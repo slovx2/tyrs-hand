@@ -56,7 +56,7 @@ jobs:
         run: |
           test -z "$(gofmt -l cmd internal ent tools)"
           go vet ./...
-          go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run
+          GOTOOLCHAIN=local go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run
           pnpm --dir web format:check
           pnpm --dir web lint
           pnpm --dir web typecheck
@@ -79,12 +79,13 @@ jobs:
           TYRS_HAND_COOKIE_SECURE: "false"
           E2E_SETUP_TOKEN: integration-setup-token
         run: |
-          export TYRS_HAND_MASTER_KEY="$(openssl rand -base64 32)"
+          TYRS_HAND_MASTER_KEY="$(openssl rand -base64 32)"
+          export TYRS_HAND_MASTER_KEY
           go run ./cmd/tyrs-hand-admin migrate
           go run ./cmd/tyrs-hand-server >/tmp/tyrs-hand-server.log 2>&1 &
           SERVER_PID=$!
           trap 'kill ${SERVER_PID}; cat /tmp/tyrs-hand-server.log' EXIT
-          for attempt in $(seq 1 30); do curl --fail --silent http://127.0.0.1:8080/healthz && break; sleep 1; done
+          for _ in $(seq 1 30); do curl --fail --silent http://127.0.0.1:8080/healthz && break; sleep 1; done
           pnpm --dir web exec playwright install --with-deps chromium
           pnpm --dir web e2e
 
@@ -98,8 +99,29 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - id: image
+        name: Resolve image tags
+        shell: bash
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            echo "push=false" >> "${GITHUB_OUTPUT}"
+            echo "tags=${image}:ci-${GITHUB_RUN_ID}" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          echo "push=true" >> "${GITHUB_OUTPUT}"
+          {
+            echo "tags<<EOF"
+            echo "${image}:sha-${GITHUB_SHA}"
+            if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+              echo "${image}:${GITHUB_REF_NAME//\//-}"
+            else
+              echo "${image}:main"
+            fi
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
       - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.image.outputs.push == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -109,8 +131,8 @@ jobs:
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
-          tags: ghcr.io/${{ github.repository }}:${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('ci-{0}', github.run_id) }}
+          push: ${{ steps.image.outputs.push == 'true' }}
+          tags: ${{ steps.image.outputs.tags }}
           provenance: mode=max
           sbom: true
           cache-from: type=gha

@@ -1,4 +1,6 @@
 .DS_Store
+.codex/
+.lcoal/
 .env
 .env.*
 !.env.example

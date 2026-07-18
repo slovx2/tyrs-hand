@@ -1,0 +1,193 @@
+<p align="center">
+  <img src="assets/tyrs-hand.png" width="128" height="128" alt="Tyrs Hand project icon">
+</p>
+
+<h1 align="center">Tyrs Hand</h1>
+
+<p align="center"><a href="README.md">中文</a></p>
+
+[![CI](https://github.com/slovx2/tyrs-hand/actions/workflows/ci.yml/badge.svg)](https://github.com/slovx2/tyrs-hand/actions/workflows/ci.yml)
+[![Security](https://github.com/slovx2/tyrs-hand/actions/workflows/security.yml/badge.svg)](https://github.com/slovx2/tyrs-hand/actions/workflows/security.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+Tyrs Hand is a self-hosted GitHub agent control plane. It receives Issue, Pull Request, review, and comment events through a GitHub App, runs Codex in isolated Git worktrees, and preserves context for follow-up instructions on the same work item.
+
+The project is at an early stage. Evaluate it on controlled repositories before production use. The default agent profile can access the public network and write to its worktree, so review trigger rules, tool allowlists, and permission policies first.
+
+## Highlights
+
+- GitHub App identity with HMAC-verified and deduplicated webhooks
+- PostgreSQL-backed durable jobs, leases, retries, and recovery
+- One bare clone cache per repository and one long-lived worktree per work item
+- Reusable Codex threads with durable summaries for context handoff
+- Repository skills loaded from `.agents/skills/<name>/SKILL.md`
+- GitHub MCP tools and controlled local Git dynamic tools
+- Idempotent tool calls keyed by `(thread, turn, call)`
+- Structured `succeeded` and `blocked` agent outcomes
+- React administration UI for repositories, rules, profiles, jobs, threads, workers, and audit logs
+
+## Architecture
+
+```mermaid
+flowchart LR
+    GitHub["GitHub App / Webhook"] --> Server["tyrs-hand-server"]
+    Admin["React Admin UI"] --> Server
+    Server --> PostgreSQL["PostgreSQL\nAuthoritative state and queue"]
+    Server --> Redis["Redis\nRate limits and notifications"]
+    Worker["tyrs-hand-worker"] --> PostgreSQL
+    Worker --> Cache["Bare Repo Cache"]
+    Cache --> Worktree["Work Item Worktree"]
+    Worker <--> Codex["Codex App Server"]
+    Codex --> Tools["GitHub / Git Dynamic Tools"]
+    Tools --> Server
+```
+
+The project ships three commands:
+
+- `tyrs-hand-server`: administration API, GitHub App, webhook receiver, and embedded frontend
+- `tyrs-hand-worker`: job leases, Git workspaces, Codex process pools, and tool execution
+- `tyrs-hand-admin`: migrations, diagnostics, administrator recovery, key rotation, and garbage collection
+
+PostgreSQL is the only authoritative state store. Redis contains only recoverable rate-limit and notification data.
+
+## Quick Start
+
+### Requirements
+
+- Docker Engine and Docker Compose
+- Go `1.26.5`, Node.js `24.14.0`, and pnpm `11.14.0` for source development
+- Codex CLI/App Server `0.142.5`; the application image already includes it
+
+### Run Locally
+
+1. Create local configuration and secrets:
+
+   ```bash
+   cp .env.example .env
+   install -d -m 0700 .local/secrets
+   printf '%s' 'tyrs_hand' > .local/secrets/postgres_password
+   openssl rand -base64 32
+   openssl rand -hex 32
+   ```
+
+   Put the generated values in `.env` as `TYRS_HAND_MASTER_KEY` and `TYRS_HAND_SETUP_TOKEN`. Local PostgreSQL uses `tyrs_hand` by default. In production, replace both `POSTGRES_PASSWORD` and the secret file with the same random password.
+
+2. Build, migrate, and start:
+
+   ```bash
+   docker compose build server
+   docker compose up -d postgres redis
+   docker compose --profile tools run --rm admin migrate
+   docker compose up -d server worker
+   ```
+
+3. Open `http://localhost:8080/setup`, create the administrator, and store the TOTP secret and one-time recovery codes.
+
+4. Create a GitHub App through the Manifest flow or enter an existing App manually. Install it on explicitly selected repositories.
+
+5. Configure an OpenAI-compatible base URL, API key, model, and reasoning effort in system settings. Shared-account authentication is also available:
+
+   ```bash
+   docker compose --profile tools run --rm admin codex-login
+   ```
+
+## Optional Webhook Listener Separation
+
+By default, the admin UI, internal API, and webhook receiver share `TYRS_HAND_HTTP_ADDR` and use one HTTP port.
+
+To isolate webhooks at the network layer:
+
+```dotenv
+TYRS_HAND_SEPARATE_WEBHOOK=true
+TYRS_HAND_WEBHOOK_HTTP_ADDR=:8081
+```
+
+When enabled, the admin listener no longer registers `/webhooks/github`. The webhook listener exposes only health endpoints and the GitHub webhook route. Your deployment must publish and route the second port separately.
+
+## GitHub App Permissions
+
+The default Manifest requests:
+
+| Permission | Access |
+| --- | --- |
+| Metadata | Read |
+| Contents | Read & Write |
+| Issues | Read & Write |
+| Pull Requests | Read & Write |
+| Actions | Read |
+| Checks | Read |
+
+The Manifest subscribes to Repository, Issues, Issue Comment, Pull Request, Review, Review Comment, and Push events. GitHub sends installation lifecycle events automatically.
+
+Default rules handle bot mentions and `pull_request.review_requested`. Regular GitHub App bots cannot be selected directly as reviewers, so the latter currently means that a reviewer request occurred in the repository. Administrators can disable or replace this rule.
+
+## Threads, Skills, and Workspaces
+
+- A `(Work Item, Agent Profile, Context Version)` tuple owns one Codex thread.
+- Follow-up comments on the same Issue or Pull Request resume that thread.
+- Provider, profile, tool schema, or skill changes create a new thread with a durable handoff summary.
+- Each work item owns a long-lived worktree and runs serially.
+- Pull Requests created from Issues are linked back to the original work item.
+- Failed jobs retain their workspace for recovery; untrusted state is quarantined and rebuilt.
+
+Repository task skills must live at:
+
+```text
+.agents/skills/<skill-name>/SKILL.md
+```
+
+If a configured skill is missing or is not returned by Codex `skills/list`, the job ends with a configuration error.
+
+## Security Model
+
+- Argon2id passwords and AES-256-GCM encrypted secrets
+- Opaque HttpOnly sessions, SameSite cookies, CSRF protection, and TOTP
+- Size-limited, HMAC-SHA256 verified, delivery-deduplicated webhooks
+- Lease token and monotonic epoch checks on every job result
+- Capability, installation, repository, work item, allowlist, and live-permission checks for dynamic tools
+- No GitHub token in the Codex environment, Git remote, or worktree
+- Non-root server and worker containers
+
+Use `compose.production.yaml` in production to provide the master key through a Docker Secret file:
+
+```bash
+docker compose -f compose.yaml -f compose.production.yaml up -d
+```
+
+Never commit `.env`, `.local/`, CODEX_HOME, private keys, worktrees, or repository caches.
+
+## Development
+
+```bash
+pnpm --dir web install --frozen-lockfile
+make generate
+make format-check
+make lint
+make test
+make test-race
+make test-integration
+make test-coverage
+make build
+```
+
+Integration tests use Testcontainers for PostgreSQL and Redis and temporary Git remotes for workspace behavior. Codex coverage includes a scripted fake App Server and the pinned real App Server with a mock Responses SSE upstream; tests never call a real model.
+
+## Images and Releases
+
+Pull Requests build images without publishing them. Pushes to `main` and `v*` tags build multi-architecture `linux/amd64` and `linux/arm64` images at:
+
+```text
+ghcr.io/slovx2/tyrs-hand
+```
+
+Every push receives an immutable `sha-<commit>` tag. Main also updates `main`, while version tags publish the matching version tag. Release builds include SBOM and provenance; version images are vulnerability-scanned and signed with Cosign keyless signing.
+
+Production deployments should pin `sha-<commit>` or an image digest and must not use `latest`.
+
+## Contributing
+
+Run tests appropriate to the change and verify generated code before opening a Pull Request. Redact logs in bug reports, and never post tokens, webhook secrets, private keys, or complete agent events.
+
+## License
+
+[MIT](LICENSE)

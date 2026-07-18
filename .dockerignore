@@ -1,5 +1,7 @@
 .git
 .github
+.codex
+.lcoal
 .env
 .env.*
 !.env.example
