@@ -1,0 +1,21 @@
+groups:
+  - name: tyrs-hand
+    rules:
+      - alert: TyrsHandQueueBacklog
+        expr: tyrs_hand_queue_depth{status="queued"} > 50
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: tyrs-hand 任务队列持续积压
+      - alert: TyrsHandNoOnlineWorker
+        expr: tyrs_hand_workers{status="online"} < 1
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: tyrs-hand 没有在线 Worker
+      - alert: TyrsHandHighHTTPErrorRate
+        expr: sum(rate(tyrs_hand_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(tyrs_hand_http_requests_total[5m])), 1) > 0.05
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: tyrs-hand HTTP 5xx 比例过高

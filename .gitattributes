@@ -1,0 +1,4 @@
+internal/web/dist/** -whitespace linguist-generated=true
+ent/** linguist-generated=true
+internal/openapi/openapi.gen.go linguist-generated=true
+web/src/api/schema.ts linguist-generated=true

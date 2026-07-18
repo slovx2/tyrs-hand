@@ -1,0 +1,469 @@
+openapi: 3.1.0
+info:
+  title: tyrs-hand Management API
+  version: 0.1.0
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: /api/v1
+tags:
+  - name: Auth
+  - name: GitHub
+  - name: Resources
+  - name: Settings
+paths:
+  /webhooks/github:
+    post:
+      operationId: receiveGitHubWebhook
+      tags: [GitHub]
+      servers: [{ url: / }]
+      security: []
+      parameters:
+        - { name: X-Hub-Signature-256, in: header, required: true, schema: { type: string } }
+        - { name: X-GitHub-Delivery, in: header, required: true, schema: { type: string } }
+        - { name: X-GitHub-Event, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "202":
+          description: 已持久化
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        default: { $ref: "#/components/responses/Problem" }
+  /internal/v1/tools/call:
+    post:
+      operationId: callInternalTool
+      tags: [Resources]
+      servers: [{ url: / }]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "200":
+          description: Tool Call 结果
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        default: { $ref: "#/components/responses/Problem" }
+  /setup/status:
+    get:
+      operationId: getSetupStatus
+      tags: [Auth]
+      security: []
+      responses:
+        "200":
+          description: Setup 状态
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SetupStatus" }
+  /setup/admin:
+    post:
+      operationId: setupAdministrator
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SetupRequest" }
+      responses:
+        "201":
+          description: 管理员与恢复资料
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SetupResult" }
+        default: { $ref: "#/components/responses/Problem" }
+  /auth/login:
+    post:
+      operationId: login
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: 登录会话
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoginResult" }
+        default: { $ref: "#/components/responses/Problem" }
+  /auth/me:
+    get:
+      operationId: getCurrentAdministrator
+      tags: [Auth]
+      responses:
+        "200":
+          description: 当前管理员
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Administrator" }
+        default: { $ref: "#/components/responses/Problem" }
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [Auth]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      responses:
+        "204": { description: 已退出 }
+        default: { $ref: "#/components/responses/Problem" }
+  /github/app:
+    get:
+      operationId: getGitHubApp
+      tags: [GitHub]
+      responses:
+        "200":
+          description: GitHub App 状态
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GitHubAppStatus" }
+    put:
+      operationId: putGitHubApp
+      tags: [GitHub]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GitHubAppInput" }
+      responses:
+        "204": { description: 已保存 }
+        default: { $ref: "#/components/responses/Problem" }
+  /github/app/manifest:
+    get:
+      operationId: getGitHubAppManifest
+      tags: [GitHub]
+      responses:
+        "200":
+          description: Manifest 表单参数
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url, manifest]
+                properties:
+                  url: { type: string, format: uri }
+                  manifest: { type: string }
+  /github/app/manifest/callback:
+    get:
+      operationId: githubAppManifestCallback
+      tags: [GitHub]
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "302": { description: 返回 GitHub 设置页 }
+        default: { $ref: "#/components/responses/Problem" }
+  /settings/agent-provider:
+    get:
+      operationId: getAgentProviderSettings
+      tags: [Settings]
+      responses:
+        "200":
+          description: Agent Provider 设置
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentProviderSettings" }
+    put:
+      operationId: putAgentProviderSettings
+      tags: [Settings]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentProviderSettingsInput" }
+      responses:
+        "204": { description: 已保存 }
+        default: { $ref: "#/components/responses/Problem" }
+  /events/stream:
+    get:
+      operationId: streamEvents
+      tags: [Resources]
+      responses:
+        "200":
+          description: Server-Sent Events
+          content:
+            text/event-stream:
+              schema: { type: string }
+  /repositories:
+    get: { $ref: "#/components/pathItems/ListRepositories" }
+    post:
+      operationId: createRepository
+      tags: [Resources]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RepositoryInput" }
+      responses:
+        "201":
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IDResource" }
+        default: { $ref: "#/components/responses/Problem" }
+  /agent-profiles:
+    get: { $ref: "#/components/pathItems/ListAgentProfiles" }
+    post: { $ref: "#/components/pathItems/CreateGeneric" }
+  /trigger-rules:
+    get: { $ref: "#/components/pathItems/ListTriggerRules" }
+    post: { $ref: "#/components/pathItems/CreateGeneric" }
+  /work-items:
+    get: { $ref: "#/components/pathItems/ListWorkItems" }
+  /threads:
+    get: { $ref: "#/components/pathItems/ListThreads" }
+  /jobs:
+    get: { $ref: "#/components/pathItems/ListJobs" }
+  /workers:
+    get: { $ref: "#/components/pathItems/ListWorkers" }
+  /worktrees:
+    get: { $ref: "#/components/pathItems/ListWorktrees" }
+  /audit-logs:
+    get: { $ref: "#/components/pathItems/ListAuditLogs" }
+  /installations:
+    get: { $ref: "#/components/pathItems/ListInstallations" }
+  /repo-caches:
+    get: { $ref: "#/components/pathItems/ListRepoCaches" }
+  /system/status:
+    get:
+      operationId: getSystemStatus
+      tags: [Resources]
+      responses:
+        "200":
+          description: 系统状态
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: { type: integer, format: int64 } }
+        default: { $ref: "#/components/responses/Problem" }
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: tyrs_hand_session
+  parameters:
+    CSRFToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema: { type: string }
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+  responses:
+    Problem:
+      description: RFC 9457 Problem Details
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/ProblemDetails" }
+    ResourceList:
+      description: 游标分页资源列表
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ResourceList" }
+  pathItems:
+    ListRepositories:
+      operationId: listRepositories
+      tags: [Resources]
+      parameters: [{ $ref: "#/components/parameters/Cursor" }, { $ref: "#/components/parameters/Limit" }]
+      responses: { "200": { $ref: "#/components/responses/ResourceList" }, default: { $ref: "#/components/responses/Problem" } }
+    ListAgentProfiles:
+      operationId: listAgentProfiles
+      tags: [Resources]
+      parameters: [{ $ref: "#/components/parameters/Cursor" }, { $ref: "#/components/parameters/Limit" }]
+      responses: { "200": { $ref: "#/components/responses/ResourceList" }, default: { $ref: "#/components/responses/Problem" } }
+    ListTriggerRules:
+      operationId: listTriggerRules
+      tags: [Resources]
+      parameters: [{ $ref: "#/components/parameters/Cursor" }, { $ref: "#/components/parameters/Limit" }]
+      responses: { "200": { $ref: "#/components/responses/ResourceList" }, default: { $ref: "#/components/responses/Problem" } }
+    ListWorkItems:
+      operationId: listWorkItems
+      tags: [Resources]
+      parameters: [{ $ref: "#/components/parameters/Cursor" }, { $ref: "#/components/parameters/Limit" }]
+      responses: { "200": { $ref: "#/components/responses/ResourceList" }, default: { $ref: "#/components/responses/Problem" } }
+    ListThreads:
+      operationId: listThreads
+      tags: [Resources]
+      parameters: [{ $ref: "#/components/parameters/Cursor" }, { $ref: "#/components/parameters/Limit" }]
+      responses: { "200": { $ref: "#/components/responses/ResourceList" }, default: { $ref: "#/components/responses/Problem" } }
+    ListJobs:
+      operationId: listJobs
+      tags: [Resources]
+      parameters: [{ $ref: "#/components/parameters/Cursor" }, { $ref: "#/components/parameters/Limit" }]
+      responses: { "200": { $ref: "#/components/responses/ResourceList" }, default: { $ref: "#/components/responses/Problem" } }
+    ListWorkers:
+      operationId: listWorkers
+      tags: [Resources]
+      parameters: [{ $ref: "#/components/parameters/Cursor" }, { $ref: "#/components/parameters/Limit" }]
+      responses: { "200": { $ref: "#/components/responses/ResourceList" }, default: { $ref: "#/components/responses/Problem" } }
+    ListWorktrees:
+      operationId: listWorktrees
+      tags: [Resources]
+      parameters: [{ $ref: "#/components/parameters/Cursor" }, { $ref: "#/components/parameters/Limit" }]
+      responses: { "200": { $ref: "#/components/responses/ResourceList" }, default: { $ref: "#/components/responses/Problem" } }
+    ListAuditLogs:
+      operationId: listAuditLogs
+      tags: [Resources]
+      parameters: [{ $ref: "#/components/parameters/Cursor" }, { $ref: "#/components/parameters/Limit" }]
+      responses: { "200": { $ref: "#/components/responses/ResourceList" }, default: { $ref: "#/components/responses/Problem" } }
+    ListInstallations:
+      operationId: listInstallations
+      tags: [Resources]
+      parameters: [{ $ref: "#/components/parameters/Cursor" }, { $ref: "#/components/parameters/Limit" }]
+      responses: { "200": { $ref: "#/components/responses/ResourceList" }, default: { $ref: "#/components/responses/Problem" } }
+    ListRepoCaches:
+      operationId: listRepoCaches
+      tags: [Resources]
+      parameters: [{ $ref: "#/components/parameters/Cursor" }, { $ref: "#/components/parameters/Limit" }]
+      responses: { "200": { $ref: "#/components/responses/ResourceList" }, default: { $ref: "#/components/responses/Problem" } }
+    CreateGeneric:
+      tags: [Resources]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "201":
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IDResource" }
+        default: { $ref: "#/components/responses/Problem" }
+  schemas:
+    ProblemDetails:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer, minimum: 400, maximum: 599 }
+        detail: { type: string }
+        instance: { type: string, format: uri-reference }
+        requestId: { type: string }
+    SetupStatus:
+      type: object
+      required: [setupRequired, githubConfigured]
+      properties:
+        setupRequired: { type: boolean }
+        githubConfigured: { type: boolean }
+    SetupRequest:
+      type: object
+      required: [setupToken, username, password]
+      properties:
+        setupToken: { type: string, minLength: 16 }
+        username: { type: string, minLength: 3, maxLength: 64 }
+        password: { type: string, minLength: 12, maxLength: 256 }
+    SetupResult:
+      type: object
+      required: [totpSecret, provisioningUri, recoveryCodes]
+      properties:
+        totpSecret: { type: string }
+        provisioningUri: { type: string, format: uri }
+        recoveryCodes: { type: array, items: { type: string } }
+    LoginRequest:
+      type: object
+      required: [username, password, totp]
+      properties:
+        username: { type: string }
+        password: { type: string }
+        totp: { type: string, pattern: "^[0-9]{6}$" }
+    LoginResult:
+      type: object
+      required: [username, csrfToken, expiresAt]
+      properties:
+        username: { type: string }
+        csrfToken: { type: string }
+        expiresAt: { type: string, format: date-time }
+    Administrator:
+      type: object
+      required: [id, username, expiresAt]
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        expiresAt: { type: string, format: date-time }
+    GitHubAppStatus:
+      type: object
+      required: [configured]
+      properties:
+        configured: { type: boolean }
+        appId: { type: integer, format: int64 }
+        clientId: { type: string }
+        appSlug: { type: string }
+    GitHubAppInput:
+      type: object
+      required: [appId, appSlug, privateKey, webhookSecret]
+      properties:
+        appId: { type: integer, format: int64, minimum: 1 }
+        clientId: { type: string }
+        appSlug: { type: string }
+        privateKey: { type: string, writeOnly: true }
+        webhookSecret: { type: string, writeOnly: true }
+    RepositoryInput:
+      type: object
+      required: [installationExternalId, accountLogin, repositoryExternalId, owner, name, defaultBranch, cloneUrl]
+      properties:
+        installationExternalId: { type: integer, format: int64 }
+        accountLogin: { type: string }
+        accountType: { type: string, default: Organization }
+        repositoryExternalId: { type: integer, format: int64 }
+        owner: { type: string }
+        name: { type: string }
+        defaultBranch: { type: string }
+        cloneUrl: { type: string, format: uri }
+    AgentProviderSettings:
+      type: object
+      required: [providerType, configured]
+      properties:
+        providerType: { type: string, enum: [device-code, api-key] }
+        baseUrl: { type: string, format: uri }
+        model: { type: string }
+        reasoningEffort: { type: string }
+        serviceTier: { type: string }
+        proxyUrl: { type: string, format: uri }
+        configured: { type: boolean }
+        configSignature: { type: string, readOnly: true }
+    AgentProviderSettingsInput:
+      allOf:
+        - $ref: "#/components/schemas/AgentProviderSettings"
+        - type: object
+          properties:
+            apiKey: { type: string, writeOnly: true }
+    IDResource:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
+    ResourceList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { type: object, additionalProperties: true }
+        nextCursor: { type: string }
+security:
+  - sessionCookie: []

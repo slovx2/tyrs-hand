@@ -1,0 +1,8 @@
+packages:
+  - .
+  - tools/*
+
+allowBuilds:
+  msw: true
+minimumReleaseAgeExclude:
+  - react-hook-form@7.82.0

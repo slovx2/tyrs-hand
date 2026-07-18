@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: 1.26.5
+  NODE_VERSION: 24.14.0
+  PNPM_VERSION: 11.14.0
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18.3-bookworm@sha256:80630f83606d8db77d30b3851b16a9f78be2d0d4dda6f7b82a1fdca5ebe3acba
+        env:
+          POSTGRES_DB: tyrs_hand_test
+          POSTGRES_USER: tyrs_hand
+          POSTGRES_PASSWORD: test-password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U tyrs_hand -d tyrs_hand_test"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:8.4.0-bookworm@sha256:c22af04bb576503bf16b3e34a1fd2fd82de0f765afd866d2e380145e0af30d78
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s
+          --health-timeout 3s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgres://tyrs_hand:test-password@localhost:5432/tyrs_hand_test?sslmode=disable
+      TEST_REDIS_URL: redis://localhost:6379/1
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with: { go-version: "1.26.5", cache: true }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: "24.14.0", cache: pnpm, cache-dependency-path: web/pnpm-lock.yaml }
+      - run: npm install --global pnpm@11.14.0
+      - run: npm install --global @openai/codex@0.142.5
+      - run: go mod download && go mod verify
+      - run: pnpm --dir web install --frozen-lockfile
+      - name: Generated code must be current
+        run: |
+          go generate ./...
+          pnpm --dir web generate:api
+          git diff --exit-code
+      - name: Format and lint
+        run: |
+          test -z "$(gofmt -l cmd internal ent tools)"
+          go vet ./...
+          go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run
+          pnpm --dir web format:check
+          pnpm --dir web lint
+          pnpm --dir web typecheck
+      - name: Unit, race and integration tests
+        run: |
+          go test ./...
+          go test -race ./internal/...
+          ./tools/check-go-coverage.sh
+          pnpm --dir web test:run
+      - uses: codecov/codecov-action@af09b5e394c93991b95a5e7646aeb90c1917f78f # v5.5.1
+        with:
+          files: coverage/go.out,web/coverage/lcov.info
+          fail_ci_if_error: false
+      - run: pnpm --dir web build && go build ./cmd/tyrs-hand-server ./cmd/tyrs-hand-worker ./cmd/tyrs-hand-admin
+      - name: Browser end-to-end
+        env:
+          TYRS_HAND_DATABASE_URL: postgres://tyrs_hand:test-password@localhost:5432/tyrs_hand_test?sslmode=disable
+          TYRS_HAND_REDIS_URL: redis://localhost:6379/1
+          TYRS_HAND_SETUP_TOKEN: integration-setup-token
+          TYRS_HAND_COOKIE_SECURE: "false"
+          E2E_SETUP_TOKEN: integration-setup-token
+        run: |
+          export TYRS_HAND_MASTER_KEY="$(openssl rand -base64 32)"
+          go run ./cmd/tyrs-hand-admin migrate
+          go run ./cmd/tyrs-hand-server >/tmp/tyrs-hand-server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill ${SERVER_PID}; cat /tmp/tyrs-hand-server.log' EXIT
+          for attempt in $(seq 1 30); do curl --fail --silent http://127.0.0.1:8080/healthz && break; sleep 1; done
+          pnpm --dir web exec playwright install --with-deps chromium
+          pnpm --dir web e2e
+
+  image:
+    runs-on: ubuntu-24.04
+    needs: verify
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          tags: ghcr.io/${{ github.repository }}:${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('ci-{0}', github.run_id) }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+        if: startsWith(github.ref, 'refs/tags/v')
+      - uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          image-ref: ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Sign multi-architecture manifest
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"

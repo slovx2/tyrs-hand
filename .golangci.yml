@@ -1,0 +1,47 @@
+version: "2"
+
+run:
+  timeout: 10m
+  tests: true
+
+linters:
+  enable:
+    - depguard
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+  settings:
+    depguard:
+      rules:
+        http-boundary:
+          files:
+            - "**/internal/httpapi/**/*.go"
+          deny:
+            - pkg: github.com/slovx2/tyrs-hand/internal/worker
+              desc: HTTP 层不能依赖 Worker Adapter
+            - pkg: github.com/slovx2/tyrs-hand/internal/gitworkspace
+              desc: HTTP 层不能依赖 Git Adapter
+            - pkg: github.com/slovx2/tyrs-hand/internal/codex
+              desc: HTTP 层不能直接依赖 Agent Adapter
+        orchestration-boundary:
+          files:
+            - "**/internal/orchestrator/**/*.go"
+          deny:
+            - pkg: github.com/slovx2/tyrs-hand/internal/httpapi
+              desc: 编排层不能反向依赖 HTTP
+            - pkg: github.com/slovx2/tyrs-hand/internal/worker
+              desc: 编排层不能依赖 Worker Adapter
+        ports-boundary:
+          files:
+            - "**/internal/ports/**/*.go"
+          deny:
+            - pkg: github.com/slovx2/tyrs-hand/internal/httpapi
+            - pkg: github.com/slovx2/tyrs-hand/internal/github
+            - pkg: github.com/slovx2/tyrs-hand/internal/gitworkspace
+            - pkg: github.com/slovx2/tyrs-hand/internal/codex
+  exclusions:
+    paths:
+      - ent
+      - internal/openapi
