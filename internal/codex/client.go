@@ -220,7 +220,7 @@ func (c *Client) readLoop(reader io.Reader) {
 			}
 		}
 	}
-	if err := scanner.Err(); err != nil && !c.closing.Load() {
+	if err := scanner.Err(); err != nil && !c.closing.Load() && !errors.Is(err, os.ErrClosed) {
 		c.fail(fmt.Errorf("读取 Codex 输出: %w", err))
 	}
 }
