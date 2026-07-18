@@ -33,12 +33,17 @@ RUN apt-get update && apt-get install --yes --no-install-recommends \
       git=1:2.39.5-0+deb12u3 \
       openssh-client=1:9.2p1-2+deb12u10 \
       ca-certificates=20230311+deb12u1 \
+      libcap2=1:2.66-4+deb12u3+b1 \
+      libgnutls30=3.7.9-2+deb12u7 \
       tini=0.19.0-1+b3 && \
     rm -rf /var/lib/apt/lists/* && \
     npm install --global --omit=dev @openai/codex@0.142.5 && \
     npm cache clean --force && \
     codex_native="$(find /usr/local/lib/node_modules/@openai/codex -path '*/vendor/*/bin/codex' -type f -print -quit)" && \
-    test -n "${codex_native}" && ln -s "${codex_native}" /usr/local/bin/apply_patch
+    test -n "${codex_native}" && ln -s "${codex_native}" /usr/local/bin/apply_patch && \
+    rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn-v1.22.22 && \
+    rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+      /usr/local/bin/yarn /usr/local/bin/yarnpkg /usr/local/bin/pnpm /usr/local/bin/pnpx
 RUN groupadd --gid 10001 tyrs-hand && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/tyrs-hand tyrs-hand && \
     install -d -o tyrs-hand -g tyrs-hand -m 0750 /data/repo-cache /data/worktrees /data/codex-homes /data/discord-workspaces /data/build-cache
 COPY --from=go-build --chown=root:root /out/tyrs-hand-server /usr/local/bin/tyrs-hand-server
