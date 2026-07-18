@@ -52,6 +52,8 @@ PostgreSQL 是唯一权威状态源。Redis 仅保存可以重建的限流和通
 
 ## 快速开始
 
+最小生产安装请参阅[最小安装指引](docs/deployment/minimal-installation.md)。
+
 ### 环境要求
 
 - Docker Engine 与 Docker Compose
