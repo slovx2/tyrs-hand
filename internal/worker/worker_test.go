@@ -15,6 +15,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
+	"github.com/slovx2/tyrs-hand/internal/domain"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/queue"
 	"github.com/stretchr/testify/require"
@@ -158,6 +159,30 @@ func TestLocalToolCallAuditIsIdempotent(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, result, replayed)
 	require.Equal(t, 1, executions)
+}
+
+func TestLoadAgentOutcome(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	mock.MatchExpectationsInOrder(false)
+	mock.ExpectClose()
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	threadDBID := uuid.New()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT payload->'item'->>'text' FROM agent_events")).
+		WithArgs(threadDBID, "turn-1").
+		WillReturnRows(sqlmock.NewRows([]string{"text"}).AddRow(`{"status":"blocked","summary":" missing permission "}`))
+	outcome, err := (&Processor{db: db}).loadAgentOutcome(context.Background(), threadDBID, "turn-1")
+	require.NoError(t, err)
+	require.Equal(t, domain.JobBlocked, outcome.Status)
+	require.Equal(t, "missing permission", outcome.Summary)
+
+	var schema map[string]any
+	require.NoError(t, json.Unmarshal(agentOutcomeSchema(), &schema))
+	require.Equal(t, "object", schema["type"])
 }
 
 type fakeWorkspace struct {

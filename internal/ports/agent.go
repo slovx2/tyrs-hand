@@ -31,6 +31,7 @@ type TurnInput struct {
 	Text                string
 	ClientUserMessageID string
 	Skills              []SkillRef
+	OutputSchema        json.RawMessage
 }
 
 type SkillRef struct {

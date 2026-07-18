@@ -161,6 +161,18 @@ func TestPostgresMigrationsAndLeaseEpoch(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, failedClaim)
 	require.NoError(t, repository.Fail(ctx, failedClaim.ID, failedClaim.LeaseToken, failedClaim.LeaseEpoch, errors.New("integration failure")))
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO job_intents(work_item_id, repository_id, agent_profile_id, idempotency_key, instruction)
+		VALUES ($1,$2,$3,'job-blocked','blocked test')`, workItemID, repositoryID, profileID)
+	require.NoError(t, err)
+	blockedClaim, err := repository.Claim(ctx, "worker-blocked")
+	require.NoError(t, err)
+	require.NotNil(t, blockedClaim)
+	require.NoError(t, repository.Block(ctx, blockedClaim.ID, blockedClaim.LeaseToken, blockedClaim.LeaseEpoch, errors.New("missing permission")))
+	var blockedStatus, blockedReason string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status, last_error FROM job_intents WHERE id = $1`, blockedClaim.ID).Scan(&blockedStatus, &blockedReason))
+	require.Equal(t, "blocked", blockedStatus)
+	require.Equal(t, "missing permission", blockedReason)
 	emptyClaim, err := repository.Claim(ctx, "worker-empty")
 	require.NoError(t, err)
 	require.Nil(t, emptyClaim)

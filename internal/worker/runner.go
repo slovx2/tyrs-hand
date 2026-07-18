@@ -86,11 +86,18 @@ func (r *Runner) execute(parent context.Context, claimed *queue.ClaimedJob) {
 	<-heartbeatDone
 	finishCtx, finishCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer finishCancel()
+	var blocked *blockedError
 	if err == nil {
 		if completeErr := r.queue.Complete(finishCtx, claimed.ID, claimed.LeaseToken, claimed.LeaseEpoch); completeErr != nil {
 			r.logger.Error("提交任务完成状态失败", zap.Error(completeErr), zap.String("job_id", claimed.ID.String()))
 		} else {
 			r.publish(finishCtx, "job.succeeded", claimed.ID.String())
+		}
+	} else if errors.As(err, &blocked) {
+		if blockErr := r.queue.Block(finishCtx, claimed.ID, claimed.LeaseToken, claimed.LeaseEpoch, blocked); blockErr != nil {
+			r.logger.Error("记录任务阻塞状态失败", zap.Error(blockErr), zap.String("job_id", claimed.ID.String()))
+		} else {
+			r.publish(finishCtx, "job.blocked", claimed.ID.String())
 		}
 	} else {
 		r.logger.Error("任务执行失败", zap.String("job_id", claimed.ID.String()), zap.Error(err))

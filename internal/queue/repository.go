@@ -135,6 +135,14 @@ func (r *Repository) Complete(ctx context.Context, jobID uuid.UUID, leaseToken s
 	return r.finish(ctx, jobID, leaseToken, epoch, domain.JobSucceeded, "")
 }
 
+func (r *Repository) Block(ctx context.Context, jobID uuid.UUID, leaseToken string, epoch int64, cause error) error {
+	message := ""
+	if cause != nil {
+		message = cause.Error()
+	}
+	return r.finish(ctx, jobID, leaseToken, epoch, domain.JobBlocked, message)
+}
+
 func (r *Repository) Fail(ctx context.Context, jobID uuid.UUID, leaseToken string, epoch int64, cause error) error {
 	message := ""
 	if cause != nil {

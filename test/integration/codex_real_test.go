@@ -28,6 +28,10 @@ func TestRealCodexAppServerWithMockResponsesAndDynamicTool(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		require.Equal(t, "/v1/responses", request.URL.Path)
 		require.Equal(t, http.MethodPost, request.Method)
+		var requestBody map[string]any
+		require.NoError(t, json.NewDecoder(request.Body).Decode(&requestBody))
+		format := requestBody["text"].(map[string]any)["format"].(map[string]any)
+		require.Equal(t, "json_schema", format["type"])
 		response.Header().Set("Content-Type", "text/event-stream")
 		response.Header().Set("Cache-Control", "no-cache")
 		if requestCount.Add(1) == 1 {
@@ -100,7 +104,10 @@ supports_websockets = false
 		},
 	})
 	require.NoError(t, err)
-	turnID, err := runtime.StartTurn(context.Background(), threadID, ports.TurnInput{Text: "Call the echo tool.", Skills: skills})
+	turnID, err := runtime.StartTurn(context.Background(), threadID, ports.TurnInput{
+		Text: "Call the echo tool.", Skills: skills,
+		OutputSchema: json.RawMessage(`{"type":"object","properties":{"result":{"type":"string"}},"required":["result"],"additionalProperties":false}`),
+	})
 	require.NoError(t, err)
 	waitForCompletedTurn(t, client.Events(), threadID, turnID)
 	select {

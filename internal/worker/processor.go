@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/config"
+	"github.com/slovx2/tyrs-hand/internal/domain"
 	"github.com/slovx2/tyrs-hand/internal/githubtools"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/queue"
@@ -136,6 +137,7 @@ func (p *Processor) Process(ctx context.Context, claimed *queue.ClaimedJob) erro
 	defer unbind()
 	turnID, err := runtime.StartTurn(ctx, threadID, ports.TurnInput{
 		Text: claimed.Instruction, ClientUserMessageID: claimed.ID.String(), Skills: skills,
+		OutputSchema: agentOutcomeSchema(),
 	})
 	if err != nil {
 		return err
@@ -144,11 +146,20 @@ func (p *Processor) Process(ctx context.Context, claimed *queue.ClaimedJob) erro
 		_ = runtime.InterruptTurn(context.Background(), threadID, turnID)
 		return err
 	}
-	if err := p.persistMemorySummary(ctx, claimed.WorkItemID, threadDBID, threadID); err != nil {
+	outcome, err := p.loadAgentOutcome(ctx, threadDBID, turnID)
+	if err != nil {
+		return err
+	}
+	if err := p.persistMemorySummary(ctx, claimed.WorkItemID, threadID, outcome.Summary); err != nil {
 		p.logger.Warn("持久化 Work Item Summary 失败", zap.Error(err), zap.String("work_item_id", claimed.WorkItemID.String()))
 	}
-	_, err = p.db.ExecContext(ctx, `UPDATE agent_threads SET last_turn_id = $2, last_used_at = now(), expires_at = now() + interval '30 days' WHERE id = $1`, threadDBID, turnID)
-	return err
+	if _, err = p.db.ExecContext(ctx, `UPDATE agent_threads SET last_turn_id = $2, last_used_at = now(), expires_at = now() + interval '30 days' WHERE id = $1`, threadDBID, turnID); err != nil {
+		return err
+	}
+	if outcome.Status == domain.JobBlocked {
+		return &blockedError{summary: outcome.Summary}
+	}
+	return nil
 }
 
 func (p *Processor) handleTool(ctx context.Context, claimed *queue.ClaimedJob, workspace ports.Workspace, branch string, request codex.ToolCallRequest) (codex.ToolCallResult, error) {

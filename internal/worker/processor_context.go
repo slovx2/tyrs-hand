@@ -88,40 +88,60 @@ func (p *Processor) handoffSummary(ctx context.Context, workItemID uuid.UUID) (s
 	return summary, err
 }
 
-func (p *Processor) persistMemorySummary(ctx context.Context, workItemID, threadDBID uuid.UUID, externalThreadID string) error {
-	var summary string
-	err := p.db.QueryRowContext(ctx, `
-		SELECT CASE
-			WHEN event_type = 'item/completed' THEN payload->'item'->>'text'
-			ELSE payload::text
-		END
-		FROM agent_events
-		WHERE thread_id = $1 AND (
-			event_type = 'turn/completed' OR (
-				event_type = 'item/completed'
-				AND payload->'item'->>'type' = 'agentMessage'
-				AND payload->'item'->>'phase' = 'final_answer'
-			)
-		)
-		ORDER BY CASE WHEN event_type = 'item/completed' THEN 0 ELSE 1 END, id DESC
-		LIMIT 1`, threadDBID).Scan(&summary)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
+func (p *Processor) persistMemorySummary(ctx context.Context, workItemID uuid.UUID, externalThreadID, summary string) error {
 	const maxSummaryBytes = 32 * 1024
 	raw := []byte(summary)
 	if len(raw) > maxSummaryBytes {
 		raw = raw[:maxSummaryBytes]
 	}
-	_, err = p.db.ExecContext(ctx, `
+	_, err := p.db.ExecContext(ctx, `
 		INSERT INTO work_item_memories(work_item_id, scope, summary, source_thread_id, version)
 		VALUES ($1, 'work_item', $2, $3,
 			COALESCE((SELECT max(version) + 1 FROM work_item_memories WHERE work_item_id = $1 AND scope = 'work_item'), 1))`,
 		workItemID, string(raw), externalThreadID)
 	return err
+}
+
+type agentOutcome struct {
+	Status  domain.JobStatus `json:"status"`
+	Summary string           `json:"summary"`
+}
+
+type blockedError struct{ summary string }
+
+func (e *blockedError) Error() string { return e.summary }
+
+func agentOutcomeSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["succeeded","blocked"],"description":"Use blocked only when the requested objective cannot be completed because required input, permissions, tools, or external state are unavailable."},"summary":{"type":"string","minLength":1,"description":"Concise factual outcome for durable memory and operators."}},"required":["status","summary"],"additionalProperties":false}`)
+}
+
+func (p *Processor) loadAgentOutcome(ctx context.Context, threadDBID uuid.UUID, turnID string) (agentOutcome, error) {
+	var text string
+	err := p.db.QueryRowContext(ctx, `
+		SELECT payload->'item'->>'text' FROM agent_events
+		WHERE thread_id = $1 AND event_type = 'item/completed'
+			AND payload->>'turnId' = $2
+			AND payload->'item'->>'type' = 'agentMessage'
+			AND payload->'item'->>'phase' = 'final_answer'
+		ORDER BY id DESC LIMIT 1`, threadDBID, turnID).Scan(&text)
+	if errors.Is(err, sql.ErrNoRows) {
+		return agentOutcome{}, errors.New("codex Turn 缺少结构化最终结果")
+	}
+	if err != nil {
+		return agentOutcome{}, err
+	}
+	var outcome agentOutcome
+	if err := json.Unmarshal([]byte(text), &outcome); err != nil {
+		return agentOutcome{}, fmt.Errorf("解析 Codex 结构化最终结果: %w", err)
+	}
+	if outcome.Status != domain.JobSucceeded && outcome.Status != domain.JobBlocked {
+		return agentOutcome{}, fmt.Errorf("codex 返回了不支持的任务状态 %q", outcome.Status)
+	}
+	outcome.Summary = strings.TrimSpace(outcome.Summary)
+	if outcome.Summary == "" {
+		return agentOutcome{}, errors.New("codex 结构化最终结果缺少摘要")
+	}
+	return outcome, nil
 }
 
 func (p *Processor) waitTurn(ctx context.Context, runtime *codex.Runtime, events <-chan codex.Event, claimed *queue.ClaimedJob, threadDBID uuid.UUID, externalThreadID, turnID string) error {

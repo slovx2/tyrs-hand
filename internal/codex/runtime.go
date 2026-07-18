@@ -46,9 +46,13 @@ func (r *Runtime) StartTurn(ctx context.Context, threadID string, input ports.Tu
 			ID string `json:"id"`
 		} `json:"turn"`
 	}
-	err := r.client.Call(ctx, "turn/start", map[string]any{
+	payload := map[string]any{
 		"threadId": threadID, "clientUserMessageId": input.ClientUserMessageID, "input": items,
-	}, &result)
+	}
+	if len(input.OutputSchema) > 0 {
+		payload["outputSchema"] = input.OutputSchema
+	}
+	err := r.client.Call(ctx, "turn/start", payload, &result)
 	if err != nil {
 		return "", err
 	}
