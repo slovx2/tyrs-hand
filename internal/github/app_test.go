@@ -36,6 +36,12 @@ func TestAppClientInstallationTokenCacheAndPermission(t *testing.T) {
 		case "/repos/owner/repo/collaborators/alice/permission":
 			require.Equal(t, "Bearer installation-token", request.Header.Get("Authorization"))
 			_ = json.NewEncoder(response).Encode(map[string]any{"permission": "write", "user": map[string]any{"login": "alice"}})
+		case "/repos/owner/repo":
+			require.Equal(t, "Bearer installation-token", request.Header.Get("Authorization"))
+			_ = json.NewEncoder(response).Encode(map[string]any{
+				"id": 99, "name": "repo", "owner": map[string]any{"login": "owner"},
+				"default_branch": "main", "clone_url": "https://github.com/owner/repo.git",
+			})
 		default:
 			http.NotFound(response, request)
 		}
@@ -52,6 +58,11 @@ func TestAppClientInstallationTokenCacheAndPermission(t *testing.T) {
 	permission, err := client.Permission(context.Background(), 42, "owner", "repo", "alice")
 	require.NoError(t, err)
 	require.Equal(t, "write", permission)
+	repository, err := client.Repository(context.Background(), 42, "owner", "repo")
+	require.NoError(t, err)
+	require.Equal(t, int64(99), repository.ExternalID)
+	require.Equal(t, "main", repository.DefaultBranch)
+	require.Equal(t, "https://github.com/owner/repo.git", repository.CloneURL)
 }
 
 func TestNewAppClientRejectsInvalidConfiguration(t *testing.T) {

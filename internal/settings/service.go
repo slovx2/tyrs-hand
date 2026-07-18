@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/slovx2/tyrs-hand/internal/secrets"
@@ -157,6 +158,11 @@ func (s *Service) PrepareCodexHome(ctx context.Context, codexHome, sharedHome st
 			return AgentProvider{}, nil, err
 		}
 	}
+	if provider.BaseURL != "" {
+		if err := writeProviderConfig(filepath.Join(codexHome, "config.toml"), provider.BaseURL); err != nil {
+			return AgentProvider{}, nil, err
+		}
+	}
 	environment := make([]string, 0, 4)
 	if provider.BaseURL != "" {
 		environment = append(environment, "OPENAI_BASE_URL="+provider.BaseURL)
@@ -208,4 +214,33 @@ func writeSecretFile(path string, data []byte) error {
 		return err
 	}
 	return nil
+}
+
+func writeProviderConfig(path, baseURL string) error {
+	existing, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	lines := strings.Split(string(existing), "\n")
+	filtered := make([]string, 0, len(lines))
+	inRoot := true
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[") {
+			inRoot = false
+		}
+		if inRoot && strings.HasPrefix(trimmed, "openai_base_url") {
+			continue
+		}
+		filtered = append(filtered, line)
+	}
+	content := "openai_base_url = " + strconv.Quote(baseURL) + "\n"
+	remaining := strings.TrimLeft(strings.Join(filtered, "\n"), "\n")
+	if remaining != "" {
+		content += remaining
+		if !strings.HasSuffix(content, "\n") {
+			content += "\n"
+		}
+	}
+	return writeSecretFile(path, []byte(content))
 }

@@ -30,6 +30,10 @@ func TestCatalogRejectsUnknownTool(t *testing.T) {
 func TestCatalogFiltersToolsAndPreservesOfficialAnnotations(t *testing.T) {
 	catalog, err := NewCatalog(RegisteredTools)
 	require.NoError(t, err)
+	for _, name := range RegisteredTools {
+		_, err = catalog.DynamicToolSpecFor([]string{name})
+		require.NoError(t, err, "注册工具 %s 必须存在于官方工具目录", name)
+	}
 	spec, err := catalog.DynamicToolSpecFor([]string{"issue_read", "merge_pull_request"})
 	require.NoError(t, err)
 	require.Len(t, spec.Tools, 2)
@@ -51,10 +55,14 @@ func TestConvertOfficialToolContent(t *testing.T) {
 	items, err := convertContent([]mcp.Content{
 		&mcp.TextContent{Text: "ok"},
 		&mcp.ImageContent{MIMEType: "image/png", Data: []byte{1, 2, 3}},
+		&mcp.EmbeddedResource{Resource: &mcp.ResourceContents{URI: "repo://file", MIMEType: "text/plain", Text: "file contents"}},
+		&mcp.ResourceLink{URI: "https://example.com/file", Name: "file", MIMEType: "text/plain"},
 	})
 	require.NoError(t, err)
 	require.Equal(t, "ok", items[0].Text)
 	require.Equal(t, "data:image/png;base64,AQID", items[1].ImageURL)
-	_, err = convertContent([]mcp.Content{&mcp.ResourceLink{Name: "unsupported", URI: "https://example.com"}})
+	require.Equal(t, "file contents", items[2].Text)
+	require.Contains(t, items[3].Text, "https://example.com/file")
+	_, err = convertContent([]mcp.Content{&mcp.AudioContent{MIMEType: "audio/wav", Data: []byte{1}}})
 	require.Error(t, err)
 }

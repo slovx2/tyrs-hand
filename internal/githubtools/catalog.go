@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	ghmcp "github.com/github/github-mcp-server/pkg/github"
 	"github.com/github/github-mcp-server/pkg/inventory"
@@ -27,7 +28,6 @@ var DefaultAllowedTools = []string{
 	"list_commits",
 	"pull_request_read",
 	"pull_request_review_write",
-	"request_pull_request_reviewers",
 }
 
 var RegisteredTools = append(append([]string{}, DefaultAllowedTools...),
@@ -140,6 +140,29 @@ func convertContent(content []mcp.Content) ([]codex.ToolContentItem, error) {
 		case *mcp.ImageContent:
 			uri := "data:" + value.MIMEType + ";base64," + base64.StdEncoding.EncodeToString(value.Data)
 			items = append(items, codex.ToolContentItem{Type: "inputImage", ImageURL: uri})
+		case *mcp.EmbeddedResource:
+			if value.Resource == nil {
+				return nil, errors.New("上游 GitHub 工具返回了空资源")
+			}
+			if value.Resource.Text != "" {
+				items = append(items, codex.ToolContentItem{Type: "inputText", Text: value.Resource.Text})
+				continue
+			}
+			if len(value.Resource.Blob) > 0 && strings.HasPrefix(value.Resource.MIMEType, "image/") {
+				uri := "data:" + value.Resource.MIMEType + ";base64," + base64.StdEncoding.EncodeToString(value.Resource.Blob)
+				items = append(items, codex.ToolContentItem{Type: "inputImage", ImageURL: uri})
+				continue
+			}
+			return nil, fmt.Errorf("上游 GitHub 工具返回了不支持的资源类型 %s", value.Resource.MIMEType)
+		case *mcp.ResourceLink:
+			data, err := json.Marshal(map[string]string{
+				"uri": value.URI, "name": value.Name, "title": value.Title,
+				"description": value.Description, "mimeType": value.MIMEType,
+			})
+			if err != nil {
+				return nil, err
+			}
+			items = append(items, codex.ToolContentItem{Type: "inputText", Text: string(data)})
 		default:
 			return nil, errors.New("上游 GitHub 工具返回了 Codex dynamic tools 不支持的内容类型")
 		}

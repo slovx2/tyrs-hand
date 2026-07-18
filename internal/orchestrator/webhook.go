@@ -49,6 +49,9 @@ func (s *WebhookService) Process(ctx context.Context, signature, deliveryID, eve
 	if err != nil {
 		return WebhookResult{}, err
 	}
+	if err := hydrateInstallationRepositories(ctx, s.provider, &event); err != nil {
+		return WebhookResult{}, err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return WebhookResult{}, err
@@ -62,6 +65,12 @@ func (s *WebhookService) Process(ctx context.Context, signature, deliveryID, eve
 		ON CONFLICT(provider, delivery_id) DO NOTHING
 		RETURNING id`, event.Provider, event.DeliveryID, event.EventName, event.Action, event.Raw).Scan(&deliveryUUID)
 	if errors.Is(err, sql.ErrNoRows) {
+		if err := syncInstallation(ctx, tx, event); err != nil {
+			return WebhookResult{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return WebhookResult{}, err
+		}
 		return WebhookResult{Duplicate: true}, nil
 	}
 	if err != nil {
@@ -141,6 +150,38 @@ func (s *WebhookService) Process(ctx context.Context, signature, deliveryID, eve
 		return WebhookResult{}, err
 	}
 	return WebhookResult{Jobs: jobs}, nil
+}
+
+func hydrateInstallationRepositories(ctx context.Context, provider ports.SCMProvider, event *domain.NormalizedEvent) error {
+	for index := range event.Installation.Repositories {
+		repository := &event.Installation.Repositories[index]
+		if repository.DefaultBranch != "" && repository.CloneURL != "" {
+			continue
+		}
+		full, err := provider.Repository(ctx, event.InstallationID, repository.Owner, repository.Name)
+		if err != nil {
+			return fmt.Errorf("补全仓库 %s/%s 元数据: %w", repository.Owner, repository.Name, err)
+		}
+		if repository.ExternalID == 0 {
+			repository.ExternalID = full.ExternalID
+		}
+		if repository.Owner == "" {
+			repository.Owner = full.Owner
+		}
+		if repository.Name == "" {
+			repository.Name = full.Name
+		}
+		if repository.DefaultBranch == "" {
+			repository.DefaultBranch = full.DefaultBranch
+		}
+		if repository.CloneURL == "" {
+			repository.CloneURL = full.CloneURL
+		}
+		if repository.DefaultBranch == "" || repository.CloneURL == "" {
+			return fmt.Errorf("GitHub 没有返回仓库 %s/%s 的默认分支或 Clone URL", repository.Owner, repository.Name)
+		}
+	}
+	return nil
 }
 
 func syncInstallation(ctx context.Context, tx *sql.Tx, event domain.NormalizedEvent) error {

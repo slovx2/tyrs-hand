@@ -53,18 +53,22 @@ func (s *Server) githubManifest(c *gin.Context) {
 		problem(c, http.StatusServiceUnavailable, "保存 Manifest State 失败", err)
 		return
 	}
-	manifest := map[string]any{
-		"name": "tyrs-hand", "url": s.cfg.PublicURL,
-		"hook_attributes": map[string]any{"url": s.cfg.PublicURL + "/webhooks/github", "active": true},
-		"redirect_url":    s.cfg.PublicURL + "/api/v1/github/app/manifest/callback",
+	manifest := githubAppManifest(s.cfg.PublicURL, "tyrs-hand-"+uuid.NewString()[:8])
+	data, _ := json.Marshal(manifest)
+	c.JSON(http.StatusOK, gin.H{"url": "https://github.com/settings/apps/new?state=" + url.QueryEscape(state), "manifest": string(data)})
+}
+
+func githubAppManifest(publicURL, appName string) map[string]any {
+	return map[string]any{
+		"name": appName, "url": publicURL,
+		"hook_attributes": map[string]any{"url": publicURL + "/webhooks/github", "active": true},
+		"redirect_url":    publicURL + "/api/v1/github/app/manifest/callback",
 		"public":          false,
 		"default_permissions": map[string]string{
 			"metadata": "read", "contents": "write", "issues": "write", "pull_requests": "write", "actions": "read", "checks": "read",
 		},
-		"default_events": []string{"installation", "installation_repositories", "repository", "issues", "issue_comment", "pull_request", "pull_request_review", "pull_request_review_comment", "push"},
+		"default_events": []string{"repository", "issues", "issue_comment", "pull_request", "pull_request_review", "pull_request_review_comment", "push"},
 	}
-	data, _ := json.Marshal(manifest)
-	c.JSON(http.StatusOK, gin.H{"url": "https://github.com/settings/apps/new?state=" + url.QueryEscape(state), "manifest": string(data)})
 }
 
 func (s *Server) githubManifestCallback(c *gin.Context) {

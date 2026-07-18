@@ -141,6 +141,27 @@ func (m *Manager) Status(ctx context.Context, worktreePath string) (string, erro
 	return runGit(ctx, worktreePath, "", "status", "--porcelain=v1", "--branch")
 }
 
+func (m *Manager) Commit(ctx context.Context, worktreePath, message string) (string, error) {
+	message = strings.TrimSpace(message)
+	if message == "" || len(message) > 200 {
+		return "", errors.New("提交信息必须为 1 到 200 个字符")
+	}
+	status, err := runGit(ctx, worktreePath, "", "status", "--porcelain=v1")
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(status) == "" {
+		return "", errors.New("当前 Worktree 没有可提交的变更")
+	}
+	if _, err := runGit(ctx, worktreePath, "", "add", "--all"); err != nil {
+		return "", err
+	}
+	if _, err := runGit(ctx, worktreePath, "", "-c", "user.name=TyrsHand Agent", "-c", "user.email=tyrs-hand[bot]@users.noreply.github.com", "commit", "-m", message); err != nil {
+		return "", fmt.Errorf("创建提交: %w", err)
+	}
+	return revParse(ctx, worktreePath)
+}
+
 func (m *Manager) Publish(ctx context.Context, worktreePath, remoteBranch, credential string) (string, error) {
 	if strings.TrimSpace(remoteBranch) == "" || strings.HasPrefix(remoteBranch, "-") {
 		return "", errors.New("远程分支名无效")

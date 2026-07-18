@@ -52,9 +52,10 @@ type webhookEnvelope struct {
 		Type  string `json:"type"`
 	} `json:"sender"`
 	Issue struct {
-		Number int    `json:"number"`
-		Title  string `json:"title"`
-		Body   string `json:"body"`
+		Number      int       `json:"number"`
+		Title       string    `json:"title"`
+		Body        string    `json:"body"`
+		PullRequest *struct{} `json:"pull_request"`
 	} `json:"issue"`
 	PullRequest struct {
 		Number int    `json:"number"`
@@ -133,6 +134,12 @@ func NormalizeWebhook(deliveryID, eventName string, payload []byte) (domain.Norm
 		event.Title = envelope.PullRequest.Title
 		event.Body = firstNonEmpty(envelope.Comment.Body, envelope.Review.Body, envelope.PullRequest.Body)
 		event.HeadSHA = envelope.PullRequest.Head.SHA
+	case envelope.Issue.Number > 0 && envelope.Issue.PullRequest != nil:
+		// PR 的普通评论由 issue_comment 事件承载，只能通过 issue.pull_request 标记识别。
+		event.Kind = domain.WorkItemPullRequest
+		event.Number = envelope.Issue.Number
+		event.Title = envelope.Issue.Title
+		event.Body = firstNonEmpty(envelope.Comment.Body, envelope.Issue.Body)
 	case envelope.Issue.Number > 0:
 		event.Kind = domain.WorkItemIssue
 		event.Number = envelope.Issue.Number

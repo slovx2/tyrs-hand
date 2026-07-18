@@ -28,12 +28,17 @@ RUN apt-get update && apt-get install --yes --no-install-recommends \
       tini=0.19.0-1+b3 && \
     rm -rf /var/lib/apt/lists/* && \
     npm install --global --omit=dev @openai/codex@0.142.5 && \
-    npm cache clean --force
+    npm cache clean --force && \
+    codex_native="$(find /usr/local/lib/node_modules/@openai/codex -path '*/vendor/*/bin/codex' -type f -print -quit)" && \
+    test -n "${codex_native}" && ln -s "${codex_native}" /usr/local/bin/apply_patch
 RUN groupadd --gid 10001 tyrs-hand && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/tyrs-hand tyrs-hand && \
     install -d -o tyrs-hand -g tyrs-hand -m 0750 /data/repo-cache /data/worktrees /data/codex-homes /data/build-cache
 COPY --from=go-build --chown=root:root /out/tyrs-hand-server /usr/local/bin/tyrs-hand-server
 COPY --from=go-build --chown=root:root /out/tyrs-hand-worker /usr/local/bin/tyrs-hand-worker
 COPY --from=go-build --chown=root:root /out/tyrs-hand-admin /usr/local/bin/tyrs-hand-admin
+COPY --from=go-build --chown=root:root /usr/local/go /usr/local/go
+RUN ln -s /usr/local/go/bin/go /usr/local/bin/go && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+ENV PATH="/usr/local/go/bin:${PATH}"
 USER 10001:10001
 WORKDIR /home/tyrs-hand
 EXPOSE 8080

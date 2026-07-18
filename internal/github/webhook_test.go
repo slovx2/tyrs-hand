@@ -33,6 +33,20 @@ func TestNormalizeIssueComment(t *testing.T) {
 	require.Equal(t, "@tyrs-hand fix this", event.Body)
 }
 
+func TestNormalizePullRequestIssueComment(t *testing.T) {
+	event, err := NormalizeWebhook("delivery-pr-comment", "issue_comment", []byte(`{
+		"action":"created","installation":{"id":9},
+		"repository":{"id":10,"name":"repo","owner":{"login":"owner"}},
+		"sender":{"id":11,"login":"alice","type":"User"},
+		"issue":{"number":15,"title":"Change","body":"details","pull_request":{"url":"https://api.github.com/repos/owner/repo/pulls/15"}},
+		"comment":{"body":"@tyrs-hand check this PR"}
+	}`))
+	require.NoError(t, err)
+	require.Equal(t, domain.WorkItemPullRequest, event.Kind)
+	require.Equal(t, 15, event.Number)
+	require.Equal(t, "@tyrs-hand check this PR", event.Body)
+}
+
 func TestNormalizePullRequestAndInstallationRepositories(t *testing.T) {
 	pull, err := NormalizeWebhook("delivery-pr", "pull_request", []byte(`{
 		"action":"review_requested","installation":{"id":9},

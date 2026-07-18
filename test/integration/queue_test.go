@@ -135,6 +135,7 @@ func TestPostgresMigrationsAndLeaseEpoch(t *testing.T) {
 		claimed = claims[1]
 	}
 	require.NotNil(t, claimed)
+	require.NotEqual(t, uuid.Nil, claimed.AttemptID)
 	require.True(t, claims[0] == nil || claims[1] == nil, "同一 Work Item 只能有一个活动租约")
 
 	_, err = db.ExecContext(ctx, "UPDATE job_intents SET lease_expires_at = now() - interval '1 second' WHERE id = $1", claimed.ID)
@@ -177,6 +178,12 @@ func (p fakeSCMProvider) VerifyWebhook(string, []byte) bool { return p.valid }
 func (p fakeSCMProvider) NormalizeWebhook(string, string, []byte) (domain.NormalizedEvent, error) {
 	return p.event, nil
 }
+func (p fakeSCMProvider) Repository(context.Context, int64, string, string) (domain.SCMRepository, error) {
+	return domain.SCMRepository{
+		ExternalID: 99, Owner: "example-org", Name: "installed", DefaultBranch: "main",
+		CloneURL: "https://example.invalid/example-org/installed.git",
+	}, nil
+}
 func (p fakeSCMProvider) Permission(context.Context, int64, string, string, string) (string, error) {
 	return p.permission, nil
 }
@@ -216,12 +223,26 @@ func testWebhookOrchestration(t *testing.T, db *sql.DB, repositoryID uuid.UUID) 
 	installationEvent.Installation = domain.SCMInstallationEvent{
 		AccountLogin: "example-org",
 		Repositories: []domain.SCMRepository{{
-			ExternalID: 99, Owner: "example-org", Name: "installed", DefaultBranch: "main",
-			CloneURL: "https://example.invalid/example-org/installed.git",
+			ExternalID: 99, Owner: "example-org", Name: "installed",
 		}},
 	}
 	result = processWebhook(t, db, installationEvent, "write")
 	require.Zero(t, result.Jobs)
+	var defaultBranch, cloneURL string
+	require.NoError(t, db.QueryRowContext(ctx, `
+		SELECT default_branch, clone_url FROM repositories
+		WHERE provider = 'github' AND external_id = 99`).Scan(&defaultBranch, &cloneURL))
+	require.Equal(t, "main", defaultBranch)
+	require.Equal(t, "https://example.invalid/example-org/installed.git", cloneURL)
+	_, err = db.ExecContext(ctx, `UPDATE repositories SET default_branch = '', clone_url = '' WHERE provider = 'github' AND external_id = 99`)
+	require.NoError(t, err)
+	duplicateInstallation := processWebhook(t, db, installationEvent, "write")
+	require.True(t, duplicateInstallation.Duplicate)
+	require.NoError(t, db.QueryRowContext(ctx, `
+		SELECT default_branch, clone_url FROM repositories
+		WHERE provider = 'github' AND external_id = 99`).Scan(&defaultBranch, &cloneURL))
+	require.Equal(t, "main", defaultBranch)
+	require.Equal(t, "https://example.invalid/example-org/installed.git", cloneURL)
 
 	noRule := event
 	noRule.DeliveryID = "issues-opened"

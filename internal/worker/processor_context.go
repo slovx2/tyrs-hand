@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -88,11 +89,22 @@ func (p *Processor) handoffSummary(ctx context.Context, workItemID uuid.UUID) (s
 }
 
 func (p *Processor) persistMemorySummary(ctx context.Context, workItemID, threadDBID uuid.UUID, externalThreadID string) error {
-	var raw []byte
+	var summary string
 	err := p.db.QueryRowContext(ctx, `
-		SELECT payload FROM agent_events
-		WHERE thread_id = $1 AND event_type IN ('item/completed', 'turn/completed')
-		ORDER BY id DESC LIMIT 1`, threadDBID).Scan(&raw)
+		SELECT CASE
+			WHEN event_type = 'item/completed' THEN payload->'item'->>'text'
+			ELSE payload::text
+		END
+		FROM agent_events
+		WHERE thread_id = $1 AND (
+			event_type = 'turn/completed' OR (
+				event_type = 'item/completed'
+				AND payload->'item'->>'type' = 'agentMessage'
+				AND payload->'item'->>'phase' = 'final_answer'
+			)
+		)
+		ORDER BY CASE WHEN event_type = 'item/completed' THEN 0 ELSE 1 END, id DESC
+		LIMIT 1`, threadDBID).Scan(&summary)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -100,6 +112,7 @@ func (p *Processor) persistMemorySummary(ctx context.Context, workItemID, thread
 		return err
 	}
 	const maxSummaryBytes = 32 * 1024
+	raw := []byte(summary)
 	if len(raw) > maxSummaryBytes {
 		raw = raw[:maxSummaryBytes]
 	}
@@ -249,9 +262,19 @@ func localGitSpec() ports.DynamicToolSpec {
 		Type: "namespace", Name: "git", Description: "Inspect and publish the current managed worktree.",
 		Tools: []ports.DynamicToolSpec{
 			{Type: "function", Name: "status", Description: "Read the current worktree status.", InputSchema: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)},
+			{Type: "function", Name: "commit", Description: "Stage all current worktree changes and create a commit.", InputSchema: json.RawMessage(`{"type":"object","properties":{"message":{"type":"string","minLength":1,"maxLength":200}},"required":["message"],"additionalProperties":false}`)},
 			{Type: "function", Name: "publish_branch", Description: "Push the current HEAD to its managed GitHub branch.", InputSchema: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)},
 		},
 	}
+}
+
+func threadConfigSignature(providerSignature string, options ports.ThreadOptions) string {
+	data, _ := json.Marshal(struct {
+		ProviderSignature string              `json:"providerSignature"`
+		Options           ports.ThreadOptions `json:"options"`
+	}{ProviderSignature: providerSignature, Options: options})
+	digest := sha256.Sum256(data)
+	return fmt.Sprintf("%x", digest[:])
 }
 
 func shortID(id uuid.UUID) string { return strings.ReplaceAll(id.String()[:8], "-", "") }

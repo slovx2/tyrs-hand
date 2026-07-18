@@ -107,6 +107,24 @@ func (a *AppClient) Permission(ctx context.Context, installationID int64, owner,
 	return permission.GetPermission(), nil
 }
 
+func (a *AppClient) Repository(ctx context.Context, installationID int64, owner, repository string) (domain.SCMRepository, error) {
+	client, err := a.RESTClient(ctx, installationID)
+	if err != nil {
+		return domain.SCMRepository{}, err
+	}
+	value, _, err := client.Repositories.Get(ctx, owner, repository)
+	if err != nil {
+		return domain.SCMRepository{}, err
+	}
+	return domain.SCMRepository{
+		ExternalID:    value.GetID(),
+		Owner:         value.GetOwner().GetLogin(),
+		Name:          value.GetName(),
+		DefaultBranch: value.GetDefaultBranch(),
+		CloneURL:      value.GetCloneURL(),
+	}, nil
+}
+
 func (a *AppClient) signJWT() (string, error) {
 	now := time.Now().UTC()
 	claims := jwt.RegisteredClaims{
@@ -132,6 +150,9 @@ func (p *Provider) VerifyWebhook(signature string, payload []byte) bool {
 }
 func (p *Provider) NormalizeWebhook(deliveryID, eventName string, payload []byte) (domain.NormalizedEvent, error) {
 	return NormalizeWebhook(deliveryID, eventName, payload)
+}
+func (p *Provider) Repository(ctx context.Context, installationID int64, owner, repository string) (domain.SCMRepository, error) {
+	return p.app.Repository(ctx, installationID, owner, repository)
 }
 func (p *Provider) Permission(ctx context.Context, installationID int64, owner, repository, actor string) (string, error) {
 	return p.app.Permission(ctx, installationID, owner, repository, actor)

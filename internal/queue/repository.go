@@ -18,6 +18,7 @@ var ErrLeaseLost = errors.New("任务租约已经失效")
 type ClaimedJob struct {
 	domain.Job
 	Capability string
+	AttemptID  uuid.UUID
 }
 
 type Repository struct {
@@ -115,7 +116,7 @@ func (r *Repository) Claim(ctx context.Context, workerID string) (*ClaimedJob, e
 		return nil, err
 	}
 	job.LeaseToken = leaseToken
-	return &ClaimedJob{Job: job, Capability: capability}, nil
+	return &ClaimedJob{Job: job, Capability: capability, AttemptID: attemptID}, nil
 }
 
 func (r *Repository) Heartbeat(ctx context.Context, jobID uuid.UUID, leaseToken string, epoch int64) error {
