@@ -9,6 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/database"
+	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
 	"github.com/slovx2/tyrs-hand/internal/githubtools"
 	"github.com/slovx2/tyrs-hand/internal/gitworkspace"
@@ -34,6 +35,13 @@ type WorkerApp struct {
 	DB     *sql.DB
 	Redis  *redis.Client
 	Pool   *codex.Pool
+	Logger *zap.Logger
+}
+
+type DiscordApp struct {
+	Daemon *discordintegration.Daemon
+	DB     *sql.DB
+	Redis  *redis.Client
 	Logger *zap.Logger
 }
 
@@ -104,4 +112,13 @@ func providePool(ctx context.Context, cfg config.Config, logger *zap.Logger) (*c
 
 func provideSettings(db *sql.DB, store *secrets.Store) *platformsettings.Service {
 	return platformsettings.NewService(db, store)
+}
+
+func provideDiscordManager(db *sql.DB, store *secrets.Store) *discordintegration.Manager {
+	return discordintegration.NewManager(db, store)
+}
+
+func provideBindingService(cfg config.Config, db *sql.DB, box *security.SecretBox, githubManager *ghadapter.Manager) *discordintegration.BindingService {
+	return discordintegration.NewBindingService(discordintegration.NewSQLBindingStore(db), box,
+		discordintegration.NewGitHubOAuthApp(githubManager), cfg.PublicURL, cfg.GitHubAPIURL)
 }

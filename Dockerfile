@@ -20,7 +20,8 @@ ARG TARGETOS=linux
 ARG TARGETARCH
 RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -buildid=" -o /out/tyrs-hand-worker ./cmd/tyrs-hand-worker && \
-    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -buildid=" -o /out/tyrs-hand-admin ./cmd/tyrs-hand-admin
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -buildid=" -o /out/tyrs-hand-admin ./cmd/tyrs-hand-admin && \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -buildid=" -o /out/tyrs-hand-discord ./cmd/tyrs-hand-discord
 COPY --from=web-build /src/internal/web/dist ./internal/web/dist
 RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -buildid=" -o /out/tyrs-hand-server ./cmd/tyrs-hand-server
@@ -39,10 +40,11 @@ RUN apt-get update && apt-get install --yes --no-install-recommends \
     codex_native="$(find /usr/local/lib/node_modules/@openai/codex -path '*/vendor/*/bin/codex' -type f -print -quit)" && \
     test -n "${codex_native}" && ln -s "${codex_native}" /usr/local/bin/apply_patch
 RUN groupadd --gid 10001 tyrs-hand && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/tyrs-hand tyrs-hand && \
-    install -d -o tyrs-hand -g tyrs-hand -m 0750 /data/repo-cache /data/worktrees /data/codex-homes /data/build-cache
+    install -d -o tyrs-hand -g tyrs-hand -m 0750 /data/repo-cache /data/worktrees /data/codex-homes /data/discord-workspaces /data/build-cache
 COPY --from=go-build --chown=root:root /out/tyrs-hand-server /usr/local/bin/tyrs-hand-server
 COPY --from=go-build --chown=root:root /out/tyrs-hand-worker /usr/local/bin/tyrs-hand-worker
 COPY --from=go-build --chown=root:root /out/tyrs-hand-admin /usr/local/bin/tyrs-hand-admin
+COPY --from=go-build --chown=root:root /out/tyrs-hand-discord /usr/local/bin/tyrs-hand-discord
 COPY --from=go-runtime --chown=root:root /usr/local/go /usr/local/go
 RUN ln -s /usr/local/go/bin/go /usr/local/bin/go && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt
 ENV PATH="/usr/local/go/bin:${PATH}"

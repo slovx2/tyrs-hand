@@ -53,6 +53,9 @@ func NewProcessor(cfg config.Config, db *sql.DB, workspace ports.WorkspaceManage
 }
 
 func (p *Processor) Process(ctx context.Context, claimed *queue.ClaimedJob) error {
+	if claimed.SourceType == domain.JobSourceDiscordConversation {
+		return p.processDiscordConversation(ctx, claimed)
+	}
 	jobCtx, err := p.loadContext(ctx, claimed.Job)
 	if err != nil {
 		return err

@@ -180,8 +180,23 @@ func (p *Processor) waitTurn(ctx context.Context, runtime *codex.Runtime, events
 			}
 		case <-steerTicker.C:
 			if turnStarted {
-				if err := p.steerQueuedInstruction(ctx, runtime, claimed, externalThreadID, turnID); err != nil {
-					p.logger.Warn("合并同一 Work Item 的新指令失败", zap.Error(err), zap.String("work_item_id", claimed.WorkItemID.String()))
+				if claimed.SourceType == domain.JobSourceDiscordConversation {
+					var status string
+					if err := p.db.QueryRowContext(ctx, "SELECT status FROM job_intents WHERE id = $1", claimed.ID).Scan(&status); err != nil {
+						return err
+					}
+					if status == "canceled" {
+						return errors.New("当前 Discord Codex Turn 已被停止")
+					}
+				}
+				var steerErr error
+				if claimed.SourceType == domain.JobSourceDiscordConversation {
+					steerErr = p.steerQueuedDiscord(ctx, runtime, claimed, externalThreadID, turnID)
+				} else {
+					steerErr = p.steerQueuedInstruction(ctx, runtime, claimed, externalThreadID, turnID)
+				}
+				if steerErr != nil {
+					p.logger.Warn("合并同一会话的新指令失败", zap.Error(steerErr), zap.String("source_type", claimed.SourceType))
 				}
 			}
 		case <-idleTimer.C:
@@ -246,7 +261,7 @@ func (p *Processor) steerQueuedInstruction(ctx context.Context, runtime *codex.R
 	if err != nil {
 		return err
 	}
-	if err := runtime.SteerTurn(ctx, threadID, turnID, instruction); err != nil {
+	if err := runtime.SteerTurn(ctx, threadID, turnID, ports.TurnInput{Text: instruction, ClientUserMessageID: jobID.String()}); err != nil {
 		return err
 	}
 	_, err = p.db.ExecContext(ctx, `

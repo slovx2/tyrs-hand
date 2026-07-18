@@ -106,7 +106,10 @@ func TestRuntimeResumeSteerAndInterrupt(t *testing.T) {
 	runtime := NewRuntime(client)
 	options := ports.ThreadOptions{CWD: t.TempDir(), Sandbox: "workspace-write", ApprovalPolicy: "never"}
 	require.NoError(t, runtime.ResumeThread(context.Background(), "thread-1", options))
-	require.NoError(t, runtime.SteerTurn(context.Background(), "thread-1", "turn-1", "more"))
+	require.NoError(t, runtime.SteerTurn(context.Background(), "thread-1", "turn-1", ports.TurnInput{
+		Text:                "more",
+		ClientUserMessageID: "message-2",
+	}))
 	require.NoError(t, runtime.InterruptTurn(context.Background(), "thread-1", "turn-1"))
 }
 

@@ -9,6 +9,7 @@ package bootstrap
 import (
 	"context"
 	"github.com/slovx2/tyrs-hand/internal/config"
+	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/httpapi"
 	"github.com/slovx2/tyrs-hand/internal/secrets"
 	"github.com/slovx2/tyrs-hand/internal/worker"
@@ -47,13 +48,15 @@ func InitializeServer(ctx context.Context, cfg config.Config) (*ServerApp, func(
 		return nil, nil, err
 	}
 	settingsService := provideSettings(db, store)
+	discordintegrationManager := provideDiscordManager(db, store)
+	bindingService := provideBindingService(cfg, db, secretBox, manager)
 	logger, cleanup3, err := provideLogger(cfg)
 	if err != nil {
 		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
-	server, err := httpapi.NewServer(cfg, db, client, service, manager, catalog, settingsService, logger)
+	server, err := httpapi.NewServer(cfg, db, client, service, manager, catalog, settingsService, discordintegrationManager, bindingService, logger)
 	if err != nil {
 		cleanup3()
 		cleanup2()
@@ -124,6 +127,50 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 	}
 	return workerApp, func() {
 		cleanup4()
+		cleanup3()
+		cleanup2()
+		cleanup()
+	}, nil
+}
+
+func InitializeDiscord(ctx context.Context, cfg config.Config) (*DiscordApp, func(), error) {
+	db, cleanup, err := provideDatabase(ctx, cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	secretBox, err := provideSecretBox(cfg)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	store := secrets.NewStore(db, secretBox)
+	manager := provideDiscordManager(db, store)
+	conversationService := discordintegration.NewConversationService(db)
+	githubManager, err := provideGitHubManager(ctx, db, store)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	bindingService := provideBindingService(cfg, db, secretBox, githubManager)
+	logger, cleanup2, err := provideLogger(cfg)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	daemon := discordintegration.NewDaemon(manager, conversationService, bindingService, githubManager, logger)
+	client, cleanup3, err := provideRedis(cfg)
+	if err != nil {
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
+	discordApp := &DiscordApp{
+		Daemon: daemon,
+		DB:     db,
+		Redis:  client,
+		Logger: logger,
+	}
+	return discordApp, func() {
 		cleanup3()
 		cleanup2()
 		cleanup()

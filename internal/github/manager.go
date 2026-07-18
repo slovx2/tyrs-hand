@@ -14,6 +14,7 @@ import (
 const (
 	privateKeySecret = "github.app.private_key"
 	webhookSecretKey = "github.app.webhook_secret"
+	clientSecretKey  = "github.app.client_secret"
 )
 
 type AppSettings struct {
@@ -22,6 +23,7 @@ type AppSettings struct {
 	AppSlug       string `json:"appSlug"`
 	PrivateKey    string `json:"privateKey,omitempty"`
 	WebhookSecret string `json:"webhookSecret,omitempty"`
+	ClientSecret  string `json:"clientSecret,omitempty"`
 }
 
 type Manager struct {
@@ -86,6 +88,11 @@ func (m *Manager) Save(ctx context.Context, settings AppSettings) error {
 	if err := m.secrets.PutTx(ctx, tx, webhookSecretKey, []byte(settings.WebhookSecret)); err != nil {
 		return err
 	}
+	if settings.ClientSecret != "" {
+		if err := m.secrets.PutTx(ctx, tx, clientSecretKey, []byte(settings.ClientSecret)); err != nil {
+			return err
+		}
+	}
 	var privateID, webhookID uuid.UUID
 	if err := tx.QueryRowContext(ctx, "SELECT id FROM encrypted_secrets WHERE secret_key = $1", privateKeySecret).Scan(&privateID); err != nil {
 		return err
@@ -93,13 +100,20 @@ func (m *Manager) Save(ctx context.Context, settings AppSettings) error {
 	if err := tx.QueryRowContext(ctx, "SELECT id FROM encrypted_secrets WHERE secret_key = $1", webhookSecretKey).Scan(&webhookID); err != nil {
 		return err
 	}
+	var clientSecretID *uuid.UUID
+	var existingClientSecretID uuid.UUID
+	if err := tx.QueryRowContext(ctx, "SELECT id FROM encrypted_secrets WHERE secret_key = $1", clientSecretKey).Scan(&existingClientSecretID); err == nil {
+		clientSecretID = &existingClientSecretID
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM github_app_configs"); err != nil {
 		return fmt.Errorf("替换 GitHub App: %w", err)
 	}
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO github_app_configs(app_id, client_id, app_slug, private_key_secret_id, webhook_secret_id)
-		VALUES ($1, NULLIF($2, ''), $3, $4, $5)`,
-		settings.AppID, settings.ClientID, settings.AppSlug, privateID, webhookID)
+		INSERT INTO github_app_configs(app_id, client_id, app_slug, private_key_secret_id, webhook_secret_id, client_secret_secret_id)
+		VALUES ($1, NULLIF($2, ''), $3, $4, $5, $6)`,
+		settings.AppID, settings.ClientID, settings.AppSlug, privateID, webhookID, clientSecretID)
 	if err != nil {
 		return fmt.Errorf("保存 GitHub App: %w", err)
 	}
@@ -107,6 +121,11 @@ func (m *Manager) Save(ctx context.Context, settings AppSettings) error {
 		return fmt.Errorf("提交 GitHub App: %w", err)
 	}
 	return m.Load(ctx)
+}
+
+func (m *Manager) ClientSecret(ctx context.Context) (string, error) {
+	value, err := m.secrets.Get(ctx, clientSecretKey)
+	return string(value), err
 }
 
 func (m *Manager) Current() (*AppSettings, *AppClient, *Provider, bool) {

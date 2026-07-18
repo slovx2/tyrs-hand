@@ -49,6 +49,7 @@ func (r *Runtime) StartTurn(ctx context.Context, threadID string, input ports.Tu
 	payload := map[string]any{
 		"threadId": threadID, "clientUserMessageId": input.ClientUserMessageID, "input": items,
 	}
+	addTurnContext(payload, input.AdditionalContext)
 	if len(input.OutputSchema) > 0 {
 		payload["outputSchema"] = input.OutputSchema
 	}
@@ -62,11 +63,13 @@ func (r *Runtime) StartTurn(ctx context.Context, threadID string, input ports.Tu
 	return result.Turn.ID, nil
 }
 
-func (r *Runtime) SteerTurn(ctx context.Context, threadID, turnID, text string) error {
-	return r.client.Call(ctx, "turn/steer", map[string]any{
+func (r *Runtime) SteerTurn(ctx context.Context, threadID, turnID string, input ports.TurnInput) error {
+	payload := map[string]any{
 		"threadId": threadID, "expectedTurnId": turnID,
-		"input": []map[string]any{{"type": "text", "text": text, "textElements": []any{}}},
-	}, nil)
+		"clientUserMessageId": input.ClientUserMessageID, "input": userInput(input),
+	}
+	addTurnContext(payload, input.AdditionalContext)
+	return r.client.Call(ctx, "turn/steer", payload, nil)
 }
 
 func (r *Runtime) InterruptTurn(ctx context.Context, threadID, turnID string) error {
@@ -137,10 +140,26 @@ func userInput(input ports.TurnInput) []map[string]any {
 		text = "$" + skill.Name + "\n" + text
 	}
 	items := []map[string]any{{"type": "text", "text": text, "textElements": []any{}}}
+	for _, image := range input.LocalImages {
+		item := map[string]any{"type": "localImage", "path": absolute(image.Path)}
+		optional(item, "detail", image.Detail)
+		items = append(items, item)
+	}
 	for _, skill := range input.Skills {
 		items = append(items, map[string]any{"type": "skill", "name": skill.Name, "path": absolute(skill.Path)})
 	}
 	return items
+}
+
+func addTurnContext(payload map[string]any, context map[string]ports.AdditionalContextEntry) {
+	if len(context) == 0 {
+		return
+	}
+	entries := make(map[string]map[string]string, len(context))
+	for key, entry := range context {
+		entries[key] = map[string]string{"value": entry.Value, "kind": entry.Kind}
+	}
+	payload["additionalContext"] = entries
 }
 
 func optional(payload map[string]any, key, value string) {

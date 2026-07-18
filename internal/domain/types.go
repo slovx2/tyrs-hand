@@ -17,6 +17,11 @@ const (
 type JobStatus string
 
 const (
+	JobSourceGitHubWorkItem      = "github_work_item"
+	JobSourceDiscordConversation = "discord_conversation"
+)
+
+const (
 	JobQueued    JobStatus = "queued"
 	JobRunning   JobStatus = "running"
 	JobSucceeded JobStatus = "succeeded"
@@ -62,22 +67,25 @@ type SCMRepository struct {
 }
 
 type Job struct {
-	ID               uuid.UUID
-	WorkItemID       uuid.UUID
-	RepositoryID     uuid.UUID
-	AgentProfileID   uuid.UUID
-	Status           JobStatus
-	Instruction      string
-	Skills           []string
-	AllowedTools     []string
-	DangerousActions []string
-	ActorLogin       string
-	ActorPermission  string
-	Attempt          int
-	LeaseToken       string
-	LeaseEpoch       int64
-	LeaseExpiresAt   time.Time
-	CreatedAt        time.Time
+	ID                    uuid.UUID
+	SourceType            string
+	WorkItemID            uuid.UUID
+	DiscordConversationID uuid.UUID
+	DiscordMessageID      string
+	RepositoryID          uuid.UUID
+	AgentProfileID        uuid.UUID
+	Status                JobStatus
+	Instruction           string
+	Skills                []string
+	AllowedTools          []string
+	DangerousActions      []string
+	ActorLogin            string
+	ActorPermission       string
+	Attempt               int
+	LeaseToken            string
+	LeaseEpoch            int64
+	LeaseExpiresAt        time.Time
+	CreatedAt             time.Time
 }
 
 type ToolCall struct {

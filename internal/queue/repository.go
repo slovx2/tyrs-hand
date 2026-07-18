@@ -50,18 +50,19 @@ func (r *Repository) Claim(ctx context.Context, workerID string) (*ClaimedJob, e
 		WITH candidate AS (
 			SELECT j.id
 			FROM job_intents j
-			JOIN work_items w ON w.id = j.work_item_id
 			WHERE j.status = 'queued'
 			  AND j.available_at <= now()
 			  AND j.attempt_count < j.max_attempts
 			  AND NOT EXISTS (
 				SELECT 1 FROM job_intents active
-				WHERE active.work_item_id = j.work_item_id
-				  AND active.status = 'running'
+				WHERE active.status = 'running'
 				  AND active.lease_expires_at > now()
+				  AND active.source_type = j.source_type
+				  AND ((j.source_type = 'github_work_item' AND active.work_item_id = j.work_item_id)
+					OR (j.source_type = 'discord_conversation' AND active.discord_conversation_id = j.discord_conversation_id))
 			  )
 			ORDER BY j.priority ASC, j.created_at ASC
-			FOR UPDATE OF j, w SKIP LOCKED
+			FOR UPDATE OF j SKIP LOCKED
 			LIMIT 1
 		)
 		UPDATE job_intents j
@@ -74,7 +75,8 @@ func (r *Repository) Claim(ctx context.Context, workerID string) (*ClaimedJob, e
 			updated_at = now()
 		FROM candidate
 		WHERE j.id = candidate.id
-		RETURNING j.id, j.work_item_id, j.repository_id, j.agent_profile_id,
+		RETURNING j.id, j.source_type, j.work_item_id, j.discord_conversation_id,
+			COALESCE(j.discord_message_id, ''), j.repository_id, j.agent_profile_id,
 			j.status, j.instruction, j.skills, j.allowed_tools, j.dangerous_actions,
 			j.actor_login, j.actor_permission, j.attempt_count,
 			j.lease_token, j.lease_epoch, j.lease_expires_at, j.created_at`,
@@ -83,7 +85,8 @@ func (r *Repository) Claim(ctx context.Context, workerID string) (*ClaimedJob, e
 	var job domain.Job
 	var skillsJSON, toolsJSON, dangerousJSON []byte
 	err = row.Scan(
-		&job.ID, &job.WorkItemID, &job.RepositoryID, &job.AgentProfileID,
+		&job.ID, &job.SourceType, &job.WorkItemID, &job.DiscordConversationID,
+		&job.DiscordMessageID, &job.RepositoryID, &job.AgentProfileID,
 		&job.Status, &job.Instruction, &skillsJSON, &toolsJSON, &dangerousJSON,
 		&job.ActorLogin, &job.ActorPermission, &job.Attempt,
 		&job.LeaseToken, &job.LeaseEpoch, &job.LeaseExpiresAt, &job.CreatedAt,

@@ -12,6 +12,7 @@ tags:
   - name: GitHub
   - name: Resources
   - name: Settings
+  - name: Discord
 paths:
   /webhooks/github:
     post:
@@ -187,6 +188,173 @@ paths:
             schema: { $ref: "#/components/schemas/AgentProviderSettingsInput" }
       responses:
         "204": { description: 已保存 }
+        default: { $ref: "#/components/responses/Problem" }
+  /settings/discord:
+    get:
+      operationId: getDiscordSettings
+      tags: [Discord]
+      responses:
+        "200":
+          description: Discord 设置
+          content: { application/json: { schema: { $ref: "#/components/schemas/DiscordSettings" } } }
+        default: { $ref: "#/components/responses/Problem" }
+    put:
+      operationId: putDiscordSettings
+      tags: [Discord]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/DiscordSettingsInput" } } }
+      responses:
+        "204": { description: 已保存 }
+        default: { $ref: "#/components/responses/Problem" }
+  /discord/status:
+    get:
+      operationId: getDiscordStatus
+      tags: [Discord]
+      responses:
+        "200":
+          description: Discord 运行状态
+          content: { application/json: { schema: { $ref: "#/components/schemas/DiscordStatus" } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /discord/initializations/preflight:
+    post:
+      operationId: preflightDiscordInitialization
+      tags: [Discord]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/DiscordInitializationInput" } } }
+      responses:
+        "200":
+          description: 零修改预检结果
+          content: { application/json: { schema: { $ref: "#/components/schemas/DiscordPreflight" } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /discord/initializations:
+    post:
+      operationId: createDiscordInitialization
+      tags: [Discord]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/DiscordInitializationInput" } } }
+      responses:
+        "202":
+          description: 初始化已排队
+          content: { application/json: { schema: { $ref: "#/components/schemas/IDResource" } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /discord/initializations/{id}:
+    get:
+      operationId: getDiscordInitialization
+      tags: [Discord]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: 初始化状态
+          content: { application/json: { schema: { $ref: "#/components/schemas/DiscordInitialization" } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /discord/members:
+    get:
+      operationId: listDiscordMembers
+      tags: [Discord]
+      responses:
+        "200":
+          description: Discord 成员
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/DiscordMember" } }
+        default: { $ref: "#/components/responses/Problem" }
+  /discord/members/{id}/forum:
+    post:
+      operationId: createDiscordMemberForum
+      tags: [Discord]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { $ref: "#/components/parameters/CSRFToken" }
+      responses:
+        "202":
+          description: Forum 创建已排队
+          content: { application/json: { schema: { $ref: "#/components/schemas/IDResource" } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /discord/forums/{forumId}/access/{memberId}:
+    parameters:
+      - { name: forumId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: memberId, in: path, required: true, schema: { type: string } }
+    put:
+      operationId: putDiscordForumAccess
+      tags: [Discord]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accessLevel]
+              properties: { accessLevel: { type: string, enum: [readonly, operator] } }
+      responses:
+        "204": { description: 已更新 }
+        default: { $ref: "#/components/responses/Problem" }
+    delete:
+      operationId: deleteDiscordForumAccess
+      tags: [Discord]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      responses:
+        "204": { description: 已删除 }
+        default: { $ref: "#/components/responses/Problem" }
+  /discord/github/bind:
+    post:
+      operationId: startDiscordGitHubBind
+      tags: [Discord]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [guildId, discordUserId]
+              properties: { guildId: { type: string }, discordUserId: { type: string } }
+      responses:
+        "200":
+          description: 一次性绑定链接
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url]
+                properties: { url: { type: string, format: uri } }
+        default: { $ref: "#/components/responses/Problem" }
+  /discord/github/bind/callback:
+    get:
+      operationId: completeDiscordGitHubBind
+      tags: [Discord]
+      security: []
+      parameters:
+        - { name: state, in: query, required: true, schema: { type: string } }
+        - { name: code, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: 绑定完成 }
+        default: { $ref: "#/components/responses/Problem" }
+  /discord/github/unbind:
+    post:
+      operationId: unbindDiscordGitHub
+      tags: [Discord]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [guildId, discordUserId, confirmed]
+              properties:
+                guildId: { type: string }
+                discordUserId: { type: string }
+                confirmed: { type: boolean }
+      responses:
+        "204": { description: 已解绑 }
         default: { $ref: "#/components/responses/Problem" }
   /events/stream:
     get:
@@ -422,6 +590,7 @@ components:
         appSlug: { type: string }
         privateKey: { type: string, writeOnly: true }
         webhookSecret: { type: string, writeOnly: true }
+        clientSecret: { type: string, writeOnly: true }
     RepositoryInput:
       type: object
       required: [installationExternalId, accountLogin, repositoryExternalId, owner, name, defaultBranch, cloneUrl]
@@ -452,6 +621,85 @@ components:
         - type: object
           properties:
             apiKey: { type: string, writeOnly: true }
+    DiscordSettings:
+      type: object
+      required: [guildId, enabled, communityEnabled, tokenConfigured]
+      properties:
+        guildId: { type: string }
+        enabled: { type: boolean }
+        communityEnabled: { type: boolean }
+        applicationId: { type: string }
+        botUserId: { type: string }
+        tokenConfigured: { type: boolean }
+    DiscordSettingsInput:
+      type: object
+      required: [guildId, enabled]
+      properties:
+        guildId: { type: string, pattern: "^[0-9]+$" }
+        enabled: { type: boolean }
+        botToken: { type: string, writeOnly: true }
+        applicationId: { type: string, pattern: "^[0-9]*$" }
+        botUserId: { type: string, pattern: "^[0-9]*$" }
+    DiscordStatus:
+      type: object
+      required: [configured, enabled, gatewayStatus, pendingOutbox, failedOutbox, pendingInitializationOperations]
+      properties:
+        configured: { type: boolean }
+        enabled: { type: boolean }
+        gatewayStatus: { type: string }
+        gatewayError: { type: string }
+        lastGatewayAt: { type: string, format: date-time }
+        pendingOutbox: { type: integer, format: int64 }
+        failedOutbox: { type: integer, format: int64 }
+        pendingInitializationOperations: { type: integer, format: int64 }
+    DiscordInitializationInput:
+      type: object
+      required: [mode]
+      properties:
+        mode: { type: string, enum: [incremental, fresh] }
+        confirmation: { type: string }
+    DiscordConflict:
+      type: object
+      required: [name, reason]
+      properties:
+        name: { type: string }
+        reason: { type: string }
+    DiscordPreflight:
+      type: object
+      required: [guildId, mode, creates, updates, deletes, conflicts, missingPermissions, channelCount, safe]
+      properties:
+        guildId: { type: string }
+        mode: { type: string, enum: [incremental, fresh] }
+        creates: { type: array, items: { type: string } }
+        updates: { type: array, items: { type: string } }
+        deletes: { type: array, items: { type: string } }
+        conflicts: { type: array, items: { $ref: "#/components/schemas/DiscordConflict" } }
+        missingPermissions: { type: array, items: { type: string } }
+        channelCount: { type: integer }
+        safe: { type: boolean }
+    DiscordInitialization:
+      type: object
+      required: [id, guildId, mode, status, preflight, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        guildId: { type: string }
+        mode: { type: string }
+        status: { type: string }
+        preflight: { $ref: "#/components/schemas/DiscordPreflight" }
+        error: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    DiscordMember:
+      type: object
+      required: [guildId, discordUserId, username, displayName, bound]
+      properties:
+        guildId: { type: string }
+        discordUserId: { type: string }
+        username: { type: string }
+        displayName: { type: string }
+        bound: { type: boolean }
+        githubLogin: { type: string }
+        forumId: { type: string, format: uuid }
     IDResource:
       type: object
       required: [id]

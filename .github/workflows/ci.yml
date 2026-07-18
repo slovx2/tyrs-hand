@@ -74,7 +74,7 @@ jobs:
         with:
           files: coverage/go.out,web/coverage/lcov.info
           fail_ci_if_error: false
-      - run: pnpm --dir web build && go build ./cmd/tyrs-hand-server ./cmd/tyrs-hand-worker ./cmd/tyrs-hand-admin
+      - run: pnpm --dir web build && go build ./cmd/tyrs-hand-server ./cmd/tyrs-hand-worker ./cmd/tyrs-hand-admin ./cmd/tyrs-hand-discord
       - name: Browser end-to-end
         env:
           TYRS_HAND_DATABASE_URL: postgres://tyrs_hand:test-password@localhost:5432/tyrs_hand_test?sslmode=disable

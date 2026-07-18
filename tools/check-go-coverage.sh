@@ -5,7 +5,7 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 mkdir -p coverage
 
-core_packages="github.com/slovx2/tyrs-hand/internal/auth,github.com/slovx2/tyrs-hand/internal/codex,github.com/slovx2/tyrs-hand/internal/config,github.com/slovx2/tyrs-hand/internal/githubtools,github.com/slovx2/tyrs-hand/internal/orchestrator,github.com/slovx2/tyrs-hand/internal/queue,github.com/slovx2/tyrs-hand/internal/security,github.com/slovx2/tyrs-hand/internal/settings,github.com/slovx2/tyrs-hand/internal/tools"
+core_packages="github.com/slovx2/tyrs-hand/internal/auth,github.com/slovx2/tyrs-hand/internal/codex,github.com/slovx2/tyrs-hand/internal/config,github.com/slovx2/tyrs-hand/internal/discordintegration,github.com/slovx2/tyrs-hand/internal/githubtools,github.com/slovx2/tyrs-hand/internal/orchestrator,github.com/slovx2/tyrs-hand/internal/queue,github.com/slovx2/tyrs-hand/internal/security,github.com/slovx2/tyrs-hand/internal/settings,github.com/slovx2/tyrs-hand/internal/tools"
 
 go test -tags=integration \
   -covermode=atomic \
@@ -13,6 +13,7 @@ go test -tags=integration \
   -coverprofile=coverage/go.out \
   ./internal/codex \
   ./internal/config \
+  ./internal/discordintegration \
   ./internal/githubtools \
   ./internal/orchestrator \
   ./internal/security \

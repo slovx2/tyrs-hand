@@ -185,6 +185,30 @@ func TestLoadAgentOutcome(t *testing.T) {
 	require.Equal(t, "object", schema["type"])
 }
 
+type failingSteerer struct{ err error }
+
+func (s failingSteerer) SteerTurn(context.Context, string, string, ports.TurnInput) error {
+	return s.err
+}
+
+func TestDiscordContributorPersistsBeforeFailedSteer(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+	conversationID := uuid.New()
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO discord_turn_contributors")).
+		WithArgs(conversationID, "turn-1", "message-2").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectClose()
+	steerErr := errors.New("turn is no longer steerable")
+	err = (&Processor{db: db}).contributeAndSteerDiscord(context.Background(), failingSteerer{err: steerErr},
+		conversationID, "thread-1", "turn-1", "message-2", ports.TurnInput{Text: "more"})
+	require.ErrorIs(t, err, steerErr)
+}
+
 type fakeWorkspace struct {
 	status string
 	err    error

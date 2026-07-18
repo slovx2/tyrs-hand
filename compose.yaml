@@ -63,11 +63,29 @@ services:
       TYRS_HAND_REPO_CACHE_ROOT: /data/repo-cache
       TYRS_HAND_WORKTREE_ROOT: /data/worktrees
       TYRS_HAND_CODEX_HOME_ROOT: /data/codex-homes
+      TYRS_HAND_DISCORD_WORKSPACE_ROOT: /data/discord-workspaces
     volumes:
       - repo-cache:/data/repo-cache
       - worktrees:/data/worktrees
       - codex-homes:/data/codex-homes
+      - discord-workspaces:/data/discord-workspaces
       - build-cache:/data/build-cache
+    depends_on:
+      server: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "tyrs-hand-admin", "check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  discord:
+    image: ${TYRS_HAND_IMAGE:-ghcr.io/slovx2/tyrs-hand:0.1.0}
+    command: ["tyrs-hand-discord"]
+    env_file: [.env]
+    environment:
+      TYRS_HAND_DATABASE_URL: postgres://tyrs_hand:${POSTGRES_PASSWORD:-tyrs_hand}@postgres:5432/tyrs_hand?sslmode=disable
+      TYRS_HAND_REDIS_URL: redis://redis:6379/0
     depends_on:
       server: { condition: service_healthy }
     healthcheck:
@@ -106,3 +124,4 @@ volumes:
   worktrees:
   codex-homes:
   build-cache:
+  discord-workspaces:

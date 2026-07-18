@@ -15,6 +15,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/slovx2/tyrs-hand/internal/auth"
 	"github.com/slovx2/tyrs-hand/internal/config"
+	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
 	"github.com/slovx2/tyrs-hand/internal/githubtools"
 	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
@@ -32,16 +33,20 @@ type Server struct {
 	github   *ghadapter.Manager
 	catalog  *githubtools.Catalog
 	settings *platformsettings.Service
+	discord  *discordintegration.Manager
+	bindings *discordintegration.BindingService
 	logger   *zap.Logger
 	assets   fs.FS
 }
 
-func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authService *auth.Service, githubManager *ghadapter.Manager, catalog *githubtools.Catalog, settingsService *platformsettings.Service, logger *zap.Logger) (*Server, error) {
+func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authService *auth.Service, githubManager *ghadapter.Manager, catalog *githubtools.Catalog, settingsService *platformsettings.Service, discordManager *discordintegration.Manager, bindingService *discordintegration.BindingService, logger *zap.Logger) (*Server, error) {
 	assets, err := web.Assets()
 	if err != nil {
 		return nil, err
 	}
-	return &Server{cfg: cfg, db: db, redis: redisClient, auth: authService, github: githubManager, catalog: catalog, settings: settingsService, logger: logger, assets: assets}, nil
+	return &Server{cfg: cfg, db: db, redis: redisClient, auth: authService, github: githubManager,
+		catalog: catalog, settings: settingsService, discord: discordManager, bindings: bindingService,
+		logger: logger, assets: assets}, nil
 }
 
 func (s *Server) baseRouter() *gin.Engine {
@@ -81,6 +86,7 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	api.POST("/setup/admin", s.setupAdmin)
 	api.POST("/auth/login", s.login)
 	api.GET("/github/app/manifest/callback", s.githubManifestCallback)
+	api.GET("/discord/github/bind/callback", s.discordGitHubBindCallback)
 
 	authenticated := api.Group("")
 	authenticated.Use(s.requireSession())
@@ -105,6 +111,18 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	authenticated.GET("/audit-logs", s.listAuditLogs)
 	authenticated.GET("/settings/agent-provider", s.getAgentProviderSettings)
 	authenticated.PUT("/settings/agent-provider", s.requireCSRF(), s.putAgentProviderSettings)
+	authenticated.GET("/settings/discord", s.getDiscordSettings)
+	authenticated.PUT("/settings/discord", s.requireCSRF(), s.putDiscordSettings)
+	authenticated.GET("/discord/status", s.discordStatus)
+	authenticated.POST("/discord/initializations/preflight", s.requireCSRF(), s.discordInitializationPreflight)
+	authenticated.POST("/discord/initializations", s.requireCSRF(), s.createDiscordInitialization)
+	authenticated.GET("/discord/initializations/:id", s.getDiscordInitialization)
+	authenticated.GET("/discord/members", s.listDiscordMembers)
+	authenticated.POST("/discord/members/:id/forum", s.requireCSRF(), s.createDiscordMemberForum)
+	authenticated.PUT("/discord/forums/:forumId/access/:memberId", s.requireCSRF(), s.putDiscordForumAccess)
+	authenticated.DELETE("/discord/forums/:forumId/access/:memberId", s.requireCSRF(), s.deleteDiscordForumAccess)
+	authenticated.POST("/discord/github/bind", s.requireCSRF(), s.startDiscordGitHubBind)
+	authenticated.POST("/discord/github/unbind", s.requireCSRF(), s.unbindDiscordGitHub)
 	authenticated.GET("/system/status", s.systemStatus)
 	authenticated.GET("/events/stream", s.eventsStream)
 

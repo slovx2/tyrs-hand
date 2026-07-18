@@ -11,6 +11,12 @@ services:
       TYRS_HAND_MASTER_KEY_FILE: /run/secrets/master_key
     secrets: [master_key]
 
+  discord:
+    environment:
+      TYRS_HAND_MASTER_KEY: ""
+      TYRS_HAND_MASTER_KEY_FILE: /run/secrets/master_key
+    secrets: [master_key]
+
   admin:
     environment:
       TYRS_HAND_MASTER_KEY: ""

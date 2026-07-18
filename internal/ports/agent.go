@@ -30,8 +30,20 @@ type ThreadOptions struct {
 type TurnInput struct {
 	Text                string
 	ClientUserMessageID string
+	LocalImages         []LocalImageInput
+	AdditionalContext   map[string]AdditionalContextEntry
 	Skills              []SkillRef
 	OutputSchema        json.RawMessage
+}
+
+type LocalImageInput struct {
+	Path   string
+	Detail string
+}
+
+type AdditionalContextEntry struct {
+	Value string
+	Kind  string
 }
 
 type SkillRef struct {
@@ -43,6 +55,6 @@ type AgentRuntime interface {
 	StartThread(ctx context.Context, options ThreadOptions) (string, error)
 	ResumeThread(ctx context.Context, threadID string, options ThreadOptions) error
 	StartTurn(ctx context.Context, threadID string, input TurnInput) (string, error)
-	SteerTurn(ctx context.Context, threadID, turnID, text string) error
+	SteerTurn(ctx context.Context, threadID, turnID string, input TurnInput) error
 	InterruptTurn(ctx context.Context, threadID, turnID string) error
 }

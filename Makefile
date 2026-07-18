@@ -41,4 +41,4 @@ web-build:
 	cd web && corepack pnpm build
 
 build: web-build
-	go build ./cmd/tyrs-hand-server ./cmd/tyrs-hand-worker ./cmd/tyrs-hand-admin
+	go build ./cmd/tyrs-hand-server ./cmd/tyrs-hand-worker ./cmd/tyrs-hand-admin ./cmd/tyrs-hand-discord

@@ -39,11 +39,17 @@ func (c *ControlClient) CallTool(ctx context.Context, capability string, request
 	return result, nil
 }
 
-func (c *ControlClient) GitCredential(ctx context.Context, capability, purpose string) (string, error) {
+func (c *ControlClient) GitCredential(ctx context.Context, capability, purpose string, turn ...string) (string, error) {
+	threadID, turnID := "", ""
+	if len(turn) >= 2 {
+		threadID, turnID = turn[0], turn[1]
+	}
 	var response struct {
 		Token string `json:"token"`
 	}
-	if err := c.post(ctx, "/internal/v1/git/credential", map[string]string{"capability": capability, "purpose": purpose}, &response); err != nil {
+	if err := c.post(ctx, "/internal/v1/git/credential", map[string]string{
+		"capability": capability, "purpose": purpose, "threadId": threadID, "turnId": turnID,
+	}, &response); err != nil {
 		return "", err
 	}
 	if response.Token == "" {

@@ -12,6 +12,7 @@ import {
 import { api } from './api/client'
 import { t, type MessageKey } from './i18n'
 import { GitHubPage } from './pages/GitHubPage'
+import { DiscordPage } from './pages/DiscordPage'
 import { LoginPage } from './pages/LoginPage'
 import { ResourcePage } from './pages/ResourcePage'
 import { SetupPage } from './pages/SetupPage'
@@ -36,6 +37,7 @@ const navigation: Array<{ to: string; label: MessageKey }> = [
   { to: '/worktrees', label: 'workers' },
   { to: '/audit-logs', label: 'audit' },
   { to: '/settings/github', label: 'github' },
+  { to: '/settings/discord', label: 'discord' },
   { to: '/settings', label: 'settings' },
 ]
 
@@ -117,6 +119,7 @@ export function App() {
           element={<ResourcePage resource="audit-logs" title="审计日志" />}
         />
         <Route path="settings/github" element={<GitHubPage />} />
+        <Route path="settings/discord" element={<DiscordPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

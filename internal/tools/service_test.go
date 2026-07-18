@@ -1,10 +1,21 @@
 package tools
 
 import (
+	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/slovx2/tyrs-hand/internal/codex"
+	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,6 +40,59 @@ func TestToolArgumentBoundaries(t *testing.T) {
 	require.Equal(t, 42, number)
 	_, valid = argumentNumber(struct{}{})
 	require.False(t, valid)
+}
+
+func TestDiscordContributorPermissionUsesLiveIntersection(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	privateKey := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	permissions := map[string]string{"alice": "write", "bob": "read"}
+	var mu sync.Mutex
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.URL.Path == "/app/installations/42/access_tokens":
+			_ = json.NewEncoder(response).Encode(map[string]any{
+				"token": "installation", "expires_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+			})
+		case strings.HasPrefix(request.URL.Path, "/repos/owner/repo/collaborators/"):
+			parts := strings.Split(request.URL.Path, "/")
+			login := parts[len(parts)-2]
+			mu.Lock()
+			permission := permissions[login]
+			mu.Unlock()
+			if permission == "" {
+				http.NotFound(response, request)
+				return
+			}
+			_ = json.NewEncoder(response).Encode(map[string]string{"permission": permission})
+		default:
+			http.NotFound(response, request)
+		}
+	}))
+	defer server.Close()
+	app, err := ghadapter.NewAppClient(123, privateKey, server.URL+"/")
+	require.NoError(t, err)
+	service := &Service{app: app}
+	auth := authorization{
+		SourceType: "discord_conversation", InstallationID: 42, Owner: "owner", Repository: "repo",
+		Contributors: []string{"alice", "bob"},
+	}
+	require.NoError(t, service.requireDiscordPermission(context.Background(), auth, false))
+	require.ErrorContains(t, service.requireDiscordPermission(context.Background(), auth, true), "bob")
+
+	mu.Lock()
+	permissions["bob"] = ""
+	mu.Unlock()
+	require.ErrorContains(t, service.requireDiscordPermission(context.Background(), auth, false), "bob")
+
+	auth.HasUnboundContributor = true
+	require.ErrorContains(t, service.requireDiscordPermission(context.Background(), auth, false), "未绑定")
+}
+
+func TestGitHubPermissionRank(t *testing.T) {
+	require.Greater(t, githubPermissionRank("admin"), githubPermissionRank("write"))
+	require.Greater(t, githubPermissionRank("triage"), githubPermissionRank("read"))
+	require.Zero(t, githubPermissionRank("none"))
 }
 
 func TestPullRequestNumberExtraction(t *testing.T) {

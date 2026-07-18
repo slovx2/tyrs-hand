@@ -104,12 +104,15 @@ func (s *Server) githubManifestCallback(c *gin.Context) {
 		Slug          string `json:"slug"`
 		PEM           string `json:"pem"`
 		WebhookSecret string `json:"webhook_secret"`
+		ClientSecret  string `json:"client_secret"`
 	}
 	if err := json.Unmarshal(body, &conversion); err != nil {
 		problem(c, http.StatusBadGateway, "解析 GitHub Manifest 结果失败", err)
 		return
 	}
-	if err := s.github.Save(c.Request.Context(), ghadapter.AppSettings{AppID: conversion.ID, ClientID: conversion.ClientID, AppSlug: conversion.Slug, PrivateKey: conversion.PEM, WebhookSecret: conversion.WebhookSecret}); err != nil {
+	if err := s.github.Save(c.Request.Context(), ghadapter.AppSettings{AppID: conversion.ID, ClientID: conversion.ClientID,
+		AppSlug: conversion.Slug, PrivateKey: conversion.PEM, WebhookSecret: conversion.WebhookSecret,
+		ClientSecret: conversion.ClientSecret}); err != nil {
 		problem(c, http.StatusInternalServerError, "保存 GitHub App 失败", err)
 		return
 	}
@@ -162,6 +165,8 @@ func (s *Server) internalGitCredential(c *gin.Context) {
 	var request struct {
 		Capability string `json:"capability" binding:"required"`
 		Purpose    string `json:"purpose" binding:"required"`
+		ThreadID   string `json:"threadId"`
+		TurnID     string `json:"turnId"`
 	}
 	if err := c.ShouldBindJSON(&request); err != nil {
 		badRequest(c, err)
@@ -172,7 +177,7 @@ func (s *Server) internalGitCredential(c *gin.Context) {
 		problem(c, http.StatusServiceUnavailable, "GitHub App 尚未配置", nil)
 		return
 	}
-	token, err := toolservice.NewService(s.db, app, s.catalog).GitCredential(c.Request.Context(), request.Capability, request.Purpose)
+	token, err := toolservice.NewService(s.db, app, s.catalog).GitCredential(c.Request.Context(), request.Capability, request.Purpose, request.TurnID)
 	if err != nil {
 		problem(c, http.StatusForbidden, "Git 凭据请求失败", err)
 		return

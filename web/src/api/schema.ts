@@ -180,6 +180,185 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings/discord": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getDiscordSettings"];
+        put: operations["putDiscordSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/discord/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getDiscordStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/discord/initializations/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["preflightDiscordInitialization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/discord/initializations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createDiscordInitialization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/discord/initializations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getDiscordInitialization"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/discord/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listDiscordMembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/discord/members/{id}/forum": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createDiscordMemberForum"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/discord/forums/{forumId}/access/{memberId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                forumId: string;
+                memberId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["putDiscordForumAccess"];
+        post?: never;
+        delete: operations["deleteDiscordForumAccess"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/discord/github/bind": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["startDiscordGitHubBind"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/discord/github/bind/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["completeDiscordGitHubBind"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/discord/github/unbind": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["unbindDiscordGitHub"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events/stream": {
         parameters: {
             query?: never;
@@ -449,6 +628,7 @@ export interface components {
             appSlug: string;
             privateKey: string;
             webhookSecret: string;
+            clientSecret?: string;
         };
         RepositoryInput: {
             /** Format: int64 */
@@ -479,6 +659,79 @@ export interface components {
         };
         AgentProviderSettingsInput: components["schemas"]["AgentProviderSettings"] & {
             apiKey?: string;
+        };
+        DiscordSettings: {
+            guildId: string;
+            enabled: boolean;
+            communityEnabled: boolean;
+            applicationId?: string;
+            botUserId?: string;
+            tokenConfigured: boolean;
+        };
+        DiscordSettingsInput: {
+            guildId: string;
+            enabled: boolean;
+            botToken?: string;
+            applicationId?: string;
+            botUserId?: string;
+        };
+        DiscordStatus: {
+            configured: boolean;
+            enabled: boolean;
+            gatewayStatus: string;
+            gatewayError?: string;
+            /** Format: date-time */
+            lastGatewayAt?: string;
+            /** Format: int64 */
+            pendingOutbox: number;
+            /** Format: int64 */
+            failedOutbox: number;
+            /** Format: int64 */
+            pendingInitializationOperations: number;
+        };
+        DiscordInitializationInput: {
+            /** @enum {string} */
+            mode: "incremental" | "fresh";
+            confirmation?: string;
+        };
+        DiscordConflict: {
+            name: string;
+            reason: string;
+        };
+        DiscordPreflight: {
+            guildId: string;
+            /** @enum {string} */
+            mode: "incremental" | "fresh";
+            creates: string[];
+            updates: string[];
+            deletes: string[];
+            conflicts: components["schemas"]["DiscordConflict"][];
+            missingPermissions: string[];
+            channelCount: number;
+            safe: boolean;
+        };
+        DiscordInitialization: {
+            /** Format: uuid */
+            id: string;
+            guildId: string;
+            mode: string;
+            status: string;
+            preflight: components["schemas"]["DiscordPreflight"];
+            error?: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        DiscordMember: {
+            guildId: string;
+            discordUserId: string;
+            username: string;
+            displayName: string;
+            bound: boolean;
+            githubLogin?: string;
+            /** Format: uuid */
+            forumId?: string;
         };
         IDResource: {
             /** Format: uuid */
@@ -1050,6 +1303,335 @@ export interface operations {
         };
         responses: {
             /** @description 已保存 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getDiscordSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Discord 设置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscordSettings"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    putDiscordSettings: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscordSettingsInput"];
+            };
+        };
+        responses: {
+            /** @description 已保存 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getDiscordStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Discord 运行状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscordStatus"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    preflightDiscordInitialization: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscordInitializationInput"];
+            };
+        };
+        responses: {
+            /** @description 零修改预检结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscordPreflight"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    createDiscordInitialization: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscordInitializationInput"];
+            };
+        };
+        responses: {
+            /** @description 初始化已排队 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IDResource"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getDiscordInitialization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 初始化状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscordInitialization"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listDiscordMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Discord 成员 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscordMember"][];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    createDiscordMemberForum: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Forum 创建已排队 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IDResource"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    putDiscordForumAccess: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                forumId: string;
+                memberId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    accessLevel: "readonly" | "operator";
+                };
+            };
+        };
+        responses: {
+            /** @description 已更新 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    deleteDiscordForumAccess: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                forumId: string;
+                memberId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已删除 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    startDiscordGitHubBind: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    guildId: string;
+                    discordUserId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 一次性绑定链接 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uri */
+                        url: string;
+                    };
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    completeDiscordGitHubBind: {
+        parameters: {
+            query: {
+                state: string;
+                code: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 绑定完成 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    unbindDiscordGitHub: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    guildId: string;
+                    discordUserId: string;
+                    confirmed: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description 已解绑 */
             204: {
                 headers: {
                     [name: string]: unknown;

@@ -36,6 +36,24 @@ const (
 	AgentProviderSettingsInputProviderTypeDeviceCode AgentProviderSettingsInputProviderType = "device-code"
 )
 
+// Defines values for DiscordInitializationInputMode.
+const (
+	DiscordInitializationInputModeFresh       DiscordInitializationInputMode = "fresh"
+	DiscordInitializationInputModeIncremental DiscordInitializationInputMode = "incremental"
+)
+
+// Defines values for DiscordPreflightMode.
+const (
+	DiscordPreflightModeFresh       DiscordPreflightMode = "fresh"
+	DiscordPreflightModeIncremental DiscordPreflightMode = "incremental"
+)
+
+// Defines values for PutDiscordForumAccessJSONBodyAccessLevel.
+const (
+	Operator PutDiscordForumAccessJSONBodyAccessLevel = "operator"
+	Readonly PutDiscordForumAccessJSONBodyAccessLevel = "readonly"
+)
+
 // Administrator defines model for Administrator.
 type Administrator struct {
 	ExpiresAt time.Time          `json:"expiresAt"`
@@ -74,11 +92,97 @@ type AgentProviderSettingsInput struct {
 // AgentProviderSettingsInputProviderType defines model for AgentProviderSettingsInput.ProviderType.
 type AgentProviderSettingsInputProviderType string
 
+// DiscordConflict defines model for DiscordConflict.
+type DiscordConflict struct {
+	Name   string `json:"name"`
+	Reason string `json:"reason"`
+}
+
+// DiscordInitialization defines model for DiscordInitialization.
+type DiscordInitialization struct {
+	CreatedAt time.Time          `json:"createdAt"`
+	Error     *string            `json:"error,omitempty"`
+	GuildId   string             `json:"guildId"`
+	Id        openapi_types.UUID `json:"id"`
+	Mode      string             `json:"mode"`
+	Preflight DiscordPreflight   `json:"preflight"`
+	Status    string             `json:"status"`
+	UpdatedAt time.Time          `json:"updatedAt"`
+}
+
+// DiscordInitializationInput defines model for DiscordInitializationInput.
+type DiscordInitializationInput struct {
+	Confirmation *string                        `json:"confirmation,omitempty"`
+	Mode         DiscordInitializationInputMode `json:"mode"`
+}
+
+// DiscordInitializationInputMode defines model for DiscordInitializationInput.Mode.
+type DiscordInitializationInputMode string
+
+// DiscordMember defines model for DiscordMember.
+type DiscordMember struct {
+	Bound         bool                `json:"bound"`
+	DiscordUserId string              `json:"discordUserId"`
+	DisplayName   string              `json:"displayName"`
+	ForumId       *openapi_types.UUID `json:"forumId,omitempty"`
+	GithubLogin   *string             `json:"githubLogin,omitempty"`
+	GuildId       string              `json:"guildId"`
+	Username      string              `json:"username"`
+}
+
+// DiscordPreflight defines model for DiscordPreflight.
+type DiscordPreflight struct {
+	ChannelCount       int                  `json:"channelCount"`
+	Conflicts          []DiscordConflict    `json:"conflicts"`
+	Creates            []string             `json:"creates"`
+	Deletes            []string             `json:"deletes"`
+	GuildId            string               `json:"guildId"`
+	MissingPermissions []string             `json:"missingPermissions"`
+	Mode               DiscordPreflightMode `json:"mode"`
+	Safe               bool                 `json:"safe"`
+	Updates            []string             `json:"updates"`
+}
+
+// DiscordPreflightMode defines model for DiscordPreflight.Mode.
+type DiscordPreflightMode string
+
+// DiscordSettings defines model for DiscordSettings.
+type DiscordSettings struct {
+	ApplicationId    *string `json:"applicationId,omitempty"`
+	BotUserId        *string `json:"botUserId,omitempty"`
+	CommunityEnabled bool    `json:"communityEnabled"`
+	Enabled          bool    `json:"enabled"`
+	GuildId          string  `json:"guildId"`
+	TokenConfigured  bool    `json:"tokenConfigured"`
+}
+
+// DiscordSettingsInput defines model for DiscordSettingsInput.
+type DiscordSettingsInput struct {
+	ApplicationId *string `json:"applicationId,omitempty"`
+	BotToken      *string `json:"botToken,omitempty"`
+	BotUserId     *string `json:"botUserId,omitempty"`
+	Enabled       bool    `json:"enabled"`
+	GuildId       string  `json:"guildId"`
+}
+
+// DiscordStatus defines model for DiscordStatus.
+type DiscordStatus struct {
+	Configured                      bool       `json:"configured"`
+	Enabled                         bool       `json:"enabled"`
+	FailedOutbox                    int64      `json:"failedOutbox"`
+	GatewayError                    *string    `json:"gatewayError,omitempty"`
+	GatewayStatus                   string     `json:"gatewayStatus"`
+	LastGatewayAt                   *time.Time `json:"lastGatewayAt,omitempty"`
+	PendingInitializationOperations int64      `json:"pendingInitializationOperations"`
+	PendingOutbox                   int64      `json:"pendingOutbox"`
+}
+
 // GitHubAppInput defines model for GitHubAppInput.
 type GitHubAppInput struct {
 	AppId         int64   `json:"appId"`
 	AppSlug       string  `json:"appSlug"`
 	ClientId      *string `json:"clientId,omitempty"`
+	ClientSecret  *string `json:"clientSecret,omitempty"`
 	PrivateKey    *string `json:"privateKey,omitempty"`
 	WebhookSecret *string `json:"webhookSecret,omitempty"`
 }
@@ -163,6 +267,68 @@ type LogoutParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
+// DeleteDiscordForumAccessParams defines parameters for DeleteDiscordForumAccess.
+type DeleteDiscordForumAccessParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// PutDiscordForumAccessJSONBody defines parameters for PutDiscordForumAccess.
+type PutDiscordForumAccessJSONBody struct {
+	AccessLevel PutDiscordForumAccessJSONBodyAccessLevel `json:"accessLevel"`
+}
+
+// PutDiscordForumAccessParams defines parameters for PutDiscordForumAccess.
+type PutDiscordForumAccessParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// PutDiscordForumAccessJSONBodyAccessLevel defines parameters for PutDiscordForumAccess.
+type PutDiscordForumAccessJSONBodyAccessLevel string
+
+// StartDiscordGitHubBindJSONBody defines parameters for StartDiscordGitHubBind.
+type StartDiscordGitHubBindJSONBody struct {
+	DiscordUserId string `json:"discordUserId"`
+	GuildId       string `json:"guildId"`
+}
+
+// StartDiscordGitHubBindParams defines parameters for StartDiscordGitHubBind.
+type StartDiscordGitHubBindParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// CompleteDiscordGitHubBindParams defines parameters for CompleteDiscordGitHubBind.
+type CompleteDiscordGitHubBindParams struct {
+	State string `form:"state" json:"state"`
+	Code  string `form:"code" json:"code"`
+}
+
+// UnbindDiscordGitHubJSONBody defines parameters for UnbindDiscordGitHub.
+type UnbindDiscordGitHubJSONBody struct {
+	Confirmed     bool   `json:"confirmed"`
+	DiscordUserId string `json:"discordUserId"`
+	GuildId       string `json:"guildId"`
+}
+
+// UnbindDiscordGitHubParams defines parameters for UnbindDiscordGitHub.
+type UnbindDiscordGitHubParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// CreateDiscordInitializationParams defines parameters for CreateDiscordInitialization.
+type CreateDiscordInitializationParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// PreflightDiscordInitializationParams defines parameters for PreflightDiscordInitialization.
+type PreflightDiscordInitializationParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// CreateDiscordMemberForumParams defines parameters for CreateDiscordMemberForum.
+type CreateDiscordMemberForumParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
 // PutGitHubAppParams defines parameters for PutGitHubApp.
 type PutGitHubAppParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
@@ -186,6 +352,11 @@ type PutAgentProviderSettingsParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
+// PutDiscordSettingsParams defines parameters for PutDiscordSettings.
+type PutDiscordSettingsParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
 // ReceiveGitHubWebhookJSONBody defines parameters for ReceiveGitHubWebhook.
 type ReceiveGitHubWebhookJSONBody map[string]interface{}
 
@@ -199,6 +370,21 @@ type ReceiveGitHubWebhookParams struct {
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
+// PutDiscordForumAccessJSONRequestBody defines body for PutDiscordForumAccess for application/json ContentType.
+type PutDiscordForumAccessJSONRequestBody PutDiscordForumAccessJSONBody
+
+// StartDiscordGitHubBindJSONRequestBody defines body for StartDiscordGitHubBind for application/json ContentType.
+type StartDiscordGitHubBindJSONRequestBody StartDiscordGitHubBindJSONBody
+
+// UnbindDiscordGitHubJSONRequestBody defines body for UnbindDiscordGitHub for application/json ContentType.
+type UnbindDiscordGitHubJSONRequestBody UnbindDiscordGitHubJSONBody
+
+// CreateDiscordInitializationJSONRequestBody defines body for CreateDiscordInitialization for application/json ContentType.
+type CreateDiscordInitializationJSONRequestBody = DiscordInitializationInput
+
+// PreflightDiscordInitializationJSONRequestBody defines body for PreflightDiscordInitialization for application/json ContentType.
+type PreflightDiscordInitializationJSONRequestBody = DiscordInitializationInput
+
 // PutGitHubAppJSONRequestBody defines body for PutGitHubApp for application/json ContentType.
 type PutGitHubAppJSONRequestBody = GitHubAppInput
 
@@ -210,6 +396,9 @@ type CreateRepositoryJSONRequestBody = RepositoryInput
 
 // PutAgentProviderSettingsJSONRequestBody defines body for PutAgentProviderSettings for application/json ContentType.
 type PutAgentProviderSettingsJSONRequestBody = AgentProviderSettingsInput
+
+// PutDiscordSettingsJSONRequestBody defines body for PutDiscordSettings for application/json ContentType.
+type PutDiscordSettingsJSONRequestBody = DiscordSettingsInput
 
 // SetupAdministratorJSONRequestBody defines body for SetupAdministrator for application/json ContentType.
 type SetupAdministratorJSONRequestBody = SetupRequest
@@ -237,6 +426,39 @@ type ServerInterface interface {
 
 	// (GET /auth/me)
 	GetCurrentAdministrator(c *gin.Context)
+
+	// (DELETE /discord/forums/{forumId}/access/{memberId})
+	DeleteDiscordForumAccess(c *gin.Context, forumId openapi_types.UUID, memberId string, params DeleteDiscordForumAccessParams)
+
+	// (PUT /discord/forums/{forumId}/access/{memberId})
+	PutDiscordForumAccess(c *gin.Context, forumId openapi_types.UUID, memberId string, params PutDiscordForumAccessParams)
+
+	// (POST /discord/github/bind)
+	StartDiscordGitHubBind(c *gin.Context, params StartDiscordGitHubBindParams)
+
+	// (GET /discord/github/bind/callback)
+	CompleteDiscordGitHubBind(c *gin.Context, params CompleteDiscordGitHubBindParams)
+
+	// (POST /discord/github/unbind)
+	UnbindDiscordGitHub(c *gin.Context, params UnbindDiscordGitHubParams)
+
+	// (POST /discord/initializations)
+	CreateDiscordInitialization(c *gin.Context, params CreateDiscordInitializationParams)
+
+	// (POST /discord/initializations/preflight)
+	PreflightDiscordInitialization(c *gin.Context, params PreflightDiscordInitializationParams)
+
+	// (GET /discord/initializations/{id})
+	GetDiscordInitialization(c *gin.Context, id openapi_types.UUID)
+
+	// (GET /discord/members)
+	ListDiscordMembers(c *gin.Context)
+
+	// (POST /discord/members/{id}/forum)
+	CreateDiscordMemberForum(c *gin.Context, id string, params CreateDiscordMemberForumParams)
+
+	// (GET /discord/status)
+	GetDiscordStatus(c *gin.Context)
 
 	// (GET /events/stream)
 	StreamEvents(c *gin.Context)
@@ -276,6 +498,12 @@ type ServerInterface interface {
 
 	// (PUT /settings/agent-provider)
 	PutAgentProviderSettings(c *gin.Context, params PutAgentProviderSettingsParams)
+
+	// (GET /settings/discord)
+	GetDiscordSettings(c *gin.Context)
+
+	// (PUT /settings/discord)
+	PutDiscordSettings(c *gin.Context, params PutDiscordSettingsParams)
 
 	// (POST /setup/admin)
 	SetupAdministrator(c *gin.Context)
@@ -432,6 +660,463 @@ func (siw *ServerInterfaceWrapper) GetCurrentAdministrator(c *gin.Context) {
 	}
 
 	siw.Handler.GetCurrentAdministrator(c)
+}
+
+// DeleteDiscordForumAccess operation middleware
+func (siw *ServerInterfaceWrapper) DeleteDiscordForumAccess(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "forumId" -------------
+	var forumId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "forumId", c.Param("forumId"), &forumId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter forumId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "memberId" -------------
+	var memberId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "memberId", c.Param("memberId"), &memberId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter memberId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteDiscordForumAccessParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteDiscordForumAccess(c, forumId, memberId, params)
+}
+
+// PutDiscordForumAccess operation middleware
+func (siw *ServerInterfaceWrapper) PutDiscordForumAccess(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "forumId" -------------
+	var forumId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "forumId", c.Param("forumId"), &forumId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter forumId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "memberId" -------------
+	var memberId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "memberId", c.Param("memberId"), &memberId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter memberId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutDiscordForumAccessParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PutDiscordForumAccess(c, forumId, memberId, params)
+}
+
+// StartDiscordGitHubBind operation middleware
+func (siw *ServerInterfaceWrapper) StartDiscordGitHubBind(c *gin.Context) {
+
+	var err error
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params StartDiscordGitHubBindParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.StartDiscordGitHubBind(c, params)
+}
+
+// CompleteDiscordGitHubBind operation middleware
+func (siw *ServerInterfaceWrapper) CompleteDiscordGitHubBind(c *gin.Context) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CompleteDiscordGitHubBindParams
+
+	// ------------- Required query parameter "state" -------------
+
+	if paramValue := c.Query("state"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Query argument state is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "state", c.Request.URL.Query(), &params.State)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter state: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Required query parameter "code" -------------
+
+	if paramValue := c.Query("code"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Query argument code is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "code", c.Request.URL.Query(), &params.Code)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter code: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CompleteDiscordGitHubBind(c, params)
+}
+
+// UnbindDiscordGitHub operation middleware
+func (siw *ServerInterfaceWrapper) UnbindDiscordGitHub(c *gin.Context) {
+
+	var err error
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UnbindDiscordGitHubParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UnbindDiscordGitHub(c, params)
+}
+
+// CreateDiscordInitialization operation middleware
+func (siw *ServerInterfaceWrapper) CreateDiscordInitialization(c *gin.Context) {
+
+	var err error
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateDiscordInitializationParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateDiscordInitialization(c, params)
+}
+
+// PreflightDiscordInitialization operation middleware
+func (siw *ServerInterfaceWrapper) PreflightDiscordInitialization(c *gin.Context) {
+
+	var err error
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PreflightDiscordInitializationParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PreflightDiscordInitialization(c, params)
+}
+
+// GetDiscordInitialization operation middleware
+func (siw *ServerInterfaceWrapper) GetDiscordInitialization(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetDiscordInitialization(c, id)
+}
+
+// ListDiscordMembers operation middleware
+func (siw *ServerInterfaceWrapper) ListDiscordMembers(c *gin.Context) {
+
+	c.Set(SessionCookieScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListDiscordMembers(c)
+}
+
+// CreateDiscordMemberForum operation middleware
+func (siw *ServerInterfaceWrapper) CreateDiscordMemberForum(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateDiscordMemberForumParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateDiscordMemberForum(c, id, params)
+}
+
+// GetDiscordStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetDiscordStatus(c *gin.Context) {
+
+	c.Set(SessionCookieScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetDiscordStatus(c)
 }
 
 // StreamEvents operation middleware
@@ -734,6 +1419,65 @@ func (siw *ServerInterfaceWrapper) PutAgentProviderSettings(c *gin.Context) {
 	siw.Handler.PutAgentProviderSettings(c, params)
 }
 
+// GetDiscordSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetDiscordSettings(c *gin.Context) {
+
+	c.Set(SessionCookieScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetDiscordSettings(c)
+}
+
+// PutDiscordSettings operation middleware
+func (siw *ServerInterfaceWrapper) PutDiscordSettings(c *gin.Context) {
+
+	var err error
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutDiscordSettingsParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PutDiscordSettings(c, params)
+}
+
 // SetupAdministrator operation middleware
 func (siw *ServerInterfaceWrapper) SetupAdministrator(c *gin.Context) {
 
@@ -984,6 +1728,17 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/auth/login", wrapper.Login)
 	router.POST(options.BaseURL+"/auth/logout", wrapper.Logout)
 	router.GET(options.BaseURL+"/auth/me", wrapper.GetCurrentAdministrator)
+	router.DELETE(options.BaseURL+"/discord/forums/:forumId/access/:memberId", wrapper.DeleteDiscordForumAccess)
+	router.PUT(options.BaseURL+"/discord/forums/:forumId/access/:memberId", wrapper.PutDiscordForumAccess)
+	router.POST(options.BaseURL+"/discord/github/bind", wrapper.StartDiscordGitHubBind)
+	router.GET(options.BaseURL+"/discord/github/bind/callback", wrapper.CompleteDiscordGitHubBind)
+	router.POST(options.BaseURL+"/discord/github/unbind", wrapper.UnbindDiscordGitHub)
+	router.POST(options.BaseURL+"/discord/initializations", wrapper.CreateDiscordInitialization)
+	router.POST(options.BaseURL+"/discord/initializations/preflight", wrapper.PreflightDiscordInitialization)
+	router.GET(options.BaseURL+"/discord/initializations/:id", wrapper.GetDiscordInitialization)
+	router.GET(options.BaseURL+"/discord/members", wrapper.ListDiscordMembers)
+	router.POST(options.BaseURL+"/discord/members/:id/forum", wrapper.CreateDiscordMemberForum)
+	router.GET(options.BaseURL+"/discord/status", wrapper.GetDiscordStatus)
 	router.GET(options.BaseURL+"/events/stream", wrapper.StreamEvents)
 	router.GET(options.BaseURL+"/github/app", wrapper.GetGitHubApp)
 	router.PUT(options.BaseURL+"/github/app", wrapper.PutGitHubApp)
@@ -997,6 +1752,8 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/repositories", wrapper.CreateRepository)
 	router.GET(options.BaseURL+"/settings/agent-provider", wrapper.GetAgentProviderSettings)
 	router.PUT(options.BaseURL+"/settings/agent-provider", wrapper.PutAgentProviderSettings)
+	router.GET(options.BaseURL+"/settings/discord", wrapper.GetDiscordSettings)
+	router.PUT(options.BaseURL+"/settings/discord", wrapper.PutDiscordSettings)
 	router.POST(options.BaseURL+"/setup/admin", wrapper.SetupAdministrator)
 	router.GET(options.BaseURL+"/setup/status", wrapper.GetSetupStatus)
 	router.GET(options.BaseURL+"/system/status", wrapper.GetSystemStatus)
@@ -1012,46 +1769,63 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
