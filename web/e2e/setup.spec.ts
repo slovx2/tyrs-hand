@@ -22,10 +22,19 @@ test('首次安装页可以提交管理员资料', async ({ page }) => {
     .locator('dd')
     .textContent())!.trim()
   await page.getByRole('link', { name: '前往登录' }).click()
+  await expect(
+    page.getByRole('heading', { name: '登录 tyrs-hand' }),
+  ).toBeVisible()
   await page.getByLabel('用户名').fill('admin')
   await page.getByLabel('密码').fill('integration-password')
   await page.getByLabel('TOTP 验证码').fill(totp(secret))
+  const loginResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/v1/auth/login') &&
+      response.request().method() === 'POST',
+  )
   await page.getByRole('button', { name: '登录' }).click()
+  expect((await loginResponse).status()).toBe(200)
   await expect(page.getByRole('heading', { name: '控制面概览' })).toBeVisible()
 
   const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })

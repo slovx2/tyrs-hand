@@ -27,6 +27,24 @@ func TestWebhookRouterSeparation(t *testing.T) {
 	require.NotContains(t, webhook, "POST /internal/v1/tools/call")
 }
 
+func TestRateLimitPoliciesUseIndependentBuckets(t *testing.T) {
+	tests := []struct {
+		path   string
+		bucket string
+		limit  int64
+	}{
+		{path: "/api/v1/auth/login", bucket: "auth-login", limit: 10},
+		{path: "/api/v1/setup/admin", bucket: "setup-admin", limit: 10},
+		{path: "/webhooks/github", bucket: "github-webhook", limit: 300},
+		{path: "/api/v1/setup/status", bucket: "default", limit: 600},
+	}
+	for _, test := range tests {
+		bucket, limit := rateLimitPolicy(test.path)
+		require.Equal(t, test.bucket, bucket)
+		require.Equal(t, test.limit, limit)
+	}
+}
+
 func routeSet(handler http.Handler) map[string]bool {
 	engine := handler.(*gin.Engine)
 	result := make(map[string]bool, len(engine.Routes()))

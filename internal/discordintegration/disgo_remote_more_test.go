@@ -92,6 +92,52 @@ func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 	mu.Unlock()
 }
 
+func TestDisgoRemoteRejectsMalformedRequestsBeforeNetworkWrites(t *testing.T) {
+	remote := NewDisgoRemote("token", "", nil)
+	t.Cleanup(func() { remote.Close(context.Background()) })
+	ctx := context.Background()
+
+	_, err := remote.Guild(ctx, "bad")
+	require.Error(t, err)
+	require.Error(t, remote.DisableCommunity(ctx, "bad"))
+	require.Error(t, remote.EnableCommunity(ctx, "bad", "2", "3"))
+	require.Error(t, remote.EnableCommunity(ctx, "1", "bad", "3"))
+	require.Error(t, remote.EnableCommunity(ctx, "1", "2", "bad"))
+
+	_, err = remote.CreateChannel(ctx, "bad", ChannelSpec{Kind: "text"}, "")
+	require.Error(t, err)
+	_, err = remote.CreateChannel(ctx, "1", ChannelSpec{Kind: "text", ParentKey: "bad"}, "")
+	require.Error(t, err)
+	_, err = remote.CreateChannel(ctx, "1", ChannelSpec{
+		Kind: "text", PermissionOverwrites: []PermissionSpec{{ID: "bad", Type: "member"}},
+	}, "")
+	require.Error(t, err)
+
+	require.Error(t, remote.UpdateChannel(ctx, "bad", ChannelSpec{Kind: "text"}))
+	require.Error(t, remote.UpdateChannel(ctx, "1", ChannelSpec{Kind: "text", ParentKey: "bad"}))
+	require.Error(t, remote.UpdateChannel(ctx, "1", ChannelSpec{
+		Kind: "text", PermissionOverwrites: []PermissionSpec{{ID: "bad", Type: "member"}},
+	}))
+	require.Error(t, remote.UpdateChannel(ctx, "1", ChannelSpec{Kind: "voice"}))
+	require.Error(t, remote.DeleteChannel(ctx, "bad"))
+
+	_, err = remote.Send(ctx, OutboxItem{OperationType: "message.create", Payload: json.RawMessage("{")})
+	require.Error(t, err)
+	invalidOperations := []OutboxItem{
+		{OperationType: "message.create", Payload: rawJSON(map[string]string{"channelId": "bad"})},
+		{OperationType: "message.update", Payload: rawJSON(map[string]string{"channelId": "1", "messageId": "bad"})},
+		{OperationType: "interaction.defer", Payload: rawJSON(map[string]string{"interactionId": "bad"})},
+		{OperationType: "channel.permissions", Payload: rawJSON(map[string]string{"channelId": "bad"})},
+		{OperationType: "forum.post.create", Payload: rawJSON(map[string]any{"channelId": "1", "tagIds": []string{"bad"}})},
+		{OperationType: "thread.archive", Payload: rawJSON(map[string]string{"channelId": "bad"})},
+		{OperationType: "thread.tags", Payload: rawJSON(map[string]any{"channelId": "1", "tagIds": []string{"bad"}})},
+	}
+	for _, operation := range invalidOperations {
+		_, err = remote.Send(ctx, operation)
+		require.Error(t, err, operation.OperationType)
+	}
+}
+
 func testDisgoSendOperations(t *testing.T, ctx context.Context, remote *DisgoRemote) {
 	t.Helper()
 	operations := []OutboxItem{

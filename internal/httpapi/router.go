@@ -138,15 +138,9 @@ func (s *Server) WebhookRouter() http.Handler {
 
 func (s *Server) rateLimit() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		limit := int64(600)
-		switch c.Request.URL.Path {
-		case "/api/v1/auth/login", "/api/v1/setup/admin":
-			limit = 10
-		case "/webhooks/github":
-			limit = 300
-		}
+		bucketName, limit := rateLimitPolicy(c.Request.URL.Path)
 		bucket := time.Now().UTC().Unix() / 60
-		key := "tyrs-hand:rate:" + c.ClientIP() + ":" + strconv.FormatInt(bucket, 10)
+		key := "tyrs-hand:rate:" + bucketName + ":" + c.ClientIP() + ":" + strconv.FormatInt(bucket, 10)
 		count, err := s.redis.Incr(c.Request.Context(), key).Result()
 		if err == nil {
 			if count == 1 {
@@ -160,6 +154,19 @@ func (s *Server) rateLimit() gin.HandlerFunc {
 			}
 		}
 		c.Next()
+	}
+}
+
+func rateLimitPolicy(path string) (string, int64) {
+	switch path {
+	case "/api/v1/auth/login":
+		return "auth-login", 10
+	case "/api/v1/setup/admin":
+		return "setup-admin", 10
+	case "/webhooks/github":
+		return "github-webhook", 300
+	default:
+		return "default", 600
 	}
 }
 

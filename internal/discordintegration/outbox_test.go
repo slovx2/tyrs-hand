@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -128,6 +129,55 @@ func TestDispatcherUsesBackoffForServerErrors(t *testing.T) {
 	require.True(t, worked)
 	require.GreaterOrEqual(t, store.retryAt, now.Add(time.Second))
 	require.LessOrEqual(t, store.retryAt, now.Add(1500*time.Millisecond))
+}
+
+type stubSQLResult struct {
+	rows    int64
+	rowsErr error
+}
+
+func (r stubSQLResult) LastInsertId() (int64, error) { return 0, nil }
+func (r stubSQLResult) RowsAffected() (int64, error) { return r.rows, r.rowsErr }
+
+func TestRemoteErrorClassificationHeadersAndOutboxHelpers(t *testing.T) {
+	header := make(http.Header)
+	header.Set("X-RateLimit-Reset-After", "2.5")
+	retry, wait, classified := classifyRemoteError(&disgorest.Error{Response: &http.Response{
+		StatusCode: http.StatusRequestTimeout, Header: header,
+	}})
+	require.True(t, retry)
+	require.Equal(t, 2500*time.Millisecond, wait)
+	require.Error(t, classified)
+
+	header.Set("Retry-After", "invalid")
+	header.Set("X-RateLimit-Reset-After", "1.5")
+	require.Equal(t, 1500*time.Millisecond, retryAfter(header))
+	header = make(http.Header)
+	header.Set("Retry-After", time.Now().Add(time.Minute).UTC().Format(http.TimeFormat))
+	require.Greater(t, retryAfter(header), 30*time.Second)
+	header.Set("Retry-After", "-1")
+	require.Zero(t, retryAfter(header))
+
+	retry, wait, classified = classifyRemoteError(context.DeadlineExceeded)
+	require.True(t, retry)
+	require.Zero(t, wait)
+	require.ErrorIs(t, classified, context.DeadlineExceeded)
+	retry, _, classified = classifyRemoteError(&net.DNSError{Err: "timeout", IsTimeout: true})
+	require.True(t, retry)
+	require.Error(t, classified)
+	retry, _, classified = classifyRemoteError(errors.New("invalid request"))
+	require.False(t, retry)
+	require.Error(t, classified)
+
+	require.Nil(t, nullableJSON(nil))
+	value := json.RawMessage("{\"ok\":true}")
+	require.JSONEq(t, string(value), string(nullableJSON(value).(json.RawMessage)))
+	require.NoError(t, changedOne(stubSQLResult{rows: 1}, nil))
+	require.ErrorIs(t, changedOne(stubSQLResult{}, context.Canceled), context.Canceled)
+	require.Error(t, changedOne(stubSQLResult{rows: 0}, nil))
+	rowsErr := errors.New("rows unavailable")
+	require.ErrorIs(t, changedOne(stubSQLResult{rowsErr: rowsErr}, nil), rowsErr)
+	require.Contains(t, intervalLiteral(1500*time.Millisecond), "1.500000")
 }
 
 func TestDisgoRemoteHandlesRouteAndGlobalRateLimits(t *testing.T) {
