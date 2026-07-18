@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
 	"go.uber.org/zap"
 )
@@ -18,6 +19,7 @@ type Daemon struct {
 	manager            *Manager
 	conversations      *ConversationService
 	bindings           *BindingService
+	redis              *redis.Client
 	logger             *zap.Logger
 	apiURL             string
 	newRemote          func(string, string) Remote
@@ -29,9 +31,11 @@ type Daemon struct {
 	permissionInterval time.Duration
 }
 
-func NewDaemon(manager *Manager, conversations *ConversationService, bindings *BindingService, githubManager *ghadapter.Manager, logger *zap.Logger) *Daemon {
+func NewDaemon(manager *Manager, conversations *ConversationService, bindings *BindingService,
+	githubManager *ghadapter.Manager, redisClient *redis.Client, logger *zap.Logger,
+) *Daemon {
 	d := &Daemon{manager: manager, conversations: conversations, bindings: bindings,
-		logger: logger, apiURL: "https://discord.com/api/v10",
+		redis: redisClient, logger: logger, apiURL: "https://discord.com/api/v10",
 		outboxInterval: 250 * time.Millisecond, operationInterval: 2 * time.Second,
 		projectionInterval: time.Minute, permissionInterval: 5 * time.Minute}
 	d.newRemote = func(token, apiURL string) Remote { return NewDisgoRemote(token, apiURL, nil) }
@@ -98,6 +102,12 @@ func (d *Daemon) waitUntilEnabled(ctx context.Context) (Settings, string, error)
 
 func (d *Daemon) runBackground(ctx context.Context, guildID string, remote Remote) error {
 	dispatcher := NewDispatcher(NewSQLoutbox(d.manager.db), remote)
+	var permissionMessages <-chan *redis.Message
+	if d.redis != nil {
+		subscription := d.redis.Subscribe(ctx, RepositoryPermissionSyncChannel)
+		defer func() { _ = subscription.Close() }()
+		permissionMessages = subscription.Channel()
+	}
 	outboxTicker := time.NewTicker(d.outboxInterval)
 	defer outboxTicker.Stop()
 	operationTicker := time.NewTicker(d.operationInterval)
@@ -134,6 +144,15 @@ func (d *Daemon) runBackground(ctx context.Context, guildID string, remote Remot
 		case <-permissionTicker.C:
 			if err := d.syncRepositoryPermissions(ctx, guildID); err != nil {
 				d.logger.Warn("同步 Discord 仓库权限失败", zap.Error(err))
+			}
+		case message, open := <-permissionMessages:
+			if !open {
+				permissionMessages = nil
+				d.logger.Warn("Discord 仓库权限同步订阅已关闭，将使用定时同步")
+				continue
+			}
+			if err := d.handleRepositoryPermissionSync(ctx, guildID, message.Payload); err != nil {
+				d.logger.Warn("处理 Discord 仓库权限定向同步失败", zap.Error(err))
 			}
 		}
 	}

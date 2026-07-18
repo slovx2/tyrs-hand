@@ -13,10 +13,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/auth"
+	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
 	"github.com/slovx2/tyrs-hand/internal/orchestrator"
 	"github.com/slovx2/tyrs-hand/internal/security"
 	toolservice "github.com/slovx2/tyrs-hand/internal/tools"
+	"go.uber.org/zap"
 )
 
 func (s *Server) getGitHubApp(c *gin.Context) {
@@ -65,9 +67,10 @@ func githubAppManifest(publicURL, appName string) map[string]any {
 		"redirect_url":    publicURL + "/api/v1/github/app/manifest/callback",
 		"public":          false,
 		"default_permissions": map[string]string{
-			"metadata": "read", "contents": "write", "issues": "write", "pull_requests": "write", "actions": "read", "checks": "read",
+			"metadata": "read", "contents": "write", "issues": "write", "pull_requests": "write", "actions": "read", "checks": "read", "members": "read",
 		},
-		"default_events": []string{"repository", "issues", "issue_comment", "pull_request", "pull_request_review", "pull_request_review_comment", "push"},
+		"default_events": []string{"repository", "member", "membership", "organization", "team", "team_add",
+			"issues", "issue_comment", "pull_request", "pull_request_review", "pull_request_review_comment", "push"},
 	}
 }
 
@@ -138,6 +141,15 @@ func (s *Server) githubWebhook(c *gin.Context) {
 	if err != nil {
 		problem(c, http.StatusUnauthorized, "Webhook 处理失败", err)
 		return
+	}
+	if result.PermissionSync != nil && s.redis != nil {
+		message, marshalErr := json.Marshal(result.PermissionSync)
+		if marshalErr != nil {
+			s.logger.Warn("编码 Discord 仓库权限同步事件失败", zap.Error(marshalErr))
+		} else if publishErr := s.redis.Publish(c.Request.Context(), discordintegration.RepositoryPermissionSyncChannel, message).Err(); publishErr != nil {
+			// 定时全量同步会在 Redis 暂时不可用时兜底。
+			s.logger.Warn("发布 Discord 仓库权限同步事件失败", zap.Error(publishErr))
+		}
 	}
 	c.JSON(http.StatusAccepted, result)
 }

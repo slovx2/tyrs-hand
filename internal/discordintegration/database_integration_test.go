@@ -401,7 +401,7 @@ func testDiscordRecoveryOrchestration(t *testing.T, ctx context.Context, db *sql
 	appManager := ghadapter.NewManager(db, manager.secrets)
 	_, _, err = NewGitHubOAuthApp(appManager).Credentials(ctx)
 	require.Error(t, err)
-	daemon := NewDaemon(manager, NewConversationService(db), &BindingService{store: store}, appManager, zap.NewNop())
+	daemon := NewDaemon(manager, NewConversationService(db), &BindingService{store: store}, appManager, nil, zap.NewNop())
 	_, err = daemon.githubPermission(ctx, 1, "owner", "repo", "alice")
 	require.Error(t, err)
 	defaultRemote := daemon.newRemote("token", "http://127.0.0.1")
@@ -418,10 +418,20 @@ func testDiscordRecoveryOrchestration(t *testing.T, ctx context.Context, db *sql
 	forums, err := daemon.repositoryForums(ctx, testGuildID)
 	require.NoError(t, err)
 	require.Len(t, forums, 1)
+	require.Equal(t, int64(43), forums[0].RepositoryExternalID)
+	permissionChecks := 0
 	daemon.githubPermission = func(context.Context, int64, string, string, string) (string, error) {
+		permissionChecks++
 		return "read", nil
 	}
-	require.NoError(t, daemon.syncRepositoryPermissions(ctx, testGuildID))
+	require.NoError(t, daemon.handleRepositoryPermissionSync(ctx, testGuildID,
+		`{"installationId":42,"repositoryIds":[999]}`))
+	require.Zero(t, permissionChecks)
+	require.NoError(t, daemon.handleRepositoryPermissionSync(ctx, testGuildID,
+		`{"installationId":42,"repositoryIds":[43]}`))
+	require.Equal(t, 1, permissionChecks)
+	require.Error(t, daemon.handleRepositoryPermissionSync(ctx, testGuildID, `{`))
+	require.Error(t, daemon.handleRepositoryPermissionSync(ctx, testGuildID, `{}`))
 	var repositoryAccess int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_forum_access
 		WHERE forum_id = $1 AND discord_user_id = '1001'`, forums[0].ForumID).Scan(&repositoryAccess))
@@ -433,6 +443,21 @@ func testDiscordRecoveryOrchestration(t *testing.T, ctx context.Context, db *sql
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_forum_access
 		WHERE forum_id = $1 AND discord_user_id = '1001'`, forums[0].ForumID).Scan(&repositoryAccess))
 	require.Zero(t, repositoryAccess)
+	require.NoError(t, db.QueryRowContext(ctx, `UPDATE repositories SET enabled = false WHERE id = $1 RETURNING enabled`,
+		seed.repositoryID).Scan(&forums[0].Enabled))
+	permissionChecks = 0
+	daemon.githubPermission = func(context.Context, int64, string, string, string) (string, error) {
+		permissionChecks++
+		return "read", nil
+	}
+	require.NoError(t, daemon.handleRepositoryPermissionSync(ctx, testGuildID,
+		`{"installationId":42,"repositoryIds":[43]}`))
+	require.Zero(t, permissionChecks)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_forum_access
+		WHERE forum_id = $1 AND discord_user_id = '1001'`, forums[0].ForumID).Scan(&repositoryAccess))
+	require.Zero(t, repositoryAccess)
+	_, err = db.ExecContext(ctx, `UPDATE repositories SET enabled = true WHERE id = $1`, seed.repositoryID)
+	require.NoError(t, err)
 	require.NoError(t, manager.syncRepositoryForumPermissions(ctx, testGuildID, forums[0]))
 	require.Greater(t, repositoryPermissionRank("admin"), repositoryPermissionRank("read"))
 	require.Greater(t, repositoryPermissionRank("maintain"), repositoryPermissionRank("write"))

@@ -152,18 +152,18 @@ func InitializeDiscord(ctx context.Context, cfg config.Config) (*DiscordApp, fun
 		return nil, nil, err
 	}
 	bindingService := provideBindingService(cfg, db, secretBox, githubManager)
-	logger, cleanup2, err := provideLogger(cfg)
+	client, cleanup2, err := provideRedis(cfg)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
 	}
-	daemon := discordintegration.NewDaemon(manager, conversationService, bindingService, githubManager, logger)
-	client, cleanup3, err := provideRedis(cfg)
+	logger, cleanup3, err := provideLogger(cfg)
 	if err != nil {
 		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
+	daemon := discordintegration.NewDaemon(manager, conversationService, bindingService, githubManager, client, logger)
 	discordApp := &DiscordApp{
 		Daemon: daemon,
 		DB:     db,

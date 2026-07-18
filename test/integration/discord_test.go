@@ -161,7 +161,7 @@ func testOutboxRecovery(t *testing.T, ctx context.Context, db *sql.DB, guildID s
 	require.NotNil(t, recovered)
 	require.Equal(t, crashed.ID, recovered.ID)
 	require.Equal(t, crashed.Attempt+1, recovered.Attempt)
-	require.NoError(t, store.Retry(ctx, *recovered, time.Now(), errors.New("retry once")))
+	require.NoError(t, store.Retry(ctx, *recovered, time.Now().Add(-time.Second), errors.New("retry once")))
 	retried, err := store.Claim(ctx, time.Second)
 	require.NoError(t, err)
 	require.NotNil(t, retried)

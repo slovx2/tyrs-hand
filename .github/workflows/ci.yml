@@ -68,6 +68,7 @@ jobs:
         run: |
           go test ./...
           go test -race ./internal/...
+          go test -tags integration ./internal/discordintegration ./test/integration
           ./tools/check-go-coverage.sh
           pnpm --dir web test:run
       - uses: codecov/codecov-action@af09b5e394c93991b95a5e7646aeb90c1917f78f # v5.5.1

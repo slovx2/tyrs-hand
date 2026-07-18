@@ -20,8 +20,14 @@ type WebhookService struct {
 }
 
 type WebhookResult struct {
-	Duplicate bool
-	Jobs      int
+	Duplicate      bool
+	Jobs           int
+	PermissionSync *DiscordPermissionSync `json:"-"`
+}
+
+type DiscordPermissionSync struct {
+	InstallationID int64   `json:"installationId"`
+	RepositoryIDs  []int64 `json:"repositoryIds,omitempty"`
 }
 
 type triggerRule struct {
@@ -49,6 +55,7 @@ func (s *WebhookService) Process(ctx context.Context, signature, deliveryID, eve
 	if err != nil {
 		return WebhookResult{}, err
 	}
+	result := WebhookResult{PermissionSync: discordPermissionSyncForEvent(event)}
 	if err := hydrateInstallationRepositories(ctx, s.provider, &event); err != nil {
 		return WebhookResult{}, err
 	}
@@ -71,7 +78,8 @@ func (s *WebhookService) Process(ctx context.Context, signature, deliveryID, eve
 		if err := tx.Commit(); err != nil {
 			return WebhookResult{}, err
 		}
-		return WebhookResult{Duplicate: true}, nil
+		result.Duplicate = true
+		return result, nil
 	}
 	if err != nil {
 		return WebhookResult{}, err
@@ -80,7 +88,7 @@ func (s *WebhookService) Process(ctx context.Context, signature, deliveryID, eve
 		return WebhookResult{}, err
 	}
 	if event.Number == 0 || event.RepositoryID == 0 {
-		return WebhookResult{}, finishDeliveryAndCommit(ctx, tx, deliveryUUID, "ignored", "")
+		return result, finishDeliveryAndCommit(ctx, tx, deliveryUUID, "ignored", "")
 	}
 
 	var repositoryID uuid.UUID
@@ -88,7 +96,7 @@ func (s *WebhookService) Process(ctx context.Context, signature, deliveryID, eve
 		SELECT id FROM repositories WHERE provider = $1 AND external_id = $2 AND enabled = true`,
 		event.Provider, event.RepositoryID).Scan(&repositoryID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return WebhookResult{}, finishDeliveryAndCommit(ctx, tx, deliveryUUID, "ignored", "repository not enabled")
+		return result, finishDeliveryAndCommit(ctx, tx, deliveryUUID, "ignored", "repository not enabled")
 	}
 	if err != nil {
 		return WebhookResult{}, err
@@ -98,14 +106,14 @@ func (s *WebhookService) Process(ctx context.Context, signature, deliveryID, eve
 		return WebhookResult{}, err
 	}
 	if isBot(event.Actor, s.botLogin) {
-		return WebhookResult{}, finishDeliveryAndCommit(ctx, tx, deliveryUUID, "ignored", "bot reconciliation event")
+		return result, finishDeliveryAndCommit(ctx, tx, deliveryUUID, "ignored", "bot reconciliation event")
 	}
 	rules, err := loadRules(ctx, tx, repositoryID, event)
 	if err != nil {
 		return WebhookResult{}, err
 	}
 	if len(rules) == 0 {
-		return WebhookResult{}, finishDeliveryAndCommit(ctx, tx, deliveryUUID, "ignored", "no matching trigger rule")
+		return result, finishDeliveryAndCommit(ctx, tx, deliveryUUID, "ignored", "no matching trigger rule")
 	}
 	permission, err := s.provider.Permission(ctx, event.InstallationID, event.Owner, event.Repository, event.Actor)
 	if err != nil {
@@ -149,7 +157,36 @@ func (s *WebhookService) Process(ctx context.Context, signature, deliveryID, eve
 	if err := tx.Commit(); err != nil {
 		return WebhookResult{}, err
 	}
-	return WebhookResult{Jobs: jobs}, nil
+	result.Jobs = jobs
+	return result, nil
+}
+
+func discordPermissionSyncForEvent(event domain.NormalizedEvent) *DiscordPermissionSync {
+	switch event.EventName {
+	case "installation", "installation_repositories", "repository", "member", "membership", "organization", "team", "team_add":
+	default:
+		return nil
+	}
+	request := &DiscordPermissionSync{InstallationID: event.InstallationID}
+	seen := make(map[int64]struct{})
+	appendRepository := func(id int64) {
+		if id == 0 {
+			return
+		}
+		if _, exists := seen[id]; exists {
+			return
+		}
+		seen[id] = struct{}{}
+		request.RepositoryIDs = append(request.RepositoryIDs, id)
+	}
+	appendRepository(event.RepositoryID)
+	for _, repository := range event.Installation.Repositories {
+		appendRepository(repository.ExternalID)
+	}
+	for _, id := range event.Installation.RemovedRepositoryIDs {
+		appendRepository(id)
+	}
+	return request
 }
 
 func hydrateInstallationRepositories(ctx context.Context, provider ports.SCMProvider, event *domain.NormalizedEvent) error {

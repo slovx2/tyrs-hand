@@ -29,3 +29,28 @@ func TestRuleHelpers(t *testing.T) {
 	require.Equal(t, 0, permissionRank("none"))
 	require.JSONEq(t, `["a","b"]`, string(encode([]string{"a", "b"})))
 }
+
+func TestDiscordPermissionSyncForEvent(t *testing.T) {
+	event := domain.NormalizedEvent{
+		EventName: "installation_repositories", InstallationID: 42, RepositoryID: 100,
+		Installation: domain.SCMInstallationEvent{
+			Repositories:         []domain.SCMRepository{{ExternalID: 101}, {ExternalID: 100}},
+			RemovedRepositoryIDs: []int64{102, 101},
+		},
+	}
+	request := discordPermissionSyncForEvent(event)
+	require.NotNil(t, request)
+	require.Equal(t, int64(42), request.InstallationID)
+	require.Equal(t, []int64{100, 101, 102}, request.RepositoryIDs)
+
+	event.EventName = "membership"
+	event.RepositoryID = 0
+	event.Installation.Repositories = nil
+	event.Installation.RemovedRepositoryIDs = nil
+	request = discordPermissionSyncForEvent(event)
+	require.NotNil(t, request)
+	require.Empty(t, request.RepositoryIDs)
+
+	event.EventName = "issue_comment"
+	require.Nil(t, discordPermissionSyncForEvent(event))
+}
