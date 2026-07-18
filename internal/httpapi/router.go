@@ -44,7 +44,7 @@ func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authSer
 	return &Server{cfg: cfg, db: db, redis: redisClient, auth: authService, github: githubManager, catalog: catalog, settings: settingsService, logger: logger, assets: assets}, nil
 }
 
-func (s *Server) Router() http.Handler {
+func (s *Server) baseRouter() *gin.Engine {
 	if s.cfg.Environment == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -53,13 +53,28 @@ func (s *Server) Router() http.Handler {
 	router.Use(s.requestID(), s.securityHeaders(), s.rateLimit(), gin.Recovery(), metricsMiddleware(), s.accessLog())
 	router.GET("/healthz", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 	router.GET("/readyz", s.ready)
+	return router
+}
+
+func (s *Server) Router() http.Handler {
+	return s.adminRouter(true)
+}
+
+func (s *Server) AdminRouter() http.Handler {
+	return s.adminRouter(false)
+}
+
+func (s *Server) adminRouter(includeWebhook bool) http.Handler {
+	router := s.baseRouter()
 	router.GET("/metrics", func(c *gin.Context) {
 		s.refreshOperationalMetrics(c.Request.Context())
 		gin.WrapH(promhttp.Handler())(c)
 	})
-	router.POST("/webhooks/github", s.githubWebhook)
 	router.POST("/internal/v1/tools/call", s.internalToolCall)
 	router.POST("/internal/v1/git/credential", s.internalGitCredential)
+	if includeWebhook {
+		router.POST("/webhooks/github", s.githubWebhook)
+	}
 
 	api := router.Group("/api/v1")
 	api.GET("/setup/status", s.setupStatus)
@@ -94,6 +109,12 @@ func (s *Server) Router() http.Handler {
 	authenticated.GET("/events/stream", s.eventsStream)
 
 	router.NoRoute(s.serveSPA)
+	return router
+}
+
+func (s *Server) WebhookRouter() http.Handler {
+	router := s.baseRouter()
+	router.POST("/webhooks/github", s.githubWebhook)
 	return router
 }
 
@@ -174,6 +195,10 @@ func (s *Server) accessLog() gin.HandlerFunc {
 }
 
 func (s *Server) serveSPA(c *gin.Context) {
+	if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead {
+		c.Status(http.StatusNotFound)
+		return
+	}
 	path := strings.TrimPrefix(c.Request.URL.Path, "/")
 	if path != "" {
 		if _, err := fs.Stat(s.assets, path); err == nil {

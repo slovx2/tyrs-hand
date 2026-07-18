@@ -7,8 +7,8 @@ import (
 )
 
 func TestGitHubAppManifestUsesSupportedEvents(t *testing.T) {
-	manifest := githubAppManifest("https://agent.example.com", "tyrs-hand-a1b2c3d4")
-	require.Equal(t, "tyrs-hand-a1b2c3d4", manifest["name"])
+	manifest := githubAppManifest("https://agent.example.com", "TyrsHand")
+	require.Equal(t, "TyrsHand", manifest["name"])
 	require.Equal(t, "https://agent.example.com", manifest["url"])
 	require.Equal(t, "https://agent.example.com/api/v1/github/app/manifest/callback", manifest["redirect_url"])
 	require.Equal(t, map[string]any{

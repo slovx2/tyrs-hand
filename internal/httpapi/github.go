@@ -53,7 +53,7 @@ func (s *Server) githubManifest(c *gin.Context) {
 		problem(c, http.StatusServiceUnavailable, "保存 Manifest State 失败", err)
 		return
 	}
-	manifest := githubAppManifest(s.cfg.PublicURL, "tyrs-hand-"+uuid.NewString()[:8])
+	manifest := githubAppManifest(s.cfg.PublicURL, s.cfg.GitHubAppName)
 	data, _ := json.Marshal(manifest)
 	c.JSON(http.StatusOK, gin.H{"url": "https://github.com/settings/apps/new?state=" + url.QueryEscape(state), "manifest": string(data)})
 }

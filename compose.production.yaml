@@ -1,0 +1,22 @@
+services:
+  server:
+    environment:
+      TYRS_HAND_MASTER_KEY: ""
+      TYRS_HAND_MASTER_KEY_FILE: /run/secrets/master_key
+    secrets: [master_key]
+
+  worker:
+    environment:
+      TYRS_HAND_MASTER_KEY: ""
+      TYRS_HAND_MASTER_KEY_FILE: /run/secrets/master_key
+    secrets: [master_key]
+
+  admin:
+    environment:
+      TYRS_HAND_MASTER_KEY: ""
+      TYRS_HAND_MASTER_KEY_FILE: /run/secrets/master_key
+    secrets: [master_key]
+
+secrets:
+  master_key:
+    file: ./.local/secrets/master_key

@@ -15,7 +15,10 @@ import (
 type Config struct {
 	Environment       string
 	HTTPAddr          string
+	SeparateWebhook   bool
+	WebhookHTTPAddr   string
 	PublicURL         string
+	GitHubAppName     string
 	GitHubAPIURL      string
 	InternalServerURL string
 	DatabaseURL       string
@@ -47,7 +50,10 @@ func Load() (Config, error) {
 	cfg := Config{
 		Environment:       v.GetString("env"),
 		HTTPAddr:          v.GetString("http_addr"),
+		SeparateWebhook:   v.GetBool("separate_webhook"),
+		WebhookHTTPAddr:   v.GetString("webhook_http_addr"),
 		PublicURL:         strings.TrimRight(v.GetString("public_url"), "/"),
+		GitHubAppName:     v.GetString("github_app_name"),
 		GitHubAPIURL:      strings.TrimRight(v.GetString("github_api_url"), "/"),
 		InternalServerURL: strings.TrimRight(v.GetString("internal_server_url"), "/"),
 		DatabaseURL:       v.GetString("database_url"),
@@ -88,6 +94,12 @@ func (c Config) Validate() error {
 	if c.HTTPAddr == "" || c.DatabaseURL == "" || c.RedisURL == "" {
 		return errors.New("服务的 HTTP、PostgreSQL 和 Redis 配置不能为空")
 	}
+	if c.SeparateWebhook && (c.WebhookHTTPAddr == "" || c.HTTPAddr == c.WebhookHTTPAddr) {
+		return errors.New("开启 Webhook 分离后必须配置不同的监听地址")
+	}
+	if strings.TrimSpace(c.GitHubAppName) == "" {
+		return errors.New("GitHub App 名称不能为空")
+	}
 	if c.CodexBin == "" || c.WorkerID == "" {
 		return errors.New("配置中的 Codex 可执行文件和 Worker ID 不能为空")
 	}
@@ -111,7 +123,10 @@ func (c Config) Validate() error {
 func setDefaults(v *viper.Viper) {
 	v.SetDefault("env", "development")
 	v.SetDefault("http_addr", ":8080")
+	v.SetDefault("separate_webhook", false)
+	v.SetDefault("webhook_http_addr", ":8081")
 	v.SetDefault("public_url", "http://localhost:8080")
+	v.SetDefault("github_app_name", "TyrsHand")
 	v.SetDefault("github_api_url", "https://api.github.com")
 	v.SetDefault("internal_server_url", "http://localhost:8080")
 	v.SetDefault("database_url", "postgres://tyrs_hand:tyrs_hand@localhost:5432/tyrs_hand?sslmode=disable")

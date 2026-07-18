@@ -13,7 +13,8 @@ import (
 
 func TestValidate(t *testing.T) {
 	valid := Config{
-		Environment: "development", HTTPAddr: ":8080", DatabaseURL: "postgres://db", RedisURL: "redis://cache",
+		Environment: "development", HTTPAddr: ":8080", WebhookHTTPAddr: ":8081", GitHubAppName: "TyrsHand",
+		DatabaseURL: "postgres://db", RedisURL: "redis://cache",
 		CodexBin: "codex", WorkerID: "worker", LeaseDuration: 90 * time.Second, HeartbeatInterval: 20 * time.Second,
 		RepoCacheMaxBytes: 1024,
 	}
@@ -23,6 +24,10 @@ func TestValidate(t *testing.T) {
 	require.Error(t, invalid.Validate())
 	invalid = valid
 	invalid.LeaseDuration = 30 * time.Second
+	require.Error(t, invalid.Validate())
+	invalid = valid
+	invalid.SeparateWebhook = true
+	invalid.WebhookHTTPAddr = invalid.HTTPAddr
 	require.Error(t, invalid.Validate())
 	production := valid
 	production.Environment = "production"

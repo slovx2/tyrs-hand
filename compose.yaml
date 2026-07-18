@@ -29,14 +29,16 @@ services:
 
   server:
     build: { context: . }
-    image: ghcr.io/slovx2/tyrs-hand:0.1.0
+    image: ${TYRS_HAND_IMAGE:-ghcr.io/slovx2/tyrs-hand:0.1.0}
     command: ["tyrs-hand-server"]
     env_file: [.env]
     environment:
       TYRS_HAND_DATABASE_URL: postgres://tyrs_hand:${POSTGRES_PASSWORD:-tyrs_hand}@postgres:5432/tyrs_hand?sslmode=disable
       TYRS_HAND_REDIS_URL: redis://redis:6379/0
       TYRS_HAND_HTTP_ADDR: :8080
-    ports: ["8080:8080"]
+      TYRS_HAND_SEPARATE_WEBHOOK: ${TYRS_HAND_SEPARATE_WEBHOOK:-false}
+      TYRS_HAND_WEBHOOK_HTTP_ADDR: :8081
+    ports: ["127.0.0.1:${TYRS_HAND_HOST_PORT:-8080}:8080"]
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -48,7 +50,7 @@ services:
     restart: unless-stopped
 
   worker:
-    image: ghcr.io/slovx2/tyrs-hand:0.1.0
+    image: ${TYRS_HAND_IMAGE:-ghcr.io/slovx2/tyrs-hand:0.1.0}
     command: ["tyrs-hand-worker"]
     security_opt: ["seccomp=unconfined"]
     env_file: [.env]
@@ -74,7 +76,7 @@ services:
     restart: unless-stopped
 
   admin:
-    image: ghcr.io/slovx2/tyrs-hand:0.1.0
+    image: ${TYRS_HAND_IMAGE:-ghcr.io/slovx2/tyrs-hand:0.1.0}
     entrypoint: ["/usr/bin/tini", "--", "tyrs-hand-admin"]
     command: ["check"]
     env_file: [.env]
