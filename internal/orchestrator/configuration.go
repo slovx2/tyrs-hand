@@ -18,23 +18,11 @@ func SeedRepositoryRules(ctx context.Context, tx *sql.Tx, repositoryID uuid.UUID
 	if err != nil {
 		return err
 	}
-	for _, rule := range []struct {
-		name, event, action string
-		mention             bool
-	}{
-		{"mention", "issue_comment", "created", true},
-		{"review-requested", "pull_request", "review_requested", false},
-	} {
-		_, err := tx.ExecContext(ctx, `
-			INSERT INTO trigger_rules(repository_id, agent_profile_id, name, event_name, action,
-				mention_required, instruction_template, allowed_tools)
-			VALUES ($1,$2,$3,$4,$5,$6,
-				'Process {{event}} {{action}} for {{owner}}/{{repository}}#{{number}} requested by {{actor}}.\n\n{{body}}',$7)
-			ON CONFLICT(repository_id,name) DO NOTHING`,
-			repositoryID, profileID, rule.name, rule.event, rule.action, rule.mention, allowedTools)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO trigger_rules(repository_id, agent_profile_id, name, event_name, action,
+			mention_required, instruction_template, allowed_tools)
+		VALUES ($1,$2,'mention','issue_comment','created',true,
+			'Process {{event}} {{action}} for {{owner}}/{{repository}}#{{number}} requested by {{actor}}.\n\n{{body}}',$3)
+		ON CONFLICT(repository_id,name) DO NOTHING`, repositoryID, profileID, allowedTools)
+	return err
 }

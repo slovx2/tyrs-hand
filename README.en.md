@@ -119,7 +119,7 @@ The default Manifest requests:
 
 The Manifest subscribes to Repository, Issues, Issue Comment, Pull Request, Review, Review Comment, and Push events. GitHub sends installation lifecycle events automatically.
 
-Default rules handle bot mentions and `pull_request.review_requested`. Regular GitHub App bots cannot be selected directly as reviewers, so the latter currently means that a reviewer request occurred in the repository. Administrators can disable or replace this rule.
+The default rule handles bot mentions in Issue and Pull Request comments. Regular GitHub App bots cannot be selected directly as reviewers; administrators can explicitly add a `pull_request.review_requested` rule when any reviewer request should trigger the agent.
 
 ## Threads, Skills, and Workspaces
 

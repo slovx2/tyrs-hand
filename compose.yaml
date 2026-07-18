@@ -52,7 +52,9 @@ services:
   worker:
     image: ${TYRS_HAND_IMAGE:-ghcr.io/slovx2/tyrs-hand:0.1.0}
     command: ["tyrs-hand-worker"]
-    security_opt: ["seccomp=unconfined"]
+    # Codex 的 Bubblewrap 需要在容器内建立用户、挂载和 PID namespace。
+    cap_add: [SYS_ADMIN]
+    security_opt: ["seccomp=unconfined", "apparmor=unconfined"]
     env_file: [.env]
     environment:
       TYRS_HAND_DATABASE_URL: postgres://tyrs_hand:${POSTGRES_PASSWORD:-tyrs_hand}@postgres:5432/tyrs_hand?sslmode=disable

@@ -207,6 +207,10 @@ func testWebhookOrchestration(t *testing.T, db *sql.DB, repositoryID uuid.UUID) 
 	require.NoError(t, err)
 	require.NoError(t, orchestrator.SeedRepositoryRules(ctx, tx, repositoryID))
 	require.NoError(t, tx.Commit())
+	var ruleCount int
+	require.NoError(t, db.QueryRowContext(ctx,
+		`SELECT count(*) FROM trigger_rules WHERE repository_id = $1`, repositoryID).Scan(&ruleCount))
+	require.Equal(t, 1, ruleCount)
 	event := domain.NormalizedEvent{
 		Provider: "github", DeliveryID: "delivery-1", EventName: "issue_comment", Action: "created",
 		InstallationID: 1, RepositoryID: 2, Owner: "owner", Repository: "repo",
