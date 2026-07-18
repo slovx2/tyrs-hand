@@ -43,7 +43,7 @@ export function GitHubPage() {
   return (
     <section className="max-w-4xl">
       <h1 className="text-3xl font-bold">GitHub App</h1>
-      <p className="mt-2 text-slate-500">
+      <p className="muted mt-2">
         所有远程操作都使用 Installation Token，不使用普通机器账号。
       </p>
       <div className="panel mt-8">
@@ -111,11 +111,11 @@ export function GitHubPage() {
             />
           </label>
         </div>
-        <p className="mt-4 text-xs text-slate-500">
+        <p className="muted mt-4 text-xs">
           Secret 加密保存，提交后不会回显。重新保存时必须提供新的完整 Secret。
         </p>
         {mutation.error && (
-          <p role="alert" className="mt-3 text-red-700">
+          <p role="alert" className="error-text mt-3">
             {mutation.error.message}
           </p>
         )}

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { api } from '../api/client'
-import { useUI, type Locale, type Theme } from '../state'
+import { useUI, type Locale } from '../state'
 
 interface ProviderSettings {
   providerType: 'device-code' | 'api-key'
@@ -47,17 +47,27 @@ export function SettingsPage() {
             <option value="en-US">English</option>
           </select>
         </label>
-        <label className="text-sm">
+        <div className="text-sm">
           主题
-          <select
-            className="field mt-1"
-            value={theme}
-            onChange={(event) => setTheme(event.target.value as Theme)}
-          >
-            <option value="light">浅色</option>
-            <option value="dark">深色</option>
-          </select>
-        </label>
+          <div className="theme-toggle mt-1" role="group" aria-label="主题">
+            <button
+              className={`theme-option ${theme === 'light' ? 'theme-option-active' : ''}`}
+              type="button"
+              aria-pressed={theme === 'light'}
+              onClick={() => setTheme('light')}
+            >
+              亮色
+            </button>
+            <button
+              className={`theme-option ${theme === 'dark' ? 'theme-option-active' : ''}`}
+              type="button"
+              aria-pressed={theme === 'dark'}
+              onClick={() => setTheme('dark')}
+            >
+              暗色
+            </button>
+          </div>
+        </div>
       </div>
       <form
         className="panel mt-6"
@@ -114,7 +124,7 @@ export function SettingsPage() {
           </label>
         </div>
         {mutation.error && (
-          <p role="alert" className="mt-4 text-red-700">
+          <p role="alert" className="error-text mt-4">
             {mutation.error.message}
           </p>
         )}

@@ -43,6 +43,7 @@ export function App() {
   const theme = useUI((state) => state.theme)
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
+    document.documentElement.dataset.theme = theme
   }, [theme])
 
   const setup = useQuery({
@@ -137,11 +138,8 @@ function AuthenticatedLayout() {
     return <Navigate to="/login" state={{ from: location }} replace />
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[250px_1fr]">
-      <aside className="border-b border-slate-200 bg-white px-4 py-5 dark:border-white/10 dark:bg-[#151b17] lg:border-r lg:border-b-0">
-        <Link
-          to="/"
-          className="mb-6 block text-xl font-bold tracking-tight text-emerald-800 dark:text-emerald-300"
-        >
+      <aside className="app-sidebar border-b px-4 py-5 lg:border-r lg:border-b-0">
+        <Link to="/" className="brand mb-7 text-xl">
           tyrs-hand
         </Link>
         <nav className="grid grid-cols-2 gap-1 sm:grid-cols-4 lg:grid-cols-1">
@@ -151,7 +149,7 @@ function AuthenticatedLayout() {
               to={item.to}
               end={item.to === '/'}
               className={({ isActive }) =>
-                `rounded-lg px-3 py-2 text-sm ${isActive ? 'bg-emerald-700 text-white' : 'hover:bg-emerald-950/5 dark:hover:bg-white/5'}`
+                `nav-item px-3 py-2 text-sm ${isActive ? 'nav-item-active' : ''}`
               }
             >
               {item.to === '/threads'
@@ -162,10 +160,10 @@ function AuthenticatedLayout() {
             </NavLink>
           ))}
         </nav>
-        <div className="mt-8 text-xs text-slate-500">{me.data?.username}</div>
+        <div className="muted mt-8 text-xs">{me.data?.username}</div>
         <LogoutButton onLogout={() => setCSRFToken(undefined)} />
       </aside>
-      <main className="min-w-0 p-4 sm:p-8">
+      <main className="min-w-0 p-4 sm:p-8 lg:p-10">
         <Outlet />
       </main>
     </div>
@@ -185,14 +183,14 @@ function Dashboard() {
   return (
     <section>
       <h1 className="text-3xl font-bold">控制面概览</h1>
-      <p className="mt-2 text-slate-600 dark:text-slate-300">
-        GitHub 事件、任务租约和 Codex 运行状态。
-      </p>
+      <p className="muted mt-2">GitHub 事件、任务租约和 Codex 运行状态。</p>
       <div className="mt-8 grid gap-4 sm:grid-cols-3">
         {resources.map((resource, index) => (
           <div className="panel" key={resource}>
-            <div className="text-sm text-slate-500">{resource}</div>
-            <div className="mt-2 text-4xl font-semibold">
+            <div className="muted text-xs font-medium tracking-[0.14em] uppercase">
+              {resource}
+            </div>
+            <div className="mt-3 text-4xl font-semibold tracking-[-0.05em]">
               {queries[index].data?.items.length ?? '—'}
             </div>
           </div>
@@ -218,7 +216,7 @@ function LogoutButton({ onLogout }: { onLogout: () => void }) {
   })
   return (
     <button
-      className="mt-2 text-sm text-slate-500 hover:text-emerald-700"
+      className="muted mt-2 cursor-pointer text-sm hover:underline"
       onClick={() => mutation.mutate()}
     >
       {t(useUI.getState().locale, 'signOut')}
@@ -235,7 +233,7 @@ function FullPageMessage({
 }) {
   return (
     <div
-      className={`grid min-h-screen place-items-center p-8 ${error ? 'text-red-700' : ''}`}
+      className={`grid min-h-screen place-items-center p-8 ${error ? 'error-text' : ''}`}
     >
       {message}
     </div>

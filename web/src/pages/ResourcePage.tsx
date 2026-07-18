@@ -41,7 +41,7 @@ export function ResourcePage({
       <div className="flex items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">{title}</h1>
-          <p className="mt-2 text-slate-500">实时显示控制面的权威状态。</p>
+          <p className="muted mt-2">实时显示控制面的权威状态。</p>
         </div>
         <button
           className="button-secondary"
@@ -52,17 +52,17 @@ export function ResourcePage({
       </div>
       {query.isLoading && <p className="mt-8">正在加载…</p>}
       {query.error && (
-        <p role="alert" className="mt-8 text-red-700">
+        <p role="alert" className="error-text mt-8">
           {query.error.message}
         </p>
       )}
       {query.data && query.data.items.length === 0 && (
-        <div className="panel mt-8 text-slate-500">暂无数据</div>
+        <div className="panel muted mt-8">暂无数据</div>
       )}
       {query.data && query.data.items.length > 0 && (
         <div className="panel mt-8 overflow-x-auto p-0">
           <table className="w-full min-w-[760px] border-collapse text-left text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5">
+            <thead className="table-head border-b">
               <tr>
                 {columns.map((column) => (
                   <th className="px-4 py-3 font-medium" key={column}>
@@ -74,7 +74,7 @@ export function ResourcePage({
             <tbody>
               {query.data.items.map((item, index) => (
                 <tr
-                  className="border-b border-slate-100 last:border-0 dark:border-white/5"
+                  className="table-row border-b last:border-0"
                   key={String(item.id ?? index)}
                 >
                   {columns.map((column) => (

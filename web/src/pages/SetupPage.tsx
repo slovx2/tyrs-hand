@@ -51,17 +51,17 @@ export function SetupPage() {
           </p>
           <dl className="mt-5 space-y-4">
             <div>
-              <dt className="text-sm text-slate-500">TOTP Secret</dt>
+              <dt className="muted text-sm">TOTP Secret</dt>
               <dd className="mt-1 break-all font-mono">{result.totpSecret}</dd>
             </div>
             <div>
-              <dt className="text-sm text-slate-500">Provisioning URI</dt>
+              <dt className="muted text-sm">Provisioning URI</dt>
               <dd className="mt-1 break-all font-mono text-xs">
                 {result.provisioningUri}
               </dd>
             </div>
             <div>
-              <dt className="text-sm text-slate-500">恢复码</dt>
+              <dt className="muted text-sm">恢复码</dt>
               <dd className="mt-2 grid grid-cols-2 gap-2 font-mono">
                 {result.recoveryCodes.map((code) => (
                   <span key={code}>{code}</span>
@@ -83,7 +83,7 @@ export function SetupPage() {
         onSubmit={form.handleSubmit((values) => mutation.mutate(values))}
       >
         <h1 className="text-2xl font-bold">初始化 tyrs-hand</h1>
-        <p className="mt-2 text-sm text-slate-500">
+        <p className="muted mt-2 text-sm">
           系统只允许创建一位管理员，并强制启用 TOTP。
         </p>
         <label className="mt-6 block text-sm">
@@ -112,12 +112,12 @@ export function SetupPage() {
           />
         </label>
         {Object.values(form.formState.errors).map((error) => (
-          <p key={error.message} className="mt-2 text-xs text-red-700">
+          <p key={error.message} className="error-text mt-2 text-xs">
             {error.message}
           </p>
         ))}
         {mutation.error && (
-          <p role="alert" className="mt-4 text-red-700">
+          <p role="alert" className="error-text mt-4">
             {mutation.error.message}
           </p>
         )}
