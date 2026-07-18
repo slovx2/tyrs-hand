@@ -71,17 +71,14 @@ export function LoginPage() {
         </label>
         <FieldError message={form.formState.errors.totp?.message} />
         {mutation.error && (
-          <p role="alert" className="mt-4 text-sm text-red-700">
+          <p role="alert" className="error-text mt-4 text-sm">
             {mutation.error.message}
           </p>
         )}
         <button className="button mt-6 w-full" disabled={mutation.isPending}>
           登录
         </button>
-        <Link
-          className="mt-4 block text-center text-sm text-emerald-700"
-          to="/setup"
-        >
+        <Link className="text-link mt-4 block text-center text-sm" to="/setup">
           首次安装？
         </Link>
       </form>
@@ -90,5 +87,5 @@ export function LoginPage() {
 }
 
 function FieldError({ message }: { message?: string }) {
-  return message ? <p className="mt-1 text-xs text-red-700">{message}</p> : null
+  return message ? <p className="error-text mt-1 text-xs">{message}</p> : null
 }
