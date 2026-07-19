@@ -77,7 +77,7 @@ PostgreSQL 是唯一权威状态源。Redis 仅保存可以重建的限流和通
 2. 构建镜像并执行显式迁移：
 
    ```bash
-   docker compose build server
+   docker compose build server worker
    docker compose up -d postgres redis
    docker compose --profile tools run --rm admin migrate
    docker compose up -d server worker
@@ -184,13 +184,14 @@ make build
 
 ## 镜像与发布
 
-GitHub Actions 对 Pull Request 构建但不推送镜像。`main` 和 `v*` Tag 会构建 `linux/amd64`、`linux/arm64` 多架构镜像并推送到：
+GitHub Actions 对 Pull Request 和 `main` 构建 Control、Worker 镜像但不推送。发布 Release 时会构建 `linux/amd64`、`linux/arm64` 多架构镜像：
 
 ```text
-ghcr.io/slovx2/tyrs-hand
+ghcr.io/slovx2/tyrs-hand-control
+ghcr.io/slovx2/tyrs-hand-worker
 ```
 
-每次推送都会生成不可变的 `sha-<commit>` Tag；`main` 额外更新 `main` Tag，版本 Tag 额外发布同名镜像。发布构建包含 SBOM、provenance，版本镜像执行漏洞扫描和 Cosign keyless 签名。
+发布构建包含 SBOM 和 provenance，并使用 `sha-<commit>` 候选 Tag 执行漏洞扫描和 Cosign keyless 签名。两个候选镜像全部通过后，才会为 Control 和 Worker 创建 Release 版本 Tag。
 
 生产部署应固定 `sha-<commit>` Tag 或镜像 Digest，不使用 `latest`。
 

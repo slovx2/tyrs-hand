@@ -47,7 +47,7 @@ func TestThreadPayloadAndSkillInput(t *testing.T) {
 	require.Equal(t, "application", context["discord_message_identity"]["kind"])
 }
 
-func TestPoolReusesProcessAndRoutesByThread(t *testing.T) {
+func TestPoolRoutesByThreadAndReleasesJobProcess(t *testing.T) {
 	pool := NewPool(PoolOptions{Bin: os.Args[0], RequestTimeout: 2 * time.Second, ToolTimeout: 2 * time.Second})
 	t.Cleanup(func() { _ = pool.Close() })
 	cwd := t.TempDir()
@@ -76,9 +76,39 @@ func TestPoolReusesProcessAndRoutesByThread(t *testing.T) {
 	unbind()
 	_, err = pool.routeTool("repo/profile/config", context.Background(), ToolCallRequest{ThreadID: threadID, Arguments: json.RawMessage(`{}`)})
 	require.Error(t, err)
+	require.NoError(t, pool.Release("repo/profile/config"))
+	select {
+	case <-client.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("Release 没有关闭 Job 的 App Server")
+	}
+	replacement, err := pool.Acquire(context.Background(), "repo/profile/config", cwd, home, []string{"GO_WANT_FAKE_CODEX=1"})
+	require.NoError(t, err)
+	require.NotSame(t, client, replacement)
 	require.NoError(t, pool.Close())
 	_, err = pool.Acquire(context.Background(), "new", cwd, home, nil)
 	require.Error(t, err)
+}
+
+func TestPoolJobProcessesAreIsolated(t *testing.T) {
+	pool := NewPool(PoolOptions{Bin: os.Args[0], RequestTimeout: 2 * time.Second, ToolTimeout: 2 * time.Second})
+	t.Cleanup(func() { _ = pool.Close() })
+	cwd := t.TempDir()
+	first, err := pool.Acquire(context.Background(), "job/first", cwd, t.TempDir(), []string{"GO_WANT_FAKE_CODEX=1"})
+	require.NoError(t, err)
+	second, err := pool.Acquire(context.Background(), "job/second", cwd, t.TempDir(), []string{"GO_WANT_FAKE_CODEX=1"})
+	require.NoError(t, err)
+	require.NotSame(t, first, second)
+	require.NoError(t, pool.Release("job/first"))
+	select {
+	case <-second.Done():
+		t.Fatal("关闭一个 Job 的 App Server 不应影响其他 Job")
+	default:
+	}
+	_, err = NewRuntime(second).StartThread(context.Background(), ports.ThreadOptions{
+		CWD: cwd, Sandbox: "workspace-write", ApprovalPolicy: "never",
+	})
+	require.NoError(t, err)
 }
 
 func TestValidateRepositorySkills(t *testing.T) {

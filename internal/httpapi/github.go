@@ -16,6 +16,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
 	"github.com/slovx2/tyrs-hand/internal/orchestrator"
+	"github.com/slovx2/tyrs-hand/internal/queue"
 	"github.com/slovx2/tyrs-hand/internal/security"
 	toolservice "github.com/slovx2/tyrs-hand/internal/tools"
 	"go.uber.org/zap"
@@ -150,6 +151,10 @@ func (s *Server) githubWebhook(c *gin.Context) {
 			// 定时全量同步会在 Redis 暂时不可用时兜底。
 			s.logger.Warn("发布 Discord 仓库权限同步事件失败", zap.Error(publishErr))
 		}
+	}
+	if result.Jobs > 0 && s.redis != nil {
+		// Redis 只负责降低领取延迟；发布失败时 Worker 的数据库轮询仍会兜底。
+		_ = s.redis.Publish(c.Request.Context(), queue.JobWakeupChannel, "queued").Err()
 	}
 	c.JSON(http.StatusAccepted, result)
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/database"
+	"github.com/slovx2/tyrs-hand/internal/devenv"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
 	"github.com/slovx2/tyrs-hand/internal/githubtools"
@@ -108,6 +109,10 @@ func providePool(ctx context.Context, cfg config.Config, logger *zap.Logger) (*c
 	}
 	pool := codex.NewPool(codex.PoolOptions{Bin: cfg.CodexBin, RequestTimeout: cfg.ControlTimeout, ToolTimeout: cfg.ToolTimeout, Logger: logger})
 	return pool, func() { _ = pool.Close() }, nil
+}
+
+func provideDevelopmentEnvironment(cfg config.Config, logger *zap.Logger) (*devenv.Manager, error) {
+	return devenv.NewManager(cfg.WorkerDataRoot, logger)
 }
 
 func provideSettings(db *sql.DB, store *secrets.Store) *platformsettings.Service {

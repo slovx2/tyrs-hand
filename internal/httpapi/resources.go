@@ -213,11 +213,24 @@ func (s *Server) listThreads(c *gin.Context) {
 }
 
 func (s *Server) listWorktrees(c *gin.Context) {
-	s.listRows(c, `SELECT wt.id, wt.path, wt.branch, wt.base_sha, wt.head_sha, wt.status,
-		wt.dirty, wt.last_used_at, wt.expires_at, rc.path, rc.size_bytes, rc.last_fetch_at
+	s.listRows(c, `SELECT * FROM (
+		SELECT wt.id, 'github_work_item' AS kind, wt.path, wt.branch, wt.base_sha, wt.head_sha, wt.status,
+			wt.dirty, wt.environment_status, wt.runtime_fingerprint, wt.dependency_fingerprint,
+			wt.environment_projects, wt.environment_diagnostics, wt.environment_prepared_at,
+			wt.last_used_at, wt.expires_at,
+			rc.path AS cache_path, rc.size_bytes, rc.last_fetch_at
 		FROM worktrees wt JOIN repo_caches rc ON rc.id = wt.repo_cache_id
-		ORDER BY wt.last_used_at DESC LIMIT 200`,
-		[]string{"id", "path", "branch", "baseSha", "headSha", "status", "dirty", "lastUsedAt", "expiresAt", "cachePath", "cacheSizeBytes", "lastFetchAt"})
+		UNION ALL
+		SELECT dw.id, 'discord' AS kind, dw.path, dw.branch, dw.base_sha, dw.head_sha, dw.status,
+			dw.dirty, dw.environment_status, dw.runtime_fingerprint, dw.dependency_fingerprint,
+			dw.environment_projects, dw.environment_diagnostics, dw.environment_prepared_at,
+			dw.last_used_at, NULL,
+			rc.path AS cache_path, rc.size_bytes, rc.last_fetch_at
+		FROM discord_workspaces dw JOIN repo_caches rc ON rc.id = dw.repo_cache_id
+	) workspaces ORDER BY last_used_at DESC LIMIT 200`,
+		[]string{"id", "kind", "path", "branch", "baseSha", "headSha", "status", "dirty",
+			"environmentStatus", "runtimeFingerprint", "dependencyFingerprint", "environmentProjects", "environmentDiagnostics",
+			"environmentPreparedAt", "lastUsedAt", "expiresAt", "cachePath", "cacheSizeBytes", "lastFetchAt"})
 }
 
 func (s *Server) listRepoCaches(c *gin.Context) {

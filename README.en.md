@@ -75,7 +75,7 @@ PostgreSQL is the only authoritative state store. Redis contains only recoverabl
 2. Build, migrate, and start:
 
    ```bash
-   docker compose build server
+   docker compose build server worker
    docker compose up -d postgres redis
    docker compose --profile tools run --rm admin migrate
    docker compose up -d server worker
@@ -174,13 +174,14 @@ Integration tests use Testcontainers for PostgreSQL and Redis and temporary Git 
 
 ## Images and Releases
 
-Pull Requests build images without publishing them. Pushes to `main` and `v*` tags build multi-architecture `linux/amd64` and `linux/arm64` images at:
+Pull Requests and `main` build the Control and Worker images without publishing them. Releases build multi-architecture `linux/amd64` and `linux/arm64` images at:
 
 ```text
-ghcr.io/slovx2/tyrs-hand
+ghcr.io/slovx2/tyrs-hand-control
+ghcr.io/slovx2/tyrs-hand-worker
 ```
 
-Every push receives an immutable `sha-<commit>` tag. Main also updates `main`, while version tags publish the matching version tag. Release builds include SBOM and provenance; version images are vulnerability-scanned and signed with Cosign keyless signing.
+Release builds include SBOM and provenance. Their `sha-<commit>` candidate tags are vulnerability-scanned and signed with Cosign keyless signing; release-version tags for both images are promoted only after every candidate passes.
 
 Production deployments should pin `sha-<commit>` or an image digest and must not use `latest`.
 

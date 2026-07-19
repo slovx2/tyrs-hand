@@ -18,7 +18,8 @@ chmod 0600 .env .local/secrets/*
 
 ```dotenv
 TYRS_HAND_ENV=production
-TYRS_HAND_IMAGE=ghcr.io/slovx2/tyrs-hand@sha256:<published-digest>
+TYRS_HAND_CONTROL_IMAGE=ghcr.io/slovx2/tyrs-hand-control@sha256:<published-digest>
+TYRS_HAND_WORKER_IMAGE=ghcr.io/slovx2/tyrs-hand-worker@sha256:<published-digest>
 TYRS_HAND_HOST_PORT=8080
 TYRS_HAND_PUBLIC_URL=https://agent.example.com
 TYRS_HAND_GITHUB_APP_NAME=my-team-tyrs-hand

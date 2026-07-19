@@ -1,0 +1,31 @@
+version: 1
+
+runtimes:
+  python: "3.13.14"
+  node: "24.14.0"
+  pnpm: "11.14.0"
+  go: "1.26.5"
+  rust:
+    version: "1.97.1"
+    profile: "minimal"
+    components: []
+    targets: []
+
+projects:
+  - name: api
+    path: api
+    dependencies:
+      - manager: requirements
+        files: [requirements.txt]
+  - name: web
+    path: web
+    dependencies:
+      - manager: pnpm
+  - name: service
+    path: service
+    dependencies:
+      - manager: go
+  - name: native
+    path: native
+    dependencies:
+      - manager: cargo

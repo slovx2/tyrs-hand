@@ -1,0 +1,20 @@
+version: 1
+
+runtimes:
+  node: "24.14.0"
+  pnpm: "11.14.0"
+  rust:
+    version: "1.97.1"
+    profile: "minimal"
+    components: ["rustfmt", "clippy"]
+    targets: []
+
+projects:
+  - name: web
+    path: "."
+    dependencies:
+      - manager: pnpm
+  - name: desktop
+    path: "src-tauri"
+    dependencies:
+      - manager: cargo

@@ -6,6 +6,23 @@ on:
     branches: [main]
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      include_tauri:
+        description: Run the real Tauri cold-cache and offline debug builds
+        required: true
+        type: boolean
+        default: true
+      include_alternate:
+        description: Run the alternate toolchain cold-cache and offline matrix
+        required: true
+        type: boolean
+        default: true
+      build_arm64:
+        description: Build the linux/arm64 Worker image after the runtime matrix
+        required: true
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -21,6 +38,7 @@ env:
 
 jobs:
   verify:
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -81,10 +99,73 @@ jobs:
           pnpm --dir web exec playwright install --with-deps chromium
           pnpm --dir web e2e
 
-  image:
+  runtime-images:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    needs: verify
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          target: control
+          load: true
+          tags: tyrs-hand-control:test
+          cache-from: type=gha,scope=control
+          cache-to: type=gha,mode=max,scope=control
+      - uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          target: worker
+          load: true
+          tags: tyrs-hand-worker:test
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,mode=max,scope=worker
+      - name: Worker runtime smoke test
+        run: |
+          docker run --rm tyrs-hand-worker:test codex --version
+          docker run --rm tyrs-hand-worker:test mise --version
+          docker run --rm tyrs-hand-worker:test uv --version
+          docker run --rm tyrs-hand-worker:test corepack --version
+
+  runtime-matrix:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          target: worker
+          load: true
+          tags: tyrs-hand-worker:matrix
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,mode=max,scope=worker
+      - name: Default, alternate, offline and Tauri runtime matrix
+        env:
+          TYRS_HAND_TEST_TAURI: ${{ inputs.include_tauri && '1' || '0' }}
+          TYRS_HAND_TEST_ALTERNATE: ${{ inputs.include_alternate && '1' || '0' }}
+        run: ./tools/test-worker-runtime.sh tyrs-hand-worker:matrix
+      - name: Build linux/arm64 Worker image
+        if: inputs.build_arm64
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          target: worker
+          platforms: linux/arm64
+          push: false
+          cache-from: type=gha,scope=worker-arm64
+          cache-to: type=gha,mode=max,scope=worker-arm64
+
+  image-candidate:
     if: github.event_name == 'release' && github.event.action == 'published'
     runs-on: ubuntu-24.04
     needs: verify
+    strategy:
+      matrix:
+        target: [control, worker]
     permissions:
       contents: read
       packages: write
@@ -93,17 +174,15 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
       - id: image
-        name: Resolve image tags
+        name: Resolve candidate image tag
         shell: bash
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          IMAGE_TARGET: ${{ matrix.target }}
         run: |
-          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          image="ghcr.io/${GITHUB_REPOSITORY,,}-${IMAGE_TARGET}"
           {
-            echo "tags<<EOF"
-            echo "${image}:sha-${GITHUB_SHA}"
-            echo "${image}:${RELEASE_TAG}"
-            echo "EOF"
+            echo "repository=${image}"
+            echo "tag=${image}:sha-${GITHUB_SHA}"
           } >> "${GITHUB_OUTPUT}"
       - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
         with:
@@ -114,9 +193,10 @@ jobs:
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
           context: .
+          target: ${{ matrix.target }}
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.image.outputs.tags }}
+          tags: ${{ steps.image.outputs.tag }}
           provenance: mode=max
           sbom: true
           cache-from: type=gha
@@ -125,13 +205,38 @@ jobs:
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: v0.70.0
-          image-ref: ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
+          image-ref: ${{ steps.image.outputs.repository }}@${{ steps.build.outputs.digest }}
           format: table
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
       - name: Sign multi-architecture manifest
         env:
-          IMAGE: ghcr.io/${{ github.repository }}
+          IMAGE: ${{ steps.image.outputs.repository }}
           DIGEST: ${{ steps.build.outputs.digest }}
         run: cosign sign --yes "${IMAGE}@${DIGEST}"
+
+  image-release:
+    if: github.event_name == 'release' && github.event.action == 'published'
+    runs-on: ubuntu-24.04
+    needs: image-candidate
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish matching Control and Worker release tags
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          for target in control worker; do
+            image="ghcr.io/${GITHUB_REPOSITORY,,}-${target}"
+            docker buildx imagetools create \
+              --tag "${image}:${RELEASE_TAG}" \
+              "${image}:sha-${GITHUB_SHA}"
+          done

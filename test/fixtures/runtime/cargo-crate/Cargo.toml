@@ -1,0 +1,8 @@
+[package]
+name = "tyrs-hand-cargo-fixture"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97.1"
+
+[dependencies]
+itoa = "=1.0.15"

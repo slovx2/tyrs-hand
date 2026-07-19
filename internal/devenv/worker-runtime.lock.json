@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "adapterSchemaVersion": "3",
+  "codex": "0.142.5",
+  "mise": "2026.7.7",
+  "uv": "0.11.29",
+  "corepack": "0.35.0",
+  "downloads": {
+    "mise": {
+      "amd64": "429f71e7e989908bf975aafac9066329c16e2d8fc7cd8e74fdf21dd6300ffe7c",
+      "arm64": "1b4ef061d25f0ceb508f11169482f3074e55c1698a1494f666386b2fcfb46b9b"
+    },
+    "uv": {
+      "amd64": "04f8b82f5d47f0512dcd32c67a4a6f16a0ea27c81537c338fd0ad6b23cebe829",
+      "arm64": "94500fb064ae3c971a873cba64d94694c50677e0a4dbf78735c80509e7429919"
+    }
+  },
+  "systemPackages": {
+    "git": "1:2.39.5-0+deb12u3",
+    "openssh-client": "1:9.2p1-2+deb12u10",
+    "ca-certificates": "20230311+deb12u1",
+    "curl": "7.88.1-10+deb12u15",
+    "build-essential": "12.9",
+    "pkg-config": "1.8.1-1",
+    "libgtk-3-dev": "3.24.38-2~deb12u3",
+    "libwebkit2gtk-4.1-dev": "2.50.6-1~deb12u2",
+    "libayatana-appindicator3-dev": "0.5.92-1",
+    "librsvg2-dev": "2.54.7+dfsg-1~deb12u1",
+    "patchelf": "0.14.3-1+b1",
+    "libssl-dev": "3.0.20-1~deb12u2",
+    "sccache": "0.4.0~~pre6-1+b1",
+    "libcap2": "1:2.66-4+deb12u3+b1",
+    "libgnutls30": "3.7.9-2+deb12u7",
+    "tini": "0.19.0-1+b3"
+  },
+  "defaults": {
+    "python": "3.13.14",
+    "node": "24.14.0",
+    "pnpm": "11.14.0",
+    "go": "1.26.5",
+    "rust": "1.97.1"
+  }
+}

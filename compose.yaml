@@ -28,8 +28,8 @@ services:
     restart: unless-stopped
 
   server:
-    build: { context: . }
-    image: ${TYRS_HAND_IMAGE:-ghcr.io/slovx2/tyrs-hand:0.1.0}
+    build: { context: ., target: control }
+    image: ${TYRS_HAND_CONTROL_IMAGE:-ghcr.io/slovx2/tyrs-hand-control:0.1.0}
     command: ["tyrs-hand-server"]
     env_file: [.env]
     environment:
@@ -43,14 +43,15 @@ services:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
     healthcheck:
-      test: ["CMD", "tyrs-hand-admin", "check"]
+      test: ["CMD", "tyrs-hand-admin", "check-control"]
       interval: 30s
       timeout: 10s
       retries: 3
     restart: unless-stopped
 
   worker:
-    image: ${TYRS_HAND_IMAGE:-ghcr.io/slovx2/tyrs-hand:0.1.0}
+    build: { context: ., target: worker }
+    image: ${TYRS_HAND_WORKER_IMAGE:-ghcr.io/slovx2/tyrs-hand-worker:0.1.0}
     command: ["tyrs-hand-worker"]
     # Codex 的 Bubblewrap 需要在容器内建立用户、挂载和 PID namespace。
     cap_add: [SYS_ADMIN]
@@ -60,27 +61,28 @@ services:
       TYRS_HAND_DATABASE_URL: postgres://tyrs_hand:${POSTGRES_PASSWORD:-tyrs_hand}@postgres:5432/tyrs_hand?sslmode=disable
       TYRS_HAND_REDIS_URL: redis://redis:6379/0
       TYRS_HAND_INTERNAL_SERVER_URL: http://server:8080
-      TYRS_HAND_REPO_CACHE_ROOT: /data/repo-cache
-      TYRS_HAND_WORKTREE_ROOT: /data/worktrees
-      TYRS_HAND_CODEX_HOME_ROOT: /data/codex-homes
-      TYRS_HAND_DISCORD_WORKSPACE_ROOT: /data/discord-workspaces
+      TYRS_HAND_WORKER_DATA_ROOT: /data/worker
+      TYRS_HAND_WORKER_ID: ${TYRS_HAND_WORKER_INSTANCE_ID:-}
+      TYRS_HAND_REPO_CACHE_ROOT: /data/worker/repo-cache
+      TYRS_HAND_WORKTREE_ROOT: /data/worker/workspaces/github
+      TYRS_HAND_CODEX_HOME_ROOT: /data/worker/codex-homes
+      TYRS_HAND_DISCORD_WORKSPACE_ROOT: /data/worker/workspaces/discord
+      TYRS_HAND_WORKER_MAX_CONCURRENT_JOBS: ${TYRS_HAND_WORKER_MAX_CONCURRENT_JOBS:-6}
+      TYRS_HAND_ENV_PREPARE_WAIT_TIMEOUT: ${TYRS_HAND_ENV_PREPARE_WAIT_TIMEOUT:-10m}
+      TYRS_HAND_WORKER_IMAGE_DIGEST: ${TYRS_HAND_WORKER_IMAGE_DIGEST:-${TYRS_HAND_WORKER_IMAGE:-ghcr.io/slovx2/tyrs-hand-worker:0.1.0}}
     volumes:
-      - repo-cache:/data/repo-cache
-      - worktrees:/data/worktrees
-      - codex-homes:/data/codex-homes
-      - discord-workspaces:/data/discord-workspaces
-      - build-cache:/data/build-cache
+      - worker-data:/data/worker
     depends_on:
       server: { condition: service_healthy }
     healthcheck:
-      test: ["CMD", "tyrs-hand-admin", "check"]
+      test: ["CMD", "tyrs-hand-admin", "check-worker"]
       interval: 30s
       timeout: 10s
       retries: 3
     restart: unless-stopped
 
   discord:
-    image: ${TYRS_HAND_IMAGE:-ghcr.io/slovx2/tyrs-hand:0.1.0}
+    image: ${TYRS_HAND_CONTROL_IMAGE:-ghcr.io/slovx2/tyrs-hand-control:0.1.0}
     command: ["tyrs-hand-discord"]
     env_file: [.env]
     environment:
@@ -89,27 +91,27 @@ services:
     depends_on:
       server: { condition: service_healthy }
     healthcheck:
-      test: ["CMD", "tyrs-hand-admin", "check"]
+      test: ["CMD", "tyrs-hand-admin", "check-control"]
       interval: 30s
       timeout: 10s
       retries: 3
     restart: unless-stopped
 
   admin:
-    image: ${TYRS_HAND_IMAGE:-ghcr.io/slovx2/tyrs-hand:0.1.0}
+    image: ${TYRS_HAND_WORKER_IMAGE:-ghcr.io/slovx2/tyrs-hand-worker:0.1.0}
     entrypoint: ["/usr/bin/tini", "--", "tyrs-hand-admin"]
-    command: ["check"]
+    command: ["check-worker"]
     env_file: [.env]
     environment:
       TYRS_HAND_DATABASE_URL: postgres://tyrs_hand:${POSTGRES_PASSWORD:-tyrs_hand}@postgres:5432/tyrs_hand?sslmode=disable
       TYRS_HAND_REDIS_URL: redis://redis:6379/0
-      TYRS_HAND_CODEX_HOME_ROOT: /data/codex-homes
-      TYRS_HAND_REPO_CACHE_ROOT: /data/repo-cache
-      TYRS_HAND_WORKTREE_ROOT: /data/worktrees
+      TYRS_HAND_WORKER_DATA_ROOT: /data/worker
+      TYRS_HAND_CODEX_HOME_ROOT: /data/worker/codex-homes
+      TYRS_HAND_REPO_CACHE_ROOT: /data/worker/repo-cache
+      TYRS_HAND_WORKTREE_ROOT: /data/worker/workspaces/github
+      TYRS_HAND_DISCORD_WORKSPACE_ROOT: /data/worker/workspaces/discord
     volumes:
-      - repo-cache:/data/repo-cache
-      - worktrees:/data/worktrees
-      - codex-homes:/data/codex-homes
+      - worker-data:/data/worker
     profiles: [tools]
     depends_on:
       postgres: { condition: service_healthy }
@@ -120,8 +122,4 @@ secrets:
 
 volumes:
   postgres-data:
-  repo-cache:
-  worktrees:
-  codex-homes:
-  build-cache:
-  discord-workspaces:
+  worker-data:

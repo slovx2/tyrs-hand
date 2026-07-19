@@ -15,6 +15,8 @@ import (
 
 var ErrLeaseLost = errors.New("任务租约已经失效")
 
+const JobWakeupChannel = "tyrs-hand:jobs"
+
 type ClaimedJob struct {
 	domain.Job
 	Capability string

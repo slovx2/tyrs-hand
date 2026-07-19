@@ -13297,24 +13297,32 @@ func (m *WorkerNodeMutation) ResetEdge(name string) error {
 // WorktreeMutation represents an operation that mutates the Worktree nodes in the graph.
 type WorktreeMutation struct {
 	config
-	op            Op
-	typ           string
-	id            *uuid.UUID
-	work_item_id  *uuid.UUID
-	repo_cache_id *uuid.UUID
-	_path         *string
-	branch        *string
-	base_sha      *string
-	head_sha      *string
-	status        *string
-	dirty         *bool
-	last_used_at  *time.Time
-	expires_at    *time.Time
-	error         *string
-	clearedFields map[string]struct{}
-	done          bool
-	oldValue      func(context.Context) (*Worktree, error)
-	predicates    []predicate.Worktree
+	op                            Op
+	typ                           string
+	id                            *uuid.UUID
+	work_item_id                  *uuid.UUID
+	repo_cache_id                 *uuid.UUID
+	_path                         *string
+	branch                        *string
+	base_sha                      *string
+	head_sha                      *string
+	status                        *string
+	dirty                         *bool
+	last_used_at                  *time.Time
+	expires_at                    *time.Time
+	error                         *string
+	environment_status            *string
+	runtime_fingerprint           *string
+	dependency_fingerprint        *string
+	environment_projects          *[]map[string]interface{}
+	appendenvironment_projects    []map[string]interface{}
+	environment_diagnostics       *[]map[string]interface{}
+	appendenvironment_diagnostics []map[string]interface{}
+	environment_prepared_at       *time.Time
+	clearedFields                 map[string]struct{}
+	done                          bool
+	oldValue                      func(context.Context) (*Worktree, error)
+	predicates                    []predicate.Worktree
 }
 
 var _ ent.Mutation = (*WorktreeMutation)(nil)
@@ -13843,6 +13851,291 @@ func (m *WorktreeMutation) ResetError() {
 	delete(m.clearedFields, worktree.FieldError)
 }
 
+// SetEnvironmentStatus sets the "environment_status" field.
+func (m *WorktreeMutation) SetEnvironmentStatus(s string) {
+	m.environment_status = &s
+}
+
+// EnvironmentStatus returns the value of the "environment_status" field in the mutation.
+func (m *WorktreeMutation) EnvironmentStatus() (r string, exists bool) {
+	v := m.environment_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnvironmentStatus returns the old "environment_status" field's value of the Worktree entity.
+// If the Worktree object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorktreeMutation) OldEnvironmentStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnvironmentStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnvironmentStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnvironmentStatus: %w", err)
+	}
+	return oldValue.EnvironmentStatus, nil
+}
+
+// ResetEnvironmentStatus resets all changes to the "environment_status" field.
+func (m *WorktreeMutation) ResetEnvironmentStatus() {
+	m.environment_status = nil
+}
+
+// SetRuntimeFingerprint sets the "runtime_fingerprint" field.
+func (m *WorktreeMutation) SetRuntimeFingerprint(s string) {
+	m.runtime_fingerprint = &s
+}
+
+// RuntimeFingerprint returns the value of the "runtime_fingerprint" field in the mutation.
+func (m *WorktreeMutation) RuntimeFingerprint() (r string, exists bool) {
+	v := m.runtime_fingerprint
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRuntimeFingerprint returns the old "runtime_fingerprint" field's value of the Worktree entity.
+// If the Worktree object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorktreeMutation) OldRuntimeFingerprint(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRuntimeFingerprint is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRuntimeFingerprint requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRuntimeFingerprint: %w", err)
+	}
+	return oldValue.RuntimeFingerprint, nil
+}
+
+// ClearRuntimeFingerprint clears the value of the "runtime_fingerprint" field.
+func (m *WorktreeMutation) ClearRuntimeFingerprint() {
+	m.runtime_fingerprint = nil
+	m.clearedFields[worktree.FieldRuntimeFingerprint] = struct{}{}
+}
+
+// RuntimeFingerprintCleared returns if the "runtime_fingerprint" field was cleared in this mutation.
+func (m *WorktreeMutation) RuntimeFingerprintCleared() bool {
+	_, ok := m.clearedFields[worktree.FieldRuntimeFingerprint]
+	return ok
+}
+
+// ResetRuntimeFingerprint resets all changes to the "runtime_fingerprint" field.
+func (m *WorktreeMutation) ResetRuntimeFingerprint() {
+	m.runtime_fingerprint = nil
+	delete(m.clearedFields, worktree.FieldRuntimeFingerprint)
+}
+
+// SetDependencyFingerprint sets the "dependency_fingerprint" field.
+func (m *WorktreeMutation) SetDependencyFingerprint(s string) {
+	m.dependency_fingerprint = &s
+}
+
+// DependencyFingerprint returns the value of the "dependency_fingerprint" field in the mutation.
+func (m *WorktreeMutation) DependencyFingerprint() (r string, exists bool) {
+	v := m.dependency_fingerprint
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDependencyFingerprint returns the old "dependency_fingerprint" field's value of the Worktree entity.
+// If the Worktree object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorktreeMutation) OldDependencyFingerprint(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDependencyFingerprint is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDependencyFingerprint requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDependencyFingerprint: %w", err)
+	}
+	return oldValue.DependencyFingerprint, nil
+}
+
+// ClearDependencyFingerprint clears the value of the "dependency_fingerprint" field.
+func (m *WorktreeMutation) ClearDependencyFingerprint() {
+	m.dependency_fingerprint = nil
+	m.clearedFields[worktree.FieldDependencyFingerprint] = struct{}{}
+}
+
+// DependencyFingerprintCleared returns if the "dependency_fingerprint" field was cleared in this mutation.
+func (m *WorktreeMutation) DependencyFingerprintCleared() bool {
+	_, ok := m.clearedFields[worktree.FieldDependencyFingerprint]
+	return ok
+}
+
+// ResetDependencyFingerprint resets all changes to the "dependency_fingerprint" field.
+func (m *WorktreeMutation) ResetDependencyFingerprint() {
+	m.dependency_fingerprint = nil
+	delete(m.clearedFields, worktree.FieldDependencyFingerprint)
+}
+
+// SetEnvironmentProjects sets the "environment_projects" field.
+func (m *WorktreeMutation) SetEnvironmentProjects(value []map[string]interface{}) {
+	m.environment_projects = &value
+	m.appendenvironment_projects = nil
+}
+
+// EnvironmentProjects returns the value of the "environment_projects" field in the mutation.
+func (m *WorktreeMutation) EnvironmentProjects() (r []map[string]interface{}, exists bool) {
+	v := m.environment_projects
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnvironmentProjects returns the old "environment_projects" field's value of the Worktree entity.
+// If the Worktree object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorktreeMutation) OldEnvironmentProjects(ctx context.Context) (v []map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnvironmentProjects is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnvironmentProjects requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnvironmentProjects: %w", err)
+	}
+	return oldValue.EnvironmentProjects, nil
+}
+
+// AppendEnvironmentProjects adds value to the "environment_projects" field.
+func (m *WorktreeMutation) AppendEnvironmentProjects(value []map[string]interface{}) {
+	m.appendenvironment_projects = append(m.appendenvironment_projects, value...)
+}
+
+// AppendedEnvironmentProjects returns the list of values that were appended to the "environment_projects" field in this mutation.
+func (m *WorktreeMutation) AppendedEnvironmentProjects() ([]map[string]interface{}, bool) {
+	if len(m.appendenvironment_projects) == 0 {
+		return nil, false
+	}
+	return m.appendenvironment_projects, true
+}
+
+// ResetEnvironmentProjects resets all changes to the "environment_projects" field.
+func (m *WorktreeMutation) ResetEnvironmentProjects() {
+	m.environment_projects = nil
+	m.appendenvironment_projects = nil
+}
+
+// SetEnvironmentDiagnostics sets the "environment_diagnostics" field.
+func (m *WorktreeMutation) SetEnvironmentDiagnostics(value []map[string]interface{}) {
+	m.environment_diagnostics = &value
+	m.appendenvironment_diagnostics = nil
+}
+
+// EnvironmentDiagnostics returns the value of the "environment_diagnostics" field in the mutation.
+func (m *WorktreeMutation) EnvironmentDiagnostics() (r []map[string]interface{}, exists bool) {
+	v := m.environment_diagnostics
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnvironmentDiagnostics returns the old "environment_diagnostics" field's value of the Worktree entity.
+// If the Worktree object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorktreeMutation) OldEnvironmentDiagnostics(ctx context.Context) (v []map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnvironmentDiagnostics is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnvironmentDiagnostics requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnvironmentDiagnostics: %w", err)
+	}
+	return oldValue.EnvironmentDiagnostics, nil
+}
+
+// AppendEnvironmentDiagnostics adds value to the "environment_diagnostics" field.
+func (m *WorktreeMutation) AppendEnvironmentDiagnostics(value []map[string]interface{}) {
+	m.appendenvironment_diagnostics = append(m.appendenvironment_diagnostics, value...)
+}
+
+// AppendedEnvironmentDiagnostics returns the list of values that were appended to the "environment_diagnostics" field in this mutation.
+func (m *WorktreeMutation) AppendedEnvironmentDiagnostics() ([]map[string]interface{}, bool) {
+	if len(m.appendenvironment_diagnostics) == 0 {
+		return nil, false
+	}
+	return m.appendenvironment_diagnostics, true
+}
+
+// ResetEnvironmentDiagnostics resets all changes to the "environment_diagnostics" field.
+func (m *WorktreeMutation) ResetEnvironmentDiagnostics() {
+	m.environment_diagnostics = nil
+	m.appendenvironment_diagnostics = nil
+}
+
+// SetEnvironmentPreparedAt sets the "environment_prepared_at" field.
+func (m *WorktreeMutation) SetEnvironmentPreparedAt(t time.Time) {
+	m.environment_prepared_at = &t
+}
+
+// EnvironmentPreparedAt returns the value of the "environment_prepared_at" field in the mutation.
+func (m *WorktreeMutation) EnvironmentPreparedAt() (r time.Time, exists bool) {
+	v := m.environment_prepared_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnvironmentPreparedAt returns the old "environment_prepared_at" field's value of the Worktree entity.
+// If the Worktree object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorktreeMutation) OldEnvironmentPreparedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnvironmentPreparedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnvironmentPreparedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnvironmentPreparedAt: %w", err)
+	}
+	return oldValue.EnvironmentPreparedAt, nil
+}
+
+// ClearEnvironmentPreparedAt clears the value of the "environment_prepared_at" field.
+func (m *WorktreeMutation) ClearEnvironmentPreparedAt() {
+	m.environment_prepared_at = nil
+	m.clearedFields[worktree.FieldEnvironmentPreparedAt] = struct{}{}
+}
+
+// EnvironmentPreparedAtCleared returns if the "environment_prepared_at" field was cleared in this mutation.
+func (m *WorktreeMutation) EnvironmentPreparedAtCleared() bool {
+	_, ok := m.clearedFields[worktree.FieldEnvironmentPreparedAt]
+	return ok
+}
+
+// ResetEnvironmentPreparedAt resets all changes to the "environment_prepared_at" field.
+func (m *WorktreeMutation) ResetEnvironmentPreparedAt() {
+	m.environment_prepared_at = nil
+	delete(m.clearedFields, worktree.FieldEnvironmentPreparedAt)
+}
+
 // Where appends a list predicates to the WorktreeMutation builder.
 func (m *WorktreeMutation) Where(ps ...predicate.Worktree) {
 	m.predicates = append(m.predicates, ps...)
@@ -13877,7 +14170,7 @@ func (m *WorktreeMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *WorktreeMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 17)
 	if m.work_item_id != nil {
 		fields = append(fields, worktree.FieldWorkItemID)
 	}
@@ -13911,6 +14204,24 @@ func (m *WorktreeMutation) Fields() []string {
 	if m.error != nil {
 		fields = append(fields, worktree.FieldError)
 	}
+	if m.environment_status != nil {
+		fields = append(fields, worktree.FieldEnvironmentStatus)
+	}
+	if m.runtime_fingerprint != nil {
+		fields = append(fields, worktree.FieldRuntimeFingerprint)
+	}
+	if m.dependency_fingerprint != nil {
+		fields = append(fields, worktree.FieldDependencyFingerprint)
+	}
+	if m.environment_projects != nil {
+		fields = append(fields, worktree.FieldEnvironmentProjects)
+	}
+	if m.environment_diagnostics != nil {
+		fields = append(fields, worktree.FieldEnvironmentDiagnostics)
+	}
+	if m.environment_prepared_at != nil {
+		fields = append(fields, worktree.FieldEnvironmentPreparedAt)
+	}
 	return fields
 }
 
@@ -13941,6 +14252,18 @@ func (m *WorktreeMutation) Field(name string) (ent.Value, bool) {
 		return m.ExpiresAt()
 	case worktree.FieldError:
 		return m.Error()
+	case worktree.FieldEnvironmentStatus:
+		return m.EnvironmentStatus()
+	case worktree.FieldRuntimeFingerprint:
+		return m.RuntimeFingerprint()
+	case worktree.FieldDependencyFingerprint:
+		return m.DependencyFingerprint()
+	case worktree.FieldEnvironmentProjects:
+		return m.EnvironmentProjects()
+	case worktree.FieldEnvironmentDiagnostics:
+		return m.EnvironmentDiagnostics()
+	case worktree.FieldEnvironmentPreparedAt:
+		return m.EnvironmentPreparedAt()
 	}
 	return nil, false
 }
@@ -13972,6 +14295,18 @@ func (m *WorktreeMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldExpiresAt(ctx)
 	case worktree.FieldError:
 		return m.OldError(ctx)
+	case worktree.FieldEnvironmentStatus:
+		return m.OldEnvironmentStatus(ctx)
+	case worktree.FieldRuntimeFingerprint:
+		return m.OldRuntimeFingerprint(ctx)
+	case worktree.FieldDependencyFingerprint:
+		return m.OldDependencyFingerprint(ctx)
+	case worktree.FieldEnvironmentProjects:
+		return m.OldEnvironmentProjects(ctx)
+	case worktree.FieldEnvironmentDiagnostics:
+		return m.OldEnvironmentDiagnostics(ctx)
+	case worktree.FieldEnvironmentPreparedAt:
+		return m.OldEnvironmentPreparedAt(ctx)
 	}
 	return nil, fmt.Errorf("unknown Worktree field %s", name)
 }
@@ -14058,6 +14393,48 @@ func (m *WorktreeMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetError(v)
 		return nil
+	case worktree.FieldEnvironmentStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnvironmentStatus(v)
+		return nil
+	case worktree.FieldRuntimeFingerprint:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRuntimeFingerprint(v)
+		return nil
+	case worktree.FieldDependencyFingerprint:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDependencyFingerprint(v)
+		return nil
+	case worktree.FieldEnvironmentProjects:
+		v, ok := value.([]map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnvironmentProjects(v)
+		return nil
+	case worktree.FieldEnvironmentDiagnostics:
+		v, ok := value.([]map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnvironmentDiagnostics(v)
+		return nil
+	case worktree.FieldEnvironmentPreparedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnvironmentPreparedAt(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Worktree field %s", name)
 }
@@ -14094,6 +14471,15 @@ func (m *WorktreeMutation) ClearedFields() []string {
 	if m.FieldCleared(worktree.FieldError) {
 		fields = append(fields, worktree.FieldError)
 	}
+	if m.FieldCleared(worktree.FieldRuntimeFingerprint) {
+		fields = append(fields, worktree.FieldRuntimeFingerprint)
+	}
+	if m.FieldCleared(worktree.FieldDependencyFingerprint) {
+		fields = append(fields, worktree.FieldDependencyFingerprint)
+	}
+	if m.FieldCleared(worktree.FieldEnvironmentPreparedAt) {
+		fields = append(fields, worktree.FieldEnvironmentPreparedAt)
+	}
 	return fields
 }
 
@@ -14113,6 +14499,15 @@ func (m *WorktreeMutation) ClearField(name string) error {
 		return nil
 	case worktree.FieldError:
 		m.ClearError()
+		return nil
+	case worktree.FieldRuntimeFingerprint:
+		m.ClearRuntimeFingerprint()
+		return nil
+	case worktree.FieldDependencyFingerprint:
+		m.ClearDependencyFingerprint()
+		return nil
+	case worktree.FieldEnvironmentPreparedAt:
+		m.ClearEnvironmentPreparedAt()
 		return nil
 	}
 	return fmt.Errorf("unknown Worktree nullable field %s", name)
@@ -14154,6 +14549,24 @@ func (m *WorktreeMutation) ResetField(name string) error {
 		return nil
 	case worktree.FieldError:
 		m.ResetError()
+		return nil
+	case worktree.FieldEnvironmentStatus:
+		m.ResetEnvironmentStatus()
+		return nil
+	case worktree.FieldRuntimeFingerprint:
+		m.ResetRuntimeFingerprint()
+		return nil
+	case worktree.FieldDependencyFingerprint:
+		m.ResetDependencyFingerprint()
+		return nil
+	case worktree.FieldEnvironmentProjects:
+		m.ResetEnvironmentProjects()
+		return nil
+	case worktree.FieldEnvironmentDiagnostics:
+		m.ResetEnvironmentDiagnostics()
+		return nil
+	case worktree.FieldEnvironmentPreparedAt:
+		m.ResetEnvironmentPreparedAt()
 		return nil
 	}
 	return fmt.Errorf("unknown Worktree field %s", name)

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -18,6 +19,10 @@ import (
 
 func TestMain(m *testing.M) {
 	if os.Getenv("GO_WANT_FAKE_CODEX") == "1" {
+		if strings.Join(os.Args[1:], " ") != "app-server --listen stdio://" {
+			fmt.Fprintln(os.Stderr, "Codex App Server 必须通过 stdio 启动")
+			os.Exit(2)
+		}
 		runFakeCodex()
 		os.Exit(0)
 	}

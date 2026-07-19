@@ -49,6 +49,12 @@ func (Worktree) Fields() []ent.Field {
 		field.String("base_sha"), field.String("head_sha"), field.String("status").Default("ready"),
 		field.Bool("dirty").Default(false), field.Time("last_used_at").Default(time.Now),
 		field.Time("expires_at").Optional().Nillable(), field.String("error").Optional().Nillable(),
+		field.String("environment_status").Default("pending"),
+		field.String("runtime_fingerprint").Optional().Nillable(),
+		field.String("dependency_fingerprint").Optional().Nillable(),
+		field.JSON("environment_projects", []map[string]any{}).Default([]map[string]any{}),
+		field.JSON("environment_diagnostics", []map[string]any{}).Default([]map[string]any{}),
+		field.Time("environment_prepared_at").Optional().Nillable(),
 	}
 }
 

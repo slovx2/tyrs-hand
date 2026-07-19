@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -39,8 +40,20 @@ type Worktree struct {
 	// ExpiresAt holds the value of the "expires_at" field.
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 	// Error holds the value of the "error" field.
-	Error        *string `json:"error,omitempty"`
-	selectValues sql.SelectValues
+	Error *string `json:"error,omitempty"`
+	// EnvironmentStatus holds the value of the "environment_status" field.
+	EnvironmentStatus string `json:"environment_status,omitempty"`
+	// RuntimeFingerprint holds the value of the "runtime_fingerprint" field.
+	RuntimeFingerprint *string `json:"runtime_fingerprint,omitempty"`
+	// DependencyFingerprint holds the value of the "dependency_fingerprint" field.
+	DependencyFingerprint *string `json:"dependency_fingerprint,omitempty"`
+	// EnvironmentProjects holds the value of the "environment_projects" field.
+	EnvironmentProjects []map[string]interface{} `json:"environment_projects,omitempty"`
+	// EnvironmentDiagnostics holds the value of the "environment_diagnostics" field.
+	EnvironmentDiagnostics []map[string]interface{} `json:"environment_diagnostics,omitempty"`
+	// EnvironmentPreparedAt holds the value of the "environment_prepared_at" field.
+	EnvironmentPreparedAt *time.Time `json:"environment_prepared_at,omitempty"`
+	selectValues          sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -48,11 +61,13 @@ func (*Worktree) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case worktree.FieldEnvironmentProjects, worktree.FieldEnvironmentDiagnostics:
+			values[i] = new([]byte)
 		case worktree.FieldDirty:
 			values[i] = new(sql.NullBool)
-		case worktree.FieldPath, worktree.FieldBranch, worktree.FieldBaseSha, worktree.FieldHeadSha, worktree.FieldStatus, worktree.FieldError:
+		case worktree.FieldPath, worktree.FieldBranch, worktree.FieldBaseSha, worktree.FieldHeadSha, worktree.FieldStatus, worktree.FieldError, worktree.FieldEnvironmentStatus, worktree.FieldRuntimeFingerprint, worktree.FieldDependencyFingerprint:
 			values[i] = new(sql.NullString)
-		case worktree.FieldLastUsedAt, worktree.FieldExpiresAt:
+		case worktree.FieldLastUsedAt, worktree.FieldExpiresAt, worktree.FieldEnvironmentPreparedAt:
 			values[i] = new(sql.NullTime)
 		case worktree.FieldID, worktree.FieldWorkItemID, worktree.FieldRepoCacheID:
 			values[i] = new(uuid.UUID)
@@ -145,6 +160,49 @@ func (_m *Worktree) assignValues(columns []string, values []any) error {
 				_m.Error = new(string)
 				*_m.Error = value.String
 			}
+		case worktree.FieldEnvironmentStatus:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field environment_status", values[i])
+			} else if value.Valid {
+				_m.EnvironmentStatus = value.String
+			}
+		case worktree.FieldRuntimeFingerprint:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field runtime_fingerprint", values[i])
+			} else if value.Valid {
+				_m.RuntimeFingerprint = new(string)
+				*_m.RuntimeFingerprint = value.String
+			}
+		case worktree.FieldDependencyFingerprint:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field dependency_fingerprint", values[i])
+			} else if value.Valid {
+				_m.DependencyFingerprint = new(string)
+				*_m.DependencyFingerprint = value.String
+			}
+		case worktree.FieldEnvironmentProjects:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field environment_projects", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.EnvironmentProjects); err != nil {
+					return fmt.Errorf("unmarshal field environment_projects: %w", err)
+				}
+			}
+		case worktree.FieldEnvironmentDiagnostics:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field environment_diagnostics", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.EnvironmentDiagnostics); err != nil {
+					return fmt.Errorf("unmarshal field environment_diagnostics: %w", err)
+				}
+			}
+		case worktree.FieldEnvironmentPreparedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field environment_prepared_at", values[i])
+			} else if value.Valid {
+				_m.EnvironmentPreparedAt = new(time.Time)
+				*_m.EnvironmentPreparedAt = value.Time
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -216,6 +274,30 @@ func (_m *Worktree) String() string {
 	if v := _m.Error; v != nil {
 		builder.WriteString("error=")
 		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	builder.WriteString("environment_status=")
+	builder.WriteString(_m.EnvironmentStatus)
+	builder.WriteString(", ")
+	if v := _m.RuntimeFingerprint; v != nil {
+		builder.WriteString("runtime_fingerprint=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.DependencyFingerprint; v != nil {
+		builder.WriteString("dependency_fingerprint=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	builder.WriteString("environment_projects=")
+	builder.WriteString(fmt.Sprintf("%v", _m.EnvironmentProjects))
+	builder.WriteString(", ")
+	builder.WriteString("environment_diagnostics=")
+	builder.WriteString(fmt.Sprintf("%v", _m.EnvironmentDiagnostics))
+	builder.WriteString(", ")
+	if v := _m.EnvironmentPreparedAt; v != nil {
+		builder.WriteString("environment_prepared_at=")
+		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteByte(')')
 	return builder.String()

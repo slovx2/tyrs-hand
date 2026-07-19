@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Tyrs Hand Fixture",
+  "version": "0.1.0",
+  "identifier": "ai.datawake.tyrs-hand-fixture",
+  "build": {
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Tyrs Hand Fixture",
+        "width": 640,
+        "height": 480
+      }
+    ]
+  },
+  "bundle": {
+    "active": false,
+    "icon": []
+  }
+}

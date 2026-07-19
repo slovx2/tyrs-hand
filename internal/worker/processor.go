@@ -9,8 +9,10 @@ import (
 	"path/filepath"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/config"
+	"github.com/slovx2/tyrs-hand/internal/devenv"
 	"github.com/slovx2/tyrs-hand/internal/domain"
 	"github.com/slovx2/tyrs-hand/internal/githubtools"
 	"github.com/slovx2/tyrs-hand/internal/ports"
@@ -20,14 +22,16 @@ import (
 )
 
 type Processor struct {
-	cfg       config.Config
-	db        *sql.DB
-	workspace ports.WorkspaceManager
-	control   *ControlClient
-	catalog   *githubtools.Catalog
-	settings  *platformsettings.Service
-	pool      *codex.Pool
-	logger    *zap.Logger
+	cfg         config.Config
+	db          *sql.DB
+	redis       *redis.Client
+	workspace   ports.WorkspaceManager
+	control     *ControlClient
+	catalog     *githubtools.Catalog
+	settings    *platformsettings.Service
+	pool        *codex.Pool
+	environment *devenv.Manager
+	logger      *zap.Logger
 }
 
 type jobContext struct {
@@ -48,8 +52,8 @@ type jobContext struct {
 	NetworkEnabled  bool
 }
 
-func NewProcessor(cfg config.Config, db *sql.DB, workspace ports.WorkspaceManager, control *ControlClient, catalog *githubtools.Catalog, settingsService *platformsettings.Service, pool *codex.Pool, logger *zap.Logger) *Processor {
-	return &Processor{cfg: cfg, db: db, workspace: workspace, control: control, catalog: catalog, settings: settingsService, pool: pool, logger: logger}
+func NewProcessor(cfg config.Config, db *sql.DB, redisClient *redis.Client, workspace ports.WorkspaceManager, control *ControlClient, catalog *githubtools.Catalog, settingsService *platformsettings.Service, pool *codex.Pool, environment *devenv.Manager, logger *zap.Logger) *Processor {
+	return &Processor{cfg: cfg, db: db, redis: redisClient, workspace: workspace, control: control, catalog: catalog, settings: settingsService, pool: pool, environment: environment, logger: logger}
 }
 
 func (p *Processor) Process(ctx context.Context, claimed *queue.ClaimedJob) error {
@@ -80,6 +84,7 @@ func (p *Processor) Process(ctx context.Context, claimed *queue.ClaimedJob) erro
 		return err
 	}
 	defer p.refreshWorkspaceState(context.Background(), claimed.WorkItemID, workspace.WorktreePath)
+	environmentResult := p.prepareWorkItemEnvironment(ctx, claimed.WorkItemID, workspace.WorktreePath)
 	skills, err := resolveSkills(workspace.WorktreePath, claimed.Skills)
 	if err != nil {
 		return err
@@ -102,11 +107,17 @@ func (p *Processor) Process(ctx context.Context, claimed *queue.ClaimedJob) erro
 	if err != nil {
 		return err
 	}
-	poolKey := claimed.RepositoryID.String() + "/" + claimed.AgentProfileID.String() + "/" + signature
+	environment = append(environment, environmentResult.Environment...)
+	poolKey := "job/" + claimed.ID.String()
 	client, err := p.pool.Acquire(ctx, poolKey, workspace.WorktreePath, codexHome, environment)
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if closeErr := p.pool.Release(poolKey); closeErr != nil {
+			p.logger.Warn("关闭 Job Codex App Server 失败", zap.Error(closeErr), zap.String("job_id", claimed.ID.String()))
+		}
+	}()
 	runtime := codex.NewRuntime(client)
 	if jobCtx.Model == "" {
 		jobCtx.Model = provider.Model
@@ -140,7 +151,7 @@ func (p *Processor) Process(ctx context.Context, claimed *queue.ClaimedJob) erro
 	defer unbind()
 	turnID, err := runtime.StartTurn(ctx, threadID, ports.TurnInput{
 		Text: claimed.Instruction, ClientUserMessageID: claimed.ID.String(), Skills: skills,
-		OutputSchema: agentOutcomeSchema(),
+		OutputSchema: agentOutcomeSchema(), AdditionalContext: environmentAdditionalContext(environmentResult),
 	})
 	if err != nil {
 		return err

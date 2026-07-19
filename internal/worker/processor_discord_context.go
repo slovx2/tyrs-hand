@@ -208,7 +208,13 @@ func (p *Processor) steerQueuedDiscord(ctx context.Context, runtime *codex.Runti
 		return err
 	}
 	var workspace string
-	if err := p.db.QueryRowContext(ctx, "SELECT path FROM discord_conversation_workspaces WHERE conversation_id = $1", claimed.DiscordConversationID).Scan(&workspace); err != nil {
+	if jobCtx.HasRepository {
+		err = p.db.QueryRowContext(ctx, `SELECT w.path FROM discord_conversations c
+			JOIN discord_workspaces w ON w.id = c.workspace_id WHERE c.id = $1`, claimed.DiscordConversationID).Scan(&workspace)
+	} else {
+		workspace = filepath.Join(p.cfg.DiscordWorkspaceRoot, "blank", claimed.DiscordConversationID.String())
+	}
+	if err != nil {
 		return err
 	}
 	skills, err := resolveSkills(workspace, claimed.Skills)

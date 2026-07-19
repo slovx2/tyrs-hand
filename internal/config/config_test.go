@@ -16,7 +16,7 @@ func TestValidate(t *testing.T) {
 		Environment: "development", HTTPAddr: ":8080", WebhookHTTPAddr: ":8081", GitHubAppName: "TyrsHand",
 		DatabaseURL: "postgres://db", RedisURL: "redis://cache",
 		CodexBin: "codex", WorkerID: "worker", LeaseDuration: 90 * time.Second, HeartbeatInterval: 20 * time.Second,
-		RepoCacheMaxBytes: 1024,
+		RepoCacheMaxBytes: 1024, WorkerMaxConcurrentJobs: 6, EnvironmentPrepareWaitTimeout: 10 * time.Minute,
 	}
 	require.NoError(t, valid.Validate())
 	invalid := valid

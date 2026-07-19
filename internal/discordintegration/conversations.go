@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"github.com/slovx2/tyrs-hand/internal/queue"
 )
 
 type IncomingMessage struct {
@@ -33,7 +35,8 @@ type IncomingAttachment struct {
 }
 
 type ConversationService struct {
-	db *sql.DB
+	db    *sql.DB
+	redis *redis.Client
 }
 
 func NewConversationService(db *sql.DB) *ConversationService { return &ConversationService{db: db} }
@@ -138,7 +141,11 @@ func (s *ConversationService) Activate(ctx context.Context, conversationID, prof
 			return err
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.notifyJobs(ctx)
+	return nil
 }
 
 func (s *ConversationService) Reply(ctx context.Context, input IncomingMessage) error {
@@ -176,7 +183,19 @@ func (s *ConversationService) Reply(ctx context.Context, input IncomingMessage) 
 	if err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if status == "active" {
+		s.notifyJobs(ctx)
+	}
+	return nil
+}
+
+func (s *ConversationService) notifyJobs(ctx context.Context) {
+	if s.redis != nil {
+		_ = s.redis.Publish(ctx, queue.JobWakeupChannel, "queued").Err()
+	}
 }
 
 func (s *ConversationService) insertMessage(ctx context.Context, tx *sql.Tx, conversationID uuid.UUID, access string, input IncomingMessage) (bool, error) {

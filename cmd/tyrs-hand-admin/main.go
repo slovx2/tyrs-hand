@@ -16,6 +16,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/database"
+	"github.com/slovx2/tyrs-hand/internal/devenv"
 	"github.com/slovx2/tyrs-hand/internal/gitworkspace"
 	"github.com/slovx2/tyrs-hand/internal/security"
 )
@@ -34,8 +35,10 @@ func main() {
 	case "migrate":
 		fatal(database.Migrate(ctx, db))
 		fmt.Println("数据库迁移完成。")
-	case "check":
-		fatal(diagnose(ctx, db, cfg))
+	case "check-control":
+		fatal(diagnoseControl(ctx, db))
+	case "check-worker":
+		fatal(diagnoseWorker(ctx, db, cfg))
 	case "reset-password":
 		requireArgs(4)
 		resetPassword(ctx, db, os.Args[2], os.Args[3])
@@ -174,25 +177,55 @@ func codexLogin(ctx context.Context, db *sql.DB, cfg config.Config) {
 	fmt.Println("共享 Codex 账号登录完成。")
 }
 
-func diagnose(ctx context.Context, db *sql.DB, cfg config.Config) error {
+func diagnoseControl(ctx context.Context, db *sql.DB) error {
 	if err := database.CheckMigrations(ctx, db); err != nil {
 		return err
 	}
-	cmd := exec.CommandContext(ctx, cfg.CodexBin, "--version")
-	cmd.Env = codexEnvironment()
-	output, err := cmd.CombinedOutput()
+	fmt.Println("数据库迁移状态正常。")
+	return nil
+}
+
+func diagnoseWorker(ctx context.Context, db *sql.DB, cfg config.Config) error {
+	if err := diagnoseControl(ctx, db); err != nil {
+		return err
+	}
+	lock, err := devenv.LoadRuntimeLock()
 	if err != nil {
-		return fmt.Errorf("检查 Codex 版本: %w", err)
+		return err
 	}
-	if strings.TrimSpace(string(output)) != "codex-cli "+codex.RequiredVersion {
-		return fmt.Errorf("要求 Codex 版本为 %s，当前为 %s", codex.RequiredVersion, strings.TrimSpace(string(output)))
+	checks := []struct {
+		name     string
+		bin      string
+		args     []string
+		expected string
+	}{
+		{name: "Codex", bin: cfg.CodexBin, args: []string{"--version"}, expected: "codex-cli " + codex.RequiredVersion},
+		{name: "mise", bin: "mise", args: []string{"--version"}, expected: lock.Mise},
+		{name: "uv", bin: "uv", args: []string{"--version"}, expected: "uv " + lock.UV},
+		{name: "Corepack", bin: "corepack", args: []string{"--version"}, expected: lock.Corepack},
 	}
-	for _, path := range []string{cfg.RepoCacheRoot, cfg.WorktreeRoot, cfg.CodexHomeRoot} {
+	for _, check := range checks {
+		cmd := exec.CommandContext(ctx, check.bin, check.args...)
+		cmd.Env = codexEnvironment()
+		output, commandErr := cmd.CombinedOutput()
+		actual := strings.TrimSpace(string(output))
+		if commandErr != nil {
+			return fmt.Errorf("检查 %s 版本: %w", check.name, commandErr)
+		}
+		if check.name == "mise" {
+			actual, _, _ = strings.Cut(actual, " ")
+		}
+		if actual != check.expected {
+			return fmt.Errorf("要求 %s 版本为 %s，当前为 %s", check.name, check.expected, actual)
+		}
+	}
+	for _, path := range []string{cfg.WorkerDataRoot, cfg.RepoCacheRoot, cfg.WorktreeRoot,
+		cfg.DiscordWorkspaceRoot, cfg.CodexHomeRoot} {
 		if err := os.MkdirAll(path, 0o750); err != nil {
 			return fmt.Errorf("检查目录 %s: %w", path, err)
 		}
 	}
-	fmt.Println("数据库迁移、Codex 版本和本地目录均正常。")
+	fmt.Println("Worker Runtime 版本和本地目录均正常。")
 	return nil
 }
 
@@ -247,6 +280,7 @@ func collectRepoCaches(ctx context.Context, db *sql.DB, cfg config.Config) int {
 	rows, err := db.QueryContext(ctx, `
 		SELECT rc.id, rc.path FROM repo_caches rc
 		WHERE NOT EXISTS (SELECT 1 FROM worktrees wt WHERE wt.repo_cache_id = rc.id)
+		  AND NOT EXISTS (SELECT 1 FROM discord_workspaces dw WHERE dw.repo_cache_id = rc.id)
 		ORDER BY rc.last_used_at DESC`)
 	fatal(err)
 	defer func() { _ = rows.Close() }()
@@ -327,7 +361,8 @@ func usage() {
 	fmt.Fprintln(os.Stderr, strings.TrimSpace(`
 Usage:
   tyrs-hand-admin migrate
-  tyrs-hand-admin check
+  tyrs-hand-admin check-control
+  tyrs-hand-admin check-worker
   tyrs-hand-admin reset-password <username> <new-password>
   tyrs-hand-admin recover-password <username> <recovery-code> <new-password>
   tyrs-hand-admin reset-totp <username>

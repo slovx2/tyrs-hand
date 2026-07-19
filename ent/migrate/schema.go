@@ -314,6 +314,12 @@ var (
 		{Name: "last_used_at", Type: field.TypeTime},
 		{Name: "expires_at", Type: field.TypeTime, Nullable: true},
 		{Name: "error", Type: field.TypeString, Nullable: true},
+		{Name: "environment_status", Type: field.TypeString, Default: "pending"},
+		{Name: "runtime_fingerprint", Type: field.TypeString, Nullable: true},
+		{Name: "dependency_fingerprint", Type: field.TypeString, Nullable: true},
+		{Name: "environment_projects", Type: field.TypeJSON},
+		{Name: "environment_diagnostics", Type: field.TypeJSON},
+		{Name: "environment_prepared_at", Type: field.TypeTime, Nullable: true},
 	}
 	// WorktreesTable holds the schema information for the "worktrees" table.
 	WorktreesTable = &schema.Table{

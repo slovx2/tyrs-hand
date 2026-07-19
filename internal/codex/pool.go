@@ -114,6 +114,17 @@ func (p *Pool) routeTool(key string, ctx context.Context, request ToolCallReques
 	return handler(ctx, request)
 }
 
+func (p *Pool) Release(key string) error {
+	p.mu.Lock()
+	entry := p.entries[key]
+	delete(p.entries, key)
+	p.mu.Unlock()
+	if entry == nil || entry.client == nil {
+		return nil
+	}
+	return entry.client.Close()
+}
+
 func (p *Pool) Close() error {
 	p.mu.Lock()
 	p.closed = true

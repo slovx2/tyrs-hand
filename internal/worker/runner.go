@@ -5,8 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/queue"
@@ -17,9 +20,22 @@ type Runner struct {
 	cfg       config.Config
 	db        *sql.DB
 	redis     *redis.Client
-	queue     *queue.Repository
-	processor *Processor
+	queue     jobQueue
+	processor jobProcessor
 	logger    *zap.Logger
+}
+
+type jobQueue interface {
+	Claim(context.Context, string) (*queue.ClaimedJob, error)
+	Heartbeat(context.Context, uuid.UUID, string, int64) error
+	Complete(context.Context, uuid.UUID, string, int64) error
+	Block(context.Context, uuid.UUID, string, int64, error) error
+	Fail(context.Context, uuid.UUID, string, int64, error) error
+	RequeueExpired(context.Context) (int64, error)
+}
+
+type jobProcessor interface {
+	Process(context.Context, *queue.ClaimedJob) error
 }
 
 func NewRunner(cfg config.Config, db *sql.DB, redisClient *redis.Client, queueRepository *queue.Repository, processor *Processor, logger *zap.Logger) *Runner {
@@ -31,13 +47,33 @@ func (r *Runner) Run(ctx context.Context) error {
 		return err
 	}
 	go r.workerHeartbeat(ctx)
+	var wakeups <-chan *redis.Message
+	var subscription *redis.PubSub
+	if r.redis != nil {
+		subscription = r.redis.Subscribe(ctx, queue.JobWakeupChannel)
+		defer func() { _ = subscription.Close() }()
+		wakeups = subscription.Channel()
+	}
+	slots := make(chan struct{}, r.cfg.WorkerMaxConcurrentJobs)
+	var active sync.WaitGroup
 	recoveryTicker := time.NewTicker(30 * time.Second)
 	defer recoveryTicker.Stop()
 	idle := time.NewTicker(2 * time.Second)
 	defer idle.Stop()
+	r.fillSlots(ctx, slots, &active)
 	for {
 		select {
 		case <-ctx.Done():
+			done := make(chan struct{})
+			go func() {
+				active.Wait()
+				close(done)
+			}()
+			select {
+			case <-done:
+			case <-time.After(15 * time.Second):
+				r.logger.Warn("Worker 优雅退出超时，未完成任务将等待 Lease 过期后重新入队")
+			}
 			return ctx.Err()
 		case <-recoveryTicker.C:
 			if count, err := r.queue.RequeueExpired(ctx); err != nil {
@@ -46,16 +82,42 @@ func (r *Runner) Run(ctx context.Context) error {
 				r.logger.Warn("已恢复过期任务", zap.Int64("count", count))
 			}
 		case <-idle.C:
-			claimed, err := r.queue.Claim(ctx, r.cfg.WorkerID)
-			if err != nil {
-				r.logger.Error("领取任务失败", zap.Error(err))
+			r.fillSlots(ctx, slots, &active)
+		case _, open := <-wakeups:
+			if !open {
+				wakeups = nil
 				continue
 			}
-			if claimed == nil {
-				continue
-			}
-			r.execute(ctx, claimed)
+			r.fillSlots(ctx, slots, &active)
 		}
+	}
+}
+
+func (r *Runner) fillSlots(ctx context.Context, slots chan struct{}, active *sync.WaitGroup) {
+	for {
+		select {
+		case slots <- struct{}{}:
+		case <-ctx.Done():
+			return
+		default:
+			return
+		}
+		claimed, err := r.queue.Claim(ctx, r.cfg.WorkerID)
+		if err != nil {
+			<-slots
+			r.logger.Error("领取任务失败", zap.Error(err))
+			return
+		}
+		if claimed == nil {
+			<-slots
+			return
+		}
+		active.Add(1)
+		go func() {
+			defer active.Done()
+			defer func() { <-slots }()
+			r.execute(ctx, claimed)
+		}()
 	}
 }
 
@@ -116,7 +178,7 @@ func (r *Runner) register(ctx context.Context) error {
 		INSERT INTO worker_nodes(id, version, status, metadata)
 		VALUES ($1, '0.1.0', 'online', $2)
 		ON CONFLICT(id) DO UPDATE SET version = EXCLUDED.version, status = 'online', heartbeat_at = now(), started_at = now()`,
-		r.cfg.WorkerID, []byte(`{"agent":"codex"}`))
+		r.cfg.WorkerID, []byte(fmt.Sprintf(`{"agent":"codex","maxConcurrentJobs":%d}`, r.cfg.WorkerMaxConcurrentJobs)))
 	return err
 }
 
@@ -135,6 +197,9 @@ func (r *Runner) workerHeartbeat(ctx context.Context) {
 }
 
 func (r *Runner) publish(ctx context.Context, eventType, id string) {
+	if r.redis == nil {
+		return
+	}
 	data, _ := json.Marshal(map[string]string{"type": eventType, "id": id})
 	_ = r.redis.Publish(ctx, "tyrs-hand:events", data).Err()
 }

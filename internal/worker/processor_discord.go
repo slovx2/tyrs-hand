@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -64,6 +63,14 @@ func (p *Processor) processDiscordConversation(ctx context.Context, claimed *que
 	if err != nil {
 		return err
 	}
+	if jobCtx.HasRepository {
+		defer p.refreshDiscordWorkspaceState(context.Background(), workspace)
+	}
+	environmentResult := p.prepareDiscordEnvironment(ctx, workspace)
+	if environmentResult.Status == "degraded" {
+		p.projectDiscordConversation(ctx, jobCtx, discordintegration.ConversationRunning,
+			"工作区已创建，但开发环境未完全准备；Agent 将携带诊断继续执行。")
+	}
 	skills, err := resolveSkills(workspace, claimed.Skills)
 	if err != nil {
 		return err
@@ -81,11 +88,17 @@ func (p *Processor) processDiscordConversation(ctx context.Context, claimed *que
 	if err != nil {
 		return err
 	}
-	poolKey := "discord/" + claimed.DiscordConversationID.String() + "/" + claimed.AgentProfileID.String() + "/" + signature
+	environment = append(environment, environmentResult.Environment...)
+	poolKey := "job/" + claimed.ID.String()
 	client, err := p.pool.Acquire(ctx, poolKey, workspace, codexHome, environment)
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if closeErr := p.pool.Release(poolKey); closeErr != nil {
+			p.logger.Warn("关闭 Discord Job Codex App Server 失败", zap.Error(closeErr), zap.String("job_id", claimed.ID.String()))
+		}
+	}()
 	runtime := codex.NewRuntime(client)
 	if jobCtx.Model == "" {
 		jobCtx.Model = provider.Model
@@ -130,6 +143,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context, claimed *que
 	if err != nil {
 		return err
 	}
+	input.AdditionalContext = mergeAdditionalContext(input.AdditionalContext, environmentAdditionalContext(environmentResult))
 	turnID, err := runtime.StartTurn(ctx, threadID, input)
 	if err != nil {
 		return err
@@ -227,46 +241,81 @@ func (p *Processor) loadDiscordContext(ctx context.Context, job domain.Job) (dis
 	return result, err
 }
 
-var branchPart = regexp.MustCompile(`[^a-z0-9._-]+`)
-
-func discordBranch(owner string, conversationID uuid.UUID) string {
-	owner = strings.Trim(branchPart.ReplaceAllString(strings.ToLower(owner), "-"), "-.")
-	if owner == "" {
-		owner = "unbound"
-	}
-	return "discord/" + owner + "/" + shortID(conversationID)
-}
-
 func (p *Processor) ensureDiscordWorkspace(ctx context.Context, claimed *queue.ClaimedJob, jobCtx discordJobContext) (string, string, error) {
 	if !jobCtx.HasRepository {
-		path := filepath.Join(p.cfg.DiscordWorkspaceRoot, claimed.DiscordConversationID.String())
+		path := filepath.Join(p.cfg.DiscordWorkspaceRoot, "blank", claimed.DiscordConversationID.String())
 		if err := os.MkdirAll(path, 0o700); err != nil {
 			return "", "", err
 		}
-		_, err := p.db.ExecContext(ctx, `INSERT INTO discord_conversation_workspaces(conversation_id, workspace_type, path)
-			VALUES ($1, 'blank', $2) ON CONFLICT(conversation_id) DO UPDATE SET path = EXCLUDED.path,
-			status = 'ready', error = NULL, last_used_at = now()`, claimed.DiscordConversationID, path)
-		return path, "", err
+		return path, "", nil
 	}
 	credential, err := p.control.GitCredential(ctx, claimed.Capability, "fetch")
 	if err != nil {
 		return "", "", err
 	}
-	branch := discordBranch(jobCtx.GitHubLogin, claimed.DiscordConversationID)
-	workspace, err := p.workspace.Ensure(ctx, ports.WorkspaceSpec{
-		RepositoryID: jobCtx.RepositoryID.String(), WorkItemID: claimed.DiscordConversationID.String(),
-		CloneURL: jobCtx.CloneURL, BaseRef: "refs/remotes/origin/" + jobCtx.DefaultBranch, Branch: branch,
-	}, credential)
+	workspaceID, workspacePath, branch, err := p.bindDiscordWorkspace(ctx, jobCtx)
 	if err != nil {
 		return "", "", err
 	}
-	_, err = p.db.ExecContext(ctx, `INSERT INTO discord_conversation_workspaces
-		(conversation_id, workspace_type, path, branch, base_sha, head_sha)
-		VALUES ($1, 'worktree', $2, $3, $4, $5)
-		ON CONFLICT(conversation_id) DO UPDATE SET path = EXCLUDED.path, branch = EXCLUDED.branch,
-			head_sha = EXCLUDED.head_sha, status = 'ready', error = NULL, last_used_at = now()`,
-		claimed.DiscordConversationID, workspace.WorktreePath, branch, jobCtx.DefaultBranch, workspace.HeadSHA)
+	workspace, err := p.workspace.Ensure(ctx, ports.WorkspaceSpec{
+		RepositoryID: jobCtx.RepositoryID.String(), WorkItemID: workspaceID.String(),
+		WorktreePath: workspacePath, CloneURL: jobCtx.CloneURL,
+		BaseRef: "refs/remotes/origin/" + jobCtx.DefaultBranch, Branch: branch,
+	}, credential)
+	if err != nil {
+		_, _ = p.db.ExecContext(context.Background(), `UPDATE discord_workspaces SET status = 'error',
+			error = $2, updated_at = now() WHERE id = $1`, workspaceID, err.Error())
+		return "", "", err
+	}
+	var cacheID uuid.UUID
+	err = p.db.QueryRowContext(ctx, `INSERT INTO repo_caches(repository_id, path, status, last_fetch_at)
+		VALUES ($1, $2, 'ready', now())
+		ON CONFLICT(repository_id) DO UPDATE SET path = EXCLUDED.path, status = 'ready',
+			error = NULL, last_fetch_at = now(), last_used_at = now()
+		RETURNING id`, jobCtx.RepositoryID, workspace.CachePath).Scan(&cacheID)
+	if err == nil {
+		_, err = p.db.ExecContext(ctx, `UPDATE discord_workspaces SET repo_cache_id = $2,
+			path = $3, branch = $4, base_sha = COALESCE(base_sha, $5), head_sha = $5,
+			status = 'ready', error = NULL, last_used_at = now(), updated_at = now()
+			WHERE id = $1`, workspaceID, cacheID, workspace.WorktreePath, branch, workspace.HeadSHA)
+	}
 	return workspace.WorktreePath, branch, err
+}
+
+func (p *Processor) bindDiscordWorkspace(ctx context.Context, jobCtx discordJobContext) (uuid.UUID, string, string, error) {
+	tx, err := p.db.BeginTx(ctx, nil)
+	if err != nil {
+		return uuid.Nil, "", "", err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	candidateID := uuid.New()
+	candidatePath := filepath.Join(p.cfg.DiscordWorkspaceRoot, candidateID.String())
+	candidateBranch := "tyrs-hand/discord/" + candidateID.String()
+	var workspaceID uuid.UUID
+	var path, branch string
+	err = tx.QueryRowContext(ctx, `INSERT INTO discord_workspaces
+		(id, guild_id, owner_discord_user_id, repository_id, name, path, branch)
+		VALUES ($1, $2, $3, $4, 'default', $5, $6)
+		ON CONFLICT(guild_id, owner_discord_user_id, repository_id, name)
+		DO UPDATE SET last_used_at = now(), updated_at = now()
+		RETURNING id, path, branch`, candidateID, jobCtx.GuildID, jobCtx.OwnerUserID,
+		jobCtx.RepositoryID, candidatePath, candidateBranch).Scan(&workspaceID, &path, &branch)
+	if err != nil {
+		return uuid.Nil, "", "", err
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE discord_conversations SET workspace_id = $2, updated_at = now()
+		WHERE id = $1 AND repository_id = $3`, jobCtx.ConversationID, workspaceID, jobCtx.RepositoryID)
+	if err != nil {
+		return uuid.Nil, "", "", err
+	}
+	if count, _ := result.RowsAffected(); count != 1 {
+		return uuid.Nil, "", "", errors.New("Discord Conversation 的仓库绑定已经变化")
+	}
+	if err := tx.Commit(); err != nil {
+		return uuid.Nil, "", "", err
+	}
+	return workspaceID, path, branch, nil
 }
 
 func (p *Processor) handleDiscordTool(ctx context.Context, claimed *queue.ClaimedJob, workspace ports.Workspace, branch string, request codex.ToolCallRequest) (codex.ToolCallResult, error) {
@@ -294,6 +343,10 @@ func (p *Processor) executeDiscordLocalTool(ctx context.Context, claimed *queue.
 			return codex.ToolCallResult{}, err
 		}
 		sha, err := p.workspace.Commit(ctx, workspace.WorktreePath, arguments.Message)
+		if err == nil {
+			_, err = p.db.ExecContext(ctx, `UPDATE discord_workspaces SET head_sha = $2, dirty = false,
+				last_used_at = now(), updated_at = now() WHERE path = $1`, workspace.WorktreePath, sha)
+		}
 		return codex.TextToolResult(fmt.Sprintf(`{"sha":%q}`, sha), err == nil), err
 	case "publish_branch":
 		credential, err := p.control.GitCredential(ctx, claimed.Capability, "push", request.ThreadID, request.TurnID)
@@ -301,8 +354,32 @@ func (p *Processor) executeDiscordLocalTool(ctx context.Context, claimed *queue.
 			return codex.ToolCallResult{}, err
 		}
 		sha, err := p.workspace.Publish(ctx, workspace.WorktreePath, branch, credential)
+		if err == nil {
+			_, err = p.db.ExecContext(ctx, `UPDATE discord_workspaces SET head_sha = $2,
+				last_used_at = now(), updated_at = now() WHERE path = $1`, workspace.WorktreePath, sha)
+		}
 		return codex.TextToolResult(fmt.Sprintf(`{"branch":%q,"sha":%q}`, branch, sha), err == nil), err
 	default:
 		return codex.ToolCallResult{}, fmt.Errorf("本地 Git 工具 %s 未授权", request.Tool)
 	}
+}
+
+func (p *Processor) refreshDiscordWorkspaceState(parent context.Context, path string) {
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	defer cancel()
+	status, err := p.workspace.Status(ctx, path)
+	if err != nil {
+		_, _ = p.db.ExecContext(ctx, `UPDATE discord_workspaces SET status = 'error', error = $2,
+			last_used_at = now(), updated_at = now() WHERE path = $1`, path, err.Error())
+		return
+	}
+	dirty := false
+	for _, line := range strings.Split(strings.TrimSpace(status), "\n") {
+		if line != "" && !strings.HasPrefix(line, "##") {
+			dirty = true
+			break
+		}
+	}
+	_, _ = p.db.ExecContext(ctx, `UPDATE discord_workspaces SET dirty = $2, status = 'ready',
+		error = NULL, last_used_at = now(), updated_at = now() WHERE path = $1`, path, dirty)
 }

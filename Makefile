@@ -1,7 +1,7 @@
 PNPM ?= pnpm
 LOCAL_IMAGE ?= tyrs-hand:local
 
-.PHONY: dependencies generate generate-check format format-check vet lint web-check test test-unit test-race test-integration test-coverage web-install web-build build build-local image-local ci ci-local
+.PHONY: dependencies generate generate-check format format-check vet lint web-check test test-unit test-race test-integration test-runtime test-runtime-image test-coverage web-install web-build build build-local image-local ci ci-local
 
 dependencies:
 	go mod download
@@ -54,6 +54,12 @@ test-race:
 test-integration:
 	go test -tags=integration ./internal/discordintegration ./test/integration
 
+test-runtime:
+	go test ./internal/devenv ./internal/worker ./internal/codex
+
+test-runtime-image:
+	./tools/test-worker-runtime.sh $(LOCAL_IMAGE)-worker
+
 test-coverage:
 	./tools/check-go-coverage.sh
 
@@ -64,13 +70,14 @@ web-build:
 	$(PNPM) --dir web build
 
 build: web-build
-	go build ./cmd/tyrs-hand-server ./cmd/tyrs-hand-worker ./cmd/tyrs-hand-admin ./cmd/tyrs-hand-discord
+	go build ./cmd/tyrs-hand-server ./cmd/tyrs-hand-worker ./cmd/tyrs-hand-runtime ./cmd/tyrs-hand-admin ./cmd/tyrs-hand-discord
 
 build-local:
 	./tools/with-local-toolchain.sh $(MAKE) web-install build
 
 image-local:
-	docker build --load --tag $(LOCAL_IMAGE) .
+	docker build --target control --load --tag $(LOCAL_IMAGE)-control .
+	docker build --target worker --load --tag $(LOCAL_IMAGE)-worker .
 
 ci:
 	$(MAKE) dependencies
@@ -82,6 +89,7 @@ ci:
 	$(MAKE) test-unit
 	$(MAKE) test-race
 	$(MAKE) test-integration
+	$(MAKE) test-runtime
 	$(MAKE) test-coverage
 	$(MAKE) build
 

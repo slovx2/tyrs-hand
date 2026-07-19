@@ -13,32 +13,35 @@ import (
 )
 
 type Config struct {
-	Environment          string
-	HTTPAddr             string
-	SeparateWebhook      bool
-	WebhookHTTPAddr      string
-	PublicURL            string
-	GitHubAppName        string
-	GitHubAPIURL         string
-	InternalServerURL    string
-	DatabaseURL          string
-	RedisURL             string
-	SetupToken           string
-	MasterKey            []byte
-	CookieSecure         bool
-	RepoCacheRoot        string
-	WorktreeRoot         string
-	DiscordWorkspaceRoot string
-	CodexHomeRoot        string
-	CodexBin             string
-	RepoCacheMaxBytes    int64
-	WorkerID             string
-	LeaseDuration        time.Duration
-	HeartbeatInterval    time.Duration
-	ControlTimeout       time.Duration
-	ToolTimeout          time.Duration
-	TurnIdleTimeout      time.Duration
-	TurnMaxDuration      time.Duration
+	Environment                   string
+	HTTPAddr                      string
+	SeparateWebhook               bool
+	WebhookHTTPAddr               string
+	PublicURL                     string
+	GitHubAppName                 string
+	GitHubAPIURL                  string
+	InternalServerURL             string
+	DatabaseURL                   string
+	RedisURL                      string
+	SetupToken                    string
+	MasterKey                     []byte
+	CookieSecure                  bool
+	RepoCacheRoot                 string
+	WorktreeRoot                  string
+	DiscordWorkspaceRoot          string
+	CodexHomeRoot                 string
+	CodexBin                      string
+	WorkerDataRoot                string
+	RepoCacheMaxBytes             int64
+	WorkerID                      string
+	WorkerMaxConcurrentJobs       int
+	LeaseDuration                 time.Duration
+	HeartbeatInterval             time.Duration
+	EnvironmentPrepareWaitTimeout time.Duration
+	ControlTimeout                time.Duration
+	ToolTimeout                   time.Duration
+	TurnIdleTimeout               time.Duration
+	TurnMaxDuration               time.Duration
 }
 
 func Load() (Config, error) {
@@ -49,31 +52,37 @@ func Load() (Config, error) {
 
 	setDefaults(v)
 	cfg := Config{
-		Environment:          v.GetString("env"),
-		HTTPAddr:             v.GetString("http_addr"),
-		SeparateWebhook:      v.GetBool("separate_webhook"),
-		WebhookHTTPAddr:      v.GetString("webhook_http_addr"),
-		PublicURL:            strings.TrimRight(v.GetString("public_url"), "/"),
-		GitHubAppName:        v.GetString("github_app_name"),
-		GitHubAPIURL:         strings.TrimRight(v.GetString("github_api_url"), "/"),
-		InternalServerURL:    strings.TrimRight(v.GetString("internal_server_url"), "/"),
-		DatabaseURL:          v.GetString("database_url"),
-		RedisURL:             v.GetString("redis_url"),
-		SetupToken:           v.GetString("setup_token"),
-		CookieSecure:         v.GetBool("cookie_secure"),
-		RepoCacheRoot:        filepath.Clean(v.GetString("repo_cache_root")),
-		WorktreeRoot:         filepath.Clean(v.GetString("worktree_root")),
-		DiscordWorkspaceRoot: filepath.Clean(v.GetString("discord_workspace_root")),
-		CodexHomeRoot:        filepath.Clean(v.GetString("codex_home_root")),
-		CodexBin:             v.GetString("codex_bin"),
-		RepoCacheMaxBytes:    v.GetInt64("repo_cache_max_bytes"),
-		WorkerID:             v.GetString("worker_id"),
-		LeaseDuration:        v.GetDuration("lease_duration"),
-		HeartbeatInterval:    v.GetDuration("heartbeat_interval"),
-		ControlTimeout:       v.GetDuration("control_timeout"),
-		ToolTimeout:          v.GetDuration("tool_timeout"),
-		TurnIdleTimeout:      v.GetDuration("turn_idle_timeout"),
-		TurnMaxDuration:      v.GetDuration("turn_max_duration"),
+		Environment:                   v.GetString("env"),
+		HTTPAddr:                      v.GetString("http_addr"),
+		SeparateWebhook:               v.GetBool("separate_webhook"),
+		WebhookHTTPAddr:               v.GetString("webhook_http_addr"),
+		PublicURL:                     strings.TrimRight(v.GetString("public_url"), "/"),
+		GitHubAppName:                 v.GetString("github_app_name"),
+		GitHubAPIURL:                  strings.TrimRight(v.GetString("github_api_url"), "/"),
+		InternalServerURL:             strings.TrimRight(v.GetString("internal_server_url"), "/"),
+		DatabaseURL:                   v.GetString("database_url"),
+		RedisURL:                      v.GetString("redis_url"),
+		SetupToken:                    v.GetString("setup_token"),
+		CookieSecure:                  v.GetBool("cookie_secure"),
+		RepoCacheRoot:                 filepath.Clean(v.GetString("repo_cache_root")),
+		WorktreeRoot:                  filepath.Clean(v.GetString("worktree_root")),
+		DiscordWorkspaceRoot:          filepath.Clean(v.GetString("discord_workspace_root")),
+		CodexHomeRoot:                 filepath.Clean(v.GetString("codex_home_root")),
+		CodexBin:                      v.GetString("codex_bin"),
+		WorkerDataRoot:                filepath.Clean(v.GetString("worker_data_root")),
+		RepoCacheMaxBytes:             v.GetInt64("repo_cache_max_bytes"),
+		WorkerID:                      v.GetString("worker_id"),
+		WorkerMaxConcurrentJobs:       v.GetInt("worker_max_concurrent_jobs"),
+		LeaseDuration:                 v.GetDuration("lease_duration"),
+		HeartbeatInterval:             v.GetDuration("heartbeat_interval"),
+		EnvironmentPrepareWaitTimeout: v.GetDuration("env_prepare_wait_timeout"),
+		ControlTimeout:                v.GetDuration("control_timeout"),
+		ToolTimeout:                   v.GetDuration("tool_timeout"),
+		TurnIdleTimeout:               v.GetDuration("turn_idle_timeout"),
+		TurnMaxDuration:               v.GetDuration("turn_max_duration"),
+	}
+	if strings.TrimSpace(cfg.WorkerID) == "" {
+		cfg.WorkerID = defaultWorkerID()
 	}
 
 	masterKeyText, err := readSecret(v.GetString("master_key"), v.GetString("master_key_file"))
@@ -105,6 +114,12 @@ func (c Config) Validate() error {
 	if c.CodexBin == "" || c.WorkerID == "" {
 		return errors.New("配置中的 Codex 可执行文件和 Worker ID 不能为空")
 	}
+	if c.WorkerMaxConcurrentJobs <= 0 {
+		return errors.New("worker_max_concurrent_jobs 必须大于零")
+	}
+	if c.EnvironmentPrepareWaitTimeout <= 0 {
+		return errors.New("env_prepare_wait_timeout 必须大于零")
+	}
 	if c.LeaseDuration <= c.HeartbeatInterval*2 {
 		return errors.New("lease_duration 必须大于 heartbeat_interval 的两倍")
 	}
@@ -134,19 +149,30 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("database_url", "postgres://tyrs_hand:tyrs_hand@localhost:5432/tyrs_hand?sslmode=disable")
 	v.SetDefault("redis_url", "redis://localhost:6379/0")
 	v.SetDefault("cookie_secure", false)
-	v.SetDefault("repo_cache_root", ".local/repo-cache")
-	v.SetDefault("worktree_root", ".local/worktrees")
-	v.SetDefault("discord_workspace_root", ".local/discord-workspaces")
-	v.SetDefault("codex_home_root", ".local/codex-homes")
+	v.SetDefault("worker_data_root", ".local/worker")
+	v.SetDefault("repo_cache_root", ".local/worker/repo-cache")
+	v.SetDefault("worktree_root", ".local/worker/workspaces/github")
+	v.SetDefault("discord_workspace_root", ".local/worker/workspaces/discord")
+	v.SetDefault("codex_home_root", ".local/worker/codex-homes")
 	v.SetDefault("codex_bin", "codex")
 	v.SetDefault("repo_cache_max_bytes", int64(20*1024*1024*1024))
-	v.SetDefault("worker_id", "worker-local")
+	v.SetDefault("worker_id", defaultWorkerID())
+	v.SetDefault("worker_max_concurrent_jobs", 6)
 	v.SetDefault("lease_duration", "90s")
 	v.SetDefault("heartbeat_interval", "20s")
+	v.SetDefault("env_prepare_wait_timeout", "10m")
 	v.SetDefault("control_timeout", "30s")
 	v.SetDefault("tool_timeout", "60s")
 	v.SetDefault("turn_idle_timeout", "15m")
 	v.SetDefault("turn_max_duration", "90m")
+}
+
+func defaultWorkerID() string {
+	hostname, err := os.Hostname()
+	if err == nil && strings.TrimSpace(hostname) != "" {
+		return hostname
+	}
+	return "worker-local"
 }
 
 func readSecret(value, filename string) (string, error) {

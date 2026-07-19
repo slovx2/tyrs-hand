@@ -1,0 +1,8 @@
+version: 1
+runtimes:
+  python: "99.99.99"
+projects:
+  - name: api
+    path: "."
+    dependencies:
+      - manager: requirements
