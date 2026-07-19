@@ -273,6 +273,12 @@ func testWebhookOrchestration(t *testing.T, db *sql.DB, repositoryID uuid.UUID) 
 	result = processWebhook(t, db, withoutMention, "write")
 	require.Zero(t, result.Jobs)
 
+	codeMention := event
+	codeMention.DeliveryID = "code-mention"
+	codeMention.Body = "`@tyrs-hand` is an example"
+	result = processWebhook(t, db, codeMention, "write")
+	require.Zero(t, result.Jobs)
+
 	editedMention := event
 	editedMention.DeliveryID = "edited-mention"
 	editedMention.Action = "edited"

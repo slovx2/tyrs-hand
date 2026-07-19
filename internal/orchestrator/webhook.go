@@ -380,6 +380,7 @@ func mentions(body, botLogin string) bool {
 		return false
 	}
 	body = strings.ToLower(body)
+	code := markdownCodeMask(body)
 	needle := "@" + strings.ToLower(botLogin)
 	for offset := 0; offset < len(body); {
 		index := strings.Index(body[offset:], needle)
@@ -390,12 +391,131 @@ func mentions(body, botLogin string) bool {
 		end := start + len(needle)
 		leftBoundary := start == 0 || !isGitHubLoginByte(body[start-1])
 		rightBoundary := end == len(body) || !isGitHubLoginByte(body[end])
-		if leftBoundary && rightBoundary {
+		if leftBoundary && rightBoundary && !code[start] && !escapedAt(body, start) && !insideURL(body, start) {
 			return true
 		}
 		offset = start + 1
 	}
 	return false
+}
+
+func markdownCodeMask(body string) []bool {
+	masked := make([]bool, len(body))
+	fenceByte, fenceSize := byte(0), 0
+	for lineStart := 0; lineStart < len(body); {
+		lineEnd := strings.IndexByte(body[lineStart:], '\n')
+		if lineEnd < 0 {
+			lineEnd = len(body)
+		} else {
+			lineEnd += lineStart
+		}
+		contentEnd := lineEnd
+		if contentEnd > lineStart && body[contentEnd-1] == '\r' {
+			contentEnd--
+		}
+		marker, size, closing := markdownFence(body, lineStart, contentEnd, fenceByte, fenceSize)
+		if fenceByte != 0 {
+			markRange(masked, lineStart, min(lineEnd+1, len(body)))
+			if closing {
+				fenceByte, fenceSize = 0, 0
+			}
+		} else if marker != 0 {
+			markRange(masked, lineStart, min(lineEnd+1, len(body)))
+			fenceByte, fenceSize = marker, size
+		}
+		if lineEnd == len(body) {
+			break
+		}
+		lineStart = lineEnd + 1
+	}
+
+	for start := 0; start < len(body); {
+		if masked[start] || body[start] != '`' {
+			start++
+			continue
+		}
+		size := byteRun(body, start, '`')
+		closeStart := matchingBackticks(body, masked, start+size, size)
+		if closeStart < 0 {
+			start += size
+			continue
+		}
+		markRange(masked, start, closeStart+size)
+		start = closeStart + size
+	}
+	return masked
+}
+
+func markdownFence(body string, start, end int, openByte byte, openSize int) (byte, int, bool) {
+	position := start
+	for position < end && position-start < 4 && body[position] == ' ' {
+		position++
+	}
+	if position-start > 3 || position >= end || body[position] != '`' && body[position] != '~' {
+		return 0, 0, false
+	}
+	marker := body[position]
+	size := byteRun(body[:end], position, marker)
+	if openByte != 0 {
+		if marker != openByte || size < openSize || strings.TrimSpace(body[position+size:end]) != "" {
+			return 0, 0, false
+		}
+		return marker, size, true
+	}
+	if size < 3 || marker == '`' && strings.ContainsRune(body[position+size:end], '`') {
+		return 0, 0, false
+	}
+	return marker, size, false
+}
+
+func matchingBackticks(body string, masked []bool, start, size int) int {
+	for position := start; position < len(body); {
+		if masked[position] || body[position] != '`' {
+			position++
+			continue
+		}
+		run := byteRun(body, position, '`')
+		if run == size {
+			return position
+		}
+		position += run
+	}
+	return -1
+}
+
+func byteRun(value string, start int, target byte) int {
+	end := start
+	for end < len(value) && value[end] == target {
+		end++
+	}
+	return end - start
+}
+
+func markRange(masked []bool, start, end int) {
+	for index := start; index < end; index++ {
+		masked[index] = true
+	}
+}
+
+func escapedAt(body string, position int) bool {
+	backslashes := 0
+	for position > 0 && body[position-1] == '\\' {
+		backslashes++
+		position--
+	}
+	return backslashes%2 == 1
+}
+
+func insideURL(body string, position int) bool {
+	start := position
+	for start > 0 && !isMarkdownSpace(body[start-1]) {
+		start--
+	}
+	return strings.Contains(body[start:position], "://")
+}
+
+func isMarkdownSpace(value byte) bool {
+	return value == ' ' || value == '\t' || value == '\r' || value == '\n'
 }
 
 func isGitHubLoginByte(value byte) bool {
