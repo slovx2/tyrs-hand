@@ -139,7 +139,7 @@ func (p *Processor) Process(ctx context.Context, claimed *codexcontrol.ClaimedCo
 		CWD: workspace.WorktreePath, Model: jobCtx.Model, ReasoningEffort: jobCtx.ReasoningEffort,
 		ServiceTier: jobCtx.ServiceTier, Sandbox: jobCtx.Sandbox, ApprovalPolicy: jobCtx.ApprovalPolicy,
 		NetworkEnabled: jobCtx.NetworkEnabled, DynamicTools: []ports.DynamicToolSpec{githubSpec, gitSpec, githubReplySpec()},
-		RuntimeConfig:         codexRuntimeConfig(environmentResult.Environment),
+		RuntimeConfig:         codexRuntimeConfig(environmentResult.Environment, p.cfg.WorkerDataRoot),
 		DeveloperInstructions: "Follow repository AGENTS.md and the explicitly attached skills. Use only the authorized GitHub work item and current worktree. Use git.commit for commits and git.publish_branch for pushes; do not write shared Git metadata with shell commands. After all business actions, call tyrs_hand.reply_to_github exactly once with the user-facing result, then provide a natural final answer.",
 	}
 	if err := runtime.ValidateSkills(ctx, workspace.WorktreePath, skills); err != nil {

@@ -526,7 +526,7 @@ func githubReplySpec() ports.DynamicToolSpec {
 	}
 }
 
-func codexRuntimeConfig(environment []string) map[string]any {
+func codexRuntimeConfig(environment []string, workerDataRoot string) map[string]any {
 	config := replygate.SessionConfig()
 	values := make(map[string]any, len(environment))
 	for _, entry := range environment {
@@ -538,6 +538,14 @@ func codexRuntimeConfig(environment []string) map[string]any {
 	config["shell_environment_policy"] = map[string]any{
 		"inherit": "all",
 		"set":     values,
+	}
+	if strings.TrimSpace(workerDataRoot) != "" {
+		config["sandbox_workspace_write"] = map[string]any{
+			"writable_roots": []string{
+				filepath.Join(workerDataRoot, "caches"),
+				filepath.Join(workerDataRoot, "state"),
+			},
+		}
 	}
 	return config
 }

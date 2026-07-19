@@ -21,6 +21,9 @@ func TestThreadPayloadAndSkillInput(t *testing.T) {
 		RuntimeConfig: map[string]any{
 			"features": map[string]any{"custom": true},
 			"hooks":    map[string]any{"Stop": []any{"hook"}},
+			"sandbox_workspace_write": map[string]any{
+				"writable_roots": []string{"/data/worker/caches", "/data/worker/state"},
+			},
 		},
 	})
 	require.Equal(t, "model", payload["model"])
@@ -30,6 +33,9 @@ func TestThreadPayloadAndSkillInput(t *testing.T) {
 	require.Equal(t, false, config["features"].(map[string]any)["memory_tool"])
 	require.Equal(t, true, config["features"].(map[string]any)["custom"])
 	require.Equal(t, []any{"hook"}, config["hooks"].(map[string]any)["Stop"])
+	sandbox := config["sandbox_workspace_write"].(map[string]any)
+	require.Equal(t, true, sandbox["network_access"])
+	require.Equal(t, []string{"/data/worker/caches", "/data/worker/state"}, sandbox["writable_roots"])
 
 	skill := ports.SkillRef{Name: "review", Path: filepath.Join(root, "SKILL.md")}
 	items := userInput(ports.TurnInput{Text: "inspect", Skills: []ports.SkillRef{skill}})

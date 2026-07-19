@@ -109,10 +109,12 @@ func TestProcessorHelpersAndLocalTools(t *testing.T) {
 	require.Len(t, firstSignature, 64)
 	require.Equal(t, firstSignature, threadConfigSignature("provider", ports.ThreadOptions{Sandbox: "workspace-write", DynamicTools: []ports.DynamicToolSpec{spec}}))
 	require.NotEqual(t, firstSignature, threadConfigSignature("provider", ports.ThreadOptions{Sandbox: "danger-full-access", DynamicTools: []ports.DynamicToolSpec{spec}}))
-	runtimeConfig := codexRuntimeConfig([]string{"PATH=/toolchain/bin:/usr/bin", "GOTOOLCHAIN=local"})
+	runtimeConfig := codexRuntimeConfig([]string{"PATH=/toolchain/bin:/usr/bin", "GOTOOLCHAIN=local"}, "/data/worker")
 	policy := runtimeConfig["shell_environment_policy"].(map[string]any)
 	require.Equal(t, "all", policy["inherit"])
 	require.Equal(t, "/toolchain/bin:/usr/bin", policy["set"].(map[string]any)["PATH"])
+	sandbox := runtimeConfig["sandbox_workspace_write"].(map[string]any)
+	require.Equal(t, []string{"/data/worker/caches", "/data/worker/state"}, sandbox["writable_roots"])
 	require.Contains(t, runtimeConfig, "hooks")
 	require.Len(t, shortID(uuid.MustParse("12345678-1234-1234-1234-123456789012")), 8)
 
