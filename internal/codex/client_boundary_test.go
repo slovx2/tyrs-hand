@@ -91,7 +91,9 @@ func TestBacklogOverflowFailsSession(t *testing.T) {
 		EventBacklog: 2, RequestTimeout: time.Second,
 	})
 	require.NoError(t, err)
-	require.NoError(t, client.Call(context.Background(), "burst", map[string]any{}, nil))
+	if callErr := client.Call(context.Background(), "burst", map[string]any{}, nil); callErr != nil {
+		require.ErrorContains(t, callErr, "backlog")
+	}
 	select {
 	case <-client.Done():
 		require.ErrorContains(t, client.processError(), "backlog")

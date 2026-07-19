@@ -118,7 +118,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		CWD: workspace, Model: jobCtx.Model, ReasoningEffort: jobCtx.ReasoningEffort,
 		ServiceTier: jobCtx.ServiceTier, Sandbox: jobCtx.Sandbox, ApprovalPolicy: jobCtx.ApprovalPolicy,
 		NetworkEnabled:        jobCtx.NetworkEnabled,
-		RuntimeConfig:         replygate.SessionConfig(),
+		RuntimeConfig:         codexRuntimeConfig(environmentResult.Environment),
 		DeveloperInstructions: discordintegration.MultiplayerDeveloperInstructions,
 	}
 	if jobCtx.HasRepository {

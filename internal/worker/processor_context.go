@@ -526,6 +526,22 @@ func githubReplySpec() ports.DynamicToolSpec {
 	}
 }
 
+func codexRuntimeConfig(environment []string) map[string]any {
+	config := replygate.SessionConfig()
+	values := make(map[string]any, len(environment))
+	for _, entry := range environment {
+		key, value, found := strings.Cut(entry, "=")
+		if found && key != "" {
+			values[key] = value
+		}
+	}
+	config["shell_environment_policy"] = map[string]any{
+		"inherit": "all",
+		"set":     values,
+	}
+	return config
+}
+
 func withoutGenericReply(tools []string) []string {
 	result := make([]string, 0, len(tools))
 	for _, tool := range tools {
