@@ -194,26 +194,27 @@ func diagnoseWorker(ctx context.Context, db *sql.DB, cfg config.Config) error {
 		return err
 	}
 	checks := []struct {
-		name     string
-		bin      string
-		args     []string
-		expected string
+		name         string
+		bin          string
+		args         []string
+		expected     string
+		versionParts int
 	}{
-		{name: "Codex", bin: cfg.CodexBin, args: []string{"--version"}, expected: "codex-cli " + codex.RequiredVersion},
-		{name: "mise", bin: "mise", args: []string{"--version"}, expected: lock.Mise},
-		{name: "uv", bin: "uv", args: []string{"--version"}, expected: "uv " + lock.UV},
-		{name: "Corepack", bin: "corepack", args: []string{"--version"}, expected: lock.Corepack},
+		{name: "Codex", bin: cfg.CodexBin, args: []string{"--version"}, expected: "codex-cli " + codex.RequiredVersion, versionParts: 2},
+		{name: "mise", bin: "mise", args: []string{"--version"}, expected: lock.Mise, versionParts: 1},
+		{name: "uv", bin: "uv", args: []string{"--version"}, expected: "uv " + lock.UV, versionParts: 2},
+		{name: "Corepack", bin: "corepack", args: []string{"--version"}, expected: lock.Corepack, versionParts: 1},
 	}
 	for _, check := range checks {
 		cmd := exec.CommandContext(ctx, check.bin, check.args...)
 		cmd.Env = codexEnvironment()
 		output, commandErr := cmd.CombinedOutput()
-		actual := strings.TrimSpace(string(output))
 		if commandErr != nil {
 			return fmt.Errorf("检查 %s 版本: %w", check.name, commandErr)
 		}
-		if check.name == "mise" {
-			actual, _, _ = strings.Cut(actual, " ")
+		actual, err := normalizeVersionOutput(string(output), check.versionParts)
+		if err != nil {
+			return fmt.Errorf("检查 %s 版本: %w", check.name, err)
 		}
 		if actual != check.expected {
 			return fmt.Errorf("要求 %s 版本为 %s，当前为 %s", check.name, check.expected, actual)
@@ -227,6 +228,14 @@ func diagnoseWorker(ctx context.Context, db *sql.DB, cfg config.Config) error {
 	}
 	fmt.Println("Worker Runtime 版本和本地目录均正常。")
 	return nil
+}
+
+func normalizeVersionOutput(output string, parts int) (string, error) {
+	fields := strings.Fields(output)
+	if parts <= 0 || len(fields) < parts {
+		return "", fmt.Errorf("无法解析版本输出 %q", strings.TrimSpace(output))
+	}
+	return strings.Join(fields[:parts], " "), nil
 }
 
 func codexEnvironment() []string {
