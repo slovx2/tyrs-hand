@@ -358,8 +358,13 @@ func (s *Service) previousResult(ctx context.Context, request CallRequest) (code
 	var message sql.NullString
 	err := s.db.QueryRowContext(ctx, `
 		SELECT status, result, error FROM tool_calls
-		WHERE thread_id = $1 AND turn_id = $2 AND call_id = $3`,
-		request.ThreadID, request.TurnID, request.CallID).Scan(&status, &resultJSON, &message)
+		WHERE thread_id = $1 AND turn_id = $2 AND call_id = $3
+		  AND namespace = $4 AND tool = $5 AND arguments = $6::jsonb`,
+		request.ThreadID, request.TurnID, request.CallID, request.Namespace, request.Tool,
+		string(request.Arguments)).Scan(&status, &resultJSON, &message)
+	if errors.Is(err, sql.ErrNoRows) {
+		return codex.ToolCallResult{}, errors.New("Tool Call ID 与既有请求不一致")
+	}
 	if err != nil {
 		return codex.ToolCallResult{}, err
 	}

@@ -153,12 +153,25 @@ func TestLocalToolCallAuditIsIdempotent(t *testing.T) {
 		WithArgs(attemptID, request.ThreadID, request.TurnID, request.CallID, request.Tool, request.Arguments).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT status, result, error FROM tool_calls")).
-		WithArgs(request.ThreadID, request.TurnID, request.CallID).
+		WithArgs(request.ThreadID, request.TurnID, request.CallID, request.Tool, string(request.Arguments)).
 		WillReturnRows(sqlmock.NewRows([]string{"status", "result", "error"}).AddRow("completed", storedJSON, nil))
 
 	replayed, err := processor.auditLocalToolCall(context.Background(), claimed, request, execute)
 	require.NoError(t, err)
 	require.Equal(t, result, replayed)
+	require.Equal(t, 1, executions)
+
+	conflicting := request
+	conflicting.Tool = "commit"
+	conflicting.Arguments = json.RawMessage(`{"message":"conflict"}`)
+	mock.ExpectQuery(insertPattern).
+		WithArgs(attemptID, conflicting.ThreadID, conflicting.TurnID, conflicting.CallID, conflicting.Tool, conflicting.Arguments).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT status, result, error FROM tool_calls")).
+		WithArgs(conflicting.ThreadID, conflicting.TurnID, conflicting.CallID, conflicting.Tool, string(conflicting.Arguments)).
+		WillReturnRows(sqlmock.NewRows([]string{"status", "result", "error"}))
+	_, err = processor.auditLocalToolCall(context.Background(), claimed, conflicting, execute)
+	require.ErrorContains(t, err, "与既有请求不一致")
 	require.Equal(t, 1, executions)
 }
 

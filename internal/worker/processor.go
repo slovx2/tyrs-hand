@@ -247,8 +247,13 @@ func (p *Processor) previousLocalToolResult(ctx context.Context, request codex.T
 	var message sql.NullString
 	err := p.db.QueryRowContext(ctx, `
 		SELECT status, result, error FROM tool_calls
-		WHERE thread_id = $1 AND turn_id = $2 AND call_id = $3`,
-		request.ThreadID, request.TurnID, request.CallID).Scan(&status, &resultJSON, &message)
+		WHERE thread_id = $1 AND turn_id = $2 AND call_id = $3
+		  AND namespace = 'git' AND tool = $4 AND arguments = $5::jsonb`,
+		request.ThreadID, request.TurnID, request.CallID, request.Tool,
+		string(request.Arguments)).Scan(&status, &resultJSON, &message)
+	if errors.Is(err, sql.ErrNoRows) {
+		return codex.ToolCallResult{}, errors.New("本地 Tool Call ID 与既有请求不一致")
+	}
 	if err != nil {
 		return codex.ToolCallResult{}, err
 	}

@@ -376,7 +376,30 @@ func renderInstruction(template string, event domain.NormalizedEvent) string {
 }
 
 func mentions(body, botLogin string) bool {
-	return botLogin != "" && strings.Contains(strings.ToLower(body), "@"+botLogin)
+	if botLogin == "" {
+		return false
+	}
+	body = strings.ToLower(body)
+	needle := "@" + strings.ToLower(botLogin)
+	for offset := 0; offset < len(body); {
+		index := strings.Index(body[offset:], needle)
+		if index < 0 {
+			return false
+		}
+		start := offset + index
+		end := start + len(needle)
+		leftBoundary := start == 0 || !isGitHubLoginByte(body[start-1])
+		rightBoundary := end == len(body) || !isGitHubLoginByte(body[end])
+		if leftBoundary && rightBoundary {
+			return true
+		}
+		offset = start + 1
+	}
+	return false
+}
+
+func isGitHubLoginByte(value byte) bool {
+	return value >= 'a' && value <= 'z' || value >= '0' && value <= '9' || value == '-'
 }
 
 func isBot(actor, botLogin string) bool {

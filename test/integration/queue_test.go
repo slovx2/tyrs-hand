@@ -273,6 +273,12 @@ func testWebhookOrchestration(t *testing.T, db *sql.DB, repositoryID uuid.UUID) 
 	result = processWebhook(t, db, withoutMention, "write")
 	require.Zero(t, result.Jobs)
 
+	editedMention := event
+	editedMention.DeliveryID = "edited-mention"
+	editedMention.Action = "edited"
+	result = processWebhook(t, db, editedMention, "write")
+	require.Zero(t, result.Jobs)
+
 	lowPermission := event
 	lowPermission.DeliveryID = "low-permission"
 	result = processWebhook(t, db, lowPermission, "read")
@@ -309,6 +315,17 @@ func testWebhookOrchestration(t *testing.T, db *sql.DB, repositoryID uuid.UUID) 
 	var enabled bool
 	require.NoError(t, db.QueryRowContext(ctx, "SELECT enabled FROM repositories WHERE provider = 'github' AND external_id = 99").Scan(&enabled))
 	require.False(t, enabled)
+
+	_, err = db.ExecContext(ctx, "UPDATE repositories SET enabled = false WHERE id = $1", repositoryID)
+	require.NoError(t, err)
+	disabledRepository := event
+	disabledRepository.DeliveryID = "disabled-repository"
+	result = processWebhook(t, db, disabledRepository, "write")
+	require.Zero(t, result.Jobs)
+	var deliveryError string
+	require.NoError(t, db.QueryRowContext(ctx,
+		"SELECT error FROM webhook_deliveries WHERE delivery_id = $1", disabledRepository.DeliveryID).Scan(&deliveryError))
+	require.Equal(t, "repository not enabled", deliveryError)
 }
 
 func processWebhook(t *testing.T, db *sql.DB, event domain.NormalizedEvent, permission string) orchestrator.WebhookResult {
@@ -391,6 +408,19 @@ func testOfficialGitHubTool(t *testing.T, db *sql.DB, capability string) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, result, previous)
+	equivalent, err := service.Call(context.Background(), toolservice.CallRequest{
+		Capability: capability, ThreadID: "thread", TurnID: "turn", CallID: "call",
+		Namespace: "github", Tool: "issue_read",
+		Arguments: json.RawMessage(`{"issue_number":1,"repo":"repo","owner":"owner","method":"get"}`),
+	})
+	require.NoError(t, err)
+	require.Equal(t, result, equivalent)
+	_, err = service.Call(context.Background(), toolservice.CallRequest{
+		Capability: capability, ThreadID: "thread", TurnID: "turn", CallID: "call",
+		Namespace: "github", Tool: "create_pull_request",
+		Arguments: json.RawMessage(`{"owner":"owner","repo":"repo","title":"conflict","head":"branch","base":"main"}`),
+	})
+	require.ErrorContains(t, err, "与既有请求不一致")
 	createRequest := toolservice.CallRequest{
 		Capability: capability, ThreadID: "thread", TurnID: "turn", CallID: "create-pr",
 		Namespace: "github", Tool: "create_pull_request",
