@@ -9,12 +9,14 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/disgoorg/disgo/discord"
 	"github.com/stretchr/testify/require"
 )
 
 func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 	var mu sync.Mutex
 	requests := make(map[string]int)
+	var guildUpdates []map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		mu.Lock()
 		requests[request.Method+" "+request.URL.Path]++
@@ -32,6 +34,9 @@ func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 		case "PATCH /guilds/123":
 			var body map[string]any
 			require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+			mu.Lock()
+			guildUpdates = append(guildUpdates, body)
+			mu.Unlock()
 			_, _ = response.Write([]byte(`{"id":"123","name":"private","owner_id":"1","features":["COMMUNITY"]}`))
 		case "POST /guilds/123/channels":
 			var body map[string]any
@@ -70,6 +75,11 @@ func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 	require.Equal(t, "91", guild.Channels[2].Tags["Running"])
 	require.NoError(t, remote.DisableCommunity(ctx, "123"))
 	require.NoError(t, remote.EnableCommunity(ctx, "123", "11", "11"))
+	mu.Lock()
+	require.Len(t, guildUpdates, 2)
+	require.Equal(t, float64(discord.VerificationLevelLow), guildUpdates[1]["verification_level"])
+	require.Equal(t, float64(discord.ExplicitContentFilterLevelAllMembers), guildUpdates[1]["explicit_content_filter"])
+	mu.Unlock()
 
 	permission := []PermissionSpec{{ID: "123", Type: "role", Allow: 1}, {ID: "456", Type: "member", Deny: 2}}
 	for _, spec := range []ChannelSpec{

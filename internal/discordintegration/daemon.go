@@ -179,9 +179,10 @@ func (d *Daemon) resumeInitialization(ctx context.Context, guildID string, remot
 	var operationID uuid.UUID
 	err := d.manager.db.QueryRowContext(ctx, `SELECT o.id FROM discord_initialization_operations o
 		WHERE o.guild_id = $1 AND o.status IN ('pending', 'failed')
-			AND EXISTS(SELECT 1 FROM discord_initialization_steps s
-				WHERE s.operation_id = o.id AND s.status <> 'completed' AND s.attempt_count < 3)
-		ORDER BY o.created_at LIMIT 1`, guildID).Scan(&operationID)
+			AND COALESCE((SELECT s.attempt_count < $2 FROM discord_initialization_steps s
+				WHERE s.operation_id = o.id AND s.status <> 'completed'
+				ORDER BY s.ordinal LIMIT 1), false)
+		ORDER BY o.created_at LIMIT 1`, guildID, initializationMaxAttempts).Scan(&operationID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}

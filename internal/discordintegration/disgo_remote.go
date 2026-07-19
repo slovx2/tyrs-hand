@@ -11,6 +11,7 @@ import (
 
 	"github.com/disgoorg/disgo/discord"
 	disgorest "github.com/disgoorg/disgo/rest"
+	"github.com/disgoorg/omit"
 	"github.com/disgoorg/snowflake/v2"
 )
 
@@ -90,8 +91,12 @@ func (r *DisgoRemote) EnableCommunity(ctx context.Context, guildID, rulesChannel
 		return err
 	}
 	features := []discord.GuildFeature{discord.GuildFeatureCommunity}
+	verificationLevel := discord.VerificationLevelLow
+	contentFilter := discord.ExplicitContentFilterLevelAllMembers
 	_, err = r.rest.UpdateGuild(guild, discord.GuildUpdate{
 		Features: &features, RulesChannelID: &rules, PublicUpdatesChannelID: &updates,
+		VerificationLevel:     omit.New(&verificationLevel),
+		ExplicitContentFilter: omit.New(&contentFilter),
 	}, disgorest.WithCtx(ctx))
 	return err
 }

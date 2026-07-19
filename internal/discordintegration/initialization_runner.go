@@ -12,6 +12,8 @@ import (
 	"github.com/google/uuid"
 )
 
+const initializationMaxAttempts = 3
+
 func (m *Manager) RunInitialization(ctx context.Context, operationID uuid.UUID, remote Remote) error {
 	var guildID string
 	err := m.db.QueryRowContext(ctx, `UPDATE discord_initialization_operations SET status = 'running',
@@ -55,11 +57,15 @@ func (m *Manager) claimInitializationStep(ctx context.Context, operationID uuid.
 	defer func() { _ = tx.Rollback() }()
 	var key string
 	var raw []byte
-	err = tx.QueryRowContext(ctx, `SELECT step_key, request FROM discord_initialization_steps
+	var attemptCount int
+	err = tx.QueryRowContext(ctx, `SELECT step_key, request, attempt_count FROM discord_initialization_steps
 		WHERE operation_id = $1 AND status <> 'completed' ORDER BY ordinal FOR UPDATE SKIP LOCKED LIMIT 1`, operationID).
-		Scan(&key, &raw)
+		Scan(&key, &raw, &attemptCount)
 	if err != nil {
 		return "", InitializationAction{}, err
+	}
+	if attemptCount >= initializationMaxAttempts {
+		return "", InitializationAction{}, errors.New("Discord 初始化步骤重试次数已耗尽")
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE discord_initialization_steps SET status = 'running',
 		attempt_count = attempt_count + 1, started_at = COALESCE(started_at, now()), error = NULL

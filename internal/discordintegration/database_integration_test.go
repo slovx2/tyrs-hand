@@ -530,6 +530,23 @@ func testDiscordRecoveryOrchestration(t *testing.T, ctx context.Context, db *sql
 	require.Equal(t, "completed", operation.Status)
 	require.NoError(t, daemon.resumeInitialization(ctx, testGuildID, actionRemote))
 
+	exhaustedID, err := manager.CreateInitialization(ctx, seed.administratorID, InitializationPlan{
+		Preflight: PreflightResult{GuildID: testGuildID, Mode: InitializationIncremental, Safe: true},
+		Actions:   []InitializationAction{{Kind: "unknown"}},
+	}, "")
+	require.NoError(t, err)
+	for range initializationMaxAttempts {
+		require.Error(t, daemon.resumeInitialization(ctx, testGuildID, actionRemote))
+	}
+	require.NoError(t, daemon.resumeInitialization(ctx, testGuildID, actionRemote))
+	var exhaustedStatus string
+	var exhaustedAttempts int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT o.status, s.attempt_count
+		FROM discord_initialization_operations o JOIN discord_initialization_steps s ON s.operation_id = o.id
+		WHERE o.id = $1`, exhaustedID).Scan(&exhaustedStatus, &exhaustedAttempts))
+	require.Equal(t, "failed", exhaustedStatus)
+	require.Equal(t, initializationMaxAttempts, exhaustedAttempts)
+
 	registerServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		require.Equal(t, http.MethodPut, request.Method)
 		require.Contains(t, request.URL.Path, "/applications/900/guilds/")
