@@ -223,14 +223,25 @@ func (d *Daemon) refreshSystemStatus(ctx context.Context, guildID string) error 
 	}
 	var queued, running, blocked, failed, workers, outbox int64
 	var gatewayStatus string
-	err = d.manager.db.QueryRowContext(ctx, `SELECT
-		(SELECT count(*) FROM job_intents WHERE status = 'queued'),
-		(SELECT count(*) FROM job_intents WHERE status = 'running'),
-		(SELECT count(*) FROM job_intents WHERE status = 'blocked'),
-		(SELECT count(*) FROM job_intents WHERE status = 'failed'),
+	err = d.manager.db.QueryRowContext(ctx, `WITH latest_jobs AS (
+		SELECT status, row_number() OVER (
+			PARTITION BY source_type, work_item_id, discord_conversation_id
+			ORDER BY created_at DESC, id DESC
+		) AS position
+		FROM job_intents
+	), job_counts AS (
+		SELECT
+			count(*) FILTER (WHERE position = 1 AND status = 'queued') AS queued,
+			count(*) FILTER (WHERE position = 1 AND status = 'running') AS running,
+			count(*) FILTER (WHERE position = 1 AND status = 'blocked') AS blocked,
+			count(*) FILTER (WHERE position = 1 AND status = 'failed') AS failed
+		FROM latest_jobs
+	)
+	SELECT queued, running, blocked, failed,
 		(SELECT count(*) FROM worker_nodes WHERE status = 'online' AND heartbeat_at > now() - interval '2 minutes'),
 		(SELECT count(*) FROM integration_outbox WHERE integration = 'discord' AND status IN ('pending','retrying','sending')),
-		COALESCE((SELECT last_gateway_status FROM discord_guilds WHERE guild_id = $1), 'unknown')`, guildID).
+		COALESCE((SELECT last_gateway_status FROM discord_guilds WHERE guild_id = $1), 'unknown')
+		FROM job_counts`, guildID).
 		Scan(&queued, &running, &blocked, &failed, &workers, &outbox, &gatewayStatus)
 	if err != nil {
 		return err

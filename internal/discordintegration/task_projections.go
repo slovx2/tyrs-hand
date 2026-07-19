@@ -183,9 +183,13 @@ func (d *Daemon) todoCard(ctx context.Context, guildID, userID string) (EmbedPay
 	if err != nil {
 		return EmbedPayload{}, err
 	}
-	rows, err := d.manager.db.QueryContext(ctx, `SELECT DISTINCT r.owner, r.name, w.kind, w.external_number,
-		w.title, j.status FROM job_intents j JOIN work_items w ON w.id = j.work_item_id
+	rows, err := d.manager.db.QueryContext(ctx, `SELECT r.owner, r.name, w.kind, w.external_number,
+		w.title, j.status FROM work_items w
 		JOIN repositories r ON r.id = w.repository_id
+		JOIN LATERAL (
+			SELECT status, actor_login FROM job_intents
+			WHERE work_item_id = w.id ORDER BY created_at DESC, id DESC LIMIT 1
+		) j ON true
 		WHERE lower(j.actor_login) = lower($1) AND j.status IN ('blocked', 'failed')
 		ORDER BY r.owner, r.name, w.external_number LIMIT 25`, login)
 	if err != nil {

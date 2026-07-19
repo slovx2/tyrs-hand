@@ -131,6 +131,19 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 		require.Contains(t, string(payload), `"embeds"`)
 		require.Contains(t, string(payload), `"content": ""`)
 	}
+	_, err = db.ExecContext(ctx, `INSERT INTO job_intents
+		(work_item_id, repository_id, agent_profile_id, idempotency_key, status, instruction, actor_login, created_at)
+		SELECT $1, $2, id, 'projection-job-retry', 'succeeded', 'test', 'alice', now() + interval '1 second'
+		FROM agent_profiles WHERE name = 'Default'`, seed.workItemID, seed.repositoryID)
+	require.NoError(t, err)
+	todoCard, err := daemon.todoCard(ctx, testGuildID, "1001")
+	require.NoError(t, err)
+	require.Equal(t, "✅ 待我处理", todoCard.Title)
+	require.NoError(t, daemon.refreshSystemStatus(ctx, testGuildID))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT payload FROM integration_outbox
+		WHERE operation_key = 'projection:system.status'`).Scan(&statusPayload))
+	require.Contains(t, string(statusPayload), "阻塞 `0`")
+	require.Contains(t, string(statusPayload), "失败 `0`")
 	require.Equal(t, "Needs Attention", projectedTaskState("open", "blocked"))
 	require.Equal(t, "Completed", projectedTaskState("closed", ""))
 	require.Equal(t, "Running", projectedTaskState("open", "queued"))
