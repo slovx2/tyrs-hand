@@ -52,12 +52,13 @@ func (p *Processor) processDiscordConversation(ctx context.Context, claimed *que
 			projectCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if projectErr := discordintegration.ProjectConversationStatus(projectCtx, p.db, jobCtx.GuildID,
-				jobCtx.ThreadID, jobCtx.ConversationID, "**Codex 处理失败**\n后台已记录错误，可稍后重试或联系管理员。"); projectErr != nil {
+				jobCtx.ThreadID, jobCtx.ConversationID, jobCtx.MessageID,
+				discordintegration.ConversationFailed, "后台已记录错误，可稍后重试或联系管理员。"); projectErr != nil {
 				p.logger.Warn("投影 Discord Conversation 失败状态失败", zap.Error(projectErr))
 			}
 		}
 	}()
-	p.projectDiscordConversation(ctx, jobCtx, "**Codex 正在处理**\n已接收消息，正在准备工作区。")
+	p.projectDiscordConversation(ctx, jobCtx, discordintegration.ConversationRunning, "已接收消息，正在准备工作区。")
 	workspace, branch, err := p.ensureDiscordWorkspace(ctx, claimed, jobCtx)
 	if err != nil {
 		return err
@@ -157,19 +158,31 @@ func (p *Processor) processDiscordConversation(ctx context.Context, claimed *que
 		return err
 	}
 	if outcome.Status == "blocked" {
-		p.projectDiscordConversation(ctx, jobCtx, "**需要处理**\n"+outcome.Summary)
+		p.projectDiscordConversation(ctx, jobCtx, discordintegration.ConversationBlocked, "本轮需要你进一步处理。")
+		p.projectDiscordReply(ctx, jobCtx, outcome.Summary)
 		finalProjected = true
 		return &blockedError{summary: outcome.Summary}
 	}
-	p.projectDiscordConversation(ctx, jobCtx, outcome.Summary)
+	p.projectDiscordConversation(ctx, jobCtx, discordintegration.ConversationCompleted, "本轮处理完成。")
+	p.projectDiscordReply(ctx, jobCtx, outcome.Summary)
 	finalProjected = true
 	return nil
 }
 
-func (p *Processor) projectDiscordConversation(ctx context.Context, jobCtx discordJobContext, content string) {
+func (p *Processor) projectDiscordConversation(ctx context.Context, jobCtx discordJobContext,
+	state discordintegration.ConversationProgress, detail string,
+) {
 	if err := discordintegration.ProjectConversationStatus(ctx, p.db, jobCtx.GuildID,
-		jobCtx.ThreadID, jobCtx.ConversationID, content); err != nil {
+		jobCtx.ThreadID, jobCtx.ConversationID, jobCtx.MessageID, state, detail); err != nil {
 		p.logger.Warn("投影 Discord Conversation 状态失败", zap.Error(err),
+			zap.String("conversation_id", jobCtx.ConversationID.String()))
+	}
+}
+
+func (p *Processor) projectDiscordReply(ctx context.Context, jobCtx discordJobContext, content string) {
+	if err := discordintegration.ProjectConversationReply(ctx, p.db, jobCtx.ThreadID,
+		jobCtx.ConversationID, jobCtx.MessageID, content); err != nil {
+		p.logger.Warn("投影 Discord Conversation 最终回复失败", zap.Error(err),
 			zap.String("conversation_id", jobCtx.ConversationID.String()))
 	}
 }

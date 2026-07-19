@@ -114,13 +114,12 @@ func (d *AttachmentDownloader) downloadOne(ctx context.Context, root, directory 
 	}
 	declared := normalizeMediaType(input.MediaType)
 	responseType := normalizeMediaType(response.Header.Get("Content-Type"))
-	if declared != "" && responseType != "" && responseType != "application/octet-stream" && declared != responseType {
-		return SavedAttachment{}, errors.New("discord 附件 Content-Type 与事件元数据不一致")
-	}
 	extension := strings.ToLower(filepath.Ext(filename))
-	mediaType := declared
+	// Gateway 元数据可能描述 Discord 代理后的格式，而附件 URL 返回原文件。
+	// 下载响应是本次实际保存的字节，因此优先用它校验扩展名和类型。
+	mediaType := responseType
 	if mediaType == "" || mediaType == "application/octet-stream" {
-		mediaType = responseType
+		mediaType = declared
 	}
 	kind, err := validateAttachmentType(extension, mediaType)
 	if err != nil {
@@ -150,8 +149,8 @@ func (d *AttachmentDownloader) downloadOne(ctx context.Context, root, directory 
 	if err != nil {
 		return SavedAttachment{}, err
 	}
-	if written > d.maxFileBytes || (input.Size > 0 && written != input.Size) {
-		return SavedAttachment{}, errors.New("discord 附件实际大小与限制或元数据不一致")
+	if written > d.maxFileBytes {
+		return SavedAttachment{}, errors.New("discord 附件实际大小超出限制")
 	}
 	if err := temporary.Sync(); err != nil {
 		return SavedAttachment{}, err

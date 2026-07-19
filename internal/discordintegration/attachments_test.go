@@ -57,7 +57,25 @@ func TestAttachmentDownloaderRejectsForbiddenRedirect(t *testing.T) {
 	require.ErrorContains(t, err, "CDN")
 }
 
-func TestAttachmentDownloaderRejectsMIMEAndSizeMismatch(t *testing.T) {
+func TestAttachmentDownloaderUsesCDNRepresentation(t *testing.T) {
+	content := "original png bytes"
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Status: "200 OK", Header: http.Header{
+			"Content-Type": []string{"image/png"},
+		}, Body: io.NopCloser(strings.NewReader(content)), Request: request}, nil
+	})
+	downloader := NewAttachmentDownloader(transport)
+	saved, err := downloader.Download(context.Background(), t.TempDir(), []AttachmentInput{{
+		ID: "1", URL: "https://cdn.discordapp.com/attachments/1/2/file.png",
+		Filename: "file.png", MediaType: "image/webp", Size: 3,
+	}})
+	require.NoError(t, err)
+	require.Equal(t, "image", saved[0].Kind)
+	require.Equal(t, "image/png", saved[0].MediaType)
+	require.EqualValues(t, len(content), saved[0].Size)
+}
+
+func TestAttachmentDownloaderRejectsResponseMIMEAndOversize(t *testing.T) {
 	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 200, Status: "200 OK", Header: http.Header{
 			"Content-Type": []string{"application/pdf"},
@@ -67,13 +85,24 @@ func TestAttachmentDownloaderRejectsMIMEAndSizeMismatch(t *testing.T) {
 	_, err := downloader.Download(context.Background(), t.TempDir(), []AttachmentInput{{
 		ID: "1", URL: "https://cdn.discordapp.com/attachments/1/2/file.png", Filename: "file.png", MediaType: "image/png", Size: 9,
 	}})
-	require.ErrorContains(t, err, "Content-Type")
+	require.ErrorContains(t, err, "类型")
 
 	downloader.maxFileBytes = 2
 	_, err = downloader.Download(context.Background(), t.TempDir(), []AttachmentInput{{
 		ID: "1", URL: "https://cdn.discordapp.com/attachments/1/2/file.txt", Filename: "file.txt", MediaType: "text/plain", Size: 3,
 	}})
 	require.ErrorContains(t, err, "大小")
+
+	downloader = NewAttachmentDownloader(roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Status: "200 OK", Header: http.Header{
+			"Content-Type": []string{"text/plain"},
+		}, Body: io.NopCloser(strings.NewReader("too large")), Request: request}, nil
+	}))
+	downloader.maxFileBytes = 2
+	_, err = downloader.Download(context.Background(), t.TempDir(), []AttachmentInput{{
+		ID: "1", URL: "https://cdn.discordapp.com/attachments/1/2/file.txt", Filename: "file.txt", MediaType: "text/plain", Size: 1,
+	}})
+	require.ErrorContains(t, err, "实际大小")
 }
 
 func TestAttachmentDownloaderRejectsSymlinkEscape(t *testing.T) {

@@ -1,44 +1,89 @@
-.PHONY: generate generate-check format format-check lint test test-unit test-race test-integration test-coverage web-install web-build build
+PNPM ?= pnpm
+LOCAL_IMAGE ?= tyrs-hand:local
+
+.PHONY: dependencies generate generate-check format format-check vet lint web-check test test-unit test-race test-integration test-coverage web-install web-build build build-local image-local ci ci-local
+
+dependencies:
+	go mod download
+	go mod verify
 
 generate:
 	go generate ./...
-	cd web && pnpm generate:api
+	$(PNPM) --dir web generate:api
 
-generate-check: generate
-	git diff --exit-code -- ent internal/openapi internal/bootstrap/wire_gen.go web/src/api/schema.ts
+generate-check:
+	@before="$$(mktemp)"; after="$$(mktemp)"; \
+	trap 'rm -f "$$before" "$$after"' EXIT; \
+	git diff --binary >"$$before"; \
+	$(MAKE) generate; \
+	git diff --binary >"$$after"; \
+	cmp --silent "$$before" "$$after" || { \
+		echo '生成代码不是最新状态，请提交生成后的文件。' >&2; \
+		diff --unified "$$before" "$$after" || true; \
+		exit 1; \
+	}
 
 format:
 	find cmd internal ent tools -name '*.go' -print0 | xargs -0 gofmt -w
-	cd web && pnpm format
+	$(PNPM) --dir web format
 
 format-check:
 	test -z "$$(gofmt -l cmd internal ent tools)"
-	cd web && pnpm format:check
+	$(PNPM) --dir web format:check
+
+vet:
+	go vet ./...
 
 lint:
-	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run
-	cd web && pnpm lint
+	GOTOOLCHAIN=local go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run
+	GOTOOLCHAIN=local go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.10 .github/workflows/*.yml
+	$(PNPM) --dir web lint
+
+web-check:
+	$(PNPM) --dir web typecheck
 
 test: test-unit
 
 test-unit:
 	go test ./...
-	cd web && pnpm test:run
+	$(PNPM) --dir web test:run
 
 test-race:
 	go test -race ./internal/...
 
 test-integration:
-	go test -tags=integration ./test/integration/...
+	go test -tags=integration ./internal/discordintegration ./test/integration
 
 test-coverage:
 	./tools/check-go-coverage.sh
 
 web-install:
-	cd web && corepack pnpm install --frozen-lockfile
+	$(PNPM) --dir web install --frozen-lockfile
 
 web-build:
-	cd web && corepack pnpm build
+	$(PNPM) --dir web build
 
 build: web-build
 	go build ./cmd/tyrs-hand-server ./cmd/tyrs-hand-worker ./cmd/tyrs-hand-admin ./cmd/tyrs-hand-discord
+
+build-local:
+	./tools/with-local-toolchain.sh $(MAKE) web-install build
+
+image-local:
+	docker build --load --tag $(LOCAL_IMAGE) .
+
+ci:
+	$(MAKE) dependencies
+	$(MAKE) generate-check
+	$(MAKE) format-check
+	$(MAKE) vet
+	$(MAKE) lint
+	$(MAKE) web-check
+	$(MAKE) test-unit
+	$(MAKE) test-race
+	$(MAKE) test-integration
+	$(MAKE) test-coverage
+	$(MAKE) build
+
+ci-local:
+	./tools/with-local-toolchain.sh ./tools/ci-local.sh

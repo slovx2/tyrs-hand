@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -17,6 +18,7 @@ func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 	var mu sync.Mutex
 	requests := make(map[string]int)
 	var guildUpdates []map[string]any
+	var messageBodies []map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		mu.Lock()
 		requests[request.Method+" "+request.URL.Path]++
@@ -53,8 +55,25 @@ func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 		case "DELETE /channels/11":
 			response.WriteHeader(http.StatusNoContent)
 		case "PATCH /channels/20/messages/21":
+			var body map[string]any
+			require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+			mu.Lock()
+			messageBodies = append(messageBodies, body)
+			mu.Unlock()
 			_, _ = response.Write([]byte(`{"id":"21","channel_id":"20","content":"updated"}`))
+		case "POST /channels/20/messages":
+			var body map[string]any
+			require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+			mu.Lock()
+			messageBodies = append(messageBodies, body)
+			mu.Unlock()
+			_, _ = response.Write([]byte(`{"id":"22","channel_id":"20","content":""}`))
 		case "POST /channels/12/threads":
+			var body map[string]any
+			require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+			mu.Lock()
+			messageBodies = append(messageBodies, body)
+			mu.Unlock()
 			_, _ = response.Write([]byte(`{"id":"30","guild_id":"123","parent_id":"12","type":11,"name":"Issue","owner_id":"1","message_count":1,"member_count":1,"rate_limit_per_user":0,"thread_metadata":{"archived":false,"auto_archive_duration":10080,"archive_timestamp":"2026-07-18T00:00:00Z","locked":false},"message":{"id":"31","channel_id":"30","content":"card"}}`))
 		case "PATCH /channels/30":
 			_, _ = response.Write([]byte(`{"id":"30","guild_id":"123","parent_id":"12","type":11,"name":"Issue","owner_id":"1","message_count":1,"member_count":1,"rate_limit_per_user":0,"thread_metadata":{"archived":false,"auto_archive_duration":10080,"archive_timestamp":"2026-07-18T00:00:00Z","locked":false}}`))
@@ -99,6 +118,11 @@ func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 	testDisgoSendOperations(t, ctx, remote)
 	mu.Lock()
 	require.GreaterOrEqual(t, requests["PATCH /channels/30"], 2)
+	require.Len(t, messageBodies, 3)
+	require.Equal(t, []any{}, messageBodies[0]["embeds"])
+	require.Equal(t, "Card", messageBodies[1]["embeds"].([]any)[0].(map[string]any)["title"])
+	threadMessage := messageBodies[2]["message"].(map[string]any)
+	require.Equal(t, "Task", threadMessage["embeds"].([]any)[0].(map[string]any)["title"])
 	mu.Unlock()
 }
 
@@ -151,7 +175,7 @@ func TestDisgoRemoteRejectsMalformedRequestsBeforeNetworkWrites(t *testing.T) {
 func testDisgoSendOperations(t *testing.T, ctx context.Context, remote *DisgoRemote) {
 	t.Helper()
 	operations := []OutboxItem{
-		{OperationType: "message.update", Payload: rawJSON(map[string]any{"channelId": "20", "messageId": "21", "content": "updated"})},
+		{OperationType: "message.update", Payload: rawJSON(map[string]any{"channelId": "20", "messageId": "21", "content": "updated", "embeds": []EmbedPayload{}})},
 		{OperationType: "channel.permissions", Payload: rawJSON(map[string]any{"channelId": "12", "permissions": []PermissionSpec{{ID: "123", Type: "role", Allow: 1}}})},
 		{OperationType: "thread.archive", Payload: rawJSON(map[string]any{"channelId": "30", "archived": true})},
 		{OperationType: "thread.tags", Payload: rawJSON(map[string]any{"channelId": "30", "tagIds": []string{"91"}})},
@@ -160,13 +184,23 @@ func testDisgoSendOperations(t *testing.T, ctx context.Context, remote *DisgoRem
 		_, err := remote.Send(ctx, operation)
 		require.NoError(t, err)
 	}
+	created, err := remote.Send(ctx, OutboxItem{OperationType: "message.create", Nonce: "card-nonce", Payload: rawJSON(map[string]any{
+		"channelId": "20", "content": "", "embeds": []EmbedPayload{{Title: "Card", Description: "Friendly", Color: cardColorBlurple,
+			Footer: "Footer", Fields: []EmbedFieldPayload{{Name: "State", Value: "Running", Inline: true}}}},
+	})})
+	require.NoError(t, err)
+	require.JSONEq(t, `{"messageId":"22"}`, string(created))
 	result, err := remote.Send(ctx, OutboxItem{OperationType: "forum.post.create", Nonce: "post-nonce", Payload: rawJSON(map[string]any{
-		"channelId": "12", "threadName": "Issue", "content": "card", "tagIds": []string{"91"},
+		"channelId": "12", "threadName": "Issue", "content": "", "embeds": []EmbedPayload{{Title: "Task", Color: cardColorGreen}}, "tagIds": []string{"91"},
 	})})
 	require.NoError(t, err)
 	require.JSONEq(t, `{"threadId":"30","messageId":"31"}`, string(result))
 	_, err = remote.Send(ctx, OutboxItem{OperationType: "unsupported", Payload: rawJSON(map[string]any{})})
 	require.Error(t, err)
+	_, err = remote.Send(ctx, OutboxItem{OperationType: "message.create", Payload: rawJSON(map[string]any{
+		"channelId": "20", "embeds": []EmbedPayload{{Title: strings.Repeat("x", 257)}},
+	})})
+	require.ErrorContains(t, err, "长度")
 	_, err = remote.CreateChannel(ctx, "123", ChannelSpec{Kind: "voice"}, "")
 	require.Error(t, err)
 	_, err = permissionOverwrites([]PermissionSpec{{ID: "123", Type: "unknown"}})

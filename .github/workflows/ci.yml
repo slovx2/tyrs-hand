@@ -4,7 +4,8 @@ on:
   pull_request:
   push:
     branches: [main]
-    tags: ["v*"]
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -51,31 +52,17 @@ jobs:
       - run: npm install --global @openai/codex@0.142.5
       - run: go mod download && go mod verify
       - run: pnpm --dir web install --frozen-lockfile
-      - name: Generated code must be current
-        run: |
-          go generate ./...
-          pnpm --dir web generate:api
-          git diff --exit-code
-      - name: Format and lint
-        run: |
-          test -z "$(gofmt -l cmd internal ent tools)"
-          go vet ./...
-          GOTOOLCHAIN=local go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run
-          pnpm --dir web format:check
-          pnpm --dir web lint
-          pnpm --dir web typecheck
-      - name: Unit, race and integration tests
-        run: |
-          go test ./...
-          go test -race ./internal/...
-          go test -tags integration ./internal/discordintegration ./test/integration
-          ./tools/check-go-coverage.sh
-          pnpm --dir web test:run
+      - name: Validate release version
+        if: github.event_name == 'release'
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: '[[ "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]'
+      - name: Generated code, lint, tests and build
+        run: make ci
       - uses: codecov/codecov-action@af09b5e394c93991b95a5e7646aeb90c1917f78f # v5.5.1
         with:
           files: coverage/go.out,web/coverage/lcov.info
           fail_ci_if_error: false
-      - run: pnpm --dir web build && go build ./cmd/tyrs-hand-server ./cmd/tyrs-hand-worker ./cmd/tyrs-hand-admin ./cmd/tyrs-hand-discord
       - name: Browser end-to-end
         env:
           TYRS_HAND_DATABASE_URL: postgres://tyrs_hand:test-password@localhost:5432/tyrs_hand_test?sslmode=disable
@@ -95,6 +82,7 @@ jobs:
           pnpm --dir web e2e
 
   image:
+    if: github.event_name == 'release' && github.event.action == 'published'
     runs-on: ubuntu-24.04
     needs: verify
     permissions:
@@ -107,26 +95,17 @@ jobs:
       - id: image
         name: Resolve image tags
         shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-            echo "push=false" >> "${GITHUB_OUTPUT}"
-            echo "tags=${image}:ci-${GITHUB_RUN_ID}" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-          echo "push=true" >> "${GITHUB_OUTPUT}"
           {
             echo "tags<<EOF"
             echo "${image}:sha-${GITHUB_SHA}"
-            if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-              echo "${image}:${GITHUB_REF_NAME//\//-}"
-            else
-              echo "${image}:main"
-            fi
+            echo "${image}:${RELEASE_TAG}"
             echo "EOF"
           } >> "${GITHUB_OUTPUT}"
       - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
-        if: steps.image.outputs.push == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -136,16 +115,14 @@ jobs:
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: ${{ steps.image.outputs.push == 'true' }}
+          push: true
           tags: ${{ steps.image.outputs.tags }}
           provenance: mode=max
           sbom: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
-        if: startsWith(github.ref, 'refs/tags/v')
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        if: startsWith(github.ref, 'refs/tags/v')
         with:
           version: v0.70.0
           image-ref: ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
@@ -154,7 +131,6 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
       - name: Sign multi-architecture manifest
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           IMAGE: ghcr.io/${{ github.repository }}
           DIGEST: ${{ steps.build.outputs.digest }}

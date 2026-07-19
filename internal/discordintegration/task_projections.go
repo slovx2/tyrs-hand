@@ -16,6 +16,8 @@ type taskProjection struct {
 	Kind             string
 	Number           int
 	Title            string
+	Owner            string
+	Repository       string
 	WorkItemState    string
 	JobStatus        string
 	ClosedAt         sql.NullTime
@@ -36,12 +38,13 @@ func (d *Daemon) refreshTaskProjections(ctx context.Context, guildID string, rem
 			tags[channel.ID] = channel.Tags
 		}
 	}
-	rows, err := d.manager.db.QueryContext(ctx, `SELECT w.id::text, f.id::text, r.discord_id,
-		w.kind, w.external_number, w.title, w.state, COALESCE(j.status, ''), w.closed_at,
+	rows, err := d.manager.db.QueryContext(ctx, `SELECT w.id::text, f.id::text, dr.discord_id,
+		w.kind, w.external_number, w.title, repo.owner, repo.name, w.state, COALESCE(j.status, ''), w.closed_at,
 		COALESCE(p.thread_id, ''), COALESCE(p.starter_message_id, ''), COALESCE(p.last_state, ''),
 		COALESCE(p.archived, false)
 		FROM work_items w JOIN discord_forums f ON f.repository_id = w.repository_id AND f.forum_type = 'repository'
-		JOIN discord_resources r ON r.id = f.resource_id
+		JOIN discord_resources dr ON dr.id = f.resource_id
+		JOIN repositories repo ON repo.id = w.repository_id
 		LEFT JOIN LATERAL (SELECT status FROM job_intents WHERE work_item_id = w.id
 			ORDER BY created_at DESC LIMIT 1) j ON true
 		LEFT JOIN discord_task_posts p ON p.work_item_id = w.id
@@ -54,7 +57,8 @@ func (d *Daemon) refreshTaskProjections(ctx context.Context, guildID string, rem
 	for rows.Next() {
 		var task taskProjection
 		if err := rows.Scan(&task.WorkItemID, &task.ForumDBID, &task.ForumDiscordID,
-			&task.Kind, &task.Number, &task.Title, &task.WorkItemState, &task.JobStatus, &task.ClosedAt,
+			&task.Kind, &task.Number, &task.Title, &task.Owner, &task.Repository,
+			&task.WorkItemState, &task.JobStatus, &task.ClosedAt,
 			&task.ThreadID, &task.StarterMessageID, &task.LastState, &task.Archived); err != nil {
 			return err
 		}
@@ -67,11 +71,12 @@ func (d *Daemon) refreshTaskProjections(ctx context.Context, guildID string, rem
 
 func (d *Daemon) projectTask(ctx context.Context, task taskProjection, tags map[string]string) error {
 	state := projectedTaskState(task.WorkItemState, task.JobStatus)
-	content := taskCard(task, state)
+	card := taskCard(task, state)
 	outbox := NewSQLoutbox(d.manager.db)
 	if task.ThreadID == "" {
 		payload := map[string]any{
-			"channelId": task.ForumDiscordID, "threadName": taskThreadName(task), "content": content,
+			"channelId": task.ForumDiscordID, "threadName": taskThreadName(task), "content": "",
+			"embeds": []EmbedPayload{card},
 			"tagIds": taskTagIDs(tags, state), "workItemId": task.WorkItemID,
 			"forumId": task.ForumDBID, "state": state,
 		}
@@ -79,14 +84,14 @@ func (d *Daemon) projectTask(ctx context.Context, task taskProjection, tags map[
 			"channels/"+task.ForumDiscordID+"/threads", payload, "task-post-"+task.WorkItemID)
 	}
 	cardPayload := map[string]any{"channelId": task.ThreadID, "messageId": task.StarterMessageID,
-		"content": content, "workItemId": task.WorkItemID, "state": state}
+		"content": "", "embeds": []EmbedPayload{card}, "workItemId": task.WorkItemID, "state": state}
 	if err := outbox.Enqueue(ctx, "task-card:"+task.WorkItemID, "message.update",
 		"channels/"+task.ThreadID+"/messages/"+task.StarterMessageID, cardPayload, ""); err != nil {
 		return err
 	}
 	if task.LastState != "" && task.LastState != state {
-		logPayload := map[string]any{"channelId": task.ThreadID,
-			"content":    fmt.Sprintf("状态变更：`%s` → `%s`", task.LastState, state),
+		logPayload := map[string]any{"channelId": task.ThreadID, "content": "",
+			"embeds":     []EmbedPayload{taskStateChangeCard(task.LastState, state)},
 			"workItemId": task.WorkItemID, "state": state}
 		if err := outbox.Enqueue(ctx, "task-log:"+task.WorkItemID+":"+state, "message.create",
 			"channels/"+task.ThreadID+"/messages", logPayload, "task-log-"+task.WorkItemID+"-"+state); err != nil {
@@ -130,11 +135,6 @@ func taskTagIDs(tags map[string]string, state string) []string {
 	return nil
 }
 
-func taskCard(task taskProjection, state string) string {
-	return fmt.Sprintf("**%s #%d · %s**\n状态：`%s`\nTyrs Hand 每分钟同步；此 Post 只读。",
-		strings.ReplaceAll(task.Kind, "_", " "), task.Number, task.Title, state)
-}
-
 func taskThreadName(task taskProjection) string {
 	value := fmt.Sprintf("#%d %s", task.Number, task.Title)
 	runes := []rune(value)
@@ -160,27 +160,28 @@ func (d *Daemon) refreshTodoProjections(ctx context.Context, guildID string) err
 		if err := rows.Scan(&userID, &forumID, &resourceID, &messageID); err != nil {
 			return err
 		}
-		content, err := d.todoContent(ctx, guildID, userID)
+		card, err := d.todoCard(ctx, guildID, userID)
 		if err != nil {
 			return err
 		}
 		if err := d.upsertForumProjection(ctx, guildID, "todo:"+userID, forumID,
-			resourceID, messageID, "待我处理", content); err != nil {
+			resourceID, messageID, "待我处理", card); err != nil {
 			return err
 		}
 	}
 	return rows.Err()
 }
 
-func (d *Daemon) todoContent(ctx context.Context, guildID, userID string) (string, error) {
+func (d *Daemon) todoCard(ctx context.Context, guildID, userID string) (EmbedPayload, error) {
 	var login string
 	err := d.manager.db.QueryRowContext(ctx, `SELECT github_login FROM discord_identity_bindings
 		WHERE guild_id = $1 AND discord_user_id = $2 AND status = 'active'`, guildID, userID).Scan(&login)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "**待我处理**\n尚未绑定 GitHub。", nil
+		return EmbedPayload{Title: "🟡 待我处理", Description: "尚未绑定 GitHub，暂时无法关联你的任务。",
+			Color: cardColorYellow, Footer: "使用 /github bind 绑定身份"}, nil
 	}
 	if err != nil {
-		return "", err
+		return EmbedPayload{}, err
 	}
 	rows, err := d.manager.db.QueryContext(ctx, `SELECT DISTINCT r.owner, r.name, w.kind, w.external_number,
 		w.title, j.status FROM job_intents j JOIN work_items w ON w.id = j.work_item_id
@@ -188,30 +189,39 @@ func (d *Daemon) todoContent(ctx context.Context, guildID, userID string) (strin
 		WHERE lower(j.actor_login) = lower($1) AND j.status IN ('blocked', 'failed')
 		ORDER BY r.owner, r.name, w.external_number LIMIT 25`, login)
 	if err != nil {
-		return "", err
+		return EmbedPayload{}, err
 	}
 	defer func() { _ = rows.Close() }()
-	lines := []string{"**待我处理**"}
+	lines := make([]string, 0, 25)
 	for rows.Next() {
 		var owner, repo, kind, title, status string
 		var number int
 		if err := rows.Scan(&owner, &repo, &kind, &number, &title, &status); err != nil {
-			return "", err
+			return EmbedPayload{}, err
 		}
-		lines = append(lines, fmt.Sprintf("- `%s` %s/%s %s #%d · %s", status, owner, repo, kind, number, title))
+		lines = append(lines, fmt.Sprintf("• `%s` **%s/%s** %s #%d · %s", cardText(status, 30),
+			cardText(owner, 100), cardText(repo, 100), cardText(kind, 30), number, cardText(title, 200)))
 	}
-	if len(lines) == 1 {
-		lines = append(lines, "当前没有需要处理的任务。")
+	if err := rows.Err(); err != nil {
+		return EmbedPayload{}, err
 	}
-	return strings.Join(lines, "\n"), rows.Err()
+	if len(lines) == 0 {
+		return EmbedPayload{Title: "✅ 待我处理", Description: "当前没有需要处理的任务。",
+			Color: cardColorGreen, Footer: "每分钟自动更新", Timestamp: time.Now().UTC().Format(time.RFC3339)}, nil
+	}
+	return EmbedPayload{Title: fmt.Sprintf("🟡 待我处理 · %d 项", len(lines)), Description: strings.Join(lines, "\n"),
+		Color: cardColorYellow, Footer: "每分钟自动更新", Timestamp: time.Now().UTC().Format(time.RFC3339)}, nil
 }
 
-func (d *Daemon) upsertForumProjection(ctx context.Context, guildID, key, forumID, resourceID, messageID, title, content string) error {
+func (d *Daemon) upsertForumProjection(ctx context.Context, guildID, key, forumID, resourceID, messageID, title string,
+	card EmbedPayload,
+) error {
+	payload := map[string]any{"content": "", "embeds": []EmbedPayload{card}}
 	_, err := d.manager.db.ExecContext(ctx, `INSERT INTO discord_projections
 		(guild_id, projection_key, resource_id, desired_payload) VALUES ($1, $2, $3, $4)
 		ON CONFLICT(guild_id, projection_key) DO UPDATE SET desired_payload = EXCLUDED.desired_payload,
 			desired_version = discord_projections.desired_version + 1, updated_at = now()`,
-		guildID, key, resourceID, mustJSON(map[string]string{"content": content}))
+		guildID, key, resourceID, mustJSON(payload))
 	if err != nil {
 		return err
 	}
@@ -219,9 +229,9 @@ func (d *Daemon) upsertForumProjection(ctx context.Context, guildID, key, forumI
 	if messageID == "" {
 		return outbox.Enqueue(ctx, "projection:"+key, "forum.post.create",
 			"channels/"+forumID+"/threads", map[string]any{"channelId": forumID,
-				"threadName": title, "content": content}, "projection-"+key)
+				"threadName": title, "content": "", "embeds": []EmbedPayload{card}}, "projection-"+key)
 	}
 	return outbox.Enqueue(ctx, "projection:"+key, "message.update",
 		"channels/"+resourceID+"/messages/"+messageID, map[string]any{
-			"channelId": resourceID, "messageId": messageID, "content": content}, "")
+			"channelId": resourceID, "messageId": messageID, "content": "", "embeds": []EmbedPayload{card}}, "")
 }

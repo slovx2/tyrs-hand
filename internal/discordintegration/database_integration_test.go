@@ -112,12 +112,25 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 	require.NoError(t, daemon.refreshTodoProjections(ctx, testGuildID))
 
 	var taskType, todoType string
+	var taskPayload, todoPayload, statusPayload, alertsPayload []byte
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT operation_type FROM integration_outbox
 		WHERE operation_key = $1`, "task-post:"+seed.workItemID.String()).Scan(&taskType))
 	require.Equal(t, "forum.post.create", taskType)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT payload FROM integration_outbox
+		WHERE operation_key = $1`, "task-post:"+seed.workItemID.String()).Scan(&taskPayload))
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT operation_type FROM integration_outbox
 		WHERE operation_key = 'projection:todo:1001'`).Scan(&todoType))
 	require.Equal(t, "forum.post.create", todoType)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT payload FROM integration_outbox
+		WHERE operation_key = 'projection:todo:1001'`).Scan(&todoPayload))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT payload FROM integration_outbox
+		WHERE operation_key = 'projection:system.status'`).Scan(&statusPayload))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT payload FROM integration_outbox
+		WHERE operation_key = 'projection:system.alerts'`).Scan(&alertsPayload))
+	for _, payload := range [][]byte{taskPayload, todoPayload, statusPayload, alertsPayload} {
+		require.Contains(t, string(payload), `"embeds"`)
+		require.Contains(t, string(payload), `"content": ""`)
+	}
 	require.Equal(t, "Needs Attention", projectedTaskState("open", "blocked"))
 	require.Equal(t, "Completed", projectedTaskState("closed", ""))
 	require.Equal(t, "Running", projectedTaskState("open", "queued"))
@@ -227,6 +240,10 @@ func testGatewayHandlers(t *testing.T, ctx context.Context, db *sql.DB, manager 
 		switch {
 		case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/channels/"):
 			threadID := strings.TrimPrefix(request.URL.Path, "/channels/")
+			if threadID == "2099" {
+				_, _ = response.Write([]byte(fmt.Sprintf(`{"id":%q,"guild_id":%q,"parent_id":"2999","type":0,"name":"general","position":0,"permission_overwrites":[],"rate_limit_per_user":0,"nsfw":false}`, threadID, testGuildID)))
+				return
+			}
 			_, _ = response.Write([]byte(fmt.Sprintf(`{"id":%q,"guild_id":%q,"parent_id":%q,"type":11,"name":"Conversation","owner_id":"1001","message_count":1,"member_count":1,"rate_limit_per_user":0,"thread_metadata":{"archived":false,"auto_archive_duration":10080,"archive_timestamp":"2026-07-18T00:00:00Z","locked":false}}`,
 				threadID, testGuildID, seed.personalForumChannelID)))
 		case request.Method == http.MethodPatch && strings.Contains(request.URL.Path, "/messages/@original"):
@@ -274,6 +291,19 @@ func testGatewayHandlers(t *testing.T, ctx context.Context, db *sql.DB, manager 
 		Scan(&attachmentKind, &attachmentMediaType))
 	require.Equal(t, "file", attachmentKind)
 	require.Equal(t, contentType, attachmentMediaType)
+
+	normalMessage := newMessageEvent(t, client, "2099", "3099", "普通频道消息")
+	connector.onMessage(normalMessage)
+	var normalEventStatus string
+	var normalEventError sql.NullString
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status, error FROM discord_inbound_events
+		WHERE event_id = 'message:3099'`).Scan(&normalEventStatus, &normalEventError))
+	require.Equal(t, "processed", normalEventStatus)
+	require.False(t, normalEventError.Valid)
+	var normalConversationCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_conversations
+		WHERE guild_id = $1 AND thread_id = '2099'`, testGuildID).Scan(&normalConversationCount))
+	require.Zero(t, normalConversationCount)
 
 	blank := newComponentEvent(t, client, "5001", "2001", "conversation-blank:"+conversationID.String(), nil)
 	connector.onComponent(blank)

@@ -118,35 +118,58 @@ func testGatewayPersistence(t *testing.T, ctx context.Context, manager *discordi
 func testOutboxRecovery(t *testing.T, ctx context.Context, db *sql.DB, guildID string, conversationID uuid.UUID) {
 	t.Helper()
 	store := discordintegration.NewSQLoutbox(db)
-	require.NoError(t, discordintegration.ProjectConversationStatus(ctx, db, guildID, "2001", conversationID, "processing"))
+	projectionKey := "conversation:" + conversationID.String() + ":message:3001"
+	require.NoError(t, discordintegration.ProjectConversationStatus(ctx, db, guildID, "2001", conversationID,
+		"3001", discordintegration.ConversationRunning, "processing"))
 	first, err := store.Claim(ctx, 30*time.Second)
 	require.NoError(t, err)
 	require.NotNil(t, first)
 	require.Equal(t, "message.create", first.OperationType)
+	require.Contains(t, string(first.Payload), `"embeds"`)
+	require.Contains(t, string(first.Payload), "处理中")
 
-	require.NoError(t, discordintegration.ProjectConversationStatus(ctx, db, guildID, "2001", conversationID, "completed"))
+	require.NoError(t, discordintegration.ProjectConversationStatus(ctx, db, guildID, "2001", conversationID,
+		"3001", discordintegration.ConversationCompleted, "completed"))
 	response := json.RawMessage(`{"messageId":"5001"}`)
 	require.NoError(t, store.Complete(ctx, *first, response))
 	var status string
 	var applied, desired int64
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT o.status, p.applied_version, p.desired_version
-		FROM integration_outbox o JOIN discord_projections p ON p.projection_key = 'conversation:' || $1
-		WHERE o.operation_key = 'projection:conversation:' || $1`, conversationID.String()).Scan(&status, &applied, &desired))
+		FROM integration_outbox o JOIN discord_projections p ON p.projection_key = $1
+		WHERE o.operation_key = 'projection:' || $1`, projectionKey).Scan(&status, &applied, &desired))
 	require.Equal(t, "pending", status)
 	require.Zero(t, applied)
 	require.Greater(t, desired, applied)
 
 	_, err = db.ExecContext(ctx, `UPDATE integration_outbox SET available_at = now()
-		WHERE operation_key = 'projection:conversation:' || $1`, conversationID.String())
+		WHERE operation_key = 'projection:' || $1`, projectionKey)
 	require.NoError(t, err)
 	latest, err := store.Claim(ctx, 30*time.Second)
 	require.NoError(t, err)
 	require.NotNil(t, latest)
 	require.Equal(t, "message.update", latest.OperationType)
+	require.Contains(t, string(latest.Payload), "已完成")
 	require.NoError(t, store.Complete(ctx, *latest, nil))
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT applied_version, desired_version
-		FROM discord_projections WHERE projection_key = 'conversation:' || $1`, conversationID.String()).Scan(&applied, &desired))
+		FROM discord_projections WHERE projection_key = $1`, projectionKey).Scan(&applied, &desired))
 	require.Equal(t, desired, applied)
+
+	require.NoError(t, discordintegration.ProjectConversationStatus(ctx, db, guildID, "2001", conversationID,
+		"3002", discordintegration.ConversationRunning, "next turn"))
+	nextTurn, err := store.Claim(ctx, 30*time.Second)
+	require.NoError(t, err)
+	require.NotNil(t, nextTurn)
+	require.Equal(t, "message.create", nextTurn.OperationType)
+	require.NotEqual(t, first.OperationKey, nextTurn.OperationKey)
+	require.NoError(t, store.Complete(ctx, *nextTurn, json.RawMessage(`{"messageId":"5002"}`)))
+
+	require.NoError(t, discordintegration.ProjectConversationReply(ctx, db, "2001", conversationID, "3002", "final reply"))
+	reply, err := store.Claim(ctx, 30*time.Second)
+	require.NoError(t, err)
+	require.NotNil(t, reply)
+	require.Equal(t, "message.create", reply.OperationType)
+	require.JSONEq(t, `{"channelId":"2001","content":"final reply","embeds":[]}`, string(reply.Payload))
+	require.NoError(t, store.Complete(ctx, *reply, json.RawMessage(`{"messageId":"5003"}`)))
 
 	require.NoError(t, store.Enqueue(ctx, "crash-recovery", "message.create", "channels/2001/messages",
 		map[string]string{"channelId": "2001", "content": "recover"}, "crash-nonce"))

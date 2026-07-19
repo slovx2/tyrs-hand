@@ -27,9 +27,11 @@ func SanitizeDiscordResult(value string) string {
 	return value
 }
 
-func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadID string, conversationID uuid.UUID, content string) error {
-	content = SanitizeDiscordResult(content)
-	key := "conversation:" + conversationID.String()
+func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadID string,
+	conversationID uuid.UUID, inputMessageID string, state ConversationProgress, detail string,
+) error {
+	card := conversationProgressCard(state, detail)
+	key := "conversation:" + conversationID.String() + ":message:" + inputMessageID
 	var resourceID, messageID string
 	err := db.QueryRowContext(ctx, `INSERT INTO discord_projections
 		(guild_id, projection_key, resource_id, desired_payload)
@@ -38,13 +40,13 @@ func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadI
 			resource_id = EXCLUDED.resource_id, desired_payload = EXCLUDED.desired_payload,
 			desired_version = discord_projections.desired_version + 1, updated_at = now()
 		RETURNING resource_id, COALESCE(message_id, '')`, guildID, key, threadID,
-		mustJSON(map[string]string{"content": content})).Scan(&resourceID, &messageID)
+		mustJSON(map[string]any{"content": "", "embeds": []EmbedPayload{card}})).Scan(&resourceID, &messageID)
 	if err != nil {
 		return err
 	}
 	operationType := "message.create"
-	payload := map[string]string{"channelId": resourceID, "content": content}
-	nonce := "conversation-status-" + conversationID.String()
+	payload := map[string]any{"channelId": resourceID, "content": "", "embeds": []EmbedPayload{card}}
+	nonce := "conversation-status-" + conversationID.String() + "-" + inputMessageID
 	if messageID != "" {
 		operationType = "message.update"
 		payload["messageId"] = messageID
@@ -52,4 +54,16 @@ func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadI
 	}
 	return NewSQLoutbox(db).Enqueue(ctx, "projection:"+key, operationType,
 		"channels/"+resourceID+"/messages", payload, nonce)
+}
+
+func ProjectConversationReply(ctx context.Context, db *sql.DB, threadID string,
+	conversationID uuid.UUID, inputMessageID, content string,
+) error {
+	content = SanitizeDiscordResult(content)
+	if content == "" {
+		content = "本轮已完成。"
+	}
+	key := "conversation-reply:" + conversationID.String() + ":message:" + inputMessageID
+	return NewSQLoutbox(db).Enqueue(ctx, key, "message.create", "channels/"+threadID+"/messages",
+		map[string]any{"channelId": threadID, "content": content, "embeds": []EmbedPayload{}}, key)
 }

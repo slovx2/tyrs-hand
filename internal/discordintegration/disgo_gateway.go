@@ -147,9 +147,19 @@ func (c *DisgoConnector) handleMessage(ctx context.Context, event *events.Messag
 	}
 	guildChannel, ok := channel.(discord.GuildChannel)
 	if !ok || guildChannel.ParentID() == nil {
-		return errors.New("新 Discord Conversation 不在 Forum Post 中")
+		return nil
 	}
 	input.ForumID = guildChannel.ParentID().String()
+	var personalForum bool
+	if err := c.manager.db.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM discord_forums f JOIN discord_resources r ON r.id = f.resource_id
+		WHERE f.guild_id = $1 AND f.forum_type = 'personal' AND r.discord_id = $2
+	)`, c.guildID, input.ForumID).Scan(&personalForum); err != nil {
+		return err
+	}
+	if !personalForum {
+		return nil
+	}
 	input.Title = channel.Name()
 	conversationID, err := c.conversations.BeginPost(ctx, input)
 	if err != nil {
@@ -158,7 +168,8 @@ func (c *DisgoConnector) handleMessage(ctx context.Context, event *events.Messag
 	return NewSQLoutbox(c.manager.db).Enqueue(ctx, "conversation:workspace:"+conversationID.String(),
 		"message.create", "channels/"+input.ThreadID+"/messages", map[string]any{
 			"channelId": input.ThreadID,
-			"content":   "选择此会话使用的工作区。",
+			"content":   "",
+			"embeds":    []EmbedPayload{workspaceSelectionCard()},
 			"buttons": []map[string]string{
 				{"label": "空白工作区", "customId": "conversation-blank:" + conversationID.String(), "style": "primary"},
 				{"label": "选择仓库", "customId": "conversation-repository:" + conversationID.String(), "style": "secondary"},
@@ -271,13 +282,15 @@ func (c *DisgoConnector) activateBlank(event *events.ComponentInteractionCreate,
 	if err == nil {
 		err = c.conversations.Activate(context.Background(), conversationID, profileID, nil, event.User().ID.String())
 	}
-	content := "已选择空白工作区，首条消息进入队列。"
+	content := ""
+	card := workspaceReadyCard(false)
 	if err != nil {
-		content = err.Error()
+		card = conversationProgressCard(ConversationFailed, "工作区初始化失败，请稍后重试或联系管理员。")
 	}
 	empty := []discord.LayoutComponent{}
+	embeds, _ := discordEmbeds([]EmbedPayload{card})
 	_, _ = event.Client().Rest.UpdateInteractionResponse(event.ApplicationID(), event.Token(),
-		discord.MessageUpdate{Content: &content, Components: &empty})
+		discord.MessageUpdate{Content: &content, Embeds: &embeds, Components: &empty})
 }
 
 func (c *DisgoConnector) showRepositorySelect(event *events.ComponentInteractionCreate, rawConversationID string) {
@@ -301,19 +314,23 @@ func (c *DisgoConnector) showRepositorySelect(event *events.ComponentInteraction
 		}
 		_ = rows.Close()
 	}
-	content := "选择一个有权访问的仓库。"
+	content := ""
+	card := EmbedPayload{Title: "📁 Codex · 选择仓库", Color: cardColorBlurple,
+		Description: "请选择一个已同步且你拥有读取权限的仓库。"}
 	var components []discord.LayoutComponent
 	if err == nil && len(options) > 0 {
 		menu := discord.NewStringSelectMenu("conversation-repository-select:"+rawConversationID, "仓库", options...)
 		components = []discord.LayoutComponent{discord.NewActionRow(menu)}
 	} else if err == nil {
-		content = "当前没有已同步且具备读取权限的仓库。"
+		card = EmbedPayload{Title: "📁 Codex · 暂无可用仓库", Color: cardColorYellow,
+			Description: "当前没有已同步且你拥有读取权限的仓库。"}
 	}
 	if err != nil {
-		content = err.Error()
+		card = conversationProgressCard(ConversationFailed, "读取仓库列表失败，请稍后重试或联系管理员。")
 	}
+	embeds, _ := discordEmbeds([]EmbedPayload{card})
 	_, _ = event.Client().Rest.UpdateInteractionResponse(event.ApplicationID(), event.Token(),
-		discord.MessageUpdate{Content: &content, Components: &components})
+		discord.MessageUpdate{Content: &content, Embeds: &embeds, Components: &components})
 }
 
 func (c *DisgoConnector) activateRepository(event *events.ComponentInteractionCreate, rawConversationID string) {
@@ -335,13 +352,15 @@ func (c *DisgoConnector) activateRepository(event *events.ComponentInteractionCr
 	if err == nil {
 		err = c.conversations.Activate(context.Background(), conversationID, profileID, &repositoryID, event.User().ID.String())
 	}
-	content := "已选择仓库工作区，首条消息进入队列。"
+	content := ""
+	card := workspaceReadyCard(true)
 	if err != nil {
-		content = err.Error()
+		card = conversationProgressCard(ConversationFailed, "工作区初始化失败，请稍后重试或联系管理员。")
 	}
 	empty := []discord.LayoutComponent{}
+	embeds, _ := discordEmbeds([]EmbedPayload{card})
 	_, _ = event.Client().Rest.UpdateInteractionResponse(event.ApplicationID(), event.Token(),
-		discord.MessageUpdate{Content: &content, Components: &empty})
+		discord.MessageUpdate{Content: &content, Embeds: &embeds, Components: &empty})
 }
 
 func (c *DisgoConnector) registerCommands(ctx context.Context, client *bot.Client) error {

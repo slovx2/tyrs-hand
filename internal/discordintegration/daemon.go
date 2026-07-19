@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -203,19 +202,21 @@ func (d *Daemon) refreshSystemStatus(ctx context.Context, guildID string) error 
 		return err
 	}
 	var queued, running, blocked, failed, workers, outbox int64
+	var gatewayStatus string
 	err = d.manager.db.QueryRowContext(ctx, `SELECT
 		(SELECT count(*) FROM job_intents WHERE status = 'queued'),
 		(SELECT count(*) FROM job_intents WHERE status = 'running'),
 		(SELECT count(*) FROM job_intents WHERE status = 'blocked'),
 		(SELECT count(*) FROM job_intents WHERE status = 'failed'),
 		(SELECT count(*) FROM worker_nodes WHERE status = 'online' AND heartbeat_at > now() - interval '2 minutes'),
-		(SELECT count(*) FROM integration_outbox WHERE integration = 'discord' AND status IN ('pending','retrying','sending'))`).
-		Scan(&queued, &running, &blocked, &failed, &workers, &outbox)
+		(SELECT count(*) FROM integration_outbox WHERE integration = 'discord' AND status IN ('pending','retrying','sending')),
+		COALESCE((SELECT last_gateway_status FROM discord_guilds WHERE guild_id = $1), 'unknown')`, guildID).
+		Scan(&queued, &running, &blocked, &failed, &workers, &outbox, &gatewayStatus)
 	if err != nil {
 		return err
 	}
-	status := fmt.Sprintf("**Tyrs Hand 系统状态**\n队列 %d · 运行 %d · 阻塞 %d · 失败 %d\nWorker %d · Gateway connected · Outbox %d\n更新时间：<t:%d:R>",
-		queued, running, blocked, failed, workers, outbox, time.Now().Unix())
+	card := systemStatusCard(queued, running, blocked, failed, workers, outbox, gatewayStatus)
+	projectionPayload := map[string]any{"content": "", "embeds": []EmbedPayload{card}}
 	var messageID string
 	err = d.manager.db.QueryRowContext(ctx, `INSERT INTO discord_projections
 		(guild_id, projection_key, resource_id, desired_payload)
@@ -223,12 +224,12 @@ func (d *Daemon) refreshSystemStatus(ctx context.Context, guildID string) error 
 		ON CONFLICT(guild_id, projection_key) DO UPDATE SET desired_payload = EXCLUDED.desired_payload,
 			desired_version = discord_projections.desired_version + 1, updated_at = now()
 		RETURNING COALESCE(message_id, '')`, guildID, channelID,
-		mustJSON(map[string]string{"content": status})).Scan(&messageID)
+		mustJSON(projectionPayload)).Scan(&messageID)
 	if err != nil {
 		return err
 	}
 	operationType := "message.create"
-	payload := map[string]string{"channelId": channelID, "content": status}
+	payload := map[string]any{"channelId": channelID, "content": "", "embeds": []EmbedPayload{card}}
 	if messageID != "" {
 		operationType = "message.update"
 		payload["messageId"] = messageID
@@ -256,23 +257,8 @@ func (d *Daemon) refreshSystemAlerts(ctx context.Context, guildID string) error 
 	if err != nil {
 		return err
 	}
-	lines := []string{"**Tyrs Hand 系统告警**"}
-	if gatewayStatus != "connected" && gatewayStatus != "resumed" {
-		lines = append(lines, "- Gateway: `"+gatewayStatus+"`")
-	}
-	if gatewayError != "" {
-		lines = append(lines, "- Gateway 最近错误已记录，请在后台查看脱敏详情。")
-	}
-	if workers == 0 {
-		lines = append(lines, "- 没有在线 Worker。")
-	}
-	if failedOutbox > 0 {
-		lines = append(lines, fmt.Sprintf("- Discord Outbox 有 %d 条失败投递。", failedOutbox))
-	}
-	if len(lines) == 1 {
-		lines = append(lines, "当前没有基础设施告警。")
-	}
-	content := strings.Join(lines, "\n")
+	card := systemAlertsCard(gatewayStatus, gatewayError != "", workers, failedOutbox)
+	projectionPayload := map[string]any{"content": "", "embeds": []EmbedPayload{card}}
 	var messageID string
 	err = d.manager.db.QueryRowContext(ctx, `INSERT INTO discord_projections
 		(guild_id, projection_key, resource_id, desired_payload)
@@ -280,12 +266,12 @@ func (d *Daemon) refreshSystemAlerts(ctx context.Context, guildID string) error 
 		ON CONFLICT(guild_id, projection_key) DO UPDATE SET desired_payload = EXCLUDED.desired_payload,
 			desired_version = discord_projections.desired_version + 1, updated_at = now()
 		RETURNING COALESCE(message_id, '')`, guildID, channelID,
-		mustJSON(map[string]string{"content": content})).Scan(&messageID)
+		mustJSON(projectionPayload)).Scan(&messageID)
 	if err != nil {
 		return err
 	}
 	operationType := "message.create"
-	payload := map[string]string{"channelId": channelID, "content": content}
+	payload := map[string]any{"channelId": channelID, "content": "", "embeds": []EmbedPayload{card}}
 	if messageID != "" {
 		operationType = "message.update"
 		payload["messageId"] = messageID

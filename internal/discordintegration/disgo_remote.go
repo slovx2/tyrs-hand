@@ -3,11 +3,13 @@ package discordintegration
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/disgoorg/disgo/discord"
 	disgorest "github.com/disgoorg/disgo/rest"
@@ -197,6 +199,7 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 		ThreadName       string           `json:"threadName"`
 		TagIDs           []string         `json:"tagIds"`
 		Archived         bool             `json:"archived"`
+		Embeds           *[]EmbedPayload  `json:"embeds"`
 		Buttons          []struct {
 			Label    string `json:"label"`
 			CustomID string `json:"customId"`
@@ -214,6 +217,13 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 		}
 		create := discord.MessageCreate{
 			Content: payload.Content, Nonce: item.Nonce, EnforceNonce: item.Nonce != "",
+		}
+		if payload.Embeds != nil {
+			embeds, embedErr := discordEmbeds(*payload.Embeds)
+			if embedErr != nil {
+				return nil, embedErr
+			}
+			create.Embeds = embeds
 		}
 		if len(payload.Buttons) > 0 {
 			buttons := make([]discord.InteractiveComponent, 0, len(payload.Buttons))
@@ -236,7 +246,15 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 		if err != nil {
 			return nil, err
 		}
-		_, err = r.rest.UpdateMessage(channel, message, discord.MessageUpdate{Content: &payload.Content}, disgorest.WithCtx(ctx))
+		update := discord.MessageUpdate{Content: &payload.Content}
+		if payload.Embeds != nil {
+			embeds, embedErr := discordEmbeds(*payload.Embeds)
+			if embedErr != nil {
+				return nil, embedErr
+			}
+			update.Embeds = &embeds
+		}
+		_, err = r.rest.UpdateMessage(channel, message, update, disgorest.WithCtx(ctx))
 		return nil, err
 	case "interaction.defer":
 		interaction, err := snowflake.Parse(payload.InteractionID)
@@ -273,9 +291,16 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 			}
 			tags = append(tags, id)
 		}
+		embeds := []discord.Embed(nil)
+		if payload.Embeds != nil {
+			embeds, err = discordEmbeds(*payload.Embeds)
+			if err != nil {
+				return nil, err
+			}
+		}
 		post, err := r.rest.CreatePostInThreadChannel(forum, discord.ThreadChannelPostCreate{
 			Name: payload.ThreadName, AutoArchiveDuration: discord.AutoArchiveDuration1w,
-			AppliedTags: tags, Message: discord.MessageCreate{Content: payload.Content,
+			AppliedTags: tags, Message: discord.MessageCreate{Content: payload.Content, Embeds: embeds,
 				Nonce: item.Nonce, EnforceNonce: item.Nonce != ""},
 		}, disgorest.WithCtx(ctx))
 		if err != nil {
@@ -310,6 +335,52 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 }
 
 func (r *DisgoRemote) Close(ctx context.Context) { r.rest.Close(ctx) }
+
+func discordEmbeds(values []EmbedPayload) ([]discord.Embed, error) {
+	if len(values) > 10 {
+		return nil, errors.New("discord 消息最多包含 10 个 Embed")
+	}
+	result := make([]discord.Embed, 0, len(values))
+	globalTotal := 0
+	for _, value := range values {
+		if value.Color < 0 || value.Color > 0xFFFFFF {
+			return nil, errors.New("discord Embed 颜色超出范围")
+		}
+		if utf8.RuneCountInString(value.Title) > 256 || utf8.RuneCountInString(value.Description) > 4096 ||
+			utf8.RuneCountInString(value.Footer) > 2048 || len(value.Fields) > 25 {
+			return nil, errors.New("discord Embed 内容超出长度限制")
+		}
+		total := utf8.RuneCountInString(value.Title) + utf8.RuneCountInString(value.Description) + utf8.RuneCountInString(value.Footer)
+		if total == 0 && len(value.Fields) == 0 {
+			return nil, errors.New("discord Embed 不能为空")
+		}
+		embed := discord.Embed{Title: value.Title, Description: value.Description, Color: value.Color}
+		if value.Footer != "" {
+			embed.Footer = &discord.EmbedFooter{Text: value.Footer}
+		}
+		if value.Timestamp != "" {
+			parsed, err := time.Parse(time.RFC3339, value.Timestamp)
+			if err != nil {
+				return nil, errors.New("discord Embed 时间格式无效")
+			}
+			embed.Timestamp = &parsed
+		}
+		for _, field := range value.Fields {
+			if field.Name == "" || field.Value == "" || utf8.RuneCountInString(field.Name) > 256 || utf8.RuneCountInString(field.Value) > 1024 {
+				return nil, errors.New("discord Embed Field 内容无效")
+			}
+			total += utf8.RuneCountInString(field.Name) + utf8.RuneCountInString(field.Value)
+			inline := field.Inline
+			embed.Fields = append(embed.Fields, discord.EmbedField{Name: field.Name, Value: field.Value, Inline: &inline})
+		}
+		globalTotal += total
+		if globalTotal > 6000 {
+			return nil, errors.New("discord Embed 总长度超出限制")
+		}
+		result = append(result, embed)
+	}
+	return result, nil
+}
 
 func optionalSnowflake(value string) (snowflake.ID, error) {
 	if value == "" {
