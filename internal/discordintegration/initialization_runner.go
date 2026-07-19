@@ -101,6 +101,13 @@ func (m *Manager) executeInitializationAction(ctx context.Context, guildID strin
 		}
 		_, dbErr := m.db.ExecContext(ctx, "DELETE FROM discord_resources WHERE guild_id = $1 AND discord_id = $2", guildID, action.ResourceID)
 		return nil, dbErr
+	case "projection.reset":
+		result, err := m.db.ExecContext(ctx, "DELETE FROM discord_projections WHERE guild_id = $1", guildID)
+		if err != nil {
+			return nil, err
+		}
+		deleted, err := result.RowsAffected()
+		return map[string]any{"deleted": deleted}, err
 	case "channel.create":
 		return m.createManagedChannel(ctx, guildID, action.Spec, remote)
 	case "channel.update":

@@ -66,6 +66,10 @@ func TestDiscordPersistencePermissionsAndRecovery(t *testing.T) {
 	stopped, err := service.Stop(ctx, seed.guildID, first.ThreadID, "1003")
 	require.NoError(t, err)
 	require.EqualValues(t, 2, stopped)
+	var canceledMessages int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_input_messages
+		WHERE conversation_id = $1 AND status = 'canceled'`, conversationID).Scan(&canceledMessages))
+	require.Equal(t, 2, canceledMessages)
 
 	bindings := discordintegration.NewSQLBindingStore(db)
 	require.NoError(t, bindings.Unbind(ctx, seed.guildID, "1003"))

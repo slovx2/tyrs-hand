@@ -109,5 +109,13 @@ func (s *ConversationService) Stop(ctx context.Context, guildID, threadID, reque
 	if err != nil {
 		return 0, err
 	}
+	_, err = tx.ExecContext(ctx, `UPDATE discord_input_messages m SET status = 'canceled', processed_at = now()
+		WHERE m.conversation_id = $1 AND m.status = 'received' AND EXISTS (
+			SELECT 1 FROM job_intents j WHERE j.discord_message_id = m.message_id
+				AND j.status = 'canceled' AND j.last_error = 'stopped from Discord'
+		)`, conversationID)
+	if err != nil {
+		return 0, err
+	}
 	return count, tx.Commit()
 }

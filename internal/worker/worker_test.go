@@ -15,6 +15,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
+	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/domain"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/queue"
@@ -207,6 +208,31 @@ func TestDiscordContributorPersistsBeforeFailedSteer(t *testing.T) {
 	err = (&Processor{db: db}).contributeAndSteerDiscord(context.Background(), failingSteerer{err: steerErr},
 		conversationID, "thread-1", "turn-1", "message-2", ports.TurnInput{Text: "more"})
 	require.ErrorIs(t, err, steerErr)
+}
+
+func TestDiscordStopUsesCanceledProjection(t *testing.T) {
+	state, detail := discordFailureProjection(context.Background(), nil, uuid.Nil, errDiscordTurnStopped)
+	require.Equal(t, discordintegration.ConversationCanceled, state)
+	require.Contains(t, detail, "主动停止")
+
+	state, detail = discordFailureProjection(context.Background(), nil, uuid.Nil, errors.New("runtime failed"))
+	require.Equal(t, discordintegration.ConversationFailed, state)
+	require.Contains(t, detail, "后台已记录")
+}
+
+func TestDiscordStopSurvivesHeartbeatCancellationRace(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+	jobID := uuid.New()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT status, COALESCE(last_error, '') FROM job_intents WHERE id = $1")).
+		WithArgs(jobID).
+		WillReturnRows(sqlmock.NewRows([]string{"status", "last_error"}).AddRow("canceled", "stopped from Discord"))
+	require.True(t, discordStopRequested(context.Background(), db, jobID, context.Canceled))
+	mock.ExpectClose()
 }
 
 type fakeWorkspace struct {

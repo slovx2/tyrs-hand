@@ -36,6 +36,7 @@ const (
 	ConversationRunning   ConversationProgress = "running"
 	ConversationCompleted ConversationProgress = "completed"
 	ConversationBlocked   ConversationProgress = "blocked"
+	ConversationCanceled  ConversationProgress = "canceled"
 	ConversationFailed    ConversationProgress = "failed"
 )
 
@@ -48,6 +49,9 @@ func conversationProgressCard(state ConversationProgress, detail string) EmbedPa
 	case ConversationBlocked:
 		return EmbedPayload{Title: "⚠️ Codex · 需要处理", Description: detail, Color: cardColorYellow,
 			Footer: "处理说明见下一条消息"}
+	case ConversationCanceled:
+		return EmbedPayload{Title: "⏹️ Codex · 已停止", Description: detail, Color: cardColorGray,
+			Footer: "本轮不会再发送回复"}
 	case ConversationFailed:
 		return EmbedPayload{Title: "❌ Codex · 处理失败", Description: detail, Color: cardColorRed,
 			Footer: "后台已记录错误，可稍后重试"}

@@ -423,6 +423,11 @@ func managedTopic(topic, marker string) string {
 	if marker == "" {
 		return topic
 	}
+	for line := range strings.SplitSeq(topic, "\n") {
+		if strings.TrimSpace(line) == marker {
+			return topic
+		}
+	}
 	if topic != "" {
 		return topic + "\n" + marker
 	}

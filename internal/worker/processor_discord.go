@@ -51,9 +51,10 @@ func (p *Processor) processDiscordConversation(ctx context.Context, claimed *que
 		if processErr != nil && !finalProjected {
 			projectCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
+			state, detail := discordFailureProjection(projectCtx, p.db, claimed.ID, processErr)
 			if projectErr := discordintegration.ProjectConversationStatus(projectCtx, p.db, jobCtx.GuildID,
 				jobCtx.ThreadID, jobCtx.ConversationID, jobCtx.MessageID,
-				discordintegration.ConversationFailed, "后台已记录错误，可稍后重试或联系管理员。"); projectErr != nil {
+				state, detail); projectErr != nil {
 				p.logger.Warn("投影 Discord Conversation 失败状态失败", zap.Error(projectErr))
 			}
 		}
@@ -167,6 +168,15 @@ func (p *Processor) processDiscordConversation(ctx context.Context, claimed *que
 	p.projectDiscordReply(ctx, jobCtx, outcome.Summary)
 	finalProjected = true
 	return nil
+}
+
+func discordFailureProjection(ctx context.Context, db *sql.DB, jobID uuid.UUID,
+	cause error,
+) (discordintegration.ConversationProgress, string) {
+	if discordStopRequested(ctx, db, jobID, cause) {
+		return discordintegration.ConversationCanceled, "本轮已由 Discord 用户主动停止。"
+	}
+	return discordintegration.ConversationFailed, "后台已记录错误，可稍后重试或联系管理员。"
 }
 
 func (p *Processor) projectDiscordConversation(ctx context.Context, jobCtx discordJobContext,

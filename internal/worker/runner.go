@@ -93,6 +93,9 @@ func (r *Runner) execute(parent context.Context, claimed *queue.ClaimedJob) {
 		} else {
 			r.publish(finishCtx, "job.succeeded", claimed.ID.String())
 		}
+	} else if discordStopRequested(finishCtx, r.db, claimed.ID, err) {
+		r.logger.Info("Discord 任务已由用户停止", zap.String("job_id", claimed.ID.String()))
+		r.publish(finishCtx, "job.canceled", claimed.ID.String())
 	} else if errors.As(err, &blocked) {
 		if blockErr := r.queue.Block(finishCtx, claimed.ID, claimed.LeaseToken, claimed.LeaseEpoch, blocked); blockErr != nil {
 			r.logger.Error("记录任务阻塞状态失败", zap.Error(blockErr), zap.String("job_id", claimed.ID.String()))

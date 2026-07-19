@@ -2,6 +2,7 @@ package discordintegration
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -70,6 +71,7 @@ func TestFreshInitializationOrderAndConfirmation(t *testing.T) {
 	require.Equal(t, "community.disable", plan.Actions[0].Kind)
 	require.Equal(t, "2", plan.Actions[1].ResourceID)
 	require.Equal(t, "1", plan.Actions[2].ResourceID)
+	require.Equal(t, "projection.reset", plan.Actions[3].Kind)
 	require.Equal(t, "community.enable", plan.Actions[len(plan.Actions)-1].Kind)
 	require.NoError(t, ValidateFreshConfirmation("123", "DELETE ALL CHANNELS 123"))
 	require.Error(t, ValidateFreshConfirmation("123", "delete all channels 123"))
@@ -86,4 +88,45 @@ func TestManagedResourceTypeMismatchIsConflict(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, plan.Preflight.Safe)
 	require.Contains(t, plan.Preflight.Conflicts[0].Reason, "预期为 category")
+}
+
+func TestManagedTopicIsIdempotent(t *testing.T) {
+	marker := managedMarker("system.status")
+	once := managedTopic("每分钟更新", marker)
+	require.Equal(t, once, managedTopic(once, marker))
+	require.Equal(t, marker, managedTopic(marker, marker))
+}
+
+func TestIncrementalPreflightImmediatelyAfterFreshHasNoChanges(t *testing.T) {
+	desired := BaseChannelSpecs()
+	ids := make(map[string]string, len(desired))
+	for index, spec := range orderedSpecs(desired) {
+		ids[spec.Key] = fmt.Sprintf("1000000000000000%d", index+1)
+	}
+
+	guild := RemoteGuild{ID: "123", CommunityEnabled: true}
+	managed := make([]ManagedResource, 0, len(desired))
+	for _, spec := range orderedSpecs(desired) {
+		parentID := ids[spec.ParentKey]
+		topic := spec.Topic
+		if spec.Kind != "category" {
+			topic = managedTopic(topic, managedMarker(spec.Key))
+		}
+		guild.Channels = append(guild.Channels, RemoteChannel{
+			ID: ids[spec.Key], ParentID: parentID, Name: spec.Name, Kind: spec.Kind, Topic: topic,
+		})
+		managed = append(managed, ManagedResource{
+			Key: spec.Key, DiscordID: ids[spec.Key], ParentID: parentID,
+			Name: spec.Name, Kind: spec.Kind, Marker: managedMarker(spec.Key),
+		})
+	}
+
+	plan, err := BuildInitializationPlan(InitializationIncremental, guild, managed, desired)
+	require.NoError(t, err)
+	require.True(t, plan.Preflight.Safe)
+	require.Empty(t, plan.Preflight.Creates)
+	require.Empty(t, plan.Preflight.Updates)
+	require.Empty(t, plan.Preflight.Deletes)
+	require.Empty(t, plan.Preflight.Conflicts)
+	require.Empty(t, plan.Actions)
 }

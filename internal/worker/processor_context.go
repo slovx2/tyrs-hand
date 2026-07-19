@@ -20,6 +20,21 @@ import (
 	"go.uber.org/zap"
 )
 
+var errDiscordTurnStopped = errors.New("当前 Discord Codex Turn 已被停止")
+
+func discordStopRequested(ctx context.Context, db *sql.DB, jobID uuid.UUID, cause error) bool {
+	if errors.Is(cause, errDiscordTurnStopped) {
+		return true
+	}
+	if db == nil {
+		return false
+	}
+	var status, lastError string
+	err := db.QueryRowContext(ctx, `SELECT status, COALESCE(last_error, '') FROM job_intents WHERE id = $1`, jobID).
+		Scan(&status, &lastError)
+	return err == nil && status == "canceled" && lastError == "stopped from Discord"
+}
+
 func (p *Processor) loadContext(ctx context.Context, job domain.Job) (jobContext, error) {
 	var result jobContext
 	err := p.db.QueryRowContext(ctx, `
@@ -186,7 +201,7 @@ func (p *Processor) waitTurn(ctx context.Context, runtime *codex.Runtime, events
 						return err
 					}
 					if status == "canceled" {
-						return errors.New("当前 Discord Codex Turn 已被停止")
+						return errDiscordTurnStopped
 					}
 				}
 				var steerErr error

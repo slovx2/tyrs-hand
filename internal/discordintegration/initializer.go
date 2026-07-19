@@ -63,6 +63,7 @@ func BuildInitializationPlan(mode string, guild RemoteGuild, managed []ManagedRe
 			result.Preflight.Deletes = append(result.Preflight.Deletes, channel.Name)
 			result.Actions = append(result.Actions, InitializationAction{Kind: "channel.delete", ResourceID: channel.ID})
 		}
+		result.Actions = append(result.Actions, InitializationAction{Kind: "projection.reset"})
 		appendCreates(&result, desired)
 		result.Actions = append(result.Actions, InitializationAction{Kind: "community.enable"})
 		return result, nil

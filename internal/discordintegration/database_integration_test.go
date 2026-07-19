@@ -320,6 +320,10 @@ func testGatewayHandlers(t *testing.T, ctx context.Context, db *sql.DB, manager 
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM job_intents
 		WHERE discord_conversation_id = $1`, conversationID).Scan(&jobStatus))
 	require.Equal(t, "canceled", jobStatus)
+	var inputStatus string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM discord_input_messages
+		WHERE conversation_id = $1`, conversationID).Scan(&inputStatus))
+	require.Equal(t, "canceled", inputStatus)
 
 	messageEvent = newMessageEvent(t, client, "2002", "3002", "repository message")
 	connector.onMessage(messageEvent)
@@ -496,6 +500,17 @@ func testDiscordRecoveryOrchestration(t *testing.T, ctx context.Context, db *sql
 	require.Zero(t, repositoryPermissionRank("none"))
 
 	actionRemote := &initializationActionRemote{}
+	var projectionCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_projections WHERE guild_id = $1`, testGuildID).
+		Scan(&projectionCount))
+	require.Positive(t, projectionCount)
+	resetResult, err := manager.executeInitializationAction(ctx, testGuildID,
+		InitializationAction{Kind: "projection.reset"}, actionRemote)
+	require.NoError(t, err)
+	require.EqualValues(t, projectionCount, resetResult["deleted"])
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_projections WHERE guild_id = $1`, testGuildID).
+		Scan(&projectionCount))
+	require.Zero(t, projectionCount)
 	rulesID := "100000000000000041"
 	updatesID := "100000000000000042"
 	insertDiscordResource(t, db, "system.rules", rulesID, "text", "规则", "")
@@ -540,7 +555,13 @@ func testDiscordRecoveryOrchestration(t *testing.T, ctx context.Context, db *sql
 		}}},
 	}, "")
 	require.NoError(t, err)
+	paused, err := daemon.projectionsPaused(ctx, testGuildID)
+	require.NoError(t, err)
+	require.True(t, paused)
 	require.NoError(t, daemon.resumeInitialization(ctx, testGuildID, actionRemote))
+	paused, err = daemon.projectionsPaused(ctx, testGuildID)
+	require.NoError(t, err)
+	require.False(t, paused)
 	resolved, err := manager.resolveChannelSpec(ctx, testGuildID, ChannelSpec{
 		Key: "child", ParentKey: "category.codex.01", Name: "child", Kind: "text",
 	})
@@ -576,6 +597,9 @@ func testDiscordRecoveryOrchestration(t *testing.T, ctx context.Context, db *sql
 		WHERE o.id = $1`, exhaustedID).Scan(&exhaustedStatus, &exhaustedAttempts))
 	require.Equal(t, "failed", exhaustedStatus)
 	require.Equal(t, initializationMaxAttempts, exhaustedAttempts)
+	paused, err = daemon.projectionsPaused(ctx, testGuildID)
+	require.NoError(t, err)
+	require.False(t, paused)
 
 	registerServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		require.Equal(t, http.MethodPut, request.Method)

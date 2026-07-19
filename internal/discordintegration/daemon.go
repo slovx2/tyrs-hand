@@ -158,6 +158,14 @@ func (d *Daemon) runBackground(ctx context.Context, guildID string, remote Remot
 }
 
 func (d *Daemon) refreshAllProjections(ctx context.Context, guildID string, remote Remote) {
+	paused, err := d.projectionsPaused(ctx, guildID)
+	if err != nil {
+		d.logger.Warn("检查 Discord 初始化状态失败", zap.Error(err))
+		return
+	}
+	if paused {
+		return
+	}
 	refreshes := []struct {
 		name string
 		run  func() error
@@ -172,6 +180,17 @@ func (d *Daemon) refreshAllProjections(ctx context.Context, guildID string, remo
 			d.logger.Warn("刷新 Discord 投影失败", zap.String("projection", refresh.name), zap.Error(err))
 		}
 	}
+}
+
+func (d *Daemon) projectionsPaused(ctx context.Context, guildID string) (bool, error) {
+	var paused bool
+	err := d.manager.db.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM discord_initialization_operations o
+		WHERE o.guild_id = $1 AND o.status IN ('pending', 'running', 'failed')
+		AND EXISTS (SELECT 1 FROM discord_initialization_steps s
+			WHERE s.operation_id = o.id AND s.status <> 'completed' AND s.attempt_count < $2)
+	)`, guildID, initializationMaxAttempts).Scan(&paused)
+	return paused, err
 }
 
 func (d *Daemon) resumeInitialization(ctx context.Context, guildID string, remote Remote) error {

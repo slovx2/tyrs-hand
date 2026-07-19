@@ -20,6 +20,9 @@ func TestConversationCardsKeepSystemAndReplyVisuallyDistinct(t *testing.T) {
 
 	blocked := conversationProgressCard(ConversationBlocked, "input needed")
 	require.Equal(t, cardColorYellow, blocked.Color)
+	canceled := conversationProgressCard(ConversationCanceled, "stopped")
+	require.Equal(t, cardColorGray, canceled.Color)
+	require.Contains(t, canceled.Title, "已停止")
 	failed := conversationProgressCard(ConversationFailed, "failed")
 	require.Equal(t, cardColorRed, failed.Color)
 }
