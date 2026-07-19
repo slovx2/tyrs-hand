@@ -2,7 +2,9 @@ package discordintegration
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -48,6 +50,7 @@ func (s *SQLoutbox) Enqueue(ctx context.Context, operationKey, operationType, ro
 	if err != nil {
 		return err
 	}
+	nonce = discordNonce(nonce)
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO integration_outbox(integration, operation_key, operation_type, route_key, payload, nonce)
 		VALUES ('discord', $1, $2, $3, $4, NULLIF($5, ''))
@@ -62,6 +65,14 @@ func (s *SQLoutbox) Enqueue(ctx context.Context, operationKey, operationType, ro
 			END,
 			updated_at = now()`, operationKey, operationType, routeKey, encoded, nonce)
 	return err
+}
+
+func discordNonce(value string) string {
+	if len(value) <= 25 {
+		return value
+	}
+	digest := sha256.Sum256([]byte(value))
+	return "th-" + hex.EncodeToString(digest[:11])
 }
 
 func (s *SQLoutbox) Claim(ctx context.Context, lease time.Duration) (*OutboxItem, error) {

@@ -185,6 +185,7 @@ func (r *DisgoRemote) DeleteChannel(ctx context.Context, channelID string) error
 }
 
 func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessage, error) {
+	item.Nonce = discordNonce(item.Nonce)
 	var payload struct {
 		ChannelID        string           `json:"channelId"`
 		MessageID        string           `json:"messageId"`

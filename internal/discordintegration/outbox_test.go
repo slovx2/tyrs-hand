@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -14,6 +15,15 @@ import (
 	disgorest "github.com/disgoorg/disgo/rest"
 	"github.com/stretchr/testify/require"
 )
+
+func TestDiscordNonceIsStableAndWithinDiscordLimit(t *testing.T) {
+	require.Equal(t, "short-nonce", discordNonce("short-nonce"))
+	long := strings.Repeat("projection-key-", 4)
+	first := discordNonce(long)
+	require.Len(t, first, 25)
+	require.Equal(t, first, discordNonce(long))
+	require.NotEqual(t, first, discordNonce(long+"other"))
+}
 
 type fakeOutboxStore struct {
 	item      *OutboxItem
@@ -215,13 +225,14 @@ func TestDisgoRemoteHandlesRouteAndGlobalRateLimits(t *testing.T) {
 			remote := NewDisgoRemote("token", server.URL, server.Client())
 			defer remote.Close(context.Background())
 			payload, _ := json.Marshal(map[string]string{"channelId": "123", "content": "hello"})
+			nonce := strings.Repeat("stable-nonce-", 3)
 			response, err := remote.Send(context.Background(), OutboxItem{
-				OperationType: "message.create", Payload: payload, Nonce: "stable-nonce",
+				OperationType: "message.create", Payload: payload, Nonce: nonce,
 			})
 			require.NoError(t, err)
 			require.JSONEq(t, `{"messageId":"456"}`, string(response))
 			require.Equal(t, 2, calls)
-			require.Equal(t, "stable-nonce", sent["nonce"])
+			require.Equal(t, discordNonce(nonce), sent["nonce"])
 			require.Equal(t, true, sent["enforce_nonce"])
 		})
 	}
