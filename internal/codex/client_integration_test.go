@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"testing"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 func TestMain(m *testing.M) {
@@ -99,6 +101,39 @@ func TestClientTimeoutAndProcessExitRejectPendingRequest(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "Codex App Server")
 	})
+}
+
+func TestReadLoopOwnsEventChannelLifecycle(t *testing.T) {
+	reader, writer := io.Pipe()
+	client := &Client{
+		options: ClientOptions{Logger: zap.NewNop()},
+		pending: make(map[int64]chan rpcMessage),
+		events:  make(chan Event, 1),
+		done:    make(chan struct{}),
+	}
+	readDone := make(chan struct{})
+	go func() {
+		client.readLoop(reader)
+		close(readDone)
+	}()
+
+	client.fail(io.EOF)
+	_, err := io.WriteString(writer, `{"method":"turn/completed","params":{}}`+"\n")
+	require.NoError(t, err)
+	select {
+	case event := <-client.Events():
+		require.Equal(t, "turn/completed", event.Method)
+	case <-time.After(time.Second):
+		t.Fatal("进程退出后的尾部事件未被读取")
+	}
+	require.NoError(t, writer.Close())
+	select {
+	case <-readDone:
+	case <-time.After(time.Second):
+		t.Fatal("Codex 事件读取循环未退出")
+	}
+	_, open := <-client.Events()
+	require.False(t, open)
 }
 
 func TestRuntimeResumeSteerAndInterrupt(t *testing.T) {

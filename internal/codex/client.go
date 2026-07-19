@@ -196,6 +196,8 @@ func (c *Client) write(value any) error {
 }
 
 func (c *Client) readLoop(reader io.Reader) {
+	// readLoop 是事件队列唯一的写入者，也由它关闭队列，避免进程退出与尾部事件并发时向已关闭队列发送。
+	defer close(c.events)
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 64*1024), 16*1024*1024)
 	for scanner.Scan() {
@@ -284,7 +286,6 @@ func (c *Client) fail(err error) {
 			close(ch)
 		}
 		close(c.done)
-		close(c.events)
 	}
 	c.mu.Unlock()
 }
