@@ -363,7 +363,7 @@ func (s *Service) previousResult(ctx context.Context, request CallRequest) (code
 		request.ThreadID, request.TurnID, request.CallID, request.Namespace, request.Tool,
 		string(request.Arguments)).Scan(&status, &resultJSON, &message)
 	if errors.Is(err, sql.ErrNoRows) {
-		return codex.ToolCallResult{}, errors.New("Tool Call ID 与既有请求不一致")
+		return codex.ToolCallResult{}, errors.New("tool call ID 与既有请求不一致")
 	}
 	if err != nil {
 		return codex.ToolCallResult{}, err
