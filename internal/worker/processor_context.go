@@ -21,6 +21,18 @@ import (
 
 var errDiscordTurnStopped = errors.New("当前 Discord Codex Turn 已被停止")
 
+const turnCleanupTimeout = 5 * time.Second
+
+func needsCleanupInterrupt(err error) bool {
+	return err != nil && !errors.Is(err, errDiscordTurnStopped)
+}
+
+func interruptTurnBestEffort(runtime *codex.Runtime, threadID, turnID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), turnCleanupTimeout)
+	defer cancel()
+	_ = runtime.InterruptTurn(ctx, threadID, turnID)
+}
+
 func discordStopRequested(ctx context.Context, db *sql.DB, intentID uuid.UUID, cause error) bool {
 	if errors.Is(cause, errDiscordTurnStopped) {
 		return true

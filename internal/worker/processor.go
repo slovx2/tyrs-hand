@@ -182,7 +182,7 @@ func (p *Processor) Process(ctx context.Context, claimed *codexcontrol.ClaimedCo
 	}
 	result, err := p.waitTurn(ctx, runtime, client.Events(), claimed, threadID, turnID)
 	if err != nil {
-		_ = runtime.InterruptTurn(context.Background(), threadID, turnID)
+		interruptTurnBestEffort(runtime, threadID, turnID)
 		return codexcontrol.TurnResult{}, err
 	}
 	p.syncReplyGate(ctx, claimed, codexHome, threadID)

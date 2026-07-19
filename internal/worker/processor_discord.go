@@ -176,12 +176,14 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		return result, err
 	}
 	if err := p.addDiscordContributor(ctx, claimed.RunID, claimed.DiscordConversationID, turnID, claimed.DiscordMessageID); err != nil {
-		_ = runtime.InterruptTurn(context.Background(), threadID, turnID)
+		interruptTurnBestEffort(runtime, threadID, turnID)
 		return result, err
 	}
 	result, err = p.waitTurn(ctx, runtime, client.Events(), claimed, threadID, turnID)
 	if err != nil {
-		_ = runtime.InterruptTurn(context.Background(), threadID, turnID)
+		if needsCleanupInterrupt(err) {
+			interruptTurnBestEffort(runtime, threadID, turnID)
+		}
 		return result, err
 	}
 	_, err = p.db.ExecContext(ctx, `UPDATE discord_input_messages SET status = 'processed', processed_at = now()
