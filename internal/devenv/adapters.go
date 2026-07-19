@@ -168,7 +168,7 @@ func (m *Manager) verifyRustExtras(ctx context.Context, environment []string, ta
 		}
 		for _, component := range rust.Components {
 			if !containsRustupItem(output, component) {
-				return fmt.Errorf("Rust component %s 未安装", component)
+				return fmt.Errorf("rust component %s 未安装", component)
 			}
 		}
 	}
@@ -179,7 +179,7 @@ func (m *Manager) verifyRustExtras(ctx context.Context, environment []string, ta
 		}
 		for _, target := range rust.Targets {
 			if !containsRustupItem(output, target) {
-				return fmt.Errorf("Rust target %s 未安装", target)
+				return fmt.Errorf("rust target %s 未安装", target)
 			}
 		}
 	}
@@ -218,7 +218,7 @@ func (m *Manager) ensurePNPM(ctx context.Context, nodeVersion, pnpmVersion strin
 	if err != nil {
 		return "", err
 	}
-	defer os.RemoveAll(temp)
+	defer func() { _ = os.RemoveAll(temp) }()
 	bin := filepath.Join(temp, "bin")
 	if err := os.MkdirAll(bin, 0o750); err != nil {
 		return "", err

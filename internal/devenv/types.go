@@ -45,7 +45,7 @@ func LoadRuntimeLock() (RuntimeLock, error) {
 	if lock.SchemaVersion != 1 || lock.AdapterSchemaVersion == "" ||
 		lock.Codex == "" || lock.Mise == "" || lock.UV == "" || lock.Corepack == "" ||
 		len(lock.Downloads.Mise) == 0 || len(lock.Downloads.UV) == 0 || len(lock.SystemPackages) == 0 {
-		return RuntimeLock{}, fmt.Errorf("Worker Runtime Lock 版本无效")
+		return RuntimeLock{}, fmt.Errorf("worker Runtime Lock 版本无效")
 	}
 	versions := map[string]string{
 		"codex": lock.Codex, "mise": lock.Mise, "uv": lock.UV, "corepack": lock.Corepack,
@@ -54,18 +54,18 @@ func LoadRuntimeLock() (RuntimeLock, error) {
 	}
 	for name, version := range versions {
 		if !exactVersion.MatchString(version) {
-			return RuntimeLock{}, fmt.Errorf("Worker Runtime Lock 的 %s 必须是精确版本", name)
+			return RuntimeLock{}, fmt.Errorf("worker Runtime Lock 的 %s 必须是精确版本", name)
 		}
 	}
 	checksum := regexp.MustCompile(`^[0-9a-f]{64}$`)
 	for _, architecture := range []string{"amd64", "arm64"} {
 		if !checksum.MatchString(lock.Downloads.Mise[architecture]) || !checksum.MatchString(lock.Downloads.UV[architecture]) {
-			return RuntimeLock{}, fmt.Errorf("Worker Runtime Lock 缺少 %s 下载校验值", architecture)
+			return RuntimeLock{}, fmt.Errorf("worker Runtime Lock 缺少 %s 下载校验值", architecture)
 		}
 	}
 	for name, version := range lock.SystemPackages {
 		if strings.TrimSpace(name) == "" || strings.TrimSpace(version) == "" || strings.ContainsAny(version, "*?[] ") {
-			return RuntimeLock{}, fmt.Errorf("Worker 系统包 %q 必须固定精确版本", name)
+			return RuntimeLock{}, fmt.Errorf("worker 系统包 %q 必须固定精确版本", name)
 		}
 	}
 	return lock, nil

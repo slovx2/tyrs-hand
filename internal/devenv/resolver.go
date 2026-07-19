@@ -46,13 +46,13 @@ func Resolve(root string, lock RuntimeLock) (Spec, error) {
 	}
 	if spec.Runtimes.Rust != nil {
 		if rustDeclared && (spec.Runtimes.Rust.Components == nil || spec.Runtimes.Rust.Targets == nil) {
-			return Spec{}, fmt.Errorf("Rust components 和 targets 必须明确列出，可使用空数组")
+			return Spec{}, fmt.Errorf("rust components 和 targets 必须明确列出，可使用空数组")
 		}
 		if spec.Runtimes.Rust.Profile == "" {
 			spec.Runtimes.Rust.Profile = "minimal"
 		}
 		if spec.Runtimes.Rust.Profile != "minimal" && spec.Runtimes.Rust.Profile != "default" {
-			return Spec{}, fmt.Errorf("Rust profile 只支持 minimal 或 default")
+			return Spec{}, fmt.Errorf("rust profile 只支持 minimal 或 default")
 		}
 		if spec.Runtimes.Rust.Components == nil {
 			spec.Runtimes.Rust.Components = []string{}
@@ -130,10 +130,10 @@ func validateProjects(root string, projects []Project) error {
 		project := &projects[index]
 		project.Name = strings.TrimSpace(project.Name)
 		if project.Name == "" {
-			return fmt.Errorf("Project name 不能为空")
+			return fmt.Errorf("project name 不能为空")
 		}
 		if _, exists := seenNames[project.Name]; exists {
-			return fmt.Errorf("Project name %q 重复", project.Name)
+			return fmt.Errorf("project name %q 重复", project.Name)
 		}
 		seenNames[project.Name] = struct{}{}
 		if project.Path == "" {
@@ -141,20 +141,20 @@ func validateProjects(root string, projects []Project) error {
 		}
 		clean := filepath.Clean(filepath.FromSlash(project.Path))
 		if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-			return fmt.Errorf("Project %q 的 path 必须位于仓库内", project.Name)
+			return fmt.Errorf("project %q 的 path 必须位于仓库内", project.Name)
 		}
 		projectPath := filepath.Join(root, clean)
 		info, err := os.Stat(projectPath)
 		if err != nil || !info.IsDir() {
-			return fmt.Errorf("Project %q 的目录 %q 不存在", project.Name, project.Path)
+			return fmt.Errorf("project %q 的目录 %q 不存在", project.Name, project.Path)
 		}
 		resolvedPath, err := filepath.EvalSymlinks(projectPath)
 		if err != nil || !pathWithin(rootPath, resolvedPath) {
-			return fmt.Errorf("Project %q 的目录 %q 必须位于仓库内", project.Name, project.Path)
+			return fmt.Errorf("project %q 的目录 %q 必须位于仓库内", project.Name, project.Path)
 		}
 		project.Path = filepath.ToSlash(clean)
 		if _, ok := seenPaths[project.Path]; ok {
-			return fmt.Errorf("Project path %q 重复", project.Path)
+			return fmt.Errorf("project path %q 重复", project.Path)
 		}
 		seenPaths[project.Path] = struct{}{}
 		managers := make(map[string]struct{})
@@ -163,17 +163,17 @@ func validateProjects(root string, projects []Project) error {
 			switch dep.Manager {
 			case "uv", "requirements", "pnpm", "go", "cargo":
 			default:
-				return fmt.Errorf("Project %q 使用了不支持的 Manager %q", project.Name, dep.Manager)
+				return fmt.Errorf("project %q 使用了不支持的 Manager %q", project.Name, dep.Manager)
 			}
 			if _, ok := managers[dep.Manager]; ok {
-				return fmt.Errorf("Project %q 重复声明 Manager %q", project.Name, dep.Manager)
+				return fmt.Errorf("project %q 重复声明 Manager %q", project.Name, dep.Manager)
 			}
 			managers[dep.Manager] = struct{}{}
 			if dep.Manager != "uv" && len(dep.Groups) > 0 {
-				return fmt.Errorf("Project %q 的 Manager %q 不支持 groups", project.Name, dep.Manager)
+				return fmt.Errorf("project %q 的 Manager %q 不支持 groups", project.Name, dep.Manager)
 			}
 			if dep.Manager != "requirements" && len(dep.Files) > 0 {
-				return fmt.Errorf("Project %q 的 Manager %q 不支持 files", project.Name, dep.Manager)
+				return fmt.Errorf("project %q 的 Manager %q 不支持 files", project.Name, dep.Manager)
 			}
 			if err := validateUniqueStrings("Project "+project.Name+" 的 groups", dep.Groups); err != nil {
 				return err
@@ -187,14 +187,14 @@ func validateProjects(root string, projects []Project) error {
 				}
 				for _, name := range dep.Files {
 					if err := requireFile(root, clean, name); err != nil {
-						return fmt.Errorf("Project %q: %w", project.Name, err)
+						return fmt.Errorf("project %q: %w", project.Name, err)
 					}
 				}
 			}
 		}
 		if _, uv := managers["uv"]; uv {
 			if _, requirements := managers["requirements"]; requirements {
-				return fmt.Errorf("Project %q 不能同时使用 uv 和 requirements", project.Name)
+				return fmt.Errorf("project %q 不能同时使用 uv 和 requirements", project.Name)
 			}
 		}
 		if err := validateProjectFiles(root, *project); err != nil {
@@ -212,7 +212,7 @@ func validateProjectFiles(root string, project Project) error {
 	for _, dep := range project.Dependencies {
 		for _, name := range required[dep.Manager] {
 			if err := requireFile(root, filepath.FromSlash(project.Path), name); err != nil {
-				return fmt.Errorf("Project %q: %w", project.Name, err)
+				return fmt.Errorf("project %q: %w", project.Name, err)
 			}
 		}
 	}
@@ -224,12 +224,12 @@ func resolveVersions(root string, spec *Spec, defaults RuntimeDefaults) error {
 	var err error
 	spec.Runtimes.Python, err = resolveVersion(spec.Runtimes.Python, nativePython(root), defaults.Python, managers["uv"] || managers["requirements"])
 	if err != nil {
-		return fmt.Errorf("Python: %w", err)
+		return fmt.Errorf("python: %w", err)
 	}
 	nodeNeeded := managers["pnpm"] || strings.TrimSpace(spec.Runtimes.PNPM) != ""
 	spec.Runtimes.Node, err = resolveVersion(spec.Runtimes.Node, nativeNode(root), defaults.Node, nodeNeeded)
 	if err != nil {
-		return fmt.Errorf("Node: %w", err)
+		return fmt.Errorf("node: %w", err)
 	}
 	spec.Runtimes.PNPM, err = resolveVersion(spec.Runtimes.PNPM, nativePNPM(root), defaults.PNPM, managers["pnpm"])
 	if err != nil {
@@ -237,7 +237,7 @@ func resolveVersions(root string, spec *Spec, defaults RuntimeDefaults) error {
 	}
 	spec.Runtimes.Go, err = resolveVersion(spec.Runtimes.Go, nativeGo(root), defaults.Go, managers["go"])
 	if err != nil {
-		return fmt.Errorf("Go: %w", err)
+		return fmt.Errorf("go: %w", err)
 	}
 	if managers["cargo"] || spec.Runtimes.Rust != nil {
 		native := nativeRust(root)
@@ -255,7 +255,7 @@ func resolveVersions(root string, spec *Spec, defaults RuntimeDefaults) error {
 		}
 		spec.Runtimes.Rust.Version, err = resolveVersion(spec.Runtimes.Rust.Version, nativeVersion, defaults.Rust, true)
 		if err != nil {
-			return fmt.Errorf("Rust: %w", err)
+			return fmt.Errorf("rust: %w", err)
 		}
 	}
 	return nil
@@ -428,7 +428,7 @@ func validateRuntimeCompatibility(root string, spec Spec) error {
 				err = validateRustCompatibility(projectRoot, spec.Runtimes.Rust.Version)
 			}
 			if err != nil {
-				return fmt.Errorf("Project %q: %w", project.Name, err)
+				return fmt.Errorf("project %q: %w", project.Name, err)
 			}
 		}
 	}
@@ -458,7 +458,7 @@ func validatePythonCompatibility(projectRoot, runtimeVersion string) error {
 	}
 	version, err := pep440.Parse(runtimeVersion)
 	if err != nil || !specifiers.Check(version) {
-		return fmt.Errorf("Python %s 不满足 requires-python %q", runtimeVersion, requirement)
+		return fmt.Errorf("python %s 不满足 requires-python %q", runtimeVersion, requirement)
 	}
 	return nil
 }
@@ -486,7 +486,7 @@ func validateNodeCompatibility(projectRoot, runtimeVersion string) error {
 	}
 	version, err := semver.NewVersion(runtimeVersion)
 	if err != nil || !constraint.Check(version) {
-		return fmt.Errorf("Node %s 不满足 engines.node %q", runtimeVersion, requirement)
+		return fmt.Errorf("node %s 不满足 engines.node %q", runtimeVersion, requirement)
 	}
 	return nil
 }

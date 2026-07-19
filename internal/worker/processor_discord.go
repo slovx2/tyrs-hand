@@ -310,7 +310,7 @@ func (p *Processor) bindDiscordWorkspace(ctx context.Context, jobCtx discordJobC
 		return uuid.Nil, "", "", err
 	}
 	if count, _ := result.RowsAffected(); count != 1 {
-		return uuid.Nil, "", "", errors.New("Discord Conversation 的仓库绑定已经变化")
+		return uuid.Nil, "", "", errors.New("会话的仓库绑定已经变化")
 	}
 	if err := tx.Commit(); err != nil {
 		return uuid.Nil, "", "", err
