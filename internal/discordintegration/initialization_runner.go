@@ -65,7 +65,7 @@ func (m *Manager) claimInitializationStep(ctx context.Context, operationID uuid.
 		return "", InitializationAction{}, err
 	}
 	if attemptCount >= initializationMaxAttempts {
-		return "", InitializationAction{}, errors.New("Discord 初始化步骤重试次数已耗尽")
+		return "", InitializationAction{}, errors.New("discord 初始化步骤重试次数已耗尽")
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE discord_initialization_steps SET status = 'running',
 		attempt_count = attempt_count + 1, started_at = COALESCE(started_at, now()), error = NULL
