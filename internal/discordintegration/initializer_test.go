@@ -1,10 +1,31 @@
 package discordintegration
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestPreflightEmptyCollectionsAreJSONArrays(t *testing.T) {
+	plan, err := BuildInitializationPlan(InitializationIncremental,
+		RemoteGuild{ID: "123", CommunityEnabled: true}, nil, nil)
+	require.NoError(t, err)
+
+	encoded, err := json.Marshal(plan.Preflight)
+	require.NoError(t, err)
+	require.JSONEq(t, `{
+		"guildId":"123",
+		"mode":"incremental",
+		"creates":[],
+		"updates":[],
+		"deletes":[],
+		"conflicts":[],
+		"missingPermissions":[],
+		"channelCount":0,
+		"safe":true
+	}`, string(encoded))
+}
 
 func TestIncrementalPreflightReportsUnmanagedNameConflictWithoutWrites(t *testing.T) {
 	guild := RemoteGuild{ID: "123", CommunityEnabled: true, Channels: []RemoteChannel{

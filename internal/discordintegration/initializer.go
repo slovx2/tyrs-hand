@@ -48,6 +48,8 @@ func BuildInitializationPlan(mode string, guild RemoteGuild, managed []ManagedRe
 	}
 	result := InitializationPlan{Preflight: PreflightResult{
 		GuildID: guild.ID, Mode: mode, Channels: len(guild.Channels), Safe: true,
+		Creates: []string{}, Updates: []string{}, Deletes: []string{},
+		Conflicts: []Conflict{}, MissingAccess: []string{},
 	}}
 	if mode == InitializationFresh {
 		if guild.CommunityEnabled {
