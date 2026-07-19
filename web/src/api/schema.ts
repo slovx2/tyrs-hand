@@ -416,7 +416,7 @@ export interface paths {
         };
         get: components["pathItems"]["ListTriggerRules"];
         put?: never;
-        post: components["pathItems"]["CreateGeneric"];
+        post: operations["createTriggerRule"];
         delete?: never;
         options?: never;
         head?: never;
@@ -643,6 +643,34 @@ export interface components {
             defaultBranch: string;
             /** Format: uri */
             cloneUrl: string;
+        };
+        TriggerRuleInput: {
+            /** Format: uuid */
+            repositoryId: string;
+            /** Format: uuid */
+            agentProfileId: string;
+            name: string;
+            eventName: string;
+            action?: string;
+            enabled?: boolean;
+            /** @default 100 */
+            priority: number;
+            /** @enum {string} */
+            triggerKind: "event" | "label" | "slash_command" | "legacy_mention";
+            /** @description Label 名或不带斜杠的命令名；event 与 legacy_mention 留空。 */
+            triggerValue?: string;
+            /**
+             * @default triage
+             * @enum {string}
+             */
+            actorMinPermission: "read" | "triage" | "write" | "maintain" | "admin";
+            instruction: string;
+            skills?: string[];
+            allowedTools?: string[];
+            dangerousActions?: string[];
+            filters?: {
+                [key: string]: unknown;
+            };
         };
         AgentProviderSettings: {
             /** @enum {string} */
@@ -1673,6 +1701,33 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["RepositoryInput"];
+            };
+        };
+        responses: {
+            /** @description 已创建 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IDResource"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    createTriggerRule: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TriggerRuleInput"];
             };
         };
         responses: {

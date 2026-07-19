@@ -70,6 +70,8 @@ func (JobIntent) Fields() []ent.Field {
 		field.String("idempotency_key").Unique(), field.String("status").Default("queued"), field.String("instruction"),
 		field.JSON("skills", []string{}).Default([]string{}), field.JSON("allowed_tools", []string{}).Default([]string{}),
 		field.JSON("dangerous_actions", []string{}).Default([]string{}),
+		field.UUID("trigger_rule_id", uuid.UUID{}).Optional().Nillable(),
+		field.JSON("trigger_evidence", map[string]any{}).Default(map[string]any{}),
 		field.String("actor_login").Default(""), field.String("actor_permission").Default(""),
 		field.Int("priority").Default(100), field.Time("available_at").Default(time.Now),
 		field.Int("attempt_count").Default(0), field.Int("max_attempts").Default(3),

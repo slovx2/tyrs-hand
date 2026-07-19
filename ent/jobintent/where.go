@@ -85,6 +85,11 @@ func Instruction(v string) predicate.JobIntent {
 	return predicate.JobIntent(sql.FieldEQ(FieldInstruction, v))
 }
 
+// TriggerRuleID applies equality check predicate on the "trigger_rule_id" field. It's identical to TriggerRuleIDEQ.
+func TriggerRuleID(v uuid.UUID) predicate.JobIntent {
+	return predicate.JobIntent(sql.FieldEQ(FieldTriggerRuleID, v))
+}
+
 // ActorLogin applies equality check predicate on the "actor_login" field. It's identical to ActorLoginEQ.
 func ActorLogin(v string) predicate.JobIntent {
 	return predicate.JobIntent(sql.FieldEQ(FieldActorLogin, v))
@@ -463,6 +468,56 @@ func InstructionEqualFold(v string) predicate.JobIntent {
 // InstructionContainsFold applies the ContainsFold predicate on the "instruction" field.
 func InstructionContainsFold(v string) predicate.JobIntent {
 	return predicate.JobIntent(sql.FieldContainsFold(FieldInstruction, v))
+}
+
+// TriggerRuleIDEQ applies the EQ predicate on the "trigger_rule_id" field.
+func TriggerRuleIDEQ(v uuid.UUID) predicate.JobIntent {
+	return predicate.JobIntent(sql.FieldEQ(FieldTriggerRuleID, v))
+}
+
+// TriggerRuleIDNEQ applies the NEQ predicate on the "trigger_rule_id" field.
+func TriggerRuleIDNEQ(v uuid.UUID) predicate.JobIntent {
+	return predicate.JobIntent(sql.FieldNEQ(FieldTriggerRuleID, v))
+}
+
+// TriggerRuleIDIn applies the In predicate on the "trigger_rule_id" field.
+func TriggerRuleIDIn(vs ...uuid.UUID) predicate.JobIntent {
+	return predicate.JobIntent(sql.FieldIn(FieldTriggerRuleID, vs...))
+}
+
+// TriggerRuleIDNotIn applies the NotIn predicate on the "trigger_rule_id" field.
+func TriggerRuleIDNotIn(vs ...uuid.UUID) predicate.JobIntent {
+	return predicate.JobIntent(sql.FieldNotIn(FieldTriggerRuleID, vs...))
+}
+
+// TriggerRuleIDGT applies the GT predicate on the "trigger_rule_id" field.
+func TriggerRuleIDGT(v uuid.UUID) predicate.JobIntent {
+	return predicate.JobIntent(sql.FieldGT(FieldTriggerRuleID, v))
+}
+
+// TriggerRuleIDGTE applies the GTE predicate on the "trigger_rule_id" field.
+func TriggerRuleIDGTE(v uuid.UUID) predicate.JobIntent {
+	return predicate.JobIntent(sql.FieldGTE(FieldTriggerRuleID, v))
+}
+
+// TriggerRuleIDLT applies the LT predicate on the "trigger_rule_id" field.
+func TriggerRuleIDLT(v uuid.UUID) predicate.JobIntent {
+	return predicate.JobIntent(sql.FieldLT(FieldTriggerRuleID, v))
+}
+
+// TriggerRuleIDLTE applies the LTE predicate on the "trigger_rule_id" field.
+func TriggerRuleIDLTE(v uuid.UUID) predicate.JobIntent {
+	return predicate.JobIntent(sql.FieldLTE(FieldTriggerRuleID, v))
+}
+
+// TriggerRuleIDIsNil applies the IsNil predicate on the "trigger_rule_id" field.
+func TriggerRuleIDIsNil() predicate.JobIntent {
+	return predicate.JobIntent(sql.FieldIsNull(FieldTriggerRuleID))
+}
+
+// TriggerRuleIDNotNil applies the NotNil predicate on the "trigger_rule_id" field.
+func TriggerRuleIDNotNil() predicate.JobIntent {
+	return predicate.JobIntent(sql.FieldNotNull(FieldTriggerRuleID))
 }
 
 // ActorLoginEQ applies the EQ predicate on the "actor_login" field.

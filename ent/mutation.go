@@ -3649,6 +3649,8 @@ type JobIntentMutation struct {
 	appendallowed_tools     []string
 	dangerous_actions       *[]string
 	appenddangerous_actions []string
+	trigger_rule_id         *uuid.UUID
+	trigger_evidence        *map[string]interface{}
 	actor_login             *string
 	actor_permission        *string
 	priority                *int
@@ -4143,6 +4145,91 @@ func (m *JobIntentMutation) AppendedDangerousActions() ([]string, bool) {
 func (m *JobIntentMutation) ResetDangerousActions() {
 	m.dangerous_actions = nil
 	m.appenddangerous_actions = nil
+}
+
+// SetTriggerRuleID sets the "trigger_rule_id" field.
+func (m *JobIntentMutation) SetTriggerRuleID(u uuid.UUID) {
+	m.trigger_rule_id = &u
+}
+
+// TriggerRuleID returns the value of the "trigger_rule_id" field in the mutation.
+func (m *JobIntentMutation) TriggerRuleID() (r uuid.UUID, exists bool) {
+	v := m.trigger_rule_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTriggerRuleID returns the old "trigger_rule_id" field's value of the JobIntent entity.
+// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *JobIntentMutation) OldTriggerRuleID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTriggerRuleID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTriggerRuleID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTriggerRuleID: %w", err)
+	}
+	return oldValue.TriggerRuleID, nil
+}
+
+// ClearTriggerRuleID clears the value of the "trigger_rule_id" field.
+func (m *JobIntentMutation) ClearTriggerRuleID() {
+	m.trigger_rule_id = nil
+	m.clearedFields[jobintent.FieldTriggerRuleID] = struct{}{}
+}
+
+// TriggerRuleIDCleared returns if the "trigger_rule_id" field was cleared in this mutation.
+func (m *JobIntentMutation) TriggerRuleIDCleared() bool {
+	_, ok := m.clearedFields[jobintent.FieldTriggerRuleID]
+	return ok
+}
+
+// ResetTriggerRuleID resets all changes to the "trigger_rule_id" field.
+func (m *JobIntentMutation) ResetTriggerRuleID() {
+	m.trigger_rule_id = nil
+	delete(m.clearedFields, jobintent.FieldTriggerRuleID)
+}
+
+// SetTriggerEvidence sets the "trigger_evidence" field.
+func (m *JobIntentMutation) SetTriggerEvidence(value map[string]interface{}) {
+	m.trigger_evidence = &value
+}
+
+// TriggerEvidence returns the value of the "trigger_evidence" field in the mutation.
+func (m *JobIntentMutation) TriggerEvidence() (r map[string]interface{}, exists bool) {
+	v := m.trigger_evidence
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTriggerEvidence returns the old "trigger_evidence" field's value of the JobIntent entity.
+// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *JobIntentMutation) OldTriggerEvidence(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTriggerEvidence is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTriggerEvidence requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTriggerEvidence: %w", err)
+	}
+	return oldValue.TriggerEvidence, nil
+}
+
+// ResetTriggerEvidence resets all changes to the "trigger_evidence" field.
+func (m *JobIntentMutation) ResetTriggerEvidence() {
+	m.trigger_evidence = nil
 }
 
 // SetActorLogin sets the "actor_login" field.
@@ -4779,7 +4866,7 @@ func (m *JobIntentMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *JobIntentMutation) Fields() []string {
-	fields := make([]string, 0, 22)
+	fields := make([]string, 0, 24)
 	if m.work_item_id != nil {
 		fields = append(fields, jobintent.FieldWorkItemID)
 	}
@@ -4806,6 +4893,12 @@ func (m *JobIntentMutation) Fields() []string {
 	}
 	if m.dangerous_actions != nil {
 		fields = append(fields, jobintent.FieldDangerousActions)
+	}
+	if m.trigger_rule_id != nil {
+		fields = append(fields, jobintent.FieldTriggerRuleID)
+	}
+	if m.trigger_evidence != nil {
+		fields = append(fields, jobintent.FieldTriggerEvidence)
 	}
 	if m.actor_login != nil {
 		fields = append(fields, jobintent.FieldActorLogin)
@@ -4872,6 +4965,10 @@ func (m *JobIntentMutation) Field(name string) (ent.Value, bool) {
 		return m.AllowedTools()
 	case jobintent.FieldDangerousActions:
 		return m.DangerousActions()
+	case jobintent.FieldTriggerRuleID:
+		return m.TriggerRuleID()
+	case jobintent.FieldTriggerEvidence:
+		return m.TriggerEvidence()
 	case jobintent.FieldActorLogin:
 		return m.ActorLogin()
 	case jobintent.FieldActorPermission:
@@ -4925,6 +5022,10 @@ func (m *JobIntentMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldAllowedTools(ctx)
 	case jobintent.FieldDangerousActions:
 		return m.OldDangerousActions(ctx)
+	case jobintent.FieldTriggerRuleID:
+		return m.OldTriggerRuleID(ctx)
+	case jobintent.FieldTriggerEvidence:
+		return m.OldTriggerEvidence(ctx)
 	case jobintent.FieldActorLogin:
 		return m.OldActorLogin(ctx)
 	case jobintent.FieldActorPermission:
@@ -5022,6 +5123,20 @@ func (m *JobIntentMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDangerousActions(v)
+		return nil
+	case jobintent.FieldTriggerRuleID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTriggerRuleID(v)
+		return nil
+	case jobintent.FieldTriggerEvidence:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTriggerEvidence(v)
 		return nil
 	case jobintent.FieldActorLogin:
 		v, ok := value.(string)
@@ -5195,6 +5310,9 @@ func (m *JobIntentMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *JobIntentMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(jobintent.FieldTriggerRuleID) {
+		fields = append(fields, jobintent.FieldTriggerRuleID)
+	}
 	if m.FieldCleared(jobintent.FieldLeaseToken) {
 		fields = append(fields, jobintent.FieldLeaseToken)
 	}
@@ -5221,6 +5339,9 @@ func (m *JobIntentMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *JobIntentMutation) ClearField(name string) error {
 	switch name {
+	case jobintent.FieldTriggerRuleID:
+		m.ClearTriggerRuleID()
+		return nil
 	case jobintent.FieldLeaseToken:
 		m.ClearLeaseToken()
 		return nil
@@ -5267,6 +5388,12 @@ func (m *JobIntentMutation) ResetField(name string) error {
 		return nil
 	case jobintent.FieldDangerousActions:
 		m.ResetDangerousActions()
+		return nil
+	case jobintent.FieldTriggerRuleID:
+		m.ResetTriggerRuleID()
+		return nil
+	case jobintent.FieldTriggerEvidence:
+		m.ResetTriggerEvidence()
 		return nil
 	case jobintent.FieldActorLogin:
 		m.ResetActorLogin()
@@ -9293,7 +9420,8 @@ type TriggerRuleMutation struct {
 	priority                *int
 	addpriority             *int
 	actor_min_permission    *string
-	mention_required        *bool
+	trigger_kind            *string
+	trigger_value           *string
 	instruction_template    *string
 	skills                  *[]string
 	appendskills            []string
@@ -9737,40 +9865,89 @@ func (m *TriggerRuleMutation) ResetActorMinPermission() {
 	m.actor_min_permission = nil
 }
 
-// SetMentionRequired sets the "mention_required" field.
-func (m *TriggerRuleMutation) SetMentionRequired(b bool) {
-	m.mention_required = &b
+// SetTriggerKind sets the "trigger_kind" field.
+func (m *TriggerRuleMutation) SetTriggerKind(s string) {
+	m.trigger_kind = &s
 }
 
-// MentionRequired returns the value of the "mention_required" field in the mutation.
-func (m *TriggerRuleMutation) MentionRequired() (r bool, exists bool) {
-	v := m.mention_required
+// TriggerKind returns the value of the "trigger_kind" field in the mutation.
+func (m *TriggerRuleMutation) TriggerKind() (r string, exists bool) {
+	v := m.trigger_kind
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldMentionRequired returns the old "mention_required" field's value of the TriggerRule entity.
+// OldTriggerKind returns the old "trigger_kind" field's value of the TriggerRule entity.
 // If the TriggerRule object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *TriggerRuleMutation) OldMentionRequired(ctx context.Context) (v bool, err error) {
+func (m *TriggerRuleMutation) OldTriggerKind(ctx context.Context) (v string, err error) {
 	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldMentionRequired is only allowed on UpdateOne operations")
+		return v, errors.New("OldTriggerKind is only allowed on UpdateOne operations")
 	}
 	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldMentionRequired requires an ID field in the mutation")
+		return v, errors.New("OldTriggerKind requires an ID field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldMentionRequired: %w", err)
+		return v, fmt.Errorf("querying old value for OldTriggerKind: %w", err)
 	}
-	return oldValue.MentionRequired, nil
+	return oldValue.TriggerKind, nil
 }
 
-// ResetMentionRequired resets all changes to the "mention_required" field.
-func (m *TriggerRuleMutation) ResetMentionRequired() {
-	m.mention_required = nil
+// ResetTriggerKind resets all changes to the "trigger_kind" field.
+func (m *TriggerRuleMutation) ResetTriggerKind() {
+	m.trigger_kind = nil
+}
+
+// SetTriggerValue sets the "trigger_value" field.
+func (m *TriggerRuleMutation) SetTriggerValue(s string) {
+	m.trigger_value = &s
+}
+
+// TriggerValue returns the value of the "trigger_value" field in the mutation.
+func (m *TriggerRuleMutation) TriggerValue() (r string, exists bool) {
+	v := m.trigger_value
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTriggerValue returns the old "trigger_value" field's value of the TriggerRule entity.
+// If the TriggerRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TriggerRuleMutation) OldTriggerValue(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTriggerValue is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTriggerValue requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTriggerValue: %w", err)
+	}
+	return oldValue.TriggerValue, nil
+}
+
+// ClearTriggerValue clears the value of the "trigger_value" field.
+func (m *TriggerRuleMutation) ClearTriggerValue() {
+	m.trigger_value = nil
+	m.clearedFields[triggerrule.FieldTriggerValue] = struct{}{}
+}
+
+// TriggerValueCleared returns if the "trigger_value" field was cleared in this mutation.
+func (m *TriggerRuleMutation) TriggerValueCleared() bool {
+	_, ok := m.clearedFields[triggerrule.FieldTriggerValue]
+	return ok
+}
+
+// ResetTriggerValue resets all changes to the "trigger_value" field.
+func (m *TriggerRuleMutation) ResetTriggerValue() {
+	m.trigger_value = nil
+	delete(m.clearedFields, triggerrule.FieldTriggerValue)
 }
 
 // SetInstructionTemplate sets the "instruction_template" field.
@@ -10160,7 +10337,7 @@ func (m *TriggerRuleMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TriggerRuleMutation) Fields() []string {
-	fields := make([]string, 0, 17)
+	fields := make([]string, 0, 18)
 	if m.repository_id != nil {
 		fields = append(fields, triggerrule.FieldRepositoryID)
 	}
@@ -10185,8 +10362,11 @@ func (m *TriggerRuleMutation) Fields() []string {
 	if m.actor_min_permission != nil {
 		fields = append(fields, triggerrule.FieldActorMinPermission)
 	}
-	if m.mention_required != nil {
-		fields = append(fields, triggerrule.FieldMentionRequired)
+	if m.trigger_kind != nil {
+		fields = append(fields, triggerrule.FieldTriggerKind)
+	}
+	if m.trigger_value != nil {
+		fields = append(fields, triggerrule.FieldTriggerValue)
 	}
 	if m.instruction_template != nil {
 		fields = append(fields, triggerrule.FieldInstructionTemplate)
@@ -10236,8 +10416,10 @@ func (m *TriggerRuleMutation) Field(name string) (ent.Value, bool) {
 		return m.Priority()
 	case triggerrule.FieldActorMinPermission:
 		return m.ActorMinPermission()
-	case triggerrule.FieldMentionRequired:
-		return m.MentionRequired()
+	case triggerrule.FieldTriggerKind:
+		return m.TriggerKind()
+	case triggerrule.FieldTriggerValue:
+		return m.TriggerValue()
 	case triggerrule.FieldInstructionTemplate:
 		return m.InstructionTemplate()
 	case triggerrule.FieldSkills:
@@ -10279,8 +10461,10 @@ func (m *TriggerRuleMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldPriority(ctx)
 	case triggerrule.FieldActorMinPermission:
 		return m.OldActorMinPermission(ctx)
-	case triggerrule.FieldMentionRequired:
-		return m.OldMentionRequired(ctx)
+	case triggerrule.FieldTriggerKind:
+		return m.OldTriggerKind(ctx)
+	case triggerrule.FieldTriggerValue:
+		return m.OldTriggerValue(ctx)
 	case triggerrule.FieldInstructionTemplate:
 		return m.OldInstructionTemplate(ctx)
 	case triggerrule.FieldSkills:
@@ -10362,12 +10546,19 @@ func (m *TriggerRuleMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetActorMinPermission(v)
 		return nil
-	case triggerrule.FieldMentionRequired:
-		v, ok := value.(bool)
+	case triggerrule.FieldTriggerKind:
+		v, ok := value.(string)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.SetMentionRequired(v)
+		m.SetTriggerKind(v)
+		return nil
+	case triggerrule.FieldTriggerValue:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTriggerValue(v)
 		return nil
 	case triggerrule.FieldInstructionTemplate:
 		v, ok := value.(string)
@@ -10485,6 +10676,9 @@ func (m *TriggerRuleMutation) ClearedFields() []string {
 	if m.FieldCleared(triggerrule.FieldAction) {
 		fields = append(fields, triggerrule.FieldAction)
 	}
+	if m.FieldCleared(triggerrule.FieldTriggerValue) {
+		fields = append(fields, triggerrule.FieldTriggerValue)
+	}
 	return fields
 }
 
@@ -10501,6 +10695,9 @@ func (m *TriggerRuleMutation) ClearField(name string) error {
 	switch name {
 	case triggerrule.FieldAction:
 		m.ClearAction()
+		return nil
+	case triggerrule.FieldTriggerValue:
+		m.ClearTriggerValue()
 		return nil
 	}
 	return fmt.Errorf("unknown TriggerRule nullable field %s", name)
@@ -10534,8 +10731,11 @@ func (m *TriggerRuleMutation) ResetField(name string) error {
 	case triggerrule.FieldActorMinPermission:
 		m.ResetActorMinPermission()
 		return nil
-	case triggerrule.FieldMentionRequired:
-		m.ResetMentionRequired()
+	case triggerrule.FieldTriggerKind:
+		m.ResetTriggerKind()
+		return nil
+	case triggerrule.FieldTriggerValue:
+		m.ResetTriggerValue()
 		return nil
 	case triggerrule.FieldInstructionTemplate:
 		m.ResetInstructionTemplate()

@@ -70,6 +70,19 @@ func TestNormalizePullRequestAndInstallationRepositories(t *testing.T) {
 	require.Equal(t, int64(21), installation.Installation.RemovedRepositoryIDs[0])
 }
 
+func TestNormalizeStructuredLabel(t *testing.T) {
+	issue, err := NormalizeWebhook("delivery-label", "issues", []byte(`{
+		"action":"labeled","installation":{"id":9},
+		"repository":{"id":10,"name":"repo","owner":{"login":"owner"}},
+		"sender":{"id":11,"login":"alice"},
+		"issue":{"number":12,"title":"Bug","body":"details"},
+		"label":{"name":"tyrs-hand"}
+	}`))
+	require.NoError(t, err)
+	require.Equal(t, domain.WorkItemIssue, issue.Kind)
+	require.Equal(t, "tyrs-hand", issue.Label)
+}
+
 func TestNormalizeWebhookRejectsInvalidInput(t *testing.T) {
 	_, err := NormalizeWebhook("", "issues", []byte(`{}`))
 	require.Error(t, err)

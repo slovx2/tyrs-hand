@@ -142,40 +142,44 @@ func init() {
 	jobintentDescDangerousActions := jobintentFields[9].Descriptor()
 	// jobintent.DefaultDangerousActions holds the default value on creation for the dangerous_actions field.
 	jobintent.DefaultDangerousActions = jobintentDescDangerousActions.Default.([]string)
+	// jobintentDescTriggerEvidence is the schema descriptor for trigger_evidence field.
+	jobintentDescTriggerEvidence := jobintentFields[11].Descriptor()
+	// jobintent.DefaultTriggerEvidence holds the default value on creation for the trigger_evidence field.
+	jobintent.DefaultTriggerEvidence = jobintentDescTriggerEvidence.Default.(map[string]interface{})
 	// jobintentDescActorLogin is the schema descriptor for actor_login field.
-	jobintentDescActorLogin := jobintentFields[10].Descriptor()
+	jobintentDescActorLogin := jobintentFields[12].Descriptor()
 	// jobintent.DefaultActorLogin holds the default value on creation for the actor_login field.
 	jobintent.DefaultActorLogin = jobintentDescActorLogin.Default.(string)
 	// jobintentDescActorPermission is the schema descriptor for actor_permission field.
-	jobintentDescActorPermission := jobintentFields[11].Descriptor()
+	jobintentDescActorPermission := jobintentFields[13].Descriptor()
 	// jobintent.DefaultActorPermission holds the default value on creation for the actor_permission field.
 	jobintent.DefaultActorPermission = jobintentDescActorPermission.Default.(string)
 	// jobintentDescPriority is the schema descriptor for priority field.
-	jobintentDescPriority := jobintentFields[12].Descriptor()
+	jobintentDescPriority := jobintentFields[14].Descriptor()
 	// jobintent.DefaultPriority holds the default value on creation for the priority field.
 	jobintent.DefaultPriority = jobintentDescPriority.Default.(int)
 	// jobintentDescAvailableAt is the schema descriptor for available_at field.
-	jobintentDescAvailableAt := jobintentFields[13].Descriptor()
+	jobintentDescAvailableAt := jobintentFields[15].Descriptor()
 	// jobintent.DefaultAvailableAt holds the default value on creation for the available_at field.
 	jobintent.DefaultAvailableAt = jobintentDescAvailableAt.Default.(func() time.Time)
 	// jobintentDescAttemptCount is the schema descriptor for attempt_count field.
-	jobintentDescAttemptCount := jobintentFields[14].Descriptor()
+	jobintentDescAttemptCount := jobintentFields[16].Descriptor()
 	// jobintent.DefaultAttemptCount holds the default value on creation for the attempt_count field.
 	jobintent.DefaultAttemptCount = jobintentDescAttemptCount.Default.(int)
 	// jobintentDescMaxAttempts is the schema descriptor for max_attempts field.
-	jobintentDescMaxAttempts := jobintentFields[15].Descriptor()
+	jobintentDescMaxAttempts := jobintentFields[17].Descriptor()
 	// jobintent.DefaultMaxAttempts holds the default value on creation for the max_attempts field.
 	jobintent.DefaultMaxAttempts = jobintentDescMaxAttempts.Default.(int)
 	// jobintentDescLeaseEpoch is the schema descriptor for lease_epoch field.
-	jobintentDescLeaseEpoch := jobintentFields[17].Descriptor()
+	jobintentDescLeaseEpoch := jobintentFields[19].Descriptor()
 	// jobintent.DefaultLeaseEpoch holds the default value on creation for the lease_epoch field.
 	jobintent.DefaultLeaseEpoch = jobintentDescLeaseEpoch.Default.(int64)
 	// jobintentDescCreatedAt is the schema descriptor for created_at field.
-	jobintentDescCreatedAt := jobintentFields[21].Descriptor()
+	jobintentDescCreatedAt := jobintentFields[23].Descriptor()
 	// jobintent.DefaultCreatedAt holds the default value on creation for the created_at field.
 	jobintent.DefaultCreatedAt = jobintentDescCreatedAt.Default.(func() time.Time)
 	// jobintentDescUpdatedAt is the schema descriptor for updated_at field.
-	jobintentDescUpdatedAt := jobintentFields[22].Descriptor()
+	jobintentDescUpdatedAt := jobintentFields[24].Descriptor()
 	// jobintent.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	jobintent.DefaultUpdatedAt = jobintentDescUpdatedAt.Default.(func() time.Time)
 	// jobintent.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -286,36 +290,36 @@ func init() {
 	triggerruleDescActorMinPermission := triggerruleFields[8].Descriptor()
 	// triggerrule.DefaultActorMinPermission holds the default value on creation for the actor_min_permission field.
 	triggerrule.DefaultActorMinPermission = triggerruleDescActorMinPermission.Default.(string)
-	// triggerruleDescMentionRequired is the schema descriptor for mention_required field.
-	triggerruleDescMentionRequired := triggerruleFields[9].Descriptor()
-	// triggerrule.DefaultMentionRequired holds the default value on creation for the mention_required field.
-	triggerrule.DefaultMentionRequired = triggerruleDescMentionRequired.Default.(bool)
+	// triggerruleDescTriggerKind is the schema descriptor for trigger_kind field.
+	triggerruleDescTriggerKind := triggerruleFields[9].Descriptor()
+	// triggerrule.DefaultTriggerKind holds the default value on creation for the trigger_kind field.
+	triggerrule.DefaultTriggerKind = triggerruleDescTriggerKind.Default.(string)
 	// triggerruleDescSkills is the schema descriptor for skills field.
-	triggerruleDescSkills := triggerruleFields[11].Descriptor()
+	triggerruleDescSkills := triggerruleFields[12].Descriptor()
 	// triggerrule.DefaultSkills holds the default value on creation for the skills field.
 	triggerrule.DefaultSkills = triggerruleDescSkills.Default.([]string)
 	// triggerruleDescAllowedTools is the schema descriptor for allowed_tools field.
-	triggerruleDescAllowedTools := triggerruleFields[12].Descriptor()
+	triggerruleDescAllowedTools := triggerruleFields[13].Descriptor()
 	// triggerrule.DefaultAllowedTools holds the default value on creation for the allowed_tools field.
 	triggerrule.DefaultAllowedTools = triggerruleDescAllowedTools.Default.([]string)
 	// triggerruleDescDangerousActions is the schema descriptor for dangerous_actions field.
-	triggerruleDescDangerousActions := triggerruleFields[13].Descriptor()
+	triggerruleDescDangerousActions := triggerruleFields[14].Descriptor()
 	// triggerrule.DefaultDangerousActions holds the default value on creation for the dangerous_actions field.
 	triggerrule.DefaultDangerousActions = triggerruleDescDangerousActions.Default.([]string)
 	// triggerruleDescFilters is the schema descriptor for filters field.
-	triggerruleDescFilters := triggerruleFields[14].Descriptor()
+	triggerruleDescFilters := triggerruleFields[15].Descriptor()
 	// triggerrule.DefaultFilters holds the default value on creation for the filters field.
 	triggerrule.DefaultFilters = triggerruleDescFilters.Default.(map[string]interface{})
 	// triggerruleDescVersion is the schema descriptor for version field.
-	triggerruleDescVersion := triggerruleFields[15].Descriptor()
+	triggerruleDescVersion := triggerruleFields[16].Descriptor()
 	// triggerrule.DefaultVersion holds the default value on creation for the version field.
 	triggerrule.DefaultVersion = triggerruleDescVersion.Default.(int64)
 	// triggerruleDescCreatedAt is the schema descriptor for created_at field.
-	triggerruleDescCreatedAt := triggerruleFields[16].Descriptor()
+	triggerruleDescCreatedAt := triggerruleFields[17].Descriptor()
 	// triggerrule.DefaultCreatedAt holds the default value on creation for the created_at field.
 	triggerrule.DefaultCreatedAt = triggerruleDescCreatedAt.Default.(func() time.Time)
 	// triggerruleDescUpdatedAt is the schema descriptor for updated_at field.
-	triggerruleDescUpdatedAt := triggerruleFields[17].Descriptor()
+	triggerruleDescUpdatedAt := triggerruleFields[18].Descriptor()
 	// triggerrule.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	triggerrule.DefaultUpdatedAt = triggerruleDescUpdatedAt.Default.(func() time.Time)
 	// triggerrule.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

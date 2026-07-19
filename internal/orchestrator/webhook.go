@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/domain"
 	"github.com/slovx2/tyrs-hand/internal/ports"
+	"github.com/slovx2/tyrs-hand/internal/security"
 )
 
 type WebhookService struct {
@@ -35,7 +36,8 @@ type triggerRule struct {
 	AgentProfileID     uuid.UUID
 	Action             sql.NullString
 	ActorMinPermission string
-	MentionRequired    bool
+	TriggerKind        string
+	TriggerValue       sql.NullString
 	Instruction        string
 	Skills             []string
 	AllowedTools       []string
@@ -122,28 +124,31 @@ func (s *WebhookService) Process(ctx context.Context, signature, deliveryID, eve
 
 	jobs := 0
 	for _, rule := range rules {
-		if rule.MentionRequired && !mentions(event.Body, s.botLogin) {
+		matched, ok := matchTrigger(rule, event, s.botLogin)
+		if !ok {
 			continue
 		}
 		if permissionRank(permission) < permissionRank(rule.ActorMinPermission) {
 			continue
 		}
-		instruction := renderInstruction(rule.Instruction, event)
+		matchedEvent := event
+		matchedEvent.Body = matched.Body
+		instruction := renderInstruction(rule.Instruction, matchedEvent)
 		idempotencyKey := fmt.Sprintf("github:%s:%s", deliveryID, rule.ID)
-		result, err := tx.ExecContext(ctx, `
+		execResult, err := tx.ExecContext(ctx, `
 			INSERT INTO job_intents(
 				work_item_id, repository_id, agent_profile_id, webhook_delivery_id,
 				idempotency_key, instruction, skills, allowed_tools, dangerous_actions,
-				priority, actor_login, actor_permission)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+				priority, actor_login, actor_permission, trigger_rule_id, trigger_evidence)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 			ON CONFLICT(idempotency_key) DO NOTHING`,
 			workItemID, repositoryID, rule.AgentProfileID, deliveryUUID, idempotencyKey,
 			instruction, encode(rule.Skills), encode(rule.AllowedTools), encode(rule.DangerousActions),
-			rule.Priority, event.Actor, permission)
+			rule.Priority, event.Actor, permission, rule.ID, encode(matched.Evidence))
 		if err != nil {
 			return WebhookResult{}, err
 		}
-		count, _ := result.RowsAffected()
+		count, _ := execResult.RowsAffected()
 		jobs += int(count)
 	}
 	status := "processed"
@@ -323,7 +328,7 @@ func updateWorkItemState(ctx context.Context, tx *sql.Tx, id uuid.UUID, action s
 
 func loadRules(ctx context.Context, tx *sql.Tx, repositoryID uuid.UUID, event domain.NormalizedEvent) ([]triggerRule, error) {
 	rows, err := tx.QueryContext(ctx, `
-		SELECT id, agent_profile_id, action, actor_min_permission, mention_required,
+		SELECT id, agent_profile_id, action, actor_min_permission, trigger_kind, trigger_value,
 			instruction_template, skills, allowed_tools, dangerous_actions, priority
 		FROM trigger_rules
 		WHERE repository_id = $1 AND enabled = true AND event_name = $2
@@ -338,7 +343,7 @@ func loadRules(ctx context.Context, tx *sql.Tx, repositoryID uuid.UUID, event do
 		var rule triggerRule
 		var skills, tools, dangerous []byte
 		if err := rows.Scan(&rule.ID, &rule.AgentProfileID, &rule.Action, &rule.ActorMinPermission,
-			&rule.MentionRequired, &rule.Instruction, &skills, &tools, &dangerous, &rule.Priority); err != nil {
+			&rule.TriggerKind, &rule.TriggerValue, &rule.Instruction, &skills, &tools, &dangerous, &rule.Priority); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(skills, &rule.Skills); err != nil {
@@ -353,6 +358,75 @@ func loadRules(ctx context.Context, tx *sql.Tx, repositoryID uuid.UUID, event do
 		rules = append(rules, rule)
 	}
 	return rules, rows.Err()
+}
+
+type triggerMatch struct {
+	Body     string
+	Evidence map[string]any
+}
+
+func matchTrigger(rule triggerRule, event domain.NormalizedEvent, botLogin string) (triggerMatch, bool) {
+	value := rule.TriggerValue.String
+	matchedBody := event.Body
+	source := "github_event"
+	switch rule.TriggerKind {
+	case "event":
+	case "label":
+		if !rule.TriggerValue.Valid || !strings.EqualFold(event.Label, value) {
+			return triggerMatch{}, false
+		}
+		source = "github_label"
+	case "slash_command":
+		var ok bool
+		matchedBody, ok = slashCommandArguments(event.Body, value)
+		if !rule.TriggerValue.Valid || !ok {
+			return triggerMatch{}, false
+		}
+		source = "comment_first_line"
+	case "legacy_mention":
+		if !mentions(event.Body, botLogin) {
+			return triggerMatch{}, false
+		}
+		source = "legacy_body_scan"
+	default:
+		return triggerMatch{}, false
+	}
+	return triggerMatch{
+		Body: matchedBody,
+		Evidence: map[string]any{
+			"kind":       rule.TriggerKind,
+			"value":      value,
+			"source":     source,
+			"event":      event.EventName,
+			"action":     event.Action,
+			"label":      event.Label,
+			"bodySha256": security.Digest(event.Body),
+		},
+	}, true
+}
+
+func slashCommandArguments(body, command string) (string, bool) {
+	if command == "" {
+		return "", false
+	}
+	firstLine, remainder, hasRemainder := strings.Cut(body, "\n")
+	firstLine = strings.TrimSpace(strings.TrimSuffix(firstLine, "\r"))
+	prefix := "/" + command
+	arguments := ""
+	if firstLine == prefix {
+		arguments = ""
+	} else if strings.HasPrefix(firstLine, prefix) && len(firstLine) > len(prefix) && (firstLine[len(prefix)] == ' ' || firstLine[len(prefix)] == '\t') {
+		arguments = strings.TrimSpace(firstLine[len(prefix):])
+	} else {
+		return "", false
+	}
+	if hasRemainder && strings.TrimSpace(remainder) != "" {
+		if arguments != "" {
+			arguments += "\n"
+		}
+		arguments += strings.TrimSpace(remainder)
+	}
+	return arguments, true
 }
 
 func finishDelivery(ctx context.Context, tx *sql.Tx, id uuid.UUID, status, message string) error {

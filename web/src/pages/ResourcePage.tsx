@@ -7,9 +7,11 @@ const hiddenColumns = new Set(['metadata', 'payload', 'config'])
 export function ResourcePage({
   resource,
   title,
+  description = '实时显示控制面的权威状态。',
 }: {
   resource: string
   title: string
+  description?: string
 }) {
   const queryClient = useQueryClient()
   const query = useQuery({
@@ -41,7 +43,7 @@ export function ResourcePage({
       <div className="flex items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">{title}</h1>
-          <p className="muted mt-2">实时显示控制面的权威状态。</p>
+          <p className="muted mt-2">{description}</p>
         </div>
         <button
           className="button-secondary"

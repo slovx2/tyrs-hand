@@ -95,9 +95,14 @@ func ActorMinPermission(v string) predicate.TriggerRule {
 	return predicate.TriggerRule(sql.FieldEQ(FieldActorMinPermission, v))
 }
 
-// MentionRequired applies equality check predicate on the "mention_required" field. It's identical to MentionRequiredEQ.
-func MentionRequired(v bool) predicate.TriggerRule {
-	return predicate.TriggerRule(sql.FieldEQ(FieldMentionRequired, v))
+// TriggerKind applies equality check predicate on the "trigger_kind" field. It's identical to TriggerKindEQ.
+func TriggerKind(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldEQ(FieldTriggerKind, v))
+}
+
+// TriggerValue applies equality check predicate on the "trigger_value" field. It's identical to TriggerValueEQ.
+func TriggerValue(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldEQ(FieldTriggerValue, v))
 }
 
 // InstructionTemplate applies equality check predicate on the "instruction_template" field. It's identical to InstructionTemplateEQ.
@@ -520,14 +525,144 @@ func ActorMinPermissionContainsFold(v string) predicate.TriggerRule {
 	return predicate.TriggerRule(sql.FieldContainsFold(FieldActorMinPermission, v))
 }
 
-// MentionRequiredEQ applies the EQ predicate on the "mention_required" field.
-func MentionRequiredEQ(v bool) predicate.TriggerRule {
-	return predicate.TriggerRule(sql.FieldEQ(FieldMentionRequired, v))
+// TriggerKindEQ applies the EQ predicate on the "trigger_kind" field.
+func TriggerKindEQ(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldEQ(FieldTriggerKind, v))
 }
 
-// MentionRequiredNEQ applies the NEQ predicate on the "mention_required" field.
-func MentionRequiredNEQ(v bool) predicate.TriggerRule {
-	return predicate.TriggerRule(sql.FieldNEQ(FieldMentionRequired, v))
+// TriggerKindNEQ applies the NEQ predicate on the "trigger_kind" field.
+func TriggerKindNEQ(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldNEQ(FieldTriggerKind, v))
+}
+
+// TriggerKindIn applies the In predicate on the "trigger_kind" field.
+func TriggerKindIn(vs ...string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldIn(FieldTriggerKind, vs...))
+}
+
+// TriggerKindNotIn applies the NotIn predicate on the "trigger_kind" field.
+func TriggerKindNotIn(vs ...string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldNotIn(FieldTriggerKind, vs...))
+}
+
+// TriggerKindGT applies the GT predicate on the "trigger_kind" field.
+func TriggerKindGT(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldGT(FieldTriggerKind, v))
+}
+
+// TriggerKindGTE applies the GTE predicate on the "trigger_kind" field.
+func TriggerKindGTE(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldGTE(FieldTriggerKind, v))
+}
+
+// TriggerKindLT applies the LT predicate on the "trigger_kind" field.
+func TriggerKindLT(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldLT(FieldTriggerKind, v))
+}
+
+// TriggerKindLTE applies the LTE predicate on the "trigger_kind" field.
+func TriggerKindLTE(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldLTE(FieldTriggerKind, v))
+}
+
+// TriggerKindContains applies the Contains predicate on the "trigger_kind" field.
+func TriggerKindContains(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldContains(FieldTriggerKind, v))
+}
+
+// TriggerKindHasPrefix applies the HasPrefix predicate on the "trigger_kind" field.
+func TriggerKindHasPrefix(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldHasPrefix(FieldTriggerKind, v))
+}
+
+// TriggerKindHasSuffix applies the HasSuffix predicate on the "trigger_kind" field.
+func TriggerKindHasSuffix(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldHasSuffix(FieldTriggerKind, v))
+}
+
+// TriggerKindEqualFold applies the EqualFold predicate on the "trigger_kind" field.
+func TriggerKindEqualFold(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldEqualFold(FieldTriggerKind, v))
+}
+
+// TriggerKindContainsFold applies the ContainsFold predicate on the "trigger_kind" field.
+func TriggerKindContainsFold(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldContainsFold(FieldTriggerKind, v))
+}
+
+// TriggerValueEQ applies the EQ predicate on the "trigger_value" field.
+func TriggerValueEQ(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldEQ(FieldTriggerValue, v))
+}
+
+// TriggerValueNEQ applies the NEQ predicate on the "trigger_value" field.
+func TriggerValueNEQ(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldNEQ(FieldTriggerValue, v))
+}
+
+// TriggerValueIn applies the In predicate on the "trigger_value" field.
+func TriggerValueIn(vs ...string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldIn(FieldTriggerValue, vs...))
+}
+
+// TriggerValueNotIn applies the NotIn predicate on the "trigger_value" field.
+func TriggerValueNotIn(vs ...string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldNotIn(FieldTriggerValue, vs...))
+}
+
+// TriggerValueGT applies the GT predicate on the "trigger_value" field.
+func TriggerValueGT(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldGT(FieldTriggerValue, v))
+}
+
+// TriggerValueGTE applies the GTE predicate on the "trigger_value" field.
+func TriggerValueGTE(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldGTE(FieldTriggerValue, v))
+}
+
+// TriggerValueLT applies the LT predicate on the "trigger_value" field.
+func TriggerValueLT(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldLT(FieldTriggerValue, v))
+}
+
+// TriggerValueLTE applies the LTE predicate on the "trigger_value" field.
+func TriggerValueLTE(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldLTE(FieldTriggerValue, v))
+}
+
+// TriggerValueContains applies the Contains predicate on the "trigger_value" field.
+func TriggerValueContains(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldContains(FieldTriggerValue, v))
+}
+
+// TriggerValueHasPrefix applies the HasPrefix predicate on the "trigger_value" field.
+func TriggerValueHasPrefix(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldHasPrefix(FieldTriggerValue, v))
+}
+
+// TriggerValueHasSuffix applies the HasSuffix predicate on the "trigger_value" field.
+func TriggerValueHasSuffix(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldHasSuffix(FieldTriggerValue, v))
+}
+
+// TriggerValueIsNil applies the IsNil predicate on the "trigger_value" field.
+func TriggerValueIsNil() predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldIsNull(FieldTriggerValue))
+}
+
+// TriggerValueNotNil applies the NotNil predicate on the "trigger_value" field.
+func TriggerValueNotNil() predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldNotNull(FieldTriggerValue))
+}
+
+// TriggerValueEqualFold applies the EqualFold predicate on the "trigger_value" field.
+func TriggerValueEqualFold(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldEqualFold(FieldTriggerValue, v))
+}
+
+// TriggerValueContainsFold applies the ContainsFold predicate on the "trigger_value" field.
+func TriggerValueContainsFold(v string) predicate.TriggerRule {
+	return predicate.TriggerRule(sql.FieldContainsFold(FieldTriggerValue, v))
 }
 
 // InstructionTemplateEQ applies the EQ predicate on the "instruction_template" field.

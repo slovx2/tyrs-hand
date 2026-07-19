@@ -389,7 +389,22 @@ paths:
     post: { $ref: "#/components/pathItems/CreateGeneric" }
   /trigger-rules:
     get: { $ref: "#/components/pathItems/ListTriggerRules" }
-    post: { $ref: "#/components/pathItems/CreateGeneric" }
+    post:
+      operationId: createTriggerRule
+      tags: [Resources]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TriggerRuleInput" }
+      responses:
+        "201":
+          description: 已创建
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IDResource" }
+        default: { $ref: "#/components/responses/Problem" }
   /work-items:
     get: { $ref: "#/components/pathItems/ListWorkItems" }
   /threads:
@@ -603,6 +618,32 @@ components:
         name: { type: string }
         defaultBranch: { type: string }
         cloneUrl: { type: string, format: uri }
+    TriggerRuleInput:
+      type: object
+      required: [repositoryId, agentProfileId, name, eventName, triggerKind, instruction]
+      properties:
+        repositoryId: { type: string, format: uuid }
+        agentProfileId: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        eventName: { type: string, minLength: 1 }
+        action: { type: string }
+        enabled: { type: boolean }
+        priority: { type: integer, default: 100 }
+        triggerKind:
+          type: string
+          enum: [event, label, slash_command, legacy_mention]
+        triggerValue:
+          type: string
+          description: Label 名或不带斜杠的命令名；event 与 legacy_mention 留空。
+        actorMinPermission:
+          type: string
+          enum: [read, triage, write, maintain, admin]
+          default: triage
+        instruction: { type: string, minLength: 1 }
+        skills: { type: array, items: { type: string } }
+        allowedTools: { type: array, items: { type: string } }
+        dangerousActions: { type: array, items: { type: string } }
+        filters: { type: object, additionalProperties: true }
     AgentProviderSettings:
       type: object
       required: [providerType, configured]

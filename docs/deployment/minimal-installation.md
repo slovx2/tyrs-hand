@@ -80,7 +80,7 @@ docker compose -f compose.yaml -f compose.production.yaml up -d server worker
 2. 选择账号，并只授权需要接入的仓库。
 3. 回到管理后台，确认 Installation 和 Repository 已同步。
 
-系统会为新仓库创建最小 `@mention` 规则。拥有 `triage` 及以上权限的用户在 Issue 或 PR 评论中发送 `@<app-slug>` 即可触发。
+系统会为新仓库创建最小命令和 Label 规则。拥有 `triage` 及以上权限的用户可以在 Issue 或 PR 评论第一行发送 `/tyrs-hand <指令>`，也可以添加名称为 `tyrs-hand` 的 Label。全文 `@mention` 规则默认关闭，只建议在兼容旧工作流时手动创建。
 
 ## 5. 配置 Codex
 

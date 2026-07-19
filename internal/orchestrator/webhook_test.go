@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"database/sql"
 	"testing"
 
 	"github.com/slovx2/tyrs-hand/internal/domain"
@@ -39,6 +40,53 @@ func TestRuleHelpers(t *testing.T) {
 	require.Equal(t, permissionRank("pull"), permissionRank("read"))
 	require.Equal(t, 0, permissionRank("none"))
 	require.JSONEq(t, `["a","b"]`, string(encode([]string{"a", "b"})))
+}
+
+func TestSlashCommandArguments(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		expected string
+		matched  bool
+	}{
+		{name: "arguments", body: "/tyrs-hand inspect this", expected: "inspect this", matched: true},
+		{name: "multiline", body: "/tyrs-hand inspect\nmore context", expected: "inspect\nmore context", matched: true},
+		{name: "command only", body: "/tyrs-hand", expected: "", matched: true},
+		{name: "surrounding whitespace", body: "  /tyrs-hand\tinspect  ", expected: "inspect", matched: true},
+		{name: "second line", body: "explanation\n/tyrs-hand inspect", matched: false},
+		{name: "suffix", body: "/tyrs-hand-extra inspect", matched: false},
+		{name: "case sensitive", body: "/Tyrs-Hand inspect", matched: false},
+		{name: "code fence", body: "```\n/tyrs-hand inspect\n```", matched: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			actual, matched := slashCommandArguments(test.body, "tyrs-hand")
+			require.Equal(t, test.matched, matched)
+			require.Equal(t, test.expected, actual)
+		})
+	}
+}
+
+func TestMatchTrigger(t *testing.T) {
+	event := domain.NormalizedEvent{EventName: "issue_comment", Action: "created", Body: "/tyrs-hand inspect\ncontext"}
+	command := triggerRule{TriggerKind: "slash_command", TriggerValue: sql.NullString{String: "tyrs-hand", Valid: true}}
+	matched, ok := matchTrigger(command, event, "tyrs-hand")
+	require.True(t, ok)
+	require.Equal(t, "inspect\ncontext", matched.Body)
+	require.Equal(t, "comment_first_line", matched.Evidence["source"])
+
+	event.Label = "TYRS-HAND"
+	label := triggerRule{TriggerKind: "label", TriggerValue: sql.NullString{String: "tyrs-hand", Valid: true}}
+	_, ok = matchTrigger(label, event, "tyrs-hand")
+	require.True(t, ok)
+
+	event.Body = "please ask @tyrs-hand to inspect"
+	legacy := triggerRule{TriggerKind: "legacy_mention"}
+	_, ok = matchTrigger(legacy, event, "tyrs-hand")
+	require.True(t, ok)
+
+	_, ok = matchTrigger(triggerRule{TriggerKind: "unknown"}, event, "tyrs-hand")
+	require.False(t, ok)
 }
 
 func TestDiscordPermissionSyncForEvent(t *testing.T) {

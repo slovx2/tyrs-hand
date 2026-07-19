@@ -101,16 +101,30 @@ func (_c *TriggerRuleCreate) SetNillableActorMinPermission(v *string) *TriggerRu
 	return _c
 }
 
-// SetMentionRequired sets the "mention_required" field.
-func (_c *TriggerRuleCreate) SetMentionRequired(v bool) *TriggerRuleCreate {
-	_c.mutation.SetMentionRequired(v)
+// SetTriggerKind sets the "trigger_kind" field.
+func (_c *TriggerRuleCreate) SetTriggerKind(v string) *TriggerRuleCreate {
+	_c.mutation.SetTriggerKind(v)
 	return _c
 }
 
-// SetNillableMentionRequired sets the "mention_required" field if the given value is not nil.
-func (_c *TriggerRuleCreate) SetNillableMentionRequired(v *bool) *TriggerRuleCreate {
+// SetNillableTriggerKind sets the "trigger_kind" field if the given value is not nil.
+func (_c *TriggerRuleCreate) SetNillableTriggerKind(v *string) *TriggerRuleCreate {
 	if v != nil {
-		_c.SetMentionRequired(*v)
+		_c.SetTriggerKind(*v)
+	}
+	return _c
+}
+
+// SetTriggerValue sets the "trigger_value" field.
+func (_c *TriggerRuleCreate) SetTriggerValue(v string) *TriggerRuleCreate {
+	_c.mutation.SetTriggerValue(v)
+	return _c
+}
+
+// SetNillableTriggerValue sets the "trigger_value" field if the given value is not nil.
+func (_c *TriggerRuleCreate) SetNillableTriggerValue(v *string) *TriggerRuleCreate {
+	if v != nil {
+		_c.SetTriggerValue(*v)
 	}
 	return _c
 }
@@ -248,9 +262,9 @@ func (_c *TriggerRuleCreate) defaults() {
 		v := triggerrule.DefaultActorMinPermission
 		_c.mutation.SetActorMinPermission(v)
 	}
-	if _, ok := _c.mutation.MentionRequired(); !ok {
-		v := triggerrule.DefaultMentionRequired
-		_c.mutation.SetMentionRequired(v)
+	if _, ok := _c.mutation.TriggerKind(); !ok {
+		v := triggerrule.DefaultTriggerKind
+		_c.mutation.SetTriggerKind(v)
 	}
 	if _, ok := _c.mutation.Skills(); !ok {
 		v := triggerrule.DefaultSkills
@@ -309,8 +323,8 @@ func (_c *TriggerRuleCreate) check() error {
 	if _, ok := _c.mutation.ActorMinPermission(); !ok {
 		return &ValidationError{Name: "actor_min_permission", err: errors.New(`ent: missing required field "TriggerRule.actor_min_permission"`)}
 	}
-	if _, ok := _c.mutation.MentionRequired(); !ok {
-		return &ValidationError{Name: "mention_required", err: errors.New(`ent: missing required field "TriggerRule.mention_required"`)}
+	if _, ok := _c.mutation.TriggerKind(); !ok {
+		return &ValidationError{Name: "trigger_kind", err: errors.New(`ent: missing required field "TriggerRule.trigger_kind"`)}
 	}
 	if _, ok := _c.mutation.InstructionTemplate(); !ok {
 		return &ValidationError{Name: "instruction_template", err: errors.New(`ent: missing required field "TriggerRule.instruction_template"`)}
@@ -403,9 +417,13 @@ func (_c *TriggerRuleCreate) createSpec() (*TriggerRule, *sqlgraph.CreateSpec) {
 		_spec.SetField(triggerrule.FieldActorMinPermission, field.TypeString, value)
 		_node.ActorMinPermission = value
 	}
-	if value, ok := _c.mutation.MentionRequired(); ok {
-		_spec.SetField(triggerrule.FieldMentionRequired, field.TypeBool, value)
-		_node.MentionRequired = value
+	if value, ok := _c.mutation.TriggerKind(); ok {
+		_spec.SetField(triggerrule.FieldTriggerKind, field.TypeString, value)
+		_node.TriggerKind = value
+	}
+	if value, ok := _c.mutation.TriggerValue(); ok {
+		_spec.SetField(triggerrule.FieldTriggerValue, field.TypeString, value)
+		_node.TriggerValue = &value
 	}
 	if value, ok := _c.mutation.InstructionTemplate(); ok {
 		_spec.SetField(triggerrule.FieldInstructionTemplate, field.TypeString, value)

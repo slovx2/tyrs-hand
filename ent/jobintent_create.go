@@ -83,6 +83,26 @@ func (_c *JobIntentCreate) SetDangerousActions(v []string) *JobIntentCreate {
 	return _c
 }
 
+// SetTriggerRuleID sets the "trigger_rule_id" field.
+func (_c *JobIntentCreate) SetTriggerRuleID(v uuid.UUID) *JobIntentCreate {
+	_c.mutation.SetTriggerRuleID(v)
+	return _c
+}
+
+// SetNillableTriggerRuleID sets the "trigger_rule_id" field if the given value is not nil.
+func (_c *JobIntentCreate) SetNillableTriggerRuleID(v *uuid.UUID) *JobIntentCreate {
+	if v != nil {
+		_c.SetTriggerRuleID(*v)
+	}
+	return _c
+}
+
+// SetTriggerEvidence sets the "trigger_evidence" field.
+func (_c *JobIntentCreate) SetTriggerEvidence(v map[string]interface{}) *JobIntentCreate {
+	_c.mutation.SetTriggerEvidence(v)
+	return _c
+}
+
 // SetActorLogin sets the "actor_login" field.
 func (_c *JobIntentCreate) SetActorLogin(v string) *JobIntentCreate {
 	_c.mutation.SetActorLogin(v)
@@ -330,6 +350,10 @@ func (_c *JobIntentCreate) defaults() {
 		v := jobintent.DefaultDangerousActions
 		_c.mutation.SetDangerousActions(v)
 	}
+	if _, ok := _c.mutation.TriggerEvidence(); !ok {
+		v := jobintent.DefaultTriggerEvidence
+		_c.mutation.SetTriggerEvidence(v)
+	}
 	if _, ok := _c.mutation.ActorLogin(); !ok {
 		v := jobintent.DefaultActorLogin
 		_c.mutation.SetActorLogin(v)
@@ -400,6 +424,9 @@ func (_c *JobIntentCreate) check() error {
 	}
 	if _, ok := _c.mutation.DangerousActions(); !ok {
 		return &ValidationError{Name: "dangerous_actions", err: errors.New(`ent: missing required field "JobIntent.dangerous_actions"`)}
+	}
+	if _, ok := _c.mutation.TriggerEvidence(); !ok {
+		return &ValidationError{Name: "trigger_evidence", err: errors.New(`ent: missing required field "JobIntent.trigger_evidence"`)}
 	}
 	if _, ok := _c.mutation.ActorLogin(); !ok {
 		return &ValidationError{Name: "actor_login", err: errors.New(`ent: missing required field "JobIntent.actor_login"`)}
@@ -498,6 +525,14 @@ func (_c *JobIntentCreate) createSpec() (*JobIntent, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.DangerousActions(); ok {
 		_spec.SetField(jobintent.FieldDangerousActions, field.TypeJSON, value)
 		_node.DangerousActions = value
+	}
+	if value, ok := _c.mutation.TriggerRuleID(); ok {
+		_spec.SetField(jobintent.FieldTriggerRuleID, field.TypeUUID, value)
+		_node.TriggerRuleID = &value
+	}
+	if value, ok := _c.mutation.TriggerEvidence(); ok {
+		_spec.SetField(jobintent.FieldTriggerEvidence, field.TypeJSON, value)
+		_node.TriggerEvidence = value
 	}
 	if value, ok := _c.mutation.ActorLogin(); ok {
 		_spec.SetField(jobintent.FieldActorLogin, field.TypeString, value)

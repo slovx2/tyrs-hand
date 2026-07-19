@@ -35,8 +35,10 @@ type TriggerRule struct {
 	Priority int `json:"priority,omitempty"`
 	// ActorMinPermission holds the value of the "actor_min_permission" field.
 	ActorMinPermission string `json:"actor_min_permission,omitempty"`
-	// MentionRequired holds the value of the "mention_required" field.
-	MentionRequired bool `json:"mention_required,omitempty"`
+	// TriggerKind holds the value of the "trigger_kind" field.
+	TriggerKind string `json:"trigger_kind,omitempty"`
+	// TriggerValue holds the value of the "trigger_value" field.
+	TriggerValue *string `json:"trigger_value,omitempty"`
 	// InstructionTemplate holds the value of the "instruction_template" field.
 	InstructionTemplate string `json:"instruction_template,omitempty"`
 	// Skills holds the value of the "skills" field.
@@ -63,11 +65,11 @@ func (*TriggerRule) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case triggerrule.FieldSkills, triggerrule.FieldAllowedTools, triggerrule.FieldDangerousActions, triggerrule.FieldFilters:
 			values[i] = new([]byte)
-		case triggerrule.FieldEnabled, triggerrule.FieldMentionRequired:
+		case triggerrule.FieldEnabled:
 			values[i] = new(sql.NullBool)
 		case triggerrule.FieldPriority, triggerrule.FieldVersion:
 			values[i] = new(sql.NullInt64)
-		case triggerrule.FieldName, triggerrule.FieldEventName, triggerrule.FieldAction, triggerrule.FieldActorMinPermission, triggerrule.FieldInstructionTemplate:
+		case triggerrule.FieldName, triggerrule.FieldEventName, triggerrule.FieldAction, triggerrule.FieldActorMinPermission, triggerrule.FieldTriggerKind, triggerrule.FieldTriggerValue, triggerrule.FieldInstructionTemplate:
 			values[i] = new(sql.NullString)
 		case triggerrule.FieldCreatedAt, triggerrule.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -143,11 +145,18 @@ func (_m *TriggerRule) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.ActorMinPermission = value.String
 			}
-		case triggerrule.FieldMentionRequired:
-			if value, ok := values[i].(*sql.NullBool); !ok {
-				return fmt.Errorf("unexpected type %T for field mention_required", values[i])
+		case triggerrule.FieldTriggerKind:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field trigger_kind", values[i])
 			} else if value.Valid {
-				_m.MentionRequired = value.Bool
+				_m.TriggerKind = value.String
+			}
+		case triggerrule.FieldTriggerValue:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field trigger_value", values[i])
+			} else if value.Valid {
+				_m.TriggerValue = new(string)
+				*_m.TriggerValue = value.String
 			}
 		case triggerrule.FieldInstructionTemplate:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -267,8 +276,13 @@ func (_m *TriggerRule) String() string {
 	builder.WriteString("actor_min_permission=")
 	builder.WriteString(_m.ActorMinPermission)
 	builder.WriteString(", ")
-	builder.WriteString("mention_required=")
-	builder.WriteString(fmt.Sprintf("%v", _m.MentionRequired))
+	builder.WriteString("trigger_kind=")
+	builder.WriteString(_m.TriggerKind)
+	builder.WriteString(", ")
+	if v := _m.TriggerValue; v != nil {
+		builder.WriteString("trigger_value=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	builder.WriteString("instruction_template=")
 	builder.WriteString(_m.InstructionTemplate)

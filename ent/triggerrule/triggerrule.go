@@ -30,8 +30,10 @@ const (
 	FieldPriority = "priority"
 	// FieldActorMinPermission holds the string denoting the actor_min_permission field in the database.
 	FieldActorMinPermission = "actor_min_permission"
-	// FieldMentionRequired holds the string denoting the mention_required field in the database.
-	FieldMentionRequired = "mention_required"
+	// FieldTriggerKind holds the string denoting the trigger_kind field in the database.
+	FieldTriggerKind = "trigger_kind"
+	// FieldTriggerValue holds the string denoting the trigger_value field in the database.
+	FieldTriggerValue = "trigger_value"
 	// FieldInstructionTemplate holds the string denoting the instruction_template field in the database.
 	FieldInstructionTemplate = "instruction_template"
 	// FieldSkills holds the string denoting the skills field in the database.
@@ -63,7 +65,8 @@ var Columns = []string{
 	FieldEnabled,
 	FieldPriority,
 	FieldActorMinPermission,
-	FieldMentionRequired,
+	FieldTriggerKind,
+	FieldTriggerValue,
 	FieldInstructionTemplate,
 	FieldSkills,
 	FieldAllowedTools,
@@ -91,8 +94,8 @@ var (
 	DefaultPriority int
 	// DefaultActorMinPermission holds the default value on creation for the "actor_min_permission" field.
 	DefaultActorMinPermission string
-	// DefaultMentionRequired holds the default value on creation for the "mention_required" field.
-	DefaultMentionRequired bool
+	// DefaultTriggerKind holds the default value on creation for the "trigger_kind" field.
+	DefaultTriggerKind string
 	// DefaultSkills holds the default value on creation for the "skills" field.
 	DefaultSkills []string
 	// DefaultAllowedTools holds the default value on creation for the "allowed_tools" field.
@@ -161,9 +164,14 @@ func ByActorMinPermission(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldActorMinPermission, opts...).ToFunc()
 }
 
-// ByMentionRequired orders the results by the mention_required field.
-func ByMentionRequired(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldMentionRequired, opts...).ToFunc()
+// ByTriggerKind orders the results by the trigger_kind field.
+func ByTriggerKind(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTriggerKind, opts...).ToFunc()
+}
+
+// ByTriggerValue orders the results by the trigger_value field.
+func ByTriggerValue(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTriggerValue, opts...).ToFunc()
 }
 
 // ByInstructionTemplate orders the results by the instruction_template field.

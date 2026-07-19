@@ -37,6 +37,10 @@ type JobIntent struct {
 	AllowedTools []string `json:"allowed_tools,omitempty"`
 	// DangerousActions holds the value of the "dangerous_actions" field.
 	DangerousActions []string `json:"dangerous_actions,omitempty"`
+	// TriggerRuleID holds the value of the "trigger_rule_id" field.
+	TriggerRuleID *uuid.UUID `json:"trigger_rule_id,omitempty"`
+	// TriggerEvidence holds the value of the "trigger_evidence" field.
+	TriggerEvidence map[string]interface{} `json:"trigger_evidence,omitempty"`
 	// ActorLogin holds the value of the "actor_login" field.
 	ActorLogin string `json:"actor_login,omitempty"`
 	// ActorPermission holds the value of the "actor_permission" field.
@@ -71,7 +75,9 @@ func (*JobIntent) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case jobintent.FieldSkills, jobintent.FieldAllowedTools, jobintent.FieldDangerousActions:
+		case jobintent.FieldTriggerRuleID:
+			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
+		case jobintent.FieldSkills, jobintent.FieldAllowedTools, jobintent.FieldDangerousActions, jobintent.FieldTriggerEvidence:
 			values[i] = new([]byte)
 		case jobintent.FieldPriority, jobintent.FieldAttemptCount, jobintent.FieldMaxAttempts, jobintent.FieldLeaseEpoch:
 			values[i] = new(sql.NullInt64)
@@ -160,6 +166,21 @@ func (_m *JobIntent) assignValues(columns []string, values []any) error {
 			} else if value != nil && len(*value) > 0 {
 				if err := json.Unmarshal(*value, &_m.DangerousActions); err != nil {
 					return fmt.Errorf("unmarshal field dangerous_actions: %w", err)
+				}
+			}
+		case jobintent.FieldTriggerRuleID:
+			if value, ok := values[i].(*sql.NullScanner); !ok {
+				return fmt.Errorf("unexpected type %T for field trigger_rule_id", values[i])
+			} else if value.Valid {
+				_m.TriggerRuleID = new(uuid.UUID)
+				*_m.TriggerRuleID = *value.S.(*uuid.UUID)
+			}
+		case jobintent.FieldTriggerEvidence:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field trigger_evidence", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.TriggerEvidence); err != nil {
+					return fmt.Errorf("unmarshal field trigger_evidence: %w", err)
 				}
 			}
 		case jobintent.FieldActorLogin:
@@ -306,6 +327,14 @@ func (_m *JobIntent) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("dangerous_actions=")
 	builder.WriteString(fmt.Sprintf("%v", _m.DangerousActions))
+	builder.WriteString(", ")
+	if v := _m.TriggerRuleID; v != nil {
+		builder.WriteString("trigger_rule_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("trigger_evidence=")
+	builder.WriteString(fmt.Sprintf("%v", _m.TriggerEvidence))
 	builder.WriteString(", ")
 	builder.WriteString("actor_login=")
 	builder.WriteString(_m.ActorLogin)

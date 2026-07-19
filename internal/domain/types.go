@@ -45,6 +45,7 @@ type NormalizedEvent struct {
 	Actor          string
 	ActorID        int64
 	Body           string
+	Label          string
 	HeadSHA        string
 	Raw            json.RawMessage
 	ReceivedAt     time.Time

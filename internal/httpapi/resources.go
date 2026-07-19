@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -66,7 +68,10 @@ type triggerRuleRequest struct {
 	Name               string         `json:"name" binding:"required"`
 	EventName          string         `json:"eventName" binding:"required"`
 	Action             string         `json:"action"`
-	MentionRequired    bool           `json:"mentionRequired"`
+	Enabled            *bool          `json:"enabled"`
+	Priority           int            `json:"priority"`
+	TriggerKind        string         `json:"triggerKind" binding:"required"`
+	TriggerValue       string         `json:"triggerValue"`
 	ActorMinPermission string         `json:"actorMinPermission"`
 	Instruction        string         `json:"instruction" binding:"required"`
 	Skills             []string       `json:"skills"`
@@ -84,25 +89,99 @@ func (s *Server) createTriggerRule(c *gin.Context) {
 	if request.ActorMinPermission == "" {
 		request.ActorMinPermission = "triage"
 	}
+	request.TriggerKind = strings.TrimSpace(request.TriggerKind)
+	request.TriggerValue = strings.TrimSpace(request.TriggerValue)
+	if request.Priority == 0 {
+		request.Priority = 100
+	}
+	enabled := triggerRuleEnabled(request)
+	if err := validateTriggerRule(&request); err != nil {
+		badRequest(c, err)
+		return
+	}
 	var id uuid.UUID
 	err := s.db.QueryRowContext(c, `
 		INSERT INTO trigger_rules(repository_id, agent_profile_id, name, event_name, action,
-			actor_min_permission, mention_required, instruction_template, skills, allowed_tools, dangerous_actions, filters)
-		VALUES ($1,$2,$3,$4,NULLIF($5,''),$6,$7,$8,$9,$10,$11,$12)
+			enabled, priority, actor_min_permission, trigger_kind, trigger_value,
+			instruction_template, skills, allowed_tools, dangerous_actions, filters)
+		VALUES ($1,$2,$3,$4,NULLIF($5,''),$6,$7,$8,$9,NULLIF($10,''),$11,$12,$13,$14,$15)
 		RETURNING id`, request.RepositoryID, request.AgentProfileID, request.Name, request.EventName,
-		request.Action, request.ActorMinPermission, request.MentionRequired, request.Instruction,
-		encodeJSON(request.Skills), encodeJSON(request.AllowedTools), encodeJSON(request.DangerousActions), encodeJSON(request.Filters)).Scan(&id)
+		request.Action, enabled, request.Priority, request.ActorMinPermission, request.TriggerKind, request.TriggerValue,
+		request.Instruction, encodeJSON(request.Skills), encodeJSON(request.AllowedTools),
+		encodeJSON(request.DangerousActions), encodeJSON(request.Filters)).Scan(&id)
 	if err != nil {
 		problem(c, http.StatusConflict, "创建 Trigger Rule 失败", err)
 		return
 	}
-	s.audit(c, "trigger_rule.create", "trigger_rule", id.String(), map[string]any{"name": request.Name})
+	s.audit(c, "trigger_rule.create", "trigger_rule", id.String(), map[string]any{
+		"name": request.Name, "triggerKind": request.TriggerKind, "triggerValue": request.TriggerValue,
+	})
 	c.JSON(http.StatusCreated, gin.H{"id": id})
 }
 
 func (s *Server) listTriggerRules(c *gin.Context) {
-	s.listRows(c, `SELECT id, repository_id, agent_profile_id, name, event_name, action, enabled, priority, actor_min_permission, mention_required, skills, allowed_tools, dangerous_actions, version, updated_at FROM trigger_rules ORDER BY repository_id, priority, name`,
-		[]string{"id", "repositoryId", "agentProfileId", "name", "eventName", "action", "enabled", "priority", "actorMinPermission", "mentionRequired", "skills", "allowedTools", "dangerousActions", "version", "updatedAt"})
+	s.listRows(c, `SELECT id, repository_id, agent_profile_id, name, trigger_kind, trigger_value, event_name, action, enabled, priority, actor_min_permission, skills, allowed_tools, dangerous_actions, version, updated_at FROM trigger_rules ORDER BY repository_id, priority, name`,
+		[]string{"id", "repositoryId", "agentProfileId", "name", "triggerKind", "triggerValue", "eventName", "action", "enabled", "priority", "actorMinPermission", "skills", "allowedTools", "dangerousActions", "version", "updatedAt"})
+}
+
+var slashCommandName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
+
+func triggerRuleEnabled(request triggerRuleRequest) bool {
+	if request.Enabled != nil {
+		return *request.Enabled
+	}
+	return request.TriggerKind != "legacy_mention"
+}
+
+func validateTriggerRule(request *triggerRuleRequest) error {
+	switch request.TriggerKind {
+	case "event":
+		if request.TriggerValue != "" {
+			return fmt.Errorf("event 触发规则不能设置 triggerValue")
+		}
+	case "label":
+		if request.EventName != "issues" && request.EventName != "pull_request" {
+			return fmt.Errorf("label 触发规则只支持 issues 或 pull_request 事件")
+		}
+		if request.TriggerValue == "" {
+			return fmt.Errorf("label 触发规则必须设置 triggerValue")
+		}
+		if request.Action == "" {
+			request.Action = "labeled"
+		}
+		if request.Action != "labeled" {
+			return fmt.Errorf("label 触发规则的 action 必须是 labeled")
+		}
+	case "slash_command":
+		if request.EventName != "issue_comment" && request.EventName != "pull_request_review_comment" {
+			return fmt.Errorf("slash_command 只支持评论事件")
+		}
+		if !slashCommandName.MatchString(request.TriggerValue) {
+			return fmt.Errorf("slash_command 的 triggerValue 必须是小写命令名，且不能包含斜杠")
+		}
+		if request.Action == "" {
+			request.Action = "created"
+		}
+		if request.Action != "created" && request.Action != "edited" {
+			return fmt.Errorf("slash_command 的 action 只支持 created 或 edited")
+		}
+	case "legacy_mention":
+		if request.EventName != "issue_comment" && request.EventName != "pull_request_review_comment" {
+			return fmt.Errorf("legacy_mention 只支持评论事件")
+		}
+		if request.TriggerValue != "" {
+			return fmt.Errorf("legacy_mention 使用 GitHub App 登录名，不能设置 triggerValue")
+		}
+		if request.Action == "" {
+			request.Action = "created"
+		}
+		if request.Action != "created" && request.Action != "edited" {
+			return fmt.Errorf("legacy_mention 的 action 只支持 created 或 edited")
+		}
+	default:
+		return fmt.Errorf("不支持的 triggerKind %q", request.TriggerKind)
+	}
+	return nil
 }
 
 func (s *Server) listWorkItems(c *gin.Context) {
@@ -111,8 +190,8 @@ func (s *Server) listWorkItems(c *gin.Context) {
 }
 
 func (s *Server) listJobs(c *gin.Context) {
-	s.listRows(c, `SELECT id, work_item_id, status, priority, attempt_count, max_attempts, worker_id, lease_epoch, lease_expires_at, last_error, created_at, updated_at FROM job_intents ORDER BY created_at DESC LIMIT 200`,
-		[]string{"id", "workItemId", "status", "priority", "attemptCount", "maxAttempts", "workerId", "leaseEpoch", "leaseExpiresAt", "lastError", "createdAt", "updatedAt"})
+	s.listRows(c, `SELECT id, work_item_id, trigger_rule_id, trigger_evidence, status, priority, attempt_count, max_attempts, worker_id, lease_epoch, lease_expires_at, last_error, created_at, updated_at FROM job_intents ORDER BY created_at DESC LIMIT 200`,
+		[]string{"id", "workItemId", "triggerRuleId", "triggerEvidence", "status", "priority", "attemptCount", "maxAttempts", "workerId", "leaseEpoch", "leaseExpiresAt", "lastError", "createdAt", "updatedAt"})
 }
 
 func (s *Server) listWorkers(c *gin.Context) {

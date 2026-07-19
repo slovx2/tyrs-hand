@@ -155,17 +155,37 @@ func (_u *TriggerRuleUpdate) SetNillableActorMinPermission(v *string) *TriggerRu
 	return _u
 }
 
-// SetMentionRequired sets the "mention_required" field.
-func (_u *TriggerRuleUpdate) SetMentionRequired(v bool) *TriggerRuleUpdate {
-	_u.mutation.SetMentionRequired(v)
+// SetTriggerKind sets the "trigger_kind" field.
+func (_u *TriggerRuleUpdate) SetTriggerKind(v string) *TriggerRuleUpdate {
+	_u.mutation.SetTriggerKind(v)
 	return _u
 }
 
-// SetNillableMentionRequired sets the "mention_required" field if the given value is not nil.
-func (_u *TriggerRuleUpdate) SetNillableMentionRequired(v *bool) *TriggerRuleUpdate {
+// SetNillableTriggerKind sets the "trigger_kind" field if the given value is not nil.
+func (_u *TriggerRuleUpdate) SetNillableTriggerKind(v *string) *TriggerRuleUpdate {
 	if v != nil {
-		_u.SetMentionRequired(*v)
+		_u.SetTriggerKind(*v)
 	}
+	return _u
+}
+
+// SetTriggerValue sets the "trigger_value" field.
+func (_u *TriggerRuleUpdate) SetTriggerValue(v string) *TriggerRuleUpdate {
+	_u.mutation.SetTriggerValue(v)
+	return _u
+}
+
+// SetNillableTriggerValue sets the "trigger_value" field if the given value is not nil.
+func (_u *TriggerRuleUpdate) SetNillableTriggerValue(v *string) *TriggerRuleUpdate {
+	if v != nil {
+		_u.SetTriggerValue(*v)
+	}
+	return _u
+}
+
+// ClearTriggerValue clears the value of the "trigger_value" field.
+func (_u *TriggerRuleUpdate) ClearTriggerValue() *TriggerRuleUpdate {
+	_u.mutation.ClearTriggerValue()
 	return _u
 }
 
@@ -346,8 +366,14 @@ func (_u *TriggerRuleUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	if value, ok := _u.mutation.ActorMinPermission(); ok {
 		_spec.SetField(triggerrule.FieldActorMinPermission, field.TypeString, value)
 	}
-	if value, ok := _u.mutation.MentionRequired(); ok {
-		_spec.SetField(triggerrule.FieldMentionRequired, field.TypeBool, value)
+	if value, ok := _u.mutation.TriggerKind(); ok {
+		_spec.SetField(triggerrule.FieldTriggerKind, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.TriggerValue(); ok {
+		_spec.SetField(triggerrule.FieldTriggerValue, field.TypeString, value)
+	}
+	if _u.mutation.TriggerValueCleared() {
+		_spec.ClearField(triggerrule.FieldTriggerValue, field.TypeString)
 	}
 	if value, ok := _u.mutation.InstructionTemplate(); ok {
 		_spec.SetField(triggerrule.FieldInstructionTemplate, field.TypeString, value)
@@ -536,17 +562,37 @@ func (_u *TriggerRuleUpdateOne) SetNillableActorMinPermission(v *string) *Trigge
 	return _u
 }
 
-// SetMentionRequired sets the "mention_required" field.
-func (_u *TriggerRuleUpdateOne) SetMentionRequired(v bool) *TriggerRuleUpdateOne {
-	_u.mutation.SetMentionRequired(v)
+// SetTriggerKind sets the "trigger_kind" field.
+func (_u *TriggerRuleUpdateOne) SetTriggerKind(v string) *TriggerRuleUpdateOne {
+	_u.mutation.SetTriggerKind(v)
 	return _u
 }
 
-// SetNillableMentionRequired sets the "mention_required" field if the given value is not nil.
-func (_u *TriggerRuleUpdateOne) SetNillableMentionRequired(v *bool) *TriggerRuleUpdateOne {
+// SetNillableTriggerKind sets the "trigger_kind" field if the given value is not nil.
+func (_u *TriggerRuleUpdateOne) SetNillableTriggerKind(v *string) *TriggerRuleUpdateOne {
 	if v != nil {
-		_u.SetMentionRequired(*v)
+		_u.SetTriggerKind(*v)
 	}
+	return _u
+}
+
+// SetTriggerValue sets the "trigger_value" field.
+func (_u *TriggerRuleUpdateOne) SetTriggerValue(v string) *TriggerRuleUpdateOne {
+	_u.mutation.SetTriggerValue(v)
+	return _u
+}
+
+// SetNillableTriggerValue sets the "trigger_value" field if the given value is not nil.
+func (_u *TriggerRuleUpdateOne) SetNillableTriggerValue(v *string) *TriggerRuleUpdateOne {
+	if v != nil {
+		_u.SetTriggerValue(*v)
+	}
+	return _u
+}
+
+// ClearTriggerValue clears the value of the "trigger_value" field.
+func (_u *TriggerRuleUpdateOne) ClearTriggerValue() *TriggerRuleUpdateOne {
+	_u.mutation.ClearTriggerValue()
 	return _u
 }
 
@@ -757,8 +803,14 @@ func (_u *TriggerRuleUpdateOne) sqlSave(ctx context.Context) (_node *TriggerRule
 	if value, ok := _u.mutation.ActorMinPermission(); ok {
 		_spec.SetField(triggerrule.FieldActorMinPermission, field.TypeString, value)
 	}
-	if value, ok := _u.mutation.MentionRequired(); ok {
-		_spec.SetField(triggerrule.FieldMentionRequired, field.TypeBool, value)
+	if value, ok := _u.mutation.TriggerKind(); ok {
+		_spec.SetField(triggerrule.FieldTriggerKind, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.TriggerValue(); ok {
+		_spec.SetField(triggerrule.FieldTriggerValue, field.TypeString, value)
+	}
+	if _u.mutation.TriggerValueCleared() {
+		_spec.ClearField(triggerrule.FieldTriggerValue, field.TypeString)
 	}
 	if value, ok := _u.mutation.InstructionTemplate(); ok {
 		_spec.SetField(triggerrule.FieldInstructionTemplate, field.TypeString, value)

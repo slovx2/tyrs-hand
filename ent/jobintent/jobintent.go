@@ -32,6 +32,10 @@ const (
 	FieldAllowedTools = "allowed_tools"
 	// FieldDangerousActions holds the string denoting the dangerous_actions field in the database.
 	FieldDangerousActions = "dangerous_actions"
+	// FieldTriggerRuleID holds the string denoting the trigger_rule_id field in the database.
+	FieldTriggerRuleID = "trigger_rule_id"
+	// FieldTriggerEvidence holds the string denoting the trigger_evidence field in the database.
+	FieldTriggerEvidence = "trigger_evidence"
 	// FieldActorLogin holds the string denoting the actor_login field in the database.
 	FieldActorLogin = "actor_login"
 	// FieldActorPermission holds the string denoting the actor_permission field in the database.
@@ -74,6 +78,8 @@ var Columns = []string{
 	FieldSkills,
 	FieldAllowedTools,
 	FieldDangerousActions,
+	FieldTriggerRuleID,
+	FieldTriggerEvidence,
 	FieldActorLogin,
 	FieldActorPermission,
 	FieldPriority,
@@ -108,6 +114,8 @@ var (
 	DefaultAllowedTools []string
 	// DefaultDangerousActions holds the default value on creation for the "dangerous_actions" field.
 	DefaultDangerousActions []string
+	// DefaultTriggerEvidence holds the default value on creation for the "trigger_evidence" field.
+	DefaultTriggerEvidence map[string]interface{}
 	// DefaultActorLogin holds the default value on creation for the "actor_login" field.
 	DefaultActorLogin string
 	// DefaultActorPermission holds the default value on creation for the "actor_permission" field.
@@ -168,6 +176,11 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 // ByInstruction orders the results by the instruction field.
 func ByInstruction(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldInstruction, opts...).ToFunc()
+}
+
+// ByTriggerRuleID orders the results by the trigger_rule_id field.
+func ByTriggerRuleID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTriggerRuleID, opts...).ToFunc()
 }
 
 // ByActorLogin orders the results by the actor_login field.

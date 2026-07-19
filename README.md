@@ -123,7 +123,7 @@ TYRS_HAND_WEBHOOK_HTTP_ADDR=:8081
 
 Manifest 订阅 Repository、Issues、Issue Comment、Pull Request、Review、Review Comment 和 Push。Installation 生命周期事件由 GitHub 自动发送给 App。
 
-默认规则处理 Issue 和 Pull Request 评论中的 Bot `@mention`。GitHub 不允许普通 App Bot 被直接选为 Reviewer；如需在仓库发生 Reviewer 请求时触发 Agent，管理员可以显式添加 `pull_request.review_requested` 规则。
+默认规则接受 Issue 和 Pull Request 评论第一行的 `/tyrs-hand` 命令，也接受名称为 `tyrs-hand` 的结构化 Label 事件。全文 `@mention` 仅作为默认关闭的兼容规则；GitHub 不允许普通 App Bot 被直接选为 Reviewer，如需在 Reviewer 请求时触发 Agent，管理员可以显式添加 `pull_request.review_requested` 事件规则。
 
 ## Thread、Skill 与工作区
 

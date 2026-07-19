@@ -71,6 +71,9 @@ type webhookEnvelope struct {
 	Review struct {
 		Body string `json:"body"`
 	} `json:"review"`
+	Label struct {
+		Name string `json:"name"`
+	} `json:"label"`
 	Repositories        []webhookRepository `json:"repositories"`
 	RepositoriesAdded   []webhookRepository `json:"repositories_added"`
 	RepositoriesRemoved []webhookRepository `json:"repositories_removed"`
@@ -104,7 +107,8 @@ func NormalizeWebhook(deliveryID, eventName string, payload []byte) (domain.Norm
 		Action: envelope.Action, InstallationID: envelope.Installation.ID,
 		RepositoryID: envelope.Repository.ID, Owner: owner, Repository: envelope.Repository.Name,
 		Actor: envelope.Sender.Login, ActorID: envelope.Sender.ID,
-		Raw: append([]byte(nil), payload...), ReceivedAt: time.Now().UTC(),
+		Label: envelope.Label.Name,
+		Raw:   append([]byte(nil), payload...), ReceivedAt: time.Now().UTC(),
 	}
 	event.Installation.AccountLogin = envelope.Installation.Account.Login
 	event.Installation.AccountType = envelope.Installation.Account.Type

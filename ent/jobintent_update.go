@@ -150,6 +150,32 @@ func (_u *JobIntentUpdate) AppendDangerousActions(v []string) *JobIntentUpdate {
 	return _u
 }
 
+// SetTriggerRuleID sets the "trigger_rule_id" field.
+func (_u *JobIntentUpdate) SetTriggerRuleID(v uuid.UUID) *JobIntentUpdate {
+	_u.mutation.SetTriggerRuleID(v)
+	return _u
+}
+
+// SetNillableTriggerRuleID sets the "trigger_rule_id" field if the given value is not nil.
+func (_u *JobIntentUpdate) SetNillableTriggerRuleID(v *uuid.UUID) *JobIntentUpdate {
+	if v != nil {
+		_u.SetTriggerRuleID(*v)
+	}
+	return _u
+}
+
+// ClearTriggerRuleID clears the value of the "trigger_rule_id" field.
+func (_u *JobIntentUpdate) ClearTriggerRuleID() *JobIntentUpdate {
+	_u.mutation.ClearTriggerRuleID()
+	return _u
+}
+
+// SetTriggerEvidence sets the "trigger_evidence" field.
+func (_u *JobIntentUpdate) SetTriggerEvidence(v map[string]interface{}) *JobIntentUpdate {
+	_u.mutation.SetTriggerEvidence(v)
+	return _u
+}
+
 // SetActorLogin sets the "actor_login" field.
 func (_u *JobIntentUpdate) SetActorLogin(v string) *JobIntentUpdate {
 	_u.mutation.SetActorLogin(v)
@@ -468,6 +494,15 @@ func (_u *JobIntentUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			sqljson.Append(u, jobintent.FieldDangerousActions, value)
 		})
 	}
+	if value, ok := _u.mutation.TriggerRuleID(); ok {
+		_spec.SetField(jobintent.FieldTriggerRuleID, field.TypeUUID, value)
+	}
+	if _u.mutation.TriggerRuleIDCleared() {
+		_spec.ClearField(jobintent.FieldTriggerRuleID, field.TypeUUID)
+	}
+	if value, ok := _u.mutation.TriggerEvidence(); ok {
+		_spec.SetField(jobintent.FieldTriggerEvidence, field.TypeJSON, value)
+	}
 	if value, ok := _u.mutation.ActorLogin(); ok {
 		_spec.SetField(jobintent.FieldActorLogin, field.TypeString, value)
 	}
@@ -668,6 +703,32 @@ func (_u *JobIntentUpdateOne) SetDangerousActions(v []string) *JobIntentUpdateOn
 // AppendDangerousActions appends value to the "dangerous_actions" field.
 func (_u *JobIntentUpdateOne) AppendDangerousActions(v []string) *JobIntentUpdateOne {
 	_u.mutation.AppendDangerousActions(v)
+	return _u
+}
+
+// SetTriggerRuleID sets the "trigger_rule_id" field.
+func (_u *JobIntentUpdateOne) SetTriggerRuleID(v uuid.UUID) *JobIntentUpdateOne {
+	_u.mutation.SetTriggerRuleID(v)
+	return _u
+}
+
+// SetNillableTriggerRuleID sets the "trigger_rule_id" field if the given value is not nil.
+func (_u *JobIntentUpdateOne) SetNillableTriggerRuleID(v *uuid.UUID) *JobIntentUpdateOne {
+	if v != nil {
+		_u.SetTriggerRuleID(*v)
+	}
+	return _u
+}
+
+// ClearTriggerRuleID clears the value of the "trigger_rule_id" field.
+func (_u *JobIntentUpdateOne) ClearTriggerRuleID() *JobIntentUpdateOne {
+	_u.mutation.ClearTriggerRuleID()
+	return _u
+}
+
+// SetTriggerEvidence sets the "trigger_evidence" field.
+func (_u *JobIntentUpdateOne) SetTriggerEvidence(v map[string]interface{}) *JobIntentUpdateOne {
+	_u.mutation.SetTriggerEvidence(v)
 	return _u
 }
 
@@ -1018,6 +1079,15 @@ func (_u *JobIntentUpdateOne) sqlSave(ctx context.Context) (_node *JobIntent, er
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
 			sqljson.Append(u, jobintent.FieldDangerousActions, value)
 		})
+	}
+	if value, ok := _u.mutation.TriggerRuleID(); ok {
+		_spec.SetField(jobintent.FieldTriggerRuleID, field.TypeUUID, value)
+	}
+	if _u.mutation.TriggerRuleIDCleared() {
+		_spec.ClearField(jobintent.FieldTriggerRuleID, field.TypeUUID)
+	}
+	if value, ok := _u.mutation.TriggerEvidence(); ok {
+		_spec.SetField(jobintent.FieldTriggerEvidence, field.TypeJSON, value)
 	}
 	if value, ok := _u.mutation.ActorLogin(); ok {
 		_spec.SetField(jobintent.FieldActorLogin, field.TypeString, value)

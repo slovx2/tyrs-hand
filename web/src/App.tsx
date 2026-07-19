@@ -84,7 +84,13 @@ export function App() {
         />
         <Route
           path="trigger-rules"
-          element={<ResourcePage resource="trigger-rules" title="触发规则" />}
+          element={
+            <ResourcePage
+              resource="trigger-rules"
+              title="触发规则"
+              description="默认使用评论第一行 /tyrs-hand 命令和 tyrs-hand Label；全文 mention 仅作为默认关闭的兼容类型。"
+            />
+          }
         />
         <Route
           path="agent-profiles"
