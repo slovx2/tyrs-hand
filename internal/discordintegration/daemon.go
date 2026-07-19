@@ -187,8 +187,9 @@ func (d *Daemon) projectionsPaused(ctx context.Context, guildID string) (bool, e
 	err := d.manager.db.QueryRowContext(ctx, `SELECT EXISTS(
 		SELECT 1 FROM discord_initialization_operations o
 		WHERE o.guild_id = $1 AND o.status IN ('pending', 'running', 'failed')
-		AND EXISTS (SELECT 1 FROM discord_initialization_steps s
-			WHERE s.operation_id = o.id AND s.status <> 'completed' AND s.attempt_count < $2)
+		AND COALESCE((SELECT s.attempt_count < $2 FROM discord_initialization_steps s
+			WHERE s.operation_id = o.id AND s.status <> 'completed'
+			ORDER BY s.ordinal LIMIT 1), false)
 	)`, guildID, initializationMaxAttempts).Scan(&paused)
 	return paused, err
 }

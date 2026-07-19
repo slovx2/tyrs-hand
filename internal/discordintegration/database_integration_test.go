@@ -583,7 +583,10 @@ func testDiscordRecoveryOrchestration(t *testing.T, ctx context.Context, db *sql
 
 	exhaustedID, err := manager.CreateInitialization(ctx, seed.administratorID, InitializationPlan{
 		Preflight: PreflightResult{GuildID: testGuildID, Mode: InitializationIncremental, Safe: true},
-		Actions:   []InitializationAction{{Kind: "unknown"}},
+		Actions: []InitializationAction{
+			{Kind: "unknown"},
+			{Kind: "channel.create", Spec: ChannelSpec{Key: "after.exhausted", Name: "After exhausted", Kind: "text"}},
+		},
 	}, "")
 	require.NoError(t, err)
 	for range initializationMaxAttempts {
@@ -594,9 +597,13 @@ func testDiscordRecoveryOrchestration(t *testing.T, ctx context.Context, db *sql
 	var exhaustedAttempts int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT o.status, s.attempt_count
 		FROM discord_initialization_operations o JOIN discord_initialization_steps s ON s.operation_id = o.id
-		WHERE o.id = $1`, exhaustedID).Scan(&exhaustedStatus, &exhaustedAttempts))
+		WHERE o.id = $1 AND s.ordinal = 1`, exhaustedID).Scan(&exhaustedStatus, &exhaustedAttempts))
 	require.Equal(t, "failed", exhaustedStatus)
 	require.Equal(t, initializationMaxAttempts, exhaustedAttempts)
+	var pendingAfterExhausted int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_initialization_steps
+		WHERE operation_id = $1 AND ordinal > 1 AND status = 'pending'`, exhaustedID).Scan(&pendingAfterExhausted))
+	require.Equal(t, 1, pendingAfterExhausted)
 	paused, err = daemon.projectionsPaused(ctx, testGuildID)
 	require.NoError(t, err)
 	require.False(t, paused)

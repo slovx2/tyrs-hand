@@ -34,6 +34,7 @@ postgres_name="tyrs-hand-ci-postgres-${run_id}"
 redis_name="tyrs-hand-ci-redis-${run_id}"
 server_pid=""
 server_log="$(mktemp -t tyrs-hand-ci-server.XXXXXX.log)"
+server_bin="$(mktemp -t tyrs-hand-ci-server.XXXXXX)"
 
 cleanup() {
   local status=$?
@@ -47,7 +48,7 @@ cleanup() {
     echo "本地 CI 失败，Server 最近日志：" >&2
     tail -n 100 "${server_log}" >&2 || true
   fi
-  rm -f "${server_log}"
+  rm -f "${server_log}" "${server_bin}"
   exit "${status}"
 }
 trap cleanup EXIT
@@ -99,7 +100,8 @@ export E2E_SETUP_TOKEN="${TYRS_HAND_SETUP_TOKEN}"
 export E2E_BASE_URL="http://127.0.0.1:${e2e_port}"
 
 go run ./cmd/tyrs-hand-admin migrate
-go run ./cmd/tyrs-hand-server >"${server_log}" 2>&1 &
+go build -o "${server_bin}" ./cmd/tyrs-hand-server
+"${server_bin}" >"${server_log}" 2>&1 &
 server_pid=$!
 for _ in $(seq 1 60); do
   if curl --fail --silent "${E2E_BASE_URL}/healthz" >/dev/null; then
