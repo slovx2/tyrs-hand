@@ -22,6 +22,7 @@ import (
 	disgorest "github.com/disgoorg/disgo/rest"
 	"github.com/disgoorg/snowflake/v2"
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/database"
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
 	"github.com/slovx2/tyrs-hand/internal/secrets"
@@ -131,10 +132,10 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 		require.Contains(t, string(payload), `"embeds"`)
 		require.Contains(t, string(payload), `"content": ""`)
 	}
-	_, err = db.ExecContext(ctx, `INSERT INTO job_intents
-		(work_item_id, repository_id, agent_profile_id, idempotency_key, status, instruction, actor_login, created_at)
-		SELECT $1, $2, id, 'projection-job-retry', 'succeeded', 'test', 'alice', now() + interval '1 second'
-		FROM agent_profiles WHERE name = 'Default'`, seed.workItemID, seed.repositoryID)
+	intentID := insertProjectionIntent(t, db, seed.workItemID, seed.repositoryID,
+		"projection-job-retry", "alice")
+	_, err = db.ExecContext(ctx, `UPDATE codex_turn_intents SET status = 'completed',
+		finished_at = now(), created_at = now() + interval '1 second' WHERE id = $1`, intentID)
 	require.NoError(t, err)
 	todoCard, err := daemon.todoCard(ctx, testGuildID, "1001")
 	require.NoError(t, err)
@@ -142,13 +143,11 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 	require.NoError(t, daemon.refreshSystemStatus(ctx, testGuildID))
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT payload FROM integration_outbox
 		WHERE operation_key = 'projection:system.status'`).Scan(&statusPayload))
-	require.Contains(t, string(statusPayload), "阻塞 `0`")
 	require.Contains(t, string(statusPayload), "失败 `0`")
-	require.Equal(t, "Needs Attention", projectedTaskState("open", "blocked"))
 	require.Equal(t, "Completed", projectedTaskState("closed", ""))
 	require.Equal(t, "Running", projectedTaskState("open", "queued"))
 	require.Equal(t, "Failed", projectedTaskState("open", "failed"))
-	require.Equal(t, "Completed", projectedTaskState("open", "succeeded"))
+	require.Equal(t, "Completed", projectedTaskState("open", "completed"))
 	require.Equal(t, []string{"7001"}, taskTagIDs(map[string]string{"Running": "7001"}, "Running"))
 	require.Len(t, []rune(taskThreadName(taskProjection{Number: 1, Title: string(make([]rune, 120))})), 100)
 	testGatewayHandlers(t, ctx, db, manager, seed)
@@ -210,15 +209,34 @@ func seedDiscordManagerData(t *testing.T, db *sql.DB) discordManagerSeed {
 		VALUES ($1, $2, 'repository', $3) RETURNING id`, testGuildID, repositoryResource, repositoryID).Scan(&seed.repositoryForumID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO work_items
 		(repository_id, kind, external_number, title) VALUES ($1, 'issue', 7, 'Needs help') RETURNING id`, repositoryID).Scan(&seed.workItemID))
-	var profileID uuid.UUID
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM agent_profiles WHERE name = 'Default'`).Scan(&profileID))
-	_, err = db.ExecContext(ctx, `INSERT INTO job_intents
-		(work_item_id, repository_id, agent_profile_id, idempotency_key, status, instruction, actor_login)
-		VALUES ($1, $2, $3, 'projection-job', 'blocked', 'test', 'alice')`, seed.workItemID, repositoryID, profileID)
+	intentID := insertProjectionIntent(t, db, seed.workItemID, repositoryID, "projection-job", "alice")
+	_, err = db.ExecContext(ctx, `UPDATE codex_turn_intents SET status = 'failed',
+		last_error_code = 'test_failure', last_error_message = 'test', finished_at = now() WHERE id = $1`, intentID)
 	require.NoError(t, err)
 	insertDiscordResource(t, db, "system.status", "100000000000000031", "text", "系统状态", "")
 	insertDiscordResource(t, db, "system.alerts", "100000000000000032", "text", "系统告警", "")
 	return seed
+}
+
+func insertProjectionIntent(t *testing.T, db *sql.DB, workItemID, repositoryID uuid.UUID,
+	key, actor string,
+) uuid.UUID {
+	t.Helper()
+	ctx := context.Background()
+	var profileID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM agent_profiles WHERE name = 'Default'`).Scan(&profileID))
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	intentID, inserted, err := codexcontrol.NewRepository(db, time.Minute).Enqueue(ctx, tx,
+		codexcontrol.EnqueueRequest{
+			SourceType: codexcontrol.SourceGitHub, WorkItemID: workItemID,
+			RepositoryID: repositoryID, AgentProfileID: profileID, ContextVersion: 1,
+			IdempotencyKey: key, Instruction: "test", ActorLogin: actor, ReplyPolicy: "required",
+		})
+	require.NoError(t, err)
+	require.True(t, inserted)
+	require.NoError(t, tx.Commit())
+	return intentID
 }
 
 func insertDiscordResource(t *testing.T, db *sql.DB, key, discordID, kind, name, parentID string) uuid.UUID {
@@ -330,8 +348,8 @@ func testGatewayHandlers(t *testing.T, ctx context.Context, db *sql.DB, manager 
 	connector.onCommand(newCommandEvent(t, client, "5013", "2001", "github", "unbind"))
 	connector.onCommand(newCommandEvent(t, client, "5014", "2001", "unknown", "command"))
 	var jobStatus string
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM job_intents
-		WHERE discord_conversation_id = $1`, conversationID).Scan(&jobStatus))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM codex_turn_intents
+		WHERE discord_conversation_id = $1 AND operation = 'turn_input'`, conversationID).Scan(&jobStatus))
 	require.Equal(t, "canceled", jobStatus)
 	var inputStatus string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM discord_input_messages

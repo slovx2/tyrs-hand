@@ -34,7 +34,9 @@ type Service struct {
 }
 
 type authorization struct {
-	AttemptID             uuid.UUID
+	RunID                 uuid.UUID
+	IntentID              uuid.UUID
+	ExternalThreadID      string
 	SourceType            string
 	WorkItemID            uuid.UUID
 	ConversationID        uuid.UUID
@@ -76,12 +78,21 @@ func (s *Service) GitCredential(ctx context.Context, capability, purpose, turnID
 }
 
 func (s *Service) Call(ctx context.Context, request CallRequest) (codex.ToolCallResult, error) {
-	if request.Namespace != "github" {
-		return codex.ToolCallResult{}, errors.New("控制面只执行 github namespace 工具")
+	if request.Namespace != "github" && request.Namespace != "tyrs_hand" {
+		return codex.ToolCallResult{}, errors.New("控制面只执行 github 或 tyrs_hand namespace 工具")
 	}
 	auth, err := s.authorize(ctx, request.Capability, request.TurnID)
 	if err != nil {
 		return codex.ToolCallResult{}, err
+	}
+	if request.ThreadID == "" || request.ThreadID != auth.ExternalThreadID {
+		return codex.ToolCallResult{}, errors.New("tool call thread 与当前 control 不一致")
+	}
+	if request.Namespace == "tyrs_hand" {
+		if request.Tool != "reply_to_github" {
+			return codex.ToolCallResult{}, errors.New("未知的 Tyrs Hand 平台工具")
+		}
+		return s.replyToGitHub(ctx, auth, request)
 	}
 	if !contains(auth.AllowedTools, request.Tool) {
 		return codex.ToolCallResult{}, fmt.Errorf("工具 %s 不在当前任务允许列表中", request.Tool)
@@ -105,10 +116,10 @@ func (s *Service) Call(ctx context.Context, request CallRequest) (codex.ToolCall
 
 	var callID uuid.UUID
 	err = s.db.QueryRowContext(ctx, `
-		INSERT INTO tool_calls(job_attempt_id, thread_id, turn_id, call_id, namespace, tool, arguments)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO tool_calls(run_id, intent_id, thread_id, turn_id, call_id, namespace, tool, arguments)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT(thread_id, turn_id, call_id) DO NOTHING
-		RETURNING id`, auth.AttemptID, request.ThreadID, request.TurnID, request.CallID,
+		RETURNING id`, auth.RunID, auth.IntentID, request.ThreadID, request.TurnID, request.CallID,
 		request.Namespace, request.Tool, request.Arguments).Scan(&callID)
 	if errors.Is(err, sql.ErrNoRows) {
 		result, previousErr := s.previousResult(ctx, request)
@@ -127,8 +138,21 @@ func (s *Service) Call(ctx context.Context, request CallRequest) (codex.ToolCall
 	}
 	result, err := s.catalog.Execute(ctx, deps, request.Tool, request.Arguments)
 	if err != nil {
-		s.fail(ctx, callID, err)
-		return codex.ToolCallResult{}, err
+		if request.Tool == "create_pull_request" {
+			if recovered, found := s.reconcilePullRequest(ctx, auth, request.Arguments); found {
+				result = recovered
+				err = nil
+			}
+		}
+		if err != nil && !readOnly {
+			_, _ = s.db.ExecContext(ctx, `UPDATE tool_calls SET status = 'reconciling', error = $2
+				WHERE id = $1`, callID, err.Error())
+			return codex.ToolCallResult{}, fmt.Errorf("github 写操作结果未知，已进入对账: %w", err)
+		}
+		if err != nil {
+			s.fail(ctx, callID, err)
+			return codex.ToolCallResult{}, err
+		}
 	}
 	resultJSON, _ := json.Marshal(result)
 	_, err = s.db.ExecContext(ctx, `UPDATE tool_calls SET status = 'completed', result = $2, finished_at = now() WHERE id = $1`, callID, resultJSON)
@@ -138,6 +162,24 @@ func (s *Service) Call(ctx context.Context, request CallRequest) (codex.ToolCall
 	return result, err
 }
 
+func (s *Service) reconcilePullRequest(ctx context.Context, auth authorization,
+	raw json.RawMessage,
+) (codex.ToolCallResult, bool) {
+	var arguments struct {
+		Head string `json:"head"`
+		Base string `json:"base"`
+	}
+	if json.Unmarshal(raw, &arguments) != nil || arguments.Head == "" || arguments.Base == "" {
+		return codex.ToolCallResult{}, false
+	}
+	value, found, err := s.app.FindPullRequest(ctx, auth.InstallationID, auth.Owner,
+		auth.Repository, arguments.Head, arguments.Base)
+	if err != nil || !found {
+		return codex.ToolCallResult{}, false
+	}
+	return codex.TextToolResult(fmt.Sprintf(`{"number":%d,"url":%q}`, value.Number, value.URL), true), true
+}
+
 func (s *Service) authorize(ctx context.Context, capability, turnID string) (authorization, error) {
 	if capability == "" {
 		return authorization{}, errors.New("任务 Capability 不能为空")
@@ -145,20 +187,26 @@ func (s *Service) authorize(ctx context.Context, capability, turnID string) (aut
 	var auth authorization
 	var toolsJSON, dangerousJSON []byte
 	err := s.db.QueryRowContext(ctx, `
-		SELECT a.id, j.source_type, j.work_item_id, j.discord_conversation_id,
-			i.external_id, r.owner, r.name, COALESCE(w.external_number, 0),
-			j.actor_login, COALESCE(w.kind, ''), COALESCE(w.agent_owned, false), j.allowed_tools, j.dangerous_actions
-		FROM job_attempts a
-		JOIN job_intents j ON j.id = a.job_id
-		JOIN repositories r ON r.id = j.repository_id
-		JOIN scm_installations i ON i.id = r.installation_id
-		LEFT JOIN work_items w ON w.id = j.work_item_id
-		WHERE a.capability_hash = $1 AND a.status = 'running'
-		  AND j.status = 'running' AND j.lease_epoch = a.lease_epoch
-		  AND j.lease_expires_at > now()`, security.Digest(capability)).
-		Scan(&auth.AttemptID, &auth.SourceType, &auth.WorkItemID, &auth.ConversationID,
-			&auth.InstallationID, &auth.Owner, &auth.Repository, &auth.Number,
-			&auth.Actor, &auth.Kind, &auth.AgentOwned, &toolsJSON, &dangerousJSON)
+			SELECT run.id, intent.id, COALESCE(control.external_thread_id, ''), intent.source_type,
+				intent.work_item_id, intent.discord_conversation_id,
+				i.external_id, r.owner, r.name, COALESCE(w.external_number, 0),
+				intent.actor_login, COALESCE(w.kind, ''), COALESCE(w.agent_owned, false),
+				intent.allowed_tools, intent.dangerous_actions
+			FROM codex_turn_runs run
+			JOIN codex_turn_intents intent ON intent.id = run.primary_intent_id
+			JOIN codex_thread_controls control ON control.id = run.control_id
+			JOIN repositories r ON r.id = intent.repository_id
+			JOIN scm_installations i ON i.id = r.installation_id
+			LEFT JOIN work_items w ON w.id = intent.work_item_id
+			WHERE run.capability_hash = $1 AND run.active_slot = 1
+			  AND run.status IN ('starting','running','reconciling')
+			  AND control.lease_epoch = run.lease_epoch AND control.lease_expires_at > now()
+			  AND ($2 = '' OR run.status = 'starting' OR control.active_codex_turn_id = $2 OR run.codex_submission_id = $2
+				OR run.confirmed_codex_turn_id = $2)`,
+		security.Digest(capability), turnID).Scan(&auth.RunID, &auth.IntentID, &auth.ExternalThreadID, &auth.SourceType,
+		&auth.WorkItemID, &auth.ConversationID,
+		&auth.InstallationID, &auth.Owner, &auth.Repository, &auth.Number,
+		&auth.Actor, &auth.Kind, &auth.AgentOwned, &toolsJSON, &dangerousJSON)
 	if errors.Is(err, sql.ErrNoRows) {
 		return authorization{}, errors.New("任务 Capability 已失效")
 	}
@@ -272,9 +320,9 @@ func (s *Service) loadDiscordContributors(ctx context.Context, capability, turnI
 		FROM discord_turn_contributors c
 		LEFT JOIN discord_identity_bindings b ON b.id = c.github_binding_id
 			AND b.status = 'active' AND b.github_user_id = c.github_user_id
-		WHERE c.conversation_id = $1 AND c.external_turn_id = $2
+		WHERE c.run_id = $1
 		ORDER BY c.contributed_at, c.discord_user_id`
-	rows, err := s.db.QueryContext(ctx, query, auth.ConversationID, turnID)
+	rows, err := s.db.QueryContext(ctx, query, auth.RunID)
 	if err != nil {
 		return err
 	}
@@ -300,11 +348,11 @@ func (s *Service) loadDiscordContributors(ctx context.Context, capability, turnI
 	var login string
 	var unbound bool
 	err = s.db.QueryRowContext(ctx, `SELECT COALESCE(b.github_login, ''), b.id IS NULL
-		FROM job_attempts a JOIN job_intents j ON j.id = a.job_id
-		JOIN discord_input_messages m ON m.message_id = j.discord_message_id
-		LEFT JOIN discord_identity_bindings b ON b.id = m.github_binding_id
-			AND b.status = 'active' AND b.github_user_id = m.github_user_id
-		WHERE a.capability_hash = $1`, security.Digest(capability)).Scan(&login, &unbound)
+			FROM codex_turn_runs run JOIN codex_turn_intents intent ON intent.id = run.primary_intent_id
+			JOIN discord_input_messages m ON m.message_id = intent.discord_message_id
+			LEFT JOIN discord_identity_bindings b ON b.id = m.github_binding_id
+				AND b.status = 'active' AND b.github_user_id = m.github_user_id
+			WHERE run.capability_hash = $1`, security.Digest(capability)).Scan(&login, &unbound)
 	if err != nil {
 		return err
 	}
@@ -377,6 +425,9 @@ func (s *Service) previousResult(ctx context.Context, request CallRequest) (code
 	}
 	if status == "failed" {
 		return codex.ToolCallResult{}, errors.New(message.String)
+	}
+	if status == "reconciling" {
+		return codex.ToolCallResult{}, errors.New("同一 GitHub 写操作的远端结果仍在对账，拒绝重复提交")
 	}
 	return codex.ToolCallResult{}, errors.New("同一 Tool Call 正在执行，不能重复提交")
 }

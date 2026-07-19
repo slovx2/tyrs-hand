@@ -11,12 +11,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/slovx2/tyrs-hand/internal/codex"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/devenv"
-	"github.com/slovx2/tyrs-hand/internal/domain"
 	"github.com/slovx2/tyrs-hand/internal/githubtools"
 	"github.com/slovx2/tyrs-hand/internal/ports"
-	"github.com/slovx2/tyrs-hand/internal/queue"
+	"github.com/slovx2/tyrs-hand/internal/replygate"
 	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
 	"go.uber.org/zap"
 )
@@ -27,6 +27,7 @@ type Processor struct {
 	redis       *redis.Client
 	workspace   ports.WorkspaceManager
 	control     *ControlClient
+	controls    *codexcontrol.Repository
 	catalog     *githubtools.Catalog
 	settings    *platformsettings.Service
 	pool        *codex.Pool
@@ -52,21 +53,24 @@ type jobContext struct {
 	NetworkEnabled  bool
 }
 
-func NewProcessor(cfg config.Config, db *sql.DB, redisClient *redis.Client, workspace ports.WorkspaceManager, control *ControlClient, catalog *githubtools.Catalog, settingsService *platformsettings.Service, pool *codex.Pool, environment *devenv.Manager, logger *zap.Logger) *Processor {
-	return &Processor{cfg: cfg, db: db, redis: redisClient, workspace: workspace, control: control, catalog: catalog, settings: settingsService, pool: pool, environment: environment, logger: logger}
+func NewProcessor(cfg config.Config, db *sql.DB, redisClient *redis.Client, workspace ports.WorkspaceManager, control *ControlClient, controls *codexcontrol.Repository, catalog *githubtools.Catalog, settingsService *platformsettings.Service, pool *codex.Pool, environment *devenv.Manager, logger *zap.Logger) *Processor {
+	return &Processor{cfg: cfg, db: db, redis: redisClient, workspace: workspace, control: control, controls: controls, catalog: catalog, settings: settingsService, pool: pool, environment: environment, logger: logger}
 }
 
-func (p *Processor) Process(ctx context.Context, claimed *queue.ClaimedJob) error {
-	if claimed.SourceType == domain.JobSourceDiscordConversation {
+func (p *Processor) Process(ctx context.Context, claimed *codexcontrol.ClaimedControl) (codexcontrol.TurnResult, error) {
+	if claimed.Operation == "interrupt" {
+		return codexcontrol.TurnResult{Evidence: "interrupt_when_idle"}, nil
+	}
+	if claimed.SourceType == codexcontrol.SourceDiscord {
 		return p.processDiscordConversation(ctx, claimed)
 	}
-	jobCtx, err := p.loadContext(ctx, claimed.Job)
+	jobCtx, err := p.loadContext(ctx, claimed.Intent)
 	if err != nil {
-		return err
+		return codexcontrol.TurnResult{}, err
 	}
 	credential, err := p.control.GitCredential(ctx, claimed.Capability, "fetch")
 	if err != nil {
-		return err
+		return codexcontrol.TurnResult{}, err
 	}
 	baseRef := "refs/remotes/origin/" + jobCtx.DefaultBranch
 	if jobCtx.HeadSHA != "" {
@@ -78,25 +82,25 @@ func (p *Processor) Process(ctx context.Context, claimed *queue.ClaimedJob) erro
 		CloneURL: jobCtx.CloneURL, BaseRef: baseRef, Branch: branch,
 	}, credential)
 	if err != nil {
-		return err
+		return codexcontrol.TurnResult{}, err
 	}
 	if err := p.recordWorkspace(ctx, claimed, workspace, baseRef); err != nil {
-		return err
+		return codexcontrol.TurnResult{}, err
 	}
 	defer p.refreshWorkspaceState(context.Background(), claimed.WorkItemID, workspace.WorktreePath)
 	environmentResult := p.prepareWorkItemEnvironment(ctx, claimed.WorkItemID, workspace.WorktreePath)
 	skills, err := resolveSkills(workspace.WorktreePath, claimed.Skills)
 	if err != nil {
-		return err
+		return codexcontrol.TurnResult{}, err
 	}
-	githubSpec, err := p.catalog.DynamicToolSpecFor(append(append([]string{}, claimed.AllowedTools...), claimed.DangerousActions...))
+	githubSpec, err := p.catalog.DynamicToolSpecFor(withoutGenericReply(append(append([]string{}, claimed.AllowedTools...), claimed.DangerousActions...)))
 	if err != nil {
-		return err
+		return codexcontrol.TurnResult{}, err
 	}
 	gitSpec := localGitSpec()
 	provider, err := p.settings.AgentProvider(ctx)
 	if err != nil {
-		return err
+		return codexcontrol.TurnResult{}, err
 	}
 	signature := provider.ConfigSignature
 	if signature == "" {
@@ -105,13 +109,16 @@ func (p *Processor) Process(ctx context.Context, claimed *queue.ClaimedJob) erro
 	codexHome := filepath.Join(p.cfg.CodexHomeRoot, "pools", claimed.RepositoryID.String(), claimed.AgentProfileID.String(), signature[:min(16, len(signature))])
 	provider, environment, err := p.settings.PrepareCodexHome(ctx, codexHome, filepath.Join(p.cfg.CodexHomeRoot, "shared"))
 	if err != nil {
-		return err
+		return codexcontrol.TurnResult{}, err
+	}
+	if err := replygate.Install(codexHome); err != nil {
+		return codexcontrol.TurnResult{}, fmt.Errorf("安装 GitHub 回复 Stop Hook: %w", err)
 	}
 	environment = append(environment, environmentResult.Environment...)
 	poolKey := "job/" + claimed.ID.String()
 	client, err := p.pool.Acquire(ctx, poolKey, workspace.WorktreePath, codexHome, environment)
 	if err != nil {
-		return err
+		return codexcontrol.TurnResult{}, err
 	}
 	defer func() {
 		if closeErr := p.pool.Release(poolKey); closeErr != nil {
@@ -131,58 +138,90 @@ func (p *Processor) Process(ctx context.Context, claimed *queue.ClaimedJob) erro
 	options := ports.ThreadOptions{
 		CWD: workspace.WorktreePath, Model: jobCtx.Model, ReasoningEffort: jobCtx.ReasoningEffort,
 		ServiceTier: jobCtx.ServiceTier, Sandbox: jobCtx.Sandbox, ApprovalPolicy: jobCtx.ApprovalPolicy,
-		NetworkEnabled: jobCtx.NetworkEnabled, DynamicTools: []ports.DynamicToolSpec{githubSpec, gitSpec},
-		DeveloperInstructions: "Follow repository AGENTS.md and the explicitly attached skills. Use only the authorized GitHub work item and current worktree. Use git.commit for commits and git.publish_branch for pushes; do not write shared Git metadata with shell commands.",
+		NetworkEnabled: jobCtx.NetworkEnabled, DynamicTools: []ports.DynamicToolSpec{githubSpec, gitSpec, githubReplySpec()},
+		RuntimeConfig:         replygate.SessionConfig(),
+		DeveloperInstructions: "Follow repository AGENTS.md and the explicitly attached skills. Use only the authorized GitHub work item and current worktree. Use git.commit for commits and git.publish_branch for pushes; do not write shared Git metadata with shell commands. After all business actions, call tyrs_hand.reply_to_github exactly once with the user-facing result, then provide a natural final answer.",
 	}
 	if err := runtime.ValidateSkills(ctx, workspace.WorktreePath, skills); err != nil {
-		return err
+		return codexcontrol.TurnResult{}, err
 	}
 	threadSignature := threadConfigSignature(signature, options)
-	threadDBID, threadID, err := p.ensureThread(ctx, runtime, claimed.Job, options, codexHome, threadSignature)
+	threadID, err := p.ensureThread(ctx, runtime, claimed, options, codexHome, threadSignature)
 	if err != nil {
-		return err
+		return codexcontrol.TurnResult{}, err
 	}
+	if err := replygate.Initialize(codexHome, threadID, claimed.ID.String(), true,
+		p.cfg.GitHubReplyGateMaxBlocks); err != nil {
+		return codexcontrol.TurnResult{}, err
+	}
+	p.syncReplyGate(ctx, claimed, codexHome, threadID)
 	unbind, err := p.pool.Bind(poolKey, threadID, func(toolCtx context.Context, request codex.ToolCallRequest) (codex.ToolCallResult, error) {
-		return p.handleTool(toolCtx, claimed, workspace, branch, request)
+		return p.handleTool(toolCtx, claimed, codexHome, workspace, branch, request)
 	})
 	if err != nil {
-		return err
+		return codexcontrol.TurnResult{}, err
 	}
 	defer unbind()
+	if claimed.Recovering {
+		if result, recovered, reconcileErr := p.reconcileTurn(ctx, runtime, claimed, threadID); reconcileErr != nil {
+			return codexcontrol.TurnResult{}, reconcileErr
+		} else if recovered {
+			p.syncReplyGate(ctx, claimed, codexHome, threadID)
+			return result, nil
+		}
+	}
 	turnID, err := runtime.StartTurn(ctx, threadID, ports.TurnInput{
 		Text: claimed.Instruction, ClientUserMessageID: claimed.ID.String(), Skills: skills,
-		OutputSchema: agentOutcomeSchema(), AdditionalContext: environmentAdditionalContext(environmentResult),
+		AdditionalContext: environmentAdditionalContext(environmentResult),
 	})
 	if err != nil {
-		return err
+		return codexcontrol.TurnResult{}, err
 	}
-	if err := p.waitTurn(ctx, runtime, client.Events(), claimed, threadDBID, threadID, turnID); err != nil {
-		_ = runtime.InterruptTurn(context.Background(), threadID, turnID)
-		return err
+	if err := p.controls.RecordSubmission(ctx, claimed, turnID); err != nil {
+		return codexcontrol.TurnResult{}, err
 	}
-	outcome, err := p.loadAgentOutcome(ctx, threadDBID, turnID)
+	result, err := p.waitTurn(ctx, runtime, client.Events(), claimed, threadID, turnID)
 	if err != nil {
-		return err
+		_ = runtime.InterruptTurn(context.Background(), threadID, turnID)
+		return codexcontrol.TurnResult{}, err
 	}
-	if err := p.persistMemorySummary(ctx, claimed.WorkItemID, threadID, outcome.Summary); err != nil {
-		p.logger.Warn("持久化 Work Item Summary 失败", zap.Error(err), zap.String("work_item_id", claimed.WorkItemID.String()))
-	}
-	if _, err = p.db.ExecContext(ctx, `UPDATE agent_threads SET last_turn_id = $2, last_used_at = now(), expires_at = now() + interval '30 days' WHERE id = $1`, threadDBID, turnID); err != nil {
-		return err
-	}
-	if outcome.Status == domain.JobBlocked {
-		return &blockedError{summary: outcome.Summary}
-	}
-	return nil
+	p.syncReplyGate(ctx, claimed, codexHome, threadID)
+	return result, nil
 }
 
-func (p *Processor) handleTool(ctx context.Context, claimed *queue.ClaimedJob, workspace ports.Workspace, branch string, request codex.ToolCallRequest) (codex.ToolCallResult, error) {
+func (p *Processor) syncReplyGate(ctx context.Context, claimed *codexcontrol.ClaimedControl,
+	codexHome, threadID string,
+) {
+	state, err := replygate.Read(codexHome, threadID)
+	if err != nil {
+		return
+	}
+	var delivered bool
+	if err := p.db.QueryRowContext(ctx, `SELECT reply_status = 'delivered'
+		FROM codex_turn_intents WHERE id = $1`, claimed.ID).Scan(&delivered); err == nil && delivered && !state.Delivered {
+		if err := replygate.MarkDelivered(codexHome, threadID); err == nil {
+			state.Delivered = true
+		}
+	}
+	_, _ = p.db.ExecContext(ctx, `UPDATE codex_turn_intents SET reply_hook_block_count = $2,
+		updated_at = now() WHERE id = $1`, claimed.ID, state.BlockCount)
+}
+
+func (p *Processor) handleTool(ctx context.Context, claimed *codexcontrol.ClaimedControl,
+	codexHome string, workspace ports.Workspace, branch string, request codex.ToolCallRequest,
+) (codex.ToolCallResult, error) {
 	namespace := ""
 	if request.Namespace != nil {
 		namespace = *request.Namespace
 	}
-	if namespace == "github" {
-		return p.control.CallTool(ctx, claimed.Capability, request)
+	if namespace == "github" || namespace == "tyrs_hand" {
+		result, err := p.control.CallTool(ctx, claimed.Capability, request)
+		if err == nil && namespace == "tyrs_hand" && request.Tool == "reply_to_github" {
+			if gateErr := replygate.MarkDelivered(codexHome, request.ThreadID); gateErr != nil {
+				return codex.ToolCallResult{}, gateErr
+			}
+		}
+		return result, err
 	}
 	if namespace != "git" {
 		return codex.ToolCallResult{}, errors.New("未知 dynamic tool namespace")
@@ -192,7 +231,7 @@ func (p *Processor) handleTool(ctx context.Context, claimed *queue.ClaimedJob, w
 	})
 }
 
-func (p *Processor) executeLocalTool(ctx context.Context, claimed *queue.ClaimedJob, workspace ports.Workspace, branch string, request codex.ToolCallRequest) (codex.ToolCallResult, error) {
+func (p *Processor) executeLocalTool(ctx context.Context, claimed *codexcontrol.ClaimedControl, workspace ports.Workspace, branch string, request codex.ToolCallRequest) (codex.ToolCallResult, error) {
 	switch request.Tool {
 	case "status":
 		status, err := p.workspace.Status(ctx, workspace.WorktreePath)
@@ -221,16 +260,16 @@ func (p *Processor) executeLocalTool(ctx context.Context, claimed *queue.Claimed
 	}
 }
 
-func (p *Processor) auditLocalToolCall(ctx context.Context, claimed *queue.ClaimedJob, request codex.ToolCallRequest, execute func() (codex.ToolCallResult, error)) (codex.ToolCallResult, error) {
+func (p *Processor) auditLocalToolCall(ctx context.Context, claimed *codexcontrol.ClaimedControl, request codex.ToolCallRequest, execute func() (codex.ToolCallResult, error)) (codex.ToolCallResult, error) {
 	if request.ThreadID == "" || request.TurnID == "" || request.CallID == "" {
 		return codex.ToolCallResult{}, errors.New("本地 Tool Call 缺少 thread、turn 或 call ID")
 	}
 	var id uuid.UUID
 	err := p.db.QueryRowContext(ctx, `
-		INSERT INTO tool_calls(job_attempt_id, thread_id, turn_id, call_id, namespace, tool, arguments)
-		VALUES ($1, $2, $3, $4, 'git', $5, $6)
+		INSERT INTO tool_calls(run_id, intent_id, thread_id, turn_id, call_id, namespace, tool, arguments)
+		VALUES ($1, $2, $3, $4, $5, 'git', $6, $7)
 		ON CONFLICT(thread_id, turn_id, call_id) DO NOTHING
-		RETURNING id`, claimed.AttemptID, request.ThreadID, request.TurnID, request.CallID, request.Tool, request.Arguments).Scan(&id)
+		RETURNING id`, claimed.RunID, claimed.ID, request.ThreadID, request.TurnID, request.CallID, request.Tool, request.Arguments).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return p.previousLocalToolResult(ctx, request)
 	}

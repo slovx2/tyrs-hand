@@ -24,7 +24,7 @@ Tyrs Hand 是一个面向 GitHub 的自托管 Agent 控制系统。它以 GitHub
 - 从仓库 `.agents/skills/<name>/SKILL.md` 加载任务 Skill。
 - 将 GitHub 官方 MCP 工具和受控本地 Git 工具暴露为 Codex Dynamic Tools。
 - 管理 GitHub App、仓库、规则、Agent Profile、任务、Thread、Worker 和审计日志。
-- 以结构化结果区分 `succeeded`、`blocked` 和协议或执行失败。
+- Codex 使用自然最终回复；平台根据 App Server 终态、持久化 Control 和受控回复门禁判定任务结果。
 
 ## 架构
 

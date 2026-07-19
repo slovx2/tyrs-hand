@@ -115,10 +115,10 @@ func (s *Service) SaveAgentProvider(ctx context.Context, input AgentProviderInpu
 		return err
 	}
 	if old.ConfigSignature != "" && old.ConfigSignature != record.ConfigSignature {
-		if _, err := tx.ExecContext(ctx, "UPDATE agent_threads SET status = 'stale' WHERE status = 'active'"); err != nil {
+		if _, err := tx.ExecContext(ctx, "UPDATE work_items SET context_version = context_version + 1, updated_at = now() WHERE state = 'open'"); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, "UPDATE work_items SET context_version = context_version + 1, updated_at = now() WHERE state = 'open'"); err != nil {
+		if _, err := tx.ExecContext(ctx, "UPDATE discord_conversations SET context_version = context_version + 1, updated_at = now()"); err != nil {
 			return err
 		}
 	}

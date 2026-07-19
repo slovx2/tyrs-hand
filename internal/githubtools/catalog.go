@@ -18,7 +18,6 @@ import (
 )
 
 var DefaultAllowedTools = []string{
-	"add_issue_comment",
 	"create_pull_request",
 	"get_commit",
 	"get_file_contents",
@@ -31,7 +30,7 @@ var DefaultAllowedTools = []string{
 }
 
 var RegisteredTools = append(append([]string{}, DefaultAllowedTools...),
-	"issue_write", "update_pull_request", "merge_pull_request")
+	"add_issue_comment", "issue_write", "update_pull_request", "merge_pull_request")
 
 var DangerousTools = map[string]bool{
 	"merge_pull_request": true,

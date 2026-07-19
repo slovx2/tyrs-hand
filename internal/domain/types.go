@@ -3,8 +3,6 @@ package domain
 import (
 	"encoding/json"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type WorkItemKind string
@@ -12,22 +10,6 @@ type WorkItemKind string
 const (
 	WorkItemIssue       WorkItemKind = "issue"
 	WorkItemPullRequest WorkItemKind = "pull_request"
-)
-
-type JobStatus string
-
-const (
-	JobSourceGitHubWorkItem      = "github_work_item"
-	JobSourceDiscordConversation = "discord_conversation"
-)
-
-const (
-	JobQueued    JobStatus = "queued"
-	JobRunning   JobStatus = "running"
-	JobSucceeded JobStatus = "succeeded"
-	JobFailed    JobStatus = "failed"
-	JobBlocked   JobStatus = "blocked"
-	JobCanceled  JobStatus = "canceled"
 )
 
 type NormalizedEvent struct {
@@ -65,28 +47,6 @@ type SCMRepository struct {
 	Name          string
 	DefaultBranch string
 	CloneURL      string
-}
-
-type Job struct {
-	ID                    uuid.UUID
-	SourceType            string
-	WorkItemID            uuid.UUID
-	DiscordConversationID uuid.UUID
-	DiscordMessageID      string
-	RepositoryID          uuid.UUID
-	AgentProfileID        uuid.UUID
-	Status                JobStatus
-	Instruction           string
-	Skills                []string
-	AllowedTools          []string
-	DangerousActions      []string
-	ActorLogin            string
-	ActorPermission       string
-	Attempt               int
-	LeaseToken            string
-	LeaseEpoch            int64
-	LeaseExpiresAt        time.Time
-	CreatedAt             time.Time
 }
 
 type ToolCall struct {

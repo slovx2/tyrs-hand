@@ -14,214 +14,378 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
-	"github.com/slovx2/tyrs-hand/internal/domain"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/ports"
-	"github.com/slovx2/tyrs-hand/internal/queue"
-	"go.uber.org/zap"
+	"github.com/slovx2/tyrs-hand/internal/replygate"
 )
 
 var errDiscordTurnStopped = errors.New("当前 Discord Codex Turn 已被停止")
 
-func discordStopRequested(ctx context.Context, db *sql.DB, jobID uuid.UUID, cause error) bool {
+func discordStopRequested(ctx context.Context, db *sql.DB, intentID uuid.UUID, cause error) bool {
 	if errors.Is(cause, errDiscordTurnStopped) {
 		return true
 	}
 	if db == nil {
 		return false
 	}
-	var status, lastError string
-	err := db.QueryRowContext(ctx, `SELECT status, COALESCE(last_error, '') FROM job_intents WHERE id = $1`, jobID).
-		Scan(&status, &lastError)
-	return err == nil && status == "canceled" && lastError == "stopped from Discord"
+	var status, code string
+	err := db.QueryRowContext(ctx, `SELECT status, COALESCE(last_error_code, '')
+		FROM codex_turn_intents WHERE id = $1`, intentID).Scan(&status, &code)
+	return err == nil && status == "canceled" && code == "user_interrupt"
 }
 
-func (p *Processor) loadContext(ctx context.Context, job domain.Job) (jobContext, error) {
+func (p *Processor) loadContext(ctx context.Context, intent codexcontrol.Intent) (jobContext, error) {
 	var result jobContext
-	err := p.db.QueryRowContext(ctx, `
-		SELECT r.owner, r.name, r.clone_url, r.default_branch,
-			w.kind, w.external_number, COALESCE(w.head_sha, ''), w.context_version,
-			p.name, COALESCE(p.model, ''), COALESCE(p.reasoning_effort, ''),
-			COALESCE(p.service_tier, ''), p.sandbox, p.approval_policy, p.network_enabled
-		FROM repositories r
-		JOIN work_items w ON w.repository_id = r.id
-		JOIN agent_profiles p ON p.id = $3
-		WHERE r.id = $1 AND w.id = $2`, job.RepositoryID, job.WorkItemID, job.AgentProfileID).
-		Scan(&result.Owner, &result.Repository, &result.CloneURL, &result.DefaultBranch,
-			&result.Kind, &result.Number, &result.HeadSHA, &result.ContextVersion,
-			&result.ProfileName, &result.Model, &result.ReasoningEffort, &result.ServiceTier,
-			&result.Sandbox, &result.ApprovalPolicy, &result.NetworkEnabled)
+	err := p.db.QueryRowContext(ctx, `SELECT r.owner, r.name, r.clone_url, r.default_branch,
+		w.kind, w.external_number, COALESCE(w.head_sha, ''), w.context_version,
+		p.name, COALESCE(p.model, ''), COALESCE(p.reasoning_effort, ''),
+		COALESCE(p.service_tier, ''), p.sandbox, p.approval_policy, p.network_enabled
+		FROM repositories r JOIN work_items w ON w.repository_id = r.id
+		JOIN agent_profiles p ON p.id = $3 WHERE r.id = $1 AND w.id = $2`,
+		intent.RepositoryID, intent.WorkItemID, intent.AgentProfileID).Scan(
+		&result.Owner, &result.Repository, &result.CloneURL, &result.DefaultBranch,
+		&result.Kind, &result.Number, &result.HeadSHA, &result.ContextVersion,
+		&result.ProfileName, &result.Model, &result.ReasoningEffort, &result.ServiceTier,
+		&result.Sandbox, &result.ApprovalPolicy, &result.NetworkEnabled)
 	return result, err
 }
 
-func (p *Processor) ensureThread(ctx context.Context, runtime *codex.Runtime, job domain.Job, options ports.ThreadOptions, codexHome, providerSignature string) (uuid.UUID, string, error) {
-	var dbID uuid.UUID
-	var threadID string
-	err := p.db.QueryRowContext(ctx, `
-		SELECT id, external_thread_id FROM agent_threads
-		WHERE work_item_id = $1 AND agent_profile_id = $2 AND context_version = (
-			SELECT context_version FROM work_items WHERE id = $1
-		) AND status = 'active' AND codex_home_key = $3 AND provider_signature = $4`,
-		job.WorkItemID, job.AgentProfileID, codexHome, providerSignature).Scan(&dbID, &threadID)
-	if err == nil {
-		if resumeErr := runtime.ResumeThread(ctx, threadID, options); resumeErr == nil {
-			return dbID, threadID, nil
+func (p *Processor) ensureThread(ctx context.Context, runtime *codex.Runtime,
+	claimed *codexcontrol.ClaimedControl, options ports.ThreadOptions, codexHome, signature string,
+) (string, error) {
+	threadID := claimed.ExternalThreadID
+	if threadID != "" {
+		if claimed.CodexHomeKey != "" && claimed.CodexHomeKey != codexHome {
+			return "", errors.New("持久化 Control 的 CODEX_HOME 与当前运行配置不一致")
 		}
-		_, _ = p.db.ExecContext(ctx, `UPDATE agent_threads SET status = 'stale' WHERE id = $1`, dbID)
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return uuid.Nil, "", err
+		if claimed.ProviderSignature != "" && claimed.ProviderSignature != signature {
+			return "", errors.New("持久化 Control 的 Provider Signature 与当前运行配置不一致")
+		}
+		if err := runtime.ResumeThread(ctx, threadID, options); err != nil {
+			return "", fmt.Errorf("恢复 Codex Thread: %w", err)
+		}
+		if !claimed.Recovering {
+			snapshot, readErr := runtime.ReadThread(ctx, threadID)
+			if readErr != nil {
+				return "", fmt.Errorf("恢复后读取 Codex Thread: %w", readErr)
+			}
+			if active, exists := snapshot.ActiveTurn(); exists {
+				return "", fmt.Errorf("codex thread 存在不属于当前 intent 的活动 turn %s", active.ID)
+			}
+		}
+	} else {
+		var err error
+		threadID, err = runtime.StartThread(ctx, options)
+		if err != nil {
+			return "", err
+		}
 	}
-	summary, summaryErr := p.handoffSummary(ctx, job.WorkItemID)
-	if summaryErr != nil {
-		return uuid.Nil, "", summaryErr
+	if err := p.controls.SetThread(ctx, claimed, threadID, codexHome, signature); err != nil {
+		return "", err
 	}
-	if summary != "" {
-		options.DeveloperInstructions += "\n\nHandoff summary from the previous thread:\n" + summary
-	}
-	threadID, err = runtime.StartThread(ctx, options)
+	claimed.ExternalThreadID = threadID
+	claimed.CodexHomeKey = codexHome
+	claimed.ProviderSignature = signature
+	return threadID, nil
+}
+
+func (p *Processor) reconcileTurn(ctx context.Context, runtime *codex.Runtime,
+	claimed *codexcontrol.ClaimedControl, threadID string,
+) (codexcontrol.TurnResult, bool, error) {
+	snapshot, err := runtime.ReadThread(ctx, threadID)
 	if err != nil {
-		return uuid.Nil, "", err
+		return codexcontrol.TurnResult{}, false, fmt.Errorf("读取 Codex Thread 快照: %w", err)
 	}
-	err = p.db.QueryRowContext(ctx, `
-		INSERT INTO agent_threads(work_item_id, agent_profile_id, provider, external_thread_id, context_version, codex_home_key, provider_signature)
-		VALUES ($1, $2, 'codex', $3, (SELECT context_version FROM work_items WHERE id = $1), $4, $5)
-		ON CONFLICT(work_item_id, agent_profile_id, context_version) DO UPDATE
-		SET external_thread_id = EXCLUDED.external_thread_id, codex_home_key = EXCLUDED.codex_home_key,
-			provider_signature = EXCLUDED.provider_signature, status = 'active', last_used_at = now()
-		RETURNING id`, job.WorkItemID, job.AgentProfileID, threadID, codexHome, providerSignature).Scan(&dbID)
-	return dbID, threadID, err
+	if snapshot.StatusType() == "systemError" || snapshot.StatusType() == "notLoaded" {
+		return codexcontrol.TurnResult{}, false, fmt.Errorf("codex thread 快照状态为 %s", snapshot.StatusType())
+	}
+	turn, found := snapshot.TurnByClientID(claimed.ID.String())
+	if !found && claimed.ConfirmedTurnID != "" {
+		turn, found = snapshot.TurnByID(claimed.ConfirmedTurnID)
+	}
+	if !found {
+		if claimed.ConfirmedTurnID != "" {
+			return codexcontrol.TurnResult{}, false, errors.New("已确认的 Codex Turn 在快照中消失，拒绝重放用户任务")
+		}
+		if claimed.Attempt >= 3 {
+			return codexcontrol.TurnResult{}, false, errors.New("codex start 缺少远端证据且安全重发次数已经耗尽")
+		}
+		return codexcontrol.TurnResult{}, false, nil
+	}
+	if err := p.controls.ConfirmTurn(ctx, claimed, turn.ID); err != nil {
+		return codexcontrol.TurnResult{}, false, err
+	}
+	if turn.Status == "completed" {
+		return codexcontrol.TurnResult{FinalAnswer: turn.FinalAnswer(), TurnID: turn.ID,
+			Evidence: "thread/read"}, true, nil
+	}
+	if turn.Status != "inProgress" && turn.Status != "active" && turn.Status != "running" {
+		return codexcontrol.TurnResult{}, false, fmt.Errorf("codex turn 快照终态为 %s", turn.Status)
+	}
+	result, err := p.waitTurn(ctx, runtime, runtime.Events(), claimed, threadID, turn.ID)
+	return result, true, err
 }
 
-func (p *Processor) handoffSummary(ctx context.Context, workItemID uuid.UUID) (string, error) {
-	var summary string
-	err := p.db.QueryRowContext(ctx, `
-		SELECT summary FROM work_item_memories
-		WHERE work_item_id = $1 AND scope = 'work_item'
-		ORDER BY version DESC LIMIT 1`, workItemID).Scan(&summary)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil
-	}
-	return summary, err
-}
-
-func (p *Processor) persistMemorySummary(ctx context.Context, workItemID uuid.UUID, externalThreadID, summary string) error {
-	const maxSummaryBytes = 32 * 1024
-	raw := []byte(summary)
-	if len(raw) > maxSummaryBytes {
-		raw = raw[:maxSummaryBytes]
-	}
-	_, err := p.db.ExecContext(ctx, `
-		INSERT INTO work_item_memories(work_item_id, scope, summary, source_thread_id, version)
-		VALUES ($1, 'work_item', $2, $3,
-			COALESCE((SELECT max(version) + 1 FROM work_item_memories WHERE work_item_id = $1 AND scope = 'work_item'), 1))`,
-		workItemID, string(raw), externalThreadID)
-	return err
-}
-
-type agentOutcome struct {
-	Status  domain.JobStatus `json:"status"`
-	Summary string           `json:"summary"`
-}
-
-type blockedError struct{ summary string }
-
-func (e *blockedError) Error() string { return e.summary }
-
-func agentOutcomeSchema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"status":{"type":"string","enum":["succeeded","blocked"],"description":"Use blocked only when the requested objective cannot be completed because required input, permissions, tools, or external state are unavailable."},"summary":{"type":"string","minLength":1,"description":"Concise factual outcome for durable memory and operators."}},"required":["status","summary"],"additionalProperties":false}`)
-}
-
-func (p *Processor) loadAgentOutcome(ctx context.Context, threadDBID uuid.UUID, turnID string) (agentOutcome, error) {
-	var text string
-	err := p.db.QueryRowContext(ctx, `
-		SELECT payload->'item'->>'text' FROM agent_events
-		WHERE thread_id = $1 AND event_type = 'item/completed'
-			AND payload->>'turnId' = $2
-			AND payload->'item'->>'type' = 'agentMessage'
-			AND payload->'item'->>'phase' = 'final_answer'
-		ORDER BY id DESC LIMIT 1`, threadDBID, turnID).Scan(&text)
-	if errors.Is(err, sql.ErrNoRows) {
-		return agentOutcome{}, errors.New("codex Turn 缺少结构化最终结果")
-	}
-	if err != nil {
-		return agentOutcome{}, err
-	}
-	var outcome agentOutcome
-	if err := json.Unmarshal([]byte(text), &outcome); err != nil {
-		return agentOutcome{}, fmt.Errorf("解析 Codex 结构化最终结果: %w", err)
-	}
-	if outcome.Status != domain.JobSucceeded && outcome.Status != domain.JobBlocked {
-		return agentOutcome{}, fmt.Errorf("codex 返回了不支持的任务状态 %q", outcome.Status)
-	}
-	outcome.Summary = strings.TrimSpace(outcome.Summary)
-	if outcome.Summary == "" {
-		return agentOutcome{}, errors.New("codex 结构化最终结果缺少摘要")
-	}
-	return outcome, nil
-}
-
-func (p *Processor) waitTurn(ctx context.Context, runtime *codex.Runtime, events <-chan codex.Event, claimed *queue.ClaimedJob, threadDBID uuid.UUID, externalThreadID, turnID string) error {
+func (p *Processor) waitTurn(ctx context.Context, runtime *codex.Runtime, events <-chan codex.Event,
+	claimed *codexcontrol.ClaimedControl, threadID, turnID string,
+) (codexcontrol.TurnResult, error) {
+	startedAt := time.Now()
 	maxTimer := time.NewTimer(p.cfg.TurnMaxDuration)
 	defer maxTimer.Stop()
 	idleTimer := time.NewTimer(p.cfg.TurnIdleTimeout)
 	defer idleTimer.Stop()
 	steerTicker := time.NewTicker(2 * time.Second)
 	defer steerTicker.Stop()
-	turnStarted := false
+	pollInterval := p.cfg.CodexStatusPollInterval
+	if pollInterval <= 0 {
+		pollInterval = 30 * time.Second
+	}
+	pollTicker := time.NewTicker(pollInterval)
+	defer pollTicker.Stop()
+	confirmed := claimed.ConfirmedTurnID != ""
+	finalAnswer := ""
+	var finalDelta strings.Builder
 	for {
 		select {
 		case event, ok := <-events:
 			if !ok {
-				return errors.New("当前 Codex 事件流在 Turn 完成前关闭")
+				result, recovered, err := p.snapshotTerminal(ctx, runtime, claimed, threadID, turnID, startedAt)
+				if recovered || err != nil {
+					return result, err
+				}
+				return codexcontrol.TurnResult{}, errors.New("codex stdio 在 turn 完成前关闭")
 			}
-			if !idleTimer.Stop() {
-				select {
-				case <-idleTimer.C:
-				default:
+			if !eventBelongsToTurn(event.Params, threadID, turnID, claimed.ID.String()) {
+				continue
+			}
+			resetTimer(idleTimer, p.cfg.TurnIdleTimeout)
+			p.persistAgentEvent(ctx, claimed, event)
+			if event.Method == "turn/started" {
+				actualID := eventTurnID(event.Params)
+				if actualID != "" {
+					turnID = actualID
+					if err := p.controls.ConfirmTurn(ctx, claimed, actualID); err != nil {
+						return codexcontrol.TurnResult{}, err
+					}
+					confirmed = true
 				}
 			}
-			idleTimer.Reset(p.cfg.TurnIdleTimeout)
-			_, _ = p.db.ExecContext(ctx, `INSERT INTO agent_events(thread_id, job_id, event_type, payload) VALUES ($1,$2,$3,$4)`, threadDBID, claimed.ID, event.Method, event.Params)
-			if event.Method == "turn/started" && eventMatchesTurn(event.Params, externalThreadID, turnID) {
-				turnStarted = true
+			if value := finalAnswerFromEvent(event); value != "" {
+				finalAnswer = value
+			}
+			if value := finalAnswerDelta(event); value != "" {
+				finalDelta.WriteString(value)
 			}
 			if event.Method == "turn/completed" {
-				matched, status := completedTurn(event.Params, externalThreadID, turnID)
-				if matched {
-					if status != "completed" {
-						return fmt.Errorf("当前 Codex Turn 结束状态为 %s", status)
-					}
-					return nil
+				_, status := completedTurn(event.Params, threadID, turnID)
+				if status != "completed" {
+					return codexcontrol.TurnResult{}, fmt.Errorf("codex turn 结束状态为 %s", status)
 				}
+				if finalAnswer == "" {
+					finalAnswer = p.readFinalAnswer(ctx, runtime, threadID, turnID)
+				}
+				if finalAnswer == "" {
+					finalAnswer = strings.TrimSpace(finalDelta.String())
+				}
+				return codexcontrol.TurnResult{FinalAnswer: finalAnswer, TurnID: turnID,
+					DurationMillis: time.Since(startedAt).Milliseconds(), Evidence: "turn/completed"}, nil
 			}
 		case <-steerTicker.C:
-			if turnStarted {
-				if claimed.SourceType == domain.JobSourceDiscordConversation {
-					var status string
-					if err := p.db.QueryRowContext(ctx, "SELECT status FROM job_intents WHERE id = $1", claimed.ID).Scan(&status); err != nil {
-						return err
-					}
-					if status == "canceled" {
-						return errDiscordTurnStopped
-					}
-				}
-				var steerErr error
-				if claimed.SourceType == domain.JobSourceDiscordConversation {
-					steerErr = p.steerQueuedDiscord(ctx, runtime, claimed, externalThreadID, turnID)
-				} else {
-					steerErr = p.steerQueuedInstruction(ctx, runtime, claimed, externalThreadID, turnID)
-				}
-				if steerErr != nil {
-					p.logger.Warn("合并同一会话的新指令失败", zap.Error(steerErr), zap.String("source_type", claimed.SourceType))
+			if confirmed && claimed.SourceType == codexcontrol.SourceDiscord {
+				if err := p.dispatchPendingIntent(ctx, runtime, claimed, threadID, turnID); err != nil {
+					return codexcontrol.TurnResult{}, fmt.Errorf("合并同一 control 的后续 intent: %w", err)
 				}
 			}
+		case <-pollTicker.C:
+			snapshot, readErr := runtime.ReadThread(ctx, threadID)
+			if readErr != nil {
+				continue
+			}
+			turn, found := snapshot.TurnByID(turnID)
+			if !found {
+				turn, found = snapshot.TurnByClientID(claimed.ID.String())
+			}
+			if found && turn.Status == "completed" {
+				return codexcontrol.TurnResult{FinalAnswer: turn.FinalAnswer(), TurnID: turn.ID,
+					DurationMillis: time.Since(startedAt).Milliseconds(), Evidence: "thread/read"}, nil
+			}
+			if found && (turn.Status == "failed" || turn.Status == "interrupted") {
+				return codexcontrol.TurnResult{}, fmt.Errorf("codex turn 快照终态为 %s", turn.Status)
+			}
 		case <-idleTimer.C:
-			return errors.New("当前 Codex Turn 长时间没有活动")
+			return codexcontrol.TurnResult{}, errors.New("codex turn 长时间没有相关活动")
 		case <-maxTimer.C:
-			return errors.New("当前 Codex Turn 超过最大执行时间")
+			return codexcontrol.TurnResult{}, errors.New("codex turn 超过最大执行时间")
 		case <-ctx.Done():
-			return ctx.Err()
+			return codexcontrol.TurnResult{}, ctx.Err()
 		}
 	}
+}
+
+func (p *Processor) readFinalAnswer(ctx context.Context, runtime *codex.Runtime, threadID, turnID string) string {
+	for attempt := 0; attempt < 3; attempt++ {
+		snapshot, err := runtime.ReadThread(ctx, threadID)
+		if err == nil {
+			if turn, ok := snapshot.TurnByID(turnID); ok {
+				if answer := turn.FinalAnswer(); answer != "" {
+					return answer
+				}
+			}
+		}
+		if attempt < 2 {
+			select {
+			case <-ctx.Done():
+				return ""
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
+	}
+	return ""
+}
+
+func (p *Processor) snapshotTerminal(ctx context.Context, runtime *codex.Runtime,
+	claimed *codexcontrol.ClaimedControl, threadID, turnID string, startedAt time.Time,
+) (codexcontrol.TurnResult, bool, error) {
+	snapshot, err := runtime.ReadThread(ctx, threadID)
+	if err != nil {
+		return codexcontrol.TurnResult{}, false, err
+	}
+	turn, found := snapshot.TurnByID(turnID)
+	if !found {
+		turn, found = snapshot.TurnByClientID(claimed.ID.String())
+	}
+	if !found || turn.Status != "completed" {
+		return codexcontrol.TurnResult{}, false, nil
+	}
+	return codexcontrol.TurnResult{FinalAnswer: turn.FinalAnswer(), TurnID: turn.ID,
+		DurationMillis: time.Since(startedAt).Milliseconds(), Evidence: "thread/read"}, true, nil
+}
+
+func (p *Processor) persistAgentEvent(ctx context.Context, claimed *codexcontrol.ClaimedControl, event codex.Event) {
+	_, _ = p.db.ExecContext(ctx, `INSERT INTO agent_events
+		(control_id, intent_id, run_id, event_type, payload) VALUES ($1,$2,$3,$4,$5)`,
+		claimed.ControlID, claimed.ID, claimed.RunID, event.Method, event.Params)
+}
+
+func (p *Processor) dispatchPendingIntent(ctx context.Context, runtime *codex.Runtime,
+	claimed *codexcontrol.ClaimedControl, threadID, turnID string,
+) error {
+	var intentID uuid.UUID
+	var operation, instruction, messageID string
+	err := p.db.QueryRowContext(ctx, `SELECT id, operation, instruction, COALESCE(discord_message_id,'')
+		FROM codex_turn_intents WHERE control_id = $1 AND sequence_no > $2
+		  AND status IN ('queued','retry_wait') AND available_at <= now()
+		  AND (SELECT append_count < max_append_count FROM codex_turn_runs WHERE id = $3)
+		ORDER BY sequence_no LIMIT 1`, claimed.ControlID, claimed.Sequence, claimed.RunID).Scan(
+		&intentID, &operation, &instruction, &messageID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if operation == "interrupt" {
+		_ = replygate.SetBypass(claimed.CodexHomeKey, threadID)
+		if err := runtime.InterruptTurn(ctx, threadID, turnID); err != nil {
+			return err
+		}
+		_, err = p.db.ExecContext(ctx, `UPDATE codex_turn_intents SET status = 'completed',
+			resolved_action = 'interrupt', confirmed_codex_turn_id = $2, finished_at = now(), updated_at = now()
+			WHERE id = $1 AND status IN ('queued','retry_wait')`, intentID, turnID)
+		if err != nil {
+			return err
+		}
+		return errDiscordTurnStopped
+	}
+	input := ports.TurnInput{Text: instruction, ClientUserMessageID: intentID.String()}
+	if claimed.SourceType == codexcontrol.SourceDiscord && messageID != "" {
+		jobCtx, loadErr := p.loadDiscordContext(ctx, codexcontrol.Intent{
+			DiscordConversationID: claimed.DiscordConversationID, DiscordMessageID: messageID,
+		})
+		if loadErr != nil {
+			return loadErr
+		}
+		workspace := filepath.Join(p.cfg.DiscordWorkspaceRoot, "blank", claimed.DiscordConversationID.String())
+		if jobCtx.HasRepository {
+			loadErr = p.db.QueryRowContext(ctx, `SELECT w.path FROM discord_conversations c
+				JOIN discord_workspaces w ON w.id = c.workspace_id WHERE c.id = $1`,
+				claimed.DiscordConversationID).Scan(&workspace)
+		}
+		if loadErr != nil {
+			return loadErr
+		}
+		input, loadErr = p.discordTurnInput(ctx, jobCtx, workspace, nil)
+		if loadErr != nil {
+			return loadErr
+		}
+	}
+	applied, err := p.steerAlreadyApplied(ctx, runtime, threadID, turnID, intentID.String())
+	if err != nil {
+		return err
+	}
+	if !applied {
+		steerErr := runtime.SteerTurn(ctx, threadID, turnID, input)
+		if steerErr != nil {
+			var requestErr *codex.RequestError
+			if !errors.As(steerErr, &requestErr) || requestErr.State != codex.RequestUnknown {
+				return steerErr
+			}
+			for attempt := 0; attempt < 2 && !applied; attempt++ {
+				if attempt > 0 {
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					case <-time.After(100 * time.Millisecond):
+					}
+				}
+				applied, err = p.steerAlreadyApplied(ctx, runtime, threadID, turnID, intentID.String())
+				if err != nil {
+					return fmt.Errorf("对账 steer 结果: %w", err)
+				}
+			}
+			if !applied {
+				return fmt.Errorf("steer 响应丢失且快照中没有应用证据: %w", steerErr)
+			}
+		}
+	}
+	return p.markSteerApplied(ctx, claimed, intentID, turnID, messageID)
+}
+
+func (p *Processor) steerAlreadyApplied(ctx context.Context, runtime *codex.Runtime,
+	threadID, turnID, clientID string,
+) (bool, error) {
+	snapshot, err := runtime.ReadThread(ctx, threadID)
+	if err != nil {
+		return false, err
+	}
+	return steerSnapshotApplied(snapshot, turnID, clientID)
+}
+
+func steerSnapshotApplied(snapshot codex.ThreadSnapshot, turnID, clientID string) (bool, error) {
+	turn, found := snapshot.TurnByClientID(clientID)
+	if !found {
+		return false, nil
+	}
+	if turn.ID != turnID {
+		return false, fmt.Errorf("steer client ID 出现在其他 turn %s", turn.ID)
+	}
+	return true, nil
+}
+
+func (p *Processor) markSteerApplied(ctx context.Context, claimed *codexcontrol.ClaimedControl,
+	intentID uuid.UUID, turnID, messageID string,
+) error {
+	_, err := p.db.ExecContext(ctx, `UPDATE codex_turn_intents SET status = 'running',
+		resolved_action = 'steer', confirmed_codex_turn_id = $2, confirmed_at = now(), updated_at = now()
+		WHERE id = $1 AND status IN ('queued','retry_wait')`, intentID, turnID)
+	if err == nil {
+		_, err = p.db.ExecContext(ctx, `UPDATE codex_turn_runs SET append_count = append_count + 1
+			WHERE id = $1 AND append_count < max_append_count`, claimed.RunID)
+	}
+	if err == nil && claimed.SourceType == codexcontrol.SourceDiscord {
+		err = p.addDiscordContributor(ctx, claimed.RunID, claimed.DiscordConversationID, turnID, messageID)
+	}
+	return err
 }
 
 func completedTurn(raw json.RawMessage, threadID, turnID string) (bool, string) {
@@ -238,51 +402,84 @@ func completedTurn(raw json.RawMessage, threadID, turnID string) (bool, string) 
 	return true, payload.Turn.Status
 }
 
-func eventMatchesTurn(raw json.RawMessage, threadID, turnID string) bool {
+func eventBelongsToTurn(raw json.RawMessage, threadID, turnID, clientID string) bool {
 	var payload struct {
 		ThreadID string `json:"threadId"`
+		TurnID   string `json:"turnId"`
 		Turn     struct {
+			ID                  string `json:"id"`
+			ClientUserMessageID string `json:"clientUserMessageId"`
+		} `json:"turn"`
+	}
+	if json.Unmarshal(raw, &payload) != nil || payload.ThreadID != threadID {
+		return false
+	}
+	eventTurn := payload.Turn.ID
+	if eventTurn == "" {
+		eventTurn = payload.TurnID
+	}
+	return eventTurn == turnID || (clientID != "" && payload.Turn.ClientUserMessageID == clientID)
+}
+
+func eventTurnID(raw json.RawMessage) string {
+	var payload struct {
+		TurnID string `json:"turnId"`
+		Turn   struct {
 			ID string `json:"id"`
 		} `json:"turn"`
 	}
-	return json.Unmarshal(raw, &payload) == nil && payload.ThreadID == threadID && payload.Turn.ID == turnID
+	_ = json.Unmarshal(raw, &payload)
+	if payload.Turn.ID != "" {
+		return payload.Turn.ID
+	}
+	return payload.TurnID
 }
 
-func (p *Processor) steerQueuedInstruction(ctx context.Context, runtime *codex.Runtime, claimed *queue.ClaimedJob, threadID, turnID string) error {
-	var jobID uuid.UUID
-	var instruction string
-	skills, err := json.Marshal(claimed.Skills)
-	if err != nil {
-		return err
+func finalAnswerFromEvent(event codex.Event) string {
+	if event.Method != "item/completed" {
+		return ""
 	}
-	allowedTools, err := json.Marshal(claimed.AllowedTools)
-	if err != nil {
-		return err
+	var payload struct {
+		Item struct {
+			Type  string `json:"type"`
+			Phase string `json:"phase"`
+			Text  string `json:"text"`
+		} `json:"item"`
 	}
-	dangerousActions, err := json.Marshal(claimed.DangerousActions)
-	if err != nil {
-		return err
+	if json.Unmarshal(event.Params, &payload) != nil || payload.Item.Type != "agentMessage" {
+		return ""
 	}
-	err = p.db.QueryRowContext(ctx, `
-		SELECT id, instruction FROM job_intents
-		WHERE work_item_id = $1 AND agent_profile_id = $2 AND status = 'queued' AND available_at <= now()
-		  AND actor_login = $3 AND actor_permission = $4
-		  AND skills = $5::jsonb AND allowed_tools = $6::jsonb AND dangerous_actions = $7::jsonb
-		ORDER BY created_at LIMIT 1`, claimed.WorkItemID, claimed.AgentProfileID,
-		claimed.ActorLogin, claimed.ActorPermission, string(skills), string(allowedTools), string(dangerousActions)).Scan(&jobID, &instruction)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
+	if payload.Item.Phase == "final_answer" || payload.Item.Phase == "" {
+		return strings.TrimSpace(payload.Item.Text)
 	}
-	if err != nil {
-		return err
+	return ""
+}
+
+func finalAnswerDelta(event codex.Event) string {
+	if event.Method != "item/agentMessage/delta" && event.Method != "item/delta" {
+		return ""
 	}
-	if err := runtime.SteerTurn(ctx, threadID, turnID, ports.TurnInput{Text: instruction, ClientUserMessageID: jobID.String()}); err != nil {
-		return err
+	var payload struct {
+		Delta string `json:"delta"`
+		Text  string `json:"text"`
 	}
-	_, err = p.db.ExecContext(ctx, `
-		UPDATE job_intents SET status = 'canceled', last_error = $2, updated_at = now()
-		WHERE id = $1 AND status = 'queued'`, jobID, "steered into active turn "+claimed.ID.String())
-	return err
+	if json.Unmarshal(event.Params, &payload) != nil {
+		return ""
+	}
+	if payload.Delta != "" {
+		return payload.Delta
+	}
+	return payload.Text
+}
+
+func resetTimer(timer *time.Timer, duration time.Duration) {
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
+	}
+	timer.Reset(duration)
 }
 
 func resolveSkills(worktree string, names []string) ([]ports.SkillRef, error) {
@@ -318,6 +515,27 @@ func localGitSpec() ports.DynamicToolSpec {
 	}
 }
 
+func githubReplySpec() ports.DynamicToolSpec {
+	return ports.DynamicToolSpec{
+		Type: "namespace", Name: "tyrs_hand", Description: "Send the required final reply through the platform.",
+		Tools: []ports.DynamicToolSpec{{
+			Type: "function", Name: "reply_to_github",
+			Description: "Post the one final user-facing reply to the current authorized GitHub issue or pull request.",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"body":{"type":"string","minLength":1,"maxLength":60000}},"required":["body"],"additionalProperties":false}`),
+		}},
+	}
+}
+
+func withoutGenericReply(tools []string) []string {
+	result := make([]string, 0, len(tools))
+	for _, tool := range tools {
+		if tool != "add_issue_comment" {
+			result = append(result, tool)
+		}
+	}
+	return result
+}
+
 func threadConfigSignature(providerSignature string, options ports.ThreadOptions) string {
 	data, _ := json.Marshal(struct {
 		ProviderSignature string              `json:"providerSignature"`
@@ -329,23 +547,22 @@ func threadConfigSignature(providerSignature string, options ports.ThreadOptions
 
 func shortID(id uuid.UUID) string { return strings.ReplaceAll(id.String()[:8], "-", "") }
 
-func (p *Processor) recordWorkspace(ctx context.Context, claimed *queue.ClaimedJob, workspace ports.Workspace, baseRef string) error {
+func (p *Processor) recordWorkspace(ctx context.Context, claimed *codexcontrol.ClaimedControl,
+	workspace ports.Workspace, baseRef string,
+) error {
 	var cacheID uuid.UUID
-	err := p.db.QueryRowContext(ctx, `
-		INSERT INTO repo_caches(repository_id, path, last_fetch_at)
-		VALUES ($1, $2, now())
-		ON CONFLICT(repository_id) DO UPDATE SET path = EXCLUDED.path, status = 'ready',
-			last_fetch_at = now(), last_used_at = now(), error = NULL
-		RETURNING id`, claimed.RepositoryID, workspace.CachePath).Scan(&cacheID)
+	err := p.db.QueryRowContext(ctx, `INSERT INTO repo_caches(repository_id, path, last_fetch_at)
+		VALUES ($1, $2, now()) ON CONFLICT(repository_id) DO UPDATE SET path = EXCLUDED.path,
+		status = 'ready', last_fetch_at = now(), last_used_at = now(), error = NULL RETURNING id`,
+		claimed.RepositoryID, workspace.CachePath).Scan(&cacheID)
 	if err != nil {
 		return err
 	}
-	_, err = p.db.ExecContext(ctx, `
-		INSERT INTO worktrees(work_item_id, repo_cache_id, path, branch, base_sha, head_sha)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT(work_item_id) DO UPDATE SET repo_cache_id = EXCLUDED.repo_cache_id,
-			path = EXCLUDED.path, branch = EXCLUDED.branch, head_sha = EXCLUDED.head_sha,
-			status = 'ready', last_used_at = now(), expires_at = NULL, error = NULL`,
+	_, err = p.db.ExecContext(ctx, `INSERT INTO worktrees
+		(work_item_id, repo_cache_id, path, branch, base_sha, head_sha)
+		VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT(work_item_id) DO UPDATE SET
+		repo_cache_id = EXCLUDED.repo_cache_id, path = EXCLUDED.path, branch = EXCLUDED.branch,
+		head_sha = EXCLUDED.head_sha, status = 'ready', last_used_at = now(), expires_at = NULL, error = NULL`,
 		claimed.WorkItemID, cacheID, workspace.WorktreePath, workspace.Branch, baseRef, workspace.HeadSHA)
 	return err
 }
@@ -355,7 +572,8 @@ func (p *Processor) refreshWorkspaceState(parent context.Context, workItemID uui
 	defer cancel()
 	status, err := p.workspace.Status(ctx, path)
 	if err != nil {
-		_, _ = p.db.ExecContext(ctx, `UPDATE worktrees SET status = 'failed', error = $2, last_used_at = now() WHERE work_item_id = $1`, workItemID, err.Error())
+		_, _ = p.db.ExecContext(ctx, `UPDATE worktrees SET status = 'failed', error = $2,
+			last_used_at = now() WHERE work_item_id = $1`, workItemID, err.Error())
 		return
 	}
 	dirty := false
@@ -365,5 +583,6 @@ func (p *Processor) refreshWorkspaceState(parent context.Context, workItemID uui
 			break
 		}
 	}
-	_, _ = p.db.ExecContext(ctx, `UPDATE worktrees SET dirty = $2, status = 'ready', error = NULL, last_used_at = now() WHERE work_item_id = $1`, workItemID, dirty)
+	_, _ = p.db.ExecContext(ctx, `UPDATE worktrees SET dirty = $2, status = 'ready',
+		error = NULL, last_used_at = now() WHERE work_item_id = $1`, workItemID, dirty)
 }

@@ -10,7 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
-	"github.com/slovx2/tyrs-hand/internal/queue"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
 type IncomingMessage struct {
@@ -194,7 +194,7 @@ func (s *ConversationService) Reply(ctx context.Context, input IncomingMessage) 
 
 func (s *ConversationService) notifyJobs(ctx context.Context) {
 	if s.redis != nil {
-		_ = s.redis.Publish(ctx, queue.JobWakeupChannel, "queued").Err()
+		_ = s.redis.Publish(ctx, codexcontrol.WakeupChannel, "queued").Err()
 	}
 }
 
@@ -246,16 +246,38 @@ func (s *ConversationService) insertMessage(ctx context.Context, tx *sql.Tx, con
 }
 
 func (s *ConversationService) enqueueMessage(ctx context.Context, tx *sql.Tx, conversationID uuid.UUID, messageID string) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO job_intents
-		(work_item_id, repository_id, agent_profile_id, idempotency_key, source_type,
-		discord_conversation_id, discord_message_id, instruction, allowed_tools, actor_login, actor_permission)
-		SELECT NULL, c.repository_id, c.agent_profile_id, 'discord:message:' || m.message_id,
-			'discord_conversation', c.id, m.message_id, m.body, p.allowed_tools,
-			COALESCE(m.github_login, ''), m.access_snapshot
+	var repositoryID sql.NullString
+	var profileID uuid.UUID
+	var contextVersion int64
+	var body, actor, permission string
+	var allowedJSON []byte
+	err := tx.QueryRowContext(ctx, `SELECT c.repository_id::text, c.agent_profile_id, c.context_version,
+		m.body, COALESCE(m.github_login, ''), m.access_snapshot, p.allowed_tools
 		FROM discord_conversations c JOIN discord_input_messages m ON m.conversation_id = c.id
 		JOIN agent_profiles p ON p.id = c.agent_profile_id
-		WHERE c.id = $1 AND m.message_id = $2
-		ON CONFLICT(idempotency_key) DO NOTHING`, conversationID, messageID)
+		WHERE c.id = $1 AND m.message_id = $2`, conversationID, messageID).Scan(
+		&repositoryID, &profileID, &contextVersion, &body, &actor, &permission, &allowedJSON)
+	if err != nil {
+		return err
+	}
+	var repository uuid.UUID
+	if repositoryID.String != "" {
+		repository, err = uuid.Parse(repositoryID.String)
+		if err != nil {
+			return err
+		}
+	}
+	var allowed []string
+	if err := json.Unmarshal(allowedJSON, &allowed); err != nil {
+		return err
+	}
+	_, _, err = codexcontrol.NewRepository(s.db, 0).Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
+		SourceType: codexcontrol.SourceDiscord, DiscordConversationID: conversationID,
+		DiscordMessageID: messageID, RepositoryID: repository, AgentProfileID: profileID,
+		ContextVersion: contextVersion, IdempotencyKey: "discord:message:" + messageID,
+		Instruction: body, AllowedTools: allowed, ActorLogin: actor, ActorPermission: permission,
+		ReplyPolicy: "silent", Behavior: "steer_if_active",
+	})
 	return err
 }
 

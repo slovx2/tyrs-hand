@@ -8,30 +8,30 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/slovx2/tyrs-hand/ent/agentthread"
+	"github.com/slovx2/tyrs-hand/ent/codexturnintent"
 	"github.com/slovx2/tyrs-hand/ent/predicate"
 )
 
-// AgentThreadDelete is the builder for deleting a AgentThread entity.
-type AgentThreadDelete struct {
+// CodexTurnIntentDelete is the builder for deleting a CodexTurnIntent entity.
+type CodexTurnIntentDelete struct {
 	config
 	hooks    []Hook
-	mutation *AgentThreadMutation
+	mutation *CodexTurnIntentMutation
 }
 
-// Where appends a list predicates to the AgentThreadDelete builder.
-func (_d *AgentThreadDelete) Where(ps ...predicate.AgentThread) *AgentThreadDelete {
+// Where appends a list predicates to the CodexTurnIntentDelete builder.
+func (_d *CodexTurnIntentDelete) Where(ps ...predicate.CodexTurnIntent) *CodexTurnIntentDelete {
 	_d.mutation.Where(ps...)
 	return _d
 }
 
 // Exec executes the deletion query and returns how many vertices were deleted.
-func (_d *AgentThreadDelete) Exec(ctx context.Context) (int, error) {
+func (_d *CodexTurnIntentDelete) Exec(ctx context.Context) (int, error) {
 	return withHooks(ctx, _d.sqlExec, _d.mutation, _d.hooks)
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_d *AgentThreadDelete) ExecX(ctx context.Context) int {
+func (_d *CodexTurnIntentDelete) ExecX(ctx context.Context) int {
 	n, err := _d.Exec(ctx)
 	if err != nil {
 		panic(err)
@@ -39,8 +39,8 @@ func (_d *AgentThreadDelete) ExecX(ctx context.Context) int {
 	return n
 }
 
-func (_d *AgentThreadDelete) sqlExec(ctx context.Context) (int, error) {
-	_spec := sqlgraph.NewDeleteSpec(agentthread.Table, sqlgraph.NewFieldSpec(agentthread.FieldID, field.TypeUUID))
+func (_d *CodexTurnIntentDelete) sqlExec(ctx context.Context) (int, error) {
+	_spec := sqlgraph.NewDeleteSpec(codexturnintent.Table, sqlgraph.NewFieldSpec(codexturnintent.FieldID, field.TypeUUID))
 	if ps := _d.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {
@@ -56,32 +56,32 @@ func (_d *AgentThreadDelete) sqlExec(ctx context.Context) (int, error) {
 	return affected, err
 }
 
-// AgentThreadDeleteOne is the builder for deleting a single AgentThread entity.
-type AgentThreadDeleteOne struct {
-	_d *AgentThreadDelete
+// CodexTurnIntentDeleteOne is the builder for deleting a single CodexTurnIntent entity.
+type CodexTurnIntentDeleteOne struct {
+	_d *CodexTurnIntentDelete
 }
 
-// Where appends a list predicates to the AgentThreadDelete builder.
-func (_d *AgentThreadDeleteOne) Where(ps ...predicate.AgentThread) *AgentThreadDeleteOne {
+// Where appends a list predicates to the CodexTurnIntentDelete builder.
+func (_d *CodexTurnIntentDeleteOne) Where(ps ...predicate.CodexTurnIntent) *CodexTurnIntentDeleteOne {
 	_d._d.mutation.Where(ps...)
 	return _d
 }
 
 // Exec executes the deletion query.
-func (_d *AgentThreadDeleteOne) Exec(ctx context.Context) error {
+func (_d *CodexTurnIntentDeleteOne) Exec(ctx context.Context) error {
 	n, err := _d._d.Exec(ctx)
 	switch {
 	case err != nil:
 		return err
 	case n == 0:
-		return &NotFoundError{agentthread.Label}
+		return &NotFoundError{codexturnintent.Label}
 	default:
 		return nil
 	}
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_d *AgentThreadDeleteOne) ExecX(ctx context.Context) {
+func (_d *CodexTurnIntentDeleteOne) ExecX(ctx context.Context) {
 	if err := _d.Exec(ctx); err != nil {
 		panic(err)
 	}

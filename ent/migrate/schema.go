@@ -48,29 +48,6 @@ var (
 		Columns:    AgentProfilesColumns,
 		PrimaryKey: []*schema.Column{AgentProfilesColumns[0]},
 	}
-	// AgentThreadsColumns holds the columns for the "agent_threads" table.
-	AgentThreadsColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeUUID},
-		{Name: "work_item_id", Type: field.TypeUUID},
-		{Name: "agent_profile_id", Type: field.TypeUUID},
-		{Name: "provider", Type: field.TypeString},
-		{Name: "external_thread_id", Type: field.TypeString},
-		{Name: "context_version", Type: field.TypeInt64},
-		{Name: "codex_home_key", Type: field.TypeString},
-		{Name: "provider_signature", Type: field.TypeString, Default: ""},
-		{Name: "rollout_path", Type: field.TypeString, Nullable: true},
-		{Name: "status", Type: field.TypeString, Default: "active"},
-		{Name: "last_turn_id", Type: field.TypeString, Nullable: true},
-		{Name: "last_used_at", Type: field.TypeTime},
-		{Name: "expires_at", Type: field.TypeTime, Nullable: true},
-		{Name: "created_at", Type: field.TypeTime},
-	}
-	// AgentThreadsTable holds the schema information for the "agent_threads" table.
-	AgentThreadsTable = &schema.Table{
-		Name:       "agent_threads",
-		Columns:    AgentThreadsColumns,
-		PrimaryKey: []*schema.Column{AgentThreadsColumns[0]},
-	}
 	// AuditLogsColumns holds the columns for the "audit_logs" table.
 	AuditLogsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -89,15 +66,64 @@ var (
 		Columns:    AuditLogsColumns,
 		PrimaryKey: []*schema.Column{AuditLogsColumns[0]},
 	}
-	// JobIntentsColumns holds the columns for the "job_intents" table.
-	JobIntentsColumns = []*schema.Column{
+	// CodexThreadControlsColumns holds the columns for the "codex_thread_controls" table.
+	CodexThreadControlsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
-		{Name: "work_item_id", Type: field.TypeUUID},
-		{Name: "repository_id", Type: field.TypeUUID},
+		{Name: "source_type", Type: field.TypeString},
+		{Name: "work_item_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "discord_conversation_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "repository_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "agent_profile_id", Type: field.TypeUUID},
+		{Name: "context_version", Type: field.TypeInt64},
+		{Name: "external_thread_id", Type: field.TypeString, Nullable: true},
+		{Name: "provider", Type: field.TypeString, Default: "codex"},
+		{Name: "codex_home_key", Type: field.TypeString, Nullable: true},
+		{Name: "provider_signature", Type: field.TypeString, Nullable: true},
+		{Name: "thread_generation", Type: field.TypeInt, Default: 1},
+		{Name: "status", Type: field.TypeString, Default: "idle"},
+		{Name: "next_sequence_no", Type: field.TypeInt64, Default: 1},
+		{Name: "active_intent_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "remote_status", Type: field.TypeString, Nullable: true},
+		{Name: "active_codex_turn_id", Type: field.TypeString, Nullable: true},
+		{Name: "active_client_id", Type: field.TypeString, Nullable: true},
+		{Name: "lease_epoch", Type: field.TypeInt64, Default: 0},
+		{Name: "lease_expires_at", Type: field.TypeTime, Nullable: true},
+		{Name: "heartbeat_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_reconciled_at", Type: field.TypeTime, Nullable: true},
+		{Name: "next_wakeup_at", Type: field.TypeTime, Nullable: true},
+		{Name: "worker_id", Type: field.TypeString, Nullable: true},
+		{Name: "lease_token", Type: field.TypeString, Nullable: true},
+		{Name: "last_error_code", Type: field.TypeString, Nullable: true},
+		{Name: "last_error_message", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// CodexThreadControlsTable holds the schema information for the "codex_thread_controls" table.
+	CodexThreadControlsTable = &schema.Table{
+		Name:       "codex_thread_controls",
+		Columns:    CodexThreadControlsColumns,
+		PrimaryKey: []*schema.Column{CodexThreadControlsColumns[0]},
+	}
+	// CodexTurnIntentsColumns holds the columns for the "codex_turn_intents" table.
+	CodexTurnIntentsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "control_id", Type: field.TypeUUID},
+		{Name: "sequence_no", Type: field.TypeInt64},
+		{Name: "operation", Type: field.TypeString, Default: "turn_input"},
+		{Name: "behavior", Type: field.TypeString, Nullable: true},
+		{Name: "resolved_action", Type: field.TypeString, Nullable: true},
+		{Name: "target_intent_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "source_type", Type: field.TypeString},
+		{Name: "work_item_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "discord_conversation_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "discord_message_id", Type: field.TypeString, Nullable: true},
+		{Name: "repository_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "agent_profile_id", Type: field.TypeUUID},
+		{Name: "webhook_delivery_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "idempotency_key", Type: field.TypeString, Unique: true},
 		{Name: "status", Type: field.TypeString, Default: "queued"},
 		{Name: "instruction", Type: field.TypeString},
+		{Name: "prepared_input", Type: field.TypeJSON, Nullable: true},
 		{Name: "skills", Type: field.TypeJSON},
 		{Name: "allowed_tools", Type: field.TypeJSON},
 		{Name: "dangerous_actions", Type: field.TypeJSON},
@@ -106,22 +132,65 @@ var (
 		{Name: "actor_login", Type: field.TypeString, Default: ""},
 		{Name: "actor_permission", Type: field.TypeString, Default: ""},
 		{Name: "priority", Type: field.TypeInt, Default: 100},
+		{Name: "steerable", Type: field.TypeBool, Default: true},
 		{Name: "available_at", Type: field.TypeTime},
 		{Name: "attempt_count", Type: field.TypeInt, Default: 0},
 		{Name: "max_attempts", Type: field.TypeInt, Default: 3},
-		{Name: "lease_token", Type: field.TypeString, Nullable: true},
-		{Name: "lease_epoch", Type: field.TypeInt64, Default: 0},
-		{Name: "lease_expires_at", Type: field.TypeTime, Nullable: true},
-		{Name: "worker_id", Type: field.TypeString, Nullable: true},
-		{Name: "last_error", Type: field.TypeString, Nullable: true},
+		{Name: "codex_submission_id", Type: field.TypeString, Nullable: true},
+		{Name: "confirmed_codex_turn_id", Type: field.TypeString, Nullable: true},
+		{Name: "last_error_code", Type: field.TypeString, Nullable: true},
+		{Name: "last_error_message", Type: field.TypeString, Nullable: true},
+		{Name: "result", Type: field.TypeJSON, Nullable: true},
+		{Name: "result_delivery_status", Type: field.TypeString, Default: "pending"},
+		{Name: "result_delivery_attempt_count", Type: field.TypeInt, Default: 0},
+		{Name: "result_delivery_error", Type: field.TypeString, Nullable: true},
+		{Name: "result_delivery_token", Type: field.TypeString, Nullable: true},
+		{Name: "result_delivery_available_at", Type: field.TypeTime, Nullable: true},
+		{Name: "reply_policy", Type: field.TypeString, Default: "silent"},
+		{Name: "reply_status", Type: field.TypeString, Default: "pending"},
+		{Name: "reply_hook_block_count", Type: field.TypeInt, Default: 0},
+		{Name: "reply_tool_call_id", Type: field.TypeString, Nullable: true},
+		{Name: "github_comment_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "github_comment_url", Type: field.TypeString, Nullable: true},
+		{Name: "dispatched_at", Type: field.TypeTime, Nullable: true},
+		{Name: "confirmed_at", Type: field.TypeTime, Nullable: true},
+		{Name: "finished_at", Type: field.TypeTime, Nullable: true},
+		{Name: "result_delivered_at", Type: field.TypeTime, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
-	// JobIntentsTable holds the schema information for the "job_intents" table.
-	JobIntentsTable = &schema.Table{
-		Name:       "job_intents",
-		Columns:    JobIntentsColumns,
-		PrimaryKey: []*schema.Column{JobIntentsColumns[0]},
+	// CodexTurnIntentsTable holds the schema information for the "codex_turn_intents" table.
+	CodexTurnIntentsTable = &schema.Table{
+		Name:       "codex_turn_intents",
+		Columns:    CodexTurnIntentsColumns,
+		PrimaryKey: []*schema.Column{CodexTurnIntentsColumns[0]},
+	}
+	// CodexTurnRunsColumns holds the columns for the "codex_turn_runs" table.
+	CodexTurnRunsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "control_id", Type: field.TypeUUID},
+		{Name: "primary_intent_id", Type: field.TypeUUID},
+		{Name: "attempt", Type: field.TypeInt},
+		{Name: "worker_id", Type: field.TypeString},
+		{Name: "lease_epoch", Type: field.TypeInt64},
+		{Name: "capability_hash", Type: field.TypeString},
+		{Name: "active_slot", Type: field.TypeInt, Nullable: true},
+		{Name: "status", Type: field.TypeString, Default: "starting"},
+		{Name: "codex_submission_id", Type: field.TypeString, Nullable: true},
+		{Name: "confirmed_codex_turn_id", Type: field.TypeString, Nullable: true},
+		{Name: "append_count", Type: field.TypeInt, Default: 0},
+		{Name: "max_append_count", Type: field.TypeInt, Default: 5},
+		{Name: "started_at", Type: field.TypeTime},
+		{Name: "heartbeat_at", Type: field.TypeTime},
+		{Name: "finished_at", Type: field.TypeTime, Nullable: true},
+		{Name: "error_code", Type: field.TypeString, Nullable: true},
+		{Name: "error_message", Type: field.TypeString, Nullable: true},
+	}
+	// CodexTurnRunsTable holds the schema information for the "codex_turn_runs" table.
+	CodexTurnRunsTable = &schema.Table{
+		Name:       "codex_turn_runs",
+		Columns:    CodexTurnRunsColumns,
+		PrimaryKey: []*schema.Column{CodexTurnRunsColumns[0]},
 	}
 	// PlatformSettingsColumns holds the columns for the "platform_settings" table.
 	PlatformSettingsColumns = []*schema.Column{
@@ -196,7 +265,8 @@ var (
 	// ToolCallsColumns holds the columns for the "tool_calls" table.
 	ToolCallsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
-		{Name: "job_attempt_id", Type: field.TypeUUID},
+		{Name: "run_id", Type: field.TypeUUID},
+		{Name: "intent_id", Type: field.TypeUUID},
 		{Name: "thread_id", Type: field.TypeString},
 		{Name: "turn_id", Type: field.TypeString},
 		{Name: "call_id", Type: field.TypeString},
@@ -331,9 +401,10 @@ var (
 	Tables = []*schema.Table{
 		AdministratorsTable,
 		AgentProfilesTable,
-		AgentThreadsTable,
 		AuditLogsTable,
-		JobIntentsTable,
+		CodexThreadControlsTable,
+		CodexTurnIntentsTable,
+		CodexTurnRunsTable,
 		PlatformSettingsTable,
 		RepoCachesTable,
 		RepositoriesTable,
@@ -354,14 +425,17 @@ func init() {
 	AgentProfilesTable.Annotation = &entsql.Annotation{
 		Table: "agent_profiles",
 	}
-	AgentThreadsTable.Annotation = &entsql.Annotation{
-		Table: "agent_threads",
-	}
 	AuditLogsTable.Annotation = &entsql.Annotation{
 		Table: "audit_logs",
 	}
-	JobIntentsTable.Annotation = &entsql.Annotation{
-		Table: "job_intents",
+	CodexThreadControlsTable.Annotation = &entsql.Annotation{
+		Table: "codex_thread_controls",
+	}
+	CodexTurnIntentsTable.Annotation = &entsql.Annotation{
+		Table: "codex_turn_intents",
+	}
+	CodexTurnRunsTable.Annotation = &entsql.Annotation{
+		Table: "codex_turn_runs",
 	}
 	PlatformSettingsTable.Annotation = &entsql.Annotation{
 		Table: "platform_settings",

@@ -33,18 +33,6 @@ func (f AgentProfileFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AgentProfileMutation", m)
 }
 
-// The AgentThreadFunc type is an adapter to allow the use of ordinary
-// function as AgentThread mutator.
-type AgentThreadFunc func(context.Context, *ent.AgentThreadMutation) (ent.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f AgentThreadFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-	if mv, ok := m.(*ent.AgentThreadMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AgentThreadMutation", m)
-}
-
 // The AuditLogFunc type is an adapter to allow the use of ordinary
 // function as AuditLog mutator.
 type AuditLogFunc func(context.Context, *ent.AuditLogMutation) (ent.Value, error)
@@ -57,16 +45,40 @@ func (f AuditLogFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, er
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuditLogMutation", m)
 }
 
-// The JobIntentFunc type is an adapter to allow the use of ordinary
-// function as JobIntent mutator.
-type JobIntentFunc func(context.Context, *ent.JobIntentMutation) (ent.Value, error)
+// The CodexThreadControlFunc type is an adapter to allow the use of ordinary
+// function as CodexThreadControl mutator.
+type CodexThreadControlFunc func(context.Context, *ent.CodexThreadControlMutation) (ent.Value, error)
 
 // Mutate calls f(ctx, m).
-func (f JobIntentFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-	if mv, ok := m.(*ent.JobIntentMutation); ok {
+func (f CodexThreadControlFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CodexThreadControlMutation); ok {
 		return f(ctx, mv)
 	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.JobIntentMutation", m)
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CodexThreadControlMutation", m)
+}
+
+// The CodexTurnIntentFunc type is an adapter to allow the use of ordinary
+// function as CodexTurnIntent mutator.
+type CodexTurnIntentFunc func(context.Context, *ent.CodexTurnIntentMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CodexTurnIntentFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CodexTurnIntentMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CodexTurnIntentMutation", m)
+}
+
+// The CodexTurnRunFunc type is an adapter to allow the use of ordinary
+// function as CodexTurnRun mutator.
+type CodexTurnRunFunc func(context.Context, *ent.CodexTurnRunMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CodexTurnRunFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CodexTurnRunMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CodexTurnRunMutation", m)
 }
 
 // The PlatformSettingFunc type is an adapter to allow the use of ordinary

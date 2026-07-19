@@ -14,9 +14,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/ent/administrator"
 	"github.com/slovx2/tyrs-hand/ent/agentprofile"
-	"github.com/slovx2/tyrs-hand/ent/agentthread"
 	"github.com/slovx2/tyrs-hand/ent/auditlog"
-	"github.com/slovx2/tyrs-hand/ent/jobintent"
+	"github.com/slovx2/tyrs-hand/ent/codexthreadcontrol"
+	"github.com/slovx2/tyrs-hand/ent/codexturnintent"
+	"github.com/slovx2/tyrs-hand/ent/codexturnrun"
 	"github.com/slovx2/tyrs-hand/ent/platformsetting"
 	"github.com/slovx2/tyrs-hand/ent/predicate"
 	"github.com/slovx2/tyrs-hand/ent/repocache"
@@ -39,21 +40,22 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeAdministrator   = "Administrator"
-	TypeAgentProfile    = "AgentProfile"
-	TypeAgentThread     = "AgentThread"
-	TypeAuditLog        = "AuditLog"
-	TypeJobIntent       = "JobIntent"
-	TypePlatformSetting = "PlatformSetting"
-	TypeRepoCache       = "RepoCache"
-	TypeRepository      = "Repository"
-	TypeSCMInstallation = "SCMInstallation"
-	TypeToolCall        = "ToolCall"
-	TypeTriggerRule     = "TriggerRule"
-	TypeWebhookDelivery = "WebhookDelivery"
-	TypeWorkItem        = "WorkItem"
-	TypeWorkerNode      = "WorkerNode"
-	TypeWorktree        = "Worktree"
+	TypeAdministrator      = "Administrator"
+	TypeAgentProfile       = "AgentProfile"
+	TypeAuditLog           = "AuditLog"
+	TypeCodexThreadControl = "CodexThreadControl"
+	TypeCodexTurnIntent    = "CodexTurnIntent"
+	TypeCodexTurnRun       = "CodexTurnRun"
+	TypePlatformSetting    = "PlatformSetting"
+	TypeRepoCache          = "RepoCache"
+	TypeRepository         = "Repository"
+	TypeSCMInstallation    = "SCMInstallation"
+	TypeToolCall           = "ToolCall"
+	TypeTriggerRule        = "TriggerRule"
+	TypeWebhookDelivery    = "WebhookDelivery"
+	TypeWorkItem           = "WorkItem"
+	TypeWorkerNode         = "WorkerNode"
+	TypeWorktree           = "Worktree"
 )
 
 // AdministratorMutation represents an operation that mutates the Administrator nodes in the graph.
@@ -1766,1082 +1768,6 @@ func (m *AgentProfileMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown AgentProfile edge %s", name)
 }
 
-// AgentThreadMutation represents an operation that mutates the AgentThread nodes in the graph.
-type AgentThreadMutation struct {
-	config
-	op                 Op
-	typ                string
-	id                 *uuid.UUID
-	work_item_id       *uuid.UUID
-	agent_profile_id   *uuid.UUID
-	provider           *string
-	external_thread_id *string
-	context_version    *int64
-	addcontext_version *int64
-	codex_home_key     *string
-	provider_signature *string
-	rollout_path       *string
-	status             *string
-	last_turn_id       *string
-	last_used_at       *time.Time
-	expires_at         *time.Time
-	created_at         *time.Time
-	clearedFields      map[string]struct{}
-	done               bool
-	oldValue           func(context.Context) (*AgentThread, error)
-	predicates         []predicate.AgentThread
-}
-
-var _ ent.Mutation = (*AgentThreadMutation)(nil)
-
-// agentthreadOption allows management of the mutation configuration using functional options.
-type agentthreadOption func(*AgentThreadMutation)
-
-// newAgentThreadMutation creates new mutation for the AgentThread entity.
-func newAgentThreadMutation(c config, op Op, opts ...agentthreadOption) *AgentThreadMutation {
-	m := &AgentThreadMutation{
-		config:        c,
-		op:            op,
-		typ:           TypeAgentThread,
-		clearedFields: make(map[string]struct{}),
-	}
-	for _, opt := range opts {
-		opt(m)
-	}
-	return m
-}
-
-// withAgentThreadID sets the ID field of the mutation.
-func withAgentThreadID(id uuid.UUID) agentthreadOption {
-	return func(m *AgentThreadMutation) {
-		var (
-			err   error
-			once  sync.Once
-			value *AgentThread
-		)
-		m.oldValue = func(ctx context.Context) (*AgentThread, error) {
-			once.Do(func() {
-				if m.done {
-					err = errors.New("querying old values post mutation is not allowed")
-				} else {
-					value, err = m.Client().AgentThread.Get(ctx, id)
-				}
-			})
-			return value, err
-		}
-		m.id = &id
-	}
-}
-
-// withAgentThread sets the old AgentThread of the mutation.
-func withAgentThread(node *AgentThread) agentthreadOption {
-	return func(m *AgentThreadMutation) {
-		m.oldValue = func(context.Context) (*AgentThread, error) {
-			return node, nil
-		}
-		m.id = &node.ID
-	}
-}
-
-// Client returns a new `ent.Client` from the mutation. If the mutation was
-// executed in a transaction (ent.Tx), a transactional client is returned.
-func (m AgentThreadMutation) Client() *Client {
-	client := &Client{config: m.config}
-	client.init()
-	return client
-}
-
-// Tx returns an `ent.Tx` for mutations that were executed in transactions;
-// it returns an error otherwise.
-func (m AgentThreadMutation) Tx() (*Tx, error) {
-	if _, ok := m.driver.(*txDriver); !ok {
-		return nil, errors.New("ent: mutation is not running in a transaction")
-	}
-	tx := &Tx{config: m.config}
-	tx.init()
-	return tx, nil
-}
-
-// SetID sets the value of the id field. Note that this
-// operation is only accepted on creation of AgentThread entities.
-func (m *AgentThreadMutation) SetID(id uuid.UUID) {
-	m.id = &id
-}
-
-// ID returns the ID value in the mutation. Note that the ID is only available
-// if it was provided to the builder or after it was returned from the database.
-func (m *AgentThreadMutation) ID() (id uuid.UUID, exists bool) {
-	if m.id == nil {
-		return
-	}
-	return *m.id, true
-}
-
-// IDs queries the database and returns the entity ids that match the mutation's predicate.
-// That means, if the mutation is applied within a transaction with an isolation level such
-// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
-// or updated by the mutation.
-func (m *AgentThreadMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
-	switch {
-	case m.op.Is(OpUpdateOne | OpDeleteOne):
-		id, exists := m.ID()
-		if exists {
-			return []uuid.UUID{id}, nil
-		}
-		fallthrough
-	case m.op.Is(OpUpdate | OpDelete):
-		return m.Client().AgentThread.Query().Where(m.predicates...).IDs(ctx)
-	default:
-		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
-	}
-}
-
-// SetWorkItemID sets the "work_item_id" field.
-func (m *AgentThreadMutation) SetWorkItemID(u uuid.UUID) {
-	m.work_item_id = &u
-}
-
-// WorkItemID returns the value of the "work_item_id" field in the mutation.
-func (m *AgentThreadMutation) WorkItemID() (r uuid.UUID, exists bool) {
-	v := m.work_item_id
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldWorkItemID returns the old "work_item_id" field's value of the AgentThread entity.
-// If the AgentThread object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AgentThreadMutation) OldWorkItemID(ctx context.Context) (v uuid.UUID, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldWorkItemID is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldWorkItemID requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldWorkItemID: %w", err)
-	}
-	return oldValue.WorkItemID, nil
-}
-
-// ResetWorkItemID resets all changes to the "work_item_id" field.
-func (m *AgentThreadMutation) ResetWorkItemID() {
-	m.work_item_id = nil
-}
-
-// SetAgentProfileID sets the "agent_profile_id" field.
-func (m *AgentThreadMutation) SetAgentProfileID(u uuid.UUID) {
-	m.agent_profile_id = &u
-}
-
-// AgentProfileID returns the value of the "agent_profile_id" field in the mutation.
-func (m *AgentThreadMutation) AgentProfileID() (r uuid.UUID, exists bool) {
-	v := m.agent_profile_id
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldAgentProfileID returns the old "agent_profile_id" field's value of the AgentThread entity.
-// If the AgentThread object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AgentThreadMutation) OldAgentProfileID(ctx context.Context) (v uuid.UUID, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldAgentProfileID is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldAgentProfileID requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldAgentProfileID: %w", err)
-	}
-	return oldValue.AgentProfileID, nil
-}
-
-// ResetAgentProfileID resets all changes to the "agent_profile_id" field.
-func (m *AgentThreadMutation) ResetAgentProfileID() {
-	m.agent_profile_id = nil
-}
-
-// SetProvider sets the "provider" field.
-func (m *AgentThreadMutation) SetProvider(s string) {
-	m.provider = &s
-}
-
-// Provider returns the value of the "provider" field in the mutation.
-func (m *AgentThreadMutation) Provider() (r string, exists bool) {
-	v := m.provider
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldProvider returns the old "provider" field's value of the AgentThread entity.
-// If the AgentThread object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AgentThreadMutation) OldProvider(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldProvider is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldProvider requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldProvider: %w", err)
-	}
-	return oldValue.Provider, nil
-}
-
-// ResetProvider resets all changes to the "provider" field.
-func (m *AgentThreadMutation) ResetProvider() {
-	m.provider = nil
-}
-
-// SetExternalThreadID sets the "external_thread_id" field.
-func (m *AgentThreadMutation) SetExternalThreadID(s string) {
-	m.external_thread_id = &s
-}
-
-// ExternalThreadID returns the value of the "external_thread_id" field in the mutation.
-func (m *AgentThreadMutation) ExternalThreadID() (r string, exists bool) {
-	v := m.external_thread_id
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldExternalThreadID returns the old "external_thread_id" field's value of the AgentThread entity.
-// If the AgentThread object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AgentThreadMutation) OldExternalThreadID(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldExternalThreadID is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldExternalThreadID requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldExternalThreadID: %w", err)
-	}
-	return oldValue.ExternalThreadID, nil
-}
-
-// ResetExternalThreadID resets all changes to the "external_thread_id" field.
-func (m *AgentThreadMutation) ResetExternalThreadID() {
-	m.external_thread_id = nil
-}
-
-// SetContextVersion sets the "context_version" field.
-func (m *AgentThreadMutation) SetContextVersion(i int64) {
-	m.context_version = &i
-	m.addcontext_version = nil
-}
-
-// ContextVersion returns the value of the "context_version" field in the mutation.
-func (m *AgentThreadMutation) ContextVersion() (r int64, exists bool) {
-	v := m.context_version
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldContextVersion returns the old "context_version" field's value of the AgentThread entity.
-// If the AgentThread object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AgentThreadMutation) OldContextVersion(ctx context.Context) (v int64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldContextVersion is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldContextVersion requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldContextVersion: %w", err)
-	}
-	return oldValue.ContextVersion, nil
-}
-
-// AddContextVersion adds i to the "context_version" field.
-func (m *AgentThreadMutation) AddContextVersion(i int64) {
-	if m.addcontext_version != nil {
-		*m.addcontext_version += i
-	} else {
-		m.addcontext_version = &i
-	}
-}
-
-// AddedContextVersion returns the value that was added to the "context_version" field in this mutation.
-func (m *AgentThreadMutation) AddedContextVersion() (r int64, exists bool) {
-	v := m.addcontext_version
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetContextVersion resets all changes to the "context_version" field.
-func (m *AgentThreadMutation) ResetContextVersion() {
-	m.context_version = nil
-	m.addcontext_version = nil
-}
-
-// SetCodexHomeKey sets the "codex_home_key" field.
-func (m *AgentThreadMutation) SetCodexHomeKey(s string) {
-	m.codex_home_key = &s
-}
-
-// CodexHomeKey returns the value of the "codex_home_key" field in the mutation.
-func (m *AgentThreadMutation) CodexHomeKey() (r string, exists bool) {
-	v := m.codex_home_key
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldCodexHomeKey returns the old "codex_home_key" field's value of the AgentThread entity.
-// If the AgentThread object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AgentThreadMutation) OldCodexHomeKey(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldCodexHomeKey is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldCodexHomeKey requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldCodexHomeKey: %w", err)
-	}
-	return oldValue.CodexHomeKey, nil
-}
-
-// ResetCodexHomeKey resets all changes to the "codex_home_key" field.
-func (m *AgentThreadMutation) ResetCodexHomeKey() {
-	m.codex_home_key = nil
-}
-
-// SetProviderSignature sets the "provider_signature" field.
-func (m *AgentThreadMutation) SetProviderSignature(s string) {
-	m.provider_signature = &s
-}
-
-// ProviderSignature returns the value of the "provider_signature" field in the mutation.
-func (m *AgentThreadMutation) ProviderSignature() (r string, exists bool) {
-	v := m.provider_signature
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldProviderSignature returns the old "provider_signature" field's value of the AgentThread entity.
-// If the AgentThread object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AgentThreadMutation) OldProviderSignature(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldProviderSignature is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldProviderSignature requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldProviderSignature: %w", err)
-	}
-	return oldValue.ProviderSignature, nil
-}
-
-// ResetProviderSignature resets all changes to the "provider_signature" field.
-func (m *AgentThreadMutation) ResetProviderSignature() {
-	m.provider_signature = nil
-}
-
-// SetRolloutPath sets the "rollout_path" field.
-func (m *AgentThreadMutation) SetRolloutPath(s string) {
-	m.rollout_path = &s
-}
-
-// RolloutPath returns the value of the "rollout_path" field in the mutation.
-func (m *AgentThreadMutation) RolloutPath() (r string, exists bool) {
-	v := m.rollout_path
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldRolloutPath returns the old "rollout_path" field's value of the AgentThread entity.
-// If the AgentThread object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AgentThreadMutation) OldRolloutPath(ctx context.Context) (v *string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldRolloutPath is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldRolloutPath requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldRolloutPath: %w", err)
-	}
-	return oldValue.RolloutPath, nil
-}
-
-// ClearRolloutPath clears the value of the "rollout_path" field.
-func (m *AgentThreadMutation) ClearRolloutPath() {
-	m.rollout_path = nil
-	m.clearedFields[agentthread.FieldRolloutPath] = struct{}{}
-}
-
-// RolloutPathCleared returns if the "rollout_path" field was cleared in this mutation.
-func (m *AgentThreadMutation) RolloutPathCleared() bool {
-	_, ok := m.clearedFields[agentthread.FieldRolloutPath]
-	return ok
-}
-
-// ResetRolloutPath resets all changes to the "rollout_path" field.
-func (m *AgentThreadMutation) ResetRolloutPath() {
-	m.rollout_path = nil
-	delete(m.clearedFields, agentthread.FieldRolloutPath)
-}
-
-// SetStatus sets the "status" field.
-func (m *AgentThreadMutation) SetStatus(s string) {
-	m.status = &s
-}
-
-// Status returns the value of the "status" field in the mutation.
-func (m *AgentThreadMutation) Status() (r string, exists bool) {
-	v := m.status
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldStatus returns the old "status" field's value of the AgentThread entity.
-// If the AgentThread object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AgentThreadMutation) OldStatus(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldStatus requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
-	}
-	return oldValue.Status, nil
-}
-
-// ResetStatus resets all changes to the "status" field.
-func (m *AgentThreadMutation) ResetStatus() {
-	m.status = nil
-}
-
-// SetLastTurnID sets the "last_turn_id" field.
-func (m *AgentThreadMutation) SetLastTurnID(s string) {
-	m.last_turn_id = &s
-}
-
-// LastTurnID returns the value of the "last_turn_id" field in the mutation.
-func (m *AgentThreadMutation) LastTurnID() (r string, exists bool) {
-	v := m.last_turn_id
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldLastTurnID returns the old "last_turn_id" field's value of the AgentThread entity.
-// If the AgentThread object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AgentThreadMutation) OldLastTurnID(ctx context.Context) (v *string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldLastTurnID is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldLastTurnID requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldLastTurnID: %w", err)
-	}
-	return oldValue.LastTurnID, nil
-}
-
-// ClearLastTurnID clears the value of the "last_turn_id" field.
-func (m *AgentThreadMutation) ClearLastTurnID() {
-	m.last_turn_id = nil
-	m.clearedFields[agentthread.FieldLastTurnID] = struct{}{}
-}
-
-// LastTurnIDCleared returns if the "last_turn_id" field was cleared in this mutation.
-func (m *AgentThreadMutation) LastTurnIDCleared() bool {
-	_, ok := m.clearedFields[agentthread.FieldLastTurnID]
-	return ok
-}
-
-// ResetLastTurnID resets all changes to the "last_turn_id" field.
-func (m *AgentThreadMutation) ResetLastTurnID() {
-	m.last_turn_id = nil
-	delete(m.clearedFields, agentthread.FieldLastTurnID)
-}
-
-// SetLastUsedAt sets the "last_used_at" field.
-func (m *AgentThreadMutation) SetLastUsedAt(t time.Time) {
-	m.last_used_at = &t
-}
-
-// LastUsedAt returns the value of the "last_used_at" field in the mutation.
-func (m *AgentThreadMutation) LastUsedAt() (r time.Time, exists bool) {
-	v := m.last_used_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldLastUsedAt returns the old "last_used_at" field's value of the AgentThread entity.
-// If the AgentThread object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AgentThreadMutation) OldLastUsedAt(ctx context.Context) (v time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldLastUsedAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldLastUsedAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldLastUsedAt: %w", err)
-	}
-	return oldValue.LastUsedAt, nil
-}
-
-// ResetLastUsedAt resets all changes to the "last_used_at" field.
-func (m *AgentThreadMutation) ResetLastUsedAt() {
-	m.last_used_at = nil
-}
-
-// SetExpiresAt sets the "expires_at" field.
-func (m *AgentThreadMutation) SetExpiresAt(t time.Time) {
-	m.expires_at = &t
-}
-
-// ExpiresAt returns the value of the "expires_at" field in the mutation.
-func (m *AgentThreadMutation) ExpiresAt() (r time.Time, exists bool) {
-	v := m.expires_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldExpiresAt returns the old "expires_at" field's value of the AgentThread entity.
-// If the AgentThread object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AgentThreadMutation) OldExpiresAt(ctx context.Context) (v *time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldExpiresAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldExpiresAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldExpiresAt: %w", err)
-	}
-	return oldValue.ExpiresAt, nil
-}
-
-// ClearExpiresAt clears the value of the "expires_at" field.
-func (m *AgentThreadMutation) ClearExpiresAt() {
-	m.expires_at = nil
-	m.clearedFields[agentthread.FieldExpiresAt] = struct{}{}
-}
-
-// ExpiresAtCleared returns if the "expires_at" field was cleared in this mutation.
-func (m *AgentThreadMutation) ExpiresAtCleared() bool {
-	_, ok := m.clearedFields[agentthread.FieldExpiresAt]
-	return ok
-}
-
-// ResetExpiresAt resets all changes to the "expires_at" field.
-func (m *AgentThreadMutation) ResetExpiresAt() {
-	m.expires_at = nil
-	delete(m.clearedFields, agentthread.FieldExpiresAt)
-}
-
-// SetCreatedAt sets the "created_at" field.
-func (m *AgentThreadMutation) SetCreatedAt(t time.Time) {
-	m.created_at = &t
-}
-
-// CreatedAt returns the value of the "created_at" field in the mutation.
-func (m *AgentThreadMutation) CreatedAt() (r time.Time, exists bool) {
-	v := m.created_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldCreatedAt returns the old "created_at" field's value of the AgentThread entity.
-// If the AgentThread object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AgentThreadMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
-	}
-	return oldValue.CreatedAt, nil
-}
-
-// ResetCreatedAt resets all changes to the "created_at" field.
-func (m *AgentThreadMutation) ResetCreatedAt() {
-	m.created_at = nil
-}
-
-// Where appends a list predicates to the AgentThreadMutation builder.
-func (m *AgentThreadMutation) Where(ps ...predicate.AgentThread) {
-	m.predicates = append(m.predicates, ps...)
-}
-
-// WhereP appends storage-level predicates to the AgentThreadMutation builder. Using this method,
-// users can use type-assertion to append predicates that do not depend on any generated package.
-func (m *AgentThreadMutation) WhereP(ps ...func(*sql.Selector)) {
-	p := make([]predicate.AgentThread, len(ps))
-	for i := range ps {
-		p[i] = ps[i]
-	}
-	m.Where(p...)
-}
-
-// Op returns the operation name.
-func (m *AgentThreadMutation) Op() Op {
-	return m.op
-}
-
-// SetOp allows setting the mutation operation.
-func (m *AgentThreadMutation) SetOp(op Op) {
-	m.op = op
-}
-
-// Type returns the node type of this mutation (AgentThread).
-func (m *AgentThreadMutation) Type() string {
-	return m.typ
-}
-
-// Fields returns all fields that were changed during this mutation. Note that in
-// order to get all numeric fields that were incremented/decremented, call
-// AddedFields().
-func (m *AgentThreadMutation) Fields() []string {
-	fields := make([]string, 0, 13)
-	if m.work_item_id != nil {
-		fields = append(fields, agentthread.FieldWorkItemID)
-	}
-	if m.agent_profile_id != nil {
-		fields = append(fields, agentthread.FieldAgentProfileID)
-	}
-	if m.provider != nil {
-		fields = append(fields, agentthread.FieldProvider)
-	}
-	if m.external_thread_id != nil {
-		fields = append(fields, agentthread.FieldExternalThreadID)
-	}
-	if m.context_version != nil {
-		fields = append(fields, agentthread.FieldContextVersion)
-	}
-	if m.codex_home_key != nil {
-		fields = append(fields, agentthread.FieldCodexHomeKey)
-	}
-	if m.provider_signature != nil {
-		fields = append(fields, agentthread.FieldProviderSignature)
-	}
-	if m.rollout_path != nil {
-		fields = append(fields, agentthread.FieldRolloutPath)
-	}
-	if m.status != nil {
-		fields = append(fields, agentthread.FieldStatus)
-	}
-	if m.last_turn_id != nil {
-		fields = append(fields, agentthread.FieldLastTurnID)
-	}
-	if m.last_used_at != nil {
-		fields = append(fields, agentthread.FieldLastUsedAt)
-	}
-	if m.expires_at != nil {
-		fields = append(fields, agentthread.FieldExpiresAt)
-	}
-	if m.created_at != nil {
-		fields = append(fields, agentthread.FieldCreatedAt)
-	}
-	return fields
-}
-
-// Field returns the value of a field with the given name. The second boolean
-// return value indicates that this field was not set, or was not defined in the
-// schema.
-func (m *AgentThreadMutation) Field(name string) (ent.Value, bool) {
-	switch name {
-	case agentthread.FieldWorkItemID:
-		return m.WorkItemID()
-	case agentthread.FieldAgentProfileID:
-		return m.AgentProfileID()
-	case agentthread.FieldProvider:
-		return m.Provider()
-	case agentthread.FieldExternalThreadID:
-		return m.ExternalThreadID()
-	case agentthread.FieldContextVersion:
-		return m.ContextVersion()
-	case agentthread.FieldCodexHomeKey:
-		return m.CodexHomeKey()
-	case agentthread.FieldProviderSignature:
-		return m.ProviderSignature()
-	case agentthread.FieldRolloutPath:
-		return m.RolloutPath()
-	case agentthread.FieldStatus:
-		return m.Status()
-	case agentthread.FieldLastTurnID:
-		return m.LastTurnID()
-	case agentthread.FieldLastUsedAt:
-		return m.LastUsedAt()
-	case agentthread.FieldExpiresAt:
-		return m.ExpiresAt()
-	case agentthread.FieldCreatedAt:
-		return m.CreatedAt()
-	}
-	return nil, false
-}
-
-// OldField returns the old value of the field from the database. An error is
-// returned if the mutation operation is not UpdateOne, or the query to the
-// database failed.
-func (m *AgentThreadMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
-	switch name {
-	case agentthread.FieldWorkItemID:
-		return m.OldWorkItemID(ctx)
-	case agentthread.FieldAgentProfileID:
-		return m.OldAgentProfileID(ctx)
-	case agentthread.FieldProvider:
-		return m.OldProvider(ctx)
-	case agentthread.FieldExternalThreadID:
-		return m.OldExternalThreadID(ctx)
-	case agentthread.FieldContextVersion:
-		return m.OldContextVersion(ctx)
-	case agentthread.FieldCodexHomeKey:
-		return m.OldCodexHomeKey(ctx)
-	case agentthread.FieldProviderSignature:
-		return m.OldProviderSignature(ctx)
-	case agentthread.FieldRolloutPath:
-		return m.OldRolloutPath(ctx)
-	case agentthread.FieldStatus:
-		return m.OldStatus(ctx)
-	case agentthread.FieldLastTurnID:
-		return m.OldLastTurnID(ctx)
-	case agentthread.FieldLastUsedAt:
-		return m.OldLastUsedAt(ctx)
-	case agentthread.FieldExpiresAt:
-		return m.OldExpiresAt(ctx)
-	case agentthread.FieldCreatedAt:
-		return m.OldCreatedAt(ctx)
-	}
-	return nil, fmt.Errorf("unknown AgentThread field %s", name)
-}
-
-// SetField sets the value of a field with the given name. It returns an error if
-// the field is not defined in the schema, or if the type mismatched the field
-// type.
-func (m *AgentThreadMutation) SetField(name string, value ent.Value) error {
-	switch name {
-	case agentthread.FieldWorkItemID:
-		v, ok := value.(uuid.UUID)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetWorkItemID(v)
-		return nil
-	case agentthread.FieldAgentProfileID:
-		v, ok := value.(uuid.UUID)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetAgentProfileID(v)
-		return nil
-	case agentthread.FieldProvider:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetProvider(v)
-		return nil
-	case agentthread.FieldExternalThreadID:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetExternalThreadID(v)
-		return nil
-	case agentthread.FieldContextVersion:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetContextVersion(v)
-		return nil
-	case agentthread.FieldCodexHomeKey:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetCodexHomeKey(v)
-		return nil
-	case agentthread.FieldProviderSignature:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetProviderSignature(v)
-		return nil
-	case agentthread.FieldRolloutPath:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetRolloutPath(v)
-		return nil
-	case agentthread.FieldStatus:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetStatus(v)
-		return nil
-	case agentthread.FieldLastTurnID:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetLastTurnID(v)
-		return nil
-	case agentthread.FieldLastUsedAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetLastUsedAt(v)
-		return nil
-	case agentthread.FieldExpiresAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetExpiresAt(v)
-		return nil
-	case agentthread.FieldCreatedAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetCreatedAt(v)
-		return nil
-	}
-	return fmt.Errorf("unknown AgentThread field %s", name)
-}
-
-// AddedFields returns all numeric fields that were incremented/decremented during
-// this mutation.
-func (m *AgentThreadMutation) AddedFields() []string {
-	var fields []string
-	if m.addcontext_version != nil {
-		fields = append(fields, agentthread.FieldContextVersion)
-	}
-	return fields
-}
-
-// AddedField returns the numeric value that was incremented/decremented on a field
-// with the given name. The second boolean return value indicates that this field
-// was not set, or was not defined in the schema.
-func (m *AgentThreadMutation) AddedField(name string) (ent.Value, bool) {
-	switch name {
-	case agentthread.FieldContextVersion:
-		return m.AddedContextVersion()
-	}
-	return nil, false
-}
-
-// AddField adds the value to the field with the given name. It returns an error if
-// the field is not defined in the schema, or if the type mismatched the field
-// type.
-func (m *AgentThreadMutation) AddField(name string, value ent.Value) error {
-	switch name {
-	case agentthread.FieldContextVersion:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddContextVersion(v)
-		return nil
-	}
-	return fmt.Errorf("unknown AgentThread numeric field %s", name)
-}
-
-// ClearedFields returns all nullable fields that were cleared during this
-// mutation.
-func (m *AgentThreadMutation) ClearedFields() []string {
-	var fields []string
-	if m.FieldCleared(agentthread.FieldRolloutPath) {
-		fields = append(fields, agentthread.FieldRolloutPath)
-	}
-	if m.FieldCleared(agentthread.FieldLastTurnID) {
-		fields = append(fields, agentthread.FieldLastTurnID)
-	}
-	if m.FieldCleared(agentthread.FieldExpiresAt) {
-		fields = append(fields, agentthread.FieldExpiresAt)
-	}
-	return fields
-}
-
-// FieldCleared returns a boolean indicating if a field with the given name was
-// cleared in this mutation.
-func (m *AgentThreadMutation) FieldCleared(name string) bool {
-	_, ok := m.clearedFields[name]
-	return ok
-}
-
-// ClearField clears the value of the field with the given name. It returns an
-// error if the field is not defined in the schema.
-func (m *AgentThreadMutation) ClearField(name string) error {
-	switch name {
-	case agentthread.FieldRolloutPath:
-		m.ClearRolloutPath()
-		return nil
-	case agentthread.FieldLastTurnID:
-		m.ClearLastTurnID()
-		return nil
-	case agentthread.FieldExpiresAt:
-		m.ClearExpiresAt()
-		return nil
-	}
-	return fmt.Errorf("unknown AgentThread nullable field %s", name)
-}
-
-// ResetField resets all changes in the mutation for the field with the given name.
-// It returns an error if the field is not defined in the schema.
-func (m *AgentThreadMutation) ResetField(name string) error {
-	switch name {
-	case agentthread.FieldWorkItemID:
-		m.ResetWorkItemID()
-		return nil
-	case agentthread.FieldAgentProfileID:
-		m.ResetAgentProfileID()
-		return nil
-	case agentthread.FieldProvider:
-		m.ResetProvider()
-		return nil
-	case agentthread.FieldExternalThreadID:
-		m.ResetExternalThreadID()
-		return nil
-	case agentthread.FieldContextVersion:
-		m.ResetContextVersion()
-		return nil
-	case agentthread.FieldCodexHomeKey:
-		m.ResetCodexHomeKey()
-		return nil
-	case agentthread.FieldProviderSignature:
-		m.ResetProviderSignature()
-		return nil
-	case agentthread.FieldRolloutPath:
-		m.ResetRolloutPath()
-		return nil
-	case agentthread.FieldStatus:
-		m.ResetStatus()
-		return nil
-	case agentthread.FieldLastTurnID:
-		m.ResetLastTurnID()
-		return nil
-	case agentthread.FieldLastUsedAt:
-		m.ResetLastUsedAt()
-		return nil
-	case agentthread.FieldExpiresAt:
-		m.ResetExpiresAt()
-		return nil
-	case agentthread.FieldCreatedAt:
-		m.ResetCreatedAt()
-		return nil
-	}
-	return fmt.Errorf("unknown AgentThread field %s", name)
-}
-
-// AddedEdges returns all edge names that were set/added in this mutation.
-func (m *AgentThreadMutation) AddedEdges() []string {
-	edges := make([]string, 0, 0)
-	return edges
-}
-
-// AddedIDs returns all IDs (to other nodes) that were added for the given edge
-// name in this mutation.
-func (m *AgentThreadMutation) AddedIDs(name string) []ent.Value {
-	return nil
-}
-
-// RemovedEdges returns all edge names that were removed in this mutation.
-func (m *AgentThreadMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 0)
-	return edges
-}
-
-// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
-// the given name in this mutation.
-func (m *AgentThreadMutation) RemovedIDs(name string) []ent.Value {
-	return nil
-}
-
-// ClearedEdges returns all edge names that were cleared in this mutation.
-func (m *AgentThreadMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 0)
-	return edges
-}
-
-// EdgeCleared returns a boolean which indicates if the edge with the given name
-// was cleared in this mutation.
-func (m *AgentThreadMutation) EdgeCleared(name string) bool {
-	return false
-}
-
-// ClearEdge clears the value of the edge with the given name. It returns an error
-// if that edge is not defined in the schema.
-func (m *AgentThreadMutation) ClearEdge(name string) error {
-	return fmt.Errorf("unknown AgentThread unique edge %s", name)
-}
-
-// ResetEdge resets all changes to the edge with the given name in this mutation.
-// It returns an error if the edge is not defined in the schema.
-func (m *AgentThreadMutation) ResetEdge(name string) error {
-	return fmt.Errorf("unknown AgentThread edge %s", name)
-}
-
 // AuditLogMutation represents an operation that mutates the AuditLog nodes in the graph.
 type AuditLogMutation struct {
 	config
@@ -3631,60 +2557,61 @@ func (m *AuditLogMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown AuditLog edge %s", name)
 }
 
-// JobIntentMutation represents an operation that mutates the JobIntent nodes in the graph.
-type JobIntentMutation struct {
+// CodexThreadControlMutation represents an operation that mutates the CodexThreadControl nodes in the graph.
+type CodexThreadControlMutation struct {
 	config
 	op                      Op
 	typ                     string
 	id                      *uuid.UUID
+	source_type             *string
 	work_item_id            *uuid.UUID
+	discord_conversation_id *uuid.UUID
 	repository_id           *uuid.UUID
 	agent_profile_id        *uuid.UUID
-	idempotency_key         *string
+	context_version         *int64
+	addcontext_version      *int64
+	external_thread_id      *string
+	provider                *string
+	codex_home_key          *string
+	provider_signature      *string
+	thread_generation       *int
+	addthread_generation    *int
 	status                  *string
-	instruction             *string
-	skills                  *[]string
-	appendskills            []string
-	allowed_tools           *[]string
-	appendallowed_tools     []string
-	dangerous_actions       *[]string
-	appenddangerous_actions []string
-	trigger_rule_id         *uuid.UUID
-	trigger_evidence        *map[string]interface{}
-	actor_login             *string
-	actor_permission        *string
-	priority                *int
-	addpriority             *int
-	available_at            *time.Time
-	attempt_count           *int
-	addattempt_count        *int
-	max_attempts            *int
-	addmax_attempts         *int
-	lease_token             *string
+	next_sequence_no        *int64
+	addnext_sequence_no     *int64
+	active_intent_id        *uuid.UUID
+	remote_status           *string
+	active_codex_turn_id    *string
+	active_client_id        *string
 	lease_epoch             *int64
 	addlease_epoch          *int64
 	lease_expires_at        *time.Time
+	heartbeat_at            *time.Time
+	last_reconciled_at      *time.Time
+	next_wakeup_at          *time.Time
 	worker_id               *string
-	last_error              *string
+	lease_token             *string
+	last_error_code         *string
+	last_error_message      *string
 	created_at              *time.Time
 	updated_at              *time.Time
 	clearedFields           map[string]struct{}
 	done                    bool
-	oldValue                func(context.Context) (*JobIntent, error)
-	predicates              []predicate.JobIntent
+	oldValue                func(context.Context) (*CodexThreadControl, error)
+	predicates              []predicate.CodexThreadControl
 }
 
-var _ ent.Mutation = (*JobIntentMutation)(nil)
+var _ ent.Mutation = (*CodexThreadControlMutation)(nil)
 
-// jobintentOption allows management of the mutation configuration using functional options.
-type jobintentOption func(*JobIntentMutation)
+// codexthreadcontrolOption allows management of the mutation configuration using functional options.
+type codexthreadcontrolOption func(*CodexThreadControlMutation)
 
-// newJobIntentMutation creates new mutation for the JobIntent entity.
-func newJobIntentMutation(c config, op Op, opts ...jobintentOption) *JobIntentMutation {
-	m := &JobIntentMutation{
+// newCodexThreadControlMutation creates new mutation for the CodexThreadControl entity.
+func newCodexThreadControlMutation(c config, op Op, opts ...codexthreadcontrolOption) *CodexThreadControlMutation {
+	m := &CodexThreadControlMutation{
 		config:        c,
 		op:            op,
-		typ:           TypeJobIntent,
+		typ:           TypeCodexThreadControl,
 		clearedFields: make(map[string]struct{}),
 	}
 	for _, opt := range opts {
@@ -3693,20 +2620,20 @@ func newJobIntentMutation(c config, op Op, opts ...jobintentOption) *JobIntentMu
 	return m
 }
 
-// withJobIntentID sets the ID field of the mutation.
-func withJobIntentID(id uuid.UUID) jobintentOption {
-	return func(m *JobIntentMutation) {
+// withCodexThreadControlID sets the ID field of the mutation.
+func withCodexThreadControlID(id uuid.UUID) codexthreadcontrolOption {
+	return func(m *CodexThreadControlMutation) {
 		var (
 			err   error
 			once  sync.Once
-			value *JobIntent
+			value *CodexThreadControl
 		)
-		m.oldValue = func(ctx context.Context) (*JobIntent, error) {
+		m.oldValue = func(ctx context.Context) (*CodexThreadControl, error) {
 			once.Do(func() {
 				if m.done {
 					err = errors.New("querying old values post mutation is not allowed")
 				} else {
-					value, err = m.Client().JobIntent.Get(ctx, id)
+					value, err = m.Client().CodexThreadControl.Get(ctx, id)
 				}
 			})
 			return value, err
@@ -3715,10 +2642,10 @@ func withJobIntentID(id uuid.UUID) jobintentOption {
 	}
 }
 
-// withJobIntent sets the old JobIntent of the mutation.
-func withJobIntent(node *JobIntent) jobintentOption {
-	return func(m *JobIntentMutation) {
-		m.oldValue = func(context.Context) (*JobIntent, error) {
+// withCodexThreadControl sets the old CodexThreadControl of the mutation.
+func withCodexThreadControl(node *CodexThreadControl) codexthreadcontrolOption {
+	return func(m *CodexThreadControlMutation) {
+		m.oldValue = func(context.Context) (*CodexThreadControl, error) {
 			return node, nil
 		}
 		m.id = &node.ID
@@ -3727,7 +2654,7 @@ func withJobIntent(node *JobIntent) jobintentOption {
 
 // Client returns a new `ent.Client` from the mutation. If the mutation was
 // executed in a transaction (ent.Tx), a transactional client is returned.
-func (m JobIntentMutation) Client() *Client {
+func (m CodexThreadControlMutation) Client() *Client {
 	client := &Client{config: m.config}
 	client.init()
 	return client
@@ -3735,7 +2662,7 @@ func (m JobIntentMutation) Client() *Client {
 
 // Tx returns an `ent.Tx` for mutations that were executed in transactions;
 // it returns an error otherwise.
-func (m JobIntentMutation) Tx() (*Tx, error) {
+func (m CodexThreadControlMutation) Tx() (*Tx, error) {
 	if _, ok := m.driver.(*txDriver); !ok {
 		return nil, errors.New("ent: mutation is not running in a transaction")
 	}
@@ -3745,14 +2672,14 @@ func (m JobIntentMutation) Tx() (*Tx, error) {
 }
 
 // SetID sets the value of the id field. Note that this
-// operation is only accepted on creation of JobIntent entities.
-func (m *JobIntentMutation) SetID(id uuid.UUID) {
+// operation is only accepted on creation of CodexThreadControl entities.
+func (m *CodexThreadControlMutation) SetID(id uuid.UUID) {
 	m.id = &id
 }
 
 // ID returns the ID value in the mutation. Note that the ID is only available
 // if it was provided to the builder or after it was returned from the database.
-func (m *JobIntentMutation) ID() (id uuid.UUID, exists bool) {
+func (m *CodexThreadControlMutation) ID() (id uuid.UUID, exists bool) {
 	if m.id == nil {
 		return
 	}
@@ -3763,7 +2690,7 @@ func (m *JobIntentMutation) ID() (id uuid.UUID, exists bool) {
 // That means, if the mutation is applied within a transaction with an isolation level such
 // as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
 // or updated by the mutation.
-func (m *JobIntentMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+func (m *CodexThreadControlMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
 	switch {
 	case m.op.Is(OpUpdateOne | OpDeleteOne):
 		id, exists := m.ID()
@@ -3772,19 +2699,55 @@ func (m *JobIntentMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
 		}
 		fallthrough
 	case m.op.Is(OpUpdate | OpDelete):
-		return m.Client().JobIntent.Query().Where(m.predicates...).IDs(ctx)
+		return m.Client().CodexThreadControl.Query().Where(m.predicates...).IDs(ctx)
 	default:
 		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
 	}
 }
 
+// SetSourceType sets the "source_type" field.
+func (m *CodexThreadControlMutation) SetSourceType(s string) {
+	m.source_type = &s
+}
+
+// SourceType returns the value of the "source_type" field in the mutation.
+func (m *CodexThreadControlMutation) SourceType() (r string, exists bool) {
+	v := m.source_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSourceType returns the old "source_type" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexThreadControlMutation) OldSourceType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSourceType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSourceType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSourceType: %w", err)
+	}
+	return oldValue.SourceType, nil
+}
+
+// ResetSourceType resets all changes to the "source_type" field.
+func (m *CodexThreadControlMutation) ResetSourceType() {
+	m.source_type = nil
+}
+
 // SetWorkItemID sets the "work_item_id" field.
-func (m *JobIntentMutation) SetWorkItemID(u uuid.UUID) {
+func (m *CodexThreadControlMutation) SetWorkItemID(u uuid.UUID) {
 	m.work_item_id = &u
 }
 
 // WorkItemID returns the value of the "work_item_id" field in the mutation.
-func (m *JobIntentMutation) WorkItemID() (r uuid.UUID, exists bool) {
+func (m *CodexThreadControlMutation) WorkItemID() (r uuid.UUID, exists bool) {
 	v := m.work_item_id
 	if v == nil {
 		return
@@ -3792,10 +2755,10 @@ func (m *JobIntentMutation) WorkItemID() (r uuid.UUID, exists bool) {
 	return *v, true
 }
 
-// OldWorkItemID returns the old "work_item_id" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
+// OldWorkItemID returns the old "work_item_id" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldWorkItemID(ctx context.Context) (v uuid.UUID, err error) {
+func (m *CodexThreadControlMutation) OldWorkItemID(ctx context.Context) (v *uuid.UUID, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldWorkItemID is only allowed on UpdateOne operations")
 	}
@@ -3809,18 +2772,80 @@ func (m *JobIntentMutation) OldWorkItemID(ctx context.Context) (v uuid.UUID, err
 	return oldValue.WorkItemID, nil
 }
 
-// ResetWorkItemID resets all changes to the "work_item_id" field.
-func (m *JobIntentMutation) ResetWorkItemID() {
+// ClearWorkItemID clears the value of the "work_item_id" field.
+func (m *CodexThreadControlMutation) ClearWorkItemID() {
 	m.work_item_id = nil
+	m.clearedFields[codexthreadcontrol.FieldWorkItemID] = struct{}{}
+}
+
+// WorkItemIDCleared returns if the "work_item_id" field was cleared in this mutation.
+func (m *CodexThreadControlMutation) WorkItemIDCleared() bool {
+	_, ok := m.clearedFields[codexthreadcontrol.FieldWorkItemID]
+	return ok
+}
+
+// ResetWorkItemID resets all changes to the "work_item_id" field.
+func (m *CodexThreadControlMutation) ResetWorkItemID() {
+	m.work_item_id = nil
+	delete(m.clearedFields, codexthreadcontrol.FieldWorkItemID)
+}
+
+// SetDiscordConversationID sets the "discord_conversation_id" field.
+func (m *CodexThreadControlMutation) SetDiscordConversationID(u uuid.UUID) {
+	m.discord_conversation_id = &u
+}
+
+// DiscordConversationID returns the value of the "discord_conversation_id" field in the mutation.
+func (m *CodexThreadControlMutation) DiscordConversationID() (r uuid.UUID, exists bool) {
+	v := m.discord_conversation_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDiscordConversationID returns the old "discord_conversation_id" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexThreadControlMutation) OldDiscordConversationID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDiscordConversationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDiscordConversationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDiscordConversationID: %w", err)
+	}
+	return oldValue.DiscordConversationID, nil
+}
+
+// ClearDiscordConversationID clears the value of the "discord_conversation_id" field.
+func (m *CodexThreadControlMutation) ClearDiscordConversationID() {
+	m.discord_conversation_id = nil
+	m.clearedFields[codexthreadcontrol.FieldDiscordConversationID] = struct{}{}
+}
+
+// DiscordConversationIDCleared returns if the "discord_conversation_id" field was cleared in this mutation.
+func (m *CodexThreadControlMutation) DiscordConversationIDCleared() bool {
+	_, ok := m.clearedFields[codexthreadcontrol.FieldDiscordConversationID]
+	return ok
+}
+
+// ResetDiscordConversationID resets all changes to the "discord_conversation_id" field.
+func (m *CodexThreadControlMutation) ResetDiscordConversationID() {
+	m.discord_conversation_id = nil
+	delete(m.clearedFields, codexthreadcontrol.FieldDiscordConversationID)
 }
 
 // SetRepositoryID sets the "repository_id" field.
-func (m *JobIntentMutation) SetRepositoryID(u uuid.UUID) {
+func (m *CodexThreadControlMutation) SetRepositoryID(u uuid.UUID) {
 	m.repository_id = &u
 }
 
 // RepositoryID returns the value of the "repository_id" field in the mutation.
-func (m *JobIntentMutation) RepositoryID() (r uuid.UUID, exists bool) {
+func (m *CodexThreadControlMutation) RepositoryID() (r uuid.UUID, exists bool) {
 	v := m.repository_id
 	if v == nil {
 		return
@@ -3828,10 +2853,10 @@ func (m *JobIntentMutation) RepositoryID() (r uuid.UUID, exists bool) {
 	return *v, true
 }
 
-// OldRepositoryID returns the old "repository_id" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
+// OldRepositoryID returns the old "repository_id" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldRepositoryID(ctx context.Context) (v uuid.UUID, err error) {
+func (m *CodexThreadControlMutation) OldRepositoryID(ctx context.Context) (v *uuid.UUID, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldRepositoryID is only allowed on UpdateOne operations")
 	}
@@ -3845,18 +2870,31 @@ func (m *JobIntentMutation) OldRepositoryID(ctx context.Context) (v uuid.UUID, e
 	return oldValue.RepositoryID, nil
 }
 
-// ResetRepositoryID resets all changes to the "repository_id" field.
-func (m *JobIntentMutation) ResetRepositoryID() {
+// ClearRepositoryID clears the value of the "repository_id" field.
+func (m *CodexThreadControlMutation) ClearRepositoryID() {
 	m.repository_id = nil
+	m.clearedFields[codexthreadcontrol.FieldRepositoryID] = struct{}{}
+}
+
+// RepositoryIDCleared returns if the "repository_id" field was cleared in this mutation.
+func (m *CodexThreadControlMutation) RepositoryIDCleared() bool {
+	_, ok := m.clearedFields[codexthreadcontrol.FieldRepositoryID]
+	return ok
+}
+
+// ResetRepositoryID resets all changes to the "repository_id" field.
+func (m *CodexThreadControlMutation) ResetRepositoryID() {
+	m.repository_id = nil
+	delete(m.clearedFields, codexthreadcontrol.FieldRepositoryID)
 }
 
 // SetAgentProfileID sets the "agent_profile_id" field.
-func (m *JobIntentMutation) SetAgentProfileID(u uuid.UUID) {
+func (m *CodexThreadControlMutation) SetAgentProfileID(u uuid.UUID) {
 	m.agent_profile_id = &u
 }
 
 // AgentProfileID returns the value of the "agent_profile_id" field in the mutation.
-func (m *JobIntentMutation) AgentProfileID() (r uuid.UUID, exists bool) {
+func (m *CodexThreadControlMutation) AgentProfileID() (r uuid.UUID, exists bool) {
 	v := m.agent_profile_id
 	if v == nil {
 		return
@@ -3864,10 +2902,10 @@ func (m *JobIntentMutation) AgentProfileID() (r uuid.UUID, exists bool) {
 	return *v, true
 }
 
-// OldAgentProfileID returns the old "agent_profile_id" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
+// OldAgentProfileID returns the old "agent_profile_id" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldAgentProfileID(ctx context.Context) (v uuid.UUID, err error) {
+func (m *CodexThreadControlMutation) OldAgentProfileID(ctx context.Context) (v uuid.UUID, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldAgentProfileID is only allowed on UpdateOne operations")
 	}
@@ -3882,53 +2920,312 @@ func (m *JobIntentMutation) OldAgentProfileID(ctx context.Context) (v uuid.UUID,
 }
 
 // ResetAgentProfileID resets all changes to the "agent_profile_id" field.
-func (m *JobIntentMutation) ResetAgentProfileID() {
+func (m *CodexThreadControlMutation) ResetAgentProfileID() {
 	m.agent_profile_id = nil
 }
 
-// SetIdempotencyKey sets the "idempotency_key" field.
-func (m *JobIntentMutation) SetIdempotencyKey(s string) {
-	m.idempotency_key = &s
+// SetContextVersion sets the "context_version" field.
+func (m *CodexThreadControlMutation) SetContextVersion(i int64) {
+	m.context_version = &i
+	m.addcontext_version = nil
 }
 
-// IdempotencyKey returns the value of the "idempotency_key" field in the mutation.
-func (m *JobIntentMutation) IdempotencyKey() (r string, exists bool) {
-	v := m.idempotency_key
+// ContextVersion returns the value of the "context_version" field in the mutation.
+func (m *CodexThreadControlMutation) ContextVersion() (r int64, exists bool) {
+	v := m.context_version
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldIdempotencyKey returns the old "idempotency_key" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
+// OldContextVersion returns the old "context_version" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldIdempotencyKey(ctx context.Context) (v string, err error) {
+func (m *CodexThreadControlMutation) OldContextVersion(ctx context.Context) (v int64, err error) {
 	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldIdempotencyKey is only allowed on UpdateOne operations")
+		return v, errors.New("OldContextVersion is only allowed on UpdateOne operations")
 	}
 	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldIdempotencyKey requires an ID field in the mutation")
+		return v, errors.New("OldContextVersion requires an ID field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldIdempotencyKey: %w", err)
+		return v, fmt.Errorf("querying old value for OldContextVersion: %w", err)
 	}
-	return oldValue.IdempotencyKey, nil
+	return oldValue.ContextVersion, nil
 }
 
-// ResetIdempotencyKey resets all changes to the "idempotency_key" field.
-func (m *JobIntentMutation) ResetIdempotencyKey() {
-	m.idempotency_key = nil
+// AddContextVersion adds i to the "context_version" field.
+func (m *CodexThreadControlMutation) AddContextVersion(i int64) {
+	if m.addcontext_version != nil {
+		*m.addcontext_version += i
+	} else {
+		m.addcontext_version = &i
+	}
+}
+
+// AddedContextVersion returns the value that was added to the "context_version" field in this mutation.
+func (m *CodexThreadControlMutation) AddedContextVersion() (r int64, exists bool) {
+	v := m.addcontext_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetContextVersion resets all changes to the "context_version" field.
+func (m *CodexThreadControlMutation) ResetContextVersion() {
+	m.context_version = nil
+	m.addcontext_version = nil
+}
+
+// SetExternalThreadID sets the "external_thread_id" field.
+func (m *CodexThreadControlMutation) SetExternalThreadID(s string) {
+	m.external_thread_id = &s
+}
+
+// ExternalThreadID returns the value of the "external_thread_id" field in the mutation.
+func (m *CodexThreadControlMutation) ExternalThreadID() (r string, exists bool) {
+	v := m.external_thread_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExternalThreadID returns the old "external_thread_id" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexThreadControlMutation) OldExternalThreadID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExternalThreadID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExternalThreadID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExternalThreadID: %w", err)
+	}
+	return oldValue.ExternalThreadID, nil
+}
+
+// ClearExternalThreadID clears the value of the "external_thread_id" field.
+func (m *CodexThreadControlMutation) ClearExternalThreadID() {
+	m.external_thread_id = nil
+	m.clearedFields[codexthreadcontrol.FieldExternalThreadID] = struct{}{}
+}
+
+// ExternalThreadIDCleared returns if the "external_thread_id" field was cleared in this mutation.
+func (m *CodexThreadControlMutation) ExternalThreadIDCleared() bool {
+	_, ok := m.clearedFields[codexthreadcontrol.FieldExternalThreadID]
+	return ok
+}
+
+// ResetExternalThreadID resets all changes to the "external_thread_id" field.
+func (m *CodexThreadControlMutation) ResetExternalThreadID() {
+	m.external_thread_id = nil
+	delete(m.clearedFields, codexthreadcontrol.FieldExternalThreadID)
+}
+
+// SetProvider sets the "provider" field.
+func (m *CodexThreadControlMutation) SetProvider(s string) {
+	m.provider = &s
+}
+
+// Provider returns the value of the "provider" field in the mutation.
+func (m *CodexThreadControlMutation) Provider() (r string, exists bool) {
+	v := m.provider
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProvider returns the old "provider" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexThreadControlMutation) OldProvider(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProvider is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProvider requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProvider: %w", err)
+	}
+	return oldValue.Provider, nil
+}
+
+// ResetProvider resets all changes to the "provider" field.
+func (m *CodexThreadControlMutation) ResetProvider() {
+	m.provider = nil
+}
+
+// SetCodexHomeKey sets the "codex_home_key" field.
+func (m *CodexThreadControlMutation) SetCodexHomeKey(s string) {
+	m.codex_home_key = &s
+}
+
+// CodexHomeKey returns the value of the "codex_home_key" field in the mutation.
+func (m *CodexThreadControlMutation) CodexHomeKey() (r string, exists bool) {
+	v := m.codex_home_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCodexHomeKey returns the old "codex_home_key" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexThreadControlMutation) OldCodexHomeKey(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCodexHomeKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCodexHomeKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCodexHomeKey: %w", err)
+	}
+	return oldValue.CodexHomeKey, nil
+}
+
+// ClearCodexHomeKey clears the value of the "codex_home_key" field.
+func (m *CodexThreadControlMutation) ClearCodexHomeKey() {
+	m.codex_home_key = nil
+	m.clearedFields[codexthreadcontrol.FieldCodexHomeKey] = struct{}{}
+}
+
+// CodexHomeKeyCleared returns if the "codex_home_key" field was cleared in this mutation.
+func (m *CodexThreadControlMutation) CodexHomeKeyCleared() bool {
+	_, ok := m.clearedFields[codexthreadcontrol.FieldCodexHomeKey]
+	return ok
+}
+
+// ResetCodexHomeKey resets all changes to the "codex_home_key" field.
+func (m *CodexThreadControlMutation) ResetCodexHomeKey() {
+	m.codex_home_key = nil
+	delete(m.clearedFields, codexthreadcontrol.FieldCodexHomeKey)
+}
+
+// SetProviderSignature sets the "provider_signature" field.
+func (m *CodexThreadControlMutation) SetProviderSignature(s string) {
+	m.provider_signature = &s
+}
+
+// ProviderSignature returns the value of the "provider_signature" field in the mutation.
+func (m *CodexThreadControlMutation) ProviderSignature() (r string, exists bool) {
+	v := m.provider_signature
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProviderSignature returns the old "provider_signature" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexThreadControlMutation) OldProviderSignature(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProviderSignature is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProviderSignature requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProviderSignature: %w", err)
+	}
+	return oldValue.ProviderSignature, nil
+}
+
+// ClearProviderSignature clears the value of the "provider_signature" field.
+func (m *CodexThreadControlMutation) ClearProviderSignature() {
+	m.provider_signature = nil
+	m.clearedFields[codexthreadcontrol.FieldProviderSignature] = struct{}{}
+}
+
+// ProviderSignatureCleared returns if the "provider_signature" field was cleared in this mutation.
+func (m *CodexThreadControlMutation) ProviderSignatureCleared() bool {
+	_, ok := m.clearedFields[codexthreadcontrol.FieldProviderSignature]
+	return ok
+}
+
+// ResetProviderSignature resets all changes to the "provider_signature" field.
+func (m *CodexThreadControlMutation) ResetProviderSignature() {
+	m.provider_signature = nil
+	delete(m.clearedFields, codexthreadcontrol.FieldProviderSignature)
+}
+
+// SetThreadGeneration sets the "thread_generation" field.
+func (m *CodexThreadControlMutation) SetThreadGeneration(i int) {
+	m.thread_generation = &i
+	m.addthread_generation = nil
+}
+
+// ThreadGeneration returns the value of the "thread_generation" field in the mutation.
+func (m *CodexThreadControlMutation) ThreadGeneration() (r int, exists bool) {
+	v := m.thread_generation
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldThreadGeneration returns the old "thread_generation" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexThreadControlMutation) OldThreadGeneration(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldThreadGeneration is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldThreadGeneration requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldThreadGeneration: %w", err)
+	}
+	return oldValue.ThreadGeneration, nil
+}
+
+// AddThreadGeneration adds i to the "thread_generation" field.
+func (m *CodexThreadControlMutation) AddThreadGeneration(i int) {
+	if m.addthread_generation != nil {
+		*m.addthread_generation += i
+	} else {
+		m.addthread_generation = &i
+	}
+}
+
+// AddedThreadGeneration returns the value that was added to the "thread_generation" field in this mutation.
+func (m *CodexThreadControlMutation) AddedThreadGeneration() (r int, exists bool) {
+	v := m.addthread_generation
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetThreadGeneration resets all changes to the "thread_generation" field.
+func (m *CodexThreadControlMutation) ResetThreadGeneration() {
+	m.thread_generation = nil
+	m.addthread_generation = nil
 }
 
 // SetStatus sets the "status" field.
-func (m *JobIntentMutation) SetStatus(s string) {
+func (m *CodexThreadControlMutation) SetStatus(s string) {
 	m.status = &s
 }
 
 // Status returns the value of the "status" field in the mutation.
-func (m *JobIntentMutation) Status() (r string, exists bool) {
+func (m *CodexThreadControlMutation) Status() (r string, exists bool) {
 	v := m.status
 	if v == nil {
 		return
@@ -3936,10 +3233,10 @@ func (m *JobIntentMutation) Status() (r string, exists bool) {
 	return *v, true
 }
 
-// OldStatus returns the old "status" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
+// OldStatus returns the old "status" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldStatus(ctx context.Context) (v string, err error) {
+func (m *CodexThreadControlMutation) OldStatus(ctx context.Context) (v string, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
 	}
@@ -3954,617 +3251,270 @@ func (m *JobIntentMutation) OldStatus(ctx context.Context) (v string, err error)
 }
 
 // ResetStatus resets all changes to the "status" field.
-func (m *JobIntentMutation) ResetStatus() {
+func (m *CodexThreadControlMutation) ResetStatus() {
 	m.status = nil
 }
 
-// SetInstruction sets the "instruction" field.
-func (m *JobIntentMutation) SetInstruction(s string) {
-	m.instruction = &s
+// SetNextSequenceNo sets the "next_sequence_no" field.
+func (m *CodexThreadControlMutation) SetNextSequenceNo(i int64) {
+	m.next_sequence_no = &i
+	m.addnext_sequence_no = nil
 }
 
-// Instruction returns the value of the "instruction" field in the mutation.
-func (m *JobIntentMutation) Instruction() (r string, exists bool) {
-	v := m.instruction
+// NextSequenceNo returns the value of the "next_sequence_no" field in the mutation.
+func (m *CodexThreadControlMutation) NextSequenceNo() (r int64, exists bool) {
+	v := m.next_sequence_no
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldInstruction returns the old "instruction" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
+// OldNextSequenceNo returns the old "next_sequence_no" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldInstruction(ctx context.Context) (v string, err error) {
+func (m *CodexThreadControlMutation) OldNextSequenceNo(ctx context.Context) (v int64, err error) {
 	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldInstruction is only allowed on UpdateOne operations")
+		return v, errors.New("OldNextSequenceNo is only allowed on UpdateOne operations")
 	}
 	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldInstruction requires an ID field in the mutation")
+		return v, errors.New("OldNextSequenceNo requires an ID field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldInstruction: %w", err)
+		return v, fmt.Errorf("querying old value for OldNextSequenceNo: %w", err)
 	}
-	return oldValue.Instruction, nil
+	return oldValue.NextSequenceNo, nil
 }
 
-// ResetInstruction resets all changes to the "instruction" field.
-func (m *JobIntentMutation) ResetInstruction() {
-	m.instruction = nil
+// AddNextSequenceNo adds i to the "next_sequence_no" field.
+func (m *CodexThreadControlMutation) AddNextSequenceNo(i int64) {
+	if m.addnext_sequence_no != nil {
+		*m.addnext_sequence_no += i
+	} else {
+		m.addnext_sequence_no = &i
+	}
 }
 
-// SetSkills sets the "skills" field.
-func (m *JobIntentMutation) SetSkills(s []string) {
-	m.skills = &s
-	m.appendskills = nil
-}
-
-// Skills returns the value of the "skills" field in the mutation.
-func (m *JobIntentMutation) Skills() (r []string, exists bool) {
-	v := m.skills
+// AddedNextSequenceNo returns the value that was added to the "next_sequence_no" field in this mutation.
+func (m *CodexThreadControlMutation) AddedNextSequenceNo() (r int64, exists bool) {
+	v := m.addnext_sequence_no
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldSkills returns the old "skills" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldSkills(ctx context.Context) (v []string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldSkills is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldSkills requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldSkills: %w", err)
-	}
-	return oldValue.Skills, nil
+// ResetNextSequenceNo resets all changes to the "next_sequence_no" field.
+func (m *CodexThreadControlMutation) ResetNextSequenceNo() {
+	m.next_sequence_no = nil
+	m.addnext_sequence_no = nil
 }
 
-// AppendSkills adds s to the "skills" field.
-func (m *JobIntentMutation) AppendSkills(s []string) {
-	m.appendskills = append(m.appendskills, s...)
+// SetActiveIntentID sets the "active_intent_id" field.
+func (m *CodexThreadControlMutation) SetActiveIntentID(u uuid.UUID) {
+	m.active_intent_id = &u
 }
 
-// AppendedSkills returns the list of values that were appended to the "skills" field in this mutation.
-func (m *JobIntentMutation) AppendedSkills() ([]string, bool) {
-	if len(m.appendskills) == 0 {
-		return nil, false
-	}
-	return m.appendskills, true
-}
-
-// ResetSkills resets all changes to the "skills" field.
-func (m *JobIntentMutation) ResetSkills() {
-	m.skills = nil
-	m.appendskills = nil
-}
-
-// SetAllowedTools sets the "allowed_tools" field.
-func (m *JobIntentMutation) SetAllowedTools(s []string) {
-	m.allowed_tools = &s
-	m.appendallowed_tools = nil
-}
-
-// AllowedTools returns the value of the "allowed_tools" field in the mutation.
-func (m *JobIntentMutation) AllowedTools() (r []string, exists bool) {
-	v := m.allowed_tools
+// ActiveIntentID returns the value of the "active_intent_id" field in the mutation.
+func (m *CodexThreadControlMutation) ActiveIntentID() (r uuid.UUID, exists bool) {
+	v := m.active_intent_id
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldAllowedTools returns the old "allowed_tools" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
+// OldActiveIntentID returns the old "active_intent_id" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldAllowedTools(ctx context.Context) (v []string, err error) {
+func (m *CodexThreadControlMutation) OldActiveIntentID(ctx context.Context) (v *uuid.UUID, err error) {
 	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldAllowedTools is only allowed on UpdateOne operations")
+		return v, errors.New("OldActiveIntentID is only allowed on UpdateOne operations")
 	}
 	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldAllowedTools requires an ID field in the mutation")
+		return v, errors.New("OldActiveIntentID requires an ID field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldAllowedTools: %w", err)
+		return v, fmt.Errorf("querying old value for OldActiveIntentID: %w", err)
 	}
-	return oldValue.AllowedTools, nil
+	return oldValue.ActiveIntentID, nil
 }
 
-// AppendAllowedTools adds s to the "allowed_tools" field.
-func (m *JobIntentMutation) AppendAllowedTools(s []string) {
-	m.appendallowed_tools = append(m.appendallowed_tools, s...)
+// ClearActiveIntentID clears the value of the "active_intent_id" field.
+func (m *CodexThreadControlMutation) ClearActiveIntentID() {
+	m.active_intent_id = nil
+	m.clearedFields[codexthreadcontrol.FieldActiveIntentID] = struct{}{}
 }
 
-// AppendedAllowedTools returns the list of values that were appended to the "allowed_tools" field in this mutation.
-func (m *JobIntentMutation) AppendedAllowedTools() ([]string, bool) {
-	if len(m.appendallowed_tools) == 0 {
-		return nil, false
-	}
-	return m.appendallowed_tools, true
-}
-
-// ResetAllowedTools resets all changes to the "allowed_tools" field.
-func (m *JobIntentMutation) ResetAllowedTools() {
-	m.allowed_tools = nil
-	m.appendallowed_tools = nil
-}
-
-// SetDangerousActions sets the "dangerous_actions" field.
-func (m *JobIntentMutation) SetDangerousActions(s []string) {
-	m.dangerous_actions = &s
-	m.appenddangerous_actions = nil
-}
-
-// DangerousActions returns the value of the "dangerous_actions" field in the mutation.
-func (m *JobIntentMutation) DangerousActions() (r []string, exists bool) {
-	v := m.dangerous_actions
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldDangerousActions returns the old "dangerous_actions" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldDangerousActions(ctx context.Context) (v []string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldDangerousActions is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldDangerousActions requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldDangerousActions: %w", err)
-	}
-	return oldValue.DangerousActions, nil
-}
-
-// AppendDangerousActions adds s to the "dangerous_actions" field.
-func (m *JobIntentMutation) AppendDangerousActions(s []string) {
-	m.appenddangerous_actions = append(m.appenddangerous_actions, s...)
-}
-
-// AppendedDangerousActions returns the list of values that were appended to the "dangerous_actions" field in this mutation.
-func (m *JobIntentMutation) AppendedDangerousActions() ([]string, bool) {
-	if len(m.appenddangerous_actions) == 0 {
-		return nil, false
-	}
-	return m.appenddangerous_actions, true
-}
-
-// ResetDangerousActions resets all changes to the "dangerous_actions" field.
-func (m *JobIntentMutation) ResetDangerousActions() {
-	m.dangerous_actions = nil
-	m.appenddangerous_actions = nil
-}
-
-// SetTriggerRuleID sets the "trigger_rule_id" field.
-func (m *JobIntentMutation) SetTriggerRuleID(u uuid.UUID) {
-	m.trigger_rule_id = &u
-}
-
-// TriggerRuleID returns the value of the "trigger_rule_id" field in the mutation.
-func (m *JobIntentMutation) TriggerRuleID() (r uuid.UUID, exists bool) {
-	v := m.trigger_rule_id
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldTriggerRuleID returns the old "trigger_rule_id" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldTriggerRuleID(ctx context.Context) (v *uuid.UUID, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldTriggerRuleID is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldTriggerRuleID requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldTriggerRuleID: %w", err)
-	}
-	return oldValue.TriggerRuleID, nil
-}
-
-// ClearTriggerRuleID clears the value of the "trigger_rule_id" field.
-func (m *JobIntentMutation) ClearTriggerRuleID() {
-	m.trigger_rule_id = nil
-	m.clearedFields[jobintent.FieldTriggerRuleID] = struct{}{}
-}
-
-// TriggerRuleIDCleared returns if the "trigger_rule_id" field was cleared in this mutation.
-func (m *JobIntentMutation) TriggerRuleIDCleared() bool {
-	_, ok := m.clearedFields[jobintent.FieldTriggerRuleID]
+// ActiveIntentIDCleared returns if the "active_intent_id" field was cleared in this mutation.
+func (m *CodexThreadControlMutation) ActiveIntentIDCleared() bool {
+	_, ok := m.clearedFields[codexthreadcontrol.FieldActiveIntentID]
 	return ok
 }
 
-// ResetTriggerRuleID resets all changes to the "trigger_rule_id" field.
-func (m *JobIntentMutation) ResetTriggerRuleID() {
-	m.trigger_rule_id = nil
-	delete(m.clearedFields, jobintent.FieldTriggerRuleID)
+// ResetActiveIntentID resets all changes to the "active_intent_id" field.
+func (m *CodexThreadControlMutation) ResetActiveIntentID() {
+	m.active_intent_id = nil
+	delete(m.clearedFields, codexthreadcontrol.FieldActiveIntentID)
 }
 
-// SetTriggerEvidence sets the "trigger_evidence" field.
-func (m *JobIntentMutation) SetTriggerEvidence(value map[string]interface{}) {
-	m.trigger_evidence = &value
+// SetRemoteStatus sets the "remote_status" field.
+func (m *CodexThreadControlMutation) SetRemoteStatus(s string) {
+	m.remote_status = &s
 }
 
-// TriggerEvidence returns the value of the "trigger_evidence" field in the mutation.
-func (m *JobIntentMutation) TriggerEvidence() (r map[string]interface{}, exists bool) {
-	v := m.trigger_evidence
+// RemoteStatus returns the value of the "remote_status" field in the mutation.
+func (m *CodexThreadControlMutation) RemoteStatus() (r string, exists bool) {
+	v := m.remote_status
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldTriggerEvidence returns the old "trigger_evidence" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
+// OldRemoteStatus returns the old "remote_status" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldTriggerEvidence(ctx context.Context) (v map[string]interface{}, err error) {
+func (m *CodexThreadControlMutation) OldRemoteStatus(ctx context.Context) (v *string, err error) {
 	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldTriggerEvidence is only allowed on UpdateOne operations")
+		return v, errors.New("OldRemoteStatus is only allowed on UpdateOne operations")
 	}
 	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldTriggerEvidence requires an ID field in the mutation")
+		return v, errors.New("OldRemoteStatus requires an ID field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldTriggerEvidence: %w", err)
+		return v, fmt.Errorf("querying old value for OldRemoteStatus: %w", err)
 	}
-	return oldValue.TriggerEvidence, nil
+	return oldValue.RemoteStatus, nil
 }
 
-// ResetTriggerEvidence resets all changes to the "trigger_evidence" field.
-func (m *JobIntentMutation) ResetTriggerEvidence() {
-	m.trigger_evidence = nil
+// ClearRemoteStatus clears the value of the "remote_status" field.
+func (m *CodexThreadControlMutation) ClearRemoteStatus() {
+	m.remote_status = nil
+	m.clearedFields[codexthreadcontrol.FieldRemoteStatus] = struct{}{}
 }
 
-// SetActorLogin sets the "actor_login" field.
-func (m *JobIntentMutation) SetActorLogin(s string) {
-	m.actor_login = &s
-}
-
-// ActorLogin returns the value of the "actor_login" field in the mutation.
-func (m *JobIntentMutation) ActorLogin() (r string, exists bool) {
-	v := m.actor_login
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldActorLogin returns the old "actor_login" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldActorLogin(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldActorLogin is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldActorLogin requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldActorLogin: %w", err)
-	}
-	return oldValue.ActorLogin, nil
-}
-
-// ResetActorLogin resets all changes to the "actor_login" field.
-func (m *JobIntentMutation) ResetActorLogin() {
-	m.actor_login = nil
-}
-
-// SetActorPermission sets the "actor_permission" field.
-func (m *JobIntentMutation) SetActorPermission(s string) {
-	m.actor_permission = &s
-}
-
-// ActorPermission returns the value of the "actor_permission" field in the mutation.
-func (m *JobIntentMutation) ActorPermission() (r string, exists bool) {
-	v := m.actor_permission
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldActorPermission returns the old "actor_permission" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldActorPermission(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldActorPermission is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldActorPermission requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldActorPermission: %w", err)
-	}
-	return oldValue.ActorPermission, nil
-}
-
-// ResetActorPermission resets all changes to the "actor_permission" field.
-func (m *JobIntentMutation) ResetActorPermission() {
-	m.actor_permission = nil
-}
-
-// SetPriority sets the "priority" field.
-func (m *JobIntentMutation) SetPriority(i int) {
-	m.priority = &i
-	m.addpriority = nil
-}
-
-// Priority returns the value of the "priority" field in the mutation.
-func (m *JobIntentMutation) Priority() (r int, exists bool) {
-	v := m.priority
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldPriority returns the old "priority" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldPriority(ctx context.Context) (v int, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldPriority is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldPriority requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldPriority: %w", err)
-	}
-	return oldValue.Priority, nil
-}
-
-// AddPriority adds i to the "priority" field.
-func (m *JobIntentMutation) AddPriority(i int) {
-	if m.addpriority != nil {
-		*m.addpriority += i
-	} else {
-		m.addpriority = &i
-	}
-}
-
-// AddedPriority returns the value that was added to the "priority" field in this mutation.
-func (m *JobIntentMutation) AddedPriority() (r int, exists bool) {
-	v := m.addpriority
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetPriority resets all changes to the "priority" field.
-func (m *JobIntentMutation) ResetPriority() {
-	m.priority = nil
-	m.addpriority = nil
-}
-
-// SetAvailableAt sets the "available_at" field.
-func (m *JobIntentMutation) SetAvailableAt(t time.Time) {
-	m.available_at = &t
-}
-
-// AvailableAt returns the value of the "available_at" field in the mutation.
-func (m *JobIntentMutation) AvailableAt() (r time.Time, exists bool) {
-	v := m.available_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldAvailableAt returns the old "available_at" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldAvailableAt(ctx context.Context) (v time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldAvailableAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldAvailableAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldAvailableAt: %w", err)
-	}
-	return oldValue.AvailableAt, nil
-}
-
-// ResetAvailableAt resets all changes to the "available_at" field.
-func (m *JobIntentMutation) ResetAvailableAt() {
-	m.available_at = nil
-}
-
-// SetAttemptCount sets the "attempt_count" field.
-func (m *JobIntentMutation) SetAttemptCount(i int) {
-	m.attempt_count = &i
-	m.addattempt_count = nil
-}
-
-// AttemptCount returns the value of the "attempt_count" field in the mutation.
-func (m *JobIntentMutation) AttemptCount() (r int, exists bool) {
-	v := m.attempt_count
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldAttemptCount returns the old "attempt_count" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldAttemptCount(ctx context.Context) (v int, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldAttemptCount is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldAttemptCount requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldAttemptCount: %w", err)
-	}
-	return oldValue.AttemptCount, nil
-}
-
-// AddAttemptCount adds i to the "attempt_count" field.
-func (m *JobIntentMutation) AddAttemptCount(i int) {
-	if m.addattempt_count != nil {
-		*m.addattempt_count += i
-	} else {
-		m.addattempt_count = &i
-	}
-}
-
-// AddedAttemptCount returns the value that was added to the "attempt_count" field in this mutation.
-func (m *JobIntentMutation) AddedAttemptCount() (r int, exists bool) {
-	v := m.addattempt_count
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetAttemptCount resets all changes to the "attempt_count" field.
-func (m *JobIntentMutation) ResetAttemptCount() {
-	m.attempt_count = nil
-	m.addattempt_count = nil
-}
-
-// SetMaxAttempts sets the "max_attempts" field.
-func (m *JobIntentMutation) SetMaxAttempts(i int) {
-	m.max_attempts = &i
-	m.addmax_attempts = nil
-}
-
-// MaxAttempts returns the value of the "max_attempts" field in the mutation.
-func (m *JobIntentMutation) MaxAttempts() (r int, exists bool) {
-	v := m.max_attempts
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldMaxAttempts returns the old "max_attempts" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldMaxAttempts(ctx context.Context) (v int, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldMaxAttempts is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldMaxAttempts requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldMaxAttempts: %w", err)
-	}
-	return oldValue.MaxAttempts, nil
-}
-
-// AddMaxAttempts adds i to the "max_attempts" field.
-func (m *JobIntentMutation) AddMaxAttempts(i int) {
-	if m.addmax_attempts != nil {
-		*m.addmax_attempts += i
-	} else {
-		m.addmax_attempts = &i
-	}
-}
-
-// AddedMaxAttempts returns the value that was added to the "max_attempts" field in this mutation.
-func (m *JobIntentMutation) AddedMaxAttempts() (r int, exists bool) {
-	v := m.addmax_attempts
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetMaxAttempts resets all changes to the "max_attempts" field.
-func (m *JobIntentMutation) ResetMaxAttempts() {
-	m.max_attempts = nil
-	m.addmax_attempts = nil
-}
-
-// SetLeaseToken sets the "lease_token" field.
-func (m *JobIntentMutation) SetLeaseToken(s string) {
-	m.lease_token = &s
-}
-
-// LeaseToken returns the value of the "lease_token" field in the mutation.
-func (m *JobIntentMutation) LeaseToken() (r string, exists bool) {
-	v := m.lease_token
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldLeaseToken returns the old "lease_token" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldLeaseToken(ctx context.Context) (v *string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldLeaseToken is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldLeaseToken requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldLeaseToken: %w", err)
-	}
-	return oldValue.LeaseToken, nil
-}
-
-// ClearLeaseToken clears the value of the "lease_token" field.
-func (m *JobIntentMutation) ClearLeaseToken() {
-	m.lease_token = nil
-	m.clearedFields[jobintent.FieldLeaseToken] = struct{}{}
-}
-
-// LeaseTokenCleared returns if the "lease_token" field was cleared in this mutation.
-func (m *JobIntentMutation) LeaseTokenCleared() bool {
-	_, ok := m.clearedFields[jobintent.FieldLeaseToken]
+// RemoteStatusCleared returns if the "remote_status" field was cleared in this mutation.
+func (m *CodexThreadControlMutation) RemoteStatusCleared() bool {
+	_, ok := m.clearedFields[codexthreadcontrol.FieldRemoteStatus]
 	return ok
 }
 
-// ResetLeaseToken resets all changes to the "lease_token" field.
-func (m *JobIntentMutation) ResetLeaseToken() {
-	m.lease_token = nil
-	delete(m.clearedFields, jobintent.FieldLeaseToken)
+// ResetRemoteStatus resets all changes to the "remote_status" field.
+func (m *CodexThreadControlMutation) ResetRemoteStatus() {
+	m.remote_status = nil
+	delete(m.clearedFields, codexthreadcontrol.FieldRemoteStatus)
+}
+
+// SetActiveCodexTurnID sets the "active_codex_turn_id" field.
+func (m *CodexThreadControlMutation) SetActiveCodexTurnID(s string) {
+	m.active_codex_turn_id = &s
+}
+
+// ActiveCodexTurnID returns the value of the "active_codex_turn_id" field in the mutation.
+func (m *CodexThreadControlMutation) ActiveCodexTurnID() (r string, exists bool) {
+	v := m.active_codex_turn_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActiveCodexTurnID returns the old "active_codex_turn_id" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexThreadControlMutation) OldActiveCodexTurnID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActiveCodexTurnID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActiveCodexTurnID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActiveCodexTurnID: %w", err)
+	}
+	return oldValue.ActiveCodexTurnID, nil
+}
+
+// ClearActiveCodexTurnID clears the value of the "active_codex_turn_id" field.
+func (m *CodexThreadControlMutation) ClearActiveCodexTurnID() {
+	m.active_codex_turn_id = nil
+	m.clearedFields[codexthreadcontrol.FieldActiveCodexTurnID] = struct{}{}
+}
+
+// ActiveCodexTurnIDCleared returns if the "active_codex_turn_id" field was cleared in this mutation.
+func (m *CodexThreadControlMutation) ActiveCodexTurnIDCleared() bool {
+	_, ok := m.clearedFields[codexthreadcontrol.FieldActiveCodexTurnID]
+	return ok
+}
+
+// ResetActiveCodexTurnID resets all changes to the "active_codex_turn_id" field.
+func (m *CodexThreadControlMutation) ResetActiveCodexTurnID() {
+	m.active_codex_turn_id = nil
+	delete(m.clearedFields, codexthreadcontrol.FieldActiveCodexTurnID)
+}
+
+// SetActiveClientID sets the "active_client_id" field.
+func (m *CodexThreadControlMutation) SetActiveClientID(s string) {
+	m.active_client_id = &s
+}
+
+// ActiveClientID returns the value of the "active_client_id" field in the mutation.
+func (m *CodexThreadControlMutation) ActiveClientID() (r string, exists bool) {
+	v := m.active_client_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActiveClientID returns the old "active_client_id" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexThreadControlMutation) OldActiveClientID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActiveClientID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActiveClientID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActiveClientID: %w", err)
+	}
+	return oldValue.ActiveClientID, nil
+}
+
+// ClearActiveClientID clears the value of the "active_client_id" field.
+func (m *CodexThreadControlMutation) ClearActiveClientID() {
+	m.active_client_id = nil
+	m.clearedFields[codexthreadcontrol.FieldActiveClientID] = struct{}{}
+}
+
+// ActiveClientIDCleared returns if the "active_client_id" field was cleared in this mutation.
+func (m *CodexThreadControlMutation) ActiveClientIDCleared() bool {
+	_, ok := m.clearedFields[codexthreadcontrol.FieldActiveClientID]
+	return ok
+}
+
+// ResetActiveClientID resets all changes to the "active_client_id" field.
+func (m *CodexThreadControlMutation) ResetActiveClientID() {
+	m.active_client_id = nil
+	delete(m.clearedFields, codexthreadcontrol.FieldActiveClientID)
 }
 
 // SetLeaseEpoch sets the "lease_epoch" field.
-func (m *JobIntentMutation) SetLeaseEpoch(i int64) {
+func (m *CodexThreadControlMutation) SetLeaseEpoch(i int64) {
 	m.lease_epoch = &i
 	m.addlease_epoch = nil
 }
 
 // LeaseEpoch returns the value of the "lease_epoch" field in the mutation.
-func (m *JobIntentMutation) LeaseEpoch() (r int64, exists bool) {
+func (m *CodexThreadControlMutation) LeaseEpoch() (r int64, exists bool) {
 	v := m.lease_epoch
 	if v == nil {
 		return
@@ -4572,10 +3522,10 @@ func (m *JobIntentMutation) LeaseEpoch() (r int64, exists bool) {
 	return *v, true
 }
 
-// OldLeaseEpoch returns the old "lease_epoch" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
+// OldLeaseEpoch returns the old "lease_epoch" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldLeaseEpoch(ctx context.Context) (v int64, err error) {
+func (m *CodexThreadControlMutation) OldLeaseEpoch(ctx context.Context) (v int64, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldLeaseEpoch is only allowed on UpdateOne operations")
 	}
@@ -4590,7 +3540,7 @@ func (m *JobIntentMutation) OldLeaseEpoch(ctx context.Context) (v int64, err err
 }
 
 // AddLeaseEpoch adds i to the "lease_epoch" field.
-func (m *JobIntentMutation) AddLeaseEpoch(i int64) {
+func (m *CodexThreadControlMutation) AddLeaseEpoch(i int64) {
 	if m.addlease_epoch != nil {
 		*m.addlease_epoch += i
 	} else {
@@ -4599,7 +3549,7 @@ func (m *JobIntentMutation) AddLeaseEpoch(i int64) {
 }
 
 // AddedLeaseEpoch returns the value that was added to the "lease_epoch" field in this mutation.
-func (m *JobIntentMutation) AddedLeaseEpoch() (r int64, exists bool) {
+func (m *CodexThreadControlMutation) AddedLeaseEpoch() (r int64, exists bool) {
 	v := m.addlease_epoch
 	if v == nil {
 		return
@@ -4608,18 +3558,18 @@ func (m *JobIntentMutation) AddedLeaseEpoch() (r int64, exists bool) {
 }
 
 // ResetLeaseEpoch resets all changes to the "lease_epoch" field.
-func (m *JobIntentMutation) ResetLeaseEpoch() {
+func (m *CodexThreadControlMutation) ResetLeaseEpoch() {
 	m.lease_epoch = nil
 	m.addlease_epoch = nil
 }
 
 // SetLeaseExpiresAt sets the "lease_expires_at" field.
-func (m *JobIntentMutation) SetLeaseExpiresAt(t time.Time) {
+func (m *CodexThreadControlMutation) SetLeaseExpiresAt(t time.Time) {
 	m.lease_expires_at = &t
 }
 
 // LeaseExpiresAt returns the value of the "lease_expires_at" field in the mutation.
-func (m *JobIntentMutation) LeaseExpiresAt() (r time.Time, exists bool) {
+func (m *CodexThreadControlMutation) LeaseExpiresAt() (r time.Time, exists bool) {
 	v := m.lease_expires_at
 	if v == nil {
 		return
@@ -4627,10 +3577,10 @@ func (m *JobIntentMutation) LeaseExpiresAt() (r time.Time, exists bool) {
 	return *v, true
 }
 
-// OldLeaseExpiresAt returns the old "lease_expires_at" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
+// OldLeaseExpiresAt returns the old "lease_expires_at" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldLeaseExpiresAt(ctx context.Context) (v *time.Time, err error) {
+func (m *CodexThreadControlMutation) OldLeaseExpiresAt(ctx context.Context) (v *time.Time, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldLeaseExpiresAt is only allowed on UpdateOne operations")
 	}
@@ -4645,30 +3595,177 @@ func (m *JobIntentMutation) OldLeaseExpiresAt(ctx context.Context) (v *time.Time
 }
 
 // ClearLeaseExpiresAt clears the value of the "lease_expires_at" field.
-func (m *JobIntentMutation) ClearLeaseExpiresAt() {
+func (m *CodexThreadControlMutation) ClearLeaseExpiresAt() {
 	m.lease_expires_at = nil
-	m.clearedFields[jobintent.FieldLeaseExpiresAt] = struct{}{}
+	m.clearedFields[codexthreadcontrol.FieldLeaseExpiresAt] = struct{}{}
 }
 
 // LeaseExpiresAtCleared returns if the "lease_expires_at" field was cleared in this mutation.
-func (m *JobIntentMutation) LeaseExpiresAtCleared() bool {
-	_, ok := m.clearedFields[jobintent.FieldLeaseExpiresAt]
+func (m *CodexThreadControlMutation) LeaseExpiresAtCleared() bool {
+	_, ok := m.clearedFields[codexthreadcontrol.FieldLeaseExpiresAt]
 	return ok
 }
 
 // ResetLeaseExpiresAt resets all changes to the "lease_expires_at" field.
-func (m *JobIntentMutation) ResetLeaseExpiresAt() {
+func (m *CodexThreadControlMutation) ResetLeaseExpiresAt() {
 	m.lease_expires_at = nil
-	delete(m.clearedFields, jobintent.FieldLeaseExpiresAt)
+	delete(m.clearedFields, codexthreadcontrol.FieldLeaseExpiresAt)
+}
+
+// SetHeartbeatAt sets the "heartbeat_at" field.
+func (m *CodexThreadControlMutation) SetHeartbeatAt(t time.Time) {
+	m.heartbeat_at = &t
+}
+
+// HeartbeatAt returns the value of the "heartbeat_at" field in the mutation.
+func (m *CodexThreadControlMutation) HeartbeatAt() (r time.Time, exists bool) {
+	v := m.heartbeat_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHeartbeatAt returns the old "heartbeat_at" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexThreadControlMutation) OldHeartbeatAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHeartbeatAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHeartbeatAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHeartbeatAt: %w", err)
+	}
+	return oldValue.HeartbeatAt, nil
+}
+
+// ClearHeartbeatAt clears the value of the "heartbeat_at" field.
+func (m *CodexThreadControlMutation) ClearHeartbeatAt() {
+	m.heartbeat_at = nil
+	m.clearedFields[codexthreadcontrol.FieldHeartbeatAt] = struct{}{}
+}
+
+// HeartbeatAtCleared returns if the "heartbeat_at" field was cleared in this mutation.
+func (m *CodexThreadControlMutation) HeartbeatAtCleared() bool {
+	_, ok := m.clearedFields[codexthreadcontrol.FieldHeartbeatAt]
+	return ok
+}
+
+// ResetHeartbeatAt resets all changes to the "heartbeat_at" field.
+func (m *CodexThreadControlMutation) ResetHeartbeatAt() {
+	m.heartbeat_at = nil
+	delete(m.clearedFields, codexthreadcontrol.FieldHeartbeatAt)
+}
+
+// SetLastReconciledAt sets the "last_reconciled_at" field.
+func (m *CodexThreadControlMutation) SetLastReconciledAt(t time.Time) {
+	m.last_reconciled_at = &t
+}
+
+// LastReconciledAt returns the value of the "last_reconciled_at" field in the mutation.
+func (m *CodexThreadControlMutation) LastReconciledAt() (r time.Time, exists bool) {
+	v := m.last_reconciled_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastReconciledAt returns the old "last_reconciled_at" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexThreadControlMutation) OldLastReconciledAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastReconciledAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastReconciledAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastReconciledAt: %w", err)
+	}
+	return oldValue.LastReconciledAt, nil
+}
+
+// ClearLastReconciledAt clears the value of the "last_reconciled_at" field.
+func (m *CodexThreadControlMutation) ClearLastReconciledAt() {
+	m.last_reconciled_at = nil
+	m.clearedFields[codexthreadcontrol.FieldLastReconciledAt] = struct{}{}
+}
+
+// LastReconciledAtCleared returns if the "last_reconciled_at" field was cleared in this mutation.
+func (m *CodexThreadControlMutation) LastReconciledAtCleared() bool {
+	_, ok := m.clearedFields[codexthreadcontrol.FieldLastReconciledAt]
+	return ok
+}
+
+// ResetLastReconciledAt resets all changes to the "last_reconciled_at" field.
+func (m *CodexThreadControlMutation) ResetLastReconciledAt() {
+	m.last_reconciled_at = nil
+	delete(m.clearedFields, codexthreadcontrol.FieldLastReconciledAt)
+}
+
+// SetNextWakeupAt sets the "next_wakeup_at" field.
+func (m *CodexThreadControlMutation) SetNextWakeupAt(t time.Time) {
+	m.next_wakeup_at = &t
+}
+
+// NextWakeupAt returns the value of the "next_wakeup_at" field in the mutation.
+func (m *CodexThreadControlMutation) NextWakeupAt() (r time.Time, exists bool) {
+	v := m.next_wakeup_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNextWakeupAt returns the old "next_wakeup_at" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexThreadControlMutation) OldNextWakeupAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNextWakeupAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNextWakeupAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNextWakeupAt: %w", err)
+	}
+	return oldValue.NextWakeupAt, nil
+}
+
+// ClearNextWakeupAt clears the value of the "next_wakeup_at" field.
+func (m *CodexThreadControlMutation) ClearNextWakeupAt() {
+	m.next_wakeup_at = nil
+	m.clearedFields[codexthreadcontrol.FieldNextWakeupAt] = struct{}{}
+}
+
+// NextWakeupAtCleared returns if the "next_wakeup_at" field was cleared in this mutation.
+func (m *CodexThreadControlMutation) NextWakeupAtCleared() bool {
+	_, ok := m.clearedFields[codexthreadcontrol.FieldNextWakeupAt]
+	return ok
+}
+
+// ResetNextWakeupAt resets all changes to the "next_wakeup_at" field.
+func (m *CodexThreadControlMutation) ResetNextWakeupAt() {
+	m.next_wakeup_at = nil
+	delete(m.clearedFields, codexthreadcontrol.FieldNextWakeupAt)
 }
 
 // SetWorkerID sets the "worker_id" field.
-func (m *JobIntentMutation) SetWorkerID(s string) {
+func (m *CodexThreadControlMutation) SetWorkerID(s string) {
 	m.worker_id = &s
 }
 
 // WorkerID returns the value of the "worker_id" field in the mutation.
-func (m *JobIntentMutation) WorkerID() (r string, exists bool) {
+func (m *CodexThreadControlMutation) WorkerID() (r string, exists bool) {
 	v := m.worker_id
 	if v == nil {
 		return
@@ -4676,10 +3773,10 @@ func (m *JobIntentMutation) WorkerID() (r string, exists bool) {
 	return *v, true
 }
 
-// OldWorkerID returns the old "worker_id" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
+// OldWorkerID returns the old "worker_id" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldWorkerID(ctx context.Context) (v *string, err error) {
+func (m *CodexThreadControlMutation) OldWorkerID(ctx context.Context) (v *string, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldWorkerID is only allowed on UpdateOne operations")
 	}
@@ -4694,79 +3791,177 @@ func (m *JobIntentMutation) OldWorkerID(ctx context.Context) (v *string, err err
 }
 
 // ClearWorkerID clears the value of the "worker_id" field.
-func (m *JobIntentMutation) ClearWorkerID() {
+func (m *CodexThreadControlMutation) ClearWorkerID() {
 	m.worker_id = nil
-	m.clearedFields[jobintent.FieldWorkerID] = struct{}{}
+	m.clearedFields[codexthreadcontrol.FieldWorkerID] = struct{}{}
 }
 
 // WorkerIDCleared returns if the "worker_id" field was cleared in this mutation.
-func (m *JobIntentMutation) WorkerIDCleared() bool {
-	_, ok := m.clearedFields[jobintent.FieldWorkerID]
+func (m *CodexThreadControlMutation) WorkerIDCleared() bool {
+	_, ok := m.clearedFields[codexthreadcontrol.FieldWorkerID]
 	return ok
 }
 
 // ResetWorkerID resets all changes to the "worker_id" field.
-func (m *JobIntentMutation) ResetWorkerID() {
+func (m *CodexThreadControlMutation) ResetWorkerID() {
 	m.worker_id = nil
-	delete(m.clearedFields, jobintent.FieldWorkerID)
+	delete(m.clearedFields, codexthreadcontrol.FieldWorkerID)
 }
 
-// SetLastError sets the "last_error" field.
-func (m *JobIntentMutation) SetLastError(s string) {
-	m.last_error = &s
+// SetLeaseToken sets the "lease_token" field.
+func (m *CodexThreadControlMutation) SetLeaseToken(s string) {
+	m.lease_token = &s
 }
 
-// LastError returns the value of the "last_error" field in the mutation.
-func (m *JobIntentMutation) LastError() (r string, exists bool) {
-	v := m.last_error
+// LeaseToken returns the value of the "lease_token" field in the mutation.
+func (m *CodexThreadControlMutation) LeaseToken() (r string, exists bool) {
+	v := m.lease_token
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldLastError returns the old "last_error" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
+// OldLeaseToken returns the old "lease_token" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldLastError(ctx context.Context) (v *string, err error) {
+func (m *CodexThreadControlMutation) OldLeaseToken(ctx context.Context) (v *string, err error) {
 	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldLastError is only allowed on UpdateOne operations")
+		return v, errors.New("OldLeaseToken is only allowed on UpdateOne operations")
 	}
 	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldLastError requires an ID field in the mutation")
+		return v, errors.New("OldLeaseToken requires an ID field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldLastError: %w", err)
+		return v, fmt.Errorf("querying old value for OldLeaseToken: %w", err)
 	}
-	return oldValue.LastError, nil
+	return oldValue.LeaseToken, nil
 }
 
-// ClearLastError clears the value of the "last_error" field.
-func (m *JobIntentMutation) ClearLastError() {
-	m.last_error = nil
-	m.clearedFields[jobintent.FieldLastError] = struct{}{}
+// ClearLeaseToken clears the value of the "lease_token" field.
+func (m *CodexThreadControlMutation) ClearLeaseToken() {
+	m.lease_token = nil
+	m.clearedFields[codexthreadcontrol.FieldLeaseToken] = struct{}{}
 }
 
-// LastErrorCleared returns if the "last_error" field was cleared in this mutation.
-func (m *JobIntentMutation) LastErrorCleared() bool {
-	_, ok := m.clearedFields[jobintent.FieldLastError]
+// LeaseTokenCleared returns if the "lease_token" field was cleared in this mutation.
+func (m *CodexThreadControlMutation) LeaseTokenCleared() bool {
+	_, ok := m.clearedFields[codexthreadcontrol.FieldLeaseToken]
 	return ok
 }
 
-// ResetLastError resets all changes to the "last_error" field.
-func (m *JobIntentMutation) ResetLastError() {
-	m.last_error = nil
-	delete(m.clearedFields, jobintent.FieldLastError)
+// ResetLeaseToken resets all changes to the "lease_token" field.
+func (m *CodexThreadControlMutation) ResetLeaseToken() {
+	m.lease_token = nil
+	delete(m.clearedFields, codexthreadcontrol.FieldLeaseToken)
+}
+
+// SetLastErrorCode sets the "last_error_code" field.
+func (m *CodexThreadControlMutation) SetLastErrorCode(s string) {
+	m.last_error_code = &s
+}
+
+// LastErrorCode returns the value of the "last_error_code" field in the mutation.
+func (m *CodexThreadControlMutation) LastErrorCode() (r string, exists bool) {
+	v := m.last_error_code
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastErrorCode returns the old "last_error_code" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexThreadControlMutation) OldLastErrorCode(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastErrorCode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastErrorCode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastErrorCode: %w", err)
+	}
+	return oldValue.LastErrorCode, nil
+}
+
+// ClearLastErrorCode clears the value of the "last_error_code" field.
+func (m *CodexThreadControlMutation) ClearLastErrorCode() {
+	m.last_error_code = nil
+	m.clearedFields[codexthreadcontrol.FieldLastErrorCode] = struct{}{}
+}
+
+// LastErrorCodeCleared returns if the "last_error_code" field was cleared in this mutation.
+func (m *CodexThreadControlMutation) LastErrorCodeCleared() bool {
+	_, ok := m.clearedFields[codexthreadcontrol.FieldLastErrorCode]
+	return ok
+}
+
+// ResetLastErrorCode resets all changes to the "last_error_code" field.
+func (m *CodexThreadControlMutation) ResetLastErrorCode() {
+	m.last_error_code = nil
+	delete(m.clearedFields, codexthreadcontrol.FieldLastErrorCode)
+}
+
+// SetLastErrorMessage sets the "last_error_message" field.
+func (m *CodexThreadControlMutation) SetLastErrorMessage(s string) {
+	m.last_error_message = &s
+}
+
+// LastErrorMessage returns the value of the "last_error_message" field in the mutation.
+func (m *CodexThreadControlMutation) LastErrorMessage() (r string, exists bool) {
+	v := m.last_error_message
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastErrorMessage returns the old "last_error_message" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexThreadControlMutation) OldLastErrorMessage(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastErrorMessage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastErrorMessage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastErrorMessage: %w", err)
+	}
+	return oldValue.LastErrorMessage, nil
+}
+
+// ClearLastErrorMessage clears the value of the "last_error_message" field.
+func (m *CodexThreadControlMutation) ClearLastErrorMessage() {
+	m.last_error_message = nil
+	m.clearedFields[codexthreadcontrol.FieldLastErrorMessage] = struct{}{}
+}
+
+// LastErrorMessageCleared returns if the "last_error_message" field was cleared in this mutation.
+func (m *CodexThreadControlMutation) LastErrorMessageCleared() bool {
+	_, ok := m.clearedFields[codexthreadcontrol.FieldLastErrorMessage]
+	return ok
+}
+
+// ResetLastErrorMessage resets all changes to the "last_error_message" field.
+func (m *CodexThreadControlMutation) ResetLastErrorMessage() {
+	m.last_error_message = nil
+	delete(m.clearedFields, codexthreadcontrol.FieldLastErrorMessage)
 }
 
 // SetCreatedAt sets the "created_at" field.
-func (m *JobIntentMutation) SetCreatedAt(t time.Time) {
+func (m *CodexThreadControlMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
 }
 
 // CreatedAt returns the value of the "created_at" field in the mutation.
-func (m *JobIntentMutation) CreatedAt() (r time.Time, exists bool) {
+func (m *CodexThreadControlMutation) CreatedAt() (r time.Time, exists bool) {
 	v := m.created_at
 	if v == nil {
 		return
@@ -4774,10 +3969,10 @@ func (m *JobIntentMutation) CreatedAt() (r time.Time, exists bool) {
 	return *v, true
 }
 
-// OldCreatedAt returns the old "created_at" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
+// OldCreatedAt returns the old "created_at" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+func (m *CodexThreadControlMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
 	}
@@ -4792,17 +3987,17 @@ func (m *JobIntentMutation) OldCreatedAt(ctx context.Context) (v time.Time, err 
 }
 
 // ResetCreatedAt resets all changes to the "created_at" field.
-func (m *JobIntentMutation) ResetCreatedAt() {
+func (m *CodexThreadControlMutation) ResetCreatedAt() {
 	m.created_at = nil
 }
 
 // SetUpdatedAt sets the "updated_at" field.
-func (m *JobIntentMutation) SetUpdatedAt(t time.Time) {
+func (m *CodexThreadControlMutation) SetUpdatedAt(t time.Time) {
 	m.updated_at = &t
 }
 
 // UpdatedAt returns the value of the "updated_at" field in the mutation.
-func (m *JobIntentMutation) UpdatedAt() (r time.Time, exists bool) {
+func (m *CodexThreadControlMutation) UpdatedAt() (r time.Time, exists bool) {
 	v := m.updated_at
 	if v == nil {
 		return
@@ -4810,10 +4005,10 @@ func (m *JobIntentMutation) UpdatedAt() (r time.Time, exists bool) {
 	return *v, true
 }
 
-// OldUpdatedAt returns the old "updated_at" field's value of the JobIntent entity.
-// If the JobIntent object wasn't provided to the builder, the object is fetched from the database.
+// OldUpdatedAt returns the old "updated_at" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *JobIntentMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+func (m *CodexThreadControlMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
 	}
@@ -4828,19 +4023,19 @@ func (m *JobIntentMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err 
 }
 
 // ResetUpdatedAt resets all changes to the "updated_at" field.
-func (m *JobIntentMutation) ResetUpdatedAt() {
+func (m *CodexThreadControlMutation) ResetUpdatedAt() {
 	m.updated_at = nil
 }
 
-// Where appends a list predicates to the JobIntentMutation builder.
-func (m *JobIntentMutation) Where(ps ...predicate.JobIntent) {
+// Where appends a list predicates to the CodexThreadControlMutation builder.
+func (m *CodexThreadControlMutation) Where(ps ...predicate.CodexThreadControl) {
 	m.predicates = append(m.predicates, ps...)
 }
 
-// WhereP appends storage-level predicates to the JobIntentMutation builder. Using this method,
+// WhereP appends storage-level predicates to the CodexThreadControlMutation builder. Using this method,
 // users can use type-assertion to append predicates that do not depend on any generated package.
-func (m *JobIntentMutation) WhereP(ps ...func(*sql.Selector)) {
-	p := make([]predicate.JobIntent, len(ps))
+func (m *CodexThreadControlMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.CodexThreadControl, len(ps))
 	for i := range ps {
 		p[i] = ps[i]
 	}
@@ -4848,96 +4043,108 @@ func (m *JobIntentMutation) WhereP(ps ...func(*sql.Selector)) {
 }
 
 // Op returns the operation name.
-func (m *JobIntentMutation) Op() Op {
+func (m *CodexThreadControlMutation) Op() Op {
 	return m.op
 }
 
 // SetOp allows setting the mutation operation.
-func (m *JobIntentMutation) SetOp(op Op) {
+func (m *CodexThreadControlMutation) SetOp(op Op) {
 	m.op = op
 }
 
-// Type returns the node type of this mutation (JobIntent).
-func (m *JobIntentMutation) Type() string {
+// Type returns the node type of this mutation (CodexThreadControl).
+func (m *CodexThreadControlMutation) Type() string {
 	return m.typ
 }
 
 // Fields returns all fields that were changed during this mutation. Note that in
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
-func (m *JobIntentMutation) Fields() []string {
-	fields := make([]string, 0, 24)
+func (m *CodexThreadControlMutation) Fields() []string {
+	fields := make([]string, 0, 28)
+	if m.source_type != nil {
+		fields = append(fields, codexthreadcontrol.FieldSourceType)
+	}
 	if m.work_item_id != nil {
-		fields = append(fields, jobintent.FieldWorkItemID)
+		fields = append(fields, codexthreadcontrol.FieldWorkItemID)
+	}
+	if m.discord_conversation_id != nil {
+		fields = append(fields, codexthreadcontrol.FieldDiscordConversationID)
 	}
 	if m.repository_id != nil {
-		fields = append(fields, jobintent.FieldRepositoryID)
+		fields = append(fields, codexthreadcontrol.FieldRepositoryID)
 	}
 	if m.agent_profile_id != nil {
-		fields = append(fields, jobintent.FieldAgentProfileID)
+		fields = append(fields, codexthreadcontrol.FieldAgentProfileID)
 	}
-	if m.idempotency_key != nil {
-		fields = append(fields, jobintent.FieldIdempotencyKey)
+	if m.context_version != nil {
+		fields = append(fields, codexthreadcontrol.FieldContextVersion)
+	}
+	if m.external_thread_id != nil {
+		fields = append(fields, codexthreadcontrol.FieldExternalThreadID)
+	}
+	if m.provider != nil {
+		fields = append(fields, codexthreadcontrol.FieldProvider)
+	}
+	if m.codex_home_key != nil {
+		fields = append(fields, codexthreadcontrol.FieldCodexHomeKey)
+	}
+	if m.provider_signature != nil {
+		fields = append(fields, codexthreadcontrol.FieldProviderSignature)
+	}
+	if m.thread_generation != nil {
+		fields = append(fields, codexthreadcontrol.FieldThreadGeneration)
 	}
 	if m.status != nil {
-		fields = append(fields, jobintent.FieldStatus)
+		fields = append(fields, codexthreadcontrol.FieldStatus)
 	}
-	if m.instruction != nil {
-		fields = append(fields, jobintent.FieldInstruction)
+	if m.next_sequence_no != nil {
+		fields = append(fields, codexthreadcontrol.FieldNextSequenceNo)
 	}
-	if m.skills != nil {
-		fields = append(fields, jobintent.FieldSkills)
+	if m.active_intent_id != nil {
+		fields = append(fields, codexthreadcontrol.FieldActiveIntentID)
 	}
-	if m.allowed_tools != nil {
-		fields = append(fields, jobintent.FieldAllowedTools)
+	if m.remote_status != nil {
+		fields = append(fields, codexthreadcontrol.FieldRemoteStatus)
 	}
-	if m.dangerous_actions != nil {
-		fields = append(fields, jobintent.FieldDangerousActions)
+	if m.active_codex_turn_id != nil {
+		fields = append(fields, codexthreadcontrol.FieldActiveCodexTurnID)
 	}
-	if m.trigger_rule_id != nil {
-		fields = append(fields, jobintent.FieldTriggerRuleID)
-	}
-	if m.trigger_evidence != nil {
-		fields = append(fields, jobintent.FieldTriggerEvidence)
-	}
-	if m.actor_login != nil {
-		fields = append(fields, jobintent.FieldActorLogin)
-	}
-	if m.actor_permission != nil {
-		fields = append(fields, jobintent.FieldActorPermission)
-	}
-	if m.priority != nil {
-		fields = append(fields, jobintent.FieldPriority)
-	}
-	if m.available_at != nil {
-		fields = append(fields, jobintent.FieldAvailableAt)
-	}
-	if m.attempt_count != nil {
-		fields = append(fields, jobintent.FieldAttemptCount)
-	}
-	if m.max_attempts != nil {
-		fields = append(fields, jobintent.FieldMaxAttempts)
-	}
-	if m.lease_token != nil {
-		fields = append(fields, jobintent.FieldLeaseToken)
+	if m.active_client_id != nil {
+		fields = append(fields, codexthreadcontrol.FieldActiveClientID)
 	}
 	if m.lease_epoch != nil {
-		fields = append(fields, jobintent.FieldLeaseEpoch)
+		fields = append(fields, codexthreadcontrol.FieldLeaseEpoch)
 	}
 	if m.lease_expires_at != nil {
-		fields = append(fields, jobintent.FieldLeaseExpiresAt)
+		fields = append(fields, codexthreadcontrol.FieldLeaseExpiresAt)
+	}
+	if m.heartbeat_at != nil {
+		fields = append(fields, codexthreadcontrol.FieldHeartbeatAt)
+	}
+	if m.last_reconciled_at != nil {
+		fields = append(fields, codexthreadcontrol.FieldLastReconciledAt)
+	}
+	if m.next_wakeup_at != nil {
+		fields = append(fields, codexthreadcontrol.FieldNextWakeupAt)
 	}
 	if m.worker_id != nil {
-		fields = append(fields, jobintent.FieldWorkerID)
+		fields = append(fields, codexthreadcontrol.FieldWorkerID)
 	}
-	if m.last_error != nil {
-		fields = append(fields, jobintent.FieldLastError)
+	if m.lease_token != nil {
+		fields = append(fields, codexthreadcontrol.FieldLeaseToken)
+	}
+	if m.last_error_code != nil {
+		fields = append(fields, codexthreadcontrol.FieldLastErrorCode)
+	}
+	if m.last_error_message != nil {
+		fields = append(fields, codexthreadcontrol.FieldLastErrorMessage)
 	}
 	if m.created_at != nil {
-		fields = append(fields, jobintent.FieldCreatedAt)
+		fields = append(fields, codexthreadcontrol.FieldCreatedAt)
 	}
 	if m.updated_at != nil {
-		fields = append(fields, jobintent.FieldUpdatedAt)
+		fields = append(fields, codexthreadcontrol.FieldUpdatedAt)
 	}
 	return fields
 }
@@ -4945,55 +4152,63 @@ func (m *JobIntentMutation) Fields() []string {
 // Field returns the value of a field with the given name. The second boolean
 // return value indicates that this field was not set, or was not defined in the
 // schema.
-func (m *JobIntentMutation) Field(name string) (ent.Value, bool) {
+func (m *CodexThreadControlMutation) Field(name string) (ent.Value, bool) {
 	switch name {
-	case jobintent.FieldWorkItemID:
+	case codexthreadcontrol.FieldSourceType:
+		return m.SourceType()
+	case codexthreadcontrol.FieldWorkItemID:
 		return m.WorkItemID()
-	case jobintent.FieldRepositoryID:
+	case codexthreadcontrol.FieldDiscordConversationID:
+		return m.DiscordConversationID()
+	case codexthreadcontrol.FieldRepositoryID:
 		return m.RepositoryID()
-	case jobintent.FieldAgentProfileID:
+	case codexthreadcontrol.FieldAgentProfileID:
 		return m.AgentProfileID()
-	case jobintent.FieldIdempotencyKey:
-		return m.IdempotencyKey()
-	case jobintent.FieldStatus:
+	case codexthreadcontrol.FieldContextVersion:
+		return m.ContextVersion()
+	case codexthreadcontrol.FieldExternalThreadID:
+		return m.ExternalThreadID()
+	case codexthreadcontrol.FieldProvider:
+		return m.Provider()
+	case codexthreadcontrol.FieldCodexHomeKey:
+		return m.CodexHomeKey()
+	case codexthreadcontrol.FieldProviderSignature:
+		return m.ProviderSignature()
+	case codexthreadcontrol.FieldThreadGeneration:
+		return m.ThreadGeneration()
+	case codexthreadcontrol.FieldStatus:
 		return m.Status()
-	case jobintent.FieldInstruction:
-		return m.Instruction()
-	case jobintent.FieldSkills:
-		return m.Skills()
-	case jobintent.FieldAllowedTools:
-		return m.AllowedTools()
-	case jobintent.FieldDangerousActions:
-		return m.DangerousActions()
-	case jobintent.FieldTriggerRuleID:
-		return m.TriggerRuleID()
-	case jobintent.FieldTriggerEvidence:
-		return m.TriggerEvidence()
-	case jobintent.FieldActorLogin:
-		return m.ActorLogin()
-	case jobintent.FieldActorPermission:
-		return m.ActorPermission()
-	case jobintent.FieldPriority:
-		return m.Priority()
-	case jobintent.FieldAvailableAt:
-		return m.AvailableAt()
-	case jobintent.FieldAttemptCount:
-		return m.AttemptCount()
-	case jobintent.FieldMaxAttempts:
-		return m.MaxAttempts()
-	case jobintent.FieldLeaseToken:
-		return m.LeaseToken()
-	case jobintent.FieldLeaseEpoch:
+	case codexthreadcontrol.FieldNextSequenceNo:
+		return m.NextSequenceNo()
+	case codexthreadcontrol.FieldActiveIntentID:
+		return m.ActiveIntentID()
+	case codexthreadcontrol.FieldRemoteStatus:
+		return m.RemoteStatus()
+	case codexthreadcontrol.FieldActiveCodexTurnID:
+		return m.ActiveCodexTurnID()
+	case codexthreadcontrol.FieldActiveClientID:
+		return m.ActiveClientID()
+	case codexthreadcontrol.FieldLeaseEpoch:
 		return m.LeaseEpoch()
-	case jobintent.FieldLeaseExpiresAt:
+	case codexthreadcontrol.FieldLeaseExpiresAt:
 		return m.LeaseExpiresAt()
-	case jobintent.FieldWorkerID:
+	case codexthreadcontrol.FieldHeartbeatAt:
+		return m.HeartbeatAt()
+	case codexthreadcontrol.FieldLastReconciledAt:
+		return m.LastReconciledAt()
+	case codexthreadcontrol.FieldNextWakeupAt:
+		return m.NextWakeupAt()
+	case codexthreadcontrol.FieldWorkerID:
 		return m.WorkerID()
-	case jobintent.FieldLastError:
-		return m.LastError()
-	case jobintent.FieldCreatedAt:
+	case codexthreadcontrol.FieldLeaseToken:
+		return m.LeaseToken()
+	case codexthreadcontrol.FieldLastErrorCode:
+		return m.LastErrorCode()
+	case codexthreadcontrol.FieldLastErrorMessage:
+		return m.LastErrorMessage()
+	case codexthreadcontrol.FieldCreatedAt:
 		return m.CreatedAt()
-	case jobintent.FieldUpdatedAt:
+	case codexthreadcontrol.FieldUpdatedAt:
 		return m.UpdatedAt()
 	}
 	return nil, false
@@ -5002,227 +4217,263 @@ func (m *JobIntentMutation) Field(name string) (ent.Value, bool) {
 // OldField returns the old value of the field from the database. An error is
 // returned if the mutation operation is not UpdateOne, or the query to the
 // database failed.
-func (m *JobIntentMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+func (m *CodexThreadControlMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
 	switch name {
-	case jobintent.FieldWorkItemID:
+	case codexthreadcontrol.FieldSourceType:
+		return m.OldSourceType(ctx)
+	case codexthreadcontrol.FieldWorkItemID:
 		return m.OldWorkItemID(ctx)
-	case jobintent.FieldRepositoryID:
+	case codexthreadcontrol.FieldDiscordConversationID:
+		return m.OldDiscordConversationID(ctx)
+	case codexthreadcontrol.FieldRepositoryID:
 		return m.OldRepositoryID(ctx)
-	case jobintent.FieldAgentProfileID:
+	case codexthreadcontrol.FieldAgentProfileID:
 		return m.OldAgentProfileID(ctx)
-	case jobintent.FieldIdempotencyKey:
-		return m.OldIdempotencyKey(ctx)
-	case jobintent.FieldStatus:
+	case codexthreadcontrol.FieldContextVersion:
+		return m.OldContextVersion(ctx)
+	case codexthreadcontrol.FieldExternalThreadID:
+		return m.OldExternalThreadID(ctx)
+	case codexthreadcontrol.FieldProvider:
+		return m.OldProvider(ctx)
+	case codexthreadcontrol.FieldCodexHomeKey:
+		return m.OldCodexHomeKey(ctx)
+	case codexthreadcontrol.FieldProviderSignature:
+		return m.OldProviderSignature(ctx)
+	case codexthreadcontrol.FieldThreadGeneration:
+		return m.OldThreadGeneration(ctx)
+	case codexthreadcontrol.FieldStatus:
 		return m.OldStatus(ctx)
-	case jobintent.FieldInstruction:
-		return m.OldInstruction(ctx)
-	case jobintent.FieldSkills:
-		return m.OldSkills(ctx)
-	case jobintent.FieldAllowedTools:
-		return m.OldAllowedTools(ctx)
-	case jobintent.FieldDangerousActions:
-		return m.OldDangerousActions(ctx)
-	case jobintent.FieldTriggerRuleID:
-		return m.OldTriggerRuleID(ctx)
-	case jobintent.FieldTriggerEvidence:
-		return m.OldTriggerEvidence(ctx)
-	case jobintent.FieldActorLogin:
-		return m.OldActorLogin(ctx)
-	case jobintent.FieldActorPermission:
-		return m.OldActorPermission(ctx)
-	case jobintent.FieldPriority:
-		return m.OldPriority(ctx)
-	case jobintent.FieldAvailableAt:
-		return m.OldAvailableAt(ctx)
-	case jobintent.FieldAttemptCount:
-		return m.OldAttemptCount(ctx)
-	case jobintent.FieldMaxAttempts:
-		return m.OldMaxAttempts(ctx)
-	case jobintent.FieldLeaseToken:
-		return m.OldLeaseToken(ctx)
-	case jobintent.FieldLeaseEpoch:
+	case codexthreadcontrol.FieldNextSequenceNo:
+		return m.OldNextSequenceNo(ctx)
+	case codexthreadcontrol.FieldActiveIntentID:
+		return m.OldActiveIntentID(ctx)
+	case codexthreadcontrol.FieldRemoteStatus:
+		return m.OldRemoteStatus(ctx)
+	case codexthreadcontrol.FieldActiveCodexTurnID:
+		return m.OldActiveCodexTurnID(ctx)
+	case codexthreadcontrol.FieldActiveClientID:
+		return m.OldActiveClientID(ctx)
+	case codexthreadcontrol.FieldLeaseEpoch:
 		return m.OldLeaseEpoch(ctx)
-	case jobintent.FieldLeaseExpiresAt:
+	case codexthreadcontrol.FieldLeaseExpiresAt:
 		return m.OldLeaseExpiresAt(ctx)
-	case jobintent.FieldWorkerID:
+	case codexthreadcontrol.FieldHeartbeatAt:
+		return m.OldHeartbeatAt(ctx)
+	case codexthreadcontrol.FieldLastReconciledAt:
+		return m.OldLastReconciledAt(ctx)
+	case codexthreadcontrol.FieldNextWakeupAt:
+		return m.OldNextWakeupAt(ctx)
+	case codexthreadcontrol.FieldWorkerID:
 		return m.OldWorkerID(ctx)
-	case jobintent.FieldLastError:
-		return m.OldLastError(ctx)
-	case jobintent.FieldCreatedAt:
+	case codexthreadcontrol.FieldLeaseToken:
+		return m.OldLeaseToken(ctx)
+	case codexthreadcontrol.FieldLastErrorCode:
+		return m.OldLastErrorCode(ctx)
+	case codexthreadcontrol.FieldLastErrorMessage:
+		return m.OldLastErrorMessage(ctx)
+	case codexthreadcontrol.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
-	case jobintent.FieldUpdatedAt:
+	case codexthreadcontrol.FieldUpdatedAt:
 		return m.OldUpdatedAt(ctx)
 	}
-	return nil, fmt.Errorf("unknown JobIntent field %s", name)
+	return nil, fmt.Errorf("unknown CodexThreadControl field %s", name)
 }
 
 // SetField sets the value of a field with the given name. It returns an error if
 // the field is not defined in the schema, or if the type mismatched the field
 // type.
-func (m *JobIntentMutation) SetField(name string, value ent.Value) error {
+func (m *CodexThreadControlMutation) SetField(name string, value ent.Value) error {
 	switch name {
-	case jobintent.FieldWorkItemID:
+	case codexthreadcontrol.FieldSourceType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSourceType(v)
+		return nil
+	case codexthreadcontrol.FieldWorkItemID:
 		v, ok := value.(uuid.UUID)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetWorkItemID(v)
 		return nil
-	case jobintent.FieldRepositoryID:
+	case codexthreadcontrol.FieldDiscordConversationID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDiscordConversationID(v)
+		return nil
+	case codexthreadcontrol.FieldRepositoryID:
 		v, ok := value.(uuid.UUID)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRepositoryID(v)
 		return nil
-	case jobintent.FieldAgentProfileID:
+	case codexthreadcontrol.FieldAgentProfileID:
 		v, ok := value.(uuid.UUID)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAgentProfileID(v)
 		return nil
-	case jobintent.FieldIdempotencyKey:
+	case codexthreadcontrol.FieldContextVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContextVersion(v)
+		return nil
+	case codexthreadcontrol.FieldExternalThreadID:
 		v, ok := value.(string)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.SetIdempotencyKey(v)
+		m.SetExternalThreadID(v)
 		return nil
-	case jobintent.FieldStatus:
+	case codexthreadcontrol.FieldProvider:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProvider(v)
+		return nil
+	case codexthreadcontrol.FieldCodexHomeKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCodexHomeKey(v)
+		return nil
+	case codexthreadcontrol.FieldProviderSignature:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProviderSignature(v)
+		return nil
+	case codexthreadcontrol.FieldThreadGeneration:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetThreadGeneration(v)
+		return nil
+	case codexthreadcontrol.FieldStatus:
 		v, ok := value.(string)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStatus(v)
 		return nil
-	case jobintent.FieldInstruction:
-		v, ok := value.(string)
+	case codexthreadcontrol.FieldNextSequenceNo:
+		v, ok := value.(int64)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.SetInstruction(v)
+		m.SetNextSequenceNo(v)
 		return nil
-	case jobintent.FieldSkills:
-		v, ok := value.([]string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetSkills(v)
-		return nil
-	case jobintent.FieldAllowedTools:
-		v, ok := value.([]string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetAllowedTools(v)
-		return nil
-	case jobintent.FieldDangerousActions:
-		v, ok := value.([]string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetDangerousActions(v)
-		return nil
-	case jobintent.FieldTriggerRuleID:
+	case codexthreadcontrol.FieldActiveIntentID:
 		v, ok := value.(uuid.UUID)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.SetTriggerRuleID(v)
+		m.SetActiveIntentID(v)
 		return nil
-	case jobintent.FieldTriggerEvidence:
-		v, ok := value.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetTriggerEvidence(v)
-		return nil
-	case jobintent.FieldActorLogin:
+	case codexthreadcontrol.FieldRemoteStatus:
 		v, ok := value.(string)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.SetActorLogin(v)
+		m.SetRemoteStatus(v)
 		return nil
-	case jobintent.FieldActorPermission:
+	case codexthreadcontrol.FieldActiveCodexTurnID:
 		v, ok := value.(string)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.SetActorPermission(v)
+		m.SetActiveCodexTurnID(v)
 		return nil
-	case jobintent.FieldPriority:
-		v, ok := value.(int)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetPriority(v)
-		return nil
-	case jobintent.FieldAvailableAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetAvailableAt(v)
-		return nil
-	case jobintent.FieldAttemptCount:
-		v, ok := value.(int)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetAttemptCount(v)
-		return nil
-	case jobintent.FieldMaxAttempts:
-		v, ok := value.(int)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetMaxAttempts(v)
-		return nil
-	case jobintent.FieldLeaseToken:
+	case codexthreadcontrol.FieldActiveClientID:
 		v, ok := value.(string)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.SetLeaseToken(v)
+		m.SetActiveClientID(v)
 		return nil
-	case jobintent.FieldLeaseEpoch:
+	case codexthreadcontrol.FieldLeaseEpoch:
 		v, ok := value.(int64)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetLeaseEpoch(v)
 		return nil
-	case jobintent.FieldLeaseExpiresAt:
+	case codexthreadcontrol.FieldLeaseExpiresAt:
 		v, ok := value.(time.Time)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetLeaseExpiresAt(v)
 		return nil
-	case jobintent.FieldWorkerID:
+	case codexthreadcontrol.FieldHeartbeatAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHeartbeatAt(v)
+		return nil
+	case codexthreadcontrol.FieldLastReconciledAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastReconciledAt(v)
+		return nil
+	case codexthreadcontrol.FieldNextWakeupAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNextWakeupAt(v)
+		return nil
+	case codexthreadcontrol.FieldWorkerID:
 		v, ok := value.(string)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetWorkerID(v)
 		return nil
-	case jobintent.FieldLastError:
+	case codexthreadcontrol.FieldLeaseToken:
 		v, ok := value.(string)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.SetLastError(v)
+		m.SetLeaseToken(v)
 		return nil
-	case jobintent.FieldCreatedAt:
+	case codexthreadcontrol.FieldLastErrorCode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastErrorCode(v)
+		return nil
+	case codexthreadcontrol.FieldLastErrorMessage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastErrorMessage(v)
+		return nil
+	case codexthreadcontrol.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCreatedAt(v)
 		return nil
-	case jobintent.FieldUpdatedAt:
+	case codexthreadcontrol.FieldUpdatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
@@ -5230,24 +4481,24 @@ func (m *JobIntentMutation) SetField(name string, value ent.Value) error {
 		m.SetUpdatedAt(v)
 		return nil
 	}
-	return fmt.Errorf("unknown JobIntent field %s", name)
+	return fmt.Errorf("unknown CodexThreadControl field %s", name)
 }
 
 // AddedFields returns all numeric fields that were incremented/decremented during
 // this mutation.
-func (m *JobIntentMutation) AddedFields() []string {
+func (m *CodexThreadControlMutation) AddedFields() []string {
 	var fields []string
-	if m.addpriority != nil {
-		fields = append(fields, jobintent.FieldPriority)
+	if m.addcontext_version != nil {
+		fields = append(fields, codexthreadcontrol.FieldContextVersion)
 	}
-	if m.addattempt_count != nil {
-		fields = append(fields, jobintent.FieldAttemptCount)
+	if m.addthread_generation != nil {
+		fields = append(fields, codexthreadcontrol.FieldThreadGeneration)
 	}
-	if m.addmax_attempts != nil {
-		fields = append(fields, jobintent.FieldMaxAttempts)
+	if m.addnext_sequence_no != nil {
+		fields = append(fields, codexthreadcontrol.FieldNextSequenceNo)
 	}
 	if m.addlease_epoch != nil {
-		fields = append(fields, jobintent.FieldLeaseEpoch)
+		fields = append(fields, codexthreadcontrol.FieldLeaseEpoch)
 	}
 	return fields
 }
@@ -5255,15 +4506,15 @@ func (m *JobIntentMutation) AddedFields() []string {
 // AddedField returns the numeric value that was incremented/decremented on a field
 // with the given name. The second boolean return value indicates that this field
 // was not set, or was not defined in the schema.
-func (m *JobIntentMutation) AddedField(name string) (ent.Value, bool) {
+func (m *CodexThreadControlMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
-	case jobintent.FieldPriority:
-		return m.AddedPriority()
-	case jobintent.FieldAttemptCount:
-		return m.AddedAttemptCount()
-	case jobintent.FieldMaxAttempts:
-		return m.AddedMaxAttempts()
-	case jobintent.FieldLeaseEpoch:
+	case codexthreadcontrol.FieldContextVersion:
+		return m.AddedContextVersion()
+	case codexthreadcontrol.FieldThreadGeneration:
+		return m.AddedThreadGeneration()
+	case codexthreadcontrol.FieldNextSequenceNo:
+		return m.AddedNextSequenceNo()
+	case codexthreadcontrol.FieldLeaseEpoch:
 		return m.AddedLeaseEpoch()
 	}
 	return nil, false
@@ -5272,30 +4523,30 @@ func (m *JobIntentMutation) AddedField(name string) (ent.Value, bool) {
 // AddField adds the value to the field with the given name. It returns an error if
 // the field is not defined in the schema, or if the type mismatched the field
 // type.
-func (m *JobIntentMutation) AddField(name string, value ent.Value) error {
+func (m *CodexThreadControlMutation) AddField(name string, value ent.Value) error {
 	switch name {
-	case jobintent.FieldPriority:
+	case codexthreadcontrol.FieldContextVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddContextVersion(v)
+		return nil
+	case codexthreadcontrol.FieldThreadGeneration:
 		v, ok := value.(int)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.AddPriority(v)
+		m.AddThreadGeneration(v)
 		return nil
-	case jobintent.FieldAttemptCount:
-		v, ok := value.(int)
+	case codexthreadcontrol.FieldNextSequenceNo:
+		v, ok := value.(int64)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.AddAttemptCount(v)
+		m.AddNextSequenceNo(v)
 		return nil
-	case jobintent.FieldMaxAttempts:
-		v, ok := value.(int)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddMaxAttempts(v)
-		return nil
-	case jobintent.FieldLeaseEpoch:
+	case codexthreadcontrol.FieldLeaseEpoch:
 		v, ok := value.(int64)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
@@ -5303,187 +4554,5552 @@ func (m *JobIntentMutation) AddField(name string, value ent.Value) error {
 		m.AddLeaseEpoch(v)
 		return nil
 	}
-	return fmt.Errorf("unknown JobIntent numeric field %s", name)
+	return fmt.Errorf("unknown CodexThreadControl numeric field %s", name)
 }
 
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
-func (m *JobIntentMutation) ClearedFields() []string {
+func (m *CodexThreadControlMutation) ClearedFields() []string {
 	var fields []string
-	if m.FieldCleared(jobintent.FieldTriggerRuleID) {
-		fields = append(fields, jobintent.FieldTriggerRuleID)
+	if m.FieldCleared(codexthreadcontrol.FieldWorkItemID) {
+		fields = append(fields, codexthreadcontrol.FieldWorkItemID)
 	}
-	if m.FieldCleared(jobintent.FieldLeaseToken) {
-		fields = append(fields, jobintent.FieldLeaseToken)
+	if m.FieldCleared(codexthreadcontrol.FieldDiscordConversationID) {
+		fields = append(fields, codexthreadcontrol.FieldDiscordConversationID)
 	}
-	if m.FieldCleared(jobintent.FieldLeaseExpiresAt) {
-		fields = append(fields, jobintent.FieldLeaseExpiresAt)
+	if m.FieldCleared(codexthreadcontrol.FieldRepositoryID) {
+		fields = append(fields, codexthreadcontrol.FieldRepositoryID)
 	}
-	if m.FieldCleared(jobintent.FieldWorkerID) {
-		fields = append(fields, jobintent.FieldWorkerID)
+	if m.FieldCleared(codexthreadcontrol.FieldExternalThreadID) {
+		fields = append(fields, codexthreadcontrol.FieldExternalThreadID)
 	}
-	if m.FieldCleared(jobintent.FieldLastError) {
-		fields = append(fields, jobintent.FieldLastError)
+	if m.FieldCleared(codexthreadcontrol.FieldCodexHomeKey) {
+		fields = append(fields, codexthreadcontrol.FieldCodexHomeKey)
+	}
+	if m.FieldCleared(codexthreadcontrol.FieldProviderSignature) {
+		fields = append(fields, codexthreadcontrol.FieldProviderSignature)
+	}
+	if m.FieldCleared(codexthreadcontrol.FieldActiveIntentID) {
+		fields = append(fields, codexthreadcontrol.FieldActiveIntentID)
+	}
+	if m.FieldCleared(codexthreadcontrol.FieldRemoteStatus) {
+		fields = append(fields, codexthreadcontrol.FieldRemoteStatus)
+	}
+	if m.FieldCleared(codexthreadcontrol.FieldActiveCodexTurnID) {
+		fields = append(fields, codexthreadcontrol.FieldActiveCodexTurnID)
+	}
+	if m.FieldCleared(codexthreadcontrol.FieldActiveClientID) {
+		fields = append(fields, codexthreadcontrol.FieldActiveClientID)
+	}
+	if m.FieldCleared(codexthreadcontrol.FieldLeaseExpiresAt) {
+		fields = append(fields, codexthreadcontrol.FieldLeaseExpiresAt)
+	}
+	if m.FieldCleared(codexthreadcontrol.FieldHeartbeatAt) {
+		fields = append(fields, codexthreadcontrol.FieldHeartbeatAt)
+	}
+	if m.FieldCleared(codexthreadcontrol.FieldLastReconciledAt) {
+		fields = append(fields, codexthreadcontrol.FieldLastReconciledAt)
+	}
+	if m.FieldCleared(codexthreadcontrol.FieldNextWakeupAt) {
+		fields = append(fields, codexthreadcontrol.FieldNextWakeupAt)
+	}
+	if m.FieldCleared(codexthreadcontrol.FieldWorkerID) {
+		fields = append(fields, codexthreadcontrol.FieldWorkerID)
+	}
+	if m.FieldCleared(codexthreadcontrol.FieldLeaseToken) {
+		fields = append(fields, codexthreadcontrol.FieldLeaseToken)
+	}
+	if m.FieldCleared(codexthreadcontrol.FieldLastErrorCode) {
+		fields = append(fields, codexthreadcontrol.FieldLastErrorCode)
+	}
+	if m.FieldCleared(codexthreadcontrol.FieldLastErrorMessage) {
+		fields = append(fields, codexthreadcontrol.FieldLastErrorMessage)
 	}
 	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
 // cleared in this mutation.
-func (m *JobIntentMutation) FieldCleared(name string) bool {
+func (m *CodexThreadControlMutation) FieldCleared(name string) bool {
 	_, ok := m.clearedFields[name]
 	return ok
 }
 
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
-func (m *JobIntentMutation) ClearField(name string) error {
+func (m *CodexThreadControlMutation) ClearField(name string) error {
 	switch name {
-	case jobintent.FieldTriggerRuleID:
-		m.ClearTriggerRuleID()
+	case codexthreadcontrol.FieldWorkItemID:
+		m.ClearWorkItemID()
 		return nil
-	case jobintent.FieldLeaseToken:
-		m.ClearLeaseToken()
+	case codexthreadcontrol.FieldDiscordConversationID:
+		m.ClearDiscordConversationID()
 		return nil
-	case jobintent.FieldLeaseExpiresAt:
+	case codexthreadcontrol.FieldRepositoryID:
+		m.ClearRepositoryID()
+		return nil
+	case codexthreadcontrol.FieldExternalThreadID:
+		m.ClearExternalThreadID()
+		return nil
+	case codexthreadcontrol.FieldCodexHomeKey:
+		m.ClearCodexHomeKey()
+		return nil
+	case codexthreadcontrol.FieldProviderSignature:
+		m.ClearProviderSignature()
+		return nil
+	case codexthreadcontrol.FieldActiveIntentID:
+		m.ClearActiveIntentID()
+		return nil
+	case codexthreadcontrol.FieldRemoteStatus:
+		m.ClearRemoteStatus()
+		return nil
+	case codexthreadcontrol.FieldActiveCodexTurnID:
+		m.ClearActiveCodexTurnID()
+		return nil
+	case codexthreadcontrol.FieldActiveClientID:
+		m.ClearActiveClientID()
+		return nil
+	case codexthreadcontrol.FieldLeaseExpiresAt:
 		m.ClearLeaseExpiresAt()
 		return nil
-	case jobintent.FieldWorkerID:
+	case codexthreadcontrol.FieldHeartbeatAt:
+		m.ClearHeartbeatAt()
+		return nil
+	case codexthreadcontrol.FieldLastReconciledAt:
+		m.ClearLastReconciledAt()
+		return nil
+	case codexthreadcontrol.FieldNextWakeupAt:
+		m.ClearNextWakeupAt()
+		return nil
+	case codexthreadcontrol.FieldWorkerID:
 		m.ClearWorkerID()
 		return nil
-	case jobintent.FieldLastError:
-		m.ClearLastError()
+	case codexthreadcontrol.FieldLeaseToken:
+		m.ClearLeaseToken()
+		return nil
+	case codexthreadcontrol.FieldLastErrorCode:
+		m.ClearLastErrorCode()
+		return nil
+	case codexthreadcontrol.FieldLastErrorMessage:
+		m.ClearLastErrorMessage()
 		return nil
 	}
-	return fmt.Errorf("unknown JobIntent nullable field %s", name)
+	return fmt.Errorf("unknown CodexThreadControl nullable field %s", name)
 }
 
 // ResetField resets all changes in the mutation for the field with the given name.
 // It returns an error if the field is not defined in the schema.
-func (m *JobIntentMutation) ResetField(name string) error {
+func (m *CodexThreadControlMutation) ResetField(name string) error {
 	switch name {
-	case jobintent.FieldWorkItemID:
+	case codexthreadcontrol.FieldSourceType:
+		m.ResetSourceType()
+		return nil
+	case codexthreadcontrol.FieldWorkItemID:
 		m.ResetWorkItemID()
 		return nil
-	case jobintent.FieldRepositoryID:
+	case codexthreadcontrol.FieldDiscordConversationID:
+		m.ResetDiscordConversationID()
+		return nil
+	case codexthreadcontrol.FieldRepositoryID:
 		m.ResetRepositoryID()
 		return nil
-	case jobintent.FieldAgentProfileID:
+	case codexthreadcontrol.FieldAgentProfileID:
 		m.ResetAgentProfileID()
 		return nil
-	case jobintent.FieldIdempotencyKey:
-		m.ResetIdempotencyKey()
+	case codexthreadcontrol.FieldContextVersion:
+		m.ResetContextVersion()
 		return nil
-	case jobintent.FieldStatus:
+	case codexthreadcontrol.FieldExternalThreadID:
+		m.ResetExternalThreadID()
+		return nil
+	case codexthreadcontrol.FieldProvider:
+		m.ResetProvider()
+		return nil
+	case codexthreadcontrol.FieldCodexHomeKey:
+		m.ResetCodexHomeKey()
+		return nil
+	case codexthreadcontrol.FieldProviderSignature:
+		m.ResetProviderSignature()
+		return nil
+	case codexthreadcontrol.FieldThreadGeneration:
+		m.ResetThreadGeneration()
+		return nil
+	case codexthreadcontrol.FieldStatus:
 		m.ResetStatus()
 		return nil
-	case jobintent.FieldInstruction:
-		m.ResetInstruction()
+	case codexthreadcontrol.FieldNextSequenceNo:
+		m.ResetNextSequenceNo()
 		return nil
-	case jobintent.FieldSkills:
-		m.ResetSkills()
+	case codexthreadcontrol.FieldActiveIntentID:
+		m.ResetActiveIntentID()
 		return nil
-	case jobintent.FieldAllowedTools:
-		m.ResetAllowedTools()
+	case codexthreadcontrol.FieldRemoteStatus:
+		m.ResetRemoteStatus()
 		return nil
-	case jobintent.FieldDangerousActions:
-		m.ResetDangerousActions()
+	case codexthreadcontrol.FieldActiveCodexTurnID:
+		m.ResetActiveCodexTurnID()
 		return nil
-	case jobintent.FieldTriggerRuleID:
-		m.ResetTriggerRuleID()
+	case codexthreadcontrol.FieldActiveClientID:
+		m.ResetActiveClientID()
 		return nil
-	case jobintent.FieldTriggerEvidence:
-		m.ResetTriggerEvidence()
-		return nil
-	case jobintent.FieldActorLogin:
-		m.ResetActorLogin()
-		return nil
-	case jobintent.FieldActorPermission:
-		m.ResetActorPermission()
-		return nil
-	case jobintent.FieldPriority:
-		m.ResetPriority()
-		return nil
-	case jobintent.FieldAvailableAt:
-		m.ResetAvailableAt()
-		return nil
-	case jobintent.FieldAttemptCount:
-		m.ResetAttemptCount()
-		return nil
-	case jobintent.FieldMaxAttempts:
-		m.ResetMaxAttempts()
-		return nil
-	case jobintent.FieldLeaseToken:
-		m.ResetLeaseToken()
-		return nil
-	case jobintent.FieldLeaseEpoch:
+	case codexthreadcontrol.FieldLeaseEpoch:
 		m.ResetLeaseEpoch()
 		return nil
-	case jobintent.FieldLeaseExpiresAt:
+	case codexthreadcontrol.FieldLeaseExpiresAt:
 		m.ResetLeaseExpiresAt()
 		return nil
-	case jobintent.FieldWorkerID:
+	case codexthreadcontrol.FieldHeartbeatAt:
+		m.ResetHeartbeatAt()
+		return nil
+	case codexthreadcontrol.FieldLastReconciledAt:
+		m.ResetLastReconciledAt()
+		return nil
+	case codexthreadcontrol.FieldNextWakeupAt:
+		m.ResetNextWakeupAt()
+		return nil
+	case codexthreadcontrol.FieldWorkerID:
 		m.ResetWorkerID()
 		return nil
-	case jobintent.FieldLastError:
-		m.ResetLastError()
+	case codexthreadcontrol.FieldLeaseToken:
+		m.ResetLeaseToken()
 		return nil
-	case jobintent.FieldCreatedAt:
+	case codexthreadcontrol.FieldLastErrorCode:
+		m.ResetLastErrorCode()
+		return nil
+	case codexthreadcontrol.FieldLastErrorMessage:
+		m.ResetLastErrorMessage()
+		return nil
+	case codexthreadcontrol.FieldCreatedAt:
 		m.ResetCreatedAt()
 		return nil
-	case jobintent.FieldUpdatedAt:
+	case codexthreadcontrol.FieldUpdatedAt:
 		m.ResetUpdatedAt()
 		return nil
 	}
-	return fmt.Errorf("unknown JobIntent field %s", name)
+	return fmt.Errorf("unknown CodexThreadControl field %s", name)
 }
 
 // AddedEdges returns all edge names that were set/added in this mutation.
-func (m *JobIntentMutation) AddedEdges() []string {
+func (m *CodexThreadControlMutation) AddedEdges() []string {
 	edges := make([]string, 0, 0)
 	return edges
 }
 
 // AddedIDs returns all IDs (to other nodes) that were added for the given edge
 // name in this mutation.
-func (m *JobIntentMutation) AddedIDs(name string) []ent.Value {
+func (m *CodexThreadControlMutation) AddedIDs(name string) []ent.Value {
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
-func (m *JobIntentMutation) RemovedEdges() []string {
+func (m *CodexThreadControlMutation) RemovedEdges() []string {
 	edges := make([]string, 0, 0)
 	return edges
 }
 
 // RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
 // the given name in this mutation.
-func (m *JobIntentMutation) RemovedIDs(name string) []ent.Value {
+func (m *CodexThreadControlMutation) RemovedIDs(name string) []ent.Value {
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
-func (m *JobIntentMutation) ClearedEdges() []string {
+func (m *CodexThreadControlMutation) ClearedEdges() []string {
 	edges := make([]string, 0, 0)
 	return edges
 }
 
 // EdgeCleared returns a boolean which indicates if the edge with the given name
 // was cleared in this mutation.
-func (m *JobIntentMutation) EdgeCleared(name string) bool {
+func (m *CodexThreadControlMutation) EdgeCleared(name string) bool {
 	return false
 }
 
 // ClearEdge clears the value of the edge with the given name. It returns an error
 // if that edge is not defined in the schema.
-func (m *JobIntentMutation) ClearEdge(name string) error {
-	return fmt.Errorf("unknown JobIntent unique edge %s", name)
+func (m *CodexThreadControlMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown CodexThreadControl unique edge %s", name)
 }
 
 // ResetEdge resets all changes to the edge with the given name in this mutation.
 // It returns an error if the edge is not defined in the schema.
-func (m *JobIntentMutation) ResetEdge(name string) error {
-	return fmt.Errorf("unknown JobIntent edge %s", name)
+func (m *CodexThreadControlMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown CodexThreadControl edge %s", name)
+}
+
+// CodexTurnIntentMutation represents an operation that mutates the CodexTurnIntent nodes in the graph.
+type CodexTurnIntentMutation struct {
+	config
+	op                               Op
+	typ                              string
+	id                               *uuid.UUID
+	control_id                       *uuid.UUID
+	sequence_no                      *int64
+	addsequence_no                   *int64
+	operation                        *string
+	behavior                         *string
+	resolved_action                  *string
+	target_intent_id                 *uuid.UUID
+	source_type                      *string
+	work_item_id                     *uuid.UUID
+	discord_conversation_id          *uuid.UUID
+	discord_message_id               *string
+	repository_id                    *uuid.UUID
+	agent_profile_id                 *uuid.UUID
+	webhook_delivery_id              *uuid.UUID
+	idempotency_key                  *string
+	status                           *string
+	instruction                      *string
+	prepared_input                   *map[string]interface{}
+	skills                           *[]string
+	appendskills                     []string
+	allowed_tools                    *[]string
+	appendallowed_tools              []string
+	dangerous_actions                *[]string
+	appenddangerous_actions          []string
+	trigger_rule_id                  *uuid.UUID
+	trigger_evidence                 *map[string]interface{}
+	actor_login                      *string
+	actor_permission                 *string
+	priority                         *int
+	addpriority                      *int
+	steerable                        *bool
+	available_at                     *time.Time
+	attempt_count                    *int
+	addattempt_count                 *int
+	max_attempts                     *int
+	addmax_attempts                  *int
+	codex_submission_id              *string
+	confirmed_codex_turn_id          *string
+	last_error_code                  *string
+	last_error_message               *string
+	result                           *map[string]interface{}
+	result_delivery_status           *string
+	result_delivery_attempt_count    *int
+	addresult_delivery_attempt_count *int
+	result_delivery_error            *string
+	result_delivery_token            *string
+	result_delivery_available_at     *time.Time
+	reply_policy                     *string
+	reply_status                     *string
+	reply_hook_block_count           *int
+	addreply_hook_block_count        *int
+	reply_tool_call_id               *string
+	github_comment_id                *int64
+	addgithub_comment_id             *int64
+	github_comment_url               *string
+	dispatched_at                    *time.Time
+	confirmed_at                     *time.Time
+	finished_at                      *time.Time
+	result_delivered_at              *time.Time
+	created_at                       *time.Time
+	updated_at                       *time.Time
+	clearedFields                    map[string]struct{}
+	done                             bool
+	oldValue                         func(context.Context) (*CodexTurnIntent, error)
+	predicates                       []predicate.CodexTurnIntent
+}
+
+var _ ent.Mutation = (*CodexTurnIntentMutation)(nil)
+
+// codexturnintentOption allows management of the mutation configuration using functional options.
+type codexturnintentOption func(*CodexTurnIntentMutation)
+
+// newCodexTurnIntentMutation creates new mutation for the CodexTurnIntent entity.
+func newCodexTurnIntentMutation(c config, op Op, opts ...codexturnintentOption) *CodexTurnIntentMutation {
+	m := &CodexTurnIntentMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeCodexTurnIntent,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withCodexTurnIntentID sets the ID field of the mutation.
+func withCodexTurnIntentID(id uuid.UUID) codexturnintentOption {
+	return func(m *CodexTurnIntentMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *CodexTurnIntent
+		)
+		m.oldValue = func(ctx context.Context) (*CodexTurnIntent, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().CodexTurnIntent.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withCodexTurnIntent sets the old CodexTurnIntent of the mutation.
+func withCodexTurnIntent(node *CodexTurnIntent) codexturnintentOption {
+	return func(m *CodexTurnIntentMutation) {
+		m.oldValue = func(context.Context) (*CodexTurnIntent, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m CodexTurnIntentMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m CodexTurnIntentMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of CodexTurnIntent entities.
+func (m *CodexTurnIntentMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *CodexTurnIntentMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *CodexTurnIntentMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().CodexTurnIntent.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetControlID sets the "control_id" field.
+func (m *CodexTurnIntentMutation) SetControlID(u uuid.UUID) {
+	m.control_id = &u
+}
+
+// ControlID returns the value of the "control_id" field in the mutation.
+func (m *CodexTurnIntentMutation) ControlID() (r uuid.UUID, exists bool) {
+	v := m.control_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldControlID returns the old "control_id" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldControlID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldControlID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldControlID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldControlID: %w", err)
+	}
+	return oldValue.ControlID, nil
+}
+
+// ResetControlID resets all changes to the "control_id" field.
+func (m *CodexTurnIntentMutation) ResetControlID() {
+	m.control_id = nil
+}
+
+// SetSequenceNo sets the "sequence_no" field.
+func (m *CodexTurnIntentMutation) SetSequenceNo(i int64) {
+	m.sequence_no = &i
+	m.addsequence_no = nil
+}
+
+// SequenceNo returns the value of the "sequence_no" field in the mutation.
+func (m *CodexTurnIntentMutation) SequenceNo() (r int64, exists bool) {
+	v := m.sequence_no
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSequenceNo returns the old "sequence_no" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldSequenceNo(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSequenceNo is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSequenceNo requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSequenceNo: %w", err)
+	}
+	return oldValue.SequenceNo, nil
+}
+
+// AddSequenceNo adds i to the "sequence_no" field.
+func (m *CodexTurnIntentMutation) AddSequenceNo(i int64) {
+	if m.addsequence_no != nil {
+		*m.addsequence_no += i
+	} else {
+		m.addsequence_no = &i
+	}
+}
+
+// AddedSequenceNo returns the value that was added to the "sequence_no" field in this mutation.
+func (m *CodexTurnIntentMutation) AddedSequenceNo() (r int64, exists bool) {
+	v := m.addsequence_no
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSequenceNo resets all changes to the "sequence_no" field.
+func (m *CodexTurnIntentMutation) ResetSequenceNo() {
+	m.sequence_no = nil
+	m.addsequence_no = nil
+}
+
+// SetOperation sets the "operation" field.
+func (m *CodexTurnIntentMutation) SetOperation(s string) {
+	m.operation = &s
+}
+
+// Operation returns the value of the "operation" field in the mutation.
+func (m *CodexTurnIntentMutation) Operation() (r string, exists bool) {
+	v := m.operation
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOperation returns the old "operation" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldOperation(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOperation is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOperation requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOperation: %w", err)
+	}
+	return oldValue.Operation, nil
+}
+
+// ResetOperation resets all changes to the "operation" field.
+func (m *CodexTurnIntentMutation) ResetOperation() {
+	m.operation = nil
+}
+
+// SetBehavior sets the "behavior" field.
+func (m *CodexTurnIntentMutation) SetBehavior(s string) {
+	m.behavior = &s
+}
+
+// Behavior returns the value of the "behavior" field in the mutation.
+func (m *CodexTurnIntentMutation) Behavior() (r string, exists bool) {
+	v := m.behavior
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBehavior returns the old "behavior" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldBehavior(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBehavior is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBehavior requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBehavior: %w", err)
+	}
+	return oldValue.Behavior, nil
+}
+
+// ClearBehavior clears the value of the "behavior" field.
+func (m *CodexTurnIntentMutation) ClearBehavior() {
+	m.behavior = nil
+	m.clearedFields[codexturnintent.FieldBehavior] = struct{}{}
+}
+
+// BehaviorCleared returns if the "behavior" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) BehaviorCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldBehavior]
+	return ok
+}
+
+// ResetBehavior resets all changes to the "behavior" field.
+func (m *CodexTurnIntentMutation) ResetBehavior() {
+	m.behavior = nil
+	delete(m.clearedFields, codexturnintent.FieldBehavior)
+}
+
+// SetResolvedAction sets the "resolved_action" field.
+func (m *CodexTurnIntentMutation) SetResolvedAction(s string) {
+	m.resolved_action = &s
+}
+
+// ResolvedAction returns the value of the "resolved_action" field in the mutation.
+func (m *CodexTurnIntentMutation) ResolvedAction() (r string, exists bool) {
+	v := m.resolved_action
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResolvedAction returns the old "resolved_action" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldResolvedAction(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResolvedAction is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResolvedAction requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResolvedAction: %w", err)
+	}
+	return oldValue.ResolvedAction, nil
+}
+
+// ClearResolvedAction clears the value of the "resolved_action" field.
+func (m *CodexTurnIntentMutation) ClearResolvedAction() {
+	m.resolved_action = nil
+	m.clearedFields[codexturnintent.FieldResolvedAction] = struct{}{}
+}
+
+// ResolvedActionCleared returns if the "resolved_action" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) ResolvedActionCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldResolvedAction]
+	return ok
+}
+
+// ResetResolvedAction resets all changes to the "resolved_action" field.
+func (m *CodexTurnIntentMutation) ResetResolvedAction() {
+	m.resolved_action = nil
+	delete(m.clearedFields, codexturnintent.FieldResolvedAction)
+}
+
+// SetTargetIntentID sets the "target_intent_id" field.
+func (m *CodexTurnIntentMutation) SetTargetIntentID(u uuid.UUID) {
+	m.target_intent_id = &u
+}
+
+// TargetIntentID returns the value of the "target_intent_id" field in the mutation.
+func (m *CodexTurnIntentMutation) TargetIntentID() (r uuid.UUID, exists bool) {
+	v := m.target_intent_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTargetIntentID returns the old "target_intent_id" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldTargetIntentID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTargetIntentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTargetIntentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTargetIntentID: %w", err)
+	}
+	return oldValue.TargetIntentID, nil
+}
+
+// ClearTargetIntentID clears the value of the "target_intent_id" field.
+func (m *CodexTurnIntentMutation) ClearTargetIntentID() {
+	m.target_intent_id = nil
+	m.clearedFields[codexturnintent.FieldTargetIntentID] = struct{}{}
+}
+
+// TargetIntentIDCleared returns if the "target_intent_id" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) TargetIntentIDCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldTargetIntentID]
+	return ok
+}
+
+// ResetTargetIntentID resets all changes to the "target_intent_id" field.
+func (m *CodexTurnIntentMutation) ResetTargetIntentID() {
+	m.target_intent_id = nil
+	delete(m.clearedFields, codexturnintent.FieldTargetIntentID)
+}
+
+// SetSourceType sets the "source_type" field.
+func (m *CodexTurnIntentMutation) SetSourceType(s string) {
+	m.source_type = &s
+}
+
+// SourceType returns the value of the "source_type" field in the mutation.
+func (m *CodexTurnIntentMutation) SourceType() (r string, exists bool) {
+	v := m.source_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSourceType returns the old "source_type" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldSourceType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSourceType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSourceType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSourceType: %w", err)
+	}
+	return oldValue.SourceType, nil
+}
+
+// ResetSourceType resets all changes to the "source_type" field.
+func (m *CodexTurnIntentMutation) ResetSourceType() {
+	m.source_type = nil
+}
+
+// SetWorkItemID sets the "work_item_id" field.
+func (m *CodexTurnIntentMutation) SetWorkItemID(u uuid.UUID) {
+	m.work_item_id = &u
+}
+
+// WorkItemID returns the value of the "work_item_id" field in the mutation.
+func (m *CodexTurnIntentMutation) WorkItemID() (r uuid.UUID, exists bool) {
+	v := m.work_item_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkItemID returns the old "work_item_id" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldWorkItemID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkItemID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkItemID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkItemID: %w", err)
+	}
+	return oldValue.WorkItemID, nil
+}
+
+// ClearWorkItemID clears the value of the "work_item_id" field.
+func (m *CodexTurnIntentMutation) ClearWorkItemID() {
+	m.work_item_id = nil
+	m.clearedFields[codexturnintent.FieldWorkItemID] = struct{}{}
+}
+
+// WorkItemIDCleared returns if the "work_item_id" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) WorkItemIDCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldWorkItemID]
+	return ok
+}
+
+// ResetWorkItemID resets all changes to the "work_item_id" field.
+func (m *CodexTurnIntentMutation) ResetWorkItemID() {
+	m.work_item_id = nil
+	delete(m.clearedFields, codexturnintent.FieldWorkItemID)
+}
+
+// SetDiscordConversationID sets the "discord_conversation_id" field.
+func (m *CodexTurnIntentMutation) SetDiscordConversationID(u uuid.UUID) {
+	m.discord_conversation_id = &u
+}
+
+// DiscordConversationID returns the value of the "discord_conversation_id" field in the mutation.
+func (m *CodexTurnIntentMutation) DiscordConversationID() (r uuid.UUID, exists bool) {
+	v := m.discord_conversation_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDiscordConversationID returns the old "discord_conversation_id" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldDiscordConversationID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDiscordConversationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDiscordConversationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDiscordConversationID: %w", err)
+	}
+	return oldValue.DiscordConversationID, nil
+}
+
+// ClearDiscordConversationID clears the value of the "discord_conversation_id" field.
+func (m *CodexTurnIntentMutation) ClearDiscordConversationID() {
+	m.discord_conversation_id = nil
+	m.clearedFields[codexturnintent.FieldDiscordConversationID] = struct{}{}
+}
+
+// DiscordConversationIDCleared returns if the "discord_conversation_id" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) DiscordConversationIDCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldDiscordConversationID]
+	return ok
+}
+
+// ResetDiscordConversationID resets all changes to the "discord_conversation_id" field.
+func (m *CodexTurnIntentMutation) ResetDiscordConversationID() {
+	m.discord_conversation_id = nil
+	delete(m.clearedFields, codexturnintent.FieldDiscordConversationID)
+}
+
+// SetDiscordMessageID sets the "discord_message_id" field.
+func (m *CodexTurnIntentMutation) SetDiscordMessageID(s string) {
+	m.discord_message_id = &s
+}
+
+// DiscordMessageID returns the value of the "discord_message_id" field in the mutation.
+func (m *CodexTurnIntentMutation) DiscordMessageID() (r string, exists bool) {
+	v := m.discord_message_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDiscordMessageID returns the old "discord_message_id" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldDiscordMessageID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDiscordMessageID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDiscordMessageID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDiscordMessageID: %w", err)
+	}
+	return oldValue.DiscordMessageID, nil
+}
+
+// ClearDiscordMessageID clears the value of the "discord_message_id" field.
+func (m *CodexTurnIntentMutation) ClearDiscordMessageID() {
+	m.discord_message_id = nil
+	m.clearedFields[codexturnintent.FieldDiscordMessageID] = struct{}{}
+}
+
+// DiscordMessageIDCleared returns if the "discord_message_id" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) DiscordMessageIDCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldDiscordMessageID]
+	return ok
+}
+
+// ResetDiscordMessageID resets all changes to the "discord_message_id" field.
+func (m *CodexTurnIntentMutation) ResetDiscordMessageID() {
+	m.discord_message_id = nil
+	delete(m.clearedFields, codexturnintent.FieldDiscordMessageID)
+}
+
+// SetRepositoryID sets the "repository_id" field.
+func (m *CodexTurnIntentMutation) SetRepositoryID(u uuid.UUID) {
+	m.repository_id = &u
+}
+
+// RepositoryID returns the value of the "repository_id" field in the mutation.
+func (m *CodexTurnIntentMutation) RepositoryID() (r uuid.UUID, exists bool) {
+	v := m.repository_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRepositoryID returns the old "repository_id" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldRepositoryID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRepositoryID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRepositoryID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRepositoryID: %w", err)
+	}
+	return oldValue.RepositoryID, nil
+}
+
+// ClearRepositoryID clears the value of the "repository_id" field.
+func (m *CodexTurnIntentMutation) ClearRepositoryID() {
+	m.repository_id = nil
+	m.clearedFields[codexturnintent.FieldRepositoryID] = struct{}{}
+}
+
+// RepositoryIDCleared returns if the "repository_id" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) RepositoryIDCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldRepositoryID]
+	return ok
+}
+
+// ResetRepositoryID resets all changes to the "repository_id" field.
+func (m *CodexTurnIntentMutation) ResetRepositoryID() {
+	m.repository_id = nil
+	delete(m.clearedFields, codexturnintent.FieldRepositoryID)
+}
+
+// SetAgentProfileID sets the "agent_profile_id" field.
+func (m *CodexTurnIntentMutation) SetAgentProfileID(u uuid.UUID) {
+	m.agent_profile_id = &u
+}
+
+// AgentProfileID returns the value of the "agent_profile_id" field in the mutation.
+func (m *CodexTurnIntentMutation) AgentProfileID() (r uuid.UUID, exists bool) {
+	v := m.agent_profile_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAgentProfileID returns the old "agent_profile_id" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldAgentProfileID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAgentProfileID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAgentProfileID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAgentProfileID: %w", err)
+	}
+	return oldValue.AgentProfileID, nil
+}
+
+// ResetAgentProfileID resets all changes to the "agent_profile_id" field.
+func (m *CodexTurnIntentMutation) ResetAgentProfileID() {
+	m.agent_profile_id = nil
+}
+
+// SetWebhookDeliveryID sets the "webhook_delivery_id" field.
+func (m *CodexTurnIntentMutation) SetWebhookDeliveryID(u uuid.UUID) {
+	m.webhook_delivery_id = &u
+}
+
+// WebhookDeliveryID returns the value of the "webhook_delivery_id" field in the mutation.
+func (m *CodexTurnIntentMutation) WebhookDeliveryID() (r uuid.UUID, exists bool) {
+	v := m.webhook_delivery_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWebhookDeliveryID returns the old "webhook_delivery_id" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldWebhookDeliveryID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWebhookDeliveryID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWebhookDeliveryID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWebhookDeliveryID: %w", err)
+	}
+	return oldValue.WebhookDeliveryID, nil
+}
+
+// ClearWebhookDeliveryID clears the value of the "webhook_delivery_id" field.
+func (m *CodexTurnIntentMutation) ClearWebhookDeliveryID() {
+	m.webhook_delivery_id = nil
+	m.clearedFields[codexturnintent.FieldWebhookDeliveryID] = struct{}{}
+}
+
+// WebhookDeliveryIDCleared returns if the "webhook_delivery_id" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) WebhookDeliveryIDCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldWebhookDeliveryID]
+	return ok
+}
+
+// ResetWebhookDeliveryID resets all changes to the "webhook_delivery_id" field.
+func (m *CodexTurnIntentMutation) ResetWebhookDeliveryID() {
+	m.webhook_delivery_id = nil
+	delete(m.clearedFields, codexturnintent.FieldWebhookDeliveryID)
+}
+
+// SetIdempotencyKey sets the "idempotency_key" field.
+func (m *CodexTurnIntentMutation) SetIdempotencyKey(s string) {
+	m.idempotency_key = &s
+}
+
+// IdempotencyKey returns the value of the "idempotency_key" field in the mutation.
+func (m *CodexTurnIntentMutation) IdempotencyKey() (r string, exists bool) {
+	v := m.idempotency_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIdempotencyKey returns the old "idempotency_key" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldIdempotencyKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIdempotencyKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIdempotencyKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIdempotencyKey: %w", err)
+	}
+	return oldValue.IdempotencyKey, nil
+}
+
+// ResetIdempotencyKey resets all changes to the "idempotency_key" field.
+func (m *CodexTurnIntentMutation) ResetIdempotencyKey() {
+	m.idempotency_key = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *CodexTurnIntentMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *CodexTurnIntentMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *CodexTurnIntentMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetInstruction sets the "instruction" field.
+func (m *CodexTurnIntentMutation) SetInstruction(s string) {
+	m.instruction = &s
+}
+
+// Instruction returns the value of the "instruction" field in the mutation.
+func (m *CodexTurnIntentMutation) Instruction() (r string, exists bool) {
+	v := m.instruction
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldInstruction returns the old "instruction" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldInstruction(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldInstruction is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldInstruction requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldInstruction: %w", err)
+	}
+	return oldValue.Instruction, nil
+}
+
+// ResetInstruction resets all changes to the "instruction" field.
+func (m *CodexTurnIntentMutation) ResetInstruction() {
+	m.instruction = nil
+}
+
+// SetPreparedInput sets the "prepared_input" field.
+func (m *CodexTurnIntentMutation) SetPreparedInput(value map[string]interface{}) {
+	m.prepared_input = &value
+}
+
+// PreparedInput returns the value of the "prepared_input" field in the mutation.
+func (m *CodexTurnIntentMutation) PreparedInput() (r map[string]interface{}, exists bool) {
+	v := m.prepared_input
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPreparedInput returns the old "prepared_input" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldPreparedInput(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPreparedInput is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPreparedInput requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPreparedInput: %w", err)
+	}
+	return oldValue.PreparedInput, nil
+}
+
+// ClearPreparedInput clears the value of the "prepared_input" field.
+func (m *CodexTurnIntentMutation) ClearPreparedInput() {
+	m.prepared_input = nil
+	m.clearedFields[codexturnintent.FieldPreparedInput] = struct{}{}
+}
+
+// PreparedInputCleared returns if the "prepared_input" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) PreparedInputCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldPreparedInput]
+	return ok
+}
+
+// ResetPreparedInput resets all changes to the "prepared_input" field.
+func (m *CodexTurnIntentMutation) ResetPreparedInput() {
+	m.prepared_input = nil
+	delete(m.clearedFields, codexturnintent.FieldPreparedInput)
+}
+
+// SetSkills sets the "skills" field.
+func (m *CodexTurnIntentMutation) SetSkills(s []string) {
+	m.skills = &s
+	m.appendskills = nil
+}
+
+// Skills returns the value of the "skills" field in the mutation.
+func (m *CodexTurnIntentMutation) Skills() (r []string, exists bool) {
+	v := m.skills
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSkills returns the old "skills" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldSkills(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSkills is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSkills requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSkills: %w", err)
+	}
+	return oldValue.Skills, nil
+}
+
+// AppendSkills adds s to the "skills" field.
+func (m *CodexTurnIntentMutation) AppendSkills(s []string) {
+	m.appendskills = append(m.appendskills, s...)
+}
+
+// AppendedSkills returns the list of values that were appended to the "skills" field in this mutation.
+func (m *CodexTurnIntentMutation) AppendedSkills() ([]string, bool) {
+	if len(m.appendskills) == 0 {
+		return nil, false
+	}
+	return m.appendskills, true
+}
+
+// ResetSkills resets all changes to the "skills" field.
+func (m *CodexTurnIntentMutation) ResetSkills() {
+	m.skills = nil
+	m.appendskills = nil
+}
+
+// SetAllowedTools sets the "allowed_tools" field.
+func (m *CodexTurnIntentMutation) SetAllowedTools(s []string) {
+	m.allowed_tools = &s
+	m.appendallowed_tools = nil
+}
+
+// AllowedTools returns the value of the "allowed_tools" field in the mutation.
+func (m *CodexTurnIntentMutation) AllowedTools() (r []string, exists bool) {
+	v := m.allowed_tools
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowedTools returns the old "allowed_tools" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldAllowedTools(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowedTools is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowedTools requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowedTools: %w", err)
+	}
+	return oldValue.AllowedTools, nil
+}
+
+// AppendAllowedTools adds s to the "allowed_tools" field.
+func (m *CodexTurnIntentMutation) AppendAllowedTools(s []string) {
+	m.appendallowed_tools = append(m.appendallowed_tools, s...)
+}
+
+// AppendedAllowedTools returns the list of values that were appended to the "allowed_tools" field in this mutation.
+func (m *CodexTurnIntentMutation) AppendedAllowedTools() ([]string, bool) {
+	if len(m.appendallowed_tools) == 0 {
+		return nil, false
+	}
+	return m.appendallowed_tools, true
+}
+
+// ResetAllowedTools resets all changes to the "allowed_tools" field.
+func (m *CodexTurnIntentMutation) ResetAllowedTools() {
+	m.allowed_tools = nil
+	m.appendallowed_tools = nil
+}
+
+// SetDangerousActions sets the "dangerous_actions" field.
+func (m *CodexTurnIntentMutation) SetDangerousActions(s []string) {
+	m.dangerous_actions = &s
+	m.appenddangerous_actions = nil
+}
+
+// DangerousActions returns the value of the "dangerous_actions" field in the mutation.
+func (m *CodexTurnIntentMutation) DangerousActions() (r []string, exists bool) {
+	v := m.dangerous_actions
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDangerousActions returns the old "dangerous_actions" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldDangerousActions(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDangerousActions is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDangerousActions requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDangerousActions: %w", err)
+	}
+	return oldValue.DangerousActions, nil
+}
+
+// AppendDangerousActions adds s to the "dangerous_actions" field.
+func (m *CodexTurnIntentMutation) AppendDangerousActions(s []string) {
+	m.appenddangerous_actions = append(m.appenddangerous_actions, s...)
+}
+
+// AppendedDangerousActions returns the list of values that were appended to the "dangerous_actions" field in this mutation.
+func (m *CodexTurnIntentMutation) AppendedDangerousActions() ([]string, bool) {
+	if len(m.appenddangerous_actions) == 0 {
+		return nil, false
+	}
+	return m.appenddangerous_actions, true
+}
+
+// ResetDangerousActions resets all changes to the "dangerous_actions" field.
+func (m *CodexTurnIntentMutation) ResetDangerousActions() {
+	m.dangerous_actions = nil
+	m.appenddangerous_actions = nil
+}
+
+// SetTriggerRuleID sets the "trigger_rule_id" field.
+func (m *CodexTurnIntentMutation) SetTriggerRuleID(u uuid.UUID) {
+	m.trigger_rule_id = &u
+}
+
+// TriggerRuleID returns the value of the "trigger_rule_id" field in the mutation.
+func (m *CodexTurnIntentMutation) TriggerRuleID() (r uuid.UUID, exists bool) {
+	v := m.trigger_rule_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTriggerRuleID returns the old "trigger_rule_id" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldTriggerRuleID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTriggerRuleID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTriggerRuleID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTriggerRuleID: %w", err)
+	}
+	return oldValue.TriggerRuleID, nil
+}
+
+// ClearTriggerRuleID clears the value of the "trigger_rule_id" field.
+func (m *CodexTurnIntentMutation) ClearTriggerRuleID() {
+	m.trigger_rule_id = nil
+	m.clearedFields[codexturnintent.FieldTriggerRuleID] = struct{}{}
+}
+
+// TriggerRuleIDCleared returns if the "trigger_rule_id" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) TriggerRuleIDCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldTriggerRuleID]
+	return ok
+}
+
+// ResetTriggerRuleID resets all changes to the "trigger_rule_id" field.
+func (m *CodexTurnIntentMutation) ResetTriggerRuleID() {
+	m.trigger_rule_id = nil
+	delete(m.clearedFields, codexturnintent.FieldTriggerRuleID)
+}
+
+// SetTriggerEvidence sets the "trigger_evidence" field.
+func (m *CodexTurnIntentMutation) SetTriggerEvidence(value map[string]interface{}) {
+	m.trigger_evidence = &value
+}
+
+// TriggerEvidence returns the value of the "trigger_evidence" field in the mutation.
+func (m *CodexTurnIntentMutation) TriggerEvidence() (r map[string]interface{}, exists bool) {
+	v := m.trigger_evidence
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTriggerEvidence returns the old "trigger_evidence" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldTriggerEvidence(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTriggerEvidence is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTriggerEvidence requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTriggerEvidence: %w", err)
+	}
+	return oldValue.TriggerEvidence, nil
+}
+
+// ResetTriggerEvidence resets all changes to the "trigger_evidence" field.
+func (m *CodexTurnIntentMutation) ResetTriggerEvidence() {
+	m.trigger_evidence = nil
+}
+
+// SetActorLogin sets the "actor_login" field.
+func (m *CodexTurnIntentMutation) SetActorLogin(s string) {
+	m.actor_login = &s
+}
+
+// ActorLogin returns the value of the "actor_login" field in the mutation.
+func (m *CodexTurnIntentMutation) ActorLogin() (r string, exists bool) {
+	v := m.actor_login
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActorLogin returns the old "actor_login" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldActorLogin(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActorLogin is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActorLogin requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActorLogin: %w", err)
+	}
+	return oldValue.ActorLogin, nil
+}
+
+// ResetActorLogin resets all changes to the "actor_login" field.
+func (m *CodexTurnIntentMutation) ResetActorLogin() {
+	m.actor_login = nil
+}
+
+// SetActorPermission sets the "actor_permission" field.
+func (m *CodexTurnIntentMutation) SetActorPermission(s string) {
+	m.actor_permission = &s
+}
+
+// ActorPermission returns the value of the "actor_permission" field in the mutation.
+func (m *CodexTurnIntentMutation) ActorPermission() (r string, exists bool) {
+	v := m.actor_permission
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActorPermission returns the old "actor_permission" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldActorPermission(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActorPermission is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActorPermission requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActorPermission: %w", err)
+	}
+	return oldValue.ActorPermission, nil
+}
+
+// ResetActorPermission resets all changes to the "actor_permission" field.
+func (m *CodexTurnIntentMutation) ResetActorPermission() {
+	m.actor_permission = nil
+}
+
+// SetPriority sets the "priority" field.
+func (m *CodexTurnIntentMutation) SetPriority(i int) {
+	m.priority = &i
+	m.addpriority = nil
+}
+
+// Priority returns the value of the "priority" field in the mutation.
+func (m *CodexTurnIntentMutation) Priority() (r int, exists bool) {
+	v := m.priority
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPriority returns the old "priority" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldPriority(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPriority is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPriority requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPriority: %w", err)
+	}
+	return oldValue.Priority, nil
+}
+
+// AddPriority adds i to the "priority" field.
+func (m *CodexTurnIntentMutation) AddPriority(i int) {
+	if m.addpriority != nil {
+		*m.addpriority += i
+	} else {
+		m.addpriority = &i
+	}
+}
+
+// AddedPriority returns the value that was added to the "priority" field in this mutation.
+func (m *CodexTurnIntentMutation) AddedPriority() (r int, exists bool) {
+	v := m.addpriority
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPriority resets all changes to the "priority" field.
+func (m *CodexTurnIntentMutation) ResetPriority() {
+	m.priority = nil
+	m.addpriority = nil
+}
+
+// SetSteerable sets the "steerable" field.
+func (m *CodexTurnIntentMutation) SetSteerable(b bool) {
+	m.steerable = &b
+}
+
+// Steerable returns the value of the "steerable" field in the mutation.
+func (m *CodexTurnIntentMutation) Steerable() (r bool, exists bool) {
+	v := m.steerable
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSteerable returns the old "steerable" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldSteerable(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSteerable is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSteerable requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSteerable: %w", err)
+	}
+	return oldValue.Steerable, nil
+}
+
+// ResetSteerable resets all changes to the "steerable" field.
+func (m *CodexTurnIntentMutation) ResetSteerable() {
+	m.steerable = nil
+}
+
+// SetAvailableAt sets the "available_at" field.
+func (m *CodexTurnIntentMutation) SetAvailableAt(t time.Time) {
+	m.available_at = &t
+}
+
+// AvailableAt returns the value of the "available_at" field in the mutation.
+func (m *CodexTurnIntentMutation) AvailableAt() (r time.Time, exists bool) {
+	v := m.available_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAvailableAt returns the old "available_at" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldAvailableAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAvailableAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAvailableAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAvailableAt: %w", err)
+	}
+	return oldValue.AvailableAt, nil
+}
+
+// ResetAvailableAt resets all changes to the "available_at" field.
+func (m *CodexTurnIntentMutation) ResetAvailableAt() {
+	m.available_at = nil
+}
+
+// SetAttemptCount sets the "attempt_count" field.
+func (m *CodexTurnIntentMutation) SetAttemptCount(i int) {
+	m.attempt_count = &i
+	m.addattempt_count = nil
+}
+
+// AttemptCount returns the value of the "attempt_count" field in the mutation.
+func (m *CodexTurnIntentMutation) AttemptCount() (r int, exists bool) {
+	v := m.attempt_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAttemptCount returns the old "attempt_count" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldAttemptCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAttemptCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAttemptCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAttemptCount: %w", err)
+	}
+	return oldValue.AttemptCount, nil
+}
+
+// AddAttemptCount adds i to the "attempt_count" field.
+func (m *CodexTurnIntentMutation) AddAttemptCount(i int) {
+	if m.addattempt_count != nil {
+		*m.addattempt_count += i
+	} else {
+		m.addattempt_count = &i
+	}
+}
+
+// AddedAttemptCount returns the value that was added to the "attempt_count" field in this mutation.
+func (m *CodexTurnIntentMutation) AddedAttemptCount() (r int, exists bool) {
+	v := m.addattempt_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAttemptCount resets all changes to the "attempt_count" field.
+func (m *CodexTurnIntentMutation) ResetAttemptCount() {
+	m.attempt_count = nil
+	m.addattempt_count = nil
+}
+
+// SetMaxAttempts sets the "max_attempts" field.
+func (m *CodexTurnIntentMutation) SetMaxAttempts(i int) {
+	m.max_attempts = &i
+	m.addmax_attempts = nil
+}
+
+// MaxAttempts returns the value of the "max_attempts" field in the mutation.
+func (m *CodexTurnIntentMutation) MaxAttempts() (r int, exists bool) {
+	v := m.max_attempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMaxAttempts returns the old "max_attempts" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldMaxAttempts(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMaxAttempts is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMaxAttempts requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMaxAttempts: %w", err)
+	}
+	return oldValue.MaxAttempts, nil
+}
+
+// AddMaxAttempts adds i to the "max_attempts" field.
+func (m *CodexTurnIntentMutation) AddMaxAttempts(i int) {
+	if m.addmax_attempts != nil {
+		*m.addmax_attempts += i
+	} else {
+		m.addmax_attempts = &i
+	}
+}
+
+// AddedMaxAttempts returns the value that was added to the "max_attempts" field in this mutation.
+func (m *CodexTurnIntentMutation) AddedMaxAttempts() (r int, exists bool) {
+	v := m.addmax_attempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetMaxAttempts resets all changes to the "max_attempts" field.
+func (m *CodexTurnIntentMutation) ResetMaxAttempts() {
+	m.max_attempts = nil
+	m.addmax_attempts = nil
+}
+
+// SetCodexSubmissionID sets the "codex_submission_id" field.
+func (m *CodexTurnIntentMutation) SetCodexSubmissionID(s string) {
+	m.codex_submission_id = &s
+}
+
+// CodexSubmissionID returns the value of the "codex_submission_id" field in the mutation.
+func (m *CodexTurnIntentMutation) CodexSubmissionID() (r string, exists bool) {
+	v := m.codex_submission_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCodexSubmissionID returns the old "codex_submission_id" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldCodexSubmissionID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCodexSubmissionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCodexSubmissionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCodexSubmissionID: %w", err)
+	}
+	return oldValue.CodexSubmissionID, nil
+}
+
+// ClearCodexSubmissionID clears the value of the "codex_submission_id" field.
+func (m *CodexTurnIntentMutation) ClearCodexSubmissionID() {
+	m.codex_submission_id = nil
+	m.clearedFields[codexturnintent.FieldCodexSubmissionID] = struct{}{}
+}
+
+// CodexSubmissionIDCleared returns if the "codex_submission_id" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) CodexSubmissionIDCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldCodexSubmissionID]
+	return ok
+}
+
+// ResetCodexSubmissionID resets all changes to the "codex_submission_id" field.
+func (m *CodexTurnIntentMutation) ResetCodexSubmissionID() {
+	m.codex_submission_id = nil
+	delete(m.clearedFields, codexturnintent.FieldCodexSubmissionID)
+}
+
+// SetConfirmedCodexTurnID sets the "confirmed_codex_turn_id" field.
+func (m *CodexTurnIntentMutation) SetConfirmedCodexTurnID(s string) {
+	m.confirmed_codex_turn_id = &s
+}
+
+// ConfirmedCodexTurnID returns the value of the "confirmed_codex_turn_id" field in the mutation.
+func (m *CodexTurnIntentMutation) ConfirmedCodexTurnID() (r string, exists bool) {
+	v := m.confirmed_codex_turn_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConfirmedCodexTurnID returns the old "confirmed_codex_turn_id" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldConfirmedCodexTurnID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConfirmedCodexTurnID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConfirmedCodexTurnID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConfirmedCodexTurnID: %w", err)
+	}
+	return oldValue.ConfirmedCodexTurnID, nil
+}
+
+// ClearConfirmedCodexTurnID clears the value of the "confirmed_codex_turn_id" field.
+func (m *CodexTurnIntentMutation) ClearConfirmedCodexTurnID() {
+	m.confirmed_codex_turn_id = nil
+	m.clearedFields[codexturnintent.FieldConfirmedCodexTurnID] = struct{}{}
+}
+
+// ConfirmedCodexTurnIDCleared returns if the "confirmed_codex_turn_id" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) ConfirmedCodexTurnIDCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldConfirmedCodexTurnID]
+	return ok
+}
+
+// ResetConfirmedCodexTurnID resets all changes to the "confirmed_codex_turn_id" field.
+func (m *CodexTurnIntentMutation) ResetConfirmedCodexTurnID() {
+	m.confirmed_codex_turn_id = nil
+	delete(m.clearedFields, codexturnintent.FieldConfirmedCodexTurnID)
+}
+
+// SetLastErrorCode sets the "last_error_code" field.
+func (m *CodexTurnIntentMutation) SetLastErrorCode(s string) {
+	m.last_error_code = &s
+}
+
+// LastErrorCode returns the value of the "last_error_code" field in the mutation.
+func (m *CodexTurnIntentMutation) LastErrorCode() (r string, exists bool) {
+	v := m.last_error_code
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastErrorCode returns the old "last_error_code" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldLastErrorCode(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastErrorCode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastErrorCode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastErrorCode: %w", err)
+	}
+	return oldValue.LastErrorCode, nil
+}
+
+// ClearLastErrorCode clears the value of the "last_error_code" field.
+func (m *CodexTurnIntentMutation) ClearLastErrorCode() {
+	m.last_error_code = nil
+	m.clearedFields[codexturnintent.FieldLastErrorCode] = struct{}{}
+}
+
+// LastErrorCodeCleared returns if the "last_error_code" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) LastErrorCodeCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldLastErrorCode]
+	return ok
+}
+
+// ResetLastErrorCode resets all changes to the "last_error_code" field.
+func (m *CodexTurnIntentMutation) ResetLastErrorCode() {
+	m.last_error_code = nil
+	delete(m.clearedFields, codexturnintent.FieldLastErrorCode)
+}
+
+// SetLastErrorMessage sets the "last_error_message" field.
+func (m *CodexTurnIntentMutation) SetLastErrorMessage(s string) {
+	m.last_error_message = &s
+}
+
+// LastErrorMessage returns the value of the "last_error_message" field in the mutation.
+func (m *CodexTurnIntentMutation) LastErrorMessage() (r string, exists bool) {
+	v := m.last_error_message
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastErrorMessage returns the old "last_error_message" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldLastErrorMessage(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastErrorMessage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastErrorMessage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastErrorMessage: %w", err)
+	}
+	return oldValue.LastErrorMessage, nil
+}
+
+// ClearLastErrorMessage clears the value of the "last_error_message" field.
+func (m *CodexTurnIntentMutation) ClearLastErrorMessage() {
+	m.last_error_message = nil
+	m.clearedFields[codexturnintent.FieldLastErrorMessage] = struct{}{}
+}
+
+// LastErrorMessageCleared returns if the "last_error_message" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) LastErrorMessageCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldLastErrorMessage]
+	return ok
+}
+
+// ResetLastErrorMessage resets all changes to the "last_error_message" field.
+func (m *CodexTurnIntentMutation) ResetLastErrorMessage() {
+	m.last_error_message = nil
+	delete(m.clearedFields, codexturnintent.FieldLastErrorMessage)
+}
+
+// SetResult sets the "result" field.
+func (m *CodexTurnIntentMutation) SetResult(value map[string]interface{}) {
+	m.result = &value
+}
+
+// Result returns the value of the "result" field in the mutation.
+func (m *CodexTurnIntentMutation) Result() (r map[string]interface{}, exists bool) {
+	v := m.result
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResult returns the old "result" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldResult(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResult is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResult requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResult: %w", err)
+	}
+	return oldValue.Result, nil
+}
+
+// ClearResult clears the value of the "result" field.
+func (m *CodexTurnIntentMutation) ClearResult() {
+	m.result = nil
+	m.clearedFields[codexturnintent.FieldResult] = struct{}{}
+}
+
+// ResultCleared returns if the "result" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) ResultCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldResult]
+	return ok
+}
+
+// ResetResult resets all changes to the "result" field.
+func (m *CodexTurnIntentMutation) ResetResult() {
+	m.result = nil
+	delete(m.clearedFields, codexturnintent.FieldResult)
+}
+
+// SetResultDeliveryStatus sets the "result_delivery_status" field.
+func (m *CodexTurnIntentMutation) SetResultDeliveryStatus(s string) {
+	m.result_delivery_status = &s
+}
+
+// ResultDeliveryStatus returns the value of the "result_delivery_status" field in the mutation.
+func (m *CodexTurnIntentMutation) ResultDeliveryStatus() (r string, exists bool) {
+	v := m.result_delivery_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResultDeliveryStatus returns the old "result_delivery_status" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldResultDeliveryStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResultDeliveryStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResultDeliveryStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResultDeliveryStatus: %w", err)
+	}
+	return oldValue.ResultDeliveryStatus, nil
+}
+
+// ResetResultDeliveryStatus resets all changes to the "result_delivery_status" field.
+func (m *CodexTurnIntentMutation) ResetResultDeliveryStatus() {
+	m.result_delivery_status = nil
+}
+
+// SetResultDeliveryAttemptCount sets the "result_delivery_attempt_count" field.
+func (m *CodexTurnIntentMutation) SetResultDeliveryAttemptCount(i int) {
+	m.result_delivery_attempt_count = &i
+	m.addresult_delivery_attempt_count = nil
+}
+
+// ResultDeliveryAttemptCount returns the value of the "result_delivery_attempt_count" field in the mutation.
+func (m *CodexTurnIntentMutation) ResultDeliveryAttemptCount() (r int, exists bool) {
+	v := m.result_delivery_attempt_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResultDeliveryAttemptCount returns the old "result_delivery_attempt_count" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldResultDeliveryAttemptCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResultDeliveryAttemptCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResultDeliveryAttemptCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResultDeliveryAttemptCount: %w", err)
+	}
+	return oldValue.ResultDeliveryAttemptCount, nil
+}
+
+// AddResultDeliveryAttemptCount adds i to the "result_delivery_attempt_count" field.
+func (m *CodexTurnIntentMutation) AddResultDeliveryAttemptCount(i int) {
+	if m.addresult_delivery_attempt_count != nil {
+		*m.addresult_delivery_attempt_count += i
+	} else {
+		m.addresult_delivery_attempt_count = &i
+	}
+}
+
+// AddedResultDeliveryAttemptCount returns the value that was added to the "result_delivery_attempt_count" field in this mutation.
+func (m *CodexTurnIntentMutation) AddedResultDeliveryAttemptCount() (r int, exists bool) {
+	v := m.addresult_delivery_attempt_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetResultDeliveryAttemptCount resets all changes to the "result_delivery_attempt_count" field.
+func (m *CodexTurnIntentMutation) ResetResultDeliveryAttemptCount() {
+	m.result_delivery_attempt_count = nil
+	m.addresult_delivery_attempt_count = nil
+}
+
+// SetResultDeliveryError sets the "result_delivery_error" field.
+func (m *CodexTurnIntentMutation) SetResultDeliveryError(s string) {
+	m.result_delivery_error = &s
+}
+
+// ResultDeliveryError returns the value of the "result_delivery_error" field in the mutation.
+func (m *CodexTurnIntentMutation) ResultDeliveryError() (r string, exists bool) {
+	v := m.result_delivery_error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResultDeliveryError returns the old "result_delivery_error" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldResultDeliveryError(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResultDeliveryError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResultDeliveryError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResultDeliveryError: %w", err)
+	}
+	return oldValue.ResultDeliveryError, nil
+}
+
+// ClearResultDeliveryError clears the value of the "result_delivery_error" field.
+func (m *CodexTurnIntentMutation) ClearResultDeliveryError() {
+	m.result_delivery_error = nil
+	m.clearedFields[codexturnintent.FieldResultDeliveryError] = struct{}{}
+}
+
+// ResultDeliveryErrorCleared returns if the "result_delivery_error" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) ResultDeliveryErrorCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldResultDeliveryError]
+	return ok
+}
+
+// ResetResultDeliveryError resets all changes to the "result_delivery_error" field.
+func (m *CodexTurnIntentMutation) ResetResultDeliveryError() {
+	m.result_delivery_error = nil
+	delete(m.clearedFields, codexturnintent.FieldResultDeliveryError)
+}
+
+// SetResultDeliveryToken sets the "result_delivery_token" field.
+func (m *CodexTurnIntentMutation) SetResultDeliveryToken(s string) {
+	m.result_delivery_token = &s
+}
+
+// ResultDeliveryToken returns the value of the "result_delivery_token" field in the mutation.
+func (m *CodexTurnIntentMutation) ResultDeliveryToken() (r string, exists bool) {
+	v := m.result_delivery_token
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResultDeliveryToken returns the old "result_delivery_token" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldResultDeliveryToken(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResultDeliveryToken is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResultDeliveryToken requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResultDeliveryToken: %w", err)
+	}
+	return oldValue.ResultDeliveryToken, nil
+}
+
+// ClearResultDeliveryToken clears the value of the "result_delivery_token" field.
+func (m *CodexTurnIntentMutation) ClearResultDeliveryToken() {
+	m.result_delivery_token = nil
+	m.clearedFields[codexturnintent.FieldResultDeliveryToken] = struct{}{}
+}
+
+// ResultDeliveryTokenCleared returns if the "result_delivery_token" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) ResultDeliveryTokenCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldResultDeliveryToken]
+	return ok
+}
+
+// ResetResultDeliveryToken resets all changes to the "result_delivery_token" field.
+func (m *CodexTurnIntentMutation) ResetResultDeliveryToken() {
+	m.result_delivery_token = nil
+	delete(m.clearedFields, codexturnintent.FieldResultDeliveryToken)
+}
+
+// SetResultDeliveryAvailableAt sets the "result_delivery_available_at" field.
+func (m *CodexTurnIntentMutation) SetResultDeliveryAvailableAt(t time.Time) {
+	m.result_delivery_available_at = &t
+}
+
+// ResultDeliveryAvailableAt returns the value of the "result_delivery_available_at" field in the mutation.
+func (m *CodexTurnIntentMutation) ResultDeliveryAvailableAt() (r time.Time, exists bool) {
+	v := m.result_delivery_available_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResultDeliveryAvailableAt returns the old "result_delivery_available_at" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldResultDeliveryAvailableAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResultDeliveryAvailableAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResultDeliveryAvailableAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResultDeliveryAvailableAt: %w", err)
+	}
+	return oldValue.ResultDeliveryAvailableAt, nil
+}
+
+// ClearResultDeliveryAvailableAt clears the value of the "result_delivery_available_at" field.
+func (m *CodexTurnIntentMutation) ClearResultDeliveryAvailableAt() {
+	m.result_delivery_available_at = nil
+	m.clearedFields[codexturnintent.FieldResultDeliveryAvailableAt] = struct{}{}
+}
+
+// ResultDeliveryAvailableAtCleared returns if the "result_delivery_available_at" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) ResultDeliveryAvailableAtCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldResultDeliveryAvailableAt]
+	return ok
+}
+
+// ResetResultDeliveryAvailableAt resets all changes to the "result_delivery_available_at" field.
+func (m *CodexTurnIntentMutation) ResetResultDeliveryAvailableAt() {
+	m.result_delivery_available_at = nil
+	delete(m.clearedFields, codexturnintent.FieldResultDeliveryAvailableAt)
+}
+
+// SetReplyPolicy sets the "reply_policy" field.
+func (m *CodexTurnIntentMutation) SetReplyPolicy(s string) {
+	m.reply_policy = &s
+}
+
+// ReplyPolicy returns the value of the "reply_policy" field in the mutation.
+func (m *CodexTurnIntentMutation) ReplyPolicy() (r string, exists bool) {
+	v := m.reply_policy
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReplyPolicy returns the old "reply_policy" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldReplyPolicy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReplyPolicy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReplyPolicy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReplyPolicy: %w", err)
+	}
+	return oldValue.ReplyPolicy, nil
+}
+
+// ResetReplyPolicy resets all changes to the "reply_policy" field.
+func (m *CodexTurnIntentMutation) ResetReplyPolicy() {
+	m.reply_policy = nil
+}
+
+// SetReplyStatus sets the "reply_status" field.
+func (m *CodexTurnIntentMutation) SetReplyStatus(s string) {
+	m.reply_status = &s
+}
+
+// ReplyStatus returns the value of the "reply_status" field in the mutation.
+func (m *CodexTurnIntentMutation) ReplyStatus() (r string, exists bool) {
+	v := m.reply_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReplyStatus returns the old "reply_status" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldReplyStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReplyStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReplyStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReplyStatus: %w", err)
+	}
+	return oldValue.ReplyStatus, nil
+}
+
+// ResetReplyStatus resets all changes to the "reply_status" field.
+func (m *CodexTurnIntentMutation) ResetReplyStatus() {
+	m.reply_status = nil
+}
+
+// SetReplyHookBlockCount sets the "reply_hook_block_count" field.
+func (m *CodexTurnIntentMutation) SetReplyHookBlockCount(i int) {
+	m.reply_hook_block_count = &i
+	m.addreply_hook_block_count = nil
+}
+
+// ReplyHookBlockCount returns the value of the "reply_hook_block_count" field in the mutation.
+func (m *CodexTurnIntentMutation) ReplyHookBlockCount() (r int, exists bool) {
+	v := m.reply_hook_block_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReplyHookBlockCount returns the old "reply_hook_block_count" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldReplyHookBlockCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReplyHookBlockCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReplyHookBlockCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReplyHookBlockCount: %w", err)
+	}
+	return oldValue.ReplyHookBlockCount, nil
+}
+
+// AddReplyHookBlockCount adds i to the "reply_hook_block_count" field.
+func (m *CodexTurnIntentMutation) AddReplyHookBlockCount(i int) {
+	if m.addreply_hook_block_count != nil {
+		*m.addreply_hook_block_count += i
+	} else {
+		m.addreply_hook_block_count = &i
+	}
+}
+
+// AddedReplyHookBlockCount returns the value that was added to the "reply_hook_block_count" field in this mutation.
+func (m *CodexTurnIntentMutation) AddedReplyHookBlockCount() (r int, exists bool) {
+	v := m.addreply_hook_block_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetReplyHookBlockCount resets all changes to the "reply_hook_block_count" field.
+func (m *CodexTurnIntentMutation) ResetReplyHookBlockCount() {
+	m.reply_hook_block_count = nil
+	m.addreply_hook_block_count = nil
+}
+
+// SetReplyToolCallID sets the "reply_tool_call_id" field.
+func (m *CodexTurnIntentMutation) SetReplyToolCallID(s string) {
+	m.reply_tool_call_id = &s
+}
+
+// ReplyToolCallID returns the value of the "reply_tool_call_id" field in the mutation.
+func (m *CodexTurnIntentMutation) ReplyToolCallID() (r string, exists bool) {
+	v := m.reply_tool_call_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReplyToolCallID returns the old "reply_tool_call_id" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldReplyToolCallID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReplyToolCallID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReplyToolCallID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReplyToolCallID: %w", err)
+	}
+	return oldValue.ReplyToolCallID, nil
+}
+
+// ClearReplyToolCallID clears the value of the "reply_tool_call_id" field.
+func (m *CodexTurnIntentMutation) ClearReplyToolCallID() {
+	m.reply_tool_call_id = nil
+	m.clearedFields[codexturnintent.FieldReplyToolCallID] = struct{}{}
+}
+
+// ReplyToolCallIDCleared returns if the "reply_tool_call_id" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) ReplyToolCallIDCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldReplyToolCallID]
+	return ok
+}
+
+// ResetReplyToolCallID resets all changes to the "reply_tool_call_id" field.
+func (m *CodexTurnIntentMutation) ResetReplyToolCallID() {
+	m.reply_tool_call_id = nil
+	delete(m.clearedFields, codexturnintent.FieldReplyToolCallID)
+}
+
+// SetGithubCommentID sets the "github_comment_id" field.
+func (m *CodexTurnIntentMutation) SetGithubCommentID(i int64) {
+	m.github_comment_id = &i
+	m.addgithub_comment_id = nil
+}
+
+// GithubCommentID returns the value of the "github_comment_id" field in the mutation.
+func (m *CodexTurnIntentMutation) GithubCommentID() (r int64, exists bool) {
+	v := m.github_comment_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGithubCommentID returns the old "github_comment_id" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldGithubCommentID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGithubCommentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGithubCommentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGithubCommentID: %w", err)
+	}
+	return oldValue.GithubCommentID, nil
+}
+
+// AddGithubCommentID adds i to the "github_comment_id" field.
+func (m *CodexTurnIntentMutation) AddGithubCommentID(i int64) {
+	if m.addgithub_comment_id != nil {
+		*m.addgithub_comment_id += i
+	} else {
+		m.addgithub_comment_id = &i
+	}
+}
+
+// AddedGithubCommentID returns the value that was added to the "github_comment_id" field in this mutation.
+func (m *CodexTurnIntentMutation) AddedGithubCommentID() (r int64, exists bool) {
+	v := m.addgithub_comment_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearGithubCommentID clears the value of the "github_comment_id" field.
+func (m *CodexTurnIntentMutation) ClearGithubCommentID() {
+	m.github_comment_id = nil
+	m.addgithub_comment_id = nil
+	m.clearedFields[codexturnintent.FieldGithubCommentID] = struct{}{}
+}
+
+// GithubCommentIDCleared returns if the "github_comment_id" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) GithubCommentIDCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldGithubCommentID]
+	return ok
+}
+
+// ResetGithubCommentID resets all changes to the "github_comment_id" field.
+func (m *CodexTurnIntentMutation) ResetGithubCommentID() {
+	m.github_comment_id = nil
+	m.addgithub_comment_id = nil
+	delete(m.clearedFields, codexturnintent.FieldGithubCommentID)
+}
+
+// SetGithubCommentURL sets the "github_comment_url" field.
+func (m *CodexTurnIntentMutation) SetGithubCommentURL(s string) {
+	m.github_comment_url = &s
+}
+
+// GithubCommentURL returns the value of the "github_comment_url" field in the mutation.
+func (m *CodexTurnIntentMutation) GithubCommentURL() (r string, exists bool) {
+	v := m.github_comment_url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGithubCommentURL returns the old "github_comment_url" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldGithubCommentURL(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGithubCommentURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGithubCommentURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGithubCommentURL: %w", err)
+	}
+	return oldValue.GithubCommentURL, nil
+}
+
+// ClearGithubCommentURL clears the value of the "github_comment_url" field.
+func (m *CodexTurnIntentMutation) ClearGithubCommentURL() {
+	m.github_comment_url = nil
+	m.clearedFields[codexturnintent.FieldGithubCommentURL] = struct{}{}
+}
+
+// GithubCommentURLCleared returns if the "github_comment_url" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) GithubCommentURLCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldGithubCommentURL]
+	return ok
+}
+
+// ResetGithubCommentURL resets all changes to the "github_comment_url" field.
+func (m *CodexTurnIntentMutation) ResetGithubCommentURL() {
+	m.github_comment_url = nil
+	delete(m.clearedFields, codexturnintent.FieldGithubCommentURL)
+}
+
+// SetDispatchedAt sets the "dispatched_at" field.
+func (m *CodexTurnIntentMutation) SetDispatchedAt(t time.Time) {
+	m.dispatched_at = &t
+}
+
+// DispatchedAt returns the value of the "dispatched_at" field in the mutation.
+func (m *CodexTurnIntentMutation) DispatchedAt() (r time.Time, exists bool) {
+	v := m.dispatched_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDispatchedAt returns the old "dispatched_at" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldDispatchedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDispatchedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDispatchedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDispatchedAt: %w", err)
+	}
+	return oldValue.DispatchedAt, nil
+}
+
+// ClearDispatchedAt clears the value of the "dispatched_at" field.
+func (m *CodexTurnIntentMutation) ClearDispatchedAt() {
+	m.dispatched_at = nil
+	m.clearedFields[codexturnintent.FieldDispatchedAt] = struct{}{}
+}
+
+// DispatchedAtCleared returns if the "dispatched_at" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) DispatchedAtCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldDispatchedAt]
+	return ok
+}
+
+// ResetDispatchedAt resets all changes to the "dispatched_at" field.
+func (m *CodexTurnIntentMutation) ResetDispatchedAt() {
+	m.dispatched_at = nil
+	delete(m.clearedFields, codexturnintent.FieldDispatchedAt)
+}
+
+// SetConfirmedAt sets the "confirmed_at" field.
+func (m *CodexTurnIntentMutation) SetConfirmedAt(t time.Time) {
+	m.confirmed_at = &t
+}
+
+// ConfirmedAt returns the value of the "confirmed_at" field in the mutation.
+func (m *CodexTurnIntentMutation) ConfirmedAt() (r time.Time, exists bool) {
+	v := m.confirmed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConfirmedAt returns the old "confirmed_at" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldConfirmedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConfirmedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConfirmedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConfirmedAt: %w", err)
+	}
+	return oldValue.ConfirmedAt, nil
+}
+
+// ClearConfirmedAt clears the value of the "confirmed_at" field.
+func (m *CodexTurnIntentMutation) ClearConfirmedAt() {
+	m.confirmed_at = nil
+	m.clearedFields[codexturnintent.FieldConfirmedAt] = struct{}{}
+}
+
+// ConfirmedAtCleared returns if the "confirmed_at" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) ConfirmedAtCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldConfirmedAt]
+	return ok
+}
+
+// ResetConfirmedAt resets all changes to the "confirmed_at" field.
+func (m *CodexTurnIntentMutation) ResetConfirmedAt() {
+	m.confirmed_at = nil
+	delete(m.clearedFields, codexturnintent.FieldConfirmedAt)
+}
+
+// SetFinishedAt sets the "finished_at" field.
+func (m *CodexTurnIntentMutation) SetFinishedAt(t time.Time) {
+	m.finished_at = &t
+}
+
+// FinishedAt returns the value of the "finished_at" field in the mutation.
+func (m *CodexTurnIntentMutation) FinishedAt() (r time.Time, exists bool) {
+	v := m.finished_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFinishedAt returns the old "finished_at" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldFinishedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFinishedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFinishedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFinishedAt: %w", err)
+	}
+	return oldValue.FinishedAt, nil
+}
+
+// ClearFinishedAt clears the value of the "finished_at" field.
+func (m *CodexTurnIntentMutation) ClearFinishedAt() {
+	m.finished_at = nil
+	m.clearedFields[codexturnintent.FieldFinishedAt] = struct{}{}
+}
+
+// FinishedAtCleared returns if the "finished_at" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) FinishedAtCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldFinishedAt]
+	return ok
+}
+
+// ResetFinishedAt resets all changes to the "finished_at" field.
+func (m *CodexTurnIntentMutation) ResetFinishedAt() {
+	m.finished_at = nil
+	delete(m.clearedFields, codexturnintent.FieldFinishedAt)
+}
+
+// SetResultDeliveredAt sets the "result_delivered_at" field.
+func (m *CodexTurnIntentMutation) SetResultDeliveredAt(t time.Time) {
+	m.result_delivered_at = &t
+}
+
+// ResultDeliveredAt returns the value of the "result_delivered_at" field in the mutation.
+func (m *CodexTurnIntentMutation) ResultDeliveredAt() (r time.Time, exists bool) {
+	v := m.result_delivered_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResultDeliveredAt returns the old "result_delivered_at" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldResultDeliveredAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResultDeliveredAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResultDeliveredAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResultDeliveredAt: %w", err)
+	}
+	return oldValue.ResultDeliveredAt, nil
+}
+
+// ClearResultDeliveredAt clears the value of the "result_delivered_at" field.
+func (m *CodexTurnIntentMutation) ClearResultDeliveredAt() {
+	m.result_delivered_at = nil
+	m.clearedFields[codexturnintent.FieldResultDeliveredAt] = struct{}{}
+}
+
+// ResultDeliveredAtCleared returns if the "result_delivered_at" field was cleared in this mutation.
+func (m *CodexTurnIntentMutation) ResultDeliveredAtCleared() bool {
+	_, ok := m.clearedFields[codexturnintent.FieldResultDeliveredAt]
+	return ok
+}
+
+// ResetResultDeliveredAt resets all changes to the "result_delivered_at" field.
+func (m *CodexTurnIntentMutation) ResetResultDeliveredAt() {
+	m.result_delivered_at = nil
+	delete(m.clearedFields, codexturnintent.FieldResultDeliveredAt)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *CodexTurnIntentMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *CodexTurnIntentMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *CodexTurnIntentMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *CodexTurnIntentMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *CodexTurnIntentMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the CodexTurnIntent entity.
+// If the CodexTurnIntent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnIntentMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *CodexTurnIntentMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the CodexTurnIntentMutation builder.
+func (m *CodexTurnIntentMutation) Where(ps ...predicate.CodexTurnIntent) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the CodexTurnIntentMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *CodexTurnIntentMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.CodexTurnIntent, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *CodexTurnIntentMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *CodexTurnIntentMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (CodexTurnIntent).
+func (m *CodexTurnIntentMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *CodexTurnIntentMutation) Fields() []string {
+	fields := make([]string, 0, 51)
+	if m.control_id != nil {
+		fields = append(fields, codexturnintent.FieldControlID)
+	}
+	if m.sequence_no != nil {
+		fields = append(fields, codexturnintent.FieldSequenceNo)
+	}
+	if m.operation != nil {
+		fields = append(fields, codexturnintent.FieldOperation)
+	}
+	if m.behavior != nil {
+		fields = append(fields, codexturnintent.FieldBehavior)
+	}
+	if m.resolved_action != nil {
+		fields = append(fields, codexturnintent.FieldResolvedAction)
+	}
+	if m.target_intent_id != nil {
+		fields = append(fields, codexturnintent.FieldTargetIntentID)
+	}
+	if m.source_type != nil {
+		fields = append(fields, codexturnintent.FieldSourceType)
+	}
+	if m.work_item_id != nil {
+		fields = append(fields, codexturnintent.FieldWorkItemID)
+	}
+	if m.discord_conversation_id != nil {
+		fields = append(fields, codexturnintent.FieldDiscordConversationID)
+	}
+	if m.discord_message_id != nil {
+		fields = append(fields, codexturnintent.FieldDiscordMessageID)
+	}
+	if m.repository_id != nil {
+		fields = append(fields, codexturnintent.FieldRepositoryID)
+	}
+	if m.agent_profile_id != nil {
+		fields = append(fields, codexturnintent.FieldAgentProfileID)
+	}
+	if m.webhook_delivery_id != nil {
+		fields = append(fields, codexturnintent.FieldWebhookDeliveryID)
+	}
+	if m.idempotency_key != nil {
+		fields = append(fields, codexturnintent.FieldIdempotencyKey)
+	}
+	if m.status != nil {
+		fields = append(fields, codexturnintent.FieldStatus)
+	}
+	if m.instruction != nil {
+		fields = append(fields, codexturnintent.FieldInstruction)
+	}
+	if m.prepared_input != nil {
+		fields = append(fields, codexturnintent.FieldPreparedInput)
+	}
+	if m.skills != nil {
+		fields = append(fields, codexturnintent.FieldSkills)
+	}
+	if m.allowed_tools != nil {
+		fields = append(fields, codexturnintent.FieldAllowedTools)
+	}
+	if m.dangerous_actions != nil {
+		fields = append(fields, codexturnintent.FieldDangerousActions)
+	}
+	if m.trigger_rule_id != nil {
+		fields = append(fields, codexturnintent.FieldTriggerRuleID)
+	}
+	if m.trigger_evidence != nil {
+		fields = append(fields, codexturnintent.FieldTriggerEvidence)
+	}
+	if m.actor_login != nil {
+		fields = append(fields, codexturnintent.FieldActorLogin)
+	}
+	if m.actor_permission != nil {
+		fields = append(fields, codexturnintent.FieldActorPermission)
+	}
+	if m.priority != nil {
+		fields = append(fields, codexturnintent.FieldPriority)
+	}
+	if m.steerable != nil {
+		fields = append(fields, codexturnintent.FieldSteerable)
+	}
+	if m.available_at != nil {
+		fields = append(fields, codexturnintent.FieldAvailableAt)
+	}
+	if m.attempt_count != nil {
+		fields = append(fields, codexturnintent.FieldAttemptCount)
+	}
+	if m.max_attempts != nil {
+		fields = append(fields, codexturnintent.FieldMaxAttempts)
+	}
+	if m.codex_submission_id != nil {
+		fields = append(fields, codexturnintent.FieldCodexSubmissionID)
+	}
+	if m.confirmed_codex_turn_id != nil {
+		fields = append(fields, codexturnintent.FieldConfirmedCodexTurnID)
+	}
+	if m.last_error_code != nil {
+		fields = append(fields, codexturnintent.FieldLastErrorCode)
+	}
+	if m.last_error_message != nil {
+		fields = append(fields, codexturnintent.FieldLastErrorMessage)
+	}
+	if m.result != nil {
+		fields = append(fields, codexturnintent.FieldResult)
+	}
+	if m.result_delivery_status != nil {
+		fields = append(fields, codexturnintent.FieldResultDeliveryStatus)
+	}
+	if m.result_delivery_attempt_count != nil {
+		fields = append(fields, codexturnintent.FieldResultDeliveryAttemptCount)
+	}
+	if m.result_delivery_error != nil {
+		fields = append(fields, codexturnintent.FieldResultDeliveryError)
+	}
+	if m.result_delivery_token != nil {
+		fields = append(fields, codexturnintent.FieldResultDeliveryToken)
+	}
+	if m.result_delivery_available_at != nil {
+		fields = append(fields, codexturnintent.FieldResultDeliveryAvailableAt)
+	}
+	if m.reply_policy != nil {
+		fields = append(fields, codexturnintent.FieldReplyPolicy)
+	}
+	if m.reply_status != nil {
+		fields = append(fields, codexturnintent.FieldReplyStatus)
+	}
+	if m.reply_hook_block_count != nil {
+		fields = append(fields, codexturnintent.FieldReplyHookBlockCount)
+	}
+	if m.reply_tool_call_id != nil {
+		fields = append(fields, codexturnintent.FieldReplyToolCallID)
+	}
+	if m.github_comment_id != nil {
+		fields = append(fields, codexturnintent.FieldGithubCommentID)
+	}
+	if m.github_comment_url != nil {
+		fields = append(fields, codexturnintent.FieldGithubCommentURL)
+	}
+	if m.dispatched_at != nil {
+		fields = append(fields, codexturnintent.FieldDispatchedAt)
+	}
+	if m.confirmed_at != nil {
+		fields = append(fields, codexturnintent.FieldConfirmedAt)
+	}
+	if m.finished_at != nil {
+		fields = append(fields, codexturnintent.FieldFinishedAt)
+	}
+	if m.result_delivered_at != nil {
+		fields = append(fields, codexturnintent.FieldResultDeliveredAt)
+	}
+	if m.created_at != nil {
+		fields = append(fields, codexturnintent.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, codexturnintent.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *CodexTurnIntentMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case codexturnintent.FieldControlID:
+		return m.ControlID()
+	case codexturnintent.FieldSequenceNo:
+		return m.SequenceNo()
+	case codexturnintent.FieldOperation:
+		return m.Operation()
+	case codexturnintent.FieldBehavior:
+		return m.Behavior()
+	case codexturnintent.FieldResolvedAction:
+		return m.ResolvedAction()
+	case codexturnintent.FieldTargetIntentID:
+		return m.TargetIntentID()
+	case codexturnintent.FieldSourceType:
+		return m.SourceType()
+	case codexturnintent.FieldWorkItemID:
+		return m.WorkItemID()
+	case codexturnintent.FieldDiscordConversationID:
+		return m.DiscordConversationID()
+	case codexturnintent.FieldDiscordMessageID:
+		return m.DiscordMessageID()
+	case codexturnintent.FieldRepositoryID:
+		return m.RepositoryID()
+	case codexturnintent.FieldAgentProfileID:
+		return m.AgentProfileID()
+	case codexturnintent.FieldWebhookDeliveryID:
+		return m.WebhookDeliveryID()
+	case codexturnintent.FieldIdempotencyKey:
+		return m.IdempotencyKey()
+	case codexturnintent.FieldStatus:
+		return m.Status()
+	case codexturnintent.FieldInstruction:
+		return m.Instruction()
+	case codexturnintent.FieldPreparedInput:
+		return m.PreparedInput()
+	case codexturnintent.FieldSkills:
+		return m.Skills()
+	case codexturnintent.FieldAllowedTools:
+		return m.AllowedTools()
+	case codexturnintent.FieldDangerousActions:
+		return m.DangerousActions()
+	case codexturnintent.FieldTriggerRuleID:
+		return m.TriggerRuleID()
+	case codexturnintent.FieldTriggerEvidence:
+		return m.TriggerEvidence()
+	case codexturnintent.FieldActorLogin:
+		return m.ActorLogin()
+	case codexturnintent.FieldActorPermission:
+		return m.ActorPermission()
+	case codexturnintent.FieldPriority:
+		return m.Priority()
+	case codexturnintent.FieldSteerable:
+		return m.Steerable()
+	case codexturnintent.FieldAvailableAt:
+		return m.AvailableAt()
+	case codexturnintent.FieldAttemptCount:
+		return m.AttemptCount()
+	case codexturnintent.FieldMaxAttempts:
+		return m.MaxAttempts()
+	case codexturnintent.FieldCodexSubmissionID:
+		return m.CodexSubmissionID()
+	case codexturnintent.FieldConfirmedCodexTurnID:
+		return m.ConfirmedCodexTurnID()
+	case codexturnintent.FieldLastErrorCode:
+		return m.LastErrorCode()
+	case codexturnintent.FieldLastErrorMessage:
+		return m.LastErrorMessage()
+	case codexturnintent.FieldResult:
+		return m.Result()
+	case codexturnintent.FieldResultDeliveryStatus:
+		return m.ResultDeliveryStatus()
+	case codexturnintent.FieldResultDeliveryAttemptCount:
+		return m.ResultDeliveryAttemptCount()
+	case codexturnintent.FieldResultDeliveryError:
+		return m.ResultDeliveryError()
+	case codexturnintent.FieldResultDeliveryToken:
+		return m.ResultDeliveryToken()
+	case codexturnintent.FieldResultDeliveryAvailableAt:
+		return m.ResultDeliveryAvailableAt()
+	case codexturnintent.FieldReplyPolicy:
+		return m.ReplyPolicy()
+	case codexturnintent.FieldReplyStatus:
+		return m.ReplyStatus()
+	case codexturnintent.FieldReplyHookBlockCount:
+		return m.ReplyHookBlockCount()
+	case codexturnintent.FieldReplyToolCallID:
+		return m.ReplyToolCallID()
+	case codexturnintent.FieldGithubCommentID:
+		return m.GithubCommentID()
+	case codexturnintent.FieldGithubCommentURL:
+		return m.GithubCommentURL()
+	case codexturnintent.FieldDispatchedAt:
+		return m.DispatchedAt()
+	case codexturnintent.FieldConfirmedAt:
+		return m.ConfirmedAt()
+	case codexturnintent.FieldFinishedAt:
+		return m.FinishedAt()
+	case codexturnintent.FieldResultDeliveredAt:
+		return m.ResultDeliveredAt()
+	case codexturnintent.FieldCreatedAt:
+		return m.CreatedAt()
+	case codexturnintent.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *CodexTurnIntentMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case codexturnintent.FieldControlID:
+		return m.OldControlID(ctx)
+	case codexturnintent.FieldSequenceNo:
+		return m.OldSequenceNo(ctx)
+	case codexturnintent.FieldOperation:
+		return m.OldOperation(ctx)
+	case codexturnintent.FieldBehavior:
+		return m.OldBehavior(ctx)
+	case codexturnintent.FieldResolvedAction:
+		return m.OldResolvedAction(ctx)
+	case codexturnintent.FieldTargetIntentID:
+		return m.OldTargetIntentID(ctx)
+	case codexturnintent.FieldSourceType:
+		return m.OldSourceType(ctx)
+	case codexturnintent.FieldWorkItemID:
+		return m.OldWorkItemID(ctx)
+	case codexturnintent.FieldDiscordConversationID:
+		return m.OldDiscordConversationID(ctx)
+	case codexturnintent.FieldDiscordMessageID:
+		return m.OldDiscordMessageID(ctx)
+	case codexturnintent.FieldRepositoryID:
+		return m.OldRepositoryID(ctx)
+	case codexturnintent.FieldAgentProfileID:
+		return m.OldAgentProfileID(ctx)
+	case codexturnintent.FieldWebhookDeliveryID:
+		return m.OldWebhookDeliveryID(ctx)
+	case codexturnintent.FieldIdempotencyKey:
+		return m.OldIdempotencyKey(ctx)
+	case codexturnintent.FieldStatus:
+		return m.OldStatus(ctx)
+	case codexturnintent.FieldInstruction:
+		return m.OldInstruction(ctx)
+	case codexturnintent.FieldPreparedInput:
+		return m.OldPreparedInput(ctx)
+	case codexturnintent.FieldSkills:
+		return m.OldSkills(ctx)
+	case codexturnintent.FieldAllowedTools:
+		return m.OldAllowedTools(ctx)
+	case codexturnintent.FieldDangerousActions:
+		return m.OldDangerousActions(ctx)
+	case codexturnintent.FieldTriggerRuleID:
+		return m.OldTriggerRuleID(ctx)
+	case codexturnintent.FieldTriggerEvidence:
+		return m.OldTriggerEvidence(ctx)
+	case codexturnintent.FieldActorLogin:
+		return m.OldActorLogin(ctx)
+	case codexturnintent.FieldActorPermission:
+		return m.OldActorPermission(ctx)
+	case codexturnintent.FieldPriority:
+		return m.OldPriority(ctx)
+	case codexturnintent.FieldSteerable:
+		return m.OldSteerable(ctx)
+	case codexturnintent.FieldAvailableAt:
+		return m.OldAvailableAt(ctx)
+	case codexturnintent.FieldAttemptCount:
+		return m.OldAttemptCount(ctx)
+	case codexturnintent.FieldMaxAttempts:
+		return m.OldMaxAttempts(ctx)
+	case codexturnintent.FieldCodexSubmissionID:
+		return m.OldCodexSubmissionID(ctx)
+	case codexturnintent.FieldConfirmedCodexTurnID:
+		return m.OldConfirmedCodexTurnID(ctx)
+	case codexturnintent.FieldLastErrorCode:
+		return m.OldLastErrorCode(ctx)
+	case codexturnintent.FieldLastErrorMessage:
+		return m.OldLastErrorMessage(ctx)
+	case codexturnintent.FieldResult:
+		return m.OldResult(ctx)
+	case codexturnintent.FieldResultDeliveryStatus:
+		return m.OldResultDeliveryStatus(ctx)
+	case codexturnintent.FieldResultDeliveryAttemptCount:
+		return m.OldResultDeliveryAttemptCount(ctx)
+	case codexturnintent.FieldResultDeliveryError:
+		return m.OldResultDeliveryError(ctx)
+	case codexturnintent.FieldResultDeliveryToken:
+		return m.OldResultDeliveryToken(ctx)
+	case codexturnintent.FieldResultDeliveryAvailableAt:
+		return m.OldResultDeliveryAvailableAt(ctx)
+	case codexturnintent.FieldReplyPolicy:
+		return m.OldReplyPolicy(ctx)
+	case codexturnintent.FieldReplyStatus:
+		return m.OldReplyStatus(ctx)
+	case codexturnintent.FieldReplyHookBlockCount:
+		return m.OldReplyHookBlockCount(ctx)
+	case codexturnintent.FieldReplyToolCallID:
+		return m.OldReplyToolCallID(ctx)
+	case codexturnintent.FieldGithubCommentID:
+		return m.OldGithubCommentID(ctx)
+	case codexturnintent.FieldGithubCommentURL:
+		return m.OldGithubCommentURL(ctx)
+	case codexturnintent.FieldDispatchedAt:
+		return m.OldDispatchedAt(ctx)
+	case codexturnintent.FieldConfirmedAt:
+		return m.OldConfirmedAt(ctx)
+	case codexturnintent.FieldFinishedAt:
+		return m.OldFinishedAt(ctx)
+	case codexturnintent.FieldResultDeliveredAt:
+		return m.OldResultDeliveredAt(ctx)
+	case codexturnintent.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case codexturnintent.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown CodexTurnIntent field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CodexTurnIntentMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case codexturnintent.FieldControlID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetControlID(v)
+		return nil
+	case codexturnintent.FieldSequenceNo:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSequenceNo(v)
+		return nil
+	case codexturnintent.FieldOperation:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOperation(v)
+		return nil
+	case codexturnintent.FieldBehavior:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBehavior(v)
+		return nil
+	case codexturnintent.FieldResolvedAction:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResolvedAction(v)
+		return nil
+	case codexturnintent.FieldTargetIntentID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTargetIntentID(v)
+		return nil
+	case codexturnintent.FieldSourceType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSourceType(v)
+		return nil
+	case codexturnintent.FieldWorkItemID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkItemID(v)
+		return nil
+	case codexturnintent.FieldDiscordConversationID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDiscordConversationID(v)
+		return nil
+	case codexturnintent.FieldDiscordMessageID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDiscordMessageID(v)
+		return nil
+	case codexturnintent.FieldRepositoryID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRepositoryID(v)
+		return nil
+	case codexturnintent.FieldAgentProfileID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAgentProfileID(v)
+		return nil
+	case codexturnintent.FieldWebhookDeliveryID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWebhookDeliveryID(v)
+		return nil
+	case codexturnintent.FieldIdempotencyKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIdempotencyKey(v)
+		return nil
+	case codexturnintent.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case codexturnintent.FieldInstruction:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetInstruction(v)
+		return nil
+	case codexturnintent.FieldPreparedInput:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPreparedInput(v)
+		return nil
+	case codexturnintent.FieldSkills:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSkills(v)
+		return nil
+	case codexturnintent.FieldAllowedTools:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowedTools(v)
+		return nil
+	case codexturnintent.FieldDangerousActions:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDangerousActions(v)
+		return nil
+	case codexturnintent.FieldTriggerRuleID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTriggerRuleID(v)
+		return nil
+	case codexturnintent.FieldTriggerEvidence:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTriggerEvidence(v)
+		return nil
+	case codexturnintent.FieldActorLogin:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActorLogin(v)
+		return nil
+	case codexturnintent.FieldActorPermission:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActorPermission(v)
+		return nil
+	case codexturnintent.FieldPriority:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPriority(v)
+		return nil
+	case codexturnintent.FieldSteerable:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSteerable(v)
+		return nil
+	case codexturnintent.FieldAvailableAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAvailableAt(v)
+		return nil
+	case codexturnintent.FieldAttemptCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAttemptCount(v)
+		return nil
+	case codexturnintent.FieldMaxAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMaxAttempts(v)
+		return nil
+	case codexturnintent.FieldCodexSubmissionID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCodexSubmissionID(v)
+		return nil
+	case codexturnintent.FieldConfirmedCodexTurnID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConfirmedCodexTurnID(v)
+		return nil
+	case codexturnintent.FieldLastErrorCode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastErrorCode(v)
+		return nil
+	case codexturnintent.FieldLastErrorMessage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastErrorMessage(v)
+		return nil
+	case codexturnintent.FieldResult:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResult(v)
+		return nil
+	case codexturnintent.FieldResultDeliveryStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResultDeliveryStatus(v)
+		return nil
+	case codexturnintent.FieldResultDeliveryAttemptCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResultDeliveryAttemptCount(v)
+		return nil
+	case codexturnintent.FieldResultDeliveryError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResultDeliveryError(v)
+		return nil
+	case codexturnintent.FieldResultDeliveryToken:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResultDeliveryToken(v)
+		return nil
+	case codexturnintent.FieldResultDeliveryAvailableAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResultDeliveryAvailableAt(v)
+		return nil
+	case codexturnintent.FieldReplyPolicy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReplyPolicy(v)
+		return nil
+	case codexturnintent.FieldReplyStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReplyStatus(v)
+		return nil
+	case codexturnintent.FieldReplyHookBlockCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReplyHookBlockCount(v)
+		return nil
+	case codexturnintent.FieldReplyToolCallID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReplyToolCallID(v)
+		return nil
+	case codexturnintent.FieldGithubCommentID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGithubCommentID(v)
+		return nil
+	case codexturnintent.FieldGithubCommentURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGithubCommentURL(v)
+		return nil
+	case codexturnintent.FieldDispatchedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDispatchedAt(v)
+		return nil
+	case codexturnintent.FieldConfirmedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConfirmedAt(v)
+		return nil
+	case codexturnintent.FieldFinishedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFinishedAt(v)
+		return nil
+	case codexturnintent.FieldResultDeliveredAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResultDeliveredAt(v)
+		return nil
+	case codexturnintent.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case codexturnintent.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CodexTurnIntent field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *CodexTurnIntentMutation) AddedFields() []string {
+	var fields []string
+	if m.addsequence_no != nil {
+		fields = append(fields, codexturnintent.FieldSequenceNo)
+	}
+	if m.addpriority != nil {
+		fields = append(fields, codexturnintent.FieldPriority)
+	}
+	if m.addattempt_count != nil {
+		fields = append(fields, codexturnintent.FieldAttemptCount)
+	}
+	if m.addmax_attempts != nil {
+		fields = append(fields, codexturnintent.FieldMaxAttempts)
+	}
+	if m.addresult_delivery_attempt_count != nil {
+		fields = append(fields, codexturnintent.FieldResultDeliveryAttemptCount)
+	}
+	if m.addreply_hook_block_count != nil {
+		fields = append(fields, codexturnintent.FieldReplyHookBlockCount)
+	}
+	if m.addgithub_comment_id != nil {
+		fields = append(fields, codexturnintent.FieldGithubCommentID)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *CodexTurnIntentMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case codexturnintent.FieldSequenceNo:
+		return m.AddedSequenceNo()
+	case codexturnintent.FieldPriority:
+		return m.AddedPriority()
+	case codexturnintent.FieldAttemptCount:
+		return m.AddedAttemptCount()
+	case codexturnintent.FieldMaxAttempts:
+		return m.AddedMaxAttempts()
+	case codexturnintent.FieldResultDeliveryAttemptCount:
+		return m.AddedResultDeliveryAttemptCount()
+	case codexturnintent.FieldReplyHookBlockCount:
+		return m.AddedReplyHookBlockCount()
+	case codexturnintent.FieldGithubCommentID:
+		return m.AddedGithubCommentID()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CodexTurnIntentMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case codexturnintent.FieldSequenceNo:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSequenceNo(v)
+		return nil
+	case codexturnintent.FieldPriority:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPriority(v)
+		return nil
+	case codexturnintent.FieldAttemptCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAttemptCount(v)
+		return nil
+	case codexturnintent.FieldMaxAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMaxAttempts(v)
+		return nil
+	case codexturnintent.FieldResultDeliveryAttemptCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddResultDeliveryAttemptCount(v)
+		return nil
+	case codexturnintent.FieldReplyHookBlockCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddReplyHookBlockCount(v)
+		return nil
+	case codexturnintent.FieldGithubCommentID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddGithubCommentID(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CodexTurnIntent numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *CodexTurnIntentMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(codexturnintent.FieldBehavior) {
+		fields = append(fields, codexturnintent.FieldBehavior)
+	}
+	if m.FieldCleared(codexturnintent.FieldResolvedAction) {
+		fields = append(fields, codexturnintent.FieldResolvedAction)
+	}
+	if m.FieldCleared(codexturnintent.FieldTargetIntentID) {
+		fields = append(fields, codexturnintent.FieldTargetIntentID)
+	}
+	if m.FieldCleared(codexturnintent.FieldWorkItemID) {
+		fields = append(fields, codexturnintent.FieldWorkItemID)
+	}
+	if m.FieldCleared(codexturnintent.FieldDiscordConversationID) {
+		fields = append(fields, codexturnintent.FieldDiscordConversationID)
+	}
+	if m.FieldCleared(codexturnintent.FieldDiscordMessageID) {
+		fields = append(fields, codexturnintent.FieldDiscordMessageID)
+	}
+	if m.FieldCleared(codexturnintent.FieldRepositoryID) {
+		fields = append(fields, codexturnintent.FieldRepositoryID)
+	}
+	if m.FieldCleared(codexturnintent.FieldWebhookDeliveryID) {
+		fields = append(fields, codexturnintent.FieldWebhookDeliveryID)
+	}
+	if m.FieldCleared(codexturnintent.FieldPreparedInput) {
+		fields = append(fields, codexturnintent.FieldPreparedInput)
+	}
+	if m.FieldCleared(codexturnintent.FieldTriggerRuleID) {
+		fields = append(fields, codexturnintent.FieldTriggerRuleID)
+	}
+	if m.FieldCleared(codexturnintent.FieldCodexSubmissionID) {
+		fields = append(fields, codexturnintent.FieldCodexSubmissionID)
+	}
+	if m.FieldCleared(codexturnintent.FieldConfirmedCodexTurnID) {
+		fields = append(fields, codexturnintent.FieldConfirmedCodexTurnID)
+	}
+	if m.FieldCleared(codexturnintent.FieldLastErrorCode) {
+		fields = append(fields, codexturnintent.FieldLastErrorCode)
+	}
+	if m.FieldCleared(codexturnintent.FieldLastErrorMessage) {
+		fields = append(fields, codexturnintent.FieldLastErrorMessage)
+	}
+	if m.FieldCleared(codexturnintent.FieldResult) {
+		fields = append(fields, codexturnintent.FieldResult)
+	}
+	if m.FieldCleared(codexturnintent.FieldResultDeliveryError) {
+		fields = append(fields, codexturnintent.FieldResultDeliveryError)
+	}
+	if m.FieldCleared(codexturnintent.FieldResultDeliveryToken) {
+		fields = append(fields, codexturnintent.FieldResultDeliveryToken)
+	}
+	if m.FieldCleared(codexturnintent.FieldResultDeliveryAvailableAt) {
+		fields = append(fields, codexturnintent.FieldResultDeliveryAvailableAt)
+	}
+	if m.FieldCleared(codexturnintent.FieldReplyToolCallID) {
+		fields = append(fields, codexturnintent.FieldReplyToolCallID)
+	}
+	if m.FieldCleared(codexturnintent.FieldGithubCommentID) {
+		fields = append(fields, codexturnintent.FieldGithubCommentID)
+	}
+	if m.FieldCleared(codexturnintent.FieldGithubCommentURL) {
+		fields = append(fields, codexturnintent.FieldGithubCommentURL)
+	}
+	if m.FieldCleared(codexturnintent.FieldDispatchedAt) {
+		fields = append(fields, codexturnintent.FieldDispatchedAt)
+	}
+	if m.FieldCleared(codexturnintent.FieldConfirmedAt) {
+		fields = append(fields, codexturnintent.FieldConfirmedAt)
+	}
+	if m.FieldCleared(codexturnintent.FieldFinishedAt) {
+		fields = append(fields, codexturnintent.FieldFinishedAt)
+	}
+	if m.FieldCleared(codexturnintent.FieldResultDeliveredAt) {
+		fields = append(fields, codexturnintent.FieldResultDeliveredAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *CodexTurnIntentMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *CodexTurnIntentMutation) ClearField(name string) error {
+	switch name {
+	case codexturnintent.FieldBehavior:
+		m.ClearBehavior()
+		return nil
+	case codexturnintent.FieldResolvedAction:
+		m.ClearResolvedAction()
+		return nil
+	case codexturnintent.FieldTargetIntentID:
+		m.ClearTargetIntentID()
+		return nil
+	case codexturnintent.FieldWorkItemID:
+		m.ClearWorkItemID()
+		return nil
+	case codexturnintent.FieldDiscordConversationID:
+		m.ClearDiscordConversationID()
+		return nil
+	case codexturnintent.FieldDiscordMessageID:
+		m.ClearDiscordMessageID()
+		return nil
+	case codexturnintent.FieldRepositoryID:
+		m.ClearRepositoryID()
+		return nil
+	case codexturnintent.FieldWebhookDeliveryID:
+		m.ClearWebhookDeliveryID()
+		return nil
+	case codexturnintent.FieldPreparedInput:
+		m.ClearPreparedInput()
+		return nil
+	case codexturnintent.FieldTriggerRuleID:
+		m.ClearTriggerRuleID()
+		return nil
+	case codexturnintent.FieldCodexSubmissionID:
+		m.ClearCodexSubmissionID()
+		return nil
+	case codexturnintent.FieldConfirmedCodexTurnID:
+		m.ClearConfirmedCodexTurnID()
+		return nil
+	case codexturnintent.FieldLastErrorCode:
+		m.ClearLastErrorCode()
+		return nil
+	case codexturnintent.FieldLastErrorMessage:
+		m.ClearLastErrorMessage()
+		return nil
+	case codexturnintent.FieldResult:
+		m.ClearResult()
+		return nil
+	case codexturnintent.FieldResultDeliveryError:
+		m.ClearResultDeliveryError()
+		return nil
+	case codexturnintent.FieldResultDeliveryToken:
+		m.ClearResultDeliveryToken()
+		return nil
+	case codexturnintent.FieldResultDeliveryAvailableAt:
+		m.ClearResultDeliveryAvailableAt()
+		return nil
+	case codexturnintent.FieldReplyToolCallID:
+		m.ClearReplyToolCallID()
+		return nil
+	case codexturnintent.FieldGithubCommentID:
+		m.ClearGithubCommentID()
+		return nil
+	case codexturnintent.FieldGithubCommentURL:
+		m.ClearGithubCommentURL()
+		return nil
+	case codexturnintent.FieldDispatchedAt:
+		m.ClearDispatchedAt()
+		return nil
+	case codexturnintent.FieldConfirmedAt:
+		m.ClearConfirmedAt()
+		return nil
+	case codexturnintent.FieldFinishedAt:
+		m.ClearFinishedAt()
+		return nil
+	case codexturnintent.FieldResultDeliveredAt:
+		m.ClearResultDeliveredAt()
+		return nil
+	}
+	return fmt.Errorf("unknown CodexTurnIntent nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *CodexTurnIntentMutation) ResetField(name string) error {
+	switch name {
+	case codexturnintent.FieldControlID:
+		m.ResetControlID()
+		return nil
+	case codexturnintent.FieldSequenceNo:
+		m.ResetSequenceNo()
+		return nil
+	case codexturnintent.FieldOperation:
+		m.ResetOperation()
+		return nil
+	case codexturnintent.FieldBehavior:
+		m.ResetBehavior()
+		return nil
+	case codexturnintent.FieldResolvedAction:
+		m.ResetResolvedAction()
+		return nil
+	case codexturnintent.FieldTargetIntentID:
+		m.ResetTargetIntentID()
+		return nil
+	case codexturnintent.FieldSourceType:
+		m.ResetSourceType()
+		return nil
+	case codexturnintent.FieldWorkItemID:
+		m.ResetWorkItemID()
+		return nil
+	case codexturnintent.FieldDiscordConversationID:
+		m.ResetDiscordConversationID()
+		return nil
+	case codexturnintent.FieldDiscordMessageID:
+		m.ResetDiscordMessageID()
+		return nil
+	case codexturnintent.FieldRepositoryID:
+		m.ResetRepositoryID()
+		return nil
+	case codexturnintent.FieldAgentProfileID:
+		m.ResetAgentProfileID()
+		return nil
+	case codexturnintent.FieldWebhookDeliveryID:
+		m.ResetWebhookDeliveryID()
+		return nil
+	case codexturnintent.FieldIdempotencyKey:
+		m.ResetIdempotencyKey()
+		return nil
+	case codexturnintent.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case codexturnintent.FieldInstruction:
+		m.ResetInstruction()
+		return nil
+	case codexturnintent.FieldPreparedInput:
+		m.ResetPreparedInput()
+		return nil
+	case codexturnintent.FieldSkills:
+		m.ResetSkills()
+		return nil
+	case codexturnintent.FieldAllowedTools:
+		m.ResetAllowedTools()
+		return nil
+	case codexturnintent.FieldDangerousActions:
+		m.ResetDangerousActions()
+		return nil
+	case codexturnintent.FieldTriggerRuleID:
+		m.ResetTriggerRuleID()
+		return nil
+	case codexturnintent.FieldTriggerEvidence:
+		m.ResetTriggerEvidence()
+		return nil
+	case codexturnintent.FieldActorLogin:
+		m.ResetActorLogin()
+		return nil
+	case codexturnintent.FieldActorPermission:
+		m.ResetActorPermission()
+		return nil
+	case codexturnintent.FieldPriority:
+		m.ResetPriority()
+		return nil
+	case codexturnintent.FieldSteerable:
+		m.ResetSteerable()
+		return nil
+	case codexturnintent.FieldAvailableAt:
+		m.ResetAvailableAt()
+		return nil
+	case codexturnintent.FieldAttemptCount:
+		m.ResetAttemptCount()
+		return nil
+	case codexturnintent.FieldMaxAttempts:
+		m.ResetMaxAttempts()
+		return nil
+	case codexturnintent.FieldCodexSubmissionID:
+		m.ResetCodexSubmissionID()
+		return nil
+	case codexturnintent.FieldConfirmedCodexTurnID:
+		m.ResetConfirmedCodexTurnID()
+		return nil
+	case codexturnintent.FieldLastErrorCode:
+		m.ResetLastErrorCode()
+		return nil
+	case codexturnintent.FieldLastErrorMessage:
+		m.ResetLastErrorMessage()
+		return nil
+	case codexturnintent.FieldResult:
+		m.ResetResult()
+		return nil
+	case codexturnintent.FieldResultDeliveryStatus:
+		m.ResetResultDeliveryStatus()
+		return nil
+	case codexturnintent.FieldResultDeliveryAttemptCount:
+		m.ResetResultDeliveryAttemptCount()
+		return nil
+	case codexturnintent.FieldResultDeliveryError:
+		m.ResetResultDeliveryError()
+		return nil
+	case codexturnintent.FieldResultDeliveryToken:
+		m.ResetResultDeliveryToken()
+		return nil
+	case codexturnintent.FieldResultDeliveryAvailableAt:
+		m.ResetResultDeliveryAvailableAt()
+		return nil
+	case codexturnintent.FieldReplyPolicy:
+		m.ResetReplyPolicy()
+		return nil
+	case codexturnintent.FieldReplyStatus:
+		m.ResetReplyStatus()
+		return nil
+	case codexturnintent.FieldReplyHookBlockCount:
+		m.ResetReplyHookBlockCount()
+		return nil
+	case codexturnintent.FieldReplyToolCallID:
+		m.ResetReplyToolCallID()
+		return nil
+	case codexturnintent.FieldGithubCommentID:
+		m.ResetGithubCommentID()
+		return nil
+	case codexturnintent.FieldGithubCommentURL:
+		m.ResetGithubCommentURL()
+		return nil
+	case codexturnintent.FieldDispatchedAt:
+		m.ResetDispatchedAt()
+		return nil
+	case codexturnintent.FieldConfirmedAt:
+		m.ResetConfirmedAt()
+		return nil
+	case codexturnintent.FieldFinishedAt:
+		m.ResetFinishedAt()
+		return nil
+	case codexturnintent.FieldResultDeliveredAt:
+		m.ResetResultDeliveredAt()
+		return nil
+	case codexturnintent.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case codexturnintent.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown CodexTurnIntent field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *CodexTurnIntentMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *CodexTurnIntentMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *CodexTurnIntentMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *CodexTurnIntentMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *CodexTurnIntentMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *CodexTurnIntentMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *CodexTurnIntentMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown CodexTurnIntent unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *CodexTurnIntentMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown CodexTurnIntent edge %s", name)
+}
+
+// CodexTurnRunMutation represents an operation that mutates the CodexTurnRun nodes in the graph.
+type CodexTurnRunMutation struct {
+	config
+	op                      Op
+	typ                     string
+	id                      *uuid.UUID
+	control_id              *uuid.UUID
+	primary_intent_id       *uuid.UUID
+	attempt                 *int
+	addattempt              *int
+	worker_id               *string
+	lease_epoch             *int64
+	addlease_epoch          *int64
+	capability_hash         *string
+	active_slot             *int
+	addactive_slot          *int
+	status                  *string
+	codex_submission_id     *string
+	confirmed_codex_turn_id *string
+	append_count            *int
+	addappend_count         *int
+	max_append_count        *int
+	addmax_append_count     *int
+	started_at              *time.Time
+	heartbeat_at            *time.Time
+	finished_at             *time.Time
+	error_code              *string
+	error_message           *string
+	clearedFields           map[string]struct{}
+	done                    bool
+	oldValue                func(context.Context) (*CodexTurnRun, error)
+	predicates              []predicate.CodexTurnRun
+}
+
+var _ ent.Mutation = (*CodexTurnRunMutation)(nil)
+
+// codexturnrunOption allows management of the mutation configuration using functional options.
+type codexturnrunOption func(*CodexTurnRunMutation)
+
+// newCodexTurnRunMutation creates new mutation for the CodexTurnRun entity.
+func newCodexTurnRunMutation(c config, op Op, opts ...codexturnrunOption) *CodexTurnRunMutation {
+	m := &CodexTurnRunMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeCodexTurnRun,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withCodexTurnRunID sets the ID field of the mutation.
+func withCodexTurnRunID(id uuid.UUID) codexturnrunOption {
+	return func(m *CodexTurnRunMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *CodexTurnRun
+		)
+		m.oldValue = func(ctx context.Context) (*CodexTurnRun, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().CodexTurnRun.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withCodexTurnRun sets the old CodexTurnRun of the mutation.
+func withCodexTurnRun(node *CodexTurnRun) codexturnrunOption {
+	return func(m *CodexTurnRunMutation) {
+		m.oldValue = func(context.Context) (*CodexTurnRun, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m CodexTurnRunMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m CodexTurnRunMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of CodexTurnRun entities.
+func (m *CodexTurnRunMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *CodexTurnRunMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *CodexTurnRunMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().CodexTurnRun.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetControlID sets the "control_id" field.
+func (m *CodexTurnRunMutation) SetControlID(u uuid.UUID) {
+	m.control_id = &u
+}
+
+// ControlID returns the value of the "control_id" field in the mutation.
+func (m *CodexTurnRunMutation) ControlID() (r uuid.UUID, exists bool) {
+	v := m.control_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldControlID returns the old "control_id" field's value of the CodexTurnRun entity.
+// If the CodexTurnRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnRunMutation) OldControlID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldControlID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldControlID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldControlID: %w", err)
+	}
+	return oldValue.ControlID, nil
+}
+
+// ResetControlID resets all changes to the "control_id" field.
+func (m *CodexTurnRunMutation) ResetControlID() {
+	m.control_id = nil
+}
+
+// SetPrimaryIntentID sets the "primary_intent_id" field.
+func (m *CodexTurnRunMutation) SetPrimaryIntentID(u uuid.UUID) {
+	m.primary_intent_id = &u
+}
+
+// PrimaryIntentID returns the value of the "primary_intent_id" field in the mutation.
+func (m *CodexTurnRunMutation) PrimaryIntentID() (r uuid.UUID, exists bool) {
+	v := m.primary_intent_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPrimaryIntentID returns the old "primary_intent_id" field's value of the CodexTurnRun entity.
+// If the CodexTurnRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnRunMutation) OldPrimaryIntentID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPrimaryIntentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPrimaryIntentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPrimaryIntentID: %w", err)
+	}
+	return oldValue.PrimaryIntentID, nil
+}
+
+// ResetPrimaryIntentID resets all changes to the "primary_intent_id" field.
+func (m *CodexTurnRunMutation) ResetPrimaryIntentID() {
+	m.primary_intent_id = nil
+}
+
+// SetAttempt sets the "attempt" field.
+func (m *CodexTurnRunMutation) SetAttempt(i int) {
+	m.attempt = &i
+	m.addattempt = nil
+}
+
+// Attempt returns the value of the "attempt" field in the mutation.
+func (m *CodexTurnRunMutation) Attempt() (r int, exists bool) {
+	v := m.attempt
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAttempt returns the old "attempt" field's value of the CodexTurnRun entity.
+// If the CodexTurnRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnRunMutation) OldAttempt(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAttempt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAttempt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAttempt: %w", err)
+	}
+	return oldValue.Attempt, nil
+}
+
+// AddAttempt adds i to the "attempt" field.
+func (m *CodexTurnRunMutation) AddAttempt(i int) {
+	if m.addattempt != nil {
+		*m.addattempt += i
+	} else {
+		m.addattempt = &i
+	}
+}
+
+// AddedAttempt returns the value that was added to the "attempt" field in this mutation.
+func (m *CodexTurnRunMutation) AddedAttempt() (r int, exists bool) {
+	v := m.addattempt
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAttempt resets all changes to the "attempt" field.
+func (m *CodexTurnRunMutation) ResetAttempt() {
+	m.attempt = nil
+	m.addattempt = nil
+}
+
+// SetWorkerID sets the "worker_id" field.
+func (m *CodexTurnRunMutation) SetWorkerID(s string) {
+	m.worker_id = &s
+}
+
+// WorkerID returns the value of the "worker_id" field in the mutation.
+func (m *CodexTurnRunMutation) WorkerID() (r string, exists bool) {
+	v := m.worker_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkerID returns the old "worker_id" field's value of the CodexTurnRun entity.
+// If the CodexTurnRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnRunMutation) OldWorkerID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkerID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkerID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkerID: %w", err)
+	}
+	return oldValue.WorkerID, nil
+}
+
+// ResetWorkerID resets all changes to the "worker_id" field.
+func (m *CodexTurnRunMutation) ResetWorkerID() {
+	m.worker_id = nil
+}
+
+// SetLeaseEpoch sets the "lease_epoch" field.
+func (m *CodexTurnRunMutation) SetLeaseEpoch(i int64) {
+	m.lease_epoch = &i
+	m.addlease_epoch = nil
+}
+
+// LeaseEpoch returns the value of the "lease_epoch" field in the mutation.
+func (m *CodexTurnRunMutation) LeaseEpoch() (r int64, exists bool) {
+	v := m.lease_epoch
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLeaseEpoch returns the old "lease_epoch" field's value of the CodexTurnRun entity.
+// If the CodexTurnRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnRunMutation) OldLeaseEpoch(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLeaseEpoch is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLeaseEpoch requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLeaseEpoch: %w", err)
+	}
+	return oldValue.LeaseEpoch, nil
+}
+
+// AddLeaseEpoch adds i to the "lease_epoch" field.
+func (m *CodexTurnRunMutation) AddLeaseEpoch(i int64) {
+	if m.addlease_epoch != nil {
+		*m.addlease_epoch += i
+	} else {
+		m.addlease_epoch = &i
+	}
+}
+
+// AddedLeaseEpoch returns the value that was added to the "lease_epoch" field in this mutation.
+func (m *CodexTurnRunMutation) AddedLeaseEpoch() (r int64, exists bool) {
+	v := m.addlease_epoch
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetLeaseEpoch resets all changes to the "lease_epoch" field.
+func (m *CodexTurnRunMutation) ResetLeaseEpoch() {
+	m.lease_epoch = nil
+	m.addlease_epoch = nil
+}
+
+// SetCapabilityHash sets the "capability_hash" field.
+func (m *CodexTurnRunMutation) SetCapabilityHash(s string) {
+	m.capability_hash = &s
+}
+
+// CapabilityHash returns the value of the "capability_hash" field in the mutation.
+func (m *CodexTurnRunMutation) CapabilityHash() (r string, exists bool) {
+	v := m.capability_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCapabilityHash returns the old "capability_hash" field's value of the CodexTurnRun entity.
+// If the CodexTurnRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnRunMutation) OldCapabilityHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCapabilityHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCapabilityHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCapabilityHash: %w", err)
+	}
+	return oldValue.CapabilityHash, nil
+}
+
+// ResetCapabilityHash resets all changes to the "capability_hash" field.
+func (m *CodexTurnRunMutation) ResetCapabilityHash() {
+	m.capability_hash = nil
+}
+
+// SetActiveSlot sets the "active_slot" field.
+func (m *CodexTurnRunMutation) SetActiveSlot(i int) {
+	m.active_slot = &i
+	m.addactive_slot = nil
+}
+
+// ActiveSlot returns the value of the "active_slot" field in the mutation.
+func (m *CodexTurnRunMutation) ActiveSlot() (r int, exists bool) {
+	v := m.active_slot
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActiveSlot returns the old "active_slot" field's value of the CodexTurnRun entity.
+// If the CodexTurnRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnRunMutation) OldActiveSlot(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActiveSlot is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActiveSlot requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActiveSlot: %w", err)
+	}
+	return oldValue.ActiveSlot, nil
+}
+
+// AddActiveSlot adds i to the "active_slot" field.
+func (m *CodexTurnRunMutation) AddActiveSlot(i int) {
+	if m.addactive_slot != nil {
+		*m.addactive_slot += i
+	} else {
+		m.addactive_slot = &i
+	}
+}
+
+// AddedActiveSlot returns the value that was added to the "active_slot" field in this mutation.
+func (m *CodexTurnRunMutation) AddedActiveSlot() (r int, exists bool) {
+	v := m.addactive_slot
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearActiveSlot clears the value of the "active_slot" field.
+func (m *CodexTurnRunMutation) ClearActiveSlot() {
+	m.active_slot = nil
+	m.addactive_slot = nil
+	m.clearedFields[codexturnrun.FieldActiveSlot] = struct{}{}
+}
+
+// ActiveSlotCleared returns if the "active_slot" field was cleared in this mutation.
+func (m *CodexTurnRunMutation) ActiveSlotCleared() bool {
+	_, ok := m.clearedFields[codexturnrun.FieldActiveSlot]
+	return ok
+}
+
+// ResetActiveSlot resets all changes to the "active_slot" field.
+func (m *CodexTurnRunMutation) ResetActiveSlot() {
+	m.active_slot = nil
+	m.addactive_slot = nil
+	delete(m.clearedFields, codexturnrun.FieldActiveSlot)
+}
+
+// SetStatus sets the "status" field.
+func (m *CodexTurnRunMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *CodexTurnRunMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the CodexTurnRun entity.
+// If the CodexTurnRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnRunMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *CodexTurnRunMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetCodexSubmissionID sets the "codex_submission_id" field.
+func (m *CodexTurnRunMutation) SetCodexSubmissionID(s string) {
+	m.codex_submission_id = &s
+}
+
+// CodexSubmissionID returns the value of the "codex_submission_id" field in the mutation.
+func (m *CodexTurnRunMutation) CodexSubmissionID() (r string, exists bool) {
+	v := m.codex_submission_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCodexSubmissionID returns the old "codex_submission_id" field's value of the CodexTurnRun entity.
+// If the CodexTurnRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnRunMutation) OldCodexSubmissionID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCodexSubmissionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCodexSubmissionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCodexSubmissionID: %w", err)
+	}
+	return oldValue.CodexSubmissionID, nil
+}
+
+// ClearCodexSubmissionID clears the value of the "codex_submission_id" field.
+func (m *CodexTurnRunMutation) ClearCodexSubmissionID() {
+	m.codex_submission_id = nil
+	m.clearedFields[codexturnrun.FieldCodexSubmissionID] = struct{}{}
+}
+
+// CodexSubmissionIDCleared returns if the "codex_submission_id" field was cleared in this mutation.
+func (m *CodexTurnRunMutation) CodexSubmissionIDCleared() bool {
+	_, ok := m.clearedFields[codexturnrun.FieldCodexSubmissionID]
+	return ok
+}
+
+// ResetCodexSubmissionID resets all changes to the "codex_submission_id" field.
+func (m *CodexTurnRunMutation) ResetCodexSubmissionID() {
+	m.codex_submission_id = nil
+	delete(m.clearedFields, codexturnrun.FieldCodexSubmissionID)
+}
+
+// SetConfirmedCodexTurnID sets the "confirmed_codex_turn_id" field.
+func (m *CodexTurnRunMutation) SetConfirmedCodexTurnID(s string) {
+	m.confirmed_codex_turn_id = &s
+}
+
+// ConfirmedCodexTurnID returns the value of the "confirmed_codex_turn_id" field in the mutation.
+func (m *CodexTurnRunMutation) ConfirmedCodexTurnID() (r string, exists bool) {
+	v := m.confirmed_codex_turn_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConfirmedCodexTurnID returns the old "confirmed_codex_turn_id" field's value of the CodexTurnRun entity.
+// If the CodexTurnRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnRunMutation) OldConfirmedCodexTurnID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConfirmedCodexTurnID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConfirmedCodexTurnID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConfirmedCodexTurnID: %w", err)
+	}
+	return oldValue.ConfirmedCodexTurnID, nil
+}
+
+// ClearConfirmedCodexTurnID clears the value of the "confirmed_codex_turn_id" field.
+func (m *CodexTurnRunMutation) ClearConfirmedCodexTurnID() {
+	m.confirmed_codex_turn_id = nil
+	m.clearedFields[codexturnrun.FieldConfirmedCodexTurnID] = struct{}{}
+}
+
+// ConfirmedCodexTurnIDCleared returns if the "confirmed_codex_turn_id" field was cleared in this mutation.
+func (m *CodexTurnRunMutation) ConfirmedCodexTurnIDCleared() bool {
+	_, ok := m.clearedFields[codexturnrun.FieldConfirmedCodexTurnID]
+	return ok
+}
+
+// ResetConfirmedCodexTurnID resets all changes to the "confirmed_codex_turn_id" field.
+func (m *CodexTurnRunMutation) ResetConfirmedCodexTurnID() {
+	m.confirmed_codex_turn_id = nil
+	delete(m.clearedFields, codexturnrun.FieldConfirmedCodexTurnID)
+}
+
+// SetAppendCount sets the "append_count" field.
+func (m *CodexTurnRunMutation) SetAppendCount(i int) {
+	m.append_count = &i
+	m.addappend_count = nil
+}
+
+// AppendCount returns the value of the "append_count" field in the mutation.
+func (m *CodexTurnRunMutation) AppendCount() (r int, exists bool) {
+	v := m.append_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAppendCount returns the old "append_count" field's value of the CodexTurnRun entity.
+// If the CodexTurnRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnRunMutation) OldAppendCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAppendCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAppendCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAppendCount: %w", err)
+	}
+	return oldValue.AppendCount, nil
+}
+
+// AddAppendCount adds i to the "append_count" field.
+func (m *CodexTurnRunMutation) AddAppendCount(i int) {
+	if m.addappend_count != nil {
+		*m.addappend_count += i
+	} else {
+		m.addappend_count = &i
+	}
+}
+
+// AddedAppendCount returns the value that was added to the "append_count" field in this mutation.
+func (m *CodexTurnRunMutation) AddedAppendCount() (r int, exists bool) {
+	v := m.addappend_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAppendCount resets all changes to the "append_count" field.
+func (m *CodexTurnRunMutation) ResetAppendCount() {
+	m.append_count = nil
+	m.addappend_count = nil
+}
+
+// SetMaxAppendCount sets the "max_append_count" field.
+func (m *CodexTurnRunMutation) SetMaxAppendCount(i int) {
+	m.max_append_count = &i
+	m.addmax_append_count = nil
+}
+
+// MaxAppendCount returns the value of the "max_append_count" field in the mutation.
+func (m *CodexTurnRunMutation) MaxAppendCount() (r int, exists bool) {
+	v := m.max_append_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMaxAppendCount returns the old "max_append_count" field's value of the CodexTurnRun entity.
+// If the CodexTurnRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnRunMutation) OldMaxAppendCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMaxAppendCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMaxAppendCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMaxAppendCount: %w", err)
+	}
+	return oldValue.MaxAppendCount, nil
+}
+
+// AddMaxAppendCount adds i to the "max_append_count" field.
+func (m *CodexTurnRunMutation) AddMaxAppendCount(i int) {
+	if m.addmax_append_count != nil {
+		*m.addmax_append_count += i
+	} else {
+		m.addmax_append_count = &i
+	}
+}
+
+// AddedMaxAppendCount returns the value that was added to the "max_append_count" field in this mutation.
+func (m *CodexTurnRunMutation) AddedMaxAppendCount() (r int, exists bool) {
+	v := m.addmax_append_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetMaxAppendCount resets all changes to the "max_append_count" field.
+func (m *CodexTurnRunMutation) ResetMaxAppendCount() {
+	m.max_append_count = nil
+	m.addmax_append_count = nil
+}
+
+// SetStartedAt sets the "started_at" field.
+func (m *CodexTurnRunMutation) SetStartedAt(t time.Time) {
+	m.started_at = &t
+}
+
+// StartedAt returns the value of the "started_at" field in the mutation.
+func (m *CodexTurnRunMutation) StartedAt() (r time.Time, exists bool) {
+	v := m.started_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStartedAt returns the old "started_at" field's value of the CodexTurnRun entity.
+// If the CodexTurnRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnRunMutation) OldStartedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStartedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStartedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStartedAt: %w", err)
+	}
+	return oldValue.StartedAt, nil
+}
+
+// ResetStartedAt resets all changes to the "started_at" field.
+func (m *CodexTurnRunMutation) ResetStartedAt() {
+	m.started_at = nil
+}
+
+// SetHeartbeatAt sets the "heartbeat_at" field.
+func (m *CodexTurnRunMutation) SetHeartbeatAt(t time.Time) {
+	m.heartbeat_at = &t
+}
+
+// HeartbeatAt returns the value of the "heartbeat_at" field in the mutation.
+func (m *CodexTurnRunMutation) HeartbeatAt() (r time.Time, exists bool) {
+	v := m.heartbeat_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHeartbeatAt returns the old "heartbeat_at" field's value of the CodexTurnRun entity.
+// If the CodexTurnRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnRunMutation) OldHeartbeatAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHeartbeatAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHeartbeatAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHeartbeatAt: %w", err)
+	}
+	return oldValue.HeartbeatAt, nil
+}
+
+// ResetHeartbeatAt resets all changes to the "heartbeat_at" field.
+func (m *CodexTurnRunMutation) ResetHeartbeatAt() {
+	m.heartbeat_at = nil
+}
+
+// SetFinishedAt sets the "finished_at" field.
+func (m *CodexTurnRunMutation) SetFinishedAt(t time.Time) {
+	m.finished_at = &t
+}
+
+// FinishedAt returns the value of the "finished_at" field in the mutation.
+func (m *CodexTurnRunMutation) FinishedAt() (r time.Time, exists bool) {
+	v := m.finished_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFinishedAt returns the old "finished_at" field's value of the CodexTurnRun entity.
+// If the CodexTurnRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnRunMutation) OldFinishedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFinishedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFinishedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFinishedAt: %w", err)
+	}
+	return oldValue.FinishedAt, nil
+}
+
+// ClearFinishedAt clears the value of the "finished_at" field.
+func (m *CodexTurnRunMutation) ClearFinishedAt() {
+	m.finished_at = nil
+	m.clearedFields[codexturnrun.FieldFinishedAt] = struct{}{}
+}
+
+// FinishedAtCleared returns if the "finished_at" field was cleared in this mutation.
+func (m *CodexTurnRunMutation) FinishedAtCleared() bool {
+	_, ok := m.clearedFields[codexturnrun.FieldFinishedAt]
+	return ok
+}
+
+// ResetFinishedAt resets all changes to the "finished_at" field.
+func (m *CodexTurnRunMutation) ResetFinishedAt() {
+	m.finished_at = nil
+	delete(m.clearedFields, codexturnrun.FieldFinishedAt)
+}
+
+// SetErrorCode sets the "error_code" field.
+func (m *CodexTurnRunMutation) SetErrorCode(s string) {
+	m.error_code = &s
+}
+
+// ErrorCode returns the value of the "error_code" field in the mutation.
+func (m *CodexTurnRunMutation) ErrorCode() (r string, exists bool) {
+	v := m.error_code
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldErrorCode returns the old "error_code" field's value of the CodexTurnRun entity.
+// If the CodexTurnRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnRunMutation) OldErrorCode(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrorCode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrorCode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrorCode: %w", err)
+	}
+	return oldValue.ErrorCode, nil
+}
+
+// ClearErrorCode clears the value of the "error_code" field.
+func (m *CodexTurnRunMutation) ClearErrorCode() {
+	m.error_code = nil
+	m.clearedFields[codexturnrun.FieldErrorCode] = struct{}{}
+}
+
+// ErrorCodeCleared returns if the "error_code" field was cleared in this mutation.
+func (m *CodexTurnRunMutation) ErrorCodeCleared() bool {
+	_, ok := m.clearedFields[codexturnrun.FieldErrorCode]
+	return ok
+}
+
+// ResetErrorCode resets all changes to the "error_code" field.
+func (m *CodexTurnRunMutation) ResetErrorCode() {
+	m.error_code = nil
+	delete(m.clearedFields, codexturnrun.FieldErrorCode)
+}
+
+// SetErrorMessage sets the "error_message" field.
+func (m *CodexTurnRunMutation) SetErrorMessage(s string) {
+	m.error_message = &s
+}
+
+// ErrorMessage returns the value of the "error_message" field in the mutation.
+func (m *CodexTurnRunMutation) ErrorMessage() (r string, exists bool) {
+	v := m.error_message
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldErrorMessage returns the old "error_message" field's value of the CodexTurnRun entity.
+// If the CodexTurnRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnRunMutation) OldErrorMessage(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrorMessage is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrorMessage requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrorMessage: %w", err)
+	}
+	return oldValue.ErrorMessage, nil
+}
+
+// ClearErrorMessage clears the value of the "error_message" field.
+func (m *CodexTurnRunMutation) ClearErrorMessage() {
+	m.error_message = nil
+	m.clearedFields[codexturnrun.FieldErrorMessage] = struct{}{}
+}
+
+// ErrorMessageCleared returns if the "error_message" field was cleared in this mutation.
+func (m *CodexTurnRunMutation) ErrorMessageCleared() bool {
+	_, ok := m.clearedFields[codexturnrun.FieldErrorMessage]
+	return ok
+}
+
+// ResetErrorMessage resets all changes to the "error_message" field.
+func (m *CodexTurnRunMutation) ResetErrorMessage() {
+	m.error_message = nil
+	delete(m.clearedFields, codexturnrun.FieldErrorMessage)
+}
+
+// Where appends a list predicates to the CodexTurnRunMutation builder.
+func (m *CodexTurnRunMutation) Where(ps ...predicate.CodexTurnRun) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the CodexTurnRunMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *CodexTurnRunMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.CodexTurnRun, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *CodexTurnRunMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *CodexTurnRunMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (CodexTurnRun).
+func (m *CodexTurnRunMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *CodexTurnRunMutation) Fields() []string {
+	fields := make([]string, 0, 17)
+	if m.control_id != nil {
+		fields = append(fields, codexturnrun.FieldControlID)
+	}
+	if m.primary_intent_id != nil {
+		fields = append(fields, codexturnrun.FieldPrimaryIntentID)
+	}
+	if m.attempt != nil {
+		fields = append(fields, codexturnrun.FieldAttempt)
+	}
+	if m.worker_id != nil {
+		fields = append(fields, codexturnrun.FieldWorkerID)
+	}
+	if m.lease_epoch != nil {
+		fields = append(fields, codexturnrun.FieldLeaseEpoch)
+	}
+	if m.capability_hash != nil {
+		fields = append(fields, codexturnrun.FieldCapabilityHash)
+	}
+	if m.active_slot != nil {
+		fields = append(fields, codexturnrun.FieldActiveSlot)
+	}
+	if m.status != nil {
+		fields = append(fields, codexturnrun.FieldStatus)
+	}
+	if m.codex_submission_id != nil {
+		fields = append(fields, codexturnrun.FieldCodexSubmissionID)
+	}
+	if m.confirmed_codex_turn_id != nil {
+		fields = append(fields, codexturnrun.FieldConfirmedCodexTurnID)
+	}
+	if m.append_count != nil {
+		fields = append(fields, codexturnrun.FieldAppendCount)
+	}
+	if m.max_append_count != nil {
+		fields = append(fields, codexturnrun.FieldMaxAppendCount)
+	}
+	if m.started_at != nil {
+		fields = append(fields, codexturnrun.FieldStartedAt)
+	}
+	if m.heartbeat_at != nil {
+		fields = append(fields, codexturnrun.FieldHeartbeatAt)
+	}
+	if m.finished_at != nil {
+		fields = append(fields, codexturnrun.FieldFinishedAt)
+	}
+	if m.error_code != nil {
+		fields = append(fields, codexturnrun.FieldErrorCode)
+	}
+	if m.error_message != nil {
+		fields = append(fields, codexturnrun.FieldErrorMessage)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *CodexTurnRunMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case codexturnrun.FieldControlID:
+		return m.ControlID()
+	case codexturnrun.FieldPrimaryIntentID:
+		return m.PrimaryIntentID()
+	case codexturnrun.FieldAttempt:
+		return m.Attempt()
+	case codexturnrun.FieldWorkerID:
+		return m.WorkerID()
+	case codexturnrun.FieldLeaseEpoch:
+		return m.LeaseEpoch()
+	case codexturnrun.FieldCapabilityHash:
+		return m.CapabilityHash()
+	case codexturnrun.FieldActiveSlot:
+		return m.ActiveSlot()
+	case codexturnrun.FieldStatus:
+		return m.Status()
+	case codexturnrun.FieldCodexSubmissionID:
+		return m.CodexSubmissionID()
+	case codexturnrun.FieldConfirmedCodexTurnID:
+		return m.ConfirmedCodexTurnID()
+	case codexturnrun.FieldAppendCount:
+		return m.AppendCount()
+	case codexturnrun.FieldMaxAppendCount:
+		return m.MaxAppendCount()
+	case codexturnrun.FieldStartedAt:
+		return m.StartedAt()
+	case codexturnrun.FieldHeartbeatAt:
+		return m.HeartbeatAt()
+	case codexturnrun.FieldFinishedAt:
+		return m.FinishedAt()
+	case codexturnrun.FieldErrorCode:
+		return m.ErrorCode()
+	case codexturnrun.FieldErrorMessage:
+		return m.ErrorMessage()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *CodexTurnRunMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case codexturnrun.FieldControlID:
+		return m.OldControlID(ctx)
+	case codexturnrun.FieldPrimaryIntentID:
+		return m.OldPrimaryIntentID(ctx)
+	case codexturnrun.FieldAttempt:
+		return m.OldAttempt(ctx)
+	case codexturnrun.FieldWorkerID:
+		return m.OldWorkerID(ctx)
+	case codexturnrun.FieldLeaseEpoch:
+		return m.OldLeaseEpoch(ctx)
+	case codexturnrun.FieldCapabilityHash:
+		return m.OldCapabilityHash(ctx)
+	case codexturnrun.FieldActiveSlot:
+		return m.OldActiveSlot(ctx)
+	case codexturnrun.FieldStatus:
+		return m.OldStatus(ctx)
+	case codexturnrun.FieldCodexSubmissionID:
+		return m.OldCodexSubmissionID(ctx)
+	case codexturnrun.FieldConfirmedCodexTurnID:
+		return m.OldConfirmedCodexTurnID(ctx)
+	case codexturnrun.FieldAppendCount:
+		return m.OldAppendCount(ctx)
+	case codexturnrun.FieldMaxAppendCount:
+		return m.OldMaxAppendCount(ctx)
+	case codexturnrun.FieldStartedAt:
+		return m.OldStartedAt(ctx)
+	case codexturnrun.FieldHeartbeatAt:
+		return m.OldHeartbeatAt(ctx)
+	case codexturnrun.FieldFinishedAt:
+		return m.OldFinishedAt(ctx)
+	case codexturnrun.FieldErrorCode:
+		return m.OldErrorCode(ctx)
+	case codexturnrun.FieldErrorMessage:
+		return m.OldErrorMessage(ctx)
+	}
+	return nil, fmt.Errorf("unknown CodexTurnRun field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CodexTurnRunMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case codexturnrun.FieldControlID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetControlID(v)
+		return nil
+	case codexturnrun.FieldPrimaryIntentID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPrimaryIntentID(v)
+		return nil
+	case codexturnrun.FieldAttempt:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAttempt(v)
+		return nil
+	case codexturnrun.FieldWorkerID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkerID(v)
+		return nil
+	case codexturnrun.FieldLeaseEpoch:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLeaseEpoch(v)
+		return nil
+	case codexturnrun.FieldCapabilityHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCapabilityHash(v)
+		return nil
+	case codexturnrun.FieldActiveSlot:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActiveSlot(v)
+		return nil
+	case codexturnrun.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case codexturnrun.FieldCodexSubmissionID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCodexSubmissionID(v)
+		return nil
+	case codexturnrun.FieldConfirmedCodexTurnID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConfirmedCodexTurnID(v)
+		return nil
+	case codexturnrun.FieldAppendCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAppendCount(v)
+		return nil
+	case codexturnrun.FieldMaxAppendCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMaxAppendCount(v)
+		return nil
+	case codexturnrun.FieldStartedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStartedAt(v)
+		return nil
+	case codexturnrun.FieldHeartbeatAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHeartbeatAt(v)
+		return nil
+	case codexturnrun.FieldFinishedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFinishedAt(v)
+		return nil
+	case codexturnrun.FieldErrorCode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetErrorCode(v)
+		return nil
+	case codexturnrun.FieldErrorMessage:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetErrorMessage(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CodexTurnRun field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *CodexTurnRunMutation) AddedFields() []string {
+	var fields []string
+	if m.addattempt != nil {
+		fields = append(fields, codexturnrun.FieldAttempt)
+	}
+	if m.addlease_epoch != nil {
+		fields = append(fields, codexturnrun.FieldLeaseEpoch)
+	}
+	if m.addactive_slot != nil {
+		fields = append(fields, codexturnrun.FieldActiveSlot)
+	}
+	if m.addappend_count != nil {
+		fields = append(fields, codexturnrun.FieldAppendCount)
+	}
+	if m.addmax_append_count != nil {
+		fields = append(fields, codexturnrun.FieldMaxAppendCount)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *CodexTurnRunMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case codexturnrun.FieldAttempt:
+		return m.AddedAttempt()
+	case codexturnrun.FieldLeaseEpoch:
+		return m.AddedLeaseEpoch()
+	case codexturnrun.FieldActiveSlot:
+		return m.AddedActiveSlot()
+	case codexturnrun.FieldAppendCount:
+		return m.AddedAppendCount()
+	case codexturnrun.FieldMaxAppendCount:
+		return m.AddedMaxAppendCount()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CodexTurnRunMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case codexturnrun.FieldAttempt:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAttempt(v)
+		return nil
+	case codexturnrun.FieldLeaseEpoch:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLeaseEpoch(v)
+		return nil
+	case codexturnrun.FieldActiveSlot:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddActiveSlot(v)
+		return nil
+	case codexturnrun.FieldAppendCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAppendCount(v)
+		return nil
+	case codexturnrun.FieldMaxAppendCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMaxAppendCount(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CodexTurnRun numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *CodexTurnRunMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(codexturnrun.FieldActiveSlot) {
+		fields = append(fields, codexturnrun.FieldActiveSlot)
+	}
+	if m.FieldCleared(codexturnrun.FieldCodexSubmissionID) {
+		fields = append(fields, codexturnrun.FieldCodexSubmissionID)
+	}
+	if m.FieldCleared(codexturnrun.FieldConfirmedCodexTurnID) {
+		fields = append(fields, codexturnrun.FieldConfirmedCodexTurnID)
+	}
+	if m.FieldCleared(codexturnrun.FieldFinishedAt) {
+		fields = append(fields, codexturnrun.FieldFinishedAt)
+	}
+	if m.FieldCleared(codexturnrun.FieldErrorCode) {
+		fields = append(fields, codexturnrun.FieldErrorCode)
+	}
+	if m.FieldCleared(codexturnrun.FieldErrorMessage) {
+		fields = append(fields, codexturnrun.FieldErrorMessage)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *CodexTurnRunMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *CodexTurnRunMutation) ClearField(name string) error {
+	switch name {
+	case codexturnrun.FieldActiveSlot:
+		m.ClearActiveSlot()
+		return nil
+	case codexturnrun.FieldCodexSubmissionID:
+		m.ClearCodexSubmissionID()
+		return nil
+	case codexturnrun.FieldConfirmedCodexTurnID:
+		m.ClearConfirmedCodexTurnID()
+		return nil
+	case codexturnrun.FieldFinishedAt:
+		m.ClearFinishedAt()
+		return nil
+	case codexturnrun.FieldErrorCode:
+		m.ClearErrorCode()
+		return nil
+	case codexturnrun.FieldErrorMessage:
+		m.ClearErrorMessage()
+		return nil
+	}
+	return fmt.Errorf("unknown CodexTurnRun nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *CodexTurnRunMutation) ResetField(name string) error {
+	switch name {
+	case codexturnrun.FieldControlID:
+		m.ResetControlID()
+		return nil
+	case codexturnrun.FieldPrimaryIntentID:
+		m.ResetPrimaryIntentID()
+		return nil
+	case codexturnrun.FieldAttempt:
+		m.ResetAttempt()
+		return nil
+	case codexturnrun.FieldWorkerID:
+		m.ResetWorkerID()
+		return nil
+	case codexturnrun.FieldLeaseEpoch:
+		m.ResetLeaseEpoch()
+		return nil
+	case codexturnrun.FieldCapabilityHash:
+		m.ResetCapabilityHash()
+		return nil
+	case codexturnrun.FieldActiveSlot:
+		m.ResetActiveSlot()
+		return nil
+	case codexturnrun.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case codexturnrun.FieldCodexSubmissionID:
+		m.ResetCodexSubmissionID()
+		return nil
+	case codexturnrun.FieldConfirmedCodexTurnID:
+		m.ResetConfirmedCodexTurnID()
+		return nil
+	case codexturnrun.FieldAppendCount:
+		m.ResetAppendCount()
+		return nil
+	case codexturnrun.FieldMaxAppendCount:
+		m.ResetMaxAppendCount()
+		return nil
+	case codexturnrun.FieldStartedAt:
+		m.ResetStartedAt()
+		return nil
+	case codexturnrun.FieldHeartbeatAt:
+		m.ResetHeartbeatAt()
+		return nil
+	case codexturnrun.FieldFinishedAt:
+		m.ResetFinishedAt()
+		return nil
+	case codexturnrun.FieldErrorCode:
+		m.ResetErrorCode()
+		return nil
+	case codexturnrun.FieldErrorMessage:
+		m.ResetErrorMessage()
+		return nil
+	}
+	return fmt.Errorf("unknown CodexTurnRun field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *CodexTurnRunMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *CodexTurnRunMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *CodexTurnRunMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *CodexTurnRunMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *CodexTurnRunMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *CodexTurnRunMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *CodexTurnRunMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown CodexTurnRun unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *CodexTurnRunMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown CodexTurnRun edge %s", name)
 }
 
 // PlatformSettingMutation represents an operation that mutates the PlatformSetting nodes in the graph.
@@ -8422,25 +13038,26 @@ func (m *SCMInstallationMutation) ResetEdge(name string) error {
 // ToolCallMutation represents an operation that mutates the ToolCall nodes in the graph.
 type ToolCallMutation struct {
 	config
-	op             Op
-	typ            string
-	id             *uuid.UUID
-	job_attempt_id *uuid.UUID
-	thread_id      *string
-	turn_id        *string
-	call_id        *string
-	namespace      *string
-	tool           *string
-	arguments      *map[string]interface{}
-	result         *map[string]interface{}
-	status         *string
-	error          *string
-	started_at     *time.Time
-	finished_at    *time.Time
-	clearedFields  map[string]struct{}
-	done           bool
-	oldValue       func(context.Context) (*ToolCall, error)
-	predicates     []predicate.ToolCall
+	op            Op
+	typ           string
+	id            *uuid.UUID
+	run_id        *uuid.UUID
+	intent_id     *uuid.UUID
+	thread_id     *string
+	turn_id       *string
+	call_id       *string
+	namespace     *string
+	tool          *string
+	arguments     *map[string]interface{}
+	result        *map[string]interface{}
+	status        *string
+	error         *string
+	started_at    *time.Time
+	finished_at   *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*ToolCall, error)
+	predicates    []predicate.ToolCall
 }
 
 var _ ent.Mutation = (*ToolCallMutation)(nil)
@@ -8547,40 +13164,76 @@ func (m *ToolCallMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
 	}
 }
 
-// SetJobAttemptID sets the "job_attempt_id" field.
-func (m *ToolCallMutation) SetJobAttemptID(u uuid.UUID) {
-	m.job_attempt_id = &u
+// SetRunID sets the "run_id" field.
+func (m *ToolCallMutation) SetRunID(u uuid.UUID) {
+	m.run_id = &u
 }
 
-// JobAttemptID returns the value of the "job_attempt_id" field in the mutation.
-func (m *ToolCallMutation) JobAttemptID() (r uuid.UUID, exists bool) {
-	v := m.job_attempt_id
+// RunID returns the value of the "run_id" field in the mutation.
+func (m *ToolCallMutation) RunID() (r uuid.UUID, exists bool) {
+	v := m.run_id
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldJobAttemptID returns the old "job_attempt_id" field's value of the ToolCall entity.
+// OldRunID returns the old "run_id" field's value of the ToolCall entity.
 // If the ToolCall object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ToolCallMutation) OldJobAttemptID(ctx context.Context) (v uuid.UUID, err error) {
+func (m *ToolCallMutation) OldRunID(ctx context.Context) (v uuid.UUID, err error) {
 	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldJobAttemptID is only allowed on UpdateOne operations")
+		return v, errors.New("OldRunID is only allowed on UpdateOne operations")
 	}
 	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldJobAttemptID requires an ID field in the mutation")
+		return v, errors.New("OldRunID requires an ID field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldJobAttemptID: %w", err)
+		return v, fmt.Errorf("querying old value for OldRunID: %w", err)
 	}
-	return oldValue.JobAttemptID, nil
+	return oldValue.RunID, nil
 }
 
-// ResetJobAttemptID resets all changes to the "job_attempt_id" field.
-func (m *ToolCallMutation) ResetJobAttemptID() {
-	m.job_attempt_id = nil
+// ResetRunID resets all changes to the "run_id" field.
+func (m *ToolCallMutation) ResetRunID() {
+	m.run_id = nil
+}
+
+// SetIntentID sets the "intent_id" field.
+func (m *ToolCallMutation) SetIntentID(u uuid.UUID) {
+	m.intent_id = &u
+}
+
+// IntentID returns the value of the "intent_id" field in the mutation.
+func (m *ToolCallMutation) IntentID() (r uuid.UUID, exists bool) {
+	v := m.intent_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIntentID returns the old "intent_id" field's value of the ToolCall entity.
+// If the ToolCall object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ToolCallMutation) OldIntentID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIntentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIntentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIntentID: %w", err)
+	}
+	return oldValue.IntentID, nil
+}
+
+// ResetIntentID resets all changes to the "intent_id" field.
+func (m *ToolCallMutation) ResetIntentID() {
+	m.intent_id = nil
 }
 
 // SetThreadID sets the "thread_id" field.
@@ -9052,9 +13705,12 @@ func (m *ToolCallMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ToolCallMutation) Fields() []string {
-	fields := make([]string, 0, 12)
-	if m.job_attempt_id != nil {
-		fields = append(fields, toolcall.FieldJobAttemptID)
+	fields := make([]string, 0, 13)
+	if m.run_id != nil {
+		fields = append(fields, toolcall.FieldRunID)
+	}
+	if m.intent_id != nil {
+		fields = append(fields, toolcall.FieldIntentID)
 	}
 	if m.thread_id != nil {
 		fields = append(fields, toolcall.FieldThreadID)
@@ -9097,8 +13753,10 @@ func (m *ToolCallMutation) Fields() []string {
 // schema.
 func (m *ToolCallMutation) Field(name string) (ent.Value, bool) {
 	switch name {
-	case toolcall.FieldJobAttemptID:
-		return m.JobAttemptID()
+	case toolcall.FieldRunID:
+		return m.RunID()
+	case toolcall.FieldIntentID:
+		return m.IntentID()
 	case toolcall.FieldThreadID:
 		return m.ThreadID()
 	case toolcall.FieldTurnID:
@@ -9130,8 +13788,10 @@ func (m *ToolCallMutation) Field(name string) (ent.Value, bool) {
 // database failed.
 func (m *ToolCallMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
 	switch name {
-	case toolcall.FieldJobAttemptID:
-		return m.OldJobAttemptID(ctx)
+	case toolcall.FieldRunID:
+		return m.OldRunID(ctx)
+	case toolcall.FieldIntentID:
+		return m.OldIntentID(ctx)
 	case toolcall.FieldThreadID:
 		return m.OldThreadID(ctx)
 	case toolcall.FieldTurnID:
@@ -9163,12 +13823,19 @@ func (m *ToolCallMutation) OldField(ctx context.Context, name string) (ent.Value
 // type.
 func (m *ToolCallMutation) SetField(name string, value ent.Value) error {
 	switch name {
-	case toolcall.FieldJobAttemptID:
+	case toolcall.FieldRunID:
 		v, ok := value.(uuid.UUID)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.SetJobAttemptID(v)
+		m.SetRunID(v)
+		return nil
+	case toolcall.FieldIntentID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIntentID(v)
 		return nil
 	case toolcall.FieldThreadID:
 		v, ok := value.(string)
@@ -9317,8 +13984,11 @@ func (m *ToolCallMutation) ClearField(name string) error {
 // It returns an error if the field is not defined in the schema.
 func (m *ToolCallMutation) ResetField(name string) error {
 	switch name {
-	case toolcall.FieldJobAttemptID:
-		m.ResetJobAttemptID()
+	case toolcall.FieldRunID:
+		m.ResetRunID()
+		return nil
+	case toolcall.FieldIntentID:
+		m.ResetIntentID()
 		return nil
 	case toolcall.FieldThreadID:
 		m.ResetThreadID()

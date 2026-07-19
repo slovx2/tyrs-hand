@@ -29,16 +29,30 @@ func (_u *ToolCallUpdate) Where(ps ...predicate.ToolCall) *ToolCallUpdate {
 	return _u
 }
 
-// SetJobAttemptID sets the "job_attempt_id" field.
-func (_u *ToolCallUpdate) SetJobAttemptID(v uuid.UUID) *ToolCallUpdate {
-	_u.mutation.SetJobAttemptID(v)
+// SetRunID sets the "run_id" field.
+func (_u *ToolCallUpdate) SetRunID(v uuid.UUID) *ToolCallUpdate {
+	_u.mutation.SetRunID(v)
 	return _u
 }
 
-// SetNillableJobAttemptID sets the "job_attempt_id" field if the given value is not nil.
-func (_u *ToolCallUpdate) SetNillableJobAttemptID(v *uuid.UUID) *ToolCallUpdate {
+// SetNillableRunID sets the "run_id" field if the given value is not nil.
+func (_u *ToolCallUpdate) SetNillableRunID(v *uuid.UUID) *ToolCallUpdate {
 	if v != nil {
-		_u.SetJobAttemptID(*v)
+		_u.SetRunID(*v)
+	}
+	return _u
+}
+
+// SetIntentID sets the "intent_id" field.
+func (_u *ToolCallUpdate) SetIntentID(v uuid.UUID) *ToolCallUpdate {
+	_u.mutation.SetIntentID(v)
+	return _u
+}
+
+// SetNillableIntentID sets the "intent_id" field if the given value is not nil.
+func (_u *ToolCallUpdate) SetNillableIntentID(v *uuid.UUID) *ToolCallUpdate {
+	if v != nil {
+		_u.SetIntentID(*v)
 	}
 	return _u
 }
@@ -240,8 +254,11 @@ func (_u *ToolCallUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			}
 		}
 	}
-	if value, ok := _u.mutation.JobAttemptID(); ok {
-		_spec.SetField(toolcall.FieldJobAttemptID, field.TypeUUID, value)
+	if value, ok := _u.mutation.RunID(); ok {
+		_spec.SetField(toolcall.FieldRunID, field.TypeUUID, value)
+	}
+	if value, ok := _u.mutation.IntentID(); ok {
+		_spec.SetField(toolcall.FieldIntentID, field.TypeUUID, value)
 	}
 	if value, ok := _u.mutation.ThreadID(); ok {
 		_spec.SetField(toolcall.FieldThreadID, field.TypeString, value)
@@ -305,16 +322,30 @@ type ToolCallUpdateOne struct {
 	mutation *ToolCallMutation
 }
 
-// SetJobAttemptID sets the "job_attempt_id" field.
-func (_u *ToolCallUpdateOne) SetJobAttemptID(v uuid.UUID) *ToolCallUpdateOne {
-	_u.mutation.SetJobAttemptID(v)
+// SetRunID sets the "run_id" field.
+func (_u *ToolCallUpdateOne) SetRunID(v uuid.UUID) *ToolCallUpdateOne {
+	_u.mutation.SetRunID(v)
 	return _u
 }
 
-// SetNillableJobAttemptID sets the "job_attempt_id" field if the given value is not nil.
-func (_u *ToolCallUpdateOne) SetNillableJobAttemptID(v *uuid.UUID) *ToolCallUpdateOne {
+// SetNillableRunID sets the "run_id" field if the given value is not nil.
+func (_u *ToolCallUpdateOne) SetNillableRunID(v *uuid.UUID) *ToolCallUpdateOne {
 	if v != nil {
-		_u.SetJobAttemptID(*v)
+		_u.SetRunID(*v)
+	}
+	return _u
+}
+
+// SetIntentID sets the "intent_id" field.
+func (_u *ToolCallUpdateOne) SetIntentID(v uuid.UUID) *ToolCallUpdateOne {
+	_u.mutation.SetIntentID(v)
+	return _u
+}
+
+// SetNillableIntentID sets the "intent_id" field if the given value is not nil.
+func (_u *ToolCallUpdateOne) SetNillableIntentID(v *uuid.UUID) *ToolCallUpdateOne {
+	if v != nil {
+		_u.SetIntentID(*v)
 	}
 	return _u
 }
@@ -546,8 +577,11 @@ func (_u *ToolCallUpdateOne) sqlSave(ctx context.Context) (_node *ToolCall, err 
 			}
 		}
 	}
-	if value, ok := _u.mutation.JobAttemptID(); ok {
-		_spec.SetField(toolcall.FieldJobAttemptID, field.TypeUUID, value)
+	if value, ok := _u.mutation.RunID(); ok {
+		_spec.SetField(toolcall.FieldRunID, field.TypeUUID, value)
+	}
+	if value, ok := _u.mutation.IntentID(); ok {
+		_spec.SetField(toolcall.FieldIntentID, field.TypeUUID, value)
 	}
 	if value, ok := _u.mutation.ThreadID(); ok {
 		_spec.SetField(toolcall.FieldThreadID, field.TypeString, value)

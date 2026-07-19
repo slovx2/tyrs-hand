@@ -8,9 +8,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/ent/administrator"
 	"github.com/slovx2/tyrs-hand/ent/agentprofile"
-	"github.com/slovx2/tyrs-hand/ent/agentthread"
 	"github.com/slovx2/tyrs-hand/ent/auditlog"
-	"github.com/slovx2/tyrs-hand/ent/jobintent"
+	"github.com/slovx2/tyrs-hand/ent/codexthreadcontrol"
+	"github.com/slovx2/tyrs-hand/ent/codexturnintent"
+	"github.com/slovx2/tyrs-hand/ent/codexturnrun"
 	"github.com/slovx2/tyrs-hand/ent/platformsetting"
 	"github.com/slovx2/tyrs-hand/ent/repocache"
 	"github.com/slovx2/tyrs-hand/ent/repository"
@@ -92,28 +93,6 @@ func init() {
 	agentprofileDescID := agentprofileFields[0].Descriptor()
 	// agentprofile.DefaultID holds the default value on creation for the id field.
 	agentprofile.DefaultID = agentprofileDescID.Default.(func() uuid.UUID)
-	agentthreadFields := schema.AgentThread{}.Fields()
-	_ = agentthreadFields
-	// agentthreadDescProviderSignature is the schema descriptor for provider_signature field.
-	agentthreadDescProviderSignature := agentthreadFields[7].Descriptor()
-	// agentthread.DefaultProviderSignature holds the default value on creation for the provider_signature field.
-	agentthread.DefaultProviderSignature = agentthreadDescProviderSignature.Default.(string)
-	// agentthreadDescStatus is the schema descriptor for status field.
-	agentthreadDescStatus := agentthreadFields[9].Descriptor()
-	// agentthread.DefaultStatus holds the default value on creation for the status field.
-	agentthread.DefaultStatus = agentthreadDescStatus.Default.(string)
-	// agentthreadDescLastUsedAt is the schema descriptor for last_used_at field.
-	agentthreadDescLastUsedAt := agentthreadFields[11].Descriptor()
-	// agentthread.DefaultLastUsedAt holds the default value on creation for the last_used_at field.
-	agentthread.DefaultLastUsedAt = agentthreadDescLastUsedAt.Default.(func() time.Time)
-	// agentthreadDescCreatedAt is the schema descriptor for created_at field.
-	agentthreadDescCreatedAt := agentthreadFields[13].Descriptor()
-	// agentthread.DefaultCreatedAt holds the default value on creation for the created_at field.
-	agentthread.DefaultCreatedAt = agentthreadDescCreatedAt.Default.(func() time.Time)
-	// agentthreadDescID is the schema descriptor for id field.
-	agentthreadDescID := agentthreadFields[0].Descriptor()
-	// agentthread.DefaultID holds the default value on creation for the id field.
-	agentthread.DefaultID = agentthreadDescID.Default.(func() uuid.UUID)
 	auditlogFields := schema.AuditLog{}.Fields()
 	_ = auditlogFields
 	// auditlogDescMetadata is the schema descriptor for metadata field.
@@ -124,70 +103,156 @@ func init() {
 	auditlogDescCreatedAt := auditlogFields[8].Descriptor()
 	// auditlog.DefaultCreatedAt holds the default value on creation for the created_at field.
 	auditlog.DefaultCreatedAt = auditlogDescCreatedAt.Default.(func() time.Time)
-	jobintentFields := schema.JobIntent{}.Fields()
-	_ = jobintentFields
-	// jobintentDescStatus is the schema descriptor for status field.
-	jobintentDescStatus := jobintentFields[5].Descriptor()
-	// jobintent.DefaultStatus holds the default value on creation for the status field.
-	jobintent.DefaultStatus = jobintentDescStatus.Default.(string)
-	// jobintentDescSkills is the schema descriptor for skills field.
-	jobintentDescSkills := jobintentFields[7].Descriptor()
-	// jobintent.DefaultSkills holds the default value on creation for the skills field.
-	jobintent.DefaultSkills = jobintentDescSkills.Default.([]string)
-	// jobintentDescAllowedTools is the schema descriptor for allowed_tools field.
-	jobintentDescAllowedTools := jobintentFields[8].Descriptor()
-	// jobintent.DefaultAllowedTools holds the default value on creation for the allowed_tools field.
-	jobintent.DefaultAllowedTools = jobintentDescAllowedTools.Default.([]string)
-	// jobintentDescDangerousActions is the schema descriptor for dangerous_actions field.
-	jobintentDescDangerousActions := jobintentFields[9].Descriptor()
-	// jobintent.DefaultDangerousActions holds the default value on creation for the dangerous_actions field.
-	jobintent.DefaultDangerousActions = jobintentDescDangerousActions.Default.([]string)
-	// jobintentDescTriggerEvidence is the schema descriptor for trigger_evidence field.
-	jobintentDescTriggerEvidence := jobintentFields[11].Descriptor()
-	// jobintent.DefaultTriggerEvidence holds the default value on creation for the trigger_evidence field.
-	jobintent.DefaultTriggerEvidence = jobintentDescTriggerEvidence.Default.(map[string]interface{})
-	// jobintentDescActorLogin is the schema descriptor for actor_login field.
-	jobintentDescActorLogin := jobintentFields[12].Descriptor()
-	// jobintent.DefaultActorLogin holds the default value on creation for the actor_login field.
-	jobintent.DefaultActorLogin = jobintentDescActorLogin.Default.(string)
-	// jobintentDescActorPermission is the schema descriptor for actor_permission field.
-	jobintentDescActorPermission := jobintentFields[13].Descriptor()
-	// jobintent.DefaultActorPermission holds the default value on creation for the actor_permission field.
-	jobintent.DefaultActorPermission = jobintentDescActorPermission.Default.(string)
-	// jobintentDescPriority is the schema descriptor for priority field.
-	jobintentDescPriority := jobintentFields[14].Descriptor()
-	// jobintent.DefaultPriority holds the default value on creation for the priority field.
-	jobintent.DefaultPriority = jobintentDescPriority.Default.(int)
-	// jobintentDescAvailableAt is the schema descriptor for available_at field.
-	jobintentDescAvailableAt := jobintentFields[15].Descriptor()
-	// jobintent.DefaultAvailableAt holds the default value on creation for the available_at field.
-	jobintent.DefaultAvailableAt = jobintentDescAvailableAt.Default.(func() time.Time)
-	// jobintentDescAttemptCount is the schema descriptor for attempt_count field.
-	jobintentDescAttemptCount := jobintentFields[16].Descriptor()
-	// jobintent.DefaultAttemptCount holds the default value on creation for the attempt_count field.
-	jobintent.DefaultAttemptCount = jobintentDescAttemptCount.Default.(int)
-	// jobintentDescMaxAttempts is the schema descriptor for max_attempts field.
-	jobintentDescMaxAttempts := jobintentFields[17].Descriptor()
-	// jobintent.DefaultMaxAttempts holds the default value on creation for the max_attempts field.
-	jobintent.DefaultMaxAttempts = jobintentDescMaxAttempts.Default.(int)
-	// jobintentDescLeaseEpoch is the schema descriptor for lease_epoch field.
-	jobintentDescLeaseEpoch := jobintentFields[19].Descriptor()
-	// jobintent.DefaultLeaseEpoch holds the default value on creation for the lease_epoch field.
-	jobintent.DefaultLeaseEpoch = jobintentDescLeaseEpoch.Default.(int64)
-	// jobintentDescCreatedAt is the schema descriptor for created_at field.
-	jobintentDescCreatedAt := jobintentFields[23].Descriptor()
-	// jobintent.DefaultCreatedAt holds the default value on creation for the created_at field.
-	jobintent.DefaultCreatedAt = jobintentDescCreatedAt.Default.(func() time.Time)
-	// jobintentDescUpdatedAt is the schema descriptor for updated_at field.
-	jobintentDescUpdatedAt := jobintentFields[24].Descriptor()
-	// jobintent.DefaultUpdatedAt holds the default value on creation for the updated_at field.
-	jobintent.DefaultUpdatedAt = jobintentDescUpdatedAt.Default.(func() time.Time)
-	// jobintent.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
-	jobintent.UpdateDefaultUpdatedAt = jobintentDescUpdatedAt.UpdateDefault.(func() time.Time)
-	// jobintentDescID is the schema descriptor for id field.
-	jobintentDescID := jobintentFields[0].Descriptor()
-	// jobintent.DefaultID holds the default value on creation for the id field.
-	jobintent.DefaultID = jobintentDescID.Default.(func() uuid.UUID)
+	codexthreadcontrolFields := schema.CodexThreadControl{}.Fields()
+	_ = codexthreadcontrolFields
+	// codexthreadcontrolDescProvider is the schema descriptor for provider field.
+	codexthreadcontrolDescProvider := codexthreadcontrolFields[8].Descriptor()
+	// codexthreadcontrol.DefaultProvider holds the default value on creation for the provider field.
+	codexthreadcontrol.DefaultProvider = codexthreadcontrolDescProvider.Default.(string)
+	// codexthreadcontrolDescThreadGeneration is the schema descriptor for thread_generation field.
+	codexthreadcontrolDescThreadGeneration := codexthreadcontrolFields[11].Descriptor()
+	// codexthreadcontrol.DefaultThreadGeneration holds the default value on creation for the thread_generation field.
+	codexthreadcontrol.DefaultThreadGeneration = codexthreadcontrolDescThreadGeneration.Default.(int)
+	// codexthreadcontrolDescStatus is the schema descriptor for status field.
+	codexthreadcontrolDescStatus := codexthreadcontrolFields[12].Descriptor()
+	// codexthreadcontrol.DefaultStatus holds the default value on creation for the status field.
+	codexthreadcontrol.DefaultStatus = codexthreadcontrolDescStatus.Default.(string)
+	// codexthreadcontrolDescNextSequenceNo is the schema descriptor for next_sequence_no field.
+	codexthreadcontrolDescNextSequenceNo := codexthreadcontrolFields[13].Descriptor()
+	// codexthreadcontrol.DefaultNextSequenceNo holds the default value on creation for the next_sequence_no field.
+	codexthreadcontrol.DefaultNextSequenceNo = codexthreadcontrolDescNextSequenceNo.Default.(int64)
+	// codexthreadcontrolDescLeaseEpoch is the schema descriptor for lease_epoch field.
+	codexthreadcontrolDescLeaseEpoch := codexthreadcontrolFields[18].Descriptor()
+	// codexthreadcontrol.DefaultLeaseEpoch holds the default value on creation for the lease_epoch field.
+	codexthreadcontrol.DefaultLeaseEpoch = codexthreadcontrolDescLeaseEpoch.Default.(int64)
+	// codexthreadcontrolDescCreatedAt is the schema descriptor for created_at field.
+	codexthreadcontrolDescCreatedAt := codexthreadcontrolFields[27].Descriptor()
+	// codexthreadcontrol.DefaultCreatedAt holds the default value on creation for the created_at field.
+	codexthreadcontrol.DefaultCreatedAt = codexthreadcontrolDescCreatedAt.Default.(func() time.Time)
+	// codexthreadcontrolDescUpdatedAt is the schema descriptor for updated_at field.
+	codexthreadcontrolDescUpdatedAt := codexthreadcontrolFields[28].Descriptor()
+	// codexthreadcontrol.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	codexthreadcontrol.DefaultUpdatedAt = codexthreadcontrolDescUpdatedAt.Default.(func() time.Time)
+	// codexthreadcontrol.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	codexthreadcontrol.UpdateDefaultUpdatedAt = codexthreadcontrolDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// codexthreadcontrolDescID is the schema descriptor for id field.
+	codexthreadcontrolDescID := codexthreadcontrolFields[0].Descriptor()
+	// codexthreadcontrol.DefaultID holds the default value on creation for the id field.
+	codexthreadcontrol.DefaultID = codexthreadcontrolDescID.Default.(func() uuid.UUID)
+	codexturnintentFields := schema.CodexTurnIntent{}.Fields()
+	_ = codexturnintentFields
+	// codexturnintentDescOperation is the schema descriptor for operation field.
+	codexturnintentDescOperation := codexturnintentFields[3].Descriptor()
+	// codexturnintent.DefaultOperation holds the default value on creation for the operation field.
+	codexturnintent.DefaultOperation = codexturnintentDescOperation.Default.(string)
+	// codexturnintentDescStatus is the schema descriptor for status field.
+	codexturnintentDescStatus := codexturnintentFields[15].Descriptor()
+	// codexturnintent.DefaultStatus holds the default value on creation for the status field.
+	codexturnintent.DefaultStatus = codexturnintentDescStatus.Default.(string)
+	// codexturnintentDescSkills is the schema descriptor for skills field.
+	codexturnintentDescSkills := codexturnintentFields[18].Descriptor()
+	// codexturnintent.DefaultSkills holds the default value on creation for the skills field.
+	codexturnintent.DefaultSkills = codexturnintentDescSkills.Default.([]string)
+	// codexturnintentDescAllowedTools is the schema descriptor for allowed_tools field.
+	codexturnintentDescAllowedTools := codexturnintentFields[19].Descriptor()
+	// codexturnintent.DefaultAllowedTools holds the default value on creation for the allowed_tools field.
+	codexturnintent.DefaultAllowedTools = codexturnintentDescAllowedTools.Default.([]string)
+	// codexturnintentDescDangerousActions is the schema descriptor for dangerous_actions field.
+	codexturnintentDescDangerousActions := codexturnintentFields[20].Descriptor()
+	// codexturnintent.DefaultDangerousActions holds the default value on creation for the dangerous_actions field.
+	codexturnintent.DefaultDangerousActions = codexturnintentDescDangerousActions.Default.([]string)
+	// codexturnintentDescTriggerEvidence is the schema descriptor for trigger_evidence field.
+	codexturnintentDescTriggerEvidence := codexturnintentFields[22].Descriptor()
+	// codexturnintent.DefaultTriggerEvidence holds the default value on creation for the trigger_evidence field.
+	codexturnintent.DefaultTriggerEvidence = codexturnintentDescTriggerEvidence.Default.(map[string]interface{})
+	// codexturnintentDescActorLogin is the schema descriptor for actor_login field.
+	codexturnintentDescActorLogin := codexturnintentFields[23].Descriptor()
+	// codexturnintent.DefaultActorLogin holds the default value on creation for the actor_login field.
+	codexturnintent.DefaultActorLogin = codexturnintentDescActorLogin.Default.(string)
+	// codexturnintentDescActorPermission is the schema descriptor for actor_permission field.
+	codexturnintentDescActorPermission := codexturnintentFields[24].Descriptor()
+	// codexturnintent.DefaultActorPermission holds the default value on creation for the actor_permission field.
+	codexturnintent.DefaultActorPermission = codexturnintentDescActorPermission.Default.(string)
+	// codexturnintentDescPriority is the schema descriptor for priority field.
+	codexturnintentDescPriority := codexturnintentFields[25].Descriptor()
+	// codexturnintent.DefaultPriority holds the default value on creation for the priority field.
+	codexturnintent.DefaultPriority = codexturnintentDescPriority.Default.(int)
+	// codexturnintentDescSteerable is the schema descriptor for steerable field.
+	codexturnintentDescSteerable := codexturnintentFields[26].Descriptor()
+	// codexturnintent.DefaultSteerable holds the default value on creation for the steerable field.
+	codexturnintent.DefaultSteerable = codexturnintentDescSteerable.Default.(bool)
+	// codexturnintentDescAvailableAt is the schema descriptor for available_at field.
+	codexturnintentDescAvailableAt := codexturnintentFields[27].Descriptor()
+	// codexturnintent.DefaultAvailableAt holds the default value on creation for the available_at field.
+	codexturnintent.DefaultAvailableAt = codexturnintentDescAvailableAt.Default.(func() time.Time)
+	// codexturnintentDescAttemptCount is the schema descriptor for attempt_count field.
+	codexturnintentDescAttemptCount := codexturnintentFields[28].Descriptor()
+	// codexturnintent.DefaultAttemptCount holds the default value on creation for the attempt_count field.
+	codexturnintent.DefaultAttemptCount = codexturnintentDescAttemptCount.Default.(int)
+	// codexturnintentDescMaxAttempts is the schema descriptor for max_attempts field.
+	codexturnintentDescMaxAttempts := codexturnintentFields[29].Descriptor()
+	// codexturnintent.DefaultMaxAttempts holds the default value on creation for the max_attempts field.
+	codexturnintent.DefaultMaxAttempts = codexturnintentDescMaxAttempts.Default.(int)
+	// codexturnintentDescResultDeliveryStatus is the schema descriptor for result_delivery_status field.
+	codexturnintentDescResultDeliveryStatus := codexturnintentFields[35].Descriptor()
+	// codexturnintent.DefaultResultDeliveryStatus holds the default value on creation for the result_delivery_status field.
+	codexturnintent.DefaultResultDeliveryStatus = codexturnintentDescResultDeliveryStatus.Default.(string)
+	// codexturnintentDescResultDeliveryAttemptCount is the schema descriptor for result_delivery_attempt_count field.
+	codexturnintentDescResultDeliveryAttemptCount := codexturnintentFields[36].Descriptor()
+	// codexturnintent.DefaultResultDeliveryAttemptCount holds the default value on creation for the result_delivery_attempt_count field.
+	codexturnintent.DefaultResultDeliveryAttemptCount = codexturnintentDescResultDeliveryAttemptCount.Default.(int)
+	// codexturnintentDescReplyPolicy is the schema descriptor for reply_policy field.
+	codexturnintentDescReplyPolicy := codexturnintentFields[40].Descriptor()
+	// codexturnintent.DefaultReplyPolicy holds the default value on creation for the reply_policy field.
+	codexturnintent.DefaultReplyPolicy = codexturnintentDescReplyPolicy.Default.(string)
+	// codexturnintentDescReplyStatus is the schema descriptor for reply_status field.
+	codexturnintentDescReplyStatus := codexturnintentFields[41].Descriptor()
+	// codexturnintent.DefaultReplyStatus holds the default value on creation for the reply_status field.
+	codexturnintent.DefaultReplyStatus = codexturnintentDescReplyStatus.Default.(string)
+	// codexturnintentDescReplyHookBlockCount is the schema descriptor for reply_hook_block_count field.
+	codexturnintentDescReplyHookBlockCount := codexturnintentFields[42].Descriptor()
+	// codexturnintent.DefaultReplyHookBlockCount holds the default value on creation for the reply_hook_block_count field.
+	codexturnintent.DefaultReplyHookBlockCount = codexturnintentDescReplyHookBlockCount.Default.(int)
+	// codexturnintentDescCreatedAt is the schema descriptor for created_at field.
+	codexturnintentDescCreatedAt := codexturnintentFields[50].Descriptor()
+	// codexturnintent.DefaultCreatedAt holds the default value on creation for the created_at field.
+	codexturnintent.DefaultCreatedAt = codexturnintentDescCreatedAt.Default.(func() time.Time)
+	// codexturnintentDescUpdatedAt is the schema descriptor for updated_at field.
+	codexturnintentDescUpdatedAt := codexturnintentFields[51].Descriptor()
+	// codexturnintent.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	codexturnintent.DefaultUpdatedAt = codexturnintentDescUpdatedAt.Default.(func() time.Time)
+	// codexturnintent.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	codexturnintent.UpdateDefaultUpdatedAt = codexturnintentDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// codexturnintentDescID is the schema descriptor for id field.
+	codexturnintentDescID := codexturnintentFields[0].Descriptor()
+	// codexturnintent.DefaultID holds the default value on creation for the id field.
+	codexturnintent.DefaultID = codexturnintentDescID.Default.(func() uuid.UUID)
+	codexturnrunFields := schema.CodexTurnRun{}.Fields()
+	_ = codexturnrunFields
+	// codexturnrunDescStatus is the schema descriptor for status field.
+	codexturnrunDescStatus := codexturnrunFields[8].Descriptor()
+	// codexturnrun.DefaultStatus holds the default value on creation for the status field.
+	codexturnrun.DefaultStatus = codexturnrunDescStatus.Default.(string)
+	// codexturnrunDescAppendCount is the schema descriptor for append_count field.
+	codexturnrunDescAppendCount := codexturnrunFields[11].Descriptor()
+	// codexturnrun.DefaultAppendCount holds the default value on creation for the append_count field.
+	codexturnrun.DefaultAppendCount = codexturnrunDescAppendCount.Default.(int)
+	// codexturnrunDescMaxAppendCount is the schema descriptor for max_append_count field.
+	codexturnrunDescMaxAppendCount := codexturnrunFields[12].Descriptor()
+	// codexturnrun.DefaultMaxAppendCount holds the default value on creation for the max_append_count field.
+	codexturnrun.DefaultMaxAppendCount = codexturnrunDescMaxAppendCount.Default.(int)
+	// codexturnrunDescStartedAt is the schema descriptor for started_at field.
+	codexturnrunDescStartedAt := codexturnrunFields[13].Descriptor()
+	// codexturnrun.DefaultStartedAt holds the default value on creation for the started_at field.
+	codexturnrun.DefaultStartedAt = codexturnrunDescStartedAt.Default.(func() time.Time)
+	// codexturnrunDescHeartbeatAt is the schema descriptor for heartbeat_at field.
+	codexturnrunDescHeartbeatAt := codexturnrunFields[14].Descriptor()
+	// codexturnrun.DefaultHeartbeatAt holds the default value on creation for the heartbeat_at field.
+	codexturnrun.DefaultHeartbeatAt = codexturnrunDescHeartbeatAt.Default.(func() time.Time)
+	// codexturnrunDescID is the schema descriptor for id field.
+	codexturnrunDescID := codexturnrunFields[0].Descriptor()
+	// codexturnrun.DefaultID holds the default value on creation for the id field.
+	codexturnrun.DefaultID = codexturnrunDescID.Default.(func() uuid.UUID)
 	platformsettingFields := schema.PlatformSetting{}.Fields()
 	_ = platformsettingFields
 	// platformsettingDescVersion is the schema descriptor for version field.
@@ -265,11 +330,11 @@ func init() {
 	toolcallFields := schema.ToolCall{}.Fields()
 	_ = toolcallFields
 	// toolcallDescStatus is the schema descriptor for status field.
-	toolcallDescStatus := toolcallFields[9].Descriptor()
+	toolcallDescStatus := toolcallFields[10].Descriptor()
 	// toolcall.DefaultStatus holds the default value on creation for the status field.
 	toolcall.DefaultStatus = toolcallDescStatus.Default.(string)
 	// toolcallDescStartedAt is the schema descriptor for started_at field.
-	toolcallDescStartedAt := toolcallFields[11].Descriptor()
+	toolcallDescStartedAt := toolcallFields[12].Descriptor()
 	// toolcall.DefaultStartedAt holds the default value on creation for the started_at field.
 	toolcall.DefaultStartedAt = toolcallDescStartedAt.Default.(func() time.Time)
 	// toolcallDescID is the schema descriptor for id field.

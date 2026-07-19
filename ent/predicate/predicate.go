@@ -12,14 +12,17 @@ type Administrator func(*sql.Selector)
 // AgentProfile is the predicate function for agentprofile builders.
 type AgentProfile func(*sql.Selector)
 
-// AgentThread is the predicate function for agentthread builders.
-type AgentThread func(*sql.Selector)
-
 // AuditLog is the predicate function for auditlog builders.
 type AuditLog func(*sql.Selector)
 
-// JobIntent is the predicate function for jobintent builders.
-type JobIntent func(*sql.Selector)
+// CodexThreadControl is the predicate function for codexthreadcontrol builders.
+type CodexThreadControl func(*sql.Selector)
+
+// CodexTurnIntent is the predicate function for codexturnintent builders.
+type CodexTurnIntent func(*sql.Selector)
+
+// CodexTurnRun is the predicate function for codexturnrun builders.
+type CodexTurnRun func(*sql.Selector)
 
 // PlatformSetting is the predicate function for platformsetting builders.
 type PlatformSetting func(*sql.Selector)

@@ -190,7 +190,11 @@ func (s *Server) listWorkItems(c *gin.Context) {
 }
 
 func (s *Server) listJobs(c *gin.Context) {
-	s.listRows(c, `SELECT id, work_item_id, trigger_rule_id, trigger_evidence, status, priority, attempt_count, max_attempts, worker_id, lease_epoch, lease_expires_at, last_error, created_at, updated_at FROM job_intents ORDER BY created_at DESC LIMIT 200`,
+	s.listRows(c, `SELECT i.id, i.work_item_id, i.trigger_rule_id, i.trigger_evidence, i.status,
+		i.priority, i.attempt_count, i.max_attempts, c.worker_id, c.lease_epoch,
+		c.lease_expires_at, i.last_error_message, i.created_at, i.updated_at
+		FROM codex_turn_intents i JOIN codex_thread_controls c ON c.id = i.control_id
+		ORDER BY i.created_at DESC LIMIT 200`,
 		[]string{"id", "workItemId", "triggerRuleId", "triggerEvidence", "status", "priority", "attemptCount", "maxAttempts", "workerId", "leaseEpoch", "leaseExpiresAt", "lastError", "createdAt", "updatedAt"})
 }
 
@@ -205,11 +209,11 @@ func (s *Server) listInstallations(c *gin.Context) {
 }
 
 func (s *Server) listThreads(c *gin.Context) {
-	s.listRows(c, `SELECT t.id, t.external_thread_id, t.provider, t.status, t.context_version,
-		t.last_turn_id, t.last_used_at, t.expires_at, w.kind, w.external_number
-		FROM agent_threads t JOIN work_items w ON w.id = t.work_item_id
-		ORDER BY t.last_used_at DESC LIMIT 200`,
-		[]string{"id", "threadId", "provider", "status", "contextVersion", "lastTurnId", "lastUsedAt", "expiresAt", "kind", "number"})
+	s.listRows(c, `SELECT t.id, t.source_type, t.external_thread_id, t.provider, t.status, t.context_version,
+		t.active_codex_turn_id, t.updated_at, t.lease_expires_at, w.kind, w.external_number
+		FROM codex_thread_controls t LEFT JOIN work_items w ON w.id = t.work_item_id
+		ORDER BY t.updated_at DESC LIMIT 200`,
+		[]string{"id", "sourceType", "threadId", "provider", "status", "contextVersion", "lastTurnId", "lastUsedAt", "expiresAt", "kind", "number"})
 }
 
 func (s *Server) listWorktrees(c *gin.Context) {
@@ -244,10 +248,10 @@ func (s *Server) listRepoCaches(c *gin.Context) {
 func (s *Server) systemStatus(c *gin.Context) {
 	counts := map[string]int64{}
 	for name, query := range map[string]string{
-		"queuedJobs":    "SELECT count(*) FROM job_intents WHERE status = 'queued'",
-		"runningJobs":   "SELECT count(*) FROM job_intents WHERE status = 'running'",
+		"queuedJobs":    "SELECT count(*) FROM codex_turn_intents WHERE status IN ('queued','retry_wait')",
+		"runningJobs":   "SELECT count(*) FROM codex_turn_intents WHERE status IN ('dispatching','awaiting_confirmation','running','reconciling')",
 		"onlineWorkers": "SELECT count(*) FROM worker_nodes WHERE status = 'online' AND heartbeat_at > now() - interval '2 minutes'",
-		"activeThreads": "SELECT count(*) FROM agent_threads WHERE status = 'active'",
+		"activeThreads": "SELECT count(*) FROM codex_thread_controls WHERE status = 'active'",
 	} {
 		var count int64
 		if err := s.db.QueryRowContext(c, query).Scan(&count); err != nil {

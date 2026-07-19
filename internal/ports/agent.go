@@ -25,6 +25,7 @@ type ThreadOptions struct {
 	BaseInstructions      string
 	DeveloperInstructions string
 	DynamicTools          []DynamicToolSpec
+	RuntimeConfig         map[string]any
 }
 
 type TurnInput struct {
@@ -33,7 +34,6 @@ type TurnInput struct {
 	LocalImages         []LocalImageInput
 	AdditionalContext   map[string]AdditionalContextEntry
 	Skills              []SkillRef
-	OutputSchema        json.RawMessage
 }
 
 type LocalImageInput struct {

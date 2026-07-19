@@ -17,6 +17,8 @@ func TestValidate(t *testing.T) {
 		DatabaseURL: "postgres://db", RedisURL: "redis://cache",
 		CodexBin: "codex", WorkerID: "worker", LeaseDuration: 90 * time.Second, HeartbeatInterval: 20 * time.Second,
 		RepoCacheMaxBytes: 1024, WorkerMaxConcurrentJobs: 6, EnvironmentPrepareWaitTimeout: 10 * time.Minute,
+		CodexStatusPollInterval: 30 * time.Second, CodexReconcileMaxAttempts: 3,
+		CodexResultDeliveryMaxAttempts: 5, CodexMaxSteersPerTurn: 5, GitHubReplyGateMaxBlocks: 3,
 	}
 	require.NoError(t, valid.Validate())
 	invalid := valid

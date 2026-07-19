@@ -92,6 +92,23 @@ func TestClientMatchesOutOfOrderAndIgnoresDuplicateResponses(t *testing.T) {
 	require.NoError(t, client.Call(context.Background(), "test/after-duplicate", map[string]any{}, &result))
 }
 
+func TestClientRepeatedStartCloseReapsProcesses(t *testing.T) {
+	for index := 0; index < 50; index++ {
+		client, err := Start(context.Background(), ClientOptions{
+			Bin: os.Args[0], CWD: t.TempDir(), CodexHome: t.TempDir(),
+			Environment: []string{"GO_WANT_FAKE_CODEX=1"}, RequestTimeout: 5 * time.Second,
+		})
+		require.NoError(t, err)
+		require.NoError(t, client.Close())
+		select {
+		case <-client.Done():
+		default:
+			t.Fatalf("第 %d 个 App Server 没有 Reap", index)
+		}
+		require.NoError(t, client.Close())
+	}
+}
+
 func TestClientTimeoutAndProcessExitRejectPendingRequest(t *testing.T) {
 	t.Run("timeout", func(t *testing.T) {
 		client := startFakeClient(t, "timeout", 2*time.Second)
@@ -153,6 +170,19 @@ func TestRuntimeResumeSteerAndInterrupt(t *testing.T) {
 	require.NoError(t, runtime.InterruptTurn(context.Background(), "thread-1", "turn-1"))
 }
 
+func TestRuntimeReadsSnapshotAndMatchesClientID(t *testing.T) {
+	client := startFakeClient(t, "", 2*time.Second)
+	snapshot, err := NewRuntime(client).ReadThread(context.Background(), "thread-1")
+	require.NoError(t, err)
+	turn, found := snapshot.TurnByClientID("intent-1")
+	require.True(t, found)
+	require.Equal(t, "turn-1", turn.ID)
+	require.Equal(t, "natural final answer", turn.FinalAnswer())
+	active, found := snapshot.ActiveTurn()
+	require.True(t, found)
+	require.Equal(t, "turn-2", active.ID)
+}
+
 func startFakeClient(t *testing.T, mode string, timeout time.Duration) *Client {
 	t.Helper()
 	client, err := Start(context.Background(), ClientOptions{
@@ -195,6 +225,16 @@ func runFakeCodex() {
 			})
 		case "turn/steer", "turn/interrupt", "thread/resume":
 			_ = encoder.Encode(map[string]any{"id": id, "result": map[string]any{}})
+		case "thread/read":
+			_ = encoder.Encode(map[string]any{"id": id, "result": map[string]any{"thread": map[string]any{
+				"id": "thread-1", "status": map[string]any{"type": "active"}, "turns": []map[string]any{
+					{"id": "turn-1", "status": "completed", "items": []map[string]any{
+						{"id": "user-1", "type": "userMessage", "clientId": "intent-1", "content": []any{}},
+						{"id": "answer-1", "type": "agentMessage", "phase": "final_answer", "text": "natural final answer"},
+					}},
+					{"id": "turn-2", "status": "inProgress", "items": []any{}},
+				},
+			}}})
 		case "skills/list":
 			if mode == "skills" {
 				_ = encoder.Encode(map[string]any{"id": id, "result": map[string]any{"data": []map[string]any{{

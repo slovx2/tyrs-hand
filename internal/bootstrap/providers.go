@@ -7,6 +7,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/slovx2/tyrs-hand/internal/auth"
 	"github.com/slovx2/tyrs-hand/internal/codex"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/database"
 	"github.com/slovx2/tyrs-hand/internal/devenv"
@@ -16,7 +17,6 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/gitworkspace"
 	"github.com/slovx2/tyrs-hand/internal/httpapi"
 	"github.com/slovx2/tyrs-hand/internal/logging"
-	"github.com/slovx2/tyrs-hand/internal/queue"
 	"github.com/slovx2/tyrs-hand/internal/secrets"
 	"github.com/slovx2/tyrs-hand/internal/security"
 	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
@@ -99,8 +99,9 @@ func provideControl(cfg config.Config) *worker.ControlClient {
 	return worker.NewControlClient(cfg.InternalServerURL, cfg.ToolTimeout)
 }
 
-func provideQueue(cfg config.Config, db *sql.DB) *queue.Repository {
-	return queue.NewRepository(db, cfg.LeaseDuration)
+func provideControlRepository(cfg config.Config, db *sql.DB) *codexcontrol.Repository {
+	return codexcontrol.NewRepository(db, cfg.LeaseDuration, cfg.CodexMaxSteersPerTurn,
+		cfg.CodexReconcileMaxAttempts)
 }
 
 func providePool(ctx context.Context, cfg config.Config, logger *zap.Logger) (*codex.Pool, func(), error) {

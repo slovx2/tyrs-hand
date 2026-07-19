@@ -13,10 +13,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
-	"github.com/slovx2/tyrs-hand/internal/domain"
 	"github.com/slovx2/tyrs-hand/internal/ports"
-	"github.com/slovx2/tyrs-hand/internal/queue"
+	"github.com/slovx2/tyrs-hand/internal/replygate"
 	"go.uber.org/zap"
 )
 
@@ -40,10 +40,12 @@ type discordJobContext struct {
 	Access         string
 }
 
-func (p *Processor) processDiscordConversation(ctx context.Context, claimed *queue.ClaimedJob) (processErr error) {
-	jobCtx, err := p.loadDiscordContext(ctx, claimed.Job)
+func (p *Processor) processDiscordConversation(ctx context.Context,
+	claimed *codexcontrol.ClaimedControl,
+) (result codexcontrol.TurnResult, processErr error) {
+	jobCtx, err := p.loadDiscordContext(ctx, claimed.Intent)
 	if err != nil {
-		return err
+		return result, err
 	}
 	finalProjected := false
 	defer func() {
@@ -61,7 +63,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context, claimed *que
 	p.projectDiscordConversation(ctx, jobCtx, discordintegration.ConversationRunning, "已接收消息，正在准备工作区。")
 	workspace, branch, err := p.ensureDiscordWorkspace(ctx, claimed, jobCtx)
 	if err != nil {
-		return err
+		return result, err
 	}
 	if jobCtx.HasRepository {
 		defer p.refreshDiscordWorkspaceState(context.Background(), workspace)
@@ -73,11 +75,11 @@ func (p *Processor) processDiscordConversation(ctx context.Context, claimed *que
 	}
 	skills, err := resolveSkills(workspace, claimed.Skills)
 	if err != nil {
-		return err
+		return result, err
 	}
 	provider, err := p.settings.AgentProvider(ctx)
 	if err != nil {
-		return err
+		return result, err
 	}
 	signature := provider.ConfigSignature
 	if signature == "" {
@@ -86,13 +88,16 @@ func (p *Processor) processDiscordConversation(ctx context.Context, claimed *que
 	codexHome := filepath.Join(p.cfg.CodexHomeRoot, "discord", claimed.DiscordConversationID.String(), signature[:min(16, len(signature))])
 	provider, environment, err := p.settings.PrepareCodexHome(ctx, codexHome, filepath.Join(p.cfg.CodexHomeRoot, "shared"))
 	if err != nil {
-		return err
+		return result, err
+	}
+	if err := replygate.Install(codexHome); err != nil {
+		return result, err
 	}
 	environment = append(environment, environmentResult.Environment...)
 	poolKey := "job/" + claimed.ID.String()
 	client, err := p.pool.Acquire(ctx, poolKey, workspace, codexHome, environment)
 	if err != nil {
-		return err
+		return result, err
 	}
 	defer func() {
 		if closeErr := p.pool.Release(poolKey); closeErr != nil {
@@ -113,75 +118,120 @@ func (p *Processor) processDiscordConversation(ctx context.Context, claimed *que
 		CWD: workspace, Model: jobCtx.Model, ReasoningEffort: jobCtx.ReasoningEffort,
 		ServiceTier: jobCtx.ServiceTier, Sandbox: jobCtx.Sandbox, ApprovalPolicy: jobCtx.ApprovalPolicy,
 		NetworkEnabled:        jobCtx.NetworkEnabled,
+		RuntimeConfig:         replygate.SessionConfig(),
 		DeveloperInstructions: discordintegration.MultiplayerDeveloperInstructions,
 	}
 	if jobCtx.HasRepository {
 		githubSpec, specErr := p.catalog.DynamicToolSpecFor(append(append([]string{}, claimed.AllowedTools...), claimed.DangerousActions...))
 		if specErr != nil {
-			return specErr
+			return result, specErr
 		}
 		options.DynamicTools = []ports.DynamicToolSpec{githubSpec, localGitSpec()}
 		options.DeveloperInstructions += "\nFollow repository AGENTS.md and the explicitly attached skills. Use only the selected repository and managed Discord worktree. Use git.commit and git.publish_branch for writes."
 	}
 	if err := runtime.ValidateSkills(ctx, workspace, skills); err != nil {
-		return err
+		return result, err
 	}
 	threadSignature := threadConfigSignature(signature, options)
-	threadDBID, threadID, err := p.ensureDiscordThread(ctx, runtime, claimed.Job, options, codexHome, threadSignature)
+	threadID, err := p.ensureThread(ctx, runtime, claimed, options, codexHome, threadSignature)
 	if err != nil {
-		return err
+		return result, err
+	}
+	if err := replygate.Initialize(codexHome, threadID, claimed.ID.String(), false,
+		p.cfg.GitHubReplyGateMaxBlocks); err != nil {
+		return result, err
 	}
 	portWorkspace := ports.Workspace{WorktreePath: workspace, Branch: branch}
 	unbind, err := p.pool.Bind(poolKey, threadID, func(toolCtx context.Context, request codex.ToolCallRequest) (codex.ToolCallResult, error) {
 		return p.handleDiscordTool(toolCtx, claimed, portWorkspace, branch, request)
 	})
 	if err != nil {
-		return err
+		return result, err
 	}
 	defer unbind()
+	if claimed.Recovering {
+		var recovered bool
+		result, recovered, err = p.reconcileTurn(ctx, runtime, claimed, threadID)
+		if err != nil {
+			return result, err
+		}
+		if recovered {
+			p.projectDiscordConversation(ctx, jobCtx, discordintegration.ConversationCompleted, "本轮处理完成。")
+			p.projectDiscordReply(ctx, jobCtx, result.FinalAnswer)
+			p.projectDiscordRunContributors(ctx, claimed.RunID, claimed.DiscordMessageID, result.FinalAnswer)
+			finalProjected = true
+			return result, nil
+		}
+	}
 	input, err := p.discordTurnInput(ctx, jobCtx, workspace, skills)
 	if err != nil {
-		return err
+		return result, err
 	}
 	input.AdditionalContext = mergeAdditionalContext(input.AdditionalContext, environmentAdditionalContext(environmentResult))
 	turnID, err := runtime.StartTurn(ctx, threadID, input)
 	if err != nil {
-		return err
+		return result, err
 	}
-	if err := p.addDiscordContributor(ctx, claimed.DiscordConversationID, turnID, claimed.DiscordMessageID); err != nil {
+	if err := p.controls.RecordSubmission(ctx, claimed, turnID); err != nil {
+		return result, err
+	}
+	if err := p.addDiscordContributor(ctx, claimed.RunID, claimed.DiscordConversationID, turnID, claimed.DiscordMessageID); err != nil {
 		_ = runtime.InterruptTurn(context.Background(), threadID, turnID)
-		return err
+		return result, err
 	}
-	if err := p.waitTurn(ctx, runtime, client.Events(), claimed, threadDBID, threadID, turnID); err != nil {
+	result, err = p.waitTurn(ctx, runtime, client.Events(), claimed, threadID, turnID)
+	if err != nil {
 		_ = runtime.InterruptTurn(context.Background(), threadID, turnID)
-		return err
+		return result, err
 	}
-	outcome, err := p.loadAgentOutcome(ctx, threadDBID, turnID)
+	_, err = p.db.ExecContext(ctx, `UPDATE discord_input_messages SET status = 'processed', processed_at = now()
+		WHERE message_id = $1`, claimed.DiscordMessageID)
 	if err != nil {
-		return err
-	}
-	if err := p.persistDiscordSummary(ctx, claimed.DiscordConversationID, threadID, outcome.Summary); err != nil {
-		p.logger.Warn("持久化 Discord Conversation Summary 失败", zap.Error(err), zap.String("conversation_id", claimed.DiscordConversationID.String()))
-	}
-	_, err = p.db.ExecContext(ctx, `UPDATE agent_threads SET last_turn_id = $2, last_used_at = now(),
-		expires_at = now() + interval '30 days' WHERE id = $1`, threadDBID, turnID)
-	if err == nil {
-		_, err = p.db.ExecContext(ctx, `UPDATE discord_input_messages SET status = 'processed', processed_at = now()
-			WHERE message_id = $1`, claimed.DiscordMessageID)
-	}
-	if err != nil {
-		return err
-	}
-	if outcome.Status == "blocked" {
-		p.projectDiscordConversation(ctx, jobCtx, discordintegration.ConversationBlocked, "本轮需要你进一步处理。")
-		p.projectDiscordReply(ctx, jobCtx, outcome.Summary)
-		finalProjected = true
-		return &blockedError{summary: outcome.Summary}
+		return result, err
 	}
 	p.projectDiscordConversation(ctx, jobCtx, discordintegration.ConversationCompleted, "本轮处理完成。")
-	p.projectDiscordReply(ctx, jobCtx, outcome.Summary)
+	p.projectDiscordReply(ctx, jobCtx, result.FinalAnswer)
+	p.projectDiscordRunContributors(ctx, claimed.RunID, claimed.DiscordMessageID, result.FinalAnswer)
 	finalProjected = true
-	return nil
+	return result, nil
+}
+
+func (p *Processor) projectDiscordRunContributors(ctx context.Context, runID uuid.UUID,
+	primaryMessageID, finalAnswer string,
+) {
+	rows, err := p.db.QueryContext(ctx, `SELECT i.discord_conversation_id, i.discord_message_id
+		FROM codex_turn_intents i JOIN codex_turn_runs r ON r.control_id = i.control_id
+		WHERE r.id = $1 AND i.resolved_action = 'steer' AND i.status = 'running'
+		  AND i.discord_message_id <> $2 ORDER BY i.sequence_no`, runID, primaryMessageID)
+	if err != nil {
+		p.logger.Warn("读取 Discord Turn Contributors 失败", zap.Error(err))
+		return
+	}
+	type contributor struct {
+		conversationID uuid.UUID
+		messageID      string
+	}
+	var contributors []contributor
+	for rows.Next() {
+		var item contributor
+		if rows.Scan(&item.conversationID, &item.messageID) == nil {
+			contributors = append(contributors, item)
+		}
+	}
+	_ = rows.Close()
+	for _, item := range contributors {
+		jobCtx, loadErr := p.loadDiscordContext(ctx, codexcontrol.Intent{
+			DiscordConversationID: item.conversationID, DiscordMessageID: item.messageID,
+		})
+		if loadErr != nil {
+			p.logger.Warn("加载 Discord Contributor 消息失败", zap.Error(loadErr))
+			continue
+		}
+		p.projectDiscordConversation(ctx, jobCtx, discordintegration.ConversationCompleted, "本轮处理完成。")
+		p.projectDiscordReply(ctx, jobCtx, finalAnswer)
+		_, _ = p.db.ExecContext(ctx, `UPDATE discord_input_messages SET status = 'processed',
+			processed_at = now() WHERE message_id = $1`, item.messageID)
+	}
 }
 
 func discordFailureProjection(ctx context.Context, db *sql.DB, jobID uuid.UUID,
@@ -211,7 +261,7 @@ func (p *Processor) projectDiscordReply(ctx context.Context, jobCtx discordJobCo
 	}
 }
 
-func (p *Processor) loadDiscordContext(ctx context.Context, job domain.Job) (discordJobContext, error) {
+func (p *Processor) loadDiscordContext(ctx context.Context, job codexcontrol.Intent) (discordJobContext, error) {
 	var result discordJobContext
 	var repositoryID sql.NullString
 	err := p.db.QueryRowContext(ctx, `SELECT c.id, c.guild_id, c.thread_id, m.message_id, c.owner_discord_user_id,
@@ -241,7 +291,7 @@ func (p *Processor) loadDiscordContext(ctx context.Context, job domain.Job) (dis
 	return result, err
 }
 
-func (p *Processor) ensureDiscordWorkspace(ctx context.Context, claimed *queue.ClaimedJob, jobCtx discordJobContext) (string, string, error) {
+func (p *Processor) ensureDiscordWorkspace(ctx context.Context, claimed *codexcontrol.ClaimedControl, jobCtx discordJobContext) (string, string, error) {
 	if !jobCtx.HasRepository {
 		path := filepath.Join(p.cfg.DiscordWorkspaceRoot, "blank", claimed.DiscordConversationID.String())
 		if err := os.MkdirAll(path, 0o700); err != nil {
@@ -318,7 +368,7 @@ func (p *Processor) bindDiscordWorkspace(ctx context.Context, jobCtx discordJobC
 	return workspaceID, path, branch, nil
 }
 
-func (p *Processor) handleDiscordTool(ctx context.Context, claimed *queue.ClaimedJob, workspace ports.Workspace, branch string, request codex.ToolCallRequest) (codex.ToolCallResult, error) {
+func (p *Processor) handleDiscordTool(ctx context.Context, claimed *codexcontrol.ClaimedControl, workspace ports.Workspace, branch string, request codex.ToolCallRequest) (codex.ToolCallResult, error) {
 	if request.Namespace != nil && *request.Namespace == "github" {
 		return p.control.CallTool(ctx, claimed.Capability, request)
 	}
@@ -330,7 +380,7 @@ func (p *Processor) handleDiscordTool(ctx context.Context, claimed *queue.Claime
 	})
 }
 
-func (p *Processor) executeDiscordLocalTool(ctx context.Context, claimed *queue.ClaimedJob, workspace ports.Workspace, branch string, request codex.ToolCallRequest) (codex.ToolCallResult, error) {
+func (p *Processor) executeDiscordLocalTool(ctx context.Context, claimed *codexcontrol.ClaimedControl, workspace ports.Workspace, branch string, request codex.ToolCallRequest) (codex.ToolCallResult, error) {
 	switch request.Tool {
 	case "status":
 		status, err := p.workspace.Status(ctx, workspace.WorktreePath)

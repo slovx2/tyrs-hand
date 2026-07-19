@@ -14,9 +14,10 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/slovx2/tyrs-hand/ent/administrator"
 	"github.com/slovx2/tyrs-hand/ent/agentprofile"
-	"github.com/slovx2/tyrs-hand/ent/agentthread"
 	"github.com/slovx2/tyrs-hand/ent/auditlog"
-	"github.com/slovx2/tyrs-hand/ent/jobintent"
+	"github.com/slovx2/tyrs-hand/ent/codexthreadcontrol"
+	"github.com/slovx2/tyrs-hand/ent/codexturnintent"
+	"github.com/slovx2/tyrs-hand/ent/codexturnrun"
 	"github.com/slovx2/tyrs-hand/ent/platformsetting"
 	"github.com/slovx2/tyrs-hand/ent/repocache"
 	"github.com/slovx2/tyrs-hand/ent/repository"
@@ -87,21 +88,22 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			administrator.Table:   administrator.ValidColumn,
-			agentprofile.Table:    agentprofile.ValidColumn,
-			agentthread.Table:     agentthread.ValidColumn,
-			auditlog.Table:        auditlog.ValidColumn,
-			jobintent.Table:       jobintent.ValidColumn,
-			platformsetting.Table: platformsetting.ValidColumn,
-			repocache.Table:       repocache.ValidColumn,
-			repository.Table:      repository.ValidColumn,
-			scminstallation.Table: scminstallation.ValidColumn,
-			toolcall.Table:        toolcall.ValidColumn,
-			triggerrule.Table:     triggerrule.ValidColumn,
-			webhookdelivery.Table: webhookdelivery.ValidColumn,
-			workitem.Table:        workitem.ValidColumn,
-			workernode.Table:      workernode.ValidColumn,
-			worktree.Table:        worktree.ValidColumn,
+			administrator.Table:      administrator.ValidColumn,
+			agentprofile.Table:       agentprofile.ValidColumn,
+			auditlog.Table:           auditlog.ValidColumn,
+			codexthreadcontrol.Table: codexthreadcontrol.ValidColumn,
+			codexturnintent.Table:    codexturnintent.ValidColumn,
+			codexturnrun.Table:       codexturnrun.ValidColumn,
+			platformsetting.Table:    platformsetting.ValidColumn,
+			repocache.Table:          repocache.ValidColumn,
+			repository.Table:         repository.ValidColumn,
+			scminstallation.Table:    scminstallation.ValidColumn,
+			toolcall.Table:           toolcall.ValidColumn,
+			triggerrule.Table:        triggerrule.ValidColumn,
+			webhookdelivery.Table:    webhookdelivery.ValidColumn,
+			workitem.Table:           workitem.ValidColumn,
+			workernode.Table:         workernode.ValidColumn,
+			worktree.Table:           worktree.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

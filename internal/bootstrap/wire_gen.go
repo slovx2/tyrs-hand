@@ -86,7 +86,7 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		cleanup()
 		return nil, nil, err
 	}
-	repository := provideQueue(cfg, db)
+	repository := provideControlRepository(cfg, db)
 	manager := provideWorkspace(cfg)
 	controlClient := provideControl(cfg)
 	catalog, err := provideCatalog()
@@ -124,7 +124,7 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		cleanup()
 		return nil, nil, err
 	}
-	processor := worker.NewProcessor(cfg, db, client, manager, controlClient, catalog, service, pool, devenvManager, logger)
+	processor := worker.NewProcessor(cfg, db, client, manager, controlClient, repository, catalog, service, pool, devenvManager, logger)
 	runner := worker.NewRunner(cfg, db, client, repository, processor, logger)
 	workerApp := &WorkerApp{
 		Runner: runner,

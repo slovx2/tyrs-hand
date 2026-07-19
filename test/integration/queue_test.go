@@ -11,12 +11,14 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -24,12 +26,13 @@ import (
 	"github.com/pquerna/otp/totp"
 	"github.com/redis/go-redis/v9"
 	"github.com/slovx2/tyrs-hand/internal/auth"
+	"github.com/slovx2/tyrs-hand/internal/codex"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/database"
 	"github.com/slovx2/tyrs-hand/internal/domain"
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
 	"github.com/slovx2/tyrs-hand/internal/githubtools"
 	"github.com/slovx2/tyrs-hand/internal/orchestrator"
-	"github.com/slovx2/tyrs-hand/internal/queue"
 	"github.com/slovx2/tyrs-hand/internal/secrets"
 	"github.com/slovx2/tyrs-hand/internal/security"
 	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
@@ -110,15 +113,23 @@ func TestPostgresMigrationsAndLeaseEpoch(t *testing.T) {
 	require.NoError(t, redisClient.Ping(ctx).Err())
 	require.NoError(t, testcontainers.TerminateContainer(redisContainer))
 	require.Error(t, redisClient.Ping(ctx).Err())
+	repository := codexcontrol.NewRepository(db, 2*time.Second)
 	for index := 0; index < 2; index++ {
-		_, err := db.ExecContext(ctx, `
-			INSERT INTO job_intents(work_item_id, repository_id, agent_profile_id, idempotency_key, instruction, allowed_tools, actor_login, actor_permission)
-			VALUES ($1,$2,$3,$4,'test','["issue_read","create_pull_request"]'::jsonb,'alice','write')`, workItemID, repositoryID, profileID, "job-"+string(rune('a'+index)))
-		require.NoError(t, err)
+		tx, beginErr := db.BeginTx(ctx, nil)
+		require.NoError(t, beginErr)
+		_, inserted, enqueueErr := repository.Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
+			SourceType: codexcontrol.SourceGitHub, WorkItemID: workItemID, RepositoryID: repositoryID,
+			AgentProfileID: profileID, ContextVersion: 1,
+			IdempotencyKey: "intent-" + string(rune('a'+index)), Instruction: "test",
+			AllowedTools: []string{"issue_read", "create_pull_request"}, ActorLogin: "alice",
+			ActorPermission: "write", ReplyPolicy: "required",
+		})
+		require.NoError(t, enqueueErr)
+		require.True(t, inserted)
+		require.NoError(t, tx.Commit())
 	}
 
-	repository := queue.NewRepository(db, 2*time.Second)
-	var claims [2]*queue.ClaimedJob
+	var claims [2]*codexcontrol.ClaimedControl
 	var claimErrors [2]error
 	var group sync.WaitGroup
 	for index := range claims {
@@ -136,15 +147,15 @@ func TestPostgresMigrationsAndLeaseEpoch(t *testing.T) {
 		claimed = claims[1]
 	}
 	require.NotNil(t, claimed)
-	require.NotEqual(t, uuid.Nil, claimed.AttemptID)
+	require.NotEqual(t, uuid.Nil, claimed.RunID)
 	require.True(t, claims[0] == nil || claims[1] == nil, "同一 Work Item 只能有一个活动租约")
 
-	_, err = db.ExecContext(ctx, "UPDATE job_intents SET lease_expires_at = now() - interval '1 second' WHERE id = $1", claimed.ID)
+	_, err = db.ExecContext(ctx, "UPDATE codex_thread_controls SET lease_expires_at = now() - interval '1 second' WHERE id = $1", claimed.ControlID)
 	require.NoError(t, err)
 	count, err := repository.RequeueExpired(ctx)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, count)
-	_, err = db.ExecContext(ctx, "UPDATE job_intents SET available_at = now() WHERE id = $1", claimed.ID)
+	_, err = db.ExecContext(ctx, "UPDATE codex_turn_intents SET available_at = now() WHERE id = $1", claimed.ID)
 	require.NoError(t, err)
 	newClaim, err := repository.Claim(ctx, "worker-new")
 	require.NoError(t, err)
@@ -153,27 +164,44 @@ func TestPostgresMigrationsAndLeaseEpoch(t *testing.T) {
 	require.Greater(t, newClaim.LeaseEpoch, claimed.LeaseEpoch)
 	require.Equal(t, "alice", newClaim.ActorLogin)
 	require.Equal(t, "write", newClaim.ActorPermission)
-	require.ErrorIs(t, repository.Complete(ctx, claimed.ID, claimed.LeaseToken, claimed.LeaseEpoch), queue.ErrLeaseLost)
-	require.NoError(t, repository.Heartbeat(ctx, newClaim.ID, newClaim.LeaseToken, newClaim.LeaseEpoch))
-	require.ErrorIs(t, repository.Heartbeat(ctx, newClaim.ID, newClaim.LeaseToken, claimed.LeaseEpoch), queue.ErrLeaseLost)
+	require.ErrorIs(t, repository.Complete(ctx, claimed, codexcontrol.TurnResult{}), codexcontrol.ErrLeaseLost)
+	require.NoError(t, repository.Heartbeat(ctx, newClaim))
+	stale := *newClaim
+	stale.LeaseEpoch = claimed.LeaseEpoch
+	require.ErrorIs(t, repository.Heartbeat(ctx, &stale), codexcontrol.ErrLeaseLost)
+	require.NoError(t, repository.SetThread(ctx, newClaim, "thread", "/tmp/codex-home", "signature"))
+	require.NoError(t, repository.RecordSubmission(ctx, newClaim, "turn"))
+	require.NoError(t, repository.ConfirmTurn(ctx, newClaim, "turn"))
 	testOfficialGitHubTool(t, db, newClaim.Capability)
-	require.NoError(t, repository.Complete(ctx, newClaim.ID, newClaim.LeaseToken, newClaim.LeaseEpoch))
+	require.NoError(t, repository.Complete(ctx, newClaim, codexcontrol.TurnResult{
+		TurnID: "turn", FinalAnswer: "succeeded, but command exited 127",
+	}))
 	failedClaim, err := repository.Claim(ctx, "worker-failure")
 	require.NoError(t, err)
 	require.NotNil(t, failedClaim)
-	require.NoError(t, repository.Fail(ctx, failedClaim.ID, failedClaim.LeaseToken, failedClaim.LeaseEpoch, errors.New("integration failure")))
-	_, err = db.ExecContext(ctx, `
-		INSERT INTO job_intents(work_item_id, repository_id, agent_profile_id, idempotency_key, instruction)
-		VALUES ($1,$2,$3,'job-blocked','blocked test')`, workItemID, repositoryID, profileID)
+	_, err = db.ExecContext(ctx, "UPDATE codex_turn_intents SET reply_status = 'delivered' WHERE id = $1", failedClaim.ID)
 	require.NoError(t, err)
-	blockedClaim, err := repository.Claim(ctx, "worker-blocked")
+	require.NoError(t, repository.Complete(ctx, failedClaim, codexcontrol.TurnResult{
+		TurnID: "turn-2", FinalAnswer: "blocked: command exited 127 and needs attention",
+	}))
+	var completedCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_intents
+		WHERE control_id = $1 AND status = 'completed'`, failedClaim.ControlID).Scan(&completedCount))
+	require.Equal(t, 2, completedCount, "自然回复中的状态词不能改变平台终态")
+	tx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
-	require.NotNil(t, blockedClaim)
-	require.NoError(t, repository.Block(ctx, blockedClaim.ID, blockedClaim.LeaseToken, blockedClaim.LeaseEpoch, errors.New("missing permission")))
-	var blockedStatus, blockedReason string
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT status, last_error FROM job_intents WHERE id = $1`, blockedClaim.ID).Scan(&blockedStatus, &blockedReason))
-	require.Equal(t, "blocked", blockedStatus)
-	require.Equal(t, "missing permission", blockedReason)
+	_, inserted, err := repository.Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
+		SourceType: codexcontrol.SourceGitHub, WorkItemID: workItemID, RepositoryID: repositoryID,
+		AgentProfileID: profileID, ContextVersion: 1, IdempotencyKey: "intent-control-failure",
+		Instruction: "test failure", ReplyPolicy: "required",
+	})
+	require.NoError(t, err)
+	require.True(t, inserted)
+	require.NoError(t, tx.Commit())
+	failedClaim, err = repository.Claim(ctx, "worker-failure")
+	require.NoError(t, err)
+	require.NotNil(t, failedClaim)
+	require.NoError(t, repository.Fail(ctx, failedClaim, "integration_failure", errors.New("integration failure")))
 	emptyClaim, err := repository.Claim(ctx, "worker-empty")
 	require.NoError(t, err)
 	require.Nil(t, emptyClaim)
@@ -287,7 +315,7 @@ func testWebhookOrchestration(t *testing.T, db *sql.DB, repositoryID uuid.UUID) 
 	var instruction string
 	var evidence []byte
 	require.NoError(t, db.QueryRowContext(ctx, `
-		SELECT j.instruction, j.trigger_evidence FROM job_intents j
+		SELECT j.instruction, j.trigger_evidence FROM codex_turn_intents j
 		JOIN webhook_deliveries d ON d.id = j.webhook_delivery_id
 		WHERE d.delivery_id = 'delivery-1'`).Scan(&instruction, &evidence))
 	require.Contains(t, instruction, "inspect\nadditional context")
@@ -454,6 +482,7 @@ func testOfficialGitHubTool(t *testing.T, db *sql.DB, capability string) {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
+	var commentCount atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/app/installations/1/access_tokens":
@@ -462,6 +491,16 @@ func testOfficialGitHubTool(t *testing.T, db *sql.DB, capability string) {
 			_ = json.NewEncoder(response).Encode(map[string]any{"permission": "write"})
 		case "/repos/owner/repo/issues/1":
 			_ = json.NewEncoder(response).Encode(map[string]any{"id": 10, "number": 1, "title": "test", "state": "open", "user": map[string]any{"login": "alice"}})
+		case "/repos/owner/repo/issues/1/comments":
+			if request.Method == http.MethodGet {
+				time.Sleep(25 * time.Millisecond)
+				_ = json.NewEncoder(response).Encode([]any{})
+				return
+			}
+			commentCount.Add(1)
+			_ = json.NewEncoder(response).Encode(map[string]any{
+				"id": 88, "html_url": "https://github.com/owner/repo/issues/1#issuecomment-88",
+			})
 		case "/repos/owner/repo/pulls":
 			response.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(response).Encode(map[string]any{
@@ -549,6 +588,29 @@ func testOfficialGitHubTool(t *testing.T, db *sql.DB, capability string) {
 	var channelCount int
 	require.NoError(t, db.QueryRowContext(context.Background(), `SELECT count(*) FROM work_item_channels WHERE channel_type = 'pull_request' AND external_number = 42`).Scan(&channelCount))
 	require.Equal(t, 1, channelCount)
+	reply := toolservice.CallRequest{
+		Capability: capability, ThreadID: "thread", TurnID: "turn", CallID: "reply-1",
+		Namespace: "tyrs_hand", Tool: "reply_to_github",
+		Arguments: json.RawMessage(`{"body":"Finished the requested work."}`),
+	}
+	var replies [2]codex.ToolCallResult
+	var replyErrors [2]error
+	var replyGroup sync.WaitGroup
+	for index := range replies {
+		replyGroup.Add(1)
+		go func(index int) {
+			defer replyGroup.Done()
+			request := reply
+			request.CallID = fmt.Sprintf("reply-%d", index+1)
+			replies[index], replyErrors[index] = service.Call(context.Background(), request)
+		}(index)
+	}
+	replyGroup.Wait()
+	require.NoError(t, replyErrors[0])
+	require.NoError(t, replyErrors[1])
+	require.True(t, replies[0].Success)
+	require.Equal(t, replies[0], replies[1])
+	require.EqualValues(t, 1, commentCount.Load())
 }
 
 func redisInstance(t *testing.T) (*redis.Client, testcontainers.Container) {

@@ -7,21 +7,21 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/devenv"
-	"github.com/slovx2/tyrs-hand/internal/queue"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
 
 type concurrencyQueue struct {
 	mu        sync.Mutex
-	jobs      []*queue.ClaimedJob
+	jobs      []*codexcontrol.ClaimedControl
 	claimed   int
 	completed int
 }
 
-func (q *concurrencyQueue) Claim(context.Context, string) (*queue.ClaimedJob, error) {
+func (q *concurrencyQueue) Claim(context.Context, string) (*codexcontrol.ClaimedControl, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if q.claimed == len(q.jobs) {
@@ -32,18 +32,28 @@ func (q *concurrencyQueue) Claim(context.Context, string) (*queue.ClaimedJob, er
 	return job, nil
 }
 
-func (*concurrencyQueue) Heartbeat(context.Context, uuid.UUID, string, int64) error { return nil }
+func (*concurrencyQueue) Heartbeat(context.Context, *codexcontrol.ClaimedControl) error { return nil }
 
-func (q *concurrencyQueue) Complete(context.Context, uuid.UUID, string, int64) error {
+func (q *concurrencyQueue) Complete(context.Context, *codexcontrol.ClaimedControl, codexcontrol.TurnResult) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.completed++
 	return nil
 }
 
-func (*concurrencyQueue) Block(context.Context, uuid.UUID, string, int64, error) error { return nil }
-func (*concurrencyQueue) Fail(context.Context, uuid.UUID, string, int64, error) error  { return nil }
-func (*concurrencyQueue) RequeueExpired(context.Context) (int64, error)                { return 0, nil }
+func (*concurrencyQueue) Cancel(context.Context, *codexcontrol.ClaimedControl, string, string) error {
+	return nil
+}
+func (*concurrencyQueue) Fail(context.Context, *codexcontrol.ClaimedControl, string, error) error {
+	return nil
+}
+func (*concurrencyQueue) Reconcile(context.Context, *codexcontrol.ClaimedControl, string, error) error {
+	return nil
+}
+func (*concurrencyQueue) ReplySatisfied(context.Context, *codexcontrol.ClaimedControl) (bool, error) {
+	return true, nil
+}
+func (*concurrencyQueue) RequeueExpired(context.Context) (int64, error) { return 0, nil }
 
 type blockingProcessor struct {
 	mu        sync.Mutex
@@ -53,7 +63,7 @@ type blockingProcessor struct {
 	maxActive int
 }
 
-func (p *blockingProcessor) Process(context.Context, *queue.ClaimedJob) error {
+func (p *blockingProcessor) Process(context.Context, *codexcontrol.ClaimedControl) (codexcontrol.TurnResult, error) {
 	p.mu.Lock()
 	p.active++
 	if p.active > p.maxActive {
@@ -65,13 +75,13 @@ func (p *blockingProcessor) Process(context.Context, *queue.ClaimedJob) error {
 	p.mu.Lock()
 	p.active--
 	p.mu.Unlock()
-	return nil
+	return codexcontrol.TurnResult{}, nil
 }
 
 func TestRunnerLimitsConcurrentJobsToSix(t *testing.T) {
-	jobs := make([]*queue.ClaimedJob, 7)
+	jobs := make([]*codexcontrol.ClaimedControl, 7)
 	for index := range jobs {
-		jobs[index] = &queue.ClaimedJob{}
+		jobs[index] = &codexcontrol.ClaimedControl{}
 		jobs[index].ID = uuid.New()
 		jobs[index].LeaseToken = "lease"
 		jobs[index].LeaseEpoch = 1
@@ -79,8 +89,8 @@ func TestRunnerLimitsConcurrentJobsToSix(t *testing.T) {
 	jobQueue := &concurrencyQueue{jobs: jobs}
 	processor := &blockingProcessor{started: make(chan struct{}, 7), release: make(chan struct{})}
 	runner := &Runner{
-		cfg:   config.Config{WorkerID: "worker", WorkerMaxConcurrentJobs: 6, HeartbeatInterval: time.Hour},
-		queue: jobQueue, processor: processor, logger: zap.NewNop(),
+		cfg:      config.Config{WorkerID: "worker", WorkerMaxConcurrentJobs: 6, HeartbeatInterval: time.Hour},
+		controls: jobQueue, processor: processor, logger: zap.NewNop(),
 	}
 	slots := make(chan struct{}, 6)
 	var active sync.WaitGroup

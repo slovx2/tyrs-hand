@@ -58,6 +58,12 @@ func (c *ControlClient) GitCredential(ctx context.Context, capability, purpose s
 	return response.Token, nil
 }
 
+func (c *ControlClient) ReportFailure(ctx context.Context, capability, code string) error {
+	return c.post(ctx, "/internal/v1/tools/failure", map[string]string{
+		"capability": capability, "code": code,
+	}, nil)
+}
+
 func (c *ControlClient) post(ctx context.Context, path string, input, output any) error {
 	data, err := json.Marshal(input)
 	if err != nil {

@@ -16,12 +16,14 @@ type Tx struct {
 	Administrator *AdministratorClient
 	// AgentProfile is the client for interacting with the AgentProfile builders.
 	AgentProfile *AgentProfileClient
-	// AgentThread is the client for interacting with the AgentThread builders.
-	AgentThread *AgentThreadClient
 	// AuditLog is the client for interacting with the AuditLog builders.
 	AuditLog *AuditLogClient
-	// JobIntent is the client for interacting with the JobIntent builders.
-	JobIntent *JobIntentClient
+	// CodexThreadControl is the client for interacting with the CodexThreadControl builders.
+	CodexThreadControl *CodexThreadControlClient
+	// CodexTurnIntent is the client for interacting with the CodexTurnIntent builders.
+	CodexTurnIntent *CodexTurnIntentClient
+	// CodexTurnRun is the client for interacting with the CodexTurnRun builders.
+	CodexTurnRun *CodexTurnRunClient
 	// PlatformSetting is the client for interacting with the PlatformSetting builders.
 	PlatformSetting *PlatformSettingClient
 	// RepoCache is the client for interacting with the RepoCache builders.
@@ -175,9 +177,10 @@ func (tx *Tx) Client() *Client {
 func (tx *Tx) init() {
 	tx.Administrator = NewAdministratorClient(tx.config)
 	tx.AgentProfile = NewAgentProfileClient(tx.config)
-	tx.AgentThread = NewAgentThreadClient(tx.config)
 	tx.AuditLog = NewAuditLogClient(tx.config)
-	tx.JobIntent = NewJobIntentClient(tx.config)
+	tx.CodexThreadControl = NewCodexThreadControlClient(tx.config)
+	tx.CodexTurnIntent = NewCodexTurnIntentClient(tx.config)
+	tx.CodexTurnRun = NewCodexTurnRunClient(tx.config)
 	tx.PlatformSetting = NewPlatformSettingClient(tx.config)
 	tx.RepoCache = NewRepoCacheClient(tx.config)
 	tx.Repository = NewRepositoryClient(tx.config)

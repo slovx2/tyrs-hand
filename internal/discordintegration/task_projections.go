@@ -45,7 +45,7 @@ func (d *Daemon) refreshTaskProjections(ctx context.Context, guildID string, rem
 		FROM work_items w JOIN discord_forums f ON f.repository_id = w.repository_id AND f.forum_type = 'repository'
 		JOIN discord_resources dr ON dr.id = f.resource_id
 		JOIN repositories repo ON repo.id = w.repository_id
-		LEFT JOIN LATERAL (SELECT status FROM job_intents WHERE work_item_id = w.id
+		LEFT JOIN LATERAL (SELECT status FROM codex_turn_intents WHERE work_item_id = w.id
 			ORDER BY created_at DESC LIMIT 1) j ON true
 		LEFT JOIN discord_task_posts p ON p.work_item_id = w.id
 		WHERE f.guild_id = $1 AND (w.state <> 'closed' OR w.updated_at > now() - interval '30 days')
@@ -113,13 +113,11 @@ func (d *Daemon) projectTask(ctx context.Context, task taskProjection, tags map[
 
 func projectedTaskState(workItemState, jobStatus string) string {
 	switch jobStatus {
-	case "running", "queued":
+	case "queued", "dispatching", "awaiting_confirmation", "running", "reconciling", "retry_wait":
 		return "Running"
-	case "blocked":
-		return "Needs Attention"
 	case "failed":
 		return "Failed"
-	case "succeeded":
+	case "completed":
 		return "Completed"
 	}
 	if workItemState == "closed" {
@@ -187,10 +185,10 @@ func (d *Daemon) todoCard(ctx context.Context, guildID, userID string) (EmbedPay
 		w.title, j.status FROM work_items w
 		JOIN repositories r ON r.id = w.repository_id
 		JOIN LATERAL (
-			SELECT status, actor_login FROM job_intents
+			SELECT status, actor_login FROM codex_turn_intents
 			WHERE work_item_id = w.id ORDER BY created_at DESC, id DESC LIMIT 1
 		) j ON true
-		WHERE lower(j.actor_login) = lower($1) AND j.status IN ('blocked', 'failed')
+		WHERE lower(j.actor_login) = lower($1) AND j.status = 'failed'
 		ORDER BY r.owner, r.name, w.external_number LIMIT 25`, login)
 	if err != nil {
 		return EmbedPayload{}, err

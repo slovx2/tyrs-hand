@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +15,17 @@ import (
 	githubapi "github.com/google/go-github/v89/github"
 	"github.com/slovx2/tyrs-hand/internal/domain"
 )
+
+type IssueComment struct {
+	ID   int64
+	URL  string
+	Body string
+}
+
+type PullRequestRef struct {
+	Number int
+	URL    string
+}
 
 type cachedToken struct {
 	value     string
@@ -123,6 +135,68 @@ func (a *AppClient) Repository(ctx context.Context, installationID int64, owner,
 		DefaultBranch: value.GetDefaultBranch(),
 		CloneURL:      value.GetCloneURL(),
 	}, nil
+}
+
+func (a *AppClient) FindIssueComment(ctx context.Context, installationID int64,
+	owner, repository string, number int, marker string,
+) (IssueComment, bool, error) {
+	client, err := a.RESTClient(ctx, installationID)
+	if err != nil {
+		return IssueComment{}, false, err
+	}
+	options := &githubapi.IssueListCommentsOptions{ListOptions: githubapi.ListOptions{PerPage: 100}}
+	for page := 0; page < 10; page++ {
+		comments, response, listErr := client.Issues.ListComments(ctx, owner, repository, number, options)
+		if listErr != nil {
+			return IssueComment{}, false, listErr
+		}
+		for _, comment := range comments {
+			if strings.Contains(comment.GetBody(), marker) {
+				return IssueComment{ID: comment.GetID(), URL: comment.GetHTMLURL(), Body: comment.GetBody()}, true, nil
+			}
+		}
+		if response == nil || response.NextPage == 0 {
+			break
+		}
+		options.Page = response.NextPage
+	}
+	return IssueComment{}, false, nil
+}
+
+func (a *AppClient) CreateIssueComment(ctx context.Context, installationID int64,
+	owner, repository string, number int, body string,
+) (IssueComment, error) {
+	client, err := a.RESTClient(ctx, installationID)
+	if err != nil {
+		return IssueComment{}, err
+	}
+	comment, _, err := client.Issues.CreateComment(ctx, owner, repository, number,
+		&githubapi.IssueComment{Body: &body})
+	if err != nil {
+		return IssueComment{}, err
+	}
+	return IssueComment{ID: comment.GetID(), URL: comment.GetHTMLURL(), Body: comment.GetBody()}, nil
+}
+
+func (a *AppClient) FindPullRequest(ctx context.Context, installationID int64,
+	owner, repository, head, base string,
+) (PullRequestRef, bool, error) {
+	client, err := a.RESTClient(ctx, installationID)
+	if err != nil {
+		return PullRequestRef{}, false, err
+	}
+	values, _, err := client.PullRequests.List(ctx, owner, repository, &githubapi.PullRequestListOptions{
+		State: "all", Head: owner + ":" + head, Base: base,
+	})
+	if err != nil {
+		return PullRequestRef{}, false, err
+	}
+	for _, value := range values {
+		if value.GetHead().GetRef() == head && value.GetBase().GetRef() == base {
+			return PullRequestRef{Number: value.GetNumber(), URL: value.GetHTMLURL()}, true, nil
+		}
+	}
+	return PullRequestRef{}, false, nil
 }
 
 func (a *AppClient) signJWT() (string, error) {

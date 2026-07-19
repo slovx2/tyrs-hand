@@ -23,7 +23,7 @@ The project is at an early stage. Evaluate it on controlled repositories before 
 - Repository skills loaded from `.agents/skills/<name>/SKILL.md`
 - GitHub MCP tools and controlled local Git dynamic tools
 - Idempotent tool calls keyed by `(thread, turn, call)`
-- Structured `succeeded` and `blocked` agent outcomes
+- Natural Codex final answers with platform-owned control state and managed reply gates
 - React administration UI for repositories, rules, profiles, jobs, threads, workers, and audit logs
 
 ## Architecture

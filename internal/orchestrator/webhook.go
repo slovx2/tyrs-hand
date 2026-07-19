@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/domain"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/security"
@@ -135,21 +136,26 @@ func (s *WebhookService) Process(ctx context.Context, signature, deliveryID, eve
 		matchedEvent.Body = matched.Body
 		instruction := renderInstruction(rule.Instruction, matchedEvent)
 		idempotencyKey := fmt.Sprintf("github:%s:%s", deliveryID, rule.ID)
-		execResult, err := tx.ExecContext(ctx, `
-			INSERT INTO job_intents(
-				work_item_id, repository_id, agent_profile_id, webhook_delivery_id,
-				idempotency_key, instruction, skills, allowed_tools, dangerous_actions,
-				priority, actor_login, actor_permission, trigger_rule_id, trigger_evidence)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-			ON CONFLICT(idempotency_key) DO NOTHING`,
-			workItemID, repositoryID, rule.AgentProfileID, deliveryUUID, idempotencyKey,
-			instruction, encode(rule.Skills), encode(rule.AllowedTools), encode(rule.DangerousActions),
-			rule.Priority, event.Actor, permission, rule.ID, encode(matched.Evidence))
+		var contextVersion int64
+		if err := tx.QueryRowContext(ctx, "SELECT context_version FROM work_items WHERE id = $1", workItemID).Scan(&contextVersion); err != nil {
+			return WebhookResult{}, err
+		}
+		_, inserted, err := codexcontrol.NewRepository(s.db, 0).Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
+			SourceType: codexcontrol.SourceGitHub, WorkItemID: workItemID, RepositoryID: repositoryID,
+			AgentProfileID: rule.AgentProfileID, ContextVersion: contextVersion,
+			WebhookDeliveryID: deliveryUUID, TriggerRuleID: rule.ID,
+			TriggerEvidence: encode(matched.Evidence), IdempotencyKey: idempotencyKey,
+			Instruction: instruction, Skills: rule.Skills, AllowedTools: rule.AllowedTools,
+			DangerousActions: rule.DangerousActions, Priority: rule.Priority,
+			ActorLogin: event.Actor, ActorPermission: permission, ReplyPolicy: "required",
+			Behavior: "steer_if_active",
+		})
 		if err != nil {
 			return WebhookResult{}, err
 		}
-		count, _ := execResult.RowsAffected()
-		jobs += int(count)
+		if inserted {
+			jobs++
+		}
 	}
 	status := "processed"
 	message := ""

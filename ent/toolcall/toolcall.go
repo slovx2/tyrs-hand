@@ -14,8 +14,10 @@ const (
 	Label = "tool_call"
 	// FieldID holds the string denoting the id field in the database.
 	FieldID = "id"
-	// FieldJobAttemptID holds the string denoting the job_attempt_id field in the database.
-	FieldJobAttemptID = "job_attempt_id"
+	// FieldRunID holds the string denoting the run_id field in the database.
+	FieldRunID = "run_id"
+	// FieldIntentID holds the string denoting the intent_id field in the database.
+	FieldIntentID = "intent_id"
 	// FieldThreadID holds the string denoting the thread_id field in the database.
 	FieldThreadID = "thread_id"
 	// FieldTurnID holds the string denoting the turn_id field in the database.
@@ -45,7 +47,8 @@ const (
 // Columns holds all SQL columns for toolcall fields.
 var Columns = []string{
 	FieldID,
-	FieldJobAttemptID,
+	FieldRunID,
+	FieldIntentID,
 	FieldThreadID,
 	FieldTurnID,
 	FieldCallID,
@@ -86,9 +89,14 @@ func ByID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldID, opts...).ToFunc()
 }
 
-// ByJobAttemptID orders the results by the job_attempt_id field.
-func ByJobAttemptID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldJobAttemptID, opts...).ToFunc()
+// ByRunID orders the results by the run_id field.
+func ByRunID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRunID, opts...).ToFunc()
+}
+
+// ByIntentID orders the results by the intent_id field.
+func ByIntentID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIntentID, opts...).ToFunc()
 }
 
 // ByThreadID orders the results by the thread_id field.

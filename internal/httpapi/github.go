@@ -13,10 +13,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/auth"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
 	"github.com/slovx2/tyrs-hand/internal/orchestrator"
-	"github.com/slovx2/tyrs-hand/internal/queue"
 	"github.com/slovx2/tyrs-hand/internal/security"
 	toolservice "github.com/slovx2/tyrs-hand/internal/tools"
 	"go.uber.org/zap"
@@ -154,7 +154,7 @@ func (s *Server) githubWebhook(c *gin.Context) {
 	}
 	if result.Jobs > 0 && s.redis != nil {
 		// Redis 只负责降低领取延迟；发布失败时 Worker 的数据库轮询仍会兜底。
-		_ = s.redis.Publish(c.Request.Context(), queue.JobWakeupChannel, "queued").Err()
+		_ = s.redis.Publish(c.Request.Context(), codexcontrol.WakeupChannel, "queued").Err()
 	}
 	c.JSON(http.StatusAccepted, result)
 }
@@ -176,6 +176,28 @@ func (s *Server) internalToolCall(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, result)
+}
+
+func (s *Server) internalToolFailure(c *gin.Context) {
+	var request struct {
+		Capability string `json:"capability" binding:"required"`
+		Code       string `json:"code" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil {
+		badRequest(c, err)
+		return
+	}
+	_, app, _, ok := s.github.Current()
+	if !ok {
+		problem(c, http.StatusServiceUnavailable, "GitHub App 尚未配置", nil)
+		return
+	}
+	if err := toolservice.NewService(s.db, app, s.catalog).ReportFailure(
+		c.Request.Context(), request.Capability, request.Code); err != nil {
+		problem(c, http.StatusForbidden, "投递系统失败回复失败", err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 func (s *Server) internalGitCredential(c *gin.Context) {

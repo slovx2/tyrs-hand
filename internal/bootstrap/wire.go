@@ -28,7 +28,7 @@ func InitializeServer(ctx context.Context, cfg config.Config) (*ServerApp, func(
 func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(), error) {
 	wire.Build(
 		provideDatabase, provideRedis, provideLogger, provideSecretBox, secrets.NewStore,
-		provideSettings, provideCatalog, provideWorkspace, provideControl, provideQueue,
+		provideSettings, provideCatalog, provideWorkspace, provideControl, provideControlRepository,
 		providePool, provideDevelopmentEnvironment, wire.Bind(new(ports.WorkspaceManager), new(*gitworkspace.Manager)),
 		worker.NewProcessor, worker.NewRunner, wire.Struct(new(WorkerApp), "*"),
 	)

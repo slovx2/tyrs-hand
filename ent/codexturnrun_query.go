@@ -12,68 +12,68 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
-	"github.com/slovx2/tyrs-hand/ent/agentthread"
+	"github.com/slovx2/tyrs-hand/ent/codexturnrun"
 	"github.com/slovx2/tyrs-hand/ent/predicate"
 )
 
-// AgentThreadQuery is the builder for querying AgentThread entities.
-type AgentThreadQuery struct {
+// CodexTurnRunQuery is the builder for querying CodexTurnRun entities.
+type CodexTurnRunQuery struct {
 	config
 	ctx        *QueryContext
-	order      []agentthread.OrderOption
+	order      []codexturnrun.OrderOption
 	inters     []Interceptor
-	predicates []predicate.AgentThread
+	predicates []predicate.CodexTurnRun
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
 }
 
-// Where adds a new predicate for the AgentThreadQuery builder.
-func (_q *AgentThreadQuery) Where(ps ...predicate.AgentThread) *AgentThreadQuery {
+// Where adds a new predicate for the CodexTurnRunQuery builder.
+func (_q *CodexTurnRunQuery) Where(ps ...predicate.CodexTurnRun) *CodexTurnRunQuery {
 	_q.predicates = append(_q.predicates, ps...)
 	return _q
 }
 
 // Limit the number of records to be returned by this query.
-func (_q *AgentThreadQuery) Limit(limit int) *AgentThreadQuery {
+func (_q *CodexTurnRunQuery) Limit(limit int) *CodexTurnRunQuery {
 	_q.ctx.Limit = &limit
 	return _q
 }
 
 // Offset to start from.
-func (_q *AgentThreadQuery) Offset(offset int) *AgentThreadQuery {
+func (_q *CodexTurnRunQuery) Offset(offset int) *CodexTurnRunQuery {
 	_q.ctx.Offset = &offset
 	return _q
 }
 
 // Unique configures the query builder to filter duplicate records on query.
 // By default, unique is set to true, and can be disabled using this method.
-func (_q *AgentThreadQuery) Unique(unique bool) *AgentThreadQuery {
+func (_q *CodexTurnRunQuery) Unique(unique bool) *CodexTurnRunQuery {
 	_q.ctx.Unique = &unique
 	return _q
 }
 
 // Order specifies how the records should be ordered.
-func (_q *AgentThreadQuery) Order(o ...agentthread.OrderOption) *AgentThreadQuery {
+func (_q *CodexTurnRunQuery) Order(o ...codexturnrun.OrderOption) *CodexTurnRunQuery {
 	_q.order = append(_q.order, o...)
 	return _q
 }
 
-// First returns the first AgentThread entity from the query.
-// Returns a *NotFoundError when no AgentThread was found.
-func (_q *AgentThreadQuery) First(ctx context.Context) (*AgentThread, error) {
+// First returns the first CodexTurnRun entity from the query.
+// Returns a *NotFoundError when no CodexTurnRun was found.
+func (_q *CodexTurnRunQuery) First(ctx context.Context) (*CodexTurnRun, error) {
 	nodes, err := _q.Limit(1).All(setContextOp(ctx, _q.ctx, ent.OpQueryFirst))
 	if err != nil {
 		return nil, err
 	}
 	if len(nodes) == 0 {
-		return nil, &NotFoundError{agentthread.Label}
+		return nil, &NotFoundError{codexturnrun.Label}
 	}
 	return nodes[0], nil
 }
 
 // FirstX is like First, but panics if an error occurs.
-func (_q *AgentThreadQuery) FirstX(ctx context.Context) *AgentThread {
+func (_q *CodexTurnRunQuery) FirstX(ctx context.Context) *CodexTurnRun {
 	node, err := _q.First(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -81,22 +81,22 @@ func (_q *AgentThreadQuery) FirstX(ctx context.Context) *AgentThread {
 	return node
 }
 
-// FirstID returns the first AgentThread ID from the query.
-// Returns a *NotFoundError when no AgentThread ID was found.
-func (_q *AgentThreadQuery) FirstID(ctx context.Context) (id uuid.UUID, err error) {
+// FirstID returns the first CodexTurnRun ID from the query.
+// Returns a *NotFoundError when no CodexTurnRun ID was found.
+func (_q *CodexTurnRunQuery) FirstID(ctx context.Context) (id uuid.UUID, err error) {
 	var ids []uuid.UUID
 	if ids, err = _q.Limit(1).IDs(setContextOp(ctx, _q.ctx, ent.OpQueryFirstID)); err != nil {
 		return
 	}
 	if len(ids) == 0 {
-		err = &NotFoundError{agentthread.Label}
+		err = &NotFoundError{codexturnrun.Label}
 		return
 	}
 	return ids[0], nil
 }
 
 // FirstIDX is like FirstID, but panics if an error occurs.
-func (_q *AgentThreadQuery) FirstIDX(ctx context.Context) uuid.UUID {
+func (_q *CodexTurnRunQuery) FirstIDX(ctx context.Context) uuid.UUID {
 	id, err := _q.FirstID(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -104,10 +104,10 @@ func (_q *AgentThreadQuery) FirstIDX(ctx context.Context) uuid.UUID {
 	return id
 }
 
-// Only returns a single AgentThread entity found by the query, ensuring it only returns one.
-// Returns a *NotSingularError when more than one AgentThread entity is found.
-// Returns a *NotFoundError when no AgentThread entities are found.
-func (_q *AgentThreadQuery) Only(ctx context.Context) (*AgentThread, error) {
+// Only returns a single CodexTurnRun entity found by the query, ensuring it only returns one.
+// Returns a *NotSingularError when more than one CodexTurnRun entity is found.
+// Returns a *NotFoundError when no CodexTurnRun entities are found.
+func (_q *CodexTurnRunQuery) Only(ctx context.Context) (*CodexTurnRun, error) {
 	nodes, err := _q.Limit(2).All(setContextOp(ctx, _q.ctx, ent.OpQueryOnly))
 	if err != nil {
 		return nil, err
@@ -116,14 +116,14 @@ func (_q *AgentThreadQuery) Only(ctx context.Context) (*AgentThread, error) {
 	case 1:
 		return nodes[0], nil
 	case 0:
-		return nil, &NotFoundError{agentthread.Label}
+		return nil, &NotFoundError{codexturnrun.Label}
 	default:
-		return nil, &NotSingularError{agentthread.Label}
+		return nil, &NotSingularError{codexturnrun.Label}
 	}
 }
 
 // OnlyX is like Only, but panics if an error occurs.
-func (_q *AgentThreadQuery) OnlyX(ctx context.Context) *AgentThread {
+func (_q *CodexTurnRunQuery) OnlyX(ctx context.Context) *CodexTurnRun {
 	node, err := _q.Only(ctx)
 	if err != nil {
 		panic(err)
@@ -131,10 +131,10 @@ func (_q *AgentThreadQuery) OnlyX(ctx context.Context) *AgentThread {
 	return node
 }
 
-// OnlyID is like Only, but returns the only AgentThread ID in the query.
-// Returns a *NotSingularError when more than one AgentThread ID is found.
+// OnlyID is like Only, but returns the only CodexTurnRun ID in the query.
+// Returns a *NotSingularError when more than one CodexTurnRun ID is found.
 // Returns a *NotFoundError when no entities are found.
-func (_q *AgentThreadQuery) OnlyID(ctx context.Context) (id uuid.UUID, err error) {
+func (_q *CodexTurnRunQuery) OnlyID(ctx context.Context) (id uuid.UUID, err error) {
 	var ids []uuid.UUID
 	if ids, err = _q.Limit(2).IDs(setContextOp(ctx, _q.ctx, ent.OpQueryOnlyID)); err != nil {
 		return
@@ -143,15 +143,15 @@ func (_q *AgentThreadQuery) OnlyID(ctx context.Context) (id uuid.UUID, err error
 	case 1:
 		id = ids[0]
 	case 0:
-		err = &NotFoundError{agentthread.Label}
+		err = &NotFoundError{codexturnrun.Label}
 	default:
-		err = &NotSingularError{agentthread.Label}
+		err = &NotSingularError{codexturnrun.Label}
 	}
 	return
 }
 
 // OnlyIDX is like OnlyID, but panics if an error occurs.
-func (_q *AgentThreadQuery) OnlyIDX(ctx context.Context) uuid.UUID {
+func (_q *CodexTurnRunQuery) OnlyIDX(ctx context.Context) uuid.UUID {
 	id, err := _q.OnlyID(ctx)
 	if err != nil {
 		panic(err)
@@ -159,18 +159,18 @@ func (_q *AgentThreadQuery) OnlyIDX(ctx context.Context) uuid.UUID {
 	return id
 }
 
-// All executes the query and returns a list of AgentThreads.
-func (_q *AgentThreadQuery) All(ctx context.Context) ([]*AgentThread, error) {
+// All executes the query and returns a list of CodexTurnRuns.
+func (_q *CodexTurnRunQuery) All(ctx context.Context) ([]*CodexTurnRun, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryAll)
 	if err := _q.prepareQuery(ctx); err != nil {
 		return nil, err
 	}
-	qr := querierAll[[]*AgentThread, *AgentThreadQuery]()
-	return withInterceptors[[]*AgentThread](ctx, _q, qr, _q.inters)
+	qr := querierAll[[]*CodexTurnRun, *CodexTurnRunQuery]()
+	return withInterceptors[[]*CodexTurnRun](ctx, _q, qr, _q.inters)
 }
 
 // AllX is like All, but panics if an error occurs.
-func (_q *AgentThreadQuery) AllX(ctx context.Context) []*AgentThread {
+func (_q *CodexTurnRunQuery) AllX(ctx context.Context) []*CodexTurnRun {
 	nodes, err := _q.All(ctx)
 	if err != nil {
 		panic(err)
@@ -178,20 +178,20 @@ func (_q *AgentThreadQuery) AllX(ctx context.Context) []*AgentThread {
 	return nodes
 }
 
-// IDs executes the query and returns a list of AgentThread IDs.
-func (_q *AgentThreadQuery) IDs(ctx context.Context) (ids []uuid.UUID, err error) {
+// IDs executes the query and returns a list of CodexTurnRun IDs.
+func (_q *CodexTurnRunQuery) IDs(ctx context.Context) (ids []uuid.UUID, err error) {
 	if _q.ctx.Unique == nil && _q.path != nil {
 		_q.Unique(true)
 	}
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryIDs)
-	if err = _q.Select(agentthread.FieldID).Scan(ctx, &ids); err != nil {
+	if err = _q.Select(codexturnrun.FieldID).Scan(ctx, &ids); err != nil {
 		return nil, err
 	}
 	return ids, nil
 }
 
 // IDsX is like IDs, but panics if an error occurs.
-func (_q *AgentThreadQuery) IDsX(ctx context.Context) []uuid.UUID {
+func (_q *CodexTurnRunQuery) IDsX(ctx context.Context) []uuid.UUID {
 	ids, err := _q.IDs(ctx)
 	if err != nil {
 		panic(err)
@@ -200,16 +200,16 @@ func (_q *AgentThreadQuery) IDsX(ctx context.Context) []uuid.UUID {
 }
 
 // Count returns the count of the given query.
-func (_q *AgentThreadQuery) Count(ctx context.Context) (int, error) {
+func (_q *CodexTurnRunQuery) Count(ctx context.Context) (int, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryCount)
 	if err := _q.prepareQuery(ctx); err != nil {
 		return 0, err
 	}
-	return withInterceptors[int](ctx, _q, querierCount[*AgentThreadQuery](), _q.inters)
+	return withInterceptors[int](ctx, _q, querierCount[*CodexTurnRunQuery](), _q.inters)
 }
 
 // CountX is like Count, but panics if an error occurs.
-func (_q *AgentThreadQuery) CountX(ctx context.Context) int {
+func (_q *CodexTurnRunQuery) CountX(ctx context.Context) int {
 	count, err := _q.Count(ctx)
 	if err != nil {
 		panic(err)
@@ -218,7 +218,7 @@ func (_q *AgentThreadQuery) CountX(ctx context.Context) int {
 }
 
 // Exist returns true if the query has elements in the graph.
-func (_q *AgentThreadQuery) Exist(ctx context.Context) (bool, error) {
+func (_q *CodexTurnRunQuery) Exist(ctx context.Context) (bool, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryExist)
 	switch _, err := _q.FirstID(ctx); {
 	case IsNotFound(err):
@@ -231,7 +231,7 @@ func (_q *AgentThreadQuery) Exist(ctx context.Context) (bool, error) {
 }
 
 // ExistX is like Exist, but panics if an error occurs.
-func (_q *AgentThreadQuery) ExistX(ctx context.Context) bool {
+func (_q *CodexTurnRunQuery) ExistX(ctx context.Context) bool {
 	exist, err := _q.Exist(ctx)
 	if err != nil {
 		panic(err)
@@ -239,18 +239,18 @@ func (_q *AgentThreadQuery) ExistX(ctx context.Context) bool {
 	return exist
 }
 
-// Clone returns a duplicate of the AgentThreadQuery builder, including all associated steps. It can be
+// Clone returns a duplicate of the CodexTurnRunQuery builder, including all associated steps. It can be
 // used to prepare common query builders and use them differently after the clone is made.
-func (_q *AgentThreadQuery) Clone() *AgentThreadQuery {
+func (_q *CodexTurnRunQuery) Clone() *CodexTurnRunQuery {
 	if _q == nil {
 		return nil
 	}
-	return &AgentThreadQuery{
+	return &CodexTurnRunQuery{
 		config:     _q.config,
 		ctx:        _q.ctx.Clone(),
-		order:      append([]agentthread.OrderOption{}, _q.order...),
+		order:      append([]codexturnrun.OrderOption{}, _q.order...),
 		inters:     append([]Interceptor{}, _q.inters...),
-		predicates: append([]predicate.AgentThread{}, _q.predicates...),
+		predicates: append([]predicate.CodexTurnRun{}, _q.predicates...),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -263,19 +263,19 @@ func (_q *AgentThreadQuery) Clone() *AgentThreadQuery {
 // Example:
 //
 //	var v []struct {
-//		WorkItemID uuid.UUID `json:"work_item_id,omitempty"`
+//		ControlID uuid.UUID `json:"control_id,omitempty"`
 //		Count int `json:"count,omitempty"`
 //	}
 //
-//	client.AgentThread.Query().
-//		GroupBy(agentthread.FieldWorkItemID).
+//	client.CodexTurnRun.Query().
+//		GroupBy(codexturnrun.FieldControlID).
 //		Aggregate(ent.Count()).
 //		Scan(ctx, &v)
-func (_q *AgentThreadQuery) GroupBy(field string, fields ...string) *AgentThreadGroupBy {
+func (_q *CodexTurnRunQuery) GroupBy(field string, fields ...string) *CodexTurnRunGroupBy {
 	_q.ctx.Fields = append([]string{field}, fields...)
-	grbuild := &AgentThreadGroupBy{build: _q}
+	grbuild := &CodexTurnRunGroupBy{build: _q}
 	grbuild.flds = &_q.ctx.Fields
-	grbuild.label = agentthread.Label
+	grbuild.label = codexturnrun.Label
 	grbuild.scan = grbuild.Scan
 	return grbuild
 }
@@ -286,26 +286,26 @@ func (_q *AgentThreadQuery) GroupBy(field string, fields ...string) *AgentThread
 // Example:
 //
 //	var v []struct {
-//		WorkItemID uuid.UUID `json:"work_item_id,omitempty"`
+//		ControlID uuid.UUID `json:"control_id,omitempty"`
 //	}
 //
-//	client.AgentThread.Query().
-//		Select(agentthread.FieldWorkItemID).
+//	client.CodexTurnRun.Query().
+//		Select(codexturnrun.FieldControlID).
 //		Scan(ctx, &v)
-func (_q *AgentThreadQuery) Select(fields ...string) *AgentThreadSelect {
+func (_q *CodexTurnRunQuery) Select(fields ...string) *CodexTurnRunSelect {
 	_q.ctx.Fields = append(_q.ctx.Fields, fields...)
-	sbuild := &AgentThreadSelect{AgentThreadQuery: _q}
-	sbuild.label = agentthread.Label
+	sbuild := &CodexTurnRunSelect{CodexTurnRunQuery: _q}
+	sbuild.label = codexturnrun.Label
 	sbuild.flds, sbuild.scan = &_q.ctx.Fields, sbuild.Scan
 	return sbuild
 }
 
-// Aggregate returns a AgentThreadSelect configured with the given aggregations.
-func (_q *AgentThreadQuery) Aggregate(fns ...AggregateFunc) *AgentThreadSelect {
+// Aggregate returns a CodexTurnRunSelect configured with the given aggregations.
+func (_q *CodexTurnRunQuery) Aggregate(fns ...AggregateFunc) *CodexTurnRunSelect {
 	return _q.Select().Aggregate(fns...)
 }
 
-func (_q *AgentThreadQuery) prepareQuery(ctx context.Context) error {
+func (_q *CodexTurnRunQuery) prepareQuery(ctx context.Context) error {
 	for _, inter := range _q.inters {
 		if inter == nil {
 			return fmt.Errorf("ent: uninitialized interceptor (forgotten import ent/runtime?)")
@@ -317,7 +317,7 @@ func (_q *AgentThreadQuery) prepareQuery(ctx context.Context) error {
 		}
 	}
 	for _, f := range _q.ctx.Fields {
-		if !agentthread.ValidColumn(f) {
+		if !codexturnrun.ValidColumn(f) {
 			return &ValidationError{Name: f, err: fmt.Errorf("ent: invalid field %q for query", f)}
 		}
 	}
@@ -331,16 +331,16 @@ func (_q *AgentThreadQuery) prepareQuery(ctx context.Context) error {
 	return nil
 }
 
-func (_q *AgentThreadQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*AgentThread, error) {
+func (_q *CodexTurnRunQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*CodexTurnRun, error) {
 	var (
-		nodes = []*AgentThread{}
+		nodes = []*CodexTurnRun{}
 		_spec = _q.querySpec()
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
-		return (*AgentThread).scanValues(nil, columns)
+		return (*CodexTurnRun).scanValues(nil, columns)
 	}
 	_spec.Assign = func(columns []string, values []any) error {
-		node := &AgentThread{config: _q.config}
+		node := &CodexTurnRun{config: _q.config}
 		nodes = append(nodes, node)
 		return node.assignValues(columns, values)
 	}
@@ -356,7 +356,7 @@ func (_q *AgentThreadQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*
 	return nodes, nil
 }
 
-func (_q *AgentThreadQuery) sqlCount(ctx context.Context) (int, error) {
+func (_q *CodexTurnRunQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
 	_spec.Node.Columns = _q.ctx.Fields
 	if len(_q.ctx.Fields) > 0 {
@@ -365,8 +365,8 @@ func (_q *AgentThreadQuery) sqlCount(ctx context.Context) (int, error) {
 	return sqlgraph.CountNodes(ctx, _q.driver, _spec)
 }
 
-func (_q *AgentThreadQuery) querySpec() *sqlgraph.QuerySpec {
-	_spec := sqlgraph.NewQuerySpec(agentthread.Table, agentthread.Columns, sqlgraph.NewFieldSpec(agentthread.FieldID, field.TypeUUID))
+func (_q *CodexTurnRunQuery) querySpec() *sqlgraph.QuerySpec {
+	_spec := sqlgraph.NewQuerySpec(codexturnrun.Table, codexturnrun.Columns, sqlgraph.NewFieldSpec(codexturnrun.FieldID, field.TypeUUID))
 	_spec.From = _q.sql
 	if unique := _q.ctx.Unique; unique != nil {
 		_spec.Unique = *unique
@@ -375,9 +375,9 @@ func (_q *AgentThreadQuery) querySpec() *sqlgraph.QuerySpec {
 	}
 	if fields := _q.ctx.Fields; len(fields) > 0 {
 		_spec.Node.Columns = make([]string, 0, len(fields))
-		_spec.Node.Columns = append(_spec.Node.Columns, agentthread.FieldID)
+		_spec.Node.Columns = append(_spec.Node.Columns, codexturnrun.FieldID)
 		for i := range fields {
-			if fields[i] != agentthread.FieldID {
+			if fields[i] != codexturnrun.FieldID {
 				_spec.Node.Columns = append(_spec.Node.Columns, fields[i])
 			}
 		}
@@ -405,12 +405,12 @@ func (_q *AgentThreadQuery) querySpec() *sqlgraph.QuerySpec {
 	return _spec
 }
 
-func (_q *AgentThreadQuery) sqlQuery(ctx context.Context) *sql.Selector {
+func (_q *CodexTurnRunQuery) sqlQuery(ctx context.Context) *sql.Selector {
 	builder := sql.Dialect(_q.driver.Dialect())
-	t1 := builder.Table(agentthread.Table)
+	t1 := builder.Table(codexturnrun.Table)
 	columns := _q.ctx.Fields
 	if len(columns) == 0 {
-		columns = agentthread.Columns
+		columns = codexturnrun.Columns
 	}
 	selector := builder.Select(t1.Columns(columns...)...).From(t1)
 	if _q.sql != nil {
@@ -437,28 +437,28 @@ func (_q *AgentThreadQuery) sqlQuery(ctx context.Context) *sql.Selector {
 	return selector
 }
 
-// AgentThreadGroupBy is the group-by builder for AgentThread entities.
-type AgentThreadGroupBy struct {
+// CodexTurnRunGroupBy is the group-by builder for CodexTurnRun entities.
+type CodexTurnRunGroupBy struct {
 	selector
-	build *AgentThreadQuery
+	build *CodexTurnRunQuery
 }
 
 // Aggregate adds the given aggregation functions to the group-by query.
-func (_g *AgentThreadGroupBy) Aggregate(fns ...AggregateFunc) *AgentThreadGroupBy {
+func (_g *CodexTurnRunGroupBy) Aggregate(fns ...AggregateFunc) *CodexTurnRunGroupBy {
 	_g.fns = append(_g.fns, fns...)
 	return _g
 }
 
 // Scan applies the selector query and scans the result into the given value.
-func (_g *AgentThreadGroupBy) Scan(ctx context.Context, v any) error {
+func (_g *CodexTurnRunGroupBy) Scan(ctx context.Context, v any) error {
 	ctx = setContextOp(ctx, _g.build.ctx, ent.OpQueryGroupBy)
 	if err := _g.build.prepareQuery(ctx); err != nil {
 		return err
 	}
-	return scanWithInterceptors[*AgentThreadQuery, *AgentThreadGroupBy](ctx, _g.build, _g, _g.build.inters, v)
+	return scanWithInterceptors[*CodexTurnRunQuery, *CodexTurnRunGroupBy](ctx, _g.build, _g, _g.build.inters, v)
 }
 
-func (_g *AgentThreadGroupBy) sqlScan(ctx context.Context, root *AgentThreadQuery, v any) error {
+func (_g *CodexTurnRunGroupBy) sqlScan(ctx context.Context, root *CodexTurnRunQuery, v any) error {
 	selector := root.sqlQuery(ctx).Select()
 	aggregation := make([]string, 0, len(_g.fns))
 	for _, fn := range _g.fns {
@@ -485,28 +485,28 @@ func (_g *AgentThreadGroupBy) sqlScan(ctx context.Context, root *AgentThreadQuer
 	return sql.ScanSlice(rows, v)
 }
 
-// AgentThreadSelect is the builder for selecting fields of AgentThread entities.
-type AgentThreadSelect struct {
-	*AgentThreadQuery
+// CodexTurnRunSelect is the builder for selecting fields of CodexTurnRun entities.
+type CodexTurnRunSelect struct {
+	*CodexTurnRunQuery
 	selector
 }
 
 // Aggregate adds the given aggregation functions to the selector query.
-func (_s *AgentThreadSelect) Aggregate(fns ...AggregateFunc) *AgentThreadSelect {
+func (_s *CodexTurnRunSelect) Aggregate(fns ...AggregateFunc) *CodexTurnRunSelect {
 	_s.fns = append(_s.fns, fns...)
 	return _s
 }
 
 // Scan applies the selector query and scans the result into the given value.
-func (_s *AgentThreadSelect) Scan(ctx context.Context, v any) error {
+func (_s *CodexTurnRunSelect) Scan(ctx context.Context, v any) error {
 	ctx = setContextOp(ctx, _s.ctx, ent.OpQuerySelect)
 	if err := _s.prepareQuery(ctx); err != nil {
 		return err
 	}
-	return scanWithInterceptors[*AgentThreadQuery, *AgentThreadSelect](ctx, _s.AgentThreadQuery, _s, _s.inters, v)
+	return scanWithInterceptors[*CodexTurnRunQuery, *CodexTurnRunSelect](ctx, _s.CodexTurnRunQuery, _s, _s.inters, v)
 }
 
-func (_s *AgentThreadSelect) sqlScan(ctx context.Context, root *AgentThreadQuery, v any) error {
+func (_s *CodexTurnRunSelect) sqlScan(ctx context.Context, root *CodexTurnRunQuery, v any) error {
 	selector := root.sqlQuery(ctx)
 	aggregation := make([]string, 0, len(_s.fns))
 	for _, fn := range _s.fns {

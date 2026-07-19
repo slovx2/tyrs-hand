@@ -17,9 +17,10 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/slovx2/tyrs-hand/ent/administrator"
 	"github.com/slovx2/tyrs-hand/ent/agentprofile"
-	"github.com/slovx2/tyrs-hand/ent/agentthread"
 	"github.com/slovx2/tyrs-hand/ent/auditlog"
-	"github.com/slovx2/tyrs-hand/ent/jobintent"
+	"github.com/slovx2/tyrs-hand/ent/codexthreadcontrol"
+	"github.com/slovx2/tyrs-hand/ent/codexturnintent"
+	"github.com/slovx2/tyrs-hand/ent/codexturnrun"
 	"github.com/slovx2/tyrs-hand/ent/platformsetting"
 	"github.com/slovx2/tyrs-hand/ent/repocache"
 	"github.com/slovx2/tyrs-hand/ent/repository"
@@ -41,12 +42,14 @@ type Client struct {
 	Administrator *AdministratorClient
 	// AgentProfile is the client for interacting with the AgentProfile builders.
 	AgentProfile *AgentProfileClient
-	// AgentThread is the client for interacting with the AgentThread builders.
-	AgentThread *AgentThreadClient
 	// AuditLog is the client for interacting with the AuditLog builders.
 	AuditLog *AuditLogClient
-	// JobIntent is the client for interacting with the JobIntent builders.
-	JobIntent *JobIntentClient
+	// CodexThreadControl is the client for interacting with the CodexThreadControl builders.
+	CodexThreadControl *CodexThreadControlClient
+	// CodexTurnIntent is the client for interacting with the CodexTurnIntent builders.
+	CodexTurnIntent *CodexTurnIntentClient
+	// CodexTurnRun is the client for interacting with the CodexTurnRun builders.
+	CodexTurnRun *CodexTurnRunClient
 	// PlatformSetting is the client for interacting with the PlatformSetting builders.
 	PlatformSetting *PlatformSettingClient
 	// RepoCache is the client for interacting with the RepoCache builders.
@@ -80,9 +83,10 @@ func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.Administrator = NewAdministratorClient(c.config)
 	c.AgentProfile = NewAgentProfileClient(c.config)
-	c.AgentThread = NewAgentThreadClient(c.config)
 	c.AuditLog = NewAuditLogClient(c.config)
-	c.JobIntent = NewJobIntentClient(c.config)
+	c.CodexThreadControl = NewCodexThreadControlClient(c.config)
+	c.CodexTurnIntent = NewCodexTurnIntentClient(c.config)
+	c.CodexTurnRun = NewCodexTurnRunClient(c.config)
 	c.PlatformSetting = NewPlatformSettingClient(c.config)
 	c.RepoCache = NewRepoCacheClient(c.config)
 	c.Repository = NewRepositoryClient(c.config)
@@ -183,23 +187,24 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:             ctx,
-		config:          cfg,
-		Administrator:   NewAdministratorClient(cfg),
-		AgentProfile:    NewAgentProfileClient(cfg),
-		AgentThread:     NewAgentThreadClient(cfg),
-		AuditLog:        NewAuditLogClient(cfg),
-		JobIntent:       NewJobIntentClient(cfg),
-		PlatformSetting: NewPlatformSettingClient(cfg),
-		RepoCache:       NewRepoCacheClient(cfg),
-		Repository:      NewRepositoryClient(cfg),
-		SCMInstallation: NewSCMInstallationClient(cfg),
-		ToolCall:        NewToolCallClient(cfg),
-		TriggerRule:     NewTriggerRuleClient(cfg),
-		WebhookDelivery: NewWebhookDeliveryClient(cfg),
-		WorkItem:        NewWorkItemClient(cfg),
-		WorkerNode:      NewWorkerNodeClient(cfg),
-		Worktree:        NewWorktreeClient(cfg),
+		ctx:                ctx,
+		config:             cfg,
+		Administrator:      NewAdministratorClient(cfg),
+		AgentProfile:       NewAgentProfileClient(cfg),
+		AuditLog:           NewAuditLogClient(cfg),
+		CodexThreadControl: NewCodexThreadControlClient(cfg),
+		CodexTurnIntent:    NewCodexTurnIntentClient(cfg),
+		CodexTurnRun:       NewCodexTurnRunClient(cfg),
+		PlatformSetting:    NewPlatformSettingClient(cfg),
+		RepoCache:          NewRepoCacheClient(cfg),
+		Repository:         NewRepositoryClient(cfg),
+		SCMInstallation:    NewSCMInstallationClient(cfg),
+		ToolCall:           NewToolCallClient(cfg),
+		TriggerRule:        NewTriggerRuleClient(cfg),
+		WebhookDelivery:    NewWebhookDeliveryClient(cfg),
+		WorkItem:           NewWorkItemClient(cfg),
+		WorkerNode:         NewWorkerNodeClient(cfg),
+		Worktree:           NewWorktreeClient(cfg),
 	}, nil
 }
 
@@ -217,23 +222,24 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:             ctx,
-		config:          cfg,
-		Administrator:   NewAdministratorClient(cfg),
-		AgentProfile:    NewAgentProfileClient(cfg),
-		AgentThread:     NewAgentThreadClient(cfg),
-		AuditLog:        NewAuditLogClient(cfg),
-		JobIntent:       NewJobIntentClient(cfg),
-		PlatformSetting: NewPlatformSettingClient(cfg),
-		RepoCache:       NewRepoCacheClient(cfg),
-		Repository:      NewRepositoryClient(cfg),
-		SCMInstallation: NewSCMInstallationClient(cfg),
-		ToolCall:        NewToolCallClient(cfg),
-		TriggerRule:     NewTriggerRuleClient(cfg),
-		WebhookDelivery: NewWebhookDeliveryClient(cfg),
-		WorkItem:        NewWorkItemClient(cfg),
-		WorkerNode:      NewWorkerNodeClient(cfg),
-		Worktree:        NewWorktreeClient(cfg),
+		ctx:                ctx,
+		config:             cfg,
+		Administrator:      NewAdministratorClient(cfg),
+		AgentProfile:       NewAgentProfileClient(cfg),
+		AuditLog:           NewAuditLogClient(cfg),
+		CodexThreadControl: NewCodexThreadControlClient(cfg),
+		CodexTurnIntent:    NewCodexTurnIntentClient(cfg),
+		CodexTurnRun:       NewCodexTurnRunClient(cfg),
+		PlatformSetting:    NewPlatformSettingClient(cfg),
+		RepoCache:          NewRepoCacheClient(cfg),
+		Repository:         NewRepositoryClient(cfg),
+		SCMInstallation:    NewSCMInstallationClient(cfg),
+		ToolCall:           NewToolCallClient(cfg),
+		TriggerRule:        NewTriggerRuleClient(cfg),
+		WebhookDelivery:    NewWebhookDeliveryClient(cfg),
+		WorkItem:           NewWorkItemClient(cfg),
+		WorkerNode:         NewWorkerNodeClient(cfg),
+		Worktree:           NewWorktreeClient(cfg),
 	}, nil
 }
 
@@ -263,9 +269,10 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.Administrator, c.AgentProfile, c.AgentThread, c.AuditLog, c.JobIntent,
-		c.PlatformSetting, c.RepoCache, c.Repository, c.SCMInstallation, c.ToolCall,
-		c.TriggerRule, c.WebhookDelivery, c.WorkItem, c.WorkerNode, c.Worktree,
+		c.Administrator, c.AgentProfile, c.AuditLog, c.CodexThreadControl,
+		c.CodexTurnIntent, c.CodexTurnRun, c.PlatformSetting, c.RepoCache,
+		c.Repository, c.SCMInstallation, c.ToolCall, c.TriggerRule, c.WebhookDelivery,
+		c.WorkItem, c.WorkerNode, c.Worktree,
 	} {
 		n.Use(hooks...)
 	}
@@ -275,9 +282,10 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.Administrator, c.AgentProfile, c.AgentThread, c.AuditLog, c.JobIntent,
-		c.PlatformSetting, c.RepoCache, c.Repository, c.SCMInstallation, c.ToolCall,
-		c.TriggerRule, c.WebhookDelivery, c.WorkItem, c.WorkerNode, c.Worktree,
+		c.Administrator, c.AgentProfile, c.AuditLog, c.CodexThreadControl,
+		c.CodexTurnIntent, c.CodexTurnRun, c.PlatformSetting, c.RepoCache,
+		c.Repository, c.SCMInstallation, c.ToolCall, c.TriggerRule, c.WebhookDelivery,
+		c.WorkItem, c.WorkerNode, c.Worktree,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -290,12 +298,14 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Administrator.mutate(ctx, m)
 	case *AgentProfileMutation:
 		return c.AgentProfile.mutate(ctx, m)
-	case *AgentThreadMutation:
-		return c.AgentThread.mutate(ctx, m)
 	case *AuditLogMutation:
 		return c.AuditLog.mutate(ctx, m)
-	case *JobIntentMutation:
-		return c.JobIntent.mutate(ctx, m)
+	case *CodexThreadControlMutation:
+		return c.CodexThreadControl.mutate(ctx, m)
+	case *CodexTurnIntentMutation:
+		return c.CodexTurnIntent.mutate(ctx, m)
+	case *CodexTurnRunMutation:
+		return c.CodexTurnRun.mutate(ctx, m)
 	case *PlatformSettingMutation:
 		return c.PlatformSetting.mutate(ctx, m)
 	case *RepoCacheMutation:
@@ -587,139 +597,6 @@ func (c *AgentProfileClient) mutate(ctx context.Context, m *AgentProfileMutation
 	}
 }
 
-// AgentThreadClient is a client for the AgentThread schema.
-type AgentThreadClient struct {
-	config
-}
-
-// NewAgentThreadClient returns a client for the AgentThread from the given config.
-func NewAgentThreadClient(c config) *AgentThreadClient {
-	return &AgentThreadClient{config: c}
-}
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `agentthread.Hooks(f(g(h())))`.
-func (c *AgentThreadClient) Use(hooks ...Hook) {
-	c.hooks.AgentThread = append(c.hooks.AgentThread, hooks...)
-}
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `agentthread.Intercept(f(g(h())))`.
-func (c *AgentThreadClient) Intercept(interceptors ...Interceptor) {
-	c.inters.AgentThread = append(c.inters.AgentThread, interceptors...)
-}
-
-// Create returns a builder for creating a AgentThread entity.
-func (c *AgentThreadClient) Create() *AgentThreadCreate {
-	mutation := newAgentThreadMutation(c.config, OpCreate)
-	return &AgentThreadCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// CreateBulk returns a builder for creating a bulk of AgentThread entities.
-func (c *AgentThreadClient) CreateBulk(builders ...*AgentThreadCreate) *AgentThreadCreateBulk {
-	return &AgentThreadCreateBulk{config: c.config, builders: builders}
-}
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *AgentThreadClient) MapCreateBulk(slice any, setFunc func(*AgentThreadCreate, int)) *AgentThreadCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &AgentThreadCreateBulk{err: fmt.Errorf("calling to AgentThreadClient.MapCreateBulk with wrong type %T, need slice", slice)}
-	}
-	builders := make([]*AgentThreadCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-	}
-	return &AgentThreadCreateBulk{config: c.config, builders: builders}
-}
-
-// Update returns an update builder for AgentThread.
-func (c *AgentThreadClient) Update() *AgentThreadUpdate {
-	mutation := newAgentThreadMutation(c.config, OpUpdate)
-	return &AgentThreadUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOne returns an update builder for the given entity.
-func (c *AgentThreadClient) UpdateOne(_m *AgentThread) *AgentThreadUpdateOne {
-	mutation := newAgentThreadMutation(c.config, OpUpdateOne, withAgentThread(_m))
-	return &AgentThreadUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOneID returns an update builder for the given id.
-func (c *AgentThreadClient) UpdateOneID(id uuid.UUID) *AgentThreadUpdateOne {
-	mutation := newAgentThreadMutation(c.config, OpUpdateOne, withAgentThreadID(id))
-	return &AgentThreadUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Delete returns a delete builder for AgentThread.
-func (c *AgentThreadClient) Delete() *AgentThreadDelete {
-	mutation := newAgentThreadMutation(c.config, OpDelete)
-	return &AgentThreadDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// DeleteOne returns a builder for deleting the given entity.
-func (c *AgentThreadClient) DeleteOne(_m *AgentThread) *AgentThreadDeleteOne {
-	return c.DeleteOneID(_m.ID)
-}
-
-// DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *AgentThreadClient) DeleteOneID(id uuid.UUID) *AgentThreadDeleteOne {
-	builder := c.Delete().Where(agentthread.ID(id))
-	builder.mutation.id = &id
-	builder.mutation.op = OpDeleteOne
-	return &AgentThreadDeleteOne{builder}
-}
-
-// Query returns a query builder for AgentThread.
-func (c *AgentThreadClient) Query() *AgentThreadQuery {
-	return &AgentThreadQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypeAgentThread},
-		inters: c.Interceptors(),
-	}
-}
-
-// Get returns a AgentThread entity by its id.
-func (c *AgentThreadClient) Get(ctx context.Context, id uuid.UUID) (*AgentThread, error) {
-	return c.Query().Where(agentthread.ID(id)).Only(ctx)
-}
-
-// GetX is like Get, but panics if an error occurs.
-func (c *AgentThreadClient) GetX(ctx context.Context, id uuid.UUID) *AgentThread {
-	obj, err := c.Get(ctx, id)
-	if err != nil {
-		panic(err)
-	}
-	return obj
-}
-
-// Hooks returns the client hooks.
-func (c *AgentThreadClient) Hooks() []Hook {
-	return c.hooks.AgentThread
-}
-
-// Interceptors returns the client interceptors.
-func (c *AgentThreadClient) Interceptors() []Interceptor {
-	return c.inters.AgentThread
-}
-
-func (c *AgentThreadClient) mutate(ctx context.Context, m *AgentThreadMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&AgentThreadCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdate:
-		return (&AgentThreadUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdateOne:
-		return (&AgentThreadUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&AgentThreadDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("ent: unknown AgentThread mutation op: %q", m.Op())
-	}
-}
-
 // AuditLogClient is a client for the AuditLog schema.
 type AuditLogClient struct {
 	config
@@ -853,107 +730,107 @@ func (c *AuditLogClient) mutate(ctx context.Context, m *AuditLogMutation) (Value
 	}
 }
 
-// JobIntentClient is a client for the JobIntent schema.
-type JobIntentClient struct {
+// CodexThreadControlClient is a client for the CodexThreadControl schema.
+type CodexThreadControlClient struct {
 	config
 }
 
-// NewJobIntentClient returns a client for the JobIntent from the given config.
-func NewJobIntentClient(c config) *JobIntentClient {
-	return &JobIntentClient{config: c}
+// NewCodexThreadControlClient returns a client for the CodexThreadControl from the given config.
+func NewCodexThreadControlClient(c config) *CodexThreadControlClient {
+	return &CodexThreadControlClient{config: c}
 }
 
 // Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `jobintent.Hooks(f(g(h())))`.
-func (c *JobIntentClient) Use(hooks ...Hook) {
-	c.hooks.JobIntent = append(c.hooks.JobIntent, hooks...)
+// A call to `Use(f, g, h)` equals to `codexthreadcontrol.Hooks(f(g(h())))`.
+func (c *CodexThreadControlClient) Use(hooks ...Hook) {
+	c.hooks.CodexThreadControl = append(c.hooks.CodexThreadControl, hooks...)
 }
 
 // Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `jobintent.Intercept(f(g(h())))`.
-func (c *JobIntentClient) Intercept(interceptors ...Interceptor) {
-	c.inters.JobIntent = append(c.inters.JobIntent, interceptors...)
+// A call to `Intercept(f, g, h)` equals to `codexthreadcontrol.Intercept(f(g(h())))`.
+func (c *CodexThreadControlClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CodexThreadControl = append(c.inters.CodexThreadControl, interceptors...)
 }
 
-// Create returns a builder for creating a JobIntent entity.
-func (c *JobIntentClient) Create() *JobIntentCreate {
-	mutation := newJobIntentMutation(c.config, OpCreate)
-	return &JobIntentCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+// Create returns a builder for creating a CodexThreadControl entity.
+func (c *CodexThreadControlClient) Create() *CodexThreadControlCreate {
+	mutation := newCodexThreadControlMutation(c.config, OpCreate)
+	return &CodexThreadControlCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
-// CreateBulk returns a builder for creating a bulk of JobIntent entities.
-func (c *JobIntentClient) CreateBulk(builders ...*JobIntentCreate) *JobIntentCreateBulk {
-	return &JobIntentCreateBulk{config: c.config, builders: builders}
+// CreateBulk returns a builder for creating a bulk of CodexThreadControl entities.
+func (c *CodexThreadControlClient) CreateBulk(builders ...*CodexThreadControlCreate) *CodexThreadControlCreateBulk {
+	return &CodexThreadControlCreateBulk{config: c.config, builders: builders}
 }
 
 // MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
 // a builder and applies setFunc on it.
-func (c *JobIntentClient) MapCreateBulk(slice any, setFunc func(*JobIntentCreate, int)) *JobIntentCreateBulk {
+func (c *CodexThreadControlClient) MapCreateBulk(slice any, setFunc func(*CodexThreadControlCreate, int)) *CodexThreadControlCreateBulk {
 	rv := reflect.ValueOf(slice)
 	if rv.Kind() != reflect.Slice {
-		return &JobIntentCreateBulk{err: fmt.Errorf("calling to JobIntentClient.MapCreateBulk with wrong type %T, need slice", slice)}
+		return &CodexThreadControlCreateBulk{err: fmt.Errorf("calling to CodexThreadControlClient.MapCreateBulk with wrong type %T, need slice", slice)}
 	}
-	builders := make([]*JobIntentCreate, rv.Len())
+	builders := make([]*CodexThreadControlCreate, rv.Len())
 	for i := 0; i < rv.Len(); i++ {
 		builders[i] = c.Create()
 		setFunc(builders[i], i)
 	}
-	return &JobIntentCreateBulk{config: c.config, builders: builders}
+	return &CodexThreadControlCreateBulk{config: c.config, builders: builders}
 }
 
-// Update returns an update builder for JobIntent.
-func (c *JobIntentClient) Update() *JobIntentUpdate {
-	mutation := newJobIntentMutation(c.config, OpUpdate)
-	return &JobIntentUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+// Update returns an update builder for CodexThreadControl.
+func (c *CodexThreadControlClient) Update() *CodexThreadControlUpdate {
+	mutation := newCodexThreadControlMutation(c.config, OpUpdate)
+	return &CodexThreadControlUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
 // UpdateOne returns an update builder for the given entity.
-func (c *JobIntentClient) UpdateOne(_m *JobIntent) *JobIntentUpdateOne {
-	mutation := newJobIntentMutation(c.config, OpUpdateOne, withJobIntent(_m))
-	return &JobIntentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+func (c *CodexThreadControlClient) UpdateOne(_m *CodexThreadControl) *CodexThreadControlUpdateOne {
+	mutation := newCodexThreadControlMutation(c.config, OpUpdateOne, withCodexThreadControl(_m))
+	return &CodexThreadControlUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
 // UpdateOneID returns an update builder for the given id.
-func (c *JobIntentClient) UpdateOneID(id uuid.UUID) *JobIntentUpdateOne {
-	mutation := newJobIntentMutation(c.config, OpUpdateOne, withJobIntentID(id))
-	return &JobIntentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+func (c *CodexThreadControlClient) UpdateOneID(id uuid.UUID) *CodexThreadControlUpdateOne {
+	mutation := newCodexThreadControlMutation(c.config, OpUpdateOne, withCodexThreadControlID(id))
+	return &CodexThreadControlUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
-// Delete returns a delete builder for JobIntent.
-func (c *JobIntentClient) Delete() *JobIntentDelete {
-	mutation := newJobIntentMutation(c.config, OpDelete)
-	return &JobIntentDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+// Delete returns a delete builder for CodexThreadControl.
+func (c *CodexThreadControlClient) Delete() *CodexThreadControlDelete {
+	mutation := newCodexThreadControlMutation(c.config, OpDelete)
+	return &CodexThreadControlDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
 // DeleteOne returns a builder for deleting the given entity.
-func (c *JobIntentClient) DeleteOne(_m *JobIntent) *JobIntentDeleteOne {
+func (c *CodexThreadControlClient) DeleteOne(_m *CodexThreadControl) *CodexThreadControlDeleteOne {
 	return c.DeleteOneID(_m.ID)
 }
 
 // DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *JobIntentClient) DeleteOneID(id uuid.UUID) *JobIntentDeleteOne {
-	builder := c.Delete().Where(jobintent.ID(id))
+func (c *CodexThreadControlClient) DeleteOneID(id uuid.UUID) *CodexThreadControlDeleteOne {
+	builder := c.Delete().Where(codexthreadcontrol.ID(id))
 	builder.mutation.id = &id
 	builder.mutation.op = OpDeleteOne
-	return &JobIntentDeleteOne{builder}
+	return &CodexThreadControlDeleteOne{builder}
 }
 
-// Query returns a query builder for JobIntent.
-func (c *JobIntentClient) Query() *JobIntentQuery {
-	return &JobIntentQuery{
+// Query returns a query builder for CodexThreadControl.
+func (c *CodexThreadControlClient) Query() *CodexThreadControlQuery {
+	return &CodexThreadControlQuery{
 		config: c.config,
-		ctx:    &QueryContext{Type: TypeJobIntent},
+		ctx:    &QueryContext{Type: TypeCodexThreadControl},
 		inters: c.Interceptors(),
 	}
 }
 
-// Get returns a JobIntent entity by its id.
-func (c *JobIntentClient) Get(ctx context.Context, id uuid.UUID) (*JobIntent, error) {
-	return c.Query().Where(jobintent.ID(id)).Only(ctx)
+// Get returns a CodexThreadControl entity by its id.
+func (c *CodexThreadControlClient) Get(ctx context.Context, id uuid.UUID) (*CodexThreadControl, error) {
+	return c.Query().Where(codexthreadcontrol.ID(id)).Only(ctx)
 }
 
 // GetX is like Get, but panics if an error occurs.
-func (c *JobIntentClient) GetX(ctx context.Context, id uuid.UUID) *JobIntent {
+func (c *CodexThreadControlClient) GetX(ctx context.Context, id uuid.UUID) *CodexThreadControl {
 	obj, err := c.Get(ctx, id)
 	if err != nil {
 		panic(err)
@@ -962,27 +839,293 @@ func (c *JobIntentClient) GetX(ctx context.Context, id uuid.UUID) *JobIntent {
 }
 
 // Hooks returns the client hooks.
-func (c *JobIntentClient) Hooks() []Hook {
-	return c.hooks.JobIntent
+func (c *CodexThreadControlClient) Hooks() []Hook {
+	return c.hooks.CodexThreadControl
 }
 
 // Interceptors returns the client interceptors.
-func (c *JobIntentClient) Interceptors() []Interceptor {
-	return c.inters.JobIntent
+func (c *CodexThreadControlClient) Interceptors() []Interceptor {
+	return c.inters.CodexThreadControl
 }
 
-func (c *JobIntentClient) mutate(ctx context.Context, m *JobIntentMutation) (Value, error) {
+func (c *CodexThreadControlClient) mutate(ctx context.Context, m *CodexThreadControlMutation) (Value, error) {
 	switch m.Op() {
 	case OpCreate:
-		return (&JobIntentCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+		return (&CodexThreadControlCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
 	case OpUpdate:
-		return (&JobIntentUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+		return (&CodexThreadControlUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
 	case OpUpdateOne:
-		return (&JobIntentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+		return (&CodexThreadControlUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
 	case OpDelete, OpDeleteOne:
-		return (&JobIntentDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+		return (&CodexThreadControlDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
-		return nil, fmt.Errorf("ent: unknown JobIntent mutation op: %q", m.Op())
+		return nil, fmt.Errorf("ent: unknown CodexThreadControl mutation op: %q", m.Op())
+	}
+}
+
+// CodexTurnIntentClient is a client for the CodexTurnIntent schema.
+type CodexTurnIntentClient struct {
+	config
+}
+
+// NewCodexTurnIntentClient returns a client for the CodexTurnIntent from the given config.
+func NewCodexTurnIntentClient(c config) *CodexTurnIntentClient {
+	return &CodexTurnIntentClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `codexturnintent.Hooks(f(g(h())))`.
+func (c *CodexTurnIntentClient) Use(hooks ...Hook) {
+	c.hooks.CodexTurnIntent = append(c.hooks.CodexTurnIntent, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `codexturnintent.Intercept(f(g(h())))`.
+func (c *CodexTurnIntentClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CodexTurnIntent = append(c.inters.CodexTurnIntent, interceptors...)
+}
+
+// Create returns a builder for creating a CodexTurnIntent entity.
+func (c *CodexTurnIntentClient) Create() *CodexTurnIntentCreate {
+	mutation := newCodexTurnIntentMutation(c.config, OpCreate)
+	return &CodexTurnIntentCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CodexTurnIntent entities.
+func (c *CodexTurnIntentClient) CreateBulk(builders ...*CodexTurnIntentCreate) *CodexTurnIntentCreateBulk {
+	return &CodexTurnIntentCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CodexTurnIntentClient) MapCreateBulk(slice any, setFunc func(*CodexTurnIntentCreate, int)) *CodexTurnIntentCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CodexTurnIntentCreateBulk{err: fmt.Errorf("calling to CodexTurnIntentClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CodexTurnIntentCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CodexTurnIntentCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CodexTurnIntent.
+func (c *CodexTurnIntentClient) Update() *CodexTurnIntentUpdate {
+	mutation := newCodexTurnIntentMutation(c.config, OpUpdate)
+	return &CodexTurnIntentUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CodexTurnIntentClient) UpdateOne(_m *CodexTurnIntent) *CodexTurnIntentUpdateOne {
+	mutation := newCodexTurnIntentMutation(c.config, OpUpdateOne, withCodexTurnIntent(_m))
+	return &CodexTurnIntentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CodexTurnIntentClient) UpdateOneID(id uuid.UUID) *CodexTurnIntentUpdateOne {
+	mutation := newCodexTurnIntentMutation(c.config, OpUpdateOne, withCodexTurnIntentID(id))
+	return &CodexTurnIntentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CodexTurnIntent.
+func (c *CodexTurnIntentClient) Delete() *CodexTurnIntentDelete {
+	mutation := newCodexTurnIntentMutation(c.config, OpDelete)
+	return &CodexTurnIntentDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CodexTurnIntentClient) DeleteOne(_m *CodexTurnIntent) *CodexTurnIntentDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CodexTurnIntentClient) DeleteOneID(id uuid.UUID) *CodexTurnIntentDeleteOne {
+	builder := c.Delete().Where(codexturnintent.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CodexTurnIntentDeleteOne{builder}
+}
+
+// Query returns a query builder for CodexTurnIntent.
+func (c *CodexTurnIntentClient) Query() *CodexTurnIntentQuery {
+	return &CodexTurnIntentQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCodexTurnIntent},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CodexTurnIntent entity by its id.
+func (c *CodexTurnIntentClient) Get(ctx context.Context, id uuid.UUID) (*CodexTurnIntent, error) {
+	return c.Query().Where(codexturnintent.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CodexTurnIntentClient) GetX(ctx context.Context, id uuid.UUID) *CodexTurnIntent {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CodexTurnIntentClient) Hooks() []Hook {
+	return c.hooks.CodexTurnIntent
+}
+
+// Interceptors returns the client interceptors.
+func (c *CodexTurnIntentClient) Interceptors() []Interceptor {
+	return c.inters.CodexTurnIntent
+}
+
+func (c *CodexTurnIntentClient) mutate(ctx context.Context, m *CodexTurnIntentMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CodexTurnIntentCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CodexTurnIntentUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CodexTurnIntentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CodexTurnIntentDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CodexTurnIntent mutation op: %q", m.Op())
+	}
+}
+
+// CodexTurnRunClient is a client for the CodexTurnRun schema.
+type CodexTurnRunClient struct {
+	config
+}
+
+// NewCodexTurnRunClient returns a client for the CodexTurnRun from the given config.
+func NewCodexTurnRunClient(c config) *CodexTurnRunClient {
+	return &CodexTurnRunClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `codexturnrun.Hooks(f(g(h())))`.
+func (c *CodexTurnRunClient) Use(hooks ...Hook) {
+	c.hooks.CodexTurnRun = append(c.hooks.CodexTurnRun, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `codexturnrun.Intercept(f(g(h())))`.
+func (c *CodexTurnRunClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CodexTurnRun = append(c.inters.CodexTurnRun, interceptors...)
+}
+
+// Create returns a builder for creating a CodexTurnRun entity.
+func (c *CodexTurnRunClient) Create() *CodexTurnRunCreate {
+	mutation := newCodexTurnRunMutation(c.config, OpCreate)
+	return &CodexTurnRunCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CodexTurnRun entities.
+func (c *CodexTurnRunClient) CreateBulk(builders ...*CodexTurnRunCreate) *CodexTurnRunCreateBulk {
+	return &CodexTurnRunCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CodexTurnRunClient) MapCreateBulk(slice any, setFunc func(*CodexTurnRunCreate, int)) *CodexTurnRunCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CodexTurnRunCreateBulk{err: fmt.Errorf("calling to CodexTurnRunClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CodexTurnRunCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CodexTurnRunCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CodexTurnRun.
+func (c *CodexTurnRunClient) Update() *CodexTurnRunUpdate {
+	mutation := newCodexTurnRunMutation(c.config, OpUpdate)
+	return &CodexTurnRunUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CodexTurnRunClient) UpdateOne(_m *CodexTurnRun) *CodexTurnRunUpdateOne {
+	mutation := newCodexTurnRunMutation(c.config, OpUpdateOne, withCodexTurnRun(_m))
+	return &CodexTurnRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CodexTurnRunClient) UpdateOneID(id uuid.UUID) *CodexTurnRunUpdateOne {
+	mutation := newCodexTurnRunMutation(c.config, OpUpdateOne, withCodexTurnRunID(id))
+	return &CodexTurnRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CodexTurnRun.
+func (c *CodexTurnRunClient) Delete() *CodexTurnRunDelete {
+	mutation := newCodexTurnRunMutation(c.config, OpDelete)
+	return &CodexTurnRunDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CodexTurnRunClient) DeleteOne(_m *CodexTurnRun) *CodexTurnRunDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CodexTurnRunClient) DeleteOneID(id uuid.UUID) *CodexTurnRunDeleteOne {
+	builder := c.Delete().Where(codexturnrun.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CodexTurnRunDeleteOne{builder}
+}
+
+// Query returns a query builder for CodexTurnRun.
+func (c *CodexTurnRunClient) Query() *CodexTurnRunQuery {
+	return &CodexTurnRunQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCodexTurnRun},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CodexTurnRun entity by its id.
+func (c *CodexTurnRunClient) Get(ctx context.Context, id uuid.UUID) (*CodexTurnRun, error) {
+	return c.Query().Where(codexturnrun.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CodexTurnRunClient) GetX(ctx context.Context, id uuid.UUID) *CodexTurnRun {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CodexTurnRunClient) Hooks() []Hook {
+	return c.hooks.CodexTurnRun
+}
+
+// Interceptors returns the client interceptors.
+func (c *CodexTurnRunClient) Interceptors() []Interceptor {
+	return c.inters.CodexTurnRun
+}
+
+func (c *CodexTurnRunClient) mutate(ctx context.Context, m *CodexTurnRunMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CodexTurnRunCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CodexTurnRunUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CodexTurnRunUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CodexTurnRunDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CodexTurnRun mutation op: %q", m.Op())
 	}
 }
 
@@ -2319,13 +2462,15 @@ func (c *WorktreeClient) mutate(ctx context.Context, m *WorktreeMutation) (Value
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Administrator, AgentProfile, AgentThread, AuditLog, JobIntent, PlatformSetting,
-		RepoCache, Repository, SCMInstallation, ToolCall, TriggerRule, WebhookDelivery,
-		WorkItem, WorkerNode, Worktree []ent.Hook
+		Administrator, AgentProfile, AuditLog, CodexThreadControl, CodexTurnIntent,
+		CodexTurnRun, PlatformSetting, RepoCache, Repository, SCMInstallation,
+		ToolCall, TriggerRule, WebhookDelivery, WorkItem, WorkerNode,
+		Worktree []ent.Hook
 	}
 	inters struct {
-		Administrator, AgentProfile, AgentThread, AuditLog, JobIntent, PlatformSetting,
-		RepoCache, Repository, SCMInstallation, ToolCall, TriggerRule, WebhookDelivery,
-		WorkItem, WorkerNode, Worktree []ent.Interceptor
+		Administrator, AgentProfile, AuditLog, CodexThreadControl, CodexTurnIntent,
+		CodexTurnRun, PlatformSetting, RepoCache, Repository, SCMInstallation,
+		ToolCall, TriggerRule, WebhookDelivery, WorkItem, WorkerNode,
+		Worktree []ent.Interceptor
 	}
 )

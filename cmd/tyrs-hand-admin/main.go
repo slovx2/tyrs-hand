@@ -276,13 +276,10 @@ func garbageCollect(ctx context.Context, db *sql.DB, cfg config.Config) {
 	fatal(rows.Close())
 	sessions, err := db.ExecContext(ctx, "DELETE FROM admin_sessions WHERE expires_at < now()")
 	fatal(err)
-	threads, err := db.ExecContext(ctx, `UPDATE agent_threads SET status = 'expired' WHERE status IN ('active','stale') AND last_used_at < now() - interval '30 days'`)
-	fatal(err)
 	sessionCount, _ := sessions.RowsAffected()
-	threadCount, _ := threads.RowsAffected()
 	cacheCount := collectRepoCaches(ctx, db, cfg)
 	audit(ctx, db, "gc.complete", "system", "")
-	fmt.Printf("GC 完成：Worktree %d，Repo Cache %d，Session %d，Thread %d。\n", removed, cacheCount, sessionCount, threadCount)
+	fmt.Printf("GC 完成：Worktree %d，Repo Cache %d，Session %d。\n", removed, cacheCount, sessionCount)
 }
 
 func collectRepoCaches(ctx context.Context, db *sql.DB, cfg config.Config) int {

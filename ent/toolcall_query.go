@@ -263,12 +263,12 @@ func (_q *ToolCallQuery) Clone() *ToolCallQuery {
 // Example:
 //
 //	var v []struct {
-//		JobAttemptID uuid.UUID `json:"job_attempt_id,omitempty"`
+//		RunID uuid.UUID `json:"run_id,omitempty"`
 //		Count int `json:"count,omitempty"`
 //	}
 //
 //	client.ToolCall.Query().
-//		GroupBy(toolcall.FieldJobAttemptID).
+//		GroupBy(toolcall.FieldRunID).
 //		Aggregate(ent.Count()).
 //		Scan(ctx, &v)
 func (_q *ToolCallQuery) GroupBy(field string, fields ...string) *ToolCallGroupBy {
@@ -286,11 +286,11 @@ func (_q *ToolCallQuery) GroupBy(field string, fields ...string) *ToolCallGroupB
 // Example:
 //
 //	var v []struct {
-//		JobAttemptID uuid.UUID `json:"job_attempt_id,omitempty"`
+//		RunID uuid.UUID `json:"run_id,omitempty"`
 //	}
 //
 //	client.ToolCall.Query().
-//		Select(toolcall.FieldJobAttemptID).
+//		Select(toolcall.FieldRunID).
 //		Scan(ctx, &v)
 func (_q *ToolCallQuery) Select(fields ...string) *ToolCallSelect {
 	_q.ctx.Fields = append(_q.ctx.Fields, fields...)

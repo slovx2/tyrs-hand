@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from '../test/server'
@@ -42,5 +43,44 @@ describe('ResourcePage', () => {
       </QueryClientProvider>,
     )
     expect(await screen.findByText('暂无数据')).toBeInTheDocument()
+  })
+
+  it('允许管理员对 error Control 执行对账和重置', async () => {
+    const user = userEvent.setup()
+    let reconcileCount = 0
+    let resetCount = 0
+    server.use(
+      http.get('/api/v1/threads', () =>
+        HttpResponse.json({
+          items: [
+            { id: 'control-error', status: 'error' },
+            { id: 'control-idle', status: 'idle' },
+          ],
+        }),
+      ),
+      http.post('/api/v1/controls/control-error/reconcile', () => {
+        reconcileCount += 1
+        return new HttpResponse(null, { status: 204 })
+      }),
+      http.post('/api/v1/controls/control-error/reset', () => {
+        resetCount += 1
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <ResourcePage resource="threads" title="Codex Controls" />
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByText('control-error')).toBeInTheDocument()
+    expect(screen.getAllByText('—')).not.toHaveLength(0)
+    await user.click(screen.getByRole('button', { name: '对账' }))
+    await waitFor(() => expect(reconcileCount).toBe(1))
+    await user.click(screen.getByRole('button', { name: '重置' }))
+    await waitFor(() => expect(resetCount).toBe(1))
   })
 })

@@ -18,8 +18,6 @@ func TestConversationCardsKeepSystemAndReplyVisuallyDistinct(t *testing.T) {
 	require.Equal(t, cardColorGreen, completed.Color)
 	require.Contains(t, completed.Footer, "下一条消息")
 
-	blocked := conversationProgressCard(ConversationBlocked, "input needed")
-	require.Equal(t, cardColorYellow, blocked.Color)
 	canceled := conversationProgressCard(ConversationCanceled, "stopped")
 	require.Equal(t, cardColorGray, canceled.Color)
 	require.Contains(t, canceled.Title, "已停止")
@@ -70,9 +68,9 @@ func TestDiscordEmbedValidationCoversDiscordLimits(t *testing.T) {
 }
 
 func TestSystemCardSeverity(t *testing.T) {
-	require.Equal(t, cardColorGreen, systemStatusCard(0, 1, 0, 0, 1, 0, "connected").Color)
-	require.Equal(t, cardColorYellow, systemStatusCard(0, 1, 1, 0, 1, 0, "connected").Color)
-	require.Equal(t, cardColorRed, systemStatusCard(0, 0, 0, 0, 0, 0, "disconnected").Color)
+	require.Equal(t, cardColorGreen, systemStatusCard(0, 1, 0, 1, 0, "connected").Color)
+	require.Equal(t, cardColorYellow, systemStatusCard(0, 1, 1, 1, 0, "connected").Color)
+	require.Equal(t, cardColorRed, systemStatusCard(0, 0, 0, 0, 0, "disconnected").Color)
 	require.Equal(t, cardColorGreen, systemAlertsCard("connected", false, 1, 0).Color)
 	require.Equal(t, cardColorRed, systemAlertsCard("disconnected", true, 0, 2).Color)
 }

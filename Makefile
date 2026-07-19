@@ -70,7 +70,7 @@ web-build:
 	$(PNPM) --dir web build
 
 build: web-build
-	go build ./cmd/tyrs-hand-server ./cmd/tyrs-hand-worker ./cmd/tyrs-hand-runtime ./cmd/tyrs-hand-admin ./cmd/tyrs-hand-discord
+	go build ./cmd/tyrs-hand-server ./cmd/tyrs-hand-worker ./cmd/tyrs-hand-runtime ./cmd/tyrs-hand-admin ./cmd/tyrs-hand-discord ./cmd/tyrs-hand-reply-hook
 
 build-local:
 	./tools/with-local-toolchain.sh $(MAKE) web-install build

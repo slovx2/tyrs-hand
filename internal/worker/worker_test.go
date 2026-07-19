@@ -15,10 +15,9 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
-	"github.com/slovx2/tyrs-hand/internal/domain"
 	"github.com/slovx2/tyrs-hand/internal/ports"
-	"github.com/slovx2/tyrs-hand/internal/queue"
 	"github.com/stretchr/testify/require"
 )
 
@@ -68,13 +67,25 @@ func TestProcessorHelpersAndLocalTools(t *testing.T) {
 	threadID := "thread-1"
 	turnID := "turn-1"
 	started := json.RawMessage(`{"threadId":"thread-1","turn":{"id":"turn-1"}}`)
-	require.True(t, eventMatchesTurn(started, threadID, turnID))
-	require.False(t, eventMatchesTurn(json.RawMessage(`{"broken":`), threadID, turnID))
+	require.True(t, eventBelongsToTurn(started, threadID, turnID, ""))
+	require.False(t, eventBelongsToTurn(json.RawMessage(`{"broken":`), threadID, turnID, ""))
 	matched, status := completedTurn(json.RawMessage(`{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}}`), threadID, turnID)
 	require.True(t, matched)
 	require.Equal(t, "completed", status)
 	matched, _ = completedTurn(started, "other", turnID)
 	require.False(t, matched)
+
+	snapshot := codex.ThreadSnapshot{Turns: []codex.TurnSnapshot{{
+		ID: turnID, Items: []codex.ItemSnapshot{{Type: "userMessage", ClientID: "steer-1"}},
+	}}}
+	applied, err := steerSnapshotApplied(snapshot, turnID, "steer-1")
+	require.NoError(t, err)
+	require.True(t, applied)
+	applied, err = steerSnapshotApplied(snapshot, turnID, "missing")
+	require.NoError(t, err)
+	require.False(t, applied)
+	_, err = steerSnapshotApplied(snapshot, "other-turn", "steer-1")
+	require.ErrorContains(t, err, "其他 turn")
 
 	root := t.TempDir()
 	skillPath := filepath.Join(root, ".agents", "skills", "review", "SKILL.md")
@@ -102,7 +113,7 @@ func TestProcessorHelpersAndLocalTools(t *testing.T) {
 
 	workspace := &fakeWorkspace{status: "## main\n M file.go"}
 	processor := &Processor{workspace: workspace}
-	claimed := &queue.ClaimedJob{}
+	claimed := &codexcontrol.ClaimedControl{}
 	statusResult, err := processor.executeLocalTool(context.Background(), claimed, ports.Workspace{WorktreePath: root}, "branch", codex.ToolCallRequest{
 		Namespace: stringPointer("git"), Tool: "status",
 	})
@@ -123,16 +134,17 @@ func TestLocalToolCallAuditIsIdempotent(t *testing.T) {
 	})
 
 	processor := &Processor{db: db}
-	attemptID := uuid.New()
+	runID := uuid.New()
+	intentID := uuid.New()
 	callRecordID := uuid.New()
-	claimed := &queue.ClaimedJob{AttemptID: attemptID}
+	claimed := &codexcontrol.ClaimedControl{RunID: runID, Intent: codexcontrol.Intent{ID: intentID}}
 	request := codex.ToolCallRequest{
 		ThreadID: "thread-1", TurnID: "turn-1", CallID: "call-1",
 		Namespace: stringPointer("git"), Tool: "status", Arguments: json.RawMessage(`{}`),
 	}
 	insertPattern := regexp.QuoteMeta("INSERT INTO tool_calls")
 	mock.ExpectQuery(insertPattern).
-		WithArgs(attemptID, request.ThreadID, request.TurnID, request.CallID, request.Tool, request.Arguments).
+		WithArgs(runID, intentID, request.ThreadID, request.TurnID, request.CallID, request.Tool, request.Arguments).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(callRecordID))
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE tool_calls SET status = 'completed'")).
 		WithArgs(callRecordID, sqlmock.AnyArg()).
@@ -150,7 +162,7 @@ func TestLocalToolCallAuditIsIdempotent(t *testing.T) {
 	storedJSON, err := json.Marshal(result)
 	require.NoError(t, err)
 	mock.ExpectQuery(insertPattern).
-		WithArgs(attemptID, request.ThreadID, request.TurnID, request.CallID, request.Tool, request.Arguments).
+		WithArgs(runID, intentID, request.ThreadID, request.TurnID, request.CallID, request.Tool, request.Arguments).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT status, result, error FROM tool_calls")).
 		WithArgs(request.ThreadID, request.TurnID, request.CallID, request.Tool, string(request.Arguments)).
@@ -165,7 +177,7 @@ func TestLocalToolCallAuditIsIdempotent(t *testing.T) {
 	conflicting.Tool = "commit"
 	conflicting.Arguments = json.RawMessage(`{"message":"conflict"}`)
 	mock.ExpectQuery(insertPattern).
-		WithArgs(attemptID, conflicting.ThreadID, conflicting.TurnID, conflicting.CallID, conflicting.Tool, conflicting.Arguments).
+		WithArgs(runID, intentID, conflicting.ThreadID, conflicting.TurnID, conflicting.CallID, conflicting.Tool, conflicting.Arguments).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT status, result, error FROM tool_calls")).
 		WithArgs(conflicting.ThreadID, conflicting.TurnID, conflicting.CallID, conflicting.Tool, string(conflicting.Arguments)).
@@ -173,54 +185,6 @@ func TestLocalToolCallAuditIsIdempotent(t *testing.T) {
 	_, err = processor.auditLocalToolCall(context.Background(), claimed, conflicting, execute)
 	require.ErrorContains(t, err, "与既有请求不一致")
 	require.Equal(t, 1, executions)
-}
-
-func TestLoadAgentOutcome(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	require.NoError(t, err)
-	mock.MatchExpectationsInOrder(false)
-	mock.ExpectClose()
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
-
-	threadDBID := uuid.New()
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT payload->'item'->>'text' FROM agent_events")).
-		WithArgs(threadDBID, "turn-1").
-		WillReturnRows(sqlmock.NewRows([]string{"text"}).AddRow(`{"status":"blocked","summary":" missing permission "}`))
-	outcome, err := (&Processor{db: db}).loadAgentOutcome(context.Background(), threadDBID, "turn-1")
-	require.NoError(t, err)
-	require.Equal(t, domain.JobBlocked, outcome.Status)
-	require.Equal(t, "missing permission", outcome.Summary)
-
-	var schema map[string]any
-	require.NoError(t, json.Unmarshal(agentOutcomeSchema(), &schema))
-	require.Equal(t, "object", schema["type"])
-}
-
-type failingSteerer struct{ err error }
-
-func (s failingSteerer) SteerTurn(context.Context, string, string, ports.TurnInput) error {
-	return s.err
-}
-
-func TestDiscordContributorPersistsBeforeFailedSteer(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
-	conversationID := uuid.New()
-	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO discord_turn_contributors")).
-		WithArgs(conversationID, "turn-1", "message-2").
-		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectClose()
-	steerErr := errors.New("turn is no longer steerable")
-	err = (&Processor{db: db}).contributeAndSteerDiscord(context.Background(), failingSteerer{err: steerErr},
-		conversationID, "thread-1", "turn-1", "message-2", ports.TurnInput{Text: "more"})
-	require.ErrorIs(t, err, steerErr)
 }
 
 func TestDiscordStopUsesCanceledProjection(t *testing.T) {
@@ -241,9 +205,9 @@ func TestDiscordStopSurvivesHeartbeatCancellationRace(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 	jobID := uuid.New()
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT status, COALESCE(last_error, '') FROM job_intents WHERE id = $1")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT status, COALESCE(last_error_code, '')")).
 		WithArgs(jobID).
-		WillReturnRows(sqlmock.NewRows([]string{"status", "last_error"}).AddRow("canceled", "stopped from Discord"))
+		WillReturnRows(sqlmock.NewRows([]string{"status", "last_error_code"}).AddRow("canceled", "user_interrupt"))
 	require.True(t, discordStopRequested(context.Background(), db, jobID, context.Canceled))
 	mock.ExpectClose()
 }

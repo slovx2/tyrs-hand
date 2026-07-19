@@ -7,6 +7,7 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
 type GatewaySession struct {
@@ -99,20 +100,50 @@ func (s *ConversationService) Stop(ctx context.Context, guildID, threadID, reque
 	if _, err := s.access(ctx, tx, forumID, ownerID, requesterID); err != nil {
 		return 0, err
 	}
-	result, err := tx.ExecContext(ctx, `UPDATE job_intents SET status = 'canceled',
-		last_error = 'stopped from Discord', lease_token = NULL, lease_expires_at = NULL, updated_at = now()
-		WHERE discord_conversation_id = $1 AND status IN ('queued', 'running')`, conversationID)
+	var profileID uuid.UUID
+	var repositoryID sql.NullString
+	var contextVersion int64
+	if err := tx.QueryRowContext(ctx, `SELECT agent_profile_id, repository_id::text, context_version
+		FROM discord_conversations WHERE id = $1`, conversationID).Scan(
+		&profileID, &repositoryID, &contextVersion); err != nil {
+		return 0, err
+	}
+	var repository uuid.UUID
+	if repositoryID.String != "" {
+		repository, err = uuid.Parse(repositoryID.String)
+		if err != nil {
+			return 0, err
+		}
+	}
+	requestID := uuid.New()
+	_, inserted, err := codexcontrol.NewRepository(s.db, 0).Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
+		SourceType: codexcontrol.SourceDiscord, DiscordConversationID: conversationID,
+		RepositoryID: repository, AgentProfileID: profileID, ContextVersion: contextVersion,
+		IdempotencyKey: "discord:stop:" + requestID.String(), Operation: "interrupt",
+		Instruction: "stopped from Discord", ReplyPolicy: "silent", ActorLogin: requesterID,
+	})
 	if err != nil {
 		return 0, err
 	}
-	count, err := result.RowsAffected()
+	updateResult, err := tx.ExecContext(ctx, `UPDATE codex_turn_intents SET status = 'canceled',
+		last_error_code = 'user_interrupt', last_error_message = 'stopped from Discord',
+		finished_at = now(), updated_at = now()
+		WHERE discord_conversation_id = $1 AND operation = 'turn_input'
+		  AND status IN ('queued','retry_wait')`, conversationID)
 	if err != nil {
 		return 0, err
+	}
+	count, err := updateResult.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if count == 0 && inserted {
+		count = 1
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE discord_input_messages m SET status = 'canceled', processed_at = now()
 		WHERE m.conversation_id = $1 AND m.status = 'received' AND EXISTS (
-			SELECT 1 FROM job_intents j WHERE j.discord_message_id = m.message_id
-				AND j.status = 'canceled' AND j.last_error = 'stopped from Discord'
+			SELECT 1 FROM codex_turn_intents i WHERE i.discord_message_id = m.message_id
+				AND i.status = 'canceled' AND i.last_error_code = 'user_interrupt'
 		)`, conversationID)
 	if err != nil {
 		return 0, err

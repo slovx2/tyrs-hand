@@ -55,9 +55,14 @@ func IDLTE(id uuid.UUID) predicate.ToolCall {
 	return predicate.ToolCall(sql.FieldLTE(FieldID, id))
 }
 
-// JobAttemptID applies equality check predicate on the "job_attempt_id" field. It's identical to JobAttemptIDEQ.
-func JobAttemptID(v uuid.UUID) predicate.ToolCall {
-	return predicate.ToolCall(sql.FieldEQ(FieldJobAttemptID, v))
+// RunID applies equality check predicate on the "run_id" field. It's identical to RunIDEQ.
+func RunID(v uuid.UUID) predicate.ToolCall {
+	return predicate.ToolCall(sql.FieldEQ(FieldRunID, v))
+}
+
+// IntentID applies equality check predicate on the "intent_id" field. It's identical to IntentIDEQ.
+func IntentID(v uuid.UUID) predicate.ToolCall {
+	return predicate.ToolCall(sql.FieldEQ(FieldIntentID, v))
 }
 
 // ThreadID applies equality check predicate on the "thread_id" field. It's identical to ThreadIDEQ.
@@ -105,44 +110,84 @@ func FinishedAt(v time.Time) predicate.ToolCall {
 	return predicate.ToolCall(sql.FieldEQ(FieldFinishedAt, v))
 }
 
-// JobAttemptIDEQ applies the EQ predicate on the "job_attempt_id" field.
-func JobAttemptIDEQ(v uuid.UUID) predicate.ToolCall {
-	return predicate.ToolCall(sql.FieldEQ(FieldJobAttemptID, v))
+// RunIDEQ applies the EQ predicate on the "run_id" field.
+func RunIDEQ(v uuid.UUID) predicate.ToolCall {
+	return predicate.ToolCall(sql.FieldEQ(FieldRunID, v))
 }
 
-// JobAttemptIDNEQ applies the NEQ predicate on the "job_attempt_id" field.
-func JobAttemptIDNEQ(v uuid.UUID) predicate.ToolCall {
-	return predicate.ToolCall(sql.FieldNEQ(FieldJobAttemptID, v))
+// RunIDNEQ applies the NEQ predicate on the "run_id" field.
+func RunIDNEQ(v uuid.UUID) predicate.ToolCall {
+	return predicate.ToolCall(sql.FieldNEQ(FieldRunID, v))
 }
 
-// JobAttemptIDIn applies the In predicate on the "job_attempt_id" field.
-func JobAttemptIDIn(vs ...uuid.UUID) predicate.ToolCall {
-	return predicate.ToolCall(sql.FieldIn(FieldJobAttemptID, vs...))
+// RunIDIn applies the In predicate on the "run_id" field.
+func RunIDIn(vs ...uuid.UUID) predicate.ToolCall {
+	return predicate.ToolCall(sql.FieldIn(FieldRunID, vs...))
 }
 
-// JobAttemptIDNotIn applies the NotIn predicate on the "job_attempt_id" field.
-func JobAttemptIDNotIn(vs ...uuid.UUID) predicate.ToolCall {
-	return predicate.ToolCall(sql.FieldNotIn(FieldJobAttemptID, vs...))
+// RunIDNotIn applies the NotIn predicate on the "run_id" field.
+func RunIDNotIn(vs ...uuid.UUID) predicate.ToolCall {
+	return predicate.ToolCall(sql.FieldNotIn(FieldRunID, vs...))
 }
 
-// JobAttemptIDGT applies the GT predicate on the "job_attempt_id" field.
-func JobAttemptIDGT(v uuid.UUID) predicate.ToolCall {
-	return predicate.ToolCall(sql.FieldGT(FieldJobAttemptID, v))
+// RunIDGT applies the GT predicate on the "run_id" field.
+func RunIDGT(v uuid.UUID) predicate.ToolCall {
+	return predicate.ToolCall(sql.FieldGT(FieldRunID, v))
 }
 
-// JobAttemptIDGTE applies the GTE predicate on the "job_attempt_id" field.
-func JobAttemptIDGTE(v uuid.UUID) predicate.ToolCall {
-	return predicate.ToolCall(sql.FieldGTE(FieldJobAttemptID, v))
+// RunIDGTE applies the GTE predicate on the "run_id" field.
+func RunIDGTE(v uuid.UUID) predicate.ToolCall {
+	return predicate.ToolCall(sql.FieldGTE(FieldRunID, v))
 }
 
-// JobAttemptIDLT applies the LT predicate on the "job_attempt_id" field.
-func JobAttemptIDLT(v uuid.UUID) predicate.ToolCall {
-	return predicate.ToolCall(sql.FieldLT(FieldJobAttemptID, v))
+// RunIDLT applies the LT predicate on the "run_id" field.
+func RunIDLT(v uuid.UUID) predicate.ToolCall {
+	return predicate.ToolCall(sql.FieldLT(FieldRunID, v))
 }
 
-// JobAttemptIDLTE applies the LTE predicate on the "job_attempt_id" field.
-func JobAttemptIDLTE(v uuid.UUID) predicate.ToolCall {
-	return predicate.ToolCall(sql.FieldLTE(FieldJobAttemptID, v))
+// RunIDLTE applies the LTE predicate on the "run_id" field.
+func RunIDLTE(v uuid.UUID) predicate.ToolCall {
+	return predicate.ToolCall(sql.FieldLTE(FieldRunID, v))
+}
+
+// IntentIDEQ applies the EQ predicate on the "intent_id" field.
+func IntentIDEQ(v uuid.UUID) predicate.ToolCall {
+	return predicate.ToolCall(sql.FieldEQ(FieldIntentID, v))
+}
+
+// IntentIDNEQ applies the NEQ predicate on the "intent_id" field.
+func IntentIDNEQ(v uuid.UUID) predicate.ToolCall {
+	return predicate.ToolCall(sql.FieldNEQ(FieldIntentID, v))
+}
+
+// IntentIDIn applies the In predicate on the "intent_id" field.
+func IntentIDIn(vs ...uuid.UUID) predicate.ToolCall {
+	return predicate.ToolCall(sql.FieldIn(FieldIntentID, vs...))
+}
+
+// IntentIDNotIn applies the NotIn predicate on the "intent_id" field.
+func IntentIDNotIn(vs ...uuid.UUID) predicate.ToolCall {
+	return predicate.ToolCall(sql.FieldNotIn(FieldIntentID, vs...))
+}
+
+// IntentIDGT applies the GT predicate on the "intent_id" field.
+func IntentIDGT(v uuid.UUID) predicate.ToolCall {
+	return predicate.ToolCall(sql.FieldGT(FieldIntentID, v))
+}
+
+// IntentIDGTE applies the GTE predicate on the "intent_id" field.
+func IntentIDGTE(v uuid.UUID) predicate.ToolCall {
+	return predicate.ToolCall(sql.FieldGTE(FieldIntentID, v))
+}
+
+// IntentIDLT applies the LT predicate on the "intent_id" field.
+func IntentIDLT(v uuid.UUID) predicate.ToolCall {
+	return predicate.ToolCall(sql.FieldLT(FieldIntentID, v))
+}
+
+// IntentIDLTE applies the LTE predicate on the "intent_id" field.
+func IntentIDLTE(v uuid.UUID) predicate.ToolCall {
+	return predicate.ToolCall(sql.FieldLTE(FieldIntentID, v))
 }
 
 // ThreadIDEQ applies the EQ predicate on the "thread_id" field.

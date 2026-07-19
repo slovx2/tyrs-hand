@@ -8,30 +8,30 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/slovx2/tyrs-hand/ent/jobintent"
+	"github.com/slovx2/tyrs-hand/ent/codexturnrun"
 	"github.com/slovx2/tyrs-hand/ent/predicate"
 )
 
-// JobIntentDelete is the builder for deleting a JobIntent entity.
-type JobIntentDelete struct {
+// CodexTurnRunDelete is the builder for deleting a CodexTurnRun entity.
+type CodexTurnRunDelete struct {
 	config
 	hooks    []Hook
-	mutation *JobIntentMutation
+	mutation *CodexTurnRunMutation
 }
 
-// Where appends a list predicates to the JobIntentDelete builder.
-func (_d *JobIntentDelete) Where(ps ...predicate.JobIntent) *JobIntentDelete {
+// Where appends a list predicates to the CodexTurnRunDelete builder.
+func (_d *CodexTurnRunDelete) Where(ps ...predicate.CodexTurnRun) *CodexTurnRunDelete {
 	_d.mutation.Where(ps...)
 	return _d
 }
 
 // Exec executes the deletion query and returns how many vertices were deleted.
-func (_d *JobIntentDelete) Exec(ctx context.Context) (int, error) {
+func (_d *CodexTurnRunDelete) Exec(ctx context.Context) (int, error) {
 	return withHooks(ctx, _d.sqlExec, _d.mutation, _d.hooks)
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_d *JobIntentDelete) ExecX(ctx context.Context) int {
+func (_d *CodexTurnRunDelete) ExecX(ctx context.Context) int {
 	n, err := _d.Exec(ctx)
 	if err != nil {
 		panic(err)
@@ -39,8 +39,8 @@ func (_d *JobIntentDelete) ExecX(ctx context.Context) int {
 	return n
 }
 
-func (_d *JobIntentDelete) sqlExec(ctx context.Context) (int, error) {
-	_spec := sqlgraph.NewDeleteSpec(jobintent.Table, sqlgraph.NewFieldSpec(jobintent.FieldID, field.TypeUUID))
+func (_d *CodexTurnRunDelete) sqlExec(ctx context.Context) (int, error) {
+	_spec := sqlgraph.NewDeleteSpec(codexturnrun.Table, sqlgraph.NewFieldSpec(codexturnrun.FieldID, field.TypeUUID))
 	if ps := _d.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {
@@ -56,32 +56,32 @@ func (_d *JobIntentDelete) sqlExec(ctx context.Context) (int, error) {
 	return affected, err
 }
 
-// JobIntentDeleteOne is the builder for deleting a single JobIntent entity.
-type JobIntentDeleteOne struct {
-	_d *JobIntentDelete
+// CodexTurnRunDeleteOne is the builder for deleting a single CodexTurnRun entity.
+type CodexTurnRunDeleteOne struct {
+	_d *CodexTurnRunDelete
 }
 
-// Where appends a list predicates to the JobIntentDelete builder.
-func (_d *JobIntentDeleteOne) Where(ps ...predicate.JobIntent) *JobIntentDeleteOne {
+// Where appends a list predicates to the CodexTurnRunDelete builder.
+func (_d *CodexTurnRunDeleteOne) Where(ps ...predicate.CodexTurnRun) *CodexTurnRunDeleteOne {
 	_d._d.mutation.Where(ps...)
 	return _d
 }
 
 // Exec executes the deletion query.
-func (_d *JobIntentDeleteOne) Exec(ctx context.Context) error {
+func (_d *CodexTurnRunDeleteOne) Exec(ctx context.Context) error {
 	n, err := _d._d.Exec(ctx)
 	switch {
 	case err != nil:
 		return err
 	case n == 0:
-		return &NotFoundError{jobintent.Label}
+		return &NotFoundError{codexturnrun.Label}
 	default:
 		return nil
 	}
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_d *JobIntentDeleteOne) ExecX(ctx context.Context) {
+func (_d *CodexTurnRunDeleteOne) ExecX(ctx context.Context) {
 	if err := _d.Exec(ctx); err != nil {
 		panic(err)
 	}

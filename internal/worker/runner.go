@@ -9,10 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/config"
-	"github.com/slovx2/tyrs-hand/internal/queue"
 	"go.uber.org/zap"
 )
 
@@ -20,26 +19,28 @@ type Runner struct {
 	cfg       config.Config
 	db        *sql.DB
 	redis     *redis.Client
-	queue     jobQueue
+	controls  controlQueue
 	processor jobProcessor
 	logger    *zap.Logger
 }
 
-type jobQueue interface {
-	Claim(context.Context, string) (*queue.ClaimedJob, error)
-	Heartbeat(context.Context, uuid.UUID, string, int64) error
-	Complete(context.Context, uuid.UUID, string, int64) error
-	Block(context.Context, uuid.UUID, string, int64, error) error
-	Fail(context.Context, uuid.UUID, string, int64, error) error
+type controlQueue interface {
+	Claim(context.Context, string) (*codexcontrol.ClaimedControl, error)
+	Heartbeat(context.Context, *codexcontrol.ClaimedControl) error
+	Complete(context.Context, *codexcontrol.ClaimedControl, codexcontrol.TurnResult) error
+	Cancel(context.Context, *codexcontrol.ClaimedControl, string, string) error
+	Fail(context.Context, *codexcontrol.ClaimedControl, string, error) error
+	Reconcile(context.Context, *codexcontrol.ClaimedControl, string, error) error
+	ReplySatisfied(context.Context, *codexcontrol.ClaimedControl) (bool, error)
 	RequeueExpired(context.Context) (int64, error)
 }
 
 type jobProcessor interface {
-	Process(context.Context, *queue.ClaimedJob) error
+	Process(context.Context, *codexcontrol.ClaimedControl) (codexcontrol.TurnResult, error)
 }
 
-func NewRunner(cfg config.Config, db *sql.DB, redisClient *redis.Client, queueRepository *queue.Repository, processor *Processor, logger *zap.Logger) *Runner {
-	return &Runner{cfg: cfg, db: db, redis: redisClient, queue: queueRepository, processor: processor, logger: logger}
+func NewRunner(cfg config.Config, db *sql.DB, redisClient *redis.Client, controls *codexcontrol.Repository, processor *Processor, logger *zap.Logger) *Runner {
+	return &Runner{cfg: cfg, db: db, redis: redisClient, controls: controls, processor: processor, logger: logger}
 }
 
 func (r *Runner) Run(ctx context.Context) error {
@@ -50,7 +51,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	var wakeups <-chan *redis.Message
 	var subscription *redis.PubSub
 	if r.redis != nil {
-		subscription = r.redis.Subscribe(ctx, queue.JobWakeupChannel)
+		subscription = r.redis.Subscribe(ctx, codexcontrol.WakeupChannel)
 		defer func() { _ = subscription.Close() }()
 		wakeups = subscription.Channel()
 	}
@@ -76,7 +77,7 @@ func (r *Runner) Run(ctx context.Context) error {
 			}
 			return ctx.Err()
 		case <-recoveryTicker.C:
-			if count, err := r.queue.RequeueExpired(ctx); err != nil {
+			if count, err := r.controls.RequeueExpired(ctx); err != nil {
 				r.logger.Error("恢复过期任务失败", zap.Error(err))
 			} else if count > 0 {
 				r.logger.Warn("已恢复过期任务", zap.Int64("count", count))
@@ -102,7 +103,7 @@ func (r *Runner) fillSlots(ctx context.Context, slots chan struct{}, active *syn
 		default:
 			return
 		}
-		claimed, err := r.queue.Claim(ctx, r.cfg.WorkerID)
+		claimed, err := r.controls.Claim(ctx, r.cfg.WorkerID)
 		if err != nil {
 			<-slots
 			r.logger.Error("领取任务失败", zap.Error(err))
@@ -121,7 +122,7 @@ func (r *Runner) fillSlots(ctx context.Context, slots chan struct{}, active *syn
 	}
 }
 
-func (r *Runner) execute(parent context.Context, claimed *queue.ClaimedJob) {
+func (r *Runner) execute(parent context.Context, claimed *codexcontrol.ClaimedControl) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	heartbeatDone := make(chan struct{})
@@ -132,7 +133,7 @@ func (r *Runner) execute(parent context.Context, claimed *queue.ClaimedJob) {
 		for {
 			select {
 			case <-ticker.C:
-				if err := r.queue.Heartbeat(ctx, claimed.ID, claimed.LeaseToken, claimed.LeaseEpoch); err != nil {
+				if err := r.controls.Heartbeat(ctx, claimed); err != nil {
 					r.logger.Error("任务心跳失败", zap.Error(err), zap.String("job_id", claimed.ID.String()))
 					cancel()
 					return
@@ -143,33 +144,48 @@ func (r *Runner) execute(parent context.Context, claimed *queue.ClaimedJob) {
 		}
 	}()
 	r.publish(ctx, "job.started", claimed.ID.String())
-	err := r.processor.Process(ctx, claimed)
+	result, err := r.processor.Process(ctx, claimed)
 	cancel()
 	<-heartbeatDone
 	finishCtx, finishCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer finishCancel()
-	var blocked *blockedError
 	if err == nil {
-		if completeErr := r.queue.Complete(finishCtx, claimed.ID, claimed.LeaseToken, claimed.LeaseEpoch); completeErr != nil {
+		replied, replyErr := r.controls.ReplySatisfied(finishCtx, claimed)
+		if replyErr != nil {
+			err = replyErr
+		} else if !replied {
+			err = errors.New("required_reply_missing")
+		}
+	}
+	if err == nil {
+		if completeErr := r.controls.Complete(finishCtx, claimed, result); completeErr != nil {
 			r.logger.Error("提交任务完成状态失败", zap.Error(completeErr), zap.String("job_id", claimed.ID.String()))
 		} else {
-			r.publish(finishCtx, "job.succeeded", claimed.ID.String())
+			r.publish(finishCtx, "intent.completed", claimed.ID.String())
 		}
 	} else if discordStopRequested(finishCtx, r.db, claimed.ID, err) {
+		_ = r.controls.Cancel(finishCtx, claimed, "user_interrupt", "stopped from Discord")
 		r.logger.Info("Discord 任务已由用户停止", zap.String("job_id", claimed.ID.String()))
-		r.publish(finishCtx, "job.canceled", claimed.ID.String())
-	} else if errors.As(err, &blocked) {
-		if blockErr := r.queue.Block(finishCtx, claimed.ID, claimed.LeaseToken, claimed.LeaseEpoch, blocked); blockErr != nil {
-			r.logger.Error("记录任务阻塞状态失败", zap.Error(blockErr), zap.String("job_id", claimed.ID.String()))
-		} else {
-			r.publish(finishCtx, "job.blocked", claimed.ID.String())
+		r.publish(finishCtx, "intent.canceled", claimed.ID.String())
+	} else if err.Error() == "required_reply_missing" {
+		if claimed.SourceType == codexcontrol.SourceGitHub {
+			if processor, ok := r.processor.(*Processor); ok {
+				_ = processor.control.ReportFailure(finishCtx, claimed.Capability, "required_reply_missing")
+			}
 		}
+		_ = r.controls.Fail(finishCtx, claimed, "required_reply_missing", err)
+		r.publish(finishCtx, "intent.failed", claimed.ID.String())
 	} else {
 		r.logger.Error("任务执行失败", zap.String("job_id", claimed.ID.String()), zap.Error(err))
-		if finishErr := r.queue.Fail(finishCtx, claimed.ID, claimed.LeaseToken, claimed.LeaseEpoch, err); finishErr != nil && !errors.Is(finishErr, queue.ErrLeaseLost) {
+		if claimed.SourceType == codexcontrol.SourceGitHub && claimed.Attempt >= claimed.MaxAttempts {
+			if processor, ok := r.processor.(*Processor); ok {
+				_ = processor.control.ReportFailure(finishCtx, claimed.Capability, "control_error")
+			}
+		}
+		if finishErr := r.controls.Reconcile(finishCtx, claimed, "control_error", err); finishErr != nil && !errors.Is(finishErr, codexcontrol.ErrLeaseLost) {
 			r.logger.Error("记录任务失败状态失败", zap.Error(finishErr))
 		}
-		r.publish(finishCtx, "job.failed", claimed.ID.String())
+		r.publish(finishCtx, "intent.reconciling", claimed.ID.String())
 	}
 }
 

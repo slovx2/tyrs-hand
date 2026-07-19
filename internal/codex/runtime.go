@@ -16,6 +16,8 @@ type Runtime struct {
 
 func NewRuntime(client *Client) *Runtime { return &Runtime{client: client} }
 
+func (r *Runtime) Events() <-chan Event { return r.client.Events() }
+
 func (r *Runtime) StartThread(ctx context.Context, options ports.ThreadOptions) (string, error) {
 	payload := threadPayload(options)
 	var result struct {
@@ -50,9 +52,6 @@ func (r *Runtime) StartTurn(ctx context.Context, threadID string, input ports.Tu
 		"threadId": threadID, "clientUserMessageId": input.ClientUserMessageID, "input": items,
 	}
 	addTurnContext(payload, input.AdditionalContext)
-	if len(input.OutputSchema) > 0 {
-		payload["outputSchema"] = input.OutputSchema
-	}
 	err := r.client.Call(ctx, "turn/start", payload, &result)
 	if err != nil {
 		return "", err
@@ -61,6 +60,103 @@ func (r *Runtime) StartTurn(ctx context.Context, threadID string, input ports.Tu
 		return "", errors.New("调用 Codex turn/start 未返回 Turn ID")
 	}
 	return result.Turn.ID, nil
+}
+
+type ThreadSnapshot struct {
+	ID     string          `json:"id"`
+	Status json.RawMessage `json:"status"`
+	Turns  []TurnSnapshot  `json:"turns"`
+}
+
+type TurnSnapshot struct {
+	ID                  string         `json:"id"`
+	Status              string         `json:"status"`
+	ClientUserMessageID string         `json:"clientUserMessageId"`
+	Items               []ItemSnapshot `json:"items"`
+}
+
+type ItemSnapshot struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Phase    string `json:"phase"`
+	Text     string `json:"text"`
+	ClientID string `json:"clientId"`
+}
+
+func (s ThreadSnapshot) StatusType() string {
+	var value struct {
+		Type string `json:"type"`
+	}
+	_ = json.Unmarshal(s.Status, &value)
+	return value.Type
+}
+
+func (r *Runtime) ReadThread(ctx context.Context, threadID string) (ThreadSnapshot, error) {
+	var result struct {
+		Thread ThreadSnapshot `json:"thread"`
+	}
+	if err := r.client.Call(ctx, "thread/read", map[string]any{
+		"threadId": threadID, "includeTurns": true,
+	}, &result); err != nil {
+		return ThreadSnapshot{}, err
+	}
+	if result.Thread.ID == "" {
+		return ThreadSnapshot{}, errors.New("调用 Codex thread/read 未返回 Thread")
+	}
+	return result.Thread, nil
+}
+
+func (s ThreadSnapshot) TurnByClientID(clientID string) (TurnSnapshot, bool) {
+	for index := len(s.Turns) - 1; index >= 0; index-- {
+		turn := s.Turns[index]
+		if turn.ClientUserMessageID == clientID || turnHasClientID(turn, clientID) {
+			return s.Turns[index], true
+		}
+	}
+	return TurnSnapshot{}, false
+}
+
+func turnHasClientID(turn TurnSnapshot, clientID string) bool {
+	for _, item := range turn.Items {
+		if item.Type == "userMessage" && item.ClientID == clientID {
+			return true
+		}
+	}
+	return false
+}
+
+func (s ThreadSnapshot) TurnByID(turnID string) (TurnSnapshot, bool) {
+	for index := len(s.Turns) - 1; index >= 0; index-- {
+		if s.Turns[index].ID == turnID {
+			return s.Turns[index], true
+		}
+	}
+	return TurnSnapshot{}, false
+}
+
+func (s ThreadSnapshot) ActiveTurn() (TurnSnapshot, bool) {
+	for index := len(s.Turns) - 1; index >= 0; index-- {
+		if s.Turns[index].Status == "inProgress" {
+			return s.Turns[index], true
+		}
+	}
+	return TurnSnapshot{}, false
+}
+
+func (s TurnSnapshot) FinalAnswer() string {
+	for index := len(s.Items) - 1; index >= 0; index-- {
+		item := s.Items[index]
+		if item.Type == "agentMessage" && item.Phase == "final_answer" && item.Text != "" {
+			return item.Text
+		}
+	}
+	for index := len(s.Items) - 1; index >= 0; index-- {
+		item := s.Items[index]
+		if item.Type == "agentMessage" && item.Text != "" {
+			return item.Text
+		}
+	}
+	return ""
 }
 
 func (r *Runtime) SteerTurn(ctx context.Context, threadID, turnID string, input ports.TurnInput) error {
@@ -119,8 +215,9 @@ func canonicalPath(path string) string {
 func threadPayload(options ports.ThreadOptions) map[string]any {
 	config := map[string]any{
 		"sandbox_workspace_write": map[string]any{"network_access": options.NetworkEnabled},
-		"features":                map[string]any{"unified_exec": true, "memory_tool": false},
+		"features":                map[string]any{"unified_exec": true, "memory_tool": false, "hooks": true},
 	}
+	mergeConfig(config, options.RuntimeConfig)
 	payload := map[string]any{
 		"cwd": absolute(options.CWD), "runtimeWorkspaceRoots": []string{absolute(options.CWD)},
 		"approvalPolicy": options.ApprovalPolicy, "sandbox": options.Sandbox,
@@ -132,6 +229,18 @@ func threadPayload(options ports.ThreadOptions) map[string]any {
 	optional(payload, "baseInstructions", options.BaseInstructions)
 	optional(payload, "developerInstructions", options.DeveloperInstructions)
 	return payload
+}
+
+func mergeConfig(target, source map[string]any) {
+	for key, value := range source {
+		sourceMap, sourceIsMap := value.(map[string]any)
+		targetMap, targetIsMap := target[key].(map[string]any)
+		if sourceIsMap && targetIsMap {
+			mergeConfig(targetMap, sourceMap)
+			continue
+		}
+		target[key] = value
+	}
 }
 
 func userInput(input ports.TurnInput) []map[string]any {

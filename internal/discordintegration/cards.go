@@ -35,7 +35,6 @@ type ConversationProgress string
 const (
 	ConversationRunning   ConversationProgress = "running"
 	ConversationCompleted ConversationProgress = "completed"
-	ConversationBlocked   ConversationProgress = "blocked"
 	ConversationCanceled  ConversationProgress = "canceled"
 	ConversationFailed    ConversationProgress = "failed"
 )
@@ -46,9 +45,6 @@ func conversationProgressCard(state ConversationProgress, detail string) EmbedPa
 	case ConversationCompleted:
 		return EmbedPayload{Title: "✅ Codex · 已完成", Description: detail, Color: cardColorGreen,
 			Footer: "完整回复见下一条消息"}
-	case ConversationBlocked:
-		return EmbedPayload{Title: "⚠️ Codex · 需要处理", Description: detail, Color: cardColorYellow,
-			Footer: "处理说明见下一条消息"}
 	case ConversationCanceled:
 		return EmbedPayload{Title: "⏹️ Codex · 已停止", Description: detail, Color: cardColorGray,
 			Footer: "本轮不会再发送回复"}
@@ -122,18 +118,18 @@ func taskStateChangeCard(previous, current string) EmbedPayload {
 		Footer:      "由 Tyrs Hand 自动同步"}
 }
 
-func systemStatusCard(queued, running, blocked, failed, workers, outbox int64, gateway string) EmbedPayload {
+func systemStatusCard(queued, running, failed, workers, outbox int64, gateway string) EmbedPayload {
 	color := cardColorGreen
 	state := "🟢 运行正常"
 	if workers == 0 || (gateway != "connected" && gateway != "resumed") {
 		color, state = cardColorRed, "🔴 服务异常"
-	} else if blocked > 0 || failed > 0 || outbox > 0 {
+	} else if failed > 0 || outbox > 0 {
 		color, state = cardColorYellow, "🟡 需要关注"
 	}
 	return EmbedPayload{Title: "Tyrs Hand · 系统状态", Description: state, Color: color,
 		Fields: []EmbedFieldPayload{
 			{Name: "任务队列", Value: fmt.Sprintf("等待 `%d`\n运行 `%d`", queued, running), Inline: true},
-			{Name: "需关注", Value: fmt.Sprintf("阻塞 `%d`\n失败 `%d`", blocked, failed), Inline: true},
+			{Name: "需关注", Value: fmt.Sprintf("失败 `%d`", failed), Inline: true},
 			{Name: "运行组件", Value: fmt.Sprintf("Worker `%d`\nGateway `%s`", workers, cardText(gateway, 100)), Inline: true},
 			{Name: "消息投递", Value: fmt.Sprintf("Outbox 待处理 `%d`", outbox), Inline: true},
 		},

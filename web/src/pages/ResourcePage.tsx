@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo } from 'react'
 import { api, type ListResponse } from '../api/client'
 
@@ -71,6 +71,7 @@ export function ResourcePage({
                     {humanize(column)}
                   </th>
                 ))}
+                {resource === 'threads' && <th className="px-4 py-3">操作</th>}
               </tr>
             </thead>
             <tbody>
@@ -88,6 +89,14 @@ export function ResourcePage({
                       {format(item[column])}
                     </td>
                   ))}
+                  {resource === 'threads' && (
+                    <td className="px-4 py-3">
+                      <ControlActions
+                        item={item}
+                        onDone={() => void query.refetch()}
+                      />
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -95,6 +104,37 @@ export function ResourcePage({
         </div>
       )}
     </section>
+  )
+}
+
+function ControlActions({
+  item,
+  onDone,
+}: {
+  item: Record<string, unknown>
+  onDone: () => void
+}) {
+  const mutation = useMutation({
+    mutationFn: (action: 'reconcile' | 'reset') =>
+      api<void>(`/controls/${String(item.id)}/${action}`, { method: 'POST' }),
+    onSuccess: onDone,
+  })
+  if (item.status !== 'error') return <span className="muted">—</span>
+  return (
+    <div className="flex gap-2">
+      <button
+        className="button-secondary"
+        onClick={() => mutation.mutate('reconcile')}
+      >
+        对账
+      </button>
+      <button
+        className="button-secondary"
+        onClick={() => mutation.mutate('reset')}
+      >
+        重置
+      </button>
+    </div>
   )
 }
 

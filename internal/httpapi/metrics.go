@@ -31,9 +31,9 @@ func init() {
 }
 
 func (s *Server) refreshOperationalMetrics(ctx context.Context) {
-	for _, status := range []string{"queued", "running", "failed"} {
+	for _, status := range []string{"queued", "dispatching", "awaiting_confirmation", "running", "reconciling", "retry_wait", "completed", "failed", "canceled"} {
 		var count int64
-		if s.db.QueryRowContext(ctx, "SELECT count(*) FROM job_intents WHERE status = $1", status).Scan(&count) == nil {
+		if s.db.QueryRowContext(ctx, "SELECT count(*) FROM codex_turn_intents WHERE status = $1", status).Scan(&count) == nil {
 			queueDepth.WithLabelValues(status).Set(float64(count))
 		}
 	}

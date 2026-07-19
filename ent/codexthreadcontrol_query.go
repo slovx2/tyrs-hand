@@ -12,68 +12,68 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
-	"github.com/slovx2/tyrs-hand/ent/jobintent"
+	"github.com/slovx2/tyrs-hand/ent/codexthreadcontrol"
 	"github.com/slovx2/tyrs-hand/ent/predicate"
 )
 
-// JobIntentQuery is the builder for querying JobIntent entities.
-type JobIntentQuery struct {
+// CodexThreadControlQuery is the builder for querying CodexThreadControl entities.
+type CodexThreadControlQuery struct {
 	config
 	ctx        *QueryContext
-	order      []jobintent.OrderOption
+	order      []codexthreadcontrol.OrderOption
 	inters     []Interceptor
-	predicates []predicate.JobIntent
+	predicates []predicate.CodexThreadControl
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
 }
 
-// Where adds a new predicate for the JobIntentQuery builder.
-func (_q *JobIntentQuery) Where(ps ...predicate.JobIntent) *JobIntentQuery {
+// Where adds a new predicate for the CodexThreadControlQuery builder.
+func (_q *CodexThreadControlQuery) Where(ps ...predicate.CodexThreadControl) *CodexThreadControlQuery {
 	_q.predicates = append(_q.predicates, ps...)
 	return _q
 }
 
 // Limit the number of records to be returned by this query.
-func (_q *JobIntentQuery) Limit(limit int) *JobIntentQuery {
+func (_q *CodexThreadControlQuery) Limit(limit int) *CodexThreadControlQuery {
 	_q.ctx.Limit = &limit
 	return _q
 }
 
 // Offset to start from.
-func (_q *JobIntentQuery) Offset(offset int) *JobIntentQuery {
+func (_q *CodexThreadControlQuery) Offset(offset int) *CodexThreadControlQuery {
 	_q.ctx.Offset = &offset
 	return _q
 }
 
 // Unique configures the query builder to filter duplicate records on query.
 // By default, unique is set to true, and can be disabled using this method.
-func (_q *JobIntentQuery) Unique(unique bool) *JobIntentQuery {
+func (_q *CodexThreadControlQuery) Unique(unique bool) *CodexThreadControlQuery {
 	_q.ctx.Unique = &unique
 	return _q
 }
 
 // Order specifies how the records should be ordered.
-func (_q *JobIntentQuery) Order(o ...jobintent.OrderOption) *JobIntentQuery {
+func (_q *CodexThreadControlQuery) Order(o ...codexthreadcontrol.OrderOption) *CodexThreadControlQuery {
 	_q.order = append(_q.order, o...)
 	return _q
 }
 
-// First returns the first JobIntent entity from the query.
-// Returns a *NotFoundError when no JobIntent was found.
-func (_q *JobIntentQuery) First(ctx context.Context) (*JobIntent, error) {
+// First returns the first CodexThreadControl entity from the query.
+// Returns a *NotFoundError when no CodexThreadControl was found.
+func (_q *CodexThreadControlQuery) First(ctx context.Context) (*CodexThreadControl, error) {
 	nodes, err := _q.Limit(1).All(setContextOp(ctx, _q.ctx, ent.OpQueryFirst))
 	if err != nil {
 		return nil, err
 	}
 	if len(nodes) == 0 {
-		return nil, &NotFoundError{jobintent.Label}
+		return nil, &NotFoundError{codexthreadcontrol.Label}
 	}
 	return nodes[0], nil
 }
 
 // FirstX is like First, but panics if an error occurs.
-func (_q *JobIntentQuery) FirstX(ctx context.Context) *JobIntent {
+func (_q *CodexThreadControlQuery) FirstX(ctx context.Context) *CodexThreadControl {
 	node, err := _q.First(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -81,22 +81,22 @@ func (_q *JobIntentQuery) FirstX(ctx context.Context) *JobIntent {
 	return node
 }
 
-// FirstID returns the first JobIntent ID from the query.
-// Returns a *NotFoundError when no JobIntent ID was found.
-func (_q *JobIntentQuery) FirstID(ctx context.Context) (id uuid.UUID, err error) {
+// FirstID returns the first CodexThreadControl ID from the query.
+// Returns a *NotFoundError when no CodexThreadControl ID was found.
+func (_q *CodexThreadControlQuery) FirstID(ctx context.Context) (id uuid.UUID, err error) {
 	var ids []uuid.UUID
 	if ids, err = _q.Limit(1).IDs(setContextOp(ctx, _q.ctx, ent.OpQueryFirstID)); err != nil {
 		return
 	}
 	if len(ids) == 0 {
-		err = &NotFoundError{jobintent.Label}
+		err = &NotFoundError{codexthreadcontrol.Label}
 		return
 	}
 	return ids[0], nil
 }
 
 // FirstIDX is like FirstID, but panics if an error occurs.
-func (_q *JobIntentQuery) FirstIDX(ctx context.Context) uuid.UUID {
+func (_q *CodexThreadControlQuery) FirstIDX(ctx context.Context) uuid.UUID {
 	id, err := _q.FirstID(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -104,10 +104,10 @@ func (_q *JobIntentQuery) FirstIDX(ctx context.Context) uuid.UUID {
 	return id
 }
 
-// Only returns a single JobIntent entity found by the query, ensuring it only returns one.
-// Returns a *NotSingularError when more than one JobIntent entity is found.
-// Returns a *NotFoundError when no JobIntent entities are found.
-func (_q *JobIntentQuery) Only(ctx context.Context) (*JobIntent, error) {
+// Only returns a single CodexThreadControl entity found by the query, ensuring it only returns one.
+// Returns a *NotSingularError when more than one CodexThreadControl entity is found.
+// Returns a *NotFoundError when no CodexThreadControl entities are found.
+func (_q *CodexThreadControlQuery) Only(ctx context.Context) (*CodexThreadControl, error) {
 	nodes, err := _q.Limit(2).All(setContextOp(ctx, _q.ctx, ent.OpQueryOnly))
 	if err != nil {
 		return nil, err
@@ -116,14 +116,14 @@ func (_q *JobIntentQuery) Only(ctx context.Context) (*JobIntent, error) {
 	case 1:
 		return nodes[0], nil
 	case 0:
-		return nil, &NotFoundError{jobintent.Label}
+		return nil, &NotFoundError{codexthreadcontrol.Label}
 	default:
-		return nil, &NotSingularError{jobintent.Label}
+		return nil, &NotSingularError{codexthreadcontrol.Label}
 	}
 }
 
 // OnlyX is like Only, but panics if an error occurs.
-func (_q *JobIntentQuery) OnlyX(ctx context.Context) *JobIntent {
+func (_q *CodexThreadControlQuery) OnlyX(ctx context.Context) *CodexThreadControl {
 	node, err := _q.Only(ctx)
 	if err != nil {
 		panic(err)
@@ -131,10 +131,10 @@ func (_q *JobIntentQuery) OnlyX(ctx context.Context) *JobIntent {
 	return node
 }
 
-// OnlyID is like Only, but returns the only JobIntent ID in the query.
-// Returns a *NotSingularError when more than one JobIntent ID is found.
+// OnlyID is like Only, but returns the only CodexThreadControl ID in the query.
+// Returns a *NotSingularError when more than one CodexThreadControl ID is found.
 // Returns a *NotFoundError when no entities are found.
-func (_q *JobIntentQuery) OnlyID(ctx context.Context) (id uuid.UUID, err error) {
+func (_q *CodexThreadControlQuery) OnlyID(ctx context.Context) (id uuid.UUID, err error) {
 	var ids []uuid.UUID
 	if ids, err = _q.Limit(2).IDs(setContextOp(ctx, _q.ctx, ent.OpQueryOnlyID)); err != nil {
 		return
@@ -143,15 +143,15 @@ func (_q *JobIntentQuery) OnlyID(ctx context.Context) (id uuid.UUID, err error) 
 	case 1:
 		id = ids[0]
 	case 0:
-		err = &NotFoundError{jobintent.Label}
+		err = &NotFoundError{codexthreadcontrol.Label}
 	default:
-		err = &NotSingularError{jobintent.Label}
+		err = &NotSingularError{codexthreadcontrol.Label}
 	}
 	return
 }
 
 // OnlyIDX is like OnlyID, but panics if an error occurs.
-func (_q *JobIntentQuery) OnlyIDX(ctx context.Context) uuid.UUID {
+func (_q *CodexThreadControlQuery) OnlyIDX(ctx context.Context) uuid.UUID {
 	id, err := _q.OnlyID(ctx)
 	if err != nil {
 		panic(err)
@@ -159,18 +159,18 @@ func (_q *JobIntentQuery) OnlyIDX(ctx context.Context) uuid.UUID {
 	return id
 }
 
-// All executes the query and returns a list of JobIntents.
-func (_q *JobIntentQuery) All(ctx context.Context) ([]*JobIntent, error) {
+// All executes the query and returns a list of CodexThreadControls.
+func (_q *CodexThreadControlQuery) All(ctx context.Context) ([]*CodexThreadControl, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryAll)
 	if err := _q.prepareQuery(ctx); err != nil {
 		return nil, err
 	}
-	qr := querierAll[[]*JobIntent, *JobIntentQuery]()
-	return withInterceptors[[]*JobIntent](ctx, _q, qr, _q.inters)
+	qr := querierAll[[]*CodexThreadControl, *CodexThreadControlQuery]()
+	return withInterceptors[[]*CodexThreadControl](ctx, _q, qr, _q.inters)
 }
 
 // AllX is like All, but panics if an error occurs.
-func (_q *JobIntentQuery) AllX(ctx context.Context) []*JobIntent {
+func (_q *CodexThreadControlQuery) AllX(ctx context.Context) []*CodexThreadControl {
 	nodes, err := _q.All(ctx)
 	if err != nil {
 		panic(err)
@@ -178,20 +178,20 @@ func (_q *JobIntentQuery) AllX(ctx context.Context) []*JobIntent {
 	return nodes
 }
 
-// IDs executes the query and returns a list of JobIntent IDs.
-func (_q *JobIntentQuery) IDs(ctx context.Context) (ids []uuid.UUID, err error) {
+// IDs executes the query and returns a list of CodexThreadControl IDs.
+func (_q *CodexThreadControlQuery) IDs(ctx context.Context) (ids []uuid.UUID, err error) {
 	if _q.ctx.Unique == nil && _q.path != nil {
 		_q.Unique(true)
 	}
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryIDs)
-	if err = _q.Select(jobintent.FieldID).Scan(ctx, &ids); err != nil {
+	if err = _q.Select(codexthreadcontrol.FieldID).Scan(ctx, &ids); err != nil {
 		return nil, err
 	}
 	return ids, nil
 }
 
 // IDsX is like IDs, but panics if an error occurs.
-func (_q *JobIntentQuery) IDsX(ctx context.Context) []uuid.UUID {
+func (_q *CodexThreadControlQuery) IDsX(ctx context.Context) []uuid.UUID {
 	ids, err := _q.IDs(ctx)
 	if err != nil {
 		panic(err)
@@ -200,16 +200,16 @@ func (_q *JobIntentQuery) IDsX(ctx context.Context) []uuid.UUID {
 }
 
 // Count returns the count of the given query.
-func (_q *JobIntentQuery) Count(ctx context.Context) (int, error) {
+func (_q *CodexThreadControlQuery) Count(ctx context.Context) (int, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryCount)
 	if err := _q.prepareQuery(ctx); err != nil {
 		return 0, err
 	}
-	return withInterceptors[int](ctx, _q, querierCount[*JobIntentQuery](), _q.inters)
+	return withInterceptors[int](ctx, _q, querierCount[*CodexThreadControlQuery](), _q.inters)
 }
 
 // CountX is like Count, but panics if an error occurs.
-func (_q *JobIntentQuery) CountX(ctx context.Context) int {
+func (_q *CodexThreadControlQuery) CountX(ctx context.Context) int {
 	count, err := _q.Count(ctx)
 	if err != nil {
 		panic(err)
@@ -218,7 +218,7 @@ func (_q *JobIntentQuery) CountX(ctx context.Context) int {
 }
 
 // Exist returns true if the query has elements in the graph.
-func (_q *JobIntentQuery) Exist(ctx context.Context) (bool, error) {
+func (_q *CodexThreadControlQuery) Exist(ctx context.Context) (bool, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryExist)
 	switch _, err := _q.FirstID(ctx); {
 	case IsNotFound(err):
@@ -231,7 +231,7 @@ func (_q *JobIntentQuery) Exist(ctx context.Context) (bool, error) {
 }
 
 // ExistX is like Exist, but panics if an error occurs.
-func (_q *JobIntentQuery) ExistX(ctx context.Context) bool {
+func (_q *CodexThreadControlQuery) ExistX(ctx context.Context) bool {
 	exist, err := _q.Exist(ctx)
 	if err != nil {
 		panic(err)
@@ -239,18 +239,18 @@ func (_q *JobIntentQuery) ExistX(ctx context.Context) bool {
 	return exist
 }
 
-// Clone returns a duplicate of the JobIntentQuery builder, including all associated steps. It can be
+// Clone returns a duplicate of the CodexThreadControlQuery builder, including all associated steps. It can be
 // used to prepare common query builders and use them differently after the clone is made.
-func (_q *JobIntentQuery) Clone() *JobIntentQuery {
+func (_q *CodexThreadControlQuery) Clone() *CodexThreadControlQuery {
 	if _q == nil {
 		return nil
 	}
-	return &JobIntentQuery{
+	return &CodexThreadControlQuery{
 		config:     _q.config,
 		ctx:        _q.ctx.Clone(),
-		order:      append([]jobintent.OrderOption{}, _q.order...),
+		order:      append([]codexthreadcontrol.OrderOption{}, _q.order...),
 		inters:     append([]Interceptor{}, _q.inters...),
-		predicates: append([]predicate.JobIntent{}, _q.predicates...),
+		predicates: append([]predicate.CodexThreadControl{}, _q.predicates...),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -263,19 +263,19 @@ func (_q *JobIntentQuery) Clone() *JobIntentQuery {
 // Example:
 //
 //	var v []struct {
-//		WorkItemID uuid.UUID `json:"work_item_id,omitempty"`
+//		SourceType string `json:"source_type,omitempty"`
 //		Count int `json:"count,omitempty"`
 //	}
 //
-//	client.JobIntent.Query().
-//		GroupBy(jobintent.FieldWorkItemID).
+//	client.CodexThreadControl.Query().
+//		GroupBy(codexthreadcontrol.FieldSourceType).
 //		Aggregate(ent.Count()).
 //		Scan(ctx, &v)
-func (_q *JobIntentQuery) GroupBy(field string, fields ...string) *JobIntentGroupBy {
+func (_q *CodexThreadControlQuery) GroupBy(field string, fields ...string) *CodexThreadControlGroupBy {
 	_q.ctx.Fields = append([]string{field}, fields...)
-	grbuild := &JobIntentGroupBy{build: _q}
+	grbuild := &CodexThreadControlGroupBy{build: _q}
 	grbuild.flds = &_q.ctx.Fields
-	grbuild.label = jobintent.Label
+	grbuild.label = codexthreadcontrol.Label
 	grbuild.scan = grbuild.Scan
 	return grbuild
 }
@@ -286,26 +286,26 @@ func (_q *JobIntentQuery) GroupBy(field string, fields ...string) *JobIntentGrou
 // Example:
 //
 //	var v []struct {
-//		WorkItemID uuid.UUID `json:"work_item_id,omitempty"`
+//		SourceType string `json:"source_type,omitempty"`
 //	}
 //
-//	client.JobIntent.Query().
-//		Select(jobintent.FieldWorkItemID).
+//	client.CodexThreadControl.Query().
+//		Select(codexthreadcontrol.FieldSourceType).
 //		Scan(ctx, &v)
-func (_q *JobIntentQuery) Select(fields ...string) *JobIntentSelect {
+func (_q *CodexThreadControlQuery) Select(fields ...string) *CodexThreadControlSelect {
 	_q.ctx.Fields = append(_q.ctx.Fields, fields...)
-	sbuild := &JobIntentSelect{JobIntentQuery: _q}
-	sbuild.label = jobintent.Label
+	sbuild := &CodexThreadControlSelect{CodexThreadControlQuery: _q}
+	sbuild.label = codexthreadcontrol.Label
 	sbuild.flds, sbuild.scan = &_q.ctx.Fields, sbuild.Scan
 	return sbuild
 }
 
-// Aggregate returns a JobIntentSelect configured with the given aggregations.
-func (_q *JobIntentQuery) Aggregate(fns ...AggregateFunc) *JobIntentSelect {
+// Aggregate returns a CodexThreadControlSelect configured with the given aggregations.
+func (_q *CodexThreadControlQuery) Aggregate(fns ...AggregateFunc) *CodexThreadControlSelect {
 	return _q.Select().Aggregate(fns...)
 }
 
-func (_q *JobIntentQuery) prepareQuery(ctx context.Context) error {
+func (_q *CodexThreadControlQuery) prepareQuery(ctx context.Context) error {
 	for _, inter := range _q.inters {
 		if inter == nil {
 			return fmt.Errorf("ent: uninitialized interceptor (forgotten import ent/runtime?)")
@@ -317,7 +317,7 @@ func (_q *JobIntentQuery) prepareQuery(ctx context.Context) error {
 		}
 	}
 	for _, f := range _q.ctx.Fields {
-		if !jobintent.ValidColumn(f) {
+		if !codexthreadcontrol.ValidColumn(f) {
 			return &ValidationError{Name: f, err: fmt.Errorf("ent: invalid field %q for query", f)}
 		}
 	}
@@ -331,16 +331,16 @@ func (_q *JobIntentQuery) prepareQuery(ctx context.Context) error {
 	return nil
 }
 
-func (_q *JobIntentQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*JobIntent, error) {
+func (_q *CodexThreadControlQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*CodexThreadControl, error) {
 	var (
-		nodes = []*JobIntent{}
+		nodes = []*CodexThreadControl{}
 		_spec = _q.querySpec()
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
-		return (*JobIntent).scanValues(nil, columns)
+		return (*CodexThreadControl).scanValues(nil, columns)
 	}
 	_spec.Assign = func(columns []string, values []any) error {
-		node := &JobIntent{config: _q.config}
+		node := &CodexThreadControl{config: _q.config}
 		nodes = append(nodes, node)
 		return node.assignValues(columns, values)
 	}
@@ -356,7 +356,7 @@ func (_q *JobIntentQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Jo
 	return nodes, nil
 }
 
-func (_q *JobIntentQuery) sqlCount(ctx context.Context) (int, error) {
+func (_q *CodexThreadControlQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
 	_spec.Node.Columns = _q.ctx.Fields
 	if len(_q.ctx.Fields) > 0 {
@@ -365,8 +365,8 @@ func (_q *JobIntentQuery) sqlCount(ctx context.Context) (int, error) {
 	return sqlgraph.CountNodes(ctx, _q.driver, _spec)
 }
 
-func (_q *JobIntentQuery) querySpec() *sqlgraph.QuerySpec {
-	_spec := sqlgraph.NewQuerySpec(jobintent.Table, jobintent.Columns, sqlgraph.NewFieldSpec(jobintent.FieldID, field.TypeUUID))
+func (_q *CodexThreadControlQuery) querySpec() *sqlgraph.QuerySpec {
+	_spec := sqlgraph.NewQuerySpec(codexthreadcontrol.Table, codexthreadcontrol.Columns, sqlgraph.NewFieldSpec(codexthreadcontrol.FieldID, field.TypeUUID))
 	_spec.From = _q.sql
 	if unique := _q.ctx.Unique; unique != nil {
 		_spec.Unique = *unique
@@ -375,9 +375,9 @@ func (_q *JobIntentQuery) querySpec() *sqlgraph.QuerySpec {
 	}
 	if fields := _q.ctx.Fields; len(fields) > 0 {
 		_spec.Node.Columns = make([]string, 0, len(fields))
-		_spec.Node.Columns = append(_spec.Node.Columns, jobintent.FieldID)
+		_spec.Node.Columns = append(_spec.Node.Columns, codexthreadcontrol.FieldID)
 		for i := range fields {
-			if fields[i] != jobintent.FieldID {
+			if fields[i] != codexthreadcontrol.FieldID {
 				_spec.Node.Columns = append(_spec.Node.Columns, fields[i])
 			}
 		}
@@ -405,12 +405,12 @@ func (_q *JobIntentQuery) querySpec() *sqlgraph.QuerySpec {
 	return _spec
 }
 
-func (_q *JobIntentQuery) sqlQuery(ctx context.Context) *sql.Selector {
+func (_q *CodexThreadControlQuery) sqlQuery(ctx context.Context) *sql.Selector {
 	builder := sql.Dialect(_q.driver.Dialect())
-	t1 := builder.Table(jobintent.Table)
+	t1 := builder.Table(codexthreadcontrol.Table)
 	columns := _q.ctx.Fields
 	if len(columns) == 0 {
-		columns = jobintent.Columns
+		columns = codexthreadcontrol.Columns
 	}
 	selector := builder.Select(t1.Columns(columns...)...).From(t1)
 	if _q.sql != nil {
@@ -437,28 +437,28 @@ func (_q *JobIntentQuery) sqlQuery(ctx context.Context) *sql.Selector {
 	return selector
 }
 
-// JobIntentGroupBy is the group-by builder for JobIntent entities.
-type JobIntentGroupBy struct {
+// CodexThreadControlGroupBy is the group-by builder for CodexThreadControl entities.
+type CodexThreadControlGroupBy struct {
 	selector
-	build *JobIntentQuery
+	build *CodexThreadControlQuery
 }
 
 // Aggregate adds the given aggregation functions to the group-by query.
-func (_g *JobIntentGroupBy) Aggregate(fns ...AggregateFunc) *JobIntentGroupBy {
+func (_g *CodexThreadControlGroupBy) Aggregate(fns ...AggregateFunc) *CodexThreadControlGroupBy {
 	_g.fns = append(_g.fns, fns...)
 	return _g
 }
 
 // Scan applies the selector query and scans the result into the given value.
-func (_g *JobIntentGroupBy) Scan(ctx context.Context, v any) error {
+func (_g *CodexThreadControlGroupBy) Scan(ctx context.Context, v any) error {
 	ctx = setContextOp(ctx, _g.build.ctx, ent.OpQueryGroupBy)
 	if err := _g.build.prepareQuery(ctx); err != nil {
 		return err
 	}
-	return scanWithInterceptors[*JobIntentQuery, *JobIntentGroupBy](ctx, _g.build, _g, _g.build.inters, v)
+	return scanWithInterceptors[*CodexThreadControlQuery, *CodexThreadControlGroupBy](ctx, _g.build, _g, _g.build.inters, v)
 }
 
-func (_g *JobIntentGroupBy) sqlScan(ctx context.Context, root *JobIntentQuery, v any) error {
+func (_g *CodexThreadControlGroupBy) sqlScan(ctx context.Context, root *CodexThreadControlQuery, v any) error {
 	selector := root.sqlQuery(ctx).Select()
 	aggregation := make([]string, 0, len(_g.fns))
 	for _, fn := range _g.fns {
@@ -485,28 +485,28 @@ func (_g *JobIntentGroupBy) sqlScan(ctx context.Context, root *JobIntentQuery, v
 	return sql.ScanSlice(rows, v)
 }
 
-// JobIntentSelect is the builder for selecting fields of JobIntent entities.
-type JobIntentSelect struct {
-	*JobIntentQuery
+// CodexThreadControlSelect is the builder for selecting fields of CodexThreadControl entities.
+type CodexThreadControlSelect struct {
+	*CodexThreadControlQuery
 	selector
 }
 
 // Aggregate adds the given aggregation functions to the selector query.
-func (_s *JobIntentSelect) Aggregate(fns ...AggregateFunc) *JobIntentSelect {
+func (_s *CodexThreadControlSelect) Aggregate(fns ...AggregateFunc) *CodexThreadControlSelect {
 	_s.fns = append(_s.fns, fns...)
 	return _s
 }
 
 // Scan applies the selector query and scans the result into the given value.
-func (_s *JobIntentSelect) Scan(ctx context.Context, v any) error {
+func (_s *CodexThreadControlSelect) Scan(ctx context.Context, v any) error {
 	ctx = setContextOp(ctx, _s.ctx, ent.OpQuerySelect)
 	if err := _s.prepareQuery(ctx); err != nil {
 		return err
 	}
-	return scanWithInterceptors[*JobIntentQuery, *JobIntentSelect](ctx, _s.JobIntentQuery, _s, _s.inters, v)
+	return scanWithInterceptors[*CodexThreadControlQuery, *CodexThreadControlSelect](ctx, _s.CodexThreadControlQuery, _s, _s.inters, v)
 }
 
-func (_s *JobIntentSelect) sqlScan(ctx context.Context, root *JobIntentQuery, v any) error {
+func (_s *CodexThreadControlSelect) sqlScan(ctx context.Context, root *CodexThreadControlQuery, v any) error {
 	selector := root.sqlQuery(ctx)
 	aggregation := make([]string, 0, len(_s.fns))
 	for _, fn := range _s.fns {

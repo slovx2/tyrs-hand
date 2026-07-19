@@ -19,8 +19,10 @@ type ToolCall struct {
 	config `json:"-"`
 	// ID of the ent.
 	ID uuid.UUID `json:"id,omitempty"`
-	// JobAttemptID holds the value of the "job_attempt_id" field.
-	JobAttemptID uuid.UUID `json:"job_attempt_id,omitempty"`
+	// RunID holds the value of the "run_id" field.
+	RunID uuid.UUID `json:"run_id,omitempty"`
+	// IntentID holds the value of the "intent_id" field.
+	IntentID uuid.UUID `json:"intent_id,omitempty"`
 	// ThreadID holds the value of the "thread_id" field.
 	ThreadID string `json:"thread_id,omitempty"`
 	// TurnID holds the value of the "turn_id" field.
@@ -57,7 +59,7 @@ func (*ToolCall) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullString)
 		case toolcall.FieldStartedAt, toolcall.FieldFinishedAt:
 			values[i] = new(sql.NullTime)
-		case toolcall.FieldID, toolcall.FieldJobAttemptID:
+		case toolcall.FieldID, toolcall.FieldRunID, toolcall.FieldIntentID:
 			values[i] = new(uuid.UUID)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -80,11 +82,17 @@ func (_m *ToolCall) assignValues(columns []string, values []any) error {
 			} else if value != nil {
 				_m.ID = *value
 			}
-		case toolcall.FieldJobAttemptID:
+		case toolcall.FieldRunID:
 			if value, ok := values[i].(*uuid.UUID); !ok {
-				return fmt.Errorf("unexpected type %T for field job_attempt_id", values[i])
+				return fmt.Errorf("unexpected type %T for field run_id", values[i])
 			} else if value != nil {
-				_m.JobAttemptID = *value
+				_m.RunID = *value
+			}
+		case toolcall.FieldIntentID:
+			if value, ok := values[i].(*uuid.UUID); !ok {
+				return fmt.Errorf("unexpected type %T for field intent_id", values[i])
+			} else if value != nil {
+				_m.IntentID = *value
 			}
 		case toolcall.FieldThreadID:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -194,8 +202,11 @@ func (_m *ToolCall) String() string {
 	var builder strings.Builder
 	builder.WriteString("ToolCall(")
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
-	builder.WriteString("job_attempt_id=")
-	builder.WriteString(fmt.Sprintf("%v", _m.JobAttemptID))
+	builder.WriteString("run_id=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RunID))
+	builder.WriteString(", ")
+	builder.WriteString("intent_id=")
+	builder.WriteString(fmt.Sprintf("%v", _m.IntentID))
 	builder.WriteString(", ")
 	builder.WriteString("thread_id=")
 	builder.WriteString(_m.ThreadID)

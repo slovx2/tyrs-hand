@@ -21,9 +21,15 @@ type ToolCallCreate struct {
 	hooks    []Hook
 }
 
-// SetJobAttemptID sets the "job_attempt_id" field.
-func (_c *ToolCallCreate) SetJobAttemptID(v uuid.UUID) *ToolCallCreate {
-	_c.mutation.SetJobAttemptID(v)
+// SetRunID sets the "run_id" field.
+func (_c *ToolCallCreate) SetRunID(v uuid.UUID) *ToolCallCreate {
+	_c.mutation.SetRunID(v)
+	return _c
+}
+
+// SetIntentID sets the "intent_id" field.
+func (_c *ToolCallCreate) SetIntentID(v uuid.UUID) *ToolCallCreate {
+	_c.mutation.SetIntentID(v)
 	return _c
 }
 
@@ -190,8 +196,11 @@ func (_c *ToolCallCreate) defaults() {
 
 // check runs all checks and user-defined validators on the builder.
 func (_c *ToolCallCreate) check() error {
-	if _, ok := _c.mutation.JobAttemptID(); !ok {
-		return &ValidationError{Name: "job_attempt_id", err: errors.New(`ent: missing required field "ToolCall.job_attempt_id"`)}
+	if _, ok := _c.mutation.RunID(); !ok {
+		return &ValidationError{Name: "run_id", err: errors.New(`ent: missing required field "ToolCall.run_id"`)}
+	}
+	if _, ok := _c.mutation.IntentID(); !ok {
+		return &ValidationError{Name: "intent_id", err: errors.New(`ent: missing required field "ToolCall.intent_id"`)}
 	}
 	if _, ok := _c.mutation.ThreadID(); !ok {
 		return &ValidationError{Name: "thread_id", err: errors.New(`ent: missing required field "ToolCall.thread_id"`)}
@@ -252,9 +261,13 @@ func (_c *ToolCallCreate) createSpec() (*ToolCall, *sqlgraph.CreateSpec) {
 		_node.ID = id
 		_spec.ID.Value = &id
 	}
-	if value, ok := _c.mutation.JobAttemptID(); ok {
-		_spec.SetField(toolcall.FieldJobAttemptID, field.TypeUUID, value)
-		_node.JobAttemptID = value
+	if value, ok := _c.mutation.RunID(); ok {
+		_spec.SetField(toolcall.FieldRunID, field.TypeUUID, value)
+		_node.RunID = value
+	}
+	if value, ok := _c.mutation.IntentID(); ok {
+		_spec.SetField(toolcall.FieldIntentID, field.TypeUUID, value)
+		_node.IntentID = value
 	}
 	if value, ok := _c.mutation.ThreadID(); ok {
 		_spec.SetField(toolcall.FieldThreadID, field.TypeString, value)

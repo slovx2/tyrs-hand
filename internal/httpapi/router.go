@@ -76,6 +76,7 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 		gin.WrapH(promhttp.Handler())(c)
 	})
 	router.POST("/internal/v1/tools/call", s.internalToolCall)
+	router.POST("/internal/v1/tools/failure", s.internalToolFailure)
 	router.POST("/internal/v1/git/credential", s.internalGitCredential)
 	if includeWebhook {
 		router.POST("/webhooks/github", s.githubWebhook)
@@ -106,6 +107,8 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	authenticated.GET("/jobs", s.listJobs)
 	authenticated.GET("/workers", s.listWorkers)
 	authenticated.GET("/threads", s.listThreads)
+	authenticated.POST("/controls/:id/reconcile", s.requireCSRF(), s.reconcileControl)
+	authenticated.POST("/controls/:id/reset", s.requireCSRF(), s.resetControl)
 	authenticated.GET("/worktrees", s.listWorktrees)
 	authenticated.GET("/repo-caches", s.listRepoCaches)
 	authenticated.GET("/audit-logs", s.listAuditLogs)
