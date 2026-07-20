@@ -245,12 +245,17 @@ func parseUUIDs(intent *Intent, workItem, conversation, repository string) error
 }
 
 func (r *Repository) Heartbeat(ctx context.Context, claimed *ClaimedControl) error {
-	result, err := r.db.ExecContext(ctx, `UPDATE codex_thread_controls
+	result, err := r.db.ExecContext(ctx, `WITH updated_control AS (
+		UPDATE codex_thread_controls
 		SET lease_expires_at = now() + $4::interval, heartbeat_at = now(), updated_at = now()
 		WHERE id = $1 AND lease_token = $2 AND lease_epoch = $3
-		  AND active_intent_id = $5 AND status IN ('dispatching','active','stopping','reconciling')`,
+		  AND active_intent_id = $5 AND status IN ('dispatching','active','stopping','reconciling')
+		RETURNING id
+	)
+	UPDATE codex_turn_runs SET heartbeat_at = now()
+	WHERE id = $6 AND control_id = (SELECT id FROM updated_control) AND active_slot = 1`,
 		claimed.ControlID, security.Digest(claimed.LeaseToken), claimed.LeaseEpoch,
-		interval(r.leaseDuration), claimed.ID)
+		interval(r.leaseDuration), claimed.ID, claimed.RunID)
 	if err != nil {
 		return err
 	}
