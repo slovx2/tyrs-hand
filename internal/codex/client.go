@@ -42,6 +42,7 @@ type ClientOptions struct {
 	Bin            string
 	CWD            string
 	CodexHome      string
+	Home           string
 	Environment    []string
 	RequestTimeout time.Duration
 	ToolTimeout    time.Duration
@@ -81,10 +82,14 @@ func Start(ctx context.Context, options ClientOptions) (*Client, error) {
 			return nil, err
 		}
 	}
+	home := options.Home
+	if home == "" {
+		home = options.CodexHome
+	}
 	process, err := options.Launcher.Launch(ProcessSpec{
 		Bin: options.Bin, Args: []string{"app-server", "--listen", "stdio://"},
 		Dir: options.CWD, Env: append(cleanEnvironment(options.Environment),
-			"CODEX_HOME="+options.CodexHome, "HOME="+options.CodexHome, "RUST_LOG=warn"),
+			"CODEX_HOME="+options.CodexHome, "HOME="+home, "RUST_LOG=warn"),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("启动 Codex App Server: %w", err)

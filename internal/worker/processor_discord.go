@@ -107,7 +107,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		return result, err
 	}
 	poolKey := "job/" + claimed.ID.String()
-	client, err := p.pool.AcquireWithLauncher(ctx, poolKey, workspace, containerRuntime.CodexHome,
+	client, err := p.pool.AcquireWithLauncher(ctx, poolKey, workspace, containerRuntime.CodexHome, containerRuntime.Home,
 		environment, p.development.Launcher(containerRuntime), "/opt/tyrs-hand/bin/codex")
 	if err != nil {
 		return result, err

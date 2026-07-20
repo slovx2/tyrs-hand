@@ -12,12 +12,13 @@ import (
 type scriptedLauncher struct {
 	mu           sync.Mutex
 	launches     int
+	specs        []ProcessSpec
 	script       func(*scriptedServer)
 	processes    []*scriptedProcess
 	ignoreSignal bool
 }
 
-func (l *scriptedLauncher) Launch(ProcessSpec) (Process, error) {
+func (l *scriptedLauncher) Launch(spec ProcessSpec) (Process, error) {
 	serverIn, clientIn := io.Pipe()
 	clientOut, serverOut := io.Pipe()
 	clientErr, serverErr := io.Pipe()
@@ -29,6 +30,7 @@ func (l *scriptedLauncher) Launch(ProcessSpec) (Process, error) {
 	}
 	l.mu.Lock()
 	l.launches++
+	l.specs = append(l.specs, spec)
 	l.processes = append(l.processes, process)
 	l.mu.Unlock()
 	go func() {

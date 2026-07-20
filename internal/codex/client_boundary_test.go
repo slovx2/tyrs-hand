@@ -25,6 +25,20 @@ func TestExecLauncherErrorsAreReported(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestClientKeepsHomeSeparateFromCodexHome(t *testing.T) {
+	launcher := &scriptedLauncher{script: initializeScript(func(server *scriptedServer) {
+		<-server.process.exited
+	})}
+	client, err := Start(context.Background(), ClientOptions{
+		Bin: "mock", CWD: t.TempDir(), CodexHome: "/var/lib/tyrs-hand/codex/thread",
+		Home: "/home/dev", Launcher: launcher, SkipLocalHome: true, RequestTimeout: time.Second,
+	})
+	require.NoError(t, err)
+	require.Contains(t, launcher.specs[0].Env, "CODEX_HOME=/var/lib/tyrs-hand/codex/thread")
+	require.Contains(t, launcher.specs[0].Env, "HOME=/home/dev")
+	require.NoError(t, client.Close())
+}
+
 func TestReadFrameBoundaries(t *testing.T) {
 	frame, err := readFrame(bufio.NewReader(strings.NewReader("1234\n")), 5)
 	require.NoError(t, err)
