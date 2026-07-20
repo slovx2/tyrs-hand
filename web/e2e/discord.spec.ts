@@ -131,6 +131,7 @@ test('管理员配置 Discord、初始化并创建成员 Forum', async ({ page }
 })
 
 test('初始化冲突、模式切换和危险确认在移动端保持安全', async ({ page }) => {
+  const guildId = '123456789012345678'
   const preflightModes: string[] = []
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request()
@@ -148,7 +149,7 @@ test('初始化冲突、模式切换和危险确认在移动端保持安全', as
     if (path === '/api/v1/settings/discord') {
       return route.fulfill({
         json: {
-          guildId: '1528064164411478178',
+          guildId,
           enabled: true,
           communityEnabled: true,
           applicationId: '456',
@@ -179,7 +180,7 @@ test('初始化冲突、模式切换和危险确认在移动端保持安全', as
         json:
           body.mode === 'incremental'
             ? {
-                guildId: '1528064164411478178',
+                guildId,
                 mode: 'incremental',
                 creates: [],
                 updates: [],
@@ -195,7 +196,7 @@ test('初始化冲突、模式切换和危险确认在移动端保持安全', as
                 safe: false,
               }
             : {
-                guildId: '1528064164411478178',
+                guildId,
                 mode: 'fresh',
                 creates: ['系统'],
                 updates: [],
@@ -226,9 +227,7 @@ test('初始化冲突、模式切换和危险确认在移动端保持安全', as
   await expect(page.getByText('预检通过')).toBeVisible()
   await expect(page.getByRole('button', { name: '开始初始化' })).toBeDisabled()
 
-  await page
-    .getByLabel(/输入确认指令/)
-    .fill('DELETE ALL CHANNELS 1528064164411478178')
+  await page.getByLabel(/输入确认指令/).fill(`DELETE ALL CHANNELS ${guildId}`)
   await expect(page.getByRole('button', { name: '开始初始化' })).toBeEnabled()
   expect(preflightModes).toEqual(['incremental', 'fresh'])
   expect(
