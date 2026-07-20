@@ -12,7 +12,10 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/security"
 )
 
-var ErrLeaseLost = errors.New("codex control 租约已经失效")
+var (
+	ErrLeaseLost         = errors.New("codex control 租约已经失效")
+	ErrControlTerminated = errors.New("codex control 已经进入错误终态")
+)
 
 type Repository struct {
 	db            *sql.DB
@@ -66,6 +69,14 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 		if err != nil {
 			return uuid.Nil, false, err
 		}
+	}
+	var controlStatus string
+	if err := tx.QueryRowContext(ctx, `SELECT status FROM codex_thread_controls WHERE id = $1`, controlID).
+		Scan(&controlStatus); err != nil {
+		return uuid.Nil, false, err
+	}
+	if controlStatus == "error" {
+		return uuid.Nil, false, ErrControlTerminated
 	}
 
 	var sequence int64

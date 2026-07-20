@@ -24,6 +24,7 @@ type repositoryForumPermission struct {
 type repositoryPermissionSync struct {
 	InstallationID int64   `json:"installationId"`
 	RepositoryIDs  []int64 `json:"repositoryIds"`
+	DiscordUserID  string  `json:"discordUserId"`
 }
 
 func (d *Daemon) syncRepositoryPermissions(ctx context.Context, guildID string) error {
@@ -61,6 +62,9 @@ func (d *Daemon) syncRepositoryPermissionsMatching(ctx context.Context, guildID 
 			continue
 		}
 		for userID, login := range bindings {
+			if target.DiscordUserID != "" && userID != target.DiscordUserID {
+				continue
+			}
 			allowed := false
 			if forum.Enabled {
 				permission, permissionErr := d.githubPermission(ctx, forum.InstallationID, forum.Owner, forum.Repository, login)
@@ -91,7 +95,7 @@ func (d *Daemon) handleRepositoryPermissionSync(ctx context.Context, guildID, pa
 	if err := json.Unmarshal([]byte(payload), &target); err != nil {
 		return err
 	}
-	if target.InstallationID == 0 && len(target.RepositoryIDs) == 0 {
+	if target.InstallationID == 0 && len(target.RepositoryIDs) == 0 && target.DiscordUserID == "" {
 		return errors.New("discord 仓库权限同步事件缺少目标")
 	}
 	return d.syncRepositoryPermissionsMatching(ctx, guildID, target)

@@ -72,6 +72,18 @@ func workspaceReadyCard(repository bool) EmbedPayload {
 		Color: cardColorGreen, Footer: "你可以继续在此 Post 中发送消息和附件"}
 }
 
+func starterBindingRequiredCard() EmbedPayload {
+	return EmbedPayload{Title: "🔐 Codex · 请新建会话", Color: cardColorYellow,
+		Description: "此 Post 的首帖发送时尚未绑定 GitHub。为避免追溯提升旧指令的仓库权限，请完成绑定后新建一个 Post。",
+		Footer:      "现有 Post 仍可选择空白工作区"}
+}
+
+func terminatedControlCard() EmbedPayload {
+	return EmbedPayload{Title: "⛔ Codex · 会话已终止", Color: cardColorRed,
+		Description: "此会话此前发生了不可恢复错误，当前消息没有进入执行队列。请新建一个 Post 后重试。",
+		Footer:      "后台已保留错误信息供排查"}
+}
+
 func taskStatePresentation(state string) (string, int) {
 	switch state {
 	case "Running":

@@ -392,6 +392,35 @@ func testGatewayHandlers(t *testing.T, ctx context.Context, db *sql.DB, manager 
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_identity_bindings
 		WHERE guild_id = $1 AND discord_user_id = '1001' AND status = 'active'`, testGuildID).Scan(&activeBinding))
 	require.Zero(t, activeBinding)
+
+	messageEvent = newMessageEvent(t, client, "2003", "3003", "created before binding")
+	connector.onMessage(messageEvent)
+	var unboundConversationID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM discord_conversations
+		WHERE guild_id = $1 AND thread_id = '2003'`, testGuildID).Scan(&unboundConversationID))
+	_, err = bindingService.store.Bind(ctx, Binding{
+		GuildID: testGuildID, DiscordUserID: "1001", GitHubUserID: 101, GitHubLogin: "alice",
+	})
+	require.NoError(t, err)
+	require.ErrorIs(t, conversationService.CheckRepositorySelection(ctx, unboundConversationID),
+		ErrStarterGitHubBindingRequired)
+	var profileID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM agent_profiles ORDER BY created_at LIMIT 1`).Scan(&profileID))
+	require.ErrorIs(t, conversationService.Activate(ctx, unboundConversationID, profileID,
+		&seed.repositoryID, "1001"), ErrStarterGitHubBindingRequired)
+	require.NoError(t, conversationService.Activate(ctx, unboundConversationID, profileID, nil, "1001"))
+
+	_, err = db.ExecContext(ctx, `UPDATE codex_thread_controls SET status = 'error'
+		WHERE discord_conversation_id = $1`, conversationID)
+	require.NoError(t, err)
+	connector.onMessage(newMessageEvent(t, client, "2001", "3010", "retry after terminal error"))
+	var rejectedMessageCount, rejectionOutboxCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_input_messages
+		WHERE message_id = '3010'`).Scan(&rejectedMessageCount))
+	require.Zero(t, rejectedMessageCount)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM integration_outbox
+		WHERE operation_key = 'conversation:terminated-rejection:3010'`).Scan(&rejectionOutboxCount))
+	require.Equal(t, 1, rejectionOutboxCount)
 }
 
 func newMessageEvent(t *testing.T, client *bot.Client, threadID, messageID, content string) *events.MessageCreate {
@@ -505,6 +534,10 @@ func testDiscordRecoveryOrchestration(t *testing.T, ctx context.Context, db *sql
 	require.Zero(t, permissionChecks)
 	require.NoError(t, daemon.handleRepositoryPermissionSync(ctx, testGuildID,
 		`{"installationId":42,"repositoryIds":[43]}`))
+	require.Equal(t, 1, permissionChecks)
+	permissionChecks = 0
+	require.NoError(t, daemon.handleRepositoryPermissionSync(ctx, testGuildID,
+		`{"discordUserId":"1001"}`))
 	require.Equal(t, 1, permissionChecks)
 	require.Error(t, daemon.handleRepositoryPermissionSync(ctx, testGuildID, `{`))
 	require.Error(t, daemon.handleRepositoryPermissionSync(ctx, testGuildID, `{}`))

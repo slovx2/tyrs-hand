@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/auth"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
+	"go.uber.org/zap"
 )
 
 func (s *Server) getDiscordSettings(c *gin.Context) {
@@ -219,6 +221,15 @@ func (s *Server) discordGitHubBindCallback(c *gin.Context) {
 	if err != nil {
 		problem(c, http.StatusForbidden, "GitHub 身份绑定失败", err)
 		return
+	}
+	if s.redis != nil {
+		message, marshalErr := json.Marshal(map[string]string{"discordUserId": binding.DiscordUserID})
+		if marshalErr != nil {
+			s.logger.Warn("编码 Discord 用户仓库权限同步事件失败", zap.Error(marshalErr))
+		} else if publishErr := s.redis.Publish(c.Request.Context(), discordintegration.RepositoryPermissionSyncChannel, message).Err(); publishErr != nil {
+			// 定时全量同步会在 Redis 暂时不可用时兜底。
+			s.logger.Warn("发布 Discord 用户仓库权限同步事件失败", zap.Error(publishErr))
+		}
 	}
 	c.Data(http.StatusOK, "text/plain; charset=utf-8", []byte("GitHub 身份绑定成功："+binding.GitHubLogin+"。可以关闭此页面。"))
 }

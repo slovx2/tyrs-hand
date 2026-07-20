@@ -2,6 +2,7 @@ package discordintegration
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	disgorest "github.com/disgoorg/disgo/rest"
 	"github.com/disgoorg/snowflake/v2"
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"go.uber.org/zap"
 )
 
@@ -139,7 +141,16 @@ func (c *DisgoConnector) handleMessage(ctx context.Context, event *events.Messag
 		return err
 	}
 	if exists {
-		return c.conversations.Reply(ctx, input)
+		err := c.conversations.Reply(ctx, input)
+		if errors.Is(err, codexcontrol.ErrControlTerminated) {
+			return NewSQLoutbox(c.manager.db).Enqueue(ctx,
+				"conversation:terminated-rejection:"+input.MessageID,
+				"message.create", "channels/"+input.ThreadID+"/messages", map[string]any{
+					"channelId": input.ThreadID, "content": "",
+					"embeds": []EmbedPayload{terminatedControlCard()},
+				}, "conversation-terminated-"+input.MessageID)
+		}
+		return err
 	}
 	channel, err := event.Client().Rest.GetChannel(event.ChannelID, disgorest.WithCtx(ctx))
 	if err != nil {
@@ -297,11 +308,25 @@ func (c *DisgoConnector) showRepositorySelect(event *events.ComponentInteraction
 	if err := event.DeferCreateMessage(true); err != nil {
 		return
 	}
-	rows, err := c.manager.db.QueryContext(context.Background(), `SELECT r.id::text, r.owner || '/' || r.name
+	conversationID, err := uuid.Parse(rawConversationID)
+	if err == nil {
+		err = c.conversations.CheckRepositorySelection(context.Background(), conversationID)
+	}
+	if errors.Is(err, ErrStarterGitHubBindingRequired) {
+		content := ""
+		embeds, _ := discordEmbeds([]EmbedPayload{starterBindingRequiredCard()})
+		_, _ = event.Client().Rest.UpdateInteractionResponse(event.ApplicationID(), event.Token(),
+			discord.MessageUpdate{Content: &content, Embeds: &embeds})
+		return
+	}
+	var rows *sql.Rows
+	if err == nil {
+		rows, err = c.manager.db.QueryContext(context.Background(), `SELECT r.id::text, r.owner || '/' || r.name
 		FROM repositories r JOIN discord_forums f ON f.repository_id = r.id AND f.forum_type = 'repository'
 		JOIN discord_forum_access a ON a.forum_id = f.id
 		WHERE a.discord_user_id = $1 AND a.access_level = 'readonly' AND r.enabled = true
 		ORDER BY lower(r.owner), lower(r.name) LIMIT 25`, event.User().ID.String())
+	}
 	var options []discord.StringSelectMenuOption
 	if err == nil {
 		for rows.Next() {
@@ -354,7 +379,9 @@ func (c *DisgoConnector) activateRepository(event *events.ComponentInteractionCr
 	}
 	content := ""
 	card := workspaceReadyCard(true)
-	if err != nil {
+	if errors.Is(err, ErrStarterGitHubBindingRequired) {
+		card = starterBindingRequiredCard()
+	} else if err != nil {
 		card = conversationProgressCard(ConversationFailed, "工作区初始化失败，请稍后重试或联系管理员。")
 	}
 	empty := []discord.LayoutComponent{}

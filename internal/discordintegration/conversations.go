@@ -86,8 +86,11 @@ func (s *ConversationService) Activate(ctx context.Context, conversationID, prof
 	defer func() { _ = tx.Rollback() }()
 	var forumID uuid.UUID
 	var ownerID, status string
-	err = tx.QueryRowContext(ctx, `SELECT forum_id, owner_discord_user_id, status
-		FROM discord_conversations WHERE id = $1 FOR UPDATE`, conversationID).Scan(&forumID, &ownerID, &status)
+	var starterBound bool
+	err = tx.QueryRowContext(ctx, `SELECT c.forum_id, c.owner_discord_user_id, c.status,
+		m.github_binding_id IS NOT NULL
+		FROM discord_conversations c JOIN discord_input_messages m ON m.message_id = c.starter_message_id
+		WHERE c.id = $1 FOR UPDATE OF c`, conversationID).Scan(&forumID, &ownerID, &status, &starterBound)
 	if err != nil {
 		return err
 	}
@@ -98,6 +101,9 @@ func (s *ConversationService) Activate(ctx context.Context, conversationID, prof
 		return errors.New("discord Conversation 已经完成工作区选择")
 	}
 	if repositoryID != nil {
+		if !starterBound {
+			return ErrStarterGitHubBindingRequired
+		}
 		var allowed bool
 		err = tx.QueryRowContext(ctx, `SELECT EXISTS(
 			SELECT 1 FROM discord_forums f JOIN discord_forum_access a ON a.forum_id = f.id
@@ -145,6 +151,24 @@ func (s *ConversationService) Activate(ctx context.Context, conversationID, prof
 		return err
 	}
 	s.notifyJobs(ctx)
+	return nil
+}
+
+func (s *ConversationService) CheckRepositorySelection(ctx context.Context, conversationID uuid.UUID) error {
+	var status string
+	var starterBound bool
+	err := s.db.QueryRowContext(ctx, `SELECT c.status, m.github_binding_id IS NOT NULL
+		FROM discord_conversations c JOIN discord_input_messages m ON m.message_id = c.starter_message_id
+		WHERE c.id = $1`, conversationID).Scan(&status, &starterBound)
+	if err != nil {
+		return err
+	}
+	if status != "awaiting_workspace" {
+		return errors.New("discord Conversation 已经完成工作区选择")
+	}
+	if !starterBound {
+		return ErrStarterGitHubBindingRequired
+	}
 	return nil
 }
 

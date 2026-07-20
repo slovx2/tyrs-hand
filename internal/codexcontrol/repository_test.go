@@ -12,6 +12,38 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestEnqueueRejectsTerminatedControl(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	controlID := uuid.New()
+	conversationID := uuid.New()
+	profileID := uuid.New()
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(context.Background(), nil)
+	require.NoError(t, err)
+	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO codex_thread_controls")).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(controlID))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT status FROM codex_thread_controls WHERE id = $1")).
+		WithArgs(controlID).
+		WillReturnRows(sqlmock.NewRows([]string{"status"}).AddRow("error"))
+	mock.ExpectRollback()
+	mock.ExpectClose()
+
+	_, inserted, err := NewRepository(db, time.Minute).Enqueue(context.Background(), tx, EnqueueRequest{
+		SourceType: SourceDiscord, DiscordConversationID: conversationID,
+		AgentProfileID: profileID, ContextVersion: 1, IdempotencyKey: "discord:message:1",
+		Instruction: "retry",
+	})
+	require.ErrorIs(t, err, ErrControlTerminated)
+	require.False(t, inserted)
+	require.NoError(t, tx.Rollback())
+}
+
 func TestHeartbeatUpdatesControlAndRun(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
