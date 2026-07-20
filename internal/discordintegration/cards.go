@@ -57,27 +57,6 @@ func conversationProgressCard(state ConversationProgress, detail string) EmbedPa
 	}
 }
 
-func workspaceSelectionCard() EmbedPayload {
-	return EmbedPayload{Title: "🧭 Codex · 选择工作区", Color: cardColorBlurple,
-		Description: "新会话已创建。请选择使用独立的空白工作区，或选择一个你有权访问的仓库。",
-		Footer:      "每个 Discord Post 对应一个独立 Codex 会话"}
-}
-
-func workspaceReadyCard(repository bool) EmbedPayload {
-	description := "已选择空白工作区，首条消息已经进入队列。"
-	if repository {
-		description = "已选择仓库工作区，首条消息已经进入队列。"
-	}
-	return EmbedPayload{Title: "✅ Codex · 工作区已就绪", Description: description,
-		Color: cardColorGreen, Footer: "你可以继续在此 Post 中发送消息和附件"}
-}
-
-func starterBindingRequiredCard() EmbedPayload {
-	return EmbedPayload{Title: "🔐 Codex · 请新建会话", Color: cardColorYellow,
-		Description: "此 Post 的首帖发送时尚未绑定 GitHub。为避免追溯提升旧指令的仓库权限，请完成绑定后新建一个 Post。",
-		Footer:      "现有 Post 仍可选择空白工作区"}
-}
-
 func terminatedControlCard() EmbedPayload {
 	return EmbedPayload{Title: "⛔ Codex · 会话已终止", Color: cardColorRed,
 		Description: "此会话此前发生了不可恢复错误，当前消息没有进入执行队列。请新建一个 Post 后重试。",

@@ -29,9 +29,24 @@ type NormalizedEvent struct {
 	Body           string
 	Label          string
 	HeadSHA        string
+	HeadRef        string
+	HeadRepository string
+	BaseSHA        string
+	BaseRef        string
+	HTMLURL        string
 	Raw            json.RawMessage
 	ReceivedAt     time.Time
 	Installation   SCMInstallationEvent
+}
+
+type PullRequest struct {
+	Number         int
+	URL            string
+	HeadSHA        string
+	HeadRef        string
+	HeadRepository string
+	BaseSHA        string
+	BaseRef        string
 }
 
 type SCMInstallationEvent struct {

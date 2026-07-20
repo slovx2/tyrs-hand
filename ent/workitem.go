@@ -34,6 +34,14 @@ type WorkItem struct {
 	BaseSha *string `json:"base_sha,omitempty"`
 	// HeadSha holds the value of the "head_sha" field.
 	HeadSha *string `json:"head_sha,omitempty"`
+	// BaseRef holds the value of the "base_ref" field.
+	BaseRef *string `json:"base_ref,omitempty"`
+	// HeadRef holds the value of the "head_ref" field.
+	HeadRef *string `json:"head_ref,omitempty"`
+	// HeadRepository holds the value of the "head_repository" field.
+	HeadRepository *string `json:"head_repository,omitempty"`
+	// HTMLURL holds the value of the "html_url" field.
+	HTMLURL *string `json:"html_url,omitempty"`
 	// ContextVersion holds the value of the "context_version" field.
 	ContextVersion int64 `json:"context_version,omitempty"`
 	// ClosedAt holds the value of the "closed_at" field.
@@ -54,7 +62,7 @@ func (*WorkItem) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case workitem.FieldExternalNumber, workitem.FieldContextVersion:
 			values[i] = new(sql.NullInt64)
-		case workitem.FieldKind, workitem.FieldTitle, workitem.FieldState, workitem.FieldBaseSha, workitem.FieldHeadSha:
+		case workitem.FieldKind, workitem.FieldTitle, workitem.FieldState, workitem.FieldBaseSha, workitem.FieldHeadSha, workitem.FieldBaseRef, workitem.FieldHeadRef, workitem.FieldHeadRepository, workitem.FieldHTMLURL:
 			values[i] = new(sql.NullString)
 		case workitem.FieldClosedAt, workitem.FieldCreatedAt, workitem.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -130,6 +138,34 @@ func (_m *WorkItem) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.HeadSha = new(string)
 				*_m.HeadSha = value.String
+			}
+		case workitem.FieldBaseRef:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field base_ref", values[i])
+			} else if value.Valid {
+				_m.BaseRef = new(string)
+				*_m.BaseRef = value.String
+			}
+		case workitem.FieldHeadRef:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field head_ref", values[i])
+			} else if value.Valid {
+				_m.HeadRef = new(string)
+				*_m.HeadRef = value.String
+			}
+		case workitem.FieldHeadRepository:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field head_repository", values[i])
+			} else if value.Valid {
+				_m.HeadRepository = new(string)
+				*_m.HeadRepository = value.String
+			}
+		case workitem.FieldHTMLURL:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field html_url", values[i])
+			} else if value.Valid {
+				_m.HTMLURL = new(string)
+				*_m.HTMLURL = value.String
 			}
 		case workitem.FieldContextVersion:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -217,6 +253,26 @@ func (_m *WorkItem) String() string {
 	builder.WriteString(", ")
 	if v := _m.HeadSha; v != nil {
 		builder.WriteString("head_sha=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.BaseRef; v != nil {
+		builder.WriteString("base_ref=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.HeadRef; v != nil {
+		builder.WriteString("head_ref=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.HeadRepository; v != nil {
+		builder.WriteString("head_repository=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.HTMLURL; v != nil {
+		builder.WriteString("html_url=")
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")

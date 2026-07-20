@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test'
 
-test('管理员配置 Discord、初始化并创建成员 Forum', async ({ page }) => {
+test('管理员配置 Discord、初始化并创建仓库开发 Forum', async ({ page }) => {
   let initializationBody: Record<string, unknown> | undefined
   let forumCreated = false
+  let forumBody: Record<string, unknown> | undefined
   let accessBody: Record<string, unknown> | undefined
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request()
@@ -62,7 +63,47 @@ test('管理员配置 Discord、初始化并创建成员 Forum', async ({ page }
             displayName: 'Bob',
             bound: true,
             githubLogin: 'bob',
-            forumId: '11111111-1111-1111-1111-111111111111',
+          },
+        ],
+      })
+    }
+    if (path === '/api/v1/repositories') {
+      return route.fulfill({
+        json: {
+          items: [
+            {
+              id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+              owner: 'datawake-ai',
+              name: 'tyrs-hand',
+              enabled: true,
+            },
+          ],
+        },
+      })
+    }
+    if (path === '/api/v1/discord/development-environments') {
+      return route.fulfill({
+        json: [
+          {
+            id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
+            ownerDiscordUserId: '20',
+            ownerName: 'Bob',
+            buildRepositoryId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            buildRepository: 'datawake-ai/tyrs-hand',
+            status: 'running',
+            lastUsedAt: '2026-07-21T00:00:00Z',
+            forums: [
+              {
+                id: '11111111-1111-1111-1111-111111111111',
+                name: 'bob-dev',
+                discordId: '999',
+                repositoryId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                repository: 'datawake-ai/tyrs-hand',
+                status: 'ready',
+                branch: 'tyrs-hand/discord/bob',
+                dirty: false,
+              },
+            ],
           },
         ],
       })
@@ -91,6 +132,7 @@ test('管理员配置 Discord、初始化并创建成员 Forum', async ({ page }
     }
     if (path === '/api/v1/discord/members/10/forum') {
       forumCreated = true
+      forumBody = request.postDataJSON() as Record<string, unknown>
       return route.fulfill({
         status: 202,
         json: { id: '33333333-3333-3333-3333-333333333333' },
@@ -122,10 +164,18 @@ test('管理员配置 Discord、初始化并创建成员 Forum', async ({ page }
     confirmation: 'DELETE ALL CHANNELS 123',
   })
 
-  await page.getByRole('button', { name: '创建个人 Forum' }).click()
+  await page
+    .getByLabel('Alice 开发仓库')
+    .selectOption('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+  await page.getByLabel('Alice Forum 名称').fill('alice-dev')
+  await page.getByRole('button', { name: '创建开发 Forum' }).first().click()
   expect(forumCreated).toBe(true)
-  await page.getByLabel('Bob 授权成员').selectOption('10')
-  await page.getByLabel('Bob 权限').selectOption('operator')
+  expect(forumBody).toEqual({
+    repositoryId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    name: 'alice-dev',
+  })
+  await page.getByLabel('bob-dev 授权成员').selectOption('10')
+  await page.getByLabel('bob-dev 权限').selectOption('operator')
   await page.getByRole('button', { name: '授权' }).click()
   expect(accessBody).toEqual({ accessLevel: 'operator' })
 })
@@ -171,6 +221,12 @@ test('初始化冲突、模式切换和危险确认在移动端保持安全', as
       })
     }
     if (path === '/api/v1/discord/members') {
+      return route.fulfill({ json: [] })
+    }
+    if (path === '/api/v1/repositories') {
+      return route.fulfill({ json: { items: [] } })
+    }
+    if (path === '/api/v1/discord/development-environments') {
       return route.fulfill({ json: [] })
     }
     if (path === '/api/v1/discord/initializations/preflight') {

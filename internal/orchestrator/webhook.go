@@ -62,6 +62,9 @@ func (s *WebhookService) Process(ctx context.Context, signature, deliveryID, eve
 	if err := hydrateInstallationRepositories(ctx, s.provider, &event); err != nil {
 		return WebhookResult{}, err
 	}
+	if err := hydratePullRequest(ctx, s.provider, &event); err != nil {
+		return WebhookResult{}, err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return WebhookResult{}, err
@@ -170,6 +173,24 @@ func (s *WebhookService) Process(ctx context.Context, signature, deliveryID, eve
 	}
 	result.Jobs = jobs
 	return result, nil
+}
+
+func hydratePullRequest(ctx context.Context, provider ports.SCMProvider, event *domain.NormalizedEvent) error {
+	if event.Kind != domain.WorkItemPullRequest || event.Number <= 0 ||
+		(event.HeadSHA != "" && event.HeadRef != "" && event.HTMLURL != "") {
+		return nil
+	}
+	pull, err := provider.PullRequest(ctx, event.InstallationID, event.Owner, event.Repository, event.Number)
+	if err != nil {
+		return fmt.Errorf("补全 Pull Request 元数据: %w", err)
+	}
+	event.HTMLURL = pull.URL
+	event.HeadSHA = pull.HeadSHA
+	event.HeadRef = pull.HeadRef
+	event.HeadRepository = pull.HeadRepository
+	event.BaseSHA = pull.BaseSHA
+	event.BaseRef = pull.BaseRef
+	return nil
 }
 
 func discordPermissionSyncForEvent(event domain.NormalizedEvent) *DiscordPermissionSync {
@@ -298,7 +319,12 @@ func resolveWorkItem(ctx context.Context, tx *sql.Tx, repositoryID uuid.UUID, ev
 		LIMIT 1`, repositoryID, event.Kind, event.Number).Scan(&id)
 	if err == nil {
 		_, err = tx.ExecContext(ctx, `UPDATE work_items SET title = $2,
-			head_sha = COALESCE(NULLIF($3, ''), head_sha), updated_at = now() WHERE id = $1`, id, event.Title, event.HeadSHA)
+			head_sha = COALESCE(NULLIF($3, ''), head_sha), head_ref = COALESCE(NULLIF($4, ''), head_ref),
+			head_repository = COALESCE(NULLIF($5, ''), head_repository),
+			base_sha = COALESCE(NULLIF($6, ''), base_sha), base_ref = COALESCE(NULLIF($7, ''), base_ref),
+			html_url = COALESCE(NULLIF($8, ''), html_url), updated_at = now() WHERE id = $1`,
+			id, event.Title, event.HeadSHA, event.HeadRef, event.HeadRepository,
+			event.BaseSHA, event.BaseRef, event.HTMLURL)
 		if err == nil {
 			err = updateWorkItemState(ctx, tx, id, event.Action)
 		}
@@ -308,11 +334,19 @@ func resolveWorkItem(ctx context.Context, tx *sql.Tx, repositoryID uuid.UUID, ev
 		return uuid.Nil, err
 	}
 	err = tx.QueryRowContext(ctx, `
-		INSERT INTO work_items(repository_id, kind, external_number, title, head_sha)
-		VALUES ($1, $2, $3, $4, NULLIF($5, ''))
+		INSERT INTO work_items(repository_id, kind, external_number, title, head_sha,
+			head_ref, head_repository, base_sha, base_ref, html_url)
+		VALUES ($1, $2, $3, $4, NULLIF($5, ''), NULLIF($6, ''), NULLIF($7, ''),
+			NULLIF($8, ''), NULLIF($9, ''), NULLIF($10, ''))
 		ON CONFLICT(repository_id, kind, external_number) DO UPDATE
-		SET title = EXCLUDED.title, head_sha = COALESCE(EXCLUDED.head_sha, work_items.head_sha), updated_at = now()
-		RETURNING id`, repositoryID, event.Kind, event.Number, event.Title, event.HeadSHA).Scan(&id)
+		SET title = EXCLUDED.title, head_sha = COALESCE(EXCLUDED.head_sha, work_items.head_sha),
+			head_ref = COALESCE(EXCLUDED.head_ref, work_items.head_ref),
+			head_repository = COALESCE(EXCLUDED.head_repository, work_items.head_repository),
+			base_sha = COALESCE(EXCLUDED.base_sha, work_items.base_sha),
+			base_ref = COALESCE(EXCLUDED.base_ref, work_items.base_ref),
+			html_url = COALESCE(EXCLUDED.html_url, work_items.html_url), updated_at = now()
+		RETURNING id`, repositoryID, event.Kind, event.Number, event.Title, event.HeadSHA,
+		event.HeadRef, event.HeadRepository, event.BaseSHA, event.BaseRef, event.HTMLURL).Scan(&id)
 	if err == nil {
 		err = updateWorkItemState(ctx, tx, id, event.Action)
 	}

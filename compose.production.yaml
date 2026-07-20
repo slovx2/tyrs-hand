@@ -9,20 +9,18 @@ services:
     environment:
       TYRS_HAND_MASTER_KEY: ""
       TYRS_HAND_MASTER_KEY_FILE: /run/secrets/master_key
-      TYRS_HAND_ENABLE_HOST_DOCKER: "true"
-      TYRS_HAND_DOCKER_NETWORK: ${TYRS_HAND_DOCKER_NETWORK:-tyrs-hand-agent-runtime}
-      TYRS_HAND_DOCKER_STOP_TIMEOUT: ${TYRS_HAND_DOCKER_STOP_TIMEOUT:-10s}
-      TYRS_HAND_DOCKER_CLEANUP_TIMEOUT: ${TYRS_HAND_DOCKER_CLEANUP_TIMEOUT:-30s}
-      TYRS_HAND_DOCKER_SWEEP_INTERVAL: ${TYRS_HAND_DOCKER_SWEEP_INTERVAL:-30s}
+    secrets: [master_key]
+
+  discord-worker:
+    environment:
+      TYRS_HAND_MASTER_KEY: ""
+      TYRS_HAND_MASTER_KEY_FILE: /run/secrets/master_key
     group_add:
       - ${TYRS_HAND_DOCKER_GID:?请设置宿主 Docker Socket 的数字 GID}
     volumes:
       - type: bind
         source: /var/run/docker.sock
         target: /var/run/docker.sock
-    networks:
-      default: {}
-      agent-runtime: {}
     secrets: [master_key]
 
   discord:
@@ -40,7 +38,3 @@ services:
 secrets:
   master_key:
     file: ./.local/secrets/master_key
-
-networks:
-  agent-runtime:
-    name: ${TYRS_HAND_DOCKER_NETWORK:-tyrs-hand-agent-runtime}

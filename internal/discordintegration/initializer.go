@@ -23,6 +23,7 @@ type InitializationAction struct {
 	Spec         ChannelSpec `json:"spec,omitempty"`
 	OwnerUserID  string      `json:"ownerUserId,omitempty"`
 	RepositoryID string      `json:"repositoryId,omitempty"`
+	ForumID      string      `json:"forumId,omitempty"`
 }
 
 type InitializationPlan struct {

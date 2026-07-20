@@ -286,6 +286,8 @@ type fakeSCMProvider struct {
 	event      domain.NormalizedEvent
 	permission string
 	valid      bool
+	pull       domain.PullRequest
+	pullErr    error
 }
 
 func (p fakeSCMProvider) Name() string                      { return "github" }
@@ -298,6 +300,12 @@ func (p fakeSCMProvider) Repository(context.Context, int64, string, string) (dom
 		ExternalID: 99, Owner: "example-org", Name: "installed", DefaultBranch: "main",
 		CloneURL: "https://example.invalid/example-org/installed.git",
 	}, nil
+}
+func (p fakeSCMProvider) PullRequest(context.Context, int64, string, string, int) (domain.PullRequest, error) {
+	if p.pullErr != nil {
+		return domain.PullRequest{}, p.pullErr
+	}
+	return p.pull, nil
 }
 func (p fakeSCMProvider) Permission(context.Context, int64, string, string, string) (string, error) {
 	return p.permission, nil
@@ -339,6 +347,29 @@ func testWebhookOrchestration(t *testing.T, db *sql.DB, repositoryID uuid.UUID) 
 	duplicate, err := service.Process(ctx, "signature", "delivery-1", "issue_comment", []byte(`{}`))
 	require.NoError(t, err)
 	require.True(t, duplicate.Duplicate)
+
+	prEvent := event
+	prEvent.DeliveryID = "delivery-pr-comment"
+	prEvent.Kind = domain.WorkItemPullRequest
+	prEvent.Number = 3
+	prEvent.Title = "pull request"
+	prEvent.HTMLURL = "https://github.com/owner/repo/pull/3"
+	pull := domain.PullRequest{Number: 3, URL: prEvent.HTMLURL, HeadSHA: "abc123",
+		HeadRef: "feature", HeadRepository: "fork/repo", BaseSHA: "def456", BaseRef: "main"}
+	prService := orchestrator.NewWebhookService(db,
+		fakeSCMProvider{event: prEvent, permission: "write", valid: true, pull: pull}, "tyrs-hand[bot]")
+	prResult, err := prService.Process(ctx, "signature", prEvent.DeliveryID, "issue_comment", []byte(`{}`))
+	require.NoError(t, err)
+	require.Equal(t, 1, prResult.Jobs)
+	var headRef, headRepository, baseSHA, baseRef, htmlURL string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT head_ref, head_repository, base_sha, base_ref, html_url
+		FROM work_items WHERE repository_id = $1 AND kind = 'pull_request' AND external_number = 3`, repositoryID).
+		Scan(&headRef, &headRepository, &baseSHA, &baseRef, &htmlURL))
+	require.Equal(t, "feature", headRef)
+	require.Equal(t, "fork/repo", headRepository)
+	require.Equal(t, "def456", baseSHA)
+	require.Equal(t, "main", baseRef)
+	require.Equal(t, prEvent.HTMLURL, htmlURL)
 
 	invalid := orchestrator.NewWebhookService(db, fakeSCMProvider{event: event}, "tyrs-hand")
 	_, err = invalid.Process(ctx, "signature", "invalid", "issue_comment", nil)

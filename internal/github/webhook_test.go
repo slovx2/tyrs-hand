@@ -52,12 +52,19 @@ func TestNormalizePullRequestAndInstallationRepositories(t *testing.T) {
 		"action":"review_requested","installation":{"id":9},
 		"repository":{"id":10,"name":"repo","full_name":"owner/repo"},
 		"sender":{"id":11,"login":"alice"},
-		"pull_request":{"number":15,"title":"Change","body":"details","head":{"sha":"abc123"}}
+		"pull_request":{"number":15,"title":"Change","body":"details","html_url":"https://github.com/owner/repo/pull/15",
+		"head":{"sha":"abc123","ref":"feature","repo":{"full_name":"fork/repo"}},
+		"base":{"sha":"def456","ref":"main"}}
 	}`))
 	require.NoError(t, err)
 	require.Equal(t, domain.WorkItemPullRequest, pull.Kind)
 	require.Equal(t, "owner", pull.Owner)
 	require.Equal(t, "abc123", pull.HeadSHA)
+	require.Equal(t, "feature", pull.HeadRef)
+	require.Equal(t, "fork/repo", pull.HeadRepository)
+	require.Equal(t, "def456", pull.BaseSHA)
+	require.Equal(t, "main", pull.BaseRef)
+	require.Equal(t, "https://github.com/owner/repo/pull/15", pull.HTMLURL)
 
 	installation, err := NormalizeWebhook("delivery-install", "installation_repositories", []byte(`{
 		"action":"added","installation":{"id":9,"account":{"login":"org","type":"Organization"}},

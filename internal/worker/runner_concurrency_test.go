@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -10,10 +9,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/config"
-	"github.com/slovx2/tyrs-hand/internal/devenv"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest/observer"
 )
 
 type concurrencyQueue struct {
@@ -21,17 +18,35 @@ type concurrencyQueue struct {
 	jobs      []*codexcontrol.ClaimedControl
 	claimed   int
 	completed int
+	sources   []string
 }
 
-func (q *concurrencyQueue) Claim(context.Context, string) (*codexcontrol.ClaimedControl, error) {
+func (q *concurrencyQueue) ClaimSource(_ context.Context, _ string, source string) (*codexcontrol.ClaimedControl, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	q.sources = append(q.sources, source)
 	if q.claimed == len(q.jobs) {
 		return nil, nil
 	}
 	job := q.jobs[q.claimed]
 	q.claimed++
 	return job, nil
+}
+
+func TestRunnerFiltersClaimsByWorkerRole(t *testing.T) {
+	for _, test := range []struct{ role, source string }{
+		{role: "github", source: codexcontrol.SourceGitHub},
+		{role: "discord", source: codexcontrol.SourceDiscord},
+		{role: "all", source: ""},
+	} {
+		t.Run(test.role, func(t *testing.T) {
+			queue := &concurrencyQueue{}
+			runner := &Runner{cfg: config.Config{WorkerID: "worker", WorkerRole: test.role,
+				WorkerMaxConcurrentJobs: 1}, controls: queue, logger: zap.NewNop()}
+			runner.fillSlots(context.Background(), make(chan struct{}, 1), &sync.WaitGroup{})
+			require.Equal(t, []string{test.source}, queue.sources)
+		})
+	}
 }
 
 func (*concurrencyQueue) Heartbeat(context.Context, *codexcontrol.ClaimedControl) error { return nil }
@@ -129,36 +144,4 @@ func TestRunnerLimitsConcurrentJobsToSix(t *testing.T) {
 	jobQueue.mu.Lock()
 	require.Equal(t, 7, jobQueue.completed)
 	jobQueue.mu.Unlock()
-}
-
-func TestDegradedEnvironmentAddsAgentDiagnosticContext(t *testing.T) {
-	contextEntries := environmentAdditionalContext(devenv.Result{
-		Status: "degraded",
-		Diagnostics: []devenv.Diagnostic{{
-			Stage: "dependencies", Project: "api", Manager: "uv", Message: "simulated failure",
-		}},
-	})
-	entry, exists := contextEntries["tyrs_hand_development_environment"]
-	require.True(t, exists)
-	require.Equal(t, "application", entry.Kind)
-	require.Contains(t, entry.Value, "simulated failure")
-	require.Contains(t, entry.Value, "继续完成任务")
-	require.Nil(t, environmentAdditionalContext(devenv.Result{Status: "ready"}))
-}
-
-type failedDockerCleanup struct{}
-
-func (failedDockerCleanup) Environment() []string { return nil }
-func (failedDockerCleanup) Close(context.Context) error {
-	return errors.New("container is in use")
-}
-
-func TestDockerCleanupFailureOnlyProducesWarning(t *testing.T) {
-	core, logs := observer.New(zap.WarnLevel)
-	processor := &Processor{cfg: config.Config{DockerCleanupTimeout: time.Second}, logger: zap.New(core)}
-	claimed := &codexcontrol.ClaimedControl{RunID: uuid.New()}
-	claimed.ID = uuid.New()
-	processor.finishHostDocker(failedDockerCleanup{}, claimed)
-	require.Len(t, logs.All(), 1)
-	require.Contains(t, logs.All()[0].Message, "自动停止失败")
 }

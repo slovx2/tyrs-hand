@@ -5,29 +5,28 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/config"
-	"github.com/slovx2/tyrs-hand/internal/hostdocker"
+	"github.com/slovx2/tyrs-hand/internal/devcontainer"
 	"go.uber.org/zap"
 )
 
 type Runner struct {
-	cfg        config.Config
-	db         *sql.DB
-	redis      *redis.Client
-	controls   controlQueue
-	processor  jobProcessor
-	hostDocker *hostdocker.Manager
-	logger     *zap.Logger
+	cfg         config.Config
+	db          *sql.DB
+	redis       *redis.Client
+	controls    controlQueue
+	processor   jobProcessor
+	development *devcontainer.Manager
+	logger      *zap.Logger
 }
 
 type controlQueue interface {
-	Claim(context.Context, string) (*codexcontrol.ClaimedControl, error)
+	ClaimSource(context.Context, string, string) (*codexcontrol.ClaimedControl, error)
 	Heartbeat(context.Context, *codexcontrol.ClaimedControl) error
 	Complete(context.Context, *codexcontrol.ClaimedControl, codexcontrol.TurnResult) error
 	Cancel(context.Context, *codexcontrol.ClaimedControl, string, string) error
@@ -42,10 +41,10 @@ type jobProcessor interface {
 }
 
 func NewRunner(cfg config.Config, db *sql.DB, redisClient *redis.Client, controls *codexcontrol.Repository,
-	processor *Processor, dockerManager *hostdocker.Manager, logger *zap.Logger,
+	processor *Processor, development *devcontainer.Manager, logger *zap.Logger,
 ) *Runner {
 	return &Runner{cfg: cfg, db: db, redis: redisClient, controls: controls, processor: processor,
-		hostDocker: dockerManager, logger: logger}
+		development: development, logger: logger}
 }
 
 func (r *Runner) Run(ctx context.Context) error {
@@ -53,8 +52,11 @@ func (r *Runner) Run(ctx context.Context) error {
 		return err
 	}
 	go r.workerHeartbeat(ctx)
-	if r.hostDocker != nil {
-		go r.hostDocker.RunSweeper(ctx)
+	if r.cfg.WorkerRole != "discord" {
+		go r.runWorktreeSweeper(ctx)
+	}
+	if r.development != nil {
+		go r.development.RunSweeper(ctx)
 	}
 	var wakeups <-chan *redis.Message
 	var subscription *redis.PubSub
@@ -102,6 +104,25 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 }
 
+func (r *Runner) runWorktreeSweeper(ctx context.Context) {
+	cleaner, ok := r.processor.(interface{ cleanupClosedWorktrees(context.Context) error })
+	if !ok {
+		return
+	}
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for {
+		if err := cleaner.cleanupClosedWorktrees(ctx); err != nil {
+			r.logger.Warn("清理已关闭 GitHub Worktree 失败", zap.Error(err))
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
 func (r *Runner) fillSlots(ctx context.Context, slots chan struct{}, active *sync.WaitGroup) {
 	for {
 		select {
@@ -111,7 +132,14 @@ func (r *Runner) fillSlots(ctx context.Context, slots chan struct{}, active *syn
 		default:
 			return
 		}
-		claimed, err := r.controls.Claim(ctx, r.cfg.WorkerID)
+		sourceType := ""
+		switch r.cfg.WorkerRole {
+		case "github":
+			sourceType = codexcontrol.SourceGitHub
+		case "discord":
+			sourceType = codexcontrol.SourceDiscord
+		}
+		claimed, err := r.controls.ClaimSource(ctx, r.cfg.WorkerID, sourceType)
 		if err != nil {
 			<-slots
 			r.logger.Error("领取任务失败", zap.Error(err))
@@ -145,11 +173,6 @@ func (r *Runner) execute(parent context.Context, claimed *codexcontrol.ClaimedCo
 					r.logger.Error("任务心跳失败", zap.Error(err), zap.String("job_id", claimed.ID.String()))
 					cancel()
 					return
-				}
-				if r.hostDocker != nil {
-					if err := r.hostDocker.Touch(claimed.RunID.String()); err != nil {
-						r.logger.Warn("刷新 Docker Run Lease 失败", zap.Error(err), zap.String("run_id", claimed.RunID.String()))
-					}
 				}
 			case <-ctx.Done():
 				return
@@ -203,11 +226,17 @@ func (r *Runner) execute(parent context.Context, claimed *codexcontrol.ClaimedCo
 }
 
 func (r *Runner) register(ctx context.Context) error {
-	_, err := r.db.ExecContext(ctx, `
+	metadata, err := json.Marshal(map[string]any{
+		"agent": "codex", "maxConcurrentJobs": r.cfg.WorkerMaxConcurrentJobs, "role": r.cfg.WorkerRole,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = r.db.ExecContext(ctx, `
 		INSERT INTO worker_nodes(id, version, status, metadata)
 		VALUES ($1, '0.1.0', 'online', $2)
-		ON CONFLICT(id) DO UPDATE SET version = EXCLUDED.version, status = 'online', heartbeat_at = now(), started_at = now()`,
-		r.cfg.WorkerID, []byte(fmt.Sprintf(`{"agent":"codex","maxConcurrentJobs":%d}`, r.cfg.WorkerMaxConcurrentJobs)))
+		ON CONFLICT(id) DO UPDATE SET version = EXCLUDED.version, status = 'online', metadata = EXCLUDED.metadata,
+			heartbeat_at = now(), started_at = now()`, r.cfg.WorkerID, metadata)
 	return err
 }
 

@@ -55,15 +55,25 @@ type webhookEnvelope struct {
 		Number      int       `json:"number"`
 		Title       string    `json:"title"`
 		Body        string    `json:"body"`
+		HTMLURL     string    `json:"html_url"`
 		PullRequest *struct{} `json:"pull_request"`
 	} `json:"issue"`
 	PullRequest struct {
-		Number int    `json:"number"`
-		Title  string `json:"title"`
-		Body   string `json:"body"`
-		Head   struct {
-			SHA string `json:"sha"`
+		Number  int    `json:"number"`
+		Title   string `json:"title"`
+		Body    string `json:"body"`
+		HTMLURL string `json:"html_url"`
+		Head    struct {
+			SHA  string `json:"sha"`
+			Ref  string `json:"ref"`
+			Repo struct {
+				FullName string `json:"full_name"`
+			} `json:"repo"`
 		} `json:"head"`
+		Base struct {
+			SHA string `json:"sha"`
+			Ref string `json:"ref"`
+		} `json:"base"`
 	} `json:"pull_request"`
 	Comment struct {
 		Body string `json:"body"`
@@ -138,17 +148,24 @@ func NormalizeWebhook(deliveryID, eventName string, payload []byte) (domain.Norm
 		event.Title = envelope.PullRequest.Title
 		event.Body = firstNonEmpty(envelope.Comment.Body, envelope.Review.Body, envelope.PullRequest.Body)
 		event.HeadSHA = envelope.PullRequest.Head.SHA
+		event.HeadRef = envelope.PullRequest.Head.Ref
+		event.HeadRepository = envelope.PullRequest.Head.Repo.FullName
+		event.BaseSHA = envelope.PullRequest.Base.SHA
+		event.BaseRef = envelope.PullRequest.Base.Ref
+		event.HTMLURL = envelope.PullRequest.HTMLURL
 	case envelope.Issue.Number > 0 && envelope.Issue.PullRequest != nil:
 		// PR 的普通评论由 issue_comment 事件承载，只能通过 issue.pull_request 标记识别。
 		event.Kind = domain.WorkItemPullRequest
 		event.Number = envelope.Issue.Number
 		event.Title = envelope.Issue.Title
 		event.Body = firstNonEmpty(envelope.Comment.Body, envelope.Issue.Body)
+		event.HTMLURL = envelope.Issue.HTMLURL
 	case envelope.Issue.Number > 0:
 		event.Kind = domain.WorkItemIssue
 		event.Number = envelope.Issue.Number
 		event.Title = envelope.Issue.Title
 		event.Body = firstNonEmpty(envelope.Comment.Body, envelope.Issue.Body)
+		event.HTMLURL = envelope.Issue.HTMLURL
 	}
 	return event, nil
 }

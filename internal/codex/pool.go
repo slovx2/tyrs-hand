@@ -37,6 +37,12 @@ func NewPool(options PoolOptions) *Pool {
 }
 
 func (p *Pool) Acquire(ctx context.Context, key, cwd, codexHome string, environment []string) (*Client, error) {
+	return p.AcquireWithLauncher(ctx, key, cwd, codexHome, environment, nil, "")
+}
+
+func (p *Pool) AcquireWithLauncher(ctx context.Context, key, cwd, codexHome string,
+	environment []string, launcher Launcher, bin string,
+) (*Client, error) {
 	p.mu.Lock()
 	if p.closed {
 		p.mu.Unlock()
@@ -55,10 +61,13 @@ func (p *Pool) Acquire(ctx context.Context, key, cwd, codexHome string, environm
 	entry := &poolEntry{handlers: make(map[string]ToolHandler)}
 	p.mu.Unlock()
 
+	if bin == "" {
+		bin = p.options.Bin
+	}
 	client, err := Start(ctx, ClientOptions{
-		Bin: p.options.Bin, CWD: cwd, CodexHome: codexHome, Environment: environment,
+		Bin: bin, CWD: cwd, CodexHome: codexHome, Environment: environment,
 		RequestTimeout: p.options.RequestTimeout, ToolTimeout: p.options.ToolTimeout,
-		Logger: p.options.Logger,
+		Logger: p.options.Logger, Launcher: launcher, SkipLocalHome: launcher != nil,
 		ToolHandler: func(toolCtx context.Context, request ToolCallRequest) (ToolCallResult, error) {
 			return p.routeTool(key, toolCtx, request)
 		},

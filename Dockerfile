@@ -20,8 +20,6 @@ ARG TARGETOS=linux
 ARG TARGETARCH
 RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -buildid=" -o /out/tyrs-hand-worker ./cmd/tyrs-hand-worker && \
-    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -buildid=" -o /out/tyrs-hand-runtime ./cmd/tyrs-hand-runtime && \
-	CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -buildid=" -o /out/tyrs-hand-docker ./cmd/tyrs-hand-docker && \
 	CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -buildid=" -o /out/tyrs-hand-reply-hook ./cmd/tyrs-hand-reply-hook && \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -buildid=" -o /out/tyrs-hand-admin ./cmd/tyrs-hand-admin && \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -buildid=" -o /out/tyrs-hand-discord ./cmd/tyrs-hand-discord
@@ -48,7 +46,7 @@ CMD ["tyrs-hand-server"]
 
 FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS worker
 ARG TARGETARCH
-COPY internal/devenv/worker-runtime.lock.json /usr/local/share/tyrs-hand/worker-runtime.lock.json
+COPY internal/codex/worker-runtime.lock.json /usr/local/share/tyrs-hand/worker-runtime.lock.json
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     set -eux; \
     runtime_lock=/usr/local/share/tyrs-hand/worker-runtime.lock.json; \
@@ -67,49 +65,32 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     done; \
     rm -rf /var/lib/apt/lists/* && \
     codex_version="$(node -p "require('${runtime_lock}').codex")"; \
-    corepack_version="$(node -p "require('${runtime_lock}').corepack")"; \
-    npm install --global --omit=dev "@openai/codex@${codex_version}" "corepack@${corepack_version}" && \
+    npm install --global --omit=dev "@openai/codex@${codex_version}" && \
     npm cache clean --force && \
     codex_native="$(find /usr/local/lib/node_modules/@openai/codex -path '*/vendor/*/bin/codex' -type f -print -quit)" && \
     test -n "${codex_native}" && ln -s "${codex_native}" /usr/local/bin/apply_patch && \
     rm -rf /usr/local/lib/node_modules/npm /opt/yarn-v1.22.22 && \
-    rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/yarn /usr/local/bin/yarnpkg /usr/local/bin/pnpm /usr/local/bin/pnpx
+    rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg /usr/local/bin/pnpm /usr/local/bin/pnpx
 RUN set -eux; \
     runtime_lock=/usr/local/share/tyrs-hand/worker-runtime.lock.json; \
-    mise_version="$(node -p "require('${runtime_lock}').mise")"; \
-    uv_version="$(node -p "require('${runtime_lock}').uv")"; \
     docker_version="$(node -p "require('${runtime_lock}').dockerCli")"; \
-    mise_sha="$(node -p "require('${runtime_lock}').downloads.mise['${TARGETARCH}']")"; \
-    uv_sha="$(node -p "require('${runtime_lock}').downloads.uv['${TARGETARCH}']")"; \
-    docker_sha="$(node -p "require('${runtime_lock}').downloads.dockerCli['${TARGETARCH}']")"; \
-    test -n "${mise_sha}"; test -n "${uv_sha}"; test -n "${docker_sha}"; \
+    docker_sha="$(node -p "require('${runtime_lock}').dockerDownloads['${TARGETARCH}']")"; \
+    test -n "${docker_sha}"; \
     case "${TARGETARCH}" in \
-      amd64) mise_arch=x64; uv_arch=x86_64; docker_arch=x86_64 ;; \
-      arm64) mise_arch=arm64; uv_arch=aarch64; docker_arch=aarch64 ;; \
+      amd64) docker_arch=x86_64 ;; \
+      arm64) docker_arch=aarch64 ;; \
       *) echo "unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
     esac; \
-    mise_asset="mise-v${mise_version}-linux-${mise_arch}"; \
-    curl --fail --location --silent --show-error --output /tmp/mise "https://github.com/jdx/mise/releases/download/v${mise_version}/${mise_asset}"; \
-    echo "${mise_sha}  /tmp/mise" | sha256sum --check --strict; \
-    install -m 0755 /tmp/mise /usr/local/bin/mise; \
-    uv_asset="uv-${uv_arch}-unknown-linux-gnu.tar.gz"; \
-    curl --fail --location --silent --show-error --output /tmp/uv.tar.gz "https://github.com/astral-sh/uv/releases/download/${uv_version}/${uv_asset}"; \
-    echo "${uv_sha}  /tmp/uv.tar.gz" | sha256sum --check --strict; \
-    tar -xzf /tmp/uv.tar.gz -C /tmp; \
-    install -m 0755 "/tmp/uv-${uv_arch}-unknown-linux-gnu/uv" /usr/local/bin/uv; \
-    install -m 0755 "/tmp/uv-${uv_arch}-unknown-linux-gnu/uvx" /usr/local/bin/uvx; \
     docker_asset="docker-${docker_version}.tgz"; \
     curl --fail --location --silent --show-error --output /tmp/docker.tgz "https://download.docker.com/linux/static/stable/${docker_arch}/${docker_asset}"; \
     echo "${docker_sha}  /tmp/docker.tgz" | sha256sum --check --strict; \
     install -d -m 0755 /usr/local/libexec/tyrs-hand; \
     tar -xzf /tmp/docker.tgz -C /tmp docker/docker; \
     install -m 0755 /tmp/docker/docker /usr/local/libexec/tyrs-hand/docker; \
-    rm -rf /tmp/mise /tmp/uv.tar.gz "/tmp/uv-${uv_arch}-unknown-linux-gnu" /tmp/docker.tgz /tmp/docker
+    rm -rf /tmp/docker.tgz /tmp/docker
 RUN groupadd --gid 10001 tyrs-hand && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/tyrs-hand tyrs-hand && \
     install -d -o tyrs-hand -g tyrs-hand -m 0750 /data/worker
 COPY --from=go-build --chown=root:root /out/tyrs-hand-worker /usr/local/bin/tyrs-hand-worker
-COPY --from=go-build --chown=root:root /out/tyrs-hand-runtime /usr/local/bin/tyrs-hand-runtime
-COPY --from=go-build --chown=root:root /out/tyrs-hand-docker /usr/local/bin/docker
 COPY --from=go-build --chown=root:root /out/tyrs-hand-reply-hook /usr/local/bin/tyrs-hand-reply-hook
 COPY --from=go-build --chown=root:root /out/tyrs-hand-admin /usr/local/bin/tyrs-hand-admin
 USER 10001:10001

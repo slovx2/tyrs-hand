@@ -134,12 +134,10 @@ func (m *Manager) Members(ctx context.Context) ([]Member, error) {
 	}
 	rows, err := m.db.QueryContext(ctx, `
 		SELECT m.guild_id, m.discord_user_id, m.username, m.display_name,
-			b.id IS NOT NULL, COALESCE(b.github_login, ''), COALESCE(f.id::text, '')
+			b.id IS NOT NULL, COALESCE(b.github_login, '')
 		FROM discord_members m
 		LEFT JOIN discord_identity_bindings b ON b.guild_id = m.guild_id
 			AND b.discord_user_id = m.discord_user_id AND b.status = 'active'
-		LEFT JOIN discord_forums f ON f.guild_id = m.guild_id
-			AND f.owner_discord_user_id = m.discord_user_id AND f.forum_type = 'personal'
 		WHERE m.active = true AND m.guild_id = $1
 		ORDER BY lower(m.display_name), m.discord_user_id`, settings.GuildID)
 	if err != nil {
@@ -150,7 +148,7 @@ func (m *Manager) Members(ctx context.Context) ([]Member, error) {
 	for rows.Next() {
 		var member Member
 		if err := rows.Scan(&member.GuildID, &member.DiscordUserID, &member.Username, &member.DisplayName,
-			&member.Bound, &member.GitHubLogin, &member.ForumID); err != nil {
+			&member.Bound, &member.GitHubLogin); err != nil {
 			return nil, err
 		}
 		result = append(result, member)

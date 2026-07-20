@@ -422,15 +422,15 @@ func init() {
 	// workitem.DefaultAgentOwned holds the default value on creation for the agent_owned field.
 	workitem.DefaultAgentOwned = workitemDescAgentOwned.Default.(bool)
 	// workitemDescContextVersion is the schema descriptor for context_version field.
-	workitemDescContextVersion := workitemFields[9].Descriptor()
+	workitemDescContextVersion := workitemFields[13].Descriptor()
 	// workitem.DefaultContextVersion holds the default value on creation for the context_version field.
 	workitem.DefaultContextVersion = workitemDescContextVersion.Default.(int64)
 	// workitemDescCreatedAt is the schema descriptor for created_at field.
-	workitemDescCreatedAt := workitemFields[11].Descriptor()
+	workitemDescCreatedAt := workitemFields[15].Descriptor()
 	// workitem.DefaultCreatedAt holds the default value on creation for the created_at field.
 	workitem.DefaultCreatedAt = workitemDescCreatedAt.Default.(func() time.Time)
 	// workitemDescUpdatedAt is the schema descriptor for updated_at field.
-	workitemDescUpdatedAt := workitemFields[12].Descriptor()
+	workitemDescUpdatedAt := workitemFields[16].Descriptor()
 	// workitem.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	workitem.DefaultUpdatedAt = workitemDescUpdatedAt.Default.(func() time.Time)
 	// workitem.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -471,18 +471,6 @@ func init() {
 	worktreeDescLastUsedAt := worktreeFields[9].Descriptor()
 	// worktree.DefaultLastUsedAt holds the default value on creation for the last_used_at field.
 	worktree.DefaultLastUsedAt = worktreeDescLastUsedAt.Default.(func() time.Time)
-	// worktreeDescEnvironmentStatus is the schema descriptor for environment_status field.
-	worktreeDescEnvironmentStatus := worktreeFields[12].Descriptor()
-	// worktree.DefaultEnvironmentStatus holds the default value on creation for the environment_status field.
-	worktree.DefaultEnvironmentStatus = worktreeDescEnvironmentStatus.Default.(string)
-	// worktreeDescEnvironmentProjects is the schema descriptor for environment_projects field.
-	worktreeDescEnvironmentProjects := worktreeFields[15].Descriptor()
-	// worktree.DefaultEnvironmentProjects holds the default value on creation for the environment_projects field.
-	worktree.DefaultEnvironmentProjects = worktreeDescEnvironmentProjects.Default.([]map[string]interface{})
-	// worktreeDescEnvironmentDiagnostics is the schema descriptor for environment_diagnostics field.
-	worktreeDescEnvironmentDiagnostics := worktreeFields[16].Descriptor()
-	// worktree.DefaultEnvironmentDiagnostics holds the default value on creation for the environment_diagnostics field.
-	worktree.DefaultEnvironmentDiagnostics = worktreeDescEnvironmentDiagnostics.Default.([]map[string]interface{})
 	// worktreeDescID is the schema descriptor for id field.
 	worktreeDescID := worktreeFields[0].Descriptor()
 	// worktree.DefaultID holds the default value on creation for the id field.

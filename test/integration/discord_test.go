@@ -38,7 +38,6 @@ func TestDiscordPersistencePermissionsAndRecovery(t *testing.T) {
 	duplicateID, err := service.BeginPost(ctx, first)
 	require.NoError(t, err)
 	require.Equal(t, conversationID, duplicateID)
-	require.NoError(t, service.Activate(ctx, conversationID, seed.profileID, nil, "1001"))
 
 	readonly := first
 	readonly.MessageID, readonly.DiscordUserID, readonly.DisplayName = "3002", "1002", "Read Only"
@@ -266,7 +265,6 @@ func testInitializationRecovery(t *testing.T, ctx context.Context, db *sql.DB, m
 type discordSeed struct {
 	guildID        string
 	forumChannelID string
-	profileID      uuid.UUID
 	administrator  uuid.UUID
 }
 
@@ -274,27 +272,46 @@ func seedDiscord(t *testing.T, db *sql.DB) discordSeed {
 	t.Helper()
 	ctx := context.Background()
 	seed := discordSeed{guildID: "100000000000000001", forumChannelID: "100000000000000010"}
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM agent_profiles WHERE name = 'Default'`).Scan(&seed.profileID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO administrators
 		(username, password_hash, totp_secret_ciphertext) VALUES ('discord-admin', 'hash', $1) RETURNING id`,
 		[]byte("secret")).Scan(&seed.administrator))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_guilds
 		(guild_id, name, enabled, community_enabled, bot_user_id)
 		VALUES ($1, 'test', true, true, '100000000000000099') RETURNING guild_id`, seed.guildID).Scan(&seed.guildID))
+	var installationID, repositoryID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO scm_installations
+		(provider, external_id, account_login, account_type)
+		VALUES ('github', 9001, 'owner', 'Organization') RETURNING id`).Scan(&installationID))
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO repositories
+		(installation_id, provider, external_id, owner, name, default_branch, clone_url)
+		VALUES ($1, 'github', 9002, 'owner', 'repo', 'main', 'https://example.invalid/repo.git') RETURNING id`,
+		installationID).Scan(&repositoryID))
+	var environmentID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_development_environments
+		(guild_id, owner_discord_user_id, build_repository_id, container_name,
+		 data_volume_name, home_volume_name, network_name)
+		VALUES ($1, '1001', $2, 'dev-owner', 'dev-owner-data', 'dev-owner-home', 'dev-owner-net') RETURNING id`,
+		seed.guildID, repositoryID).Scan(&environmentID))
 	var resourceID, forumID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_resources
 		(guild_id, resource_key, discord_id, kind, name, managed_marker)
-		VALUES ($1, 'forum.personal.1001', $2, 'forum', 'codex-owner', '[tyrs-hand:forum.personal.1001]') RETURNING id`,
+		VALUES ($1, 'forum.development.owner', $2, 'forum', 'codex-owner', '[tyrs-hand:forum.development.owner]') RETURNING id`,
 		seed.guildID, seed.forumChannelID).Scan(&resourceID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_forums
-		(guild_id, resource_id, forum_type, owner_discord_user_id)
-		VALUES ($1, $2, 'personal', '1001') RETURNING id`, seed.guildID, resourceID).Scan(&forumID))
+		(guild_id, resource_id, forum_type, owner_discord_user_id, repository_id, development_environment_id)
+		VALUES ($1, $2, 'development', '1001', $3, $4) RETURNING id`, seed.guildID, resourceID,
+		repositoryID, environmentID).Scan(&forumID))
+	_, err := db.ExecContext(ctx, `INSERT INTO discord_forum_workspaces
+		(forum_id, environment_id, relative_path, branch, status)
+		VALUES ($1, $2, $3, 'tyrs-hand/discord/test', 'ready')`, forumID, environmentID,
+		"workspaces/"+forumID.String())
+	require.NoError(t, err)
 	for _, userID := range []string{"1001", "1002", "1003"} {
 		_, err := db.ExecContext(ctx, `INSERT INTO discord_members
 			(guild_id, discord_user_id, username, display_name) VALUES ($1, $2, $2, $2)`, seed.guildID, userID)
 		require.NoError(t, err)
 	}
-	_, err := db.ExecContext(ctx, `INSERT INTO discord_forum_access(forum_id, discord_user_id, access_level, granted_by)
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_forum_access(forum_id, discord_user_id, access_level, granted_by)
 		VALUES ($1, '1002', 'readonly', $2), ($1, '1003', 'operator', $2)`, forumID, seed.administrator)
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_identity_bindings

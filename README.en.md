@@ -10,7 +10,7 @@
 [![Security](https://github.com/slovx2/tyrs-hand/actions/workflows/security.yml/badge.svg)](https://github.com/slovx2/tyrs-hand/actions/workflows/security.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Tyrs Hand is a self-hosted GitHub agent control plane. It receives Issue, Pull Request, review, and comment events through a GitHub App, runs Codex in isolated Git worktrees, and preserves context for follow-up instructions on the same work item.
+Tyrs Hand is a self-hosted GitHub and Discord agent control plane. GitHub tasks use isolated temporary worktrees for read-only or lightweight edits. Discord development forums use long-lived per-user development containers with persistent repository clones, Home directories, and Codex sessions.
 
 The project is at an early stage. Evaluate it on controlled repositories before production use. The default agent profile can access the public network and write to its worktree, so review trigger rules, tool allowlists, and permission policies first.
 
@@ -18,11 +18,12 @@ The project is at an early stage. Evaluate it on controlled repositories before 
 
 - GitHub App identity with HMAC-verified and deduplicated webhooks
 - PostgreSQL-backed durable jobs, leases, retries, and recovery
-- One bare clone cache per repository and one long-lived worktree per work item
+- One bare clone cache per repository and one temporary worktree per GitHub work item, removed seven days after closure
 - Reusable Codex threads with durable summaries for context handoff
 - Repository skills loaded from `.agents/skills/<name>/SKILL.md`
 - GitHub MCP tools and controlled local Git dynamic tools
-- Private Discord servers with personal Codex forums, GitHub task projections, and persistent conversations
+- Private Discord servers with long-lived development forums, GitHub task projections, and persistent conversations
+- One reusable container and Home per Discord user, with one independent full clone per forum
 - Idempotent tool calls keyed by `(thread, turn, call)`
 - Natural Codex final answers with platform-owned control state and managed reply gates
 - React administration UI for repositories, rules, profiles, jobs, threads, workers, and audit logs
@@ -38,10 +39,13 @@ flowchart LR
     Server --> Redis["Redis\nRate limits and notifications"]
     Gateway --> PostgreSQL
     Gateway --> Redis
-    Worker["tyrs-hand-worker"] --> PostgreSQL
-    Worker --> Cache["Bare Repo Cache"]
+    GitHubWorker["GitHub Worker"] --> PostgreSQL
+    GitHubWorker --> Cache["Bare Repo Cache"]
     Cache --> Worktree["Work Item Worktree"]
-    Worker <--> Codex["Codex App Server"]
+    DiscordWorker["Discord Dev Worker"] --> PostgreSQL
+    DiscordWorker --> DevContainer["Per-user dev container\nPersistent Home + repository clones"]
+    GitHubWorker <--> Codex["Codex App Server"]
+    DevContainer <--> Codex
     Codex --> Tools["GitHub / Git Dynamic Tools"]
     Tools --> Server
 ```
@@ -49,7 +53,7 @@ flowchart LR
 The project ships four commands:
 
 - `tyrs-hand-server`: administration API, GitHub App, webhook receiver, and embedded frontend
-- `tyrs-hand-worker`: job leases, Git workspaces, Codex process pools, and tool execution
+- `tyrs-hand-worker`: runs in a `github` or `discord` role for leases, workspaces, Codex, and tools
 - `tyrs-hand-discord`: Discord gateway, forum conversations, projections, and outbox delivery
 - `tyrs-hand-admin`: migrations, diagnostics, administrator recovery, key rotation, and garbage collection
 
@@ -131,9 +135,23 @@ The default rules accept `/tyrs-hand` on the first line of an Issue or Pull Requ
 - A `(Work Item, Agent Profile, Context Version)` tuple owns one Codex thread.
 - Follow-up comments on the same Issue or Pull Request resume that thread.
 - Provider, profile, tool schema, or skill changes create a new thread with a durable handoff summary.
-- Each work item owns a long-lived worktree and runs serially.
+- Each GitHub work item owns a temporary worktree and runs serially; it is removed seven days after closure.
+- The GitHub path does not install or share dependencies and does not prepare toolchains. It is intended for read-only or lightweight edits, not local builds, execution, or debugging.
+- Issue and PR URLs and numbers are injected into the prompt. PR source refs are fetched in advance, with source/target branches and SHAs included in context.
 - Pull Requests created from Issues are linked back to the original work item.
 - Failed jobs retain their workspace for recovery; untrusted state is quarantined and rebuilt.
+
+## Discord Development Containers
+
+Production runs separate GitHub and Discord workers. Only the Discord Dev Worker receives the host Docker socket; neither the GitHub Worker nor the agent's development container can access it.
+
+- A Discord user has one container, data volume, Home volume, and network per Guild. Forums for multiple repositories reuse that environment.
+- The per-user container is the security boundary. Operator collaborators can drive the agent and must be trusted by the environment owner.
+- The first forum's repository is the stable image source and must provide `.devcontainer/Dockerfile` on its default branch with a non-root final `USER`.
+- Every forum has an independent full clone. Home, clones, and Codex sessions survive container, worker, and host restarts.
+- Containers stop after 30 idle minutes. Explicit rebuilds preserve persistent data while resetting the writable system layer.
+- A rebuild is rejected if `USER`, UID/GID, or the Home path changes. devcontainer.json, Features, Compose, arbitrary mounts, Docker sockets, privileged mode, and published ports are not supported.
+- Deleting the final forum also deletes the user's container, image, volumes, network, and Home after an explicit confirmation.
 
 Repository task skills must live at:
 
@@ -151,7 +169,8 @@ If a configured skill is missing or is not returned by Codex `skills/list`, the 
 - Lease token and monotonic epoch checks on every job result
 - Capability, installation, repository, work item, allowlist, and live-permission checks for dynamic tools
 - No GitHub token in the Codex environment, Git remote, or worktree
-- Non-root server and worker containers
+- Non-root server, worker, and Discord development containers
+- Access to the host container daemon is limited to the Discord Dev Worker for lifecycle management
 
 Use `compose.production.yaml` in production to provide the master key through a Docker Secret file:
 
@@ -175,7 +194,7 @@ make test-coverage
 make build
 ```
 
-Integration tests use Testcontainers for PostgreSQL and Redis and temporary Git remotes for workspace behavior. Codex coverage includes a scripted fake App Server and the pinned real App Server with a mock Responses SSE upstream; tests never call a real model.
+Integration tests use Testcontainers for PostgreSQL, Redis, and real Docker development containers. They cover independent multi-repository clones, persistent Home and data, rebuild rollback, and deletion. Codex coverage includes a scripted fake App Server and the pinned real App Server with a mock Responses SSE upstream; tests never call a real model.
 
 ## Images and Releases
 

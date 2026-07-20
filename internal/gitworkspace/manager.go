@@ -35,12 +35,6 @@ func (m *Manager) Ensure(ctx context.Context, spec ports.WorkspaceSpec, credenti
 	}
 	cachePath := filepath.Join(m.cacheRoot, spec.RepositoryID, "repository.git")
 	worktreePath := filepath.Join(m.worktreeRoot, spec.WorkItemID)
-	if spec.WorktreePath != "" {
-		worktreePath = filepath.Clean(spec.WorktreePath)
-		if filepath.Base(worktreePath) != spec.WorkItemID {
-			return ports.Workspace{}, errors.New("自定义 Worktree 路径必须以资源 ID 结尾")
-		}
-	}
 	lockPath := filepath.Join(m.cacheRoot, spec.RepositoryID, ".lock")
 	unlock, err := lock(lockPath)
 	if err != nil {

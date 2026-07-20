@@ -5,7 +5,6 @@ import "context"
 type WorkspaceSpec struct {
 	RepositoryID string
 	WorkItemID   string
-	WorktreePath string
 	CloneURL     string
 	BaseRef      string
 	Branch       string

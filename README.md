@@ -10,7 +10,7 @@
 [![Security](https://github.com/slovx2/tyrs-hand/actions/workflows/security.yml/badge.svg)](https://github.com/slovx2/tyrs-hand/actions/workflows/security.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Tyrs Hand 是一个面向 GitHub 的自托管 Agent 控制系统。它以 GitHub App 接收 Issue、Pull Request 和评论事件，在隔离的 Git Worktree 中运行 Codex，并为同一个工作项持续复用上下文。
+Tyrs Hand 是一个面向 GitHub 与 Discord 的自托管 Agent 控制系统。GitHub 任务在隔离的临时 Git Worktree 中执行轻量修改；Discord 开发 Forum 则使用用户级长期开发容器，并持久化仓库 clone、Home 和 Codex 会话。
 
 项目目前处于早期版本，适合在受控仓库中评估和二次开发。默认 Agent 配置允许访问公网并写入 Worktree；接入生产仓库前，请先审查工具白名单、触发规则和权限策略。
 
@@ -18,12 +18,13 @@ Tyrs Hand 是一个面向 GitHub 的自托管 Agent 控制系统。它以 GitHub
 
 - 通过 GitHub App 接收并验签 Webhook，不需要普通机器账号。
 - 将 GitHub 事件标准化为持久化 Work Item 和 Durable Job。
-- 每个仓库维护 Bare Clone Cache，每个 Work Item 维护长期 Worktree。
+- 每个仓库维护 Bare Clone Cache，每个 GitHub Work Item 使用独立临时 Worktree；关闭 7 天后自动清理。
 - 同一 Issue 或 PR 串行处理，不同工作项可以由多个 Worker 并行处理。
 - 同一工作项后续评论复用 Codex Thread；配置变化时使用持久化摘要交接。
 - 从仓库 `.agents/skills/<name>/SKILL.md` 加载任务 Skill。
 - 将 GitHub 官方 MCP 工具和受控本地 Git 工具暴露为 Codex Dynamic Tools。
-- 通过 Discord 私有 Server 提供个人 Codex Forum、GitHub 任务投影和持续会话。
+- 通过 Discord 私有 Server 提供长期开发 Forum、GitHub 任务投影和持续会话。
+- 同一 Discord 用户复用一个开发容器与 Home；每个 Forum 固定一个仓库并保留独立完整 clone。
 - 管理 GitHub App、仓库、规则、Agent Profile、任务、Thread、Worker 和审计日志。
 - Codex 使用自然最终回复；平台根据 App Server 终态、持久化 Control 和受控回复门禁判定任务结果。
 
@@ -38,10 +39,13 @@ flowchart LR
     Server --> Redis["Redis\n限流与实时通知"]
     Gateway --> PostgreSQL
     Gateway --> Redis
-    Worker["tyrs-hand-worker"] --> PostgreSQL
-    Worker --> Cache["Bare Repo Cache"]
+    GitHubWorker["GitHub Worker"] --> PostgreSQL
+    GitHubWorker --> Cache["Bare Repo Cache"]
     Cache --> Worktree["Work Item Worktree"]
-    Worker <--> Codex["Codex App Server"]
+    DiscordWorker["Discord Dev Worker"] --> PostgreSQL
+    DiscordWorker --> DevContainer["用户级开发容器\n持久化 Home + 多仓库 clone"]
+    GitHubWorker <--> Codex["Codex App Server"]
+    DevContainer <--> Codex
     Codex --> Tools["GitHub / Git Dynamic Tools"]
     Tools --> Server
 ```
@@ -49,7 +53,7 @@ flowchart LR
 四个可执行入口分别承担不同职责：
 
 - `tyrs-hand-server`：管理 API、GitHub App、Webhook 和前端静态资源。
-- `tyrs-hand-worker`：任务租约、Git Workspace、Codex 进程池和工具调用。
+- `tyrs-hand-worker`：以 `github` 或 `discord` 角色运行任务租约、工作区、Codex 和工具调用。
 - `tyrs-hand-discord`：Discord Gateway、Forum 会话、投影和 Outbox 投递。
 - `tyrs-hand-admin`：迁移、诊断、管理员恢复、主密钥轮换和 GC。
 
@@ -113,22 +117,25 @@ TYRS_HAND_WEBHOOK_HTTP_ADDR=:8081
 
 开启后，管理端口不再注册 `/webhooks/github`，Webhook 端口只注册健康检查和 GitHub Webhook。部署系统还需要单独发布该端口，并由反向代理将 `/webhooks/github` 路由到它。
 
-## Host Docker Beta
+## Discord 长期开发容器
 
-基础 `compose.yaml` 不会向 Worker 挂载 Docker Socket。可信的单宿主机部署可以显式启用 Host Docker：
+生产 Compose 将任务分成两个 Worker：GitHub Worker 不挂载 Docker Socket，只处理临时 Worktree；Discord Dev Worker 独占 Docker Socket，只处理 Discord 任务。Docker Socket 不会进入 Agent 所在的开发容器。
 
-1. 将宿主 `/var/run/docker.sock` 的数字 GID 写入 `.env` 的 `TYRS_HAND_DOCKER_GID`。Linux 可使用 `stat -c '%g' /var/run/docker.sock` 查询。
-2. 追加 Beta Override 并重建 Worker：
+部署前将宿主 `/var/run/docker.sock` 的数字 GID 写入 `.env` 的 `TYRS_HAND_DOCKER_GID`。Linux 可使用 `stat -c '%g' /var/run/docker.sock` 查询。然后启动：
 
-   ```bash
-   docker compose -f compose.yaml -f compose.host-docker.example.yaml up -d --force-recreate worker
-   ```
+```bash
+docker compose -f compose.yaml -f compose.production.yaml up -d server worker discord-worker discord
+```
 
-`compose.production.yaml` 已直接启用该功能，不需要再追加 Override，但必须设置 `TYRS_HAND_DOCKER_GID`。如果生产部署需要关闭，必须先从生产 Compose 移除 Socket、补充组和运行网络配置，再重建 Worker；只修改 `TYRS_HAND_ENABLE_HOST_DOCKER` 不能撤销已经挂载的 Socket。
+开发环境规则：
 
-> **Beta。有安全风险，请确保所有用户可信再开启。** Worker 虽然继续以非 root 用户运行，但 Docker Socket 允许 Agent 完整控制宿主 Docker Daemon，包括其他容器和宿主目录。
-
-Agent 可以使用 `docker run/build/start/stop/exec/logs`，但 Worker 不安装 Docker Compose Plugin。服务容器默认加入专用运行网络；Job 结束时平台只停止受管容器，不删除容器、Network、Volume、镜像或 Build Cache。当前 Worktree 位于 Docker Volume 内，因此不支持直接使用 `-v "$PWD:/app"`，`docker build .` 不受影响。
+- 同一 Guild 中，一个 Discord 用户只有一个容器、数据卷、Home 卷和网络；多个仓库 Forum 复用它们。
+- 用户级容器是安全边界；可操作协作者能够驱动 Agent，因此只能授权给该环境 owner 信任的成员。
+- 首个 Forum 的仓库成为稳定的镜像构建来源，必须在默认分支提供 `.devcontainer/Dockerfile`，且最终镜像声明非 root `USER`。
+- 每个 Forum 使用独立完整 clone。容器停止、重启及 Worker/宿主重启不会丢失 Home、clone 或 Codex 会话。
+- 空闲 30 分钟自动停止容器；显式 rebuild 保留 Home、clone 和 Codex 会话，但重置系统可写层。
+- rebuild 改变 `USER`、UID/GID 或 Home 路径时会被拒绝并保留旧容器。平台不支持 devcontainer.json、Features、Compose、任意 Mount、Docker Socket、privileged 或端口发布。
+- 删除 Forum 前会显示未提交、未推送和运行中状态；删除最后一个 Forum 会同时删除整个用户环境和 Home。
 
 ## GitHub App 权限
 
@@ -152,7 +159,9 @@ Manifest 订阅 Repository、Issues、Issue Comment、Pull Request、Review、Re
 - 一个 `(Work Item, Agent Profile, Context Version)` 对应一个 Codex Thread。
 - 同一 Issue 或 PR 的后续指令 Resume 原 Thread。
 - Provider、Profile、工具 Schema 或 Skill 配置变化时创建新 Thread，并注入上一轮摘要。
-- 一个 Work Item 对应一个长期 Worktree；同一工作项严格串行。
+- 一个 GitHub Work Item 对应一个临时 Worktree；同一工作项严格串行，关闭 7 天后清理。
+- GitHub 路径不安装依赖、不共享依赖，也不准备工具链；定位是只读或轻量修改，不建议在 Worker 本地构建、运行和调试。
+- Issue/PR 地址与编号会注入 Prompt；PR 还会预拉源分支并注入源/目标分支与 SHA。
 - Issue 创建的 PR 会自动关联回原 Work Item。
 - 失败任务保留现场，租约或 Head 不一致时隔离旧 Worktree 并重建。
 
@@ -173,7 +182,8 @@ Manifest 订阅 Repository、Issues、Issue Comment、Pull Request、Review、Re
 - Dynamic Tool 同时校验 Capability、Installation、Repository、Work Item、工具白名单和实时 GitHub 权限。
 - Tool Call 以 `(thread, turn, call)` 幂等记录。
 - GitHub Token 不进入 Codex 环境、Git Remote 或 Worktree。
-- Server 与 Worker 容器均以非 root 用户运行。
+- Server、Worker 与 Discord 开发镜像均要求以非 root 用户运行。
+- 只有 Discord Dev Worker 可以访问宿主 Docker Socket，开发容器和 GitHub Worker 均不可访问。
 
 生产环境应使用 `compose.production.yaml`，通过 Secret 文件提供主密钥：
 
@@ -197,7 +207,7 @@ make test-coverage
 make build
 ```
 
-集成测试使用 Testcontainers 启动 PostgreSQL 和 Redis，并使用临时 Git Remote 验证 Worktree。Codex 测试包含两层：
+集成测试使用 Testcontainers 启动 PostgreSQL、Redis 和真实 Docker 开发容器，并使用临时 Git Remote 验证 Worktree、多仓库 clone、Home/重建持久化与删除。Codex 测试包含两层：
 
 - 脚本化 Fake App Server，覆盖 JSON-RPC、超时、断线、Resume、Steer、Interrupt 和工具回调。
 - 固定 Codex `0.142.5` 配合 Mock Responses SSE 上游，验证真实 App Server 协议，不调用真实模型。

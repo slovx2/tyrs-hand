@@ -160,6 +160,86 @@ func (_u *WorkItemUpdate) ClearHeadSha() *WorkItemUpdate {
 	return _u
 }
 
+// SetBaseRef sets the "base_ref" field.
+func (_u *WorkItemUpdate) SetBaseRef(v string) *WorkItemUpdate {
+	_u.mutation.SetBaseRef(v)
+	return _u
+}
+
+// SetNillableBaseRef sets the "base_ref" field if the given value is not nil.
+func (_u *WorkItemUpdate) SetNillableBaseRef(v *string) *WorkItemUpdate {
+	if v != nil {
+		_u.SetBaseRef(*v)
+	}
+	return _u
+}
+
+// ClearBaseRef clears the value of the "base_ref" field.
+func (_u *WorkItemUpdate) ClearBaseRef() *WorkItemUpdate {
+	_u.mutation.ClearBaseRef()
+	return _u
+}
+
+// SetHeadRef sets the "head_ref" field.
+func (_u *WorkItemUpdate) SetHeadRef(v string) *WorkItemUpdate {
+	_u.mutation.SetHeadRef(v)
+	return _u
+}
+
+// SetNillableHeadRef sets the "head_ref" field if the given value is not nil.
+func (_u *WorkItemUpdate) SetNillableHeadRef(v *string) *WorkItemUpdate {
+	if v != nil {
+		_u.SetHeadRef(*v)
+	}
+	return _u
+}
+
+// ClearHeadRef clears the value of the "head_ref" field.
+func (_u *WorkItemUpdate) ClearHeadRef() *WorkItemUpdate {
+	_u.mutation.ClearHeadRef()
+	return _u
+}
+
+// SetHeadRepository sets the "head_repository" field.
+func (_u *WorkItemUpdate) SetHeadRepository(v string) *WorkItemUpdate {
+	_u.mutation.SetHeadRepository(v)
+	return _u
+}
+
+// SetNillableHeadRepository sets the "head_repository" field if the given value is not nil.
+func (_u *WorkItemUpdate) SetNillableHeadRepository(v *string) *WorkItemUpdate {
+	if v != nil {
+		_u.SetHeadRepository(*v)
+	}
+	return _u
+}
+
+// ClearHeadRepository clears the value of the "head_repository" field.
+func (_u *WorkItemUpdate) ClearHeadRepository() *WorkItemUpdate {
+	_u.mutation.ClearHeadRepository()
+	return _u
+}
+
+// SetHTMLURL sets the "html_url" field.
+func (_u *WorkItemUpdate) SetHTMLURL(v string) *WorkItemUpdate {
+	_u.mutation.SetHTMLURL(v)
+	return _u
+}
+
+// SetNillableHTMLURL sets the "html_url" field if the given value is not nil.
+func (_u *WorkItemUpdate) SetNillableHTMLURL(v *string) *WorkItemUpdate {
+	if v != nil {
+		_u.SetHTMLURL(*v)
+	}
+	return _u
+}
+
+// ClearHTMLURL clears the value of the "html_url" field.
+func (_u *WorkItemUpdate) ClearHTMLURL() *WorkItemUpdate {
+	_u.mutation.ClearHTMLURL()
+	return _u
+}
+
 // SetContextVersion sets the "context_version" field.
 func (_u *WorkItemUpdate) SetContextVersion(v int64) *WorkItemUpdate {
 	_u.mutation.ResetContextVersion()
@@ -303,6 +383,30 @@ func (_u *WorkItemUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.HeadShaCleared() {
 		_spec.ClearField(workitem.FieldHeadSha, field.TypeString)
+	}
+	if value, ok := _u.mutation.BaseRef(); ok {
+		_spec.SetField(workitem.FieldBaseRef, field.TypeString, value)
+	}
+	if _u.mutation.BaseRefCleared() {
+		_spec.ClearField(workitem.FieldBaseRef, field.TypeString)
+	}
+	if value, ok := _u.mutation.HeadRef(); ok {
+		_spec.SetField(workitem.FieldHeadRef, field.TypeString, value)
+	}
+	if _u.mutation.HeadRefCleared() {
+		_spec.ClearField(workitem.FieldHeadRef, field.TypeString)
+	}
+	if value, ok := _u.mutation.HeadRepository(); ok {
+		_spec.SetField(workitem.FieldHeadRepository, field.TypeString, value)
+	}
+	if _u.mutation.HeadRepositoryCleared() {
+		_spec.ClearField(workitem.FieldHeadRepository, field.TypeString)
+	}
+	if value, ok := _u.mutation.HTMLURL(); ok {
+		_spec.SetField(workitem.FieldHTMLURL, field.TypeString, value)
+	}
+	if _u.mutation.HTMLURLCleared() {
+		_spec.ClearField(workitem.FieldHTMLURL, field.TypeString)
 	}
 	if value, ok := _u.mutation.ContextVersion(); ok {
 		_spec.SetField(workitem.FieldContextVersion, field.TypeInt64, value)
@@ -470,6 +574,86 @@ func (_u *WorkItemUpdateOne) SetNillableHeadSha(v *string) *WorkItemUpdateOne {
 // ClearHeadSha clears the value of the "head_sha" field.
 func (_u *WorkItemUpdateOne) ClearHeadSha() *WorkItemUpdateOne {
 	_u.mutation.ClearHeadSha()
+	return _u
+}
+
+// SetBaseRef sets the "base_ref" field.
+func (_u *WorkItemUpdateOne) SetBaseRef(v string) *WorkItemUpdateOne {
+	_u.mutation.SetBaseRef(v)
+	return _u
+}
+
+// SetNillableBaseRef sets the "base_ref" field if the given value is not nil.
+func (_u *WorkItemUpdateOne) SetNillableBaseRef(v *string) *WorkItemUpdateOne {
+	if v != nil {
+		_u.SetBaseRef(*v)
+	}
+	return _u
+}
+
+// ClearBaseRef clears the value of the "base_ref" field.
+func (_u *WorkItemUpdateOne) ClearBaseRef() *WorkItemUpdateOne {
+	_u.mutation.ClearBaseRef()
+	return _u
+}
+
+// SetHeadRef sets the "head_ref" field.
+func (_u *WorkItemUpdateOne) SetHeadRef(v string) *WorkItemUpdateOne {
+	_u.mutation.SetHeadRef(v)
+	return _u
+}
+
+// SetNillableHeadRef sets the "head_ref" field if the given value is not nil.
+func (_u *WorkItemUpdateOne) SetNillableHeadRef(v *string) *WorkItemUpdateOne {
+	if v != nil {
+		_u.SetHeadRef(*v)
+	}
+	return _u
+}
+
+// ClearHeadRef clears the value of the "head_ref" field.
+func (_u *WorkItemUpdateOne) ClearHeadRef() *WorkItemUpdateOne {
+	_u.mutation.ClearHeadRef()
+	return _u
+}
+
+// SetHeadRepository sets the "head_repository" field.
+func (_u *WorkItemUpdateOne) SetHeadRepository(v string) *WorkItemUpdateOne {
+	_u.mutation.SetHeadRepository(v)
+	return _u
+}
+
+// SetNillableHeadRepository sets the "head_repository" field if the given value is not nil.
+func (_u *WorkItemUpdateOne) SetNillableHeadRepository(v *string) *WorkItemUpdateOne {
+	if v != nil {
+		_u.SetHeadRepository(*v)
+	}
+	return _u
+}
+
+// ClearHeadRepository clears the value of the "head_repository" field.
+func (_u *WorkItemUpdateOne) ClearHeadRepository() *WorkItemUpdateOne {
+	_u.mutation.ClearHeadRepository()
+	return _u
+}
+
+// SetHTMLURL sets the "html_url" field.
+func (_u *WorkItemUpdateOne) SetHTMLURL(v string) *WorkItemUpdateOne {
+	_u.mutation.SetHTMLURL(v)
+	return _u
+}
+
+// SetNillableHTMLURL sets the "html_url" field if the given value is not nil.
+func (_u *WorkItemUpdateOne) SetNillableHTMLURL(v *string) *WorkItemUpdateOne {
+	if v != nil {
+		_u.SetHTMLURL(*v)
+	}
+	return _u
+}
+
+// ClearHTMLURL clears the value of the "html_url" field.
+func (_u *WorkItemUpdateOne) ClearHTMLURL() *WorkItemUpdateOne {
+	_u.mutation.ClearHTMLURL()
 	return _u
 }
 
@@ -646,6 +830,30 @@ func (_u *WorkItemUpdateOne) sqlSave(ctx context.Context) (_node *WorkItem, err 
 	}
 	if _u.mutation.HeadShaCleared() {
 		_spec.ClearField(workitem.FieldHeadSha, field.TypeString)
+	}
+	if value, ok := _u.mutation.BaseRef(); ok {
+		_spec.SetField(workitem.FieldBaseRef, field.TypeString, value)
+	}
+	if _u.mutation.BaseRefCleared() {
+		_spec.ClearField(workitem.FieldBaseRef, field.TypeString)
+	}
+	if value, ok := _u.mutation.HeadRef(); ok {
+		_spec.SetField(workitem.FieldHeadRef, field.TypeString, value)
+	}
+	if _u.mutation.HeadRefCleared() {
+		_spec.ClearField(workitem.FieldHeadRef, field.TypeString)
+	}
+	if value, ok := _u.mutation.HeadRepository(); ok {
+		_spec.SetField(workitem.FieldHeadRepository, field.TypeString, value)
+	}
+	if _u.mutation.HeadRepositoryCleared() {
+		_spec.ClearField(workitem.FieldHeadRepository, field.TypeString)
+	}
+	if value, ok := _u.mutation.HTMLURL(); ok {
+		_spec.SetField(workitem.FieldHTMLURL, field.TypeString, value)
+	}
+	if _u.mutation.HTMLURLCleared() {
+		_spec.ClearField(workitem.FieldHTMLURL, field.TypeString)
 	}
 	if value, ok := _u.mutation.ContextVersion(); ok {
 		_spec.SetField(workitem.FieldContextVersion, field.TypeInt64, value)

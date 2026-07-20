@@ -131,6 +131,10 @@ func defaultJSON(value json.RawMessage) json.RawMessage {
 func interval(value time.Duration) string { return fmt.Sprintf("%f seconds", value.Seconds()) }
 
 func (r *Repository) Claim(ctx context.Context, workerID string) (*ClaimedControl, error) {
+	return r.ClaimSource(ctx, workerID, "")
+}
+
+func (r *Repository) ClaimSource(ctx context.Context, workerID, sourceType string) (*ClaimedControl, error) {
 	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return nil, err
@@ -149,12 +153,13 @@ func (r *Repository) Claim(ctx context.Context, workerID string) (*ClaimedContro
 	err = tx.QueryRowContext(ctx, `SELECT c.id, c.status
 		FROM codex_thread_controls c
 		WHERE c.status <> 'error'
+		  AND ($2 = '' OR c.source_type = $2)
 		  AND (c.lease_expires_at IS NULL OR c.lease_expires_at < now())
 		  AND EXISTS (SELECT 1 FROM codex_turn_intents i
 			WHERE i.control_id = c.id AND i.status IN ('queued','retry_wait','reconciling')
 			  AND i.available_at <= now() AND i.attempt_count < $1)
 		ORDER BY COALESCE(c.next_wakeup_at, c.created_at), c.created_at
-		FOR UPDATE SKIP LOCKED LIMIT 1`, r.maxAttempts).Scan(&controlID, &oldStatus)
+		FOR UPDATE SKIP LOCKED LIMIT 1`, r.maxAttempts, sourceType).Scan(&controlID, &oldStatus)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

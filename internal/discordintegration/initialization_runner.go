@@ -123,18 +123,6 @@ func (m *Manager) executeInitializationAction(ctx context.Context, guildID strin
 			WHERE guild_id = $1 AND discord_id = $2`, guildID, action.ResourceID,
 			spec.Name, spec.Kind, spec.ParentKey, managedMarker(spec.Key))
 		return nil, err
-	case "forum.personal.record":
-		var resourceID uuid.UUID
-		err := m.db.QueryRowContext(ctx, `SELECT id FROM discord_resources
-			WHERE guild_id = $1 AND resource_key = $2 AND status = 'active'`, guildID, action.Spec.Key).Scan(&resourceID)
-		if err != nil {
-			return nil, err
-		}
-		_, err = m.db.ExecContext(ctx, `INSERT INTO discord_forums
-			(guild_id, resource_id, forum_type, owner_discord_user_id)
-			VALUES ($1, $2, 'personal', $3) ON CONFLICT(resource_id) DO NOTHING`,
-			guildID, resourceID, action.OwnerUserID)
-		return nil, err
 	case "forum.repository.record":
 		var resourceID uuid.UUID
 		err := m.db.QueryRowContext(ctx, `SELECT id FROM discord_resources
@@ -150,9 +138,58 @@ func (m *Manager) executeInitializationAction(ctx context.Context, guildID strin
 			(guild_id, resource_id, forum_type, repository_id)
 			VALUES ($1, $2, 'repository', $3) ON CONFLICT(resource_id) DO NOTHING`, guildID, resourceID, repositoryID)
 		return nil, err
+	case "forum.development.record":
+		var resourceID uuid.UUID
+		if err := m.db.QueryRowContext(ctx, `SELECT id FROM discord_resources
+			WHERE guild_id = $1 AND resource_key = $2 AND status = 'active'`, guildID, action.Spec.Key).
+			Scan(&resourceID); err != nil {
+			return nil, err
+		}
+		repositoryID, err := uuid.Parse(action.RepositoryID)
+		if err != nil {
+			return nil, err
+		}
+		forumID, err := uuid.Parse(action.ForumID)
+		if err != nil {
+			return nil, err
+		}
+		environmentID, err := m.ensureDevelopmentEnvironment(ctx, guildID, action.OwnerUserID, repositoryID)
+		if err != nil {
+			return nil, err
+		}
+		_, err = m.db.ExecContext(ctx, `INSERT INTO discord_forums
+			(id, guild_id, resource_id, forum_type, owner_discord_user_id, repository_id, development_environment_id)
+			VALUES ($1, $2, $3, 'development', $4, $5, $6)`, forumID, guildID, resourceID,
+			action.OwnerUserID, repositoryID, environmentID)
+		if err != nil {
+			return nil, err
+		}
+		branch := "tyrs-hand/discord/" + strings.ReplaceAll(forumID.String()[:8], "-", "")
+		_, err = m.db.ExecContext(ctx, `INSERT INTO discord_forum_workspaces
+			(forum_id, environment_id, relative_path, branch)
+			VALUES ($1, $2, $3, $4)`, forumID, environmentID,
+			"workspaces/"+forumID.String(), branch)
+		return map[string]any{"environmentId": environmentID, "forumId": forumID}, err
 	default:
 		return nil, fmt.Errorf("未知初始化步骤 %q", action.Kind)
 	}
+}
+
+func (m *Manager) ensureDevelopmentEnvironment(ctx context.Context, guildID, ownerID string,
+	repositoryID uuid.UUID,
+) (uuid.UUID, error) {
+	candidate := uuid.New()
+	compact := strings.ReplaceAll(candidate.String(), "-", "")
+	var id uuid.UUID
+	err := m.db.QueryRowContext(ctx, `INSERT INTO discord_development_environments
+		(id, guild_id, owner_discord_user_id, build_repository_id, container_name,
+		 data_volume_name, home_volume_name, network_name)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT(guild_id, owner_discord_user_id)
+		DO UPDATE SET updated_at = now() RETURNING id`, candidate, guildID, ownerID, repositoryID,
+		"tyrs-hand-dev-"+compact, "tyrs-hand-dev-data-"+compact,
+		"tyrs-hand-dev-home-"+compact, "tyrs-hand-dev-net-"+compact).Scan(&id)
+	return id, err
 }
 
 func (m *Manager) createManagedChannel(ctx context.Context, guildID string, input ChannelSpec, remote Remote) (map[string]any, error) {

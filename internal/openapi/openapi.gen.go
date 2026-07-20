@@ -116,6 +116,45 @@ type DiscordConflict struct {
 	Reason string `json:"reason"`
 }
 
+// DiscordDevelopmentDeletePreflight defines model for DiscordDevelopmentDeletePreflight.
+type DiscordDevelopmentDeletePreflight struct {
+	Active             bool               `json:"active"`
+	Confirmation       string             `json:"confirmation"`
+	DeletesEnvironment bool               `json:"deletesEnvironment"`
+	Dirty              bool               `json:"dirty"`
+	ForumId            openapi_types.UUID `json:"forumId"`
+	Unpushed           bool               `json:"unpushed"`
+}
+
+// DiscordDevelopmentEnvironment defines model for DiscordDevelopmentEnvironment.
+type DiscordDevelopmentEnvironment struct {
+	BuildRepository    string                    `json:"buildRepository"`
+	BuildRepositoryId  openapi_types.UUID        `json:"buildRepositoryId"`
+	BuildSourceSha     *string                   `json:"buildSourceSha,omitempty"`
+	Error              *string                   `json:"error,omitempty"`
+	Forums             []DiscordDevelopmentForum `json:"forums"`
+	Id                 openapi_types.UUID        `json:"id"`
+	ImageId            *string                   `json:"imageId,omitempty"`
+	LastUsedAt         time.Time                 `json:"lastUsedAt"`
+	OwnerDiscordUserId string                    `json:"ownerDiscordUserId"`
+	OwnerName          string                    `json:"ownerName"`
+	RuntimeUser        *string                   `json:"runtimeUser,omitempty"`
+	Status             string                    `json:"status"`
+}
+
+// DiscordDevelopmentForum defines model for DiscordDevelopmentForum.
+type DiscordDevelopmentForum struct {
+	Branch       string             `json:"branch"`
+	Dirty        bool               `json:"dirty"`
+	DiscordId    string             `json:"discordId"`
+	Error        *string            `json:"error,omitempty"`
+	Id           openapi_types.UUID `json:"id"`
+	Name         string             `json:"name"`
+	Repository   string             `json:"repository"`
+	RepositoryId openapi_types.UUID `json:"repositoryId"`
+	Status       string             `json:"status"`
+}
+
 // DiscordInitialization defines model for DiscordInitialization.
 type DiscordInitialization struct {
 	CreatedAt time.Time          `json:"createdAt"`
@@ -139,13 +178,12 @@ type DiscordInitializationInputMode string
 
 // DiscordMember defines model for DiscordMember.
 type DiscordMember struct {
-	Bound         bool                `json:"bound"`
-	DiscordUserId string              `json:"discordUserId"`
-	DisplayName   string              `json:"displayName"`
-	ForumId       *openapi_types.UUID `json:"forumId,omitempty"`
-	GithubLogin   *string             `json:"githubLogin,omitempty"`
-	GuildId       string              `json:"guildId"`
-	Username      string              `json:"username"`
+	Bound         bool    `json:"bound"`
+	DiscordUserId string  `json:"discordUserId"`
+	DisplayName   string  `json:"displayName"`
+	GithubLogin   *string `json:"githubLogin,omitempty"`
+	GuildId       string  `json:"guildId"`
+	Username      string  `json:"username"`
 }
 
 // DiscordPreflight defines model for DiscordPreflight.
@@ -312,6 +350,21 @@ type LogoutParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
+// RebuildDiscordDevelopmentEnvironmentParams defines parameters for RebuildDiscordDevelopmentEnvironment.
+type RebuildDiscordDevelopmentEnvironmentParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// DeleteDiscordDevelopmentForumJSONBody defines parameters for DeleteDiscordDevelopmentForum.
+type DeleteDiscordDevelopmentForumJSONBody struct {
+	Confirmation string `json:"confirmation"`
+}
+
+// DeleteDiscordDevelopmentForumParams defines parameters for DeleteDiscordDevelopmentForum.
+type DeleteDiscordDevelopmentForumParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
 // DeleteDiscordForumAccessParams defines parameters for DeleteDiscordForumAccess.
 type DeleteDiscordForumAccessParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
@@ -369,6 +422,12 @@ type PreflightDiscordInitializationParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
+// CreateDiscordMemberForumJSONBody defines parameters for CreateDiscordMemberForum.
+type CreateDiscordMemberForumJSONBody struct {
+	Name         *string            `json:"name,omitempty"`
+	RepositoryId openapi_types.UUID `json:"repositoryId"`
+}
+
 // CreateDiscordMemberForumParams defines parameters for CreateDiscordMemberForum.
 type CreateDiscordMemberForumParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
@@ -420,6 +479,9 @@ type ReceiveGitHubWebhookParams struct {
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
+// DeleteDiscordDevelopmentForumJSONRequestBody defines body for DeleteDiscordDevelopmentForum for application/json ContentType.
+type DeleteDiscordDevelopmentForumJSONRequestBody DeleteDiscordDevelopmentForumJSONBody
+
 // PutDiscordForumAccessJSONRequestBody defines body for PutDiscordForumAccess for application/json ContentType.
 type PutDiscordForumAccessJSONRequestBody PutDiscordForumAccessJSONBody
 
@@ -434,6 +496,9 @@ type CreateDiscordInitializationJSONRequestBody = DiscordInitializationInput
 
 // PreflightDiscordInitializationJSONRequestBody defines body for PreflightDiscordInitialization for application/json ContentType.
 type PreflightDiscordInitializationJSONRequestBody = DiscordInitializationInput
+
+// CreateDiscordMemberForumJSONRequestBody defines body for CreateDiscordMemberForum for application/json ContentType.
+type CreateDiscordMemberForumJSONRequestBody CreateDiscordMemberForumJSONBody
 
 // PutGitHubAppJSONRequestBody defines body for PutGitHubApp for application/json ContentType.
 type PutGitHubAppJSONRequestBody = GitHubAppInput
@@ -479,6 +544,18 @@ type ServerInterface interface {
 
 	// (GET /auth/me)
 	GetCurrentAdministrator(c *gin.Context)
+
+	// (GET /discord/development-environments)
+	ListDiscordDevelopmentEnvironments(c *gin.Context)
+
+	// (POST /discord/development-environments/{id}/rebuild)
+	RebuildDiscordDevelopmentEnvironment(c *gin.Context, id openapi_types.UUID, params RebuildDiscordDevelopmentEnvironmentParams)
+
+	// (POST /discord/development-forums/{id}/delete)
+	DeleteDiscordDevelopmentForum(c *gin.Context, id openapi_types.UUID, params DeleteDiscordDevelopmentForumParams)
+
+	// (GET /discord/development-forums/{id}/delete-preflight)
+	PreflightDiscordDevelopmentForumDeletion(c *gin.Context, id openapi_types.UUID)
 
 	// (DELETE /discord/forums/{forumId}/access/{memberId})
 	DeleteDiscordForumAccess(c *gin.Context, forumId openapi_types.UUID, memberId string, params DeleteDiscordForumAccessParams)
@@ -713,6 +790,153 @@ func (siw *ServerInterfaceWrapper) GetCurrentAdministrator(c *gin.Context) {
 	}
 
 	siw.Handler.GetCurrentAdministrator(c)
+}
+
+// ListDiscordDevelopmentEnvironments operation middleware
+func (siw *ServerInterfaceWrapper) ListDiscordDevelopmentEnvironments(c *gin.Context) {
+
+	c.Set(SessionCookieScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListDiscordDevelopmentEnvironments(c)
+}
+
+// RebuildDiscordDevelopmentEnvironment operation middleware
+func (siw *ServerInterfaceWrapper) RebuildDiscordDevelopmentEnvironment(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RebuildDiscordDevelopmentEnvironmentParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.RebuildDiscordDevelopmentEnvironment(c, id, params)
+}
+
+// DeleteDiscordDevelopmentForum operation middleware
+func (siw *ServerInterfaceWrapper) DeleteDiscordDevelopmentForum(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteDiscordDevelopmentForumParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteDiscordDevelopmentForum(c, id, params)
+}
+
+// PreflightDiscordDevelopmentForumDeletion operation middleware
+func (siw *ServerInterfaceWrapper) PreflightDiscordDevelopmentForumDeletion(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PreflightDiscordDevelopmentForumDeletion(c, id)
 }
 
 // DeleteDiscordForumAccess operation middleware
@@ -1810,6 +2034,10 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/auth/login", wrapper.Login)
 	router.POST(options.BaseURL+"/auth/logout", wrapper.Logout)
 	router.GET(options.BaseURL+"/auth/me", wrapper.GetCurrentAdministrator)
+	router.GET(options.BaseURL+"/discord/development-environments", wrapper.ListDiscordDevelopmentEnvironments)
+	router.POST(options.BaseURL+"/discord/development-environments/:id/rebuild", wrapper.RebuildDiscordDevelopmentEnvironment)
+	router.POST(options.BaseURL+"/discord/development-forums/:id/delete", wrapper.DeleteDiscordDevelopmentForum)
+	router.GET(options.BaseURL+"/discord/development-forums/:id/delete-preflight", wrapper.PreflightDiscordDevelopmentForumDeletion)
 	router.DELETE(options.BaseURL+"/discord/forums/:forumId/access/:memberId", wrapper.DeleteDiscordForumAccess)
 	router.PUT(options.BaseURL+"/discord/forums/:forumId/access/:memberId", wrapper.PutDiscordForumAccess)
 	router.POST(options.BaseURL+"/discord/github/bind", wrapper.StartDiscordGitHubBind)
@@ -1851,68 +2079,74 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

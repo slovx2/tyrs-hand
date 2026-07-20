@@ -14,12 +14,11 @@ const (
 )
 
 var (
-	ErrReadOnly                     = errors.New("当前成员只有只读权限")
-	ErrStarterGitHubBindingRequired = errors.New("首帖发送时尚未绑定 GitHub")
-	ErrResourceGone                 = errors.New("discord 资源已经失效")
-	ErrPermission                   = errors.New("discord Bot 权限不足")
-	ErrUnauthorized                 = errors.New("discord Bot Token 无效")
-	ErrAmbiguousWrite               = errors.New("discord 写请求结果不明确")
+	ErrReadOnly       = errors.New("当前成员只有只读权限")
+	ErrResourceGone   = errors.New("discord 资源已经失效")
+	ErrPermission     = errors.New("discord Bot 权限不足")
+	ErrUnauthorized   = errors.New("discord Bot Token 无效")
+	ErrAmbiguousWrite = errors.New("discord 写请求结果不明确")
 )
 
 type Settings struct {
@@ -138,7 +137,6 @@ type Member struct {
 	DisplayName   string `json:"displayName"`
 	Bound         bool   `json:"bound"`
 	GitHubLogin   string `json:"githubLogin,omitempty"`
-	ForumID       string `json:"forumId,omitempty"`
 }
 
 type ForumAccess struct {

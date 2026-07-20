@@ -45,6 +45,16 @@ func TestEnsureAndPublish(t *testing.T) {
 	}, "")
 	require.NoError(t, err)
 	require.Equal(t, workspace.WorktreePath, reused.WorktreePath)
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "pull-request.txt"), []byte("pull request\n"), 0o600))
+	run(t, seed, "git", "add", "pull-request.txt")
+	run(t, seed, "git", "commit", "-m", "pull request")
+	run(t, seed, "git", "push", "origin", "HEAD:refs/pull/8/head")
+	pullWorkspace, err := manager.Ensure(ctx, ports.WorkspaceSpec{
+		RepositoryID: "repo-1", WorkItemID: "pull-8", CloneURL: remote,
+		BaseRef: "refs/remotes/pull/8", Branch: "tyrs-hand/pull-8",
+	}, "")
+	require.NoError(t, err)
+	require.FileExists(t, filepath.Join(pullWorkspace.WorktreePath, "pull-request.txt"))
 
 	require.NoError(t, os.WriteFile(filepath.Join(workspace.WorktreePath, "change.txt"), []byte("change\n"), 0o600))
 	commitSHA, err := manager.Commit(ctx, workspace.WorktreePath, "feat: add change")
@@ -104,40 +114,6 @@ func TestWorkspaceRejectsInvalidSpecs(t *testing.T) {
 	_, err = manager.Ensure(context.Background(), ports.WorkspaceSpec{RepositoryID: "repo", WorkItemID: "../escape"}, "")
 	require.Error(t, err)
 	require.Error(t, manager.Remove(context.Background(), "../escape", "item"))
-}
-
-func TestEnsureUsesExplicitWorktreePath(t *testing.T) {
-	ctx := context.Background()
-	root := t.TempDir()
-	remote := filepath.Join(root, "remote.git")
-	seed := filepath.Join(root, "seed")
-	require.NoError(t, os.MkdirAll(seed, 0o750))
-	run(t, root, "git", "init", "--bare", remote)
-	run(t, seed, "git", "init", "-b", "main")
-	run(t, seed, "git", "config", "user.name", "Test")
-	run(t, seed, "git", "config", "user.email", "test@example.com")
-	require.NoError(t, os.WriteFile(filepath.Join(seed, "README.md"), []byte("hello\n"), 0o600))
-	run(t, seed, "git", "add", "README.md")
-	run(t, seed, "git", "commit", "-m", "initial")
-	run(t, seed, "git", "remote", "add", "origin", remote)
-	run(t, seed, "git", "push", "origin", "main")
-	run(t, root, "git", "--git-dir", remote, "symbolic-ref", "HEAD", "refs/heads/main")
-
-	manager := NewManager(filepath.Join(root, "cache"), filepath.Join(root, "github"))
-	discordPath := filepath.Join(root, "discord", "workspace-1")
-	workspace, err := manager.Ensure(ctx, ports.WorkspaceSpec{
-		RepositoryID: "repo-1", WorkItemID: "workspace-1", WorktreePath: discordPath,
-		CloneURL: remote, BaseRef: "refs/remotes/origin/main", Branch: "tyrs-hand/discord/workspace-1",
-	}, "")
-	require.NoError(t, err)
-	require.Equal(t, discordPath, workspace.WorktreePath)
-	require.FileExists(t, filepath.Join(discordPath, "README.md"))
-
-	_, err = manager.Ensure(ctx, ports.WorkspaceSpec{
-		RepositoryID: "repo-1", WorkItemID: "workspace-2", WorktreePath: discordPath,
-		CloneURL: remote, BaseRef: "refs/remotes/origin/main", Branch: "tyrs-hand/discord/workspace-2",
-	}, "")
-	require.Error(t, err)
 }
 
 func run(t *testing.T, dir, name string, args ...string) {

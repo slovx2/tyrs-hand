@@ -3,9 +3,11 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/devcontainer"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 )
@@ -13,7 +15,11 @@ import (
 func (p *Processor) discordTurnInput(ctx context.Context, jobCtx discordJobContext,
 	workspace string, skills []ports.SkillRef,
 ) (ports.TurnInput, error) {
-	attachments, err := p.prepareDiscordAttachments(ctx, jobCtx.MessageID, workspace)
+	runtime, err := p.development.Runtime(ctx, jobCtx.EnvironmentID, jobCtx.ForumID, jobCtx.ConversationID)
+	if err != nil {
+		return ports.TurnInput{}, err
+	}
+	attachments, err := p.prepareDiscordAttachments(ctx, jobCtx.MessageID, runtime)
 	if err != nil {
 		return ports.TurnInput{}, err
 	}
@@ -31,7 +37,7 @@ func (p *Processor) discordTurnInput(ctx context.Context, jobCtx discordJobConte
 	var images []ports.LocalImageInput
 	var files []map[string]string
 	for _, attachment := range attachments {
-		absolute := filepath.Join(workspace, filepath.FromSlash(attachment.RelativePath))
+		absolute := filepath.ToSlash(filepath.Join(runtime.Workspace, filepath.FromSlash(attachment.RelativePath)))
 		if attachment.Kind == "image" {
 			images = append(images, ports.LocalImageInput{Path: absolute, Detail: "auto"})
 		} else {
@@ -51,7 +57,9 @@ func (p *Processor) discordTurnInput(ctx context.Context, jobCtx discordJobConte
 		LocalImages: images, AdditionalContext: additional, Skills: skills}, nil
 }
 
-func (p *Processor) prepareDiscordAttachments(ctx context.Context, messageID, workspace string) ([]discordintegration.SavedAttachment, error) {
+func (p *Processor) prepareDiscordAttachments(ctx context.Context, messageID string,
+	runtime devcontainer.Runtime,
+) ([]discordintegration.SavedAttachment, error) {
 	rows, err := p.db.QueryContext(ctx, `SELECT discord_attachment_id, source_url, original_filename,
 		media_type, size_bytes FROM discord_attachments WHERE message_id = $1 AND status = 'pending'
 		ORDER BY created_at, id`, messageID)
@@ -71,9 +79,17 @@ func (p *Processor) prepareDiscordAttachments(ctx context.Context, messageID, wo
 		return nil, err
 	}
 	if len(pending) > 0 {
-		saved, downloadErr := discordintegration.NewAttachmentDownloader(nil).Download(ctx, workspace, pending)
+		temporary, temporaryErr := os.MkdirTemp("", "tyrs-hand-discord-attachments-*")
+		if temporaryErr != nil {
+			return nil, temporaryErr
+		}
+		defer func() { _ = os.RemoveAll(temporary) }()
+		saved, downloadErr := discordintegration.NewAttachmentDownloader(nil).Download(ctx, temporary, pending)
 		if downloadErr != nil {
 			return nil, downloadErr
+		}
+		if err := p.development.CopyToRuntime(ctx, runtime, temporary, runtime.Workspace); err != nil {
+			return nil, err
 		}
 		for _, attachment := range saved {
 			_, err = p.db.ExecContext(ctx, `UPDATE discord_attachments SET kind = $3, media_type = $4,

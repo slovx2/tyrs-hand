@@ -59,7 +59,44 @@ function commonHandlers() {
           displayName: 'Bob',
           bound: true,
           githubLogin: 'bob',
-          forumId: '11111111-1111-1111-1111-111111111111',
+        },
+      ]),
+    ),
+    http.get('/api/v1/repositories', () =>
+      HttpResponse.json({
+        items: [
+          {
+            id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            owner: 'datawake-ai',
+            name: 'tyrs-hand',
+            enabled: true,
+          },
+        ],
+      }),
+    ),
+    http.get('/api/v1/discord/development-environments', () =>
+      HttpResponse.json([
+        {
+          id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
+          ownerDiscordUserId: '20',
+          ownerName: 'Bob',
+          buildRepositoryId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+          buildRepository: 'datawake-ai/tyrs-hand',
+          status: 'running',
+          runtimeUser: 'vscode',
+          lastUsedAt: '2026-07-21T00:00:00Z',
+          forums: [
+            {
+              id: '11111111-1111-1111-1111-111111111111',
+              name: 'bob-dev',
+              discordId: '999',
+              repositoryId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+              repository: 'datawake-ai/tyrs-hand',
+              status: 'ready',
+              branch: 'tyrs-hand/discord/bob',
+              dirty: false,
+            },
+          ],
         },
       ]),
     ),
@@ -113,13 +150,13 @@ describe('DiscordPage', () => {
     })
   })
 
-  it('创建个人 Forum 并配置 operator 权限', async () => {
+  it('选择仓库创建开发 Forum 并配置 operator 权限', async () => {
     commonHandlers()
     const createForum = vi.fn()
     const grant = vi.fn()
     server.use(
-      http.post('/api/v1/discord/members/10/forum', () => {
-        createForum()
+      http.post('/api/v1/discord/members/10/forum', async ({ request }) => {
+        createForum(await request.json())
         return HttpResponse.json(
           { id: '33333333-3333-3333-3333-333333333333' },
           { status: 202 },
@@ -136,11 +173,21 @@ describe('DiscordPage', () => {
     renderPage()
     const user = userEvent.setup()
     expect((await screen.findAllByText('Alice')).length).toBeGreaterThan(0)
-    await user.click(screen.getByRole('button', { name: '创建个人 Forum' }))
-    expect(createForum).toHaveBeenCalled()
+    await user.selectOptions(
+      screen.getByLabelText('Alice 开发仓库'),
+      'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    )
+    await user.type(screen.getByLabelText('Alice Forum 名称'), 'alice-api')
+    await user.click(
+      screen.getAllByRole('button', { name: '创建开发 Forum' })[0],
+    )
+    expect(createForum).toHaveBeenCalledWith({
+      repositoryId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+      name: 'alice-api',
+    })
 
-    await user.selectOptions(screen.getByLabelText('Bob 授权成员'), '10')
-    await user.selectOptions(screen.getByLabelText('Bob 权限'), 'operator')
+    await user.selectOptions(screen.getByLabelText('bob-dev 授权成员'), '10')
+    await user.selectOptions(screen.getByLabelText('bob-dev 权限'), 'operator')
     await user.click(screen.getByRole('button', { name: '授权' }))
     expect(grant).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -149,5 +196,57 @@ describe('DiscordPage', () => {
       }),
       { accessLevel: 'operator' },
     )
+  })
+
+  it('重建用户级环境并强确认删除最后一个 Forum', async () => {
+    commonHandlers()
+    const rebuild = vi.fn()
+    const remove = vi.fn()
+    vi.spyOn(window, 'prompt').mockReturnValue(
+      'DELETE 11111111-1111-1111-1111-111111111111',
+    )
+    server.use(
+      http.post(
+        '/api/v1/discord/development-environments/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/rebuild',
+        () => {
+          rebuild()
+          return new HttpResponse(null, { status: 202 })
+        },
+      ),
+      http.get(
+        '/api/v1/discord/development-forums/11111111-1111-1111-1111-111111111111/delete-preflight',
+        () =>
+          HttpResponse.json({
+            forumId: '11111111-1111-1111-1111-111111111111',
+            dirty: true,
+            unpushed: true,
+            active: false,
+            deletesEnvironment: true,
+            confirmation: 'DELETE 11111111-1111-1111-1111-111111111111',
+          }),
+      ),
+      http.post(
+        '/api/v1/discord/development-forums/11111111-1111-1111-1111-111111111111/delete',
+        async ({ request }) => {
+          remove(await request.json())
+          return HttpResponse.json(
+            { id: 'dddddddd-dddd-dddd-dddd-dddddddddddd' },
+            { status: 202 },
+          )
+        },
+      ),
+    )
+    renderPage()
+    const user = userEvent.setup()
+    await screen.findByText('bob-dev')
+    await user.click(screen.getByRole('button', { name: '下次运行前重建环境' }))
+    expect(rebuild).toHaveBeenCalledOnce()
+    await user.click(screen.getByRole('button', { name: '删除' }))
+    expect(window.prompt).toHaveBeenCalledWith(
+      expect.stringContaining('最后一个 Forum'),
+    )
+    expect(remove).toHaveBeenCalledWith({
+      confirmation: 'DELETE 11111111-1111-1111-1111-111111111111',
+    })
   })
 })

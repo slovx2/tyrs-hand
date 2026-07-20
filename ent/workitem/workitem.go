@@ -30,6 +30,14 @@ const (
 	FieldBaseSha = "base_sha"
 	// FieldHeadSha holds the string denoting the head_sha field in the database.
 	FieldHeadSha = "head_sha"
+	// FieldBaseRef holds the string denoting the base_ref field in the database.
+	FieldBaseRef = "base_ref"
+	// FieldHeadRef holds the string denoting the head_ref field in the database.
+	FieldHeadRef = "head_ref"
+	// FieldHeadRepository holds the string denoting the head_repository field in the database.
+	FieldHeadRepository = "head_repository"
+	// FieldHTMLURL holds the string denoting the html_url field in the database.
+	FieldHTMLURL = "html_url"
 	// FieldContextVersion holds the string denoting the context_version field in the database.
 	FieldContextVersion = "context_version"
 	// FieldClosedAt holds the string denoting the closed_at field in the database.
@@ -53,6 +61,10 @@ var Columns = []string{
 	FieldAgentOwned,
 	FieldBaseSha,
 	FieldHeadSha,
+	FieldBaseRef,
+	FieldHeadRef,
+	FieldHeadRepository,
+	FieldHTMLURL,
 	FieldContextVersion,
 	FieldClosedAt,
 	FieldCreatedAt,
@@ -134,6 +146,26 @@ func ByBaseSha(opts ...sql.OrderTermOption) OrderOption {
 // ByHeadSha orders the results by the head_sha field.
 func ByHeadSha(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldHeadSha, opts...).ToFunc()
+}
+
+// ByBaseRef orders the results by the base_ref field.
+func ByBaseRef(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBaseRef, opts...).ToFunc()
+}
+
+// ByHeadRef orders the results by the head_ref field.
+func ByHeadRef(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldHeadRef, opts...).ToFunc()
+}
+
+// ByHeadRepository orders the results by the head_repository field.
+func ByHeadRepository(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldHeadRepository, opts...).ToFunc()
+}
+
+// ByHTMLURL orders the results by the html_url field.
+func ByHTMLURL(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldHTMLURL, opts...).ToFunc()
 }
 
 // ByContextVersion orders the results by the context_version field.

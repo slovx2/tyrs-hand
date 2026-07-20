@@ -28,16 +28,16 @@ type Config struct {
 	CookieSecure                   bool
 	RepoCacheRoot                  string
 	WorktreeRoot                   string
-	DiscordWorkspaceRoot           string
 	CodexHomeRoot                  string
 	CodexBin                       string
 	WorkerDataRoot                 string
 	RepoCacheMaxBytes              int64
 	WorkerID                       string
+	WorkerRole                     string
+	WorkerImageDigest              string
 	WorkerMaxConcurrentJobs        int
 	LeaseDuration                  time.Duration
 	HeartbeatInterval              time.Duration
-	EnvironmentPrepareWaitTimeout  time.Duration
 	ControlTimeout                 time.Duration
 	ToolTimeout                    time.Duration
 	TurnIdleTimeout                time.Duration
@@ -47,11 +47,8 @@ type Config struct {
 	CodexResultDeliveryMaxAttempts int
 	CodexMaxSteersPerTurn          int
 	GitHubReplyGateMaxBlocks       int
-	EnableHostDocker               bool
-	DockerNetwork                  string
-	DockerStopTimeout              time.Duration
-	DockerCleanupTimeout           time.Duration
-	DockerSweepInterval            time.Duration
+	EnableDevelopmentContainers    bool
+	DevelopmentContainerIdle       time.Duration
 }
 
 func Load() (Config, error) {
@@ -76,16 +73,16 @@ func Load() (Config, error) {
 		CookieSecure:                   v.GetBool("cookie_secure"),
 		RepoCacheRoot:                  filepath.Clean(v.GetString("repo_cache_root")),
 		WorktreeRoot:                   filepath.Clean(v.GetString("worktree_root")),
-		DiscordWorkspaceRoot:           filepath.Clean(v.GetString("discord_workspace_root")),
 		CodexHomeRoot:                  filepath.Clean(v.GetString("codex_home_root")),
 		CodexBin:                       v.GetString("codex_bin"),
 		WorkerDataRoot:                 filepath.Clean(v.GetString("worker_data_root")),
 		RepoCacheMaxBytes:              v.GetInt64("repo_cache_max_bytes"),
 		WorkerID:                       v.GetString("worker_id"),
+		WorkerRole:                     strings.TrimSpace(v.GetString("worker_role")),
+		WorkerImageDigest:              strings.TrimSpace(v.GetString("worker_image_digest")),
 		WorkerMaxConcurrentJobs:        v.GetInt("worker_max_concurrent_jobs"),
 		LeaseDuration:                  v.GetDuration("lease_duration"),
 		HeartbeatInterval:              v.GetDuration("heartbeat_interval"),
-		EnvironmentPrepareWaitTimeout:  v.GetDuration("env_prepare_wait_timeout"),
 		ControlTimeout:                 v.GetDuration("control_timeout"),
 		ToolTimeout:                    v.GetDuration("tool_timeout"),
 		TurnIdleTimeout:                v.GetDuration("turn_idle_timeout"),
@@ -95,11 +92,8 @@ func Load() (Config, error) {
 		CodexResultDeliveryMaxAttempts: v.GetInt("codex_result_delivery_max_attempts"),
 		CodexMaxSteersPerTurn:          v.GetInt("codex_max_steers_per_turn"),
 		GitHubReplyGateMaxBlocks:       v.GetInt("github_reply_gate_max_blocks"),
-		EnableHostDocker:               v.GetBool("enable_host_docker"),
-		DockerNetwork:                  strings.TrimSpace(v.GetString("docker_network")),
-		DockerStopTimeout:              v.GetDuration("docker_stop_timeout"),
-		DockerCleanupTimeout:           v.GetDuration("docker_cleanup_timeout"),
-		DockerSweepInterval:            v.GetDuration("docker_sweep_interval"),
+		EnableDevelopmentContainers:    v.GetBool("enable_development_containers"),
+		DevelopmentContainerIdle:       v.GetDuration("development_container_idle"),
 	}
 	if strings.TrimSpace(cfg.WorkerID) == "" {
 		cfg.WorkerID = defaultWorkerID()
@@ -137,8 +131,8 @@ func (c Config) Validate() error {
 	if c.WorkerMaxConcurrentJobs <= 0 {
 		return errors.New("worker_max_concurrent_jobs 必须大于零")
 	}
-	if c.EnvironmentPrepareWaitTimeout <= 0 {
-		return errors.New("env_prepare_wait_timeout 必须大于零")
+	if c.WorkerRole != "" && c.WorkerRole != "all" && c.WorkerRole != "github" && c.WorkerRole != "discord" {
+		return errors.New("worker_role 必须是 all、github 或 discord")
 	}
 	if c.CodexStatusPollInterval <= 0 || c.CodexReconcileMaxAttempts <= 0 ||
 		c.CodexResultDeliveryMaxAttempts <= 0 || c.CodexMaxSteersPerTurn <= 0 ||
@@ -151,11 +145,8 @@ func (c Config) Validate() error {
 	if c.RepoCacheMaxBytes <= 0 {
 		return errors.New("配置的 Repo Cache 容量上限必须大于零")
 	}
-	if c.DockerStopTimeout <= 0 || c.DockerCleanupTimeout <= 0 || c.DockerSweepInterval <= 0 {
-		return errors.New("docker 停止、清理和扫描间隔必须大于零")
-	}
-	if c.EnableHostDocker && c.DockerNetwork == "" {
-		return errors.New("启用宿主 Docker 时必须配置 docker_network")
+	if c.DevelopmentContainerIdle < 0 {
+		return errors.New("development_container_idle 不能小于零")
 	}
 	if c.Environment == "production" {
 		if len(c.MasterKey) != 32 {
@@ -183,15 +174,15 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("worker_data_root", ".local/worker")
 	v.SetDefault("repo_cache_root", ".local/worker/repo-cache")
 	v.SetDefault("worktree_root", ".local/worker/workspaces/github")
-	v.SetDefault("discord_workspace_root", ".local/worker/workspaces/discord")
 	v.SetDefault("codex_home_root", ".local/worker/codex-homes")
 	v.SetDefault("codex_bin", "codex")
 	v.SetDefault("repo_cache_max_bytes", int64(20*1024*1024*1024))
 	v.SetDefault("worker_id", defaultWorkerID())
+	v.SetDefault("worker_role", "all")
+	v.SetDefault("worker_image_digest", "")
 	v.SetDefault("worker_max_concurrent_jobs", 6)
 	v.SetDefault("lease_duration", "90s")
 	v.SetDefault("heartbeat_interval", "20s")
-	v.SetDefault("env_prepare_wait_timeout", "10m")
 	v.SetDefault("control_timeout", "30s")
 	v.SetDefault("tool_timeout", "60s")
 	v.SetDefault("turn_idle_timeout", "15m")
@@ -201,11 +192,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("codex_result_delivery_max_attempts", 5)
 	v.SetDefault("codex_max_steers_per_turn", 5)
 	v.SetDefault("github_reply_gate_max_blocks", 3)
-	v.SetDefault("enable_host_docker", false)
-	v.SetDefault("docker_network", "tyrs-hand-agent-runtime")
-	v.SetDefault("docker_stop_timeout", "10s")
-	v.SetDefault("docker_cleanup_timeout", "30s")
-	v.SetDefault("docker_sweep_interval", "30s")
+	v.SetDefault("enable_development_containers", false)
+	v.SetDefault("development_container_idle", "30m")
 }
 
 func defaultWorkerID() string {

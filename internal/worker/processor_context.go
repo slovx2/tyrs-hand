@@ -17,6 +17,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/replygate"
+	"go.uber.org/zap"
 )
 
 var errDiscordTurnStopped = errors.New("当前 Discord Codex Turn 已被停止")
@@ -49,17 +50,48 @@ func discordStopRequested(ctx context.Context, db *sql.DB, intentID uuid.UUID, c
 func (p *Processor) loadContext(ctx context.Context, intent codexcontrol.Intent) (jobContext, error) {
 	var result jobContext
 	err := p.db.QueryRowContext(ctx, `SELECT r.owner, r.name, r.clone_url, r.default_branch,
-		w.kind, w.external_number, COALESCE(w.head_sha, ''), w.context_version,
+		w.kind, w.external_number, COALESCE(w.head_sha, ''), COALESCE(w.head_ref, ''),
+		COALESCE(w.head_repository, ''), COALESCE(w.base_sha, ''), COALESCE(w.base_ref, ''),
+		COALESCE(w.html_url, ''), w.context_version,
 		p.name, COALESCE(p.model, ''), COALESCE(p.reasoning_effort, ''),
 		COALESCE(p.service_tier, ''), p.sandbox, p.approval_policy, p.network_enabled
 		FROM repositories r JOIN work_items w ON w.repository_id = r.id
 		JOIN agent_profiles p ON p.id = $3 WHERE r.id = $1 AND w.id = $2`,
 		intent.RepositoryID, intent.WorkItemID, intent.AgentProfileID).Scan(
 		&result.Owner, &result.Repository, &result.CloneURL, &result.DefaultBranch,
-		&result.Kind, &result.Number, &result.HeadSHA, &result.ContextVersion,
+		&result.Kind, &result.Number, &result.HeadSHA, &result.HeadRef,
+		&result.HeadRepository, &result.BaseSHA, &result.BaseRef, &result.HTMLURL,
+		&result.ContextVersion,
 		&result.ProfileName, &result.Model, &result.ReasoningEffort, &result.ServiceTier,
 		&result.Sandbox, &result.ApprovalPolicy, &result.NetworkEnabled)
 	return result, err
+}
+
+func githubWorkItemAdditionalContext(job jobContext, workspace ports.Workspace) map[string]ports.AdditionalContextEntry {
+	url := job.HTMLURL
+	if url == "" {
+		path := "issues"
+		if job.Kind == "pull_request" {
+			path = "pull"
+		}
+		url = fmt.Sprintf("https://github.com/%s/%s/%s/%d", job.Owner, job.Repository, path, job.Number)
+	}
+	payload := map[string]any{
+		"provider": "github", "repository": job.Owner + "/" + job.Repository,
+		"kind": job.Kind, "number": job.Number, "url": url,
+		"workspace": map[string]any{"branch": workspace.Branch, "policy": "temporary_lightweight"},
+	}
+	if job.Kind == "pull_request" {
+		payload["pullRequest"] = map[string]any{
+			"sourceRepository": job.HeadRepository, "sourceBranch": job.HeadRef,
+			"sourceSha": job.HeadSHA, "targetBranch": job.BaseRef,
+			"targetSha": job.BaseSHA, "fetchedRef": fmt.Sprintf("refs/remotes/pull/%d", job.Number),
+		}
+	}
+	encoded, _ := json.Marshal(payload)
+	return map[string]ports.AdditionalContextEntry{
+		"github_work_item": {Kind: "application", Value: string(encoded)},
+	}
 }
 
 func (p *Processor) ensureThread(ctx context.Context, runtime *codex.Runtime,
@@ -317,12 +349,12 @@ func (p *Processor) dispatchPendingIntent(ctx context.Context, runtime *codex.Ru
 		if loadErr != nil {
 			return loadErr
 		}
-		workspace := filepath.Join(p.cfg.DiscordWorkspaceRoot, "blank", claimed.DiscordConversationID.String())
-		if jobCtx.HasRepository {
-			loadErr = p.db.QueryRowContext(ctx, `SELECT w.path FROM discord_conversations c
-				JOIN discord_workspaces w ON w.id = c.workspace_id WHERE c.id = $1`,
-				claimed.DiscordConversationID).Scan(&workspace)
+		containerRuntime, runtimeErr := p.development.Runtime(ctx, jobCtx.EnvironmentID,
+			jobCtx.ForumID, jobCtx.ConversationID)
+		if runtimeErr != nil {
+			return runtimeErr
 		}
+		workspace := containerRuntime.Workspace
 		if loadErr != nil {
 			return loadErr
 		}
@@ -516,9 +548,21 @@ func resolveSkills(worktree string, names []string) ([]ports.SkillRef, error) {
 	return result, nil
 }
 
+func resolveContainerSkills(workspace string, names []string) ([]ports.SkillRef, error) {
+	result := make([]ports.SkillRef, 0, len(names))
+	for _, name := range names {
+		if name == "" || strings.ContainsAny(name, `/\`) {
+			return nil, fmt.Errorf("仓库 Skill 名称 %q 无效", name)
+		}
+		result = append(result, ports.SkillRef{Name: name,
+			Path: filepath.ToSlash(filepath.Join(workspace, ".agents", "skills", name, "SKILL.md"))})
+	}
+	return result, nil
+}
+
 func localGitSpec() ports.DynamicToolSpec {
 	return ports.DynamicToolSpec{
-		Type: "namespace", Name: "git", Description: "Inspect and publish the current managed worktree.",
+		Type: "namespace", Name: "git", Description: "Inspect and publish the current managed Git workspace.",
 		Tools: []ports.DynamicToolSpec{
 			{Type: "function", Name: "status", Description: "Read the current worktree status.", InputSchema: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)},
 			{Type: "function", Name: "commit", Description: "Stage all current worktree changes and create a commit.", InputSchema: json.RawMessage(`{"type":"object","properties":{"message":{"type":"string","minLength":1,"maxLength":200}},"required":["message"],"additionalProperties":false}`)},
@@ -633,4 +677,32 @@ func (p *Processor) refreshWorkspaceState(parent context.Context, workItemID uui
 	}
 	_, _ = p.db.ExecContext(ctx, `UPDATE worktrees SET dirty = $2, status = 'ready',
 		error = NULL, last_used_at = now() WHERE work_item_id = $1`, workItemID, dirty)
+}
+
+func (p *Processor) cleanupClosedWorktrees(ctx context.Context) error {
+	rows, err := p.db.QueryContext(ctx, `SELECT r.id::text, w.id::text
+		FROM work_items w JOIN repositories r ON r.id = w.repository_id
+		JOIN worktrees wt ON wt.work_item_id = w.id
+		WHERE w.closed_at < now() - interval '7 days'
+		  AND NOT EXISTS (
+			SELECT 1 FROM codex_turn_intents i WHERE i.work_item_id = w.id
+			  AND i.status IN ('dispatching','awaiting_confirmation','running','reconciling'))`)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var repositoryID, workItemID string
+		if err := rows.Scan(&repositoryID, &workItemID); err != nil {
+			return err
+		}
+		if err := p.workspace.Remove(ctx, repositoryID, workItemID); err != nil {
+			p.logger.Warn("删除 GitHub Worktree 失败", zap.String("work_item_id", workItemID), zap.Error(err))
+			continue
+		}
+		if _, err := p.db.ExecContext(ctx, "DELETE FROM worktrees WHERE work_item_id = $1", workItemID); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
 }

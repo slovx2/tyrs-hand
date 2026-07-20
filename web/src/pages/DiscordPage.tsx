@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { api } from '../api/client'
+import type { ListResponse } from '../api/client'
 
 interface DiscordSettings {
   guildId: string
@@ -29,7 +30,39 @@ interface DiscordMember {
   displayName: string
   bound: boolean
   githubLogin?: string
-  forumId?: string
+}
+
+interface RepositoryRecord {
+  id: string
+  owner: string
+  name: string
+  enabled: boolean
+}
+
+interface DevelopmentForum {
+  id: string
+  name: string
+  discordId: string
+  repositoryId: string
+  repository: string
+  status: string
+  branch: string
+  dirty: boolean
+  error?: string
+}
+
+interface DevelopmentEnvironment {
+  id: string
+  ownerDiscordUserId: string
+  ownerName: string
+  buildRepositoryId: string
+  buildRepository: string
+  status: string
+  imageId?: string
+  buildSourceSha?: string
+  runtimeUser?: string
+  error?: string
+  forums: DevelopmentForum[]
 }
 
 interface Preflight {
@@ -64,6 +97,17 @@ export function DiscordPage() {
     queryKey: ['discord-members'],
     queryFn: () => api<DiscordMember[]>('/discord/members'),
     enabled: settings.data?.tokenConfigured === true,
+  })
+  const repositories = useQuery({
+    queryKey: ['repositories'],
+    queryFn: () => api<ListResponse<RepositoryRecord>>('/repositories'),
+  })
+  const environments = useQuery({
+    queryKey: ['discord-development-environments'],
+    queryFn: () =>
+      api<DevelopmentEnvironment[]>('/discord/development-environments'),
+    enabled: settings.data?.tokenConfigured === true,
+    refetchInterval: 30_000,
   })
   const form = useForm<SettingsInput>({
     values: settings.data
@@ -172,9 +216,10 @@ export function DiscordPage() {
       <div className="panel mt-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="text-xl font-semibold">成员与个人 Forum</h2>
+            <h2 className="text-xl font-semibold">成员与开发 Forum</h2>
             <p className="muted mt-1 text-sm">
-              个人 Forum 只由管理员创建，不会自动创建。
+              每个 Forum 固定绑定一个仓库；同一成员的多个仓库共享长期开发容器与
+              Home。
             </p>
           </div>
           <button
@@ -187,14 +232,18 @@ export function DiscordPage() {
         </div>
         <div className="danger-note mt-4">
           拥有 Discord Administrator
-          权限的成员可以绕过频道权限覆盖。后台授权无法限制这种平台级能力。
+          权限的成员可以绕过频道权限覆盖。可操作协作者能够驱动 Agent，且同一
+          owner 的容器与 Home 会跨 Forum 复用，因此只应授权给该 owner
+          信任的成员。
         </div>
         <div className="mt-5 grid gap-4">
           {(members.data ?? []).map((member) => (
             <MemberRow
               key={member.discordUserId}
               member={member}
-              members={members.data ?? []}
+              repositories={(repositories.data?.items ?? []).filter(
+                (repository) => repository.enabled,
+              )}
             />
           ))}
           {members.data?.length === 0 && (
@@ -202,6 +251,10 @@ export function DiscordPage() {
           )}
         </div>
       </div>
+      <DevelopmentEnvironmentPanel
+        environments={environments.data ?? []}
+        members={members.data ?? []}
+      />
     </section>
   )
 }
@@ -335,29 +388,26 @@ function PreflightResult({ value }: { value: Preflight }) {
 
 function MemberRow({
   member,
-  members,
+  repositories,
 }: {
   member: DiscordMember
-  members: DiscordMember[]
+  repositories: RepositoryRecord[]
 }) {
   const queryClient = useQueryClient()
-  const [target, setTarget] = useState('')
-  const [level, setLevel] = useState<'readonly' | 'operator'>('readonly')
+  const [repositoryId, setRepositoryId] = useState('')
+  const [name, setName] = useState('')
   const createForum = useMutation({
     mutationFn: () =>
       api<{ id: string }>(`/discord/members/${member.discordUserId}/forum`, {
         method: 'POST',
+        body: JSON.stringify({ repositoryId, name }),
       }),
-    onSuccess: () =>
-      void queryClient.invalidateQueries({ queryKey: ['discord-members'] }),
-  })
-  const access = useMutation({
-    mutationFn: (method: 'PUT' | 'DELETE') =>
-      api<void>(`/discord/forums/${member.forumId}/access/${target}`, {
-        method,
-        body:
-          method === 'PUT' ? JSON.stringify({ accessLevel: level }) : undefined,
-      }),
+    onSuccess: async () => {
+      setName('')
+      await queryClient.invalidateQueries({
+        queryKey: ['discord-development-environments'],
+      })
+    },
   })
   return (
     <div
@@ -370,75 +420,236 @@ function MemberRow({
             {member.displayName || member.username}
           </p>
           <p className="muted truncate text-xs">
-            {member.bound ? `GitHub: ${member.githubLogin}` : '未绑定 GitHub'} ·{' '}
-            {member.forumId ? '已创建 Forum' : '未创建 Forum'}
+            {member.bound ? `GitHub: ${member.githubLogin}` : '未绑定 GitHub'}
           </p>
         </div>
-        {!member.forumId && (
-          <button
-            type="button"
-            className="button-secondary"
-            disabled={createForum.isPending}
-            onClick={() => createForum.mutate()}
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+        <select
+          className="field"
+          aria-label={`${member.displayName} 开发仓库`}
+          value={repositoryId}
+          onChange={(event) => setRepositoryId(event.target.value)}
+        >
+          <option value="">选择仓库</option>
+          {repositories.map((repository) => (
+            <option key={repository.id} value={repository.id}>
+              {repository.owner}/{repository.name}
+            </option>
+          ))}
+        </select>
+        <input
+          className="field"
+          aria-label={`${member.displayName} Forum 名称`}
+          placeholder="Forum 名称（可选）"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+        />
+        <button
+          type="button"
+          className="button-secondary"
+          disabled={!member.bound || !repositoryId || createForum.isPending}
+          onClick={() => createForum.mutate()}
+        >
+          创建开发 Forum
+        </button>
+      </div>
+      {createForum.error && (
+        <p className="error-text mt-2 text-sm">{createForum.error.message}</p>
+      )}
+    </div>
+  )
+}
+
+function DevelopmentEnvironmentPanel({
+  environments,
+  members,
+}: {
+  environments: DevelopmentEnvironment[]
+  members: DiscordMember[]
+}) {
+  const queryClient = useQueryClient()
+  const rebuild = useMutation({
+    mutationFn: (id: string) =>
+      api<void>(`/discord/development-environments/${id}/rebuild`, {
+        method: 'POST',
+      }),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({
+        queryKey: ['discord-development-environments'],
+      }),
+  })
+  return (
+    <div className="panel mt-6">
+      <h2 className="text-xl font-semibold">长期开发环境</h2>
+      <p className="muted mt-1 text-sm">
+        同一 Discord 用户只有一个容器和 Home；不同仓库、不同 Forum 各自使用独立
+        clone。
+      </p>
+      <div className="mt-5 grid gap-5">
+        {environments.map((environment) => (
+          <div
+            key={environment.id}
+            className="border-t pt-4 first:border-t-0 first:pt-0"
+            style={{ borderColor: 'var(--border)' }}
           >
-            创建个人 Forum
-          </button>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold">{environment.ownerName}</p>
+                <p className="muted mt-1 text-xs">
+                  {environment.status} · 构建来源 {environment.buildRepository}{' '}
+                  · 用户 {environment.runtimeUser || '待构建'}
+                  {environment.buildSourceSha
+                    ? ` · ${environment.buildSourceSha.slice(0, 12)}`
+                    : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={rebuild.isPending}
+                onClick={() => rebuild.mutate(environment.id)}
+              >
+                下次运行前重建环境
+              </button>
+            </div>
+            {environment.error && (
+              <p className="error-text mt-2 text-sm">{environment.error}</p>
+            )}
+            <div className="mt-3 grid gap-3">
+              {environment.forums.map((forum) => (
+                <DevelopmentForumRow
+                  key={forum.id}
+                  forum={forum}
+                  ownerUserId={environment.ownerDiscordUserId}
+                  members={members}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+        {environments.length === 0 && (
+          <p className="muted text-sm">尚未创建开发 Forum</p>
         )}
       </div>
-      {member.forumId && (
-        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_150px_auto_auto]">
-          <select
-            className="field"
-            aria-label={`${member.displayName} 授权成员`}
-            value={target}
-            onChange={(event) => setTarget(event.target.value)}
-          >
-            <option value="">选择其他成员</option>
-            {members
-              .filter(
-                (candidate) => candidate.discordUserId !== member.discordUserId,
-              )
-              .map((candidate) => (
-                <option
-                  key={candidate.discordUserId}
-                  value={candidate.discordUserId}
-                >
-                  {candidate.displayName || candidate.username}
-                </option>
-              ))}
-          </select>
-          <select
-            className="field"
-            aria-label={`${member.displayName} 权限`}
-            value={level}
-            onChange={(event) =>
-              setLevel(event.target.value as 'readonly' | 'operator')
-            }
-          >
-            <option value="readonly">只读</option>
-            <option value="operator">可操作</option>
-          </select>
-          <button
-            type="button"
-            className="button-secondary"
-            disabled={!target || access.isPending}
-            onClick={() => access.mutate('PUT')}
-          >
-            授权
-          </button>
-          <button
-            type="button"
-            className="button-secondary"
-            disabled={!target || access.isPending}
-            onClick={() => access.mutate('DELETE')}
-          >
-            移除
-          </button>
+    </div>
+  )
+}
+
+function DevelopmentForumRow({
+  forum,
+  ownerUserId,
+  members,
+}: {
+  forum: DevelopmentForum
+  ownerUserId: string
+  members: DiscordMember[]
+}) {
+  const queryClient = useQueryClient()
+  const [target, setTarget] = useState('')
+  const [level, setLevel] = useState<'readonly' | 'operator'>('readonly')
+  const access = useMutation({
+    mutationFn: (method: 'PUT' | 'DELETE') =>
+      api<void>(`/discord/forums/${forum.id}/access/${target}`, {
+        method,
+        body:
+          method === 'PUT' ? JSON.stringify({ accessLevel: level }) : undefined,
+      }),
+  })
+  const remove = useMutation({
+    mutationFn: async () => {
+      const preflight = await api<{
+        dirty: boolean
+        unpushed: boolean
+        active: boolean
+        deletesEnvironment: boolean
+        confirmation: string
+      }>(`/discord/development-forums/${forum.id}/delete-preflight`)
+      const warning = `${preflight.active ? '仍有任务排队或运行，当前不能删除。' : ''}${preflight.dirty ? '存在未提交修改。' : ''}${preflight.unpushed ? '存在未推送提交。' : ''}${preflight.deletesEnvironment ? '这也是最后一个 Forum，将删除整个环境和 Home。' : ''}`
+      if (preflight.active) return
+      const confirmation = window.prompt(
+        `${warning}\n请输入：${preflight.confirmation}`,
+      )
+      if (confirmation !== preflight.confirmation) return
+      await api<{ id: string }>(
+        `/discord/development-forums/${forum.id}/delete`,
+        { method: 'POST', body: JSON.stringify({ confirmation }) },
+      )
+    },
+    onSuccess: () =>
+      void queryClient.invalidateQueries({
+        queryKey: ['discord-development-environments'],
+      }),
+  })
+  return (
+    <div
+      className="rounded border p-3"
+      style={{ borderColor: 'var(--border)' }}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="font-medium">{forum.name}</p>
+          <p className="muted text-xs">
+            {forum.repository} · {forum.status} · {forum.branch}{' '}
+            {forum.dirty ? '· 有未提交修改' : ''}
+          </p>
         </div>
-      )}
-      {(createForum.error || access.error) && (
+        <button
+          type="button"
+          className="button-secondary"
+          disabled={remove.isPending}
+          onClick={() => remove.mutate()}
+        >
+          删除
+        </button>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_130px_auto_auto]">
+        <select
+          className="field"
+          value={target}
+          onChange={(event) => setTarget(event.target.value)}
+          aria-label={`${forum.name} 授权成员`}
+        >
+          <option value="">选择协作者</option>
+          {members
+            .filter((member) => member.discordUserId !== ownerUserId)
+            .map((member) => (
+              <option key={member.discordUserId} value={member.discordUserId}>
+                {member.displayName || member.username}
+              </option>
+            ))}
+        </select>
+        <select
+          className="field"
+          value={level}
+          aria-label={`${forum.name} 权限`}
+          onChange={(event) =>
+            setLevel(event.target.value as 'readonly' | 'operator')
+          }
+        >
+          <option value="readonly">只读</option>
+          <option value="operator">可操作</option>
+        </select>
+        <button
+          type="button"
+          className="button-secondary"
+          disabled={!target || access.isPending}
+          onClick={() => access.mutate('PUT')}
+        >
+          授权
+        </button>
+        <button
+          type="button"
+          className="button-secondary"
+          disabled={!target || access.isPending}
+          onClick={() => access.mutate('DELETE')}
+        >
+          移除
+        </button>
+      </div>
+      {(access.error || remove.error) && (
         <p className="error-text mt-2 text-sm">
-          {(createForum.error ?? access.error)?.message}
+          {(access.error ?? remove.error)?.message}
         </p>
       )}
     </div>

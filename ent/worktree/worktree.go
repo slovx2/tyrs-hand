@@ -36,18 +36,6 @@ const (
 	FieldExpiresAt = "expires_at"
 	// FieldError holds the string denoting the error field in the database.
 	FieldError = "error"
-	// FieldEnvironmentStatus holds the string denoting the environment_status field in the database.
-	FieldEnvironmentStatus = "environment_status"
-	// FieldRuntimeFingerprint holds the string denoting the runtime_fingerprint field in the database.
-	FieldRuntimeFingerprint = "runtime_fingerprint"
-	// FieldDependencyFingerprint holds the string denoting the dependency_fingerprint field in the database.
-	FieldDependencyFingerprint = "dependency_fingerprint"
-	// FieldEnvironmentProjects holds the string denoting the environment_projects field in the database.
-	FieldEnvironmentProjects = "environment_projects"
-	// FieldEnvironmentDiagnostics holds the string denoting the environment_diagnostics field in the database.
-	FieldEnvironmentDiagnostics = "environment_diagnostics"
-	// FieldEnvironmentPreparedAt holds the string denoting the environment_prepared_at field in the database.
-	FieldEnvironmentPreparedAt = "environment_prepared_at"
 	// Table holds the table name of the worktree in the database.
 	Table = "worktrees"
 )
@@ -66,12 +54,6 @@ var Columns = []string{
 	FieldLastUsedAt,
 	FieldExpiresAt,
 	FieldError,
-	FieldEnvironmentStatus,
-	FieldRuntimeFingerprint,
-	FieldDependencyFingerprint,
-	FieldEnvironmentProjects,
-	FieldEnvironmentDiagnostics,
-	FieldEnvironmentPreparedAt,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -91,12 +73,6 @@ var (
 	DefaultDirty bool
 	// DefaultLastUsedAt holds the default value on creation for the "last_used_at" field.
 	DefaultLastUsedAt func() time.Time
-	// DefaultEnvironmentStatus holds the default value on creation for the "environment_status" field.
-	DefaultEnvironmentStatus string
-	// DefaultEnvironmentProjects holds the default value on creation for the "environment_projects" field.
-	DefaultEnvironmentProjects []map[string]interface{}
-	// DefaultEnvironmentDiagnostics holds the default value on creation for the "environment_diagnostics" field.
-	DefaultEnvironmentDiagnostics []map[string]interface{}
 	// DefaultID holds the default value on creation for the "id" field.
 	DefaultID func() uuid.UUID
 )
@@ -162,24 +138,4 @@ func ByExpiresAt(opts ...sql.OrderTermOption) OrderOption {
 // ByError orders the results by the error field.
 func ByError(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldError, opts...).ToFunc()
-}
-
-// ByEnvironmentStatus orders the results by the environment_status field.
-func ByEnvironmentStatus(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldEnvironmentStatus, opts...).ToFunc()
-}
-
-// ByRuntimeFingerprint orders the results by the runtime_fingerprint field.
-func ByRuntimeFingerprint(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldRuntimeFingerprint, opts...).ToFunc()
-}
-
-// ByDependencyFingerprint orders the results by the dependency_fingerprint field.
-func ByDependencyFingerprint(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldDependencyFingerprint, opts...).ToFunc()
-}
-
-// ByEnvironmentPreparedAt orders the results by the environment_prepared_at field.
-func ByEnvironmentPreparedAt(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldEnvironmentPreparedAt, opts...).ToFunc()
 }

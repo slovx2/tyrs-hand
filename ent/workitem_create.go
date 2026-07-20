@@ -109,6 +109,62 @@ func (_c *WorkItemCreate) SetNillableHeadSha(v *string) *WorkItemCreate {
 	return _c
 }
 
+// SetBaseRef sets the "base_ref" field.
+func (_c *WorkItemCreate) SetBaseRef(v string) *WorkItemCreate {
+	_c.mutation.SetBaseRef(v)
+	return _c
+}
+
+// SetNillableBaseRef sets the "base_ref" field if the given value is not nil.
+func (_c *WorkItemCreate) SetNillableBaseRef(v *string) *WorkItemCreate {
+	if v != nil {
+		_c.SetBaseRef(*v)
+	}
+	return _c
+}
+
+// SetHeadRef sets the "head_ref" field.
+func (_c *WorkItemCreate) SetHeadRef(v string) *WorkItemCreate {
+	_c.mutation.SetHeadRef(v)
+	return _c
+}
+
+// SetNillableHeadRef sets the "head_ref" field if the given value is not nil.
+func (_c *WorkItemCreate) SetNillableHeadRef(v *string) *WorkItemCreate {
+	if v != nil {
+		_c.SetHeadRef(*v)
+	}
+	return _c
+}
+
+// SetHeadRepository sets the "head_repository" field.
+func (_c *WorkItemCreate) SetHeadRepository(v string) *WorkItemCreate {
+	_c.mutation.SetHeadRepository(v)
+	return _c
+}
+
+// SetNillableHeadRepository sets the "head_repository" field if the given value is not nil.
+func (_c *WorkItemCreate) SetNillableHeadRepository(v *string) *WorkItemCreate {
+	if v != nil {
+		_c.SetHeadRepository(*v)
+	}
+	return _c
+}
+
+// SetHTMLURL sets the "html_url" field.
+func (_c *WorkItemCreate) SetHTMLURL(v string) *WorkItemCreate {
+	_c.mutation.SetHTMLURL(v)
+	return _c
+}
+
+// SetNillableHTMLURL sets the "html_url" field if the given value is not nil.
+func (_c *WorkItemCreate) SetNillableHTMLURL(v *string) *WorkItemCreate {
+	if v != nil {
+		_c.SetHTMLURL(*v)
+	}
+	return _c
+}
+
 // SetContextVersion sets the "context_version" field.
 func (_c *WorkItemCreate) SetContextVersion(v int64) *WorkItemCreate {
 	_c.mutation.SetContextVersion(v)
@@ -339,6 +395,22 @@ func (_c *WorkItemCreate) createSpec() (*WorkItem, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.HeadSha(); ok {
 		_spec.SetField(workitem.FieldHeadSha, field.TypeString, value)
 		_node.HeadSha = &value
+	}
+	if value, ok := _c.mutation.BaseRef(); ok {
+		_spec.SetField(workitem.FieldBaseRef, field.TypeString, value)
+		_node.BaseRef = &value
+	}
+	if value, ok := _c.mutation.HeadRef(); ok {
+		_spec.SetField(workitem.FieldHeadRef, field.TypeString, value)
+		_node.HeadRef = &value
+	}
+	if value, ok := _c.mutation.HeadRepository(); ok {
+		_spec.SetField(workitem.FieldHeadRepository, field.TypeString, value)
+		_node.HeadRepository = &value
+	}
+	if value, ok := _c.mutation.HTMLURL(); ok {
+		_spec.SetField(workitem.FieldHTMLURL, field.TypeString, value)
+		_node.HTMLURL = &value
 	}
 	if value, ok := _c.mutation.ContextVersion(); ok {
 		_spec.SetField(workitem.FieldContextVersion, field.TypeInt64, value)

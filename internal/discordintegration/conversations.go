@@ -50,7 +50,7 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 		return uuid.Nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	forumID, ownerID, err := s.personalForum(ctx, tx, input.GuildID, input.ForumID)
+	forumID, ownerID, repositoryID, err := s.developmentForum(ctx, tx, input.GuildID, input.ForumID)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -60,11 +60,13 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 	}
 	var conversationID uuid.UUID
 	err = tx.QueryRowContext(ctx, `INSERT INTO discord_conversations
-		(guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id, agent_profile_id, title, status)
-		VALUES ($1, $2, $3, $4, $5,
-			(SELECT id FROM agent_profiles ORDER BY created_at LIMIT 1), $6, 'awaiting_workspace')
+		(guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
+		 repository_id, agent_profile_id, title, status)
+		VALUES ($1, $2, $3, $4, $5, $6,
+			(SELECT id FROM agent_profiles ORDER BY created_at LIMIT 1), $7, 'active')
 		ON CONFLICT(guild_id, thread_id) DO UPDATE SET last_activity_at = now(), updated_at = now()
-		RETURNING id`, input.GuildID, forumID, input.ThreadID, input.MessageID, ownerID, input.Title).Scan(&conversationID)
+		RETURNING id`, input.GuildID, forumID, input.ThreadID, input.MessageID, ownerID,
+		repositoryID, input.Title).Scan(&conversationID)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -75,101 +77,14 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 	if !inserted {
 		return conversationID, tx.Commit()
 	}
-	return conversationID, tx.Commit()
-}
-
-func (s *ConversationService) Activate(ctx context.Context, conversationID, profileID uuid.UUID, repositoryID *uuid.UUID, requesterID string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	var forumID uuid.UUID
-	var ownerID, status string
-	var starterBound bool
-	err = tx.QueryRowContext(ctx, `SELECT c.forum_id, c.owner_discord_user_id, c.status,
-		m.github_binding_id IS NOT NULL
-		FROM discord_conversations c JOIN discord_input_messages m ON m.message_id = c.starter_message_id
-		WHERE c.id = $1 FOR UPDATE OF c`, conversationID).Scan(&forumID, &ownerID, &status, &starterBound)
-	if err != nil {
-		return err
-	}
-	if _, err := s.access(ctx, tx, forumID, ownerID, requesterID); err != nil {
-		return err
-	}
-	if status != "awaiting_workspace" {
-		return errors.New("discord Conversation 已经完成工作区选择")
-	}
-	if repositoryID != nil {
-		if !starterBound {
-			return ErrStarterGitHubBindingRequired
-		}
-		var allowed bool
-		err = tx.QueryRowContext(ctx, `SELECT EXISTS(
-			SELECT 1 FROM discord_forums f JOIN discord_forum_access a ON a.forum_id = f.id
-			WHERE f.repository_id = $1 AND f.forum_type = 'repository'
-				AND a.discord_user_id = $2 AND a.access_level = 'readonly')`, *repositoryID, requesterID).Scan(&allowed)
-		if err != nil {
-			return err
-		}
-		if !allowed {
-			return errors.New("当前 Discord 用户没有该仓库的 GitHub 读取权限")
-		}
-	}
-	result, err := tx.ExecContext(ctx, `UPDATE discord_conversations SET repository_id = $2,
-		agent_profile_id = $3, status = 'active', updated_at = now() WHERE id = $1 AND status = 'awaiting_workspace'`,
-		conversationID, repositoryID, profileID)
-	if err != nil {
-		return err
-	}
-	if changed, _ := result.RowsAffected(); changed != 1 {
-		return errors.New("discord Conversation 状态发生变化")
-	}
-	rows, err := tx.QueryContext(ctx, `SELECT message_id FROM discord_input_messages
-		WHERE conversation_id = $1 AND status = 'received' ORDER BY received_at`, conversationID)
-	if err != nil {
-		return err
-	}
-	var messages []string
-	for rows.Next() {
-		var messageID string
-		if err := rows.Scan(&messageID); err != nil {
-			_ = rows.Close()
-			return err
-		}
-		messages = append(messages, messageID)
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-	for _, messageID := range messages {
-		if err := s.enqueueMessage(ctx, tx, conversationID, messageID); err != nil {
-			return err
-		}
+	if err := s.enqueueMessage(ctx, tx, conversationID, input.MessageID); err != nil {
+		return uuid.Nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return err
+		return uuid.Nil, err
 	}
 	s.notifyJobs(ctx)
-	return nil
-}
-
-func (s *ConversationService) CheckRepositorySelection(ctx context.Context, conversationID uuid.UUID) error {
-	var status string
-	var starterBound bool
-	err := s.db.QueryRowContext(ctx, `SELECT c.status, m.github_binding_id IS NOT NULL
-		FROM discord_conversations c JOIN discord_input_messages m ON m.message_id = c.starter_message_id
-		WHERE c.id = $1`, conversationID).Scan(&status, &starterBound)
-	if err != nil {
-		return err
-	}
-	if status != "awaiting_workspace" {
-		return errors.New("discord Conversation 已经完成工作区选择")
-	}
-	if !starterBound {
-		return ErrStarterGitHubBindingRequired
-	}
-	return nil
+	return conversationID, nil
 }
 
 func (s *ConversationService) Reply(ctx context.Context, input IncomingMessage) error {
@@ -305,13 +220,18 @@ func (s *ConversationService) enqueueMessage(ctx context.Context, tx *sql.Tx, co
 	return err
 }
 
-func (s *ConversationService) personalForum(ctx context.Context, tx *sql.Tx, guildID, discordID string) (uuid.UUID, string, error) {
+func (s *ConversationService) developmentForum(ctx context.Context, tx *sql.Tx,
+	guildID, discordID string,
+) (uuid.UUID, string, uuid.UUID, error) {
 	var forumID uuid.UUID
+	var repositoryID uuid.UUID
 	var owner string
-	err := tx.QueryRowContext(ctx, `SELECT f.id, f.owner_discord_user_id FROM discord_forums f
+	err := tx.QueryRowContext(ctx, `SELECT f.id, f.owner_discord_user_id, f.repository_id FROM discord_forums f
 		JOIN discord_resources r ON r.id = f.resource_id
-		WHERE f.guild_id = $1 AND r.discord_id = $2 AND f.forum_type = 'personal'`, guildID, discordID).Scan(&forumID, &owner)
-	return forumID, owner, err
+		JOIN discord_development_environments e ON e.id = f.development_environment_id
+		WHERE f.guild_id = $1 AND r.discord_id = $2 AND f.forum_type = 'development'
+		  AND e.status <> 'deleting'`, guildID, discordID).Scan(&forumID, &owner, &repositoryID)
+	return forumID, owner, repositoryID, err
 }
 
 func (s *ConversationService) access(ctx context.Context, tx *sql.Tx, forumID uuid.UUID, ownerID, userID string) (string, error) {

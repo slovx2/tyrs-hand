@@ -63,13 +63,42 @@ services:
       TYRS_HAND_INTERNAL_SERVER_URL: http://server:8080
       TYRS_HAND_WORKER_DATA_ROOT: /data/worker
       TYRS_HAND_WORKER_ID: ${TYRS_HAND_WORKER_INSTANCE_ID:-}
+      TYRS_HAND_WORKER_ROLE: github
       TYRS_HAND_REPO_CACHE_ROOT: /data/worker/repo-cache
       TYRS_HAND_WORKTREE_ROOT: /data/worker/workspaces/github
       TYRS_HAND_CODEX_HOME_ROOT: /data/worker/codex-homes
-      TYRS_HAND_DISCORD_WORKSPACE_ROOT: /data/worker/workspaces/discord
       TYRS_HAND_WORKER_MAX_CONCURRENT_JOBS: ${TYRS_HAND_WORKER_MAX_CONCURRENT_JOBS:-6}
-      TYRS_HAND_ENV_PREPARE_WAIT_TIMEOUT: ${TYRS_HAND_ENV_PREPARE_WAIT_TIMEOUT:-10m}
       TYRS_HAND_WORKER_IMAGE_DIGEST: ${TYRS_HAND_WORKER_IMAGE_DIGEST:-${TYRS_HAND_WORKER_IMAGE:-ghcr.io/slovx2/tyrs-hand-worker:0.1.0}}
+    volumes:
+      - worker-data:/data/worker
+    depends_on:
+      server: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "tyrs-hand-admin", "check-worker"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  discord-worker:
+    build: { context: ., target: worker }
+    image: ${TYRS_HAND_WORKER_IMAGE:-ghcr.io/slovx2/tyrs-hand-worker:0.1.0}
+    command: ["tyrs-hand-worker"]
+    env_file: [.env]
+    environment:
+      TYRS_HAND_DATABASE_URL: postgres://tyrs_hand:${POSTGRES_PASSWORD:-tyrs_hand}@postgres:5432/tyrs_hand?sslmode=disable
+      TYRS_HAND_REDIS_URL: redis://redis:6379/0
+      TYRS_HAND_INTERNAL_SERVER_URL: http://server:8080
+      TYRS_HAND_WORKER_DATA_ROOT: /data/worker
+      TYRS_HAND_WORKER_ID: ${TYRS_HAND_DISCORD_WORKER_INSTANCE_ID:-discord-dev}
+      TYRS_HAND_WORKER_ROLE: discord
+      TYRS_HAND_REPO_CACHE_ROOT: /data/worker/repo-cache
+      TYRS_HAND_WORKTREE_ROOT: /data/worker/workspaces/github
+      TYRS_HAND_CODEX_HOME_ROOT: /data/worker/codex-homes
+      TYRS_HAND_WORKER_MAX_CONCURRENT_JOBS: ${TYRS_HAND_DISCORD_WORKER_MAX_CONCURRENT_JOBS:-6}
+      TYRS_HAND_WORKER_IMAGE_DIGEST: ${TYRS_HAND_WORKER_IMAGE_DIGEST:-${TYRS_HAND_WORKER_IMAGE:-ghcr.io/slovx2/tyrs-hand-worker:0.1.0}}
+      TYRS_HAND_ENABLE_DEVELOPMENT_CONTAINERS: "true"
+      TYRS_HAND_DEVELOPMENT_CONTAINER_IDLE: ${TYRS_HAND_DEVELOPMENT_CONTAINER_IDLE:-30m}
     volumes:
       - worker-data:/data/worker
     depends_on:
@@ -109,7 +138,6 @@ services:
       TYRS_HAND_CODEX_HOME_ROOT: /data/worker/codex-homes
       TYRS_HAND_REPO_CACHE_ROOT: /data/worker/repo-cache
       TYRS_HAND_WORKTREE_ROOT: /data/worker/workspaces/github
-      TYRS_HAND_DISCORD_WORKSPACE_ROOT: /data/worker/workspaces/discord
     volumes:
       - worker-data:/data/worker
     profiles: [tools]

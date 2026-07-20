@@ -129,7 +129,76 @@ func (s *Server) listDiscordMembers(c *gin.Context) {
 	c.JSON(http.StatusOK, members)
 }
 
+func (s *Server) listDiscordDevelopmentEnvironments(c *gin.Context) {
+	environments, err := s.discord.DevelopmentEnvironments(c)
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取 Discord 开发环境失败", err)
+		return
+	}
+	c.JSON(http.StatusOK, environments)
+}
+
+func (s *Server) rebuildDiscordDevelopmentEnvironment(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		badRequest(c, err)
+		return
+	}
+	if err := s.discord.RebuildDevelopmentEnvironment(c, id); err != nil {
+		problem(c, http.StatusConflict, "重建 Discord 开发环境失败", err)
+		return
+	}
+	s.audit(c, "discord.development_environment.rebuild", "discord_development_environment", id.String(), nil)
+	c.Status(http.StatusAccepted)
+}
+
+func (s *Server) discordDevelopmentForumDeletePreflight(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		badRequest(c, err)
+		return
+	}
+	preflight, err := s.discord.DevelopmentForumDeletePreflight(c, id)
+	if err != nil {
+		problem(c, http.StatusNotFound, "Discord 开发 Forum 不存在", err)
+		return
+	}
+	c.JSON(http.StatusOK, preflight)
+}
+
+func (s *Server) deleteDiscordDevelopmentForum(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		badRequest(c, err)
+		return
+	}
+	var input struct {
+		Confirmation string `json:"confirmation" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		badRequest(c, err)
+		return
+	}
+	administratorID := c.MustGet("session").(auth.Session).AdministratorID
+	operationID, err := s.discord.DeleteDevelopmentForum(c, id, input.Confirmation, administratorID)
+	if err != nil {
+		problem(c, http.StatusConflict, "删除 Discord 开发 Forum 失败", err)
+		return
+	}
+	s.audit(c, "discord.development_forum.delete", "discord_forum", id.String(),
+		map[string]any{"operationId": operationID})
+	c.JSON(http.StatusAccepted, gin.H{"id": operationID})
+}
+
 func (s *Server) createDiscordMemberForum(c *gin.Context) {
+	var input struct {
+		RepositoryID uuid.UUID `json:"repositoryId" binding:"required"`
+		Name         string    `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		badRequest(c, err)
+		return
+	}
 	settings, err := s.discord.Settings(c)
 	if err != nil || settings.GuildID == "" {
 		badRequest(c, errors.New("discord 尚未配置"))
@@ -147,18 +216,19 @@ func (s *Server) createDiscordMemberForum(c *gin.Context) {
 		problem(c, http.StatusBadGateway, "读取 Discord Guild 失败", err)
 		return
 	}
-	plan, err := s.discord.PersonalForumPlan(c, guild, c.Param("id"))
+	plan, err := s.discord.DevelopmentForumPlan(c, guild, c.Param("id"), input.RepositoryID, input.Name)
 	if err != nil {
-		problem(c, http.StatusConflict, "创建个人 Forum 预检失败", err)
+		problem(c, http.StatusConflict, "创建开发 Forum 预检失败", err)
 		return
 	}
 	administratorID := c.MustGet("session").(auth.Session).AdministratorID
 	operationID, err := s.discord.CreateInitialization(c, administratorID, plan, "")
 	if err != nil {
-		problem(c, http.StatusConflict, "创建个人 Forum 失败", err)
+		problem(c, http.StatusConflict, "创建开发 Forum 失败", err)
 		return
 	}
-	s.audit(c, "discord.personal_forum.create", "discord_member", c.Param("id"), map[string]any{"operationId": operationID})
+	s.audit(c, "discord.development_forum.create", "discord_member", c.Param("id"),
+		map[string]any{"operationId": operationID, "repositoryId": input.RepositoryID})
 	c.JSON(http.StatusAccepted, gin.H{"id": operationID})
 }
 

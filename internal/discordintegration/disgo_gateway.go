@@ -2,7 +2,6 @@ package discordintegration
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -15,7 +14,6 @@ import (
 	"github.com/disgoorg/disgo/gateway"
 	disgorest "github.com/disgoorg/disgo/rest"
 	"github.com/disgoorg/snowflake/v2"
-	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"go.uber.org/zap"
 )
@@ -161,14 +159,14 @@ func (c *DisgoConnector) handleMessage(ctx context.Context, event *events.Messag
 		return nil
 	}
 	input.ForumID = guildChannel.ParentID().String()
-	var personalForum bool
+	var developmentForum bool
 	if err := c.manager.db.QueryRowContext(ctx, `SELECT EXISTS(
 		SELECT 1 FROM discord_forums f JOIN discord_resources r ON r.id = f.resource_id
-		WHERE f.guild_id = $1 AND f.forum_type = 'personal' AND r.discord_id = $2
-	)`, c.guildID, input.ForumID).Scan(&personalForum); err != nil {
+		WHERE f.guild_id = $1 AND f.forum_type = 'development' AND r.discord_id = $2
+	)`, c.guildID, input.ForumID).Scan(&developmentForum); err != nil {
 		return err
 	}
-	if !personalForum {
+	if !developmentForum {
 		return nil
 	}
 	input.Title = channel.Name()
@@ -176,16 +174,12 @@ func (c *DisgoConnector) handleMessage(ctx context.Context, event *events.Messag
 	if err != nil {
 		return err
 	}
-	return NewSQLoutbox(c.manager.db).Enqueue(ctx, "conversation:workspace:"+conversationID.String(),
+	return NewSQLoutbox(c.manager.db).Enqueue(ctx, "conversation:queued:"+conversationID.String(),
 		"message.create", "channels/"+input.ThreadID+"/messages", map[string]any{
 			"channelId": input.ThreadID,
 			"content":   "",
-			"embeds":    []EmbedPayload{workspaceSelectionCard()},
-			"buttons": []map[string]string{
-				{"label": "空白工作区", "customId": "conversation-blank:" + conversationID.String(), "style": "primary"},
-				{"label": "选择仓库", "customId": "conversation-repository:" + conversationID.String(), "style": "secondary"},
-			},
-		}, "conversation-workspace-"+conversationID.String())
+			"embeds":    []EmbedPayload{conversationProgressCard(ConversationRunning, "消息已进入长期开发环境队列。")},
+		}, "conversation-queued-"+conversationID.String())
 }
 
 func (c *DisgoConnector) onCommand(event *events.ApplicationCommandInteractionCreate) {
@@ -251,18 +245,6 @@ func (c *DisgoConnector) onComponent(event *events.ComponentInteractionCreate) {
 		return
 	}
 	defer func() { _ = c.manager.CompleteInboundEvent(context.Background(), eventID, nil) }()
-	if strings.HasPrefix(customID, "conversation-blank:") {
-		c.activateBlank(event, strings.TrimPrefix(customID, "conversation-blank:"))
-		return
-	}
-	if strings.HasPrefix(customID, "conversation-repository:") {
-		c.showRepositorySelect(event, strings.TrimPrefix(customID, "conversation-repository:"))
-		return
-	}
-	if strings.HasPrefix(customID, "conversation-repository-select:") {
-		c.activateRepository(event, strings.TrimPrefix(customID, "conversation-repository-select:"))
-		return
-	}
 	const prefix = "github-unbind-confirm:"
 	if !strings.HasPrefix(customID, prefix) || event.GuildID() == nil {
 		return
@@ -279,115 +261,6 @@ func (c *DisgoConnector) onComponent(event *events.ComponentInteractionCreate) {
 	}
 	empty := []discord.LayoutComponent{}
 	_ = event.UpdateMessage(discord.MessageUpdate{Content: &content, Components: &empty})
-}
-
-func (c *DisgoConnector) activateBlank(event *events.ComponentInteractionCreate, rawConversationID string) {
-	if err := event.DeferUpdateMessage(); err != nil {
-		return
-	}
-	conversationID, err := uuid.Parse(rawConversationID)
-	profileID := uuid.Nil
-	if err == nil {
-		err = c.manager.db.QueryRowContext(context.Background(), "SELECT id FROM agent_profiles ORDER BY created_at LIMIT 1").Scan(&profileID)
-	}
-	if err == nil {
-		err = c.conversations.Activate(context.Background(), conversationID, profileID, nil, event.User().ID.String())
-	}
-	content := ""
-	card := workspaceReadyCard(false)
-	if err != nil {
-		card = conversationProgressCard(ConversationFailed, "工作区初始化失败，请稍后重试或联系管理员。")
-	}
-	empty := []discord.LayoutComponent{}
-	embeds, _ := discordEmbeds([]EmbedPayload{card})
-	_, _ = event.Client().Rest.UpdateInteractionResponse(event.ApplicationID(), event.Token(),
-		discord.MessageUpdate{Content: &content, Embeds: &embeds, Components: &empty})
-}
-
-func (c *DisgoConnector) showRepositorySelect(event *events.ComponentInteractionCreate, rawConversationID string) {
-	if err := event.DeferCreateMessage(true); err != nil {
-		return
-	}
-	conversationID, err := uuid.Parse(rawConversationID)
-	if err == nil {
-		err = c.conversations.CheckRepositorySelection(context.Background(), conversationID)
-	}
-	if errors.Is(err, ErrStarterGitHubBindingRequired) {
-		content := ""
-		embeds, _ := discordEmbeds([]EmbedPayload{starterBindingRequiredCard()})
-		_, _ = event.Client().Rest.UpdateInteractionResponse(event.ApplicationID(), event.Token(),
-			discord.MessageUpdate{Content: &content, Embeds: &embeds})
-		return
-	}
-	var rows *sql.Rows
-	if err == nil {
-		rows, err = c.manager.db.QueryContext(context.Background(), `SELECT r.id::text, r.owner || '/' || r.name
-		FROM repositories r JOIN discord_forums f ON f.repository_id = r.id AND f.forum_type = 'repository'
-		JOIN discord_forum_access a ON a.forum_id = f.id
-		WHERE a.discord_user_id = $1 AND a.access_level = 'readonly' AND r.enabled = true
-		ORDER BY lower(r.owner), lower(r.name) LIMIT 25`, event.User().ID.String())
-	}
-	var options []discord.StringSelectMenuOption
-	if err == nil {
-		for rows.Next() {
-			var id, name string
-			if scanErr := rows.Scan(&id, &name); scanErr != nil {
-				err = scanErr
-				break
-			}
-			options = append(options, discord.NewStringSelectMenuOption(name, id))
-		}
-		_ = rows.Close()
-	}
-	content := ""
-	card := EmbedPayload{Title: "📁 Codex · 选择仓库", Color: cardColorBlurple,
-		Description: "请选择一个已同步且你拥有读取权限的仓库。"}
-	var components []discord.LayoutComponent
-	if err == nil && len(options) > 0 {
-		menu := discord.NewStringSelectMenu("conversation-repository-select:"+rawConversationID, "仓库", options...)
-		components = []discord.LayoutComponent{discord.NewActionRow(menu)}
-	} else if err == nil {
-		card = EmbedPayload{Title: "📁 Codex · 暂无可用仓库", Color: cardColorYellow,
-			Description: "当前没有已同步且你拥有读取权限的仓库。"}
-	}
-	if err != nil {
-		card = conversationProgressCard(ConversationFailed, "读取仓库列表失败，请稍后重试或联系管理员。")
-	}
-	embeds, _ := discordEmbeds([]EmbedPayload{card})
-	_, _ = event.Client().Rest.UpdateInteractionResponse(event.ApplicationID(), event.Token(),
-		discord.MessageUpdate{Content: &content, Embeds: &embeds, Components: &components})
-}
-
-func (c *DisgoConnector) activateRepository(event *events.ComponentInteractionCreate, rawConversationID string) {
-	if err := event.DeferUpdateMessage(); err != nil {
-		return
-	}
-	conversationID, err := uuid.Parse(rawConversationID)
-	data := event.StringSelectMenuInteractionData()
-	var repositoryID uuid.UUID
-	if err == nil && len(data.Values) == 1 {
-		repositoryID, err = uuid.Parse(data.Values[0])
-	} else if err == nil {
-		err = errors.New("必须选择一个仓库")
-	}
-	profileID := uuid.Nil
-	if err == nil {
-		err = c.manager.db.QueryRowContext(context.Background(), "SELECT id FROM agent_profiles ORDER BY created_at LIMIT 1").Scan(&profileID)
-	}
-	if err == nil {
-		err = c.conversations.Activate(context.Background(), conversationID, profileID, &repositoryID, event.User().ID.String())
-	}
-	content := ""
-	card := workspaceReadyCard(true)
-	if errors.Is(err, ErrStarterGitHubBindingRequired) {
-		card = starterBindingRequiredCard()
-	} else if err != nil {
-		card = conversationProgressCard(ConversationFailed, "工作区初始化失败，请稍后重试或联系管理员。")
-	}
-	empty := []discord.LayoutComponent{}
-	embeds, _ := discordEmbeds([]EmbedPayload{card})
-	_, _ = event.Client().Rest.UpdateInteractionResponse(event.ApplicationID(), event.Token(),
-		discord.MessageUpdate{Content: &content, Embeds: &embeds, Components: &empty})
 }
 
 func (c *DisgoConnector) registerCommands(ctx context.Context, client *bot.Client) error {

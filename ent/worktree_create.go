@@ -127,74 +127,6 @@ func (_c *WorktreeCreate) SetNillableError(v *string) *WorktreeCreate {
 	return _c
 }
 
-// SetEnvironmentStatus sets the "environment_status" field.
-func (_c *WorktreeCreate) SetEnvironmentStatus(v string) *WorktreeCreate {
-	_c.mutation.SetEnvironmentStatus(v)
-	return _c
-}
-
-// SetNillableEnvironmentStatus sets the "environment_status" field if the given value is not nil.
-func (_c *WorktreeCreate) SetNillableEnvironmentStatus(v *string) *WorktreeCreate {
-	if v != nil {
-		_c.SetEnvironmentStatus(*v)
-	}
-	return _c
-}
-
-// SetRuntimeFingerprint sets the "runtime_fingerprint" field.
-func (_c *WorktreeCreate) SetRuntimeFingerprint(v string) *WorktreeCreate {
-	_c.mutation.SetRuntimeFingerprint(v)
-	return _c
-}
-
-// SetNillableRuntimeFingerprint sets the "runtime_fingerprint" field if the given value is not nil.
-func (_c *WorktreeCreate) SetNillableRuntimeFingerprint(v *string) *WorktreeCreate {
-	if v != nil {
-		_c.SetRuntimeFingerprint(*v)
-	}
-	return _c
-}
-
-// SetDependencyFingerprint sets the "dependency_fingerprint" field.
-func (_c *WorktreeCreate) SetDependencyFingerprint(v string) *WorktreeCreate {
-	_c.mutation.SetDependencyFingerprint(v)
-	return _c
-}
-
-// SetNillableDependencyFingerprint sets the "dependency_fingerprint" field if the given value is not nil.
-func (_c *WorktreeCreate) SetNillableDependencyFingerprint(v *string) *WorktreeCreate {
-	if v != nil {
-		_c.SetDependencyFingerprint(*v)
-	}
-	return _c
-}
-
-// SetEnvironmentProjects sets the "environment_projects" field.
-func (_c *WorktreeCreate) SetEnvironmentProjects(v []map[string]interface{}) *WorktreeCreate {
-	_c.mutation.SetEnvironmentProjects(v)
-	return _c
-}
-
-// SetEnvironmentDiagnostics sets the "environment_diagnostics" field.
-func (_c *WorktreeCreate) SetEnvironmentDiagnostics(v []map[string]interface{}) *WorktreeCreate {
-	_c.mutation.SetEnvironmentDiagnostics(v)
-	return _c
-}
-
-// SetEnvironmentPreparedAt sets the "environment_prepared_at" field.
-func (_c *WorktreeCreate) SetEnvironmentPreparedAt(v time.Time) *WorktreeCreate {
-	_c.mutation.SetEnvironmentPreparedAt(v)
-	return _c
-}
-
-// SetNillableEnvironmentPreparedAt sets the "environment_prepared_at" field if the given value is not nil.
-func (_c *WorktreeCreate) SetNillableEnvironmentPreparedAt(v *time.Time) *WorktreeCreate {
-	if v != nil {
-		_c.SetEnvironmentPreparedAt(*v)
-	}
-	return _c
-}
-
 // SetID sets the "id" field.
 func (_c *WorktreeCreate) SetID(v uuid.UUID) *WorktreeCreate {
 	_c.mutation.SetID(v)
@@ -256,18 +188,6 @@ func (_c *WorktreeCreate) defaults() {
 		v := worktree.DefaultLastUsedAt()
 		_c.mutation.SetLastUsedAt(v)
 	}
-	if _, ok := _c.mutation.EnvironmentStatus(); !ok {
-		v := worktree.DefaultEnvironmentStatus
-		_c.mutation.SetEnvironmentStatus(v)
-	}
-	if _, ok := _c.mutation.EnvironmentProjects(); !ok {
-		v := worktree.DefaultEnvironmentProjects
-		_c.mutation.SetEnvironmentProjects(v)
-	}
-	if _, ok := _c.mutation.EnvironmentDiagnostics(); !ok {
-		v := worktree.DefaultEnvironmentDiagnostics
-		_c.mutation.SetEnvironmentDiagnostics(v)
-	}
 	if _, ok := _c.mutation.ID(); !ok {
 		v := worktree.DefaultID()
 		_c.mutation.SetID(v)
@@ -302,15 +222,6 @@ func (_c *WorktreeCreate) check() error {
 	}
 	if _, ok := _c.mutation.LastUsedAt(); !ok {
 		return &ValidationError{Name: "last_used_at", err: errors.New(`ent: missing required field "Worktree.last_used_at"`)}
-	}
-	if _, ok := _c.mutation.EnvironmentStatus(); !ok {
-		return &ValidationError{Name: "environment_status", err: errors.New(`ent: missing required field "Worktree.environment_status"`)}
-	}
-	if _, ok := _c.mutation.EnvironmentProjects(); !ok {
-		return &ValidationError{Name: "environment_projects", err: errors.New(`ent: missing required field "Worktree.environment_projects"`)}
-	}
-	if _, ok := _c.mutation.EnvironmentDiagnostics(); !ok {
-		return &ValidationError{Name: "environment_diagnostics", err: errors.New(`ent: missing required field "Worktree.environment_diagnostics"`)}
 	}
 	return nil
 }
@@ -390,30 +301,6 @@ func (_c *WorktreeCreate) createSpec() (*Worktree, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Error(); ok {
 		_spec.SetField(worktree.FieldError, field.TypeString, value)
 		_node.Error = &value
-	}
-	if value, ok := _c.mutation.EnvironmentStatus(); ok {
-		_spec.SetField(worktree.FieldEnvironmentStatus, field.TypeString, value)
-		_node.EnvironmentStatus = value
-	}
-	if value, ok := _c.mutation.RuntimeFingerprint(); ok {
-		_spec.SetField(worktree.FieldRuntimeFingerprint, field.TypeString, value)
-		_node.RuntimeFingerprint = &value
-	}
-	if value, ok := _c.mutation.DependencyFingerprint(); ok {
-		_spec.SetField(worktree.FieldDependencyFingerprint, field.TypeString, value)
-		_node.DependencyFingerprint = &value
-	}
-	if value, ok := _c.mutation.EnvironmentProjects(); ok {
-		_spec.SetField(worktree.FieldEnvironmentProjects, field.TypeJSON, value)
-		_node.EnvironmentProjects = value
-	}
-	if value, ok := _c.mutation.EnvironmentDiagnostics(); ok {
-		_spec.SetField(worktree.FieldEnvironmentDiagnostics, field.TypeJSON, value)
-		_node.EnvironmentDiagnostics = value
-	}
-	if value, ok := _c.mutation.EnvironmentPreparedAt(); ok {
-		_spec.SetField(worktree.FieldEnvironmentPreparedAt, field.TypeTime, value)
-		_node.EnvironmentPreparedAt = &value
 	}
 	return _node, _spec
 }

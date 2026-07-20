@@ -210,6 +210,13 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 		return nil, err
 	}
 	switch item.OperationType {
+	case "channel.delete":
+		channel, err := snowflake.Parse(payload.ChannelID)
+		if err != nil {
+			return nil, err
+		}
+		err = r.rest.DeleteChannel(channel, disgorest.WithCtx(ctx))
+		return json.RawMessage(`{}`), err
 	case "message.create":
 		channel, err := snowflake.Parse(payload.ChannelID)
 		if err != nil {

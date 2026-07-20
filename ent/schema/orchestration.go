@@ -36,6 +36,8 @@ func (WorkItem) Fields() []ent.Field {
 		field.String("kind"), field.Int("external_number"), field.String("title").Default(""),
 		field.String("state").Default("open"), field.Bool("agent_owned").Default(false),
 		field.String("base_sha").Optional().Nillable(), field.String("head_sha").Optional().Nillable(),
+		field.String("base_ref").Optional().Nillable(), field.String("head_ref").Optional().Nillable(),
+		field.String("head_repository").Optional().Nillable(), field.String("html_url").Optional().Nillable(),
 		field.Int64("context_version").Default(1), field.Time("closed_at").Optional().Nillable(),
 		field.Time("created_at").Default(time.Now), field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}

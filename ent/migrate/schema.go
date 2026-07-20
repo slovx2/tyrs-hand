@@ -344,6 +344,10 @@ var (
 		{Name: "agent_owned", Type: field.TypeBool, Default: false},
 		{Name: "base_sha", Type: field.TypeString, Nullable: true},
 		{Name: "head_sha", Type: field.TypeString, Nullable: true},
+		{Name: "base_ref", Type: field.TypeString, Nullable: true},
+		{Name: "head_ref", Type: field.TypeString, Nullable: true},
+		{Name: "head_repository", Type: field.TypeString, Nullable: true},
+		{Name: "html_url", Type: field.TypeString, Nullable: true},
 		{Name: "context_version", Type: field.TypeInt64, Default: 1},
 		{Name: "closed_at", Type: field.TypeTime, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
@@ -384,12 +388,6 @@ var (
 		{Name: "last_used_at", Type: field.TypeTime},
 		{Name: "expires_at", Type: field.TypeTime, Nullable: true},
 		{Name: "error", Type: field.TypeString, Nullable: true},
-		{Name: "environment_status", Type: field.TypeString, Default: "pending"},
-		{Name: "runtime_fingerprint", Type: field.TypeString, Nullable: true},
-		{Name: "dependency_fingerprint", Type: field.TypeString, Nullable: true},
-		{Name: "environment_projects", Type: field.TypeJSON},
-		{Name: "environment_diagnostics", Type: field.TypeJSON},
-		{Name: "environment_prepared_at", Type: field.TypeTime, Nullable: true},
 	}
 	// WorktreesTable holds the schema information for the "worktrees" table.
 	WorktreesTable = &schema.Table{

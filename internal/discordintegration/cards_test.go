@@ -23,7 +23,6 @@ func TestConversationCardsKeepSystemAndReplyVisuallyDistinct(t *testing.T) {
 	require.Contains(t, canceled.Title, "已停止")
 	failed := conversationProgressCard(ConversationFailed, "failed")
 	require.Equal(t, cardColorRed, failed.Color)
-	require.Contains(t, starterBindingRequiredCard().Description, "新建一个 Post")
 	require.Contains(t, terminatedControlCard().Description, "没有进入执行队列")
 }
 

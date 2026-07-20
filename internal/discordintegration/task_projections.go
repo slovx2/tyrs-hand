@@ -3,9 +3,7 @@ package discordintegration
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -140,100 +138,4 @@ func taskThreadName(task taskProjection) string {
 		value = string(runes[:100])
 	}
 	return value
-}
-
-func (d *Daemon) refreshTodoProjections(ctx context.Context, guildID string) error {
-	rows, err := d.manager.db.QueryContext(ctx, `SELECT f.owner_discord_user_id, r.discord_id,
-		COALESCE(p.resource_id, r.discord_id), COALESCE(p.message_id, '')
-		FROM discord_forums f JOIN discord_resources r ON r.id = f.resource_id
-		LEFT JOIN discord_projections p ON p.guild_id = f.guild_id
-			AND p.projection_key = 'todo:' || f.owner_discord_user_id
-		WHERE f.guild_id = $1 AND f.forum_type = 'personal' ORDER BY f.owner_discord_user_id`, guildID)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = rows.Close() }()
-	for rows.Next() {
-		var userID, forumID, resourceID, messageID string
-		if err := rows.Scan(&userID, &forumID, &resourceID, &messageID); err != nil {
-			return err
-		}
-		card, err := d.todoCard(ctx, guildID, userID)
-		if err != nil {
-			return err
-		}
-		if err := d.upsertForumProjection(ctx, guildID, "todo:"+userID, forumID,
-			resourceID, messageID, "待我处理", card); err != nil {
-			return err
-		}
-	}
-	return rows.Err()
-}
-
-func (d *Daemon) todoCard(ctx context.Context, guildID, userID string) (EmbedPayload, error) {
-	var login string
-	err := d.manager.db.QueryRowContext(ctx, `SELECT github_login FROM discord_identity_bindings
-		WHERE guild_id = $1 AND discord_user_id = $2 AND status = 'active'`, guildID, userID).Scan(&login)
-	if errors.Is(err, sql.ErrNoRows) {
-		return EmbedPayload{Title: "🟡 待我处理", Description: "尚未绑定 GitHub，暂时无法关联你的任务。",
-			Color: cardColorYellow, Footer: "使用 /github bind 绑定身份"}, nil
-	}
-	if err != nil {
-		return EmbedPayload{}, err
-	}
-	rows, err := d.manager.db.QueryContext(ctx, `SELECT r.owner, r.name, w.kind, w.external_number,
-		w.title, j.status FROM work_items w
-		JOIN repositories r ON r.id = w.repository_id
-		JOIN LATERAL (
-			SELECT status, actor_login FROM codex_turn_intents
-			WHERE work_item_id = w.id ORDER BY created_at DESC, id DESC LIMIT 1
-		) j ON true
-		WHERE lower(j.actor_login) = lower($1) AND j.status = 'failed'
-		ORDER BY r.owner, r.name, w.external_number LIMIT 25`, login)
-	if err != nil {
-		return EmbedPayload{}, err
-	}
-	defer func() { _ = rows.Close() }()
-	lines := make([]string, 0, 25)
-	for rows.Next() {
-		var owner, repo, kind, title, status string
-		var number int
-		if err := rows.Scan(&owner, &repo, &kind, &number, &title, &status); err != nil {
-			return EmbedPayload{}, err
-		}
-		lines = append(lines, fmt.Sprintf("• `%s` **%s/%s** %s #%d · %s", cardText(status, 30),
-			cardText(owner, 100), cardText(repo, 100), cardText(kind, 30), number, cardText(title, 200)))
-	}
-	if err := rows.Err(); err != nil {
-		return EmbedPayload{}, err
-	}
-	if len(lines) == 0 {
-		return EmbedPayload{Title: "✅ 待我处理", Description: "当前没有需要处理的任务。",
-			Color: cardColorGreen, Footer: "每分钟自动更新", Timestamp: time.Now().UTC().Format(time.RFC3339)}, nil
-	}
-	return EmbedPayload{Title: fmt.Sprintf("🟡 待我处理 · %d 项", len(lines)), Description: strings.Join(lines, "\n"),
-		Color: cardColorYellow, Footer: "每分钟自动更新", Timestamp: time.Now().UTC().Format(time.RFC3339)}, nil
-}
-
-func (d *Daemon) upsertForumProjection(ctx context.Context, guildID, key, forumID, resourceID, messageID, title string,
-	card EmbedPayload,
-) error {
-	payload := map[string]any{"content": "", "embeds": []EmbedPayload{card}}
-	_, err := d.manager.db.ExecContext(ctx, `INSERT INTO discord_projections
-		(guild_id, projection_key, resource_id, desired_payload) VALUES ($1, $2, $3, $4)
-		ON CONFLICT(guild_id, projection_key) DO UPDATE SET desired_payload = EXCLUDED.desired_payload,
-			desired_version = discord_projections.desired_version + 1, updated_at = now()`,
-		guildID, key, resourceID, mustJSON(payload))
-	if err != nil {
-		return err
-	}
-	outbox := NewSQLoutbox(d.manager.db)
-	if messageID == "" {
-		return outbox.Enqueue(ctx, "projection:"+key, "forum.post.create",
-			"channels/"+forumID+"/threads", map[string]any{"channelId": forumID,
-				"threadName": title, "content": "", "embeds": []EmbedPayload{card}}, "projection-"+key)
-	}
-	return outbox.Enqueue(ctx, "projection:"+key, "message.update",
-		"channels/"+resourceID+"/messages/"+messageID, map[string]any{
-			"channelId": resourceID, "messageId": messageID, "content": "", "embeds": []EmbedPayload{card}}, "")
 }

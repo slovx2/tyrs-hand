@@ -10,7 +10,6 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
-	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/ent/predicate"
@@ -196,104 +195,6 @@ func (_u *WorktreeUpdate) ClearError() *WorktreeUpdate {
 	return _u
 }
 
-// SetEnvironmentStatus sets the "environment_status" field.
-func (_u *WorktreeUpdate) SetEnvironmentStatus(v string) *WorktreeUpdate {
-	_u.mutation.SetEnvironmentStatus(v)
-	return _u
-}
-
-// SetNillableEnvironmentStatus sets the "environment_status" field if the given value is not nil.
-func (_u *WorktreeUpdate) SetNillableEnvironmentStatus(v *string) *WorktreeUpdate {
-	if v != nil {
-		_u.SetEnvironmentStatus(*v)
-	}
-	return _u
-}
-
-// SetRuntimeFingerprint sets the "runtime_fingerprint" field.
-func (_u *WorktreeUpdate) SetRuntimeFingerprint(v string) *WorktreeUpdate {
-	_u.mutation.SetRuntimeFingerprint(v)
-	return _u
-}
-
-// SetNillableRuntimeFingerprint sets the "runtime_fingerprint" field if the given value is not nil.
-func (_u *WorktreeUpdate) SetNillableRuntimeFingerprint(v *string) *WorktreeUpdate {
-	if v != nil {
-		_u.SetRuntimeFingerprint(*v)
-	}
-	return _u
-}
-
-// ClearRuntimeFingerprint clears the value of the "runtime_fingerprint" field.
-func (_u *WorktreeUpdate) ClearRuntimeFingerprint() *WorktreeUpdate {
-	_u.mutation.ClearRuntimeFingerprint()
-	return _u
-}
-
-// SetDependencyFingerprint sets the "dependency_fingerprint" field.
-func (_u *WorktreeUpdate) SetDependencyFingerprint(v string) *WorktreeUpdate {
-	_u.mutation.SetDependencyFingerprint(v)
-	return _u
-}
-
-// SetNillableDependencyFingerprint sets the "dependency_fingerprint" field if the given value is not nil.
-func (_u *WorktreeUpdate) SetNillableDependencyFingerprint(v *string) *WorktreeUpdate {
-	if v != nil {
-		_u.SetDependencyFingerprint(*v)
-	}
-	return _u
-}
-
-// ClearDependencyFingerprint clears the value of the "dependency_fingerprint" field.
-func (_u *WorktreeUpdate) ClearDependencyFingerprint() *WorktreeUpdate {
-	_u.mutation.ClearDependencyFingerprint()
-	return _u
-}
-
-// SetEnvironmentProjects sets the "environment_projects" field.
-func (_u *WorktreeUpdate) SetEnvironmentProjects(v []map[string]interface{}) *WorktreeUpdate {
-	_u.mutation.SetEnvironmentProjects(v)
-	return _u
-}
-
-// AppendEnvironmentProjects appends value to the "environment_projects" field.
-func (_u *WorktreeUpdate) AppendEnvironmentProjects(v []map[string]interface{}) *WorktreeUpdate {
-	_u.mutation.AppendEnvironmentProjects(v)
-	return _u
-}
-
-// SetEnvironmentDiagnostics sets the "environment_diagnostics" field.
-func (_u *WorktreeUpdate) SetEnvironmentDiagnostics(v []map[string]interface{}) *WorktreeUpdate {
-	_u.mutation.SetEnvironmentDiagnostics(v)
-	return _u
-}
-
-// AppendEnvironmentDiagnostics appends value to the "environment_diagnostics" field.
-func (_u *WorktreeUpdate) AppendEnvironmentDiagnostics(v []map[string]interface{}) *WorktreeUpdate {
-	_u.mutation.AppendEnvironmentDiagnostics(v)
-	return _u
-}
-
-// SetEnvironmentPreparedAt sets the "environment_prepared_at" field.
-func (_u *WorktreeUpdate) SetEnvironmentPreparedAt(v time.Time) *WorktreeUpdate {
-	_u.mutation.SetEnvironmentPreparedAt(v)
-	return _u
-}
-
-// SetNillableEnvironmentPreparedAt sets the "environment_prepared_at" field if the given value is not nil.
-func (_u *WorktreeUpdate) SetNillableEnvironmentPreparedAt(v *time.Time) *WorktreeUpdate {
-	if v != nil {
-		_u.SetEnvironmentPreparedAt(*v)
-	}
-	return _u
-}
-
-// ClearEnvironmentPreparedAt clears the value of the "environment_prepared_at" field.
-func (_u *WorktreeUpdate) ClearEnvironmentPreparedAt() *WorktreeUpdate {
-	_u.mutation.ClearEnvironmentPreparedAt()
-	return _u
-}
-
 // Mutation returns the WorktreeMutation object of the builder.
 func (_u *WorktreeUpdate) Mutation() *WorktreeMutation {
 	return _u.mutation
@@ -373,43 +274,6 @@ func (_u *WorktreeUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.ErrorCleared() {
 		_spec.ClearField(worktree.FieldError, field.TypeString)
-	}
-	if value, ok := _u.mutation.EnvironmentStatus(); ok {
-		_spec.SetField(worktree.FieldEnvironmentStatus, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.RuntimeFingerprint(); ok {
-		_spec.SetField(worktree.FieldRuntimeFingerprint, field.TypeString, value)
-	}
-	if _u.mutation.RuntimeFingerprintCleared() {
-		_spec.ClearField(worktree.FieldRuntimeFingerprint, field.TypeString)
-	}
-	if value, ok := _u.mutation.DependencyFingerprint(); ok {
-		_spec.SetField(worktree.FieldDependencyFingerprint, field.TypeString, value)
-	}
-	if _u.mutation.DependencyFingerprintCleared() {
-		_spec.ClearField(worktree.FieldDependencyFingerprint, field.TypeString)
-	}
-	if value, ok := _u.mutation.EnvironmentProjects(); ok {
-		_spec.SetField(worktree.FieldEnvironmentProjects, field.TypeJSON, value)
-	}
-	if value, ok := _u.mutation.AppendedEnvironmentProjects(); ok {
-		_spec.AddModifier(func(u *sql.UpdateBuilder) {
-			sqljson.Append(u, worktree.FieldEnvironmentProjects, value)
-		})
-	}
-	if value, ok := _u.mutation.EnvironmentDiagnostics(); ok {
-		_spec.SetField(worktree.FieldEnvironmentDiagnostics, field.TypeJSON, value)
-	}
-	if value, ok := _u.mutation.AppendedEnvironmentDiagnostics(); ok {
-		_spec.AddModifier(func(u *sql.UpdateBuilder) {
-			sqljson.Append(u, worktree.FieldEnvironmentDiagnostics, value)
-		})
-	}
-	if value, ok := _u.mutation.EnvironmentPreparedAt(); ok {
-		_spec.SetField(worktree.FieldEnvironmentPreparedAt, field.TypeTime, value)
-	}
-	if _u.mutation.EnvironmentPreparedAtCleared() {
-		_spec.ClearField(worktree.FieldEnvironmentPreparedAt, field.TypeTime)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -597,104 +461,6 @@ func (_u *WorktreeUpdateOne) ClearError() *WorktreeUpdateOne {
 	return _u
 }
 
-// SetEnvironmentStatus sets the "environment_status" field.
-func (_u *WorktreeUpdateOne) SetEnvironmentStatus(v string) *WorktreeUpdateOne {
-	_u.mutation.SetEnvironmentStatus(v)
-	return _u
-}
-
-// SetNillableEnvironmentStatus sets the "environment_status" field if the given value is not nil.
-func (_u *WorktreeUpdateOne) SetNillableEnvironmentStatus(v *string) *WorktreeUpdateOne {
-	if v != nil {
-		_u.SetEnvironmentStatus(*v)
-	}
-	return _u
-}
-
-// SetRuntimeFingerprint sets the "runtime_fingerprint" field.
-func (_u *WorktreeUpdateOne) SetRuntimeFingerprint(v string) *WorktreeUpdateOne {
-	_u.mutation.SetRuntimeFingerprint(v)
-	return _u
-}
-
-// SetNillableRuntimeFingerprint sets the "runtime_fingerprint" field if the given value is not nil.
-func (_u *WorktreeUpdateOne) SetNillableRuntimeFingerprint(v *string) *WorktreeUpdateOne {
-	if v != nil {
-		_u.SetRuntimeFingerprint(*v)
-	}
-	return _u
-}
-
-// ClearRuntimeFingerprint clears the value of the "runtime_fingerprint" field.
-func (_u *WorktreeUpdateOne) ClearRuntimeFingerprint() *WorktreeUpdateOne {
-	_u.mutation.ClearRuntimeFingerprint()
-	return _u
-}
-
-// SetDependencyFingerprint sets the "dependency_fingerprint" field.
-func (_u *WorktreeUpdateOne) SetDependencyFingerprint(v string) *WorktreeUpdateOne {
-	_u.mutation.SetDependencyFingerprint(v)
-	return _u
-}
-
-// SetNillableDependencyFingerprint sets the "dependency_fingerprint" field if the given value is not nil.
-func (_u *WorktreeUpdateOne) SetNillableDependencyFingerprint(v *string) *WorktreeUpdateOne {
-	if v != nil {
-		_u.SetDependencyFingerprint(*v)
-	}
-	return _u
-}
-
-// ClearDependencyFingerprint clears the value of the "dependency_fingerprint" field.
-func (_u *WorktreeUpdateOne) ClearDependencyFingerprint() *WorktreeUpdateOne {
-	_u.mutation.ClearDependencyFingerprint()
-	return _u
-}
-
-// SetEnvironmentProjects sets the "environment_projects" field.
-func (_u *WorktreeUpdateOne) SetEnvironmentProjects(v []map[string]interface{}) *WorktreeUpdateOne {
-	_u.mutation.SetEnvironmentProjects(v)
-	return _u
-}
-
-// AppendEnvironmentProjects appends value to the "environment_projects" field.
-func (_u *WorktreeUpdateOne) AppendEnvironmentProjects(v []map[string]interface{}) *WorktreeUpdateOne {
-	_u.mutation.AppendEnvironmentProjects(v)
-	return _u
-}
-
-// SetEnvironmentDiagnostics sets the "environment_diagnostics" field.
-func (_u *WorktreeUpdateOne) SetEnvironmentDiagnostics(v []map[string]interface{}) *WorktreeUpdateOne {
-	_u.mutation.SetEnvironmentDiagnostics(v)
-	return _u
-}
-
-// AppendEnvironmentDiagnostics appends value to the "environment_diagnostics" field.
-func (_u *WorktreeUpdateOne) AppendEnvironmentDiagnostics(v []map[string]interface{}) *WorktreeUpdateOne {
-	_u.mutation.AppendEnvironmentDiagnostics(v)
-	return _u
-}
-
-// SetEnvironmentPreparedAt sets the "environment_prepared_at" field.
-func (_u *WorktreeUpdateOne) SetEnvironmentPreparedAt(v time.Time) *WorktreeUpdateOne {
-	_u.mutation.SetEnvironmentPreparedAt(v)
-	return _u
-}
-
-// SetNillableEnvironmentPreparedAt sets the "environment_prepared_at" field if the given value is not nil.
-func (_u *WorktreeUpdateOne) SetNillableEnvironmentPreparedAt(v *time.Time) *WorktreeUpdateOne {
-	if v != nil {
-		_u.SetEnvironmentPreparedAt(*v)
-	}
-	return _u
-}
-
-// ClearEnvironmentPreparedAt clears the value of the "environment_prepared_at" field.
-func (_u *WorktreeUpdateOne) ClearEnvironmentPreparedAt() *WorktreeUpdateOne {
-	_u.mutation.ClearEnvironmentPreparedAt()
-	return _u
-}
-
 // Mutation returns the WorktreeMutation object of the builder.
 func (_u *WorktreeUpdateOne) Mutation() *WorktreeMutation {
 	return _u.mutation
@@ -804,43 +570,6 @@ func (_u *WorktreeUpdateOne) sqlSave(ctx context.Context) (_node *Worktree, err 
 	}
 	if _u.mutation.ErrorCleared() {
 		_spec.ClearField(worktree.FieldError, field.TypeString)
-	}
-	if value, ok := _u.mutation.EnvironmentStatus(); ok {
-		_spec.SetField(worktree.FieldEnvironmentStatus, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.RuntimeFingerprint(); ok {
-		_spec.SetField(worktree.FieldRuntimeFingerprint, field.TypeString, value)
-	}
-	if _u.mutation.RuntimeFingerprintCleared() {
-		_spec.ClearField(worktree.FieldRuntimeFingerprint, field.TypeString)
-	}
-	if value, ok := _u.mutation.DependencyFingerprint(); ok {
-		_spec.SetField(worktree.FieldDependencyFingerprint, field.TypeString, value)
-	}
-	if _u.mutation.DependencyFingerprintCleared() {
-		_spec.ClearField(worktree.FieldDependencyFingerprint, field.TypeString)
-	}
-	if value, ok := _u.mutation.EnvironmentProjects(); ok {
-		_spec.SetField(worktree.FieldEnvironmentProjects, field.TypeJSON, value)
-	}
-	if value, ok := _u.mutation.AppendedEnvironmentProjects(); ok {
-		_spec.AddModifier(func(u *sql.UpdateBuilder) {
-			sqljson.Append(u, worktree.FieldEnvironmentProjects, value)
-		})
-	}
-	if value, ok := _u.mutation.EnvironmentDiagnostics(); ok {
-		_spec.SetField(worktree.FieldEnvironmentDiagnostics, field.TypeJSON, value)
-	}
-	if value, ok := _u.mutation.AppendedEnvironmentDiagnostics(); ok {
-		_spec.AddModifier(func(u *sql.UpdateBuilder) {
-			sqljson.Append(u, worktree.FieldEnvironmentDiagnostics, value)
-		})
-	}
-	if value, ok := _u.mutation.EnvironmentPreparedAt(); ok {
-		_spec.SetField(worktree.FieldEnvironmentPreparedAt, field.TypeTime, value)
-	}
-	if _u.mutation.EnvironmentPreparedAtCleared() {
-		_spec.ClearField(worktree.FieldEnvironmentPreparedAt, field.TypeTime)
 	}
 	_node = &Worktree{config: _u.config}
 	_spec.Assign = _node.assignValues

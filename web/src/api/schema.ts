@@ -276,6 +276,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/discord/development-environments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listDiscordDevelopmentEnvironments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/discord/development-environments/{id}/rebuild": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["rebuildDiscordDevelopmentEnvironment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/discord/development-forums/{id}/delete-preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["preflightDiscordDevelopmentForumDeletion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/discord/development-forums/{id}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["deleteDiscordDevelopmentForum"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/discord/members/{id}/forum": {
         parameters: {
             query?: never;
@@ -758,8 +822,45 @@ export interface components {
             displayName: string;
             bound: boolean;
             githubLogin?: string;
+        };
+        DiscordDevelopmentForum: {
             /** Format: uuid */
-            forumId?: string;
+            id: string;
+            name: string;
+            discordId: string;
+            /** Format: uuid */
+            repositoryId: string;
+            repository: string;
+            status: string;
+            branch: string;
+            dirty: boolean;
+            error?: string;
+        };
+        DiscordDevelopmentEnvironment: {
+            /** Format: uuid */
+            id: string;
+            ownerDiscordUserId: string;
+            ownerName: string;
+            /** Format: uuid */
+            buildRepositoryId: string;
+            buildRepository: string;
+            status: string;
+            imageId?: string;
+            buildSourceSha?: string;
+            runtimeUser?: string;
+            /** Format: date-time */
+            lastUsedAt: string;
+            error?: string;
+            forums: components["schemas"]["DiscordDevelopmentForum"][];
+        };
+        DiscordDevelopmentDeletePreflight: {
+            /** Format: uuid */
+            forumId: string;
+            dirty: boolean;
+            unpushed: boolean;
+            active: boolean;
+            deletesEnvironment: boolean;
+            confirmation: string;
         };
         IDResource: {
             /** Format: uuid */
@@ -1505,7 +1606,28 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    createDiscordMemberForum: {
+    listDiscordDevelopmentEnvironments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 长期开发环境 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscordDevelopmentEnvironment"][];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    rebuildDiscordDevelopmentEnvironment: {
         parameters: {
             query?: never;
             header: {
@@ -1517,6 +1639,91 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description 已标记为下次运行前重建 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    preflightDiscordDevelopmentForumDeletion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 删除预检 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscordDevelopmentDeletePreflight"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    deleteDiscordDevelopmentForum: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    confirmation: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 删除已排队 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IDResource"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    createDiscordMemberForum: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    repositoryId: string;
+                    name?: string;
+                };
+            };
+        };
         responses: {
             /** @description Forum 创建已排队 */
             202: {

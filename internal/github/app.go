@@ -137,6 +137,24 @@ func (a *AppClient) Repository(ctx context.Context, installationID int64, owner,
 	}, nil
 }
 
+func (a *AppClient) PullRequest(ctx context.Context, installationID int64,
+	owner, repository string, number int,
+) (domain.PullRequest, error) {
+	client, err := a.RESTClient(ctx, installationID)
+	if err != nil {
+		return domain.PullRequest{}, err
+	}
+	value, _, err := client.PullRequests.Get(ctx, owner, repository, number)
+	if err != nil {
+		return domain.PullRequest{}, err
+	}
+	return domain.PullRequest{
+		Number: number, URL: value.GetHTMLURL(), HeadSHA: value.GetHead().GetSHA(),
+		HeadRef: value.GetHead().GetRef(), HeadRepository: value.GetHead().GetRepo().GetFullName(),
+		BaseSHA: value.GetBase().GetSHA(), BaseRef: value.GetBase().GetRef(),
+	}, nil
+}
+
 func (a *AppClient) FindIssueComment(ctx context.Context, installationID int64,
 	owner, repository string, number int, marker string,
 ) (IssueComment, bool, error) {
@@ -227,6 +245,9 @@ func (p *Provider) NormalizeWebhook(deliveryID, eventName string, payload []byte
 }
 func (p *Provider) Repository(ctx context.Context, installationID int64, owner, repository string) (domain.SCMRepository, error) {
 	return p.app.Repository(ctx, installationID, owner, repository)
+}
+func (p *Provider) PullRequest(ctx context.Context, installationID int64, owner, repository string, number int) (domain.PullRequest, error) {
+	return p.app.PullRequest(ctx, installationID, owner, repository, number)
 }
 func (p *Provider) Permission(ctx context.Context, installationID int64, owner, repository, actor string) (string, error) {
 	return p.app.Permission(ctx, installationID, owner, repository, actor)

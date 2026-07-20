@@ -50,6 +50,7 @@ type ClientOptions struct {
 	EventBacklog   int
 	ToolHandler    ToolHandler
 	Launcher       Launcher
+	SkipLocalHome  bool
 	Logger         *zap.Logger
 }
 
@@ -75,8 +76,10 @@ func Start(ctx context.Context, options ClientOptions) (*Client, error) {
 		return nil, errors.New("启动 Codex 缺少 bin、cwd 或 CODEX_HOME")
 	}
 	applyClientDefaults(&options)
-	if err := os.MkdirAll(options.CodexHome, 0o700); err != nil {
-		return nil, err
+	if !options.SkipLocalHome {
+		if err := os.MkdirAll(options.CodexHome, 0o700); err != nil {
+			return nil, err
+		}
 	}
 	process, err := options.Launcher.Launch(ProcessSpec{
 		Bin: options.Bin, Args: []string{"app-server", "--listen", "stdio://"},

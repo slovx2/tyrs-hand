@@ -95,6 +95,26 @@ func HeadSha(v string) predicate.WorkItem {
 	return predicate.WorkItem(sql.FieldEQ(FieldHeadSha, v))
 }
 
+// BaseRef applies equality check predicate on the "base_ref" field. It's identical to BaseRefEQ.
+func BaseRef(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldBaseRef, v))
+}
+
+// HeadRef applies equality check predicate on the "head_ref" field. It's identical to HeadRefEQ.
+func HeadRef(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldHeadRef, v))
+}
+
+// HeadRepository applies equality check predicate on the "head_repository" field. It's identical to HeadRepositoryEQ.
+func HeadRepository(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldHeadRepository, v))
+}
+
+// HTMLURL applies equality check predicate on the "html_url" field. It's identical to HTMLURLEQ.
+func HTMLURL(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldHTMLURL, v))
+}
+
 // ContextVersion applies equality check predicate on the "context_version" field. It's identical to ContextVersionEQ.
 func ContextVersion(v int64) predicate.WorkItem {
 	return predicate.WorkItem(sql.FieldEQ(FieldContextVersion, v))
@@ -548,6 +568,306 @@ func HeadShaEqualFold(v string) predicate.WorkItem {
 // HeadShaContainsFold applies the ContainsFold predicate on the "head_sha" field.
 func HeadShaContainsFold(v string) predicate.WorkItem {
 	return predicate.WorkItem(sql.FieldContainsFold(FieldHeadSha, v))
+}
+
+// BaseRefEQ applies the EQ predicate on the "base_ref" field.
+func BaseRefEQ(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldBaseRef, v))
+}
+
+// BaseRefNEQ applies the NEQ predicate on the "base_ref" field.
+func BaseRefNEQ(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNEQ(FieldBaseRef, v))
+}
+
+// BaseRefIn applies the In predicate on the "base_ref" field.
+func BaseRefIn(vs ...string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldIn(FieldBaseRef, vs...))
+}
+
+// BaseRefNotIn applies the NotIn predicate on the "base_ref" field.
+func BaseRefNotIn(vs ...string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNotIn(FieldBaseRef, vs...))
+}
+
+// BaseRefGT applies the GT predicate on the "base_ref" field.
+func BaseRefGT(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldGT(FieldBaseRef, v))
+}
+
+// BaseRefGTE applies the GTE predicate on the "base_ref" field.
+func BaseRefGTE(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldGTE(FieldBaseRef, v))
+}
+
+// BaseRefLT applies the LT predicate on the "base_ref" field.
+func BaseRefLT(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldLT(FieldBaseRef, v))
+}
+
+// BaseRefLTE applies the LTE predicate on the "base_ref" field.
+func BaseRefLTE(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldLTE(FieldBaseRef, v))
+}
+
+// BaseRefContains applies the Contains predicate on the "base_ref" field.
+func BaseRefContains(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldContains(FieldBaseRef, v))
+}
+
+// BaseRefHasPrefix applies the HasPrefix predicate on the "base_ref" field.
+func BaseRefHasPrefix(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldHasPrefix(FieldBaseRef, v))
+}
+
+// BaseRefHasSuffix applies the HasSuffix predicate on the "base_ref" field.
+func BaseRefHasSuffix(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldHasSuffix(FieldBaseRef, v))
+}
+
+// BaseRefIsNil applies the IsNil predicate on the "base_ref" field.
+func BaseRefIsNil() predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldIsNull(FieldBaseRef))
+}
+
+// BaseRefNotNil applies the NotNil predicate on the "base_ref" field.
+func BaseRefNotNil() predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNotNull(FieldBaseRef))
+}
+
+// BaseRefEqualFold applies the EqualFold predicate on the "base_ref" field.
+func BaseRefEqualFold(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEqualFold(FieldBaseRef, v))
+}
+
+// BaseRefContainsFold applies the ContainsFold predicate on the "base_ref" field.
+func BaseRefContainsFold(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldContainsFold(FieldBaseRef, v))
+}
+
+// HeadRefEQ applies the EQ predicate on the "head_ref" field.
+func HeadRefEQ(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldHeadRef, v))
+}
+
+// HeadRefNEQ applies the NEQ predicate on the "head_ref" field.
+func HeadRefNEQ(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNEQ(FieldHeadRef, v))
+}
+
+// HeadRefIn applies the In predicate on the "head_ref" field.
+func HeadRefIn(vs ...string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldIn(FieldHeadRef, vs...))
+}
+
+// HeadRefNotIn applies the NotIn predicate on the "head_ref" field.
+func HeadRefNotIn(vs ...string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNotIn(FieldHeadRef, vs...))
+}
+
+// HeadRefGT applies the GT predicate on the "head_ref" field.
+func HeadRefGT(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldGT(FieldHeadRef, v))
+}
+
+// HeadRefGTE applies the GTE predicate on the "head_ref" field.
+func HeadRefGTE(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldGTE(FieldHeadRef, v))
+}
+
+// HeadRefLT applies the LT predicate on the "head_ref" field.
+func HeadRefLT(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldLT(FieldHeadRef, v))
+}
+
+// HeadRefLTE applies the LTE predicate on the "head_ref" field.
+func HeadRefLTE(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldLTE(FieldHeadRef, v))
+}
+
+// HeadRefContains applies the Contains predicate on the "head_ref" field.
+func HeadRefContains(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldContains(FieldHeadRef, v))
+}
+
+// HeadRefHasPrefix applies the HasPrefix predicate on the "head_ref" field.
+func HeadRefHasPrefix(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldHasPrefix(FieldHeadRef, v))
+}
+
+// HeadRefHasSuffix applies the HasSuffix predicate on the "head_ref" field.
+func HeadRefHasSuffix(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldHasSuffix(FieldHeadRef, v))
+}
+
+// HeadRefIsNil applies the IsNil predicate on the "head_ref" field.
+func HeadRefIsNil() predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldIsNull(FieldHeadRef))
+}
+
+// HeadRefNotNil applies the NotNil predicate on the "head_ref" field.
+func HeadRefNotNil() predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNotNull(FieldHeadRef))
+}
+
+// HeadRefEqualFold applies the EqualFold predicate on the "head_ref" field.
+func HeadRefEqualFold(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEqualFold(FieldHeadRef, v))
+}
+
+// HeadRefContainsFold applies the ContainsFold predicate on the "head_ref" field.
+func HeadRefContainsFold(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldContainsFold(FieldHeadRef, v))
+}
+
+// HeadRepositoryEQ applies the EQ predicate on the "head_repository" field.
+func HeadRepositoryEQ(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldHeadRepository, v))
+}
+
+// HeadRepositoryNEQ applies the NEQ predicate on the "head_repository" field.
+func HeadRepositoryNEQ(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNEQ(FieldHeadRepository, v))
+}
+
+// HeadRepositoryIn applies the In predicate on the "head_repository" field.
+func HeadRepositoryIn(vs ...string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldIn(FieldHeadRepository, vs...))
+}
+
+// HeadRepositoryNotIn applies the NotIn predicate on the "head_repository" field.
+func HeadRepositoryNotIn(vs ...string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNotIn(FieldHeadRepository, vs...))
+}
+
+// HeadRepositoryGT applies the GT predicate on the "head_repository" field.
+func HeadRepositoryGT(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldGT(FieldHeadRepository, v))
+}
+
+// HeadRepositoryGTE applies the GTE predicate on the "head_repository" field.
+func HeadRepositoryGTE(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldGTE(FieldHeadRepository, v))
+}
+
+// HeadRepositoryLT applies the LT predicate on the "head_repository" field.
+func HeadRepositoryLT(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldLT(FieldHeadRepository, v))
+}
+
+// HeadRepositoryLTE applies the LTE predicate on the "head_repository" field.
+func HeadRepositoryLTE(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldLTE(FieldHeadRepository, v))
+}
+
+// HeadRepositoryContains applies the Contains predicate on the "head_repository" field.
+func HeadRepositoryContains(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldContains(FieldHeadRepository, v))
+}
+
+// HeadRepositoryHasPrefix applies the HasPrefix predicate on the "head_repository" field.
+func HeadRepositoryHasPrefix(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldHasPrefix(FieldHeadRepository, v))
+}
+
+// HeadRepositoryHasSuffix applies the HasSuffix predicate on the "head_repository" field.
+func HeadRepositoryHasSuffix(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldHasSuffix(FieldHeadRepository, v))
+}
+
+// HeadRepositoryIsNil applies the IsNil predicate on the "head_repository" field.
+func HeadRepositoryIsNil() predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldIsNull(FieldHeadRepository))
+}
+
+// HeadRepositoryNotNil applies the NotNil predicate on the "head_repository" field.
+func HeadRepositoryNotNil() predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNotNull(FieldHeadRepository))
+}
+
+// HeadRepositoryEqualFold applies the EqualFold predicate on the "head_repository" field.
+func HeadRepositoryEqualFold(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEqualFold(FieldHeadRepository, v))
+}
+
+// HeadRepositoryContainsFold applies the ContainsFold predicate on the "head_repository" field.
+func HeadRepositoryContainsFold(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldContainsFold(FieldHeadRepository, v))
+}
+
+// HTMLURLEQ applies the EQ predicate on the "html_url" field.
+func HTMLURLEQ(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldHTMLURL, v))
+}
+
+// HTMLURLNEQ applies the NEQ predicate on the "html_url" field.
+func HTMLURLNEQ(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNEQ(FieldHTMLURL, v))
+}
+
+// HTMLURLIn applies the In predicate on the "html_url" field.
+func HTMLURLIn(vs ...string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldIn(FieldHTMLURL, vs...))
+}
+
+// HTMLURLNotIn applies the NotIn predicate on the "html_url" field.
+func HTMLURLNotIn(vs ...string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNotIn(FieldHTMLURL, vs...))
+}
+
+// HTMLURLGT applies the GT predicate on the "html_url" field.
+func HTMLURLGT(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldGT(FieldHTMLURL, v))
+}
+
+// HTMLURLGTE applies the GTE predicate on the "html_url" field.
+func HTMLURLGTE(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldGTE(FieldHTMLURL, v))
+}
+
+// HTMLURLLT applies the LT predicate on the "html_url" field.
+func HTMLURLLT(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldLT(FieldHTMLURL, v))
+}
+
+// HTMLURLLTE applies the LTE predicate on the "html_url" field.
+func HTMLURLLTE(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldLTE(FieldHTMLURL, v))
+}
+
+// HTMLURLContains applies the Contains predicate on the "html_url" field.
+func HTMLURLContains(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldContains(FieldHTMLURL, v))
+}
+
+// HTMLURLHasPrefix applies the HasPrefix predicate on the "html_url" field.
+func HTMLURLHasPrefix(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldHasPrefix(FieldHTMLURL, v))
+}
+
+// HTMLURLHasSuffix applies the HasSuffix predicate on the "html_url" field.
+func HTMLURLHasSuffix(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldHasSuffix(FieldHTMLURL, v))
+}
+
+// HTMLURLIsNil applies the IsNil predicate on the "html_url" field.
+func HTMLURLIsNil() predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldIsNull(FieldHTMLURL))
+}
+
+// HTMLURLNotNil applies the NotNil predicate on the "html_url" field.
+func HTMLURLNotNil() predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNotNull(FieldHTMLURL))
+}
+
+// HTMLURLEqualFold applies the EqualFold predicate on the "html_url" field.
+func HTMLURLEqualFold(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEqualFold(FieldHTMLURL, v))
+}
+
+// HTMLURLContainsFold applies the ContainsFold predicate on the "html_url" field.
+func HTMLURLContainsFold(v string) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldContainsFold(FieldHTMLURL, v))
 }
 
 // ContextVersionEQ applies the EQ predicate on the "context_version" field.

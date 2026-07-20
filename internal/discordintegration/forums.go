@@ -15,29 +15,34 @@ import (
 
 var channelNamePart = regexp.MustCompile(`[^a-z0-9-]+`)
 
-func (m *Manager) PersonalForumPlan(ctx context.Context, remoteGuild RemoteGuild, memberID string) (InitializationPlan, error) {
+func (m *Manager) DevelopmentForumPlan(ctx context.Context, remoteGuild RemoteGuild,
+	memberID string, repositoryID uuid.UUID, requestedName string,
+) (InitializationPlan, error) {
 	settings, err := m.Settings(ctx)
 	if err != nil {
 		return InitializationPlan{}, err
 	}
 	if settings.GuildID == "" || settings.BotUserID == "" {
-		return InitializationPlan{}, errors.New("创建个人 Forum 前必须配置 Guild ID 和 Bot User ID")
+		return InitializationPlan{}, errors.New("创建开发 Forum 前必须配置 Guild ID 和 Bot User ID")
 	}
-	var username, displayName string
-	err = m.db.QueryRowContext(ctx, `SELECT username, display_name FROM discord_members
-		WHERE guild_id = $1 AND discord_user_id = $2 AND active = true`, settings.GuildID, memberID).
-		Scan(&username, &displayName)
+	var username, displayName, owner, repository string
+	err = m.db.QueryRowContext(ctx, `SELECT m.username, m.display_name, r.owner, r.name
+		FROM discord_members m CROSS JOIN repositories r
+		JOIN discord_identity_bindings b ON b.guild_id = m.guild_id
+			AND b.discord_user_id = m.discord_user_id AND b.status = 'active'
+		WHERE m.guild_id = $1 AND m.discord_user_id = $2 AND m.active = true
+			AND r.id = $3 AND r.enabled = true`, settings.GuildID, memberID, repositoryID).
+		Scan(&username, &displayName, &owner, &repository)
 	if err != nil {
-		return InitializationPlan{}, err
+		return InitializationPlan{}, errors.New("成员必须已绑定 GitHub，且仓库必须处于启用状态")
 	}
-	var existing bool
-	err = m.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM discord_forums
-		WHERE guild_id = $1 AND owner_discord_user_id = $2 AND forum_type = 'personal')`, settings.GuildID, memberID).Scan(&existing)
-	if err != nil {
-		return InitializationPlan{}, err
-	}
-	if existing {
-		return InitializationPlan{}, errors.New("该 Discord 成员已经有个人 Forum")
+	var allowed bool
+	err = m.db.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM discord_forums f JOIN discord_forum_access a ON a.forum_id = f.id
+		WHERE f.repository_id = $1 AND f.forum_type = 'repository'
+			AND a.discord_user_id = $2 AND a.access_level = 'readonly')`, repositoryID, memberID).Scan(&allowed)
+	if err != nil || !allowed {
+		return InitializationPlan{}, errors.New("成员没有该仓库的 GitHub 读取权限")
 	}
 	categoryKey, categoryID, err := m.availableCodexCategory(ctx, settings.GuildID)
 	if err != nil {
@@ -46,31 +51,31 @@ func (m *Manager) PersonalForumPlan(ctx context.Context, remoteGuild RemoteGuild
 	var desired []ChannelSpec
 	if categoryID == "" {
 		index, _ := strconv.Atoi(strings.TrimPrefix(categoryKey, "category.codex."))
-		desired = append(desired, ChannelSpec{Key: categoryKey, Name: fmt.Sprintf("Codex 会话 %02d", index), Kind: "category"})
+		desired = append(desired, ChannelSpec{Key: categoryKey,
+			Name: fmt.Sprintf("Codex 会话 %02d", index), Kind: "category"})
 	}
-	name := channelNamePart.ReplaceAllString(strings.ToLower(username), "-")
+	forumID := uuid.New()
+	name := requestedName
+	if name == "" {
+		name = "dev-" + username + "-" + repository
+	}
+	name = channelNamePart.ReplaceAllString(strings.ToLower(name), "-")
 	name = strings.Trim(name, "-")
 	if name == "" {
-		name = "member"
+		return InitializationPlan{}, errors.New("开发 Forum 名称无效")
 	}
-	suffix := memberID
-	if len(suffix) > 6 {
-		suffix = suffix[len(suffix)-6:]
-	}
-	key := "forum.personal." + memberID
+	key := "forum.development." + forumID.String()
 	allow := discord.PermissionViewChannel | discord.PermissionSendMessages |
 		discord.PermissionReadMessageHistory | discord.PermissionCreatePublicThreads |
 		discord.PermissionSendMessagesInThreads | discord.PermissionAttachFiles | discord.PermissionEmbedLinks
 	botAllow := allow | discord.PermissionManageChannels | discord.PermissionManageThreads | discord.PermissionManageMessages
-	forum := ChannelSpec{
-		Key: key, ParentKey: categoryKey, Name: "codex-" + name + "-" + suffix, Kind: "forum",
-		Topic: "Tyrs Hand 私有 Codex 会话 · " + displayName,
+	forum := ChannelSpec{Key: key, ParentKey: categoryKey, Name: name, Kind: "forum",
+		Topic: "Tyrs Hand 长期开发环境 · " + displayName + " · " + owner + "/" + repository,
 		PermissionOverwrites: []PermissionSpec{
 			{ID: settings.GuildID, Type: "role", Deny: int64(discord.PermissionViewChannel)},
 			{ID: memberID, Type: "member", Allow: int64(allow)},
 			{ID: settings.BotUserID, Type: "member", Allow: int64(botAllow)},
-		},
-	}
+		}}
 	desired = append(desired, forum)
 	managed, err := m.ManagedResources(ctx, settings.GuildID)
 	if err != nil {
@@ -80,7 +85,8 @@ func (m *Manager) PersonalForumPlan(ctx context.Context, remoteGuild RemoteGuild
 	if err != nil {
 		return InitializationPlan{}, err
 	}
-	plan.Actions = append(plan.Actions, InitializationAction{Kind: "forum.personal.record", Spec: forum, OwnerUserID: memberID})
+	plan.Actions = append(plan.Actions, InitializationAction{Kind: "forum.development.record",
+		Spec: forum, OwnerUserID: memberID, RepositoryID: repositoryID.String(), ForumID: forumID.String()})
 	return plan, nil
 }
 
@@ -200,7 +206,7 @@ func (m *Manager) syncForumPermissions(ctx context.Context, forumID uuid.UUID) e
 	var guildID, channelID, ownerID, botID string
 	err := m.db.QueryRowContext(ctx, `SELECT f.guild_id, r.discord_id, f.owner_discord_user_id,
 		COALESCE(g.bot_user_id, '') FROM discord_forums f JOIN discord_resources r ON r.id = f.resource_id
-		JOIN discord_guilds g ON g.guild_id = f.guild_id WHERE f.id = $1 AND f.forum_type = 'personal'`, forumID).
+		JOIN discord_guilds g ON g.guild_id = f.guild_id WHERE f.id = $1 AND f.forum_type = 'development'`, forumID).
 		Scan(&guildID, &channelID, &ownerID, &botID)
 	if err != nil {
 		return err

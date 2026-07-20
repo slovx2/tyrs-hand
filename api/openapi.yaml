@@ -265,6 +265,57 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/DiscordMember" } }
         default: { $ref: "#/components/responses/Problem" }
+  /discord/development-environments:
+    get:
+      operationId: listDiscordDevelopmentEnvironments
+      tags: [Discord]
+      responses:
+        "200":
+          description: 长期开发环境
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/DiscordDevelopmentEnvironment" } }
+        default: { $ref: "#/components/responses/Problem" }
+  /discord/development-environments/{id}/rebuild:
+    post:
+      operationId: rebuildDiscordDevelopmentEnvironment
+      tags: [Discord]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/CSRFToken" }
+      responses:
+        "202": { description: 已标记为下次运行前重建 }
+        default: { $ref: "#/components/responses/Problem" }
+  /discord/development-forums/{id}/delete-preflight:
+    get:
+      operationId: preflightDiscordDevelopmentForumDeletion
+      tags: [Discord]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200":
+          description: 删除预检
+          content: { application/json: { schema: { $ref: "#/components/schemas/DiscordDevelopmentDeletePreflight" } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /discord/development-forums/{id}/delete:
+    post:
+      operationId: deleteDiscordDevelopmentForum
+      tags: [Discord]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/CSRFToken" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirmation]
+              properties: { confirmation: { type: string } }
+      responses:
+        "202":
+          description: 删除已排队
+          content: { application/json: { schema: { $ref: "#/components/schemas/IDResource" } } }
+        default: { $ref: "#/components/responses/Problem" }
   /discord/members/{id}/forum:
     post:
       operationId: createDiscordMemberForum
@@ -272,6 +323,16 @@ paths:
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
         - { $ref: "#/components/parameters/CSRFToken" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [repositoryId]
+              properties:
+                repositoryId: { type: string, format: uuid }
+                name: { type: string }
       responses:
         "202":
           description: Forum 创建已排队
@@ -740,7 +801,45 @@ components:
         displayName: { type: string }
         bound: { type: boolean }
         githubLogin: { type: string }
+    DiscordDevelopmentForum:
+      type: object
+      required: [id, name, discordId, repositoryId, repository, status, branch, dirty]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        discordId: { type: string }
+        repositoryId: { type: string, format: uuid }
+        repository: { type: string }
+        status: { type: string }
+        branch: { type: string }
+        dirty: { type: boolean }
+        error: { type: string }
+    DiscordDevelopmentEnvironment:
+      type: object
+      required: [id, ownerDiscordUserId, ownerName, buildRepositoryId, buildRepository, status, lastUsedAt, forums]
+      properties:
+        id: { type: string, format: uuid }
+        ownerDiscordUserId: { type: string }
+        ownerName: { type: string }
+        buildRepositoryId: { type: string, format: uuid }
+        buildRepository: { type: string }
+        status: { type: string }
+        imageId: { type: string }
+        buildSourceSha: { type: string }
+        runtimeUser: { type: string }
+        lastUsedAt: { type: string, format: date-time }
+        error: { type: string }
+        forums: { type: array, items: { $ref: "#/components/schemas/DiscordDevelopmentForum" } }
+    DiscordDevelopmentDeletePreflight:
+      type: object
+      required: [forumId, dirty, unpushed, active, deletesEnvironment, confirmation]
+      properties:
         forumId: { type: string, format: uuid }
+        dirty: { type: boolean }
+        unpushed: { type: boolean }
+        active: { type: boolean }
+        deletesEnvironment: { type: boolean }
+        confirmation: { type: string }
     IDResource:
       type: object
       required: [id]

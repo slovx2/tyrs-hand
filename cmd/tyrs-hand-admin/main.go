@@ -16,7 +16,6 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/database"
-	"github.com/slovx2/tyrs-hand/internal/devenv"
 	"github.com/slovx2/tyrs-hand/internal/gitworkspace"
 	"github.com/slovx2/tyrs-hand/internal/security"
 )
@@ -189,62 +188,24 @@ func diagnoseWorker(ctx context.Context, db *sql.DB, cfg config.Config) error {
 	if err := diagnoseControl(ctx, db); err != nil {
 		return err
 	}
-	lock, err := devenv.LoadRuntimeLock()
-	if err != nil {
+	if err := codex.ValidateVersion(ctx, cfg.CodexBin); err != nil {
 		return err
 	}
-	checks := []struct {
-		name         string
-		bin          string
-		args         []string
-		expected     string
-		versionParts int
-	}{
-		{name: "Codex", bin: cfg.CodexBin, args: []string{"--version"}, expected: "codex-cli " + codex.RequiredVersion, versionParts: 2},
-		{name: "mise", bin: "mise", args: []string{"--version"}, expected: lock.Mise, versionParts: 1},
-		{name: "uv", bin: "uv", args: []string{"--version"}, expected: "uv " + lock.UV, versionParts: 2},
-		{name: "Corepack", bin: "corepack", args: []string{"--version"}, expected: lock.Corepack, versionParts: 1},
-	}
-	for _, check := range checks {
-		cmd := exec.CommandContext(ctx, check.bin, check.args...)
-		cmd.Env = codexEnvironment()
-		output, commandErr := cmd.CombinedOutput()
-		if commandErr != nil {
-			return fmt.Errorf("检查 %s 版本: %w", check.name, commandErr)
+	if cfg.EnableDevelopmentContainers && (cfg.WorkerRole == "discord" || cfg.WorkerRole == "all") {
+		docker := exec.CommandContext(ctx, "/usr/local/libexec/tyrs-hand/docker", "version")
+		docker.Env = append(codexEnvironment(), "DOCKER_HOST=unix:///var/run/docker.sock")
+		if output, err := docker.CombinedOutput(); err != nil {
+			return fmt.Errorf("检查开发容器 Docker Daemon: %w: %s", err, strings.TrimSpace(string(output)))
 		}
-		actual, err := normalizeVersionOutput(string(output), check.versionParts)
-		if err != nil {
-			return fmt.Errorf("检查 %s 版本: %w", check.name, err)
-		}
-		if actual != check.expected {
-			return fmt.Errorf("要求 %s 版本为 %s，当前为 %s", check.name, check.expected, actual)
-		}
-	}
-	docker := exec.CommandContext(ctx, "docker", "--version")
-	docker.Env = codexEnvironment()
-	dockerOutput, err := docker.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("检查 Docker CLI 版本: %w", err)
-	}
-	if !strings.HasPrefix(strings.TrimSpace(string(dockerOutput)), "Docker version "+lock.DockerCLI+",") {
-		return fmt.Errorf("要求 Docker CLI 版本为 %s，当前为 %q", lock.DockerCLI, strings.TrimSpace(string(dockerOutput)))
 	}
 	for _, path := range []string{cfg.WorkerDataRoot, cfg.RepoCacheRoot, cfg.WorktreeRoot,
-		cfg.DiscordWorkspaceRoot, cfg.CodexHomeRoot} {
+		cfg.CodexHomeRoot} {
 		if err := os.MkdirAll(path, 0o750); err != nil {
 			return fmt.Errorf("检查目录 %s: %w", path, err)
 		}
 	}
-	fmt.Println("Worker Runtime 版本和本地目录均正常。")
+	fmt.Println("Worker 运行时和本地目录均正常。")
 	return nil
-}
-
-func normalizeVersionOutput(output string, parts int) (string, error) {
-	fields := strings.Fields(output)
-	if parts <= 0 || len(fields) < parts {
-		return "", fmt.Errorf("无法解析版本输出 %q", strings.TrimSpace(output))
-	}
-	return strings.Join(fields[:parts], " "), nil
 }
 
 func codexEnvironment() []string {
@@ -295,7 +256,6 @@ func collectRepoCaches(ctx context.Context, db *sql.DB, cfg config.Config) int {
 	rows, err := db.QueryContext(ctx, `
 		SELECT rc.id, rc.path FROM repo_caches rc
 		WHERE NOT EXISTS (SELECT 1 FROM worktrees wt WHERE wt.repo_cache_id = rc.id)
-		  AND NOT EXISTS (SELECT 1 FROM discord_workspaces dw WHERE dw.repo_cache_id = rc.id)
 		ORDER BY rc.last_used_at DESC`)
 	fatal(err)
 	defer func() { _ = rows.Close() }()
