@@ -573,10 +573,22 @@ func withoutGenericReply(tools []string) []string {
 }
 
 func threadConfigSignature(providerSignature string, options ports.ThreadOptions) string {
-	data, _ := json.Marshal(struct {
+	stableOptions := options
+	data, _ := json.Marshal(options.RuntimeConfig)
+	var runtimeConfig map[string]any
+	if json.Unmarshal(data, &runtimeConfig) == nil {
+		if policy, ok := runtimeConfig["shell_environment_policy"].(map[string]any); ok {
+			if values, ok := policy["set"].(map[string]any); ok {
+				delete(values, "TYRS_HAND_DOCKER_INTENT_ID")
+				delete(values, "TYRS_HAND_DOCKER_RUN_ID")
+			}
+		}
+		stableOptions.RuntimeConfig = runtimeConfig
+	}
+	data, _ = json.Marshal(struct {
 		ProviderSignature string              `json:"providerSignature"`
 		Options           ports.ThreadOptions `json:"options"`
-	}{ProviderSignature: providerSignature, Options: options})
+	}{ProviderSignature: providerSignature, Options: stableOptions})
 	digest := sha256.Sum256(data)
 	return fmt.Sprintf("%x", digest[:])
 }

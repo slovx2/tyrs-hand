@@ -1,14 +1,8 @@
+# Beta。有安全风险，请确保所有用户可信再开启。
+# 启用后，非 root Worker 仍可通过 Docker Socket 完整控制宿主 Docker Daemon。
 services:
-  server:
-    environment:
-      TYRS_HAND_MASTER_KEY: ""
-      TYRS_HAND_MASTER_KEY_FILE: /run/secrets/master_key
-    secrets: [master_key]
-
   worker:
     environment:
-      TYRS_HAND_MASTER_KEY: ""
-      TYRS_HAND_MASTER_KEY_FILE: /run/secrets/master_key
       TYRS_HAND_ENABLE_HOST_DOCKER: "true"
       TYRS_HAND_DOCKER_NETWORK: ${TYRS_HAND_DOCKER_NETWORK:-tyrs-hand-agent-runtime}
       TYRS_HAND_DOCKER_STOP_TIMEOUT: ${TYRS_HAND_DOCKER_STOP_TIMEOUT:-10s}
@@ -23,23 +17,6 @@ services:
     networks:
       default: {}
       agent-runtime: {}
-    secrets: [master_key]
-
-  discord:
-    environment:
-      TYRS_HAND_MASTER_KEY: ""
-      TYRS_HAND_MASTER_KEY_FILE: /run/secrets/master_key
-    secrets: [master_key]
-
-  admin:
-    environment:
-      TYRS_HAND_MASTER_KEY: ""
-      TYRS_HAND_MASTER_KEY_FILE: /run/secrets/master_key
-    secrets: [master_key]
-
-secrets:
-  master_key:
-    file: ./.local/secrets/master_key
 
 networks:
   agent-runtime:

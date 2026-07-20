@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/devenv"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 type concurrencyQueue struct {
@@ -142,4 +144,21 @@ func TestDegradedEnvironmentAddsAgentDiagnosticContext(t *testing.T) {
 	require.Contains(t, entry.Value, "simulated failure")
 	require.Contains(t, entry.Value, "继续完成任务")
 	require.Nil(t, environmentAdditionalContext(devenv.Result{Status: "ready"}))
+}
+
+type failedDockerCleanup struct{}
+
+func (failedDockerCleanup) Environment() []string { return nil }
+func (failedDockerCleanup) Close(context.Context) error {
+	return errors.New("container is in use")
+}
+
+func TestDockerCleanupFailureOnlyProducesWarning(t *testing.T) {
+	core, logs := observer.New(zap.WarnLevel)
+	processor := &Processor{cfg: config.Config{DockerCleanupTimeout: time.Second}, logger: zap.New(core)}
+	claimed := &codexcontrol.ClaimedControl{RunID: uuid.New()}
+	claimed.ID = uuid.New()
+	processor.finishHostDocker(failedDockerCleanup{}, claimed)
+	require.Len(t, logs.All(), 1)
+	require.Contains(t, logs.All()[0].Message, "自动停止失败")
 }

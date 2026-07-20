@@ -15,6 +15,7 @@ import (
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
 	"github.com/slovx2/tyrs-hand/internal/githubtools"
 	"github.com/slovx2/tyrs-hand/internal/gitworkspace"
+	"github.com/slovx2/tyrs-hand/internal/hostdocker"
 	"github.com/slovx2/tyrs-hand/internal/httpapi"
 	"github.com/slovx2/tyrs-hand/internal/logging"
 	"github.com/slovx2/tyrs-hand/internal/secrets"
@@ -114,6 +115,10 @@ func providePool(ctx context.Context, cfg config.Config, logger *zap.Logger) (*c
 
 func provideDevelopmentEnvironment(cfg config.Config, logger *zap.Logger) (*devenv.Manager, error) {
 	return devenv.NewManager(cfg.WorkerDataRoot, logger)
+}
+
+func provideHostDocker(cfg config.Config, logger *zap.Logger) (*hostdocker.Manager, error) {
+	return hostdocker.NewManager(cfg, logger)
 }
 
 func provideSettings(db *sql.DB, store *secrets.Store) *platformsettings.Service {

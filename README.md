@@ -108,6 +108,23 @@ TYRS_HAND_WEBHOOK_HTTP_ADDR=:8081
 
 开启后，管理端口不再注册 `/webhooks/github`，Webhook 端口只注册健康检查和 GitHub Webhook。部署系统还需要单独发布该端口，并由反向代理将 `/webhooks/github` 路由到它。
 
+## Host Docker Beta
+
+基础 `compose.yaml` 不会向 Worker 挂载 Docker Socket。可信的单宿主机部署可以显式启用 Host Docker：
+
+1. 将宿主 `/var/run/docker.sock` 的数字 GID 写入 `.env` 的 `TYRS_HAND_DOCKER_GID`。Linux 可使用 `stat -c '%g' /var/run/docker.sock` 查询。
+2. 追加 Beta Override 并重建 Worker：
+
+   ```bash
+   docker compose -f compose.yaml -f compose.host-docker.example.yaml up -d --force-recreate worker
+   ```
+
+`compose.production.yaml` 已直接启用该功能，不需要再追加 Override，但必须设置 `TYRS_HAND_DOCKER_GID`。如果生产部署需要关闭，必须先从生产 Compose 移除 Socket、补充组和运行网络配置，再重建 Worker；只修改 `TYRS_HAND_ENABLE_HOST_DOCKER` 不能撤销已经挂载的 Socket。
+
+> **Beta。有安全风险，请确保所有用户可信再开启。** Worker 虽然继续以非 root 用户运行，但 Docker Socket 允许 Agent 完整控制宿主 Docker Daemon，包括其他容器和宿主目录。
+
+Agent 可以使用 `docker run/build/start/stop/exec/logs`，但 Worker 不安装 Docker Compose Plugin。服务容器默认加入专用运行网络；Job 结束时平台只停止受管容器，不删除容器、Network、Volume、镜像或 Build Cache。当前 Worktree 位于 Docker Volume 内，因此不支持直接使用 `-v "$PWD:/app"`，`docker build .` 不受影响。
+
 ## GitHub App 权限
 
 默认 Manifest 请求以下最小权限：

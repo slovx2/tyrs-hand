@@ -19,6 +19,8 @@ func TestValidate(t *testing.T) {
 		RepoCacheMaxBytes: 1024, WorkerMaxConcurrentJobs: 6, EnvironmentPrepareWaitTimeout: 10 * time.Minute,
 		CodexStatusPollInterval: 30 * time.Second, CodexReconcileMaxAttempts: 3,
 		CodexResultDeliveryMaxAttempts: 5, CodexMaxSteersPerTurn: 5, GitHubReplyGateMaxBlocks: 3,
+		DockerNetwork: "tyrs-hand-agent-runtime", DockerStopTimeout: 10 * time.Second,
+		DockerCleanupTimeout: 30 * time.Second, DockerSweepInterval: 30 * time.Second,
 	}
 	require.NoError(t, valid.Validate())
 	invalid := valid
@@ -37,6 +39,10 @@ func TestValidate(t *testing.T) {
 	production.MasterKey = make([]byte, 32)
 	production.CookieSecure = true
 	require.NoError(t, production.Validate())
+	enabled := valid
+	enabled.EnableHostDocker = true
+	enabled.DockerNetwork = ""
+	require.Error(t, enabled.Validate())
 }
 
 func TestReadSecretAndLoadMasterKey(t *testing.T) {

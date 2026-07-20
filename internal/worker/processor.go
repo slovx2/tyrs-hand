@@ -15,6 +15,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/devenv"
 	"github.com/slovx2/tyrs-hand/internal/githubtools"
+	"github.com/slovx2/tyrs-hand/internal/hostdocker"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/replygate"
 	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
@@ -32,6 +33,7 @@ type Processor struct {
 	settings    *platformsettings.Service
 	pool        *codex.Pool
 	environment *devenv.Manager
+	hostDocker  *hostdocker.Manager
 	logger      *zap.Logger
 }
 
@@ -53,8 +55,14 @@ type jobContext struct {
 	NetworkEnabled  bool
 }
 
-func NewProcessor(cfg config.Config, db *sql.DB, redisClient *redis.Client, workspace ports.WorkspaceManager, control *ControlClient, controls *codexcontrol.Repository, catalog *githubtools.Catalog, settingsService *platformsettings.Service, pool *codex.Pool, environment *devenv.Manager, logger *zap.Logger) *Processor {
-	return &Processor{cfg: cfg, db: db, redis: redisClient, workspace: workspace, control: control, controls: controls, catalog: catalog, settings: settingsService, pool: pool, environment: environment, logger: logger}
+func NewProcessor(cfg config.Config, db *sql.DB, redisClient *redis.Client, workspace ports.WorkspaceManager,
+	control *ControlClient, controls *codexcontrol.Repository, catalog *githubtools.Catalog,
+	settingsService *platformsettings.Service, pool *codex.Pool, environment *devenv.Manager,
+	dockerManager *hostdocker.Manager, logger *zap.Logger,
+) *Processor {
+	return &Processor{cfg: cfg, db: db, redis: redisClient, workspace: workspace, control: control,
+		controls: controls, catalog: catalog, settings: settingsService, pool: pool,
+		environment: environment, hostDocker: dockerManager, logger: logger}
 }
 
 func (p *Processor) Process(ctx context.Context, claimed *codexcontrol.ClaimedControl) (codexcontrol.TurnResult, error) {
@@ -88,6 +96,11 @@ func (p *Processor) Process(ctx context.Context, claimed *codexcontrol.ClaimedCo
 		return codexcontrol.TurnResult{}, err
 	}
 	defer p.refreshWorkspaceState(context.Background(), claimed.WorkItemID, workspace.WorktreePath)
+	dockerSession, err := p.beginHostDocker(claimed, claimed.WorkItemID.String())
+	if err != nil {
+		return codexcontrol.TurnResult{}, err
+	}
+	defer p.finishHostDocker(dockerSession, claimed)
 	environmentResult := p.prepareWorkItemEnvironment(ctx, claimed.WorkItemID, workspace.WorktreePath)
 	skills, err := resolveSkills(workspace.WorktreePath, claimed.Skills)
 	if err != nil {
@@ -114,7 +127,9 @@ func (p *Processor) Process(ctx context.Context, claimed *codexcontrol.ClaimedCo
 	if err := replygate.Install(codexHome); err != nil {
 		return codexcontrol.TurnResult{}, fmt.Errorf("安装 GitHub 回复 Stop Hook: %w", err)
 	}
-	environment = append(environment, environmentResult.Environment...)
+	runtimeEnvironment := append([]string{}, environmentResult.Environment...)
+	runtimeEnvironment = append(runtimeEnvironment, dockerSession.Environment()...)
+	environment = append(environment, runtimeEnvironment...)
 	poolKey := "job/" + claimed.ID.String()
 	client, err := p.pool.Acquire(ctx, poolKey, workspace.WorktreePath, codexHome, environment)
 	if err != nil {
@@ -139,8 +154,9 @@ func (p *Processor) Process(ctx context.Context, claimed *codexcontrol.ClaimedCo
 		CWD: workspace.WorktreePath, Model: jobCtx.Model, ReasoningEffort: jobCtx.ReasoningEffort,
 		ServiceTier: jobCtx.ServiceTier, Sandbox: jobCtx.Sandbox, ApprovalPolicy: jobCtx.ApprovalPolicy,
 		NetworkEnabled: jobCtx.NetworkEnabled, DynamicTools: []ports.DynamicToolSpec{githubSpec, gitSpec, githubReplySpec()},
-		RuntimeConfig:         codexRuntimeConfig(environmentResult.Environment, p.cfg.WorkerDataRoot),
-		DeveloperInstructions: "Follow repository AGENTS.md and the explicitly attached skills. Use only the authorized GitHub work item and current worktree. Use git.commit for commits and git.publish_branch for pushes; do not write shared Git metadata with shell commands. After all business actions, call tyrs_hand.reply_to_github exactly once with the user-facing result, then provide a natural final answer.",
+		RuntimeConfig: codexRuntimeConfig(runtimeEnvironment, p.cfg.WorkerDataRoot),
+		DeveloperInstructions: "Follow repository AGENTS.md and the explicitly attached skills. Use only the authorized GitHub work item and current worktree. Use git.commit for commits and git.publish_branch for pushes; do not write shared Git metadata with shell commands. After all business actions, call tyrs_hand.reply_to_github exactly once with the user-facing result, then provide a natural final answer." +
+			dockerInstructions(dockerSession),
 	}
 	if err := runtime.ValidateSkills(ctx, workspace.WorktreePath, skills); err != nil {
 		return codexcontrol.TurnResult{}, err
@@ -172,7 +188,7 @@ func (p *Processor) Process(ctx context.Context, claimed *codexcontrol.ClaimedCo
 	}
 	turnID, err := runtime.StartTurn(ctx, threadID, ports.TurnInput{
 		Text: claimed.Instruction, ClientUserMessageID: claimed.ID.String(), Skills: skills,
-		AdditionalContext: environmentAdditionalContext(environmentResult),
+		AdditionalContext: mergeAdditionalContext(environmentAdditionalContext(environmentResult), hostDockerAdditionalContext(dockerSession)),
 	})
 	if err != nil {
 		return codexcontrol.TurnResult{}, err

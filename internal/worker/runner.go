@@ -12,16 +12,18 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/config"
+	"github.com/slovx2/tyrs-hand/internal/hostdocker"
 	"go.uber.org/zap"
 )
 
 type Runner struct {
-	cfg       config.Config
-	db        *sql.DB
-	redis     *redis.Client
-	controls  controlQueue
-	processor jobProcessor
-	logger    *zap.Logger
+	cfg        config.Config
+	db         *sql.DB
+	redis      *redis.Client
+	controls   controlQueue
+	processor  jobProcessor
+	hostDocker *hostdocker.Manager
+	logger     *zap.Logger
 }
 
 type controlQueue interface {
@@ -39,8 +41,11 @@ type jobProcessor interface {
 	Process(context.Context, *codexcontrol.ClaimedControl) (codexcontrol.TurnResult, error)
 }
 
-func NewRunner(cfg config.Config, db *sql.DB, redisClient *redis.Client, controls *codexcontrol.Repository, processor *Processor, logger *zap.Logger) *Runner {
-	return &Runner{cfg: cfg, db: db, redis: redisClient, controls: controls, processor: processor, logger: logger}
+func NewRunner(cfg config.Config, db *sql.DB, redisClient *redis.Client, controls *codexcontrol.Repository,
+	processor *Processor, dockerManager *hostdocker.Manager, logger *zap.Logger,
+) *Runner {
+	return &Runner{cfg: cfg, db: db, redis: redisClient, controls: controls, processor: processor,
+		hostDocker: dockerManager, logger: logger}
 }
 
 func (r *Runner) Run(ctx context.Context) error {
@@ -48,6 +53,9 @@ func (r *Runner) Run(ctx context.Context) error {
 		return err
 	}
 	go r.workerHeartbeat(ctx)
+	if r.hostDocker != nil {
+		go r.hostDocker.RunSweeper(ctx)
+	}
 	var wakeups <-chan *redis.Message
 	var subscription *redis.PubSub
 	if r.redis != nil {
@@ -137,6 +145,11 @@ func (r *Runner) execute(parent context.Context, claimed *codexcontrol.ClaimedCo
 					r.logger.Error("任务心跳失败", zap.Error(err), zap.String("job_id", claimed.ID.String()))
 					cancel()
 					return
+				}
+				if r.hostDocker != nil {
+					if err := r.hostDocker.Touch(claimed.RunID.String()); err != nil {
+						r.logger.Warn("刷新 Docker Run Lease 失败", zap.Error(err), zap.String("run_id", claimed.RunID.String()))
+					}
 				}
 			case <-ctx.Done():
 				return

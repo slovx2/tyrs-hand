@@ -55,6 +55,24 @@ docker compose -f compose.yaml -f compose.production.yaml up -d server worker
 
 打开 `https://agent.example.com/setup`，使用 `TYRS_HAND_SETUP_TOKEN` 创建管理员，并保存 TOTP 和恢复码。
 
+### Host Docker Beta
+
+生产 Compose 默认向 Worker 挂载宿主 Docker Socket。部署前必须确认所有用户和仓库都可信，并在备份 `.env` 后填写：
+
+```dotenv
+TYRS_HAND_DOCKER_GID=<stat -c '%g' /var/run/docker.sock 的结果>
+```
+
+然后使用生产 Compose 重建 Worker：
+
+```bash
+docker compose -f compose.yaml -f compose.production.yaml up -d --force-recreate worker
+```
+
+**Beta。有安全风险，请确保所有用户可信再开启。** 非 root Worker 获得 Socket 访问后仍能控制宿主 Docker Daemon 的全部容器。关闭时必须移除生产 Compose 中的 Socket、补充组和运行网络配置并重建 Worker，不能只依赖应用配置开关。
+
+本功能只提供 Docker CLI，不提供 Compose。Agent 创建的受管容器会在 Job 结束时停止，但不会删除，后续 Job 可以重新启动；Network、Volume、镜像和 Build Cache 也会保留。
+
 ## 3. 注册 GitHub App
 
 推荐使用 Manifest：

@@ -47,6 +47,11 @@ type Config struct {
 	CodexResultDeliveryMaxAttempts int
 	CodexMaxSteersPerTurn          int
 	GitHubReplyGateMaxBlocks       int
+	EnableHostDocker               bool
+	DockerNetwork                  string
+	DockerStopTimeout              time.Duration
+	DockerCleanupTimeout           time.Duration
+	DockerSweepInterval            time.Duration
 }
 
 func Load() (Config, error) {
@@ -90,6 +95,11 @@ func Load() (Config, error) {
 		CodexResultDeliveryMaxAttempts: v.GetInt("codex_result_delivery_max_attempts"),
 		CodexMaxSteersPerTurn:          v.GetInt("codex_max_steers_per_turn"),
 		GitHubReplyGateMaxBlocks:       v.GetInt("github_reply_gate_max_blocks"),
+		EnableHostDocker:               v.GetBool("enable_host_docker"),
+		DockerNetwork:                  strings.TrimSpace(v.GetString("docker_network")),
+		DockerStopTimeout:              v.GetDuration("docker_stop_timeout"),
+		DockerCleanupTimeout:           v.GetDuration("docker_cleanup_timeout"),
+		DockerSweepInterval:            v.GetDuration("docker_sweep_interval"),
 	}
 	if strings.TrimSpace(cfg.WorkerID) == "" {
 		cfg.WorkerID = defaultWorkerID()
@@ -141,6 +151,12 @@ func (c Config) Validate() error {
 	if c.RepoCacheMaxBytes <= 0 {
 		return errors.New("配置的 Repo Cache 容量上限必须大于零")
 	}
+	if c.DockerStopTimeout <= 0 || c.DockerCleanupTimeout <= 0 || c.DockerSweepInterval <= 0 {
+		return errors.New("docker 停止、清理和扫描间隔必须大于零")
+	}
+	if c.EnableHostDocker && c.DockerNetwork == "" {
+		return errors.New("启用宿主 Docker 时必须配置 docker_network")
+	}
 	if c.Environment == "production" {
 		if len(c.MasterKey) != 32 {
 			return errors.New("生产环境必须配置主密钥")
@@ -185,6 +201,11 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("codex_result_delivery_max_attempts", 5)
 	v.SetDefault("codex_max_steers_per_turn", 5)
 	v.SetDefault("github_reply_gate_max_blocks", 3)
+	v.SetDefault("enable_host_docker", false)
+	v.SetDefault("docker_network", "tyrs-hand-agent-runtime")
+	v.SetDefault("docker_stop_timeout", "10s")
+	v.SetDefault("docker_cleanup_timeout", "30s")
+	v.SetDefault("docker_sweep_interval", "30s")
 }
 
 func defaultWorkerID() string {

@@ -68,6 +68,11 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	if jobCtx.HasRepository {
 		defer p.refreshDiscordWorkspaceState(context.Background(), workspace)
 	}
+	dockerSession, err := p.beginHostDocker(claimed, filepath.Base(workspace))
+	if err != nil {
+		return result, err
+	}
+	defer p.finishHostDocker(dockerSession, claimed)
 	environmentResult := p.prepareDiscordEnvironment(ctx, workspace)
 	if environmentResult.Status == "degraded" {
 		p.projectDiscordConversation(ctx, jobCtx, discordintegration.ConversationRunning,
@@ -93,7 +98,9 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	if err := replygate.Install(codexHome); err != nil {
 		return result, err
 	}
-	environment = append(environment, environmentResult.Environment...)
+	runtimeEnvironment := append([]string{}, environmentResult.Environment...)
+	runtimeEnvironment = append(runtimeEnvironment, dockerSession.Environment()...)
+	environment = append(environment, runtimeEnvironment...)
 	poolKey := "job/" + claimed.ID.String()
 	client, err := p.pool.Acquire(ctx, poolKey, workspace, codexHome, environment)
 	if err != nil {
@@ -117,9 +124,10 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	options := ports.ThreadOptions{
 		CWD: workspace, Model: jobCtx.Model, ReasoningEffort: jobCtx.ReasoningEffort,
 		ServiceTier: jobCtx.ServiceTier, Sandbox: jobCtx.Sandbox, ApprovalPolicy: jobCtx.ApprovalPolicy,
-		NetworkEnabled:        jobCtx.NetworkEnabled,
-		RuntimeConfig:         codexRuntimeConfig(environmentResult.Environment, p.cfg.WorkerDataRoot),
-		DeveloperInstructions: discordintegration.MultiplayerDeveloperInstructions,
+		NetworkEnabled: jobCtx.NetworkEnabled,
+		RuntimeConfig:  codexRuntimeConfig(runtimeEnvironment, p.cfg.WorkerDataRoot),
+		DeveloperInstructions: discordintegration.MultiplayerDeveloperInstructions +
+			dockerInstructions(dockerSession),
 	}
 	if jobCtx.HasRepository {
 		githubSpec, specErr := p.catalog.DynamicToolSpecFor(append(append([]string{}, claimed.AllowedTools...), claimed.DangerousActions...))
@@ -168,6 +176,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		return result, err
 	}
 	input.AdditionalContext = mergeAdditionalContext(input.AdditionalContext, environmentAdditionalContext(environmentResult))
+	input.AdditionalContext = mergeAdditionalContext(input.AdditionalContext, hostDockerAdditionalContext(dockerSession))
 	turnID, err := runtime.StartTurn(ctx, threadID, input)
 	if err != nil {
 		return result, err

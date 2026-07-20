@@ -19,14 +19,16 @@ type RuntimeLock struct {
 	Mise                 string            `json:"mise"`
 	UV                   string            `json:"uv"`
 	Corepack             string            `json:"corepack"`
+	DockerCLI            string            `json:"dockerCli"`
 	Downloads            RuntimeDownloads  `json:"downloads"`
 	SystemPackages       map[string]string `json:"systemPackages"`
 	Defaults             RuntimeDefaults   `json:"defaults"`
 }
 
 type RuntimeDownloads struct {
-	Mise map[string]string `json:"mise"`
-	UV   map[string]string `json:"uv"`
+	Mise      map[string]string `json:"mise"`
+	UV        map[string]string `json:"uv"`
+	DockerCLI map[string]string `json:"dockerCli"`
 }
 
 type RuntimeDefaults struct {
@@ -43,12 +45,12 @@ func LoadRuntimeLock() (RuntimeLock, error) {
 		return RuntimeLock{}, fmt.Errorf("解析 Worker Runtime Lock: %w", err)
 	}
 	if lock.SchemaVersion != 1 || lock.AdapterSchemaVersion == "" ||
-		lock.Codex == "" || lock.Mise == "" || lock.UV == "" || lock.Corepack == "" ||
-		len(lock.Downloads.Mise) == 0 || len(lock.Downloads.UV) == 0 || len(lock.SystemPackages) == 0 {
+		lock.Codex == "" || lock.Mise == "" || lock.UV == "" || lock.Corepack == "" || lock.DockerCLI == "" ||
+		len(lock.Downloads.Mise) == 0 || len(lock.Downloads.UV) == 0 || len(lock.Downloads.DockerCLI) == 0 || len(lock.SystemPackages) == 0 {
 		return RuntimeLock{}, fmt.Errorf("worker Runtime Lock 版本无效")
 	}
 	versions := map[string]string{
-		"codex": lock.Codex, "mise": lock.Mise, "uv": lock.UV, "corepack": lock.Corepack,
+		"codex": lock.Codex, "mise": lock.Mise, "uv": lock.UV, "corepack": lock.Corepack, "docker": lock.DockerCLI,
 		"python": lock.Defaults.Python, "node": lock.Defaults.Node, "pnpm": lock.Defaults.PNPM,
 		"go": lock.Defaults.Go, "rust": lock.Defaults.Rust,
 	}
@@ -59,7 +61,8 @@ func LoadRuntimeLock() (RuntimeLock, error) {
 	}
 	checksum := regexp.MustCompile(`^[0-9a-f]{64}$`)
 	for _, architecture := range []string{"amd64", "arm64"} {
-		if !checksum.MatchString(lock.Downloads.Mise[architecture]) || !checksum.MatchString(lock.Downloads.UV[architecture]) {
+		if !checksum.MatchString(lock.Downloads.Mise[architecture]) || !checksum.MatchString(lock.Downloads.UV[architecture]) ||
+			!checksum.MatchString(lock.Downloads.DockerCLI[architecture]) {
 			return RuntimeLock{}, fmt.Errorf("worker Runtime Lock 缺少 %s 下载校验值", architecture)
 		}
 	}

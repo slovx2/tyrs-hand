@@ -128,6 +128,11 @@ jobs:
           docker run --rm tyrs-hand-worker:test mise --version
           docker run --rm tyrs-hand-worker:test uv --version
           docker run --rm tyrs-hand-worker:test corepack --version
+          docker run --rm tyrs-hand-worker:test docker --version
+          if docker run --rm tyrs-hand-worker:test docker compose version; then
+            echo "Worker 不应安装 Docker Compose Plugin" >&2
+            exit 1
+          fi
 
   runtime-matrix:
     if: github.event_name == 'workflow_dispatch'

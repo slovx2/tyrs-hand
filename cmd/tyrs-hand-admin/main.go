@@ -220,6 +220,15 @@ func diagnoseWorker(ctx context.Context, db *sql.DB, cfg config.Config) error {
 			return fmt.Errorf("要求 %s 版本为 %s，当前为 %s", check.name, check.expected, actual)
 		}
 	}
+	docker := exec.CommandContext(ctx, "docker", "--version")
+	docker.Env = codexEnvironment()
+	dockerOutput, err := docker.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("检查 Docker CLI 版本: %w", err)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(string(dockerOutput)), "Docker version "+lock.DockerCLI+",") {
+		return fmt.Errorf("要求 Docker CLI 版本为 %s，当前为 %q", lock.DockerCLI, strings.TrimSpace(string(dockerOutput)))
+	}
 	for _, path := range []string{cfg.WorkerDataRoot, cfg.RepoCacheRoot, cfg.WorktreeRoot,
 		cfg.DiscordWorkspaceRoot, cfg.CodexHomeRoot} {
 		if err := os.MkdirAll(path, 0o750); err != nil {

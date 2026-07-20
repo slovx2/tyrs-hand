@@ -124,8 +124,16 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		cleanup()
 		return nil, nil, err
 	}
-	processor := worker.NewProcessor(cfg, db, client, manager, controlClient, repository, catalog, service, pool, devenvManager, logger)
-	runner := worker.NewRunner(cfg, db, client, repository, processor, logger)
+	hostdockerManager, err := provideHostDocker(cfg, logger)
+	if err != nil {
+		cleanup4()
+		cleanup3()
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
+	processor := worker.NewProcessor(cfg, db, client, manager, controlClient, repository, catalog, service, pool, devenvManager, hostdockerManager, logger)
+	runner := worker.NewRunner(cfg, db, client, repository, processor, hostdockerManager, logger)
 	workerApp := &WorkerApp{
 		Runner: runner,
 		DB:     db,

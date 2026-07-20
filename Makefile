@@ -1,7 +1,7 @@
 PNPM ?= pnpm
 LOCAL_IMAGE ?= tyrs-hand:local
 
-.PHONY: dependencies generate generate-check format format-check vet lint web-check test test-unit test-race test-integration test-runtime test-runtime-image test-coverage web-install web-build build build-local image-local ci ci-local
+.PHONY: dependencies generate generate-check format format-check vet lint web-check test test-unit test-race test-integration test-runtime test-runtime-image test-host-docker-manual test-coverage web-install web-build build build-local image-local ci ci-local
 
 dependencies:
 	go mod download
@@ -60,6 +60,10 @@ test-runtime:
 test-runtime-image:
 	./tools/test-worker-runtime.sh $(LOCAL_IMAGE)-worker
 
+# 仅手动运行；CI 和 Release 不调用。会在宿主 Docker 创建并清理真实 Redis Fixture。
+test-host-docker-manual:
+	TYRS_HAND_TEST_HOST_DOCKER=1 go test -tags=manual_host_docker ./internal/hostdocker -run TestManualHostDocker
+
 test-coverage:
 	./tools/check-go-coverage.sh
 
@@ -70,7 +74,7 @@ web-build:
 	$(PNPM) --dir web build
 
 build: web-build
-	go build ./cmd/tyrs-hand-server ./cmd/tyrs-hand-worker ./cmd/tyrs-hand-runtime ./cmd/tyrs-hand-admin ./cmd/tyrs-hand-discord ./cmd/tyrs-hand-reply-hook
+	go build ./cmd/tyrs-hand-server ./cmd/tyrs-hand-worker ./cmd/tyrs-hand-runtime ./cmd/tyrs-hand-docker ./cmd/tyrs-hand-admin ./cmd/tyrs-hand-discord ./cmd/tyrs-hand-reply-hook
 
 build-local:
 	./tools/with-local-toolchain.sh $(MAKE) web-install build

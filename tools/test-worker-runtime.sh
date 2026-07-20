@@ -11,6 +11,12 @@ cleanup() {
 trap cleanup EXIT
 docker volume create "$volume" >/dev/null
 
+docker run --rm "$image" docker --version
+if docker run --rm "$image" docker compose version; then
+  echo "Worker 不应安装 Docker Compose Plugin" >&2
+  exit 1
+fi
+
 run_fixtures() {
   local network=$1
   local mode=$2

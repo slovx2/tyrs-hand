@@ -29,7 +29,8 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 	wire.Build(
 		provideDatabase, provideRedis, provideLogger, provideSecretBox, secrets.NewStore,
 		provideSettings, provideCatalog, provideWorkspace, provideControl, provideControlRepository,
-		providePool, provideDevelopmentEnvironment, wire.Bind(new(ports.WorkspaceManager), new(*gitworkspace.Manager)),
+		providePool, provideDevelopmentEnvironment, provideHostDocker,
+		wire.Bind(new(ports.WorkspaceManager), new(*gitworkspace.Manager)),
 		worker.NewProcessor, worker.NewRunner, wire.Struct(new(WorkerApp), "*"),
 	)
 	return nil, nil, nil
