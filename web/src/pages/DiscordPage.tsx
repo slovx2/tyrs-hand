@@ -143,7 +143,7 @@ export function DiscordPage() {
             <input
               className="field mt-1"
               type="password"
-              autoComplete="off"
+              autoComplete="new-password"
               placeholder={
                 settings.data?.tokenConfigured ? '已配置，留空则不变' : ''
               }

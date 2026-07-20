@@ -64,9 +64,20 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 	status, err := manager.Status(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "connected", status.GatewayStatus)
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO discord_guilds(guild_id, enabled, updated_at)
+		VALUES ('100000000000000777', false, now() - interval '1 hour')`)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO discord_members(guild_id, discord_user_id, username, display_name)
+		VALUES ('100000000000000777', '1777', 'other-guild', 'Other Guild')`)
+	require.NoError(t, err)
 	members, err := manager.Members(ctx)
 	require.NoError(t, err)
 	require.Len(t, members, 3)
+	for _, member := range members {
+		require.Equal(t, testGuildID, member.GuildID)
+	}
 
 	remoteGuild := RemoteGuild{ID: testGuildID, CommunityEnabled: true, Channels: []RemoteChannel{
 		{ID: seed.codexCategoryID, Name: "Codex 会话 01", Kind: "category"},

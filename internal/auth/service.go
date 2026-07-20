@@ -21,6 +21,8 @@ var (
 	ErrSessionInvalid     = errors.New("登录会话无效")
 )
 
+const administratorSessionLifetime = 90 * 24 * time.Hour
+
 type Service struct {
 	db          *sql.DB
 	box         *security.SecretBox
@@ -44,7 +46,7 @@ type Session struct {
 }
 
 func NewService(db *sql.DB, box *security.SecretBox, setupToken, publicURL string) *Service {
-	return &Service{db: db, box: box, setupToken: setupToken, publicURL: publicURL, sessionLife: 12 * time.Hour}
+	return &Service{db: db, box: box, setupToken: setupToken, publicURL: publicURL, sessionLife: administratorSessionLifetime}
 }
 
 func (s *Service) SetupRequired(ctx context.Context) (bool, error) {

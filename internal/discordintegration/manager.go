@@ -125,6 +125,13 @@ func (m *Manager) SetGatewayStatus(ctx context.Context, guildID, status string, 
 }
 
 func (m *Manager) Members(ctx context.Context) ([]Member, error) {
+	settings, err := m.Settings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if settings.GuildID == "" {
+		return []Member{}, nil
+	}
 	rows, err := m.db.QueryContext(ctx, `
 		SELECT m.guild_id, m.discord_user_id, m.username, m.display_name,
 			b.id IS NOT NULL, COALESCE(b.github_login, ''), COALESCE(f.id::text, '')
@@ -133,7 +140,8 @@ func (m *Manager) Members(ctx context.Context) ([]Member, error) {
 			AND b.discord_user_id = m.discord_user_id AND b.status = 'active'
 		LEFT JOIN discord_forums f ON f.guild_id = m.guild_id
 			AND f.owner_discord_user_id = m.discord_user_id AND f.forum_type = 'personal'
-		WHERE m.active = true ORDER BY lower(m.display_name), m.discord_user_id`)
+		WHERE m.active = true AND m.guild_id = $1
+		ORDER BY lower(m.display_name), m.discord_user_id`, settings.GuildID)
 	if err != nil {
 		return nil, err
 	}
