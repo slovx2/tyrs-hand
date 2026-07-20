@@ -119,7 +119,7 @@ The default Manifest requests:
 
 The Manifest subscribes to Repository, Issues, Issue Comment, Pull Request, Review, Review Comment, and Push events. GitHub sends installation lifecycle events automatically.
 
-The default rules accept `/tyrs-hand` on the first line of an Issue or Pull Request comment and structured `tyrs-hand` label events. Full-body `@mention` matching remains available only as a disabled-by-default compatibility rule. Regular GitHub App bots cannot be selected directly as reviewers; administrators can explicitly add a `pull_request.review_requested` event rule when any reviewer request should trigger the agent.
+The default rules accept `/tyrs-hand` on the first line of an Issue or Pull Request comment, a visible exact `@mention` of the App login anywhere on that first line, and structured `tyrs-hand` label events. Mention matching is case-insensitive and ignores later lines, quotes, code, escapes, URLs, and username suffixes. Legacy full-body `@mention` matching remains available only as a disabled-by-default compatibility rule. Regular GitHub App bots cannot be selected directly as reviewers; administrators can explicitly add a `pull_request.review_requested` event rule when any reviewer request should trigger the agent.
 
 ## Threads, Skills, and Workspaces
 

@@ -54,10 +54,14 @@ func TestValidateTriggerRule(t *testing.T) {
 	}{
 		{name: "event", request: triggerRuleRequest{TriggerKind: "event", EventName: "push"}, valid: true},
 		{name: "slash command", request: triggerRuleRequest{TriggerKind: "slash_command", TriggerValue: "tyrs-hand", EventName: "issue_comment"}, valid: true, action: "created"},
+		{name: "mention command", request: triggerRuleRequest{TriggerKind: "mention_command", EventName: "issue_comment"}, valid: true, action: "created"},
 		{name: "label", request: triggerRuleRequest{TriggerKind: "label", TriggerValue: "tyrs-hand", EventName: "issues"}, valid: true, action: "labeled"},
 		{name: "legacy mention", request: triggerRuleRequest{TriggerKind: "legacy_mention", EventName: "pull_request_review_comment"}, valid: true, action: "created"},
 		{name: "slash missing value", request: triggerRuleRequest{TriggerKind: "slash_command", EventName: "issue_comment"}},
 		{name: "slash with slash", request: triggerRuleRequest{TriggerKind: "slash_command", TriggerValue: "/tyrs-hand", EventName: "issue_comment"}},
+		{name: "mention with value", request: triggerRuleRequest{TriggerKind: "mention_command", TriggerValue: "tyrshand", EventName: "issue_comment"}},
+		{name: "mention wrong event", request: triggerRuleRequest{TriggerKind: "mention_command", EventName: "pull_request_review_comment"}},
+		{name: "mention edited", request: triggerRuleRequest{TriggerKind: "mention_command", EventName: "issue_comment", Action: "edited"}},
 		{name: "label wrong event", request: triggerRuleRequest{TriggerKind: "label", TriggerValue: "tyrs-hand", EventName: "issue_comment"}},
 		{name: "event with value", request: triggerRuleRequest{TriggerKind: "event", TriggerValue: "unexpected", EventName: "push"}},
 		{name: "unknown", request: triggerRuleRequest{TriggerKind: "unknown", EventName: "issues"}},
@@ -78,6 +82,7 @@ func TestValidateTriggerRule(t *testing.T) {
 func TestLegacyMentionIsDisabledByDefault(t *testing.T) {
 	require.False(t, triggerRuleEnabled(triggerRuleRequest{TriggerKind: "legacy_mention"}))
 	require.True(t, triggerRuleEnabled(triggerRuleRequest{TriggerKind: "slash_command"}))
+	require.True(t, triggerRuleEnabled(triggerRuleRequest{TriggerKind: "mention_command"}))
 	enabled := true
 	require.True(t, triggerRuleEnabled(triggerRuleRequest{TriggerKind: "legacy_mention", Enabled: &enabled}))
 }

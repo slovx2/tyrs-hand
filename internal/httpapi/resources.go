@@ -165,6 +165,19 @@ func validateTriggerRule(request *triggerRuleRequest) error {
 		if request.Action != "created" && request.Action != "edited" {
 			return fmt.Errorf("slash_command 的 action 只支持 created 或 edited")
 		}
+	case "mention_command":
+		if request.EventName != "issue_comment" {
+			return fmt.Errorf("mention_command 只支持 issue_comment 事件")
+		}
+		if request.TriggerValue != "" {
+			return fmt.Errorf("mention_command 使用 GitHub App 登录名，不能设置 triggerValue")
+		}
+		if request.Action == "" {
+			request.Action = "created"
+		}
+		if request.Action != "created" {
+			return fmt.Errorf("mention_command 的 action 只支持 created")
+		}
 	case "legacy_mention":
 		if request.EventName != "issue_comment" && request.EventName != "pull_request_review_comment" {
 			return fmt.Errorf("legacy_mention 只支持评论事件")

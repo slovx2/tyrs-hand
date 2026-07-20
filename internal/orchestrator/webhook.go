@@ -389,6 +389,11 @@ func matchTrigger(rule triggerRule, event domain.NormalizedEvent, botLogin strin
 			return triggerMatch{}, false
 		}
 		source = "comment_first_line"
+	case "mention_command":
+		if !firstLineMentions(event.Body, botLogin) {
+			return triggerMatch{}, false
+		}
+		source = "comment_first_line_mention"
 	case "legacy_mention":
 		if !mentions(event.Body, botLogin) {
 			return triggerMatch{}, false
@@ -456,6 +461,21 @@ func renderInstruction(template string, event domain.NormalizedEvent) string {
 }
 
 func mentions(body, botLogin string) bool {
+	return visibleMention(body, botLogin)
+}
+
+func firstLineMentions(body, botLogin string) bool {
+	firstLine, _, _ := strings.Cut(body, "\n")
+	firstLine = strings.TrimSuffix(firstLine, "\r")
+	trimmed := strings.TrimLeft(firstLine, " \t")
+	indent := firstLine[:len(firstLine)-len(trimmed)]
+	if strings.HasPrefix(trimmed, ">") || len(indent) >= 4 || strings.Contains(indent, "\t") {
+		return false
+	}
+	return visibleMention(firstLine, botLogin)
+}
+
+func visibleMention(body, botLogin string) bool {
 	if botLogin == "" {
 		return false
 	}

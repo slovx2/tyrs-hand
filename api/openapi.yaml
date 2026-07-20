@@ -631,10 +631,10 @@ components:
         priority: { type: integer, default: 100 }
         triggerKind:
           type: string
-          enum: [event, label, slash_command, legacy_mention]
+          enum: [event, label, slash_command, mention_command, legacy_mention]
         triggerValue:
           type: string
-          description: Label 名或不带斜杠的命令名；event 与 legacy_mention 留空。
+          description: Label 名或不带斜杠的命令名；event、mention_command 与 legacy_mention 留空。
         actorMinPermission:
           type: string
           enum: [read, triage, write, maintain, admin]

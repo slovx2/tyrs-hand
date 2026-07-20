@@ -67,6 +67,42 @@ func TestSlashCommandArguments(t *testing.T) {
 	}
 }
 
+func TestFirstLineMentions(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		matched bool
+	}{
+		{name: "leading mention", body: "@tyrshand inspect this", matched: true},
+		{name: "natural language", body: "请 @tyrshand 帮我检查", matched: true},
+		{name: "case insensitive", body: "请 @TyrsHand 检查", matched: true},
+		{name: "visible after inline code", body: "`example` then @tyrshand inspect", matched: true},
+		{name: "windows first line", body: "@tyrshand inspect\r\ncontext", matched: true},
+		{name: "second line", body: "context\n@tyrshand inspect"},
+		{name: "quoted", body: "> @tyrshand inspect"},
+		{name: "indented quote", body: "  > @tyrshand inspect"},
+		{name: "inline code", body: "`@tyrshand` inspect"},
+		{name: "fenced code", body: "```text @tyrshand"},
+		{name: "indented code", body: "    @tyrshand inspect"},
+		{name: "tab indented code", body: "\t@tyrshand inspect"},
+		{name: "mixed tab indented code", body: " \t@tyrshand inspect"},
+		{name: "escaped", body: "\\@tyrshand inspect"},
+		{name: "url", body: "https://github.com/@tyrshand inspect"},
+		{name: "suffix", body: "@tyrshand-extra inspect"},
+		{name: "email style prefix", body: "hello@tyrshand.example"},
+		{name: "empty bot login", body: "@tyrshand inspect"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			botLogin := "tyrshand"
+			if test.name == "empty bot login" {
+				botLogin = ""
+			}
+			require.Equal(t, test.matched, firstLineMentions(test.body, botLogin))
+		})
+	}
+}
+
 func TestMatchTrigger(t *testing.T) {
 	event := domain.NormalizedEvent{EventName: "issue_comment", Action: "created", Body: "/tyrs-hand inspect\ncontext"}
 	command := triggerRule{TriggerKind: "slash_command", TriggerValue: sql.NullString{String: "tyrs-hand", Valid: true}}
@@ -74,6 +110,13 @@ func TestMatchTrigger(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "inspect\ncontext", matched.Body)
 	require.Equal(t, "comment_first_line", matched.Evidence["source"])
+
+	event.Body = "请 @tyrshand 帮我检查\n更多上下文"
+	mentionCommand := triggerRule{TriggerKind: "mention_command"}
+	matched, ok = matchTrigger(mentionCommand, event, "tyrshand")
+	require.True(t, ok)
+	require.Equal(t, event.Body, matched.Body)
+	require.Equal(t, "comment_first_line_mention", matched.Evidence["source"])
 
 	event.Label = "TYRS-HAND"
 	label := triggerRule{TriggerKind: "label", TriggerValue: sql.NullString{String: "tyrs-hand", Valid: true}}

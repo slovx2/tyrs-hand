@@ -24,6 +24,8 @@ func SeedRepositoryRules(ctx context.Context, tx *sql.Tx, repositoryID uuid.UUID
 		VALUES
 			($1,$2,'command','issue_comment','created','slash_command','tyrs-hand',
 				'Process {{event}} {{action}} for {{owner}}/{{repository}}#{{number}} requested by {{actor}}.\n\n{{body}}',$3),
+			($1,$2,'mention-command','issue_comment','created','mention_command',NULL,
+				'Process {{event}} {{action}} for {{owner}}/{{repository}}#{{number}} requested by {{actor}}.\n\n{{body}}',$3),
 			($1,$2,'label-issue','issues','labeled','label','tyrs-hand',
 				'Process {{event}} {{action}} for {{owner}}/{{repository}}#{{number}} requested by {{actor}}.\n\n{{body}}',$3),
 			($1,$2,'label-pull-request','pull_request','labeled','label','tyrs-hand',

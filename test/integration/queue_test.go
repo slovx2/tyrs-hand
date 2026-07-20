@@ -268,6 +268,18 @@ func TestTriggerKindMigrationUpgradesExistingRules(t *testing.T) {
 		SELECT count(*) FROM information_schema.columns
 		WHERE table_name = 'trigger_rules' AND column_name = 'mention_required'`).Scan(&oldColumnCount))
 	require.Zero(t, oldColumnCount)
+
+	mentionUpgrade, err := os.ReadFile(filepath.Join(migrationDirectory, "010_mention_command.sql"))
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, string(mentionUpgrade))
+	require.NoError(t, err)
+	var enabled bool
+	require.NoError(t, db.QueryRowContext(ctx, `
+		SELECT trigger_kind, enabled, actor_min_permission FROM trigger_rules
+		WHERE repository_id = $1 AND name = 'mention-command'`, repositoryID).Scan(&kind, &enabled, &value))
+	require.Equal(t, "mention_command", kind)
+	require.True(t, enabled)
+	require.Equal(t, "triage", value)
 }
 
 type fakeSCMProvider struct {
@@ -301,7 +313,7 @@ func testWebhookOrchestration(t *testing.T, db *sql.DB, repositoryID uuid.UUID) 
 	var ruleCount int
 	require.NoError(t, db.QueryRowContext(ctx,
 		`SELECT count(*) FROM trigger_rules WHERE repository_id = $1`, repositoryID).Scan(&ruleCount))
-	require.Equal(t, 3, ruleCount)
+	require.Equal(t, 4, ruleCount)
 	event := domain.NormalizedEvent{
 		Provider: "github", DeliveryID: "delivery-1", EventName: "issue_comment", Action: "created",
 		InstallationID: 1, RepositoryID: 2, Owner: "owner", Repository: "repo",
@@ -391,10 +403,29 @@ func testWebhookOrchestration(t *testing.T, db *sql.DB, repositoryID uuid.UUID) 
 	result = processWebhook(t, db, withoutMention, "write")
 	require.Zero(t, result.Jobs)
 
-	legacyMention := event
-	legacyMention.DeliveryID = "legacy-mention-disabled"
-	legacyMention.Body = "@tyrs-hand inspect"
-	result = processWebhook(t, db, legacyMention, "write")
+	mentionCommand := event
+	mentionCommand.DeliveryID = "mention-command"
+	mentionCommand.Body = "please ask @tyrs-hand to inspect"
+	result = processWebhook(t, db, mentionCommand, "write")
+	require.Equal(t, 1, result.Jobs)
+	require.NoError(t, db.QueryRowContext(ctx, `
+		SELECT j.trigger_evidence FROM codex_turn_intents j
+		JOIN webhook_deliveries d ON d.id = j.webhook_delivery_id
+		WHERE d.delivery_id = 'mention-command'`).Scan(&evidence))
+	require.NoError(t, json.Unmarshal(evidence, &decodedEvidence))
+	require.Equal(t, "mention_command", decodedEvidence["kind"])
+	require.Equal(t, "comment_first_line_mention", decodedEvidence["source"])
+
+	secondLineMention := event
+	secondLineMention.DeliveryID = "second-line-mention"
+	secondLineMention.Body = "context first\n@tyrs-hand inspect"
+	result = processWebhook(t, db, secondLineMention, "write")
+	require.Zero(t, result.Jobs)
+
+	quotedMention := event
+	quotedMention.DeliveryID = "quoted-mention"
+	quotedMention.Body = "> @tyrs-hand inspect"
+	result = processWebhook(t, db, quotedMention, "write")
 	require.Zero(t, result.Jobs)
 
 	secondLineCommand := event
@@ -415,9 +446,28 @@ func testWebhookOrchestration(t *testing.T, db *sql.DB, repositoryID uuid.UUID) 
 	result = processWebhook(t, db, codeMention, "write")
 	require.Zero(t, result.Jobs)
 
+	escapedMention := event
+	escapedMention.DeliveryID = "escaped-mention"
+	escapedMention.Body = "\\@tyrs-hand inspect"
+	result = processWebhook(t, db, escapedMention, "write")
+	require.Zero(t, result.Jobs)
+
+	urlMention := event
+	urlMention.DeliveryID = "url-mention"
+	urlMention.Body = "https://github.com/@tyrs-hand inspect"
+	result = processWebhook(t, db, urlMention, "write")
+	require.Zero(t, result.Jobs)
+
+	suffixMention := event
+	suffixMention.DeliveryID = "suffix-mention"
+	suffixMention.Body = "@tyrs-hand-extra inspect"
+	result = processWebhook(t, db, suffixMention, "write")
+	require.Zero(t, result.Jobs)
+
 	editedMention := event
 	editedMention.DeliveryID = "edited-mention"
 	editedMention.Action = "edited"
+	editedMention.Body = "@tyrs-hand inspect"
 	result = processWebhook(t, db, editedMention, "write")
 	require.Zero(t, result.Jobs)
 

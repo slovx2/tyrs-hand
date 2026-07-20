@@ -656,8 +656,8 @@ export interface components {
             /** @default 100 */
             priority: number;
             /** @enum {string} */
-            triggerKind: "event" | "label" | "slash_command" | "legacy_mention";
-            /** @description Label 名或不带斜杠的命令名；event 与 legacy_mention 留空。 */
+            triggerKind: "event" | "label" | "slash_command" | "mention_command" | "legacy_mention";
+            /** @description Label 名或不带斜杠的命令名；event、mention_command 与 legacy_mention 留空。 */
             triggerValue?: string;
             /**
              * @default triage
