@@ -22,6 +22,7 @@ The project is at an early stage. Evaluate it on controlled repositories before 
 - Reusable Codex threads with durable summaries for context handoff
 - Repository skills loaded from `.agents/skills/<name>/SKILL.md`
 - GitHub MCP tools and controlled local Git dynamic tools
+- Private Discord servers with personal Codex forums, GitHub task projections, and persistent conversations
 - Idempotent tool calls keyed by `(thread, turn, call)`
 - Natural Codex final answers with platform-owned control state and managed reply gates
 - React administration UI for repositories, rules, profiles, jobs, threads, workers, and audit logs
@@ -32,8 +33,11 @@ The project is at an early stage. Evaluate it on controlled repositories before 
 flowchart LR
     GitHub["GitHub App / Webhook"] --> Server["tyrs-hand-server"]
     Admin["React Admin UI"] --> Server
+    Discord["Discord Server"] <--> Gateway["tyrs-hand-discord"]
     Server --> PostgreSQL["PostgreSQL\nAuthoritative state and queue"]
     Server --> Redis["Redis\nRate limits and notifications"]
+    Gateway --> PostgreSQL
+    Gateway --> Redis
     Worker["tyrs-hand-worker"] --> PostgreSQL
     Worker --> Cache["Bare Repo Cache"]
     Cache --> Worktree["Work Item Worktree"]
@@ -42,10 +46,11 @@ flowchart LR
     Tools --> Server
 ```
 
-The project ships three commands:
+The project ships four commands:
 
 - `tyrs-hand-server`: administration API, GitHub App, webhook receiver, and embedded frontend
 - `tyrs-hand-worker`: job leases, Git workspaces, Codex process pools, and tool execution
+- `tyrs-hand-discord`: Discord gateway, forum conversations, projections, and outbox delivery
 - `tyrs-hand-admin`: migrations, diagnostics, administrator recovery, key rotation, and garbage collection
 
 PostgreSQL is the only authoritative state store. Redis contains only recoverable rate-limit and notification data.
@@ -78,7 +83,7 @@ PostgreSQL is the only authoritative state store. Redis contains only recoverabl
    docker compose build server worker
    docker compose up -d postgres redis
    docker compose --profile tools run --rm admin migrate
-   docker compose up -d server worker
+   docker compose up -d server worker discord
    ```
 
 3. Open `http://localhost:8080/setup`, create the administrator, and store the TOTP secret and one-time recovery codes.

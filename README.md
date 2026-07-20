@@ -23,6 +23,7 @@ Tyrs Hand 是一个面向 GitHub 的自托管 Agent 控制系统。它以 GitHub
 - 同一工作项后续评论复用 Codex Thread；配置变化时使用持久化摘要交接。
 - 从仓库 `.agents/skills/<name>/SKILL.md` 加载任务 Skill。
 - 将 GitHub 官方 MCP 工具和受控本地 Git 工具暴露为 Codex Dynamic Tools。
+- 通过 Discord 私有 Server 提供个人 Codex Forum、GitHub 任务投影和持续会话。
 - 管理 GitHub App、仓库、规则、Agent Profile、任务、Thread、Worker 和审计日志。
 - Codex 使用自然最终回复；平台根据 App Server 终态、持久化 Control 和受控回复门禁判定任务结果。
 
@@ -32,8 +33,11 @@ Tyrs Hand 是一个面向 GitHub 的自托管 Agent 控制系统。它以 GitHub
 flowchart LR
     GitHub["GitHub App / Webhook"] --> Server["tyrs-hand-server"]
     Admin["React 管理后台"] --> Server
+    Discord["Discord Server"] <--> Gateway["tyrs-hand-discord"]
     Server --> PostgreSQL["PostgreSQL\n权威状态与任务队列"]
     Server --> Redis["Redis\n限流与实时通知"]
+    Gateway --> PostgreSQL
+    Gateway --> Redis
     Worker["tyrs-hand-worker"] --> PostgreSQL
     Worker --> Cache["Bare Repo Cache"]
     Cache --> Worktree["Work Item Worktree"]
@@ -42,10 +46,11 @@ flowchart LR
     Tools --> Server
 ```
 
-三个可执行入口分别承担不同职责：
+四个可执行入口分别承担不同职责：
 
 - `tyrs-hand-server`：管理 API、GitHub App、Webhook 和前端静态资源。
 - `tyrs-hand-worker`：任务租约、Git Workspace、Codex 进程池和工具调用。
+- `tyrs-hand-discord`：Discord Gateway、Forum 会话、投影和 Outbox 投递。
 - `tyrs-hand-admin`：迁移、诊断、管理员恢复、主密钥轮换和 GC。
 
 PostgreSQL 是唯一权威状态源。Redis 仅保存可以重建的限流和通知状态。
@@ -80,7 +85,7 @@ PostgreSQL 是唯一权威状态源。Redis 仅保存可以重建的限流和通
    docker compose build server worker
    docker compose up -d postgres redis
    docker compose --profile tools run --rm admin migrate
-   docker compose up -d server worker
+   docker compose up -d server worker discord
    ```
 
    Server 和 Worker 启动时只检查迁移状态，不会自行修改数据库结构。
