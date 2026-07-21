@@ -169,17 +169,26 @@ func (m *Manager) docker(ctx context.Context, arguments ...string) (string, erro
 }
 
 func (m *Manager) MarkIdle(ctx context.Context, environmentID uuid.UUID) {
+	if m.db == nil {
+		return
+	}
 	_, _ = m.db.ExecContext(ctx, `UPDATE discord_development_environments
 		SET idle_at = now() + $2::interval, last_used_at = now(), updated_at = now() WHERE id = $1`,
 		environmentID, fmt.Sprintf("%f seconds", m.idle.Seconds()))
 }
 
 func (m *Manager) failEnvironment(id uuid.UUID, cause error) {
+	if m.db == nil {
+		return
+	}
 	_, _ = m.db.ExecContext(context.Background(), `UPDATE discord_development_environments
 		SET status = 'error', error = $2, updated_at = now() WHERE id = $1`, id, cause.Error())
 }
 
 func (m *Manager) failWorkspace(id uuid.UUID, cause error) {
+	if m.db == nil {
+		return
+	}
 	_, _ = m.db.ExecContext(context.Background(), `UPDATE discord_forum_workspaces
 		SET status = 'error', error = $2, updated_at = now() WHERE forum_id = $1`, id, cause.Error())
 }

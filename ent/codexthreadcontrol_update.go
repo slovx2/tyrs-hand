@@ -138,6 +138,26 @@ func (_u *CodexThreadControlUpdate) AddContextVersion(v int64) *CodexThreadContr
 	return _u
 }
 
+// SetExecutionNodeID sets the "execution_node_id" field.
+func (_u *CodexThreadControlUpdate) SetExecutionNodeID(v uuid.UUID) *CodexThreadControlUpdate {
+	_u.mutation.SetExecutionNodeID(v)
+	return _u
+}
+
+// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
+func (_u *CodexThreadControlUpdate) SetNillableExecutionNodeID(v *uuid.UUID) *CodexThreadControlUpdate {
+	if v != nil {
+		_u.SetExecutionNodeID(*v)
+	}
+	return _u
+}
+
+// ClearExecutionNodeID clears the value of the "execution_node_id" field.
+func (_u *CodexThreadControlUpdate) ClearExecutionNodeID() *CodexThreadControlUpdate {
+	_u.mutation.ClearExecutionNodeID()
+	return _u
+}
+
 // SetExternalThreadID sets the "external_thread_id" field.
 func (_u *CodexThreadControlUpdate) SetExternalThreadID(v string) *CodexThreadControlUpdate {
 	_u.mutation.SetExternalThreadID(v)
@@ -629,6 +649,12 @@ func (_u *CodexThreadControlUpdate) sqlSave(ctx context.Context) (_node int, err
 	if value, ok := _u.mutation.AddedContextVersion(); ok {
 		_spec.AddField(codexthreadcontrol.FieldContextVersion, field.TypeInt64, value)
 	}
+	if value, ok := _u.mutation.ExecutionNodeID(); ok {
+		_spec.SetField(codexthreadcontrol.FieldExecutionNodeID, field.TypeUUID, value)
+	}
+	if _u.mutation.ExecutionNodeIDCleared() {
+		_spec.ClearField(codexthreadcontrol.FieldExecutionNodeID, field.TypeUUID)
+	}
 	if value, ok := _u.mutation.ExternalThreadID(); ok {
 		_spec.SetField(codexthreadcontrol.FieldExternalThreadID, field.TypeString, value)
 	}
@@ -875,6 +901,26 @@ func (_u *CodexThreadControlUpdateOne) SetNillableContextVersion(v *int64) *Code
 // AddContextVersion adds value to the "context_version" field.
 func (_u *CodexThreadControlUpdateOne) AddContextVersion(v int64) *CodexThreadControlUpdateOne {
 	_u.mutation.AddContextVersion(v)
+	return _u
+}
+
+// SetExecutionNodeID sets the "execution_node_id" field.
+func (_u *CodexThreadControlUpdateOne) SetExecutionNodeID(v uuid.UUID) *CodexThreadControlUpdateOne {
+	_u.mutation.SetExecutionNodeID(v)
+	return _u
+}
+
+// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
+func (_u *CodexThreadControlUpdateOne) SetNillableExecutionNodeID(v *uuid.UUID) *CodexThreadControlUpdateOne {
+	if v != nil {
+		_u.SetExecutionNodeID(*v)
+	}
+	return _u
+}
+
+// ClearExecutionNodeID clears the value of the "execution_node_id" field.
+func (_u *CodexThreadControlUpdateOne) ClearExecutionNodeID() *CodexThreadControlUpdateOne {
+	_u.mutation.ClearExecutionNodeID()
 	return _u
 }
 
@@ -1398,6 +1444,12 @@ func (_u *CodexThreadControlUpdateOne) sqlSave(ctx context.Context) (_node *Code
 	}
 	if value, ok := _u.mutation.AddedContextVersion(); ok {
 		_spec.AddField(codexthreadcontrol.FieldContextVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.ExecutionNodeID(); ok {
+		_spec.SetField(codexthreadcontrol.FieldExecutionNodeID, field.TypeUUID, value)
+	}
+	if _u.mutation.ExecutionNodeIDCleared() {
+		_spec.ClearField(codexthreadcontrol.FieldExecutionNodeID, field.TypeUUID)
 	}
 	if value, ok := _u.mutation.ExternalThreadID(); ok {
 		_spec.SetField(codexthreadcontrol.FieldExternalThreadID, field.TypeString, value)

@@ -124,6 +124,12 @@ func provideDiscordManager(db *sql.DB, store *secrets.Store) *discordintegration
 	return discordintegration.NewManager(db, store)
 }
 
+func provideConversationService(cfg config.Config, db *sql.DB) *discordintegration.ConversationService {
+	service := discordintegration.NewConversationService(db)
+	service.ConfigureAttachmentStore(cfg.AttachmentRoot)
+	return service
+}
+
 func provideBindingService(cfg config.Config, db *sql.DB, box *security.SecretBox, githubManager *ghadapter.Manager) *discordintegration.BindingService {
 	return discordintegration.NewBindingService(discordintegration.NewSQLBindingStore(db), box,
 		discordintegration.NewGitHubOAuthApp(githubManager), cfg.PublicURL, cfg.GitHubAPIURL)

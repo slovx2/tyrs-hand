@@ -18,6 +18,8 @@ import (
 	"github.com/slovx2/tyrs-hand/ent/codexthreadcontrol"
 	"github.com/slovx2/tyrs-hand/ent/codexturnintent"
 	"github.com/slovx2/tyrs-hand/ent/codexturnrun"
+	"github.com/slovx2/tyrs-hand/ent/executionnode"
+	"github.com/slovx2/tyrs-hand/ent/executionnodeenrollment"
 	"github.com/slovx2/tyrs-hand/ent/platformsetting"
 	"github.com/slovx2/tyrs-hand/ent/predicate"
 	"github.com/slovx2/tyrs-hand/ent/repocache"
@@ -40,22 +42,24 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeAdministrator      = "Administrator"
-	TypeAgentProfile       = "AgentProfile"
-	TypeAuditLog           = "AuditLog"
-	TypeCodexThreadControl = "CodexThreadControl"
-	TypeCodexTurnIntent    = "CodexTurnIntent"
-	TypeCodexTurnRun       = "CodexTurnRun"
-	TypePlatformSetting    = "PlatformSetting"
-	TypeRepoCache          = "RepoCache"
-	TypeRepository         = "Repository"
-	TypeSCMInstallation    = "SCMInstallation"
-	TypeToolCall           = "ToolCall"
-	TypeTriggerRule        = "TriggerRule"
-	TypeWebhookDelivery    = "WebhookDelivery"
-	TypeWorkItem           = "WorkItem"
-	TypeWorkerNode         = "WorkerNode"
-	TypeWorktree           = "Worktree"
+	TypeAdministrator           = "Administrator"
+	TypeAgentProfile            = "AgentProfile"
+	TypeAuditLog                = "AuditLog"
+	TypeCodexThreadControl      = "CodexThreadControl"
+	TypeCodexTurnIntent         = "CodexTurnIntent"
+	TypeCodexTurnRun            = "CodexTurnRun"
+	TypeExecutionNode           = "ExecutionNode"
+	TypeExecutionNodeEnrollment = "ExecutionNodeEnrollment"
+	TypePlatformSetting         = "PlatformSetting"
+	TypeRepoCache               = "RepoCache"
+	TypeRepository              = "Repository"
+	TypeSCMInstallation         = "SCMInstallation"
+	TypeToolCall                = "ToolCall"
+	TypeTriggerRule             = "TriggerRule"
+	TypeWebhookDelivery         = "WebhookDelivery"
+	TypeWorkItem                = "WorkItem"
+	TypeWorkerNode              = "WorkerNode"
+	TypeWorktree                = "Worktree"
 )
 
 // AdministratorMutation represents an operation that mutates the Administrator nodes in the graph.
@@ -2570,6 +2574,7 @@ type CodexThreadControlMutation struct {
 	agent_profile_id        *uuid.UUID
 	context_version         *int64
 	addcontext_version      *int64
+	execution_node_id       *uuid.UUID
 	external_thread_id      *string
 	provider                *string
 	codex_home_key          *string
@@ -2978,6 +2983,55 @@ func (m *CodexThreadControlMutation) AddedContextVersion() (r int64, exists bool
 func (m *CodexThreadControlMutation) ResetContextVersion() {
 	m.context_version = nil
 	m.addcontext_version = nil
+}
+
+// SetExecutionNodeID sets the "execution_node_id" field.
+func (m *CodexThreadControlMutation) SetExecutionNodeID(u uuid.UUID) {
+	m.execution_node_id = &u
+}
+
+// ExecutionNodeID returns the value of the "execution_node_id" field in the mutation.
+func (m *CodexThreadControlMutation) ExecutionNodeID() (r uuid.UUID, exists bool) {
+	v := m.execution_node_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExecutionNodeID returns the old "execution_node_id" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexThreadControlMutation) OldExecutionNodeID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExecutionNodeID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExecutionNodeID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExecutionNodeID: %w", err)
+	}
+	return oldValue.ExecutionNodeID, nil
+}
+
+// ClearExecutionNodeID clears the value of the "execution_node_id" field.
+func (m *CodexThreadControlMutation) ClearExecutionNodeID() {
+	m.execution_node_id = nil
+	m.clearedFields[codexthreadcontrol.FieldExecutionNodeID] = struct{}{}
+}
+
+// ExecutionNodeIDCleared returns if the "execution_node_id" field was cleared in this mutation.
+func (m *CodexThreadControlMutation) ExecutionNodeIDCleared() bool {
+	_, ok := m.clearedFields[codexthreadcontrol.FieldExecutionNodeID]
+	return ok
+}
+
+// ResetExecutionNodeID resets all changes to the "execution_node_id" field.
+func (m *CodexThreadControlMutation) ResetExecutionNodeID() {
+	m.execution_node_id = nil
+	delete(m.clearedFields, codexthreadcontrol.FieldExecutionNodeID)
 }
 
 // SetExternalThreadID sets the "external_thread_id" field.
@@ -4061,7 +4115,7 @@ func (m *CodexThreadControlMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *CodexThreadControlMutation) Fields() []string {
-	fields := make([]string, 0, 28)
+	fields := make([]string, 0, 29)
 	if m.source_type != nil {
 		fields = append(fields, codexthreadcontrol.FieldSourceType)
 	}
@@ -4079,6 +4133,9 @@ func (m *CodexThreadControlMutation) Fields() []string {
 	}
 	if m.context_version != nil {
 		fields = append(fields, codexthreadcontrol.FieldContextVersion)
+	}
+	if m.execution_node_id != nil {
+		fields = append(fields, codexthreadcontrol.FieldExecutionNodeID)
 	}
 	if m.external_thread_id != nil {
 		fields = append(fields, codexthreadcontrol.FieldExternalThreadID)
@@ -4166,6 +4223,8 @@ func (m *CodexThreadControlMutation) Field(name string) (ent.Value, bool) {
 		return m.AgentProfileID()
 	case codexthreadcontrol.FieldContextVersion:
 		return m.ContextVersion()
+	case codexthreadcontrol.FieldExecutionNodeID:
+		return m.ExecutionNodeID()
 	case codexthreadcontrol.FieldExternalThreadID:
 		return m.ExternalThreadID()
 	case codexthreadcontrol.FieldProvider:
@@ -4231,6 +4290,8 @@ func (m *CodexThreadControlMutation) OldField(ctx context.Context, name string) 
 		return m.OldAgentProfileID(ctx)
 	case codexthreadcontrol.FieldContextVersion:
 		return m.OldContextVersion(ctx)
+	case codexthreadcontrol.FieldExecutionNodeID:
+		return m.OldExecutionNodeID(ctx)
 	case codexthreadcontrol.FieldExternalThreadID:
 		return m.OldExternalThreadID(ctx)
 	case codexthreadcontrol.FieldProvider:
@@ -4325,6 +4386,13 @@ func (m *CodexThreadControlMutation) SetField(name string, value ent.Value) erro
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetContextVersion(v)
+		return nil
+	case codexthreadcontrol.FieldExecutionNodeID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExecutionNodeID(v)
 		return nil
 	case codexthreadcontrol.FieldExternalThreadID:
 		v, ok := value.(string)
@@ -4570,6 +4638,9 @@ func (m *CodexThreadControlMutation) ClearedFields() []string {
 	if m.FieldCleared(codexthreadcontrol.FieldRepositoryID) {
 		fields = append(fields, codexthreadcontrol.FieldRepositoryID)
 	}
+	if m.FieldCleared(codexthreadcontrol.FieldExecutionNodeID) {
+		fields = append(fields, codexthreadcontrol.FieldExecutionNodeID)
+	}
 	if m.FieldCleared(codexthreadcontrol.FieldExternalThreadID) {
 		fields = append(fields, codexthreadcontrol.FieldExternalThreadID)
 	}
@@ -4637,6 +4708,9 @@ func (m *CodexThreadControlMutation) ClearField(name string) error {
 		return nil
 	case codexthreadcontrol.FieldRepositoryID:
 		m.ClearRepositoryID()
+		return nil
+	case codexthreadcontrol.FieldExecutionNodeID:
+		m.ClearExecutionNodeID()
 		return nil
 	case codexthreadcontrol.FieldExternalThreadID:
 		m.ClearExternalThreadID()
@@ -4708,6 +4782,9 @@ func (m *CodexThreadControlMutation) ResetField(name string) error {
 		return nil
 	case codexthreadcontrol.FieldContextVersion:
 		m.ResetContextVersion()
+		return nil
+	case codexthreadcontrol.FieldExecutionNodeID:
+		m.ResetExecutionNodeID()
 		return nil
 	case codexthreadcontrol.FieldExternalThreadID:
 		m.ResetExternalThreadID()
@@ -8623,35 +8700,39 @@ func (m *CodexTurnIntentMutation) ResetEdge(name string) error {
 // CodexTurnRunMutation represents an operation that mutates the CodexTurnRun nodes in the graph.
 type CodexTurnRunMutation struct {
 	config
-	op                      Op
-	typ                     string
-	id                      *uuid.UUID
-	control_id              *uuid.UUID
-	primary_intent_id       *uuid.UUID
-	attempt                 *int
-	addattempt              *int
-	worker_id               *string
-	lease_epoch             *int64
-	addlease_epoch          *int64
-	capability_hash         *string
-	active_slot             *int
-	addactive_slot          *int
-	status                  *string
-	codex_submission_id     *string
-	confirmed_codex_turn_id *string
-	append_count            *int
-	addappend_count         *int
-	max_append_count        *int
-	addmax_append_count     *int
-	started_at              *time.Time
-	heartbeat_at            *time.Time
-	finished_at             *time.Time
-	error_code              *string
-	error_message           *string
-	clearedFields           map[string]struct{}
-	done                    bool
-	oldValue                func(context.Context) (*CodexTurnRun, error)
-	predicates              []predicate.CodexTurnRun
+	op                       Op
+	typ                      string
+	id                       *uuid.UUID
+	control_id               *uuid.UUID
+	primary_intent_id        *uuid.UUID
+	attempt                  *int
+	addattempt               *int
+	worker_id                *string
+	lease_epoch              *int64
+	addlease_epoch           *int64
+	capability_hash          *string
+	execution_node_id        *uuid.UUID
+	worker_event_sequence    *int64
+	addworker_event_sequence *int64
+	worker_terminal_key      *string
+	active_slot              *int
+	addactive_slot           *int
+	status                   *string
+	codex_submission_id      *string
+	confirmed_codex_turn_id  *string
+	append_count             *int
+	addappend_count          *int
+	max_append_count         *int
+	addmax_append_count      *int
+	started_at               *time.Time
+	heartbeat_at             *time.Time
+	finished_at              *time.Time
+	error_code               *string
+	error_message            *string
+	clearedFields            map[string]struct{}
+	done                     bool
+	oldValue                 func(context.Context) (*CodexTurnRun, error)
+	predicates               []predicate.CodexTurnRun
 }
 
 var _ ent.Mutation = (*CodexTurnRunMutation)(nil)
@@ -9012,6 +9093,160 @@ func (m *CodexTurnRunMutation) OldCapabilityHash(ctx context.Context) (v string,
 // ResetCapabilityHash resets all changes to the "capability_hash" field.
 func (m *CodexTurnRunMutation) ResetCapabilityHash() {
 	m.capability_hash = nil
+}
+
+// SetExecutionNodeID sets the "execution_node_id" field.
+func (m *CodexTurnRunMutation) SetExecutionNodeID(u uuid.UUID) {
+	m.execution_node_id = &u
+}
+
+// ExecutionNodeID returns the value of the "execution_node_id" field in the mutation.
+func (m *CodexTurnRunMutation) ExecutionNodeID() (r uuid.UUID, exists bool) {
+	v := m.execution_node_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExecutionNodeID returns the old "execution_node_id" field's value of the CodexTurnRun entity.
+// If the CodexTurnRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnRunMutation) OldExecutionNodeID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExecutionNodeID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExecutionNodeID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExecutionNodeID: %w", err)
+	}
+	return oldValue.ExecutionNodeID, nil
+}
+
+// ClearExecutionNodeID clears the value of the "execution_node_id" field.
+func (m *CodexTurnRunMutation) ClearExecutionNodeID() {
+	m.execution_node_id = nil
+	m.clearedFields[codexturnrun.FieldExecutionNodeID] = struct{}{}
+}
+
+// ExecutionNodeIDCleared returns if the "execution_node_id" field was cleared in this mutation.
+func (m *CodexTurnRunMutation) ExecutionNodeIDCleared() bool {
+	_, ok := m.clearedFields[codexturnrun.FieldExecutionNodeID]
+	return ok
+}
+
+// ResetExecutionNodeID resets all changes to the "execution_node_id" field.
+func (m *CodexTurnRunMutation) ResetExecutionNodeID() {
+	m.execution_node_id = nil
+	delete(m.clearedFields, codexturnrun.FieldExecutionNodeID)
+}
+
+// SetWorkerEventSequence sets the "worker_event_sequence" field.
+func (m *CodexTurnRunMutation) SetWorkerEventSequence(i int64) {
+	m.worker_event_sequence = &i
+	m.addworker_event_sequence = nil
+}
+
+// WorkerEventSequence returns the value of the "worker_event_sequence" field in the mutation.
+func (m *CodexTurnRunMutation) WorkerEventSequence() (r int64, exists bool) {
+	v := m.worker_event_sequence
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkerEventSequence returns the old "worker_event_sequence" field's value of the CodexTurnRun entity.
+// If the CodexTurnRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnRunMutation) OldWorkerEventSequence(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkerEventSequence is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkerEventSequence requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkerEventSequence: %w", err)
+	}
+	return oldValue.WorkerEventSequence, nil
+}
+
+// AddWorkerEventSequence adds i to the "worker_event_sequence" field.
+func (m *CodexTurnRunMutation) AddWorkerEventSequence(i int64) {
+	if m.addworker_event_sequence != nil {
+		*m.addworker_event_sequence += i
+	} else {
+		m.addworker_event_sequence = &i
+	}
+}
+
+// AddedWorkerEventSequence returns the value that was added to the "worker_event_sequence" field in this mutation.
+func (m *CodexTurnRunMutation) AddedWorkerEventSequence() (r int64, exists bool) {
+	v := m.addworker_event_sequence
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetWorkerEventSequence resets all changes to the "worker_event_sequence" field.
+func (m *CodexTurnRunMutation) ResetWorkerEventSequence() {
+	m.worker_event_sequence = nil
+	m.addworker_event_sequence = nil
+}
+
+// SetWorkerTerminalKey sets the "worker_terminal_key" field.
+func (m *CodexTurnRunMutation) SetWorkerTerminalKey(s string) {
+	m.worker_terminal_key = &s
+}
+
+// WorkerTerminalKey returns the value of the "worker_terminal_key" field in the mutation.
+func (m *CodexTurnRunMutation) WorkerTerminalKey() (r string, exists bool) {
+	v := m.worker_terminal_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkerTerminalKey returns the old "worker_terminal_key" field's value of the CodexTurnRun entity.
+// If the CodexTurnRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnRunMutation) OldWorkerTerminalKey(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkerTerminalKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkerTerminalKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkerTerminalKey: %w", err)
+	}
+	return oldValue.WorkerTerminalKey, nil
+}
+
+// ClearWorkerTerminalKey clears the value of the "worker_terminal_key" field.
+func (m *CodexTurnRunMutation) ClearWorkerTerminalKey() {
+	m.worker_terminal_key = nil
+	m.clearedFields[codexturnrun.FieldWorkerTerminalKey] = struct{}{}
+}
+
+// WorkerTerminalKeyCleared returns if the "worker_terminal_key" field was cleared in this mutation.
+func (m *CodexTurnRunMutation) WorkerTerminalKeyCleared() bool {
+	_, ok := m.clearedFields[codexturnrun.FieldWorkerTerminalKey]
+	return ok
+}
+
+// ResetWorkerTerminalKey resets all changes to the "worker_terminal_key" field.
+func (m *CodexTurnRunMutation) ResetWorkerTerminalKey() {
+	m.worker_terminal_key = nil
+	delete(m.clearedFields, codexturnrun.FieldWorkerTerminalKey)
 }
 
 // SetActiveSlot sets the "active_slot" field.
@@ -9583,7 +9818,7 @@ func (m *CodexTurnRunMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *CodexTurnRunMutation) Fields() []string {
-	fields := make([]string, 0, 17)
+	fields := make([]string, 0, 20)
 	if m.control_id != nil {
 		fields = append(fields, codexturnrun.FieldControlID)
 	}
@@ -9601,6 +9836,15 @@ func (m *CodexTurnRunMutation) Fields() []string {
 	}
 	if m.capability_hash != nil {
 		fields = append(fields, codexturnrun.FieldCapabilityHash)
+	}
+	if m.execution_node_id != nil {
+		fields = append(fields, codexturnrun.FieldExecutionNodeID)
+	}
+	if m.worker_event_sequence != nil {
+		fields = append(fields, codexturnrun.FieldWorkerEventSequence)
+	}
+	if m.worker_terminal_key != nil {
+		fields = append(fields, codexturnrun.FieldWorkerTerminalKey)
 	}
 	if m.active_slot != nil {
 		fields = append(fields, codexturnrun.FieldActiveSlot)
@@ -9655,6 +9899,12 @@ func (m *CodexTurnRunMutation) Field(name string) (ent.Value, bool) {
 		return m.LeaseEpoch()
 	case codexturnrun.FieldCapabilityHash:
 		return m.CapabilityHash()
+	case codexturnrun.FieldExecutionNodeID:
+		return m.ExecutionNodeID()
+	case codexturnrun.FieldWorkerEventSequence:
+		return m.WorkerEventSequence()
+	case codexturnrun.FieldWorkerTerminalKey:
+		return m.WorkerTerminalKey()
 	case codexturnrun.FieldActiveSlot:
 		return m.ActiveSlot()
 	case codexturnrun.FieldStatus:
@@ -9698,6 +9948,12 @@ func (m *CodexTurnRunMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldLeaseEpoch(ctx)
 	case codexturnrun.FieldCapabilityHash:
 		return m.OldCapabilityHash(ctx)
+	case codexturnrun.FieldExecutionNodeID:
+		return m.OldExecutionNodeID(ctx)
+	case codexturnrun.FieldWorkerEventSequence:
+		return m.OldWorkerEventSequence(ctx)
+	case codexturnrun.FieldWorkerTerminalKey:
+		return m.OldWorkerTerminalKey(ctx)
 	case codexturnrun.FieldActiveSlot:
 		return m.OldActiveSlot(ctx)
 	case codexturnrun.FieldStatus:
@@ -9770,6 +10026,27 @@ func (m *CodexTurnRunMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCapabilityHash(v)
+		return nil
+	case codexturnrun.FieldExecutionNodeID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExecutionNodeID(v)
+		return nil
+	case codexturnrun.FieldWorkerEventSequence:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkerEventSequence(v)
+		return nil
+	case codexturnrun.FieldWorkerTerminalKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkerTerminalKey(v)
 		return nil
 	case codexturnrun.FieldActiveSlot:
 		v, ok := value.(int)
@@ -9862,6 +10139,9 @@ func (m *CodexTurnRunMutation) AddedFields() []string {
 	if m.addlease_epoch != nil {
 		fields = append(fields, codexturnrun.FieldLeaseEpoch)
 	}
+	if m.addworker_event_sequence != nil {
+		fields = append(fields, codexturnrun.FieldWorkerEventSequence)
+	}
 	if m.addactive_slot != nil {
 		fields = append(fields, codexturnrun.FieldActiveSlot)
 	}
@@ -9883,6 +10163,8 @@ func (m *CodexTurnRunMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedAttempt()
 	case codexturnrun.FieldLeaseEpoch:
 		return m.AddedLeaseEpoch()
+	case codexturnrun.FieldWorkerEventSequence:
+		return m.AddedWorkerEventSequence()
 	case codexturnrun.FieldActiveSlot:
 		return m.AddedActiveSlot()
 	case codexturnrun.FieldAppendCount:
@@ -9911,6 +10193,13 @@ func (m *CodexTurnRunMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddLeaseEpoch(v)
+		return nil
+	case codexturnrun.FieldWorkerEventSequence:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddWorkerEventSequence(v)
 		return nil
 	case codexturnrun.FieldActiveSlot:
 		v, ok := value.(int)
@@ -9941,6 +10230,12 @@ func (m *CodexTurnRunMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *CodexTurnRunMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(codexturnrun.FieldExecutionNodeID) {
+		fields = append(fields, codexturnrun.FieldExecutionNodeID)
+	}
+	if m.FieldCleared(codexturnrun.FieldWorkerTerminalKey) {
+		fields = append(fields, codexturnrun.FieldWorkerTerminalKey)
+	}
 	if m.FieldCleared(codexturnrun.FieldActiveSlot) {
 		fields = append(fields, codexturnrun.FieldActiveSlot)
 	}
@@ -9973,6 +10268,12 @@ func (m *CodexTurnRunMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *CodexTurnRunMutation) ClearField(name string) error {
 	switch name {
+	case codexturnrun.FieldExecutionNodeID:
+		m.ClearExecutionNodeID()
+		return nil
+	case codexturnrun.FieldWorkerTerminalKey:
+		m.ClearWorkerTerminalKey()
+		return nil
 	case codexturnrun.FieldActiveSlot:
 		m.ClearActiveSlot()
 		return nil
@@ -10016,6 +10317,15 @@ func (m *CodexTurnRunMutation) ResetField(name string) error {
 		return nil
 	case codexturnrun.FieldCapabilityHash:
 		m.ResetCapabilityHash()
+		return nil
+	case codexturnrun.FieldExecutionNodeID:
+		m.ResetExecutionNodeID()
+		return nil
+	case codexturnrun.FieldWorkerEventSequence:
+		m.ResetWorkerEventSequence()
+		return nil
+	case codexturnrun.FieldWorkerTerminalKey:
+		m.ResetWorkerTerminalKey()
 		return nil
 	case codexturnrun.FieldActiveSlot:
 		m.ResetActiveSlot()
@@ -10100,6 +10410,1807 @@ func (m *CodexTurnRunMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *CodexTurnRunMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown CodexTurnRun edge %s", name)
+}
+
+// ExecutionNodeMutation represents an operation that mutates the ExecutionNode nodes in the graph.
+type ExecutionNodeMutation struct {
+	config
+	op                     Op
+	typ                    string
+	id                     *uuid.UUID
+	name                   *string
+	roles                  *[]string
+	appendroles            []string
+	enabled                *bool
+	max_concurrent_jobs    *int
+	addmax_concurrent_jobs *int
+	credential_hash        *string
+	credential_version     *int64
+	addcredential_version  *int64
+	protocol_version       *int
+	addprotocol_version    *int
+	worker_version         *string
+	status                 *string
+	heartbeat_at           *time.Time
+	last_error             *string
+	metadata               *map[string]interface{}
+	created_at             *time.Time
+	updated_at             *time.Time
+	clearedFields          map[string]struct{}
+	done                   bool
+	oldValue               func(context.Context) (*ExecutionNode, error)
+	predicates             []predicate.ExecutionNode
+}
+
+var _ ent.Mutation = (*ExecutionNodeMutation)(nil)
+
+// executionnodeOption allows management of the mutation configuration using functional options.
+type executionnodeOption func(*ExecutionNodeMutation)
+
+// newExecutionNodeMutation creates new mutation for the ExecutionNode entity.
+func newExecutionNodeMutation(c config, op Op, opts ...executionnodeOption) *ExecutionNodeMutation {
+	m := &ExecutionNodeMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeExecutionNode,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withExecutionNodeID sets the ID field of the mutation.
+func withExecutionNodeID(id uuid.UUID) executionnodeOption {
+	return func(m *ExecutionNodeMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ExecutionNode
+		)
+		m.oldValue = func(ctx context.Context) (*ExecutionNode, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ExecutionNode.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withExecutionNode sets the old ExecutionNode of the mutation.
+func withExecutionNode(node *ExecutionNode) executionnodeOption {
+	return func(m *ExecutionNodeMutation) {
+		m.oldValue = func(context.Context) (*ExecutionNode, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ExecutionNodeMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ExecutionNodeMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of ExecutionNode entities.
+func (m *ExecutionNodeMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ExecutionNodeMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ExecutionNodeMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ExecutionNode.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetName sets the "name" field.
+func (m *ExecutionNodeMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *ExecutionNodeMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the ExecutionNode entity.
+// If the ExecutionNode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExecutionNodeMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *ExecutionNodeMutation) ResetName() {
+	m.name = nil
+}
+
+// SetRoles sets the "roles" field.
+func (m *ExecutionNodeMutation) SetRoles(s []string) {
+	m.roles = &s
+	m.appendroles = nil
+}
+
+// Roles returns the value of the "roles" field in the mutation.
+func (m *ExecutionNodeMutation) Roles() (r []string, exists bool) {
+	v := m.roles
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRoles returns the old "roles" field's value of the ExecutionNode entity.
+// If the ExecutionNode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExecutionNodeMutation) OldRoles(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRoles is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRoles requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRoles: %w", err)
+	}
+	return oldValue.Roles, nil
+}
+
+// AppendRoles adds s to the "roles" field.
+func (m *ExecutionNodeMutation) AppendRoles(s []string) {
+	m.appendroles = append(m.appendroles, s...)
+}
+
+// AppendedRoles returns the list of values that were appended to the "roles" field in this mutation.
+func (m *ExecutionNodeMutation) AppendedRoles() ([]string, bool) {
+	if len(m.appendroles) == 0 {
+		return nil, false
+	}
+	return m.appendroles, true
+}
+
+// ResetRoles resets all changes to the "roles" field.
+func (m *ExecutionNodeMutation) ResetRoles() {
+	m.roles = nil
+	m.appendroles = nil
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *ExecutionNodeMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *ExecutionNodeMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the ExecutionNode entity.
+// If the ExecutionNode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExecutionNodeMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *ExecutionNodeMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
+// SetMaxConcurrentJobs sets the "max_concurrent_jobs" field.
+func (m *ExecutionNodeMutation) SetMaxConcurrentJobs(i int) {
+	m.max_concurrent_jobs = &i
+	m.addmax_concurrent_jobs = nil
+}
+
+// MaxConcurrentJobs returns the value of the "max_concurrent_jobs" field in the mutation.
+func (m *ExecutionNodeMutation) MaxConcurrentJobs() (r int, exists bool) {
+	v := m.max_concurrent_jobs
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMaxConcurrentJobs returns the old "max_concurrent_jobs" field's value of the ExecutionNode entity.
+// If the ExecutionNode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExecutionNodeMutation) OldMaxConcurrentJobs(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMaxConcurrentJobs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMaxConcurrentJobs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMaxConcurrentJobs: %w", err)
+	}
+	return oldValue.MaxConcurrentJobs, nil
+}
+
+// AddMaxConcurrentJobs adds i to the "max_concurrent_jobs" field.
+func (m *ExecutionNodeMutation) AddMaxConcurrentJobs(i int) {
+	if m.addmax_concurrent_jobs != nil {
+		*m.addmax_concurrent_jobs += i
+	} else {
+		m.addmax_concurrent_jobs = &i
+	}
+}
+
+// AddedMaxConcurrentJobs returns the value that was added to the "max_concurrent_jobs" field in this mutation.
+func (m *ExecutionNodeMutation) AddedMaxConcurrentJobs() (r int, exists bool) {
+	v := m.addmax_concurrent_jobs
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetMaxConcurrentJobs resets all changes to the "max_concurrent_jobs" field.
+func (m *ExecutionNodeMutation) ResetMaxConcurrentJobs() {
+	m.max_concurrent_jobs = nil
+	m.addmax_concurrent_jobs = nil
+}
+
+// SetCredentialHash sets the "credential_hash" field.
+func (m *ExecutionNodeMutation) SetCredentialHash(s string) {
+	m.credential_hash = &s
+}
+
+// CredentialHash returns the value of the "credential_hash" field in the mutation.
+func (m *ExecutionNodeMutation) CredentialHash() (r string, exists bool) {
+	v := m.credential_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCredentialHash returns the old "credential_hash" field's value of the ExecutionNode entity.
+// If the ExecutionNode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExecutionNodeMutation) OldCredentialHash(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCredentialHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCredentialHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCredentialHash: %w", err)
+	}
+	return oldValue.CredentialHash, nil
+}
+
+// ClearCredentialHash clears the value of the "credential_hash" field.
+func (m *ExecutionNodeMutation) ClearCredentialHash() {
+	m.credential_hash = nil
+	m.clearedFields[executionnode.FieldCredentialHash] = struct{}{}
+}
+
+// CredentialHashCleared returns if the "credential_hash" field was cleared in this mutation.
+func (m *ExecutionNodeMutation) CredentialHashCleared() bool {
+	_, ok := m.clearedFields[executionnode.FieldCredentialHash]
+	return ok
+}
+
+// ResetCredentialHash resets all changes to the "credential_hash" field.
+func (m *ExecutionNodeMutation) ResetCredentialHash() {
+	m.credential_hash = nil
+	delete(m.clearedFields, executionnode.FieldCredentialHash)
+}
+
+// SetCredentialVersion sets the "credential_version" field.
+func (m *ExecutionNodeMutation) SetCredentialVersion(i int64) {
+	m.credential_version = &i
+	m.addcredential_version = nil
+}
+
+// CredentialVersion returns the value of the "credential_version" field in the mutation.
+func (m *ExecutionNodeMutation) CredentialVersion() (r int64, exists bool) {
+	v := m.credential_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCredentialVersion returns the old "credential_version" field's value of the ExecutionNode entity.
+// If the ExecutionNode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExecutionNodeMutation) OldCredentialVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCredentialVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCredentialVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCredentialVersion: %w", err)
+	}
+	return oldValue.CredentialVersion, nil
+}
+
+// AddCredentialVersion adds i to the "credential_version" field.
+func (m *ExecutionNodeMutation) AddCredentialVersion(i int64) {
+	if m.addcredential_version != nil {
+		*m.addcredential_version += i
+	} else {
+		m.addcredential_version = &i
+	}
+}
+
+// AddedCredentialVersion returns the value that was added to the "credential_version" field in this mutation.
+func (m *ExecutionNodeMutation) AddedCredentialVersion() (r int64, exists bool) {
+	v := m.addcredential_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCredentialVersion resets all changes to the "credential_version" field.
+func (m *ExecutionNodeMutation) ResetCredentialVersion() {
+	m.credential_version = nil
+	m.addcredential_version = nil
+}
+
+// SetProtocolVersion sets the "protocol_version" field.
+func (m *ExecutionNodeMutation) SetProtocolVersion(i int) {
+	m.protocol_version = &i
+	m.addprotocol_version = nil
+}
+
+// ProtocolVersion returns the value of the "protocol_version" field in the mutation.
+func (m *ExecutionNodeMutation) ProtocolVersion() (r int, exists bool) {
+	v := m.protocol_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProtocolVersion returns the old "protocol_version" field's value of the ExecutionNode entity.
+// If the ExecutionNode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExecutionNodeMutation) OldProtocolVersion(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProtocolVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProtocolVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProtocolVersion: %w", err)
+	}
+	return oldValue.ProtocolVersion, nil
+}
+
+// AddProtocolVersion adds i to the "protocol_version" field.
+func (m *ExecutionNodeMutation) AddProtocolVersion(i int) {
+	if m.addprotocol_version != nil {
+		*m.addprotocol_version += i
+	} else {
+		m.addprotocol_version = &i
+	}
+}
+
+// AddedProtocolVersion returns the value that was added to the "protocol_version" field in this mutation.
+func (m *ExecutionNodeMutation) AddedProtocolVersion() (r int, exists bool) {
+	v := m.addprotocol_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetProtocolVersion resets all changes to the "protocol_version" field.
+func (m *ExecutionNodeMutation) ResetProtocolVersion() {
+	m.protocol_version = nil
+	m.addprotocol_version = nil
+}
+
+// SetWorkerVersion sets the "worker_version" field.
+func (m *ExecutionNodeMutation) SetWorkerVersion(s string) {
+	m.worker_version = &s
+}
+
+// WorkerVersion returns the value of the "worker_version" field in the mutation.
+func (m *ExecutionNodeMutation) WorkerVersion() (r string, exists bool) {
+	v := m.worker_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkerVersion returns the old "worker_version" field's value of the ExecutionNode entity.
+// If the ExecutionNode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExecutionNodeMutation) OldWorkerVersion(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkerVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkerVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkerVersion: %w", err)
+	}
+	return oldValue.WorkerVersion, nil
+}
+
+// ClearWorkerVersion clears the value of the "worker_version" field.
+func (m *ExecutionNodeMutation) ClearWorkerVersion() {
+	m.worker_version = nil
+	m.clearedFields[executionnode.FieldWorkerVersion] = struct{}{}
+}
+
+// WorkerVersionCleared returns if the "worker_version" field was cleared in this mutation.
+func (m *ExecutionNodeMutation) WorkerVersionCleared() bool {
+	_, ok := m.clearedFields[executionnode.FieldWorkerVersion]
+	return ok
+}
+
+// ResetWorkerVersion resets all changes to the "worker_version" field.
+func (m *ExecutionNodeMutation) ResetWorkerVersion() {
+	m.worker_version = nil
+	delete(m.clearedFields, executionnode.FieldWorkerVersion)
+}
+
+// SetStatus sets the "status" field.
+func (m *ExecutionNodeMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *ExecutionNodeMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the ExecutionNode entity.
+// If the ExecutionNode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExecutionNodeMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *ExecutionNodeMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetHeartbeatAt sets the "heartbeat_at" field.
+func (m *ExecutionNodeMutation) SetHeartbeatAt(t time.Time) {
+	m.heartbeat_at = &t
+}
+
+// HeartbeatAt returns the value of the "heartbeat_at" field in the mutation.
+func (m *ExecutionNodeMutation) HeartbeatAt() (r time.Time, exists bool) {
+	v := m.heartbeat_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHeartbeatAt returns the old "heartbeat_at" field's value of the ExecutionNode entity.
+// If the ExecutionNode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExecutionNodeMutation) OldHeartbeatAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHeartbeatAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHeartbeatAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHeartbeatAt: %w", err)
+	}
+	return oldValue.HeartbeatAt, nil
+}
+
+// ClearHeartbeatAt clears the value of the "heartbeat_at" field.
+func (m *ExecutionNodeMutation) ClearHeartbeatAt() {
+	m.heartbeat_at = nil
+	m.clearedFields[executionnode.FieldHeartbeatAt] = struct{}{}
+}
+
+// HeartbeatAtCleared returns if the "heartbeat_at" field was cleared in this mutation.
+func (m *ExecutionNodeMutation) HeartbeatAtCleared() bool {
+	_, ok := m.clearedFields[executionnode.FieldHeartbeatAt]
+	return ok
+}
+
+// ResetHeartbeatAt resets all changes to the "heartbeat_at" field.
+func (m *ExecutionNodeMutation) ResetHeartbeatAt() {
+	m.heartbeat_at = nil
+	delete(m.clearedFields, executionnode.FieldHeartbeatAt)
+}
+
+// SetLastError sets the "last_error" field.
+func (m *ExecutionNodeMutation) SetLastError(s string) {
+	m.last_error = &s
+}
+
+// LastError returns the value of the "last_error" field in the mutation.
+func (m *ExecutionNodeMutation) LastError() (r string, exists bool) {
+	v := m.last_error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastError returns the old "last_error" field's value of the ExecutionNode entity.
+// If the ExecutionNode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExecutionNodeMutation) OldLastError(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastError: %w", err)
+	}
+	return oldValue.LastError, nil
+}
+
+// ClearLastError clears the value of the "last_error" field.
+func (m *ExecutionNodeMutation) ClearLastError() {
+	m.last_error = nil
+	m.clearedFields[executionnode.FieldLastError] = struct{}{}
+}
+
+// LastErrorCleared returns if the "last_error" field was cleared in this mutation.
+func (m *ExecutionNodeMutation) LastErrorCleared() bool {
+	_, ok := m.clearedFields[executionnode.FieldLastError]
+	return ok
+}
+
+// ResetLastError resets all changes to the "last_error" field.
+func (m *ExecutionNodeMutation) ResetLastError() {
+	m.last_error = nil
+	delete(m.clearedFields, executionnode.FieldLastError)
+}
+
+// SetMetadata sets the "metadata" field.
+func (m *ExecutionNodeMutation) SetMetadata(value map[string]interface{}) {
+	m.metadata = &value
+}
+
+// Metadata returns the value of the "metadata" field in the mutation.
+func (m *ExecutionNodeMutation) Metadata() (r map[string]interface{}, exists bool) {
+	v := m.metadata
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMetadata returns the old "metadata" field's value of the ExecutionNode entity.
+// If the ExecutionNode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExecutionNodeMutation) OldMetadata(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMetadata is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMetadata requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMetadata: %w", err)
+	}
+	return oldValue.Metadata, nil
+}
+
+// ResetMetadata resets all changes to the "metadata" field.
+func (m *ExecutionNodeMutation) ResetMetadata() {
+	m.metadata = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ExecutionNodeMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ExecutionNodeMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ExecutionNode entity.
+// If the ExecutionNode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExecutionNodeMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ExecutionNodeMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *ExecutionNodeMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *ExecutionNodeMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the ExecutionNode entity.
+// If the ExecutionNode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExecutionNodeMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *ExecutionNodeMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the ExecutionNodeMutation builder.
+func (m *ExecutionNodeMutation) Where(ps ...predicate.ExecutionNode) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ExecutionNodeMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ExecutionNodeMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ExecutionNode, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ExecutionNodeMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ExecutionNodeMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ExecutionNode).
+func (m *ExecutionNodeMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ExecutionNodeMutation) Fields() []string {
+	fields := make([]string, 0, 14)
+	if m.name != nil {
+		fields = append(fields, executionnode.FieldName)
+	}
+	if m.roles != nil {
+		fields = append(fields, executionnode.FieldRoles)
+	}
+	if m.enabled != nil {
+		fields = append(fields, executionnode.FieldEnabled)
+	}
+	if m.max_concurrent_jobs != nil {
+		fields = append(fields, executionnode.FieldMaxConcurrentJobs)
+	}
+	if m.credential_hash != nil {
+		fields = append(fields, executionnode.FieldCredentialHash)
+	}
+	if m.credential_version != nil {
+		fields = append(fields, executionnode.FieldCredentialVersion)
+	}
+	if m.protocol_version != nil {
+		fields = append(fields, executionnode.FieldProtocolVersion)
+	}
+	if m.worker_version != nil {
+		fields = append(fields, executionnode.FieldWorkerVersion)
+	}
+	if m.status != nil {
+		fields = append(fields, executionnode.FieldStatus)
+	}
+	if m.heartbeat_at != nil {
+		fields = append(fields, executionnode.FieldHeartbeatAt)
+	}
+	if m.last_error != nil {
+		fields = append(fields, executionnode.FieldLastError)
+	}
+	if m.metadata != nil {
+		fields = append(fields, executionnode.FieldMetadata)
+	}
+	if m.created_at != nil {
+		fields = append(fields, executionnode.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, executionnode.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ExecutionNodeMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case executionnode.FieldName:
+		return m.Name()
+	case executionnode.FieldRoles:
+		return m.Roles()
+	case executionnode.FieldEnabled:
+		return m.Enabled()
+	case executionnode.FieldMaxConcurrentJobs:
+		return m.MaxConcurrentJobs()
+	case executionnode.FieldCredentialHash:
+		return m.CredentialHash()
+	case executionnode.FieldCredentialVersion:
+		return m.CredentialVersion()
+	case executionnode.FieldProtocolVersion:
+		return m.ProtocolVersion()
+	case executionnode.FieldWorkerVersion:
+		return m.WorkerVersion()
+	case executionnode.FieldStatus:
+		return m.Status()
+	case executionnode.FieldHeartbeatAt:
+		return m.HeartbeatAt()
+	case executionnode.FieldLastError:
+		return m.LastError()
+	case executionnode.FieldMetadata:
+		return m.Metadata()
+	case executionnode.FieldCreatedAt:
+		return m.CreatedAt()
+	case executionnode.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ExecutionNodeMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case executionnode.FieldName:
+		return m.OldName(ctx)
+	case executionnode.FieldRoles:
+		return m.OldRoles(ctx)
+	case executionnode.FieldEnabled:
+		return m.OldEnabled(ctx)
+	case executionnode.FieldMaxConcurrentJobs:
+		return m.OldMaxConcurrentJobs(ctx)
+	case executionnode.FieldCredentialHash:
+		return m.OldCredentialHash(ctx)
+	case executionnode.FieldCredentialVersion:
+		return m.OldCredentialVersion(ctx)
+	case executionnode.FieldProtocolVersion:
+		return m.OldProtocolVersion(ctx)
+	case executionnode.FieldWorkerVersion:
+		return m.OldWorkerVersion(ctx)
+	case executionnode.FieldStatus:
+		return m.OldStatus(ctx)
+	case executionnode.FieldHeartbeatAt:
+		return m.OldHeartbeatAt(ctx)
+	case executionnode.FieldLastError:
+		return m.OldLastError(ctx)
+	case executionnode.FieldMetadata:
+		return m.OldMetadata(ctx)
+	case executionnode.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case executionnode.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ExecutionNode field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ExecutionNodeMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case executionnode.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case executionnode.FieldRoles:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRoles(v)
+		return nil
+	case executionnode.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	case executionnode.FieldMaxConcurrentJobs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMaxConcurrentJobs(v)
+		return nil
+	case executionnode.FieldCredentialHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCredentialHash(v)
+		return nil
+	case executionnode.FieldCredentialVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCredentialVersion(v)
+		return nil
+	case executionnode.FieldProtocolVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProtocolVersion(v)
+		return nil
+	case executionnode.FieldWorkerVersion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkerVersion(v)
+		return nil
+	case executionnode.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case executionnode.FieldHeartbeatAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHeartbeatAt(v)
+		return nil
+	case executionnode.FieldLastError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastError(v)
+		return nil
+	case executionnode.FieldMetadata:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMetadata(v)
+		return nil
+	case executionnode.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case executionnode.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ExecutionNode field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ExecutionNodeMutation) AddedFields() []string {
+	var fields []string
+	if m.addmax_concurrent_jobs != nil {
+		fields = append(fields, executionnode.FieldMaxConcurrentJobs)
+	}
+	if m.addcredential_version != nil {
+		fields = append(fields, executionnode.FieldCredentialVersion)
+	}
+	if m.addprotocol_version != nil {
+		fields = append(fields, executionnode.FieldProtocolVersion)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ExecutionNodeMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case executionnode.FieldMaxConcurrentJobs:
+		return m.AddedMaxConcurrentJobs()
+	case executionnode.FieldCredentialVersion:
+		return m.AddedCredentialVersion()
+	case executionnode.FieldProtocolVersion:
+		return m.AddedProtocolVersion()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ExecutionNodeMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case executionnode.FieldMaxConcurrentJobs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMaxConcurrentJobs(v)
+		return nil
+	case executionnode.FieldCredentialVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCredentialVersion(v)
+		return nil
+	case executionnode.FieldProtocolVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddProtocolVersion(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ExecutionNode numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ExecutionNodeMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(executionnode.FieldCredentialHash) {
+		fields = append(fields, executionnode.FieldCredentialHash)
+	}
+	if m.FieldCleared(executionnode.FieldWorkerVersion) {
+		fields = append(fields, executionnode.FieldWorkerVersion)
+	}
+	if m.FieldCleared(executionnode.FieldHeartbeatAt) {
+		fields = append(fields, executionnode.FieldHeartbeatAt)
+	}
+	if m.FieldCleared(executionnode.FieldLastError) {
+		fields = append(fields, executionnode.FieldLastError)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ExecutionNodeMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ExecutionNodeMutation) ClearField(name string) error {
+	switch name {
+	case executionnode.FieldCredentialHash:
+		m.ClearCredentialHash()
+		return nil
+	case executionnode.FieldWorkerVersion:
+		m.ClearWorkerVersion()
+		return nil
+	case executionnode.FieldHeartbeatAt:
+		m.ClearHeartbeatAt()
+		return nil
+	case executionnode.FieldLastError:
+		m.ClearLastError()
+		return nil
+	}
+	return fmt.Errorf("unknown ExecutionNode nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ExecutionNodeMutation) ResetField(name string) error {
+	switch name {
+	case executionnode.FieldName:
+		m.ResetName()
+		return nil
+	case executionnode.FieldRoles:
+		m.ResetRoles()
+		return nil
+	case executionnode.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	case executionnode.FieldMaxConcurrentJobs:
+		m.ResetMaxConcurrentJobs()
+		return nil
+	case executionnode.FieldCredentialHash:
+		m.ResetCredentialHash()
+		return nil
+	case executionnode.FieldCredentialVersion:
+		m.ResetCredentialVersion()
+		return nil
+	case executionnode.FieldProtocolVersion:
+		m.ResetProtocolVersion()
+		return nil
+	case executionnode.FieldWorkerVersion:
+		m.ResetWorkerVersion()
+		return nil
+	case executionnode.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case executionnode.FieldHeartbeatAt:
+		m.ResetHeartbeatAt()
+		return nil
+	case executionnode.FieldLastError:
+		m.ResetLastError()
+		return nil
+	case executionnode.FieldMetadata:
+		m.ResetMetadata()
+		return nil
+	case executionnode.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case executionnode.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ExecutionNode field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ExecutionNodeMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ExecutionNodeMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ExecutionNodeMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ExecutionNodeMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ExecutionNodeMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ExecutionNodeMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ExecutionNodeMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ExecutionNode unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ExecutionNodeMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ExecutionNode edge %s", name)
+}
+
+// ExecutionNodeEnrollmentMutation represents an operation that mutates the ExecutionNodeEnrollment nodes in the graph.
+type ExecutionNodeEnrollmentMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *uuid.UUID
+	node_id       *uuid.UUID
+	token_hash    *string
+	expires_at    *time.Time
+	consumed_at   *time.Time
+	created_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*ExecutionNodeEnrollment, error)
+	predicates    []predicate.ExecutionNodeEnrollment
+}
+
+var _ ent.Mutation = (*ExecutionNodeEnrollmentMutation)(nil)
+
+// executionnodeenrollmentOption allows management of the mutation configuration using functional options.
+type executionnodeenrollmentOption func(*ExecutionNodeEnrollmentMutation)
+
+// newExecutionNodeEnrollmentMutation creates new mutation for the ExecutionNodeEnrollment entity.
+func newExecutionNodeEnrollmentMutation(c config, op Op, opts ...executionnodeenrollmentOption) *ExecutionNodeEnrollmentMutation {
+	m := &ExecutionNodeEnrollmentMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeExecutionNodeEnrollment,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withExecutionNodeEnrollmentID sets the ID field of the mutation.
+func withExecutionNodeEnrollmentID(id uuid.UUID) executionnodeenrollmentOption {
+	return func(m *ExecutionNodeEnrollmentMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ExecutionNodeEnrollment
+		)
+		m.oldValue = func(ctx context.Context) (*ExecutionNodeEnrollment, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ExecutionNodeEnrollment.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withExecutionNodeEnrollment sets the old ExecutionNodeEnrollment of the mutation.
+func withExecutionNodeEnrollment(node *ExecutionNodeEnrollment) executionnodeenrollmentOption {
+	return func(m *ExecutionNodeEnrollmentMutation) {
+		m.oldValue = func(context.Context) (*ExecutionNodeEnrollment, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ExecutionNodeEnrollmentMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ExecutionNodeEnrollmentMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of ExecutionNodeEnrollment entities.
+func (m *ExecutionNodeEnrollmentMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ExecutionNodeEnrollmentMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ExecutionNodeEnrollmentMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ExecutionNodeEnrollment.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetNodeID sets the "node_id" field.
+func (m *ExecutionNodeEnrollmentMutation) SetNodeID(u uuid.UUID) {
+	m.node_id = &u
+}
+
+// NodeID returns the value of the "node_id" field in the mutation.
+func (m *ExecutionNodeEnrollmentMutation) NodeID() (r uuid.UUID, exists bool) {
+	v := m.node_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNodeID returns the old "node_id" field's value of the ExecutionNodeEnrollment entity.
+// If the ExecutionNodeEnrollment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExecutionNodeEnrollmentMutation) OldNodeID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNodeID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNodeID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNodeID: %w", err)
+	}
+	return oldValue.NodeID, nil
+}
+
+// ResetNodeID resets all changes to the "node_id" field.
+func (m *ExecutionNodeEnrollmentMutation) ResetNodeID() {
+	m.node_id = nil
+}
+
+// SetTokenHash sets the "token_hash" field.
+func (m *ExecutionNodeEnrollmentMutation) SetTokenHash(s string) {
+	m.token_hash = &s
+}
+
+// TokenHash returns the value of the "token_hash" field in the mutation.
+func (m *ExecutionNodeEnrollmentMutation) TokenHash() (r string, exists bool) {
+	v := m.token_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTokenHash returns the old "token_hash" field's value of the ExecutionNodeEnrollment entity.
+// If the ExecutionNodeEnrollment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExecutionNodeEnrollmentMutation) OldTokenHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTokenHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTokenHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTokenHash: %w", err)
+	}
+	return oldValue.TokenHash, nil
+}
+
+// ResetTokenHash resets all changes to the "token_hash" field.
+func (m *ExecutionNodeEnrollmentMutation) ResetTokenHash() {
+	m.token_hash = nil
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (m *ExecutionNodeEnrollmentMutation) SetExpiresAt(t time.Time) {
+	m.expires_at = &t
+}
+
+// ExpiresAt returns the value of the "expires_at" field in the mutation.
+func (m *ExecutionNodeEnrollmentMutation) ExpiresAt() (r time.Time, exists bool) {
+	v := m.expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpiresAt returns the old "expires_at" field's value of the ExecutionNodeEnrollment entity.
+// If the ExecutionNodeEnrollment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExecutionNodeEnrollmentMutation) OldExpiresAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiresAt: %w", err)
+	}
+	return oldValue.ExpiresAt, nil
+}
+
+// ResetExpiresAt resets all changes to the "expires_at" field.
+func (m *ExecutionNodeEnrollmentMutation) ResetExpiresAt() {
+	m.expires_at = nil
+}
+
+// SetConsumedAt sets the "consumed_at" field.
+func (m *ExecutionNodeEnrollmentMutation) SetConsumedAt(t time.Time) {
+	m.consumed_at = &t
+}
+
+// ConsumedAt returns the value of the "consumed_at" field in the mutation.
+func (m *ExecutionNodeEnrollmentMutation) ConsumedAt() (r time.Time, exists bool) {
+	v := m.consumed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConsumedAt returns the old "consumed_at" field's value of the ExecutionNodeEnrollment entity.
+// If the ExecutionNodeEnrollment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExecutionNodeEnrollmentMutation) OldConsumedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConsumedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConsumedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConsumedAt: %w", err)
+	}
+	return oldValue.ConsumedAt, nil
+}
+
+// ClearConsumedAt clears the value of the "consumed_at" field.
+func (m *ExecutionNodeEnrollmentMutation) ClearConsumedAt() {
+	m.consumed_at = nil
+	m.clearedFields[executionnodeenrollment.FieldConsumedAt] = struct{}{}
+}
+
+// ConsumedAtCleared returns if the "consumed_at" field was cleared in this mutation.
+func (m *ExecutionNodeEnrollmentMutation) ConsumedAtCleared() bool {
+	_, ok := m.clearedFields[executionnodeenrollment.FieldConsumedAt]
+	return ok
+}
+
+// ResetConsumedAt resets all changes to the "consumed_at" field.
+func (m *ExecutionNodeEnrollmentMutation) ResetConsumedAt() {
+	m.consumed_at = nil
+	delete(m.clearedFields, executionnodeenrollment.FieldConsumedAt)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ExecutionNodeEnrollmentMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ExecutionNodeEnrollmentMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ExecutionNodeEnrollment entity.
+// If the ExecutionNodeEnrollment object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExecutionNodeEnrollmentMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ExecutionNodeEnrollmentMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the ExecutionNodeEnrollmentMutation builder.
+func (m *ExecutionNodeEnrollmentMutation) Where(ps ...predicate.ExecutionNodeEnrollment) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ExecutionNodeEnrollmentMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ExecutionNodeEnrollmentMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ExecutionNodeEnrollment, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ExecutionNodeEnrollmentMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ExecutionNodeEnrollmentMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ExecutionNodeEnrollment).
+func (m *ExecutionNodeEnrollmentMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ExecutionNodeEnrollmentMutation) Fields() []string {
+	fields := make([]string, 0, 5)
+	if m.node_id != nil {
+		fields = append(fields, executionnodeenrollment.FieldNodeID)
+	}
+	if m.token_hash != nil {
+		fields = append(fields, executionnodeenrollment.FieldTokenHash)
+	}
+	if m.expires_at != nil {
+		fields = append(fields, executionnodeenrollment.FieldExpiresAt)
+	}
+	if m.consumed_at != nil {
+		fields = append(fields, executionnodeenrollment.FieldConsumedAt)
+	}
+	if m.created_at != nil {
+		fields = append(fields, executionnodeenrollment.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ExecutionNodeEnrollmentMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case executionnodeenrollment.FieldNodeID:
+		return m.NodeID()
+	case executionnodeenrollment.FieldTokenHash:
+		return m.TokenHash()
+	case executionnodeenrollment.FieldExpiresAt:
+		return m.ExpiresAt()
+	case executionnodeenrollment.FieldConsumedAt:
+		return m.ConsumedAt()
+	case executionnodeenrollment.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ExecutionNodeEnrollmentMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case executionnodeenrollment.FieldNodeID:
+		return m.OldNodeID(ctx)
+	case executionnodeenrollment.FieldTokenHash:
+		return m.OldTokenHash(ctx)
+	case executionnodeenrollment.FieldExpiresAt:
+		return m.OldExpiresAt(ctx)
+	case executionnodeenrollment.FieldConsumedAt:
+		return m.OldConsumedAt(ctx)
+	case executionnodeenrollment.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ExecutionNodeEnrollment field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ExecutionNodeEnrollmentMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case executionnodeenrollment.FieldNodeID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNodeID(v)
+		return nil
+	case executionnodeenrollment.FieldTokenHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTokenHash(v)
+		return nil
+	case executionnodeenrollment.FieldExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpiresAt(v)
+		return nil
+	case executionnodeenrollment.FieldConsumedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConsumedAt(v)
+		return nil
+	case executionnodeenrollment.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ExecutionNodeEnrollment field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ExecutionNodeEnrollmentMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ExecutionNodeEnrollmentMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ExecutionNodeEnrollmentMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown ExecutionNodeEnrollment numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ExecutionNodeEnrollmentMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(executionnodeenrollment.FieldConsumedAt) {
+		fields = append(fields, executionnodeenrollment.FieldConsumedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ExecutionNodeEnrollmentMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ExecutionNodeEnrollmentMutation) ClearField(name string) error {
+	switch name {
+	case executionnodeenrollment.FieldConsumedAt:
+		m.ClearConsumedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ExecutionNodeEnrollment nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ExecutionNodeEnrollmentMutation) ResetField(name string) error {
+	switch name {
+	case executionnodeenrollment.FieldNodeID:
+		m.ResetNodeID()
+		return nil
+	case executionnodeenrollment.FieldTokenHash:
+		m.ResetTokenHash()
+		return nil
+	case executionnodeenrollment.FieldExpiresAt:
+		m.ResetExpiresAt()
+		return nil
+	case executionnodeenrollment.FieldConsumedAt:
+		m.ResetConsumedAt()
+		return nil
+	case executionnodeenrollment.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ExecutionNodeEnrollment field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ExecutionNodeEnrollmentMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ExecutionNodeEnrollmentMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ExecutionNodeEnrollmentMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ExecutionNodeEnrollmentMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ExecutionNodeEnrollmentMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ExecutionNodeEnrollmentMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ExecutionNodeEnrollmentMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ExecutionNodeEnrollment unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ExecutionNodeEnrollmentMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ExecutionNodeEnrollment edge %s", name)
 }
 
 // PlatformSettingMutation represents an operation that mutates the PlatformSetting nodes in the graph.
@@ -10629,21 +12740,22 @@ func (m *PlatformSettingMutation) ResetEdge(name string) error {
 // RepoCacheMutation represents an operation that mutates the RepoCache nodes in the graph.
 type RepoCacheMutation struct {
 	config
-	op            Op
-	typ           string
-	id            *uuid.UUID
-	repository_id *uuid.UUID
-	_path         *string
-	status        *string
-	size_bytes    *int64
-	addsize_bytes *int64
-	last_fetch_at *time.Time
-	last_used_at  *time.Time
-	error         *string
-	clearedFields map[string]struct{}
-	done          bool
-	oldValue      func(context.Context) (*RepoCache, error)
-	predicates    []predicate.RepoCache
+	op                Op
+	typ               string
+	id                *uuid.UUID
+	repository_id     *uuid.UUID
+	execution_node_id *uuid.UUID
+	_path             *string
+	status            *string
+	size_bytes        *int64
+	addsize_bytes     *int64
+	last_fetch_at     *time.Time
+	last_used_at      *time.Time
+	error             *string
+	clearedFields     map[string]struct{}
+	done              bool
+	oldValue          func(context.Context) (*RepoCache, error)
+	predicates        []predicate.RepoCache
 }
 
 var _ ent.Mutation = (*RepoCacheMutation)(nil)
@@ -10784,6 +12896,55 @@ func (m *RepoCacheMutation) OldRepositoryID(ctx context.Context) (v uuid.UUID, e
 // ResetRepositoryID resets all changes to the "repository_id" field.
 func (m *RepoCacheMutation) ResetRepositoryID() {
 	m.repository_id = nil
+}
+
+// SetExecutionNodeID sets the "execution_node_id" field.
+func (m *RepoCacheMutation) SetExecutionNodeID(u uuid.UUID) {
+	m.execution_node_id = &u
+}
+
+// ExecutionNodeID returns the value of the "execution_node_id" field in the mutation.
+func (m *RepoCacheMutation) ExecutionNodeID() (r uuid.UUID, exists bool) {
+	v := m.execution_node_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExecutionNodeID returns the old "execution_node_id" field's value of the RepoCache entity.
+// If the RepoCache object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RepoCacheMutation) OldExecutionNodeID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExecutionNodeID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExecutionNodeID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExecutionNodeID: %w", err)
+	}
+	return oldValue.ExecutionNodeID, nil
+}
+
+// ClearExecutionNodeID clears the value of the "execution_node_id" field.
+func (m *RepoCacheMutation) ClearExecutionNodeID() {
+	m.execution_node_id = nil
+	m.clearedFields[repocache.FieldExecutionNodeID] = struct{}{}
+}
+
+// ExecutionNodeIDCleared returns if the "execution_node_id" field was cleared in this mutation.
+func (m *RepoCacheMutation) ExecutionNodeIDCleared() bool {
+	_, ok := m.clearedFields[repocache.FieldExecutionNodeID]
+	return ok
+}
+
+// ResetExecutionNodeID resets all changes to the "execution_node_id" field.
+func (m *RepoCacheMutation) ResetExecutionNodeID() {
+	m.execution_node_id = nil
+	delete(m.clearedFields, repocache.FieldExecutionNodeID)
 }
 
 // SetPath sets the "path" field.
@@ -11082,9 +13243,12 @@ func (m *RepoCacheMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RepoCacheMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.repository_id != nil {
 		fields = append(fields, repocache.FieldRepositoryID)
+	}
+	if m.execution_node_id != nil {
+		fields = append(fields, repocache.FieldExecutionNodeID)
 	}
 	if m._path != nil {
 		fields = append(fields, repocache.FieldPath)
@@ -11114,6 +13278,8 @@ func (m *RepoCacheMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case repocache.FieldRepositoryID:
 		return m.RepositoryID()
+	case repocache.FieldExecutionNodeID:
+		return m.ExecutionNodeID()
 	case repocache.FieldPath:
 		return m.Path()
 	case repocache.FieldStatus:
@@ -11137,6 +13303,8 @@ func (m *RepoCacheMutation) OldField(ctx context.Context, name string) (ent.Valu
 	switch name {
 	case repocache.FieldRepositoryID:
 		return m.OldRepositoryID(ctx)
+	case repocache.FieldExecutionNodeID:
+		return m.OldExecutionNodeID(ctx)
 	case repocache.FieldPath:
 		return m.OldPath(ctx)
 	case repocache.FieldStatus:
@@ -11164,6 +13332,13 @@ func (m *RepoCacheMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRepositoryID(v)
+		return nil
+	case repocache.FieldExecutionNodeID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExecutionNodeID(v)
 		return nil
 	case repocache.FieldPath:
 		v, ok := value.(string)
@@ -11252,6 +13427,9 @@ func (m *RepoCacheMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *RepoCacheMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(repocache.FieldExecutionNodeID) {
+		fields = append(fields, repocache.FieldExecutionNodeID)
+	}
 	if m.FieldCleared(repocache.FieldLastFetchAt) {
 		fields = append(fields, repocache.FieldLastFetchAt)
 	}
@@ -11272,6 +13450,9 @@ func (m *RepoCacheMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *RepoCacheMutation) ClearField(name string) error {
 	switch name {
+	case repocache.FieldExecutionNodeID:
+		m.ClearExecutionNodeID()
+		return nil
 	case repocache.FieldLastFetchAt:
 		m.ClearLastFetchAt()
 		return nil
@@ -11288,6 +13469,9 @@ func (m *RepoCacheMutation) ResetField(name string) error {
 	switch name {
 	case repocache.FieldRepositoryID:
 		m.ResetRepositoryID()
+		return nil
+	case repocache.FieldExecutionNodeID:
+		m.ResetExecutionNodeID()
 		return nil
 	case repocache.FieldPath:
 		m.ResetPath()
@@ -16380,6 +18564,7 @@ type WorkItemMutation struct {
 	head_ref           *string
 	head_repository    *string
 	html_url           *string
+	execution_node_id  *uuid.UUID
 	context_version    *int64
 	addcontext_version *int64
 	closed_at          *time.Time
@@ -17025,6 +19210,55 @@ func (m *WorkItemMutation) ResetHTMLURL() {
 	delete(m.clearedFields, workitem.FieldHTMLURL)
 }
 
+// SetExecutionNodeID sets the "execution_node_id" field.
+func (m *WorkItemMutation) SetExecutionNodeID(u uuid.UUID) {
+	m.execution_node_id = &u
+}
+
+// ExecutionNodeID returns the value of the "execution_node_id" field in the mutation.
+func (m *WorkItemMutation) ExecutionNodeID() (r uuid.UUID, exists bool) {
+	v := m.execution_node_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExecutionNodeID returns the old "execution_node_id" field's value of the WorkItem entity.
+// If the WorkItem object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorkItemMutation) OldExecutionNodeID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExecutionNodeID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExecutionNodeID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExecutionNodeID: %w", err)
+	}
+	return oldValue.ExecutionNodeID, nil
+}
+
+// ClearExecutionNodeID clears the value of the "execution_node_id" field.
+func (m *WorkItemMutation) ClearExecutionNodeID() {
+	m.execution_node_id = nil
+	m.clearedFields[workitem.FieldExecutionNodeID] = struct{}{}
+}
+
+// ExecutionNodeIDCleared returns if the "execution_node_id" field was cleared in this mutation.
+func (m *WorkItemMutation) ExecutionNodeIDCleared() bool {
+	_, ok := m.clearedFields[workitem.FieldExecutionNodeID]
+	return ok
+}
+
+// ResetExecutionNodeID resets all changes to the "execution_node_id" field.
+func (m *WorkItemMutation) ResetExecutionNodeID() {
+	m.execution_node_id = nil
+	delete(m.clearedFields, workitem.FieldExecutionNodeID)
+}
+
 // SetContextVersion sets the "context_version" field.
 func (m *WorkItemMutation) SetContextVersion(i int64) {
 	m.context_version = &i
@@ -17236,7 +19470,7 @@ func (m *WorkItemMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *WorkItemMutation) Fields() []string {
-	fields := make([]string, 0, 16)
+	fields := make([]string, 0, 17)
 	if m.repository_id != nil {
 		fields = append(fields, workitem.FieldRepositoryID)
 	}
@@ -17272,6 +19506,9 @@ func (m *WorkItemMutation) Fields() []string {
 	}
 	if m.html_url != nil {
 		fields = append(fields, workitem.FieldHTMLURL)
+	}
+	if m.execution_node_id != nil {
+		fields = append(fields, workitem.FieldExecutionNodeID)
 	}
 	if m.context_version != nil {
 		fields = append(fields, workitem.FieldContextVersion)
@@ -17317,6 +19554,8 @@ func (m *WorkItemMutation) Field(name string) (ent.Value, bool) {
 		return m.HeadRepository()
 	case workitem.FieldHTMLURL:
 		return m.HTMLURL()
+	case workitem.FieldExecutionNodeID:
+		return m.ExecutionNodeID()
 	case workitem.FieldContextVersion:
 		return m.ContextVersion()
 	case workitem.FieldClosedAt:
@@ -17358,6 +19597,8 @@ func (m *WorkItemMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldHeadRepository(ctx)
 	case workitem.FieldHTMLURL:
 		return m.OldHTMLURL(ctx)
+	case workitem.FieldExecutionNodeID:
+		return m.OldExecutionNodeID(ctx)
 	case workitem.FieldContextVersion:
 		return m.OldContextVersion(ctx)
 	case workitem.FieldClosedAt:
@@ -17458,6 +19699,13 @@ func (m *WorkItemMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetHTMLURL(v)
+		return nil
+	case workitem.FieldExecutionNodeID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExecutionNodeID(v)
 		return nil
 	case workitem.FieldContextVersion:
 		v, ok := value.(int64)
@@ -17562,6 +19810,9 @@ func (m *WorkItemMutation) ClearedFields() []string {
 	if m.FieldCleared(workitem.FieldHTMLURL) {
 		fields = append(fields, workitem.FieldHTMLURL)
 	}
+	if m.FieldCleared(workitem.FieldExecutionNodeID) {
+		fields = append(fields, workitem.FieldExecutionNodeID)
+	}
 	if m.FieldCleared(workitem.FieldClosedAt) {
 		fields = append(fields, workitem.FieldClosedAt)
 	}
@@ -17596,6 +19847,9 @@ func (m *WorkItemMutation) ClearField(name string) error {
 		return nil
 	case workitem.FieldHTMLURL:
 		m.ClearHTMLURL()
+		return nil
+	case workitem.FieldExecutionNodeID:
+		m.ClearExecutionNodeID()
 		return nil
 	case workitem.FieldClosedAt:
 		m.ClearClosedAt()
@@ -17643,6 +19897,9 @@ func (m *WorkItemMutation) ResetField(name string) error {
 		return nil
 	case workitem.FieldHTMLURL:
 		m.ResetHTMLURL()
+		return nil
+	case workitem.FieldExecutionNodeID:
+		m.ResetExecutionNodeID()
 		return nil
 	case workitem.FieldContextVersion:
 		m.ResetContextVersion()
@@ -17711,18 +19968,19 @@ func (m *WorkItemMutation) ResetEdge(name string) error {
 // WorkerNodeMutation represents an operation that mutates the WorkerNode nodes in the graph.
 type WorkerNodeMutation struct {
 	config
-	op            Op
-	typ           string
-	id            *string
-	version       *string
-	status        *string
-	metadata      *map[string]interface{}
-	heartbeat_at  *time.Time
-	started_at    *time.Time
-	clearedFields map[string]struct{}
-	done          bool
-	oldValue      func(context.Context) (*WorkerNode, error)
-	predicates    []predicate.WorkerNode
+	op                Op
+	typ               string
+	id                *string
+	version           *string
+	status            *string
+	execution_node_id *uuid.UUID
+	metadata          *map[string]interface{}
+	heartbeat_at      *time.Time
+	started_at        *time.Time
+	clearedFields     map[string]struct{}
+	done              bool
+	oldValue          func(context.Context) (*WorkerNode, error)
+	predicates        []predicate.WorkerNode
 }
 
 var _ ent.Mutation = (*WorkerNodeMutation)(nil)
@@ -17901,6 +20159,55 @@ func (m *WorkerNodeMutation) ResetStatus() {
 	m.status = nil
 }
 
+// SetExecutionNodeID sets the "execution_node_id" field.
+func (m *WorkerNodeMutation) SetExecutionNodeID(u uuid.UUID) {
+	m.execution_node_id = &u
+}
+
+// ExecutionNodeID returns the value of the "execution_node_id" field in the mutation.
+func (m *WorkerNodeMutation) ExecutionNodeID() (r uuid.UUID, exists bool) {
+	v := m.execution_node_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExecutionNodeID returns the old "execution_node_id" field's value of the WorkerNode entity.
+// If the WorkerNode object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorkerNodeMutation) OldExecutionNodeID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExecutionNodeID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExecutionNodeID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExecutionNodeID: %w", err)
+	}
+	return oldValue.ExecutionNodeID, nil
+}
+
+// ClearExecutionNodeID clears the value of the "execution_node_id" field.
+func (m *WorkerNodeMutation) ClearExecutionNodeID() {
+	m.execution_node_id = nil
+	m.clearedFields[workernode.FieldExecutionNodeID] = struct{}{}
+}
+
+// ExecutionNodeIDCleared returns if the "execution_node_id" field was cleared in this mutation.
+func (m *WorkerNodeMutation) ExecutionNodeIDCleared() bool {
+	_, ok := m.clearedFields[workernode.FieldExecutionNodeID]
+	return ok
+}
+
+// ResetExecutionNodeID resets all changes to the "execution_node_id" field.
+func (m *WorkerNodeMutation) ResetExecutionNodeID() {
+	m.execution_node_id = nil
+	delete(m.clearedFields, workernode.FieldExecutionNodeID)
+}
+
 // SetMetadata sets the "metadata" field.
 func (m *WorkerNodeMutation) SetMetadata(value map[string]interface{}) {
 	m.metadata = &value
@@ -18043,12 +20350,15 @@ func (m *WorkerNodeMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *WorkerNodeMutation) Fields() []string {
-	fields := make([]string, 0, 5)
+	fields := make([]string, 0, 6)
 	if m.version != nil {
 		fields = append(fields, workernode.FieldVersion)
 	}
 	if m.status != nil {
 		fields = append(fields, workernode.FieldStatus)
+	}
+	if m.execution_node_id != nil {
+		fields = append(fields, workernode.FieldExecutionNodeID)
 	}
 	if m.metadata != nil {
 		fields = append(fields, workernode.FieldMetadata)
@@ -18071,6 +20381,8 @@ func (m *WorkerNodeMutation) Field(name string) (ent.Value, bool) {
 		return m.Version()
 	case workernode.FieldStatus:
 		return m.Status()
+	case workernode.FieldExecutionNodeID:
+		return m.ExecutionNodeID()
 	case workernode.FieldMetadata:
 		return m.Metadata()
 	case workernode.FieldHeartbeatAt:
@@ -18090,6 +20402,8 @@ func (m *WorkerNodeMutation) OldField(ctx context.Context, name string) (ent.Val
 		return m.OldVersion(ctx)
 	case workernode.FieldStatus:
 		return m.OldStatus(ctx)
+	case workernode.FieldExecutionNodeID:
+		return m.OldExecutionNodeID(ctx)
 	case workernode.FieldMetadata:
 		return m.OldMetadata(ctx)
 	case workernode.FieldHeartbeatAt:
@@ -18118,6 +20432,13 @@ func (m *WorkerNodeMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStatus(v)
+		return nil
+	case workernode.FieldExecutionNodeID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExecutionNodeID(v)
 		return nil
 	case workernode.FieldMetadata:
 		v, ok := value.(map[string]interface{})
@@ -18169,7 +20490,11 @@ func (m *WorkerNodeMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *WorkerNodeMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(workernode.FieldExecutionNodeID) {
+		fields = append(fields, workernode.FieldExecutionNodeID)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -18182,6 +20507,11 @@ func (m *WorkerNodeMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *WorkerNodeMutation) ClearField(name string) error {
+	switch name {
+	case workernode.FieldExecutionNodeID:
+		m.ClearExecutionNodeID()
+		return nil
+	}
 	return fmt.Errorf("unknown WorkerNode nullable field %s", name)
 }
 
@@ -18194,6 +20524,9 @@ func (m *WorkerNodeMutation) ResetField(name string) error {
 		return nil
 	case workernode.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case workernode.FieldExecutionNodeID:
+		m.ResetExecutionNodeID()
 		return nil
 	case workernode.FieldMetadata:
 		m.ResetMetadata()
@@ -18259,24 +20592,25 @@ func (m *WorkerNodeMutation) ResetEdge(name string) error {
 // WorktreeMutation represents an operation that mutates the Worktree nodes in the graph.
 type WorktreeMutation struct {
 	config
-	op            Op
-	typ           string
-	id            *uuid.UUID
-	work_item_id  *uuid.UUID
-	repo_cache_id *uuid.UUID
-	_path         *string
-	branch        *string
-	base_sha      *string
-	head_sha      *string
-	status        *string
-	dirty         *bool
-	last_used_at  *time.Time
-	expires_at    *time.Time
-	error         *string
-	clearedFields map[string]struct{}
-	done          bool
-	oldValue      func(context.Context) (*Worktree, error)
-	predicates    []predicate.Worktree
+	op                Op
+	typ               string
+	id                *uuid.UUID
+	work_item_id      *uuid.UUID
+	repo_cache_id     *uuid.UUID
+	execution_node_id *uuid.UUID
+	_path             *string
+	branch            *string
+	base_sha          *string
+	head_sha          *string
+	status            *string
+	dirty             *bool
+	last_used_at      *time.Time
+	expires_at        *time.Time
+	error             *string
+	clearedFields     map[string]struct{}
+	done              bool
+	oldValue          func(context.Context) (*Worktree, error)
+	predicates        []predicate.Worktree
 }
 
 var _ ent.Mutation = (*WorktreeMutation)(nil)
@@ -18453,6 +20787,55 @@ func (m *WorktreeMutation) OldRepoCacheID(ctx context.Context) (v uuid.UUID, err
 // ResetRepoCacheID resets all changes to the "repo_cache_id" field.
 func (m *WorktreeMutation) ResetRepoCacheID() {
 	m.repo_cache_id = nil
+}
+
+// SetExecutionNodeID sets the "execution_node_id" field.
+func (m *WorktreeMutation) SetExecutionNodeID(u uuid.UUID) {
+	m.execution_node_id = &u
+}
+
+// ExecutionNodeID returns the value of the "execution_node_id" field in the mutation.
+func (m *WorktreeMutation) ExecutionNodeID() (r uuid.UUID, exists bool) {
+	v := m.execution_node_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExecutionNodeID returns the old "execution_node_id" field's value of the Worktree entity.
+// If the Worktree object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorktreeMutation) OldExecutionNodeID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExecutionNodeID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExecutionNodeID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExecutionNodeID: %w", err)
+	}
+	return oldValue.ExecutionNodeID, nil
+}
+
+// ClearExecutionNodeID clears the value of the "execution_node_id" field.
+func (m *WorktreeMutation) ClearExecutionNodeID() {
+	m.execution_node_id = nil
+	m.clearedFields[worktree.FieldExecutionNodeID] = struct{}{}
+}
+
+// ExecutionNodeIDCleared returns if the "execution_node_id" field was cleared in this mutation.
+func (m *WorktreeMutation) ExecutionNodeIDCleared() bool {
+	_, ok := m.clearedFields[worktree.FieldExecutionNodeID]
+	return ok
+}
+
+// ResetExecutionNodeID resets all changes to the "execution_node_id" field.
+func (m *WorktreeMutation) ResetExecutionNodeID() {
+	m.execution_node_id = nil
+	delete(m.clearedFields, worktree.FieldExecutionNodeID)
 }
 
 // SetPath sets the "path" field.
@@ -18839,12 +21222,15 @@ func (m *WorktreeMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *WorktreeMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 12)
 	if m.work_item_id != nil {
 		fields = append(fields, worktree.FieldWorkItemID)
 	}
 	if m.repo_cache_id != nil {
 		fields = append(fields, worktree.FieldRepoCacheID)
+	}
+	if m.execution_node_id != nil {
+		fields = append(fields, worktree.FieldExecutionNodeID)
 	}
 	if m._path != nil {
 		fields = append(fields, worktree.FieldPath)
@@ -18885,6 +21271,8 @@ func (m *WorktreeMutation) Field(name string) (ent.Value, bool) {
 		return m.WorkItemID()
 	case worktree.FieldRepoCacheID:
 		return m.RepoCacheID()
+	case worktree.FieldExecutionNodeID:
+		return m.ExecutionNodeID()
 	case worktree.FieldPath:
 		return m.Path()
 	case worktree.FieldBranch:
@@ -18916,6 +21304,8 @@ func (m *WorktreeMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldWorkItemID(ctx)
 	case worktree.FieldRepoCacheID:
 		return m.OldRepoCacheID(ctx)
+	case worktree.FieldExecutionNodeID:
+		return m.OldExecutionNodeID(ctx)
 	case worktree.FieldPath:
 		return m.OldPath(ctx)
 	case worktree.FieldBranch:
@@ -18956,6 +21346,13 @@ func (m *WorktreeMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRepoCacheID(v)
+		return nil
+	case worktree.FieldExecutionNodeID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExecutionNodeID(v)
 		return nil
 	case worktree.FieldPath:
 		v, ok := value.(string)
@@ -19050,6 +21447,9 @@ func (m *WorktreeMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *WorktreeMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(worktree.FieldExecutionNodeID) {
+		fields = append(fields, worktree.FieldExecutionNodeID)
+	}
 	if m.FieldCleared(worktree.FieldExpiresAt) {
 		fields = append(fields, worktree.FieldExpiresAt)
 	}
@@ -19070,6 +21470,9 @@ func (m *WorktreeMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *WorktreeMutation) ClearField(name string) error {
 	switch name {
+	case worktree.FieldExecutionNodeID:
+		m.ClearExecutionNodeID()
+		return nil
 	case worktree.FieldExpiresAt:
 		m.ClearExpiresAt()
 		return nil
@@ -19089,6 +21492,9 @@ func (m *WorktreeMutation) ResetField(name string) error {
 		return nil
 	case worktree.FieldRepoCacheID:
 		m.ResetRepoCacheID()
+		return nil
+	case worktree.FieldExecutionNodeID:
+		m.ResetExecutionNodeID()
 		return nil
 	case worktree.FieldPath:
 		m.ResetPath()

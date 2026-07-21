@@ -153,7 +153,7 @@ func InitializeDiscord(ctx context.Context, cfg config.Config) (*DiscordApp, fun
 	}
 	store := secrets.NewStore(db, secretBox)
 	manager := provideDiscordManager(db, store)
-	conversationService := discordintegration.NewConversationService(db)
+	conversationService := provideConversationService(cfg, db)
 	githubManager, err := provideGitHubManager(ctx, db, store)
 	if err != nil {
 		cleanup()

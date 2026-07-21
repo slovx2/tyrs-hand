@@ -165,6 +165,20 @@ func (_c *WorkItemCreate) SetNillableHTMLURL(v *string) *WorkItemCreate {
 	return _c
 }
 
+// SetExecutionNodeID sets the "execution_node_id" field.
+func (_c *WorkItemCreate) SetExecutionNodeID(v uuid.UUID) *WorkItemCreate {
+	_c.mutation.SetExecutionNodeID(v)
+	return _c
+}
+
+// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
+func (_c *WorkItemCreate) SetNillableExecutionNodeID(v *uuid.UUID) *WorkItemCreate {
+	if v != nil {
+		_c.SetExecutionNodeID(*v)
+	}
+	return _c
+}
+
 // SetContextVersion sets the "context_version" field.
 func (_c *WorkItemCreate) SetContextVersion(v int64) *WorkItemCreate {
 	_c.mutation.SetContextVersion(v)
@@ -411,6 +425,10 @@ func (_c *WorkItemCreate) createSpec() (*WorkItem, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.HTMLURL(); ok {
 		_spec.SetField(workitem.FieldHTMLURL, field.TypeString, value)
 		_node.HTMLURL = &value
+	}
+	if value, ok := _c.mutation.ExecutionNodeID(); ok {
+		_spec.SetField(workitem.FieldExecutionNodeID, field.TypeUUID, value)
+		_node.ExecutionNodeID = &value
 	}
 	if value, ok := _c.mutation.ContextVersion(); ok {
 		_spec.SetField(workitem.FieldContextVersion, field.TypeInt64, value)

@@ -7,8 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
+
+var remoteBuildLock sync.Mutex
 
 func (m *Manager) provision(ctx context.Context, item *workspace, credential string) error {
 	buildLock, err := m.acquireBuildLock(ctx)
@@ -18,8 +21,10 @@ func (m *Manager) provision(ctx context.Context, item *workspace, credential str
 	defer m.releaseBuildLock(buildLock)
 
 	firstProvision := item.Environment.ContainerID == ""
-	_, _ = m.db.ExecContext(ctx, `UPDATE discord_development_environments
-		SET status = 'building', error = NULL, updated_at = now() WHERE id = $1`, item.Environment.ID)
+	if m.db != nil {
+		_, _ = m.db.ExecContext(ctx, `UPDATE discord_development_environments
+			SET status = 'building', error = NULL, updated_at = now() WHERE id = $1`, item.Environment.ID)
+	}
 	checkout, cleanup, err := m.checkoutRepository(ctx, item.Environment.BuildCloneURL,
 		item.Environment.BuildDefaultRef, "", credential)
 	if err != nil {
@@ -128,11 +133,13 @@ printf '%s:%s:%s' "$uid" "$gid" "$home"`)
 		return fmt.Errorf("切换新开发容器: %w", err)
 	}
 	candidateExists = false
-	_, err = m.db.ExecContext(ctx, `UPDATE discord_development_environments SET
+	if m.db != nil {
+		_, err = m.db.ExecContext(ctx, `UPDATE discord_development_environments SET
 		status = 'running', image_ref = $2, image_id = $3, build_source_sha = NULLIF($4, ''),
 		container_id = $5, runtime_user = $6, runtime_uid = $7, runtime_gid = $8, runtime_home = $9,
 		error = NULL, idle_at = NULL, last_used_at = now(), updated_at = now() WHERE id = $1`,
-		item.Environment.ID, imageRef, imageID, sha, containerID, runtimeUser, uid, gid, home)
+			item.Environment.ID, imageRef, imageID, sha, containerID, runtimeUser, uid, gid, home)
+	}
 	if err != nil {
 		_, _ = m.docker(context.Background(), "rm", "--force", item.Environment.ContainerName)
 		m.restorePreviousContainer(backupName, item.Environment.ContainerName)
@@ -153,6 +160,9 @@ printf '%s:%s:%s' "$uid" "$gid" "$home"`)
 }
 
 func (m *Manager) acquireBuildLock(ctx context.Context) (*sql.Conn, error) {
+	if m.db == nil {
+		return nil, nil
+	}
 	connection, err := m.db.Conn(ctx)
 	if err != nil {
 		return nil, err
@@ -166,6 +176,9 @@ func (m *Manager) acquireBuildLock(ctx context.Context) (*sql.Conn, error) {
 }
 
 func (m *Manager) releaseBuildLock(connection *sql.Conn) {
+	if m.db == nil {
+		return
+	}
 	if connection == nil {
 		return
 	}
@@ -183,8 +196,10 @@ func (m *Manager) restorePreviousContainer(backupName, containerName string) {
 }
 
 func (m *Manager) cloneWorkspace(ctx context.Context, item *workspace, credential string) error {
-	_, _ = m.db.ExecContext(ctx, `UPDATE discord_forum_workspaces
-		SET status = 'cloning', error = NULL, updated_at = now() WHERE forum_id = $1`, item.ForumID)
+	if m.db != nil {
+		_, _ = m.db.ExecContext(ctx, `UPDATE discord_forum_workspaces
+			SET status = 'cloning', error = NULL, updated_at = now() WHERE forum_id = $1`, item.ForumID)
+	}
 	checkout, cleanup, err := m.checkoutRepository(ctx, item.CloneURL, item.DefaultRef, item.Branch, credential)
 	if err != nil {
 		return err
@@ -240,6 +255,10 @@ func (m *Manager) copyCheckout(ctx context.Context, item *workspace, checkout st
 		return err
 	}
 	sha, _ := m.runner.Run(ctx, nil, checkout, "git", "rev-parse", "HEAD")
+	if m.db == nil {
+		item.Status = "ready"
+		return nil
+	}
 	_, err := m.db.ExecContext(ctx, `UPDATE discord_forum_workspaces SET status = 'ready',
 		base_sha = $2, head_sha = $2, dirty = false, error = NULL, last_used_at = now(), updated_at = now()
 		WHERE forum_id = $1`, item.ForumID, sha)

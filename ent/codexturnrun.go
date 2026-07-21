@@ -30,6 +30,12 @@ type CodexTurnRun struct {
 	LeaseEpoch int64 `json:"lease_epoch,omitempty"`
 	// CapabilityHash holds the value of the "capability_hash" field.
 	CapabilityHash string `json:"-"`
+	// ExecutionNodeID holds the value of the "execution_node_id" field.
+	ExecutionNodeID *uuid.UUID `json:"execution_node_id,omitempty"`
+	// WorkerEventSequence holds the value of the "worker_event_sequence" field.
+	WorkerEventSequence int64 `json:"worker_event_sequence,omitempty"`
+	// WorkerTerminalKey holds the value of the "worker_terminal_key" field.
+	WorkerTerminalKey *string `json:"worker_terminal_key,omitempty"`
 	// ActiveSlot holds the value of the "active_slot" field.
 	ActiveSlot *int `json:"active_slot,omitempty"`
 	// Status holds the value of the "status" field.
@@ -60,9 +66,11 @@ func (*CodexTurnRun) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case codexturnrun.FieldAttempt, codexturnrun.FieldLeaseEpoch, codexturnrun.FieldActiveSlot, codexturnrun.FieldAppendCount, codexturnrun.FieldMaxAppendCount:
+		case codexturnrun.FieldExecutionNodeID:
+			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
+		case codexturnrun.FieldAttempt, codexturnrun.FieldLeaseEpoch, codexturnrun.FieldWorkerEventSequence, codexturnrun.FieldActiveSlot, codexturnrun.FieldAppendCount, codexturnrun.FieldMaxAppendCount:
 			values[i] = new(sql.NullInt64)
-		case codexturnrun.FieldWorkerID, codexturnrun.FieldCapabilityHash, codexturnrun.FieldStatus, codexturnrun.FieldCodexSubmissionID, codexturnrun.FieldConfirmedCodexTurnID, codexturnrun.FieldErrorCode, codexturnrun.FieldErrorMessage:
+		case codexturnrun.FieldWorkerID, codexturnrun.FieldCapabilityHash, codexturnrun.FieldWorkerTerminalKey, codexturnrun.FieldStatus, codexturnrun.FieldCodexSubmissionID, codexturnrun.FieldConfirmedCodexTurnID, codexturnrun.FieldErrorCode, codexturnrun.FieldErrorMessage:
 			values[i] = new(sql.NullString)
 		case codexturnrun.FieldStartedAt, codexturnrun.FieldHeartbeatAt, codexturnrun.FieldFinishedAt:
 			values[i] = new(sql.NullTime)
@@ -124,6 +132,26 @@ func (_m *CodexTurnRun) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field capability_hash", values[i])
 			} else if value.Valid {
 				_m.CapabilityHash = value.String
+			}
+		case codexturnrun.FieldExecutionNodeID:
+			if value, ok := values[i].(*sql.NullScanner); !ok {
+				return fmt.Errorf("unexpected type %T for field execution_node_id", values[i])
+			} else if value.Valid {
+				_m.ExecutionNodeID = new(uuid.UUID)
+				*_m.ExecutionNodeID = *value.S.(*uuid.UUID)
+			}
+		case codexturnrun.FieldWorkerEventSequence:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field worker_event_sequence", values[i])
+			} else if value.Valid {
+				_m.WorkerEventSequence = value.Int64
+			}
+		case codexturnrun.FieldWorkerTerminalKey:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field worker_terminal_key", values[i])
+			} else if value.Valid {
+				_m.WorkerTerminalKey = new(string)
+				*_m.WorkerTerminalKey = value.String
 			}
 		case codexturnrun.FieldActiveSlot:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -249,6 +277,19 @@ func (_m *CodexTurnRun) String() string {
 	builder.WriteString(fmt.Sprintf("%v", _m.LeaseEpoch))
 	builder.WriteString(", ")
 	builder.WriteString("capability_hash=<sensitive>")
+	builder.WriteString(", ")
+	if v := _m.ExecutionNodeID; v != nil {
+		builder.WriteString("execution_node_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("worker_event_sequence=")
+	builder.WriteString(fmt.Sprintf("%v", _m.WorkerEventSequence))
+	builder.WriteString(", ")
+	if v := _m.WorkerTerminalKey; v != nil {
+		builder.WriteString("worker_terminal_key=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	if v := _m.ActiveSlot; v != nil {
 		builder.WriteString("active_slot=")

@@ -22,6 +22,7 @@ type DevelopmentEnvironment struct {
 	RuntimeUser       string             `json:"runtimeUser,omitempty"`
 	LastUsedAt        time.Time          `json:"lastUsedAt"`
 	Error             string             `json:"error,omitempty"`
+	ExecutionNodeID   *uuid.UUID         `json:"executionNodeId,omitempty"`
 	Forums            []DevelopmentForum `json:"forums"`
 }
 
@@ -51,6 +52,7 @@ func (m *Manager) DevelopmentEnvironments(ctx context.Context) ([]DevelopmentEnv
 		COALESCE(NULLIF(dm.display_name, ''), dm.username), e.build_repository_id, br.owner || '/' || br.name,
 		e.status, COALESCE(e.image_id, ''), COALESCE(e.build_source_sha, ''),
 		COALESCE(e.runtime_user, ''), e.last_used_at, COALESCE(e.error, ''),
+		e.execution_node_id::text,
 		f.id, COALESCE(dr.name, ''), COALESCE(dr.discord_id, ''), f.repository_id,
 		COALESCE(r.owner || '/' || r.name, ''), COALESCE(fw.status, ''),
 		COALESCE(fw.branch, ''), COALESCE(fw.dirty, false), COALESCE(fw.error, '')
@@ -70,17 +72,25 @@ func (m *Manager) DevelopmentEnvironments(ctx context.Context) ([]DevelopmentEnv
 	byID := make(map[uuid.UUID]int)
 	for rows.Next() {
 		var environment DevelopmentEnvironment
-		var forumID sql.NullString
+		var forumID, executionNodeID sql.NullString
 		var forum DevelopmentForum
 		if err := rows.Scan(&environment.ID, &environment.OwnerUserID, &environment.OwnerName,
 			&environment.BuildRepositoryID, &environment.BuildRepository, &environment.Status, &environment.ImageID,
 			&environment.SourceSHA, &environment.RuntimeUser, &environment.LastUsedAt, &environment.Error,
+			&executionNodeID,
 			&forumID, &forum.Name, &forum.DiscordID, &forum.RepositoryID, &forum.Repository,
 			&forum.Status, &forum.Branch, &forum.Dirty, &forum.Error); err != nil {
 			return nil, err
 		}
 		index, exists := byID[environment.ID]
 		if !exists {
+			if executionNodeID.Valid {
+				id, parseErr := uuid.Parse(executionNodeID.String)
+				if parseErr != nil {
+					return nil, parseErr
+				}
+				environment.ExecutionNodeID = &id
+			}
 			environment.Forums = []DevelopmentForum{}
 			result = append(result, environment)
 			index = len(result) - 1
@@ -98,20 +108,33 @@ func (m *Manager) DevelopmentEnvironments(ctx context.Context) ([]DevelopmentEnv
 }
 
 func (m *Manager) RebuildDevelopmentEnvironment(ctx context.Context, id uuid.UUID) error {
-	result, err := m.db.ExecContext(ctx, `UPDATE discord_development_environments
-		SET status = 'pending', error = NULL, updated_at = now()
-		WHERE id = $1 AND status <> 'deleting' AND NOT EXISTS (
-			SELECT 1 FROM discord_forums f JOIN discord_conversations c ON c.forum_id = f.id
-			JOIN codex_turn_intents i ON i.discord_conversation_id = c.id
-			WHERE f.development_environment_id = $1
-			AND i.status IN ('dispatching','awaiting_confirmation','running','reconciling'))`, id)
+	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	if count, _ := result.RowsAffected(); count != 1 {
-		return errors.New("开发环境不存在、正在删除或仍有任务运行")
+	defer func() { _ = tx.Rollback() }()
+	var nodeID uuid.UUID
+	err = tx.QueryRowContext(ctx, `UPDATE discord_development_environments
+		SET status = 'building', error = NULL, updated_at = now()
+		WHERE id = $1 AND status <> 'deleting' AND execution_node_id IS NOT NULL
+		AND NOT EXISTS (
+			SELECT 1 FROM discord_forums f JOIN discord_conversations c ON c.forum_id = f.id
+			JOIN codex_turn_intents i ON i.discord_conversation_id = c.id
+			WHERE f.development_environment_id = $1
+			AND i.status IN ('queued','retry_wait','dispatching','awaiting_confirmation','running','reconciling'))
+		RETURNING execution_node_id`, id).Scan(&nodeID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("开发环境不存在、未分配节点、正在删除或仍有任务排队/运行")
+		}
+		return err
 	}
-	return nil
+	_, err = tx.ExecContext(ctx, `INSERT INTO discord_development_operations
+		(environment_id, operation, execution_node_id) VALUES ($1, 'rebuild', $2)`, id, nodeID)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (m *Manager) DevelopmentForumDeletePreflight(ctx context.Context,
@@ -180,7 +203,9 @@ func (m *Manager) DeleteDevelopmentForum(ctx context.Context, forumID uuid.UUID,
 	}
 	var operationID uuid.UUID
 	err = tx.QueryRowContext(ctx, `INSERT INTO discord_development_operations
-		(environment_id, forum_id, operation, requested_by) VALUES ($1, $2, $3, $4) RETURNING id`,
+		(environment_id, forum_id, operation, requested_by, execution_node_id)
+		SELECT $1, $2, $3, $4, execution_node_id FROM discord_development_environments
+		WHERE id = $1 AND execution_node_id IS NOT NULL RETURNING id`,
 		environmentID, forumID, operation, administratorID).Scan(&operationID)
 	if err != nil {
 		return uuid.Nil, err

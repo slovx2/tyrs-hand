@@ -21,6 +21,7 @@ import (
 )
 
 const (
+	NodeBearerScopes    = "nodeBearer.Scopes"
 	SessionCookieScopes = "sessionCookie.Scopes"
 )
 
@@ -68,6 +69,38 @@ const (
 	DiscordPreflightModeIncremental DiscordPreflightMode = "incremental"
 )
 
+// Defines values for EnrollmentTokenExpiresIn.
+const (
+	EnrollmentTokenExpiresInN900 EnrollmentTokenExpiresIn = 900
+)
+
+// Defines values for ExecutionNodeRoles.
+const (
+	ExecutionNodeRolesDiscord ExecutionNodeRoles = "discord"
+	ExecutionNodeRolesGithub  ExecutionNodeRoles = "github"
+)
+
+// Defines values for ExecutionNodeStatus.
+const (
+	Disabled     ExecutionNodeStatus = "disabled"
+	Error        ExecutionNodeStatus = "error"
+	Incompatible ExecutionNodeStatus = "incompatible"
+	Offline      ExecutionNodeStatus = "offline"
+	Online       ExecutionNodeStatus = "online"
+	Pending      ExecutionNodeStatus = "pending"
+)
+
+// Defines values for ExecutionNodeCreatedExpiresIn.
+const (
+	ExecutionNodeCreatedExpiresInN900 ExecutionNodeCreatedExpiresIn = 900
+)
+
+// Defines values for ExecutionNodeInputRoles.
+const (
+	ExecutionNodeInputRolesDiscord ExecutionNodeInputRoles = "discord"
+	ExecutionNodeInputRolesGithub  ExecutionNodeInputRoles = "github"
+)
+
 // Defines values for TriggerRuleInputActorMinPermission.
 const (
 	Admin    TriggerRuleInputActorMinPermission = "admin"
@@ -84,6 +117,29 @@ const (
 	LegacyMention  TriggerRuleInputTriggerKind = "legacy_mention"
 	MentionCommand TriggerRuleInputTriggerKind = "mention_command"
 	SlashCommand   TriggerRuleInputTriggerKind = "slash_command"
+)
+
+// Defines values for WorkerClaimRequestRole.
+const (
+	Discord WorkerClaimRequestRole = "discord"
+	Github  WorkerClaimRequestRole = "github"
+)
+
+// Defines values for WorkerCommandAckAction.
+const (
+	Interrupt WorkerCommandAckAction = "interrupt"
+	Steer     WorkerCommandAckAction = "steer"
+)
+
+// Defines values for WorkerDevelopmentOperationOperation.
+const (
+	Clone             WorkerDevelopmentOperationOperation = "clone"
+	DeleteEnvironment WorkerDevelopmentOperationOperation = "delete_environment"
+	DeleteForum       WorkerDevelopmentOperationOperation = "delete_forum"
+	Provision         WorkerDevelopmentOperationOperation = "provision"
+	Rebuild           WorkerDevelopmentOperationOperation = "rebuild"
+	Start             WorkerDevelopmentOperationOperation = "start"
+	Stop              WorkerDevelopmentOperationOperation = "stop"
 )
 
 // Defines values for PutDiscordForumAccessJSONBodyAccessLevel.
@@ -302,6 +358,62 @@ type DiscordStatus struct {
 	PendingOutbox                   int64      `json:"pendingOutbox"`
 }
 
+// EnrollmentToken defines model for EnrollmentToken.
+type EnrollmentToken struct {
+	EnrollmentToken *string                  `json:"enrollmentToken,omitempty"`
+	ExpiresIn       EnrollmentTokenExpiresIn `json:"expiresIn"`
+}
+
+// EnrollmentTokenExpiresIn defines model for EnrollmentToken.ExpiresIn.
+type EnrollmentTokenExpiresIn int
+
+// ExecutionDefaults defines model for ExecutionDefaults.
+type ExecutionDefaults struct {
+	DiscordNodeId *openapi_types.UUID `json:"discordNodeId"`
+	GithubNodeId  *openapi_types.UUID `json:"githubNodeId"`
+}
+
+// ExecutionNode defines model for ExecutionNode.
+type ExecutionNode struct {
+	Enabled           bool                   `json:"enabled"`
+	HeartbeatAt       *time.Time             `json:"heartbeatAt,omitempty"`
+	Id                openapi_types.UUID     `json:"id"`
+	LastError         *string                `json:"lastError,omitempty"`
+	MaxConcurrentJobs int                    `json:"maxConcurrentJobs"`
+	Metadata          map[string]interface{} `json:"metadata"`
+	Name              string                 `json:"name"`
+	ProtocolVersion   int                    `json:"protocolVersion"`
+	Roles             []ExecutionNodeRoles   `json:"roles"`
+	Status            ExecutionNodeStatus    `json:"status"`
+	WorkerVersion     *string                `json:"workerVersion,omitempty"`
+}
+
+// ExecutionNodeRoles defines model for ExecutionNode.Roles.
+type ExecutionNodeRoles string
+
+// ExecutionNodeStatus defines model for ExecutionNode.Status.
+type ExecutionNodeStatus string
+
+// ExecutionNodeCreated defines model for ExecutionNodeCreated.
+type ExecutionNodeCreated struct {
+	EnrollmentToken *string                       `json:"enrollmentToken,omitempty"`
+	ExpiresIn       ExecutionNodeCreatedExpiresIn `json:"expiresIn"`
+	Node            ExecutionNode                 `json:"node"`
+}
+
+// ExecutionNodeCreatedExpiresIn defines model for ExecutionNodeCreated.ExpiresIn.
+type ExecutionNodeCreatedExpiresIn int
+
+// ExecutionNodeInput defines model for ExecutionNodeInput.
+type ExecutionNodeInput struct {
+	MaxConcurrentJobs int                       `json:"maxConcurrentJobs"`
+	Name              string                    `json:"name"`
+	Roles             []ExecutionNodeInputRoles `json:"roles"`
+}
+
+// ExecutionNodeInputRoles defines model for ExecutionNodeInput.Roles.
+type ExecutionNodeInputRoles string
+
 // GitHubAppInput defines model for GitHubAppInput.
 type GitHubAppInput struct {
 	AppId         int64   `json:"appId"`
@@ -408,8 +520,130 @@ type TriggerRuleInputActorMinPermission string
 // TriggerRuleInputTriggerKind defines model for TriggerRuleInput.TriggerKind.
 type TriggerRuleInputTriggerKind string
 
+// WorkerClaimRequest defines model for WorkerClaimRequest.
+type WorkerClaimRequest struct {
+	Role     WorkerClaimRequestRole `json:"role"`
+	Wait     bool                   `json:"wait"`
+	WorkerId string                 `json:"workerId"`
+}
+
+// WorkerClaimRequestRole defines model for WorkerClaimRequest.Role.
+type WorkerClaimRequestRole string
+
+// WorkerClaimResponse defines model for WorkerClaimResponse.
+type WorkerClaimResponse struct {
+	DevelopmentOperation *WorkerDevelopmentOperation `json:"developmentOperation,omitempty"`
+	Task                 *map[string]interface{}     `json:"task,omitempty"`
+}
+
+// WorkerCommandAck defines model for WorkerCommandAck.
+type WorkerCommandAck struct {
+	Action     WorkerCommandAckAction `json:"action"`
+	CommandId  openapi_types.UUID     `json:"commandId"`
+	LeaseEpoch int64                  `json:"leaseEpoch"`
+	LeaseToken *string                `json:"leaseToken,omitempty"`
+	TurnId     *string                `json:"turnId,omitempty"`
+}
+
+// WorkerCommandAckAction defines model for WorkerCommandAck.Action.
+type WorkerCommandAckAction string
+
+// WorkerCompleteRequest defines model for WorkerCompleteRequest.
+type WorkerCompleteRequest struct {
+	IdempotencyKey string                 `json:"idempotencyKey"`
+	LeaseEpoch     int64                  `json:"leaseEpoch"`
+	LeaseToken     *string                `json:"leaseToken,omitempty"`
+	Result         map[string]interface{} `json:"result"`
+}
+
+// WorkerDevelopmentOperation defines model for WorkerDevelopmentOperation.
+type WorkerDevelopmentOperation struct {
+	ContainerName   string                              `json:"containerName"`
+	ConversationIds *[]openapi_types.UUID               `json:"conversationIds,omitempty"`
+	DataVolume      string                              `json:"dataVolume"`
+	EnvironmentId   openapi_types.UUID                  `json:"environmentId"`
+	ForumId         *openapi_types.UUID                 `json:"forumId,omitempty"`
+	HomeVolume      string                              `json:"homeVolume"`
+	Id              openapi_types.UUID                  `json:"id"`
+	ImageRef        *string                             `json:"imageRef,omitempty"`
+	LeaseEpoch      int64                               `json:"leaseEpoch"`
+	LeaseToken      *string                             `json:"leaseToken,omitempty"`
+	Network         string                              `json:"network"`
+	Operation       WorkerDevelopmentOperationOperation `json:"operation"`
+	Workspace       *string                             `json:"workspace,omitempty"`
+}
+
+// WorkerDevelopmentOperationOperation defines model for WorkerDevelopmentOperation.Operation.
+type WorkerDevelopmentOperationOperation string
+
+// WorkerEnrollRequest defines model for WorkerEnrollRequest.
+type WorkerEnrollRequest struct {
+	Token *string `json:"token,omitempty"`
+}
+
+// WorkerEnrollResponse defines model for WorkerEnrollResponse.
+type WorkerEnrollResponse struct {
+	Credential      *string            `json:"credential,omitempty"`
+	NodeId          openapi_types.UUID `json:"nodeId"`
+	ProtocolVersion int                `json:"protocolVersion"`
+}
+
+// WorkerEvent defines model for WorkerEvent.
+type WorkerEvent struct {
+	Payload  map[string]interface{} `json:"payload"`
+	Sequence int64                  `json:"sequence"`
+	Type     string                 `json:"type"`
+}
+
+// WorkerEventsRequest defines model for WorkerEventsRequest.
+type WorkerEventsRequest struct {
+	Events     []WorkerEvent `json:"events"`
+	LeaseEpoch int64         `json:"leaseEpoch"`
+	LeaseToken *string       `json:"leaseToken,omitempty"`
+}
+
+// WorkerFailRequest defines model for WorkerFailRequest.
+type WorkerFailRequest struct {
+	Code           string  `json:"code"`
+	IdempotencyKey string  `json:"idempotencyKey"`
+	LeaseEpoch     int64   `json:"leaseEpoch"`
+	LeaseToken     *string `json:"leaseToken,omitempty"`
+	Message        string  `json:"message"`
+}
+
+// WorkerHeartbeat defines model for WorkerHeartbeat.
+type WorkerHeartbeat struct {
+	Metadata        *map[string]interface{} `json:"metadata,omitempty"`
+	ProtocolVersion int                     `json:"protocolVersion"`
+	WorkerVersion   string                  `json:"workerVersion"`
+}
+
+// WorkerOperationTerminal defines model for WorkerOperationTerminal.
+type WorkerOperationTerminal struct {
+	Error          *string `json:"error,omitempty"`
+	IdempotencyKey string  `json:"idempotencyKey"`
+	LeaseEpoch     int64   `json:"leaseEpoch"`
+	LeaseToken     *string `json:"leaseToken,omitempty"`
+}
+
+// WorkerRunLease defines model for WorkerRunLease.
+type WorkerRunLease struct {
+	LeaseEpoch int64   `json:"leaseEpoch"`
+	LeaseToken *string `json:"leaseToken,omitempty"`
+}
+
+// WorkerRuntimeCredential defines model for WorkerRuntimeCredential.
+type WorkerRuntimeCredential struct {
+	ApiKey   *string `json:"apiKey,omitempty"`
+	BaseUrl  *string `json:"baseUrl,omitempty"`
+	ProxyUrl *string `json:"proxyUrl,omitempty"`
+}
+
 // CSRFToken defines model for CSRFToken.
 type CSRFToken = string
+
+// WorkerResourceID defines model for WorkerResourceID.
+type WorkerResourceID = openapi_types.UUID
 
 // Problem defines model for Problem.
 type Problem = ProblemDetails
@@ -502,6 +736,31 @@ type CreateDiscordMemberForumParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
+// CreateExecutionNodeParams defines parameters for CreateExecutionNode.
+type CreateExecutionNodeParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// DeleteExecutionNodeParams defines parameters for DeleteExecutionNode.
+type DeleteExecutionNodeParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// SetExecutionNodeEnabledJSONBody defines parameters for SetExecutionNodeEnabled.
+type SetExecutionNodeEnabledJSONBody struct {
+	Enabled bool `json:"enabled"`
+}
+
+// SetExecutionNodeEnabledParams defines parameters for SetExecutionNodeEnabled.
+type SetExecutionNodeEnabledParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// CreateExecutionNodeEnrollmentParams defines parameters for CreateExecutionNodeEnrollment.
+type CreateExecutionNodeEnrollmentParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
 // PutGitHubAppParams defines parameters for PutGitHubApp.
 type PutGitHubAppParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
@@ -540,6 +799,11 @@ type PutDiscordSettingsParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
+// PutExecutionDefaultsParams defines parameters for PutExecutionDefaults.
+type PutExecutionDefaultsParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
 // CreateTriggerRuleParams defines parameters for CreateTriggerRule.
 type CreateTriggerRuleParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
@@ -554,6 +818,36 @@ type ReceiveGitHubWebhookParams struct {
 	XGitHubDelivery  string `json:"X-GitHub-Delivery"`
 	XGitHubEvent     string `json:"X-GitHub-Event"`
 }
+
+// DownloadWorkerAttachmentParams defines parameters for DownloadWorkerAttachment.
+type DownloadWorkerAttachmentParams struct {
+	XRunLeaseToken string `json:"X-Run-Lease-Token"`
+	XRunLeaseEpoch int64  `json:"X-Run-Lease-Epoch"`
+}
+
+// ConfirmWorkerRunTurnJSONBody defines parameters for ConfirmWorkerRunTurn.
+type ConfirmWorkerRunTurnJSONBody map[string]interface{}
+
+// UpdateWorkerDevelopmentStateJSONBody defines parameters for UpdateWorkerDevelopmentState.
+type UpdateWorkerDevelopmentStateJSONBody map[string]interface{}
+
+// SetWorkerDiscordTitleJSONBody defines parameters for SetWorkerDiscordTitle.
+type SetWorkerDiscordTitleJSONBody map[string]interface{}
+
+// GetWorkerGitCredentialJSONBody defines parameters for GetWorkerGitCredential.
+type GetWorkerGitCredentialJSONBody map[string]interface{}
+
+// RecordWorkerRunSubmissionJSONBody defines parameters for RecordWorkerRunSubmission.
+type RecordWorkerRunSubmissionJSONBody map[string]interface{}
+
+// SetWorkerRunThreadJSONBody defines parameters for SetWorkerRunThread.
+type SetWorkerRunThreadJSONBody map[string]interface{}
+
+// CallWorkerDynamicToolJSONBody defines parameters for CallWorkerDynamicTool.
+type CallWorkerDynamicToolJSONBody map[string]interface{}
+
+// UpdateWorkerWorkspaceStateJSONBody defines parameters for UpdateWorkerWorkspaceState.
+type UpdateWorkerWorkspaceStateJSONBody map[string]interface{}
 
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
@@ -579,6 +873,12 @@ type PreflightDiscordInitializationJSONRequestBody = DiscordInitializationInput
 // CreateDiscordMemberForumJSONRequestBody defines body for CreateDiscordMemberForum for application/json ContentType.
 type CreateDiscordMemberForumJSONRequestBody CreateDiscordMemberForumJSONBody
 
+// CreateExecutionNodeJSONRequestBody defines body for CreateExecutionNode for application/json ContentType.
+type CreateExecutionNodeJSONRequestBody = ExecutionNodeInput
+
+// SetExecutionNodeEnabledJSONRequestBody defines body for SetExecutionNodeEnabled for application/json ContentType.
+type SetExecutionNodeEnabledJSONRequestBody SetExecutionNodeEnabledJSONBody
+
 // PutGitHubAppJSONRequestBody defines body for PutGitHubApp for application/json ContentType.
 type PutGitHubAppJSONRequestBody = GitHubAppInput
 
@@ -600,6 +900,9 @@ type PutRepositoryCodexSettingsJSONRequestBody = CodexPreferences
 // PutDiscordSettingsJSONRequestBody defines body for PutDiscordSettings for application/json ContentType.
 type PutDiscordSettingsJSONRequestBody = DiscordSettingsInput
 
+// PutExecutionDefaultsJSONRequestBody defines body for PutExecutionDefaults for application/json ContentType.
+type PutExecutionDefaultsJSONRequestBody = ExecutionDefaults
+
 // SetupAdministratorJSONRequestBody defines body for SetupAdministrator for application/json ContentType.
 type SetupAdministratorJSONRequestBody = SetupRequest
 
@@ -608,6 +911,66 @@ type CreateTriggerRuleJSONRequestBody = TriggerRuleInput
 
 // ReceiveGitHubWebhookJSONRequestBody defines body for ReceiveGitHubWebhook for application/json ContentType.
 type ReceiveGitHubWebhookJSONRequestBody ReceiveGitHubWebhookJSONBody
+
+// ClaimWorkerTaskJSONRequestBody defines body for ClaimWorkerTask for application/json ContentType.
+type ClaimWorkerTaskJSONRequestBody = WorkerClaimRequest
+
+// CompleteWorkerDevelopmentOperationJSONRequestBody defines body for CompleteWorkerDevelopmentOperation for application/json ContentType.
+type CompleteWorkerDevelopmentOperationJSONRequestBody = WorkerOperationTerminal
+
+// FailWorkerDevelopmentOperationJSONRequestBody defines body for FailWorkerDevelopmentOperation for application/json ContentType.
+type FailWorkerDevelopmentOperationJSONRequestBody = WorkerOperationTerminal
+
+// HeartbeatWorkerDevelopmentOperationJSONRequestBody defines body for HeartbeatWorkerDevelopmentOperation for application/json ContentType.
+type HeartbeatWorkerDevelopmentOperationJSONRequestBody = WorkerRunLease
+
+// EnrollWorkerJSONRequestBody defines body for EnrollWorker for application/json ContentType.
+type EnrollWorkerJSONRequestBody = WorkerEnrollRequest
+
+// HeartbeatWorkerJSONRequestBody defines body for HeartbeatWorker for application/json ContentType.
+type HeartbeatWorkerJSONRequestBody = WorkerHeartbeat
+
+// AcknowledgeWorkerRunCommandJSONRequestBody defines body for AcknowledgeWorkerRunCommand for application/json ContentType.
+type AcknowledgeWorkerRunCommandJSONRequestBody = WorkerCommandAck
+
+// CompleteWorkerRunJSONRequestBody defines body for CompleteWorkerRun for application/json ContentType.
+type CompleteWorkerRunJSONRequestBody = WorkerCompleteRequest
+
+// ConfirmWorkerRunTurnJSONRequestBody defines body for ConfirmWorkerRunTurn for application/json ContentType.
+type ConfirmWorkerRunTurnJSONRequestBody ConfirmWorkerRunTurnJSONBody
+
+// UpdateWorkerDevelopmentStateJSONRequestBody defines body for UpdateWorkerDevelopmentState for application/json ContentType.
+type UpdateWorkerDevelopmentStateJSONRequestBody UpdateWorkerDevelopmentStateJSONBody
+
+// SetWorkerDiscordTitleJSONRequestBody defines body for SetWorkerDiscordTitle for application/json ContentType.
+type SetWorkerDiscordTitleJSONRequestBody SetWorkerDiscordTitleJSONBody
+
+// AppendWorkerRunEventsJSONRequestBody defines body for AppendWorkerRunEvents for application/json ContentType.
+type AppendWorkerRunEventsJSONRequestBody = WorkerEventsRequest
+
+// FailWorkerRunJSONRequestBody defines body for FailWorkerRun for application/json ContentType.
+type FailWorkerRunJSONRequestBody = WorkerFailRequest
+
+// GetWorkerGitCredentialJSONRequestBody defines body for GetWorkerGitCredential for application/json ContentType.
+type GetWorkerGitCredentialJSONRequestBody GetWorkerGitCredentialJSONBody
+
+// HeartbeatWorkerRunJSONRequestBody defines body for HeartbeatWorkerRun for application/json ContentType.
+type HeartbeatWorkerRunJSONRequestBody = WorkerRunLease
+
+// GetWorkerRuntimeCredentialJSONRequestBody defines body for GetWorkerRuntimeCredential for application/json ContentType.
+type GetWorkerRuntimeCredentialJSONRequestBody = WorkerRunLease
+
+// RecordWorkerRunSubmissionJSONRequestBody defines body for RecordWorkerRunSubmission for application/json ContentType.
+type RecordWorkerRunSubmissionJSONRequestBody RecordWorkerRunSubmissionJSONBody
+
+// SetWorkerRunThreadJSONRequestBody defines body for SetWorkerRunThread for application/json ContentType.
+type SetWorkerRunThreadJSONRequestBody SetWorkerRunThreadJSONBody
+
+// CallWorkerDynamicToolJSONRequestBody defines body for CallWorkerDynamicTool for application/json ContentType.
+type CallWorkerDynamicToolJSONRequestBody CallWorkerDynamicToolJSONBody
+
+// UpdateWorkerWorkspaceStateJSONRequestBody defines body for UpdateWorkerWorkspaceState for application/json ContentType.
+type UpdateWorkerWorkspaceStateJSONRequestBody UpdateWorkerWorkspaceStateJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -678,6 +1041,21 @@ type ServerInterface interface {
 	// (GET /events/stream)
 	StreamEvents(c *gin.Context)
 
+	// (GET /execution-nodes)
+	ListExecutionNodes(c *gin.Context)
+
+	// (POST /execution-nodes)
+	CreateExecutionNode(c *gin.Context, params CreateExecutionNodeParams)
+
+	// (DELETE /execution-nodes/{id})
+	DeleteExecutionNode(c *gin.Context, id openapi_types.UUID, params DeleteExecutionNodeParams)
+
+	// (PUT /execution-nodes/{id}/enabled)
+	SetExecutionNodeEnabled(c *gin.Context, id openapi_types.UUID, params SetExecutionNodeEnabledParams)
+
+	// (POST /execution-nodes/{id}/enrollments)
+	CreateExecutionNodeEnrollment(c *gin.Context, id openapi_types.UUID, params CreateExecutionNodeEnrollmentParams)
+
 	// (GET /github/app)
 	GetGitHubApp(c *gin.Context)
 
@@ -729,6 +1107,12 @@ type ServerInterface interface {
 	// (PUT /settings/discord)
 	PutDiscordSettings(c *gin.Context, params PutDiscordSettingsParams)
 
+	// (GET /settings/execution)
+	GetExecutionDefaults(c *gin.Context)
+
+	// (PUT /settings/execution)
+	PutExecutionDefaults(c *gin.Context, params PutExecutionDefaultsParams)
+
 	// (POST /setup/admin)
 	SetupAdministrator(c *gin.Context)
 
@@ -752,6 +1136,69 @@ type ServerInterface interface {
 
 	// (GET /work-items)
 	GetWorkItems(c *gin.Context)
+
+	// (POST /worker/v1/claims)
+	ClaimWorkerTask(c *gin.Context)
+
+	// (POST /worker/v1/development-operations/{id}/complete)
+	CompleteWorkerDevelopmentOperation(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/development-operations/{id}/fail)
+	FailWorkerDevelopmentOperation(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/development-operations/{id}/heartbeat)
+	HeartbeatWorkerDevelopmentOperation(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/enroll)
+	EnrollWorker(c *gin.Context)
+
+	// (POST /worker/v1/heartbeat)
+	HeartbeatWorker(c *gin.Context)
+
+	// (GET /worker/v1/runs/{id}/attachments/{attachmentId})
+	DownloadWorkerAttachment(c *gin.Context, id WorkerResourceID, attachmentId openapi_types.UUID, params DownloadWorkerAttachmentParams)
+
+	// (POST /worker/v1/runs/{id}/commands/ack)
+	AcknowledgeWorkerRunCommand(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/complete)
+	CompleteWorkerRun(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/confirm)
+	ConfirmWorkerRunTurn(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/development-state)
+	UpdateWorkerDevelopmentState(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/discord-title)
+	SetWorkerDiscordTitle(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/events)
+	AppendWorkerRunEvents(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/fail)
+	FailWorkerRun(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/git-credential)
+	GetWorkerGitCredential(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/heartbeat)
+	HeartbeatWorkerRun(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/runtime-credential)
+	GetWorkerRuntimeCredential(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/submission)
+	RecordWorkerRunSubmission(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/thread)
+	SetWorkerRunThread(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/tools/call)
+	CallWorkerDynamicTool(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/workspace-state)
+	UpdateWorkerWorkspaceState(c *gin.Context, id WorkerResourceID)
 
 	// (GET /workers)
 	GetWorkers(c *gin.Context)
@@ -1505,6 +1952,224 @@ func (siw *ServerInterfaceWrapper) StreamEvents(c *gin.Context) {
 	siw.Handler.StreamEvents(c)
 }
 
+// ListExecutionNodes operation middleware
+func (siw *ServerInterfaceWrapper) ListExecutionNodes(c *gin.Context) {
+
+	c.Set(SessionCookieScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListExecutionNodes(c)
+}
+
+// CreateExecutionNode operation middleware
+func (siw *ServerInterfaceWrapper) CreateExecutionNode(c *gin.Context) {
+
+	var err error
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateExecutionNodeParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateExecutionNode(c, params)
+}
+
+// DeleteExecutionNode operation middleware
+func (siw *ServerInterfaceWrapper) DeleteExecutionNode(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteExecutionNodeParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteExecutionNode(c, id, params)
+}
+
+// SetExecutionNodeEnabled operation middleware
+func (siw *ServerInterfaceWrapper) SetExecutionNodeEnabled(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SetExecutionNodeEnabledParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.SetExecutionNodeEnabled(c, id, params)
+}
+
+// CreateExecutionNodeEnrollment operation middleware
+func (siw *ServerInterfaceWrapper) CreateExecutionNodeEnrollment(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateExecutionNodeEnrollmentParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateExecutionNodeEnrollment(c, id, params)
+}
+
 // GetGitHubApp operation middleware
 func (siw *ServerInterfaceWrapper) GetGitHubApp(c *gin.Context) {
 
@@ -1970,6 +2635,65 @@ func (siw *ServerInterfaceWrapper) PutDiscordSettings(c *gin.Context) {
 	siw.Handler.PutDiscordSettings(c, params)
 }
 
+// GetExecutionDefaults operation middleware
+func (siw *ServerInterfaceWrapper) GetExecutionDefaults(c *gin.Context) {
+
+	c.Set(SessionCookieScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetExecutionDefaults(c)
+}
+
+// PutExecutionDefaults operation middleware
+func (siw *ServerInterfaceWrapper) PutExecutionDefaults(c *gin.Context) {
+
+	var err error
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutExecutionDefaultsParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PutExecutionDefaults(c, params)
+}
+
 // SetupAdministrator operation middleware
 func (siw *ServerInterfaceWrapper) SetupAdministrator(c *gin.Context) {
 
@@ -2186,6 +2910,575 @@ func (siw *ServerInterfaceWrapper) GetWorkItems(c *gin.Context) {
 	siw.Handler.GetWorkItems(c)
 }
 
+// ClaimWorkerTask operation middleware
+func (siw *ServerInterfaceWrapper) ClaimWorkerTask(c *gin.Context) {
+
+	c.Set(NodeBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClaimWorkerTask(c)
+}
+
+// CompleteWorkerDevelopmentOperation operation middleware
+func (siw *ServerInterfaceWrapper) CompleteWorkerDevelopmentOperation(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(NodeBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CompleteWorkerDevelopmentOperation(c, id)
+}
+
+// FailWorkerDevelopmentOperation operation middleware
+func (siw *ServerInterfaceWrapper) FailWorkerDevelopmentOperation(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(NodeBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.FailWorkerDevelopmentOperation(c, id)
+}
+
+// HeartbeatWorkerDevelopmentOperation operation middleware
+func (siw *ServerInterfaceWrapper) HeartbeatWorkerDevelopmentOperation(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(NodeBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.HeartbeatWorkerDevelopmentOperation(c, id)
+}
+
+// EnrollWorker operation middleware
+func (siw *ServerInterfaceWrapper) EnrollWorker(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.EnrollWorker(c)
+}
+
+// HeartbeatWorker operation middleware
+func (siw *ServerInterfaceWrapper) HeartbeatWorker(c *gin.Context) {
+
+	c.Set(NodeBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.HeartbeatWorker(c)
+}
+
+// DownloadWorkerAttachment operation middleware
+func (siw *ServerInterfaceWrapper) DownloadWorkerAttachment(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "attachmentId" -------------
+	var attachmentId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "attachmentId", c.Param("attachmentId"), &attachmentId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter attachmentId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(NodeBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DownloadWorkerAttachmentParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Run-Lease-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Run-Lease-Token")]; found {
+		var XRunLeaseToken string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Run-Lease-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Run-Lease-Token", valueList[0], &XRunLeaseToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Run-Lease-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XRunLeaseToken = XRunLeaseToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Run-Lease-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Required header parameter "X-Run-Lease-Epoch" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Run-Lease-Epoch")]; found {
+		var XRunLeaseEpoch int64
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Run-Lease-Epoch, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Run-Lease-Epoch", valueList[0], &XRunLeaseEpoch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Run-Lease-Epoch: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XRunLeaseEpoch = XRunLeaseEpoch
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Run-Lease-Epoch is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DownloadWorkerAttachment(c, id, attachmentId, params)
+}
+
+// AcknowledgeWorkerRunCommand operation middleware
+func (siw *ServerInterfaceWrapper) AcknowledgeWorkerRunCommand(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(NodeBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.AcknowledgeWorkerRunCommand(c, id)
+}
+
+// CompleteWorkerRun operation middleware
+func (siw *ServerInterfaceWrapper) CompleteWorkerRun(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(NodeBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CompleteWorkerRun(c, id)
+}
+
+// ConfirmWorkerRunTurn operation middleware
+func (siw *ServerInterfaceWrapper) ConfirmWorkerRunTurn(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(NodeBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ConfirmWorkerRunTurn(c, id)
+}
+
+// UpdateWorkerDevelopmentState operation middleware
+func (siw *ServerInterfaceWrapper) UpdateWorkerDevelopmentState(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(NodeBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateWorkerDevelopmentState(c, id)
+}
+
+// SetWorkerDiscordTitle operation middleware
+func (siw *ServerInterfaceWrapper) SetWorkerDiscordTitle(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(NodeBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.SetWorkerDiscordTitle(c, id)
+}
+
+// AppendWorkerRunEvents operation middleware
+func (siw *ServerInterfaceWrapper) AppendWorkerRunEvents(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(NodeBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.AppendWorkerRunEvents(c, id)
+}
+
+// FailWorkerRun operation middleware
+func (siw *ServerInterfaceWrapper) FailWorkerRun(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(NodeBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.FailWorkerRun(c, id)
+}
+
+// GetWorkerGitCredential operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkerGitCredential(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(NodeBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetWorkerGitCredential(c, id)
+}
+
+// HeartbeatWorkerRun operation middleware
+func (siw *ServerInterfaceWrapper) HeartbeatWorkerRun(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(NodeBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.HeartbeatWorkerRun(c, id)
+}
+
+// GetWorkerRuntimeCredential operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkerRuntimeCredential(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(NodeBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetWorkerRuntimeCredential(c, id)
+}
+
+// RecordWorkerRunSubmission operation middleware
+func (siw *ServerInterfaceWrapper) RecordWorkerRunSubmission(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(NodeBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.RecordWorkerRunSubmission(c, id)
+}
+
+// SetWorkerRunThread operation middleware
+func (siw *ServerInterfaceWrapper) SetWorkerRunThread(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(NodeBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.SetWorkerRunThread(c, id)
+}
+
+// CallWorkerDynamicTool operation middleware
+func (siw *ServerInterfaceWrapper) CallWorkerDynamicTool(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(NodeBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CallWorkerDynamicTool(c, id)
+}
+
+// UpdateWorkerWorkspaceState operation middleware
+func (siw *ServerInterfaceWrapper) UpdateWorkerWorkspaceState(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(NodeBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateWorkerWorkspaceState(c, id)
+}
+
 // GetWorkers operation middleware
 func (siw *ServerInterfaceWrapper) GetWorkers(c *gin.Context) {
 
@@ -2265,6 +3558,11 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/discord/members/:id/forum", wrapper.CreateDiscordMemberForum)
 	router.GET(options.BaseURL+"/discord/status", wrapper.GetDiscordStatus)
 	router.GET(options.BaseURL+"/events/stream", wrapper.StreamEvents)
+	router.GET(options.BaseURL+"/execution-nodes", wrapper.ListExecutionNodes)
+	router.POST(options.BaseURL+"/execution-nodes", wrapper.CreateExecutionNode)
+	router.DELETE(options.BaseURL+"/execution-nodes/:id", wrapper.DeleteExecutionNode)
+	router.PUT(options.BaseURL+"/execution-nodes/:id/enabled", wrapper.SetExecutionNodeEnabled)
+	router.POST(options.BaseURL+"/execution-nodes/:id/enrollments", wrapper.CreateExecutionNodeEnrollment)
 	router.GET(options.BaseURL+"/github/app", wrapper.GetGitHubApp)
 	router.PUT(options.BaseURL+"/github/app", wrapper.PutGitHubApp)
 	router.GET(options.BaseURL+"/github/app/manifest", wrapper.GetGitHubAppManifest)
@@ -2282,6 +3580,8 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.PUT(options.BaseURL+"/settings/codex/repositories/:id", wrapper.PutRepositoryCodexSettings)
 	router.GET(options.BaseURL+"/settings/discord", wrapper.GetDiscordSettings)
 	router.PUT(options.BaseURL+"/settings/discord", wrapper.PutDiscordSettings)
+	router.GET(options.BaseURL+"/settings/execution", wrapper.GetExecutionDefaults)
+	router.PUT(options.BaseURL+"/settings/execution", wrapper.PutExecutionDefaults)
 	router.POST(options.BaseURL+"/setup/admin", wrapper.SetupAdministrator)
 	router.GET(options.BaseURL+"/setup/status", wrapper.GetSetupStatus)
 	router.GET(options.BaseURL+"/system/status", wrapper.GetSystemStatus)
@@ -2290,6 +3590,27 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/trigger-rules", wrapper.CreateTriggerRule)
 	router.POST(options.BaseURL+"/webhooks/github", wrapper.ReceiveGitHubWebhook)
 	router.GET(options.BaseURL+"/work-items", wrapper.GetWorkItems)
+	router.POST(options.BaseURL+"/worker/v1/claims", wrapper.ClaimWorkerTask)
+	router.POST(options.BaseURL+"/worker/v1/development-operations/:id/complete", wrapper.CompleteWorkerDevelopmentOperation)
+	router.POST(options.BaseURL+"/worker/v1/development-operations/:id/fail", wrapper.FailWorkerDevelopmentOperation)
+	router.POST(options.BaseURL+"/worker/v1/development-operations/:id/heartbeat", wrapper.HeartbeatWorkerDevelopmentOperation)
+	router.POST(options.BaseURL+"/worker/v1/enroll", wrapper.EnrollWorker)
+	router.POST(options.BaseURL+"/worker/v1/heartbeat", wrapper.HeartbeatWorker)
+	router.GET(options.BaseURL+"/worker/v1/runs/:id/attachments/:attachmentId", wrapper.DownloadWorkerAttachment)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/commands/ack", wrapper.AcknowledgeWorkerRunCommand)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/complete", wrapper.CompleteWorkerRun)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/confirm", wrapper.ConfirmWorkerRunTurn)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/development-state", wrapper.UpdateWorkerDevelopmentState)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/discord-title", wrapper.SetWorkerDiscordTitle)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/events", wrapper.AppendWorkerRunEvents)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/fail", wrapper.FailWorkerRun)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/git-credential", wrapper.GetWorkerGitCredential)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/heartbeat", wrapper.HeartbeatWorkerRun)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/runtime-credential", wrapper.GetWorkerRuntimeCredential)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/submission", wrapper.RecordWorkerRunSubmission)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/thread", wrapper.SetWorkerRunThread)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/tools/call", wrapper.CallWorkerDynamicTool)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/workspace-state", wrapper.UpdateWorkerWorkspaceState)
 	router.GET(options.BaseURL+"/workers", wrapper.GetWorkers)
 	router.GET(options.BaseURL+"/worktrees", wrapper.GetWorktrees)
 }
@@ -2297,79 +3618,110 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/+xd/3Mct3X/V262/qnZy1GyrNb8jaZkhY1UaUSp6YyG9eB2cXcwd4ENFkvyquEMnbq1",
-	"0kiKVEWa2LJjy3HrdiZVPG4TM6Yd/THmHcmf+i90FtgvwC6wt0veUWyZnyQesHh4n/fw8N7Dw+5tyyF+",
-	"QDDELLTmb1sBoMCHDFL+1+Ly9TdvkFWI4z8QtuatAQQupJZtYeBDa97623bcpy062RaFP44Qha41z2gE",
-	"bSt0BtAH8dNsGMT9Q0YR7lubm5u2FQA2WGLQF6QoBAxeghhS5BRncuu29QqFPWve+rNOPt9O3qWTz3Rz",
-	"RUwDhuwN4g7joRyCGcQs/i8IAg85gCGCO2+HhDOWTxK4LoqbgHeNkgBShmCYspIwQLpvQ4cJBlRu+Q9h",
-	"QHAIOUdn5840Iq7jULSGnaUL12FIIupAQdmFoUNREI9kzVujr74c3Xk62vna4k09EHnMNGI2xc41Sroe",
-	"9K14PAb6McxWSiW0VjZt6zIK2UIfYnaNkh7yBFsxLpyFJdeat7xSF7up5CIaEmpt2hN7XkY+Yol8FZzn",
-	"JjObMhazNAuUIhexy6RvQihrPpXoLOGQAc/jmBgQUrucSpT+inQN4PCWU4nJdRiQReAMTKZHaj+1+ISI",
-	"EYqqEMp6nEqMbgwoBK4BnrTxdCJDUb8P6fXIuLUrPU4lRj8idDVzUssA5c2nFp0kVtBjEzeeWmQYhbAC",
-	"G9F8ytApRklpf3OkFIge32sWMSXjXoAMIC/URU3X31xsvX7utb9oJV1bed80cOUzXHB9hFHIKGCE8shU",
-	"ig1vW05Ie1mMXIhybQtuBIjCcIFz1SPUB8yat1zAYJshH1p2+RHkKn2jCLm6blEIqQjCy8G1HJresvjz",
-	"WXdbmrE8v5VSiGtbaWS3hlxIlyFjCIsQR4WgC0J4k3rqtCnSzdohuIf6y6iPAYson3y8AV/F3rAQaBef",
-	"iTg3Ga9dQjwIcNzuExd6WvSDZOo3eMNtC+LIjxFx4RpyYNshbowHCFB7FQ4lBJQRNoY1eaMQhAQj3L/Y",
-	"6xHKtDMKIY1J30CQThacMn0Fh9rCWsJBJFaU513tGe1Lumr0Ao9tjSpxEKAfwmGZA9tap4jBXJzcDKgz",
-	"jS3kInHhxsVeDzoMrcFrFPYghdiBGuUyS/cQeKcKEDKAXUDjhdEDIdOIviAKMYsyTZWCTiyc1TcJjXzz",
-	"AoIpEpOsmhm3+obDYDRsi6xjSC+g0CHUvRlCuuQaIM3ZmDhXZYo6u5TYJA1tiZItIWTEuJ4W+WDjMsR9",
-	"NrDmz5z9S9vCkeeBrgeN1kejZakWeWTdsi0fuijyLdsaoP7Asq0N/u9KjaHrK+eEoTZNmGTR33DWyteL",
-	"NZyPh1JveeJY6qrImQCUguHUNPoYlFjQyZRZq7cZREYFTpHgPldJTBms9fHVSF8DMl8aV4MsOZeNXwJN",
-	"fbIIRBIFKcPpeE1W+SLBPQ85Gk6N4hRLcfK+mYgh6V4xhwtwDXok8CFmF6AHGVdqD/UHmlmBbI2UPRC+",
-	"M8dKiojeDXT56OFFvIYowX7i5ZYHchFlQ30T156lmr4hDqJwoPeXClilw6a0pYftlGft/Atc10O5AEDB",
-	"jYyQ5+Y6qwWy0KcmHvypZR6DLA+A3lGnlOhNRUPLVmaam7kjmDfkgz40bMYeCNnNELpNAoya+zzv9tfG",
-	"tRjhePz4eb2BZYBFYc3gRLv75/R1Yi/9ZmU0FVQqza5JVmXVpAA7A/3SNi9ZVwxvwNescUfd9mj1GqJN",
-	"l08jWSbGN+e9QFCZniSzBOIU0ApxLWHEEPDQ32f2thCR86PkRkvCLIt+rGUGCdaUU7wjGsJTabepYVPy",
-	"3alKKLYVBW4zAHRyTBlP5i9JKp+2LWEtk60tvCw8LUhw0n6aQpq6zAg7FMbrF8RBWo/CcFAvpqua6hXo",
-	"d6Em49MlEXYrV3yFVXVRGHhgaLSrfcQGUfcy6SPcWB/rp4Ry4boFqyvlieSp2gnXFXBV+E7OAGAMvUUS",
-	"KY4Pwgz2IU09qNgbbLzPZm6kZn8VytnIqc1cnWYPVUnFR2GIcP8apPx/Db3sw+q6bYWgZ3BXxUI9irNf",
-	"Mg4p1PngOZKydLVw2KqCJFOvUDVzMCsljg3i6BJWsTwd4vsRRmx4EcfxtmGZw6rGKl1gZBXixcp8phHp",
-	"lKhmkuWBa4BnsL0lBAPAGKTYmrf+7tZc+/WVP39F62ITZsiCl3OCBSHUI1AX8+Jo33tl4n5XxrgKvmzf",
-	"1exZFVnqyvn3APKgezViXbKhbNoIs/PncgYki9kHDK6D4UWz5yI6LJv9hNhNviR6NXGWAohdhPvqTn41",
-	"PeIKa84/GaUBzwWpSYDLi0Nlu0inAPVkZnSacAmxH0TdhSAwL6GCZ52y5COM/NiMn9FBAoJg2Yv6esPk",
-	"IYiZyWrxxmXoUMjqLcCAojXAYM0kvm2tw+6AkNX6JArCEpDkLCozKA5fiblp/ZlBnybQTUz3hPMaqaaz",
-	"nOyrE1mUvXYdGe5KXhcFsWVCAQjDdUJNuxULdCb19vnNV452JCl5mdkMEnoVPITJCfSMD2APxUb9Q9XC",
-	"yXSJH5c36ANOHDKAhcLIp5HtLEGtP5fkwjcd52TryQcbwji99vrrkqk6NzenW0MMMQ9WeI71Z1gAlYnT",
-	"TjF+Nj8dklJCyGCIHSf2KM3RVNIhPR/Oqhysq7QPcJph0J1JewTXPfNORn3DnENCUvXrxY14rQGvtjE7",
-	"xOlHnoFpSK1ocvTztlXgDfRKxyYqThLGOtkvQxYFtcyadOJ39rXzXLHzE0DtqRyLgsygyL3PTzAWEqXz",
-	"5xRCr05SeomorbWOFRjozSIvHojjK4T7NymqV8DgkDVIh4vEbRoAx6bb5ByUFnje1y5NszgLI98mP0Ak",
-	"UBYneONhqj6o3l6u9rfLVHTzlKonjQbKmOICDiP0CsJ5oKxaKEYR6EPu+oq8AIWAb6Lp79wji31OgDAD",
-	"fB0C10dYmywA0h2Omllh4HlkHbo3CPGaplgA7kNKonDBYc3zIZWBFFyDmKXJNXntahjoIS+96NTg4o+w",
-	"1jTKJDeBisY48MKDCY8FFBGKxMlCJvQz+q24eUJ/FXlNhcaEMv8QidxnqnUccH7k0uUFMqEHwsFbDvF9",
-	"gHl+COIYKOkXD/aBM3wradBqY0Lrb4AXJfuyXLh3OSbVGj24N77zZHf73mj738ZPPhx/9MneB++OHn67",
-	"u/PZ6MG9//nmKZ/Zd1vvFGbQ2t2+31Ln0Np7/P7ef3z93dZPJjonhaOMwrLJtrJcDVXgVOUp2wxumZwo",
-	"FvyyM4C+sBIh5Ot/kZBVBLOreI74M7uKx4Y0fGsAsPtW0j9nJinX4kWQCPdIPIaHHIhDMZwb49DjZSjW",
-	"laUb+ZjxH7mvx0m0YxKtKwCDPs9CthauLVm2tQapsFHW3PfPfH+O+x8BxCBA1rz1Kv9J3PjjHHU4cO1A",
-	"ulfWh8ZjkOyiYOey5rqZWlx7CZY6SPWmOPK8eHGRsAYx9UpikdA1Ek6ktGlbHRC5iLW95G5YfS6lK2Nl",
-	"DqVGPU026Hip15tyqw6T+2aHuytZlZtXYs5aVyXnpk2bO0Waqt+993dG3z7e/eaD/d9+dOjC5nSNWvO3",
-	"VvIy54WIDUSFcyYAkmz6JgnE7fYRr7oqOJ4rm8vRV18ebG2N3jv67dAig2JjS1S6pKSLEaUQM7V8eoaC",
-	"Vwnprsl++2j003t7z5/tPfin0cNfThOO5BSt4+aVBG2Y17qERpzipV5ZJhMeFbJDFq3IlTrl06AStgeP",
-	"X4w//Hj0zdbo5w/37v929Ok/HBneZE41Ee7cRu5mh0JeFWJec9dFh2p+SyuS77exfc53RuRWXnefmLo7",
-	"2jI/q13m40/e23/+xe7217vbPxv/5tn+iwf7z+6Ofnrv4L1707gcPlkgotRGiEKc/pklIQruTBU4J1IE",
-	"h9soG5U26FLI5hK7Ojvr2eN6CcGdTw7e/yzWwvv/cvDLj1+KtrWVihqtwc2qFAyax9VSOM8z18CVGe6G",
-	"kytcjTI8+PTd8a+3ZiTAVGhJ3elmBzgODMPObZ9X2yy5m8K0pcajwmhweS3wx4/DiRLgTBGWOhqWl+ce",
-	"ydBpRk7xbvTWlhXbSvJYhVUVsRkIZRr2VqjX5XgZyGkLCoFLsDfMoitCJxeMyWMdzhjrNWv89L/HT76Y",
-	"0YITmcpON8nb6DfjZQZoKkFx0vqGSFe8fAFOLqkzF9zUrHo7nCznjsBUVOfkqHjYSE1apyrU7vbW+DfP",
-	"xluf7+08HD3/4ODRH8f3/3X2ytVxgOd1gbNq3HoXiR9I5rtKz7i9+nEEeYlwYrBCBhhsZK1s/UDJtc9G",
-	"Vk8n+0JigaM9en53fOfBlBMLldhHuHpp3+TtCuYnYl0nri08dCXtkZe9Lc1hmuZ8//Nf7+08nNGKQ0qh",
-	"UmiWu8he6kvmX478a7iruurwExblfDT6/Geju09mHegU5NxRIhu9xIuhzf97oU89WqoMjg6e/n73xfPx",
-	"L/4g4qO9nUfjX314TNKPY9yqXGtNif+fDGELTFUtyr1//v14650ZyUQETLVSuVeSrseYuk0uq9RI1SYP",
-	"tMZ3HkwjC14JlkjO9LJLdZN3KsHH1JKAJyPpV+Om3tIhKj6Vp092dpALtCXeUjrrrTOvaJxgLrMa8Vmb",
-	"sIRQxWIUufqZ2C9eixB2QkYh8I2oLPPmi2v1jpwY3GBi4HY+buXLflW2lyFdg7S9DDFrJTQrXhiVhjog",
-	"CKqkmpWIz1KixTp0DXOiS2shCFqpQCXekhCMp/8MqTSZkZPmsxXuPhwhTNp98dHoP4++/2R4qorS8QFG",
-	"vaQ4dKLGXEk7TzXLI0+hXDh6yBSQnQ9bJxuUctbaf/bvo3uPRz//yfjxF40AnJzYucQfkmBcTJ+oldg5",
-	"cj7mVd156P6LX4ye/qqVLMb953/c+/b5wbPfTVffUPHNxrXre4ovPC7pZrGDrs4HYVFN3Vk702GEeCGX",
-	"VYWnBTxvKXnmBiGedWJelT43S+KqYsSMt2IkWkcM4dRkXci3NKHlfG1bHW6ETXva28nrnmtrTPIW6JKi",
-	"JL/r9CN2ENtO9v7k2qSU1yqXCCqtJrLyW4kb0ZVeVqylLLWbC/t0AYbyqpCTtq0Wr7Kcgu8LxJqSvikr",
-	"rwflbx6s2rP1ryicZV2Z/p2IZZh4x1baM9lyFPazp6u8PxODJ01lK943+fK9QglpRc9iX2OjMoWjvIpt",
-	"lnpVfueb7jBv59Ho60e72/dbaaQoIum9D95t8QEyNZslYB2p1IZ7FwbV5XMrAnhovbVnlrCc/mLQvCfw",
-	"RC8BZY+eKNd8d/qTcE+2cJMcWJ3k1zGYuCKpqgTYdMyYUl1VXal0grdW7ZtaXr7SqXlFfiWyI64UmguL",
-	"4k7lKwDTh0y5D3zM3rN8D1d35SS9cbC7fX/8zqejz+7t/+7d8ZP3Z3f9RIhmch5cvkg7QzMgk9Emg1mk",
-	"pEon8zcMGfTrMMg7TodDfdKh1hX9iTmJvf/a2dv5eErp/2KQxfIP4NSOxPPv4pQwzZt0sX9y27FNo6b3",
-	"+grfminTVdubBf/SwyfQ3pcuip+S8D957U+YpJ2rru04EK1BkXv9kXjKkFwuf6HyB1G3nX1xon32tfOH",
-	"KiIsjytm074APbQmEtpTHPVicq+6YVb8RCRzzx5fMnf01Zfju+/s/uEfR3efHFMiVzkAWCd0tZ3VadS2",
-	"dfJno0qGTm7Umdj1/KNLjQiKihQtuVKxikIs+45RI3Lp5420BNPGEklVHKW777dWNvUiAgHqrJ2RBZWW",
-	"XQjHIV5xyd+JAKVfcrsk/ah8/iT5LfWAN1c2/zcAAP//4oNcIDp3AAA=",
+	"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",
+	"Tb6NxY3/CwAA//8iH3gNZb8AAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

@@ -24,6 +24,10 @@ type Tx struct {
 	CodexTurnIntent *CodexTurnIntentClient
 	// CodexTurnRun is the client for interacting with the CodexTurnRun builders.
 	CodexTurnRun *CodexTurnRunClient
+	// ExecutionNode is the client for interacting with the ExecutionNode builders.
+	ExecutionNode *ExecutionNodeClient
+	// ExecutionNodeEnrollment is the client for interacting with the ExecutionNodeEnrollment builders.
+	ExecutionNodeEnrollment *ExecutionNodeEnrollmentClient
 	// PlatformSetting is the client for interacting with the PlatformSetting builders.
 	PlatformSetting *PlatformSettingClient
 	// RepoCache is the client for interacting with the RepoCache builders.
@@ -181,6 +185,8 @@ func (tx *Tx) init() {
 	tx.CodexThreadControl = NewCodexThreadControlClient(tx.config)
 	tx.CodexTurnIntent = NewCodexTurnIntentClient(tx.config)
 	tx.CodexTurnRun = NewCodexTurnRunClient(tx.config)
+	tx.ExecutionNode = NewExecutionNodeClient(tx.config)
+	tx.ExecutionNodeEnrollment = NewExecutionNodeEnrollmentClient(tx.config)
 	tx.PlatformSetting = NewPlatformSettingClient(tx.config)
 	tx.RepoCache = NewRepoCacheClient(tx.config)
 	tx.Repository = NewRepositoryClient(tx.config)

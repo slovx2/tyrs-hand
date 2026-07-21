@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/database"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
+	"github.com/slovx2/tyrs-hand/internal/executionnode"
 	"github.com/stretchr/testify/require"
 )
 
@@ -283,6 +284,10 @@ func seedDiscord(t *testing.T, db *sql.DB) discordSeed {
 		(guild_id, name, enabled, community_enabled, bot_user_id)
 		VALUES ($1, 'test', true, true, '100000000000000099') RETURNING guild_id`, seed.guildID).Scan(&seed.guildID))
 	var installationID, repositoryID uuid.UUID
+	nodes := executionnode.NewService(db)
+	node, _, err := nodes.Create(ctx, "discord-test", []string{"discord"}, 2)
+	require.NoError(t, err)
+	require.NoError(t, nodes.SetDefaults(ctx, executionnode.Defaults{DiscordNodeID: &node.ID}))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO scm_installations
 		(provider, external_id, account_login, account_type)
 		VALUES ('github', 9001, 'owner', 'Organization') RETURNING id`).Scan(&installationID))
@@ -293,9 +298,9 @@ func seedDiscord(t *testing.T, db *sql.DB) discordSeed {
 	var environmentID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_development_environments
 		(guild_id, owner_discord_user_id, build_repository_id, container_name,
-		 data_volume_name, home_volume_name, network_name)
-		VALUES ($1, '1001', $2, 'dev-owner', 'dev-owner-data', 'dev-owner-home', 'dev-owner-net') RETURNING id`,
-		seed.guildID, repositoryID).Scan(&environmentID))
+		 data_volume_name, home_volume_name, network_name, execution_node_id)
+		VALUES ($1, '1001', $2, 'dev-owner', 'dev-owner-data', 'dev-owner-home', 'dev-owner-net', $3) RETURNING id`,
+		seed.guildID, repositoryID, node.ID).Scan(&environmentID))
 	var resourceID, forumID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_resources
 		(guild_id, resource_key, discord_id, kind, name, managed_marker)
@@ -305,7 +310,7 @@ func seedDiscord(t *testing.T, db *sql.DB) discordSeed {
 		(guild_id, resource_id, forum_type, owner_discord_user_id, repository_id, development_environment_id)
 		VALUES ($1, $2, 'development', '1001', $3, $4) RETURNING id`, seed.guildID, resourceID,
 		repositoryID, environmentID).Scan(&forumID))
-	_, err := db.ExecContext(ctx, `INSERT INTO discord_forum_workspaces
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_forum_workspaces
 		(forum_id, environment_id, relative_path, branch, status)
 		VALUES ($1, $2, $3, 'tyrs-hand/discord/test', 'ready')`, forumID, environmentID,
 		"workspaces/"+forumID.String())

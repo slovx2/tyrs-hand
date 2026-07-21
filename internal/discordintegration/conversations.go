@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/google/uuid"
@@ -32,19 +34,113 @@ type IncomingMessage struct {
 }
 
 type IncomingAttachment struct {
-	ID        string
-	URL       string
-	Filename  string
-	MediaType string
-	Size      int64
+	ID         string
+	URL        string
+	Filename   string
+	MediaType  string
+	Size       int64
+	Kind       string
+	SHA256     string
+	StorageKey string
 }
 
 type ConversationService struct {
-	db    *sql.DB
-	redis *redis.Client
+	db             *sql.DB
+	redis          *redis.Client
+	attachmentRoot string
 }
 
 func NewConversationService(db *sql.DB) *ConversationService { return &ConversationService{db: db} }
+
+func (s *ConversationService) ConfigureAttachmentStore(root string) {
+	s.attachmentRoot = root
+}
+
+func (s *ConversationService) PersistAttachments(ctx context.Context, input *IncomingMessage) error {
+	if input == nil || len(input.Attachments) == 0 {
+		return nil
+	}
+	if strings.TrimSpace(s.attachmentRoot) == "" {
+		return nil
+	}
+	if err := os.MkdirAll(s.attachmentRoot, 0o700); err != nil {
+		return err
+	}
+	items := make([]AttachmentInput, 0, len(input.Attachments))
+	for _, item := range input.Attachments {
+		items = append(items, AttachmentInput{ID: item.ID, URL: item.URL,
+			Filename: item.Filename, MediaType: item.MediaType, Size: item.Size})
+	}
+	saved, err := NewAttachmentDownloader(nil).Download(ctx, s.attachmentRoot, items)
+	if err != nil {
+		return err
+	}
+	byID := make(map[string]SavedAttachment, len(saved))
+	for _, item := range saved {
+		byID[item.ID] = item
+	}
+	for index := range input.Attachments {
+		item := byID[input.Attachments[index].ID]
+		input.Attachments[index].Kind = item.Kind
+		input.Attachments[index].MediaType = item.MediaType
+		input.Attachments[index].Size = item.Size
+		input.Attachments[index].SHA256 = item.SHA256
+		input.Attachments[index].StorageKey = item.RelativePath
+	}
+	return nil
+}
+
+func (s *ConversationService) CleanupAttachments(ctx context.Context) error {
+	if strings.TrimSpace(s.attachmentRoot) == "" {
+		return nil
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT a.id, a.storage_key
+		FROM discord_attachments a WHERE a.status = 'ready'
+		AND a.stored_at < now() - interval '7 days'
+		AND NOT EXISTS (SELECT 1 FROM codex_turn_intents i
+			WHERE i.discord_message_id = a.message_id AND i.status IN
+			('placement_pending','queued','dispatching','awaiting_confirmation','running',
+			 'reconciling','retry_wait'))
+		ORDER BY a.stored_at LIMIT 100`)
+	if err != nil {
+		return err
+	}
+	type expired struct {
+		id  uuid.UUID
+		key string
+	}
+	var items []expired
+	for rows.Next() {
+		var item expired
+		if err := rows.Scan(&item.id, &item.key); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	root, err := filepath.Abs(s.attachmentRoot)
+	if err != nil {
+		return err
+	}
+	for _, item := range items {
+		target := filepath.Join(root, filepath.FromSlash(item.key))
+		relative, relErr := filepath.Rel(root, target)
+		if relErr != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return errors.New("附件清理路径越过持久卷")
+		}
+		if err := os.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		if _, err := s.db.ExecContext(ctx, `UPDATE discord_attachments SET status = 'deleted',
+			storage_key = NULL WHERE id = $1 AND status = 'ready'`, item.id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessage) (uuid.UUID, error) {
 	if err := validateIncomingMessage(input); err != nil {
@@ -339,14 +435,21 @@ func (s *ConversationService) insertMessage(ctx context.Context, tx *sql.Tx, con
 		return false, nil
 	}
 	for _, attachment := range input.Attachments {
-		kind := "file"
-		if strings.HasPrefix(attachment.MediaType, "image/") {
-			kind = "image"
+		kind := attachment.Kind
+		if kind == "" {
+			kind = "file"
+			if strings.HasPrefix(attachment.MediaType, "image/") {
+				kind = "image"
+			}
 		}
 		_, err := tx.ExecContext(ctx, `INSERT INTO discord_attachments
-			(message_id, discord_attachment_id, kind, original_filename, media_type, size_bytes, source_url)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)`, input.MessageID, attachment.ID, kind,
-			attachment.Filename, attachment.MediaType, attachment.Size, attachment.URL)
+			(message_id, discord_attachment_id, kind, original_filename, media_type, size_bytes,
+			 source_url, sha256, relative_path, storage_key, stored_at, status)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8,''), NULLIF($9,''),
+			 NULLIF($9,''), CASE WHEN $9 = '' THEN NULL ELSE now() END,
+			 CASE WHEN $9 = '' THEN 'pending' ELSE 'ready' END)`, input.MessageID, attachment.ID,
+			kind, attachment.Filename, attachment.MediaType, attachment.Size, attachment.URL,
+			attachment.SHA256, attachment.StorageKey)
 		if err != nil {
 			return false, err
 		}

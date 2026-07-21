@@ -81,6 +81,20 @@ func (_c *CodexThreadControlCreate) SetContextVersion(v int64) *CodexThreadContr
 	return _c
 }
 
+// SetExecutionNodeID sets the "execution_node_id" field.
+func (_c *CodexThreadControlCreate) SetExecutionNodeID(v uuid.UUID) *CodexThreadControlCreate {
+	_c.mutation.SetExecutionNodeID(v)
+	return _c
+}
+
+// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
+func (_c *CodexThreadControlCreate) SetNillableExecutionNodeID(v *uuid.UUID) *CodexThreadControlCreate {
+	if v != nil {
+		_c.SetExecutionNodeID(*v)
+	}
+	return _c
+}
+
 // SetExternalThreadID sets the "external_thread_id" field.
 func (_c *CodexThreadControlCreate) SetExternalThreadID(v string) *CodexThreadControlCreate {
 	_c.mutation.SetExternalThreadID(v)
@@ -562,6 +576,10 @@ func (_c *CodexThreadControlCreate) createSpec() (*CodexThreadControl, *sqlgraph
 	if value, ok := _c.mutation.ContextVersion(); ok {
 		_spec.SetField(codexthreadcontrol.FieldContextVersion, field.TypeInt64, value)
 		_node.ContextVersion = value
+	}
+	if value, ok := _c.mutation.ExecutionNodeID(); ok {
+		_spec.SetField(codexthreadcontrol.FieldExecutionNodeID, field.TypeUUID, value)
+		_node.ExecutionNodeID = &value
 	}
 	if value, ok := _c.mutation.ExternalThreadID(); ok {
 		_spec.SetField(codexthreadcontrol.FieldExternalThreadID, field.TypeString, value)

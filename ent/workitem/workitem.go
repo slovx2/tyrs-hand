@@ -38,6 +38,8 @@ const (
 	FieldHeadRepository = "head_repository"
 	// FieldHTMLURL holds the string denoting the html_url field in the database.
 	FieldHTMLURL = "html_url"
+	// FieldExecutionNodeID holds the string denoting the execution_node_id field in the database.
+	FieldExecutionNodeID = "execution_node_id"
 	// FieldContextVersion holds the string denoting the context_version field in the database.
 	FieldContextVersion = "context_version"
 	// FieldClosedAt holds the string denoting the closed_at field in the database.
@@ -65,6 +67,7 @@ var Columns = []string{
 	FieldHeadRef,
 	FieldHeadRepository,
 	FieldHTMLURL,
+	FieldExecutionNodeID,
 	FieldContextVersion,
 	FieldClosedAt,
 	FieldCreatedAt,
@@ -166,6 +169,11 @@ func ByHeadRepository(opts ...sql.OrderTermOption) OrderOption {
 // ByHTMLURL orders the results by the html_url field.
 func ByHTMLURL(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldHTMLURL, opts...).ToFunc()
+}
+
+// ByExecutionNodeID orders the results by the execution_node_id field.
+func ByExecutionNodeID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExecutionNodeID, opts...).ToFunc()
 }
 
 // ByContextVersion orders the results by the context_version field.

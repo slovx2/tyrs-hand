@@ -57,6 +57,48 @@ func (_c *CodexTurnRunCreate) SetCapabilityHash(v string) *CodexTurnRunCreate {
 	return _c
 }
 
+// SetExecutionNodeID sets the "execution_node_id" field.
+func (_c *CodexTurnRunCreate) SetExecutionNodeID(v uuid.UUID) *CodexTurnRunCreate {
+	_c.mutation.SetExecutionNodeID(v)
+	return _c
+}
+
+// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
+func (_c *CodexTurnRunCreate) SetNillableExecutionNodeID(v *uuid.UUID) *CodexTurnRunCreate {
+	if v != nil {
+		_c.SetExecutionNodeID(*v)
+	}
+	return _c
+}
+
+// SetWorkerEventSequence sets the "worker_event_sequence" field.
+func (_c *CodexTurnRunCreate) SetWorkerEventSequence(v int64) *CodexTurnRunCreate {
+	_c.mutation.SetWorkerEventSequence(v)
+	return _c
+}
+
+// SetNillableWorkerEventSequence sets the "worker_event_sequence" field if the given value is not nil.
+func (_c *CodexTurnRunCreate) SetNillableWorkerEventSequence(v *int64) *CodexTurnRunCreate {
+	if v != nil {
+		_c.SetWorkerEventSequence(*v)
+	}
+	return _c
+}
+
+// SetWorkerTerminalKey sets the "worker_terminal_key" field.
+func (_c *CodexTurnRunCreate) SetWorkerTerminalKey(v string) *CodexTurnRunCreate {
+	_c.mutation.SetWorkerTerminalKey(v)
+	return _c
+}
+
+// SetNillableWorkerTerminalKey sets the "worker_terminal_key" field if the given value is not nil.
+func (_c *CodexTurnRunCreate) SetNillableWorkerTerminalKey(v *string) *CodexTurnRunCreate {
+	if v != nil {
+		_c.SetWorkerTerminalKey(*v)
+	}
+	return _c
+}
+
 // SetActiveSlot sets the "active_slot" field.
 func (_c *CodexTurnRunCreate) SetActiveSlot(v int) *CodexTurnRunCreate {
 	_c.mutation.SetActiveSlot(v)
@@ -260,6 +302,10 @@ func (_c *CodexTurnRunCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *CodexTurnRunCreate) defaults() {
+	if _, ok := _c.mutation.WorkerEventSequence(); !ok {
+		v := codexturnrun.DefaultWorkerEventSequence
+		_c.mutation.SetWorkerEventSequence(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := codexturnrun.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -305,6 +351,9 @@ func (_c *CodexTurnRunCreate) check() error {
 	}
 	if _, ok := _c.mutation.CapabilityHash(); !ok {
 		return &ValidationError{Name: "capability_hash", err: errors.New(`ent: missing required field "CodexTurnRun.capability_hash"`)}
+	}
+	if _, ok := _c.mutation.WorkerEventSequence(); !ok {
+		return &ValidationError{Name: "worker_event_sequence", err: errors.New(`ent: missing required field "CodexTurnRun.worker_event_sequence"`)}
 	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "CodexTurnRun.status"`)}
@@ -379,6 +428,18 @@ func (_c *CodexTurnRunCreate) createSpec() (*CodexTurnRun, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.CapabilityHash(); ok {
 		_spec.SetField(codexturnrun.FieldCapabilityHash, field.TypeString, value)
 		_node.CapabilityHash = value
+	}
+	if value, ok := _c.mutation.ExecutionNodeID(); ok {
+		_spec.SetField(codexturnrun.FieldExecutionNodeID, field.TypeUUID, value)
+		_node.ExecutionNodeID = &value
+	}
+	if value, ok := _c.mutation.WorkerEventSequence(); ok {
+		_spec.SetField(codexturnrun.FieldWorkerEventSequence, field.TypeInt64, value)
+		_node.WorkerEventSequence = value
+	}
+	if value, ok := _c.mutation.WorkerTerminalKey(); ok {
+		_spec.SetField(codexturnrun.FieldWorkerTerminalKey, field.TypeString, value)
+		_node.WorkerTerminalKey = &value
 	}
 	if value, ok := _c.mutation.ActiveSlot(); ok {
 		_spec.SetField(codexturnrun.FieldActiveSlot, field.TypeInt, value)

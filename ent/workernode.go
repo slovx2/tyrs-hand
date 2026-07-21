@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/ent/workernode"
 )
 
@@ -22,6 +23,8 @@ type WorkerNode struct {
 	Version string `json:"version,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
+	// ExecutionNodeID holds the value of the "execution_node_id" field.
+	ExecutionNodeID *uuid.UUID `json:"execution_node_id,omitempty"`
 	// Metadata holds the value of the "metadata" field.
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
 	// HeartbeatAt holds the value of the "heartbeat_at" field.
@@ -36,6 +39,8 @@ func (*WorkerNode) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case workernode.FieldExecutionNodeID:
+			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		case workernode.FieldMetadata:
 			values[i] = new([]byte)
 		case workernode.FieldID, workernode.FieldVersion, workernode.FieldStatus:
@@ -74,6 +79,13 @@ func (_m *WorkerNode) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field status", values[i])
 			} else if value.Valid {
 				_m.Status = value.String
+			}
+		case workernode.FieldExecutionNodeID:
+			if value, ok := values[i].(*sql.NullScanner); !ok {
+				return fmt.Errorf("unexpected type %T for field execution_node_id", values[i])
+			} else if value.Valid {
+				_m.ExecutionNodeID = new(uuid.UUID)
+				*_m.ExecutionNodeID = *value.S.(*uuid.UUID)
 			}
 		case workernode.FieldMetadata:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -136,6 +148,11 @@ func (_m *WorkerNode) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)
+	builder.WriteString(", ")
+	if v := _m.ExecutionNodeID; v != nil {
+		builder.WriteString("execution_node_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("metadata=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Metadata))

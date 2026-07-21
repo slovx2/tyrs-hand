@@ -60,6 +60,11 @@ func RepositoryID(v uuid.UUID) predicate.RepoCache {
 	return predicate.RepoCache(sql.FieldEQ(FieldRepositoryID, v))
 }
 
+// ExecutionNodeID applies equality check predicate on the "execution_node_id" field. It's identical to ExecutionNodeIDEQ.
+func ExecutionNodeID(v uuid.UUID) predicate.RepoCache {
+	return predicate.RepoCache(sql.FieldEQ(FieldExecutionNodeID, v))
+}
+
 // Path applies equality check predicate on the "path" field. It's identical to PathEQ.
 func Path(v string) predicate.RepoCache {
 	return predicate.RepoCache(sql.FieldEQ(FieldPath, v))
@@ -128,6 +133,56 @@ func RepositoryIDLT(v uuid.UUID) predicate.RepoCache {
 // RepositoryIDLTE applies the LTE predicate on the "repository_id" field.
 func RepositoryIDLTE(v uuid.UUID) predicate.RepoCache {
 	return predicate.RepoCache(sql.FieldLTE(FieldRepositoryID, v))
+}
+
+// ExecutionNodeIDEQ applies the EQ predicate on the "execution_node_id" field.
+func ExecutionNodeIDEQ(v uuid.UUID) predicate.RepoCache {
+	return predicate.RepoCache(sql.FieldEQ(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDNEQ applies the NEQ predicate on the "execution_node_id" field.
+func ExecutionNodeIDNEQ(v uuid.UUID) predicate.RepoCache {
+	return predicate.RepoCache(sql.FieldNEQ(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDIn applies the In predicate on the "execution_node_id" field.
+func ExecutionNodeIDIn(vs ...uuid.UUID) predicate.RepoCache {
+	return predicate.RepoCache(sql.FieldIn(FieldExecutionNodeID, vs...))
+}
+
+// ExecutionNodeIDNotIn applies the NotIn predicate on the "execution_node_id" field.
+func ExecutionNodeIDNotIn(vs ...uuid.UUID) predicate.RepoCache {
+	return predicate.RepoCache(sql.FieldNotIn(FieldExecutionNodeID, vs...))
+}
+
+// ExecutionNodeIDGT applies the GT predicate on the "execution_node_id" field.
+func ExecutionNodeIDGT(v uuid.UUID) predicate.RepoCache {
+	return predicate.RepoCache(sql.FieldGT(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDGTE applies the GTE predicate on the "execution_node_id" field.
+func ExecutionNodeIDGTE(v uuid.UUID) predicate.RepoCache {
+	return predicate.RepoCache(sql.FieldGTE(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDLT applies the LT predicate on the "execution_node_id" field.
+func ExecutionNodeIDLT(v uuid.UUID) predicate.RepoCache {
+	return predicate.RepoCache(sql.FieldLT(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDLTE applies the LTE predicate on the "execution_node_id" field.
+func ExecutionNodeIDLTE(v uuid.UUID) predicate.RepoCache {
+	return predicate.RepoCache(sql.FieldLTE(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDIsNil applies the IsNil predicate on the "execution_node_id" field.
+func ExecutionNodeIDIsNil() predicate.RepoCache {
+	return predicate.RepoCache(sql.FieldIsNull(FieldExecutionNodeID))
+}
+
+// ExecutionNodeIDNotNil applies the NotNil predicate on the "execution_node_id" field.
+func ExecutionNodeIDNotNil() predicate.RepoCache {
+	return predicate.RepoCache(sql.FieldNotNull(FieldExecutionNodeID))
 }
 
 // PathEQ applies the EQ predicate on the "path" field.

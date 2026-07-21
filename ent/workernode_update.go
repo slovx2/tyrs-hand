@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/ent/predicate"
 	"github.com/slovx2/tyrs-hand/ent/workernode"
 )
@@ -53,6 +54,26 @@ func (_u *WorkerNodeUpdate) SetNillableStatus(v *string) *WorkerNodeUpdate {
 	if v != nil {
 		_u.SetStatus(*v)
 	}
+	return _u
+}
+
+// SetExecutionNodeID sets the "execution_node_id" field.
+func (_u *WorkerNodeUpdate) SetExecutionNodeID(v uuid.UUID) *WorkerNodeUpdate {
+	_u.mutation.SetExecutionNodeID(v)
+	return _u
+}
+
+// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
+func (_u *WorkerNodeUpdate) SetNillableExecutionNodeID(v *uuid.UUID) *WorkerNodeUpdate {
+	if v != nil {
+		_u.SetExecutionNodeID(*v)
+	}
+	return _u
+}
+
+// ClearExecutionNodeID clears the value of the "execution_node_id" field.
+func (_u *WorkerNodeUpdate) ClearExecutionNodeID() *WorkerNodeUpdate {
+	_u.mutation.ClearExecutionNodeID()
 	return _u
 }
 
@@ -137,6 +158,12 @@ func (_u *WorkerNodeUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(workernode.FieldStatus, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.ExecutionNodeID(); ok {
+		_spec.SetField(workernode.FieldExecutionNodeID, field.TypeUUID, value)
+	}
+	if _u.mutation.ExecutionNodeIDCleared() {
+		_spec.ClearField(workernode.FieldExecutionNodeID, field.TypeUUID)
+	}
 	if value, ok := _u.mutation.Metadata(); ok {
 		_spec.SetField(workernode.FieldMetadata, field.TypeJSON, value)
 	}
@@ -191,6 +218,26 @@ func (_u *WorkerNodeUpdateOne) SetNillableStatus(v *string) *WorkerNodeUpdateOne
 	if v != nil {
 		_u.SetStatus(*v)
 	}
+	return _u
+}
+
+// SetExecutionNodeID sets the "execution_node_id" field.
+func (_u *WorkerNodeUpdateOne) SetExecutionNodeID(v uuid.UUID) *WorkerNodeUpdateOne {
+	_u.mutation.SetExecutionNodeID(v)
+	return _u
+}
+
+// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
+func (_u *WorkerNodeUpdateOne) SetNillableExecutionNodeID(v *uuid.UUID) *WorkerNodeUpdateOne {
+	if v != nil {
+		_u.SetExecutionNodeID(*v)
+	}
+	return _u
+}
+
+// ClearExecutionNodeID clears the value of the "execution_node_id" field.
+func (_u *WorkerNodeUpdateOne) ClearExecutionNodeID() *WorkerNodeUpdateOne {
+	_u.mutation.ClearExecutionNodeID()
 	return _u
 }
 
@@ -304,6 +351,12 @@ func (_u *WorkerNodeUpdateOne) sqlSave(ctx context.Context) (_node *WorkerNode, 
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(workernode.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ExecutionNodeID(); ok {
+		_spec.SetField(workernode.FieldExecutionNodeID, field.TypeUUID, value)
+	}
+	if _u.mutation.ExecutionNodeIDCleared() {
+		_spec.ClearField(workernode.FieldExecutionNodeID, field.TypeUUID)
 	}
 	if value, ok := _u.mutation.Metadata(); ok {
 		_spec.SetField(workernode.FieldMetadata, field.TypeJSON, value)

@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,6 +30,7 @@ type Config struct {
 	RepoCacheRoot                  string
 	WorktreeRoot                   string
 	CodexHomeRoot                  string
+	AttachmentRoot                 string
 	CodexBin                       string
 	WorkerDataRoot                 string
 	RepoCacheMaxBytes              int64
@@ -36,6 +38,12 @@ type Config struct {
 	WorkerRole                     string
 	WorkerImageDigest              string
 	WorkerMaxConcurrentJobs        int
+	WorkerControlURL               string
+	WorkerCredentialFile           string
+	WorkerEnrollmentToken          string
+	WorkerProtocolVersion          int
+	WorkerAPIAllowlist             []netip.Prefix
+	WorkerAPITrustedProxies        []netip.Prefix
 	LeaseDuration                  time.Duration
 	HeartbeatInterval              time.Duration
 	ControlTimeout                 time.Duration
@@ -52,6 +60,15 @@ type Config struct {
 }
 
 func Load() (Config, error) {
+	return load(false)
+}
+
+// LoadWorker 允许远程 Worker 在没有数据库、Redis 和主密钥的环境中启动。
+func LoadWorker() (Config, error) {
+	return load(true)
+}
+
+func load(workerProcess bool) (Config, error) {
 	v := viper.New()
 	v.SetEnvPrefix("TYRS_HAND")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
@@ -74,6 +91,7 @@ func Load() (Config, error) {
 		RepoCacheRoot:                  filepath.Clean(v.GetString("repo_cache_root")),
 		WorktreeRoot:                   filepath.Clean(v.GetString("worktree_root")),
 		CodexHomeRoot:                  filepath.Clean(v.GetString("codex_home_root")),
+		AttachmentRoot:                 filepath.Clean(v.GetString("attachment_root")),
 		CodexBin:                       v.GetString("codex_bin"),
 		WorkerDataRoot:                 filepath.Clean(v.GetString("worker_data_root")),
 		RepoCacheMaxBytes:              v.GetInt64("repo_cache_max_bytes"),
@@ -81,6 +99,10 @@ func Load() (Config, error) {
 		WorkerRole:                     strings.TrimSpace(v.GetString("worker_role")),
 		WorkerImageDigest:              strings.TrimSpace(v.GetString("worker_image_digest")),
 		WorkerMaxConcurrentJobs:        v.GetInt("worker_max_concurrent_jobs"),
+		WorkerControlURL:               strings.TrimRight(v.GetString("worker_control_url"), "/"),
+		WorkerCredentialFile:           filepath.Clean(v.GetString("worker_credential_file")),
+		WorkerEnrollmentToken:          strings.TrimSpace(v.GetString("worker_enrollment_token")),
+		WorkerProtocolVersion:          v.GetInt("worker_protocol_version"),
 		LeaseDuration:                  v.GetDuration("lease_duration"),
 		HeartbeatInterval:              v.GetDuration("heartbeat_interval"),
 		ControlTimeout:                 v.GetDuration("control_timeout"),
@@ -94,6 +116,15 @@ func Load() (Config, error) {
 		GitHubReplyGateMaxBlocks:       v.GetInt("github_reply_gate_max_blocks"),
 		EnableDevelopmentContainers:    v.GetBool("enable_development_containers"),
 		DevelopmentContainerIdle:       v.GetDuration("development_container_idle"),
+	}
+	var err error
+	cfg.WorkerAPIAllowlist, err = parseNetworkList(v.GetString("worker_api_ip_allowlist"))
+	if err != nil {
+		return Config{}, fmt.Errorf("解析 Worker API IP 白名单: %w", err)
+	}
+	cfg.WorkerAPITrustedProxies, err = parseNetworkList(v.GetString("worker_api_trusted_proxies"))
+	if err != nil {
+		return Config{}, fmt.Errorf("解析 Worker API 可信代理: %w", err)
 	}
 	if strings.TrimSpace(cfg.WorkerID) == "" {
 		cfg.WorkerID = defaultWorkerID()
@@ -109,10 +140,43 @@ func Load() (Config, error) {
 			return Config{}, errors.New("环境变量 TYRS_HAND_MASTER_KEY 必须是 32 字节随机值的 base64 编码")
 		}
 	}
-	if err := cfg.Validate(); err != nil {
-		return Config{}, err
+	var validateErr error
+	if workerProcess {
+		validateErr = cfg.ValidateWorker()
+	} else {
+		validateErr = cfg.Validate()
+	}
+	if validateErr != nil {
+		return Config{}, validateErr
 	}
 	return cfg, nil
+}
+
+func (c Config) RemoteWorker() bool { return strings.TrimSpace(c.WorkerControlURL) != "" }
+
+func (c Config) ValidateWorker() error {
+	if !c.RemoteWorker() {
+		return c.Validate()
+	}
+	if c.CodexBin == "" || c.WorkerID == "" {
+		return errors.New("配置中的 Codex 可执行文件和 Worker ID 不能为空")
+	}
+	if c.WorkerMaxConcurrentJobs <= 0 {
+		return errors.New("worker_max_concurrent_jobs 必须大于零")
+	}
+	if c.WorkerRole != "all" && c.WorkerRole != "github" && c.WorkerRole != "discord" {
+		return errors.New("远程 worker_role 必须是 all、github 或 discord")
+	}
+	if c.WorkerProtocolVersion != 1 {
+		return errors.New("当前 Worker 只支持协议版本 1")
+	}
+	if c.WorkerCredentialFile == "." || strings.TrimSpace(c.WorkerCredentialFile) == "" {
+		return errors.New("远程 Worker 必须配置凭据文件")
+	}
+	if c.Environment == "production" && !strings.HasPrefix(c.WorkerControlURL, "https://") {
+		return errors.New("生产远程 Worker 的 Control URL 必须使用 HTTPS")
+	}
+	return nil
 }
 
 func (c Config) Validate() error {
@@ -155,6 +219,9 @@ func (c Config) Validate() error {
 		if !c.CookieSecure {
 			return errors.New("生产环境必须启用 Secure Cookie")
 		}
+		if !strings.HasPrefix(c.PublicURL, "https://") {
+			return errors.New("生产环境 Public URL 必须使用 HTTPS")
+		}
 	}
 	return nil
 }
@@ -175,12 +242,19 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("repo_cache_root", ".local/worker/repo-cache")
 	v.SetDefault("worktree_root", ".local/worker/workspaces/github")
 	v.SetDefault("codex_home_root", ".local/worker/codex-homes")
+	v.SetDefault("attachment_root", ".local/control/attachments")
 	v.SetDefault("codex_bin", "codex")
 	v.SetDefault("repo_cache_max_bytes", int64(20*1024*1024*1024))
 	v.SetDefault("worker_id", defaultWorkerID())
 	v.SetDefault("worker_role", "all")
 	v.SetDefault("worker_image_digest", "")
 	v.SetDefault("worker_max_concurrent_jobs", 6)
+	v.SetDefault("worker_control_url", "")
+	v.SetDefault("worker_credential_file", ".local/worker/node-credential")
+	v.SetDefault("worker_enrollment_token", "")
+	v.SetDefault("worker_protocol_version", 1)
+	v.SetDefault("worker_api_ip_allowlist", "")
+	v.SetDefault("worker_api_trusted_proxies", "127.0.0.1/32,::1/128")
 	v.SetDefault("lease_duration", "90s")
 	v.SetDefault("heartbeat_interval", "20s")
 	v.SetDefault("control_timeout", "30s")
@@ -194,6 +268,30 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("github_reply_gate_max_blocks", 3)
 	v.SetDefault("enable_development_containers", false)
 	v.SetDefault("development_container_idle", "30m")
+}
+
+func parseNetworkList(value string) ([]netip.Prefix, error) {
+	var result []netip.Prefix
+	for _, raw := range strings.Split(value, ",") {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		if address, err := netip.ParseAddr(raw); err == nil {
+			bits := 128
+			if address.Is4() {
+				bits = 32
+			}
+			result = append(result, netip.PrefixFrom(address.Unmap(), bits))
+			continue
+		}
+		prefix, err := netip.ParsePrefix(raw)
+		if err != nil {
+			return nil, fmt.Errorf("%q 不是有效的 IP 或 CIDR", raw)
+		}
+		result = append(result, prefix.Masked())
+	}
+	return result, nil
 }
 
 func defaultWorkerID() string {

@@ -115,6 +115,11 @@ func HTMLURL(v string) predicate.WorkItem {
 	return predicate.WorkItem(sql.FieldEQ(FieldHTMLURL, v))
 }
 
+// ExecutionNodeID applies equality check predicate on the "execution_node_id" field. It's identical to ExecutionNodeIDEQ.
+func ExecutionNodeID(v uuid.UUID) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldExecutionNodeID, v))
+}
+
 // ContextVersion applies equality check predicate on the "context_version" field. It's identical to ContextVersionEQ.
 func ContextVersion(v int64) predicate.WorkItem {
 	return predicate.WorkItem(sql.FieldEQ(FieldContextVersion, v))
@@ -868,6 +873,56 @@ func HTMLURLEqualFold(v string) predicate.WorkItem {
 // HTMLURLContainsFold applies the ContainsFold predicate on the "html_url" field.
 func HTMLURLContainsFold(v string) predicate.WorkItem {
 	return predicate.WorkItem(sql.FieldContainsFold(FieldHTMLURL, v))
+}
+
+// ExecutionNodeIDEQ applies the EQ predicate on the "execution_node_id" field.
+func ExecutionNodeIDEQ(v uuid.UUID) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldEQ(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDNEQ applies the NEQ predicate on the "execution_node_id" field.
+func ExecutionNodeIDNEQ(v uuid.UUID) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNEQ(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDIn applies the In predicate on the "execution_node_id" field.
+func ExecutionNodeIDIn(vs ...uuid.UUID) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldIn(FieldExecutionNodeID, vs...))
+}
+
+// ExecutionNodeIDNotIn applies the NotIn predicate on the "execution_node_id" field.
+func ExecutionNodeIDNotIn(vs ...uuid.UUID) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNotIn(FieldExecutionNodeID, vs...))
+}
+
+// ExecutionNodeIDGT applies the GT predicate on the "execution_node_id" field.
+func ExecutionNodeIDGT(v uuid.UUID) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldGT(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDGTE applies the GTE predicate on the "execution_node_id" field.
+func ExecutionNodeIDGTE(v uuid.UUID) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldGTE(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDLT applies the LT predicate on the "execution_node_id" field.
+func ExecutionNodeIDLT(v uuid.UUID) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldLT(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDLTE applies the LTE predicate on the "execution_node_id" field.
+func ExecutionNodeIDLTE(v uuid.UUID) predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldLTE(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDIsNil applies the IsNil predicate on the "execution_node_id" field.
+func ExecutionNodeIDIsNil() predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldIsNull(FieldExecutionNodeID))
+}
+
+// ExecutionNodeIDNotNil applies the NotNil predicate on the "execution_node_id" field.
+func ExecutionNodeIDNotNil() predicate.WorkItem {
+	return predicate.WorkItem(sql.FieldNotNull(FieldExecutionNodeID))
 }
 
 // ContextVersionEQ applies the EQ predicate on the "context_version" field.

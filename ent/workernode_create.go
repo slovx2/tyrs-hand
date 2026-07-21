@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/ent/workernode"
 )
 
@@ -36,6 +37,20 @@ func (_c *WorkerNodeCreate) SetStatus(v string) *WorkerNodeCreate {
 func (_c *WorkerNodeCreate) SetNillableStatus(v *string) *WorkerNodeCreate {
 	if v != nil {
 		_c.SetStatus(*v)
+	}
+	return _c
+}
+
+// SetExecutionNodeID sets the "execution_node_id" field.
+func (_c *WorkerNodeCreate) SetExecutionNodeID(v uuid.UUID) *WorkerNodeCreate {
+	_c.mutation.SetExecutionNodeID(v)
+	return _c
+}
+
+// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
+func (_c *WorkerNodeCreate) SetNillableExecutionNodeID(v *uuid.UUID) *WorkerNodeCreate {
+	if v != nil {
+		_c.SetExecutionNodeID(*v)
 	}
 	return _c
 }
@@ -192,6 +207,10 @@ func (_c *WorkerNodeCreate) createSpec() (*WorkerNode, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(workernode.FieldStatus, field.TypeString, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.ExecutionNodeID(); ok {
+		_spec.SetField(workernode.FieldExecutionNodeID, field.TypeUUID, value)
+		_node.ExecutionNodeID = &value
 	}
 	if value, ok := _c.mutation.Metadata(); ok {
 		_spec.SetField(workernode.FieldMetadata, field.TypeJSON, value)

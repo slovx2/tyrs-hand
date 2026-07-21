@@ -30,6 +30,8 @@ type CodexThreadControl struct {
 	AgentProfileID uuid.UUID `json:"agent_profile_id,omitempty"`
 	// ContextVersion holds the value of the "context_version" field.
 	ContextVersion int64 `json:"context_version,omitempty"`
+	// ExecutionNodeID holds the value of the "execution_node_id" field.
+	ExecutionNodeID *uuid.UUID `json:"execution_node_id,omitempty"`
 	// ExternalThreadID holds the value of the "external_thread_id" field.
 	ExternalThreadID *string `json:"external_thread_id,omitempty"`
 	// Provider holds the value of the "provider" field.
@@ -82,7 +84,7 @@ func (*CodexThreadControl) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case codexthreadcontrol.FieldWorkItemID, codexthreadcontrol.FieldDiscordConversationID, codexthreadcontrol.FieldRepositoryID, codexthreadcontrol.FieldActiveIntentID:
+		case codexthreadcontrol.FieldWorkItemID, codexthreadcontrol.FieldDiscordConversationID, codexthreadcontrol.FieldRepositoryID, codexthreadcontrol.FieldExecutionNodeID, codexthreadcontrol.FieldActiveIntentID:
 			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		case codexthreadcontrol.FieldContextVersion, codexthreadcontrol.FieldThreadGeneration, codexthreadcontrol.FieldNextSequenceNo, codexthreadcontrol.FieldLeaseEpoch:
 			values[i] = new(sql.NullInt64)
@@ -151,6 +153,13 @@ func (_m *CodexThreadControl) assignValues(columns []string, values []any) error
 				return fmt.Errorf("unexpected type %T for field context_version", values[i])
 			} else if value.Valid {
 				_m.ContextVersion = value.Int64
+			}
+		case codexthreadcontrol.FieldExecutionNodeID:
+			if value, ok := values[i].(*sql.NullScanner); !ok {
+				return fmt.Errorf("unexpected type %T for field execution_node_id", values[i])
+			} else if value.Valid {
+				_m.ExecutionNodeID = new(uuid.UUID)
+				*_m.ExecutionNodeID = *value.S.(*uuid.UUID)
 			}
 		case codexthreadcontrol.FieldExternalThreadID:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -358,6 +367,11 @@ func (_m *CodexThreadControl) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("context_version=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ContextVersion))
+	builder.WriteString(", ")
+	if v := _m.ExecutionNodeID; v != nil {
+		builder.WriteString("execution_node_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	if v := _m.ExternalThreadID; v != nil {
 		builder.WriteString("external_thread_id=")

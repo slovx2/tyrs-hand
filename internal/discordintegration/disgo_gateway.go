@@ -133,6 +133,9 @@ func (c *DisgoConnector) handleMessage(ctx context.Context, event *events.Messag
 		input.Attachments = append(input.Attachments, IncomingAttachment{ID: attachment.ID.String(), URL: attachment.URL,
 			Filename: attachment.Filename, MediaType: mediaType, Size: int64(attachment.Size)})
 	}
+	if err := c.conversations.PersistAttachments(ctx, &input); err != nil {
+		return err
+	}
 	var exists bool
 	if err := c.manager.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM discord_conversations
 		WHERE guild_id = $1 AND thread_id = $2)`, c.guildID, input.ThreadID).Scan(&exists); err != nil {

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"entgo.io/ent/dialect/sql"
+	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/ent/predicate"
 )
 
@@ -72,6 +73,11 @@ func Version(v string) predicate.WorkerNode {
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
 func Status(v string) predicate.WorkerNode {
 	return predicate.WorkerNode(sql.FieldEQ(FieldStatus, v))
+}
+
+// ExecutionNodeID applies equality check predicate on the "execution_node_id" field. It's identical to ExecutionNodeIDEQ.
+func ExecutionNodeID(v uuid.UUID) predicate.WorkerNode {
+	return predicate.WorkerNode(sql.FieldEQ(FieldExecutionNodeID, v))
 }
 
 // HeartbeatAt applies equality check predicate on the "heartbeat_at" field. It's identical to HeartbeatAtEQ.
@@ -212,6 +218,56 @@ func StatusEqualFold(v string) predicate.WorkerNode {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.WorkerNode {
 	return predicate.WorkerNode(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// ExecutionNodeIDEQ applies the EQ predicate on the "execution_node_id" field.
+func ExecutionNodeIDEQ(v uuid.UUID) predicate.WorkerNode {
+	return predicate.WorkerNode(sql.FieldEQ(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDNEQ applies the NEQ predicate on the "execution_node_id" field.
+func ExecutionNodeIDNEQ(v uuid.UUID) predicate.WorkerNode {
+	return predicate.WorkerNode(sql.FieldNEQ(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDIn applies the In predicate on the "execution_node_id" field.
+func ExecutionNodeIDIn(vs ...uuid.UUID) predicate.WorkerNode {
+	return predicate.WorkerNode(sql.FieldIn(FieldExecutionNodeID, vs...))
+}
+
+// ExecutionNodeIDNotIn applies the NotIn predicate on the "execution_node_id" field.
+func ExecutionNodeIDNotIn(vs ...uuid.UUID) predicate.WorkerNode {
+	return predicate.WorkerNode(sql.FieldNotIn(FieldExecutionNodeID, vs...))
+}
+
+// ExecutionNodeIDGT applies the GT predicate on the "execution_node_id" field.
+func ExecutionNodeIDGT(v uuid.UUID) predicate.WorkerNode {
+	return predicate.WorkerNode(sql.FieldGT(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDGTE applies the GTE predicate on the "execution_node_id" field.
+func ExecutionNodeIDGTE(v uuid.UUID) predicate.WorkerNode {
+	return predicate.WorkerNode(sql.FieldGTE(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDLT applies the LT predicate on the "execution_node_id" field.
+func ExecutionNodeIDLT(v uuid.UUID) predicate.WorkerNode {
+	return predicate.WorkerNode(sql.FieldLT(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDLTE applies the LTE predicate on the "execution_node_id" field.
+func ExecutionNodeIDLTE(v uuid.UUID) predicate.WorkerNode {
+	return predicate.WorkerNode(sql.FieldLTE(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDIsNil applies the IsNil predicate on the "execution_node_id" field.
+func ExecutionNodeIDIsNil() predicate.WorkerNode {
+	return predicate.WorkerNode(sql.FieldIsNull(FieldExecutionNodeID))
+}
+
+// ExecutionNodeIDNotNil applies the NotNil predicate on the "execution_node_id" field.
+func ExecutionNodeIDNotNil() predicate.WorkerNode {
+	return predicate.WorkerNode(sql.FieldNotNull(FieldExecutionNodeID))
 }
 
 // HeartbeatAtEQ applies the EQ predicate on the "heartbeat_at" field.

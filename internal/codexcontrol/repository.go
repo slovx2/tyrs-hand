@@ -47,25 +47,51 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 		request.Behavior = "steer_if_active"
 	}
 	var controlID uuid.UUID
+	var executionNodeID sql.NullString
 	if request.SourceType == SourceGitHub {
+		if err := tx.QueryRowContext(ctx, `SELECT execution_node_id::text FROM work_items
+			WHERE id = $1 FOR UPDATE`, request.WorkItemID).Scan(&executionNodeID); err != nil {
+			return uuid.Nil, false, err
+		}
+		if !executionNodeID.Valid {
+			_ = tx.QueryRowContext(ctx, `SELECT value->>'nodeId' FROM platform_settings
+				WHERE setting_key = 'execution.default.github'`).Scan(&executionNodeID)
+			if executionNodeID.Valid {
+				if _, err := tx.ExecContext(ctx, `UPDATE work_items SET execution_node_id = $2,
+					updated_at = now() WHERE id = $1 AND execution_node_id IS NULL`,
+					request.WorkItemID, executionNodeID.String); err != nil {
+					return uuid.Nil, false, err
+				}
+			}
+		}
 		err := tx.QueryRowContext(ctx, `INSERT INTO codex_thread_controls
-			(source_type, work_item_id, repository_id, agent_profile_id, context_version)
-			VALUES ('github_work_item', $1, $2, $3, $4)
+			(source_type, work_item_id, repository_id, agent_profile_id, context_version, execution_node_id)
+			VALUES ('github_work_item', $1, $2, $3, $4, NULLIF($5,'')::uuid)
 			ON CONFLICT(work_item_id, agent_profile_id, context_version) WHERE work_item_id IS NOT NULL
-			DO UPDATE SET updated_at = now() RETURNING id`, request.WorkItemID, request.RepositoryID,
-			request.AgentProfileID, request.ContextVersion).Scan(&controlID)
+			DO UPDATE SET execution_node_id = COALESCE(codex_thread_controls.execution_node_id,
+				EXCLUDED.execution_node_id), updated_at = now() RETURNING id`, request.WorkItemID,
+			request.RepositoryID, request.AgentProfileID, request.ContextVersion,
+			executionNodeID.String).Scan(&controlID)
 		if err != nil {
 			return uuid.Nil, false, err
 		}
 	} else {
+		_ = tx.QueryRowContext(ctx, `SELECT e.execution_node_id::text
+			FROM discord_conversations c JOIN discord_forums f ON f.id = c.forum_id
+			JOIN discord_development_environments e ON e.id = f.development_environment_id
+			WHERE c.id = $1`, request.DiscordConversationID).Scan(&executionNodeID)
 		err := tx.QueryRowContext(ctx, `INSERT INTO codex_thread_controls
-			(source_type, discord_conversation_id, repository_id, agent_profile_id, context_version)
-			VALUES ('discord_conversation', $1, NULLIF($2::text, '')::uuid, $3, $4)
+			(source_type, discord_conversation_id, repository_id, agent_profile_id, context_version,
+			 execution_node_id)
+			VALUES ('discord_conversation', $1, NULLIF($2::text, '')::uuid, $3, $4,
+			 NULLIF($5,'')::uuid)
 			ON CONFLICT(discord_conversation_id, agent_profile_id, context_version)
 				WHERE discord_conversation_id IS NOT NULL
-			DO UPDATE SET repository_id = EXCLUDED.repository_id, updated_at = now() RETURNING id`,
+			DO UPDATE SET repository_id = EXCLUDED.repository_id,
+				execution_node_id = COALESCE(codex_thread_controls.execution_node_id,
+					EXCLUDED.execution_node_id), updated_at = now() RETURNING id`,
 			request.DiscordConversationID, nilUUID(request.RepositoryID), request.AgentProfileID,
-			request.ContextVersion).Scan(&controlID)
+			request.ContextVersion, executionNodeID.String).Scan(&controlID)
 		if err != nil {
 			return uuid.Nil, false, err
 		}
@@ -86,23 +112,28 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 		return uuid.Nil, false, err
 	}
 	var intentID uuid.UUID
+	initialStatus := "queued"
+	if !executionNodeID.Valid || executionNodeID.String == "" {
+		initialStatus = "placement_pending"
+	}
 	err := tx.QueryRowContext(ctx, `INSERT INTO codex_turn_intents(
 		control_id, sequence_no, operation, behavior, source_type, work_item_id,
 		discord_conversation_id, discord_message_id, repository_id, agent_profile_id,
 		webhook_delivery_id, trigger_rule_id, trigger_evidence, idempotency_key,
 		instruction, skills, allowed_tools, dangerous_actions, priority,
-		actor_login, actor_permission, reply_policy, reply_status)
+		actor_login, actor_permission, reply_policy, reply_status, status)
 		VALUES ($1,$2,$3,NULLIF($4,''),$5,NULLIF($6::text,'')::uuid,NULLIF($7::text,'')::uuid,
 		NULLIF($8,''),NULLIF($9::text,'')::uuid,$10,NULLIF($11::text,'')::uuid,
 		NULLIF($12::text,'')::uuid,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,
-		CASE WHEN $22 = 'required' THEN 'pending' ELSE 'skipped' END)
+		CASE WHEN $22 = 'required' THEN 'pending' ELSE 'skipped' END, $23)
 		ON CONFLICT(idempotency_key) DO NOTHING RETURNING id`, controlID, sequence,
 		request.Operation, request.Behavior, request.SourceType, nilUUID(request.WorkItemID),
 		nilUUID(request.DiscordConversationID), request.DiscordMessageID, nilUUID(request.RepositoryID),
 		request.AgentProfileID, nilUUID(request.WebhookDeliveryID), nilUUID(request.TriggerRuleID),
 		defaultJSON(request.TriggerEvidence), request.IdempotencyKey, request.Instruction,
 		encode(request.Skills), encode(request.AllowedTools), encode(request.DangerousActions),
-		request.Priority, request.ActorLogin, request.ActorPermission, request.ReplyPolicy).Scan(&intentID)
+		request.Priority, request.ActorLogin, request.ActorPermission, request.ReplyPolicy,
+		initialStatus).Scan(&intentID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return uuid.Nil, false, nil
 	}
@@ -135,6 +166,18 @@ func (r *Repository) Claim(ctx context.Context, workerID string) (*ClaimedContro
 }
 
 func (r *Repository) ClaimSource(ctx context.Context, workerID, sourceType string) (*ClaimedControl, error) {
+	return r.claimSource(ctx, workerID, sourceType, "")
+}
+
+func (r *Repository) ClaimNode(ctx context.Context, workerID, sourceType string,
+	executionNodeID uuid.UUID,
+) (*ClaimedControl, error) {
+	return r.claimSource(ctx, workerID, sourceType, executionNodeID.String())
+}
+
+func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
+	executionNodeID string,
+) (*ClaimedControl, error) {
 	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return nil, err
@@ -154,12 +197,21 @@ func (r *Repository) ClaimSource(ctx context.Context, workerID, sourceType strin
 		FROM codex_thread_controls c
 		WHERE c.status <> 'error'
 		  AND ($2 = '' OR c.source_type = $2)
+		  AND ($3 = '' OR c.execution_node_id = $3::uuid)
+		  AND ($2 <> 'discord_conversation' OR NOT EXISTS (
+			SELECT 1 FROM discord_conversations dc
+			JOIN discord_forums df ON df.id = dc.forum_id
+			JOIN discord_development_operations operation
+				ON operation.environment_id = df.development_environment_id
+			WHERE dc.id = c.discord_conversation_id
+			AND operation.status IN ('pending','running')))
 		  AND (c.lease_expires_at IS NULL OR c.lease_expires_at < now())
 		  AND EXISTS (SELECT 1 FROM codex_turn_intents i
 			WHERE i.control_id = c.id AND i.status IN ('queued','retry_wait','reconciling')
 			  AND i.available_at <= now() AND i.attempt_count < $1)
 		ORDER BY COALESCE(c.next_wakeup_at, c.created_at), c.created_at
-		FOR UPDATE SKIP LOCKED LIMIT 1`, r.maxAttempts, sourceType).Scan(&controlID, &oldStatus)
+		FOR UPDATE SKIP LOCKED LIMIT 1`, r.maxAttempts, sourceType,
+		executionNodeID).Scan(&controlID, &oldStatus)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -229,9 +281,11 @@ func (r *Repository) ClaimSource(ctx context.Context, workerID, sourceType strin
 		return nil, err
 	}
 	err = tx.QueryRowContext(ctx, `INSERT INTO codex_turn_runs
-		(control_id, primary_intent_id, attempt, worker_id, lease_epoch, capability_hash, active_slot, max_append_count)
-		VALUES ($1,$2,$3,$4,$5,$6,1,$7) RETURNING id`, controlID, claimed.ID,
-		claimed.Attempt, workerID, claimed.LeaseEpoch, security.Digest(capability), r.maxSteers).Scan(&claimed.RunID)
+		(control_id, primary_intent_id, attempt, worker_id, lease_epoch, capability_hash,
+		 active_slot, max_append_count, execution_node_id)
+		VALUES ($1,$2,$3,$4,$5,$6,1,$7,NULLIF($8,'')::uuid) RETURNING id`, controlID, claimed.ID,
+		claimed.Attempt, workerID, claimed.LeaseEpoch, security.Digest(capability), r.maxSteers,
+		executionNodeID).Scan(&claimed.RunID)
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +317,11 @@ func parseUUIDs(intent *Intent, workItem, conversation, repository string) error
 func (r *Repository) Heartbeat(ctx context.Context, claimed *ClaimedControl) error {
 	result, err := r.db.ExecContext(ctx, `WITH updated_control AS (
 		UPDATE codex_thread_controls
-		SET lease_expires_at = now() + $4::interval, heartbeat_at = now(), updated_at = now()
+		SET lease_expires_at = now() + $4::interval, heartbeat_at = now(),
+			status = CASE WHEN status = 'reconciling' THEN 'active' ELSE status END,
+			last_error_code = CASE WHEN status = 'reconciling' THEN NULL ELSE last_error_code END,
+			last_error_message = CASE WHEN status = 'reconciling' THEN NULL ELSE last_error_message END,
+			updated_at = now()
 		WHERE id = $1 AND lease_token = $2 AND lease_epoch = $3
 		  AND active_intent_id = $5 AND status IN ('dispatching','active','stopping','reconciling')
 		RETURNING id
@@ -488,16 +546,21 @@ func (r *Repository) RequeueExpired(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	rows, err := tx.QueryContext(ctx, `SELECT id, active_intent_id FROM codex_thread_controls
-		WHERE lease_expires_at < now() AND active_intent_id IS NOT NULL FOR UPDATE SKIP LOCKED`)
+	rows, err := tx.QueryContext(ctx, `SELECT id, active_intent_id, execution_node_id::text
+		FROM codex_thread_controls
+		WHERE lease_expires_at < now() AND active_intent_id IS NOT NULL
+		AND status <> 'reconciling' FOR UPDATE SKIP LOCKED`)
 	if err != nil {
 		return 0, err
 	}
-	type expired struct{ controlID, intentID uuid.UUID }
+	type expired struct {
+		controlID, intentID uuid.UUID
+		executionNodeID     sql.NullString
+	}
 	var values []expired
 	for rows.Next() {
 		var value expired
-		if err := rows.Scan(&value.controlID, &value.intentID); err != nil {
+		if err := rows.Scan(&value.controlID, &value.intentID, &value.executionNodeID); err != nil {
 			_ = rows.Close()
 			return 0, err
 		}
@@ -513,6 +576,15 @@ func (r *Repository) RequeueExpired(ctx context.Context) (int64, error) {
 			WHERE id = $1 AND status IN ('dispatching','awaiting_confirmation','running','reconciling')`, value.intentID)
 		if err != nil {
 			return 0, err
+		}
+		if value.executionNodeID.Valid {
+			_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET status = 'reconciling',
+				last_error_code = 'lease_expired', last_error_message = 'worker lease expired',
+				next_wakeup_at = now(), updated_at = now() WHERE id = $1`, value.controlID)
+			if err != nil {
+				return 0, err
+			}
+			continue
 		}
 		_, err = tx.ExecContext(ctx, `UPDATE codex_turn_runs SET status = 'failed', active_slot = NULL,
 			error_code = 'lease_expired', error_message = 'worker lease expired', finished_at = now()

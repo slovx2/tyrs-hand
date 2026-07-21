@@ -42,6 +42,8 @@ type WorkItem struct {
 	HeadRepository *string `json:"head_repository,omitempty"`
 	// HTMLURL holds the value of the "html_url" field.
 	HTMLURL *string `json:"html_url,omitempty"`
+	// ExecutionNodeID holds the value of the "execution_node_id" field.
+	ExecutionNodeID *uuid.UUID `json:"execution_node_id,omitempty"`
 	// ContextVersion holds the value of the "context_version" field.
 	ContextVersion int64 `json:"context_version,omitempty"`
 	// ClosedAt holds the value of the "closed_at" field.
@@ -58,6 +60,8 @@ func (*WorkItem) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case workitem.FieldExecutionNodeID:
+			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		case workitem.FieldAgentOwned:
 			values[i] = new(sql.NullBool)
 		case workitem.FieldExternalNumber, workitem.FieldContextVersion:
@@ -167,6 +171,13 @@ func (_m *WorkItem) assignValues(columns []string, values []any) error {
 				_m.HTMLURL = new(string)
 				*_m.HTMLURL = value.String
 			}
+		case workitem.FieldExecutionNodeID:
+			if value, ok := values[i].(*sql.NullScanner); !ok {
+				return fmt.Errorf("unexpected type %T for field execution_node_id", values[i])
+			} else if value.Valid {
+				_m.ExecutionNodeID = new(uuid.UUID)
+				*_m.ExecutionNodeID = *value.S.(*uuid.UUID)
+			}
 		case workitem.FieldContextVersion:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field context_version", values[i])
@@ -274,6 +285,11 @@ func (_m *WorkItem) String() string {
 	if v := _m.HTMLURL; v != nil {
 		builder.WriteString("html_url=")
 		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.ExecutionNodeID; v != nil {
+		builder.WriteString("execution_node_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
 	builder.WriteString("context_version=")

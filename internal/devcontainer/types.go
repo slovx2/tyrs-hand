@@ -19,6 +19,53 @@ type Runtime struct {
 	Home          string
 }
 
+type RemoteSpec struct {
+	EnvironmentID     uuid.UUID
+	ForumID           uuid.UUID
+	ConversationID    uuid.UUID
+	WorkspaceStatus   string
+	WorkspaceRelative string
+	WorkspaceBranch   string
+	Repository        string
+	CloneURL          string
+	DefaultRef        string
+	BuildRepositoryID uuid.UUID
+	BuildRepository   string
+	BuildCloneURL     string
+	BuildDefaultRef   string
+	EnvironmentStatus string
+	ImageRef          string
+	ImageID           string
+	ContainerName     string
+	ContainerID       string
+	DataVolume        string
+	HomeVolume        string
+	Network           string
+	RuntimeUser       string
+	RuntimeUID        int64
+	RuntimeGID        int64
+	RuntimeHome       string
+	BuildSourceSHA    string
+}
+
+type RemoteState struct {
+	RemoteSpec
+	WorkspaceHeadSHA string
+	WorkspaceDirty   bool
+	Error            string
+}
+
+type RemoteOperation struct {
+	Operation       string
+	ContainerName   string
+	ImageRef        string
+	DataVolume      string
+	HomeVolume      string
+	Network         string
+	Workspace       string
+	ConversationIDs []uuid.UUID
+}
+
 type environment struct {
 	ID                uuid.UUID
 	BuildRepositoryID uuid.UUID

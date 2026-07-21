@@ -26,6 +26,8 @@ const (
 	FieldAgentProfileID = "agent_profile_id"
 	// FieldContextVersion holds the string denoting the context_version field in the database.
 	FieldContextVersion = "context_version"
+	// FieldExecutionNodeID holds the string denoting the execution_node_id field in the database.
+	FieldExecutionNodeID = "execution_node_id"
 	// FieldExternalThreadID holds the string denoting the external_thread_id field in the database.
 	FieldExternalThreadID = "external_thread_id"
 	// FieldProvider holds the string denoting the provider field in the database.
@@ -83,6 +85,7 @@ var Columns = []string{
 	FieldRepositoryID,
 	FieldAgentProfileID,
 	FieldContextVersion,
+	FieldExecutionNodeID,
 	FieldExternalThreadID,
 	FieldProvider,
 	FieldCodexHomeKey,
@@ -174,6 +177,11 @@ func ByAgentProfileID(opts ...sql.OrderTermOption) OrderOption {
 // ByContextVersion orders the results by the context_version field.
 func ByContextVersion(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldContextVersion, opts...).ToFunc()
+}
+
+// ByExecutionNodeID orders the results by the execution_node_id field.
+func ByExecutionNodeID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExecutionNodeID, opts...).ToFunc()
 }
 
 // ByExternalThreadID orders the results by the external_thread_id field.

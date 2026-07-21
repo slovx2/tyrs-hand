@@ -1,35 +1,20 @@
 services:
   server:
+    image: ${TYRS_HAND_CONTROL_IMAGE:?请设置 Control 镜像 digest}
     environment:
       TYRS_HAND_MASTER_KEY: ""
       TYRS_HAND_MASTER_KEY_FILE: /run/secrets/master_key
-    secrets: [master_key]
-
-  worker:
-    environment:
-      TYRS_HAND_MASTER_KEY: ""
-      TYRS_HAND_MASTER_KEY_FILE: /run/secrets/master_key
-    secrets: [master_key]
-
-  discord-worker:
-    environment:
-      TYRS_HAND_MASTER_KEY: ""
-      TYRS_HAND_MASTER_KEY_FILE: /run/secrets/master_key
-    group_add:
-      - ${TYRS_HAND_DOCKER_GID:?请设置宿主 Docker Socket 的数字 GID}
-    volumes:
-      - type: bind
-        source: /var/run/docker.sock
-        target: /var/run/docker.sock
     secrets: [master_key]
 
   discord:
+    image: ${TYRS_HAND_CONTROL_IMAGE:?请设置 Control 镜像 digest}
     environment:
       TYRS_HAND_MASTER_KEY: ""
       TYRS_HAND_MASTER_KEY_FILE: /run/secrets/master_key
     secrets: [master_key]
 
   admin:
+    image: ${TYRS_HAND_CONTROL_IMAGE:?请设置 Control 镜像 digest}
     environment:
       TYRS_HAND_MASTER_KEY: ""
       TYRS_HAND_MASTER_KEY_FILE: /run/secrets/master_key

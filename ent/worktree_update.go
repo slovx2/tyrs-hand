@@ -57,6 +57,26 @@ func (_u *WorktreeUpdate) SetNillableRepoCacheID(v *uuid.UUID) *WorktreeUpdate {
 	return _u
 }
 
+// SetExecutionNodeID sets the "execution_node_id" field.
+func (_u *WorktreeUpdate) SetExecutionNodeID(v uuid.UUID) *WorktreeUpdate {
+	_u.mutation.SetExecutionNodeID(v)
+	return _u
+}
+
+// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
+func (_u *WorktreeUpdate) SetNillableExecutionNodeID(v *uuid.UUID) *WorktreeUpdate {
+	if v != nil {
+		_u.SetExecutionNodeID(*v)
+	}
+	return _u
+}
+
+// ClearExecutionNodeID clears the value of the "execution_node_id" field.
+func (_u *WorktreeUpdate) ClearExecutionNodeID() *WorktreeUpdate {
+	_u.mutation.ClearExecutionNodeID()
+	return _u
+}
+
 // SetPath sets the "path" field.
 func (_u *WorktreeUpdate) SetPath(v string) *WorktreeUpdate {
 	_u.mutation.SetPath(v)
@@ -242,6 +262,12 @@ func (_u *WorktreeUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.RepoCacheID(); ok {
 		_spec.SetField(worktree.FieldRepoCacheID, field.TypeUUID, value)
 	}
+	if value, ok := _u.mutation.ExecutionNodeID(); ok {
+		_spec.SetField(worktree.FieldExecutionNodeID, field.TypeUUID, value)
+	}
+	if _u.mutation.ExecutionNodeIDCleared() {
+		_spec.ClearField(worktree.FieldExecutionNodeID, field.TypeUUID)
+	}
 	if value, ok := _u.mutation.Path(); ok {
 		_spec.SetField(worktree.FieldPath, field.TypeString, value)
 	}
@@ -320,6 +346,26 @@ func (_u *WorktreeUpdateOne) SetNillableRepoCacheID(v *uuid.UUID) *WorktreeUpdat
 	if v != nil {
 		_u.SetRepoCacheID(*v)
 	}
+	return _u
+}
+
+// SetExecutionNodeID sets the "execution_node_id" field.
+func (_u *WorktreeUpdateOne) SetExecutionNodeID(v uuid.UUID) *WorktreeUpdateOne {
+	_u.mutation.SetExecutionNodeID(v)
+	return _u
+}
+
+// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
+func (_u *WorktreeUpdateOne) SetNillableExecutionNodeID(v *uuid.UUID) *WorktreeUpdateOne {
+	if v != nil {
+		_u.SetExecutionNodeID(*v)
+	}
+	return _u
+}
+
+// ClearExecutionNodeID clears the value of the "execution_node_id" field.
+func (_u *WorktreeUpdateOne) ClearExecutionNodeID() *WorktreeUpdateOne {
+	_u.mutation.ClearExecutionNodeID()
 	return _u
 }
 
@@ -537,6 +583,12 @@ func (_u *WorktreeUpdateOne) sqlSave(ctx context.Context) (_node *Worktree, err 
 	}
 	if value, ok := _u.mutation.RepoCacheID(); ok {
 		_spec.SetField(worktree.FieldRepoCacheID, field.TypeUUID, value)
+	}
+	if value, ok := _u.mutation.ExecutionNodeID(); ok {
+		_spec.SetField(worktree.FieldExecutionNodeID, field.TypeUUID, value)
+	}
+	if _u.mutation.ExecutionNodeIDCleared() {
+		_spec.ClearField(worktree.FieldExecutionNodeID, field.TypeUUID)
 	}
 	if value, ok := _u.mutation.Path(); ok {
 		_spec.SetField(worktree.FieldPath, field.TypeString, value)

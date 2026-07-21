@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -114,6 +116,36 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, environments, 1)
 	require.Len(t, environments[0].Forums, 2)
+	require.NotNil(t, environments[0].ExecutionNodeID)
+	require.Equal(t, seed.executionNodeID, *environments[0].ExecutionNodeID)
+	require.Error(t, manager.RebuildDevelopmentEnvironment(ctx, uuid.New()))
+	require.NoError(t, manager.RebuildDevelopmentEnvironment(ctx, firstEnvironmentID))
+	var rebuildNodeID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT execution_node_id
+		FROM discord_development_operations WHERE environment_id = $1 AND operation = 'rebuild'`,
+		firstEnvironmentID).Scan(&rebuildNodeID))
+	require.Equal(t, seed.executionNodeID, rebuildNodeID)
+	_, err = db.ExecContext(ctx, `UPDATE discord_development_operations SET status = 'completed'
+		WHERE environment_id = $1 AND operation = 'rebuild'`,
+		firstEnvironmentID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE discord_development_environments
+		SET status = 'stopped' WHERE id = $1`, firstEnvironmentID)
+	require.NoError(t, err)
+	thirdForumID := uuid.New()
+	insertDiscordResource(t, db, "forum.development."+thirdForumID.String(), "100000000000000014",
+		"forum", "dev-bob-repo", seed.codexCategoryID)
+	_, err = manager.executeInitializationAction(ctx, testGuildID, InitializationAction{
+		Kind: "forum.development.record", OwnerUserID: "1002", RepositoryID: seed.repositoryID.String(),
+		ForumID: thirdForumID.String(), Spec: ChannelSpec{Key: "forum.development." + thirdForumID.String()},
+	}, nil)
+	require.NoError(t, err)
+	var thirdEnvironmentNode uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT e.execution_node_id
+		FROM discord_development_environments e JOIN discord_forums f
+		ON f.development_environment_id = e.id WHERE f.id = $1`, thirdForumID).
+		Scan(&thirdEnvironmentNode))
+	require.Equal(t, seed.executionNodeID, thirdEnvironmentNode)
 	_, err = db.ExecContext(ctx, `UPDATE discord_forum_workspaces
 		SET dirty = true, base_sha = 'base', head_sha = 'head' WHERE forum_id = $1`, secondForumID)
 	require.NoError(t, err)
@@ -205,6 +237,7 @@ const (
 type discordManagerSeed struct {
 	administratorID           uuid.UUID
 	developmentForumID        uuid.UUID
+	executionNodeID           uuid.UUID
 	workItemID                uuid.UUID
 	codexCategoryID           string
 	repositoryForumChannelID  string
@@ -220,6 +253,15 @@ func seedDiscordManagerData(t *testing.T, db *sql.DB) discordManagerSeed {
 		codexCategoryID: "100000000000000011", developmentForumChannelID: "100000000000000012",
 		repositoryForumChannelID: "100000000000000022",
 	}
+	var executionNodeID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO execution_nodes
+		(name, roles, status) VALUES ('discord-test-node', '["github","discord"]', 'online')
+		RETURNING id`).Scan(&executionNodeID))
+	seed.executionNodeID = executionNodeID
+	_, err := db.ExecContext(ctx, `INSERT INTO platform_settings(setting_key, value) VALUES
+		('execution.default.github', jsonb_build_object('nodeId', $1::text)),
+		('execution.default.discord', jsonb_build_object('nodeId', $1::text))`, executionNodeID)
+	require.NoError(t, err)
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO administrators
 		(username, password_hash, totp_secret_ciphertext) VALUES ('discord-admin', 'hash', $1) RETURNING id`,
 		[]byte("secret")).Scan(&seed.administratorID))
@@ -228,7 +270,7 @@ func seedDiscordManagerData(t *testing.T, db *sql.DB) discordManagerSeed {
 			(guild_id, discord_user_id, username, display_name) VALUES ($1, $2, $3, $3)`, testGuildID, user.id, user.login)
 		require.NoError(t, err)
 	}
-	_, err := db.ExecContext(ctx, `INSERT INTO discord_identity_bindings
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_identity_bindings
 		(guild_id, discord_user_id, github_user_id, github_login) VALUES ($1, '1001', 101, 'alice')`, testGuildID)
 	require.NoError(t, err)
 
@@ -250,9 +292,11 @@ func seedDiscordManagerData(t *testing.T, db *sql.DB) discordManagerSeed {
 	require.NoError(t, err)
 	var environmentID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_development_environments
-		(guild_id, owner_discord_user_id, build_repository_id, container_name, data_volume_name, home_volume_name, network_name)
-		VALUES ($1, '1001', $2, 'dev-alice', 'dev-alice-data', 'dev-alice-home', 'dev-alice-net') RETURNING id`,
-		testGuildID, repositoryID).Scan(&environmentID))
+		(guild_id, owner_discord_user_id, build_repository_id, container_name, data_volume_name,
+		 home_volume_name, network_name, execution_node_id)
+		VALUES ($1, '1001', $2, 'dev-alice', 'dev-alice-data', 'dev-alice-home',
+		'dev-alice-net', $3) RETURNING id`, testGuildID, repositoryID, executionNodeID).
+		Scan(&environmentID))
 	developmentResource := insertDiscordResource(t, db, "forum.development.seed", seed.developmentForumChannelID,
 		"forum", "dev-alice-repo", seed.codexCategoryID)
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_forums
@@ -418,6 +462,17 @@ func testGatewayHandlers(t *testing.T, ctx context.Context, db *sql.DB, manager 
 	require.Equal(t, "gpt-5.6-terra", configuredModel)
 	require.Equal(t, "high", configuredEffort)
 	require.Equal(t, "fast", configuredTier)
+	attachmentRoot := t.TempDir()
+	attachmentPath := filepath.Join(attachmentRoot, "stored", "notes.txt")
+	require.NoError(t, os.MkdirAll(filepath.Dir(attachmentPath), 0o700))
+	require.NoError(t, os.WriteFile(attachmentPath, []byte("stored notes"), 0o600))
+	_, err = db.ExecContext(ctx, `UPDATE discord_attachments SET status = 'ready',
+		storage_key = 'stored/notes.txt', stored_at = now() - interval '8 days'
+		WHERE message_id = '3001' AND discord_attachment_id = '4001'`)
+	require.NoError(t, err)
+	conversationService.ConfigureAttachmentStore(attachmentRoot)
+	require.NoError(t, conversationService.CleanupAttachments(ctx))
+	require.FileExists(t, attachmentPath, "排队或运行中的附件不能清理")
 
 	command := newCommandEvent(t, client, "5002", "2001", "codex", "stop")
 	connector.onCommand(command)
@@ -432,6 +487,13 @@ func testGatewayHandlers(t *testing.T, ctx context.Context, db *sql.DB, manager 
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM discord_input_messages
 		WHERE conversation_id = $1`, conversationID).Scan(&inputStatus))
 	require.Equal(t, "canceled", inputStatus)
+	require.NoError(t, conversationService.CleanupAttachments(ctx))
+	require.NoFileExists(t, attachmentPath)
+	var cleanedAttachmentStatus string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM discord_attachments
+		WHERE message_id = '3001' AND discord_attachment_id = '4001'`).
+		Scan(&cleanedAttachmentStatus))
+	require.Equal(t, "deleted", cleanedAttachmentStatus)
 
 	messageEvent = newMessageEvent(t, client, "2002", "3002", "repository message")
 	connector.onMessage(messageEvent)

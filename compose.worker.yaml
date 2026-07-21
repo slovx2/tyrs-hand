@@ -1,0 +1,40 @@
+name: tyrs-hand-worker
+
+services:
+  worker:
+    image: ${TYRS_HAND_WORKER_IMAGE:?请设置 Worker 镜像 digest}
+    command: ["tyrs-hand-worker"]
+    cap_add: [SYS_ADMIN]
+    security_opt: ["seccomp=unconfined", "apparmor=unconfined"]
+    environment:
+      TYRS_HAND_ENV: production
+      TYRS_HAND_WORKER_CONTROL_URL: ${TYRS_HAND_WORKER_CONTROL_URL:?请设置公网 HTTPS Control URL}
+      TYRS_HAND_WORKER_CREDENTIAL_FILE: /data/worker/control-state/node-credential
+      TYRS_HAND_WORKER_ENROLLMENT_TOKEN: ${TYRS_HAND_WORKER_ENROLLMENT_TOKEN:-}
+      TYRS_HAND_WORKER_PROTOCOL_VERSION: "1"
+      TYRS_HAND_WORKER_ID: ${TYRS_HAND_WORKER_ID:-home-1}
+      TYRS_HAND_WORKER_ROLE: ${TYRS_HAND_WORKER_ROLE:-all}
+      TYRS_HAND_WORKER_MAX_CONCURRENT_JOBS: ${TYRS_HAND_WORKER_MAX_CONCURRENT_JOBS:-6}
+      TYRS_HAND_WORKER_IMAGE_DIGEST: ${TYRS_HAND_WORKER_IMAGE}
+      TYRS_HAND_WORKER_DATA_ROOT: /data/worker
+      TYRS_HAND_REPO_CACHE_ROOT: /data/worker/repo-cache
+      TYRS_HAND_WORKTREE_ROOT: /data/worker/workspaces/github
+      TYRS_HAND_CODEX_HOME_ROOT: /data/worker/codex-homes
+      TYRS_HAND_ENABLE_DEVELOPMENT_CONTAINERS: ${TYRS_HAND_ENABLE_DEVELOPMENT_CONTAINERS:-true}
+      TYRS_HAND_DEVELOPMENT_CONTAINER_IDLE: ${TYRS_HAND_DEVELOPMENT_CONTAINER_IDLE:-30m}
+    group_add:
+      - ${TYRS_HAND_DOCKER_GID:?请设置宿主 Docker Socket 的数字 GID}
+    volumes:
+      - worker-data:/data/worker
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /data/worker/control-state/node-credential && kill -0 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  worker-data:

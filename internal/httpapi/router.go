@@ -16,6 +16,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/auth"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
+	"github.com/slovx2/tyrs-hand/internal/executionnode"
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
 	"github.com/slovx2/tyrs-hand/internal/githubtools"
 	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
@@ -35,6 +36,7 @@ type Server struct {
 	settings *platformsettings.Service
 	discord  *discordintegration.Manager
 	bindings *discordintegration.BindingService
+	nodes    *executionnode.Service
 	logger   *zap.Logger
 	assets   fs.FS
 }
@@ -46,7 +48,7 @@ func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authSer
 	}
 	return &Server{cfg: cfg, db: db, redis: redisClient, auth: authService, github: githubManager,
 		catalog: catalog, settings: settingsService, discord: discordManager, bindings: bindingService,
-		logger: logger, assets: assets}, nil
+		nodes: executionnode.NewService(db), logger: logger, assets: assets}, nil
 }
 
 func (s *Server) baseRouter() *gin.Engine {
@@ -78,6 +80,7 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	router.POST("/internal/v1/tools/call", s.internalToolCall)
 	router.POST("/internal/v1/tools/failure", s.internalToolFailure)
 	router.POST("/internal/v1/git/credential", s.internalGitCredential)
+	s.registerWorkerRoutes(router)
 	if includeWebhook {
 		router.POST("/webhooks/github", s.githubWebhook)
 	}
@@ -106,6 +109,13 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	authenticated.GET("/work-items", s.listWorkItems)
 	authenticated.GET("/jobs", s.listJobs)
 	authenticated.GET("/workers", s.listWorkers)
+	authenticated.GET("/execution-nodes", s.listExecutionNodes)
+	authenticated.POST("/execution-nodes", s.requireCSRF(), s.createExecutionNode)
+	authenticated.POST("/execution-nodes/:id/enrollments", s.requireCSRF(), s.createExecutionNodeEnrollment)
+	authenticated.PUT("/execution-nodes/:id/enabled", s.requireCSRF(), s.setExecutionNodeEnabled)
+	authenticated.DELETE("/execution-nodes/:id", s.requireCSRF(), s.deleteExecutionNode)
+	authenticated.GET("/settings/execution", s.getExecutionSettings)
+	authenticated.PUT("/settings/execution", s.requireCSRF(), s.putExecutionSettings)
 	authenticated.GET("/threads", s.listThreads)
 	authenticated.POST("/controls/:id/reconcile", s.requireCSRF(), s.reconcileControl)
 	authenticated.POST("/controls/:id/reset", s.requireCSRF(), s.resetControl)

@@ -20,6 +20,8 @@ type RepoCache struct {
 	ID uuid.UUID `json:"id,omitempty"`
 	// RepositoryID holds the value of the "repository_id" field.
 	RepositoryID uuid.UUID `json:"repository_id,omitempty"`
+	// ExecutionNodeID holds the value of the "execution_node_id" field.
+	ExecutionNodeID *uuid.UUID `json:"execution_node_id,omitempty"`
 	// Path holds the value of the "path" field.
 	Path string `json:"path,omitempty"`
 	// Status holds the value of the "status" field.
@@ -40,6 +42,8 @@ func (*RepoCache) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case repocache.FieldExecutionNodeID:
+			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		case repocache.FieldSizeBytes:
 			values[i] = new(sql.NullInt64)
 		case repocache.FieldPath, repocache.FieldStatus, repocache.FieldError:
@@ -74,6 +78,13 @@ func (_m *RepoCache) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field repository_id", values[i])
 			} else if value != nil {
 				_m.RepositoryID = *value
+			}
+		case repocache.FieldExecutionNodeID:
+			if value, ok := values[i].(*sql.NullScanner); !ok {
+				return fmt.Errorf("unexpected type %T for field execution_node_id", values[i])
+			} else if value.Valid {
+				_m.ExecutionNodeID = new(uuid.UUID)
+				*_m.ExecutionNodeID = *value.S.(*uuid.UUID)
 			}
 		case repocache.FieldPath:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -151,6 +162,11 @@ func (_m *RepoCache) String() string {
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
 	builder.WriteString("repository_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RepositoryID))
+	builder.WriteString(", ")
+	if v := _m.ExecutionNodeID; v != nil {
+		builder.WriteString("execution_node_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("path=")
 	builder.WriteString(_m.Path)

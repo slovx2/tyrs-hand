@@ -65,6 +65,11 @@ func RepoCacheID(v uuid.UUID) predicate.Worktree {
 	return predicate.Worktree(sql.FieldEQ(FieldRepoCacheID, v))
 }
 
+// ExecutionNodeID applies equality check predicate on the "execution_node_id" field. It's identical to ExecutionNodeIDEQ.
+func ExecutionNodeID(v uuid.UUID) predicate.Worktree {
+	return predicate.Worktree(sql.FieldEQ(FieldExecutionNodeID, v))
+}
+
 // Path applies equality check predicate on the "path" field. It's identical to PathEQ.
 func Path(v string) predicate.Worktree {
 	return predicate.Worktree(sql.FieldEQ(FieldPath, v))
@@ -188,6 +193,56 @@ func RepoCacheIDLT(v uuid.UUID) predicate.Worktree {
 // RepoCacheIDLTE applies the LTE predicate on the "repo_cache_id" field.
 func RepoCacheIDLTE(v uuid.UUID) predicate.Worktree {
 	return predicate.Worktree(sql.FieldLTE(FieldRepoCacheID, v))
+}
+
+// ExecutionNodeIDEQ applies the EQ predicate on the "execution_node_id" field.
+func ExecutionNodeIDEQ(v uuid.UUID) predicate.Worktree {
+	return predicate.Worktree(sql.FieldEQ(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDNEQ applies the NEQ predicate on the "execution_node_id" field.
+func ExecutionNodeIDNEQ(v uuid.UUID) predicate.Worktree {
+	return predicate.Worktree(sql.FieldNEQ(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDIn applies the In predicate on the "execution_node_id" field.
+func ExecutionNodeIDIn(vs ...uuid.UUID) predicate.Worktree {
+	return predicate.Worktree(sql.FieldIn(FieldExecutionNodeID, vs...))
+}
+
+// ExecutionNodeIDNotIn applies the NotIn predicate on the "execution_node_id" field.
+func ExecutionNodeIDNotIn(vs ...uuid.UUID) predicate.Worktree {
+	return predicate.Worktree(sql.FieldNotIn(FieldExecutionNodeID, vs...))
+}
+
+// ExecutionNodeIDGT applies the GT predicate on the "execution_node_id" field.
+func ExecutionNodeIDGT(v uuid.UUID) predicate.Worktree {
+	return predicate.Worktree(sql.FieldGT(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDGTE applies the GTE predicate on the "execution_node_id" field.
+func ExecutionNodeIDGTE(v uuid.UUID) predicate.Worktree {
+	return predicate.Worktree(sql.FieldGTE(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDLT applies the LT predicate on the "execution_node_id" field.
+func ExecutionNodeIDLT(v uuid.UUID) predicate.Worktree {
+	return predicate.Worktree(sql.FieldLT(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDLTE applies the LTE predicate on the "execution_node_id" field.
+func ExecutionNodeIDLTE(v uuid.UUID) predicate.Worktree {
+	return predicate.Worktree(sql.FieldLTE(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDIsNil applies the IsNil predicate on the "execution_node_id" field.
+func ExecutionNodeIDIsNil() predicate.Worktree {
+	return predicate.Worktree(sql.FieldIsNull(FieldExecutionNodeID))
+}
+
+// ExecutionNodeIDNotNil applies the NotNil predicate on the "execution_node_id" field.
+func ExecutionNodeIDNotNil() predicate.Worktree {
+	return predicate.Worktree(sql.FieldNotNull(FieldExecutionNodeID))
 }
 
 // PathEQ applies the EQ predicate on the "path" field.

@@ -85,6 +85,11 @@ func ContextVersion(v int64) predicate.CodexThreadControl {
 	return predicate.CodexThreadControl(sql.FieldEQ(FieldContextVersion, v))
 }
 
+// ExecutionNodeID applies equality check predicate on the "execution_node_id" field. It's identical to ExecutionNodeIDEQ.
+func ExecutionNodeID(v uuid.UUID) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldEQ(FieldExecutionNodeID, v))
+}
+
 // ExternalThreadID applies equality check predicate on the "external_thread_id" field. It's identical to ExternalThreadIDEQ.
 func ExternalThreadID(v string) predicate.CodexThreadControl {
 	return predicate.CodexThreadControl(sql.FieldEQ(FieldExternalThreadID, v))
@@ -488,6 +493,56 @@ func ContextVersionLT(v int64) predicate.CodexThreadControl {
 // ContextVersionLTE applies the LTE predicate on the "context_version" field.
 func ContextVersionLTE(v int64) predicate.CodexThreadControl {
 	return predicate.CodexThreadControl(sql.FieldLTE(FieldContextVersion, v))
+}
+
+// ExecutionNodeIDEQ applies the EQ predicate on the "execution_node_id" field.
+func ExecutionNodeIDEQ(v uuid.UUID) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldEQ(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDNEQ applies the NEQ predicate on the "execution_node_id" field.
+func ExecutionNodeIDNEQ(v uuid.UUID) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldNEQ(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDIn applies the In predicate on the "execution_node_id" field.
+func ExecutionNodeIDIn(vs ...uuid.UUID) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldIn(FieldExecutionNodeID, vs...))
+}
+
+// ExecutionNodeIDNotIn applies the NotIn predicate on the "execution_node_id" field.
+func ExecutionNodeIDNotIn(vs ...uuid.UUID) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldNotIn(FieldExecutionNodeID, vs...))
+}
+
+// ExecutionNodeIDGT applies the GT predicate on the "execution_node_id" field.
+func ExecutionNodeIDGT(v uuid.UUID) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldGT(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDGTE applies the GTE predicate on the "execution_node_id" field.
+func ExecutionNodeIDGTE(v uuid.UUID) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldGTE(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDLT applies the LT predicate on the "execution_node_id" field.
+func ExecutionNodeIDLT(v uuid.UUID) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldLT(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDLTE applies the LTE predicate on the "execution_node_id" field.
+func ExecutionNodeIDLTE(v uuid.UUID) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldLTE(FieldExecutionNodeID, v))
+}
+
+// ExecutionNodeIDIsNil applies the IsNil predicate on the "execution_node_id" field.
+func ExecutionNodeIDIsNil() predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldIsNull(FieldExecutionNodeID))
+}
+
+// ExecutionNodeIDNotNil applies the NotNil predicate on the "execution_node_id" field.
+func ExecutionNodeIDNotNil() predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldNotNull(FieldExecutionNodeID))
 }
 
 // ExternalThreadIDEQ applies the EQ predicate on the "external_thread_id" field.

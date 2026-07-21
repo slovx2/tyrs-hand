@@ -43,6 +43,26 @@ func (_u *RepoCacheUpdate) SetNillableRepositoryID(v *uuid.UUID) *RepoCacheUpdat
 	return _u
 }
 
+// SetExecutionNodeID sets the "execution_node_id" field.
+func (_u *RepoCacheUpdate) SetExecutionNodeID(v uuid.UUID) *RepoCacheUpdate {
+	_u.mutation.SetExecutionNodeID(v)
+	return _u
+}
+
+// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
+func (_u *RepoCacheUpdate) SetNillableExecutionNodeID(v *uuid.UUID) *RepoCacheUpdate {
+	if v != nil {
+		_u.SetExecutionNodeID(*v)
+	}
+	return _u
+}
+
+// ClearExecutionNodeID clears the value of the "execution_node_id" field.
+func (_u *RepoCacheUpdate) ClearExecutionNodeID() *RepoCacheUpdate {
+	_u.mutation.ClearExecutionNodeID()
+	return _u
+}
+
 // SetPath sets the "path" field.
 func (_u *RepoCacheUpdate) SetPath(v string) *RepoCacheUpdate {
 	_u.mutation.SetPath(v)
@@ -190,6 +210,12 @@ func (_u *RepoCacheUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.RepositoryID(); ok {
 		_spec.SetField(repocache.FieldRepositoryID, field.TypeUUID, value)
 	}
+	if value, ok := _u.mutation.ExecutionNodeID(); ok {
+		_spec.SetField(repocache.FieldExecutionNodeID, field.TypeUUID, value)
+	}
+	if _u.mutation.ExecutionNodeIDCleared() {
+		_spec.ClearField(repocache.FieldExecutionNodeID, field.TypeUUID)
+	}
 	if value, ok := _u.mutation.Path(); ok {
 		_spec.SetField(repocache.FieldPath, field.TypeString, value)
 	}
@@ -248,6 +274,26 @@ func (_u *RepoCacheUpdateOne) SetNillableRepositoryID(v *uuid.UUID) *RepoCacheUp
 	if v != nil {
 		_u.SetRepositoryID(*v)
 	}
+	return _u
+}
+
+// SetExecutionNodeID sets the "execution_node_id" field.
+func (_u *RepoCacheUpdateOne) SetExecutionNodeID(v uuid.UUID) *RepoCacheUpdateOne {
+	_u.mutation.SetExecutionNodeID(v)
+	return _u
+}
+
+// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
+func (_u *RepoCacheUpdateOne) SetNillableExecutionNodeID(v *uuid.UUID) *RepoCacheUpdateOne {
+	if v != nil {
+		_u.SetExecutionNodeID(*v)
+	}
+	return _u
+}
+
+// ClearExecutionNodeID clears the value of the "execution_node_id" field.
+func (_u *RepoCacheUpdateOne) ClearExecutionNodeID() *RepoCacheUpdateOne {
+	_u.mutation.ClearExecutionNodeID()
 	return _u
 }
 
@@ -427,6 +473,12 @@ func (_u *RepoCacheUpdateOne) sqlSave(ctx context.Context) (_node *RepoCache, er
 	}
 	if value, ok := _u.mutation.RepositoryID(); ok {
 		_spec.SetField(repocache.FieldRepositoryID, field.TypeUUID, value)
+	}
+	if value, ok := _u.mutation.ExecutionNodeID(); ok {
+		_spec.SetField(repocache.FieldExecutionNodeID, field.TypeUUID, value)
+	}
+	if _u.mutation.ExecutionNodeIDCleared() {
+		_spec.ClearField(repocache.FieldExecutionNodeID, field.TypeUUID)
 	}
 	if value, ok := _u.mutation.Path(); ok {
 		_spec.SetField(repocache.FieldPath, field.TypeString, value)

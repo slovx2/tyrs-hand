@@ -13,6 +13,8 @@ tags:
   - name: Resources
   - name: Settings
   - name: Discord
+  - name: Execution Nodes
+  - name: Worker Protocol
 paths:
   /webhooks/github:
     post:
@@ -511,6 +513,256 @@ paths:
     get: { $ref: "#/components/pathItems/ListJobs" }
   /workers:
     get: { $ref: "#/components/pathItems/ListWorkers" }
+  /execution-nodes:
+    get:
+      operationId: listExecutionNodes
+      tags: [Execution Nodes]
+      responses:
+        "200":
+          description: 执行节点列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties: { items: { type: array, items: { $ref: "#/components/schemas/ExecutionNode" } } }
+    post:
+      operationId: createExecutionNode
+      tags: [Execution Nodes]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ExecutionNodeInput" } } }
+      responses:
+        "201":
+          description: 节点与一次性注册 Token
+          content: { application/json: { schema: { $ref: "#/components/schemas/ExecutionNodeCreated" } } }
+  /execution-nodes/{id}/enrollments:
+    post:
+      operationId: createExecutionNodeEnrollment
+      tags: [Execution Nodes]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/CSRFToken" }
+      responses:
+        "201": { description: 一次性注册 Token, content: { application/json: { schema: { $ref: "#/components/schemas/EnrollmentToken" } } } }
+  /execution-nodes/{id}:
+    delete:
+      operationId: deleteExecutionNode
+      tags: [Execution Nodes]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/CSRFToken" }
+      responses: { "204": { description: 已删除 }, default: { $ref: "#/components/responses/Problem" } }
+  /execution-nodes/{id}/enabled:
+    put:
+      operationId: setExecutionNodeEnabled
+      tags: [Execution Nodes]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/CSRFToken" }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [enabled], properties: { enabled: { type: boolean } } } } } }
+      responses: { "204": { description: 已更新 }, default: { $ref: "#/components/responses/Problem" } }
+  /settings/execution:
+    get:
+      operationId: getExecutionDefaults
+      tags: [Execution Nodes]
+      responses: { "200": { description: 默认节点, content: { application/json: { schema: { $ref: "#/components/schemas/ExecutionDefaults" } } } } }
+    put:
+      operationId: putExecutionDefaults
+      tags: [Execution Nodes]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ExecutionDefaults" } } } }
+      responses: { "204": { description: 已保存 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/enroll:
+    post:
+      operationId: enrollWorker
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: []
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerEnrollRequest" } } } }
+      responses: { "200": { description: 长期节点凭据, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerEnrollResponse" } } } }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/heartbeat:
+    post:
+      operationId: heartbeatWorker
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ nodeBearer: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerHeartbeat" } } } }
+      responses: { "204": { description: 心跳已记录 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/claims:
+    post:
+      operationId: claimWorkerTask
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ nodeBearer: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerClaimRequest" } } } }
+      responses: { "200": { description: 任务、开发环境 Operation 或空响应, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerClaimResponse" } } } }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/heartbeat:
+    post:
+      operationId: heartbeatWorkerRun
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ nodeBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerRunLease" } } } }
+      responses: { "200": { description: Lease 已续期及待执行命令, content: { application/json: { schema: { type: object, additionalProperties: true } } } }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/commands/ack:
+    post:
+      operationId: acknowledgeWorkerRunCommand
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ nodeBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerCommandAck" } } } }
+      responses: { "204": { description: 命令已确认 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/events:
+    post:
+      operationId: appendWorkerRunEvents
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ nodeBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerEventsRequest" } } } }
+      responses: { "204": { description: 事件已持久化 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/complete:
+    post:
+      operationId: completeWorkerRun
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ nodeBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerCompleteRequest" } } } }
+      responses: { "204": { description: Run 已完成 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/fail:
+    post:
+      operationId: failWorkerRun
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ nodeBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerFailRequest" } } } }
+      responses: { "204": { description: Run 已失败 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/runtime-credential:
+    post:
+      operationId: getWorkerRuntimeCredential
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ nodeBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerRunLease" } } } }
+      responses: { "200": { description: Run 限定运行凭据, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerRuntimeCredential" } } } }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/thread:
+    post:
+      operationId: setWorkerRunThread
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ nodeBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+      responses: { "204": { description: Thread 已记录 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/submission:
+    post:
+      operationId: recordWorkerRunSubmission
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ nodeBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+      responses: { "204": { description: Submission 已记录 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/confirm:
+    post:
+      operationId: confirmWorkerRunTurn
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ nodeBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+      responses: { "204": { description: Turn 已确认 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/development-state:
+    post:
+      operationId: updateWorkerDevelopmentState
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ nodeBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+      responses: { "204": { description: 开发环境状态已更新 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/workspace-state:
+    post:
+      operationId: updateWorkerWorkspaceState
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ nodeBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+      responses: { "204": { description: Worktree 状态已更新 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/discord-title:
+    post:
+      operationId: setWorkerDiscordTitle
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ nodeBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+      responses: { "200": { description: 标题处理结果, content: { application/json: { schema: { type: object, additionalProperties: true } } } }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/tools/call:
+    post:
+      operationId: callWorkerDynamicTool
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ nodeBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+      responses: { "200": { description: Tool 调用结果, content: { application/json: { schema: { type: object, additionalProperties: true } } } }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/git-credential:
+    post:
+      operationId: getWorkerGitCredential
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ nodeBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+      responses: { "200": { description: Git 凭据, content: { application/json: { schema: { type: object, additionalProperties: true } } } }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/attachments/{attachmentId}:
+    get:
+      operationId: downloadWorkerAttachment
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ nodeBearer: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/WorkerResourceID" }
+        - { name: attachmentId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: X-Run-Lease-Token, in: header, required: true, schema: { type: string } }
+        - { name: X-Run-Lease-Epoch, in: header, required: true, schema: { type: integer, format: int64 } }
+      responses: { "200": { description: Discord 附件, content: { application/octet-stream: { schema: { type: string, format: binary } } } }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/development-operations/{id}/heartbeat:
+    post:
+      operationId: heartbeatWorkerDevelopmentOperation
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ nodeBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerRunLease" } } } }
+      responses: { "204": { description: Lease 已续期 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/development-operations/{id}/complete:
+    post:
+      operationId: completeWorkerDevelopmentOperation
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ nodeBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerOperationTerminal" } } } }
+      responses: { "204": { description: Operation 已完成 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/development-operations/{id}/fail:
+    post:
+      operationId: failWorkerDevelopmentOperation
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ nodeBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerOperationTerminal" } } } }
+      responses: { "204": { description: Operation 已失败 }, default: { $ref: "#/components/responses/Problem" } }
   /worktrees:
     get: { $ref: "#/components/pathItems/ListWorktrees" }
   /audit-logs:
@@ -536,6 +788,10 @@ components:
       type: apiKey
       in: cookie
       name: tyrs_hand_session
+    nodeBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-node-token
   parameters:
     CSRFToken:
       name: X-CSRF-Token
@@ -552,6 +808,11 @@ components:
       in: query
       required: false
       schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    WorkerResourceID:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
   responses:
     Problem:
       description: RFC 9457 Problem Details
@@ -635,6 +896,153 @@ components:
               schema: { $ref: "#/components/schemas/IDResource" }
         default: { $ref: "#/components/responses/Problem" }
   schemas:
+    ExecutionNode:
+      type: object
+      required: [id, name, roles, enabled, maxConcurrentJobs, protocolVersion, status, metadata]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        roles: { type: array, items: { type: string, enum: [github, discord] } }
+        enabled: { type: boolean }
+        maxConcurrentJobs: { type: integer, minimum: 1 }
+        protocolVersion: { type: integer }
+        workerVersion: { type: string }
+        status: { type: string, enum: [pending, online, offline, disabled, incompatible, error] }
+        heartbeatAt: { type: string, format: date-time }
+        lastError: { type: string }
+        metadata: { type: object, additionalProperties: true }
+    ExecutionNodeInput:
+      type: object
+      required: [name, roles, maxConcurrentJobs]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        roles: { type: array, minItems: 1, items: { type: string, enum: [github, discord] } }
+        maxConcurrentJobs: { type: integer, minimum: 1 }
+    EnrollmentToken:
+      type: object
+      required: [enrollmentToken, expiresIn]
+      properties:
+        enrollmentToken: { type: string, writeOnly: true }
+        expiresIn: { type: integer, enum: [900] }
+    ExecutionNodeCreated:
+      allOf:
+        - { $ref: "#/components/schemas/EnrollmentToken" }
+        - type: object
+          required: [node]
+          properties: { node: { $ref: "#/components/schemas/ExecutionNode" } }
+    ExecutionDefaults:
+      type: object
+      properties:
+        githubNodeId: { type: string, format: uuid, nullable: true }
+        discordNodeId: { type: string, format: uuid, nullable: true }
+    WorkerEnrollRequest:
+      type: object
+      required: [token]
+      properties: { token: { type: string, writeOnly: true } }
+    WorkerEnrollResponse:
+      type: object
+      required: [nodeId, credential, protocolVersion]
+      properties:
+        nodeId: { type: string, format: uuid }
+        credential: { type: string, writeOnly: true }
+        protocolVersion: { type: integer }
+    WorkerHeartbeat:
+      type: object
+      required: [workerVersion, protocolVersion]
+      properties:
+        workerVersion: { type: string }
+        protocolVersion: { type: integer }
+        metadata: { type: object, additionalProperties: true }
+    WorkerClaimRequest:
+      type: object
+      required: [workerId, role, wait]
+      properties:
+        workerId: { type: string }
+        role: { type: string, enum: [github, discord] }
+        wait: { type: boolean }
+    WorkerClaimResponse:
+      type: object
+      properties:
+        task: { type: object, additionalProperties: true }
+        developmentOperation: { $ref: "#/components/schemas/WorkerDevelopmentOperation" }
+    WorkerDevelopmentOperation:
+      type: object
+      required: [id, operation, leaseToken, leaseEpoch, environmentId, containerName, dataVolume, homeVolume, network]
+      properties:
+        id: { type: string, format: uuid }
+        operation: { type: string, enum: [provision, clone, start, stop, rebuild, delete_forum, delete_environment] }
+        leaseToken: { type: string, writeOnly: true }
+        leaseEpoch: { type: integer, format: int64 }
+        environmentId: { type: string, format: uuid }
+        forumId: { type: string, format: uuid }
+        containerName: { type: string }
+        imageRef: { type: string }
+        dataVolume: { type: string }
+        homeVolume: { type: string }
+        network: { type: string }
+        workspace: { type: string }
+        conversationIds: { type: array, items: { type: string, format: uuid } }
+    WorkerRunLease:
+      type: object
+      required: [leaseToken, leaseEpoch]
+      properties:
+        leaseToken: { type: string, writeOnly: true }
+        leaseEpoch: { type: integer, format: int64 }
+    WorkerEvent:
+      type: object
+      required: [sequence, type, payload]
+      properties:
+        sequence: { type: integer, format: int64, minimum: 1 }
+        type: { type: string }
+        payload: { type: object, additionalProperties: true }
+    WorkerEventsRequest:
+      allOf:
+        - { $ref: "#/components/schemas/WorkerRunLease" }
+        - type: object
+          required: [events]
+          properties:
+            events: { type: array, items: { $ref: "#/components/schemas/WorkerEvent" } }
+    WorkerCompleteRequest:
+      allOf:
+        - { $ref: "#/components/schemas/WorkerRunLease" }
+        - type: object
+          required: [idempotencyKey, result]
+          properties:
+            idempotencyKey: { type: string }
+            result: { type: object, additionalProperties: true }
+    WorkerFailRequest:
+      allOf:
+        - { $ref: "#/components/schemas/WorkerRunLease" }
+        - type: object
+          required: [idempotencyKey, code, message]
+          properties:
+            idempotencyKey: { type: string }
+            code: { type: string }
+            message: { type: string }
+    WorkerCommandAck:
+      allOf:
+        - { $ref: "#/components/schemas/WorkerRunLease" }
+        - type: object
+          required: [commandId, action]
+          properties:
+            commandId: { type: string, format: uuid }
+            action: { type: string, enum: [steer, interrupt] }
+            turnId: { type: string }
+    WorkerOperationTerminal:
+      allOf:
+        - { $ref: "#/components/schemas/WorkerRunLease" }
+        - type: object
+          required: [idempotencyKey]
+          properties:
+            idempotencyKey: { type: string }
+            error: { type: string }
+    WorkerRuntimeCredential:
+      type: object
+      required: [apiKey]
+      properties:
+        apiKey: { type: string, writeOnly: true }
+        baseUrl: { type: string, format: uri }
+        proxyUrl: { type: string, format: uri }
     ProblemDetails:
       type: object
       required: [type, title, status]

@@ -35,6 +35,7 @@ RUN apt-get update && apt-get install --yes --no-install-recommends \
       tini=0.19.0-1+b3 && \
     rm -rf /var/lib/apt/lists/*
 RUN groupadd --gid 10001 tyrs-hand && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/tyrs-hand tyrs-hand
+RUN install -d -o tyrs-hand -g tyrs-hand -m 0700 /data/control/attachments
 COPY --from=go-build --chown=root:root /out/tyrs-hand-server /usr/local/bin/tyrs-hand-server
 COPY --from=go-build --chown=root:root /out/tyrs-hand-admin /usr/local/bin/tyrs-hand-admin
 COPY --from=go-build --chown=root:root /out/tyrs-hand-discord /usr/local/bin/tyrs-hand-discord

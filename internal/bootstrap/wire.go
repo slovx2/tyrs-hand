@@ -40,7 +40,7 @@ func InitializeDiscord(ctx context.Context, cfg config.Config) (*DiscordApp, fun
 	wire.Build(
 		provideDatabase, provideRedis, provideLogger, provideSecretBox, secrets.NewStore,
 		provideGitHubManager, provideDiscordManager, provideBindingService,
-		discordintegration.NewConversationService, discordintegration.NewDaemon,
+		provideConversationService, discordintegration.NewDaemon,
 		wire.Struct(new(DiscordApp), "*"),
 	)
 	return nil, nil, nil

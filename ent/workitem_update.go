@@ -240,6 +240,26 @@ func (_u *WorkItemUpdate) ClearHTMLURL() *WorkItemUpdate {
 	return _u
 }
 
+// SetExecutionNodeID sets the "execution_node_id" field.
+func (_u *WorkItemUpdate) SetExecutionNodeID(v uuid.UUID) *WorkItemUpdate {
+	_u.mutation.SetExecutionNodeID(v)
+	return _u
+}
+
+// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
+func (_u *WorkItemUpdate) SetNillableExecutionNodeID(v *uuid.UUID) *WorkItemUpdate {
+	if v != nil {
+		_u.SetExecutionNodeID(*v)
+	}
+	return _u
+}
+
+// ClearExecutionNodeID clears the value of the "execution_node_id" field.
+func (_u *WorkItemUpdate) ClearExecutionNodeID() *WorkItemUpdate {
+	_u.mutation.ClearExecutionNodeID()
+	return _u
+}
+
 // SetContextVersion sets the "context_version" field.
 func (_u *WorkItemUpdate) SetContextVersion(v int64) *WorkItemUpdate {
 	_u.mutation.ResetContextVersion()
@@ -407,6 +427,12 @@ func (_u *WorkItemUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.HTMLURLCleared() {
 		_spec.ClearField(workitem.FieldHTMLURL, field.TypeString)
+	}
+	if value, ok := _u.mutation.ExecutionNodeID(); ok {
+		_spec.SetField(workitem.FieldExecutionNodeID, field.TypeUUID, value)
+	}
+	if _u.mutation.ExecutionNodeIDCleared() {
+		_spec.ClearField(workitem.FieldExecutionNodeID, field.TypeUUID)
 	}
 	if value, ok := _u.mutation.ContextVersion(); ok {
 		_spec.SetField(workitem.FieldContextVersion, field.TypeInt64, value)
@@ -657,6 +683,26 @@ func (_u *WorkItemUpdateOne) ClearHTMLURL() *WorkItemUpdateOne {
 	return _u
 }
 
+// SetExecutionNodeID sets the "execution_node_id" field.
+func (_u *WorkItemUpdateOne) SetExecutionNodeID(v uuid.UUID) *WorkItemUpdateOne {
+	_u.mutation.SetExecutionNodeID(v)
+	return _u
+}
+
+// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
+func (_u *WorkItemUpdateOne) SetNillableExecutionNodeID(v *uuid.UUID) *WorkItemUpdateOne {
+	if v != nil {
+		_u.SetExecutionNodeID(*v)
+	}
+	return _u
+}
+
+// ClearExecutionNodeID clears the value of the "execution_node_id" field.
+func (_u *WorkItemUpdateOne) ClearExecutionNodeID() *WorkItemUpdateOne {
+	_u.mutation.ClearExecutionNodeID()
+	return _u
+}
+
 // SetContextVersion sets the "context_version" field.
 func (_u *WorkItemUpdateOne) SetContextVersion(v int64) *WorkItemUpdateOne {
 	_u.mutation.ResetContextVersion()
@@ -854,6 +900,12 @@ func (_u *WorkItemUpdateOne) sqlSave(ctx context.Context) (_node *WorkItem, err 
 	}
 	if _u.mutation.HTMLURLCleared() {
 		_spec.ClearField(workitem.FieldHTMLURL, field.TypeString)
+	}
+	if value, ok := _u.mutation.ExecutionNodeID(); ok {
+		_spec.SetField(workitem.FieldExecutionNodeID, field.TypeUUID, value)
+	}
+	if _u.mutation.ExecutionNodeIDCleared() {
+		_spec.ClearField(workitem.FieldExecutionNodeID, field.TypeUUID)
 	}
 	if value, ok := _u.mutation.ContextVersion(); ok {
 		_spec.SetField(workitem.FieldContextVersion, field.TypeInt64, value)

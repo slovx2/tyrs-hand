@@ -17,6 +17,8 @@ const (
 	FieldVersion = "version"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldExecutionNodeID holds the string denoting the execution_node_id field in the database.
+	FieldExecutionNodeID = "execution_node_id"
 	// FieldMetadata holds the string denoting the metadata field in the database.
 	FieldMetadata = "metadata"
 	// FieldHeartbeatAt holds the string denoting the heartbeat_at field in the database.
@@ -32,6 +34,7 @@ var Columns = []string{
 	FieldID,
 	FieldVersion,
 	FieldStatus,
+	FieldExecutionNodeID,
 	FieldMetadata,
 	FieldHeartbeatAt,
 	FieldStartedAt,
@@ -74,6 +77,11 @@ func ByVersion(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByExecutionNodeID orders the results by the execution_node_id field.
+func ByExecutionNodeID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExecutionNodeID, opts...).ToFunc()
 }
 
 // ByHeartbeatAt orders the results by the heartbeat_at field.

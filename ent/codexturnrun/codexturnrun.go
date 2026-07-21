@@ -26,6 +26,12 @@ const (
 	FieldLeaseEpoch = "lease_epoch"
 	// FieldCapabilityHash holds the string denoting the capability_hash field in the database.
 	FieldCapabilityHash = "capability_hash"
+	// FieldExecutionNodeID holds the string denoting the execution_node_id field in the database.
+	FieldExecutionNodeID = "execution_node_id"
+	// FieldWorkerEventSequence holds the string denoting the worker_event_sequence field in the database.
+	FieldWorkerEventSequence = "worker_event_sequence"
+	// FieldWorkerTerminalKey holds the string denoting the worker_terminal_key field in the database.
+	FieldWorkerTerminalKey = "worker_terminal_key"
 	// FieldActiveSlot holds the string denoting the active_slot field in the database.
 	FieldActiveSlot = "active_slot"
 	// FieldStatus holds the string denoting the status field in the database.
@@ -61,6 +67,9 @@ var Columns = []string{
 	FieldWorkerID,
 	FieldLeaseEpoch,
 	FieldCapabilityHash,
+	FieldExecutionNodeID,
+	FieldWorkerEventSequence,
+	FieldWorkerTerminalKey,
 	FieldActiveSlot,
 	FieldStatus,
 	FieldCodexSubmissionID,
@@ -85,6 +94,8 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// DefaultWorkerEventSequence holds the default value on creation for the "worker_event_sequence" field.
+	DefaultWorkerEventSequence int64
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// DefaultAppendCount holds the default value on creation for the "append_count" field.
@@ -135,6 +146,21 @@ func ByLeaseEpoch(opts ...sql.OrderTermOption) OrderOption {
 // ByCapabilityHash orders the results by the capability_hash field.
 func ByCapabilityHash(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCapabilityHash, opts...).ToFunc()
+}
+
+// ByExecutionNodeID orders the results by the execution_node_id field.
+func ByExecutionNodeID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExecutionNodeID, opts...).ToFunc()
+}
+
+// ByWorkerEventSequence orders the results by the worker_event_sequence field.
+func ByWorkerEventSequence(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWorkerEventSequence, opts...).ToFunc()
+}
+
+// ByWorkerTerminalKey orders the results by the worker_terminal_key field.
+func ByWorkerTerminalKey(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWorkerTerminalKey, opts...).ToFunc()
 }
 
 // ByActiveSlot orders the results by the active_slot field.

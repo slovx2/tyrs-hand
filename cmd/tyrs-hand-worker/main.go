@@ -15,15 +15,26 @@ import (
 )
 
 func main() {
-	cfg, err := config.Load()
+	cfg, err := config.LoadWorker()
 	if err != nil {
 		log.Fatal(err)
 	}
-	if len(cfg.MasterKey) != 32 {
+	if !cfg.RemoteWorker() && len(cfg.MasterKey) != 32 {
 		log.Fatal("必须配置 TYRS_HAND_MASTER_KEY")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if cfg.RemoteWorker() {
+		app, cleanup, initializeErr := bootstrap.InitializeRemoteWorker(ctx, cfg)
+		if initializeErr != nil {
+			log.Fatal(initializeErr)
+		}
+		defer cleanup()
+		if runErr := app.Runner.Run(ctx); runErr != nil && !errors.Is(runErr, context.Canceled) {
+			app.Logger.Fatal("远程 Worker 退出", zap.Error(runErr))
+		}
+		return
+	}
 	app, cleanup, err := bootstrap.InitializeWorker(ctx, cfg)
 	if err != nil {
 		log.Fatal(err)

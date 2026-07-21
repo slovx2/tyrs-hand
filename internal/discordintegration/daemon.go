@@ -116,6 +116,8 @@ func (d *Daemon) runBackground(ctx context.Context, guildID string, remote Remot
 	defer projectionTicker.Stop()
 	permissionTicker := time.NewTicker(d.permissionInterval)
 	defer permissionTicker.Stop()
+	attachmentTicker := time.NewTicker(time.Hour)
+	defer attachmentTicker.Stop()
 	d.refreshAllProjections(ctx, guildID, remote)
 	if err := d.syncRepositoryPermissions(ctx, guildID); err != nil {
 		d.logger.Warn("同步 Discord 仓库权限失败", zap.Error(err))
@@ -154,6 +156,10 @@ func (d *Daemon) runBackground(ctx context.Context, guildID string, remote Remot
 		case <-permissionTicker.C:
 			if err := d.syncRepositoryPermissions(ctx, guildID); err != nil {
 				d.logger.Warn("同步 Discord 仓库权限失败", zap.Error(err))
+			}
+		case <-attachmentTicker.C:
+			if err := d.conversations.CleanupAttachments(ctx); err != nil {
+				d.logger.Warn("清理过期 Discord 附件失败", zap.Error(err))
 			}
 		case message, open := <-permissionMessages:
 			if !open {

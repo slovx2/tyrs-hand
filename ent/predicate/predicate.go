@@ -24,6 +24,12 @@ type CodexTurnIntent func(*sql.Selector)
 // CodexTurnRun is the predicate function for codexturnrun builders.
 type CodexTurnRun func(*sql.Selector)
 
+// ExecutionNode is the predicate function for executionnode builders.
+type ExecutionNode func(*sql.Selector)
+
+// ExecutionNodeEnrollment is the predicate function for executionnodeenrollment builders.
+type ExecutionNodeEnrollment func(*sql.Selector)
+
 // PlatformSetting is the predicate function for platformsetting builders.
 type PlatformSetting func(*sql.Selector)
 

@@ -30,6 +30,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/database"
 	"github.com/slovx2/tyrs-hand/internal/domain"
+	"github.com/slovx2/tyrs-hand/internal/executionnode"
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
 	"github.com/slovx2/tyrs-hand/internal/githubtools"
 	"github.com/slovx2/tyrs-hand/internal/orchestrator"
@@ -108,7 +109,7 @@ func TestPostgresMigrationsAndLeaseEpoch(t *testing.T) {
 	require.Contains(t, environment, "HTTP_PROXY=https://proxy.example.com")
 	require.FileExists(t, filepath.Join(deviceHome, "auth.json"))
 
-	repositoryID, workItemID, profileID := seedQueue(t, db)
+	repositoryID, workItemID, profileID, nodeID := seedQueue(t, db)
 	redisClient, redisContainer := redisInstance(t)
 	require.NoError(t, redisClient.Ping(ctx).Err())
 	require.NoError(t, testcontainers.TerminateContainer(redisContainer))
@@ -136,7 +137,8 @@ func TestPostgresMigrationsAndLeaseEpoch(t *testing.T) {
 		group.Add(1)
 		go func(index int) {
 			defer group.Done()
-			claims[index], claimErrors[index] = repository.Claim(ctx, "worker-"+string(rune('a'+index)))
+			claims[index], claimErrors[index] = repository.ClaimNode(ctx,
+				"worker-"+string(rune('a'+index)), codexcontrol.SourceGitHub, nodeID)
 		}(index)
 	}
 	group.Wait()
@@ -155,28 +157,32 @@ func TestPostgresMigrationsAndLeaseEpoch(t *testing.T) {
 	count, err := repository.RequeueExpired(ctx)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, count)
-	_, err = db.ExecContext(ctx, "UPDATE codex_turn_intents SET available_at = now() WHERE id = $1", claimed.ID)
-	require.NoError(t, err)
-	newClaim, err := repository.Claim(ctx, "worker-new")
-	require.NoError(t, err)
-	require.NotNil(t, newClaim)
-	require.Equal(t, claimed.ID, newClaim.ID)
-	require.Greater(t, newClaim.LeaseEpoch, claimed.LeaseEpoch)
-	require.Equal(t, "alice", newClaim.ActorLogin)
-	require.Equal(t, "write", newClaim.ActorPermission)
-	require.ErrorIs(t, repository.Complete(ctx, claimed, codexcontrol.TurnResult{}), codexcontrol.ErrLeaseLost)
-	require.NoError(t, repository.Heartbeat(ctx, newClaim))
-	stale := *newClaim
-	stale.LeaseEpoch = claimed.LeaseEpoch
+	require.NoError(t, repository.Heartbeat(ctx, claimed), "原节点应当使用同一 Lease 恢复 Run")
+	var activeSlot int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT active_slot FROM codex_turn_runs WHERE id = $1`,
+		claimed.RunID).Scan(&activeSlot))
+	require.Equal(t, 1, activeSlot, "恢复时必须保留原 Run 的活动槽位")
+	require.Equal(t, "alice", claimed.ActorLogin)
+	require.Equal(t, "write", claimed.ActorPermission)
+	stale := *claimed
+	stale.LeaseEpoch--
 	require.ErrorIs(t, repository.Heartbeat(ctx, &stale), codexcontrol.ErrLeaseLost)
-	require.NoError(t, repository.SetThread(ctx, newClaim, "thread", "/tmp/codex-home", "signature"))
-	require.NoError(t, repository.RecordSubmission(ctx, newClaim, "turn"))
-	require.NoError(t, repository.ConfirmTurn(ctx, newClaim, "turn"))
-	testOfficialGitHubTool(t, db, newClaim.Capability)
-	require.NoError(t, repository.Complete(ctx, newClaim, codexcontrol.TurnResult{
+	require.NoError(t, repository.SetThread(ctx, claimed, "thread", "/tmp/codex-home", "signature"))
+	require.NoError(t, repository.RecordSubmission(ctx, claimed, "turn"))
+	require.NoError(t, repository.ConfirmTurn(ctx, claimed, "turn"))
+	satisfied, err := repository.ReplySatisfied(ctx, claimed)
+	require.NoError(t, err)
+	require.False(t, satisfied)
+	silentClaim := *claimed
+	silentClaim.ReplyPolicy = "silent"
+	satisfied, err = repository.ReplySatisfied(ctx, &silentClaim)
+	require.NoError(t, err)
+	require.True(t, satisfied)
+	testOfficialGitHubTool(t, db, claimed.Capability)
+	require.NoError(t, repository.Complete(ctx, claimed, codexcontrol.TurnResult{
 		TurnID: "turn", FinalAnswer: "succeeded, but command exited 127",
 	}))
-	failedClaim, err := repository.Claim(ctx, "worker-failure")
+	failedClaim, err := repository.ClaimNode(ctx, "worker-failure", codexcontrol.SourceGitHub, nodeID)
 	require.NoError(t, err)
 	require.NotNil(t, failedClaim)
 	_, err = db.ExecContext(ctx, "UPDATE codex_turn_intents SET reply_status = 'delivered' WHERE id = $1", failedClaim.ID)
@@ -192,17 +198,43 @@ func TestPostgresMigrationsAndLeaseEpoch(t *testing.T) {
 	require.NoError(t, err)
 	_, inserted, err := repository.Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
 		SourceType: codexcontrol.SourceGitHub, WorkItemID: workItemID, RepositoryID: repositoryID,
+		AgentProfileID: profileID, ContextVersion: 1, IdempotencyKey: "intent-reconcile",
+		Instruction: "reconcile", ReplyPolicy: "silent",
+	})
+	require.NoError(t, err)
+	require.True(t, inserted)
+	require.NoError(t, tx.Commit())
+	reconcileClaim, err := repository.ClaimNode(ctx, "worker-reconcile", codexcontrol.SourceGitHub, nodeID)
+	require.NoError(t, err)
+	require.NotNil(t, reconcileClaim)
+	require.NoError(t, repository.Reconcile(ctx, reconcileClaim, "network_lost", errors.New("offline")))
+	var reconciledStatus string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM codex_turn_intents WHERE id = $1`,
+		reconcileClaim.ID).Scan(&reconciledStatus))
+	require.Equal(t, "retry_wait", reconciledStatus)
+	_, err = db.ExecContext(ctx, `UPDATE codex_turn_intents SET available_at = now() WHERE id = $1`,
+		reconcileClaim.ID)
+	require.NoError(t, err)
+	reconcileClaim, err = repository.ClaimNode(ctx, "worker-reconcile", codexcontrol.SourceGitHub, nodeID)
+	require.NoError(t, err)
+	require.NotNil(t, reconcileClaim)
+	require.Equal(t, 2, reconcileClaim.Attempt)
+	require.NoError(t, repository.Cancel(ctx, reconcileClaim, "canceled", "test complete"))
+	tx, err = db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	_, inserted, err = repository.Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
+		SourceType: codexcontrol.SourceGitHub, WorkItemID: workItemID, RepositoryID: repositoryID,
 		AgentProfileID: profileID, ContextVersion: 1, IdempotencyKey: "intent-control-failure",
 		Instruction: "test failure", ReplyPolicy: "required",
 	})
 	require.NoError(t, err)
 	require.True(t, inserted)
 	require.NoError(t, tx.Commit())
-	failedClaim, err = repository.Claim(ctx, "worker-failure")
+	failedClaim, err = repository.ClaimNode(ctx, "worker-failure", codexcontrol.SourceGitHub, nodeID)
 	require.NoError(t, err)
 	require.NotNil(t, failedClaim)
 	require.NoError(t, repository.Fail(ctx, failedClaim, "integration_failure", errors.New("integration failure")))
-	emptyClaim, err := repository.Claim(ctx, "worker-empty")
+	emptyClaim, err := repository.ClaimNode(ctx, "worker-empty", codexcontrol.SourceGitHub, nodeID)
 	require.NoError(t, err)
 	require.Nil(t, emptyClaim)
 	testWebhookOrchestration(t, db, repositoryID)
@@ -737,13 +769,17 @@ func postgresDatabase(t *testing.T) *sql.DB {
 	return db
 }
 
-func seedQueue(t *testing.T, db *sql.DB) (uuid.UUID, uuid.UUID, uuid.UUID) {
+func seedQueue(t *testing.T, db *sql.DB) (uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID) {
 	t.Helper()
 	ctx := context.Background()
 	var installationID, repositoryID, workItemID, profileID uuid.UUID
+	nodes := executionnode.NewService(db)
+	node, _, err := nodes.Create(ctx, "queue-test", []string{"github"}, 2)
+	require.NoError(t, err)
+	require.NoError(t, nodes.SetDefaults(ctx, executionnode.Defaults{GitHubNodeID: &node.ID}))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO scm_installations(provider,external_id,account_login,account_type) VALUES ('github',1,'test','Organization') RETURNING id`).Scan(&installationID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO repositories(installation_id,provider,external_id,owner,name,default_branch,clone_url) VALUES ($1,'github',2,'owner','repo','main','https://example.invalid/repo.git') RETURNING id`, installationID).Scan(&repositoryID))
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM agent_profiles WHERE name = 'Default'`).Scan(&profileID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO work_items(repository_id,kind,external_number,title) VALUES ($1,'issue',1,'test') RETURNING id`, repositoryID).Scan(&workItemID))
-	return repositoryID, workItemID, profileID
+	return repositoryID, workItemID, profileID, node.ID
 }

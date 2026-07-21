@@ -37,6 +37,9 @@ func TestValidate(t *testing.T) {
 	require.Error(t, production.Validate())
 	production.MasterKey = make([]byte, 32)
 	production.CookieSecure = true
+	production.PublicURL = "http://tyr.example.com"
+	require.Error(t, production.Validate())
+	production.PublicURL = "https://tyr.example.com"
 	require.NoError(t, production.Validate())
 }
 
@@ -57,4 +60,61 @@ func TestReadSecretAndLoadMasterKey(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, cfg.MasterKey, 32)
 	require.False(t, strings.HasSuffix(cfg.PublicURL, "/"))
+}
+
+func TestParseWorkerAPINetworkList(t *testing.T) {
+	prefixes, err := parseNetworkList("203.0.113.8, 10.20.0.0/16, 2001:db8::1")
+	require.NoError(t, err)
+	require.Equal(t, []string{"203.0.113.8/32", "10.20.0.0/16", "2001:db8::1/128"},
+		[]string{prefixes[0].String(), prefixes[1].String(), prefixes[2].String()})
+	_, err = parseNetworkList("not-an-ip")
+	require.Error(t, err)
+}
+
+func TestValidateAndLoadRemoteWorker(t *testing.T) {
+	valid := Config{
+		Environment: "production", WorkerControlURL: "https://tyr.example.com",
+		CodexBin: "codex", WorkerID: "home-1", WorkerRole: "all",
+		WorkerCredentialFile:  "/data/worker/control-state/node-credential",
+		WorkerProtocolVersion: 1, WorkerMaxConcurrentJobs: 2,
+	}
+	require.True(t, valid.RemoteWorker())
+	require.NoError(t, valid.ValidateWorker())
+
+	invalid := valid
+	invalid.WorkerControlURL = "http://tyr.example.com"
+	require.Error(t, invalid.ValidateWorker())
+	invalid = valid
+	invalid.WorkerRole = "unknown"
+	require.Error(t, invalid.ValidateWorker())
+	invalid = valid
+	invalid.WorkerProtocolVersion = 2
+	require.Error(t, invalid.ValidateWorker())
+	invalid = valid
+	invalid.WorkerCredentialFile = ""
+	require.Error(t, invalid.ValidateWorker())
+	invalid = valid
+	invalid.WorkerMaxConcurrentJobs = 0
+	require.Error(t, invalid.ValidateWorker())
+	invalid = valid
+	invalid.CodexBin = ""
+	require.Error(t, invalid.ValidateWorker())
+
+	local := Config{}
+	require.False(t, local.RemoteWorker())
+	require.Error(t, local.ValidateWorker())
+
+	t.Setenv("TYRS_HAND_ENV", "production")
+	t.Setenv("TYRS_HAND_WORKER_CONTROL_URL", "https://tyr.example.com/")
+	t.Setenv("TYRS_HAND_WORKER_ID", "home-1")
+	t.Setenv("TYRS_HAND_WORKER_ROLE", "github")
+	t.Setenv("TYRS_HAND_WORKER_CREDENTIAL_FILE", filepath.Join(t.TempDir(), "credential"))
+	t.Setenv("TYRS_HAND_WORKER_PROTOCOL_VERSION", "1")
+	t.Setenv("TYRS_HAND_WORKER_MAX_CONCURRENT_JOBS", "2")
+	t.Setenv("TYRS_HAND_DATABASE_URL", "")
+	t.Setenv("TYRS_HAND_REDIS_URL", "")
+	loaded, err := LoadWorker()
+	require.NoError(t, err)
+	require.Equal(t, "https://tyr.example.com", loaded.WorkerControlURL)
+	require.Equal(t, "github", loaded.WorkerRole)
 }

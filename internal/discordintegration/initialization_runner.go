@@ -181,14 +181,23 @@ func (m *Manager) ensureDevelopmentEnvironment(ctx context.Context, guildID, own
 	candidate := uuid.New()
 	compact := strings.ReplaceAll(candidate.String(), "-", "")
 	var id uuid.UUID
-	err := m.db.QueryRowContext(ctx, `INSERT INTO discord_development_environments
+	err := m.db.QueryRowContext(ctx, `WITH placement AS (
+		SELECT n.id FROM platform_settings s JOIN execution_nodes n
+			ON n.id = (s.value->>'nodeId')::uuid
+		WHERE s.setting_key = 'execution.default.discord' AND n.enabled AND n.roles ? 'discord'
+	)
+	INSERT INTO discord_development_environments
 		(id, guild_id, owner_discord_user_id, build_repository_id, container_name,
-		 data_volume_name, home_volume_name, network_name)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		 data_volume_name, home_volume_name, network_name, execution_node_id)
+		SELECT $1, $2, $3, $4, $5, $6, $7, $8, placement.id FROM placement
 		ON CONFLICT(guild_id, owner_discord_user_id)
-		DO UPDATE SET updated_at = now() RETURNING id`, candidate, guildID, ownerID, repositoryID,
+		DO UPDATE SET execution_node_id = COALESCE(discord_development_environments.execution_node_id,
+			EXCLUDED.execution_node_id), updated_at = now() RETURNING id`, candidate, guildID, ownerID, repositoryID,
 		"tyrs-hand-dev-"+compact, "tyrs-hand-dev-data-"+compact,
 		"tyrs-hand-dev-home-"+compact, "tyrs-hand-dev-net-"+compact).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return uuid.Nil, errors.New("尚未配置可用的 Discord 默认执行节点")
+	}
 	return id, err
 }
 

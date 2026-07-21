@@ -17,6 +17,7 @@ const (
 type IntentStatus string
 
 const (
+	IntentPlacementPending     IntentStatus = "placement_pending"
 	IntentQueued               IntentStatus = "queued"
 	IntentDispatching          IntentStatus = "dispatching"
 	IntentAwaitingConfirmation IntentStatus = "awaiting_confirmation"

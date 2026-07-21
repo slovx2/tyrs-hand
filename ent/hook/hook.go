@@ -81,6 +81,30 @@ func (f CodexTurnRunFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CodexTurnRunMutation", m)
 }
 
+// The ExecutionNodeFunc type is an adapter to allow the use of ordinary
+// function as ExecutionNode mutator.
+type ExecutionNodeFunc func(context.Context, *ent.ExecutionNodeMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ExecutionNodeFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ExecutionNodeMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ExecutionNodeMutation", m)
+}
+
+// The ExecutionNodeEnrollmentFunc type is an adapter to allow the use of ordinary
+// function as ExecutionNodeEnrollment mutator.
+type ExecutionNodeEnrollmentFunc func(context.Context, *ent.ExecutionNodeEnrollmentMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ExecutionNodeEnrollmentFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ExecutionNodeEnrollmentMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ExecutionNodeEnrollmentMutation", m)
+}
+
 // The PlatformSettingFunc type is an adapter to allow the use of ordinary
 // function as PlatformSetting mutator.
 type PlatformSettingFunc func(context.Context, *ent.PlatformSettingMutation) (ent.Value, error)
