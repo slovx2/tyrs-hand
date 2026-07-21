@@ -28,6 +28,24 @@ func TestWorkerSourceIPOnlyTrustsForwardedHeaderFromTrustedProxy(t *testing.T) {
 	require.Equal(t, "198.51.100.5", address.String())
 }
 
+func TestWorkerSourceIPSupportsOptionalCloudflareHeader(t *testing.T) {
+	trusted := []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32"),
+		netip.MustParsePrefix("104.16.0.0/13")}
+	request := httptest.NewRequest("GET", "/worker/v1/heartbeat", nil)
+	request.RemoteAddr = "127.0.0.1:9000"
+	request.Header.Set("X-Forwarded-For", "104.23.175.40")
+	request.Header.Set("CF-Connecting-IP", "203.0.113.8")
+	address, err := workerSourceIP(request, trusted)
+	require.NoError(t, err)
+	require.Equal(t, "203.0.113.8", address.String())
+
+	request.Header.Set("X-Forwarded-For", "198.51.100.5")
+	request.Header.Set("CF-Connecting-IP", "203.0.113.8")
+	address, err = workerSourceIP(request, trusted)
+	require.NoError(t, err)
+	require.Equal(t, "198.51.100.5", address.String(), "非可信来源不能伪造 Cloudflare 请求头")
+}
+
 func TestWorkerIPAllowlistSupportsSingleAddressAndCIDR(t *testing.T) {
 	prefixes := []netip.Prefix{netip.MustParsePrefix("203.0.113.8/32"),
 		netip.MustParsePrefix("2001:db8:1234::/48")}

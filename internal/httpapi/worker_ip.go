@@ -47,6 +47,14 @@ func workerSourceIP(request *http.Request, trusted []netip.Prefix) (netip.Addr, 
 		}
 		current = candidate.Unmap()
 	}
+	cloudflareAddress := strings.TrimSpace(request.Header.Get("CF-Connecting-IP"))
+	if cloudflareAddress != "" && prefixesContain(trusted, current) {
+		candidate, parseErr := netip.ParseAddr(cloudflareAddress)
+		if parseErr != nil {
+			return netip.Addr{}, errors.New("可信代理提供了无效的 CF-Connecting-IP")
+		}
+		return candidate.Unmap(), nil
+	}
 	return current, nil
 }
 
