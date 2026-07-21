@@ -178,6 +178,9 @@ func (s *Server) rateLimit() gin.HandlerFunc {
 }
 
 func rateLimitPolicy(path string) (string, int64) {
+	if strings.HasPrefix(path, "/worker/v1/") {
+		return "worker-api", 10000
+	}
 	switch path {
 	case "/api/v1/auth/login":
 		return "auth-login", 10

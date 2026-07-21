@@ -36,6 +36,8 @@ func TestRateLimitPoliciesUseIndependentBuckets(t *testing.T) {
 		{path: "/api/v1/auth/login", bucket: "auth-login", limit: 10},
 		{path: "/api/v1/setup/admin", bucket: "setup-admin", limit: 10},
 		{path: "/webhooks/github", bucket: "github-webhook", limit: 300},
+		{path: "/worker/v1/runs/run-id/events", bucket: "worker-api", limit: 10000},
+		{path: "/worker/v1/heartbeat", bucket: "worker-api", limit: 10000},
 		{path: "/api/v1/setup/status", bucket: "default", limit: 600},
 	}
 	for _, test := range tests {
