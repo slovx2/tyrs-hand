@@ -158,9 +158,13 @@ func TestLocalToolCallAuditIsIdempotent(t *testing.T) {
 		ThreadID: "thread-1", TurnID: "turn-1", CallID: "call-1",
 		Namespace: stringPointer("git"), Tool: "status", Arguments: json.RawMessage(`{}`),
 	}
+	missingNamespace := request
+	missingNamespace.Namespace = nil
+	_, err = processor.auditLocalToolCall(context.Background(), claimed, missingNamespace, nil)
+	require.ErrorContains(t, err, "缺少 namespace")
 	insertPattern := regexp.QuoteMeta("INSERT INTO tool_calls")
 	mock.ExpectQuery(insertPattern).
-		WithArgs(runID, intentID, request.ThreadID, request.TurnID, request.CallID, request.Tool, request.Arguments).
+		WithArgs(runID, intentID, request.ThreadID, request.TurnID, request.CallID, "git", request.Tool, request.Arguments).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(callRecordID))
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE tool_calls SET status = 'completed'")).
 		WithArgs(callRecordID, sqlmock.AnyArg()).
@@ -178,10 +182,10 @@ func TestLocalToolCallAuditIsIdempotent(t *testing.T) {
 	storedJSON, err := json.Marshal(result)
 	require.NoError(t, err)
 	mock.ExpectQuery(insertPattern).
-		WithArgs(runID, intentID, request.ThreadID, request.TurnID, request.CallID, request.Tool, request.Arguments).
+		WithArgs(runID, intentID, request.ThreadID, request.TurnID, request.CallID, "git", request.Tool, request.Arguments).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT status, result, error FROM tool_calls")).
-		WithArgs(request.ThreadID, request.TurnID, request.CallID, request.Tool, string(request.Arguments)).
+		WithArgs(request.ThreadID, request.TurnID, request.CallID, "git", request.Tool, string(request.Arguments)).
 		WillReturnRows(sqlmock.NewRows([]string{"status", "result", "error"}).AddRow("completed", storedJSON, nil))
 
 	replayed, err := processor.auditLocalToolCall(context.Background(), claimed, request, execute)
@@ -193,14 +197,33 @@ func TestLocalToolCallAuditIsIdempotent(t *testing.T) {
 	conflicting.Tool = "commit"
 	conflicting.Arguments = json.RawMessage(`{"message":"conflict"}`)
 	mock.ExpectQuery(insertPattern).
-		WithArgs(runID, intentID, conflicting.ThreadID, conflicting.TurnID, conflicting.CallID, conflicting.Tool, conflicting.Arguments).
+		WithArgs(runID, intentID, conflicting.ThreadID, conflicting.TurnID, conflicting.CallID, "git", conflicting.Tool, conflicting.Arguments).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT status, result, error FROM tool_calls")).
-		WithArgs(conflicting.ThreadID, conflicting.TurnID, conflicting.CallID, conflicting.Tool, string(conflicting.Arguments)).
+		WithArgs(conflicting.ThreadID, conflicting.TurnID, conflicting.CallID, "git", conflicting.Tool, string(conflicting.Arguments)).
 		WillReturnRows(sqlmock.NewRows([]string{"status", "result", "error"}))
 	_, err = processor.auditLocalToolCall(context.Background(), claimed, conflicting, execute)
 	require.ErrorContains(t, err, "与既有请求不一致")
 	require.Equal(t, 1, executions)
+
+	discordNamespace := "discord"
+	discordRequest := codex.ToolCallRequest{
+		ThreadID: "thread-2", TurnID: "turn-2", CallID: "call-2",
+		Namespace: &discordNamespace, Tool: "set_post_title",
+		Arguments: json.RawMessage(`{"title":"测试标题"}`),
+	}
+	discordRecordID := uuid.New()
+	mock.ExpectQuery(insertPattern).
+		WithArgs(runID, intentID, discordRequest.ThreadID, discordRequest.TurnID,
+			discordRequest.CallID, "discord", discordRequest.Tool, discordRequest.Arguments).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(discordRecordID))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE tool_calls SET status = 'completed'")).
+		WithArgs(discordRecordID, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	_, err = processor.auditLocalToolCall(context.Background(), claimed, discordRequest, execute)
+	require.NoError(t, err)
+	require.Equal(t, 2, executions)
 }
 
 func TestDiscordStopUsesCanceledProjection(t *testing.T) {

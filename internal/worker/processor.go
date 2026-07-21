@@ -274,14 +274,19 @@ func (p *Processor) auditLocalToolCall(ctx context.Context, claimed *codexcontro
 	if request.ThreadID == "" || request.TurnID == "" || request.CallID == "" {
 		return codex.ToolCallResult{}, errors.New("本地 Tool Call 缺少 thread、turn 或 call ID")
 	}
+	if request.Namespace == nil {
+		return codex.ToolCallResult{}, errors.New("本地 Tool Call 缺少 namespace")
+	}
+	namespace := *request.Namespace
 	var id uuid.UUID
 	err := p.db.QueryRowContext(ctx, `
 		INSERT INTO tool_calls(run_id, intent_id, thread_id, turn_id, call_id, namespace, tool, arguments)
-		VALUES ($1, $2, $3, $4, $5, 'git', $6, $7)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT(thread_id, turn_id, call_id) DO NOTHING
-		RETURNING id`, claimed.RunID, claimed.ID, request.ThreadID, request.TurnID, request.CallID, request.Tool, request.Arguments).Scan(&id)
+		RETURNING id`, claimed.RunID, claimed.ID, request.ThreadID, request.TurnID, request.CallID,
+		namespace, request.Tool, request.Arguments).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
-		return p.previousLocalToolResult(ctx, request)
+		return p.previousLocalToolResult(ctx, request, namespace)
 	}
 	if err != nil {
 		return codex.ToolCallResult{}, err
@@ -301,15 +306,17 @@ func (p *Processor) auditLocalToolCall(ctx context.Context, claimed *codexcontro
 	return result, nil
 }
 
-func (p *Processor) previousLocalToolResult(ctx context.Context, request codex.ToolCallRequest) (codex.ToolCallResult, error) {
+func (p *Processor) previousLocalToolResult(ctx context.Context, request codex.ToolCallRequest,
+	namespace string,
+) (codex.ToolCallResult, error) {
 	var status string
 	var resultJSON []byte
 	var message sql.NullString
 	err := p.db.QueryRowContext(ctx, `
 		SELECT status, result, error FROM tool_calls
 		WHERE thread_id = $1 AND turn_id = $2 AND call_id = $3
-		  AND namespace = 'git' AND tool = $4 AND arguments = $5::jsonb`,
-		request.ThreadID, request.TurnID, request.CallID, request.Tool,
+		  AND namespace = $4 AND tool = $5 AND arguments = $6::jsonb`,
+		request.ThreadID, request.TurnID, request.CallID, namespace, request.Tool,
 		string(request.Arguments)).Scan(&status, &resultJSON, &message)
 	if errors.Is(err, sql.ErrNoRows) {
 		return codex.ToolCallResult{}, errors.New("本地 Tool Call ID 与既有请求不一致")
