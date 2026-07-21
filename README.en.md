@@ -16,6 +16,7 @@ The project is at an early stage. Evaluate it on controlled repositories before 
 
 ## Highlights
 
+- **Turn idle home computers into execution nodes.** Run the public Control on a small internet-facing server while powerful machines at home pull Codex work over HTTPS. Home networks need no public IP, port forwarding, or SSH reverse tunnel; Cloudflare remains optional. Route all new resources to one default node first, then add nodes and placement policies later.
 - GitHub App identity with HMAC-verified and deduplicated webhooks
 - PostgreSQL-backed durable jobs, leases, retries, and recovery
 - One bare clone cache per repository and one temporary worktree per GitHub work item, removed seven days after closure
@@ -26,38 +27,41 @@ The project is at an early stage. Evaluate it on controlled repositories before 
 - One reusable container and Home per Discord user, with one independent full clone per forum
 - Idempotent tool calls keyed by `(thread, turn, call)`
 - Natural Codex final answers with platform-owned control state and managed reply gates
-- React administration UI for repositories, rules, profiles, jobs, threads, workers, and audit logs
+- Public HTTPS Control and Pull Workers with frozen per-resource placement
+- React administration UI for repositories, rules, profiles, jobs, threads, execution nodes, default placement, and audit logs
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    GitHub["GitHub App / Webhook"] --> Server["tyrs-hand-server"]
+    subgraph Public["Public Control"]
+        Server["tyrs-hand-server\nWebhooks + Worker API"]
+        Gateway["tyrs-hand-discord\nGateway + Outbox"]
+        State["PostgreSQL + Redis\nAttachment volume"]
+        Server <--> State
+        Gateway <--> State
+    end
+    GitHub["GitHub App / Webhook"] --> Server
     Admin["React Admin UI"] --> Server
-    Discord["Discord Server"] <--> Gateway["tyrs-hand-discord"]
-    Server --> PostgreSQL["PostgreSQL\nAuthoritative state and queue"]
-    Server --> Redis["Redis\nRate limits and notifications"]
-    Gateway --> PostgreSQL
-    Gateway --> Redis
-    GitHubWorker["GitHub Worker"] --> PostgreSQL
-    GitHubWorker --> Cache["Bare Repo Cache"]
-    Cache --> Worktree["Work Item Worktree"]
-    DiscordWorker["Discord Dev Worker"] --> PostgreSQL
-    DiscordWorker --> DevContainer["Per-user dev container\nPersistent Home + repository clones"]
-    GitHubWorker <--> Codex["Codex App Server"]
-    DevContainer <--> Codex
-    Codex --> Tools["GitHub / Git Dynamic Tools"]
-    Tools --> Server
+    Discord["Discord Server"] <--> Gateway
+    subgraph Home["Home or compute node (no public IP)"]
+        Worker["Pull Worker"]
+        Workspace["Repo cache + worktrees\nDevelopment containers"]
+        Codex["Codex App Server"]
+        Worker <--> Workspace
+        Worker <--> Codex
+    end
+    Worker -->|"HTTPS long polling / events / tools"| Server
 ```
 
 The project ships four commands:
 
 - `tyrs-hand-server`: administration API, GitHub App, webhook receiver, and embedded frontend
-- `tyrs-hand-worker`: runs in a `github` or `discord` role for leases, workspaces, Codex, and tools
+- `tyrs-hand-worker`: pulls work through `/worker/v1` and runs workspaces, Codex, local Git, and development containers on an execution node
 - `tyrs-hand-discord`: Discord gateway, forum conversations, projections, and outbox delivery
 - `tyrs-hand-admin`: migrations, diagnostics, administrator recovery, key rotation, and garbage collection
 
-PostgreSQL is the only authoritative state store. Redis contains only recoverable rate-limit and notification data.
+PostgreSQL is the only authoritative state store. Redis contains only recoverable rate-limit and notification data. Workers connect to neither store directly and hold no Control master key or Discord bot token.
 
 ## Quick Start
 
@@ -81,13 +85,13 @@ PostgreSQL is the only authoritative state store. Redis contains only recoverabl
 
    Put the generated values in `.env` as `TYRS_HAND_MASTER_KEY` and `TYRS_HAND_SETUP_TOKEN`. Local PostgreSQL uses `tyrs_hand` by default. In production, replace both `POSTGRES_PASSWORD` and the secret file with the same random password.
 
-2. Build, migrate, and start:
+2. Build, migrate, and start the Control:
 
    ```bash
-   docker compose build server worker
+   docker compose build server
    docker compose up -d postgres redis
    docker compose --profile tools run --rm admin migrate
-   docker compose up -d server worker discord
+   docker compose up -d server discord
    ```
 
 3. Open `http://localhost:8080/setup`, create the administrator, and store the TOTP secret and one-time recovery codes.
@@ -99,6 +103,8 @@ PostgreSQL is the only authoritative state store. Redis contains only recoverabl
    ```bash
    docker compose --profile tools run --rm admin codex-login
    ```
+
+6. A complete production deployment also creates an execution node in the admin UI and starts a Pull Worker with the separate `compose.worker.yaml`. See the [minimal installation guide](docs/deployment/minimal-installation.md) for enrollment, default placement, and IP/CIDR allowlisting.
 
 ## Optional Webhook Listener Separation
 
@@ -143,7 +149,13 @@ The default rules accept `/tyrs-hand` on the first line of an Issue or Pull Requ
 
 ## Discord Development Containers
 
-Production runs separate GitHub and Discord workers. Only the Discord Dev Worker receives the host Docker socket; neither the GitHub Worker nor the agent's development container can access it.
+An execution node with the `discord` role manages Discord development environments. The first release can use one default node for both GitHub and Discord work; it does not force a Discord-user-to-node binding. A development environment freezes the current default node when it is created, and its forums, conversations, and Codex controls keep using that node.
+
+Only Workers with development containers enabled mount the host Docker socket. The socket is never exposed inside the agent's development container. Start the Worker with the separate Compose file:
+
+```bash
+docker compose -f compose.worker.yaml up -d worker
+```
 
 - A Discord user has one container, data volume, Home volume, and network per Guild. Forums for multiple repositories reuse that environment.
 - The per-user container is the security boundary. Operator collaborators can drive the agent and must be trusted by the environment owner.
@@ -170,9 +182,11 @@ If a configured skill is missing or is not returned by Codex `skills/list`, the 
 - Capability, installation, repository, work item, allowlist, and live-permission checks for dynamic tools
 - No GitHub token in the Codex environment, Git remote, or worktree
 - Non-root server, worker, and Discord development containers
-- Access to the host container daemon is limited to the Discord Dev Worker for lifecycle management
+- Workers use the HTTPS Worker API instead of direct PostgreSQL or Redis access; no master key, Discord bot token, or provider key is kept in long-lived configuration or the process environment, and run credentials are scoped by the Control
+- The Worker API supports individual IP and CIDR allowlists without requiring Cloudflare; forwarded source headers are accepted only from trusted proxies
+- Access to the host container daemon is limited to Workers with Discord development containers enabled
 
-Use `compose.production.yaml` in production to provide the master key through a Docker Secret file:
+Use `compose.production.yaml` for the production Control to provide the master key through a Docker Secret file. Workers use the separate `compose.worker.yaml`:
 
 ```bash
 docker compose -f compose.yaml -f compose.production.yaml up -d

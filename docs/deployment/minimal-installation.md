@@ -1,10 +1,12 @@
 # 最小安装指引
 
-适用于一台 Docker 主机、一个公开 HTTPS 域名和 GitHub.com。默认让管理端与 Webhook 共用一个端口。
+推荐把 Tyrs Hand 部署成一个公网 Control 和一个主动连接的 Pull Worker。Control 需要公开 HTTPS 域名，用于管理后台、GitHub Webhook、Discord Gateway 和 Worker API；Worker 可以放在家庭服务器或闲置电脑上，只需能够主动访问 Control，不需要家庭公网 IP、端口转发、SSH 反向隧道或 Cloudflare。
 
-## 1. 准备配置
+Control 和 Worker 也可以位于同一台物理机，但仍应分别使用 Control Compose 与 Worker Compose，保持凭据和运行边界一致。
 
-要求：Docker Engine、Docker Compose，以及指向部署主机的 HTTPS 域名。
+## 1. 准备 Control
+
+Control 主机需要 Docker Engine、Docker Compose，以及指向它的公开 HTTPS 域名。
 
 ```bash
 cp .env.example .env
@@ -14,12 +16,12 @@ openssl rand -hex 32 > .local/secrets/postgres_password
 chmod 0600 .env .local/secrets/*
 ```
 
-在 `.env` 中至少修改：
+在 Control 的 `.env` 中至少修改：
 
 ```dotenv
 TYRS_HAND_ENV=production
-TYRS_HAND_CONTROL_IMAGE=ghcr.io/slovx2/tyrs-hand-control@sha256:<published-digest>
-TYRS_HAND_WORKER_IMAGE=ghcr.io/slovx2/tyrs-hand-worker@sha256:<published-digest>
+TYRS_HAND_CONTROL_IMAGE=ghcr.io/slovx2/tyrs-hand-control@sha256:<control-digest>
+TYRS_HAND_WORKER_IMAGE=ghcr.io/slovx2/tyrs-hand-worker@sha256:<worker-digest>
 TYRS_HAND_HOST_PORT=8080
 TYRS_HAND_PUBLIC_URL=https://agent.example.com
 TYRS_HAND_GITHUB_APP_NAME=my-team-tyrs-hand
@@ -28,48 +30,36 @@ TYRS_HAND_COOKIE_SECURE=true
 POSTGRES_PASSWORD=<与 .local/secrets/postgres_password 完全一致>
 ```
 
-GitHub App 名称必须全局唯一；`TYRS_HAND_SETUP_TOKEN` 可用 `openssl rand -hex 32` 生成。
+GitHub App 名称必须全局唯一；`TYRS_HAND_SETUP_TOKEN` 可用 `openssl rand -hex 32` 生成。Control 保留配对的 Worker Digest，便于发布审计与回滚，但不会在本机启动 Worker。
 
-反向代理将 `TYRS_HAND_PUBLIC_URL` 的全部请求转发到 `127.0.0.1:8080`。GitHub Webhook 地址是：
+反向代理应把该域名的全部请求转发到 `127.0.0.1:8080`。主要入口包括：
 
 ```text
 https://agent.example.com/webhooks/github
+https://agent.example.com/worker/v1/*
 ```
+
+Cloudflare 是可选项。只要域名能够通过标准 HTTPS 访问，Worker 就可以直接连接 Control。
 
 配置边界：
 
 | 配置位置 | 放什么 |
 | --- | --- |
-| `.env` / Secret 文件 | 镜像、端口、公开 URL、数据库、Redis、Setup Token、主密钥、存储路径 |
-| 管理后台 | GitHub App 凭据、Discord Bot 与 Server、Codex Provider、模型与 Agent 配置 |
+| Control `.env` / Secret 文件 | 镜像、端口、公开 URL、数据库、Redis、Setup Token、主密钥、附件路径、Worker API 网络策略 |
+| 管理后台 | GitHub App、Discord Bot、Codex Provider、模型、Agent 配置、执行节点和默认 Placement |
+| Worker `.env` / 数据卷 | Control URL、节点标识、角色、容量、一次性注册 Token、长期节点凭据和本地执行数据 |
 
-GitHub Private Key、Webhook Secret 和 Codex API Key 不要放入 `.env`。它们通过管理后台写入，并使用主密钥加密保存。
+GitHub Private Key、Webhook Secret、Discord Bot Token 和 Codex API Key 不要放入 Worker。它们由 Control 加密保存，并按 Run 最小权限提供所需能力。
 
-## 2. 启动
+## 2. 启动 Control
 
 ```bash
 docker compose -f compose.yaml -f compose.production.yaml up -d postgres redis
 docker compose -f compose.yaml -f compose.production.yaml --profile tools run --rm admin migrate
-docker compose -f compose.yaml -f compose.production.yaml up -d server worker discord-worker discord
+docker compose -f compose.yaml -f compose.production.yaml up -d server discord
 ```
 
 打开 `https://agent.example.com/setup`，使用 `TYRS_HAND_SETUP_TOKEN` 创建管理员，并保存 TOTP 和恢复码。
-
-### Discord Dev Worker
-
-生产 Compose 只向 Discord Dev Worker 挂载宿主 Docker Socket；GitHub Worker 不挂载，Agent 的开发容器也不会得到 Socket。部署前在备份 `.env` 后填写：
-
-```dotenv
-TYRS_HAND_DOCKER_GID=<stat -c '%g' /var/run/docker.sock 的结果>
-```
-
-然后使用生产 Compose 重建 Discord Dev Worker：
-
-```bash
-docker compose -f compose.yaml -f compose.production.yaml up -d --force-recreate discord-worker
-```
-
-Discord Dev Worker 用 Socket 管理用户级长期开发容器。每位 Discord 用户在一个 Guild 中复用一个容器和 Home；不同 Forum 各有独立仓库 clone。容器空闲 30 分钟后停止，后续任务自动启动。只有显式删除最后一个 Forum 才会删除容器、镜像、Network、Volume 和 Home。
 
 ## 3. 注册 GitHub App
 
@@ -97,31 +87,22 @@ Discord Dev Worker 用 Socket 管理用户级长期开发容器。每位 Discord
 2. 选择账号，并只授权需要接入的仓库。
 3. 回到管理后台，确认 Installation 和 Repository 已同步。
 
-系统会为新仓库创建 Slash Command、首行 Mention 和 Label 规则。拥有 `triage` 及以上权限的用户可以在 Issue 或 PR 评论第一行发送 `/tyrs-hand <指令>`，也可以在第一行任意位置输入精确的 `@<app-slug>`，或添加名称为 `tyrs-hand` 的 Label。Mention 会忽略后续行、引用、代码、转义、URL 和用户名后缀；旧版全文 `@mention` 规则默认关闭，只建议在兼容旧工作流时手动创建。
+系统会为新仓库创建 Slash Command、首行 Mention 和 Label 规则。拥有 `triage` 及以上权限的用户可以在 Issue 或 PR 评论第一行发送 `/tyrs-hand <指令>`，也可以输入精确的 `@<app-slug>`，或添加名称为 `tyrs-hand` 的 Label。
 
 ## 5. 配置 Discord（可选）
 
 当前只支持单个启用 Community 的私有 Discord Server。启用前：
 
 1. 在 Discord Developer Portal 创建 Application 和 Bot，开启 `Server Members Intent` 与 `Message Content Intent`。
-2. 通过 OAuth2 把 Bot 邀请进目标 Server。首次初始化需要管理 Server、频道、线程和消息，建议只在专用私有 Server 中授予 Administrator。
-3. 在管理后台进入“Discord”，填写 Server ID、Application ID、Bot User ID 和 Bot Token，勾选“启用 Discord 常驻服务”并保存。Bot Token 会进入加密 Secret Store，不要写入 `.env`。
-4. 先执行“增量初始化”预检，确认没有冲突后再开始初始化。增量模式只创建或校正 Tyrs Hand 管理的资源，不会删除无关频道。
+2. 通过 OAuth2 把 Bot 邀请进目标 Server。首次初始化建议只在专用私有 Server 中授予 Administrator。
+3. 在管理后台进入“Discord”，填写 Server ID、Application ID、Bot User ID 和 Bot Token，勾选“启用 Discord 常驻服务”并保存。
+4. 先执行“增量初始化”预检，确认没有冲突后再开始初始化。
 
-“全新初始化”会删除目标 Server 的全部 Channel 和 Category，并要求输入包含目标 Server ID 的精确确认指令。只应在空白或专用测试 Server 中使用，不得用它重置已经投入使用的正式 Server。
-
-初始化完成后，在 Discord 页面确认 Gateway 为 `connected`，Outbox 和失败数为 `0`。为成员选择仓库并创建开发 Forum；首个 Forum 的仓库必须在默认分支提供 `.devcontainer/Dockerfile`，最终镜像必须声明非 root `USER`。同一成员后续可以为其他仓库创建 Forum，并复用首个 Forum 确定的容器镜像与 Home。
+“全新初始化”会删除目标 Server 的全部 Channel 和 Category，只应在空白或专用测试 Server 中使用。初始化完成后，确认 Gateway 为 `connected`，Outbox 和失败数为 `0`。
 
 ## 6. 配置 Codex
 
-进入管理后台“系统设置”：
-
-- 使用 API Key：填写兼容 API Base URL、API Key、模型和推理级别。
-- 使用共享账号：运行以下命令完成 Device Code 登录。
-
-```bash
-docker compose -f compose.yaml -f compose.production.yaml --profile tools run --rm admin codex-login
-```
+进入管理后台“系统设置”，配置 API Key Provider、兼容 API Base URL、模型和推理级别。分布式 Worker 第一版不支持 Device Code；Provider Key 留在 Control，由 Run 限定的凭据接口下发，不要写入 Worker `.env`。
 
 仓库规则使用 Skill 时，文件必须位于：
 
@@ -129,13 +110,80 @@ docker compose -f compose.yaml -f compose.production.yaml --profile tools run --
 .agents/skills/<skill-name>/SKILL.md
 ```
 
-## 7. 验收
+## 7. 创建执行节点
+
+在管理后台“执行节点”页面：
+
+1. 创建节点，选择 `github`、`discord` 角色和并发容量。
+2. 生成短期、单次使用的 Enrollment Token。
+3. 把 GitHub 和 Discord 默认执行节点都设为该节点。
+
+默认节点只影响新资源。Discord 开发环境和 GitHub Work Item 创建后会冻结实际节点；修改默认值不会迁移已有环境、Work Item 或 Codex Thread。第一版不要求一个 Discord 用户绑定一个节点。
+
+未设置 GitHub 默认节点时，Intent 会进入 `placement_pending`；未设置 Discord 默认节点时，创建开发环境会返回明确配置错误。节点离线或禁用时，已有任务继续等待原节点，不会自动漂移。
+
+## 8. 启动 Pull Worker
+
+把 `compose.worker.yaml` 和单独的 `.env` 放到 Worker 主机。先查询 Docker Socket GID：
+
+```bash
+stat -c '%g' /var/run/docker.sock
+```
+
+Worker `.env` 至少包含：
+
+```dotenv
+TYRS_HAND_WORKER_IMAGE=ghcr.io/slovx2/tyrs-hand-worker@sha256:<worker-digest>
+TYRS_HAND_WORKER_CONTROL_URL=https://agent.example.com
+TYRS_HAND_WORKER_ID=home-1
+TYRS_HAND_WORKER_ROLE=all
+TYRS_HAND_WORKER_MAX_CONCURRENT_JOBS=6
+TYRS_HAND_WORKER_ENROLLMENT_TOKEN=<一次性 Token>
+TYRS_HAND_ENABLE_DEVELOPMENT_CONTAINERS=true
+TYRS_HAND_DOCKER_GID=<Docker Socket GID>
+```
+
+启动并等待长期节点凭据生成：
+
+```bash
+docker compose -f compose.worker.yaml up -d worker
+docker compose -f compose.worker.yaml ps
+```
+
+长期凭据位于 Worker 数据卷的 `control-state/node-credential`，权限应为 `0600`。注册成功后必须从 `.env` 清空 `TYRS_HAND_WORKER_ENROLLMENT_TOKEN`，再强制重建以确认 Worker 只依赖长期凭据：
+
+```bash
+docker compose -f compose.worker.yaml up -d --force-recreate worker
+```
+
+Worker 不应配置 PostgreSQL、Redis、Control 主密钥、Discord Bot Token 或 Provider API Key；运行所需凭据由 Control 按 Run 限定下发。Discord 角色需要 Docker Socket 来管理开发容器；只承担 GitHub 角色的节点可以移除该挂载并关闭开发容器能力。
+
+## 9. 可选的 Worker API IP 白名单
+
+Control 可限制能够访问 `/worker/v1` 的 Worker 出口地址：
+
+```dotenv
+TYRS_HAND_WORKER_API_IP_ALLOWLIST=203.0.113.8,198.51.100.0/24,2001:db8::/48
+TYRS_HAND_WORKER_API_TRUSTED_PROXIES=127.0.0.1/32,::1/128
+```
+
+白名单支持单个 IPv4/IPv6 和 CIDR，逗号分隔；留空表示不限制。直连时使用 TCP 来源地址；经过反向代理时，只有代理上一跳位于 `TYRS_HAND_WORKER_API_TRUSTED_PROXIES` 才采信转发头。Cloudflare 存在时可以使用其来源头，但不是启用白名单的前提，也不要求改造为 Cloudflare 架构。
+
+## 10. 验收
+
+Control 主机：
 
 ```bash
 docker compose -f compose.yaml -f compose.production.yaml ps
 curl --fail https://agent.example.com/healthz
+curl --fail https://agent.example.com/readyz
 ```
 
-确认 PostgreSQL、Redis、Server、GitHub Worker、Discord Dev Worker 和 Discord Gateway 容器健康。在已安装仓库的 Issue 中评论 `@<app-slug> 检查当前问题并回复结果`，然后在管理后台确认 Webhook、Job、Thread 和 Worktree 状态。
+Worker 主机：
 
-启用 Discord 时，还应在开发 Forum 新建 Post，确认平台构建/启动用户级容器、直接使用该 Forum 绑定仓库、持续更新状态并最终回复。再创建第二个仓库 Forum，确认它复用容器与 Home、但使用独立 clone；最后回到管理后台确认 Gateway 仍为 `connected`，Outbox 没有待处理或失败积压。
+```bash
+docker compose -f compose.worker.yaml ps
+docker compose -f compose.worker.yaml logs --no-color --tail=200 worker
+```
+
+确认 PostgreSQL、Redis、Server 和 Discord 健康；执行节点为 `online` 且持续更新心跳；GitHub、Discord 默认节点正确；Worker 日志没有认证、协议或租约循环错误。再分别执行一次 GitHub Issue/PR 和 Discord Forum 真实任务，确认任务都冻结并运行在预期节点，Gateway、Projection 与 Outbox 没有积压。

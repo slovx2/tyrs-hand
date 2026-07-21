@@ -14,6 +14,10 @@ Tyrs Hand 是一个面向 GitHub 与 Discord 的自托管 Agent 控制系统。G
 
 项目目前处于早期版本，适合在受控仓库中评估和二次开发。默认 Agent 配置允许访问公网并写入 Worktree；接入生产仓库前，请先审查工具白名单、触发规则和权限策略。
 
+## 亮点功能：把闲置家庭电脑变成执行节点
+
+Tyrs Hand 支持把公网 Control 与实际运行 Codex 的 Worker 分开部署。公网小服务器负责稳定接收 GitHub Webhook、连接 Discord 和调用外部 API；家里的高性能电脑只需通过 HTTPS 主动领取任务，就能贡献 CPU、内存、磁盘和 Docker 能力。家庭网络不需要公网 IP、端口转发或 SSH 反向隧道，Cloudflare 也只是可选代理。首版可以让所有新建资源使用一个默认家庭节点，之后再扩展更多节点和分配策略。
+
 ## 能做什么
 
 - 通过 GitHub App 接收并验签 Webhook，不需要普通机器账号。
@@ -25,39 +29,42 @@ Tyrs Hand 是一个面向 GitHub 与 Discord 的自托管 Agent 控制系统。G
 - 将 GitHub 官方 MCP 工具和受控本地 Git 工具暴露为 Codex Dynamic Tools。
 - 通过 Discord 私有 Server 提供长期开发 Forum、GitHub 任务投影和持续会话。
 - 同一 Discord 用户复用一个开发容器与 Home；每个 Forum 固定一个仓库并保留独立完整 clone。
-- 管理 GitHub App、仓库、规则、Agent Profile、任务、Thread、Worker 和审计日志。
+- 通过公网 HTTPS Control 与 Pull Worker 分离部署，家庭执行节点不需要公网 IP。
+- 管理 GitHub App、仓库、规则、Agent Profile、任务、Thread、执行节点、默认 Placement 和审计日志。
 - Codex 使用自然最终回复；平台根据 App Server 终态、持久化 Control 和受控回复门禁判定任务结果。
 
 ## 架构
 
 ```mermaid
 flowchart LR
-    GitHub["GitHub App / Webhook"] --> Server["tyrs-hand-server"]
+    subgraph Public["公网 Control"]
+        Server["tyrs-hand-server\nWebhook + Worker API"]
+        Gateway["tyrs-hand-discord\nGateway + Outbox"]
+        State["PostgreSQL + Redis\n附件持久卷"]
+        Server <--> State
+        Gateway <--> State
+    end
+    GitHub["GitHub App / Webhook"] --> Server
     Admin["React 管理后台"] --> Server
-    Discord["Discord Server"] <--> Gateway["tyrs-hand-discord"]
-    Server --> PostgreSQL["PostgreSQL\n权威状态与任务队列"]
-    Server --> Redis["Redis\n限流与实时通知"]
-    Gateway --> PostgreSQL
-    Gateway --> Redis
-    GitHubWorker["GitHub Worker"] --> PostgreSQL
-    GitHubWorker --> Cache["Bare Repo Cache"]
-    Cache --> Worktree["Work Item Worktree"]
-    DiscordWorker["Discord Dev Worker"] --> PostgreSQL
-    DiscordWorker --> DevContainer["用户级开发容器\n持久化 Home + 多仓库 clone"]
-    GitHubWorker <--> Codex["Codex App Server"]
-    DevContainer <--> Codex
-    Codex --> Tools["GitHub / Git Dynamic Tools"]
-    Tools --> Server
+    Discord["Discord Server"] <--> Gateway
+    subgraph Home["家庭或算力节点（无需公网 IP）"]
+        Worker["Pull Worker"]
+        Workspace["Repo Cache + Worktree\n开发容器"]
+        Codex["Codex App Server"]
+        Worker <--> Workspace
+        Worker <--> Codex
+    end
+    Worker -->|"HTTPS 长轮询 / 事件回传 / 工具调用"| Server
 ```
 
 四个可执行入口分别承担不同职责：
 
 - `tyrs-hand-server`：管理 API、GitHub App、Webhook 和前端静态资源。
-- `tyrs-hand-worker`：以 `github` 或 `discord` 角色运行任务租约、工作区、Codex 和工具调用。
+- `tyrs-hand-worker`：通过 `/worker/v1` 主动领取任务，在执行节点运行工作区、Codex、本地 Git 和开发容器。
 - `tyrs-hand-discord`：Discord Gateway、Forum 会话、投影和 Outbox 投递。
 - `tyrs-hand-admin`：迁移、诊断、管理员恢复、主密钥轮换和 GC。
 
-PostgreSQL 是唯一权威状态源。Redis 仅保存可以重建的限流和通知状态。
+PostgreSQL 是唯一权威状态源。Redis 仅保存可以重建的限流和通知状态。Worker 不直连二者，也不持有 Control 主密钥或 Discord Bot Token。
 
 ## 快速开始
 
@@ -83,16 +90,16 @@ PostgreSQL 是唯一权威状态源。Redis 仅保存可以重建的限流和通
 
    将两个随机值分别写入 `.env` 的 `TYRS_HAND_MASTER_KEY` 和 `TYRS_HAND_SETUP_TOKEN`。本地默认 PostgreSQL 密码为 `tyrs_hand`；生产环境必须同时替换 `.env` 中的 `POSTGRES_PASSWORD` 和 Secret 文件内容。
 
-2. 构建镜像并执行显式迁移：
+2. 构建 Control 镜像并执行显式迁移：
 
    ```bash
-   docker compose build server worker
+   docker compose build server
    docker compose up -d postgres redis
    docker compose --profile tools run --rm admin migrate
-   docker compose up -d server worker discord
+   docker compose up -d server discord
    ```
 
-   Server 和 Worker 启动时只检查迁移状态，不会自行修改数据库结构。
+   Server 启动时只检查迁移状态，不会自行修改数据库结构。
 
 3. 打开 `http://localhost:8080/setup`，使用 Setup Token 创建管理员，并立即保存 TOTP Secret 和一次性恢复码。
 
@@ -103,6 +110,8 @@ PostgreSQL 是唯一权威状态源。Redis 仅保存可以重建的限流和通
    ```bash
    docker compose --profile tools run --rm admin codex-login
    ```
+
+6. 完整生产部署还需要在管理后台创建执行节点，并使用独立的 `compose.worker.yaml` 启动 Pull Worker。注册、默认节点和 IP/CIDR 白名单步骤见[最小安装指引](docs/deployment/minimal-installation.md)。
 
 ## Webhook 监听分离
 
@@ -119,12 +128,12 @@ TYRS_HAND_WEBHOOK_HTTP_ADDR=:8081
 
 ## Discord 长期开发容器
 
-生产 Compose 将任务分成两个 Worker：GitHub Worker 不挂载 Docker Socket，只处理临时 Worktree；Discord Dev Worker 独占 Docker Socket，只处理 Discord 任务。Docker Socket 不会进入 Agent 所在的开发容器。
+Discord 开发环境由带 `discord` 角色的执行节点管理。第一版可让同一个默认节点同时承担 GitHub 和 Discord 任务；系统不会强制建立“Discord 用户—节点”绑定。开发环境创建时会冻结当时的默认节点，后续 Forum、Conversation 和 Codex Control 都沿用该节点。
 
-部署前将宿主 `/var/run/docker.sock` 的数字 GID 写入 `.env` 的 `TYRS_HAND_DOCKER_GID`。Linux 可使用 `stat -c '%g' /var/run/docker.sock` 查询。然后启动：
+只有启用 Discord 开发容器的 Worker 挂载宿主 Docker Socket，Socket 不会进入 Agent 所在的开发容器。部署前将 Worker 宿主 `/var/run/docker.sock` 的数字 GID 写入 Worker `.env` 的 `TYRS_HAND_DOCKER_GID`。Linux 可使用 `stat -c '%g' /var/run/docker.sock` 查询，然后使用独立 Compose 启动：
 
 ```bash
-docker compose -f compose.yaml -f compose.production.yaml up -d server worker discord-worker discord
+docker compose -f compose.worker.yaml up -d worker
 ```
 
 开发环境规则：
@@ -183,9 +192,11 @@ Manifest 订阅 Repository、Issues、Issue Comment、Pull Request、Review、Re
 - Tool Call 以 `(thread, turn, call)` 幂等记录。
 - GitHub Token 不进入 Codex 环境、Git Remote 或 Worktree。
 - Server、Worker 与 Discord 开发镜像均要求以非 root 用户运行。
-- 只有 Discord Dev Worker 可以访问宿主 Docker Socket，开发容器和 GitHub Worker 均不可访问。
+- Worker 只通过 HTTPS Worker API 访问 Control，不直连 PostgreSQL 或 Redis，也不在长期配置或进程环境中持有主密钥、Discord Bot Token 或 Provider Key；运行所需凭据由 Control 按 Run 限定下发。
+- Worker API 支持单个 IP 和 CIDR 白名单；直连不依赖 Cloudflare，只有可信代理链才采信转发来源头。
+- 只有启用 Discord 开发容器的 Worker 可以访问宿主 Docker Socket，开发容器自身不可访问。
 
-生产环境应使用 `compose.production.yaml`，通过 Secret 文件提供主密钥：
+生产 Control 应使用 `compose.production.yaml`，通过 Secret 文件提供主密钥；Worker 使用独立的 `compose.worker.yaml`：
 
 ```bash
 docker compose -f compose.yaml -f compose.production.yaml up -d
