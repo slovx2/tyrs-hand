@@ -41,7 +41,7 @@ export function GitHubPage() {
   })
   const manifestURL = manifest.data?.url
   return (
-    <section className="max-w-4xl">
+    <section className="mx-auto max-w-5xl">
       <h1 className="text-3xl font-bold">GitHub App</h1>
       <p className="muted mt-2">
         所有远程操作都使用 Installation Token，不使用普通机器账号。

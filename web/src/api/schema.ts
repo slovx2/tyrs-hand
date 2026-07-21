@@ -675,6 +675,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             username: string;
+            csrfToken: string;
             /** Format: date-time */
             expiresAt: string;
         };

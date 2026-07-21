@@ -22,6 +22,7 @@ var (
 )
 
 const administratorSessionLifetime = 90 * 24 * time.Hour
+const sessionCSRFAssociatedData = "administrator.session.csrf"
 
 type Service struct {
 	db          *sql.DB
@@ -140,10 +141,14 @@ func (s *Service) Login(ctx context.Context, username, password, code string) (S
 	if err != nil {
 		return Session{}, err
 	}
+	encryptedCSRF, err := s.encryptCSRF(csrf)
+	if err != nil {
+		return Session{}, err
+	}
 	expiresAt := time.Now().UTC().Add(s.sessionLife)
 	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO admin_sessions(administrator_id, token_hash, csrf_token_hash, expires_at)
-		VALUES ($1, $2, $3, $4)`, id, security.Digest(token), security.Digest(csrf), expiresAt)
+		INSERT INTO admin_sessions(administrator_id, token_hash, csrf_token_hash, csrf_token_ciphertext, expires_at)
+		VALUES ($1, $2, $3, $4, $5)`, id, security.Digest(token), security.Digest(csrf), encryptedCSRF, expiresAt)
 	if err != nil {
 		return Session{}, err
 	}
@@ -155,17 +160,84 @@ func (s *Service) Authenticate(ctx context.Context, token string) (Session, erro
 		return Session{}, ErrSessionInvalid
 	}
 	var session Session
+	var encryptedCSRF []byte
+	tokenHash := security.Digest(token)
 	err := s.db.QueryRowContext(ctx, `
 		UPDATE admin_sessions s SET last_seen_at = now()
 		FROM administrators a
 		WHERE s.administrator_id = a.id AND s.token_hash = $1 AND s.expires_at > now()
-		RETURNING a.id, a.username, s.expires_at`, security.Digest(token)).
-		Scan(&session.AdministratorID, &session.Username, &session.ExpiresAt)
+		RETURNING a.id, a.username, s.expires_at, s.csrf_token_ciphertext`, tokenHash).
+		Scan(&session.AdministratorID, &session.Username, &session.ExpiresAt, &encryptedCSRF)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Session{}, ErrSessionInvalid
 	}
+	if err != nil {
+		return Session{}, err
+	}
+	session.CSRFToken, err = s.restoreCSRF(ctx, tokenHash, encryptedCSRF)
+	if err != nil {
+		return Session{}, err
+	}
 	session.Token = token
-	return session, err
+	return session, nil
+}
+
+func (s *Service) restoreCSRF(ctx context.Context, tokenHash string, encrypted []byte) (string, error) {
+	if len(encrypted) > 0 {
+		return s.decryptCSRF(encrypted)
+	}
+	csrf, err := security.RandomToken(24)
+	if err != nil {
+		return "", err
+	}
+	encrypted, err = s.encryptCSRF(csrf)
+	if err != nil {
+		return "", err
+	}
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE admin_sessions
+		SET csrf_token_hash = $1, csrf_token_ciphertext = $2
+		WHERE token_hash = $3 AND csrf_token_ciphertext IS NULL AND expires_at > now()`,
+		security.Digest(csrf), encrypted, tokenHash)
+	if err != nil {
+		return "", err
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return "", err
+	}
+	if updated == 1 {
+		return csrf, nil
+	}
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT csrf_token_ciphertext FROM admin_sessions
+		WHERE token_hash = $1 AND expires_at > now()`, tokenHash).Scan(&encrypted); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrSessionInvalid
+		}
+		return "", err
+	}
+	return s.decryptCSRF(encrypted)
+}
+
+func (s *Service) encryptCSRF(csrf string) ([]byte, error) {
+	nonce, ciphertext, err := s.box.Encrypt([]byte(csrf), sessionCSRFAssociatedData)
+	if err != nil {
+		return nil, err
+	}
+	return append(nonce, ciphertext...), nil
+}
+
+func (s *Service) decryptCSRF(encrypted []byte) (string, error) {
+	const nonceSize = 12
+	if len(encrypted) <= nonceSize {
+		return "", errors.New("会话 CSRF 密文损坏")
+	}
+	csrf, err := s.box.Decrypt(encrypted[:nonceSize], encrypted[nonceSize:], sessionCSRFAssociatedData)
+	if err != nil {
+		return "", err
+	}
+	return string(csrf), nil
 }
 
 func (s *Service) ValidateCSRF(ctx context.Context, token, csrf string) bool {

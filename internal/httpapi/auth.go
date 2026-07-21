@@ -75,7 +75,10 @@ func (s *Server) login(c *gin.Context) {
 
 func (s *Server) me(c *gin.Context) {
 	session := c.MustGet("session").(auth.Session)
-	c.JSON(http.StatusOK, gin.H{"id": session.AdministratorID, "username": session.Username, "expiresAt": session.ExpiresAt})
+	c.JSON(http.StatusOK, gin.H{
+		"id": session.AdministratorID, "username": session.Username,
+		"csrfToken": session.CSRFToken, "expiresAt": session.ExpiresAt,
+	})
 }
 
 func (s *Server) logout(c *gin.Context) {

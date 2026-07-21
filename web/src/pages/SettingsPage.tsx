@@ -33,7 +33,7 @@ export function SettingsPage() {
       void queryClient.invalidateQueries({ queryKey: ['settings'] }),
   })
   return (
-    <section className="max-w-3xl">
+    <section className="mx-auto max-w-4xl">
       <h1 className="text-3xl font-bold">系统设置</h1>
       <div className="panel mt-8 grid gap-4 sm:grid-cols-2">
         <label className="text-sm">

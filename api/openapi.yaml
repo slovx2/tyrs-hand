@@ -644,10 +644,11 @@ components:
         expiresAt: { type: string, format: date-time }
     Administrator:
       type: object
-      required: [id, username, expiresAt]
+      required: [id, username, csrfToken, expiresAt]
       properties:
         id: { type: string, format: uuid }
         username: { type: string }
+        csrfToken: { type: string }
         expiresAt: { type: string, format: date-time }
     GitHubAppStatus:
       type: object

@@ -124,13 +124,18 @@ h2 {
   letter-spacing: -0.035em;
 }
 
-.brand::before {
-  width: 1.65rem;
-  height: 1.65rem;
-  border-radius: 0.45rem;
-  background: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--border-strong);
-  content: '';
+.brand-logo {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.55rem;
+  object-fit: cover;
+  box-shadow: 0 6px 18px -10px rgb(0 0 0 / 65%);
+}
+
+.app-content {
+  width: 100%;
+  max-width: 90rem;
+  margin-inline: auto;
 }
 
 .nav-item {

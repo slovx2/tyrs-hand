@@ -139,7 +139,15 @@ function AuthenticatedLayout() {
   const setCSRFToken = useUI((state) => state.setCSRFToken)
   const me = useQuery({
     queryKey: ['me'],
-    queryFn: () => api<{ username: string; expiresAt: string }>('/auth/me'),
+    queryFn: async () => {
+      const session = await api<{
+        username: string
+        csrfToken: string
+        expiresAt: string
+      }>('/auth/me')
+      setCSRFToken(session.csrfToken)
+      return session
+    },
     retry: false,
   })
   if (me.isLoading) return <FullPageMessage message={t(locale, 'loading')} />
@@ -149,6 +157,7 @@ function AuthenticatedLayout() {
     <div className="min-h-screen lg:grid lg:grid-cols-[250px_1fr]">
       <aside className="app-sidebar border-b px-4 py-5 lg:border-r lg:border-b-0">
         <Link to="/" className="brand mb-7 text-xl">
+          <img className="brand-logo" src="/tyrs-hand.png" alt="" />
           tyrs-hand
         </Link>
         <nav className="grid grid-cols-2 gap-1 sm:grid-cols-4 lg:grid-cols-1">
@@ -173,7 +182,9 @@ function AuthenticatedLayout() {
         <LogoutButton onLogout={() => setCSRFToken(undefined)} />
       </aside>
       <main className="min-w-0 p-4 sm:p-8 lg:p-10">
-        <Outlet />
+        <div className="app-content">
+          <Outlet />
+        </div>
       </main>
     </div>
   )

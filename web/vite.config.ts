@@ -4,6 +4,7 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  publicDir: '../assets',
   build: { outDir: '../internal/web/dist', emptyOutDir: true },
   server: {
     port: 5173,

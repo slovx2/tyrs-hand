@@ -133,7 +133,7 @@ export function DiscordPage() {
   })
 
   return (
-    <section className="max-w-5xl">
+    <section>
       <h1 className="text-3xl font-bold">Discord</h1>
       <p className="muted mt-2">
         私有 Server、个人 Codex Forum 与 GitHub 任务投影。
