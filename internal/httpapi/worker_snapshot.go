@@ -3,8 +3,11 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"errors"
 
+	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/codexsettings"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
@@ -29,19 +32,62 @@ func (s *Server) loadWorkerSnapshot(ctx context.Context,
 	result.Runtime.BaseURL = provider.BaseURL
 	result.Runtime.ProxyURL = provider.ProxyURL
 	result.Runtime.ConfigSignature = provider.ConfigSignature
-	if result.Runtime.Model == "" {
-		result.Runtime.Model = provider.Model
+	preferences, err := s.freezeWorkerRuntimePreferences(ctx, claimed)
+	if err != nil {
+		return result, err
 	}
-	if result.Runtime.ReasoningEffort == "" {
-		result.Runtime.ReasoningEffort = provider.Reasoning
-	}
-	if result.Runtime.ServiceTier == "" {
-		result.Runtime.ServiceTier = provider.ServiceTier
-	}
+	result.Runtime.Model = preferences.Model
+	result.Runtime.ReasoningEffort = preferences.ReasoningEffort
+	result.Runtime.ServiceTier = preferences.ServiceTier
 	if claimed.SourceType == codexcontrol.SourceGitHub {
 		result.GitHub, err = s.loadGitHubWorkerSnapshot(ctx, claimed)
 	} else {
 		result.Discord, err = s.loadDiscordWorkerSnapshot(ctx, claimed)
+	}
+	return result, err
+}
+
+func (s *Server) freezeWorkerRuntimePreferences(ctx context.Context,
+	claimed *codexcontrol.ClaimedControl,
+) (codexsettings.EffectivePreferences, error) {
+	var result codexsettings.EffectivePreferences
+	var model, effort, tier sql.NullString
+	var frozen sql.NullTime
+	err := s.db.QueryRowContext(ctx, `SELECT model, reasoning_effort, service_tier,
+		runtime_preferences_frozen_at FROM codex_thread_controls WHERE id = $1`, claimed.ControlID).
+		Scan(&model, &effort, &tier, &frozen)
+	if err != nil {
+		return result, err
+	}
+	if frozen.Valid {
+		result.Model, result.ReasoningEffort = model.String, effort.String
+		result.ServiceTier = tier.String
+		if result.ServiceTier == "" {
+			result.ServiceTier = "standard"
+		}
+		return result, nil
+	}
+	if claimed.SourceType == codexcontrol.SourceDiscord {
+		err = s.db.QueryRowContext(ctx, `SELECT COALESCE(model,''),
+			COALESCE(reasoning_effort,''), service_tier FROM discord_conversations WHERE id = $1`,
+			claimed.DiscordConversationID).
+			Scan(&result.Model, &result.ReasoningEffort, &result.ServiceTier)
+	} else {
+		result, err = codexsettings.NewService(s.db).Resolve(ctx, claimed.RepositoryID,
+			uuid.Nil, claimed.AgentProfileID)
+	}
+	if err != nil {
+		return codexsettings.EffectivePreferences{}, err
+	}
+	err = s.db.QueryRowContext(ctx, `UPDATE codex_thread_controls SET model = NULLIF($2,''),
+		reasoning_effort = NULLIF($3,''), service_tier = $4,
+		runtime_preferences_frozen_at = now(), updated_at = now()
+		WHERE id = $1 AND runtime_preferences_frozen_at IS NULL
+		RETURNING COALESCE(model,''), COALESCE(reasoning_effort,''), service_tier`,
+		claimed.ControlID, result.Model, result.ReasoningEffort, result.ServiceTier).
+		Scan(&result.Model, &result.ReasoningEffort, &result.ServiceTier)
+	if errors.Is(err, sql.ErrNoRows) {
+		return s.freezeWorkerRuntimePreferences(ctx, claimed)
 	}
 	return result, err
 }

@@ -145,6 +145,82 @@ func TestWorkerAPIPlacementLeaseEventsAndIdempotency(t *testing.T) {
 	require.Error(t, err, "禁用节点不能继续领取任务")
 }
 
+func TestWorkerAPIDiscordRuntimePreferencesFreeze(t *testing.T) {
+	db := workerDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	server, endpoint := workerTestServer(t, db)
+	node, enrollment, err := server.nodes.Create(ctx, "discord-home", []string{"discord"}, 1)
+	require.NoError(t, err)
+	_, credential, err := server.nodes.Enroll(ctx, enrollment)
+	require.NoError(t, err)
+	require.NoError(t, server.nodes.SetDefaults(ctx, executionnode.Defaults{
+		DiscordNodeID: &node.ID,
+	}))
+	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
+
+	repositoryID, _, profileID := seedWorkerGitHubQueue(t, db, 31)
+	_, forumID := seedDevelopmentOperation(t, db, repositoryID, node.ID)
+	var conversationID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_conversations
+		(guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
+		 repository_id, agent_profile_id, title, model, reasoning_effort, service_tier,
+		 configuration_status, title_rename_status)
+		VALUES ('worker-test-guild',$1,'runtime-thread','runtime-message-1','worker-owner',
+		 $2,$3,'runtime','gpt-5.6-sol','xhigh','standard','configured','completed')
+		RETURNING id`, forumID, repositoryID, profileID).Scan(&conversationID))
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_input_messages
+		(message_id, conversation_id, discord_user_id, display_name, username,
+		 access_snapshot, body) VALUES
+		('runtime-message-1',$1,'worker-owner','Owner','owner','owner','first')
+		RETURNING conversation_id`, conversationID).Scan(&conversationID))
+	firstIntent := enqueueWorkerDiscordIntent(t, db, conversationID, "runtime-message-1",
+		repositoryID, profileID)
+
+	first, err := client.Claim(ctx, workerprotocol.ClaimRequest{WorkerID: "discord-worker",
+		Role: "discord"})
+	require.NoError(t, err)
+	require.NotNil(t, first.Task)
+	require.Equal(t, firstIntent, first.Task.Claimed.ID)
+	require.Equal(t, "gpt-5.6-sol", first.Task.Snapshot.Runtime.Model)
+	require.Equal(t, "xhigh", first.Task.Snapshot.Runtime.ReasoningEffort)
+	require.Equal(t, "standard", first.Task.Snapshot.Runtime.ServiceTier)
+	var frozenModel, frozenEffort, frozenTier string
+	var frozen bool
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COALESCE(model,''),
+		COALESCE(reasoning_effort,''), COALESCE(service_tier,''),
+		runtime_preferences_frozen_at IS NOT NULL FROM codex_thread_controls
+		WHERE id = $1`, first.Task.Claimed.ControlID).
+		Scan(&frozenModel, &frozenEffort, &frozenTier, &frozen))
+	require.Equal(t, "gpt-5.6-sol", frozenModel)
+	require.Equal(t, "xhigh", frozenEffort)
+	require.Equal(t, "standard", frozenTier)
+	require.True(t, frozen)
+	require.NoError(t, client.Complete(ctx, first.Task, codexcontrol.TurnResult{
+		TurnID: "runtime-turn-1", FinalAnswer: "done",
+	}))
+
+	_, err = db.ExecContext(ctx, `UPDATE discord_conversations SET model = 'gpt-5.4',
+		reasoning_effort = 'low', service_tier = 'fast' WHERE id = $1`, conversationID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_input_messages
+		(message_id, conversation_id, discord_user_id, display_name, username,
+		 access_snapshot, body) VALUES
+		('runtime-message-2',$1,'worker-owner','Owner','owner','owner','second')`, conversationID)
+	require.NoError(t, err)
+	secondIntent := enqueueWorkerDiscordIntent(t, db, conversationID, "runtime-message-2",
+		repositoryID, profileID)
+	second, err := client.Claim(ctx, workerprotocol.ClaimRequest{WorkerID: "discord-worker",
+		Role: "discord"})
+	require.NoError(t, err)
+	require.NotNil(t, second.Task)
+	require.Equal(t, secondIntent, second.Task.Claimed.ID)
+	require.Equal(t, first.Task.Claimed.ControlID, second.Task.Claimed.ControlID)
+	require.Equal(t, "gpt-5.6-sol", second.Task.Snapshot.Runtime.Model)
+	require.Equal(t, "xhigh", second.Task.Snapshot.Runtime.ReasoningEffort)
+	require.Equal(t, "standard", second.Task.Snapshot.Runtime.ServiceTier)
+}
+
 func TestWorkerAPIMissingDefaultAndDevelopmentOperationRecovery(t *testing.T) {
 	db := workerDatabase(t)
 	ctx := context.Background()
@@ -268,6 +344,25 @@ func enqueueWorkerIntent(t *testing.T, db *sql.DB, repositoryID, itemID, profile
 		context.Background(), tx, codexcontrol.EnqueueRequest{SourceType: codexcontrol.SourceGitHub,
 			WorkItemID: itemID, RepositoryID: repositoryID, AgentProfileID: profileID,
 			ContextVersion: 1, IdempotencyKey: key, Instruction: "test", ReplyPolicy: "silent"})
+	require.NoError(t, err)
+	require.True(t, inserted)
+	require.NoError(t, tx.Commit())
+	return intentID
+}
+
+func enqueueWorkerDiscordIntent(t *testing.T, db *sql.DB, conversationID uuid.UUID,
+	messageID string, repositoryID, profileID uuid.UUID,
+) uuid.UUID {
+	t.Helper()
+	tx, err := db.BeginTx(context.Background(), nil)
+	require.NoError(t, err)
+	intentID, inserted, err := codexcontrol.NewRepository(db, 2*time.Second).Enqueue(
+		context.Background(), tx, codexcontrol.EnqueueRequest{
+			SourceType: codexcontrol.SourceDiscord, DiscordConversationID: conversationID,
+			DiscordMessageID: messageID, RepositoryID: repositoryID, AgentProfileID: profileID,
+			ContextVersion: 1, IdempotencyKey: "discord:" + messageID,
+			Instruction: messageID, ReplyPolicy: "silent", Behavior: "steer_if_active",
+		})
 	require.NoError(t, err)
 	require.True(t, inserted)
 	require.NoError(t, tx.Commit())

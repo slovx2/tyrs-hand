@@ -216,7 +216,7 @@ func (p *Processor) reconcileTurn(ctx context.Context, runtime *codex.Runtime,
 		return codexcontrol.TurnResult{FinalAnswer: turn.FinalAnswer(), TurnID: turn.ID,
 			Evidence: "thread/read"}, true, nil
 	}
-	if turn.Status != "inProgress" && turn.Status != "active" && turn.Status != "running" {
+	if !isActiveCodexTurnStatus(turn.Status) {
 		return codexcontrol.TurnResult{}, false, fmt.Errorf("codex turn 快照终态为 %s", turn.Status)
 	}
 	result, err := p.waitTurn(ctx, runtime, runtime.Events(), claimed, threadID, turn.ID, observer)
@@ -500,6 +500,10 @@ func completedTurn(raw json.RawMessage, threadID, turnID string) (bool, string) 
 		return false, ""
 	}
 	return true, payload.Turn.Status
+}
+
+func isActiveCodexTurnStatus(status string) bool {
+	return status == "inProgress" || status == "active" || status == "running"
 }
 
 func eventBelongsToTurn(raw json.RawMessage, threadID, turnID, clientID string) bool {

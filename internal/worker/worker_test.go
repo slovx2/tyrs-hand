@@ -73,6 +73,11 @@ func TestProcessorHelpersAndLocalTools(t *testing.T) {
 	matched, status := completedTurn(json.RawMessage(`{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}}`), threadID, turnID)
 	require.True(t, matched)
 	require.Equal(t, "completed", status)
+	require.True(t, isActiveCodexTurnStatus("inProgress"))
+	require.True(t, isActiveCodexTurnStatus("active"))
+	require.True(t, isActiveCodexTurnStatus("running"))
+	require.False(t, isActiveCodexTurnStatus("failed"))
+	require.False(t, isActiveCodexTurnStatus("interrupted"))
 	matched, _ = completedTurn(started, "other", turnID)
 	require.False(t, matched)
 
@@ -137,6 +142,27 @@ func TestProcessorHelpersAndLocalTools(t *testing.T) {
 	require.Contains(t, statusResult.ContentItems[0].Text, "file.go")
 	_, err = processor.executeLocalTool(context.Background(), claimed, ports.Workspace{}, "branch", codex.ToolCallRequest{Namespace: stringPointer("git"), Tool: "unknown"})
 	require.Error(t, err)
+}
+
+func TestRemoteDiscordEventReporterForwardsTimeline(t *testing.T) {
+	type reportedEvent struct {
+		eventType string
+		payload   json.RawMessage
+	}
+	var events []reportedEvent
+	reporter := remoteDiscordEventReporter(func(eventType string, payload json.RawMessage) {
+		events = append(events, reportedEvent{eventType: eventType, payload: payload})
+	})
+	item := json.RawMessage(`{"item":{"id":"commentary-1","type":"agentMessage","phase":"commentary"}}`)
+	reporter("item/started", item)
+	reporter("turn/started", json.RawMessage(`{"turn":{"id":"turn-1"}}`))
+	require.Len(t, events, 3)
+	require.Equal(t, "item/started", events[0].eventType)
+	require.JSONEq(t, string(item), string(events[0].payload))
+	require.Equal(t, "turn/started", events[1].eventType)
+	require.Equal(t, "discord.progress", events[2].eventType)
+	require.JSONEq(t, `{"detail":"Codex 正在处理当前消息。","state":"running"}`,
+		string(events[2].payload))
 }
 
 func TestLocalToolCallAuditIsIdempotent(t *testing.T) {

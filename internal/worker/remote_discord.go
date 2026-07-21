@@ -136,13 +136,7 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 		return workerprotocol.CompleteRequest{}, err
 	}
 	defer unbind()
-	codexReport := func(eventType string, payload json.RawMessage) {
-		if eventType == "turn/started" {
-			report("discord.progress", remoteEventPayload(map[string]string{
-				"state": "running", "detail": "Codex 正在处理当前消息。",
-			}))
-		}
-	}
+	codexReport := remoteDiscordEventReporter(report)
 	if task.Claimed.Recovering {
 		result, recovered, recoverErr := p.reconcileRemoteTurn(ctx, codexRuntime, task,
 			threadID, commands, p.discordCommandHandler(task, runtime, skills, report), codexReport)
@@ -171,6 +165,17 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 		"state": "completed", "detail": "本轮处理完成。",
 	}))
 	return workerprotocol.CompleteRequest{Result: result}, nil
+}
+
+func remoteDiscordEventReporter(report func(string, json.RawMessage)) func(string, json.RawMessage) {
+	return func(eventType string, payload json.RawMessage) {
+		report(eventType, payload)
+		if eventType == "turn/started" {
+			report("discord.progress", remoteEventPayload(map[string]string{
+				"state": "running", "detail": "Codex 正在处理当前消息。",
+			}))
+		}
+	}
 }
 
 func remoteDevelopmentSpec(value workerprotocol.DevelopmentSpec) devcontainer.RemoteSpec {
