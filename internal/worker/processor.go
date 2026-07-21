@@ -174,7 +174,7 @@ func (p *Processor) Process(ctx context.Context, claimed *codexcontrol.ClaimedCo
 	}
 	defer unbind()
 	if claimed.Recovering {
-		if result, recovered, reconcileErr := p.reconcileTurn(ctx, runtime, claimed, threadID); reconcileErr != nil {
+		if result, recovered, reconcileErr := p.reconcileTurn(ctx, runtime, claimed, threadID, nil); reconcileErr != nil {
 			return codexcontrol.TurnResult{}, reconcileErr
 		} else if recovered {
 			p.syncReplyGate(ctx, claimed, codexHome, threadID)
@@ -191,7 +191,7 @@ func (p *Processor) Process(ctx context.Context, claimed *codexcontrol.ClaimedCo
 	if err := p.controls.RecordSubmission(ctx, claimed, turnID); err != nil {
 		return codexcontrol.TurnResult{}, err
 	}
-	result, err := p.waitTurn(ctx, runtime, client.Events(), claimed, threadID, turnID)
+	result, err := p.waitTurn(ctx, runtime, client.Events(), claimed, threadID, turnID, nil)
 	if err != nil {
 		interruptTurnBestEffort(runtime, threadID, turnID)
 		return codexcontrol.TurnResult{}, err

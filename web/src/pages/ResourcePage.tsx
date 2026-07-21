@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo } from 'react'
 import { api, type ListResponse } from '../api/client'
+import { useUI } from '../state'
 
 const hiddenColumns = new Set(['metadata', 'payload', 'config'])
 
@@ -14,6 +15,7 @@ export function ResourcePage({
   description?: string
 }) {
   const queryClient = useQueryClient()
+  const showToast = useUI((state) => state.showToast)
   const query = useQuery({
     queryKey: [resource],
     queryFn: () => api<ListResponse>(`/${resource}`),
@@ -47,9 +49,17 @@ export function ResourcePage({
         </div>
         <button
           className="button-secondary"
-          onClick={() => void query.refetch()}
+          disabled={query.isFetching}
+          onClick={async () => {
+            const result = await query.refetch()
+            if (result.error) {
+              showToast('error', result.error.message)
+              return
+            }
+            showToast('success', `${title}已刷新`)
+          }}
         >
-          刷新
+          {query.isFetching ? '刷新中…' : '刷新'}
         </button>
       </div>
       {query.isLoading && <p className="mt-8">正在加载…</p>}
@@ -93,7 +103,7 @@ export function ResourcePage({
                     <td className="px-4 py-3">
                       <ControlActions
                         item={item}
-                        onDone={() => void query.refetch()}
+                        onDone={() => query.refetch()}
                       />
                     </td>
                   )}
@@ -112,27 +122,37 @@ function ControlActions({
   onDone,
 }: {
   item: Record<string, unknown>
-  onDone: () => void
+  onDone: () => void | Promise<unknown>
 }) {
+  const showToast = useUI((state) => state.showToast)
   const mutation = useMutation({
     mutationFn: (action: 'reconcile' | 'reset') =>
       api<void>(`/controls/${String(item.id)}/${action}`, { method: 'POST' }),
-    onSuccess: onDone,
+    onSuccess: async (_, action) => {
+      await onDone()
+      showToast('success', action === 'reconcile' ? '对账已完成' : '重置已完成')
+    },
   })
   if (item.status !== 'error') return <span className="muted">—</span>
   return (
     <div className="flex gap-2">
       <button
         className="button-secondary"
+        disabled={mutation.isPending}
         onClick={() => mutation.mutate('reconcile')}
       >
-        对账
+        {mutation.isPending && mutation.variables === 'reconcile'
+          ? '对账中…'
+          : '对账'}
       </button>
       <button
         className="button-secondary"
+        disabled={mutation.isPending}
         onClick={() => mutation.mutate('reset')}
       >
-        重置
+        {mutation.isPending && mutation.variables === 'reset'
+          ? '重置中…'
+          : '重置'}
       </button>
     </div>
   )

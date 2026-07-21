@@ -49,6 +49,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	if err != nil {
 		return result, err
 	}
+	progress := p.newDiscordProgressReporter(ctx, claimed, jobCtx)
 	finalProjected := false
 	defer func() {
 		if processErr != nil && !finalProjected {
@@ -57,12 +58,12 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 			state, detail := discordFailureProjection(projectCtx, p.db, claimed.ID, processErr)
 			if projectErr := discordintegration.ProjectConversationStatus(projectCtx, p.db, jobCtx.GuildID,
 				jobCtx.ThreadID, jobCtx.ConversationID, jobCtx.MessageID,
-				state, detail); projectErr != nil {
+				state, progress.detail(detail, result.DurationMillis)); projectErr != nil {
 				p.logger.Warn("投影 Discord Conversation 失败状态失败", zap.Error(projectErr))
 			}
 		}
 	}()
-	p.projectDiscordConversation(ctx, jobCtx, discordintegration.ConversationRunning, "已接收消息，正在准备工作区。")
+	progress.project(ctx, discordintegration.ConversationRunning, "已接收消息，正在准备工作区。", 0)
 	credential, err := p.control.GitCredential(ctx, claimed.Capability, "fetch")
 	if err != nil {
 		return result, err
@@ -152,7 +153,14 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	}
 	portWorkspace := ports.Workspace{WorktreePath: workspace}
 	unbind, err := p.pool.Bind(poolKey, threadID, func(toolCtx context.Context, request codex.ToolCallRequest) (codex.ToolCallResult, error) {
-		return p.handleDiscordTool(toolCtx, claimed, containerRuntime, portWorkspace, request)
+		progress.dynamicTool(request, "running")
+		toolResult, toolErr := p.handleDiscordTool(toolCtx, claimed, containerRuntime, portWorkspace, request)
+		state := "completed"
+		if toolErr != nil || !toolResult.Success {
+			state = "failed"
+		}
+		progress.dynamicTool(request, state)
+		return toolResult, toolErr
 	})
 	if err != nil {
 		return result, err
@@ -160,14 +168,15 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	defer unbind()
 	if claimed.Recovering {
 		var recovered bool
-		result, recovered, err = p.reconcileTurn(ctx, runtime, claimed, threadID)
+		result, recovered, err = p.reconcileTurn(ctx, runtime, claimed, threadID, progress.observeEvent)
 		if err != nil {
 			return result, err
 		}
 		if recovered {
-			p.projectDiscordConversation(ctx, jobCtx, discordintegration.ConversationCompleted, "本轮处理完成。")
+			progress.project(ctx, discordintegration.ConversationCompleted, "本轮处理完成。", result.DurationMillis)
 			p.projectDiscordReply(ctx, jobCtx, result.FinalAnswer)
-			p.projectDiscordRunContributors(ctx, claimed.RunID, claimed.DiscordMessageID, result.FinalAnswer)
+			p.projectDiscordRunContributors(ctx, claimed.RunID, claimed.DiscordMessageID,
+				result.FinalAnswer, progress.detail("本轮处理完成。", result.DurationMillis))
 			finalProjected = true
 			return result, nil
 		}
@@ -187,7 +196,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		interruptTurnBestEffort(runtime, threadID, turnID)
 		return result, err
 	}
-	result, err = p.waitTurn(ctx, runtime, client.Events(), claimed, threadID, turnID)
+	result, err = p.waitTurn(ctx, runtime, client.Events(), claimed, threadID, turnID, progress.observeEvent)
 	if err != nil {
 		if needsCleanupInterrupt(err) {
 			interruptTurnBestEffort(runtime, threadID, turnID)
@@ -199,15 +208,16 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	if err != nil {
 		return result, err
 	}
-	p.projectDiscordConversation(ctx, jobCtx, discordintegration.ConversationCompleted, "本轮处理完成。")
+	progress.project(ctx, discordintegration.ConversationCompleted, "本轮处理完成。", result.DurationMillis)
 	p.projectDiscordReply(ctx, jobCtx, result.FinalAnswer)
-	p.projectDiscordRunContributors(ctx, claimed.RunID, claimed.DiscordMessageID, result.FinalAnswer)
+	p.projectDiscordRunContributors(ctx, claimed.RunID, claimed.DiscordMessageID,
+		result.FinalAnswer, progress.detail("本轮处理完成。", result.DurationMillis))
 	finalProjected = true
 	return result, nil
 }
 
 func (p *Processor) projectDiscordRunContributors(ctx context.Context, runID uuid.UUID,
-	primaryMessageID, finalAnswer string,
+	primaryMessageID, finalAnswer, detail string,
 ) {
 	rows, err := p.db.QueryContext(ctx, `SELECT i.discord_conversation_id, i.discord_message_id
 		FROM codex_turn_intents i JOIN codex_turn_runs r ON r.control_id = i.control_id
@@ -237,7 +247,7 @@ func (p *Processor) projectDiscordRunContributors(ctx context.Context, runID uui
 			p.logger.Warn("加载 Discord Contributor 消息失败", zap.Error(loadErr))
 			continue
 		}
-		p.projectDiscordConversation(ctx, jobCtx, discordintegration.ConversationCompleted, "本轮处理完成。")
+		p.projectDiscordConversation(ctx, jobCtx, discordintegration.ConversationCompleted, detail)
 		p.projectDiscordReply(ctx, jobCtx, finalAnswer)
 		_, _ = p.db.ExecContext(ctx, `UPDATE discord_input_messages SET status = 'processed',
 			processed_at = now() WHERE message_id = $1`, item.messageID)

@@ -46,12 +46,22 @@ type SQLoutbox struct {
 func NewSQLoutbox(db *sql.DB) *SQLoutbox { return &SQLoutbox{db: db} }
 
 func (s *SQLoutbox) Enqueue(ctx context.Context, operationKey, operationType, routeKey string, payload any, nonce string) error {
+	return enqueueDiscordOutbox(ctx, s.db, operationKey, operationType, routeKey, payload, nonce)
+}
+
+type discordOutboxExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func enqueueDiscordOutbox(ctx context.Context, execer discordOutboxExecer,
+	operationKey, operationType, routeKey string, payload any, nonce string,
+) error {
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
 	nonce = discordNonce(nonce)
-	_, err = s.db.ExecContext(ctx, `
+	_, err = execer.ExecContext(ctx, `
 		INSERT INTO integration_outbox(integration, operation_key, operation_type, route_key, payload, nonce)
 		VALUES ('discord', $1, $2, $3, $4, NULLIF($5, ''))
 		ON CONFLICT(integration, operation_key) DO UPDATE SET
@@ -120,6 +130,14 @@ func (s *SQLoutbox) Complete(ctx context.Context, item OutboxItem, response json
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if strings.HasPrefix(item.OperationKey, "projection:") {
+		var locked int
+		if err := tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT 1 FROM discord_projections
+			WHERE projection_key = $1 FOR UPDATE), 0)`,
+			strings.TrimPrefix(item.OperationKey, "projection:")).Scan(&locked); err != nil {
+			return err
+		}
+	}
 	result, err := tx.ExecContext(ctx, `UPDATE integration_outbox SET
 		status = CASE WHEN payload = $4::jsonb THEN 'completed' ELSE 'pending' END,
 		available_at = CASE WHEN payload = $4::jsonb THEN available_at ELSE now() + interval '5 seconds' END,

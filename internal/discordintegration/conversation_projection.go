@@ -32,8 +32,13 @@ func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadI
 ) error {
 	card := conversationProgressCard(state, detail)
 	key := "conversation:" + conversationID.String() + ":message:" + inputMessageID
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
 	var resourceID, messageID string
-	err := db.QueryRowContext(ctx, `INSERT INTO discord_projections
+	err = tx.QueryRowContext(ctx, `INSERT INTO discord_projections
 		(guild_id, projection_key, resource_id, desired_payload)
 		VALUES ($1, $2, $3, $4)
 		ON CONFLICT(guild_id, projection_key) DO UPDATE SET
@@ -52,8 +57,11 @@ func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadI
 		payload["messageId"] = messageID
 		nonce = ""
 	}
-	return NewSQLoutbox(db).Enqueue(ctx, "projection:"+key, operationType,
-		"channels/"+resourceID+"/messages", payload, nonce)
+	if err := enqueueDiscordOutbox(ctx, tx, "projection:"+key, operationType,
+		"channels/"+resourceID+"/messages", payload, nonce); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func ProjectConversationReply(ctx context.Context, db *sql.DB, threadID string,

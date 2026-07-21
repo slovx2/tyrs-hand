@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { api } from '../api/client'
+import { useUI } from '../state'
 
 interface GitHubStatus {
   configured: boolean
@@ -18,6 +19,7 @@ interface AppInput {
 
 export function GitHubPage() {
   const queryClient = useQueryClient()
+  const showToast = useUI((state) => state.showToast)
   const status = useQuery({
     queryKey: ['github-app'],
     queryFn: () => api<GitHubStatus>('/github/app'),
@@ -34,9 +36,10 @@ export function GitHubPage() {
         method: 'PUT',
         body: JSON.stringify({ ...values, appId: Number(values.appId) }),
       }),
-    onSuccess: () => {
+    onSuccess: async () => {
       form.reset()
-      void queryClient.invalidateQueries({ queryKey: ['github-app'] })
+      await queryClient.invalidateQueries({ queryKey: ['github-app'] })
+      showToast('success', 'GitHub App 设置已保存')
     },
   })
   const manifestURL = manifest.data?.url
@@ -114,13 +117,8 @@ export function GitHubPage() {
         <p className="muted mt-4 text-xs">
           Secret 加密保存，提交后不会回显。重新保存时必须提供新的完整 Secret。
         </p>
-        {mutation.error && (
-          <p role="alert" className="error-text mt-3">
-            {mutation.error.message}
-          </p>
-        )}
         <button className="button mt-5" disabled={mutation.isPending}>
-          保存 GitHub App
+          {mutation.isPending ? '保存中…' : '保存 GitHub App'}
         </button>
       </form>
     </section>

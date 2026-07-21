@@ -44,16 +44,16 @@ func conversationProgressCard(state ConversationProgress, detail string) EmbedPa
 	switch state {
 	case ConversationCompleted:
 		return EmbedPayload{Title: "✅ Codex · 已完成", Description: detail, Color: cardColorGreen,
-			Footer: "完整回复见下一条消息"}
+			Footer: "完整回复见下一条消息 · 不展示工具返回内容"}
 	case ConversationCanceled:
 		return EmbedPayload{Title: "⏹️ Codex · 已停止", Description: detail, Color: cardColorGray,
-			Footer: "本轮不会再发送回复"}
+			Footer: "本轮不会再发送回复 · 不展示工具返回内容"}
 	case ConversationFailed:
 		return EmbedPayload{Title: "❌ Codex · 处理失败", Description: detail, Color: cardColorRed,
-			Footer: "后台已记录错误，可稍后重试"}
+			Footer: "后台已记录错误，可稍后重试 · 不展示工具返回内容"}
 	default:
 		return EmbedPayload{Title: "⚙️ Codex · 处理中", Description: detail, Color: cardColorBlurple,
-			Footer: "状态会在此卡片中更新"}
+			Footer: "状态会在此卡片中更新 · 不展示工具返回内容"}
 	}
 }
 

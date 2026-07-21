@@ -70,13 +70,8 @@ export function LoginPage() {
           />
         </label>
         <FieldError message={form.formState.errors.totp?.message} />
-        {mutation.error && (
-          <p role="alert" className="error-text mt-4 text-sm">
-            {mutation.error.message}
-          </p>
-        )}
         <button className="button mt-6 w-full" disabled={mutation.isPending}>
-          登录
+          {mutation.isPending ? '登录中…' : '登录'}
         </button>
         <Link className="text-link mt-4 block text-center text-sm" to="/setup">
           首次安装？

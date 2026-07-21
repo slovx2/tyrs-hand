@@ -1,11 +1,13 @@
 import '@testing-library/jest-dom/vitest'
 import { afterAll, afterEach, beforeAll, vi } from 'vitest'
+import { useUI } from '../state'
 import { server } from './server'
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
   server.resetHandlers()
   sessionStorage.clear()
+  useUI.getState().clearToasts()
 })
 afterAll(() => server.close())
 

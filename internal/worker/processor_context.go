@@ -133,8 +133,10 @@ func (p *Processor) ensureThread(ctx context.Context, runtime *codex.Runtime,
 	return threadID, nil
 }
 
+type turnEventObserver func(context.Context, codex.Event)
+
 func (p *Processor) reconcileTurn(ctx context.Context, runtime *codex.Runtime,
-	claimed *codexcontrol.ClaimedControl, threadID string,
+	claimed *codexcontrol.ClaimedControl, threadID string, observer turnEventObserver,
 ) (codexcontrol.TurnResult, bool, error) {
 	snapshot, err := runtime.ReadThread(ctx, threadID)
 	if err != nil {
@@ -166,12 +168,12 @@ func (p *Processor) reconcileTurn(ctx context.Context, runtime *codex.Runtime,
 	if turn.Status != "inProgress" && turn.Status != "active" && turn.Status != "running" {
 		return codexcontrol.TurnResult{}, false, fmt.Errorf("codex turn 快照终态为 %s", turn.Status)
 	}
-	result, err := p.waitTurn(ctx, runtime, runtime.Events(), claimed, threadID, turn.ID)
+	result, err := p.waitTurn(ctx, runtime, runtime.Events(), claimed, threadID, turn.ID, observer)
 	return result, true, err
 }
 
 func (p *Processor) waitTurn(ctx context.Context, runtime *codex.Runtime, events <-chan codex.Event,
-	claimed *codexcontrol.ClaimedControl, threadID, turnID string,
+	claimed *codexcontrol.ClaimedControl, threadID, turnID string, observer turnEventObserver,
 ) (codexcontrol.TurnResult, error) {
 	startedAt := time.Now()
 	maxTimer := time.NewTimer(p.cfg.TurnMaxDuration)
@@ -204,6 +206,9 @@ func (p *Processor) waitTurn(ctx context.Context, runtime *codex.Runtime, events
 			}
 			resetTimer(idleTimer, p.cfg.TurnIdleTimeout)
 			p.persistAgentEvent(ctx, claimed, event)
+			if observer != nil {
+				observer(ctx, event)
+			}
 			if event.Method == "turn/started" {
 				actualID := eventTurnID(event.Params)
 				if actualID != "" {

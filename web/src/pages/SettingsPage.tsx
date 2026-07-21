@@ -14,7 +14,7 @@ interface ProviderSettings {
 }
 
 export function SettingsPage() {
-  const { locale, theme, setLocale, setTheme } = useUI()
+  const { locale, theme, setLocale, setTheme, showToast } = useUI()
   const queryClient = useQueryClient()
   const settings = useQuery({
     queryKey: ['settings'],
@@ -29,8 +29,10 @@ export function SettingsPage() {
         method: 'PUT',
         body: JSON.stringify(value),
       }),
-    onSuccess: () =>
-      void queryClient.invalidateQueries({ queryKey: ['settings'] }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['settings'] })
+      showToast('success', 'Provider 设置已保存')
+    },
   })
   return (
     <section className="mx-auto max-w-4xl">
@@ -123,13 +125,8 @@ export function SettingsPage() {
             <input className="field mt-1" {...form.register('serviceTier')} />
           </label>
         </div>
-        {mutation.error && (
-          <p role="alert" className="error-text mt-4">
-            {mutation.error.message}
-          </p>
-        )}
         <button className="button mt-5" disabled={mutation.isPending}>
-          保存 Provider 设置
+          {mutation.isPending ? '保存中…' : '保存 Provider 设置'}
         </button>
       </form>
     </section>

@@ -39,7 +39,9 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     throw new APIError(problem)
   }
   if (response.status === 204) return undefined as T
-  return (await response.json()) as T
+  const content = await response.text()
+  if (!content) return undefined as T
+  return JSON.parse(content) as T
 }
 
 export interface ListResponse<T = Record<string, unknown>> {

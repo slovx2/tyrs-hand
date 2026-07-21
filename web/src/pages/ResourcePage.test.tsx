@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from '../test/server'
+import { useUI } from '../state'
 import { ResourcePage } from './ResourcePage'
 
 describe('ResourcePage', () => {
@@ -80,7 +81,13 @@ describe('ResourcePage', () => {
     expect(screen.getAllByText('—')).not.toHaveLength(0)
     await user.click(screen.getByRole('button', { name: '对账' }))
     await waitFor(() => expect(reconcileCount).toBe(1))
+    await waitFor(() =>
+      expect(useUI.getState().toasts.at(-1)?.message).toBe('对账已完成'),
+    )
     await user.click(screen.getByRole('button', { name: '重置' }))
     await waitFor(() => expect(resetCount).toBe(1))
+    await waitFor(() =>
+      expect(useUI.getState().toasts.at(-1)?.message).toBe('重置已完成'),
+    )
   })
 })

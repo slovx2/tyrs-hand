@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../test/server'
+import { ToastViewport } from '../components/ToastViewport'
 import { DiscordPage } from './DiscordPage'
 
 afterEach(cleanup)
@@ -16,6 +17,7 @@ function renderPage() {
       }
     >
       <DiscordPage />
+      <ToastViewport />
     </QueryClientProvider>,
   )
 }
@@ -144,6 +146,9 @@ describe('DiscordPage', () => {
     expect(await screen.findByText('预检通过')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '开始初始化' }))
     expect(await screen.findByText(/初始化操作已创建/)).toBeInTheDocument()
+    expect(
+      await screen.findByText('初始化请求已提交，状态会自动刷新'),
+    ).toBeInTheDocument()
     expect(initialize).toHaveBeenCalledWith({
       mode: 'fresh',
       confirmation: 'DELETE ALL CHANNELS 123',
@@ -185,6 +190,9 @@ describe('DiscordPage', () => {
       repositoryId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
       name: 'alice-api',
     })
+    expect(
+      await screen.findByText('开发 Forum 创建请求已提交，列表会自动刷新'),
+    ).toBeInTheDocument()
 
     await user.selectOptions(screen.getByLabelText('bob-dev 授权成员'), '10')
     await user.selectOptions(screen.getByLabelText('bob-dev 权限'), 'operator')
@@ -196,6 +204,7 @@ describe('DiscordPage', () => {
       }),
       { accessLevel: 'operator' },
     )
+    expect(await screen.findByText('Forum 访问权限已更新')).toBeInTheDocument()
   })
 
   it('重建用户级环境并强确认删除最后一个 Forum', async () => {
@@ -241,6 +250,9 @@ describe('DiscordPage', () => {
     await screen.findByText('bob-dev')
     await user.click(screen.getByRole('button', { name: '下次运行前重建环境' }))
     expect(rebuild).toHaveBeenCalledOnce()
+    expect(
+      await screen.findByText('环境已标记为重建，将在下次运行前生效'),
+    ).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '删除' }))
     expect(window.prompt).toHaveBeenCalledWith(
       expect.stringContaining('最后一个 Forum'),
@@ -248,5 +260,8 @@ describe('DiscordPage', () => {
     expect(remove).toHaveBeenCalledWith({
       confirmation: 'DELETE 11111111-1111-1111-1111-111111111111',
     })
+    expect(
+      await screen.findByText('Forum 删除请求已提交，列表会自动刷新'),
+    ).toBeInTheDocument()
   })
 })

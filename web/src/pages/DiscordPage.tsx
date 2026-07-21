@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { api } from '../api/client'
 import type { ListResponse } from '../api/client'
+import { useUI } from '../state'
 
 interface DiscordSettings {
   guildId: string
@@ -84,6 +85,7 @@ type SettingsInput = Pick<
 
 export function DiscordPage() {
   const queryClient = useQueryClient()
+  const showToast = useUI((state) => state.showToast)
   const settings = useQuery({
     queryKey: ['discord-settings'],
     queryFn: () => api<DiscordSettings>('/settings/discord'),
@@ -91,7 +93,10 @@ export function DiscordPage() {
   const status = useQuery({
     queryKey: ['discord-status'],
     queryFn: () => api<DiscordStatus>('/discord/status'),
-    refetchInterval: 60_000,
+    refetchInterval: (query) =>
+      (query.state.data?.pendingInitializationOperations ?? 0) > 0
+        ? 2_000
+        : 60_000,
   })
   const members = useQuery({
     queryKey: ['discord-members'],
@@ -107,8 +112,15 @@ export function DiscordPage() {
     queryFn: () =>
       api<DevelopmentEnvironment[]>('/discord/development-environments'),
     enabled: settings.data?.tokenConfigured === true,
-    refetchInterval: 30_000,
+    refetchInterval: 5_000,
   })
+  useEffect(() => {
+    if (status.data?.pendingInitializationOperations === 0) {
+      void queryClient.invalidateQueries({
+        queryKey: ['discord-development-environments'],
+      })
+    }
+  }, [queryClient, status.data?.pendingInitializationOperations])
   const form = useForm<SettingsInput>({
     values: settings.data
       ? {
@@ -129,6 +141,7 @@ export function DiscordPage() {
       form.setValue('botToken', '')
       await queryClient.invalidateQueries({ queryKey: ['discord-settings'] })
       await queryClient.invalidateQueries({ queryKey: ['discord-status'] })
+      showToast('success', 'Discord 设置已保存')
     },
   })
 
@@ -202,9 +215,8 @@ export function DiscordPage() {
         <p className="muted mt-3 text-xs">
           第一阶段只支持启用 Community 的单个私有 Server。
         </p>
-        {save.error && <p className="error-text mt-3">{save.error.message}</p>}
         <button className="button mt-5" disabled={save.isPending}>
-          保存 Discord 设置
+          {save.isPending ? '保存中…' : '保存 Discord 设置'}
         </button>
       </form>
 
@@ -225,9 +237,17 @@ export function DiscordPage() {
           <button
             type="button"
             className="button-secondary"
-            onClick={() => void members.refetch()}
+            disabled={members.isFetching}
+            onClick={async () => {
+              const result = await members.refetch()
+              if (result.error) {
+                showToast('error', result.error.message)
+                return
+              }
+              showToast('success', '成员列表已刷新')
+            }}
           >
-            刷新成员
+            {members.isFetching ? '刷新中…' : '刷新成员'}
           </button>
         </div>
         <div className="danger-note mt-4">
@@ -275,6 +295,8 @@ function StatusMetric({
 }
 
 function InitializationPanel({ guildId }: { guildId: string }) {
+  const queryClient = useQueryClient()
+  const showToast = useUI((state) => state.showToast)
   const [mode, setMode] = useState<'incremental' | 'fresh'>('incremental')
   const [confirmation, setConfirmation] = useState('')
   const [preflight, setPreflight] = useState<Preflight>()
@@ -284,7 +306,13 @@ function InitializationPanel({ guildId }: { guildId: string }) {
         method: 'POST',
         body: JSON.stringify({ mode }),
       }),
-    onSuccess: setPreflight,
+    onSuccess: (value) => {
+      setPreflight(value)
+      showToast(
+        value.safe ? 'success' : 'warning',
+        value.safe ? '初始化预检已通过' : '初始化预检存在冲突',
+      )
+    },
   })
   const initialize = useMutation({
     mutationFn: () =>
@@ -292,6 +320,15 @@ function InitializationPanel({ guildId }: { guildId: string }) {
         method: 'POST',
         body: JSON.stringify({ mode, confirmation }),
       }),
+    onSuccess: async () => {
+      showToast('info', '初始化请求已提交，状态会自动刷新')
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['discord-status'] }),
+        queryClient.invalidateQueries({
+          queryKey: ['discord-development-environments'],
+        }),
+      ])
+    },
   })
   const expected = `DELETE ALL CHANNELS ${guildId}`
   const confirmationValid = mode === 'incremental' || confirmation === expected
@@ -335,7 +372,7 @@ function InitializationPanel({ guildId }: { guildId: string }) {
           onClick={() => check.mutate()}
           disabled={!guildId || check.isPending}
         >
-          执行预检
+          {check.isPending ? '预检中…' : '执行预检'}
         </button>
         <button
           type="button"
@@ -345,14 +382,9 @@ function InitializationPanel({ guildId }: { guildId: string }) {
             !preflight?.safe || !confirmationValid || initialize.isPending
           }
         >
-          开始初始化
+          {initialize.isPending ? '提交中…' : '开始初始化'}
         </button>
       </div>
-      {(check.error || initialize.error) && (
-        <p className="error-text mt-3">
-          {(check.error ?? initialize.error)?.message}
-        </p>
-      )}
       {initialize.data && (
         <p className="mt-3 text-sm">初始化操作已创建：{initialize.data.id}</p>
       )}
@@ -394,6 +426,7 @@ function MemberRow({
   repositories: RepositoryRecord[]
 }) {
   const queryClient = useQueryClient()
+  const showToast = useUI((state) => state.showToast)
   const [repositoryId, setRepositoryId] = useState('')
   const [name, setName] = useState('')
   const createForum = useMutation({
@@ -404,9 +437,13 @@ function MemberRow({
       }),
     onSuccess: async () => {
       setName('')
-      await queryClient.invalidateQueries({
-        queryKey: ['discord-development-environments'],
-      })
+      showToast('info', '开发 Forum 创建请求已提交，列表会自动刷新')
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['discord-status'] }),
+        queryClient.invalidateQueries({
+          queryKey: ['discord-development-environments'],
+        }),
+      ])
     },
   })
   return (
@@ -451,12 +488,9 @@ function MemberRow({
           disabled={!member.bound || !repositoryId || createForum.isPending}
           onClick={() => createForum.mutate()}
         >
-          创建开发 Forum
+          {createForum.isPending ? '提交中…' : '创建开发 Forum'}
         </button>
       </div>
-      {createForum.error && (
-        <p className="error-text mt-2 text-sm">{createForum.error.message}</p>
-      )}
     </div>
   )
 }
@@ -469,15 +503,18 @@ function DevelopmentEnvironmentPanel({
   members: DiscordMember[]
 }) {
   const queryClient = useQueryClient()
+  const showToast = useUI((state) => state.showToast)
   const rebuild = useMutation({
     mutationFn: (id: string) =>
       api<void>(`/discord/development-environments/${id}/rebuild`, {
         method: 'POST',
       }),
-    onSuccess: () =>
-      void queryClient.invalidateQueries({
+    onSuccess: async () => {
+      showToast('info', '环境已标记为重建，将在下次运行前生效')
+      await queryClient.invalidateQueries({
         queryKey: ['discord-development-environments'],
-      }),
+      })
+    },
   })
   return (
     <div className="panel mt-6">
@@ -510,7 +547,7 @@ function DevelopmentEnvironmentPanel({
                 disabled={rebuild.isPending}
                 onClick={() => rebuild.mutate(environment.id)}
               >
-                下次运行前重建环境
+                {rebuild.isPending ? '提交中…' : '下次运行前重建环境'}
               </button>
             </div>
             {environment.error && (
@@ -546,6 +583,7 @@ function DevelopmentForumRow({
   members: DiscordMember[]
 }) {
   const queryClient = useQueryClient()
+  const showToast = useUI((state) => state.showToast)
   const [target, setTarget] = useState('')
   const [level, setLevel] = useState<'readonly' | 'operator'>('readonly')
   const access = useMutation({
@@ -555,6 +593,12 @@ function DevelopmentForumRow({
         body:
           method === 'PUT' ? JSON.stringify({ accessLevel: level }) : undefined,
       }),
+    onSuccess: (_, method) => {
+      showToast(
+        'success',
+        method === 'PUT' ? 'Forum 访问权限已更新' : 'Forum 访问权限已移除',
+      )
+    },
   })
   const remove = useMutation({
     mutationFn: async () => {
@@ -566,20 +610,28 @@ function DevelopmentForumRow({
         confirmation: string
       }>(`/discord/development-forums/${forum.id}/delete-preflight`)
       const warning = `${preflight.active ? '仍有任务排队或运行，当前不能删除。' : ''}${preflight.dirty ? '存在未提交修改。' : ''}${preflight.unpushed ? '存在未推送提交。' : ''}${preflight.deletesEnvironment ? '这也是最后一个 Forum，将删除整个环境和 Home。' : ''}`
-      if (preflight.active) return
+      if (preflight.active) return 'blocked' as const
       const confirmation = window.prompt(
         `${warning}\n请输入：${preflight.confirmation}`,
       )
-      if (confirmation !== preflight.confirmation) return
+      if (confirmation !== preflight.confirmation) return 'cancelled' as const
       await api<{ id: string }>(
         `/discord/development-forums/${forum.id}/delete`,
         { method: 'POST', body: JSON.stringify({ confirmation }) },
       )
+      return 'submitted' as const
     },
-    onSuccess: () =>
-      void queryClient.invalidateQueries({
+    onSuccess: async (result) => {
+      if (result === 'blocked') {
+        showToast('warning', '该 Forum 仍有任务排队或运行，暂时不能删除')
+        return
+      }
+      if (result !== 'submitted') return
+      showToast('info', 'Forum 删除请求已提交，列表会自动刷新')
+      await queryClient.invalidateQueries({
         queryKey: ['discord-development-environments'],
-      }),
+      })
+    },
   })
   return (
     <div
@@ -600,7 +652,7 @@ function DevelopmentForumRow({
           disabled={remove.isPending}
           onClick={() => remove.mutate()}
         >
-          删除
+          {remove.isPending ? '处理中…' : '删除'}
         </button>
       </div>
       <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_130px_auto_auto]">
@@ -636,7 +688,7 @@ function DevelopmentForumRow({
           disabled={!target || access.isPending}
           onClick={() => access.mutate('PUT')}
         >
-          授权
+          {access.isPending && access.variables === 'PUT' ? '授权中…' : '授权'}
         </button>
         <button
           type="button"
@@ -644,14 +696,11 @@ function DevelopmentForumRow({
           disabled={!target || access.isPending}
           onClick={() => access.mutate('DELETE')}
         >
-          移除
+          {access.isPending && access.variables === 'DELETE'
+            ? '移除中…'
+            : '移除'}
         </button>
       </div>
-      {(access.error || remove.error) && (
-        <p className="error-text mt-2 text-sm">
-          {(access.error ?? remove.error)?.message}
-        </p>
-      )}
     </div>
   )
 }

@@ -174,12 +174,8 @@ func (c *DisgoConnector) handleMessage(ctx context.Context, event *events.Messag
 	if err != nil {
 		return err
 	}
-	return NewSQLoutbox(c.manager.db).Enqueue(ctx, "conversation:queued:"+conversationID.String(),
-		"message.create", "channels/"+input.ThreadID+"/messages", map[string]any{
-			"channelId": input.ThreadID,
-			"content":   "",
-			"embeds":    []EmbedPayload{conversationProgressCard(ConversationRunning, "消息已进入长期开发环境队列。")},
-		}, "conversation-queued-"+conversationID.String())
+	return ProjectConversationStatus(ctx, c.manager.db, input.GuildID, input.ThreadID,
+		conversationID, input.MessageID, ConversationRunning, "消息已进入长期开发环境队列。")
 }
 
 func (c *DisgoConnector) onCommand(event *events.ApplicationCommandInteractionCreate) {

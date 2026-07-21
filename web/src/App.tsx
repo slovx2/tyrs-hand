@@ -237,9 +237,10 @@ function LogoutButton({ onLogout }: { onLogout: () => void }) {
   return (
     <button
       className="muted mt-2 cursor-pointer text-sm hover:underline"
+      disabled={mutation.isPending}
       onClick={() => mutation.mutate()}
     >
-      {t(useUI.getState().locale, 'signOut')}
+      {mutation.isPending ? '退出中…' : t(useUI.getState().locale, 'signOut')}
     </button>
   )
 }

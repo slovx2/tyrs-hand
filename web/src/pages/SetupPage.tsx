@@ -116,13 +116,8 @@ export function SetupPage() {
             {error.message}
           </p>
         ))}
-        {mutation.error && (
-          <p role="alert" className="error-text mt-4">
-            {mutation.error.message}
-          </p>
-        )}
         <button className="button mt-6 w-full" disabled={mutation.isPending}>
-          创建管理员
+          {mutation.isPending ? '创建中…' : '创建管理员'}
         </button>
       </form>
     </main>

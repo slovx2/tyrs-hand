@@ -42,6 +42,16 @@ describe('API client', () => {
     await expect(api('/empty', { method: 'POST' })).resolves.toBeUndefined()
   })
 
+  it('支持 202 空响应', async () => {
+    server.use(
+      http.post(
+        '/api/v1/accepted',
+        () => new HttpResponse(null, { status: 202 }),
+      ),
+    )
+    await expect(api('/accepted', { method: 'POST' })).resolves.toBeUndefined()
+  })
+
   it('生成 JSON 请求体', () => {
     expect(jsonBody({ value: 1 })).toEqual({ body: '{"value":1}' })
   })
