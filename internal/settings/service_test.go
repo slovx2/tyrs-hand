@@ -49,7 +49,7 @@ func TestWriteSecretFile(t *testing.T) {
 func TestWriteProviderConfigPreservesCodexSettings(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	require.NoError(t, os.WriteFile(path, []byte("openai_base_url = \"https://old.example/v1\"\n[projects.\"/repo\"]\ntrust_level = \"trusted\"\n"), 0o600))
-	require.NoError(t, writeProviderConfig(path, "https://api.example.com/v1"))
+	require.NoError(t, WriteProviderConfig(path, "https://api.example.com/v1"))
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)
 	require.Equal(t, "openai_base_url = \"https://api.example.com/v1\"\n[projects.\"/repo\"]\ntrust_level = \"trusted\"\n", string(data))

@@ -17,6 +17,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/githubtools"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/replygate"
+	"github.com/slovx2/tyrs-hand/internal/settings"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
 )
@@ -227,6 +228,11 @@ func prepareRemoteCodexHome(home string, credential workerprotocol.RuntimeCreden
 	}
 	if err := os.Rename(temporary, filepath.Join(home, "auth.json")); err != nil {
 		return nil, err
+	}
+	if credential.BaseURL != "" {
+		if err := settings.WriteProviderConfig(filepath.Join(home, "config.toml"), credential.BaseURL); err != nil {
+			return nil, err
+		}
 	}
 	environment := []string(nil)
 	if credential.BaseURL != "" {

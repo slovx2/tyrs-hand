@@ -164,7 +164,7 @@ func (s *Service) PrepareCodexHome(ctx context.Context, codexHome, sharedHome st
 		}
 	}
 	if provider.BaseURL != "" {
-		if err := writeProviderConfig(filepath.Join(codexHome, "config.toml"), provider.BaseURL); err != nil {
+		if err := WriteProviderConfig(filepath.Join(codexHome, "config.toml"), provider.BaseURL); err != nil {
 			return AgentProvider{}, nil, err
 		}
 	}
@@ -226,7 +226,7 @@ func writeSecretFile(path string, data []byte) error {
 	return nil
 }
 
-func writeProviderConfig(path, baseURL string) error {
+func WriteProviderConfig(path, baseURL string) error {
 	existing, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err

@@ -19,6 +19,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/ports"
+	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/stretchr/testify/require"
 )
 
@@ -131,6 +132,28 @@ func TestProcessorHelpersAndLocalTools(t *testing.T) {
 	require.Equal(t, []string{"/data/worker/caches", "/data/worker/state"}, sandbox["writable_roots"])
 	require.Contains(t, runtimeConfig, "hooks")
 	require.Len(t, shortID(uuid.MustParse("12345678-1234-1234-1234-123456789012")), 8)
+
+	remoteHome := t.TempDir()
+	remoteEnvironment, err := prepareRemoteCodexHome(remoteHome, workerprotocol.RuntimeCredential{
+		APIKey: "test-key", BaseURL: "https://api.example.com/v1", ProxyURL: "https://proxy.example.com",
+	})
+	require.NoError(t, err)
+	auth, err := os.ReadFile(filepath.Join(remoteHome, "auth.json"))
+	require.NoError(t, err)
+	require.JSONEq(t, `{"auth_mode":"apikey","OPENAI_API_KEY":"test-key"}`, string(auth))
+	providerConfig, err := os.ReadFile(filepath.Join(remoteHome, "config.toml"))
+	require.NoError(t, err)
+	require.Equal(t, "openai_base_url = \"https://api.example.com/v1\"\n", string(providerConfig))
+	require.Equal(t, []string{"OPENAI_BASE_URL=https://api.example.com/v1",
+		"HTTP_PROXY=https://proxy.example.com", "HTTPS_PROXY=https://proxy.example.com"},
+		remoteEnvironment)
+
+	completed, err := remoteCompletedResult(" final answer ", "turn-1", 123, "thread/read")
+	require.NoError(t, err)
+	require.Equal(t, "final answer", completed.FinalAnswer)
+	require.EqualValues(t, 123, completed.DurationMillis)
+	_, err = remoteCompletedResult(" \n ", "turn-1", 0, "thread/read")
+	require.ErrorContains(t, err, "没有最终回复")
 
 	workspace := &fakeWorkspace{status: "## main\n M file.go"}
 	processor := &Processor{workspace: workspace}
