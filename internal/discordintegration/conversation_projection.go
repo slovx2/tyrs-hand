@@ -64,6 +64,49 @@ func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadI
 	return tx.Commit()
 }
 
+func ProjectConversationConfiguration(ctx context.Context, db *sql.DB, guildID, threadID string,
+	conversationID uuid.UUID, inputMessageID string,
+) error {
+	var model, effort, tier string
+	if err := db.QueryRowContext(ctx, `SELECT COALESCE(model,''), COALESCE(reasoning_effort,''), service_tier
+		FROM discord_conversations WHERE id = $1`, conversationID).Scan(&model, &effort, &tier); err != nil {
+		return err
+	}
+	card := conversationConfigurationCard(model, effort, tier)
+	key := "conversation:" + conversationID.String() + ":message:" + inputMessageID
+	buttons := []map[string]string{
+		{"label": "按默认值开始", "customId": "codex-config-start:" + conversationID.String(), "style": "primary"},
+		{"label": "调整参数", "customId": "codex-config-edit:" + conversationID.String()},
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	payload := map[string]any{"content": "", "embeds": []EmbedPayload{card}, "buttons": buttons}
+	var messageID string
+	err = tx.QueryRowContext(ctx, `INSERT INTO discord_projections
+		(guild_id, projection_key, resource_id, desired_payload) VALUES ($1,$2,$3,$4)
+		ON CONFLICT(guild_id, projection_key) DO UPDATE SET desired_payload = EXCLUDED.desired_payload,
+		desired_version = discord_projections.desired_version + 1, updated_at = now()
+		RETURNING COALESCE(message_id,'')`, guildID, key, threadID, mustJSON(payload)).Scan(&messageID)
+	if err != nil {
+		return err
+	}
+	operationType := "message.create"
+	payload["channelId"] = threadID
+	nonce := "conversation-config-" + conversationID.String()
+	if messageID != "" {
+		operationType, nonce = "message.update", ""
+		payload["messageId"] = messageID
+	}
+	if err := enqueueDiscordOutbox(ctx, tx, "projection:"+key, operationType,
+		"channels/"+threadID+"/messages", payload, nonce); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func ProjectConversationReply(ctx context.Context, db *sql.DB, threadID string,
 	conversationID uuid.UUID, inputMessageID, content string,
 ) error {

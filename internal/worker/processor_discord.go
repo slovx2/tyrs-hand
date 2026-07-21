@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/codexsettings"
 	"github.com/slovx2/tyrs-hand/internal/devcontainer"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/ports"
@@ -49,6 +50,13 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	if err != nil {
 		return result, err
 	}
+	preferences, err := p.freezeRuntimePreferences(ctx, claimed)
+	if err != nil {
+		return result, err
+	}
+	jobCtx.Model = preferences.Model
+	jobCtx.ReasoningEffort = preferences.ReasoningEffort
+	jobCtx.ServiceTier = codexsettings.RuntimeServiceTier(preferences.ServiceTier)
 	progress := p.newDiscordProgressReporter(ctx, claimed, jobCtx)
 	finalProjected := false
 	defer func() {
@@ -119,28 +127,21 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		}
 	}()
 	runtime := codex.NewRuntime(client)
-	if jobCtx.Model == "" {
-		jobCtx.Model = provider.Model
-	}
-	if jobCtx.ReasoningEffort == "" {
-		jobCtx.ReasoningEffort = provider.Reasoning
-	}
-	if jobCtx.ServiceTier == "" {
-		jobCtx.ServiceTier = provider.ServiceTier
-	}
 	options := ports.ThreadOptions{
 		CWD: workspace, Model: jobCtx.Model, ReasoningEffort: jobCtx.ReasoningEffort,
 		ServiceTier: jobCtx.ServiceTier, Sandbox: "danger-full-access", ApprovalPolicy: jobCtx.ApprovalPolicy,
-		NetworkEnabled:        jobCtx.NetworkEnabled,
-		RuntimeConfig:         codexRuntimeConfig(environment, ""),
-		DeveloperInstructions: discordintegration.MultiplayerDeveloperInstructions,
+		NetworkEnabled: jobCtx.NetworkEnabled,
+		RuntimeConfig:  codexRuntimeConfig(environment, ""),
+		DeveloperInstructions: discordintegration.MultiplayerDeveloperInstructions +
+			"\nAfter understanding the task, call discord.set_post_title exactly once with a concise user-facing title. If the platform reports that the title is already set, continue without trying again.",
+		DynamicTools: []ports.DynamicToolSpec{discordTitleSpec()},
 	}
 	if jobCtx.HasRepository {
 		githubSpec, specErr := p.catalog.DynamicToolSpecFor(append(append([]string{}, claimed.AllowedTools...), claimed.DangerousActions...))
 		if specErr != nil {
 			return result, specErr
 		}
-		options.DynamicTools = []ports.DynamicToolSpec{githubSpec, localGitSpec()}
+		options.DynamicTools = append(options.DynamicTools, githubSpec, localGitSpec())
 		options.DeveloperInstructions += "\nFollow repository AGENTS.md and the explicitly attached skills. Use only the selected repository and persistent Discord clone. The container and Home are shared with the owner's other forums, so never inspect or modify sibling workspaces outside the current CWD. Use git.commit and git.publish_branch for writes."
 	}
 	if err := runtime.ValidateSkills(ctx, workspace, skills); err != nil {
@@ -173,6 +174,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 			return result, err
 		}
 		if recovered {
+			p.finalizeDiscordTitle(ctx, runtime, threadID, jobCtx)
 			progress.project(ctx, discordintegration.ConversationCompleted, "本轮处理完成。", result.DurationMillis)
 			p.projectDiscordReply(ctx, jobCtx, result.FinalAnswer)
 			p.projectDiscordRunContributors(ctx, claimed.RunID, claimed.DiscordMessageID,
@@ -203,6 +205,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		}
 		return result, err
 	}
+	p.finalizeDiscordTitle(ctx, runtime, threadID, jobCtx)
 	_, err = p.db.ExecContext(ctx, `UPDATE discord_input_messages SET status = 'processed', processed_at = now()
 		WHERE message_id = $1`, claimed.DiscordMessageID)
 	if err != nil {
@@ -320,12 +323,47 @@ func (p *Processor) handleDiscordTool(ctx context.Context, claimed *codexcontrol
 	if request.Namespace != nil && *request.Namespace == "github" {
 		return p.control.CallTool(ctx, claimed.Capability, request)
 	}
+	if request.Namespace != nil && *request.Namespace == "discord" {
+		return p.auditLocalToolCall(ctx, claimed, request, func() (codex.ToolCallResult, error) {
+			if request.Tool != "set_post_title" {
+				return codex.ToolCallResult{}, fmt.Errorf("未知 Discord 工具 %s", request.Tool)
+			}
+			var arguments struct {
+				Title string `json:"title"`
+			}
+			if err := json.Unmarshal(request.Arguments, &arguments); err != nil {
+				return codex.ToolCallResult{}, err
+			}
+			title, scheduled, err := discordintegration.ScheduleConversationTitle(ctx, p.db,
+				claimed.DiscordConversationID, arguments.Title)
+			if err != nil {
+				return codex.ToolCallResult{}, err
+			}
+			return codex.TextToolResult(fmt.Sprintf(`{"title":%q,"scheduled":%t}`, title, scheduled), true), nil
+		})
+	}
 	if request.Namespace == nil || *request.Namespace != "git" {
 		return codex.ToolCallResult{}, errors.New("未知 dynamic tool namespace")
 	}
 	return p.auditLocalToolCall(ctx, claimed, request, func() (codex.ToolCallResult, error) {
 		return p.executeDiscordLocalTool(ctx, claimed, runtime, workspace, request)
 	})
+}
+
+func (p *Processor) finalizeDiscordTitle(ctx context.Context, runtime *codex.Runtime, threadID string,
+	jobCtx discordJobContext,
+) {
+	title, err := discordintegration.EnsureConversationTitle(ctx, p.db, jobCtx.ConversationID, jobCtx.Body)
+	if err != nil {
+		p.logger.Warn("生成 Discord 帖子兜底标题失败", zap.Error(err),
+			zap.String("conversation_id", jobCtx.ConversationID.String()))
+		return
+	}
+	if title != "" {
+		if err := runtime.SetThreadName(ctx, threadID, title); err != nil {
+			p.logger.Warn("同步 Codex Thread 名称失败", zap.Error(err), zap.String("thread_id", threadID))
+		}
+	}
 }
 
 func (p *Processor) executeDiscordLocalTool(ctx context.Context, claimed *codexcontrol.ClaimedControl,

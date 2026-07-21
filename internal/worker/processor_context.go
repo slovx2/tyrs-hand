@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/codexsettings"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/replygate"
 	"go.uber.org/zap"
@@ -65,6 +66,56 @@ func (p *Processor) loadContext(ctx context.Context, intent codexcontrol.Intent)
 		&result.ProfileName, &result.Model, &result.ReasoningEffort, &result.ServiceTier,
 		&result.Sandbox, &result.ApprovalPolicy, &result.NetworkEnabled)
 	return result, err
+}
+
+func (p *Processor) freezeRuntimePreferences(ctx context.Context,
+	claimed *codexcontrol.ClaimedControl,
+) (codexsettings.EffectivePreferences, error) {
+	var result codexsettings.EffectivePreferences
+	var model, effort, tier sql.NullString
+	var frozen sql.NullTime
+	err := p.db.QueryRowContext(ctx, `SELECT model, reasoning_effort, service_tier,
+		runtime_preferences_frozen_at FROM codex_thread_controls WHERE id = $1`, claimed.ControlID).
+		Scan(&model, &effort, &tier, &frozen)
+	if err != nil {
+		return result, err
+	}
+	if frozen.Valid {
+		result.Model, result.ReasoningEffort = model.String, effort.String
+		result.ServiceTier = tier.String
+		if result.ServiceTier == "" {
+			result.ServiceTier = "standard"
+		}
+		return result, nil
+	}
+	if claimed.SourceType == codexcontrol.SourceDiscord {
+		err = p.db.QueryRowContext(ctx, `SELECT COALESCE(model,''), COALESCE(reasoning_effort,''), service_tier
+			FROM discord_conversations WHERE id = $1`, claimed.DiscordConversationID).
+			Scan(&result.Model, &result.ReasoningEffort, &result.ServiceTier)
+	} else {
+		result, err = codexsettings.NewService(p.db).Resolve(ctx, claimed.RepositoryID, uuid.Nil,
+			claimed.AgentProfileID)
+	}
+	if err != nil {
+		return codexsettings.EffectivePreferences{}, err
+	}
+	err = p.db.QueryRowContext(ctx, `UPDATE codex_thread_controls SET model = $2,
+		reasoning_effort = $3, service_tier = $4, runtime_preferences_frozen_at = now(), updated_at = now()
+		WHERE id = $1 AND runtime_preferences_frozen_at IS NULL
+		RETURNING COALESCE(model,''), COALESCE(reasoning_effort,''), service_tier`, claimed.ControlID,
+		nullIfEmpty(result.Model), nullIfEmpty(result.ReasoningEffort), result.ServiceTier).
+		Scan(&result.Model, &result.ReasoningEffort, &result.ServiceTier)
+	if errors.Is(err, sql.ErrNoRows) {
+		return p.freezeRuntimePreferences(ctx, claimed)
+	}
+	return result, err
+}
+
+func nullIfEmpty(value string) any {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return strings.TrimSpace(value)
 }
 
 func githubWorkItemAdditionalContext(job jobContext, workspace ports.Workspace) map[string]ports.AdditionalContextEntry {
@@ -583,6 +634,17 @@ func githubReplySpec() ports.DynamicToolSpec {
 			Type: "function", Name: "reply_to_github",
 			Description: "Post the one final user-facing reply to the current authorized GitHub issue or pull request.",
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"body":{"type":"string","minLength":1,"maxLength":60000}},"required":["body"],"additionalProperties":false}`),
+		}},
+	}
+}
+
+func discordTitleSpec() ports.DynamicToolSpec {
+	return ports.DynamicToolSpec{
+		Type: "namespace", Name: "discord", Description: "Update metadata for the current Discord Codex post.",
+		Tools: []ports.DynamicToolSpec{{
+			Type: "function", Name: "set_post_title",
+			Description: "Set one concise title for the current Discord post after understanding the task. This succeeds at most once per post.",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"title":{"type":"string","minLength":1,"maxLength":100}},"required":["title"],"additionalProperties":false}`),
 		}},
 	}
 }

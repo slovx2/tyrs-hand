@@ -139,6 +139,16 @@ func (d *Daemon) runBackground(ctx context.Context, guildID string, remote Remot
 			if err := d.resumeInitialization(ctx, guildID, remote); err != nil {
 				d.logger.Warn("执行 Discord 初始化失败", zap.Error(err))
 			}
+			for count := 0; count < 20; count++ {
+				worked, err := d.conversations.StartDueConfiguration(ctx)
+				if err != nil {
+					d.logger.Warn("启动到期 Discord 会话失败", zap.Error(err))
+					break
+				}
+				if !worked {
+					break
+				}
+			}
 		case <-projectionTicker.C:
 			d.refreshAllProjections(ctx, guildID, remote)
 		case <-permissionTicker.C:
@@ -246,7 +256,8 @@ func (d *Daemon) refreshSystemStatus(ctx context.Context, guildID string) error 
 		return err
 	}
 	card := systemStatusCard(queued, running, failed, workers, outbox, gatewayStatus)
-	projectionPayload := map[string]any{"content": "", "embeds": []EmbedPayload{card}}
+	buttons := []map[string]string{{"label": "新建 Codex 帖子", "customId": "codex-new-open", "style": "primary"}}
+	projectionPayload := map[string]any{"content": "", "embeds": []EmbedPayload{card}, "buttons": buttons}
 	var messageID string
 	err = d.manager.db.QueryRowContext(ctx, `INSERT INTO discord_projections
 		(guild_id, projection_key, resource_id, desired_payload)
@@ -259,7 +270,7 @@ func (d *Daemon) refreshSystemStatus(ctx context.Context, guildID string) error 
 		return err
 	}
 	operationType := "message.create"
-	payload := map[string]any{"channelId": channelID, "content": "", "embeds": []EmbedPayload{card}}
+	payload := map[string]any{"channelId": channelID, "content": "", "embeds": []EmbedPayload{card}, "buttons": buttons}
 	if messageID != "" {
 		operationType = "message.update"
 		payload["messageId"] = messageID

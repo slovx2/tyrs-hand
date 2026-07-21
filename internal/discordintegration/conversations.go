@@ -11,19 +11,24 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/codexsettings"
 )
 
 type IncomingMessage struct {
-	GuildID       string
-	ForumID       string
-	ThreadID      string
-	MessageID     string
-	DiscordUserID string
-	DisplayName   string
-	Username      string
-	Title         string
-	Body          string
-	Attachments   []IncomingAttachment
+	GuildID                string
+	ForumID                string
+	ThreadID               string
+	MessageID              string
+	DiscordUserID          string
+	DisplayName            string
+	Username               string
+	Title                  string
+	Body                   string
+	Model                  string
+	ReasoningEffort        string
+	ServiceTier            string
+	ConfigurationConfirmed bool
+	Attachments            []IncomingAttachment
 }
 
 type IncomingAttachment struct {
@@ -58,15 +63,41 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 	if err != nil {
 		return uuid.Nil, err
 	}
+	var profileID uuid.UUID
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM agent_profiles ORDER BY created_at LIMIT 1`).Scan(&profileID); err != nil {
+		return uuid.Nil, err
+	}
+	preferences, err := codexsettings.NewService(s.db).Resolve(ctx, repositoryID, forumID, profileID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if input.Model != "" {
+		preferences.Model = input.Model
+	}
+	if input.ReasoningEffort != "" {
+		preferences.ReasoningEffort = input.ReasoningEffort
+	}
+	if input.ServiceTier != "" {
+		preferences.ServiceTier = input.ServiceTier
+	}
+	status, configurationStatus := "active", "configured"
+	var deadline any
+	if !input.ConfigurationConfirmed {
+		status, configurationStatus = "awaiting_configuration", "awaiting"
+		deadline = "20 seconds"
+	}
 	var conversationID uuid.UUID
 	err = tx.QueryRowContext(ctx, `INSERT INTO discord_conversations
 		(guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
-		 repository_id, agent_profile_id, title, status)
-		VALUES ($1, $2, $3, $4, $5, $6,
-			(SELECT id FROM agent_profiles ORDER BY created_at LIMIT 1), $7, 'active')
+		 repository_id, agent_profile_id, title, status, model, reasoning_effort, service_tier,
+		 configuration_status, configuration_deadline, configured_by_discord_user_id,
+		 title_rename_status)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULLIF($10,''), NULLIF($11,''), $12,
+			$13, CASE WHEN $14::text IS NULL THEN NULL ELSE now() + $14::interval END, $15, 'pending')
 		ON CONFLICT(guild_id, thread_id) DO UPDATE SET last_activity_at = now(), updated_at = now()
 		RETURNING id`, input.GuildID, forumID, input.ThreadID, input.MessageID, ownerID,
-		repositoryID, input.Title).Scan(&conversationID)
+		repositoryID, profileID, input.Title, status, preferences.Model, preferences.ReasoningEffort,
+		preferences.ServiceTier, configurationStatus, deadline, input.DiscordUserID).Scan(&conversationID)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -77,13 +108,17 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 	if !inserted {
 		return conversationID, tx.Commit()
 	}
-	if err := s.enqueueMessage(ctx, tx, conversationID, input.MessageID); err != nil {
-		return uuid.Nil, err
+	if input.ConfigurationConfirmed {
+		if err := s.enqueueMessage(ctx, tx, conversationID, input.MessageID); err != nil {
+			return uuid.Nil, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return uuid.Nil, err
 	}
-	s.notifyJobs(ctx)
+	if input.ConfigurationConfirmed {
+		s.notifyJobs(ctx)
+	}
 	return conversationID, nil
 }
 
@@ -129,6 +164,141 @@ func (s *ConversationService) Reply(ctx context.Context, input IncomingMessage) 
 		s.notifyJobs(ctx)
 	}
 	return nil
+}
+
+type ConversationConfiguration struct {
+	Model           string
+	ReasoningEffort string
+	ServiceTier     string
+}
+
+func (s *ConversationService) BeginConfigurationEdit(ctx context.Context, conversationID uuid.UUID,
+	userID string,
+) error {
+	result, err := s.db.ExecContext(ctx, `UPDATE discord_conversations c SET configuration_status = 'editing',
+		configuration_deadline = now() + interval '2 minutes', updated_at = now()
+		WHERE c.id = $1 AND c.configuration_status IN ('awaiting','editing') AND (
+			c.configured_by_discord_user_id = $2 OR c.owner_discord_user_id = $2 OR EXISTS(
+				SELECT 1 FROM discord_forum_access a WHERE a.forum_id = c.forum_id
+				AND a.discord_user_id = $2 AND a.access_level = 'operator'))`, conversationID, userID)
+	if err != nil {
+		return err
+	}
+	changed, _ := result.RowsAffected()
+	if changed != 1 {
+		return errors.New("配置已生效，或当前用户没有修改权限")
+	}
+	return nil
+}
+
+func (s *ConversationService) FinalizeConfiguration(ctx context.Context, conversationID uuid.UUID,
+	userID string, selected *ConversationConfiguration,
+) error {
+	return s.finalizeConfiguration(ctx, conversationID, userID, selected, false)
+}
+
+func (s *ConversationService) finalizeConfiguration(ctx context.Context, conversationID uuid.UUID,
+	userID string, selected *ConversationConfiguration, requireDue bool,
+) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var model, effort, tier string
+	var forumID uuid.UUID
+	var owner, configuredBy, status string
+	err = tx.QueryRowContext(ctx, `SELECT COALESCE(model,''), COALESCE(reasoning_effort,''), service_tier,
+		forum_id, owner_discord_user_id, COALESCE(configured_by_discord_user_id,''), configuration_status
+		FROM discord_conversations WHERE id = $1 AND (
+			$2 = false OR (configuration_status IN ('awaiting','editing') AND configuration_deadline <= now())
+		) FOR UPDATE`, conversationID, requireDue).
+		Scan(&model, &effort, &tier, &forumID, &owner, &configuredBy, &status)
+	if err != nil {
+		return err
+	}
+	if status == "configured" {
+		return errors.New("该会话已经启动")
+	}
+	if userID != "" && userID != configuredBy && userID != owner {
+		var operator bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM discord_forum_access
+			WHERE forum_id = $1 AND discord_user_id = $2 AND access_level = 'operator')`, forumID, userID).
+			Scan(&operator); err != nil || !operator {
+			return errors.New("当前用户没有修改该会话配置的权限")
+		}
+	}
+	if selected != nil {
+		value := codexsettings.Preferences{Model: optionalPreference(selected.Model),
+			ReasoningEffort: optionalPreference(selected.ReasoningEffort), ServiceTier: &selected.ServiceTier}
+		if err := codexsettings.ValidatePreferences(value); err != nil {
+			return err
+		}
+		model, effort, tier = strings.TrimSpace(selected.Model), selected.ReasoningEffort, selected.ServiceTier
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE discord_conversations SET model = NULLIF($2,''),
+		reasoning_effort = NULLIF($3,''), service_tier = $4, configuration_status = 'configured',
+		configuration_deadline = NULL, status = 'active', updated_at = now() WHERE id = $1`,
+		conversationID, model, effort, tier)
+	if err != nil {
+		return err
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT message_id FROM discord_input_messages
+		WHERE conversation_id = $1 AND status = 'received' ORDER BY received_at, message_id`, conversationID)
+	if err != nil {
+		return err
+	}
+	var messages []string
+	for rows.Next() {
+		var messageID string
+		if err := rows.Scan(&messageID); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		messages = append(messages, messageID)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, messageID := range messages {
+		if err := s.enqueueMessage(ctx, tx, conversationID, messageID); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.notifyJobs(ctx)
+	return nil
+}
+
+func optionalPreference(value string) *string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func (s *ConversationService) StartDueConfiguration(ctx context.Context) (bool, error) {
+	var conversationID uuid.UUID
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM discord_conversations
+		WHERE configuration_status IN ('awaiting','editing') AND configuration_deadline <= now()
+		ORDER BY configuration_deadline LIMIT 1`).Scan(&conversationID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	err = s.finalizeConfiguration(ctx, conversationID, "", nil, true)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil && strings.Contains(err.Error(), "已经启动") {
+		return true, nil
+	}
+	return err == nil, err
 }
 
 func (s *ConversationService) notifyJobs(ctx context.Context) {

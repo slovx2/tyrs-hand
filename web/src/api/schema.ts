@@ -180,6 +180,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings/codex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listCodexSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/codex/repositories/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["putRepositoryCodexSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/codex/forums/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["putForumCodexSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/settings/discord": {
         parameters: {
             query?: never;
@@ -752,6 +800,40 @@ export interface components {
         };
         AgentProviderSettingsInput: components["schemas"]["AgentProviderSettings"] & {
             apiKey?: string;
+        };
+        CodexPreferences: {
+            model?: string | null;
+            /** @enum {string|null} */
+            reasoningEffort?: "low" | "medium" | "high" | "xhigh" | null;
+            /** @enum {string|null} */
+            serviceTier?: "standard" | "fast" | null;
+        };
+        CodexEffectivePreferences: {
+            model: string;
+            reasoningEffort: string;
+            /** @enum {string} */
+            serviceTier: "standard" | "fast";
+        };
+        CodexForumSettings: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            ownerDiscordUserId: string;
+            settings: components["schemas"]["CodexPreferences"];
+            effective: components["schemas"]["CodexEffectivePreferences"];
+        };
+        CodexRepositorySettings: {
+            /** Format: uuid */
+            id: string;
+            owner: string;
+            name: string;
+            settings: components["schemas"]["CodexPreferences"];
+            effective: components["schemas"]["CodexEffectivePreferences"];
+            forums: components["schemas"]["CodexForumSettings"][];
+        };
+        CodexSettingsList: {
+            items: components["schemas"]["CodexRepositorySettings"][];
+            modelOptions: string[];
         };
         DiscordSettings: {
             guildId: string;
@@ -1429,6 +1511,81 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["AgentProviderSettingsInput"];
+            };
+        };
+        responses: {
+            /** @description 已保存 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listCodexSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 仓库与 Discord Forum 的 Codex 设置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodexSettingsList"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    putRepositoryCodexSettings: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodexPreferences"];
+            };
+        };
+        responses: {
+            /** @description 已保存 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    putForumCodexSettings: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodexPreferences"];
             };
         };
         responses: {

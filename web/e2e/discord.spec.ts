@@ -273,7 +273,7 @@ test('初始化冲突、模式切换和危险确认在移动端保持安全', as
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/settings/discord')
   await page.getByRole('button', { name: '执行预检' }).click()
-  await expect(page.getByText('预检存在冲突')).toBeVisible()
+  await expect(page.getByText('预检存在冲突', { exact: true })).toBeVisible()
   await expect(page.getByText('存在未受管的同名频道')).toBeVisible()
 
   await page.getByRole('button', { name: '全新初始化' }).click()

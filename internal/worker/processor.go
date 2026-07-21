@@ -12,6 +12,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/codexsettings"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/devcontainer"
 	"github.com/slovx2/tyrs-hand/internal/githubtools"
@@ -79,6 +80,13 @@ func (p *Processor) Process(ctx context.Context, claimed *codexcontrol.ClaimedCo
 	if err != nil {
 		return codexcontrol.TurnResult{}, err
 	}
+	preferences, err := p.freezeRuntimePreferences(ctx, claimed)
+	if err != nil {
+		return codexcontrol.TurnResult{}, err
+	}
+	jobCtx.Model = preferences.Model
+	jobCtx.ReasoningEffort = preferences.ReasoningEffort
+	jobCtx.ServiceTier = codexsettings.RuntimeServiceTier(preferences.ServiceTier)
 	credential, err := p.control.GitCredential(ctx, claimed.Capability, "fetch")
 	if err != nil {
 		return codexcontrol.TurnResult{}, err
@@ -137,15 +145,6 @@ func (p *Processor) Process(ctx context.Context, claimed *codexcontrol.ClaimedCo
 		}
 	}()
 	runtime := codex.NewRuntime(client)
-	if jobCtx.Model == "" {
-		jobCtx.Model = provider.Model
-	}
-	if jobCtx.ReasoningEffort == "" {
-		jobCtx.ReasoningEffort = provider.Reasoning
-	}
-	if jobCtx.ServiceTier == "" {
-		jobCtx.ServiceTier = provider.ServiceTier
-	}
 	options := ports.ThreadOptions{
 		CWD: workspace.WorktreePath, Model: jobCtx.Model, ReasoningEffort: jobCtx.ReasoningEffort,
 		ServiceTier: jobCtx.ServiceTier, Sandbox: jobCtx.Sandbox, ApprovalPolicy: jobCtx.ApprovalPolicy,

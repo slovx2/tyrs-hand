@@ -76,9 +76,10 @@ func (t *ConversationActionTracker) ApplyDynamicTool(callID, namespace, tool str
 		"tool": tool, "arguments": values, "status": state,
 	}
 	actionState := actionRunning
-	if state == "completed" {
+	switch state {
+	case "completed":
 		actionState = actionCompleted
-	} else if state == "failed" {
+	case "failed":
 		actionState = actionFailed
 	}
 	return t.applyItem(item, actionState)

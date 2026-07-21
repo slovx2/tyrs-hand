@@ -63,6 +63,36 @@ func terminatedControlCard() EmbedPayload {
 		Footer:      "后台已保留错误信息供排查"}
 }
 
+func conversationConfigurationCard(model, effort, tier string) EmbedPayload {
+	if model == "" {
+		model = "Codex 默认"
+	}
+	switch effort {
+	case "low":
+		effort = "轻"
+	case "medium":
+		effort = "中"
+	case "high":
+		effort = "高"
+	case "xhigh":
+		effort = "极高"
+	default:
+		effort = "Codex 默认"
+	}
+	if tier == "fast" {
+		tier = "快速"
+	} else {
+		tier = "标准"
+	}
+	return EmbedPayload{Title: "⚙️ Codex · 即将启动", Color: cardColorYellow,
+		Description: "可以直接使用后台默认值，或在 20 秒内调整本次会话参数。参数确认后会固定到本会话。",
+		Fields: []EmbedFieldPayload{
+			{Name: "模型", Value: "`" + cardText(model, 128) + "`", Inline: true},
+			{Name: "服务等级", Value: "`" + cardText(tier, 32) + "`", Inline: true},
+			{Name: "思考等级", Value: "`" + cardText(effort, 32) + "`", Inline: true},
+		}, Footer: "20 秒后自动按以上参数启动"}
+}
+
 func taskStatePresentation(state string) (string, int) {
 	switch state {
 	case "Running":

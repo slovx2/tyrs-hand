@@ -199,6 +199,7 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 		ThreadName       string           `json:"threadName"`
 		TagIDs           []string         `json:"tagIds"`
 		Archived         bool             `json:"archived"`
+		ConversationID   string           `json:"conversationId"`
 		Embeds           *[]EmbedPayload  `json:"embeds"`
 		Buttons          []struct {
 			Label    string `json:"label"`
@@ -253,13 +254,26 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 		if err != nil {
 			return nil, err
 		}
-		update := discord.MessageUpdate{Content: &payload.Content}
+		emptyComponents := []discord.LayoutComponent{}
+		update := discord.MessageUpdate{Content: &payload.Content, Components: &emptyComponents}
 		if payload.Embeds != nil {
 			embeds, embedErr := discordEmbeds(*payload.Embeds)
 			if embedErr != nil {
 				return nil, embedErr
 			}
 			update.Embeds = &embeds
+		}
+		if len(payload.Buttons) > 0 {
+			buttons := make([]discord.InteractiveComponent, 0, len(payload.Buttons))
+			for _, button := range payload.Buttons {
+				component := discord.NewSecondaryButton(button.Label, button.CustomID)
+				if button.Style == "primary" {
+					component = discord.NewPrimaryButton(button.Label, button.CustomID)
+				}
+				buttons = append(buttons, component)
+			}
+			components := []discord.LayoutComponent{discord.NewActionRow(buttons...)}
+			update.Components = &components
 		}
 		_, err = r.rest.UpdateMessage(channel, message, update, disgorest.WithCtx(ctx))
 		return nil, err
@@ -320,6 +334,14 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 			return nil, err
 		}
 		_, err = r.rest.UpdateChannel(thread, discord.GuildPostUpdate{Archived: &payload.Archived}, disgorest.WithCtx(ctx))
+		return nil, err
+	case "thread.rename":
+		thread, err := snowflake.Parse(payload.ChannelID)
+		if err != nil {
+			return nil, err
+		}
+		name := payload.ThreadName
+		_, err = r.rest.UpdateChannel(thread, discord.GuildPostUpdate{Name: &name}, disgorest.WithCtx(ctx))
 		return nil, err
 	case "thread.tags":
 		thread, err := snowflake.Parse(payload.ChannelID)

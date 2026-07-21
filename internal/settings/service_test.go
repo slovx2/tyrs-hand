@@ -20,6 +20,21 @@ func TestProviderSignatureAndURLValidation(t *testing.T) {
 	require.Error(t, validateURL("relative/path", "URL"))
 }
 
+func TestProviderConnectionChangedIgnoresRuntimeDefaults(t *testing.T) {
+	old := providerRecord{AgentProvider: AgentProvider{
+		ProviderType: "api-key", BaseURL: "https://api.example.com/v1", ProxyURL: "https://proxy.example.com",
+		Model: "gpt-5.5", Reasoning: "medium", ServiceTier: "standard",
+	}, CredentialVersion: "v1"}
+	current := old
+	current.Model = "gpt-5.6-sol"
+	current.Reasoning = "xhigh"
+	current.ServiceTier = "fast"
+	require.False(t, providerConnectionChanged(old, current))
+
+	current.CredentialVersion = "v2"
+	require.True(t, providerConnectionChanged(old, current))
+}
+
 func TestWriteSecretFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "auth.json")
 	require.NoError(t, writeSecretFile(path, []byte("secret")))

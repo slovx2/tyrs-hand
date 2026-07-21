@@ -23,6 +23,7 @@ import (
 	"github.com/disgoorg/snowflake/v2"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/codexsettings"
 	"github.com/slovx2/tyrs-hand/internal/database"
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
 	"github.com/slovx2/tyrs-hand/internal/secrets"
@@ -325,6 +326,9 @@ func testGatewayHandlers(t *testing.T, ctx context.Context, db *sql.DB, manager 
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
 		switch {
+		case request.Method == http.MethodPost && request.URL.Path == "/channels/"+seed.developmentForumChannelID+"/threads":
+			_, _ = response.Write([]byte(fmt.Sprintf(`{"id":"2010","guild_id":%q,"parent_id":%q,"type":11,"name":"Codex 正在生成标题","owner_id":%q,"message_count":1,"member_count":1,"rate_limit_per_user":0,"thread_metadata":{"archived":false,"auto_archive_duration":10080,"archive_timestamp":"2026-07-18T00:00:00Z","locked":false},"message":{"id":"3011","channel_id":"2010","author":{"id":%q,"username":"bot","discriminator":"0","bot":true},"content":"bot-created task"}}`,
+				testGuildID, seed.developmentForumChannelID, testBotID, testBotID)))
 		case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/channels/"):
 			threadID := strings.TrimPrefix(request.URL.Path, "/channels/")
 			if threadID == "2099" {
@@ -350,6 +354,7 @@ func testGatewayHandlers(t *testing.T, ctx context.Context, db *sql.DB, manager 
 		"https://tyr.example", "https://api.github.com")
 	connector := NewDisgoConnector(manager, conversationService, bindingService,
 		testGuildID, "token", zap.NewNop())
+	testCodexConfigurationInteractions(t, ctx, db, connector, client, seed)
 
 	messageEvent := newMessageEvent(t, client, "2001", "3001", "first message")
 	nickname := "Alice Operator"
@@ -394,7 +399,25 @@ func testGatewayHandlers(t *testing.T, ctx context.Context, db *sql.DB, manager 
 
 	var conversationStatus string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM discord_conversations WHERE id = $1`, conversationID).Scan(&conversationStatus))
+	require.Equal(t, "awaiting_configuration", conversationStatus)
+	var queuedBeforeConfiguration int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_intents
+		WHERE discord_conversation_id = $1`, conversationID).Scan(&queuedBeforeConfiguration))
+	require.Zero(t, queuedBeforeConfiguration)
+	require.NoError(t, conversationService.BeginConfigurationEdit(ctx, conversationID, "1001"))
+	started, err := conversationService.StartDueConfiguration(ctx)
+	require.NoError(t, err)
+	require.False(t, started, "调整参数后延长的截止时间不能被旧的超时扫描启动")
+	require.NoError(t, conversationService.FinalizeConfiguration(ctx, conversationID, "1001",
+		&ConversationConfiguration{Model: "gpt-5.6-terra", ReasoningEffort: "high", ServiceTier: "fast"}))
+	var configuredModel, configuredEffort, configuredTier string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status, model, reasoning_effort, service_tier
+		FROM discord_conversations WHERE id = $1`, conversationID).
+		Scan(&conversationStatus, &configuredModel, &configuredEffort, &configuredTier))
 	require.Equal(t, "active", conversationStatus)
+	require.Equal(t, "gpt-5.6-terra", configuredModel)
+	require.Equal(t, "high", configuredEffort)
+	require.Equal(t, "fast", configuredTier)
 
 	command := newCommandEvent(t, client, "5002", "2001", "codex", "stop")
 	connector.onCommand(command)
@@ -453,6 +476,185 @@ func testGatewayHandlers(t *testing.T, ctx context.Context, db *sql.DB, manager 
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM integration_outbox
 		WHERE operation_key = 'conversation:terminated-rejection:3010'`).Scan(&rejectionOutboxCount))
 	require.Equal(t, 1, rejectionOutboxCount)
+}
+
+func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *sql.DB,
+	connector *DisgoConnector, client *bot.Client, seed discordManagerSeed,
+) {
+	t.Helper()
+
+	connector.onComponent(newComponentEvent(t, client, "5100", seed.developmentForumChannelID,
+		"codex-new-open", nil))
+	modal, err := connector.newCodexModal(ctx, seed.developmentForumChannelID, "1001")
+	require.NoError(t, err)
+	require.Equal(t, newCodexModalPrefix+seed.developmentForumChannelID, modal.CustomID)
+	require.Len(t, modal.Components, 5)
+	_, _, _, err = connector.authorizedForum(ctx, seed.developmentForumChannelID, "1003")
+	require.NoError(t, err)
+	_, _, _, err = connector.authorizedForum(ctx, seed.developmentForumChannelID, "1002")
+	require.Error(t, err)
+	_, _, _, err = connector.authorizedForum(ctx, "999999999999999999", "1001")
+	require.Error(t, err)
+	_, err = connector.newCodexModal(ctx, seed.developmentForumChannelID, "1002")
+	require.Error(t, err)
+	_, err = connector.configurationModal(ctx, uuid.New())
+	require.Error(t, err)
+	options, custom := modelModalOptions("private-model")
+	require.Len(t, options, len(codexsettings.PresetModels)+2)
+	require.Equal(t, "private-model", custom.Value)
+	require.NotEmpty(t, effortModalSelect("xhigh").Options)
+	require.Empty(t, firstModalValue(nil))
+
+	connector.onMessage(newMessageEvent(t, client, "2011", "3012", "edit configuration"))
+	editID := conversationIDForThread(t, ctx, db, "2011")
+	connector.onComponent(newComponentEvent(t, client, "5101", "2011",
+		"codex-config-edit:"+editID.String(), nil))
+	var status string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT configuration_status FROM discord_conversations
+		WHERE id = $1`, editID).Scan(&status))
+	require.Equal(t, "editing", status)
+
+	configurationSubmit := newModalEvent(t, client, "5102", "2011", configurationModalPrefix+editID.String(),
+		[]discord.LayoutComponent{
+			discord.NewLabel("模型", discord.StringSelectMenuComponent{CustomID: "model", Values: []string{"__custom__"}}),
+			discord.NewLabel("自定义模型", discord.TextInputComponent{CustomID: "custom_model", Value: "private-model"}),
+			discord.NewLabel("服务等级", discord.StringSelectMenuComponent{CustomID: "service_tier", Values: []string{"fast"}}),
+			discord.NewLabel("思考等级", discord.StringSelectMenuComponent{CustomID: "reasoning_effort", Values: []string{"xhigh"}}),
+		})
+	connector.onModalSubmit(configurationSubmit)
+	connector.onModalSubmit(configurationSubmit)
+	var model, effort, tier string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT configuration_status, model, reasoning_effort, service_tier
+		FROM discord_conversations WHERE id = $1`, editID).Scan(&status, &model, &effort, &tier))
+	require.Equal(t, "configured", status)
+	require.Equal(t, "private-model", model)
+	require.Equal(t, "xhigh", effort)
+	require.Equal(t, "fast", tier)
+	_, err = connector.configurationModal(ctx, editID)
+	require.NoError(t, err)
+
+	connector.onMessage(newMessageEvent(t, client, "2012", "3013", "start defaults"))
+	startID := conversationIDForThread(t, ctx, db, "2012")
+	connector.onComponent(newComponentEvent(t, client, "5103", "2012",
+		"codex-config-start:"+startID.String(), nil))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT configuration_status FROM discord_conversations
+		WHERE id = $1`, startID).Scan(&status))
+	require.Equal(t, "configured", status)
+	connector.onComponent(newComponentEvent(t, client, "5105", "2012", "codex-config-start:bad-id", nil))
+	connector.onComponent(newComponentEvent(t, client, "5106", "2012", "codex-config-edit:bad-id", nil))
+
+	connector.onMessage(newMessageEvent(t, client, "2013", "3014", "timeout defaults"))
+	timeoutID := conversationIDForThread(t, ctx, db, "2013")
+	_, err = db.ExecContext(ctx, `UPDATE discord_conversations SET configuration_deadline = now() - interval '1 second'
+		WHERE id = $1`, timeoutID)
+	require.NoError(t, err)
+	started, err := connector.conversations.StartDueConfiguration(ctx)
+	require.NoError(t, err)
+	require.True(t, started)
+	started, err = connector.conversations.StartDueConfiguration(ctx)
+	require.NoError(t, err)
+	require.False(t, started)
+
+	newPostSubmit := newModalEvent(t, client, "5104", seed.developmentForumChannelID,
+		newCodexModalPrefix+seed.developmentForumChannelID, []discord.LayoutComponent{
+			discord.NewLabel("任务", discord.TextInputComponent{CustomID: "task", Value: "bot-created task"}),
+			discord.NewLabel("模型", discord.StringSelectMenuComponent{CustomID: "model", Values: []string{"gpt-5.6-sol"}}),
+			discord.NewLabel("自定义模型", discord.TextInputComponent{CustomID: "custom_model"}),
+			discord.NewLabel("服务等级", discord.StringSelectMenuComponent{CustomID: "service_tier", Values: []string{"standard"}}),
+			discord.NewLabel("思考等级", discord.StringSelectMenuComponent{CustomID: "reasoning_effort", Values: []string{"medium"}}),
+		})
+	connector.onModalSubmit(newPostSubmit)
+	createdID := conversationIDForThread(t, ctx, db, "2010")
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT configuration_status, title_rename_status
+		FROM discord_conversations WHERE id = $1`, createdID).Scan(&status, &model))
+	require.Equal(t, "configured", status)
+	require.Equal(t, "pending", model)
+	emptyCustom := newModalEvent(t, client, "5107", seed.developmentForumChannelID,
+		newCodexModalPrefix+seed.developmentForumChannelID, []discord.LayoutComponent{
+			discord.NewLabel("任务", discord.TextInputComponent{CustomID: "task", Value: "invalid custom model"}),
+			discord.NewLabel("模型", discord.StringSelectMenuComponent{CustomID: "model", Values: []string{"__custom__"}}),
+			discord.NewLabel("自定义模型", discord.TextInputComponent{CustomID: "custom_model"}),
+			discord.NewLabel("服务等级", discord.StringSelectMenuComponent{CustomID: "service_tier", Values: []string{"standard"}}),
+			discord.NewLabel("思考等级", discord.StringSelectMenuComponent{CustomID: "reasoning_effort", Values: []string{"__default__"}}),
+		})
+	connector.onModalSubmit(emptyCustom)
+	emptyTask := newModalEvent(t, client, "5108", seed.developmentForumChannelID,
+		newCodexModalPrefix+seed.developmentForumChannelID, []discord.LayoutComponent{
+			discord.NewLabel("任务", discord.TextInputComponent{CustomID: "task"}),
+			discord.NewLabel("模型", discord.StringSelectMenuComponent{CustomID: "model", Values: []string{"__default__"}}),
+			discord.NewLabel("自定义模型", discord.TextInputComponent{CustomID: "custom_model"}),
+			discord.NewLabel("服务等级", discord.StringSelectMenuComponent{CustomID: "service_tier", Values: []string{"standard"}}),
+			discord.NewLabel("思考等级", discord.StringSelectMenuComponent{CustomID: "reasoning_effort", Values: []string{"low"}}),
+		})
+	connector.onModalSubmit(emptyTask)
+	connector.onModalSubmit(newModalEvent(t, client, "5109", "2012", "unrelated-modal", nil))
+	connector.onMessage(newMessageEvent(t, client, "2014", "3015", "invalid configuration"))
+	invalidConfigurationID := conversationIDForThread(t, ctx, db, "2014")
+	connector.onModalSubmit(newModalEvent(t, client, "5110", "2014",
+		configurationModalPrefix+invalidConfigurationID.String(), []discord.LayoutComponent{
+			discord.NewLabel("模型", discord.StringSelectMenuComponent{CustomID: "model", Values: []string{"__custom__"}}),
+			discord.NewLabel("自定义模型", discord.TextInputComponent{CustomID: "custom_model"}),
+			discord.NewLabel("服务等级", discord.StringSelectMenuComponent{CustomID: "service_tier", Values: []string{"standard"}}),
+			discord.NewLabel("思考等级", discord.StringSelectMenuComponent{CustomID: "reasoning_effort", Values: []string{"__default__"}}),
+		}))
+	generated, scheduled, err := ScheduleConversationTitle(ctx, db, createdID, "  Generated\nTitle  ")
+	require.NoError(t, err)
+	require.True(t, scheduled)
+	require.Equal(t, "Generated Title", generated)
+	generated, scheduled, err = ScheduleConversationTitle(ctx, db, createdID, "Ignored title")
+	require.NoError(t, err)
+	require.False(t, scheduled)
+	require.Equal(t, "Generated Title", generated)
+	generated, err = EnsureConversationTitle(ctx, db, createdID, "fallback")
+	require.NoError(t, err)
+	require.Equal(t, "Generated Title", generated)
+	completeOutboxForTest(t, ctx, db, "conversation-title:"+createdID.String(), nil)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT title_rename_status FROM discord_conversations
+		WHERE id = $1`, createdID).Scan(&status))
+	require.Equal(t, "completed", status)
+	_, err = db.ExecContext(ctx, `UPDATE discord_conversations SET generated_title = NULL WHERE id = $1`, createdID)
+	require.NoError(t, err)
+	generated, err = EnsureConversationTitle(ctx, db, createdID, "unused fallback")
+	require.NoError(t, err)
+	require.Empty(t, generated)
+	generated, err = EnsureConversationTitle(ctx, db, startID, "fallback task")
+	require.NoError(t, err)
+	require.Equal(t, "fallback task", generated)
+	_, _, err = ScheduleConversationTitle(ctx, db, startID, "")
+	require.Error(t, err)
+	_, _, err = ScheduleConversationTitle(ctx, db, uuid.New(), "missing conversation")
+	require.Error(t, err)
+	for _, value := range []struct{ effort, tier string }{
+		{"low", "standard"}, {"medium", "fast"}, {"high", "standard"}, {"xhigh", "fast"}, {"unknown", "standard"},
+	} {
+		card := conversationConfigurationCard("", value.effort, value.tier)
+		require.Len(t, card.Fields, 3)
+	}
+}
+
+func conversationIDForThread(t *testing.T, ctx context.Context, db *sql.DB, threadID string) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM discord_conversations
+		WHERE guild_id = $1 AND thread_id = $2`, testGuildID, threadID).Scan(&id))
+	return id
+}
+
+func newModalEvent(t *testing.T, client *bot.Client, id, channelID, customID string,
+	components []discord.LayoutComponent,
+) *events.ModalSubmitInteractionCreate {
+	t.Helper()
+	raw := fmt.Sprintf(`{"id":%q,"application_id":"900","type":5,"token":%q,"version":1,"guild_id":%q,"channel":{"id":%q,"type":11,"name":"Conversation"},"member":{"user":{"id":"1001","username":"alice","discriminator":"0"},"roles":[]},"locale":"en-US","guild_locale":"en-US","data":{"custom_id":%q,"components":[]}}`,
+		id, "token-"+id, testGuildID, channelID, customID)
+	var interaction discord.ModalSubmitInteraction
+	require.NoError(t, json.Unmarshal([]byte(raw), &interaction))
+	interaction.Data.Components = components
+	return &events.ModalSubmitInteractionCreate{
+		GenericEvent: events.NewGenericEvent(client, 4, 0), ModalSubmitInteraction: interaction,
+		Respond: func(discord.InteractionResponseType, discord.InteractionResponseData, ...disgorest.RequestOpt) error {
+			return nil
+		},
+	}
 }
 
 func newMessageEvent(t *testing.T, client *bot.Client, threadID, messageID, content string) *events.MessageCreate {

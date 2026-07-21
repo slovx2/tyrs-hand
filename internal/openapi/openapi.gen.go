@@ -36,6 +36,26 @@ const (
 	AgentProviderSettingsInputProviderTypeDeviceCode AgentProviderSettingsInputProviderType = "device-code"
 )
 
+// Defines values for CodexEffectivePreferencesServiceTier.
+const (
+	CodexEffectivePreferencesServiceTierFast     CodexEffectivePreferencesServiceTier = "fast"
+	CodexEffectivePreferencesServiceTierStandard CodexEffectivePreferencesServiceTier = "standard"
+)
+
+// Defines values for CodexPreferencesReasoningEffort.
+const (
+	High   CodexPreferencesReasoningEffort = "high"
+	Low    CodexPreferencesReasoningEffort = "low"
+	Medium CodexPreferencesReasoningEffort = "medium"
+	Xhigh  CodexPreferencesReasoningEffort = "xhigh"
+)
+
+// Defines values for CodexPreferencesServiceTier.
+const (
+	CodexPreferencesServiceTierFast     CodexPreferencesServiceTier = "fast"
+	CodexPreferencesServiceTierStandard CodexPreferencesServiceTier = "standard"
+)
+
 // Defines values for DiscordInitializationInputMode.
 const (
 	DiscordInitializationInputModeFresh       DiscordInitializationInputMode = "fresh"
@@ -110,6 +130,54 @@ type AgentProviderSettingsInput struct {
 
 // AgentProviderSettingsInputProviderType defines model for AgentProviderSettingsInput.ProviderType.
 type AgentProviderSettingsInputProviderType string
+
+// CodexEffectivePreferences defines model for CodexEffectivePreferences.
+type CodexEffectivePreferences struct {
+	Model           string                               `json:"model"`
+	ReasoningEffort string                               `json:"reasoningEffort"`
+	ServiceTier     CodexEffectivePreferencesServiceTier `json:"serviceTier"`
+}
+
+// CodexEffectivePreferencesServiceTier defines model for CodexEffectivePreferences.ServiceTier.
+type CodexEffectivePreferencesServiceTier string
+
+// CodexForumSettings defines model for CodexForumSettings.
+type CodexForumSettings struct {
+	Effective          CodexEffectivePreferences `json:"effective"`
+	Id                 openapi_types.UUID        `json:"id"`
+	Name               string                    `json:"name"`
+	OwnerDiscordUserId string                    `json:"ownerDiscordUserId"`
+	Settings           CodexPreferences          `json:"settings"`
+}
+
+// CodexPreferences defines model for CodexPreferences.
+type CodexPreferences struct {
+	Model           *string                          `json:"model"`
+	ReasoningEffort *CodexPreferencesReasoningEffort `json:"reasoningEffort"`
+	ServiceTier     *CodexPreferencesServiceTier     `json:"serviceTier"`
+}
+
+// CodexPreferencesReasoningEffort defines model for CodexPreferences.ReasoningEffort.
+type CodexPreferencesReasoningEffort string
+
+// CodexPreferencesServiceTier defines model for CodexPreferences.ServiceTier.
+type CodexPreferencesServiceTier string
+
+// CodexRepositorySettings defines model for CodexRepositorySettings.
+type CodexRepositorySettings struct {
+	Effective CodexEffectivePreferences `json:"effective"`
+	Forums    []CodexForumSettings      `json:"forums"`
+	Id        openapi_types.UUID        `json:"id"`
+	Name      string                    `json:"name"`
+	Owner     string                    `json:"owner"`
+	Settings  CodexPreferences          `json:"settings"`
+}
+
+// CodexSettingsList defines model for CodexSettingsList.
+type CodexSettingsList struct {
+	Items        []CodexRepositorySettings `json:"items"`
+	ModelOptions []string                  `json:"modelOptions"`
+}
 
 // DiscordConflict defines model for DiscordConflict.
 type DiscordConflict struct {
@@ -457,6 +525,16 @@ type PutAgentProviderSettingsParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
+// PutForumCodexSettingsParams defines parameters for PutForumCodexSettings.
+type PutForumCodexSettingsParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// PutRepositoryCodexSettingsParams defines parameters for PutRepositoryCodexSettings.
+type PutRepositoryCodexSettingsParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
 // PutDiscordSettingsParams defines parameters for PutDiscordSettings.
 type PutDiscordSettingsParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
@@ -512,6 +590,12 @@ type CreateRepositoryJSONRequestBody = RepositoryInput
 
 // PutAgentProviderSettingsJSONRequestBody defines body for PutAgentProviderSettings for application/json ContentType.
 type PutAgentProviderSettingsJSONRequestBody = AgentProviderSettingsInput
+
+// PutForumCodexSettingsJSONRequestBody defines body for PutForumCodexSettings for application/json ContentType.
+type PutForumCodexSettingsJSONRequestBody = CodexPreferences
+
+// PutRepositoryCodexSettingsJSONRequestBody defines body for PutRepositoryCodexSettings for application/json ContentType.
+type PutRepositoryCodexSettingsJSONRequestBody = CodexPreferences
 
 // PutDiscordSettingsJSONRequestBody defines body for PutDiscordSettings for application/json ContentType.
 type PutDiscordSettingsJSONRequestBody = DiscordSettingsInput
@@ -629,6 +713,15 @@ type ServerInterface interface {
 
 	// (PUT /settings/agent-provider)
 	PutAgentProviderSettings(c *gin.Context, params PutAgentProviderSettingsParams)
+
+	// (GET /settings/codex)
+	ListCodexSettings(c *gin.Context)
+
+	// (PUT /settings/codex/forums/{id})
+	PutForumCodexSettings(c *gin.Context, id openapi_types.UUID, params PutForumCodexSettingsParams)
+
+	// (PUT /settings/codex/repositories/{id})
+	PutRepositoryCodexSettings(c *gin.Context, id openapi_types.UUID, params PutRepositoryCodexSettingsParams)
 
 	// (GET /settings/discord)
 	GetDiscordSettings(c *gin.Context)
@@ -1697,6 +1790,127 @@ func (siw *ServerInterfaceWrapper) PutAgentProviderSettings(c *gin.Context) {
 	siw.Handler.PutAgentProviderSettings(c, params)
 }
 
+// ListCodexSettings operation middleware
+func (siw *ServerInterfaceWrapper) ListCodexSettings(c *gin.Context) {
+
+	c.Set(SessionCookieScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListCodexSettings(c)
+}
+
+// PutForumCodexSettings operation middleware
+func (siw *ServerInterfaceWrapper) PutForumCodexSettings(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutForumCodexSettingsParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PutForumCodexSettings(c, id, params)
+}
+
+// PutRepositoryCodexSettings operation middleware
+func (siw *ServerInterfaceWrapper) PutRepositoryCodexSettings(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutRepositoryCodexSettingsParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PutRepositoryCodexSettings(c, id, params)
+}
+
 // GetDiscordSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetDiscordSettings(c *gin.Context) {
 
@@ -2063,6 +2277,9 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/repositories", wrapper.CreateRepository)
 	router.GET(options.BaseURL+"/settings/agent-provider", wrapper.GetAgentProviderSettings)
 	router.PUT(options.BaseURL+"/settings/agent-provider", wrapper.PutAgentProviderSettings)
+	router.GET(options.BaseURL+"/settings/codex", wrapper.ListCodexSettings)
+	router.PUT(options.BaseURL+"/settings/codex/forums/:id", wrapper.PutForumCodexSettings)
+	router.PUT(options.BaseURL+"/settings/codex/repositories/:id", wrapper.PutRepositoryCodexSettings)
 	router.GET(options.BaseURL+"/settings/discord", wrapper.GetDiscordSettings)
 	router.PUT(options.BaseURL+"/settings/discord", wrapper.PutDiscordSettings)
 	router.POST(options.BaseURL+"/setup/admin", wrapper.SetupAdministrator)
@@ -2080,74 +2297,79 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/+RdX3MctZb/KlO9eVpmGNsk2Y3fjBOCF2eTipNlq1LelKZbMyPcLTVqtZ1Zl6scll3C",
-	"EodkISlCCBBgl90qNlDcCwRMyIfBM7af7le41ZL6v9TTbc84vtdv8Uito/M7R0fnHB0pq4ZJHJdgiJln",
-	"TK8aLqDAgQxS/tfswsVXLpEliIM/EDamjS4EFqRG3cDAgca08c+NoE9DdKobFL7pIwotY5pRH9YNz+xC",
-	"BwRfs54b9PcYRbhjrK2t1Q0XsO4cg44gRSFg8CzEkCIzO5Mrq8YxCtvGtPE3zXi+zbhLM57p2qKYBvTY",
-	"y8TqBUOZBDOIWfBP4Lo2MgFDBDff8AhnLJ4ksCwUNAH7AiUupAxBL2RFMkBab0CTCQbS3PIfPJdgD3KO",
-	"piYmKxFXcShavebc6YvQIz41oaBsQc+kyA1GMqaN/k/f92886G/+YvCmNvBtphsxmmLzAiUtGzpGMB4D",
-	"nQBmI6TiGYtrdWMeeWymAzG7QEkb2YKtABfOwpxlTBt2rku9quR86hFqrNWH9pxHDmJSvimcJ4YzGzIW",
-	"sDQOlHwLsXnS0SEUNR9JdOawx4Btc0w0CKW7HEmU/oG0NODwliOJyUXokllgdnWmJ9F+ZPHxECMUFSEU",
-	"9TiSGF3qUggsDTxh49FEhqJOB9KLvnZrT/U4khi9TuhS5KTmAYqbjyw6MlZQYxM0HllkGIWwABvRfMTQ",
-	"yUZJYX99pOSKHi9Ui5jkuKchA8j2VFHTxVdma6eOn/i7muxai/uGgSuf4YzlIIw8RgEjlEemidhw1TA9",
-	"2o5i5EyUWzfgNRdR6M1wrtqEOoAZ04YFGGww5ECjnv8EWam+vo8sVTffg1QE4fngOhmaXjH491H3emLG",
-	"yfkt5kLcuhFGdsvIgnQBMoawCHHSELSABy9TOz1tilSzNgluo84C6mDAfMonH2zA57HdywTa2W98zk3E",
-	"a4sQGwIctDvEgrYSfVdO/RJvWDUg9p0AEQsuIxM2TGIFeAAXNZZgL4FAaoRrvZK8UQg8ghHunGm3CWXK",
-	"GXmQBqQvIUiHCy41/RQOpYU1h11frCjbPt/W2pdw1agFHtiatMSBi16DvTwHdWOFIgZjcXIzkJ5pYCFP",
-	"I88k1JoluG0jk+VVSqPZIcjDsZO6Lrur8JJzOA2XoU1cB2J2GtqQwQsUtm3U6SpmBUyGlqFaC7l0AgVB",
-	"RG0KLD66dwYvI0qwIy1dfiALUdZTN7UJ9Z25kvYBu77XVa+ZDFbhsCHtxMf1kGfl/DNcl0M5A0DGlPjI",
-	"tqKYpacEMtOnJB78qwW+Dy10gdpYU0qosoUjxCeIQl+waBnlmX4lGMCIFwOgFPQqWHvkgA6cs5STs4HH",
-	"LnvQqrLJkBUMqZzmZQ9SzdC82z9q16KPg/GD79XGjgHmeyU3KMWMkvRVYs/9ZkQ0U6hE8iunoEJWedWk",
-	"AJtd9dLWL1lLDK/BV69xJfWiwE4WriFadflUkqU0vjHvGYKp6SVkJiEOAS0Q1xxGDAEb/WtkbzNeGT9O",
-	"qLQk9LLoBFqmkWBJOQU+isZFSew2JWxKvDsVCaVu+K5VDQCVHEPG5fwTkoqnXU9gnSRbWniRi5KR4LD9",
-	"NIQ0dOoQNikM1i+wgxVPoddVuHQZNvkgBVM9B50WVHj9LeJjq3DFF1hVC3muDXpau9pBrOu35kkH4cr6",
-	"WD4siIVrZaxuIlZITrUuuS6Aq8B3MrsAY2jPEj/l+CDMYAfS0IMKvMHK+2zkRir2V6Gc6SFzoGU/kq5O",
-	"tY+KpOIgz0O4cwFS/i95DFJ+7L3pet3wQFvjroqFWmkaWv2RxiGEOh48RjIpXSUc9bSCyKkXqJo+HE0k",
-	"DzTiaBFWsDxN4jg+Rqx3BoOWrYs6YVFjkS6wIPSeLYxptUiHRBWTzA9cAjyN7c0h6ALGIMXGtPEvVyYa",
-	"pxb/9pjSxSZMkwnJx4UZIZQjUBbz7GgvHBu63+UxLoIv2ncVe1ZBpqJw/m2AbGid91mLXEtt2gizk8dj",
-	"BhIWswMYXAG9M3rPRXRY0PsJgZt8VvSq4iy5EFsId9I7+fkwzemVnL8cpQLPGaklAE8ujjTbWToZqIcz",
-	"o9KEs4i96rdmXFe/hDKedciSgzByAjM+qYIEuO6C7XfUhslGEDOd1eKNC9CkkJVbgC5Fy4DBkomcurEC",
-	"W11ClsqTyAhLQBKzmJpBdvhCzHXrTw/6KIGuYrqH5OwSdT05ZkpFFnmvXUWGu5IXRVFUnpALPG+FUN1u",
-	"xVyVSV09uXZsf2nphJcZzUDSK+DBk6cQY07C74mN8on1zOlEjh+LN6gDTuwxgIXCJDPSDQrbkMKgRZmb",
-	"5sLXqHQcRzrgmjBOJ06dSpiq4xMTqjXEELNhgedYfoYZUJnIeIvxo/mpkEwkhDSG2DQDj1IfTckO4RlB",
-	"dNJlnKcdgMMMg+pcwia47LmHHPVlfQ4JJSqgzlwL1hqwSxszbRqIJ9CGZIAqUsuaHPW862ngNfTCCcYp",
-	"oxROCYxVsl+AzHdLmTUHXJuHuMO6xvTUiZNcscO/J6dUcVMwcmRQkr1PDjEWCUonj6cIvTRM6RNE60rr",
-	"WICB2izyA6QgvkK4c5micodYJlmGtDdLrKoBcGC6dc5BboHHfeu5aWZnoeVb5weIBMrsEG/cC9UHldvL",
-	"0/3reSqqeSYqaLQGSpviAiYj9BzCcaCctlCMItCB3PUVeQEKAd9Ew9+5Rxb4nABhBvg6BJaDsDJZABJ1",
-	"vCWzwsC2yQq0LhFiV02xANyBlPjejMmq50MKAym4DDELk2vJtatgoI3ssNi9QvG3sNbUjyQ3hIrCOExO",
-	"/X192GcuRYQicbIQCX1SvRVXT+gvIbuq0JhQ5teQyH2GWscB50cuLWgH27UNvO5VkzgOwDw/BHEAVOIX",
-	"G3aA2bsqG5TaKGn9E7B9uS8nizfmA1K1/u2NwY17W082+k/+Z3Dvk8HDz7c/frt/5+nW5lf92xt/+vUB",
-	"n9nv69czM6htPblVS8+htn33/vb//fL7+ltDnZPMUUZm2URbWayGaeDSypO3GdwymX4g+AWzCx1hJTzI",
-	"1/8sIUsIRtcxTPFndB2D9ah3tQuwdVX2j5mRR/a8EAbhNgnGsJEJsSeGswIc2rwuwTg3dykeM/gj9vU4",
-	"iUZAonYOYNDhWcjazIU5o24sQypslDHx4uSLE9z/cCEGLjKmjZf4T+LWB+eoyYFruIm7BR2oPQaJLos0",
-	"5xVXDtIFVmdhrkOi5gj7th0sLuKVIJa+lpIldIF4Qymt1Y0m8C3EGra8H1Cey8S1gTyHiUY1TdZt2qHX",
-	"G3KbHib2zfZ2X6YoN5+KOUtdl5kYNW3uFCkqv7bvb/af3t369eOdbx/uubgtXKPG9JXFuNRtxmddUeUW",
-	"CYDITV8ngaC9vs/rTikcj+fNZf+n73fX1/vv7P+GUJZBsbFJlc4p6axPKcQsXUI3RsGnCamuSj39oP/u",
-	"xvbjR9u3/6N/56NRwiFP0ZpWXEnQgHGti6fFKVjqhWUy3n4h22PRSrJSJ38alMN29+6zwSef9X9d779/",
-	"Z/vWt/0v/m3f8Mo5lUS4uYqstSaFvCpEv+Yuig7F/OZWJN9vA/sc74zIKrzyODR1t79lPqVc5oPP39l5",
-	"/N3Wk1+2nrw3+ObRzrPbO49u9t/d2H1nYxQXBIcLRJTaCFGI0z+9JETBna4C51CKYG8bZaXSBlUKWV9i",
-	"V2ZnnTqoi6g3Pt+9/1Wghbf+a/ejz56LtjVSFTVKgxtVKWg0j6ulcJ7HroGLY9wNh1e4amW4+8Xbgy/X",
-	"xyTAUGiy7nStCUwTel5z1eHVNnPWmjBtofEoMBpcXjP884NwogQ4I4SljIbF5bn7MnSKkUO8K93cX6wb",
-	"Mo+VWVU+G4NQRmFvhXrNB8sgmbagEFgE270ouiJ0eMFYcqy9GWO1Zg0e/HFw77sxLTiRqWy2ZN5GvRkv",
-	"MEBDCYqT1pdFuuL5C3B4SZ2+4KZk1dveZDmxD6b8MidH2cNGqtO6tEJtPVkffPNosP719uad/uOPdz/4",
-	"bXDrv8evXE0T2HYLmEvarXeWOG7CfBfpGbdXb/qQlwhLg+UxwGAla1VXDySv/lSyeirZZxILHO3+45uD",
-	"G7dHnFgoxN7HxUv7Mm9PYX4o1rV0beGeK2n3vezriTmM0pzvfP3l9uadMa04lCpU8vRyF9lLdcn885F/",
-	"CXdVVR1+yKKch/2v3+vfvDfuQCcj52YqslFLPBva/NULfeTRUmFwtPvgx61njwcf/izio+3NDwaffnJA",
-	"0g9i3KJca0mJ/0WGsBmmihbl9n/+OFi/PiaZiICpVCr3nOx6gKlbeVmlRKpWflAb3Lg9iix4IVgiOdOO",
-	"LtUN36kEHyNLAh6OpF+Jm3pze6j4TH19uLODXKA18VLduLfOuKJxiLmMasTHbcIkoYLFKHL1Y7FfvBbB",
-	"a3qMQuBoUVngzWeWyx05MXiNiYEb8biFDz6m2V6AdBnSxgLErCZpFjwaEoY6wHWLpBqViI9Totk6dAVz",
-	"okttxnVroUATvMkQjKf/NKm0JCOHzWfL3H3YR5i09exh///3v/9EeKYVpekAjNqyOHSoxpwLO480y5Oc",
-	"Qr5wdI8poHo8bJlsUMhZbefR//Y37vbff2tw97tKAA5P7JzlHyVgnA2/KJXY2Xc+5iXVeejOsw/7Dz6t",
-	"ycW48/i37aePdx/9MFp9Q9nXLUvX92QfvczpZraDqs4HYVFN3VyebDJCbI/LqsDTArY9J7+5RIhtHJrn",
-	"cifGSTytGAHjtQCJ2j5DuHSyzuNbmtByvraNJjfCuj3tDfnkZ2mNkS+B5hRF/q7Sj8BBbJjRG5qlSaWe",
-	"1swRTLXqyCZfpqxEN/FgpZJyol1f2KcKMFJPhRy2bTV7leUIvDEdaIon7yLH9aD89amiPVv9TNU468rU",
-	"72LlYeIda2FPueWk2I++LvL+dAweNpUteHPs+XuFCaRTeiZjxDLB4QGoVpZUUYAotWmU1QfFJ/mHWPWU",
-	"Lxk8f6VLx938ylBTXLnRH7wHnfIlsqOHLHVf7oB3l+Q9NVVJdliRu/Xk1uD6F/2vNnZ+eHtw7/74yrOF",
-	"aIbniZIXzcZoBpJklMkS5qdSCcP563kMOmUY5B1Hw6HaKS91hXWoz779h83tzc9GlB7LOiEsfiS8tKca",
-	"vx2ewzRuUvnG8jZQg/pV771k3uPO0023V3OOEx8fQnufu0h5RNxj+SyGJ9MyRWXtJkTLUOQmXhdfaZIv",
-	"+f/F51W/1Yhe5W1MnTi5pyKb/LhiNo3T0EbLIuEzwlHPyHuHFbNGhyLZMXVwyY7+T98Pbl7f+vnf+zfv",
-	"HVCiI5UgWyF0qRGdY5a2dcmn9XOGLtmoMrEr8cP0lQiKE1sludxhbopY9NZ7JXLhE/BKgmFjjmRaHLm7",
-	"oVcW19QiAi5qLk8mBRUeSwrHIVhx8m8pwMQvsV1K/Jh6Ilr+FnrAa4trfw4AAP//h1Z6KF5sAAA=",
+	"H4sIAAAAAAAC/+xd/3Mct3X/V262/qnZy1GyrNb8jaZkhY1UaUSp6YyG9eB2cXcwd4ENFkvyquEMnbq1",
+	"0kiKVEWa2LJjy3HrdiZVPG4TM6Yd/THmHcmf+i90FtgvwC6wt0veUWyZnyQesHh4n/fw8N7Dw+5tyyF+",
+	"QDDELLTmb1sBoMCHDFL+1+Ly9TdvkFWI4z8QtuatAQQupJZtYeBDa97623bcpy062RaFP44Qha41z2gE",
+	"bSt0BtAH8dNsGMT9Q0YR7lubm5u2FQA2WGLQF6QoBAxeghhS5BRncuu29QqFPWve+rNOPt9O3qWTz3Rz",
+	"RUwDhuwN4g7joRyCGcQs/i8IAg85gCGCO2+HhDOWTxK4LoqbgHeNkgBShmCYspIwQLpvQ4cJBlRu+Q9h",
+	"QHAIOUdn5840Iq7jULSGnaUL12FIIupAQdmFoUNREI9kzVujr74c3Xk62vna4k09EHnMNGI2xc41Sroe",
+	"9K14PAb6McxWSiW0VjZt6zIK2UIfYnaNkh7yBFsxLpyFJdeat7xSF7up5CIaEmpt2hN7XkY+Yol8FZzn",
+	"JjObMhazNAuUIhexy6RvQihrPpXoLOGQAc/jmBgQUrucSpT+inQN4PCWU4nJdRiQReAMTKZHaj+1+ISI",
+	"EYqqEMp6nEqMbgwoBK4BnrTxdCJDUb8P6fXIuLUrPU4lRj8idDVzUssA5c2nFp0kVtBjEzeeWmQYhbAC",
+	"G9F8ytApRklpf3OkFIge32sWMSXjXoAMIC/URU3X31xsvX7utb9oJV1bed80cOUzXHB9hFHIKGCE8shU",
+	"ig1vW05Ie1mMXIhybQtuBIjCcIFz1SPUB8yat1zAYJshH1p2+RHkKn2jCLm6blEIqQjCy8G1HJresvjz",
+	"WXdbmrE8v5VSiGtbaWS3hlxIlyFjCIsQR4WgC0J4k3rqtCnSzdohuIf6y6iPAYson3y8AV/F3rAQaBef",
+	"iTg3Ga9dQjwIcNzuExd6WvSDZOo3eMNtC+LIjxFx4RpyYNshbowHCFB7FQ4lBJQRNoY1eaMQhAQj3L/Y",
+	"6xHKtDMKIY1J30CQThacMn0Fh9rCWsJBJFaU513tGe1Lumr0Ao9tjSpxEKAfwmGZA9tap4jBXJzcDKgz",
+	"jS3kInHhxsVeDzoMrcFrFPYghdiBGuUyS/cQeKcKEDKAXUDjhdEDIdOIviAKMYsyTZWCTiyc1TcJjXzz",
+	"AoIpEpOsmhm3+obDYDRsi6xjSC+g0CHUvRlCuuQaIM3ZmDhXZYo6u5TYJA1tiZItIWTEuJ4W+WDjMsR9",
+	"NrDmz5z9S9vCkeeBrgeN1kejZakWeWTdsi0fuijyLdsaoP7Asq0N/u9KjaHrK+eEoTZNmGTR33DWyteL",
+	"NZyPh1JveeJY6qrImQCUguHUNPoYlFjQyZRZq7cZREYFTpHgPldJTBms9fHVSF8DMl8aV4MsOZeNXwJN",
+	"fbIIRBIFKcPpeE1W+SLBPQ85Gk6N4hRLcfK+mYgh6V4xhwtwDXok8CFmF6AHGVdqD/UHmlmBbI2UPRC+",
+	"M8dKiojeDXT56OFFvIYowX7i5ZYHchFlQ30T156lmr4hDqJwoPeXClilw6a0pYftlGft/Atc10O5AEDB",
+	"jYyQ5+Y6qwWy0KcmHvypZR6DLA+A3lGnlOhNRUPLVmaam7kjmDfkgz40bMYeCNnNELpNAoya+zzv9tfG",
+	"tRjhePz4eb2BZYBFYc3gRLv75/R1Yi/9ZmU0FVQqza5JVmXVpAA7A/3SNi9ZVwxvwNescUfd9mj1GqJN",
+	"l08jWSbGN+e9QFCZniSzBOIU0ApxLWHEEPDQ32f2thCR86PkRkvCLIt+rGUGCdaUU7wjGsJTabepYVPy",
+	"3alKKLYVBW4zAHRyTBlP5i9JKp+2LWEtk60tvCw8LUhw0n6aQpq6zAg7FMbrF8RBWo/CcFAvpqua6hXo",
+	"d6Em49MlEXYrV3yFVXVRGHhgaLSrfcQGUfcy6SPcWB/rp4Ry4boFqyvlieSp2gnXFXBV+E7OAGAMvUUS",
+	"KY4Pwgz2IU09qNgbbLzPZm6kZn8VytnIqc1cnWYPVUnFR2GIcP8apPx/Db3sw+q6bYWgZ3BXxUI9irNf",
+	"Mg4p1PngOZKydLVw2KqCJFOvUDVzMCsljg3i6BJWsTwd4vsRRmx4EcfxtmGZw6rGKl1gZBXixcp8phHp",
+	"lKhmkuWBa4BnsL0lBAPAGKTYmrf+7tZc+/WVP39F62ITZsiCl3OCBSHUI1AX8+Jo33tl4n5XxrgKvmzf",
+	"1exZFVnqyvn3APKgezViXbKhbNoIs/PncgYki9kHDK6D4UWz5yI6LJv9hNhNviR6NXGWAohdhPvqTn41",
+	"PeIKa84/GaUBzwWpSYDLi0Nlu0inAPVkZnSacAmxH0TdhSAwL6GCZ52y5COM/NiMn9FBAoJg2Yv6esPk",
+	"IYiZyWrxxmXoUMjqLcCAojXAYM0kvm2tw+6AkNX6JArCEpDkLCozKA5fiblp/ZlBnybQTUz3hPMaqaaz",
+	"nOyrE1mUvXYdGe5KXhcFsWVCAQjDdUJNuxULdCb19vnNV452JCl5mdkMEnoVPITJCfSMD2APxUb9Q9XC",
+	"yXSJH5c36ANOHDKAhcLIp5HtLEGtP5fkwjcd52TryQcbwji99vrrkqk6NzenW0MMMQ9WeI71Z1gAlYnT",
+	"TjF+Nj8dklJCyGCIHSf2KM3RVNIhPR/Oqhysq7QPcJph0J1JewTXPfNORn3DnENCUvXrxY14rQGvtjE7",
+	"xOlHnoFpSK1ocvTztlXgDfRKxyYqThLGOtkvQxYFtcyadOJ39rXzXLHzE0DtqRyLgsygyL3PTzAWEqXz",
+	"5xRCr05SeomorbWOFRjozSIvHojjK4T7NymqV8DgkDVIh4vEbRoAx6bb5ByUFnje1y5NszgLI98mP0Ak",
+	"UBYneONhqj6o3l6u9rfLVHTzlKonjQbKmOICDiP0CsJ5oKxaKEYR6EPu+oq8AIWAb6Lp79wji31OgDAD",
+	"fB0C10dYmywA0h2Omllh4HlkHbo3CPGaplgA7kNKonDBYc3zIZWBFFyDmKXJNXntahjoIS+96NTg4o+w",
+	"1jTKJDeBisY48MKDCY8FFBGKxMlCJvQz+q24eUJ/FXlNhcaEMv8QidxnqnUccH7k0uUFMqEHwsFbDvF9",
+	"gHl+COIYKOkXD/aBM3wradBqY0Lrb4AXJfuyXLh3OSbVGj24N77zZHf73mj738ZPPhx/9MneB++OHn67",
+	"u/PZ6MG9//nmKZ/Zd1vvFGbQ2t2+31Ln0Np7/P7ef3z93dZPJjonhaOMwrLJtrJcDVXgVOUp2wxumZwo",
+	"FvyyM4C+sBIh5Ot/kZBVBLOreI74M7uKx4Y0fGsAsPtW0j9nJinX4kWQCPdIPIaHHIhDMZwb49DjZSjW",
+	"laUb+ZjxH7mvx0m0YxKtKwCDPs9CthauLVm2tQapsFHW3PfPfH+O+x8BxCBA1rz1Kv9J3PjjHHU4cO1A",
+	"ulfWh8ZjkOyiYOey5rqZWlx7CZY6SPWmOPK8eHGRsAYx9UpikdA1Ek6ktGlbHRC5iLW95G5YfS6lK2Nl",
+	"DqVGPU026Hip15tyqw6T+2aHuytZlZtXYs5aVyXnpk2bO0Waqt+993dG3z7e/eaD/d9+dOjC5nSNWvO3",
+	"VvIy54WIDUSFcyYAkmz6JgnE7fYRr7oqOJ4rm8vRV18ebG2N3jv67dAig2JjS1S6pKSLEaUQM7V8eoaC",
+	"Vwnprsl++2j003t7z5/tPfin0cNfThOO5BSt4+aVBG2Y17qERpzipV5ZJhMeFbJDFq3IlTrl06AStgeP",
+	"X4w//Hj0zdbo5w/37v929Ok/HBneZE41Ee7cRu5mh0JeFWJec9dFh2p+SyuS77exfc53RuRWXnefmLo7",
+	"2jI/q13m40/e23/+xe7217vbPxv/5tn+iwf7z+6Ofnrv4L1707gcPlkgotRGiEKc/pklIQruTBU4J1IE",
+	"h9soG5U26FLI5hK7Ojvr2eN6CcGdTw7e/yzWwvv/cvDLj1+KtrWVihqtwc2qFAyax9VSOM8z18CVGe6G",
+	"kytcjTI8+PTd8a+3ZiTAVGhJ3elmBzgODMPObZ9X2yy5m8K0pcajwmhweS3wx4/DiRLgTBGWOhqWl+ce",
+	"ydBpRk7xbvTWlhXbSvJYhVUVsRkIZRr2VqjX5XgZyGkLCoFLsDfMoitCJxeMyWMdzhjrNWv89L/HT76Y",
+	"0YITmcpON8nb6DfjZQZoKkFx0vqGSFe8fAFOLqkzF9zUrHo7nCznjsBUVOfkqHjYSE1apyrU7vbW+DfP",
+	"xluf7+08HD3/4ODRH8f3/3X2ytVxgOd1gbNq3HoXiR9I5rtKz7i9+nEEeYlwYrBCBhhsZK1s/UDJtc9G",
+	"Vk8n+0JigaM9en53fOfBlBMLldhHuHpp3+TtCuYnYl0nri08dCXtkZe9Lc1hmuZ8//Nf7+08nNGKQ0qh",
+	"UmiWu8he6kvmX478a7iruurwExblfDT6/Geju09mHegU5NxRIhu9xIuhzf97oU89WqoMjg6e/n73xfPx",
+	"L/4g4qO9nUfjX314TNKPY9yqXGtNif+fDGELTFUtyr1//v14650ZyUQETLVSuVeSrseYuk0uq9RI1SYP",
+	"tMZ3HkwjC14JlkjO9LJLdZN3KsHH1JKAJyPpV+Om3tIhKj6Vp092dpALtCXeUjrrrTOvaJxgLrMa8Vmb",
+	"sIRQxWIUufqZ2C9eixB2QkYh8I2oLPPmi2v1jpwY3GBi4HY+buXLflW2lyFdg7S9DDFrJTQrXhiVhjog",
+	"CKqkmpWIz1KixTp0DXOiS2shCFqpQCXekhCMp/8MqTSZkZPmsxXuPhwhTNp98dHoP4++/2R4qorS8QFG",
+	"vaQ4dKLGXEk7TzXLI0+hXDh6yBSQnQ9bJxuUctbaf/bvo3uPRz//yfjxF40AnJzYucQfkmBcTJ+oldg5",
+	"cj7mVd156P6LX4ye/qqVLMb953/c+/b5wbPfTVffUPHNxrXre4ovPC7pZrGDrs4HYVFN3Vk702GEeCGX",
+	"VYWnBTxvKXnmBiGedWJelT43S+KqYsSMt2IkWkcM4dRkXci3NKHlfG1bHW6ETXva28nrnmtrTPIW6JKi",
+	"JL/r9CN2ENtO9v7k2qSU1yqXCCqtJrLyW4kb0ZVeVqylLLWbC/t0AYbyqpCTtq0Wr7Kcgu8LxJqSvikr",
+	"rwflbx6s2rP1ryicZV2Z/p2IZZh4x1baM9lyFPazp6u8PxODJ01lK943+fK9QglpRc9iX2OjMoWjvIpt",
+	"lnpVfueb7jBv59Ho60e72/dbaaQoIum9D95t8QEyNZslYB2p1IZ7FwbV5XMrAnhovbVnlrCc/mLQvCfw",
+	"RC8BZY+eKNd8d/qTcE+2cJMcWJ3k1zGYuCKpqgTYdMyYUl1VXal0grdW7ZtaXr7SqXlFfiWyI64UmguL",
+	"4k7lKwDTh0y5D3zM3rN8D1d35SS9cbC7fX/8zqejz+7t/+7d8ZP3Z3f9RIhmch5cvkg7QzMgk9Emg1mk",
+	"pEon8zcMGfTrMMg7TodDfdKh1hX9iTmJvf/a2dv5eErp/2KQxfIP4NSOxPPv4pQwzZt0sX9y27FNo6b3",
+	"+grfminTVdubBf/SwyfQ3pcuip+S8D957U+YpJ2rru04EK1BkXv9kXjKkFwuf6HyB1G3nX1xon32tfOH",
+	"KiIsjytm074APbQmEtpTHPVicq+6YVb8RCRzzx5fMnf01Zfju+/s/uEfR3efHFMiVzkAWCd0tZ3VadS2",
+	"dfJno0qGTm7Umdj1/KNLjQiKihQtuVKxikIs+45RI3Lp5420BNPGEklVHKW777dWNvUiAgHqrJ2RBZWW",
+	"XQjHIV5xyd+JAKVfcrsk/ah8/iT5LfWAN1c2/zcAAP//4oNcIDp3AAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

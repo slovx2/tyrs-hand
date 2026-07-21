@@ -119,6 +119,30 @@ func TestConversationActionTrackerDynamicToolDeduplicatesProtocolEvent(t *testin
 	require.Contains(t, rendered, "已调用")
 }
 
+func TestConversationActionTrackerFormatsDelegationAndFileChanges(t *testing.T) {
+	tracker := NewConversationActionTracker(time.Now())
+	require.True(t, tracker.ApplyEvent("item/completed", progressEvent(t, map[string]any{
+		"id": "collab-1", "type": "collabAgentToolCall", "status": "completed",
+		"receiverThreadId": "fallback-agent", "arguments": map[string]any{"task_name": "reviewer"},
+	})))
+	require.True(t, tracker.ApplyEvent("item/completed", progressEvent(t, map[string]any{
+		"id": "files-1", "type": "fileChange", "status": "completed",
+		"changes": []any{
+			map[string]any{"path": "/workspace/new.go", "kind": map[string]any{"type": "add"}},
+			map[string]any{"path": "/workspace/old.go", "kind": map[string]any{"type": "delete"}},
+		},
+	})))
+	require.True(t, tracker.ApplyEvent("item/completed", progressEvent(t, map[string]any{
+		"id": "files-2", "type": "fileChange", "status": "completed",
+		"changes": []any{map[string]any{"path": "/workspace/old.go", "kind": map[string]any{"type": "delete"}}},
+	})))
+
+	rendered := tracker.Render("", time.Second)
+	require.Contains(t, rendered, "已委派 `reviewer`")
+	require.Contains(t, rendered, "已创建 `new.go 等 2 个文件`")
+	require.Contains(t, rendered, "已删除 `old.go`")
+}
+
 func progressEvent(t *testing.T, item map[string]any) json.RawMessage {
 	t.Helper()
 	encoded, err := json.Marshal(map[string]any{"item": item})

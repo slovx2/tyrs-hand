@@ -47,7 +47,7 @@ func (c *DisgoConnector) Open(ctx context.Context, resume *GatewaySession) error
 		bot.WithRestConfigOpts(disgorest.WithDefaultAllowedMentions(discord.AllowedMentions{})),
 		bot.WithEventListenerFunc(c.onReady), bot.WithEventListenerFunc(c.onResumed),
 		bot.WithEventListenerFunc(c.onMessage), bot.WithEventListenerFunc(c.onCommand),
-		bot.WithEventListenerFunc(c.onComponent),
+		bot.WithEventListenerFunc(c.onComponent), bot.WithEventListenerFunc(c.onModalSubmit),
 	)
 	if err != nil {
 		return err
@@ -174,12 +174,28 @@ func (c *DisgoConnector) handleMessage(ctx context.Context, event *events.Messag
 	if err != nil {
 		return err
 	}
-	return ProjectConversationStatus(ctx, c.manager.db, input.GuildID, input.ThreadID,
-		conversationID, input.MessageID, ConversationRunning, "消息已进入长期开发环境队列。")
+	return ProjectConversationConfiguration(ctx, c.manager.db, input.GuildID, input.ThreadID,
+		conversationID, input.MessageID)
 }
 
 func (c *DisgoConnector) onCommand(event *events.ApplicationCommandInteractionCreate) {
 	if event.GuildID() == nil || event.GuildID().String() != c.guildID {
+		return
+	}
+	data := event.SlashCommandInteractionData()
+	path := data.CommandPath()
+	if path == "/codex/new" {
+		forum, ok := data.OptChannel("forum")
+		if !ok {
+			_ = event.CreateMessage(discord.NewMessageCreate().WithContent("请选择开发 Forum。").WithEphemeral(true))
+			return
+		}
+		modal, err := c.newCodexModal(context.Background(), forum.ID.String(), event.User().ID.String())
+		if err != nil {
+			_ = event.CreateMessage(discord.NewMessageCreate().WithContent(err.Error()).WithEphemeral(true))
+			return
+		}
+		_ = event.Modal(modal)
 		return
 	}
 	if err := event.DeferCreateMessage(true); err != nil {
@@ -191,8 +207,6 @@ func (c *DisgoConnector) onCommand(event *events.ApplicationCommandInteractionCr
 	if recordErr != nil || !inserted {
 		return
 	}
-	data := event.SlashCommandInteractionData()
-	path := data.CommandPath()
 	userID := event.User().ID.String()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -241,6 +255,32 @@ func (c *DisgoConnector) onComponent(event *events.ComponentInteractionCreate) {
 		return
 	}
 	defer func() { _ = c.manager.CompleteInboundEvent(context.Background(), eventID, nil) }()
+	if strings.HasPrefix(customID, "codex-config-start:") {
+		c.startConfiguredConversation(event, strings.TrimPrefix(customID, "codex-config-start:"))
+		return
+	}
+	if customID == "codex-new-open" {
+		c.showForumSelector(event)
+		return
+	}
+	if customID == "codex-new-forum" {
+		values := event.ChannelSelectMenuInteractionData().Values
+		if len(values) == 0 {
+			_ = event.CreateMessage(discord.NewMessageCreate().WithContent("请选择开发 Forum。").WithEphemeral(true))
+			return
+		}
+		modal, err := c.newCodexModal(context.Background(), values[0].String(), event.User().ID.String())
+		if err != nil {
+			_ = event.CreateMessage(discord.NewMessageCreate().WithContent(err.Error()).WithEphemeral(true))
+			return
+		}
+		_ = event.Modal(modal)
+		return
+	}
+	if strings.HasPrefix(customID, "codex-config-edit:") {
+		c.editConversationConfiguration(event, strings.TrimPrefix(customID, "codex-config-edit:"))
+		return
+	}
 	const prefix = "github-unbind-confirm:"
 	if !strings.HasPrefix(customID, prefix) || event.GuildID() == nil {
 		return
@@ -274,6 +314,10 @@ func (c *DisgoConnector) registerCommands(ctx context.Context, client *bot.Clien
 			discord.ApplicationCommandOptionSubCommand{Name: "unbind", Description: "解绑 GitHub 身份"},
 		}},
 		discord.SlashCommandCreate{Name: "codex", Description: "管理当前 Codex 会话", Options: []discord.ApplicationCommandOption{
+			discord.ApplicationCommandOptionSubCommand{Name: "new", Description: "新建 Codex Forum 帖子", Options: []discord.ApplicationCommandOption{
+				discord.ApplicationCommandOptionChannel{Name: "forum", Description: "目标开发 Forum", Required: true,
+					ChannelTypes: []discord.ChannelType{discord.ChannelTypeGuildForum}},
+			}},
 			discord.ApplicationCommandOptionSubCommand{Name: "stop", Description: "停止当前会话的活动任务"},
 		}},
 	}

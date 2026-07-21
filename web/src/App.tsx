@@ -17,6 +17,7 @@ import { LoginPage } from './pages/LoginPage'
 import { ResourcePage } from './pages/ResourcePage'
 import { SetupPage } from './pages/SetupPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { CodexSettingsPage } from './pages/CodexSettingsPage'
 import { useUI } from './state'
 
 interface SetupStatus {
@@ -38,6 +39,7 @@ const navigation: Array<{ to: string; label: MessageKey }> = [
   { to: '/audit-logs', label: 'audit' },
   { to: '/settings/github', label: 'github' },
   { to: '/settings/discord', label: 'discord' },
+  { to: '/settings/codex', label: 'codex' },
   { to: '/settings', label: 'settings' },
 ]
 
@@ -126,6 +128,7 @@ export function App() {
         />
         <Route path="settings/github" element={<GitHubPage />} />
         <Route path="settings/discord" element={<DiscordPage />} />
+        <Route path="settings/codex" element={<CodexSettingsPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -225,6 +225,15 @@ func (s *SQLoutbox) Complete(ctx context.Context, item OutboxItem, response json
 			}
 		}
 	}
+	if strings.HasPrefix(item.OperationKey, "conversation-title:") {
+		conversationID := strings.TrimPrefix(item.OperationKey, "conversation-title:")
+		_, err = tx.ExecContext(ctx, `UPDATE discord_conversations SET title_rename_status = 'completed',
+			title = COALESCE(generated_title, title), title_renamed_at = now(), updated_at = now()
+			WHERE id = $1 AND title_rename_status = 'scheduled'`, conversationID)
+		if err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
 }
 
@@ -236,10 +245,26 @@ func (s *SQLoutbox) Retry(ctx context.Context, item OutboxItem, at time.Time, ca
 }
 
 func (s *SQLoutbox) Fail(ctx context.Context, item OutboxItem, cause error) error {
-	result, err := s.db.ExecContext(ctx, `UPDATE integration_outbox SET status = 'failed',
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `UPDATE integration_outbox SET status = 'failed',
 		lease_token = NULL, lease_expires_at = NULL, last_error = $3, updated_at = now()
 		WHERE id = $1 AND lease_token = $2`, item.ID, item.LeaseToken, cause.Error())
-	return changedOne(result, err)
+	if err := changedOne(result, err); err != nil {
+		return err
+	}
+	if strings.HasPrefix(item.OperationKey, "conversation-title:") {
+		_, err = tx.ExecContext(ctx, `UPDATE discord_conversations SET title_rename_status = 'failed',
+			updated_at = now() WHERE id = $1 AND title_rename_status = 'scheduled'`,
+			strings.TrimPrefix(item.OperationKey, "conversation-title:"))
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 type Dispatcher struct {

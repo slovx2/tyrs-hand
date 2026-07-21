@@ -52,6 +52,10 @@ func TestDiscordPersistencePermissionsAndRecovery(t *testing.T) {
 	var jobs, messages, attachments int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_intents
 		WHERE discord_conversation_id = $1`, conversationID).Scan(&jobs))
+	require.Zero(t, jobs)
+	require.NoError(t, service.FinalizeConfiguration(ctx, conversationID, "1001", nil))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_intents
+		WHERE discord_conversation_id = $1`, conversationID).Scan(&jobs))
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_input_messages
 		WHERE conversation_id = $1`, conversationID).Scan(&messages))
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_attachments

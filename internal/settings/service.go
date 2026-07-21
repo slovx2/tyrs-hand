@@ -92,7 +92,12 @@ func (s *Service) SaveAgentProvider(ctx context.Context, input AgentProviderInpu
 		Model: input.Model, Reasoning: input.Reasoning, ServiceTier: input.ServiceTier,
 		ProxyURL: input.ProxyURL, Configured: input.ProviderType == "api-key" || old.Configured,
 	}, CredentialVersion: credentialVersion}
-	record.ConfigSignature = signature(record)
+	connectionChanged := providerConnectionChanged(old, record)
+	if old.ConfigSignature != "" && !connectionChanged {
+		record.ConfigSignature = old.ConfigSignature
+	} else {
+		record.ConfigSignature = signature(record)
+	}
 	data, err := json.Marshal(record)
 	if err != nil {
 		return err
@@ -114,7 +119,7 @@ func (s *Service) SaveAgentProvider(ctx context.Context, input AgentProviderInpu
 	if err != nil {
 		return err
 	}
-	if old.ConfigSignature != "" && old.ConfigSignature != record.ConfigSignature {
+	if old.ConfigSignature != "" && connectionChanged {
 		if _, err := tx.ExecContext(ctx, "UPDATE work_items SET context_version = context_version + 1, updated_at = now() WHERE state = 'open'"); err != nil {
 			return err
 		}
@@ -187,6 +192,11 @@ func signature(value providerRecord) string {
 	data, _ := json.Marshal(value)
 	digest := sha256.Sum256(data)
 	return hex.EncodeToString(digest[:])
+}
+
+func providerConnectionChanged(old, current providerRecord) bool {
+	return old.ProviderType != current.ProviderType || old.BaseURL != current.BaseURL ||
+		old.ProxyURL != current.ProxyURL || old.CredentialVersion != current.CredentialVersion
 }
 
 func validateURL(value, name string) error {

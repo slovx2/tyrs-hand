@@ -189,6 +189,43 @@ paths:
       responses:
         "204": { description: 已保存 }
         default: { $ref: "#/components/responses/Problem" }
+  /settings/codex:
+    get:
+      operationId: listCodexSettings
+      tags: [Settings]
+      responses:
+        "200":
+          description: 仓库与 Discord Forum 的 Codex 设置
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CodexSettingsList" }
+        default: { $ref: "#/components/responses/Problem" }
+  /settings/codex/repositories/{id}:
+    put:
+      operationId: putRepositoryCodexSettings
+      tags: [Settings]
+      parameters:
+        - { $ref: "#/components/parameters/CSRFToken" }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CodexPreferences" } } }
+      responses:
+        "204": { description: 已保存 }
+        default: { $ref: "#/components/responses/Problem" }
+  /settings/codex/forums/{id}:
+    put:
+      operationId: putForumCodexSettings
+      tags: [Settings]
+      parameters:
+        - { $ref: "#/components/parameters/CSRFToken" }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CodexPreferences" } } }
+      responses:
+        "204": { description: 已保存 }
+        default: { $ref: "#/components/responses/Problem" }
   /settings/discord:
     get:
       operationId: getDiscordSettings
@@ -724,6 +761,44 @@ components:
         - type: object
           properties:
             apiKey: { type: string, writeOnly: true }
+    CodexPreferences:
+      type: object
+      properties:
+        model: { type: string, nullable: true, maxLength: 128 }
+        reasoningEffort: { type: string, nullable: true, enum: [low, medium, high, xhigh] }
+        serviceTier: { type: string, nullable: true, enum: [standard, fast] }
+    CodexEffectivePreferences:
+      type: object
+      required: [model, reasoningEffort, serviceTier]
+      properties:
+        model: { type: string }
+        reasoningEffort: { type: string }
+        serviceTier: { type: string, enum: [standard, fast] }
+    CodexForumSettings:
+      type: object
+      required: [id, name, ownerDiscordUserId, settings, effective]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        ownerDiscordUserId: { type: string }
+        settings: { $ref: "#/components/schemas/CodexPreferences" }
+        effective: { $ref: "#/components/schemas/CodexEffectivePreferences" }
+    CodexRepositorySettings:
+      type: object
+      required: [id, owner, name, settings, effective, forums]
+      properties:
+        id: { type: string, format: uuid }
+        owner: { type: string }
+        name: { type: string }
+        settings: { $ref: "#/components/schemas/CodexPreferences" }
+        effective: { $ref: "#/components/schemas/CodexEffectivePreferences" }
+        forums: { type: array, items: { $ref: "#/components/schemas/CodexForumSettings" } }
+    CodexSettingsList:
+      type: object
+      required: [items, modelOptions]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/CodexRepositorySettings" } }
+        modelOptions: { type: array, items: { type: string } }
     DiscordSettings:
       type: object
       required: [guildId, enabled, communityEnabled, tokenConfigured]

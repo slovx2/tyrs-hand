@@ -172,6 +172,10 @@ func (r *Runtime) InterruptTurn(ctx context.Context, threadID, turnID string) er
 	return r.client.Call(ctx, "turn/interrupt", map[string]any{"threadId": threadID, "turnId": turnID}, nil)
 }
 
+func (r *Runtime) SetThreadName(ctx context.Context, threadID, name string) error {
+	return r.client.Call(ctx, "thread/name/set", map[string]any{"threadId": threadID, "name": name}, nil)
+}
+
 func (r *Runtime) ValidateSkills(ctx context.Context, cwd string, expected []ports.SkillRef) error {
 	var result struct {
 		Data []struct {
