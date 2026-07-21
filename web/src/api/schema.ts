@@ -903,22 +903,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/worker/v1/runs/{id}/discord-title": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["setWorkerDiscordTitle"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/worker/v1/runs/{id}/tools/call": {
         parameters: {
             query?: never;
@@ -3184,37 +3168,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    setWorkerDiscordTitle: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
-            };
-        };
-        responses: {
-            /** @description 标题处理结果 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
             };
             default: components["responses"]["Problem"];
         };

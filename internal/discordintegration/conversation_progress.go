@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	conversationActionLimit = 8
-	conversationLineWidth   = 64
+	conversationLineWidth  = 96
+	conversationPageBudget = 3500
 )
 
 type conversationActionState string
@@ -25,8 +25,15 @@ const (
 )
 
 type conversationAction struct {
-	id   string
-	line string
+	id         string
+	line       string
+	commentary bool
+}
+
+type ConversationTimeline struct {
+	Pages    []string
+	Updates  int
+	Duration time.Duration
 }
 
 // ConversationActionTracker 将 Codex item 收敛成适合 Discord 单行展示的行动记录。
@@ -46,15 +53,31 @@ func NewConversationActionTracker(startedAt time.Time) *ConversationActionTracke
 }
 
 func (t *ConversationActionTracker) ApplyEvent(method string, params json.RawMessage) bool {
+	var payload struct {
+		Item   map[string]any `json:"item"`
+		ItemID string         `json:"itemId"`
+		Delta  string         `json:"delta"`
+		Text   string         `json:"text"`
+		Phase  string         `json:"phase"`
+	}
+	if json.Unmarshal(params, &payload) != nil {
+		return false
+	}
+	if method == "item/agentMessage/delta" || method == "item/delta" {
+		return t.applyCommentaryDelta(payload.ItemID, payload.Phase, firstNonEmpty(payload.Delta, payload.Text))
+	}
 	if method != "item/started" && method != "item/completed" &&
 		method != "discord/tool/started" && method != "discord/tool/completed" {
 		return false
 	}
-	var payload struct {
-		Item map[string]any `json:"item"`
-	}
-	if json.Unmarshal(params, &payload) != nil || payload.Item == nil {
+	if payload.Item == nil {
 		return false
+	}
+	if textValue(payload.Item["type"]) == "agentMessage" {
+		if textValue(payload.Item["phase"]) != "commentary" {
+			return false
+		}
+		return t.applyCommentary(textValue(payload.Item["id"]), textValue(payload.Item["text"]))
 	}
 	state := actionRunning
 	if strings.HasSuffix(method, "/completed") {
@@ -85,25 +108,47 @@ func (t *ConversationActionTracker) ApplyDynamicTool(callID, namespace, tool str
 	return t.applyItem(item, actionState)
 }
 
-func (t *ConversationActionTracker) Render(summary string, duration time.Duration) string {
+func (t *ConversationActionTracker) Timeline(summary string, duration time.Duration) ConversationTimeline {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if duration <= 0 {
 		duration = time.Since(t.startedAt)
 	}
-	lines := []string{fmt.Sprintf("`%s` · `%d 条更新`", compactDuration(duration), t.updates), ""}
+	blocks := make([]string, 0, len(t.order))
 	if len(t.order) == 0 {
-		lines = append(lines, truncateDisplayLine(SanitizeDiscordResult(summary), conversationLineWidth))
-		return strings.Join(lines, "\n")
+		blocks = append(blocks, sanitizeDiscordTimeline(summary))
+	} else {
+		var toolLines []string
+		flushTools := func() {
+			if len(toolLines) > 0 {
+				blocks = append(blocks, strings.Join(toolLines, "\n"))
+				toolLines = nil
+			}
+		}
+		for _, id := range t.order {
+			action := t.actions[id]
+			if action.commentary {
+				flushTools()
+				if text := sanitizeDiscordTimeline(action.line); text != "" {
+					blocks = append(blocks, text)
+				}
+				continue
+			}
+			toolLines = append(toolLines, "> ↳ "+action.line)
+		}
+		flushTools()
 	}
-	start := max(0, len(t.order)-conversationActionLimit)
-	if start > 0 {
-		lines = append(lines, fmt.Sprintf("> *另有 %d 条较早操作已省略*", start))
+	pages := paginateConversationBlocks(blocks, conversationPageBudget)
+	if len(pages) == 0 {
+		pages = []string{"正在处理请求。"}
 	}
-	for _, id := range t.order[start:] {
-		lines = append(lines, "• "+t.actions[id].line)
-	}
-	return strings.Join(lines, "\n")
+	return ConversationTimeline{Pages: pages, Updates: t.updates, Duration: duration}
+}
+
+func (t *ConversationActionTracker) Render(summary string, duration time.Duration) string {
+	timeline := t.Timeline(summary, duration)
+	return fmt.Sprintf("`%s` · `%d 条更新`\n\n%s", compactDuration(timeline.Duration),
+		timeline.Updates, timeline.Pages[len(timeline.Pages)-1])
 }
 
 func (t *ConversationActionTracker) applyItem(item map[string]any, state conversationActionState) bool {
@@ -131,6 +176,112 @@ func (t *ConversationActionTracker) applyItem(item map[string]any, state convers
 	t.actions[id] = conversationAction{id: id, line: line}
 	t.updates++
 	return true
+}
+
+func (t *ConversationActionTracker) applyCommentary(id, text string) bool {
+	if id == "" {
+		return false
+	}
+	text = strings.TrimSpace(text)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	existing, exists := t.actions[id]
+	if exists && existing.commentary && existing.line == text {
+		return false
+	}
+	if !exists {
+		t.order = append(t.order, id)
+	}
+	t.actions[id] = conversationAction{id: id, line: text, commentary: true}
+	t.updates++
+	return true
+}
+
+func (t *ConversationActionTracker) applyCommentaryDelta(id, phase, delta string) bool {
+	if id == "" || delta == "" {
+		return false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	existing, exists := t.actions[id]
+	if phase != "commentary" && (!exists || !existing.commentary) {
+		return false
+	}
+	if !exists {
+		t.order = append(t.order, id)
+		existing = conversationAction{id: id, commentary: true}
+	}
+	existing.line += delta
+	t.actions[id] = existing
+	t.updates++
+	return true
+}
+
+func paginateConversationBlocks(blocks []string, budget int) []string {
+	if budget <= 0 {
+		budget = conversationPageBudget
+	}
+	var pages []string
+	current := ""
+	flush := func() {
+		if strings.TrimSpace(current) != "" {
+			pages = append(pages, strings.TrimSpace(current))
+			current = ""
+		}
+	}
+	for _, block := range blocks {
+		for _, part := range splitConversationBlock(block, budget) {
+			separator := ""
+			if current != "" {
+				separator = "\n\n"
+			}
+			if len([]rune(current))+len([]rune(separator))+len([]rune(part)) > budget {
+				flush()
+				separator = ""
+			}
+			current += separator + part
+		}
+	}
+	flush()
+	return pages
+}
+
+func splitConversationBlock(value string, budget int) []string {
+	runes := []rune(strings.TrimSpace(value))
+	if len(runes) == 0 {
+		return nil
+	}
+	parts := make([]string, 0, (len(runes)+budget-1)/budget)
+	for len(runes) > budget {
+		cut := budget
+		for index := budget; index > budget/2; index-- {
+			if runes[index-1] == '\n' || unicode.IsSpace(runes[index-1]) {
+				cut = index
+				break
+			}
+		}
+		parts = append(parts, strings.TrimSpace(string(runes[:cut])))
+		runes = runes[cut:]
+	}
+	if text := strings.TrimSpace(string(runes)); text != "" {
+		parts = append(parts, text)
+	}
+	return parts
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func sanitizeDiscordTimeline(value string) string {
+	value = strings.TrimSpace(value)
+	value = discordSecretPattern.ReplaceAllString(value, "[已隐藏凭据]")
+	return discordPathPattern.ReplaceAllString(value, "$1[已隐藏路径]")
 }
 
 func supportedActionType(value string) bool {

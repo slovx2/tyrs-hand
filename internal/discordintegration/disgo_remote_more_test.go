@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync"
 	"testing"
 
@@ -119,10 +118,18 @@ func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 	mu.Lock()
 	require.GreaterOrEqual(t, requests["PATCH /channels/30"], 2)
 	require.Len(t, messageBodies, 3)
-	require.Equal(t, []any{}, messageBodies[0]["embeds"])
-	require.Equal(t, "Card", messageBodies[1]["embeds"].([]any)[0].(map[string]any)["title"])
+	allowedMentions := messageBodies[0]["allowed_mentions"].(map[string]any)
+	require.Equal(t, false, allowedMentions["replied_user"])
+	require.Nil(t, allowedMentions["parse"])
+	require.Equal(t, float64(discord.MessageFlagIsComponentsV2), messageBodies[1]["flags"])
+	require.Nil(t, messageBodies[1]["embeds"])
+	container := messageBodies[1]["components"].([]any)[0].(map[string]any)
+	require.Equal(t, float64(discord.ComponentTypeContainer), container["type"])
+	require.Equal(t, "## Card", container["components"].([]any)[0].(map[string]any)["content"])
 	threadMessage := messageBodies[2]["message"].(map[string]any)
-	require.Equal(t, "Task", threadMessage["embeds"].([]any)[0].(map[string]any)["title"])
+	require.Equal(t, float64(discord.MessageFlagIsComponentsV2), threadMessage["flags"])
+	threadContainer := threadMessage["components"].([]any)[0].(map[string]any)
+	require.Equal(t, "## Task", threadContainer["components"].([]any)[0].(map[string]any)["content"])
 	mu.Unlock()
 }
 
@@ -175,7 +182,7 @@ func TestDisgoRemoteRejectsMalformedRequestsBeforeNetworkWrites(t *testing.T) {
 func testDisgoSendOperations(t *testing.T, ctx context.Context, remote *DisgoRemote) {
 	t.Helper()
 	operations := []OutboxItem{
-		{OperationType: "message.update", Payload: rawJSON(map[string]any{"channelId": "20", "messageId": "21", "content": "updated", "embeds": []EmbedPayload{}})},
+		{OperationType: "message.update", Payload: rawJSON(map[string]any{"channelId": "20", "messageId": "21", "content": "updated"})},
 		{OperationType: "channel.permissions", Payload: rawJSON(map[string]any{"channelId": "12", "permissions": []PermissionSpec{{ID: "123", Type: "role", Allow: 1}}})},
 		{OperationType: "thread.archive", Payload: rawJSON(map[string]any{"channelId": "30", "archived": true})},
 		{OperationType: "thread.tags", Payload: rawJSON(map[string]any{"channelId": "30", "tagIds": []string{"91"}})},
@@ -185,22 +192,24 @@ func testDisgoSendOperations(t *testing.T, ctx context.Context, remote *DisgoRem
 		require.NoError(t, err)
 	}
 	created, err := remote.Send(ctx, OutboxItem{OperationType: "message.create", Nonce: "card-nonce", Payload: rawJSON(map[string]any{
-		"channelId": "20", "content": "", "embeds": []EmbedPayload{{Title: "Card", Description: "Friendly", Color: cardColorBlurple,
-			Footer: "Footer", Fields: []EmbedFieldPayload{{Name: "State", Value: "Running", Inline: true}}}},
+		"channelId": "20", "card": ComponentCardPayload{Header: "## Card", Body: "Friendly",
+			AccentColor: cardColorBlurple, Footer: "Footer"},
 	})})
 	require.NoError(t, err)
 	require.JSONEq(t, `{"messageId":"22"}`, string(created))
 	result, err := remote.Send(ctx, OutboxItem{OperationType: "forum.post.create", Nonce: "post-nonce", Payload: rawJSON(map[string]any{
-		"channelId": "12", "threadName": "Issue", "content": "", "embeds": []EmbedPayload{{Title: "Task", Color: cardColorGreen}}, "tagIds": []string{"91"},
+		"channelId": "12", "threadName": "Issue", "card": ComponentCardPayload{Header: "## Task",
+			AccentColor: cardColorGreen}, "tagIds": []string{"91"},
 	})})
 	require.NoError(t, err)
 	require.JSONEq(t, `{"threadId":"30","messageId":"31"}`, string(result))
 	_, err = remote.Send(ctx, OutboxItem{OperationType: "unsupported", Payload: rawJSON(map[string]any{})})
 	require.Error(t, err)
 	_, err = remote.Send(ctx, OutboxItem{OperationType: "message.create", Payload: rawJSON(map[string]any{
-		"channelId": "20", "embeds": []EmbedPayload{{Title: strings.Repeat("x", 257)}},
+		"channelId": "20", "card": ComponentCardPayload{Header: "x",
+			Buttons: []ComponentButtonPayload{{Label: "a", CustomID: "same"}, {Label: "b", CustomID: "same"}}},
 	})})
-	require.ErrorContains(t, err, "长度")
+	require.ErrorContains(t, err, "重复")
 	_, err = remote.CreateChannel(ctx, "123", ChannelSpec{Kind: "voice"}, "")
 	require.Error(t, err)
 	_, err = permissionOverwrites([]PermissionSpec{{ID: "123", Type: "unknown"}})

@@ -40,7 +40,6 @@ func (s *Server) registerWorkerRoutes(router *gin.Engine) {
 	authorized.POST("/runs/:id/confirm", s.workerConfirmTurn)
 	authorized.POST("/runs/:id/development-state", s.workerDevelopmentState)
 	authorized.POST("/runs/:id/workspace-state", s.workerWorkspaceState)
-	authorized.POST("/runs/:id/discord-title", s.workerDiscordTitle)
 	authorized.POST("/runs/:id/tools/call", s.workerToolCall)
 	authorized.POST("/runs/:id/git-credential", s.workerGitCredential)
 	authorized.GET("/runs/:id/attachments/:attachmentId", s.workerDownloadAttachment)

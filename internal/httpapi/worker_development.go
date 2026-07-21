@@ -7,7 +7,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
-	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
@@ -75,29 +74,4 @@ func (s *Server) workerDevelopmentState(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
-}
-
-func (s *Server) workerDiscordTitle(c *gin.Context) {
-	var request workerprotocol.DiscordTitleRequest
-	runID, node, ok := requireRunLease(c, &request)
-	if !ok {
-		return
-	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), node.ID, runID,
-		request.RunLeaseRequest)
-	if err != nil {
-		remoteRunError(c, "校验 Discord 标题请求失败", err)
-		return
-	}
-	if claimed.SourceType != codexcontrol.SourceDiscord {
-		problem(c, http.StatusForbidden, "只有 Discord Run 可以设置帖子标题", nil)
-		return
-	}
-	title, scheduled, err := discordintegration.ScheduleConversationTitle(c.Request.Context(),
-		s.db, claimed.DiscordConversationID, request.Title)
-	if err != nil {
-		problem(c, http.StatusConflict, "设置 Discord 帖子标题失败", err)
-		return
-	}
-	c.JSON(http.StatusOK, workerprotocol.DiscordTitleResponse{Title: title, Scheduled: scheduled})
 }

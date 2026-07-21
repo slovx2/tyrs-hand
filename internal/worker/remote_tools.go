@@ -57,22 +57,6 @@ func (p *RemoteProcessor) handleRemoteDiscordTool(ctx context.Context,
 	switch namespace {
 	case "github":
 		result, err = p.client.CallTool(ctx, task, request)
-	case "discord":
-		if request.Tool != "set_post_title" {
-			err = fmt.Errorf("未知 Discord 工具 %s", request.Tool)
-			break
-		}
-		var arguments struct {
-			Title string `json:"title"`
-		}
-		if err = json.Unmarshal(request.Arguments, &arguments); err == nil {
-			var response workerprotocol.DiscordTitleResponse
-			response, err = p.client.SetDiscordTitle(ctx, task, arguments.Title)
-			if err == nil {
-				result = codex.TextToolResult(fmt.Sprintf(`{"title":%q,"scheduled":%t}`,
-					response.Title, response.Scheduled), true)
-			}
-		}
 	case "git":
 		result, err = p.executeRemoteContainerGit(ctx, task, runtime, request)
 	default:

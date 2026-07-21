@@ -39,7 +39,7 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 func InitializeDiscord(ctx context.Context, cfg config.Config) (*DiscordApp, func(), error) {
 	wire.Build(
 		provideDatabase, provideRedis, provideLogger, provideSecretBox, secrets.NewStore,
-		provideGitHubManager, provideDiscordManager, provideBindingService,
+		provideGitHubManager, provideSettings, provideDiscordManager, provideBindingService,
 		provideConversationService, discordintegration.NewDaemon,
 		wire.Struct(new(DiscordApp), "*"),
 	)

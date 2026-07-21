@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
+	"github.com/slovx2/tyrs-hand/internal/settings"
 	"go.uber.org/zap"
 )
 
@@ -18,6 +19,7 @@ type Daemon struct {
 	manager            *Manager
 	conversations      *ConversationService
 	bindings           *BindingService
+	titles             *TitleGenerator
 	redis              *redis.Client
 	logger             *zap.Logger
 	apiURL             string
@@ -31,10 +33,12 @@ type Daemon struct {
 }
 
 func NewDaemon(manager *Manager, conversations *ConversationService, bindings *BindingService,
-	githubManager *ghadapter.Manager, redisClient *redis.Client, logger *zap.Logger,
+	githubManager *ghadapter.Manager, settingsService *settings.Service,
+	redisClient *redis.Client, logger *zap.Logger,
 ) *Daemon {
 	d := &Daemon{manager: manager, conversations: conversations, bindings: bindings,
-		redis: redisClient, logger: logger, apiURL: "https://discord.com/api/v10",
+		titles: NewTitleGenerator(manager.db, settingsService), redis: redisClient,
+		logger: logger, apiURL: "https://discord.com/api/v10",
 		outboxInterval: 250 * time.Millisecond, operationInterval: 2 * time.Second,
 		projectionInterval: time.Minute, permissionInterval: 5 * time.Minute}
 	conversations.redis = redisClient
@@ -66,9 +70,10 @@ func (d *Daemon) Run(ctx context.Context) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	gatewayRunner := NewGatewayRunner(d.manager, settings.GuildID, connector)
-	errCh := make(chan error, 2)
+	errCh := make(chan error, 3)
 	go func() { errCh <- gatewayRunner.Run(runCtx) }()
 	go func() { errCh <- d.runBackground(runCtx, settings.GuildID, remote) }()
+	go func() { errCh <- d.runTitles(runCtx) }()
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -174,6 +179,34 @@ func (d *Daemon) runBackground(ctx context.Context, guildID string, remote Remot
 	}
 }
 
+func (d *Daemon) runTitles(ctx context.Context) error {
+	if err := d.titles.RecoverInterrupted(ctx); err != nil {
+		return fmt.Errorf("恢复 Discord 标题任务失败: %w", err)
+	}
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		for count := 0; count < 20; count++ {
+			worked, err := d.titles.RunOnce(ctx)
+			if err != nil {
+				d.logger.Warn("生成 Discord 帖子标题失败", zap.Error(err))
+				if recoverErr := d.titles.RecoverInterrupted(ctx); recoverErr != nil {
+					d.logger.Warn("回退 Discord 帖子标题失败", zap.Error(recoverErr))
+				}
+				break
+			}
+			if !worked {
+				break
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
 func (d *Daemon) refreshAllProjections(ctx context.Context, guildID string, remote Remote) {
 	paused, err := d.projectionsPaused(ctx, guildID)
 	if err != nil {
@@ -262,8 +295,8 @@ func (d *Daemon) refreshSystemStatus(ctx context.Context, guildID string) error 
 		return err
 	}
 	card := systemStatusCard(queued, running, failed, workers, outbox, gatewayStatus)
-	buttons := []map[string]string{{"label": "新建 Codex 帖子", "customId": "codex-new-open", "style": "primary"}}
-	projectionPayload := map[string]any{"content": "", "embeds": []EmbedPayload{card}, "buttons": buttons}
+	card.Buttons = []ComponentButtonPayload{{Label: "新建 Codex 帖子", CustomID: "codex-new-open", Style: "primary"}}
+	projectionPayload := map[string]any{"card": card}
 	var messageID string
 	err = d.manager.db.QueryRowContext(ctx, `INSERT INTO discord_projections
 		(guild_id, projection_key, resource_id, desired_payload)
@@ -276,7 +309,7 @@ func (d *Daemon) refreshSystemStatus(ctx context.Context, guildID string) error 
 		return err
 	}
 	operationType := "message.create"
-	payload := map[string]any{"channelId": channelID, "content": "", "embeds": []EmbedPayload{card}, "buttons": buttons}
+	payload := map[string]any{"channelId": channelID, "card": card}
 	if messageID != "" {
 		operationType = "message.update"
 		payload["messageId"] = messageID
@@ -305,7 +338,7 @@ func (d *Daemon) refreshSystemAlerts(ctx context.Context, guildID string) error 
 		return err
 	}
 	card := systemAlertsCard(gatewayStatus, gatewayError != "", workers, failedOutbox)
-	projectionPayload := map[string]any{"content": "", "embeds": []EmbedPayload{card}}
+	projectionPayload := map[string]any{"card": card}
 	var messageID string
 	err = d.manager.db.QueryRowContext(ctx, `INSERT INTO discord_projections
 		(guild_id, projection_key, resource_id, desired_payload)
@@ -318,7 +351,7 @@ func (d *Daemon) refreshSystemAlerts(ctx context.Context, guildID string) error 
 		return err
 	}
 	operationType := "message.create"
-	payload := map[string]any{"channelId": channelID, "content": "", "embeds": []EmbedPayload{card}}
+	payload := map[string]any{"channelId": channelID, "card": card}
 	if messageID != "" {
 		operationType = "message.update"
 		payload["messageId"] = messageID

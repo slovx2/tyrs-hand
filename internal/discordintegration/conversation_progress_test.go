@@ -45,8 +45,8 @@ func TestConversationActionTrackerPackagesAndUpdatesActions(t *testing.T) {
 
 	rendered := tracker.Render("正在处理请求。", 87*time.Second)
 	require.Contains(t, rendered, "`1m 27s` · `3 条更新`")
-	require.Contains(t, rendered, "• 已读取 `client.go`")
-	require.Contains(t, rendered, "• 调用未成功，正在继续处理：`github.issue_read`")
+	require.Contains(t, rendered, "> ↳ 已读取 `client.go`")
+	require.Contains(t, rendered, "> ↳ 调用未成功，正在继续处理：`github.issue_read`")
 	require.NotContains(t, rendered, "api_key")
 	require.Contains(t, rendered, "`repo=tyrs-hand`")
 	require.NotContains(t, rendered, "不应显示")
@@ -63,11 +63,11 @@ func TestConversationActionTrackerPackagesSearchCommand(t *testing.T) {
 	require.True(t, tracker.ApplyEvent("item/completed", event))
 
 	rendered := tracker.Render("", time.Second)
-	require.Contains(t, rendered, "• 已搜索 `rg -n 'waitTurn|ProjectConversationStatus'")
+	require.Contains(t, rendered, "> ↳ 已搜索 `rg -n 'waitTurn|ProjectConversationStatus'")
 	require.NotContains(t, rendered, "/bin/zsh -lc")
 }
 
-func TestConversationActionTrackerKeepsRecentActionsInOrder(t *testing.T) {
+func TestConversationActionTrackerKeepsAllActionsInOrder(t *testing.T) {
 	tracker := NewConversationActionTracker(time.Now())
 	for index := 1; index <= 10; index++ {
 		event := progressEvent(t, map[string]any{
@@ -77,14 +77,12 @@ func TestConversationActionTrackerKeepsRecentActionsInOrder(t *testing.T) {
 		require.True(t, tracker.ApplyEvent("item/completed", event))
 	}
 
-	rendered := tracker.Render("", time.Second)
-	lines := strings.Split(rendered, "\n")
-	require.Equal(t, "> *另有 2 条较早操作已省略*", lines[2])
-	require.Contains(t, lines[3], "第 3 个查询")
-	require.Contains(t, lines[len(lines)-1], "第 10 个查询")
-	require.NotContains(t, rendered, "第 1 个查询")
-	for _, line := range lines[3:] {
-		require.LessOrEqual(t, displayLineWidth(strings.TrimPrefix(line, "• ")), conversationLineWidth+1)
+	timeline := tracker.Timeline("", time.Second)
+	rendered := strings.Join(timeline.Pages, "\n")
+	require.Contains(t, rendered, "第 1 个查询")
+	require.Contains(t, rendered, "第 10 个查询")
+	for _, line := range strings.Split(rendered, "\n") {
+		require.LessOrEqual(t, displayLineWidth(strings.TrimPrefix(line, "> ↳ ")), conversationLineWidth+1)
 	}
 }
 
@@ -102,6 +100,50 @@ func TestConversationActionTrackerTruncatesOneLineWithoutBreakingCode(t *testing
 	require.NotContains(t, actionLine, "\n")
 	require.Contains(t, actionLine, "…")
 	require.Zero(t, strings.Count(actionLine, "`")%2)
+}
+
+func TestConversationActionTrackerSeparatesCommentaryAndCompactsTools(t *testing.T) {
+	tracker := NewConversationActionTracker(time.Now())
+	require.True(t, tracker.ApplyEvent("item/started", progressEvent(t, map[string]any{
+		"id": "comment-1", "type": "agentMessage", "phase": "commentary", "text": "先检查项目。",
+	})))
+	require.True(t, tracker.ApplyEvent("item/completed", progressEvent(t, map[string]any{
+		"id": "tool-1", "type": "webSearch", "query": "Components V2",
+	})))
+	require.True(t, tracker.ApplyEvent("item/completed", progressEvent(t, map[string]any{
+		"id": "tool-2", "type": "imageView", "path": "/tmp/example.png",
+	})))
+	require.True(t, tracker.ApplyEvent("item/completed", progressEvent(t, map[string]any{
+		"id": "comment-2", "type": "agentMessage", "phase": "commentary", "text": "已确认交互结构。",
+	})))
+	rendered := strings.Join(tracker.Timeline("", time.Second).Pages, "\n")
+	require.Contains(t, rendered, "先检查项目。\n\n> ↳ 已搜索网页")
+	require.Contains(t, rendered, "\n> ↳ 已查看 `example.png`\n\n已确认交互结构。")
+}
+
+func TestConversationActionTrackerUpdatesCommentaryDeltaAndPaginatesLongText(t *testing.T) {
+	tracker := NewConversationActionTracker(time.Now())
+	require.True(t, tracker.ApplyEvent("item/started", progressEvent(t, map[string]any{
+		"id": "comment-1", "type": "agentMessage", "phase": "commentary", "text": "",
+	})))
+	delta, err := json.Marshal(map[string]any{"itemId": "comment-1", "phase": "commentary",
+		"delta": strings.Repeat("长内容", 1600)})
+	require.NoError(t, err)
+	require.True(t, tracker.ApplyEvent("item/agentMessage/delta", delta))
+	timeline := tracker.Timeline("", time.Second)
+	require.Greater(t, len(timeline.Pages), 1)
+	for _, page := range timeline.Pages {
+		require.LessOrEqual(t, len([]rune(page)), conversationPageBudget)
+	}
+	require.Equal(t, 2, timeline.Updates)
+}
+
+func TestConversationActionTrackerExcludesFinalAnswer(t *testing.T) {
+	tracker := NewConversationActionTracker(time.Now())
+	require.False(t, tracker.ApplyEvent("item/completed", progressEvent(t, map[string]any{
+		"id": "answer", "type": "agentMessage", "phase": "final_answer", "text": "最终回答",
+	})))
+	require.NotContains(t, tracker.Render("处理中", time.Second), "最终回答")
 }
 
 func TestConversationActionTrackerDynamicToolDeduplicatesProtocolEvent(t *testing.T) {

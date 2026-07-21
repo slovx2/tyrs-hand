@@ -109,11 +109,10 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 		ReasoningEffort: settings.ReasoningEffort,
 		ServiceTier:     codexsettings.RuntimeServiceTier(settings.ServiceTier),
 		Sandbox:         "danger-full-access", ApprovalPolicy: settings.ApprovalPolicy,
-		NetworkEnabled: settings.NetworkEnabled,
-		RuntimeConfig:  codexRuntimeConfig(environment, ""),
-		DeveloperInstructions: discordintegration.MultiplayerDeveloperInstructions +
-			"\nAfter understanding the task, call discord.set_post_title exactly once with a concise user-facing title.",
-		DynamicTools: []ports.DynamicToolSpec{discordTitleSpec(), githubSpec, localGitSpec()},
+		NetworkEnabled:        settings.NetworkEnabled,
+		RuntimeConfig:         codexRuntimeConfig(environment, ""),
+		DeveloperInstructions: discordintegration.MultiplayerDeveloperInstructions,
+		DynamicTools:          []ports.DynamicToolSpec{githubSpec, localGitSpec()},
 	}
 	if err := codexRuntime.ValidateSkills(ctx, runtime.Workspace, skills); err != nil {
 		return workerprotocol.CompleteRequest{}, err

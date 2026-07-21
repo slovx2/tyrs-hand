@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/disgo/events"
@@ -26,11 +27,19 @@ func (c *DisgoConnector) startConfiguredConversation(event *events.ComponentInte
 		_ = event.CreateMessage(discord.NewMessageCreate().WithContent(err.Error()).WithEphemeral(true))
 		return
 	}
-	content := ""
-	embeds, _ := discordEmbeds([]EmbedPayload{conversationProgressCard(ConversationRunning,
-		"已按默认参数启动，消息正在进入长期开发环境队列。")})
-	empty := []discord.LayoutComponent{}
-	_ = event.UpdateMessage(discord.MessageUpdate{Content: &content, Embeds: &embeds, Components: &empty})
+	timeline := ConversationTimeline{Pages: []string{"已按默认参数启动，消息正在进入长期开发环境队列。"},
+		Duration: time.Second}
+	components, componentErr := discordCardComponents(conversationProgressCard(ConversationRunning,
+		timeline, 0, ""))
+	if componentErr != nil {
+		return
+	}
+	update := discord.NewMessageUpdateV2(components...)
+	emptyContent := ""
+	emptyEmbeds := []discord.Embed{}
+	update.Content, update.Embeds = &emptyContent, &emptyEmbeds
+	update.AllowedMentions = &discord.AllowedMentions{}
+	_ = event.UpdateMessage(update)
 }
 
 func (c *DisgoConnector) editConversationConfiguration(event *events.ComponentInteractionCreate, rawID string) {
@@ -138,7 +147,7 @@ func (c *DisgoConnector) onModalSubmit(event *events.ModalSubmitInteractionCreat
 			Scan(&guildID, &threadID, &starterID)
 		if queryErr == nil {
 			_ = ProjectConversationStatus(context.Background(), c.manager.db, guildID, threadID, id,
-				starterID, ConversationRunning, "参数已确认，消息正在进入长期开发环境队列。")
+				starterID, uuid.Nil, ConversationRunning, "参数已确认，消息正在进入长期开发环境队列。")
 		}
 	}
 }
@@ -278,7 +287,7 @@ func (c *DisgoConnector) createCodexPost(event *events.ModalSubmitInteractionCre
 			conversationID, err = c.conversations.BeginPost(ctx, input)
 			if err == nil {
 				err = ProjectConversationStatus(ctx, c.manager.db, c.guildID, threadID, conversationID,
-					input.MessageID, ConversationRunning, "帖子已创建，消息正在进入长期开发环境队列。")
+					input.MessageID, uuid.Nil, ConversationRunning, "帖子已创建，消息正在进入长期开发环境队列。")
 			}
 		}
 	}

@@ -206,24 +206,7 @@ func TestLocalToolCallAuditIsIdempotent(t *testing.T) {
 	require.ErrorContains(t, err, "与既有请求不一致")
 	require.Equal(t, 1, executions)
 
-	discordNamespace := "discord"
-	discordRequest := codex.ToolCallRequest{
-		ThreadID: "thread-2", TurnID: "turn-2", CallID: "call-2",
-		Namespace: &discordNamespace, Tool: "set_post_title",
-		Arguments: json.RawMessage(`{"title":"测试标题"}`),
-	}
-	discordRecordID := uuid.New()
-	mock.ExpectQuery(insertPattern).
-		WithArgs(runID, intentID, discordRequest.ThreadID, discordRequest.TurnID,
-			discordRequest.CallID, "discord", discordRequest.Tool, discordRequest.Arguments).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(discordRecordID))
-	mock.ExpectExec(regexp.QuoteMeta("UPDATE tool_calls SET status = 'completed'")).
-		WithArgs(discordRecordID, sqlmock.AnyArg()).
-		WillReturnResult(sqlmock.NewResult(0, 1))
-
-	_, err = processor.auditLocalToolCall(context.Background(), claimed, discordRequest, execute)
-	require.NoError(t, err)
-	require.Equal(t, 2, executions)
+	require.Equal(t, 1, executions)
 }
 
 func TestDiscordStopUsesCanceledProjection(t *testing.T) {

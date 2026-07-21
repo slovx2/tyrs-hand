@@ -197,9 +197,26 @@ func (s *Server) workerRunEvents(c *gin.Context) {
 		return
 	}
 	if claimed.SourceType == codexcontrol.SourceDiscord {
+		hasExplicitProgress := false
+		timelineChanged := false
 		for _, event := range request.Events {
 			if event.Type == "discord.progress" {
+				hasExplicitProgress = true
 				s.projectRemoteDiscordProgress(c.Request.Context(), claimed, event.Payload)
+				continue
+			}
+			if event.Type == "item/started" || event.Type == "item/completed" ||
+				event.Type == "item/agentMessage/delta" || event.Type == "item/delta" ||
+				event.Type == "discord/tool/started" || event.Type == "discord/tool/completed" {
+				timelineChanged = true
+			}
+		}
+		if timelineChanged && !hasExplicitProgress {
+			guildID, threadID, targetErr := s.discordProjectionTarget(c.Request.Context(), claimed)
+			if targetErr == nil {
+				_ = discordintegration.ProjectConversationStatus(c.Request.Context(), s.db,
+					guildID, threadID, claimed.DiscordConversationID, claimed.DiscordMessageID,
+					claimed.RunID, discordintegration.ConversationRunning, "正在处理请求。")
 			}
 		}
 	}
@@ -274,7 +291,7 @@ func (s *Server) projectRemoteDiscordProgress(ctx context.Context,
 	guildID, threadID, err := s.discordProjectionTarget(ctx, claimed)
 	if err == nil {
 		_ = discordintegration.ProjectConversationStatus(ctx, s.db, guildID, threadID,
-			claimed.DiscordConversationID, claimed.DiscordMessageID, state, progress.Detail)
+			claimed.DiscordConversationID, claimed.DiscordMessageID, claimed.RunID, state, progress.Detail)
 	}
 }
 
@@ -286,7 +303,7 @@ func (s *Server) projectRemoteDiscordComplete(ctx context.Context,
 		return err
 	}
 	if err := discordintegration.ProjectConversationStatus(ctx, s.db, guildID, threadID,
-		claimed.DiscordConversationID, claimed.DiscordMessageID,
+		claimed.DiscordConversationID, claimed.DiscordMessageID, claimed.RunID,
 		discordintegration.ConversationCompleted, "本轮处理完成。"); err != nil {
 		return err
 	}
@@ -341,7 +358,7 @@ func (s *Server) workerRunFail(c *gin.Context) {
 				detail = "本轮已由 Discord 用户主动停止。"
 			}
 			_ = discordintegration.ProjectConversationStatus(c.Request.Context(), s.db,
-				guildID, threadID, claimed.DiscordConversationID, claimed.DiscordMessageID,
+				guildID, threadID, claimed.DiscordConversationID, claimed.DiscordMessageID, claimed.RunID,
 				state, detail)
 		}
 	}

@@ -3,7 +3,6 @@ package discordintegration
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -189,23 +188,18 @@ func (r *DisgoRemote) DeleteChannel(ctx context.Context, channelID string) error
 func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessage, error) {
 	item.Nonce = discordNonce(item.Nonce)
 	var payload struct {
-		ChannelID        string           `json:"channelId"`
-		MessageID        string           `json:"messageId"`
-		Content          string           `json:"content"`
-		InteractionID    string           `json:"interactionId"`
-		InteractionToken string           `json:"interactionToken"`
-		Ephemeral        bool             `json:"ephemeral"`
-		Permissions      []PermissionSpec `json:"permissions"`
-		ThreadName       string           `json:"threadName"`
-		TagIDs           []string         `json:"tagIds"`
-		Archived         bool             `json:"archived"`
-		ConversationID   string           `json:"conversationId"`
-		Embeds           *[]EmbedPayload  `json:"embeds"`
-		Buttons          []struct {
-			Label    string `json:"label"`
-			CustomID string `json:"customId"`
-			Style    string `json:"style"`
-		} `json:"buttons"`
+		ChannelID        string                `json:"channelId"`
+		MessageID        string                `json:"messageId"`
+		Content          string                `json:"content"`
+		InteractionID    string                `json:"interactionId"`
+		InteractionToken string                `json:"interactionToken"`
+		Ephemeral        bool                  `json:"ephemeral"`
+		Permissions      []PermissionSpec      `json:"permissions"`
+		ThreadName       string                `json:"threadName"`
+		TagIDs           []string              `json:"tagIds"`
+		Archived         bool                  `json:"archived"`
+		ConversationID   string                `json:"conversationId"`
+		Card             *ComponentCardPayload `json:"card"`
 	}
 	if err := json.Unmarshal(item.Payload, &payload); err != nil {
 		return nil, err
@@ -223,26 +217,16 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 		if err != nil {
 			return nil, err
 		}
-		create := discord.MessageCreate{
-			Content: payload.Content, Nonce: item.Nonce, EnforceNonce: item.Nonce != "",
-		}
-		if payload.Embeds != nil {
-			embeds, embedErr := discordEmbeds(*payload.Embeds)
-			if embedErr != nil {
-				return nil, embedErr
+		create := discord.MessageCreate{Content: payload.Content, Nonce: item.Nonce,
+			EnforceNonce: item.Nonce != "", AllowedMentions: &discord.AllowedMentions{}}
+		if payload.Card != nil {
+			components, componentErr := discordCardComponents(*payload.Card)
+			if componentErr != nil {
+				return nil, componentErr
 			}
-			create.Embeds = embeds
-		}
-		if len(payload.Buttons) > 0 {
-			buttons := make([]discord.InteractiveComponent, 0, len(payload.Buttons))
-			for _, button := range payload.Buttons {
-				component := discord.NewSecondaryButton(button.Label, button.CustomID)
-				if button.Style == "primary" {
-					component = discord.NewPrimaryButton(button.Label, button.CustomID)
-				}
-				buttons = append(buttons, component)
-			}
-			create.Components = []discord.LayoutComponent{discord.NewActionRow(buttons...)}
+			create = discord.NewMessageCreateV2(components...)
+			create.Nonce, create.EnforceNonce = item.Nonce, item.Nonce != ""
+			create.AllowedMentions = &discord.AllowedMentions{}
 		}
 		message, err := r.rest.CreateMessage(channel, create, disgorest.WithCtx(ctx))
 		if err != nil {
@@ -255,25 +239,18 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 			return nil, err
 		}
 		emptyComponents := []discord.LayoutComponent{}
-		update := discord.MessageUpdate{Content: &payload.Content, Components: &emptyComponents}
-		if payload.Embeds != nil {
-			embeds, embedErr := discordEmbeds(*payload.Embeds)
-			if embedErr != nil {
-				return nil, embedErr
+		update := discord.MessageUpdate{Content: &payload.Content, Components: &emptyComponents,
+			AllowedMentions: &discord.AllowedMentions{}}
+		if payload.Card != nil {
+			components, componentErr := discordCardComponents(*payload.Card)
+			if componentErr != nil {
+				return nil, componentErr
 			}
-			update.Embeds = &embeds
-		}
-		if len(payload.Buttons) > 0 {
-			buttons := make([]discord.InteractiveComponent, 0, len(payload.Buttons))
-			for _, button := range payload.Buttons {
-				component := discord.NewSecondaryButton(button.Label, button.CustomID)
-				if button.Style == "primary" {
-					component = discord.NewPrimaryButton(button.Label, button.CustomID)
-				}
-				buttons = append(buttons, component)
-			}
-			components := []discord.LayoutComponent{discord.NewActionRow(buttons...)}
-			update.Components = &components
+			update = discord.NewMessageUpdateV2(components...)
+			emptyContent := ""
+			emptyEmbeds := []discord.Embed{}
+			update.Content, update.Embeds = &emptyContent, &emptyEmbeds
+			update.AllowedMentions = &discord.AllowedMentions{}
 		}
 		_, err = r.rest.UpdateMessage(channel, message, update, disgorest.WithCtx(ctx))
 		return nil, err
@@ -312,17 +289,20 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 			}
 			tags = append(tags, id)
 		}
-		embeds := []discord.Embed(nil)
-		if payload.Embeds != nil {
-			embeds, err = discordEmbeds(*payload.Embeds)
-			if err != nil {
-				return nil, err
+		message := discord.MessageCreate{Content: payload.Content, Nonce: item.Nonce,
+			EnforceNonce: item.Nonce != "", AllowedMentions: &discord.AllowedMentions{}}
+		if payload.Card != nil {
+			components, componentErr := discordCardComponents(*payload.Card)
+			if componentErr != nil {
+				return nil, componentErr
 			}
+			message = discord.NewMessageCreateV2(components...)
+			message.Nonce, message.EnforceNonce = item.Nonce, item.Nonce != ""
+			message.AllowedMentions = &discord.AllowedMentions{}
 		}
 		post, err := r.rest.CreatePostInThreadChannel(forum, discord.ThreadChannelPostCreate{
 			Name: payload.ThreadName, AutoArchiveDuration: discord.AutoArchiveDuration1w,
-			AppliedTags: tags, Message: discord.MessageCreate{Content: payload.Content, Embeds: embeds,
-				Nonce: item.Nonce, EnforceNonce: item.Nonce != ""},
+			AppliedTags: tags, Message: message,
 		}, disgorest.WithCtx(ctx))
 		if err != nil {
 			return nil, err
@@ -365,50 +345,52 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 
 func (r *DisgoRemote) Close(ctx context.Context) { r.rest.Close(ctx) }
 
-func discordEmbeds(values []EmbedPayload) ([]discord.Embed, error) {
-	if len(values) > 10 {
-		return nil, errors.New("discord 消息最多包含 10 个 Embed")
+func discordCardComponents(card ComponentCardPayload) ([]discord.LayoutComponent, error) {
+	if card.AccentColor < 0 || card.AccentColor > 0xFFFFFF || strings.TrimSpace(card.Header) == "" {
+		return nil, fmt.Errorf("discord Components V2 卡片无效")
 	}
-	result := make([]discord.Embed, 0, len(values))
-	globalTotal := 0
-	for _, value := range values {
-		if value.Color < 0 || value.Color > 0xFFFFFF {
-			return nil, errors.New("discord Embed 颜色超出范围")
+	parts := make([]discord.ContainerSubComponent, 0, 9)
+	addText := func(value string) error {
+		if strings.TrimSpace(value) == "" {
+			return nil
 		}
-		if utf8.RuneCountInString(value.Title) > 256 || utf8.RuneCountInString(value.Description) > 4096 ||
-			utf8.RuneCountInString(value.Footer) > 2048 || len(value.Fields) > 25 {
-			return nil, errors.New("discord Embed 内容超出长度限制")
+		if utf8.RuneCountInString(value) > 4000 {
+			return fmt.Errorf("discord Text Display 超过 4000 字符")
 		}
-		total := utf8.RuneCountInString(value.Title) + utf8.RuneCountInString(value.Description) + utf8.RuneCountInString(value.Footer)
-		if total == 0 && len(value.Fields) == 0 {
-			return nil, errors.New("discord Embed 不能为空")
+		if len(parts) > 0 {
+			parts = append(parts, discord.NewSmallSeparator())
 		}
-		embed := discord.Embed{Title: value.Title, Description: value.Description, Color: value.Color}
-		if value.Footer != "" {
-			embed.Footer = &discord.EmbedFooter{Text: value.Footer}
-		}
-		if value.Timestamp != "" {
-			parsed, err := time.Parse(time.RFC3339, value.Timestamp)
-			if err != nil {
-				return nil, errors.New("discord Embed 时间格式无效")
-			}
-			embed.Timestamp = &parsed
-		}
-		for _, field := range value.Fields {
-			if field.Name == "" || field.Value == "" || utf8.RuneCountInString(field.Name) > 256 || utf8.RuneCountInString(field.Value) > 1024 {
-				return nil, errors.New("discord Embed Field 内容无效")
-			}
-			total += utf8.RuneCountInString(field.Name) + utf8.RuneCountInString(field.Value)
-			inline := field.Inline
-			embed.Fields = append(embed.Fields, discord.EmbedField{Name: field.Name, Value: field.Value, Inline: &inline})
-		}
-		globalTotal += total
-		if globalTotal > 6000 {
-			return nil, errors.New("discord Embed 总长度超出限制")
-		}
-		result = append(result, embed)
+		parts = append(parts, discord.NewTextDisplay(value))
+		return nil
 	}
-	return result, nil
+	for _, value := range []string{card.Header, card.Body, card.Timeline, card.Footer} {
+		if err := addText(value); err != nil {
+			return nil, err
+		}
+	}
+	if len(card.Buttons) > 0 {
+		if len(card.Buttons) > 5 {
+			return nil, fmt.Errorf("discord Action Row 最多包含 5 个按钮")
+		}
+		buttons := make([]discord.InteractiveComponent, 0, len(card.Buttons))
+		seen := make(map[string]bool, len(card.Buttons))
+		for _, button := range card.Buttons {
+			if button.CustomID == "" || len(button.CustomID) > 100 || seen[button.CustomID] ||
+				utf8.RuneCountInString(button.Label) == 0 || utf8.RuneCountInString(button.Label) > 80 {
+				return nil, fmt.Errorf("discord 按钮 custom_id 无效或重复")
+			}
+			seen[button.CustomID] = true
+			component := discord.NewSecondaryButton(button.Label, button.CustomID)
+			if button.Style == "primary" {
+				component = discord.NewPrimaryButton(button.Label, button.CustomID)
+			}
+			component.Disabled = button.Disabled
+			buttons = append(buttons, component)
+		}
+		parts = append(parts, discord.NewSmallSeparator(), discord.NewActionRow(buttons...))
+	}
+	container := discord.NewContainer(parts...).WithAccentColor(card.AccentColor)
+	return []discord.LayoutComponent{container}, nil
 }
 
 func optionalSnowflake(value string) (snowflake.ID, error) {

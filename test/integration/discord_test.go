@@ -128,16 +128,17 @@ func testOutboxRecovery(t *testing.T, ctx context.Context, db *sql.DB, guildID s
 	store := discordintegration.NewSQLoutbox(db)
 	projectionKey := "conversation:" + conversationID.String() + ":message:3001"
 	require.NoError(t, discordintegration.ProjectConversationStatus(ctx, db, guildID, "2001", conversationID,
-		"3001", discordintegration.ConversationRunning, "processing"))
+		"3001", uuid.Nil, discordintegration.ConversationRunning, "processing"))
 	first, err := store.Claim(ctx, 30*time.Second)
 	require.NoError(t, err)
 	require.NotNil(t, first)
 	require.Equal(t, "message.create", first.OperationType)
-	require.Contains(t, string(first.Payload), `"embeds"`)
+	require.Contains(t, string(first.Payload), `"card"`)
+	require.NotContains(t, string(first.Payload), `"embeds"`)
 	require.Contains(t, string(first.Payload), "处理中")
 
 	require.NoError(t, discordintegration.ProjectConversationStatus(ctx, db, guildID, "2001", conversationID,
-		"3001", discordintegration.ConversationCompleted, "completed"))
+		"3001", uuid.Nil, discordintegration.ConversationCompleted, "completed"))
 	response := json.RawMessage(`{"messageId":"5001"}`)
 	require.NoError(t, store.Complete(ctx, *first, response))
 	var status string
@@ -163,7 +164,7 @@ func testOutboxRecovery(t *testing.T, ctx context.Context, db *sql.DB, guildID s
 	require.Equal(t, desired, applied)
 
 	require.NoError(t, discordintegration.ProjectConversationStatus(ctx, db, guildID, "2001", conversationID,
-		"3002", discordintegration.ConversationRunning, "next turn"))
+		"3002", uuid.Nil, discordintegration.ConversationRunning, "next turn"))
 	nextTurn, err := store.Claim(ctx, 30*time.Second)
 	require.NoError(t, err)
 	require.NotNil(t, nextTurn)
@@ -176,7 +177,7 @@ func testOutboxRecovery(t *testing.T, ctx context.Context, db *sql.DB, guildID s
 	require.NoError(t, err)
 	require.NotNil(t, reply)
 	require.Equal(t, "message.create", reply.OperationType)
-	require.JSONEq(t, `{"channelId":"2001","content":"final reply","embeds":[]}`, string(reply.Payload))
+	require.JSONEq(t, `{"channelId":"2001","content":"final reply"}`, string(reply.Payload))
 	require.NoError(t, store.Complete(ctx, *reply, json.RawMessage(`{"messageId":"5003"}`)))
 
 	require.NoError(t, store.Enqueue(ctx, "crash-recovery", "message.create", "channels/2001/messages",

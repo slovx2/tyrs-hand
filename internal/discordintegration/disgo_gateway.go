@@ -2,8 +2,10 @@ package discordintegration
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/disgoorg/disgo/gateway"
 	disgorest "github.com/disgoorg/disgo/rest"
 	"github.com/disgoorg/snowflake/v2"
+	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"go.uber.org/zap"
 )
@@ -147,8 +150,7 @@ func (c *DisgoConnector) handleMessage(ctx context.Context, event *events.Messag
 			return NewSQLoutbox(c.manager.db).Enqueue(ctx,
 				"conversation:terminated-rejection:"+input.MessageID,
 				"message.create", "channels/"+input.ThreadID+"/messages", map[string]any{
-					"channelId": input.ThreadID, "content": "",
-					"embeds": []EmbedPayload{terminatedControlCard()},
+					"channelId": input.ThreadID, "card": terminatedControlCard(),
 				}, "conversation-terminated-"+input.MessageID)
 		}
 		return err
@@ -251,6 +253,10 @@ func (c *DisgoConnector) onComponent(event *events.ComponentInteractionCreate) {
 		return
 	}
 	customID := event.Data.CustomID()
+	if strings.HasPrefix(customID, "codex-progress-") {
+		c.updateConversationProgressPage(event, customID)
+		return
+	}
 	eventID := "interaction:" + event.ID().String()
 	inserted, err := c.manager.RecordInboundEvent(context.Background(), eventID, c.guildID,
 		"MESSAGE_COMPONENT", map[string]string{"id": event.ID().String(), "customId": customID})
@@ -300,6 +306,79 @@ func (c *DisgoConnector) onComponent(event *events.ComponentInteractionCreate) {
 	}
 	empty := []discord.LayoutComponent{}
 	_ = event.UpdateMessage(discord.MessageUpdate{Content: &content, Components: &empty})
+}
+
+func (c *DisgoConnector) updateConversationProgressPage(event *events.ComponentInteractionCreate,
+	customID string,
+) {
+	_, runID, page, err := parseProgressButton(customID)
+	if err != nil || event.GuildID() == nil {
+		_ = event.CreateMessage(discord.NewMessageCreate().WithContent("这个翻页按钮无效，请使用卡片上的最新按钮。").WithEphemeral(true))
+		return
+	}
+	card, err := c.conversationProgressPage(context.Background(), event.GuildID().String(),
+		event.Message.ChannelID.String(), event.Message.ID.String(), runID, page)
+	if err != nil {
+		_ = event.CreateMessage(discord.NewMessageCreate().WithContent("这张卡片已过期，无法继续翻页。").WithEphemeral(true))
+		return
+	}
+	components, err := discordCardComponents(card)
+	if err != nil {
+		_ = event.CreateMessage(discord.NewMessageCreate().WithContent("卡片暂时无法更新，请稍后重试。").WithEphemeral(true))
+		return
+	}
+	update := discord.NewMessageUpdateV2(components...)
+	emptyContent := ""
+	emptyEmbeds := []discord.Embed{}
+	update.Content, update.Embeds = &emptyContent, &emptyEmbeds
+	update.AllowedMentions = &discord.AllowedMentions{}
+	_ = event.UpdateMessage(update)
+}
+
+func parseProgressButton(customID string) (string, uuid.UUID, int, error) {
+	if !strings.HasPrefix(customID, "codex-progress-") {
+		return "", uuid.Nil, 0, errors.New("discord 翻页按钮前缀无效")
+	}
+	parts := strings.Split(strings.TrimPrefix(customID, "codex-progress-"), ":")
+	if len(parts) != 3 || (parts[0] != "older" && parts[0] != "newer" && parts[0] != "latest") {
+		return "", uuid.Nil, 0, errors.New("discord 翻页动作无效")
+	}
+	runID, err := uuid.Parse(parts[1])
+	if err != nil {
+		return "", uuid.Nil, 0, err
+	}
+	page, err := strconv.Atoi(parts[2])
+	if err != nil || page < 0 {
+		return "", uuid.Nil, 0, errors.New("discord 翻页页码无效")
+	}
+	return parts[0], runID, page, nil
+}
+
+func (c *DisgoConnector) conversationProgressPage(ctx context.Context, guildID, channelID,
+	messageID string, runID uuid.UUID, page int,
+) (ComponentCardPayload, error) {
+	if page < 0 {
+		return ComponentCardPayload{}, errors.New("discord 翻页页码无效")
+	}
+	var rawPayload json.RawMessage
+	err := c.manager.db.QueryRowContext(ctx, `SELECT desired_payload
+		FROM discord_projections WHERE guild_id = $1 AND resource_id = $2 AND message_id = $3
+		AND projection_key LIKE 'conversation:%'`, guildID, channelID, messageID).Scan(&rawPayload)
+	var desired struct {
+		Progress conversationProgressPayload `json:"progress"`
+	}
+	if err == nil {
+		err = json.Unmarshal(rawPayload, &desired)
+	}
+	if err != nil || desired.Progress.RunID != runID.String() {
+		return ComponentCardPayload{}, errors.New("discord 翻页卡片与 Run 不匹配")
+	}
+	timeline, err := conversationTimelineForRun(ctx, c.manager.db, runID,
+		desired.Progress.Summary)
+	if err != nil || page >= len(timeline.Pages) {
+		return ComponentCardPayload{}, errors.New("discord 翻页目标不存在")
+	}
+	return conversationProgressCard(desired.Progress.State, timeline, page, runID.String()), nil
 }
 
 func (c *DisgoConnector) registerCommands(ctx context.Context, client *bot.Client) error {

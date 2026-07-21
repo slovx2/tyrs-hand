@@ -638,17 +638,6 @@ func githubReplySpec() ports.DynamicToolSpec {
 	}
 }
 
-func discordTitleSpec() ports.DynamicToolSpec {
-	return ports.DynamicToolSpec{
-		Type: "namespace", Name: "discord", Description: "Update metadata for the current Discord Codex post.",
-		Tools: []ports.DynamicToolSpec{{
-			Type: "function", Name: "set_post_title",
-			Description: "Set one concise title for the current Discord post after understanding the task. This succeeds at most once per post.",
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"title":{"type":"string","minLength":1,"maxLength":100}},"required":["title"],"additionalProperties":false}`),
-		}},
-	}
-}
-
 func codexRuntimeConfig(environment []string, workerDataRoot string) map[string]any {
 	config := replygate.SessionConfig()
 	values := make(map[string]any, len(environment))

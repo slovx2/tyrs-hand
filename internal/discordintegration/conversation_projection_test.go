@@ -59,7 +59,7 @@ func TestProjectConversationStatusUsesSingleProjectionOutboxKey(t *testing.T) {
 	mock.ExpectCommit()
 
 	err = ProjectConversationStatus(context.Background(), db, "guild-1", "thread-1",
-		conversationID, "message-1", ConversationRunning, "消息已进入队列。")
+		conversationID, "message-1", uuid.Nil, ConversationRunning, "消息已进入队列。")
 	require.NoError(t, err)
 	mock.ExpectClose()
 }

@@ -230,16 +230,6 @@ func (c *Client) WorkspaceState(ctx context.Context, task *Task, state Workspace
 	return c.call(ctx, http.MethodPost, runPath(task, "/workspace-state"), state, nil, true)
 }
 
-func (c *Client) SetDiscordTitle(ctx context.Context, task *Task,
-	title string,
-) (DiscordTitleResponse, error) {
-	var response DiscordTitleResponse
-	err := c.call(ctx, http.MethodPost, runPath(task, "/discord-title"), DiscordTitleRequest{
-		RunLeaseRequest: lease(task), Title: title,
-	}, &response, true)
-	return response, err
-}
-
 func (c *Client) CallTool(ctx context.Context, task *Task,
 	request codex.ToolCallRequest,
 ) (codex.ToolCallResult, error) {

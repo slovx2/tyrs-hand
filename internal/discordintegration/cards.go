@@ -15,19 +15,20 @@ const (
 	cardColorGray    = 0x95A5A6
 )
 
-type EmbedPayload struct {
-	Title       string              `json:"title,omitempty"`
-	Description string              `json:"description,omitempty"`
-	Color       int                 `json:"color,omitempty"`
-	Footer      string              `json:"footer,omitempty"`
-	Timestamp   string              `json:"timestamp,omitempty"`
-	Fields      []EmbedFieldPayload `json:"fields,omitempty"`
+type ComponentCardPayload struct {
+	AccentColor int                      `json:"accentColor"`
+	Header      string                   `json:"header"`
+	Body        string                   `json:"body,omitempty"`
+	Timeline    string                   `json:"timeline,omitempty"`
+	Footer      string                   `json:"footer,omitempty"`
+	Buttons     []ComponentButtonPayload `json:"buttons,omitempty"`
 }
 
-type EmbedFieldPayload struct {
-	Name   string `json:"name"`
-	Value  string `json:"value"`
-	Inline bool   `json:"inline,omitempty"`
+type ComponentButtonPayload struct {
+	Label    string `json:"label"`
+	CustomID string `json:"customId"`
+	Style    string `json:"style,omitempty"`
+	Disabled bool   `json:"disabled,omitempty"`
 }
 
 type ConversationProgress string
@@ -39,31 +40,50 @@ const (
 	ConversationFailed    ConversationProgress = "failed"
 )
 
-func conversationProgressCard(state ConversationProgress, detail string) EmbedPayload {
-	detail = cardText(detail, 4096)
+func conversationProgressCard(state ConversationProgress, timeline ConversationTimeline,
+	page int, runID string,
+) ComponentCardPayload {
+	header, color, footer := "⚙️ Codex · 处理中", cardColorBlurple,
+		"状态会在此卡片中更新 · 不展示工具返回内容"
 	switch state {
 	case ConversationCompleted:
-		return EmbedPayload{Title: "✅ Codex · 已完成", Description: detail, Color: cardColorGreen,
-			Footer: "完整回复见下一条消息 · 不展示工具返回内容"}
+		header, color, footer = "✅ Codex · 已完成", cardColorGreen,
+			"完整回复见下一条消息 · 不展示工具返回内容"
 	case ConversationCanceled:
-		return EmbedPayload{Title: "⏹️ Codex · 已停止", Description: detail, Color: cardColorGray,
-			Footer: "本轮不会再发送回复 · 不展示工具返回内容"}
+		header, color, footer = "⏹️ Codex · 已停止", cardColorGray,
+			"本轮不会再发送回复 · 不展示工具返回内容"
 	case ConversationFailed:
-		return EmbedPayload{Title: "❌ Codex · 处理失败", Description: detail, Color: cardColorRed,
-			Footer: "后台已记录错误，可稍后重试 · 不展示工具返回内容"}
-	default:
-		return EmbedPayload{Title: "⚙️ Codex · 处理中", Description: detail, Color: cardColorBlurple,
-			Footer: "状态会在此卡片中更新 · 不展示工具返回内容"}
+		header, color, footer = "❌ Codex · 处理失败", cardColorRed,
+			"后台已记录错误，可稍后重试 · 不展示工具返回内容"
 	}
+	if len(timeline.Pages) == 0 {
+		timeline.Pages = []string{"正在处理请求。"}
+	}
+	page = min(max(page, 0), len(timeline.Pages)-1)
+	card := ComponentCardPayload{AccentColor: color, Header: "## " + header,
+		Body:     fmt.Sprintf("`%s` · `%d 条更新`", compactDuration(timeline.Duration), timeline.Updates),
+		Timeline: timeline.Pages[page], Footer: footer}
+	if len(timeline.Pages) > 1 && runID != "" {
+		last := len(timeline.Pages) - 1
+		card.Footer += fmt.Sprintf(" · 第 %d / %d 页", page+1, len(timeline.Pages))
+		card.Buttons = []ComponentButtonPayload{
+			{Label: "较早", CustomID: progressButtonID("older", runID, max(0, page-1)), Disabled: page == 0},
+			{Label: fmt.Sprintf("%d / %d", page+1, len(timeline.Pages)),
+				CustomID: progressButtonID("page", runID, page), Disabled: true},
+			{Label: "较新", CustomID: progressButtonID("newer", runID, min(last, page+1)), Disabled: page == last},
+			{Label: "最新", CustomID: progressButtonID("latest", runID, last), Disabled: page == last},
+		}
+	}
+	return card
 }
 
-func terminatedControlCard() EmbedPayload {
-	return EmbedPayload{Title: "⛔ Codex · 会话已终止", Color: cardColorRed,
-		Description: "此会话此前发生了不可恢复错误，当前消息没有进入执行队列。请新建一个 Post 后重试。",
-		Footer:      "后台已保留错误信息供排查"}
+func terminatedControlCard() ComponentCardPayload {
+	return ComponentCardPayload{AccentColor: cardColorRed, Header: "## ⛔ Codex · 会话已终止",
+		Body:   "此会话此前发生了不可恢复错误，当前消息没有进入执行队列。请新建一个 Post 后重试。",
+		Footer: "后台已保留错误信息供排查"}
 }
 
-func conversationConfigurationCard(model, effort, tier string) EmbedPayload {
+func conversationConfigurationCard(model, effort, tier string) ComponentCardPayload {
 	if model == "" {
 		model = "Codex 默认"
 	}
@@ -84,13 +104,12 @@ func conversationConfigurationCard(model, effort, tier string) EmbedPayload {
 	} else {
 		tier = "标准"
 	}
-	return EmbedPayload{Title: "⚙️ Codex · 即将启动", Color: cardColorYellow,
-		Description: "可以直接使用后台默认值，或在 20 秒内调整本次会话参数。参数确认后会固定到本会话。",
-		Fields: []EmbedFieldPayload{
-			{Name: "模型", Value: "`" + cardText(model, 128) + "`", Inline: true},
-			{Name: "服务等级", Value: "`" + cardText(tier, 32) + "`", Inline: true},
-			{Name: "思考等级", Value: "`" + cardText(effort, 32) + "`", Inline: true},
-		}, Footer: "20 秒后自动按以上参数启动"}
+	return ComponentCardPayload{AccentColor: cardColorYellow, Header: "## ⚙️ Codex · 即将启动",
+		Body: "可以直接使用后台默认值，或在 20 秒内调整本次会话参数。参数确认后会固定到本会话。\n\n" +
+			"**模型**  `" + cardText(model, 128) + "`\n" +
+			"**服务等级**  `" + cardText(tier, 32) + "`\n" +
+			"**思考等级**  `" + cardText(effort, 32) + "`",
+		Footer: "20 秒后自动按以上参数启动"}
 }
 
 func taskStatePresentation(state string) (string, int) {
@@ -108,17 +127,16 @@ func taskStatePresentation(state string) (string, int) {
 	}
 }
 
-func taskCard(task taskProjection, state string) EmbedPayload {
+func taskCard(task taskProjection, state string) ComponentCardPayload {
 	label, color := taskStatePresentation(state)
-	title := fmt.Sprintf("%s #%d · %s", taskKindLabel(task.Kind),
-		task.Number, task.Title)
-	fields := []EmbedFieldPayload{{Name: "状态", Value: label, Inline: true}}
+	title := fmt.Sprintf("%s #%d · %s", taskKindLabel(task.Kind), task.Number, task.Title)
+	body := "**状态**  " + label
 	if task.Owner != "" && task.Repository != "" {
-		fields = append(fields, EmbedFieldPayload{Name: "仓库", Value: "`" + cardText(task.Owner+"/"+task.Repository, 1000) + "`", Inline: true})
+		body += "\n**仓库**  `" + cardText(task.Owner+"/"+task.Repository, 1000) + "`"
 	}
-	fields = append(fields, EmbedFieldPayload{Name: "GitHub 状态", Value: "`" + cardText(task.WorkItemState, 1000) + "`", Inline: true})
-	return EmbedPayload{Title: cardText(title, 256), Color: color, Fields: fields,
-		Footer: "每分钟同步 · 此 Post 只读", Timestamp: time.Now().UTC().Format(time.RFC3339)}
+	body += "\n**GitHub 状态**  `" + cardText(task.WorkItemState, 1000) + "`"
+	return ComponentCardPayload{AccentColor: color, Header: "## " + cardText(title, 256), Body: body,
+		Footer: "每分钟同步 · 此 Post 只读 · " + time.Now().UTC().Format(time.RFC3339)}
 }
 
 func taskKindLabel(kind string) string {
@@ -132,32 +150,28 @@ func taskKindLabel(kind string) string {
 	}
 }
 
-func taskStateChangeCard(previous, current string) EmbedPayload {
+func taskStateChangeCard(previous, current string) ComponentCardPayload {
 	label, color := taskStatePresentation(current)
-	return EmbedPayload{Title: "任务状态已更新", Color: color,
-		Description: fmt.Sprintf("`%s` → **%s**", cardText(previous, 1000), label),
-		Footer:      "由 Tyrs Hand 自动同步"}
+	return ComponentCardPayload{AccentColor: color, Header: "## 任务状态已更新",
+		Body:   fmt.Sprintf("`%s` → **%s**", cardText(previous, 1000), label),
+		Footer: "由 Tyrs Hand 自动同步"}
 }
 
-func systemStatusCard(queued, running, failed, workers, outbox int64, gateway string) EmbedPayload {
-	color := cardColorGreen
-	state := "🟢 运行正常"
+func systemStatusCard(queued, running, failed, workers, outbox int64, gateway string) ComponentCardPayload {
+	color, state := cardColorGreen, "🟢 运行正常"
 	if workers == 0 || (gateway != "connected" && gateway != "resumed") {
 		color, state = cardColorRed, "🔴 服务异常"
 	} else if failed > 0 || outbox > 0 {
 		color, state = cardColorYellow, "🟡 需要关注"
 	}
-	return EmbedPayload{Title: "Tyrs Hand · 系统状态", Description: state, Color: color,
-		Fields: []EmbedFieldPayload{
-			{Name: "任务队列", Value: fmt.Sprintf("等待 `%d`\n运行 `%d`", queued, running), Inline: true},
-			{Name: "需关注", Value: fmt.Sprintf("失败 `%d`", failed), Inline: true},
-			{Name: "运行组件", Value: fmt.Sprintf("Worker `%d`\nGateway `%s`", workers, cardText(gateway, 100)), Inline: true},
-			{Name: "消息投递", Value: fmt.Sprintf("Outbox 待处理 `%d`", outbox), Inline: true},
-		},
-		Footer: "每分钟自动更新", Timestamp: time.Now().UTC().Format(time.RFC3339)}
+	body := fmt.Sprintf("%s\n\n**任务队列**  等待 `%d` · 运行 `%d`\n**需关注**  失败 `%d`\n"+
+		"**运行组件**  Worker `%d` · Gateway `%s`\n**消息投递**  Outbox 待处理 `%d`",
+		state, queued, running, failed, workers, cardText(gateway, 100), outbox)
+	return ComponentCardPayload{AccentColor: color, Header: "## Tyrs Hand · 系统状态", Body: body,
+		Footer: "每分钟自动更新 · " + time.Now().UTC().Format(time.RFC3339)}
 }
 
-func systemAlertsCard(gatewayStatus string, gatewayError bool, workers, failedOutbox int64) EmbedPayload {
+func systemAlertsCard(gatewayStatus string, gatewayError bool, workers, failedOutbox int64) ComponentCardPayload {
 	alerts := make([]string, 0, 4)
 	if gatewayStatus != "connected" && gatewayStatus != "resumed" {
 		alerts = append(alerts, "• Gateway：`"+cardText(gatewayStatus, 100)+"`")
@@ -172,12 +186,12 @@ func systemAlertsCard(gatewayStatus string, gatewayError bool, workers, failedOu
 		alerts = append(alerts, fmt.Sprintf("• Discord Outbox 有 `%d` 条失败投递。", failedOutbox))
 	}
 	if len(alerts) == 0 {
-		return EmbedPayload{Title: "✅ Tyrs Hand · 系统告警", Description: "当前没有基础设施告警。",
-			Color: cardColorGreen, Footer: "每分钟自动检查", Timestamp: time.Now().UTC().Format(time.RFC3339)}
+		return ComponentCardPayload{AccentColor: cardColorGreen, Header: "## ✅ Tyrs Hand · 系统告警",
+			Body: "当前没有基础设施告警。", Footer: "每分钟自动检查 · " + time.Now().UTC().Format(time.RFC3339)}
 	}
-	return EmbedPayload{Title: fmt.Sprintf("🚨 Tyrs Hand · 系统告警 · %d 项", len(alerts)),
-		Description: strings.Join(alerts, "\n"), Color: cardColorRed,
-		Footer: "请在管理后台查看详情", Timestamp: time.Now().UTC().Format(time.RFC3339)}
+	return ComponentCardPayload{AccentColor: cardColorRed,
+		Header: fmt.Sprintf("## 🚨 Tyrs Hand · 系统告警 · %d 项", len(alerts)),
+		Body:   strings.Join(alerts, "\n"), Footer: "请在管理后台查看详情 · " + time.Now().UTC().Format(time.RFC3339)}
 }
 
 func cardText(value string, limit int) string {

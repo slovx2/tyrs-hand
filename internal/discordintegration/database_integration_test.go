@@ -30,6 +30,7 @@ import (
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
 	"github.com/slovx2/tyrs-hand/internal/secrets"
 	"github.com/slovx2/tyrs-hand/internal/security"
+	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -207,8 +208,8 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT payload FROM integration_outbox
 		WHERE operation_key = 'projection:system.alerts'`).Scan(&alertsPayload))
 	for _, payload := range [][]byte{taskPayload, statusPayload, alertsPayload} {
-		require.Contains(t, string(payload), `"embeds"`)
-		require.Contains(t, string(payload), `"content": ""`)
+		require.Contains(t, string(payload), `"card"`)
+		require.NotContains(t, string(payload), `"embeds"`)
 	}
 	intentID := insertProjectionIntent(t, db, seed.workItemID, seed.repositoryID,
 		"projection-job-retry", "alice")
@@ -659,38 +660,29 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 			discord.NewLabel("服务等级", discord.StringSelectMenuComponent{CustomID: "service_tier", Values: []string{"standard"}}),
 			discord.NewLabel("思考等级", discord.StringSelectMenuComponent{CustomID: "reasoning_effort", Values: []string{"__default__"}}),
 		}))
-	generated, scheduled, err := ScheduleConversationTitle(ctx, db, createdID, "  Generated\nTitle  ")
+	_, err = db.ExecContext(ctx, `UPDATE discord_conversations SET title_rename_status = 'skipped'
+		WHERE title_rename_status = 'pending' AND id <> $1`, createdID)
 	require.NoError(t, err)
-	require.True(t, scheduled)
-	require.Equal(t, "Generated Title", generated)
-	generated, scheduled, err = ScheduleConversationTitle(ctx, db, createdID, "Ignored title")
+	generator := &TitleGenerator{db: db}
+	claimedTitle, err := generator.claim(ctx, "pending")
 	require.NoError(t, err)
-	require.False(t, scheduled)
-	require.Equal(t, "Generated Title", generated)
-	generated, err = EnsureConversationTitle(ctx, db, createdID, "fallback")
-	require.NoError(t, err)
-	require.Equal(t, "Generated Title", generated)
+	require.Equal(t, createdID, claimedTitle.ID)
+	require.NoError(t, generator.schedule(ctx, claimedTitle, "  Generated\nTitle  "))
 	completeOutboxForTest(t, ctx, db, "conversation-title:"+createdID.String(), nil)
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT title_rename_status FROM discord_conversations
 		WHERE id = $1`, createdID).Scan(&status))
 	require.Equal(t, "completed", status)
-	_, err = db.ExecContext(ctx, `UPDATE discord_conversations SET generated_title = NULL WHERE id = $1`, createdID)
-	require.NoError(t, err)
-	generated, err = EnsureConversationTitle(ctx, db, createdID, "unused fallback")
-	require.NoError(t, err)
-	require.Empty(t, generated)
-	generated, err = EnsureConversationTitle(ctx, db, startID, "fallback task")
-	require.NoError(t, err)
-	require.Equal(t, "fallback task", generated)
-	_, _, err = ScheduleConversationTitle(ctx, db, startID, "")
-	require.Error(t, err)
-	_, _, err = ScheduleConversationTitle(ctx, db, uuid.New(), "missing conversation")
-	require.Error(t, err)
+	var generated string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT generated_title FROM discord_conversations
+		WHERE id = $1`, createdID).Scan(&generated))
+	require.Equal(t, "Generated Title", generated)
 	for _, value := range []struct{ effort, tier string }{
 		{"low", "standard"}, {"medium", "fast"}, {"high", "standard"}, {"xhigh", "fast"}, {"unknown", "standard"},
 	} {
 		card := conversationConfigurationCard("", value.effort, value.tier)
-		require.Len(t, card.Fields, 3)
+		require.Contains(t, card.Body, "**模型**")
+		require.Contains(t, card.Body, "**服务等级**")
+		require.Contains(t, card.Body, "**思考等级**")
 	}
 }
 
@@ -802,7 +794,8 @@ func testDiscordRecoveryOrchestration(t *testing.T, ctx context.Context, db *sql
 	appManager := ghadapter.NewManager(db, manager.secrets)
 	_, _, err = NewGitHubOAuthApp(appManager).Credentials(ctx)
 	require.Error(t, err)
-	daemon := NewDaemon(manager, NewConversationService(db), &BindingService{store: store}, appManager, nil, zap.NewNop())
+	daemon := NewDaemon(manager, NewConversationService(db), &BindingService{store: store}, appManager,
+		platformsettings.NewService(db, manager.secrets), nil, zap.NewNop())
 	_, err = daemon.githubPermission(ctx, 1, "owner", "repo", "alice")
 	require.Error(t, err)
 	defaultRemote := daemon.newRemote("token", "http://127.0.0.1")

@@ -24,6 +24,7 @@ type discordProgressReporter struct {
 	claimed   *codexcontrol.ClaimedControl
 	jobCtx    discordJobContext
 	tracker   *discordintegration.ConversationActionTracker
+	projected time.Time
 }
 
 func (p *Processor) newDiscordProgressReporter(ctx context.Context, claimed *codexcontrol.ClaimedControl,
@@ -60,6 +61,11 @@ func (r *discordProgressReporter) observeEvent(ctx context.Context, event codex.
 	if !r.tracker.ApplyEvent(event.Method, event.Params) {
 		return
 	}
+	if (event.Method == "item/agentMessage/delta" || event.Method == "item/delta") &&
+		time.Since(r.projected) < 750*time.Millisecond {
+		return
+	}
+	r.projected = time.Now()
 	r.project(ctx, discordintegration.ConversationRunning, "正在处理请求。", 0)
 }
 
@@ -84,6 +90,7 @@ func (r *discordProgressReporter) dynamicTool(request codex.ToolCallRequest, sta
 	if !r.tracker.ApplyDynamicTool(request.CallID, namespace, request.Tool, request.Arguments, state) {
 		return
 	}
+	r.projected = time.Now()
 	r.project(ctx, discordintegration.ConversationRunning, "正在处理请求。", 0)
 }
 
@@ -98,7 +105,7 @@ func (r *discordProgressReporter) detail(summary string, durationMillis int64) s
 func (r *discordProgressReporter) project(ctx context.Context, state discordintegration.ConversationProgress,
 	summary string, durationMillis int64,
 ) {
-	r.processor.projectDiscordConversation(ctx, r.jobCtx, state, r.detail(summary, durationMillis))
+	r.processor.projectDiscordConversation(ctx, r.jobCtx, r.claimed.RunID, state, summary)
 }
 
 func mustDiscordProgressParams(request codex.ToolCallRequest, namespace, state string) json.RawMessage {

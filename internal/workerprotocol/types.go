@@ -263,16 +263,6 @@ type ConfirmTurnRequest struct {
 	TurnID string `json:"turnId"`
 }
 
-type DiscordTitleRequest struct {
-	RunLeaseRequest
-	Title string `json:"title"`
-}
-
-type DiscordTitleResponse struct {
-	Title     string `json:"title"`
-	Scheduled bool   `json:"scheduled"`
-}
-
 type ToolCallRequest struct {
 	RunLeaseRequest
 	Capability string                `json:"capability"`

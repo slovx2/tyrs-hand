@@ -73,8 +73,7 @@ func (d *Daemon) projectTask(ctx context.Context, task taskProjection, tags map[
 	outbox := NewSQLoutbox(d.manager.db)
 	if task.ThreadID == "" {
 		payload := map[string]any{
-			"channelId": task.ForumDiscordID, "threadName": taskThreadName(task), "content": "",
-			"embeds": []EmbedPayload{card},
+			"channelId": task.ForumDiscordID, "threadName": taskThreadName(task), "card": card,
 			"tagIds": taskTagIDs(tags, state), "workItemId": task.WorkItemID,
 			"forumId": task.ForumDBID, "state": state,
 		}
@@ -82,14 +81,14 @@ func (d *Daemon) projectTask(ctx context.Context, task taskProjection, tags map[
 			"channels/"+task.ForumDiscordID+"/threads", payload, "task-post-"+task.WorkItemID)
 	}
 	cardPayload := map[string]any{"channelId": task.ThreadID, "messageId": task.StarterMessageID,
-		"content": "", "embeds": []EmbedPayload{card}, "workItemId": task.WorkItemID, "state": state}
+		"card": card, "workItemId": task.WorkItemID, "state": state}
 	if err := outbox.Enqueue(ctx, "task-card:"+task.WorkItemID, "message.update",
 		"channels/"+task.ThreadID+"/messages/"+task.StarterMessageID, cardPayload, ""); err != nil {
 		return err
 	}
 	if task.LastState != "" && task.LastState != state {
-		logPayload := map[string]any{"channelId": task.ThreadID, "content": "",
-			"embeds":     []EmbedPayload{taskStateChangeCard(task.LastState, state)},
+		logPayload := map[string]any{"channelId": task.ThreadID,
+			"card":       taskStateChangeCard(task.LastState, state),
 			"workItemId": task.WorkItemID, "state": state}
 		if err := outbox.Enqueue(ctx, "task-log:"+task.WorkItemID+":"+state, "message.create",
 			"channels/"+task.ThreadID+"/messages", logPayload, "task-log-"+task.WorkItemID+"-"+state); err != nil {
