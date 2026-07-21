@@ -11,6 +11,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const remoteEventFlushInterval = time.Second
+
 func (r *RemoteRunner) runJournal(ctx context.Context, journal *runJournal, slots chan struct{},
 	active *sync.WaitGroup,
 ) {
@@ -44,6 +46,7 @@ func (r *RemoteRunner) runJournal(ctx context.Context, journal *runJournal, slot
 		r.runLeaseHeartbeat(processCtx, task, commands, logger)
 	}()
 	var journalMu sync.Mutex
+	var lastEventFlushAttempt time.Time
 	report := func(eventType string, payload json.RawMessage) {
 		journalMu.Lock()
 		journal.PendingEvents = append(journal.PendingEvents, workerprotocol.EventInput{
@@ -55,7 +58,11 @@ func (r *RemoteRunner) runJournal(ctx context.Context, journal *runJournal, slot
 			journalMu.Unlock()
 			return
 		}
-		r.flushEventsLocked(processCtx, journal, logger)
+		now := time.Now()
+		if shouldFlushRemoteEvents(lastEventFlushAttempt, now) {
+			lastEventFlushAttempt = now
+			r.flushEventsLocked(processCtx, journal, logger)
+		}
 		journalMu.Unlock()
 	}
 	result, err := r.processor.ProcessRemote(processCtx, task, commands, report)
@@ -79,6 +86,10 @@ func (r *RemoteRunner) runJournal(ctx context.Context, journal *runJournal, slot
 	}
 	journalMu.Unlock()
 	r.deliverTerminal(ctx, journal, logger)
+}
+
+func shouldFlushRemoteEvents(lastAttempt, now time.Time) bool {
+	return lastAttempt.IsZero() || now.Sub(lastAttempt) >= remoteEventFlushInterval
 }
 
 func (r *RemoteRunner) restoreLease(ctx context.Context, task *workerprotocol.Task,

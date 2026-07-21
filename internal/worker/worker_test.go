@@ -188,6 +188,13 @@ func TestRemoteDiscordEventReporterForwardsTimeline(t *testing.T) {
 		string(events[2].payload))
 }
 
+func TestRemoteEventUploadIsRateLimitedToBatches(t *testing.T) {
+	now := time.Date(2026, 7, 22, 1, 0, 0, 0, time.UTC)
+	require.True(t, shouldFlushRemoteEvents(time.Time{}, now))
+	require.False(t, shouldFlushRemoteEvents(now, now.Add(remoteEventFlushInterval-time.Millisecond)))
+	require.True(t, shouldFlushRemoteEvents(now, now.Add(remoteEventFlushInterval)))
+}
+
 func TestLocalToolCallAuditIsIdempotent(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
