@@ -8,12 +8,13 @@ if [[ $EUID -ne 0 ]]; then
   echo "请使用 root 运行宿主浏览器安装脚本" >&2
   exit 1
 fi
-if [[ ! -x /usr/bin/node ]]; then
-  echo "宿主缺少 /usr/bin/node" >&2
+node_bin=/usr/local/bin/node
+if [[ ! -x $node_bin ]]; then
+  echo "宿主缺少 $node_bin" >&2
   exit 1
 fi
-release=$(/usr/bin/node -e 'const lock=require(process.argv[1]); process.stdout.write(lock.release)' "$lock_path")
-extension_id=$(/usr/bin/node -e 'const lock=require(process.argv[1]); process.stdout.write(lock.extensionId)' "$lock_path")
+release=$($node_bin -e 'const lock=require(process.argv[1]); process.stdout.write(lock.release)' "$lock_path")
+extension_id=$($node_bin -e 'const lock=require(process.argv[1]); process.stdout.write(lock.extensionId)' "$lock_path")
 if [[ ! $release =~ ^tyrs-v[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ ! $extension_id =~ ^[a-p]{32}$ ]]; then
   echo "浏览器制品锁中的版本或扩展 ID 无效" >&2
   exit 1
@@ -29,7 +30,7 @@ cleanup() {
 trap cleanup EXIT
 
 "$script_dir/prepare-host.sh" "$desktop_user"
-/usr/bin/node "$script_dir/fetch-release.mjs" "$lock_path" "$download_dir"
+$node_bin "$script_dir/fetch-release.mjs" "$lock_path" "$download_dir"
 tar -xzf "$download_dir/tyrs-browser-bridge-bundle.tgz" -C "$download_dir"
 
 rm -rf "$release_dir"
@@ -58,7 +59,7 @@ EOF
 chown "$desktop_uid:$desktop_gid" /opt/tyrs-hand/browser/browser.env
 
 install -d -m 0755 /etc/opt/chrome/policies/managed
-/usr/bin/node "$script_dir/generate-policy.mjs" "$lock_path" \
+$node_bin "$script_dir/generate-policy.mjs" "$lock_path" \
   /opt/tyrs-hand/browser/browser_extension_token \
   /etc/opt/chrome/policies/managed/tyrs-browser.json
 chmod 0644 /etc/opt/chrome/policies/managed/tyrs-browser.json
