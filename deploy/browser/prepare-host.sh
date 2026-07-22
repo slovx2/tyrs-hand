@@ -5,6 +5,7 @@ desktop_user=${1:?请提供 Ubuntu 桌面用户名}
 desktop_uid=$(id -u "$desktop_user")
 desktop_gid=$(id -g "$desktop_user")
 
+setfacl -m "u:$desktop_user:--x" /opt/tyrs-hand
 install -d -o 10001 -g 10001 -m 0755 /opt/tyrs-hand/ssh-agent
 install -d -o "$desktop_uid" -g "$desktop_gid" -m 0777 /opt/tyrs-hand/browser-files
 install -d -o "$desktop_uid" -g "$desktop_gid" -m 0750 /opt/tyrs-hand/browser
