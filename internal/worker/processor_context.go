@@ -654,7 +654,7 @@ func codexRuntimeConfig(environment []string, workerDataRoot string,
 			config["mcp_servers"] = map[string]any{"chrome": map[string]any{
 				"url": cfg.BrowserMCPURL, "bearer_token_env_var": "TYRS_BROWSER_MCP_TOKEN",
 				"startup_timeout_sec": 10.0, "tool_timeout_sec": 120.0,
-				"required": false,
+				"required": false, "default_tools_approval_mode": "approve",
 			}}
 		}
 	}

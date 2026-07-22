@@ -206,6 +206,7 @@ func TestPrepareCodexRuntimeInjectsManagedCapabilities(t *testing.T) {
 	require.Equal(t, 10.0, chrome["startup_timeout_sec"])
 	require.Equal(t, 120.0, chrome["tool_timeout_sec"])
 	require.Equal(t, false, chrome["required"])
+	require.Equal(t, "approve", chrome["default_tools_approval_mode"])
 	require.NotContains(t, chrome, "bearer_token")
 	serializedConfig, err := json.Marshal(runtimeConfig)
 	require.NoError(t, err)
