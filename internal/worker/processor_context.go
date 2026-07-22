@@ -24,7 +24,18 @@ import (
 
 var errDiscordTurnStopped = errors.New("当前 Discord Codex Turn 已被停止")
 
-const turnCleanupTimeout = 5 * time.Second
+const (
+	turnCleanupTimeout        = 5 * time.Second
+	workerCodexSandbox        = "danger-full-access"
+	workerCodexApprovalPolicy = "never"
+)
+
+// workerThreadOptions 在平台边界固定无人值守 Codex 的命令权限，避免 Profile 或任务快照覆盖。
+func workerThreadOptions(options ports.ThreadOptions) ports.ThreadOptions {
+	options.Sandbox = workerCodexSandbox
+	options.ApprovalPolicy = workerCodexApprovalPolicy
+	return options
+}
 
 func needsCleanupInterrupt(err error) bool {
 	return err != nil && !errors.Is(err, errDiscordTurnStopped)

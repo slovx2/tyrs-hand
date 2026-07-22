@@ -129,13 +129,13 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		}
 	}()
 	runtime := codex.NewRuntime(client)
-	options := ports.ThreadOptions{
+	options := workerThreadOptions(ports.ThreadOptions{
 		CWD: workspace, Model: jobCtx.Model, ReasoningEffort: jobCtx.ReasoningEffort,
-		ServiceTier: jobCtx.ServiceTier, Sandbox: "danger-full-access", ApprovalPolicy: jobCtx.ApprovalPolicy,
+		ServiceTier:           jobCtx.ServiceTier,
 		NetworkEnabled:        jobCtx.NetworkEnabled,
 		RuntimeConfig:         runtimeConfig,
 		DeveloperInstructions: browserDeveloperInstructions(p.cfg, discordintegration.MultiplayerDeveloperInstructions),
-	}
+	})
 	if jobCtx.HasRepository {
 		githubSpec, specErr := p.catalog.DynamicToolSpecFor(append(append([]string{}, claimed.AllowedTools...), claimed.DangerousActions...))
 		if specErr != nil {

@@ -107,16 +107,15 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
-	options := ports.ThreadOptions{
+	options := workerThreadOptions(ports.ThreadOptions{
 		CWD: runtime.Workspace, Model: settings.Model,
-		ReasoningEffort: settings.ReasoningEffort,
-		ServiceTier:     codexsettings.RuntimeServiceTier(settings.ServiceTier),
-		Sandbox:         "danger-full-access", ApprovalPolicy: settings.ApprovalPolicy,
+		ReasoningEffort:       settings.ReasoningEffort,
+		ServiceTier:           codexsettings.RuntimeServiceTier(settings.ServiceTier),
 		NetworkEnabled:        settings.NetworkEnabled,
 		RuntimeConfig:         runtimeConfig,
 		DeveloperInstructions: browserDeveloperInstructions(p.cfg, discordintegration.MultiplayerDeveloperInstructions),
 		DynamicTools:          withBrowserTools(p.cfg, githubSpec, localGitSpec()),
-	}
+	})
 	if err := codexRuntime.ValidateSkills(ctx, runtime.Workspace, skills); err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
