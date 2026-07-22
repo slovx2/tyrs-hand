@@ -2,6 +2,7 @@ package devcontainer
 
 import (
 	"context"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -15,8 +16,9 @@ import (
 )
 
 type recordingCommandRunner struct {
-	mu    sync.Mutex
-	calls [][]string
+	mu           sync.Mutex
+	calls        [][]string
+	failContains string
 }
 
 func (r *recordingCommandRunner) Run(_ context.Context, _ []string, _ string,
@@ -25,6 +27,9 @@ func (r *recordingCommandRunner) Run(_ context.Context, _ []string, _ string,
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.calls = append(r.calls, append([]string(nil), arguments...))
+	if r.failContains != "" && strings.Contains(strings.Join(arguments, " "), r.failContains) {
+		return "", errors.New("injected command failure")
+	}
 	return "ok", nil
 }
 
@@ -108,9 +113,46 @@ func TestReconfigureRemoteEnvironmentKeepsContainerRunningAndSecuresSSH(t *testi
 	require.True(t, runner.contains("PermitRootLogin no"))
 	require.True(t, runner.contains("DisableForwarding yes"))
 	require.True(t, runner.contains("AuthenticationMethods publickey"))
+	require.True(t, runner.contains("chown \"$TYRS_OWNER\" /run/tyrs-hand"))
+	require.True(t, runner.contains("chmod 0700 /run/tyrs-hand"))
+	require.True(t, runner.contains("chmod 0777 /run/tyrs-hand"))
+	require.True(t, runner.contains("chmod 0666 /run/tyrs-hand/app-server.sock"))
 	require.True(t, runner.contains("docker exec --detach --user 0:0"))
 	require.True(t, runner.contains("sshd -D -e"))
 	require.True(t, runner.contains("codex-real app-server --listen unix:///run/tyrs-hand/app-server.sock"))
+}
+
+func TestShareAppServerSocketFallsBackToHostPermissions(t *testing.T) {
+	runtimeRoot := t.TempDir()
+	environmentID := uuid.New()
+	environmentRuntime := filepath.Join(runtimeRoot, environmentID.String())
+	require.NoError(t, os.MkdirAll(environmentRuntime, 0o770))
+	socketPath := filepath.Join(environmentRuntime, "app-server.sock")
+	require.NoError(t, os.WriteFile(socketPath, nil, 0o600))
+	runner := &recordingCommandRunner{failContains: "chmod 0666 /run/tyrs-hand/app-server.sock"}
+	manager := &Manager{dockerBin: "docker", dockerHost: "inherit", runner: runner,
+		developmentRuntimeDir: runtimeRoot}
+
+	require.NoError(t, manager.shareAppServerSocket(context.Background(), "development",
+		environmentID))
+	metadata, err := os.Stat(socketPath)
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o666), metadata.Mode().Perm())
+
+	require.ErrorContains(t, manager.shareAppServerSocket(context.Background(), "development",
+		uuid.New()), "宿主回退")
+
+	setupFailure := &Manager{dockerBin: "docker", dockerHost: "inherit",
+		runner: &recordingCommandRunner{failContains: "chown \"$TYRS_WORKER_OWNER\""}}
+	require.ErrorContains(t, setupFailure.shareAppServerSocket(context.Background(),
+		"development", environmentID), "共享环境 Codex")
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	waitFailure := &Manager{dockerBin: "docker", dockerHost: "inherit",
+		runner: &recordingCommandRunner{failContains: "test -S /run/tyrs-hand/app-server.sock"}}
+	require.ErrorIs(t, waitFailure.waitForAppServerSocket(canceled, "development"),
+		context.Canceled)
 }
 
 func TestRunRemoteDevelopmentOperationRejectsUnknownType(t *testing.T) {

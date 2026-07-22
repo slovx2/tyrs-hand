@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -116,7 +118,8 @@ func (m *Manager) configureRemoteDaemons(ctx context.Context, container string,
 	owner := fmt.Sprintf("%d:%d", operation.RuntimeUID, operation.RuntimeGID)
 	setup := `set -eu
 install -d -m 0770 /run/tyrs-hand
-chmod 0777 /run/tyrs-hand
+chown "$TYRS_OWNER" /run/tyrs-hand
+chmod 0700 /run/tyrs-hand
 install -d -m 0755 /run/sshd
 install -d -o "$TYRS_UID" -g "$TYRS_GID" -m 0700 /var/lib/tyrs-hand/codex
 if test -s /run/tyrs-hand/app-server.pid && kill -0 "$(cat /run/tyrs-hand/app-server.pid)" 2>/dev/null; then
@@ -160,7 +163,37 @@ exec /opt/tyrs-hand/libexec/codex-real app-server --listen unix:///run/tyrs-hand
 		container, "/bin/sh", "-c", appServerCommand); err != nil {
 		return fmt.Errorf("启动环境 Codex app-server: %w", err)
 	}
-	return m.waitForAppServerSocket(ctx, container)
+	if err := m.waitForAppServerSocket(ctx, container); err != nil {
+		return err
+	}
+	return m.shareAppServerSocket(ctx, container, operation.EnvironmentID)
+}
+
+func (m *Manager) shareAppServerSocket(ctx context.Context, container string,
+	environmentID uuid.UUID,
+) error {
+	// Codex 启动时要求 Socket 目录属于自己且权限为 0700；监听完成后再恢复 Worker
+	// 对宿主 bind 的所有权。宿主父目录仍是 0770，只对当前 Worker 开放。
+	workerOwner := fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid())
+	script := `set -eu
+chown "$TYRS_WORKER_OWNER" /run/tyrs-hand
+chmod 0777 /run/tyrs-hand`
+	if _, err := m.docker(ctx, "exec", "--user", "0:0",
+		"--env", "TYRS_WORKER_OWNER="+workerOwner,
+		container, "/bin/sh", "-c", script); err != nil {
+		return fmt.Errorf("共享环境 Codex app-server Socket: %w", err)
+	}
+	if _, err := m.docker(ctx, "exec", "--user", "0:0", container,
+		"chmod", "0666", appServerSocket); err != nil {
+		// Docker Desktop 的 bind mount 不允许容器修改 Unix Socket 权限，但宿主进程可以。
+		hostSocket := filepath.Join(m.developmentRuntimeDir, environmentID.String(),
+			filepath.Base(appServerSocket))
+		if hostErr := os.Chmod(hostSocket, 0o666); hostErr != nil {
+			return fmt.Errorf("设置环境 Codex app-server Socket 权限: %w（宿主回退: %v）",
+				err, hostErr)
+		}
+	}
+	return nil
 }
 
 func (m *Manager) StopRemoteAppServer(ctx context.Context, container string) error {

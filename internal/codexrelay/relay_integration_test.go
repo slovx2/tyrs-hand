@@ -222,8 +222,11 @@ func TestRelayWorkerSubscriptionDoesNotDependOnGlobalEventQueue(t *testing.T) {
 		EventBacklog: 1})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = worker.Close() })
+	startedEvents := worker.Subscribe(codex.ThreadFilter{})
 	threadID, err := worker.StartThread(context.Background(), mustJSON(map[string]any{"cwd": t.TempDir()}))
 	require.NoError(t, err)
+	require.Equal(t, "thread/started", receiveEvent(t, startedEvents.Events()).Method)
+	startedEvents.Close()
 	subscription := worker.Subscribe(codex.ThreadFilter{ThreadID: threadID})
 	t.Cleanup(subscription.Close)
 
@@ -424,6 +427,10 @@ func startRelay(t *testing.T, upstream string) *codexrelay.Relay {
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, relay.Close()) })
+	metadata, err := os.Stat(relay.SocketPath())
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o666), metadata.Mode().Perm(),
+		"开发容器用户必须能跨 UID/GID 连接 Relay")
 	return relay
 }
 

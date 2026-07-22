@@ -269,6 +269,11 @@ func testRemoteSSHAndDesktopProxy(t *testing.T, manager *Manager, environmentID 
 		WHERE id=$1`, environmentID).Scan(&operation.ImageRef, &operation.DataVolume,
 		&operation.HomeVolume, &operation.Network))
 	require.NoError(t, manager.reconfigureRemote(context.Background(), operation))
+	permissions, err := manager.docker(context.Background(), "exec", runtime.Container,
+		"stat", "-c", "%a:%n", "/run/tyrs-hand", "/run/tyrs-hand/app-server.sock")
+	require.NoError(t, err)
+	require.Contains(t, permissions, "777:/run/tyrs-hand\n")
+	require.Contains(t, permissions, "666:/run/tyrs-hand/app-server.sock")
 
 	hostKeyBefore := dockerReadRoot(t, manager, runtime,
 		"/var/lib/tyrs-hand/system/ssh/ssh_host_ed25519_key.pub")

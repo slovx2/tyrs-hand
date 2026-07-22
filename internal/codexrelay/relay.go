@@ -84,7 +84,8 @@ func (r *Relay) listen() error {
 	if err != nil {
 		return fmt.Errorf("监听 Relay Socket: %w", err)
 	}
-	if err := os.Chmod(r.options.SocketPath, 0o660); err != nil {
+	// Relay 与开发容器运行用户处于不同的 UID/GID 命名空间，宿主父目录负责隔离环境。
+	if err := os.Chmod(r.options.SocketPath, 0o666); err != nil {
 		_ = listener.Close()
 		return fmt.Errorf("设置 Relay Socket 权限: %w", err)
 	}
