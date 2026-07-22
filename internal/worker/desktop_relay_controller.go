@@ -10,9 +10,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/codexrelay"
+	"github.com/slovx2/tyrs-hand/internal/devcontainer"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
@@ -31,9 +33,10 @@ type desktopRelayCallState struct {
 }
 
 type desktopToolRuntime struct {
-	task   *workerprotocol.Task
-	report func(string, json.RawMessage)
-	err    error
+	task    *workerprotocol.Task
+	runtime devcontainer.Runtime
+	report  func(string, json.RawMessage)
+	err     error
 }
 
 func (c *desktopRelayController) PrepareCall(_ context.Context,
@@ -62,7 +65,7 @@ func (c *desktopRelayController) PrepareCall(_ context.Context,
 					return codex.ToolCallResult{}, runtime.err
 				}
 				return c.processor.handleRemoteDiscordTool(ctx, runtime.task,
-					c.environment.runtime, request, runtime.report)
+					runtime.runtime, request, runtime.report)
 			case <-ctx.Done():
 				return codex.ToolCallResult{}, ctx.Err()
 			case <-time.After(10 * time.Second):
@@ -260,7 +263,10 @@ func (c *desktopRelayController) observeDesktopTurn(call codexrelay.Call,
 		}
 	}
 	reporter := newDesktopEventReporter(ctx, c.processor, &task)
-	state.toolReady <- desktopToolRuntime{task: &task, report: reporter.Report}
+	toolRuntime, runtimeErr := desktopRuntimeForTask(c.environment.runtime, &task)
+	state.toolReady <- desktopToolRuntime{
+		task: &task, runtime: toolRuntime, report: reporter.Report, err: runtimeErr,
+	}
 	reporter.Report("discord.progress", remoteEventPayload(map[string]string{
 		"state": "running", "detail": "Codex Desktop 正在处理请求。",
 	}))
@@ -287,6 +293,25 @@ func (c *desktopRelayController) observeDesktopTurn(call codexrelay.Call,
 		}))
 	}
 	c.finishDesktopTurn(ctx, &task, reporter, resultValue, err)
+}
+
+func desktopRuntimeForTask(environment devcontainer.Runtime,
+	task *workerprotocol.Task,
+) (devcontainer.Runtime, error) {
+	if task == nil || task.Snapshot.Discord == nil || task.Snapshot.Discord.Development == nil {
+		return devcontainer.Runtime{}, errors.New("desktop turn 缺少 Discord 开发环境快照")
+	}
+	development := task.Snapshot.Discord.Development
+	if development.EnvironmentID == uuid.Nil || development.EnvironmentID != environment.EnvironmentID {
+		return devcontainer.Runtime{}, errors.New("desktop turn 开发环境快照与 Relay 环境不一致")
+	}
+	workspace, err := devcontainer.ContainerWorkspacePath(development.WorkspaceRelative)
+	if err != nil {
+		return devcontainer.Runtime{}, err
+	}
+	environment.ForumID = development.ForumID
+	environment.Workspace = workspace
+	return environment, nil
 }
 
 func (c *desktopRelayController) finishDesktopTurn(ctx context.Context, task *workerprotocol.Task,

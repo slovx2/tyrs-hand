@@ -46,6 +46,35 @@ func TestDesktopThreadCompletionDoesNotWaitForDiscordControl(t *testing.T) {
 		"Discord/Control 不可用不得延迟 Desktop thread/start 响应")
 }
 
+func TestDesktopToolRuntimeUsesBoundDiscordWorkspace(t *testing.T) {
+	environmentID := uuid.New()
+	environmentRuntime := devcontainer.Runtime{
+		EnvironmentID: environmentID,
+		Container:     "desktop-environment",
+		User:          "vscode",
+		UID:           1000,
+		GID:           1000,
+		Home:          "/home/vscode",
+	}
+	task := workerprotocol.Task{Snapshot: workerprotocol.TaskSnapshot{
+		Discord: &workerprotocol.DiscordSnapshot{Development: &workerprotocol.DevelopmentSpec{
+			EnvironmentID:     environmentID,
+			WorkspaceRelative: "workspaces/wakeqora",
+		}},
+	}}
+
+	runtime, err := desktopRuntimeForTask(environmentRuntime, &task)
+	require.NoError(t, err)
+	require.Equal(t, "/var/lib/tyrs-hand/workspaces/wakeqora", runtime.Workspace)
+	require.Equal(t, environmentRuntime.Container, runtime.Container)
+}
+
+func TestDesktopToolRuntimeRejectsMissingDevelopmentSnapshot(t *testing.T) {
+	_, err := desktopRuntimeForTask(devcontainer.Runtime{EnvironmentID: uuid.New()},
+		&workerprotocol.Task{})
+	require.EqualError(t, err, "desktop turn 缺少 Discord 开发环境快照")
+}
+
 func TestDesktopEventReporterPersistsUntilControlAcceptsTerminal(t *testing.T) {
 	var available atomic.Bool
 	var completed atomic.Int64

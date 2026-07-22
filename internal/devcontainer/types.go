@@ -1,11 +1,25 @@
 package devcontainer
 
-import "github.com/google/uuid"
+import (
+	"errors"
+	"path"
+	"strings"
+
+	"github.com/google/uuid"
+)
 
 const (
 	containerRoot = "/var/lib/tyrs-hand"
 	runtimeRoot   = "/opt/tyrs-hand"
 )
+
+func ContainerWorkspacePath(relative string) (string, error) {
+	clean := path.Clean(strings.TrimSpace(relative))
+	if clean == "." || path.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, "../") {
+		return "", errors.New("开发工作区相对路径无效")
+	}
+	return path.Join(containerRoot, clean), nil
+}
 
 type Runtime struct {
 	EnvironmentID   uuid.UUID
