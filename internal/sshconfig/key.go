@@ -2,10 +2,31 @@ package sshconfig
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"golang.org/x/crypto/ssh"
 )
+
+func ParseAuthorizedPublicKey(value string) (string, string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", "", errors.New("SSH 公钥不能为空")
+	}
+	publicKey, comment, options, rest, err := ssh.ParseAuthorizedKey([]byte(value))
+	_ = comment
+	if err != nil {
+		return "", "", errors.New("SSH 公钥格式无效")
+	}
+	if len(options) > 0 {
+		return "", "", fmt.Errorf("SSH 公钥不能包含 authorized_keys options")
+	}
+	if strings.TrimSpace(string(rest)) != "" {
+		return "", "", errors.New("每个环境只能配置一个 SSH 公钥")
+	}
+	normalized := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(publicKey)))
+	return normalized, ssh.FingerprintSHA256(publicKey), nil
+}
 
 func parsePrivateKey(privateKey, passphrase string) (string, string, error) {
 	privateKey = strings.TrimSpace(privateKey)

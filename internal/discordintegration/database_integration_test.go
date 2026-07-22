@@ -130,9 +130,6 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 		WHERE environment_id = $1 AND operation = 'rebuild'`,
 		firstEnvironmentID)
 	require.NoError(t, err)
-	_, err = db.ExecContext(ctx, `UPDATE discord_development_environments
-		SET status = 'stopped' WHERE id = $1`, firstEnvironmentID)
-	require.NoError(t, err)
 	thirdForumID := uuid.New()
 	insertDiscordResource(t, db, "forum.development."+thirdForumID.String(), "100000000000000014",
 		"forum", "dev-bob-repo", seed.codexCategoryID)

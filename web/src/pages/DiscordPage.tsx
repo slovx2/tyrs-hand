@@ -63,6 +63,16 @@ interface DevelopmentEnvironment {
   buildSourceSha?: string
   runtimeUser?: string
   error?: string
+  sshPublicKey?: string
+  sshFingerprint?: string
+  sshPort?: number
+  sshConfigRevision: number
+  sshAppliedRevision: number
+  daemonStatus: string
+  daemonError?: string
+  appServerStatus: string
+  sshStatus: string
+  relayStatus: string
   forums: DevelopmentForum[]
 }
 
@@ -553,6 +563,10 @@ function DevelopmentEnvironmentPanel({
             {environment.error && (
               <p className="error-text mt-2 text-sm">{environment.error}</p>
             )}
+            <DevelopmentEnvironmentSSHForm
+              key={`${environment.id}:${environment.sshConfigRevision}:${environment.sshAppliedRevision}`}
+              environment={environment}
+            />
             <div className="mt-3 grid gap-3">
               {environment.forums.map((forum) => (
                 <DevelopmentForumRow
@@ -569,6 +583,113 @@ function DevelopmentEnvironmentPanel({
           <p className="muted text-sm">尚未创建开发 Forum</p>
         )}
       </div>
+    </div>
+  )
+}
+
+function DevelopmentEnvironmentSSHForm({
+  environment,
+}: {
+  environment: DevelopmentEnvironment
+}) {
+  const queryClient = useQueryClient()
+  const showToast = useUI((state) => state.showToast)
+  const [publicKey, setPublicKey] = useState(environment.sshPublicKey ?? '')
+  const [port, setPort] = useState(
+    environment.sshPort ? String(environment.sshPort) : '',
+  )
+  const refresh = async () => {
+    await queryClient.invalidateQueries({
+      queryKey: ['discord-development-environments'],
+    })
+  }
+  const save = useMutation({
+    mutationFn: () =>
+      api<void>(`/discord/development-environments/${environment.id}/ssh`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          publicKey: publicKey.trim(),
+          port: Number(port),
+        }),
+      }),
+    onSuccess: async () => {
+      showToast('info', 'SSH 配置已排队生效')
+      await refresh()
+    },
+  })
+  const disable = useMutation({
+    mutationFn: () =>
+      api<void>(`/discord/development-environments/${environment.id}/ssh`, {
+        method: 'DELETE',
+      }),
+    onSuccess: async () => {
+      setPublicKey('')
+      setPort('')
+      showToast('info', 'SSH 停用请求已排队')
+      await refresh()
+    },
+  })
+  const pending =
+    environment.sshConfigRevision !== environment.sshAppliedRevision
+  return (
+    <div
+      className="mt-3 rounded border p-3"
+      style={{ borderColor: 'var(--border)' }}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-medium">Codex Desktop SSH</p>
+        <p className="muted text-xs">
+          总体 {environment.daemonStatus} · App Server{' '}
+          {environment.appServerStatus} · Relay {environment.relayStatus} · SSH{' '}
+          {environment.sshStatus}
+          {pending ? ' · 等待生效' : ''}
+          {environment.sshFingerprint ? ` · ${environment.sshFingerprint}` : ''}
+        </p>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_140px_auto_auto]">
+        <label className="text-sm">
+          <span className="sr-only">{environment.ownerName} SSH 公钥</span>
+          <textarea
+            className="field min-h-20"
+            aria-label={`${environment.ownerName} SSH 公钥`}
+            placeholder="ssh-ed25519 …"
+            value={publicKey}
+            onChange={(event) => setPublicKey(event.target.value)}
+          />
+        </label>
+        <label className="text-sm">
+          <span className="sr-only">{environment.ownerName} SSH 端口</span>
+          <input
+            className="field"
+            aria-label={`${environment.ownerName} SSH 端口`}
+            type="number"
+            min={1}
+            max={65535}
+            placeholder="宿主机端口"
+            value={port}
+            onChange={(event) => setPort(event.target.value)}
+          />
+        </label>
+        <button
+          type="button"
+          className="button-secondary"
+          disabled={!publicKey.trim() || !port || save.isPending}
+          onClick={() => save.mutate()}
+        >
+          {save.isPending ? '保存中…' : '保存 SSH'}
+        </button>
+        <button
+          type="button"
+          className="button-secondary"
+          disabled={!environment.sshPort || disable.isPending}
+          onClick={() => disable.mutate()}
+        >
+          {disable.isPending ? '停用中…' : '停用 SSH'}
+        </button>
+      </div>
+      {environment.daemonError && (
+        <p className="error-text mt-2 text-xs">{environment.daemonError}</p>
+      )}
     </div>
   )
 }

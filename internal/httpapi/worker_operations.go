@@ -26,11 +26,14 @@ func (s *Server) claimDevelopmentOperation(ctx context.Context, nodeID uuid.UUID
 	}
 	defer func() { _ = tx.Rollback() }()
 	var result workerprotocol.DevelopmentOperation
-	var forumID, imageRef, workspace sql.NullString
+	var forumID, imageRef, workspace, runtimeUser, runtimeHome, sshPublicKey sql.NullString
+	var sshPort sql.NullInt64
 	var previousEpoch int64
 	err = tx.QueryRowContext(ctx, `SELECT o.id, o.operation, o.environment_id,
 		o.forum_id::text, o.lease_epoch, e.container_name, e.image_ref,
-		e.data_volume_name, e.home_volume_name, e.network_name, fw.relative_path
+		e.data_volume_name, e.home_volume_name, e.network_name, fw.relative_path,
+		e.runtime_user, COALESCE(e.runtime_uid,0), COALESCE(e.runtime_gid,0), e.runtime_home,
+		e.ssh_public_key, e.ssh_port, e.ssh_config_revision
 		FROM discord_development_operations o
 		JOIN discord_development_environments e ON e.id = o.environment_id
 		LEFT JOIN discord_forum_workspaces fw ON fw.forum_id = o.forum_id
@@ -39,7 +42,8 @@ func (s *Server) claimDevelopmentOperation(ctx context.Context, nodeID uuid.UUID
 		ORDER BY o.created_at FOR UPDATE OF o SKIP LOCKED LIMIT 1`, nodeID).Scan(
 		&result.ID, &result.Operation, &result.EnvironmentID, &forumID, &previousEpoch,
 		&result.ContainerName, &imageRef, &result.DataVolume, &result.HomeVolume,
-		&result.Network, &workspace)
+		&result.Network, &workspace, &runtimeUser, &result.RuntimeUID, &result.RuntimeGID,
+		&runtimeHome, &sshPublicKey, &sshPort, &result.SSHConfigRevision)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -47,6 +51,8 @@ func (s *Server) claimDevelopmentOperation(ctx context.Context, nodeID uuid.UUID
 		return nil, err
 	}
 	result.ImageRef, result.Workspace = imageRef.String, workspace.String
+	result.RuntimeUser, result.RuntimeHome = runtimeUser.String, runtimeHome.String
+	result.SSHPublicKey, result.SSHPort = sshPublicKey.String, int(sshPort.Int64)
 	if forumID.Valid {
 		parsed, parseErr := uuid.Parse(forumID.String)
 		if parseErr != nil {
@@ -79,6 +85,13 @@ func (s *Server) claimDevelopmentOperation(ctx context.Context, nodeID uuid.UUID
 		s.cfg.LeaseDuration.String())
 	if err != nil {
 		return nil, err
+	}
+	if result.Operation == "reconfigure" {
+		if _, err = tx.ExecContext(ctx, `UPDATE discord_development_environments SET
+			daemon_status = 'starting', daemon_error = NULL, updated_at = now() WHERE id = $1`,
+			result.EnvironmentID); err != nil {
+			return nil, err
+		}
 	}
 	return &result, tx.Commit()
 }
@@ -161,9 +174,9 @@ func (s *Server) finishDevelopmentOperation(c *gin.Context, succeeded bool) {
 		return
 	}
 	if succeeded {
-		err = completeDevelopmentOperation(c, tx, operation, environmentID, forumID)
+		err = completeDevelopmentOperation(c, tx, operation, environmentID, forumID, request)
 	} else {
-		err = failDevelopmentOperation(c, tx, environmentID, forumID, request.Error)
+		err = failDevelopmentOperation(c, tx, operation, environmentID, forumID, request.Error)
 	}
 	if err == nil {
 		terminalStatus := "completed"
@@ -174,6 +187,13 @@ func (s *Server) finishDevelopmentOperation(c *gin.Context, succeeded bool) {
 			terminal_key = $3, error = NULLIF($4,''), lease_token = NULL,
 			lease_expires_at = NULL, finished_at = now(), updated_at = now() WHERE id = $1`,
 			id, terminalStatus, request.IdempotencyKey, request.Error)
+	}
+	if err == nil && succeeded && operation == "reconfigure" {
+		_, err = tx.ExecContext(c, `INSERT INTO discord_development_operations
+			(environment_id, operation, execution_node_id)
+			SELECT id, 'reconfigure', execution_node_id
+			FROM discord_development_environments
+			WHERE id = $1 AND ssh_applied_revision < ssh_config_revision`, environmentID.String)
 	}
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "保存开发环境 Operation 结果失败", err)
@@ -187,24 +207,24 @@ func (s *Server) finishDevelopmentOperation(c *gin.Context, succeeded bool) {
 }
 
 func completeDevelopmentOperation(ctx context.Context, tx *sql.Tx, operation string,
-	environmentID, forumID sql.NullString,
+	environmentID, forumID sql.NullString, request workerprotocol.DevelopmentOperationTerminal,
 ) error {
 	switch operation {
+	case "reconfigure":
+		if request.AppliedRevision <= 0 || request.ContainerID == "" || request.DaemonStatus != "running" {
+			return errors.New("worker 未返回有效的 daemon 应用状态")
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE discord_development_environments SET
+			container_id = $2, ssh_applied_revision = $3, daemon_status = 'running',
+			daemon_error = NULL, updated_at = now() WHERE id = $1
+			AND ssh_config_revision >= $3 AND ssh_applied_revision < $3`, environmentID.String,
+			request.ContainerID, request.AppliedRevision)
+		return err
 	case "rebuild":
 		_, err := tx.ExecContext(ctx, `UPDATE discord_development_environments SET
 			status = 'pending', image_ref = NULL, image_id = NULL, container_id = NULL,
 			runtime_user = NULL, runtime_uid = NULL, runtime_gid = NULL, runtime_home = NULL,
 			build_source_sha = NULL, error = NULL, updated_at = now() WHERE id = $1`,
-			environmentID.String)
-		return err
-	case "start":
-		_, err := tx.ExecContext(ctx, `UPDATE discord_development_environments
-			SET status = 'running', idle_at = NULL, updated_at = now() WHERE id = $1`,
-			environmentID.String)
-		return err
-	case "stop":
-		_, err := tx.ExecContext(ctx, `UPDATE discord_development_environments
-			SET status = 'stopped', idle_at = NULL, updated_at = now() WHERE id = $1`,
 			environmentID.String)
 		return err
 	case "delete_forum", "delete_environment":
@@ -244,13 +264,19 @@ func finalizeDevelopmentDeletion(ctx context.Context, tx *sql.Tx, environmentID,
 	return nil
 }
 
-func failDevelopmentOperation(ctx context.Context, tx *sql.Tx, environmentID,
-	forumID sql.NullString, message string,
+func failDevelopmentOperation(ctx context.Context, tx *sql.Tx, operation string,
+	environmentID, forumID sql.NullString, message string,
 ) error {
 	if message == "" {
 		message = "Worker 未提供失败原因"
 	}
 	if environmentID.Valid {
+		if operation == "reconfigure" {
+			_, err := tx.ExecContext(ctx, `UPDATE discord_development_environments SET
+				daemon_status = 'error', daemon_error = $2, updated_at = now() WHERE id = $1`,
+				environmentID.String, message)
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, `UPDATE discord_development_environments SET
 			status = 'error', error = $2, updated_at = now() WHERE id = $1`,
 			environmentID.String, message); err != nil {

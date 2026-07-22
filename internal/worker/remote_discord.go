@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -67,39 +65,12 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
-	runtimeCredential, err := p.client.RuntimeCredential(ctx, task)
+	_, runtimeConfig := prepareCodexRuntime(nil, "", p.cfg)
+	environmentCodex, err := p.environments.ensure(runtime, nil)
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
-	if err := os.MkdirAll(filepath.Join(p.cfg.WorkerDataRoot, "tmp"), 0o700); err != nil {
-		return workerprotocol.CompleteRequest{}, err
-	}
-	temporaryHome, err := os.MkdirTemp(filepath.Join(p.cfg.WorkerDataRoot, "tmp"),
-		"discord-codex-home-*")
-	if err != nil {
-		return workerprotocol.CompleteRequest{}, err
-	}
-	defer func() { _ = os.RemoveAll(temporaryHome) }()
-	environment, err := prepareRemoteCodexHome(temporaryHome, runtimeCredential,
-		task.Snapshot.Runtime.GlobalAgents)
-	if err != nil {
-		return workerprotocol.CompleteRequest{}, err
-	}
-	environment, runtimeConfig := prepareCodexRuntime(environment, "", p.cfg)
-	if err := p.development.CopyToRuntime(ctx, runtime, temporaryHome, runtime.CodexHome); err != nil {
-		return workerprotocol.CompleteRequest{}, err
-	}
-	poolKey := "job/" + task.Claimed.ID.String()
-	client, err := p.pool.AcquireWithLauncher(ctx, poolKey, runtime.Workspace, runtime.CodexHome,
-		runtime.Home, environment, p.development.Launcher(runtime), "/opt/tyrs-hand/bin/codex")
-	if err != nil {
-		return workerprotocol.CompleteRequest{}, err
-	}
-	defer func() {
-		if closeErr := p.pool.Release(poolKey); closeErr != nil {
-			p.logger.Warn("关闭远程 Discord Codex App Server 失败", zap.Error(closeErr))
-		}
-	}()
+	client := environmentCodex.client
 	codexRuntime := codex.NewRuntime(client)
 	settings := task.Snapshot.Runtime
 	githubSpec, err := p.catalog.DynamicToolSpecFor(append(
@@ -129,19 +100,24 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
-	unbind, err := p.pool.Bind(poolKey, threadID, func(toolCtx context.Context,
+	unbind := environmentCodex.bindTool(threadID, func(toolCtx context.Context,
 		request codex.ToolCallRequest,
 	) (codex.ToolCallResult, error) {
 		return p.handleRemoteDiscordTool(toolCtx, task, runtime, request, report)
 	})
-	if err != nil {
-		return workerprotocol.CompleteRequest{}, err
-	}
 	defer unbind()
+	unbindInteractive := environmentCodex.bindInteractive(threadID,
+		func(inputCtx context.Context, request codex.ServerRequest) (any, error) {
+			return p.handleRemoteInteractive(inputCtx, task, environmentCodex.generation, request)
+		})
+	defer unbindInteractive()
+	subscription := client.Subscribe(codex.ThreadFilter{ThreadID: threadID})
+	defer subscription.Close()
 	codexReport := remoteDiscordEventReporter(report)
 	if task.Claimed.Recovering {
-		result, recovered, recoverErr := p.reconcileRemoteTurn(ctx, codexRuntime, task,
-			threadID, commands, p.discordCommandHandler(task, runtime, skills, report), codexReport)
+		result, recovered, recoverErr := p.reconcileRemoteTurn(ctx, codexRuntime,
+			subscription.Events(), task, threadID, commands,
+			p.discordCommandHandler(task, runtime, skills, report), codexReport)
 		if recoverErr != nil {
 			return workerprotocol.CompleteRequest{}, recoverErr
 		}
@@ -157,7 +133,7 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	if err := p.client.RecordSubmission(ctx, task, turnID); err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
-	result, err := p.waitRemoteTurn(ctx, codexRuntime, client.Events(), task, threadID,
+	result, err := p.waitRemoteTurn(ctx, codexRuntime, subscription.Events(), task, threadID,
 		turnID, commands, p.discordCommandHandler(task, runtime, skills, report), codexReport)
 	if err != nil {
 		interruptTurnBestEffort(codexRuntime, threadID, turnID)

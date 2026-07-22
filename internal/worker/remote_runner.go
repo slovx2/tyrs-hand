@@ -23,6 +23,10 @@ type remoteTaskProcessor interface {
 	ProcessDevelopmentOperation(context.Context, *workerprotocol.DevelopmentOperation) error
 }
 
+type environmentCoordinator interface {
+	CoordinateEnvironments(context.Context) error
+}
+
 type RemoteRunner struct {
 	cfg       config.Config
 	client    *workerprotocol.Client
@@ -62,6 +66,12 @@ func (r *RemoteRunner) Run(ctx context.Context) error {
 	defer func() { _ = lock.Close() }()
 	if err := r.authenticate(ctx); err != nil {
 		return err
+	}
+	if coordinator, ok := r.processor.(environmentCoordinator); ok {
+		if err := coordinator.CoordinateEnvironments(ctx); err != nil {
+			r.logger.Warn("首次协调常驻开发环境未全部成功", zap.Error(err))
+		}
+		go r.environmentLoop(ctx, coordinator)
 	}
 	if r.ssh != nil {
 		go func() {
@@ -134,6 +144,25 @@ func (r *RemoteRunner) Run(ctx context.Context) error {
 	}
 	active.Wait()
 	return ctx.Err()
+}
+
+func (r *RemoteRunner) environmentLoop(ctx context.Context, coordinator environmentCoordinator) {
+	interval := r.cfg.HeartbeatInterval
+	if interval < 15*time.Second {
+		interval = 15 * time.Second
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := coordinator.CoordinateEnvironments(ctx); err != nil {
+				r.logger.Warn("协调常驻开发环境未全部成功", zap.Error(err))
+			}
+		}
+	}
 }
 
 func (r *RemoteRunner) authenticate(ctx context.Context) error {

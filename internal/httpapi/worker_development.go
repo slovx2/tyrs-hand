@@ -50,7 +50,7 @@ func (s *Server) workerDevelopmentState(c *gin.Context) {
 		status = $2, image_ref = NULLIF($3,''), image_id = NULLIF($4,''),
 		container_id = NULLIF($5,''), runtime_user = NULLIF($6,''), runtime_uid = NULLIF($7,0),
 		runtime_gid = NULLIF($8,0), runtime_home = NULLIF($9,''),
-		build_source_sha = NULLIF($10,''), error = NULLIF($11,''), idle_at = NULL,
+		build_source_sha = NULLIF($10,''), error = NULLIF($11,''),
 		last_used_at = now(), updated_at = now() WHERE id = $1`, request.EnvironmentID,
 		status, request.ImageRef, request.ImageID, request.ContainerID, request.RuntimeUser,
 		request.RuntimeUID, request.RuntimeGID, request.RuntimeHome, request.BuildSourceSHA,

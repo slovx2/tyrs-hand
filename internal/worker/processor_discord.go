@@ -82,7 +82,6 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	if err != nil {
 		return result, err
 	}
-	defer p.development.MarkIdle(context.Background(), jobCtx.EnvironmentID)
 	defer func() {
 		refreshCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()

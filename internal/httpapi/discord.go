@@ -152,6 +152,42 @@ func (s *Server) rebuildDiscordDevelopmentEnvironment(c *gin.Context) {
 	c.Status(http.StatusAccepted)
 }
 
+func (s *Server) putDiscordDevelopmentEnvironmentSSH(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		badRequest(c, err)
+		return
+	}
+	var input discordintegration.DevelopmentEnvironmentSSHInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		badRequest(c, err)
+		return
+	}
+	fingerprint, err := s.discord.SaveDevelopmentEnvironmentSSH(c, id, input)
+	if err != nil {
+		problem(c, http.StatusConflict, "保存开发环境 SSH 配置失败", err)
+		return
+	}
+	s.audit(c, "discord.development_environment.ssh.update", "discord_development_environment",
+		id.String(), map[string]any{"port": input.Port, "fingerprint": fingerprint})
+	c.Status(http.StatusAccepted)
+}
+
+func (s *Server) deleteDiscordDevelopmentEnvironmentSSH(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		badRequest(c, err)
+		return
+	}
+	if err := s.discord.ClearDevelopmentEnvironmentSSH(c, id); err != nil {
+		problem(c, http.StatusConflict, "停用开发环境 SSH 失败", err)
+		return
+	}
+	s.audit(c, "discord.development_environment.ssh.delete", "discord_development_environment",
+		id.String(), nil)
+	c.Status(http.StatusAccepted)
+}
+
 func (s *Server) discordDevelopmentForumDeletePreflight(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {

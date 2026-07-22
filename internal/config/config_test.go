@@ -19,7 +19,6 @@ func TestValidate(t *testing.T) {
 		RepoCacheMaxBytes: 1024, WorkerMaxConcurrentJobs: 6,
 		CodexStatusPollInterval: 30 * time.Second, CodexReconcileMaxAttempts: 3,
 		CodexResultDeliveryMaxAttempts: 5, CodexMaxSteersPerTurn: 5, GitHubReplyGateMaxBlocks: 3,
-		DevelopmentContainerIdle: 30 * time.Minute,
 	}
 	require.NoError(t, valid.Validate())
 	invalid := valid
@@ -76,7 +75,7 @@ func TestValidateAndLoadRemoteWorker(t *testing.T) {
 		Environment: "production", WorkerControlURL: "https://tyr.example.com",
 		CodexBin: "codex", WorkerID: "home-1", WorkerRole: "all",
 		WorkerCredentialFile:  "/data/worker/control-state/node-credential",
-		WorkerProtocolVersion: 1, WorkerMaxConcurrentJobs: 2,
+		WorkerProtocolVersion: 2, WorkerMaxConcurrentJobs: 2,
 	}
 	require.True(t, valid.RemoteWorker())
 	require.NoError(t, valid.ValidateWorker())
@@ -88,7 +87,7 @@ func TestValidateAndLoadRemoteWorker(t *testing.T) {
 	invalid.WorkerRole = "unknown"
 	require.Error(t, invalid.ValidateWorker())
 	invalid = valid
-	invalid.WorkerProtocolVersion = 2
+	invalid.WorkerProtocolVersion = 1
 	require.Error(t, invalid.ValidateWorker())
 	invalid = valid
 	invalid.WorkerCredentialFile = ""
@@ -109,7 +108,7 @@ func TestValidateAndLoadRemoteWorker(t *testing.T) {
 	t.Setenv("TYRS_HAND_WORKER_ID", "home-1")
 	t.Setenv("TYRS_HAND_WORKER_ROLE", "github")
 	t.Setenv("TYRS_HAND_WORKER_CREDENTIAL_FILE", filepath.Join(t.TempDir(), "credential"))
-	t.Setenv("TYRS_HAND_WORKER_PROTOCOL_VERSION", "1")
+	t.Setenv("TYRS_HAND_WORKER_PROTOCOL_VERSION", "2")
 	t.Setenv("TYRS_HAND_WORKER_MAX_CONCURRENT_JOBS", "2")
 	t.Setenv("TYRS_HAND_DATABASE_URL", "")
 	t.Setenv("TYRS_HAND_REDIS_URL", "")

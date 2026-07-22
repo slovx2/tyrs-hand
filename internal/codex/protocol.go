@@ -1,6 +1,9 @@
 package codex
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 type rpcMessage struct {
 	ID     json.RawMessage `json:"id,omitempty"`
@@ -10,11 +13,15 @@ type rpcMessage struct {
 	Error  *rpcError       `json:"error,omitempty"`
 }
 
-type rpcError struct {
+type RPCError struct {
 	Code    int             `json:"code"`
 	Message string          `json:"message"`
 	Data    json.RawMessage `json:"data,omitempty"`
 }
+
+func (e *RPCError) Error() string { return fmt.Sprintf("%d %s", e.Code, e.Message) }
+
+type rpcError = RPCError
 
 type requestEnvelope struct {
 	ID     int64  `json:"id"`

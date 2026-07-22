@@ -17,6 +17,7 @@ go test -tags=integration \
   ./internal/devcontainer \
   ./internal/discordintegration \
   ./internal/githubtools \
+	./internal/httpapi \
   ./internal/orchestrator \
   ./internal/security \
   ./internal/settings \

@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -20,6 +21,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/database"
+	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/executionnode"
 	"github.com/slovx2/tyrs-hand/internal/secrets"
 	"github.com/slovx2/tyrs-hand/internal/security"
@@ -226,6 +228,198 @@ func TestWorkerAPIDiscordRuntimePreferencesFreeze(t *testing.T) {
 	require.Equal(t, "gpt-5.6-sol", second.Task.Snapshot.Runtime.Model)
 	require.Equal(t, "xhigh", second.Task.Snapshot.Runtime.ReasoningEffort)
 	require.Equal(t, "standard", second.Task.Snapshot.Runtime.ServiceTier)
+}
+
+func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
+	db := workerDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	server, endpoint := workerTestServer(t, db)
+	node, enrollment, err := server.nodes.Create(ctx, "desktop-node", []string{"discord"}, 2)
+	require.NoError(t, err)
+	_, credential, err := server.nodes.Enroll(ctx, enrollment)
+	require.NoError(t, err)
+	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
+	repositoryID, _, _ := seedWorkerGitHubQueue(t, db, 41)
+	environmentID, forumID := seedDevelopmentOperation(t, db, repositoryID, node.ID)
+	workspace := "/var/lib/tyrs-hand/workspaces/" + forumID.String()
+
+	state, err := client.PrepareDesktopThread(ctx, workerprotocol.DesktopThreadPrepareRequest{
+		EnvironmentID: environmentID, Operation: "start", RequestKey: strings.Repeat("a", 64),
+		Params: json.RawMessage(`{"cwd":"` + workspace + `/nested","model":"mock-model","effort":"high"}`),
+	})
+	if err != nil {
+		var requestID uuid.UUID
+		require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM desktop_thread_requests
+			WHERE environment_id = $1 AND request_key = $2`, environmentID, strings.Repeat("a", 64)).Scan(&requestID))
+		testContext, _ := gin.CreateTestContext(httptest.NewRecorder())
+		testContext.Request = httptest.NewRequest("GET", "/", nil)
+		testContext.Set(workerNodeContextKey, node)
+		_, directErr := server.loadDesktopThreadState(testContext, requestID)
+		require.NoError(t, directErr)
+	}
+	require.NoError(t, err)
+	require.Equal(t, "post_pending", state.Status)
+	var controls int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_thread_controls`).Scan(&controls))
+	require.Zero(t, controls, "异步补投影前不应伪造已绑定 Control")
+
+	outbox := discordintegration.NewSQLoutbox(db)
+	item, err := outbox.Claim(ctx, time.Minute)
+	require.NoError(t, err)
+	require.NotNil(t, item)
+	require.Equal(t, "desktop-thread-post:"+state.ID.String(), item.OperationKey)
+	require.NoError(t, outbox.Complete(ctx, *item,
+		json.RawMessage(`{"threadId":"desktop-discord-thread","messageId":"desktop-starter"}`)))
+	state, err = client.DesktopThreadState(ctx, state.ID)
+	require.NoError(t, err)
+	require.Equal(t, "codex_pending", state.Status)
+	require.NotEqual(t, uuid.Nil, state.ControlID)
+	require.Equal(t, "mock-model", state.Config.Model)
+	require.Equal(t, "high", state.Config.ReasoningEffort)
+
+	response := json.RawMessage(`{"thread":{"id":"codex-desktop-thread"}}`)
+	state, err = client.CompleteDesktopThread(ctx, state.ID,
+		workerprotocol.DesktopThreadCompleteRequest{EnvironmentID: environmentID, Response: response})
+	require.NoError(t, err)
+	require.Equal(t, "completed", state.Status)
+	require.Equal(t, "codex-desktop-thread", state.ExternalThreadID)
+	var boundEnvironment uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT development_environment_id
+		FROM codex_thread_controls WHERE id = $1`, state.ControlID).Scan(&boundEnvironment))
+	require.Equal(t, environmentID, boundEnvironment)
+
+	task, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
+		EnvironmentID: environmentID, WorkerID: "desktop-worker",
+		RequestKey: strings.Repeat("d", 64), Params: json.RawMessage(
+			`{"threadId":"codex-desktop-thread","input":[{"type":"text","text":"desktop asks"}]}`),
+	})
+	require.NoError(t, err)
+	require.Equal(t, "desktop", task.Claimed.InputSurface)
+	require.Empty(t, task.Claimed.DiscordMessageID)
+	require.NotNil(t, task.Snapshot.Discord)
+	require.Equal(t, "desktop asks", task.Snapshot.Discord.Body)
+	require.NoError(t, client.RecordSubmission(ctx, &task, "desktop-turn-1"))
+	require.NoError(t, client.ConfirmTurn(ctx, &task, "desktop-turn-1"))
+	interactive, err := client.RegisterInteractive(ctx, &task, json.RawMessage(`"input-1"`),
+		json.RawMessage(`{"threadId":"codex-desktop-thread","turnId":"desktop-turn-1",`+
+			`"itemId":"question-1","questions":[{"id":"choice","header":"Choose",`+
+			`"question":"Continue?","options":[{"label":"Yes","description":"Continue"},`+
+			`{"label":"No","description":"Stop"}]}],"autoResolutionMs":60000}`), 1)
+	require.NoError(t, err)
+	require.Equal(t, "pending", interactive.Status)
+	require.False(t, interactive.Ready)
+	var activeSlot sql.NullInt64
+	var runStatus, intentStatus string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT r.active_slot, r.status, i.status
+		FROM codex_turn_runs r JOIN codex_turn_intents i ON i.id=r.primary_intent_id
+		WHERE r.id=$1`, task.Claimed.RunID).Scan(&activeSlot, &runStatus, &intentStatus))
+	require.False(t, activeSlot.Valid, "等待用户回答时必须释放计算槽")
+	require.Equal(t, "waiting_for_user", runStatus)
+	require.Equal(t, "waiting_for_user", intentStatus)
+	answered, err := client.AnswerInteractive(ctx, workerprotocol.InteractiveAnswerRequest{
+		EnvironmentID: environmentID, ThreadID: "codex-desktop-thread", TurnID: "desktop-turn-1",
+		ItemID: "question-1", Surface: "discord",
+		Answer: json.RawMessage(`{"answers":{"choice":{"answers":["Yes"]}}}`),
+	})
+	require.NoError(t, err)
+	require.True(t, answered.Accepted)
+	require.True(t, answered.Ready, "回答获胜后应在有空闲槽时恢复运行")
+	duplicate, err := client.AnswerInteractive(ctx, workerprotocol.InteractiveAnswerRequest{
+		EnvironmentID: environmentID, ThreadID: "codex-desktop-thread", TurnID: "desktop-turn-1",
+		ItemID: "question-1", Surface: "desktop",
+		Answer: json.RawMessage(`{"answers":{"choice":{"answers":["No"]}}}`),
+	})
+	require.NoError(t, err)
+	require.False(t, duplicate.Accepted, "并发或重复回答必须 first-answer-wins")
+	require.JSONEq(t, string(answered.Answer), string(duplicate.Answer))
+
+	secretInput, err := client.RegisterInteractive(ctx, &task, json.RawMessage(`"input-secret"`),
+		json.RawMessage(`{"threadId":"codex-desktop-thread","turnId":"desktop-turn-1",`+
+			`"itemId":"question-secret","questions":[{"id":"token","header":"Secret",`+
+			`"question":"Token?","isSecret":true}],"autoResolutionMs":60000}`), 1)
+	require.NoError(t, err)
+	require.True(t, secretInput.Secret)
+	secretAnswer := json.RawMessage(`{"answers":{"token":{"answers":["not-plaintext-secret"]}}}`)
+	_, err = client.AnswerInteractive(ctx, workerprotocol.InteractiveAnswerRequest{
+		EnvironmentID: environmentID, ThreadID: "codex-desktop-thread", TurnID: "desktop-turn-1",
+		ItemID: "question-secret", Surface: "discord", Answer: secretAnswer,
+	})
+	require.Error(t, err, "Secret 回答不得从 Discord 提交")
+	secretState, err := client.AnswerInteractive(ctx, workerprotocol.InteractiveAnswerRequest{
+		EnvironmentID: environmentID, ThreadID: "codex-desktop-thread", TurnID: "desktop-turn-1",
+		ItemID: "question-secret", Surface: "desktop", Answer: secretAnswer,
+	})
+	require.NoError(t, err)
+	require.True(t, secretState.Accepted)
+	require.JSONEq(t, string(secretAnswer), string(secretState.Answer))
+	var plainAnswer sql.NullString
+	var ciphertext []byte
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT q.answer::text, es.ciphertext
+		FROM codex_interactive_requests q JOIN encrypted_secrets es ON es.id=q.answer_secret_id
+		WHERE q.id=$1`, secretInput.ID).Scan(&plainAnswer, &ciphertext))
+	require.False(t, plainAnswer.Valid)
+	require.NotContains(t, string(ciphertext), "not-plaintext-secret")
+
+	timed, err := client.RegisterInteractive(ctx, &task, json.RawMessage(`"input-timeout"`),
+		json.RawMessage(`{"threadId":"codex-desktop-thread","turnId":"desktop-turn-1",`+
+			`"itemId":"question-timeout","questions":[{"id":"late","header":"Wait",`+
+			`"question":"Answer?"}],"autoResolutionMs":1}`), 1)
+	require.NoError(t, err)
+	time.Sleep(5 * time.Millisecond)
+	timed, err = client.InteractiveState(ctx, timed.ID)
+	require.NoError(t, err)
+	require.Equal(t, "expired", timed.Status)
+	require.True(t, timed.Ready)
+	require.JSONEq(t, `{"answers":{}}`, string(timed.Answer))
+	interrupted, err := client.RegisterInteractive(ctx, &task, json.RawMessage(`"input-restart"`),
+		json.RawMessage(`{"threadId":"codex-desktop-thread","turnId":"desktop-turn-1",`+
+			`"itemId":"question-restart","questions":[{"id":"restart","header":"Restart",`+
+			`"question":"Still there?"}],"autoResolutionMs":60000}`), 1)
+	require.NoError(t, err)
+	require.NoError(t, client.InterruptEnvironmentInteractive(ctx, environmentID))
+	interrupted, err = client.InteractiveState(ctx, interrupted.ID)
+	require.NoError(t, err)
+	require.Equal(t, "interrupted", interrupted.Status)
+	require.False(t, interrupted.Ready)
+	require.NoError(t, client.Events(ctx, &task, []workerprotocol.EventInput{{
+		Sequence: 1, Type: "discord.progress",
+		Payload: json.RawMessage(`{"state":"running","detail":"Desktop running"}`),
+	}}))
+	require.NoError(t, client.Complete(ctx, &task, codexcontrol.TurnResult{
+		TurnID: "desktop-turn-1", FinalAnswer: "desktop done",
+	}))
+	var projectedReply int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM integration_outbox
+		WHERE operation_key = $1`, "conversation-reply:"+state.ConversationID.String()+
+		":message:desktop-"+task.Claimed.ID.String()).Scan(&projectedReply))
+	require.Equal(t, 1, projectedReply)
+
+	fork, err := client.PrepareDesktopThread(ctx, workerprotocol.DesktopThreadPrepareRequest{
+		EnvironmentID: environmentID, Operation: "fork", RequestKey: strings.Repeat("b", 64),
+		Params: json.RawMessage(`{"threadId":"codex-desktop-thread"}`),
+	})
+	require.NoError(t, err, "Fork 不要求 Desktop 额外发送 cwd")
+	require.Equal(t, "post_pending", fork.Status)
+
+	failed, err := client.PrepareDesktopThread(ctx, workerprotocol.DesktopThreadPrepareRequest{
+		EnvironmentID: environmentID, Operation: "start", RequestKey: strings.Repeat("c", 64),
+		Params: json.RawMessage(`{"cwd":"` + workspace + `"}`),
+	})
+	require.NoError(t, err)
+	for {
+		item, err = outbox.Claim(ctx, time.Minute)
+		require.NoError(t, err)
+		require.NotNil(t, item)
+		if item.OperationKey == "desktop-thread-post:"+failed.ID.String() {
+			break
+		}
+		require.NoError(t, outbox.Fail(ctx, *item, errors.New("skip fork post")))
+	}
+	require.NoError(t, outbox.Fail(ctx, *item, errors.New("discord unavailable")))
+	failed, err = client.DesktopThreadState(ctx, failed.ID)
+	require.NoError(t, err)
+	require.Equal(t, "failed", failed.Status)
 }
 
 func TestWorkerAPIMissingDefaultAndDevelopmentOperationRecovery(t *testing.T) {
@@ -493,13 +687,14 @@ func workerTestServer(t *testing.T, db *sql.DB) (*Server, string) {
 	t.Helper()
 	box, err := security.NewSecretBox(make([]byte, 32))
 	require.NoError(t, err)
-	settings := platformsettings.NewService(db, secrets.NewStore(db, box))
+	secretStore := secrets.NewStore(db, box)
+	settings := platformsettings.NewService(db, secretStore)
 	require.NoError(t, settings.SaveAgentProvider(context.Background(),
 		platformsettings.AgentProviderInput{ProviderType: "api-key", APIKey: "test-key"}))
 	server := &Server{cfg: config.Config{LeaseDuration: 2 * time.Second,
 		CodexMaxSteersPerTurn: 5, CodexReconcileMaxAttempts: 3}, db: db,
 		nodes: executionnode.NewService(db), settings: settings,
-		ssh: sshconfig.NewService(db, secrets.NewStore(db, box))}
+		ssh: sshconfig.NewService(db, secretStore), secrets: secretStore}
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	server.registerWorkerRoutes(router)

@@ -63,6 +63,7 @@ func (m *Manager) provision(ctx context.Context, item *workspace, credential str
 		"--env", "TYRS_RUNTIME_USER="+lookup, imageRef, "-c",
 		`command -v git >/dev/null && command -v getent >/dev/null && command -v sleep >/dev/null || exit 20
 command -v ssh >/dev/null && command -v scp >/dev/null && command -v sftp >/dev/null || exit 23
+test -x /usr/sbin/sshd && command -v ssh-keygen >/dev/null && test -x /usr/lib/openssh/sftp-server || exit 24
 entry=$(getent passwd "$TYRS_RUNTIME_USER") || exit 21
 uid=$(printf '%s' "$entry" | cut -d: -f3)
 gid=$(printf '%s' "$entry" | cut -d: -f4)
@@ -91,12 +92,18 @@ printf '%s:%s:%s' "$uid" "$gid" "$home"`)
 	if err := m.ensureDockerResource(ctx, "network", item.Environment.Network); err != nil {
 		return err
 	}
+	runtimeDir := filepath.Join(m.developmentRuntimeDir, item.Environment.ID.String())
+	if err := os.MkdirAll(runtimeDir, 0o770); err != nil {
+		return fmt.Errorf("创建环境运行目录: %w", err)
+	}
+	hostRuntimeDir := filepath.Join(m.developmentRuntimeHostDir, item.Environment.ID.String())
 	candidateName := item.Environment.ContainerName + "-candidate-" + time.Now().UTC().Format("20060102150405")
 	_, _ = m.docker(ctx, "rm", "--force", candidateName)
-	createArguments := []string{"create", "--name", candidateName,
+	createArguments := []string{"create", "--name", candidateName, "--restart", "unless-stopped",
 		"--label", "com.tyrs-hand.development-environment=" + item.Environment.ID.String(),
 		"--network", item.Environment.Network, "--volume", item.Environment.DataVolume + ":" + containerRoot,
 		"--volume", item.Environment.HomeVolume + ":" + home,
+		"--mount", "type=bind,source=" + hostRuntimeDir + ",target=" + containerRunDir,
 		"--add-host", "host.docker.internal:host-gateway"}
 	if m.sshEnabled {
 		createArguments = append(createArguments, "--mount", "type=bind,source="+
@@ -124,6 +131,12 @@ printf '%s:%s:%s' "$uid" "$gid" "$home"`)
 	if err := m.installRuntime(ctx, candidateName, uid, gid, home); err != nil {
 		return err
 	}
+	if err := m.configureRemoteDaemons(ctx, candidateName, RemoteOperation{
+		EnvironmentID: item.Environment.ID, RuntimeUser: lookup, RuntimeUID: uid,
+		RuntimeGID: gid, RuntimeHome: home,
+	}); err != nil {
+		return err
+	}
 	if _, err := m.docker(ctx, "exec", "--user", fmt.Sprintf("%d:%d", uid, gid),
 		"--env", "HOME="+home, candidateName, runtimeRoot+"/bin/codex", "--version"); err != nil {
 		return fmt.Errorf("验证开发容器内 Codex 运行时: %w", err)
@@ -149,7 +162,7 @@ printf '%s:%s:%s' "$uid" "$gid" "$home"`)
 		_, err = m.db.ExecContext(ctx, `UPDATE discord_development_environments SET
 		status = 'running', image_ref = $2, image_id = $3, build_source_sha = NULLIF($4, ''),
 		container_id = $5, runtime_user = $6, runtime_uid = $7, runtime_gid = $8, runtime_home = $9,
-		error = NULL, idle_at = NULL, last_used_at = now(), updated_at = now() WHERE id = $1`,
+		error = NULL, last_used_at = now(), updated_at = now() WHERE id = $1`,
 			item.Environment.ID, imageRef, imageID, sha, containerID, runtimeUser, uid, gid, home)
 	}
 	if err != nil {

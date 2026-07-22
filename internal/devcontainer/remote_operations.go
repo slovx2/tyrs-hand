@@ -5,27 +5,26 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 )
+
+func (m *Manager) ContainerID(ctx context.Context, name string) (string, error) {
+	value, err := m.docker(ctx, "inspect", "--format", "{{.Id}}", name)
+	return strings.TrimSpace(value), err
+}
 
 func (m *Manager) RunRemoteOperation(ctx context.Context, operation RemoteOperation) error {
 	if !m.Enabled() {
 		return errors.New("discord 开发容器未启用")
 	}
 	switch operation.Operation {
+	case "reconfigure":
+		return m.reconfigureRemote(ctx, operation)
 	case "rebuild":
 		if err := m.removeDockerResource(ctx, "container", operation.ContainerName); err != nil {
 			return err
 		}
 		return m.removeDockerResource(ctx, "image", operation.ImageRef)
-	case "start":
-		_, err := m.docker(ctx, "start", operation.ContainerName)
-		return err
-	case "stop":
-		if !m.dockerResourceExists(ctx, "container", operation.ContainerName) {
-			return nil
-		}
-		_, err := m.docker(ctx, "stop", "--time", "10", operation.ContainerName)
-		return err
 	case "delete_forum":
 		return m.deleteRemoteForum(ctx, operation)
 	case "delete_environment":
@@ -54,10 +53,6 @@ func (m *Manager) deleteRemoteForum(ctx context.Context, operation RemoteOperati
 		return err
 	}
 	paths := []string{filepath.ToSlash(filepath.Join(containerRoot, operation.Workspace))}
-	for _, conversationID := range operation.ConversationIDs {
-		paths = append(paths, filepath.ToSlash(filepath.Join(containerRoot, "codex",
-			conversationID.String())))
-	}
 	arguments := []string{"exec", "--user", "0:0", operation.ContainerName, "rm", "-rf"}
 	_, err := m.docker(ctx, append(arguments, paths...)...)
 	return err

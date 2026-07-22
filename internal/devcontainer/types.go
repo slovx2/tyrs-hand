@@ -8,15 +8,17 @@ const (
 )
 
 type Runtime struct {
-	EnvironmentID uuid.UUID
-	ForumID       uuid.UUID
-	Container     string
-	Workspace     string
-	CodexHome     string
-	User          string
-	UID           int64
-	GID           int64
-	Home          string
+	EnvironmentID   uuid.UUID
+	ForumID         uuid.UUID
+	Container       string
+	Workspace       string
+	CodexHome       string
+	User            string
+	UID             int64
+	GID             int64
+	Home            string
+	AppServerSocket string
+	RelaySocket     string
 }
 
 type RemoteSpec struct {
@@ -56,14 +58,22 @@ type RemoteState struct {
 }
 
 type RemoteOperation struct {
-	Operation       string
-	ContainerName   string
-	ImageRef        string
-	DataVolume      string
-	HomeVolume      string
-	Network         string
-	Workspace       string
-	ConversationIDs []uuid.UUID
+	EnvironmentID     uuid.UUID
+	Operation         string
+	ContainerName     string
+	ImageRef          string
+	DataVolume        string
+	HomeVolume        string
+	Network           string
+	Workspace         string
+	ConversationIDs   []uuid.UUID
+	RuntimeUser       string
+	RuntimeUID        int64
+	RuntimeGID        int64
+	RuntimeHome       string
+	SSHPublicKey      string
+	SSHPort           int
+	SSHConfigRevision int64
 }
 
 type environment struct {

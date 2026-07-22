@@ -39,7 +39,7 @@ func InitializeRemoteWorker(ctx context.Context, cfg config.Config) (*RemoteWork
 		return nil, nil, err
 	}
 	client := workerprotocol.NewClient(cfg.WorkerControlURL, "", cfg.ControlTimeout)
-	processor := worker.NewRemoteProcessor(cfg, client, workspace, catalog, pool, development, logger)
+	processor := worker.NewRemoteProcessor(ctx, cfg, client, workspace, catalog, pool, development, logger)
 	runner, err := worker.NewRemoteRunner(cfg, client, processor, logger)
 	if err != nil {
 		cleanupPool()

@@ -3,10 +3,14 @@
 package devcontainer
 
 import (
+	"bufio"
 	"context"
+	"crypto/ed25519"
+	crand "crypto/rand"
 	"database/sql"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,6 +28,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"go.uber.org/zap"
+	"golang.org/x/crypto/ssh"
 )
 
 func TestUserEnvironmentSharesHomeAndKeepsIndependentRepositoryClones(t *testing.T) {
@@ -35,17 +40,18 @@ func TestUserEnvironmentSharesHomeAndKeepsIndependentRepositoryClones(t *testing
 	secondRepository := createGitRepository(t, filepath.Join(root, "second-repo"), "two.txt", "two")
 	environmentID, firstForumID, secondForumID := seedDevelopmentEnvironment(t, db,
 		buildRepository, secondRepository)
+	runtimeRoot, err := os.MkdirTemp("/tmp", "tyrs-dev-runtime-")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, os.RemoveAll(runtimeRoot)) })
 
 	t.Setenv("TYRS_HAND_DOCKER_REAL_BIN", "docker")
 	t.Setenv("TYRS_HAND_DOCKER_HOST", "inherit")
 	manager, err := NewManager(config.Config{
 		WorkerDataRoot: root, WorkerRole: "discord", EnableDevelopmentContainers: true,
-		DevelopmentContainerIdle: 30 * time.Minute,
+		DevelopmentRuntimeDir: runtimeRoot, DevelopmentRuntimeHostDir: runtimeRoot,
 	}, db, zap.NewNop())
 	require.NoError(t, err)
-	runtimeScript := filepath.Join(root, "codex")
-	require.NoError(t, os.WriteFile(runtimeScript, []byte("#!/bin/sh\nexit 0\n"), 0o755))
-	manager.codexBin = runtimeScript
+	manager.codexBin, manager.codexProxyBin = buildLinuxCodexTestBinaries(t, manager, root)
 	manager.replyHook = filepath.Join(root, "missing-reply-hook")
 	t.Cleanup(func() { cleanupDevelopmentResources(manager, environmentID) })
 
@@ -117,15 +123,17 @@ func TestUserEnvironmentSharesHomeAndKeepsIndependentRepositoryClones(t *testing
 	require.NoError(t, err)
 	require.Equal(t, "system", dockerRead(t, manager, first, "/system-layer"))
 	require.Equal(t, "home", dockerRead(t, manager, first, first.Home+"/home-marker"))
-	manager.idle = 0
-	manager.MarkIdle(ctx, environmentID)
-	manager.sweepIdle(ctx)
-	var stoppedStatus string
+	sweeperCtx, cancelSweeper := context.WithCancel(ctx)
+	go manager.RunSweeper(sweeperCtx)
+	time.Sleep(50 * time.Millisecond)
+	cancelSweeper()
+	var runningStatus string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM discord_development_environments WHERE id = $1`,
-		environmentID).Scan(&stoppedStatus))
-	require.Equal(t, "stopped", stoppedStatus)
+		environmentID).Scan(&runningStatus))
+	require.Equal(t, "running", runningStatus)
 	first, err = manager.Ensure(ctx, environmentID, firstForumID, conversationOne, "")
 	require.NoError(t, err)
+	testRemoteSSHAndDesktopProxy(t, manager, environmentID, first)
 
 	commitDockerfile(t, buildRepository, dockerfile("dev", 1001, "rebuild"))
 	_, err = db.ExecContext(ctx, `UPDATE discord_development_environments SET status = 'pending' WHERE id = $1`, environmentID)
@@ -191,10 +199,172 @@ func TestUserEnvironmentSharesHomeAndKeepsIndependentRepositoryClones(t *testing
 
 func dockerfile(user string, uid int, version string) string {
 	return fmt.Sprintf(`FROM debian:bookworm-slim@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818
-RUN apt-get update && apt-get install --yes --no-install-recommends git=1:2.39.5-0+deb12u3 openssh-client=1:9.2p1-2+deb12u10 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install --yes --no-install-recommends git=1:2.39.5-0+deb12u3 openssh-client=1:9.2p1-2+deb12u10 openssh-server=1:9.2p1-2+deb12u10 && rm -rf /var/lib/apt/lists/*
 RUN useradd --uid %d --create-home --home-dir /home/%s %s && printf '%s' > /image-version
 USER %s
 `, uid, user, user, version, user)
+}
+
+func buildLinuxCodexTestBinaries(t *testing.T, manager *Manager, target string) (string, string) {
+	t.Helper()
+	arch, err := manager.docker(context.Background(), "version", "--format", "{{.Server.Arch}}")
+	require.NoError(t, err)
+	switch strings.TrimSpace(arch) {
+	case "x86_64":
+		arch = "amd64"
+	case "aarch64":
+		arch = "arm64"
+	default:
+		arch = strings.TrimSpace(arch)
+	}
+	repository := repositoryRoot(t)
+	build := func(output, packagePath string) string {
+		path := filepath.Join(target, output)
+		command := exec.Command("go", "build", "-o", path, packagePath)
+		command.Dir = repository
+		command.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+arch)
+		data, buildErr := command.CombinedOutput()
+		require.NoError(t, buildErr, string(data))
+		return path
+	}
+	return build("codex-real", "./internal/testutil/mockcodexapp"),
+		build("tyrs-hand-codex", "./cmd/tyrs-hand-codex")
+}
+
+func repositoryRoot(t *testing.T) string {
+	t.Helper()
+	directory, err := os.Getwd()
+	require.NoError(t, err)
+	for {
+		if _, statErr := os.Stat(filepath.Join(directory, "go.mod")); statErr == nil {
+			return directory
+		}
+		parent := filepath.Dir(directory)
+		require.NotEqual(t, directory, parent, "找不到测试仓库根目录")
+		directory = parent
+	}
+}
+
+func testRemoteSSHAndDesktopProxy(t *testing.T, manager *Manager, environmentID uuid.UUID,
+	runtime Runtime,
+) {
+	t.Helper()
+	public, private, err := ed25519.GenerateKey(crand.Reader)
+	require.NoError(t, err)
+	signer, err := ssh.NewSignerFromKey(private)
+	require.NoError(t, err)
+	require.Equal(t, public, private.Public())
+	authorizedKey := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer.PublicKey())))
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	port := listener.Addr().(*net.TCPAddr).Port
+	require.NoError(t, listener.Close())
+
+	operation := RemoteOperation{EnvironmentID: environmentID, ContainerName: runtime.Container,
+		RuntimeUser: runtime.User, RuntimeUID: runtime.UID, RuntimeGID: runtime.GID,
+		RuntimeHome: runtime.Home, SSHPublicKey: authorizedKey, SSHPort: port,
+		SSHConfigRevision: 1}
+	require.NoError(t, manager.db.QueryRowContext(context.Background(), `SELECT image_ref,
+		data_volume_name, home_volume_name, network_name FROM discord_development_environments
+		WHERE id=$1`, environmentID).Scan(&operation.ImageRef, &operation.DataVolume,
+		&operation.HomeVolume, &operation.Network))
+	require.NoError(t, manager.reconfigureRemote(context.Background(), operation))
+
+	hostKeyBefore := dockerReadRoot(t, manager, runtime,
+		"/var/lib/tyrs-hand/system/ssh/ssh_host_ed25519_key.pub")
+	_, err = manager.docker(context.Background(), "exec", "--detach", "--user",
+		fmt.Sprintf("%d:%d", runtime.UID, runtime.GID), runtime.Container,
+		"/opt/tyrs-hand/libexec/codex-real", "app-server", "--listen",
+		"unix:///run/tyrs-hand/relay.sock")
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		_, socketErr := manager.docker(context.Background(), "exec", runtime.Container,
+			"test", "-S", "/run/tyrs-hand/relay.sock")
+		return socketErr == nil
+	}, 5*time.Second, 100*time.Millisecond)
+
+	address := fmt.Sprintf("127.0.0.1:%d", port)
+	client := dialSSHEventually(t, address, &ssh.ClientConfig{User: runtime.User,
+		Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)}, HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout: 5 * time.Second})
+	session, err := client.NewSession()
+	require.NoError(t, err)
+	version, err := session.CombinedOutput("codex --version")
+	require.NoError(t, err, string(version))
+	require.Equal(t, "codex-cli 0.142.5", strings.TrimSpace(string(version)))
+	_ = session.Close()
+
+	sftp, err := client.NewSession()
+	require.NoError(t, err)
+	require.NoError(t, sftp.RequestSubsystem("sftp"))
+	_ = sftp.Close()
+
+	proxy, err := client.NewSession()
+	require.NoError(t, err)
+	stdin, err := proxy.StdinPipe()
+	require.NoError(t, err)
+	stdout, err := proxy.StdoutPipe()
+	require.NoError(t, err)
+	require.NoError(t, proxy.Start("codex app-server proxy"))
+	_, err = io.WriteString(stdin, "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\n"+
+		"Connection: Upgrade\r\nSec-WebSocket-Version: 13\r\n"+
+		"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n")
+	require.NoError(t, err)
+	reader := bufio.NewReader(stdout)
+	status, err := reader.ReadString('\n')
+	require.NoError(t, err)
+	require.Contains(t, status, "101 Switching Protocols")
+	for {
+		line, readErr := reader.ReadString('\n')
+		require.NoError(t, readErr)
+		if line == "\r\n" {
+			break
+		}
+	}
+	_ = proxy.Close()
+
+	_, err = client.Dial("tcp", "127.0.0.1:1")
+	require.Error(t, err, "sshd 必须拒绝端口转发")
+	require.NoError(t, client.Close())
+	assertSSHDialRejected(t, address, &ssh.ClientConfig{User: runtime.User,
+		Auth: []ssh.AuthMethod{ssh.Password("wrong")}, HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout: 3 * time.Second})
+	_, wrongPrivate, err := ed25519.GenerateKey(crand.Reader)
+	require.NoError(t, err)
+	wrongSigner, err := ssh.NewSignerFromKey(wrongPrivate)
+	require.NoError(t, err)
+	assertSSHDialRejected(t, address, &ssh.ClientConfig{User: runtime.User,
+		Auth: []ssh.AuthMethod{ssh.PublicKeys(wrongSigner)}, HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout: 3 * time.Second})
+	assertSSHDialRejected(t, address, &ssh.ClientConfig{User: "root",
+		Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)}, HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout: 3 * time.Second})
+
+	operation.SSHConfigRevision = 2
+	require.NoError(t, manager.reconfigureRemote(context.Background(), operation))
+	hostKeyAfter := dockerReadRoot(t, manager, runtime,
+		"/var/lib/tyrs-hand/system/ssh/ssh_host_ed25519_key.pub")
+	require.Equal(t, hostKeyBefore, hostKeyAfter, "容器重建后 SSH Host Key 必须稳定")
+}
+
+func dialSSHEventually(t *testing.T, address string, configuration *ssh.ClientConfig) *ssh.Client {
+	t.Helper()
+	var client *ssh.Client
+	var err error
+	require.Eventually(t, func() bool {
+		client, err = ssh.Dial("tcp", address, configuration)
+		return err == nil
+	}, 15*time.Second, 200*time.Millisecond, "SSH 未就绪: %v", err)
+	return client
+}
+
+func assertSSHDialRejected(t *testing.T, address string, configuration *ssh.ClientConfig) {
+	t.Helper()
+	client, err := ssh.Dial("tcp", address, configuration)
+	if client != nil {
+		_ = client.Close()
+	}
+	require.Error(t, err)
 }
 
 func createGitRepository(t *testing.T, directory, filename, content string) string {
@@ -236,6 +406,14 @@ func dockerExec(manager *Manager, runtime Runtime, arguments ...string) error {
 func dockerRead(t *testing.T, manager *Manager, runtime Runtime, path string) string {
 	t.Helper()
 	value, err := manager.docker(context.Background(), "exec", runtime.Container, "cat", path)
+	require.NoError(t, err)
+	return strings.TrimSpace(value)
+}
+
+func dockerReadRoot(t *testing.T, manager *Manager, runtime Runtime, path string) string {
+	t.Helper()
+	value, err := manager.docker(context.Background(), "exec", "--user", "0:0",
+		runtime.Container, "cat", path)
 	require.NoError(t, err)
 	return strings.TrimSpace(value)
 }

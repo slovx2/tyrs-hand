@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/config"
@@ -19,22 +18,24 @@ import (
 const defaultDockerBinary = "/usr/local/libexec/tyrs-hand/docker"
 
 type Manager struct {
-	db                   *sql.DB
-	dataRoot             string
-	dockerBin            string
-	dockerHost           string
-	codexBin             string
-	replyHook            string
-	idle                 time.Duration
-	runner               commandRunner
-	logger               *zap.Logger
-	enabled              bool
-	sshEnabled           bool
-	sshAgentDir          string
-	sshAgentHostDir      string
-	browserEnabled       bool
-	browserFilesRoot     string
-	browserFilesHostRoot string
+	db                        *sql.DB
+	dataRoot                  string
+	dockerBin                 string
+	dockerHost                string
+	codexBin                  string
+	codexProxyBin             string
+	replyHook                 string
+	runner                    commandRunner
+	logger                    *zap.Logger
+	enabled                   bool
+	developmentRuntimeDir     string
+	developmentRuntimeHostDir string
+	sshEnabled                bool
+	sshAgentDir               string
+	sshAgentHostDir           string
+	browserEnabled            bool
+	browserFilesRoot          string
+	browserFilesHostRoot      string
 }
 
 func NewManager(cfg config.Config, db *sql.DB, logger *zap.Logger) (*Manager, error) {
@@ -46,11 +47,20 @@ func NewManager(cfg config.Config, db *sql.DB, logger *zap.Logger) (*Manager, er
 	if dockerHost == "" {
 		dockerHost = "unix:///var/run/docker.sock"
 	}
+	runtimeDir, runtimeHostDir := cfg.DevelopmentRuntimeDir, cfg.DevelopmentRuntimeHostDir
+	if !filepath.IsAbs(runtimeDir) {
+		runtimeDir, _ = filepath.Abs(runtimeDir)
+	}
+	if !filepath.IsAbs(runtimeHostDir) {
+		runtimeHostDir, _ = filepath.Abs(runtimeHostDir)
+	}
 	manager := &Manager{
 		db: db, dataRoot: cfg.WorkerDataRoot, dockerBin: binary, dockerHost: dockerHost,
-		codexBin: "/usr/local/bin/apply_patch", replyHook: "/usr/local/bin/tyrs-hand-reply-hook",
-		idle: cfg.DevelopmentContainerIdle, runner: execRunner{}, logger: logger,
-		enabled:    cfg.EnableDevelopmentContainers && (cfg.WorkerRole == "discord" || cfg.WorkerRole == "all"),
+		codexBin: "/usr/local/bin/apply_patch", codexProxyBin: "/usr/local/bin/tyrs-hand-codex",
+		replyHook: "/usr/local/bin/tyrs-hand-reply-hook",
+		runner:    execRunner{}, logger: logger,
+		enabled:               cfg.EnableDevelopmentContainers && (cfg.WorkerRole == "discord" || cfg.WorkerRole == "all"),
+		developmentRuntimeDir: runtimeDir, developmentRuntimeHostDir: runtimeHostDir,
 		sshEnabled: cfg.EnableSSH, sshAgentDir: cfg.SSHAgentDir,
 		sshAgentHostDir: cfg.SSHAgentHostDir, browserEnabled: cfg.BrowserMCPURL != "",
 		browserFilesRoot: cfg.BrowserFilesRoot, browserFilesHostRoot: cfg.BrowserFilesHostRoot,
@@ -104,7 +114,7 @@ func (m *Manager) Ensure(ctx context.Context, environmentID, forumID, conversati
 	if _, err := m.docker(ctx, "start", item.Environment.ContainerName); err != nil {
 		return Runtime{}, err
 	}
-	codexHome := filepath.ToSlash(filepath.Join(containerRoot, "codex", conversationID.String()))
+	codexHome := filepath.ToSlash(filepath.Join(containerRoot, "codex"))
 	if _, err := m.docker(ctx, "exec", "--user", "0:0", item.Environment.ContainerName,
 		"mkdir", "-p", codexHome); err != nil {
 		return Runtime{}, err
@@ -115,13 +125,15 @@ func (m *Manager) Ensure(ctx context.Context, environmentID, forumID, conversati
 		return Runtime{}, err
 	}
 	_, _ = m.db.ExecContext(ctx, `UPDATE discord_development_environments
-		SET status = 'running', idle_at = NULL, last_used_at = now(), error = NULL, updated_at = now()
+		SET status = 'running', last_used_at = now(), error = NULL, updated_at = now()
 		WHERE id = $1`, environmentID)
 	return Runtime{
 		EnvironmentID: environmentID, ForumID: forumID, Container: item.Environment.ContainerName,
 		Workspace: filepath.ToSlash(filepath.Join(containerRoot, item.Relative)), CodexHome: codexHome,
 		User: item.Environment.RuntimeUser, UID: item.Environment.RuntimeUID,
 		GID: item.Environment.RuntimeGID, Home: item.Environment.RuntimeHome,
+		AppServerSocket: filepath.Join(m.developmentRuntimeDir, environmentID.String(), "app-server.sock"),
+		RelaySocket:     filepath.Join(m.developmentRuntimeDir, environmentID.String(), "relay.sock"),
 	}, nil
 }
 
@@ -136,9 +148,11 @@ func (m *Manager) Runtime(ctx context.Context, environmentID, forumID, conversat
 	return Runtime{
 		EnvironmentID: environmentID, ForumID: forumID, Container: item.Environment.ContainerName,
 		Workspace: filepath.ToSlash(filepath.Join(containerRoot, item.Relative)),
-		CodexHome: filepath.ToSlash(filepath.Join(containerRoot, "codex", conversationID.String())),
+		CodexHome: filepath.ToSlash(filepath.Join(containerRoot, "codex")),
 		User:      item.Environment.RuntimeUser, UID: item.Environment.RuntimeUID,
 		GID: item.Environment.RuntimeGID, Home: item.Environment.RuntimeHome,
+		AppServerSocket: filepath.Join(m.developmentRuntimeDir, environmentID.String(), "app-server.sock"),
+		RelaySocket:     filepath.Join(m.developmentRuntimeDir, environmentID.String(), "relay.sock"),
 	}, nil
 }
 
@@ -175,15 +189,6 @@ func (m *Manager) docker(ctx context.Context, arguments ...string) (string, erro
 		environment = []string{"DOCKER_HOST=" + m.dockerHost}
 	}
 	return m.runner.Run(ctx, environment, "", append([]string{m.dockerBin}, arguments...)...)
-}
-
-func (m *Manager) MarkIdle(ctx context.Context, environmentID uuid.UUID) {
-	if m.db == nil {
-		return
-	}
-	_, _ = m.db.ExecContext(ctx, `UPDATE discord_development_environments
-		SET idle_at = now() + $2::interval, last_used_at = now(), updated_at = now() WHERE id = $1`,
-		environmentID, fmt.Sprintf("%f seconds", m.idle.Seconds()))
 }
 
 func (m *Manager) failEnvironment(id uuid.UUID, cause error) {

@@ -8,22 +8,38 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/sshconfig"
 )
 
 type DevelopmentEnvironment struct {
-	ID                uuid.UUID          `json:"id"`
-	OwnerUserID       string             `json:"ownerDiscordUserId"`
-	OwnerName         string             `json:"ownerName"`
-	BuildRepositoryID uuid.UUID          `json:"buildRepositoryId"`
-	BuildRepository   string             `json:"buildRepository"`
-	Status            string             `json:"status"`
-	ImageID           string             `json:"imageId,omitempty"`
-	SourceSHA         string             `json:"buildSourceSha,omitempty"`
-	RuntimeUser       string             `json:"runtimeUser,omitempty"`
-	LastUsedAt        time.Time          `json:"lastUsedAt"`
-	Error             string             `json:"error,omitempty"`
-	ExecutionNodeID   *uuid.UUID         `json:"executionNodeId,omitempty"`
-	Forums            []DevelopmentForum `json:"forums"`
+	ID                 uuid.UUID          `json:"id"`
+	OwnerUserID        string             `json:"ownerDiscordUserId"`
+	OwnerName          string             `json:"ownerName"`
+	BuildRepositoryID  uuid.UUID          `json:"buildRepositoryId"`
+	BuildRepository    string             `json:"buildRepository"`
+	Status             string             `json:"status"`
+	ImageID            string             `json:"imageId,omitempty"`
+	SourceSHA          string             `json:"buildSourceSha,omitempty"`
+	RuntimeUser        string             `json:"runtimeUser,omitempty"`
+	LastUsedAt         time.Time          `json:"lastUsedAt"`
+	Error              string             `json:"error,omitempty"`
+	ExecutionNodeID    *uuid.UUID         `json:"executionNodeId,omitempty"`
+	SSHPublicKey       string             `json:"sshPublicKey,omitempty"`
+	SSHFingerprint     string             `json:"sshFingerprint,omitempty"`
+	SSHPort            int                `json:"sshPort,omitempty"`
+	SSHConfigRevision  int64              `json:"sshConfigRevision"`
+	SSHAppliedRevision int64              `json:"sshAppliedRevision"`
+	DaemonStatus       string             `json:"daemonStatus"`
+	DaemonError        string             `json:"daemonError,omitempty"`
+	AppServerStatus    string             `json:"appServerStatus"`
+	SSHStatus          string             `json:"sshStatus"`
+	RelayStatus        string             `json:"relayStatus"`
+	Forums             []DevelopmentForum `json:"forums"`
+}
+
+type DevelopmentEnvironmentSSHInput struct {
+	PublicKey string `json:"publicKey"`
+	Port      int    `json:"port"`
 }
 
 type DevelopmentForum struct {
@@ -52,7 +68,10 @@ func (m *Manager) DevelopmentEnvironments(ctx context.Context) ([]DevelopmentEnv
 		COALESCE(NULLIF(dm.display_name, ''), dm.username), e.build_repository_id, br.owner || '/' || br.name,
 		e.status, COALESCE(e.image_id, ''), COALESCE(e.build_source_sha, ''),
 		COALESCE(e.runtime_user, ''), e.last_used_at, COALESCE(e.error, ''),
-		e.execution_node_id::text,
+		e.execution_node_id::text, COALESCE(e.ssh_public_key, ''), COALESCE(e.ssh_fingerprint, ''),
+		COALESCE(e.ssh_port, 0), e.ssh_config_revision, e.ssh_applied_revision,
+		e.daemon_status, COALESCE(e.daemon_error, ''), e.app_server_status,
+		e.ssh_daemon_status, e.relay_status,
 		f.id, COALESCE(dr.name, ''), COALESCE(dr.discord_id, ''), f.repository_id,
 		COALESCE(r.owner || '/' || r.name, ''), COALESCE(fw.status, ''),
 		COALESCE(fw.branch, ''), COALESCE(fw.dirty, false), COALESCE(fw.error, '')
@@ -77,7 +96,10 @@ func (m *Manager) DevelopmentEnvironments(ctx context.Context) ([]DevelopmentEnv
 		if err := rows.Scan(&environment.ID, &environment.OwnerUserID, &environment.OwnerName,
 			&environment.BuildRepositoryID, &environment.BuildRepository, &environment.Status, &environment.ImageID,
 			&environment.SourceSHA, &environment.RuntimeUser, &environment.LastUsedAt, &environment.Error,
-			&executionNodeID,
+			&executionNodeID, &environment.SSHPublicKey, &environment.SSHFingerprint,
+			&environment.SSHPort, &environment.SSHConfigRevision, &environment.SSHAppliedRevision,
+			&environment.DaemonStatus, &environment.DaemonError, &environment.AppServerStatus,
+			&environment.SSHStatus, &environment.RelayStatus,
 			&forumID, &forum.Name, &forum.DiscordID, &forum.RepositoryID, &forum.Repository,
 			&forum.Status, &forum.Branch, &forum.Dirty, &forum.Error); err != nil {
 			return nil, err
@@ -105,6 +127,77 @@ func (m *Manager) DevelopmentEnvironments(ctx context.Context) ([]DevelopmentEnv
 		}
 	}
 	return result, rows.Err()
+}
+
+func (m *Manager) SaveDevelopmentEnvironmentSSH(ctx context.Context, id uuid.UUID,
+	input DevelopmentEnvironmentSSHInput,
+) (string, error) {
+	if input.Port < 1 || input.Port > 65535 {
+		return "", errors.New("SSH 端口必须在 1 到 65535 之间")
+	}
+	publicKey, fingerprint, err := sshconfig.ParseAuthorizedPublicKey(input.PublicKey)
+	if err != nil {
+		return "", err
+	}
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var nodeID uuid.UUID
+	var revision int64
+	err = tx.QueryRowContext(ctx, `UPDATE discord_development_environments SET
+		ssh_public_key = $2, ssh_fingerprint = $3, ssh_port = $4,
+		ssh_config_revision = ssh_config_revision + 1, daemon_status = 'pending',
+		daemon_error = NULL, updated_at = now()
+		WHERE id = $1 AND status <> 'deleting' AND execution_node_id IS NOT NULL
+		RETURNING execution_node_id, ssh_config_revision`, id, publicKey, fingerprint, input.Port).
+		Scan(&nodeID, &revision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", errors.New("开发环境不存在、正在删除或尚未分配执行节点")
+	}
+	if err != nil {
+		return "", err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO discord_development_operations
+		(environment_id, operation, execution_node_id)
+		SELECT $1, 'reconfigure', $2 WHERE NOT EXISTS (
+			SELECT 1 FROM discord_development_operations
+			WHERE environment_id = $1 AND operation = 'reconfigure' AND status IN ('pending','running')
+		)`, id, nodeID); err != nil {
+		return "", err
+	}
+	if err := tx.Commit(); err != nil {
+		return "", err
+	}
+	return fingerprint, nil
+}
+
+func (m *Manager) ClearDevelopmentEnvironmentSSH(ctx context.Context, id uuid.UUID) error {
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var nodeID uuid.UUID
+	err = tx.QueryRowContext(ctx, `UPDATE discord_development_environments SET
+		ssh_public_key = NULL, ssh_fingerprint = NULL, ssh_port = NULL,
+		ssh_config_revision = ssh_config_revision + 1, daemon_status = 'pending',
+		daemon_error = NULL, updated_at = now()
+		WHERE id = $1 AND status <> 'deleting' AND execution_node_id IS NOT NULL
+		RETURNING execution_node_id`, id).Scan(&nodeID)
+	if err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO discord_development_operations
+		(environment_id, operation, execution_node_id)
+		SELECT $1, 'reconfigure', $2 WHERE NOT EXISTS (
+			SELECT 1 FROM discord_development_operations
+			WHERE environment_id = $1 AND operation = 'reconfigure' AND status IN ('pending','running')
+		)`, id, nodeID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (m *Manager) RebuildDevelopmentEnvironment(ctx context.Context, id uuid.UUID) error {

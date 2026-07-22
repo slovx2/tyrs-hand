@@ -106,6 +106,10 @@ func (c *DisgoConnector) onModalSubmit(event *events.ModalSubmitInteractionCreat
 		return
 	}
 	defer func() { _ = c.manager.CompleteInboundEvent(context.Background(), eventID, nil) }()
+	if strings.HasPrefix(event.Data.CustomID, interactiveModalPrefix) {
+		c.answerInteractiveModal(event)
+		return
+	}
 	if strings.HasPrefix(event.Data.CustomID, newCodexModalPrefix) {
 		c.createCodexPost(event)
 		return

@@ -200,6 +200,24 @@ func (s *SQLoutbox) Complete(ctx context.Context, item OutboxItem, response json
 			return err
 		}
 	}
+	if strings.HasPrefix(item.OperationKey, "desktop-thread-post:") {
+		if err := s.completeDesktopThreadPost(ctx, tx, item, response); err != nil {
+			return err
+		}
+	}
+	if strings.HasPrefix(item.OperationKey, "interactive:") {
+		var value struct {
+			MessageID string `json:"messageId"`
+		}
+		if json.Unmarshal(response, &value) == nil && value.MessageID != "" {
+			_, err = tx.ExecContext(ctx, `UPDATE codex_interactive_requests SET
+				discord_message_id=$2, updated_at=now() WHERE id=$1`,
+				strings.TrimPrefix(item.OperationKey, "interactive:"), value.MessageID)
+			if err != nil {
+				return err
+			}
+		}
+	}
 	if strings.HasPrefix(item.OperationKey, "task-log:") || strings.HasPrefix(item.OperationKey, "task-card:") {
 		var sent struct {
 			WorkItemID string `json:"workItemId"`
@@ -260,6 +278,15 @@ func (s *SQLoutbox) Fail(ctx context.Context, item OutboxItem, cause error) erro
 		_, err = tx.ExecContext(ctx, `UPDATE discord_conversations SET title_rename_status = 'failed',
 			updated_at = now() WHERE id = $1 AND title_rename_status = 'scheduled'`,
 			strings.TrimPrefix(item.OperationKey, "conversation-title:"))
+		if err != nil {
+			return err
+		}
+	}
+	if strings.HasPrefix(item.OperationKey, "desktop-thread-post:") {
+		requestID := strings.TrimPrefix(item.OperationKey, "desktop-thread-post:")
+		_, err = tx.ExecContext(ctx, `UPDATE desktop_thread_requests SET status = 'failed',
+			error = $2, updated_at = now() WHERE id = $1 AND status = 'post_pending'`,
+			requestID, cause.Error())
 		if err != nil {
 			return err
 		}

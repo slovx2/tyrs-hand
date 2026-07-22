@@ -36,6 +36,7 @@ type Intent struct {
 	Operation             string
 	Behavior              string
 	SourceType            string
+	InputSurface          string
 	WorkItemID            uuid.UUID
 	DiscordConversationID uuid.UUID
 	DiscordMessageID      string
@@ -72,6 +73,7 @@ type ClaimedControl struct {
 
 type EnqueueRequest struct {
 	SourceType            string
+	InputSurface          string
 	WorkItemID            uuid.UUID
 	DiscordConversationID uuid.UUID
 	DiscordMessageID      string

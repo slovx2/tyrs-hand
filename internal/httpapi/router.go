@@ -40,6 +40,7 @@ type Server struct {
 	bindings *discordintegration.BindingService
 	nodes    *executionnode.Service
 	ssh      *sshconfig.Service
+	secrets  *secrets.Store
 	logger   *zap.Logger
 	assets   fs.FS
 }
@@ -52,7 +53,7 @@ func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authSer
 	return &Server{cfg: cfg, db: db, redis: redisClient, auth: authService, github: githubManager,
 		catalog: catalog, settings: settingsService, discord: discordManager, bindings: bindingService,
 		nodes: executionnode.NewService(db), ssh: sshconfig.NewService(db, secretStore),
-		logger: logger, assets: assets}, nil
+		secrets: secretStore, logger: logger, assets: assets}, nil
 }
 
 func (s *Server) baseRouter() *gin.Engine {
@@ -151,6 +152,8 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	authenticated.GET("/discord/development-environments", s.listDiscordDevelopmentEnvironments)
 	authenticated.POST("/discord/members/:id/forum", s.requireCSRF(), s.createDiscordMemberForum)
 	authenticated.POST("/discord/development-environments/:id/rebuild", s.requireCSRF(), s.rebuildDiscordDevelopmentEnvironment)
+	authenticated.PUT("/discord/development-environments/:id/ssh", s.requireCSRF(), s.putDiscordDevelopmentEnvironmentSSH)
+	authenticated.DELETE("/discord/development-environments/:id/ssh", s.requireCSRF(), s.deleteDiscordDevelopmentEnvironmentSSH)
 	authenticated.GET("/discord/development-forums/:id/delete-preflight", s.discordDevelopmentForumDeletePreflight)
 	authenticated.POST("/discord/development-forums/:id/delete", s.requireCSRF(), s.deleteDiscordDevelopmentForum)
 	authenticated.PUT("/discord/forums/:forumId/access/:memberId", s.requireCSRF(), s.putDiscordForumAccess)

@@ -290,8 +290,9 @@ func (s *Server) projectRemoteDiscordProgress(ctx context.Context,
 	}
 	guildID, threadID, err := s.discordProjectionTarget(ctx, claimed)
 	if err == nil {
+		anchor := discordProjectionAnchor(claimed)
 		_ = discordintegration.ProjectConversationStatus(ctx, s.db, guildID, threadID,
-			claimed.DiscordConversationID, claimed.DiscordMessageID, claimed.RunID, state, progress.Detail)
+			claimed.DiscordConversationID, anchor, claimed.RunID, state, progress.Detail)
 	}
 }
 
@@ -302,18 +303,26 @@ func (s *Server) projectRemoteDiscordComplete(ctx context.Context,
 	if err != nil {
 		return err
 	}
+	anchor := discordProjectionAnchor(claimed)
 	if err := discordintegration.ProjectConversationStatus(ctx, s.db, guildID, threadID,
-		claimed.DiscordConversationID, claimed.DiscordMessageID, claimed.RunID,
+		claimed.DiscordConversationID, anchor, claimed.RunID,
 		discordintegration.ConversationCompleted, "本轮处理完成。"); err != nil {
 		return err
 	}
 	if err := discordintegration.ProjectConversationReply(ctx, s.db, threadID,
-		claimed.DiscordConversationID, claimed.DiscordMessageID, result.FinalAnswer); err != nil {
+		claimed.DiscordConversationID, anchor, result.FinalAnswer); err != nil {
 		return err
 	}
 	_, err = s.db.ExecContext(ctx, `UPDATE discord_input_messages SET status = 'processed',
 		processed_at = now() WHERE message_id = $1`, claimed.DiscordMessageID)
 	return err
+}
+
+func discordProjectionAnchor(claimed *codexcontrol.ClaimedControl) string {
+	if claimed.DiscordMessageID != "" {
+		return claimed.DiscordMessageID
+	}
+	return "desktop-" + claimed.ID.String()
 }
 
 func (s *Server) workerRunFail(c *gin.Context) {
@@ -358,7 +367,7 @@ func (s *Server) workerRunFail(c *gin.Context) {
 				detail = "本轮已由 Discord 用户主动停止。"
 			}
 			_ = discordintegration.ProjectConversationStatus(c.Request.Context(), s.db,
-				guildID, threadID, claimed.DiscordConversationID, claimed.DiscordMessageID, claimed.RunID,
+				guildID, threadID, claimed.DiscordConversationID, discordProjectionAnchor(claimed), claimed.RunID,
 				state, detail)
 		}
 	}

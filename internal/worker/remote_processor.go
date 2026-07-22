@@ -23,21 +23,30 @@ import (
 )
 
 type RemoteProcessor struct {
-	cfg         config.Config
-	client      *workerprotocol.Client
-	workspace   ports.WorkspaceManager
-	catalog     *githubtools.Catalog
-	pool        *codex.Pool
-	development *devcontainer.Manager
-	logger      *zap.Logger
+	cfg          config.Config
+	client       *workerprotocol.Client
+	workspace    ports.WorkspaceManager
+	catalog      *githubtools.Catalog
+	pool         *codex.Pool
+	development  *devcontainer.Manager
+	environments *environmentCodexRegistry
+	journals     *journalStore
+	logger       *zap.Logger
 }
 
-func NewRemoteProcessor(cfg config.Config, client *workerprotocol.Client,
+func NewRemoteProcessor(ctx context.Context, cfg config.Config, client *workerprotocol.Client,
 	workspace ports.WorkspaceManager, catalog *githubtools.Catalog, pool *codex.Pool,
 	development *devcontainer.Manager, logger *zap.Logger,
 ) *RemoteProcessor {
-	return &RemoteProcessor{cfg: cfg, client: client, workspace: workspace, catalog: catalog,
+	processor := &RemoteProcessor{cfg: cfg, client: client, workspace: workspace, catalog: catalog,
 		pool: pool, development: development, logger: logger}
+	if journals, err := newJournalStore(cfg.WorkerDataRoot); err == nil {
+		processor.journals = journals
+	} else {
+		logger.Error("初始化 Desktop Run Journal 失败", zap.Error(err))
+	}
+	processor.environments = newEnvironmentCodexRegistry(ctx, processor)
+	return processor
 }
 
 func (p *RemoteProcessor) ProcessRemote(ctx context.Context, task *workerprotocol.Task,
@@ -57,12 +66,27 @@ func (p *RemoteProcessor) ProcessRemote(ctx context.Context, task *workerprotoco
 func (p *RemoteProcessor) ProcessDevelopmentOperation(ctx context.Context,
 	operation *workerprotocol.DevelopmentOperation,
 ) error {
-	return p.development.RunRemoteOperation(ctx, devcontainer.RemoteOperation{
-		Operation: operation.Operation, ContainerName: operation.ContainerName,
-		ImageRef: operation.ImageRef, DataVolume: operation.DataVolume,
+	err := p.development.RunRemoteOperation(ctx, devcontainer.RemoteOperation{
+		EnvironmentID: operation.EnvironmentID, Operation: operation.Operation,
+		ContainerName: operation.ContainerName,
+		ImageRef:      operation.ImageRef, DataVolume: operation.DataVolume,
 		HomeVolume: operation.HomeVolume, Network: operation.Network,
 		Workspace: operation.Workspace, ConversationIDs: operation.ConversationIDs,
+		RuntimeUser: operation.RuntimeUser, RuntimeUID: operation.RuntimeUID,
+		RuntimeGID: operation.RuntimeGID, RuntimeHome: operation.RuntimeHome,
+		SSHPublicKey: operation.SSHPublicKey, SSHPort: operation.SSHPort,
+		SSHConfigRevision: operation.SSHConfigRevision,
 	})
+	if err != nil || operation.Operation != "reconfigure" {
+		return err
+	}
+	operation.ContainerID, err = p.development.ContainerID(ctx, operation.ContainerName)
+	if err != nil {
+		return err
+	}
+	operation.AppliedRevision = operation.SSHConfigRevision
+	operation.DaemonStatus = "running"
+	return nil
 }
 
 func (p *RemoteProcessor) processRemoteGitHub(ctx context.Context, task *workerprotocol.Task,
@@ -182,8 +206,8 @@ func (p *RemoteProcessor) processRemoteGitHub(ctx context.Context, task *workerp
 	}
 	defer unbind()
 	if claimed.Recovering {
-		if result, recovered, recoverErr := p.reconcileRemoteTurn(ctx, runtime, task,
-			threadID, commands, nil, report); recoverErr != nil {
+		if result, recovered, recoverErr := p.reconcileRemoteTurn(ctx, runtime, client.Events(),
+			task, threadID, commands, nil, report); recoverErr != nil {
 			return codexcontrol.TurnResult{}, recoverErr
 		} else if recovered {
 			return result, nil

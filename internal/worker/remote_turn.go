@@ -52,7 +52,8 @@ func (p *RemoteProcessor) ensureRemoteThread(ctx context.Context, runtime *codex
 }
 
 func (p *RemoteProcessor) reconcileRemoteTurn(ctx context.Context, runtime *codex.Runtime,
-	task *workerprotocol.Task, threadID string, commands <-chan workerprotocol.RunCommand,
+	events <-chan codex.Event, task *workerprotocol.Task, threadID string,
+	commands <-chan workerprotocol.RunCommand,
 	handleCommand remoteCommandHandler, report func(string, json.RawMessage),
 ) (codexcontrol.TurnResult, bool, error) {
 	claimed := &task.Claimed
@@ -82,7 +83,7 @@ func (p *RemoteProcessor) reconcileRemoteTurn(ctx context.Context, runtime *code
 		return codexcontrol.TurnResult{}, false,
 			fmt.Errorf("codex turn 快照终态为 %s", turn.Status)
 	}
-	result, err := p.waitRemoteTurn(ctx, runtime, runtime.Events(), task, threadID, turn.ID,
+	result, err := p.waitRemoteTurn(ctx, runtime, events, task, threadID, turn.ID,
 		commands, handleCommand, report)
 	return result, true, err
 }

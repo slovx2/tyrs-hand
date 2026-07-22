@@ -11,12 +11,24 @@ import (
 )
 
 type Runtime struct {
-	client *Client
+	client RuntimeClient
 }
 
-func NewRuntime(client *Client) *Runtime { return &Runtime{client: client} }
+type RuntimeClient interface {
+	Call(context.Context, string, any, any) error
+}
 
-func (r *Runtime) Events() <-chan Event { return r.client.Events() }
+func NewRuntime(client RuntimeClient) *Runtime { return &Runtime{client: client} }
+
+func (r *Runtime) Events() <-chan Event {
+	client, ok := r.client.(interface{ Events() <-chan Event })
+	if !ok {
+		closed := make(chan Event)
+		close(closed)
+		return closed
+	}
+	return client.Events()
+}
 
 func (r *Runtime) StartThread(ctx context.Context, options ports.ThreadOptions) (string, error) {
 	payload := threadPayload(options)

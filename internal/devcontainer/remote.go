@@ -19,10 +19,8 @@ func (m *Manager) EnsureRemote(ctx context.Context, spec RemoteSpec,
 	if !m.Enabled() {
 		return Runtime{}, RemoteState{}, errors.New("discord 开发容器未启用")
 	}
-	lockValue, _ := remoteEnvironmentLocks.LoadOrStore(spec.EnvironmentID.String(), &sync.Mutex{})
-	lock := lockValue.(*sync.Mutex)
-	lock.Lock()
-	defer lock.Unlock()
+	unlock := LockRemoteEnvironment(spec.EnvironmentID)
+	defer unlock()
 
 	item := workspace{
 		ForumID: spec.ForumID, Relative: spec.WorkspaceRelative,
@@ -63,7 +61,7 @@ func (m *Manager) EnsureRemote(ctx context.Context, spec RemoteSpec,
 	if _, err := m.docker(ctx, "start", item.Environment.ContainerName); err != nil {
 		return Runtime{}, state(err), err
 	}
-	codexHome := filepath.ToSlash(filepath.Join(containerRoot, "codex", spec.ConversationID.String()))
+	codexHome := filepath.ToSlash(filepath.Join(containerRoot, "codex"))
 	if _, err := m.docker(ctx, "exec", "--user", "0:0", item.Environment.ContainerName,
 		"mkdir", "-p", codexHome); err != nil {
 		return Runtime{}, state(err), err
@@ -77,7 +75,9 @@ func (m *Manager) EnsureRemote(ctx context.Context, spec RemoteSpec,
 		Container: item.Environment.ContainerName,
 		Workspace: filepath.ToSlash(filepath.Join(containerRoot, item.Relative)), CodexHome: codexHome,
 		User: item.Environment.RuntimeUser, UID: item.Environment.RuntimeUID,
-		GID: item.Environment.RuntimeGID, Home: item.Environment.RuntimeHome}
+		GID: item.Environment.RuntimeGID, Home: item.Environment.RuntimeHome,
+		AppServerSocket: filepath.Join(m.developmentRuntimeDir, spec.EnvironmentID.String(), "app-server.sock"),
+		RelaySocket:     filepath.Join(m.developmentRuntimeDir, spec.EnvironmentID.String(), "relay.sock")}
 	result := state(nil)
 	status, statusErr := m.Git(ctx, runtime, "status", "--porcelain=v1")
 	head, headErr := m.Git(ctx, runtime, "rev-parse", "HEAD")
@@ -90,6 +90,13 @@ func (m *Manager) EnsureRemote(ctx context.Context, spec RemoteSpec,
 	result.WorkspaceDirty = strings.TrimSpace(status) != ""
 	result.WorkspaceHeadSHA = strings.TrimSpace(head)
 	return runtime, result, nil
+}
+
+func LockRemoteEnvironment(environmentID uuid.UUID) func() {
+	lockValue, _ := remoteEnvironmentLocks.LoadOrStore(environmentID.String(), &sync.Mutex{})
+	lock := lockValue.(*sync.Mutex)
+	lock.Lock()
+	return lock.Unlock
 }
 
 func remoteState(item workspace, conversationID uuid.UUID) RemoteState {

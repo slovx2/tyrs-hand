@@ -87,6 +87,15 @@ function commonHandlers() {
           status: 'running',
           runtimeUser: 'vscode',
           lastUsedAt: '2026-07-21T00:00:00Z',
+          sshPublicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest',
+          sshFingerprint: 'SHA256:test',
+          sshPort: 2222,
+          sshConfigRevision: 2,
+          sshAppliedRevision: 2,
+          daemonStatus: 'running',
+          appServerStatus: 'running',
+          sshStatus: 'running',
+          relayStatus: 'running',
           forums: [
             {
               id: '11111111-1111-1111-1111-111111111111',
@@ -263,5 +272,43 @@ describe('DiscordPage', () => {
     expect(
       await screen.findByText('Forum 删除请求已提交，列表会自动刷新'),
     ).toBeInTheDocument()
+  })
+
+  it('保存和停用环境 SSH 配置', async () => {
+    commonHandlers()
+    const save = vi.fn()
+    const disable = vi.fn()
+    server.use(
+      http.put(
+        '/api/v1/discord/development-environments/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/ssh',
+        async ({ request }) => {
+          save(await request.json())
+          return new HttpResponse(null, { status: 202 })
+        },
+      ),
+      http.delete(
+        '/api/v1/discord/development-environments/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/ssh',
+        () => {
+          disable()
+          return new HttpResponse(null, { status: 202 })
+        },
+      ),
+    )
+    renderPage()
+    const user = userEvent.setup()
+    const key = await screen.findByLabelText('Bob SSH 公钥')
+    await user.clear(key)
+    await user.type(key, 'ssh-ed25519 AAAAC3NzaNew')
+    const port = screen.getByLabelText('Bob SSH 端口')
+    await user.clear(port)
+    await user.type(port, '2200')
+    await user.click(screen.getByRole('button', { name: '保存 SSH' }))
+    expect(save).toHaveBeenCalledWith({
+      publicKey: 'ssh-ed25519 AAAAC3NzaNew',
+      port: 2200,
+    })
+    expect(await screen.findByText('SSH 配置已排队生效')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '停用 SSH' }))
+    expect(disable).toHaveBeenCalledOnce()
   })
 })

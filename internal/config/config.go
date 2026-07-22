@@ -57,7 +57,8 @@ type Config struct {
 	CodexMaxSteersPerTurn          int
 	GitHubReplyGateMaxBlocks       int
 	EnableDevelopmentContainers    bool
-	DevelopmentContainerIdle       time.Duration
+	DevelopmentRuntimeDir          string
+	DevelopmentRuntimeHostDir      string
 	EnableSSH                      bool
 	SSHAgentDir                    string
 	SSHAgentHostDir                string
@@ -123,7 +124,8 @@ func load(workerProcess bool) (Config, error) {
 		CodexMaxSteersPerTurn:          v.GetInt("codex_max_steers_per_turn"),
 		GitHubReplyGateMaxBlocks:       v.GetInt("github_reply_gate_max_blocks"),
 		EnableDevelopmentContainers:    v.GetBool("enable_development_containers"),
-		DevelopmentContainerIdle:       v.GetDuration("development_container_idle"),
+		DevelopmentRuntimeDir:          filepath.Clean(v.GetString("development_runtime_dir")),
+		DevelopmentRuntimeHostDir:      filepath.Clean(v.GetString("development_runtime_host_dir")),
 		EnableSSH:                      v.GetBool("enable_ssh"),
 		SSHAgentDir:                    filepath.Clean(v.GetString("ssh_agent_dir")),
 		SSHAgentHostDir:                filepath.Clean(v.GetString("ssh_agent_host_dir")),
@@ -182,8 +184,8 @@ func (c Config) ValidateWorker() error {
 	if c.WorkerRole != "all" && c.WorkerRole != "github" && c.WorkerRole != "discord" {
 		return errors.New("远程 worker_role 必须是 all、github 或 discord")
 	}
-	if c.WorkerProtocolVersion != 1 {
-		return errors.New("当前 Worker 只支持协议版本 1")
+	if c.WorkerProtocolVersion != 2 {
+		return errors.New("当前 Worker 只支持协议版本 2")
 	}
 	if c.WorkerCredentialFile == "." || strings.TrimSpace(c.WorkerCredentialFile) == "" {
 		return errors.New("远程 Worker 必须配置凭据文件")
@@ -198,6 +200,10 @@ func (c Config) ValidateWorker() error {
 }
 
 func (c Config) validateWorkerCapabilities() error {
+	if c.EnableDevelopmentContainers &&
+		(c.DevelopmentRuntimeDir == "." || c.DevelopmentRuntimeHostDir == ".") {
+		return errors.New("启用开发容器时必须配置环境运行目录和宿主目录")
+	}
 	if c.EnableSSH && (c.SSHAgentDir == "." || c.SSHAgentHostDir == ".") {
 		return errors.New("启用 SSH 时必须配置 Agent 容器目录和宿主目录")
 	}
@@ -244,9 +250,6 @@ func (c Config) Validate() error {
 	if c.RepoCacheMaxBytes <= 0 {
 		return errors.New("配置的 Repo Cache 容量上限必须大于零")
 	}
-	if c.DevelopmentContainerIdle < 0 {
-		return errors.New("development_container_idle 不能小于零")
-	}
 	if err := c.validateWorkerCapabilities(); err != nil {
 		return err
 	}
@@ -290,7 +293,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("worker_control_url", "")
 	v.SetDefault("worker_credential_file", ".local/worker/node-credential")
 	v.SetDefault("worker_enrollment_token", "")
-	v.SetDefault("worker_protocol_version", 1)
+	v.SetDefault("worker_protocol_version", 2)
+	v.SetDefault("development_runtime_dir", ".local/worker/development-runtime")
+	v.SetDefault("development_runtime_host_dir", ".local/worker/development-runtime")
 	v.SetDefault("enable_ssh", false)
 	v.SetDefault("ssh_agent_dir", "/run/tyrs-hand-ssh-agent")
 	v.SetDefault("ssh_agent_host_dir", "/opt/tyrs-hand/ssh-agent")
@@ -312,7 +317,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("codex_max_steers_per_turn", 5)
 	v.SetDefault("github_reply_gate_max_blocks", 3)
 	v.SetDefault("enable_development_containers", false)
-	v.SetDefault("development_container_idle", "30m")
 }
 
 func parseNetworkList(value string) ([]netip.Prefix, error) {

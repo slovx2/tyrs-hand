@@ -98,6 +98,104 @@ func (c *Client) SSHConfiguration(ctx context.Context, etag string) (SSHConfigur
 	return configuration, response.Header.Get("ETag"), true, nil
 }
 
+func (c *Client) DevelopmentEnvironments(ctx context.Context) ([]EnvironmentManifest, error) {
+	var result struct {
+		Environments []EnvironmentManifest `json:"environments"`
+	}
+	err := c.call(ctx, http.MethodGet, "/worker/v1/development-environments", nil, &result, true)
+	return result.Environments, err
+}
+
+func (c *Client) EnvironmentDaemonState(ctx context.Context, state EnvironmentDaemonState) error {
+	return c.call(ctx, http.MethodPost, "/worker/v1/development-environments/"+
+		state.EnvironmentID.String()+"/daemon-state", state, nil, true)
+}
+
+func (c *Client) InterruptEnvironmentInteractive(ctx context.Context,
+	environmentID uuid.UUID,
+) error {
+	return c.call(ctx, http.MethodPost, "/worker/v1/development-environments/"+
+		environmentID.String()+"/interactive/interrupted", struct{}{}, nil, true)
+}
+
+func (c *Client) EnvironmentRuntimeCredential(ctx context.Context,
+	environmentID uuid.UUID,
+) (RuntimeCredential, error) {
+	var result RuntimeCredential
+	err := c.call(ctx, http.MethodPost, "/worker/v1/development-environments/"+
+		environmentID.String()+"/runtime-credential", nil, &result, true)
+	return result, err
+}
+
+func (c *Client) PrepareDesktopThread(ctx context.Context,
+	request DesktopThreadPrepareRequest,
+) (DesktopThreadState, error) {
+	var result DesktopThreadState
+	err := c.call(ctx, http.MethodPost, "/worker/v1/desktop-thread-requests", request,
+		&result, true)
+	return result, err
+}
+
+func (c *Client) DesktopThreadState(ctx context.Context,
+	requestID uuid.UUID,
+) (DesktopThreadState, error) {
+	var result DesktopThreadState
+	err := c.call(ctx, http.MethodGet, "/worker/v1/desktop-thread-requests/"+
+		requestID.String(), nil, &result, true)
+	return result, err
+}
+
+func (c *Client) CompleteDesktopThread(ctx context.Context, requestID uuid.UUID,
+	request DesktopThreadCompleteRequest,
+) (DesktopThreadState, error) {
+	var result DesktopThreadState
+	err := c.call(ctx, http.MethodPost, "/worker/v1/desktop-thread-requests/"+
+		requestID.String()+"/complete", request, &result, true)
+	return result, err
+}
+
+func (c *Client) FailDesktopThread(ctx context.Context, requestID uuid.UUID,
+	request DesktopThreadFailRequest,
+) error {
+	return c.call(ctx, http.MethodPost, "/worker/v1/desktop-thread-requests/"+
+		requestID.String()+"/fail", request, nil, true)
+}
+
+func (c *Client) PrepareDesktopTurn(ctx context.Context,
+	request DesktopTurnPrepareRequest,
+) (Task, error) {
+	var result Task
+	err := c.call(ctx, http.MethodPost, "/worker/v1/desktop-turns", request, &result, true)
+	return result, err
+}
+
+func (c *Client) RegisterInteractive(ctx context.Context, task *Task,
+	requestID, params json.RawMessage, generation int64,
+) (InteractiveState, error) {
+	var result InteractiveState
+	err := c.call(ctx, http.MethodPost, runPath(task, "/interactive"),
+		InteractiveRegisterRequest{RunLeaseRequest: lease(task), RequestID: requestID,
+			Params: params, AppServerGeneration: generation}, &result, true)
+	return result, err
+}
+
+func (c *Client) InteractiveState(ctx context.Context,
+	requestID uuid.UUID,
+) (InteractiveState, error) {
+	var result InteractiveState
+	err := c.call(ctx, http.MethodGet, "/worker/v1/interactive/"+requestID.String(), nil,
+		&result, true)
+	return result, err
+}
+
+func (c *Client) AnswerInteractive(ctx context.Context,
+	request InteractiveAnswerRequest,
+) (InteractiveState, error) {
+	var result InteractiveState
+	err := c.call(ctx, http.MethodPost, "/worker/v1/interactive/answer", request, &result, true)
+	return result, err
+}
+
 func (c *Client) Claim(ctx context.Context, request ClaimRequest) (ClaimResponse, error) {
 	var response ClaimResponse
 	if err := c.call(ctx, http.MethodPost, "/worker/v1/claims", request, &response, true); err != nil {
@@ -123,7 +221,9 @@ func (c *Client) CompleteDevelopmentOperation(ctx context.Context,
 		DevelopmentOperationLease: DevelopmentOperationLease{
 			LeaseToken: operation.LeaseToken, LeaseEpoch: operation.LeaseEpoch,
 		},
-		IdempotencyKey: operation.ID.String() + ":complete",
+		IdempotencyKey:  operation.ID.String() + ":complete",
+		AppliedRevision: operation.AppliedRevision, ContainerID: operation.ContainerID,
+		DaemonStatus: operation.DaemonStatus,
 	}, nil, true)
 }
 

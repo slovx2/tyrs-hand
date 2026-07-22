@@ -196,7 +196,7 @@ func (c *Client) call(ctx context.Context, method string, params, result any) er
 		}
 		if response.Error != nil {
 			return &RequestError{Method: method, State: RequestRejected,
-				Cause: fmt.Errorf("%d %s", response.Error.Code, response.Error.Message)}
+				Cause: response.Error}
 		}
 		if result != nil && len(response.Result) > 0 {
 			if err := json.Unmarshal(response.Result, result); err != nil {

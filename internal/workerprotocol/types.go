@@ -2,13 +2,14 @@ package workerprotocol
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 1
+const Version = 2
 
 type EnrollRequest struct {
 	Token string `json:"token"`
@@ -61,19 +62,29 @@ type ClaimResponse struct {
 }
 
 type DevelopmentOperation struct {
-	ID              uuid.UUID   `json:"id"`
-	Operation       string      `json:"operation"`
-	LeaseToken      string      `json:"leaseToken"`
-	LeaseEpoch      int64       `json:"leaseEpoch"`
-	EnvironmentID   uuid.UUID   `json:"environmentId"`
-	ForumID         *uuid.UUID  `json:"forumId,omitempty"`
-	ContainerName   string      `json:"containerName"`
-	ImageRef        string      `json:"imageRef,omitempty"`
-	DataVolume      string      `json:"dataVolume"`
-	HomeVolume      string      `json:"homeVolume"`
-	Network         string      `json:"network"`
-	Workspace       string      `json:"workspace,omitempty"`
-	ConversationIDs []uuid.UUID `json:"conversationIds,omitempty"`
+	ID                uuid.UUID   `json:"id"`
+	Operation         string      `json:"operation"`
+	LeaseToken        string      `json:"leaseToken"`
+	LeaseEpoch        int64       `json:"leaseEpoch"`
+	EnvironmentID     uuid.UUID   `json:"environmentId"`
+	ForumID           *uuid.UUID  `json:"forumId,omitempty"`
+	ContainerName     string      `json:"containerName"`
+	ImageRef          string      `json:"imageRef,omitempty"`
+	DataVolume        string      `json:"dataVolume"`
+	HomeVolume        string      `json:"homeVolume"`
+	Network           string      `json:"network"`
+	Workspace         string      `json:"workspace,omitempty"`
+	ConversationIDs   []uuid.UUID `json:"conversationIds,omitempty"`
+	RuntimeUser       string      `json:"runtimeUser,omitempty"`
+	RuntimeUID        int64       `json:"runtimeUid,omitempty"`
+	RuntimeGID        int64       `json:"runtimeGid,omitempty"`
+	RuntimeHome       string      `json:"runtimeHome,omitempty"`
+	SSHPublicKey      string      `json:"sshPublicKey,omitempty"`
+	SSHPort           int         `json:"sshPort,omitempty"`
+	SSHConfigRevision int64       `json:"sshConfigRevision"`
+	AppliedRevision   int64       `json:"appliedRevision,omitempty"`
+	ContainerID       string      `json:"containerId,omitempty"`
+	DaemonStatus      string      `json:"daemonStatus,omitempty"`
 }
 
 type DevelopmentOperationLease struct {
@@ -83,8 +94,123 @@ type DevelopmentOperationLease struct {
 
 type DevelopmentOperationTerminal struct {
 	DevelopmentOperationLease
-	IdempotencyKey string `json:"idempotencyKey"`
-	Error          string `json:"error,omitempty"`
+	IdempotencyKey  string `json:"idempotencyKey"`
+	Error           string `json:"error,omitempty"`
+	AppliedRevision int64  `json:"appliedRevision,omitempty"`
+	ContainerID     string `json:"containerId,omitempty"`
+	DaemonStatus    string `json:"daemonStatus,omitempty"`
+}
+
+type EnvironmentManifest struct {
+	EnvironmentID     uuid.UUID          `json:"environmentId"`
+	ContainerName     string             `json:"containerName"`
+	ContainerID       string             `json:"containerId,omitempty"`
+	ImageRef          string             `json:"imageRef,omitempty"`
+	DataVolume        string             `json:"dataVolume"`
+	HomeVolume        string             `json:"homeVolume"`
+	Network           string             `json:"network"`
+	RuntimeUser       string             `json:"runtimeUser,omitempty"`
+	RuntimeUID        int64              `json:"runtimeUid,omitempty"`
+	RuntimeGID        int64              `json:"runtimeGid,omitempty"`
+	RuntimeHome       string             `json:"runtimeHome,omitempty"`
+	SSHPublicKey      string             `json:"sshPublicKey,omitempty"`
+	SSHPort           int                `json:"sshPort,omitempty"`
+	SSHConfigRevision int64              `json:"sshConfigRevision"`
+	AppliedRevision   int64              `json:"appliedRevision"`
+	Forums            []EnvironmentForum `json:"forums"`
+}
+
+type EnvironmentForum struct {
+	ForumID           uuid.UUID `json:"forumId"`
+	GuildID           string    `json:"guildId"`
+	DiscordForumID    string    `json:"discordForumId"`
+	OwnerUserID       string    `json:"ownerUserId"`
+	RepositoryID      uuid.UUID `json:"repositoryId"`
+	WorkspaceRelative string    `json:"workspaceRelative"`
+	WorkspaceStatus   string    `json:"workspaceStatus"`
+}
+
+type EnvironmentDaemonState struct {
+	EnvironmentID   uuid.UUID `json:"environmentId"`
+	Status          string    `json:"status"`
+	AppServerStatus string    `json:"appServerStatus"`
+	SSHStatus       string    `json:"sshStatus"`
+	RelayStatus     string    `json:"relayStatus"`
+	Error           string    `json:"error,omitempty"`
+}
+
+type DesktopThreadPrepareRequest struct {
+	EnvironmentID uuid.UUID       `json:"environmentId"`
+	Operation     string          `json:"operation"`
+	RequestKey    string          `json:"requestKey"`
+	Params        json.RawMessage `json:"params"`
+}
+
+type DesktopThreadConfig struct {
+	Model            string   `json:"model,omitempty"`
+	ReasoningEffort  string   `json:"reasoningEffort,omitempty"`
+	ServiceTier      string   `json:"serviceTier,omitempty"`
+	AllowedTools     []string `json:"allowedTools"`
+	DangerousActions []string `json:"dangerousActions"`
+}
+
+type DesktopThreadState struct {
+	ID               uuid.UUID           `json:"id"`
+	EnvironmentID    uuid.UUID           `json:"environmentId"`
+	Operation        string              `json:"operation"`
+	Status           string              `json:"status"`
+	ForumID          uuid.UUID           `json:"forumId,omitempty"`
+	ConversationID   uuid.UUID           `json:"conversationId,omitempty"`
+	ControlID        uuid.UUID           `json:"controlId,omitempty"`
+	ExternalThreadID string              `json:"externalThreadId,omitempty"`
+	Response         json.RawMessage     `json:"response,omitempty"`
+	Error            string              `json:"error,omitempty"`
+	Config           DesktopThreadConfig `json:"config"`
+}
+
+type DesktopThreadCompleteRequest struct {
+	EnvironmentID uuid.UUID       `json:"environmentId"`
+	Response      json.RawMessage `json:"response"`
+}
+
+type DesktopThreadFailRequest struct {
+	EnvironmentID uuid.UUID `json:"environmentId"`
+	Error         string    `json:"error"`
+}
+
+type DesktopTurnPrepareRequest struct {
+	EnvironmentID uuid.UUID       `json:"environmentId"`
+	WorkerID      string          `json:"workerId"`
+	RequestKey    string          `json:"requestKey"`
+	Params        json.RawMessage `json:"params"`
+}
+
+type InteractiveRegisterRequest struct {
+	RunLeaseRequest
+	RequestID           json.RawMessage `json:"requestId"`
+	Params              json.RawMessage `json:"params"`
+	AppServerGeneration int64           `json:"appServerGeneration"`
+}
+
+type InteractiveAnswerRequest struct {
+	EnvironmentID uuid.UUID       `json:"environmentId"`
+	ThreadID      string          `json:"threadId"`
+	TurnID        string          `json:"turnId"`
+	ItemID        string          `json:"itemId"`
+	Surface       string          `json:"surface"`
+	Answer        json.RawMessage `json:"answer"`
+}
+
+type InteractiveState struct {
+	ID         uuid.UUID       `json:"id"`
+	Status     string          `json:"status"`
+	Questions  json.RawMessage `json:"questions,omitempty"`
+	Answer     json.RawMessage `json:"answer,omitempty"`
+	DeadlineAt *time.Time      `json:"deadlineAt,omitempty"`
+	Secret     bool            `json:"secret"`
+	Surface    string          `json:"surface,omitempty"`
+	Accepted   bool            `json:"accepted,omitempty"`
+	Ready      bool            `json:"ready"`
 }
 
 type Task struct {
@@ -265,9 +391,11 @@ type EventsRequest struct {
 }
 
 type RuntimeCredential struct {
-	APIKey   string `json:"apiKey"`
-	BaseURL  string `json:"baseUrl,omitempty"`
-	ProxyURL string `json:"proxyUrl,omitempty"`
+	APIKey          string `json:"apiKey"`
+	BaseURL         string `json:"baseUrl,omitempty"`
+	ProxyURL        string `json:"proxyUrl,omitempty"`
+	ConfigSignature string `json:"configSignature,omitempty"`
+	GlobalAgents    string `json:"globalAgents,omitempty"`
 }
 
 type SetThreadRequest struct {

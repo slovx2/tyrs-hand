@@ -51,10 +51,18 @@ func (m *Manager) installRuntime(ctx context.Context, container string, uid, gid
 	if _, err := os.Stat(m.codexBin); err != nil {
 		return fmt.Errorf("读取 Codex 原生程序: %w", err)
 	}
-	if _, err := m.docker(ctx, "exec", "--user", "0:0", container, "mkdir", "-p", runtimeRoot+"/bin"); err != nil {
+	if _, err := os.Stat(m.codexProxyBin); err != nil {
+		return fmt.Errorf("读取 Codex Desktop Proxy: %w", err)
+	}
+	if _, err := m.docker(ctx, "exec", "--user", "0:0", container, "mkdir", "-p",
+		runtimeRoot+"/bin", runtimeRoot+"/libexec"); err != nil {
 		return err
 	}
-	if _, err := m.docker(ctx, "cp", "--follow-link", m.codexBin, container+":"+runtimeRoot+"/bin/codex"); err != nil {
+	if _, err := m.docker(ctx, "cp", "--follow-link", m.codexBin,
+		container+":"+runtimeRoot+"/libexec/codex-real"); err != nil {
+		return err
+	}
+	if _, err := m.docker(ctx, "cp", m.codexProxyBin, container+":"+runtimeRoot+"/bin/codex"); err != nil {
 		return err
 	}
 	if _, err := os.Stat(m.replyHook); err == nil {
@@ -64,7 +72,10 @@ func (m *Manager) installRuntime(ctx context.Context, container string, uid, gid
 	}
 	owner := fmt.Sprintf("%d:%d", uid, gid)
 	_, err := m.docker(ctx, "exec", "--user", "0:0", container, "/bin/sh", "-c",
-		"chmod 0755 /opt/tyrs-hand/bin/* && ln -sf codex /opt/tyrs-hand/bin/apply_patch && chown -R "+owner+" /opt/tyrs-hand")
+		"chmod 0755 /opt/tyrs-hand/bin/* /opt/tyrs-hand/libexec/* && "+
+			"ln -sf ../libexec/codex-real /opt/tyrs-hand/bin/apply_patch && "+
+			"ln -sf /opt/tyrs-hand/bin/codex /usr/local/bin/codex && "+
+			"chown -R "+owner+" /opt/tyrs-hand")
 	if err != nil || !m.sshEnabled {
 		return err
 	}
@@ -184,40 +195,11 @@ func (m *Manager) RunSweeper(ctx context.Context) {
 	defer ticker.Stop()
 	for {
 		m.processOperation(ctx)
-		m.sweepIdle(ctx)
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 		}
-	}
-}
-
-func (m *Manager) sweepIdle(ctx context.Context) {
-	rows, err := m.db.QueryContext(ctx, `SELECT e.id, e.container_name
-		FROM discord_development_environments e
-		WHERE e.status = 'running' AND e.idle_at IS NOT NULL AND e.idle_at <= now()
-		AND NOT EXISTS (
-			SELECT 1 FROM discord_forums f JOIN discord_conversations c ON c.forum_id = f.id
-			JOIN codex_turn_intents i ON i.discord_conversation_id = c.id
-			WHERE f.development_environment_id = e.id
-			AND i.status IN ('dispatching','awaiting_confirmation','running','reconciling'))`)
-	if err != nil {
-		m.logger.Warn("扫描空闲开发容器失败", zapError(err))
-		return
-	}
-	defer func() { _ = rows.Close() }()
-	for rows.Next() {
-		var id, container string
-		if rows.Scan(&id, &container) != nil {
-			continue
-		}
-		if _, err := m.docker(ctx, "stop", "--time", "10", container); err != nil {
-			m.logger.Warn("停止空闲开发容器失败", zapString("container", container), zapError(err))
-			continue
-		}
-		_, _ = m.db.ExecContext(ctx, `UPDATE discord_development_environments
-			SET status = 'stopped', idle_at = NULL, updated_at = now() WHERE id = $1`, id)
 	}
 }
 

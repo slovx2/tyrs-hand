@@ -20,6 +20,7 @@ ARG TARGETOS=linux
 ARG TARGETARCH
 RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -buildid=" -o /out/tyrs-hand-worker ./cmd/tyrs-hand-worker && \
+	CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -buildid=" -o /out/tyrs-hand-codex ./cmd/tyrs-hand-codex && \
 	CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -buildid=" -o /out/tyrs-hand-reply-hook ./cmd/tyrs-hand-reply-hook && \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -buildid=" -o /out/tyrs-hand-admin ./cmd/tyrs-hand-admin && \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -buildid=" -o /out/tyrs-hand-discord ./cmd/tyrs-hand-discord
@@ -95,6 +96,7 @@ RUN groupadd --gid 10001 tyrs-hand && useradd --uid 10001 --gid 10001 --create-h
 	printf '%s\n' 'Include /run/tyrs-hand-ssh-agent/ssh_config' > /home/tyrs-hand/.ssh/config && \
 	chown tyrs-hand:tyrs-hand /home/tyrs-hand/.ssh/config && chmod 0600 /home/tyrs-hand/.ssh/config
 COPY --from=go-build --chown=root:root /out/tyrs-hand-worker /usr/local/bin/tyrs-hand-worker
+COPY --from=go-build --chown=root:root /out/tyrs-hand-codex /usr/local/bin/tyrs-hand-codex
 COPY --from=go-build --chown=root:root /out/tyrs-hand-reply-hook /usr/local/bin/tyrs-hand-reply-hook
 COPY --from=go-build --chown=root:root /out/tyrs-hand-admin /usr/local/bin/tyrs-hand-admin
 USER 10001:10001

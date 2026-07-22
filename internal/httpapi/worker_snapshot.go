@@ -115,6 +115,9 @@ func (s *Server) loadGitHubWorkerSnapshot(ctx context.Context,
 func (s *Server) loadDiscordWorkerSnapshot(ctx context.Context,
 	claimed *codexcontrol.ClaimedControl,
 ) (*workerprotocol.DiscordSnapshot, error) {
+	if claimed.InputSurface == "desktop" {
+		return s.loadDesktopDiscordWorkerSnapshot(ctx, claimed)
+	}
 	var result workerprotocol.DiscordSnapshot
 	var bindingID sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT c.guild_id, c.thread_id, m.message_id,
@@ -177,4 +180,49 @@ func (s *Server) loadDiscordWorkerSnapshot(ctx context.Context,
 		result.Attachments = append(result.Attachments, item)
 	}
 	return &result, rows.Err()
+}
+
+func (s *Server) loadDesktopDiscordWorkerSnapshot(ctx context.Context,
+	claimed *codexcontrol.ClaimedControl,
+) (*workerprotocol.DiscordSnapshot, error) {
+	result := &workerprotocol.DiscordSnapshot{Body: claimed.Instruction,
+		DisplayName: "Codex Desktop", Username: "codex-desktop", Access: "owner"}
+	err := s.db.QueryRowContext(ctx, `SELECT c.guild_id, c.thread_id,
+		c.owner_discord_user_id, f.id, f.development_environment_id
+		FROM discord_conversations c JOIN discord_forums f ON f.id = c.forum_id
+		WHERE c.id = $1 AND f.forum_type = 'development'`, claimed.DiscordConversationID).
+		Scan(&result.GuildID, &result.ThreadID, &result.OwnerUserID, &result.ForumID,
+			&result.EnvironmentID)
+	if err != nil {
+		return nil, err
+	}
+	result.UserID = result.OwnerUserID
+	development := &workerprotocol.DevelopmentSpec{ConversationID: claimed.DiscordConversationID}
+	err = s.db.QueryRowContext(ctx, `SELECT e.id, f.id, fw.status, fw.relative_path,
+		fw.branch, r.owner || '/' || r.name, r.clone_url, r.default_branch,
+		e.build_repository_id, br.owner || '/' || br.name, br.clone_url, br.default_branch,
+		e.status, COALESCE(e.image_ref,''), COALESCE(e.image_id,''), e.container_name,
+		COALESCE(e.container_id,''), e.data_volume_name, e.home_volume_name, e.network_name,
+		COALESCE(e.runtime_user,''), COALESCE(e.runtime_uid,0), COALESCE(e.runtime_gid,0),
+		COALESCE(e.runtime_home,''), COALESCE(e.build_source_sha,'')
+		FROM discord_forums f
+		JOIN discord_development_environments e ON e.id = f.development_environment_id
+		JOIN discord_forum_workspaces fw ON fw.forum_id = f.id
+		JOIN repositories r ON r.id = f.repository_id
+		JOIN repositories br ON br.id = e.build_repository_id WHERE f.id = $1`, result.ForumID).
+		Scan(&development.EnvironmentID, &development.ForumID,
+			&development.WorkspaceStatus, &development.WorkspaceRelative,
+			&development.WorkspaceBranch, &development.Repository, &development.CloneURL,
+			&development.DefaultRef, &development.BuildRepositoryID,
+			&development.BuildRepository, &development.BuildCloneURL,
+			&development.BuildDefaultRef, &development.EnvironmentStatus,
+			&development.ImageRef, &development.ImageID, &development.ContainerName,
+			&development.ContainerID, &development.DataVolume, &development.HomeVolume,
+			&development.Network, &development.RuntimeUser, &development.RuntimeUID,
+			&development.RuntimeGID, &development.RuntimeHome, &development.BuildSourceSHA)
+	if err != nil {
+		return nil, err
+	}
+	result.Development = development
+	return result, nil
 }

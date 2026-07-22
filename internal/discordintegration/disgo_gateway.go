@@ -257,6 +257,10 @@ func (c *DisgoConnector) onComponent(event *events.ComponentInteractionCreate) {
 		c.updateConversationProgressPage(event, customID)
 		return
 	}
+	if strings.HasPrefix(customID, interactiveButtonPrefix) {
+		c.answerInteractiveComponent(event, customID)
+		return
+	}
 	eventID := "interaction:" + event.ID().String()
 	inserted, err := c.manager.RecordInboundEvent(context.Background(), eventID, c.guildID,
 		"MESSAGE_COMPONENT", map[string]string{"id": event.ID().String(), "customId": customID})

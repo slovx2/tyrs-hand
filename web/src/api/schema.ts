@@ -372,6 +372,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/discord/development-environments/{id}/ssh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["putDiscordDevelopmentEnvironmentSSH"];
+        post?: never;
+        delete: operations["deleteDiscordDevelopmentEnvironmentSSH"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/discord/development-forums/{id}/delete-preflight": {
         parameters: {
             query?: never;
@@ -1332,7 +1348,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** @enum {string} */
-            operation: "provision" | "clone" | "start" | "stop" | "rebuild" | "delete_forum" | "delete_environment";
+            operation: "provision" | "clone" | "rebuild" | "reconfigure" | "delete_forum" | "delete_environment";
             leaseToken: string;
             /** Format: int64 */
             leaseEpoch: number;
@@ -1647,7 +1663,27 @@ export interface components {
             /** Format: date-time */
             lastUsedAt: string;
             error?: string;
+            sshPublicKey?: string;
+            readonly sshFingerprint?: string;
+            sshPort?: number;
+            /** Format: int64 */
+            readonly sshConfigRevision: number;
+            /** Format: int64 */
+            readonly sshAppliedRevision: number;
+            /** @enum {string} */
+            daemonStatus: "pending" | "starting" | "running" | "error";
+            daemonError?: string;
+            /** @enum {string} */
+            appServerStatus: "pending" | "starting" | "running" | "error";
+            /** @enum {string} */
+            sshStatus: "disabled" | "pending" | "starting" | "running" | "error";
+            /** @enum {string} */
+            relayStatus: "pending" | "starting" | "running" | "error";
             forums: components["schemas"]["DiscordDevelopmentForum"][];
+        };
+        DiscordDevelopmentEnvironmentSSHInput: {
+            publicKey: string;
+            port: number;
         };
         DiscordDevelopmentDeletePreflight: {
             /** Format: uuid */
@@ -2559,6 +2595,56 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description 已标记为下次运行前重建 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    putDiscordDevelopmentEnvironmentSSH: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiscordDevelopmentEnvironmentSSHInput"];
+            };
+        };
+        responses: {
+            /** @description SSH 配置已排队 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    deleteDiscordDevelopmentEnvironmentSSH: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SSH 停用已排队 */
             202: {
                 headers: {
                     [name: string]: unknown;

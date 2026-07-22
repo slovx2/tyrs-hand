@@ -48,6 +48,7 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 	}
 	var controlID uuid.UUID
 	var executionNodeID sql.NullString
+	var developmentEnvironmentID sql.NullString
 	if request.SourceType == SourceGitHub {
 		if err := tx.QueryRowContext(ctx, `SELECT execution_node_id::text FROM work_items
 			WHERE id = $1 FOR UPDATE`, request.WorkItemID).Scan(&executionNodeID); err != nil {
@@ -76,22 +77,25 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 			return uuid.Nil, false, err
 		}
 	} else {
-		_ = tx.QueryRowContext(ctx, `SELECT e.execution_node_id::text
+		_ = tx.QueryRowContext(ctx, `SELECT e.execution_node_id::text, e.id::text
 			FROM discord_conversations c JOIN discord_forums f ON f.id = c.forum_id
 			JOIN discord_development_environments e ON e.id = f.development_environment_id
-			WHERE c.id = $1`, request.DiscordConversationID).Scan(&executionNodeID)
+			WHERE c.id = $1`, request.DiscordConversationID).
+			Scan(&executionNodeID, &developmentEnvironmentID)
 		err := tx.QueryRowContext(ctx, `INSERT INTO codex_thread_controls
 			(source_type, discord_conversation_id, repository_id, agent_profile_id, context_version,
-			 execution_node_id)
+			 execution_node_id, development_environment_id)
 			VALUES ('discord_conversation', $1, NULLIF($2::text, '')::uuid, $3, $4,
-			 NULLIF($5,'')::uuid)
+			 NULLIF($5,'')::uuid, NULLIF($6,'')::uuid)
 			ON CONFLICT(discord_conversation_id, agent_profile_id, context_version)
 				WHERE discord_conversation_id IS NOT NULL
 			DO UPDATE SET repository_id = EXCLUDED.repository_id,
 				execution_node_id = COALESCE(codex_thread_controls.execution_node_id,
-					EXCLUDED.execution_node_id), updated_at = now() RETURNING id`,
+					EXCLUDED.execution_node_id),
+				development_environment_id = COALESCE(codex_thread_controls.development_environment_id,
+					EXCLUDED.development_environment_id), updated_at = now() RETURNING id`,
 			request.DiscordConversationID, nilUUID(request.RepositoryID), request.AgentProfileID,
-			request.ContextVersion, executionNodeID.String).Scan(&controlID)
+			request.ContextVersion, executionNodeID.String, developmentEnvironmentID.String).Scan(&controlID)
 		if err != nil {
 			return uuid.Nil, false, err
 		}
@@ -116,16 +120,20 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 	if !executionNodeID.Valid || executionNodeID.String == "" {
 		initialStatus = "placement_pending"
 	}
+	inputSurface := request.InputSurface
+	if request.SourceType == SourceDiscord && inputSurface == "" {
+		inputSurface = "discord"
+	}
 	err := tx.QueryRowContext(ctx, `INSERT INTO codex_turn_intents(
 		control_id, sequence_no, operation, behavior, source_type, work_item_id,
 		discord_conversation_id, discord_message_id, repository_id, agent_profile_id,
 		webhook_delivery_id, trigger_rule_id, trigger_evidence, idempotency_key,
 		instruction, skills, allowed_tools, dangerous_actions, priority,
-		actor_login, actor_permission, reply_policy, reply_status, status)
+		actor_login, actor_permission, reply_policy, reply_status, status, input_surface)
 		VALUES ($1,$2,$3,NULLIF($4,''),$5,NULLIF($6::text,'')::uuid,NULLIF($7::text,'')::uuid,
 		NULLIF($8,''),NULLIF($9::text,'')::uuid,$10,NULLIF($11::text,'')::uuid,
 		NULLIF($12::text,'')::uuid,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,
-		CASE WHEN $22 = 'required' THEN 'pending' ELSE 'skipped' END, $23)
+		CASE WHEN $22 = 'required' THEN 'pending' ELSE 'skipped' END, $23, NULLIF($24,''))
 		ON CONFLICT(idempotency_key) DO NOTHING RETURNING id`, controlID, sequence,
 		request.Operation, request.Behavior, request.SourceType, nilUUID(request.WorkItemID),
 		nilUUID(request.DiscordConversationID), request.DiscordMessageID, nilUUID(request.RepositoryID),
@@ -133,7 +141,7 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 		defaultJSON(request.TriggerEvidence), request.IdempotencyKey, request.Instruction,
 		encode(request.Skills), encode(request.AllowedTools), encode(request.DangerousActions),
 		request.Priority, request.ActorLogin, request.ActorPermission, request.ReplyPolicy,
-		initialStatus).Scan(&intentID)
+		initialStatus, inputSurface).Scan(&intentID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return uuid.Nil, false, nil
 	}
@@ -223,7 +231,7 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 	var workItemID, conversationID, repositoryID, discordMessageID sql.NullString
 	var externalThreadID, codexHomeKey, providerSignature sql.NullString
 	err = tx.QueryRowContext(ctx, `SELECT i.id, i.sequence_no, i.operation, COALESCE(i.behavior,''),
-		i.source_type, i.work_item_id::text, i.discord_conversation_id::text,
+		i.source_type, COALESCE(i.input_surface,''), i.work_item_id::text, i.discord_conversation_id::text,
 		i.repository_id::text, i.agent_profile_id, COALESCE(i.discord_message_id,''),
 		i.instruction, i.skills, i.allowed_tools, i.dangerous_actions,
 		i.actor_login, i.actor_permission, i.reply_policy, i.reply_status,
@@ -235,7 +243,7 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 		  AND i.available_at <= now() AND i.attempt_count < $2
 		ORDER BY i.sequence_no FOR UPDATE OF i LIMIT 1`, controlID, r.maxAttempts).Scan(
 		&claimed.ID, &claimed.Sequence, &claimed.Operation, &claimed.Behavior,
-		&claimed.SourceType, &workItemID, &conversationID, &repositoryID,
+		&claimed.SourceType, &claimed.InputSurface, &workItemID, &conversationID, &repositoryID,
 		&claimed.AgentProfileID, &discordMessageID, &claimed.Instruction,
 		&skillsJSON, &toolsJSON, &dangerousJSON, &claimed.ActorLogin,
 		&claimed.ActorPermission, &claimed.ReplyPolicy, &claimed.ReplyStatus,
