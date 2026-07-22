@@ -15,6 +15,7 @@ const policy = {
     [lock.extensionId]: {
       installation_mode: "force_installed",
       update_url: updateURL,
+      override_update_url: true,
     },
   },
   "3rdparty": {

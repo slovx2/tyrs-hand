@@ -229,6 +229,8 @@ sudo deploy/browser/install-host-release.sh <desktop-user>
 
 Token 不需要也不应手工复制到 Chrome 或 Worker `.env`。当前发布的扩展 ID 记录在制品锁中；浏览器整包 `tyrs-v0.1.3` 使用的扩展 ID 为 `ljjpfmlebedjianbadehibibioaknkfb`。
 
+企业策略同时设置 `override_update_url: true`，确保首次强制安装和后续升级都使用锁定的 localhost 更新源。否则没有在 manifest 内写死 `update_url` 的扩展可能只能完成首装，Chrome 后续不会继续从 Bridge 检查新版本。
+
 扩展优先读取 Chrome managed storage 中的 Relay 地址和 Extension Token。部分 Linux Chrome 版本虽然会应用强制安装策略，却不会把 `3rdparty.extensions` 暴露给扩展；此时扩展会自动从 `http://127.0.0.1:8931/extension/config` 完成本机 bootstrap。该端点只接受真正的 loopback 客户端，Docker、LAN 和 Tailscale 请求会被拒绝；MCP Bearer Token 与 Extension Token 仍然相互独立。这个回退不会打开 Remote Debugging，也不会增加人工确认步骤。
 
 安装脚本完成后，仍需桌面用户手工让 Chrome 加载策略：

@@ -45,6 +45,7 @@ web-check:
 test: test-unit
 
 test-unit:
+	node --test deploy/browser/*.test.mjs
 	go test ./...
 	$(PNPM) --dir web test:run
 
