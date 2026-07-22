@@ -227,7 +227,7 @@ sudo deploy/browser/install-host-release.sh <desktop-user>
 - 写入 Chrome 企业策略 `/etc/opt/chrome/policies/managed/tyrs-browser.json`。
 - 为桌面用户安装并启动 `tyrs-browser-bridge.service`。
 
-Token 不需要也不应手工复制到 Chrome 或 Worker `.env`。当前发布的扩展 ID 记录在制品锁中；`tyrs-v0.1.0` 对应 `ljjpfmlebedjianbadehibibioaknkfb`。
+Token 不需要也不应手工复制到 Chrome 或 Worker `.env`。当前发布的扩展 ID 记录在制品锁中；浏览器整包 `tyrs-v0.1.2` 使用的扩展 ID 为 `ljjpfmlebedjianbadehibibioaknkfb`。
 
 安装脚本完成后，仍需桌面用户手工让 Chrome 加载策略：
 
