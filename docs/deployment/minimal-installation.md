@@ -249,6 +249,38 @@ curl --fail http://127.0.0.1:8931/health
 
 扩展尚未连接时 `/health` 返回 `degraded`；加载成功后应返回 `ready`、扩展与 Chrome 版本、Profile 和标签页数量。Bridge 的 MCP 端点必须携带 Bearer Token，未授权请求返回 `401` 是预期结果。
 
+### 仍需人工处理的安装边界
+
+当前安装契约只覆盖 Ubuntu 桌面环境中的 Google Chrome。Chromium、Chrome 的非标准安装路径，以及没有图形会话或用户 D-Bus 的纯服务器环境不在保证范围内。首次接入一台新机器时，即使安装脚本执行成功，也必须完成上面的 Chrome Policy 重载和浏览器重启；脚本无法替桌面用户完成这一步。
+
+重新安装同一版本或升级到新版本后，必须重启已经运行的 Bridge。`install-host-release.sh` 会安装并启用服务，但 `systemctl --user enable --now` 不会重启一个已经处于 running 状态的服务：
+
+```bash
+systemctl --user restart tyrs-browser-bridge.service
+curl --fail http://127.0.0.1:8931/health
+```
+
+如果命令由 root 或 SSH 会话代替桌面用户执行，需要显式连接该桌面用户的 user systemd：
+
+```bash
+desktop_user=<desktop-user>
+desktop_uid=$(id -u "$desktop_user")
+sudo -u "$desktop_user" env \
+  XDG_RUNTIME_DIR="/run/user/$desktop_uid" \
+  DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$desktop_uid/bus" \
+  systemctl --user restart tyrs-browser-bridge.service
+```
+
+与这些人工步骤相关的常见现象按下表处理：
+
+| 现象 | 优先检查 |
+| --- | --- |
+| Chrome 看不到扩展 | 在 `chrome://policy` Reload policies，确认 `ExtensionSettings` 包含锁定 ID，然后完整退出并重启所有 Chrome 进程 |
+| Bridge 版本已更新，扩展版本仍旧 | 重启 Bridge 后重新加载 Chrome Policy，并完整重启 Chrome；确认更新清单和 CRX 都来自 `releases/current` |
+| 安装脚本成功，但 `/health` 仍显示旧 Bridge 版本 | `enable --now` 不会重启已运行的 user service；按上面的命令显式重启 Bridge |
+
+只有 `/health` 为 `ready` 还不能证明 Agent 链路完整。安装后至少执行一次真实 Codex 任务，验证普通 shell 命令、`chrome.browser_tabs` 打开页面、读取标题并关闭新标签页，全程没有 Codex 审批或 Chrome 调试确认窗。
+
 Bridge 只允许 loopback 和 Docker bridge CIDR，防火墙也不应向 LAN/Tailscale 开放这些端口。Agent 验证开发服务时，服务必须监听 `0.0.0.0`；平台会通过 `host_browser.resolve_local_url` 把 Worker 或当前开发容器的端口解析成宿主 Chrome 可访问的地址。`host_browser` 避开了 Responses API 保留的 `browser` 动态工具命名空间。
 
 安全边界按整台受管开发机划分：扩展可以控制当前 Profile 的全部普通标签页，但只有受管扩展能使用 Extension Token 接入 Relay，Worker 只能使用另一枚 MCP Token。扩展或 Bridge 失联后会停止浏览器 Session 并释放 debugger；不通过标签分组、每次确认弹窗或 Remote Debugging 端口限制标签页范围。
@@ -275,6 +307,14 @@ sudo deploy/browser/install-host-release.sh <desktop-user>
 ```
 
 脚本会把制品安装到独立版本目录，校验成功后才切换 `releases/current`。安装完成后以桌面用户执行 `systemctl --user restart tyrs-browser-bridge.service`，让正在运行的 Bridge 使用新版本。旧版本目录可保留用于回滚；回滚时把 `current` 原子指向已验证的旧版本，并重启该服务。如果扩展 ID 或策略变化，还需要重新加载 Chrome Policy 并重启 Chrome。
+
+发布或升级浏览器制品前必须逐项核对：
+
+1. Extension 与 Bridge 两个 fork 的目标提交、Release Tag 和源码锁完全对应，工作区没有未记录改动。
+2. Extension Release 的 `extension-release.json` 中扩展 ID 与现有制品锁一致；除非明确执行签名密钥轮换，否则发现变化必须停止发布。
+3. Bridge CI 和 Release Workflow 下载的 Playwright Core Release 已同步到本次 Extension/Core 版本，不能继续引用旧的硬编码 Tag。
+4. `browser-artifacts.lock.json` 记录的 URL、提交、版本和 SHA256 均来自已发布制品，不使用本机临时产物替代生产 Release。
+5. 在受支持的 Ubuntu + Google Chrome 环境执行安装验收。当前没有全新 Ubuntu 镜像的自动化洁净安装门禁，因此新宿主首次接入仍需人工核对 Chrome Policy、扩展 ID、Bridge 版本和真实 Codex E2E。
 
 Control 和 Worker 回滚必须使用同一次内部发布的成对 Digest。能力也可以独立关闭：
 
