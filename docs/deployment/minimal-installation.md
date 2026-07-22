@@ -249,7 +249,7 @@ curl --fail http://127.0.0.1:8931/health
 
 扩展尚未连接时 `/health` 返回 `degraded`；加载成功后应返回 `ready`、扩展与 Chrome 版本、Profile 和标签页数量。Bridge 的 MCP 端点必须携带 Bearer Token，未授权请求返回 `401` 是预期结果。
 
-Bridge 只允许 loopback 和 Docker bridge CIDR，防火墙也不应向 LAN/Tailscale 开放这些端口。Agent 验证开发服务时，服务必须监听 `0.0.0.0`；平台会把 Worker 或当前开发容器的端口解析成宿主 Chrome 可访问的地址。
+Bridge 只允许 loopback 和 Docker bridge CIDR，防火墙也不应向 LAN/Tailscale 开放这些端口。Agent 验证开发服务时，服务必须监听 `0.0.0.0`；平台会通过 `host_browser.resolve_local_url` 把 Worker 或当前开发容器的端口解析成宿主 Chrome 可访问的地址。`host_browser` 避开了 Responses API 保留的 `browser` 动态工具命名空间。
 
 安全边界按整台受管开发机划分：扩展可以控制当前 Profile 的全部普通标签页，但只有受管扩展能使用 Extension Token 接入 Relay，Worker 只能使用另一枚 MCP Token。扩展或 Bridge 失联后会停止浏览器 Session 并释放 debugger；不通过标签分组、每次确认弹窗或 Remote Debugging 端口限制标签页范围。
 

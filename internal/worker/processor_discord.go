@@ -321,7 +321,7 @@ func (p *Processor) handleDiscordTool(ctx context.Context, claimed *codexcontrol
 	if request.Namespace != nil && *request.Namespace == "github" {
 		return p.control.CallTool(ctx, claimed.Capability, request)
 	}
-	if request.Namespace != nil && *request.Namespace == "browser" {
+	if request.Namespace != nil && *request.Namespace == browserToolNamespace {
 		return p.auditLocalToolCall(ctx, claimed, request, func() (codex.ToolCallResult, error) {
 			return executeBrowserTool(ctx, p.cfg, claimed.ID.String(), runtime.Workspace,
 				&runtime, p.development, request)

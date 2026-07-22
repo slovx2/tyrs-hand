@@ -46,6 +46,17 @@ func TestBrowserFileExchangeStaysInsideWorkspace(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestBrowserToolNamespaceAvoidsResponsesReservedName(t *testing.T) {
+	spec := browserToolSpec()
+	require.Equal(t, "host_browser", spec.Name)
+	require.NotEqual(t, "browser", spec.Name)
+
+	enabled := withBrowserTools(config.Config{BrowserMCPURL: "http://host.docker.internal:8931/mcp"})
+	require.Len(t, enabled, 1)
+	require.Equal(t, browserToolNamespace, enabled[0].Name)
+	require.Empty(t, withBrowserTools(config.Config{}))
+}
+
 func TestBrowserDownloadImport(t *testing.T) {
 	workspace := t.TempDir()
 	exchange := t.TempDir()

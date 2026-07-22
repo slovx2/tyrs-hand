@@ -22,7 +22,10 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/ports"
 )
 
-const browserFileLimit = 25 * 1024 * 1024
+const (
+	browserFileLimit     = 25 * 1024 * 1024
+	browserToolNamespace = "host_browser"
+)
 
 type stagedBrowserFile struct {
 	HostPath  string    `json:"hostPath"`
@@ -32,7 +35,7 @@ type stagedBrowserFile struct {
 
 func browserToolSpec() ports.DynamicToolSpec {
 	return ports.DynamicToolSpec{
-		Type: "namespace", Name: "browser",
+		Type: "namespace", Name: browserToolNamespace,
 		Description: "Expose local development servers and exchange files with the managed host Chrome.",
 		Tools: []ports.DynamicToolSpec{
 			{Type: "function", Name: "resolve_local_url",

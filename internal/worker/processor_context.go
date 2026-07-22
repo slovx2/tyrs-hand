@@ -689,7 +689,7 @@ func browserDeveloperInstructions(cfg config.Config, current string) string {
 	if cfg.BrowserMCPURL == "" {
 		return current
 	}
-	return current + "\nThe host Chrome profile is the only browser backend. If the chrome MCP is unavailable, report that directly; do not start Chrome, CDP, a container browser, or a headless browser."
+	return current + "\nThe host Chrome profile is the only browser backend. Use host_browser tools only to expose local services or exchange files with it. If the chrome MCP is unavailable, report that directly; do not start Chrome, CDP, a container browser, or a headless browser."
 }
 
 func withoutGenericReply(tools []string) []string {

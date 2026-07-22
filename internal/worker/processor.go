@@ -235,7 +235,7 @@ func (p *Processor) handleTool(ctx context.Context, claimed *codexcontrol.Claime
 		}
 		return result, err
 	}
-	if namespace == "browser" {
+	if namespace == browserToolNamespace {
 		return p.auditLocalToolCall(ctx, claimed, request, func() (codex.ToolCallResult, error) {
 			return executeBrowserTool(ctx, p.cfg, claimed.ID.String(), workspace.WorktreePath,
 				nil, p.development, request)

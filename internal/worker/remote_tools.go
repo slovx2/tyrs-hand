@@ -33,7 +33,7 @@ func (p *RemoteProcessor) handleRemoteGitHubTool(ctx context.Context,
 		}))
 		return result, err
 	}
-	if namespace == "browser" {
+	if namespace == browserToolNamespace {
 		result, err := executeBrowserTool(ctx, p.cfg, task.Claimed.ID.String(),
 			workspace.WorktreePath, nil, p.development, request)
 		report("local_tool.finished", remoteEventPayload(map[string]any{
@@ -66,7 +66,7 @@ func (p *RemoteProcessor) handleRemoteDiscordTool(ctx context.Context,
 	switch namespace {
 	case "github":
 		result, err = p.client.CallTool(ctx, task, request)
-	case "browser":
+	case browserToolNamespace:
 		result, err = executeBrowserTool(ctx, p.cfg, task.Claimed.ID.String(),
 			runtime.Workspace, &runtime, p.development, request)
 	case "git":
