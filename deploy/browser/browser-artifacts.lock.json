@@ -1,31 +1,31 @@
 {
   "schemaVersion": 1,
-  "release": "tyrs-v0.1.2",
+  "release": "tyrs-v0.1.3",
   "extensionId": "ljjpfmlebedjianbadehibibioaknkfb",
   "playwright": {
     "repository": "https://github.com/slovx2/playwright",
-    "commit": "2cb52d3aadbef3750ba5ebc64e4f80d957c75d54",
-    "extensionVersion": "0.1.0",
+    "commit": "5206c3826528161d7c7c62b84c0fda66b3a323f4",
+    "extensionVersion": "0.1.1",
     "playwrightCoreVersion": "1.62.0-next",
     "artifacts": {
       "extension": {
-        "url": "https://github.com/slovx2/playwright/releases/download/tyrs-v0.1.0/tyrs-browser-extension.crx",
-        "sha256": "5e21041ce84e74acd2c64ac93080690cd976737944975c9f14812cefb4d92a6e"
+        "url": "https://github.com/slovx2/playwright/releases/download/tyrs-v0.1.1/tyrs-browser-extension.crx",
+        "sha256": "d73435cf307b8c5d9be636ba31bbd16ac2ffc6524bbbbea1788df82bb7c62cb9"
       },
       "playwrightCore": {
-        "url": "https://github.com/slovx2/playwright/releases/download/tyrs-v0.1.0/playwright-core.tgz",
+        "url": "https://github.com/slovx2/playwright/releases/download/tyrs-v0.1.1/playwright-core.tgz",
         "sha256": "5090f5857c0ee7feb756c46207d2100e9f11d00ceddad2ce30be5f7f94fa8993"
       }
     }
   },
   "playwrightMcp": {
     "repository": "https://github.com/slovx2/playwright-mcp",
-    "commit": "1c1d5f5c917ecc1ebd1ef51d81f9e4b6c76ea481",
-    "bridgeVersion": "0.1.2",
+    "commit": "3da91ebd097b1571f2d64c4467b0d5daa5b2d335",
+    "bridgeVersion": "0.1.3",
     "artifacts": {
       "bundle": {
-        "url": "https://github.com/slovx2/playwright-mcp/releases/download/tyrs-v0.1.2/tyrs-browser-bridge-bundle.tgz",
-        "sha256": "5f2538a1b662d117134eadb1a2c04e245cca36948e356a5e433441800c08282b"
+        "url": "https://github.com/slovx2/playwright-mcp/releases/download/tyrs-v0.1.3/tyrs-browser-bridge-bundle.tgz",
+        "sha256": "04de06dfa0336ff80a6862f485f0e18e7e94fd9e5d8b083d23b2dcb6123e06dc"
       }
     }
   }

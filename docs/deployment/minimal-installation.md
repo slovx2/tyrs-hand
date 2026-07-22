@@ -227,7 +227,9 @@ sudo deploy/browser/install-host-release.sh <desktop-user>
 - 写入 Chrome 企业策略 `/etc/opt/chrome/policies/managed/tyrs-browser.json`。
 - 为桌面用户安装并启动 `tyrs-browser-bridge.service`。
 
-Token 不需要也不应手工复制到 Chrome 或 Worker `.env`。当前发布的扩展 ID 记录在制品锁中；浏览器整包 `tyrs-v0.1.2` 使用的扩展 ID 为 `ljjpfmlebedjianbadehibibioaknkfb`。
+Token 不需要也不应手工复制到 Chrome 或 Worker `.env`。当前发布的扩展 ID 记录在制品锁中；浏览器整包 `tyrs-v0.1.3` 使用的扩展 ID 为 `ljjpfmlebedjianbadehibibioaknkfb`。
+
+扩展优先读取 Chrome managed storage 中的 Relay 地址和 Extension Token。部分 Linux Chrome 版本虽然会应用强制安装策略，却不会把 `3rdparty.extensions` 暴露给扩展；此时扩展会自动从 `http://127.0.0.1:8931/extension/config` 完成本机 bootstrap。该端点只接受真正的 loopback 客户端，Docker、LAN 和 Tailscale 请求会被拒绝；MCP Bearer Token 与 Extension Token 仍然相互独立。这个回退不会打开 Remote Debugging，也不会增加人工确认步骤。
 
 安装脚本完成后，仍需桌面用户手工让 Chrome 加载策略：
 
@@ -246,6 +248,8 @@ curl --fail http://127.0.0.1:8931/health
 扩展尚未连接时 `/health` 返回 `degraded`；加载成功后应返回 `ready`、扩展与 Chrome 版本、Profile 和标签页数量。Bridge 的 MCP 端点必须携带 Bearer Token，未授权请求返回 `401` 是预期结果。
 
 Bridge 只允许 loopback 和 Docker bridge CIDR，防火墙也不应向 LAN/Tailscale 开放这些端口。Agent 验证开发服务时，服务必须监听 `0.0.0.0`；平台会把 Worker 或当前开发容器的端口解析成宿主 Chrome 可访问的地址。
+
+安全边界按整台受管开发机划分：扩展可以控制当前 Profile 的全部普通标签页，但只有受管扩展能使用 Extension Token 接入 Relay，Worker 只能使用另一枚 MCP Token。扩展或 Bridge 失联后会停止浏览器 Session 并释放 debugger；不通过标签分组、每次确认弹窗或 Remote Debugging 端口限制标签页范围。
 
 浏览器上传和下载使用 `/opt/tyrs-hand/browser-files` 交换目录。工作区文件需要先通过平台工具暂存，单文件上限为 25 MiB；符号链接和工作区越界路径会被拒绝。任务结束时会清理文件，Sweeper 也会删除超过 1 小时的残留。
 
