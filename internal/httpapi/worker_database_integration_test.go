@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -473,6 +474,95 @@ func TestWorkerAPIMissingDefaultAndDevelopmentOperationRecovery(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM discord_development_operations
 		WHERE id = $1`, operationID).Scan(&operationStatus))
 	require.Equal(t, "completed", operationStatus)
+}
+
+func TestEnvironmentRelayRuntimeMigrationQueuesExistingEnvironmentsOnce(t *testing.T) {
+	db := workerDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	server, _ := workerTestServer(t, db)
+	node, _, err := server.nodes.Create(ctx, "relay-migration", []string{"discord"}, 1)
+	require.NoError(t, err)
+	repositoryID, _, _ := seedWorkerGitHubQueue(t, db, 71)
+	environmentID, _ := seedDevelopmentOperation(t, db, repositoryID, node.ID)
+	_, err = db.ExecContext(ctx, `UPDATE discord_development_environments
+		SET ssh_config_revision=0, daemon_status='running' WHERE id=$1`, environmentID)
+	require.NoError(t, err)
+
+	migrationSQL, err := os.ReadFile("../database/migrations/019_environment_relay_runtime.sql")
+	require.NoError(t, err)
+	require.NoError(t, execMigrationSQL(ctx, db, string(migrationSQL)))
+	require.NoError(t, execMigrationSQL(ctx, db, string(migrationSQL)),
+		"重复执行迁移不得重复创建 reconfigure Operation")
+
+	var revision int64
+	var daemonStatus string
+	var operationCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT ssh_config_revision, daemon_status
+		FROM discord_development_environments WHERE id=$1`, environmentID).
+		Scan(&revision, &daemonStatus))
+	require.EqualValues(t, 1, revision)
+	require.Equal(t, "pending", daemonStatus)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*)
+		FROM discord_development_operations WHERE environment_id=$1
+		AND operation='reconfigure' AND status IN ('pending','running')`, environmentID).
+		Scan(&operationCount))
+	require.Equal(t, 1, operationCount)
+}
+
+func TestWorkerAPIReconfigureWaitsForActiveEnvironmentTurn(t *testing.T) {
+	db := workerDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	server, endpoint := workerTestServer(t, db)
+	node, enrollment, err := server.nodes.Create(ctx, "relay-reconfigure", []string{"discord"}, 2)
+	require.NoError(t, err)
+	_, credential, err := server.nodes.Enroll(ctx, enrollment)
+	require.NoError(t, err)
+	require.NoError(t, server.nodes.SetDefaults(ctx, executionnode.Defaults{DiscordNodeID: &node.ID}))
+	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
+
+	repositoryID, _, profileID := seedWorkerGitHubQueue(t, db, 72)
+	environmentID, forumID := seedDevelopmentOperation(t, db, repositoryID, node.ID)
+	var conversationID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_conversations
+		(guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
+		 repository_id, agent_profile_id, title, configuration_status, title_rename_status)
+		VALUES ('worker-test-guild',$1,'reconfigure-thread','reconfigure-message',
+		 'worker-owner',$2,$3,'reconfigure','configured','completed') RETURNING id`,
+		forumID, repositoryID, profileID).Scan(&conversationID))
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_input_messages
+		(message_id, conversation_id, discord_user_id, display_name, username,
+		 access_snapshot, body) VALUES
+		('reconfigure-message',$1,'worker-owner','Owner','owner','owner','run')`, conversationID)
+	require.NoError(t, err)
+	enqueueWorkerDiscordIntent(t, db, conversationID, "reconfigure-message", repositoryID, profileID)
+
+	claimed, err := client.Claim(ctx, workerprotocol.ClaimRequest{
+		WorkerID: "relay-worker", Role: "discord",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, claimed.Task)
+	var operationID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_development_operations
+		(environment_id, operation, execution_node_id) VALUES ($1,'reconfigure',$2)
+		RETURNING id`, environmentID, node.ID).Scan(&operationID))
+
+	operation, err := server.claimDevelopmentOperation(ctx, node.ID, "relay-worker")
+	require.NoError(t, err)
+	require.Nil(t, operation, "环境存在 active Run 时不得领取 reconfigure")
+	require.NoError(t, client.Complete(ctx, claimed.Task, codexcontrol.TurnResult{
+		TurnID: "reconfigure-turn", FinalAnswer: "done",
+	}))
+	operation, err = server.claimDevelopmentOperation(ctx, node.ID, "relay-worker")
+	require.NoError(t, err)
+	require.NotNil(t, operation)
+	require.Equal(t, operationID, operation.ID)
+}
+
+func execMigrationSQL(ctx context.Context, db *sql.DB, statement string) error {
+	_, err := db.ExecContext(ctx, statement)
+	return err
 }
 
 func TestWorkerAPISSHConfigurationRotationConstraintsAndGlobalAgents(t *testing.T) {

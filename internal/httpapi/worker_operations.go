@@ -39,6 +39,11 @@ func (s *Server) claimDevelopmentOperation(ctx context.Context, nodeID uuid.UUID
 		LEFT JOIN discord_forum_workspaces fw ON fw.forum_id = o.forum_id
 		WHERE o.execution_node_id = $1 AND (
 			o.status = 'pending' OR (o.status = 'running' AND o.lease_expires_at < now()))
+		AND (o.operation <> 'reconfigure' OR NOT EXISTS (
+			SELECT 1 FROM codex_thread_controls ct JOIN codex_turn_runs r ON r.control_id = ct.id
+			WHERE ct.development_environment_id = e.id
+			AND r.status IN ('starting','running','waiting_for_user','reconciling')
+		))
 		ORDER BY o.created_at FOR UPDATE OF o SKIP LOCKED LIMIT 1`, nodeID).Scan(
 		&result.ID, &result.Operation, &result.EnvironmentID, &forumID, &previousEpoch,
 		&result.ContainerName, &imageRef, &result.DataVolume, &result.HomeVolume,
