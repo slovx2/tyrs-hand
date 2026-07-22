@@ -29,6 +29,8 @@ type RemoteRunner struct {
 	processor remoteTaskProcessor
 	logger    *zap.Logger
 	journals  *journalStore
+	ssh       *sshAgentManager
+	browser   *browserHealthMonitor
 }
 
 func NewRemoteRunner(cfg config.Config, client *workerprotocol.Client, processor remoteTaskProcessor,
@@ -38,8 +40,18 @@ func NewRemoteRunner(cfg config.Config, client *workerprotocol.Client, processor
 	if err != nil {
 		return nil, err
 	}
-	return &RemoteRunner{cfg: cfg, client: client, processor: processor, logger: logger,
-		journals: journals}, nil
+	runner := &RemoteRunner{cfg: cfg, client: client, processor: processor, logger: logger,
+		journals: journals}
+	if cfg.EnableSSH {
+		runner.ssh = newSSHAgentManager(cfg.SSHAgentDir, client, logger)
+	}
+	if cfg.BrowserMCPURL != "" {
+		runner.browser, err = newBrowserHealthMonitor(cfg.BrowserMCPURL)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return runner, nil
 }
 
 func (r *RemoteRunner) Run(ctx context.Context) error {
@@ -50,6 +62,14 @@ func (r *RemoteRunner) Run(ctx context.Context) error {
 	defer func() { _ = lock.Close() }()
 	if err := r.authenticate(ctx); err != nil {
 		return err
+	}
+	if r.ssh != nil {
+		go func() {
+			if err := r.ssh.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				r.logger.Error("SSH Agent 管理器停止", zap.Error(err))
+			}
+		}()
+		defer r.ssh.Close()
 	}
 	if err := r.sendHeartbeat(ctx); err != nil {
 		return fmt.Errorf("首次节点心跳失败: %w", err)
@@ -157,9 +177,20 @@ func (r *RemoteRunner) roleAllowed(source string) bool {
 }
 
 func (r *RemoteRunner) sendHeartbeat(ctx context.Context) error {
-	metadata, _ := json.Marshal(map[string]any{"workerId": r.cfg.WorkerID,
+	values := map[string]any{"workerId": r.cfg.WorkerID,
 		"roles": r.roles(), "maxConcurrentJobs": r.cfg.WorkerMaxConcurrentJobs,
-		"imageDigest": r.cfg.WorkerImageDigest, "protocolVersion": r.cfg.WorkerProtocolVersion})
+		"imageDigest": r.cfg.WorkerImageDigest, "protocolVersion": r.cfg.WorkerProtocolVersion}
+	if r.ssh != nil {
+		values["ssh"] = r.ssh.Status()
+	}
+	if r.browser != nil {
+		healthCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		r.browser.Refresh(healthCtx)
+		cancel()
+		values["browser"] = r.browser.Status()
+		sweepBrowserFiles(r.cfg.BrowserFilesRoot)
+	}
+	metadata, _ := json.Marshal(values)
 	return r.client.Heartbeat(ctx, workerprotocol.HeartbeatRequest{
 		WorkerVersion: workerVersion, ProtocolVersion: r.cfg.WorkerProtocolVersion,
 		Metadata: metadata,

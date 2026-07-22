@@ -62,6 +62,42 @@ func (c *Client) Heartbeat(ctx context.Context, request HeartbeatRequest) error 
 	return c.call(ctx, http.MethodPost, "/worker/v1/heartbeat", request, nil, true)
 }
 
+func (c *Client) SSHConfiguration(ctx context.Context, etag string) (SSHConfiguration, string, bool, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		c.baseURL+"/worker/v1/ssh-configuration", nil)
+	if err != nil {
+		return SSHConfiguration{}, etag, false, err
+	}
+	if c.credential == "" {
+		return SSHConfiguration{}, etag, false, errors.New("执行节点尚未注册")
+	}
+	request.Header.Set("Authorization", "Bearer "+c.credential)
+	if etag != "" {
+		request.Header.Set("If-None-Match", etag)
+	}
+	response, err := c.http.Do(request)
+	if err != nil {
+		return SSHConfiguration{}, etag, false, err
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode == http.StatusNotModified {
+		return SSHConfiguration{}, etag, false, nil
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, 16<<20))
+	if err != nil {
+		return SSHConfiguration{}, etag, false, err
+	}
+	if response.StatusCode != http.StatusOK {
+		return SSHConfiguration{}, etag, false, &HTTPError{StatusCode: response.StatusCode,
+			Status: response.Status, Detail: strings.TrimSpace(string(data))}
+	}
+	var configuration SSHConfiguration
+	if err := json.Unmarshal(data, &configuration); err != nil {
+		return SSHConfiguration{}, etag, false, err
+	}
+	return configuration, response.Header.Get("ETag"), true, nil
+}
+
 func (c *Client) Claim(ctx context.Context, request ClaimRequest) (ClaimResponse, error) {
 	var response ClaimResponse
 	if err := c.call(ctx, http.MethodPost, "/worker/v1/claims", request, &response, true); err != nil {

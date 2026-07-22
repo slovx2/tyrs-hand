@@ -306,6 +306,43 @@ var (
 		Columns:    ScmInstallationsColumns,
 		PrimaryKey: []*schema.Column{ScmInstallationsColumns[0]},
 	}
+	// SSHCredentialsColumns holds the columns for the "ssh_credentials" table.
+	SSHCredentialsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Unique: true},
+		{Name: "secret_id", Type: field.TypeUUID, Unique: true},
+		{Name: "public_key", Type: field.TypeString},
+		{Name: "fingerprint", Type: field.TypeString, Unique: true},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "version", Type: field.TypeInt64, Default: 1},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SSHCredentialsTable holds the schema information for the "ssh_credentials" table.
+	SSHCredentialsTable = &schema.Table{
+		Name:       "ssh_credentials",
+		Columns:    SSHCredentialsColumns,
+		PrimaryKey: []*schema.Column{SSHCredentialsColumns[0]},
+	}
+	// SSHHostsColumns holds the columns for the "ssh_hosts" table.
+	SSHHostsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "alias", Type: field.TypeString, Unique: true},
+		{Name: "hostname", Type: field.TypeString},
+		{Name: "port", Type: field.TypeInt, Default: 22},
+		{Name: "username", Type: field.TypeString},
+		{Name: "credential_id", Type: field.TypeUUID},
+		{Name: "proxy_jump_host_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SSHHostsTable holds the schema information for the "ssh_hosts" table.
+	SSHHostsTable = &schema.Table{
+		Name:       "ssh_hosts",
+		Columns:    SSHHostsColumns,
+		PrimaryKey: []*schema.Column{SSHHostsColumns[0]},
+	}
 	// ToolCallsColumns holds the columns for the "tool_calls" table.
 	ToolCallsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -456,6 +493,8 @@ var (
 		RepoCachesTable,
 		RepositoriesTable,
 		ScmInstallationsTable,
+		SSHCredentialsTable,
+		SSHHostsTable,
 		ToolCallsTable,
 		TriggerRulesTable,
 		WebhookDeliveriesTable,
@@ -501,6 +540,12 @@ func init() {
 	}
 	ScmInstallationsTable.Annotation = &entsql.Annotation{
 		Table: "scm_installations",
+	}
+	SSHCredentialsTable.Annotation = &entsql.Annotation{
+		Table: "ssh_credentials",
+	}
+	SSHHostsTable.Annotation = &entsql.Annotation{
+		Table: "ssh_hosts",
 	}
 	ToolCallsTable.Annotation = &entsql.Annotation{
 		Table: "tool_calls",

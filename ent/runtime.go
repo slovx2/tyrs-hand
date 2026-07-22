@@ -19,6 +19,8 @@ import (
 	"github.com/slovx2/tyrs-hand/ent/repository"
 	"github.com/slovx2/tyrs-hand/ent/schema"
 	"github.com/slovx2/tyrs-hand/ent/scminstallation"
+	"github.com/slovx2/tyrs-hand/ent/sshcredential"
+	"github.com/slovx2/tyrs-hand/ent/sshhost"
 	"github.com/slovx2/tyrs-hand/ent/toolcall"
 	"github.com/slovx2/tyrs-hand/ent/triggerrule"
 	"github.com/slovx2/tyrs-hand/ent/webhookdelivery"
@@ -387,6 +389,54 @@ func init() {
 	scminstallationDescID := scminstallationFields[0].Descriptor()
 	// scminstallation.DefaultID holds the default value on creation for the id field.
 	scminstallation.DefaultID = scminstallationDescID.Default.(func() uuid.UUID)
+	sshcredentialFields := schema.SSHCredential{}.Fields()
+	_ = sshcredentialFields
+	// sshcredentialDescEnabled is the schema descriptor for enabled field.
+	sshcredentialDescEnabled := sshcredentialFields[5].Descriptor()
+	// sshcredential.DefaultEnabled holds the default value on creation for the enabled field.
+	sshcredential.DefaultEnabled = sshcredentialDescEnabled.Default.(bool)
+	// sshcredentialDescVersion is the schema descriptor for version field.
+	sshcredentialDescVersion := sshcredentialFields[6].Descriptor()
+	// sshcredential.DefaultVersion holds the default value on creation for the version field.
+	sshcredential.DefaultVersion = sshcredentialDescVersion.Default.(int64)
+	// sshcredentialDescCreatedAt is the schema descriptor for created_at field.
+	sshcredentialDescCreatedAt := sshcredentialFields[7].Descriptor()
+	// sshcredential.DefaultCreatedAt holds the default value on creation for the created_at field.
+	sshcredential.DefaultCreatedAt = sshcredentialDescCreatedAt.Default.(func() time.Time)
+	// sshcredentialDescUpdatedAt is the schema descriptor for updated_at field.
+	sshcredentialDescUpdatedAt := sshcredentialFields[8].Descriptor()
+	// sshcredential.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	sshcredential.DefaultUpdatedAt = sshcredentialDescUpdatedAt.Default.(func() time.Time)
+	// sshcredential.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	sshcredential.UpdateDefaultUpdatedAt = sshcredentialDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// sshcredentialDescID is the schema descriptor for id field.
+	sshcredentialDescID := sshcredentialFields[0].Descriptor()
+	// sshcredential.DefaultID holds the default value on creation for the id field.
+	sshcredential.DefaultID = sshcredentialDescID.Default.(func() uuid.UUID)
+	sshhostFields := schema.SSHHost{}.Fields()
+	_ = sshhostFields
+	// sshhostDescPort is the schema descriptor for port field.
+	sshhostDescPort := sshhostFields[3].Descriptor()
+	// sshhost.DefaultPort holds the default value on creation for the port field.
+	sshhost.DefaultPort = sshhostDescPort.Default.(int)
+	// sshhostDescEnabled is the schema descriptor for enabled field.
+	sshhostDescEnabled := sshhostFields[7].Descriptor()
+	// sshhost.DefaultEnabled holds the default value on creation for the enabled field.
+	sshhost.DefaultEnabled = sshhostDescEnabled.Default.(bool)
+	// sshhostDescCreatedAt is the schema descriptor for created_at field.
+	sshhostDescCreatedAt := sshhostFields[8].Descriptor()
+	// sshhost.DefaultCreatedAt holds the default value on creation for the created_at field.
+	sshhost.DefaultCreatedAt = sshhostDescCreatedAt.Default.(func() time.Time)
+	// sshhostDescUpdatedAt is the schema descriptor for updated_at field.
+	sshhostDescUpdatedAt := sshhostFields[9].Descriptor()
+	// sshhost.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	sshhost.DefaultUpdatedAt = sshhostDescUpdatedAt.Default.(func() time.Time)
+	// sshhost.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	sshhost.UpdateDefaultUpdatedAt = sshhostDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// sshhostDescID is the schema descriptor for id field.
+	sshhostDescID := sshhostFields[0].Descriptor()
+	// sshhost.DefaultID holds the default value on creation for the id field.
+	sshhost.DefaultID = sshhostDescID.Default.(func() uuid.UUID)
 	toolcallFields := schema.ToolCall{}.Fields()
 	_ = toolcallFields
 	// toolcallDescStatus is the schema descriptor for status field.

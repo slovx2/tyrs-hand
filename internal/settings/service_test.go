@@ -1,10 +1,13 @@
 package settings
 
 import (
+	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -46,6 +49,192 @@ func TestWriteSecretFile(t *testing.T) {
 	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 }
 
+func TestWriteGlobalAgents(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "AGENTS.md")
+	require.NoError(t, WriteGlobalAgents(path, "# Shared\n"))
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, "# Shared\n", string(data))
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o644), info.Mode().Perm())
+	require.NoError(t, WriteGlobalAgents(path, ""))
+	data, err = os.ReadFile(path)
+	require.NoError(t, err)
+	require.Empty(t, data)
+}
+
+func TestSaveGlobalAgentsRefreshesExistingContextsOnlyWhenContentChanges(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	service := NewService(db, nil)
+
+	mock.ExpectBegin()
+	mock.ExpectExec("INSERT INTO platform_settings").
+		WithArgs(globalAgentsKey, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE work_items").WillReturnResult(sqlmock.NewResult(0, 2))
+	mock.ExpectExec("UPDATE discord_conversations").WillReturnResult(sqlmock.NewResult(0, 3))
+	mock.ExpectCommit()
+	require.NoError(t, service.SaveGlobalAgents(context.Background(), GlobalAgents{Content: "# Shared\r\n"}))
+
+	mock.ExpectBegin()
+	mock.ExpectExec("INSERT INTO platform_settings").
+		WithArgs(globalAgentsKey, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectCommit()
+	require.NoError(t, service.SaveGlobalAgents(context.Background(), GlobalAgents{Content: "# Shared\n"}))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestSaveGlobalAgentsReturnsDatabaseFailures(t *testing.T) {
+	tests := []struct {
+		name     string
+		setup    func(sqlmock.Sqlmock)
+		expected error
+	}{
+		{
+			name: "无法开始事务",
+			setup: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin().WillReturnError(sql.ErrConnDone)
+			},
+			expected: sql.ErrConnDone,
+		},
+		{
+			name: "无法保存设置",
+			setup: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin()
+				mock.ExpectExec("INSERT INTO platform_settings").
+					WithArgs(globalAgentsKey, sqlmock.AnyArg()).WillReturnError(sql.ErrConnDone)
+				mock.ExpectRollback()
+			},
+			expected: sql.ErrConnDone,
+		},
+		{
+			name: "无法刷新 GitHub 上下文",
+			setup: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin()
+				mock.ExpectExec("INSERT INTO platform_settings").WithArgs(globalAgentsKey, sqlmock.AnyArg()).
+					WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectExec("UPDATE work_items").WillReturnError(sql.ErrConnDone)
+				mock.ExpectRollback()
+			},
+			expected: sql.ErrConnDone,
+		},
+		{
+			name: "无法刷新 Discord 上下文",
+			setup: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin()
+				mock.ExpectExec("INSERT INTO platform_settings").WithArgs(globalAgentsKey, sqlmock.AnyArg()).
+					WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectExec("UPDATE work_items").WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectExec("UPDATE discord_conversations").WillReturnError(sql.ErrConnDone)
+				mock.ExpectRollback()
+			},
+			expected: sql.ErrConnDone,
+		},
+		{
+			name: "无法提交事务",
+			setup: func(mock sqlmock.Sqlmock) {
+				mock.ExpectBegin()
+				mock.ExpectExec("INSERT INTO platform_settings").WithArgs(globalAgentsKey, sqlmock.AnyArg()).
+					WillReturnResult(sqlmock.NewResult(0, 0))
+				mock.ExpectCommit().WillReturnError(sql.ErrTxDone)
+			},
+			expected: sql.ErrTxDone,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = db.Close() })
+			test.setup(mock)
+			err = NewService(db, nil).SaveGlobalAgents(context.Background(), GlobalAgents{Content: "# Shared\n"})
+			require.ErrorIs(t, err, test.expected)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+func TestGlobalAgentsParticipatesInProviderSignature(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	service := NewService(db, nil)
+	provider := []byte(`{"providerType":"api-key","configured":true,"configSignature":"provider-signature"}`)
+	expectProvider := func(content string) {
+		mock.ExpectQuery("SELECT value FROM platform_settings").WithArgs(agentProviderKey).
+			WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow(provider))
+		mock.ExpectQuery("SELECT value FROM platform_settings").WithArgs(globalAgentsKey).
+			WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow([]byte(`{"content":"` + content + `"}`)))
+	}
+	expectProvider("first")
+	first, err := service.AgentProvider(context.Background())
+	require.NoError(t, err)
+	require.NotEqual(t, "provider-signature", first.ConfigSignature)
+	expectProvider("first")
+	same, err := service.AgentProvider(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, first.ConfigSignature, same.ConfigSignature)
+	expectProvider("second")
+	second, err := service.AgentProvider(context.Background())
+	require.NoError(t, err)
+	require.NotEqual(t, first.ConfigSignature, second.ConfigSignature)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGlobalAgentsMissingCorruptAndSizeBoundaries(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	service := NewService(db, nil)
+
+	mock.ExpectQuery("SELECT value FROM platform_settings").WithArgs(agentProviderKey).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery("SELECT value FROM platform_settings").WithArgs(globalAgentsKey).
+		WillReturnError(sql.ErrNoRows)
+	provider, err := service.AgentProvider(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "device-code", provider.ProviderType)
+	require.False(t, provider.Configured)
+	require.Empty(t, provider.ConfigSignature)
+
+	mock.ExpectQuery("SELECT value FROM platform_settings").WithArgs(globalAgentsKey).
+		WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow([]byte(`{"content":`)))
+	_, err = service.GlobalAgents(context.Background())
+	require.Error(t, err)
+	require.ErrorContains(t, service.SaveGlobalAgents(context.Background(),
+		GlobalAgents{Content: string(make([]byte, maxGlobalAgents+1))}), "256 KiB")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGlobalAgentsReturnsQueryFailures(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	service := NewService(db, nil)
+
+	mock.ExpectQuery("SELECT value FROM platform_settings").WithArgs(agentProviderKey).
+		WillReturnError(sql.ErrConnDone)
+	_, err = service.AgentProvider(context.Background())
+	require.ErrorIs(t, err, sql.ErrConnDone)
+
+	mock.ExpectQuery("SELECT value FROM platform_settings").WithArgs(agentProviderKey).
+		WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow([]byte(`{"providerType":"device-code"}`)))
+	mock.ExpectQuery("SELECT value FROM platform_settings").WithArgs(globalAgentsKey).
+		WillReturnError(sql.ErrConnDone)
+	_, err = service.AgentProvider(context.Background())
+	require.ErrorIs(t, err, sql.ErrConnDone)
+
+	mock.ExpectQuery("SELECT value FROM platform_settings").WithArgs(globalAgentsKey).
+		WillReturnError(sql.ErrConnDone)
+	_, err = service.GlobalAgents(context.Background())
+	require.ErrorIs(t, err, sql.ErrConnDone)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestWriteProviderConfigPreservesCodexSettings(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	require.NoError(t, os.WriteFile(path, []byte("openai_base_url = \"https://old.example/v1\"\n[projects.\"/repo\"]\ntrust_level = \"trusted\"\n"), 0o600))
@@ -53,4 +242,20 @@ func TestWriteProviderConfigPreservesCodexSettings(t *testing.T) {
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)
 	require.Equal(t, "openai_base_url = \"https://api.example.com/v1\"\n[projects.\"/repo\"]\ntrust_level = \"trusted\"\n", string(data))
+}
+
+func TestAtomicSettingsWritersReturnFilesystemFailures(t *testing.T) {
+	missingParent := filepath.Join(t.TempDir(), "missing", "auth.json")
+	require.Error(t, writeSecretFile(missingParent, []byte("secret")))
+	require.Error(t, WriteGlobalAgents(filepath.Join(t.TempDir(), "missing", "AGENTS.md"), "content"))
+
+	directoryTarget := t.TempDir()
+	require.Error(t, writeSecretFile(directoryTarget, []byte("secret")))
+	require.Error(t, WriteGlobalAgents(directoryTarget, "content"))
+
+	newConfig := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, WriteProviderConfig(newConfig, "https://api.example.com/v1"))
+	data, err := os.ReadFile(newConfig)
+	require.NoError(t, err)
+	require.Equal(t, "openai_base_url = \"https://api.example.com/v1\"\n", string(data))
 }

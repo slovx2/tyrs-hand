@@ -38,6 +38,7 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
+	defer cleanupBrowserTask(p.cfg, task.Claimed.ID.String())
 	spec := remoteDevelopmentSpec(*snapshot.Development)
 	runtime, state, err := p.development.EnsureRemote(ctx, spec, fetchCredential)
 	p.reportDevelopmentState(ctx, task, state)
@@ -79,7 +80,8 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 		return workerprotocol.CompleteRequest{}, err
 	}
 	defer func() { _ = os.RemoveAll(temporaryHome) }()
-	environment, err := prepareRemoteCodexHome(temporaryHome, runtimeCredential)
+	environment, err := prepareRemoteCodexHome(temporaryHome, runtimeCredential,
+		task.Snapshot.Runtime.GlobalAgents)
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
@@ -110,9 +112,9 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 		ServiceTier:     codexsettings.RuntimeServiceTier(settings.ServiceTier),
 		Sandbox:         "danger-full-access", ApprovalPolicy: settings.ApprovalPolicy,
 		NetworkEnabled:        settings.NetworkEnabled,
-		RuntimeConfig:         codexRuntimeConfig(environment, ""),
-		DeveloperInstructions: discordintegration.MultiplayerDeveloperInstructions,
-		DynamicTools:          []ports.DynamicToolSpec{githubSpec, localGitSpec()},
+		RuntimeConfig:         codexRuntimeConfig(environment, "", p.cfg),
+		DeveloperInstructions: browserDeveloperInstructions(p.cfg, discordintegration.MultiplayerDeveloperInstructions),
+		DynamicTools:          withBrowserTools(p.cfg, githubSpec, localGitSpec()),
 	}
 	if err := codexRuntime.ValidateSkills(ctx, runtime.Workspace, skills); err != nil {
 		return workerprotocol.CompleteRequest{}, err

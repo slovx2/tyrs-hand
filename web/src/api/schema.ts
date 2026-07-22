@@ -180,6 +180,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings/global-agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getGlobalAgents"];
+        put: operations["putGlobalAgents"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/settings/codex": {
         parameters: {
             query?: never;
@@ -679,6 +695,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ssh/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listSSHCredentials"];
+        put?: never;
+        post: operations["createSSHCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ssh/credentials/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["updateSSHCredential"];
+        post?: never;
+        delete: operations["deleteSSHCredential"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ssh/hosts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listSSHHosts"];
+        put?: never;
+        post: operations["createSSHHost"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ssh/hosts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["updateSSHHost"];
+        post?: never;
+        delete: operations["deleteSSHHost"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/ssh-configuration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getWorkerSSHConfiguration"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/worker/v1/enroll": {
         parameters: {
             query?: never;
@@ -1120,6 +1216,90 @@ export interface components {
             /** Format: uuid */
             discordNodeId?: string | null;
         };
+        SSHCredential: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            readonly publicKey: string;
+            readonly fingerprint: string;
+            enabled: boolean;
+            /** Format: int64 */
+            readonly version: number;
+            readonly hostCount: number;
+            /** Format: date-time */
+            readonly updatedAt: string;
+        };
+        SSHCredentialList: {
+            items: components["schemas"]["SSHCredential"][];
+        };
+        SSHCredentialCreateInput: {
+            name: string;
+            privateKey: string;
+            passphrase?: string;
+            enabled: boolean;
+        };
+        SSHCredentialUpdateInput: {
+            name: string;
+            /** @description 非空时显式轮换私钥；空字符串表示保持现有私钥 */
+            privateKey?: string;
+            passphrase?: string;
+            enabled: boolean;
+        };
+        SSHHost: {
+            /** Format: uuid */
+            id: string;
+            alias: string;
+            hostname: string;
+            port: number;
+            username: string;
+            /** Format: uuid */
+            credentialId: string;
+            readonly credentialName: string;
+            /** Format: uuid */
+            proxyJumpHostId?: string;
+            readonly proxyJumpAlias?: string;
+            executionNodeIds: string[];
+            enabled: boolean;
+            /** Format: date-time */
+            readonly updatedAt: string;
+        };
+        SSHHostInput: {
+            alias: string;
+            hostname: string;
+            port: number;
+            username: string;
+            /** Format: uuid */
+            credentialId: string;
+            /** Format: uuid */
+            proxyJumpHostId?: string;
+            executionNodeIds: string[];
+            enabled: boolean;
+        };
+        SSHHostList: {
+            items: components["schemas"]["SSHHost"][];
+        };
+        WorkerSSHCredential: {
+            /** Format: uuid */
+            id: string;
+            privateKey: string;
+            passphrase?: string;
+            publicKey: string;
+            fingerprint: string;
+        };
+        WorkerSSHHost: {
+            alias: string;
+            hostname: string;
+            port: number;
+            username: string;
+            /** Format: uuid */
+            credentialId: string;
+            proxyJumpAlias?: string;
+        };
+        WorkerSSHConfiguration: {
+            revision: string;
+            credentials: components["schemas"]["WorkerSSHCredential"][];
+            hosts: components["schemas"]["WorkerSSHHost"][];
+        };
         WorkerEnrollRequest: {
             token: string;
         };
@@ -1330,6 +1510,9 @@ export interface components {
         };
         AgentProviderSettingsInput: components["schemas"]["AgentProviderSettings"] & {
             apiKey?: string;
+        };
+        GlobalAgents: {
+            content: string;
         };
         CodexPreferences: {
             model?: string | null;
@@ -2042,6 +2225,52 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["AgentProviderSettingsInput"];
+            };
+        };
+        responses: {
+            /** @description 已保存 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getGlobalAgents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 注入所有 Codex Home 的全局 AGENTS.md */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GlobalAgents"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    putGlobalAgents: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GlobalAgents"];
             };
         };
         responses: {
@@ -2800,6 +3029,238 @@ export interface operations {
         responses: {
             /** @description 已保存 */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listSSHCredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SSH 凭证列表，不包含私钥或口令 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SSHCredentialList"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    createSSHCredential: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SSHCredentialCreateInput"];
+            };
+        };
+        responses: {
+            /** @description 已创建的脱敏 SSH 凭证 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SSHCredential"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    updateSSHCredential: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SSHCredentialUpdateInput"];
+            };
+        };
+        responses: {
+            /** @description 已更新的脱敏 SSH 凭证 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SSHCredential"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    deleteSSHCredential: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已删除 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listSSHHosts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SSH 主机列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SSHHostList"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    createSSHHost: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SSHHostInput"];
+            };
+        };
+        responses: {
+            /** @description 已创建的 SSH 主机 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SSHHost"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    updateSSHHost: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SSHHostInput"];
+            };
+        };
+        responses: {
+            /** @description 已更新的 SSH 主机 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SSHHost"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    deleteSSHHost: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已删除 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getWorkerSSHConfiguration: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-None-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前执行节点的 SSH 配置 */
+            200: {
+                headers: {
+                    ETag?: string;
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerSSHConfiguration"];
+                };
+            };
+            /** @description 配置未变化 */
+            304: {
                 headers: {
                     [name: string]: unknown;
                 };

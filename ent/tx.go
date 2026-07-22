@@ -36,6 +36,10 @@ type Tx struct {
 	Repository *RepositoryClient
 	// SCMInstallation is the client for interacting with the SCMInstallation builders.
 	SCMInstallation *SCMInstallationClient
+	// SSHCredential is the client for interacting with the SSHCredential builders.
+	SSHCredential *SSHCredentialClient
+	// SSHHost is the client for interacting with the SSHHost builders.
+	SSHHost *SSHHostClient
 	// ToolCall is the client for interacting with the ToolCall builders.
 	ToolCall *ToolCallClient
 	// TriggerRule is the client for interacting with the TriggerRule builders.
@@ -191,6 +195,8 @@ func (tx *Tx) init() {
 	tx.RepoCache = NewRepoCacheClient(tx.config)
 	tx.Repository = NewRepositoryClient(tx.config)
 	tx.SCMInstallation = NewSCMInstallationClient(tx.config)
+	tx.SSHCredential = NewSSHCredentialClient(tx.config)
+	tx.SSHHost = NewSSHHostClient(tx.config)
 	tx.ToolCall = NewToolCallClient(tx.config)
 	tx.TriggerRule = NewTriggerRuleClient(tx.config)
 	tx.WebhookDelivery = NewWebhookDeliveryClient(tx.config)

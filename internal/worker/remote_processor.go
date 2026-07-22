@@ -78,6 +78,7 @@ func (p *RemoteProcessor) processRemoteGitHub(ctx context.Context, task *workerp
 	if err != nil {
 		return codexcontrol.TurnResult{}, err
 	}
+	defer cleanupBrowserTask(p.cfg, claimed.ID.String())
 	baseRef := "refs/remotes/origin/" + job.DefaultBranch
 	if job.Kind == "pull_request" {
 		baseRef = fmt.Sprintf("refs/remotes/pull/%d", job.Number)
@@ -128,7 +129,8 @@ func (p *RemoteProcessor) processRemoteGitHub(ctx context.Context, task *workerp
 	}
 	codexHome := filepath.Join(p.cfg.CodexHomeRoot, "pools", claimed.RepositoryID.String(),
 		claimed.AgentProfileID.String(), signature[:min(16, len(signature))])
-	environment, err := prepareRemoteCodexHome(codexHome, credential)
+	environment, err := prepareRemoteCodexHome(codexHome, credential,
+		task.Snapshot.Runtime.GlobalAgents)
 	if err != nil {
 		return codexcontrol.TurnResult{}, err
 	}
@@ -153,9 +155,9 @@ func (p *RemoteProcessor) processRemoteGitHub(ctx context.Context, task *workerp
 		ServiceTier:     codexsettings.RuntimeServiceTier(settings.ServiceTier),
 		Sandbox:         settings.Sandbox, ApprovalPolicy: settings.ApprovalPolicy,
 		NetworkEnabled:        settings.NetworkEnabled,
-		DynamicTools:          []ports.DynamicToolSpec{githubSpec, localGitSpec(), githubReplySpec()},
-		RuntimeConfig:         codexRuntimeConfig(environment, p.cfg.WorkerDataRoot),
-		DeveloperInstructions: "Follow repository AGENTS.md and the explicitly attached skills. Use only the authorized GitHub work item and current worktree. Use git.commit for commits and git.publish_branch for pushes. After all business actions, call tyrs_hand.reply_to_github exactly once with the user-facing result, then provide a natural final answer.",
+		DynamicTools:          withBrowserTools(p.cfg, githubSpec, localGitSpec(), githubReplySpec()),
+		RuntimeConfig:         codexRuntimeConfig(environment, p.cfg.WorkerDataRoot, p.cfg),
+		DeveloperInstructions: browserDeveloperInstructions(p.cfg, "Follow repository AGENTS.md and the explicitly attached skills. Use only the authorized GitHub work item and current worktree. Use git.commit for commits and git.publish_branch for pushes. After all business actions, call tyrs_hand.reply_to_github exactly once with the user-facing result, then provide a natural final answer."),
 	}
 	if err := runtime.ValidateSkills(ctx, workspace.WorktreePath, skills); err != nil {
 		return codexcontrol.TurnResult{}, err
@@ -214,8 +216,13 @@ func remoteWorkspaceDirty(status string) bool {
 	return false
 }
 
-func prepareRemoteCodexHome(home string, credential workerprotocol.RuntimeCredential) ([]string, error) {
+func prepareRemoteCodexHome(home string, credential workerprotocol.RuntimeCredential,
+	globalAgents string,
+) ([]string, error) {
 	if err := os.MkdirAll(home, 0o700); err != nil {
+		return nil, err
+	}
+	if err := settings.WriteGlobalAgents(filepath.Join(home, "AGENTS.md"), globalAgents); err != nil {
 		return nil, err
 	}
 	auth, _ := json.Marshal(map[string]string{"auth_mode": "apikey", "OPENAI_API_KEY": credential.APIKey})

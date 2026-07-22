@@ -27,6 +27,8 @@ import (
 	"github.com/slovx2/tyrs-hand/ent/repocache"
 	"github.com/slovx2/tyrs-hand/ent/repository"
 	"github.com/slovx2/tyrs-hand/ent/scminstallation"
+	"github.com/slovx2/tyrs-hand/ent/sshcredential"
+	"github.com/slovx2/tyrs-hand/ent/sshhost"
 	"github.com/slovx2/tyrs-hand/ent/toolcall"
 	"github.com/slovx2/tyrs-hand/ent/triggerrule"
 	"github.com/slovx2/tyrs-hand/ent/webhookdelivery"
@@ -64,6 +66,10 @@ type Client struct {
 	Repository *RepositoryClient
 	// SCMInstallation is the client for interacting with the SCMInstallation builders.
 	SCMInstallation *SCMInstallationClient
+	// SSHCredential is the client for interacting with the SSHCredential builders.
+	SSHCredential *SSHCredentialClient
+	// SSHHost is the client for interacting with the SSHHost builders.
+	SSHHost *SSHHostClient
 	// ToolCall is the client for interacting with the ToolCall builders.
 	ToolCall *ToolCallClient
 	// TriggerRule is the client for interacting with the TriggerRule builders.
@@ -99,6 +105,8 @@ func (c *Client) init() {
 	c.RepoCache = NewRepoCacheClient(c.config)
 	c.Repository = NewRepositoryClient(c.config)
 	c.SCMInstallation = NewSCMInstallationClient(c.config)
+	c.SSHCredential = NewSSHCredentialClient(c.config)
+	c.SSHHost = NewSSHHostClient(c.config)
 	c.ToolCall = NewToolCallClient(c.config)
 	c.TriggerRule = NewTriggerRuleClient(c.config)
 	c.WebhookDelivery = NewWebhookDeliveryClient(c.config)
@@ -209,6 +217,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		RepoCache:               NewRepoCacheClient(cfg),
 		Repository:              NewRepositoryClient(cfg),
 		SCMInstallation:         NewSCMInstallationClient(cfg),
+		SSHCredential:           NewSSHCredentialClient(cfg),
+		SSHHost:                 NewSSHHostClient(cfg),
 		ToolCall:                NewToolCallClient(cfg),
 		TriggerRule:             NewTriggerRuleClient(cfg),
 		WebhookDelivery:         NewWebhookDeliveryClient(cfg),
@@ -246,6 +256,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		RepoCache:               NewRepoCacheClient(cfg),
 		Repository:              NewRepositoryClient(cfg),
 		SCMInstallation:         NewSCMInstallationClient(cfg),
+		SSHCredential:           NewSSHCredentialClient(cfg),
+		SSHHost:                 NewSSHHostClient(cfg),
 		ToolCall:                NewToolCallClient(cfg),
 		TriggerRule:             NewTriggerRuleClient(cfg),
 		WebhookDelivery:         NewWebhookDeliveryClient(cfg),
@@ -283,8 +295,9 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.Administrator, c.AgentProfile, c.AuditLog, c.CodexThreadControl,
 		c.CodexTurnIntent, c.CodexTurnRun, c.ExecutionNode, c.ExecutionNodeEnrollment,
-		c.PlatformSetting, c.RepoCache, c.Repository, c.SCMInstallation, c.ToolCall,
-		c.TriggerRule, c.WebhookDelivery, c.WorkItem, c.WorkerNode, c.Worktree,
+		c.PlatformSetting, c.RepoCache, c.Repository, c.SCMInstallation,
+		c.SSHCredential, c.SSHHost, c.ToolCall, c.TriggerRule, c.WebhookDelivery,
+		c.WorkItem, c.WorkerNode, c.Worktree,
 	} {
 		n.Use(hooks...)
 	}
@@ -296,8 +309,9 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.Administrator, c.AgentProfile, c.AuditLog, c.CodexThreadControl,
 		c.CodexTurnIntent, c.CodexTurnRun, c.ExecutionNode, c.ExecutionNodeEnrollment,
-		c.PlatformSetting, c.RepoCache, c.Repository, c.SCMInstallation, c.ToolCall,
-		c.TriggerRule, c.WebhookDelivery, c.WorkItem, c.WorkerNode, c.Worktree,
+		c.PlatformSetting, c.RepoCache, c.Repository, c.SCMInstallation,
+		c.SSHCredential, c.SSHHost, c.ToolCall, c.TriggerRule, c.WebhookDelivery,
+		c.WorkItem, c.WorkerNode, c.Worktree,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -330,6 +344,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Repository.mutate(ctx, m)
 	case *SCMInstallationMutation:
 		return c.SCMInstallation.mutate(ctx, m)
+	case *SSHCredentialMutation:
+		return c.SSHCredential.mutate(ctx, m)
+	case *SSHHostMutation:
+		return c.SSHHost.mutate(ctx, m)
 	case *ToolCallMutation:
 		return c.ToolCall.mutate(ctx, m)
 	case *TriggerRuleMutation:
@@ -1943,6 +1961,272 @@ func (c *SCMInstallationClient) mutate(ctx context.Context, m *SCMInstallationMu
 	}
 }
 
+// SSHCredentialClient is a client for the SSHCredential schema.
+type SSHCredentialClient struct {
+	config
+}
+
+// NewSSHCredentialClient returns a client for the SSHCredential from the given config.
+func NewSSHCredentialClient(c config) *SSHCredentialClient {
+	return &SSHCredentialClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `sshcredential.Hooks(f(g(h())))`.
+func (c *SSHCredentialClient) Use(hooks ...Hook) {
+	c.hooks.SSHCredential = append(c.hooks.SSHCredential, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `sshcredential.Intercept(f(g(h())))`.
+func (c *SSHCredentialClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SSHCredential = append(c.inters.SSHCredential, interceptors...)
+}
+
+// Create returns a builder for creating a SSHCredential entity.
+func (c *SSHCredentialClient) Create() *SSHCredentialCreate {
+	mutation := newSSHCredentialMutation(c.config, OpCreate)
+	return &SSHCredentialCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SSHCredential entities.
+func (c *SSHCredentialClient) CreateBulk(builders ...*SSHCredentialCreate) *SSHCredentialCreateBulk {
+	return &SSHCredentialCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SSHCredentialClient) MapCreateBulk(slice any, setFunc func(*SSHCredentialCreate, int)) *SSHCredentialCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SSHCredentialCreateBulk{err: fmt.Errorf("calling to SSHCredentialClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SSHCredentialCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SSHCredentialCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SSHCredential.
+func (c *SSHCredentialClient) Update() *SSHCredentialUpdate {
+	mutation := newSSHCredentialMutation(c.config, OpUpdate)
+	return &SSHCredentialUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SSHCredentialClient) UpdateOne(_m *SSHCredential) *SSHCredentialUpdateOne {
+	mutation := newSSHCredentialMutation(c.config, OpUpdateOne, withSSHCredential(_m))
+	return &SSHCredentialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SSHCredentialClient) UpdateOneID(id uuid.UUID) *SSHCredentialUpdateOne {
+	mutation := newSSHCredentialMutation(c.config, OpUpdateOne, withSSHCredentialID(id))
+	return &SSHCredentialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SSHCredential.
+func (c *SSHCredentialClient) Delete() *SSHCredentialDelete {
+	mutation := newSSHCredentialMutation(c.config, OpDelete)
+	return &SSHCredentialDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SSHCredentialClient) DeleteOne(_m *SSHCredential) *SSHCredentialDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SSHCredentialClient) DeleteOneID(id uuid.UUID) *SSHCredentialDeleteOne {
+	builder := c.Delete().Where(sshcredential.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SSHCredentialDeleteOne{builder}
+}
+
+// Query returns a query builder for SSHCredential.
+func (c *SSHCredentialClient) Query() *SSHCredentialQuery {
+	return &SSHCredentialQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSSHCredential},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SSHCredential entity by its id.
+func (c *SSHCredentialClient) Get(ctx context.Context, id uuid.UUID) (*SSHCredential, error) {
+	return c.Query().Where(sshcredential.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SSHCredentialClient) GetX(ctx context.Context, id uuid.UUID) *SSHCredential {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SSHCredentialClient) Hooks() []Hook {
+	return c.hooks.SSHCredential
+}
+
+// Interceptors returns the client interceptors.
+func (c *SSHCredentialClient) Interceptors() []Interceptor {
+	return c.inters.SSHCredential
+}
+
+func (c *SSHCredentialClient) mutate(ctx context.Context, m *SSHCredentialMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SSHCredentialCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SSHCredentialUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SSHCredentialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SSHCredentialDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SSHCredential mutation op: %q", m.Op())
+	}
+}
+
+// SSHHostClient is a client for the SSHHost schema.
+type SSHHostClient struct {
+	config
+}
+
+// NewSSHHostClient returns a client for the SSHHost from the given config.
+func NewSSHHostClient(c config) *SSHHostClient {
+	return &SSHHostClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `sshhost.Hooks(f(g(h())))`.
+func (c *SSHHostClient) Use(hooks ...Hook) {
+	c.hooks.SSHHost = append(c.hooks.SSHHost, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `sshhost.Intercept(f(g(h())))`.
+func (c *SSHHostClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SSHHost = append(c.inters.SSHHost, interceptors...)
+}
+
+// Create returns a builder for creating a SSHHost entity.
+func (c *SSHHostClient) Create() *SSHHostCreate {
+	mutation := newSSHHostMutation(c.config, OpCreate)
+	return &SSHHostCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SSHHost entities.
+func (c *SSHHostClient) CreateBulk(builders ...*SSHHostCreate) *SSHHostCreateBulk {
+	return &SSHHostCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SSHHostClient) MapCreateBulk(slice any, setFunc func(*SSHHostCreate, int)) *SSHHostCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SSHHostCreateBulk{err: fmt.Errorf("calling to SSHHostClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SSHHostCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SSHHostCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SSHHost.
+func (c *SSHHostClient) Update() *SSHHostUpdate {
+	mutation := newSSHHostMutation(c.config, OpUpdate)
+	return &SSHHostUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SSHHostClient) UpdateOne(_m *SSHHost) *SSHHostUpdateOne {
+	mutation := newSSHHostMutation(c.config, OpUpdateOne, withSSHHost(_m))
+	return &SSHHostUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SSHHostClient) UpdateOneID(id uuid.UUID) *SSHHostUpdateOne {
+	mutation := newSSHHostMutation(c.config, OpUpdateOne, withSSHHostID(id))
+	return &SSHHostUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SSHHost.
+func (c *SSHHostClient) Delete() *SSHHostDelete {
+	mutation := newSSHHostMutation(c.config, OpDelete)
+	return &SSHHostDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SSHHostClient) DeleteOne(_m *SSHHost) *SSHHostDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SSHHostClient) DeleteOneID(id uuid.UUID) *SSHHostDeleteOne {
+	builder := c.Delete().Where(sshhost.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SSHHostDeleteOne{builder}
+}
+
+// Query returns a query builder for SSHHost.
+func (c *SSHHostClient) Query() *SSHHostQuery {
+	return &SSHHostQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSSHHost},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SSHHost entity by its id.
+func (c *SSHHostClient) Get(ctx context.Context, id uuid.UUID) (*SSHHost, error) {
+	return c.Query().Where(sshhost.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SSHHostClient) GetX(ctx context.Context, id uuid.UUID) *SSHHost {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SSHHostClient) Hooks() []Hook {
+	return c.hooks.SSHHost
+}
+
+// Interceptors returns the client interceptors.
+func (c *SSHHostClient) Interceptors() []Interceptor {
+	return c.inters.SSHHost
+}
+
+func (c *SSHHostClient) mutate(ctx context.Context, m *SSHHostMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SSHHostCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SSHHostUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SSHHostUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SSHHostDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SSHHost mutation op: %q", m.Op())
+	}
+}
+
 // ToolCallClient is a client for the ToolCall schema.
 type ToolCallClient struct {
 	config
@@ -2746,13 +3030,13 @@ type (
 	hooks struct {
 		Administrator, AgentProfile, AuditLog, CodexThreadControl, CodexTurnIntent,
 		CodexTurnRun, ExecutionNode, ExecutionNodeEnrollment, PlatformSetting,
-		RepoCache, Repository, SCMInstallation, ToolCall, TriggerRule, WebhookDelivery,
-		WorkItem, WorkerNode, Worktree []ent.Hook
+		RepoCache, Repository, SCMInstallation, SSHCredential, SSHHost, ToolCall,
+		TriggerRule, WebhookDelivery, WorkItem, WorkerNode, Worktree []ent.Hook
 	}
 	inters struct {
 		Administrator, AgentProfile, AuditLog, CodexThreadControl, CodexTurnIntent,
 		CodexTurnRun, ExecutionNode, ExecutionNodeEnrollment, PlatformSetting,
-		RepoCache, Repository, SCMInstallation, ToolCall, TriggerRule, WebhookDelivery,
-		WorkItem, WorkerNode, Worktree []ent.Interceptor
+		RepoCache, Repository, SCMInstallation, SSHCredential, SSHHost, ToolCall,
+		TriggerRule, WebhookDelivery, WorkItem, WorkerNode, Worktree []ent.Interceptor
 	}
 )

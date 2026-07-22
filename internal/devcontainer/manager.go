@@ -19,16 +19,22 @@ import (
 const defaultDockerBinary = "/usr/local/libexec/tyrs-hand/docker"
 
 type Manager struct {
-	db         *sql.DB
-	dataRoot   string
-	dockerBin  string
-	dockerHost string
-	codexBin   string
-	replyHook  string
-	idle       time.Duration
-	runner     commandRunner
-	logger     *zap.Logger
-	enabled    bool
+	db                   *sql.DB
+	dataRoot             string
+	dockerBin            string
+	dockerHost           string
+	codexBin             string
+	replyHook            string
+	idle                 time.Duration
+	runner               commandRunner
+	logger               *zap.Logger
+	enabled              bool
+	sshEnabled           bool
+	sshAgentDir          string
+	sshAgentHostDir      string
+	browserEnabled       bool
+	browserFilesRoot     string
+	browserFilesHostRoot string
 }
 
 func NewManager(cfg config.Config, db *sql.DB, logger *zap.Logger) (*Manager, error) {
@@ -44,7 +50,10 @@ func NewManager(cfg config.Config, db *sql.DB, logger *zap.Logger) (*Manager, er
 		db: db, dataRoot: cfg.WorkerDataRoot, dockerBin: binary, dockerHost: dockerHost,
 		codexBin: "/usr/local/bin/apply_patch", replyHook: "/usr/local/bin/tyrs-hand-reply-hook",
 		idle: cfg.DevelopmentContainerIdle, runner: execRunner{}, logger: logger,
-		enabled: cfg.EnableDevelopmentContainers && (cfg.WorkerRole == "discord" || cfg.WorkerRole == "all"),
+		enabled:    cfg.EnableDevelopmentContainers && (cfg.WorkerRole == "discord" || cfg.WorkerRole == "all"),
+		sshEnabled: cfg.EnableSSH, sshAgentDir: cfg.SSHAgentDir,
+		sshAgentHostDir: cfg.SSHAgentHostDir, browserEnabled: cfg.BrowserMCPURL != "",
+		browserFilesRoot: cfg.BrowserFilesRoot, browserFilesHostRoot: cfg.BrowserFilesHostRoot,
 	}
 	if !manager.enabled {
 		return manager, nil

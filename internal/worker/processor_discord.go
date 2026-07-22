@@ -50,6 +50,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	if err != nil {
 		return result, err
 	}
+	defer cleanupBrowserTask(p.cfg, claimed.ID.String())
 	preferences, err := p.freezeRuntimePreferences(ctx, claimed)
 	if err != nil {
 		return result, err
@@ -131,8 +132,8 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		CWD: workspace, Model: jobCtx.Model, ReasoningEffort: jobCtx.ReasoningEffort,
 		ServiceTier: jobCtx.ServiceTier, Sandbox: "danger-full-access", ApprovalPolicy: jobCtx.ApprovalPolicy,
 		NetworkEnabled:        jobCtx.NetworkEnabled,
-		RuntimeConfig:         codexRuntimeConfig(environment, ""),
-		DeveloperInstructions: discordintegration.MultiplayerDeveloperInstructions,
+		RuntimeConfig:         codexRuntimeConfig(environment, "", p.cfg),
+		DeveloperInstructions: browserDeveloperInstructions(p.cfg, discordintegration.MultiplayerDeveloperInstructions),
 	}
 	if jobCtx.HasRepository {
 		githubSpec, specErr := p.catalog.DynamicToolSpecFor(append(append([]string{}, claimed.AllowedTools...), claimed.DangerousActions...))
@@ -142,6 +143,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		options.DynamicTools = append(options.DynamicTools, githubSpec, localGitSpec())
 		options.DeveloperInstructions += "\nFollow repository AGENTS.md and the explicitly attached skills. Use only the selected repository and persistent Discord clone. The container and Home are shared with the owner's other forums, so never inspect or modify sibling workspaces outside the current CWD. Use git.commit and git.publish_branch for writes."
 	}
+	options.DynamicTools = withBrowserTools(p.cfg, options.DynamicTools...)
 	if err := runtime.ValidateSkills(ctx, workspace, skills); err != nil {
 		return result, err
 	}
@@ -318,6 +320,12 @@ func (p *Processor) handleDiscordTool(ctx context.Context, claimed *codexcontrol
 ) (codex.ToolCallResult, error) {
 	if request.Namespace != nil && *request.Namespace == "github" {
 		return p.control.CallTool(ctx, claimed.Capability, request)
+	}
+	if request.Namespace != nil && *request.Namespace == "browser" {
+		return p.auditLocalToolCall(ctx, claimed, request, func() (codex.ToolCallResult, error) {
+			return executeBrowserTool(ctx, p.cfg, claimed.ID.String(), runtime.Workspace,
+				&runtime, p.development, request)
+		})
 	}
 	if request.Namespace == nil || *request.Namespace != "git" {
 		return codex.ToolCallResult{}, errors.New("未知 dynamic tool namespace")

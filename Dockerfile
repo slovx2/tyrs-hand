@@ -90,7 +90,10 @@ RUN set -eux; \
     install -m 0755 /tmp/docker/docker /usr/local/libexec/tyrs-hand/docker; \
     rm -rf /tmp/docker.tgz /tmp/docker
 RUN groupadd --gid 10001 tyrs-hand && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/tyrs-hand tyrs-hand && \
-    install -d -o tyrs-hand -g tyrs-hand -m 0750 /data/worker
+	install -d -o tyrs-hand -g tyrs-hand -m 0750 /data/worker && \
+	install -d -o tyrs-hand -g tyrs-hand -m 0700 /home/tyrs-hand/.ssh && \
+	printf '%s\n' 'Include /run/tyrs-hand-ssh-agent/ssh_config' > /home/tyrs-hand/.ssh/config && \
+	chown tyrs-hand:tyrs-hand /home/tyrs-hand/.ssh/config && chmod 0600 /home/tyrs-hand/.ssh/config
 COPY --from=go-build --chown=root:root /out/tyrs-hand-worker /usr/local/bin/tyrs-hand-worker
 COPY --from=go-build --chown=root:root /out/tyrs-hand-reply-hook /usr/local/bin/tyrs-hand-reply-hook
 COPY --from=go-build --chown=root:root /out/tyrs-hand-admin /usr/local/bin/tyrs-hand-admin

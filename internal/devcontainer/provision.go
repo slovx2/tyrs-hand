@@ -62,6 +62,7 @@ func (m *Manager) provision(ctx context.Context, item *workspace, credential str
 	identity, err := m.docker(ctx, "run", "--rm", "--user", "0:0", "--entrypoint", "/bin/sh",
 		"--env", "TYRS_RUNTIME_USER="+lookup, imageRef, "-c",
 		`command -v git >/dev/null && command -v getent >/dev/null && command -v sleep >/dev/null || exit 20
+command -v ssh >/dev/null && command -v scp >/dev/null && command -v sftp >/dev/null || exit 23
 entry=$(getent passwd "$TYRS_RUNTIME_USER") || exit 21
 uid=$(printf '%s' "$entry" | cut -d: -f3)
 gid=$(printf '%s' "$entry" | cut -d: -f4)
@@ -92,11 +93,22 @@ printf '%s:%s:%s' "$uid" "$gid" "$home"`)
 	}
 	candidateName := item.Environment.ContainerName + "-candidate-" + time.Now().UTC().Format("20060102150405")
 	_, _ = m.docker(ctx, "rm", "--force", candidateName)
-	containerID, err := m.docker(ctx, "create", "--name", candidateName,
-		"--label", "com.tyrs-hand.development-environment="+item.Environment.ID.String(),
-		"--network", item.Environment.Network, "--volume", item.Environment.DataVolume+":"+containerRoot,
-		"--volume", item.Environment.HomeVolume+":"+home, "--entrypoint", "/bin/sh", imageRef,
+	createArguments := []string{"create", "--name", candidateName,
+		"--label", "com.tyrs-hand.development-environment=" + item.Environment.ID.String(),
+		"--network", item.Environment.Network, "--volume", item.Environment.DataVolume + ":" + containerRoot,
+		"--volume", item.Environment.HomeVolume + ":" + home,
+		"--add-host", "host.docker.internal:host-gateway"}
+	if m.sshEnabled {
+		createArguments = append(createArguments, "--mount", "type=bind,source="+
+			m.sshAgentHostDir+",target="+m.sshAgentDir)
+	}
+	if m.browserEnabled {
+		createArguments = append(createArguments, "--mount", "type=bind,source="+
+			m.browserFilesHostRoot+",target="+m.browserFilesRoot)
+	}
+	createArguments = append(createArguments, "--entrypoint", "/bin/sh", imageRef,
 		"-c", "while :; do sleep 3600; done")
+	containerID, err := m.docker(ctx, createArguments...)
 	if err != nil {
 		return fmt.Errorf("创建开发容器: %w", err)
 	}
@@ -109,7 +121,7 @@ printf '%s:%s:%s' "$uid" "$gid" "$home"`)
 	if _, err := m.docker(ctx, "start", candidateName); err != nil {
 		return err
 	}
-	if err := m.installRuntime(ctx, candidateName, uid, gid); err != nil {
+	if err := m.installRuntime(ctx, candidateName, uid, gid, home); err != nil {
 		return err
 	}
 	if _, err := m.docker(ctx, "exec", "--user", fmt.Sprintf("%d:%d", uid, gid),

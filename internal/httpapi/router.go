@@ -19,7 +19,9 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/executionnode"
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
 	"github.com/slovx2/tyrs-hand/internal/githubtools"
+	"github.com/slovx2/tyrs-hand/internal/secrets"
 	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
+	"github.com/slovx2/tyrs-hand/internal/sshconfig"
 	"github.com/slovx2/tyrs-hand/internal/web"
 	"go.uber.org/zap"
 )
@@ -37,18 +39,20 @@ type Server struct {
 	discord  *discordintegration.Manager
 	bindings *discordintegration.BindingService
 	nodes    *executionnode.Service
+	ssh      *sshconfig.Service
 	logger   *zap.Logger
 	assets   fs.FS
 }
 
-func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authService *auth.Service, githubManager *ghadapter.Manager, catalog *githubtools.Catalog, settingsService *platformsettings.Service, discordManager *discordintegration.Manager, bindingService *discordintegration.BindingService, logger *zap.Logger) (*Server, error) {
+func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authService *auth.Service, githubManager *ghadapter.Manager, catalog *githubtools.Catalog, settingsService *platformsettings.Service, discordManager *discordintegration.Manager, bindingService *discordintegration.BindingService, secretStore *secrets.Store, logger *zap.Logger) (*Server, error) {
 	assets, err := web.Assets()
 	if err != nil {
 		return nil, err
 	}
 	return &Server{cfg: cfg, db: db, redis: redisClient, auth: authService, github: githubManager,
 		catalog: catalog, settings: settingsService, discord: discordManager, bindings: bindingService,
-		nodes: executionnode.NewService(db), logger: logger, assets: assets}, nil
+		nodes: executionnode.NewService(db), ssh: sshconfig.NewService(db, secretStore),
+		logger: logger, assets: assets}, nil
 }
 
 func (s *Server) baseRouter() *gin.Engine {
@@ -114,6 +118,14 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	authenticated.POST("/execution-nodes/:id/enrollments", s.requireCSRF(), s.createExecutionNodeEnrollment)
 	authenticated.PUT("/execution-nodes/:id/enabled", s.requireCSRF(), s.setExecutionNodeEnabled)
 	authenticated.DELETE("/execution-nodes/:id", s.requireCSRF(), s.deleteExecutionNode)
+	authenticated.GET("/ssh/credentials", s.listSSHCredentials)
+	authenticated.POST("/ssh/credentials", s.requireCSRF(), s.createSSHCredential)
+	authenticated.PUT("/ssh/credentials/:id", s.requireCSRF(), s.updateSSHCredential)
+	authenticated.DELETE("/ssh/credentials/:id", s.requireCSRF(), s.deleteSSHCredential)
+	authenticated.GET("/ssh/hosts", s.listSSHHosts)
+	authenticated.POST("/ssh/hosts", s.requireCSRF(), s.createSSHHost)
+	authenticated.PUT("/ssh/hosts/:id", s.requireCSRF(), s.updateSSHHost)
+	authenticated.DELETE("/ssh/hosts/:id", s.requireCSRF(), s.deleteSSHHost)
 	authenticated.GET("/settings/execution", s.getExecutionSettings)
 	authenticated.PUT("/settings/execution", s.requireCSRF(), s.putExecutionSettings)
 	authenticated.GET("/threads", s.listThreads)
@@ -124,6 +136,8 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	authenticated.GET("/audit-logs", s.listAuditLogs)
 	authenticated.GET("/settings/agent-provider", s.getAgentProviderSettings)
 	authenticated.PUT("/settings/agent-provider", s.requireCSRF(), s.putAgentProviderSettings)
+	authenticated.GET("/settings/global-agents", s.getGlobalAgents)
+	authenticated.PUT("/settings/global-agents", s.requireCSRF(), s.putGlobalAgents)
 	authenticated.GET("/settings/codex", s.listCodexSettings)
 	authenticated.PUT("/settings/codex/repositories/:id", s.requireCSRF(), s.putRepositoryCodexSettings)
 	authenticated.PUT("/settings/codex/forums/:id", s.requireCSRF(), s.putForumCodexSettings)

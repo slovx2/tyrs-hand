@@ -56,7 +56,7 @@ func InitializeServer(ctx context.Context, cfg config.Config) (*ServerApp, func(
 		cleanup()
 		return nil, nil, err
 	}
-	server, err := httpapi.NewServer(cfg, db, client, service, manager, catalog, settingsService, discordintegrationManager, bindingService, logger)
+	server, err := httpapi.NewServer(cfg, db, client, service, manager, catalog, settingsService, discordintegrationManager, bindingService, store, logger)
 	if err != nil {
 		cleanup3()
 		cleanup2()

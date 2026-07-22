@@ -20,6 +20,10 @@ export function SettingsPage() {
     queryKey: ['settings'],
     queryFn: () => api<ProviderSettings>('/settings/agent-provider'),
   })
+  const globalAgents = useQuery({
+    queryKey: ['global-agents'],
+    queryFn: () => api<{ content: string }>('/settings/global-agents'),
+  })
   const form = useForm<ProviderSettings & { apiKey?: string }>({
     values: settings.data,
   })
@@ -32,6 +36,17 @@ export function SettingsPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['settings'] })
       showToast('success', 'Provider 设置已保存')
+    },
+  })
+  const globalAgentsMutation = useMutation({
+    mutationFn: (content: string) =>
+      api<void>('/settings/global-agents', {
+        method: 'PUT',
+        body: JSON.stringify({ content }),
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['global-agents'] })
+      showToast('success', '全局 AGENTS.md 已保存')
     },
   })
   return (
@@ -127,6 +142,31 @@ export function SettingsPage() {
         </div>
         <button className="button mt-5" disabled={mutation.isPending}>
           {mutation.isPending ? '保存中…' : '保存 Provider 设置'}
+        </button>
+      </form>
+      <form
+        className="panel mt-6"
+        onSubmit={(event) => {
+          event.preventDefault()
+          const formData = new FormData(event.currentTarget)
+          globalAgentsMutation.mutate(String(formData.get('content') ?? ''))
+        }}
+      >
+        <h2 className="text-xl font-semibold">全局 AGENTS.md</h2>
+        <textarea
+          className="field mt-4 min-h-80 font-mono text-sm"
+          name="content"
+          maxLength={262144}
+          defaultValue={globalAgents.data?.content ?? ''}
+          key={globalAgents.data?.content ?? ''}
+          spellCheck={false}
+          aria-label="全局 AGENTS.md"
+        />
+        <button
+          className="button mt-5"
+          disabled={globalAgentsMutation.isPending}
+        >
+          {globalAgentsMutation.isPending ? '保存中…' : '保存全局 AGENTS.md'}
         </button>
       </form>
     </section>

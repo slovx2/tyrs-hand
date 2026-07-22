@@ -14,11 +14,18 @@ func TestWebhookRouterSeparation(t *testing.T) {
 	combined := routeSet(server.Router())
 	require.Contains(t, combined, "POST /webhooks/github")
 	require.Contains(t, combined, "GET /api/v1/setup/status")
+	require.Contains(t, combined, "GET /api/v1/ssh/credentials")
+	require.Contains(t, combined, "PUT /api/v1/ssh/credentials/:id")
+	require.Contains(t, combined, "GET /api/v1/ssh/hosts")
+	require.Contains(t, combined, "PUT /api/v1/settings/global-agents")
+	require.Contains(t, combined, "GET /worker/v1/ssh-configuration")
 
 	admin := routeSet(server.AdminRouter())
 	require.NotContains(t, admin, "POST /webhooks/github")
 	require.Contains(t, admin, "GET /api/v1/setup/status")
 	require.Contains(t, admin, "POST /internal/v1/tools/call")
+	require.Contains(t, admin, "DELETE /api/v1/ssh/hosts/:id")
+	require.Contains(t, admin, "GET /api/v1/settings/global-agents")
 
 	webhook := routeSet(server.WebhookRouter())
 	require.Contains(t, webhook, "POST /webhooks/github")

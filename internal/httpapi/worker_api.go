@@ -28,6 +28,7 @@ func (s *Server) registerWorkerRoutes(router *gin.Engine) {
 	authorized := group.Group("")
 	authorized.Use(s.requireWorkerNode())
 	authorized.POST("/heartbeat", s.workerHeartbeat)
+	authorized.GET("/ssh-configuration", s.workerSSHConfiguration)
 	authorized.POST("/claims", s.workerClaim)
 	authorized.POST("/runs/:id/heartbeat", s.workerRunHeartbeat)
 	authorized.POST("/runs/:id/commands/ack", s.workerCommandAck)
@@ -46,6 +47,21 @@ func (s *Server) registerWorkerRoutes(router *gin.Engine) {
 	authorized.POST("/development-operations/:id/heartbeat", s.workerDevelopmentOperationHeartbeat)
 	authorized.POST("/development-operations/:id/complete", s.workerCompleteDevelopmentOperation)
 	authorized.POST("/development-operations/:id/fail", s.workerFailDevelopmentOperation)
+}
+
+func (s *Server) workerSSHConfiguration(c *gin.Context) {
+	configuration, err := s.ssh.NodeConfiguration(c.Request.Context(), workerNode(c).ID)
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取节点 SSH 配置失败", err)
+		return
+	}
+	etag := `"` + configuration.Revision + `"`
+	c.Header("ETag", etag)
+	if c.GetHeader("If-None-Match") == etag {
+		c.Status(http.StatusNotModified)
+		return
+	}
+	c.JSON(http.StatusOK, configuration)
 }
 
 func (s *Server) enrollWorkerNode(c *gin.Context) {

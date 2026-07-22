@@ -33,6 +33,15 @@ func (p *RemoteProcessor) handleRemoteGitHubTool(ctx context.Context,
 		}))
 		return result, err
 	}
+	if namespace == "browser" {
+		result, err := executeBrowserTool(ctx, p.cfg, task.Claimed.ID.String(),
+			workspace.WorktreePath, nil, p.development, request)
+		report("local_tool.finished", remoteEventPayload(map[string]any{
+			"namespace": namespace, "tool": request.Tool, "callId": request.CallID,
+			"success": err == nil && result.Success, "error": trimError(err),
+		}))
+		return result, err
+	}
 	if namespace != "git" {
 		return codex.ToolCallResult{}, errors.New("未知 dynamic tool namespace")
 	}
@@ -57,6 +66,9 @@ func (p *RemoteProcessor) handleRemoteDiscordTool(ctx context.Context,
 	switch namespace {
 	case "github":
 		result, err = p.client.CallTool(ctx, task, request)
+	case "browser":
+		result, err = executeBrowserTool(ctx, p.cfg, task.Claimed.ID.String(),
+			runtime.Workspace, &runtime, p.development, request)
 	case "git":
 		result, err = p.executeRemoteContainerGit(ctx, task, runtime, request)
 	default:

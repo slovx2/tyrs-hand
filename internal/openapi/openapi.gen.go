@@ -432,6 +432,11 @@ type GitHubAppStatus struct {
 	Configured bool    `json:"configured"`
 }
 
+// GlobalAgents defines model for GlobalAgents.
+type GlobalAgents struct {
+	Content string `json:"content"`
+}
+
 // IDResource defines model for IDResource.
 type IDResource struct {
 	Id openapi_types.UUID `json:"id"`
@@ -471,6 +476,74 @@ type RepositoryInput struct {
 	Name                   string  `json:"name"`
 	Owner                  string  `json:"owner"`
 	RepositoryExternalId   int64   `json:"repositoryExternalId"`
+}
+
+// SSHCredential defines model for SSHCredential.
+type SSHCredential struct {
+	Enabled     bool               `json:"enabled"`
+	Fingerprint *string            `json:"fingerprint,omitempty"`
+	HostCount   *int               `json:"hostCount,omitempty"`
+	Id          openapi_types.UUID `json:"id"`
+	Name        string             `json:"name"`
+	PublicKey   *string            `json:"publicKey,omitempty"`
+	UpdatedAt   *time.Time         `json:"updatedAt,omitempty"`
+	Version     *int64             `json:"version,omitempty"`
+}
+
+// SSHCredentialCreateInput defines model for SSHCredentialCreateInput.
+type SSHCredentialCreateInput struct {
+	Enabled    bool    `json:"enabled"`
+	Name       string  `json:"name"`
+	Passphrase *string `json:"passphrase,omitempty"`
+	PrivateKey *string `json:"privateKey,omitempty"`
+}
+
+// SSHCredentialList defines model for SSHCredentialList.
+type SSHCredentialList struct {
+	Items []SSHCredential `json:"items"`
+}
+
+// SSHCredentialUpdateInput defines model for SSHCredentialUpdateInput.
+type SSHCredentialUpdateInput struct {
+	Enabled    bool    `json:"enabled"`
+	Name       string  `json:"name"`
+	Passphrase *string `json:"passphrase,omitempty"`
+
+	// PrivateKey 非空时显式轮换私钥；空字符串表示保持现有私钥
+	PrivateKey *string `json:"privateKey,omitempty"`
+}
+
+// SSHHost defines model for SSHHost.
+type SSHHost struct {
+	Alias            string               `json:"alias"`
+	CredentialId     openapi_types.UUID   `json:"credentialId"`
+	CredentialName   *string              `json:"credentialName,omitempty"`
+	Enabled          bool                 `json:"enabled"`
+	ExecutionNodeIds []openapi_types.UUID `json:"executionNodeIds"`
+	Hostname         string               `json:"hostname"`
+	Id               openapi_types.UUID   `json:"id"`
+	Port             int                  `json:"port"`
+	ProxyJumpAlias   *string              `json:"proxyJumpAlias,omitempty"`
+	ProxyJumpHostId  *openapi_types.UUID  `json:"proxyJumpHostId,omitempty"`
+	UpdatedAt        *time.Time           `json:"updatedAt,omitempty"`
+	Username         string               `json:"username"`
+}
+
+// SSHHostInput defines model for SSHHostInput.
+type SSHHostInput struct {
+	Alias            string               `json:"alias"`
+	CredentialId     openapi_types.UUID   `json:"credentialId"`
+	Enabled          bool                 `json:"enabled"`
+	ExecutionNodeIds []openapi_types.UUID `json:"executionNodeIds"`
+	Hostname         string               `json:"hostname"`
+	Port             int                  `json:"port"`
+	ProxyJumpHostId  *openapi_types.UUID  `json:"proxyJumpHostId,omitempty"`
+	Username         string               `json:"username"`
+}
+
+// SSHHostList defines model for SSHHostList.
+type SSHHostList struct {
+	Items []SSHHost `json:"items"`
 }
 
 // SetupRequest defines model for SetupRequest.
@@ -639,6 +712,32 @@ type WorkerRuntimeCredential struct {
 	ProxyUrl *string `json:"proxyUrl,omitempty"`
 }
 
+// WorkerSSHConfiguration defines model for WorkerSSHConfiguration.
+type WorkerSSHConfiguration struct {
+	Credentials []WorkerSSHCredential `json:"credentials"`
+	Hosts       []WorkerSSHHost       `json:"hosts"`
+	Revision    string                `json:"revision"`
+}
+
+// WorkerSSHCredential defines model for WorkerSSHCredential.
+type WorkerSSHCredential struct {
+	Fingerprint string             `json:"fingerprint"`
+	Id          openapi_types.UUID `json:"id"`
+	Passphrase  *string            `json:"passphrase,omitempty"`
+	PrivateKey  *string            `json:"privateKey,omitempty"`
+	PublicKey   string             `json:"publicKey"`
+}
+
+// WorkerSSHHost defines model for WorkerSSHHost.
+type WorkerSSHHost struct {
+	Alias          string             `json:"alias"`
+	CredentialId   openapi_types.UUID `json:"credentialId"`
+	Hostname       string             `json:"hostname"`
+	Port           int                `json:"port"`
+	ProxyJumpAlias *string            `json:"proxyJumpAlias,omitempty"`
+	Username       string             `json:"username"`
+}
+
 // CSRFToken defines model for CSRFToken.
 type CSRFToken = string
 
@@ -804,6 +903,41 @@ type PutExecutionDefaultsParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
+// PutGlobalAgentsParams defines parameters for PutGlobalAgents.
+type PutGlobalAgentsParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// CreateSSHCredentialParams defines parameters for CreateSSHCredential.
+type CreateSSHCredentialParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// DeleteSSHCredentialParams defines parameters for DeleteSSHCredential.
+type DeleteSSHCredentialParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// UpdateSSHCredentialParams defines parameters for UpdateSSHCredential.
+type UpdateSSHCredentialParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// CreateSSHHostParams defines parameters for CreateSSHHost.
+type CreateSSHHostParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// DeleteSSHHostParams defines parameters for DeleteSSHHost.
+type DeleteSSHHostParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// UpdateSSHHostParams defines parameters for UpdateSSHHost.
+type UpdateSSHHostParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
 // CreateTriggerRuleParams defines parameters for CreateTriggerRule.
 type CreateTriggerRuleParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
@@ -845,6 +979,11 @@ type CallWorkerDynamicToolJSONBody map[string]interface{}
 
 // UpdateWorkerWorkspaceStateJSONBody defines parameters for UpdateWorkerWorkspaceState.
 type UpdateWorkerWorkspaceStateJSONBody map[string]interface{}
+
+// GetWorkerSSHConfigurationParams defines parameters for GetWorkerSSHConfiguration.
+type GetWorkerSSHConfigurationParams struct {
+	IfNoneMatch *string `json:"If-None-Match,omitempty"`
+}
 
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
@@ -900,8 +1039,23 @@ type PutDiscordSettingsJSONRequestBody = DiscordSettingsInput
 // PutExecutionDefaultsJSONRequestBody defines body for PutExecutionDefaults for application/json ContentType.
 type PutExecutionDefaultsJSONRequestBody = ExecutionDefaults
 
+// PutGlobalAgentsJSONRequestBody defines body for PutGlobalAgents for application/json ContentType.
+type PutGlobalAgentsJSONRequestBody = GlobalAgents
+
 // SetupAdministratorJSONRequestBody defines body for SetupAdministrator for application/json ContentType.
 type SetupAdministratorJSONRequestBody = SetupRequest
+
+// CreateSSHCredentialJSONRequestBody defines body for CreateSSHCredential for application/json ContentType.
+type CreateSSHCredentialJSONRequestBody = SSHCredentialCreateInput
+
+// UpdateSSHCredentialJSONRequestBody defines body for UpdateSSHCredential for application/json ContentType.
+type UpdateSSHCredentialJSONRequestBody = SSHCredentialUpdateInput
+
+// CreateSSHHostJSONRequestBody defines body for CreateSSHHost for application/json ContentType.
+type CreateSSHHostJSONRequestBody = SSHHostInput
+
+// UpdateSSHHostJSONRequestBody defines body for UpdateSSHHost for application/json ContentType.
+type UpdateSSHHostJSONRequestBody = SSHHostInput
 
 // CreateTriggerRuleJSONRequestBody defines body for CreateTriggerRule for application/json ContentType.
 type CreateTriggerRuleJSONRequestBody = TriggerRuleInput
@@ -1107,11 +1261,41 @@ type ServerInterface interface {
 	// (PUT /settings/execution)
 	PutExecutionDefaults(c *gin.Context, params PutExecutionDefaultsParams)
 
+	// (GET /settings/global-agents)
+	GetGlobalAgents(c *gin.Context)
+
+	// (PUT /settings/global-agents)
+	PutGlobalAgents(c *gin.Context, params PutGlobalAgentsParams)
+
 	// (POST /setup/admin)
 	SetupAdministrator(c *gin.Context)
 
 	// (GET /setup/status)
 	GetSetupStatus(c *gin.Context)
+
+	// (GET /ssh/credentials)
+	ListSSHCredentials(c *gin.Context)
+
+	// (POST /ssh/credentials)
+	CreateSSHCredential(c *gin.Context, params CreateSSHCredentialParams)
+
+	// (DELETE /ssh/credentials/{id})
+	DeleteSSHCredential(c *gin.Context, id openapi_types.UUID, params DeleteSSHCredentialParams)
+
+	// (PUT /ssh/credentials/{id})
+	UpdateSSHCredential(c *gin.Context, id openapi_types.UUID, params UpdateSSHCredentialParams)
+
+	// (GET /ssh/hosts)
+	ListSSHHosts(c *gin.Context)
+
+	// (POST /ssh/hosts)
+	CreateSSHHost(c *gin.Context, params CreateSSHHostParams)
+
+	// (DELETE /ssh/hosts/{id})
+	DeleteSSHHost(c *gin.Context, id openapi_types.UUID, params DeleteSSHHostParams)
+
+	// (PUT /ssh/hosts/{id})
+	UpdateSSHHost(c *gin.Context, id openapi_types.UUID, params UpdateSSHHostParams)
 
 	// (GET /system/status)
 	GetSystemStatus(c *gin.Context)
@@ -1190,6 +1374,9 @@ type ServerInterface interface {
 
 	// (POST /worker/v1/runs/{id}/workspace-state)
 	UpdateWorkerWorkspaceState(c *gin.Context, id WorkerResourceID)
+
+	// (GET /worker/v1/ssh-configuration)
+	GetWorkerSSHConfiguration(c *gin.Context, params GetWorkerSSHConfigurationParams)
 
 	// (GET /workers)
 	GetWorkers(c *gin.Context)
@@ -2685,6 +2872,65 @@ func (siw *ServerInterfaceWrapper) PutExecutionDefaults(c *gin.Context) {
 	siw.Handler.PutExecutionDefaults(c, params)
 }
 
+// GetGlobalAgents operation middleware
+func (siw *ServerInterfaceWrapper) GetGlobalAgents(c *gin.Context) {
+
+	c.Set(SessionCookieScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetGlobalAgents(c)
+}
+
+// PutGlobalAgents operation middleware
+func (siw *ServerInterfaceWrapper) PutGlobalAgents(c *gin.Context) {
+
+	var err error
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutGlobalAgentsParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PutGlobalAgents(c, params)
+}
+
 // SetupAdministrator operation middleware
 func (siw *ServerInterfaceWrapper) SetupAdministrator(c *gin.Context) {
 
@@ -2709,6 +2955,336 @@ func (siw *ServerInterfaceWrapper) GetSetupStatus(c *gin.Context) {
 	}
 
 	siw.Handler.GetSetupStatus(c)
+}
+
+// ListSSHCredentials operation middleware
+func (siw *ServerInterfaceWrapper) ListSSHCredentials(c *gin.Context) {
+
+	c.Set(SessionCookieScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListSSHCredentials(c)
+}
+
+// CreateSSHCredential operation middleware
+func (siw *ServerInterfaceWrapper) CreateSSHCredential(c *gin.Context) {
+
+	var err error
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateSSHCredentialParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateSSHCredential(c, params)
+}
+
+// DeleteSSHCredential operation middleware
+func (siw *ServerInterfaceWrapper) DeleteSSHCredential(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteSSHCredentialParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteSSHCredential(c, id, params)
+}
+
+// UpdateSSHCredential operation middleware
+func (siw *ServerInterfaceWrapper) UpdateSSHCredential(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateSSHCredentialParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateSSHCredential(c, id, params)
+}
+
+// ListSSHHosts operation middleware
+func (siw *ServerInterfaceWrapper) ListSSHHosts(c *gin.Context) {
+
+	c.Set(SessionCookieScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListSSHHosts(c)
+}
+
+// CreateSSHHost operation middleware
+func (siw *ServerInterfaceWrapper) CreateSSHHost(c *gin.Context) {
+
+	var err error
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateSSHHostParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateSSHHost(c, params)
+}
+
+// DeleteSSHHost operation middleware
+func (siw *ServerInterfaceWrapper) DeleteSSHHost(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteSSHHostParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteSSHHost(c, id, params)
+}
+
+// UpdateSSHHost operation middleware
+func (siw *ServerInterfaceWrapper) UpdateSSHHost(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateSSHHostParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateSSHHost(c, id, params)
 }
 
 // GetSystemStatus operation middleware
@@ -3444,6 +4020,47 @@ func (siw *ServerInterfaceWrapper) UpdateWorkerWorkspaceState(c *gin.Context) {
 	siw.Handler.UpdateWorkerWorkspaceState(c, id)
 }
 
+// GetWorkerSSHConfiguration operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkerSSHConfiguration(c *gin.Context) {
+
+	var err error
+
+	c.Set(NodeBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetWorkerSSHConfigurationParams
+
+	headers := c.Request.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for If-None-Match, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter If-None-Match: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetWorkerSSHConfiguration(c, params)
+}
+
 // GetWorkers operation middleware
 func (siw *ServerInterfaceWrapper) GetWorkers(c *gin.Context) {
 
@@ -3547,8 +4164,18 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.PUT(options.BaseURL+"/settings/discord", wrapper.PutDiscordSettings)
 	router.GET(options.BaseURL+"/settings/execution", wrapper.GetExecutionDefaults)
 	router.PUT(options.BaseURL+"/settings/execution", wrapper.PutExecutionDefaults)
+	router.GET(options.BaseURL+"/settings/global-agents", wrapper.GetGlobalAgents)
+	router.PUT(options.BaseURL+"/settings/global-agents", wrapper.PutGlobalAgents)
 	router.POST(options.BaseURL+"/setup/admin", wrapper.SetupAdministrator)
 	router.GET(options.BaseURL+"/setup/status", wrapper.GetSetupStatus)
+	router.GET(options.BaseURL+"/ssh/credentials", wrapper.ListSSHCredentials)
+	router.POST(options.BaseURL+"/ssh/credentials", wrapper.CreateSSHCredential)
+	router.DELETE(options.BaseURL+"/ssh/credentials/:id", wrapper.DeleteSSHCredential)
+	router.PUT(options.BaseURL+"/ssh/credentials/:id", wrapper.UpdateSSHCredential)
+	router.GET(options.BaseURL+"/ssh/hosts", wrapper.ListSSHHosts)
+	router.POST(options.BaseURL+"/ssh/hosts", wrapper.CreateSSHHost)
+	router.DELETE(options.BaseURL+"/ssh/hosts/:id", wrapper.DeleteSSHHost)
+	router.PUT(options.BaseURL+"/ssh/hosts/:id", wrapper.UpdateSSHHost)
 	router.GET(options.BaseURL+"/system/status", wrapper.GetSystemStatus)
 	router.GET(options.BaseURL+"/threads", wrapper.GetThreads)
 	router.GET(options.BaseURL+"/trigger-rules", wrapper.GetTriggerRules)
@@ -3575,6 +4202,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/worker/v1/runs/:id/thread", wrapper.SetWorkerRunThread)
 	router.POST(options.BaseURL+"/worker/v1/runs/:id/tools/call", wrapper.CallWorkerDynamicTool)
 	router.POST(options.BaseURL+"/worker/v1/runs/:id/workspace-state", wrapper.UpdateWorkerWorkspaceState)
+	router.GET(options.BaseURL+"/worker/v1/ssh-configuration", wrapper.GetWorkerSSHConfiguration)
 	router.GET(options.BaseURL+"/workers", wrapper.GetWorkers)
 	router.GET(options.BaseURL+"/worktrees", wrapper.GetWorktrees)
 }
@@ -3582,109 +4210,125 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
+	"989IjrBwPPlnmppri2v/FwAA//9qbWivt90AAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

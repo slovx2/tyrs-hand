@@ -25,6 +25,8 @@ import (
 	"github.com/slovx2/tyrs-hand/ent/repocache"
 	"github.com/slovx2/tyrs-hand/ent/repository"
 	"github.com/slovx2/tyrs-hand/ent/scminstallation"
+	"github.com/slovx2/tyrs-hand/ent/sshcredential"
+	"github.com/slovx2/tyrs-hand/ent/sshhost"
 	"github.com/slovx2/tyrs-hand/ent/toolcall"
 	"github.com/slovx2/tyrs-hand/ent/triggerrule"
 	"github.com/slovx2/tyrs-hand/ent/webhookdelivery"
@@ -54,6 +56,8 @@ const (
 	TypeRepoCache               = "RepoCache"
 	TypeRepository              = "Repository"
 	TypeSCMInstallation         = "SCMInstallation"
+	TypeSSHCredential           = "SSHCredential"
+	TypeSSHHost                 = "SSHHost"
 	TypeToolCall                = "ToolCall"
 	TypeTriggerRule             = "TriggerRule"
 	TypeWebhookDelivery         = "WebhookDelivery"
@@ -15217,6 +15221,1574 @@ func (m *SCMInstallationMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *SCMInstallationMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown SCMInstallation edge %s", name)
+}
+
+// SSHCredentialMutation represents an operation that mutates the SSHCredential nodes in the graph.
+type SSHCredentialMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *uuid.UUID
+	name          *string
+	secret_id     *uuid.UUID
+	public_key    *string
+	fingerprint   *string
+	enabled       *bool
+	version       *int64
+	addversion    *int64
+	created_at    *time.Time
+	updated_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*SSHCredential, error)
+	predicates    []predicate.SSHCredential
+}
+
+var _ ent.Mutation = (*SSHCredentialMutation)(nil)
+
+// sshcredentialOption allows management of the mutation configuration using functional options.
+type sshcredentialOption func(*SSHCredentialMutation)
+
+// newSSHCredentialMutation creates new mutation for the SSHCredential entity.
+func newSSHCredentialMutation(c config, op Op, opts ...sshcredentialOption) *SSHCredentialMutation {
+	m := &SSHCredentialMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSSHCredential,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSSHCredentialID sets the ID field of the mutation.
+func withSSHCredentialID(id uuid.UUID) sshcredentialOption {
+	return func(m *SSHCredentialMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *SSHCredential
+		)
+		m.oldValue = func(ctx context.Context) (*SSHCredential, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().SSHCredential.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSSHCredential sets the old SSHCredential of the mutation.
+func withSSHCredential(node *SSHCredential) sshcredentialOption {
+	return func(m *SSHCredentialMutation) {
+		m.oldValue = func(context.Context) (*SSHCredential, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SSHCredentialMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SSHCredentialMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of SSHCredential entities.
+func (m *SSHCredentialMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SSHCredentialMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SSHCredentialMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().SSHCredential.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetName sets the "name" field.
+func (m *SSHCredentialMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *SSHCredentialMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the SSHCredential entity.
+// If the SSHCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SSHCredentialMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *SSHCredentialMutation) ResetName() {
+	m.name = nil
+}
+
+// SetSecretID sets the "secret_id" field.
+func (m *SSHCredentialMutation) SetSecretID(u uuid.UUID) {
+	m.secret_id = &u
+}
+
+// SecretID returns the value of the "secret_id" field in the mutation.
+func (m *SSHCredentialMutation) SecretID() (r uuid.UUID, exists bool) {
+	v := m.secret_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSecretID returns the old "secret_id" field's value of the SSHCredential entity.
+// If the SSHCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SSHCredentialMutation) OldSecretID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSecretID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSecretID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSecretID: %w", err)
+	}
+	return oldValue.SecretID, nil
+}
+
+// ResetSecretID resets all changes to the "secret_id" field.
+func (m *SSHCredentialMutation) ResetSecretID() {
+	m.secret_id = nil
+}
+
+// SetPublicKey sets the "public_key" field.
+func (m *SSHCredentialMutation) SetPublicKey(s string) {
+	m.public_key = &s
+}
+
+// PublicKey returns the value of the "public_key" field in the mutation.
+func (m *SSHCredentialMutation) PublicKey() (r string, exists bool) {
+	v := m.public_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPublicKey returns the old "public_key" field's value of the SSHCredential entity.
+// If the SSHCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SSHCredentialMutation) OldPublicKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPublicKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPublicKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPublicKey: %w", err)
+	}
+	return oldValue.PublicKey, nil
+}
+
+// ResetPublicKey resets all changes to the "public_key" field.
+func (m *SSHCredentialMutation) ResetPublicKey() {
+	m.public_key = nil
+}
+
+// SetFingerprint sets the "fingerprint" field.
+func (m *SSHCredentialMutation) SetFingerprint(s string) {
+	m.fingerprint = &s
+}
+
+// Fingerprint returns the value of the "fingerprint" field in the mutation.
+func (m *SSHCredentialMutation) Fingerprint() (r string, exists bool) {
+	v := m.fingerprint
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFingerprint returns the old "fingerprint" field's value of the SSHCredential entity.
+// If the SSHCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SSHCredentialMutation) OldFingerprint(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFingerprint is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFingerprint requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFingerprint: %w", err)
+	}
+	return oldValue.Fingerprint, nil
+}
+
+// ResetFingerprint resets all changes to the "fingerprint" field.
+func (m *SSHCredentialMutation) ResetFingerprint() {
+	m.fingerprint = nil
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *SSHCredentialMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *SSHCredentialMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the SSHCredential entity.
+// If the SSHCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SSHCredentialMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *SSHCredentialMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
+// SetVersion sets the "version" field.
+func (m *SSHCredentialMutation) SetVersion(i int64) {
+	m.version = &i
+	m.addversion = nil
+}
+
+// Version returns the value of the "version" field in the mutation.
+func (m *SSHCredentialMutation) Version() (r int64, exists bool) {
+	v := m.version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVersion returns the old "version" field's value of the SSHCredential entity.
+// If the SSHCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SSHCredentialMutation) OldVersion(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVersion: %w", err)
+	}
+	return oldValue.Version, nil
+}
+
+// AddVersion adds i to the "version" field.
+func (m *SSHCredentialMutation) AddVersion(i int64) {
+	if m.addversion != nil {
+		*m.addversion += i
+	} else {
+		m.addversion = &i
+	}
+}
+
+// AddedVersion returns the value that was added to the "version" field in this mutation.
+func (m *SSHCredentialMutation) AddedVersion() (r int64, exists bool) {
+	v := m.addversion
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetVersion resets all changes to the "version" field.
+func (m *SSHCredentialMutation) ResetVersion() {
+	m.version = nil
+	m.addversion = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *SSHCredentialMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *SSHCredentialMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the SSHCredential entity.
+// If the SSHCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SSHCredentialMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *SSHCredentialMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *SSHCredentialMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *SSHCredentialMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the SSHCredential entity.
+// If the SSHCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SSHCredentialMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *SSHCredentialMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the SSHCredentialMutation builder.
+func (m *SSHCredentialMutation) Where(ps ...predicate.SSHCredential) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SSHCredentialMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SSHCredentialMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.SSHCredential, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SSHCredentialMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SSHCredentialMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (SSHCredential).
+func (m *SSHCredentialMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SSHCredentialMutation) Fields() []string {
+	fields := make([]string, 0, 8)
+	if m.name != nil {
+		fields = append(fields, sshcredential.FieldName)
+	}
+	if m.secret_id != nil {
+		fields = append(fields, sshcredential.FieldSecretID)
+	}
+	if m.public_key != nil {
+		fields = append(fields, sshcredential.FieldPublicKey)
+	}
+	if m.fingerprint != nil {
+		fields = append(fields, sshcredential.FieldFingerprint)
+	}
+	if m.enabled != nil {
+		fields = append(fields, sshcredential.FieldEnabled)
+	}
+	if m.version != nil {
+		fields = append(fields, sshcredential.FieldVersion)
+	}
+	if m.created_at != nil {
+		fields = append(fields, sshcredential.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, sshcredential.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SSHCredentialMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case sshcredential.FieldName:
+		return m.Name()
+	case sshcredential.FieldSecretID:
+		return m.SecretID()
+	case sshcredential.FieldPublicKey:
+		return m.PublicKey()
+	case sshcredential.FieldFingerprint:
+		return m.Fingerprint()
+	case sshcredential.FieldEnabled:
+		return m.Enabled()
+	case sshcredential.FieldVersion:
+		return m.Version()
+	case sshcredential.FieldCreatedAt:
+		return m.CreatedAt()
+	case sshcredential.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SSHCredentialMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case sshcredential.FieldName:
+		return m.OldName(ctx)
+	case sshcredential.FieldSecretID:
+		return m.OldSecretID(ctx)
+	case sshcredential.FieldPublicKey:
+		return m.OldPublicKey(ctx)
+	case sshcredential.FieldFingerprint:
+		return m.OldFingerprint(ctx)
+	case sshcredential.FieldEnabled:
+		return m.OldEnabled(ctx)
+	case sshcredential.FieldVersion:
+		return m.OldVersion(ctx)
+	case sshcredential.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case sshcredential.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown SSHCredential field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SSHCredentialMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case sshcredential.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case sshcredential.FieldSecretID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSecretID(v)
+		return nil
+	case sshcredential.FieldPublicKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPublicKey(v)
+		return nil
+	case sshcredential.FieldFingerprint:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFingerprint(v)
+		return nil
+	case sshcredential.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	case sshcredential.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVersion(v)
+		return nil
+	case sshcredential.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case sshcredential.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SSHCredential field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SSHCredentialMutation) AddedFields() []string {
+	var fields []string
+	if m.addversion != nil {
+		fields = append(fields, sshcredential.FieldVersion)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SSHCredentialMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case sshcredential.FieldVersion:
+		return m.AddedVersion()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SSHCredentialMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case sshcredential.FieldVersion:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddVersion(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SSHCredential numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SSHCredentialMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SSHCredentialMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SSHCredentialMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown SSHCredential nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SSHCredentialMutation) ResetField(name string) error {
+	switch name {
+	case sshcredential.FieldName:
+		m.ResetName()
+		return nil
+	case sshcredential.FieldSecretID:
+		m.ResetSecretID()
+		return nil
+	case sshcredential.FieldPublicKey:
+		m.ResetPublicKey()
+		return nil
+	case sshcredential.FieldFingerprint:
+		m.ResetFingerprint()
+		return nil
+	case sshcredential.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	case sshcredential.FieldVersion:
+		m.ResetVersion()
+		return nil
+	case sshcredential.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case sshcredential.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown SSHCredential field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SSHCredentialMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SSHCredentialMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SSHCredentialMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SSHCredentialMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SSHCredentialMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SSHCredentialMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SSHCredentialMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown SSHCredential unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SSHCredentialMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown SSHCredential edge %s", name)
+}
+
+// SSHHostMutation represents an operation that mutates the SSHHost nodes in the graph.
+type SSHHostMutation struct {
+	config
+	op                 Op
+	typ                string
+	id                 *uuid.UUID
+	alias              *string
+	hostname           *string
+	port               *int
+	addport            *int
+	username           *string
+	credential_id      *uuid.UUID
+	proxy_jump_host_id *uuid.UUID
+	enabled            *bool
+	created_at         *time.Time
+	updated_at         *time.Time
+	clearedFields      map[string]struct{}
+	done               bool
+	oldValue           func(context.Context) (*SSHHost, error)
+	predicates         []predicate.SSHHost
+}
+
+var _ ent.Mutation = (*SSHHostMutation)(nil)
+
+// sshhostOption allows management of the mutation configuration using functional options.
+type sshhostOption func(*SSHHostMutation)
+
+// newSSHHostMutation creates new mutation for the SSHHost entity.
+func newSSHHostMutation(c config, op Op, opts ...sshhostOption) *SSHHostMutation {
+	m := &SSHHostMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSSHHost,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSSHHostID sets the ID field of the mutation.
+func withSSHHostID(id uuid.UUID) sshhostOption {
+	return func(m *SSHHostMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *SSHHost
+		)
+		m.oldValue = func(ctx context.Context) (*SSHHost, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().SSHHost.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSSHHost sets the old SSHHost of the mutation.
+func withSSHHost(node *SSHHost) sshhostOption {
+	return func(m *SSHHostMutation) {
+		m.oldValue = func(context.Context) (*SSHHost, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SSHHostMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SSHHostMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of SSHHost entities.
+func (m *SSHHostMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SSHHostMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SSHHostMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().SSHHost.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetAlias sets the "alias" field.
+func (m *SSHHostMutation) SetAlias(s string) {
+	m.alias = &s
+}
+
+// Alias returns the value of the "alias" field in the mutation.
+func (m *SSHHostMutation) Alias() (r string, exists bool) {
+	v := m.alias
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAlias returns the old "alias" field's value of the SSHHost entity.
+// If the SSHHost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SSHHostMutation) OldAlias(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAlias is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAlias requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAlias: %w", err)
+	}
+	return oldValue.Alias, nil
+}
+
+// ResetAlias resets all changes to the "alias" field.
+func (m *SSHHostMutation) ResetAlias() {
+	m.alias = nil
+}
+
+// SetHostname sets the "hostname" field.
+func (m *SSHHostMutation) SetHostname(s string) {
+	m.hostname = &s
+}
+
+// Hostname returns the value of the "hostname" field in the mutation.
+func (m *SSHHostMutation) Hostname() (r string, exists bool) {
+	v := m.hostname
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHostname returns the old "hostname" field's value of the SSHHost entity.
+// If the SSHHost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SSHHostMutation) OldHostname(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHostname is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHostname requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHostname: %w", err)
+	}
+	return oldValue.Hostname, nil
+}
+
+// ResetHostname resets all changes to the "hostname" field.
+func (m *SSHHostMutation) ResetHostname() {
+	m.hostname = nil
+}
+
+// SetPort sets the "port" field.
+func (m *SSHHostMutation) SetPort(i int) {
+	m.port = &i
+	m.addport = nil
+}
+
+// Port returns the value of the "port" field in the mutation.
+func (m *SSHHostMutation) Port() (r int, exists bool) {
+	v := m.port
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPort returns the old "port" field's value of the SSHHost entity.
+// If the SSHHost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SSHHostMutation) OldPort(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPort is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPort requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPort: %w", err)
+	}
+	return oldValue.Port, nil
+}
+
+// AddPort adds i to the "port" field.
+func (m *SSHHostMutation) AddPort(i int) {
+	if m.addport != nil {
+		*m.addport += i
+	} else {
+		m.addport = &i
+	}
+}
+
+// AddedPort returns the value that was added to the "port" field in this mutation.
+func (m *SSHHostMutation) AddedPort() (r int, exists bool) {
+	v := m.addport
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPort resets all changes to the "port" field.
+func (m *SSHHostMutation) ResetPort() {
+	m.port = nil
+	m.addport = nil
+}
+
+// SetUsername sets the "username" field.
+func (m *SSHHostMutation) SetUsername(s string) {
+	m.username = &s
+}
+
+// Username returns the value of the "username" field in the mutation.
+func (m *SSHHostMutation) Username() (r string, exists bool) {
+	v := m.username
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUsername returns the old "username" field's value of the SSHHost entity.
+// If the SSHHost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SSHHostMutation) OldUsername(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUsername is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUsername requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUsername: %w", err)
+	}
+	return oldValue.Username, nil
+}
+
+// ResetUsername resets all changes to the "username" field.
+func (m *SSHHostMutation) ResetUsername() {
+	m.username = nil
+}
+
+// SetCredentialID sets the "credential_id" field.
+func (m *SSHHostMutation) SetCredentialID(u uuid.UUID) {
+	m.credential_id = &u
+}
+
+// CredentialID returns the value of the "credential_id" field in the mutation.
+func (m *SSHHostMutation) CredentialID() (r uuid.UUID, exists bool) {
+	v := m.credential_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCredentialID returns the old "credential_id" field's value of the SSHHost entity.
+// If the SSHHost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SSHHostMutation) OldCredentialID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCredentialID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCredentialID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCredentialID: %w", err)
+	}
+	return oldValue.CredentialID, nil
+}
+
+// ResetCredentialID resets all changes to the "credential_id" field.
+func (m *SSHHostMutation) ResetCredentialID() {
+	m.credential_id = nil
+}
+
+// SetProxyJumpHostID sets the "proxy_jump_host_id" field.
+func (m *SSHHostMutation) SetProxyJumpHostID(u uuid.UUID) {
+	m.proxy_jump_host_id = &u
+}
+
+// ProxyJumpHostID returns the value of the "proxy_jump_host_id" field in the mutation.
+func (m *SSHHostMutation) ProxyJumpHostID() (r uuid.UUID, exists bool) {
+	v := m.proxy_jump_host_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProxyJumpHostID returns the old "proxy_jump_host_id" field's value of the SSHHost entity.
+// If the SSHHost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SSHHostMutation) OldProxyJumpHostID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProxyJumpHostID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProxyJumpHostID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProxyJumpHostID: %w", err)
+	}
+	return oldValue.ProxyJumpHostID, nil
+}
+
+// ClearProxyJumpHostID clears the value of the "proxy_jump_host_id" field.
+func (m *SSHHostMutation) ClearProxyJumpHostID() {
+	m.proxy_jump_host_id = nil
+	m.clearedFields[sshhost.FieldProxyJumpHostID] = struct{}{}
+}
+
+// ProxyJumpHostIDCleared returns if the "proxy_jump_host_id" field was cleared in this mutation.
+func (m *SSHHostMutation) ProxyJumpHostIDCleared() bool {
+	_, ok := m.clearedFields[sshhost.FieldProxyJumpHostID]
+	return ok
+}
+
+// ResetProxyJumpHostID resets all changes to the "proxy_jump_host_id" field.
+func (m *SSHHostMutation) ResetProxyJumpHostID() {
+	m.proxy_jump_host_id = nil
+	delete(m.clearedFields, sshhost.FieldProxyJumpHostID)
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *SSHHostMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *SSHHostMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the SSHHost entity.
+// If the SSHHost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SSHHostMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *SSHHostMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *SSHHostMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *SSHHostMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the SSHHost entity.
+// If the SSHHost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SSHHostMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *SSHHostMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *SSHHostMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *SSHHostMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the SSHHost entity.
+// If the SSHHost object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SSHHostMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *SSHHostMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the SSHHostMutation builder.
+func (m *SSHHostMutation) Where(ps ...predicate.SSHHost) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SSHHostMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SSHHostMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.SSHHost, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SSHHostMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SSHHostMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (SSHHost).
+func (m *SSHHostMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SSHHostMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.alias != nil {
+		fields = append(fields, sshhost.FieldAlias)
+	}
+	if m.hostname != nil {
+		fields = append(fields, sshhost.FieldHostname)
+	}
+	if m.port != nil {
+		fields = append(fields, sshhost.FieldPort)
+	}
+	if m.username != nil {
+		fields = append(fields, sshhost.FieldUsername)
+	}
+	if m.credential_id != nil {
+		fields = append(fields, sshhost.FieldCredentialID)
+	}
+	if m.proxy_jump_host_id != nil {
+		fields = append(fields, sshhost.FieldProxyJumpHostID)
+	}
+	if m.enabled != nil {
+		fields = append(fields, sshhost.FieldEnabled)
+	}
+	if m.created_at != nil {
+		fields = append(fields, sshhost.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, sshhost.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SSHHostMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case sshhost.FieldAlias:
+		return m.Alias()
+	case sshhost.FieldHostname:
+		return m.Hostname()
+	case sshhost.FieldPort:
+		return m.Port()
+	case sshhost.FieldUsername:
+		return m.Username()
+	case sshhost.FieldCredentialID:
+		return m.CredentialID()
+	case sshhost.FieldProxyJumpHostID:
+		return m.ProxyJumpHostID()
+	case sshhost.FieldEnabled:
+		return m.Enabled()
+	case sshhost.FieldCreatedAt:
+		return m.CreatedAt()
+	case sshhost.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SSHHostMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case sshhost.FieldAlias:
+		return m.OldAlias(ctx)
+	case sshhost.FieldHostname:
+		return m.OldHostname(ctx)
+	case sshhost.FieldPort:
+		return m.OldPort(ctx)
+	case sshhost.FieldUsername:
+		return m.OldUsername(ctx)
+	case sshhost.FieldCredentialID:
+		return m.OldCredentialID(ctx)
+	case sshhost.FieldProxyJumpHostID:
+		return m.OldProxyJumpHostID(ctx)
+	case sshhost.FieldEnabled:
+		return m.OldEnabled(ctx)
+	case sshhost.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case sshhost.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown SSHHost field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SSHHostMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case sshhost.FieldAlias:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAlias(v)
+		return nil
+	case sshhost.FieldHostname:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHostname(v)
+		return nil
+	case sshhost.FieldPort:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPort(v)
+		return nil
+	case sshhost.FieldUsername:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUsername(v)
+		return nil
+	case sshhost.FieldCredentialID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCredentialID(v)
+		return nil
+	case sshhost.FieldProxyJumpHostID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProxyJumpHostID(v)
+		return nil
+	case sshhost.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	case sshhost.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case sshhost.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SSHHost field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SSHHostMutation) AddedFields() []string {
+	var fields []string
+	if m.addport != nil {
+		fields = append(fields, sshhost.FieldPort)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SSHHostMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case sshhost.FieldPort:
+		return m.AddedPort()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SSHHostMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case sshhost.FieldPort:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPort(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SSHHost numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SSHHostMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(sshhost.FieldProxyJumpHostID) {
+		fields = append(fields, sshhost.FieldProxyJumpHostID)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SSHHostMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SSHHostMutation) ClearField(name string) error {
+	switch name {
+	case sshhost.FieldProxyJumpHostID:
+		m.ClearProxyJumpHostID()
+		return nil
+	}
+	return fmt.Errorf("unknown SSHHost nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SSHHostMutation) ResetField(name string) error {
+	switch name {
+	case sshhost.FieldAlias:
+		m.ResetAlias()
+		return nil
+	case sshhost.FieldHostname:
+		m.ResetHostname()
+		return nil
+	case sshhost.FieldPort:
+		m.ResetPort()
+		return nil
+	case sshhost.FieldUsername:
+		m.ResetUsername()
+		return nil
+	case sshhost.FieldCredentialID:
+		m.ResetCredentialID()
+		return nil
+	case sshhost.FieldProxyJumpHostID:
+		m.ResetProxyJumpHostID()
+		return nil
+	case sshhost.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	case sshhost.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case sshhost.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown SSHHost field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SSHHostMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SSHHostMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SSHHostMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SSHHostMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SSHHostMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SSHHostMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SSHHostMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown SSHHost unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SSHHostMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown SSHHost edge %s", name)
 }
 
 // ToolCallMutation represents an operation that mutates the ToolCall nodes in the graph.

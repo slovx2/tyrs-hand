@@ -26,6 +26,29 @@ type HeartbeatRequest struct {
 	Metadata        json.RawMessage `json:"metadata,omitempty"`
 }
 
+type SSHCredential struct {
+	ID          uuid.UUID `json:"id"`
+	PrivateKey  string    `json:"privateKey"`
+	Passphrase  string    `json:"passphrase,omitempty"`
+	PublicKey   string    `json:"publicKey"`
+	Fingerprint string    `json:"fingerprint"`
+}
+
+type SSHHost struct {
+	Alias          string    `json:"alias"`
+	Hostname       string    `json:"hostname"`
+	Port           int       `json:"port"`
+	Username       string    `json:"username"`
+	CredentialID   uuid.UUID `json:"credentialId"`
+	ProxyJumpAlias string    `json:"proxyJumpAlias,omitempty"`
+}
+
+type SSHConfiguration struct {
+	Revision    string          `json:"revision"`
+	Credentials []SSHCredential `json:"credentials"`
+	Hosts       []SSHHost       `json:"hosts"`
+}
+
 type ClaimRequest struct {
 	WorkerID string `json:"workerId"`
 	Role     string `json:"role"`
@@ -87,6 +110,7 @@ type RuntimeSnapshot struct {
 	BaseURL         string `json:"baseUrl,omitempty"`
 	ProxyURL        string `json:"proxyUrl,omitempty"`
 	ConfigSignature string `json:"configSignature"`
+	GlobalAgents    string `json:"globalAgents"`
 }
 
 type GitHubSnapshot struct {

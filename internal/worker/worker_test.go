@@ -136,11 +136,14 @@ func TestProcessorHelpersAndLocalTools(t *testing.T) {
 	remoteHome := t.TempDir()
 	remoteEnvironment, err := prepareRemoteCodexHome(remoteHome, workerprotocol.RuntimeCredential{
 		APIKey: "test-key", BaseURL: "https://api.example.com/v1", ProxyURL: "https://proxy.example.com",
-	})
+	}, "# Global instructions\n")
 	require.NoError(t, err)
 	auth, err := os.ReadFile(filepath.Join(remoteHome, "auth.json"))
 	require.NoError(t, err)
 	require.JSONEq(t, `{"auth_mode":"apikey","OPENAI_API_KEY":"test-key"}`, string(auth))
+	agents, err := os.ReadFile(filepath.Join(remoteHome, "AGENTS.md"))
+	require.NoError(t, err)
+	require.Equal(t, "# Global instructions\n", string(agents))
 	providerConfig, err := os.ReadFile(filepath.Join(remoteHome, "config.toml"))
 	require.NoError(t, err)
 	require.Equal(t, "openai_base_url = \"https://api.example.com/v1\"\n", string(providerConfig))

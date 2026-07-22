@@ -14,6 +14,24 @@ interface ExecutionNode {
   status: string
   heartbeatAt?: string
   lastError?: string
+  metadata?: {
+    ssh?: {
+      status?: string
+      revision?: string
+      credentialCount?: number
+      hostCount?: number
+      lastError?: string
+    }
+    browser?: {
+      status?: string
+      bridgeVersion?: string
+      extensionVersion?: string
+      chromeVersion?: string
+      profile?: string
+      tabCount?: number
+      lastError?: string
+    }
+  }
 }
 
 interface Defaults {
@@ -219,6 +237,7 @@ export function ExecutionNodesPage() {
                 {node.lastError && (
                   <p className="error-text mt-2">{node.lastError}</p>
                 )}
+                <CapabilityStatus node={node} />
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -245,6 +264,30 @@ export function ExecutionNodesPage() {
         ))}
       </div>
     </section>
+  )
+}
+
+function CapabilityStatus({ node }: { node: ExecutionNode }) {
+  const ssh = node.metadata?.ssh
+  const browser = node.metadata?.browser
+  if (!ssh && !browser) return null
+  return (
+    <div className="mt-3 grid gap-1 text-xs">
+      {ssh && (
+        <p className="muted">
+          SSH：{ssh.status ?? 'unknown'} · {ssh.hostCount ?? 0} 台主机 ·{' '}
+          {ssh.credentialCount ?? 0} 份凭证
+          {ssh.lastError ? ` · ${ssh.lastError}` : ''}
+        </p>
+      )}
+      {browser && (
+        <p className="muted">
+          Chrome：{browser.status ?? 'unknown'} ·{' '}
+          {browser.profile ?? '未知 Profile'} · {browser.tabCount ?? 0} 个标签页
+          {browser.lastError ? ` · ${browser.lastError}` : ''}
+        </p>
+      )}
+    </div>
   )
 }
 

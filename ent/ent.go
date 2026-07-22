@@ -24,6 +24,8 @@ import (
 	"github.com/slovx2/tyrs-hand/ent/repocache"
 	"github.com/slovx2/tyrs-hand/ent/repository"
 	"github.com/slovx2/tyrs-hand/ent/scminstallation"
+	"github.com/slovx2/tyrs-hand/ent/sshcredential"
+	"github.com/slovx2/tyrs-hand/ent/sshhost"
 	"github.com/slovx2/tyrs-hand/ent/toolcall"
 	"github.com/slovx2/tyrs-hand/ent/triggerrule"
 	"github.com/slovx2/tyrs-hand/ent/webhookdelivery"
@@ -102,6 +104,8 @@ func checkColumn(t, c string) error {
 			repocache.Table:               repocache.ValidColumn,
 			repository.Table:              repository.ValidColumn,
 			scminstallation.Table:         scminstallation.ValidColumn,
+			sshcredential.Table:           sshcredential.ValidColumn,
+			sshhost.Table:                 sshhost.ValidColumn,
 			toolcall.Table:                toolcall.ValidColumn,
 			triggerrule.Table:             triggerrule.ValidColumn,
 			webhookdelivery.Table:         webhookdelivery.ValidColumn,

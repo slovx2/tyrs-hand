@@ -118,3 +118,44 @@ func TestValidateAndLoadRemoteWorker(t *testing.T) {
 	require.Equal(t, "https://tyr.example.com", loaded.WorkerControlURL)
 	require.Equal(t, "github", loaded.WorkerRole)
 }
+
+func TestValidateWorkerCapabilities(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  Config
+		message string
+	}{
+		{
+			name:    "SSH 缺少 Agent 目录",
+			config:  Config{EnableSSH: true, SSHAgentDir: ".", SSHAgentHostDir: "/opt/tyrs-hand/ssh-agent"},
+			message: "Agent 容器目录和宿主目录",
+		},
+		{
+			name:    "浏览器 URL 非法",
+			config:  Config{BrowserMCPURL: "relative/path"},
+			message: "有效的绝对 URL",
+		},
+		{
+			name: "浏览器缺少交换目录",
+			config: Config{BrowserMCPURL: "http://host.docker.internal:8931/mcp",
+				BrowserMCPTokenFile: "/run/secrets/browser_mcp_token", BrowserFilesRoot: ".",
+				BrowserFilesHostRoot: "/opt/tyrs-hand/browser-files"},
+			message: "Token 文件和文件交换目录",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			require.ErrorContains(t, test.config.validateWorkerCapabilities(), test.message)
+		})
+	}
+
+	valid := Config{
+		EnableSSH: true, SSHAgentDir: "/run/tyrs-hand-ssh-agent",
+		SSHAgentHostDir:      "/opt/tyrs-hand/ssh-agent",
+		BrowserMCPURL:        "http://host.docker.internal:8931/mcp",
+		BrowserMCPTokenFile:  "/run/secrets/browser_mcp_token",
+		BrowserFilesRoot:     "/run/tyrs-hand-browser-files",
+		BrowserFilesHostRoot: "/opt/tyrs-hand/browser-files",
+	}
+	require.NoError(t, valid.validateWorkerCapabilities())
+}

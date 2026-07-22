@@ -21,6 +21,11 @@ community-research/
 /web/test-results/
 /web/*.tsbuildinfo
 
+# 宿主浏览器扩展与 Bridge
+/browser/**/node_modules/
+/browser/extension/dist/
+/browser/**/coverage/
+
 # 本地运行数据
 /.local/
 /data/
@@ -34,3 +39,4 @@ community-research/
 *.key
 auth.json
 sessions/
+deploy/browser/out/

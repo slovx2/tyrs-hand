@@ -1,0 +1,21 @@
+[Unit]
+Description=Tyrs Browser Bridge
+After=graphical-session.target network-online.target
+Wants=network-online.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/tyrs-hand/browser/releases/current/tyrs-browser-bridge
+EnvironmentFile=/opt/tyrs-hand/browser/browser.env
+ExecStart=/usr/bin/node /opt/tyrs-hand/browser/releases/current/tyrs-browser-bridge/bridge/src/server.mjs
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/tyrs-hand/browser-files
+
+[Install]
+WantedBy=graphical-session.target

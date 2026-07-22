@@ -2,16 +2,21 @@ package devcontainer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"go.uber.org/zap"
 )
+
+const maxBrowserFileSize = 25 * 1024 * 1024
 
 func createAskPass(credential string) (string, func(), error) {
 	directory, err := os.MkdirTemp("", "tyrs-hand-git-askpass-*")
@@ -40,7 +45,9 @@ func (m *Manager) ensureDockerResource(ctx context.Context, kind, name string) e
 	return err
 }
 
-func (m *Manager) installRuntime(ctx context.Context, container string, uid, gid int64) error {
+func (m *Manager) installRuntime(ctx context.Context, container string, uid, gid int64,
+	home string,
+) error {
 	if _, err := os.Stat(m.codexBin); err != nil {
 		return fmt.Errorf("读取 Codex 原生程序: %w", err)
 	}
@@ -58,6 +65,25 @@ func (m *Manager) installRuntime(ctx context.Context, container string, uid, gid
 	owner := fmt.Sprintf("%d:%d", uid, gid)
 	_, err := m.docker(ctx, "exec", "--user", "0:0", container, "/bin/sh", "-c",
 		"chmod 0755 /opt/tyrs-hand/bin/* && ln -sf codex /opt/tyrs-hand/bin/apply_patch && chown -R "+owner+" /opt/tyrs-hand")
+	if err != nil || !m.sshEnabled {
+		return err
+	}
+	include := "Include " + filepath.ToSlash(filepath.Join(m.sshAgentDir, "ssh_config"))
+	script := `set -eu
+mkdir -p "$TYRS_HOME/.ssh"
+config="$TYRS_HOME/.ssh/config"
+if ! test -f "$config" || ! grep -Fqx "$TYRS_INCLUDE" "$config"; then
+  temporary="$config.tyrs-hand.tmp"
+  printf '%s\n' "$TYRS_INCLUDE" > "$temporary"
+  test ! -f "$config" || cat "$config" >> "$temporary"
+  mv "$temporary" "$config"
+fi
+chmod 0700 "$TYRS_HOME/.ssh"
+chmod 0600 "$config"
+chown -R "$TYRS_OWNER" "$TYRS_HOME/.ssh"`
+	_, err = m.docker(ctx, "exec", "--user", "0:0", "--env", "TYRS_HOME="+home,
+		"--env", "TYRS_INCLUDE="+include, "--env", "TYRS_OWNER="+owner,
+		container, "/bin/sh", "-c", script)
 	return err
 }
 
@@ -75,6 +101,73 @@ func (m *Manager) CopyToRuntime(ctx context.Context, runtime Runtime, source, ta
 	}
 	_, err := m.docker(ctx, "exec", "--user", "0:0", runtime.Container, "chown", "-R",
 		fmt.Sprintf("%d:%d", runtime.UID, runtime.GID), target)
+	return err
+}
+
+func (m *Manager) ContainerIP(ctx context.Context, runtime Runtime) (string, error) {
+	value, err := m.docker(ctx, "inspect", "--format",
+		"{{range .NetworkSettings.Networks}}{{println .IPAddress}}{{end}}", runtime.Container)
+	if err != nil {
+		return "", err
+	}
+	for _, address := range strings.Fields(value) {
+		if address != "" {
+			return address, nil
+		}
+	}
+	return "", errors.New("开发容器没有可用的 IPv4 地址")
+}
+
+func (m *Manager) ExportWorkspaceFile(ctx context.Context, runtime Runtime,
+	source, target string,
+) error {
+	clean := filepath.ToSlash(filepath.Clean(source))
+	workspace := strings.TrimSuffix(filepath.ToSlash(filepath.Clean(runtime.Workspace)), "/")
+	if clean != workspace && !strings.HasPrefix(clean, workspace+"/") {
+		return errors.New("文件不在当前工作区内")
+	}
+	resolved, err := m.docker(ctx, "exec", runtime.Container, "realpath", "-e", "--", clean)
+	if err != nil || strings.TrimSpace(resolved) != clean {
+		return errors.New("文件路径不存在或包含符号链接")
+	}
+	metadata, err := m.docker(ctx, "exec", runtime.Container, "stat", "-c", "%F:%s", "--", clean)
+	if err != nil {
+		return err
+	}
+	parts := strings.Split(strings.TrimSpace(metadata), ":")
+	if len(parts) != 2 || parts[0] != "regular file" {
+		return errors.New("只能交换普通文件")
+	}
+	size, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || size > maxBrowserFileSize {
+		return errors.New("文件大小超过 25 MiB")
+	}
+	_, err = m.docker(ctx, "cp", runtime.Container+":"+clean, target)
+	return err
+}
+
+func (m *Manager) ImportWorkspaceFile(ctx context.Context, runtime Runtime,
+	source, destination string,
+) error {
+	clean := filepath.ToSlash(filepath.Clean(destination))
+	workspace := strings.TrimSuffix(filepath.ToSlash(filepath.Clean(runtime.Workspace)), "/")
+	if clean == workspace || !strings.HasPrefix(clean, workspace+"/") {
+		return errors.New("目标文件不在当前工作区内")
+	}
+	parent := filepath.ToSlash(filepath.Dir(clean))
+	resolved, err := m.docker(ctx, "exec", runtime.Container, "realpath", "-m", "--", parent)
+	if err != nil || strings.TrimSpace(resolved) != parent {
+		return errors.New("目标目录包含符号链接")
+	}
+	if _, err := m.docker(ctx, "exec", "--user", fmt.Sprintf("%d:%d", runtime.UID, runtime.GID),
+		runtime.Container, "mkdir", "-p", "--", parent); err != nil {
+		return err
+	}
+	if _, err := m.docker(ctx, "cp", source, runtime.Container+":"+clean); err != nil {
+		return err
+	}
+	_, err = m.docker(ctx, "exec", "--user", "0:0", runtime.Container, "chown",
+		fmt.Sprintf("%d:%d", runtime.UID, runtime.GID), clean)
 	return err
 }
 

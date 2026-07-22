@@ -20,7 +20,13 @@ import (
 const (
 	agentProviderKey = "agent.provider"
 	providerAPIKey   = "agent.provider.api_key"
+	globalAgentsKey  = "codex.global_agents"
+	maxGlobalAgents  = 256 * 1024
 )
+
+type GlobalAgents struct {
+	Content string `json:"content"`
+}
 
 type AgentProvider struct {
 	ProviderType    string `json:"providerType"`
@@ -60,9 +66,61 @@ func NewService(db *sql.DB, secretStore *secrets.Store) *Service {
 func (s *Service) AgentProvider(ctx context.Context) (AgentProvider, error) {
 	record, err := s.record(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
-		return AgentProvider{ProviderType: "device-code", Configured: false}, nil
+		record.AgentProvider = AgentProvider{ProviderType: "device-code", Configured: false}
+	} else if err != nil {
+		return AgentProvider{}, err
 	}
-	return record.AgentProvider, err
+	agents, configured, err := s.globalAgents(ctx)
+	if err != nil {
+		return AgentProvider{}, err
+	}
+	if configured {
+		digest := sha256.Sum256([]byte(agents.Content))
+		combined := sha256.Sum256([]byte(record.ConfigSignature + ":" + hex.EncodeToString(digest[:])))
+		record.ConfigSignature = hex.EncodeToString(combined[:])
+	}
+	return record.AgentProvider, nil
+}
+
+func (s *Service) GlobalAgents(ctx context.Context) (GlobalAgents, error) {
+	value, _, err := s.globalAgents(ctx)
+	return value, err
+}
+
+func (s *Service) SaveGlobalAgents(ctx context.Context, input GlobalAgents) error {
+	input.Content = strings.ReplaceAll(input.Content, "\r\n", "\n")
+	if len(input.Content) > maxGlobalAgents {
+		return errors.New("全局 AGENTS.md 不能超过 256 KiB")
+	}
+	data, err := json.Marshal(input)
+	if err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `INSERT INTO platform_settings(setting_key, value)
+		VALUES ($1,$2) ON CONFLICT(setting_key) DO UPDATE SET value=EXCLUDED.value,
+		version=platform_settings.version+1, updated_at=now()
+		WHERE platform_settings.value IS DISTINCT FROM EXCLUDED.value`, globalAgentsKey, data)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed != 0 {
+		if _, err := tx.ExecContext(ctx, "UPDATE work_items SET context_version = context_version + 1, updated_at = now() WHERE state = 'open'"); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, "UPDATE discord_conversations SET context_version = context_version + 1, updated_at = now()"); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *Service) SaveAgentProvider(ctx context.Context, input AgentProviderInput) error {
@@ -142,6 +200,13 @@ func (s *Service) PrepareCodexHome(ctx context.Context, codexHome, sharedHome st
 	if err := os.MkdirAll(codexHome, 0o700); err != nil {
 		return AgentProvider{}, nil, err
 	}
+	agents, err := s.GlobalAgents(ctx)
+	if err != nil {
+		return AgentProvider{}, nil, err
+	}
+	if err := WriteGlobalAgents(filepath.Join(codexHome, "AGENTS.md"), agents.Content); err != nil {
+		return AgentProvider{}, nil, err
+	}
 	if provider.ProviderType == "api-key" {
 		apiKey, err := s.APIKey(ctx)
 		if err != nil {
@@ -176,6 +241,20 @@ func (s *Service) PrepareCodexHome(ctx context.Context, codexHome, sharedHome st
 		environment = append(environment, "HTTP_PROXY="+provider.ProxyURL, "HTTPS_PROXY="+provider.ProxyURL)
 	}
 	return provider, environment, nil
+}
+
+func (s *Service) globalAgents(ctx context.Context) (GlobalAgents, bool, error) {
+	var raw []byte
+	err := s.db.QueryRowContext(ctx, `SELECT value FROM platform_settings WHERE setting_key=$1`,
+		globalAgentsKey).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return GlobalAgents{}, false, nil
+	}
+	if err != nil {
+		return GlobalAgents{}, false, err
+	}
+	var result GlobalAgents
+	return result, true, json.Unmarshal(raw, &result)
 }
 
 func (s *Service) record(ctx context.Context) (providerRecord, error) {
@@ -216,6 +295,22 @@ func writeSecretFile(path string, data []byte) error {
 		return err
 	}
 	if err := os.Chmod(temporary, 0o600); err != nil {
+		_ = os.Remove(temporary)
+		return err
+	}
+	if err := os.Rename(temporary, path); err != nil {
+		_ = os.Remove(temporary)
+		return err
+	}
+	return nil
+}
+
+func WriteGlobalAgents(path, content string) error {
+	temporary := path + ".tmp"
+	if err := os.WriteFile(temporary, []byte(content), 0o644); err != nil {
+		return err
+	}
+	if err := os.Chmod(temporary, 0o644); err != nil {
 		_ = os.Remove(temporary)
 		return err
 	}

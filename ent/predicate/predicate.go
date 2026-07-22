@@ -42,6 +42,12 @@ type Repository func(*sql.Selector)
 // SCMInstallation is the predicate function for scminstallation builders.
 type SCMInstallation func(*sql.Selector)
 
+// SSHCredential is the predicate function for sshcredential builders.
+type SSHCredential func(*sql.Selector)
+
+// SSHHost is the predicate function for sshhost builders.
+type SSHHost func(*sql.Selector)
+
 // ToolCall is the predicate function for toolcall builders.
 type ToolCall func(*sql.Selector)
 

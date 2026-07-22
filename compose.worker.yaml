@@ -22,6 +22,13 @@ services:
       TYRS_HAND_CODEX_HOME_ROOT: /data/worker/codex-homes
       TYRS_HAND_ENABLE_DEVELOPMENT_CONTAINERS: ${TYRS_HAND_ENABLE_DEVELOPMENT_CONTAINERS:-true}
       TYRS_HAND_DEVELOPMENT_CONTAINER_IDLE: ${TYRS_HAND_DEVELOPMENT_CONTAINER_IDLE:-30m}
+      TYRS_HAND_ENABLE_SSH: ${TYRS_HAND_ENABLE_SSH:-false}
+      TYRS_HAND_SSH_AGENT_DIR: /run/tyrs-hand-ssh-agent
+      TYRS_HAND_SSH_AGENT_HOST_DIR: /opt/tyrs-hand/ssh-agent
+      TYRS_HAND_BROWSER_MCP_URL: ${TYRS_HAND_BROWSER_MCP_URL:-}
+      TYRS_HAND_BROWSER_MCP_TOKEN_FILE: /run/tyrs-hand-browser/browser_mcp_token
+      TYRS_HAND_BROWSER_FILES_ROOT: /run/tyrs-hand-browser-files
+      TYRS_HAND_BROWSER_FILES_HOST_ROOT: /opt/tyrs-hand/browser-files
     group_add:
       - ${TYRS_HAND_DOCKER_GID:?请设置宿主 Docker Socket 的数字 GID}
     volumes:
@@ -29,6 +36,18 @@ services:
       - type: bind
         source: /var/run/docker.sock
         target: /var/run/docker.sock
+      - type: bind
+        source: /opt/tyrs-hand/ssh-agent
+        target: /run/tyrs-hand-ssh-agent
+      - type: bind
+        source: /opt/tyrs-hand/browser-files
+        target: /run/tyrs-hand-browser-files
+      - type: bind
+        source: /opt/tyrs-hand/browser/browser_mcp_token
+        target: /run/tyrs-hand-browser/browser_mcp_token
+        read_only: true
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD-SHELL", "test -s /data/worker/control-state/node-credential && kill -0 1"]
       interval: 30s

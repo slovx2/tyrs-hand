@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "playwright": {
+    "repository": "https://github.com/slovx2/playwright",
+    "upstreamCommit": "9fb36027c64c8edcf08bf06f618b3ca97a7b0d97",
+    "commit": "acb52bd8e3de85794303a03f3a18673615f34a9c"
+  },
+  "playwrightMcp": {
+    "repository": "https://github.com/slovx2/playwright-mcp",
+    "upstreamCommit": "5f8fc00210b27b4407c375b59cda4838045d429c",
+    "commit": "aad3edccff5ef93a831da1daf49be565d2db29f2"
+  }
+}

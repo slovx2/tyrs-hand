@@ -16,6 +16,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/codexsettings"
+	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/replygate"
 	"go.uber.org/zap"
@@ -642,8 +643,26 @@ func githubReplySpec() ports.DynamicToolSpec {
 	}
 }
 
-func codexRuntimeConfig(environment []string, workerDataRoot string) map[string]any {
+func codexRuntimeConfig(environment []string, workerDataRoot string,
+	capabilities ...config.Config,
+) map[string]any {
 	config := replygate.SessionConfig()
+	if len(capabilities) > 0 {
+		cfg := capabilities[0]
+		if cfg.EnableSSH {
+			environment = append(environment, "SSH_AUTH_SOCK="+filepath.Join(cfg.SSHAgentDir, "current.sock"))
+		}
+		if cfg.BrowserMCPURL != "" {
+			if token, err := os.ReadFile(cfg.BrowserMCPTokenFile); err == nil && strings.TrimSpace(string(token)) != "" {
+				environment = append(environment, "TYRS_BROWSER_MCP_TOKEN="+strings.TrimSpace(string(token)))
+				config["mcp_servers"] = map[string]any{"chrome": map[string]any{
+					"url": cfg.BrowserMCPURL, "bearer_token_env_var": "TYRS_BROWSER_MCP_TOKEN",
+					"startup_timeout_sec": 10.0, "tool_timeout_sec": 120.0,
+					"required": false,
+				}}
+			}
+		}
+	}
 	values := make(map[string]any, len(environment))
 	for _, entry := range environment {
 		key, value, found := strings.Cut(entry, "=")
@@ -664,6 +683,13 @@ func codexRuntimeConfig(environment []string, workerDataRoot string) map[string]
 		}
 	}
 	return config
+}
+
+func browserDeveloperInstructions(cfg config.Config, current string) string {
+	if cfg.BrowserMCPURL == "" {
+		return current
+	}
+	return current + "\nThe host Chrome profile is the only browser backend. If the chrome MCP is unavailable, report that directly; do not start Chrome, CDP, a container browser, or a headless browser."
 }
 
 func withoutGenericReply(tools []string) []string {

@@ -139,6 +139,8 @@ func TestTitleGeneratorRunOnceClaimsAndSchedulesFallback(t *testing.T) {
 	providerJSON := []byte(`{"providerType":"device-code","configured":true,"configSignature":"test"}`)
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT value FROM platform_settings WHERE setting_key = $1")).
 		WithArgs("agent.provider").WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow(providerJSON))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT value FROM platform_settings WHERE setting_key=$1")).
+		WithArgs("codex.global_agents").WillReturnError(sql.ErrNoRows)
 	mock.ExpectBegin()
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE discord_conversations")).
 		WithArgs(conversationID, fallbackTitle(strings.Repeat("消息", 40))).
@@ -209,6 +211,8 @@ func titleGeneratorForProvider(t *testing.T, baseURL, providerType string,
 	require.NoError(t, err)
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT value FROM platform_settings WHERE setting_key = $1")).
 		WithArgs("agent.provider").WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow(providerJSON))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT value FROM platform_settings WHERE setting_key=$1")).
+		WithArgs("codex.global_agents").WillReturnError(sql.ErrNoRows)
 	if providerType == "api-key" && configured {
 		nonce, ciphertext, err := box.Encrypt([]byte("test-api-key"), "agent.provider.api_key")
 		require.NoError(t, err)

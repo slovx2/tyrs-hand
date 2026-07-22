@@ -153,6 +153,30 @@ func (f SCMInstallationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Va
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SCMInstallationMutation", m)
 }
 
+// The SSHCredentialFunc type is an adapter to allow the use of ordinary
+// function as SSHCredential mutator.
+type SSHCredentialFunc func(context.Context, *ent.SSHCredentialMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SSHCredentialFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SSHCredentialMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SSHCredentialMutation", m)
+}
+
+// The SSHHostFunc type is an adapter to allow the use of ordinary
+// function as SSHHost mutator.
+type SSHHostFunc func(context.Context, *ent.SSHHostMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SSHHostFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SSHHostMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SSHHostMutation", m)
+}
+
 // The ToolCallFunc type is an adapter to allow the use of ordinary
 // function as ToolCall mutator.
 type ToolCallFunc func(context.Context, *ent.ToolCallMutation) (ent.Value, error)

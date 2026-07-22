@@ -19,6 +19,7 @@ import { SetupPage } from './pages/SetupPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { CodexSettingsPage } from './pages/CodexSettingsPage'
 import { ExecutionNodesPage } from './pages/ExecutionNodesPage'
+import { SSHPage } from './pages/SSHPage'
 import { useUI } from './state'
 
 interface SetupStatus {
@@ -37,6 +38,7 @@ const navigation: Array<{ to: string; label: MessageKey }> = [
   { to: '/jobs', label: 'jobs' },
   { to: '/workers', label: 'workers' },
   { to: '/execution-nodes', label: 'nodes' },
+  { to: '/ssh', label: 'ssh' },
   { to: '/worktrees', label: 'workers' },
   { to: '/audit-logs', label: 'audit' },
   { to: '/settings/github', label: 'github' },
@@ -119,6 +121,7 @@ export function App() {
           element={<ResourcePage resource="workers" title="Worker" />}
         />
         <Route path="execution-nodes" element={<ExecutionNodesPage />} />
+        <Route path="ssh" element={<SSHPage />} />
         <Route
           path="worktrees"
           element={

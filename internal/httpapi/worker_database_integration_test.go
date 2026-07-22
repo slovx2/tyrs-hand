@@ -3,10 +3,15 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"database/sql"
 	"encoding/json"
+	"encoding/pem"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,10 +24,12 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/secrets"
 	"github.com/slovx2/tyrs-hand/internal/security"
 	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
+	"github.com/slovx2/tyrs-hand/internal/sshconfig"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"golang.org/x/crypto/ssh"
 )
 
 func TestWorkerAPIPlacementLeaseEventsAndIdempotency(t *testing.T) {
@@ -274,6 +281,214 @@ func TestWorkerAPIMissingDefaultAndDevelopmentOperationRecovery(t *testing.T) {
 	require.Equal(t, "completed", operationStatus)
 }
 
+func TestWorkerAPISSHConfigurationRotationConstraintsAndGlobalAgents(t *testing.T) {
+	db := workerDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	server, endpoint := workerTestServer(t, db)
+	nodeA, enrollmentA, err := server.nodes.Create(ctx, "ssh-a", []string{"github"}, 1)
+	require.NoError(t, err)
+	nodeB, enrollmentB, err := server.nodes.Create(ctx, "ssh-b", []string{"github"}, 1)
+	require.NoError(t, err)
+	_, nodeCredential, err := server.nodes.Enroll(ctx, enrollmentA)
+	require.NoError(t, err)
+	client := workerprotocol.NewClient(endpoint, nodeCredential, 5*time.Second)
+	_, nodeCredentialB, err := server.nodes.Enroll(ctx, enrollmentB)
+	require.NoError(t, err)
+	clientB := workerprotocol.NewClient(endpoint, nodeCredentialB, 5*time.Second)
+
+	privateKeyA := testSSHPrivateKey(t, "")
+	credential, err := server.ssh.CreateCredential(ctx, sshconfig.CredentialInput{
+		Name: "production", PrivateKey: privateKeyA,
+	})
+	require.NoError(t, err)
+	var ciphertext []byte
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT es.ciphertext FROM encrypted_secrets es
+		JOIN ssh_credentials c ON c.secret_id=es.id WHERE c.id=$1`, credential.ID).Scan(&ciphertext))
+	require.False(t, bytes.Contains(ciphertext, []byte("PRIVATE KEY")))
+	jump, err := server.ssh.CreateHost(ctx, sshconfig.HostInput{
+		Alias: "jump", Hostname: "192.0.2.1", Port: 22, Username: "ubuntu",
+		CredentialID: credential.ID, ExecutionNodeIDs: []uuid.UUID{nodeA.ID},
+	})
+	require.NoError(t, err)
+	_, err = server.ssh.CreateHost(ctx, sshconfig.HostInput{
+		Alias: "wrong-node", Hostname: "192.0.2.2", Port: 22, Username: "ubuntu",
+		CredentialID: credential.ID, ProxyJumpHostID: &jump.ID,
+		ExecutionNodeIDs: []uuid.UUID{nodeB.ID},
+	})
+	require.ErrorContains(t, err, "相同的 Execution Node")
+	target, err := server.ssh.CreateHost(ctx, sshconfig.HostInput{
+		Alias: "target", Hostname: "192.0.2.3", Port: 2222, Username: "deploy",
+		CredentialID: credential.ID, ProxyJumpHostID: &jump.ID,
+		ExecutionNodeIDs: []uuid.UUID{nodeA.ID},
+	})
+	require.NoError(t, err)
+	_, err = server.ssh.UpdateHost(ctx, jump.ID, sshconfig.HostInput{
+		Alias: jump.Alias, Hostname: jump.Hostname, Port: jump.Port, Username: jump.Username,
+		CredentialID: credential.ID, ProxyJumpHostID: &target.ID,
+		ExecutionNodeIDs: []uuid.UUID{nodeA.ID},
+	})
+	require.ErrorContains(t, err, "循环")
+	_, err = server.ssh.UpdateHost(ctx, jump.ID, sshconfig.HostInput{
+		Alias: jump.Alias, Hostname: jump.Hostname, Port: jump.Port, Username: jump.Username,
+		CredentialID: credential.ID, ExecutionNodeIDs: nil,
+	})
+	require.ErrorContains(t, err, "仍被已启用主机")
+
+	configuration, etag, changed, err := client.SSHConfiguration(ctx, "")
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Len(t, configuration.Hosts, 2)
+	require.Len(t, configuration.Credentials, 1)
+	require.Equal(t, strings.TrimSpace(privateKeyA), configuration.Credentials[0].PrivateKey)
+	require.NotEmpty(t, etag)
+	configurationB, _, changed, err := clientB.SSHConfiguration(ctx, "")
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Empty(t, configurationB.Hosts)
+	require.Empty(t, configurationB.Credentials)
+	_, sameETag, changed, err := client.SSHConfiguration(ctx, etag)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, etag, sameETag)
+
+	privateKeyB := testSSHPrivateKey(t, "rotation-passphrase")
+	enabled := true
+	rotated, err := server.ssh.UpdateCredential(ctx, credential.ID, sshconfig.CredentialInput{
+		Name: "production", PrivateKey: privateKeyB, Passphrase: "rotation-passphrase",
+		Enabled: &enabled,
+	})
+	require.NoError(t, err)
+	require.Greater(t, rotated.Version, credential.Version)
+	configuration, rotatedETag, changed, err := client.SSHConfiguration(ctx, etag)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.NotEqual(t, etag, rotatedETag)
+	require.Equal(t, strings.TrimSpace(privateKeyB), configuration.Credentials[0].PrivateKey)
+	require.Equal(t, "rotation-passphrase", configuration.Credentials[0].Passphrase)
+	require.ErrorContains(t, server.ssh.DeleteCredential(ctx, credential.ID), "关联主机")
+
+	disabled := false
+	_, err = server.ssh.UpdateCredential(ctx, credential.ID, sshconfig.CredentialInput{
+		Name: "production", Enabled: &disabled,
+	})
+	require.NoError(t, err)
+	configuration, _, changed, err = client.SSHConfiguration(ctx, rotatedETag)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Empty(t, configuration.Hosts)
+	require.Empty(t, configuration.Credentials)
+
+	apiKey := testSSHPrivateKey(t, "api-passphrase")
+	createBody, err := json.Marshal(sshconfig.CredentialInput{
+		Name: "api-managed", PrivateKey: apiKey, Passphrase: "api-passphrase",
+	})
+	require.NoError(t, err)
+	createRecorder := httptest.NewRecorder()
+	createContext, _ := gin.CreateTestContext(createRecorder)
+	createContext.Request = httptest.NewRequest("POST", "/api/v1/ssh/credentials",
+		bytes.NewReader(createBody))
+	createContext.Request.Header.Set("Content-Type", "application/json")
+	server.createSSHCredential(createContext)
+	require.Equal(t, 201, createRecorder.Code)
+	require.NotContains(t, createRecorder.Body.String(), "PRIVATE KEY")
+	require.NotContains(t, createRecorder.Body.String(), "api-passphrase")
+	require.NotContains(t, createRecorder.Body.String(), "ciphertext")
+	var apiCredential sshconfig.Credential
+	require.NoError(t, json.Unmarshal(createRecorder.Body.Bytes(), &apiCredential))
+	var secretBeforeUpdate []byte
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT es.ciphertext FROM encrypted_secrets es
+		JOIN ssh_credentials c ON c.secret_id=es.id WHERE c.id=$1`, apiCredential.ID).
+		Scan(&secretBeforeUpdate))
+
+	updateBody, err := json.Marshal(sshconfig.CredentialInput{Name: "api-renamed", Enabled: &enabled})
+	require.NoError(t, err)
+	updateRecorder := httptest.NewRecorder()
+	updateContext, _ := gin.CreateTestContext(updateRecorder)
+	updateContext.Request = httptest.NewRequest("PUT", "/api/v1/ssh/credentials/"+apiCredential.ID.String(),
+		bytes.NewReader(updateBody))
+	updateContext.Request.Header.Set("Content-Type", "application/json")
+	updateContext.Params = gin.Params{{Key: "id", Value: apiCredential.ID.String()}}
+	server.updateSSHCredential(updateContext)
+	require.Equal(t, 200, updateRecorder.Code)
+	require.NotContains(t, updateRecorder.Body.String(), "PRIVATE KEY")
+	var storedSecret []byte
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT es.ciphertext FROM encrypted_secrets es
+		JOIN ssh_credentials c ON c.secret_id=es.id WHERE c.id=$1`, apiCredential.ID).Scan(&storedSecret))
+	require.Equal(t, secretBeforeUpdate, storedSecret)
+
+	deleteRecorder := httptest.NewRecorder()
+	deleteContext, _ := gin.CreateTestContext(deleteRecorder)
+	deleteContext.Request = httptest.NewRequest("DELETE", "/api/v1/ssh/credentials/"+apiCredential.ID.String(), nil)
+	deleteContext.Params = gin.Params{{Key: "id", Value: apiCredential.ID.String()}}
+	server.deleteSSHCredential(deleteContext)
+	require.Equal(t, 204, deleteContext.Writer.Status())
+	var auditActions []string
+	rows, err := db.QueryContext(ctx, `SELECT action FROM audit_logs
+		WHERE resource_id=$1 ORDER BY created_at`, apiCredential.ID.String())
+	require.NoError(t, err)
+	for rows.Next() {
+		var action string
+		require.NoError(t, rows.Scan(&action))
+		auditActions = append(auditActions, action)
+	}
+	require.NoError(t, rows.Close())
+	require.Equal(t, []string{"ssh_credential.create", "ssh_credential.update",
+		"ssh_credential.delete"}, auditActions)
+
+	repositoryID, itemID, _ := seedWorkerGitHubQueue(t, db, 80)
+	_ = repositoryID
+	var before int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT context_version FROM work_items WHERE id=$1`,
+		itemID).Scan(&before))
+	providerBefore, err := server.settings.AgentProvider(ctx)
+	require.NoError(t, err)
+	require.NoError(t, server.settings.SaveGlobalAgents(ctx,
+		platformsettings.GlobalAgents{Content: "# Global\r\n"}))
+	agents, err := server.settings.GlobalAgents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "# Global\n", agents.Content)
+	providerAfter, err := server.settings.AgentProvider(ctx)
+	require.NoError(t, err)
+	require.NotEqual(t, providerBefore.ConfigSignature, providerAfter.ConfigSignature)
+	var after int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT context_version FROM work_items WHERE id=$1`,
+		itemID).Scan(&after))
+	require.Equal(t, before+1, after)
+	require.NoError(t, server.settings.SaveGlobalAgents(ctx,
+		platformsettings.GlobalAgents{Content: "# Global\n"}))
+	var unchanged int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT context_version FROM work_items WHERE id=$1`,
+		itemID).Scan(&unchanged))
+	require.Equal(t, after, unchanged)
+	agentsRecorder := httptest.NewRecorder()
+	agentsContext, _ := gin.CreateTestContext(agentsRecorder)
+	agentsContext.Request = httptest.NewRequest("PUT", "/api/v1/settings/global-agents",
+		strings.NewReader(`{"content":"# Managed through API\n"}`))
+	agentsContext.Request.Header.Set("Content-Type", "application/json")
+	server.putGlobalAgents(agentsContext)
+	require.Equal(t, 204, agentsContext.Writer.Status())
+	var globalAuditCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM audit_logs
+		WHERE action='settings.global_agents.update' AND resource_id='codex.global_agents'`).
+		Scan(&globalAuditCount))
+	require.Equal(t, 1, globalAuditCount)
+}
+
+func testSSHPrivateKey(t *testing.T, passphrase string) string {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	var block *pem.Block
+	if passphrase == "" {
+		block, err = ssh.MarshalPrivateKey(key, "integration")
+	} else {
+		block, err = ssh.MarshalPrivateKeyWithPassphrase(key, "integration", []byte(passphrase))
+	}
+	require.NoError(t, err)
+	return string(pem.EncodeToMemory(block))
+}
+
 func workerTestServer(t *testing.T, db *sql.DB) (*Server, string) {
 	t.Helper()
 	box, err := security.NewSecretBox(make([]byte, 32))
@@ -283,7 +498,8 @@ func workerTestServer(t *testing.T, db *sql.DB) (*Server, string) {
 		platformsettings.AgentProviderInput{ProviderType: "api-key", APIKey: "test-key"}))
 	server := &Server{cfg: config.Config{LeaseDuration: 2 * time.Second,
 		CodexMaxSteersPerTurn: 5, CodexReconcileMaxAttempts: 3}, db: db,
-		nodes: executionnode.NewService(db), settings: settings}
+		nodes: executionnode.NewService(db), settings: settings,
+		ssh: sshconfig.NewService(db, secrets.NewStore(db, box))}
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	server.registerWorkerRoutes(router)

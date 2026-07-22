@@ -14,6 +14,7 @@ tags:
   - name: Settings
   - name: Discord
   - name: Execution Nodes
+  - name: SSH
   - name: Worker Protocol
 paths:
   /webhooks/github:
@@ -188,6 +189,25 @@ paths:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/AgentProviderSettingsInput" }
+      responses:
+        "204": { description: 已保存 }
+        default: { $ref: "#/components/responses/Problem" }
+  /settings/global-agents:
+    get:
+      operationId: getGlobalAgents
+      tags: [Settings]
+      responses:
+        "200":
+          description: 注入所有 Codex Home 的全局 AGENTS.md
+          content: { application/json: { schema: { $ref: "#/components/schemas/GlobalAgents" } } }
+        default: { $ref: "#/components/responses/Problem" }
+    put:
+      operationId: putGlobalAgents
+      tags: [Settings]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/GlobalAgents" } } }
       responses:
         "204": { description: 已保存 }
         default: { $ref: "#/components/responses/Problem" }
@@ -574,6 +594,113 @@ paths:
       parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ExecutionDefaults" } } } }
       responses: { "204": { description: 已保存 }, default: { $ref: "#/components/responses/Problem" } }
+  /ssh/credentials:
+    get:
+      operationId: listSSHCredentials
+      tags: [SSH]
+      responses:
+        "200":
+          description: SSH 凭证列表，不包含私钥或口令
+          content: { application/json: { schema: { $ref: "#/components/schemas/SSHCredentialList" } } }
+        default: { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: createSSHCredential
+      tags: [SSH]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/SSHCredentialCreateInput" } } }
+      responses:
+        "201":
+          description: 已创建的脱敏 SSH 凭证
+          content: { application/json: { schema: { $ref: "#/components/schemas/SSHCredential" } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /ssh/credentials/{id}:
+    put:
+      operationId: updateSSHCredential
+      tags: [SSH]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/CSRFToken" }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/SSHCredentialUpdateInput" } } }
+      responses:
+        "200":
+          description: 已更新的脱敏 SSH 凭证
+          content: { application/json: { schema: { $ref: "#/components/schemas/SSHCredential" } } }
+        default: { $ref: "#/components/responses/Problem" }
+    delete:
+      operationId: deleteSSHCredential
+      tags: [SSH]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/CSRFToken" }
+      responses:
+        "204": { description: 已删除 }
+        default: { $ref: "#/components/responses/Problem" }
+  /ssh/hosts:
+    get:
+      operationId: listSSHHosts
+      tags: [SSH]
+      responses:
+        "200":
+          description: SSH 主机列表
+          content: { application/json: { schema: { $ref: "#/components/schemas/SSHHostList" } } }
+        default: { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: createSSHHost
+      tags: [SSH]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/SSHHostInput" } } }
+      responses:
+        "201":
+          description: 已创建的 SSH 主机
+          content: { application/json: { schema: { $ref: "#/components/schemas/SSHHost" } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /ssh/hosts/{id}:
+    put:
+      operationId: updateSSHHost
+      tags: [SSH]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/CSRFToken" }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/SSHHostInput" } } }
+      responses:
+        "200":
+          description: 已更新的 SSH 主机
+          content: { application/json: { schema: { $ref: "#/components/schemas/SSHHost" } } }
+        default: { $ref: "#/components/responses/Problem" }
+    delete:
+      operationId: deleteSSHHost
+      tags: [SSH]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/CSRFToken" }
+      responses:
+        "204": { description: 已删除 }
+        default: { $ref: "#/components/responses/Problem" }
+  /worker/v1/ssh-configuration:
+    get:
+      operationId: getWorkerSSHConfiguration
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ nodeBearer: [] }]
+      parameters:
+        - { name: If-None-Match, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: 当前执行节点的 SSH 配置
+          headers:
+            ETag: { schema: { type: string } }
+            Cache-Control: { schema: { type: string, enum: [no-store] } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/WorkerSSHConfiguration" } } }
+        "304": { description: 配置未变化 }
+        default: { $ref: "#/components/responses/Problem" }
   /worker/v1/enroll:
     post:
       operationId: enrollWorker
@@ -926,6 +1053,101 @@ components:
       properties:
         githubNodeId: { type: string, format: uuid, nullable: true }
         discordNodeId: { type: string, format: uuid, nullable: true }
+    SSHCredential:
+      type: object
+      required: [id, name, publicKey, fingerprint, enabled, version, hostCount, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        publicKey: { type: string, readOnly: true }
+        fingerprint: { type: string, readOnly: true }
+        enabled: { type: boolean }
+        version: { type: integer, format: int64, readOnly: true }
+        hostCount: { type: integer, readOnly: true }
+        updatedAt: { type: string, format: date-time, readOnly: true }
+    SSHCredentialList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/SSHCredential" } }
+    SSHCredentialCreateInput:
+      type: object
+      required: [name, privateKey, enabled]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        privateKey: { type: string, minLength: 1, writeOnly: true }
+        passphrase: { type: string, writeOnly: true }
+        enabled: { type: boolean }
+    SSHCredentialUpdateInput:
+      type: object
+      required: [name, enabled]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        privateKey:
+          type: string
+          writeOnly: true
+          description: 非空时显式轮换私钥；空字符串表示保持现有私钥
+        passphrase: { type: string, writeOnly: true }
+        enabled: { type: boolean }
+    SSHHost:
+      type: object
+      required: [id, alias, hostname, port, username, credentialId, credentialName, executionNodeIds, enabled, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        alias: { type: string }
+        hostname: { type: string }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        username: { type: string }
+        credentialId: { type: string, format: uuid }
+        credentialName: { type: string, readOnly: true }
+        proxyJumpHostId: { type: string, format: uuid }
+        proxyJumpAlias: { type: string, readOnly: true }
+        executionNodeIds: { type: array, items: { type: string, format: uuid } }
+        enabled: { type: boolean }
+        updatedAt: { type: string, format: date-time, readOnly: true }
+    SSHHostInput:
+      type: object
+      required: [alias, hostname, port, username, credentialId, executionNodeIds, enabled]
+      properties:
+        alias: { type: string, minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9._-]+$" }
+        hostname: { type: string, minLength: 1, maxLength: 255 }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        username: { type: string, minLength: 1, maxLength: 128 }
+        credentialId: { type: string, format: uuid }
+        proxyJumpHostId: { type: string, format: uuid }
+        executionNodeIds: { type: array, items: { type: string, format: uuid }, uniqueItems: true }
+        enabled: { type: boolean }
+    SSHHostList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/SSHHost" } }
+    WorkerSSHCredential:
+      type: object
+      required: [id, privateKey, publicKey, fingerprint]
+      properties:
+        id: { type: string, format: uuid }
+        privateKey: { type: string, writeOnly: true }
+        passphrase: { type: string, writeOnly: true }
+        publicKey: { type: string }
+        fingerprint: { type: string }
+    WorkerSSHHost:
+      type: object
+      required: [alias, hostname, port, username, credentialId]
+      properties:
+        alias: { type: string }
+        hostname: { type: string }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        username: { type: string }
+        credentialId: { type: string, format: uuid }
+        proxyJumpAlias: { type: string }
+    WorkerSSHConfiguration:
+      type: object
+      required: [revision, credentials, hosts]
+      properties:
+        revision: { type: string }
+        credentials: { type: array, items: { $ref: "#/components/schemas/WorkerSSHCredential" } }
+        hosts: { type: array, items: { $ref: "#/components/schemas/WorkerSSHHost" } }
     WorkerEnrollRequest:
       type: object
       required: [token]
@@ -1160,6 +1382,11 @@ components:
         - type: object
           properties:
             apiKey: { type: string, writeOnly: true }
+    GlobalAgents:
+      type: object
+      required: [content]
+      properties:
+        content: { type: string, maxLength: 262144 }
     CodexPreferences:
       type: object
       properties:

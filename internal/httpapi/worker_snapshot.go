@@ -32,6 +32,11 @@ func (s *Server) loadWorkerSnapshot(ctx context.Context,
 	result.Runtime.BaseURL = provider.BaseURL
 	result.Runtime.ProxyURL = provider.ProxyURL
 	result.Runtime.ConfigSignature = provider.ConfigSignature
+	agents, err := s.settings.GlobalAgents(ctx)
+	if err != nil {
+		return result, err
+	}
+	result.Runtime.GlobalAgents = agents.Content
 	preferences, err := s.freezeWorkerRuntimePreferences(ctx, claimed)
 	if err != nil {
 		return result, err

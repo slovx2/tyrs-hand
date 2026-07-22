@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,6 +58,13 @@ type Config struct {
 	GitHubReplyGateMaxBlocks       int
 	EnableDevelopmentContainers    bool
 	DevelopmentContainerIdle       time.Duration
+	EnableSSH                      bool
+	SSHAgentDir                    string
+	SSHAgentHostDir                string
+	BrowserMCPURL                  string
+	BrowserMCPTokenFile            string
+	BrowserFilesRoot               string
+	BrowserFilesHostRoot           string
 }
 
 func Load() (Config, error) {
@@ -116,6 +124,13 @@ func load(workerProcess bool) (Config, error) {
 		GitHubReplyGateMaxBlocks:       v.GetInt("github_reply_gate_max_blocks"),
 		EnableDevelopmentContainers:    v.GetBool("enable_development_containers"),
 		DevelopmentContainerIdle:       v.GetDuration("development_container_idle"),
+		EnableSSH:                      v.GetBool("enable_ssh"),
+		SSHAgentDir:                    filepath.Clean(v.GetString("ssh_agent_dir")),
+		SSHAgentHostDir:                filepath.Clean(v.GetString("ssh_agent_host_dir")),
+		BrowserMCPURL:                  strings.TrimSpace(v.GetString("browser_mcp_url")),
+		BrowserMCPTokenFile:            filepath.Clean(v.GetString("browser_mcp_token_file")),
+		BrowserFilesRoot:               filepath.Clean(v.GetString("browser_files_root")),
+		BrowserFilesHostRoot:           filepath.Clean(v.GetString("browser_files_host_root")),
 	}
 	var err error
 	cfg.WorkerAPIAllowlist, err = parseNetworkList(v.GetString("worker_api_ip_allowlist"))
@@ -176,6 +191,26 @@ func (c Config) ValidateWorker() error {
 	if c.Environment == "production" && !strings.HasPrefix(c.WorkerControlURL, "https://") {
 		return errors.New("生产远程 Worker 的 Control URL 必须使用 HTTPS")
 	}
+	if err := c.validateWorkerCapabilities(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c Config) validateWorkerCapabilities() error {
+	if c.EnableSSH && (c.SSHAgentDir == "." || c.SSHAgentHostDir == ".") {
+		return errors.New("启用 SSH 时必须配置 Agent 容器目录和宿主目录")
+	}
+	if c.BrowserMCPURL != "" {
+		parsed, err := url.ParseRequestURI(c.BrowserMCPURL)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			return errors.New("浏览器 MCP URL 必须是有效的绝对 URL")
+		}
+		if c.BrowserMCPTokenFile == "." || c.BrowserFilesRoot == "." ||
+			c.BrowserFilesHostRoot == "." {
+			return errors.New("启用浏览器时必须配置 Token 文件和文件交换目录")
+		}
+	}
 	return nil
 }
 
@@ -211,6 +246,9 @@ func (c Config) Validate() error {
 	}
 	if c.DevelopmentContainerIdle < 0 {
 		return errors.New("development_container_idle 不能小于零")
+	}
+	if err := c.validateWorkerCapabilities(); err != nil {
+		return err
 	}
 	if c.Environment == "production" {
 		if len(c.MasterKey) != 32 {
@@ -253,6 +291,13 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("worker_credential_file", ".local/worker/node-credential")
 	v.SetDefault("worker_enrollment_token", "")
 	v.SetDefault("worker_protocol_version", 1)
+	v.SetDefault("enable_ssh", false)
+	v.SetDefault("ssh_agent_dir", "/run/tyrs-hand-ssh-agent")
+	v.SetDefault("ssh_agent_host_dir", "/opt/tyrs-hand/ssh-agent")
+	v.SetDefault("browser_mcp_url", "")
+	v.SetDefault("browser_mcp_token_file", "/run/secrets/browser_mcp_token")
+	v.SetDefault("browser_files_root", "/run/tyrs-hand-browser-files")
+	v.SetDefault("browser_files_host_root", "/opt/tyrs-hand/browser-files")
 	v.SetDefault("worker_api_ip_allowlist", "")
 	v.SetDefault("worker_api_trusted_proxies", "127.0.0.1/32,::1/128")
 	v.SetDefault("lease_duration", "90s")
