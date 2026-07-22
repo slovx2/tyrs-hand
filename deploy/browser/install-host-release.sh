@@ -20,16 +20,16 @@ if [[ ! $release =~ ^tyrs-v[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ ! $extension_id =~ ^
   exit 1
 fi
 release_dir="/opt/tyrs-hand/browser/releases/$release"
-download_dir=$(mktemp -d "/opt/tyrs-hand/browser/releases/.${release}.XXXXXX")
 desktop_uid=$(id -u "$desktop_user")
 desktop_gid=$(id -g "$desktop_user")
 
+"$script_dir/prepare-host.sh" "$desktop_user"
+download_dir=$(mktemp -d "/opt/tyrs-hand/browser/releases/.${release}.XXXXXX")
 cleanup() {
   rm -rf "$download_dir"
 }
 trap cleanup EXIT
 
-"$script_dir/prepare-host.sh" "$desktop_user"
 $node_bin "$script_dir/fetch-release.mjs" "$lock_path" "$download_dir"
 tar -xzf "$download_dir/tyrs-browser-bridge-bundle.tgz" -C "$download_dir"
 
