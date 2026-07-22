@@ -113,6 +113,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	if err != nil {
 		return result, err
 	}
+	environment, runtimeConfig := prepareCodexRuntime(environment, "", p.cfg)
 	if err := p.development.CopyToRuntime(ctx, containerRuntime, temporaryHome, containerRuntime.CodexHome); err != nil {
 		return result, err
 	}
@@ -132,7 +133,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		CWD: workspace, Model: jobCtx.Model, ReasoningEffort: jobCtx.ReasoningEffort,
 		ServiceTier: jobCtx.ServiceTier, Sandbox: "danger-full-access", ApprovalPolicy: jobCtx.ApprovalPolicy,
 		NetworkEnabled:        jobCtx.NetworkEnabled,
-		RuntimeConfig:         codexRuntimeConfig(environment, "", p.cfg),
+		RuntimeConfig:         runtimeConfig,
 		DeveloperInstructions: browserDeveloperInstructions(p.cfg, discordintegration.MultiplayerDeveloperInstructions),
 	}
 	if jobCtx.HasRepository {

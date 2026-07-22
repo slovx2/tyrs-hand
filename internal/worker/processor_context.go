@@ -649,24 +649,19 @@ func codexRuntimeConfig(environment []string, workerDataRoot string,
 	config := replygate.SessionConfig()
 	if len(capabilities) > 0 {
 		cfg := capabilities[0]
-		if cfg.EnableSSH {
-			environment = append(environment, "SSH_AUTH_SOCK="+filepath.Join(cfg.SSHAgentDir, "current.sock"))
-		}
-		if cfg.BrowserMCPURL != "" {
-			if token, err := os.ReadFile(cfg.BrowserMCPTokenFile); err == nil && strings.TrimSpace(string(token)) != "" {
-				environment = append(environment, "TYRS_BROWSER_MCP_TOKEN="+strings.TrimSpace(string(token)))
-				config["mcp_servers"] = map[string]any{"chrome": map[string]any{
-					"url": cfg.BrowserMCPURL, "bearer_token_env_var": "TYRS_BROWSER_MCP_TOKEN",
-					"startup_timeout_sec": 10.0, "tool_timeout_sec": 120.0,
-					"required": false,
-				}}
-			}
+		if cfg.BrowserMCPURL != "" && environmentValue(environment,
+			"TYRS_BROWSER_MCP_TOKEN") != "" {
+			config["mcp_servers"] = map[string]any{"chrome": map[string]any{
+				"url": cfg.BrowserMCPURL, "bearer_token_env_var": "TYRS_BROWSER_MCP_TOKEN",
+				"startup_timeout_sec": 10.0, "tool_timeout_sec": 120.0,
+				"required": false,
+			}}
 		}
 	}
 	values := make(map[string]any, len(environment))
 	for _, entry := range environment {
 		key, value, found := strings.Cut(entry, "=")
-		if found && key != "" {
+		if found && key != "" && key != "TYRS_BROWSER_MCP_TOKEN" {
 			values[key] = value
 		}
 	}
@@ -683,6 +678,52 @@ func codexRuntimeConfig(environment []string, workerDataRoot string,
 		}
 	}
 	return config
+}
+
+func prepareCodexRuntime(environment []string, workerDataRoot string,
+	cfg config.Config,
+) ([]string, map[string]any) {
+	processEnvironment := codexProcessEnvironment(environment, cfg)
+	return processEnvironment, codexRuntimeConfig(processEnvironment, workerDataRoot, cfg)
+}
+
+func codexProcessEnvironment(environment []string, cfg config.Config) []string {
+	result := append([]string(nil), environment...)
+	if cfg.EnableSSH {
+		result = setEnvironmentValue(result, "SSH_AUTH_SOCK",
+			filepath.Join(cfg.SSHAgentDir, "current.sock"))
+	}
+	if cfg.BrowserMCPURL == "" {
+		return result
+	}
+	token, err := os.ReadFile(cfg.BrowserMCPTokenFile)
+	if err != nil || strings.TrimSpace(string(token)) == "" {
+		return result
+	}
+	return setEnvironmentValue(result, "TYRS_BROWSER_MCP_TOKEN",
+		strings.TrimSpace(string(token)))
+}
+
+func setEnvironmentValue(environment []string, key, value string) []string {
+	result := make([]string, 0, len(environment)+1)
+	for _, entry := range environment {
+		entryKey, _, found := strings.Cut(entry, "=")
+		if found && entryKey == key {
+			continue
+		}
+		result = append(result, entry)
+	}
+	return append(result, key+"="+value)
+}
+
+func environmentValue(environment []string, key string) string {
+	for index := len(environment) - 1; index >= 0; index-- {
+		entryKey, value, found := strings.Cut(environment[index], "=")
+		if found && entryKey == key {
+			return value
+		}
+	}
+	return ""
 }
 
 func browserDeveloperInstructions(cfg config.Config, current string) string {

@@ -134,6 +134,7 @@ func (p *RemoteProcessor) processRemoteGitHub(ctx context.Context, task *workerp
 	if err != nil {
 		return codexcontrol.TurnResult{}, err
 	}
+	environment, runtimeConfig := prepareCodexRuntime(environment, p.cfg.WorkerDataRoot, p.cfg)
 	if err := replygate.Install(codexHome); err != nil {
 		return codexcontrol.TurnResult{}, fmt.Errorf("安装 GitHub 回复 Stop Hook: %w", err)
 	}
@@ -156,7 +157,7 @@ func (p *RemoteProcessor) processRemoteGitHub(ctx context.Context, task *workerp
 		Sandbox:         settings.Sandbox, ApprovalPolicy: settings.ApprovalPolicy,
 		NetworkEnabled:        settings.NetworkEnabled,
 		DynamicTools:          withBrowserTools(p.cfg, githubSpec, localGitSpec(), githubReplySpec()),
-		RuntimeConfig:         codexRuntimeConfig(environment, p.cfg.WorkerDataRoot, p.cfg),
+		RuntimeConfig:         runtimeConfig,
 		DeveloperInstructions: browserDeveloperInstructions(p.cfg, "Follow repository AGENTS.md and the explicitly attached skills. Use only the authorized GitHub work item and current worktree. Use git.commit for commits and git.publish_branch for pushes. After all business actions, call tyrs_hand.reply_to_github exactly once with the user-facing result, then provide a natural final answer."),
 	}
 	if err := runtime.ValidateSkills(ctx, workspace.WorktreePath, skills); err != nil {

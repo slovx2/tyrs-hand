@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
@@ -168,6 +170,95 @@ func TestProcessorHelpersAndLocalTools(t *testing.T) {
 	require.Contains(t, statusResult.ContentItems[0].Text, "file.go")
 	_, err = processor.executeLocalTool(context.Background(), claimed, ports.Workspace{}, "branch", codex.ToolCallRequest{Namespace: stringPointer("git"), Tool: "unknown"})
 	require.Error(t, err)
+}
+
+func TestPrepareCodexRuntimeInjectsManagedCapabilities(t *testing.T) {
+	tokenPath := filepath.Join(t.TempDir(), "browser-token")
+	require.NoError(t, os.WriteFile(tokenPath, []byte(" managed-token \n"), 0o600))
+	base := make([]string, 3, 8)
+	base[0] = "PATH=/toolchain/bin:/usr/bin"
+	base[1] = "SSH_AUTH_SOCK=/stale.sock"
+	base[2] = "TYRS_BROWSER_MCP_TOKEN=stale-token"
+	original := append([]string(nil), base...)
+
+	environment, runtimeConfig := prepareCodexRuntime(base, "/data/worker", config.Config{
+		EnableSSH: true, SSHAgentDir: "/run/tyrs-hand-ssh-agent",
+		BrowserMCPURL:       "http://host.docker.internal:8931/mcp",
+		BrowserMCPTokenFile: tokenPath,
+	})
+
+	require.Equal(t, original, base)
+	require.Equal(t, "/run/tyrs-hand-ssh-agent/current.sock",
+		environmentValue(environment, "SSH_AUTH_SOCK"))
+	require.Equal(t, "managed-token", environmentValue(environment,
+		"TYRS_BROWSER_MCP_TOKEN"))
+	require.Equal(t, 1, environmentKeyCount(environment, "SSH_AUTH_SOCK"))
+	require.Equal(t, 1, environmentKeyCount(environment, "TYRS_BROWSER_MCP_TOKEN"))
+
+	policy := runtimeConfig["shell_environment_policy"].(map[string]any)
+	values := policy["set"].(map[string]any)
+	require.NotContains(t, values, "TYRS_BROWSER_MCP_TOKEN")
+	require.Equal(t, "/run/tyrs-hand-ssh-agent/current.sock", values["SSH_AUTH_SOCK"])
+	mcpServers := runtimeConfig["mcp_servers"].(map[string]any)
+	chrome := mcpServers["chrome"].(map[string]any)
+	require.Equal(t, "http://host.docker.internal:8931/mcp", chrome["url"])
+	require.Equal(t, "TYRS_BROWSER_MCP_TOKEN", chrome["bearer_token_env_var"])
+	require.Equal(t, 10.0, chrome["startup_timeout_sec"])
+	require.Equal(t, 120.0, chrome["tool_timeout_sec"])
+	require.Equal(t, false, chrome["required"])
+	require.NotContains(t, chrome, "bearer_token")
+	serializedConfig, err := json.Marshal(runtimeConfig)
+	require.NoError(t, err)
+	require.NotContains(t, string(serializedConfig), "managed-token")
+}
+
+func TestPrepareCodexRuntimeBrowserTokenBranches(t *testing.T) {
+	root := t.TempDir()
+	validToken := filepath.Join(root, "valid")
+	emptyToken := filepath.Join(root, "empty")
+	whitespaceToken := filepath.Join(root, "whitespace")
+	require.NoError(t, os.WriteFile(validToken, []byte("token-value\n"), 0o600))
+	require.NoError(t, os.WriteFile(emptyToken, nil, 0o600))
+	require.NoError(t, os.WriteFile(whitespaceToken, []byte(" \n\t"), 0o600))
+
+	tests := []struct {
+		name      string
+		url       string
+		tokenPath string
+		enabled   bool
+	}{
+		{name: "有效 Token", url: "http://host.docker.internal:8931/mcp", tokenPath: validToken, enabled: true},
+		{name: "未配置 URL", tokenPath: validToken},
+		{name: "Token 文件缺失", url: "http://host.docker.internal:8931/mcp", tokenPath: filepath.Join(root, "missing")},
+		{name: "Token 文件为空", url: "http://host.docker.internal:8931/mcp", tokenPath: emptyToken},
+		{name: "Token 只有空白", url: "http://host.docker.internal:8931/mcp", tokenPath: whitespaceToken},
+		{name: "Token 路径是目录", url: "http://host.docker.internal:8931/mcp", tokenPath: root},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			environment, runtimeConfig := prepareCodexRuntime([]string{"PATH=/usr/bin"}, "",
+				config.Config{BrowserMCPURL: test.url, BrowserMCPTokenFile: test.tokenPath})
+			if test.enabled {
+				require.Equal(t, "token-value", environmentValue(environment,
+					"TYRS_BROWSER_MCP_TOKEN"))
+				require.Contains(t, runtimeConfig, "mcp_servers")
+				return
+			}
+			require.Empty(t, environmentValue(environment, "TYRS_BROWSER_MCP_TOKEN"))
+			require.NotContains(t, runtimeConfig, "mcp_servers")
+		})
+	}
+}
+
+func environmentKeyCount(environment []string, key string) int {
+	count := 0
+	for _, entry := range environment {
+		entryKey, _, found := strings.Cut(entry, "=")
+		if found && entryKey == key {
+			count++
+		}
+	}
+	return count
 }
 
 func TestRemoteDiscordEventReporterForwardsTimeline(t *testing.T) {

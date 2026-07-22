@@ -85,6 +85,7 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
+	environment, runtimeConfig := prepareCodexRuntime(environment, "", p.cfg)
 	if err := p.development.CopyToRuntime(ctx, runtime, temporaryHome, runtime.CodexHome); err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
@@ -112,7 +113,7 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 		ServiceTier:     codexsettings.RuntimeServiceTier(settings.ServiceTier),
 		Sandbox:         "danger-full-access", ApprovalPolicy: settings.ApprovalPolicy,
 		NetworkEnabled:        settings.NetworkEnabled,
-		RuntimeConfig:         codexRuntimeConfig(environment, "", p.cfg),
+		RuntimeConfig:         runtimeConfig,
 		DeveloperInstructions: browserDeveloperInstructions(p.cfg, discordintegration.MultiplayerDeveloperInstructions),
 		DynamicTools:          withBrowserTools(p.cfg, githubSpec, localGitSpec()),
 	}
