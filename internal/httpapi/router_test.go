@@ -17,6 +17,7 @@ func TestWebhookRouterSeparation(t *testing.T) {
 	require.Contains(t, combined, "GET /api/v1/ssh/credentials")
 	require.Contains(t, combined, "PUT /api/v1/ssh/credentials/:id")
 	require.Contains(t, combined, "GET /api/v1/ssh/hosts")
+	require.Contains(t, combined, "POST /api/v1/ssh/hosts/import")
 	require.Contains(t, combined, "PUT /api/v1/settings/global-agents")
 	require.Contains(t, combined, "GET /worker/v1/ssh-configuration")
 

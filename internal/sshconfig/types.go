@@ -50,6 +50,21 @@ type HostInput struct {
 	Enabled          *bool       `json:"enabled"`
 }
 
+type HostImportInput struct {
+	CredentialID     uuid.UUID        `json:"credentialId"`
+	ExecutionNodeIDs []uuid.UUID      `json:"executionNodeIds"`
+	Enabled          *bool            `json:"enabled"`
+	Hosts            []HostImportItem `json:"hosts"`
+}
+
+type HostImportItem struct {
+	Alias          string `json:"alias"`
+	Hostname       string `json:"hostname"`
+	Port           int    `json:"port"`
+	Username       string `json:"username"`
+	ProxyJumpAlias string `json:"proxyJumpAlias,omitempty"`
+}
+
 type NodeCredential struct {
 	ID          uuid.UUID `json:"id"`
 	PrivateKey  string    `json:"privateKey"`

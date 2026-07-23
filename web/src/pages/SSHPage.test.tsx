@@ -110,6 +110,104 @@ describe('SSHPage', () => {
     })
   })
 
+  it('按 SSH config 一次导入多个主机', async () => {
+    const importHosts = vi.fn()
+    const credentialID = '11111111-1111-1111-1111-111111111111'
+    const nodeID = '22222222-2222-2222-2222-222222222222'
+    server.use(
+      http.get('/api/v1/ssh/credentials', () =>
+        HttpResponse.json({
+          items: [
+            {
+              id: credentialID,
+              name: 'production',
+              publicKey: 'ssh-ed25519 AAAA',
+              fingerprint: 'SHA256:fingerprint',
+              enabled: true,
+              version: 1,
+              hostCount: 0,
+              updatedAt: '2026-07-22T00:00:00Z',
+            },
+          ],
+        }),
+      ),
+      http.get('/api/v1/ssh/hosts', () => HttpResponse.json({ items: [] })),
+      http.get('/api/v1/execution-nodes', () =>
+        HttpResponse.json({
+          items: [
+            {
+              id: nodeID,
+              name: 'song-ubuntu',
+              enabled: true,
+              status: 'online',
+            },
+          ],
+        }),
+      ),
+      http.post('/api/v1/ssh/hosts/import', async ({ request }) => {
+        importHosts(await request.json())
+        return HttpResponse.json({ items: [{}, {}] }, { status: 201 })
+      }),
+    )
+
+    renderPage()
+    const user = userEvent.setup()
+    expect(await screen.findByText('SHA256:fingerprint')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '导入 SSH config' }))
+    await user.type(
+      screen.getByLabelText('SSH config'),
+      `Host jump
+  HostName 192.0.2.10
+  User ubuntu
+  IdentityFile ~/.ssh/id_ed25519
+
+Host production
+  HostName 10.0.0.8
+  User deploy
+  Port 2222
+  ProxyJump jump
+  ServerAliveInterval 30`,
+    )
+    expect(screen.getByText('将导入 2 台主机')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'config 中的 IdentityFile 只是本机路径，页面不会读取；以下选择的托管凭证会用于全部主机。',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText((_, element) => {
+        return (
+          element?.tagName === 'P' &&
+          element.textContent === '未导入的指令：ServerAliveInterval'
+        )
+      }),
+    ).toBeInTheDocument()
+    await user.click(screen.getByLabelText('批量导入到 song-ubuntu'))
+    await user.click(screen.getByRole('button', { name: '导入 2 台主机' }))
+
+    expect(importHosts).toHaveBeenCalledWith({
+      credentialId: credentialID,
+      executionNodeIds: [nodeID],
+      enabled: true,
+      hosts: [
+        {
+          alias: 'jump',
+          hostname: '192.0.2.10',
+          port: 22,
+          username: 'ubuntu',
+        },
+        {
+          alias: 'production',
+          hostname: '10.0.0.8',
+          port: 2222,
+          username: 'deploy',
+          proxyJumpAlias: 'jump',
+        },
+      ],
+    })
+    expect(await screen.findByText('已导入 2 台 SSH 主机')).toBeInTheDocument()
+  })
+
   it('轮换凭证并编辑、删除已有主机', async () => {
     const updateCredential = vi.fn()
     const deleteCredential = vi.fn()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"regexp"
 	"sort"
 	"strings"
@@ -13,6 +14,8 @@ import (
 )
 
 var aliasPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
+const maxHostImportCount = 100
 
 func normalizeHost(input HostInput) (HostInput, error) {
 	input.Alias = strings.TrimSpace(input.Alias)
@@ -33,17 +36,21 @@ func normalizeHost(input HostInput) (HostInput, error) {
 	if input.Port < 1 || input.Port > 65535 {
 		return input, errors.New("SSH 端口必须在 1 到 65535 之间")
 	}
+	input.ExecutionNodeIDs = normalizeNodeIDs(input.ExecutionNodeIDs)
+	return input, nil
+}
+
+func normalizeNodeIDs(input []uuid.UUID) []uuid.UUID {
 	seen := make(map[uuid.UUID]bool)
-	nodes := input.ExecutionNodeIDs[:0]
-	for _, id := range input.ExecutionNodeIDs {
+	result := make([]uuid.UUID, 0, len(input))
+	for _, id := range input {
 		if id != uuid.Nil && !seen[id] {
 			seen[id] = true
-			nodes = append(nodes, id)
+			result = append(result, id)
 		}
 	}
-	sort.Slice(nodes, func(i, j int) bool { return nodes[i].String() < nodes[j].String() })
-	input.ExecutionNodeIDs = nodes
-	return input, nil
+	sort.Slice(result, func(i, j int) bool { return result[i].String() < result[j].String() })
+	return result
 }
 
 func (s *Service) ListHosts(ctx context.Context) ([]Host, error) {
@@ -123,6 +130,150 @@ func (s *Service) CreateHost(ctx context.Context, input HostInput) (Host, error)
 		return Host{}, err
 	}
 	return s.getHost(ctx, id)
+}
+
+func (s *Service) ImportHosts(ctx context.Context, input HostImportInput) ([]Host, error) {
+	if input.CredentialID == uuid.Nil {
+		return nil, errors.New("必须选择 SSH 凭证")
+	}
+	if len(input.Hosts) == 0 || len(input.Hosts) > maxHostImportCount {
+		return nil, fmt.Errorf("每次必须导入 1 到 %d 台主机", maxHostImportCount)
+	}
+	nodeIDs := normalizeNodeIDs(input.ExecutionNodeIDs)
+	normalized := make([]HostInput, len(input.Hosts))
+	proxyAliases := make([]string, len(input.Hosts))
+	for index, item := range input.Hosts {
+		host, err := normalizeHost(HostInput{
+			Alias: item.Alias, Hostname: item.Hostname, Port: item.Port,
+			Username: item.Username, CredentialID: input.CredentialID,
+			ExecutionNodeIDs: nodeIDs, Enabled: input.Enabled,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("主机 %q：%w", strings.TrimSpace(item.Alias), err)
+		}
+		proxyAlias := strings.TrimSpace(item.ProxyJumpAlias)
+		if proxyAlias != "" && (!aliasPattern.MatchString(proxyAlias) || len(proxyAlias) > 128) {
+			return nil, fmt.Errorf("主机 %q 的 ProxyJump 别名格式不正确", host.Alias)
+		}
+		normalized[index] = host
+		proxyAliases[index] = proxyAlias
+	}
+	order, aliasIndexes, err := orderHostImports(normalized, proxyAliases)
+	if err != nil {
+		return nil, err
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for alias := range aliasIndexes {
+		var exists bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM ssh_hosts WHERE alias=$1)`,
+			alias).Scan(&exists); err != nil {
+			return nil, err
+		}
+		if exists {
+			return nil, fmt.Errorf("主机别名 %q 已存在", alias)
+		}
+	}
+
+	ids := make([]uuid.UUID, len(normalized))
+	for index := range ids {
+		ids[index] = uuid.New()
+	}
+	externalProxyIDs := make(map[string]uuid.UUID)
+	for _, proxyAlias := range proxyAliases {
+		if proxyAlias == "" {
+			continue
+		}
+		if _, imported := aliasIndexes[proxyAlias]; imported {
+			continue
+		}
+		if _, resolved := externalProxyIDs[proxyAlias]; resolved {
+			continue
+		}
+		var id uuid.UUID
+		if err := tx.QueryRowContext(ctx, `SELECT id FROM ssh_hosts WHERE alias=$1`,
+			proxyAlias).Scan(&id); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, fmt.Errorf("ProxyJump 主机 %q 不存在", proxyAlias)
+			}
+			return nil, err
+		}
+		externalProxyIDs[proxyAlias] = id
+	}
+
+	for _, index := range order {
+		host := normalized[index]
+		proxyAlias := proxyAliases[index]
+		if proxyIndex, imported := aliasIndexes[proxyAlias]; imported {
+			host.ProxyJumpHostID = &ids[proxyIndex]
+		} else if id, external := externalProxyIDs[proxyAlias]; external {
+			host.ProxyJumpHostID = &id
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO ssh_hosts
+			(id, alias, hostname, port, username, credential_id, proxy_jump_host_id, enabled)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, ids[index], host.Alias, host.Hostname,
+			host.Port, host.Username, host.CredentialID, host.ProxyJumpHostID,
+			enabledValue(host.Enabled)); err != nil {
+			return nil, err
+		}
+		if err := replaceNodeAssignments(ctx, tx, ids[index], host.ProxyJumpHostID,
+			host.ExecutionNodeIDs, enabledValue(host.Enabled)); err != nil {
+			return nil, fmt.Errorf("主机 %q：%w", host.Alias, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	result := make([]Host, len(ids))
+	for index, id := range ids {
+		item, err := s.getHost(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		result[index] = item
+	}
+	return result, nil
+}
+
+func orderHostImports(hosts []HostInput, proxyAliases []string) ([]int, map[string]int, error) {
+	indexes := make(map[string]int, len(hosts))
+	for index, host := range hosts {
+		if _, exists := indexes[host.Alias]; exists {
+			return nil, nil, fmt.Errorf("SSH config 中存在重复主机别名 %q", host.Alias)
+		}
+		indexes[host.Alias] = index
+	}
+	states := make([]uint8, len(hosts))
+	order := make([]int, 0, len(hosts))
+	var visit func(int) error
+	visit = func(index int) error {
+		switch states[index] {
+		case 1:
+			return fmt.Errorf("主机 %q 的 ProxyJump 形成循环", hosts[index].Alias)
+		case 2:
+			return nil
+		}
+		states[index] = 1
+		if proxyIndex, imported := indexes[proxyAliases[index]]; imported {
+			if err := visit(proxyIndex); err != nil {
+				return err
+			}
+		}
+		states[index] = 2
+		order = append(order, index)
+		return nil
+	}
+	for index := range hosts {
+		if err := visit(index); err != nil {
+			return nil, nil, err
+		}
+	}
+	return order, indexes, nil
 }
 
 func (s *Service) UpdateHost(ctx context.Context, id uuid.UUID, input HostInput) (Host, error) {

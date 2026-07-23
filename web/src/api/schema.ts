@@ -759,6 +759,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ssh/hosts/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["importSSHHosts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ssh/hosts/{id}": {
         parameters: {
             query?: never;
@@ -1290,6 +1306,20 @@ export interface components {
             proxyJumpHostId?: string;
             executionNodeIds: string[];
             enabled: boolean;
+        };
+        SSHHostImportItem: {
+            alias: string;
+            hostname: string;
+            port: number;
+            username: string;
+            proxyJumpAlias?: string;
+        };
+        SSHHostImportInput: {
+            /** Format: uuid */
+            credentialId: string;
+            executionNodeIds: string[];
+            enabled: boolean;
+            hosts: components["schemas"]["SSHHostImportItem"][];
         };
         SSHHostList: {
             items: components["schemas"]["SSHHost"][];
@@ -3269,6 +3299,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SSHHost"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    importSSHHosts: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SSHHostImportInput"];
+            };
+        };
+        responses: {
+            /** @description 已批量导入的 SSH 主机 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SSHHostList"];
                 };
             };
             default: components["responses"]["Problem"];

@@ -108,6 +108,25 @@ func (s *Server) createSSHHost(c *gin.Context) {
 	c.JSON(http.StatusCreated, item)
 }
 
+func (s *Server) importSSHHosts(c *gin.Context) {
+	var input sshconfig.HostImportInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		badRequest(c, err)
+		return
+	}
+	items, err := s.ssh.ImportHosts(c.Request.Context(), input)
+	if err != nil {
+		problem(c, http.StatusConflict, "导入 SSH 主机失败", err)
+		return
+	}
+	for _, item := range items {
+		s.audit(c, "ssh_host.create", "ssh_host", item.ID.String(),
+			map[string]any{"alias": item.Alias, "executionNodeIds": item.ExecutionNodeIDs,
+				"source": "ssh_config"})
+	}
+	c.JSON(http.StatusCreated, gin.H{"items": items})
+}
+
 func (s *Server) updateSSHHost(c *gin.Context) {
 	id, ok := parseResourceID(c)
 	if !ok {

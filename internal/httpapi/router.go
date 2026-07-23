@@ -125,6 +125,7 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	authenticated.DELETE("/ssh/credentials/:id", s.requireCSRF(), s.deleteSSHCredential)
 	authenticated.GET("/ssh/hosts", s.listSSHHosts)
 	authenticated.POST("/ssh/hosts", s.requireCSRF(), s.createSSHHost)
+	authenticated.POST("/ssh/hosts/import", s.requireCSRF(), s.importSSHHosts)
 	authenticated.PUT("/ssh/hosts/:id", s.requireCSRF(), s.updateSSHHost)
 	authenticated.DELETE("/ssh/hosts/:id", s.requireCSRF(), s.deleteSSHHost)
 	authenticated.GET("/settings/execution", s.getExecutionSettings)

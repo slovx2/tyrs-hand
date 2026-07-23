@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { api } from '../api/client'
 import { useUI } from '../state'
+import { parseSSHConfig } from './sshConfigParser'
 import type { SSHCredential, SSHExecutionNode, SSHHost } from './sshTypes'
 
 interface HostForm {
@@ -12,6 +13,13 @@ interface HostForm {
   username: string
   credentialId: string
   proxyJumpHostId: string
+  executionNodeIds: string[]
+  enabled: boolean
+}
+
+interface HostImportForm {
+  config: string
+  credentialId: string
   executionNodeIds: string[]
   enabled: boolean
 }
@@ -28,6 +36,13 @@ const emptyHost: HostForm = {
   enabled: true,
 }
 
+const emptyImport: HostImportForm = {
+  config: '',
+  credentialId: '',
+  executionNodeIds: [],
+  enabled: true,
+}
+
 export function SSHHostSection({
   items,
   credentials,
@@ -38,6 +53,7 @@ export function SSHHostSection({
   nodes: SSHExecutionNode[]
 }) {
   const [form, setForm] = useState<HostForm | null>(null)
+  const [importForm, setImportForm] = useState<HostImportForm | null>(null)
   const queryClient = useQueryClient()
   const showToast = useUI((state) => state.showToast)
   const refresh = () =>
@@ -64,6 +80,25 @@ export function SSHHostSection({
       setForm(null)
       await refresh()
       showToast('success', 'SSH 主机已保存')
+    },
+  })
+  const importHosts = useMutation({
+    mutationFn: (values: HostImportForm) => {
+      const parsed = parseSSHConfig(values.config)
+      return api<{ items: SSHHost[] }>('/ssh/hosts/import', {
+        method: 'POST',
+        body: JSON.stringify({
+          credentialId: values.credentialId,
+          executionNodeIds: values.executionNodeIds,
+          enabled: values.enabled,
+          hosts: parsed.hosts,
+        }),
+      })
+    },
+    onSuccess: async (result) => {
+      setImportForm(null)
+      await refresh()
+      showToast('success', `已导入 ${result.items.length} 台 SSH 主机`)
     },
   })
   const remove = useMutation({
@@ -115,11 +150,38 @@ export function SSHHostSection({
         : value,
     )
   }
+  const toggleImportNode = (id: string, checked: boolean) => {
+    setImportForm((value) =>
+      value
+        ? {
+            ...value,
+            executionNodeIds: checked
+              ? [...new Set([...value.executionNodeIds, id])]
+              : value.executionNodeIds.filter((item) => item !== id),
+          }
+        : value,
+    )
+  }
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (form) save.mutate(form)
   }
+  const submitImport = (event: FormEvent) => {
+    event.preventDefault()
+    if (importForm) importHosts.mutate(importForm)
+  }
   const selectedProxy = items.find((item) => item.id === form?.proxyJumpHostId)
+  const parsedImport = (() => {
+    if (!importForm?.config.trim()) return { result: null, error: '' }
+    try {
+      return { result: parseSSHConfig(importForm.config), error: '' }
+    } catch (error) {
+      return {
+        result: null,
+        error: error instanceof Error ? error.message : 'SSH config 解析失败',
+      }
+    }
+  })()
 
   return (
     <section className="mt-12" aria-labelledby="ssh-hosts-title">
@@ -134,18 +196,241 @@ export function SSHHostSection({
               : '添加主机后，Codex 可以直接使用这里的别名发起 SSH 连接。'}
           </p>
         </div>
-        {!form && (
-          <button
-            className="button"
-            type="button"
-            disabled={credentials.length === 0}
-            title={credentials.length === 0 ? '请先添加登录凭证' : undefined}
-            onClick={() => setForm({ ...emptyHost })}
-          >
-            添加主机
-          </button>
+        {!form && !importForm && (
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="button-secondary"
+              type="button"
+              disabled={credentials.length === 0}
+              title={credentials.length === 0 ? '请先添加登录凭证' : undefined}
+              onClick={() =>
+                setImportForm({
+                  ...emptyImport,
+                  credentialId:
+                    credentials.find((item) => item.enabled)?.id ?? '',
+                })
+              }
+            >
+              导入 SSH config
+            </button>
+            <button
+              className="button"
+              type="button"
+              disabled={credentials.length === 0}
+              title={credentials.length === 0 ? '请先添加登录凭证' : undefined}
+              onClick={() => setForm({ ...emptyHost })}
+            >
+              添加主机
+            </button>
+          </div>
         )}
       </div>
+
+      {importForm && (
+        <form className="panel mt-4" onSubmit={submitImport}>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-semibold">导入 SSH config</h3>
+              <p className="muted mt-1 text-sm">
+                粘贴多个具体的 Host 段，确认预览后会在一个事务中批量创建。
+              </p>
+            </div>
+            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+              <input
+                className="size-4 accent-[var(--accent)]"
+                type="checkbox"
+                checked={importForm.enabled}
+                onChange={(event) =>
+                  setImportForm({
+                    ...importForm,
+                    enabled: event.target.checked,
+                  })
+                }
+              />
+              启用导入的主机
+            </label>
+          </div>
+
+          <label className="mt-6 block text-sm font-medium">
+            SSH config
+            <textarea
+              className="field mt-1 min-h-64 font-mono text-sm"
+              value={importForm.config}
+              required
+              spellCheck={false}
+              placeholder={`Host jump
+  HostName 192.0.2.10
+  User ubuntu
+
+Host production
+  HostName 10.0.0.8
+  User deploy
+  Port 2222
+  ProxyJump jump`}
+              onChange={(event) =>
+                setImportForm({ ...importForm, config: event.target.value })
+              }
+            />
+          </label>
+          <p className="muted mt-2 text-xs">
+            支持 Host、HostName、User、Port 和单级 ProxyJump；一个 Host
+            段可以包含多个具体别名。
+          </p>
+
+          {parsedImport.error && (
+            <div
+              className="mt-3 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800"
+              role="alert"
+            >
+              {parsedImport.error}
+            </div>
+          )}
+
+          {parsedImport.result && (
+            <div className="mt-4 rounded-xl border border-[color:var(--border)] bg-[var(--surface-muted)] p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h4 className="font-semibold">
+                  将导入 {parsedImport.result.hosts.length} 台主机
+                </h4>
+                <span className="muted text-xs">整批成功或整批失败</span>
+              </div>
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                {parsedImport.result.hosts.slice(0, 12).map((host) => (
+                  <div
+                    className="rounded-lg border border-[color:var(--border)] bg-[var(--surface)] px-3 py-2 text-sm"
+                    key={host.alias}
+                  >
+                    <span className="font-semibold">{host.alias}</span>
+                    <code className="muted ml-2 break-all text-xs">
+                      {host.username}@{host.hostname}:{host.port}
+                    </code>
+                    {host.proxyJumpAlias && (
+                      <span className="muted mt-1 block text-xs">
+                        ProxyJump：{host.proxyJumpAlias}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {parsedImport.result.hosts.length > 12 && (
+                <p className="muted mt-2 text-xs">
+                  另有 {parsedImport.result.hosts.length - 12}{' '}
+                  台主机未在预览中展开。
+                </p>
+              )}
+              {parsedImport.result.identityFiles.length > 0 && (
+                <p className="mt-3 text-xs text-amber-800">
+                  config 中的 IdentityFile
+                  只是本机路径，页面不会读取；以下选择的托管凭证会用于全部主机。
+                </p>
+              )}
+              {parsedImport.result.ignoredDirectives.length > 0 && (
+                <p className="muted mt-2 text-xs">
+                  未导入的指令：
+                  {parsedImport.result.ignoredDirectives.join('、')}
+                </p>
+              )}
+            </div>
+          )}
+
+          <fieldset className="mt-6 border-t border-[color:var(--border)] pt-6">
+            <legend className="font-semibold">认证凭证</legend>
+            <label className="mt-3 block max-w-xl text-sm font-medium">
+              全部主机使用
+              <select
+                className="field mt-1"
+                value={importForm.credentialId}
+                required
+                onChange={(event) =>
+                  setImportForm({
+                    ...importForm,
+                    credentialId: event.target.value,
+                  })
+                }
+              >
+                <option value="">请选择凭证</option>
+                {credentials.map((item) => (
+                  <option value={item.id} key={item.id}>
+                    {item.name}
+                    {item.enabled ? '' : '（已停用）'}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </fieldset>
+
+          <fieldset className="mt-6 border-t border-[color:var(--border)] pt-6">
+            <legend className="font-semibold">下发到执行节点</legend>
+            <p className="muted mt-1 text-sm">
+              选中的节点会同时接收本批主机。同批 ProxyJump
+              会自动按依赖顺序创建。
+            </p>
+            {nodes.length === 0 ? (
+              <div className="mt-3 rounded-lg border border-dashed border-[color:var(--border-strong)] p-4 text-sm">
+                目前没有执行节点。你可以先导入主机，注册 Worker 后再回来分配。
+              </div>
+            ) : (
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {nodes.map((node) => {
+                  const checked = importForm.executionNodeIds.includes(node.id)
+                  return (
+                    <label
+                      className={`flex items-start gap-3 rounded-xl border p-3 text-sm transition-colors ${
+                        checked
+                          ? 'border-[color:var(--accent)] bg-[var(--surface-muted)]'
+                          : 'border-[color:var(--border)]'
+                      } ${node.enabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
+                      key={node.id}
+                    >
+                      <input
+                        className="mt-0.5 size-4 accent-[var(--accent)]"
+                        type="checkbox"
+                        aria-label={`批量导入到 ${node.name}`}
+                        checked={checked}
+                        disabled={!node.enabled}
+                        onChange={(event) =>
+                          toggleImportNode(node.id, event.target.checked)
+                        }
+                      />
+                      <span>
+                        <span className="block font-medium">{node.name}</span>
+                        <span className="muted mt-0.5 block text-xs">
+                          {node.enabled ? '将接收整批配置' : '节点已停用'}
+                        </span>
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+          </fieldset>
+
+          <div className="mt-6 flex flex-wrap gap-2">
+            <button
+              className="button"
+              disabled={
+                importHosts.isPending ||
+                !parsedImport.result ||
+                !importForm.credentialId
+              }
+            >
+              {importHosts.isPending
+                ? '导入中…'
+                : parsedImport.result
+                  ? `导入 ${parsedImport.result.hosts.length} 台主机`
+                  : '导入主机'}
+            </button>
+            <button
+              type="button"
+              className="button-secondary"
+              disabled={importHosts.isPending}
+              onClick={() => setImportForm(null)}
+            >
+              取消
+            </button>
+          </div>
+        </form>
+      )}
 
       {form && (
         <form className="panel mt-4" onSubmit={submit}>

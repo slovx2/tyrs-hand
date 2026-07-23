@@ -682,6 +682,19 @@ paths:
           description: 已创建的 SSH 主机
           content: { application/json: { schema: { $ref: "#/components/schemas/SSHHost" } } }
         default: { $ref: "#/components/responses/Problem" }
+  /ssh/hosts/import:
+    post:
+      operationId: importSSHHosts
+      tags: [SSH]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/SSHHostImportInput" } } }
+      responses:
+        "201":
+          description: 已批量导入的 SSH 主机
+          content: { application/json: { schema: { $ref: "#/components/schemas/SSHHostList" } } }
+        default: { $ref: "#/components/responses/Problem" }
   /ssh/hosts/{id}:
     put:
       operationId: updateSSHHost
@@ -1139,6 +1152,27 @@ components:
         proxyJumpHostId: { type: string, format: uuid }
         executionNodeIds: { type: array, items: { type: string, format: uuid }, uniqueItems: true }
         enabled: { type: boolean }
+    SSHHostImportItem:
+      type: object
+      required: [alias, hostname, port, username]
+      properties:
+        alias: { type: string, minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9._-]+$" }
+        hostname: { type: string, minLength: 1, maxLength: 255 }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        username: { type: string, minLength: 1, maxLength: 128 }
+        proxyJumpAlias: { type: string, minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9._-]+$" }
+    SSHHostImportInput:
+      type: object
+      required: [credentialId, executionNodeIds, enabled, hosts]
+      properties:
+        credentialId: { type: string, format: uuid }
+        executionNodeIds: { type: array, items: { type: string, format: uuid }, uniqueItems: true }
+        enabled: { type: boolean }
+        hosts:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: "#/components/schemas/SSHHostImportItem" }
     SSHHostList:
       type: object
       required: [items]

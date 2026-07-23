@@ -94,6 +94,30 @@ func TestNormalizeHostDefaultsDeduplicatesAndRejectsInvalidFields(t *testing.T) 
 	}
 }
 
+func TestOrderHostImportsPlacesProxyFirst(t *testing.T) {
+	hosts := []HostInput{{Alias: "target"}, {Alias: "jump"}, {Alias: "direct"}}
+	order, indexes, err := orderHostImports(hosts, []string{"jump", "", "external"})
+	require.NoError(t, err)
+	require.Equal(t, map[string]int{"target": 0, "jump": 1, "direct": 2}, indexes)
+	require.Less(t, indexOf(order, 1), indexOf(order, 0))
+
+	_, _, err = orderHostImports([]HostInput{{Alias: "duplicate"}, {Alias: "duplicate"}},
+		[]string{"", ""})
+	require.ErrorContains(t, err, "重复")
+	_, _, err = orderHostImports([]HostInput{{Alias: "one"}, {Alias: "two"}},
+		[]string{"two", "one"})
+	require.ErrorContains(t, err, "循环")
+}
+
+func indexOf(values []int, target int) int {
+	for index, value := range values {
+		if value == target {
+			return index
+		}
+	}
+	return -1
+}
+
 func pemBytes(block *pem.Block) []byte {
 	return pem.EncodeToMemory(block)
 }
