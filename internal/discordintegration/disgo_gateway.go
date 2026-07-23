@@ -18,6 +18,7 @@ import (
 	"github.com/disgoorg/snowflake/v2"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
 )
 
@@ -51,6 +52,7 @@ func (c *DisgoConnector) Open(ctx context.Context, resume *GatewaySession) error
 		bot.WithEventListenerFunc(c.onReady), bot.WithEventListenerFunc(c.onResumed),
 		bot.WithEventListenerFunc(c.onMessage), bot.WithEventListenerFunc(c.onCommand),
 		bot.WithEventListenerFunc(c.onComponent), bot.WithEventListenerFunc(c.onModalSubmit),
+		bot.WithEventListenerFunc(c.onThreadUpdate),
 	)
 	if err != nil {
 		return err
@@ -153,6 +155,13 @@ func (c *DisgoConnector) handleMessage(ctx context.Context, event *events.Messag
 					"channelId": input.ThreadID, "card": terminatedControlCard(),
 				}, "conversation-terminated-"+input.MessageID)
 		}
+		if errors.Is(err, codexcontrol.ErrControlArchived) {
+			return NewSQLoutbox(c.manager.db).Enqueue(ctx,
+				"conversation:archived-rejection:"+input.MessageID,
+				"message.create", "channels/"+input.ThreadID+"/messages", map[string]any{
+					"channelId": input.ThreadID, "card": archivedConversationCard(),
+				}, "conversation-archived-"+input.MessageID)
+		}
 		return err
 	}
 	channel, err := event.Client().Rest.GetChannel(event.ChannelID, disgorest.WithCtx(ctx))
@@ -235,6 +244,22 @@ func (c *DisgoConnector) onCommand(event *events.ApplicationCommandInteractionCr
 		if err == nil {
 			content = fmt.Sprintf("已停止 %d 个正在运行或排队的任务。", count)
 		}
+	case "/codex/restore":
+		threadID := event.Channel().ID().String()
+		if rawPost, ok := data.OptString("post"); ok && strings.TrimSpace(rawPost) != "" {
+			threadID, err = parseDiscordPostReference(rawPost)
+		}
+		if err == nil {
+			var state workerprotocol.ThreadLifecycleState
+			state, err = c.conversations.Restore(ctx, c.guildID, threadID, userID, nil)
+			if err == nil {
+				if state.Status == "completed" {
+					content = "会话已经处于可用状态。"
+				} else {
+					content = "恢复请求已提交；Codex 确认恢复后会自动解锁原 Post。"
+				}
+			}
+		}
 	default:
 		err = errors.New("未知 Discord 命令")
 	}
@@ -259,6 +284,10 @@ func (c *DisgoConnector) onComponent(event *events.ComponentInteractionCreate) {
 	}
 	if strings.HasPrefix(customID, interactiveButtonPrefix) {
 		c.answerInteractiveComponent(event, customID)
+		return
+	}
+	if strings.HasPrefix(customID, "codex-restore:") {
+		c.restoreConversationComponent(event, customID)
 		return
 	}
 	eventID := "interaction:" + event.ID().String()
@@ -405,10 +434,98 @@ func (c *DisgoConnector) registerCommands(ctx context.Context, client *bot.Clien
 					ChannelTypes: []discord.ChannelType{discord.ChannelTypeGuildForum}},
 			}},
 			discord.ApplicationCommandOptionSubCommand{Name: "stop", Description: "停止当前会话的活动任务"},
+			discord.ApplicationCommandOptionSubCommand{Name: "restore", Description: "恢复已归档的 Codex 会话", Options: []discord.ApplicationCommandOption{
+				discord.ApplicationCommandOptionString{Name: "post", Description: "原 Post mention 或 ID；在原 Post 内可省略"},
+			}},
 		}},
 	}
 	_, err = client.Rest.SetGuildCommands(applicationID, guildID, commands, disgorest.WithCtx(ctx))
 	return err
+}
+
+func parseDiscordPostReference(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	value = strings.TrimPrefix(value, "<#")
+	value = strings.TrimSuffix(value, ">")
+	id, err := snowflake.Parse(value)
+	if err != nil {
+		return "", errors.New("post 参数必须是 Discord Post mention 或 ID")
+	}
+	return id.String(), nil
+}
+
+func (c *DisgoConnector) restoreConversationComponent(event *events.ComponentInteractionCreate,
+	customID string,
+) {
+	parts := strings.Split(strings.TrimPrefix(customID, "codex-restore:"), ":")
+	if len(parts) != 2 {
+		_ = event.CreateMessage(discord.NewMessageCreate().
+			WithContent("这个恢复按钮无效，请使用 `/codex restore`。").WithEphemeral(true))
+		return
+	}
+	conversationID, err := uuid.Parse(parts[0])
+	revision, revisionErr := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || revisionErr != nil || revision < 0 {
+		_ = event.CreateMessage(discord.NewMessageCreate().
+			WithContent("这个恢复按钮无效，请使用 `/codex restore`。").WithEphemeral(true))
+		return
+	}
+	if err := event.DeferCreateMessage(true); err != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	var threadID string
+	err = c.manager.db.QueryRowContext(ctx, `SELECT thread_id FROM discord_conversations
+		WHERE id = $1 AND guild_id = $2`, conversationID, c.guildID).Scan(&threadID)
+	content := "恢复请求已提交；Codex 确认恢复后会自动解锁原 Post。"
+	if err == nil {
+		var state workerprotocol.ThreadLifecycleState
+		state, err = c.conversations.Restore(ctx, c.guildID, threadID,
+			event.User().ID.String(), &revision)
+		if err == nil && state.Status == "completed" {
+			content = "会话已经处于可用状态。"
+		}
+	}
+	if err != nil {
+		content = err.Error()
+	}
+	_, _ = event.Client().Rest.UpdateInteractionResponse(event.ApplicationID(), event.Token(),
+		discord.MessageUpdate{Content: &content})
+}
+
+func (c *DisgoConnector) onThreadUpdate(event *events.ThreadUpdate) {
+	if event.GuildID.String() != c.guildID {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var conversationID uuid.UUID
+	var state string
+	err := c.manager.db.QueryRowContext(ctx, `SELECT id, lifecycle_state
+		FROM discord_conversations WHERE guild_id = $1 AND thread_id = $2`,
+		c.guildID, event.ThreadID.String()).Scan(&conversationID, &state)
+	if err != nil || (state != "active" && state != "archived") {
+		return
+	}
+	shouldArchive := state == "archived"
+	if event.Thread.ThreadMetadata.Archived == shouldArchive &&
+		event.Thread.ThreadMetadata.Locked == shouldArchive {
+		return
+	}
+	tx, err := c.manager.db.BeginTx(ctx, nil)
+	if err == nil {
+		err = EnqueueConversationLifecycleTx(ctx, tx, conversationID)
+	}
+	if err == nil {
+		err = tx.Commit()
+	} else if tx != nil {
+		_ = tx.Rollback()
+	}
+	if err != nil {
+		c.logger.Warn("重新投影 Discord 会话生命周期失败",
+			zap.String("thread_id", event.ThreadID.String()), zap.Error(err))
+	}
 }
 
 var _ GatewayConnector = (*DisgoConnector)(nil)

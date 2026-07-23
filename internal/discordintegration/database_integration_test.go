@@ -227,6 +227,225 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 	testDiscordRecoveryOrchestration(t, ctx, db, manager, seed)
 }
 
+func TestConversationLifecycleProjectionAndRestore(t *testing.T) {
+	db := discordDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	_, err := db.ExecContext(ctx, `INSERT INTO discord_guilds(guild_id, name, enabled)
+		VALUES ($1, 'Lifecycle Test', true)`, testGuildID)
+	require.NoError(t, err)
+	seed := seedDiscordManagerData(t, db)
+	var profileID, environmentID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM agent_profiles
+		ORDER BY created_at LIMIT 1`).Scan(&profileID))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT development_environment_id
+		FROM discord_forums WHERE id = $1`, seed.developmentForumID).Scan(&environmentID))
+	conversationID, controlID := uuid.New(), uuid.New()
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_conversations
+		(id, guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
+			repository_id, agent_profile_id, title, lifecycle_state, lifecycle_revision)
+		VALUES ($1,$2,$3,'100000000000000070','100000000000000071','1001',$4,$5,
+			'Lifecycle','archived',3)`, conversationID, testGuildID,
+		seed.developmentForumID, seed.repositoryID, profileID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `INSERT INTO codex_thread_controls
+		(id, source_type, discord_conversation_id, repository_id, agent_profile_id,
+			context_version, external_thread_id, execution_node_id,
+			development_environment_id, lifecycle_state, lifecycle_revision)
+		VALUES ($1,'discord_conversation',$2,$3,$4,1,'thread-lifecycle',$5,$6,'archived',3)`,
+		controlID, conversationID, seed.repositoryID, profileID, seed.executionNodeID,
+		environmentID)
+	require.NoError(t, err)
+
+	service := NewConversationService(db)
+	err = service.Reply(ctx, IncomingMessage{
+		GuildID: testGuildID, ThreadID: "100000000000000070",
+		MessageID: "100000000000000073", DiscordUserID: "1001",
+		DisplayName: "alice", Username: "alice", Body: "should not run",
+	})
+	require.ErrorIs(t, err, codexcontrol.ErrControlArchived)
+	var rejectedMessages int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_input_messages
+		WHERE message_id = '100000000000000073'`).Scan(&rejectedMessages))
+	require.Zero(t, rejectedMessages)
+
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NoError(t, EnqueueConversationLifecycleTx(ctx, tx, conversationID))
+	require.NoError(t, tx.Commit())
+	var lifecycleCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM integration_outbox
+		WHERE operation_key = $1`, "conversation-lifecycle:"+conversationID.String()).
+		Scan(&lifecycleCount))
+	require.Zero(t, lifecycleCount, "归档卡片完成前不能锁定 Post")
+	completeOutboxForTest(t, ctx, db, "conversation-lifecycle-card:"+conversationID.String(),
+		json.RawMessage(`{"messageId":"100000000000000072"}`))
+	var operationType string
+	var payload json.RawMessage
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT operation_type, payload
+		FROM integration_outbox WHERE operation_key = $1`,
+		"conversation-lifecycle:"+conversationID.String()).Scan(&operationType, &payload))
+	require.Equal(t, "thread.lifecycle", operationType)
+	require.JSONEq(t, `{"channelId":"100000000000000070","conversationId":"`+
+		conversationID.String()+`","lifecycleState":"archived","revision":3,`+
+		`"archived":true,"locked":true}`, string(payload))
+	completeOutboxForTest(t, ctx, db, "conversation-lifecycle:"+conversationID.String(), nil)
+	var appliedRevision int64
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT discord_lifecycle_applied_revision
+		FROM discord_conversations WHERE id = $1`, conversationID).Scan(&appliedRevision))
+	require.EqualValues(t, 3, appliedRevision)
+
+	staleRevision := int64(2)
+	_, err = service.Restore(ctx, testGuildID, "100000000000000070", "1001",
+		&staleRevision)
+	require.ErrorIs(t, err, ErrLifecycleRevisionStale)
+	_, err = service.Restore(ctx, testGuildID, "100000000000000070", "1003", nil)
+	require.ErrorIs(t, err, ErrReadOnly)
+	revision := int64(3)
+	state, err := service.Restore(ctx, testGuildID, "100000000000000070", "1001",
+		&revision)
+	require.NoError(t, err)
+	require.Equal(t, "applying", state.Status)
+	require.EqualValues(t, 4, state.Revision)
+	var conversationState, controlState, source, requestedBy string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT conversation.lifecycle_state,
+		control.lifecycle_state, request.source, request.requested_by_discord_user_id
+		FROM discord_conversations conversation
+		JOIN codex_thread_controls control ON control.discord_conversation_id = conversation.id
+		JOIN codex_thread_lifecycle_requests request ON request.control_id = control.id
+		WHERE conversation.id = $1 AND request.id = $2`, conversationID, state.ID).
+		Scan(&conversationState, &controlState, &source, &requestedBy))
+	require.Equal(t, "unarchive_pending", conversationState)
+	require.Equal(t, "unarchive_pending", controlState)
+	require.Equal(t, "discord", source)
+	require.Equal(t, "1001", requestedBy)
+	var staleItem OutboxItem
+	var staleID uuid.UUID
+	staleItem.LeaseToken = strings.Repeat("b", 64)
+	require.NoError(t, db.QueryRowContext(ctx, `UPDATE integration_outbox SET
+		status='sending', lease_token=$2, lease_expires_at=now()+interval '1 minute'
+		WHERE operation_key=$1 RETURNING id, operation_key, operation_type, route_key,
+			payload, COALESCE(nonce,''), attempt_count, max_attempts`,
+		"conversation-lifecycle:"+conversationID.String(), staleItem.LeaseToken).
+		Scan(&staleID, &staleItem.OperationKey, &staleItem.OperationType,
+			&staleItem.RouteKey, &staleItem.Payload, &staleItem.Nonce,
+			&staleItem.Attempt, &staleItem.MaxAttempts))
+	staleItem.ID = staleID.String()
+	require.NoError(t, NewSQLoutbox(db).Fail(ctx, staleItem,
+		errors.New("旧 lifecycle 回调失败")))
+	var projectionError sql.NullString
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT lifecycle_state,
+		lifecycle_projection_error FROM discord_conversations WHERE id=$1`,
+		conversationID).Scan(&conversationState, &projectionError))
+	require.Equal(t, "unarchive_pending", conversationState)
+	require.False(t, projectionError.Valid,
+		"旧 revision Outbox 失败回调不得污染当前恢复状态")
+
+	gatewayConversationID, gatewayControlID := uuid.New(), uuid.New()
+	const gatewayThreadID = "100000000000000080"
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_conversations
+		(id, guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
+			repository_id, agent_profile_id, title, lifecycle_state, lifecycle_revision)
+		VALUES ($1,$2,$3,$4,'100000000000000081','1001',$5,$6,
+			'Gateway Lifecycle','archived',7)`, gatewayConversationID, testGuildID,
+		seed.developmentForumID, gatewayThreadID, seed.repositoryID, profileID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `INSERT INTO codex_thread_controls
+		(id, source_type, discord_conversation_id, repository_id, agent_profile_id,
+			context_version, external_thread_id, execution_node_id,
+			development_environment_id, lifecycle_state, lifecycle_revision)
+		VALUES ($1,'discord_conversation',$2,$3,$4,1,'thread-lifecycle-gateway',$5,$6,
+			'archived',7)`, gatewayControlID, gatewayConversationID, seed.repositoryID,
+		profileID, seed.executionNodeID, environmentID)
+	require.NoError(t, err)
+
+	require.NoError(t, ReconcileConversationLifecycles(ctx, db, testGuildID))
+	var cardStatus string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM integration_outbox
+		WHERE operation_key = $1`,
+		"conversation-lifecycle-card:"+gatewayConversationID.String()).Scan(&cardStatus))
+	require.Equal(t, "pending", cardStatus)
+
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		if request.Method == http.MethodPatch &&
+			strings.Contains(request.URL.Path, "/messages/@original") {
+			_, _ = response.Write([]byte(`{"id":"9902","channel_id":"` +
+				gatewayThreadID + `","content":"updated"}`))
+			return
+		}
+		http.NotFound(response, request)
+	}))
+	t.Cleanup(server.Close)
+	remote := NewDisgoRemote("token", server.URL, server.Client())
+	t.Cleanup(func() { remote.Close(context.Background()) })
+	client := &bot.Client{ApplicationID: snowflake.ID(900), Rest: remote.rest}
+	connector := &DisgoConnector{
+		manager: &Manager{db: db}, conversations: service,
+		guildID: testGuildID, logger: zap.NewNop(),
+	}
+	connector.onComponent(newComponentEvent(t, client, "100000000000000082",
+		gatewayThreadID, "codex-restore:"+gatewayConversationID.String()+":7", nil))
+	var gatewayState string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT lifecycle_state
+		FROM discord_conversations WHERE id = $1`, gatewayConversationID).Scan(&gatewayState))
+	require.Equal(t, "unarchive_pending", gatewayState)
+	var restoreRequests int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*)
+		FROM codex_thread_lifecycle_requests
+		WHERE control_id = $1 AND source = 'discord' AND desired_state = 'active'`,
+		gatewayControlID).Scan(&restoreRequests))
+	require.Equal(t, 1, restoreRequests)
+
+	_, err = db.ExecContext(ctx, `UPDATE discord_conversations SET
+		lifecycle_state = 'archived', lifecycle_revision = 9,
+		discord_lifecycle_applied_revision = 9 WHERE id = $1`, gatewayConversationID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE codex_thread_controls SET
+		lifecycle_state = 'archived', lifecycle_revision = 9 WHERE id = $1`,
+		gatewayControlID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE integration_outbox SET status = 'completed'
+		WHERE operation_key = $1`,
+		"conversation-lifecycle-card:"+gatewayConversationID.String())
+	require.NoError(t, err)
+	var thread discord.GuildThread
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"id":"`+gatewayThreadID+`",
+		"guild_id":"`+testGuildID+`",
+		"parent_id":"100000000000000012",
+		"type":11,
+		"name":"Gateway Lifecycle",
+		"owner_id":"1001",
+		"message_count":1,
+		"member_count":1,
+		"rate_limit_per_user":0,
+		"thread_metadata":{
+			"archived":false,
+			"auto_archive_duration":10080,
+			"archive_timestamp":"2026-07-18T00:00:00Z",
+			"locked":false
+		}
+	}`), &thread))
+	connector.onThreadUpdate(&events.ThreadUpdate{GenericThread: &events.GenericThread{
+		GenericEvent: events.NewGenericEvent(client, 1, 0),
+		Thread:       thread,
+		ThreadID:     snowflake.MustParse(gatewayThreadID),
+		GuildID:      snowflake.MustParse(testGuildID),
+	}})
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM integration_outbox
+		WHERE operation_key = $1`,
+		"conversation-lifecycle-card:"+gatewayConversationID.String()).Scan(&cardStatus))
+	require.Equal(t, "pending", cardStatus,
+		"Discord 状态漂移后应重新投影 app-server 的权威生命周期")
+	var restoreRequestsAfterDrift int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*)
+		FROM codex_thread_lifecycle_requests WHERE control_id = $1`,
+		gatewayControlID).Scan(&restoreRequestsAfterDrift))
+	require.Equal(t, restoreRequests, restoreRequestsAfterDrift,
+		"Discord THREAD_UPDATE 不得反向创建 Codex 生命周期请求")
+}
+
 const (
 	testGuildID = "100000000000000001"
 	testBotID   = "100000000000000099"

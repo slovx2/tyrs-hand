@@ -87,6 +87,13 @@ func terminatedControlCard() ComponentCardPayload {
 		Footer: "后台已保留错误信息供排查"}
 }
 
+func archivedConversationCard() ComponentCardPayload {
+	return ComponentCardPayload{AccentColor: cardColorGray,
+		Header: "## 🔒 Codex · 会话已归档",
+		Body:   "当前消息没有进入执行队列。请先恢复这个会话，再继续对话。",
+		Footer: "历史消息仍然保留"}
+}
+
 func conversationConfigurationCard(model, effort, tier string) ComponentCardPayload {
 	if model == "" {
 		model = "Codex 默认"

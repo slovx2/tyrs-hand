@@ -180,6 +180,38 @@ func (c *Client) AckThreadName(ctx context.Context, controlID uuid.UUID,
 		controlID.String()+"/ack", request, nil, true)
 }
 
+func (c *Client) PrepareDesktopThreadLifecycle(ctx context.Context,
+	request ThreadLifecyclePrepareRequest,
+) (ThreadLifecycleState, error) {
+	var result ThreadLifecycleState
+	err := c.call(ctx, http.MethodPost, "/worker/v1/thread-lifecycle-requests/desktop",
+		request, &result, true)
+	return result, err
+}
+
+func (c *Client) PendingThreadLifecycles(ctx context.Context) ([]ThreadLifecycleState, error) {
+	var result []ThreadLifecycleState
+	err := c.call(ctx, http.MethodGet, "/worker/v1/thread-lifecycle-requests",
+		nil, &result, true)
+	return result, err
+}
+
+func (c *Client) ThreadLifecycleState(ctx context.Context,
+	requestID uuid.UUID,
+) (ThreadLifecycleState, error) {
+	var result ThreadLifecycleState
+	err := c.call(ctx, http.MethodGet, "/worker/v1/thread-lifecycle-requests/"+
+		requestID.String(), nil, &result, true)
+	return result, err
+}
+
+func (c *Client) CompleteThreadLifecycle(ctx context.Context, requestID uuid.UUID,
+	request ThreadLifecycleCompleteRequest,
+) error {
+	return c.call(ctx, http.MethodPost, "/worker/v1/thread-lifecycle-requests/"+
+		requestID.String()+"/complete", request, nil, true)
+}
+
 func (c *Client) PrepareDesktopTurn(ctx context.Context,
 	request DesktopTurnPrepareRequest,
 ) (Task, error) {

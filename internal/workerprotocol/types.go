@@ -9,7 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 4
+const Version = 5
 
 type EnrollRequest struct {
 	Token string `json:"token"`
@@ -186,9 +186,11 @@ type DesktopThreadFailRequest struct {
 }
 
 type ThreadMetadataEvent struct {
-	ThreadID string `json:"threadId"`
-	Sequence int64  `json:"sequence"`
-	Name     string `json:"name"`
+	ThreadID       string `json:"threadId"`
+	Sequence       int64  `json:"sequence"`
+	Kind           string `json:"kind"`
+	Name           string `json:"name,omitempty"`
+	LifecycleState string `json:"lifecycleState,omitempty"`
 }
 
 type ThreadMetadataRequest struct {
@@ -209,6 +211,30 @@ type ThreadNameAckRequest struct {
 	EnvironmentID uuid.UUID `json:"environmentId"`
 	Revision      int64     `json:"revision"`
 	Error         string    `json:"error,omitempty"`
+}
+
+type ThreadLifecyclePrepareRequest struct {
+	EnvironmentID uuid.UUID `json:"environmentId"`
+	ThreadID      string    `json:"threadId"`
+	DesiredState  string    `json:"desiredState"`
+}
+
+type ThreadLifecycleState struct {
+	ID            uuid.UUID       `json:"id"`
+	ControlID     uuid.UUID       `json:"controlId"`
+	EnvironmentID uuid.UUID       `json:"environmentId"`
+	ThreadID      string          `json:"threadId"`
+	DesiredState  string          `json:"desiredState"`
+	Status        string          `json:"status"`
+	Revision      int64           `json:"revision"`
+	Response      json.RawMessage `json:"response,omitempty"`
+	Error         string          `json:"error,omitempty"`
+}
+
+type ThreadLifecycleCompleteRequest struct {
+	EnvironmentID uuid.UUID       `json:"environmentId"`
+	Response      json.RawMessage `json:"response,omitempty"`
+	Error         string          `json:"error,omitempty"`
 }
 
 type DesktopTurnPrepareRequest struct {

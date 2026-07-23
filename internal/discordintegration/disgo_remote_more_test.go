@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/disgoorg/disgo/discord"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,6 +19,7 @@ func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 	requests := make(map[string]int)
 	var guildUpdates []map[string]any
 	var messageBodies []map[string]any
+	var threadBodies []map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		mu.Lock()
 		requests[request.Method+" "+request.URL.Path]++
@@ -75,6 +77,11 @@ func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 			mu.Unlock()
 			_, _ = response.Write([]byte(`{"id":"30","guild_id":"123","parent_id":"12","type":11,"name":"Issue","owner_id":"1","message_count":1,"member_count":1,"rate_limit_per_user":0,"thread_metadata":{"archived":false,"auto_archive_duration":10080,"archive_timestamp":"2026-07-18T00:00:00Z","locked":false},"message":{"id":"31","channel_id":"30","content":"card"}}`))
 		case "PATCH /channels/30":
+			var body map[string]any
+			require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+			mu.Lock()
+			threadBodies = append(threadBodies, body)
+			mu.Unlock()
 			_, _ = response.Write([]byte(`{"id":"30","guild_id":"123","parent_id":"12","type":11,"name":"Issue","owner_id":"1","message_count":1,"member_count":1,"rate_limit_per_user":0,"thread_metadata":{"archived":false,"auto_archive_duration":10080,"archive_timestamp":"2026-07-18T00:00:00Z","locked":false}}`))
 		default:
 			http.NotFound(response, request)
@@ -116,7 +123,8 @@ func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 
 	testDisgoSendOperations(t, ctx, remote)
 	mu.Lock()
-	require.GreaterOrEqual(t, requests["PATCH /channels/30"], 2)
+	require.GreaterOrEqual(t, requests["PATCH /channels/30"], 3)
+	require.Contains(t, threadBodies, map[string]any{"archived": true, "locked": true})
 	require.Len(t, messageBodies, 3)
 	allowedMentions := messageBodies[0]["allowed_mentions"].(map[string]any)
 	require.Equal(t, false, allowedMentions["replied_user"])
@@ -171,6 +179,7 @@ func TestDisgoRemoteRejectsMalformedRequestsBeforeNetworkWrites(t *testing.T) {
 		{OperationType: "channel.permissions", Payload: rawJSON(map[string]string{"channelId": "bad"})},
 		{OperationType: "forum.post.create", Payload: rawJSON(map[string]any{"channelId": "1", "tagIds": []string{"bad"}})},
 		{OperationType: "thread.archive", Payload: rawJSON(map[string]string{"channelId": "bad"})},
+		{OperationType: "thread.lifecycle", Payload: rawJSON(map[string]string{"channelId": "bad"})},
 		{OperationType: "thread.tags", Payload: rawJSON(map[string]any{"channelId": "1", "tagIds": []string{"bad"}})},
 	}
 	for _, operation := range invalidOperations {
@@ -179,12 +188,31 @@ func TestDisgoRemoteRejectsMalformedRequestsBeforeNetworkWrites(t *testing.T) {
 	}
 }
 
+func TestDiscordRestoreReferencesAndCardRevision(t *testing.T) {
+	id, err := parseDiscordPostReference("<#100000000000000070>")
+	require.NoError(t, err)
+	require.Equal(t, "100000000000000070", id)
+	id, err = parseDiscordPostReference("100000000000000071")
+	require.NoError(t, err)
+	require.Equal(t, "100000000000000071", id)
+	_, err = parseDiscordPostReference("not-a-post")
+	require.Error(t, err)
+	conversationID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	card := lifecycleCard(conversationID, "archived", 7)
+	require.Len(t, card.Buttons, 1)
+	require.Equal(t, "codex-restore:"+conversationID.String()+":7",
+		card.Buttons[0].CustomID)
+}
+
 func testDisgoSendOperations(t *testing.T, ctx context.Context, remote *DisgoRemote) {
 	t.Helper()
 	operations := []OutboxItem{
 		{OperationType: "message.update", Payload: rawJSON(map[string]any{"channelId": "20", "messageId": "21", "content": "updated"})},
 		{OperationType: "channel.permissions", Payload: rawJSON(map[string]any{"channelId": "12", "permissions": []PermissionSpec{{ID: "123", Type: "role", Allow: 1}}})},
 		{OperationType: "thread.archive", Payload: rawJSON(map[string]any{"channelId": "30", "archived": true})},
+		{OperationType: "thread.lifecycle", Payload: rawJSON(map[string]any{
+			"channelId": "30", "archived": true, "locked": true,
+		})},
 		{OperationType: "thread.tags", Payload: rawJSON(map[string]any{"channelId": "30", "tagIds": []string{"91"}})},
 	}
 	for _, operation := range operations {

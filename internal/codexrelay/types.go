@@ -17,12 +17,13 @@ const (
 )
 
 type Options struct {
-	SocketPath           string
-	UpstreamSocketPath   string
-	RequestTimeout       time.Duration
-	ServerRequestTimeout time.Duration
-	EventBacklog         int
-	Controller           Controller
+	SocketPath              string
+	UpstreamSocketPath      string
+	RequestTimeout          time.Duration
+	LifecycleRequestTimeout time.Duration
+	ServerRequestTimeout    time.Duration
+	EventBacklog            int
+	Controller              Controller
 }
 
 type ClientOptions struct {
@@ -36,6 +37,15 @@ type Stats struct {
 	UpstreamInitializations int64
 	DesktopConnections      int64
 	WorkerConnections       int64
+}
+
+type archiveOperation struct {
+	done     chan struct{}
+	wake     chan struct{}
+	result   json.RawMessage
+	err      error
+	canceled bool
+	applying bool
 }
 
 type rpcMessage struct {
@@ -86,6 +96,12 @@ type Controller interface {
 	PrepareCall(context.Context, Call) (CallPlan, error)
 	CompleteCall(context.Context, Call, CallPlan, json.RawMessage, error) (json.RawMessage, error)
 	ResolveInteractive(context.Context, codex.ServerRequest, json.RawMessage, Role) (bool, json.RawMessage, error)
+}
+
+// ArchiveGate 在 app-server 已空闲后等待外部 Control Run 完成，再允许官方归档。
+// 未实现该接口的嵌入场景仍保持纯 Relay 语义。
+type ArchiveGate interface {
+	WaitArchiveReady(context.Context, Call, CallPlan) error
 }
 
 // PassThroughController 只用于测试和显式信任的嵌入场景。

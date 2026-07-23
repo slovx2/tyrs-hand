@@ -15,6 +15,7 @@ import (
 var (
 	ErrLeaseLost         = errors.New("codex control 租约已经失效")
 	ErrControlTerminated = errors.New("codex control 已经进入错误终态")
+	ErrControlArchived   = errors.New("codex 会话已经归档或正在归档")
 )
 
 type Repository struct {
@@ -100,13 +101,23 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 			return uuid.Nil, false, err
 		}
 	}
-	var controlStatus string
-	if err := tx.QueryRowContext(ctx, `SELECT status FROM codex_thread_controls WHERE id = $1`, controlID).
-		Scan(&controlStatus); err != nil {
+	var controlStatus, lifecycleState string
+	if err := tx.QueryRowContext(ctx, `SELECT control.status,
+		CASE WHEN conversation.lifecycle_state IS NOT NULL
+			AND conversation.lifecycle_state <> 'active'
+			THEN conversation.lifecycle_state ELSE control.lifecycle_state END
+		FROM codex_thread_controls control
+		LEFT JOIN discord_conversations conversation
+			ON conversation.id = control.discord_conversation_id
+		WHERE control.id = $1`, controlID).
+		Scan(&controlStatus, &lifecycleState); err != nil {
 		return uuid.Nil, false, err
 	}
 	if controlStatus == "error" {
 		return uuid.Nil, false, ErrControlTerminated
+	}
+	if lifecycleState != "active" {
+		return uuid.Nil, false, ErrControlArchived
 	}
 
 	var sequence int64
@@ -208,6 +219,7 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 	err = tx.QueryRowContext(ctx, `SELECT c.id, c.status
 		FROM codex_thread_controls c
 		WHERE c.status <> 'error'
+		  AND c.lifecycle_state = 'active'
 		  AND ($2 = '' OR c.source_type = $2)
 		  AND ($3 = '' OR c.execution_node_id = $3::uuid)
 		  AND ($2 <> 'discord_conversation' OR NOT EXISTS (

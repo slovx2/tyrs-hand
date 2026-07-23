@@ -29,8 +29,27 @@ func (s *Server) workerRecordThreadMetadata(c *gin.Context) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	for _, event := range request.Events {
+		if strings.TrimSpace(event.ThreadID) == "" || event.Sequence <= 0 {
+			badRequest(c, errors.New("thread metadata event 无效"))
+			return
+		}
+		if event.Kind == "lifecycle" {
+			if event.LifecycleState != "active" && event.LifecycleState != "archived" {
+				badRequest(c, errors.New("thread lifecycle event 无效"))
+				return
+			}
+			if err := s.recordThreadLifecycleEvent(c, tx, request, event); err != nil {
+				problem(c, http.StatusInternalServerError, "记录 Thread lifecycle 失败", err)
+				return
+			}
+			continue
+		}
+		if event.Kind != "name" {
+			badRequest(c, errors.New("thread metadata kind 无效"))
+			return
+		}
 		name := normalizeDesktopTitle(event.Name)
-		if strings.TrimSpace(event.ThreadID) == "" || event.Sequence <= 0 || name == "" {
+		if name == "" {
 			badRequest(c, errors.New("thread metadata event 无效"))
 			return
 		}
@@ -81,6 +100,72 @@ func (s *Server) workerRecordThreadMetadata(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func (s *Server) recordThreadLifecycleEvent(c *gin.Context, tx *sql.Tx,
+	request workerprotocol.ThreadMetadataRequest, event workerprotocol.ThreadMetadataEvent,
+) error {
+	var controlID uuid.UUID
+	var conversationID sql.NullString
+	var revision int64
+	err := tx.QueryRowContext(c.Request.Context(), `UPDATE codex_thread_controls control SET
+		lifecycle_state = $4,
+		lifecycle_revision = lifecycle_revision +
+			CASE WHEN lifecycle_state = $4 THEN 0 ELSE 1 END,
+		lifecycle_last_error = NULL,
+		app_server_lifecycle_generation = $5,
+		app_server_lifecycle_sequence = $6,
+		updated_at = now()
+		FROM discord_development_environments environment
+		WHERE control.development_environment_id = environment.id
+			AND control.external_thread_id = $3
+			AND control.development_environment_id = $1
+			AND environment.execution_node_id = $2
+			AND ($5 > control.app_server_lifecycle_generation OR
+				($5 = control.app_server_lifecycle_generation
+					AND $6 > control.app_server_lifecycle_sequence))
+		RETURNING control.id, control.discord_conversation_id::text,
+			control.lifecycle_revision`, request.EnvironmentID, workerNode(c).ID,
+		event.ThreadID, event.LifecycleState, request.Generation, event.Sequence).
+		Scan(&controlID, &conversationID, &revision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_thread_lifecycle_requests SET
+		status = 'completed', error = NULL, completed_at = now(), updated_at = now()
+		WHERE control_id = $1 AND desired_state = $2
+			AND status IN ('waiting_for_turn','applying')`, controlID, event.LifecycleState)
+	if err != nil || !conversationID.Valid {
+		return err
+	}
+	_, err = tx.ExecContext(c.Request.Context(), `UPDATE discord_conversations SET
+		lifecycle_state = $2, lifecycle_revision = $3,
+		lifecycle_projection_error = NULL, updated_at = now() WHERE id = $1`,
+		conversationID.String, event.LifecycleState, revision)
+	if err != nil {
+		return err
+	}
+	if event.LifecycleState == "archived" {
+		_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_turn_intents SET
+			status = 'canceled', last_error_code = 'thread_archived',
+			last_error_message = 'Codex Thread 已归档，消息未执行',
+			finished_at = now(), updated_at = now()
+			WHERE control_id = $1 AND status IN (
+				'placement_pending','queued','dispatching','awaiting_confirmation','retry_wait'
+			)`, controlID)
+		if err != nil {
+			return err
+		}
+	}
+	conversationUUID, err := uuid.Parse(conversationID.String)
+	if err != nil {
+		return err
+	}
+	return discordintegration.EnqueueConversationLifecycleTx(c.Request.Context(), tx,
+		conversationUUID)
 }
 
 func (s *Server) workerPendingThreadNames(c *gin.Context) {

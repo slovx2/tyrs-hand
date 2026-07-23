@@ -229,16 +229,21 @@ func (s *ConversationService) Reply(ctx context.Context, input IncomingMessage) 
 	}
 	defer func() { _ = tx.Rollback() }()
 	var conversationID, forumID uuid.UUID
-	var ownerID, status string
-	err = tx.QueryRowContext(ctx, `SELECT id, forum_id, owner_discord_user_id, status
+	var ownerID, status, lifecycleState string
+	err = tx.QueryRowContext(ctx, `SELECT id, forum_id, owner_discord_user_id, status,
+		lifecycle_state
 		FROM discord_conversations WHERE guild_id = $1 AND thread_id = $2 FOR UPDATE`,
-		input.GuildID, input.ThreadID).Scan(&conversationID, &forumID, &ownerID, &status)
+		input.GuildID, input.ThreadID).Scan(&conversationID, &forumID, &ownerID, &status,
+		&lifecycleState)
 	if err != nil {
 		return err
 	}
 	access, err := s.access(ctx, tx, forumID, ownerID, input.DiscordUserID)
 	if err != nil {
 		return err
+	}
+	if lifecycleState != "active" {
+		return codexcontrol.ErrControlArchived
 	}
 	inserted, err := s.insertMessage(ctx, tx, conversationID, access, input)
 	if err != nil || !inserted {

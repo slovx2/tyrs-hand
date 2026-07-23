@@ -50,10 +50,11 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 	var controlID, conversationID, repositoryID, profileID uuid.UUID
 	var nullableConversation sql.NullString
 	var nextSequence int64
-	var controlStatus, activeTurnID, guildID, actorUserID, actorDisplayName string
+	var controlStatus, lifecycleState, activeTurnID, guildID, actorUserID, actorDisplayName string
 	var allowedJSON, dangerousJSON []byte
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT ct.id, ct.discord_conversation_id,
 		ct.repository_id, ct.agent_profile_id, ct.next_sequence_no, ct.status,
+		ct.lifecycle_state,
 		COALESCE(ct.active_codex_turn_id,''), p.allowed_tools, '[]'::jsonb,
 		e.guild_id, COALESCE(e.ssh_discord_user_id, ''),
 		COALESCE(NULLIF(m.display_name, ''), m.username, '')
@@ -64,7 +65,7 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 		WHERE ct.external_thread_id = $1 AND ct.development_environment_id = $2
 		AND ct.execution_node_id = $3 FOR UPDATE OF ct`, threadID, request.EnvironmentID,
 		node.ID).Scan(&controlID, &nullableConversation, &repositoryID, &profileID, &nextSequence,
-		&controlStatus, &activeTurnID, &allowedJSON, &dangerousJSON, &guildID,
+		&controlStatus, &lifecycleState, &activeTurnID, &allowedJSON, &dangerousJSON, &guildID,
 		&actorUserID, &actorDisplayName)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusForbidden, "Desktop Steer 的 Thread 未绑定到当前环境", err)
@@ -72,6 +73,10 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 	}
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取 Desktop Steer Control 失败", err)
+		return
+	}
+	if lifecycleState != "active" {
+		problem(c, http.StatusConflict, "该 Thread 已归档或正在归档", nil)
 		return
 	}
 	conversationID = parseOptionalUUID(nullableConversation)

@@ -108,6 +108,7 @@ func (r *environmentCodexRegistry) ensure(runtime devcontainer.Runtime,
 	entry.client = client
 	entry.metadataEvents = client.Subscribe(codex.ThreadFilter{})
 	go entry.observeMetadata(r.ctx)
+	go entry.reconcileThreadLifecycles(r.ctx)
 	r.entries[runtime.EnvironmentID] = entry
 	return entry, nil
 }
@@ -153,15 +154,26 @@ func (e *environmentCodex) observeMetadata(ctx context.Context) {
 			if !ok {
 				return
 			}
-			if event.Method != "thread/name/updated" {
-				continue
-			}
-			var value struct {
-				ThreadID   string `json:"threadId"`
-				ThreadName string `json:"threadName"`
-			}
-			if json.Unmarshal(event.Params, &value) == nil {
-				e.recordThreadName(ctx, value.ThreadID, value.ThreadName)
+			switch event.Method {
+			case "thread/name/updated":
+				var value struct {
+					ThreadID   string `json:"threadId"`
+					ThreadName string `json:"threadName"`
+				}
+				if json.Unmarshal(event.Params, &value) == nil {
+					e.recordThreadName(ctx, value.ThreadID, value.ThreadName)
+				}
+			case "thread/archived", "thread/unarchived":
+				var value struct {
+					ThreadID string `json:"threadId"`
+				}
+				if json.Unmarshal(event.Params, &value) == nil {
+					state := "archived"
+					if event.Method == "thread/unarchived" {
+						state = "active"
+					}
+					e.recordThreadLifecycle(ctx, value.ThreadID, state)
+				}
 			}
 		case <-ctx.Done():
 			return
@@ -174,7 +186,22 @@ func (e *environmentCodex) recordThreadName(ctx context.Context, threadID, name 
 		return
 	}
 	event := workerprotocol.ThreadMetadataEvent{ThreadID: threadID,
-		Sequence: e.metadataSequence.Add(1), Name: name}
+		Sequence: e.metadataSequence.Add(1), Kind: "name", Name: name}
+	e.recordThreadMetadata(ctx, event)
+}
+
+func (e *environmentCodex) recordThreadLifecycle(ctx context.Context, threadID, state string) {
+	if e.processor == nil || threadID == "" || (state != "active" && state != "archived") {
+		return
+	}
+	event := workerprotocol.ThreadMetadataEvent{ThreadID: threadID,
+		Sequence: e.metadataSequence.Add(1), Kind: "lifecycle", LifecycleState: state}
+	e.recordThreadMetadata(ctx, event)
+}
+
+func (e *environmentCodex) recordThreadMetadata(ctx context.Context,
+	event workerprotocol.ThreadMetadataEvent,
+) {
 	for attempt := 0; attempt < 8 && ctx.Err() == nil; attempt++ {
 		requestCtx, cancel := context.WithTimeout(ctx, e.processor.cfg.ControlTimeout)
 		err := e.processor.client.RecordThreadMetadata(requestCtx,
@@ -186,10 +213,48 @@ func (e *environmentCodex) recordThreadName(ctx context.Context, threadID, name 
 		if err == nil {
 			return
 		}
-		e.processor.logger.Warn("提交 Codex Thread 名称失败",
-			zap.String("thread_id", threadID), zap.Error(err))
+		e.processor.logger.Warn("提交 Codex Thread metadata 失败",
+			zap.String("thread_id", event.ThreadID), zap.String("kind", event.Kind),
+			zap.Error(err))
 		if !waitContext(ctx, 500*time.Millisecond) {
 			return
+		}
+	}
+}
+
+func (e *environmentCodex) reconcileThreadLifecycles(ctx context.Context) {
+	for _, archived := range []bool{false, true} {
+		var cursor *string
+		for ctx.Err() == nil {
+			var result struct {
+				Data []struct {
+					ID string `json:"id"`
+				} `json:"data"`
+				NextCursor *string `json:"nextCursor"`
+			}
+			params := map[string]any{"archived": archived, "limit": 100}
+			if cursor != nil && *cursor != "" {
+				params["cursor"] = *cursor
+			}
+			requestCtx, cancel := context.WithTimeout(ctx, e.processor.cfg.ControlTimeout)
+			err := e.client.Call(requestCtx, "thread/list", params, &result)
+			cancel()
+			if err != nil {
+				e.processor.logger.Warn("对账 Codex Thread lifecycle 失败",
+					zap.Bool("archived", archived), zap.Error(err))
+				return
+			}
+			state := "active"
+			if archived {
+				state = "archived"
+			}
+			for _, thread := range result.Data {
+				e.recordThreadLifecycle(ctx, thread.ID, state)
+			}
+			if result.NextCursor == nil || *result.NextCursor == "" {
+				break
+			}
+			cursor = result.NextCursor
 		}
 	}
 }

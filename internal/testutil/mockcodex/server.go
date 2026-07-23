@@ -38,6 +38,7 @@ type Thread struct {
 	Sandbox                 any    `json:"sandbox,omitempty"`
 	ActivePermissionProfile string `json:"activePermissionProfile,omitempty"`
 	Turns                   []Turn `json:"turns,omitempty"`
+	Archived                bool   `json:"-"`
 }
 
 type Turn struct {
@@ -59,11 +60,12 @@ type Server struct {
 	http     *http.Server
 	nextID   atomic.Int64
 
-	mu          sync.Mutex
-	connections map[int64]*connection
-	threads     map[string]Thread
-	pending     map[string]pendingRequest
-	requests    chan Request
+	mu               sync.Mutex
+	connections      map[int64]*connection
+	threads          map[string]Thread
+	pending          map[string]pendingRequest
+	requestsByMethod map[string]int
+	requests         chan Request
 }
 
 type connection struct {
@@ -95,7 +97,8 @@ func Start(t interface{ Cleanup(func()) }) (*Server, error) {
 	}
 	server := &Server{SocketPath: socketPath, listener: listener,
 		connections: make(map[int64]*connection), threads: make(map[string]Thread),
-		pending: make(map[string]pendingRequest), requests: make(chan Request, 256)}
+		pending: make(map[string]pendingRequest), requestsByMethod: make(map[string]int),
+		requests: make(chan Request, 256)}
 	server.http = &http.Server{Handler: http.HandlerFunc(server.serve)}
 	go func() { _ = server.http.Serve(listener) }()
 	t.Cleanup(func() {
@@ -171,8 +174,17 @@ func (c *connection) readLoop() {
 		case c.server.requests <- Request{ConnectionID: c.id, Message: message}:
 		default:
 		}
+		c.server.mu.Lock()
+		c.server.requestsByMethod[message.Method]++
+		c.server.mu.Unlock()
 		c.handle(message)
 	}
+}
+
+func (s *Server) RequestCount(method string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.requestsByMethod[method]
 }
 
 func (c *connection) handle(message Message) {
@@ -272,7 +284,40 @@ func (c *connection) handle(message Message) {
 		}
 		c.respond(message.ID, map[string]any{"thread": thread})
 	case "thread/list":
-		c.respond(message.ID, map[string]any{"data": c.server.listThreads(), "nextCursor": nil})
+		var params struct {
+			Archived bool `json:"archived"`
+		}
+		_ = json.Unmarshal(message.Params, &params)
+		c.respond(message.ID, map[string]any{"data": c.server.listThreads(params.Archived),
+			"nextCursor": nil})
+	case "thread/archive":
+		var params struct {
+			ThreadID string `json:"threadId"`
+		}
+		_ = json.Unmarshal(message.Params, &params)
+		thread, ok := c.server.setThreadArchived(params.ThreadID, true)
+		if !ok {
+			c.respondError(message.ID, -32602, "unknown or active thread")
+			return
+		}
+		c.respond(message.ID, map[string]any{})
+		c.server.broadcast(thread.ID, "thread/archived", map[string]any{
+			"threadId": thread.ID,
+		})
+	case "thread/unarchive":
+		var params struct {
+			ThreadID string `json:"threadId"`
+		}
+		_ = json.Unmarshal(message.Params, &params)
+		thread, ok := c.server.setThreadArchived(params.ThreadID, false)
+		if !ok {
+			c.respondError(message.ID, -32602, "unknown thread")
+			return
+		}
+		c.respond(message.ID, threadResponse(thread))
+		c.server.broadcast(thread.ID, "thread/unarchived", map[string]any{
+			"threadId": thread.ID,
+		})
 	case "thread/unsubscribe":
 		var params struct {
 			ThreadID string `json:"threadId"`
@@ -408,14 +453,37 @@ func (s *Server) updateThreadName(id, name string) (Thread, bool) {
 	return thread, true
 }
 
-func (s *Server) listThreads() []Thread {
+func (s *Server) listThreads(archived bool) []Thread {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	result := make([]Thread, 0, len(s.threads))
 	for _, thread := range s.threads {
+		if thread.Archived != archived {
+			continue
+		}
 		result = append(result, thread)
 	}
 	return result
+}
+
+func (s *Server) setThreadArchived(id string, archived bool) (Thread, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	thread, ok := s.threads[id]
+	if !ok {
+		return Thread{}, false
+	}
+	if archived {
+		for _, turn := range thread.Turns {
+			if turn.Status == "inProgress" {
+				return Thread{}, false
+			}
+		}
+	}
+	thread.Archived = archived
+	thread.Status = map[string]string{"type": "idle"}
+	s.threads[id] = thread
+	return thread, true
 }
 
 func (s *Server) startTurn(threadID, clientID string) (Turn, error) {

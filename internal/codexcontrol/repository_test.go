@@ -28,9 +28,10 @@ func TestEnqueueRejectsTerminatedControl(t *testing.T) {
 	require.NoError(t, err)
 	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO codex_thread_controls")).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(controlID))
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT status FROM codex_thread_controls WHERE id = $1")).
+	mock.ExpectQuery("SELECT control.status,").
 		WithArgs(controlID).
-		WillReturnRows(sqlmock.NewRows([]string{"status"}).AddRow("error"))
+		WillReturnRows(sqlmock.NewRows([]string{"status", "lifecycle_state"}).
+			AddRow("error", "active"))
 	mock.ExpectRollback()
 	mock.ExpectClose()
 

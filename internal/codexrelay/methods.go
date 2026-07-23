@@ -67,7 +67,7 @@ var methodClasses = map[string]methodClass{
 	"plugin/uninstall":                         methodForward,
 	"review/start":                             methodForward,
 	"thread/approveGuardianDeniedAction":       methodForward,
-	"thread/archive":                           methodForward,
+	"thread/archive":                           methodControlled,
 	"thread/compact/start":                     methodForward,
 	"thread/delete":                            methodForward,
 	"thread/goal/clear":                        methodForward,
@@ -79,7 +79,7 @@ var methodClasses = map[string]methodClass{
 	"thread/rollback":                          methodForward,
 	"thread/shellCommand":                      methodForward,
 	"thread/settings/update":                   methodForward,
-	"thread/unarchive":                         methodForward,
+	"thread/unarchive":                         methodControlled,
 	"windowsSandbox/setupStart":                methodForward,
 
 	"account/read":       methodControlled,

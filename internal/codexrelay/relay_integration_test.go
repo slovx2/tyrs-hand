@@ -456,6 +456,315 @@ func TestRelaySynchronizesSteerInterruptAndRejectsConcurrentStart(t *testing.T) 
 	require.Equal(t, "turn/completed", receiveEvent(t, events.Events()).Method)
 }
 
+func TestRelayWaitsForActiveTurnBeforeArchiving(t *testing.T) {
+	mock, err := mockcodex.Start(t)
+	require.NoError(t, err)
+	relay := startRelay(t, mock.SocketPath)
+	worker, err := relay.OpenClient(codexrelay.ClientOptions{Role: codexrelay.RoleWorker})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = worker.Close() })
+	first := connectDesktop(t, relay.SocketPath())
+	second := connectDesktop(t, relay.SocketPath())
+	first.initialize(t, 1)
+	second.initialize(t, 1)
+
+	first.write(t, rpcMessage{ID: rawID(2), Method: "thread/start",
+		Params: mustJSON(map[string]any{"cwd": t.TempDir()})})
+	threadID := responseThreadID(t, first.response(t, rawID(2)).Result)
+	second.write(t, rpcMessage{ID: rawID(2), Method: "thread/resume",
+		Params: mustJSON(map[string]string{"threadId": threadID})})
+	require.Nil(t, second.response(t, rawID(2)).Error)
+	events := worker.Subscribe(codex.ThreadFilter{ThreadID: threadID})
+	t.Cleanup(events.Close)
+
+	first.write(t, rpcMessage{ID: rawID(3), Method: "turn/start",
+		Params: mustJSON(map[string]any{"threadId": threadID,
+			"input": []map[string]string{{"type": "text", "text": "keep running"}}})})
+	turnStarted := first.response(t, rawID(3))
+	require.Nil(t, turnStarted.Error)
+	_, turnID := testResponseScope(t, turnStarted.Result)
+	require.Equal(t, "turn/started", receiveEvent(t, events.Events()).Method)
+
+	first.write(t, rpcMessage{ID: rawID(4), Method: "thread/archive",
+		Params: mustJSON(map[string]string{"threadId": threadID})})
+	require.Never(t, func() bool {
+		return mock.RequestCount("thread/archive") != 0
+	}, 250*time.Millisecond, 10*time.Millisecond,
+		"活动 Turn 完成前不应调用官方 archive")
+
+	second.write(t, rpcMessage{ID: rawID(3), Method: "turn/steer",
+		Params: mustJSON(map[string]any{"threadId": threadID, "expectedTurnId": turnID,
+			"input": []map[string]string{{"type": "text", "text": "late steer"}}})})
+	require.Equal(t, -32052, rpcErrorCode(t, second.response(t, rawID(3)).Error))
+
+	require.True(t, mock.CompleteTurn(threadID, turnID, "done"))
+	require.Equal(t, "item/completed", receiveEvent(t, events.Events()).Method)
+	require.Equal(t, "turn/completed", receiveEvent(t, events.Events()).Method)
+	archiveResponse := first.response(t, rawID(4))
+	require.Nil(t, archiveResponse.Error)
+	require.Equal(t, 1, mock.RequestCount("thread/archive"))
+	require.Equal(t, "thread/archived", second.notification(t, "thread/archived").Method)
+}
+
+func TestRelayArchivesImmediatelyWhenIdleAndUnarchivesForEveryClient(t *testing.T) {
+	mock, err := mockcodex.Start(t)
+	require.NoError(t, err)
+	relay := startRelay(t, mock.SocketPath)
+	worker, err := relay.OpenClient(codexrelay.ClientOptions{Role: codexrelay.RoleWorker})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = worker.Close() })
+	first := connectDesktop(t, relay.SocketPath())
+	second := connectDesktop(t, relay.SocketPath())
+	first.initialize(t, 1)
+	second.initialize(t, 1)
+
+	first.write(t, rpcMessage{ID: rawID(2), Method: "thread/start",
+		Params: mustJSON(map[string]any{"cwd": t.TempDir()})})
+	threadID := responseThreadID(t, first.response(t, rawID(2)).Result)
+	second.write(t, rpcMessage{ID: rawID(2), Method: "thread/resume",
+		Params: mustJSON(map[string]string{"threadId": threadID})})
+	require.Nil(t, second.response(t, rawID(2)).Error)
+	events := worker.Subscribe(codex.ThreadFilter{ThreadID: threadID})
+	t.Cleanup(events.Close)
+
+	first.write(t, rpcMessage{ID: rawID(3), Method: "thread/archive",
+		Params: mustJSON(map[string]string{"threadId": threadID})})
+	require.Nil(t, first.response(t, rawID(3)).Error)
+	require.Equal(t, "thread/archived", second.notification(t, "thread/archived").Method)
+	require.Equal(t, "thread/archived", receiveEvent(t, events.Events()).Method)
+
+	second.write(t, rpcMessage{ID: rawID(3), Method: "thread/unarchive",
+		Params: mustJSON(map[string]string{"threadId": threadID})})
+	require.Nil(t, second.response(t, rawID(3)).Error)
+	require.Equal(t, "thread/unarchived", first.notification(t, "thread/unarchived").Method)
+	require.Equal(t, "thread/unarchived", receiveEvent(t, events.Events()).Method)
+	require.Equal(t, 1, mock.RequestCount("thread/archive"))
+	require.Equal(t, 1, mock.RequestCount("thread/unarchive"))
+}
+
+func TestRelayCoalescesConcurrentArchiveRequests(t *testing.T) {
+	mock, err := mockcodex.Start(t)
+	require.NoError(t, err)
+	relay := startRelay(t, mock.SocketPath)
+	worker, err := relay.OpenClient(codexrelay.ClientOptions{Role: codexrelay.RoleWorker})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = worker.Close() })
+	first := connectDesktop(t, relay.SocketPath())
+	second := connectDesktop(t, relay.SocketPath())
+	first.initialize(t, 1)
+	second.initialize(t, 1)
+
+	first.write(t, rpcMessage{ID: rawID(2), Method: "thread/start",
+		Params: mustJSON(map[string]any{"cwd": t.TempDir()})})
+	threadID := responseThreadID(t, first.response(t, rawID(2)).Result)
+	second.write(t, rpcMessage{ID: rawID(2), Method: "thread/resume",
+		Params: mustJSON(map[string]string{"threadId": threadID})})
+	require.Nil(t, second.response(t, rawID(2)).Error)
+	var turn struct {
+		Turn struct {
+			ID string `json:"id"`
+		} `json:"turn"`
+	}
+	require.NoError(t, worker.Call(context.Background(), "turn/start", map[string]any{
+		"threadId": threadID,
+		"input":    []map[string]string{{"type": "text", "text": "running"}},
+	}, &turn))
+	first.write(t, rpcMessage{ID: rawID(3), Method: "thread/archive",
+		Params: mustJSON(map[string]string{"threadId": threadID})})
+	second.write(t, rpcMessage{ID: rawID(3), Method: "thread/archive",
+		Params: mustJSON(map[string]string{"threadId": threadID})})
+	require.True(t, mock.CompleteTurn(threadID, turn.Turn.ID, "done"))
+	require.Nil(t, first.response(t, rawID(3)).Error)
+	require.Nil(t, second.response(t, rawID(3)).Error)
+	require.Equal(t, 1, mock.RequestCount("thread/archive"))
+}
+
+func TestRelayArchivePendingAllowsInputAnswerAndInterrupt(t *testing.T) {
+	mock, err := mockcodex.Start(t)
+	require.NoError(t, err)
+	relay := startRelay(t, mock.SocketPath)
+	worker, err := relay.OpenClient(codexrelay.ClientOptions{Role: codexrelay.RoleWorker})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = worker.Close() })
+	desktop := connectDesktop(t, relay.SocketPath())
+	desktop.initialize(t, 1)
+	threadID, err := worker.StartThread(context.Background(), mustJSON(map[string]any{
+		"cwd": t.TempDir(),
+	}))
+	require.NoError(t, err)
+	desktop.write(t, rpcMessage{ID: rawID(2), Method: "thread/resume",
+		Params: mustJSON(map[string]string{"threadId": threadID})})
+	require.Nil(t, desktop.response(t, rawID(2)).Error)
+	var turn struct {
+		Turn struct {
+			ID string `json:"id"`
+		} `json:"turn"`
+	}
+	require.NoError(t, worker.Call(context.Background(), "turn/start", map[string]any{
+		"threadId": threadID,
+		"input":    []map[string]string{{"type": "text", "text": "running"}},
+	}, &turn))
+	desktop.write(t, rpcMessage{ID: rawID(3), Method: "thread/archive",
+		Params: mustJSON(map[string]string{"threadId": threadID})})
+
+	requestID := mock.RequestUserInput(threadID, turn.Turn.ID, "input-1",
+		[]map[string]any{{"id": "answer", "header": "继续", "question": "继续吗？"}}, 1000)
+	request := desktop.serverRequest(t, "item/tool/requestUserInput")
+	desktop.write(t, rpcMessage{ID: request.ID, Result: mustJSON(map[string]any{
+		"answers": map[string]any{"answer": map[string]any{"answers": []string{"继续"}}},
+	})})
+	require.Eventually(t, func() bool {
+		_, responses, resolved := mock.ResolvedRequest(requestID)
+		return resolved && responses == 1
+	}, time.Second, 10*time.Millisecond)
+	desktop.write(t, rpcMessage{ID: rawID(4), Method: "turn/interrupt",
+		Params: mustJSON(map[string]string{"threadId": threadID, "turnId": turn.Turn.ID})})
+	responses := desktop.responses(t, rawID(3), rawID(4))
+	require.Nil(t, responses[string(rawID(4))].Error)
+	require.Nil(t, responses[string(rawID(3))].Error)
+	require.Equal(t, 1, mock.RequestCount("thread/archive"))
+}
+
+func TestRelayCancelsWaitingArchiveOnUnarchive(t *testing.T) {
+	mock, err := mockcodex.Start(t)
+	require.NoError(t, err)
+	relay := startRelay(t, mock.SocketPath)
+	worker, err := relay.OpenClient(codexrelay.ClientOptions{Role: codexrelay.RoleWorker})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = worker.Close() })
+	desktop := connectDesktop(t, relay.SocketPath())
+	desktop.initialize(t, 1)
+	threadID, err := worker.StartThread(context.Background(), mustJSON(map[string]any{
+		"cwd": t.TempDir(),
+	}))
+	require.NoError(t, err)
+	desktop.write(t, rpcMessage{ID: rawID(2), Method: "thread/resume",
+		Params: mustJSON(map[string]string{"threadId": threadID})})
+	require.Nil(t, desktop.response(t, rawID(2)).Error)
+	var turn struct {
+		Turn struct {
+			ID string `json:"id"`
+		} `json:"turn"`
+	}
+	require.NoError(t, worker.Call(context.Background(), "turn/start", map[string]any{
+		"threadId": threadID,
+		"input":    []map[string]string{{"type": "text", "text": "running"}},
+	}, &turn))
+	desktop.write(t, rpcMessage{ID: rawID(3), Method: "thread/archive",
+		Params: mustJSON(map[string]string{"threadId": threadID})})
+	require.Eventually(t, func() bool {
+		return mock.RequestCount("thread/read") > 0
+	}, time.Second, 10*time.Millisecond)
+	require.NoError(t, worker.Call(context.Background(), "thread/unarchive",
+		map[string]string{"threadId": threadID}, nil))
+	require.Equal(t, -32053, rpcErrorCode(t, desktop.response(t, rawID(3)).Error))
+	require.True(t, mock.CompleteTurn(threadID, turn.Turn.ID, "done"))
+	require.Never(t, func() bool {
+		return mock.RequestCount("thread/archive") != 0
+	}, 200*time.Millisecond, 10*time.Millisecond)
+}
+
+func TestRelayArchiveDisconnectAndTimeoutDoNotReachUpstream(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		disconnect bool
+	}{
+		{name: "disconnect", disconnect: true},
+		{name: "timeout"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			mock, err := mockcodex.Start(t)
+			require.NoError(t, err)
+			directory := shortTempDir(t)
+			relay, err := codexrelay.Start(context.Background(), codexrelay.Options{
+				SocketPath: directory + "/relay.sock", UpstreamSocketPath: mock.SocketPath,
+				Controller:              codexrelay.PassThroughController{},
+				LifecycleRequestTimeout: 100 * time.Millisecond,
+			})
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = relay.Close() })
+			worker, err := relay.OpenClient(codexrelay.ClientOptions{Role: codexrelay.RoleWorker})
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = worker.Close() })
+			desktop := connectDesktop(t, relay.SocketPath())
+			desktop.initialize(t, 1)
+			threadID, err := worker.StartThread(context.Background(), mustJSON(map[string]any{
+				"cwd": t.TempDir(),
+			}))
+			require.NoError(t, err)
+			var turn struct {
+				Turn struct {
+					ID string `json:"id"`
+				} `json:"turn"`
+			}
+			require.NoError(t, worker.Call(context.Background(), "turn/start", map[string]any{
+				"threadId": threadID,
+				"input":    []map[string]string{{"type": "text", "text": "running"}},
+			}, &turn))
+			desktop.write(t, rpcMessage{ID: rawID(2), Method: "thread/archive",
+				Params: mustJSON(map[string]string{"threadId": threadID})})
+			if test.disconnect {
+				require.NoError(t, desktop.ws.Close())
+			} else {
+				require.Equal(t, -32000, rpcErrorCode(t, desktop.response(t, rawID(2)).Error))
+			}
+			time.Sleep(200 * time.Millisecond)
+			another := connectDesktop(t, relay.SocketPath())
+			another.initialize(t, 10)
+			another.write(t, rpcMessage{ID: rawID(11), Method: "turn/steer",
+				Params: mustJSON(map[string]any{"threadId": threadID,
+					"expectedTurnId": turn.Turn.ID,
+					"input":          []map[string]string{{"type": "text", "text": "allowed"}},
+				})})
+			require.Nil(t, another.response(t, rawID(11)).Error)
+			require.True(t, mock.CompleteTurn(threadID, turn.Turn.ID, "done"))
+			require.Equal(t, 0, mock.RequestCount("thread/archive"))
+		})
+	}
+}
+
+func TestRelayWaitsForControlRunGateAfterAppServerBecomesIdle(t *testing.T) {
+	mock, err := mockcodex.Start(t)
+	require.NoError(t, err)
+	directory := shortTempDir(t)
+	ready := make(chan struct{})
+	relay, err := codexrelay.Start(context.Background(), codexrelay.Options{
+		SocketPath: directory + "/relay.sock", UpstreamSocketPath: mock.SocketPath,
+		Controller: archiveGateController{ready: ready},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = relay.Close() })
+	desktop := connectDesktop(t, relay.SocketPath())
+	desktop.initialize(t, 1)
+	desktop.write(t, rpcMessage{ID: rawID(2), Method: "thread/start",
+		Params: mustJSON(map[string]any{"cwd": t.TempDir()})})
+	threadID := responseThreadID(t, desktop.response(t, rawID(2)).Result)
+	desktop.write(t, rpcMessage{ID: rawID(3), Method: "thread/archive",
+		Params: mustJSON(map[string]string{"threadId": threadID})})
+	require.Never(t, func() bool {
+		return mock.RequestCount("thread/archive") != 0
+	}, 200*time.Millisecond, 10*time.Millisecond)
+	close(ready)
+	require.Nil(t, desktop.response(t, rawID(3)).Error)
+	require.Equal(t, 1, mock.RequestCount("thread/archive"))
+}
+
+type archiveGateController struct {
+	codexrelay.PassThroughController
+	ready <-chan struct{}
+}
+
+func (c archiveGateController) WaitArchiveReady(ctx context.Context, _ codexrelay.Call,
+	_ codexrelay.CallPlan,
+) error {
+	select {
+	case <-c.ready:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 func TestRelayResumeReadsCurrentUpstreamThreadSettingsAndName(t *testing.T) {
 	mock, err := mockcodex.Start(t)
 	require.NoError(t, err)
@@ -527,6 +836,29 @@ func TestRelayKeepsEphemeralDesktopThreadsOutsideController(t *testing.T) {
 		Params: mustJSON(map[string]any{"cwd": t.TempDir()})})
 	require.NotEmpty(t, responseThreadID(t, desktop.response(t, rawID(5)).Result))
 	require.Equal(t, []string{"thread/start"}, controller.methods())
+}
+
+func TestRelayArchivesEphemeralThreadWithoutEnteringController(t *testing.T) {
+	mock, err := mockcodex.Start(t)
+	require.NoError(t, err)
+	directory := shortTempDir(t)
+	controller := &recordingController{}
+	relay, err := codexrelay.Start(context.Background(), codexrelay.Options{
+		SocketPath: directory + "/relay.sock", UpstreamSocketPath: mock.SocketPath,
+		Controller: controller,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = relay.Close() })
+	desktop := connectDesktop(t, relay.SocketPath())
+	desktop.initialize(t, 1)
+	desktop.write(t, rpcMessage{ID: rawID(2), Method: "thread/start",
+		Params: mustJSON(map[string]any{"cwd": t.TempDir(), "ephemeral": true})})
+	threadID := responseThreadID(t, desktop.response(t, rawID(2)).Result)
+	desktop.write(t, rpcMessage{ID: rawID(3), Method: "thread/archive",
+		Params: mustJSON(map[string]string{"threadId": threadID})})
+	require.Nil(t, desktop.response(t, rawID(3)).Error)
+	require.Empty(t, controller.methods())
+	require.Equal(t, 1, mock.RequestCount("thread/archive"))
 }
 
 type recordingController struct {
@@ -641,6 +973,24 @@ func (c *desktopClient) response(t *testing.T, id json.RawMessage) rpcMessage {
 			return message
 		}
 	}
+}
+
+func (c *desktopClient) responses(t *testing.T, ids ...json.RawMessage) map[string]rpcMessage {
+	t.Helper()
+	wanted := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		wanted[string(id)] = true
+	}
+	result := make(map[string]rpcMessage, len(ids))
+	for len(result) < len(wanted) {
+		var message rpcMessage
+		require.NoError(t, c.ws.ReadJSON(&message))
+		key := string(message.ID)
+		if message.Method == "" && wanted[key] {
+			result[key] = message
+		}
+	}
+	return result
 }
 
 func (c *desktopClient) serverRequest(t *testing.T, method string) rpcMessage {

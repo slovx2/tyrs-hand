@@ -302,7 +302,8 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
 		EnvironmentID: environmentID, Generation: 10,
 		Events: []workerprotocol.ThreadMetadataEvent{{
-			ThreadID: "codex-desktop-thread", Sequence: 1, Name: "首条输入前的正式标题",
+			ThreadID: "codex-desktop-thread", Sequence: 1, Kind: "name",
+			Name: "首条输入前的正式标题",
 		}},
 	}))
 
@@ -372,13 +373,15 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
 		EnvironmentID: environmentID, Generation: 10,
 		Events: []workerprotocol.ThreadMetadataEvent{{
-			ThreadID: "codex-desktop-thread", Sequence: 2, Name: "WakeQora 正式标题",
+			ThreadID: "codex-desktop-thread", Sequence: 2, Kind: "name",
+			Name: "WakeQora 正式标题",
 		}},
 	}))
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
 		EnvironmentID: environmentID, Generation: 10,
 		Events: []workerprotocol.ThreadMetadataEvent{{
-			ThreadID: "codex-desktop-thread", Sequence: 1, Name: "迟到的旧标题",
+			ThreadID: "codex-desktop-thread", Sequence: 1, Kind: "name",
+			Name: "迟到的旧标题",
 		}},
 	}))
 	var desiredName, conversationTitle string
@@ -410,7 +413,8 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
 		EnvironmentID: environmentID, Generation: 10,
 		Events: []workerprotocol.ThreadMetadataEvent{{
-			ThreadID: "codex-desktop-thread", Sequence: 3, Name: "竞争后的最新标题",
+			ThreadID: "codex-desktop-thread", Sequence: 3, Kind: "name",
+			Name: "竞争后的最新标题",
 		}},
 	}))
 	require.NoError(t, outbox.Complete(ctx, *renameItem, json.RawMessage(`{}`)))
@@ -445,7 +449,8 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
 		EnvironmentID: environmentID, Generation: 10,
 		Events: []workerprotocol.ThreadMetadataEvent{{
-			ThreadID: "codex-desktop-thread", Sequence: 4, Name: "即将失败的旧标题",
+			ThreadID: "codex-desktop-thread", Sequence: 4, Kind: "name",
+			Name: "即将失败的旧标题",
 		}},
 	}))
 	_, err = db.ExecContext(ctx, `UPDATE integration_outbox SET available_at=now()
@@ -458,7 +463,8 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
 		EnvironmentID: environmentID, Generation: 10,
 		Events: []workerprotocol.ThreadMetadataEvent{{
-			ThreadID: "codex-desktop-thread", Sequence: 5, Name: "失败竞争后的最新标题",
+			ThreadID: "codex-desktop-thread", Sequence: 5, Kind: "name",
+			Name: "失败竞争后的最新标题",
 		}},
 	}))
 	require.NoError(t, outbox.Fail(ctx, *renameItem, errors.New("旧 rename 失败")))
@@ -640,6 +646,96 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		WHERE operation_key = $1`, "conversation-reply:"+state.ConversationID.String()+
 		":message:desktop-"+task.Claimed.ID.String()).Scan(&projectedReply))
 	require.Equal(t, 1, projectedReply)
+
+	archive, err := client.PrepareDesktopThreadLifecycle(ctx,
+		workerprotocol.ThreadLifecyclePrepareRequest{
+			EnvironmentID: environmentID, ThreadID: "codex-desktop-thread",
+			DesiredState: "archived",
+		})
+	require.NoError(t, err)
+	require.Equal(t, "waiting_for_turn", archive.Status)
+	archiveReady, err := client.ThreadLifecycleState(ctx, archive.ID)
+	require.NoError(t, err)
+	require.Equal(t, "applying", archiveReady.Status,
+		"Control Run 终态后才允许 Relay 调用官方 archive")
+	_, err = client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
+		EnvironmentID: environmentID, WorkerID: "desktop-worker",
+		RequestKey: strings.Repeat("6", 64), Params: json.RawMessage(
+			`{"threadId":"codex-desktop-thread","input":[{"type":"text","text":"blocked"}]}`),
+	})
+	require.Error(t, err, "归档 pending 起必须拒绝新的 Desktop Turn")
+	require.NoError(t, client.CompleteThreadLifecycle(ctx, archive.ID,
+		workerprotocol.ThreadLifecycleCompleteRequest{
+			EnvironmentID: environmentID, Response: json.RawMessage(`{}`),
+		}))
+	var lifecycleState string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT lifecycle_state
+		FROM discord_conversations WHERE id=$1`, state.ConversationID).Scan(&lifecycleState))
+	require.Equal(t, "archive_pending", lifecycleState,
+		"官方 RPC 返回不能替代 thread/archived 生命周期通知")
+	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
+		EnvironmentID: environmentID, Generation: 10,
+		Events: []workerprotocol.ThreadMetadataEvent{{
+			ThreadID: "codex-desktop-thread", Sequence: 1, Kind: "lifecycle",
+			LifecycleState: "archived",
+		}},
+	}))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT lifecycle_state
+		FROM discord_conversations WHERE id=$1`, state.ConversationID).Scan(&lifecycleState))
+	require.Equal(t, "archived", lifecycleState)
+	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
+		EnvironmentID: environmentID, Generation: 10,
+		Events: []workerprotocol.ThreadMetadataEvent{{
+			ThreadID: "codex-desktop-thread", Sequence: 1, Kind: "lifecycle",
+			LifecycleState: "active",
+		}},
+	}))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT lifecycle_state
+		FROM discord_conversations WHERE id=$1`, state.ConversationID).Scan(&lifecycleState))
+	require.Equal(t, "archived", lifecycleState,
+		"重复或乱序 lifecycle 通知不得覆盖较新事实")
+	unarchive, err := client.PrepareDesktopThreadLifecycle(ctx,
+		workerprotocol.ThreadLifecyclePrepareRequest{
+			EnvironmentID: environmentID, ThreadID: "codex-desktop-thread",
+			DesiredState: "active",
+		})
+	require.NoError(t, err)
+	require.Equal(t, "applying", unarchive.Status)
+	require.NoError(t, client.CompleteThreadLifecycle(ctx, unarchive.ID,
+		workerprotocol.ThreadLifecycleCompleteRequest{
+			EnvironmentID: environmentID, Response: json.RawMessage(`{}`),
+		}))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT lifecycle_state
+		FROM discord_conversations WHERE id=$1`, state.ConversationID).Scan(&lifecycleState))
+	require.Equal(t, "unarchive_pending", lifecycleState,
+		"Discord 必须等 thread/unarchived 通知后再解锁")
+	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
+		EnvironmentID: environmentID, Generation: 10,
+		Events: []workerprotocol.ThreadMetadataEvent{{
+			ThreadID: "codex-desktop-thread", Sequence: 2, Kind: "lifecycle",
+			LifecycleState: "active",
+		}},
+	}))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT lifecycle_state
+		FROM discord_conversations WHERE id=$1`, state.ConversationID).Scan(&lifecycleState))
+	require.Equal(t, "active", lifecycleState)
+	failedArchive, err := client.PrepareDesktopThreadLifecycle(ctx,
+		workerprotocol.ThreadLifecyclePrepareRequest{
+			EnvironmentID: environmentID, ThreadID: "codex-desktop-thread",
+			DesiredState: "archived",
+		})
+	require.NoError(t, err)
+	require.NoError(t, client.CompleteThreadLifecycle(ctx, failedArchive.ID,
+		workerprotocol.ThreadLifecycleCompleteRequest{
+			EnvironmentID: environmentID, Error: "archive unavailable",
+		}))
+	var lifecycleRequestStatus string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT c.lifecycle_state, r.status
+		FROM codex_thread_controls c JOIN codex_thread_lifecycle_requests r
+			ON r.control_id=c.id WHERE r.id=$1`, failedArchive.ID).
+		Scan(&lifecycleState, &lifecycleRequestStatus))
+	require.Equal(t, "active", lifecycleState)
+	require.Equal(t, "failed", lifecycleRequestStatus)
 
 	forkTask, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
 		EnvironmentID: environmentID, WorkerID: "desktop-worker",

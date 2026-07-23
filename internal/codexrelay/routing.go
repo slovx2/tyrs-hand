@@ -22,20 +22,45 @@ func (r *Relay) routeCall(ctx context.Context, source *session, method string,
 	plan := CallPlan{Params: params, Forward: true}
 	ephemeral := r.callIsEphemeral(method, params)
 	controlled := class == methodControlled && source.role == RoleDesktop && !ephemeral
+	var reservedArchive *archiveOperation
+	var reservedArchiveLeader bool
+	var reservedArchiveThreadID string
+	if method == "thread/archive" && source.role == RoleDesktop && !ephemeral {
+		reservedArchiveThreadID, _ = threadScope(params)
+		if reservedArchiveThreadID != "" {
+			reservedArchive, reservedArchiveLeader = r.beginArchive(reservedArchiveThreadID)
+		}
+	}
+	if !ephemeral && (method == "turn/start" || method == "turn/steer") {
+		if threadID, _ := threadScope(params); r.archivePending(threadID) {
+			return nil, &ProtocolError{Code: -32052,
+				Message: "该 Codex Thread 正在归档，不能继续发送新输入"}
+		}
+	}
 	if controlled {
 		if r.options.Controller == nil {
+			if reservedArchiveLeader {
+				r.finishArchive(reservedArchiveThreadID, reservedArchive, nil,
+					errors.New("codex Relay 尚未配置 Desktop Control"))
+			}
 			return nil, &ProtocolError{Code: -32041,
 				Message: "Codex Relay 尚未配置 Desktop Control"}
 		}
 		var err error
 		plan, err = r.options.Controller.PrepareCall(ctx, call)
 		if err != nil {
+			if reservedArchiveLeader {
+				r.finishArchive(reservedArchiveThreadID, reservedArchive, nil, err)
+			}
 			return nil, err
 		}
 		if len(plan.Params) == 0 {
 			plan.Params = params
 		}
 		if !plan.Forward {
+			if reservedArchiveLeader {
+				r.finishArchive(reservedArchiveThreadID, reservedArchive, plan.Result, nil)
+			}
 			return r.completeControlled(ctx, call, plan, plan.Result, nil)
 		}
 	}
@@ -47,11 +72,37 @@ func (r *Relay) routeCall(ctx context.Context, source *session, method string,
 		return result, err
 	}
 	var result json.RawMessage
-	if err := r.upstream.Call(ctx, method, plan.Params, &result); err != nil {
+	var upstreamErr error
+	if method == "thread/archive" && source.role == RoleDesktop && !ephemeral {
+		var gate func(context.Context) error
 		if controlled {
-			return r.completeControlled(ctx, call, plan, nil, err)
+			if controller, ok := r.options.Controller.(ArchiveGate); ok {
+				gate = func(gateCtx context.Context) error {
+					return controller.WaitArchiveReady(gateCtx, call, plan)
+				}
+			}
 		}
-		return nil, err
+		result, upstreamErr = r.archiveThread(ctx, plan.Params, gate,
+			reservedArchive, reservedArchiveLeader)
+	} else {
+		skipUpstream := false
+		if method == "thread/unarchive" && !ephemeral {
+			if threadID, _ := threadScope(plan.Params); threadID != "" {
+				if r.cancelPendingArchive(threadID) {
+					result = json.RawMessage(`{}`)
+					skipUpstream = true
+				}
+			}
+		}
+		if !skipUpstream {
+			upstreamErr = r.upstream.Call(ctx, method, plan.Params, &result)
+		}
+	}
+	if upstreamErr != nil {
+		if controlled {
+			return r.completeControlled(ctx, call, plan, nil, upstreamErr)
+		}
+		return nil, upstreamErr
 	}
 	if method == "thread/start" || method == "thread/fork" || method == "thread/resume" {
 		threadID := responseThreadID(result)
@@ -141,6 +192,10 @@ func (r *Relay) anySubscribed(threadID string) bool {
 func (r *Relay) forwardEvents() {
 	for event := range r.upstreamEvents.Events() {
 		threadID, _ := threadScope(event.Params)
+		switch event.Method {
+		case "turn/started", "turn/completed", "thread/archived", "thread/unarchived":
+			r.signalLifecycle(threadID)
+		}
 		if event.Method == "thread/started" && eventThreadEphemeral(event.Params) {
 			r.markEphemeral(threadID)
 		}
@@ -166,6 +221,171 @@ func (r *Relay) forwardEvents() {
 	case <-r.done:
 	default:
 		r.shutdown(errors.New("relay 上游事件流已关闭"))
+	}
+}
+
+func (r *Relay) archiveThread(ctx context.Context, params json.RawMessage,
+	gate func(context.Context) error, operation *archiveOperation, leader bool,
+) (json.RawMessage, error) {
+	threadID, _ := threadScope(params)
+	if threadID == "" {
+		return nil, errors.New("thread/archive 缺少 threadId")
+	}
+	if operation == nil {
+		operation, leader = r.beginArchive(threadID)
+	}
+	if !leader {
+		select {
+		case <-operation.done:
+			return append(json.RawMessage(nil), operation.result...), operation.err
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	result, err := r.runArchive(ctx, threadID, params, operation, gate)
+	r.finishArchive(threadID, operation, result, err)
+	return result, err
+}
+
+func (r *Relay) beginArchive(threadID string) (*archiveOperation, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if current := r.archiveOperations[threadID]; current != nil {
+		return current, false
+	}
+	operation := &archiveOperation{done: make(chan struct{}), wake: make(chan struct{}, 1)}
+	r.archiveOperations[threadID] = operation
+	return operation, true
+}
+
+func (r *Relay) runArchive(ctx context.Context, threadID string, params json.RawMessage,
+	operation *archiveOperation, gate func(context.Context) error,
+) (json.RawMessage, error) {
+	for {
+		if r.archiveCanceled(operation) {
+			return nil, &ProtocolError{Code: -32053,
+				Message: "Codex Thread 归档已被恢复请求取消"}
+		}
+		active, err := r.threadActive(ctx, threadID)
+		if err != nil {
+			return nil, err
+		}
+		if !active {
+			break
+		}
+		select {
+		case <-operation.wake:
+		case <-time.After(time.Second):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	if gate != nil {
+		if err := gate(ctx); err != nil {
+			return nil, err
+		}
+	}
+	if !r.beginArchiveApply(operation) {
+		return nil, &ProtocolError{Code: -32053,
+			Message: "Codex Thread 归档已被恢复请求取消"}
+	}
+	var result json.RawMessage
+	if err := r.upstream.Call(ctx, "thread/archive", params, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (r *Relay) archiveCanceled(operation *archiveOperation) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return operation.canceled
+}
+
+func (r *Relay) beginArchiveApply(operation *archiveOperation) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if operation.canceled {
+		return false
+	}
+	operation.applying = true
+	return true
+}
+
+func (r *Relay) cancelPendingArchive(threadID string) bool {
+	r.mu.Lock()
+	operation := r.archiveOperations[threadID]
+	canceled := false
+	if operation != nil && !operation.applying {
+		operation.canceled = true
+		canceled = true
+	}
+	r.mu.Unlock()
+	if operation == nil {
+		return false
+	}
+	select {
+	case operation.wake <- struct{}{}:
+	default:
+	}
+	return canceled
+}
+
+func (r *Relay) threadActive(ctx context.Context, threadID string) (bool, error) {
+	var result struct {
+		Thread struct {
+			Status json.RawMessage `json:"status"`
+		} `json:"thread"`
+	}
+	if err := r.upstream.Call(ctx, "thread/read", map[string]any{
+		"threadId": threadID, "includeTurns": false,
+	}, &result); err != nil {
+		return false, err
+	}
+	var status struct {
+		Type string `json:"type"`
+	}
+	if json.Unmarshal(result.Thread.Status, &status) != nil {
+		return false, nil
+	}
+	return status.Type == "active", nil
+}
+
+func (r *Relay) finishArchive(threadID string, operation *archiveOperation,
+	result json.RawMessage, err error,
+) {
+	r.mu.Lock()
+	if r.archiveOperations[threadID] == operation {
+		delete(r.archiveOperations, threadID)
+	}
+	operation.result = append(json.RawMessage(nil), result...)
+	operation.err = err
+	close(operation.done)
+	r.mu.Unlock()
+}
+
+func (r *Relay) archivePending(threadID string) bool {
+	if threadID == "" {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.archiveOperations[threadID] != nil
+}
+
+func (r *Relay) signalLifecycle(threadID string) {
+	if threadID == "" {
+		return
+	}
+	r.mu.Lock()
+	operation := r.archiveOperations[threadID]
+	r.mu.Unlock()
+	if operation == nil {
+		return
+	}
+	select {
+	case operation.wake <- struct{}{}:
+	default:
 	}
 }
 

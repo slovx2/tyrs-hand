@@ -22,13 +22,14 @@ type Relay struct {
 	listener       net.Listener
 	httpServer     *http.Server
 
-	mu               sync.Mutex
-	sessions         map[int64]*session
-	ephemeralThreads map[string]bool
-	nextID           atomic.Int64
-	closed           bool
-	stats            Stats
-	done             chan struct{}
+	mu                sync.Mutex
+	sessions          map[int64]*session
+	ephemeralThreads  map[string]bool
+	archiveOperations map[string]*archiveOperation
+	nextID            atomic.Int64
+	closed            bool
+	stats             Stats
+	done              chan struct{}
 }
 
 func Start(ctx context.Context, options Options) (*Relay, error) {
@@ -38,6 +39,9 @@ func Start(ctx context.Context, options Options) (*Relay, error) {
 	if options.RequestTimeout <= 0 {
 		options.RequestTimeout = 30 * time.Second
 	}
+	if options.LifecycleRequestTimeout <= 0 {
+		options.LifecycleRequestTimeout = 24 * time.Hour
+	}
 	if options.ServerRequestTimeout <= 0 {
 		options.ServerRequestTimeout = 24 * time.Hour
 	}
@@ -45,7 +49,8 @@ func Start(ctx context.Context, options Options) (*Relay, error) {
 		options.EventBacklog = 4096
 	}
 	relay := &Relay{options: options, sessions: make(map[int64]*session),
-		ephemeralThreads: make(map[string]bool), done: make(chan struct{})}
+		ephemeralThreads:  make(map[string]bool),
+		archiveOperations: make(map[string]*archiveOperation), done: make(chan struct{})}
 	upstream, err := codex.ConnectSocket(ctx, codex.SocketClientOptions{
 		SocketPath: options.UpstreamSocketPath, RequestTimeout: options.RequestTimeout,
 		ServerRequestTimeout: options.ServerRequestTimeout, EventBacklog: options.EventBacklog,

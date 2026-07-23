@@ -33,6 +33,10 @@ type desktopRelayCallState struct {
 	unbindInput  func()
 }
 
+type desktopLifecycleCallState struct {
+	request workerprotocol.ThreadLifecycleState
+}
+
 type desktopToolRuntime struct {
 	task    *workerprotocol.Task
 	runtime devcontainer.Runtime
@@ -101,6 +105,33 @@ func (c *desktopRelayController) PrepareCall(_ context.Context,
 				}
 			})
 		plan.State = state
+	case "thread/archive", "thread/unarchive":
+		threadID, _ := relayCallScope(plan.Params)
+		if threadID == "" {
+			return plan, nil
+		}
+		desiredState := "archived"
+		if call.Method == "thread/unarchive" {
+			desiredState = "active"
+		}
+		requestCtx, cancel := context.WithTimeout(c.processor.environments.ctx,
+			c.processor.cfg.ControlTimeout)
+		state, err := c.processor.client.PrepareDesktopThreadLifecycle(requestCtx,
+			workerprotocol.ThreadLifecyclePrepareRequest{
+				EnvironmentID: c.environment.runtime.EnvironmentID,
+				ThreadID:      threadID, DesiredState: desiredState,
+			})
+		cancel()
+		if err != nil {
+			c.processor.logger.Warn("登记 Desktop Thread lifecycle 失败，继续执行官方操作",
+				zap.String("thread_id", threadID), zap.Error(err))
+			return plan, nil
+		}
+		if len(state.Response) > 0 && string(state.Response) != "null" {
+			plan.Forward = false
+			plan.Result = append(json.RawMessage(nil), state.Response...)
+		}
+		plan.State = &desktopLifecycleCallState{request: state}
 	}
 	return plan, nil
 }
@@ -110,6 +141,9 @@ func (c *desktopRelayController) CompleteCall(_ context.Context, call codexrelay
 ) (json.RawMessage, error) {
 	if call.Method == "account/read" {
 		return desktopAccountWithServiceTiers(result, cause)
+	}
+	if lifecycle, ok := plan.State.(*desktopLifecycleCallState); ok {
+		go c.completeDesktopLifecycle(lifecycle.request, result, cause)
 	}
 	if cause != nil {
 		c.cleanupDesktopCall(plan, cause)
@@ -134,6 +168,63 @@ func (c *desktopRelayController) CompleteCall(_ context.Context, call codexrelay
 		go c.observeDesktopSteer(call, result)
 	}
 	return result, nil
+}
+
+func (c *desktopRelayController) completeDesktopLifecycle(
+	state workerprotocol.ThreadLifecycleState, result json.RawMessage, cause error,
+) {
+	if state.ID == uuid.Nil {
+		return
+	}
+	request := workerprotocol.ThreadLifecycleCompleteRequest{
+		EnvironmentID: state.EnvironmentID, Response: result,
+	}
+	if cause != nil {
+		request.Error = cause.Error()
+	}
+	ctx := c.processor.environments.ctx
+	for attempt := 0; attempt < 8 && ctx.Err() == nil; attempt++ {
+		requestCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
+		err := c.processor.client.CompleteThreadLifecycle(requestCtx, state.ID, request)
+		cancel()
+		if err == nil {
+			return
+		}
+		c.processor.logger.Warn("提交 Desktop Thread lifecycle 结果失败",
+			zap.String("thread_id", state.ThreadID), zap.Error(err))
+		if !waitContext(ctx, 500*time.Millisecond) {
+			return
+		}
+	}
+}
+
+func (c *desktopRelayController) WaitArchiveReady(ctx context.Context, _ codexrelay.Call,
+	plan codexrelay.CallPlan,
+) error {
+	state, ok := plan.State.(*desktopLifecycleCallState)
+	if !ok || state.request.ID == uuid.Nil {
+		return nil
+	}
+	for {
+		requestCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
+		current, err := c.processor.client.ThreadLifecycleState(requestCtx, state.request.ID)
+		cancel()
+		if err != nil {
+			return err
+		}
+		switch current.Status {
+		case "applying", "completed":
+			return nil
+		case "failed", "canceled":
+			if current.Error != "" {
+				return errors.New(current.Error)
+			}
+			return errors.New("desktop Thread 归档请求已取消")
+		}
+		if !waitContext(ctx, 250*time.Millisecond) {
+			return ctx.Err()
+		}
+	}
 }
 
 func desktopThreadName(raw json.RawMessage) (string, string) {
@@ -588,3 +679,4 @@ func (r *desktopEventReporter) saveLocked() {
 }
 
 var _ codexrelay.Controller = (*desktopRelayController)(nil)
+var _ codexrelay.ArchiveGate = (*desktopRelayController)(nil)

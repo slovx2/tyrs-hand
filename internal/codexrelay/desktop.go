@@ -107,7 +107,11 @@ func (r *Relay) serveDesktop(response http.ResponseWriter, request *http.Request
 func (r *Relay) handleDesktopCall(parent context.Context, source *session,
 	writer *desktopWriter, message rpcMessage,
 ) {
-	ctx, cancel := requestContext(parent, r.options.RequestTimeout)
+	timeout := r.options.RequestTimeout
+	if message.Method == "thread/archive" {
+		timeout = r.options.LifecycleRequestTimeout
+	}
+	ctx, cancel := requestContext(parent, timeout)
 	defer cancel()
 	result, err := r.routeCall(ctx, source, message.Method, message.Params)
 	if err == nil {

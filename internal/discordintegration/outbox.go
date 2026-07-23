@@ -271,6 +271,56 @@ func (s *SQLoutbox) Complete(ctx context.Context, item OutboxItem, response json
 			}
 		}
 	}
+	if strings.HasPrefix(item.OperationKey, "conversation-lifecycle-card:") {
+		var sent struct {
+			ConversationID string `json:"conversationId"`
+			LifecycleState string `json:"lifecycleState"`
+			Revision       int64  `json:"revision"`
+		}
+		var value struct {
+			MessageID string `json:"messageId"`
+		}
+		if json.Unmarshal(item.Payload, &sent) == nil && sent.ConversationID != "" {
+			_ = json.Unmarshal(response, &value)
+			var threadID string
+			err = tx.QueryRowContext(ctx, `UPDATE discord_conversations SET
+				lifecycle_card_message_id = COALESCE(NULLIF($4,''), lifecycle_card_message_id),
+				lifecycle_projection_error = NULL, updated_at = now()
+				WHERE id = $1 AND lifecycle_state = $2 AND lifecycle_revision = $3
+				RETURNING thread_id`, sent.ConversationID, sent.LifecycleState,
+				sent.Revision, value.MessageID).Scan(&threadID)
+			if errors.Is(err, sql.ErrNoRows) {
+				err = nil
+			} else if err == nil && sent.LifecycleState == "archived" {
+				conversationID, parseErr := uuid.Parse(sent.ConversationID)
+				if parseErr != nil {
+					return parseErr
+				}
+				err = enqueueThreadLifecycle(ctx, tx, conversationID, threadID,
+					sent.LifecycleState, sent.Revision)
+			}
+			if err != nil {
+				return err
+			}
+		}
+	}
+	if strings.HasPrefix(item.OperationKey, "conversation-lifecycle:") {
+		var sent struct {
+			ConversationID string `json:"conversationId"`
+			LifecycleState string `json:"lifecycleState"`
+			Revision       int64  `json:"revision"`
+		}
+		if json.Unmarshal(item.Payload, &sent) == nil && sent.ConversationID != "" {
+			_, err = tx.ExecContext(ctx, `UPDATE discord_conversations SET
+				discord_lifecycle_applied_revision = $3,
+				lifecycle_projection_error = NULL, updated_at = now()
+				WHERE id = $1 AND lifecycle_state = $2 AND lifecycle_revision = $3`,
+				sent.ConversationID, sent.LifecycleState, sent.Revision)
+			if err != nil {
+				return err
+			}
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -336,6 +386,23 @@ func (s *SQLoutbox) Fail(ctx context.Context, item OutboxItem, cause error) erro
 			controlID, cause.Error())
 		if err != nil {
 			return err
+		}
+	}
+	if strings.HasPrefix(item.OperationKey, "conversation-lifecycle-card:") ||
+		strings.HasPrefix(item.OperationKey, "conversation-lifecycle:") {
+		var sent struct {
+			ConversationID string `json:"conversationId"`
+			LifecycleState string `json:"lifecycleState"`
+			Revision       int64  `json:"revision"`
+		}
+		if json.Unmarshal(item.Payload, &sent) == nil && sent.ConversationID != "" {
+			_, err = tx.ExecContext(ctx, `UPDATE discord_conversations SET
+				lifecycle_projection_error = $4, updated_at = now()
+				WHERE id = $1 AND lifecycle_state = $2 AND lifecycle_revision = $3`,
+				sent.ConversationID, sent.LifecycleState, sent.Revision, cause.Error())
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return tx.Commit()

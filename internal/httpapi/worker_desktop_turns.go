@@ -64,14 +64,15 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		return
 	}
 	var claimed codexcontrol.ClaimedControl
-	var controlStatus string
+	var controlStatus, lifecycleState string
 	var allowedJSON, dangerousJSON []byte
 	var nextSequence int64
 	var oldLeaseEpoch int64
 	var actorGuildID, actorUserID, actorDisplayName string
 	var conversationID sql.NullString
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT ct.id, ct.discord_conversation_id,
-		ct.repository_id, ct.agent_profile_id, ct.status, ct.next_sequence_no,
+		ct.repository_id, ct.agent_profile_id, ct.status, ct.lifecycle_state,
+		ct.next_sequence_no,
 		ct.lease_epoch, COALESCE(ct.external_thread_id,''), COALESCE(ct.codex_home_key,''),
 		COALESCE(ct.provider_signature,''), p.allowed_tools, '[]'::jsonb,
 		e.guild_id, COALESCE(e.ssh_discord_user_id, ''),
@@ -83,7 +84,8 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		WHERE ct.external_thread_id = $1 AND ct.development_environment_id = $2
 		AND ct.execution_node_id = $3 FOR UPDATE OF ct`, threadID, request.EnvironmentID,
 		node.ID).Scan(&claimed.ControlID, &conversationID,
-		&claimed.RepositoryID, &claimed.AgentProfileID, &controlStatus, &nextSequence,
+		&claimed.RepositoryID, &claimed.AgentProfileID, &controlStatus, &lifecycleState,
+		&nextSequence,
 		&oldLeaseEpoch, &claimed.ExternalThreadID,
 		&claimed.CodexHomeKey, &claimed.ProviderSignature, &allowedJSON, &dangerousJSON,
 		&actorGuildID, &actorUserID, &actorDisplayName)
@@ -93,6 +95,10 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	}
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取 Desktop Turn Control 失败", err)
+		return
+	}
+	if lifecycleState != "active" {
+		problem(c, http.StatusConflict, "该 Thread 已归档或正在归档", nil)
 		return
 	}
 	claimed.DiscordConversationID = parseOptionalUUID(conversationID)

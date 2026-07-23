@@ -198,6 +198,7 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 		ThreadName       string                `json:"threadName"`
 		TagIDs           []string              `json:"tagIds"`
 		Archived         bool                  `json:"archived"`
+		Locked           bool                  `json:"locked"`
 		ConversationID   string                `json:"conversationId"`
 		Card             *ComponentCardPayload `json:"card"`
 	}
@@ -314,6 +315,16 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 			return nil, err
 		}
 		_, err = r.rest.UpdateChannel(thread, discord.GuildPostUpdate{Archived: &payload.Archived}, disgorest.WithCtx(ctx))
+		return nil, err
+	case "thread.lifecycle":
+		thread, err := snowflake.Parse(payload.ChannelID)
+		if err != nil {
+			return nil, err
+		}
+		_, err = r.rest.UpdateChannel(thread, discord.GuildPostUpdate{
+			Archived: &payload.Archived,
+			Locked:   &payload.Locked,
+		}, disgorest.WithCtx(ctx))
 		return nil, err
 	case "thread.rename":
 		thread, err := snowflake.Parse(payload.ChannelID)
