@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/disgoorg/disgo/discord"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,6 +16,8 @@ func TestConversationCardsKeepSystemAndReplyVisuallyDistinct(t *testing.T) {
 	timeline := ConversationTimeline{Pages: []string{"working"}, Updates: 2, Duration: 3 * time.Second}
 	running := conversationProgressCard(ConversationRunning, timeline, 0, "")
 	require.Contains(t, running.Header, "处理中")
+	require.Contains(t, running.Body, "2 项动态")
+	require.NotContains(t, running.Body, "条更新")
 	require.Equal(t, cardColorBlurple, running.AccentColor)
 	require.Contains(t, running.Footer, "此卡片")
 
@@ -111,12 +114,18 @@ func TestEverySystemCardBuildsAsComponentsV2(t *testing.T) {
 		conversationProgressCard(ConversationCanceled, timeline, 0, ""),
 		conversationProgressCard(ConversationFailed, timeline, 0, ""),
 		terminatedControlCard(), conversationConfigurationCard("gpt-5.6-sol", "high", "fast"),
+		archivedConversationCard(), lifecycleCard(uuid.New(), 1),
+		DesktopInputCards("Kal", "hello")[0],
+		interactiveCard(InteractiveProjection{Status: "pending", Questions: []InteractiveQuestion{{
+			ID: "confirm", Header: "确认", Question: "继续吗？",
+		}}}),
 		taskCard(taskProjection{Kind: "issue", Number: 1, Title: "task", WorkItemState: "open"}, "Running"),
 		taskStateChangeCard("Running", "Completed"),
 		systemStatusCard(0, 1, 0, 1, 0, "connected"),
 		systemAlertsCard("connected", false, 1, 0),
 	}
 	for _, card := range cards {
+		require.False(t, strings.HasPrefix(strings.TrimSpace(card.Header), "#"), card.Header)
 		components, err := discordCardComponents(card)
 		require.NoError(t, err, card.Header)
 		encoded, err := json.Marshal(discord.NewMessageCreateV2(components...))

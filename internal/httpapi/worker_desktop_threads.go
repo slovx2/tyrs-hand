@@ -13,7 +13,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/slovx2/tyrs-hand/internal/codexsettings"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
@@ -278,14 +277,13 @@ func (s *Server) workerCompleteDesktopThread(c *gin.Context) {
 	var status string
 	var environmentID, controlID, forumID, repositoryID, executionNodeID uuid.UUID
 	var sourceControl sql.NullString
-	var requestParams json.RawMessage
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT r.environment_id, r.status,
-		r.forum_id, r.source_control_id::text, r.request_params, f.repository_id, e.execution_node_id
+		r.forum_id, r.source_control_id::text, f.repository_id, e.execution_node_id
 			FROM desktop_thread_requests r JOIN discord_development_environments e
 			ON e.id = r.environment_id JOIN discord_forums f ON f.id = r.forum_id
 			WHERE r.id = $1 AND e.execution_node_id = $2 FOR UPDATE`,
 		requestID, workerNode(c).ID).Scan(&environmentID, &status, &forumID,
-		&sourceControl, &requestParams, &repositoryID, &executionNodeID)
+		&sourceControl, &repositoryID, &executionNodeID)
 	if err != nil {
 		problem(c, http.StatusNotFound, "Desktop Thread reservation 不存在", err)
 		return
@@ -296,7 +294,7 @@ func (s *Server) workerCompleteDesktopThread(c *gin.Context) {
 	}
 	if status == "preparing" {
 		profileID, contextVersion, model, effort, tier, configErr :=
-			s.desktopControlConfig(c.Request.Context(), sourceControl, repositoryID, forumID, requestParams)
+			s.desktopControlConfig(c.Request.Context(), sourceControl, request.Response)
 		if configErr != nil {
 			problem(c, http.StatusInternalServerError, "解析 Desktop Thread 运行配置失败", configErr)
 			return
@@ -306,7 +304,7 @@ func (s *Server) workerCompleteDesktopThread(c *gin.Context) {
 			(id, source_type, repository_id, agent_profile_id, context_version, external_thread_id,
 			 execution_node_id, development_environment_id, model, reasoning_effort, service_tier,
 			 runtime_preferences_frozen_at, codex_home_key, provider_signature)
-			VALUES ($1,'desktop_thread',$2,$3,$4,$5,$6,$7,NULLIF($8,''),NULLIF($9,''),$10,
+			VALUES ($1,'desktop_thread',$2,$3,$4,$5,$6,$7,NULLIF($8,''),NULLIF($9,''),NULLIF($10,''),
 			 now(),$11,$12)`, controlID, repositoryID, profileID, contextVersion, threadID,
 			executionNodeID, environmentID, model, effort, tier, environmentID.String(),
 			provider.ConfigSignature)
@@ -338,30 +336,25 @@ func (s *Server) workerCompleteDesktopThread(c *gin.Context) {
 }
 
 func (s *Server) desktopControlConfig(ctx context.Context, sourceControl sql.NullString,
-	repositoryID, forumID uuid.UUID, params json.RawMessage,
+	response json.RawMessage,
 ) (uuid.UUID, int64, string, string, string, error) {
 	var profileID uuid.UUID
 	var contextVersion int64
-	var model, effort, tier string
 	if sourceControl.Valid {
-		err := s.db.QueryRowContext(ctx, `SELECT agent_profile_id, context_version,
-			COALESCE(model,''), COALESCE(reasoning_effort,''), COALESCE(service_tier,'standard')
+		err := s.db.QueryRowContext(ctx, `SELECT agent_profile_id, context_version
 			FROM codex_thread_controls WHERE id = $1`, sourceControl.String).
-			Scan(&profileID, &contextVersion, &model, &effort, &tier)
-		return profileID, contextVersion, model, effort, tier, err
+			Scan(&profileID, &contextVersion)
+		if err != nil {
+			return uuid.Nil, 0, "", "", "", err
+		}
+	} else {
+		err := s.db.QueryRowContext(ctx, `SELECT id, context_version FROM agent_profiles
+			ORDER BY created_at, id LIMIT 1`).Scan(&profileID, &contextVersion)
+		if err != nil {
+			return uuid.Nil, 0, "", "", "", err
+		}
 	}
-	err := s.db.QueryRowContext(ctx, `SELECT id, context_version FROM agent_profiles
-		ORDER BY created_at, id LIMIT 1`).Scan(&profileID, &contextVersion)
-	if err != nil {
-		return uuid.Nil, 0, "", "", "", err
-	}
-	preferences, err := codexsettings.NewService(s.db).Resolve(ctx, repositoryID, forumID, profileID)
-	if err != nil {
-		return uuid.Nil, 0, "", "", "", err
-	}
-	config := workerprotocol.DesktopThreadConfig{Model: preferences.Model,
-		ReasoningEffort: preferences.ReasoningEffort, ServiceTier: preferences.ServiceTier}
-	applyDesktopRuntimeParams(&config, params)
+	config := desktopRuntimeFromResponse(response)
 	return profileID, contextVersion, config.Model, config.ReasoningEffort, config.ServiceTier, nil
 }
 

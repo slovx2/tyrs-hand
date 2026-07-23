@@ -3,6 +3,7 @@ package discordintegration
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -190,6 +191,7 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 	var payload struct {
 		ChannelID        string                `json:"channelId"`
 		MessageID        string                `json:"messageId"`
+		UserID           string                `json:"userId"`
 		Content          string                `json:"content"`
 		InteractionID    string                `json:"interactionId"`
 		InteractionToken string                `json:"interactionToken"`
@@ -255,6 +257,16 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 		}
 		_, err = r.rest.UpdateMessage(channel, message, update, disgorest.WithCtx(ctx))
 		return nil, err
+	case "message.delete":
+		channel, message, err := twoSnowflakes(payload.ChannelID, payload.MessageID)
+		if err != nil {
+			return nil, err
+		}
+		err = r.rest.DeleteMessage(channel, message, disgorest.WithCtx(ctx))
+		if discordNotFound(err) {
+			err = nil
+		}
+		return json.RawMessage(`{}`), err
 	case "interaction.defer":
 		interaction, err := snowflake.Parse(payload.InteractionID)
 		if err != nil {
@@ -326,6 +338,13 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 			Locked:   &payload.Locked,
 		}, disgorest.WithCtx(ctx))
 		return nil, err
+	case "thread.member.add":
+		thread, user, err := twoSnowflakes(payload.ChannelID, payload.UserID)
+		if err != nil {
+			return nil, err
+		}
+		return json.RawMessage(`{}`), r.rest.AddThreadMember(thread, user,
+			disgorest.WithCtx(ctx))
 	case "thread.rename":
 		thread, err := snowflake.Parse(payload.ChannelID)
 		if err != nil {
@@ -352,6 +371,12 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 	default:
 		return nil, fmt.Errorf("不支持的 Discord Outbox 操作 %q", item.OperationType)
 	}
+}
+
+func discordNotFound(err error) bool {
+	var restErr *disgorest.Error
+	return errors.As(err, &restErr) && restErr.Response != nil &&
+		restErr.Response.StatusCode == http.StatusNotFound
 }
 
 func (r *DisgoRemote) Close(ctx context.Context) { r.rest.Close(ctx) }

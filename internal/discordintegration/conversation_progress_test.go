@@ -44,7 +44,7 @@ func TestConversationActionTrackerPackagesAndUpdatesActions(t *testing.T) {
 	require.False(t, tracker.ApplyEvent("item/agentMessage/delta", json.RawMessage(`{"delta":"过程说明"}`)))
 
 	rendered := tracker.Render("正在处理请求。", 87*time.Second)
-	require.Contains(t, rendered, "`1m 27s` · `3 条更新`")
+	require.Contains(t, rendered, "`1m 27s` · `2 项动态`")
 	require.Contains(t, rendered, "> ↳ 已读取 `client.go`")
 	require.Contains(t, rendered, "> ↳ 调用未成功，正在继续处理：`github.issue_read`")
 	require.NotContains(t, rendered, "api_key")
@@ -135,7 +135,34 @@ func TestConversationActionTrackerUpdatesCommentaryDeltaAndPaginatesLongText(t *
 	for _, page := range timeline.Pages {
 		require.LessOrEqual(t, len([]rune(page)), conversationPageBudget)
 	}
+	require.Equal(t, 1, timeline.Updates)
+}
+
+func TestConversationActionTrackerCountsUniqueCommentaryAndToolItems(t *testing.T) {
+	tracker := NewConversationActionTracker(time.Now())
+	require.True(t, tracker.ApplyEvent("item/started", progressEvent(t, map[string]any{
+		"id": "comment-1", "type": "agentMessage", "phase": "commentary", "text": "",
+	})))
+	for index := 0; index < 100; index++ {
+		delta, err := json.Marshal(map[string]any{
+			"itemId": "comment-1", "phase": "commentary", "delta": "片段",
+		})
+		require.NoError(t, err)
+		require.True(t, tracker.ApplyEvent("item/agentMessage/delta", delta))
+	}
+	started := progressEvent(t, map[string]any{
+		"id": "tool-1", "type": "webSearch", "query": "relay protocol",
+	})
+	completed := progressEvent(t, map[string]any{
+		"id": "tool-1", "type": "webSearch", "query": "relay protocol", "status": "completed",
+	})
+	require.True(t, tracker.ApplyEvent("item/started", started))
+	require.True(t, tracker.ApplyEvent("item/completed", completed))
+	require.False(t, tracker.ApplyEvent("item/completed", completed))
+
+	timeline := tracker.Timeline("", time.Second)
 	require.Equal(t, 2, timeline.Updates)
+	require.Contains(t, tracker.Render("", time.Second), "`2 项动态`")
 }
 
 func TestConversationActionTrackerExcludesFinalAnswer(t *testing.T) {

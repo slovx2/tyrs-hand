@@ -155,9 +155,17 @@ func (c *desktopRelayController) CompleteCall(_ context.Context, call codexrelay
 		if threadID, name := desktopThreadName(result); threadID != "" && name != "" {
 			go c.environment.recordThreadName(c.processor.environments.ctx, threadID, name)
 		}
+		if threadID, model, effort, tier := desktopThreadRuntime(result); threadID != "" {
+			go c.environment.recordThreadSettings(c.processor.environments.ctx, threadID,
+				model, effort, tier)
+		}
 	case "thread/resume":
 		if threadID, name := desktopThreadName(result); threadID != "" && name != "" {
 			go c.environment.recordThreadName(c.processor.environments.ctx, threadID, name)
+		}
+		if threadID, model, effort, tier := desktopThreadRuntime(result); threadID != "" {
+			go c.environment.recordThreadSettings(c.processor.environments.ctx, threadID,
+				model, effort, tier)
 		}
 	case "turn/start":
 		state, _ := plan.State.(*desktopRelayCallState)
@@ -236,6 +244,20 @@ func desktopThreadName(raw json.RawMessage) (string, string) {
 	}
 	_ = json.Unmarshal(raw, &value)
 	return value.Thread.ID, strings.TrimSpace(value.Thread.Name)
+}
+
+func desktopThreadRuntime(raw json.RawMessage) (string, string, string, string) {
+	var value struct {
+		Thread struct {
+			ID string `json:"id"`
+		} `json:"thread"`
+		Model           string `json:"model"`
+		ReasoningEffort string `json:"reasoningEffort"`
+		ServiceTier     string `json:"serviceTier"`
+	}
+	_ = json.Unmarshal(raw, &value)
+	return value.Thread.ID, strings.TrimSpace(value.Model),
+		strings.TrimSpace(value.ReasoningEffort), strings.TrimSpace(value.ServiceTier)
 }
 
 func desktopAccountWithServiceTiers(result json.RawMessage, cause error) (json.RawMessage, error) {

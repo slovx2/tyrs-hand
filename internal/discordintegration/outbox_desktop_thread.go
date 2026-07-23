@@ -40,7 +40,7 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 		COALESCE(NULLIF(r.first_input_actor_display_name,''),
 			NULLIF(member.display_name,''), member.username, ''),
 		f.repository_id, ct.agent_profile_id, ct.context_version, ct.model,
-		ct.reasoning_effort, COALESCE(ct.service_tier,'standard'),
+		ct.reasoning_effort, COALESCE(ct.service_tier,''),
 		COALESCE(r.preview_title,''), COALESCE(ct.desired_thread_name,''),
 		COALESCE(ct.desired_thread_name_source,''), ct.desired_thread_name_revision,
 		COALESCE(r.first_input_projection_key,''), COALESCE(r.first_input_text,''),
@@ -81,7 +81,7 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 		 repository_id, agent_profile_id, title, status, model, reasoning_effort, service_tier,
 		 configuration_status, configured_by_discord_user_id, title_rename_status,
 		 lifecycle_state, lifecycle_revision)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'active',NULLIF($10,''),NULLIF($11,''),$12,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'active',NULLIF($10,''),NULLIF($11,''),NULLIF($12,''),
 			'configured',$6,'skipped',$13,$14)`, conversationID, guildID, forumID, result.ThreadID,
 		result.MessageID, ownerID, repositoryID, profileID, title,
 		model.String, effort.String, serviceTier, lifecycleState, lifecycleRevision)
@@ -135,6 +135,15 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 	if err := enqueuePendingDesktopInputs(ctx, tx, controlID, result.ThreadID,
 		conversationID, firstProjectionKey); err != nil {
 		return err
+	}
+	if sshUserID != "" {
+		if err := enqueueDiscordOutbox(ctx, tx,
+			"desktop-thread-member:"+requestID.String(), "thread.member.add",
+			"channels/"+result.ThreadID+"/thread-members/"+sshUserID,
+			map[string]any{"channelId": result.ThreadID, "userId": sshUserID,
+				"conversationId": conversationID.String()}, ""); err != nil {
+			return err
+		}
 	}
 	if lifecycleState == "active" || lifecycleState == "archived" {
 		if err := EnqueueConversationLifecycleTx(ctx, tx, conversationID); err != nil {

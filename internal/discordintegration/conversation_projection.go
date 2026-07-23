@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -44,8 +45,8 @@ func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadI
 		rawRunID = runID.String()
 	}
 	card := conversationProgressCard(state, timeline, page, rawRunID)
-	progress := conversationProgressPayload{RunID: rawRunID, State: state, Summary: detail,
-		Page: page}
+	progress := conversationProgressPayload{FormatVersion: conversationProgressFormatVersion,
+		RunID: rawRunID, State: state, Summary: detail, Page: page}
 	key := "conversation:" + conversationID.String() + ":message:" + inputMessageID
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -83,7 +84,8 @@ func ProjectConversationConfiguration(ctx context.Context, db *sql.DB, guildID, 
 	conversationID uuid.UUID, inputMessageID string,
 ) error {
 	var model, effort, tier string
-	if err := db.QueryRowContext(ctx, `SELECT COALESCE(model,''), COALESCE(reasoning_effort,''), service_tier
+	if err := db.QueryRowContext(ctx, `SELECT COALESCE(model,''), COALESCE(reasoning_effort,''),
+		COALESCE(service_tier,'standard')
 		FROM discord_conversations WHERE id = $1`, conversationID).Scan(&model, &effort, &tier); err != nil {
 		return err
 	}
@@ -136,11 +138,14 @@ func ProjectConversationReply(ctx context.Context, db *sql.DB, threadID string,
 }
 
 type conversationProgressPayload struct {
-	RunID   string               `json:"runId,omitempty"`
-	State   ConversationProgress `json:"state"`
-	Summary string               `json:"summary"`
-	Page    int                  `json:"page"`
+	FormatVersion int                  `json:"formatVersion"`
+	RunID         string               `json:"runId,omitempty"`
+	State         ConversationProgress `json:"state"`
+	Summary       string               `json:"summary"`
+	Page          int                  `json:"page"`
 }
+
+const conversationProgressFormatVersion = 2
 
 func conversationTimelineForRun(ctx context.Context, db *sql.DB, runID uuid.UUID,
 	summary string,
@@ -178,6 +183,96 @@ func conversationTimelineForRun(ctx context.Context, db *sql.DB, runID uuid.UUID
 		end = finished.Time
 	}
 	return tracker.Timeline(summary, end.Sub(started)), nil
+}
+
+// ReconcileConversationProgressCards 分批重算旧版进度卡，原消息和 projection key 保持不变。
+func ReconcileConversationProgressCards(ctx context.Context, db *sql.DB, guildID string) error {
+	rows, err := db.QueryContext(ctx, `SELECT projection_key, resource_id,
+		COALESCE(message_id,''), desired_payload
+		FROM discord_projections
+		WHERE guild_id = $1 AND projection_key LIKE 'conversation:%'
+			AND desired_payload ? 'progress'
+			AND COALESCE(desired_payload->'progress'->>'formatVersion','0') <> $2
+		ORDER BY updated_at, projection_key LIMIT 100`, guildID,
+		fmt.Sprint(conversationProgressFormatVersion))
+	if err != nil {
+		return err
+	}
+	type staleProgress struct {
+		key, resourceID, messageID string
+		payload                    json.RawMessage
+	}
+	items := make([]staleProgress, 0)
+	for rows.Next() {
+		var item staleProgress
+		if err := rows.Scan(&item.key, &item.resourceID, &item.messageID, &item.payload); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	var failures []error
+	for _, item := range items {
+		if err := reconcileConversationProgressCard(ctx, db, guildID, item.key,
+			item.resourceID, item.messageID, item.payload); err != nil {
+			failures = append(failures, err)
+		}
+	}
+	return errors.Join(failures...)
+}
+
+func reconcileConversationProgressCard(ctx context.Context, db *sql.DB, guildID,
+	projectionKey, resourceID, messageID string, raw json.RawMessage,
+) error {
+	var desired struct {
+		Progress conversationProgressPayload `json:"progress"`
+	}
+	if err := json.Unmarshal(raw, &desired); err != nil {
+		return err
+	}
+	runID := uuid.Nil
+	if desired.Progress.RunID != "" {
+		parsed, err := uuid.Parse(desired.Progress.RunID)
+		if err != nil {
+			return err
+		}
+		runID = parsed
+	}
+	timeline, err := conversationTimelineForRun(ctx, db, runID, desired.Progress.Summary)
+	if err != nil {
+		return err
+	}
+	desired.Progress.FormatVersion = conversationProgressFormatVersion
+	desired.Progress.Page = len(timeline.Pages) - 1
+	card := conversationProgressCard(desired.Progress.State, timeline, desired.Progress.Page,
+		desired.Progress.RunID)
+	payload := map[string]any{"channelId": resourceID, "card": card,
+		"progress": desired.Progress}
+	operation, nonce := "message.create", "conversation-progress-reconcile-"+projectionKey
+	if messageID != "" {
+		operation, nonce = "message.update", ""
+		payload["messageId"] = messageID
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	_, err = tx.ExecContext(ctx, `UPDATE discord_projections SET desired_payload = $3,
+		desired_version = desired_version + 1, updated_at = now()
+		WHERE guild_id = $1 AND projection_key = $2`, guildID, projectionKey,
+		mustJSON(map[string]any{"card": card, "progress": desired.Progress}))
+	if err == nil {
+		err = enqueueDiscordOutbox(ctx, tx, "projection:"+projectionKey, operation,
+			"channels/"+resourceID+"/messages", payload, nonce)
+	}
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func progressButtonID(action, runID string, page int) string {

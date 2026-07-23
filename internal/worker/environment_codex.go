@@ -39,6 +39,7 @@ type environmentCodex struct {
 	nextBinding         uint64
 	metadataEvents      *codexrelay.Subscription
 	metadataSequence    atomic.Int64
+	settingsSequence    atomic.Int64
 }
 
 type toolBinding struct {
@@ -174,6 +175,19 @@ func (e *environmentCodex) observeMetadata(ctx context.Context) {
 					}
 					e.recordThreadLifecycle(ctx, value.ThreadID, state)
 				}
+			case "thread/settings/updated":
+				var value struct {
+					ThreadID       string `json:"threadId"`
+					ThreadSettings struct {
+						Model       string `json:"model"`
+						ServiceTier string `json:"serviceTier"`
+						Effort      string `json:"effort"`
+					} `json:"threadSettings"`
+				}
+				if json.Unmarshal(event.Params, &value) == nil {
+					e.recordThreadSettings(ctx, value.ThreadID, value.ThreadSettings.Model,
+						value.ThreadSettings.Effort, value.ThreadSettings.ServiceTier)
+				}
 			}
 		case <-ctx.Done():
 			return
@@ -196,6 +210,18 @@ func (e *environmentCodex) recordThreadLifecycle(ctx context.Context, threadID, 
 	}
 	event := workerprotocol.ThreadMetadataEvent{ThreadID: threadID,
 		Sequence: e.metadataSequence.Add(1), Kind: "lifecycle", LifecycleState: state}
+	e.recordThreadMetadata(ctx, event)
+}
+
+func (e *environmentCodex) recordThreadSettings(ctx context.Context, threadID, model,
+	effort, tier string,
+) {
+	if e.processor == nil || threadID == "" || model == "" {
+		return
+	}
+	event := workerprotocol.ThreadMetadataEvent{ThreadID: threadID,
+		Sequence: e.settingsSequence.Add(1), Kind: "settings", Model: model,
+		ReasoningEffort: effort, ServiceTier: tier}
 	e.recordThreadMetadata(ctx, event)
 }
 

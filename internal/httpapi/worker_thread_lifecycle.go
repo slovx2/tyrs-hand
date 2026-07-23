@@ -83,6 +83,59 @@ func (s *Server) workerPrepareDesktopThreadLifecycle(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "读取 Thread Control 失败", err)
 		return
 	}
+	if request.DesiredState == "active" && currentState == "archive_pending" {
+		var pendingArchiveID uuid.UUID
+		var pendingArchiveStatus string
+		err = tx.QueryRowContext(c.Request.Context(), `SELECT id, status
+			FROM codex_thread_lifecycle_requests
+			WHERE control_id=$1 AND desired_state='archived'
+				AND status IN ('waiting_for_turn','applying')
+			ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, result.ControlID).
+			Scan(&pendingArchiveID, &pendingArchiveStatus)
+		if err == nil && pendingArchiveStatus == "waiting_for_turn" {
+			result.EnvironmentID, result.ThreadID = request.EnvironmentID, request.ThreadID
+			result.DesiredState, result.Status = "active", "completed"
+			result.Response = json.RawMessage(`{}`)
+			result.Revision++
+			_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_thread_lifecycle_requests
+				SET status='canceled', completed_at=now(), updated_at=now() WHERE id=$1`,
+				pendingArchiveID)
+			if err == nil {
+				_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_thread_controls SET
+					lifecycle_state='active', lifecycle_revision=$2,
+					lifecycle_last_error=NULL, updated_at=now() WHERE id=$1`,
+					result.ControlID, result.Revision)
+			}
+			if err == nil && conversationID.Valid {
+				_, err = tx.ExecContext(c.Request.Context(), `UPDATE discord_conversations SET
+					lifecycle_state='active', lifecycle_revision=$2,
+					lifecycle_projection_error=NULL, updated_at=now() WHERE id=$1`,
+					conversationID.String, result.Revision)
+			}
+			if err == nil && conversationID.Valid {
+				var parsed uuid.UUID
+				parsed, err = uuid.Parse(conversationID.String)
+				if err == nil {
+					err = discordintegration.EnqueueConversationLifecycleTx(c.Request.Context(), tx,
+						parsed)
+				}
+			}
+			if err != nil {
+				problem(c, http.StatusInternalServerError, "取消待执行 Thread 归档失败", err)
+				return
+			}
+			if err := tx.Commit(); err != nil {
+				problem(c, http.StatusInternalServerError, "提交 Thread lifecycle 失败", err)
+				return
+			}
+			c.JSON(http.StatusOK, result)
+			return
+		}
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			problem(c, http.StatusInternalServerError, "读取待执行 Thread 归档失败", err)
+			return
+		}
+	}
 	result.ID, result.EnvironmentID = uuid.New(), request.EnvironmentID
 	result.ThreadID, result.DesiredState = request.ThreadID, request.DesiredState
 	result.Revision++
@@ -118,7 +171,29 @@ func (s *Server) workerPrepareDesktopThreadLifecycle(c *gin.Context) {
 }
 
 func (s *Server) workerPendingThreadLifecycles(c *gin.Context) {
-	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT request.id,
+	tx, err := s.db.BeginTx(c.Request.Context(), nil)
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取待执行 Thread lifecycle 失败", err)
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_thread_lifecycle_requests request
+		SET status = 'applying', updated_at = now()
+		FROM codex_thread_controls control, discord_development_environments environment
+		WHERE request.control_id = control.id
+			AND environment.id = request.environment_id
+			AND request.source = 'discord' AND request.status = 'waiting_for_turn'
+			AND request.revision = control.lifecycle_revision
+			AND environment.execution_node_id = $1
+			AND NOT EXISTS (SELECT 1 FROM codex_turn_runs run
+				WHERE run.control_id = request.control_id
+					AND run.status IN ('starting','running','waiting_for_user','reconciling'))`,
+		workerNode(c).ID)
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "推进待执行 Thread lifecycle 失败", err)
+		return
+	}
+	rows, err := tx.QueryContext(c.Request.Context(), `SELECT request.id,
 		request.control_id, request.environment_id, control.external_thread_id,
 		request.desired_state, request.status, request.revision,
 		COALESCE(request.response,'null'::jsonb), COALESCE(request.error,'')
@@ -134,7 +209,6 @@ func (s *Server) workerPendingThreadLifecycles(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "读取待执行 Thread lifecycle 失败", err)
 		return
 	}
-	defer func() { _ = rows.Close() }()
 	result := make([]workerprotocol.ThreadLifecycleState, 0)
 	for rows.Next() {
 		var item workerprotocol.ThreadLifecycleState
@@ -147,7 +221,16 @@ func (s *Server) workerPendingThreadLifecycles(c *gin.Context) {
 		result = append(result, item)
 	}
 	if err := rows.Err(); err != nil {
+		_ = rows.Close()
 		problem(c, http.StatusInternalServerError, "读取待执行 Thread lifecycle 失败", err)
+		return
+	}
+	if err := rows.Close(); err != nil {
+		problem(c, http.StatusInternalServerError, "读取待执行 Thread lifecycle 失败", err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		problem(c, http.StatusInternalServerError, "提交待执行 Thread lifecycle 失败", err)
 		return
 	}
 	c.JSON(http.StatusOK, result)

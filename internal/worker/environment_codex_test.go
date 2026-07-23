@@ -37,7 +37,7 @@ func TestEnvironmentCodexObserverSubmitsThreadNamesFromRelay(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, client.Close()) })
 
-	received := make(chan workerprotocol.ThreadMetadataRequest, 2)
+	received := make(chan workerprotocol.ThreadMetadataRequest, 3)
 	control := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
 		request *http.Request,
 	) {
@@ -70,7 +70,9 @@ func TestEnvironmentCodexObserverSubmitsThreadNamesFromRelay(t *testing.T) {
 		json.RawMessage(`{"cwd":"/workspace"}`))
 	require.NoError(t, err)
 	mock.Emit(threadID, "thread/settings/updated", map[string]any{
-		"threadId": threadID, "settings": map[string]any{"approvalPolicy": "never"},
+		"threadId": threadID, "threadSettings": map[string]any{
+			"model": "gpt-5.6-sol", "effort": "ultra", "serviceTier": "priority",
+		},
 	})
 	mock.Emit(threadID, "thread/name/updated", map[string]any{
 		"threadId": threadID, "threadName": "第一个标题",
@@ -79,6 +81,16 @@ func TestEnvironmentCodexObserverSubmitsThreadNamesFromRelay(t *testing.T) {
 		"threadId": threadID, "threadName": "第二个标题",
 	})
 
+	select {
+	case request := <-received:
+		require.Equal(t, "settings", request.Events[0].Kind)
+		require.Equal(t, int64(1), request.Events[0].Sequence)
+		require.Equal(t, "gpt-5.6-sol", request.Events[0].Model)
+		require.Equal(t, "ultra", request.Events[0].ReasoningEffort)
+		require.Equal(t, "priority", request.Events[0].ServiceTier)
+	case <-time.After(3 * time.Second):
+		t.Fatal("Worker 没有提交 Relay 广播的 Thread 设置")
+	}
 	for sequence, name := range []string{"第一个标题", "第二个标题"} {
 		select {
 		case request := <-received:

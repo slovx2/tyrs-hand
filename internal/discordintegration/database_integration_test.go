@@ -341,6 +341,64 @@ func TestConversationLifecycleProjectionAndRestore(t *testing.T) {
 	require.False(t, projectionError.Valid,
 		"旧 revision Outbox 失败回调不得污染当前恢复状态")
 
+	_, err = db.ExecContext(ctx, `UPDATE codex_thread_controls SET
+		lifecycle_state='active', lifecycle_revision=4 WHERE id=$1`, controlID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE discord_conversations SET
+		lifecycle_state='active', lifecycle_revision=4,
+		discord_lifecycle_applied_revision=4 WHERE id=$1`, conversationID)
+	require.NoError(t, err)
+	require.NoError(t, ReconcileConversationLifecycles(ctx, db, testGuildID))
+	completeOutboxForTest(t, ctx, db, "conversation-lifecycle:"+conversationID.String(), nil)
+	deleteKey := "conversation-lifecycle-delete:" + conversationID.String() + ":4"
+	var deleteType string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT operation_type FROM integration_outbox
+		WHERE operation_key=$1`, deleteKey).Scan(&deleteType))
+	require.Equal(t, "message.delete", deleteType,
+		"恢复成功必须先解锁，再删除原归档卡片")
+	completeOutboxForTest(t, ctx, db, deleteKey, json.RawMessage(`{}`))
+	var lifecycleCardID sql.NullString
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT lifecycle_card_message_id
+		FROM discord_conversations WHERE id=$1`, conversationID).Scan(&lifecycleCardID))
+	require.False(t, lifecycleCardID.Valid)
+
+	intentID, runID := uuid.New(), uuid.New()
+	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_intents
+		(id, control_id, sequence_no, source_type, discord_conversation_id,
+			agent_profile_id, idempotency_key, status)
+		VALUES ($1,$2,1,'discord_conversation',$3,$4,$5,'running')`, intentID,
+		controlID, conversationID, profileID, "lifecycle-active-"+intentID.String())
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_runs
+		(id, control_id, primary_intent_id, attempt, worker_id, lease_epoch,
+			capability_hash, active_slot, status)
+		VALUES ($1,$2,$3,1,'worker',1,$4,1,'running')`, runID, controlID,
+		intentID, strings.Repeat("c", 64))
+	require.NoError(t, err)
+	archive, err := service.Archive(ctx, testGuildID, "100000000000000070", "1001")
+	require.NoError(t, err)
+	require.Equal(t, "waiting_for_turn", archive.Status)
+	repeatedArchive, err := service.Archive(ctx, testGuildID,
+		"100000000000000070", "1001")
+	require.NoError(t, err)
+	require.Equal(t, archive.ID, repeatedArchive.ID)
+	require.Equal(t, archive.Revision, repeatedArchive.Revision)
+	_, err = service.Archive(ctx, testGuildID, "100000000000000070", "1003")
+	require.ErrorIs(t, err, ErrReadOnly)
+	_, err = db.ExecContext(ctx, `UPDATE codex_turn_runs SET status='completed',
+		active_slot=NULL, finished_at=now() WHERE id=$1`, runID)
+	require.NoError(t, err)
+	winningRestore, err := service.Restore(ctx, testGuildID,
+		"100000000000000070", "1001", nil)
+	require.NoError(t, err)
+	require.Equal(t, "completed", winningRestore.Status)
+	require.Greater(t, winningRestore.Revision, archive.Revision)
+	var canceledArchive string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status
+		FROM codex_thread_lifecycle_requests WHERE id=$1`, archive.ID).Scan(&canceledArchive))
+	require.Equal(t, "canceled", canceledArchive,
+		"archive/restore 竞争必须由最新 revision 胜出")
+
 	gatewayConversationID, gatewayControlID := uuid.New(), uuid.New()
 	const gatewayThreadID = "100000000000000080"
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_conversations
@@ -444,6 +502,78 @@ func TestConversationLifecycleProjectionAndRestore(t *testing.T) {
 		gatewayControlID).Scan(&restoreRequestsAfterDrift))
 	require.Equal(t, restoreRequests, restoreRequestsAfterDrift,
 		"Discord THREAD_UPDATE 不得反向创建 Codex 生命周期请求")
+
+	_, err = db.ExecContext(ctx, `UPDATE discord_conversations SET
+		lifecycle_state='active', lifecycle_revision=10,
+		discord_lifecycle_applied_revision=10 WHERE id=$1`, gatewayConversationID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE codex_thread_controls SET
+		lifecycle_state='active', lifecycle_revision=10 WHERE id=$1`, gatewayControlID)
+	require.NoError(t, err)
+	tx, err = db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NoError(t, EnqueueConversationLifecycleTx(ctx, tx, gatewayConversationID))
+	require.NoError(t, tx.Commit())
+	var lifecycleRequestsBeforeHiddenRestore int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*)
+		FROM codex_thread_lifecycle_requests WHERE control_id=$1`, gatewayControlID).
+		Scan(&lifecycleRequestsBeforeHiddenRestore))
+	hiddenRestore, err := service.Restore(ctx, testGuildID, gatewayThreadID, "1001", nil)
+	require.NoError(t, err)
+	require.Equal(t, "completed", hiddenRestore.Status)
+	var lifecycleRequestsAfterHiddenRestore int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*)
+		FROM codex_thread_lifecycle_requests WHERE control_id=$1`, gatewayControlID).
+		Scan(&lifecycleRequestsAfterHiddenRestore))
+	require.Equal(t, lifecycleRequestsBeforeHiddenRestore, lifecycleRequestsAfterHiddenRestore,
+		"仅隐藏的 active Post 恢复时不得调用 app-server")
+	_, err = db.ExecContext(ctx, `UPDATE integration_outbox SET status='completed'
+		WHERE operation_key=$1`, "conversation-lifecycle:"+gatewayConversationID.String())
+	require.NoError(t, err)
+	thread.ThreadMetadata.Archived = true
+	thread.ThreadMetadata.Locked = false
+	connector.onThreadUpdate(&events.ThreadUpdate{GenericThread: &events.GenericThread{
+		GenericEvent: events.NewGenericEvent(client, 2, 0), Thread: thread,
+		ThreadID: snowflake.MustParse(gatewayThreadID), GuildID: snowflake.MustParse(testGuildID),
+	}})
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM integration_outbox
+		WHERE operation_key=$1`, "conversation-lifecycle:"+gatewayConversationID.String()).
+		Scan(&cardStatus))
+	require.Equal(t, "completed", cardStatus,
+		"Discord 未锁定归档只表示隐藏，不应重新打开 Post 或修改 Codex lifecycle")
+}
+
+func TestReconcileConversationProgressCardsUpdatesExistingMessage(t *testing.T) {
+	db := discordDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	_, err := db.ExecContext(ctx, `INSERT INTO discord_guilds(guild_id, name, enabled)
+		VALUES ($1, 'Progress Test', true)`, testGuildID)
+	require.NoError(t, err)
+	conversationID := uuid.New()
+	projectionKey := "conversation:" + conversationID.String() + ":message:desktop-input"
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_projections
+		(guild_id, projection_key, resource_id, message_id, desired_payload)
+		VALUES ($1,$2,'100000000000000090','100000000000000091',$3)`, testGuildID,
+		projectionKey, mustJSON(map[string]any{
+			"card": ComponentCardPayload{AccentColor: cardColorBlurple,
+				Header: "## ⚙️ Codex · 处理中", Body: "`1s` · `1190 条更新`"},
+			"progress": conversationProgressPayload{State: ConversationRunning,
+				Summary: "正在处理请求。", Page: 0},
+		}))
+	require.NoError(t, err)
+	require.NoError(t, ReconcileConversationProgressCards(ctx, db, testGuildID))
+	var desiredPayload json.RawMessage
+	var operationType string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT projection.desired_payload,
+		outbox.operation_type FROM discord_projections projection
+		JOIN integration_outbox outbox ON outbox.operation_key='projection:' || projection.projection_key
+		WHERE projection.guild_id=$1 AND projection.projection_key=$2`, testGuildID,
+		projectionKey).Scan(&desiredPayload, &operationType))
+	require.Equal(t, "message.update", operationType)
+	require.Contains(t, string(desiredPayload), `"formatVersion": 2`)
+	require.Contains(t, string(desiredPayload), "项动态")
+	require.NotContains(t, string(desiredPayload), "条更新")
 }
 
 const (
@@ -1197,6 +1327,23 @@ func testDiscordRecoveryOrchestration(t *testing.T, ctx context.Context, db *sql
 	registerServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		require.Equal(t, http.MethodPut, request.Method)
 		require.Contains(t, request.URL.Path, "/applications/900/guilds/")
+		var commands []struct {
+			Name    string `json:"name"`
+			Options []struct {
+				Name string `json:"name"`
+			} `json:"options"`
+		}
+		require.NoError(t, json.NewDecoder(request.Body).Decode(&commands))
+		var codexSubcommands []string
+		for _, command := range commands {
+			if command.Name == "codex" {
+				for _, option := range command.Options {
+					codexSubcommands = append(codexSubcommands, option.Name)
+				}
+			}
+		}
+		require.Contains(t, codexSubcommands, "archive")
+		require.Contains(t, codexSubcommands, "restore")
 		response.Header().Set("Content-Type", "application/json")
 		_, _ = response.Write([]byte(`[]`))
 	}))

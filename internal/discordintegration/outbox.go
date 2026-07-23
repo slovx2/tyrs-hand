@@ -311,11 +311,42 @@ func (s *SQLoutbox) Complete(ctx context.Context, item OutboxItem, response json
 			Revision       int64  `json:"revision"`
 		}
 		if json.Unmarshal(item.Payload, &sent) == nil && sent.ConversationID != "" {
-			_, err = tx.ExecContext(ctx, `UPDATE discord_conversations SET
+			var threadID, cardMessageID string
+			err = tx.QueryRowContext(ctx, `UPDATE discord_conversations SET
 				discord_lifecycle_applied_revision = $3,
 				lifecycle_projection_error = NULL, updated_at = now()
-				WHERE id = $1 AND lifecycle_state = $2 AND lifecycle_revision = $3`,
-				sent.ConversationID, sent.LifecycleState, sent.Revision)
+				WHERE id = $1 AND lifecycle_state = $2 AND lifecycle_revision = $3
+				RETURNING thread_id, COALESCE(lifecycle_card_message_id,'')`,
+				sent.ConversationID, sent.LifecycleState, sent.Revision).
+				Scan(&threadID, &cardMessageID)
+			if errors.Is(err, sql.ErrNoRows) {
+				err = nil
+			} else if err == nil && sent.LifecycleState == "active" && cardMessageID != "" {
+				err = enqueueDiscordOutbox(ctx, tx,
+					"conversation-lifecycle-delete:"+sent.ConversationID+":"+strconv.FormatInt(sent.Revision, 10),
+					"message.delete", "channels/"+threadID+"/messages/"+cardMessageID,
+					map[string]any{"channelId": threadID, "messageId": cardMessageID,
+						"conversationId": sent.ConversationID,
+						"lifecycleState": sent.LifecycleState, "revision": sent.Revision}, "")
+			}
+			if err != nil {
+				return err
+			}
+		}
+	}
+	if strings.HasPrefix(item.OperationKey, "conversation-lifecycle-delete:") {
+		var sent struct {
+			ConversationID string `json:"conversationId"`
+			LifecycleState string `json:"lifecycleState"`
+			Revision       int64  `json:"revision"`
+			MessageID      string `json:"messageId"`
+		}
+		if json.Unmarshal(item.Payload, &sent) == nil && sent.ConversationID != "" {
+			_, err = tx.ExecContext(ctx, `UPDATE discord_conversations SET
+				lifecycle_card_message_id = NULL, lifecycle_projection_error = NULL,
+				updated_at = now() WHERE id = $1 AND lifecycle_state = 'active'
+				AND lifecycle_revision = $2 AND lifecycle_card_message_id = $3`,
+				sent.ConversationID, sent.Revision, sent.MessageID)
 			if err != nil {
 				return err
 			}
@@ -389,7 +420,8 @@ func (s *SQLoutbox) Fail(ctx context.Context, item OutboxItem, cause error) erro
 		}
 	}
 	if strings.HasPrefix(item.OperationKey, "conversation-lifecycle-card:") ||
-		strings.HasPrefix(item.OperationKey, "conversation-lifecycle:") {
+		strings.HasPrefix(item.OperationKey, "conversation-lifecycle:") ||
+		strings.HasPrefix(item.OperationKey, "conversation-lifecycle-delete:") {
 		var sent struct {
 			ConversationID string `json:"conversationId"`
 			LifecycleState string `json:"lifecycleState"`

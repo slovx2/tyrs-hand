@@ -9,11 +9,9 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
-var ErrLifecycleRevisionStale = errors.New("这张恢复卡片已经过期，请使用最新卡片")
-
-// Restore 只登记恢复意图；真实 app-server 通知到达后才会解锁 Discord Post。
-func (s *ConversationService) Restore(ctx context.Context, guildID, threadID,
-	requesterID string, expectedRevision *int64,
+// Archive 登记 Discord 发起的真实 Codex 归档；活动 Turn 会自然结束后再交给 Worker。
+func (s *ConversationService) Archive(ctx context.Context, guildID, threadID,
+	requesterID string,
 ) (workerprotocol.ThreadLifecycleState, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -41,61 +39,15 @@ func (s *ConversationService) Restore(ctx context.Context, guildID, threadID,
 	if _, err := s.access(ctx, tx, forumID, ownerID, requesterID); err != nil {
 		return workerprotocol.ThreadLifecycleState{}, err
 	}
-	if expectedRevision != nil && result.Revision != *expectedRevision {
-		return workerprotocol.ThreadLifecycleState{}, ErrLifecycleRevisionStale
-	}
-	result.DesiredState = "active"
-	if currentState == "active" {
+	result.DesiredState = "archived"
+	if currentState == "archived" {
 		result.Status = "completed"
-		if err := enqueueThreadLifecycle(ctx, tx, conversationID, threadID,
-			"active", result.Revision); err != nil {
-			return workerprotocol.ThreadLifecycleState{}, err
-		}
 		return result, tx.Commit()
 	}
 	if currentState == "archive_pending" {
-		var archiveRequestID uuid.UUID
-		var archiveStatus string
 		err = tx.QueryRowContext(ctx, `SELECT id, status
 			FROM codex_thread_lifecycle_requests
 			WHERE control_id = $1 AND desired_state = 'archived'
-				AND status IN ('waiting_for_turn','applying')
-			ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, result.ControlID).
-			Scan(&archiveRequestID, &archiveStatus)
-		if err == nil && archiveStatus == "waiting_for_turn" {
-			result.Status = "completed"
-			result.Revision++
-			_, err = tx.ExecContext(ctx, `UPDATE codex_thread_lifecycle_requests SET
-				status='canceled', completed_at=now(), updated_at=now() WHERE id=$1`,
-				archiveRequestID)
-			if err == nil {
-				_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET
-					lifecycle_state='active', lifecycle_revision=$2,
-					lifecycle_last_error=NULL, updated_at=now() WHERE id=$1`,
-					result.ControlID, result.Revision)
-			}
-			if err == nil {
-				_, err = tx.ExecContext(ctx, `UPDATE discord_conversations SET
-					lifecycle_state='active', lifecycle_revision=$2,
-					lifecycle_projection_error=NULL, updated_at=now() WHERE id=$1`,
-					conversationID, result.Revision)
-			}
-			if err == nil {
-				err = enqueueThreadLifecycle(ctx, tx, conversationID, threadID,
-					"active", result.Revision)
-			}
-			if err != nil {
-				return workerprotocol.ThreadLifecycleState{}, err
-			}
-			return result, tx.Commit()
-		}
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return workerprotocol.ThreadLifecycleState{}, err
-		}
-	}
-	if currentState == "unarchive_pending" {
-		err = tx.QueryRowContext(ctx, `SELECT id, status FROM codex_thread_lifecycle_requests
-			WHERE control_id = $1 AND desired_state = 'active'
 				AND status IN ('waiting_for_turn','applying')
 			ORDER BY created_at DESC LIMIT 1`, result.ControlID).
 			Scan(&result.ID, &result.Status)
@@ -106,7 +58,17 @@ func (s *ConversationService) Restore(ctx context.Context, guildID, threadID,
 			return workerprotocol.ThreadLifecycleState{}, err
 		}
 	}
+	var active bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM codex_turn_runs WHERE control_id = $1
+			AND status IN ('starting','running','waiting_for_user','reconciling')
+	)`, result.ControlID).Scan(&active); err != nil {
+		return workerprotocol.ThreadLifecycleState{}, err
+	}
 	result.ID, result.Status = uuid.New(), "applying"
+	if active {
+		result.Status = "waiting_for_turn"
+	}
 	result.Revision++
 	_, err = tx.ExecContext(ctx, `UPDATE codex_thread_lifecycle_requests SET
 		status = 'canceled', completed_at = now(), updated_at = now()
@@ -114,13 +76,13 @@ func (s *ConversationService) Restore(ctx context.Context, guildID, threadID,
 		result.ControlID)
 	if err == nil {
 		_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET
-			lifecycle_state = 'unarchive_pending', lifecycle_revision = $2,
+			lifecycle_state = 'archive_pending', lifecycle_revision = $2,
 			lifecycle_last_error = NULL, updated_at = now() WHERE id = $1`,
 			result.ControlID, result.Revision)
 	}
 	if err == nil {
 		_, err = tx.ExecContext(ctx, `UPDATE discord_conversations SET
-			lifecycle_state = 'unarchive_pending', lifecycle_revision = $2,
+			lifecycle_state = 'archive_pending', lifecycle_revision = $2,
 			lifecycle_projection_error = NULL, updated_at = now() WHERE id = $1`,
 			conversationID, result.Revision)
 	}
@@ -128,8 +90,9 @@ func (s *ConversationService) Restore(ctx context.Context, guildID, threadID,
 		_, err = tx.ExecContext(ctx, `INSERT INTO codex_thread_lifecycle_requests
 			(id, control_id, environment_id, source, desired_state, status, revision,
 				requested_by_discord_user_id)
-			VALUES ($1,$2,$3,'discord','active','applying',$4,$5)`,
-			result.ID, result.ControlID, result.EnvironmentID, result.Revision, requesterID)
+			VALUES ($1,$2,$3,'discord','archived',$4,$5,$6)`,
+			result.ID, result.ControlID, result.EnvironmentID, result.Status,
+			result.Revision, requesterID)
 	}
 	if err != nil {
 		return workerprotocol.ThreadLifecycleState{}, err

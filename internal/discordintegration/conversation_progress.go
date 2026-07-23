@@ -42,7 +42,6 @@ type ConversationActionTracker struct {
 	startedAt time.Time
 	order     []string
 	actions   map[string]conversationAction
-	updates   int
 }
 
 func NewConversationActionTracker(startedAt time.Time) *ConversationActionTracker {
@@ -142,12 +141,12 @@ func (t *ConversationActionTracker) Timeline(summary string, duration time.Durat
 	if len(pages) == 0 {
 		pages = []string{"正在处理请求。"}
 	}
-	return ConversationTimeline{Pages: pages, Updates: t.updates, Duration: duration}
+	return ConversationTimeline{Pages: pages, Updates: len(t.actions), Duration: duration}
 }
 
 func (t *ConversationActionTracker) Render(summary string, duration time.Duration) string {
 	timeline := t.Timeline(summary, duration)
-	return fmt.Sprintf("`%s` · `%d 条更新`\n\n%s", compactDuration(timeline.Duration),
+	return fmt.Sprintf("`%s` · `%d 项动态`\n\n%s", compactDuration(timeline.Duration),
 		timeline.Updates, timeline.Pages[len(timeline.Pages)-1])
 }
 
@@ -174,7 +173,6 @@ func (t *ConversationActionTracker) applyItem(item map[string]any, state convers
 		t.order = append(t.order, id)
 	}
 	t.actions[id] = conversationAction{id: id, line: line}
-	t.updates++
 	return true
 }
 
@@ -193,7 +191,6 @@ func (t *ConversationActionTracker) applyCommentary(id, text string) bool {
 		t.order = append(t.order, id)
 	}
 	t.actions[id] = conversationAction{id: id, line: text, commentary: true}
-	t.updates++
 	return true
 }
 
@@ -213,7 +210,6 @@ func (t *ConversationActionTracker) applyCommentaryDelta(id, phase, delta string
 	}
 	existing.line += delta
 	t.actions[id] = existing
-	t.updates++
 	return true
 }
 

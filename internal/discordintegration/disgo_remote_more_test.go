@@ -55,6 +55,10 @@ func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 			_, _ = response.Write([]byte(channelJSON("12", 15, "tasks")))
 		case "DELETE /channels/11":
 			response.WriteHeader(http.StatusNoContent)
+		case "DELETE /channels/20/messages/21":
+			response.WriteHeader(http.StatusNoContent)
+		case "PUT /channels/30/thread-members/456":
+			response.WriteHeader(http.StatusNoContent)
 		case "PATCH /channels/20/messages/21":
 			var body map[string]any
 			require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
@@ -133,11 +137,12 @@ func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 	require.Nil(t, messageBodies[1]["embeds"])
 	container := messageBodies[1]["components"].([]any)[0].(map[string]any)
 	require.Equal(t, float64(discord.ComponentTypeContainer), container["type"])
-	require.Equal(t, "## Card", container["components"].([]any)[0].(map[string]any)["content"])
+	require.Equal(t, "Card", container["components"].([]any)[0].(map[string]any)["content"])
 	threadMessage := messageBodies[2]["message"].(map[string]any)
+	require.Equal(t, float64(discord.AutoArchiveDuration1w), messageBodies[2]["auto_archive_duration"])
 	require.Equal(t, float64(discord.MessageFlagIsComponentsV2), threadMessage["flags"])
 	threadContainer := threadMessage["components"].([]any)[0].(map[string]any)
-	require.Equal(t, "## Task", threadContainer["components"].([]any)[0].(map[string]any)["content"])
+	require.Equal(t, "Task", threadContainer["components"].([]any)[0].(map[string]any)["content"])
 	mu.Unlock()
 }
 
@@ -175,6 +180,8 @@ func TestDisgoRemoteRejectsMalformedRequestsBeforeNetworkWrites(t *testing.T) {
 	invalidOperations := []OutboxItem{
 		{OperationType: "message.create", Payload: rawJSON(map[string]string{"channelId": "bad"})},
 		{OperationType: "message.update", Payload: rawJSON(map[string]string{"channelId": "1", "messageId": "bad"})},
+		{OperationType: "message.delete", Payload: rawJSON(map[string]string{"channelId": "1", "messageId": "bad"})},
+		{OperationType: "thread.member.add", Payload: rawJSON(map[string]string{"channelId": "1", "userId": "bad"})},
 		{OperationType: "interaction.defer", Payload: rawJSON(map[string]string{"interactionId": "bad"})},
 		{OperationType: "channel.permissions", Payload: rawJSON(map[string]string{"channelId": "bad"})},
 		{OperationType: "forum.post.create", Payload: rawJSON(map[string]any{"channelId": "1", "tagIds": []string{"bad"}})},
@@ -188,6 +195,18 @@ func TestDisgoRemoteRejectsMalformedRequestsBeforeNetworkWrites(t *testing.T) {
 	}
 }
 
+func TestDisgoRemoteTreatsDeletedLifecycleCardAsIdempotent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		http.Error(response, `{"message":"Unknown Message","code":10008}`, http.StatusNotFound)
+	}))
+	t.Cleanup(server.Close)
+	remote := NewDisgoRemote("token", server.URL, server.Client())
+	t.Cleanup(func() { remote.Close(context.Background()) })
+	_, err := remote.Send(context.Background(), OutboxItem{OperationType: "message.delete",
+		Payload: rawJSON(map[string]string{"channelId": "20", "messageId": "21"})})
+	require.NoError(t, err)
+}
+
 func TestDiscordRestoreReferencesAndCardRevision(t *testing.T) {
 	id, err := parseDiscordPostReference("<#100000000000000070>")
 	require.NoError(t, err)
@@ -198,7 +217,7 @@ func TestDiscordRestoreReferencesAndCardRevision(t *testing.T) {
 	_, err = parseDiscordPostReference("not-a-post")
 	require.Error(t, err)
 	conversationID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
-	card := lifecycleCard(conversationID, "archived", 7)
+	card := lifecycleCard(conversationID, 7)
 	require.Len(t, card.Buttons, 1)
 	require.Equal(t, "codex-restore:"+conversationID.String()+":7",
 		card.Buttons[0].CustomID)
@@ -214,19 +233,21 @@ func testDisgoSendOperations(t *testing.T, ctx context.Context, remote *DisgoRem
 			"channelId": "30", "archived": true, "locked": true,
 		})},
 		{OperationType: "thread.tags", Payload: rawJSON(map[string]any{"channelId": "30", "tagIds": []string{"91"}})},
+		{OperationType: "thread.member.add", Payload: rawJSON(map[string]any{"channelId": "30", "userId": "456"})},
+		{OperationType: "message.delete", Payload: rawJSON(map[string]any{"channelId": "20", "messageId": "21"})},
 	}
 	for _, operation := range operations {
 		_, err := remote.Send(ctx, operation)
 		require.NoError(t, err)
 	}
 	created, err := remote.Send(ctx, OutboxItem{OperationType: "message.create", Nonce: "card-nonce", Payload: rawJSON(map[string]any{
-		"channelId": "20", "card": ComponentCardPayload{Header: "## Card", Body: "Friendly",
+		"channelId": "20", "card": ComponentCardPayload{Header: "Card", Body: "Friendly",
 			AccentColor: cardColorBlurple, Footer: "Footer"},
 	})})
 	require.NoError(t, err)
 	require.JSONEq(t, `{"messageId":"22"}`, string(created))
 	result, err := remote.Send(ctx, OutboxItem{OperationType: "forum.post.create", Nonce: "post-nonce", Payload: rawJSON(map[string]any{
-		"channelId": "12", "threadName": "Issue", "card": ComponentCardPayload{Header: "## Task",
+		"channelId": "12", "threadName": "Issue", "card": ComponentCardPayload{Header: "Task",
 			AccentColor: cardColorGreen}, "tagIds": []string{"91"},
 	})})
 	require.NoError(t, err)

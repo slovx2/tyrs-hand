@@ -260,6 +260,25 @@ func (c *DisgoConnector) onCommand(event *events.ApplicationCommandInteractionCr
 				}
 			}
 		}
+	case "/codex/archive":
+		threadID := event.Channel().ID().String()
+		if rawPost, ok := data.OptString("post"); ok && strings.TrimSpace(rawPost) != "" {
+			threadID, err = parseDiscordPostReference(rawPost)
+		}
+		if err == nil {
+			var state workerprotocol.ThreadLifecycleState
+			state, err = c.conversations.Archive(ctx, c.guildID, threadID, userID)
+			if err == nil {
+				switch state.Status {
+				case "completed":
+					content = "会话已经归档。"
+				case "waiting_for_turn":
+					content = "归档请求已提交；当前 Turn 完成后会自动归档并隐藏原 Post。"
+				default:
+					content = "归档请求已提交；Codex 确认归档后会自动锁定并隐藏原 Post。"
+				}
+			}
+		}
 	default:
 		err = errors.New("未知 Discord 命令")
 	}
@@ -434,6 +453,9 @@ func (c *DisgoConnector) registerCommands(ctx context.Context, client *bot.Clien
 					ChannelTypes: []discord.ChannelType{discord.ChannelTypeGuildForum}},
 			}},
 			discord.ApplicationCommandOptionSubCommand{Name: "stop", Description: "停止当前会话的活动任务"},
+			discord.ApplicationCommandOptionSubCommand{Name: "archive", Description: "归档 Codex 会话并隐藏原 Post", Options: []discord.ApplicationCommandOption{
+				discord.ApplicationCommandOptionString{Name: "post", Description: "原 Post mention 或 ID；在原 Post 内可省略"},
+			}},
 			discord.ApplicationCommandOptionSubCommand{Name: "restore", Description: "恢复已归档的 Codex 会话", Options: []discord.ApplicationCommandOption{
 				discord.ApplicationCommandOptionString{Name: "post", Description: "原 Post mention 或 ID；在原 Post 内可省略"},
 			}},
@@ -508,9 +530,14 @@ func (c *DisgoConnector) onThreadUpdate(event *events.ThreadUpdate) {
 	if err != nil || (state != "active" && state != "archived") {
 		return
 	}
-	shouldArchive := state == "archived"
-	if event.Thread.ThreadMetadata.Archived == shouldArchive &&
-		event.Thread.ThreadMetadata.Locked == shouldArchive {
+	archived := event.Thread.ThreadMetadata.Archived
+	locked := event.Thread.ThreadMetadata.Locked
+	if state == "active" {
+		// Discord 的未锁定归档只表示客户端隐藏，不改变 Codex 生命周期。
+		if (archived && !locked) || (!archived && !locked) {
+			return
+		}
+	} else if archived && locked {
 		return
 	}
 	tx, err := c.manager.db.BeginTx(ctx, nil)

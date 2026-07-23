@@ -29,7 +29,7 @@ func DesktopInputCards(displayName, input string) []ComponentCardPayload {
 		end := min(start+desktopInputPageRunes, len(runes))
 		card := ComponentCardPayload{
 			AccentColor: 0x5865F2,
-			Header:      "## 🖥️ " + displayName + " · Desktop",
+			Header:      "🖥️ " + displayName + " · Desktop",
 			Body:        string(runes[start:end]),
 		}
 		if pageCount > 1 {

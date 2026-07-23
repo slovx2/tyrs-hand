@@ -310,7 +310,8 @@ func (s *ConversationService) finalizeConfiguration(ctx context.Context, convers
 	var model, effort, tier string
 	var forumID uuid.UUID
 	var owner, configuredBy, status string
-	err = tx.QueryRowContext(ctx, `SELECT COALESCE(model,''), COALESCE(reasoning_effort,''), service_tier,
+	err = tx.QueryRowContext(ctx, `SELECT COALESCE(model,''), COALESCE(reasoning_effort,''),
+		COALESCE(service_tier,'standard'),
 		forum_id, owner_discord_user_id, COALESCE(configured_by_discord_user_id,''), configuration_status
 		FROM discord_conversations WHERE id = $1 AND (
 			$2 = false OR (configuration_status IN ('awaiting','editing') AND configuration_deadline <= now())

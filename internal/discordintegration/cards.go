@@ -59,8 +59,8 @@ func conversationProgressCard(state ConversationProgress, timeline ConversationT
 		timeline.Pages = []string{"正在处理请求。"}
 	}
 	page = min(max(page, 0), len(timeline.Pages)-1)
-	card := ComponentCardPayload{AccentColor: color, Header: "## " + header,
-		Body:     fmt.Sprintf("`%s` · `%d 条更新`", compactDuration(timeline.Duration), timeline.Updates),
+	card := ComponentCardPayload{AccentColor: color, Header: header,
+		Body:     fmt.Sprintf("`%s` · `%d 项动态`", compactDuration(timeline.Duration), timeline.Updates),
 		Timeline: timeline.Pages[page], Footer: footer}
 	if len(timeline.Pages) > 1 && runID != "" {
 		last := len(timeline.Pages) - 1
@@ -82,14 +82,14 @@ func conversationProgressCard(state ConversationProgress, timeline ConversationT
 }
 
 func terminatedControlCard() ComponentCardPayload {
-	return ComponentCardPayload{AccentColor: cardColorRed, Header: "## ⛔ Codex · 会话已终止",
+	return ComponentCardPayload{AccentColor: cardColorRed, Header: "⛔ Codex · 会话已终止",
 		Body:   "此会话此前发生了不可恢复错误，当前消息没有进入执行队列。请新建一个 Post 后重试。",
 		Footer: "后台已保留错误信息供排查"}
 }
 
 func archivedConversationCard() ComponentCardPayload {
 	return ComponentCardPayload{AccentColor: cardColorGray,
-		Header: "## 🔒 Codex · 会话已归档",
+		Header: "🔒 Codex · 会话已归档",
 		Body:   "当前消息没有进入执行队列。请先恢复这个会话，再继续对话。",
 		Footer: "历史消息仍然保留"}
 }
@@ -115,7 +115,7 @@ func conversationConfigurationCard(model, effort, tier string) ComponentCardPayl
 	} else {
 		tier = "标准"
 	}
-	return ComponentCardPayload{AccentColor: cardColorYellow, Header: "## ⚙️ Codex · 即将启动",
+	return ComponentCardPayload{AccentColor: cardColorYellow, Header: "⚙️ Codex · 即将启动",
 		Body: "可以直接使用后台默认值，或在 20 秒内调整本次会话参数。参数确认后会固定到本会话。\n\n" +
 			"**模型**  `" + cardText(model, 128) + "`\n" +
 			"**服务等级**  `" + cardText(tier, 32) + "`\n" +
@@ -146,7 +146,7 @@ func taskCard(task taskProjection, state string) ComponentCardPayload {
 		body += "\n**仓库**  `" + cardText(task.Owner+"/"+task.Repository, 1000) + "`"
 	}
 	body += "\n**GitHub 状态**  `" + cardText(task.WorkItemState, 1000) + "`"
-	return ComponentCardPayload{AccentColor: color, Header: "## " + cardText(title, 256), Body: body,
+	return ComponentCardPayload{AccentColor: color, Header: cardText(title, 256), Body: body,
 		Footer: "每分钟同步 · 此 Post 只读 · " + time.Now().UTC().Format(time.RFC3339)}
 }
 
@@ -163,7 +163,7 @@ func taskKindLabel(kind string) string {
 
 func taskStateChangeCard(previous, current string) ComponentCardPayload {
 	label, color := taskStatePresentation(current)
-	return ComponentCardPayload{AccentColor: color, Header: "## 任务状态已更新",
+	return ComponentCardPayload{AccentColor: color, Header: "任务状态已更新",
 		Body:   fmt.Sprintf("`%s` → **%s**", cardText(previous, 1000), label),
 		Footer: "由 Tyrs Hand 自动同步"}
 }
@@ -178,7 +178,7 @@ func systemStatusCard(queued, running, failed, workers, outbox int64, gateway st
 	body := fmt.Sprintf("%s\n\n**任务队列**  等待 `%d` · 运行 `%d`\n**需关注**  失败 `%d`\n"+
 		"**运行组件**  Worker `%d` · Gateway `%s`\n**消息投递**  Outbox 待处理 `%d`",
 		state, queued, running, failed, workers, cardText(gateway, 100), outbox)
-	return ComponentCardPayload{AccentColor: color, Header: "## Tyrs Hand · 系统状态", Body: body,
+	return ComponentCardPayload{AccentColor: color, Header: "Tyrs Hand · 系统状态", Body: body,
 		Footer: "每分钟自动更新 · " + time.Now().UTC().Format(time.RFC3339)}
 }
 
@@ -197,11 +197,11 @@ func systemAlertsCard(gatewayStatus string, gatewayError bool, workers, failedOu
 		alerts = append(alerts, fmt.Sprintf("• Discord Outbox 有 `%d` 条失败投递。", failedOutbox))
 	}
 	if len(alerts) == 0 {
-		return ComponentCardPayload{AccentColor: cardColorGreen, Header: "## ✅ Tyrs Hand · 系统告警",
+		return ComponentCardPayload{AccentColor: cardColorGreen, Header: "✅ Tyrs Hand · 系统告警",
 			Body: "当前没有基础设施告警。", Footer: "每分钟自动检查 · " + time.Now().UTC().Format(time.RFC3339)}
 	}
 	return ComponentCardPayload{AccentColor: cardColorRed,
-		Header: fmt.Sprintf("## 🚨 Tyrs Hand · 系统告警 · %d 项", len(alerts)),
+		Header: fmt.Sprintf("🚨 Tyrs Hand · 系统告警 · %d 项", len(alerts)),
 		Body:   strings.Join(alerts, "\n"), Footer: "请在管理后台查看详情 · " + time.Now().UTC().Format(time.RFC3339)}
 }
 

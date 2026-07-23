@@ -286,7 +286,8 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_thread_controls`).Scan(&controls))
 	require.Zero(t, controls)
 
-	response := json.RawMessage(`{"thread":{"id":"codex-desktop-thread"}}`)
+	response := json.RawMessage(`{"thread":{"id":"codex-desktop-thread"},` +
+		`"model":"mock-model","reasoningEffort":"high","serviceTier":"standard"}`)
 	state, err = client.CompleteDesktopThread(ctx, state.ID,
 		workerprotocol.DesktopThreadCompleteRequest{EnvironmentID: environmentID, Response: response})
 	require.NoError(t, err)
@@ -315,10 +316,23 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "preparing", fork.Status)
 	fork, err = client.CompleteDesktopThread(ctx, fork.ID,
 		workerprotocol.DesktopThreadCompleteRequest{EnvironmentID: environmentID,
-			Response: json.RawMessage(`{"thread":{"id":"codex-desktop-fork"}}`)})
+			Response: json.RawMessage(`{"thread":{"id":"codex-desktop-fork"},` +
+				`"model":"mock-model","reasoningEffort":"high","serviceTier":"standard"}`)})
 	require.NoError(t, err)
 	require.Equal(t, "waiting_for_input", fork.Status)
 	require.Equal(t, state.Config, fork.Config)
+	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
+		EnvironmentID: environmentID, Generation: 12,
+		Events: []workerprotocol.ThreadMetadataEvent{{
+			ThreadID: "codex-desktop-thread", Sequence: 1, Kind: "settings",
+			Model: "gpt-5.6-sol", ReasoningEffort: "ultra", ServiceTier: "priority",
+		}},
+	}))
+	state, err = client.DesktopThreadState(ctx, state.ID)
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.6-sol", state.Config.Model)
+	require.Equal(t, "ultra", state.Config.ReasoningEffort)
+	require.Equal(t, "priority", state.Config.ServiceTier)
 
 	task, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
 		EnvironmentID: environmentID, WorkerID: "desktop-worker",
@@ -332,6 +346,9 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "desktop", task.Claimed.InputSurface)
 	require.Empty(t, task.Claimed.DiscordMessageID)
 	require.NotNil(t, task.Snapshot.Discord)
+	require.Equal(t, "gpt-5.6-sol", task.Snapshot.Runtime.Model)
+	require.Equal(t, "ultra", task.Snapshot.Runtime.ReasoningEffort)
+	require.Equal(t, "priority", task.Snapshot.Runtime.ServiceTier)
 	require.Equal(t, "desktop asks && checks", task.Snapshot.Discord.Body)
 	require.Equal(t, "desktop-user", task.Snapshot.Discord.UserID)
 	require.Equal(t, "Desktop Alice", task.Snapshot.Discord.DisplayName)
@@ -354,6 +371,11 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "completed", state.Status)
 	require.NotEqual(t, uuid.Nil, state.ConversationID)
+	var memberAddPayload string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT payload::text FROM integration_outbox
+		WHERE operation_key=$1`, "desktop-thread-member:"+state.ID.String()).
+		Scan(&memberAddPayload))
+	require.Contains(t, memberAddPayload, `"userId": "desktop-user"`)
 	var initialAppliedName string
 	var initialAppliedRevision int64
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT COALESCE(applied_thread_name,''),
@@ -647,6 +669,26 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		":message:desktop-"+task.Claimed.ID.String()).Scan(&projectedReply))
 	require.Equal(t, 1, projectedReply)
 
+	cancelableArchive, err := client.PrepareDesktopThreadLifecycle(ctx,
+		workerprotocol.ThreadLifecyclePrepareRequest{
+			EnvironmentID: environmentID, ThreadID: "codex-desktop-thread",
+			DesiredState: "archived",
+		})
+	require.NoError(t, err)
+	require.Equal(t, "waiting_for_turn", cancelableArchive.Status)
+	canceledByUnarchive, err := client.PrepareDesktopThreadLifecycle(ctx,
+		workerprotocol.ThreadLifecyclePrepareRequest{
+			EnvironmentID: environmentID, ThreadID: "codex-desktop-thread",
+			DesiredState: "active",
+		})
+	require.NoError(t, err)
+	require.Equal(t, "completed", canceledByUnarchive.Status)
+	var canceledDesktopArchive string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status
+		FROM codex_thread_lifecycle_requests WHERE id=$1`, cancelableArchive.ID).
+		Scan(&canceledDesktopArchive))
+	require.Equal(t, "canceled", canceledDesktopArchive)
+
 	archive, err := client.PrepareDesktopThreadLifecycle(ctx,
 		workerprotocol.ThreadLifecyclePrepareRequest{
 			EnvironmentID: environmentID, ThreadID: "codex-desktop-thread",
@@ -737,6 +779,22 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "active", lifecycleState)
 	require.Equal(t, "failed", lifecycleRequestStatus)
 
+	discordArchive, err := discordintegration.NewConversationService(db).Archive(ctx,
+		"worker-test-guild", "desktop-discord-thread", "desktop-user")
+	require.NoError(t, err)
+	require.Equal(t, "applying", discordArchive.Status)
+	pendingLifecycles, err := client.PendingThreadLifecycles(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, pendingLifecycles)
+	require.Equal(t, discordArchive.ID, pendingLifecycles[0].ID)
+	require.Equal(t, "archived", pendingLifecycles[0].DesiredState)
+	require.NoError(t, client.CompleteThreadLifecycle(ctx, discordArchive.ID,
+		workerprotocol.ThreadLifecycleCompleteRequest{EnvironmentID: environmentID,
+			Error: "archive test rollback"}))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT lifecycle_state
+		FROM discord_conversations WHERE id=$1`, state.ConversationID).Scan(&lifecycleState))
+	require.Equal(t, "active", lifecycleState)
+
 	forkTask, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
 		EnvironmentID: environmentID, WorkerID: "desktop-worker",
 		RequestKey: strings.Repeat("8", 64), Params: json.RawMessage(
@@ -745,9 +803,9 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, fork.ControlID, forkTask.Claimed.ControlID)
-	require.Equal(t, task.Snapshot.Runtime.Model, forkTask.Snapshot.Runtime.Model)
-	require.Equal(t, task.Snapshot.Runtime.ReasoningEffort,
-		forkTask.Snapshot.Runtime.ReasoningEffort)
+	require.Equal(t, "mock-model", forkTask.Snapshot.Runtime.Model)
+	require.Equal(t, "high", forkTask.Snapshot.Runtime.ReasoningEffort)
+	require.Equal(t, "standard", forkTask.Snapshot.Runtime.ServiceTier)
 	var forkPost *discordintegration.OutboxItem
 	for {
 		forkPost, err = outbox.Claim(ctx, time.Minute)
@@ -769,9 +827,29 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NotEqual(t, state.ConversationID, fork.ConversationID)
 	require.NoError(t, client.RecordSubmission(ctx, &forkTask, "desktop-fork-turn-1"))
 	require.NoError(t, client.ConfirmTurn(ctx, &forkTask, "desktop-fork-turn-1"))
+	waitingArchive, err := discordintegration.NewConversationService(db).Archive(ctx,
+		"worker-test-guild", "desktop-discord-fork", "desktop-user")
+	require.NoError(t, err)
+	require.Equal(t, "waiting_for_turn", waitingArchive.Status)
+	pendingLifecycles, err = client.PendingThreadLifecycles(ctx)
+	require.NoError(t, err)
+	for _, pending := range pendingLifecycles {
+		require.NotEqual(t, waitingArchive.ID, pending.ID,
+			"活动 Turn 完成前 Worker 不得取得 Discord archive")
+	}
 	require.NoError(t, client.Complete(ctx, &forkTask, codexcontrol.TurnResult{
 		TurnID: "desktop-fork-turn-1", FinalAnswer: "fork done",
 	}))
+	pendingLifecycles, err = client.PendingThreadLifecycles(ctx)
+	require.NoError(t, err)
+	foundWaitingArchive := false
+	for _, pending := range pendingLifecycles {
+		foundWaitingArchive = foundWaitingArchive || pending.ID == waitingArchive.ID
+	}
+	require.True(t, foundWaitingArchive)
+	require.NoError(t, client.CompleteThreadLifecycle(ctx, waitingArchive.ID,
+		workerprotocol.ThreadLifecycleCompleteRequest{EnvironmentID: environmentID,
+			Error: "archive waiting test rollback"}))
 
 	_, err = db.ExecContext(ctx, `UPDATE discord_development_environments SET
 		ssh_public_key=NULL, ssh_fingerprint=NULL, ssh_port=NULL, ssh_discord_user_id=NULL

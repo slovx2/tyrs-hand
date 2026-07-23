@@ -9,17 +9,10 @@ import (
 	"github.com/google/uuid"
 )
 
-func lifecycleCard(conversationID uuid.UUID, state string,
-	revision int64,
+func lifecycleCard(conversationID uuid.UUID, revision int64,
 ) ComponentCardPayload {
-	if state == "active" {
-		return ComponentCardPayload{AccentColor: cardColorGreen,
-			Header: "## 🔓 Codex · 会话已恢复",
-			Body:   "现在可以继续从 Discord 或 Codex Desktop 对话。",
-			Footer: "历史消息和原会话保持不变"}
-	}
 	return ComponentCardPayload{AccentColor: cardColorGray,
-		Header: "## 🔒 Codex · 会话已归档",
+		Header: "🔒 Codex · 会话已归档",
 		Body:   "该会话已关闭，历史消息仍然保留。",
 		Footer: "需要继续时可以恢复原会话",
 		Buttons: []ComponentButtonPayload{{
@@ -35,7 +28,7 @@ func int64Text(value int64) string {
 }
 
 // EnqueueConversationLifecycleTx 将 app-server 生命周期投影到原 Discord Post。
-// archived 状态先投递恢复卡片，卡片完成回调再锁定 Post。
+// archived 先投递恢复卡片；active 先解锁 Post，再删除原归档卡片。
 func EnqueueConversationLifecycleTx(ctx context.Context, tx *sql.Tx,
 	conversationID uuid.UUID,
 ) error {
@@ -59,7 +52,10 @@ func EnqueueConversationLifecycleTx(ctx context.Context, tx *sql.Tx,
 			return err
 		}
 	}
-	card := lifecycleCard(conversationID, state, revision)
+	if state == "active" {
+		return enqueueThreadLifecycle(ctx, tx, conversationID, threadID, state, revision)
+	}
+	card := lifecycleCard(conversationID, revision)
 	cardKey := "conversation-lifecycle-card:" + conversationID.String()
 	cardPayload := map[string]any{
 		"channelId": threadID, "card": card, "conversationId": conversationID.String(),
@@ -73,10 +69,6 @@ func EnqueueConversationLifecycleTx(ctx context.Context, tx *sql.Tx,
 	if err := enqueueDiscordOutbox(ctx, tx, cardKey, cardOperation,
 		"channels/"+threadID+"/messages", cardPayload, cardNonce); err != nil {
 		return err
-	}
-	if state == "active" {
-		return enqueueThreadLifecycle(ctx, tx, conversationID, threadID,
-			state, revision)
 	}
 	return nil
 }
@@ -124,7 +116,8 @@ func ReconcileConversationLifecycles(ctx context.Context, db *sql.DB,
 ) error {
 	rows, err := db.QueryContext(ctx, `SELECT id FROM discord_conversations
 		WHERE guild_id = $1 AND lifecycle_state IN ('active','archived')
-			AND lifecycle_revision > discord_lifecycle_applied_revision
+			AND (lifecycle_revision > discord_lifecycle_applied_revision
+				OR (lifecycle_state = 'active' AND lifecycle_card_message_id IS NOT NULL))
 		ORDER BY updated_at, id LIMIT 100`, guildID)
 	if err != nil {
 		return err

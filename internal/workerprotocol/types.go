@@ -9,7 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 5
+const Version = 6
 
 type EnrollRequest struct {
 	Token string `json:"token"`
@@ -186,11 +186,14 @@ type DesktopThreadFailRequest struct {
 }
 
 type ThreadMetadataEvent struct {
-	ThreadID       string `json:"threadId"`
-	Sequence       int64  `json:"sequence"`
-	Kind           string `json:"kind"`
-	Name           string `json:"name,omitempty"`
-	LifecycleState string `json:"lifecycleState,omitempty"`
+	ThreadID        string `json:"threadId"`
+	Sequence        int64  `json:"sequence"`
+	Kind            string `json:"kind"`
+	Name            string `json:"name,omitempty"`
+	LifecycleState  string `json:"lifecycleState,omitempty"`
+	Model           string `json:"model,omitempty"`
+	ReasoningEffort string `json:"reasoningEffort,omitempty"`
+	ServiceTier     string `json:"serviceTier,omitempty"`
 }
 
 type ThreadMetadataRequest struct {

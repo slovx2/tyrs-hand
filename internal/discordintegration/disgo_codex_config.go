@@ -61,7 +61,8 @@ func (c *DisgoConnector) editConversationConfiguration(event *events.ComponentIn
 
 func (c *DisgoConnector) configurationModal(ctx context.Context, conversationID uuid.UUID) (discord.ModalCreate, error) {
 	var model, effort, tier string
-	err := c.manager.db.QueryRowContext(ctx, `SELECT COALESCE(model,''), COALESCE(reasoning_effort,''), service_tier
+	err := c.manager.db.QueryRowContext(ctx, `SELECT COALESCE(model,''), COALESCE(reasoning_effort,''),
+		COALESCE(service_tier,'standard')
 		FROM discord_conversations WHERE id = $1`, conversationID).Scan(&model, &effort, &tier)
 	if err != nil {
 		return discord.ModalCreate{}, err

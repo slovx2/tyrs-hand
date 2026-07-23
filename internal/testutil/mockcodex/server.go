@@ -37,6 +37,9 @@ type Thread struct {
 	ApprovalPolicy          string `json:"approvalPolicy,omitempty"`
 	Sandbox                 any    `json:"sandbox,omitempty"`
 	ActivePermissionProfile string `json:"activePermissionProfile,omitempty"`
+	Model                   string `json:"-"`
+	ReasoningEffort         string `json:"-"`
+	ServiceTier             string `json:"-"`
 	Turns                   []Turn `json:"turns,omitempty"`
 	Archived                bool   `json:"-"`
 }
@@ -205,11 +208,16 @@ func (c *connection) handle(message Message) {
 		})
 	case "thread/start":
 		var params struct {
-			CWD       string `json:"cwd"`
-			Ephemeral bool   `json:"ephemeral"`
+			CWD             string `json:"cwd"`
+			Ephemeral       bool   `json:"ephemeral"`
+			Model           string `json:"model"`
+			ReasoningEffort string `json:"reasoningEffort"`
+			ServiceTier     string `json:"serviceTier"`
 		}
 		_ = json.Unmarshal(message.Params, &params)
 		thread := c.server.createThread(params.CWD, params.Ephemeral)
+		thread = c.server.updateThreadRuntime(thread.ID, params.Model,
+			params.ReasoningEffort, params.ServiceTier)
 		c.subscriptions[thread.ID] = true
 		c.respond(message.ID, threadResponse(thread))
 		c.server.broadcast(thread.ID, "thread/started", map[string]any{"thread": thread})
@@ -224,6 +232,8 @@ func (c *connection) handle(message Message) {
 			return
 		}
 		thread := c.server.createThread(source.CWD, false)
+		thread = c.server.updateThreadRuntime(thread.ID, source.Model,
+			source.ReasoningEffort, source.ServiceTier)
 		c.subscriptions[thread.ID] = true
 		c.respond(message.ID, threadResponse(thread))
 		c.server.broadcast(thread.ID, "thread/started", map[string]any{"thread": thread})
@@ -244,18 +254,22 @@ func (c *connection) handle(message Message) {
 			ThreadID       string `json:"threadId"`
 			ApprovalPolicy string `json:"approvalPolicy"`
 			Permissions    string `json:"permissions"`
+			Model          string `json:"model"`
+			Effort         string `json:"effort"`
+			ServiceTier    string `json:"serviceTier"`
 		}
 		_ = json.Unmarshal(message.Params, &params)
 		thread, ok := c.server.updateThreadSettings(params.ThreadID,
-			params.ApprovalPolicy, params.Permissions)
+			params.ApprovalPolicy, params.Permissions, params.Model, params.Effort,
+			params.ServiceTier)
 		if !ok {
 			c.respondError(message.ID, -32602, "unknown thread")
 			return
 		}
 		c.respond(message.ID, map[string]any{})
 		c.server.broadcast(thread.ID, "thread/settings/updated", map[string]any{
-			"threadId": thread.ID,
-			"settings": threadSettings(thread),
+			"threadId":       thread.ID,
+			"threadSettings": threadSettings(thread),
 		})
 	case "thread/name/set":
 		var params struct {
@@ -379,12 +393,15 @@ func (c *connection) handle(message Message) {
 
 func threadResponse(thread Thread) map[string]any {
 	settings := threadSettings(thread)
+	settings["reasoningEffort"] = settings["effort"]
+	delete(settings, "effort")
 	settings["thread"] = thread
 	return settings
 }
 
 func threadSettings(thread Thread) map[string]any {
-	return map[string]any{"model": "mock-model", "modelProvider": "mock",
+	return map[string]any{"model": thread.Model, "modelProvider": "mock",
+		"effort": thread.ReasoningEffort, "serviceTier": thread.ServiceTier,
 		"cwd": thread.CWD, "approvalPolicy": thread.ApprovalPolicy,
 		"sandbox": thread.Sandbox, "activePermissionProfile": thread.ActivePermissionProfile}
 }
@@ -408,6 +425,7 @@ func (s *Server) createThread(cwd string, ephemeral bool) Thread {
 	id := "thread-" + jsonNumber(s.nextID.Add(1))
 	thread := Thread{ID: id, CWD: cwd, Status: map[string]string{"type": "idle"},
 		Ephemeral:      ephemeral,
+		Model:          "mock-model",
 		ApprovalPolicy: "never", Sandbox: map[string]any{"type": "dangerFullAccess"},
 		ActivePermissionProfile: ":danger-full-access"}
 	s.mu.Lock()
@@ -416,7 +434,9 @@ func (s *Server) createThread(cwd string, ephemeral bool) Thread {
 	return thread
 }
 
-func (s *Server) updateThreadSettings(id, approvalPolicy, permissions string) (Thread, bool) {
+func (s *Server) updateThreadSettings(id, approvalPolicy, permissions, model, effort,
+	serviceTier string,
+) (Thread, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	thread, ok := s.threads[id]
@@ -437,8 +457,30 @@ func (s *Server) updateThreadSettings(id, approvalPolicy, permissions string) (T
 			thread.Sandbox = map[string]any{"type": "readOnly"}
 		}
 	}
+	if model != "" {
+		thread.Model = model
+	}
+	if effort != "" {
+		thread.ReasoningEffort = effort
+	}
+	if serviceTier != "" {
+		thread.ServiceTier = serviceTier
+	}
 	s.threads[id] = thread
 	return thread, true
+}
+
+func (s *Server) updateThreadRuntime(id, model, effort, serviceTier string) Thread {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	thread := s.threads[id]
+	if model != "" {
+		thread.Model = model
+	}
+	thread.ReasoningEffort = effort
+	thread.ServiceTier = serviceTier
+	s.threads[id] = thread
+	return thread
 }
 
 func (s *Server) updateThreadName(id, name string) (Thread, bool) {

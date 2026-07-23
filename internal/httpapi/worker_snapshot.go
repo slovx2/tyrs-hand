@@ -67,14 +67,15 @@ func (s *Server) freezeWorkerRuntimePreferences(ctx context.Context,
 	if frozen.Valid {
 		result.Model, result.ReasoningEffort = model.String, effort.String
 		result.ServiceTier = tier.String
-		if result.ServiceTier == "" {
+		if result.ServiceTier == "" && claimed.InputSurface != "desktop" {
 			result.ServiceTier = "standard"
 		}
 		return result, nil
 	}
 	if claimed.SourceType == codexcontrol.SourceDiscord {
 		err = s.db.QueryRowContext(ctx, `SELECT COALESCE(model,''),
-			COALESCE(reasoning_effort,''), service_tier FROM discord_conversations WHERE id = $1`,
+			COALESCE(reasoning_effort,''), COALESCE(service_tier,'standard')
+			FROM discord_conversations WHERE id = $1`,
 			claimed.DiscordConversationID).
 			Scan(&result.Model, &result.ReasoningEffort, &result.ServiceTier)
 	} else {

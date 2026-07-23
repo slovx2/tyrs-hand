@@ -149,6 +149,9 @@ func (d *Daemon) runBackground(ctx context.Context, guildID string, remote Remot
 			if err := ReconcileConversationLifecycles(ctx, d.manager.db, guildID); err != nil {
 				d.logger.Warn("同步 Discord 会话生命周期失败", zap.Error(err))
 			}
+			if err := ReconcileConversationProgressCards(ctx, d.manager.db, guildID); err != nil {
+				d.logger.Warn("重算 Discord 旧版进度卡失败", zap.Error(err))
+			}
 			for count := 0; count < 20; count++ {
 				worked, err := d.conversations.StartDueConfiguration(ctx)
 				if err != nil {

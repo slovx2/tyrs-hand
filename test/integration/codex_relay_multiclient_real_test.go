@@ -251,6 +251,7 @@ func TestRealCodexRelayDesktopSelectsFastServiceTierWithAPIKeyUpstream(t *testin
 	require.NoError(t, os.MkdirAll(home, 0o700))
 	require.NoError(t, os.MkdirAll(workspace, 0o755))
 	config := fmt.Sprintf(`model = "gpt-5.6-sol"
+model_reasoning_effort = "ultra"
 approval_policy = "never"
 sandbox_mode = "read-only"
 model_provider = "mock_provider"
@@ -307,11 +308,21 @@ supports_websockets = false
 		Thread struct {
 			ID string `json:"id"`
 		} `json:"thread"`
+		Model           string `json:"model"`
+		ReasoningEffort string `json:"reasoningEffort"`
+		ServiceTier     string `json:"serviceTier"`
 	}
 	require.NoError(t, desktop.Call(context.Background(), "thread/start", map[string]any{
 		"cwd": workspace, "model": "gpt-5.6-sol", "serviceTier": "priority",
 		"approvalPolicy": "never", "sandbox": "read-only",
 	}, &started))
+	require.Equal(t, "gpt-5.6-sol", started.Model)
+	require.Equal(t, "ultra", started.ReasoningEffort)
+	require.Equal(t, "priority", started.ServiceTier)
+	require.NoError(t, desktop.Call(context.Background(), "thread/settings/update", map[string]any{
+		"threadId": started.Thread.ID, "model": "gpt-5.6-sol", "effort": "max",
+		"serviceTier": "priority",
+	}, nil))
 	events := desktop.Subscribe(codex.ThreadFilter{ThreadID: started.Thread.ID})
 	t.Cleanup(events.Close)
 	var turn struct {
@@ -328,9 +339,22 @@ supports_websockets = false
 	select {
 	case body := <-requestBody:
 		require.Equal(t, "priority", body["service_tier"])
+		reasoning, ok := body["reasoning"].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "max", reasoning["effort"])
 	case <-time.After(10 * time.Second):
 		t.Fatal("Mock LLM 没有收到 Fast service tier 请求")
 	}
+	var resumed struct {
+		Model           string `json:"model"`
+		ReasoningEffort string `json:"reasoningEffort"`
+		ServiceTier     string `json:"serviceTier"`
+	}
+	require.NoError(t, desktop.Call(context.Background(), "thread/resume",
+		map[string]any{"threadId": started.Thread.ID}, &resumed))
+	require.Equal(t, "gpt-5.6-sol", resumed.Model)
+	require.Equal(t, "max", resumed.ReasoningEffort)
+	require.Equal(t, "priority", resumed.ServiceTier)
 }
 
 type serviceTierRelayController struct{}

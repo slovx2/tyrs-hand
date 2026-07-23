@@ -33,6 +33,20 @@ func (s *Server) workerRecordThreadMetadata(c *gin.Context) {
 			badRequest(c, errors.New("thread metadata event 无效"))
 			return
 		}
+		if event.Kind == "settings" {
+			event.Model = strings.TrimSpace(event.Model)
+			event.ReasoningEffort = strings.TrimSpace(event.ReasoningEffort)
+			event.ServiceTier = strings.TrimSpace(event.ServiceTier)
+			if event.Model == "" {
+				badRequest(c, errors.New("thread settings event 无效"))
+				return
+			}
+			if err := s.recordThreadSettingsEvent(c, tx, request, event); err != nil {
+				problem(c, http.StatusInternalServerError, "记录 Thread settings 失败", err)
+				return
+			}
+			continue
+		}
 		if event.Kind == "lifecycle" {
 			if event.LifecycleState != "active" && event.LifecycleState != "archived" {
 				badRequest(c, errors.New("thread lifecycle event 无效"))
@@ -100,6 +114,40 @@ func (s *Server) workerRecordThreadMetadata(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func (s *Server) recordThreadSettingsEvent(c *gin.Context, tx *sql.Tx,
+	request workerprotocol.ThreadMetadataRequest, event workerprotocol.ThreadMetadataEvent,
+) error {
+	var controlID uuid.UUID
+	var conversationID sql.NullString
+	err := tx.QueryRowContext(c.Request.Context(), `UPDATE codex_thread_controls control SET
+		model = NULLIF($4,''), reasoning_effort = NULLIF($5,''), service_tier = NULLIF($6,''),
+		runtime_preferences_frozen_at = now(), app_server_settings_generation = $7,
+		app_server_settings_sequence = $8, updated_at = now()
+		FROM discord_development_environments environment
+		WHERE control.development_environment_id = environment.id
+			AND control.external_thread_id = $3
+			AND control.development_environment_id = $1
+			AND environment.execution_node_id = $2
+			AND ($7 > control.app_server_settings_generation OR
+				($7 = control.app_server_settings_generation
+					AND $8 > control.app_server_settings_sequence))
+		RETURNING control.id, control.discord_conversation_id::text`, request.EnvironmentID,
+		workerNode(c).ID, event.ThreadID, event.Model, event.ReasoningEffort,
+		event.ServiceTier, request.Generation, event.Sequence).
+		Scan(&controlID, &conversationID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil || !conversationID.Valid {
+		return err
+	}
+	_, err = tx.ExecContext(c.Request.Context(), `UPDATE discord_conversations SET
+		model = NULLIF($2,''), reasoning_effort = NULLIF($3,''),
+		service_tier = NULLIF($4,''), updated_at = now() WHERE id = $1`,
+		conversationID.String, event.Model, event.ReasoningEffort, event.ServiceTier)
+	return err
 }
 
 func (s *Server) recordThreadLifecycleEvent(c *gin.Context, tx *sql.Tx,
