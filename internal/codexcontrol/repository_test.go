@@ -120,3 +120,38 @@ func TestReconcileExhaustedIntentReturnsControlToIdle(t *testing.T) {
 		"desktop_turn_error", errors.New("runtime failed"))
 	require.NoError(t, err)
 }
+
+func TestReconcileDesktopIntentReturnsControlToIdleImmediately(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+	claimed := &ClaimedControl{
+		Intent: Intent{
+			ID: uuid.New(), ControlID: uuid.New(), InputSurface: "desktop",
+			Attempt: 1, MaxAttempts: 3,
+		},
+		RunID: uuid.New(), LeaseToken: "lease-token", LeaseEpoch: 2,
+	}
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT EXISTS(SELECT 1 FROM codex_thread_controls")).
+		WithArgs(claimed.ControlID, sqlmock.AnyArg(), claimed.LeaseEpoch, claimed.ID).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectExec("UPDATE codex_turn_intents SET status").
+		WithArgs(claimed.ID, "failed", "desktop_turn_error", "runtime failed").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE codex_turn_runs SET status = 'failed'").
+		WithArgs(claimed.RunID, "desktop_turn_error", "runtime failed").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE codex_thread_controls SET status").
+		WithArgs(claimed.ControlID, "idle", "desktop_turn_error", "runtime failed").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	mock.ExpectClose()
+
+	err = NewRepository(db, time.Minute).Reconcile(context.Background(), claimed,
+		"desktop_turn_error", errors.New("runtime failed"))
+	require.NoError(t, err)
+}

@@ -576,6 +576,79 @@ func TestReconcileConversationProgressCardsUpdatesExistingMessage(t *testing.T) 
 	require.NotContains(t, string(desiredPayload), "条更新")
 }
 
+func TestReconcileConversationProgressCardsUsesTerminalRunState(t *testing.T) {
+	db := discordDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	_, err := db.ExecContext(ctx, `INSERT INTO discord_guilds(guild_id, name, enabled)
+		VALUES ($1, 'Terminal Progress Test', true)`, testGuildID)
+	require.NoError(t, err)
+	seed := seedDiscordManagerData(t, db)
+	var profileID, environmentID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM agent_profiles
+		WHERE name = 'Default'`).Scan(&profileID))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT development_environment_id
+		FROM discord_forums WHERE id = $1`, seed.developmentForumID).Scan(&environmentID))
+
+	conversationID, controlID, intentID, runID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_conversations
+		(id, guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
+			repository_id, agent_profile_id, title)
+		VALUES ($1,$2,$3,'terminal-thread','terminal-starter','1001',$4,$5,'Terminal')`,
+		conversationID, testGuildID, seed.developmentForumID, seed.repositoryID, profileID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `INSERT INTO codex_thread_controls
+		(id, source_type, discord_conversation_id, repository_id, agent_profile_id,
+			context_version, execution_node_id, development_environment_id)
+		VALUES ($1,'discord_conversation',$2,$3,$4,1,$5,$6)`,
+		controlID, conversationID, seed.repositoryID, profileID, seed.executionNodeID, environmentID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_intents
+		(id, control_id, sequence_no, source_type, input_surface, discord_conversation_id,
+			repository_id, agent_profile_id, idempotency_key, status, finished_at)
+		VALUES ($1,$2,1,'discord_conversation','desktop',$3,$4,$5,$6,'canceled',now())`,
+		intentID, controlID, conversationID, seed.repositoryID, profileID,
+		"terminal-progress-"+intentID.String())
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_runs
+		(id, control_id, primary_intent_id, attempt, worker_id, lease_epoch,
+			capability_hash, status, finished_at)
+		VALUES ($1,$2,$3,1,'desktop-relay',1,$4,'canceled',now())`,
+		runID, controlID, intentID, strings.Repeat("f", 64))
+	require.NoError(t, err)
+
+	projectionKey := "conversation:" + conversationID.String() + ":message:desktop-input"
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_projections
+		(guild_id, projection_key, resource_id, message_id, desired_payload)
+		VALUES ($1,$2,'terminal-thread','terminal-message',$3)`, testGuildID,
+		projectionKey, mustJSON(map[string]any{
+			"card": ComponentCardPayload{AccentColor: cardColorRed,
+				Header: "❌ Codex · 处理失败",
+				Footer: "后台已记录错误，可稍后重试 · 不展示工具返回内容"},
+			"progress": conversationProgressPayload{
+				FormatVersion: conversationProgressFormatVersion,
+				RunID:         runID.String(), State: ConversationFailed,
+				Summary: "本轮处理未完成。", Page: 0,
+			},
+		}))
+	require.NoError(t, err)
+
+	require.NoError(t, ReconcileConversationProgressCards(ctx, db, testGuildID))
+	var desiredPayload json.RawMessage
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT desired_payload
+		FROM discord_projections WHERE guild_id=$1 AND projection_key=$2`,
+		testGuildID, projectionKey).Scan(&desiredPayload))
+	var desired struct {
+		Card     ComponentCardPayload        `json:"card"`
+		Progress conversationProgressPayload `json:"progress"`
+	}
+	require.NoError(t, json.Unmarshal(desiredPayload, &desired))
+	require.Equal(t, ConversationCanceled, desired.Progress.State)
+	require.Equal(t, "本轮已停止。", desired.Progress.Summary)
+	require.Equal(t, "⏹️ Codex · 已停止", desired.Card.Header)
+	require.NotContains(t, desired.Card.Footer, "后台已记录错误")
+}
+
 const (
 	testGuildID = "100000000000000001"
 	testBotID   = "100000000000000099"

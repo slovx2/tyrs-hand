@@ -192,7 +192,22 @@ func ReconcileConversationProgressCards(ctx context.Context, db *sql.DB, guildID
 		FROM discord_projections
 		WHERE guild_id = $1 AND projection_key LIKE 'conversation:%'
 			AND desired_payload ? 'progress'
-			AND COALESCE(desired_payload->'progress'->>'formatVersion','0') <> $2
+			AND (
+				COALESCE(desired_payload->'progress'->>'formatVersion','0') <> $2
+				OR COALESCE(desired_payload->'card'->>'footer','')
+					LIKE '%后台已记录错误%'
+				OR EXISTS (
+					SELECT 1 FROM codex_turn_runs AS run
+					WHERE run.id::text = desired_payload->'progress'->>'runId'
+						AND (
+							(run.status = 'canceled'
+								AND COALESCE(desired_payload->'progress'->>'state','') <> 'canceled')
+							OR
+							(run.status = 'failed'
+								AND COALESCE(desired_payload->'progress'->>'state','') <> 'failed')
+						)
+				)
+			)
 		ORDER BY updated_at, projection_key LIMIT 100`, guildID,
 		fmt.Sprint(conversationProgressFormatVersion))
 	if err != nil {
@@ -240,6 +255,19 @@ func reconcileConversationProgressCard(ctx context.Context, db *sql.DB, guildID,
 			return err
 		}
 		runID = parsed
+		var runStatus string
+		if err := db.QueryRowContext(ctx, `SELECT status FROM codex_turn_runs WHERE id = $1`,
+			runID).Scan(&runStatus); err != nil {
+			return err
+		}
+		switch runStatus {
+		case "canceled":
+			desired.Progress.State = ConversationCanceled
+			desired.Progress.Summary = "本轮已停止。"
+		case "failed":
+			desired.Progress.State = ConversationFailed
+			desired.Progress.Summary = "本轮处理未完成。"
+		}
 	}
 	timeline, err := conversationTimelineForRun(ctx, db, runID, desired.Progress.Summary)
 	if err != nil {

@@ -462,7 +462,7 @@ func (r *Repository) Reconcile(ctx context.Context, claimed *ClaimedControl, cod
 	if err := r.fence(ctx, tx, claimed); err != nil {
 		return err
 	}
-	terminal := claimed.Attempt >= claimed.MaxAttempts
+	terminal := claimed.InputSurface == "desktop" || claimed.Attempt >= claimed.MaxAttempts
 	intentStatus, controlStatus := "retry_wait", "reconciling"
 	available := "now() + interval '15 seconds'"
 	if terminal {
