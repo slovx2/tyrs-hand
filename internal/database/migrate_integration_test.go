@@ -83,7 +83,7 @@ func TestParticipantIdentityMigrationBindsExistingSSHToEnvironmentOwner(t *testi
 	require.Equal(t, 6, protocolVersion)
 }
 
-func TestDesktopTurnTerminalRepairMigration(t *testing.T) {
+func TestStrandedDesktopTurnTerminalRepairMigration(t *testing.T) {
 	ctx := context.Background()
 	db := migrationTestDatabase(t)
 	_, err := db.ExecContext(ctx, `CREATE TABLE schema_migrations (
@@ -145,9 +145,6 @@ func TestDesktopTurnTerminalRepairMigration(t *testing.T) {
 		VALUES ($1,$2,1,'discord_conversation','desktop',$3,$4,'retry_wait',1,3,
 			'desktop_turn_error','Codex turn interrupted')`,
 		intentID, controlID, profileID, "migration-desktop-"+intentID.String())
-	require.NoError(t, err)
-	_, err = db.ExecContext(ctx, `UPDATE codex_thread_controls
-		SET active_intent_id=$2 WHERE id=$1`, controlID, intentID)
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_runs
 		(id, control_id, primary_intent_id, attempt, worker_id, lease_epoch,

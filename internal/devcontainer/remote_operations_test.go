@@ -2,6 +2,8 @@ package devcontainer
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net"
 	"os"
@@ -84,23 +86,60 @@ func TestRefreshRemoteRuntimeOnlyWhenWorkerBinariesChange(t *testing.T) {
 	require.True(t, staleRunner.contains("TYRS_RUNTIME_SIGNATURE="+signature))
 }
 
-func TestInstallRuntimeUsesSystemSSHConfigAndRemovesLegacyUserInclude(t *testing.T) {
+func TestInstallRuntimeCopiesRootOwnedSSHConfigAndRemovesLegacyInclude(t *testing.T) {
 	root := t.TempDir()
 	codexBin := filepath.Join(root, "codex-real")
 	proxyBin := filepath.Join(root, "codex")
+	agentDir := filepath.Join(root, "ssh-agent")
 	require.NoError(t, os.WriteFile(codexBin, []byte("codex"), 0o755))
 	require.NoError(t, os.WriteFile(proxyBin, []byte("proxy"), 0o755))
+	require.NoError(t, os.Mkdir(agentDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(agentDir, "ssh_config"),
+		[]byte("Host *\n"), 0o644))
 	runner := &recordingCommandRunner{}
 	manager := &Manager{dockerBin: "docker", dockerHost: "inherit", runner: runner,
 		codexBin: codexBin, codexProxyBin: proxyBin, sshEnabled: true,
-		sshAgentDir: "/run/tyrs-hand-ssh-agent"}
+		sshAgentDir: agentDir}
 
 	require.NoError(t, manager.installRuntime(context.Background(), "development",
 		1000, 1000, "/home/vscode"))
-	require.True(t, runner.contains(`TYRS_INCLUDE=Include /run/tyrs-hand-ssh-agent/ssh_config`))
+	require.True(t, runner.contains("docker cp "+filepath.Join(agentDir, "ssh_config")+" "+
+		"development:/etc/ssh/ssh_config.d/99-tyrs-hand.conf.tmp"))
+	require.True(t, runner.contains(`TYRS_INCLUDE=Include /etc/ssh/ssh_config.d/99-tyrs-hand.conf`))
+	require.True(t, runner.contains(`TYRS_LEGACY_INCLUDE=Include `+agentDir+`/ssh_config`))
 	require.True(t, runner.contains(`system_config="/etc/ssh/ssh_config"`))
 	require.True(t, runner.contains(`config="$TYRS_HOME/.ssh/config"`))
-	require.True(t, runner.contains(`test "$line" = "$TYRS_INCLUDE"`))
+	require.True(t, runner.contains(`TYRS_PROFILE=/etc/profile.d/tyrs-hand-ssh-agent.sh`))
+}
+
+func TestRefreshRemoteRuntimeKeepsCurrentSSHConfig(t *testing.T) {
+	root := t.TempDir()
+	codexBin := filepath.Join(root, "codex-real")
+	proxyBin := filepath.Join(root, "codex")
+	agentDir := filepath.Join(root, "ssh-agent")
+	sshConfig := []byte("Host *\n")
+	require.NoError(t, os.WriteFile(codexBin, []byte("codex"), 0o755))
+	require.NoError(t, os.WriteFile(proxyBin, []byte("proxy"), 0o755))
+	require.NoError(t, os.Mkdir(agentDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(agentDir, "ssh_config"), sshConfig, 0o644))
+	manager := &Manager{dockerBin: "docker", dockerHost: "inherit",
+		codexBin: codexBin, codexProxyBin: proxyBin, sshEnabled: true,
+		sshAgentDir: agentDir}
+	signature, err := manager.desiredRuntimeSignature()
+	require.NoError(t, err)
+	checksum := sha256.Sum256(sshConfig)
+	runner := &recordingCommandRunner{resultFor: map[string]string{
+		"cat " + managedSSHConfigPath + ".sha256": hex.EncodeToString(checksum[:]),
+		"cat " + runtimeSignaturePath:             signature,
+	}}
+	manager.runner = runner
+
+	changed, err := manager.RefreshRemoteRuntime(context.Background(), Runtime{
+		Container: "development", UID: 1000, GID: 1000, Home: "/home/vscode",
+	})
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.False(t, runner.contains("docker cp"))
 }
 
 func TestRunRemoteDevelopmentOperations(t *testing.T) {
@@ -152,7 +191,8 @@ func TestReconfigureRemoteEnvironmentKeepsContainerRunningAndSecuresSSH(t *testi
 	require.NoError(t, os.WriteFile(proxyBin, []byte("mock"), 0o755))
 	manager := &Manager{enabled: true, dockerBin: "docker", dockerHost: "inherit", runner: runner,
 		developmentRuntimeDir: runtimeDir, developmentRuntimeHostDir: "/host/runtime",
-		codexBin: codexBin, codexProxyBin: proxyBin}
+		codexBin: codexBin, codexProxyBin: proxyBin, sshEnabled: true,
+		sshAgentDir: "/run/tyrs-hand-ssh-agent", sshAgentHostDir: "/host/ssh-agent"}
 	environmentID := uuid.New()
 	err := manager.RunRemoteOperation(context.Background(), RemoteOperation{
 		Operation: "reconfigure", EnvironmentID: environmentID,
@@ -166,6 +206,8 @@ func TestReconfigureRemoteEnvironmentKeepsContainerRunningAndSecuresSSH(t *testi
 	require.True(t, runner.contains("docker create"))
 	require.True(t, runner.contains("--restart unless-stopped"))
 	require.True(t, runner.contains("--publish 2222:22"))
+	require.True(t, runner.contains("type=bind,source=/host/ssh-agent,target=/run/tyrs-hand-ssh-agent"))
+	require.True(t, runner.contains("--env SSH_AUTH_SOCK=/run/tyrs-hand-ssh-agent/current.sock"))
 	require.True(t, runner.contains("type=bind,source=/host/runtime/"+environmentID.String()+",target=/run/tyrs-hand"))
 	require.True(t, runner.contains("PasswordAuthentication no"))
 	require.True(t, runner.contains("PermitRootLogin no"))

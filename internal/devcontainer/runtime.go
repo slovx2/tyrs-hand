@@ -21,6 +21,8 @@ import (
 const (
 	maxBrowserFileSize   = 25 * 1024 * 1024
 	runtimeSignaturePath = runtimeRoot + "/.codex-runtime-signature"
+	managedSSHConfigPath = "/etc/ssh/ssh_config.d/99-tyrs-hand.conf"
+	sshAgentProfilePath  = "/etc/profile.d/tyrs-hand-ssh-agent.sh"
 )
 
 func (m *Manager) desiredRuntimeSignature() (string, error) {
@@ -54,6 +56,12 @@ func (m *Manager) desiredRuntimeSignature() (string, error) {
 
 // RefreshRemoteRuntime 在 Worker 镜像变化后更新长期运行的环境。
 func (m *Manager) RefreshRemoteRuntime(ctx context.Context, runtime Runtime) (bool, error) {
+	if m.sshEnabled {
+		owner := fmt.Sprintf("%d:%d", runtime.UID, runtime.GID)
+		if err := m.installSSHConfiguration(ctx, runtime.Container, runtime.Home, owner); err != nil {
+			return false, fmt.Errorf("刷新 SSH 配置: %w", err)
+		}
+	}
 	desired, err := m.desiredRuntimeSignature()
 	if err != nil {
 		return false, fmt.Errorf("计算 Codex 运行时签名: %w", err)
@@ -139,7 +147,39 @@ func (m *Manager) installRuntime(ctx context.Context, container string, uid, gid
 	if err != nil || !m.sshEnabled {
 		return err
 	}
-	include := "Include " + filepath.ToSlash(filepath.Join(m.sshAgentDir, "ssh_config"))
+	return m.installSSHConfiguration(ctx, container, home, owner)
+}
+
+func (m *Manager) installSSHConfiguration(ctx context.Context, container, home, owner string) error {
+	source := filepath.Join(m.sshAgentDir, "ssh_config")
+	content, err := os.ReadFile(source)
+	sourceExists := err == nil
+	if errors.Is(err, os.ErrNotExist) {
+		content = []byte("Host *\n")
+	} else if err != nil {
+		return err
+	}
+	checksum := sha256.Sum256(content)
+	expectedChecksum := hex.EncodeToString(checksum[:])
+	currentChecksum, _ := m.docker(ctx, "exec", container, "cat", managedSSHConfigPath+".sha256")
+	if strings.TrimSpace(currentChecksum) == expectedChecksum {
+		return nil
+	}
+	if _, err := m.docker(ctx, "exec", "--user", "0:0", container, "mkdir", "-p",
+		filepath.Dir(managedSSHConfigPath), filepath.Dir(sshAgentProfilePath)); err != nil {
+		return err
+	}
+	temporaryConfig := managedSSHConfigPath + ".tmp"
+	if sourceExists {
+		if _, err := m.docker(ctx, "cp", source, container+":"+temporaryConfig); err != nil {
+			return err
+		}
+	} else if _, err := m.docker(ctx, "exec", "--user", "0:0", container,
+		"/bin/sh", "-c", "printf 'Host *\\n' > "+temporaryConfig); err != nil {
+		return err
+	}
+	include := "Include " + managedSSHConfigPath
+	legacyInclude := "Include " + filepath.ToSlash(filepath.Join(m.sshAgentDir, "ssh_config"))
 	script := `set -eu
 mkdir -p "$TYRS_HOME/.ssh"
 system_config="/etc/ssh/ssh_config"
@@ -147,26 +187,43 @@ system_temporary="$system_config.tyrs-hand.tmp"
 printf '%s\n' "$TYRS_INCLUDE" > "$system_temporary"
 if test -f "$system_config"; then
   while IFS= read -r line || test -n "$line"; do
-    test "$line" = "$TYRS_INCLUDE" || printf '%s\n' "$line"
+    if test "$line" != "$TYRS_INCLUDE" && test "$line" != "$TYRS_LEGACY_INCLUDE"; then
+      printf '%s\n' "$line"
+    fi
   done < "$system_config" >> "$system_temporary"
 fi
 mv "$system_temporary" "$system_config"
 chmod 0644 "$system_config"
 chown 0:0 "$system_config"
+chown 0:0 "$TYRS_MANAGED_CONFIG"
+chmod 0644 "$TYRS_MANAGED_CONFIG"
+mv "$TYRS_MANAGED_CONFIG" "$TYRS_CONFIG"
+printf 'export SSH_AUTH_SOCK=%s\n' "$TYRS_AGENT_SOCKET" > "$TYRS_PROFILE"
+chmod 0644 "$TYRS_PROFILE"
+chown 0:0 "$TYRS_PROFILE"
 config="$TYRS_HOME/.ssh/config"
 if test -f "$config"; then
   temporary="$config.tyrs-hand.tmp"
   : > "$temporary"
   while IFS= read -r line || test -n "$line"; do
-    test "$line" = "$TYRS_INCLUDE" || printf '%s\n' "$line"
+    if test "$line" != "$TYRS_INCLUDE" && test "$line" != "$TYRS_LEGACY_INCLUDE"; then
+      printf '%s\n' "$line"
+    fi
   done < "$config" >> "$temporary"
   mv "$temporary" "$config"
   chmod 0600 "$config"
 fi
 chmod 0700 "$TYRS_HOME/.ssh"
-chown -R "$TYRS_OWNER" "$TYRS_HOME/.ssh"`
+chown -R "$TYRS_OWNER" "$TYRS_HOME/.ssh"
+printf '%s\n' "$TYRS_CHECKSUM" > "$TYRS_CONFIG.sha256"
+chmod 0644 "$TYRS_CONFIG.sha256"
+chown 0:0 "$TYRS_CONFIG.sha256"`
 	_, err = m.docker(ctx, "exec", "--user", "0:0", "--env", "TYRS_HOME="+home,
-		"--env", "TYRS_INCLUDE="+include, "--env", "TYRS_OWNER="+owner,
+		"--env", "TYRS_INCLUDE="+include, "--env", "TYRS_LEGACY_INCLUDE="+legacyInclude,
+		"--env", "TYRS_OWNER="+owner, "--env", "TYRS_MANAGED_CONFIG="+temporaryConfig,
+		"--env", "TYRS_CONFIG="+managedSSHConfigPath, "--env", "TYRS_CHECKSUM="+expectedChecksum,
+		"--env", "TYRS_AGENT_SOCKET="+filepath.Join(m.sshAgentDir, "current.sock"),
+		"--env", "TYRS_PROFILE="+sshAgentProfilePath,
 		container, "/bin/sh", "-c", script)
 	return err
 }

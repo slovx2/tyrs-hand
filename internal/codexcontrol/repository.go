@@ -583,21 +583,25 @@ func (r *Repository) RequeueExpired(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	rows, err := tx.QueryContext(ctx, `SELECT id, active_intent_id, execution_node_id::text
-		FROM codex_thread_controls
+	rows, err := tx.QueryContext(ctx, `SELECT control.id, control.active_intent_id,
+			control.execution_node_id::text, COALESCE(intent.input_surface, '')
+		FROM codex_thread_controls AS control
+		JOIN codex_turn_intents AS intent ON intent.id = control.active_intent_id
 		WHERE lease_expires_at < now() AND active_intent_id IS NOT NULL
-		AND status <> 'reconciling' FOR UPDATE SKIP LOCKED`)
+		AND control.status <> 'reconciling' FOR UPDATE OF control SKIP LOCKED`)
 	if err != nil {
 		return 0, err
 	}
 	type expired struct {
 		controlID, intentID uuid.UUID
 		executionNodeID     sql.NullString
+		inputSurface        string
 	}
 	var values []expired
 	for rows.Next() {
 		var value expired
-		if err := rows.Scan(&value.controlID, &value.intentID, &value.executionNodeID); err != nil {
+		if err := rows.Scan(&value.controlID, &value.intentID, &value.executionNodeID,
+			&value.inputSurface); err != nil {
 			_ = rows.Close()
 			return 0, err
 		}
@@ -607,6 +611,35 @@ func (r *Repository) RequeueExpired(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	for _, value := range values {
+		if value.inputSurface == "desktop" {
+			_, err = tx.ExecContext(ctx, `UPDATE codex_turn_intents SET status = 'failed',
+				last_error_code = 'lease_expired', last_error_message = 'desktop relay lease expired',
+				available_at = now(), finished_at = now(), updated_at = now()
+				WHERE id = $1 AND status IN (
+					'dispatching','awaiting_confirmation','running','reconciling'
+				)`, value.intentID)
+			if err != nil {
+				return 0, err
+			}
+			_, err = tx.ExecContext(ctx, `UPDATE codex_turn_runs SET status = 'failed',
+				active_slot = NULL, error_code = 'lease_expired',
+				error_message = 'desktop relay lease expired', finished_at = now()
+				WHERE control_id = $1 AND active_slot = 1`, value.controlID)
+			if err != nil {
+				return 0, err
+			}
+			_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET status = 'idle',
+				active_intent_id = NULL, remote_status = 'idle',
+				active_codex_turn_id = NULL, active_client_id = NULL,
+				worker_id = NULL, lease_token = NULL, lease_expires_at = NULL,
+				last_error_code = 'lease_expired',
+				last_error_message = 'desktop relay lease expired',
+				next_wakeup_at = NULL, updated_at = now() WHERE id = $1`, value.controlID)
+			if err != nil {
+				return 0, err
+			}
+			continue
+		}
 		_, err = tx.ExecContext(ctx, `UPDATE codex_turn_intents SET status = 'reconciling',
 			last_error_code = 'lease_expired', last_error_message = 'worker lease expired',
 			available_at = now(), updated_at = now()

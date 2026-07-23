@@ -155,3 +155,33 @@ func TestReconcileDesktopIntentReturnsControlToIdleImmediately(t *testing.T) {
 		"desktop_turn_error", errors.New("runtime failed"))
 	require.NoError(t, err)
 }
+
+func TestRequeueExpiredDesktopIntentReturnsControlToIdle(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+	controlID, intentID := uuid.New(), uuid.New()
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT control.id, control.active_intent_id").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"control_id", "intent_id", "execution_node_id", "input_surface",
+		}).AddRow(controlID, intentID, nil, "desktop"))
+	mock.ExpectExec("UPDATE codex_turn_intents SET status = 'failed'").
+		WithArgs(intentID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE codex_turn_runs SET status = 'failed'").
+		WithArgs(controlID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE codex_thread_controls SET status = 'idle'").
+		WithArgs(controlID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	mock.ExpectClose()
+
+	requeued, err := NewRepository(db, time.Minute).RequeueExpired(context.Background())
+	require.NoError(t, err)
+	require.EqualValues(t, 1, requeued)
+}

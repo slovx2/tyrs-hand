@@ -102,7 +102,8 @@ func (m *Manager) remoteContainerCreateArguments(operation RemoteOperation, name
 	}
 	if m.sshEnabled {
 		arguments = append(arguments, "--mount", "type=bind,source="+
-			m.sshAgentHostDir+",target="+m.sshAgentDir)
+			m.sshAgentHostDir+",target="+m.sshAgentDir,
+			"--env", "SSH_AUTH_SOCK="+filepath.Join(m.sshAgentDir, "current.sock"))
 	}
 	if m.browserEnabled {
 		arguments = append(arguments, "--mount", "type=bind,source="+
