@@ -28,8 +28,20 @@ type sshCapabilityStatus struct {
 }
 
 type managedAgent struct {
-	command *exec.Cmd
-	socket  string
+	command     *exec.Cmd
+	socket      string
+	agentSocket string
+	proxy       *unixSocketProxy
+}
+
+type unixSocketProxy struct {
+	listener net.Listener
+	target   string
+
+	mu          sync.Mutex
+	connections map[net.Conn]struct{}
+	closed      bool
+	wg          sync.WaitGroup
 }
 
 type sshAgentManager struct {
@@ -117,24 +129,21 @@ func (m *sshAgentManager) sync(ctx context.Context) error {
 func (m *sshAgentManager) startGeneration(ctx context.Context,
 	configuration workerprotocol.SSHConfiguration,
 ) (*managedAgent, error) {
-	generation := fmt.Sprintf("agent-%d.sock", time.Now().UnixNano())
-	socket := filepath.Join(m.root, generation)
-	command := exec.Command("ssh-agent", "-D", "-a", socket)
+	generation := fmt.Sprintf("agent-%d", time.Now().UnixNano())
+	agentSocket := filepath.Join(m.root, generation+".private.sock")
+	socket := filepath.Join(m.root, generation+".sock")
+	command := exec.Command("ssh-agent", "-D", "-a", agentSocket)
 	command.Stdout, command.Stderr = io.Discard, io.Discard
 	if err := command.Start(); err != nil {
 		return nil, fmt.Errorf("启动 ssh-agent: %w", err)
 	}
-	managed := &managedAgent{command: command, socket: socket}
+	managed := &managedAgent{command: command, socket: socket, agentSocket: agentSocket}
 	go func() { _ = command.Wait() }()
-	if err := waitForSocket(ctx, socket); err != nil {
+	if err := waitForSocket(ctx, agentSocket); err != nil {
 		_ = stopAgent(managed)
 		return nil, err
 	}
-	if err := os.Chmod(socket, 0o666); err != nil {
-		_ = stopAgent(managed)
-		return nil, err
-	}
-	if err := m.loadKeys(socket, configuration.Credentials); err != nil {
+	if err := m.loadKeys(agentSocket, configuration.Credentials); err != nil {
 		_ = stopAgent(managed)
 		return nil, err
 	}
@@ -142,7 +151,109 @@ func (m *sshAgentManager) startGeneration(ctx context.Context,
 		_ = stopAgent(managed)
 		return nil, err
 	}
+	proxy, err := startUnixSocketProxy(socket, agentSocket)
+	if err != nil {
+		_ = stopAgent(managed)
+		return nil, err
+	}
+	managed.proxy = proxy
 	return managed, nil
+}
+
+func startUnixSocketProxy(socket, target string) (*unixSocketProxy, error) {
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		return nil, fmt.Errorf("启动 ssh-agent Socket 代理: %w", err)
+	}
+	if err := os.Chmod(socket, 0o666); err != nil {
+		_ = listener.Close()
+		_ = os.Remove(socket)
+		return nil, err
+	}
+	proxy := &unixSocketProxy{listener: listener, target: target,
+		connections: make(map[net.Conn]struct{})}
+	proxy.wg.Add(1)
+	go proxy.serve()
+	return proxy, nil
+}
+
+func (p *unixSocketProxy) serve() {
+	defer p.wg.Done()
+	for {
+		connection, err := p.listener.Accept()
+		if err != nil {
+			return
+		}
+		if !p.track(connection) {
+			_ = connection.Close()
+			return
+		}
+		p.wg.Add(1)
+		go p.forward(connection)
+	}
+}
+
+func (p *unixSocketProxy) forward(source net.Conn) {
+	defer p.wg.Done()
+	defer p.untrack(source)
+	target, err := net.Dial("unix", p.target)
+	if err != nil {
+		_ = source.Close()
+		return
+	}
+	if !p.track(target) {
+		_ = source.Close()
+		_ = target.Close()
+		return
+	}
+	defer p.untrack(target)
+	done := make(chan struct{}, 2)
+	go func() {
+		_, _ = io.Copy(target, source)
+		done <- struct{}{}
+	}()
+	go func() {
+		_, _ = io.Copy(source, target)
+		done <- struct{}{}
+	}()
+	<-done
+	_ = source.Close()
+	_ = target.Close()
+	<-done
+}
+
+func (p *unixSocketProxy) track(connection net.Conn) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return false
+	}
+	p.connections[connection] = struct{}{}
+	return true
+}
+
+func (p *unixSocketProxy) untrack(connection net.Conn) {
+	p.mu.Lock()
+	delete(p.connections, connection)
+	p.mu.Unlock()
+}
+
+func (p *unixSocketProxy) Close() {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return
+	}
+	p.closed = true
+	_ = p.listener.Close()
+	for connection := range p.connections {
+		_ = connection.Close()
+	}
+	p.mu.Unlock()
+	p.wg.Wait()
 }
 
 func waitForSocket(ctx context.Context, path string) error {
@@ -239,11 +350,16 @@ func switchSymlink(link, target string) error {
 }
 
 func stopAgent(value *managedAgent) error {
-	if value == nil || value.command == nil || value.command.Process == nil {
+	if value == nil {
+		return nil
+	}
+	value.proxy.Close()
+	_ = os.Remove(value.socket)
+	_ = os.Remove(value.agentSocket)
+	if value.command == nil || value.command.Process == nil {
 		return nil
 	}
 	err := value.command.Process.Kill()
-	_ = os.Remove(value.socket)
 	if errors.Is(err, os.ErrProcessDone) {
 		return nil
 	}

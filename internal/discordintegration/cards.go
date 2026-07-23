@@ -52,8 +52,7 @@ func conversationProgressCard(state ConversationProgress, timeline ConversationT
 		header, color, footer = "⏹️ Codex · 已停止", cardColorGray,
 			"本轮不会再发送回复 · 不展示工具返回内容"
 	case ConversationFailed:
-		header, color, footer = "❌ Codex · 处理失败", cardColorRed,
-			"后台已记录错误，可稍后重试 · 不展示工具返回内容"
+		header, color, footer = "❌ Codex · 处理失败", cardColorRed, ""
 	}
 	if len(timeline.Pages) == 0 {
 		timeline.Pages = []string{"正在处理请求。"}

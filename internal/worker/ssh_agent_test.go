@@ -56,6 +56,10 @@ func TestSSHAgentGenerationLoadsKeysAndWritesPublicConfig(t *testing.T) {
 	managed, err := manager.startGeneration(context.Background(), configuration)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = stopAgent(managed) })
+	require.NotEqual(t, managed.socket, managed.agentSocket)
+	socketInfo, err := os.Stat(managed.socket)
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o666), socketInfo.Mode().Perm())
 
 	connection, err := net.Dial("unix", managed.socket)
 	require.NoError(t, err)
@@ -75,6 +79,29 @@ func TestSSHAgentGenerationLoadsKeysAndWritesPublicConfig(t *testing.T) {
 	publicFile, err := os.ReadFile(filepath.Join(manager.root, "keys", credentialID.String()+".pub"))
 	require.NoError(t, err)
 	require.Contains(t, string(publicFile), "ssh-rsa")
+}
+
+func TestSSHAgentProxyStopsConnectionsAndRemovesSockets(t *testing.T) {
+	if _, err := exec.LookPath("ssh-agent"); err != nil {
+		t.Skip("系统没有 ssh-agent")
+	}
+	root, err := os.MkdirTemp("/tmp", "tyrs-ssh-proxy-")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "keys"), 0o755))
+	manager := newSSHAgentManager(root, nil, zap.NewNop())
+	managed, err := manager.startGeneration(context.Background(),
+		workerprotocol.SSHConfiguration{Revision: "empty"})
+	require.NoError(t, err)
+
+	connection, err := net.Dial("unix", managed.socket)
+	require.NoError(t, err)
+	_, err = agent.NewClient(connection).List()
+	require.NoError(t, err)
+	require.NoError(t, stopAgent(managed))
+	require.NoError(t, connection.Close())
+	require.NoFileExists(t, managed.socket)
+	require.NoFileExists(t, managed.agentSocket)
 }
 
 func TestSSHAgentGenerationSupportsEncryptedKeysAndRejectsInvalidGeneration(t *testing.T) {

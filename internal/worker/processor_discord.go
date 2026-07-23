@@ -261,7 +261,7 @@ func discordFailureProjection(ctx context.Context, db *sql.DB, jobID uuid.UUID,
 	if discordStopRequested(ctx, db, jobID, cause) {
 		return discordintegration.ConversationCanceled, "本轮已由 Discord 用户主动停止。"
 	}
-	return discordintegration.ConversationFailed, "后台已记录错误，可稍后重试或联系管理员。"
+	return discordintegration.ConversationFailed, "本轮处理未完成。"
 }
 
 func (p *Processor) projectDiscordConversation(ctx context.Context, jobCtx discordJobContext,

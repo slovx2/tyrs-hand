@@ -370,7 +370,7 @@ func TestDiscordStopUsesCanceledProjection(t *testing.T) {
 
 	state, detail = discordFailureProjection(context.Background(), nil, uuid.Nil, errors.New("runtime failed"))
 	require.Equal(t, discordintegration.ConversationFailed, state)
-	require.Contains(t, detail, "后台已记录")
+	require.Equal(t, "本轮处理未完成。", detail)
 }
 
 func TestDiscordStopSurvivesHeartbeatCancellationRace(t *testing.T) {

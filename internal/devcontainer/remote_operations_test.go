@@ -84,6 +84,25 @@ func TestRefreshRemoteRuntimeOnlyWhenWorkerBinariesChange(t *testing.T) {
 	require.True(t, staleRunner.contains("TYRS_RUNTIME_SIGNATURE="+signature))
 }
 
+func TestInstallRuntimeUsesSystemSSHConfigAndRemovesLegacyUserInclude(t *testing.T) {
+	root := t.TempDir()
+	codexBin := filepath.Join(root, "codex-real")
+	proxyBin := filepath.Join(root, "codex")
+	require.NoError(t, os.WriteFile(codexBin, []byte("codex"), 0o755))
+	require.NoError(t, os.WriteFile(proxyBin, []byte("proxy"), 0o755))
+	runner := &recordingCommandRunner{}
+	manager := &Manager{dockerBin: "docker", dockerHost: "inherit", runner: runner,
+		codexBin: codexBin, codexProxyBin: proxyBin, sshEnabled: true,
+		sshAgentDir: "/run/tyrs-hand-ssh-agent"}
+
+	require.NoError(t, manager.installRuntime(context.Background(), "development",
+		1000, 1000, "/home/vscode"))
+	require.True(t, runner.contains(`TYRS_INCLUDE=Include /run/tyrs-hand-ssh-agent/ssh_config`))
+	require.True(t, runner.contains(`system_config="/etc/ssh/ssh_config"`))
+	require.True(t, runner.contains(`config="$TYRS_HOME/.ssh/config"`))
+	require.True(t, runner.contains(`test "$line" = "$TYRS_INCLUDE"`))
+}
+
 func TestRunRemoteDevelopmentOperations(t *testing.T) {
 	runner := &recordingCommandRunner{}
 	manager := &Manager{enabled: true, dockerBin: "docker", dockerHost: "inherit", runner: runner}

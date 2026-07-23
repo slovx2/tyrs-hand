@@ -80,8 +80,7 @@ func (p *RemoteProcessor) reconcileRemoteTurn(ctx context.Context, runtime *code
 		return result, true, resultErr
 	}
 	if !isActiveCodexTurnStatus(turn.Status) {
-		return codexcontrol.TurnResult{}, false,
-			fmt.Errorf("codex turn 快照终态为 %s", turn.Status)
+		return codexcontrol.TurnResult{}, false, remoteTurnTerminalError("快照", turn.Status)
 	}
 	result, err := p.waitRemoteTurn(ctx, runtime, events, task, threadID, turn.ID,
 		commands, handleCommand, report)
@@ -137,7 +136,7 @@ func (p *RemoteProcessor) waitRemoteTurn(ctx context.Context, runtime *codex.Run
 			if event.Method == "turn/completed" {
 				_, status := completedTurn(event.Params, threadID, turnID)
 				if status != "completed" {
-					return codexcontrol.TurnResult{}, fmt.Errorf("codex turn 结束状态为 %s", status)
+					return codexcontrol.TurnResult{}, remoteTurnTerminalError("结束", status)
 				}
 				if finalAnswer == "" {
 					finalAnswer = p.remoteFinalAnswer(ctx, runtime, threadID, turnID)
@@ -161,8 +160,8 @@ func (p *RemoteProcessor) waitRemoteTurn(ctx context.Context, runtime *codex.Run
 				return remoteCompletedResult(turn.FinalAnswer(), turn.ID,
 					time.Since(startedAt).Milliseconds(), "thread/read")
 			}
-			if found && (turn.Status == "failed" || turn.Status == "interrupted") {
-				return codexcontrol.TurnResult{}, fmt.Errorf("codex turn 快照终态为 %s", turn.Status)
+			if found && !isActiveCodexTurnStatus(turn.Status) {
+				return codexcontrol.TurnResult{}, remoteTurnTerminalError("快照", turn.Status)
 			}
 		case command := <-commands:
 			if appliedCommands[command.ID] {
@@ -222,11 +221,24 @@ func (p *RemoteProcessor) remoteSnapshotTerminal(ctx context.Context, runtime *c
 	if !found {
 		turn, found = snapshot.TurnByClientID(task.Claimed.ID.String())
 	}
-	if !found || turn.Status != "completed" {
+	if !found {
 		return codexcontrol.TurnResult{}, errors.New("codex stdio 在 turn 完成前关闭")
+	}
+	if turn.Status != "completed" {
+		return codexcontrol.TurnResult{}, remoteTurnTerminalError("快照", turn.Status)
 	}
 	return remoteCompletedResult(turn.FinalAnswer(), turn.ID,
 		time.Since(startedAt).Milliseconds(), "thread/read")
+}
+
+func remoteTurnTerminalError(evidence, status string) error {
+	message := fmt.Sprintf("codex turn %s状态为 %s", evidence, status)
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "interrupted", "cancelled", "canceled":
+		return fmt.Errorf("%s: %w", message, errRemoteInterrupt)
+	default:
+		return errors.New(message)
+	}
 }
 
 func remoteCompletedResult(finalAnswer, turnID string, durationMillis int64,

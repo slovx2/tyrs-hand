@@ -142,15 +142,28 @@ func (m *Manager) installRuntime(ctx context.Context, container string, uid, gid
 	include := "Include " + filepath.ToSlash(filepath.Join(m.sshAgentDir, "ssh_config"))
 	script := `set -eu
 mkdir -p "$TYRS_HOME/.ssh"
+system_config="/etc/ssh/ssh_config"
+system_temporary="$system_config.tyrs-hand.tmp"
+printf '%s\n' "$TYRS_INCLUDE" > "$system_temporary"
+if test -f "$system_config"; then
+  while IFS= read -r line || test -n "$line"; do
+    test "$line" = "$TYRS_INCLUDE" || printf '%s\n' "$line"
+  done < "$system_config" >> "$system_temporary"
+fi
+mv "$system_temporary" "$system_config"
+chmod 0644 "$system_config"
+chown 0:0 "$system_config"
 config="$TYRS_HOME/.ssh/config"
-if ! test -f "$config" || ! grep -Fqx "$TYRS_INCLUDE" "$config"; then
+if test -f "$config"; then
   temporary="$config.tyrs-hand.tmp"
-  printf '%s\n' "$TYRS_INCLUDE" > "$temporary"
-  test ! -f "$config" || cat "$config" >> "$temporary"
+  : > "$temporary"
+  while IFS= read -r line || test -n "$line"; do
+    test "$line" = "$TYRS_INCLUDE" || printf '%s\n' "$line"
+  done < "$config" >> "$temporary"
   mv "$temporary" "$config"
+  chmod 0600 "$config"
 fi
 chmod 0700 "$TYRS_HOME/.ssh"
-chmod 0600 "$config"
 chown -R "$TYRS_OWNER" "$TYRS_HOME/.ssh"`
 	_, err = m.docker(ctx, "exec", "--user", "0:0", "--env", "TYRS_HOME="+home,
 		"--env", "TYRS_INCLUDE="+include, "--env", "TYRS_OWNER="+owner,

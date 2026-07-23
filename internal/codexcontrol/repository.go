@@ -466,7 +466,7 @@ func (r *Repository) Reconcile(ctx context.Context, claimed *ClaimedControl, cod
 	intentStatus, controlStatus := "retry_wait", "reconciling"
 	available := "now() + interval '15 seconds'"
 	if terminal {
-		intentStatus, controlStatus, available = "failed", "error", "now()"
+		intentStatus, controlStatus, available = "failed", "idle", "now()"
 	}
 	_, err = tx.ExecContext(ctx, fmt.Sprintf(`UPDATE codex_turn_intents SET status = $2,
 		last_error_code = $3, last_error_message = $4, available_at = %s,
@@ -478,9 +478,14 @@ func (r *Repository) Reconcile(ctx context.Context, claimed *ClaimedControl, cod
 	}
 	if err == nil {
 		_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET status = $2,
-			active_intent_id = CASE WHEN $2 = 'error' THEN active_intent_id ELSE NULL END,
+			active_intent_id = CASE WHEN $2 = 'reconciling' THEN active_intent_id ELSE NULL END,
+			remote_status = CASE WHEN $2 = 'idle' THEN 'idle' ELSE remote_status END,
+			active_codex_turn_id = CASE WHEN $2 = 'idle' THEN NULL ELSE active_codex_turn_id END,
+			active_client_id = CASE WHEN $2 = 'idle' THEN NULL ELSE active_client_id END,
 			worker_id = NULL, lease_token = NULL, lease_expires_at = NULL,
-			last_error_code = $3, last_error_message = $4, next_wakeup_at = now() + interval '15 seconds',
+			last_error_code = $3, last_error_message = $4,
+			next_wakeup_at = CASE WHEN $2 = 'reconciling'
+				THEN now() + interval '15 seconds' ELSE NULL END,
 			updated_at = now() WHERE id = $1`, claimed.ControlID, controlStatus, code, message)
 	}
 	if err != nil {

@@ -421,8 +421,12 @@ func (s *Server) workerRunFail(c *gin.Context) {
 		badRequest(c, errors.New("失败请求缺少幂等键"))
 		return
 	}
+	expectedStatus := "failed"
+	if request.Code == "user_interrupt" {
+		expectedStatus = "canceled"
+	}
 	if finished, err := s.remoteRunAlreadyFinished(c.Request.Context(), runID, node.ID,
-		request.IdempotencyKey, "failed"); err != nil {
+		request.IdempotencyKey, expectedStatus); err != nil {
 		remoteRunError(c, "检查远程任务失败状态失败", err)
 		return
 	} else if finished {
@@ -447,7 +451,7 @@ func (s *Server) workerRunFail(c *gin.Context) {
 		guildID, threadID, targetErr := s.discordProjectionTarget(c.Request.Context(), claimed)
 		if targetErr == nil {
 			state := discordintegration.ConversationFailed
-			detail := "后台已记录错误，可稍后重试或联系管理员。"
+			detail := "本轮处理未完成。"
 			if request.Code == "user_interrupt" {
 				state = discordintegration.ConversationCanceled
 				detail = "本轮已由 Discord 用户主动停止。"
