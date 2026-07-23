@@ -129,18 +129,22 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 		discord_conversation_id, discord_message_id, repository_id, agent_profile_id,
 		webhook_delivery_id, trigger_rule_id, trigger_evidence, idempotency_key,
 		instruction, skills, allowed_tools, dangerous_actions, priority,
-		actor_login, actor_permission, reply_policy, reply_status, status, input_surface)
+		actor_login, actor_permission, actor_participant_id, actor_display_name,
+		reply_policy, reply_status, status, input_surface)
 		VALUES ($1,$2,$3,NULLIF($4,''),$5,NULLIF($6::text,'')::uuid,NULLIF($7::text,'')::uuid,
 		NULLIF($8,''),NULLIF($9::text,'')::uuid,$10,NULLIF($11::text,'')::uuid,
-		NULLIF($12::text,'')::uuid,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,
-		CASE WHEN $22 = 'required' THEN 'pending' ELSE 'skipped' END, $23, NULLIF($24,''))
+		NULLIF($12::text,'')::uuid,$13,$14,$15,$16,$17,$18,$19,$20,$21,
+		NULLIF($22::text,'')::uuid,$23,$24,
+		CASE WHEN $24 = 'required' THEN 'pending' ELSE 'skipped' END,
+		$25, NULLIF($26,''))
 		ON CONFLICT(idempotency_key) DO NOTHING RETURNING id`, controlID, sequence,
 		request.Operation, request.Behavior, request.SourceType, nilUUID(request.WorkItemID),
 		nilUUID(request.DiscordConversationID), request.DiscordMessageID, nilUUID(request.RepositoryID),
 		request.AgentProfileID, nilUUID(request.WebhookDeliveryID), nilUUID(request.TriggerRuleID),
 		defaultJSON(request.TriggerEvidence), request.IdempotencyKey, request.Instruction,
 		encode(request.Skills), encode(request.AllowedTools), encode(request.DangerousActions),
-		request.Priority, request.ActorLogin, request.ActorPermission, request.ReplyPolicy,
+		request.Priority, request.ActorLogin, request.ActorPermission,
+		nilUUID(request.ActorParticipantID), request.ActorDisplayName, request.ReplyPolicy,
 		initialStatus, inputSurface).Scan(&intentID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return uuid.Nil, false, nil
@@ -228,13 +232,14 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 	}
 	var claimed ClaimedControl
 	var skillsJSON, toolsJSON, dangerousJSON []byte
-	var workItemID, conversationID, repositoryID, discordMessageID sql.NullString
+	var workItemID, conversationID, repositoryID, discordMessageID, actorParticipantID sql.NullString
 	var externalThreadID, codexHomeKey, providerSignature sql.NullString
 	err = tx.QueryRowContext(ctx, `SELECT i.id, i.sequence_no, i.operation, COALESCE(i.behavior,''),
 		i.source_type, COALESCE(i.input_surface,''), i.work_item_id::text, i.discord_conversation_id::text,
 		i.repository_id::text, i.agent_profile_id, COALESCE(i.discord_message_id,''),
 		i.instruction, i.skills, i.allowed_tools, i.dangerous_actions,
-		i.actor_login, i.actor_permission, i.reply_policy, i.reply_status,
+		i.actor_login, i.actor_permission, i.actor_participant_id::text,
+		i.actor_display_name, i.reply_policy, i.reply_status,
 		i.attempt_count + 1, $2::integer, COALESCE(i.codex_submission_id,''),
 		COALESCE(i.confirmed_codex_turn_id,''), i.created_at,
 		c.external_thread_id, c.codex_home_key, c.provider_signature, c.lease_epoch + 1
@@ -246,7 +251,8 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 		&claimed.SourceType, &claimed.InputSurface, &workItemID, &conversationID, &repositoryID,
 		&claimed.AgentProfileID, &discordMessageID, &claimed.Instruction,
 		&skillsJSON, &toolsJSON, &dangerousJSON, &claimed.ActorLogin,
-		&claimed.ActorPermission, &claimed.ReplyPolicy, &claimed.ReplyStatus,
+		&claimed.ActorPermission, &actorParticipantID, &claimed.ActorDisplayName,
+		&claimed.ReplyPolicy, &claimed.ReplyStatus,
 		&claimed.Attempt, &claimed.MaxAttempts, &claimed.SubmissionID, &claimed.ConfirmedTurnID,
 		&claimed.CreatedAt, &externalThreadID, &codexHomeKey, &providerSignature,
 		&claimed.LeaseEpoch)
@@ -259,6 +265,12 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 	claimed.ExternalThreadID = externalThreadID.String
 	claimed.CodexHomeKey = codexHomeKey.String
 	claimed.ProviderSignature = providerSignature.String
+	if actorParticipantID.Valid {
+		claimed.ActorParticipantID, err = uuid.Parse(actorParticipantID.String)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if err := parseUUIDs(&claimed.Intent, workItemID.String, conversationID.String, repositoryID.String); err != nil {
 		return nil, err
 	}

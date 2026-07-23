@@ -88,7 +88,7 @@ var methodClasses = map[string]methodClass{
 	"thread/resume":      methodForward,
 	"thread/unsubscribe": methodForward,
 	"turn/interrupt":     methodForward,
-	"turn/steer":         methodForward,
+	"turn/steer":         methodControlled,
 
 	// 环境由单个用户独占，Desktop 的账号、配置与插件操作优先保持官方行为。
 	// 这些写入会影响共享 CODEX_HOME，后续若增加多租户再在 Control 层收紧。

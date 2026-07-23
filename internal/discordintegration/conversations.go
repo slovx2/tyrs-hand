@@ -14,6 +14,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/codexsettings"
+	"github.com/slovx2/tyrs-hand/internal/participantidentity"
 )
 
 type IncomingMessage struct {
@@ -420,7 +421,7 @@ func (s *ConversationService) insertMessage(ctx context.Context, tx *sql.Tx, con
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return false, err
 	}
-	participantID := uuid.NewSHA1(uuid.NameSpaceURL, []byte("discord://"+input.GuildID+"/users/"+input.DiscordUserID))
+	participantID := participantidentity.ID(input.GuildID, input.DiscordUserID)
 	result, err := tx.ExecContext(ctx, `INSERT INTO discord_input_messages
 		(message_id, conversation_id, discord_user_id, participant_id, display_name, username,
 		github_binding_id, github_user_id, github_login, binding_version, access_snapshot, body)
@@ -461,14 +462,17 @@ func (s *ConversationService) enqueueMessage(ctx context.Context, tx *sql.Tx, co
 	var repositoryID sql.NullString
 	var profileID uuid.UUID
 	var contextVersion int64
-	var body, actor, permission string
+	var body, actor, permission, actorDisplayName string
+	var actorParticipantID uuid.UUID
 	var allowedJSON []byte
 	err := tx.QueryRowContext(ctx, `SELECT c.repository_id::text, c.agent_profile_id, c.context_version,
-		m.body, COALESCE(m.github_login, ''), m.access_snapshot, p.allowed_tools
+		m.body, COALESCE(m.github_login, ''), m.access_snapshot, m.participant_id,
+		m.display_name, p.allowed_tools
 		FROM discord_conversations c JOIN discord_input_messages m ON m.conversation_id = c.id
 		JOIN agent_profiles p ON p.id = c.agent_profile_id
 		WHERE c.id = $1 AND m.message_id = $2`, conversationID, messageID).Scan(
-		&repositoryID, &profileID, &contextVersion, &body, &actor, &permission, &allowedJSON)
+		&repositoryID, &profileID, &contextVersion, &body, &actor, &permission,
+		&actorParticipantID, &actorDisplayName, &allowedJSON)
 	if err != nil {
 		return err
 	}
@@ -488,6 +492,7 @@ func (s *ConversationService) enqueueMessage(ctx context.Context, tx *sql.Tx, co
 		DiscordMessageID: messageID, RepositoryID: repository, AgentProfileID: profileID,
 		ContextVersion: contextVersion, IdempotencyKey: "discord:message:" + messageID,
 		Instruction: body, AllowedTools: allowed, ActorLogin: actor, ActorPermission: permission,
+		ActorParticipantID: actorParticipantID, ActorDisplayName: actorDisplayName,
 		ReplyPolicy: "silent", Behavior: "steer_if_active",
 	})
 	return err

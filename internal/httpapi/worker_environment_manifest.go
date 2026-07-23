@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/participantidentity"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
@@ -15,9 +16,13 @@ func (s *Server) workerDevelopmentEnvironments(c *gin.Context) {
 		COALESCE(container_id,''), COALESCE(image_ref,''), data_volume_name,
 		home_volume_name, network_name, COALESCE(runtime_user,''), COALESCE(runtime_uid,0),
 		COALESCE(runtime_gid,0), COALESCE(runtime_home,''), COALESCE(ssh_public_key,''),
-		COALESCE(ssh_port,0), ssh_config_revision, ssh_applied_revision
-		FROM discord_development_environments
-		WHERE execution_node_id = $1 AND status NOT IN ('deleting','pending','building')
+		COALESCE(ssh_port,0), ssh_config_revision, ssh_applied_revision,
+		COALESCE(e.ssh_discord_user_id, ''),
+		COALESCE(NULLIF(m.display_name, ''), m.username, ''), e.guild_id
+		FROM discord_development_environments e
+		LEFT JOIN discord_members m ON m.guild_id = e.guild_id
+			AND m.discord_user_id = e.ssh_discord_user_id
+		WHERE execution_node_id = $1 AND e.status NOT IN ('deleting','pending','building')
 		AND container_id IS NOT NULL ORDER BY created_at, id`, workerNode(c).ID)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取开发环境 Manifest 失败", err)
@@ -27,13 +32,20 @@ func (s *Server) workerDevelopmentEnvironments(c *gin.Context) {
 	environments := make([]workerprotocol.EnvironmentManifest, 0)
 	for rows.Next() {
 		var item workerprotocol.EnvironmentManifest
+		var sshUserID, sshDisplayName, guildID string
 		if err := rows.Scan(&item.EnvironmentID, &item.ContainerName, &item.ContainerID,
 			&item.ImageRef, &item.DataVolume, &item.HomeVolume, &item.Network,
 			&item.RuntimeUser, &item.RuntimeUID, &item.RuntimeGID, &item.RuntimeHome,
 			&item.SSHPublicKey, &item.SSHPort, &item.SSHConfigRevision,
-			&item.AppliedRevision); err != nil {
+			&item.AppliedRevision, &sshUserID, &sshDisplayName, &guildID); err != nil {
 			problem(c, http.StatusInternalServerError, "解析开发环境 Manifest 失败", err)
 			return
+		}
+		if sshUserID != "" {
+			item.SSHParticipant = &workerprotocol.ParticipantIdentity{
+				ParticipantID: participantidentity.ID(guildID, sshUserID),
+				DiscordUserID: sshUserID, DisplayName: sshDisplayName,
+			}
 		}
 		environments = append(environments, item)
 	}

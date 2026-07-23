@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/slovx2/tyrs-hand/internal/participantidentity"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/stretchr/testify/require"
 )
@@ -44,11 +45,12 @@ func TestThreadPayloadAndSkillInput(t *testing.T) {
 	require.Equal(t, "review", items[1]["name"])
 
 	image := filepath.Join(root, "image.png")
+	participant := participantidentity.Participant{
+		ID: participantidentity.ID("guild", "user"), DisplayName: "Alice",
+	}
 	input := ports.TurnInput{
 		Text: "look", LocalImages: []ports.LocalImageInput{{Path: image, Detail: "high"}},
-		AdditionalContext: map[string]ports.AdditionalContextEntry{
-			"discord_message_identity": {Kind: "application", Value: `{"message_id":"1"}`},
-		},
+		AdditionalContext: participantidentity.AdditionalContext(participant),
 	}
 	items = userInput(input)
 	require.Equal(t, "localImage", items[1]["type"])
@@ -56,7 +58,8 @@ func TestThreadPayloadAndSkillInput(t *testing.T) {
 	payload = map[string]any{}
 	addTurnContext(payload, input.AdditionalContext)
 	context := payload["additionalContext"].(map[string]map[string]string)
-	require.Equal(t, "application", context["discord_message_identity"]["kind"])
+	require.Equal(t, "application", context[participantidentity.IdentityContextKey]["kind"])
+	require.Equal(t, "untrusted", context[participantidentity.ProfileContextKey]["kind"])
 }
 
 func TestPoolRoutesByThreadAndReleasesJobProcess(t *testing.T) {

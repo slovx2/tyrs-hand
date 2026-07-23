@@ -9,7 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 2
+const Version = 3
 
 type EnrollRequest struct {
 	Token string `json:"token"`
@@ -102,22 +102,29 @@ type DevelopmentOperationTerminal struct {
 }
 
 type EnvironmentManifest struct {
-	EnvironmentID     uuid.UUID          `json:"environmentId"`
-	ContainerName     string             `json:"containerName"`
-	ContainerID       string             `json:"containerId,omitempty"`
-	ImageRef          string             `json:"imageRef,omitempty"`
-	DataVolume        string             `json:"dataVolume"`
-	HomeVolume        string             `json:"homeVolume"`
-	Network           string             `json:"network"`
-	RuntimeUser       string             `json:"runtimeUser,omitempty"`
-	RuntimeUID        int64              `json:"runtimeUid,omitempty"`
-	RuntimeGID        int64              `json:"runtimeGid,omitempty"`
-	RuntimeHome       string             `json:"runtimeHome,omitempty"`
-	SSHPublicKey      string             `json:"sshPublicKey,omitempty"`
-	SSHPort           int                `json:"sshPort,omitempty"`
-	SSHConfigRevision int64              `json:"sshConfigRevision"`
-	AppliedRevision   int64              `json:"appliedRevision"`
-	Forums            []EnvironmentForum `json:"forums"`
+	EnvironmentID     uuid.UUID            `json:"environmentId"`
+	ContainerName     string               `json:"containerName"`
+	ContainerID       string               `json:"containerId,omitempty"`
+	ImageRef          string               `json:"imageRef,omitempty"`
+	DataVolume        string               `json:"dataVolume"`
+	HomeVolume        string               `json:"homeVolume"`
+	Network           string               `json:"network"`
+	RuntimeUser       string               `json:"runtimeUser,omitempty"`
+	RuntimeUID        int64                `json:"runtimeUid,omitempty"`
+	RuntimeGID        int64                `json:"runtimeGid,omitempty"`
+	RuntimeHome       string               `json:"runtimeHome,omitempty"`
+	SSHPublicKey      string               `json:"sshPublicKey,omitempty"`
+	SSHPort           int                  `json:"sshPort,omitempty"`
+	SSHConfigRevision int64                `json:"sshConfigRevision"`
+	AppliedRevision   int64                `json:"appliedRevision"`
+	SSHParticipant    *ParticipantIdentity `json:"sshParticipant,omitempty"`
+	Forums            []EnvironmentForum   `json:"forums"`
+}
+
+type ParticipantIdentity struct {
+	ParticipantID uuid.UUID `json:"participantId"`
+	DiscordUserID string    `json:"discordUserId"`
+	DisplayName   string    `json:"displayName"`
 }
 
 type EnvironmentForum struct {
@@ -181,6 +188,12 @@ type DesktopThreadFailRequest struct {
 type DesktopTurnPrepareRequest struct {
 	EnvironmentID uuid.UUID       `json:"environmentId"`
 	WorkerID      string          `json:"workerId"`
+	RequestKey    string          `json:"requestKey"`
+	Params        json.RawMessage `json:"params"`
+}
+
+type DesktopSteerRecordRequest struct {
+	EnvironmentID uuid.UUID       `json:"environmentId"`
 	RequestKey    string          `json:"requestKey"`
 	Params        json.RawMessage `json:"params"`
 }

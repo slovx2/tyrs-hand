@@ -169,6 +169,12 @@ func (c *Client) PrepareDesktopTurn(ctx context.Context,
 	return result, err
 }
 
+func (c *Client) RecordDesktopSteer(ctx context.Context,
+	request DesktopSteerRecordRequest,
+) error {
+	return c.call(ctx, http.MethodPost, "/worker/v1/desktop-steers", request, nil, true)
+}
+
 func (c *Client) RegisterInteractive(ctx context.Context, task *Task,
 	requestID, params json.RawMessage, generation int64,
 ) (InteractiveState, error) {

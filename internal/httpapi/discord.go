@@ -169,7 +169,8 @@ func (s *Server) putDiscordDevelopmentEnvironmentSSH(c *gin.Context) {
 		return
 	}
 	s.audit(c, "discord.development_environment.ssh.update", "discord_development_environment",
-		id.String(), map[string]any{"port": input.Port, "fingerprint": fingerprint})
+		id.String(), map[string]any{"port": input.Port, "fingerprint": fingerprint,
+			"discordUserId": input.DiscordUserID})
 	c.Status(http.StatusAccepted)
 }
 

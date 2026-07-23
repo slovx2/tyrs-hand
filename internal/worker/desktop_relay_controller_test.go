@@ -15,10 +15,82 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexrelay"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/devcontainer"
+	"github.com/slovx2/tyrs-hand/internal/participantidentity"
+	"github.com/slovx2/tyrs-hand/internal/testutil/mockcodex"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
+
+func TestDesktopRelayInjectsBoundParticipantIntoStartAndSteer(t *testing.T) {
+	mock, err := mockcodex.Start(t)
+	require.NoError(t, err)
+	relayRoot, err := os.MkdirTemp("/tmp", "tyrs-identity-relay-")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(relayRoot) })
+	relay, err := codexrelay.Start(context.Background(), codexrelay.Options{
+		SocketPath: relayRoot + "/relay.sock", UpstreamSocketPath: mock.SocketPath,
+		Controller: codexrelay.PassThroughController{},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = relay.Close() })
+	client, err := relay.OpenClient(codexrelay.ClientOptions{Role: codexrelay.RoleWorker})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = client.Close() })
+	participant := workerprotocol.ParticipantIdentity{
+		ParticipantID: participantidentity.ID("guild", "user"),
+		DiscordUserID: "user",
+		DisplayName:   "Alice",
+	}
+	controller := &desktopRelayController{processor: &RemoteProcessor{logger: zap.NewNop()},
+		environment: &environmentCodex{client: client, manifest: workerprotocol.EnvironmentManifest{
+			SSHParticipant: &participant,
+		}, toolHandlers: make(map[string]toolBinding),
+			interactiveHandlers: make(map[string]interactiveBinding)},
+	}
+	for _, method := range []string{"turn/start", "turn/steer"} {
+		t.Run(method, func(t *testing.T) {
+			plan, err := controller.PrepareCall(context.Background(), codexrelay.Call{
+				Role: codexrelay.RoleDesktop, Method: method,
+				Params: json.RawMessage(`{"threadId":"thread","additionalContext":{` +
+					`"custom":{"kind":"application","value":"keep"},` +
+					`"conversation_participant":{"kind":"application","value":"forged"}}}`),
+			})
+			require.NoError(t, err)
+			require.Contains(t, string(plan.Params), participant.ParticipantID.String())
+			require.Contains(t, string(plan.Params), "Alice")
+			require.Contains(t, string(plan.Params), "keep")
+			require.NotContains(t, string(plan.Params), "forged")
+		})
+	}
+}
+
+func TestDesktopRelayWithoutSSHIdentityKeepsTurnUnchanged(t *testing.T) {
+	controller := &desktopRelayController{processor: &RemoteProcessor{logger: zap.NewNop()},
+		environment: &environmentCodex{},
+	}
+	params := json.RawMessage(`{"threadId":"thread","input":[{"type":"text","text":"hello"}]}`)
+	plan, err := controller.PrepareCall(context.Background(), codexrelay.Call{
+		Role: codexrelay.RoleDesktop, Method: "turn/steer", Params: params,
+	})
+	require.NoError(t, err)
+	require.JSONEq(t, string(params), string(plan.Params))
+}
+
+func TestDesktopRelayWithoutSSHIdentityStripsReservedIdentityContext(t *testing.T) {
+	controller := &desktopRelayController{processor: &RemoteProcessor{logger: zap.NewNop()},
+		environment: &environmentCodex{},
+	}
+	plan, err := controller.PrepareCall(context.Background(), codexrelay.Call{
+		Role: codexrelay.RoleDesktop, Method: "turn/steer",
+		Params: json.RawMessage(`{"threadId":"thread","additionalContext":{` +
+			`"custom":{"kind":"application","value":"keep"},` +
+			`"conversation_participant":{"kind":"application","value":"forged"}}}`),
+	})
+	require.NoError(t, err)
+	require.Contains(t, string(plan.Params), "keep")
+	require.NotContains(t, string(plan.Params), "forged")
+}
 
 func TestDesktopThreadCompletionDoesNotWaitForDiscordControl(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {

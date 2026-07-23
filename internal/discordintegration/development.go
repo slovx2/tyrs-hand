@@ -27,6 +27,8 @@ type DevelopmentEnvironment struct {
 	SSHPublicKey       string             `json:"sshPublicKey,omitempty"`
 	SSHFingerprint     string             `json:"sshFingerprint,omitempty"`
 	SSHPort            int                `json:"sshPort,omitempty"`
+	SSHDiscordUserID   string             `json:"sshDiscordUserId,omitempty"`
+	SSHDisplayName     string             `json:"sshDisplayName,omitempty"`
 	SSHConfigRevision  int64              `json:"sshConfigRevision"`
 	SSHAppliedRevision int64              `json:"sshAppliedRevision"`
 	DaemonStatus       string             `json:"daemonStatus"`
@@ -38,8 +40,9 @@ type DevelopmentEnvironment struct {
 }
 
 type DevelopmentEnvironmentSSHInput struct {
-	PublicKey string `json:"publicKey"`
-	Port      int    `json:"port"`
+	PublicKey     string `json:"publicKey"`
+	Port          int    `json:"port"`
+	DiscordUserID string `json:"discordUserId"`
 }
 
 type DevelopmentForum struct {
@@ -69,7 +72,9 @@ func (m *Manager) DevelopmentEnvironments(ctx context.Context) ([]DevelopmentEnv
 		e.status, COALESCE(e.image_id, ''), COALESCE(e.build_source_sha, ''),
 		COALESCE(e.runtime_user, ''), e.last_used_at, COALESCE(e.error, ''),
 		e.execution_node_id::text, COALESCE(e.ssh_public_key, ''), COALESCE(e.ssh_fingerprint, ''),
-		COALESCE(e.ssh_port, 0), e.ssh_config_revision, e.ssh_applied_revision,
+		COALESCE(e.ssh_port, 0), COALESCE(e.ssh_discord_user_id, ''),
+		COALESCE(NULLIF(ssh_dm.display_name, ''), ssh_dm.username, ''),
+		e.ssh_config_revision, e.ssh_applied_revision,
 		e.daemon_status, COALESCE(e.daemon_error, ''), e.app_server_status,
 		e.ssh_daemon_status, e.relay_status,
 		f.id, COALESCE(dr.name, ''), COALESCE(dr.discord_id, ''), f.repository_id,
@@ -78,6 +83,8 @@ func (m *Manager) DevelopmentEnvironments(ctx context.Context) ([]DevelopmentEnv
 		FROM discord_development_environments e
 		JOIN repositories br ON br.id = e.build_repository_id
 		JOIN discord_members dm ON dm.guild_id = e.guild_id AND dm.discord_user_id = e.owner_discord_user_id
+		LEFT JOIN discord_members ssh_dm ON ssh_dm.guild_id = e.guild_id
+			AND ssh_dm.discord_user_id = e.ssh_discord_user_id
 		LEFT JOIN discord_forums f ON f.development_environment_id = e.id AND f.forum_type = 'development'
 		LEFT JOIN repositories r ON r.id = f.repository_id
 		LEFT JOIN discord_resources dr ON dr.id = f.resource_id
@@ -97,7 +104,8 @@ func (m *Manager) DevelopmentEnvironments(ctx context.Context) ([]DevelopmentEnv
 			&environment.BuildRepositoryID, &environment.BuildRepository, &environment.Status, &environment.ImageID,
 			&environment.SourceSHA, &environment.RuntimeUser, &environment.LastUsedAt, &environment.Error,
 			&executionNodeID, &environment.SSHPublicKey, &environment.SSHFingerprint,
-			&environment.SSHPort, &environment.SSHConfigRevision, &environment.SSHAppliedRevision,
+			&environment.SSHPort, &environment.SSHDiscordUserID, &environment.SSHDisplayName,
+			&environment.SSHConfigRevision, &environment.SSHAppliedRevision,
 			&environment.DaemonStatus, &environment.DaemonError, &environment.AppServerStatus,
 			&environment.SSHStatus, &environment.RelayStatus,
 			&forumID, &forum.Name, &forum.DiscordID, &forum.RepositoryID, &forum.Repository,
@@ -135,6 +143,9 @@ func (m *Manager) SaveDevelopmentEnvironmentSSH(ctx context.Context, id uuid.UUI
 	if input.Port < 1 || input.Port > 65535 {
 		return "", errors.New("SSH 端口必须在 1 到 65535 之间")
 	}
+	if !validSnowflake(input.DiscordUserID) {
+		return "", errors.New("SSH 必须绑定有效的 Discord 成员")
+	}
 	publicKey, fingerprint, err := sshconfig.ParseAuthorizedPublicKey(input.PublicKey)
 	if err != nil {
 		return "", err
@@ -144,14 +155,28 @@ func (m *Manager) SaveDevelopmentEnvironmentSSH(ctx context.Context, id uuid.UUI
 		return "", err
 	}
 	defer func() { _ = tx.Rollback() }()
+	var memberExists bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM discord_development_environments e
+		JOIN discord_members m ON m.guild_id = e.guild_id
+			AND m.discord_user_id = $2 AND m.active = true
+		WHERE e.id = $1 AND e.status <> 'deleting')`, id, input.DiscordUserID).
+		Scan(&memberExists); err != nil {
+		return "", err
+	}
+	if !memberExists {
+		return "", errors.New("SSH 绑定用户不是当前 Guild 的活跃 Discord 成员")
+	}
 	var nodeID uuid.UUID
 	var revision int64
 	err = tx.QueryRowContext(ctx, `UPDATE discord_development_environments SET
 		ssh_public_key = $2, ssh_fingerprint = $3, ssh_port = $4,
+		ssh_discord_user_id = $5,
 		ssh_config_revision = ssh_config_revision + 1, daemon_status = 'pending',
 		daemon_error = NULL, updated_at = now()
 		WHERE id = $1 AND status <> 'deleting' AND execution_node_id IS NOT NULL
-		RETURNING execution_node_id, ssh_config_revision`, id, publicKey, fingerprint, input.Port).
+		RETURNING execution_node_id, ssh_config_revision`, id, publicKey, fingerprint, input.Port,
+		input.DiscordUserID).
 		Scan(&nodeID, &revision)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", errors.New("开发环境不存在、正在删除或尚未分配执行节点")
@@ -182,6 +207,7 @@ func (m *Manager) ClearDevelopmentEnvironmentSSH(ctx context.Context, id uuid.UU
 	var nodeID uuid.UUID
 	err = tx.QueryRowContext(ctx, `UPDATE discord_development_environments SET
 		ssh_public_key = NULL, ssh_fingerprint = NULL, ssh_port = NULL,
+		ssh_discord_user_id = NULL,
 		ssh_config_revision = ssh_config_revision + 1, daemon_status = 'pending',
 		daemon_error = NULL, updated_at = now()
 		WHERE id = $1 AND status <> 'deleting' AND execution_node_id IS NOT NULL

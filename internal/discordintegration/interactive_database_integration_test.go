@@ -145,15 +145,18 @@ func TestClearDevelopmentEnvironmentSSHQueuesReconfigure(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT development_environment_id FROM discord_forums
 		WHERE id=$1`, seed.developmentForumID).Scan(&environmentID))
 	_, err := db.ExecContext(ctx, `UPDATE discord_development_environments SET ssh_public_key=$2,
-		ssh_fingerprint='SHA256:test', ssh_port=2222 WHERE id=$1`, environmentID,
+		ssh_fingerprint='SHA256:test', ssh_port=2222,
+		ssh_discord_user_id=owner_discord_user_id WHERE id=$1`, environmentID,
 		"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest")
 	require.NoError(t, err)
 	require.NoError(t, NewManager(db, nil).ClearDevelopmentEnvironmentSSH(ctx, environmentID))
-	var key sql.NullString
+	var key, sshUserID sql.NullString
 	var revision int64
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT ssh_public_key, ssh_config_revision
-		FROM discord_development_environments WHERE id=$1`, environmentID).Scan(&key, &revision))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT ssh_public_key, ssh_discord_user_id,
+		ssh_config_revision FROM discord_development_environments WHERE id=$1`,
+		environmentID).Scan(&key, &sshUserID, &revision))
 	require.False(t, key.Valid)
+	require.False(t, sshUserID.Valid)
 	require.Equal(t, int64(1), revision)
 }
 

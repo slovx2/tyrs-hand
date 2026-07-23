@@ -27,8 +27,10 @@ func TestSocketClientFansOutEventsWithoutCrossConsumption(t *testing.T) {
 	server.Emit(threadA, "item/completed", map[string]any{"threadId": threadA, "turnId": "turn-a", "item": map[string]string{"id": "a"}})
 	server.Emit(threadB, "item/completed", map[string]any{"threadId": threadB, "turnId": "turn-b", "item": map[string]string{"id": "b"}})
 
-	require.Equal(t, threadA, eventThreadID(t, receiveSocketEvent(t, subscriptionA.Events())))
-	require.Equal(t, threadB, eventThreadID(t, receiveSocketEvent(t, subscriptionB.Events())))
+	require.Equal(t, threadA, eventThreadID(t,
+		receiveSocketEventMethod(t, subscriptionA.Events(), "item/completed")))
+	require.Equal(t, threadB, eventThreadID(t,
+		receiveSocketEventMethod(t, subscriptionB.Events(), "item/completed")))
 	select {
 	case event := <-subscriptionA.Events():
 		t.Fatalf("Thread A 收到其他订阅事件：%s", event.Method)
@@ -73,23 +75,13 @@ func startSocketThread(t *testing.T, client *SocketClient, cwd string) string {
 	return response.Thread.ID
 }
 
-func receiveSocketEvent(t *testing.T, events <-chan Event) Event {
-	t.Helper()
-	select {
-	case event := <-events:
-		return event
-	case <-time.After(time.Second):
-		t.Fatal("等待 SocketClient 事件超时")
-		return Event{}
-	}
-}
-
 func receiveSocketEventMethod(t *testing.T, events <-chan Event, method string) Event {
 	t.Helper()
 	deadline := time.After(time.Second)
 	for {
 		select {
-		case event := <-events:
+		case event, ok := <-events:
+			require.True(t, ok, "SocketClient 在收到 %s 前关闭", method)
 			if event.Method == method {
 				return event
 			}

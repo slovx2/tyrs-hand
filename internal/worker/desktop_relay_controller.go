@@ -15,6 +15,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/codexrelay"
 	"github.com/slovx2/tyrs-hand/internal/devcontainer"
+	"github.com/slovx2/tyrs-hand/internal/participantidentity"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
@@ -43,11 +44,22 @@ func (c *desktopRelayController) PrepareCall(_ context.Context,
 	call codexrelay.Call,
 ) (codexrelay.CallPlan, error) {
 	plan := codexrelay.CallPlan{Params: append(json.RawMessage(nil), call.Params...), Forward: true}
+	if call.Method == "turn/start" || call.Method == "turn/steer" {
+		if identity, ok := c.environment.sshParticipant(); ok {
+			plan.Params = participantidentity.InjectTurnContext(plan.Params,
+				participantidentity.Participant{
+					ID: identity.ParticipantID, DisplayName: identity.DisplayName,
+				})
+		} else {
+			plan.Params = participantidentity.StripTurnContext(plan.Params)
+		}
+	}
 	switch call.Method {
 	case "thread/start":
 		plan.Params = c.injectDesktopTools(call.Params)
+		plan.Params = participantidentity.AppendDeveloperInstructions(plan.Params)
 	case "turn/start":
-		threadID, _ := relayCallScope(call.Params)
+		threadID, _ := relayCallScope(plan.Params)
 		if threadID == "" {
 			return plan, nil
 		}
@@ -108,6 +120,8 @@ func (c *desktopRelayController) CompleteCall(_ context.Context, call codexrelay
 		if state != nil {
 			go c.observeDesktopTurn(call, result, state)
 		}
+	case "turn/steer":
+		go c.observeDesktopSteer(call, result)
 	}
 	return result, nil
 }
@@ -293,6 +307,30 @@ func (c *desktopRelayController) observeDesktopTurn(call codexrelay.Call,
 		}))
 	}
 	c.finishDesktopTurn(ctx, &task, reporter, resultValue, err)
+}
+
+func (c *desktopRelayController) observeDesktopSteer(call codexrelay.Call,
+	result json.RawMessage,
+) {
+	ctx := c.processor.environments.ctx
+	request := workerprotocol.DesktopSteerRecordRequest{
+		EnvironmentID: c.environment.runtime.EnvironmentID,
+		RequestKey:    desktopRequestKey(call.Method, call.Params, result),
+		Params:        call.Params,
+	}
+	for attempt := 0; attempt < 8 && ctx.Err() == nil; attempt++ {
+		requestCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
+		err := c.processor.client.RecordDesktopSteer(requestCtx, request)
+		cancel()
+		if err == nil {
+			return
+		}
+		c.processor.logger.Warn("异步记录 Desktop Steer 失败，Desktop Steer 已继续执行",
+			zap.String("request_key", request.RequestKey), zap.Error(err))
+		if !waitContext(ctx, 500*time.Millisecond) {
+			return
+		}
+	}
 }
 
 func desktopRuntimeForTask(environment devcontainer.Runtime,

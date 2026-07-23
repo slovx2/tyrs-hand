@@ -53,7 +53,7 @@ test-race:
 	go test -race ./internal/...
 
 test-integration:
-	go test -p=1 -tags=integration ./internal/devcontainer ./internal/discordintegration ./internal/httpapi ./test/integration
+	go test -p=1 -tags=integration ./internal/database ./internal/devcontainer ./internal/discordintegration ./internal/httpapi ./test/integration
 
 test-runtime-image:
 	./tools/test-worker-runtime.sh $(LOCAL_IMAGE)-worker

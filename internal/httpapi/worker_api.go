@@ -39,6 +39,7 @@ func (s *Server) registerWorkerRoutes(router *gin.Engine) {
 	authorized.POST("/desktop-thread-requests/:id/complete", s.workerCompleteDesktopThread)
 	authorized.POST("/desktop-thread-requests/:id/fail", s.workerFailDesktopThread)
 	authorized.POST("/desktop-turns", s.workerPrepareDesktopTurn)
+	authorized.POST("/desktop-steers", s.workerRecordDesktopSteer)
 	authorized.POST("/runs/:id/interactive", s.workerRegisterInteractive)
 	authorized.GET("/interactive/:id", s.workerInteractiveState)
 	authorized.POST("/interactive/answer", s.workerAnswerInteractive)

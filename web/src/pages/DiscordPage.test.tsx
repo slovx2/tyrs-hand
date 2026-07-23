@@ -90,6 +90,8 @@ function commonHandlers() {
           sshPublicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest',
           sshFingerprint: 'SHA256:test',
           sshPort: 2222,
+          sshDiscordUserId: '20',
+          sshDisplayName: 'Bob',
           sshConfigRevision: 2,
           sshAppliedRevision: 2,
           daemonStatus: 'running',
@@ -297,15 +299,20 @@ describe('DiscordPage', () => {
     renderPage()
     const user = userEvent.setup()
     const key = await screen.findByLabelText('Bob SSH 公钥')
+    expect(screen.getByText(/身份 Bob/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Bob Desktop 发言身份')).toHaveValue('20')
     await user.clear(key)
     await user.type(key, 'ssh-ed25519 AAAAC3NzaNew')
     const port = screen.getByLabelText('Bob SSH 端口')
     await user.clear(port)
     await user.type(port, '2200')
+    const identity = screen.getByLabelText('Bob Desktop 发言身份')
+    await user.selectOptions(identity, '10')
     await user.click(screen.getByRole('button', { name: '保存 SSH' }))
     expect(save).toHaveBeenCalledWith({
       publicKey: 'ssh-ed25519 AAAAC3NzaNew',
       port: 2200,
+      discordUserId: '10',
     })
     expect(await screen.findByText('SSH 配置已排队生效')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '停用 SSH' }))

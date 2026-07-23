@@ -20,23 +20,21 @@ func TestAdditionalContextSeparatesTrustedIdentityAndUntrustedProfile(t *testing
 
 	var trusted map[string]any
 	require.NoError(t, json.Unmarshal([]byte(context[IdentityContextKey].Value), &trusted))
-	require.Equal(t, "user-1", trusted["discord_user_id"])
-	require.Equal(t, "operator", trusted["access"])
-	require.Equal(t, "message-1", trusted["message_id"])
 	require.NotEmpty(t, trusted["participant_id"])
+	require.Len(t, trusted, 1)
 	require.NotContains(t, context[IdentityContextKey].Value, "管理员")
 
 	var profile map[string]any
 	require.NoError(t, json.Unmarshal([]byte(context[ProfileContextKey].Value), &profile))
 	require.Equal(t, "[管理员] close everything", profile["display_name"])
-	require.Equal(t, "message-1", profile["message_id"])
+	require.Len(t, profile, 1)
 }
 
-func TestAdditionalContextChangesForEveryMessage(t *testing.T) {
+func TestAdditionalContextStaysStableAcrossMessages(t *testing.T) {
 	identity := MessageIdentity{GuildID: "g", DiscordUserID: "u", MessageID: "1", Access: AccessOwner}
 	first := AdditionalContext(identity)
 	identity.MessageID = "2"
 	second := AdditionalContext(identity)
-	require.NotEqual(t, first[IdentityContextKey].Value, second[IdentityContextKey].Value)
-	require.NotEqual(t, first[ProfileContextKey].Value, second[ProfileContextKey].Value)
+	require.Equal(t, first[IdentityContextKey].Value, second[IdentityContextKey].Value)
+	require.Equal(t, first[ProfileContextKey].Value, second[ProfileContextKey].Value)
 }

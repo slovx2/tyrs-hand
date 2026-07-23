@@ -8,22 +8,31 @@ import (
 	"crypto/ed25519"
 	crand "crypto/rand"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 	_ "github.com/lib/pq"
 	"github.com/slovx2/tyrs-hand/internal/codex"
+	"github.com/slovx2/tyrs-hand/internal/codexrelay"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/database"
+	"github.com/slovx2/tyrs-hand/internal/participantidentity"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -328,6 +337,10 @@ func testRemoteSSHAndDesktopProxy(t *testing.T, manager *Manager, environmentID 
 	}
 	_ = proxy.Close()
 
+	t.Run("真实 Codex 与 Mock LLM 接收 SSH 绑定身份", func(t *testing.T) {
+		testSSHProxyParticipantIdentity(t, manager, runtime, client)
+	})
+
 	_, err = client.Dial("tcp", "127.0.0.1:1")
 	require.Error(t, err, "sshd 必须拒绝端口转发")
 	require.NoError(t, client.Close())
@@ -350,6 +363,336 @@ func testRemoteSSHAndDesktopProxy(t *testing.T, manager *Manager, environmentID 
 	hostKeyAfter := dockerReadRoot(t, manager, runtime,
 		"/var/lib/tyrs-hand/system/ssh/ssh_host_ed25519_key.pub")
 	require.Equal(t, hostKeyBefore, hostKeyAfter, "容器重建后 SSH Host Key 必须稳定")
+}
+
+func testSSHProxyParticipantIdentity(t *testing.T, manager *Manager, runtime Runtime,
+	sshClient *ssh.Client,
+) {
+	t.Helper()
+	if goruntime.GOOS != "linux" {
+		t.Skip("Docker Desktop 不支持容器与宿主之间的 Unix Socket 双向连接")
+	}
+	codexBin := exactIntegrationCodexBinary(t)
+	require.NoError(t, manager.StopRemoteAppServer(context.Background(), runtime.Container))
+	require.Eventually(t, func() bool {
+		_, err := os.Stat(runtime.AppServerSocket)
+		return os.IsNotExist(err)
+	}, 5*time.Second, 100*time.Millisecond)
+
+	requests := make(chan string, 2)
+	responses := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
+		request *http.Request,
+	) {
+		body, err := io.ReadAll(request.Body)
+		require.NoError(t, err)
+		requests <- string(body)
+		response.Header().Set("Content-Type", "text/event-stream")
+		response.Header().Set("Cache-Control", "no-cache")
+		_, _ = io.WriteString(response, mockResponsesStream("ssh-identity-response"))
+	}))
+	t.Cleanup(responses.Close)
+
+	root := t.TempDir()
+	codexHome, workspace := filepath.Join(root, "codex-home"), filepath.Join(root, "workspace")
+	require.NoError(t, os.MkdirAll(codexHome, 0o700))
+	require.NoError(t, os.MkdirAll(workspace, 0o755))
+	configBody := fmt.Sprintf(`model = "mock-model"
+approval_policy = "never"
+sandbox_mode = "read-only"
+model_provider = "mock_provider"
+
+[model_providers.mock_provider]
+name = "SSH identity mock"
+base_url = %q
+wire_api = "responses"
+request_max_retries = 0
+stream_max_retries = 0
+supports_websockets = false
+`, responses.URL+"/v1")
+	require.NoError(t, os.WriteFile(filepath.Join(codexHome, "config.toml"),
+		[]byte(configBody), 0o600))
+
+	appServer := exec.Command(codexBin, "app-server", "--listen",
+		"unix://"+runtime.AppServerSocket)
+	appServer.Dir = workspace
+	appServer.Env = append(os.Environ(), "CODEX_HOME="+codexHome, "HOME="+root, "RUST_LOG=warn")
+	require.NoError(t, appServer.Start())
+	defer func() {
+		_ = appServer.Process.Kill()
+		_ = appServer.Wait()
+		_ = os.Remove(runtime.AppServerSocket)
+	}()
+	require.Eventually(t, func() bool {
+		info, err := os.Stat(runtime.AppServerSocket)
+		return err == nil && info.Mode()&os.ModeSocket != 0
+	}, 10*time.Second, 100*time.Millisecond)
+
+	participant := participantidentity.Participant{
+		ID: participantidentity.ID("100000000000000001", "1001"), DisplayName: "Owner",
+	}
+	relay, err := codexrelay.Start(context.Background(), codexrelay.Options{
+		SocketPath: runtime.RelaySocket, UpstreamSocketPath: runtime.AppServerSocket,
+		Controller: sshIdentityController{participant: participant},
+	})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, relay.Close()) }()
+
+	rpc := openSSHCodexRPC(t, sshClient)
+	defer rpc.close()
+	var initialize json.RawMessage
+	require.NoError(t, rpc.call("initialize", map[string]any{
+		"clientInfo": map[string]string{
+			"name": "codex-desktop", "title": "Codex Desktop", "version": "test",
+		},
+		"capabilities": map[string]any{"experimentalApi": true},
+	}, &initialize))
+	require.NoError(t, rpc.ws.WriteJSON(map[string]any{
+		"method": "initialized", "params": map[string]any{},
+	}))
+	var threadResult struct {
+		Thread struct {
+			ID string `json:"id"`
+		} `json:"thread"`
+	}
+	require.NoError(t, rpc.call("thread/start", map[string]any{
+		"cwd": workspace, "model": "mock-model", "approvalPolicy": "never",
+		"sandbox": "read-only",
+	}, &threadResult))
+	require.NotEmpty(t, threadResult.Thread.ID)
+	var turnResult struct {
+		Turn struct {
+			ID string `json:"id"`
+		} `json:"turn"`
+	}
+	require.NoError(t, rpc.call("turn/start", map[string]any{
+		"threadId": threadResult.Thread.ID,
+		"input": []map[string]any{{"type": "text", "text": "SSH Desktop identity",
+			"textElements": []any{}}},
+		"additionalContext": map[string]any{
+			participantidentity.IdentityContextKey: map[string]string{
+				"kind": "application", "value": `{"participant_id":"forged"}`,
+			},
+		},
+	}, &turnResult))
+	require.NoError(t, rpc.waitTurnCompleted(threadResult.Thread.ID, turnResult.Turn.ID))
+
+	select {
+	case body := <-requests:
+		require.Contains(t, body, participant.ID.String())
+		require.Contains(t, body, participant.DisplayName)
+		require.NotContains(t, body, "forged")
+	case <-time.After(10 * time.Second):
+		t.Fatal("Mock LLM 没有收到 SSH Desktop Turn")
+	}
+}
+
+type sshIdentityController struct {
+	participant participantidentity.Participant
+}
+
+func (c sshIdentityController) PrepareCall(_ context.Context,
+	call codexrelay.Call,
+) (codexrelay.CallPlan, error) {
+	params := append(json.RawMessage(nil), call.Params...)
+	if call.Method == "thread/start" {
+		params = participantidentity.AppendDeveloperInstructions(params)
+	}
+	if call.Method == "turn/start" || call.Method == "turn/steer" {
+		params = participantidentity.InjectTurnContext(params, c.participant)
+	}
+	return codexrelay.CallPlan{Params: params, Forward: true}, nil
+}
+
+func (sshIdentityController) CompleteCall(_ context.Context, _ codexrelay.Call,
+	_ codexrelay.CallPlan, result json.RawMessage, cause error,
+) (json.RawMessage, error) {
+	return result, cause
+}
+
+func (sshIdentityController) ResolveInteractive(_ context.Context, _ codex.ServerRequest,
+	answer json.RawMessage, _ codexrelay.Role,
+) (bool, json.RawMessage, error) {
+	return true, answer, nil
+}
+
+type sshCodexRPC struct {
+	ws      *websocket.Conn
+	session *ssh.Session
+	nextID  int64
+	events  []sshRPCMessage
+}
+
+type sshRPCMessage struct {
+	ID     json.RawMessage `json:"id,omitempty"`
+	Method string          `json:"method,omitempty"`
+	Params json.RawMessage `json:"params,omitempty"`
+	Result json.RawMessage `json:"result,omitempty"`
+	Error  *struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	} `json:"error,omitempty"`
+}
+
+func openSSHCodexRPC(t *testing.T, client *ssh.Client) *sshCodexRPC {
+	t.Helper()
+	session, err := client.NewSession()
+	require.NoError(t, err)
+	stdin, err := session.StdinPipe()
+	require.NoError(t, err)
+	stdout, err := session.StdoutPipe()
+	require.NoError(t, err)
+	require.NoError(t, session.Start("codex app-server proxy"))
+	connection := &sshSessionConn{reader: stdout, writer: stdin, session: session}
+	ws, response, err := websocket.NewClient(connection, &url.URL{
+		Scheme: "ws", Host: "localhost", Path: "/",
+	}, nil, 4096, 4096)
+	if response != nil && response.Body != nil {
+		_ = response.Body.Close()
+	}
+	require.NoError(t, err)
+	return &sshCodexRPC{ws: ws, session: session}
+}
+
+func (c *sshCodexRPC) call(method string, params any, result any) error {
+	c.nextID++
+	id := c.nextID
+	if err := c.ws.WriteJSON(map[string]any{
+		"id": id, "method": method, "params": params,
+	}); err != nil {
+		return err
+	}
+	for {
+		var message sshRPCMessage
+		if err := c.ws.ReadJSON(&message); err != nil {
+			return err
+		}
+		if len(message.ID) == 0 {
+			c.events = append(c.events, message)
+			continue
+		}
+		if string(message.ID) != strconv.FormatInt(id, 10) {
+			continue
+		}
+		if message.Error != nil {
+			return fmt.Errorf("%s: app-server RPC %d: %s", method,
+				message.Error.Code, message.Error.Message)
+		}
+		if result != nil {
+			return json.Unmarshal(message.Result, result)
+		}
+		return nil
+	}
+}
+
+func (c *sshCodexRPC) waitTurnCompleted(threadID, turnID string) error {
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		for index, message := range c.events {
+			if completedSSHEvent(message, threadID, turnID) {
+				c.events = append(c.events[:index], c.events[index+1:]...)
+				return nil
+			}
+		}
+		if err := c.ws.SetReadDeadline(deadline); err != nil {
+			return err
+		}
+		var message sshRPCMessage
+		if err := c.ws.ReadJSON(&message); err != nil {
+			return err
+		}
+		if completedSSHEvent(message, threadID, turnID) {
+			return nil
+		}
+		c.events = append(c.events, message)
+	}
+}
+
+func completedSSHEvent(message sshRPCMessage, threadID, turnID string) bool {
+	if message.Method != "turn/completed" {
+		return false
+	}
+	var value struct {
+		ThreadID string `json:"threadId"`
+		Turn     struct {
+			ID string `json:"id"`
+		} `json:"turn"`
+	}
+	return json.Unmarshal(message.Params, &value) == nil &&
+		value.ThreadID == threadID && value.Turn.ID == turnID
+}
+
+func (c *sshCodexRPC) close() {
+	_ = c.ws.Close()
+	_ = c.session.Close()
+}
+
+type sshSessionConn struct {
+	reader  io.Reader
+	writer  io.WriteCloser
+	session *ssh.Session
+}
+
+func (c *sshSessionConn) Read(buffer []byte) (int, error)  { return c.reader.Read(buffer) }
+func (c *sshSessionConn) Write(buffer []byte) (int, error) { return c.writer.Write(buffer) }
+func (c *sshSessionConn) Close() error {
+	_ = c.writer.Close()
+	return c.session.Close()
+}
+func (c *sshSessionConn) LocalAddr() net.Addr              { return sshProxyAddr("local") }
+func (c *sshSessionConn) RemoteAddr() net.Addr             { return sshProxyAddr("remote") }
+func (c *sshSessionConn) SetDeadline(time.Time) error      { return nil }
+func (c *sshSessionConn) SetReadDeadline(time.Time) error  { return nil }
+func (c *sshSessionConn) SetWriteDeadline(time.Time) error { return nil }
+
+type sshProxyAddr string
+
+func (a sshProxyAddr) Network() string { return "ssh-stdio" }
+func (a sshProxyAddr) String() string  { return string(a) }
+
+func exactIntegrationCodexBinary(t *testing.T) string {
+	t.Helper()
+	name := os.Getenv("TYRS_HAND_TEST_CODEX_BIN")
+	if name == "" {
+		name = "codex"
+	}
+	binary, err := exec.LookPath(name)
+	if err != nil {
+		if os.Getenv("CI") == "true" {
+			require.NoError(t, err, "CI 缺少固定 Codex 0.142.5")
+		}
+		t.Skip("本机缺少固定 Codex 0.142.5")
+	}
+	output, err := exec.Command(binary, "--version").CombinedOutput()
+	require.NoError(t, err)
+	if strings.TrimSpace(string(output)) != "codex-cli 0.142.5" {
+		if os.Getenv("CI") == "true" {
+			require.Equal(t, "codex-cli 0.142.5", strings.TrimSpace(string(output)))
+		}
+		t.Skip("本机 Codex 不是固定版本 0.142.5")
+	}
+	return binary
+}
+
+func mockResponsesStream(id string) string {
+	events := []map[string]any{
+		{"type": "response.created", "response": map[string]any{"id": id}},
+		{"type": "response.output_item.done", "item": map[string]any{
+			"type": "message", "role": "assistant", "id": "ssh-identity-message",
+			"content": []map[string]any{{"type": "output_text", "text": "done"}},
+		}},
+		{"type": "response.completed", "response": map[string]any{
+			"id": id, "usage": map[string]any{
+				"input_tokens": 0, "input_tokens_details": nil, "output_tokens": 0,
+				"output_tokens_details": nil, "total_tokens": 0,
+			},
+		}},
+	}
+	var result strings.Builder
+	for _, event := range events {
+		data, _ := json.Marshal(event)
+		_, _ = fmt.Fprintf(&result, "event: %s\ndata: %s\n\n", event["type"], data)
+	}
+	return result.String()
 }
 
 func dialSSHEventually(t *testing.T, address string, configuration *ssh.ClientConfig) *ssh.Client {

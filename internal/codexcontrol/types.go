@@ -49,6 +49,8 @@ type Intent struct {
 	DangerousActions      []string
 	ActorLogin            string
 	ActorPermission       string
+	ActorParticipantID    uuid.UUID
+	ActorDisplayName      string
 	ReplyPolicy           string
 	ReplyStatus           string
 	Attempt               int
@@ -91,6 +93,8 @@ type EnqueueRequest struct {
 	Priority              int
 	ActorLogin            string
 	ActorPermission       string
+	ActorParticipantID    uuid.UUID
+	ActorDisplayName      string
 	ReplyPolicy           string
 	Operation             string
 	Behavior              string

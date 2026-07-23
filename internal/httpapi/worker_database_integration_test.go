@@ -5,12 +5,14 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
 	"database/sql"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -24,6 +26,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/database"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/executionnode"
+	"github.com/slovx2/tyrs-hand/internal/participantidentity"
 	"github.com/slovx2/tyrs-hand/internal/secrets"
 	"github.com/slovx2/tyrs-hand/internal/security"
 	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
@@ -32,6 +35,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"go.uber.org/zap"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -243,6 +247,23 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
 	repositoryID, _, _ := seedWorkerGitHubQueue(t, db, 41)
 	environmentID, forumID := seedDevelopmentOperation(t, db, repositoryID, node.ID)
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_members
+		(guild_id, discord_user_id, username, display_name)
+		VALUES ('worker-test-guild','desktop-user','desktop','Desktop Alice')`)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE discord_development_environments SET
+		ssh_public_key='ssh-ed25519 test', ssh_fingerprint='SHA256:test', ssh_port=2222,
+		ssh_discord_user_id='desktop-user', status='ready', container_id='desktop-container'
+		WHERE id=$1`, environmentID)
+	require.NoError(t, err)
+	manifests, err := client.DevelopmentEnvironments(ctx)
+	require.NoError(t, err)
+	require.Len(t, manifests, 1)
+	require.NotNil(t, manifests[0].SSHParticipant)
+	require.Equal(t, "desktop-user", manifests[0].SSHParticipant.DiscordUserID)
+	require.Equal(t, "Desktop Alice", manifests[0].SSHParticipant.DisplayName)
+	require.Equal(t, participantidentity.ID("worker-test-guild", "desktop-user"),
+		manifests[0].SSHParticipant.ParticipantID)
 	workspace := "/var/lib/tyrs-hand/workspaces/" + forumID.String()
 
 	state, err := client.PrepareDesktopThread(ctx, workerprotocol.DesktopThreadPrepareRequest{
@@ -270,6 +291,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, item)
 	require.Equal(t, "desktop-thread-post:"+state.ID.String(), item.OperationKey)
+	require.Contains(t, string(item.Payload), "Desktop Alice")
 	require.NoError(t, outbox.Complete(ctx, *item,
 		json.RawMessage(`{"threadId":"desktop-discord-thread","messageId":"desktop-starter"}`)))
 	state, err = client.DesktopThreadState(ctx, state.ID)
@@ -300,8 +322,32 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Empty(t, task.Claimed.DiscordMessageID)
 	require.NotNil(t, task.Snapshot.Discord)
 	require.Equal(t, "desktop asks", task.Snapshot.Discord.Body)
+	require.Equal(t, "desktop-user", task.Snapshot.Discord.UserID)
+	require.Equal(t, "Desktop Alice", task.Snapshot.Discord.DisplayName)
+	require.Equal(t, participantidentity.ID("worker-test-guild", "desktop-user"),
+		task.Claimed.ActorParticipantID)
+	require.Equal(t, "Desktop Alice", task.Claimed.ActorDisplayName)
 	require.NoError(t, client.RecordSubmission(ctx, &task, "desktop-turn-1"))
 	require.NoError(t, client.ConfirmTurn(ctx, &task, "desktop-turn-1"))
+	steerRequest := workerprotocol.DesktopSteerRecordRequest{
+		EnvironmentID: environmentID, RequestKey: strings.Repeat("f", 64),
+		Params: json.RawMessage(`{"threadId":"codex-desktop-thread",` +
+			`"expectedTurnId":"desktop-turn-1",` +
+			`"input":[{"type":"text","text":"desktop follows up"}]}`),
+	}
+	require.NoError(t, client.RecordDesktopSteer(ctx, steerRequest))
+	require.NoError(t, client.RecordDesktopSteer(ctx, steerRequest),
+		"Desktop Steer 重试不得重复创建 Intent")
+	var steerIntentID, steerParticipantID uuid.UUID
+	var steerStatus, steerDisplayName string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT id, status, actor_participant_id,
+		actor_display_name FROM codex_turn_intents WHERE idempotency_key=$1`,
+		"desktop-steer:"+environmentID.String()+":"+strings.Repeat("f", 64)).
+		Scan(&steerIntentID, &steerStatus, &steerParticipantID, &steerDisplayName))
+	require.Equal(t, "running", steerStatus)
+	require.Equal(t, participantidentity.ID("worker-test-guild", "desktop-user"),
+		steerParticipantID)
+	require.Equal(t, "Desktop Alice", steerDisplayName)
 	interactive, err := client.RegisterInteractive(ctx, &task, json.RawMessage(`"input-1"`),
 		json.RawMessage(`{"threadId":"codex-desktop-thread","turnId":"desktop-turn-1",`+
 			`"itemId":"question-1","questions":[{"id":"choice","header":"Choose",`+
@@ -390,11 +436,35 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, client.Complete(ctx, &task, codexcontrol.TurnResult{
 		TurnID: "desktop-turn-1", FinalAnswer: "desktop done",
 	}))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM codex_turn_intents
+		WHERE id=$1`, steerIntentID).Scan(&steerStatus))
+	require.Equal(t, "completed", steerStatus)
 	var projectedReply int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM integration_outbox
 		WHERE operation_key = $1`, "conversation-reply:"+state.ConversationID.String()+
 		":message:desktop-"+task.Claimed.ID.String()).Scan(&projectedReply))
 	require.Equal(t, 1, projectedReply)
+
+	_, err = db.ExecContext(ctx, `UPDATE discord_development_environments SET
+		ssh_public_key=NULL, ssh_fingerprint=NULL, ssh_port=NULL, ssh_discord_user_id=NULL
+		WHERE id=$1`, environmentID)
+	require.NoError(t, err)
+	unboundTask, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
+		EnvironmentID: environmentID, WorkerID: "desktop-worker",
+		RequestKey: strings.Repeat("e", 64), Params: json.RawMessage(
+			`{"threadId":"codex-desktop-thread","input":[{"type":"text","text":"local desktop"}]}`),
+	})
+	require.NoError(t, err)
+	require.Equal(t, uuid.Nil, unboundTask.Claimed.ActorParticipantID)
+	require.Empty(t, unboundTask.Claimed.ActorDisplayName)
+	require.Empty(t, unboundTask.Snapshot.Discord.UserID)
+	require.Empty(t, unboundTask.Snapshot.Discord.DisplayName)
+	require.Empty(t, unboundTask.Snapshot.Discord.Username)
+	require.NoError(t, client.RecordSubmission(ctx, &unboundTask, "desktop-turn-2"))
+	require.NoError(t, client.ConfirmTurn(ctx, &unboundTask, "desktop-turn-2"))
+	require.NoError(t, client.Complete(ctx, &unboundTask, codexcontrol.TurnResult{
+		TurnID: "desktop-turn-2", FinalAnswer: "local desktop done",
+	}))
 
 	fork, err := client.PrepareDesktopThread(ctx, workerprotocol.DesktopThreadPrepareRequest{
 		EnvironmentID: environmentID, Operation: "fork", RequestKey: strings.Repeat("b", 64),
@@ -421,6 +491,91 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	failed, err = client.DesktopThreadState(ctx, failed.ID)
 	require.NoError(t, err)
 	require.Equal(t, "failed", failed.Status)
+}
+
+func TestDiscordDevelopmentEnvironmentSSHAPIBindsParticipantAndRedactsAudit(t *testing.T) {
+	db := workerDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	nodes := executionnode.NewService(db)
+	node, _, err := nodes.Create(ctx, "ssh-api-node", []string{"discord"}, 2)
+	require.NoError(t, err)
+	repositoryID, _, _ := seedWorkerGitHubQueue(t, db, 51)
+	environmentID, _ := seedDevelopmentOperation(t, db, repositoryID, node.ID)
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_members
+		(guild_id, discord_user_id, username, display_name)
+		VALUES ('worker-test-guild','100000000000000009','desktop','Desktop Member')`)
+	require.NoError(t, err)
+	public, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	sshKey, err := ssh.NewPublicKey(public)
+	require.NoError(t, err)
+	publicKey := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(sshKey)))
+	server := &Server{db: db, discord: discordintegration.NewManager(db, nil), logger: zap.NewNop()}
+	request := func(method string, payload any) (*gin.Context, *httptest.ResponseRecorder) {
+		t.Helper()
+		var body []byte
+		if payload != nil {
+			body, err = json.Marshal(payload)
+			require.NoError(t, err)
+		}
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(method, "/discord/development-environments/"+
+			environmentID.String()+"/ssh", bytes.NewReader(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+		c.Params = gin.Params{{Key: "id", Value: environmentID.String()}}
+		return c, recorder
+	}
+
+	c, _ := request(http.MethodPut, map[string]any{
+		"publicKey": publicKey, "port": 2222, "discordUserId": "100000000000000009",
+	})
+	server.putDiscordDevelopmentEnvironmentSSH(c)
+	require.Equal(t, http.StatusAccepted, c.Writer.Status())
+	var savedUserID string
+	var revision int64
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT ssh_discord_user_id,
+		ssh_config_revision FROM discord_development_environments WHERE id=$1`,
+		environmentID).Scan(&savedUserID, &revision))
+	require.Equal(t, "100000000000000009", savedUserID)
+	require.Equal(t, int64(1), revision)
+	var auditMetadata string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT metadata::text FROM audit_logs
+		WHERE action='discord.development_environment.ssh.update'
+		ORDER BY created_at DESC LIMIT 1`).Scan(&auditMetadata))
+	require.Contains(t, auditMetadata, "100000000000000009")
+	require.Contains(t, auditMetadata, "SHA256:")
+	require.NotContains(t, auditMetadata, publicKey)
+
+	listRecorder := httptest.NewRecorder()
+	listContext, _ := gin.CreateTestContext(listRecorder)
+	listContext.Request = httptest.NewRequest(http.MethodGet,
+		"/discord/development-environments", nil)
+	server.listDiscordDevelopmentEnvironments(listContext)
+	require.Equal(t, http.StatusOK, listRecorder.Code)
+	var environments []discordintegration.DevelopmentEnvironment
+	require.NoError(t, json.Unmarshal(listRecorder.Body.Bytes(), &environments))
+	require.Len(t, environments, 1)
+	require.Equal(t, "100000000000000009", environments[0].SSHDiscordUserID)
+	require.Equal(t, "Desktop Member", environments[0].SSHDisplayName)
+
+	c, _ = request(http.MethodPut, map[string]any{
+		"publicKey": publicKey, "port": 2222, "discordUserId": "100000000000000099",
+	})
+	server.putDiscordDevelopmentEnvironmentSSH(c)
+	require.Equal(t, http.StatusConflict, c.Writer.Status())
+
+	c, _ = request(http.MethodDelete, nil)
+	server.deleteDiscordDevelopmentEnvironmentSSH(c)
+	require.Equal(t, http.StatusAccepted, c.Writer.Status())
+	var cleared bool
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT ssh_public_key IS NULL
+		AND ssh_fingerprint IS NULL AND ssh_port IS NULL AND ssh_discord_user_id IS NULL,
+		ssh_config_revision FROM discord_development_environments WHERE id=$1`,
+		environmentID).Scan(&cleared, &revision))
+	require.True(t, cleared)
+	require.Equal(t, int64(2), revision)
 }
 
 func TestWorkerAPIMissingDefaultAndDevelopmentOperationRecovery(t *testing.T) {

@@ -1556,6 +1556,8 @@ components:
         sshPublicKey: { type: string }
         sshFingerprint: { type: string, readOnly: true }
         sshPort: { type: integer, minimum: 1, maximum: 65535 }
+        sshDiscordUserId: { type: string }
+        sshDisplayName: { type: string, readOnly: true }
         sshConfigRevision: { type: integer, format: int64, readOnly: true }
         sshAppliedRevision: { type: integer, format: int64, readOnly: true }
         daemonStatus: { type: string, enum: [pending, starting, running, error] }
@@ -1566,10 +1568,11 @@ components:
         forums: { type: array, items: { $ref: "#/components/schemas/DiscordDevelopmentForum" } }
     DiscordDevelopmentEnvironmentSSHInput:
       type: object
-      required: [publicKey, port]
+      required: [publicKey, port, discordUserId]
       properties:
         publicKey: { type: string, minLength: 1 }
         port: { type: integer, minimum: 1, maximum: 65535 }
+        discordUserId: { type: string, minLength: 1 }
     DiscordDevelopmentDeletePreflight:
       type: object
       required: [forumId, dirty, unpushed, active, deletesEnvironment, confirmation]

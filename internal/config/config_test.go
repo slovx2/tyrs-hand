@@ -75,7 +75,7 @@ func TestValidateAndLoadRemoteWorker(t *testing.T) {
 		Environment: "production", WorkerControlURL: "https://tyr.example.com",
 		CodexBin: "codex", WorkerID: "home-1", WorkerRole: "all",
 		WorkerCredentialFile:  "/data/worker/control-state/node-credential",
-		WorkerProtocolVersion: 2, WorkerMaxConcurrentJobs: 2,
+		WorkerProtocolVersion: 3, WorkerMaxConcurrentJobs: 2,
 	}
 	require.True(t, valid.RemoteWorker())
 	require.NoError(t, valid.ValidateWorker())
@@ -108,7 +108,7 @@ func TestValidateAndLoadRemoteWorker(t *testing.T) {
 	t.Setenv("TYRS_HAND_WORKER_ID", "home-1")
 	t.Setenv("TYRS_HAND_WORKER_ROLE", "github")
 	t.Setenv("TYRS_HAND_WORKER_CREDENTIAL_FILE", filepath.Join(t.TempDir(), "credential"))
-	t.Setenv("TYRS_HAND_WORKER_PROTOCOL_VERSION", "2")
+	t.Setenv("TYRS_HAND_WORKER_PROTOCOL_VERSION", "3")
 	t.Setenv("TYRS_HAND_WORKER_MAX_CONCURRENT_JOBS", "2")
 	t.Setenv("TYRS_HAND_DATABASE_URL", "")
 	t.Setenv("TYRS_HAND_REDIS_URL", "")

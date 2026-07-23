@@ -22,6 +22,7 @@ type desktopThreadTarget struct {
 	repository    string
 	workspacePath string
 	sourceControl uuid.UUID
+	actorName     string
 }
 
 func (s *Server) workerPrepareDesktopThread(c *gin.Context) {
@@ -93,12 +94,15 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 		return nil, desktopThreadTarget{}, errors.New("不支持 path-based fork")
 	}
 	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT f.id, r.discord_id,
-		repo.owner || '/' || repo.name, fw.relative_path
+		repo.owner || '/' || repo.name, fw.relative_path,
+		COALESCE(NULLIF(m.display_name, ''), m.username, '')
 		FROM discord_development_environments e
 		JOIN discord_forums f ON f.development_environment_id = e.id
 		JOIN discord_resources r ON r.id = f.resource_id
 		JOIN repositories repo ON repo.id = f.repository_id
 		JOIN discord_forum_workspaces fw ON fw.forum_id = f.id
+		LEFT JOIN discord_members m ON m.guild_id = e.guild_id
+			AND m.discord_user_id = e.ssh_discord_user_id
 		WHERE e.id = $1 AND e.execution_node_id = $2 AND e.status NOT IN ('deleting','error')`,
 		request.EnvironmentID, workerNode(c).ID)
 	if err != nil {
@@ -110,7 +114,7 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 		var target desktopThreadTarget
 		var relative string
 		if err := rows.Scan(&target.forumID, &target.forumDiscord, &target.repository,
-			&relative); err != nil {
+			&relative, &target.actorName); err != nil {
 			return nil, desktopThreadTarget{}, err
 		}
 		target.workspacePath = path.Join("/var/lib/tyrs-hand", relative)
@@ -170,13 +174,19 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 func enqueueDesktopThreadPost(c *gin.Context, tx *sql.Tx, requestID uuid.UUID,
 	target desktopThreadTarget,
 ) error {
-	name := "Codex Desktop · " + target.repository
+	actor := "Codex Desktop"
+	body := "Desktop 已连接，正在初始化共享 Codex Thread。"
+	if target.actorName != "" {
+		actor = target.actorName + " · Codex Desktop"
+		body = target.actorName + " 已通过 Codex Desktop 发起任务，正在初始化共享 Codex Thread。"
+	}
+	name := actor + " · " + target.repository
 	if len([]rune(name)) > 100 {
 		name = string([]rune(name)[:100])
 	}
 	card := discordintegration.ComponentCardPayload{AccentColor: 0x5865F2,
-		Header: "## 🖥️ Codex Desktop · 正在创建",
-		Body:   "Desktop 已连接，正在初始化共享 Codex Thread。",
+		Header: "## 🖥️ " + actor + " · 正在创建",
+		Body:   body,
 		Footer: "此 Post 将同步 Desktop 与 Discord 的完整进度和最终回复"}
 	payload, _ := json.Marshal(map[string]any{"channelId": target.forumDiscord,
 		"threadName": name, "card": card, "desktopThreadRequestId": requestID.String()})

@@ -1666,6 +1666,8 @@ export interface components {
             sshPublicKey?: string;
             readonly sshFingerprint?: string;
             sshPort?: number;
+            sshDiscordUserId?: string;
+            readonly sshDisplayName?: string;
             /** Format: int64 */
             readonly sshConfigRevision: number;
             /** Format: int64 */
@@ -1684,6 +1686,7 @@ export interface components {
         DiscordDevelopmentEnvironmentSSHInput: {
             publicKey: string;
             port: number;
+            discordUserId: string;
         };
         DiscordDevelopmentDeletePreflight: {
             /** Format: uuid */

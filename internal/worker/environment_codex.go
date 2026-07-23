@@ -71,7 +71,9 @@ func (r *environmentCodexRegistry) ensure(runtime devcontainer.Runtime,
 			delete(r.entries, runtime.EnvironmentID)
 		default:
 			if manifest != nil {
+				current.mu.Lock()
 				current.manifest = *manifest
+				current.mu.Unlock()
 			}
 			return current, nil
 		}
@@ -100,6 +102,15 @@ func (r *environmentCodexRegistry) ensure(runtime devcontainer.Runtime,
 	entry.client = client
 	r.entries[runtime.EnvironmentID] = entry
 	return entry, nil
+}
+
+func (e *environmentCodex) sshParticipant() (workerprotocol.ParticipantIdentity, bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.manifest.SSHParticipant == nil {
+		return workerprotocol.ParticipantIdentity{}, false
+	}
+	return *e.manifest.SSHParticipant, true
 }
 
 func (r *environmentCodexRegistry) retain(environmentIDs map[uuid.UUID]bool) {

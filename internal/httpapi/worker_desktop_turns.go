@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/participantidentity"
 	"github.com/slovx2/tyrs-hand/internal/security"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
@@ -62,17 +63,24 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	var allowedJSON, dangerousJSON []byte
 	var nextSequence int64
 	var oldLeaseEpoch int64
+	var actorGuildID, actorUserID, actorDisplayName string
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT ct.id, ct.discord_conversation_id,
 		ct.repository_id, ct.agent_profile_id, ct.status, ct.next_sequence_no,
 		ct.lease_epoch, COALESCE(ct.external_thread_id,''), COALESCE(ct.codex_home_key,''),
-		COALESCE(ct.provider_signature,''), p.allowed_tools, '[]'::jsonb
+		COALESCE(ct.provider_signature,''), p.allowed_tools, '[]'::jsonb,
+		e.guild_id, COALESCE(e.ssh_discord_user_id, ''),
+		COALESCE(NULLIF(m.display_name, ''), m.username, '')
 		FROM codex_thread_controls ct JOIN agent_profiles p ON p.id = ct.agent_profile_id
+		JOIN discord_development_environments e ON e.id = ct.development_environment_id
+		LEFT JOIN discord_members m ON m.guild_id = e.guild_id
+			AND m.discord_user_id = e.ssh_discord_user_id
 		WHERE ct.external_thread_id = $1 AND ct.development_environment_id = $2
 		AND ct.execution_node_id = $3 FOR UPDATE OF ct`, threadID, request.EnvironmentID,
 		node.ID).Scan(&claimed.ControlID, &claimed.DiscordConversationID,
 		&claimed.RepositoryID, &claimed.AgentProfileID, &controlStatus, &nextSequence,
 		&oldLeaseEpoch, &claimed.ExternalThreadID,
-		&claimed.CodexHomeKey, &claimed.ProviderSignature, &allowedJSON, &dangerousJSON)
+		&claimed.CodexHomeKey, &claimed.ProviderSignature, &allowedJSON, &dangerousJSON,
+		&actorGuildID, &actorUserID, &actorDisplayName)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusForbidden, "Desktop Turn 的 Thread 未绑定到当前环境", err)
 		return
@@ -92,6 +100,10 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	claimed.SourceType, claimed.InputSurface = codexcontrol.SourceDiscord, "desktop"
 	claimed.Status, claimed.Instruction = codexcontrol.IntentDispatching, instruction
 	claimed.ActorLogin, claimed.ActorPermission, claimed.ReplyPolicy = "codex-desktop", "owner", "silent"
+	if actorUserID != "" {
+		claimed.ActorParticipantID = participantidentity.ID(actorGuildID, actorUserID)
+		claimed.ActorDisplayName = actorDisplayName
+	}
 	claimed.Attempt, claimed.MaxAttempts = 1, max(1, s.cfg.CodexReconcileMaxAttempts)
 	claimed.LeaseToken, claimed.LeaseEpoch = leaseToken, oldLeaseEpoch+1
 	claimed.LeaseExpiresAt = time.Now().Add(s.cfg.LeaseDuration)
@@ -100,13 +112,15 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		(id, control_id, sequence_no, operation, behavior, source_type, input_surface,
 		 discord_conversation_id, repository_id, agent_profile_id, idempotency_key,
 		 instruction, prepared_input, allowed_tools, dangerous_actions, priority,
-		 actor_login, actor_permission, reply_policy, reply_status, status, attempt_count, max_attempts,
-		 dispatched_at)
+		 actor_login, actor_permission, actor_participant_id, actor_display_name,
+		 reply_policy, reply_status, status, attempt_count, max_attempts, dispatched_at)
 		VALUES ($1,$2,$3,'turn_input','start_when_idle','discord_conversation','desktop',$4,$5,$6,$7,
-			$8,$9,$10,$11,100,'codex-desktop','owner','silent','skipped','dispatching',1,$12,now())`,
+			$8,$9,$10,$11,100,'codex-desktop','owner',NULLIF($12::text,'')::uuid,$13,
+			'silent','skipped','dispatching',1,$14,now())`,
 		claimed.ID, claimed.ControlID, claimed.Sequence, claimed.DiscordConversationID,
 		claimed.RepositoryID, claimed.AgentProfileID, idempotencyKey, instruction, request.Params,
-		allowedJSON, dangerousJSON, claimed.MaxAttempts)
+		allowedJSON, dangerousJSON, nilUUIDString(claimed.ActorParticipantID),
+		claimed.ActorDisplayName, claimed.MaxAttempts)
 	if err != nil {
 		problem(c, http.StatusConflict, "Desktop Turn 已提交或发生并发冲突", err)
 		return

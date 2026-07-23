@@ -66,6 +66,8 @@ interface DevelopmentEnvironment {
   sshPublicKey?: string
   sshFingerprint?: string
   sshPort?: number
+  sshDiscordUserId?: string
+  sshDisplayName?: string
   sshConfigRevision: number
   sshAppliedRevision: number
   daemonStatus: string
@@ -566,6 +568,7 @@ function DevelopmentEnvironmentPanel({
             <DevelopmentEnvironmentSSHForm
               key={`${environment.id}:${environment.sshConfigRevision}:${environment.sshAppliedRevision}`}
               environment={environment}
+              members={members}
             />
             <div className="mt-3 grid gap-3">
               {environment.forums.map((forum) => (
@@ -589,14 +592,19 @@ function DevelopmentEnvironmentPanel({
 
 function DevelopmentEnvironmentSSHForm({
   environment,
+  members,
 }: {
   environment: DevelopmentEnvironment
+  members: DiscordMember[]
 }) {
   const queryClient = useQueryClient()
   const showToast = useUI((state) => state.showToast)
   const [publicKey, setPublicKey] = useState(environment.sshPublicKey ?? '')
   const [port, setPort] = useState(
     environment.sshPort ? String(environment.sshPort) : '',
+  )
+  const [discordUserId, setDiscordUserId] = useState(
+    environment.sshDiscordUserId ?? '',
   )
   const refresh = async () => {
     await queryClient.invalidateQueries({
@@ -610,6 +618,7 @@ function DevelopmentEnvironmentSSHForm({
         body: JSON.stringify({
           publicKey: publicKey.trim(),
           port: Number(port),
+          discordUserId,
         }),
       }),
     onSuccess: async () => {
@@ -625,6 +634,7 @@ function DevelopmentEnvironmentSSHForm({
     onSuccess: async () => {
       setPublicKey('')
       setPort('')
+      setDiscordUserId('')
       showToast('info', 'SSH 停用请求已排队')
       await refresh()
     },
@@ -643,10 +653,13 @@ function DevelopmentEnvironmentSSHForm({
           {environment.appServerStatus} · Relay {environment.relayStatus} · SSH{' '}
           {environment.sshStatus}
           {pending ? ' · 等待生效' : ''}
+          {environment.sshDisplayName
+            ? ` · 身份 ${environment.sshDisplayName}`
+            : ''}
           {environment.sshFingerprint ? ` · ${environment.sshFingerprint}` : ''}
         </p>
       </div>
-      <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_140px_auto_auto]">
+      <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_140px_180px_auto_auto]">
         <label className="text-sm">
           <span className="sr-only">{environment.ownerName} SSH 公钥</span>
           <textarea
@@ -670,10 +683,30 @@ function DevelopmentEnvironmentSSHForm({
             onChange={(event) => setPort(event.target.value)}
           />
         </label>
+        <label className="text-sm">
+          <span className="sr-only">
+            {environment.ownerName} Desktop 发言身份
+          </span>
+          <select
+            className="field"
+            aria-label={`${environment.ownerName} Desktop 发言身份`}
+            value={discordUserId}
+            onChange={(event) => setDiscordUserId(event.target.value)}
+          >
+            <option value="">选择发言身份</option>
+            {members.map((member) => (
+              <option key={member.discordUserId} value={member.discordUserId}>
+                {member.displayName || member.username}
+              </option>
+            ))}
+          </select>
+        </label>
         <button
           type="button"
           className="button-secondary"
-          disabled={!publicKey.trim() || !port || save.isPending}
+          disabled={
+            !publicKey.trim() || !port || !discordUserId || save.isPending
+          }
           onClick={() => save.mutate()}
         >
           {save.isPending ? '保存中…' : '保存 SSH'}
