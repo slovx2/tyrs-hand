@@ -160,8 +160,12 @@ docker compose -f compose.worker.yaml up -d worker
 - A Discord user has one container, data volume, Home volume, and network per Guild. Forums for multiple repositories reuse that environment.
 - The per-user container is the security boundary. Operator collaborators can drive the agent and must be trusted by the environment owner.
 - The first forum's repository is the stable image source and must provide `.devcontainer/Dockerfile` on its default branch with a non-root final `USER`.
-- Every forum has an independent full clone. Home, clones, and Codex sessions survive container, worker, and host restarts.
-- Containers stop after 30 idle minutes. Explicit rebuilds preserve persistent data while resetting the writable system layer.
+- Every forum has an independent full clone. Environment containers stay running, and the Worker restores the container, environment-level Codex App Server, and Relay after worker or host restarts.
+- Each environment shares one `CODEX_HOME` and one App Server. Codex Desktop and Discord connect through a thin protocol Relay. Explicit rebuilds preserve Home, clones, and Codex sessions while resetting the writable system layer.
+- Administrators can configure one SSH public key and host port for an environment. The development image must provide `sshd`, `ssh-keygen`, and an SFTP server; Desktop connects by running `codex app-server proxy` over SSH.
+- The SSH credential is bound to one active Discord member, so Desktop and Discord messages from that member use the same stable participant identity. Desktop messages, titles, progress, and final replies are projected to Discord asynchronously; Discord failures do not block Desktop threads or turns.
+- Desktop-created and resumed threads keep the model, reasoning effort, and service tier selected by Desktop and the real App Server. Control-plane defaults apply only to conversations started from Discord.
+- System-created Discord posts auto-hide after seven inactive days. An unlocked Discord archive only changes visibility; `/codex archive` archives the Codex thread and locks the post, while `/codex restore` restores the original thread and post.
 - A rebuild is rejected if `USER`, UID/GID, or the Home path changes. devcontainer.json, Features, Compose, arbitrary mounts, Docker sockets, privileged mode, and published ports are not supported.
 - Deleting the final forum also deletes the user's container, image, volumes, network, and Home after an explicit confirmation.
 

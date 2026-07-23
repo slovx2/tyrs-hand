@@ -144,6 +144,9 @@ docker compose -f compose.worker.yaml up -d worker
 - 每个 Forum 使用独立完整 clone。环境容器永久运行；Worker/宿主重启后会主动拉起容器、环境级 Codex app-server 和 Relay，且不会丢失 Home、clone 或 Codex 会话。
 - 每个环境共享一个 `CODEX_HOME` 和一个 app-server；Desktop 与 Discord 通过薄 Relay 复用同一协议连接。显式 rebuild 保留 Home、clone 和 Codex 会话，但重置系统可写层。
 - 管理后台可为环境配置一个 SSH 公钥和宿主机端口。镜像必须原生提供 `sshd`、`ssh-keygen` 与 SFTP server；Desktop 通过 SSH 执行 `codex app-server proxy`。
+- SSH 凭据绑定一个活跃 Discord 成员，Desktop 与该成员从 Discord 发言时使用同一个稳定参与者身份。Desktop 主 Thread 的消息、标题、进度和最终回复会异步投影到 Discord；Discord 故障不会中断 Desktop Thread 或 Turn。
+- Desktop 创建或恢复 Thread 时，模型、思考强度和 service tier 以 Desktop 与真实 app-server 状态为准。管理后台的默认参数只用于从 Discord 发起的新会话。
+- 系统创建的 Discord Post 在七天不活跃后自动隐藏。未锁定的 Discord 归档只改变展示状态；`/codex archive` 才会真正归档 Codex Thread 并锁定 Post，`/codex restore` 会恢复原 Thread 和 Post。
 - rebuild 改变 `USER`、UID/GID 或 Home 路径时会被拒绝并保留旧容器。平台不支持 devcontainer.json、Features、Compose、任意 Mount、Docker Socket、privileged 或端口发布。
 - 删除 Forum 前会显示未提交、未推送和运行中状态；删除最后一个 Forum 会同时删除整个用户环境和 Home。
 
