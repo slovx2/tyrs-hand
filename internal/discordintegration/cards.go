@@ -47,8 +47,7 @@ func conversationProgressCard(state ConversationProgress, timeline ConversationT
 		"状态会在此卡片中更新 · 不展示工具返回内容"
 	switch state {
 	case ConversationCompleted:
-		header, color, footer = "✅ Codex · 已完成", cardColorGreen,
-			"完整回复见下一条消息 · 不展示工具返回内容"
+		header, color, footer = "✅ Codex · 已完成", cardColorGreen, ""
 	case ConversationCanceled:
 		header, color, footer = "⏹️ Codex · 已停止", cardColorGray,
 			"本轮不会再发送回复 · 不展示工具返回内容"
@@ -65,7 +64,12 @@ func conversationProgressCard(state ConversationProgress, timeline ConversationT
 		Timeline: timeline.Pages[page], Footer: footer}
 	if len(timeline.Pages) > 1 && runID != "" {
 		last := len(timeline.Pages) - 1
-		card.Footer += fmt.Sprintf(" · 第 %d / %d 页", page+1, len(timeline.Pages))
+		pagination := fmt.Sprintf("第 %d / %d 页", page+1, len(timeline.Pages))
+		if card.Footer == "" {
+			card.Footer = pagination
+		} else {
+			card.Footer += " · " + pagination
+		}
 		card.Buttons = []ComponentButtonPayload{
 			{Label: "较早", CustomID: progressButtonID("older", runID, max(0, page-1)), Disabled: page == 0},
 			{Label: fmt.Sprintf("%d / %d", page+1, len(timeline.Pages)),

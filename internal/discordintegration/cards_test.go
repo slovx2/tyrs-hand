@@ -20,7 +20,7 @@ func TestConversationCardsKeepSystemAndReplyVisuallyDistinct(t *testing.T) {
 
 	completed := conversationProgressCard(ConversationCompleted, timeline, 0, "")
 	require.Equal(t, cardColorGreen, completed.AccentColor)
-	require.Contains(t, completed.Footer, "下一条消息")
+	require.Empty(t, completed.Footer)
 	canceled := conversationProgressCard(ConversationCanceled, timeline, 0, "")
 	require.Equal(t, cardColorGray, canceled.AccentColor)
 	require.Contains(t, canceled.Header, "已停止")
@@ -36,7 +36,7 @@ func TestConversationCardPaginationKeepsStatusAndUsesUniqueButtons(t *testing.T)
 	card := conversationProgressCard(ConversationCompleted, timeline, 1, runID)
 	require.Contains(t, card.Header, "已完成")
 	require.Equal(t, "newer", card.Timeline)
-	require.Contains(t, card.Footer, "第 2 / 3 页")
+	require.Equal(t, "第 2 / 3 页", card.Footer)
 	require.Len(t, card.Buttons, 4)
 	seen := map[string]bool{}
 	for _, button := range card.Buttons {
