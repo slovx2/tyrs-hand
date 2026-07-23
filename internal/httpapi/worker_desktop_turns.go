@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"net/http"
@@ -213,11 +214,31 @@ func desktopTurnInput(params json.RawMessage) (string, string, error) {
 	}
 	parts := make([]string, 0, len(value.Input))
 	for _, item := range value.Input {
-		if item.Type == "text" && strings.TrimSpace(item.Text) != "" {
-			parts = append(parts, strings.TrimSpace(item.Text))
+		text := desktopProjectionText(item.Text)
+		if item.Type == "text" && text != "" {
+			parts = append(parts, text)
 		}
 	}
 	return value.ThreadID, strings.Join(parts, "\n\n"), nil
+}
+
+func desktopProjectionText(value string) string {
+	value = strings.TrimSpace(value)
+	if !strings.HasPrefix(value, "<codex_delegation>") ||
+		!strings.HasSuffix(value, "</codex_delegation>") {
+		return value
+	}
+	var envelope struct {
+		XMLName        xml.Name `xml:"codex_delegation"`
+		SourceThreadID string   `xml:"source_thread_id"`
+		Input          string   `xml:"input"`
+	}
+	if err := xml.Unmarshal([]byte(value), &envelope); err != nil ||
+		envelope.XMLName.Local != "codex_delegation" ||
+		strings.TrimSpace(envelope.SourceThreadID) == "" {
+		return value
+	}
+	return strings.TrimSpace(envelope.Input)
 }
 
 func (s *Server) queueFirstDesktopInput(ctx context.Context, tx *sql.Tx, controlID uuid.UUID,
@@ -292,5 +313,5 @@ func enqueueDesktopInputProjection(ctx context.Context, tx *sql.Tx, conversation
 		return err
 	}
 	return discordintegration.EnqueueDesktopInputPages(ctx, tx, threadID, conversationID,
-		projectionKey, displayName, input, 0)
+		projectionKey, displayName, desktopProjectionText(input), 0)
 }

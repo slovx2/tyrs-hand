@@ -183,7 +183,8 @@ func enqueueDesktopThreadPost(ctx context.Context, tx *sql.Tx, requestID uuid.UU
 	if actor == "" {
 		actor = "Desktop"
 	}
-	name := normalizeDesktopTitle(title)
+	input = desktopProjectionText(input)
+	name := normalizeDesktopTitle(desktopProjectionText(title))
 	if name == "" {
 		name = actor + " · Desktop"
 	}

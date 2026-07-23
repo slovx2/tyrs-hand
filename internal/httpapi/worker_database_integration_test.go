@@ -323,13 +323,15 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		EnvironmentID: environmentID, WorkerID: "desktop-worker",
 		RequestKey: strings.Repeat("d", 64), Params: json.RawMessage(
 			`{"threadId":"codex-desktop-thread","clientUserMessageId":"desktop-client-message-1",` +
-				`"input":[{"type":"text","text":"desktop asks"}]}`),
+				`"input":[{"type":"text","text":"<codex_delegation>\n` +
+				`<source_thread_id>source-thread</source_thread_id>\n` +
+				`<input>desktop asks &amp;&amp; checks</input>\n</codex_delegation>"}]}`),
 	})
 	require.NoError(t, err)
 	require.Equal(t, "desktop", task.Claimed.InputSurface)
 	require.Empty(t, task.Claimed.DiscordMessageID)
 	require.NotNil(t, task.Snapshot.Discord)
-	require.Equal(t, "desktop asks", task.Snapshot.Discord.Body)
+	require.Equal(t, "desktop asks && checks", task.Snapshot.Discord.Body)
 	require.Equal(t, "desktop-user", task.Snapshot.Discord.UserID)
 	require.Equal(t, "Desktop Alice", task.Snapshot.Discord.DisplayName)
 	require.Equal(t, participantidentity.ID("worker-test-guild", "desktop-user"),
@@ -341,7 +343,9 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NotNil(t, item)
 	require.Equal(t, "desktop-thread-post:"+state.ID.String(), item.OperationKey)
 	require.Contains(t, string(item.Payload), "Desktop Alice")
-	require.Contains(t, string(item.Payload), "desktop asks")
+	require.Contains(t, string(item.Payload), "desktop asks && checks")
+	require.NotContains(t, string(item.Payload), "codex_delegation")
+	require.NotContains(t, string(item.Payload), "source_thread_id")
 	require.Contains(t, string(item.Payload), "首条输入前的正式标题")
 	require.NoError(t, outbox.Complete(ctx, *item,
 		json.RawMessage(`{"threadId":"desktop-discord-thread","messageId":"desktop-starter"}`)))
@@ -501,7 +505,9 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		Params: json.RawMessage(`{"threadId":"codex-desktop-thread",` +
 			`"expectedTurnId":"desktop-turn-1",` +
 			`"clientUserMessageId":"desktop-client-steer-1",` +
-			`"input":[{"type":"text","text":"desktop follows up"}]}`),
+			`"input":[{"type":"text","text":"<codex_delegation>` +
+			`<source_thread_id>source-thread</source_thread_id>` +
+			`<input>desktop follows up</input></codex_delegation>"}]}`),
 	}
 	require.NoError(t, client.RecordDesktopSteer(ctx, steerRequest))
 	require.NoError(t, client.RecordDesktopSteer(ctx, steerRequest),
@@ -511,6 +517,12 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		WHERE operation_key LIKE $1`, "desktop-input:"+state.ConversationID.String()+":"+
 		"desktop-client-steer-1:%").Scan(&steerInputProjection))
 	require.Equal(t, 1, steerInputProjection)
+	var steerPayload string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT payload::text FROM integration_outbox
+		WHERE operation_key LIKE $1`, "desktop-input:"+state.ConversationID.String()+":"+
+		"desktop-client-steer-1:%").Scan(&steerPayload))
+	require.Contains(t, steerPayload, "desktop follows up")
+	require.NotContains(t, steerPayload, "codex_delegation")
 	var steerIntentID, steerParticipantID uuid.UUID
 	var steerStatus, steerDisplayName, steerProjectionStatus string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT id, status, actor_participant_id,
