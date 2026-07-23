@@ -73,12 +73,13 @@ describe('SSHPage', () => {
     const user = userEvent.setup()
     expect(await screen.findByText('SHA256:fingerprint')).toBeInTheDocument()
 
+    await user.click(screen.getByRole('button', { name: '添加凭证' }))
     await user.type(screen.getByLabelText('名称'), 'backup')
     await user.type(
       screen.getByLabelText('私钥'),
       '-----BEGIN PRIVATE KEY-----',
     )
-    await user.click(screen.getByRole('button', { name: '添加凭证' }))
+    await user.click(screen.getByRole('button', { name: '保存凭证' }))
     expect(createCredential).toHaveBeenCalledWith({
       name: 'backup',
       privateKey: '-----BEGIN PRIVATE KEY-----',
@@ -86,16 +87,17 @@ describe('SSHPage', () => {
       enabled: true,
     })
 
-    await user.type(screen.getByLabelText('别名'), 'production-host')
-    await user.type(screen.getByLabelText('HostName'), '192.0.2.10')
+    await user.click(screen.getByRole('button', { name: '添加主机' }))
+    await user.type(screen.getByLabelText('SSH 别名'), 'production-host')
+    await user.type(screen.getByLabelText('主机地址'), '192.0.2.10')
     await user.clear(screen.getByLabelText('用户名'))
     await user.type(screen.getByLabelText('用户名'), 'ubuntu')
     await user.selectOptions(
-      screen.getByLabelText('凭证'),
+      screen.getByLabelText('使用凭证'),
       '11111111-1111-1111-1111-111111111111',
     )
     await user.click(screen.getByLabelText('song-ubuntu'))
-    await user.click(screen.getByRole('button', { name: '添加主机' }))
+    await user.click(screen.getByRole('button', { name: '保存主机' }))
     expect(createHost).toHaveBeenCalledWith({
       alias: 'production-host',
       hostname: '192.0.2.10',
@@ -217,16 +219,20 @@ describe('SSHPage', () => {
       name: '删除',
     })
     expect(linkedDelete).toBeDisabled()
-    expect(linkedDelete).toHaveAttribute('title', '仍有关联主机')
+    expect(linkedDelete).toHaveAttribute('title', '请先删除关联主机')
     await user.click(
-      within(productionCard!).getByRole('button', { name: '编辑或轮换' }),
+      within(productionCard!).getByRole('button', { name: '编辑' }),
     )
-    await user.type(screen.getByLabelText('私钥口令'), 'secret')
-    await user.click(screen.getAllByLabelText('启用')[0])
-    await user.click(screen.getByRole('button', { name: '保存并按需轮换' }))
+    await user.type(
+      screen.getByLabelText('私钥'),
+      '-----BEGIN PRIVATE KEY-----',
+    )
+    await user.type(screen.getByLabelText('私钥口令（可选）'), 'secret')
+    await user.click(screen.getByLabelText('启用凭证'))
+    await user.click(screen.getByRole('button', { name: '保存凭证' }))
     expect(updateCredential).toHaveBeenCalledWith({
       name: 'production',
-      privateKey: '',
+      privateKey: '-----BEGIN PRIVATE KEY-----',
       passphrase: 'secret',
       enabled: false,
     })
@@ -243,9 +249,12 @@ describe('SSHPage', () => {
     await user.click(within(targetCard!).getByRole('button', { name: '编辑' }))
     await user.clear(screen.getByLabelText('端口'))
     await user.type(screen.getByLabelText('端口'), '2222')
+    expect(screen.getByLabelText('backup-node')).toBeDisabled()
+    await user.selectOptions(screen.getByLabelText('ProxyJump（可选）'), '')
+    expect(screen.getByLabelText('backup-node')).toBeEnabled()
     await user.click(screen.getByLabelText('song-ubuntu'))
     await user.click(screen.getByLabelText('backup-node'))
-    await user.click(screen.getAllByLabelText('启用')[1])
+    await user.click(screen.getByLabelText('启用主机'))
     await user.click(screen.getByRole('button', { name: '保存主机' }))
     expect(updateHost).toHaveBeenCalledWith({
       alias: 'target',
@@ -253,7 +262,7 @@ describe('SSHPage', () => {
       port: 2222,
       username: 'root',
       credentialId: credentialID,
-      proxyJumpHostId: jumpID,
+      proxyJumpHostId: null,
       executionNodeIds: [secondNodeID],
       enabled: true,
     })
