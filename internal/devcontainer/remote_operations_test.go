@@ -19,6 +19,7 @@ type recordingCommandRunner struct {
 	mu           sync.Mutex
 	calls        [][]string
 	failContains string
+	resultFor    map[string]string
 }
 
 func (r *recordingCommandRunner) Run(_ context.Context, _ []string, _ string,
@@ -29,6 +30,11 @@ func (r *recordingCommandRunner) Run(_ context.Context, _ []string, _ string,
 	r.calls = append(r.calls, append([]string(nil), arguments...))
 	if r.failContains != "" && strings.Contains(strings.Join(arguments, " "), r.failContains) {
 		return "", errors.New("injected command failure")
+	}
+	for fragment, result := range r.resultFor {
+		if strings.Contains(strings.Join(arguments, " "), fragment) {
+			return result, nil
+		}
 	}
 	return "ok", nil
 }
@@ -43,6 +49,39 @@ func (r *recordingCommandRunner) contains(parts ...string) bool {
 		}
 	}
 	return false
+}
+
+func TestRefreshRemoteRuntimeOnlyWhenWorkerBinariesChange(t *testing.T) {
+	root := t.TempDir()
+	codexBin := filepath.Join(root, "codex-real")
+	proxyBin := filepath.Join(root, "codex")
+	require.NoError(t, os.WriteFile(codexBin, []byte("codex-v2"), 0o755))
+	require.NoError(t, os.WriteFile(proxyBin, []byte("proxy-v2"), 0o755))
+	manager := &Manager{enabled: true, dockerBin: "docker", dockerHost: "inherit",
+		codexBin: codexBin, codexProxyBin: proxyBin}
+	signature, err := manager.desiredRuntimeSignature()
+	require.NoError(t, err)
+
+	currentRunner := &recordingCommandRunner{resultFor: map[string]string{
+		"cat " + runtimeSignaturePath: signature,
+	}}
+	manager.runner = currentRunner
+	runtime := Runtime{Container: "dev-container", UID: 1000, GID: 1000, Home: "/home/dev"}
+	changed, err := manager.RefreshRemoteRuntime(context.Background(), runtime)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.False(t, currentRunner.contains("docker cp"))
+
+	staleRunner := &recordingCommandRunner{resultFor: map[string]string{
+		"cat " + runtimeSignaturePath: "old-signature",
+	}}
+	manager.runner = staleRunner
+	changed, err = manager.RefreshRemoteRuntime(context.Background(), runtime)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.True(t, staleRunner.contains("app-server.pid"))
+	require.True(t, staleRunner.contains("docker cp --follow-link "+codexBin))
+	require.True(t, staleRunner.contains("TYRS_RUNTIME_SIGNATURE="+signature))
 }
 
 func TestRunRemoteDevelopmentOperations(t *testing.T) {

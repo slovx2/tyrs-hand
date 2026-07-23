@@ -46,6 +46,13 @@ func (p *RemoteProcessor) coordinateEnvironment(ctx context.Context,
 	_ = p.client.EnvironmentDaemonState(ctx, state)
 	runtime, err := p.development.PrepareRemoteRuntime(ctx, *manifest)
 	appServerRestart := err == nil && !environmentSocketAvailable(runtime.AppServerSocket)
+	if err == nil && p.environments.idle(manifest.EnvironmentID) {
+		var changed bool
+		changed, err = p.development.RefreshRemoteRuntime(ctx, runtime)
+		if changed {
+			appServerRestart = true
+		}
+	}
 	if err == nil {
 		var credential workerprotocol.RuntimeCredential
 		credential, err = p.client.EnvironmentRuntimeCredential(ctx, manifest.EnvironmentID)

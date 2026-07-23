@@ -33,6 +33,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/database"
 	"github.com/slovx2/tyrs-hand/internal/participantidentity"
+	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -142,6 +143,7 @@ func TestUserEnvironmentSharesHomeAndKeepsIndependentRepositoryClones(t *testing
 	require.Equal(t, "running", runningStatus)
 	first, err = manager.Ensure(ctx, environmentID, firstForumID, conversationOne, "")
 	require.NoError(t, err)
+	testExistingEnvironmentRuntimeRefresh(t, manager, first)
 	testRemoteSSHAndDesktopProxy(t, manager, environmentID, first)
 
 	commitDockerfile(t, buildRepository, dockerfile("dev", 1001, "rebuild"))
@@ -238,6 +240,48 @@ func buildLinuxCodexTestBinaries(t *testing.T, manager *Manager, target string) 
 	}
 	return build("codex-real", "./internal/testutil/mockcodexapp"),
 		build("tyrs-hand-codex", "./cmd/tyrs-hand-codex")
+}
+
+func testExistingEnvironmentRuntimeRefresh(t *testing.T, manager *Manager, runtime Runtime) {
+	t.Helper()
+	upgradedCodex := filepath.Join(filepath.Dir(manager.codexBin), "codex-real-upgraded")
+	source, err := os.Open(manager.codexBin)
+	require.NoError(t, err)
+	target, err := os.OpenFile(upgradedCodex, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	require.NoError(t, err)
+	_, err = io.Copy(target, source)
+	require.NoError(t, err)
+	_, err = target.Write([]byte("\nruntime-upgrade\n"))
+	require.NoError(t, err)
+	require.NoError(t, source.Close())
+	require.NoError(t, target.Close())
+
+	manager.runtimeSignatureMu.Lock()
+	manager.codexBin = upgradedCodex
+	manager.runtimeSignature = ""
+	manager.runtimeSignatureMu.Unlock()
+	changed, err := manager.RefreshRemoteRuntime(context.Background(), runtime)
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	manifest := workerprotocol.EnvironmentManifest{EnvironmentID: runtime.EnvironmentID,
+		ContainerName: runtime.Container, RuntimeUser: runtime.User, RuntimeUID: runtime.UID,
+		RuntimeGID: runtime.GID, RuntimeHome: runtime.Home}
+	require.NoError(t, manager.EnsureRemoteDaemons(context.Background(), manifest, runtime))
+	version, err := manager.docker(context.Background(), "exec", runtime.Container,
+		"/opt/tyrs-hand/libexec/codex-real", "--version")
+	require.NoError(t, err)
+	require.Equal(t, "codex-cli 0.145.0", strings.TrimSpace(version))
+	signature, err := manager.desiredRuntimeSignature()
+	require.NoError(t, err)
+	installed, err := manager.docker(context.Background(), "exec", runtime.Container,
+		"cat", runtimeSignaturePath)
+	require.NoError(t, err)
+	require.Equal(t, signature, strings.TrimSpace(installed))
+	changed, err = manager.RefreshRemoteRuntime(context.Background(), runtime)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, "home", dockerRead(t, manager, runtime, runtime.Home+"/home-marker"))
 }
 
 func repositoryRoot(t *testing.T) string {

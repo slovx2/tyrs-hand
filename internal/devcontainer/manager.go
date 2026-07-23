@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/config"
@@ -36,6 +37,8 @@ type Manager struct {
 	browserEnabled            bool
 	browserFilesRoot          string
 	browserFilesHostRoot      string
+	runtimeSignatureMu        sync.Mutex
+	runtimeSignature          string
 }
 
 func NewManager(cfg config.Config, db *sql.DB, logger *zap.Logger) (*Manager, error) {
