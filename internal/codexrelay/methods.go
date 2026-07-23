@@ -78,6 +78,7 @@ var methodClasses = map[string]methodClass{
 	"thread/name/set":                          methodForward,
 	"thread/rollback":                          methodForward,
 	"thread/shellCommand":                      methodForward,
+	"thread/settings/update":                   methodForward,
 	"thread/unarchive":                         methodForward,
 	"windowsSandbox/setupStart":                methodForward,
 
@@ -87,7 +88,7 @@ var methodClasses = map[string]methodClass{
 	"turn/start":         methodControlled,
 	"thread/list":        methodForward,
 	"thread/read":        methodForward,
-	"thread/resume":      methodForward,
+	"thread/resume":      methodControlled,
 	"thread/unsubscribe": methodForward,
 	"turn/interrupt":     methodForward,
 	"turn/steer":         methodControlled,

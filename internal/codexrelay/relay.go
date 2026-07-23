@@ -2,7 +2,6 @@ package codexrelay
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -23,13 +22,13 @@ type Relay struct {
 	listener       net.Listener
 	httpServer     *http.Server
 
-	mu       sync.Mutex
-	sessions map[int64]*session
-	threads  map[string]json.RawMessage
-	nextID   atomic.Int64
-	closed   bool
-	stats    Stats
-	done     chan struct{}
+	mu               sync.Mutex
+	sessions         map[int64]*session
+	ephemeralThreads map[string]bool
+	nextID           atomic.Int64
+	closed           bool
+	stats            Stats
+	done             chan struct{}
 }
 
 func Start(ctx context.Context, options Options) (*Relay, error) {
@@ -46,7 +45,7 @@ func Start(ctx context.Context, options Options) (*Relay, error) {
 		options.EventBacklog = 4096
 	}
 	relay := &Relay{options: options, sessions: make(map[int64]*session),
-		threads: make(map[string]json.RawMessage), done: make(chan struct{})}
+		ephemeralThreads: make(map[string]bool), done: make(chan struct{})}
 	upstream, err := codex.ConnectSocket(ctx, codex.SocketClientOptions{
 		SocketPath: options.UpstreamSocketPath, RequestTimeout: options.RequestTimeout,
 		ServerRequestTimeout: options.ServerRequestTimeout, EventBacklog: options.EventBacklog,

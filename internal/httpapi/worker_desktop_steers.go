@@ -26,6 +26,7 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 		badRequest(c, errors.New("desktop steer 参数无效"))
 		return
 	}
+	projectionKey := desktopInputProjectionKey(request.Params, request.RequestKey)
 	tx, err := s.db.BeginTx(c.Request.Context(), nil)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "记录 Desktop Steer 失败", err)
@@ -47,6 +48,7 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 
 	node := workerNode(c)
 	var controlID, conversationID, repositoryID, profileID uuid.UUID
+	var nullableConversation sql.NullString
 	var nextSequence int64
 	var controlStatus, activeTurnID, guildID, actorUserID, actorDisplayName string
 	var allowedJSON, dangerousJSON []byte
@@ -61,7 +63,7 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 			AND m.discord_user_id = e.ssh_discord_user_id
 		WHERE ct.external_thread_id = $1 AND ct.development_environment_id = $2
 		AND ct.execution_node_id = $3 FOR UPDATE OF ct`, threadID, request.EnvironmentID,
-		node.ID).Scan(&controlID, &conversationID, &repositoryID, &profileID, &nextSequence,
+		node.ID).Scan(&controlID, &nullableConversation, &repositoryID, &profileID, &nextSequence,
 		&controlStatus, &activeTurnID, &allowedJSON, &dangerousJSON, &guildID,
 		&actorUserID, &actorDisplayName)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -72,6 +74,7 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "读取 Desktop Steer Control 失败", err)
 		return
 	}
+	conversationID = parseOptionalUUID(nullableConversation)
 
 	intentStatus := "completed"
 	if controlStatus == "active" && activeTurnID == expectedTurnID {
@@ -100,20 +103,31 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 		 input_surface, discord_conversation_id, repository_id, agent_profile_id,
 		 idempotency_key, instruction, prepared_input, allowed_tools, dangerous_actions,
 		 priority, actor_login, actor_permission, actor_participant_id, actor_display_name,
-		 reply_policy, reply_status, status, attempt_count, confirmed_codex_turn_id,
-		 confirmed_at, finished_at, result_delivery_status, result_delivered_at)
-		VALUES ($1,$2,$3,'turn_input','steer_if_active','steer','discord_conversation',
-			'desktop',$4,$5,$6,$7,$8,$9,$10,$11,100,'codex-desktop','owner',
-			NULLIF($12::text,'')::uuid,$13,'silent','skipped',$14,1,$15,now(),
-			CASE WHEN $14='completed' THEN now() ELSE NULL END,
-			CASE WHEN $14='completed' THEN 'delivered' ELSE 'pending' END,
-			CASE WHEN $14='completed' THEN now() ELSE NULL END)`,
-		intentID, controlID, nextSequence, conversationID, repositoryID, profileID,
+			 reply_policy, reply_status, status, attempt_count, confirmed_codex_turn_id,
+			 confirmed_at, finished_at, result_delivery_status, result_delivered_at,
+			 desktop_input_projection_key, desktop_input_projection_status)
+			VALUES ($1,$2,$3,'turn_input','steer_if_active','steer','discord_conversation',
+				'desktop',NULLIF($4::text,'')::uuid,$5,$6,$7,$8,$9,$10,$11,100,'codex-desktop','owner',
+				NULLIF($12::text,'')::uuid,$13,'silent','skipped',$14,1,$15,now(),
+				CASE WHEN $14='completed' THEN now() ELSE NULL END,
+				CASE WHEN $14='completed' THEN 'delivered' ELSE 'pending' END,
+				CASE WHEN $14='completed' THEN now() ELSE NULL END,$16,'pending')`,
+		intentID, controlID, nextSequence, nilUUIDString(conversationID), repositoryID, profileID,
 		idempotencyKey, instruction, request.Params, allowedJSON, dangerousJSON,
-		nilUUIDString(actorParticipantID), actorDisplayName, intentStatus, expectedTurnID)
+		nilUUIDString(actorParticipantID), actorDisplayName, intentStatus, expectedTurnID,
+		projectionKey)
 	if err == nil {
 		_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_thread_controls SET
 			next_sequence_no = next_sequence_no + 1, updated_at = now() WHERE id = $1`, controlID)
+	}
+	if err == nil && conversationID != uuid.Nil {
+		err = enqueueDesktopInputProjection(c.Request.Context(), tx, conversationID,
+			projectionKey, actorDisplayName, instruction)
+	}
+	if err == nil && conversationID != uuid.Nil {
+		_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_turn_intents SET
+			desktop_input_projection_status = 'projected', updated_at = now()
+			WHERE id = $1`, intentID)
 	}
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "持久化 Desktop Steer 失败", err)

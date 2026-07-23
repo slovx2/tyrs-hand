@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codexsettings"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
@@ -22,6 +24,7 @@ type desktopThreadTarget struct {
 	repository    string
 	workspacePath string
 	sourceControl uuid.UUID
+	actorID       string
 	actorName     string
 }
 
@@ -49,20 +52,17 @@ func (s *Server) workerPrepareDesktopThread(c *gin.Context) {
 	defer func() { _ = tx.Rollback() }()
 	var requestID uuid.UUID
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT id FROM desktop_thread_requests
-		WHERE environment_id = $1 AND request_key = $2
-		AND status IN ('preparing','post_pending','codex_pending') FOR UPDATE`, request.EnvironmentID,
+			WHERE environment_id = $1 AND request_key = $2
+			AND status NOT IN ('failed') FOR UPDATE`, request.EnvironmentID,
 		request.RequestKey).Scan(&requestID)
 	if errors.Is(err, sql.ErrNoRows) {
 		requestID = uuid.New()
 		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO desktop_thread_requests
-			(id, environment_id, operation, request_key, source_control_id, cwd,
-			 request_params, status, forum_id)
-			VALUES ($1,$2,$3,$4,NULLIF($5::text,'')::uuid,$6,$7,'post_pending',$8)`,
+				(id, environment_id, operation, request_key, source_control_id, cwd,
+				 request_params, status, forum_id)
+				VALUES ($1,$2,$3,$4,NULLIF($5::text,'')::uuid,$6,$7,'preparing',$8)`,
 			requestID, request.EnvironmentID, request.Operation, request.RequestKey,
 			nilUUIDString(target.sourceControl), target.workspacePath, params, target.forumID)
-		if err == nil {
-			err = enqueueDesktopThreadPost(c, tx, requestID, target)
-		}
 	}
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "创建 Desktop Thread reservation 失败", err)
@@ -95,6 +95,7 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 	}
 	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT f.id, r.discord_id,
 		repo.owner || '/' || repo.name, fw.relative_path,
+		COALESCE(e.ssh_discord_user_id, ''),
 		COALESCE(NULLIF(m.display_name, ''), m.username, '')
 		FROM discord_development_environments e
 		JOIN discord_forums f ON f.development_environment_id = e.id
@@ -114,7 +115,7 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 		var target desktopThreadTarget
 		var relative string
 		if err := rows.Scan(&target.forumID, &target.forumDiscord, &target.repository,
-			&relative, &target.actorName); err != nil {
+			&relative, &target.actorID, &target.actorName); err != nil {
 			return nil, desktopThreadTarget{}, err
 		}
 		target.workspacePath = path.Join("/var/lib/tyrs-hand", relative)
@@ -128,12 +129,16 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 		if sourceThread == "" {
 			return nil, desktopThreadTarget{}, errors.New("fork 缺少源 Thread")
 		}
-		var sourceForum, sourceEnvironment, sourceConversation, sourceControl uuid.UUID
-		err := s.db.QueryRowContext(c.Request.Context(), `SELECT id, discord_conversation_id,
-			development_environment_id, (SELECT forum_id FROM discord_conversations
-			WHERE id = codex_thread_controls.discord_conversation_id)
-			FROM codex_thread_controls WHERE external_thread_id = $1`, sourceThread).
-			Scan(&sourceControl, &sourceConversation, &sourceEnvironment, &sourceForum)
+		var sourceForum, sourceEnvironment, sourceControl uuid.UUID
+		err := s.db.QueryRowContext(c.Request.Context(), `SELECT control.id,
+			control.development_environment_id,
+			COALESCE(conversation.forum_id, request.forum_id)
+			FROM codex_thread_controls control
+			LEFT JOIN discord_conversations conversation
+				ON conversation.id = control.discord_conversation_id
+			LEFT JOIN desktop_thread_requests request ON request.control_id = control.id
+			WHERE control.external_thread_id = $1`, sourceThread).
+			Scan(&sourceControl, &sourceEnvironment, &sourceForum)
 		if err != nil || sourceEnvironment != request.EnvironmentID {
 			return nil, desktopThreadTarget{}, errors.New("fork 源 Thread 未绑定到相同 Development Forum")
 		}
@@ -171,32 +176,42 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 	return normalized, target, err
 }
 
-func enqueueDesktopThreadPost(c *gin.Context, tx *sql.Tx, requestID uuid.UUID,
-	target desktopThreadTarget,
+func enqueueDesktopThreadPost(ctx context.Context, tx *sql.Tx, requestID uuid.UUID,
+	target desktopThreadTarget, title, input string,
 ) error {
-	actor := "Codex Desktop"
-	body := "Desktop 已连接，正在初始化共享 Codex Thread。"
-	if target.actorName != "" {
-		actor = target.actorName + " · Codex Desktop"
-		body = target.actorName + " 已通过 Codex Desktop 发起任务，正在初始化共享 Codex Thread。"
+	actor := target.actorName
+	if actor == "" {
+		actor = "Desktop"
 	}
-	name := actor + " · " + target.repository
+	name := normalizeDesktopTitle(title)
+	if name == "" {
+		name = actor + " · Desktop"
+	}
 	if len([]rune(name)) > 100 {
 		name = string([]rune(name)[:100])
 	}
-	card := discordintegration.ComponentCardPayload{AccentColor: 0x5865F2,
-		Header: "## 🖥️ " + actor + " · 正在创建",
-		Body:   body,
-		Footer: "此 Post 将同步 Desktop 与 Discord 的完整进度和最终回复"}
+	card := discordintegration.DesktopInputCards(actor, input)[0]
 	payload, _ := json.Marshal(map[string]any{"channelId": target.forumDiscord,
 		"threadName": name, "card": card, "desktopThreadRequestId": requestID.String()})
-	_, err := tx.ExecContext(c.Request.Context(), `INSERT INTO integration_outbox
+	_, err := tx.ExecContext(ctx, `INSERT INTO integration_outbox
 		(integration, operation_key, operation_type, route_key, payload, nonce)
 		VALUES ('discord',$1,'forum.post.create',$2,$3,$4)
-		ON CONFLICT(integration, operation_key) DO NOTHING`,
+		ON CONFLICT(integration, operation_key) DO UPDATE SET
+			operation_type = EXCLUDED.operation_type, route_key = EXCLUDED.route_key,
+			payload = EXCLUDED.payload, nonce = EXCLUDED.nonce, status = 'pending',
+			attempt_count = 0, available_at = now(), last_error = NULL, updated_at = now()`,
 		"desktop-thread-post:"+requestID.String(), "channels/"+target.forumDiscord+"/threads",
 		payload, "desktop-thread-"+requestID.String())
 	return err
+}
+
+func normalizeDesktopTitle(value string) string {
+	value = strings.Join(strings.Fields(value), " ")
+	runes := []rune(value)
+	if len(runes) > 100 {
+		value = string(runes[:100])
+	}
+	return strings.TrimSpace(value)
 }
 
 func validDesktopRequestKey(value string) bool {
@@ -260,11 +275,16 @@ func (s *Server) workerCompleteDesktopThread(c *gin.Context) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	var status string
-	var environmentID, controlID uuid.UUID
-	err = tx.QueryRowContext(c.Request.Context(), `SELECT r.environment_id, r.control_id, r.status
-		FROM desktop_thread_requests r JOIN discord_development_environments e
-		ON e.id = r.environment_id WHERE r.id = $1 AND e.execution_node_id = $2 FOR UPDATE`,
-		requestID, workerNode(c).ID).Scan(&environmentID, &controlID, &status)
+	var environmentID, controlID, forumID, repositoryID, executionNodeID uuid.UUID
+	var sourceControl sql.NullString
+	var requestParams json.RawMessage
+	err = tx.QueryRowContext(c.Request.Context(), `SELECT r.environment_id, r.status,
+		r.forum_id, r.source_control_id::text, r.request_params, f.repository_id, e.execution_node_id
+			FROM desktop_thread_requests r JOIN discord_development_environments e
+			ON e.id = r.environment_id JOIN discord_forums f ON f.id = r.forum_id
+			WHERE r.id = $1 AND e.execution_node_id = $2 FOR UPDATE`,
+		requestID, workerNode(c).ID).Scan(&environmentID, &status, &forumID,
+		&sourceControl, &requestParams, &repositoryID, &executionNodeID)
 	if err != nil {
 		problem(c, http.StatusNotFound, "Desktop Thread reservation 不存在", err)
 		return
@@ -273,30 +293,36 @@ func (s *Server) workerCompleteDesktopThread(c *gin.Context) {
 		problem(c, http.StatusForbidden, "Desktop Thread 不属于当前开发环境", nil)
 		return
 	}
-	if status != "completed" {
-		if status != "codex_pending" || controlID == uuid.Nil {
-			problem(c, http.StatusConflict, "Desktop Thread 尚未准备好或已经失败", nil)
+	if status == "preparing" {
+		profileID, contextVersion, model, effort, tier, configErr :=
+			s.desktopControlConfig(c.Request.Context(), sourceControl, repositoryID, forumID, requestParams)
+		if configErr != nil {
+			problem(c, http.StatusInternalServerError, "解析 Desktop Thread 运行配置失败", configErr)
 			return
 		}
-		result, updateErr := tx.ExecContext(c.Request.Context(), `UPDATE codex_thread_controls SET
-			external_thread_id = $2, codex_home_key = $3, provider_signature = $4,
-			updated_at = now() WHERE id = $1 AND external_thread_id IS NULL`, controlID,
-			threadID, environmentID.String(), provider.ConfigSignature)
-		if updateErr != nil {
-			problem(c, http.StatusConflict, "Codex Thread 已绑定到其他会话", updateErr)
-			return
+		controlID = uuid.New()
+		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO codex_thread_controls
+			(id, source_type, repository_id, agent_profile_id, context_version, external_thread_id,
+			 execution_node_id, development_environment_id, model, reasoning_effort, service_tier,
+			 runtime_preferences_frozen_at, codex_home_key, provider_signature)
+			VALUES ($1,'desktop_thread',$2,$3,$4,$5,$6,$7,NULLIF($8,''),NULLIF($9,''),$10,
+			 now(),$11,$12)`, controlID, repositoryID, profileID, contextVersion, threadID,
+			executionNodeID, environmentID, model, effort, tier, environmentID.String(),
+			provider.ConfigSignature)
+		if err == nil {
+			_, err = tx.ExecContext(c.Request.Context(), `UPDATE desktop_thread_requests SET
+				status = 'waiting_for_input', control_id = $2, external_thread_id = $3,
+				response = $4, error = NULL, updated_at = now() WHERE id = $1`,
+				requestID, controlID, threadID, request.Response)
 		}
-		if changed, _ := result.RowsAffected(); changed != 1 {
-			problem(c, http.StatusConflict, "Codex Thread Control 已经被修改", nil)
-			return
-		}
-		_, err = tx.ExecContext(c.Request.Context(), `UPDATE desktop_thread_requests SET
-			status = 'completed', external_thread_id = $2, response = $3, error = NULL,
-			updated_at = now() WHERE id = $1`, requestID, threadID, request.Response)
 		if err != nil {
-			problem(c, http.StatusInternalServerError, "保存 Desktop Thread 结果失败", err)
+			problem(c, http.StatusConflict, "绑定 Desktop Thread Control 失败", err)
 			return
 		}
+	} else if status != "waiting_for_input" && status != "post_pending" &&
+		status != "completed" && status != "post_failed" {
+		problem(c, http.StatusConflict, "Desktop Thread 尚未准备好或已经失败", nil)
+		return
 	}
 	if err := tx.Commit(); err != nil {
 		problem(c, http.StatusInternalServerError, "提交 Desktop Thread 绑定失败", err)
@@ -308,6 +334,34 @@ func (s *Server) workerCompleteDesktopThread(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, state)
+}
+
+func (s *Server) desktopControlConfig(ctx context.Context, sourceControl sql.NullString,
+	repositoryID, forumID uuid.UUID, params json.RawMessage,
+) (uuid.UUID, int64, string, string, string, error) {
+	var profileID uuid.UUID
+	var contextVersion int64
+	var model, effort, tier string
+	if sourceControl.Valid {
+		err := s.db.QueryRowContext(ctx, `SELECT agent_profile_id, context_version,
+			COALESCE(model,''), COALESCE(reasoning_effort,''), COALESCE(service_tier,'standard')
+			FROM codex_thread_controls WHERE id = $1`, sourceControl.String).
+			Scan(&profileID, &contextVersion, &model, &effort, &tier)
+		return profileID, contextVersion, model, effort, tier, err
+	}
+	err := s.db.QueryRowContext(ctx, `SELECT id, context_version FROM agent_profiles
+		ORDER BY created_at, id LIMIT 1`).Scan(&profileID, &contextVersion)
+	if err != nil {
+		return uuid.Nil, 0, "", "", "", err
+	}
+	preferences, err := codexsettings.NewService(s.db).Resolve(ctx, repositoryID, forumID, profileID)
+	if err != nil {
+		return uuid.Nil, 0, "", "", "", err
+	}
+	config := workerprotocol.DesktopThreadConfig{Model: preferences.Model,
+		ReasoningEffort: preferences.ReasoningEffort, ServiceTier: preferences.ServiceTier}
+	applyDesktopRuntimeParams(&config, params)
+	return profileID, contextVersion, config.Model, config.ReasoningEffort, config.ServiceTier, nil
 }
 
 func (s *Server) workerFailDesktopThread(c *gin.Context) {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,6 +14,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexrelay"
 	"github.com/slovx2/tyrs-hand/internal/devcontainer"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
+	"go.uber.org/zap"
 )
 
 type environmentCodexRegistry struct {
@@ -29,11 +31,14 @@ type environmentCodex struct {
 	manifest   workerprotocol.EnvironmentManifest
 	runtime    devcontainer.Runtime
 	generation int64
+	processor  *RemoteProcessor
 
 	mu                  sync.Mutex
 	toolHandlers        map[string]toolBinding
 	interactiveHandlers map[string]interactiveBinding
 	nextBinding         uint64
+	metadataEvents      *codexrelay.Subscription
+	metadataSequence    atomic.Int64
 }
 
 type toolBinding struct {
@@ -79,6 +84,7 @@ func (r *environmentCodexRegistry) ensure(runtime devcontainer.Runtime,
 		}
 	}
 	entry := &environmentCodex{runtime: runtime, generation: time.Now().UnixNano(),
+		processor:           r.processor,
 		toolHandlers:        make(map[string]toolBinding),
 		interactiveHandlers: make(map[string]interactiveBinding)}
 	if manifest != nil {
@@ -100,6 +106,8 @@ func (r *environmentCodexRegistry) ensure(runtime devcontainer.Runtime,
 		return nil, err
 	}
 	entry.client = client
+	entry.metadataEvents = client.Subscribe(codex.ThreadFilter{})
+	go entry.observeMetadata(r.ctx)
 	r.entries[runtime.EnvironmentID] = entry
 	return entry, nil
 }
@@ -124,8 +132,65 @@ func (r *environmentCodexRegistry) retain(environmentIDs map[uuid.UUID]bool) {
 	}
 	r.mu.Unlock()
 	for _, entry := range removed {
+		if entry.metadataEvents != nil {
+			entry.metadataEvents.Close()
+		}
 		_ = entry.client.Close()
 		_ = entry.relay.Close()
+	}
+}
+
+func (r *environmentCodexRegistry) get(environmentID uuid.UUID) *environmentCodex {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.entries[environmentID]
+}
+
+func (e *environmentCodex) observeMetadata(ctx context.Context) {
+	for {
+		select {
+		case event, ok := <-e.metadataEvents.Events():
+			if !ok {
+				return
+			}
+			if event.Method != "thread/name/updated" {
+				continue
+			}
+			var value struct {
+				ThreadID   string `json:"threadId"`
+				ThreadName string `json:"threadName"`
+			}
+			if json.Unmarshal(event.Params, &value) == nil {
+				e.recordThreadName(ctx, value.ThreadID, value.ThreadName)
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (e *environmentCodex) recordThreadName(ctx context.Context, threadID, name string) {
+	if e.processor == nil || threadID == "" || name == "" {
+		return
+	}
+	event := workerprotocol.ThreadMetadataEvent{ThreadID: threadID,
+		Sequence: e.metadataSequence.Add(1), Name: name}
+	for attempt := 0; attempt < 8 && ctx.Err() == nil; attempt++ {
+		requestCtx, cancel := context.WithTimeout(ctx, e.processor.cfg.ControlTimeout)
+		err := e.processor.client.RecordThreadMetadata(requestCtx,
+			workerprotocol.ThreadMetadataRequest{
+				EnvironmentID: e.runtime.EnvironmentID, Generation: e.generation,
+				Events: []workerprotocol.ThreadMetadataEvent{event},
+			})
+		cancel()
+		if err == nil {
+			return
+		}
+		e.processor.logger.Warn("提交 Codex Thread 名称失败",
+			zap.String("thread_id", threadID), zap.Error(err))
+		if !waitContext(ctx, 500*time.Millisecond) {
+			return
+		}
 	}
 }
 
@@ -223,6 +288,9 @@ func (r *environmentCodexRegistry) close() {
 	r.entries = make(map[uuid.UUID]*environmentCodex)
 	r.mu.Unlock()
 	for _, entry := range entries {
+		if entry.metadataEvents != nil {
+			entry.metadataEvents.Close()
+		}
 		_ = entry.client.Close()
 		_ = entry.relay.Close()
 	}

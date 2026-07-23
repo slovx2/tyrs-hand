@@ -29,10 +29,15 @@ type RPCError struct {
 }
 
 type Thread struct {
-	ID     string `json:"id"`
-	CWD    string `json:"cwd"`
-	Status any    `json:"status"`
-	Turns  []Turn `json:"turns,omitempty"`
+	ID                      string `json:"id"`
+	CWD                     string `json:"cwd"`
+	Name                    string `json:"name,omitempty"`
+	Ephemeral               bool   `json:"ephemeral"`
+	Status                  any    `json:"status"`
+	ApprovalPolicy          string `json:"approvalPolicy,omitempty"`
+	Sandbox                 any    `json:"sandbox,omitempty"`
+	ActivePermissionProfile string `json:"activePermissionProfile,omitempty"`
+	Turns                   []Turn `json:"turns,omitempty"`
 }
 
 type Turn struct {
@@ -188,10 +193,11 @@ func (c *connection) handle(message Message) {
 		})
 	case "thread/start":
 		var params struct {
-			CWD string `json:"cwd"`
+			CWD       string `json:"cwd"`
+			Ephemeral bool   `json:"ephemeral"`
 		}
 		_ = json.Unmarshal(message.Params, &params)
-		thread := c.server.createThread(params.CWD)
+		thread := c.server.createThread(params.CWD, params.Ephemeral)
 		c.subscriptions[thread.ID] = true
 		c.respond(message.ID, threadResponse(thread))
 		c.server.broadcast(thread.ID, "thread/started", map[string]any{"thread": thread})
@@ -205,7 +211,7 @@ func (c *connection) handle(message Message) {
 			c.respondError(message.ID, -32602, "unknown source thread")
 			return
 		}
-		thread := c.server.createThread(source.CWD)
+		thread := c.server.createThread(source.CWD, false)
 		c.subscriptions[thread.ID] = true
 		c.respond(message.ID, threadResponse(thread))
 		c.server.broadcast(thread.ID, "thread/started", map[string]any{"thread": thread})
@@ -221,6 +227,39 @@ func (c *connection) handle(message Message) {
 		}
 		c.subscriptions[thread.ID] = true
 		c.respond(message.ID, threadResponse(thread))
+	case "thread/settings/update":
+		var params struct {
+			ThreadID       string `json:"threadId"`
+			ApprovalPolicy string `json:"approvalPolicy"`
+			Permissions    string `json:"permissions"`
+		}
+		_ = json.Unmarshal(message.Params, &params)
+		thread, ok := c.server.updateThreadSettings(params.ThreadID,
+			params.ApprovalPolicy, params.Permissions)
+		if !ok {
+			c.respondError(message.ID, -32602, "unknown thread")
+			return
+		}
+		c.respond(message.ID, map[string]any{})
+		c.server.broadcast(thread.ID, "thread/settings/updated", map[string]any{
+			"threadId": thread.ID,
+			"settings": threadSettings(thread),
+		})
+	case "thread/name/set":
+		var params struct {
+			ThreadID string `json:"threadId"`
+			Name     string `json:"name"`
+		}
+		_ = json.Unmarshal(message.Params, &params)
+		thread, ok := c.server.updateThreadName(params.ThreadID, params.Name)
+		if !ok {
+			c.respondError(message.ID, -32602, "unknown thread")
+			return
+		}
+		c.respond(message.ID, map[string]any{})
+		c.server.broadcast(thread.ID, "thread/name/updated", map[string]any{
+			"threadId": thread.ID, "threadName": thread.Name,
+		})
 	case "thread/read":
 		var params struct {
 			ThreadID string `json:"threadId"`
@@ -294,8 +333,15 @@ func (c *connection) handle(message Message) {
 }
 
 func threadResponse(thread Thread) map[string]any {
-	return map[string]any{"thread": thread, "model": "mock-model", "modelProvider": "mock",
-		"cwd": thread.CWD, "approvalPolicy": "never", "sandbox": map[string]any{"type": "dangerFullAccess"}}
+	settings := threadSettings(thread)
+	settings["thread"] = thread
+	return settings
+}
+
+func threadSettings(thread Thread) map[string]any {
+	return map[string]any{"model": "mock-model", "modelProvider": "mock",
+		"cwd": thread.CWD, "approvalPolicy": thread.ApprovalPolicy,
+		"sandbox": thread.Sandbox, "activePermissionProfile": thread.ActivePermissionProfile}
 }
 
 func (c *connection) respond(id json.RawMessage, result any) {
@@ -313,13 +359,53 @@ func (c *connection) write(value any) {
 	_ = c.ws.WriteMessage(websocket.TextMessage, payload)
 }
 
-func (s *Server) createThread(cwd string) Thread {
+func (s *Server) createThread(cwd string, ephemeral bool) Thread {
 	id := "thread-" + jsonNumber(s.nextID.Add(1))
-	thread := Thread{ID: id, CWD: cwd, Status: map[string]string{"type": "idle"}}
+	thread := Thread{ID: id, CWD: cwd, Status: map[string]string{"type": "idle"},
+		Ephemeral:      ephemeral,
+		ApprovalPolicy: "never", Sandbox: map[string]any{"type": "dangerFullAccess"},
+		ActivePermissionProfile: ":danger-full-access"}
 	s.mu.Lock()
 	s.threads[id] = thread
 	s.mu.Unlock()
 	return thread
+}
+
+func (s *Server) updateThreadSettings(id, approvalPolicy, permissions string) (Thread, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	thread, ok := s.threads[id]
+	if !ok {
+		return Thread{}, false
+	}
+	if approvalPolicy != "" {
+		thread.ApprovalPolicy = approvalPolicy
+	}
+	if permissions != "" {
+		thread.ActivePermissionProfile = permissions
+		switch permissions {
+		case ":danger-full-access":
+			thread.Sandbox = map[string]any{"type": "dangerFullAccess"}
+		case ":workspace":
+			thread.Sandbox = map[string]any{"type": "workspaceWrite"}
+		case ":read-only":
+			thread.Sandbox = map[string]any{"type": "readOnly"}
+		}
+	}
+	s.threads[id] = thread
+	return thread, true
+}
+
+func (s *Server) updateThreadName(id, name string) (Thread, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	thread, ok := s.threads[id]
+	if !ok {
+		return Thread{}, false
+	}
+	thread.Name = name
+	s.threads[id] = thread
+	return thread, true
 }
 
 func (s *Server) listThreads() []Thread {

@@ -219,6 +219,14 @@ func (g *TitleGenerator) schedule(ctx context.Context, claimed claimedConversati
 		}
 		return errors.New("discord 标题生成状态已变化")
 	}
+	_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET
+		desired_thread_name = $2, desired_thread_name_source = 'luna',
+		desired_thread_name_revision = desired_thread_name_revision + 1,
+		thread_name_last_error = NULL, updated_at = now()
+		WHERE discord_conversation_id = $1`, claimed.ID, title)
+	if err != nil {
+		return err
+	}
 	payload := map[string]any{"channelId": claimed.ThreadID, "threadName": title,
 		"conversationId": claimed.ID.String()}
 	if err := enqueueDiscordOutbox(ctx, tx, "conversation-title:"+claimed.ID.String(),

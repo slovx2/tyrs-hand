@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -453,6 +454,111 @@ func TestRelaySynchronizesSteerInterruptAndRejectsConcurrentStart(t *testing.T) 
 		Params: mustJSON(map[string]string{"threadId": threadID, "turnId": turnID})})
 	require.Nil(t, first.response(t, rawID(4)).Error)
 	require.Equal(t, "turn/completed", receiveEvent(t, events.Events()).Method)
+}
+
+func TestRelayResumeReadsCurrentUpstreamThreadSettingsAndName(t *testing.T) {
+	mock, err := mockcodex.Start(t)
+	require.NoError(t, err)
+	relay := startRelay(t, mock.SocketPath)
+	first := connectDesktop(t, relay.SocketPath())
+	second := connectDesktop(t, relay.SocketPath())
+	first.initialize(t, 1)
+	second.initialize(t, 1)
+
+	first.write(t, rpcMessage{ID: rawID(2), Method: "thread/start",
+		Params: mustJSON(map[string]any{"cwd": t.TempDir(), "approvalPolicy": "on-request"})})
+	threadID := responseThreadID(t, first.response(t, rawID(2)).Result)
+	first.write(t, rpcMessage{ID: rawID(3), Method: "thread/settings/update",
+		Params: mustJSON(map[string]any{"threadId": threadID, "approvalPolicy": "never",
+			"permissions": ":danger-full-access"})})
+	require.Nil(t, first.response(t, rawID(3)).Error)
+	first.write(t, rpcMessage{ID: rawID(4), Method: "thread/name/set",
+		Params: mustJSON(map[string]any{"threadId": threadID, "name": "最新标题"})})
+	require.Nil(t, first.response(t, rawID(4)).Error)
+
+	second.write(t, rpcMessage{ID: rawID(2), Method: "thread/resume",
+		Params: mustJSON(map[string]string{"threadId": threadID})})
+	resumed := second.response(t, rawID(2))
+	require.Nil(t, resumed.Error)
+	require.Contains(t, string(resumed.Result), `"approvalPolicy":"never"`)
+	require.Contains(t, string(resumed.Result), `"activePermissionProfile":":danger-full-access"`)
+	require.Contains(t, string(resumed.Result), `"name":"最新标题"`)
+
+	var upstreamResume bool
+	for !upstreamResume {
+		select {
+		case request := <-mock.Requests():
+			if request.Message.Method == "thread/resume" {
+				upstreamResume = true
+			}
+		case <-time.After(time.Second):
+			t.Fatal("Relay 没有把第二个 Desktop 的 resume 转发给真实 app-server")
+		}
+	}
+}
+
+func TestRelayKeepsEphemeralDesktopThreadsOutsideController(t *testing.T) {
+	mock, err := mockcodex.Start(t)
+	require.NoError(t, err)
+	directory := shortTempDir(t)
+	controller := &recordingController{}
+	relay, err := codexrelay.Start(context.Background(), codexrelay.Options{
+		SocketPath: directory + "/relay.sock", UpstreamSocketPath: mock.SocketPath,
+		Controller: controller,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, relay.Close()) })
+	desktop := connectDesktop(t, relay.SocketPath())
+	desktop.initialize(t, 1)
+
+	desktop.write(t, rpcMessage{ID: rawID(2), Method: "thread/start",
+		Params: mustJSON(map[string]any{"cwd": t.TempDir(), "ephemeral": true})})
+	threadID := responseThreadID(t, desktop.response(t, rawID(2)).Result)
+	desktop.write(t, rpcMessage{ID: rawID(3), Method: "turn/start",
+		Params: mustJSON(map[string]any{"threadId": threadID,
+			"input": []map[string]string{{"type": "text", "text": "name helper"}}})})
+	require.Nil(t, desktop.response(t, rawID(3)).Error)
+	desktop.write(t, rpcMessage{ID: rawID(4), Method: "thread/name/set",
+		Params: mustJSON(map[string]string{"threadId": threadID, "name": "helper"})})
+	require.Nil(t, desktop.response(t, rawID(4)).Error)
+	require.Empty(t, controller.methods())
+
+	desktop.write(t, rpcMessage{ID: rawID(5), Method: "thread/start",
+		Params: mustJSON(map[string]any{"cwd": t.TempDir()})})
+	require.NotEmpty(t, responseThreadID(t, desktop.response(t, rawID(5)).Result))
+	require.Equal(t, []string{"thread/start"}, controller.methods())
+}
+
+type recordingController struct {
+	mu    sync.Mutex
+	calls []string
+}
+
+func (c *recordingController) PrepareCall(_ context.Context,
+	call codexrelay.Call,
+) (codexrelay.CallPlan, error) {
+	c.mu.Lock()
+	c.calls = append(c.calls, call.Method)
+	c.mu.Unlock()
+	return codexrelay.CallPlan{Params: call.Params, Forward: true}, nil
+}
+
+func (*recordingController) CompleteCall(_ context.Context, _ codexrelay.Call,
+	_ codexrelay.CallPlan, result json.RawMessage, cause error,
+) (json.RawMessage, error) {
+	return result, cause
+}
+
+func (*recordingController) ResolveInteractive(_ context.Context, _ codex.ServerRequest,
+	answer json.RawMessage, _ codexrelay.Role,
+) (bool, json.RawMessage, error) {
+	return true, answer, nil
+}
+
+func (c *recordingController) methods() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.calls...)
 }
 
 func testResponseScope(t *testing.T, raw json.RawMessage) (string, string) {

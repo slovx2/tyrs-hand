@@ -145,6 +145,9 @@ func TestTitleGeneratorRunOnceClaimsAndSchedulesFallback(t *testing.T) {
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE discord_conversations")).
 		WithArgs(conversationID, fallbackTitle(strings.Repeat("消息", 40))).
 		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE codex_thread_controls SET")).
+		WithArgs(conversationID, fallbackTitle(strings.Repeat("消息", 40))).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO integration_outbox")).
 		WithArgs("conversation-title:"+conversationID.String(), "thread.rename", "channels/thread-1",
 			sqlmock.AnyArg(), "").WillReturnResult(sqlmock.NewResult(1, 1))
@@ -184,6 +187,9 @@ func TestTitleGeneratorRecoversGeneratingWithoutCallingProvider(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE discord_conversations")).
 		WithArgs(conversationID, "中断前的首条消息").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE codex_thread_controls SET")).
+		WithArgs(conversationID, "中断前的首条消息").
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO integration_outbox")).
 		WithArgs("conversation-title:"+conversationID.String(), "thread.rename", "channels/thread-1",
 			sqlmock.AnyArg(), "").WillReturnResult(sqlmock.NewResult(1, 1))

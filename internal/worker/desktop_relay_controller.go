@@ -118,6 +118,13 @@ func (c *desktopRelayController) CompleteCall(_ context.Context, call codexrelay
 	switch call.Method {
 	case "thread/start", "thread/fork":
 		go c.observeDesktopThread(call, result)
+		if threadID, name := desktopThreadName(result); threadID != "" && name != "" {
+			go c.environment.recordThreadName(c.processor.environments.ctx, threadID, name)
+		}
+	case "thread/resume":
+		if threadID, name := desktopThreadName(result); threadID != "" && name != "" {
+			go c.environment.recordThreadName(c.processor.environments.ctx, threadID, name)
+		}
 	case "turn/start":
 		state, _ := plan.State.(*desktopRelayCallState)
 		if state != nil {
@@ -127,6 +134,17 @@ func (c *desktopRelayController) CompleteCall(_ context.Context, call codexrelay
 		go c.observeDesktopSteer(call, result)
 	}
 	return result, nil
+}
+
+func desktopThreadName(raw json.RawMessage) (string, string) {
+	var value struct {
+		Thread struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"thread"`
+	}
+	_ = json.Unmarshal(raw, &value)
+	return value.Thread.ID, strings.TrimSpace(value.Thread.Name)
 }
 
 func desktopAccountWithServiceTiers(result json.RawMessage, cause error) (json.RawMessage, error) {
@@ -233,30 +251,22 @@ func (c *desktopRelayController) observeDesktopThread(call codexrelay.Call,
 		}
 	}
 	for ctx.Err() == nil {
-		switch state.Status {
-		case "codex_pending":
-			requestCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
-			_, err := c.processor.client.CompleteDesktopThread(requestCtx, state.ID,
-				workerprotocol.DesktopThreadCompleteRequest{
-					EnvironmentID: c.environment.runtime.EnvironmentID, Response: result,
-				})
-			cancel()
-			if err != nil {
-				c.processor.logger.Warn("异步绑定 Desktop Thread 失败", zap.Error(err))
-			}
-			return
-		case "completed", "failed":
-			return
-		}
-		if !waitContext(ctx, 500*time.Millisecond) {
+		if state.Status != "preparing" {
 			return
 		}
 		requestCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
-		var err error
-		state, err = c.processor.client.DesktopThreadState(requestCtx, state.ID)
+		_, err := c.processor.client.CompleteDesktopThread(requestCtx, state.ID,
+			workerprotocol.DesktopThreadCompleteRequest{
+				EnvironmentID: c.environment.runtime.EnvironmentID, Response: result,
+			})
 		cancel()
-		if err != nil {
-			c.processor.logger.Warn("读取 Desktop Thread 异步绑定状态失败", zap.Error(err))
+		if err == nil {
+			return
+		}
+		c.processor.logger.Warn("异步绑定 Desktop Thread 失败，稍后重试",
+			zap.String("thread_id", threadID), zap.Error(err))
+		if !waitContext(ctx, 500*time.Millisecond) {
+			return
 		}
 	}
 }

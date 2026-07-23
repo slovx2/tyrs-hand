@@ -186,18 +186,21 @@ func (s *Server) loadDesktopDiscordWorkerSnapshot(ctx context.Context,
 	claimed *codexcontrol.ClaimedControl,
 ) (*workerprotocol.DiscordSnapshot, error) {
 	result := &workerprotocol.DiscordSnapshot{Body: claimed.Instruction, Access: "owner"}
-	var sshUserID, sshDisplayName string
-	err := s.db.QueryRowContext(ctx, `SELECT c.guild_id, c.thread_id,
-		c.owner_discord_user_id, f.id, f.development_environment_id,
+	var sshUserID, sshDisplayName, conversationID string
+	err := s.db.QueryRowContext(ctx, `SELECT e.guild_id, COALESCE(c.thread_id,''),
+		f.owner_discord_user_id, f.id, e.id, COALESCE(c.id::text,''),
 		COALESCE(e.ssh_discord_user_id, ''),
 		COALESCE(NULLIF(m.display_name, ''), m.username, '')
-		FROM discord_conversations c JOIN discord_forums f ON f.id = c.forum_id
-		JOIN discord_development_environments e ON e.id = f.development_environment_id
+		FROM codex_thread_controls ct
+		JOIN desktop_thread_requests request ON request.control_id = ct.id
+		JOIN discord_forums f ON f.id = request.forum_id
+		JOIN discord_development_environments e ON e.id = request.environment_id
+		LEFT JOIN discord_conversations c ON c.id = ct.discord_conversation_id
 		LEFT JOIN discord_members m ON m.guild_id = e.guild_id
 			AND m.discord_user_id = e.ssh_discord_user_id
-		WHERE c.id = $1 AND f.forum_type = 'development'`, claimed.DiscordConversationID).
+		WHERE ct.id = $1 AND f.forum_type = 'development'`, claimed.ControlID).
 		Scan(&result.GuildID, &result.ThreadID, &result.OwnerUserID, &result.ForumID,
-			&result.EnvironmentID, &sshUserID, &sshDisplayName)
+			&result.EnvironmentID, &conversationID, &sshUserID, &sshDisplayName)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +208,8 @@ func (s *Server) loadDesktopDiscordWorkerSnapshot(ctx context.Context,
 		result.UserID = sshUserID
 		result.DisplayName = sshDisplayName
 	}
-	development := &workerprotocol.DevelopmentSpec{ConversationID: claimed.DiscordConversationID}
+	development := &workerprotocol.DevelopmentSpec{}
+	development.ConversationID, _ = uuid.Parse(conversationID)
 	err = s.db.QueryRowContext(ctx, `SELECT e.id, f.id, fw.status, fw.relative_path,
 		fw.branch, r.owner || '/' || r.name, r.clone_url, r.default_branch,
 		e.build_repository_id, br.owner || '/' || br.name, br.clone_url, br.default_branch,

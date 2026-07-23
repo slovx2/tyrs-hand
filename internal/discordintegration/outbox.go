@@ -130,6 +130,7 @@ func (s *SQLoutbox) Complete(ctx context.Context, item OutboxItem, response json
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	var desktopRequestID uuid.UUID
 	if strings.HasPrefix(item.OperationKey, "projection:") {
 		var locked int
 		if err := tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT 1 FROM discord_projections
@@ -204,6 +205,7 @@ func (s *SQLoutbox) Complete(ctx context.Context, item OutboxItem, response json
 		if err := s.completeDesktopThreadPost(ctx, tx, item, response); err != nil {
 			return err
 		}
+		desktopRequestID, _ = uuid.Parse(strings.TrimPrefix(item.OperationKey, "desktop-thread-post:"))
 	}
 	if strings.HasPrefix(item.OperationKey, "interactive:") {
 		var value struct {
@@ -252,7 +254,30 @@ func (s *SQLoutbox) Complete(ctx context.Context, item OutboxItem, response json
 			return err
 		}
 	}
-	return tx.Commit()
+	if strings.HasPrefix(item.OperationKey, "thread-name:") {
+		var sent struct {
+			ControlID string `json:"controlId"`
+			Name      string `json:"threadName"`
+			Revision  int64  `json:"revision"`
+		}
+		if json.Unmarshal(item.Payload, &sent) == nil && sent.ControlID != "" {
+			_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET
+				applied_thread_name = $2, applied_thread_name_revision = $3,
+				thread_name_last_error = NULL, updated_at = now()
+				WHERE id = $1 AND desired_thread_name_revision = $3`,
+				sent.ControlID, sent.Name, sent.Revision)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if desktopRequestID != uuid.Nil {
+		return s.replayDesktopProjection(ctx, desktopRequestID)
+	}
+	return nil
 }
 
 func (s *SQLoutbox) Retry(ctx context.Context, item OutboxItem, at time.Time, cause error) error {
@@ -268,11 +293,23 @@ func (s *SQLoutbox) Fail(ctx context.Context, item OutboxItem, cause error) erro
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	result, err := tx.ExecContext(ctx, `UPDATE integration_outbox SET status = 'failed',
-		lease_token = NULL, lease_expires_at = NULL, last_error = $3, updated_at = now()
-		WHERE id = $1 AND lease_token = $2`, item.ID, item.LeaseToken, cause.Error())
-	if err := changedOne(result, err); err != nil {
+	var status string
+	err = tx.QueryRowContext(ctx, `UPDATE integration_outbox SET
+		status = CASE WHEN payload = $4::jsonb THEN 'failed' ELSE 'pending' END,
+		available_at = CASE WHEN payload = $4::jsonb THEN available_at ELSE now() END,
+		lease_token = NULL, lease_expires_at = NULL,
+		last_error = CASE WHEN payload = $4::jsonb THEN $3 ELSE NULL END,
+		updated_at = now()
+		WHERE id = $1 AND lease_token = $2 RETURNING status`,
+		item.ID, item.LeaseToken, cause.Error(), item.Payload).Scan(&status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return errors.New("outbox lease 已失效")
+	}
+	if err != nil {
 		return err
+	}
+	if status == "pending" {
+		return tx.Commit()
 	}
 	if strings.HasPrefix(item.OperationKey, "conversation-title:") {
 		_, err = tx.ExecContext(ctx, `UPDATE discord_conversations SET title_rename_status = 'failed',
@@ -284,9 +321,19 @@ func (s *SQLoutbox) Fail(ctx context.Context, item OutboxItem, cause error) erro
 	}
 	if strings.HasPrefix(item.OperationKey, "desktop-thread-post:") {
 		requestID := strings.TrimPrefix(item.OperationKey, "desktop-thread-post:")
-		_, err = tx.ExecContext(ctx, `UPDATE desktop_thread_requests SET status = 'failed',
+		_, err = tx.ExecContext(ctx, `UPDATE desktop_thread_requests SET status = 'post_failed',
 			error = $2, updated_at = now() WHERE id = $1 AND status = 'post_pending'`,
 			requestID, cause.Error())
+		if err != nil {
+			return err
+		}
+	}
+	if strings.HasPrefix(item.OperationKey, "thread-name:") {
+		controlID := strings.TrimPrefix(item.OperationKey, "thread-name:")
+		_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET
+			thread_name_last_error = $2, updated_at = now()
+			WHERE id = $1 AND desired_thread_name_revision > applied_thread_name_revision`,
+			controlID, cause.Error())
 		if err != nil {
 			return err
 		}

@@ -38,6 +38,9 @@ func (s *Server) registerWorkerRoutes(router *gin.Engine) {
 	authorized.GET("/desktop-thread-requests/:id", s.workerDesktopThreadState)
 	authorized.POST("/desktop-thread-requests/:id/complete", s.workerCompleteDesktopThread)
 	authorized.POST("/desktop-thread-requests/:id/fail", s.workerFailDesktopThread)
+	authorized.POST("/thread-metadata-events", s.workerRecordThreadMetadata)
+	authorized.GET("/thread-name-updates", s.workerPendingThreadNames)
+	authorized.POST("/thread-name-updates/:id/ack", s.workerAckThreadName)
 	authorized.POST("/desktop-turns", s.workerPrepareDesktopTurn)
 	authorized.POST("/desktop-steers", s.workerRecordDesktopSteer)
 	authorized.POST("/runs/:id/interactive", s.workerRegisterInteractive)
@@ -239,7 +242,8 @@ func (s *Server) claimedRemoteRun(ctx context.Context, nodeID, runID uuid.UUID,
 	var source string
 	var conversationID, workItemID, repositoryID sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT r.control_id, r.primary_intent_id, r.id,
-		r.lease_epoch, i.source_type, i.attempt_count, i.max_attempts,
+		r.lease_epoch, i.source_type, COALESCE(i.input_surface,''),
+		i.attempt_count, i.max_attempts,
 		i.discord_conversation_id::text, i.work_item_id::text, i.repository_id::text,
 		COALESCE(i.discord_message_id,''), i.agent_profile_id, i.sequence_no,
 		i.status = 'reconciling' OR i.codex_submission_id IS NOT NULL,
@@ -250,7 +254,8 @@ func (s *Server) claimedRemoteRun(ctx context.Context, nodeID, runID uuid.UUID,
 		JOIN codex_thread_controls c ON c.id = r.control_id
 		WHERE r.id = $1 AND r.execution_node_id = $2`, runID, nodeID).Scan(
 		&claimed.ControlID, &claimed.ID, &claimed.RunID, &claimed.LeaseEpoch, &source,
-		&claimed.Attempt, &claimed.MaxAttempts, &conversationID, &workItemID, &repositoryID,
+		&claimed.InputSurface, &claimed.Attempt, &claimed.MaxAttempts,
+		&conversationID, &workItemID, &repositoryID,
 		&claimed.DiscordMessageID, &claimed.AgentProfileID, &claimed.Sequence,
 		&claimed.Recovering, &claimed.SubmissionID, &claimed.ConfirmedTurnID,
 		&claimed.ExternalThreadID, &claimed.CodexHomeKey, &claimed.ProviderSignature)

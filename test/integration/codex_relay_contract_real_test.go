@@ -28,6 +28,11 @@ func TestRealCodexRelayClassifiesEveryClientRequestMethod(t *testing.T) {
 	require.NotEmpty(t, methods)
 
 	classified := codexrelay.ClassifiedMethods()
+	// Desktop 0.145.0 会调用该方法，app-server 也能处理并广播结果，
+	// 但 generate-json-schema 尚未把它写入 ClientRequest。
+	unschematizedDesktopMethods := map[string]bool{
+		"thread/settings/update": true,
+	}
 	missing := make([]string, 0)
 	extra := make([]string, 0)
 	for method := range methods {
@@ -36,7 +41,7 @@ func TestRealCodexRelayClassifiesEveryClientRequestMethod(t *testing.T) {
 		}
 	}
 	for method := range classified {
-		if !methods[method] {
+		if !methods[method] && !unschematizedDesktopMethods[method] {
 			extra = append(extra, method)
 		}
 	}

@@ -20,7 +20,8 @@ func (r *Relay) routeCall(ctx context.Context, source *session, method string,
 	// 未知方法也透明交给固定版本的 app-server 判定，避免 Relay 升级滞后破坏 Desktop 新能力。
 	call := Call{Role: source.role, Method: method, Params: append(json.RawMessage(nil), params...)}
 	plan := CallPlan{Params: params, Forward: true}
-	controlled := class == methodControlled && source.role == RoleDesktop
+	ephemeral := r.callIsEphemeral(method, params)
+	controlled := class == methodControlled && source.role == RoleDesktop && !ephemeral
 	if controlled {
 		if r.options.Controller == nil {
 			return nil, &ProtocolError{Code: -32041,
@@ -45,16 +46,6 @@ func (r *Relay) routeCall(ctx context.Context, source *session, method string,
 		}
 		return result, err
 	}
-	if method == "thread/resume" {
-		threadID, _ := threadScope(plan.Params)
-		if cached := r.cachedThread(threadID); len(cached) > 0 {
-			source.subscribe(threadID)
-			if controlled {
-				return r.completeControlled(ctx, call, plan, cached, nil)
-			}
-			return cached, nil
-		}
-	}
 	var result json.RawMessage
 	if err := r.upstream.Call(ctx, method, plan.Params, &result); err != nil {
 		if controlled {
@@ -62,16 +53,16 @@ func (r *Relay) routeCall(ctx context.Context, source *session, method string,
 		}
 		return nil, err
 	}
-	if method == "thread/list" {
-		result = r.mergeThreadList(result)
-	}
 	if method == "thread/start" || method == "thread/fork" || method == "thread/resume" {
 		threadID := responseThreadID(result)
 		if threadID == "" {
 			return nil, fmt.Errorf("%s 没有返回 Codex Thread ID", method)
 		}
-		r.subscribeCreatedThread(source, threadID)
-		r.cacheThread(threadID, result)
+		if responseThreadEphemeral(result) || ephemeral {
+			r.markEphemeral(threadID)
+			ephemeral = true
+		}
+		r.subscribeCreatedThread(source, threadID, ephemeral)
 	}
 	if controlled {
 		return r.completeControlled(ctx, call, plan, result, nil)
@@ -96,11 +87,11 @@ func (r *Relay) routeNotification(source *session, method string, params json.Ra
 	return r.upstream.Notify(method, params)
 }
 
-func (r *Relay) subscribeCreatedThread(source *session, threadID string) {
+func (r *Relay) subscribeCreatedThread(source *session, threadID string, ephemeral bool) {
 	r.mu.Lock()
 	sessions := make([]*session, 0, len(r.sessions))
 	for _, item := range r.sessions {
-		if item == source || item.role == RoleWorker {
+		if item == source || !ephemeral {
 			sessions = append(sessions, item)
 		}
 	}
@@ -129,7 +120,6 @@ func (r *Relay) unsubscribe(ctx context.Context, source *session,
 	if err := r.upstream.Call(ctx, "thread/unsubscribe", params, &result); err != nil {
 		return nil, err
 	}
-	r.forgetThread(threadID)
 	return result, nil
 }
 
@@ -148,78 +138,19 @@ func (r *Relay) anySubscribed(threadID string) bool {
 	return false
 }
 
-func (r *Relay) cachedThread(threadID string) json.RawMessage {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return append(json.RawMessage(nil), r.threads[threadID]...)
-}
-
-func (r *Relay) cacheThread(threadID string, response json.RawMessage) {
-	if threadID == "" || len(response) == 0 {
-		return
-	}
-	r.mu.Lock()
-	r.threads[threadID] = append(json.RawMessage(nil), response...)
-	r.mu.Unlock()
-}
-
-func (r *Relay) forgetThread(threadID string) {
-	r.mu.Lock()
-	delete(r.threads, threadID)
-	r.mu.Unlock()
-}
-
-func (r *Relay) mergeThreadList(response json.RawMessage) json.RawMessage {
-	var value struct {
-		Data       []json.RawMessage `json:"data"`
-		NextCursor json.RawMessage   `json:"nextCursor"`
-	}
-	if json.Unmarshal(response, &value) != nil {
-		return response
-	}
-	known := make(map[string]bool, len(value.Data))
-	for _, thread := range value.Data {
-		known[threadObjectID(thread)] = true
-	}
-	r.mu.Lock()
-	cached := make([]json.RawMessage, 0, len(r.threads))
-	for _, item := range r.threads {
-		cached = append(cached, append(json.RawMessage(nil), item...))
-	}
-	r.mu.Unlock()
-	for _, item := range cached {
-		var started struct {
-			Thread json.RawMessage `json:"thread"`
-		}
-		if json.Unmarshal(item, &started) != nil || len(started.Thread) == 0 {
-			continue
-		}
-		if id := threadObjectID(started.Thread); id != "" && !known[id] {
-			value.Data = append(value.Data, started.Thread)
-			known[id] = true
-		}
-	}
-	merged, err := json.Marshal(value)
-	if err != nil {
-		return response
-	}
-	return merged
-}
-
-func threadObjectID(raw json.RawMessage) string {
-	var value struct {
-		ID string `json:"id"`
-	}
-	_ = json.Unmarshal(raw, &value)
-	return value.ID
-}
-
 func (r *Relay) forwardEvents() {
 	for event := range r.upstreamEvents.Events() {
 		threadID, _ := threadScope(event.Params)
+		if event.Method == "thread/started" && eventThreadEphemeral(event.Params) {
+			r.markEphemeral(threadID)
+		}
+		ephemeral := r.isEphemeral(threadID)
 		r.mu.Lock()
 		sessions := make([]*session, 0, len(r.sessions))
 		for _, item := range r.sessions {
+			if ephemeral && item.role == RoleWorker {
+				continue
+			}
 			if threadID == "" || event.Method == "thread/started" || item.subscribed(threadID) {
 				sessions = append(sessions, item)
 			}
@@ -236,6 +167,51 @@ func (r *Relay) forwardEvents() {
 	default:
 		r.shutdown(errors.New("relay 上游事件流已关闭"))
 	}
+}
+
+func (r *Relay) callIsEphemeral(method string, params json.RawMessage) bool {
+	if method == "thread/start" || method == "thread/fork" {
+		var value struct {
+			Ephemeral bool   `json:"ephemeral"`
+			ThreadID  string `json:"threadId"`
+		}
+		_ = json.Unmarshal(params, &value)
+		return value.Ephemeral || r.isEphemeral(value.ThreadID)
+	}
+	threadID, _ := threadScope(params)
+	return r.isEphemeral(threadID)
+}
+
+func (r *Relay) markEphemeral(threadID string) {
+	if threadID == "" {
+		return
+	}
+	r.mu.Lock()
+	r.ephemeralThreads[threadID] = true
+	r.mu.Unlock()
+}
+
+func (r *Relay) isEphemeral(threadID string) bool {
+	if threadID == "" {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.ephemeralThreads[threadID]
+}
+
+func responseThreadEphemeral(raw json.RawMessage) bool {
+	var value struct {
+		Thread struct {
+			Ephemeral bool `json:"ephemeral"`
+		} `json:"thread"`
+	}
+	_ = json.Unmarshal(raw, &value)
+	return value.Thread.Ephemeral
+}
+
+func eventThreadEphemeral(raw json.RawMessage) bool {
+	return responseThreadEphemeral(raw)
 }
 
 func (r *Relay) handleServerRequest(ctx context.Context,

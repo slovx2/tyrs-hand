@@ -9,7 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 3
+const Version = 4
 
 type EnrollRequest struct {
 	Token string `json:"token"`
@@ -183,6 +183,32 @@ type DesktopThreadCompleteRequest struct {
 type DesktopThreadFailRequest struct {
 	EnvironmentID uuid.UUID `json:"environmentId"`
 	Error         string    `json:"error"`
+}
+
+type ThreadMetadataEvent struct {
+	ThreadID string `json:"threadId"`
+	Sequence int64  `json:"sequence"`
+	Name     string `json:"name"`
+}
+
+type ThreadMetadataRequest struct {
+	EnvironmentID uuid.UUID             `json:"environmentId"`
+	Generation    int64                 `json:"generation"`
+	Events        []ThreadMetadataEvent `json:"events"`
+}
+
+type ThreadNameUpdate struct {
+	ControlID     uuid.UUID `json:"controlId"`
+	EnvironmentID uuid.UUID `json:"environmentId"`
+	ThreadID      string    `json:"threadId"`
+	Name          string    `json:"name"`
+	Revision      int64     `json:"revision"`
+}
+
+type ThreadNameAckRequest struct {
+	EnvironmentID uuid.UUID `json:"environmentId"`
+	Revision      int64     `json:"revision"`
+	Error         string    `json:"error,omitempty"`
 }
 
 type DesktopTurnPrepareRequest struct {

@@ -185,6 +185,16 @@ func (s *Server) workerRunEvents(c *gin.Context) {
 			problem(c, http.StatusInternalServerError, "记录远程事件失败", err)
 			return
 		}
+		if event.Type == "item/completed" {
+			itemID, clientID, isUserMessage := completedUserMessage(event.Payload)
+			if isUserMessage {
+				if err := recordDesktopUserMessageItem(c.Request.Context(), tx,
+					claimed, itemID, clientID); err != nil {
+					problem(c, http.StatusInternalServerError, "确认 Desktop 用户消息失败", err)
+					return
+				}
+			}
+		}
 		lastSequence = event.Sequence
 	}
 	if _, err := tx.ExecContext(c.Request.Context(), `UPDATE codex_turn_runs
@@ -197,6 +207,7 @@ func (s *Server) workerRunEvents(c *gin.Context) {
 		return
 	}
 	if claimed.SourceType == codexcontrol.SourceDiscord {
+		s.hydrateDesktopConversation(c.Request.Context(), claimed)
 		hasExplicitProgress := false
 		timelineChanged := false
 		for _, event := range request.Events {
@@ -221,6 +232,63 @@ func (s *Server) workerRunEvents(c *gin.Context) {
 		}
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func completedUserMessage(payload json.RawMessage) (string, string, bool) {
+	var value struct {
+		Item struct {
+			ID                  string `json:"id"`
+			Type                string `json:"type"`
+			ClientID            string `json:"clientId"`
+			ClientUserMessageID string `json:"clientUserMessageId"`
+		} `json:"item"`
+	}
+	if json.Unmarshal(payload, &value) != nil || value.Item.Type != "userMessage" ||
+		value.Item.ID == "" {
+		return "", "", false
+	}
+	clientID := value.Item.ClientID
+	if clientID == "" {
+		clientID = value.Item.ClientUserMessageID
+	}
+	return value.Item.ID, clientID, true
+}
+
+func recordDesktopUserMessageItem(ctx context.Context, tx *sql.Tx,
+	claimed *codexcontrol.ClaimedControl, itemID, clientID string,
+) error {
+	if claimed.InputSurface != "desktop" {
+		return nil
+	}
+	var intentID uuid.UUID
+	query := `UPDATE codex_turn_intents SET
+		codex_user_message_item_id = COALESCE(codex_user_message_item_id, $3),
+		updated_at = now()
+		WHERE control_id = $1 AND input_surface = 'desktop'
+			AND desktop_input_projection_key = $2
+		RETURNING id`
+	err := tx.QueryRowContext(ctx, query, claimed.ControlID, clientID, itemID).Scan(&intentID)
+	if errors.Is(err, sql.ErrNoRows) && clientID == "" {
+		err = tx.QueryRowContext(ctx, `UPDATE codex_turn_intents SET
+			codex_user_message_item_id = COALESCE(codex_user_message_item_id, $2),
+			updated_at = now()
+			WHERE id = $1 AND input_surface = 'desktop' RETURNING id`,
+			claimed.ID, itemID).Scan(&intentID)
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE desktop_thread_requests request SET
+		codex_user_message_item_id = COALESCE(request.codex_user_message_item_id, $2),
+		updated_at = now()
+		FROM codex_turn_intents intent
+		WHERE intent.id = $1 AND request.control_id = intent.control_id
+			AND request.first_input_projection_key = intent.desktop_input_projection_key`,
+		intentID, itemID)
+	return err
 }
 
 func (s *Server) workerRunComplete(c *gin.Context) {
@@ -251,7 +319,13 @@ func (s *Server) workerRunComplete(c *gin.Context) {
 		}
 	}
 	if err == nil && claimed.SourceType == codexcontrol.SourceDiscord {
-		err = s.projectRemoteDiscordComplete(c.Request.Context(), claimed, request.Result)
+		s.hydrateDesktopConversation(c.Request.Context(), claimed)
+		if claimed.DiscordConversationID != uuid.Nil {
+			projectionErr := s.projectRemoteDiscordComplete(c.Request.Context(), claimed, request.Result)
+			if claimed.InputSurface != "desktop" {
+				err = projectionErr
+			}
+		}
 	}
 	if err == nil {
 		err = repository.Complete(c.Request.Context(), claimed, request.Result)
@@ -268,10 +342,22 @@ func (s *Server) workerRunComplete(c *gin.Context) {
 func (s *Server) discordProjectionTarget(ctx context.Context,
 	claimed *codexcontrol.ClaimedControl,
 ) (string, string, error) {
+	s.hydrateDesktopConversation(ctx, claimed)
 	var guildID, threadID string
 	err := s.db.QueryRowContext(ctx, `SELECT guild_id, thread_id FROM discord_conversations
 		WHERE id = $1`, claimed.DiscordConversationID).Scan(&guildID, &threadID)
 	return guildID, threadID, err
+}
+
+func (s *Server) hydrateDesktopConversation(ctx context.Context,
+	claimed *codexcontrol.ClaimedControl,
+) {
+	if claimed.InputSurface != "desktop" || claimed.DiscordConversationID != uuid.Nil {
+		return
+	}
+	_ = s.db.QueryRowContext(ctx, `SELECT discord_conversation_id
+		FROM codex_thread_controls WHERE id = $1 AND discord_conversation_id IS NOT NULL`,
+		claimed.ControlID).Scan(&claimed.DiscordConversationID)
 }
 
 func (s *Server) projectRemoteDiscordProgress(ctx context.Context,

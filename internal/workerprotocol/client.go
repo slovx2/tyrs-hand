@@ -161,6 +161,25 @@ func (c *Client) FailDesktopThread(ctx context.Context, requestID uuid.UUID,
 		requestID.String()+"/fail", request, nil, true)
 }
 
+func (c *Client) RecordThreadMetadata(ctx context.Context,
+	request ThreadMetadataRequest,
+) error {
+	return c.call(ctx, http.MethodPost, "/worker/v1/thread-metadata-events", request, nil, true)
+}
+
+func (c *Client) PendingThreadNames(ctx context.Context) ([]ThreadNameUpdate, error) {
+	var result []ThreadNameUpdate
+	err := c.call(ctx, http.MethodGet, "/worker/v1/thread-name-updates", nil, &result, true)
+	return result, err
+}
+
+func (c *Client) AckThreadName(ctx context.Context, controlID uuid.UUID,
+	request ThreadNameAckRequest,
+) error {
+	return c.call(ctx, http.MethodPost, "/worker/v1/thread-name-updates/"+
+		controlID.String()+"/ack", request, nil, true)
+}
+
 func (c *Client) PrepareDesktopTurn(ctx context.Context,
 	request DesktopTurnPrepareRequest,
 ) (Task, error) {

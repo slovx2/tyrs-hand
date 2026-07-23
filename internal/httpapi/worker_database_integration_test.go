@@ -281,41 +281,49 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		require.NoError(t, directErr)
 	}
 	require.NoError(t, err)
-	require.Equal(t, "post_pending", state.Status)
+	require.Equal(t, "preparing", state.Status)
 	var controls int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_thread_controls`).Scan(&controls))
-	require.Zero(t, controls, "异步补投影前不应伪造已绑定 Control")
-
-	outbox := discordintegration.NewSQLoutbox(db)
-	item, err := outbox.Claim(ctx, time.Minute)
-	require.NoError(t, err)
-	require.NotNil(t, item)
-	require.Equal(t, "desktop-thread-post:"+state.ID.String(), item.OperationKey)
-	require.Contains(t, string(item.Payload), "Desktop Alice")
-	require.NoError(t, outbox.Complete(ctx, *item,
-		json.RawMessage(`{"threadId":"desktop-discord-thread","messageId":"desktop-starter"}`)))
-	state, err = client.DesktopThreadState(ctx, state.ID)
-	require.NoError(t, err)
-	require.Equal(t, "codex_pending", state.Status)
-	require.NotEqual(t, uuid.Nil, state.ControlID)
-	require.Equal(t, "mock-model", state.Config.Model)
-	require.Equal(t, "high", state.Config.ReasoningEffort)
+	require.Zero(t, controls)
 
 	response := json.RawMessage(`{"thread":{"id":"codex-desktop-thread"}}`)
 	state, err = client.CompleteDesktopThread(ctx, state.ID,
 		workerprotocol.DesktopThreadCompleteRequest{EnvironmentID: environmentID, Response: response})
 	require.NoError(t, err)
-	require.Equal(t, "completed", state.Status)
+	require.Equal(t, "waiting_for_input", state.Status)
+	require.NotEqual(t, uuid.Nil, state.ControlID)
+	require.Equal(t, "mock-model", state.Config.Model)
+	require.Equal(t, "high", state.Config.ReasoningEffort)
 	require.Equal(t, "codex-desktop-thread", state.ExternalThreadID)
 	var boundEnvironment uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT development_environment_id
 		FROM codex_thread_controls WHERE id = $1`, state.ControlID).Scan(&boundEnvironment))
 	require.Equal(t, environmentID, boundEnvironment)
+	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
+		EnvironmentID: environmentID, Generation: 10,
+		Events: []workerprotocol.ThreadMetadataEvent{{
+			ThreadID: "codex-desktop-thread", Sequence: 1, Name: "首条输入前的正式标题",
+		}},
+	}))
+
+	fork, err := client.PrepareDesktopThread(ctx, workerprotocol.DesktopThreadPrepareRequest{
+		EnvironmentID: environmentID, Operation: "fork", RequestKey: strings.Repeat("b", 64),
+		Params: json.RawMessage(`{"threadId":"codex-desktop-thread"}`),
+	})
+	require.NoError(t, err, "Fork 不应依赖源 Thread 已经创建 Discord Conversation")
+	require.Equal(t, "preparing", fork.Status)
+	fork, err = client.CompleteDesktopThread(ctx, fork.ID,
+		workerprotocol.DesktopThreadCompleteRequest{EnvironmentID: environmentID,
+			Response: json.RawMessage(`{"thread":{"id":"codex-desktop-fork"}}`)})
+	require.NoError(t, err)
+	require.Equal(t, "waiting_for_input", fork.Status)
+	require.Equal(t, state.Config, fork.Config)
 
 	task, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
 		EnvironmentID: environmentID, WorkerID: "desktop-worker",
 		RequestKey: strings.Repeat("d", 64), Params: json.RawMessage(
-			`{"threadId":"codex-desktop-thread","input":[{"type":"text","text":"desktop asks"}]}`),
+			`{"threadId":"codex-desktop-thread","clientUserMessageId":"desktop-client-message-1",` +
+				`"input":[{"type":"text","text":"desktop asks"}]}`),
 	})
 	require.NoError(t, err)
 	require.Equal(t, "desktop", task.Claimed.InputSurface)
@@ -327,12 +335,157 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, participantidentity.ID("worker-test-guild", "desktop-user"),
 		task.Claimed.ActorParticipantID)
 	require.Equal(t, "Desktop Alice", task.Claimed.ActorDisplayName)
+	outbox := discordintegration.NewSQLoutbox(db)
+	item, err := outbox.Claim(ctx, time.Minute)
+	require.NoError(t, err)
+	require.NotNil(t, item)
+	require.Equal(t, "desktop-thread-post:"+state.ID.String(), item.OperationKey)
+	require.Contains(t, string(item.Payload), "Desktop Alice")
+	require.Contains(t, string(item.Payload), "desktop asks")
+	require.Contains(t, string(item.Payload), "首条输入前的正式标题")
+	require.NoError(t, outbox.Complete(ctx, *item,
+		json.RawMessage(`{"threadId":"desktop-discord-thread","messageId":"desktop-starter"}`)))
+	state, err = client.DesktopThreadState(ctx, state.ID)
+	require.NoError(t, err)
+	require.Equal(t, "completed", state.Status)
+	require.NotEqual(t, uuid.Nil, state.ConversationID)
+	var initialAppliedName string
+	var initialAppliedRevision int64
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COALESCE(applied_thread_name,''),
+		applied_thread_name_revision FROM codex_thread_controls WHERE id=$1`,
+		state.ControlID).Scan(&initialAppliedName, &initialAppliedRevision))
+	require.Equal(t, "首条输入前的正式标题", initialAppliedName)
+	require.Equal(t, int64(1), initialAppliedRevision,
+		"Forum Post 首次创建已应用正式标题时应同步 applied revision")
+	var firstIntentProjectionKey, firstRequestProjectionKey string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT intent.desktop_input_projection_key,
+		request.first_input_projection_key FROM codex_turn_intents intent
+		JOIN desktop_thread_requests request ON request.control_id=intent.control_id
+		WHERE intent.id=$1`, task.Claimed.ID).
+		Scan(&firstIntentProjectionKey, &firstRequestProjectionKey))
+	require.Equal(t, "desktop-client-message-1", firstIntentProjectionKey)
+	require.Equal(t, firstIntentProjectionKey, firstRequestProjectionKey)
+	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
+		EnvironmentID: environmentID, Generation: 10,
+		Events: []workerprotocol.ThreadMetadataEvent{{
+			ThreadID: "codex-desktop-thread", Sequence: 2, Name: "WakeQora 正式标题",
+		}},
+	}))
+	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
+		EnvironmentID: environmentID, Generation: 10,
+		Events: []workerprotocol.ThreadMetadataEvent{{
+			ThreadID: "codex-desktop-thread", Sequence: 1, Name: "迟到的旧标题",
+		}},
+	}))
+	var desiredName, conversationTitle string
+	var desiredRevision int64
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT ct.desired_thread_name,
+		ct.desired_thread_name_revision, c.title FROM codex_thread_controls ct
+		JOIN discord_conversations c ON c.id = ct.discord_conversation_id
+		WHERE ct.id = $1`, state.ControlID).
+		Scan(&desiredName, &desiredRevision, &conversationTitle))
+	require.Equal(t, "WakeQora 正式标题", desiredName)
+	require.Equal(t, int64(2), desiredRevision)
+	require.Equal(t, desiredName, conversationTitle)
+	var renamePayload string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT payload::text FROM integration_outbox
+		WHERE operation_key = $1`, "thread-name:"+state.ControlID.String()).Scan(&renamePayload))
+	require.Contains(t, renamePayload, "WakeQora 正式标题")
+	require.Contains(t, renamePayload, `"revision": 2`)
+	var renameItem *discordintegration.OutboxItem
+	for {
+		renameItem, err = outbox.Claim(ctx, time.Minute)
+		require.NoError(t, err)
+		require.NotNil(t, renameItem)
+		if renameItem.OperationKey == "thread-name:"+state.ControlID.String() {
+			break
+		}
+		require.NoError(t, outbox.Retry(ctx, *renameItem, time.Now().Add(time.Hour),
+			errors.New("推迟无关投影")))
+	}
+	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
+		EnvironmentID: environmentID, Generation: 10,
+		Events: []workerprotocol.ThreadMetadataEvent{{
+			ThreadID: "codex-desktop-thread", Sequence: 3, Name: "竞争后的最新标题",
+		}},
+	}))
+	require.NoError(t, outbox.Complete(ctx, *renameItem, json.RawMessage(`{}`)))
+	var appliedName, renameStatus string
+	var appliedRevision int64
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT desired_thread_name,
+		desired_thread_name_revision, COALESCE(applied_thread_name,''),
+		applied_thread_name_revision FROM codex_thread_controls WHERE id=$1`,
+		state.ControlID).Scan(&desiredName, &desiredRevision, &appliedName, &appliedRevision))
+	require.Equal(t, "竞争后的最新标题", desiredName)
+	require.Equal(t, int64(3), desiredRevision)
+	require.Less(t, appliedRevision, desiredRevision,
+		"旧 rename 完成回调不得把新 revision 标记为已应用")
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status, payload::text
+		FROM integration_outbox WHERE operation_key=$1`,
+		"thread-name:"+state.ControlID.String()).Scan(&renameStatus, &renamePayload))
+	require.Equal(t, "pending", renameStatus)
+	require.Contains(t, renamePayload, "竞争后的最新标题")
+	require.Contains(t, renamePayload, `"revision": 3`)
+	_, err = db.ExecContext(ctx, `UPDATE integration_outbox SET available_at=now()
+		WHERE operation_key=$1`, "thread-name:"+state.ControlID.String())
+	require.NoError(t, err)
+	renameItem, err = outbox.Claim(ctx, time.Minute)
+	require.NoError(t, err)
+	require.NotNil(t, renameItem)
+	require.NoError(t, outbox.Complete(ctx, *renameItem, json.RawMessage(`{}`)))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COALESCE(applied_thread_name,''),
+		applied_thread_name_revision FROM codex_thread_controls WHERE id=$1`,
+		state.ControlID).Scan(&appliedName, &appliedRevision))
+	require.Equal(t, desiredName, appliedName)
+	require.Equal(t, desiredRevision, appliedRevision)
+	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
+		EnvironmentID: environmentID, Generation: 10,
+		Events: []workerprotocol.ThreadMetadataEvent{{
+			ThreadID: "codex-desktop-thread", Sequence: 4, Name: "即将失败的旧标题",
+		}},
+	}))
+	_, err = db.ExecContext(ctx, `UPDATE integration_outbox SET available_at=now()
+		WHERE operation_key=$1`, "thread-name:"+state.ControlID.String())
+	require.NoError(t, err)
+	renameItem, err = outbox.Claim(ctx, time.Minute)
+	require.NoError(t, err)
+	require.NotNil(t, renameItem)
+	require.Equal(t, "thread-name:"+state.ControlID.String(), renameItem.OperationKey)
+	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
+		EnvironmentID: environmentID, Generation: 10,
+		Events: []workerprotocol.ThreadMetadataEvent{{
+			ThreadID: "codex-desktop-thread", Sequence: 5, Name: "失败竞争后的最新标题",
+		}},
+	}))
+	require.NoError(t, outbox.Fail(ctx, *renameItem, errors.New("旧 rename 失败")))
+	var lastNameError sql.NullString
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status, payload::text
+		FROM integration_outbox WHERE operation_key=$1`,
+		"thread-name:"+state.ControlID.String()).Scan(&renameStatus, &renamePayload))
+	require.Equal(t, "pending", renameStatus)
+	require.Contains(t, renamePayload, "失败竞争后的最新标题")
+	require.Contains(t, renamePayload, `"revision": 5`)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT thread_name_last_error
+		FROM codex_thread_controls WHERE id=$1`, state.ControlID).Scan(&lastNameError))
+	require.False(t, lastNameError.Valid,
+		"旧 rename 失败回调不得给更新 revision 写入错误")
+
 	require.NoError(t, client.RecordSubmission(ctx, &task, "desktop-turn-1"))
 	require.NoError(t, client.ConfirmTurn(ctx, &task, "desktop-turn-1"))
-	require.NoError(t, client.Events(ctx, &task, []workerprotocol.EventInput{{
-		Sequence: 1, Type: "item/started",
-		Payload: json.RawMessage(`{"item":{"id":"desktop-command","type":"commandExecution"}}`),
-	}}))
+	require.NoError(t, client.Events(ctx, &task, []workerprotocol.EventInput{
+		{Sequence: 1, Type: "item/completed", Payload: json.RawMessage(
+			`{"item":{"id":"desktop-user-item-1","type":"userMessage",` +
+				`"clientId":"desktop-client-message-1"}}`)},
+		{Sequence: 2, Type: "item/started",
+			Payload: json.RawMessage(`{"item":{"id":"desktop-command","type":"commandExecution"}}`)},
+	}))
+	var intentUserItem, requestUserItem string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT i.codex_user_message_item_id,
+		r.codex_user_message_item_id FROM codex_turn_intents i
+		JOIN desktop_thread_requests r ON r.control_id=i.control_id WHERE i.id=$1`,
+		task.Claimed.ID).Scan(&intentUserItem, &requestUserItem))
+	require.Equal(t, "desktop-user-item-1", intentUserItem)
+	require.Equal(t, intentUserItem, requestUserItem)
 	var timelineProjection, emptyAnchorProjection int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_projections
 		WHERE projection_key = $1`, "conversation:"+state.ConversationID.String()+
@@ -347,21 +500,38 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		EnvironmentID: environmentID, RequestKey: strings.Repeat("f", 64),
 		Params: json.RawMessage(`{"threadId":"codex-desktop-thread",` +
 			`"expectedTurnId":"desktop-turn-1",` +
+			`"clientUserMessageId":"desktop-client-steer-1",` +
 			`"input":[{"type":"text","text":"desktop follows up"}]}`),
 	}
 	require.NoError(t, client.RecordDesktopSteer(ctx, steerRequest))
 	require.NoError(t, client.RecordDesktopSteer(ctx, steerRequest),
 		"Desktop Steer 重试不得重复创建 Intent")
+	var steerInputProjection int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM integration_outbox
+		WHERE operation_key LIKE $1`, "desktop-input:"+state.ConversationID.String()+":"+
+		"desktop-client-steer-1:%").Scan(&steerInputProjection))
+	require.Equal(t, 1, steerInputProjection)
 	var steerIntentID, steerParticipantID uuid.UUID
-	var steerStatus, steerDisplayName string
+	var steerStatus, steerDisplayName, steerProjectionStatus string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT id, status, actor_participant_id,
-		actor_display_name FROM codex_turn_intents WHERE idempotency_key=$1`,
+		actor_display_name, desktop_input_projection_status
+		FROM codex_turn_intents WHERE idempotency_key=$1`,
 		"desktop-steer:"+environmentID.String()+":"+strings.Repeat("f", 64)).
-		Scan(&steerIntentID, &steerStatus, &steerParticipantID, &steerDisplayName))
+		Scan(&steerIntentID, &steerStatus, &steerParticipantID, &steerDisplayName,
+			&steerProjectionStatus))
 	require.Equal(t, "running", steerStatus)
+	require.Equal(t, "projected", steerProjectionStatus)
 	require.Equal(t, participantidentity.ID("worker-test-guild", "desktop-user"),
 		steerParticipantID)
 	require.Equal(t, "Desktop Alice", steerDisplayName)
+	require.NoError(t, client.Events(ctx, &task, []workerprotocol.EventInput{{
+		Sequence: 3, Type: "item/completed", Payload: json.RawMessage(
+			`{"item":{"id":"desktop-steer-item-1","type":"userMessage",` +
+				`"clientId":"desktop-client-steer-1"}}`),
+	}}))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT codex_user_message_item_id
+		FROM codex_turn_intents WHERE id=$1`, steerIntentID).Scan(&intentUserItem))
+	require.Equal(t, "desktop-steer-item-1", intentUserItem)
 	interactive, err := client.RegisterInteractive(ctx, &task, json.RawMessage(`"input-1"`),
 		json.RawMessage(`{"threadId":"codex-desktop-thread","turnId":"desktop-turn-1",`+
 			`"itemId":"question-1","questions":[{"id":"choice","header":"Choose",`+
@@ -444,7 +614,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "interrupted", interrupted.Status)
 	require.False(t, interrupted.Ready)
 	require.NoError(t, client.Events(ctx, &task, []workerprotocol.EventInput{{
-		Sequence: 2, Type: "discord.progress",
+		Sequence: 4, Type: "discord.progress",
 		Payload: json.RawMessage(`{"state":"running","detail":"Desktop running"}`),
 	}}))
 	require.NoError(t, client.Complete(ctx, &task, codexcontrol.TurnResult{
@@ -458,6 +628,42 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		WHERE operation_key = $1`, "conversation-reply:"+state.ConversationID.String()+
 		":message:desktop-"+task.Claimed.ID.String()).Scan(&projectedReply))
 	require.Equal(t, 1, projectedReply)
+
+	forkTask, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
+		EnvironmentID: environmentID, WorkerID: "desktop-worker",
+		RequestKey: strings.Repeat("8", 64), Params: json.RawMessage(
+			`{"threadId":"codex-desktop-fork","clientUserMessageId":"desktop-fork-message-1",` +
+				`"input":[{"type":"text","text":"fork first input"}]}`),
+	})
+	require.NoError(t, err)
+	require.Equal(t, fork.ControlID, forkTask.Claimed.ControlID)
+	require.Equal(t, task.Snapshot.Runtime.Model, forkTask.Snapshot.Runtime.Model)
+	require.Equal(t, task.Snapshot.Runtime.ReasoningEffort,
+		forkTask.Snapshot.Runtime.ReasoningEffort)
+	var forkPost *discordintegration.OutboxItem
+	for {
+		forkPost, err = outbox.Claim(ctx, time.Minute)
+		require.NoError(t, err)
+		require.NotNil(t, forkPost)
+		if forkPost.OperationKey == "desktop-thread-post:"+fork.ID.String() {
+			break
+		}
+		require.NoError(t, outbox.Retry(ctx, *forkPost, time.Now().Add(time.Hour),
+			errors.New("推迟无关投影")))
+	}
+	require.Contains(t, string(forkPost.Payload), "Desktop Alice")
+	require.Contains(t, string(forkPost.Payload), "fork first input")
+	require.NoError(t, outbox.Complete(ctx, *forkPost,
+		json.RawMessage(`{"threadId":"desktop-discord-fork","messageId":"desktop-fork-starter"}`)))
+	fork, err = client.DesktopThreadState(ctx, fork.ID)
+	require.NoError(t, err)
+	require.Equal(t, "completed", fork.Status)
+	require.NotEqual(t, state.ConversationID, fork.ConversationID)
+	require.NoError(t, client.RecordSubmission(ctx, &forkTask, "desktop-fork-turn-1"))
+	require.NoError(t, client.ConfirmTurn(ctx, &forkTask, "desktop-fork-turn-1"))
+	require.NoError(t, client.Complete(ctx, &forkTask, codexcontrol.TurnResult{
+		TurnID: "desktop-fork-turn-1", FinalAnswer: "fork done",
+	}))
 
 	_, err = db.ExecContext(ctx, `UPDATE discord_development_environments SET
 		ssh_public_key=NULL, ssh_fingerprint=NULL, ssh_port=NULL, ssh_discord_user_id=NULL
@@ -480,18 +686,23 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		TurnID: "desktop-turn-2", FinalAnswer: "local desktop done",
 	}))
 
-	fork, err := client.PrepareDesktopThread(ctx, workerprotocol.DesktopThreadPrepareRequest{
-		EnvironmentID: environmentID, Operation: "fork", RequestKey: strings.Repeat("b", 64),
-		Params: json.RawMessage(`{"threadId":"codex-desktop-thread"}`),
-	})
-	require.NoError(t, err, "Fork 不要求 Desktop 额外发送 cwd")
-	require.Equal(t, "post_pending", fork.Status)
-
 	failed, err := client.PrepareDesktopThread(ctx, workerprotocol.DesktopThreadPrepareRequest{
 		EnvironmentID: environmentID, Operation: "start", RequestKey: strings.Repeat("c", 64),
 		Params: json.RawMessage(`{"cwd":"` + workspace + `"}`),
 	})
 	require.NoError(t, err)
+	failed, err = client.CompleteDesktopThread(ctx, failed.ID,
+		workerprotocol.DesktopThreadCompleteRequest{EnvironmentID: environmentID,
+			Response: json.RawMessage(`{"thread":{"id":"codex-desktop-failed"}}`)})
+	require.NoError(t, err)
+	failedTask, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
+		EnvironmentID: environmentID, WorkerID: "desktop-worker",
+		RequestKey: strings.Repeat("9", 64), Params: json.RawMessage(
+			`{"threadId":"codex-desktop-failed","clientUserMessageId":"offline-first",` +
+				`"input":[{"type":"text","text":"offline post"}]}`),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, failedTask.Snapshot.Discord)
 	for {
 		item, err = outbox.Claim(ctx, time.Minute)
 		require.NoError(t, err)
@@ -504,7 +715,60 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, outbox.Fail(ctx, *item, errors.New("discord unavailable")))
 	failed, err = client.DesktopThreadState(ctx, failed.ID)
 	require.NoError(t, err)
-	require.Equal(t, "failed", failed.Status)
+	require.Equal(t, "post_failed", failed.Status)
+	require.NoError(t, client.RecordSubmission(ctx, &failedTask, "desktop-offline-turn-1"))
+	require.NoError(t, client.ConfirmTurn(ctx, &failedTask, "desktop-offline-turn-1"))
+	require.NoError(t, client.Events(ctx, &failedTask, []workerprotocol.EventInput{{
+		Sequence: 1, Type: "discord.progress",
+		Payload: json.RawMessage(`{"state":"running","detail":"offline running"}`),
+	}}))
+	require.NoError(t, client.Complete(ctx, &failedTask, codexcontrol.TurnResult{
+		TurnID: "desktop-offline-turn-1", FinalAnswer: "offline first done",
+	}))
+
+	recoveryTask, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
+		EnvironmentID: environmentID, WorkerID: "desktop-worker",
+		RequestKey: strings.Repeat("7", 64), Params: json.RawMessage(
+			`{"threadId":"codex-desktop-failed","clientUserMessageId":"offline-second",` +
+				`"input":[{"type":"text","text":"second while recovering"}]}`),
+	})
+	require.NoError(t, err)
+	var recoveredPost *discordintegration.OutboxItem
+	for {
+		recoveredPost, err = outbox.Claim(ctx, time.Minute)
+		require.NoError(t, err)
+		require.NotNil(t, recoveredPost)
+		if recoveredPost.OperationKey == "desktop-thread-post:"+failed.ID.String() {
+			break
+		}
+		require.NoError(t, outbox.Retry(ctx, *recoveredPost, time.Now().Add(time.Hour),
+			errors.New("推迟无关投影")))
+	}
+	require.Contains(t, string(recoveredPost.Payload), "offline post")
+	require.NotContains(t, string(recoveredPost.Payload), "second while recovering",
+		"重试创建 Forum Post 必须保留最初的 Starter Message")
+	require.NoError(t, outbox.Complete(ctx, *recoveredPost,
+		json.RawMessage(`{"threadId":"desktop-discord-recovered",`+
+			`"messageId":"desktop-recovered-starter"}`)))
+	failed, err = client.DesktopThreadState(ctx, failed.ID)
+	require.NoError(t, err)
+	require.Equal(t, "completed", failed.Status)
+	var recoveredSecondInput, recoveredFirstReply int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM integration_outbox
+		WHERE operation_key LIKE $1`, "desktop-input:"+failed.ConversationID.String()+
+		":offline-second:%").Scan(&recoveredSecondInput))
+	require.Equal(t, 1, recoveredSecondInput,
+		"Post 恢复后必须补投影故障期间的后续 Desktop 输入")
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM integration_outbox
+		WHERE operation_key=$1`, "conversation-reply:"+failed.ConversationID.String()+
+		":message:desktop-"+failedTask.Claimed.ID.String()).Scan(&recoveredFirstReply))
+	require.Equal(t, 1, recoveredFirstReply,
+		"Post 恢复后必须补投影已经完成的最终回复")
+	require.NoError(t, client.RecordSubmission(ctx, &recoveryTask, "desktop-offline-turn-2"))
+	require.NoError(t, client.ConfirmTurn(ctx, &recoveryTask, "desktop-offline-turn-2"))
+	require.NoError(t, client.Complete(ctx, &recoveryTask, codexcontrol.TurnResult{
+		TurnID: "desktop-offline-turn-2", FinalAnswer: "offline second done",
+	}))
 }
 
 func TestDiscordDevelopmentEnvironmentSSHAPIBindsParticipantAndRedactsAudit(t *testing.T) {
