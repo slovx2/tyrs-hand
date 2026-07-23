@@ -4,10 +4,12 @@ import (
 	"encoding/base64"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/stretchr/testify/require"
 )
 
@@ -116,6 +118,17 @@ func TestValidateAndLoadRemoteWorker(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "https://tyr.example.com", loaded.WorkerControlURL)
 	require.Equal(t, "github", loaded.WorkerRole)
+}
+
+func TestDeploymentWorkerProtocolVersion(t *testing.T) {
+	version := strconv.Itoa(workerprotocol.Version)
+	compose, err := os.ReadFile("../../compose.worker.yaml")
+	require.NoError(t, err)
+	require.Contains(t, string(compose), `TYRS_HAND_WORKER_PROTOCOL_VERSION: "`+version+`"`)
+
+	example, err := os.ReadFile("../../.env.example")
+	require.NoError(t, err)
+	require.Contains(t, string(example), "TYRS_HAND_WORKER_PROTOCOL_VERSION="+version)
 }
 
 func TestValidateWorkerCapabilities(t *testing.T) {
