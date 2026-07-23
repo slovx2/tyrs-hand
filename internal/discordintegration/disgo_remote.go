@@ -256,7 +256,11 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 			update.AllowedMentions = &discord.AllowedMentions{}
 		}
 		_, err = r.rest.UpdateMessage(channel, message, update, disgorest.WithCtx(ctx))
-		return nil, err
+		if discordThreadArchived(err) {
+			// 隐藏或真正归档的 Thread 不能更新消息；恢复后的自然投影会再次刷新内容。
+			err = nil
+		}
+		return json.RawMessage(`{}`), err
 	case "message.delete":
 		channel, message, err := twoSnowflakes(payload.ChannelID, payload.MessageID)
 		if err != nil {
@@ -377,6 +381,12 @@ func discordNotFound(err error) bool {
 	var restErr *disgorest.Error
 	return errors.As(err, &restErr) && restErr.Response != nil &&
 		restErr.Response.StatusCode == http.StatusNotFound
+}
+
+func discordThreadArchived(err error) bool {
+	var restErr *disgorest.Error
+	return errors.As(err, &restErr) &&
+		restErr.Code == disgorest.JSONErrorCodeOperationOnArchivedThread
 }
 
 func (r *DisgoRemote) Close(ctx context.Context) { r.rest.Close(ctx) }

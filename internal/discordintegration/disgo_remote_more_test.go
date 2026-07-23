@@ -207,6 +207,21 @@ func TestDisgoRemoteTreatsDeletedLifecycleCardAsIdempotent(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestDisgoRemoteDefersMessageUpdateForArchivedThread(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		response.WriteHeader(http.StatusBadRequest)
+		_, _ = response.Write([]byte(`{"message":"Thread is archived","code":50083}`))
+	}))
+	t.Cleanup(server.Close)
+	remote := NewDisgoRemote("token", server.URL, server.Client())
+	t.Cleanup(func() { remote.Close(context.Background()) })
+	_, err := remote.Send(context.Background(), OutboxItem{OperationType: "message.update",
+		Payload: rawJSON(map[string]string{"channelId": "20", "messageId": "21",
+			"content": "updated"})})
+	require.NoError(t, err)
+}
+
 func TestDiscordRestoreReferencesAndCardRevision(t *testing.T) {
 	id, err := parseDiscordPostReference("<#100000000000000070>")
 	require.NoError(t, err)
@@ -226,6 +241,7 @@ func TestDiscordRestoreReferencesAndCardRevision(t *testing.T) {
 func testDisgoSendOperations(t *testing.T, ctx context.Context, remote *DisgoRemote) {
 	t.Helper()
 	operations := []OutboxItem{
+		{OperationType: "channel.delete", Payload: rawJSON(map[string]any{"channelId": "11"})},
 		{OperationType: "message.update", Payload: rawJSON(map[string]any{"channelId": "20", "messageId": "21", "content": "updated"})},
 		{OperationType: "channel.permissions", Payload: rawJSON(map[string]any{"channelId": "12", "permissions": []PermissionSpec{{ID: "123", Type: "role", Allow: 1}}})},
 		{OperationType: "thread.archive", Payload: rawJSON(map[string]any{"channelId": "30", "archived": true})},
@@ -234,6 +250,7 @@ func testDisgoSendOperations(t *testing.T, ctx context.Context, remote *DisgoRem
 		})},
 		{OperationType: "thread.tags", Payload: rawJSON(map[string]any{"channelId": "30", "tagIds": []string{"91"}})},
 		{OperationType: "thread.member.add", Payload: rawJSON(map[string]any{"channelId": "30", "userId": "456"})},
+		{OperationType: "thread.rename", Payload: rawJSON(map[string]any{"channelId": "30", "threadName": "Renamed"})},
 		{OperationType: "message.delete", Payload: rawJSON(map[string]any{"channelId": "20", "messageId": "21"})},
 	}
 	for _, operation := range operations {
@@ -265,6 +282,12 @@ func testDisgoSendOperations(t *testing.T, ctx context.Context, remote *DisgoRem
 	require.Error(t, err)
 	_, _, err = twoSnowflakes("bad", "2")
 	require.Error(t, err)
+	topic := "pointer topic"
+	forum := &discord.GuildForumChannel{Topic: &topic,
+		AvailableTags: []discord.ChannelTag{{ID: 91, Name: "Running"}}}
+	require.Equal(t, topic, channelTopic(forum))
+	require.Equal(t, map[string]string{"Running": "91"}, channelTags(forum))
+	require.Empty(t, stringValue(nil))
 }
 
 func channelJSON(id string, channelType int, name string) string {
