@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-const RequiredVersion = "0.142.5"
+const RequiredVersion = "0.145.0"
 
 func ValidateVersion(ctx context.Context, bin string) error {
 	output, err := exec.CommandContext(ctx, bin, "--version").CombinedOutput()

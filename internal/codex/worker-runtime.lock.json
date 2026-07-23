@@ -3,7 +3,7 @@
   "defaults": {
     "node": "24.14.0"
   },
-  "codex": "0.142.5",
+  "codex": "0.145.0",
   "dockerCli": "28.3.3",
   "dockerDownloads": {
     "amd64": "40c16bcf324f354b382d07e845e6a79e3493fc0c09b252dff9e1a46125589bff",

@@ -92,6 +92,22 @@ func TestDesktopRelayWithoutSSHIdentityStripsReservedIdentityContext(t *testing.
 	require.NotContains(t, string(plan.Params), "forged")
 }
 
+func TestDesktopRelayAdvertisesServiceTiersWithoutChangingRealChatGPTAccount(t *testing.T) {
+	apiKeyResult := json.RawMessage(
+		`{"account":{"type":"apiKey"},"requiresOpenaiAuth":true}`)
+	desktopResult, err := desktopAccountWithServiceTiers(apiKeyResult, nil)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"account":{"type":"chatgpt","email":null,"planType":"unknown"},`+
+		`"requiresOpenaiAuth":false}`, string(desktopResult))
+
+	chatGPTResult := json.RawMessage(
+		`{"account":{"type":"chatgpt","email":"user@example.com","planType":"plus"},` +
+			`"requiresOpenaiAuth":true}`)
+	preserved, err := desktopAccountWithServiceTiers(chatGPTResult, nil)
+	require.NoError(t, err)
+	require.JSONEq(t, string(chatGPTResult), string(preserved))
+}
+
 func TestDesktopThreadCompletionDoesNotWaitForDiscordControl(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		time.Sleep(100 * time.Millisecond)

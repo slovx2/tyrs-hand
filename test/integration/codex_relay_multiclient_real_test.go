@@ -97,8 +97,7 @@ supports_websockets = false
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = desktop.Close() })
 
-	var models map[string]any
-	require.NoError(t, desktop.Call(context.Background(), "model/list", map[string]any{}, &models))
+	requireModernCodexModelCatalog(t, desktop)
 	threadID, err := worker.StartThread(context.Background(), mustRealJSON(map[string]any{
 		"cwd": workspace, "model": "mock-model", "approvalPolicy": "never",
 		"sandbox": "read-only", "developerInstructions": participantidentity.DeveloperInstructions,
@@ -184,6 +183,178 @@ supports_websockets = false
 	secondDesktopBody := <-requestBodies
 	require.Contains(t, secondDesktopBody, participant.ID.String())
 	require.Contains(t, secondDesktopBody, "Alice")
+}
+
+func requireModernCodexModelCatalog(t *testing.T, client *codex.SocketClient) {
+	t.Helper()
+	var catalog struct {
+		Data []struct {
+			ID                        string `json:"id"`
+			IsDefault                 bool   `json:"isDefault"`
+			SupportedReasoningEfforts []struct {
+				ReasoningEffort string `json:"reasoningEffort"`
+			} `json:"supportedReasoningEfforts"`
+			ServiceTiers []struct {
+				ID string `json:"id"`
+			} `json:"serviceTiers"`
+			AdditionalSpeedTiers []string `json:"additionalSpeedTiers"`
+		} `json:"data"`
+	}
+	require.NoError(t, client.Call(context.Background(), "model/list", map[string]any{}, &catalog))
+	for _, model := range catalog.Data {
+		if model.ID != "gpt-5.6-sol" {
+			continue
+		}
+		efforts := make([]string, 0, len(model.SupportedReasoningEfforts))
+		for _, effort := range model.SupportedReasoningEfforts {
+			efforts = append(efforts, effort.ReasoningEffort)
+		}
+		tiers := make([]string, 0, len(model.ServiceTiers))
+		for _, tier := range model.ServiceTiers {
+			tiers = append(tiers, tier.ID)
+		}
+		require.True(t, model.IsDefault)
+		require.Contains(t, efforts, "max")
+		require.Contains(t, efforts, "ultra")
+		require.Contains(t, tiers, "priority")
+		require.Contains(t, model.AdditionalSpeedTiers, "fast")
+		return
+	}
+	t.Fatal("真实 Codex model/list 没有返回 gpt-5.6-sol")
+}
+
+func TestRealCodexRelayDesktopSelectsFastServiceTierWithAPIKeyUpstream(t *testing.T) {
+	requestBody := make(chan map[string]any, 1)
+	responses := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
+		request *http.Request,
+	) {
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+		requestBody <- body
+		response.Header().Set("Content-Type", "text/event-stream")
+		response.Header().Set("Cache-Control", "no-cache")
+		_, _ = fmt.Fprint(response, sse(
+			map[string]any{"type": "response.created", "response": map[string]any{
+				"id": "service-tier-response",
+			}},
+			map[string]any{"type": "response.output_item.done", "item": map[string]any{
+				"type": "message", "role": "assistant", "id": "service-tier-message",
+				"content": []map[string]any{{"type": "output_text", "text": "done"}},
+			}},
+			completedResponse("service-tier-response"),
+		))
+	}))
+	t.Cleanup(responses.Close)
+
+	root := temporaryDir(t, "tyrs-real-relay-service-tier-")
+	home, workspace := filepath.Join(root, "home"), filepath.Join(root, "workspace")
+	require.NoError(t, os.MkdirAll(home, 0o700))
+	require.NoError(t, os.MkdirAll(workspace, 0o755))
+	config := fmt.Sprintf(`model = "gpt-5.6-sol"
+approval_policy = "never"
+sandbox_mode = "read-only"
+model_provider = "mock_provider"
+
+[model_providers.mock_provider]
+name = "Relay service tier mock"
+base_url = %q
+wire_api = "responses"
+request_max_retries = 0
+stream_max_retries = 0
+supports_websockets = false
+`, responses.URL+"/v1")
+	require.NoError(t, os.WriteFile(filepath.Join(home, "config.toml"), []byte(config), 0o600))
+	appSocket := filepath.Join(root, "app.sock")
+	process := exec.Command(fixedCodexBinary(t), "app-server", "--listen", "unix://"+appSocket)
+	process.Dir = workspace
+	process.Env = append(os.Environ(), "CODEX_HOME="+home, "HOME="+root, "RUST_LOG=warn")
+	require.NoError(t, process.Start())
+	t.Cleanup(func() { _ = process.Process.Kill(); _ = process.Wait() })
+	waitForUnixSocket(t, appSocket)
+
+	relay, err := codexrelay.Start(context.Background(), codexrelay.Options{
+		SocketPath: filepath.Join(root, "relay.sock"), UpstreamSocketPath: appSocket,
+		Controller: serviceTierRelayController{},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, relay.Close()) })
+	worker, err := relay.OpenClient(codexrelay.ClientOptions{Role: codexrelay.RoleWorker})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = worker.Close() })
+	desktop, err := codex.ConnectSocket(context.Background(), codex.SocketClientOptions{
+		SocketPath: relay.SocketPath(), RequestTimeout: 30 * time.Second,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = desktop.Close() })
+
+	var workerAccount struct {
+		Account any `json:"account"`
+	}
+	require.NoError(t, worker.Call(context.Background(), "account/read",
+		map[string]any{"refreshToken": false}, &workerAccount))
+	require.Nil(t, workerAccount.Account)
+	var desktopAccount struct {
+		Account struct {
+			Type string `json:"type"`
+		} `json:"account"`
+	}
+	require.NoError(t, desktop.Call(context.Background(), "account/read",
+		map[string]any{"refreshToken": false}, &desktopAccount))
+	require.Equal(t, "chatgpt", desktopAccount.Account.Type)
+	requireModernCodexModelCatalog(t, desktop)
+
+	var started struct {
+		Thread struct {
+			ID string `json:"id"`
+		} `json:"thread"`
+	}
+	require.NoError(t, desktop.Call(context.Background(), "thread/start", map[string]any{
+		"cwd": workspace, "model": "gpt-5.6-sol", "serviceTier": "priority",
+		"approvalPolicy": "never", "sandbox": "read-only",
+	}, &started))
+	events := desktop.Subscribe(codex.ThreadFilter{ThreadID: started.Thread.ID})
+	t.Cleanup(events.Close)
+	var turn struct {
+		Turn struct {
+			ID string `json:"id"`
+		} `json:"turn"`
+	}
+	require.NoError(t, desktop.Call(context.Background(), "turn/start", map[string]any{
+		"threadId": started.Thread.ID,
+		"input": []map[string]any{{"type": "text", "text": "Use Fast.",
+			"textElements": []any{}}},
+	}, &turn))
+	waitForRelayTurnCompleted(t, events.Events(), started.Thread.ID, turn.Turn.ID)
+	select {
+	case body := <-requestBody:
+		require.Equal(t, "priority", body["service_tier"])
+	case <-time.After(10 * time.Second):
+		t.Fatal("Mock LLM 没有收到 Fast service tier 请求")
+	}
+}
+
+type serviceTierRelayController struct{}
+
+func (serviceTierRelayController) PrepareCall(_ context.Context,
+	call codexrelay.Call,
+) (codexrelay.CallPlan, error) {
+	return codexrelay.CallPlan{Params: call.Params, Forward: true}, nil
+}
+
+func (serviceTierRelayController) CompleteCall(_ context.Context, call codexrelay.Call,
+	_ codexrelay.CallPlan, result json.RawMessage, cause error,
+) (json.RawMessage, error) {
+	if call.Method == "account/read" {
+		return json.RawMessage(`{"account":{"type":"chatgpt","email":null,` +
+			`"planType":"unknown"},"requiresOpenaiAuth":false}`), nil
+	}
+	return result, cause
+}
+
+func (serviceTierRelayController) ResolveInteractive(_ context.Context, _ codex.ServerRequest,
+	answer json.RawMessage, _ codexrelay.Role,
+) (bool, json.RawMessage, error) {
+	return true, answer, nil
 }
 
 type identityRelayController struct {

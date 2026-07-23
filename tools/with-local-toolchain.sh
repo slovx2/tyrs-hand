@@ -6,7 +6,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 toolchain_root="${root}/.local/toolchains"
 node_version="24.14.0"
 pnpm_version="11.14.0"
-codex_version="0.142.5"
+codex_version="0.145.0"
 
 case "$(uname -s)-$(uname -m)" in
   Darwin-arm64)

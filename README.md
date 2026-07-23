@@ -74,7 +74,7 @@ PostgreSQL 是唯一权威状态源。Redis 仅保存可以重建的限流和通
 
 - Docker Engine 与 Docker Compose
 - 本地源码开发额外需要 Go `1.26.5`、Node.js `24.14.0` 和 pnpm `11.14.0`
-- Codex CLI/App Server 固定为 `0.142.5`，容器镜像已经包含该版本
+- Codex CLI/App Server 固定为 `0.145.0`，容器镜像已经包含该版本
 
 ### 启动服务
 
@@ -222,7 +222,7 @@ make build
 集成测试使用 Testcontainers 启动 PostgreSQL、Redis 和真实 Docker 开发容器，并使用临时 Git Remote 验证 Worktree、多仓库 clone、Home/重建持久化与删除。Codex 测试包含两层：
 
 - 脚本化 Fake App Server，覆盖 JSON-RPC、超时、断线、Resume、Steer、Interrupt 和工具回调。
-- 固定 Codex `0.142.5` 配合 Mock Responses SSE 上游，验证真实 App Server 协议，不调用真实模型。
+- 固定 Codex `0.145.0` 配合 Mock Responses SSE 上游，验证真实 App Server 协议，不调用真实模型。
 
 前端测试使用 Vitest、Testing Library、MSW 和 Playwright。OpenAPI 3.1 同时生成 Go Gin 接口与前端 TypeScript 类型。
 

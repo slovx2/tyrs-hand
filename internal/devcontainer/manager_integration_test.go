@@ -305,7 +305,7 @@ func testRemoteSSHAndDesktopProxy(t *testing.T, manager *Manager, environmentID 
 	require.NoError(t, err)
 	version, err := session.CombinedOutput("codex --version")
 	require.NoError(t, err, string(version))
-	require.Equal(t, "codex-cli 0.142.5", strings.TrimSpace(string(version)))
+	require.Equal(t, "codex-cli 0.145.0", strings.TrimSpace(string(version)))
 	_ = session.Close()
 
 	sftp, err := client.NewSession()
@@ -658,17 +658,17 @@ func exactIntegrationCodexBinary(t *testing.T) string {
 	binary, err := exec.LookPath(name)
 	if err != nil {
 		if os.Getenv("CI") == "true" {
-			require.NoError(t, err, "CI 缺少固定 Codex 0.142.5")
+			require.NoError(t, err, "CI 缺少固定 Codex 0.145.0")
 		}
-		t.Skip("本机缺少固定 Codex 0.142.5")
+		t.Skip("本机缺少固定 Codex 0.145.0")
 	}
 	output, err := exec.Command(binary, "--version").CombinedOutput()
 	require.NoError(t, err)
-	if strings.TrimSpace(string(output)) != "codex-cli 0.142.5" {
+	if strings.TrimSpace(string(output)) != "codex-cli 0.145.0" {
 		if os.Getenv("CI") == "true" {
-			require.Equal(t, "codex-cli 0.142.5", strings.TrimSpace(string(output)))
+			require.Equal(t, "codex-cli 0.145.0", strings.TrimSpace(string(output)))
 		}
-		t.Skip("本机 Codex 不是固定版本 0.142.5")
+		t.Skip("本机 Codex 不是固定版本 0.145.0")
 	}
 	return binary
 }

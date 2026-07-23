@@ -181,6 +181,35 @@ func TestRelayPreservesDesktopConfigurationAndFutureMethodAccess(t *testing.T) {
 	}
 }
 
+func TestRelayAllowsDesktopAccountCapabilityProjectionWithoutChangingWorker(t *testing.T) {
+	mock, err := mockcodex.Start(t)
+	require.NoError(t, err)
+	directory := shortTempDir(t)
+	relay, err := codexrelay.Start(context.Background(), codexrelay.Options{
+		SocketPath: directory + "/relay.sock", UpstreamSocketPath: mock.SocketPath,
+		Controller: desktopAccountController{},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, relay.Close()) })
+
+	worker, err := relay.OpenClient(codexrelay.ClientOptions{Role: codexrelay.RoleWorker})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = worker.Close() })
+	var workerAccount map[string]any
+	require.NoError(t, worker.Call(context.Background(), "account/read",
+		map[string]any{"refreshToken": false}, &workerAccount))
+	require.Equal(t, "apiKey", workerAccount["account"].(map[string]any)["type"])
+
+	desktop := connectDesktop(t, relay.SocketPath())
+	desktop.initialize(t, 1)
+	desktop.write(t, rpcMessage{ID: rawID(2), Method: "account/read",
+		Params: mustJSON(map[string]any{"refreshToken": false})})
+	response := desktop.response(t, rawID(2))
+	require.Nil(t, response.Error)
+	require.JSONEq(t, `{"account":{"type":"chatgpt","email":null,"planType":"unknown"},`+
+		`"requiresOpenaiAuth":false}`, string(response.Result))
+}
+
 func TestRelayRequiresControllerForDesktopControlCalls(t *testing.T) {
 	mock, err := mockcodex.Start(t)
 	require.NoError(t, err)
@@ -195,6 +224,30 @@ func TestRelayRequiresControllerForDesktopControlCalls(t *testing.T) {
 	desktop.write(t, rpcMessage{ID: rawID(2), Method: "thread/start",
 		Params: mustJSON(map[string]any{"cwd": t.TempDir()})})
 	require.Equal(t, -32041, rpcErrorCode(t, desktop.response(t, rawID(2)).Error))
+}
+
+type desktopAccountController struct{}
+
+func (desktopAccountController) PrepareCall(_ context.Context,
+	call codexrelay.Call,
+) (codexrelay.CallPlan, error) {
+	return codexrelay.CallPlan{Params: call.Params, Forward: true}, nil
+}
+
+func (desktopAccountController) CompleteCall(_ context.Context, call codexrelay.Call,
+	_ codexrelay.CallPlan, result json.RawMessage, cause error,
+) (json.RawMessage, error) {
+	if call.Method == "account/read" {
+		return json.RawMessage(`{"account":{"type":"chatgpt","email":null,` +
+			`"planType":"unknown"},"requiresOpenaiAuth":false}`), nil
+	}
+	return result, cause
+}
+
+func (desktopAccountController) ResolveInteractive(_ context.Context, _ codex.ServerRequest,
+	answer json.RawMessage, _ codexrelay.Role,
+) (bool, json.RawMessage, error) {
+	return true, answer, nil
 }
 
 func TestRelayPreservesUpstreamJSONRPCError(t *testing.T) {

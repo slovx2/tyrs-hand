@@ -108,6 +108,9 @@ func (c *desktopRelayController) PrepareCall(_ context.Context,
 func (c *desktopRelayController) CompleteCall(_ context.Context, call codexrelay.Call,
 	plan codexrelay.CallPlan, result json.RawMessage, cause error,
 ) (json.RawMessage, error) {
+	if call.Method == "account/read" {
+		return desktopAccountWithServiceTiers(result, cause)
+	}
 	if cause != nil {
 		c.cleanupDesktopCall(plan, cause)
 		return result, cause
@@ -124,6 +127,22 @@ func (c *desktopRelayController) CompleteCall(_ context.Context, call codexrelay
 		go c.observeDesktopSteer(call, result)
 	}
 	return result, nil
+}
+
+func desktopAccountWithServiceTiers(result json.RawMessage, cause error) (json.RawMessage, error) {
+	var response struct {
+		Account *struct {
+			Type string `json:"type"`
+		} `json:"account"`
+	}
+	if cause == nil && json.Unmarshal(result, &response) == nil &&
+		response.Account != nil && response.Account.Type == "chatgpt" {
+		return result, nil
+	}
+	// Desktop 目前只对 ChatGPT 账号显示 app-server 已声明的速度档位。
+	// 环境仍使用原 API Key 调用上游；这里仅补足 Desktop 的能力识别，不暴露虚构账号资料。
+	return json.RawMessage(`{"account":{"type":"chatgpt","email":null,` +
+		`"planType":"unknown"},"requiresOpenaiAuth":false}`), nil
 }
 
 func (c *desktopRelayController) ResolveInteractive(ctx context.Context,

@@ -182,6 +182,10 @@ func (c *connection) handle(message Message) {
 	case "initialize":
 		c.initialized = true
 		c.respond(message.ID, map[string]any{"codexHome": "/mock/codex", "platformFamily": "unix", "platformOs": "linux"})
+	case "account/read":
+		c.respond(message.ID, map[string]any{
+			"account": map[string]any{"type": "apiKey"}, "requiresOpenaiAuth": true,
+		})
 	case "thread/start":
 		var params struct {
 			CWD string `json:"cwd"`

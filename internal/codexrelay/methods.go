@@ -16,10 +16,11 @@ var methodClasses = map[string]methodClass{
 	"initialize": methodLocal,
 
 	"account/rateLimits/read":                  methodForward,
-	"account/read":                             methodForward,
 	"account/usage/read":                       methodForward,
 	"account/workspaceMessages/read":           methodForward,
+	"app/installed":                            methodForward,
 	"app/list":                                 methodForward,
+	"app/read":                                 methodForward,
 	"command/exec":                             methodForward,
 	"command/exec/resize":                      methodForward,
 	"command/exec/terminate":                   methodForward,
@@ -80,6 +81,7 @@ var methodClasses = map[string]methodClass{
 	"thread/unarchive":                         methodForward,
 	"windowsSandbox/setupStart":                methodForward,
 
+	"account/read":       methodControlled,
 	"thread/fork":        methodControlled,
 	"thread/start":       methodControlled,
 	"turn/start":         methodControlled,

@@ -20,8 +20,8 @@ if [[ "$(pnpm --version)" != "11.14.0" ]]; then
   echo "本地 CI 需要 pnpm 11.14.0，当前为 $(pnpm --version)。" >&2
   exit 1
 fi
-if [[ "$(codex --version)" != "codex-cli 0.142.5" ]]; then
-  echo "本地 CI 需要 Codex CLI 0.142.5，当前为 $(codex --version)。" >&2
+if [[ "$(codex --version)" != "codex-cli 0.145.0" ]]; then
+  echo "本地 CI 需要 Codex CLI 0.145.0，当前为 $(codex --version)。" >&2
   exit 1
 fi
 if ! docker info >/dev/null 2>&1; then

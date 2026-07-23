@@ -132,11 +132,11 @@ func fixedCodexBinary(t *testing.T) string {
 		if os.Getenv("CI") == "true" {
 			t.Fatalf("CI 缺少固定 Codex: %v", err)
 		}
-		t.Skip("本机没有安装 Codex 0.142.5")
+		t.Skip("本机没有安装 Codex 0.145.0")
 	}
 	output, err := exec.Command(path, "--version").CombinedOutput()
 	require.NoError(t, err)
-	require.Equal(t, "codex-cli 0.142.5", strings.TrimSpace(string(output)))
+	require.Equal(t, "codex-cli 0.145.0", strings.TrimSpace(string(output)))
 	return path
 }
 

@@ -69,7 +69,7 @@ PostgreSQL is the only authoritative state store. Redis contains only recoverabl
 
 - Docker Engine and Docker Compose
 - Go `1.26.5`, Node.js `24.14.0`, and pnpm `11.14.0` for source development
-- Codex CLI/App Server `0.142.5`; the application image already includes it
+- Codex CLI/App Server `0.145.0`; the application image already includes it
 
 ### Run Locally
 
