@@ -329,6 +329,20 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "Desktop Alice", task.Claimed.ActorDisplayName)
 	require.NoError(t, client.RecordSubmission(ctx, &task, "desktop-turn-1"))
 	require.NoError(t, client.ConfirmTurn(ctx, &task, "desktop-turn-1"))
+	require.NoError(t, client.Events(ctx, &task, []workerprotocol.EventInput{{
+		Sequence: 1, Type: "item/started",
+		Payload: json.RawMessage(`{"item":{"id":"desktop-command","type":"commandExecution"}}`),
+	}}))
+	var timelineProjection, emptyAnchorProjection int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_projections
+		WHERE projection_key = $1`, "conversation:"+state.ConversationID.String()+
+		":message:desktop-"+task.Claimed.ID.String()).Scan(&timelineProjection))
+	require.Equal(t, 1, timelineProjection,
+		"Desktop timeline-only 事件必须复用该 Intent 的投影锚点")
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_projections
+		WHERE projection_key = $1`, "conversation:"+state.ConversationID.String()+
+		":message:").Scan(&emptyAnchorProjection))
+	require.Zero(t, emptyAnchorProjection, "Desktop timeline-only 事件不得创建空锚点 Projection")
 	steerRequest := workerprotocol.DesktopSteerRecordRequest{
 		EnvironmentID: environmentID, RequestKey: strings.Repeat("f", 64),
 		Params: json.RawMessage(`{"threadId":"codex-desktop-thread",` +
@@ -430,7 +444,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "interrupted", interrupted.Status)
 	require.False(t, interrupted.Ready)
 	require.NoError(t, client.Events(ctx, &task, []workerprotocol.EventInput{{
-		Sequence: 1, Type: "discord.progress",
+		Sequence: 2, Type: "discord.progress",
 		Payload: json.RawMessage(`{"state":"running","detail":"Desktop running"}`),
 	}}))
 	require.NoError(t, client.Complete(ctx, &task, codexcontrol.TurnResult{

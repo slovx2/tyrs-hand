@@ -215,7 +215,7 @@ func (s *Server) workerRunEvents(c *gin.Context) {
 			guildID, threadID, targetErr := s.discordProjectionTarget(c.Request.Context(), claimed)
 			if targetErr == nil {
 				_ = discordintegration.ProjectConversationStatus(c.Request.Context(), s.db,
-					guildID, threadID, claimed.DiscordConversationID, claimed.DiscordMessageID,
+					guildID, threadID, claimed.DiscordConversationID, discordProjectionAnchor(claimed),
 					claimed.RunID, discordintegration.ConversationRunning, "正在处理请求。")
 			}
 		}
