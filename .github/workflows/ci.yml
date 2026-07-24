@@ -212,6 +212,7 @@ jobs:
         with:
           version: v0.70.0
           image-ref: ${{ steps.image.outputs.repository }}@${{ steps.build.outputs.digest }}
+          scanners: vuln
           format: table
           severity: HIGH,CRITICAL
           ignore-unfixed: true

@@ -20,6 +20,7 @@ test -x /opt/tyrs-hand/codex/bin/codex
 test "$(mise --version | awk "{print \$1}")" = "2026.7.7"
 test "$(uv --version | awk "{print \$2}")" = "0.11.29"
 test "$(node --version)" = "v24.14.0"
+test "$(npm --version)" = "11.18.0"
 test "$(corepack --version)" = "0.35.0"
 test "$(pnpm --version)" = "11.14.0"
 test "$(python3 --version)" = "Python 3.13.14"
@@ -27,4 +28,5 @@ test "$(go version | awk "{print \$3}")" = "go1.26.5"
 test "$(rustc --version | awk "{print \$2}")" = "1.97.1"
 test "$(codex --version)" = "codex-cli 0.145.0"
 test "$(tyrs-hand-dev codex status)" = "bundled"
+! find /etc/ssh -maxdepth 1 -type f -name "ssh_host_*_key" -print -quit | grep -q .
 '

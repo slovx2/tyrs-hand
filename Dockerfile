@@ -131,11 +131,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get -o Acquire::Retries=5 update; \
     apt-get -o Acquire::Retries=5 install --yes --no-install-recommends ${packages}; \
     rm -rf /var/lib/apt/lists/*; \
+    npm_version="$(node -p "require('${runtime_lock}').npm")"; \
     corepack_version="$(node -p "require('${runtime_lock}').corepack")"; \
     pnpm_version="$(node -p "require('${runtime_lock}').defaults.pnpm")"; \
+    npm install --global --omit=dev "npm@${npm_version}"; \
     npm install --global --omit=dev "corepack@${corepack_version}"; \
     npm install --global --omit=dev --force "pnpm@${pnpm_version}"; \
     npm cache clean --force; \
+    rm -f /etc/ssh/ssh_host_*; \
     ln -s /usr/bin/fdfind /usr/local/bin/fd
 RUN set -eux; \
     runtime_lock=/usr/local/share/tyrs-hand/development-runtime.lock.json; \
