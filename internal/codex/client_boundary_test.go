@@ -39,6 +39,25 @@ func TestClientKeepsHomeSeparateFromCodexHome(t *testing.T) {
 	require.NoError(t, client.Close())
 }
 
+func TestClientEnforcesManagedAppServerConfiguration(t *testing.T) {
+	launcher := &scriptedLauncher{script: initializeScript(func(server *scriptedServer) {
+		<-server.process.exited
+	})}
+	client, err := Start(context.Background(), ClientOptions{
+		Bin: "mock", CWD: t.TempDir(), CodexHome: t.TempDir(),
+		Environment: []string{"TYRS_HAND_MODEL_API_KEY=secret"},
+		Launcher:    launcher, RequestTimeout: time.Second,
+	})
+	require.NoError(t, err)
+	require.Equal(t, ManagedAppServerArguments("stdio://"), launcher.specs[0].Args)
+	require.Contains(t, launcher.specs[0].Args,
+		`shell_environment_policy.exclude=["TYRS_HAND_MODEL_API_KEY"]`)
+	require.Contains(t, launcher.specs[0].Args, "allow_login_shell=false")
+	require.Contains(t, launcher.specs[0].Args,
+		`openai_base_url="https://chatgpt.com/backend-api/codex"`)
+	require.NoError(t, client.Close())
+}
+
 func TestReadFrameBoundaries(t *testing.T) {
 	frame, err := readFrame(bufio.NewReader(strings.NewReader("1234\n")), 5)
 	require.NoError(t, err)

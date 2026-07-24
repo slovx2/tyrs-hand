@@ -6,9 +6,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/gorilla/websocket"
+	"github.com/slovx2/tyrs-hand/internal/codex"
 )
 
 type message struct {
@@ -21,12 +23,13 @@ func main() {
 		_, _ = os.Stdout.WriteString("codex-cli 0.145.0\n")
 		return
 	}
-	if len(os.Args) != 4 || os.Args[1] != "app-server" || os.Args[2] != "--listen" ||
-		!strings.HasPrefix(os.Args[3], "unix://") {
+	if len(os.Args) < 2 || !slices.Equal(os.Args[1:],
+		codex.ManagedAppServerArguments(os.Args[len(os.Args)-1])) ||
+		!strings.HasPrefix(os.Args[len(os.Args)-1], "unix://") {
 		_, _ = os.Stderr.WriteString("unsupported mock codex invocation\n")
 		os.Exit(2)
 	}
-	path := strings.TrimPrefix(os.Args[3], "unix://")
+	path := strings.TrimPrefix(os.Args[len(os.Args)-1], "unix://")
 	_ = os.Remove(path)
 	listener, err := net.Listen("unix", path)
 	if err != nil {

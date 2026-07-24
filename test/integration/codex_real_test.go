@@ -121,6 +121,109 @@ supports_websockets = false
 	require.GreaterOrEqual(t, requestCount.Load(), int32(2))
 }
 
+func TestRealCodexShellDoesNotInheritManagedModelKey(t *testing.T) {
+	bin := fixedCodexBinary(t)
+	const (
+		hiddenMarker  = "TYRS_MANAGED_KEY_HIDDEN"
+		visibleMarker = "TYRS_MANAGED_KEY_VISIBLE"
+	)
+	var shellOutput atomic.Value
+	var requestCount atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
+		request *http.Request,
+	) {
+		var requestBody map[string]any
+		require.NoError(t, json.NewDecoder(request.Body).Decode(&requestBody))
+		if requestCount.Add(1) == 1 {
+			arguments, _ := json.Marshal(map[string]any{
+				"command": `if test -n "${TYRS_HAND_MODEL_API_KEY+x}"; then ` +
+					`printf TYRS_MANAGED_KEY_VISIBLE; else printf TYRS_MANAGED_KEY_HIDDEN; fi`,
+				"timeout_ms": 2_000,
+			})
+			_, _ = fmt.Fprint(response, sse(
+				map[string]any{"type": "response.created",
+					"response": map[string]any{"id": "resp-shell-1"}},
+				map[string]any{"type": "response.output_item.done", "item": map[string]any{
+					"type": "function_call", "id": "shell-1", "call_id": "shell-call-1",
+					"name": "shell_command", "arguments": string(arguments),
+				}},
+				completedResponse("resp-shell-1"),
+			))
+			return
+		}
+		for _, item := range requestBody["input"].([]any) {
+			value, ok := item.(map[string]any)
+			if ok && value["type"] == "function_call_output" &&
+				value["call_id"] == "shell-call-1" {
+				encoded, _ := json.Marshal(value["output"])
+				shellOutput.Store(string(encoded))
+			}
+		}
+		_, _ = fmt.Fprint(response, sse(
+			map[string]any{"type": "response.created",
+				"response": map[string]any{"id": "resp-shell-2"}},
+			map[string]any{"type": "response.output_item.done", "item": map[string]any{
+				"type": "message", "role": "assistant", "id": "msg-shell",
+				"content": []map[string]any{{"type": "output_text", "text": "done"}},
+			}},
+			completedResponse("resp-shell-2"),
+		))
+	}))
+	t.Cleanup(upstream.Close)
+
+	root := temporaryDir(t, "tyrs-hand-codex-shell-policy-")
+	codexHome := filepath.Join(root, "codex-home")
+	worktree := filepath.Join(root, "worktree")
+	require.NoError(t, os.MkdirAll(codexHome, 0o700))
+	require.NoError(t, os.MkdirAll(worktree, 0o700))
+	config := fmt.Sprintf(`model = "mock-model"
+model_provider = "mock_provider"
+openai_base_url = "https://personal.invalid/v1"
+
+[model_providers.mock_provider]
+name = "Mock provider for shell policy test"
+base_url = %q
+wire_api = "responses"
+env_key = "TYRS_HAND_MODEL_API_KEY"
+request_max_retries = 0
+stream_max_retries = 0
+supports_websockets = false
+`, upstream.URL)
+	require.NoError(t, os.WriteFile(filepath.Join(codexHome, "config.toml"),
+		[]byte(config), 0o600))
+
+	client, err := codex.Start(context.Background(), codex.ClientOptions{
+		Bin: bin, CWD: worktree, CodexHome: codexHome,
+		Environment:    []string{"TYRS_HAND_MODEL_API_KEY=managed-secret"},
+		RequestTimeout: 30 * time.Second, Logger: zap.NewNop(),
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = client.Close() })
+	var configRead struct {
+		Config map[string]any `json:"config"`
+	}
+	require.NoError(t, client.Call(context.Background(), "config/read",
+		map[string]any{"cwd": worktree, "includeLayers": false}, &configRead))
+	require.Equal(t, "https://chatgpt.com/backend-api/codex",
+		configRead.Config["openai_base_url"])
+	require.Equal(t, false, configRead.Config["allow_login_shell"])
+	runtime := codex.NewRuntime(client)
+	threadID, err := runtime.StartThread(context.Background(), ports.ThreadOptions{
+		CWD: worktree, Model: "mock-model", Sandbox: "danger-full-access",
+		ApprovalPolicy: "never",
+	})
+	require.NoError(t, err)
+	turnID, err := runtime.StartTurn(context.Background(), threadID,
+		ports.TurnInput{Text: "Run the requested shell check."})
+	require.NoError(t, err)
+	waitForCompletedTurn(t, client.Events(), threadID, turnID)
+	output, ok := shellOutput.Load().(string)
+	require.True(t, ok, "没有收到真实 Shell 执行结果：requests=%d", requestCount.Load())
+	require.Contains(t, output, hiddenMarker)
+	require.NotContains(t, output, visibleMarker)
+	require.Equal(t, int32(2), requestCount.Load())
+}
+
 func fixedCodexBinary(t *testing.T) string {
 	t.Helper()
 	bin := os.Getenv("TYRS_HAND_TEST_CODEX_BIN")

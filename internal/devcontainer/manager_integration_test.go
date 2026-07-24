@@ -330,10 +330,12 @@ func testRemoteSSHAndDesktopProxy(t *testing.T, manager *Manager, environmentID 
 
 	hostKeyBefore := dockerReadRoot(t, manager, runtime,
 		"/var/lib/tyrs-hand/system/ssh/ssh_host_ed25519_key.pub")
-	_, err = manager.docker(context.Background(), "exec", "--detach", "--user",
+	appServerArguments := []string{"exec", "--detach", "--user",
 		fmt.Sprintf("%d:%d", runtime.UID, runtime.GID), runtime.Container,
-		"/opt/tyrs-hand/libexec/codex-real", "app-server", "--listen",
-		"unix:///run/tyrs-hand/relay.sock")
+		"/opt/tyrs-hand/libexec/codex-real"}
+	appServerArguments = append(appServerArguments,
+		codex.ManagedAppServerArguments("unix:///run/tyrs-hand/relay.sock")...)
+	_, err = manager.docker(context.Background(), appServerArguments...)
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
 		_, socketErr := manager.docker(context.Background(), "exec", runtime.Container,

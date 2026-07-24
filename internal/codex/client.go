@@ -87,7 +87,7 @@ func Start(ctx context.Context, options ClientOptions) (*Client, error) {
 		home = options.CodexHome
 	}
 	process, err := options.Launcher.Launch(ProcessSpec{
-		Bin: options.Bin, Args: []string{"app-server", "--listen", "stdio://"},
+		Bin: options.Bin, Args: ManagedAppServerArguments("stdio://"),
 		Dir: options.CWD, Env: append(cleanEnvironment(options.Environment),
 			"CODEX_HOME="+options.CodexHome, "HOME="+home, "RUST_LOG=warn"),
 	})

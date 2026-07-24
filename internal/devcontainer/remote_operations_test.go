@@ -219,7 +219,9 @@ func TestReconfigureRemoteEnvironmentKeepsContainerRunningAndSecuresSSH(t *testi
 	require.True(t, runner.contains("chmod 0666 /run/tyrs-hand/app-server.sock"))
 	require.True(t, runner.contains("docker exec --detach --user 0:0"))
 	require.True(t, runner.contains("sshd -D -e"))
-	require.True(t, runner.contains("codex-real app-server --listen unix:///run/tyrs-hand/app-server.sock"))
+	require.True(t, runner.contains(`shell_environment_policy.exclude=["TYRS_HAND_MODEL_API_KEY"]`))
+	require.True(t, runner.contains("allow_login_shell=false"))
+	require.True(t, runner.contains(`openai_base_url="https://chatgpt.com/backend-api/codex"`))
 }
 
 func TestShareAppServerSocketFallsBackToHostPermissions(t *testing.T) {
@@ -328,7 +330,7 @@ func TestCoordinateRemoteStartsPermanentDaemons(t *testing.T) {
 	require.Equal(t, filepath.Join(manager.developmentRuntimeDir,
 		manifest.EnvironmentID.String(), "app-server.sock"), runtime.AppServerSocket)
 	require.True(t, runner.contains("docker start dev-container"))
-	require.True(t, runner.contains("codex-real app-server --listen"))
+	require.True(t, runner.contains(`shell_environment_policy.inherit="core"`))
 	require.True(t, runner.contains("sshd -D -e"))
 	listener, err := net.Listen("unix", runtime.AppServerSocket)
 	require.NoError(t, err)
