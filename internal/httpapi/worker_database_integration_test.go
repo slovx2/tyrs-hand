@@ -235,6 +235,59 @@ func TestWorkerAPIDiscordRuntimePreferencesFreeze(t *testing.T) {
 	require.Equal(t, "standard", second.Task.Snapshot.Runtime.ServiceTier)
 }
 
+func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
+	db := workerDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	server, endpoint := workerTestServer(t, db)
+	node, enrollment, err := server.nodes.Create(ctx, "desktop-discord-node", []string{"discord"}, 2)
+	require.NoError(t, err)
+	_, credential, err := server.nodes.Enroll(ctx, enrollment)
+	require.NoError(t, err)
+	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
+	require.NoError(t, client.Heartbeat(ctx, workerprotocol.HeartbeatRequest{
+		WorkerVersion: "test", ProtocolVersion: workerprotocol.Version,
+	}))
+
+	repositoryID, _, profileID := seedWorkerGitHubQueue(t, db, 42)
+	environmentID, forumID := seedDevelopmentOperation(t, db, repositoryID, node.ID)
+	var conversationID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_conversations
+		(guild_id, forum_id, thread_id, owner_discord_user_id, repository_id, agent_profile_id, title)
+		VALUES ('worker-test-guild',$1,'desktop-bound-thread','worker-owner',$2,$3,
+			'Desktop bound thread') RETURNING id`, forumID, repositoryID, profileID).
+		Scan(&conversationID))
+	var controlID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_thread_controls
+		(source_type, discord_conversation_id, repository_id, agent_profile_id,
+			execution_node_id, development_environment_id, external_thread_id)
+		VALUES ('desktop_thread',$1,$2,$3,$4,$5,'codex-desktop-bound-thread')
+		RETURNING id`, conversationID, repositoryID, profileID, node.ID, environmentID).
+		Scan(&controlID))
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_input_messages
+		(message_id, conversation_id, discord_user_id, display_name, username,
+		 access_snapshot, body)
+		VALUES ('desktop-bound-followup',$1,'worker-owner','Owner','owner','owner','continue')`,
+		conversationID)
+	require.NoError(t, err)
+	intentID := enqueueWorkerDiscordIntent(t, db, conversationID, "desktop-bound-followup",
+		repositoryID, profileID)
+
+	claimed, err := client.Claim(ctx, workerprotocol.ClaimRequest{
+		WorkerID: "desktop-discord-worker", Role: "discord",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, claimed.Task)
+	require.Equal(t, intentID, claimed.Task.Claimed.ID)
+	require.Equal(t, controlID, claimed.Task.Claimed.ControlID)
+	require.Equal(t, codexcontrol.SourceDiscord, claimed.Task.Claimed.SourceType)
+	require.Equal(t, "codex-desktop-bound-thread", claimed.Task.Claimed.ExternalThreadID)
+	var controls int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_thread_controls
+		WHERE discord_conversation_id=$1`, conversationID).Scan(&controls))
+	require.Equal(t, 1, controls)
+}
+
 func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	db := workerDatabase(t)
 	ctx := context.Background()

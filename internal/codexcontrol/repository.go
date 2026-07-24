@@ -241,7 +241,6 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 		FROM codex_thread_controls c
 		WHERE c.status <> 'error'
 		  AND c.lifecycle_state = 'active'
-		  AND ($2 = '' OR c.source_type = $2)
 		  AND ($3 = '' OR c.execution_node_id = $3::uuid)
 			  AND ($2 <> 'discord_conversation' OR NOT EXISTS (
 				SELECT 1 FROM discord_conversations dc
@@ -253,7 +252,8 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 		  AND (c.lease_expires_at IS NULL OR c.lease_expires_at < now())
 		  AND EXISTS (SELECT 1 FROM codex_turn_intents i
 			WHERE i.control_id = c.id AND i.status IN ('queued','retry_wait','reconciling')
-			  AND i.available_at <= now() AND i.attempt_count < $1)
+			  AND i.available_at <= now() AND i.attempt_count < $1
+			  AND ($2 = '' OR i.source_type = $2))
 		ORDER BY COALESCE(c.next_wakeup_at, c.created_at), c.created_at
 		FOR UPDATE SKIP LOCKED LIMIT 1`, r.maxAttempts, sourceType,
 		executionNodeID).Scan(&controlID, &oldStatus)
@@ -279,7 +279,8 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 		FROM codex_turn_intents i JOIN codex_thread_controls c ON c.id = i.control_id
 		WHERE i.control_id = $1 AND i.status IN ('queued','retry_wait','reconciling')
 		  AND i.available_at <= now() AND i.attempt_count < $2
-		ORDER BY i.sequence_no FOR UPDATE OF i LIMIT 1`, controlID, r.maxAttempts).Scan(
+		  AND ($3 = '' OR i.source_type = $3)
+		ORDER BY i.sequence_no FOR UPDATE OF i LIMIT 1`, controlID, r.maxAttempts, sourceType).Scan(
 		&claimed.ID, &claimed.Sequence, &claimed.Operation, &claimed.Behavior,
 		&claimed.SourceType, &claimed.InputSurface, &workItemID, &conversationID, &repositoryID,
 		&claimed.AgentProfileID, &discordMessageID, &claimed.Instruction,
