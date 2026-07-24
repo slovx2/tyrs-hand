@@ -19,7 +19,7 @@ func TestConversationCardsKeepSystemAndReplyVisuallyDistinct(t *testing.T) {
 	require.Contains(t, running.Body, "2 项动态")
 	require.NotContains(t, running.Body, "条更新")
 	require.Equal(t, cardColorBlurple, running.AccentColor)
-	require.Contains(t, running.Footer, "此卡片")
+	require.Empty(t, running.Footer)
 
 	completed := conversationProgressCard(ConversationCompleted, timeline, 0, "")
 	require.Equal(t, cardColorGreen, completed.AccentColor)

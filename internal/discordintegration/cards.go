@@ -43,8 +43,7 @@ const (
 func conversationProgressCard(state ConversationProgress, timeline ConversationTimeline,
 	page int, runID string,
 ) ComponentCardPayload {
-	header, color, footer := "⚙️ Codex · 处理中", cardColorBlurple,
-		"状态会在此卡片中更新 · 不展示工具返回内容"
+	header, color, footer := "⚙️ Codex · 处理中", cardColorBlurple, ""
 	switch state {
 	case ConversationCompleted:
 		header, color, footer = "✅ Codex · 已完成", cardColorGreen, ""
