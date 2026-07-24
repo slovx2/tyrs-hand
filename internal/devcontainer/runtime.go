@@ -50,6 +50,10 @@ func (m *Manager) desiredRuntimeSignature() (string, error) {
 		}
 		_, _ = hash.Write([]byte{0})
 	}
+	for _, argument := range codex.ManagedAppServerArguments("unix://" + appServerSocket) {
+		_, _ = hash.Write([]byte(argument))
+		_, _ = hash.Write([]byte{0})
+	}
 	m.runtimeSignature = hex.EncodeToString(hash.Sum(nil))
 	return m.runtimeSignature, nil
 }

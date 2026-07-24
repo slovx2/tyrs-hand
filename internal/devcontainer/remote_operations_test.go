@@ -53,7 +53,7 @@ func (r *recordingCommandRunner) contains(parts ...string) bool {
 	return false
 }
 
-func TestRefreshRemoteRuntimeOnlyWhenWorkerBinariesChange(t *testing.T) {
+func TestRefreshRemoteRuntimeWhenWorkerBinariesOrArgumentsChange(t *testing.T) {
 	root := t.TempDir()
 	codexBin := filepath.Join(root, "codex-real")
 	proxyBin := filepath.Join(root, "codex")
@@ -63,6 +63,15 @@ func TestRefreshRemoteRuntimeOnlyWhenWorkerBinariesChange(t *testing.T) {
 		codexBin: codexBin, codexProxyBin: proxyBin}
 	signature, err := manager.desiredRuntimeSignature()
 	require.NoError(t, err)
+	legacyHash := sha256.New()
+	for _, content := range []string{"codex-v2", "proxy-v2"} {
+		_, err = legacyHash.Write([]byte(content))
+		require.NoError(t, err)
+		_, err = legacyHash.Write([]byte{0})
+		require.NoError(t, err)
+	}
+	legacySignature := hex.EncodeToString(legacyHash.Sum(nil))
+	require.NotEqual(t, legacySignature, signature)
 
 	currentRunner := &recordingCommandRunner{resultFor: map[string]string{
 		"cat " + runtimeSignaturePath: signature,
@@ -75,7 +84,7 @@ func TestRefreshRemoteRuntimeOnlyWhenWorkerBinariesChange(t *testing.T) {
 	require.False(t, currentRunner.contains("docker cp"))
 
 	staleRunner := &recordingCommandRunner{resultFor: map[string]string{
-		"cat " + runtimeSignaturePath: "old-signature",
+		"cat " + runtimeSignaturePath: legacySignature,
 	}}
 	manager.runner = staleRunner
 	changed, err = manager.RefreshRemoteRuntime(context.Background(), runtime)
@@ -84,6 +93,157 @@ func TestRefreshRemoteRuntimeOnlyWhenWorkerBinariesChange(t *testing.T) {
 	require.True(t, staleRunner.contains("app-server.pid"))
 	require.True(t, staleRunner.contains("docker cp --follow-link "+codexBin))
 	require.True(t, staleRunner.contains("TYRS_RUNTIME_SIGNATURE="+signature))
+}
+
+func TestRefreshRemoteRuntimeReportsRefreshFailures(t *testing.T) {
+	root := t.TempDir()
+	codexBin := filepath.Join(root, "codex-real")
+	proxyBin := filepath.Join(root, "codex")
+	require.NoError(t, os.WriteFile(codexBin, []byte("codex"), 0o755))
+	require.NoError(t, os.WriteFile(proxyBin, []byte("proxy"), 0o755))
+	runtime := Runtime{Container: "dev-container", UID: 1000, GID: 1000, Home: "/home/dev"}
+
+	t.Run("计算签名", func(t *testing.T) {
+		manager := &Manager{dockerBin: "docker", dockerHost: "inherit",
+			codexBin: filepath.Join(root, "missing"), codexProxyBin: proxyBin,
+			runner: &recordingCommandRunner{}}
+		_, err := manager.RefreshRemoteRuntime(context.Background(), runtime)
+		require.ErrorContains(t, err, "计算 Codex 运行时签名")
+	})
+
+	t.Run("停止旧进程", func(t *testing.T) {
+		runner := &recordingCommandRunner{failContains: "app-server.pid"}
+		manager := &Manager{dockerBin: "docker", dockerHost: "inherit",
+			codexBin: codexBin, codexProxyBin: proxyBin, runner: runner}
+		_, err := manager.RefreshRemoteRuntime(context.Background(), runtime)
+		require.ErrorContains(t, err, "停止旧 Codex app-server")
+	})
+
+	t.Run("安装运行时", func(t *testing.T) {
+		temporaryCodex := filepath.Join(t.TempDir(), "codex-real")
+		require.NoError(t, os.WriteFile(temporaryCodex, []byte("codex"), 0o755))
+		manager := &Manager{dockerBin: "docker", dockerHost: "inherit",
+			codexBin: temporaryCodex, codexProxyBin: proxyBin,
+			runner: &recordingCommandRunner{}}
+		_, err := manager.desiredRuntimeSignature()
+		require.NoError(t, err)
+		require.NoError(t, os.Remove(temporaryCodex))
+		_, err = manager.RefreshRemoteRuntime(context.Background(), runtime)
+		require.ErrorContains(t, err, "刷新 Codex 运行时")
+	})
+}
+
+func TestInstallRuntimeReportsIncompleteInstallation(t *testing.T) {
+	tests := []struct {
+		name         string
+		failContains string
+		remove       string
+		replyHook    bool
+	}{
+		{name: "Codex 不存在", remove: "codex"},
+		{name: "Proxy 不存在", remove: "proxy"},
+		{name: "无法创建目录", failContains: "mkdir -p /opt/tyrs-hand/bin"},
+		{name: "无法复制 Codex", failContains: "cp --follow-link"},
+		{name: "无法复制 Proxy", failContains: "/opt/tyrs-hand/bin/codex"},
+		{name: "无法复制 Reply Hook", failContains: "tyrs-hand-reply-hook", replyHook: true},
+		{name: "无法写入签名", failContains: "TYRS_RUNTIME_SIGNATURE="},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			codexBin := filepath.Join(root, "codex-real")
+			proxyBin := filepath.Join(root, "codex")
+			replyHook := filepath.Join(root, "reply-hook")
+			require.NoError(t, os.WriteFile(codexBin, []byte("codex"), 0o755))
+			require.NoError(t, os.WriteFile(proxyBin, []byte("proxy"), 0o755))
+			if test.replyHook {
+				require.NoError(t, os.WriteFile(replyHook, []byte("hook"), 0o755))
+			}
+			runner := &recordingCommandRunner{failContains: test.failContains}
+			manager := &Manager{dockerBin: "docker", dockerHost: "inherit", runner: runner,
+				codexBin: codexBin, codexProxyBin: proxyBin, replyHook: replyHook}
+			_, err := manager.desiredRuntimeSignature()
+			require.NoError(t, err)
+			switch test.remove {
+			case "codex":
+				require.NoError(t, os.Remove(codexBin))
+			case "proxy":
+				require.NoError(t, os.Remove(proxyBin))
+			}
+			require.Error(t, manager.installRuntime(context.Background(), "development",
+				1000, 1000, "/home/dev"))
+		})
+	}
+}
+
+func TestRefreshRemoteRuntimeReportsSSHConfigurationFailure(t *testing.T) {
+	root := t.TempDir()
+	codexBin := filepath.Join(root, "codex-real")
+	proxyBin := filepath.Join(root, "codex")
+	require.NoError(t, os.WriteFile(codexBin, []byte("codex"), 0o755))
+	require.NoError(t, os.WriteFile(proxyBin, []byte("proxy"), 0o755))
+	manager := &Manager{dockerBin: "docker", dockerHost: "inherit",
+		codexBin: codexBin, codexProxyBin: proxyBin, sshEnabled: true,
+		sshAgentDir: filepath.Join(root, "missing-agent"),
+		runner:      &recordingCommandRunner{failContains: "mkdir -p /etc/ssh"}}
+
+	_, err := manager.RefreshRemoteRuntime(context.Background(), Runtime{
+		Container: "development", UID: 1000, GID: 1000, Home: "/home/dev",
+	})
+	require.ErrorContains(t, err, "刷新 SSH 配置")
+}
+
+func TestInstallSSHConfigurationReportsPartialUpdates(t *testing.T) {
+	tests := []struct {
+		name         string
+		source       string
+		failContains string
+	}{
+		{name: "本地配置不可读", source: "directory"},
+		{name: "配置无法复制", source: "file", failContains: "99-tyrs-hand.conf.tmp"},
+		{name: "默认配置无法创建", failContains: "printf 'Host *"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			agentDir := filepath.Join(root, "ssh-agent")
+			require.NoError(t, os.Mkdir(agentDir, 0o755))
+			source := filepath.Join(agentDir, "ssh_config")
+			switch test.source {
+			case "directory":
+				require.NoError(t, os.Mkdir(source, 0o755))
+			case "file":
+				require.NoError(t, os.WriteFile(source, []byte("Host *\n"), 0o644))
+			}
+			manager := &Manager{dockerBin: "docker", dockerHost: "inherit",
+				sshAgentDir: agentDir,
+				runner:      &recordingCommandRunner{failContains: test.failContains}}
+			require.Error(t, manager.installSSHConfiguration(context.Background(),
+				"development", "/home/dev", "1000:1000"))
+		})
+	}
+}
+
+func TestConfigureRemoteDaemonsReportsStartFailures(t *testing.T) {
+	tests := []struct {
+		name         string
+		failContains string
+		publicKey    string
+	}{
+		{name: "初始化失败", failContains: "TYRS_UID="},
+		{name: "SSH 启动失败", failContains: "/usr/sbin/sshd", publicKey: "ssh-ed25519 test"},
+		{name: "app-server 启动失败", failContains: "tyrs-hand-app-server"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			manager := &Manager{dockerBin: "docker", dockerHost: "inherit",
+				runner: &recordingCommandRunner{failContains: test.failContains}}
+			err := manager.configureRemoteDaemons(context.Background(), "development",
+				RemoteOperation{RuntimeUser: "dev", RuntimeUID: 1000, RuntimeGID: 1000,
+					RuntimeHome: "/home/dev", SSHPublicKey: test.publicKey})
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestInstallRuntimeCopiesRootOwnedSSHConfigAndRemovesLegacyInclude(t *testing.T) {
@@ -200,7 +360,8 @@ func TestReconfigureRemoteEnvironmentKeepsContainerRunningAndSecuresSSH(t *testi
 		HomeVolume: "dev-home", Network: "dev-network", RuntimeUser: "agent",
 		RuntimeUID: 1000, RuntimeGID: 1000, RuntimeHome: "/home/agent",
 		SSHPort: 2222, SSHPublicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest",
-		SSHConfigRevision: 3,
+		SSHConfigRevision:  3,
+		ProcessEnvironment: []string{"TYRS_TEST_RUNTIME=value"},
 	})
 	require.NoError(t, err)
 	require.True(t, runner.contains("docker create"))
@@ -208,6 +369,7 @@ func TestReconfigureRemoteEnvironmentKeepsContainerRunningAndSecuresSSH(t *testi
 	require.True(t, runner.contains("--publish 2222:22"))
 	require.True(t, runner.contains("type=bind,source=/host/ssh-agent,target=/run/tyrs-hand-ssh-agent"))
 	require.True(t, runner.contains("--env SSH_AUTH_SOCK=/run/tyrs-hand-ssh-agent/current.sock"))
+	require.True(t, runner.contains("--env TYRS_TEST_RUNTIME=value"))
 	require.True(t, runner.contains("type=bind,source=/host/runtime/"+environmentID.String()+",target=/run/tyrs-hand"))
 	require.True(t, runner.contains("PasswordAuthentication no"))
 	require.True(t, runner.contains("PermitRootLogin no"))
