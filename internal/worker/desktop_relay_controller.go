@@ -17,6 +17,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/devcontainer"
 	"github.com/slovx2/tyrs-hand/internal/participantidentity"
 	"github.com/slovx2/tyrs-hand/internal/ports"
+	"github.com/slovx2/tyrs-hand/internal/settings"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
 )
@@ -59,6 +60,16 @@ func (c *desktopRelayController) PrepareCall(_ context.Context,
 		}
 	}
 	switch call.Method {
+	case "model/list":
+		if call.Role == codexrelay.RoleDesktop &&
+			c.environment.runtime.ModelSource == settings.ModelSourceProvider {
+			result, err := providerDesktopModelCatalog()
+			if err != nil {
+				return plan, err
+			}
+			plan.Forward = false
+			plan.Result = result
+		}
 	case "thread/start":
 		plan.Params = c.injectDesktopRuntime(call.Params, true)
 		plan.Params = participantidentity.AppendDeveloperInstructions(plan.Params)
@@ -142,7 +153,7 @@ func (c *desktopRelayController) CompleteCall(_ context.Context, call codexrelay
 	plan codexrelay.CallPlan, result json.RawMessage, cause error,
 ) (json.RawMessage, error) {
 	if call.Method == "account/read" {
-		return desktopAccountWithServiceTiers(result, cause)
+		return desktopAccountForModelSource(c.environment.runtime.ModelSource, result, cause)
 	}
 	if lifecycle, ok := plan.State.(*desktopLifecycleCallState); ok {
 		go c.completeDesktopLifecycle(lifecycle.request, result, cause)
@@ -262,18 +273,13 @@ func desktopThreadRuntime(raw json.RawMessage) (string, string, string, string) 
 		strings.TrimSpace(value.ReasoningEffort), strings.TrimSpace(value.ServiceTier)
 }
 
-func desktopAccountWithServiceTiers(result json.RawMessage, cause error) (json.RawMessage, error) {
-	var response struct {
-		Account *struct {
-			Type string `json:"type"`
-		} `json:"account"`
+func desktopAccountForModelSource(modelSource string, result json.RawMessage,
+	cause error,
+) (json.RawMessage, error) {
+	if modelSource != settings.ModelSourceProvider {
+		return result, cause
 	}
-	if cause == nil && json.Unmarshal(result, &response) == nil &&
-		response.Account != nil && response.Account.Type == "chatgpt" {
-		return result, nil
-	}
-	// Desktop 目前只对 ChatGPT 账号显示 app-server 已声明的速度档位。
-	// 环境仍使用原 API Key 调用上游；这里仅补足 Desktop 的能力识别，不暴露虚构账号资料。
+	// Provider 的模型能力由 App Key 决定，不能再被仅用于插件市场的 ChatGPT 套餐过滤。
 	return json.RawMessage(`{"account":{"type":"chatgpt","email":null,` +
 		`"planType":"unknown"},"requiresOpenaiAuth":false}`), nil
 }

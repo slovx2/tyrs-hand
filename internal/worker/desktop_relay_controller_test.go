@@ -16,6 +16,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/devcontainer"
 	"github.com/slovx2/tyrs-hand/internal/participantidentity"
+	"github.com/slovx2/tyrs-hand/internal/settings"
 	"github.com/slovx2/tyrs-hand/internal/testutil/mockcodex"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/stretchr/testify/require"
@@ -143,18 +144,84 @@ func TestDesktopRelayForcesGlobalModelAndOmitsPlatformGitHubTools(t *testing.T) 
 	require.NotContains(t, string(resume.Params), `"dynamicTools"`)
 }
 
-func TestDesktopRelayAdvertisesServiceTiersWithoutChangingRealChatGPTAccount(t *testing.T) {
-	apiKeyResult := json.RawMessage(
-		`{"account":{"type":"apiKey"},"requiresOpenaiAuth":true}`)
-	desktopResult, err := desktopAccountWithServiceTiers(apiKeyResult, nil)
+func TestDesktopRelayProviderModelCatalogUsesAppKeyCapabilities(t *testing.T) {
+	controller := &desktopRelayController{environment: &environmentCodex{
+		runtime: devcontainer.Runtime{ModelSource: settings.ModelSourceProvider},
+	}}
+	plan, err := controller.PrepareCall(context.Background(), codexrelay.Call{
+		Role: codexrelay.RoleDesktop, Method: "model/list", Params: json.RawMessage(`{}`),
+	})
+	require.NoError(t, err)
+	require.False(t, plan.Forward)
+
+	var catalog struct {
+		Data []struct {
+			ID                        string `json:"id"`
+			IsDefault                 bool   `json:"isDefault"`
+			SupportedReasoningEfforts []struct {
+				ReasoningEffort string `json:"reasoningEffort"`
+			} `json:"supportedReasoningEfforts"`
+			ServiceTiers []struct {
+				ID string `json:"id"`
+			} `json:"serviceTiers"`
+			AdditionalSpeedTiers []string `json:"additionalSpeedTiers"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(plan.Result, &catalog))
+	for _, model := range catalog.Data {
+		if model.ID != "gpt-5.6-sol" {
+			continue
+		}
+		efforts := make([]string, 0, len(model.SupportedReasoningEfforts))
+		for _, effort := range model.SupportedReasoningEfforts {
+			efforts = append(efforts, effort.ReasoningEffort)
+		}
+		tiers := make([]string, 0, len(model.ServiceTiers))
+		for _, tier := range model.ServiceTiers {
+			tiers = append(tiers, tier.ID)
+		}
+		require.True(t, model.IsDefault)
+		require.Contains(t, efforts, "max")
+		require.Contains(t, efforts, "ultra")
+		require.Contains(t, tiers, "priority")
+		require.Contains(t, model.AdditionalSpeedTiers, "fast")
+		return
+	}
+	t.Fatal("Provider 模型目录缺少 gpt-5.6-sol")
+}
+
+func TestDesktopRelayDoesNotReplaceChatGPTOrWorkerModelCatalog(t *testing.T) {
+	controller := &desktopRelayController{environment: &environmentCodex{
+		runtime: devcontainer.Runtime{ModelSource: settings.ModelSourceChatGPT},
+	}}
+	chatGPTPlan, err := controller.PrepareCall(context.Background(), codexrelay.Call{
+		Role: codexrelay.RoleDesktop, Method: "model/list", Params: json.RawMessage(`{}`),
+	})
+	require.NoError(t, err)
+	require.True(t, chatGPTPlan.Forward)
+
+	controller.environment.runtime.ModelSource = settings.ModelSourceProvider
+	workerPlan, err := controller.PrepareCall(context.Background(), codexrelay.Call{
+		Role: codexrelay.RoleWorker, Method: "model/list", Params: json.RawMessage(`{}`),
+	})
+	require.NoError(t, err)
+	require.True(t, workerPlan.Forward)
+}
+
+func TestDesktopRelayAccountCapabilitiesFollowModelSource(t *testing.T) {
+	chatGPTResult := json.RawMessage(
+		`{"account":{"type":"chatgpt","email":"user@example.com","planType":"free"},` +
+			`"requiresOpenaiAuth":true}`)
+	desktopResult, err := desktopAccountForModelSource(
+		settings.ModelSourceProvider, chatGPTResult, nil,
+	)
 	require.NoError(t, err)
 	require.JSONEq(t, `{"account":{"type":"chatgpt","email":null,"planType":"unknown"},`+
 		`"requiresOpenaiAuth":false}`, string(desktopResult))
 
-	chatGPTResult := json.RawMessage(
-		`{"account":{"type":"chatgpt","email":"user@example.com","planType":"plus"},` +
-			`"requiresOpenaiAuth":true}`)
-	preserved, err := desktopAccountWithServiceTiers(chatGPTResult, nil)
+	preserved, err := desktopAccountForModelSource(
+		settings.ModelSourceChatGPT, chatGPTResult, nil,
+	)
 	require.NoError(t, err)
 	require.JSONEq(t, string(chatGPTResult), string(preserved))
 }

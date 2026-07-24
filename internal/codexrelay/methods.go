@@ -44,7 +44,7 @@ var methodClasses = map[string]methodClass{
 	"mcpServer/resource/read":                  methodForward,
 	"mcpServer/tool/call":                      methodForward,
 	"mcpServerStatus/list":                     methodForward,
-	"model/list":                               methodForward,
+	"model/list":                               methodControlled,
 	"modelProvider/capabilities/read":          methodForward,
 	"permissionProfile/list":                   methodForward,
 	"plugin/installed":                         methodForward,
