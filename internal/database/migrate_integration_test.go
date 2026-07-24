@@ -80,7 +80,7 @@ func TestParticipantIdentityMigrationBindsExistingSSHToEnvironmentOwner(t *testi
 	require.Equal(t, "100000000000000002", ownerID)
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT protocol_version FROM execution_nodes
 		WHERE id=$1`, nodeID).Scan(&protocolVersion))
-	require.Equal(t, 6, protocolVersion)
+	require.Equal(t, 7, protocolVersion)
 }
 
 func TestStrandedDesktopTurnTerminalRepairMigration(t *testing.T) {
