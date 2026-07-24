@@ -128,10 +128,11 @@ func (p *RemoteProcessor) coordinateEnvironment(ctx context.Context,
 	_ = p.client.EnvironmentDaemonState(ctx, state)
 	runtime, err := p.development.PrepareRemoteRuntime(ctx, *manifest)
 	appServerRestart := err == nil && !environmentSocketAvailable(runtime.AppServerSocket)
+	codexRestartPending := false
 	if err == nil && p.environments.idle(manifest.EnvironmentID) {
-		var changed bool
-		changed, err = p.development.RefreshRemoteRuntime(ctx, runtime)
-		if changed {
+		_, _, codexRestartPending, err = p.development.CodexState(ctx, runtime)
+		if err == nil && codexRestartPending {
+			err = p.development.StopRemoteAppServer(ctx, runtime.Container)
 			appServerRestart = true
 		}
 	}
@@ -155,6 +156,19 @@ func (p *RemoteProcessor) coordinateEnvironment(ctx context.Context,
 	if err == nil {
 		err = p.development.EnsureRemoteDaemons(ctx, *manifest, runtime)
 	}
+	if err != nil && codexRestartPending {
+		if rollbackErr := p.development.RollbackUserCodex(ctx, runtime); rollbackErr == nil {
+			err = p.development.EnsureRemoteDaemons(ctx, *manifest, runtime)
+		}
+		if err != nil {
+			if resetErr := p.development.ResetUserCodex(ctx, runtime); resetErr == nil {
+				err = p.development.EnsureRemoteDaemons(ctx, *manifest, runtime)
+			}
+		}
+	}
+	if err == nil && codexRestartPending {
+		err = p.development.ClearCodexRestartMarker(ctx, runtime)
+	}
 	if err == nil && appServerRestart {
 		err = p.client.InterruptEnvironmentInteractive(ctx, manifest.EnvironmentID)
 	}
@@ -170,6 +184,11 @@ func (p *RemoteProcessor) coordinateEnvironment(ctx context.Context,
 	}
 	state.Status, state.AppServerStatus, state.RelayStatus = "running", "running", "running"
 	state.SSHStatus = environmentSSHState(manifest, "running")
+	state.CodexVersion, state.CodexUserOverride, _, err = p.development.CodexState(ctx, runtime)
+	if err != nil {
+		state.Status, state.Error = "error", err.Error()
+		return p.client.EnvironmentDaemonState(ctx, state)
+	}
 	return p.client.EnvironmentDaemonState(ctx, state)
 }
 

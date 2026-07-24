@@ -153,7 +153,7 @@ func (m *Manager) executeInitializationAction(ctx context.Context, guildID strin
 		if err != nil {
 			return nil, err
 		}
-		environmentID, err := m.ensureDevelopmentEnvironment(ctx, guildID, action.OwnerUserID, repositoryID)
+		environmentID, err := m.ensureDevelopmentEnvironment(ctx, guildID, action.OwnerUserID)
 		if err != nil {
 			return nil, err
 		}
@@ -175,9 +175,10 @@ func (m *Manager) executeInitializationAction(ctx context.Context, guildID strin
 	}
 }
 
-func (m *Manager) ensureDevelopmentEnvironment(ctx context.Context, guildID, ownerID string,
-	repositoryID uuid.UUID,
-) (uuid.UUID, error) {
+func (m *Manager) ensureDevelopmentEnvironment(ctx context.Context, guildID, ownerID string) (uuid.UUID, error) {
+	if m.developmentImage == "" {
+		return uuid.Nil, errors.New("尚未配置 TYRS_HAND_DEVELOPMENT_IMAGE")
+	}
 	candidate := uuid.New()
 	compact := strings.ReplaceAll(candidate.String(), "-", "")
 	var id uuid.UUID
@@ -187,12 +188,12 @@ func (m *Manager) ensureDevelopmentEnvironment(ctx context.Context, guildID, own
 		WHERE s.setting_key = 'execution.default.discord' AND n.enabled AND n.roles ? 'discord'
 	)
 	INSERT INTO discord_development_environments
-		(id, guild_id, owner_discord_user_id, build_repository_id, container_name,
+		(id, guild_id, owner_discord_user_id, image_ref, container_name,
 		 data_volume_name, home_volume_name, network_name, execution_node_id)
 		SELECT $1, $2, $3, $4, $5, $6, $7, $8, placement.id FROM placement
 		ON CONFLICT(guild_id, owner_discord_user_id)
 		DO UPDATE SET execution_node_id = COALESCE(discord_development_environments.execution_node_id,
-			EXCLUDED.execution_node_id), updated_at = now() RETURNING id`, candidate, guildID, ownerID, repositoryID,
+			EXCLUDED.execution_node_id), updated_at = now() RETURNING id`, candidate, guildID, ownerID, m.developmentImage,
 		"tyrs-hand-dev-"+compact, "tyrs-hand-dev-data-"+compact,
 		"tyrs-hand-dev-home-"+compact, "tyrs-hand-dev-net-"+compact).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {

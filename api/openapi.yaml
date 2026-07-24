@@ -378,15 +378,15 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/DiscordDevelopmentEnvironment" } }
         default: { $ref: "#/components/responses/Problem" }
-  /discord/development-environments/{id}/rebuild:
+  /discord/development-environments/{id}/rebase:
     post:
-      operationId: rebuildDiscordDevelopmentEnvironment
+      operationId: rebaseDiscordDevelopmentEnvironment
       tags: [Discord]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
         - { $ref: "#/components/parameters/CSRFToken" }
       responses:
-        "202": { description: 已标记为下次运行前重建 }
+        "202": { description: 已排队 Rebase 到当前官方开发镜像 }
         default: { $ref: "#/components/responses/Problem" }
   /discord/development-environments/{id}/ssh:
     put:
@@ -1282,7 +1282,7 @@ components:
       required: [id, operation, leaseToken, leaseEpoch, environmentId, containerName, dataVolume, homeVolume, network]
       properties:
         id: { type: string, format: uuid }
-        operation: { type: string, enum: [provision, clone, rebuild, reconfigure, delete_forum, delete_environment] }
+        operation: { type: string, enum: [provision, clone, rebase, reconfigure, delete_forum, delete_environment] }
         leaseToken: { type: string, writeOnly: true }
         leaseEpoch: { type: integer, format: int64 }
         environmentId: { type: string, format: uuid }
@@ -1294,6 +1294,13 @@ components:
         network: { type: string }
         workspace: { type: string }
         conversationIds: { type: array, items: { type: string, format: uuid } }
+        runtimeUser: { type: string }
+        runtimeUid: { type: integer, format: int64 }
+        runtimeGid: { type: integer, format: int64 }
+        runtimeHome: { type: string }
+        sshPublicKey: { type: string }
+        sshPort: { type: integer, minimum: 1, maximum: 65535 }
+        sshConfigRevision: { type: integer, format: int64 }
     WorkerRunLease:
       type: object
       required: [leaseToken, leaseEpoch]
@@ -1348,6 +1355,11 @@ components:
           properties:
             idempotencyKey: { type: string }
             error: { type: string }
+            appliedRevision: { type: integer, format: int64 }
+            containerId: { type: string }
+            imageRef: { type: string }
+            imageId: { type: string }
+            daemonStatus: { type: string }
     WorkerRuntimeCredential:
       type: object
       required: [modelSource, chatgptAuthRevision]
@@ -1660,17 +1672,17 @@ components:
         error: { type: string }
     DiscordDevelopmentEnvironment:
       type: object
-      required: [id, ownerDiscordUserId, ownerName, buildRepositoryId, buildRepository, status, lastUsedAt, sshConfigRevision, sshAppliedRevision, daemonStatus, appServerStatus, sshStatus, relayStatus, forums]
+      required: [id, ownerDiscordUserId, ownerName, status, imageRef, codexUserOverride, lastUsedAt, sshConfigRevision, sshAppliedRevision, daemonStatus, appServerStatus, sshStatus, relayStatus, forums]
       properties:
         id: { type: string, format: uuid }
         ownerDiscordUserId: { type: string }
         ownerName: { type: string }
-        buildRepositoryId: { type: string, format: uuid }
-        buildRepository: { type: string }
         status: { type: string }
+        imageRef: { type: string }
         imageId: { type: string }
-        buildSourceSha: { type: string }
         runtimeUser: { type: string }
+        codexVersion: { type: string }
+        codexUserOverride: { type: boolean }
         lastUsedAt: { type: string, format: date-time }
         error: { type: string }
         sshPublicKey: { type: string }

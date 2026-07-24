@@ -28,6 +28,16 @@ func (m *Manager) reconfigureRemote(ctx context.Context, operation RemoteOperati
 	if (operation.SSHPublicKey == "") != (operation.SSHPort == 0) {
 		return errors.New("必须同时配置 SSH 公钥与端口")
 	}
+	oldExists := m.dockerResourceExists(ctx, "container", operation.ContainerName)
+	if oldExists && operation.Operation == "reconfigure" {
+		currentPort, err := m.remoteSSHPort(ctx, operation.ContainerName)
+		if err != nil {
+			return fmt.Errorf("读取开发容器 SSH 端口: %w", err)
+		}
+		if currentPort == operation.SSHPort {
+			return m.configureRemoteSSH(ctx, operation.ContainerName, operation)
+		}
+	}
 	runtimeDir := filepath.Join(m.developmentRuntimeDir, operation.EnvironmentID.String())
 	if err := os.MkdirAll(runtimeDir, 0o770); err != nil {
 		return fmt.Errorf("创建环境运行目录: %w", err)
@@ -38,7 +48,6 @@ func (m *Manager) reconfigureRemote(ctx context.Context, operation RemoteOperati
 	hostRuntimeDir := filepath.Join(m.developmentRuntimeHostDir, operation.EnvironmentID.String())
 	candidate := operation.ContainerName + "-candidate-" + time.Now().UTC().Format("20060102150405.000000000")
 	_, _ = m.docker(ctx, "rm", "--force", candidate)
-	oldExists := m.dockerResourceExists(ctx, "container", operation.ContainerName)
 	if oldExists {
 		if _, err := m.docker(ctx, "stop", "--time", "10", operation.ContainerName); err != nil {
 			return fmt.Errorf("停止旧开发容器: %w", err)
@@ -48,6 +57,7 @@ func (m *Manager) reconfigureRemote(ctx context.Context, operation RemoteOperati
 		_, _ = m.docker(context.Background(), "rm", "--force", candidate)
 		if oldExists {
 			_, _ = m.docker(context.Background(), "start", operation.ContainerName)
+			_ = m.configureRemoteDaemons(context.Background(), operation.ContainerName, operation)
 		}
 	}
 	if _, err := m.docker(ctx, m.remoteContainerCreateArguments(operation, candidate, hostRuntimeDir)...); err != nil {
@@ -57,11 +67,6 @@ func (m *Manager) reconfigureRemote(ctx context.Context, operation RemoteOperati
 	if _, err := m.docker(ctx, "start", candidate); err != nil {
 		restoreOld()
 		return fmt.Errorf("启动重配开发容器: %w", err)
-	}
-	if err := m.installRuntime(ctx, candidate, operation.RuntimeUID, operation.RuntimeGID,
-		operation.RuntimeHome); err != nil {
-		restoreOld()
-		return fmt.Errorf("安装重配容器 Codex 运行时: %w", err)
 	}
 	if err := m.configureRemoteDaemons(ctx, candidate, operation); err != nil {
 		restoreOld()
@@ -84,6 +89,64 @@ func (m *Manager) reconfigureRemote(ctx context.Context, operation RemoteOperati
 	}
 	if backup != "" {
 		_, _ = m.docker(context.Background(), "rm", "--force", backup)
+	}
+	return nil
+}
+
+func (m *Manager) remoteSSHPort(ctx context.Context, container string) (int, error) {
+	value, err := m.docker(ctx, "inspect", "--format",
+		`{{with (index .NetworkSettings.Ports "22/tcp")}}{{(index . 0).HostPort}}{{end}}`, container)
+	if err != nil {
+		return 0, err
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, nil
+	}
+	port, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, errors.New("docker 返回了无效的 SSH 宿主端口")
+	}
+	return port, nil
+}
+
+func (m *Manager) configureRemoteSSH(ctx context.Context, container string,
+	operation RemoteOperation,
+) error {
+	owner := fmt.Sprintf("%d:%d", operation.RuntimeUID, operation.RuntimeGID)
+	script := `set -eu
+if test -s /run/tyrs-hand/sshd.pid && kill -0 "$(cat /run/tyrs-hand/sshd.pid)" 2>/dev/null; then
+  kill "$(cat /run/tyrs-hand/sshd.pid)"
+fi
+rm -f /run/tyrs-hand/sshd.pid
+if test -z "$TYRS_SSH_PUBLIC_KEY"; then
+  rm -f "$TYRS_HOME/.ssh/authorized_keys"
+  exit 0
+fi
+install -d -m 0755 /run/sshd
+install -d -m 0700 /var/lib/tyrs-hand/system/ssh
+test -f /var/lib/tyrs-hand/system/ssh/ssh_host_ed25519_key || ssh-keygen -q -t ed25519 -N '' -f /var/lib/tyrs-hand/system/ssh/ssh_host_ed25519_key
+install -d -o "$TYRS_UID" -g "$TYRS_GID" -m 0700 "$TYRS_HOME/.ssh"
+printf '%s\n' "$TYRS_SSH_PUBLIC_KEY" > "$TYRS_HOME/.ssh/authorized_keys"
+chown "$TYRS_OWNER" "$TYRS_HOME/.ssh/authorized_keys"
+chmod 0600 "$TYRS_HOME/.ssh/authorized_keys"
+printf '%s\n' "$TYRS_SSHD_CONFIG" > /var/lib/tyrs-hand/system/ssh/sshd_config
+chmod 0600 /var/lib/tyrs-hand/system/ssh/ssh_host_ed25519_key`
+	if _, err := m.docker(ctx, "exec", "--user", "0:0",
+		"--env", "TYRS_UID="+strconv.FormatInt(operation.RuntimeUID, 10),
+		"--env", "TYRS_GID="+strconv.FormatInt(operation.RuntimeGID, 10),
+		"--env", "TYRS_OWNER="+owner, "--env", "TYRS_HOME="+operation.RuntimeHome,
+		"--env", "TYRS_SSH_PUBLIC_KEY="+operation.SSHPublicKey,
+		"--env", "TYRS_SSHD_CONFIG="+remoteSSHDConfig(operation.RuntimeUser),
+		container, "/bin/sh", "-c", script); err != nil {
+		return fmt.Errorf("更新开发容器 SSH: %w", err)
+	}
+	if operation.SSHPublicKey == "" {
+		return nil
+	}
+	if _, err := m.docker(ctx, "exec", "--detach", "--user", "0:0", container,
+		"/usr/sbin/sshd", "-D", "-e", "-f", "/var/lib/tyrs-hand/system/ssh/sshd_config"); err != nil {
+		return fmt.Errorf("启动开发容器 SSH: %w", err)
 	}
 	return nil
 }
@@ -150,6 +213,11 @@ fi`
 		"--env", "TYRS_SSHD_CONFIG="+config, container, "/bin/sh", "-c", setup); err != nil {
 		return fmt.Errorf("配置开发容器 daemon: %w", err)
 	}
+	if m.sshEnabled {
+		if err := m.installSSHConfiguration(ctx, container, operation.RuntimeHome, owner); err != nil {
+			return fmt.Errorf("安装开发容器 SSH 客户端配置: %w", err)
+		}
+	}
 	if operation.SSHPublicKey != "" {
 		if _, err := m.docker(ctx, "exec", "--detach", "--user", "0:0", container,
 			"/usr/sbin/sshd", "-D", "-e", "-f", "/var/lib/tyrs-hand/system/ssh/sshd_config"); err != nil {
@@ -166,7 +234,7 @@ exec "$@" >>/run/tyrs-hand/app-server.log 2>&1`
 		arguments = append(arguments, "--env", entry)
 	}
 	arguments = append(arguments, container, "/bin/sh", "-c", appServerCommand,
-		"tyrs-hand-app-server", "/opt/tyrs-hand/libexec/codex-real")
+		"tyrs-hand-app-server", "codex")
 	arguments = append(arguments,
 		codex.ManagedAppServerArguments("unix:///run/tyrs-hand/app-server.sock")...)
 	if _, err := m.docker(ctx, arguments...); err != nil {

@@ -159,7 +159,7 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	authenticated.GET("/discord/members", s.listDiscordMembers)
 	authenticated.GET("/discord/development-environments", s.listDiscordDevelopmentEnvironments)
 	authenticated.POST("/discord/members/:id/forum", s.requireCSRF(), s.createDiscordMemberForum)
-	authenticated.POST("/discord/development-environments/:id/rebuild", s.requireCSRF(), s.rebuildDiscordDevelopmentEnvironment)
+	authenticated.POST("/discord/development-environments/:id/rebase", s.requireCSRF(), s.rebaseDiscordDevelopmentEnvironment)
 	authenticated.PUT("/discord/development-environments/:id/ssh", s.requireCSRF(), s.putDiscordDevelopmentEnvironmentSSH)
 	authenticated.DELETE("/discord/development-environments/:id/ssh", s.requireCSRF(), s.deleteDiscordDevelopmentEnvironmentSSH)
 	authenticated.GET("/discord/development-forums/:id/delete-preflight", s.discordDevelopmentForumDeletePreflight)

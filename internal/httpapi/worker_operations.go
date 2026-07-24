@@ -39,7 +39,7 @@ func (s *Server) claimDevelopmentOperation(ctx context.Context, nodeID uuid.UUID
 		LEFT JOIN discord_forum_workspaces fw ON fw.forum_id = o.forum_id
 		WHERE o.execution_node_id = $1 AND (
 			o.status = 'pending' OR (o.status = 'running' AND o.lease_expires_at < now()))
-		AND (o.operation <> 'reconfigure' OR NOT EXISTS (
+		AND (o.operation NOT IN ('reconfigure','rebase') OR NOT EXISTS (
 			SELECT 1 FROM codex_thread_controls ct JOIN codex_turn_runs r ON r.control_id = ct.id
 			WHERE ct.development_environment_id = e.id
 			AND r.status IN ('starting','running','waiting_for_user','reconciling')
@@ -56,6 +56,12 @@ func (s *Server) claimDevelopmentOperation(ctx context.Context, nodeID uuid.UUID
 		return nil, err
 	}
 	result.ImageRef, result.Workspace = imageRef.String, workspace.String
+	if result.Operation == "rebase" {
+		result.ImageRef = s.cfg.DevelopmentImage
+		if result.ImageRef == "" {
+			return nil, errors.New("control 未配置 TYRS_HAND_DEVELOPMENT_IMAGE")
+		}
+	}
 	result.RuntimeUser, result.RuntimeHome = runtimeUser.String, runtimeHome.String
 	result.SSHPublicKey, result.SSHPort = sshPublicKey.String, int(sshPort.Int64)
 	if forumID.Valid {
@@ -225,12 +231,17 @@ func completeDevelopmentOperation(ctx context.Context, tx *sql.Tx, operation str
 			AND ssh_config_revision >= $3 AND ssh_applied_revision < $3`, environmentID.String,
 			request.ContainerID, request.AppliedRevision)
 		return err
-	case "rebuild":
+	case "rebase":
+		if request.ContainerID == "" || request.ImageRef == "" || request.ImageID == "" ||
+			request.DaemonStatus != "running" {
+			return errors.New("worker 未返回有效的 Rebase 结果")
+		}
 		_, err := tx.ExecContext(ctx, `UPDATE discord_development_environments SET
-			status = 'pending', image_ref = NULL, image_id = NULL, container_id = NULL,
-			runtime_user = NULL, runtime_uid = NULL, runtime_gid = NULL, runtime_home = NULL,
-			build_source_sha = NULL, error = NULL, updated_at = now() WHERE id = $1`,
-			environmentID.String)
+			status = 'running', image_ref = $2, image_id = $3, container_id = $4,
+			ssh_applied_revision = GREATEST(ssh_applied_revision, $5),
+			daemon_status = 'running', daemon_error = NULL, error = NULL,
+			updated_at = now() WHERE id = $1`, environmentID.String, request.ImageRef,
+			request.ImageID, request.ContainerID, request.AppliedRevision)
 		return err
 	case "delete_forum", "delete_environment":
 		return finalizeDevelopmentDeletion(ctx, tx, environmentID.String, forumID.String,

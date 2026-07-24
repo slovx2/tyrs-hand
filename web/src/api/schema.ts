@@ -406,7 +406,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/discord/development-environments/{id}/rebuild": {
+    "/discord/development-environments/{id}/rebase": {
         parameters: {
             query?: never;
             header?: never;
@@ -415,7 +415,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["rebuildDiscordDevelopmentEnvironment"];
+        post: operations["rebaseDiscordDevelopmentEnvironment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1428,7 +1428,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** @enum {string} */
-            operation: "provision" | "clone" | "rebuild" | "reconfigure" | "delete_forum" | "delete_environment";
+            operation: "provision" | "clone" | "rebase" | "reconfigure" | "delete_forum" | "delete_environment";
             leaseToken: string;
             /** Format: int64 */
             leaseEpoch: number;
@@ -1443,6 +1443,16 @@ export interface components {
             network: string;
             workspace?: string;
             conversationIds?: string[];
+            runtimeUser?: string;
+            /** Format: int64 */
+            runtimeUid?: number;
+            /** Format: int64 */
+            runtimeGid?: number;
+            runtimeHome?: string;
+            sshPublicKey?: string;
+            sshPort?: number;
+            /** Format: int64 */
+            sshConfigRevision?: number;
         };
         WorkerRunLease: {
             leaseToken: string;
@@ -1481,6 +1491,12 @@ export interface components {
         WorkerOperationTerminal: components["schemas"]["WorkerRunLease"] & {
             idempotencyKey: string;
             error?: string;
+            /** Format: int64 */
+            appliedRevision?: number;
+            containerId?: string;
+            imageRef?: string;
+            imageId?: string;
+            daemonStatus?: string;
         };
         WorkerRuntimeCredential: {
             apiKey?: string;
@@ -1768,13 +1784,12 @@ export interface components {
             id: string;
             ownerDiscordUserId: string;
             ownerName: string;
-            /** Format: uuid */
-            buildRepositoryId: string;
-            buildRepository: string;
             status: string;
+            imageRef: string;
             imageId?: string;
-            buildSourceSha?: string;
             runtimeUser?: string;
+            codexVersion?: string;
+            codexUserOverride: boolean;
             /** Format: date-time */
             lastUsedAt: string;
             error?: string;
@@ -2789,7 +2804,7 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    rebuildDiscordDevelopmentEnvironment: {
+    rebaseDiscordDevelopmentEnvironment: {
         parameters: {
             query?: never;
             header: {
@@ -2802,7 +2817,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 已标记为下次运行前重建 */
+            /** @description 已排队 Rebase 到当前官方开发镜像 */
             202: {
                 headers: {
                     [name: string]: unknown;

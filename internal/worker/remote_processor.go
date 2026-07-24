@@ -65,7 +65,7 @@ func (p *RemoteProcessor) ProcessDevelopmentOperation(ctx context.Context,
 	operation *workerprotocol.DevelopmentOperation,
 ) error {
 	processEnvironment := []string(nil)
-	if operation.Operation == "reconfigure" {
+	if operation.Operation == "reconfigure" || operation.Operation == "rebase" {
 		credential, err := p.client.EnvironmentRuntimeCredential(ctx, operation.EnvironmentID)
 		if err != nil {
 			return err
@@ -87,7 +87,7 @@ func (p *RemoteProcessor) ProcessDevelopmentOperation(ctx context.Context,
 		SSHConfigRevision:  operation.SSHConfigRevision,
 		ProcessEnvironment: processEnvironment,
 	})
-	if err != nil || operation.Operation != "reconfigure" {
+	if err != nil || (operation.Operation != "reconfigure" && operation.Operation != "rebase") {
 		return err
 	}
 	operation.ContainerID, err = p.development.ContainerID(ctx, operation.ContainerName)
@@ -96,6 +96,12 @@ func (p *RemoteProcessor) ProcessDevelopmentOperation(ctx context.Context,
 	}
 	operation.AppliedRevision = operation.SSHConfigRevision
 	operation.DaemonStatus = "running"
+	if operation.Operation == "rebase" {
+		operation.ImageID, err = p.development.ImageID(ctx, operation.ImageRef)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

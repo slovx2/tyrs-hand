@@ -2,87 +2,34 @@ package devcontainer
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 )
 
-var remoteBuildLock sync.Mutex
-
 func (m *Manager) provision(ctx context.Context, item *workspace, credential string) error {
-	buildLock, err := m.acquireBuildLock(ctx)
-	if err != nil {
-		return err
-	}
-	defer m.releaseBuildLock(buildLock)
-
 	firstProvision := item.Environment.ContainerID == ""
 	if m.db != nil {
 		_, _ = m.db.ExecContext(ctx, `UPDATE discord_development_environments
 			SET status = 'building', error = NULL, updated_at = now() WHERE id = $1`, item.Environment.ID)
 	}
-	checkout, cleanup, err := m.checkoutRepository(ctx, item.Environment.BuildCloneURL,
-		item.Environment.BuildDefaultRef, "", credential)
+	imageRef := strings.TrimSpace(item.Environment.ImageRef)
+	if imageRef == "" {
+		return errorsNew("开发环境缺少官方开发镜像引用")
+	}
+	identity, err := m.inspectDevelopmentImage(ctx, imageRef)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
-	dockerfile := filepath.Join(checkout, ".devcontainer", "Dockerfile")
-	if info, err := os.Stat(dockerfile); err != nil || info.IsDir() {
-		return errorsNew("仓库默认分支必须提供 .devcontainer/Dockerfile")
-	}
-	imageRef := "tyrs-hand-dev:" + strings.ReplaceAll(item.Environment.ID.String(), "-", "") +
-		"-" + time.Now().UTC().Format("20060102150405")
-	if _, err := m.docker(ctx, "build", "--pull", "--file", dockerfile, "--tag", imageRef, checkout); err != nil {
-		return fmt.Errorf("构建开发镜像: %w", err)
-	}
-	keepImage := false
-	defer func() {
-		if !keepImage {
-			_, _ = m.docker(context.Background(), "image", "rm", "--force", imageRef)
-		}
-	}()
-	imageID, err := m.docker(ctx, "image", "inspect", "--format", "{{.Id}}", imageRef)
-	if err != nil {
-		return err
-	}
-	runtimeUser, err := m.docker(ctx, "image", "inspect", "--format", "{{.Config.User}}", imageRef)
-	if err != nil {
-		return err
-	}
-	runtimeUser = strings.TrimSpace(runtimeUser)
-	lookup := strings.Split(runtimeUser, ":")[0]
-	if lookup == "" || lookup == "0" || lookup == "root" {
-		return errorsNew("开发镜像必须声明非 root USER")
-	}
-	identity, err := m.docker(ctx, "run", "--rm", "--user", "0:0", "--entrypoint", "/bin/sh",
-		"--env", "TYRS_RUNTIME_USER="+lookup, imageRef, "-c",
-		`command -v git >/dev/null && command -v getent >/dev/null && command -v sleep >/dev/null || exit 20
-command -v ssh >/dev/null && command -v scp >/dev/null && command -v sftp >/dev/null || exit 23
-test -x /usr/sbin/sshd && command -v ssh-keygen >/dev/null && test -x /usr/lib/openssh/sftp-server || exit 24
-entry=$(getent passwd "$TYRS_RUNTIME_USER") || exit 21
-uid=$(printf '%s' "$entry" | cut -d: -f3)
-gid=$(printf '%s' "$entry" | cut -d: -f4)
-home=$(printf '%s' "$entry" | cut -d: -f6)
-test -n "$uid" -a "$uid" != 0 -a -n "$gid" -a -n "$home" || exit 22
-printf '%s:%s:%s' "$uid" "$gid" "$home"`)
-	if err != nil {
-		return fmt.Errorf("验证开发镜像运行用户、Git 和基础命令: %w", err)
-	}
-	uid, gid, home, err := parseIdentity(identity)
-	if err != nil || home == "/" {
-		return errorsNew("开发镜像 USER 必须有独立 Home 目录")
-	}
+	imageID, runtimeUser := identity.ImageID, identity.User
+	uid, gid, home := identity.UID, identity.GID, identity.Home
 	if item.Environment.RuntimeUID != 0 &&
 		(item.Environment.RuntimeUser != runtimeUser || item.Environment.RuntimeUID != uid ||
 			item.Environment.RuntimeGID != gid || item.Environment.RuntimeHome != home) {
 		return errorsNew("重建镜像改变了 USER、UID/GID 或 Home 路径；请恢复原身份或删除最后一个 Forum 后重建")
 	}
-	previousImage := item.Environment.ImageRef
 	if err := m.ensureDockerResource(ctx, "volume", item.Environment.DataVolume); err != nil {
 		return err
 	}
@@ -128,20 +75,16 @@ printf '%s:%s:%s' "$uid" "$gid" "$home"`)
 	if _, err := m.docker(ctx, "start", candidateName); err != nil {
 		return err
 	}
-	if err := m.installRuntime(ctx, candidateName, uid, gid, home); err != nil {
-		return err
-	}
 	if err := m.configureRemoteDaemons(ctx, candidateName, RemoteOperation{
-		EnvironmentID: item.Environment.ID, RuntimeUser: lookup, RuntimeUID: uid,
+		EnvironmentID: item.Environment.ID, RuntimeUser: runtimeUser, RuntimeUID: uid,
 		RuntimeGID: gid, RuntimeHome: home,
 	}); err != nil {
 		return err
 	}
 	if _, err := m.docker(ctx, "exec", "--user", fmt.Sprintf("%d:%d", uid, gid),
-		"--env", "HOME="+home, candidateName, runtimeRoot+"/bin/codex", "--version"); err != nil {
+		"--env", "HOME="+home, candidateName, "codex", "--version"); err != nil {
 		return fmt.Errorf("验证开发容器内 Codex 运行时: %w", err)
 	}
-	sha, _ := m.runner.Run(ctx, nil, checkout, "git", "rev-parse", "HEAD")
 	backupName := ""
 	if !firstProvision {
 		backupName = item.Environment.ContainerName + "-previous-" + time.Now().UTC().Format("20060102150405")
@@ -160,17 +103,16 @@ printf '%s:%s:%s' "$uid" "$gid" "$home"`)
 	candidateExists = false
 	if m.db != nil {
 		_, err = m.db.ExecContext(ctx, `UPDATE discord_development_environments SET
-		status = 'running', image_ref = $2, image_id = $3, build_source_sha = NULLIF($4, ''),
-		container_id = $5, runtime_user = $6, runtime_uid = $7, runtime_gid = $8, runtime_home = $9,
+		status = 'running', image_ref = $2, image_id = $3,
+		container_id = $4, runtime_user = $5, runtime_uid = $6, runtime_gid = $7, runtime_home = $8,
 		error = NULL, last_used_at = now(), updated_at = now() WHERE id = $1`,
-			item.Environment.ID, imageRef, imageID, sha, containerID, runtimeUser, uid, gid, home)
+			item.Environment.ID, imageRef, imageID, containerID, runtimeUser, uid, gid, home)
 	}
 	if err != nil {
 		_, _ = m.docker(context.Background(), "rm", "--force", item.Environment.ContainerName)
 		m.restorePreviousContainer(backupName, item.Environment.ContainerName)
 		return err
 	}
-	keepImage = true
 	item.Environment.Status = "running"
 	item.Environment.ImageRef, item.Environment.ImageID = imageRef, imageID
 	item.Environment.ContainerID, item.Environment.RuntimeUser = containerID, runtimeUser
@@ -178,38 +120,7 @@ printf '%s:%s:%s' "$uid" "$gid" "$home"`)
 	if backupName != "" {
 		_, _ = m.docker(context.Background(), "rm", "--force", backupName)
 	}
-	if previousImage != "" && previousImage != imageRef {
-		_, _ = m.docker(context.Background(), "image", "rm", previousImage)
-	}
 	return nil
-}
-
-func (m *Manager) acquireBuildLock(ctx context.Context) (*sql.Conn, error) {
-	if m.db == nil {
-		return nil, nil
-	}
-	connection, err := m.db.Conn(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := connection.ExecContext(ctx,
-		"SELECT pg_advisory_lock(hashtext('discord-development-build-global'))"); err != nil {
-		_ = connection.Close()
-		return nil, err
-	}
-	return connection, nil
-}
-
-func (m *Manager) releaseBuildLock(connection *sql.Conn) {
-	if m.db == nil {
-		return
-	}
-	if connection == nil {
-		return
-	}
-	_, _ = connection.ExecContext(context.Background(),
-		"SELECT pg_advisory_unlock(hashtext('discord-development-build-global'))")
-	_ = connection.Close()
 }
 
 func (m *Manager) restorePreviousContainer(backupName, containerName string) {
@@ -288,6 +199,68 @@ func (m *Manager) copyCheckout(ctx context.Context, item *workspace, checkout st
 		base_sha = $2, head_sha = $2, dirty = false, error = NULL, last_used_at = now(), updated_at = now()
 		WHERE forum_id = $1`, item.ForumID, sha)
 	return err
+}
+
+type developmentImageIdentity struct {
+	ImageID string
+	User    string
+	UID     int64
+	GID     int64
+	Home    string
+}
+
+func (m *Manager) inspectDevelopmentImage(ctx context.Context,
+	imageRef string,
+) (developmentImageIdentity, error) {
+	if _, err := m.docker(ctx, "image", "inspect", imageRef); err != nil {
+		if _, pullErr := m.docker(ctx, "pull", imageRef); pullErr != nil {
+			return developmentImageIdentity{}, fmt.Errorf("拉取开发镜像: %w", pullErr)
+		}
+	}
+	imageID, err := m.docker(ctx, "image", "inspect", "--format", "{{.Id}}", imageRef)
+	if err != nil {
+		return developmentImageIdentity{}, err
+	}
+	contract, err := m.docker(ctx, "image", "inspect", "--format",
+		"{{index .Config.Labels \"ai.tyrs-hand.development.contract\"}}", imageRef)
+	if err != nil || strings.TrimSpace(contract) != "1" {
+		return developmentImageIdentity{}, errorsNew("开发镜像不符合 Tyrs Hand 开发容器契约 1")
+	}
+	configUser, err := m.docker(ctx, "image", "inspect", "--format", "{{.Config.User}}", imageRef)
+	if err != nil {
+		return developmentImageIdentity{}, err
+	}
+	configUser = strings.TrimSpace(configUser)
+	lookup := strings.Split(configUser, ":")[0]
+	if lookup == "" || lookup == "0" || lookup == "root" {
+		return developmentImageIdentity{}, errorsNew("开发镜像必须声明非 root USER")
+	}
+	identity, err := m.docker(ctx, "run", "--rm", "--user", "0:0", "--entrypoint", "/bin/sh",
+		"--env", "TYRS_RUNTIME_USER="+lookup, imageRef, "-c",
+		`command -v git >/dev/null && command -v getent >/dev/null && command -v sleep >/dev/null || exit 20
+command -v ssh >/dev/null && command -v scp >/dev/null && command -v sftp >/dev/null || exit 23
+test -x /usr/sbin/sshd && command -v ssh-keygen >/dev/null && test -x /usr/lib/openssh/sftp-server || exit 24
+command -v codex >/dev/null && command -v apply_patch >/dev/null && command -v tyrs-hand-dev >/dev/null || exit 25
+entry=$(getent passwd "$TYRS_RUNTIME_USER") || exit 21
+name=$(printf '%s' "$entry" | cut -d: -f1)
+uid=$(printf '%s' "$entry" | cut -d: -f3)
+gid=$(printf '%s' "$entry" | cut -d: -f4)
+home=$(printf '%s' "$entry" | cut -d: -f6)
+test -n "$name" -a -n "$uid" -a "$uid" != 0 -a -n "$gid" -a -n "$home" || exit 22
+printf '%s:%s:%s:%s' "$name" "$uid" "$gid" "$home"`)
+	if err != nil {
+		return developmentImageIdentity{}, fmt.Errorf("验证开发镜像运行用户、Git 和基础命令: %w", err)
+	}
+	parts := strings.SplitN(strings.TrimSpace(identity), ":", 4)
+	if len(parts) != 4 || parts[0] == "" {
+		return developmentImageIdentity{}, errorsNew("开发镜像 USER 身份格式无效")
+	}
+	uid, gid, home, err := parseIdentity(strings.Join(parts[1:], ":"))
+	if err != nil || home == "/" {
+		return developmentImageIdentity{}, errorsNew("开发镜像 USER 必须有独立 Home 目录")
+	}
+	return developmentImageIdentity{ImageID: strings.TrimSpace(imageID), User: parts[0],
+		UID: uid, GID: gid, Home: home}, nil
 }
 
 func errorsNew(message string) error { return fmt.Errorf("%s", message) }

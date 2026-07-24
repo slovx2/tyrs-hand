@@ -280,6 +280,7 @@ func (c *Client) CompleteDevelopmentOperation(ctx context.Context,
 		},
 		IdempotencyKey:  operation.ID.String() + ":complete",
 		AppliedRevision: operation.AppliedRevision, ContainerID: operation.ContainerID,
+		ImageRef: operation.ImageRef, ImageID: operation.ImageID,
 		DaemonStatus: operation.DaemonStatus,
 	}, nil, true)
 }

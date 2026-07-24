@@ -48,7 +48,7 @@ func InitializeServer(ctx context.Context, cfg config.Config) (*ServerApp, func(
 		return nil, nil, err
 	}
 	settingsService := provideSettings(db, store)
-	discordintegrationManager := provideDiscordManager(db, store)
+	discordintegrationManager := provideDiscordManager(cfg, db, store)
 	bindingService := provideBindingService(cfg, db, secretBox, manager)
 	logger, cleanup3, err := provideLogger(cfg)
 	if err != nil {
@@ -152,7 +152,7 @@ func InitializeDiscord(ctx context.Context, cfg config.Config) (*DiscordApp, fun
 		return nil, nil, err
 	}
 	store := secrets.NewStore(db, secretBox)
-	manager := provideDiscordManager(db, store)
+	manager := provideDiscordManager(cfg, db, store)
 	conversationService := provideConversationService(cfg, db)
 	githubManager, err := provideGitHubManager(ctx, db, store)
 	if err != nil {

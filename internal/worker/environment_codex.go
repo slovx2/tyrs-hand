@@ -300,7 +300,7 @@ func (r *environmentCodexRegistry) idle(environmentID uuid.UUID) bool {
 		return true
 	}
 	entry.mu.Lock()
-	toolsIdle := len(entry.toolHandlers) == 0
+	toolsIdle := len(entry.toolHandlers) == 0 && len(entry.interactiveHandlers) == 0
 	entry.mu.Unlock()
 	return toolsIdle && entry.relay.Stats().DesktopConnections == 0
 }

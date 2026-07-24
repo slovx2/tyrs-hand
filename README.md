@@ -140,14 +140,15 @@ docker compose -f compose.worker.yaml up -d worker
 
 - 同一 Guild 中，一个 Discord 用户只有一个容器、数据卷、Home 卷和网络；多个仓库 Forum 复用它们。
 - 用户级容器是安全边界；可操作协作者能够驱动 Agent，因此只能授权给该环境 owner 信任的成员。
-- 首个 Forum 的仓库成为稳定的镜像构建来源，必须在默认分支提供 `.devcontainer/Dockerfile`，且最终镜像声明非 root `USER`。
+- Control 为新环境固化官方 `TYRS_HAND_DEVELOPMENT_IMAGE` digest；业务仓库不需要提供 Dockerfile。
 - 每个 Forum 使用独立完整 clone。环境容器永久运行；Worker/宿主重启后会主动拉起容器、环境级 Codex app-server 和 Relay，且不会丢失 Home、clone 或 Codex 会话。
-- 每个环境共享一个 `CODEX_HOME` 和一个 app-server；Desktop 与 Discord 通过薄 Relay 复用同一协议连接。显式 rebuild 保留 Home、clone 和 Codex 会话，但重置系统可写层。
+- 每个环境共享一个 `CODEX_HOME` 和一个 app-server；Desktop 与 Discord 通过薄 Relay 复用同一协议连接。显式 Rebase 保留 Home、clone、用户 Codex 和会话，但重置系统可写层。
 - 管理后台可为环境配置一个 SSH 公钥和宿主机端口。镜像必须原生提供 `sshd`、`ssh-keygen` 与 SFTP server；Desktop 通过 SSH 执行 `codex app-server proxy`。
 - SSH 凭据绑定一个活跃 Discord 成员，Desktop 与该成员从 Discord 发言时使用同一个稳定参与者身份。Desktop 主 Thread 的消息、标题、进度和最终回复会异步投影到 Discord；Discord 故障不会中断 Desktop Thread 或 Turn。
 - Desktop 创建或恢复 Thread 时，模型、思考强度和 service tier 以 Desktop 与真实 app-server 状态为准。管理后台的默认参数只用于从 Discord 发起的新会话。
 - 系统创建的 Discord Post 在七天不活跃后自动隐藏。未锁定的 Discord 归档只改变展示状态；`/codex archive` 才会真正归档 Codex Thread 并锁定 Post，`/codex restore` 会恢复原 Thread 和 Post。
-- rebuild 改变 `USER`、UID/GID 或 Home 路径时会被拒绝并保留旧容器。平台不支持 devcontainer.json、Features、Compose、任意 Mount、Docker Socket、privileged 或端口发布。
+- 用户可用 `tyrs-hand-dev codex install <精确版本>` 在持久 Home 中覆盖镜像内置 Codex；环境空闲后生效，失败会自动回退。
+- Rebase 改变 `USER`、UID/GID 或 Home 路径时会被拒绝并保留旧容器。平台不支持 devcontainer.json、Features、Compose、任意 Mount、Docker Socket、privileged 或任意端口发布。
 - 删除 Forum 前会显示未提交、未推送和运行中状态；删除最后一个 Forum 会同时删除整个用户环境和 Home。
 
 ## GitHub App 权限
@@ -231,14 +232,15 @@ make build
 
 ## 镜像与发布
 
-GitHub Actions 对 Pull Request 和 `main` 构建 Control、Worker 镜像但不推送。发布 Release 时会构建 `linux/amd64`、`linux/arm64` 多架构镜像：
+GitHub Actions 对 Pull Request 和 `main` 构建 Control、Worker、Development 镜像但不推送。发布 Release 时会构建 `linux/amd64`、`linux/arm64` 多架构镜像：
 
 ```text
 ghcr.io/slovx2/tyrs-hand-control
 ghcr.io/slovx2/tyrs-hand-worker
+ghcr.io/slovx2/tyrs-hand-development
 ```
 
-发布构建包含 SBOM 和 provenance，并使用 `sha-<commit>` 候选 Tag 执行漏洞扫描和 Cosign keyless 签名。两个候选镜像全部通过后，才会为 Control 和 Worker 创建 Release 版本 Tag。
+发布构建包含 SBOM 和 provenance，并使用 `sha-<commit>` 候选 Tag 执行漏洞扫描和 Cosign keyless 签名。三个候选镜像全部通过后，才会创建 Release 版本 Tag。
 
 生产部署应固定 `sha-<commit>` Tag 或镜像 Digest，不使用 `latest`。
 

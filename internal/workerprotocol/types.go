@@ -9,7 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 8
+const Version = 9
 
 type EnrollRequest struct {
 	Token string `json:"token"`
@@ -84,6 +84,7 @@ type DevelopmentOperation struct {
 	SSHConfigRevision int64       `json:"sshConfigRevision"`
 	AppliedRevision   int64       `json:"appliedRevision,omitempty"`
 	ContainerID       string      `json:"containerId,omitempty"`
+	ImageID           string      `json:"imageId,omitempty"`
 	DaemonStatus      string      `json:"daemonStatus,omitempty"`
 }
 
@@ -98,6 +99,8 @@ type DevelopmentOperationTerminal struct {
 	Error           string `json:"error,omitempty"`
 	AppliedRevision int64  `json:"appliedRevision,omitempty"`
 	ContainerID     string `json:"containerId,omitempty"`
+	ImageRef        string `json:"imageRef,omitempty"`
+	ImageID         string `json:"imageId,omitempty"`
 	DaemonStatus    string `json:"daemonStatus,omitempty"`
 }
 
@@ -138,12 +141,14 @@ type EnvironmentForum struct {
 }
 
 type EnvironmentDaemonState struct {
-	EnvironmentID   uuid.UUID `json:"environmentId"`
-	Status          string    `json:"status"`
-	AppServerStatus string    `json:"appServerStatus"`
-	SSHStatus       string    `json:"sshStatus"`
-	RelayStatus     string    `json:"relayStatus"`
-	Error           string    `json:"error,omitempty"`
+	EnvironmentID     uuid.UUID `json:"environmentId"`
+	Status            string    `json:"status"`
+	AppServerStatus   string    `json:"appServerStatus"`
+	SSHStatus         string    `json:"sshStatus"`
+	RelayStatus       string    `json:"relayStatus"`
+	CodexVersion      string    `json:"codexVersion,omitempty"`
+	CodexUserOverride bool      `json:"codexUserOverride"`
+	Error             string    `json:"error,omitempty"`
 }
 
 type DesktopThreadPrepareRequest struct {
@@ -352,10 +357,6 @@ type DevelopmentSpec struct {
 	Repository        string    `json:"repository"`
 	CloneURL          string    `json:"cloneUrl"`
 	DefaultRef        string    `json:"defaultRef"`
-	BuildRepositoryID uuid.UUID `json:"buildRepositoryId"`
-	BuildRepository   string    `json:"buildRepository"`
-	BuildCloneURL     string    `json:"buildCloneUrl"`
-	BuildDefaultRef   string    `json:"buildDefaultRef"`
 	EnvironmentStatus string    `json:"environmentStatus"`
 	ImageRef          string    `json:"imageRef,omitempty"`
 	ImageID           string    `json:"imageId,omitempty"`
@@ -368,7 +369,6 @@ type DevelopmentSpec struct {
 	RuntimeUID        int64     `json:"runtimeUid,omitempty"`
 	RuntimeGID        int64     `json:"runtimeGid,omitempty"`
 	RuntimeHome       string    `json:"runtimeHome,omitempty"`
-	BuildSourceSHA    string    `json:"buildSourceSha,omitempty"`
 }
 
 type DevelopmentState struct {

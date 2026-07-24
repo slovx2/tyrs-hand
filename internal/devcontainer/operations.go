@@ -89,9 +89,6 @@ func (m *Manager) deleteForum(ctx context.Context, environmentID, forumID uuid.U
 		_, _ = m.docker(ctx, "volume", "rm", dataVolume)
 		_, _ = m.docker(ctx, "volume", "rm", homeVolume)
 		_, _ = m.docker(ctx, "network", "rm", network)
-		if imageRef != "" {
-			_, _ = m.docker(ctx, "image", "rm", imageRef)
-		}
 	}
 	if _, err := m.db.ExecContext(ctx, `DELETE FROM discord_resources WHERE id = $1`, resourceID); err != nil {
 		return err

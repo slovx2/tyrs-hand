@@ -15,12 +15,12 @@ type DevelopmentEnvironment struct {
 	ID                 uuid.UUID          `json:"id"`
 	OwnerUserID        string             `json:"ownerDiscordUserId"`
 	OwnerName          string             `json:"ownerName"`
-	BuildRepositoryID  uuid.UUID          `json:"buildRepositoryId"`
-	BuildRepository    string             `json:"buildRepository"`
 	Status             string             `json:"status"`
+	ImageRef           string             `json:"imageRef"`
 	ImageID            string             `json:"imageId,omitempty"`
-	SourceSHA          string             `json:"buildSourceSha,omitempty"`
 	RuntimeUser        string             `json:"runtimeUser,omitempty"`
+	CodexVersion       string             `json:"codexVersion,omitempty"`
+	CodexUserOverride  bool               `json:"codexUserOverride"`
 	LastUsedAt         time.Time          `json:"lastUsedAt"`
 	Error              string             `json:"error,omitempty"`
 	ExecutionNodeID    *uuid.UUID         `json:"executionNodeId,omitempty"`
@@ -68,9 +68,9 @@ type DevelopmentDeletePreflight struct {
 
 func (m *Manager) DevelopmentEnvironments(ctx context.Context) ([]DevelopmentEnvironment, error) {
 	rows, err := m.db.QueryContext(ctx, `SELECT e.id, e.owner_discord_user_id,
-		COALESCE(NULLIF(dm.display_name, ''), dm.username), e.build_repository_id, br.owner || '/' || br.name,
-		e.status, COALESCE(e.image_id, ''), COALESCE(e.build_source_sha, ''),
-		COALESCE(e.runtime_user, ''), e.last_used_at, COALESCE(e.error, ''),
+		COALESCE(NULLIF(dm.display_name, ''), dm.username), e.status, COALESCE(e.image_ref, ''),
+		COALESCE(e.image_id, ''), COALESCE(e.runtime_user, ''), COALESCE(e.codex_version, ''),
+		e.codex_user_override, e.last_used_at, COALESCE(e.error, ''),
 		e.execution_node_id::text, COALESCE(e.ssh_public_key, ''), COALESCE(e.ssh_fingerprint, ''),
 		COALESCE(e.ssh_port, 0), COALESCE(e.ssh_discord_user_id, ''),
 		COALESCE(NULLIF(ssh_dm.display_name, ''), ssh_dm.username, ''),
@@ -81,7 +81,6 @@ func (m *Manager) DevelopmentEnvironments(ctx context.Context) ([]DevelopmentEnv
 		COALESCE(r.owner || '/' || r.name, ''), COALESCE(fw.status, ''),
 		COALESCE(fw.branch, ''), COALESCE(fw.dirty, false), COALESCE(fw.error, '')
 		FROM discord_development_environments e
-		JOIN repositories br ON br.id = e.build_repository_id
 		JOIN discord_members dm ON dm.guild_id = e.guild_id AND dm.discord_user_id = e.owner_discord_user_id
 		LEFT JOIN discord_members ssh_dm ON ssh_dm.guild_id = e.guild_id
 			AND ssh_dm.discord_user_id = e.ssh_discord_user_id
@@ -101,8 +100,9 @@ func (m *Manager) DevelopmentEnvironments(ctx context.Context) ([]DevelopmentEnv
 		var forumID, executionNodeID sql.NullString
 		var forum DevelopmentForum
 		if err := rows.Scan(&environment.ID, &environment.OwnerUserID, &environment.OwnerName,
-			&environment.BuildRepositoryID, &environment.BuildRepository, &environment.Status, &environment.ImageID,
-			&environment.SourceSHA, &environment.RuntimeUser, &environment.LastUsedAt, &environment.Error,
+			&environment.Status, &environment.ImageRef, &environment.ImageID,
+			&environment.RuntimeUser, &environment.CodexVersion, &environment.CodexUserOverride,
+			&environment.LastUsedAt, &environment.Error,
 			&executionNodeID, &environment.SSHPublicKey, &environment.SSHFingerprint,
 			&environment.SSHPort, &environment.SSHDiscordUserID, &environment.SSHDisplayName,
 			&environment.SSHConfigRevision, &environment.SSHAppliedRevision,
@@ -226,7 +226,10 @@ func (m *Manager) ClearDevelopmentEnvironmentSSH(ctx context.Context, id uuid.UU
 	return tx.Commit()
 }
 
-func (m *Manager) RebuildDevelopmentEnvironment(ctx context.Context, id uuid.UUID) error {
+func (m *Manager) RebaseDevelopmentEnvironment(ctx context.Context, id uuid.UUID) error {
+	if m.developmentImage == "" {
+		return errors.New("Control 未配置 TYRS_HAND_DEVELOPMENT_IMAGE")
+	}
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -241,6 +244,10 @@ func (m *Manager) RebuildDevelopmentEnvironment(ctx context.Context, id uuid.UUI
 			JOIN codex_turn_intents i ON i.discord_conversation_id = c.id
 			WHERE f.development_environment_id = $1
 			AND i.status IN ('queued','retry_wait','dispatching','awaiting_confirmation','running','reconciling'))
+		AND NOT EXISTS (
+			SELECT 1 FROM codex_thread_controls ct JOIN codex_turn_runs r ON r.control_id = ct.id
+			WHERE ct.development_environment_id = $1
+			AND r.status IN ('starting','running','waiting_for_user','reconciling'))
 		RETURNING execution_node_id`, id).Scan(&nodeID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -249,7 +256,7 @@ func (m *Manager) RebuildDevelopmentEnvironment(ctx context.Context, id uuid.UUI
 		return err
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO discord_development_operations
-		(environment_id, operation, execution_node_id) VALUES ($1, 'rebuild', $2)`, id, nodeID)
+		(environment_id, operation, execution_node_id) VALUES ($1, 'rebase', $2)`, id, nodeID)
 	if err != nil {
 		return err
 	}

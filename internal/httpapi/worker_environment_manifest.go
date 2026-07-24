@@ -111,10 +111,11 @@ func (s *Server) workerEnvironmentDaemonState(c *gin.Context) {
 	}
 	result, err := s.db.ExecContext(c.Request.Context(), `UPDATE discord_development_environments
 		SET daemon_status = $3, daemon_error = NULLIF($4,''), app_server_status=$5,
-		ssh_daemon_status=$6, relay_status=$7, updated_at = now()
+		ssh_daemon_status=$6, relay_status=$7, codex_version=NULLIF($8,''),
+		codex_user_override=$9, updated_at = now()
 		WHERE id = $1 AND execution_node_id = $2`, environmentID, workerNode(c).ID,
 		request.Status, request.Error, request.AppServerStatus, request.SSHStatus,
-		request.RelayStatus)
+		request.RelayStatus, request.CodexVersion, request.CodexUserOverride)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "保存开发环境 daemon 状态失败", err)
 		return

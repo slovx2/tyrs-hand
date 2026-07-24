@@ -27,14 +27,12 @@ func (m *Manager) EnsureRemote(ctx context.Context, spec RemoteSpec,
 		Status: spec.WorkspaceStatus, Branch: spec.WorkspaceBranch,
 		Repository: spec.Repository, CloneURL: spec.CloneURL, DefaultRef: spec.DefaultRef,
 		Environment: environment{
-			ID: spec.EnvironmentID, BuildRepositoryID: spec.BuildRepositoryID,
-			BuildRepository: spec.BuildRepository, BuildCloneURL: spec.BuildCloneURL,
-			BuildDefaultRef: spec.BuildDefaultRef, Status: spec.EnvironmentStatus,
+			ID: spec.EnvironmentID, Status: spec.EnvironmentStatus,
 			ImageRef: spec.ImageRef, ImageID: spec.ImageID, ContainerName: spec.ContainerName,
 			ContainerID: spec.ContainerID, DataVolume: spec.DataVolume,
 			HomeVolume: spec.HomeVolume, Network: spec.Network, RuntimeUser: spec.RuntimeUser,
 			RuntimeUID: spec.RuntimeUID, RuntimeGID: spec.RuntimeGID,
-			RuntimeHome: spec.RuntimeHome, BuildSourceSHA: spec.BuildSourceSHA,
+			RuntimeHome: spec.RuntimeHome,
 		},
 	}
 	state := func(cause error) RemoteState {
@@ -46,9 +44,7 @@ func (m *Manager) EnsureRemote(ctx context.Context, spec RemoteSpec,
 	}
 	if item.Environment.Status == "pending" || item.Environment.Status == "error" ||
 		item.Environment.ContainerID == "" {
-		remoteBuildLock.Lock()
 		provisionErr := m.provision(ctx, &item, credential)
-		remoteBuildLock.Unlock()
 		if provisionErr != nil {
 			return Runtime{}, state(provisionErr), provisionErr
 		}
@@ -105,15 +101,11 @@ func remoteState(item workspace, conversationID uuid.UUID) RemoteState {
 		ConversationID: conversationID, WorkspaceStatus: item.Status,
 		WorkspaceRelative: item.Relative, WorkspaceBranch: item.Branch,
 		Repository: item.Repository, CloneURL: item.CloneURL, DefaultRef: item.DefaultRef,
-		BuildRepositoryID: item.Environment.BuildRepositoryID,
-		BuildRepository:   item.Environment.BuildRepository,
-		BuildCloneURL:     item.Environment.BuildCloneURL, BuildDefaultRef: item.Environment.BuildDefaultRef,
 		EnvironmentStatus: item.Environment.Status, ImageRef: item.Environment.ImageRef,
 		ImageID: item.Environment.ImageID, ContainerName: item.Environment.ContainerName,
 		ContainerID: item.Environment.ContainerID, DataVolume: item.Environment.DataVolume,
 		HomeVolume: item.Environment.HomeVolume, Network: item.Environment.Network,
 		RuntimeUser: item.Environment.RuntimeUser, RuntimeUID: item.Environment.RuntimeUID,
 		RuntimeGID: item.Environment.RuntimeGID, RuntimeHome: item.Environment.RuntimeHome,
-		BuildSourceSHA: item.Environment.BuildSourceSHA,
 	}}
 }

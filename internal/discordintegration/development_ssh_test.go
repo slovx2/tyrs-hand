@@ -42,7 +42,7 @@ func TestSaveDevelopmentEnvironmentSSHQueuesReconfigure(t *testing.T) {
 		WillReturnResult(driver.RowsAffected(1))
 	mock.ExpectCommit()
 
-	fingerprint, err := NewManager(db, nil).SaveDevelopmentEnvironmentSSH(context.Background(),
+	fingerprint, err := NewManager(db, nil, "").SaveDevelopmentEnvironmentSSH(context.Background(),
 		environmentID, DevelopmentEnvironmentSSHInput{
 			PublicKey: publicKey, Port: 2222, DiscordUserID: discordUserID,
 		})
@@ -55,7 +55,7 @@ func TestSaveDevelopmentEnvironmentSSHValidatesPortBeforeDatabase(t *testing.T) 
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
-	_, err = NewManager(db, nil).SaveDevelopmentEnvironmentSSH(context.Background(), uuid.New(),
+	_, err = NewManager(db, nil, "").SaveDevelopmentEnvironmentSSH(context.Background(), uuid.New(),
 		DevelopmentEnvironmentSSHInput{
 			PublicKey: "invalid", Port: 70000, DiscordUserID: "100000000000000001",
 		})
@@ -79,7 +79,7 @@ func TestSaveDevelopmentEnvironmentSSHRejectsInactiveOrForeignMember(t *testing.
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 	mock.ExpectRollback()
 
-	_, err = NewManager(db, nil).SaveDevelopmentEnvironmentSSH(context.Background(),
+	_, err = NewManager(db, nil, "").SaveDevelopmentEnvironmentSSH(context.Background(),
 		environmentID, DevelopmentEnvironmentSSHInput{
 			PublicKey: strings.TrimSpace(string(ssh.MarshalAuthorizedKey(key))),
 			Port:      2222, DiscordUserID: "100000000000000099",
@@ -92,7 +92,7 @@ func TestSaveDevelopmentEnvironmentSSHRejectsInvalidIdentityAndKeyBeforeDatabase
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
-	manager := NewManager(db, nil)
+	manager := NewManager(db, nil, "")
 
 	_, err = manager.SaveDevelopmentEnvironmentSSH(context.Background(), uuid.New(),
 		DevelopmentEnvironmentSSHInput{
@@ -129,7 +129,7 @@ func TestSaveDevelopmentEnvironmentSSHRejectsUnavailableEnvironment(t *testing.T
 		WillReturnError(sql.ErrNoRows)
 	mock.ExpectRollback()
 
-	_, err = NewManager(db, nil).SaveDevelopmentEnvironmentSSH(context.Background(),
+	_, err = NewManager(db, nil, "").SaveDevelopmentEnvironmentSSH(context.Background(),
 		environmentID, DevelopmentEnvironmentSSHInput{
 			PublicKey: strings.TrimSpace(string(ssh.MarshalAuthorizedKey(key))),
 			Port:      2222, DiscordUserID: discordUserID,
@@ -165,7 +165,7 @@ func TestSaveDevelopmentEnvironmentSSHRollsBackWhenReconfigureQueueFails(t *test
 		WillReturnError(queueErr)
 	mock.ExpectRollback()
 
-	_, err = NewManager(db, nil).SaveDevelopmentEnvironmentSSH(context.Background(),
+	_, err = NewManager(db, nil, "").SaveDevelopmentEnvironmentSSH(context.Background(),
 		environmentID, DevelopmentEnvironmentSSHInput{
 			PublicKey: strings.TrimSpace(string(ssh.MarshalAuthorizedKey(key))),
 			Port:      2222, DiscordUserID: discordUserID,

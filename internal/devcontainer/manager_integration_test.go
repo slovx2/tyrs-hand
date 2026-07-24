@@ -33,7 +33,6 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/database"
 	"github.com/slovx2/tyrs-hand/internal/participantidentity"
-	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -46,10 +45,8 @@ func TestUserEnvironmentSharesHomeAndKeepsIndependentRepositoryClones(t *testing
 	db := developmentDatabase(t)
 	require.NoError(t, database.Migrate(ctx, db))
 	root := t.TempDir()
-	buildRepository := createGitRepository(t, filepath.Join(root, "build-repo"), "one.txt", "one")
+	firstRepository := createGitRepository(t, filepath.Join(root, "first-repo"), "one.txt", "one")
 	secondRepository := createGitRepository(t, filepath.Join(root, "second-repo"), "two.txt", "two")
-	environmentID, firstForumID, secondForumID := seedDevelopmentEnvironment(t, db,
-		buildRepository, secondRepository)
 	runtimeRoot, err := os.MkdirTemp("/tmp", "tyrs-dev-runtime-")
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, os.RemoveAll(runtimeRoot)) })
@@ -61,17 +58,22 @@ func TestUserEnvironmentSharesHomeAndKeepsIndependentRepositoryClones(t *testing
 		DevelopmentRuntimeDir: runtimeRoot, DevelopmentRuntimeHostDir: runtimeRoot,
 	}, db, zap.NewNop())
 	require.NoError(t, err)
-	manager.codexBin, manager.codexProxyBin = buildLinuxCodexTestBinaries(t, manager, root)
-	manager.replyHook = filepath.Join(root, "missing-reply-hook")
+	imageRef := buildDevelopmentTestImage(t, manager, root, "dev", 1001, "initial")
+	environmentID, firstForumID, secondForumID := seedDevelopmentEnvironment(t, db,
+		firstRepository, secondRepository, imageRef)
 	t.Cleanup(func() { cleanupDevelopmentResources(manager, environmentID) })
 
 	conversationOne := mustUUID(t, "10000000-0000-0000-0000-000000000001")
 	first, err := manager.Ensure(ctx, environmentID, firstForumID, conversationOne, "")
 	require.NoError(t, err)
-	require.FileExists(t, filepath.Join(buildRepository, "one.txt"))
+	require.FileExists(t, filepath.Join(firstRepository, "one.txt"))
 	require.Equal(t, "/home/dev", first.Home)
 	require.NoError(t, dockerExec(manager, first, "sh", "-c",
 		"printf home > $HOME/home-marker && printf forum-one > forum-marker"))
+	require.NoError(t, dockerExec(manager, first, "sh", "-c", `set -eu
+mkdir -p "$HOME/.local/share/tyrs-hand/codex/versions/0.145.0-user/bin"
+cp /opt/tyrs-hand/codex/bin/codex "$HOME/.local/share/tyrs-hand/codex/versions/0.145.0-user/bin/codex"
+ln -s "$HOME/.local/share/tyrs-hand/codex/versions/0.145.0-user" "$HOME/.local/share/tyrs-hand/codex/current"`))
 	_, err = manager.docker(ctx, "exec", "--user", "0:0", first.Container, "sh", "-c",
 		"printf system > /system-layer")
 	require.NoError(t, err)
@@ -87,6 +89,10 @@ func TestUserEnvironmentSharesHomeAndKeepsIndependentRepositoryClones(t *testing
 	require.NotEqual(t, first.Workspace, second.Workspace)
 	require.Equal(t, "two", dockerRead(t, manager, second, second.Workspace+"/two.txt"))
 	require.Equal(t, "forum-one", dockerRead(t, manager, first, first.Workspace+"/forum-marker"))
+	selection, err := manager.docker(ctx, "exec", "--user", "1001:1001", "--env",
+		"HOME=/home/dev", first.Container, "tyrs-hand-dev", "codex", "status")
+	require.NoError(t, err)
+	require.Equal(t, "0.145.0-user", strings.TrimSpace(selection))
 	require.Equal(t, "home", dockerRead(t, manager, second, second.Home+"/home-marker"))
 
 	copySource := filepath.Join(root, "copy-source")
@@ -143,11 +149,11 @@ func TestUserEnvironmentSharesHomeAndKeepsIndependentRepositoryClones(t *testing
 	require.Equal(t, "running", runningStatus)
 	first, err = manager.Ensure(ctx, environmentID, firstForumID, conversationOne, "")
 	require.NoError(t, err)
-	testExistingEnvironmentRuntimeRefresh(t, manager, first)
 	testRemoteSSHAndDesktopProxy(t, manager, environmentID, first)
 
-	commitDockerfile(t, buildRepository, dockerfile("dev", 1001, "rebuild"))
-	_, err = db.ExecContext(ctx, `UPDATE discord_development_environments SET status = 'pending' WHERE id = $1`, environmentID)
+	rebaseImage := buildDevelopmentTestImage(t, manager, root, "dev", 1001, "rebase")
+	_, err = db.ExecContext(ctx, `UPDATE discord_development_environments
+		SET status = 'pending', image_ref = $2 WHERE id = $1`, environmentID, rebaseImage)
 	require.NoError(t, err)
 	first, err = manager.Ensure(ctx, environmentID, firstForumID, conversationOne, "")
 	require.NoError(t, err)
@@ -155,18 +161,19 @@ func TestUserEnvironmentSharesHomeAndKeepsIndependentRepositoryClones(t *testing
 	require.Equal(t, "forum-one", dockerRead(t, manager, first, first.Workspace+"/forum-marker"))
 	_, err = manager.docker(ctx, "exec", first.Container, "test", "!", "-e", "/system-layer")
 	require.NoError(t, err, "重建必须重置系统可写层")
-	require.Equal(t, "rebuild", dockerRead(t, manager, first, "/image-version"))
+	require.Equal(t, "rebase", dockerRead(t, manager, first, "/image-version"))
 
-	commitDockerfile(t, buildRepository, dockerfile("other", 1002, "invalid-user"))
-	_, err = db.ExecContext(ctx, `UPDATE discord_development_environments SET status = 'pending' WHERE id = $1`, environmentID)
+	invalidImage := buildDevelopmentTestImage(t, manager, root, "other", 1002, "invalid-user")
+	_, err = db.ExecContext(ctx, `UPDATE discord_development_environments
+		SET status = 'pending', image_ref = $2 WHERE id = $1`, environmentID, invalidImage)
 	require.NoError(t, err)
 	_, err = manager.Ensure(ctx, environmentID, firstForumID, conversationOne, "")
 	require.ErrorContains(t, err, "改变了 USER、UID/GID 或 Home")
 	require.Equal(t, "home", dockerRead(t, manager, first, first.Home+"/home-marker"))
-	require.Equal(t, "rebuild", dockerRead(t, manager, first, "/image-version"))
+	require.Equal(t, "rebase", dockerRead(t, manager, first, "/image-version"))
 	var unsupportedOperationID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_development_operations
-		(environment_id, forum_id, operation) VALUES ($1, $2, 'rebuild') RETURNING id`,
+		(environment_id, forum_id, operation) VALUES ($1, $2, 'rebase') RETURNING id`,
 		environmentID, secondForumID).Scan(&unsupportedOperationID))
 	manager.processOperation(ctx)
 	var unsupportedStatus string
@@ -208,15 +215,22 @@ func TestUserEnvironmentSharesHomeAndKeepsIndependentRepositoryClones(t *testing
 	}
 }
 
-func dockerfile(user string, uid int, version string) string {
+func developmentTestDockerfile(user string, uid int, version string) string {
 	return fmt.Sprintf(`FROM debian:bookworm-slim@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818
+LABEL ai.tyrs-hand.development.contract="1"
 RUN apt-get update && apt-get install --yes --no-install-recommends git=1:2.39.5-0+deb12u3 openssh-client=1:9.2p1-2+deb12u10 openssh-server=1:9.2p1-2+deb12u10 && rm -rf /var/lib/apt/lists/*
-RUN useradd --uid %d --create-home --home-dir /home/%s %s && printf '%s' > /image-version
+RUN useradd --uid %d --create-home --home-dir /home/%s %s && install -d -m 0755 /opt/tyrs-hand/codex/bin && printf '%s' > /image-version
+COPY codex-real /opt/tyrs-hand/codex/bin/codex
+COPY tyrs-hand-codex /usr/local/bin/codex
+COPY tyrs-hand-dev /usr/local/bin/tyrs-hand-dev
+RUN ln -s /usr/local/bin/codex /usr/local/bin/apply_patch
 USER %s
 `, uid, user, user, version, user)
 }
 
-func buildLinuxCodexTestBinaries(t *testing.T, manager *Manager, target string) (string, string) {
+func buildDevelopmentTestImage(t *testing.T, manager *Manager, target, user string,
+	uid int, version string,
+) string {
 	t.Helper()
 	arch, err := manager.docker(context.Background(), "version", "--format", "{{.Server.Arch}}")
 	require.NoError(t, err)
@@ -229,59 +243,26 @@ func buildLinuxCodexTestBinaries(t *testing.T, manager *Manager, target string) 
 		arch = strings.TrimSpace(arch)
 	}
 	repository := repositoryRoot(t)
-	build := func(output, packagePath string) string {
+	build := func(output, packagePath string) {
 		path := filepath.Join(target, output)
 		command := exec.Command("go", "build", "-o", path, packagePath)
 		command.Dir = repository
 		command.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+arch)
 		data, buildErr := command.CombinedOutput()
 		require.NoError(t, buildErr, string(data))
-		return path
 	}
-	return build("codex-real", "./internal/testutil/mockcodexapp"),
-		build("tyrs-hand-codex", "./cmd/tyrs-hand-codex")
-}
-
-func testExistingEnvironmentRuntimeRefresh(t *testing.T, manager *Manager, runtime Runtime) {
-	t.Helper()
-	upgradedCodex := filepath.Join(filepath.Dir(manager.codexBin), "codex-real-upgraded")
-	source, err := os.Open(manager.codexBin)
+	build("codex-real", "./internal/testutil/mockcodexapp")
+	build("tyrs-hand-codex", "./cmd/tyrs-hand-codex")
+	build("tyrs-hand-dev", "./cmd/tyrs-hand-dev")
+	require.NoError(t, os.WriteFile(filepath.Join(target, "Dockerfile.development-test"),
+		[]byte(developmentTestDockerfile(user, uid, version)), 0o600))
+	image := "tyrs-hand-development-test:" + strings.ToLower(user) + "-" +
+		strings.ReplaceAll(uuid.NewString(), "-", "")
+	_, err = manager.docker(context.Background(), "build", "--file",
+		filepath.Join(target, "Dockerfile.development-test"), "--tag", image, target)
 	require.NoError(t, err)
-	target, err := os.OpenFile(upgradedCodex, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
-	require.NoError(t, err)
-	_, err = io.Copy(target, source)
-	require.NoError(t, err)
-	_, err = target.Write([]byte("\nruntime-upgrade\n"))
-	require.NoError(t, err)
-	require.NoError(t, source.Close())
-	require.NoError(t, target.Close())
-
-	manager.runtimeSignatureMu.Lock()
-	manager.codexBin = upgradedCodex
-	manager.runtimeSignature = ""
-	manager.runtimeSignatureMu.Unlock()
-	changed, err := manager.RefreshRemoteRuntime(context.Background(), runtime)
-	require.NoError(t, err)
-	require.True(t, changed)
-
-	manifest := workerprotocol.EnvironmentManifest{EnvironmentID: runtime.EnvironmentID,
-		ContainerName: runtime.Container, RuntimeUser: runtime.User, RuntimeUID: runtime.UID,
-		RuntimeGID: runtime.GID, RuntimeHome: runtime.Home}
-	require.NoError(t, manager.EnsureRemoteDaemons(context.Background(), manifest, runtime))
-	version, err := manager.docker(context.Background(), "exec", runtime.Container,
-		"/opt/tyrs-hand/libexec/codex-real", "--version")
-	require.NoError(t, err)
-	require.Equal(t, "codex-cli 0.145.0", strings.TrimSpace(version))
-	signature, err := manager.desiredRuntimeSignature()
-	require.NoError(t, err)
-	installed, err := manager.docker(context.Background(), "exec", runtime.Container,
-		"cat", runtimeSignaturePath)
-	require.NoError(t, err)
-	require.Equal(t, signature, strings.TrimSpace(installed))
-	changed, err = manager.RefreshRemoteRuntime(context.Background(), runtime)
-	require.NoError(t, err)
-	require.False(t, changed)
-	require.Equal(t, "home", dockerRead(t, manager, runtime, runtime.Home+"/home-marker"))
+	t.Cleanup(func() { _, _ = manager.docker(context.Background(), "image", "rm", image) })
+	return image
 }
 
 func repositoryRoot(t *testing.T) string {
@@ -332,7 +313,7 @@ func testRemoteSSHAndDesktopProxy(t *testing.T, manager *Manager, environmentID 
 		"/var/lib/tyrs-hand/system/ssh/ssh_host_ed25519_key.pub")
 	appServerArguments := []string{"exec", "--detach", "--user",
 		fmt.Sprintf("%d:%d", runtime.UID, runtime.GID), runtime.Container,
-		"/opt/tyrs-hand/libexec/codex-real"}
+		"/opt/tyrs-hand/codex/bin/codex"}
 	appServerArguments = append(appServerArguments,
 		codex.ManagedAppServerArguments("unix:///run/tyrs-hand/relay.sock")...)
 	_, err = manager.docker(context.Background(), appServerArguments...)
@@ -763,23 +744,13 @@ func assertSSHDialRejected(t *testing.T, address string, configuration *ssh.Clie
 
 func createGitRepository(t *testing.T, directory, filename, content string) string {
 	t.Helper()
-	require.NoError(t, os.MkdirAll(filepath.Join(directory, ".devcontainer"), 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(directory, ".devcontainer", "Dockerfile"),
-		[]byte(dockerfile("dev", 1001, "initial")), 0o600))
+	require.NoError(t, os.MkdirAll(directory, 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(directory, filename), []byte(content), 0o600))
 	runGit(t, directory, "init", "--initial-branch=main")
 	runGit(t, directory, "add", ".")
 	runGit(t, directory, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
 		"commit", "-m", "initial")
 	return directory
-}
-
-func commitDockerfile(t *testing.T, repository, content string) {
-	t.Helper()
-	require.NoError(t, os.WriteFile(filepath.Join(repository, ".devcontainer", "Dockerfile"), []byte(content), 0o600))
-	runGit(t, repository, "add", ".devcontainer/Dockerfile")
-	runGit(t, repository, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
-		"commit", "-m", "change image")
 }
 
 func runGit(t *testing.T, directory string, arguments ...string) {
@@ -812,7 +783,9 @@ func dockerReadRoot(t *testing.T, manager *Manager, runtime Runtime, path string
 	return strings.TrimSpace(value)
 }
 
-func seedDevelopmentEnvironment(t *testing.T, db *sql.DB, firstClone, secondClone string) (uuid.UUID, uuid.UUID, uuid.UUID) {
+func seedDevelopmentEnvironment(t *testing.T, db *sql.DB, firstClone, secondClone,
+	imageRef string,
+) (uuid.UUID, uuid.UUID, uuid.UUID) {
 	t.Helper()
 	ctx := context.Background()
 	_, err := db.ExecContext(ctx, `INSERT INTO discord_guilds(guild_id, enabled)
@@ -839,10 +812,10 @@ func seedDevelopmentEnvironment(t *testing.T, db *sql.DB, firstClone, secondClon
 	environmentID := uuid.New()
 	compact := strings.ReplaceAll(environmentID.String(), "-", "")
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_development_environments
-		(id, guild_id, owner_discord_user_id, build_repository_id, container_name,
+		(id, guild_id, owner_discord_user_id, image_ref, container_name,
 		 data_volume_name, home_volume_name, network_name)
 		VALUES ($1, '100000000000000001', '1001', $2, $3, $4, $5, $6) RETURNING id`,
-		environmentID, firstRepositoryID, "tyrs-test-dev-"+compact, "tyrs-test-data-"+compact,
+		environmentID, imageRef, "tyrs-test-dev-"+compact, "tyrs-test-data-"+compact,
 		"tyrs-test-home-"+compact, "tyrs-test-net-"+compact).Scan(&environmentID))
 	insertForum := func(suffix string, repositoryID uuid.UUID) uuid.UUID {
 		forumID := uuid.New()

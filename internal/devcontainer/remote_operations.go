@@ -13,6 +13,11 @@ func (m *Manager) ContainerID(ctx context.Context, name string) (string, error) 
 	return strings.TrimSpace(value), err
 }
 
+func (m *Manager) ImageID(ctx context.Context, reference string) (string, error) {
+	value, err := m.docker(ctx, "image", "inspect", "--format", "{{.Id}}", reference)
+	return strings.TrimSpace(value), err
+}
+
 func (m *Manager) RunRemoteOperation(ctx context.Context, operation RemoteOperation) error {
 	if !m.Enabled() {
 		return errors.New("discord 开发容器未启用")
@@ -20,11 +25,18 @@ func (m *Manager) RunRemoteOperation(ctx context.Context, operation RemoteOperat
 	switch operation.Operation {
 	case "reconfigure":
 		return m.reconfigureRemote(ctx, operation)
-	case "rebuild":
-		if err := m.removeDockerResource(ctx, "container", operation.ContainerName); err != nil {
+	case "rebase":
+		identity, err := m.inspectDevelopmentImage(ctx, operation.ImageRef)
+		if err != nil {
 			return err
 		}
-		return m.removeDockerResource(ctx, "image", operation.ImageRef)
+		if operation.RuntimeUID > 0 && (operation.RuntimeUID != identity.UID ||
+			operation.RuntimeGID != identity.GID || operation.RuntimeHome != identity.Home) {
+			return errors.New("新开发镜像的 UID/GID 或 Home 与现有持久卷不兼容")
+		}
+		operation.RuntimeUser, operation.RuntimeUID = identity.User, identity.UID
+		operation.RuntimeGID, operation.RuntimeHome = identity.GID, identity.Home
+		return m.reconfigureRemote(ctx, operation)
 	case "delete_forum":
 		return m.deleteRemoteForum(ctx, operation)
 	case "delete_environment":
@@ -39,7 +51,7 @@ func (m *Manager) RunRemoteOperation(ctx context.Context, operation RemoteOperat
 		if err := m.removeDockerResource(ctx, "network", operation.Network); err != nil {
 			return err
 		}
-		return m.removeDockerResource(ctx, "image", operation.ImageRef)
+		return nil
 	default:
 		return fmt.Errorf("不支持的远程开发环境 Operation %q", operation.Operation)
 	}

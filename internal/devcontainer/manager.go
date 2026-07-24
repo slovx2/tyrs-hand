@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/config"
@@ -23,9 +22,6 @@ type Manager struct {
 	dataRoot                  string
 	dockerBin                 string
 	dockerHost                string
-	codexBin                  string
-	codexProxyBin             string
-	replyHook                 string
 	runner                    commandRunner
 	logger                    *zap.Logger
 	enabled                   bool
@@ -37,8 +33,6 @@ type Manager struct {
 	browserEnabled            bool
 	browserFilesRoot          string
 	browserFilesHostRoot      string
-	runtimeSignatureMu        sync.Mutex
-	runtimeSignature          string
 }
 
 func NewManager(cfg config.Config, db *sql.DB, logger *zap.Logger) (*Manager, error) {
@@ -59,9 +53,7 @@ func NewManager(cfg config.Config, db *sql.DB, logger *zap.Logger) (*Manager, er
 	}
 	manager := &Manager{
 		db: db, dataRoot: cfg.WorkerDataRoot, dockerBin: binary, dockerHost: dockerHost,
-		codexBin: "/usr/local/bin/apply_patch", codexProxyBin: "/usr/local/bin/tyrs-hand-codex",
-		replyHook: "/usr/local/bin/tyrs-hand-reply-hook",
-		runner:    execRunner{}, logger: logger,
+		runner: execRunner{}, logger: logger,
 		enabled:               cfg.EnableDevelopmentContainers && (cfg.WorkerRole == "discord" || cfg.WorkerRole == "all"),
 		developmentRuntimeDir: runtimeDir, developmentRuntimeHostDir: runtimeHostDir,
 		sshEnabled: cfg.EnableSSH, sshAgentDir: cfg.SSHAgentDir,
@@ -161,28 +153,25 @@ func (m *Manager) Runtime(ctx context.Context, environmentID, forumID, conversat
 
 func (m *Manager) loadWorkspace(ctx context.Context, environmentID, forumID uuid.UUID) (workspace, error) {
 	var item workspace
-	var imageRef, imageID, containerID, runtimeUser, runtimeHome, buildSHA sql.NullString
+	var imageRef, imageID, containerID, runtimeUser, runtimeHome sql.NullString
 	err := m.db.QueryRowContext(ctx, `SELECT fw.forum_id, fw.relative_path, fw.status, fw.branch,
 		r.owner || '/' || r.name, r.clone_url, r.default_branch,
-		e.id, e.build_repository_id, br.owner || '/' || br.name, br.clone_url, br.default_branch,
-		e.status, e.image_ref, e.image_id, e.container_name, e.container_id,
+		e.id, e.status, e.image_ref, e.image_id, e.container_name, e.container_id,
 		e.data_volume_name, e.home_volume_name, e.network_name, e.runtime_user,
-		COALESCE(e.runtime_uid, 0), COALESCE(e.runtime_gid, 0), e.runtime_home, e.build_source_sha
+		COALESCE(e.runtime_uid, 0), COALESCE(e.runtime_gid, 0), e.runtime_home
 		FROM discord_forum_workspaces fw JOIN discord_development_environments e ON e.id = fw.environment_id
 		JOIN discord_forums f ON f.id = fw.forum_id
 		JOIN repositories r ON r.id = f.repository_id
-		JOIN repositories br ON br.id = e.build_repository_id
 		WHERE fw.forum_id = $1 AND e.id = $2`, forumID, environmentID).Scan(
 		&item.ForumID, &item.Relative, &item.Status, &item.Branch,
 		&item.Repository, &item.CloneURL, &item.DefaultRef,
-		&item.Environment.ID, &item.Environment.BuildRepositoryID, &item.Environment.BuildRepository,
-		&item.Environment.BuildCloneURL, &item.Environment.BuildDefaultRef, &item.Environment.Status,
+		&item.Environment.ID, &item.Environment.Status,
 		&imageRef, &imageID, &item.Environment.ContainerName, &containerID,
 		&item.Environment.DataVolume, &item.Environment.HomeVolume, &item.Environment.Network,
-		&runtimeUser, &item.Environment.RuntimeUID, &item.Environment.RuntimeGID, &runtimeHome, &buildSHA)
+		&runtimeUser, &item.Environment.RuntimeUID, &item.Environment.RuntimeGID, &runtimeHome)
 	item.Environment.ImageRef, item.Environment.ImageID = imageRef.String, imageID.String
 	item.Environment.ContainerID, item.Environment.RuntimeUser = containerID.String, runtimeUser.String
-	item.Environment.RuntimeHome, item.Environment.BuildSourceSHA = runtimeHome.String, buildSHA.String
+	item.Environment.RuntimeHome = runtimeHome.String
 	return item, err
 }
 

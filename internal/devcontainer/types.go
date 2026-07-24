@@ -48,10 +48,6 @@ type RemoteSpec struct {
 	Repository        string
 	CloneURL          string
 	DefaultRef        string
-	BuildRepositoryID uuid.UUID
-	BuildRepository   string
-	BuildCloneURL     string
-	BuildDefaultRef   string
 	EnvironmentStatus string
 	ImageRef          string
 	ImageID           string
@@ -64,7 +60,6 @@ type RemoteSpec struct {
 	RuntimeUID        int64
 	RuntimeGID        int64
 	RuntimeHome       string
-	BuildSourceSHA    string
 }
 
 type RemoteState struct {
@@ -95,24 +90,19 @@ type RemoteOperation struct {
 }
 
 type environment struct {
-	ID                uuid.UUID
-	BuildRepositoryID uuid.UUID
-	BuildRepository   string
-	BuildCloneURL     string
-	BuildDefaultRef   string
-	Status            string
-	ImageRef          string
-	ImageID           string
-	ContainerName     string
-	ContainerID       string
-	DataVolume        string
-	HomeVolume        string
-	Network           string
-	RuntimeUser       string
-	RuntimeUID        int64
-	RuntimeGID        int64
-	RuntimeHome       string
-	BuildSourceSHA    string
+	ID            uuid.UUID
+	Status        string
+	ImageRef      string
+	ImageID       string
+	ContainerName string
+	ContainerID   string
+	DataVolume    string
+	HomeVolume    string
+	Network       string
+	RuntimeUser   string
+	RuntimeUID    int64
+	RuntimeGID    int64
+	RuntimeHome   string
 }
 
 type workspace struct {

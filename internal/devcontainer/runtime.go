@@ -20,69 +20,9 @@ import (
 
 const (
 	maxBrowserFileSize   = 25 * 1024 * 1024
-	runtimeSignaturePath = runtimeRoot + "/.codex-runtime-signature"
 	managedSSHConfigPath = "/etc/ssh/ssh_config.d/99-tyrs-hand.conf"
 	sshAgentProfilePath  = "/etc/profile.d/tyrs-hand-ssh-agent.sh"
 )
-
-func (m *Manager) desiredRuntimeSignature() (string, error) {
-	m.runtimeSignatureMu.Lock()
-	defer m.runtimeSignatureMu.Unlock()
-	if m.runtimeSignature != "" {
-		return m.runtimeSignature, nil
-	}
-	hash := sha256.New()
-	for _, path := range []string{m.codexBin, m.codexProxyBin, m.replyHook} {
-		file, err := os.Open(path)
-		if err != nil {
-			if path == m.replyHook && errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			return "", err
-		}
-		_, copyErr := io.Copy(hash, file)
-		closeErr := file.Close()
-		if copyErr != nil {
-			return "", copyErr
-		}
-		if closeErr != nil {
-			return "", closeErr
-		}
-		_, _ = hash.Write([]byte{0})
-	}
-	for _, argument := range codex.ManagedAppServerArguments("unix://" + appServerSocket) {
-		_, _ = hash.Write([]byte(argument))
-		_, _ = hash.Write([]byte{0})
-	}
-	m.runtimeSignature = hex.EncodeToString(hash.Sum(nil))
-	return m.runtimeSignature, nil
-}
-
-// RefreshRemoteRuntime 在 Worker 镜像变化后更新长期运行的环境。
-func (m *Manager) RefreshRemoteRuntime(ctx context.Context, runtime Runtime) (bool, error) {
-	if m.sshEnabled {
-		owner := fmt.Sprintf("%d:%d", runtime.UID, runtime.GID)
-		if err := m.installSSHConfiguration(ctx, runtime.Container, runtime.Home, owner); err != nil {
-			return false, fmt.Errorf("刷新 SSH 配置: %w", err)
-		}
-	}
-	desired, err := m.desiredRuntimeSignature()
-	if err != nil {
-		return false, fmt.Errorf("计算 Codex 运行时签名: %w", err)
-	}
-	current, _ := m.docker(ctx, "exec", runtime.Container, "cat", runtimeSignaturePath)
-	if strings.TrimSpace(current) == desired {
-		return false, nil
-	}
-	if err := m.StopRemoteAppServer(ctx, runtime.Container); err != nil {
-		return false, fmt.Errorf("停止旧 Codex app-server: %w", err)
-	}
-	if err := m.installRuntime(ctx, runtime.Container, runtime.UID, runtime.GID,
-		runtime.Home); err != nil {
-		return false, fmt.Errorf("刷新 Codex 运行时: %w", err)
-	}
-	return true, nil
-}
 
 func createAskPass(credential string) (string, func(), error) {
 	directory, err := os.MkdirTemp("", "tyrs-hand-git-askpass-*")
@@ -109,49 +49,6 @@ func (m *Manager) ensureDockerResource(ctx context.Context, kind, name string) e
 	arguments = append(arguments, name)
 	_, err := m.docker(ctx, arguments...)
 	return err
-}
-
-func (m *Manager) installRuntime(ctx context.Context, container string, uid, gid int64,
-	home string,
-) error {
-	signature, err := m.desiredRuntimeSignature()
-	if err != nil {
-		return fmt.Errorf("计算 Codex 运行时签名: %w", err)
-	}
-	if _, err := os.Stat(m.codexBin); err != nil {
-		return fmt.Errorf("读取 Codex 原生程序: %w", err)
-	}
-	if _, err := os.Stat(m.codexProxyBin); err != nil {
-		return fmt.Errorf("读取 Codex Desktop Proxy: %w", err)
-	}
-	if _, err := m.docker(ctx, "exec", "--user", "0:0", container, "mkdir", "-p",
-		runtimeRoot+"/bin", runtimeRoot+"/libexec"); err != nil {
-		return err
-	}
-	if _, err := m.docker(ctx, "cp", "--follow-link", m.codexBin,
-		container+":"+runtimeRoot+"/libexec/codex-real"); err != nil {
-		return err
-	}
-	if _, err := m.docker(ctx, "cp", m.codexProxyBin, container+":"+runtimeRoot+"/bin/codex"); err != nil {
-		return err
-	}
-	if _, err := os.Stat(m.replyHook); err == nil {
-		if _, err := m.docker(ctx, "cp", m.replyHook, container+":"+runtimeRoot+"/bin/tyrs-hand-reply-hook"); err != nil {
-			return err
-		}
-	}
-	owner := fmt.Sprintf("%d:%d", uid, gid)
-	_, err = m.docker(ctx, "exec", "--user", "0:0",
-		"--env", "TYRS_RUNTIME_SIGNATURE="+signature, container, "/bin/sh", "-c",
-		"chmod 0755 /opt/tyrs-hand/bin/* /opt/tyrs-hand/libexec/* && "+
-			"ln -sf ../libexec/codex-real /opt/tyrs-hand/bin/apply_patch && "+
-			"ln -sf /opt/tyrs-hand/bin/codex /usr/local/bin/codex && "+
-			"printf '%s' \"$TYRS_RUNTIME_SIGNATURE\" > "+runtimeSignaturePath+" && "+
-			"chown -R "+owner+" /opt/tyrs-hand")
-	if err != nil || !m.sshEnabled {
-		return err
-	}
-	return m.installSSHConfiguration(ctx, container, home, owner)
 }
 
 func (m *Manager) installSSHConfiguration(ctx context.Context, container, home, owner string) error {

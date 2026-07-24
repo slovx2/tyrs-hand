@@ -88,9 +88,10 @@ test('管理员配置 Discord、初始化并创建仓库开发 Forum', async ({ 
             id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
             ownerDiscordUserId: '20',
             ownerName: 'Bob',
-            buildRepositoryId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-            buildRepository: 'datawake-ai/tyrs-hand',
             status: 'running',
+            imageRef: 'ghcr.io/slovx2/tyrs-hand-development@sha256:aaaaaaaa',
+            codexVersion: 'codex-cli 0.145.0',
+            codexUserOverride: false,
             lastUsedAt: '2026-07-21T00:00:00Z',
             forums: [
               {

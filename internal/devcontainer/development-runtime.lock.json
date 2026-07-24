@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "1",
+  "codex": "0.145.0",
+  "mise": "2026.7.7",
+  "uv": "0.11.29",
+  "corepack": "0.35.0",
+  "downloads": {
+    "mise": {
+      "amd64": "0953810c2785eb4a75159f67f8b5721c4f3c80b8a6a812015d5af7d7fbd1b8a4",
+      "arm64": "c4e542b53a15d2ec641e072f7b2d9da8a0554b92fd2c09a51febde32c6080ab8"
+    },
+    "uv": {
+      "amd64": "04f8b82f5d47f0512dcd32c67a4a6f16a0ea27c81537c338fd0ad6b23cebe829",
+      "arm64": "94500fb064ae3c971a873cba64d94694c50677e0a4dbf78735c80509e7429919"
+    }
+  },
+  "systemPackages": {
+    "git": "1:2.39.5-0+deb12u3",
+    "git-lfs": "3.3.0-1+deb12u1",
+    "openssh-client": "1:9.2p1-2+deb12u10",
+    "openssh-server": "1:9.2p1-2+deb12u10",
+    "openssh-sftp-server": "1:9.2p1-2+deb12u10",
+    "ca-certificates": "20230311+deb12u1",
+    "curl": "7.88.1-10+deb12u15",
+    "wget": "1.21.3-1+deb12u1",
+    "jq": "1.6-2.1+deb12u2",
+    "ripgrep": "13.0.0-4+b2",
+    "fd-find": "8.6.0-3",
+    "zip": "3.0-13",
+    "unzip": "6.0-28",
+    "xz-utils": "5.4.1-1+deb12u1",
+    "sudo": "1.9.13p3-1+deb12u4",
+    "build-essential": "12.9",
+    "pkg-config": "1.8.1-1",
+    "cmake": "3.25.1-1",
+    "ninja-build": "1.11.1-2~deb12u1",
+    "clang": "1:14.0-55.7~deb12u1",
+    "libgtk-3-dev": "3.24.38-2~deb12u3",
+    "libwebkit2gtk-4.1-dev": "2.50.6-1~deb12u2",
+    "libayatana-appindicator3-dev": "0.5.92-1",
+    "librsvg2-dev": "2.54.7+dfsg-1~deb12u1",
+    "patchelf": "0.14.3-1+b1",
+    "libssl-dev": "3.0.20-1~deb12u2",
+    "sccache": "0.4.0~~pre6-1+b1",
+    "tini": "0.19.0-1+b3"
+  },
+  "defaults": {
+    "python": "3.13.14",
+    "node": "24.14.0",
+    "pnpm": "11.14.0",
+    "go": "1.26.5",
+    "rust": "1.97.1"
+  }
+}

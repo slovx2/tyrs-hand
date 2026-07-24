@@ -82,10 +82,11 @@ function commonHandlers() {
           id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
           ownerDiscordUserId: '20',
           ownerName: 'Bob',
-          buildRepositoryId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-          buildRepository: 'datawake-ai/tyrs-hand',
           status: 'running',
+          imageRef: 'ghcr.io/slovx2/tyrs-hand-development@sha256:aaaaaaaa',
           runtimeUser: 'vscode',
+          codexVersion: 'codex-cli 0.145.0',
+          codexUserOverride: false,
           lastUsedAt: '2026-07-21T00:00:00Z',
           sshPublicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest',
           sshFingerprint: 'SHA256:test',
@@ -218,18 +219,18 @@ describe('DiscordPage', () => {
     expect(await screen.findByText('Forum 访问权限已更新')).toBeInTheDocument()
   })
 
-  it('重建用户级环境并强确认删除最后一个 Forum', async () => {
+  it('Rebase 用户级环境并强确认删除最后一个 Forum', async () => {
     commonHandlers()
-    const rebuild = vi.fn()
+    const rebase = vi.fn()
     const remove = vi.fn()
     vi.spyOn(window, 'prompt').mockReturnValue(
       'DELETE 11111111-1111-1111-1111-111111111111',
     )
     server.use(
       http.post(
-        '/api/v1/discord/development-environments/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/rebuild',
+        '/api/v1/discord/development-environments/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/rebase',
         () => {
-          rebuild()
+          rebase()
           return new HttpResponse(null, { status: 202 })
         },
       ),
@@ -259,10 +260,12 @@ describe('DiscordPage', () => {
     renderPage()
     const user = userEvent.setup()
     await screen.findByText('bob-dev')
-    await user.click(screen.getByRole('button', { name: '下次运行前重建环境' }))
-    expect(rebuild).toHaveBeenCalledOnce()
+    await user.click(
+      screen.getByRole('button', { name: 'Rebase 到当前官方镜像' }),
+    )
+    expect(rebase).toHaveBeenCalledOnce()
     expect(
-      await screen.findByText('环境已标记为重建，将在下次运行前生效'),
+      await screen.findByText('环境 Rebase 已排队，将切换到当前官方开发镜像'),
     ).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '删除' }))
     expect(window.prompt).toHaveBeenCalledWith(

@@ -141,26 +141,22 @@ func (s *Server) loadDiscordWorkerSnapshot(ctx context.Context,
 	development.ConversationID = claimed.DiscordConversationID
 	err = s.db.QueryRowContext(ctx, `SELECT e.id, f.id, fw.status, fw.relative_path,
 		fw.branch, r.owner || '/' || r.name, r.clone_url, r.default_branch,
-		e.build_repository_id, br.owner || '/' || br.name, br.clone_url, br.default_branch,
 		e.status, COALESCE(e.image_ref,''), COALESCE(e.image_id,''), e.container_name,
 		COALESCE(e.container_id,''), e.data_volume_name, e.home_volume_name, e.network_name,
 		COALESCE(e.runtime_user,''), COALESCE(e.runtime_uid,0), COALESCE(e.runtime_gid,0),
-		COALESCE(e.runtime_home,''), COALESCE(e.build_source_sha,'')
+		COALESCE(e.runtime_home,'')
 		FROM discord_forums f
 		JOIN discord_development_environments e ON e.id = f.development_environment_id
 		JOIN discord_forum_workspaces fw ON fw.forum_id = f.id
-		JOIN repositories r ON r.id = f.repository_id
-		JOIN repositories br ON br.id = e.build_repository_id WHERE f.id = $1`, result.ForumID).
+		JOIN repositories r ON r.id = f.repository_id WHERE f.id = $1`, result.ForumID).
 		Scan(&development.EnvironmentID, &development.ForumID,
 			&development.WorkspaceStatus, &development.WorkspaceRelative,
 			&development.WorkspaceBranch, &development.Repository, &development.CloneURL,
-			&development.DefaultRef, &development.BuildRepositoryID,
-			&development.BuildRepository, &development.BuildCloneURL,
-			&development.BuildDefaultRef, &development.EnvironmentStatus,
+			&development.DefaultRef, &development.EnvironmentStatus,
 			&development.ImageRef, &development.ImageID, &development.ContainerName,
 			&development.ContainerID, &development.DataVolume, &development.HomeVolume,
 			&development.Network, &development.RuntimeUser, &development.RuntimeUID,
-			&development.RuntimeGID, &development.RuntimeHome, &development.BuildSourceSHA)
+			&development.RuntimeGID, &development.RuntimeHome)
 	if err != nil {
 		return nil, err
 	}
@@ -213,26 +209,22 @@ func (s *Server) loadDesktopDiscordWorkerSnapshot(ctx context.Context,
 	development.ConversationID, _ = uuid.Parse(conversationID)
 	err = s.db.QueryRowContext(ctx, `SELECT e.id, f.id, fw.status, fw.relative_path,
 		fw.branch, r.owner || '/' || r.name, r.clone_url, r.default_branch,
-		e.build_repository_id, br.owner || '/' || br.name, br.clone_url, br.default_branch,
 		e.status, COALESCE(e.image_ref,''), COALESCE(e.image_id,''), e.container_name,
 		COALESCE(e.container_id,''), e.data_volume_name, e.home_volume_name, e.network_name,
 		COALESCE(e.runtime_user,''), COALESCE(e.runtime_uid,0), COALESCE(e.runtime_gid,0),
-		COALESCE(e.runtime_home,''), COALESCE(e.build_source_sha,'')
+		COALESCE(e.runtime_home,'')
 		FROM discord_forums f
 		JOIN discord_development_environments e ON e.id = f.development_environment_id
 		JOIN discord_forum_workspaces fw ON fw.forum_id = f.id
-		JOIN repositories r ON r.id = f.repository_id
-		JOIN repositories br ON br.id = e.build_repository_id WHERE f.id = $1`, result.ForumID).
+		JOIN repositories r ON r.id = f.repository_id WHERE f.id = $1`, result.ForumID).
 		Scan(&development.EnvironmentID, &development.ForumID,
 			&development.WorkspaceStatus, &development.WorkspaceRelative,
 			&development.WorkspaceBranch, &development.Repository, &development.CloneURL,
-			&development.DefaultRef, &development.BuildRepositoryID,
-			&development.BuildRepository, &development.BuildCloneURL,
-			&development.BuildDefaultRef, &development.EnvironmentStatus,
+			&development.DefaultRef, &development.EnvironmentStatus,
 			&development.ImageRef, &development.ImageID, &development.ContainerName,
 			&development.ContainerID, &development.DataVolume, &development.HomeVolume,
 			&development.Network, &development.RuntimeUser, &development.RuntimeUID,
-			&development.RuntimeGID, &development.RuntimeHome, &development.BuildSourceSHA)
+			&development.RuntimeGID, &development.RuntimeHome)
 	if err != nil {
 		return nil, err
 	}

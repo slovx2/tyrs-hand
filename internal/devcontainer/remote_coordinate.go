@@ -7,10 +7,13 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
+
+const codexRestartMarkerRelative = ".local/state/tyrs-hand/codex-restart-required"
 
 func (m *Manager) CoordinateRemote(ctx context.Context,
 	manifest workerprotocol.EnvironmentManifest,
@@ -92,4 +95,42 @@ func (m *Manager) ensureRemoteSSH(ctx context.Context, container string) error {
 		return fmt.Errorf("恢复开发容器 SSH: %w", err)
 	}
 	return nil
+}
+
+func (m *Manager) CodexState(ctx context.Context, runtime Runtime) (string, bool, bool, error) {
+	user := fmt.Sprintf("%d:%d", runtime.UID, runtime.GID)
+	version, err := m.docker(ctx, "exec", "--user", user, "--env", "HOME="+runtime.Home,
+		runtime.Container, "codex", "--version")
+	if err != nil {
+		return "", false, false, err
+	}
+	selection, err := m.docker(ctx, "exec", "--user", user, "--env", "HOME="+runtime.Home,
+		runtime.Container, "tyrs-hand-dev", "codex", "status")
+	if err != nil {
+		return "", false, false, err
+	}
+	_, markerErr := m.docker(ctx, "exec", "--user", user, runtime.Container, "test", "-f",
+		filepath.ToSlash(filepath.Join(runtime.Home, codexRestartMarkerRelative)))
+	return strings.TrimSpace(version), strings.TrimSpace(selection) != "bundled", markerErr == nil, nil
+}
+
+func (m *Manager) ClearCodexRestartMarker(ctx context.Context, runtime Runtime) error {
+	_, err := m.docker(ctx, "exec", "--user", fmt.Sprintf("%d:%d", runtime.UID, runtime.GID),
+		runtime.Container, "rm", "-f", filepath.ToSlash(filepath.Join(runtime.Home,
+			codexRestartMarkerRelative)))
+	return err
+}
+
+func (m *Manager) RollbackUserCodex(ctx context.Context, runtime Runtime) error {
+	arguments := []string{"exec", "--user", fmt.Sprintf("%d:%d", runtime.UID, runtime.GID),
+		"--env", "HOME=" + runtime.Home, runtime.Container, "tyrs-hand-dev", "codex"}
+	_, err := m.docker(ctx, append(arguments, "rollback")...)
+	return err
+}
+
+func (m *Manager) ResetUserCodex(ctx context.Context, runtime Runtime) error {
+	arguments := []string{"exec", "--user", fmt.Sprintf("%d:%d", runtime.UID, runtime.GID),
+		"--env", "HOME=" + runtime.Home, runtime.Container, "tyrs-hand-dev", "codex", "reset"}
+	_, err := m.docker(ctx, arguments...)
+	return err
 }

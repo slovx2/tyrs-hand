@@ -159,14 +159,15 @@ docker compose -f compose.worker.yaml up -d worker
 
 - A Discord user has one container, data volume, Home volume, and network per Guild. Forums for multiple repositories reuse that environment.
 - The per-user container is the security boundary. Operator collaborators can drive the agent and must be trusted by the environment owner.
-- The first forum's repository is the stable image source and must provide `.devcontainer/Dockerfile` on its default branch with a non-root final `USER`.
+- Control pins the configured official `TYRS_HAND_DEVELOPMENT_IMAGE` digest for each new environment; repositories do not need to provide a Dockerfile.
 - Every forum has an independent full clone. Environment containers stay running, and the Worker restores the container, environment-level Codex App Server, and Relay after worker or host restarts.
-- Each environment shares one `CODEX_HOME` and one App Server. Codex Desktop and Discord connect through a thin protocol Relay. Explicit rebuilds preserve Home, clones, and Codex sessions while resetting the writable system layer.
+- Each environment shares one `CODEX_HOME` and one App Server. Codex Desktop and Discord connect through a thin protocol Relay. Explicit rebases preserve Home, clones, user-installed Codex versions, and sessions while resetting the writable system layer.
 - Administrators can configure one SSH public key and host port for an environment. The development image must provide `sshd`, `ssh-keygen`, and an SFTP server; Desktop connects by running `codex app-server proxy` over SSH.
 - The SSH credential is bound to one active Discord member, so Desktop and Discord messages from that member use the same stable participant identity. Desktop messages, titles, progress, and final replies are projected to Discord asynchronously; Discord failures do not block Desktop threads or turns.
 - Desktop-created and resumed threads keep the model, reasoning effort, and service tier selected by Desktop and the real App Server. Control-plane defaults apply only to conversations started from Discord.
 - System-created Discord posts auto-hide after seven inactive days. An unlocked Discord archive only changes visibility; `/codex archive` archives the Codex thread and locks the post, while `/codex restore` restores the original thread and post.
-- A rebuild is rejected if `USER`, UID/GID, or the Home path changes. devcontainer.json, Features, Compose, arbitrary mounts, Docker sockets, privileged mode, and published ports are not supported.
+- Users can run `tyrs-hand-dev codex install <exact-version>` to override the bundled Codex in persistent Home; it activates when the environment is idle and rolls back automatically on startup failure.
+- A rebase is rejected if `USER`, UID/GID, or the Home path changes. devcontainer.json, Features, Compose, arbitrary mounts, Docker sockets, privileged mode, and arbitrary published ports are not supported.
 - Deleting the final forum also deletes the user's container, image, volumes, network, and Home after an explicit confirmation.
 
 Repository task skills must live at:
@@ -212,18 +213,19 @@ make test-coverage
 make build
 ```
 
-Integration tests use Testcontainers for PostgreSQL, Redis, and real Docker development containers. They cover independent multi-repository clones, persistent Home and data, rebuild rollback, and deletion. Codex coverage includes a scripted fake App Server and the pinned real App Server with a mock Responses SSE upstream; tests never call a real model.
+Integration tests use Testcontainers for PostgreSQL, Redis, and real Docker development containers. They cover repositories without `.devcontainer`, independent multi-repository clones, persistent Home and data, rebase rollback, and deletion. Codex coverage includes a scripted fake App Server and the pinned real App Server with a mock Responses SSE upstream; tests never call a real model.
 
 ## Images and Releases
 
-Pull Requests and `main` build the Control and Worker images without publishing them. Releases build multi-architecture `linux/amd64` and `linux/arm64` images at:
+Pull Requests and `main` build the Control, Worker, and Development images without publishing them. Releases build multi-architecture `linux/amd64` and `linux/arm64` images at:
 
 ```text
 ghcr.io/slovx2/tyrs-hand-control
 ghcr.io/slovx2/tyrs-hand-worker
+ghcr.io/slovx2/tyrs-hand-development
 ```
 
-Release builds include SBOM and provenance. Their `sha-<commit>` candidate tags are vulnerability-scanned and signed with Cosign keyless signing; release-version tags for both images are promoted only after every candidate passes.
+Release builds include SBOM and provenance. Their `sha-<commit>` candidate tags are vulnerability-scanned and signed with Cosign keyless signing; release-version tags for all images are promoted only after every candidate passes.
 
 Production deployments should pin `sha-<commit>` or an image digest and must not use `latest`.
 

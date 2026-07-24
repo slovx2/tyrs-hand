@@ -22,7 +22,7 @@ func TestDiscordPersistencePermissionsAndRecovery(t *testing.T) {
 	db := postgresDatabase(t)
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))
-	manager := discordintegration.NewManager(db, nil)
+	manager := discordintegration.NewManager(db, nil, "tyrs-hand-development:test")
 	service := discordintegration.NewConversationService(db)
 	seed := seedDiscord(t, db)
 
@@ -298,10 +298,11 @@ func seedDiscord(t *testing.T, db *sql.DB) discordSeed {
 		installationID).Scan(&repositoryID))
 	var environmentID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_development_environments
-		(guild_id, owner_discord_user_id, build_repository_id, container_name,
+		(guild_id, owner_discord_user_id, image_ref, container_name,
 		 data_volume_name, home_volume_name, network_name, execution_node_id)
-		VALUES ($1, '1001', $2, 'dev-owner', 'dev-owner-data', 'dev-owner-home', 'dev-owner-net', $3) RETURNING id`,
-		seed.guildID, repositoryID, node.ID).Scan(&environmentID))
+		VALUES ($1, '1001', 'tyrs-hand-development:test', 'dev-owner', 'dev-owner-data',
+		'dev-owner-home', 'dev-owner-net', $2) RETURNING id`, seed.guildID, node.ID).
+		Scan(&environmentID))
 	var resourceID, forumID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_resources
 		(guild_id, resource_key, discord_id, kind, name, managed_marker)

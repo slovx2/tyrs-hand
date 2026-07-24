@@ -120,8 +120,8 @@ func provideSettings(db *sql.DB, store *secrets.Store) *platformsettings.Service
 	return platformsettings.NewService(db, store)
 }
 
-func provideDiscordManager(db *sql.DB, store *secrets.Store) *discordintegration.Manager {
-	return discordintegration.NewManager(db, store)
+func provideDiscordManager(cfg config.Config, db *sql.DB, store *secrets.Store) *discordintegration.Manager {
+	return discordintegration.NewManager(db, store, cfg.DevelopmentImage)
 }
 
 func provideConversationService(cfg config.Config, db *sql.DB) *discordintegration.ConversationService {

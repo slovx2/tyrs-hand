@@ -67,7 +67,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: "24.14.0" }
       - run: npm install --global pnpm@11.14.0
-      - run: npm install --global @openai/codex@0.142.5
+      - run: npm install --global @openai/codex@0.145.0
       - run: go mod download && go mod verify
       - run: pnpm --dir web install --frozen-lockfile
       - name: Validate release version
@@ -122,17 +122,18 @@ jobs:
           tags: tyrs-hand-worker:test
           cache-from: type=gha,scope=worker
           cache-to: type=gha,mode=max,scope=worker
+      - uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          target: development
+          load: true
+          tags: tyrs-hand-development:test
+          cache-from: type=gha,scope=development
+          cache-to: type=gha,mode=max,scope=development
       - name: Worker runtime smoke test
-        run: |
-          docker run --rm tyrs-hand-worker:test codex --version
-          docker run --rm tyrs-hand-worker:test mise --version
-          docker run --rm tyrs-hand-worker:test uv --version
-          docker run --rm tyrs-hand-worker:test corepack --version
-          docker run --rm tyrs-hand-worker:test docker --version
-          if docker run --rm tyrs-hand-worker:test docker compose version; then
-            echo "Worker 不应安装 Docker Compose Plugin" >&2
-            exit 1
-          fi
+        run: ./tools/test-worker-runtime.sh tyrs-hand-worker:test
+      - name: Development runtime smoke test
+        run: ./tools/test-development-runtime.sh tyrs-hand-development:test
 
   runtime-matrix:
     if: github.event_name == 'workflow_dispatch'
@@ -170,7 +171,7 @@ jobs:
     needs: verify
     strategy:
       matrix:
-        target: [control, worker]
+        target: [control, worker, development]
     permissions:
       contents: read
       packages: write
@@ -235,11 +236,11 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish matching Control and Worker release tags
+      - name: Publish matching Control, Worker and Development release tags
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          for target in control worker; do
+          for target in control worker development; do
             image="ghcr.io/${GITHUB_REPOSITORY,,}-${target}"
             docker buildx imagetools create \
               --tag "${image}:${RELEASE_TAG}" \

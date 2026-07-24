@@ -7,13 +7,14 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/slovx2/tyrs-hand/internal/codexproxy"
 )
 
 const (
-	defaultCodexReal   = "/opt/tyrs-hand/libexec/codex-real"
+	defaultCodexReal   = "/opt/tyrs-hand/codex/bin/codex"
 	defaultRelaySocket = "/run/tyrs-hand/relay.sock"
 )
 
@@ -31,8 +32,9 @@ func run(arguments []string) error {
 		return codexproxy.ServeStdio(ctx,
 			envOr("TYRS_HAND_RELAY_SOCKET", defaultRelaySocket))
 	}
-	binary := envOr("TYRS_HAND_CODEX_REAL", defaultCodexReal)
+	binary := resolveCodexReal()
 	command := exec.Command(binary, arguments...)
+	command.Args[0] = os.Args[0]
 	command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
 	command.Env = os.Environ()
 	if os.Getenv("CODEX_HOME") == "" {
@@ -46,6 +48,21 @@ func run(arguments []string) error {
 		return err
 	}
 	return nil
+}
+
+func resolveCodexReal() string {
+	if configured := os.Getenv("TYRS_HAND_CODEX_REAL"); configured != "" {
+		return configured
+	}
+	home, err := os.UserHomeDir()
+	if err == nil {
+		userBinary := filepath.Join(home, ".local", "share", "tyrs-hand", "codex",
+			"current", "bin", "codex")
+		if info, statErr := os.Stat(userBinary); statErr == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
+			return userBinary
+		}
+	}
+	return defaultCodexReal
 }
 
 func envOr(name, fallback string) string {

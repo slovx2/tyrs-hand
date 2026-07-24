@@ -138,17 +138,17 @@ func (s *Server) listDiscordDevelopmentEnvironments(c *gin.Context) {
 	c.JSON(http.StatusOK, environments)
 }
 
-func (s *Server) rebuildDiscordDevelopmentEnvironment(c *gin.Context) {
+func (s *Server) rebaseDiscordDevelopmentEnvironment(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		badRequest(c, err)
 		return
 	}
-	if err := s.discord.RebuildDevelopmentEnvironment(c, id); err != nil {
-		problem(c, http.StatusConflict, "重建 Discord 开发环境失败", err)
+	if err := s.discord.RebaseDevelopmentEnvironment(c, id); err != nil {
+		problem(c, http.StatusConflict, "Rebase Discord 开发环境失败", err)
 		return
 	}
-	s.audit(c, "discord.development_environment.rebuild", "discord_development_environment", id.String(), nil)
+	s.audit(c, "discord.development_environment.rebase", "discord_development_environment", id.String(), nil)
 	c.Status(http.StatusAccepted)
 }
 

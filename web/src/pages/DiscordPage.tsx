@@ -56,12 +56,12 @@ interface DevelopmentEnvironment {
   id: string
   ownerDiscordUserId: string
   ownerName: string
-  buildRepositoryId: string
-  buildRepository: string
   status: string
+  imageRef: string
   imageId?: string
-  buildSourceSha?: string
   runtimeUser?: string
+  codexVersion?: string
+  codexUserOverride: boolean
   error?: string
   sshPublicKey?: string
   sshFingerprint?: string
@@ -516,13 +516,13 @@ function DevelopmentEnvironmentPanel({
 }) {
   const queryClient = useQueryClient()
   const showToast = useUI((state) => state.showToast)
-  const rebuild = useMutation({
+  const rebase = useMutation({
     mutationFn: (id: string) =>
-      api<void>(`/discord/development-environments/${id}/rebuild`, {
+      api<void>(`/discord/development-environments/${id}/rebase`, {
         method: 'POST',
       }),
     onSuccess: async () => {
-      showToast('info', '环境已标记为重建，将在下次运行前生效')
+      showToast('info', '环境 Rebase 已排队，将切换到当前官方开发镜像')
       await queryClient.invalidateQueries({
         queryKey: ['discord-development-environments'],
       })
@@ -533,7 +533,8 @@ function DevelopmentEnvironmentPanel({
       <h2 className="text-xl font-semibold">长期开发环境</h2>
       <p className="muted mt-1 text-sm">
         同一 Discord 用户只有一个容器和 Home；不同仓库、不同 Forum 各自使用独立
-        clone。
+        clone。Rebase 会保留 Home 和工作区，但会清除通过 sudo
+        安装到系统层的软件。
       </p>
       <div className="mt-5 grid gap-5">
         {environments.map((environment) => (
@@ -546,20 +547,21 @@ function DevelopmentEnvironmentPanel({
               <div>
                 <p className="font-semibold">{environment.ownerName}</p>
                 <p className="muted mt-1 text-xs">
-                  {environment.status} · 构建来源 {environment.buildRepository}{' '}
-                  · 用户 {environment.runtimeUser || '待构建'}
-                  {environment.buildSourceSha
-                    ? ` · ${environment.buildSourceSha.slice(0, 12)}`
-                    : ''}
+                  {environment.status} · 镜像 {environment.imageRef || '待配置'}{' '}
+                  · 用户 {environment.runtimeUser || '待启动'} · Codex{' '}
+                  {environment.codexVersion || '待上报'}
+                  {environment.codexUserOverride
+                    ? '（用户覆盖）'
+                    : '（镜像内置）'}
                 </p>
               </div>
               <button
                 type="button"
                 className="button-secondary"
-                disabled={rebuild.isPending}
-                onClick={() => rebuild.mutate(environment.id)}
+                disabled={rebase.isPending}
+                onClick={() => rebase.mutate(environment.id)}
               >
-                {rebuild.isPending ? '提交中…' : '下次运行前重建环境'}
+                {rebase.isPending ? '提交中…' : 'Rebase 到当前官方镜像'}
               </button>
             </div>
             {environment.error && (

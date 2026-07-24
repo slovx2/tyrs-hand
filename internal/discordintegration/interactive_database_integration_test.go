@@ -22,7 +22,7 @@ func TestInteractiveProjectionCollectsDiscordAnswers(t *testing.T) {
 	require.NoError(t, database.Migrate(ctx, db))
 	insertInteractiveGuild(t, db)
 	seed := seedDiscordManagerData(t, db)
-	manager := NewManager(db, nil)
+	manager := NewManager(db, nil, "")
 	controlID, runID := insertInteractiveControl(t, db, seed)
 	questions := json.RawMessage(`[
 		{"id":"choice","header":"确认","question":"继续吗？","options":[
@@ -149,7 +149,7 @@ func TestClearDevelopmentEnvironmentSSHQueuesReconfigure(t *testing.T) {
 		ssh_discord_user_id=owner_discord_user_id WHERE id=$1`, environmentID,
 		"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest")
 	require.NoError(t, err)
-	require.NoError(t, NewManager(db, nil).ClearDevelopmentEnvironmentSSH(ctx, environmentID))
+	require.NoError(t, NewManager(db, nil, "").ClearDevelopmentEnvironmentSSH(ctx, environmentID))
 	var key, sshUserID sql.NullString
 	var revision int64
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT ssh_public_key, ssh_discord_user_id,

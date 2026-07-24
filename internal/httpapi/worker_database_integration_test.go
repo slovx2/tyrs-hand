@@ -1037,7 +1037,8 @@ func TestDiscordDevelopmentEnvironmentSSHAPIBindsParticipantAndRedactsAudit(t *t
 	sshKey, err := ssh.NewPublicKey(public)
 	require.NoError(t, err)
 	publicKey := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(sshKey)))
-	server := &Server{db: db, discord: discordintegration.NewManager(db, nil), logger: zap.NewNop()}
+	server := &Server{db: db, discord: discordintegration.NewManager(db, nil,
+		"tyrs-hand-development:test"), logger: zap.NewNop()}
 	request := func(method string, payload any) (*gin.Context, *httptest.ResponseRecorder) {
 		t.Helper()
 		var body []byte
@@ -1603,10 +1604,11 @@ func seedDevelopmentOperation(t *testing.T, db *sql.DB, repositoryID,
 	require.NoError(t, err)
 	var environmentID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_development_environments
-		(guild_id, owner_discord_user_id, build_repository_id, container_name,
+		(guild_id, owner_discord_user_id, image_ref, container_name,
 		 data_volume_name, home_volume_name, network_name, execution_node_id)
-		VALUES ('worker-test-guild','worker-owner',$1,'dev-worker','dev-worker-data',
-		'dev-worker-home','dev-worker-net',$2) RETURNING id`, repositoryID, nodeID).
+		VALUES ('worker-test-guild','worker-owner','tyrs-hand-development:test',
+		'dev-worker','dev-worker-data','dev-worker-home','dev-worker-net',$1)
+		RETURNING id`, nodeID).
 		Scan(&environmentID))
 	var resourceID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_resources

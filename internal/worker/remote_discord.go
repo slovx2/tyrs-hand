@@ -154,14 +154,12 @@ func remoteDevelopmentSpec(value workerprotocol.DevelopmentSpec) devcontainer.Re
 		ConversationID: value.ConversationID, WorkspaceStatus: value.WorkspaceStatus,
 		WorkspaceRelative: value.WorkspaceRelative, WorkspaceBranch: value.WorkspaceBranch,
 		Repository: value.Repository, CloneURL: value.CloneURL, DefaultRef: value.DefaultRef,
-		BuildRepositoryID: value.BuildRepositoryID, BuildRepository: value.BuildRepository,
-		BuildCloneURL: value.BuildCloneURL, BuildDefaultRef: value.BuildDefaultRef,
 		EnvironmentStatus: value.EnvironmentStatus, ImageRef: value.ImageRef,
 		ImageID: value.ImageID, ContainerName: value.ContainerName,
 		ContainerID: value.ContainerID, DataVolume: value.DataVolume,
 		HomeVolume: value.HomeVolume, Network: value.Network, RuntimeUser: value.RuntimeUser,
 		RuntimeUID: value.RuntimeUID, RuntimeGID: value.RuntimeGID,
-		RuntimeHome: value.RuntimeHome, BuildSourceSHA: value.BuildSourceSHA,
+		RuntimeHome: value.RuntimeHome,
 	}
 }
 
@@ -171,14 +169,12 @@ func protocolDevelopmentState(value devcontainer.RemoteState) workerprotocol.Dev
 		ConversationID: value.ConversationID, WorkspaceStatus: value.WorkspaceStatus,
 		WorkspaceRelative: value.WorkspaceRelative, WorkspaceBranch: value.WorkspaceBranch,
 		Repository: value.Repository, CloneURL: value.CloneURL, DefaultRef: value.DefaultRef,
-		BuildRepositoryID: value.BuildRepositoryID, BuildRepository: value.BuildRepository,
-		BuildCloneURL: value.BuildCloneURL, BuildDefaultRef: value.BuildDefaultRef,
 		EnvironmentStatus: value.EnvironmentStatus, ImageRef: value.ImageRef,
 		ImageID: value.ImageID, ContainerName: value.ContainerName,
 		ContainerID: value.ContainerID, DataVolume: value.DataVolume,
 		HomeVolume: value.HomeVolume, Network: value.Network, RuntimeUser: value.RuntimeUser,
 		RuntimeUID: value.RuntimeUID, RuntimeGID: value.RuntimeGID,
-		RuntimeHome: value.RuntimeHome, BuildSourceSHA: value.BuildSourceSHA,
+		RuntimeHome: value.RuntimeHome,
 	}, WorkspaceHeadSHA: value.WorkspaceHeadSHA, WorkspaceDirty: value.WorkspaceDirty,
 		Error: value.Error}
 }

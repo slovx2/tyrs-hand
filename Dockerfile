@@ -21,6 +21,7 @@ ARG TARGETARCH
 RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -buildid=" -o /out/tyrs-hand-worker ./cmd/tyrs-hand-worker && \
 	CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -buildid=" -o /out/tyrs-hand-codex ./cmd/tyrs-hand-codex && \
+	CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -buildid=" -o /out/tyrs-hand-dev ./cmd/tyrs-hand-dev && \
 	CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -buildid=" -o /out/tyrs-hand-reply-hook ./cmd/tyrs-hand-reply-hook && \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -buildid=" -o /out/tyrs-hand-admin ./cmd/tyrs-hand-admin && \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w -buildid=" -o /out/tyrs-hand-discord ./cmd/tyrs-hand-discord
@@ -97,7 +98,7 @@ RUN set -eux; \
       *) echo "unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
     esac; \
     docker_asset="docker-${docker_version}.tgz"; \
-    curl --fail --location --silent --show-error --output /tmp/docker.tgz "https://download.docker.com/linux/static/stable/${docker_arch}/${docker_asset}"; \
+    curl --fail --location --silent --show-error --retry 5 --retry-all-errors --output /tmp/docker.tgz "https://download.docker.com/linux/static/stable/${docker_arch}/${docker_asset}"; \
     echo "${docker_sha}  /tmp/docker.tgz" | sha256sum --check --strict; \
     install -d -m 0755 /usr/local/libexec/tyrs-hand; \
     tar -xzf /tmp/docker.tgz -C /tmp docker/docker; \
@@ -116,3 +117,81 @@ USER 10001:10001
 WORKDIR /home/tyrs-hand
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["tyrs-hand-worker"]
+
+FROM node:24.14.0-bookworm-slim@sha256:d8e448a56fc63242f70026718378bd4b00f8c82e78d20eefb199224a4d8e33d8 AS development
+ARG TARGETARCH
+LABEL ai.tyrs-hand.development.contract="1"
+COPY internal/devcontainer/development-runtime.lock.json /usr/local/share/tyrs-hand/development-runtime.lock.json
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    set -eux; \
+    runtime_lock=/usr/local/share/tyrs-hand/development-runtime.lock.json; \
+    test "$(node -p "require('${runtime_lock}').defaults.node")" = "$(node --version | sed 's/^v//')"; \
+    packages="$(node -e 'const p=require(process.argv[1]).systemPackages; console.log(Object.entries(p).map(([name, version]) => `${name}=${version}`).join(" "))' "${runtime_lock}")"; \
+    rm -f /etc/apt/apt.conf.d/docker-clean; \
+    apt-get -o Acquire::Retries=5 update; \
+    apt-get -o Acquire::Retries=5 install --yes --no-install-recommends ${packages}; \
+    rm -rf /var/lib/apt/lists/*; \
+    corepack_version="$(node -p "require('${runtime_lock}').corepack")"; \
+    pnpm_version="$(node -p "require('${runtime_lock}').defaults.pnpm")"; \
+    npm install --global --omit=dev "corepack@${corepack_version}"; \
+    npm install --global --omit=dev --force "pnpm@${pnpm_version}"; \
+    npm cache clean --force; \
+    ln -s /usr/bin/fdfind /usr/local/bin/fd
+RUN set -eux; \
+    runtime_lock=/usr/local/share/tyrs-hand/development-runtime.lock.json; \
+    mise_version="$(node -p "require('${runtime_lock}').mise")"; \
+    uv_version="$(node -p "require('${runtime_lock}').uv")"; \
+    mise_sha="$(node -p "require('${runtime_lock}').downloads.mise['${TARGETARCH}']")"; \
+    uv_sha="$(node -p "require('${runtime_lock}').downloads.uv['${TARGETARCH}']")"; \
+    test -n "${mise_sha}"; test -n "${uv_sha}"; \
+    case "${TARGETARCH}" in \
+      amd64) mise_arch=x64; uv_arch=x86_64 ;; \
+      arm64) mise_arch=arm64; uv_arch=aarch64 ;; \
+      *) echo "unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    mise_asset="mise-v${mise_version}-linux-${mise_arch}.tar.gz"; \
+    curl --fail --location --silent --show-error --retry 5 --retry-all-errors --output /tmp/mise.tar.gz \
+      "https://github.com/jdx/mise/releases/download/v${mise_version}/${mise_asset}"; \
+    echo "${mise_sha}  /tmp/mise.tar.gz" | sha256sum --check --strict; \
+    tar -xzf /tmp/mise.tar.gz -C /tmp; \
+    install -m 0755 /tmp/mise/bin/mise /usr/local/bin/mise; \
+    uv_asset="uv-${uv_arch}-unknown-linux-gnu.tar.gz"; \
+    curl --fail --location --silent --show-error --retry 5 --retry-all-errors --output /tmp/uv.tar.gz \
+      "https://github.com/astral-sh/uv/releases/download/${uv_version}/${uv_asset}"; \
+    echo "${uv_sha}  /tmp/uv.tar.gz" | sha256sum --check --strict; \
+    tar -xzf /tmp/uv.tar.gz -C /tmp; \
+    install -m 0755 "/tmp/uv-${uv_arch}-unknown-linux-gnu/uv" /usr/local/bin/uv; \
+    install -m 0755 "/tmp/uv-${uv_arch}-unknown-linux-gnu/uvx" /usr/local/bin/uvx; \
+    rm -rf /tmp/mise /tmp/mise.tar.gz /tmp/uv.tar.gz "/tmp/uv-${uv_arch}-unknown-linux-gnu"
+RUN set -eux; \
+    runtime_lock=/usr/local/share/tyrs-hand/development-runtime.lock.json; \
+    python_version="$(node -p "require('${runtime_lock}').defaults.python")"; \
+    go_version="$(node -p "require('${runtime_lock}').defaults.go")"; \
+    rust_version="$(node -p "require('${runtime_lock}').defaults.rust")"; \
+    MISE_DATA_DIR=/opt/tyrs-hand/mise RUSTUP_HOME=/opt/tyrs-hand/rustup \
+      CARGO_HOME=/opt/tyrs-hand/cargo mise install \
+      "python@${python_version}" "go@${go_version}" "rust@${rust_version}"; \
+    ln -s "/opt/tyrs-hand/mise/installs/python/${python_version}/bin/python3" /usr/local/bin/python3; \
+    ln -s "/opt/tyrs-hand/mise/installs/python/${python_version}/bin/pip3" /usr/local/bin/pip3; \
+    ln -s "/opt/tyrs-hand/mise/installs/go/${go_version}/bin/go" /usr/local/bin/go; \
+    rust_toolchain="$(find /opt/tyrs-hand/rustup/toolchains -mindepth 1 -maxdepth 1 \
+      -type d -name "${rust_version}-*" -print -quit)"; \
+    test -n "${rust_toolchain}"; \
+    ln -s "${rust_toolchain}/bin/rustc" /usr/local/bin/rustc; \
+    ln -s "${rust_toolchain}/bin/cargo" /usr/local/bin/cargo
+RUN groupmod --new-name developer node && \
+    usermod --login developer --home /home/developer --move-home --shell /bin/bash node && \
+    printf '%s\n' 'developer ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/developer && \
+    chmod 0440 /etc/sudoers.d/developer && \
+    install -d -o developer -g developer -m 0700 /home/developer/.local/share/tyrs-hand/codex && \
+    install -d -o developer -g developer -m 0700 /home/developer/.local/state/tyrs-hand && \
+    chown -R developer:developer /home/developer && \
+    install -d -m 0755 /opt/tyrs-hand/codex/bin
+COPY --from=codex-cli --chown=root:root /out/codex /opt/tyrs-hand/codex/bin/codex
+COPY --from=go-build --chown=root:root /out/tyrs-hand-codex /usr/local/bin/codex
+COPY --from=go-build --chown=root:root /out/tyrs-hand-dev /usr/local/bin/tyrs-hand-dev
+RUN ln -s /usr/local/bin/codex /usr/local/bin/apply_patch
+USER 1000:1000
+WORKDIR /home/developer
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["/bin/sh", "-c", "while :; do sleep 3600; done"]

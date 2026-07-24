@@ -31,7 +31,6 @@ func TestParseIdentityAndDisabledManager(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, manager.Enabled())
 	manager.RunSweeper(context.Background())
-	manager.releaseBuildLock(nil)
 	manager.restorePreviousContainer("", "")
 	require.Equal(t, "error", zapError(errors.New("error")).Key)
 	require.Equal(t, "container", zapString("container", "dev").Key)

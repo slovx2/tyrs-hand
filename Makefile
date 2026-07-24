@@ -57,6 +57,7 @@ test-integration:
 
 test-runtime-image:
 	./tools/test-worker-runtime.sh $(LOCAL_IMAGE)-worker
+	./tools/test-development-runtime.sh $(LOCAL_IMAGE)-development
 
 test-coverage:
 	./tools/check-go-coverage.sh
@@ -76,6 +77,7 @@ build-local:
 image-local:
 	docker build --target control --load --tag $(LOCAL_IMAGE)-control .
 	docker build --target worker --load --tag $(LOCAL_IMAGE)-worker .
+	docker build --target development --load --tag $(LOCAL_IMAGE)-development .
 
 ci:
 	$(MAKE) dependencies

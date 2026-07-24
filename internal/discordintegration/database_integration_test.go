@@ -43,7 +43,7 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 	require.NoError(t, database.Migrate(ctx, db))
 	box, err := security.NewSecretBox(make([]byte, 32))
 	require.NoError(t, err)
-	manager := NewManager(db, secrets.NewStore(db, box))
+	manager := NewManager(db, secrets.NewStore(db, box), "tyrs-hand-development:test")
 
 	empty, err := manager.Settings(ctx)
 	require.NoError(t, err)
@@ -119,15 +119,15 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 	require.Len(t, environments[0].Forums, 2)
 	require.NotNil(t, environments[0].ExecutionNodeID)
 	require.Equal(t, seed.executionNodeID, *environments[0].ExecutionNodeID)
-	require.Error(t, manager.RebuildDevelopmentEnvironment(ctx, uuid.New()))
-	require.NoError(t, manager.RebuildDevelopmentEnvironment(ctx, firstEnvironmentID))
-	var rebuildNodeID uuid.UUID
+	require.Error(t, manager.RebaseDevelopmentEnvironment(ctx, uuid.New()))
+	require.NoError(t, manager.RebaseDevelopmentEnvironment(ctx, firstEnvironmentID))
+	var rebaseNodeID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT execution_node_id
-		FROM discord_development_operations WHERE environment_id = $1 AND operation = 'rebuild'`,
-		firstEnvironmentID).Scan(&rebuildNodeID))
-	require.Equal(t, seed.executionNodeID, rebuildNodeID)
+		FROM discord_development_operations WHERE environment_id = $1 AND operation = 'rebase'`,
+		firstEnvironmentID).Scan(&rebaseNodeID))
+	require.Equal(t, seed.executionNodeID, rebaseNodeID)
 	_, err = db.ExecContext(ctx, `UPDATE discord_development_operations SET status = 'completed'
-		WHERE environment_id = $1 AND operation = 'rebuild'`,
+		WHERE environment_id = $1 AND operation = 'rebase'`,
 		firstEnvironmentID)
 	require.NoError(t, err)
 	thirdForumID := uuid.New()
@@ -802,10 +802,10 @@ func seedDiscordManagerData(t *testing.T, db *sql.DB) discordManagerSeed {
 	require.NoError(t, err)
 	var environmentID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_development_environments
-		(guild_id, owner_discord_user_id, build_repository_id, container_name, data_volume_name,
+		(guild_id, owner_discord_user_id, image_ref, container_name, data_volume_name,
 		 home_volume_name, network_name, execution_node_id)
-		VALUES ($1, '1001', $2, 'dev-alice', 'dev-alice-data', 'dev-alice-home',
-		'dev-alice-net', $3) RETURNING id`, testGuildID, repositoryID, executionNodeID).
+		VALUES ($1, '1001', 'tyrs-hand-development:test', 'dev-alice', 'dev-alice-data',
+		'dev-alice-home', 'dev-alice-net', $2) RETURNING id`, testGuildID, executionNodeID).
 		Scan(&environmentID))
 	developmentResource := insertDiscordResource(t, db, "forum.development.seed", seed.developmentForumChannelID,
 		"forum", "dev-alice-repo", seed.codexCategoryID)

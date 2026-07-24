@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -57,6 +58,7 @@ type Config struct {
 	CodexMaxSteersPerTurn          int
 	GitHubReplyGateMaxBlocks       int
 	EnableDevelopmentContainers    bool
+	DevelopmentImage               string
 	DevelopmentRuntimeDir          string
 	DevelopmentRuntimeHostDir      string
 	EnableSSH                      bool
@@ -124,6 +126,7 @@ func load(workerProcess bool) (Config, error) {
 		CodexMaxSteersPerTurn:          v.GetInt("codex_max_steers_per_turn"),
 		GitHubReplyGateMaxBlocks:       v.GetInt("github_reply_gate_max_blocks"),
 		EnableDevelopmentContainers:    v.GetBool("enable_development_containers"),
+		DevelopmentImage:               strings.TrimSpace(v.GetString("development_image")),
 		DevelopmentRuntimeDir:          filepath.Clean(v.GetString("development_runtime_dir")),
 		DevelopmentRuntimeHostDir:      filepath.Clean(v.GetString("development_runtime_host_dir")),
 		EnableSSH:                      v.GetBool("enable_ssh"),
@@ -184,8 +187,8 @@ func (c Config) ValidateWorker() error {
 	if c.WorkerRole != "all" && c.WorkerRole != "github" && c.WorkerRole != "discord" {
 		return errors.New("远程 worker_role 必须是 all、github 或 discord")
 	}
-	if c.WorkerProtocolVersion != 8 {
-		return errors.New("当前 Worker 只支持协议版本 8")
+	if c.WorkerProtocolVersion != 9 {
+		return errors.New("当前 Worker 只支持协议版本 9")
 	}
 	if c.WorkerCredentialFile == "." || strings.TrimSpace(c.WorkerCredentialFile) == "" {
 		return errors.New("远程 Worker 必须配置凭据文件")
@@ -263,6 +266,9 @@ func (c Config) Validate() error {
 		if !strings.HasPrefix(c.PublicURL, "https://") {
 			return errors.New("生产环境 Public URL 必须使用 HTTPS")
 		}
+		if c.DevelopmentImage != "" && !developmentImageDigest.MatchString(c.DevelopmentImage) {
+			return errors.New("生产环境开发镜像必须使用完整的 image@sha256:... 引用")
+		}
 	}
 	return nil
 }
@@ -293,7 +299,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("worker_control_url", "")
 	v.SetDefault("worker_credential_file", ".local/worker/node-credential")
 	v.SetDefault("worker_enrollment_token", "")
-	v.SetDefault("worker_protocol_version", 8)
+	v.SetDefault("worker_protocol_version", 9)
 	v.SetDefault("development_runtime_dir", ".local/worker/development-runtime")
 	v.SetDefault("development_runtime_host_dir", ".local/worker/development-runtime")
 	v.SetDefault("enable_ssh", false)
@@ -317,7 +323,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("codex_max_steers_per_turn", 5)
 	v.SetDefault("github_reply_gate_max_blocks", 3)
 	v.SetDefault("enable_development_containers", false)
+	v.SetDefault("development_image", "")
 }
+
+var developmentImageDigest = regexp.MustCompile(`^[^[:space:]@]+@sha256:[0-9a-f]{64}$`)
 
 func parseNetworkList(value string) ([]netip.Prefix, error) {
 	var result []netip.Prefix

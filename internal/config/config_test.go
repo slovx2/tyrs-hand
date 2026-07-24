@@ -77,7 +77,7 @@ func TestValidateAndLoadRemoteWorker(t *testing.T) {
 		Environment: "production", WorkerControlURL: "https://tyr.example.com",
 		CodexBin: "codex", WorkerID: "home-1", WorkerRole: "all",
 		WorkerCredentialFile:  "/data/worker/control-state/node-credential",
-		WorkerProtocolVersion: 8, WorkerMaxConcurrentJobs: 2,
+		WorkerProtocolVersion: 9, WorkerMaxConcurrentJobs: 2,
 	}
 	require.True(t, valid.RemoteWorker())
 	require.NoError(t, valid.ValidateWorker())
@@ -110,7 +110,7 @@ func TestValidateAndLoadRemoteWorker(t *testing.T) {
 	t.Setenv("TYRS_HAND_WORKER_ID", "home-1")
 	t.Setenv("TYRS_HAND_WORKER_ROLE", "github")
 	t.Setenv("TYRS_HAND_WORKER_CREDENTIAL_FILE", filepath.Join(t.TempDir(), "credential"))
-	t.Setenv("TYRS_HAND_WORKER_PROTOCOL_VERSION", "8")
+	t.Setenv("TYRS_HAND_WORKER_PROTOCOL_VERSION", "9")
 	t.Setenv("TYRS_HAND_WORKER_MAX_CONCURRENT_JOBS", "2")
 	t.Setenv("TYRS_HAND_DATABASE_URL", "")
 	t.Setenv("TYRS_HAND_REDIS_URL", "")
@@ -129,6 +129,24 @@ func TestDeploymentWorkerProtocolVersion(t *testing.T) {
 	example, err := os.ReadFile("../../.env.example")
 	require.NoError(t, err)
 	require.Contains(t, string(example), "TYRS_HAND_WORKER_PROTOCOL_VERSION="+version)
+}
+
+func TestProductionDevelopmentImageRequiresDigest(t *testing.T) {
+	valid := Config{
+		Environment: "production", MasterKey: make([]byte, 32), CookieSecure: true,
+		HTTPAddr: ":8080", DatabaseURL: "postgres://db", RedisURL: "redis://cache",
+		PublicURL: "https://tyr.example.com", GitHubAppName: "TyrsHand", CodexBin: "codex",
+		WorkerID: "control", WorkerRole: "all", WorkerMaxConcurrentJobs: 1,
+		CodexStatusPollInterval: time.Second, CodexReconcileMaxAttempts: 1,
+		CodexResultDeliveryMaxAttempts: 1, CodexMaxSteersPerTurn: 1,
+		GitHubReplyGateMaxBlocks: 1, LeaseDuration: 3 * time.Second,
+		HeartbeatInterval: time.Second, RepoCacheMaxBytes: 1,
+	}
+	require.NoError(t, valid.Validate())
+	valid.DevelopmentImage = "ghcr.io/slovx2/tyrs-hand-development:latest"
+	require.ErrorContains(t, valid.Validate(), "完整的 image@sha256")
+	valid.DevelopmentImage = "ghcr.io/slovx2/tyrs-hand-development@sha256:" + strings.Repeat("a", 64)
+	require.NoError(t, valid.Validate())
 }
 
 func TestValidateWorkerCapabilities(t *testing.T) {
