@@ -254,8 +254,11 @@ func reconcileConversationProgressCard(ctx context.Context, db *sql.DB, guildID,
 		}
 		runID = parsed
 		var runStatus string
-		if err := db.QueryRowContext(ctx, `SELECT status FROM codex_turn_runs WHERE id = $1`,
-			runID).Scan(&runStatus); err != nil {
+		err = db.QueryRowContext(ctx, `SELECT status FROM codex_turn_runs WHERE id = $1`,
+			runID).Scan(&runStatus)
+		if errors.Is(err, sql.ErrNoRows) {
+			runID = uuid.Nil
+		} else if err != nil {
 			return err
 		}
 		switch runStatus {

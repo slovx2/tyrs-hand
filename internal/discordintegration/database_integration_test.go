@@ -634,6 +634,40 @@ func TestReconcileConversationProgressCardsUpdatesExistingMessage(t *testing.T) 
 	require.NotContains(t, string(desiredPayload), "条更新")
 }
 
+func TestReconcileConversationProgressCardsUpdatesOrphanedRun(t *testing.T) {
+	db := discordDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	_, err := db.ExecContext(ctx, `INSERT INTO discord_guilds(guild_id, name, enabled)
+		VALUES ($1, 'Orphan Progress Test', true)`, testGuildID)
+	require.NoError(t, err)
+
+	projectionKey := "conversation:orphan:message:test"
+	missingRunID := uuid.New()
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_projections
+		(guild_id, projection_key, resource_id, message_id, desired_payload,
+		 desired_version, applied_version)
+		VALUES ($1,$2,'thread-id','message-id',$3,1,1)`, testGuildID, projectionKey,
+		mustJSON(map[string]any{
+			"card": ComponentCardPayload{Header: "旧卡片"},
+			"progress": conversationProgressPayload{RunID: missingRunID.String(),
+				State: ConversationCompleted, Summary: "历史任务已完成。"},
+		}))
+	require.NoError(t, err)
+
+	require.NoError(t, ReconcileConversationProgressCards(ctx, db, testGuildID))
+	var desiredPayload string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT desired_payload::text
+		FROM discord_projections WHERE guild_id=$1 AND projection_key=$2`,
+		testGuildID, projectionKey).Scan(&desiredPayload))
+	require.Contains(t, desiredPayload, `"formatVersion": 3`)
+	require.NotContains(t, desiredPayload, `"footer"`)
+	var outboxStatus string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM integration_outbox
+		WHERE operation_key=$1`, "projection:"+projectionKey).Scan(&outboxStatus))
+	require.Equal(t, "pending", outboxStatus)
+}
+
 func TestReconcileConversationProgressCardsUsesTerminalRunState(t *testing.T) {
 	db := discordDatabase(t)
 	ctx := context.Background()
