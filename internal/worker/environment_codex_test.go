@@ -21,6 +21,15 @@ import (
 	"go.uber.org/zap"
 )
 
+func TestThreadLifecycleListParamsIncludeEveryProvider(t *testing.T) {
+	cursor := "next-page"
+	params := threadLifecycleListParams(true, &cursor)
+	require.Equal(t, true, params["archived"])
+	require.Equal(t, 100, params["limit"])
+	require.Equal(t, "next-page", params["cursor"])
+	require.Empty(t, params["modelProviders"])
+}
+
 func TestEnvironmentCodexObserverSubmitsThreadNamesFromRelay(t *testing.T) {
 	mock, err := mockcodex.Start(t)
 	require.NoError(t, err)

@@ -70,6 +70,10 @@ func (c *desktopRelayController) PrepareCall(_ context.Context,
 			plan.Forward = false
 			plan.Result = result
 		}
+	case "thread/list":
+		if call.Role == codexrelay.RoleDesktop {
+			plan.Params = desktopThreadListAllProviders(call.Params)
+		}
 	case "thread/start":
 		plan.Params = c.injectDesktopRuntime(call.Params, true)
 		plan.Params = participantidentity.AppendDeveloperInstructions(plan.Params)
@@ -282,6 +286,26 @@ func desktopAccountForModelSource(modelSource string, result json.RawMessage,
 	// Provider 的模型能力由 App Key 决定，不能再被仅用于插件市场的 ChatGPT 套餐过滤。
 	return json.RawMessage(`{"account":{"type":"chatgpt","email":null,` +
 		`"planType":"unknown"},"requiresOpenaiAuth":false}`), nil
+}
+
+func desktopThreadListAllProviders(params json.RawMessage) json.RawMessage {
+	var value map[string]any
+	if json.Unmarshal(params, &value) != nil {
+		return params
+	}
+	if value == nil {
+		value = make(map[string]any)
+	}
+	if providers, exists := value["modelProviders"]; exists && providers != nil {
+		return params
+	}
+	// Codex 只在显式空数组时查询全部 Provider；null 会退回启动时的默认 Provider。
+	value["modelProviders"] = []string{}
+	result, err := json.Marshal(value)
+	if err != nil {
+		return params
+	}
+	return result
 }
 
 func (c *desktopRelayController) ResolveInteractive(ctx context.Context,

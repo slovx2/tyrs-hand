@@ -258,10 +258,7 @@ func (e *environmentCodex) reconcileThreadLifecycles(ctx context.Context) {
 				} `json:"data"`
 				NextCursor *string `json:"nextCursor"`
 			}
-			params := map[string]any{"archived": archived, "limit": 100}
-			if cursor != nil && *cursor != "" {
-				params["cursor"] = *cursor
-			}
+			params := threadLifecycleListParams(archived, cursor)
 			requestCtx, cancel := context.WithTimeout(ctx, e.processor.cfg.ControlTimeout)
 			err := e.client.Call(requestCtx, "thread/list", params, &result)
 			cancel()
@@ -283,6 +280,16 @@ func (e *environmentCodex) reconcileThreadLifecycles(ctx context.Context) {
 			cursor = result.NextCursor
 		}
 	}
+}
+
+func threadLifecycleListParams(archived bool, cursor *string) map[string]any {
+	params := map[string]any{
+		"archived": archived, "limit": 100, "modelProviders": []string{},
+	}
+	if cursor != nil && *cursor != "" {
+		params["cursor"] = *cursor
+	}
+	return params
 }
 
 func (r *environmentCodexRegistry) idle(environmentID uuid.UUID) bool {

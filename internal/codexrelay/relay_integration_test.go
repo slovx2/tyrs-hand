@@ -838,6 +838,26 @@ func TestRelayKeepsEphemeralDesktopThreadsOutsideController(t *testing.T) {
 	require.Equal(t, []string{"thread/start"}, controller.methods())
 }
 
+func TestRelayRoutesDesktopThreadListThroughController(t *testing.T) {
+	mock, err := mockcodex.Start(t)
+	require.NoError(t, err)
+	directory := shortTempDir(t)
+	controller := &recordingController{}
+	relay, err := codexrelay.Start(context.Background(), codexrelay.Options{
+		SocketPath: directory + "/relay.sock", UpstreamSocketPath: mock.SocketPath,
+		Controller: controller,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, relay.Close()) })
+	desktop := connectDesktop(t, relay.SocketPath())
+	desktop.initialize(t, 1)
+
+	desktop.write(t, rpcMessage{ID: rawID(2), Method: "thread/list",
+		Params: mustJSON(map[string]any{"archived": false})})
+	require.Nil(t, desktop.response(t, rawID(2)).Error)
+	require.Equal(t, []string{"thread/list"}, controller.methods())
+}
+
 func TestRelayArchivesEphemeralThreadWithoutEnteringController(t *testing.T) {
 	mock, err := mockcodex.Start(t)
 	require.NoError(t, err)

@@ -86,7 +86,7 @@ var methodClasses = map[string]methodClass{
 	"thread/fork":        methodControlled,
 	"thread/start":       methodControlled,
 	"turn/start":         methodControlled,
-	"thread/list":        methodForward,
+	"thread/list":        methodControlled,
 	"thread/read":        methodForward,
 	"thread/resume":      methodControlled,
 	"thread/unsubscribe": methodForward,
