@@ -18,6 +18,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/database"
 	"github.com/slovx2/tyrs-hand/internal/gitworkspace"
 	"github.com/slovx2/tyrs-hand/internal/security"
+	"github.com/slovx2/tyrs-hand/internal/settings"
 )
 
 func main() {
@@ -162,17 +163,13 @@ func rotateMasterKey(ctx context.Context, db *sql.DB, oldKey []byte, newKeyFile 
 func codexLogin(ctx context.Context, db *sql.DB, cfg config.Config) {
 	sharedHome := filepath.Join(cfg.CodexHomeRoot, "shared")
 	fatal(os.MkdirAll(sharedHome, 0o700))
-	cmd := exec.CommandContext(ctx, cfg.CodexBin, "login", "--device-auth")
+	cmd := exec.CommandContext(ctx, cfg.CodexBin,
+		"-c", `cli_auth_credentials_store="file"`, "login", "--device-auth")
 	cmd.Env = append(codexEnvironment(), "CODEX_HOME="+sharedHome, "HOME="+sharedHome)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	fatal(cmd.Run())
-	_, err := db.ExecContext(ctx, `
-		INSERT INTO platform_settings(setting_key, value)
-		VALUES ('agent.provider', '{"providerType":"device-code","configured":true,"configSignature":"device-code"}'::jsonb)
-		ON CONFLICT(setting_key) DO UPDATE SET value = jsonb_set(platform_settings.value, '{configured}', 'true'::jsonb),
-			version = platform_settings.version + 1, updated_at = now()`)
-	fatal(err)
-	audit(ctx, db, "agent_provider.device_login", "platform_setting", "agent.provider")
+	fatal(settings.NewService(db, nil).SetChatGPTConfigured(ctx, true))
+	audit(ctx, db, "settings.chatgpt.login.completed", "platform_setting", "agent.provider")
 	fmt.Println("共享 Codex 账号登录完成。")
 }
 

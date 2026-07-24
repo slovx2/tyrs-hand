@@ -21,6 +21,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/ports"
+	"github.com/slovx2/tyrs-hand/internal/settings"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/stretchr/testify/require"
 )
@@ -136,20 +137,31 @@ func TestProcessorHelpersAndLocalTools(t *testing.T) {
 	require.Len(t, shortID(uuid.MustParse("12345678-1234-1234-1234-123456789012")), 8)
 
 	remoteHome := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(remoteHome, "config.toml"),
+		[]byte("model = \"personal-choice\"\n"), 0o600))
+	require.NoError(t, os.MkdirAll(filepath.Join(remoteHome, "plugins"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(remoteHome, "plugins", "enabled.json"),
+		[]byte(`{"github":true}`), 0o600))
 	remoteEnvironment, err := prepareRemoteCodexHome(remoteHome, workerprotocol.RuntimeCredential{
-		APIKey: "test-key", BaseURL: "https://api.example.com/v1", ProxyURL: "https://proxy.example.com",
+		ModelSource: settings.ModelSourceProvider, APIKey: "test-key",
+		BaseURL: "https://api.example.com/v1", ProxyURL: "https://proxy.example.com",
+		ChatGPTAuth:         json.RawMessage(`{"auth_mode":"chatgpt","tokens":{"access_token":"token"}}`),
+		ChatGPTAuthRevision: 1,
 	}, "# Global instructions\n")
 	require.NoError(t, err)
 	auth, err := os.ReadFile(filepath.Join(remoteHome, "auth.json"))
 	require.NoError(t, err)
-	require.JSONEq(t, `{"auth_mode":"apikey","OPENAI_API_KEY":"test-key"}`, string(auth))
+	require.JSONEq(t, `{"auth_mode":"chatgpt","tokens":{"access_token":"token"}}`, string(auth))
 	agents, err := os.ReadFile(filepath.Join(remoteHome, "AGENTS.md"))
 	require.NoError(t, err)
 	require.Equal(t, "# Global instructions\n", string(agents))
 	providerConfig, err := os.ReadFile(filepath.Join(remoteHome, "config.toml"))
 	require.NoError(t, err)
-	require.Equal(t, "openai_base_url = \"https://api.example.com/v1\"\n", string(providerConfig))
-	require.Equal(t, []string{"OPENAI_BASE_URL=https://api.example.com/v1",
+	require.Equal(t, "model = \"personal-choice\"\n", string(providerConfig))
+	pluginState, err := os.ReadFile(filepath.Join(remoteHome, "plugins", "enabled.json"))
+	require.NoError(t, err)
+	require.JSONEq(t, `{"github":true}`, string(pluginState))
+	require.Equal(t, []string{"TYRS_HAND_MODEL_API_KEY=test-key",
 		"HTTP_PROXY=https://proxy.example.com", "HTTPS_PROXY=https://proxy.example.com"},
 		remoteEnvironment)
 
@@ -175,10 +187,11 @@ func TestProcessorHelpersAndLocalTools(t *testing.T) {
 func TestPrepareCodexRuntimeInjectsManagedCapabilities(t *testing.T) {
 	tokenPath := filepath.Join(t.TempDir(), "browser-token")
 	require.NoError(t, os.WriteFile(tokenPath, []byte(" managed-token \n"), 0o600))
-	base := make([]string, 3, 8)
+	base := make([]string, 4, 8)
 	base[0] = "PATH=/toolchain/bin:/usr/bin"
 	base[1] = "SSH_AUTH_SOCK=/stale.sock"
 	base[2] = "TYRS_BROWSER_MCP_TOKEN=stale-token"
+	base[3] = "TYRS_HAND_MODEL_API_KEY=model-secret"
 	original := append([]string(nil), base...)
 
 	environment, runtimeConfig := prepareCodexRuntime(base, "/data/worker", config.Config{
@@ -192,12 +205,16 @@ func TestPrepareCodexRuntimeInjectsManagedCapabilities(t *testing.T) {
 		environmentValue(environment, "SSH_AUTH_SOCK"))
 	require.Equal(t, "managed-token", environmentValue(environment,
 		"TYRS_BROWSER_MCP_TOKEN"))
+	require.Equal(t, "model-secret", environmentValue(environment,
+		"TYRS_HAND_MODEL_API_KEY"))
 	require.Equal(t, 1, environmentKeyCount(environment, "SSH_AUTH_SOCK"))
 	require.Equal(t, 1, environmentKeyCount(environment, "TYRS_BROWSER_MCP_TOKEN"))
 
 	policy := runtimeConfig["shell_environment_policy"].(map[string]any)
 	values := policy["set"].(map[string]any)
 	require.NotContains(t, values, "TYRS_BROWSER_MCP_TOKEN")
+	require.NotContains(t, values, "TYRS_HAND_MODEL_API_KEY")
+	require.Contains(t, policy["exclude"], "TYRS_HAND_MODEL_API_KEY")
 	require.Equal(t, "/run/tyrs-hand-ssh-agent/current.sock", values["SSH_AUTH_SOCK"])
 	mcpServers := runtimeConfig["mcp_servers"].(map[string]any)
 	chrome := mcpServers["chrome"].(map[string]any)
@@ -211,6 +228,41 @@ func TestPrepareCodexRuntimeInjectsManagedCapabilities(t *testing.T) {
 	serializedConfig, err := json.Marshal(runtimeConfig)
 	require.NoError(t, err)
 	require.NotContains(t, string(serializedConfig), "managed-token")
+}
+
+func TestModelProviderConfigPreservesPersonalSettings(t *testing.T) {
+	runtimeConfig := map[string]any{
+		"model_providers": map[string]any{
+			"personal": map[string]any{"base_url": "https://personal.example/v1"},
+		},
+		"mcp_servers": map[string]any{"personal": map[string]any{"url": "https://mcp.example"}},
+		"shell_environment_policy": map[string]any{
+			"inherit": "all",
+			"set": map[string]any{
+				"PERSONAL": "keep", "TYRS_HAND_MODEL_API_KEY": "must-not-leak",
+			},
+			"exclude": []any{"PERSONAL_SECRET"},
+		},
+	}
+	applyModelProviderConfig(runtimeConfig, settings.ModelSourceProvider, "")
+	hideModelAPIKey(runtimeConfig)
+	require.Equal(t, "tyrs-hand-provider", runtimeConfig["model_provider"])
+	providers := runtimeConfig["model_providers"].(map[string]any)
+	require.Contains(t, providers, "personal")
+	managed := providers["tyrs-hand-provider"].(map[string]any)
+	require.Equal(t, "https://api.openai.com/v1", managed["base_url"])
+	require.Equal(t, "responses", managed["wire_api"])
+	require.Equal(t, "TYRS_HAND_MODEL_API_KEY", managed["env_key"])
+	require.Contains(t, runtimeConfig, "mcp_servers")
+	policy := runtimeConfig["shell_environment_policy"].(map[string]any)
+	require.Equal(t, "keep", policy["set"].(map[string]any)["PERSONAL"])
+	require.NotContains(t, policy["set"], "TYRS_HAND_MODEL_API_KEY")
+	require.ElementsMatch(t, []string{"PERSONAL_SECRET", "TYRS_HAND_MODEL_API_KEY"},
+		policy["exclude"])
+
+	applyModelProviderConfig(runtimeConfig, settings.ModelSourceChatGPT, "")
+	require.Equal(t, "openai", runtimeConfig["model_provider"])
+	require.Contains(t, runtimeConfig["model_providers"], "personal")
 }
 
 func TestPrepareCodexRuntimeBrowserTokenBranches(t *testing.T) {

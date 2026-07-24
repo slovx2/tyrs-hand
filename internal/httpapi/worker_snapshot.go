@@ -28,7 +28,7 @@ func (s *Server) loadWorkerSnapshot(ctx context.Context,
 	if err != nil {
 		return result, err
 	}
-	result.Runtime.ProviderType = provider.ProviderType
+	result.Runtime.ModelSource = provider.ModelSource
 	result.Runtime.BaseURL = provider.BaseURL
 	result.Runtime.ProxyURL = provider.ProxyURL
 	result.Runtime.ConfigSignature = provider.ConfigSignature

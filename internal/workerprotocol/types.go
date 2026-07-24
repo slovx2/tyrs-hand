@@ -9,7 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 6
+const Version = 7
 
 type EnrollRequest struct {
 	Token string `json:"token"`
@@ -300,7 +300,7 @@ type RuntimeSnapshot struct {
 	Sandbox         string `json:"sandbox"`
 	ApprovalPolicy  string `json:"approvalPolicy"`
 	NetworkEnabled  bool   `json:"networkEnabled"`
-	ProviderType    string `json:"providerType"`
+	ModelSource     string `json:"modelSource"`
 	BaseURL         string `json:"baseUrl,omitempty"`
 	ProxyURL        string `json:"proxyUrl,omitempty"`
 	ConfigSignature string `json:"configSignature"`
@@ -459,11 +459,14 @@ type EventsRequest struct {
 }
 
 type RuntimeCredential struct {
-	APIKey          string `json:"apiKey"`
-	BaseURL         string `json:"baseUrl,omitempty"`
-	ProxyURL        string `json:"proxyUrl,omitempty"`
-	ConfigSignature string `json:"configSignature,omitempty"`
-	GlobalAgents    string `json:"globalAgents,omitempty"`
+	APIKey              string          `json:"apiKey,omitempty"`
+	BaseURL             string          `json:"baseUrl,omitempty"`
+	ProxyURL            string          `json:"proxyUrl,omitempty"`
+	ModelSource         string          `json:"modelSource"`
+	ChatGPTAuth         json.RawMessage `json:"chatgptAuth,omitempty"`
+	ChatGPTAuthRevision int64           `json:"chatgptAuthRevision"`
+	ConfigSignature     string          `json:"configSignature,omitempty"`
+	GlobalAgents        string          `json:"globalAgents,omitempty"`
 }
 
 type SetThreadRequest struct {

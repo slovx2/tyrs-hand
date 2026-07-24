@@ -60,8 +60,10 @@ func (c *desktopRelayController) PrepareCall(_ context.Context,
 	}
 	switch call.Method {
 	case "thread/start":
-		plan.Params = c.injectDesktopTools(call.Params)
+		plan.Params = c.injectDesktopRuntime(call.Params, true)
 		plan.Params = participantidentity.AppendDeveloperInstructions(plan.Params)
+	case "thread/resume":
+		plan.Params = c.injectDesktopRuntime(call.Params, false)
 	case "turn/start":
 		threadID, _ := relayCallScope(plan.Params)
 		if threadID == "" {
@@ -308,25 +310,32 @@ func (c *desktopRelayController) ResolveInteractive(ctx context.Context,
 	return true, state.Answer, nil
 }
 
-func (c *desktopRelayController) injectDesktopTools(params json.RawMessage) json.RawMessage {
+func (c *desktopRelayController) injectDesktopRuntime(params json.RawMessage,
+	includeTools bool,
+) json.RawMessage {
 	var value map[string]any
-	if json.Unmarshal(params, &value) != nil || c.processor.catalog == nil {
+	if json.Unmarshal(params, &value) != nil {
 		return params
 	}
-	githubSpec, err := c.processor.catalog.DynamicToolSpec()
-	if err != nil {
-		c.processor.logger.Warn("生成 Desktop 动态工具清单失败", zap.Error(err))
-		return params
+	config, _ := value["config"].(map[string]any)
+	if config == nil {
+		config = make(map[string]any)
 	}
-	specs := withBrowserTools(c.processor.cfg, githubSpec, localGitSpec())
-	current, _ := value["dynamicTools"].([]any)
-	for _, spec := range specs {
-		encoded, _ := json.Marshal(spec)
-		var item any
-		_ = json.Unmarshal(encoded, &item)
-		current = append(current, item)
+	applyModelProviderConfig(config, c.environment.runtime.ModelSource,
+		c.environment.runtime.ModelBaseURL)
+	hideModelAPIKey(config)
+	value["config"] = config
+	if includeTools {
+		specs := withBrowserTools(c.processor.cfg, localGitSpec())
+		current, _ := value["dynamicTools"].([]any)
+		for _, spec := range specs {
+			encoded, _ := json.Marshal(spec)
+			var item any
+			_ = json.Unmarshal(encoded, &item)
+			current = append(current, item)
+		}
+		value["dynamicTools"] = current
 	}
-	value["dynamicTools"] = current
 	result, err := json.Marshal(value)
 	if err != nil {
 		return params

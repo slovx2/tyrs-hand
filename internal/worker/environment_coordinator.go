@@ -139,6 +139,11 @@ func (p *RemoteProcessor) coordinateEnvironment(ctx context.Context,
 		var credential workerprotocol.RuntimeCredential
 		credential, err = p.client.EnvironmentRuntimeCredential(ctx, manifest.EnvironmentID)
 		if err == nil {
+			runtime.ModelSource = credential.ModelSource
+			runtime.ModelBaseURL = credential.BaseURL
+			runtime.ProcessEnvironment, err = remoteCredentialEnvironment(credential)
+		}
+		if err == nil {
 			var changed bool
 			changed, err = p.installEnvironmentCodexHome(ctx, runtime, credential)
 			if err == nil && changed {

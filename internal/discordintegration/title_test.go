@@ -45,7 +45,7 @@ func TestTitleGeneratorSendsExactLunaRequest(t *testing.T) {
 		_, _ = response.Write([]byte(`{"output":[{"content":[{"type":"output_text","text":"  修复\n登录标题  "}]}]}`))
 	}))
 	t.Cleanup(server.Close)
-	generator, mock, closeDB := titleGeneratorForProvider(t, server.URL, "api-key", true)
+	generator, mock, closeDB := titleGeneratorForProvider(t, server.URL, true)
 	defer closeDB()
 	generator.client = server.Client()
 	title, err := generator.generate(context.Background(), "第一句用户消息")
@@ -62,8 +62,8 @@ func TestTitleGeneratorSendsExactLunaRequest(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestTitleGeneratorFallsBackWhenProviderIsNotAPIKey(t *testing.T) {
-	generator, mock, closeDB := titleGeneratorForProvider(t, "", "device-code", false)
+func TestTitleGeneratorFallsBackWithoutProviderConfiguration(t *testing.T) {
+	generator, mock, closeDB := titleGeneratorForProvider(t, "", false)
 	defer closeDB()
 	_, err := generator.generate(context.Background(), "message")
 	require.ErrorContains(t, err, "API Key")
@@ -86,7 +86,7 @@ func TestTitleGeneratorRejectsBadOrEmptyResponses(t *testing.T) {
 				_, _ = response.Write([]byte(test.body))
 			}))
 			t.Cleanup(server.Close)
-			generator, mock, closeDB := titleGeneratorForProvider(t, server.URL, "api-key", true)
+			generator, mock, closeDB := titleGeneratorForProvider(t, server.URL, true)
 			defer closeDB()
 			generator.client = server.Client()
 			_, err := generator.generate(context.Background(), "message")
@@ -102,7 +102,7 @@ func TestTitleGeneratorHonorsHTTPClientTimeout(t *testing.T) {
 		_, _ = response.Write([]byte(`{"output":[]}`))
 	}))
 	t.Cleanup(server.Close)
-	generator, mock, closeDB := titleGeneratorForProvider(t, server.URL, "api-key", true)
+	generator, mock, closeDB := titleGeneratorForProvider(t, server.URL, true)
 	defer closeDB()
 	generator.client = &http.Client{Timeout: 5 * time.Millisecond}
 	_, err := generator.generate(context.Background(), "message")
@@ -136,7 +136,7 @@ func TestTitleGeneratorRunOnceClaimsAndSchedulesFallback(t *testing.T) {
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE discord_conversations")).
 		WithArgs(conversationID).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
-	providerJSON := []byte(`{"providerType":"device-code","configured":true,"configSignature":"test"}`)
+	providerJSON := []byte(`{"modelSource":"chatgpt","chatgptConfigured":true,"configSignature":"test"}`)
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT value FROM platform_settings WHERE setting_key = $1")).
 		WithArgs("agent.provider").WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow(providerJSON))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT value FROM platform_settings WHERE setting_key=$1")).
@@ -203,8 +203,7 @@ func TestTitleGeneratorRecoversGeneratingWithoutCallingProvider(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func titleGeneratorForProvider(t *testing.T, baseURL, providerType string,
-	configured bool,
+func titleGeneratorForProvider(t *testing.T, baseURL string, configured bool,
 ) (*TitleGenerator, sqlmock.Sqlmock, func()) {
 	t.Helper()
 	db, mock, err := sqlmock.New()
@@ -212,14 +211,14 @@ func titleGeneratorForProvider(t *testing.T, baseURL, providerType string,
 	box, err := security.NewSecretBox([]byte(strings.Repeat("a", 32)))
 	require.NoError(t, err)
 	store := secrets.NewStore(db, box)
-	providerJSON, err := json.Marshal(map[string]any{"providerType": providerType,
-		"baseUrl": baseURL, "configured": configured, "configSignature": "test"})
+	providerJSON, err := json.Marshal(map[string]any{"modelSource": "provider",
+		"baseUrl": baseURL, "providerConfigured": configured, "configSignature": "test"})
 	require.NoError(t, err)
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT value FROM platform_settings WHERE setting_key = $1")).
 		WithArgs("agent.provider").WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow(providerJSON))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT value FROM platform_settings WHERE setting_key=$1")).
 		WithArgs("codex.global_agents").WillReturnError(sql.ErrNoRows)
-	if providerType == "api-key" && configured {
+	if configured {
 		nonce, ciphertext, err := box.Encrypt([]byte("test-api-key"), "agent.provider.api_key")
 		require.NoError(t, err)
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT nonce, ciphertext FROM encrypted_secrets WHERE secret_key = $1")).

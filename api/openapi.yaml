@@ -192,6 +192,49 @@ paths:
       responses:
         "204": { description: 已保存 }
         default: { $ref: "#/components/responses/Problem" }
+  /settings/agent-provider/chatgpt/login:
+    post:
+      operationId: startChatGPTLogin
+      tags: [Settings]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      responses:
+        "202":
+          description: 已发起 ChatGPT Device Code 登录
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChatGPTLoginOperation" }
+        default: { $ref: "#/components/responses/Problem" }
+  /settings/agent-provider/chatgpt/login/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getChatGPTLogin
+      tags: [Settings]
+      responses:
+        "200":
+          description: ChatGPT Device Code 登录状态
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChatGPTLoginOperation" }
+        default: { $ref: "#/components/responses/Problem" }
+    delete:
+      operationId: cancelChatGPTLogin
+      tags: [Settings]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      responses:
+        "204": { description: 已取消登录 }
+        default: { $ref: "#/components/responses/Problem" }
+  /settings/agent-provider/chatgpt/account:
+    delete:
+      operationId: logoutChatGPT
+      tags: [Settings]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      responses:
+        "204": { description: 已退出全局 ChatGPT 账号 }
+        default: { $ref: "#/components/responses/Problem" }
   /settings/global-agents:
     get:
       operationId: getGlobalAgents
@@ -1307,11 +1350,19 @@ components:
             error: { type: string }
     WorkerRuntimeCredential:
       type: object
-      required: [apiKey]
+      required: [modelSource, chatgptAuthRevision]
       properties:
         apiKey: { type: string, writeOnly: true }
-        baseUrl: { type: string, format: uri }
-        proxyUrl: { type: string, format: uri }
+        baseUrl: { type: string }
+        proxyUrl: { type: string }
+        modelSource: { type: string, enum: [chatgpt, provider] }
+        chatgptAuth:
+          type: object
+          additionalProperties: true
+          writeOnly: true
+        chatgptAuthRevision: { type: integer, format: int64 }
+        configSignature: { type: string }
+        globalAgents: { type: string }
     ProblemDetails:
       type: object
       required: [type, title, status]
@@ -1422,22 +1473,56 @@ components:
         filters: { type: object, additionalProperties: true }
     AgentProviderSettings:
       type: object
-      required: [providerType, configured]
+      required:
+        - modelSource
+        - providerConfigured
+        - chatgptConfigured
+        - chatgptAuthRevision
+        - configSignature
+        - chatgptAccount
       properties:
-        providerType: { type: string, enum: [device-code, api-key] }
-        baseUrl: { type: string, format: uri }
+        modelSource: { type: string, enum: [chatgpt, provider] }
+        baseUrl: { type: string }
         model: { type: string }
         reasoningEffort: { type: string }
         serviceTier: { type: string }
-        proxyUrl: { type: string, format: uri }
-        configured: { type: boolean }
+        proxyUrl: { type: string }
+        providerConfigured: { type: boolean, readOnly: true }
+        chatgptConfigured: { type: boolean, readOnly: true }
+        chatgptAuthRevision: { type: integer, format: int64, readOnly: true }
         configSignature: { type: string, readOnly: true }
+        chatgptAccount: { $ref: "#/components/schemas/ChatGPTAccount" }
     AgentProviderSettingsInput:
-      allOf:
-        - $ref: "#/components/schemas/AgentProviderSettings"
-        - type: object
-          properties:
-            apiKey: { type: string, writeOnly: true }
+      type: object
+      required: [modelSource]
+      properties:
+        modelSource: { type: string, enum: [chatgpt, provider] }
+        baseUrl: { type: string }
+        apiKey: { type: string, writeOnly: true }
+        model: { type: string }
+        reasoningEffort: { type: string }
+        serviceTier: { type: string }
+        proxyUrl: { type: string }
+    ChatGPTAccount:
+      type: object
+      required: [configured]
+      properties:
+        configured: { type: boolean }
+        email: { type: string }
+        planType: { type: string }
+    ChatGPTLoginOperation:
+      type: object
+      required: [id, status]
+      properties:
+        id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [pending, awaiting_user, completed, failed, canceled]
+        authUrl: { type: string, format: uri }
+        email: { type: string }
+        planType: { type: string }
+        error: { type: string }
+        expiresAt: { type: string, format: date-time }
     GlobalAgents:
       type: object
       required: [content]

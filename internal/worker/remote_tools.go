@@ -64,8 +64,6 @@ func (p *RemoteProcessor) handleRemoteDiscordTool(ctx context.Context,
 	var result codex.ToolCallResult
 	var err error
 	switch namespace {
-	case "github":
-		result, err = p.client.CallTool(ctx, task, request)
 	case browserToolNamespace:
 		result, err = executeBrowserTool(ctx, p.cfg, task.Claimed.ID.String(),
 			runtime.Workspace, &runtime, p.development, request)

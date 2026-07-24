@@ -1399,7 +1399,9 @@ func workerTestServer(t *testing.T, db *sql.DB) (*Server, string) {
 	secretStore := secrets.NewStore(db, box)
 	settings := platformsettings.NewService(db, secretStore)
 	require.NoError(t, settings.SaveAgentProvider(context.Background(),
-		platformsettings.AgentProviderInput{ProviderType: "api-key", APIKey: "test-key"}))
+		platformsettings.AgentProviderInput{
+			ModelSource: platformsettings.ModelSourceProvider, APIKey: "test-key",
+		}))
 	server := &Server{cfg: config.Config{LeaseDuration: 2 * time.Second,
 		CodexMaxSteersPerTurn: 5, CodexReconcileMaxAttempts: 3}, db: db,
 		nodes: executionnode.NewService(db), settings: settings,

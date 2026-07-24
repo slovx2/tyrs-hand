@@ -145,22 +145,10 @@ func (s *Server) workerEnvironmentRuntimeCredential(c *gin.Context) {
 		problem(c, http.StatusForbidden, "开发环境不属于当前执行节点", err)
 		return
 	}
-	provider, err := s.settings.AgentProvider(c.Request.Context())
-	if err != nil || provider.ProviderType != "api-key" {
-		problem(c, http.StatusConflict, "开发环境只支持 API Key Provider", err)
-		return
-	}
-	key, err := s.settings.APIKey(c.Request.Context())
+	credential, err := s.codexRuntimeCredential(c.Request.Context())
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取开发环境 Provider 凭据失败", err)
 		return
 	}
-	agents, err := s.settings.GlobalAgents(c.Request.Context())
-	if err != nil {
-		problem(c, http.StatusInternalServerError, "读取全局 AGENTS.md 失败", err)
-		return
-	}
-	c.JSON(http.StatusOK, workerprotocol.RuntimeCredential{APIKey: string(key),
-		BaseURL: provider.BaseURL, ProxyURL: provider.ProxyURL,
-		ConfigSignature: provider.ConfigSignature, GlobalAgents: agents.Content})
+	c.JSON(http.StatusOK, credential)
 }

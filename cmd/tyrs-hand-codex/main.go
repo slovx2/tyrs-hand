@@ -35,6 +35,9 @@ func run(arguments []string) error {
 	command := exec.Command(binary, arguments...)
 	command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
 	command.Env = os.Environ()
+	if os.Getenv("CODEX_HOME") == "" {
+		command.Env = append(command.Env, "CODEX_HOME=/var/lib/tyrs-hand/codex")
+	}
 	if err := command.Run(); err != nil {
 		var exit *exec.ExitError
 		if errors.As(err, &exit) {

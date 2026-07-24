@@ -19,6 +19,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/replygate"
+	"github.com/slovx2/tyrs-hand/internal/settings"
 	"go.uber.org/zap"
 )
 
@@ -673,7 +674,8 @@ func codexRuntimeConfig(environment []string, workerDataRoot string,
 	values := make(map[string]any, len(environment))
 	for _, entry := range environment {
 		key, value, found := strings.Cut(entry, "=")
-		if found && key != "" && key != "TYRS_BROWSER_MCP_TOKEN" {
+		if found && key != "" && key != "TYRS_BROWSER_MCP_TOKEN" &&
+			key != "TYRS_HAND_MODEL_API_KEY" {
 			values[key] = value
 		}
 	}
@@ -681,6 +683,7 @@ func codexRuntimeConfig(environment []string, workerDataRoot string,
 		"inherit": "all",
 		"set":     values,
 	}
+	hideModelAPIKey(config)
 	if strings.TrimSpace(workerDataRoot) != "" {
 		config["sandbox_workspace_write"] = map[string]any{
 			"writable_roots": []string{
@@ -690,6 +693,57 @@ func codexRuntimeConfig(environment []string, workerDataRoot string,
 		}
 	}
 	return config
+}
+
+func applyModelProviderConfig(config map[string]any, modelSource, baseURL string) {
+	if modelSource == settings.ModelSourceChatGPT {
+		config["model_provider"] = "openai"
+		return
+	}
+	if strings.TrimSpace(baseURL) == "" {
+		baseURL = "https://api.openai.com/v1"
+	}
+	config["model_provider"] = "tyrs-hand-provider"
+	providers, _ := config["model_providers"].(map[string]any)
+	if providers == nil {
+		providers = make(map[string]any)
+	}
+	providers["tyrs-hand-provider"] = map[string]any{
+		"name": "Tyrs Hand Provider", "base_url": strings.TrimRight(baseURL, "/"),
+		"wire_api": "responses", "env_key": "TYRS_HAND_MODEL_API_KEY",
+		"requires_openai_auth": true,
+	}
+	config["model_providers"] = providers
+}
+
+func hideModelAPIKey(config map[string]any) {
+	policy, _ := config["shell_environment_policy"].(map[string]any)
+	if policy == nil {
+		policy = map[string]any{"inherit": "all"}
+	}
+	if values, ok := policy["set"].(map[string]any); ok {
+		delete(values, "TYRS_HAND_MODEL_API_KEY")
+	}
+	excluded := make([]string, 0, 4)
+	switch values := policy["exclude"].(type) {
+	case []string:
+		excluded = append(excluded, values...)
+	case []any:
+		for _, value := range values {
+			if text, ok := value.(string); ok {
+				excluded = append(excluded, text)
+			}
+		}
+	}
+	for _, value := range excluded {
+		if value == "TYRS_HAND_MODEL_API_KEY" {
+			policy["exclude"] = excluded
+			config["shell_environment_policy"] = policy
+			return
+		}
+	}
+	policy["exclude"] = append(excluded, "TYRS_HAND_MODEL_API_KEY")
+	config["shell_environment_policy"] = policy
 }
 
 func prepareCodexRuntime(environment []string, workerDataRoot string,

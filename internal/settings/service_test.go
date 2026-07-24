@@ -12,7 +12,9 @@ import (
 )
 
 func TestProviderSignatureAndURLValidation(t *testing.T) {
-	record := providerRecord{AgentProvider: AgentProvider{ProviderType: "api-key", BaseURL: "https://api.example.com/v1"}, CredentialVersion: "v1"}
+	record := providerRecord{AgentProvider: AgentProvider{
+		ModelSource: ModelSourceProvider, BaseURL: "https://api.example.com/v1",
+	}, CredentialVersion: "v1"}
 	first := signature(record)
 	require.Len(t, first, 64)
 	require.Equal(t, first, signature(record))
@@ -25,8 +27,9 @@ func TestProviderSignatureAndURLValidation(t *testing.T) {
 
 func TestProviderConnectionChangedIgnoresRuntimeDefaults(t *testing.T) {
 	old := providerRecord{AgentProvider: AgentProvider{
-		ProviderType: "api-key", BaseURL: "https://api.example.com/v1", ProxyURL: "https://proxy.example.com",
-		Model: "gpt-5.5", Reasoning: "medium", ServiceTier: "standard",
+		ModelSource: ModelSourceProvider, BaseURL: "https://api.example.com/v1",
+		ProxyURL: "https://proxy.example.com",
+		Model:    "gpt-5.5", Reasoning: "medium", ServiceTier: "standard",
 	}, CredentialVersion: "v1"}
 	current := old
 	current.Model = "gpt-5.6-sol"
@@ -47,6 +50,32 @@ func TestWriteSecretFile(t *testing.T) {
 	info, err := os.Stat(path)
 	require.NoError(t, err)
 	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+}
+
+func TestSyncChatGPTAuthOnlyOverwritesOnRevisionChanges(t *testing.T) {
+	sharedHome := t.TempDir()
+	codexHome := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(sharedHome, "auth.json"),
+		[]byte(`{"tokens":{"access_token":"shared"}}`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(codexHome, "auth.json"),
+		[]byte(`{"tokens":{"access_token":"refreshed"}}`), 0o600))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(codexHome, ".tyrs-hand-chatgpt-auth-revision"),
+		[]byte("2"), 0o600))
+
+	require.NoError(t, SyncChatGPTAuth(codexHome, sharedHome, true, 2))
+	data, err := os.ReadFile(filepath.Join(codexHome, "auth.json"))
+	require.NoError(t, err)
+	require.JSONEq(t, `{"tokens":{"access_token":"refreshed"}}`, string(data))
+
+	require.NoError(t, SyncChatGPTAuth(codexHome, sharedHome, true, 3))
+	data, err = os.ReadFile(filepath.Join(codexHome, "auth.json"))
+	require.NoError(t, err)
+	require.JSONEq(t, `{"tokens":{"access_token":"shared"}}`, string(data))
+
+	require.NoError(t, SyncChatGPTAuth(codexHome, sharedHome, false, 4))
+	_, err = os.Stat(filepath.Join(codexHome, "auth.json"))
+	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
 func TestWriteGlobalAgents(t *testing.T) {
@@ -163,7 +192,7 @@ func TestGlobalAgentsParticipatesInProviderSignature(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 	service := NewService(db, nil)
-	provider := []byte(`{"providerType":"api-key","configured":true,"configSignature":"provider-signature"}`)
+	provider := []byte(`{"modelSource":"provider","providerConfigured":true,"configSignature":"provider-signature"}`)
 	expectProvider := func(content string) {
 		mock.ExpectQuery("SELECT value FROM platform_settings").WithArgs(agentProviderKey).
 			WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow(provider))
@@ -197,8 +226,9 @@ func TestGlobalAgentsMissingCorruptAndSizeBoundaries(t *testing.T) {
 		WillReturnError(sql.ErrNoRows)
 	provider, err := service.AgentProvider(context.Background())
 	require.NoError(t, err)
-	require.Equal(t, "device-code", provider.ProviderType)
-	require.False(t, provider.Configured)
+	require.Equal(t, ModelSourceProvider, provider.ModelSource)
+	require.False(t, provider.ProviderConfigured)
+	require.False(t, provider.ChatGPTConfigured)
 	require.Empty(t, provider.ConfigSignature)
 
 	mock.ExpectQuery("SELECT value FROM platform_settings").WithArgs(globalAgentsKey).
@@ -222,7 +252,7 @@ func TestGlobalAgentsReturnsQueryFailures(t *testing.T) {
 	require.ErrorIs(t, err, sql.ErrConnDone)
 
 	mock.ExpectQuery("SELECT value FROM platform_settings").WithArgs(agentProviderKey).
-		WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow([]byte(`{"providerType":"device-code"}`)))
+		WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow([]byte(`{"modelSource":"chatgpt"}`)))
 	mock.ExpectQuery("SELECT value FROM platform_settings").WithArgs(globalAgentsKey).
 		WillReturnError(sql.ErrConnDone)
 	_, err = service.AgentProvider(context.Background())
@@ -235,15 +265,6 @@ func TestGlobalAgentsReturnsQueryFailures(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestWriteProviderConfigPreservesCodexSettings(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, os.WriteFile(path, []byte("openai_base_url = \"https://old.example/v1\"\n[projects.\"/repo\"]\ntrust_level = \"trusted\"\n"), 0o600))
-	require.NoError(t, WriteProviderConfig(path, "https://api.example.com/v1"))
-	data, err := os.ReadFile(path)
-	require.NoError(t, err)
-	require.Equal(t, "openai_base_url = \"https://api.example.com/v1\"\n[projects.\"/repo\"]\ntrust_level = \"trusted\"\n", string(data))
-}
-
 func TestAtomicSettingsWritersReturnFilesystemFailures(t *testing.T) {
 	missingParent := filepath.Join(t.TempDir(), "missing", "auth.json")
 	require.Error(t, writeSecretFile(missingParent, []byte("secret")))
@@ -253,9 +274,4 @@ func TestAtomicSettingsWritersReturnFilesystemFailures(t *testing.T) {
 	require.Error(t, writeSecretFile(directoryTarget, []byte("secret")))
 	require.Error(t, WriteGlobalAgents(directoryTarget, "content"))
 
-	newConfig := filepath.Join(t.TempDir(), "config.toml")
-	require.NoError(t, WriteProviderConfig(newConfig, "https://api.example.com/v1"))
-	data, err := os.ReadFile(newConfig)
-	require.NoError(t, err)
-	require.Equal(t, "openai_base_url = \"https://api.example.com/v1\"\n", string(data))
 }

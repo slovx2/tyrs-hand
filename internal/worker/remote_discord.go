@@ -70,14 +70,11 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
+	applyModelProviderConfig(runtimeConfig, environmentCodex.runtime.ModelSource,
+		environmentCodex.runtime.ModelBaseURL)
 	client := environmentCodex.client
 	codexRuntime := codex.NewRuntime(client)
 	settings := task.Snapshot.Runtime
-	githubSpec, err := p.catalog.DynamicToolSpecFor(append(
-		append([]string{}, task.Claimed.AllowedTools...), task.Claimed.DangerousActions...))
-	if err != nil {
-		return workerprotocol.CompleteRequest{}, err
-	}
 	options := workerThreadOptions(ports.ThreadOptions{
 		CWD: runtime.Workspace, Model: settings.Model,
 		ReasoningEffort:       settings.ReasoningEffort,
@@ -85,7 +82,7 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 		NetworkEnabled:        settings.NetworkEnabled,
 		RuntimeConfig:         runtimeConfig,
 		DeveloperInstructions: browserDeveloperInstructions(p.cfg, discordintegration.MultiplayerDeveloperInstructions),
-		DynamicTools:          withBrowserTools(p.cfg, githubSpec, localGitSpec()),
+		DynamicTools:          withBrowserTools(p.cfg, localGitSpec()),
 	})
 	if err := codexRuntime.ValidateSkills(ctx, runtime.Workspace, skills); err != nil {
 		return workerprotocol.CompleteRequest{}, err

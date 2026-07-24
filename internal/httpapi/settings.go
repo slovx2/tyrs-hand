@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/slovx2/tyrs-hand/internal/codexauth"
 	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
 )
 
@@ -13,7 +14,15 @@ func (s *Server) getAgentProviderSettings(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "读取 Agent Provider 设置失败", err)
 		return
 	}
-	c.JSON(http.StatusOK, settings)
+	account, err := s.codexAuth.Account(c.Request.Context())
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取全局 ChatGPT 账号失败", err)
+		return
+	}
+	c.JSON(http.StatusOK, struct {
+		platformsettings.AgentProvider
+		ChatGPTAccount codexauth.Account `json:"chatgptAccount"`
+	}{AgentProvider: settings, ChatGPTAccount: account})
 }
 
 func (s *Server) putAgentProviderSettings(c *gin.Context) {

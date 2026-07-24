@@ -92,6 +92,57 @@ func TestDesktopRelayWithoutSSHIdentityStripsReservedIdentityContext(t *testing.
 	require.NotContains(t, string(plan.Params), "forged")
 }
 
+func TestDesktopRelayForcesGlobalModelAndOmitsPlatformGitHubTools(t *testing.T) {
+	controller := &desktopRelayController{
+		processor: &RemoteProcessor{logger: zap.NewNop()},
+		environment: &environmentCodex{runtime: devcontainer.Runtime{
+			ModelSource:  "provider",
+			ModelBaseURL: "https://api.example.com/v1",
+		}},
+	}
+	plan, err := controller.PrepareCall(context.Background(), codexrelay.Call{
+		Role: codexrelay.RoleDesktop, Method: "thread/start",
+		Params: json.RawMessage(`{
+			"cwd":"/workspace",
+			"dynamicTools":[{"type":"namespace","name":"personal","tools":[]}],
+			"config":{
+				"model_providers":{"personal":{"base_url":"https://personal.example/v1"}},
+				"mcp_servers":{"personal":{"url":"https://mcp.example"}},
+				"shell_environment_policy":{
+					"set":{"PERSONAL":"keep","TYRS_HAND_MODEL_API_KEY":"leak"},
+					"exclude":["PERSONAL_SECRET"]
+				}
+			}
+		}`),
+	})
+	require.NoError(t, err)
+	var params map[string]any
+	require.NoError(t, json.Unmarshal(plan.Params, &params))
+	runtimeConfig := params["config"].(map[string]any)
+	require.Equal(t, "tyrs-hand-provider", runtimeConfig["model_provider"])
+	require.Contains(t, runtimeConfig["model_providers"], "personal")
+	require.Contains(t, runtimeConfig, "mcp_servers")
+	policy := runtimeConfig["shell_environment_policy"].(map[string]any)
+	require.NotContains(t, policy["set"], "TYRS_HAND_MODEL_API_KEY")
+	require.ElementsMatch(t, []any{"PERSONAL_SECRET", "TYRS_HAND_MODEL_API_KEY"},
+		policy["exclude"])
+	tools := params["dynamicTools"].([]any)
+	encodedTools, err := json.Marshal(tools)
+	require.NoError(t, err)
+	require.Contains(t, string(encodedTools), `"name":"personal"`)
+	require.Contains(t, string(encodedTools), `"name":"git"`)
+	require.NotContains(t, string(encodedTools), `"name":"github"`)
+
+	controller.environment.runtime.ModelSource = "chatgpt"
+	resume, err := controller.PrepareCall(context.Background(), codexrelay.Call{
+		Role: codexrelay.RoleDesktop, Method: "thread/resume",
+		Params: json.RawMessage(`{"threadId":"thread","config":{}}`),
+	})
+	require.NoError(t, err)
+	require.Contains(t, string(resume.Params), `"model_provider":"openai"`)
+	require.NotContains(t, string(resume.Params), `"dynamicTools"`)
+}
+
 func TestDesktopRelayAdvertisesServiceTiersWithoutChangingRealChatGPTAccount(t *testing.T) {
 	apiKeyResult := json.RawMessage(
 		`{"account":{"type":"apiKey"},"requiresOpenaiAuth":true}`)

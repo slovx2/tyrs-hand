@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/slovx2/tyrs-hand/internal/codex"
@@ -53,9 +54,6 @@ func (p *RemoteProcessor) ProcessRemote(ctx context.Context, task *workerprotoco
 	commands <-chan workerprotocol.RunCommand,
 	report func(string, json.RawMessage),
 ) (workerprotocol.CompleteRequest, error) {
-	if task.Snapshot.Runtime.ProviderType != "api-key" {
-		return workerprotocol.CompleteRequest{}, errors.New("分布式 Worker 只支持 API Key Provider")
-	}
 	if task.Claimed.SourceType == codexcontrol.SourceDiscord {
 		return p.processRemoteDiscord(ctx, task, commands, report)
 	}
@@ -66,6 +64,17 @@ func (p *RemoteProcessor) ProcessRemote(ctx context.Context, task *workerprotoco
 func (p *RemoteProcessor) ProcessDevelopmentOperation(ctx context.Context,
 	operation *workerprotocol.DevelopmentOperation,
 ) error {
+	processEnvironment := []string(nil)
+	if operation.Operation == "reconfigure" {
+		credential, err := p.client.EnvironmentRuntimeCredential(ctx, operation.EnvironmentID)
+		if err != nil {
+			return err
+		}
+		processEnvironment, err = remoteCredentialEnvironment(credential)
+		if err != nil {
+			return err
+		}
+	}
 	err := p.development.RunRemoteOperation(ctx, devcontainer.RemoteOperation{
 		EnvironmentID: operation.EnvironmentID, Operation: operation.Operation,
 		ContainerName: operation.ContainerName,
@@ -75,7 +84,8 @@ func (p *RemoteProcessor) ProcessDevelopmentOperation(ctx context.Context,
 		RuntimeUser: operation.RuntimeUser, RuntimeUID: operation.RuntimeUID,
 		RuntimeGID: operation.RuntimeGID, RuntimeHome: operation.RuntimeHome,
 		SSHPublicKey: operation.SSHPublicKey, SSHPort: operation.SSHPort,
-		SSHConfigRevision: operation.SSHConfigRevision,
+		SSHConfigRevision:  operation.SSHConfigRevision,
+		ProcessEnvironment: processEnvironment,
 	})
 	if err != nil || operation.Operation != "reconfigure" {
 		return err
@@ -159,6 +169,7 @@ func (p *RemoteProcessor) processRemoteGitHub(ctx context.Context, task *workerp
 		return codexcontrol.TurnResult{}, err
 	}
 	environment, runtimeConfig := prepareCodexRuntime(environment, p.cfg.WorkerDataRoot, p.cfg)
+	applyModelProviderConfig(runtimeConfig, credential.ModelSource, credential.BaseURL)
 	if err := replygate.Install(codexHome); err != nil {
 		return codexcontrol.TurnResult{}, fmt.Errorf("安装 GitHub 回复 Stop Hook: %w", err)
 	}
@@ -249,25 +260,41 @@ func prepareRemoteCodexHome(home string, credential workerprotocol.RuntimeCreden
 	if err := settings.WriteGlobalAgents(filepath.Join(home, "AGENTS.md"), globalAgents); err != nil {
 		return nil, err
 	}
-	auth, _ := json.Marshal(map[string]string{"auth_mode": "apikey", "OPENAI_API_KEY": credential.APIKey})
-	temporary := filepath.Join(home, "auth.json.tmp")
-	if err := os.WriteFile(temporary, auth, 0o600); err != nil {
-		return nil, err
-	}
-	if err := os.Chmod(temporary, 0o600); err != nil {
-		return nil, err
-	}
-	if err := os.Rename(temporary, filepath.Join(home, "auth.json")); err != nil {
-		return nil, err
-	}
-	if credential.BaseURL != "" {
-		if err := settings.WriteProviderConfig(filepath.Join(home, "config.toml"), credential.BaseURL); err != nil {
+	authPath := filepath.Join(home, "auth.json")
+	authMarker := filepath.Join(home, ".tyrs-hand-chatgpt-auth-revision")
+	expectedRevision := strconv.FormatInt(credential.ChatGPTAuthRevision, 10)
+	currentRevision, _ := os.ReadFile(authMarker)
+	if string(currentRevision) != expectedRevision && len(credential.ChatGPTAuth) > 0 {
+		temporary := authPath + ".tmp"
+		if err := os.WriteFile(temporary, credential.ChatGPTAuth, 0o600); err != nil {
+			return nil, err
+		}
+		if err := os.Chmod(temporary, 0o600); err != nil {
+			return nil, err
+		}
+		if err := os.Rename(temporary, authPath); err != nil {
+			return nil, err
+		}
+	} else if string(currentRevision) != expectedRevision {
+		if err := os.Remove(authPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return nil, err
 		}
 	}
+	if string(currentRevision) != expectedRevision {
+		if err := os.WriteFile(authMarker, []byte(expectedRevision), 0o600); err != nil {
+			return nil, err
+		}
+	}
+	return remoteCredentialEnvironment(credential)
+}
+
+func remoteCredentialEnvironment(credential workerprotocol.RuntimeCredential) ([]string, error) {
 	environment := []string(nil)
-	if credential.BaseURL != "" {
-		environment = append(environment, "OPENAI_BASE_URL="+credential.BaseURL)
+	if credential.ModelSource == settings.ModelSourceProvider {
+		if credential.APIKey == "" {
+			return nil, errors.New("当前 Provider 模式缺少模型 App Key")
+		}
+		environment = append(environment, "TYRS_HAND_MODEL_API_KEY="+credential.APIKey)
 	}
 	if credential.ProxyURL != "" {
 		environment = append(environment, "HTTP_PROXY="+credential.ProxyURL,

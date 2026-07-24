@@ -159,9 +159,14 @@ fi`
 echo $$ > /run/tyrs-hand/app-server.pid
 exec /opt/tyrs-hand/libexec/codex-real app-server --listen unix:///run/tyrs-hand/app-server.sock \
   >>/run/tyrs-hand/app-server.log 2>&1`
-	if _, err := m.docker(ctx, "exec", "--detach", "--user", owner,
-		"--env", "HOME="+operation.RuntimeHome, "--env", "CODEX_HOME=/var/lib/tyrs-hand/codex",
-		container, "/bin/sh", "-c", appServerCommand); err != nil {
+	arguments := []string{"exec", "--detach", "--user", owner,
+		"--env", "HOME=" + operation.RuntimeHome,
+		"--env", "CODEX_HOME=/var/lib/tyrs-hand/codex"}
+	for _, entry := range operation.ProcessEnvironment {
+		arguments = append(arguments, "--env", entry)
+	}
+	arguments = append(arguments, container, "/bin/sh", "-c", appServerCommand)
+	if _, err := m.docker(ctx, arguments...); err != nil {
 		return fmt.Errorf("启动环境 Codex app-server: %w", err)
 	}
 	if err := m.waitForAppServerSocket(ctx, container); err != nil {

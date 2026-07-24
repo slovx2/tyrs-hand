@@ -113,6 +113,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		return result, err
 	}
 	environment, runtimeConfig := prepareCodexRuntime(environment, "", p.cfg)
+	applyModelProviderConfig(runtimeConfig, provider.ModelSource, provider.BaseURL)
 	if err := p.development.CopyToRuntime(ctx, containerRuntime, temporaryHome, containerRuntime.CodexHome); err != nil {
 		return result, err
 	}
@@ -136,11 +137,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		DeveloperInstructions: browserDeveloperInstructions(p.cfg, discordintegration.MultiplayerDeveloperInstructions),
 	})
 	if jobCtx.HasRepository {
-		githubSpec, specErr := p.catalog.DynamicToolSpecFor(append(append([]string{}, claimed.AllowedTools...), claimed.DangerousActions...))
-		if specErr != nil {
-			return result, specErr
-		}
-		options.DynamicTools = append(options.DynamicTools, githubSpec, localGitSpec())
+		options.DynamicTools = append(options.DynamicTools, localGitSpec())
 		options.DeveloperInstructions += "\nFollow repository AGENTS.md and the explicitly attached skills. Use only the selected repository and persistent Discord clone. The container and Home are shared with the owner's other forums, so never inspect or modify sibling workspaces outside the current CWD. Use git.commit and git.publish_branch for writes."
 	}
 	options.DynamicTools = withBrowserTools(p.cfg, options.DynamicTools...)
@@ -318,9 +315,6 @@ func (p *Processor) loadDiscordContext(ctx context.Context, job codexcontrol.Int
 func (p *Processor) handleDiscordTool(ctx context.Context, claimed *codexcontrol.ClaimedControl,
 	runtime devcontainer.Runtime, workspace ports.Workspace, request codex.ToolCallRequest,
 ) (codex.ToolCallResult, error) {
-	if request.Namespace != nil && *request.Namespace == "github" {
-		return p.control.CallTool(ctx, claimed.Capability, request)
-	}
 	if request.Namespace != nil && *request.Namespace == browserToolNamespace {
 		return p.auditLocalToolCall(ctx, claimed, request, func() (codex.ToolCallResult, error) {
 			return executeBrowserTool(ctx, p.cfg, claimed.ID.String(), runtime.Workspace,

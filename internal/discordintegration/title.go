@@ -110,7 +110,7 @@ func (g *TitleGenerator) generate(ctx context.Context, body string) (string, err
 	if err != nil {
 		return "", err
 	}
-	if provider.ProviderType != "api-key" || !provider.Configured {
+	if !provider.ProviderConfigured {
 		return "", errors.New("未配置 Agent Provider API Key")
 	}
 	apiKey, err := g.settings.APIKey(ctx)

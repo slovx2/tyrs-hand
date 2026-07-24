@@ -22,17 +22,20 @@ func ContainerWorkspacePath(relative string) (string, error) {
 }
 
 type Runtime struct {
-	EnvironmentID   uuid.UUID
-	ForumID         uuid.UUID
-	Container       string
-	Workspace       string
-	CodexHome       string
-	User            string
-	UID             int64
-	GID             int64
-	Home            string
-	AppServerSocket string
-	RelaySocket     string
+	EnvironmentID      uuid.UUID
+	ForumID            uuid.UUID
+	Container          string
+	Workspace          string
+	CodexHome          string
+	User               string
+	UID                int64
+	GID                int64
+	Home               string
+	AppServerSocket    string
+	RelaySocket        string
+	ModelSource        string
+	ModelBaseURL       string
+	ProcessEnvironment []string
 }
 
 type RemoteSpec struct {
@@ -72,22 +75,23 @@ type RemoteState struct {
 }
 
 type RemoteOperation struct {
-	EnvironmentID     uuid.UUID
-	Operation         string
-	ContainerName     string
-	ImageRef          string
-	DataVolume        string
-	HomeVolume        string
-	Network           string
-	Workspace         string
-	ConversationIDs   []uuid.UUID
-	RuntimeUser       string
-	RuntimeUID        int64
-	RuntimeGID        int64
-	RuntimeHome       string
-	SSHPublicKey      string
-	SSHPort           int
-	SSHConfigRevision int64
+	EnvironmentID      uuid.UUID
+	Operation          string
+	ContainerName      string
+	ImageRef           string
+	DataVolume         string
+	HomeVolume         string
+	Network            string
+	Workspace          string
+	ConversationIDs    []uuid.UUID
+	RuntimeUser        string
+	RuntimeUID         int64
+	RuntimeGID         int64
+	RuntimeHome        string
+	SSHPublicKey       string
+	SSHPort            int
+	SSHConfigRevision  int64
+	ProcessEnvironment []string
 }
 
 type environment struct {

@@ -180,6 +180,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings/agent-provider/chatgpt/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["startChatGPTLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/agent-provider/chatgpt/login/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["getChatGPTLogin"];
+        put?: never;
+        post?: never;
+        delete: operations["cancelChatGPTLogin"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/agent-provider/chatgpt/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["logoutChatGPT"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/settings/global-agents": {
         parameters: {
             query?: never;
@@ -1433,11 +1483,18 @@ export interface components {
             error?: string;
         };
         WorkerRuntimeCredential: {
-            apiKey: string;
-            /** Format: uri */
+            apiKey?: string;
             baseUrl?: string;
-            /** Format: uri */
             proxyUrl?: string;
+            /** @enum {string} */
+            modelSource: "chatgpt" | "provider";
+            chatgptAuth?: {
+                [key: string]: unknown;
+            };
+            /** Format: int64 */
+            chatgptAuthRevision: number;
+            configSignature?: string;
+            globalAgents?: string;
         };
         ProblemDetails: {
             /** Format: uri-reference */
@@ -1543,19 +1600,46 @@ export interface components {
         };
         AgentProviderSettings: {
             /** @enum {string} */
-            providerType: "device-code" | "api-key";
-            /** Format: uri */
+            modelSource: "chatgpt" | "provider";
             baseUrl?: string;
             model?: string;
             reasoningEffort?: string;
             serviceTier?: string;
-            /** Format: uri */
             proxyUrl?: string;
-            configured: boolean;
-            readonly configSignature?: string;
+            readonly providerConfigured: boolean;
+            readonly chatgptConfigured: boolean;
+            /** Format: int64 */
+            readonly chatgptAuthRevision: number;
+            readonly configSignature: string;
+            chatgptAccount: components["schemas"]["ChatGPTAccount"];
         };
-        AgentProviderSettingsInput: components["schemas"]["AgentProviderSettings"] & {
+        AgentProviderSettingsInput: {
+            /** @enum {string} */
+            modelSource: "chatgpt" | "provider";
+            baseUrl?: string;
             apiKey?: string;
+            model?: string;
+            reasoningEffort?: string;
+            serviceTier?: string;
+            proxyUrl?: string;
+        };
+        ChatGPTAccount: {
+            configured: boolean;
+            email?: string;
+            planType?: string;
+        };
+        ChatGPTLoginOperation: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            status: "pending" | "awaiting_user" | "completed" | "failed" | "canceled";
+            /** Format: uri */
+            authUrl?: string;
+            email?: string;
+            planType?: string;
+            error?: string;
+            /** Format: date-time */
+            expiresAt?: string;
         };
         GlobalAgents: {
             content: string;
@@ -2298,6 +2382,96 @@ export interface operations {
         };
         responses: {
             /** @description 已保存 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    startChatGPTLogin: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已发起 ChatGPT Device Code 登录 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatGPTLoginOperation"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getChatGPTLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ChatGPT Device Code 登录状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatGPTLoginOperation"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    cancelChatGPTLogin: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已取消登录 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    logoutChatGPT: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已退出全局 ChatGPT 账号 */
             204: {
                 headers: {
                     [name: string]: unknown;

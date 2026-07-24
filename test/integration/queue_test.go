@@ -81,31 +81,40 @@ func TestPostgresMigrationsAndLeaseEpoch(t *testing.T) {
 	settingsService := platformsettings.NewService(db, secrets.NewStore(db, box))
 	provider, err := settingsService.AgentProvider(ctx)
 	require.NoError(t, err)
-	require.Equal(t, "device-code", provider.ProviderType)
-	require.Error(t, settingsService.SaveAgentProvider(ctx, platformsettings.AgentProviderInput{ProviderType: "unknown"}))
-	require.Error(t, settingsService.SaveAgentProvider(ctx, platformsettings.AgentProviderInput{ProviderType: "api-key"}))
-	require.Error(t, settingsService.SaveAgentProvider(ctx, platformsettings.AgentProviderInput{ProviderType: "device-code", ProxyURL: "relative"}))
+	require.Equal(t, platformsettings.ModelSourceProvider, provider.ModelSource)
+	require.Error(t, settingsService.SaveAgentProvider(ctx,
+		platformsettings.AgentProviderInput{ModelSource: "unknown"}))
+	require.Error(t, settingsService.SaveAgentProvider(ctx,
+		platformsettings.AgentProviderInput{ModelSource: platformsettings.ModelSourceProvider}))
+	require.Error(t, settingsService.SaveAgentProvider(ctx,
+		platformsettings.AgentProviderInput{
+			ModelSource: platformsettings.ModelSourceChatGPT, ProxyURL: "relative",
+		}))
 	require.NoError(t, settingsService.SaveAgentProvider(ctx, platformsettings.AgentProviderInput{
-		ProviderType: "api-key", BaseURL: "https://api.example.com/v1", APIKey: "test-provider-key", Model: "test-model",
+		ModelSource: platformsettings.ModelSourceProvider,
+		BaseURL:     "https://api.example.com/v1", APIKey: "test-provider-key",
+		Model: "test-model",
 	}))
 	apiKey, err := settingsService.APIKey(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "test-provider-key", string(apiKey))
 	provider, environment, err := settingsService.PrepareCodexHome(ctx, t.TempDir(), t.TempDir())
 	require.NoError(t, err)
-	require.True(t, provider.Configured)
-	require.Contains(t, environment, "OPENAI_BASE_URL=https://api.example.com/v1")
+	require.True(t, provider.ProviderConfigured)
+	require.Contains(t, environment, "TYRS_HAND_MODEL_API_KEY=test-provider-key")
 	sharedHome := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(sharedHome, "auth.json"), []byte(`{"tokens":{}}`), 0o600))
+	require.NoError(t, settingsService.SetChatGPTConfigured(ctx, true))
 	require.NoError(t, settingsService.SaveAgentProvider(ctx, platformsettings.AgentProviderInput{
-		ProviderType: "device-code", ProxyURL: "https://proxy.example.com",
+		ModelSource: platformsettings.ModelSourceChatGPT,
+		BaseURL:     "https://api.example.com/v1", ProxyURL: "https://proxy.example.com",
 	}))
 	deviceHome := t.TempDir()
 	_, _, err = settingsService.PrepareCodexHome(ctx, deviceHome, t.TempDir())
 	require.Error(t, err)
 	provider, environment, err = settingsService.PrepareCodexHome(ctx, deviceHome, sharedHome)
 	require.NoError(t, err)
-	require.Equal(t, "device-code", provider.ProviderType)
+	require.Equal(t, platformsettings.ModelSourceChatGPT, provider.ModelSource)
 	require.Contains(t, environment, "HTTP_PROXY=https://proxy.example.com")
 	require.FileExists(t, filepath.Join(deviceHome, "auth.json"))
 

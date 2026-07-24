@@ -503,22 +503,12 @@ func (s *Server) workerRuntimeCredential(c *gin.Context) {
 		remoteRunError(c, "校验运行凭据请求失败", err)
 		return
 	}
-	provider, err := s.settings.AgentProvider(c.Request.Context())
-	if err != nil {
-		problem(c, http.StatusInternalServerError, "读取 Provider 设置失败", err)
-		return
-	}
-	if provider.ProviderType != "api-key" {
-		problem(c, http.StatusConflict, "分布式 Worker 只支持 API Key Provider", nil)
-		return
-	}
-	key, err := s.settings.APIKey(c.Request.Context())
+	credential, err := s.codexRuntimeCredential(c.Request.Context())
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取 Provider 凭据失败", err)
 		return
 	}
-	c.JSON(http.StatusOK, workerprotocol.RuntimeCredential{APIKey: string(key),
-		BaseURL: provider.BaseURL, ProxyURL: provider.ProxyURL})
+	c.JSON(http.StatusOK, credential)
 }
 
 func (s *Server) workerSetThread(c *gin.Context) {

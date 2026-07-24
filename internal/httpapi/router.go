@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"github.com/slovx2/tyrs-hand/internal/auth"
+	"github.com/slovx2/tyrs-hand/internal/codexauth"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/executionnode"
@@ -29,20 +30,21 @@ import (
 const sessionCookie = "tyrs_hand_session"
 
 type Server struct {
-	cfg      config.Config
-	db       *sql.DB
-	redis    *redis.Client
-	auth     *auth.Service
-	github   *ghadapter.Manager
-	catalog  *githubtools.Catalog
-	settings *platformsettings.Service
-	discord  *discordintegration.Manager
-	bindings *discordintegration.BindingService
-	nodes    *executionnode.Service
-	ssh      *sshconfig.Service
-	secrets  *secrets.Store
-	logger   *zap.Logger
-	assets   fs.FS
+	cfg       config.Config
+	db        *sql.DB
+	redis     *redis.Client
+	auth      *auth.Service
+	github    *ghadapter.Manager
+	catalog   *githubtools.Catalog
+	settings  *platformsettings.Service
+	codexAuth *codexauth.Manager
+	discord   *discordintegration.Manager
+	bindings  *discordintegration.BindingService
+	nodes     *executionnode.Service
+	ssh       *sshconfig.Service
+	secrets   *secrets.Store
+	logger    *zap.Logger
+	assets    fs.FS
 }
 
 func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authService *auth.Service, githubManager *ghadapter.Manager, catalog *githubtools.Catalog, settingsService *platformsettings.Service, discordManager *discordintegration.Manager, bindingService *discordintegration.BindingService, secretStore *secrets.Store, logger *zap.Logger) (*Server, error) {
@@ -53,7 +55,8 @@ func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authSer
 	return &Server{cfg: cfg, db: db, redis: redisClient, auth: authService, github: githubManager,
 		catalog: catalog, settings: settingsService, discord: discordManager, bindings: bindingService,
 		nodes: executionnode.NewService(db), ssh: sshconfig.NewService(db, secretStore),
-		secrets: secretStore, logger: logger, assets: assets}, nil
+		secrets: secretStore, logger: logger, assets: assets,
+		codexAuth: codexauth.NewManager(cfg, db, settingsService, logger)}, nil
 }
 
 func (s *Server) baseRouter() *gin.Engine {
@@ -138,6 +141,10 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	authenticated.GET("/audit-logs", s.listAuditLogs)
 	authenticated.GET("/settings/agent-provider", s.getAgentProviderSettings)
 	authenticated.PUT("/settings/agent-provider", s.requireCSRF(), s.putAgentProviderSettings)
+	authenticated.POST("/settings/agent-provider/chatgpt/login", s.requireCSRF(), s.startChatGPTLogin)
+	authenticated.GET("/settings/agent-provider/chatgpt/login/:id", s.getChatGPTLogin)
+	authenticated.DELETE("/settings/agent-provider/chatgpt/login/:id", s.requireCSRF(), s.cancelChatGPTLogin)
+	authenticated.DELETE("/settings/agent-provider/chatgpt/account", s.requireCSRF(), s.logoutChatGPT)
 	authenticated.GET("/settings/global-agents", s.getGlobalAgents)
 	authenticated.PUT("/settings/global-agents", s.requireCSRF(), s.putGlobalAgents)
 	authenticated.GET("/settings/codex", s.listCodexSettings)
