@@ -86,6 +86,10 @@ func TestManagerCompletesLoginWithNullableLoginID(t *testing.T) {
 		}})
 		request = server.request()
 		server.send(map[string]any{"id": request["id"], "result": map[string]any{
+			"account": nil,
+		}})
+		request = server.request()
+		server.send(map[string]any{"id": request["id"], "result": map[string]any{
 			"account": map[string]any{
 				"type": "chatgpt", "email": "user@example.com", "planType": "plus",
 			},

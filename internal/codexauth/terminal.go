@@ -10,8 +10,17 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codex"
 	"go.uber.org/zap"
 )
+
+const accountReadReadyTimeout = 5 * time.Second
+
+type loginAccount struct {
+	Type     string `json:"type"`
+	Email    string `json:"email"`
+	PlanType string `json:"planType"`
+}
 
 func prepareSharedHome(home string) error {
 	if err := os.MkdirAll(home, 0o700); err != nil {
@@ -59,35 +68,48 @@ func prepareSharedHome(home string) error {
 }
 
 func (m *Manager) complete(active *activeLogin) {
-	ctx, cancel := context.WithTimeout(context.Background(), m.cfg.ControlTimeout)
+	timeout := accountReadReadyTimeout
+	if m.cfg.ControlTimeout > 0 && m.cfg.ControlTimeout < timeout {
+		timeout = m.cfg.ControlTimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	var response struct {
-		Account *struct {
-			Type     string `json:"type"`
-			Email    string `json:"email"`
-			PlanType string `json:"planType"`
-		} `json:"account"`
-	}
-	if err := active.client.Call(ctx, "account/read", map[string]any{
-		"refreshToken": true,
-	}, &response); err != nil {
+	account, err := waitForAccount(ctx, active.client)
+	if err != nil {
 		m.fail(active.operationID, errors.New("登录完成但无法读取 ChatGPT 账号"))
-		return
-	}
-	if response.Account == nil || response.Account.Type != "chatgpt" {
-		m.fail(active.operationID, errors.New("登录完成但没有读取到 ChatGPT 账号"))
 		return
 	}
 	if err := m.settings.SetChatGPTConfigured(ctx, true); err != nil {
 		m.fail(active.operationID, err)
 		return
 	}
-	_, err := m.db.ExecContext(ctx, `UPDATE codex_auth_operations
+	_, err = m.db.ExecContext(ctx, `UPDATE codex_auth_operations
 		SET status='completed', account_email=$2, account_plan_type=$3,
 		user_code=NULL, finished_at=now(), updated_at=now() WHERE id=$1`,
-		active.operationID, response.Account.Email, response.Account.PlanType)
+		active.operationID, account.Email, account.PlanType)
 	if err != nil {
 		m.logger.Error("保存 ChatGPT 登录结果失败", zap.Error(err))
+	}
+}
+
+func waitForAccount(ctx context.Context, client *codex.Client) (loginAccount, error) {
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		var response struct {
+			Account *loginAccount `json:"account"`
+		}
+		err := client.Call(ctx, "account/read", map[string]any{
+			"refreshToken": true,
+		}, &response)
+		if err == nil && response.Account != nil && response.Account.Type == "chatgpt" {
+			return *response.Account, nil
+		}
+		select {
+		case <-ctx.Done():
+			return loginAccount{}, ctx.Err()
+		case <-ticker.C:
+		}
 	}
 }
 
