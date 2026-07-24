@@ -158,11 +158,11 @@ func githubWorkItemAdditionalContext(job jobContext, workspace ports.Workspace) 
 }
 
 func (p *Processor) ensureThread(ctx context.Context, runtime *codex.Runtime,
-	claimed *codexcontrol.ClaimedControl, options ports.ThreadOptions, codexHome string,
+	claimed *codexcontrol.ClaimedControl, options ports.ThreadOptions, codexHomeKey string,
 ) (string, error) {
 	threadID := claimed.ExternalThreadID
 	if threadID != "" {
-		if claimed.CodexHomeKey != "" && claimed.CodexHomeKey != codexHome {
+		if claimed.CodexHomeKey != "" && claimed.CodexHomeKey != codexHomeKey {
 			return "", errors.New("持久化 Control 的 CODEX_HOME 与当前运行配置不一致")
 		}
 		if err := runtime.ResumeThread(ctx, threadID, options); err != nil {
@@ -184,11 +184,11 @@ func (p *Processor) ensureThread(ctx context.Context, runtime *codex.Runtime,
 			return "", err
 		}
 	}
-	if err := p.controls.SetThread(ctx, claimed, threadID, codexHome); err != nil {
+	if err := p.controls.SetThread(ctx, claimed, threadID, codexHomeKey); err != nil {
 		return "", err
 	}
 	claimed.ExternalThreadID = threadID
-	claimed.CodexHomeKey = codexHome
+	claimed.CodexHomeKey = codexHomeKey
 	return threadID, nil
 }
 

@@ -239,12 +239,13 @@ func TestPersistentControlIdentityMigrationRemovesIsolationFieldsAndDuplicateCon
 	ordinaryFirstID, ordinarySecondID := uuid.New(), uuid.New()
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_thread_controls
 		(id, source_type, discord_conversation_id, repository_id, agent_profile_id,
-			context_version, development_environment_id, created_at)
+			context_version, development_environment_id, codex_home_key, created_at)
 		VALUES
-			($1,'discord_conversation',$5,$7,$9,1,$8,now()-interval '4 hours'),
-			($2,'desktop_thread',$5,$7,$9,2,$8,now()-interval '3 hours'),
-			($3,'discord_conversation',$6,$7,$9,3,$8,now()-interval '2 hours'),
-			($4,'discord_conversation',$6,$7,$9,4,$8,now()-interval '1 hour')`,
+			($1,'discord_conversation',$5,$7,$9,1,$8,NULL,now()-interval '4 hours'),
+			($2,'desktop_thread',$5,$7,$9,2,$8,'/var/lib/tyrs-hand/codex',
+				now()-interval '3 hours'),
+			($3,'discord_conversation',$6,$7,$9,3,$8,NULL,now()-interval '2 hours'),
+			($4,'discord_conversation',$6,$7,$9,4,$8,NULL,now()-interval '1 hour')`,
 		projectedOldID, projectedDesktopID, ordinaryFirstID, ordinarySecondID,
 		projectedConversationID, ordinaryConversationID, repositoryID, environmentID, profileID)
 	require.NoError(t, err)
@@ -306,6 +307,10 @@ func TestPersistentControlIdentityMigrationRemovesIsolationFieldsAndDuplicateCon
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT protocol_version FROM execution_nodes
 		WHERE name='migration-protocol-node'`).Scan(&protocolVersion))
 	require.Equal(t, 8, protocolVersion)
+	var codexHomeKey string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT codex_home_key
+		FROM codex_thread_controls WHERE id=$1`, projectedDesktopID).Scan(&codexHomeKey))
+	require.Equal(t, environmentID.String(), codexHomeKey)
 }
 
 func migrationTestDatabase(t *testing.T) *sql.DB {

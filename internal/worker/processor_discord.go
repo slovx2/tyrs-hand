@@ -140,7 +140,8 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	if err := runtime.ValidateSkills(ctx, workspace, skills); err != nil {
 		return result, err
 	}
-	threadID, err := p.ensureThread(ctx, runtime, claimed, options, containerRuntime.CodexHome)
+	threadID, err := p.ensureThread(ctx, runtime, claimed, options,
+		containerRuntime.EnvironmentID.String())
 	if err != nil {
 		return result, err
 	}

@@ -87,7 +87,8 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	if err := codexRuntime.ValidateSkills(ctx, runtime.Workspace, skills); err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
-	threadID, err := p.ensureRemoteThread(ctx, codexRuntime, task, options, runtime.CodexHome)
+	threadID, err := p.ensureRemoteThread(ctx, codexRuntime, task, options,
+		runtime.EnvironmentID.String())
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
