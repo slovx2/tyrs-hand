@@ -14,7 +14,7 @@ import (
 var remoteEnvironmentLocks sync.Map
 
 func (m *Manager) EnsureRemote(ctx context.Context, spec RemoteSpec,
-	credential string,
+	credential string, processEnvironment []string,
 ) (Runtime, RemoteState, error) {
 	if !m.Enabled() {
 		return Runtime{}, RemoteState{}, errors.New("discord 开发容器未启用")
@@ -44,7 +44,7 @@ func (m *Manager) EnsureRemote(ctx context.Context, spec RemoteSpec,
 	}
 	if item.Environment.Status == "pending" || item.Environment.Status == "error" ||
 		item.Environment.ContainerID == "" {
-		provisionErr := m.provision(ctx, &item, credential)
+		provisionErr := m.provision(ctx, &item, credential, processEnvironment)
 		if provisionErr != nil {
 			return Runtime{}, state(provisionErr), provisionErr
 		}

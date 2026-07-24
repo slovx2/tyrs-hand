@@ -2,10 +2,8 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"syscall"
@@ -17,6 +15,8 @@ const (
 	defaultCodexReal   = "/opt/tyrs-hand/codex/bin/codex"
 	defaultRelaySocket = "/run/tyrs-hand/relay.sock"
 )
+
+var execProcess = syscall.Exec
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -33,19 +33,13 @@ func run(arguments []string) error {
 			envOr("TYRS_HAND_RELAY_SOCKET", defaultRelaySocket))
 	}
 	binary := resolveCodexReal()
-	command := exec.Command(binary, arguments...)
-	command.Args[0] = os.Args[0]
-	command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
-	command.Env = os.Environ()
+	environment := os.Environ()
 	if os.Getenv("CODEX_HOME") == "" {
-		command.Env = append(command.Env, "CODEX_HOME=/var/lib/tyrs-hand/codex")
+		environment = append(environment, "CODEX_HOME=/var/lib/tyrs-hand/codex")
 	}
-	if err := command.Run(); err != nil {
-		var exit *exec.ExitError
-		if errors.As(err, &exit) {
-			return fmt.Errorf("codex-real 退出：%d", exit.ExitCode())
-		}
-		return err
+	processArguments := append([]string{os.Args[0]}, arguments...)
+	if err := execProcess(binary, processArguments, environment); err != nil {
+		return fmt.Errorf("启动 codex-real: %w", err)
 	}
 	return nil
 }

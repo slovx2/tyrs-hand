@@ -33,6 +33,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/database"
 	"github.com/slovx2/tyrs-hand/internal/participantidentity"
+	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -66,6 +67,12 @@ func TestUserEnvironmentSharesHomeAndKeepsIndependentRepositoryClones(t *testing
 	conversationOne := mustUUID(t, "10000000-0000-0000-0000-000000000001")
 	first, err := manager.Ensure(ctx, environmentID, firstForumID, conversationOne, "")
 	require.NoError(t, err)
+	appServerPID := strings.TrimSpace(dockerRead(t, manager, first,
+		"/run/tyrs-hand/app-server.pid"))
+	appServerExecutable, err := manager.docker(ctx, "exec", first.Container,
+		"readlink", "/proc/"+appServerPID+"/exe")
+	require.NoError(t, err)
+	require.Equal(t, "/opt/tyrs-hand/codex/bin/codex", strings.TrimSpace(appServerExecutable))
 	require.FileExists(t, filepath.Join(firstRepository, "one.txt"))
 	require.Equal(t, "/home/dev", first.Home)
 	require.NoError(t, dockerExec(manager, first, "sh", "-c",
@@ -113,6 +120,18 @@ ln -s "$HOME/.local/share/tyrs-hand/codex/versions/0.145.0-user" "$HOME/.local/s
 	require.Equal(t, "launched", string(launched))
 	require.Error(t, process.Signal(syscall.SIGTERM))
 	require.Error(t, process.Kill())
+
+	require.NoError(t, manager.StopRemoteAppServer(ctx, first.Container))
+	require.Eventually(t, func() bool {
+		_, processErr := manager.docker(ctx, "exec", first.Container,
+			"test", "!", "-d", "/proc/"+appServerPID)
+		return processErr == nil
+	}, 5*time.Second, 100*time.Millisecond)
+	require.NoError(t, manager.EnsureRemoteDaemons(ctx, workerprotocol.EnvironmentManifest{
+		EnvironmentID: environmentID, ContainerName: first.Container,
+		RuntimeUser: first.User, RuntimeUID: first.UID, RuntimeGID: first.GID,
+		RuntimeHome: first.Home,
+	}, first))
 
 	require.NoError(t, dockerExec(manager, first, "sh", "-c", "printf committed > committed.txt"))
 	status, err := manager.Git(ctx, first, "status", "--porcelain=v1")

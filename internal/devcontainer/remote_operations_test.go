@@ -104,6 +104,27 @@ func TestConfigureRemoteDaemonsReportsStartFailures(t *testing.T) {
 	}
 }
 
+func TestProvisionStartsInitialAppServerWithRuntimeCredential(t *testing.T) {
+	runner := &recordingCommandRunner{resultFor: map[string]string{
+		`{{.Id}}`:                     "sha256:development",
+		`index .Config.Labels`:        "1",
+		`{{.Config.User}}`:            "developer",
+		`TYRS_RUNTIME_USER=developer`: "developer:1000:1000:/home/developer",
+	}}
+	manager := &Manager{dockerBin: "docker", dockerHost: "inherit", runner: runner,
+		developmentRuntimeDir: t.TempDir(), developmentRuntimeHostDir: "/host/runtime"}
+	item := workspace{Environment: environment{
+		ID: uuid.New(), Status: "pending", ImageRef: "development-image",
+		ContainerName: "development", DataVolume: "development-data",
+		HomeVolume: "development-home", Network: "development-network",
+	}}
+
+	err := manager.provision(context.Background(), &item, "git-credential",
+		[]string{"TYRS_HAND_MODEL_API_KEY=managed-secret"})
+	require.NoError(t, err)
+	require.True(t, runner.contains("--env TYRS_HAND_MODEL_API_KEY=managed-secret"))
+}
+
 func TestRunRemoteDevelopmentOperations(t *testing.T) {
 	runner := &recordingCommandRunner{resultFor: map[string]string{
 		`index .Config.Labels`:                   "1",
@@ -314,7 +335,7 @@ func TestEnsureRemoteUsesExistingEnvironment(t *testing.T) {
 		ImageID: "sha256:image", ContainerName: "dev-container", ContainerID: "container-id",
 		DataVolume: "dev-data", HomeVolume: "dev-home", Network: "dev-network",
 		RuntimeUser: "agent", RuntimeUID: 1000, RuntimeGID: 1000, RuntimeHome: "/home/agent",
-	}, "credential")
+	}, "credential", nil)
 	require.NoError(t, err)
 	require.Equal(t, environmentID, runtime.EnvironmentID)
 	require.Equal(t, forumID, runtime.ForumID)
@@ -334,14 +355,14 @@ func TestEnsureRemoteUsesExistingEnvironment(t *testing.T) {
 		WorkspaceStatus: "ready", WorkspaceRelative: "workspaces/forum", WorkspaceBranch: "main",
 		EnvironmentStatus: "running", ContainerName: "dev-container", ContainerID: "container-id",
 		RuntimeUser: "agent", RuntimeUID: 1000, RuntimeGID: 1000, RuntimeHome: "/home/agent",
-	}, "credential")
+	}, "credential", nil)
 	require.NoError(t, err)
 	require.Equal(t, runtime.CodexHome, second.CodexHome)
 }
 
 func TestEnsureRemoteRequiresDevelopmentContainers(t *testing.T) {
 	manager := &Manager{}
-	_, _, err := manager.EnsureRemote(context.Background(), RemoteSpec{}, "")
+	_, _, err := manager.EnsureRemote(context.Background(), RemoteSpec{}, "", nil)
 	require.ErrorContains(t, err, "未启用")
 }
 

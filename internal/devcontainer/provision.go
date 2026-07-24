@@ -9,7 +9,9 @@ import (
 	"time"
 )
 
-func (m *Manager) provision(ctx context.Context, item *workspace, credential string) error {
+func (m *Manager) provision(ctx context.Context, item *workspace, credential string,
+	processEnvironment []string,
+) error {
 	firstProvision := item.Environment.ContainerID == ""
 	if m.db != nil {
 		_, _ = m.db.ExecContext(ctx, `UPDATE discord_development_environments
@@ -77,7 +79,7 @@ func (m *Manager) provision(ctx context.Context, item *workspace, credential str
 	}
 	if err := m.configureRemoteDaemons(ctx, candidateName, RemoteOperation{
 		EnvironmentID: item.Environment.ID, RuntimeUser: runtimeUser, RuntimeUID: uid,
-		RuntimeGID: gid, RuntimeHome: home,
+		RuntimeGID: gid, RuntimeHome: home, ProcessEnvironment: processEnvironment,
 	}); err != nil {
 		return err
 	}

@@ -95,7 +95,7 @@ func (m *Manager) Ensure(ctx context.Context, environmentID, forumID, conversati
 		return Runtime{}, err
 	}
 	if item.Environment.Status == "pending" || item.Environment.Status == "error" || item.Environment.ContainerID == "" {
-		if err := m.provision(ctx, &item, credential); err != nil {
+		if err := m.provision(ctx, &item, credential, nil); err != nil {
 			m.failEnvironment(environmentID, err)
 			return Runtime{}, err
 		}

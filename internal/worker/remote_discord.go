@@ -36,13 +36,26 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
+	runtimeCredential, err := p.client.EnvironmentRuntimeCredential(ctx,
+		snapshot.Development.EnvironmentID)
+	if err != nil {
+		return workerprotocol.CompleteRequest{}, err
+	}
+	processEnvironment, err := remoteCredentialEnvironment(runtimeCredential)
+	if err != nil {
+		return workerprotocol.CompleteRequest{}, err
+	}
 	defer cleanupBrowserTask(p.cfg, task.Claimed.ID.String())
 	spec := remoteDevelopmentSpec(*snapshot.Development)
-	runtime, state, err := p.development.EnsureRemote(ctx, spec, fetchCredential)
+	runtime, state, err := p.development.EnsureRemote(ctx, spec, fetchCredential,
+		processEnvironment)
 	p.reportDevelopmentState(ctx, task, state)
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
+	runtime.ModelSource = runtimeCredential.ModelSource
+	runtime.ModelBaseURL = runtimeCredential.BaseURL
+	runtime.ProcessEnvironment = processEnvironment
 	defer func() {
 		status, statusErr := p.development.Git(context.Background(), runtime,
 			"status", "--porcelain=v1")
