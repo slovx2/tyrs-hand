@@ -84,7 +84,7 @@ func (m *Manager) complete(active *activeLogin) {
 	}
 	_, err := m.db.ExecContext(ctx, `UPDATE codex_auth_operations
 		SET status='completed', account_email=$2, account_plan_type=$3,
-		finished_at=now(), updated_at=now() WHERE id=$1`,
+		user_code=NULL, finished_at=now(), updated_at=now() WHERE id=$1`,
 		active.operationID, response.Account.Email, response.Account.PlanType)
 	if err != nil {
 		m.logger.Error("保存 ChatGPT 登录结果失败", zap.Error(err))
@@ -95,7 +95,7 @@ func (m *Manager) fail(id uuid.UUID, cause error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_, err := m.db.ExecContext(ctx, `UPDATE codex_auth_operations SET status='failed',
-		error=$2, finished_at=now(), updated_at=now()
+		error=$2, user_code=NULL, finished_at=now(), updated_at=now()
 		WHERE id=$1 AND status IN ('pending','awaiting_user')`, id, cause.Error())
 	if err != nil {
 		m.logger.Error("保存 ChatGPT 登录失败状态失败", zap.Error(err))

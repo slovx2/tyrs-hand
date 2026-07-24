@@ -53,7 +53,8 @@ func TestManagerCompletesLoginWithNullableLoginID(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "status"}).
 			AddRow(operationID, "pending"))
 	mock.ExpectExec("UPDATE codex_auth_operations SET login_id").
-		WithArgs(operationID, "login-1", "https://auth.openai.com/device", sqlmock.AnyArg()).
+		WithArgs(operationID, "login-1", "https://auth.openai.com/codex/device",
+			"ABCD-1234", sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("SELECT value FROM platform_settings").
 		WithArgs("agent.provider").
@@ -70,12 +71,15 @@ func TestManagerCompletesLoginWithNullableLoginID(t *testing.T) {
 		WithArgs(operationID, "user@example.com", "plus").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
+	loginRequest := make(chan map[string]any, 1)
 	launcher := &rpcLauncher{script: func(server *rpcServer) {
 		server.initialize()
 		request := server.request()
+		loginRequest <- request
 		server.send(map[string]any{"id": request["id"], "result": map[string]any{
-			"type": "chatgpt", "loginId": "login-1",
-			"authUrl": "https://auth.openai.com/device",
+			"type": "chatgptDeviceCode", "loginId": "login-1",
+			"verificationUrl": "https://auth.openai.com/codex/device",
+			"userCode":        "ABCD-1234",
 		}})
 		server.send(map[string]any{"method": "account/login/completed", "params": map[string]any{
 			"loginId": nil, "success": true, "error": nil,
@@ -94,6 +98,10 @@ func TestManagerCompletesLoginWithNullableLoginID(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, operationID, operation.ID)
 	require.Equal(t, "awaiting_user", operation.Status)
+	require.Equal(t, "https://auth.openai.com/codex/device", operation.VerificationURL)
+	require.Equal(t, "ABCD-1234", operation.UserCode)
+	request := <-loginRequest
+	require.Equal(t, map[string]any{"type": "chatgptDeviceCode"}, request["params"])
 	require.Eventually(t, func() bool {
 		manager.mu.Lock()
 		defer manager.mu.Unlock()
@@ -113,7 +121,8 @@ func TestManagerCancelDoesNotRewriteStatusAsExpired(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "status"}).
 			AddRow(operationID, "pending"))
 	mock.ExpectExec("UPDATE codex_auth_operations SET login_id").
-		WithArgs(operationID, "login-1", "https://auth.openai.com/device", sqlmock.AnyArg()).
+		WithArgs(operationID, "login-1", "https://auth.openai.com/codex/device",
+			"ABCD-1234", sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("UPDATE codex_auth_operations SET status='canceled'").
 		WithArgs(operationID).WillReturnResult(sqlmock.NewResult(0, 1))
@@ -122,8 +131,9 @@ func TestManagerCancelDoesNotRewriteStatusAsExpired(t *testing.T) {
 		server.initialize()
 		request := server.request()
 		server.send(map[string]any{"id": request["id"], "result": map[string]any{
-			"type": "chatgpt", "loginId": "login-1",
-			"authUrl": "https://auth.openai.com/device",
+			"type": "chatgptDeviceCode", "loginId": "login-1",
+			"verificationUrl": "https://auth.openai.com/codex/device",
+			"userCode":        "ABCD-1234",
 		}})
 		request = server.request()
 		server.send(map[string]any{"id": request["id"], "result": map[string]any{}})

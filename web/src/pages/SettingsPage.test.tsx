@@ -84,7 +84,8 @@ describe('SettingsPage', () => {
     const operation = {
       id: '92b45cb9-aa2c-4438-b194-50181736df94',
       status: 'awaiting_user',
-      authUrl: 'https://auth.openai.com/device?user_code=ABCD',
+      verificationUrl: 'https://auth.openai.com/codex/device',
+      userCode: 'ABCD-1234',
       expiresAt: '2026-07-24T10:00:00Z',
     }
     server.use(
@@ -136,9 +137,12 @@ describe('SettingsPage', () => {
       await screen.findByRole('button', { name: '登录 ChatGPT' }),
     )
     const link = await screen.findByRole('link', {
-      name: '打开 ChatGPT 授权页面',
+      name: '打开 ChatGPT 设备授权页面',
     })
-    expect(link).toHaveAttribute('href', operation.authUrl)
+    expect(screen.getByLabelText('设备授权代码')).toHaveTextContent(
+      operation.userCode,
+    )
+    expect(link).toHaveAttribute('href', operation.verificationUrl)
     await user.click(screen.getByRole('button', { name: '取消登录' }))
     expect(canceled).toHaveBeenCalledOnce()
     expect(

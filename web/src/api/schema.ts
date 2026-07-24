@@ -1634,7 +1634,8 @@ export interface components {
             /** @enum {string} */
             status: "pending" | "awaiting_user" | "completed" | "failed" | "canceled";
             /** Format: uri */
-            authUrl?: string;
+            verificationUrl?: string;
+            userCode?: string;
             email?: string;
             planType?: string;
             error?: string;

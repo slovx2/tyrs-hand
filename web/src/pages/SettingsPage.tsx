@@ -37,7 +37,8 @@ interface ProviderInput {
 interface ChatGPTLoginOperation {
   id: string
   status: 'pending' | 'awaiting_user' | 'completed' | 'failed' | 'canceled'
-  authUrl?: string
+  verificationUrl?: string
+  userCode?: string
   email?: string
   planType?: string
   error?: string
@@ -237,15 +238,23 @@ export function SettingsPage() {
           <div className="danger-note mt-4" role="status">
             {loginOperation.status === 'awaiting_user' && (
               <>
-                <p>后台登录已启动，请在官方页面完成授权。</p>
-                {loginOperation.authUrl && (
+                <p>请打开官方设备授权页面，并输入下面的代码。</p>
+                {loginOperation.userCode && (
+                  <code
+                    className="mt-3 block w-fit rounded-lg bg-[var(--surface-muted)] px-4 py-3 text-lg font-semibold tracking-wider select-all"
+                    aria-label="设备授权代码"
+                  >
+                    {loginOperation.userCode}
+                  </code>
+                )}
+                {loginOperation.verificationUrl && (
                   <a
                     className="button mt-3 inline-flex"
-                    href={loginOperation.authUrl}
+                    href={loginOperation.verificationUrl}
                     target="_blank"
                     rel="noreferrer"
                   >
-                    打开 ChatGPT 授权页面
+                    打开 ChatGPT 设备授权页面
                   </a>
                 )}
                 {loginOperation.expiresAt && (

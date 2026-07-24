@@ -25,13 +25,14 @@ type Account struct {
 }
 
 type Operation struct {
-	ID        uuid.UUID  `json:"id"`
-	Status    string     `json:"status"`
-	AuthURL   string     `json:"authUrl,omitempty"`
-	Email     string     `json:"email,omitempty"`
-	PlanType  string     `json:"planType,omitempty"`
-	Error     string     `json:"error,omitempty"`
-	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+	ID              uuid.UUID  `json:"id"`
+	Status          string     `json:"status"`
+	VerificationURL string     `json:"verificationUrl,omitempty"`
+	UserCode        string     `json:"userCode,omitempty"`
+	Email           string     `json:"email,omitempty"`
+	PlanType        string     `json:"planType,omitempty"`
+	Error           string     `json:"error,omitempty"`
+	ExpiresAt       *time.Time `json:"expiresAt,omitempty"`
 }
 
 type activeLogin struct {
@@ -59,7 +60,8 @@ func NewManager(cfg config.Config, db *sql.DB, service *settings.Service,
 ) *Manager {
 	manager := &Manager{cfg: cfg, db: db, settings: service, logger: logger, start: codex.Start}
 	_, _ = db.Exec(`UPDATE codex_auth_operations SET status='failed',
-		error='Control 重启，登录流程已中止', finished_at=now(), updated_at=now()
+		error='Control 重启，登录流程已中止', user_code=NULL,
+		finished_at=now(), updated_at=now()
 		WHERE status IN ('pending','awaiting_user')`)
 	return manager
 }
@@ -93,18 +95,20 @@ func (m *Manager) Start(ctx context.Context, administratorID uuid.UUID) (Operati
 		return Operation{}, loginErr
 	}
 	var response struct {
-		Type    string `json:"type"`
-		LoginID string `json:"loginId"`
-		AuthURL string `json:"authUrl"`
+		Type            string `json:"type"`
+		LoginID         string `json:"loginId"`
+		VerificationURL string `json:"verificationUrl"`
+		UserCode        string `json:"userCode"`
 	}
-	if err = client.Call(ctx, "account/login/start", map[string]string{"type": "chatgpt"},
-		&response); err != nil {
+	if err = client.Call(ctx, "account/login/start",
+		map[string]string{"type": "chatgptDeviceCode"}, &response); err != nil {
 		_ = client.Close()
 		loginErr := errors.New("无法通过 Codex 发起 ChatGPT Device Code 登录")
 		m.fail(operation.ID, loginErr)
 		return Operation{}, loginErr
 	}
-	if response.Type != "chatgpt" || response.LoginID == "" || response.AuthURL == "" {
+	if response.Type != "chatgptDeviceCode" || response.LoginID == "" ||
+		response.VerificationURL == "" || response.UserCode == "" {
 		_ = client.Close()
 		err = errors.New("后台 Codex 没有返回有效的 Device Code 登录信息")
 		m.fail(operation.ID, err)
@@ -112,8 +116,9 @@ func (m *Manager) Start(ctx context.Context, administratorID uuid.UUID) (Operati
 	}
 	expiresAt := time.Now().Add(loginLifetime)
 	_, err = m.db.ExecContext(ctx, `UPDATE codex_auth_operations SET login_id=$2,
-		auth_url=$3, status='awaiting_user', expires_at=$4, updated_at=now() WHERE id=$1`,
-		operation.ID, response.LoginID, response.AuthURL, expiresAt)
+		verification_url=$3, user_code=$4, status='awaiting_user',
+		expires_at=$5, updated_at=now() WHERE id=$1`,
+		operation.ID, response.LoginID, response.VerificationURL, response.UserCode, expiresAt)
 	if err != nil {
 		_ = client.Close()
 		m.fail(operation.ID, err)
@@ -126,7 +131,9 @@ func (m *Manager) Start(ctx context.Context, administratorID uuid.UUID) (Operati
 	m.active = active
 	m.mu.Unlock()
 	go m.wait(loginCtx, active)
-	operation.Status, operation.AuthURL = "awaiting_user", response.AuthURL
+	operation.Status = "awaiting_user"
+	operation.VerificationURL = response.VerificationURL
+	operation.UserCode = response.UserCode
 	operation.ExpiresAt = &expiresAt
 	return operation, nil
 }
@@ -134,11 +141,12 @@ func (m *Manager) Start(ctx context.Context, administratorID uuid.UUID) (Operati
 func (m *Manager) Get(ctx context.Context, id uuid.UUID) (Operation, error) {
 	var result Operation
 	var expires sql.NullTime
-	err := m.db.QueryRowContext(ctx, `SELECT id, status, COALESCE(auth_url,''),
-		COALESCE(account_email,''), COALESCE(account_plan_type,''), COALESCE(error,''),
-		expires_at FROM codex_auth_operations WHERE id=$1`, id).Scan(
-		&result.ID, &result.Status, &result.AuthURL, &result.Email, &result.PlanType,
-		&result.Error, &expires)
+	err := m.db.QueryRowContext(ctx, `SELECT id, status, COALESCE(verification_url,''),
+		COALESCE(user_code,''), COALESCE(account_email,''),
+		COALESCE(account_plan_type,''), COALESCE(error,''), expires_at
+		FROM codex_auth_operations WHERE id=$1`, id).Scan(
+		&result.ID, &result.Status, &result.VerificationURL, &result.UserCode,
+		&result.Email, &result.PlanType, &result.Error, &expires)
 	if expires.Valid {
 		result.ExpiresAt = &expires.Time
 	}
@@ -180,7 +188,8 @@ func (m *Manager) Cancel(ctx context.Context, id uuid.UUID) error {
 	active.cancel()
 	_ = active.client.Close()
 	_, err := m.db.ExecContext(ctx, `UPDATE codex_auth_operations SET status='canceled',
-		finished_at=now(), updated_at=now() WHERE id=$1 AND status='awaiting_user'`, id)
+		user_code=NULL, finished_at=now(), updated_at=now()
+		WHERE id=$1 AND status='awaiting_user'`, id)
 	if err != nil {
 		return err
 	}

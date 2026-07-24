@@ -1518,7 +1518,8 @@ components:
         status:
           type: string
           enum: [pending, awaiting_user, completed, failed, canceled]
-        authUrl: { type: string, format: uri }
+        verificationUrl: { type: string, format: uri }
+        userCode: { type: string }
         email: { type: string }
         planType: { type: string }
         error: { type: string }
