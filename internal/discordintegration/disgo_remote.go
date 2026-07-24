@@ -409,7 +409,7 @@ func discordCardComponents(card ComponentCardPayload) ([]discord.LayoutComponent
 		parts = append(parts, discord.NewTextDisplay(value))
 		return nil
 	}
-	for _, value := range []string{card.Header, card.Body, card.Timeline, card.Footer} {
+	for _, value := range []string{card.Header, card.Body, card.Timeline} {
 		if err := addText(value); err != nil {
 			return nil, err
 		}

@@ -1,12 +1,33 @@
 package worker
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codex"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/stretchr/testify/require"
 )
+
+type recordingThreadRuntimeClient struct {
+	methods   []string
+	resumeErr error
+}
+
+func (c *recordingThreadRuntimeClient) Call(_ context.Context, method string, _ any, _ any) error {
+	c.methods = append(c.methods, method)
+	if method == "thread/resume" {
+		return c.resumeErr
+	}
+	return errors.New("不应调用 " + method)
+}
 
 func TestGitHubWorkItemAdditionalContextIncludesIssueAndPullRequestMetadata(t *testing.T) {
 	workspace := ports.Workspace{Branch: "tyrs-hand/pull-8", HeadSHA: "workspace-head"}
@@ -61,4 +82,88 @@ func TestWorkerThreadOptionsForceUnattendedCommandPolicy(t *testing.T) {
 			require.Equal(t, input.NetworkEnabled, actual.NetworkEnabled)
 		})
 	}
+}
+
+func TestDiscordThreadResumesExistingThread(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		mock.ExpectClose()
+		require.NoError(t, db.Close())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+	claimed := &codexcontrol.ClaimedControl{
+		Intent: codexcontrol.Intent{ID: uuid.New(), ControlID: uuid.New(),
+			SourceType: codexcontrol.SourceDiscord},
+		ExternalThreadID: "discord-thread", CodexHomeKey: "shared-home",
+		Recovering: true,
+		LeaseToken: "lease", LeaseEpoch: 4,
+	}
+	mock.ExpectExec("UPDATE codex_thread_controls SET").
+		WithArgs(claimed.ControlID, sqlmock.AnyArg(), claimed.LeaseEpoch,
+			"discord-thread", "shared-home").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	client := &recordingThreadRuntimeClient{}
+	processor := &Processor{controls: codexcontrol.NewRepository(db, time.Minute)}
+
+	threadID, err := processor.ensureThread(context.Background(), codex.NewRuntime(client),
+		claimed, ports.ThreadOptions{}, "shared-home")
+	require.NoError(t, err)
+	require.Equal(t, "discord-thread", threadID)
+	require.Equal(t, []string{"thread/resume"}, client.methods)
+}
+
+func TestGitHubThreadResumesExistingThread(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		mock.ExpectClose()
+		require.NoError(t, db.Close())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+	claimed := &codexcontrol.ClaimedControl{
+		Intent: codexcontrol.Intent{ID: uuid.New(), ControlID: uuid.New(),
+			SourceType: codexcontrol.SourceGitHub},
+		ExternalThreadID: "github-thread", CodexHomeKey: "shared-home",
+		Recovering: true,
+		LeaseToken: "lease", LeaseEpoch: 5,
+	}
+	mock.ExpectExec("UPDATE codex_thread_controls SET").
+		WithArgs(claimed.ControlID, sqlmock.AnyArg(), claimed.LeaseEpoch,
+			"github-thread", "shared-home").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	client := &recordingThreadRuntimeClient{}
+	processor := &Processor{controls: codexcontrol.NewRepository(db, time.Minute)}
+
+	threadID, err := processor.ensureThread(context.Background(), codex.NewRuntime(client),
+		claimed, ports.ThreadOptions{}, "shared-home")
+	require.NoError(t, err)
+	require.Equal(t, "github-thread", threadID)
+	require.Equal(t, []string{"thread/resume"}, client.methods)
+}
+
+func TestDiscordResumeFailureDoesNotStartReplacementThread(t *testing.T) {
+	claimed := &codexcontrol.ClaimedControl{
+		Intent:           codexcontrol.Intent{SourceType: codexcontrol.SourceDiscord},
+		ExternalThreadID: "missing-thread", CodexHomeKey: "shared-home",
+		Recovering: true,
+	}
+	client := &recordingThreadRuntimeClient{resumeErr: errors.New("thread missing")}
+
+	_, err := (&Processor{}).ensureThread(context.Background(), codex.NewRuntime(client),
+		claimed, ports.ThreadOptions{}, "shared-home")
+	require.ErrorContains(t, err, "恢复 Codex Thread")
+	require.Equal(t, []string{"thread/resume"}, client.methods)
+}
+
+func TestPersistentCodexHomeUsesControlPathOrStableIdentity(t *testing.T) {
+	claimed := &codexcontrol.ClaimedControl{Intent: codexcontrol.Intent{
+		RepositoryID: uuid.New(), AgentProfileID: uuid.New(),
+	}}
+	expected := filepath.Join("/codex", "pools", claimed.RepositoryID.String(),
+		claimed.AgentProfileID.String())
+	require.Equal(t, expected, persistentCodexHome("/codex", claimed))
+
+	claimed.CodexHomeKey = "/codex/pools/legacy-provider-home"
+	require.Equal(t, claimed.CodexHomeKey, persistentCodexHome("/codex", claimed))
 }

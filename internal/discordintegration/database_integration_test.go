@@ -227,6 +227,64 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 	testDiscordRecoveryOrchestration(t, ctx, db, manager, seed)
 }
 
+func TestDiscordLunaTitleSynchronizesBeforeAndAfterControlBinding(t *testing.T) {
+	db := discordDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	_, err := db.ExecContext(ctx, `INSERT INTO discord_guilds(guild_id, name, enabled)
+		VALUES ($1, 'Title Timing Test', true)`, testGuildID)
+	require.NoError(t, err)
+	seed := seedDiscordManagerData(t, db)
+	service := NewConversationService(db)
+	generator := &TitleGenerator{db: db}
+
+	titleFirstID, err := service.BeginPost(ctx, IncomingMessage{
+		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
+		ThreadID: "title-first-thread", MessageID: "title-first-message",
+		DiscordUserID: "1001", DisplayName: "alice", Username: "alice",
+		Title: "Pending", Body: "先生成标题，再创建 Control", ConfigurationConfirmed: false,
+	})
+	require.NoError(t, err)
+	var controls int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_thread_controls
+		WHERE discord_conversation_id=$1`, titleFirstID).Scan(&controls))
+	require.Zero(t, controls)
+	claimed, err := generator.claim(ctx, "pending")
+	require.NoError(t, err)
+	require.Equal(t, titleFirstID, claimed.ID)
+	require.NoError(t, generator.schedule(ctx, claimed, "标题先完成"))
+	require.NoError(t, service.FinalizeConfiguration(ctx, titleFirstID, "1001", nil))
+	var titleFirstControl uuid.UUID
+	var desiredTitle, desiredSource string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT control.id,
+		control.desired_thread_name, control.desired_thread_name_source
+		FROM discord_conversations conversation
+		JOIN codex_thread_controls control ON control.discord_conversation_id=conversation.id
+		WHERE conversation.id=$1`, titleFirstID).
+		Scan(&titleFirstControl, &desiredTitle, &desiredSource))
+	require.NotEqual(t, uuid.Nil, titleFirstControl)
+	require.Equal(t, "标题先完成", desiredTitle)
+	require.Equal(t, "luna", desiredSource)
+
+	controlFirstID, err := service.BeginPost(ctx, IncomingMessage{
+		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
+		ThreadID: "control-first-thread", MessageID: "control-first-message",
+		DiscordUserID: "1001", DisplayName: "alice", Username: "alice",
+		Title: "Pending", Body: "先创建 Control，再生成标题", ConfigurationConfirmed: true,
+	})
+	require.NoError(t, err)
+	claimed, err = generator.claim(ctx, "pending")
+	require.NoError(t, err)
+	require.Equal(t, controlFirstID, claimed.ID)
+	require.NoError(t, generator.schedule(ctx, claimed, "Control 先完成"))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT control.desired_thread_name,
+		control.desired_thread_name_source FROM discord_conversations conversation
+		JOIN codex_thread_controls control ON control.discord_conversation_id=conversation.id
+		WHERE conversation.id=$1`, controlFirstID).Scan(&desiredTitle, &desiredSource))
+	require.Equal(t, "Control 先完成", desiredTitle)
+	require.Equal(t, "luna", desiredSource)
+}
+
 func TestConversationLifecycleProjectionAndRestore(t *testing.T) {
 	db := discordDatabase(t)
 	ctx := context.Background()
@@ -250,9 +308,9 @@ func TestConversationLifecycleProjectionAndRestore(t *testing.T) {
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_thread_controls
 		(id, source_type, discord_conversation_id, repository_id, agent_profile_id,
-			context_version, external_thread_id, execution_node_id,
+			external_thread_id, execution_node_id,
 			development_environment_id, lifecycle_state, lifecycle_revision)
-		VALUES ($1,'discord_conversation',$2,$3,$4,1,'thread-lifecycle',$5,$6,'archived',3)`,
+		VALUES ($1,'discord_conversation',$2,$3,$4,'thread-lifecycle',$5,$6,'archived',3)`,
 		controlID, conversationID, seed.repositoryID, profileID, seed.executionNodeID,
 		environmentID)
 	require.NoError(t, err)
@@ -410,9 +468,9 @@ func TestConversationLifecycleProjectionAndRestore(t *testing.T) {
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_thread_controls
 		(id, source_type, discord_conversation_id, repository_id, agent_profile_id,
-			context_version, external_thread_id, execution_node_id,
+			external_thread_id, execution_node_id,
 			development_environment_id, lifecycle_state, lifecycle_revision)
-		VALUES ($1,'discord_conversation',$2,$3,$4,1,'thread-lifecycle-gateway',$5,$6,
+		VALUES ($1,'discord_conversation',$2,$3,$4,'thread-lifecycle-gateway',$5,$6,
 			'archived',7)`, gatewayControlID, gatewayConversationID, seed.repositoryID,
 		profileID, seed.executionNodeID, environmentID)
 	require.NoError(t, err)
@@ -571,7 +629,7 @@ func TestReconcileConversationProgressCardsUpdatesExistingMessage(t *testing.T) 
 		WHERE projection.guild_id=$1 AND projection.projection_key=$2`, testGuildID,
 		projectionKey).Scan(&desiredPayload, &operationType))
 	require.Equal(t, "message.update", operationType)
-	require.Contains(t, string(desiredPayload), `"formatVersion": 2`)
+	require.Contains(t, string(desiredPayload), `"formatVersion": 3`)
 	require.Contains(t, string(desiredPayload), "项动态")
 	require.NotContains(t, string(desiredPayload), "条更新")
 }
@@ -599,8 +657,8 @@ func TestReconcileConversationProgressCardsUsesTerminalRunState(t *testing.T) {
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_thread_controls
 		(id, source_type, discord_conversation_id, repository_id, agent_profile_id,
-			context_version, execution_node_id, development_environment_id)
-		VALUES ($1,'discord_conversation',$2,$3,$4,1,$5,$6)`,
+			execution_node_id, development_environment_id)
+		VALUES ($1,'discord_conversation',$2,$3,$4,$5,$6)`,
 		controlID, conversationID, seed.repositoryID, profileID, seed.executionNodeID, environmentID)
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_intents
@@ -623,8 +681,7 @@ func TestReconcileConversationProgressCardsUsesTerminalRunState(t *testing.T) {
 		VALUES ($1,$2,'terminal-thread','terminal-message',$3)`, testGuildID,
 		projectionKey, mustJSON(map[string]any{
 			"card": ComponentCardPayload{AccentColor: cardColorRed,
-				Header: "❌ Codex · 处理失败",
-				Footer: "后台已记录错误，可稍后重试 · 不展示工具返回内容"},
+				Header: "❌ Codex · 处理失败"},
 			"progress": conversationProgressPayload{
 				FormatVersion: conversationProgressFormatVersion,
 				RunID:         runID.String(), State: ConversationFailed,
@@ -646,7 +703,6 @@ func TestReconcileConversationProgressCardsUsesTerminalRunState(t *testing.T) {
 	require.Equal(t, ConversationCanceled, desired.Progress.State)
 	require.Equal(t, "本轮已停止。", desired.Progress.Summary)
 	require.Equal(t, "⏹️ Codex · 已停止", desired.Card.Header)
-	require.NotContains(t, desired.Card.Footer, "后台已记录错误")
 }
 
 const (
@@ -751,7 +807,7 @@ func insertProjectionIntent(t *testing.T, db *sql.DB, workItemID, repositoryID u
 	intentID, inserted, err := codexcontrol.NewRepository(db, time.Minute).Enqueue(ctx, tx,
 		codexcontrol.EnqueueRequest{
 			SourceType: codexcontrol.SourceGitHub, WorkItemID: workItemID,
-			RepositoryID: repositoryID, AgentProfileID: profileID, ContextVersion: 1,
+			RepositoryID: repositoryID, AgentProfileID: profileID,
 			IdempotencyKey: key, Instruction: "test", ActorLogin: actor, ReplyPolicy: "required",
 		})
 	require.NoError(t, err)

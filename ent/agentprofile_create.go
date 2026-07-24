@@ -27,20 +27,6 @@ func (_c *AgentProfileCreate) SetName(v string) *AgentProfileCreate {
 	return _c
 }
 
-// SetProvider sets the "provider" field.
-func (_c *AgentProfileCreate) SetProvider(v string) *AgentProfileCreate {
-	_c.mutation.SetProvider(v)
-	return _c
-}
-
-// SetNillableProvider sets the "provider" field if the given value is not nil.
-func (_c *AgentProfileCreate) SetNillableProvider(v *string) *AgentProfileCreate {
-	if v != nil {
-		_c.SetProvider(*v)
-	}
-	return _c
-}
-
 // SetModel sets the "model" field.
 func (_c *AgentProfileCreate) SetModel(v string) *AgentProfileCreate {
 	_c.mutation.SetModel(v)
@@ -137,20 +123,6 @@ func (_c *AgentProfileCreate) SetConfig(v map[string]interface{}) *AgentProfileC
 	return _c
 }
 
-// SetContextVersion sets the "context_version" field.
-func (_c *AgentProfileCreate) SetContextVersion(v int64) *AgentProfileCreate {
-	_c.mutation.SetContextVersion(v)
-	return _c
-}
-
-// SetNillableContextVersion sets the "context_version" field if the given value is not nil.
-func (_c *AgentProfileCreate) SetNillableContextVersion(v *int64) *AgentProfileCreate {
-	if v != nil {
-		_c.SetContextVersion(*v)
-	}
-	return _c
-}
-
 // SetCreatedAt sets the "created_at" field.
 func (_c *AgentProfileCreate) SetCreatedAt(v time.Time) *AgentProfileCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -228,10 +200,6 @@ func (_c *AgentProfileCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *AgentProfileCreate) defaults() {
-	if _, ok := _c.mutation.Provider(); !ok {
-		v := agentprofile.DefaultProvider
-		_c.mutation.SetProvider(v)
-	}
 	if _, ok := _c.mutation.Sandbox(); !ok {
 		v := agentprofile.DefaultSandbox
 		_c.mutation.SetSandbox(v)
@@ -252,10 +220,6 @@ func (_c *AgentProfileCreate) defaults() {
 		v := agentprofile.DefaultConfig
 		_c.mutation.SetConfig(v)
 	}
-	if _, ok := _c.mutation.ContextVersion(); !ok {
-		v := agentprofile.DefaultContextVersion
-		_c.mutation.SetContextVersion(v)
-	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := agentprofile.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -275,9 +239,6 @@ func (_c *AgentProfileCreate) check() error {
 	if _, ok := _c.mutation.Name(); !ok {
 		return &ValidationError{Name: "name", err: errors.New(`ent: missing required field "AgentProfile.name"`)}
 	}
-	if _, ok := _c.mutation.Provider(); !ok {
-		return &ValidationError{Name: "provider", err: errors.New(`ent: missing required field "AgentProfile.provider"`)}
-	}
 	if _, ok := _c.mutation.Sandbox(); !ok {
 		return &ValidationError{Name: "sandbox", err: errors.New(`ent: missing required field "AgentProfile.sandbox"`)}
 	}
@@ -292,9 +253,6 @@ func (_c *AgentProfileCreate) check() error {
 	}
 	if _, ok := _c.mutation.Config(); !ok {
 		return &ValidationError{Name: "config", err: errors.New(`ent: missing required field "AgentProfile.config"`)}
-	}
-	if _, ok := _c.mutation.ContextVersion(); !ok {
-		return &ValidationError{Name: "context_version", err: errors.New(`ent: missing required field "AgentProfile.context_version"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "AgentProfile.created_at"`)}
@@ -341,10 +299,6 @@ func (_c *AgentProfileCreate) createSpec() (*AgentProfile, *sqlgraph.CreateSpec)
 		_spec.SetField(agentprofile.FieldName, field.TypeString, value)
 		_node.Name = value
 	}
-	if value, ok := _c.mutation.Provider(); ok {
-		_spec.SetField(agentprofile.FieldProvider, field.TypeString, value)
-		_node.Provider = value
-	}
 	if value, ok := _c.mutation.Model(); ok {
 		_spec.SetField(agentprofile.FieldModel, field.TypeString, value)
 		_node.Model = &value
@@ -376,10 +330,6 @@ func (_c *AgentProfileCreate) createSpec() (*AgentProfile, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.Config(); ok {
 		_spec.SetField(agentprofile.FieldConfig, field.TypeJSON, value)
 		_node.Config = value
-	}
-	if value, ok := _c.mutation.ContextVersion(); ok {
-		_spec.SetField(agentprofile.FieldContextVersion, field.TypeInt64, value)
-		_node.ContextVersion = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(agentprofile.FieldCreatedAt, field.TypeTime, value)

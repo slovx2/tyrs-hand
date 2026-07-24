@@ -120,11 +120,6 @@ func ExecutionNodeID(v uuid.UUID) predicate.WorkItem {
 	return predicate.WorkItem(sql.FieldEQ(FieldExecutionNodeID, v))
 }
 
-// ContextVersion applies equality check predicate on the "context_version" field. It's identical to ContextVersionEQ.
-func ContextVersion(v int64) predicate.WorkItem {
-	return predicate.WorkItem(sql.FieldEQ(FieldContextVersion, v))
-}
-
 // ClosedAt applies equality check predicate on the "closed_at" field. It's identical to ClosedAtEQ.
 func ClosedAt(v time.Time) predicate.WorkItem {
 	return predicate.WorkItem(sql.FieldEQ(FieldClosedAt, v))
@@ -923,46 +918,6 @@ func ExecutionNodeIDIsNil() predicate.WorkItem {
 // ExecutionNodeIDNotNil applies the NotNil predicate on the "execution_node_id" field.
 func ExecutionNodeIDNotNil() predicate.WorkItem {
 	return predicate.WorkItem(sql.FieldNotNull(FieldExecutionNodeID))
-}
-
-// ContextVersionEQ applies the EQ predicate on the "context_version" field.
-func ContextVersionEQ(v int64) predicate.WorkItem {
-	return predicate.WorkItem(sql.FieldEQ(FieldContextVersion, v))
-}
-
-// ContextVersionNEQ applies the NEQ predicate on the "context_version" field.
-func ContextVersionNEQ(v int64) predicate.WorkItem {
-	return predicate.WorkItem(sql.FieldNEQ(FieldContextVersion, v))
-}
-
-// ContextVersionIn applies the In predicate on the "context_version" field.
-func ContextVersionIn(vs ...int64) predicate.WorkItem {
-	return predicate.WorkItem(sql.FieldIn(FieldContextVersion, vs...))
-}
-
-// ContextVersionNotIn applies the NotIn predicate on the "context_version" field.
-func ContextVersionNotIn(vs ...int64) predicate.WorkItem {
-	return predicate.WorkItem(sql.FieldNotIn(FieldContextVersion, vs...))
-}
-
-// ContextVersionGT applies the GT predicate on the "context_version" field.
-func ContextVersionGT(v int64) predicate.WorkItem {
-	return predicate.WorkItem(sql.FieldGT(FieldContextVersion, v))
-}
-
-// ContextVersionGTE applies the GTE predicate on the "context_version" field.
-func ContextVersionGTE(v int64) predicate.WorkItem {
-	return predicate.WorkItem(sql.FieldGTE(FieldContextVersion, v))
-}
-
-// ContextVersionLT applies the LT predicate on the "context_version" field.
-func ContextVersionLT(v int64) predicate.WorkItem {
-	return predicate.WorkItem(sql.FieldLT(FieldContextVersion, v))
-}
-
-// ContextVersionLTE applies the LTE predicate on the "context_version" field.
-func ContextVersionLTE(v int64) predicate.WorkItem {
-	return predicate.WorkItem(sql.FieldLTE(FieldContextVersion, v))
 }
 
 // ClosedAtEQ applies the EQ predicate on the "closed_at" field.

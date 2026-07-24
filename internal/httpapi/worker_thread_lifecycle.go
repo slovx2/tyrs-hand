@@ -320,7 +320,8 @@ func (s *Server) workerCompleteThreadLifecycle(c *gin.Context) {
 	var desiredState string
 	var revision int64
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT request.control_id,
-		control.discord_conversation_id::text, request.desired_state, request.revision
+		control.discord_conversation_id::text,
+		request.desired_state, request.revision
 		FROM codex_thread_lifecycle_requests request
 		JOIN codex_thread_controls control ON control.id = request.control_id
 		JOIN discord_development_environments environment

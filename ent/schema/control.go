@@ -72,12 +72,12 @@ func (AgentProfile) Annotations() []schema.Annotation {
 }
 func (AgentProfile) Fields() []ent.Field {
 	return []ent.Field{
-		field.UUID("id", uuid.UUID{}).Default(uuid.New), field.String("name").Unique(), field.String("provider").Default("codex"),
+		field.UUID("id", uuid.UUID{}).Default(uuid.New), field.String("name").Unique(),
 		field.String("model").Optional().Nillable(), field.String("reasoning_effort").Optional().Nillable(),
 		field.String("service_tier").Optional().Nillable(), field.String("sandbox").Default("workspace-write"),
 		field.Bool("network_enabled").Default(true), field.String("approval_policy").Default("never"),
 		field.JSON("allowed_tools", []string{}).Default([]string{}), field.JSON("config", map[string]any{}).Default(map[string]any{}),
-		field.Int64("context_version").Default(1), field.Time("created_at").Default(time.Now),
+		field.Time("created_at").Default(time.Now),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}
 }

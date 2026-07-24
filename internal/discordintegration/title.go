@@ -223,7 +223,8 @@ func (g *TitleGenerator) schedule(ctx context.Context, claimed claimedConversati
 		desired_thread_name = $2, desired_thread_name_source = 'luna',
 		desired_thread_name_revision = desired_thread_name_revision + 1,
 		thread_name_last_error = NULL, updated_at = now()
-		WHERE discord_conversation_id = $1`, claimed.ID, title)
+		WHERE discord_conversation_id = $1`,
+		claimed.ID, title)
 	if err != nil {
 		return err
 	}

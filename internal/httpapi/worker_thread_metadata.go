@@ -223,6 +223,7 @@ func (s *Server) workerPendingThreadNames(c *gin.Context) {
 		FROM codex_thread_controls control
 		JOIN discord_development_environments environment
 			ON environment.id = control.development_environment_id
+		JOIN discord_conversations conversation ON conversation.id = control.discord_conversation_id
 		WHERE environment.execution_node_id = $1
 			AND control.desired_thread_name_source = 'luna'
 			AND control.desired_thread_name_revision > control.applied_thread_name_revision

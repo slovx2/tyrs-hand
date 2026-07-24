@@ -112,8 +112,8 @@ func enqueueDesktopThreadFailure(c *gin.Context, tx *sql.Tx, requestID uuid.UUID
 ) error {
 	card := discordintegration.ComponentCardPayload{AccentColor: 0xED4245,
 		Header: "❌ Codex Desktop · 创建失败",
-		Body:   "Codex Thread 未能创建。可以在 Desktop 中重试。",
-		Footer: "错误：" + safeDesktopFailure(message)}
+		Body: "Codex Thread 未能创建。可以在 Desktop 中重试。\n\n错误：" +
+			safeDesktopFailure(message)}
 	payload, _ := json.Marshal(map[string]any{"channelId": threadID, "messageId": messageID,
 		"card": card})
 	_, err := tx.ExecContext(c.Request.Context(), `INSERT INTO integration_outbox

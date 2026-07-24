@@ -179,20 +179,6 @@ func (_c *WorkItemCreate) SetNillableExecutionNodeID(v *uuid.UUID) *WorkItemCrea
 	return _c
 }
 
-// SetContextVersion sets the "context_version" field.
-func (_c *WorkItemCreate) SetContextVersion(v int64) *WorkItemCreate {
-	_c.mutation.SetContextVersion(v)
-	return _c
-}
-
-// SetNillableContextVersion sets the "context_version" field if the given value is not nil.
-func (_c *WorkItemCreate) SetNillableContextVersion(v *int64) *WorkItemCreate {
-	if v != nil {
-		_c.SetContextVersion(*v)
-	}
-	return _c
-}
-
 // SetClosedAt sets the "closed_at" field.
 func (_c *WorkItemCreate) SetClosedAt(v time.Time) *WorkItemCreate {
 	_c.mutation.SetClosedAt(v)
@@ -296,10 +282,6 @@ func (_c *WorkItemCreate) defaults() {
 		v := workitem.DefaultAgentOwned
 		_c.mutation.SetAgentOwned(v)
 	}
-	if _, ok := _c.mutation.ContextVersion(); !ok {
-		v := workitem.DefaultContextVersion
-		_c.mutation.SetContextVersion(v)
-	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := workitem.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -333,9 +315,6 @@ func (_c *WorkItemCreate) check() error {
 	}
 	if _, ok := _c.mutation.AgentOwned(); !ok {
 		return &ValidationError{Name: "agent_owned", err: errors.New(`ent: missing required field "WorkItem.agent_owned"`)}
-	}
-	if _, ok := _c.mutation.ContextVersion(); !ok {
-		return &ValidationError{Name: "context_version", err: errors.New(`ent: missing required field "WorkItem.context_version"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "WorkItem.created_at"`)}
@@ -429,10 +408,6 @@ func (_c *WorkItemCreate) createSpec() (*WorkItem, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ExecutionNodeID(); ok {
 		_spec.SetField(workitem.FieldExecutionNodeID, field.TypeUUID, value)
 		_node.ExecutionNodeID = &value
-	}
-	if value, ok := _c.mutation.ContextVersion(); ok {
-		_spec.SetField(workitem.FieldContextVersion, field.TypeInt64, value)
-		_node.ContextVersion = value
 	}
 	if value, ok := _c.mutation.ClosedAt(); ok {
 		_spec.SetField(workitem.FieldClosedAt, field.TypeTime, value)

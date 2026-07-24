@@ -130,9 +130,6 @@ func applyRunRecovery(task *workerprotocol.Task, recovery workerprotocol.RunReco
 	if recovery.CodexHomeKey != "" {
 		task.Claimed.CodexHomeKey = recovery.CodexHomeKey
 	}
-	if recovery.ProviderSignature != "" {
-		task.Claimed.ProviderSignature = recovery.ProviderSignature
-	}
 }
 
 func (r *RemoteRunner) runLeaseHeartbeat(ctx context.Context, task *workerprotocol.Task,

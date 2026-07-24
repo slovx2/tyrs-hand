@@ -129,7 +129,7 @@ func TestPostgresMigrationsAndLeaseEpoch(t *testing.T) {
 		require.NoError(t, beginErr)
 		_, inserted, enqueueErr := repository.Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
 			SourceType: codexcontrol.SourceGitHub, WorkItemID: workItemID, RepositoryID: repositoryID,
-			AgentProfileID: profileID, ContextVersion: 1,
+			AgentProfileID: profileID,
 			IdempotencyKey: "intent-" + string(rune('a'+index)), Instruction: "test",
 			AllowedTools: []string{"issue_read", "create_pull_request"}, ActorLogin: "alice",
 			ActorPermission: "write", ReplyPolicy: "required",
@@ -176,7 +176,7 @@ func TestPostgresMigrationsAndLeaseEpoch(t *testing.T) {
 	stale := *claimed
 	stale.LeaseEpoch--
 	require.ErrorIs(t, repository.Heartbeat(ctx, &stale), codexcontrol.ErrLeaseLost)
-	require.NoError(t, repository.SetThread(ctx, claimed, "thread", "/tmp/codex-home", "signature"))
+	require.NoError(t, repository.SetThread(ctx, claimed, "thread", "/tmp/codex-home"))
 	require.NoError(t, repository.RecordSubmission(ctx, claimed, "turn"))
 	require.NoError(t, repository.ConfirmTurn(ctx, claimed, "turn"))
 	satisfied, err := repository.ReplySatisfied(ctx, claimed)
@@ -207,7 +207,7 @@ func TestPostgresMigrationsAndLeaseEpoch(t *testing.T) {
 	require.NoError(t, err)
 	_, inserted, err := repository.Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
 		SourceType: codexcontrol.SourceGitHub, WorkItemID: workItemID, RepositoryID: repositoryID,
-		AgentProfileID: profileID, ContextVersion: 1, IdempotencyKey: "intent-reconcile",
+		AgentProfileID: profileID, IdempotencyKey: "intent-reconcile",
 		Instruction: "reconcile", ReplyPolicy: "silent",
 	})
 	require.NoError(t, err)
@@ -233,7 +233,7 @@ func TestPostgresMigrationsAndLeaseEpoch(t *testing.T) {
 	require.NoError(t, err)
 	_, inserted, err = repository.Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
 		SourceType: codexcontrol.SourceGitHub, WorkItemID: workItemID, RepositoryID: repositoryID,
-		AgentProfileID: profileID, ContextVersion: 1, IdempotencyKey: "intent-control-failure",
+		AgentProfileID: profileID, IdempotencyKey: "intent-control-failure",
 		Instruction: "test failure", ReplyPolicy: "required",
 	})
 	require.NoError(t, err)

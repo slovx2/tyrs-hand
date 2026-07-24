@@ -9,7 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 7
+const Version = 8
 
 type EnrollRequest struct {
 	Token string `json:"token"`
@@ -419,12 +419,11 @@ type RunHeartbeatResponse struct {
 }
 
 type RunRecoveryState struct {
-	Recovering        bool   `json:"recovering"`
-	SubmissionID      string `json:"submissionId,omitempty"`
-	ConfirmedTurnID   string `json:"confirmedTurnId,omitempty"`
-	ExternalThreadID  string `json:"externalThreadId,omitempty"`
-	CodexHomeKey      string `json:"codexHomeKey,omitempty"`
-	ProviderSignature string `json:"providerSignature,omitempty"`
+	Recovering       bool   `json:"recovering"`
+	SubmissionID     string `json:"submissionId,omitempty"`
+	ConfirmedTurnID  string `json:"confirmedTurnId,omitempty"`
+	ExternalThreadID string `json:"externalThreadId,omitempty"`
+	CodexHomeKey     string `json:"codexHomeKey,omitempty"`
 }
 
 type CommandAckRequest struct {
@@ -471,9 +470,8 @@ type RuntimeCredential struct {
 
 type SetThreadRequest struct {
 	RunLeaseRequest
-	ThreadID          string `json:"threadId"`
-	CodexHome         string `json:"codexHome"`
-	ProviderSignature string `json:"providerSignature"`
+	ThreadID  string `json:"threadId"`
+	CodexHome string `json:"codexHome"`
 }
 
 type SubmissionRequest struct {

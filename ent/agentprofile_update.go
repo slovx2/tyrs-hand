@@ -43,20 +43,6 @@ func (_u *AgentProfileUpdate) SetNillableName(v *string) *AgentProfileUpdate {
 	return _u
 }
 
-// SetProvider sets the "provider" field.
-func (_u *AgentProfileUpdate) SetProvider(v string) *AgentProfileUpdate {
-	_u.mutation.SetProvider(v)
-	return _u
-}
-
-// SetNillableProvider sets the "provider" field if the given value is not nil.
-func (_u *AgentProfileUpdate) SetNillableProvider(v *string) *AgentProfileUpdate {
-	if v != nil {
-		_u.SetProvider(*v)
-	}
-	return _u
-}
-
 // SetModel sets the "model" field.
 func (_u *AgentProfileUpdate) SetModel(v string) *AgentProfileUpdate {
 	_u.mutation.SetModel(v)
@@ -177,27 +163,6 @@ func (_u *AgentProfileUpdate) SetConfig(v map[string]interface{}) *AgentProfileU
 	return _u
 }
 
-// SetContextVersion sets the "context_version" field.
-func (_u *AgentProfileUpdate) SetContextVersion(v int64) *AgentProfileUpdate {
-	_u.mutation.ResetContextVersion()
-	_u.mutation.SetContextVersion(v)
-	return _u
-}
-
-// SetNillableContextVersion sets the "context_version" field if the given value is not nil.
-func (_u *AgentProfileUpdate) SetNillableContextVersion(v *int64) *AgentProfileUpdate {
-	if v != nil {
-		_u.SetContextVersion(*v)
-	}
-	return _u
-}
-
-// AddContextVersion adds value to the "context_version" field.
-func (_u *AgentProfileUpdate) AddContextVersion(v int64) *AgentProfileUpdate {
-	_u.mutation.AddContextVersion(v)
-	return _u
-}
-
 // SetCreatedAt sets the "created_at" field.
 func (_u *AgentProfileUpdate) SetCreatedAt(v time.Time) *AgentProfileUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -271,9 +236,6 @@ func (_u *AgentProfileUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(agentprofile.FieldName, field.TypeString, value)
 	}
-	if value, ok := _u.mutation.Provider(); ok {
-		_spec.SetField(agentprofile.FieldProvider, field.TypeString, value)
-	}
 	if value, ok := _u.mutation.Model(); ok {
 		_spec.SetField(agentprofile.FieldModel, field.TypeString, value)
 	}
@@ -312,12 +274,6 @@ func (_u *AgentProfileUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if value, ok := _u.mutation.Config(); ok {
 		_spec.SetField(agentprofile.FieldConfig, field.TypeJSON, value)
 	}
-	if value, ok := _u.mutation.ContextVersion(); ok {
-		_spec.SetField(agentprofile.FieldContextVersion, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedContextVersion(); ok {
-		_spec.AddField(agentprofile.FieldContextVersion, field.TypeInt64, value)
-	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(agentprofile.FieldCreatedAt, field.TypeTime, value)
 	}
@@ -354,20 +310,6 @@ func (_u *AgentProfileUpdateOne) SetName(v string) *AgentProfileUpdateOne {
 func (_u *AgentProfileUpdateOne) SetNillableName(v *string) *AgentProfileUpdateOne {
 	if v != nil {
 		_u.SetName(*v)
-	}
-	return _u
-}
-
-// SetProvider sets the "provider" field.
-func (_u *AgentProfileUpdateOne) SetProvider(v string) *AgentProfileUpdateOne {
-	_u.mutation.SetProvider(v)
-	return _u
-}
-
-// SetNillableProvider sets the "provider" field if the given value is not nil.
-func (_u *AgentProfileUpdateOne) SetNillableProvider(v *string) *AgentProfileUpdateOne {
-	if v != nil {
-		_u.SetProvider(*v)
 	}
 	return _u
 }
@@ -492,27 +434,6 @@ func (_u *AgentProfileUpdateOne) SetConfig(v map[string]interface{}) *AgentProfi
 	return _u
 }
 
-// SetContextVersion sets the "context_version" field.
-func (_u *AgentProfileUpdateOne) SetContextVersion(v int64) *AgentProfileUpdateOne {
-	_u.mutation.ResetContextVersion()
-	_u.mutation.SetContextVersion(v)
-	return _u
-}
-
-// SetNillableContextVersion sets the "context_version" field if the given value is not nil.
-func (_u *AgentProfileUpdateOne) SetNillableContextVersion(v *int64) *AgentProfileUpdateOne {
-	if v != nil {
-		_u.SetContextVersion(*v)
-	}
-	return _u
-}
-
-// AddContextVersion adds value to the "context_version" field.
-func (_u *AgentProfileUpdateOne) AddContextVersion(v int64) *AgentProfileUpdateOne {
-	_u.mutation.AddContextVersion(v)
-	return _u
-}
-
 // SetCreatedAt sets the "created_at" field.
 func (_u *AgentProfileUpdateOne) SetCreatedAt(v time.Time) *AgentProfileUpdateOne {
 	_u.mutation.SetCreatedAt(v)
@@ -616,9 +537,6 @@ func (_u *AgentProfileUpdateOne) sqlSave(ctx context.Context) (_node *AgentProfi
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(agentprofile.FieldName, field.TypeString, value)
 	}
-	if value, ok := _u.mutation.Provider(); ok {
-		_spec.SetField(agentprofile.FieldProvider, field.TypeString, value)
-	}
 	if value, ok := _u.mutation.Model(); ok {
 		_spec.SetField(agentprofile.FieldModel, field.TypeString, value)
 	}
@@ -656,12 +574,6 @@ func (_u *AgentProfileUpdateOne) sqlSave(ctx context.Context) (_node *AgentProfi
 	}
 	if value, ok := _u.mutation.Config(); ok {
 		_spec.SetField(agentprofile.FieldConfig, field.TypeJSON, value)
-	}
-	if value, ok := _u.mutation.ContextVersion(); ok {
-		_spec.SetField(agentprofile.FieldContextVersion, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedContextVersion(); ok {
-		_spec.AddField(agentprofile.FieldContextVersion, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(agentprofile.FieldCreatedAt, field.TypeTime, value)

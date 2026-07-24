@@ -64,8 +64,8 @@ func TestConversationProgressPageValidatesMessageAndRun(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, card.Header, "已完成")
 	require.NotEmpty(t, card.Timeline)
-	require.Contains(t, card.Footer, "第 1 /")
 	require.Len(t, card.Buttons, 4)
+	require.Contains(t, card.Buttons[1].Label, "1 /")
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

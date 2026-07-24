@@ -2,6 +2,7 @@ package discordintegration
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -18,12 +19,9 @@ func TestDesktopInputCardsPreserveIdentityAndPaginateDeterministically(t *testin
 	for index, card := range cards {
 		require.Contains(t, card.Header, "Kal · Desktop")
 		require.LessOrEqual(t, len([]rune(card.Body)), desktopInputPageRunes)
-		require.Contains(t, card.Footer, "第 ")
-		require.Contains(t, card.Footer, "/")
+		require.Contains(t, card.Header, "/")
 		rebuilt.WriteString(card.Body)
-		if index > 0 {
-			require.Equal(t, cards[0].Header, card.Header)
-		}
+		require.Contains(t, card.Header, fmt.Sprintf("%d/%d", index+1, len(cards)))
 	}
 	require.Equal(t, input, rebuilt.String())
 }
@@ -33,7 +31,6 @@ func TestDesktopInputCardsUseStableFallbacksForEmptyIdentityAndText(t *testing.T
 	require.Len(t, cards, 1)
 	require.Contains(t, cards[0].Header, "Desktop · Desktop")
 	require.Equal(t, "（无文本输入）", cards[0].Body)
-	require.Empty(t, cards[0].Footer)
 }
 
 func TestEnqueueDesktopInputPagesNormalizesStartAndSkipsExistingPages(t *testing.T) {

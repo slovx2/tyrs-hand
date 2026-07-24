@@ -39,7 +39,7 @@ func (WorkItem) Fields() []ent.Field {
 		field.String("base_ref").Optional().Nillable(), field.String("head_ref").Optional().Nillable(),
 		field.String("head_repository").Optional().Nillable(), field.String("html_url").Optional().Nillable(),
 		field.UUID("execution_node_id", uuid.UUID{}).Optional().Nillable(),
-		field.Int64("context_version").Default(1), field.Time("closed_at").Optional().Nillable(),
+		field.Time("closed_at").Optional().Nillable(),
 		field.Time("created_at").Default(time.Now), field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}
 }
@@ -55,11 +55,10 @@ func (CodexThreadControl) Fields() []ent.Field {
 		field.UUID("work_item_id", uuid.UUID{}).Optional().Nillable(),
 		field.UUID("discord_conversation_id", uuid.UUID{}).Optional().Nillable(),
 		field.UUID("repository_id", uuid.UUID{}).Optional().Nillable(),
-		field.UUID("agent_profile_id", uuid.UUID{}), field.Int64("context_version"),
+		field.UUID("agent_profile_id", uuid.UUID{}),
 		field.UUID("execution_node_id", uuid.UUID{}).Optional().Nillable(),
-		field.String("external_thread_id").Optional().Nillable(), field.String("provider").Default("codex"),
-		field.String("codex_home_key").Optional().Nillable(), field.String("provider_signature").Optional().Nillable(),
-		field.Int("thread_generation").Default(1), field.String("status").Default("idle"),
+		field.String("external_thread_id").Optional().Nillable(),
+		field.String("codex_home_key").Optional().Nillable(), field.String("status").Default("idle"),
 		field.Int64("next_sequence_no").Default(1), field.UUID("active_intent_id", uuid.UUID{}).Optional().Nillable(),
 		field.String("remote_status").Optional().Nillable(), field.String("active_codex_turn_id").Optional().Nillable(),
 		field.String("active_client_id").Optional().Nillable(), field.Int64("lease_epoch").Default(0),

@@ -28,20 +28,12 @@ type CodexThreadControl struct {
 	RepositoryID *uuid.UUID `json:"repository_id,omitempty"`
 	// AgentProfileID holds the value of the "agent_profile_id" field.
 	AgentProfileID uuid.UUID `json:"agent_profile_id,omitempty"`
-	// ContextVersion holds the value of the "context_version" field.
-	ContextVersion int64 `json:"context_version,omitempty"`
 	// ExecutionNodeID holds the value of the "execution_node_id" field.
 	ExecutionNodeID *uuid.UUID `json:"execution_node_id,omitempty"`
 	// ExternalThreadID holds the value of the "external_thread_id" field.
 	ExternalThreadID *string `json:"external_thread_id,omitempty"`
-	// Provider holds the value of the "provider" field.
-	Provider string `json:"provider,omitempty"`
 	// CodexHomeKey holds the value of the "codex_home_key" field.
 	CodexHomeKey *string `json:"codex_home_key,omitempty"`
-	// ProviderSignature holds the value of the "provider_signature" field.
-	ProviderSignature *string `json:"provider_signature,omitempty"`
-	// ThreadGeneration holds the value of the "thread_generation" field.
-	ThreadGeneration int `json:"thread_generation,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
 	// NextSequenceNo holds the value of the "next_sequence_no" field.
@@ -86,9 +78,9 @@ func (*CodexThreadControl) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case codexthreadcontrol.FieldWorkItemID, codexthreadcontrol.FieldDiscordConversationID, codexthreadcontrol.FieldRepositoryID, codexthreadcontrol.FieldExecutionNodeID, codexthreadcontrol.FieldActiveIntentID:
 			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
-		case codexthreadcontrol.FieldContextVersion, codexthreadcontrol.FieldThreadGeneration, codexthreadcontrol.FieldNextSequenceNo, codexthreadcontrol.FieldLeaseEpoch:
+		case codexthreadcontrol.FieldNextSequenceNo, codexthreadcontrol.FieldLeaseEpoch:
 			values[i] = new(sql.NullInt64)
-		case codexthreadcontrol.FieldSourceType, codexthreadcontrol.FieldExternalThreadID, codexthreadcontrol.FieldProvider, codexthreadcontrol.FieldCodexHomeKey, codexthreadcontrol.FieldProviderSignature, codexthreadcontrol.FieldStatus, codexthreadcontrol.FieldRemoteStatus, codexthreadcontrol.FieldActiveCodexTurnID, codexthreadcontrol.FieldActiveClientID, codexthreadcontrol.FieldWorkerID, codexthreadcontrol.FieldLeaseToken, codexthreadcontrol.FieldLastErrorCode, codexthreadcontrol.FieldLastErrorMessage:
+		case codexthreadcontrol.FieldSourceType, codexthreadcontrol.FieldExternalThreadID, codexthreadcontrol.FieldCodexHomeKey, codexthreadcontrol.FieldStatus, codexthreadcontrol.FieldRemoteStatus, codexthreadcontrol.FieldActiveCodexTurnID, codexthreadcontrol.FieldActiveClientID, codexthreadcontrol.FieldWorkerID, codexthreadcontrol.FieldLeaseToken, codexthreadcontrol.FieldLastErrorCode, codexthreadcontrol.FieldLastErrorMessage:
 			values[i] = new(sql.NullString)
 		case codexthreadcontrol.FieldLeaseExpiresAt, codexthreadcontrol.FieldHeartbeatAt, codexthreadcontrol.FieldLastReconciledAt, codexthreadcontrol.FieldNextWakeupAt, codexthreadcontrol.FieldCreatedAt, codexthreadcontrol.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -148,12 +140,6 @@ func (_m *CodexThreadControl) assignValues(columns []string, values []any) error
 			} else if value != nil {
 				_m.AgentProfileID = *value
 			}
-		case codexthreadcontrol.FieldContextVersion:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field context_version", values[i])
-			} else if value.Valid {
-				_m.ContextVersion = value.Int64
-			}
 		case codexthreadcontrol.FieldExecutionNodeID:
 			if value, ok := values[i].(*sql.NullScanner); !ok {
 				return fmt.Errorf("unexpected type %T for field execution_node_id", values[i])
@@ -168,31 +154,12 @@ func (_m *CodexThreadControl) assignValues(columns []string, values []any) error
 				_m.ExternalThreadID = new(string)
 				*_m.ExternalThreadID = value.String
 			}
-		case codexthreadcontrol.FieldProvider:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field provider", values[i])
-			} else if value.Valid {
-				_m.Provider = value.String
-			}
 		case codexthreadcontrol.FieldCodexHomeKey:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field codex_home_key", values[i])
 			} else if value.Valid {
 				_m.CodexHomeKey = new(string)
 				*_m.CodexHomeKey = value.String
-			}
-		case codexthreadcontrol.FieldProviderSignature:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field provider_signature", values[i])
-			} else if value.Valid {
-				_m.ProviderSignature = new(string)
-				*_m.ProviderSignature = value.String
-			}
-		case codexthreadcontrol.FieldThreadGeneration:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field thread_generation", values[i])
-			} else if value.Valid {
-				_m.ThreadGeneration = int(value.Int64)
 			}
 		case codexthreadcontrol.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -365,9 +332,6 @@ func (_m *CodexThreadControl) String() string {
 	builder.WriteString("agent_profile_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AgentProfileID))
 	builder.WriteString(", ")
-	builder.WriteString("context_version=")
-	builder.WriteString(fmt.Sprintf("%v", _m.ContextVersion))
-	builder.WriteString(", ")
 	if v := _m.ExecutionNodeID; v != nil {
 		builder.WriteString("execution_node_id=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
@@ -378,21 +342,10 @@ func (_m *CodexThreadControl) String() string {
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
-	builder.WriteString("provider=")
-	builder.WriteString(_m.Provider)
-	builder.WriteString(", ")
 	if v := _m.CodexHomeKey; v != nil {
 		builder.WriteString("codex_home_key=")
 		builder.WriteString(*v)
 	}
-	builder.WriteString(", ")
-	if v := _m.ProviderSignature; v != nil {
-		builder.WriteString("provider_signature=")
-		builder.WriteString(*v)
-	}
-	builder.WriteString(", ")
-	builder.WriteString("thread_generation=")
-	builder.WriteString(fmt.Sprintf("%v", _m.ThreadGeneration))
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)

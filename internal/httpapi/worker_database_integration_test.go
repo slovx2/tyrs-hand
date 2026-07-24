@@ -371,6 +371,15 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "completed", state.Status)
 	require.NotEqual(t, uuid.Nil, state.ConversationID)
+	var conversationControlID uuid.UUID
+	var titleRenameStatus string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT control.id, conversation.title_rename_status
+		FROM discord_conversations conversation JOIN codex_thread_controls control
+			ON control.discord_conversation_id=conversation.id WHERE conversation.id=$1`, state.ConversationID).
+		Scan(&conversationControlID, &titleRenameStatus))
+	require.Equal(t, state.ControlID, conversationControlID)
+	require.Equal(t, "skipped", titleRenameStatus,
+		"Desktop 投影只使用 Codex 自己的标题，不进入 Luna 队列")
 	var memberAddPayload string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT payload::text FROM integration_outbox
 		WHERE operation_key=$1`, "desktop-thread-member:"+state.ID.String()).
@@ -1339,11 +1348,9 @@ func TestWorkerAPISSHConfigurationRotationConstraintsAndGlobalAgents(t *testing.
 	require.Equal(t, []string{"ssh_credential.create", "ssh_credential.update",
 		"ssh_credential.delete"}, auditActions)
 
-	repositoryID, itemID, _ := seedWorkerGitHubQueue(t, db, 80)
-	_ = repositoryID
-	var before int
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT context_version FROM work_items WHERE id=$1`,
-		itemID).Scan(&before))
+	repositoryID, itemID, profileID := seedWorkerGitHubQueue(t, db, 80)
+	beforeIntent := enqueueWorkerIntent(t, db, repositoryID, itemID, profileID,
+		"global-agents-before")
 	providerBefore, err := server.settings.AgentProvider(ctx)
 	require.NoError(t, err)
 	require.NoError(t, server.settings.SaveGlobalAgents(ctx,
@@ -1354,16 +1361,16 @@ func TestWorkerAPISSHConfigurationRotationConstraintsAndGlobalAgents(t *testing.
 	providerAfter, err := server.settings.AgentProvider(ctx)
 	require.NoError(t, err)
 	require.NotEqual(t, providerBefore.ConfigSignature, providerAfter.ConfigSignature)
-	var after int
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT context_version FROM work_items WHERE id=$1`,
-		itemID).Scan(&after))
-	require.Equal(t, before+1, after)
 	require.NoError(t, server.settings.SaveGlobalAgents(ctx,
 		platformsettings.GlobalAgents{Content: "# Global\n"}))
-	var unchanged int
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT context_version FROM work_items WHERE id=$1`,
-		itemID).Scan(&unchanged))
-	require.Equal(t, after, unchanged)
+	afterIntent := enqueueWorkerIntent(t, db, repositoryID, itemID, profileID,
+		"global-agents-after")
+	var beforeControlID, afterControlID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT control_id FROM codex_turn_intents
+		WHERE id=$1`, beforeIntent).Scan(&beforeControlID))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT control_id FROM codex_turn_intents
+		WHERE id=$1`, afterIntent).Scan(&afterControlID))
+	require.Equal(t, beforeControlID, afterControlID)
 	agentsRecorder := httptest.NewRecorder()
 	agentsContext, _ := gin.CreateTestContext(agentsRecorder)
 	agentsContext.Request = httptest.NewRequest("PUT", "/api/v1/settings/global-agents",
@@ -1465,7 +1472,7 @@ func enqueueWorkerIntent(t *testing.T, db *sql.DB, repositoryID, itemID, profile
 	intentID, inserted, err := codexcontrol.NewRepository(db, 2*time.Second).Enqueue(
 		context.Background(), tx, codexcontrol.EnqueueRequest{SourceType: codexcontrol.SourceGitHub,
 			WorkItemID: itemID, RepositoryID: repositoryID, AgentProfileID: profileID,
-			ContextVersion: 1, IdempotencyKey: key, Instruction: "test", ReplyPolicy: "silent"})
+			IdempotencyKey: key, Instruction: "test", ReplyPolicy: "silent"})
 	require.NoError(t, err)
 	require.True(t, inserted)
 	require.NoError(t, tx.Commit())
@@ -1482,8 +1489,8 @@ func enqueueWorkerDiscordIntent(t *testing.T, db *sql.DB, conversationID uuid.UU
 		context.Background(), tx, codexcontrol.EnqueueRequest{
 			SourceType: codexcontrol.SourceDiscord, DiscordConversationID: conversationID,
 			DiscordMessageID: messageID, RepositoryID: repositoryID, AgentProfileID: profileID,
-			ContextVersion: 1, IdempotencyKey: "discord:" + messageID,
-			Instruction: messageID, ReplyPolicy: "silent", Behavior: "steer_if_active",
+			IdempotencyKey: "discord:" + messageID,
+			Instruction:    messageID, ReplyPolicy: "silent", Behavior: "steer_if_active",
 		})
 	require.NoError(t, err)
 	require.True(t, inserted)
@@ -1500,7 +1507,7 @@ func enqueueWorkerOperation(t *testing.T, db *sql.DB, repositoryID, itemID, prof
 	intentID, inserted, err := codexcontrol.NewRepository(db, 2*time.Second).Enqueue(
 		context.Background(), tx, codexcontrol.EnqueueRequest{SourceType: codexcontrol.SourceGitHub,
 			WorkItemID: itemID, RepositoryID: repositoryID, AgentProfileID: profileID,
-			ContextVersion: 1, IdempotencyKey: key, Instruction: "stop", Operation: operation,
+			IdempotencyKey: key, Instruction: "stop", Operation: operation,
 			ReplyPolicy: "silent"})
 	require.NoError(t, err)
 	require.True(t, inserted)

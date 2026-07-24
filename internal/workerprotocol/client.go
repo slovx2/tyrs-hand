@@ -394,10 +394,9 @@ func (c *Client) DownloadAttachment(ctx context.Context, task *Task, attachmentI
 	return response.Header.Get("X-Attachment-SHA256"), written, err
 }
 
-func (c *Client) SetThread(ctx context.Context, task *Task, threadID, home, signature string) error {
+func (c *Client) SetThread(ctx context.Context, task *Task, threadID, home string) error {
 	return c.call(ctx, http.MethodPost, runPath(task, "/thread"), SetThreadRequest{
 		RunLeaseRequest: lease(task), ThreadID: threadID, CodexHome: home,
-		ProviderSignature: signature,
 	}, nil, true)
 }
 

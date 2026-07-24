@@ -93,7 +93,7 @@ func TestWriteGlobalAgents(t *testing.T) {
 	require.Empty(t, data)
 }
 
-func TestSaveGlobalAgentsRefreshesExistingContextsOnlyWhenContentChanges(t *testing.T) {
+func TestSaveGlobalAgentsNormalizesAndPersistsContent(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
@@ -103,8 +103,6 @@ func TestSaveGlobalAgentsRefreshesExistingContextsOnlyWhenContentChanges(t *test
 	mock.ExpectExec("INSERT INTO platform_settings").
 		WithArgs(globalAgentsKey, sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec("UPDATE work_items").WillReturnResult(sqlmock.NewResult(0, 2))
-	mock.ExpectExec("UPDATE discord_conversations").WillReturnResult(sqlmock.NewResult(0, 3))
 	mock.ExpectCommit()
 	require.NoError(t, service.SaveGlobalAgents(context.Background(), GlobalAgents{Content: "# Shared\r\n"}))
 
@@ -136,29 +134,6 @@ func TestSaveGlobalAgentsReturnsDatabaseFailures(t *testing.T) {
 				mock.ExpectBegin()
 				mock.ExpectExec("INSERT INTO platform_settings").
 					WithArgs(globalAgentsKey, sqlmock.AnyArg()).WillReturnError(sql.ErrConnDone)
-				mock.ExpectRollback()
-			},
-			expected: sql.ErrConnDone,
-		},
-		{
-			name: "无法刷新 GitHub 上下文",
-			setup: func(mock sqlmock.Sqlmock) {
-				mock.ExpectBegin()
-				mock.ExpectExec("INSERT INTO platform_settings").WithArgs(globalAgentsKey, sqlmock.AnyArg()).
-					WillReturnResult(sqlmock.NewResult(0, 1))
-				mock.ExpectExec("UPDATE work_items").WillReturnError(sql.ErrConnDone)
-				mock.ExpectRollback()
-			},
-			expected: sql.ErrConnDone,
-		},
-		{
-			name: "无法刷新 Discord 上下文",
-			setup: func(mock sqlmock.Sqlmock) {
-				mock.ExpectBegin()
-				mock.ExpectExec("INSERT INTO platform_settings").WithArgs(globalAgentsKey, sqlmock.AnyArg()).
-					WillReturnResult(sqlmock.NewResult(0, 1))
-				mock.ExpectExec("UPDATE work_items").WillReturnResult(sqlmock.NewResult(0, 1))
-				mock.ExpectExec("UPDATE discord_conversations").WillReturnError(sql.ErrConnDone)
 				mock.ExpectRollback()
 			},
 			expected: sql.ErrConnDone,

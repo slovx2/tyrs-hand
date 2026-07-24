@@ -259,7 +259,7 @@ func testDisgoSendOperations(t *testing.T, ctx context.Context, remote *DisgoRem
 	}
 	created, err := remote.Send(ctx, OutboxItem{OperationType: "message.create", Nonce: "card-nonce", Payload: rawJSON(map[string]any{
 		"channelId": "20", "card": ComponentCardPayload{Header: "Card", Body: "Friendly",
-			AccentColor: cardColorBlurple, Footer: "Footer"},
+			AccentColor: cardColorBlurple},
 	})})
 	require.NoError(t, err)
 	require.JSONEq(t, `{"messageId":"22"}`, string(created))

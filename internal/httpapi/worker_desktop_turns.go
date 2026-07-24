@@ -74,7 +74,7 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		ct.repository_id, ct.agent_profile_id, ct.status, ct.lifecycle_state,
 		ct.next_sequence_no,
 		ct.lease_epoch, COALESCE(ct.external_thread_id,''), COALESCE(ct.codex_home_key,''),
-		COALESCE(ct.provider_signature,''), p.allowed_tools, '[]'::jsonb,
+		p.allowed_tools, '[]'::jsonb,
 		e.guild_id, COALESCE(e.ssh_discord_user_id, ''),
 		COALESCE(NULLIF(m.display_name, ''), m.username, '')
 		FROM codex_thread_controls ct JOIN agent_profiles p ON p.id = ct.agent_profile_id
@@ -87,7 +87,7 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		&claimed.RepositoryID, &claimed.AgentProfileID, &controlStatus, &lifecycleState,
 		&nextSequence,
 		&oldLeaseEpoch, &claimed.ExternalThreadID,
-		&claimed.CodexHomeKey, &claimed.ProviderSignature, &allowedJSON, &dangerousJSON,
+		&claimed.CodexHomeKey, &allowedJSON, &dangerousJSON,
 		&actorGuildID, &actorUserID, &actorDisplayName)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusForbidden, "Desktop Turn 的 Thread 未绑定到当前环境", err)

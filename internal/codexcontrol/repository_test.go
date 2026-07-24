@@ -26,8 +26,15 @@ func TestEnqueueRejectsTerminatedControl(t *testing.T) {
 	mock.ExpectBegin()
 	tx, err := db.BeginTx(context.Background(), nil)
 	require.NoError(t, err)
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id FROM discord_conversations")).
+		WithArgs(conversationID).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(conversationID))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT e.execution_node_id::text, e.id::text")).
+		WithArgs(conversationID).WillReturnError(errors.New("development environment unavailable"))
 	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO codex_thread_controls")).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(controlID))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE codex_thread_controls control SET")).
+		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectQuery("SELECT control.status,").
 		WithArgs(controlID).
 		WillReturnRows(sqlmock.NewRows([]string{"status", "lifecycle_state"}).
@@ -37,11 +44,57 @@ func TestEnqueueRejectsTerminatedControl(t *testing.T) {
 
 	_, inserted, err := NewRepository(db, time.Minute).Enqueue(context.Background(), tx, EnqueueRequest{
 		SourceType: SourceDiscord, DiscordConversationID: conversationID,
-		AgentProfileID: profileID, ContextVersion: 1, IdempotencyKey: "discord:message:1",
+		AgentProfileID: profileID, IdempotencyKey: "discord:message:1",
 		Instruction: "retry",
 	})
 	require.ErrorIs(t, err, ErrControlTerminated)
 	require.False(t, inserted)
+	require.NoError(t, tx.Rollback())
+}
+
+func TestEnqueueDiscordUsesConversationUniqueControl(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		mock.ExpectClose()
+		require.NoError(t, db.Close())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	controlID := uuid.New()
+	conversationID := uuid.New()
+	profileID := uuid.New()
+	intentID := uuid.New()
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(context.Background(), nil)
+	require.NoError(t, err)
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id FROM discord_conversations")).
+		WithArgs(conversationID).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(conversationID))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT e.execution_node_id::text, e.id::text")).
+		WithArgs(conversationID).WillReturnError(errors.New("development environment unavailable"))
+	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO codex_thread_controls")).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(controlID))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE codex_thread_controls control SET")).
+		WithArgs(controlID, conversationID).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT control.status,").WithArgs(controlID).
+		WillReturnRows(sqlmock.NewRows([]string{"status", "lifecycle_state"}).
+			AddRow("idle", "active"))
+	mock.ExpectQuery(regexp.QuoteMeta("UPDATE codex_thread_controls")).
+		WithArgs(controlID).WillReturnRows(sqlmock.NewRows([]string{"sequence_no"}).AddRow(7))
+	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO codex_turn_intents(")).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(intentID))
+	mock.ExpectRollback()
+
+	actual, inserted, err := NewRepository(db, time.Minute).Enqueue(context.Background(), tx,
+		EnqueueRequest{
+			SourceType: SourceDiscord, DiscordConversationID: conversationID,
+			AgentProfileID: profileID,
+			IdempotencyKey: "discord:message:continue", Instruction: "continue",
+		})
+	require.NoError(t, err)
+	require.True(t, inserted)
+	require.Equal(t, intentID, actual)
 	require.NoError(t, tx.Rollback())
 }
 

@@ -263,11 +263,6 @@ func (s *Server) workerCompleteDesktopThread(c *gin.Context) {
 		badRequest(c, errors.New("codex thread 完成结果无效"))
 		return
 	}
-	provider, err := s.settings.AgentProvider(c.Request.Context())
-	if err != nil {
-		problem(c, http.StatusInternalServerError, "读取 Codex Provider 配置失败", err)
-		return
-	}
 	tx, err := s.db.BeginTx(c.Request.Context(), nil)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "绑定 Desktop Thread 失败", err)
@@ -293,7 +288,7 @@ func (s *Server) workerCompleteDesktopThread(c *gin.Context) {
 		return
 	}
 	if status == "preparing" {
-		profileID, contextVersion, model, effort, tier, configErr :=
+		profileID, model, effort, tier, configErr :=
 			s.desktopControlConfig(c.Request.Context(), sourceControl, request.Response)
 		if configErr != nil {
 			problem(c, http.StatusInternalServerError, "解析 Desktop Thread 运行配置失败", configErr)
@@ -301,13 +296,12 @@ func (s *Server) workerCompleteDesktopThread(c *gin.Context) {
 		}
 		controlID = uuid.New()
 		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO codex_thread_controls
-			(id, source_type, repository_id, agent_profile_id, context_version, external_thread_id,
+			(id, source_type, repository_id, agent_profile_id, external_thread_id,
 			 execution_node_id, development_environment_id, model, reasoning_effort, service_tier,
-			 runtime_preferences_frozen_at, codex_home_key, provider_signature)
-			VALUES ($1,'desktop_thread',$2,$3,$4,$5,$6,$7,NULLIF($8,''),NULLIF($9,''),NULLIF($10,''),
-			 now(),$11,$12)`, controlID, repositoryID, profileID, contextVersion, threadID,
-			executionNodeID, environmentID, model, effort, tier, environmentID.String(),
-			provider.ConfigSignature)
+			 runtime_preferences_frozen_at, codex_home_key)
+			VALUES ($1,'desktop_thread',$2,$3,$4,$5,$6,NULLIF($7,''),NULLIF($8,''),NULLIF($9,''),
+			 now(),$10)`, controlID, repositoryID, profileID, threadID,
+			executionNodeID, environmentID, model, effort, tier, environmentID.String())
 		if err == nil {
 			_, err = tx.ExecContext(c.Request.Context(), `UPDATE desktop_thread_requests SET
 				status = 'waiting_for_input', control_id = $2, external_thread_id = $3,
@@ -337,25 +331,23 @@ func (s *Server) workerCompleteDesktopThread(c *gin.Context) {
 
 func (s *Server) desktopControlConfig(ctx context.Context, sourceControl sql.NullString,
 	response json.RawMessage,
-) (uuid.UUID, int64, string, string, string, error) {
+) (uuid.UUID, string, string, string, error) {
 	var profileID uuid.UUID
-	var contextVersion int64
 	if sourceControl.Valid {
-		err := s.db.QueryRowContext(ctx, `SELECT agent_profile_id, context_version
-			FROM codex_thread_controls WHERE id = $1`, sourceControl.String).
-			Scan(&profileID, &contextVersion)
+		err := s.db.QueryRowContext(ctx, `SELECT agent_profile_id
+			FROM codex_thread_controls WHERE id = $1`, sourceControl.String).Scan(&profileID)
 		if err != nil {
-			return uuid.Nil, 0, "", "", "", err
+			return uuid.Nil, "", "", "", err
 		}
 	} else {
-		err := s.db.QueryRowContext(ctx, `SELECT id, context_version FROM agent_profiles
-			ORDER BY created_at, id LIMIT 1`).Scan(&profileID, &contextVersion)
+		err := s.db.QueryRowContext(ctx, `SELECT id FROM agent_profiles
+			ORDER BY created_at, id LIMIT 1`).Scan(&profileID)
 		if err != nil {
-			return uuid.Nil, 0, "", "", "", err
+			return uuid.Nil, "", "", "", err
 		}
 	}
 	config := desktopRuntimeFromResponse(response)
-	return profileID, contextVersion, config.Model, config.ReasoningEffort, config.ServiceTier, nil
+	return profileID, config.Model, config.ReasoningEffort, config.ServiceTier, nil
 }
 
 func (s *Server) workerFailDesktopThread(c *gin.Context) {

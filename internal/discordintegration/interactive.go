@@ -178,8 +178,7 @@ func interactiveCard(request InteractiveProjection) ComponentCardPayload {
 			source = "自动超时"
 		}
 		return ComponentCardPayload{AccentColor: cardColorGreen,
-			Header: "✅ Codex · 已收到回答", Body: "回答来源：`" + cardText(source, 64) + "`",
-			Footer: "本轮已继续运行 · 旧按钮已失效"}
+			Header: "✅ Codex · 已收到回答", Body: "回答来源：`" + cardText(source, 64) + "`"}
 	}
 	index := nextInteractiveQuestion(request)
 	if index < 0 {
@@ -193,11 +192,9 @@ func interactiveCard(request InteractiveProjection) ComponentCardPayload {
 	body := fmt.Sprintf("**%d / %d · %s**\n%s", index+1, len(request.Questions),
 		cardText(header, 128), cardText(question.Question, 3000))
 	card := ComponentCardPayload{AccentColor: cardColorYellow,
-		Header: "❓ Codex · 等待输入", Body: body,
-		Footer: "Desktop 与 Discord 同时可答 · 只接受最先提交的一方"}
+		Header: "❓ Codex · 等待输入", Body: body}
 	if question.IsSecret {
 		card.Body += "\n\n🔒 此问题包含敏感信息，请在 Codex Desktop 回答。"
-		card.Footer = "Discord 不收集或展示 Secret 回答"
 		return card
 	}
 	for optionIndex, option := range question.Options {

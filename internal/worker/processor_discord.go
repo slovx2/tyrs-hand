@@ -96,10 +96,6 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	if err != nil {
 		return result, err
 	}
-	signature := provider.ConfigSignature
-	if signature == "" {
-		signature = "default"
-	}
 	if err := os.MkdirAll(filepath.Join(p.cfg.WorkerDataRoot, "tmp"), 0o750); err != nil {
 		return result, err
 	}
@@ -144,8 +140,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	if err := runtime.ValidateSkills(ctx, workspace, skills); err != nil {
 		return result, err
 	}
-	threadSignature := threadConfigSignature(signature, options)
-	threadID, err := p.ensureThread(ctx, runtime, claimed, options, containerRuntime.CodexHome, threadSignature)
+	threadID, err := p.ensureThread(ctx, runtime, claimed, options, containerRuntime.CodexHome)
 	if err != nil {
 		return result, err
 	}
@@ -285,7 +280,7 @@ func (p *Processor) loadDiscordContext(ctx context.Context, job codexcontrol.Int
 	err := p.db.QueryRowContext(ctx, `SELECT c.id, c.guild_id, c.thread_id, m.message_id, c.owner_discord_user_id,
 		f.id, f.development_environment_id,
 		COALESCE(c.repository_id::text, ''), COALESCE(r.owner, ''), COALESCE(r.name, ''),
-		COALESCE(r.clone_url, ''), COALESCE(r.default_branch, ''), c.context_version,
+		COALESCE(r.clone_url, ''), COALESCE(r.default_branch, ''),
 		p.name, COALESCE(p.model, ''), COALESCE(p.reasoning_effort, ''), COALESCE(p.service_tier, ''),
 		p.sandbox, p.approval_policy, p.network_enabled, m.body, m.discord_user_id,
 		m.display_name, m.username, COALESCE(m.github_user_id, 0), COALESCE(m.github_login, ''),
@@ -298,7 +293,7 @@ func (p *Processor) loadDiscordContext(ctx context.Context, job codexcontrol.Int
 		Scan(&result.ConversationID, &result.GuildID, &result.ThreadID, &result.MessageID, &result.OwnerUserID,
 			&result.ForumID, &result.EnvironmentID,
 			&repositoryID, &result.Owner, &result.Repository, &result.CloneURL, &result.DefaultBranch,
-			&result.ContextVersion, &result.ProfileName, &result.Model, &result.ReasoningEffort,
+			&result.ProfileName, &result.Model, &result.ReasoningEffort,
 			&result.ServiceTier, &result.Sandbox, &result.ApprovalPolicy, &result.NetworkEnabled,
 			&result.Body, &result.DiscordUserID, &result.DisplayName, &result.Username,
 			&result.GitHubUserID, &result.GitHubLogin, &result.BindingID, &result.BindingVersion, &result.Access)

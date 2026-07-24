@@ -145,7 +145,7 @@ type conversationProgressPayload struct {
 	Page          int                  `json:"page"`
 }
 
-const conversationProgressFormatVersion = 2
+const conversationProgressFormatVersion = 3
 
 func conversationTimelineForRun(ctx context.Context, db *sql.DB, runID uuid.UUID,
 	summary string,
@@ -194,8 +194,6 @@ func ReconcileConversationProgressCards(ctx context.Context, db *sql.DB, guildID
 			AND desired_payload ? 'progress'
 			AND (
 				COALESCE(desired_payload->'progress'->>'formatVersion','0') <> $2
-				OR COALESCE(desired_payload->'card'->>'footer','')
-					LIKE '%后台已记录错误%'
 				OR EXISTS (
 					SELECT 1 FROM codex_turn_runs AS run
 					WHERE run.id::text = desired_payload->'progress'->>'runId'

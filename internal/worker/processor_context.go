@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -66,7 +65,7 @@ func (p *Processor) loadContext(ctx context.Context, intent codexcontrol.Intent)
 	err := p.db.QueryRowContext(ctx, `SELECT r.owner, r.name, r.clone_url, r.default_branch,
 		w.kind, w.external_number, COALESCE(w.head_sha, ''), COALESCE(w.head_ref, ''),
 		COALESCE(w.head_repository, ''), COALESCE(w.base_sha, ''), COALESCE(w.base_ref, ''),
-		COALESCE(w.html_url, ''), w.context_version,
+		COALESCE(w.html_url, ''),
 		p.name, COALESCE(p.model, ''), COALESCE(p.reasoning_effort, ''),
 		COALESCE(p.service_tier, ''), p.sandbox, p.approval_policy, p.network_enabled
 		FROM repositories r JOIN work_items w ON w.repository_id = r.id
@@ -75,7 +74,6 @@ func (p *Processor) loadContext(ctx context.Context, intent codexcontrol.Intent)
 		&result.Owner, &result.Repository, &result.CloneURL, &result.DefaultBranch,
 		&result.Kind, &result.Number, &result.HeadSHA, &result.HeadRef,
 		&result.HeadRepository, &result.BaseSHA, &result.BaseRef, &result.HTMLURL,
-		&result.ContextVersion,
 		&result.ProfileName, &result.Model, &result.ReasoningEffort, &result.ServiceTier,
 		&result.Sandbox, &result.ApprovalPolicy, &result.NetworkEnabled)
 	return result, err
@@ -160,15 +158,12 @@ func githubWorkItemAdditionalContext(job jobContext, workspace ports.Workspace) 
 }
 
 func (p *Processor) ensureThread(ctx context.Context, runtime *codex.Runtime,
-	claimed *codexcontrol.ClaimedControl, options ports.ThreadOptions, codexHome, signature string,
+	claimed *codexcontrol.ClaimedControl, options ports.ThreadOptions, codexHome string,
 ) (string, error) {
 	threadID := claimed.ExternalThreadID
 	if threadID != "" {
 		if claimed.CodexHomeKey != "" && claimed.CodexHomeKey != codexHome {
 			return "", errors.New("持久化 Control 的 CODEX_HOME 与当前运行配置不一致")
-		}
-		if claimed.ProviderSignature != "" && claimed.ProviderSignature != signature {
-			return "", errors.New("持久化 Control 的 Provider Signature 与当前运行配置不一致")
 		}
 		if err := runtime.ResumeThread(ctx, threadID, options); err != nil {
 			return "", fmt.Errorf("恢复 Codex Thread: %w", err)
@@ -189,13 +184,19 @@ func (p *Processor) ensureThread(ctx context.Context, runtime *codex.Runtime,
 			return "", err
 		}
 	}
-	if err := p.controls.SetThread(ctx, claimed, threadID, codexHome, signature); err != nil {
+	if err := p.controls.SetThread(ctx, claimed, threadID, codexHome); err != nil {
 		return "", err
 	}
 	claimed.ExternalThreadID = threadID
 	claimed.CodexHomeKey = codexHome
-	claimed.ProviderSignature = signature
 	return threadID, nil
+}
+
+func persistentCodexHome(root string, claimed *codexcontrol.ClaimedControl) string {
+	if claimed.CodexHomeKey != "" {
+		return claimed.CodexHomeKey
+	}
+	return filepath.Join(root, "pools", claimed.RepositoryID.String(), claimed.AgentProfileID.String())
 }
 
 type turnEventObserver func(context.Context, codex.Event)
@@ -807,27 +808,6 @@ func withoutGenericReply(tools []string) []string {
 		}
 	}
 	return result
-}
-
-func threadConfigSignature(providerSignature string, options ports.ThreadOptions) string {
-	stableOptions := options
-	data, _ := json.Marshal(options.RuntimeConfig)
-	var runtimeConfig map[string]any
-	if json.Unmarshal(data, &runtimeConfig) == nil {
-		if policy, ok := runtimeConfig["shell_environment_policy"].(map[string]any); ok {
-			if values, ok := policy["set"].(map[string]any); ok {
-				delete(values, "TYRS_HAND_DOCKER_INTENT_ID")
-				delete(values, "TYRS_HAND_DOCKER_RUN_ID")
-			}
-		}
-		stableOptions.RuntimeConfig = runtimeConfig
-	}
-	data, _ = json.Marshal(struct {
-		ProviderSignature string              `json:"providerSignature"`
-		Options           ports.ThreadOptions `json:"options"`
-	}{ProviderSignature: providerSignature, Options: stableOptions})
-	digest := sha256.Sum256(data)
-	return fmt.Sprintf("%x", digest[:])
 }
 
 func shortID(id uuid.UUID) string { return strings.ReplaceAll(id.String()[:8], "-", "") }

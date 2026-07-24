@@ -115,18 +115,6 @@ func TestProcessorHelpersAndLocalTools(t *testing.T) {
 	spec := localGitSpec()
 	require.Equal(t, "git", spec.Name)
 	require.Len(t, spec.Tools, 3)
-	firstSignature := threadConfigSignature("provider", ports.ThreadOptions{Sandbox: "workspace-write", DynamicTools: []ports.DynamicToolSpec{spec}})
-	require.Len(t, firstSignature, 64)
-	require.Equal(t, firstSignature, threadConfigSignature("provider", ports.ThreadOptions{Sandbox: "workspace-write", DynamicTools: []ports.DynamicToolSpec{spec}}))
-	require.NotEqual(t, firstSignature, threadConfigSignature("provider", ports.ThreadOptions{Sandbox: "danger-full-access", DynamicTools: []ports.DynamicToolSpec{spec}}))
-	dockerOptions := ports.ThreadOptions{RuntimeConfig: codexRuntimeConfig([]string{
-		"TYRS_HAND_DOCKER_WORKSPACE_ID=workspace", "TYRS_HAND_DOCKER_INTENT_ID=intent-1", "TYRS_HAND_DOCKER_RUN_ID=run-1",
-	}, "/data/worker")}
-	dockerSignature := threadConfigSignature("provider", dockerOptions)
-	dockerOptions.RuntimeConfig = codexRuntimeConfig([]string{
-		"TYRS_HAND_DOCKER_WORKSPACE_ID=workspace", "TYRS_HAND_DOCKER_INTENT_ID=intent-2", "TYRS_HAND_DOCKER_RUN_ID=run-2",
-	}, "/data/worker")
-	require.Equal(t, dockerSignature, threadConfigSignature("provider", dockerOptions))
 	runtimeConfig := codexRuntimeConfig([]string{"PATH=/toolchain/bin:/usr/bin", "GOTOOLCHAIN=local"}, "/data/worker")
 	policy := runtimeConfig["shell_environment_policy"].(map[string]any)
 	require.Equal(t, "all", policy["inherit"])

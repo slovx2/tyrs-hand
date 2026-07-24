@@ -64,8 +64,6 @@ func TestManagerCompletesLoginWithNullableLoginID(t *testing.T) {
 	mock.ExpectExec("INSERT INTO platform_settings").
 		WithArgs("agent.provider", sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec("UPDATE work_items").WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec("UPDATE discord_conversations").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 	mock.ExpectExec("UPDATE codex_auth_operations").
 		WithArgs(operationID, "user@example.com", "plus").

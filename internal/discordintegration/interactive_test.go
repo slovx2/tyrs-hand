@@ -48,7 +48,6 @@ func TestInteractiveSecretCardOnlyAllowsDesktop(t *testing.T) {
 	card := interactiveCard(request)
 	require.Empty(t, card.Buttons)
 	require.Contains(t, card.Body, "Codex Desktop")
-	require.Contains(t, card.Footer, "Secret")
 }
 
 func TestInteractiveModalIdentifierRoundTrip(t *testing.T) {

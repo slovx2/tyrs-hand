@@ -21,16 +21,13 @@ type remoteCommandHandler func(context.Context, *codex.Runtime, string, string,
 	workerprotocol.RunCommand) error
 
 func (p *RemoteProcessor) ensureRemoteThread(ctx context.Context, runtime *codex.Runtime,
-	task *workerprotocol.Task, options ports.ThreadOptions, codexHome, signature string,
+	task *workerprotocol.Task, options ports.ThreadOptions, codexHome string,
 ) (string, error) {
 	claimed := &task.Claimed
 	threadID := claimed.ExternalThreadID
 	if threadID != "" {
 		if claimed.CodexHomeKey != "" && claimed.CodexHomeKey != codexHome {
 			return "", errors.New("持久化 Control 的 CODEX_HOME 与当前执行节点不一致")
-		}
-		if claimed.ProviderSignature != "" && claimed.ProviderSignature != signature {
-			return "", errors.New("持久化 Control 的 Provider Signature 与当前配置不一致")
 		}
 		if err := runtime.ResumeThread(ctx, threadID, options); err != nil {
 			return "", fmt.Errorf("恢复 Codex Thread: %w", err)
@@ -42,12 +39,11 @@ func (p *RemoteProcessor) ensureRemoteThread(ctx context.Context, runtime *codex
 			return "", err
 		}
 	}
-	if err := p.client.SetThread(ctx, task, threadID, codexHome, signature); err != nil {
+	if err := p.client.SetThread(ctx, task, threadID, codexHome); err != nil {
 		return "", err
 	}
 	claimed.ExternalThreadID = threadID
 	claimed.CodexHomeKey = codexHome
-	claimed.ProviderSignature = signature
 	return threadID, nil
 }
 

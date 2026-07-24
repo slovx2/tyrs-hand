@@ -60,11 +60,6 @@ func Name(v string) predicate.AgentProfile {
 	return predicate.AgentProfile(sql.FieldEQ(FieldName, v))
 }
 
-// Provider applies equality check predicate on the "provider" field. It's identical to ProviderEQ.
-func Provider(v string) predicate.AgentProfile {
-	return predicate.AgentProfile(sql.FieldEQ(FieldProvider, v))
-}
-
 // Model applies equality check predicate on the "model" field. It's identical to ModelEQ.
 func Model(v string) predicate.AgentProfile {
 	return predicate.AgentProfile(sql.FieldEQ(FieldModel, v))
@@ -93,11 +88,6 @@ func NetworkEnabled(v bool) predicate.AgentProfile {
 // ApprovalPolicy applies equality check predicate on the "approval_policy" field. It's identical to ApprovalPolicyEQ.
 func ApprovalPolicy(v string) predicate.AgentProfile {
 	return predicate.AgentProfile(sql.FieldEQ(FieldApprovalPolicy, v))
-}
-
-// ContextVersion applies equality check predicate on the "context_version" field. It's identical to ContextVersionEQ.
-func ContextVersion(v int64) predicate.AgentProfile {
-	return predicate.AgentProfile(sql.FieldEQ(FieldContextVersion, v))
 }
 
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
@@ -173,71 +163,6 @@ func NameEqualFold(v string) predicate.AgentProfile {
 // NameContainsFold applies the ContainsFold predicate on the "name" field.
 func NameContainsFold(v string) predicate.AgentProfile {
 	return predicate.AgentProfile(sql.FieldContainsFold(FieldName, v))
-}
-
-// ProviderEQ applies the EQ predicate on the "provider" field.
-func ProviderEQ(v string) predicate.AgentProfile {
-	return predicate.AgentProfile(sql.FieldEQ(FieldProvider, v))
-}
-
-// ProviderNEQ applies the NEQ predicate on the "provider" field.
-func ProviderNEQ(v string) predicate.AgentProfile {
-	return predicate.AgentProfile(sql.FieldNEQ(FieldProvider, v))
-}
-
-// ProviderIn applies the In predicate on the "provider" field.
-func ProviderIn(vs ...string) predicate.AgentProfile {
-	return predicate.AgentProfile(sql.FieldIn(FieldProvider, vs...))
-}
-
-// ProviderNotIn applies the NotIn predicate on the "provider" field.
-func ProviderNotIn(vs ...string) predicate.AgentProfile {
-	return predicate.AgentProfile(sql.FieldNotIn(FieldProvider, vs...))
-}
-
-// ProviderGT applies the GT predicate on the "provider" field.
-func ProviderGT(v string) predicate.AgentProfile {
-	return predicate.AgentProfile(sql.FieldGT(FieldProvider, v))
-}
-
-// ProviderGTE applies the GTE predicate on the "provider" field.
-func ProviderGTE(v string) predicate.AgentProfile {
-	return predicate.AgentProfile(sql.FieldGTE(FieldProvider, v))
-}
-
-// ProviderLT applies the LT predicate on the "provider" field.
-func ProviderLT(v string) predicate.AgentProfile {
-	return predicate.AgentProfile(sql.FieldLT(FieldProvider, v))
-}
-
-// ProviderLTE applies the LTE predicate on the "provider" field.
-func ProviderLTE(v string) predicate.AgentProfile {
-	return predicate.AgentProfile(sql.FieldLTE(FieldProvider, v))
-}
-
-// ProviderContains applies the Contains predicate on the "provider" field.
-func ProviderContains(v string) predicate.AgentProfile {
-	return predicate.AgentProfile(sql.FieldContains(FieldProvider, v))
-}
-
-// ProviderHasPrefix applies the HasPrefix predicate on the "provider" field.
-func ProviderHasPrefix(v string) predicate.AgentProfile {
-	return predicate.AgentProfile(sql.FieldHasPrefix(FieldProvider, v))
-}
-
-// ProviderHasSuffix applies the HasSuffix predicate on the "provider" field.
-func ProviderHasSuffix(v string) predicate.AgentProfile {
-	return predicate.AgentProfile(sql.FieldHasSuffix(FieldProvider, v))
-}
-
-// ProviderEqualFold applies the EqualFold predicate on the "provider" field.
-func ProviderEqualFold(v string) predicate.AgentProfile {
-	return predicate.AgentProfile(sql.FieldEqualFold(FieldProvider, v))
-}
-
-// ProviderContainsFold applies the ContainsFold predicate on the "provider" field.
-func ProviderContainsFold(v string) predicate.AgentProfile {
-	return predicate.AgentProfile(sql.FieldContainsFold(FieldProvider, v))
 }
 
 // ModelEQ applies the EQ predicate on the "model" field.
@@ -603,46 +528,6 @@ func ApprovalPolicyEqualFold(v string) predicate.AgentProfile {
 // ApprovalPolicyContainsFold applies the ContainsFold predicate on the "approval_policy" field.
 func ApprovalPolicyContainsFold(v string) predicate.AgentProfile {
 	return predicate.AgentProfile(sql.FieldContainsFold(FieldApprovalPolicy, v))
-}
-
-// ContextVersionEQ applies the EQ predicate on the "context_version" field.
-func ContextVersionEQ(v int64) predicate.AgentProfile {
-	return predicate.AgentProfile(sql.FieldEQ(FieldContextVersion, v))
-}
-
-// ContextVersionNEQ applies the NEQ predicate on the "context_version" field.
-func ContextVersionNEQ(v int64) predicate.AgentProfile {
-	return predicate.AgentProfile(sql.FieldNEQ(FieldContextVersion, v))
-}
-
-// ContextVersionIn applies the In predicate on the "context_version" field.
-func ContextVersionIn(vs ...int64) predicate.AgentProfile {
-	return predicate.AgentProfile(sql.FieldIn(FieldContextVersion, vs...))
-}
-
-// ContextVersionNotIn applies the NotIn predicate on the "context_version" field.
-func ContextVersionNotIn(vs ...int64) predicate.AgentProfile {
-	return predicate.AgentProfile(sql.FieldNotIn(FieldContextVersion, vs...))
-}
-
-// ContextVersionGT applies the GT predicate on the "context_version" field.
-func ContextVersionGT(v int64) predicate.AgentProfile {
-	return predicate.AgentProfile(sql.FieldGT(FieldContextVersion, v))
-}
-
-// ContextVersionGTE applies the GTE predicate on the "context_version" field.
-func ContextVersionGTE(v int64) predicate.AgentProfile {
-	return predicate.AgentProfile(sql.FieldGTE(FieldContextVersion, v))
-}
-
-// ContextVersionLT applies the LT predicate on the "context_version" field.
-func ContextVersionLT(v int64) predicate.AgentProfile {
-	return predicate.AgentProfile(sql.FieldLT(FieldContextVersion, v))
-}
-
-// ContextVersionLTE applies the LTE predicate on the "context_version" field.
-func ContextVersionLTE(v int64) predicate.AgentProfile {
-	return predicate.AgentProfile(sql.FieldLTE(FieldContextVersion, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

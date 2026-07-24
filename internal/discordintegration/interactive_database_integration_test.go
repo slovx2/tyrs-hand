@@ -105,9 +105,9 @@ func insertInteractiveControl(t *testing.T, db *sql.DB, seed discordManagerSeed)
 		VALUES ($1,$2,'interactive-thread','interactive-starter','1001',$3,$4,'Interactive') RETURNING id`,
 		testGuildID, seed.developmentForumID, seed.repositoryID, profileID).Scan(&conversationID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_thread_controls
-		(source_type, discord_conversation_id, repository_id, agent_profile_id, context_version,
+		(source_type, discord_conversation_id, repository_id, agent_profile_id,
 		 execution_node_id, development_environment_id, external_thread_id)
-		VALUES ('discord_conversation',$1,$2,$3,1,$4,$5,'codex-interactive-thread') RETURNING id`,
+		VALUES ('discord_conversation',$1,$2,$3,$4,$5,'codex-interactive-thread') RETURNING id`,
 		conversationID, seed.repositoryID, profileID, seed.executionNodeID, environmentID).Scan(&controlID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_turn_intents
 		(control_id, sequence_no, behavior, source_type, discord_conversation_id,

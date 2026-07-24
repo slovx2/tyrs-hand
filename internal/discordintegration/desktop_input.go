@@ -33,7 +33,7 @@ func DesktopInputCards(displayName, input string) []ComponentCardPayload {
 			Body:        string(runes[start:end]),
 		}
 		if pageCount > 1 {
-			card.Footer = fmt.Sprintf("第 %d/%d 页", page+1, pageCount)
+			card.Header += fmt.Sprintf(" · %d/%d", page+1, pageCount)
 		}
 		cards = append(cards, card)
 	}

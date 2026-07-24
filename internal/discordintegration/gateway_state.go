@@ -102,10 +102,9 @@ func (s *ConversationService) Stop(ctx context.Context, guildID, threadID, reque
 	}
 	var profileID uuid.UUID
 	var repositoryID sql.NullString
-	var contextVersion int64
-	if err := tx.QueryRowContext(ctx, `SELECT agent_profile_id, repository_id::text, context_version
+	if err := tx.QueryRowContext(ctx, `SELECT agent_profile_id, repository_id::text
 		FROM discord_conversations WHERE id = $1`, conversationID).Scan(
-		&profileID, &repositoryID, &contextVersion); err != nil {
+		&profileID, &repositoryID); err != nil {
 		return 0, err
 	}
 	var repository uuid.UUID
@@ -118,7 +117,7 @@ func (s *ConversationService) Stop(ctx context.Context, guildID, threadID, reque
 	requestID := uuid.New()
 	_, inserted, err := codexcontrol.NewRepository(s.db, 0).Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
 		SourceType: codexcontrol.SourceDiscord, DiscordConversationID: conversationID,
-		RepositoryID: repository, AgentProfileID: profileID, ContextVersion: contextVersion,
+		RepositoryID: repository, AgentProfileID: profileID,
 		IdempotencyKey: "discord:stop:" + requestID.String(), Operation: "interrupt",
 		Instruction: "stopped from Discord", ReplyPolicy: "silent", ActorLogin: requesterID,
 	})
@@ -128,7 +127,9 @@ func (s *ConversationService) Stop(ctx context.Context, guildID, threadID, reque
 	updateResult, err := tx.ExecContext(ctx, `UPDATE codex_turn_intents SET status = 'canceled',
 		last_error_code = 'user_interrupt', last_error_message = 'stopped from Discord',
 		finished_at = now(), updated_at = now()
-		WHERE discord_conversation_id = $1 AND operation = 'turn_input'
+		WHERE control_id = (SELECT id FROM codex_thread_controls
+			WHERE discord_conversation_id = $1)
+		  AND operation = 'turn_input'
 		  AND status IN ('queued','retry_wait')`, conversationID)
 	if err != nil {
 		return 0, err

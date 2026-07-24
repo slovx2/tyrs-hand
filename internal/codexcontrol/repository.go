@@ -67,36 +67,57 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 			}
 		}
 		err := tx.QueryRowContext(ctx, `INSERT INTO codex_thread_controls
-			(source_type, work_item_id, repository_id, agent_profile_id, context_version, execution_node_id)
-			VALUES ('github_work_item', $1, $2, $3, $4, NULLIF($5,'')::uuid)
-			ON CONFLICT(work_item_id, agent_profile_id, context_version) WHERE work_item_id IS NOT NULL
+			(source_type, work_item_id, repository_id, agent_profile_id, execution_node_id)
+			VALUES ('github_work_item', $1, $2, $3, NULLIF($4,'')::uuid)
+			ON CONFLICT(work_item_id, agent_profile_id) WHERE work_item_id IS NOT NULL
 			DO UPDATE SET execution_node_id = COALESCE(codex_thread_controls.execution_node_id,
 				EXCLUDED.execution_node_id), updated_at = now() RETURNING id`, request.WorkItemID,
-			request.RepositoryID, request.AgentProfileID, request.ContextVersion,
-			executionNodeID.String).Scan(&controlID)
+			request.RepositoryID, request.AgentProfileID, executionNodeID.String).Scan(&controlID)
 		if err != nil {
 			return uuid.Nil, false, err
 		}
 	} else {
+		var lockedConversationID uuid.UUID
+		if err := tx.QueryRowContext(ctx, `SELECT id FROM discord_conversations
+			WHERE id = $1 FOR UPDATE`, request.DiscordConversationID).
+			Scan(&lockedConversationID); err != nil {
+			return uuid.Nil, false, err
+		}
 		_ = tx.QueryRowContext(ctx, `SELECT e.execution_node_id::text, e.id::text
 			FROM discord_conversations c JOIN discord_forums f ON f.id = c.forum_id
 			JOIN discord_development_environments e ON e.id = f.development_environment_id
 			WHERE c.id = $1`, request.DiscordConversationID).
 			Scan(&executionNodeID, &developmentEnvironmentID)
 		err := tx.QueryRowContext(ctx, `INSERT INTO codex_thread_controls
-			(source_type, discord_conversation_id, repository_id, agent_profile_id, context_version,
+			(source_type, discord_conversation_id, repository_id, agent_profile_id,
 			 execution_node_id, development_environment_id)
-			VALUES ('discord_conversation', $1, NULLIF($2::text, '')::uuid, $3, $4,
-			 NULLIF($5,'')::uuid, NULLIF($6,'')::uuid)
-			ON CONFLICT(discord_conversation_id, agent_profile_id, context_version)
-				WHERE discord_conversation_id IS NOT NULL
-			DO UPDATE SET repository_id = EXCLUDED.repository_id,
+			VALUES ('discord_conversation', $1, NULLIF($2::text, '')::uuid, $3,
+			 NULLIF($4,'')::uuid, NULLIF($5,'')::uuid)
+			ON CONFLICT(discord_conversation_id) WHERE discord_conversation_id IS NOT NULL
+			DO UPDATE SET repository_id = COALESCE(EXCLUDED.repository_id,
+				codex_thread_controls.repository_id),
 				execution_node_id = COALESCE(codex_thread_controls.execution_node_id,
 					EXCLUDED.execution_node_id),
 				development_environment_id = COALESCE(codex_thread_controls.development_environment_id,
 					EXCLUDED.development_environment_id), updated_at = now() RETURNING id`,
 			request.DiscordConversationID, nilUUID(request.RepositoryID), request.AgentProfileID,
-			request.ContextVersion, executionNodeID.String, developmentEnvironmentID.String).Scan(&controlID)
+			executionNodeID.String, developmentEnvironmentID.String).Scan(&controlID)
+		if err != nil {
+			return uuid.Nil, false, err
+		}
+		_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls control SET
+			desired_thread_name = conversation.generated_title,
+			desired_thread_name_source = 'luna',
+			desired_thread_name_revision = desired_thread_name_revision + 1,
+			thread_name_last_error = NULL, updated_at = now()
+			FROM discord_conversations conversation
+			WHERE control.id = $1 AND conversation.id = $2
+				AND control.discord_conversation_id = conversation.id
+				AND COALESCE(conversation.generated_title, '') <> ''
+				AND conversation.title_rename_status IN ('scheduled','completed','failed')
+				AND (control.desired_thread_name_source IS DISTINCT FROM 'luna'
+					OR control.desired_thread_name IS DISTINCT FROM conversation.generated_title)`,
+			controlID, request.DiscordConversationID)
 		if err != nil {
 			return uuid.Nil, false, err
 		}
@@ -222,13 +243,13 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 		  AND c.lifecycle_state = 'active'
 		  AND ($2 = '' OR c.source_type = $2)
 		  AND ($3 = '' OR c.execution_node_id = $3::uuid)
-		  AND ($2 <> 'discord_conversation' OR NOT EXISTS (
-			SELECT 1 FROM discord_conversations dc
-			JOIN discord_forums df ON df.id = dc.forum_id
-			JOIN discord_development_operations operation
-				ON operation.environment_id = df.development_environment_id
-			WHERE dc.id = c.discord_conversation_id
-			AND operation.status IN ('pending','running')))
+			  AND ($2 <> 'discord_conversation' OR NOT EXISTS (
+				SELECT 1 FROM discord_conversations dc
+				JOIN discord_forums df ON df.id = dc.forum_id
+				JOIN discord_development_operations operation
+					ON operation.environment_id = df.development_environment_id
+				WHERE dc.id = c.discord_conversation_id
+				AND operation.status IN ('pending','running')))
 		  AND (c.lease_expires_at IS NULL OR c.lease_expires_at < now())
 		  AND EXISTS (SELECT 1 FROM codex_turn_intents i
 			WHERE i.control_id = c.id AND i.status IN ('queued','retry_wait','reconciling')
@@ -245,7 +266,7 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 	var claimed ClaimedControl
 	var skillsJSON, toolsJSON, dangerousJSON []byte
 	var workItemID, conversationID, repositoryID, discordMessageID, actorParticipantID sql.NullString
-	var externalThreadID, codexHomeKey, providerSignature sql.NullString
+	var externalThreadID, codexHomeKey sql.NullString
 	err = tx.QueryRowContext(ctx, `SELECT i.id, i.sequence_no, i.operation, COALESCE(i.behavior,''),
 		i.source_type, COALESCE(i.input_surface,''), i.work_item_id::text, i.discord_conversation_id::text,
 		i.repository_id::text, i.agent_profile_id, COALESCE(i.discord_message_id,''),
@@ -254,7 +275,7 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 		i.actor_display_name, i.reply_policy, i.reply_status,
 		i.attempt_count + 1, $2::integer, COALESCE(i.codex_submission_id,''),
 		COALESCE(i.confirmed_codex_turn_id,''), i.created_at,
-		c.external_thread_id, c.codex_home_key, c.provider_signature, c.lease_epoch + 1
+		c.external_thread_id, c.codex_home_key, c.lease_epoch + 1
 		FROM codex_turn_intents i JOIN codex_thread_controls c ON c.id = i.control_id
 		WHERE i.control_id = $1 AND i.status IN ('queued','retry_wait','reconciling')
 		  AND i.available_at <= now() AND i.attempt_count < $2
@@ -266,8 +287,7 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 		&claimed.ActorPermission, &actorParticipantID, &claimed.ActorDisplayName,
 		&claimed.ReplyPolicy, &claimed.ReplyStatus,
 		&claimed.Attempt, &claimed.MaxAttempts, &claimed.SubmissionID, &claimed.ConfirmedTurnID,
-		&claimed.CreatedAt, &externalThreadID, &codexHomeKey, &providerSignature,
-		&claimed.LeaseEpoch)
+		&claimed.CreatedAt, &externalThreadID, &codexHomeKey, &claimed.LeaseEpoch)
 	if err != nil {
 		return nil, err
 	}
@@ -276,7 +296,6 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 	claimed.DiscordMessageID = discordMessageID.String
 	claimed.ExternalThreadID = externalThreadID.String
 	claimed.CodexHomeKey = codexHomeKey.String
-	claimed.ProviderSignature = providerSignature.String
 	if actorParticipantID.Valid {
 		claimed.ActorParticipantID, err = uuid.Parse(actorParticipantID.String)
 		if err != nil {
@@ -368,13 +387,13 @@ func (r *Repository) Heartbeat(ctx context.Context, claimed *ClaimedControl) err
 	return requireOne(result)
 }
 
-func (r *Repository) SetThread(ctx context.Context, claimed *ClaimedControl, threadID, codexHome, signature string) error {
+func (r *Repository) SetThread(ctx context.Context, claimed *ClaimedControl, threadID, codexHome string) error {
 	result, err := r.db.ExecContext(ctx, `UPDATE codex_thread_controls SET
-		external_thread_id = $4, codex_home_key = $5, provider_signature = $6,
+		external_thread_id = $4, codex_home_key = $5,
 		status = 'active', remote_status = 'idle', last_error_code = NULL,
 		last_error_message = NULL, updated_at = now()
 		WHERE id = $1 AND lease_token = $2 AND lease_epoch = $3`, claimed.ControlID,
-		security.Digest(claimed.LeaseToken), claimed.LeaseEpoch, threadID, codexHome, signature)
+		security.Digest(claimed.LeaseToken), claimed.LeaseEpoch, threadID, codexHome)
 	if err == nil {
 		err = requireOne(result)
 	}

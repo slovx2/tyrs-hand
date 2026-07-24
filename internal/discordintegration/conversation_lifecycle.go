@@ -14,7 +14,6 @@ func lifecycleCard(conversationID uuid.UUID, revision int64,
 	return ComponentCardPayload{AccentColor: cardColorGray,
 		Header: "🔒 Codex · 会话已归档",
 		Body:   "该会话已关闭，历史消息仍然保留。",
-		Footer: "需要继续时可以恢复原会话",
 		Buttons: []ComponentButtonPayload{{
 			Label:    "恢复会话",
 			CustomID: "codex-restore:" + conversationID.String() + ":" + int64Text(revision),
@@ -80,7 +79,8 @@ func conversationLifecycleProjectionReady(ctx context.Context, tx *sql.Tx,
 	err := tx.QueryRowContext(ctx, `SELECT EXISTS(
 		SELECT 1 FROM codex_turn_runs run
 		JOIN codex_thread_controls control ON control.id = run.control_id
-		WHERE control.discord_conversation_id = $1
+		JOIN discord_conversations conversation ON conversation.id = control.discord_conversation_id
+		WHERE conversation.id = $1
 			AND run.status IN ('starting','running','waiting_for_user','reconciling')
 	)`, conversationID).Scan(&active)
 	if err != nil || active {

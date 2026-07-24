@@ -29,7 +29,7 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 	var status, guildID, ownerID, sshUserID, sshDisplayName, previewTitle, desiredName string
 	var desiredSource, firstProjectionKey, firstInputText string
 	var environmentID, forumID, repositoryID, profileID, controlID uuid.UUID
-	var contextVersion, desiredRevision, lifecycleRevision int64
+	var desiredRevision, lifecycleRevision int64
 	var lifecycleState string
 	var model, effort sql.NullString
 	var serviceTier string
@@ -39,7 +39,7 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 			e.ssh_discord_user_id, ''),
 		COALESCE(NULLIF(r.first_input_actor_display_name,''),
 			NULLIF(member.display_name,''), member.username, ''),
-		f.repository_id, ct.agent_profile_id, ct.context_version, ct.model,
+		f.repository_id, ct.agent_profile_id, ct.model,
 		ct.reasoning_effort, COALESCE(ct.service_tier,''),
 		COALESCE(r.preview_title,''), COALESCE(ct.desired_thread_name,''),
 		COALESCE(ct.desired_thread_name_source,''), ct.desired_thread_name_revision,
@@ -53,7 +53,7 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 				NULLIF(r.first_input_actor_discord_user_id,''), e.ssh_discord_user_id)
 		WHERE r.id = $1 FOR UPDATE OF r, ct`, requestID).Scan(&status, &environmentID, &forumID,
 		&controlID, &guildID, &ownerID, &sshUserID, &sshDisplayName, &repositoryID, &profileID,
-		&contextVersion, &model, &effort, &serviceTier, &previewTitle, &desiredName,
+		&model, &effort, &serviceTier, &previewTitle, &desiredName,
 		&desiredSource, &desiredRevision, &firstProjectionKey, &firstInputText,
 		&lifecycleState, &lifecycleRevision)
 	if err != nil {
@@ -151,7 +151,6 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 		}
 	}
 	_ = environmentID
-	_ = contextVersion
 	return nil
 }
 

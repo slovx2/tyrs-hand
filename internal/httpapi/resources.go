@@ -58,8 +58,8 @@ func (s *Server) createAgentProfile(c *gin.Context) {
 }
 
 func (s *Server) listAgentProfiles(c *gin.Context) {
-	s.listRows(c, `SELECT id, name, provider, model, reasoning_effort, service_tier, sandbox, network_enabled, allowed_tools, context_version, updated_at FROM agent_profiles ORDER BY name`,
-		[]string{"id", "name", "provider", "model", "reasoningEffort", "serviceTier", "sandbox", "networkEnabled", "allowedTools", "contextVersion", "updatedAt"})
+	s.listRows(c, `SELECT id, name, model, reasoning_effort, service_tier, sandbox, network_enabled, allowed_tools, updated_at FROM agent_profiles ORDER BY name`,
+		[]string{"id", "name", "model", "reasoningEffort", "serviceTier", "sandbox", "networkEnabled", "allowedTools", "updatedAt"})
 }
 
 type triggerRuleRequest struct {
@@ -229,12 +229,12 @@ func (s *Server) listInstallations(c *gin.Context) {
 }
 
 func (s *Server) listThreads(c *gin.Context) {
-	s.listRows(c, `SELECT t.id, t.source_type, t.external_thread_id, t.provider, t.status, t.context_version,
+	s.listRows(c, `SELECT t.id, t.source_type, t.external_thread_id, t.status,
 		t.active_codex_turn_id, t.updated_at, t.lease_expires_at, w.kind, w.external_number, n.name
 		FROM codex_thread_controls t LEFT JOIN work_items w ON w.id = t.work_item_id
 		LEFT JOIN execution_nodes n ON n.id = t.execution_node_id
 		ORDER BY t.updated_at DESC LIMIT 200`,
-		[]string{"id", "sourceType", "threadId", "provider", "status", "contextVersion", "lastTurnId", "lastUsedAt", "expiresAt", "kind", "number", "executionNode"})
+		[]string{"id", "sourceType", "threadId", "status", "lastTurnId", "lastUsedAt", "expiresAt", "kind", "number", "executionNode"})
 }
 
 func (s *Server) listWorktrees(c *gin.Context) {

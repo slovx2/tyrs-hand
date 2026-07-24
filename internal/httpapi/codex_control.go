@@ -69,11 +69,11 @@ func (s *Server) resetControl(c *gin.Context) {
 		WHERE control_id = $1 AND status NOT IN ('completed','failed','canceled')`, id)
 	if err == nil {
 		result, updateErr := tx.ExecContext(c.Request.Context(), `UPDATE codex_thread_controls SET
-			status = 'idle', external_thread_id = NULL, active_intent_id = NULL,
+			status = 'idle', active_intent_id = NULL,
 			active_codex_turn_id = NULL, active_client_id = NULL, remote_status = NULL,
 			worker_id = NULL, lease_token = NULL, lease_expires_at = NULL,
-			thread_generation = thread_generation + 1, last_error_code = NULL,
-			last_error_message = NULL, updated_at = now() WHERE id = $1 AND status = 'error'`, id)
+			last_error_code = NULL, last_error_message = NULL, updated_at = now()
+			WHERE id = $1 AND status = 'error'`, id)
 		err = updateErr
 		if err == nil {
 			if count, _ := result.RowsAffected(); count != 1 {

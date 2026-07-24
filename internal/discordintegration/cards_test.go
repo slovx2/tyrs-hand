@@ -19,18 +19,14 @@ func TestConversationCardsKeepSystemAndReplyVisuallyDistinct(t *testing.T) {
 	require.Contains(t, running.Body, "2 项动态")
 	require.NotContains(t, running.Body, "条更新")
 	require.Equal(t, cardColorBlurple, running.AccentColor)
-	require.Empty(t, running.Footer)
 
 	completed := conversationProgressCard(ConversationCompleted, timeline, 0, "")
 	require.Equal(t, cardColorGreen, completed.AccentColor)
-	require.Empty(t, completed.Footer)
 	canceled := conversationProgressCard(ConversationCanceled, timeline, 0, "")
 	require.Equal(t, cardColorGray, canceled.AccentColor)
 	require.Contains(t, canceled.Header, "已停止")
 	failed := conversationProgressCard(ConversationFailed, timeline, 0, "")
 	require.Equal(t, cardColorRed, failed.AccentColor)
-	require.Empty(t, failed.Footer)
-	require.NotContains(t, failed.Footer, "后台已记录错误")
 	require.Contains(t, terminatedControlCard().Body, "没有进入执行队列")
 }
 
@@ -41,8 +37,8 @@ func TestConversationCardPaginationKeepsStatusAndUsesUniqueButtons(t *testing.T)
 	card := conversationProgressCard(ConversationCompleted, timeline, 1, runID)
 	require.Contains(t, card.Header, "已完成")
 	require.Equal(t, "newer", card.Timeline)
-	require.Equal(t, "第 2 / 3 页", card.Footer)
 	require.Len(t, card.Buttons, 4)
+	require.Equal(t, "2 / 3", card.Buttons[1].Label)
 	seen := map[string]bool{}
 	for _, button := range card.Buttons {
 		require.False(t, seen[button.CustomID])
@@ -69,7 +65,7 @@ func TestCardsSanitizeUntrustedContentAndRespectLimits(t *testing.T) {
 
 func TestDiscordComponentsV2CardStructureAndLimits(t *testing.T) {
 	card := ComponentCardPayload{AccentColor: cardColorGreen, Header: "## Status", Body: "Healthy",
-		Timeline: "过程", Footer: "Updated", Buttons: []ComponentButtonPayload{
+		Timeline: "过程", Buttons: []ComponentButtonPayload{
 			{Label: "继续", CustomID: "continue", Style: "primary"},
 		}}
 	components, err := discordCardComponents(card)

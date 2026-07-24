@@ -37,8 +37,7 @@ func (s *Server) workerRunHeartbeat(c *gin.Context) {
 	c.JSON(http.StatusOK, workerprotocol.RunHeartbeatResponse{Commands: commands,
 		Recovery: workerprotocol.RunRecoveryState{Recovering: claimed.Recovering,
 			SubmissionID: claimed.SubmissionID, ConfirmedTurnID: claimed.ConfirmedTurnID,
-			ExternalThreadID: claimed.ExternalThreadID, CodexHomeKey: claimed.CodexHomeKey,
-			ProviderSignature: claimed.ProviderSignature}})
+			ExternalThreadID: claimed.ExternalThreadID, CodexHomeKey: claimed.CodexHomeKey}})
 }
 
 func (s *Server) pendingRunCommands(ctx context.Context,
@@ -520,7 +519,7 @@ func (s *Server) workerSetThread(c *gin.Context) {
 	claimed, err := s.claimedRemoteRun(c.Request.Context(), node.ID, runID, request.RunLeaseRequest)
 	if err == nil {
 		err = codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration).SetThread(c.Request.Context(),
-			claimed, request.ThreadID, request.CodexHome, request.ProviderSignature)
+			claimed, request.ThreadID, request.CodexHome)
 	}
 	if err != nil {
 		remoteRunError(c, "保存远程 Codex Thread 失败", err)

@@ -40,8 +40,6 @@ const (
 	FieldHTMLURL = "html_url"
 	// FieldExecutionNodeID holds the string denoting the execution_node_id field in the database.
 	FieldExecutionNodeID = "execution_node_id"
-	// FieldContextVersion holds the string denoting the context_version field in the database.
-	FieldContextVersion = "context_version"
 	// FieldClosedAt holds the string denoting the closed_at field in the database.
 	FieldClosedAt = "closed_at"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -68,7 +66,6 @@ var Columns = []string{
 	FieldHeadRepository,
 	FieldHTMLURL,
 	FieldExecutionNodeID,
-	FieldContextVersion,
 	FieldClosedAt,
 	FieldCreatedAt,
 	FieldUpdatedAt,
@@ -91,8 +88,6 @@ var (
 	DefaultState string
 	// DefaultAgentOwned holds the default value on creation for the "agent_owned" field.
 	DefaultAgentOwned bool
-	// DefaultContextVersion holds the default value on creation for the "context_version" field.
-	DefaultContextVersion int64
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -174,11 +169,6 @@ func ByHTMLURL(opts ...sql.OrderTermOption) OrderOption {
 // ByExecutionNodeID orders the results by the execution_node_id field.
 func ByExecutionNodeID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldExecutionNodeID, opts...).ToFunc()
-}
-
-// ByContextVersion orders the results by the context_version field.
-func ByContextVersion(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldContextVersion, opts...).ToFunc()
 }
 
 // ByClosedAt orders the results by the closed_at field.

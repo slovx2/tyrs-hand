@@ -16,8 +16,6 @@ const (
 	FieldID = "id"
 	// FieldName holds the string denoting the name field in the database.
 	FieldName = "name"
-	// FieldProvider holds the string denoting the provider field in the database.
-	FieldProvider = "provider"
 	// FieldModel holds the string denoting the model field in the database.
 	FieldModel = "model"
 	// FieldReasoningEffort holds the string denoting the reasoning_effort field in the database.
@@ -34,8 +32,6 @@ const (
 	FieldAllowedTools = "allowed_tools"
 	// FieldConfig holds the string denoting the config field in the database.
 	FieldConfig = "config"
-	// FieldContextVersion holds the string denoting the context_version field in the database.
-	FieldContextVersion = "context_version"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -48,7 +44,6 @@ const (
 var Columns = []string{
 	FieldID,
 	FieldName,
-	FieldProvider,
 	FieldModel,
 	FieldReasoningEffort,
 	FieldServiceTier,
@@ -57,7 +52,6 @@ var Columns = []string{
 	FieldApprovalPolicy,
 	FieldAllowedTools,
 	FieldConfig,
-	FieldContextVersion,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -73,8 +67,6 @@ func ValidColumn(column string) bool {
 }
 
 var (
-	// DefaultProvider holds the default value on creation for the "provider" field.
-	DefaultProvider string
 	// DefaultSandbox holds the default value on creation for the "sandbox" field.
 	DefaultSandbox string
 	// DefaultNetworkEnabled holds the default value on creation for the "network_enabled" field.
@@ -85,8 +77,6 @@ var (
 	DefaultAllowedTools []string
 	// DefaultConfig holds the default value on creation for the "config" field.
 	DefaultConfig map[string]interface{}
-	// DefaultContextVersion holds the default value on creation for the "context_version" field.
-	DefaultContextVersion int64
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -108,11 +98,6 @@ func ByID(opts ...sql.OrderTermOption) OrderOption {
 // ByName orders the results by the name field.
 func ByName(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldName, opts...).ToFunc()
-}
-
-// ByProvider orders the results by the provider field.
-func ByProvider(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldProvider, opts...).ToFunc()
 }
 
 // ByModel orders the results by the model field.
@@ -143,11 +128,6 @@ func ByNetworkEnabled(opts ...sql.OrderTermOption) OrderOption {
 // ByApprovalPolicy orders the results by the approval_policy field.
 func ByApprovalPolicy(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldApprovalPolicy, opts...).ToFunc()
-}
-
-// ByContextVersion orders the results by the context_version field.
-func ByContextVersion(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldContextVersion, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

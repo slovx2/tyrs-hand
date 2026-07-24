@@ -161,7 +161,8 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 		return uuid.Nil, err
 	}
 	var profileID uuid.UUID
-	if err := tx.QueryRowContext(ctx, `SELECT id FROM agent_profiles ORDER BY created_at LIMIT 1`).Scan(&profileID); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM agent_profiles
+		ORDER BY created_at LIMIT 1`).Scan(&profileID); err != nil {
 		return uuid.Nil, err
 	}
 	preferences, err := codexsettings.NewService(s.db).Resolve(ctx, repositoryID, forumID, profileID)
@@ -190,7 +191,8 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 		 configuration_status, configuration_deadline, configured_by_discord_user_id,
 		 title_rename_status)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULLIF($10,''), NULLIF($11,''), $12,
-			$13, CASE WHEN $14::text IS NULL THEN NULL ELSE now() + $14::interval END, $15, 'pending')
+			$13, CASE WHEN $14::text IS NULL THEN NULL ELSE now() + $14::interval END, $15,
+			'pending')
 		ON CONFLICT(guild_id, thread_id) DO UPDATE SET last_activity_at = now(), updated_at = now()
 		RETURNING id`, input.GuildID, forumID, input.ThreadID, input.MessageID, ownerID,
 		repositoryID, profileID, input.Title, status, preferences.Model, preferences.ReasoningEffort,
@@ -467,17 +469,16 @@ func (s *ConversationService) insertMessage(ctx context.Context, tx *sql.Tx, con
 func (s *ConversationService) enqueueMessage(ctx context.Context, tx *sql.Tx, conversationID uuid.UUID, messageID string) error {
 	var repositoryID sql.NullString
 	var profileID uuid.UUID
-	var contextVersion int64
 	var body, actor, permission, actorDisplayName string
 	var actorParticipantID uuid.UUID
 	var allowedJSON []byte
-	err := tx.QueryRowContext(ctx, `SELECT c.repository_id::text, c.agent_profile_id, c.context_version,
+	err := tx.QueryRowContext(ctx, `SELECT c.repository_id::text, c.agent_profile_id,
 		m.body, COALESCE(m.github_login, ''), m.access_snapshot, m.participant_id,
 		m.display_name, p.allowed_tools
 		FROM discord_conversations c JOIN discord_input_messages m ON m.conversation_id = c.id
 		JOIN agent_profiles p ON p.id = c.agent_profile_id
 		WHERE c.id = $1 AND m.message_id = $2`, conversationID, messageID).Scan(
-		&repositoryID, &profileID, &contextVersion, &body, &actor, &permission,
+		&repositoryID, &profileID, &body, &actor, &permission,
 		&actorParticipantID, &actorDisplayName, &allowedJSON)
 	if err != nil {
 		return err
@@ -496,8 +497,8 @@ func (s *ConversationService) enqueueMessage(ctx context.Context, tx *sql.Tx, co
 	_, _, err = codexcontrol.NewRepository(s.db, 0).Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
 		SourceType: codexcontrol.SourceDiscord, DiscordConversationID: conversationID,
 		DiscordMessageID: messageID, RepositoryID: repository, AgentProfileID: profileID,
-		ContextVersion: contextVersion, IdempotencyKey: "discord:message:" + messageID,
-		Instruction: body, AllowedTools: allowed, ActorLogin: actor, ActorPermission: permission,
+		IdempotencyKey: "discord:message:" + messageID,
+		Instruction:    body, AllowedTools: allowed, ActorLogin: actor, ActorPermission: permission,
 		ActorParticipantID: actorParticipantID, ActorDisplayName: actorDisplayName,
 		ReplyPolicy: "silent", Behavior: "steer_if_active",
 	})

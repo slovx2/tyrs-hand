@@ -80,11 +80,6 @@ func AgentProfileID(v uuid.UUID) predicate.CodexThreadControl {
 	return predicate.CodexThreadControl(sql.FieldEQ(FieldAgentProfileID, v))
 }
 
-// ContextVersion applies equality check predicate on the "context_version" field. It's identical to ContextVersionEQ.
-func ContextVersion(v int64) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldEQ(FieldContextVersion, v))
-}
-
 // ExecutionNodeID applies equality check predicate on the "execution_node_id" field. It's identical to ExecutionNodeIDEQ.
 func ExecutionNodeID(v uuid.UUID) predicate.CodexThreadControl {
 	return predicate.CodexThreadControl(sql.FieldEQ(FieldExecutionNodeID, v))
@@ -95,24 +90,9 @@ func ExternalThreadID(v string) predicate.CodexThreadControl {
 	return predicate.CodexThreadControl(sql.FieldEQ(FieldExternalThreadID, v))
 }
 
-// Provider applies equality check predicate on the "provider" field. It's identical to ProviderEQ.
-func Provider(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldEQ(FieldProvider, v))
-}
-
 // CodexHomeKey applies equality check predicate on the "codex_home_key" field. It's identical to CodexHomeKeyEQ.
 func CodexHomeKey(v string) predicate.CodexThreadControl {
 	return predicate.CodexThreadControl(sql.FieldEQ(FieldCodexHomeKey, v))
-}
-
-// ProviderSignature applies equality check predicate on the "provider_signature" field. It's identical to ProviderSignatureEQ.
-func ProviderSignature(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldEQ(FieldProviderSignature, v))
-}
-
-// ThreadGeneration applies equality check predicate on the "thread_generation" field. It's identical to ThreadGenerationEQ.
-func ThreadGeneration(v int) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldEQ(FieldThreadGeneration, v))
 }
 
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
@@ -455,46 +435,6 @@ func AgentProfileIDLTE(v uuid.UUID) predicate.CodexThreadControl {
 	return predicate.CodexThreadControl(sql.FieldLTE(FieldAgentProfileID, v))
 }
 
-// ContextVersionEQ applies the EQ predicate on the "context_version" field.
-func ContextVersionEQ(v int64) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldEQ(FieldContextVersion, v))
-}
-
-// ContextVersionNEQ applies the NEQ predicate on the "context_version" field.
-func ContextVersionNEQ(v int64) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldNEQ(FieldContextVersion, v))
-}
-
-// ContextVersionIn applies the In predicate on the "context_version" field.
-func ContextVersionIn(vs ...int64) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldIn(FieldContextVersion, vs...))
-}
-
-// ContextVersionNotIn applies the NotIn predicate on the "context_version" field.
-func ContextVersionNotIn(vs ...int64) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldNotIn(FieldContextVersion, vs...))
-}
-
-// ContextVersionGT applies the GT predicate on the "context_version" field.
-func ContextVersionGT(v int64) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldGT(FieldContextVersion, v))
-}
-
-// ContextVersionGTE applies the GTE predicate on the "context_version" field.
-func ContextVersionGTE(v int64) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldGTE(FieldContextVersion, v))
-}
-
-// ContextVersionLT applies the LT predicate on the "context_version" field.
-func ContextVersionLT(v int64) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldLT(FieldContextVersion, v))
-}
-
-// ContextVersionLTE applies the LTE predicate on the "context_version" field.
-func ContextVersionLTE(v int64) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldLTE(FieldContextVersion, v))
-}
-
 // ExecutionNodeIDEQ applies the EQ predicate on the "execution_node_id" field.
 func ExecutionNodeIDEQ(v uuid.UUID) predicate.CodexThreadControl {
 	return predicate.CodexThreadControl(sql.FieldEQ(FieldExecutionNodeID, v))
@@ -620,71 +560,6 @@ func ExternalThreadIDContainsFold(v string) predicate.CodexThreadControl {
 	return predicate.CodexThreadControl(sql.FieldContainsFold(FieldExternalThreadID, v))
 }
 
-// ProviderEQ applies the EQ predicate on the "provider" field.
-func ProviderEQ(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldEQ(FieldProvider, v))
-}
-
-// ProviderNEQ applies the NEQ predicate on the "provider" field.
-func ProviderNEQ(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldNEQ(FieldProvider, v))
-}
-
-// ProviderIn applies the In predicate on the "provider" field.
-func ProviderIn(vs ...string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldIn(FieldProvider, vs...))
-}
-
-// ProviderNotIn applies the NotIn predicate on the "provider" field.
-func ProviderNotIn(vs ...string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldNotIn(FieldProvider, vs...))
-}
-
-// ProviderGT applies the GT predicate on the "provider" field.
-func ProviderGT(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldGT(FieldProvider, v))
-}
-
-// ProviderGTE applies the GTE predicate on the "provider" field.
-func ProviderGTE(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldGTE(FieldProvider, v))
-}
-
-// ProviderLT applies the LT predicate on the "provider" field.
-func ProviderLT(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldLT(FieldProvider, v))
-}
-
-// ProviderLTE applies the LTE predicate on the "provider" field.
-func ProviderLTE(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldLTE(FieldProvider, v))
-}
-
-// ProviderContains applies the Contains predicate on the "provider" field.
-func ProviderContains(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldContains(FieldProvider, v))
-}
-
-// ProviderHasPrefix applies the HasPrefix predicate on the "provider" field.
-func ProviderHasPrefix(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldHasPrefix(FieldProvider, v))
-}
-
-// ProviderHasSuffix applies the HasSuffix predicate on the "provider" field.
-func ProviderHasSuffix(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldHasSuffix(FieldProvider, v))
-}
-
-// ProviderEqualFold applies the EqualFold predicate on the "provider" field.
-func ProviderEqualFold(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldEqualFold(FieldProvider, v))
-}
-
-// ProviderContainsFold applies the ContainsFold predicate on the "provider" field.
-func ProviderContainsFold(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldContainsFold(FieldProvider, v))
-}
-
 // CodexHomeKeyEQ applies the EQ predicate on the "codex_home_key" field.
 func CodexHomeKeyEQ(v string) predicate.CodexThreadControl {
 	return predicate.CodexThreadControl(sql.FieldEQ(FieldCodexHomeKey, v))
@@ -758,121 +633,6 @@ func CodexHomeKeyEqualFold(v string) predicate.CodexThreadControl {
 // CodexHomeKeyContainsFold applies the ContainsFold predicate on the "codex_home_key" field.
 func CodexHomeKeyContainsFold(v string) predicate.CodexThreadControl {
 	return predicate.CodexThreadControl(sql.FieldContainsFold(FieldCodexHomeKey, v))
-}
-
-// ProviderSignatureEQ applies the EQ predicate on the "provider_signature" field.
-func ProviderSignatureEQ(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldEQ(FieldProviderSignature, v))
-}
-
-// ProviderSignatureNEQ applies the NEQ predicate on the "provider_signature" field.
-func ProviderSignatureNEQ(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldNEQ(FieldProviderSignature, v))
-}
-
-// ProviderSignatureIn applies the In predicate on the "provider_signature" field.
-func ProviderSignatureIn(vs ...string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldIn(FieldProviderSignature, vs...))
-}
-
-// ProviderSignatureNotIn applies the NotIn predicate on the "provider_signature" field.
-func ProviderSignatureNotIn(vs ...string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldNotIn(FieldProviderSignature, vs...))
-}
-
-// ProviderSignatureGT applies the GT predicate on the "provider_signature" field.
-func ProviderSignatureGT(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldGT(FieldProviderSignature, v))
-}
-
-// ProviderSignatureGTE applies the GTE predicate on the "provider_signature" field.
-func ProviderSignatureGTE(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldGTE(FieldProviderSignature, v))
-}
-
-// ProviderSignatureLT applies the LT predicate on the "provider_signature" field.
-func ProviderSignatureLT(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldLT(FieldProviderSignature, v))
-}
-
-// ProviderSignatureLTE applies the LTE predicate on the "provider_signature" field.
-func ProviderSignatureLTE(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldLTE(FieldProviderSignature, v))
-}
-
-// ProviderSignatureContains applies the Contains predicate on the "provider_signature" field.
-func ProviderSignatureContains(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldContains(FieldProviderSignature, v))
-}
-
-// ProviderSignatureHasPrefix applies the HasPrefix predicate on the "provider_signature" field.
-func ProviderSignatureHasPrefix(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldHasPrefix(FieldProviderSignature, v))
-}
-
-// ProviderSignatureHasSuffix applies the HasSuffix predicate on the "provider_signature" field.
-func ProviderSignatureHasSuffix(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldHasSuffix(FieldProviderSignature, v))
-}
-
-// ProviderSignatureIsNil applies the IsNil predicate on the "provider_signature" field.
-func ProviderSignatureIsNil() predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldIsNull(FieldProviderSignature))
-}
-
-// ProviderSignatureNotNil applies the NotNil predicate on the "provider_signature" field.
-func ProviderSignatureNotNil() predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldNotNull(FieldProviderSignature))
-}
-
-// ProviderSignatureEqualFold applies the EqualFold predicate on the "provider_signature" field.
-func ProviderSignatureEqualFold(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldEqualFold(FieldProviderSignature, v))
-}
-
-// ProviderSignatureContainsFold applies the ContainsFold predicate on the "provider_signature" field.
-func ProviderSignatureContainsFold(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldContainsFold(FieldProviderSignature, v))
-}
-
-// ThreadGenerationEQ applies the EQ predicate on the "thread_generation" field.
-func ThreadGenerationEQ(v int) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldEQ(FieldThreadGeneration, v))
-}
-
-// ThreadGenerationNEQ applies the NEQ predicate on the "thread_generation" field.
-func ThreadGenerationNEQ(v int) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldNEQ(FieldThreadGeneration, v))
-}
-
-// ThreadGenerationIn applies the In predicate on the "thread_generation" field.
-func ThreadGenerationIn(vs ...int) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldIn(FieldThreadGeneration, vs...))
-}
-
-// ThreadGenerationNotIn applies the NotIn predicate on the "thread_generation" field.
-func ThreadGenerationNotIn(vs ...int) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldNotIn(FieldThreadGeneration, vs...))
-}
-
-// ThreadGenerationGT applies the GT predicate on the "thread_generation" field.
-func ThreadGenerationGT(v int) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldGT(FieldThreadGeneration, v))
-}
-
-// ThreadGenerationGTE applies the GTE predicate on the "thread_generation" field.
-func ThreadGenerationGTE(v int) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldGTE(FieldThreadGeneration, v))
-}
-
-// ThreadGenerationLT applies the LT predicate on the "thread_generation" field.
-func ThreadGenerationLT(v int) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldLT(FieldThreadGeneration, v))
-}
-
-// ThreadGenerationLTE applies the LTE predicate on the "thread_generation" field.
-func ThreadGenerationLTE(v int) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldLTE(FieldThreadGeneration, v))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.

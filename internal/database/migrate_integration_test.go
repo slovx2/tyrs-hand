@@ -80,7 +80,7 @@ func TestParticipantIdentityMigrationBindsExistingSSHToEnvironmentOwner(t *testi
 	require.Equal(t, "100000000000000002", ownerID)
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT protocol_version FROM execution_nodes
 		WHERE id=$1`, nodeID).Scan(&protocolVersion))
-	require.Equal(t, 7, protocolVersion)
+	require.Equal(t, 8, protocolVersion)
 }
 
 func TestStrandedDesktopTurnTerminalRepairMigration(t *testing.T) {
@@ -172,6 +172,140 @@ func TestStrandedDesktopTurnTerminalRepairMigration(t *testing.T) {
 	require.Equal(t, "user_interrupt", intentCode)
 	require.Equal(t, "canceled", runStatus)
 	require.Equal(t, "user_interrupt", runCode)
+}
+
+func TestPersistentControlIdentityMigrationRemovesIsolationFieldsAndDuplicateControls(t *testing.T) {
+	ctx := context.Background()
+	db := migrationTestDatabase(t)
+	_, err := db.ExecContext(ctx, `CREATE TABLE schema_migrations (
+		version text PRIMARY KEY,
+		checksum char(64) NOT NULL,
+		applied_at timestamptz NOT NULL DEFAULT now())`)
+	require.NoError(t, err)
+	migrations, err := loadMigrations()
+	require.NoError(t, err)
+	connection, err := db.Conn(ctx)
+	require.NoError(t, err)
+	for _, item := range migrations {
+		if item.version >= "029_" {
+			break
+		}
+		if item.nonTx {
+			require.NoError(t, applyNonTransactional(ctx, connection, item))
+		} else {
+			require.NoError(t, applyTransactional(ctx, connection, item))
+		}
+	}
+	require.NoError(t, connection.Close())
+
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_guilds(guild_id, enabled)
+		VALUES ('bound-control-guild', true)`)
+	require.NoError(t, err)
+	var installationID, repositoryID, profileID, resourceID, environmentID, forumID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO scm_installations
+		(provider, external_id, account_login, account_type)
+		VALUES ('github',9201,'owner','Organization') RETURNING id`).Scan(&installationID))
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO repositories
+		(installation_id, provider, external_id, owner, name, default_branch, clone_url)
+		VALUES ($1,'github',9202,'owner','bound-control','main','https://example.invalid/repo.git')
+		RETURNING id`, installationID).Scan(&repositoryID))
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO agent_profiles(name)
+		VALUES ('Bound Control') RETURNING id`).Scan(&profileID))
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_resources
+		(guild_id, resource_key, discord_id, kind, name, managed_marker)
+		VALUES ('bound-control-guild','forum.bound-control','bound-control-forum','forum',
+			'Bound Control','managed') RETURNING id`).Scan(&resourceID))
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_development_environments
+		(guild_id, owner_discord_user_id, build_repository_id, container_name,
+			data_volume_name, home_volume_name, network_name)
+		VALUES ('bound-control-guild','owner',$1,'bound-control-env','bound-control-data',
+			'bound-control-home','bound-control-network') RETURNING id`, repositoryID).
+		Scan(&environmentID))
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_forums
+		(guild_id, resource_id, forum_type, owner_discord_user_id, repository_id,
+			development_environment_id)
+		VALUES ('bound-control-guild',$1,'development','owner',$2,$3) RETURNING id`,
+		resourceID, repositoryID, environmentID).Scan(&forumID))
+
+	projectedConversationID, ordinaryConversationID := uuid.New(), uuid.New()
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_conversations
+		(id, guild_id, forum_id, thread_id, owner_discord_user_id, repository_id,
+			agent_profile_id, title, context_version)
+		VALUES ($1,'bound-control-guild',$3,'projected','owner',$4,$5,'Projected',10),
+			($2,'bound-control-guild',$3,'ordinary','owner',$4,$5,'Ordinary',20)`,
+		projectedConversationID, ordinaryConversationID, forumID, repositoryID, profileID)
+	require.NoError(t, err)
+	projectedOldID, projectedDesktopID := uuid.New(), uuid.New()
+	ordinaryFirstID, ordinarySecondID := uuid.New(), uuid.New()
+	_, err = db.ExecContext(ctx, `INSERT INTO codex_thread_controls
+		(id, source_type, discord_conversation_id, repository_id, agent_profile_id,
+			context_version, development_environment_id, created_at)
+		VALUES
+			($1,'discord_conversation',$5,$7,$9,1,$8,now()-interval '4 hours'),
+			($2,'desktop_thread',$5,$7,$9,2,$8,now()-interval '3 hours'),
+			($3,'discord_conversation',$6,$7,$9,3,$8,now()-interval '2 hours'),
+			($4,'discord_conversation',$6,$7,$9,4,$8,now()-interval '1 hour')`,
+		projectedOldID, projectedDesktopID, ordinaryFirstID, ordinarySecondID,
+		projectedConversationID, ordinaryConversationID, repositoryID, environmentID, profileID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `INSERT INTO desktop_thread_requests
+		(id, environment_id, operation, request_key, cwd, request_params, status,
+			forum_id, conversation_id, control_id)
+		VALUES ($1,$2,'start',$3,'/workspace','{}','completed',$4,$5,$6)`,
+		uuid.New(), environmentID, strings.Repeat("d", 64), forumID,
+		projectedConversationID, projectedDesktopID)
+	require.NoError(t, err)
+	var workItemID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO work_items
+		(repository_id, kind, external_number, title, context_version)
+		VALUES ($1,'issue',99,'Persistent GitHub',8) RETURNING id`, repositoryID).
+		Scan(&workItemID))
+	githubOldID, githubLatestID := uuid.New(), uuid.New()
+	_, err = db.ExecContext(ctx, `INSERT INTO codex_thread_controls
+		(id, source_type, work_item_id, repository_id, agent_profile_id,
+			context_version, created_at)
+		VALUES ($1,'github_work_item',$3,$4,$5,7,now()-interval '2 hours'),
+			($2,'github_work_item',$3,$4,$5,8,now()-interval '1 hour')`,
+		githubOldID, githubLatestID, workItemID, repositoryID, profileID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `INSERT INTO execution_nodes(name, protocol_version)
+		VALUES ('migration-protocol-node', 7)`)
+	require.NoError(t, err)
+
+	require.NoError(t, Migrate(ctx, db))
+	var projectedControlID, ordinaryControlID, githubControlID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM codex_thread_controls
+		WHERE discord_conversation_id=$1`, projectedConversationID).Scan(&projectedControlID))
+	require.Equal(t, projectedDesktopID, projectedControlID)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM codex_thread_controls
+		WHERE discord_conversation_id=$1`, ordinaryConversationID).Scan(&ordinaryControlID))
+	require.Equal(t, ordinaryFirstID, ordinaryControlID)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM codex_thread_controls
+		WHERE work_item_id=$1 AND agent_profile_id=$2`, workItemID, profileID).
+		Scan(&githubControlID))
+	require.Equal(t, githubLatestID, githubControlID)
+	var controls int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_thread_controls
+		WHERE id IN ($1,$2,$3,$4)`, projectedOldID, projectedDesktopID,
+		ordinaryFirstID, ordinarySecondID).Scan(&controls))
+	require.Equal(t, 2, controls)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_thread_controls
+		WHERE id IN ($1,$2)`, githubOldID, githubLatestID).Scan(&controls))
+	require.Equal(t, 1, controls)
+	var isolationColumns int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM information_schema.columns
+		WHERE table_schema='public' AND (
+			(column_name='context_version' AND table_name IN
+				('agent_profiles','work_items','discord_conversations','codex_thread_controls'))
+			OR (table_name='codex_thread_controls'
+				AND column_name IN ('provider','provider_signature','thread_generation'))
+			OR (table_name='agent_profiles' AND column_name='provider')
+		)`).Scan(&isolationColumns))
+	require.Zero(t, isolationColumns)
+	var protocolVersion int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT protocol_version FROM execution_nodes
+		WHERE name='migration-protocol-node'`).Scan(&protocolVersion))
+	require.Equal(t, 8, protocolVersion)
 }
 
 func migrationTestDatabase(t *testing.T) *sql.DB {

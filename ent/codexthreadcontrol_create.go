@@ -75,12 +75,6 @@ func (_c *CodexThreadControlCreate) SetAgentProfileID(v uuid.UUID) *CodexThreadC
 	return _c
 }
 
-// SetContextVersion sets the "context_version" field.
-func (_c *CodexThreadControlCreate) SetContextVersion(v int64) *CodexThreadControlCreate {
-	_c.mutation.SetContextVersion(v)
-	return _c
-}
-
 // SetExecutionNodeID sets the "execution_node_id" field.
 func (_c *CodexThreadControlCreate) SetExecutionNodeID(v uuid.UUID) *CodexThreadControlCreate {
 	_c.mutation.SetExecutionNodeID(v)
@@ -109,20 +103,6 @@ func (_c *CodexThreadControlCreate) SetNillableExternalThreadID(v *string) *Code
 	return _c
 }
 
-// SetProvider sets the "provider" field.
-func (_c *CodexThreadControlCreate) SetProvider(v string) *CodexThreadControlCreate {
-	_c.mutation.SetProvider(v)
-	return _c
-}
-
-// SetNillableProvider sets the "provider" field if the given value is not nil.
-func (_c *CodexThreadControlCreate) SetNillableProvider(v *string) *CodexThreadControlCreate {
-	if v != nil {
-		_c.SetProvider(*v)
-	}
-	return _c
-}
-
 // SetCodexHomeKey sets the "codex_home_key" field.
 func (_c *CodexThreadControlCreate) SetCodexHomeKey(v string) *CodexThreadControlCreate {
 	_c.mutation.SetCodexHomeKey(v)
@@ -133,34 +113,6 @@ func (_c *CodexThreadControlCreate) SetCodexHomeKey(v string) *CodexThreadContro
 func (_c *CodexThreadControlCreate) SetNillableCodexHomeKey(v *string) *CodexThreadControlCreate {
 	if v != nil {
 		_c.SetCodexHomeKey(*v)
-	}
-	return _c
-}
-
-// SetProviderSignature sets the "provider_signature" field.
-func (_c *CodexThreadControlCreate) SetProviderSignature(v string) *CodexThreadControlCreate {
-	_c.mutation.SetProviderSignature(v)
-	return _c
-}
-
-// SetNillableProviderSignature sets the "provider_signature" field if the given value is not nil.
-func (_c *CodexThreadControlCreate) SetNillableProviderSignature(v *string) *CodexThreadControlCreate {
-	if v != nil {
-		_c.SetProviderSignature(*v)
-	}
-	return _c
-}
-
-// SetThreadGeneration sets the "thread_generation" field.
-func (_c *CodexThreadControlCreate) SetThreadGeneration(v int) *CodexThreadControlCreate {
-	_c.mutation.SetThreadGeneration(v)
-	return _c
-}
-
-// SetNillableThreadGeneration sets the "thread_generation" field if the given value is not nil.
-func (_c *CodexThreadControlCreate) SetNillableThreadGeneration(v *int) *CodexThreadControlCreate {
-	if v != nil {
-		_c.SetThreadGeneration(*v)
 	}
 	return _c
 }
@@ -452,14 +404,6 @@ func (_c *CodexThreadControlCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *CodexThreadControlCreate) defaults() {
-	if _, ok := _c.mutation.Provider(); !ok {
-		v := codexthreadcontrol.DefaultProvider
-		_c.mutation.SetProvider(v)
-	}
-	if _, ok := _c.mutation.ThreadGeneration(); !ok {
-		v := codexthreadcontrol.DefaultThreadGeneration
-		_c.mutation.SetThreadGeneration(v)
-	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := codexthreadcontrol.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -493,15 +437,6 @@ func (_c *CodexThreadControlCreate) check() error {
 	}
 	if _, ok := _c.mutation.AgentProfileID(); !ok {
 		return &ValidationError{Name: "agent_profile_id", err: errors.New(`ent: missing required field "CodexThreadControl.agent_profile_id"`)}
-	}
-	if _, ok := _c.mutation.ContextVersion(); !ok {
-		return &ValidationError{Name: "context_version", err: errors.New(`ent: missing required field "CodexThreadControl.context_version"`)}
-	}
-	if _, ok := _c.mutation.Provider(); !ok {
-		return &ValidationError{Name: "provider", err: errors.New(`ent: missing required field "CodexThreadControl.provider"`)}
-	}
-	if _, ok := _c.mutation.ThreadGeneration(); !ok {
-		return &ValidationError{Name: "thread_generation", err: errors.New(`ent: missing required field "CodexThreadControl.thread_generation"`)}
 	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "CodexThreadControl.status"`)}
@@ -573,10 +508,6 @@ func (_c *CodexThreadControlCreate) createSpec() (*CodexThreadControl, *sqlgraph
 		_spec.SetField(codexthreadcontrol.FieldAgentProfileID, field.TypeUUID, value)
 		_node.AgentProfileID = value
 	}
-	if value, ok := _c.mutation.ContextVersion(); ok {
-		_spec.SetField(codexthreadcontrol.FieldContextVersion, field.TypeInt64, value)
-		_node.ContextVersion = value
-	}
 	if value, ok := _c.mutation.ExecutionNodeID(); ok {
 		_spec.SetField(codexthreadcontrol.FieldExecutionNodeID, field.TypeUUID, value)
 		_node.ExecutionNodeID = &value
@@ -585,21 +516,9 @@ func (_c *CodexThreadControlCreate) createSpec() (*CodexThreadControl, *sqlgraph
 		_spec.SetField(codexthreadcontrol.FieldExternalThreadID, field.TypeString, value)
 		_node.ExternalThreadID = &value
 	}
-	if value, ok := _c.mutation.Provider(); ok {
-		_spec.SetField(codexthreadcontrol.FieldProvider, field.TypeString, value)
-		_node.Provider = value
-	}
 	if value, ok := _c.mutation.CodexHomeKey(); ok {
 		_spec.SetField(codexthreadcontrol.FieldCodexHomeKey, field.TypeString, value)
 		_node.CodexHomeKey = &value
-	}
-	if value, ok := _c.mutation.ProviderSignature(); ok {
-		_spec.SetField(codexthreadcontrol.FieldProviderSignature, field.TypeString, value)
-		_node.ProviderSignature = &value
-	}
-	if value, ok := _c.mutation.ThreadGeneration(); ok {
-		_spec.SetField(codexthreadcontrol.FieldThreadGeneration, field.TypeInt, value)
-		_node.ThreadGeneration = value
 	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(codexthreadcontrol.FieldStatus, field.TypeString, value)

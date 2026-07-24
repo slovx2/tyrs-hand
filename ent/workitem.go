@@ -44,8 +44,6 @@ type WorkItem struct {
 	HTMLURL *string `json:"html_url,omitempty"`
 	// ExecutionNodeID holds the value of the "execution_node_id" field.
 	ExecutionNodeID *uuid.UUID `json:"execution_node_id,omitempty"`
-	// ContextVersion holds the value of the "context_version" field.
-	ContextVersion int64 `json:"context_version,omitempty"`
 	// ClosedAt holds the value of the "closed_at" field.
 	ClosedAt *time.Time `json:"closed_at,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -64,7 +62,7 @@ func (*WorkItem) scanValues(columns []string) ([]any, error) {
 			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		case workitem.FieldAgentOwned:
 			values[i] = new(sql.NullBool)
-		case workitem.FieldExternalNumber, workitem.FieldContextVersion:
+		case workitem.FieldExternalNumber:
 			values[i] = new(sql.NullInt64)
 		case workitem.FieldKind, workitem.FieldTitle, workitem.FieldState, workitem.FieldBaseSha, workitem.FieldHeadSha, workitem.FieldBaseRef, workitem.FieldHeadRef, workitem.FieldHeadRepository, workitem.FieldHTMLURL:
 			values[i] = new(sql.NullString)
@@ -178,12 +176,6 @@ func (_m *WorkItem) assignValues(columns []string, values []any) error {
 				_m.ExecutionNodeID = new(uuid.UUID)
 				*_m.ExecutionNodeID = *value.S.(*uuid.UUID)
 			}
-		case workitem.FieldContextVersion:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field context_version", values[i])
-			} else if value.Valid {
-				_m.ContextVersion = value.Int64
-			}
 		case workitem.FieldClosedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field closed_at", values[i])
@@ -291,9 +283,6 @@ func (_m *WorkItem) String() string {
 		builder.WriteString("execution_node_id=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
-	builder.WriteString(", ")
-	builder.WriteString("context_version=")
-	builder.WriteString(fmt.Sprintf("%v", _m.ContextVersion))
 	builder.WriteString(", ")
 	if v := _m.ClosedAt; v != nil {
 		builder.WriteString("closed_at=")

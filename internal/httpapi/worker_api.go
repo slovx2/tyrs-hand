@@ -252,8 +252,7 @@ func (s *Server) claimedRemoteRun(ctx context.Context, nodeID, runID uuid.UUID,
 		COALESCE(i.discord_message_id,''), i.agent_profile_id, i.sequence_no,
 		i.status = 'reconciling' OR i.codex_submission_id IS NOT NULL,
 		COALESCE(i.codex_submission_id,''), COALESCE(i.confirmed_codex_turn_id,''),
-		COALESCE(c.external_thread_id,''), COALESCE(c.codex_home_key,''),
-		COALESCE(c.provider_signature,'')
+		COALESCE(c.external_thread_id,''), COALESCE(c.codex_home_key,'')
 		FROM codex_turn_runs r JOIN codex_turn_intents i ON i.id = r.primary_intent_id
 		JOIN codex_thread_controls c ON c.id = r.control_id
 		WHERE r.id = $1 AND r.execution_node_id = $2`, runID, nodeID).Scan(
@@ -262,7 +261,7 @@ func (s *Server) claimedRemoteRun(ctx context.Context, nodeID, runID uuid.UUID,
 		&conversationID, &workItemID, &repositoryID,
 		&claimed.DiscordMessageID, &claimed.AgentProfileID, &claimed.Sequence,
 		&claimed.Recovering, &claimed.SubmissionID, &claimed.ConfirmedTurnID,
-		&claimed.ExternalThreadID, &claimed.CodexHomeKey, &claimed.ProviderSignature)
+		&claimed.ExternalThreadID, &claimed.CodexHomeKey)
 	if err != nil {
 		return nil, err
 	}

@@ -62,15 +62,14 @@ type Intent struct {
 
 type ClaimedControl struct {
 	Intent
-	RunID             uuid.UUID
-	Capability        string
-	LeaseToken        string
-	LeaseEpoch        int64
-	LeaseExpiresAt    time.Time
-	ExternalThreadID  string
-	CodexHomeKey      string
-	ProviderSignature string
-	Recovering        bool
+	RunID            uuid.UUID
+	Capability       string
+	LeaseToken       string
+	LeaseEpoch       int64
+	LeaseExpiresAt   time.Time
+	ExternalThreadID string
+	CodexHomeKey     string
+	Recovering       bool
 }
 
 type EnqueueRequest struct {
@@ -81,7 +80,6 @@ type EnqueueRequest struct {
 	DiscordMessageID      string
 	RepositoryID          uuid.UUID
 	AgentProfileID        uuid.UUID
-	ContextVersion        int64
 	WebhookDeliveryID     uuid.UUID
 	TriggerRuleID         uuid.UUID
 	TriggerEvidence       json.RawMessage

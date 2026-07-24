@@ -105,24 +105,12 @@ func (s *Service) SaveGlobalAgents(ctx context.Context, input GlobalAgents) erro
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	result, err := tx.ExecContext(ctx, `INSERT INTO platform_settings(setting_key, value)
+	_, err = tx.ExecContext(ctx, `INSERT INTO platform_settings(setting_key, value)
 		VALUES ($1,$2) ON CONFLICT(setting_key) DO UPDATE SET value=EXCLUDED.value,
 		version=platform_settings.version+1, updated_at=now()
 		WHERE platform_settings.value IS DISTINCT FROM EXCLUDED.value`, globalAgentsKey, data)
 	if err != nil {
 		return err
-	}
-	changed, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if changed != 0 {
-		if _, err := tx.ExecContext(ctx, "UPDATE work_items SET context_version = context_version + 1, updated_at = now() WHERE state = 'open'"); err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, "UPDATE discord_conversations SET context_version = context_version + 1, updated_at = now()"); err != nil {
-			return err
-		}
 	}
 	return tx.Commit()
 }
@@ -186,14 +174,6 @@ func (s *Service) SaveAgentProvider(ctx context.Context, input AgentProviderInpu
 	if err != nil {
 		return err
 	}
-	if old.ConfigSignature != "" && connectionChanged {
-		if _, err := tx.ExecContext(ctx, "UPDATE work_items SET context_version = context_version + 1, updated_at = now() WHERE state = 'open'"); err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, "UPDATE discord_conversations SET context_version = context_version + 1, updated_at = now()"); err != nil {
-			return err
-		}
-	}
 	return tx.Commit()
 }
 
@@ -227,14 +207,6 @@ func (s *Service) SetChatGPTConfigured(ctx context.Context, configured bool) err
 	if _, err = tx.ExecContext(ctx, `INSERT INTO platform_settings(setting_key, value)
 		VALUES ($1,$2) ON CONFLICT(setting_key) DO UPDATE SET value=EXCLUDED.value,
 		version=platform_settings.version+1, updated_at=now()`, agentProviderKey, data); err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE work_items SET context_version=context_version+1,
-		updated_at=now() WHERE state='open'`); err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE discord_conversations
-		SET context_version=context_version+1, updated_at=now()`); err != nil {
 		return err
 	}
 	return tx.Commit()

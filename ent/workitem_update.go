@@ -260,27 +260,6 @@ func (_u *WorkItemUpdate) ClearExecutionNodeID() *WorkItemUpdate {
 	return _u
 }
 
-// SetContextVersion sets the "context_version" field.
-func (_u *WorkItemUpdate) SetContextVersion(v int64) *WorkItemUpdate {
-	_u.mutation.ResetContextVersion()
-	_u.mutation.SetContextVersion(v)
-	return _u
-}
-
-// SetNillableContextVersion sets the "context_version" field if the given value is not nil.
-func (_u *WorkItemUpdate) SetNillableContextVersion(v *int64) *WorkItemUpdate {
-	if v != nil {
-		_u.SetContextVersion(*v)
-	}
-	return _u
-}
-
-// AddContextVersion adds value to the "context_version" field.
-func (_u *WorkItemUpdate) AddContextVersion(v int64) *WorkItemUpdate {
-	_u.mutation.AddContextVersion(v)
-	return _u
-}
-
 // SetClosedAt sets the "closed_at" field.
 func (_u *WorkItemUpdate) SetClosedAt(v time.Time) *WorkItemUpdate {
 	_u.mutation.SetClosedAt(v)
@@ -433,12 +412,6 @@ func (_u *WorkItemUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.ExecutionNodeIDCleared() {
 		_spec.ClearField(workitem.FieldExecutionNodeID, field.TypeUUID)
-	}
-	if value, ok := _u.mutation.ContextVersion(); ok {
-		_spec.SetField(workitem.FieldContextVersion, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedContextVersion(); ok {
-		_spec.AddField(workitem.FieldContextVersion, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.ClosedAt(); ok {
 		_spec.SetField(workitem.FieldClosedAt, field.TypeTime, value)
@@ -703,27 +676,6 @@ func (_u *WorkItemUpdateOne) ClearExecutionNodeID() *WorkItemUpdateOne {
 	return _u
 }
 
-// SetContextVersion sets the "context_version" field.
-func (_u *WorkItemUpdateOne) SetContextVersion(v int64) *WorkItemUpdateOne {
-	_u.mutation.ResetContextVersion()
-	_u.mutation.SetContextVersion(v)
-	return _u
-}
-
-// SetNillableContextVersion sets the "context_version" field if the given value is not nil.
-func (_u *WorkItemUpdateOne) SetNillableContextVersion(v *int64) *WorkItemUpdateOne {
-	if v != nil {
-		_u.SetContextVersion(*v)
-	}
-	return _u
-}
-
-// AddContextVersion adds value to the "context_version" field.
-func (_u *WorkItemUpdateOne) AddContextVersion(v int64) *WorkItemUpdateOne {
-	_u.mutation.AddContextVersion(v)
-	return _u
-}
-
 // SetClosedAt sets the "closed_at" field.
 func (_u *WorkItemUpdateOne) SetClosedAt(v time.Time) *WorkItemUpdateOne {
 	_u.mutation.SetClosedAt(v)
@@ -906,12 +858,6 @@ func (_u *WorkItemUpdateOne) sqlSave(ctx context.Context) (_node *WorkItem, err 
 	}
 	if _u.mutation.ExecutionNodeIDCleared() {
 		_spec.ClearField(workitem.FieldExecutionNodeID, field.TypeUUID)
-	}
-	if value, ok := _u.mutation.ContextVersion(); ok {
-		_spec.SetField(workitem.FieldContextVersion, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedContextVersion(); ok {
-		_spec.AddField(workitem.FieldContextVersion, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.ClosedAt(); ok {
 		_spec.SetField(workitem.FieldClosedAt, field.TypeTime, value)

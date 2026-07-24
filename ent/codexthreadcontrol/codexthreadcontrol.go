@@ -24,20 +24,12 @@ const (
 	FieldRepositoryID = "repository_id"
 	// FieldAgentProfileID holds the string denoting the agent_profile_id field in the database.
 	FieldAgentProfileID = "agent_profile_id"
-	// FieldContextVersion holds the string denoting the context_version field in the database.
-	FieldContextVersion = "context_version"
 	// FieldExecutionNodeID holds the string denoting the execution_node_id field in the database.
 	FieldExecutionNodeID = "execution_node_id"
 	// FieldExternalThreadID holds the string denoting the external_thread_id field in the database.
 	FieldExternalThreadID = "external_thread_id"
-	// FieldProvider holds the string denoting the provider field in the database.
-	FieldProvider = "provider"
 	// FieldCodexHomeKey holds the string denoting the codex_home_key field in the database.
 	FieldCodexHomeKey = "codex_home_key"
-	// FieldProviderSignature holds the string denoting the provider_signature field in the database.
-	FieldProviderSignature = "provider_signature"
-	// FieldThreadGeneration holds the string denoting the thread_generation field in the database.
-	FieldThreadGeneration = "thread_generation"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldNextSequenceNo holds the string denoting the next_sequence_no field in the database.
@@ -84,13 +76,9 @@ var Columns = []string{
 	FieldDiscordConversationID,
 	FieldRepositoryID,
 	FieldAgentProfileID,
-	FieldContextVersion,
 	FieldExecutionNodeID,
 	FieldExternalThreadID,
-	FieldProvider,
 	FieldCodexHomeKey,
-	FieldProviderSignature,
-	FieldThreadGeneration,
 	FieldStatus,
 	FieldNextSequenceNo,
 	FieldActiveIntentID,
@@ -121,10 +109,6 @@ func ValidColumn(column string) bool {
 }
 
 var (
-	// DefaultProvider holds the default value on creation for the "provider" field.
-	DefaultProvider string
-	// DefaultThreadGeneration holds the default value on creation for the "thread_generation" field.
-	DefaultThreadGeneration int
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// DefaultNextSequenceNo holds the default value on creation for the "next_sequence_no" field.
@@ -174,11 +158,6 @@ func ByAgentProfileID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAgentProfileID, opts...).ToFunc()
 }
 
-// ByContextVersion orders the results by the context_version field.
-func ByContextVersion(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldContextVersion, opts...).ToFunc()
-}
-
 // ByExecutionNodeID orders the results by the execution_node_id field.
 func ByExecutionNodeID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldExecutionNodeID, opts...).ToFunc()
@@ -189,24 +168,9 @@ func ByExternalThreadID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldExternalThreadID, opts...).ToFunc()
 }
 
-// ByProvider orders the results by the provider field.
-func ByProvider(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldProvider, opts...).ToFunc()
-}
-
 // ByCodexHomeKey orders the results by the codex_home_key field.
 func ByCodexHomeKey(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCodexHomeKey, opts...).ToFunc()
-}
-
-// ByProviderSignature orders the results by the provider_signature field.
-func ByProviderSignature(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldProviderSignature, opts...).ToFunc()
-}
-
-// ByThreadGeneration orders the results by the thread_generation field.
-func ByThreadGeneration(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldThreadGeneration, opts...).ToFunc()
 }
 
 // ByStatus orders the results by the status field.

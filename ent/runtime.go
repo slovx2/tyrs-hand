@@ -55,40 +55,32 @@ func init() {
 	administrator.DefaultID = administratorDescID.Default.(func() uuid.UUID)
 	agentprofileFields := schema.AgentProfile{}.Fields()
 	_ = agentprofileFields
-	// agentprofileDescProvider is the schema descriptor for provider field.
-	agentprofileDescProvider := agentprofileFields[2].Descriptor()
-	// agentprofile.DefaultProvider holds the default value on creation for the provider field.
-	agentprofile.DefaultProvider = agentprofileDescProvider.Default.(string)
 	// agentprofileDescSandbox is the schema descriptor for sandbox field.
-	agentprofileDescSandbox := agentprofileFields[6].Descriptor()
+	agentprofileDescSandbox := agentprofileFields[5].Descriptor()
 	// agentprofile.DefaultSandbox holds the default value on creation for the sandbox field.
 	agentprofile.DefaultSandbox = agentprofileDescSandbox.Default.(string)
 	// agentprofileDescNetworkEnabled is the schema descriptor for network_enabled field.
-	agentprofileDescNetworkEnabled := agentprofileFields[7].Descriptor()
+	agentprofileDescNetworkEnabled := agentprofileFields[6].Descriptor()
 	// agentprofile.DefaultNetworkEnabled holds the default value on creation for the network_enabled field.
 	agentprofile.DefaultNetworkEnabled = agentprofileDescNetworkEnabled.Default.(bool)
 	// agentprofileDescApprovalPolicy is the schema descriptor for approval_policy field.
-	agentprofileDescApprovalPolicy := agentprofileFields[8].Descriptor()
+	agentprofileDescApprovalPolicy := agentprofileFields[7].Descriptor()
 	// agentprofile.DefaultApprovalPolicy holds the default value on creation for the approval_policy field.
 	agentprofile.DefaultApprovalPolicy = agentprofileDescApprovalPolicy.Default.(string)
 	// agentprofileDescAllowedTools is the schema descriptor for allowed_tools field.
-	agentprofileDescAllowedTools := agentprofileFields[9].Descriptor()
+	agentprofileDescAllowedTools := agentprofileFields[8].Descriptor()
 	// agentprofile.DefaultAllowedTools holds the default value on creation for the allowed_tools field.
 	agentprofile.DefaultAllowedTools = agentprofileDescAllowedTools.Default.([]string)
 	// agentprofileDescConfig is the schema descriptor for config field.
-	agentprofileDescConfig := agentprofileFields[10].Descriptor()
+	agentprofileDescConfig := agentprofileFields[9].Descriptor()
 	// agentprofile.DefaultConfig holds the default value on creation for the config field.
 	agentprofile.DefaultConfig = agentprofileDescConfig.Default.(map[string]interface{})
-	// agentprofileDescContextVersion is the schema descriptor for context_version field.
-	agentprofileDescContextVersion := agentprofileFields[11].Descriptor()
-	// agentprofile.DefaultContextVersion holds the default value on creation for the context_version field.
-	agentprofile.DefaultContextVersion = agentprofileDescContextVersion.Default.(int64)
 	// agentprofileDescCreatedAt is the schema descriptor for created_at field.
-	agentprofileDescCreatedAt := agentprofileFields[12].Descriptor()
+	agentprofileDescCreatedAt := agentprofileFields[10].Descriptor()
 	// agentprofile.DefaultCreatedAt holds the default value on creation for the created_at field.
 	agentprofile.DefaultCreatedAt = agentprofileDescCreatedAt.Default.(func() time.Time)
 	// agentprofileDescUpdatedAt is the schema descriptor for updated_at field.
-	agentprofileDescUpdatedAt := agentprofileFields[13].Descriptor()
+	agentprofileDescUpdatedAt := agentprofileFields[11].Descriptor()
 	// agentprofile.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	agentprofile.DefaultUpdatedAt = agentprofileDescUpdatedAt.Default.(func() time.Time)
 	// agentprofile.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -109,32 +101,24 @@ func init() {
 	auditlog.DefaultCreatedAt = auditlogDescCreatedAt.Default.(func() time.Time)
 	codexthreadcontrolFields := schema.CodexThreadControl{}.Fields()
 	_ = codexthreadcontrolFields
-	// codexthreadcontrolDescProvider is the schema descriptor for provider field.
-	codexthreadcontrolDescProvider := codexthreadcontrolFields[9].Descriptor()
-	// codexthreadcontrol.DefaultProvider holds the default value on creation for the provider field.
-	codexthreadcontrol.DefaultProvider = codexthreadcontrolDescProvider.Default.(string)
-	// codexthreadcontrolDescThreadGeneration is the schema descriptor for thread_generation field.
-	codexthreadcontrolDescThreadGeneration := codexthreadcontrolFields[12].Descriptor()
-	// codexthreadcontrol.DefaultThreadGeneration holds the default value on creation for the thread_generation field.
-	codexthreadcontrol.DefaultThreadGeneration = codexthreadcontrolDescThreadGeneration.Default.(int)
 	// codexthreadcontrolDescStatus is the schema descriptor for status field.
-	codexthreadcontrolDescStatus := codexthreadcontrolFields[13].Descriptor()
+	codexthreadcontrolDescStatus := codexthreadcontrolFields[9].Descriptor()
 	// codexthreadcontrol.DefaultStatus holds the default value on creation for the status field.
 	codexthreadcontrol.DefaultStatus = codexthreadcontrolDescStatus.Default.(string)
 	// codexthreadcontrolDescNextSequenceNo is the schema descriptor for next_sequence_no field.
-	codexthreadcontrolDescNextSequenceNo := codexthreadcontrolFields[14].Descriptor()
+	codexthreadcontrolDescNextSequenceNo := codexthreadcontrolFields[10].Descriptor()
 	// codexthreadcontrol.DefaultNextSequenceNo holds the default value on creation for the next_sequence_no field.
 	codexthreadcontrol.DefaultNextSequenceNo = codexthreadcontrolDescNextSequenceNo.Default.(int64)
 	// codexthreadcontrolDescLeaseEpoch is the schema descriptor for lease_epoch field.
-	codexthreadcontrolDescLeaseEpoch := codexthreadcontrolFields[19].Descriptor()
+	codexthreadcontrolDescLeaseEpoch := codexthreadcontrolFields[15].Descriptor()
 	// codexthreadcontrol.DefaultLeaseEpoch holds the default value on creation for the lease_epoch field.
 	codexthreadcontrol.DefaultLeaseEpoch = codexthreadcontrolDescLeaseEpoch.Default.(int64)
 	// codexthreadcontrolDescCreatedAt is the schema descriptor for created_at field.
-	codexthreadcontrolDescCreatedAt := codexthreadcontrolFields[28].Descriptor()
+	codexthreadcontrolDescCreatedAt := codexthreadcontrolFields[24].Descriptor()
 	// codexthreadcontrol.DefaultCreatedAt holds the default value on creation for the created_at field.
 	codexthreadcontrol.DefaultCreatedAt = codexthreadcontrolDescCreatedAt.Default.(func() time.Time)
 	// codexthreadcontrolDescUpdatedAt is the schema descriptor for updated_at field.
-	codexthreadcontrolDescUpdatedAt := codexthreadcontrolFields[29].Descriptor()
+	codexthreadcontrolDescUpdatedAt := codexthreadcontrolFields[25].Descriptor()
 	// codexthreadcontrol.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	codexthreadcontrol.DefaultUpdatedAt = codexthreadcontrolDescUpdatedAt.Default.(func() time.Time)
 	// codexthreadcontrol.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -531,16 +515,12 @@ func init() {
 	workitemDescAgentOwned := workitemFields[6].Descriptor()
 	// workitem.DefaultAgentOwned holds the default value on creation for the agent_owned field.
 	workitem.DefaultAgentOwned = workitemDescAgentOwned.Default.(bool)
-	// workitemDescContextVersion is the schema descriptor for context_version field.
-	workitemDescContextVersion := workitemFields[14].Descriptor()
-	// workitem.DefaultContextVersion holds the default value on creation for the context_version field.
-	workitem.DefaultContextVersion = workitemDescContextVersion.Default.(int64)
 	// workitemDescCreatedAt is the schema descriptor for created_at field.
-	workitemDescCreatedAt := workitemFields[16].Descriptor()
+	workitemDescCreatedAt := workitemFields[15].Descriptor()
 	// workitem.DefaultCreatedAt holds the default value on creation for the created_at field.
 	workitem.DefaultCreatedAt = workitemDescCreatedAt.Default.(func() time.Time)
 	// workitemDescUpdatedAt is the schema descriptor for updated_at field.
-	workitemDescUpdatedAt := workitemFields[17].Descriptor()
+	workitemDescUpdatedAt := workitemFields[16].Descriptor()
 	// workitem.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	workitem.DefaultUpdatedAt = workitemDescUpdatedAt.Default.(func() time.Time)
 	// workitem.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

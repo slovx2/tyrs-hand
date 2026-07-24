@@ -49,7 +49,6 @@ type jobContext struct {
 	BaseSHA         string
 	BaseRef         string
 	HTMLURL         string
-	ContextVersion  int64
 	ProfileName     string
 	Model           string
 	ReasoningEffort string
@@ -123,11 +122,7 @@ func (p *Processor) Process(ctx context.Context, claimed *codexcontrol.ClaimedCo
 	if err != nil {
 		return codexcontrol.TurnResult{}, err
 	}
-	signature := provider.ConfigSignature
-	if signature == "" {
-		signature = "default"
-	}
-	codexHome := filepath.Join(p.cfg.CodexHomeRoot, "pools", claimed.RepositoryID.String(), claimed.AgentProfileID.String(), signature[:min(16, len(signature))])
+	codexHome := persistentCodexHome(p.cfg.CodexHomeRoot, claimed)
 	provider, environment, err := p.settings.PrepareCodexHome(ctx, codexHome, filepath.Join(p.cfg.CodexHomeRoot, "shared"))
 	if err != nil {
 		return codexcontrol.TurnResult{}, err
@@ -159,8 +154,7 @@ func (p *Processor) Process(ctx context.Context, claimed *codexcontrol.ClaimedCo
 	if err := runtime.ValidateSkills(ctx, workspace.WorktreePath, skills); err != nil {
 		return codexcontrol.TurnResult{}, err
 	}
-	threadSignature := threadConfigSignature(signature, options)
-	threadID, err := p.ensureThread(ctx, runtime, claimed, options, codexHome, threadSignature)
+	threadID, err := p.ensureThread(ctx, runtime, claimed, options, codexHome)
 	if err != nil {
 		return codexcontrol.TurnResult{}, err
 	}

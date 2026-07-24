@@ -157,12 +157,7 @@ func (p *RemoteProcessor) processRemoteGitHub(ctx context.Context, task *workerp
 	if err != nil {
 		return codexcontrol.TurnResult{}, err
 	}
-	signature := task.Snapshot.Runtime.ConfigSignature
-	if signature == "" {
-		signature = "default"
-	}
-	codexHome := filepath.Join(p.cfg.CodexHomeRoot, "pools", claimed.RepositoryID.String(),
-		claimed.AgentProfileID.String(), signature[:min(16, len(signature))])
+	codexHome := persistentCodexHome(p.cfg.CodexHomeRoot, claimed)
 	environment, err := prepareRemoteCodexHome(codexHome, credential,
 		task.Snapshot.Runtime.GlobalAgents)
 	if err != nil {
@@ -197,8 +192,7 @@ func (p *RemoteProcessor) processRemoteGitHub(ctx context.Context, task *workerp
 	if err := runtime.ValidateSkills(ctx, workspace.WorktreePath, skills); err != nil {
 		return codexcontrol.TurnResult{}, err
 	}
-	threadSignature := threadConfigSignature(signature, options)
-	threadID, err := p.ensureRemoteThread(ctx, runtime, task, options, codexHome, threadSignature)
+	threadID, err := p.ensureRemoteThread(ctx, runtime, task, options, codexHome)
 	if err != nil {
 		return codexcontrol.TurnResult{}, err
 	}

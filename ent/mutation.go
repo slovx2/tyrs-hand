@@ -691,7 +691,6 @@ type AgentProfileMutation struct {
 	typ                 string
 	id                  *uuid.UUID
 	name                *string
-	provider            *string
 	model               *string
 	reasoning_effort    *string
 	service_tier        *string
@@ -701,8 +700,6 @@ type AgentProfileMutation struct {
 	allowed_tools       *[]string
 	appendallowed_tools []string
 	_config             *map[string]interface{}
-	context_version     *int64
-	addcontext_version  *int64
 	created_at          *time.Time
 	updated_at          *time.Time
 	clearedFields       map[string]struct{}
@@ -849,42 +846,6 @@ func (m *AgentProfileMutation) OldName(ctx context.Context) (v string, err error
 // ResetName resets all changes to the "name" field.
 func (m *AgentProfileMutation) ResetName() {
 	m.name = nil
-}
-
-// SetProvider sets the "provider" field.
-func (m *AgentProfileMutation) SetProvider(s string) {
-	m.provider = &s
-}
-
-// Provider returns the value of the "provider" field in the mutation.
-func (m *AgentProfileMutation) Provider() (r string, exists bool) {
-	v := m.provider
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldProvider returns the old "provider" field's value of the AgentProfile entity.
-// If the AgentProfile object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AgentProfileMutation) OldProvider(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldProvider is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldProvider requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldProvider: %w", err)
-	}
-	return oldValue.Provider, nil
-}
-
-// ResetProvider resets all changes to the "provider" field.
-func (m *AgentProfileMutation) ResetProvider() {
-	m.provider = nil
 }
 
 // SetModel sets the "model" field.
@@ -1229,62 +1190,6 @@ func (m *AgentProfileMutation) ResetConfig() {
 	m._config = nil
 }
 
-// SetContextVersion sets the "context_version" field.
-func (m *AgentProfileMutation) SetContextVersion(i int64) {
-	m.context_version = &i
-	m.addcontext_version = nil
-}
-
-// ContextVersion returns the value of the "context_version" field in the mutation.
-func (m *AgentProfileMutation) ContextVersion() (r int64, exists bool) {
-	v := m.context_version
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldContextVersion returns the old "context_version" field's value of the AgentProfile entity.
-// If the AgentProfile object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *AgentProfileMutation) OldContextVersion(ctx context.Context) (v int64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldContextVersion is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldContextVersion requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldContextVersion: %w", err)
-	}
-	return oldValue.ContextVersion, nil
-}
-
-// AddContextVersion adds i to the "context_version" field.
-func (m *AgentProfileMutation) AddContextVersion(i int64) {
-	if m.addcontext_version != nil {
-		*m.addcontext_version += i
-	} else {
-		m.addcontext_version = &i
-	}
-}
-
-// AddedContextVersion returns the value that was added to the "context_version" field in this mutation.
-func (m *AgentProfileMutation) AddedContextVersion() (r int64, exists bool) {
-	v := m.addcontext_version
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetContextVersion resets all changes to the "context_version" field.
-func (m *AgentProfileMutation) ResetContextVersion() {
-	m.context_version = nil
-	m.addcontext_version = nil
-}
-
 // SetCreatedAt sets the "created_at" field.
 func (m *AgentProfileMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -1391,12 +1296,9 @@ func (m *AgentProfileMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AgentProfileMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 11)
 	if m.name != nil {
 		fields = append(fields, agentprofile.FieldName)
-	}
-	if m.provider != nil {
-		fields = append(fields, agentprofile.FieldProvider)
 	}
 	if m.model != nil {
 		fields = append(fields, agentprofile.FieldModel)
@@ -1422,9 +1324,6 @@ func (m *AgentProfileMutation) Fields() []string {
 	if m._config != nil {
 		fields = append(fields, agentprofile.FieldConfig)
 	}
-	if m.context_version != nil {
-		fields = append(fields, agentprofile.FieldContextVersion)
-	}
 	if m.created_at != nil {
 		fields = append(fields, agentprofile.FieldCreatedAt)
 	}
@@ -1441,8 +1340,6 @@ func (m *AgentProfileMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case agentprofile.FieldName:
 		return m.Name()
-	case agentprofile.FieldProvider:
-		return m.Provider()
 	case agentprofile.FieldModel:
 		return m.Model()
 	case agentprofile.FieldReasoningEffort:
@@ -1459,8 +1356,6 @@ func (m *AgentProfileMutation) Field(name string) (ent.Value, bool) {
 		return m.AllowedTools()
 	case agentprofile.FieldConfig:
 		return m.Config()
-	case agentprofile.FieldContextVersion:
-		return m.ContextVersion()
 	case agentprofile.FieldCreatedAt:
 		return m.CreatedAt()
 	case agentprofile.FieldUpdatedAt:
@@ -1476,8 +1371,6 @@ func (m *AgentProfileMutation) OldField(ctx context.Context, name string) (ent.V
 	switch name {
 	case agentprofile.FieldName:
 		return m.OldName(ctx)
-	case agentprofile.FieldProvider:
-		return m.OldProvider(ctx)
 	case agentprofile.FieldModel:
 		return m.OldModel(ctx)
 	case agentprofile.FieldReasoningEffort:
@@ -1494,8 +1387,6 @@ func (m *AgentProfileMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldAllowedTools(ctx)
 	case agentprofile.FieldConfig:
 		return m.OldConfig(ctx)
-	case agentprofile.FieldContextVersion:
-		return m.OldContextVersion(ctx)
 	case agentprofile.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case agentprofile.FieldUpdatedAt:
@@ -1515,13 +1406,6 @@ func (m *AgentProfileMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetName(v)
-		return nil
-	case agentprofile.FieldProvider:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetProvider(v)
 		return nil
 	case agentprofile.FieldModel:
 		v, ok := value.(string)
@@ -1579,13 +1463,6 @@ func (m *AgentProfileMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetConfig(v)
 		return nil
-	case agentprofile.FieldContextVersion:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetContextVersion(v)
-		return nil
 	case agentprofile.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -1607,21 +1484,13 @@ func (m *AgentProfileMutation) SetField(name string, value ent.Value) error {
 // AddedFields returns all numeric fields that were incremented/decremented during
 // this mutation.
 func (m *AgentProfileMutation) AddedFields() []string {
-	var fields []string
-	if m.addcontext_version != nil {
-		fields = append(fields, agentprofile.FieldContextVersion)
-	}
-	return fields
+	return nil
 }
 
 // AddedField returns the numeric value that was incremented/decremented on a field
 // with the given name. The second boolean return value indicates that this field
 // was not set, or was not defined in the schema.
 func (m *AgentProfileMutation) AddedField(name string) (ent.Value, bool) {
-	switch name {
-	case agentprofile.FieldContextVersion:
-		return m.AddedContextVersion()
-	}
 	return nil, false
 }
 
@@ -1630,13 +1499,6 @@ func (m *AgentProfileMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *AgentProfileMutation) AddField(name string, value ent.Value) error {
 	switch name {
-	case agentprofile.FieldContextVersion:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddContextVersion(v)
-		return nil
 	}
 	return fmt.Errorf("unknown AgentProfile numeric field %s", name)
 }
@@ -1688,9 +1550,6 @@ func (m *AgentProfileMutation) ResetField(name string) error {
 	case agentprofile.FieldName:
 		m.ResetName()
 		return nil
-	case agentprofile.FieldProvider:
-		m.ResetProvider()
-		return nil
 	case agentprofile.FieldModel:
 		m.ResetModel()
 		return nil
@@ -1714,9 +1573,6 @@ func (m *AgentProfileMutation) ResetField(name string) error {
 		return nil
 	case agentprofile.FieldConfig:
 		m.ResetConfig()
-		return nil
-	case agentprofile.FieldContextVersion:
-		m.ResetContextVersion()
 		return nil
 	case agentprofile.FieldCreatedAt:
 		m.ResetCreatedAt()
@@ -2576,15 +2432,9 @@ type CodexThreadControlMutation struct {
 	discord_conversation_id *uuid.UUID
 	repository_id           *uuid.UUID
 	agent_profile_id        *uuid.UUID
-	context_version         *int64
-	addcontext_version      *int64
 	execution_node_id       *uuid.UUID
 	external_thread_id      *string
-	provider                *string
 	codex_home_key          *string
-	provider_signature      *string
-	thread_generation       *int
-	addthread_generation    *int
 	status                  *string
 	next_sequence_no        *int64
 	addnext_sequence_no     *int64
@@ -2933,62 +2783,6 @@ func (m *CodexThreadControlMutation) ResetAgentProfileID() {
 	m.agent_profile_id = nil
 }
 
-// SetContextVersion sets the "context_version" field.
-func (m *CodexThreadControlMutation) SetContextVersion(i int64) {
-	m.context_version = &i
-	m.addcontext_version = nil
-}
-
-// ContextVersion returns the value of the "context_version" field in the mutation.
-func (m *CodexThreadControlMutation) ContextVersion() (r int64, exists bool) {
-	v := m.context_version
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldContextVersion returns the old "context_version" field's value of the CodexThreadControl entity.
-// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *CodexThreadControlMutation) OldContextVersion(ctx context.Context) (v int64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldContextVersion is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldContextVersion requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldContextVersion: %w", err)
-	}
-	return oldValue.ContextVersion, nil
-}
-
-// AddContextVersion adds i to the "context_version" field.
-func (m *CodexThreadControlMutation) AddContextVersion(i int64) {
-	if m.addcontext_version != nil {
-		*m.addcontext_version += i
-	} else {
-		m.addcontext_version = &i
-	}
-}
-
-// AddedContextVersion returns the value that was added to the "context_version" field in this mutation.
-func (m *CodexThreadControlMutation) AddedContextVersion() (r int64, exists bool) {
-	v := m.addcontext_version
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetContextVersion resets all changes to the "context_version" field.
-func (m *CodexThreadControlMutation) ResetContextVersion() {
-	m.context_version = nil
-	m.addcontext_version = nil
-}
-
 // SetExecutionNodeID sets the "execution_node_id" field.
 func (m *CodexThreadControlMutation) SetExecutionNodeID(u uuid.UUID) {
 	m.execution_node_id = &u
@@ -3087,42 +2881,6 @@ func (m *CodexThreadControlMutation) ResetExternalThreadID() {
 	delete(m.clearedFields, codexthreadcontrol.FieldExternalThreadID)
 }
 
-// SetProvider sets the "provider" field.
-func (m *CodexThreadControlMutation) SetProvider(s string) {
-	m.provider = &s
-}
-
-// Provider returns the value of the "provider" field in the mutation.
-func (m *CodexThreadControlMutation) Provider() (r string, exists bool) {
-	v := m.provider
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldProvider returns the old "provider" field's value of the CodexThreadControl entity.
-// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *CodexThreadControlMutation) OldProvider(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldProvider is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldProvider requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldProvider: %w", err)
-	}
-	return oldValue.Provider, nil
-}
-
-// ResetProvider resets all changes to the "provider" field.
-func (m *CodexThreadControlMutation) ResetProvider() {
-	m.provider = nil
-}
-
 // SetCodexHomeKey sets the "codex_home_key" field.
 func (m *CodexThreadControlMutation) SetCodexHomeKey(s string) {
 	m.codex_home_key = &s
@@ -3170,111 +2928,6 @@ func (m *CodexThreadControlMutation) CodexHomeKeyCleared() bool {
 func (m *CodexThreadControlMutation) ResetCodexHomeKey() {
 	m.codex_home_key = nil
 	delete(m.clearedFields, codexthreadcontrol.FieldCodexHomeKey)
-}
-
-// SetProviderSignature sets the "provider_signature" field.
-func (m *CodexThreadControlMutation) SetProviderSignature(s string) {
-	m.provider_signature = &s
-}
-
-// ProviderSignature returns the value of the "provider_signature" field in the mutation.
-func (m *CodexThreadControlMutation) ProviderSignature() (r string, exists bool) {
-	v := m.provider_signature
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldProviderSignature returns the old "provider_signature" field's value of the CodexThreadControl entity.
-// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *CodexThreadControlMutation) OldProviderSignature(ctx context.Context) (v *string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldProviderSignature is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldProviderSignature requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldProviderSignature: %w", err)
-	}
-	return oldValue.ProviderSignature, nil
-}
-
-// ClearProviderSignature clears the value of the "provider_signature" field.
-func (m *CodexThreadControlMutation) ClearProviderSignature() {
-	m.provider_signature = nil
-	m.clearedFields[codexthreadcontrol.FieldProviderSignature] = struct{}{}
-}
-
-// ProviderSignatureCleared returns if the "provider_signature" field was cleared in this mutation.
-func (m *CodexThreadControlMutation) ProviderSignatureCleared() bool {
-	_, ok := m.clearedFields[codexthreadcontrol.FieldProviderSignature]
-	return ok
-}
-
-// ResetProviderSignature resets all changes to the "provider_signature" field.
-func (m *CodexThreadControlMutation) ResetProviderSignature() {
-	m.provider_signature = nil
-	delete(m.clearedFields, codexthreadcontrol.FieldProviderSignature)
-}
-
-// SetThreadGeneration sets the "thread_generation" field.
-func (m *CodexThreadControlMutation) SetThreadGeneration(i int) {
-	m.thread_generation = &i
-	m.addthread_generation = nil
-}
-
-// ThreadGeneration returns the value of the "thread_generation" field in the mutation.
-func (m *CodexThreadControlMutation) ThreadGeneration() (r int, exists bool) {
-	v := m.thread_generation
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldThreadGeneration returns the old "thread_generation" field's value of the CodexThreadControl entity.
-// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *CodexThreadControlMutation) OldThreadGeneration(ctx context.Context) (v int, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldThreadGeneration is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldThreadGeneration requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldThreadGeneration: %w", err)
-	}
-	return oldValue.ThreadGeneration, nil
-}
-
-// AddThreadGeneration adds i to the "thread_generation" field.
-func (m *CodexThreadControlMutation) AddThreadGeneration(i int) {
-	if m.addthread_generation != nil {
-		*m.addthread_generation += i
-	} else {
-		m.addthread_generation = &i
-	}
-}
-
-// AddedThreadGeneration returns the value that was added to the "thread_generation" field in this mutation.
-func (m *CodexThreadControlMutation) AddedThreadGeneration() (r int, exists bool) {
-	v := m.addthread_generation
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetThreadGeneration resets all changes to the "thread_generation" field.
-func (m *CodexThreadControlMutation) ResetThreadGeneration() {
-	m.thread_generation = nil
-	m.addthread_generation = nil
 }
 
 // SetStatus sets the "status" field.
@@ -4119,7 +3772,7 @@ func (m *CodexThreadControlMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *CodexThreadControlMutation) Fields() []string {
-	fields := make([]string, 0, 29)
+	fields := make([]string, 0, 25)
 	if m.source_type != nil {
 		fields = append(fields, codexthreadcontrol.FieldSourceType)
 	}
@@ -4135,26 +3788,14 @@ func (m *CodexThreadControlMutation) Fields() []string {
 	if m.agent_profile_id != nil {
 		fields = append(fields, codexthreadcontrol.FieldAgentProfileID)
 	}
-	if m.context_version != nil {
-		fields = append(fields, codexthreadcontrol.FieldContextVersion)
-	}
 	if m.execution_node_id != nil {
 		fields = append(fields, codexthreadcontrol.FieldExecutionNodeID)
 	}
 	if m.external_thread_id != nil {
 		fields = append(fields, codexthreadcontrol.FieldExternalThreadID)
 	}
-	if m.provider != nil {
-		fields = append(fields, codexthreadcontrol.FieldProvider)
-	}
 	if m.codex_home_key != nil {
 		fields = append(fields, codexthreadcontrol.FieldCodexHomeKey)
-	}
-	if m.provider_signature != nil {
-		fields = append(fields, codexthreadcontrol.FieldProviderSignature)
-	}
-	if m.thread_generation != nil {
-		fields = append(fields, codexthreadcontrol.FieldThreadGeneration)
 	}
 	if m.status != nil {
 		fields = append(fields, codexthreadcontrol.FieldStatus)
@@ -4225,20 +3866,12 @@ func (m *CodexThreadControlMutation) Field(name string) (ent.Value, bool) {
 		return m.RepositoryID()
 	case codexthreadcontrol.FieldAgentProfileID:
 		return m.AgentProfileID()
-	case codexthreadcontrol.FieldContextVersion:
-		return m.ContextVersion()
 	case codexthreadcontrol.FieldExecutionNodeID:
 		return m.ExecutionNodeID()
 	case codexthreadcontrol.FieldExternalThreadID:
 		return m.ExternalThreadID()
-	case codexthreadcontrol.FieldProvider:
-		return m.Provider()
 	case codexthreadcontrol.FieldCodexHomeKey:
 		return m.CodexHomeKey()
-	case codexthreadcontrol.FieldProviderSignature:
-		return m.ProviderSignature()
-	case codexthreadcontrol.FieldThreadGeneration:
-		return m.ThreadGeneration()
 	case codexthreadcontrol.FieldStatus:
 		return m.Status()
 	case codexthreadcontrol.FieldNextSequenceNo:
@@ -4292,20 +3925,12 @@ func (m *CodexThreadControlMutation) OldField(ctx context.Context, name string) 
 		return m.OldRepositoryID(ctx)
 	case codexthreadcontrol.FieldAgentProfileID:
 		return m.OldAgentProfileID(ctx)
-	case codexthreadcontrol.FieldContextVersion:
-		return m.OldContextVersion(ctx)
 	case codexthreadcontrol.FieldExecutionNodeID:
 		return m.OldExecutionNodeID(ctx)
 	case codexthreadcontrol.FieldExternalThreadID:
 		return m.OldExternalThreadID(ctx)
-	case codexthreadcontrol.FieldProvider:
-		return m.OldProvider(ctx)
 	case codexthreadcontrol.FieldCodexHomeKey:
 		return m.OldCodexHomeKey(ctx)
-	case codexthreadcontrol.FieldProviderSignature:
-		return m.OldProviderSignature(ctx)
-	case codexthreadcontrol.FieldThreadGeneration:
-		return m.OldThreadGeneration(ctx)
 	case codexthreadcontrol.FieldStatus:
 		return m.OldStatus(ctx)
 	case codexthreadcontrol.FieldNextSequenceNo:
@@ -4384,13 +4009,6 @@ func (m *CodexThreadControlMutation) SetField(name string, value ent.Value) erro
 		}
 		m.SetAgentProfileID(v)
 		return nil
-	case codexthreadcontrol.FieldContextVersion:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetContextVersion(v)
-		return nil
 	case codexthreadcontrol.FieldExecutionNodeID:
 		v, ok := value.(uuid.UUID)
 		if !ok {
@@ -4405,33 +4023,12 @@ func (m *CodexThreadControlMutation) SetField(name string, value ent.Value) erro
 		}
 		m.SetExternalThreadID(v)
 		return nil
-	case codexthreadcontrol.FieldProvider:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetProvider(v)
-		return nil
 	case codexthreadcontrol.FieldCodexHomeKey:
 		v, ok := value.(string)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCodexHomeKey(v)
-		return nil
-	case codexthreadcontrol.FieldProviderSignature:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetProviderSignature(v)
-		return nil
-	case codexthreadcontrol.FieldThreadGeneration:
-		v, ok := value.(int)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetThreadGeneration(v)
 		return nil
 	case codexthreadcontrol.FieldStatus:
 		v, ok := value.(string)
@@ -4560,12 +4157,6 @@ func (m *CodexThreadControlMutation) SetField(name string, value ent.Value) erro
 // this mutation.
 func (m *CodexThreadControlMutation) AddedFields() []string {
 	var fields []string
-	if m.addcontext_version != nil {
-		fields = append(fields, codexthreadcontrol.FieldContextVersion)
-	}
-	if m.addthread_generation != nil {
-		fields = append(fields, codexthreadcontrol.FieldThreadGeneration)
-	}
 	if m.addnext_sequence_no != nil {
 		fields = append(fields, codexthreadcontrol.FieldNextSequenceNo)
 	}
@@ -4580,10 +4171,6 @@ func (m *CodexThreadControlMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *CodexThreadControlMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
-	case codexthreadcontrol.FieldContextVersion:
-		return m.AddedContextVersion()
-	case codexthreadcontrol.FieldThreadGeneration:
-		return m.AddedThreadGeneration()
 	case codexthreadcontrol.FieldNextSequenceNo:
 		return m.AddedNextSequenceNo()
 	case codexthreadcontrol.FieldLeaseEpoch:
@@ -4597,20 +4184,6 @@ func (m *CodexThreadControlMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *CodexThreadControlMutation) AddField(name string, value ent.Value) error {
 	switch name {
-	case codexthreadcontrol.FieldContextVersion:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddContextVersion(v)
-		return nil
-	case codexthreadcontrol.FieldThreadGeneration:
-		v, ok := value.(int)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddThreadGeneration(v)
-		return nil
 	case codexthreadcontrol.FieldNextSequenceNo:
 		v, ok := value.(int64)
 		if !ok {
@@ -4650,9 +4223,6 @@ func (m *CodexThreadControlMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(codexthreadcontrol.FieldCodexHomeKey) {
 		fields = append(fields, codexthreadcontrol.FieldCodexHomeKey)
-	}
-	if m.FieldCleared(codexthreadcontrol.FieldProviderSignature) {
-		fields = append(fields, codexthreadcontrol.FieldProviderSignature)
 	}
 	if m.FieldCleared(codexthreadcontrol.FieldActiveIntentID) {
 		fields = append(fields, codexthreadcontrol.FieldActiveIntentID)
@@ -4722,9 +4292,6 @@ func (m *CodexThreadControlMutation) ClearField(name string) error {
 	case codexthreadcontrol.FieldCodexHomeKey:
 		m.ClearCodexHomeKey()
 		return nil
-	case codexthreadcontrol.FieldProviderSignature:
-		m.ClearProviderSignature()
-		return nil
 	case codexthreadcontrol.FieldActiveIntentID:
 		m.ClearActiveIntentID()
 		return nil
@@ -4784,26 +4351,14 @@ func (m *CodexThreadControlMutation) ResetField(name string) error {
 	case codexthreadcontrol.FieldAgentProfileID:
 		m.ResetAgentProfileID()
 		return nil
-	case codexthreadcontrol.FieldContextVersion:
-		m.ResetContextVersion()
-		return nil
 	case codexthreadcontrol.FieldExecutionNodeID:
 		m.ResetExecutionNodeID()
 		return nil
 	case codexthreadcontrol.FieldExternalThreadID:
 		m.ResetExternalThreadID()
 		return nil
-	case codexthreadcontrol.FieldProvider:
-		m.ResetProvider()
-		return nil
 	case codexthreadcontrol.FieldCodexHomeKey:
 		m.ResetCodexHomeKey()
-		return nil
-	case codexthreadcontrol.FieldProviderSignature:
-		m.ResetProviderSignature()
-		return nil
-	case codexthreadcontrol.FieldThreadGeneration:
-		m.ResetThreadGeneration()
 		return nil
 	case codexthreadcontrol.FieldStatus:
 		m.ResetStatus()
@@ -20137,8 +19692,6 @@ type WorkItemMutation struct {
 	head_repository    *string
 	html_url           *string
 	execution_node_id  *uuid.UUID
-	context_version    *int64
-	addcontext_version *int64
 	closed_at          *time.Time
 	created_at         *time.Time
 	updated_at         *time.Time
@@ -20831,62 +20384,6 @@ func (m *WorkItemMutation) ResetExecutionNodeID() {
 	delete(m.clearedFields, workitem.FieldExecutionNodeID)
 }
 
-// SetContextVersion sets the "context_version" field.
-func (m *WorkItemMutation) SetContextVersion(i int64) {
-	m.context_version = &i
-	m.addcontext_version = nil
-}
-
-// ContextVersion returns the value of the "context_version" field in the mutation.
-func (m *WorkItemMutation) ContextVersion() (r int64, exists bool) {
-	v := m.context_version
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldContextVersion returns the old "context_version" field's value of the WorkItem entity.
-// If the WorkItem object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *WorkItemMutation) OldContextVersion(ctx context.Context) (v int64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldContextVersion is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldContextVersion requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldContextVersion: %w", err)
-	}
-	return oldValue.ContextVersion, nil
-}
-
-// AddContextVersion adds i to the "context_version" field.
-func (m *WorkItemMutation) AddContextVersion(i int64) {
-	if m.addcontext_version != nil {
-		*m.addcontext_version += i
-	} else {
-		m.addcontext_version = &i
-	}
-}
-
-// AddedContextVersion returns the value that was added to the "context_version" field in this mutation.
-func (m *WorkItemMutation) AddedContextVersion() (r int64, exists bool) {
-	v := m.addcontext_version
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetContextVersion resets all changes to the "context_version" field.
-func (m *WorkItemMutation) ResetContextVersion() {
-	m.context_version = nil
-	m.addcontext_version = nil
-}
-
 // SetClosedAt sets the "closed_at" field.
 func (m *WorkItemMutation) SetClosedAt(t time.Time) {
 	m.closed_at = &t
@@ -21042,7 +20539,7 @@ func (m *WorkItemMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *WorkItemMutation) Fields() []string {
-	fields := make([]string, 0, 17)
+	fields := make([]string, 0, 16)
 	if m.repository_id != nil {
 		fields = append(fields, workitem.FieldRepositoryID)
 	}
@@ -21081,9 +20578,6 @@ func (m *WorkItemMutation) Fields() []string {
 	}
 	if m.execution_node_id != nil {
 		fields = append(fields, workitem.FieldExecutionNodeID)
-	}
-	if m.context_version != nil {
-		fields = append(fields, workitem.FieldContextVersion)
 	}
 	if m.closed_at != nil {
 		fields = append(fields, workitem.FieldClosedAt)
@@ -21128,8 +20622,6 @@ func (m *WorkItemMutation) Field(name string) (ent.Value, bool) {
 		return m.HTMLURL()
 	case workitem.FieldExecutionNodeID:
 		return m.ExecutionNodeID()
-	case workitem.FieldContextVersion:
-		return m.ContextVersion()
 	case workitem.FieldClosedAt:
 		return m.ClosedAt()
 	case workitem.FieldCreatedAt:
@@ -21171,8 +20663,6 @@ func (m *WorkItemMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldHTMLURL(ctx)
 	case workitem.FieldExecutionNodeID:
 		return m.OldExecutionNodeID(ctx)
-	case workitem.FieldContextVersion:
-		return m.OldContextVersion(ctx)
 	case workitem.FieldClosedAt:
 		return m.OldClosedAt(ctx)
 	case workitem.FieldCreatedAt:
@@ -21279,13 +20769,6 @@ func (m *WorkItemMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetExecutionNodeID(v)
 		return nil
-	case workitem.FieldContextVersion:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetContextVersion(v)
-		return nil
 	case workitem.FieldClosedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -21318,9 +20801,6 @@ func (m *WorkItemMutation) AddedFields() []string {
 	if m.addexternal_number != nil {
 		fields = append(fields, workitem.FieldExternalNumber)
 	}
-	if m.addcontext_version != nil {
-		fields = append(fields, workitem.FieldContextVersion)
-	}
 	return fields
 }
 
@@ -21331,8 +20811,6 @@ func (m *WorkItemMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case workitem.FieldExternalNumber:
 		return m.AddedExternalNumber()
-	case workitem.FieldContextVersion:
-		return m.AddedContextVersion()
 	}
 	return nil, false
 }
@@ -21348,13 +20826,6 @@ func (m *WorkItemMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddExternalNumber(v)
-		return nil
-	case workitem.FieldContextVersion:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddContextVersion(v)
 		return nil
 	}
 	return fmt.Errorf("unknown WorkItem numeric field %s", name)
@@ -21472,9 +20943,6 @@ func (m *WorkItemMutation) ResetField(name string) error {
 		return nil
 	case workitem.FieldExecutionNodeID:
 		m.ResetExecutionNodeID()
-		return nil
-	case workitem.FieldContextVersion:
-		m.ResetContextVersion()
 		return nil
 	case workitem.FieldClosedAt:
 		m.ResetClosedAt()

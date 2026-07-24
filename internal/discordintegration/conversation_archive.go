@@ -29,7 +29,6 @@ func (s *ConversationService) Archive(ctx context.Context, guildID, threadID,
 		JOIN codex_thread_controls control
 			ON control.discord_conversation_id = conversation.id
 		WHERE conversation.guild_id = $1 AND conversation.thread_id = $2
-		ORDER BY control.created_at LIMIT 1
 		FOR UPDATE OF conversation, control`, guildID, threadID).
 		Scan(&conversationID, &forumID, &ownerID, &currentState, &result.Revision,
 			&result.ControlID, &result.EnvironmentID, &result.ThreadID)

@@ -87,13 +87,7 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	if err := codexRuntime.ValidateSkills(ctx, runtime.Workspace, skills); err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
-	signature := settings.ConfigSignature
-	if signature == "" {
-		signature = "default"
-	}
-	threadSignature := threadConfigSignature(signature, options)
-	threadID, err := p.ensureRemoteThread(ctx, codexRuntime, task, options, runtime.CodexHome,
-		threadSignature)
+	threadID, err := p.ensureRemoteThread(ctx, codexRuntime, task, options, runtime.CodexHome)
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}

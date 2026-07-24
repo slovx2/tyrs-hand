@@ -139,13 +139,9 @@ func (s *WebhookService) Process(ctx context.Context, signature, deliveryID, eve
 		matchedEvent.Body = matched.Body
 		instruction := renderInstruction(rule.Instruction, matchedEvent)
 		idempotencyKey := fmt.Sprintf("github:%s:%s", deliveryID, rule.ID)
-		var contextVersion int64
-		if err := tx.QueryRowContext(ctx, "SELECT context_version FROM work_items WHERE id = $1", workItemID).Scan(&contextVersion); err != nil {
-			return WebhookResult{}, err
-		}
 		_, inserted, err := codexcontrol.NewRepository(s.db, 0).Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
 			SourceType: codexcontrol.SourceGitHub, WorkItemID: workItemID, RepositoryID: repositoryID,
-			AgentProfileID: rule.AgentProfileID, ContextVersion: contextVersion,
+			AgentProfileID:    rule.AgentProfileID,
 			WebhookDeliveryID: deliveryUUID, TriggerRuleID: rule.ID,
 			TriggerEvidence: encode(matched.Evidence), IdempotencyKey: idempotencyKey,
 			Instruction: instruction, Skills: rule.Skills, AllowedTools: rule.AllowedTools,
