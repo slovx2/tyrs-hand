@@ -315,6 +315,24 @@ func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
 	require.NoError(t, client.Complete(ctx, claimed.Task, codexcontrol.TurnResult{
 		TurnID: "discord-active-turn", FinalAnswer: "completed from shared thread",
 	}))
+	desktopTurn, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
+		EnvironmentID: environmentID, WorkerID: "desktop-discord-worker",
+		RequestKey: strings.Repeat("b", 64), Params: json.RawMessage(
+			`{"threadId":"codex-desktop-bound-thread","clientUserMessageId":"desktop-next-turn",` +
+				`"input":[{"type":"text","text":"desktop starts the next turn"}]}`),
+	})
+	require.NoError(t, err,
+		"Discord 创建的 Thread 首轮结束后，Desktop 应能在没有 desktop_thread_request 的情况下发起新 Turn")
+	require.Equal(t, controlID, desktopTurn.Claimed.ControlID)
+	require.Equal(t, "desktop", desktopTurn.Claimed.InputSurface)
+	require.Equal(t, conversationID, desktopTurn.Claimed.DiscordConversationID)
+	require.NotNil(t, desktopTurn.Snapshot.Discord)
+	require.Equal(t, "desktop starts the next turn", desktopTurn.Snapshot.Discord.Body)
+	require.Equal(t, forumID, desktopTurn.Snapshot.Discord.ForumID)
+	require.Equal(t, environmentID, desktopTurn.Snapshot.Discord.EnvironmentID)
+	require.NoError(t, client.Complete(ctx, &desktopTurn, codexcontrol.TurnResult{
+		TurnID: "desktop-next-turn", FinalAnswer: "completed from desktop",
+	}))
 }
 
 func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {

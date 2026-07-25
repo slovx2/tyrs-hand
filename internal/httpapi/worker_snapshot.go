@@ -195,10 +195,10 @@ func (s *Server) loadDesktopDiscordWorkerSnapshot(ctx context.Context,
 		COALESCE(e.ssh_discord_user_id, ''),
 		COALESCE(NULLIF(m.display_name, ''), m.username, '')
 		FROM codex_thread_controls ct
-		JOIN desktop_thread_requests request ON request.control_id = ct.id
-		JOIN discord_forums f ON f.id = request.forum_id
-		JOIN discord_development_environments e ON e.id = request.environment_id
+		LEFT JOIN desktop_thread_requests request ON request.control_id = ct.id
 		LEFT JOIN discord_conversations c ON c.id = ct.discord_conversation_id
+		JOIN discord_forums f ON f.id = COALESCE(c.forum_id, request.forum_id)
+		JOIN discord_development_environments e ON e.id = ct.development_environment_id
 		LEFT JOIN discord_members m ON m.guild_id = e.guild_id
 			AND m.discord_user_id = e.ssh_discord_user_id
 		WHERE ct.id = $1 AND f.forum_type = 'development'`, claimed.ControlID).
