@@ -2,6 +2,7 @@ package discordintegration
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,6 +24,7 @@ type InitializationAction struct {
 	Spec         ChannelSpec `json:"spec,omitempty"`
 	OwnerUserID  string      `json:"ownerUserId,omitempty"`
 	RepositoryID string      `json:"repositoryId,omitempty"`
+	ProjectID    string      `json:"projectId,omitempty"`
 	ForumID      string      `json:"forumId,omitempty"`
 }
 
@@ -171,10 +173,24 @@ func (m *Manager) CreateInitialization(ctx context.Context, administratorID uuid
 		return uuid.Nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	operationID, err := m.createInitializationTx(ctx, tx, administratorID, uuid.Nil,
+		plan, confirmation, encoded)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return operationID, tx.Commit()
+}
+
+func (m *Manager) createInitializationTx(ctx context.Context, tx *sql.Tx,
+	administratorID, projectID uuid.UUID, plan InitializationPlan, confirmation string,
+	encodedPreflight []byte,
+) (uuid.UUID, error) {
 	var operationID uuid.UUID
-	err = tx.QueryRowContext(ctx, `INSERT INTO discord_initialization_operations
-		(guild_id, mode, requested_by, preflight, confirmation) VALUES ($1, $2, $3, $4, NULLIF($5, '')) RETURNING id`,
-		plan.Preflight.GuildID, plan.Preflight.Mode, administratorID, encoded, confirmation).Scan(&operationID)
+	err := tx.QueryRowContext(ctx, `INSERT INTO discord_initialization_operations
+		(guild_id, mode, requested_by, preflight, confirmation, project_id)
+		VALUES ($1, $2, $3, $4, NULLIF($5, ''), NULLIF($6::text,'')::uuid) RETURNING id`,
+		plan.Preflight.GuildID, plan.Preflight.Mode, administratorID, encodedPreflight,
+		confirmation, optionalUUID(projectID)).Scan(&operationID)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -183,13 +199,21 @@ func (m *Manager) CreateInitialization(ctx context.Context, administratorID uuid
 		if marshalErr != nil {
 			return uuid.Nil, marshalErr
 		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO discord_initialization_steps(operation_id, step_key, ordinal, request)
-			VALUES ($1, $2, $3, $4)`, operationID, fmt.Sprintf("%03d-%s", index+1, action.Kind), index+1, request)
+		_, err = tx.ExecContext(ctx, `INSERT INTO discord_initialization_steps
+			(operation_id, step_key, ordinal, request) VALUES ($1, $2, $3, $4)`,
+			operationID, fmt.Sprintf("%03d-%s", index+1, action.Kind), index+1, request)
 		if err != nil {
 			return uuid.Nil, err
 		}
 	}
-	return operationID, tx.Commit()
+	return operationID, nil
+}
+
+func optionalUUID(value uuid.UUID) string {
+	if value == uuid.Nil {
+		return ""
+	}
+	return value.String()
 }
 
 func (m *Manager) Operation(ctx context.Context, id uuid.UUID) (Operation, error) {

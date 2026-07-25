@@ -375,7 +375,9 @@ func (c *desktopRelayController) injectDesktopRuntime(params json.RawMessage,
 	hideModelAPIKey(config)
 	value["config"] = config
 	if includeTools {
-		specs := withBrowserTools(c.processor.cfg, localGitSpec())
+		cwd, _ := value["cwd"].(string)
+		allowPublish := c.desktopWorkspaceAllowsPublish(cwd)
+		specs := withBrowserTools(c.processor.cfg, localGitSpec(allowPublish))
 		current, _ := value["dynamicTools"].([]any)
 		for _, spec := range specs {
 			encoded, _ := json.Marshal(spec)
@@ -390,6 +392,19 @@ func (c *desktopRelayController) injectDesktopRuntime(params json.RawMessage,
 		return params
 	}
 	return result
+}
+
+func (c *desktopRelayController) desktopWorkspaceAllowsPublish(cwd string) bool {
+	c.environment.mu.Lock()
+	forums := append([]workerprotocol.EnvironmentForum(nil), c.environment.manifest.Forums...)
+	c.environment.mu.Unlock()
+	for _, forum := range forums {
+		workspace, err := devcontainer.ContainerWorkspacePath(forum.WorkspaceRelative)
+		if err == nil && workspace == cwd {
+			return forum.WorkspaceKind == "repository"
+		}
+	}
+	return false
 }
 
 func (c *desktopRelayController) prepareDesktopThread(ctx context.Context,

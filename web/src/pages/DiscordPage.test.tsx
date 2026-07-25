@@ -76,6 +76,27 @@ function commonHandlers() {
         ],
       }),
     ),
+    http.get('/api/v1/projects', () =>
+      HttpResponse.json({
+        items: [
+          {
+            id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+            name: 'common',
+            status: 'active',
+            ownerDiscordUserId: '20',
+            ownerName: 'Bob',
+            forumId: 'ffffffff-ffff-ffff-ffff-ffffffffffff',
+            forumName: 'common',
+            discordId: '998',
+            workspaceStatus: 'ready',
+            workspaceRelative: 'workspaces/projects/common-cccccc',
+            branch: 'main',
+            headSha: '0123456789abcdef',
+            dirty: false,
+          },
+        ],
+      }),
+    ),
     http.get('/api/v1/discord/development-environments', () =>
       HttpResponse.json([
         {
@@ -105,6 +126,7 @@ function commonHandlers() {
               name: 'bob-dev',
               discordId: '999',
               repositoryId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+              workspaceKind: 'repository',
               repository: 'datawake-ai/tyrs-hand',
               status: 'ready',
               branch: 'tyrs-hand/discord/bob',
@@ -217,6 +239,55 @@ describe('DiscordPage', () => {
       { accessLevel: 'operator' },
     )
     expect(await screen.findByText('Forum 访问权限已更新')).toBeInTheDocument()
+  })
+
+  it('创建、停用和重新启用普通项目时不要求 GitHub 绑定', async () => {
+    commonHandlers()
+    const create = vi.fn()
+    const disable = vi.fn()
+    server.use(
+      http.post('/api/v1/projects', async ({ request }) => {
+        create(await request.json())
+        return HttpResponse.json(
+          {
+            id: 'dddddddd-dddd-dddd-dddd-dddddddddddd',
+            operationId: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
+          },
+          { status: 202 },
+        )
+      }),
+      http.post(
+        '/api/v1/projects/cccccccc-cccc-cccc-cccc-cccccccccccc/disable',
+        () => {
+          disable()
+          return HttpResponse.json(
+            { id: 'cccccccc-cccc-cccc-cccc-cccccccccccc' },
+            { status: 202 },
+          )
+        },
+      ),
+    )
+    renderPage()
+    const user = userEvent.setup()
+    await screen.findByText('common')
+    await user.type(screen.getByLabelText('普通项目名称'), 'notes')
+    await user.selectOptions(screen.getByLabelText('普通项目 Owner'), '20')
+    await user.click(screen.getByRole('button', { name: '创建普通项目' }))
+    expect(create).toHaveBeenCalledWith({
+      name: 'notes',
+      ownerDiscordUserId: '20',
+    })
+    expect(
+      await screen.findByText(
+        '普通项目创建请求已提交，Forum 和工作区会自动创建',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/分支 main/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '停用' }))
+    expect(disable).toHaveBeenCalledOnce()
+    expect(
+      await screen.findByText('普通项目已停用，运行中任务正在中断'),
+    ).toBeInTheDocument()
   })
 
   it('Rebase 用户级环境并强确认删除最后一个 Forum', async () => {

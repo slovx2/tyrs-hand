@@ -44,12 +44,31 @@ interface DevelopmentForum {
   id: string
   name: string
   discordId: string
-  repositoryId: string
+  repositoryId?: string
+  projectId?: string
+  workspaceKind: 'repository' | 'project'
   repository: string
   status: string
   branch: string
   dirty: boolean
   error?: string
+}
+
+interface Project {
+  id: string
+  name: string
+  status: 'provisioning' | 'active' | 'disabled' | 'error'
+  error?: string
+  ownerDiscordUserId: string
+  ownerName: string
+  forumId: string
+  forumName?: string
+  discordId?: string
+  workspaceStatus?: string
+  workspaceRelative?: string
+  branch?: string
+  headSha?: string
+  dirty: boolean
 }
 
 interface DevelopmentEnvironment {
@@ -126,6 +145,17 @@ export function DiscordPage() {
     enabled: settings.data?.tokenConfigured === true,
     refetchInterval: 5_000,
   })
+  const projects = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => api<ListResponse<Project>>('/projects'),
+    enabled: settings.data?.tokenConfigured === true,
+    refetchInterval: (query) =>
+      query.state.data?.items.some(
+        (project) => project.status === 'provisioning',
+      )
+        ? 2_000
+        : 15_000,
+  })
   useEffect(() => {
     if (status.data?.pendingInitializationOperations === 0) {
       void queryClient.invalidateQueries({
@@ -161,7 +191,7 @@ export function DiscordPage() {
     <section>
       <h1 className="text-3xl font-bold">Discord</h1>
       <p className="muted mt-2">
-        私有 Server、个人 Codex Forum 与 GitHub 任务投影。
+        私有 Server、普通项目、个人 Codex Forum 与 GitHub 任务投影。
       </p>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-4">
@@ -237,13 +267,19 @@ export function DiscordPage() {
         guildId={settings.data?.guildId ?? ''}
       />
 
+      <ProjectPanel
+        projects={projects.data?.items ?? []}
+        members={members.data ?? []}
+      />
+
       <div className="panel mt-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="text-xl font-semibold">成员与开发 Forum</h2>
             <p className="muted mt-1 text-sm">
-              每个 Forum 固定绑定一个仓库；同一成员的多个仓库共享长期开发容器与
-              Home。
+              仓库 Forum 固定绑定 GitHub
+              仓库；普通项目由上方单独创建。同一成员的
+              多个工作区共享长期开发容器与 Home。
             </p>
           </div>
           <button
@@ -288,6 +324,165 @@ export function DiscordPage() {
         members={members.data ?? []}
       />
     </section>
+  )
+}
+
+function ProjectPanel({
+  projects,
+  members,
+}: {
+  projects: Project[]
+  members: DiscordMember[]
+}) {
+  const queryClient = useQueryClient()
+  const showToast = useUI((state) => state.showToast)
+  const [name, setName] = useState('')
+  const [ownerDiscordUserId, setOwnerDiscordUserId] = useState('')
+  const refresh = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['projects'] }),
+      queryClient.invalidateQueries({ queryKey: ['discord-status'] }),
+      queryClient.invalidateQueries({
+        queryKey: ['discord-development-environments'],
+      }),
+    ])
+  }
+  const create = useMutation({
+    mutationFn: () =>
+      api<{ id: string; operationId: string }>('/projects', {
+        method: 'POST',
+        body: JSON.stringify({ name: name.trim(), ownerDiscordUserId }),
+      }),
+    onSuccess: async () => {
+      setName('')
+      showToast('info', '普通项目创建请求已提交，Forum 和工作区会自动创建')
+      await refresh()
+    },
+  })
+  const action = useMutation({
+    mutationFn: ({ id, operation }: { id: string; operation: string }) =>
+      api(`/projects/${id}/${operation}`, { method: 'POST' }),
+    onSuccess: async (_, variables) => {
+      const messages: Record<string, string> = {
+        retry: '普通项目重试请求已提交',
+        disable: '普通项目已停用，运行中任务正在中断',
+        enable: '普通项目已重新启用',
+      }
+      showToast('info', messages[variables.operation])
+      await refresh()
+    },
+  })
+  return (
+    <div className="panel mt-6">
+      <h2 className="text-xl font-semibold">普通项目</h2>
+      <p className="muted mt-1 text-sm">
+        无需 GitHub 仓库。系统会创建私有 Discord Forum、持久工作区和本地 Git
+        仓库；仅支持本地查看状态和提交。
+      </p>
+      <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+        <input
+          className="field"
+          aria-label="普通项目名称"
+          placeholder="项目名称"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+        />
+        <select
+          className="field"
+          aria-label="普通项目 Owner"
+          value={ownerDiscordUserId}
+          onChange={(event) => setOwnerDiscordUserId(event.target.value)}
+        >
+          <option value="">选择 Discord Owner</option>
+          {members.map((member) => (
+            <option key={member.discordUserId} value={member.discordUserId}>
+              {member.displayName || member.username}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          className="button"
+          disabled={!name.trim() || !ownerDiscordUserId || create.isPending}
+          onClick={() => create.mutate()}
+        >
+          {create.isPending ? '创建中…' : '创建普通项目'}
+        </button>
+      </div>
+      <div className="mt-5 grid gap-3">
+        {projects.map((project) => {
+          const pending =
+            action.isPending && action.variables?.id === project.id
+          return (
+            <div
+              key={project.id}
+              className="rounded border p-3"
+              style={{ borderColor: 'var(--border)' }}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold">{project.name}</p>
+                  <p className="muted mt-1 text-xs">
+                    Owner {project.ownerName} · {project.status} · Forum{' '}
+                    {project.forumName || '创建中'} · 工作区{' '}
+                    {project.workspaceStatus || '创建中'}
+                    {project.branch ? ` · 分支 ${project.branch}` : ''}
+                    {project.dirty ? ' · 有未提交修改' : ''}
+                  </p>
+                  {project.workspaceRelative && (
+                    <p className="muted mt-1 break-all font-mono text-xs">
+                      {project.workspaceRelative}
+                    </p>
+                  )}
+                  {project.error && (
+                    <p className="error-text mt-2 text-sm">{project.error}</p>
+                  )}
+                </div>
+                {project.status === 'error' && (
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    disabled={pending}
+                    onClick={() =>
+                      action.mutate({ id: project.id, operation: 'retry' })
+                    }
+                  >
+                    {pending ? '提交中…' : '重试'}
+                  </button>
+                )}
+                {project.status === 'active' && (
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    disabled={pending}
+                    onClick={() =>
+                      action.mutate({ id: project.id, operation: 'disable' })
+                    }
+                  >
+                    {pending ? '停用中…' : '停用'}
+                  </button>
+                )}
+                {project.status === 'disabled' && (
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    disabled={pending}
+                    onClick={() =>
+                      action.mutate({ id: project.id, operation: 'enable' })
+                    }
+                  >
+                    {pending ? '启用中…' : '重新启用'}
+                  </button>
+                )}
+              </div>
+            </div>
+          )
+        })}
+        {projects.length === 0 && (
+          <p className="muted text-sm">尚未创建普通项目</p>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -532,9 +727,9 @@ function DevelopmentEnvironmentPanel({
     <div className="panel mt-6">
       <h2 className="text-xl font-semibold">长期开发环境</h2>
       <p className="muted mt-1 text-sm">
-        同一 Discord 用户只有一个容器和 Home；不同仓库、不同 Forum 各自使用独立
-        clone。Rebase 会保留 Home 和工作区，但会清除通过 sudo
-        安装到系统层的软件。
+        同一 Discord 用户只有一个容器和 Home；不同 Forum 各自使用独立工作区，
+        仓库项目使用 clone，普通项目使用本地 Git。Rebase 会保留 Home
+        和工作区，但会清除通过 sudo 安装到系统层的软件。
       </p>
       <div className="mt-5 grid gap-5">
         {environments.map((environment) => (
@@ -798,18 +993,21 @@ function DevelopmentForumRow({
         <div>
           <p className="font-medium">{forum.name}</p>
           <p className="muted text-xs">
-            {forum.repository} · {forum.status} · {forum.branch}{' '}
+            {forum.workspaceKind === 'project' ? '普通项目' : forum.repository}{' '}
+            · {forum.status} · {forum.branch}{' '}
             {forum.dirty ? '· 有未提交修改' : ''}
           </p>
         </div>
-        <button
-          type="button"
-          className="button-secondary"
-          disabled={remove.isPending}
-          onClick={() => remove.mutate()}
-        >
-          {remove.isPending ? '处理中…' : '删除'}
-        </button>
+        {forum.workspaceKind === 'repository' && (
+          <button
+            type="button"
+            className="button-secondary"
+            disabled={remove.isPending}
+            onClick={() => remove.mutate()}
+          >
+            {remove.isPending ? '处理中…' : '删除'}
+          </button>
+        )}
       </div>
       <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_130px_auto_auto]">
         <select

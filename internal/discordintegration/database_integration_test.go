@@ -241,6 +241,176 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 	testDiscordRecoveryOrchestration(t, ctx, db, manager, seed)
 }
 
+func TestGenericProjectInitializationAndDisableAreIdempotent(t *testing.T) {
+	db := discordDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	box, err := security.NewSecretBox(make([]byte, 32))
+	require.NoError(t, err)
+	manager := NewManager(db, secrets.NewStore(db, box), "tyrs-hand-development:test")
+	require.NoError(t, manager.SaveSettings(ctx, SettingsInput{
+		GuildID: testGuildID, Enabled: true, BotToken: "test-token",
+		ApplicationID: "100000000000000002", BotUserID: testBotID,
+	}))
+	seed := seedDiscordManagerData(t, db)
+	remoteGuild := RemoteGuild{ID: testGuildID, CommunityEnabled: true, Channels: []RemoteChannel{
+		{ID: seed.codexCategoryID, Name: "Codex 会话 01", Kind: "category"},
+	}}
+
+	projectID, operationID, err := manager.CreateProject(ctx, remoteGuild, "Common", "1003",
+		seed.administratorID)
+	require.NoError(t, err, "未绑定 GitHub 的活跃 Discord 成员也可以成为 Owner")
+	require.NotEqual(t, uuid.Nil, projectID)
+	require.NoError(t, manager.RunInitialization(ctx, operationID, &initializationActionRemote{}))
+	require.NoError(t, manager.RunInitialization(ctx, operationID, &initializationActionRemote{}),
+		"重复执行已完成的初始化必须幂等")
+
+	var forumID, environmentID uuid.UUID
+	var repositoryID *uuid.UUID
+	var workspace, branch, workspaceStatus, projectStatus string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT forum.id, forum.repository_id,
+		forum.development_environment_id, workspace.relative_path, workspace.branch,
+		workspace.status, project.status
+		FROM projects project JOIN discord_forums forum ON forum.project_id=project.id
+		JOIN discord_forum_workspaces workspace ON workspace.forum_id=forum.id
+		WHERE project.id=$1`, projectID).Scan(&forumID, &repositoryID, &environmentID,
+		&workspace, &branch, &workspaceStatus, &projectStatus))
+	require.Nil(t, repositoryID)
+	require.Equal(t, "workspaces/projects/common-"+
+		strings.ReplaceAll(projectID.String(), "-", "")[:8], workspace)
+	require.Equal(t, "main", branch)
+	require.Equal(t, "pending", workspaceStatus)
+	require.Equal(t, "provisioning", projectStatus)
+	environments, err := manager.DevelopmentEnvironments(ctx)
+	require.NoError(t, err)
+	var projectForum DevelopmentForum
+	for _, environment := range environments {
+		for _, forum := range environment.Forums {
+			if forum.ProjectID != nil && *forum.ProjectID == projectID {
+				projectForum = forum
+			}
+		}
+	}
+	require.Equal(t, "project", projectForum.WorkspaceKind)
+	require.Nil(t, projectForum.RepositoryID)
+	require.Equal(t, "Common", projectForum.Repository)
+	projects, err := manager.Projects(ctx)
+	require.NoError(t, err)
+	require.Len(t, projects, 1)
+	require.Equal(t, projectID, projects[0].ID)
+	require.Equal(t, "Common", projects[0].Name)
+	require.Equal(t, "charlie", projects[0].OwnerName)
+	require.Equal(t, forumID, projects[0].ForumID)
+	require.Equal(t, workspace, projects[0].WorkspaceRelative)
+	require.Equal(t, branch, projects[0].Branch)
+	var forumCount, workspaceCount, provisionCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT
+		(SELECT count(*) FROM discord_forums WHERE project_id=$1),
+		(SELECT count(*) FROM discord_forum_workspaces WHERE forum_id=$2),
+		(SELECT count(*) FROM discord_development_operations
+			WHERE forum_id=$2 AND operation='provision')`, projectID, forumID).
+		Scan(&forumCount, &workspaceCount, &provisionCount))
+	require.Equal(t, []int{1, 1, 1}, []int{forumCount, workspaceCount, provisionCount})
+	_, err = db.ExecContext(ctx, `UPDATE projects SET status='error', error='test failure'
+		WHERE id=$1`, projectID)
+	require.NoError(t, err)
+	retryOperationID, err := manager.RetryProject(ctx, remoteGuild, projectID, seed.administratorID)
+	require.NoError(t, err)
+	require.NotEqual(t, operationID, retryOperationID)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM projects WHERE id=$1`, projectID).
+		Scan(&projectStatus))
+	require.Equal(t, "provisioning", projectStatus)
+	_, err = manager.RetryProject(ctx, remoteGuild, projectID, seed.administratorID)
+	require.Error(t, err, "只有 error 状态允许重试")
+
+	_, err = db.ExecContext(ctx, `UPDATE discord_forum_workspaces SET status='ready' WHERE forum_id=$1`, forumID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE projects SET status='active' WHERE id=$1`, projectID)
+	require.NoError(t, err)
+	service := NewConversationService(db)
+	projectConversationID, err := service.BeginPost(ctx, IncomingMessage{
+		GuildID: testGuildID, ForumID: "100000000000000060",
+		ThreadID: "project-service-thread", MessageID: "project-service-starter",
+		DiscordUserID: "1003", DisplayName: "charlie", Username: "charlie",
+		Title: "Common task", Body: "start from Discord", ConfigurationConfirmed: true,
+	})
+	require.NoError(t, err)
+	require.NotEqual(t, uuid.Nil, projectConversationID)
+	var serviceIntentID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM codex_turn_intents
+		WHERE discord_conversation_id=$1 AND project_id=$2`, projectConversationID, projectID).
+		Scan(&serviceIntentID))
+	var profileID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM agent_profiles WHERE name='Default'`).
+		Scan(&profileID))
+	var conversationID, controlID, activeIntentID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_conversations
+		(guild_id, forum_id, thread_id, owner_discord_user_id, project_id, agent_profile_id)
+		VALUES ($1,$2,'project-thread','1003',$3,$4) RETURNING id`, testGuildID,
+		forumID, projectID, profileID).Scan(&conversationID))
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_thread_controls
+		(source_type, discord_conversation_id, project_id, agent_profile_id, status, next_sequence_no)
+		VALUES ('discord_conversation',$1,$2,$3,'active',3) RETURNING id`,
+		conversationID, projectID, profileID).Scan(&controlID))
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_turn_intents
+		(control_id,sequence_no,behavior,source_type,discord_conversation_id,project_id,
+		 agent_profile_id,idempotency_key,status,input_surface)
+		VALUES ($1,1,'start_when_idle','discord_conversation',$2,$3,$4,
+		'project-active','running','discord') RETURNING id`, controlID, conversationID,
+		projectID, profileID).Scan(&activeIntentID))
+	_, err = db.ExecContext(ctx, `UPDATE codex_thread_controls SET active_intent_id=$2 WHERE id=$1`,
+		controlID, activeIntentID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_intents
+		(control_id,sequence_no,behavior,source_type,discord_conversation_id,project_id,
+		 agent_profile_id,idempotency_key,status,input_surface)
+		VALUES ($1,2,'steer_if_active','discord_conversation',$2,$3,$4,
+		'project-queued','queued','desktop')`, controlID, conversationID,
+		projectID, profileID)
+	require.NoError(t, err)
+
+	require.NoError(t, manager.DisableProject(ctx, projectID, seed.administratorID))
+	var activeStatus, queuedStatus, disabledStatus string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM codex_turn_intents
+		WHERE id=$1`, activeIntentID).Scan(&activeStatus))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM codex_turn_intents
+		WHERE idempotency_key='project-queued'`).Scan(&queuedStatus))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM projects WHERE id=$1`, projectID).
+		Scan(&disabledStatus))
+	require.Equal(t, "running", activeStatus)
+	require.Equal(t, "canceled", queuedStatus)
+	require.Equal(t, "disabled", disabledStatus)
+	err = service.Reply(ctx, IncomingMessage{
+		GuildID: testGuildID, ThreadID: "project-service-thread",
+		MessageID: "project-disabled-reply", DiscordUserID: "1003",
+		DisplayName: "charlie", Username: "charlie", Body: "must be rejected",
+	})
+	require.Error(t, err)
+	var disabledReplyCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_input_messages
+		WHERE message_id='project-disabled-reply'`).Scan(&disabledReplyCount))
+	require.Zero(t, disabledReplyCount)
+	var interrupts int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_intents
+		WHERE control_id=$1 AND operation='interrupt' AND status='queued'`, controlID).
+		Scan(&interrupts))
+	require.Equal(t, 1, interrupts)
+	require.NoError(t, manager.DisableProject(ctx, projectID, seed.administratorID))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_intents
+		WHERE control_id=$1 AND operation='interrupt'`, controlID).Scan(&interrupts))
+	require.Equal(t, 1, interrupts)
+	require.NoError(t, manager.EnableProject(ctx, projectID))
+	require.NoError(t, service.Reply(ctx, IncomingMessage{
+		GuildID: testGuildID, ThreadID: "project-service-thread",
+		MessageID: "project-enabled-reply", DiscordUserID: "1003",
+		DisplayName: "charlie", Username: "charlie", Body: "continue after enable",
+	}))
+	var enabledReplyProjectID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT project_id FROM codex_turn_intents
+		WHERE discord_message_id='project-enabled-reply'`).Scan(&enabledReplyProjectID))
+	require.Equal(t, projectID, enabledReplyProjectID)
+}
+
 func TestDiscordLunaTitleSynchronizesBeforeAndAfterControlBinding(t *testing.T) {
 	db := discordDatabase(t)
 	ctx := context.Background()
@@ -437,9 +607,10 @@ func TestConversationLifecycleProjectionAndRestore(t *testing.T) {
 	intentID, runID := uuid.New(), uuid.New()
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_intents
 		(id, control_id, sequence_no, source_type, discord_conversation_id,
-			agent_profile_id, idempotency_key, status)
-		VALUES ($1,$2,1,'discord_conversation',$3,$4,$5,'running')`, intentID,
-		controlID, conversationID, profileID, "lifecycle-active-"+intentID.String())
+			repository_id, agent_profile_id, idempotency_key, status)
+		VALUES ($1,$2,1,'discord_conversation',$3,$4,$5,$6,'running')`, intentID,
+		controlID, conversationID, seed.repositoryID, profileID,
+		"lifecycle-active-"+intentID.String())
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_runs
 		(id, control_id, primary_intent_id, attempt, worker_id, lease_epoch,

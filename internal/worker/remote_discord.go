@@ -32,9 +32,13 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	report("discord.progress", remoteEventPayload(map[string]string{
 		"state": "running", "detail": "已接收消息，正在准备工作区。",
 	}))
-	fetchCredential, err := p.client.GitCredential(ctx, task, "fetch", "", "")
-	if err != nil {
-		return workerprotocol.CompleteRequest{}, err
+	fetchCredential := ""
+	var err error
+	if snapshot.Development.WorkspaceKind != "project" {
+		fetchCredential, err = p.client.GitCredential(ctx, task, "fetch", "", "")
+		if err != nil {
+			return workerprotocol.CompleteRequest{}, err
+		}
 	}
 	runtimeCredential, err := p.client.EnvironmentRuntimeCredential(ctx,
 		snapshot.Development.EnvironmentID)
@@ -95,7 +99,7 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 		NetworkEnabled:        settings.NetworkEnabled,
 		RuntimeConfig:         runtimeConfig,
 		DeveloperInstructions: browserDeveloperInstructions(p.cfg, discordintegration.MultiplayerDeveloperInstructions),
-		DynamicTools:          withBrowserTools(p.cfg, localGitSpec()),
+		DynamicTools:          withBrowserTools(p.cfg, localGitSpec(snapshot.Development.WorkspaceKind != "project")),
 	})
 	if err := codexRuntime.ValidateSkills(ctx, runtime.Workspace, skills); err != nil {
 		return workerprotocol.CompleteRequest{}, err
@@ -166,7 +170,8 @@ func remoteDevelopmentSpec(value workerprotocol.DevelopmentSpec) devcontainer.Re
 		EnvironmentID: value.EnvironmentID, ForumID: value.ForumID,
 		ConversationID: value.ConversationID, WorkspaceStatus: value.WorkspaceStatus,
 		WorkspaceRelative: value.WorkspaceRelative, WorkspaceBranch: value.WorkspaceBranch,
-		Repository: value.Repository, CloneURL: value.CloneURL, DefaultRef: value.DefaultRef,
+		WorkspaceKind: value.WorkspaceKind,
+		Repository:    value.Repository, CloneURL: value.CloneURL, DefaultRef: value.DefaultRef,
 		EnvironmentStatus: value.EnvironmentStatus, ImageRef: value.ImageRef,
 		ImageID: value.ImageID, ContainerName: value.ContainerName,
 		ContainerID: value.ContainerID, DataVolume: value.DataVolume,
@@ -181,7 +186,8 @@ func protocolDevelopmentState(value devcontainer.RemoteState) workerprotocol.Dev
 		EnvironmentID: value.EnvironmentID, ForumID: value.ForumID,
 		ConversationID: value.ConversationID, WorkspaceStatus: value.WorkspaceStatus,
 		WorkspaceRelative: value.WorkspaceRelative, WorkspaceBranch: value.WorkspaceBranch,
-		Repository: value.Repository, CloneURL: value.CloneURL, DefaultRef: value.DefaultRef,
+		WorkspaceKind: value.WorkspaceKind,
+		Repository:    value.Repository, CloneURL: value.CloneURL, DefaultRef: value.DefaultRef,
 		EnvironmentStatus: value.EnvironmentStatus, ImageRef: value.ImageRef,
 		ImageID: value.ImageID, ContainerName: value.ContainerName,
 		ContainerID: value.ContainerID, DataVolume: value.DataVolume,

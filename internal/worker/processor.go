@@ -117,7 +117,7 @@ func (p *Processor) Process(ctx context.Context, claimed *codexcontrol.ClaimedCo
 	if err != nil {
 		return codexcontrol.TurnResult{}, err
 	}
-	gitSpec := localGitSpec()
+	gitSpec := localGitSpec(true)
 	provider, err := p.settings.AgentProvider(ctx)
 	if err != nil {
 		return codexcontrol.TurnResult{}, err

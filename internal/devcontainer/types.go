@@ -45,6 +45,7 @@ type RemoteSpec struct {
 	WorkspaceStatus   string
 	WorkspaceRelative string
 	WorkspaceBranch   string
+	WorkspaceKind     string
 	Repository        string
 	CloneURL          string
 	DefaultRef        string
@@ -110,6 +111,7 @@ type workspace struct {
 	Relative    string
 	Status      string
 	Branch      string
+	Kind        string
 	Repository  string
 	CloneURL    string
 	DefaultRef  string

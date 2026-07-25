@@ -406,6 +406,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listProjects"];
+        put?: never;
+        post: operations["createProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["retryProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["disableProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["enableProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/discord/development-environments/{id}/rebase": {
         parameters: {
             query?: never;
@@ -1772,7 +1836,11 @@ export interface components {
             name: string;
             discordId: string;
             /** Format: uuid */
-            repositoryId: string;
+            repositoryId?: string;
+            /** Format: uuid */
+            projectId?: string;
+            /** @enum {string} */
+            workspaceKind: "repository" | "project";
             repository: string;
             status: string;
             branch: string;
@@ -1830,6 +1898,35 @@ export interface components {
         IDResource: {
             /** Format: uuid */
             id: string;
+        };
+        Project: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @enum {string} */
+            status: "provisioning" | "active" | "disabled" | "error";
+            error?: string;
+            ownerDiscordUserId: string;
+            ownerName: string;
+            /** Format: uuid */
+            forumId: string;
+            forumName?: string;
+            discordId?: string;
+            /** Format: uuid */
+            environmentId?: string;
+            workspaceStatus?: string;
+            workspaceRelative?: string;
+            branch?: string;
+            headSha?: string;
+            dirty: boolean;
+            /** Format: uuid */
+            initializationId?: string;
+        };
+        ProjectOperation: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            operationId: string;
         };
         ResourceList: {
             items: {
@@ -2799,6 +2896,132 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DiscordDevelopmentEnvironment"][];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listProjects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 普通项目列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Project"][];
+                    };
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    createProject: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    ownerDiscordUserId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 项目与 Forum 创建已排队 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOperation"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    retryProject: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 项目恢复操作已排队 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOperation"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    disableProject: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 项目已停用，运行中的 Turn 正在中断 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    enableProject: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 项目已重新启用 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
                 };
             };
             default: components["responses"]["Problem"];

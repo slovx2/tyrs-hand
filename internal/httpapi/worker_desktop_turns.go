@@ -69,9 +69,9 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	var nextSequence int64
 	var oldLeaseEpoch int64
 	var actorGuildID, actorUserID, actorDisplayName string
-	var conversationID sql.NullString
+	var conversationID, repositoryID, projectID sql.NullString
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT ct.id, ct.discord_conversation_id,
-		ct.repository_id, ct.agent_profile_id, ct.status, ct.lifecycle_state,
+		ct.repository_id::text, ct.project_id::text, ct.agent_profile_id, ct.status, ct.lifecycle_state,
 		ct.next_sequence_no,
 		ct.lease_epoch, COALESCE(ct.external_thread_id,''), COALESCE(ct.codex_home_key,''),
 		p.allowed_tools, '[]'::jsonb,
@@ -79,12 +79,14 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		COALESCE(NULLIF(m.display_name, ''), m.username, '')
 		FROM codex_thread_controls ct JOIN agent_profiles p ON p.id = ct.agent_profile_id
 		JOIN discord_development_environments e ON e.id = ct.development_environment_id
+		LEFT JOIN projects project ON project.id=ct.project_id
 		LEFT JOIN discord_members m ON m.guild_id = e.guild_id
 			AND m.discord_user_id = e.ssh_discord_user_id
 		WHERE ct.external_thread_id = $1 AND ct.development_environment_id = $2
-		AND ct.execution_node_id = $3 FOR UPDATE OF ct`, threadID, request.EnvironmentID,
+		AND ct.execution_node_id = $3
+		AND (ct.project_id IS NULL OR project.status='active') FOR UPDATE OF ct`, threadID, request.EnvironmentID,
 		node.ID).Scan(&claimed.ControlID, &conversationID,
-		&claimed.RepositoryID, &claimed.AgentProfileID, &controlStatus, &lifecycleState,
+		&repositoryID, &projectID, &claimed.AgentProfileID, &controlStatus, &lifecycleState,
 		&nextSequence,
 		&oldLeaseEpoch, &claimed.ExternalThreadID,
 		&claimed.CodexHomeKey, &allowedJSON, &dangerousJSON,
@@ -102,6 +104,8 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		return
 	}
 	claimed.DiscordConversationID = parseOptionalUUID(conversationID)
+	claimed.RepositoryID = parseOptionalUUID(repositoryID)
+	claimed.ProjectID = parseOptionalUUID(projectID)
 	if controlStatus != "idle" {
 		problem(c, http.StatusConflict, "该 Thread 已有活动 Turn", nil)
 		return
@@ -130,17 +134,18 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	idempotencyKey := "desktop-turn:" + request.EnvironmentID.String() + ":" + request.RequestKey
 	_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO codex_turn_intents
 			(id, control_id, sequence_no, operation, behavior, source_type, input_surface,
-			 discord_conversation_id, repository_id, agent_profile_id, idempotency_key,
+			 discord_conversation_id, repository_id, project_id, agent_profile_id, idempotency_key,
 			 instruction, prepared_input, allowed_tools, dangerous_actions, priority,
 			 actor_login, actor_permission, actor_participant_id, actor_display_name,
 			 reply_policy, reply_status, status, attempt_count, max_attempts, dispatched_at,
 			 desktop_input_projection_key, desktop_input_projection_status)
 			VALUES ($1,$2,$3,'turn_input','start_when_idle','discord_conversation','desktop',
-				NULLIF($4::text,'')::uuid,$5,$6,$7,
-				$8,$9,$10,$11,100,'codex-desktop','owner',NULLIF($12::text,'')::uuid,$13,
-				'silent','skipped','dispatching',1,$14,now(),$15,'pending')`,
+				NULLIF($4::text,'')::uuid,NULLIF($5::text,'')::uuid,NULLIF($6::text,'')::uuid,$7,$8,
+				$9,$10,$11,$12,100,'codex-desktop','owner',NULLIF($13::text,'')::uuid,$14,
+				'silent','skipped','dispatching',1,$15,now(),$16,'pending')`,
 		claimed.ID, claimed.ControlID, claimed.Sequence, nilUUIDString(claimed.DiscordConversationID),
-		claimed.RepositoryID, claimed.AgentProfileID, idempotencyKey, instruction, request.Params,
+		nilUUIDString(claimed.RepositoryID), nilUUIDString(claimed.ProjectID),
+		claimed.AgentProfileID, idempotencyKey, instruction, request.Params,
 		allowedJSON, dangerousJSON, nilUUIDString(claimed.ActorParticipantID),
 		claimed.ActorDisplayName, claimed.MaxAttempts, projectionKey)
 	if err != nil {
@@ -255,7 +260,7 @@ func (s *Server) queueFirstDesktopInput(ctx context.Context, tx *sql.Tx, control
 	var firstProjectionKey, firstInputText, firstTitle, firstActorID, firstActorName string
 	var target desktopThreadTarget
 	err := tx.QueryRowContext(ctx, `SELECT r.id, r.status, f.id, resource.discord_id,
-		repo.owner || '/' || repo.name, fw.relative_path,
+		COALESCE(repo.owner || '/' || repo.name, project.name, ''), fw.relative_path,
 		COALESCE(environment.ssh_discord_user_id, ''),
 		COALESCE(NULLIF(member.display_name, ''), member.username, ''),
 		COALESCE(control.desired_thread_name,''), COALESCE(control.desired_thread_name_source,''),
@@ -266,7 +271,8 @@ func (s *Server) queueFirstDesktopInput(ctx context.Context, tx *sql.Tx, control
 		JOIN codex_thread_controls control ON control.id = r.control_id
 		JOIN discord_forums f ON f.id = r.forum_id
 		JOIN discord_resources resource ON resource.id = f.resource_id
-		JOIN repositories repo ON repo.id = f.repository_id
+		LEFT JOIN repositories repo ON repo.id = f.repository_id
+		LEFT JOIN projects project ON project.id=f.project_id
 		JOIN discord_forum_workspaces fw ON fw.forum_id = f.id
 		JOIN discord_development_environments environment ON environment.id = r.environment_id
 	LEFT JOIN discord_members member ON member.guild_id = environment.guild_id

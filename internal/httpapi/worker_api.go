@@ -246,11 +246,12 @@ func (s *Server) claimedRemoteRun(ctx context.Context, nodeID, runID uuid.UUID,
 ) (*codexcontrol.ClaimedControl, error) {
 	var claimed codexcontrol.ClaimedControl
 	var source string
-	var conversationID, workItemID, repositoryID sql.NullString
+	var conversationID, workItemID, repositoryID, projectID sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT r.control_id, r.primary_intent_id, r.id,
 		r.lease_epoch, i.source_type, COALESCE(i.input_surface,''),
 		i.attempt_count, i.max_attempts,
 		i.discord_conversation_id::text, i.work_item_id::text, i.repository_id::text,
+		i.project_id::text,
 		COALESCE(i.discord_message_id,''), i.agent_profile_id, i.sequence_no,
 		i.status = 'reconciling' OR i.codex_submission_id IS NOT NULL,
 		COALESCE(i.codex_submission_id,''), COALESCE(i.confirmed_codex_turn_id,''),
@@ -260,7 +261,7 @@ func (s *Server) claimedRemoteRun(ctx context.Context, nodeID, runID uuid.UUID,
 		WHERE r.id = $1 AND r.execution_node_id = $2`, runID, nodeID).Scan(
 		&claimed.ControlID, &claimed.ID, &claimed.RunID, &claimed.LeaseEpoch, &source,
 		&claimed.InputSurface, &claimed.Attempt, &claimed.MaxAttempts,
-		&conversationID, &workItemID, &repositoryID,
+		&conversationID, &workItemID, &repositoryID, &projectID,
 		&claimed.DiscordMessageID, &claimed.AgentProfileID, &claimed.Sequence,
 		&claimed.Recovering, &claimed.SubmissionID, &claimed.ConfirmedTurnID,
 		&claimed.ExternalThreadID, &claimed.CodexHomeKey)
@@ -279,6 +280,9 @@ func (s *Server) claimedRemoteRun(ctx context.Context, nodeID, runID uuid.UUID,
 	}
 	if err == nil && repositoryID.Valid {
 		claimed.RepositoryID, err = uuid.Parse(repositoryID.String)
+	}
+	if err == nil && projectID.Valid {
+		claimed.ProjectID, err = uuid.Parse(projectID.String)
 	}
 	if err != nil {
 		return nil, err

@@ -29,6 +29,7 @@ type discordJobContext struct {
 	MessageID      string
 	OwnerUserID    string
 	RepositoryID   uuid.UUID
+	ProjectID      uuid.UUID
 	EnvironmentID  uuid.UUID
 	ForumID        uuid.UUID
 	HasRepository  bool
@@ -73,9 +74,12 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		}
 	}()
 	progress.project(ctx, discordintegration.ConversationRunning, "已接收消息，正在准备工作区。", 0)
-	credential, err := p.control.GitCredential(ctx, claimed.Capability, "fetch")
-	if err != nil {
-		return result, err
+	credential := ""
+	if jobCtx.HasRepository {
+		credential, err = p.control.GitCredential(ctx, claimed.Capability, "fetch")
+		if err != nil {
+			return result, err
+		}
 	}
 	containerRuntime, err := p.development.Ensure(ctx, jobCtx.EnvironmentID, jobCtx.ForumID,
 		jobCtx.ConversationID, credential)
@@ -133,8 +137,11 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		DeveloperInstructions: browserDeveloperInstructions(p.cfg, discordintegration.MultiplayerDeveloperInstructions),
 	})
 	if jobCtx.HasRepository {
-		options.DynamicTools = append(options.DynamicTools, localGitSpec())
+		options.DynamicTools = append(options.DynamicTools, localGitSpec(true))
 		options.DeveloperInstructions += "\nFollow repository AGENTS.md and the explicitly attached skills. Use only the selected repository and persistent Discord clone. The container and Home are shared with the owner's other forums, so never inspect or modify sibling workspaces outside the current CWD. Use git.commit and git.publish_branch for writes."
+	} else {
+		options.DynamicTools = append(options.DynamicTools, localGitSpec(false))
+		options.DeveloperInstructions += "\nUse only the current persistent project workspace. The container and Home are shared with the owner's other forums, so never inspect or modify sibling workspaces outside the current CWD. Local commits are allowed, but this project has no remote and must not be published."
 	}
 	options.DynamicTools = withBrowserTools(p.cfg, options.DynamicTools...)
 	if err := runtime.ValidateSkills(ctx, workspace, skills); err != nil {
@@ -277,10 +284,11 @@ func (p *Processor) projectDiscordReply(ctx context.Context, jobCtx discordJobCo
 
 func (p *Processor) loadDiscordContext(ctx context.Context, job codexcontrol.Intent) (discordJobContext, error) {
 	var result discordJobContext
-	var repositoryID sql.NullString
+	var repositoryID, projectID sql.NullString
 	err := p.db.QueryRowContext(ctx, `SELECT c.id, c.guild_id, c.thread_id, m.message_id, c.owner_discord_user_id,
 		f.id, f.development_environment_id,
-		COALESCE(c.repository_id::text, ''), COALESCE(r.owner, ''), COALESCE(r.name, ''),
+		COALESCE(c.repository_id::text, ''), COALESCE(c.project_id::text, ''),
+		COALESCE(r.owner, ''), COALESCE(r.name, ''),
 		COALESCE(r.clone_url, ''), COALESCE(r.default_branch, ''),
 		p.name, COALESCE(p.model, ''), COALESCE(p.reasoning_effort, ''), COALESCE(p.service_tier, ''),
 		p.sandbox, p.approval_policy, p.network_enabled, m.body, m.discord_user_id,
@@ -293,7 +301,7 @@ func (p *Processor) loadDiscordContext(ctx context.Context, job codexcontrol.Int
 		WHERE c.id = $1 AND m.message_id = $2`, job.DiscordConversationID, job.DiscordMessageID).
 		Scan(&result.ConversationID, &result.GuildID, &result.ThreadID, &result.MessageID, &result.OwnerUserID,
 			&result.ForumID, &result.EnvironmentID,
-			&repositoryID, &result.Owner, &result.Repository, &result.CloneURL, &result.DefaultBranch,
+			&repositoryID, &projectID, &result.Owner, &result.Repository, &result.CloneURL, &result.DefaultBranch,
 			&result.ProfileName, &result.Model, &result.ReasoningEffort,
 			&result.ServiceTier, &result.Sandbox, &result.ApprovalPolicy, &result.NetworkEnabled,
 			&result.Body, &result.DiscordUserID, &result.DisplayName, &result.Username,
@@ -304,6 +312,9 @@ func (p *Processor) loadDiscordContext(ctx context.Context, job codexcontrol.Int
 	if repositoryID.String != "" {
 		result.RepositoryID, err = uuid.Parse(repositoryID.String)
 		result.HasRepository = err == nil
+	}
+	if projectID.String != "" {
+		result.ProjectID, err = uuid.Parse(projectID.String)
 	}
 	return result, err
 }
@@ -346,6 +357,9 @@ func (p *Processor) executeDiscordLocalTool(ctx context.Context, claimed *codexc
 		}
 		return codex.TextToolResult(fmt.Sprintf(`{"sha":%q}`, sha), err == nil), err
 	case "publish_branch":
+		if claimed.ProjectID != uuid.Nil {
+			return codex.ToolCallResult{}, errors.New("普通项目没有远端，不能发布分支")
+		}
 		credential, err := p.control.GitCredential(ctx, claimed.Capability, "push", request.ThreadID, request.TurnID)
 		if err != nil {
 			return codex.ToolCallResult{}, err

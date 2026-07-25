@@ -68,7 +68,9 @@ func (s *Server) environmentManifestForums(c *gin.Context,
 	environmentID uuid.UUID,
 ) ([]workerprotocol.EnvironmentForum, error) {
 	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT f.id, f.guild_id,
-		r.discord_id, f.owner_discord_user_id, f.repository_id, fw.relative_path, fw.status
+		r.discord_id, f.owner_discord_user_id, f.repository_id::text, f.project_id::text,
+		CASE WHEN f.project_id IS NULL THEN 'repository' ELSE 'project' END,
+		fw.relative_path, fw.status
 		FROM discord_forums f JOIN discord_resources r ON r.id = f.resource_id
 		JOIN discord_forum_workspaces fw ON fw.forum_id = f.id
 		WHERE f.development_environment_id = $1 AND fw.status <> 'deleting'
@@ -80,10 +82,17 @@ func (s *Server) environmentManifestForums(c *gin.Context,
 	result := make([]workerprotocol.EnvironmentForum, 0)
 	for rows.Next() {
 		var item workerprotocol.EnvironmentForum
+		var repositoryID, projectID sql.NullString
 		if err := rows.Scan(&item.ForumID, &item.GuildID, &item.DiscordForumID,
-			&item.OwnerUserID, &item.RepositoryID, &item.WorkspaceRelative,
+			&item.OwnerUserID, &repositoryID, &projectID, &item.WorkspaceKind, &item.WorkspaceRelative,
 			&item.WorkspaceStatus); err != nil {
 			return nil, err
+		}
+		if repository := parseOptionalUUID(repositoryID); repository != uuid.Nil {
+			item.RepositoryID = &repository
+		}
+		if project := parseOptionalUUID(projectID); project != uuid.Nil {
+			item.ProjectID = &project
 		}
 		result = append(result, item)
 	}

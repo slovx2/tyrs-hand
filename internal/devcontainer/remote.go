@@ -24,7 +24,7 @@ func (m *Manager) EnsureRemote(ctx context.Context, spec RemoteSpec,
 
 	item := workspace{
 		ForumID: spec.ForumID, Relative: spec.WorkspaceRelative,
-		Status: spec.WorkspaceStatus, Branch: spec.WorkspaceBranch,
+		Status: spec.WorkspaceStatus, Branch: spec.WorkspaceBranch, Kind: spec.WorkspaceKind,
 		Repository: spec.Repository, CloneURL: spec.CloneURL, DefaultRef: spec.DefaultRef,
 		Environment: environment{
 			ID: spec.EnvironmentID, Status: spec.EnvironmentStatus,
@@ -50,7 +50,7 @@ func (m *Manager) EnsureRemote(ctx context.Context, spec RemoteSpec,
 		}
 	}
 	if item.Status != "ready" {
-		if err := m.cloneWorkspace(ctx, &item, credential); err != nil {
+		if err := m.prepareWorkspace(ctx, &item, credential); err != nil {
 			return Runtime{}, state(err), err
 		}
 	}
@@ -100,7 +100,8 @@ func remoteState(item workspace, conversationID uuid.UUID) RemoteState {
 		EnvironmentID: item.Environment.ID, ForumID: item.ForumID,
 		ConversationID: conversationID, WorkspaceStatus: item.Status,
 		WorkspaceRelative: item.Relative, WorkspaceBranch: item.Branch,
-		Repository: item.Repository, CloneURL: item.CloneURL, DefaultRef: item.DefaultRef,
+		WorkspaceKind: item.Kind,
+		Repository:    item.Repository, CloneURL: item.CloneURL, DefaultRef: item.DefaultRef,
 		EnvironmentStatus: item.Environment.Status, ImageRef: item.Environment.ImageRef,
 		ImageID: item.Environment.ImageID, ContainerName: item.Environment.ContainerName,
 		ContainerID: item.Environment.ContainerID, DataVolume: item.Environment.DataVolume,

@@ -5,6 +5,7 @@ test('管理员配置 Discord、初始化并创建仓库开发 Forum', async ({ 
   let forumCreated = false
   let forumBody: Record<string, unknown> | undefined
   let accessBody: Record<string, unknown> | undefined
+  let projectBody: Record<string, unknown> | undefined
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request()
     const path = new URL(request.url()).pathname
@@ -81,6 +82,19 @@ test('管理员配置 Discord、初始化并创建仓库开发 Forum', async ({ 
         },
       })
     }
+    if (path === '/api/v1/projects' && request.method() === 'GET') {
+      return route.fulfill({ json: { items: [] } })
+    }
+    if (path === '/api/v1/projects' && request.method() === 'POST') {
+      projectBody = request.postDataJSON() as Record<string, unknown>
+      return route.fulfill({
+        status: 202,
+        json: {
+          id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+          operationId: 'dddddddd-dddd-dddd-dddd-dddddddddddd',
+        },
+      })
+    }
     if (path === '/api/v1/discord/development-environments') {
       return route.fulfill({
         json: [
@@ -99,6 +113,7 @@ test('管理员配置 Discord、初始化并创建仓库开发 Forum', async ({ 
                 name: 'bob-dev',
                 discordId: '999',
                 repositoryId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                workspaceKind: 'repository',
                 repository: 'datawake-ai/tyrs-hand',
                 status: 'ready',
                 branch: 'tyrs-hand/discord/bob',
@@ -165,6 +180,11 @@ test('管理员配置 Discord、初始化并创建仓库开发 Forum', async ({ 
     confirmation: 'DELETE ALL CHANNELS 123',
   })
 
+  await page.getByLabel('普通项目名称').fill('common')
+  await page.getByLabel('普通项目 Owner').selectOption('20')
+  await page.getByRole('button', { name: '创建普通项目' }).click()
+  expect(projectBody).toEqual({ name: 'common', ownerDiscordUserId: '20' })
+
   await page
     .getByLabel('Alice 开发仓库')
     .selectOption('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
@@ -225,6 +245,9 @@ test('初始化冲突、模式切换和危险确认在移动端保持安全', as
       return route.fulfill({ json: [] })
     }
     if (path === '/api/v1/repositories') {
+      return route.fulfill({ json: { items: [] } })
+    }
+    if (path === '/api/v1/projects') {
       return route.fulfill({ json: { items: [] } })
     }
     if (path === '/api/v1/discord/development-environments') {

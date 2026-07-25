@@ -147,6 +147,53 @@ func (m *Manager) cloneWorkspace(ctx context.Context, item *workspace, credentia
 	return m.copyCheckout(ctx, item, checkout)
 }
 
+func (m *Manager) prepareWorkspace(ctx context.Context, item *workspace, credential string) error {
+	if item.Kind == "project" {
+		return m.initializeProjectWorkspace(ctx, item)
+	}
+	return m.cloneWorkspace(ctx, item, credential)
+}
+
+func (m *Manager) initializeProjectWorkspace(ctx context.Context, item *workspace) error {
+	if m.db != nil {
+		_, _ = m.db.ExecContext(ctx, `UPDATE discord_forum_workspaces
+			SET status='cloning', error=NULL, updated_at=now() WHERE forum_id=$1`, item.ForumID)
+	}
+	target := filepath.ToSlash(filepath.Join(containerRoot, item.Relative))
+	owner := fmt.Sprintf("%d:%d", item.Environment.RuntimeUID, item.Environment.RuntimeGID)
+	if _, err := m.docker(ctx, "exec", "--user", "0:0", item.Environment.ContainerName,
+		"mkdir", "-p", target); err != nil {
+		return err
+	}
+	if _, err := m.docker(ctx, "exec", "--user", "0:0", item.Environment.ContainerName,
+		"chown", "-R", owner, target); err != nil {
+		return err
+	}
+	base := []string{"exec", "--user", owner, "--env", "HOME=" + item.Environment.RuntimeHome,
+		"--workdir", target, item.Environment.ContainerName, "git"}
+	if _, err := m.docker(ctx, append(base, "init", "--initial-branch=main")...); err != nil {
+		return err
+	}
+	commit := append(base, "-c", "user.name=TyrsHand Agent",
+		"-c", "user.email=tyrs-hand[bot]@users.noreply.github.com",
+		"commit", "--allow-empty", "-m", "Initialize project")
+	if _, err := m.docker(ctx, commit...); err != nil {
+		return err
+	}
+	sha, err := m.docker(ctx, append(base, "rev-parse", "HEAD")...)
+	if err != nil {
+		return err
+	}
+	item.Status = "ready"
+	if m.db == nil {
+		return nil
+	}
+	_, err = m.db.ExecContext(ctx, `UPDATE discord_forum_workspaces SET status='ready',
+		base_sha=$2, head_sha=$2, dirty=false, error=NULL, last_used_at=now(), updated_at=now()
+		WHERE forum_id=$1`, item.ForumID, strings.TrimSpace(sha))
+	return err
+}
+
 func (m *Manager) checkoutRepository(ctx context.Context, cloneURL, defaultRef, branch, credential string) (string, func(), error) {
 	root := filepath.Join(m.dataRoot, "tmp")
 	if err := os.MkdirAll(root, 0o750); err != nil {

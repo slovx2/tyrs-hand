@@ -378,6 +378,74 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/DiscordDevelopmentEnvironment" } }
         default: { $ref: "#/components/responses/Problem" }
+  /projects:
+    get:
+      operationId: listProjects
+      tags: [Projects]
+      responses:
+        "200":
+          description: 普通项目列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Project" } }
+        default: { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: createProject
+      tags: [Projects]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, ownerDiscordUserId]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 80 }
+                ownerDiscordUserId: { type: string, minLength: 1 }
+      responses:
+        "202":
+          description: 项目与 Forum 创建已排队
+          content: { application/json: { schema: { $ref: "#/components/schemas/ProjectOperation" } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /projects/{id}/retry:
+    post:
+      operationId: retryProject
+      tags: [Projects]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/CSRFToken" }
+      responses:
+        "202":
+          description: 项目恢复操作已排队
+          content: { application/json: { schema: { $ref: "#/components/schemas/ProjectOperation" } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /projects/{id}/disable:
+    post:
+      operationId: disableProject
+      tags: [Projects]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/CSRFToken" }
+      responses:
+        "202": { description: 项目已停用，运行中的 Turn 正在中断 }
+        default: { $ref: "#/components/responses/Problem" }
+  /projects/{id}/enable:
+    post:
+      operationId: enableProject
+      tags: [Projects]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/CSRFToken" }
+      responses:
+        "200":
+          description: 项目已重新启用
+          content: { application/json: { schema: { $ref: "#/components/schemas/Project" } } }
+        default: { $ref: "#/components/responses/Problem" }
   /discord/development-environments/{id}/rebase:
     post:
       operationId: rebaseDiscordDevelopmentEnvironment
@@ -1659,12 +1727,14 @@ components:
         githubLogin: { type: string }
     DiscordDevelopmentForum:
       type: object
-      required: [id, name, discordId, repositoryId, repository, status, branch, dirty]
+      required: [id, name, discordId, workspaceKind, repository, status, branch, dirty]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         discordId: { type: string }
         repositoryId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        workspaceKind: { type: string, enum: [repository, project] }
         repository: { type: string }
         status: { type: string }
         branch: { type: string }
@@ -1720,6 +1790,32 @@ components:
       required: [id]
       properties:
         id: { type: string, format: uuid }
+    Project:
+      type: object
+      required: [id, name, status, ownerDiscordUserId, ownerName, forumId, dirty]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        status: { type: string, enum: [provisioning, active, disabled, error] }
+        error: { type: string }
+        ownerDiscordUserId: { type: string }
+        ownerName: { type: string }
+        forumId: { type: string, format: uuid }
+        forumName: { type: string }
+        discordId: { type: string }
+        environmentId: { type: string, format: uuid }
+        workspaceStatus: { type: string }
+        workspaceRelative: { type: string }
+        branch: { type: string }
+        headSha: { type: string }
+        dirty: { type: boolean }
+        initializationId: { type: string, format: uuid }
+    ProjectOperation:
+      type: object
+      required: [id, operationId]
+      properties:
+        id: { type: string, format: uuid }
+        operationId: { type: string, format: uuid }
     ResourceList:
       type: object
       required: [items]

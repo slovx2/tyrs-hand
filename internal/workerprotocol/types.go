@@ -9,7 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 10
+const Version = 11
 
 type EnrollRequest struct {
 	Token string `json:"token"`
@@ -78,6 +78,7 @@ type DevelopmentOperation struct {
 	WorkspaceStatus   string      `json:"workspaceStatus,omitempty"`
 	WorkspaceHeadSHA  string      `json:"workspaceHeadSha,omitempty"`
 	WorkspaceBranch   string      `json:"workspaceBranch,omitempty"`
+	WorkspaceKind     string      `json:"workspaceKind"`
 	Repository        string      `json:"repository,omitempty"`
 	CloneURL          string      `json:"cloneUrl,omitempty"`
 	DefaultRef        string      `json:"defaultRef,omitempty"`
@@ -144,13 +145,15 @@ type ParticipantIdentity struct {
 }
 
 type EnvironmentForum struct {
-	ForumID           uuid.UUID `json:"forumId"`
-	GuildID           string    `json:"guildId"`
-	DiscordForumID    string    `json:"discordForumId"`
-	OwnerUserID       string    `json:"ownerUserId"`
-	RepositoryID      uuid.UUID `json:"repositoryId"`
-	WorkspaceRelative string    `json:"workspaceRelative"`
-	WorkspaceStatus   string    `json:"workspaceStatus"`
+	ForumID           uuid.UUID  `json:"forumId"`
+	GuildID           string     `json:"guildId"`
+	DiscordForumID    string     `json:"discordForumId"`
+	OwnerUserID       string     `json:"ownerUserId"`
+	RepositoryID      *uuid.UUID `json:"repositoryId,omitempty"`
+	ProjectID         *uuid.UUID `json:"projectId,omitempty"`
+	WorkspaceKind     string     `json:"workspaceKind"`
+	WorkspaceRelative string     `json:"workspaceRelative"`
+	WorkspaceStatus   string     `json:"workspaceStatus"`
 }
 
 type EnvironmentDaemonState struct {
@@ -367,6 +370,8 @@ type DevelopmentSpec struct {
 	WorkspaceStatus   string    `json:"workspaceStatus"`
 	WorkspaceRelative string    `json:"workspaceRelative"`
 	WorkspaceBranch   string    `json:"workspaceBranch"`
+	WorkspaceKind     string    `json:"workspaceKind"`
+	ProjectID         uuid.UUID `json:"projectId,omitempty"`
 	Repository        string    `json:"repository"`
 	CloneURL          string    `json:"cloneUrl"`
 	DefaultRef        string    `json:"defaultRef"`

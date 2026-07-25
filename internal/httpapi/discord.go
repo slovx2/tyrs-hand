@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -106,6 +107,20 @@ func (s *Server) discordPreflight(c *gin.Context, mode string) (discordintegrati
 	return s.discord.ServerInitializationPlan(c, guild, mode)
 }
 
+func (s *Server) discordGuild(c *gin.Context) (discordintegration.RemoteGuild, error) {
+	settings, err := s.discord.Settings(c)
+	if err != nil || settings.GuildID == "" || !settings.TokenConfigured {
+		return discordintegration.RemoteGuild{}, errors.New("discord Guild 或 Bot Token 尚未配置")
+	}
+	token, err := s.discord.BotToken(c)
+	if err != nil {
+		return discordintegration.RemoteGuild{}, err
+	}
+	remote := discordintegration.NewDisgoRemote(token, "", nil)
+	defer remote.Close(c)
+	return remote.Guild(c, settings.GuildID)
+}
+
 func (s *Server) getDiscordInitialization(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -127,6 +142,102 @@ func (s *Server) listDiscordMembers(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, members)
+}
+
+func (s *Server) listProjects(c *gin.Context) {
+	projects, err := s.discord.Projects(c)
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取普通项目失败", err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": projects})
+}
+
+func (s *Server) createProject(c *gin.Context) {
+	var input struct {
+		Name               string `json:"name" binding:"required"`
+		OwnerDiscordUserID string `json:"ownerDiscordUserId" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		badRequest(c, err)
+		return
+	}
+	guild, err := s.discordGuild(c)
+	if err != nil {
+		problem(c, http.StatusBadGateway, "读取 Discord Guild 失败", err)
+		return
+	}
+	administratorID := c.MustGet("session").(auth.Session).AdministratorID
+	projectID, operationID, err := s.discord.CreateProject(c, guild, input.Name,
+		input.OwnerDiscordUserID, administratorID)
+	if err != nil {
+		problem(c, http.StatusConflict, "创建普通项目失败", err)
+		return
+	}
+	s.audit(c, "project.create", "project", projectID.String(), map[string]any{
+		"operationId": operationID, "ownerDiscordUserId": input.OwnerDiscordUserID})
+	c.JSON(http.StatusAccepted, gin.H{"id": projectID, "operationId": operationID})
+}
+
+func (s *Server) retryProject(c *gin.Context) {
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		badRequest(c, err)
+		return
+	}
+	guild, err := s.discordGuild(c)
+	if err != nil {
+		problem(c, http.StatusBadGateway, "读取 Discord Guild 失败", err)
+		return
+	}
+	administratorID := c.MustGet("session").(auth.Session).AdministratorID
+	operationID, err := s.discord.RetryProject(c, guild, projectID, administratorID)
+	if err != nil {
+		problem(c, http.StatusConflict, "重试普通项目失败", err)
+		return
+	}
+	s.audit(c, "project.retry", "project", projectID.String(), map[string]any{"operationId": operationID})
+	c.JSON(http.StatusAccepted, gin.H{"id": projectID, "operationId": operationID})
+}
+
+func (s *Server) disableProject(c *gin.Context) {
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		badRequest(c, err)
+		return
+	}
+	administratorID := c.MustGet("session").(auth.Session).AdministratorID
+	if err := s.discord.DisableProject(c, projectID, administratorID); err != nil {
+		problem(c, http.StatusConflict, "停用普通项目失败", err)
+		return
+	}
+	s.audit(c, "project.disable", "project", projectID.String(), nil)
+	c.JSON(http.StatusAccepted, gin.H{"id": projectID})
+}
+
+func (s *Server) enableProject(c *gin.Context) {
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		badRequest(c, err)
+		return
+	}
+	if err := s.discord.EnableProject(c, projectID); err != nil {
+		problem(c, http.StatusConflict, "启用普通项目失败", err)
+		return
+	}
+	s.audit(c, "project.enable", "project", projectID.String(), nil)
+	projects, err := s.discord.Projects(c)
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取普通项目失败", err)
+		return
+	}
+	for _, project := range projects {
+		if project.ID == projectID {
+			c.JSON(http.StatusOK, project)
+			return
+		}
+	}
+	problem(c, http.StatusNotFound, "普通项目不存在", sql.ErrNoRows)
 }
 
 func (s *Server) listDiscordDevelopmentEnvironments(c *gin.Context) {

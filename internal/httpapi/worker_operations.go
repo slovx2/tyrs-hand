@@ -34,6 +34,7 @@ func (s *Server) claimDevelopmentOperation(ctx context.Context, nodeID uuid.UUID
 		COALESCE(e.image_id,''), COALESCE(e.container_id,''),
 		e.data_volume_name, e.home_volume_name, e.network_name, fw.relative_path,
 		COALESCE(fw.status,''), COALESCE(fw.branch,''),
+		CASE WHEN f.project_id IS NULL THEN 'repository' ELSE 'project' END,
 		COALESCE(r.owner || '/' || r.name,''), COALESCE(r.clone_url,''),
 		COALESCE(r.default_branch,''),
 		e.runtime_user, COALESCE(e.runtime_uid,0), COALESCE(e.runtime_gid,0), e.runtime_home,
@@ -55,7 +56,7 @@ func (s *Server) claimDevelopmentOperation(ctx context.Context, nodeID uuid.UUID
 		&result.EnvironmentStatus, &result.ContainerName, &imageRef, &result.ImageID,
 		&result.ContainerID, &result.DataVolume, &result.HomeVolume,
 		&result.Network, &workspace, &result.WorkspaceStatus, &result.WorkspaceBranch,
-		&result.Repository, &result.CloneURL, &result.DefaultRef, &runtimeUser,
+		&result.WorkspaceKind, &result.Repository, &result.CloneURL, &result.DefaultRef, &runtimeUser,
 		&result.RuntimeUID, &result.RuntimeGID, &runtimeHome, &sshPublicKey, &sshPort,
 		&result.SSHConfigRevision)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -296,6 +297,11 @@ func completeDevelopmentOperation(ctx context.Context, tx *sql.Tx, operation str
 			status = 'ready', head_sha = NULLIF($2,''), dirty = false, error = NULL,
 			last_used_at = now(), updated_at = now() WHERE forum_id = $1`,
 			forumID.String, request.WorkspaceHeadSHA)
+		if err == nil {
+			_, err = tx.ExecContext(ctx, `UPDATE projects SET status='active', error=NULL,
+				updated_at=now() WHERE id=(SELECT project_id FROM discord_forums WHERE id=$1)
+				AND status='provisioning'`, forumID.String)
+		}
 		return err
 	case "reconfigure":
 		if request.AppliedRevision <= 0 || request.ContainerID == "" || request.DaemonStatus != "running" {
@@ -379,6 +385,11 @@ func failDevelopmentOperation(ctx context.Context, tx *sql.Tx, operation string,
 		_, err := tx.ExecContext(ctx, `UPDATE discord_forum_workspaces SET
 			status = 'error', error = $2, updated_at = now() WHERE forum_id = $1`,
 			forumID.String, message)
+		if err == nil {
+			_, err = tx.ExecContext(ctx, `UPDATE projects SET status='error', error=$2,
+				updated_at=now() WHERE id=(SELECT project_id FROM discord_forums WHERE id=$1)
+				AND status='provisioning'`, forumID.String, message)
+		}
 		return err
 	}
 	return nil

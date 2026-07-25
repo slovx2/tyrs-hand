@@ -47,24 +47,26 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 	}
 
 	node := workerNode(c)
-	var controlID, conversationID, repositoryID, profileID uuid.UUID
-	var nullableConversation sql.NullString
+	var controlID, conversationID, profileID uuid.UUID
+	var nullableConversation, repositoryID, projectID sql.NullString
 	var nextSequence int64
 	var controlStatus, lifecycleState, activeTurnID, guildID, actorUserID, actorDisplayName string
 	var allowedJSON, dangerousJSON []byte
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT ct.id, ct.discord_conversation_id,
-		ct.repository_id, ct.agent_profile_id, ct.next_sequence_no, ct.status,
+		ct.repository_id::text, ct.project_id::text, ct.agent_profile_id, ct.next_sequence_no, ct.status,
 		ct.lifecycle_state,
 		COALESCE(ct.active_codex_turn_id,''), p.allowed_tools, '[]'::jsonb,
 		e.guild_id, COALESCE(e.ssh_discord_user_id, ''),
 		COALESCE(NULLIF(m.display_name, ''), m.username, '')
 		FROM codex_thread_controls ct JOIN agent_profiles p ON p.id = ct.agent_profile_id
 		JOIN discord_development_environments e ON e.id = ct.development_environment_id
+		LEFT JOIN projects project ON project.id=ct.project_id
 		LEFT JOIN discord_members m ON m.guild_id = e.guild_id
 			AND m.discord_user_id = e.ssh_discord_user_id
 		WHERE ct.external_thread_id = $1 AND ct.development_environment_id = $2
-		AND ct.execution_node_id = $3 FOR UPDATE OF ct`, threadID, request.EnvironmentID,
-		node.ID).Scan(&controlID, &nullableConversation, &repositoryID, &profileID, &nextSequence,
+		AND ct.execution_node_id = $3
+		AND (ct.project_id IS NULL OR project.status='active') FOR UPDATE OF ct`, threadID, request.EnvironmentID,
+		node.ID).Scan(&controlID, &nullableConversation, &repositoryID, &projectID, &profileID, &nextSequence,
 		&controlStatus, &lifecycleState, &activeTurnID, &allowedJSON, &dangerousJSON, &guildID,
 		&actorUserID, &actorDisplayName)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -105,22 +107,23 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 	intentID := uuid.New()
 	_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO codex_turn_intents
 		(id, control_id, sequence_no, operation, behavior, resolved_action, source_type,
-		 input_surface, discord_conversation_id, repository_id, agent_profile_id,
+		 input_surface, discord_conversation_id, repository_id, project_id, agent_profile_id,
 		 idempotency_key, instruction, prepared_input, allowed_tools, dangerous_actions,
 		 priority, actor_login, actor_permission, actor_participant_id, actor_display_name,
 			 reply_policy, reply_status, status, attempt_count, confirmed_codex_turn_id,
 			 confirmed_at, finished_at, result_delivery_status, result_delivered_at,
 			 desktop_input_projection_key, desktop_input_projection_status)
 			VALUES ($1,$2,$3,'turn_input','steer_if_active','steer','discord_conversation',
-				'desktop',NULLIF($4::text,'')::uuid,$5,$6,$7,$8,$9,$10,$11,100,'codex-desktop','owner',
-				NULLIF($12::text,'')::uuid,$13,'silent','skipped',$14,1,$15,now(),
-				CASE WHEN $14='completed' THEN now() ELSE NULL END,
-				CASE WHEN $14='completed' THEN 'delivered' ELSE 'pending' END,
-				CASE WHEN $14='completed' THEN now() ELSE NULL END,$16,'pending')`,
-		intentID, controlID, nextSequence, nilUUIDString(conversationID), repositoryID, profileID,
-		idempotencyKey, instruction, request.Params, allowedJSON, dangerousJSON,
-		nilUUIDString(actorParticipantID), actorDisplayName, intentStatus, expectedTurnID,
-		projectionKey)
+			'desktop',NULLIF($4::text,'')::uuid,NULLIF($5,'')::uuid,NULLIF($6,'')::uuid,$7,$8,
+			$9,$10,$11,$12,100,'codex-desktop','owner',NULLIF($13::text,'')::uuid,$14,
+			'silent','skipped',$15,1,$16,now(),
+				CASE WHEN $15='completed' THEN now() ELSE NULL END,
+				CASE WHEN $15='completed' THEN 'delivered' ELSE 'pending' END,
+				CASE WHEN $15='completed' THEN now() ELSE NULL END,$17,'pending')`,
+		intentID, controlID, nextSequence, nilUUIDString(conversationID), repositoryID.String,
+		projectID.String, profileID, idempotencyKey, instruction, request.Params, allowedJSON,
+		dangerousJSON, nilUUIDString(actorParticipantID), actorDisplayName, intentStatus,
+		expectedTurnID, projectionKey)
 	if err == nil {
 		_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_thread_controls SET
 			next_sequence_no = next_sequence_no + 1, updated_at = now() WHERE id = $1`, controlID)

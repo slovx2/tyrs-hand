@@ -46,15 +46,17 @@ type DevelopmentEnvironmentSSHInput struct {
 }
 
 type DevelopmentForum struct {
-	ID           uuid.UUID `json:"id"`
-	Name         string    `json:"name"`
-	DiscordID    string    `json:"discordId"`
-	RepositoryID uuid.UUID `json:"repositoryId"`
-	Repository   string    `json:"repository"`
-	Status       string    `json:"status"`
-	Branch       string    `json:"branch"`
-	Dirty        bool      `json:"dirty"`
-	Error        string    `json:"error,omitempty"`
+	ID            uuid.UUID  `json:"id"`
+	Name          string     `json:"name"`
+	DiscordID     string     `json:"discordId"`
+	RepositoryID  *uuid.UUID `json:"repositoryId,omitempty"`
+	ProjectID     *uuid.UUID `json:"projectId,omitempty"`
+	WorkspaceKind string     `json:"workspaceKind"`
+	Repository    string     `json:"repository"`
+	Status        string     `json:"status"`
+	Branch        string     `json:"branch"`
+	Dirty         bool       `json:"dirty"`
+	Error         string     `json:"error,omitempty"`
 }
 
 type DevelopmentDeletePreflight struct {
@@ -77,8 +79,10 @@ func (m *Manager) DevelopmentEnvironments(ctx context.Context) ([]DevelopmentEnv
 		e.ssh_config_revision, e.ssh_applied_revision,
 		e.daemon_status, COALESCE(e.daemon_error, ''), e.app_server_status,
 		e.ssh_daemon_status, e.relay_status,
-		f.id, COALESCE(dr.name, ''), COALESCE(dr.discord_id, ''), f.repository_id,
-		COALESCE(r.owner || '/' || r.name, ''), COALESCE(fw.status, ''),
+		f.id, COALESCE(dr.name, ''), COALESCE(dr.discord_id, ''),
+		f.repository_id::text, f.project_id::text,
+		CASE WHEN f.project_id IS NULL THEN 'repository' ELSE 'project' END,
+		COALESCE(r.owner || '/' || r.name, project.name, ''), COALESCE(fw.status, ''),
 		COALESCE(fw.branch, ''), COALESCE(fw.dirty, false), COALESCE(fw.error, '')
 		FROM discord_development_environments e
 		JOIN discord_members dm ON dm.guild_id = e.guild_id AND dm.discord_user_id = e.owner_discord_user_id
@@ -86,6 +90,7 @@ func (m *Manager) DevelopmentEnvironments(ctx context.Context) ([]DevelopmentEnv
 			AND ssh_dm.discord_user_id = e.ssh_discord_user_id
 		LEFT JOIN discord_forums f ON f.development_environment_id = e.id AND f.forum_type = 'development'
 		LEFT JOIN repositories r ON r.id = f.repository_id
+		LEFT JOIN projects project ON project.id=f.project_id
 		LEFT JOIN discord_resources dr ON dr.id = f.resource_id
 		LEFT JOIN discord_forum_workspaces fw ON fw.forum_id = f.id
 		ORDER BY lower(dm.display_name), lower(r.owner), lower(r.name), dr.name`)
@@ -97,7 +102,7 @@ func (m *Manager) DevelopmentEnvironments(ctx context.Context) ([]DevelopmentEnv
 	byID := make(map[uuid.UUID]int)
 	for rows.Next() {
 		var environment DevelopmentEnvironment
-		var forumID, executionNodeID sql.NullString
+		var forumID, executionNodeID, repositoryID, projectID sql.NullString
 		var forum DevelopmentForum
 		if err := rows.Scan(&environment.ID, &environment.OwnerUserID, &environment.OwnerName,
 			&environment.Status, &environment.ImageRef, &environment.ImageID,
@@ -108,7 +113,8 @@ func (m *Manager) DevelopmentEnvironments(ctx context.Context) ([]DevelopmentEnv
 			&environment.SSHConfigRevision, &environment.SSHAppliedRevision,
 			&environment.DaemonStatus, &environment.DaemonError, &environment.AppServerStatus,
 			&environment.SSHStatus, &environment.RelayStatus,
-			&forumID, &forum.Name, &forum.DiscordID, &forum.RepositoryID, &forum.Repository,
+			&forumID, &forum.Name, &forum.DiscordID, &repositoryID, &projectID,
+			&forum.WorkspaceKind, &forum.Repository,
 			&forum.Status, &forum.Branch, &forum.Dirty, &forum.Error); err != nil {
 			return nil, err
 		}
@@ -130,6 +136,20 @@ func (m *Manager) DevelopmentEnvironments(ctx context.Context) ([]DevelopmentEnv
 			forum.ID, err = uuid.Parse(forumID.String)
 			if err != nil {
 				return nil, err
+			}
+			if repositoryID.Valid {
+				repository, parseErr := uuid.Parse(repositoryID.String)
+				if parseErr != nil {
+					return nil, parseErr
+				}
+				forum.RepositoryID = &repository
+			}
+			if projectID.Valid {
+				project, parseErr := uuid.Parse(projectID.String)
+				if parseErr != nil {
+					return nil, parseErr
+				}
+				forum.ProjectID = &project
 			}
 			result[index].Forums = append(result[index].Forums, forum)
 		}

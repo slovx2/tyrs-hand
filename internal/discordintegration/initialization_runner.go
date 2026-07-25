@@ -189,6 +189,81 @@ func (m *Manager) executeInitializationAction(ctx context.Context, guildID strin
 			err = tx.Commit()
 		}
 		return map[string]any{"environmentId": environmentID, "forumId": forumID}, err
+	case "forum.project.record":
+		var resourceID uuid.UUID
+		if err := m.db.QueryRowContext(ctx, `SELECT id FROM discord_resources
+			WHERE guild_id=$1 AND resource_key=$2 AND status='active'`, guildID,
+			action.Spec.Key).Scan(&resourceID); err != nil {
+			return nil, err
+		}
+		projectID, err := uuid.Parse(action.ProjectID)
+		if err != nil {
+			return nil, err
+		}
+		forumID, err := uuid.Parse(action.ForumID)
+		if err != nil {
+			return nil, err
+		}
+		var projectName, reservedForumID string
+		if err := m.db.QueryRowContext(ctx, `SELECT name, forum_id::text FROM projects
+			WHERE id=$1 AND guild_id=$2`, projectID, guildID).
+			Scan(&projectName, &reservedForumID); err != nil {
+			return nil, err
+		}
+		if reservedForumID != forumID.String() {
+			return nil, errors.New("项目 Forum ID 与预留值不一致")
+		}
+		environmentID, err := m.ensureDevelopmentEnvironment(ctx, guildID, action.OwnerUserID)
+		if err != nil {
+			return nil, err
+		}
+		tx, err := m.db.BeginTx(ctx, nil)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = tx.Rollback() }()
+		_, err = tx.ExecContext(ctx, `INSERT INTO discord_forums
+			(id, guild_id, resource_id, forum_type, owner_discord_user_id, project_id,
+			 development_environment_id) VALUES ($1,$2,$3,'development',$4,$5,$6)
+			ON CONFLICT(id) DO NOTHING`, forumID, guildID, resourceID,
+			action.OwnerUserID, projectID, environmentID)
+		if err != nil {
+			return nil, err
+		}
+		shortID := strings.ReplaceAll(projectID.String(), "-", "")[:8]
+		slug := channelName(projectName)
+		if slug == "" {
+			slug = "project"
+		}
+		relative := "workspaces/projects/" + slug + "-" + shortID
+		_, err = tx.ExecContext(ctx, `INSERT INTO discord_forum_workspaces
+			(forum_id, environment_id, relative_path, branch) VALUES ($1,$2,$3,'main')
+			ON CONFLICT(forum_id) DO UPDATE SET
+				status=CASE WHEN discord_forum_workspaces.status='error' THEN 'pending'
+					ELSE discord_forum_workspaces.status END,
+				error=NULL, updated_at=now()`, forumID, environmentID, relative)
+		if err == nil {
+			_, err = tx.ExecContext(ctx, `INSERT INTO discord_development_operations
+				(environment_id, forum_id, operation, execution_node_id)
+				SELECT $1,$2,'provision',execution_node_id
+				FROM discord_development_environments WHERE id=$1
+				AND EXISTS (SELECT 1 FROM discord_forum_workspaces
+					WHERE forum_id=$2 AND status<>'ready')
+				AND NOT EXISTS (SELECT 1 FROM discord_development_operations
+					WHERE forum_id=$2 AND operation='provision' AND status IN ('pending','running'))`,
+				environmentID, forumID)
+		}
+		if err == nil {
+			_, err = tx.ExecContext(ctx, `UPDATE projects SET status=CASE WHEN EXISTS(
+				SELECT 1 FROM discord_forum_workspaces WHERE forum_id=$2 AND status='ready')
+				THEN 'active' ELSE 'provisioning' END, error=NULL, updated_at=now()
+				WHERE id=$1 AND status<>'disabled'`, projectID, forumID)
+		}
+		if err == nil {
+			err = tx.Commit()
+		}
+		return map[string]any{"environmentId": environmentID, "forumId": forumID,
+			"projectId": projectID}, err
 	default:
 		return nil, fmt.Errorf("未知初始化步骤 %q", action.Kind)
 	}
@@ -290,6 +365,9 @@ func (m *Manager) failInitialization(ctx context.Context, operationID uuid.UUID,
 	}
 	_, _ = m.db.ExecContext(ctx, `UPDATE discord_initialization_operations SET status = 'failed',
 		error = $2, updated_at = now() WHERE id = $1`, operationID, cause.Error())
+	_, _ = m.db.ExecContext(ctx, `UPDATE projects SET status='error', error=$2, updated_at=now()
+		WHERE id=(SELECT project_id FROM discord_initialization_operations WHERE id=$1)
+		AND status='provisioning'`, operationID, cause.Error())
 	return cause
 }
 

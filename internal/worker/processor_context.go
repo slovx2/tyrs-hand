@@ -635,15 +635,20 @@ func resolveContainerSkills(workspace string, names []string) ([]ports.SkillRef,
 	return result, nil
 }
 
-func localGitSpec() ports.DynamicToolSpec {
-	return ports.DynamicToolSpec{
+func localGitSpec(allowPublish bool) ports.DynamicToolSpec {
+	result := ports.DynamicToolSpec{
 		Type: "namespace", Name: "git", Description: "Inspect and publish the current managed Git workspace.",
 		Tools: []ports.DynamicToolSpec{
 			{Type: "function", Name: "status", Description: "Read the current worktree status.", InputSchema: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)},
 			{Type: "function", Name: "commit", Description: "Stage all current worktree changes and create a commit.", InputSchema: json.RawMessage(`{"type":"object","properties":{"message":{"type":"string","minLength":1,"maxLength":200}},"required":["message"],"additionalProperties":false}`)},
-			{Type: "function", Name: "publish_branch", Description: "Push the current HEAD to its managed GitHub branch.", InputSchema: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)},
 		},
 	}
+	if allowPublish {
+		result.Tools = append(result.Tools, ports.DynamicToolSpec{Type: "function",
+			Name: "publish_branch", Description: "Push the current HEAD to its managed GitHub branch.",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)})
+	}
+	return result
 }
 
 func githubReplySpec() ports.DynamicToolSpec {

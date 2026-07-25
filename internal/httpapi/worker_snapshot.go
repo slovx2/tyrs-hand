@@ -138,9 +138,12 @@ func (s *Server) loadDiscordWorkerSnapshot(ctx context.Context,
 	}
 	result.BindingID = bindingID.String
 	var development workerprotocol.DevelopmentSpec
+	var projectID sql.NullString
 	development.ConversationID = claimed.DiscordConversationID
 	err = s.db.QueryRowContext(ctx, `SELECT e.id, f.id, fw.status, fw.relative_path,
-		fw.branch, r.owner || '/' || r.name, r.clone_url, r.default_branch,
+		fw.branch, CASE WHEN f.project_id IS NULL THEN 'repository' ELSE 'project' END,
+		f.project_id::text, COALESCE(r.owner || '/' || r.name, project.name, ''),
+		COALESCE(r.clone_url,''), COALESCE(r.default_branch,''),
 		e.status, COALESCE(e.image_ref,''), COALESCE(e.image_id,''), e.container_name,
 		COALESCE(e.container_id,''), e.data_volume_name, e.home_volume_name, e.network_name,
 		COALESCE(e.runtime_user,''), COALESCE(e.runtime_uid,0), COALESCE(e.runtime_gid,0),
@@ -148,10 +151,12 @@ func (s *Server) loadDiscordWorkerSnapshot(ctx context.Context,
 		FROM discord_forums f
 		JOIN discord_development_environments e ON e.id = f.development_environment_id
 		JOIN discord_forum_workspaces fw ON fw.forum_id = f.id
-		JOIN repositories r ON r.id = f.repository_id WHERE f.id = $1`, result.ForumID).
+		LEFT JOIN repositories r ON r.id = f.repository_id
+		LEFT JOIN projects project ON project.id=f.project_id WHERE f.id = $1`, result.ForumID).
 		Scan(&development.EnvironmentID, &development.ForumID,
 			&development.WorkspaceStatus, &development.WorkspaceRelative,
-			&development.WorkspaceBranch, &development.Repository, &development.CloneURL,
+			&development.WorkspaceBranch, &development.WorkspaceKind, &projectID,
+			&development.Repository, &development.CloneURL,
 			&development.DefaultRef, &development.EnvironmentStatus,
 			&development.ImageRef, &development.ImageID, &development.ContainerName,
 			&development.ContainerID, &development.DataVolume, &development.HomeVolume,
@@ -160,6 +165,7 @@ func (s *Server) loadDiscordWorkerSnapshot(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+	development.ProjectID = parseOptionalUUID(projectID)
 	result.Development = &development
 	rows, err := s.db.QueryContext(ctx, `SELECT id, kind, original_filename, media_type,
 		size_bytes, COALESCE(sha256,'') FROM discord_attachments
@@ -206,9 +212,12 @@ func (s *Server) loadDesktopDiscordWorkerSnapshot(ctx context.Context,
 		result.DisplayName = sshDisplayName
 	}
 	development := &workerprotocol.DevelopmentSpec{}
+	var projectID sql.NullString
 	development.ConversationID, _ = uuid.Parse(conversationID)
 	err = s.db.QueryRowContext(ctx, `SELECT e.id, f.id, fw.status, fw.relative_path,
-		fw.branch, r.owner || '/' || r.name, r.clone_url, r.default_branch,
+		fw.branch, CASE WHEN f.project_id IS NULL THEN 'repository' ELSE 'project' END,
+		f.project_id::text, COALESCE(r.owner || '/' || r.name, project.name, ''),
+		COALESCE(r.clone_url,''), COALESCE(r.default_branch,''),
 		e.status, COALESCE(e.image_ref,''), COALESCE(e.image_id,''), e.container_name,
 		COALESCE(e.container_id,''), e.data_volume_name, e.home_volume_name, e.network_name,
 		COALESCE(e.runtime_user,''), COALESCE(e.runtime_uid,0), COALESCE(e.runtime_gid,0),
@@ -216,10 +225,12 @@ func (s *Server) loadDesktopDiscordWorkerSnapshot(ctx context.Context,
 		FROM discord_forums f
 		JOIN discord_development_environments e ON e.id = f.development_environment_id
 		JOIN discord_forum_workspaces fw ON fw.forum_id = f.id
-		JOIN repositories r ON r.id = f.repository_id WHERE f.id = $1`, result.ForumID).
+		LEFT JOIN repositories r ON r.id = f.repository_id
+		LEFT JOIN projects project ON project.id=f.project_id WHERE f.id = $1`, result.ForumID).
 		Scan(&development.EnvironmentID, &development.ForumID,
 			&development.WorkspaceStatus, &development.WorkspaceRelative,
-			&development.WorkspaceBranch, &development.Repository, &development.CloneURL,
+			&development.WorkspaceBranch, &development.WorkspaceKind, &projectID,
+			&development.Repository, &development.CloneURL,
 			&development.DefaultRef, &development.EnvironmentStatus,
 			&development.ImageRef, &development.ImageID, &development.ContainerName,
 			&development.ContainerID, &development.DataVolume, &development.HomeVolume,
@@ -228,6 +239,7 @@ func (s *Server) loadDesktopDiscordWorkerSnapshot(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+	development.ProjectID = parseOptionalUUID(projectID)
 	result.Development = development
 	return result, nil
 }

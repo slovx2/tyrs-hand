@@ -115,15 +115,20 @@ func (p *RemoteProcessor) processDevelopmentProvision(ctx context.Context,
 	if operation.ForumID == nil {
 		return errors.New("开发环境 Provision 缺少 Forum")
 	}
-	gitCredential, err := p.client.DevelopmentOperationGitCredential(ctx, operation)
-	if err != nil {
-		return err
+	gitCredential := ""
+	var err error
+	if operation.WorkspaceKind != "project" {
+		gitCredential, err = p.client.DevelopmentOperationGitCredential(ctx, operation)
+		if err != nil {
+			return err
+		}
 	}
 	runtime, state, err := p.development.EnsureRemote(ctx, devcontainer.RemoteSpec{
 		EnvironmentID: operation.EnvironmentID, ForumID: *operation.ForumID,
 		WorkspaceStatus:   operation.WorkspaceStatus,
 		WorkspaceRelative: operation.Workspace, WorkspaceBranch: operation.WorkspaceBranch,
-		Repository: operation.Repository, CloneURL: operation.CloneURL,
+		WorkspaceKind: operation.WorkspaceKind,
+		Repository:    operation.Repository, CloneURL: operation.CloneURL,
 		DefaultRef: operation.DefaultRef, EnvironmentStatus: operation.EnvironmentStatus,
 		ImageRef: operation.ImageRef, ImageID: operation.ImageID,
 		ContainerName: operation.ContainerName, ContainerID: operation.ContainerID,
@@ -244,7 +249,7 @@ func (p *RemoteProcessor) processRemoteGitHub(ctx context.Context, task *workerp
 		ReasoningEffort:       settings.ReasoningEffort,
 		ServiceTier:           codexsettings.RuntimeServiceTier(settings.ServiceTier),
 		NetworkEnabled:        settings.NetworkEnabled,
-		DynamicTools:          withBrowserTools(p.cfg, githubSpec, localGitSpec(), githubReplySpec()),
+		DynamicTools:          withBrowserTools(p.cfg, githubSpec, localGitSpec(true), githubReplySpec()),
 		RuntimeConfig:         runtimeConfig,
 		DeveloperInstructions: browserDeveloperInstructions(p.cfg, "Follow repository AGENTS.md and the explicitly attached skills. Use only the authorized GitHub work item and current worktree. Use git.commit for commits and git.publish_branch for pushes. After all business actions, call tyrs_hand.reply_to_github exactly once with the user-facing result, then provide a natural final answer."),
 	})

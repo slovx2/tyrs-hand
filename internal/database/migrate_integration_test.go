@@ -80,7 +80,7 @@ func TestParticipantIdentityMigrationBindsExistingSSHToEnvironmentOwner(t *testi
 	require.Equal(t, "100000000000000002", ownerID)
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT protocol_version FROM execution_nodes
 		WHERE id=$1`, nodeID).Scan(&protocolVersion))
-	require.Equal(t, 10, protocolVersion)
+	require.Equal(t, 11, protocolVersion)
 }
 
 func TestStrandedDesktopTurnTerminalRepairMigration(t *testing.T) {
@@ -172,6 +172,10 @@ func TestStrandedDesktopTurnTerminalRepairMigration(t *testing.T) {
 	require.Equal(t, "user_interrupt", intentCode)
 	require.Equal(t, "canceled", runStatus)
 	require.Equal(t, "user_interrupt", runCode)
+	var migratedRepositoryID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT repository_id
+		FROM codex_turn_intents WHERE id=$1`, intentID).Scan(&migratedRepositoryID))
+	require.Equal(t, repositoryID, migratedRepositoryID)
 }
 
 func TestPersistentControlIdentityMigrationRemovesIsolationFieldsAndDuplicateControls(t *testing.T) {
@@ -306,7 +310,7 @@ func TestPersistentControlIdentityMigrationRemovesIsolationFieldsAndDuplicateCon
 	var protocolVersion int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT protocol_version FROM execution_nodes
 		WHERE name='migration-protocol-node'`).Scan(&protocolVersion))
-	require.Equal(t, 10, protocolVersion)
+	require.Equal(t, 11, protocolVersion)
 	var codexHomeKey string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT codex_home_key
 		FROM codex_thread_controls WHERE id=$1`, projectedDesktopID).Scan(&codexHomeKey))

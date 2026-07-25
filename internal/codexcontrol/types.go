@@ -41,6 +41,7 @@ type Intent struct {
 	DiscordConversationID uuid.UUID
 	DiscordMessageID      string
 	RepositoryID          uuid.UUID
+	ProjectID             uuid.UUID
 	AgentProfileID        uuid.UUID
 	Status                IntentStatus
 	Instruction           string
@@ -79,6 +80,7 @@ type EnqueueRequest struct {
 	DiscordConversationID uuid.UUID
 	DiscordMessageID      string
 	RepositoryID          uuid.UUID
+	ProjectID             uuid.UUID
 	AgentProfileID        uuid.UUID
 	WebhookDeliveryID     uuid.UUID
 	TriggerRuleID         uuid.UUID

@@ -101,7 +101,7 @@ func (m *Manager) Ensure(ctx context.Context, environmentID, forumID, conversati
 		}
 	}
 	if item.Status != "ready" {
-		if err := m.cloneWorkspace(ctx, &item, credential); err != nil {
+		if err := m.prepareWorkspace(ctx, &item, credential); err != nil {
 			m.failWorkspace(forumID, err)
 			return Runtime{}, err
 		}
@@ -155,15 +155,18 @@ func (m *Manager) loadWorkspace(ctx context.Context, environmentID, forumID uuid
 	var item workspace
 	var imageRef, imageID, containerID, runtimeUser, runtimeHome sql.NullString
 	err := m.db.QueryRowContext(ctx, `SELECT fw.forum_id, fw.relative_path, fw.status, fw.branch,
-		r.owner || '/' || r.name, r.clone_url, r.default_branch,
+		CASE WHEN f.project_id IS NULL THEN 'repository' ELSE 'project' END,
+		COALESCE(r.owner || '/' || r.name, project.name, ''),
+		COALESCE(r.clone_url,''), COALESCE(r.default_branch,''),
 		e.id, e.status, e.image_ref, e.image_id, e.container_name, e.container_id,
 		e.data_volume_name, e.home_volume_name, e.network_name, e.runtime_user,
 		COALESCE(e.runtime_uid, 0), COALESCE(e.runtime_gid, 0), e.runtime_home
 		FROM discord_forum_workspaces fw JOIN discord_development_environments e ON e.id = fw.environment_id
 		JOIN discord_forums f ON f.id = fw.forum_id
-		JOIN repositories r ON r.id = f.repository_id
+		LEFT JOIN repositories r ON r.id = f.repository_id
+		LEFT JOIN projects project ON project.id=f.project_id
 		WHERE fw.forum_id = $1 AND e.id = $2`, forumID, environmentID).Scan(
-		&item.ForumID, &item.Relative, &item.Status, &item.Branch,
+		&item.ForumID, &item.Relative, &item.Status, &item.Branch, &item.Kind,
 		&item.Repository, &item.CloneURL, &item.DefaultRef,
 		&item.Environment.ID, &item.Environment.Status,
 		&imageRef, &imageID, &item.Environment.ContainerName, &containerID,

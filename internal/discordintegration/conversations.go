@@ -152,7 +152,8 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 		return uuid.Nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	forumID, ownerID, repositoryID, err := s.developmentForum(ctx, tx, input.GuildID, input.ForumID)
+	forumID, ownerID, repositoryID, projectID, err := s.developmentForum(ctx, tx,
+		input.GuildID, input.ForumID)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -187,15 +188,17 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 	var conversationID uuid.UUID
 	err = tx.QueryRowContext(ctx, `INSERT INTO discord_conversations
 		(guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
-		 repository_id, agent_profile_id, title, status, model, reasoning_effort, service_tier,
+		 repository_id, project_id, agent_profile_id, title, status, model, reasoning_effort, service_tier,
 		 configuration_status, configuration_deadline, configured_by_discord_user_id,
 		 title_rename_status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULLIF($10,''), NULLIF($11,''), $12,
-			$13, CASE WHEN $14::text IS NULL THEN NULL ELSE now() + $14::interval END, $15,
+		VALUES ($1, $2, $3, $4, $5, NULLIF($6::text,'')::uuid, NULLIF($7::text,'')::uuid,
+			$8, $9, $10, NULLIF($11,''), NULLIF($12,''), $13,
+			$14, CASE WHEN $15::text IS NULL THEN NULL ELSE now() + $15::interval END, $16,
 			'pending')
 		ON CONFLICT(guild_id, thread_id) DO UPDATE SET last_activity_at = now(), updated_at = now()
 		RETURNING id`, input.GuildID, forumID, input.ThreadID, input.MessageID, ownerID,
-		repositoryID, profileID, input.Title, status, preferences.Model, preferences.ReasoningEffort,
+		optionalUUID(repositoryID), optionalUUID(projectID), profileID, input.Title, status,
+		preferences.Model, preferences.ReasoningEffort,
 		preferences.ServiceTier, configurationStatus, deadline, input.DiscordUserID).Scan(&conversationID)
 	if err != nil {
 		return uuid.Nil, err
@@ -232,9 +235,13 @@ func (s *ConversationService) Reply(ctx context.Context, input IncomingMessage) 
 	defer func() { _ = tx.Rollback() }()
 	var conversationID, forumID uuid.UUID
 	var ownerID, status, lifecycleState string
-	err = tx.QueryRowContext(ctx, `SELECT id, forum_id, owner_discord_user_id, status,
-		lifecycle_state
-		FROM discord_conversations WHERE guild_id = $1 AND thread_id = $2 FOR UPDATE`,
+	err = tx.QueryRowContext(ctx, `SELECT conversation.id, conversation.forum_id,
+		conversation.owner_discord_user_id, conversation.status, conversation.lifecycle_state
+		FROM discord_conversations conversation
+		JOIN discord_forums forum ON forum.id=conversation.forum_id
+		LEFT JOIN projects project ON project.id=forum.project_id
+		WHERE conversation.guild_id=$1 AND conversation.thread_id=$2
+		AND (forum.project_id IS NULL OR project.status='active') FOR UPDATE OF conversation`,
 		input.GuildID, input.ThreadID).Scan(&conversationID, &forumID, &ownerID, &status,
 		&lifecycleState)
 	if err != nil {
@@ -467,18 +474,18 @@ func (s *ConversationService) insertMessage(ctx context.Context, tx *sql.Tx, con
 }
 
 func (s *ConversationService) enqueueMessage(ctx context.Context, tx *sql.Tx, conversationID uuid.UUID, messageID string) error {
-	var repositoryID sql.NullString
+	var repositoryID, projectID sql.NullString
 	var profileID uuid.UUID
 	var body, actor, permission, actorDisplayName string
 	var actorParticipantID uuid.UUID
 	var allowedJSON []byte
-	err := tx.QueryRowContext(ctx, `SELECT c.repository_id::text, c.agent_profile_id,
+	err := tx.QueryRowContext(ctx, `SELECT c.repository_id::text, c.project_id::text, c.agent_profile_id,
 		m.body, COALESCE(m.github_login, ''), m.access_snapshot, m.participant_id,
 		m.display_name, p.allowed_tools
 		FROM discord_conversations c JOIN discord_input_messages m ON m.conversation_id = c.id
 		JOIN agent_profiles p ON p.id = c.agent_profile_id
 		WHERE c.id = $1 AND m.message_id = $2`, conversationID, messageID).Scan(
-		&repositoryID, &profileID, &body, &actor, &permission,
+		&repositoryID, &projectID, &profileID, &body, &actor, &permission,
 		&actorParticipantID, &actorDisplayName, &allowedJSON)
 	if err != nil {
 		return err
@@ -490,13 +497,21 @@ func (s *ConversationService) enqueueMessage(ctx context.Context, tx *sql.Tx, co
 			return err
 		}
 	}
+	var project uuid.UUID
+	if projectID.String != "" {
+		project, err = uuid.Parse(projectID.String)
+		if err != nil {
+			return err
+		}
+	}
 	var allowed []string
 	if err := json.Unmarshal(allowedJSON, &allowed); err != nil {
 		return err
 	}
 	_, _, err = codexcontrol.NewRepository(s.db, 0).Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
 		SourceType: codexcontrol.SourceDiscord, DiscordConversationID: conversationID,
-		DiscordMessageID: messageID, RepositoryID: repository, AgentProfileID: profileID,
+		DiscordMessageID: messageID, RepositoryID: repository, ProjectID: project,
+		AgentProfileID: profileID,
 		IdempotencyKey: "discord:message:" + messageID,
 		Instruction:    body, AllowedTools: allowed, ActorLogin: actor, ActorPermission: permission,
 		ActorParticipantID: actorParticipantID, ActorDisplayName: actorDisplayName,
@@ -507,16 +522,35 @@ func (s *ConversationService) enqueueMessage(ctx context.Context, tx *sql.Tx, co
 
 func (s *ConversationService) developmentForum(ctx context.Context, tx *sql.Tx,
 	guildID, discordID string,
-) (uuid.UUID, string, uuid.UUID, error) {
+) (uuid.UUID, string, uuid.UUID, uuid.UUID, error) {
 	var forumID uuid.UUID
-	var repositoryID uuid.UUID
+	var repositoryID, projectID sql.NullString
 	var owner string
-	err := tx.QueryRowContext(ctx, `SELECT f.id, f.owner_discord_user_id, f.repository_id FROM discord_forums f
+	err := tx.QueryRowContext(ctx, `SELECT f.id, f.owner_discord_user_id,
+		f.repository_id::text, f.project_id::text FROM discord_forums f
 		JOIN discord_resources r ON r.id = f.resource_id
 		JOIN discord_development_environments e ON e.id = f.development_environment_id
+		LEFT JOIN projects project ON project.id=f.project_id
 		WHERE f.guild_id = $1 AND r.discord_id = $2 AND f.forum_type = 'development'
-		  AND e.status <> 'deleting'`, guildID, discordID).Scan(&forumID, &owner, &repositoryID)
-	return forumID, owner, repositoryID, err
+		  AND e.status <> 'deleting'
+		  AND (f.project_id IS NULL OR project.status='active')`, guildID, discordID).
+		Scan(&forumID, &owner, &repositoryID, &projectID)
+	if err != nil {
+		return uuid.Nil, "", uuid.Nil, uuid.Nil, err
+	}
+	repository, err := parseOptionalUUIDString(repositoryID.String)
+	if err != nil {
+		return uuid.Nil, "", uuid.Nil, uuid.Nil, err
+	}
+	project, err := parseOptionalUUIDString(projectID.String)
+	return forumID, owner, repository, project, err
+}
+
+func parseOptionalUUIDString(value string) (uuid.UUID, error) {
+	if value == "" {
+		return uuid.Nil, nil
+	}
+	return uuid.Parse(value)
 }
 
 func (s *ConversationService) access(ctx context.Context, tx *sql.Tx, forumID uuid.UUID, ownerID, userID string) (string, error) {

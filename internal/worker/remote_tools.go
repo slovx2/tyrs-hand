@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/devcontainer"
 	"github.com/slovx2/tyrs-hand/internal/ports"
@@ -100,6 +101,9 @@ func (p *RemoteProcessor) executeRemoteContainerGit(ctx context.Context,
 		return codex.TextToolResult(fmt.Sprintf(`{"sha":%q}`, strings.TrimSpace(sha)),
 			err == nil), err
 	case "publish_branch":
+		if task.Claimed.ProjectID != uuid.Nil {
+			return codex.ToolCallResult{}, errors.New("普通项目没有远端，不能发布分支")
+		}
 		credential, err := p.client.GitCredential(ctx, task, "push",
 			request.ThreadID, request.TurnID)
 		if err != nil {

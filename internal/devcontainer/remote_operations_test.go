@@ -125,6 +125,28 @@ func TestProvisionStartsInitialAppServerWithRuntimeCredential(t *testing.T) {
 	require.True(t, runner.contains("--env TYRS_HAND_MODEL_API_KEY=managed-secret"))
 }
 
+func TestPrepareProjectWorkspaceInitializesLocalGitWithoutClone(t *testing.T) {
+	runner := &recordingCommandRunner{resultFor: map[string]string{
+		"rev-parse HEAD": "0123456789abcdef",
+	}}
+	manager := &Manager{dockerBin: "docker", dockerHost: "inherit", runner: runner}
+	item := workspace{
+		Kind: "project", Relative: "workspaces/projects/common-12345678",
+		Environment: environment{
+			ContainerName: "development", RuntimeUID: 1000, RuntimeGID: 1000,
+			RuntimeHome: "/home/developer",
+		},
+	}
+
+	require.NoError(t, manager.prepareWorkspace(context.Background(), &item, "unused-credential"))
+	require.Equal(t, "ready", item.Status)
+	require.True(t, runner.contains("git init --initial-branch=main"))
+	require.True(t, runner.contains("commit --allow-empty -m Initialize project"))
+	require.True(t, runner.contains("git rev-parse HEAD"))
+	require.False(t, runner.contains("clone"))
+	require.False(t, runner.contains("unused-credential"))
+}
+
 func TestRunRemoteDevelopmentOperations(t *testing.T) {
 	runner := &recordingCommandRunner{resultFor: map[string]string{
 		`index .Config.Labels`:                   "1",

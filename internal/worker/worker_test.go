@@ -19,6 +19,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/config"
+	"github.com/slovx2/tyrs-hand/internal/devcontainer"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/settings"
@@ -112,9 +113,13 @@ func TestProcessorHelpersAndLocalTools(t *testing.T) {
 	_, err = resolveSkills(root, []string{"missing"})
 	require.Error(t, err)
 
-	spec := localGitSpec()
+	spec := localGitSpec(true)
 	require.Equal(t, "git", spec.Name)
 	require.Len(t, spec.Tools, 3)
+	projectSpec := localGitSpec(false)
+	require.Equal(t, []string{"status", "commit"}, []string{
+		projectSpec.Tools[0].Name, projectSpec.Tools[1].Name,
+	})
 	runtimeConfig := codexRuntimeConfig([]string{"PATH=/toolchain/bin:/usr/bin", "GOTOOLCHAIN=local"}, "/data/worker")
 	policy := runtimeConfig["shell_environment_policy"].(map[string]any)
 	require.Equal(t, "all", policy["inherit"])
@@ -170,6 +175,20 @@ func TestProcessorHelpersAndLocalTools(t *testing.T) {
 	require.Contains(t, statusResult.ContentItems[0].Text, "file.go")
 	_, err = processor.executeLocalTool(context.Background(), claimed, ports.Workspace{}, "branch", codex.ToolCallRequest{Namespace: stringPointer("git"), Tool: "unknown"})
 	require.Error(t, err)
+}
+
+func TestProjectRejectsPublishBranchBeforeRequestingCredential(t *testing.T) {
+	namespace := "git"
+	processor := &RemoteProcessor{}
+	_, err := processor.executeRemoteContainerGit(context.Background(), &workerprotocol.Task{
+		Claimed: codexcontrol.ClaimedControl{
+			Intent: codexcontrol.Intent{ProjectID: uuid.New()},
+		},
+	}, devcontainer.Runtime{}, codex.ToolCallRequest{
+		ThreadID: "thread", TurnID: "turn", CallID: "call", Namespace: &namespace,
+		Tool: "publish_branch",
+	})
+	require.ErrorContains(t, err, "普通项目没有远端")
 }
 
 func TestPrepareCodexRuntimeInjectsManagedCapabilities(t *testing.T) {

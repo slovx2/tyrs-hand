@@ -64,6 +64,16 @@ func (s *Server) workerDevelopmentState(c *gin.Context) {
 			last_used_at = now(), updated_at = now() WHERE forum_id = $1`, request.ForumID,
 			workspaceStatus, request.WorkspaceHeadSHA, request.WorkspaceDirty, request.Error)
 	}
+	if err == nil {
+		projectStatus := "active"
+		if request.Error != "" {
+			projectStatus = "error"
+		}
+		_, err = tx.ExecContext(c.Request.Context(), `UPDATE projects SET status=$2,
+			error=NULLIF($3,''), updated_at=now()
+			WHERE id=(SELECT project_id FROM discord_forums WHERE id=$1)
+			AND status<>'disabled'`, request.ForumID, projectStatus, request.Error)
+	}
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "保存开发环境状态失败", err)
 		return
