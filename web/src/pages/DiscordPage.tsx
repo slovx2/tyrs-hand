@@ -490,7 +490,7 @@ function MemberRow({
         <input
           className="field"
           aria-label={`${member.displayName} Forum 名称`}
-          placeholder="Forum 名称（可选）"
+          placeholder="Forum 名称（可选，留空按成员与仓库生成）"
           value={name}
           onChange={(event) => setName(event.target.value)}
         />

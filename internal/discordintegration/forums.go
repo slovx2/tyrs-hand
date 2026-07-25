@@ -55,12 +55,8 @@ func (m *Manager) DevelopmentForumPlan(ctx context.Context, remoteGuild RemoteGu
 			Name: fmt.Sprintf("Codex 会话 %02d", index), Kind: "category"})
 	}
 	forumID := uuid.New()
-	name := requestedName
-	if name == "" {
-		name = "dev-" + username + "-" + repository
-	}
-	name = channelNamePart.ReplaceAllString(strings.ToLower(name), "-")
-	name = strings.Trim(name, "-")
+	name := developmentForumName(remoteGuild, requestedName, displayName, username,
+		owner, repository, forumID)
 	if name == "" {
 		return InitializationPlan{}, errors.New("开发 Forum 名称无效")
 	}
@@ -88,6 +84,37 @@ func (m *Manager) DevelopmentForumPlan(ctx context.Context, remoteGuild RemoteGu
 	plan.Actions = append(plan.Actions, InitializationAction{Kind: "forum.development.record",
 		Spec: forum, OwnerUserID: memberID, RepositoryID: repositoryID.String(), ForumID: forumID.String()})
 	return plan, nil
+}
+
+func developmentForumName(guild RemoteGuild, requestedName, displayName, username,
+	owner, repository string, forumID uuid.UUID,
+) string {
+	if strings.TrimSpace(requestedName) != "" {
+		return channelName(requestedName)
+	}
+	member := channelName(displayName)
+	if member == "" {
+		member = channelName(username)
+	}
+	base := channelName(member + "-" + repository)
+	ownerScoped := channelName(member + "-" + owner + "-" + repository)
+	used := make(map[string]bool, len(guild.Channels))
+	for _, channel := range guild.Channels {
+		used[channelName(channel.Name)] = true
+	}
+	if base != "" && !used[base] {
+		return base
+	}
+	if ownerScoped != "" && !used[ownerScoped] {
+		return ownerScoped
+	}
+	suffix := strings.ReplaceAll(forumID.String(), "-", "")[:6]
+	return channelName(ownerScoped + "-" + suffix)
+}
+
+func channelName(value string) string {
+	value = channelNamePart.ReplaceAllString(strings.ToLower(strings.TrimSpace(value)), "-")
+	return strings.Trim(value, "-")
 }
 
 func (m *Manager) ServerInitializationPlan(ctx context.Context, remoteGuild RemoteGuild, mode string) (InitializationPlan, error) {
@@ -120,11 +147,11 @@ func (m *Manager) ServerInitializationPlan(ctx context.Context, remoteGuild Remo
 		if shard > 1 && index%45 == 0 {
 			desired = append(desired, ChannelSpec{Key: categoryKey, Name: fmt.Sprintf("GitHub 任务 %02d", shard), Kind: "category"})
 		}
-		channelName := channelNamePart.ReplaceAllString(strings.ToLower(owner+"-"+name), "-")
+		repositoryChannelName := channelName(owner + "-" + name)
 		key := "forum.repository." + repositoryID
 		allowBot := discord.PermissionViewChannel | discord.PermissionReadMessageHistory |
 			discord.PermissionManageChannels | discord.PermissionManageThreads | discord.PermissionManageMessages
-		spec := ChannelSpec{Key: key, ParentKey: categoryKey, Name: channelName, Kind: "forum",
+		spec := ChannelSpec{Key: key, ParentKey: categoryKey, Name: repositoryChannelName, Kind: "forum",
 			Topic: "Tyrs Hand 只读任务看板 · " + owner + "/" + name,
 			Tags:  []string{"Needs Attention", "Running", "Completed", "Failed"},
 			PermissionOverwrites: []PermissionSpec{

@@ -86,9 +86,13 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 	remoteGuild := RemoteGuild{ID: testGuildID, CommunityEnabled: true, Channels: []RemoteChannel{
 		{ID: seed.codexCategoryID, Name: "Codex 会话 01", Kind: "category"},
 	}}
+	defaultDevelopmentPlan, err := manager.DevelopmentForumPlan(ctx, remoteGuild, "1001", seed.repositoryID, "")
+	require.NoError(t, err)
+	require.Equal(t, "alice-repo", defaultDevelopmentPlan.Preflight.Creates[0])
 	developmentPlan, err := manager.DevelopmentForumPlan(ctx, remoteGuild, "1001", seed.repositoryID, "another-repo")
 	require.NoError(t, err)
 	require.True(t, developmentPlan.Preflight.Safe)
+	require.Equal(t, "another-repo", developmentPlan.Preflight.Creates[0])
 	require.Equal(t, "forum.development.record", developmentPlan.Actions[len(developmentPlan.Actions)-1].Kind)
 	serverPlan, err := manager.ServerInitializationPlan(ctx, remoteGuild, InitializationIncremental)
 	require.NoError(t, err)
