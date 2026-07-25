@@ -144,7 +144,7 @@ func TestDesktopRelayForcesGlobalModelAndOmitsPlatformGitHubTools(t *testing.T) 
 	require.NotContains(t, string(resume.Params), `"dynamicTools"`)
 }
 
-func TestDesktopRelayListsEveryProviderUnlessExplicitlyFiltered(t *testing.T) {
+func TestDesktopRelayAlwaysListsEveryProvider(t *testing.T) {
 	controller := &desktopRelayController{environment: &environmentCodex{}}
 	for _, test := range []struct {
 		name     string
@@ -160,8 +160,13 @@ func TestDesktopRelayListsEveryProviderUnlessExplicitlyFiltered(t *testing.T) {
 			expected: `{"modelProviders":[],"limit":50}`,
 		},
 		{
-			name: "保留显式过滤", params: `{"modelProviders":["openai"],"limit":50}`,
-			expected: `{"modelProviders":["openai"],"limit":50}`,
+			name: "覆盖桌面端 OpenAI 过滤", params: `{"modelProviders":["openai"],"limit":50}`,
+			expected: `{"modelProviders":[],"limit":50}`,
+		},
+		{
+			name:     "覆盖平台 Provider 过滤",
+			params:   `{"modelProviders":["tyrs-hand-provider"],"limit":50}`,
+			expected: `{"modelProviders":[],"limit":50}`,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

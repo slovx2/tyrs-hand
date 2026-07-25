@@ -296,10 +296,7 @@ func desktopThreadListAllProviders(params json.RawMessage) json.RawMessage {
 	if value == nil {
 		value = make(map[string]any)
 	}
-	if providers, exists := value["modelProviders"]; exists && providers != nil {
-		return params
-	}
-	// Codex 只在显式空数组时查询全部 Provider；null 会退回启动时的默认 Provider。
+	// 远程环境的 Thread 可能由不同 Provider 创建，桌面端必须查询全部 Provider。
 	value["modelProviders"] = []string{}
 	result, err := json.Marshal(value)
 	if err != nil {
