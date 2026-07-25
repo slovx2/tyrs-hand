@@ -6,6 +6,12 @@
   "uv": "0.11.29",
   "npm": "11.18.0",
   "corepack": "0.35.0",
+  "npmPackages": {
+    "brace-expansion": {
+      "version": "5.0.8",
+      "sha256": "a03b06e66d862d0278b1ff45b66427f245f99c665800dc9bd790c0c13d2247fe"
+    }
+  },
   "downloads": {
     "mise": {
       "amd64": "0953810c2785eb4a75159f67f8b5721c4f3c80b8a6a812015d5af7d7fbd1b8a4",

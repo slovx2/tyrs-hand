@@ -135,6 +135,16 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     corepack_version="$(node -p "require('${runtime_lock}').corepack")"; \
     pnpm_version="$(node -p "require('${runtime_lock}').defaults.pnpm")"; \
     npm install --global --omit=dev "npm@${npm_version}"; \
+    brace_version="$(node -p "require('${runtime_lock}').npmPackages['brace-expansion'].version")"; \
+    brace_sha="$(node -p "require('${runtime_lock}').npmPackages['brace-expansion'].sha256")"; \
+    brace_archive="$(npm pack --silent --pack-destination /tmp "brace-expansion@${brace_version}")"; \
+    echo "${brace_sha}  /tmp/${brace_archive}" | sha256sum --check --strict; \
+    brace_target=/usr/local/lib/node_modules/npm/node_modules/brace-expansion; \
+    rm -rf "${brace_target}"; \
+    install -d -m 0755 "${brace_target}"; \
+    tar -xzf "/tmp/${brace_archive}" -C "${brace_target}" --strip-components=1; \
+    rm -f "/tmp/${brace_archive}"; \
+    test "$(node -p "require('${brace_target}/package.json').version")" = "${brace_version}"; \
     npm install --global --omit=dev "corepack@${corepack_version}"; \
     npm install --global --omit=dev --force "pnpm@${pnpm_version}"; \
     npm cache clean --force; \
