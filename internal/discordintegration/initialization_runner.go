@@ -162,7 +162,12 @@ func (m *Manager) executeInitializationAction(ctx context.Context, guildID strin
 		if err != nil {
 			return nil, err
 		}
-		_, err = m.db.ExecContext(ctx, `INSERT INTO discord_forums
+		tx, err := m.db.BeginTx(ctx, nil)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = tx.Rollback() }()
+		_, err = tx.ExecContext(ctx, `INSERT INTO discord_forums
 			(id, guild_id, resource_id, forum_type, owner_discord_user_id, repository_id, development_environment_id)
 			VALUES ($1, $2, $3, 'development', $4, $5, $6)`, forumID, guildID, resourceID,
 			action.OwnerUserID, repositoryID, environmentID)
@@ -170,10 +175,19 @@ func (m *Manager) executeInitializationAction(ctx context.Context, guildID strin
 			return nil, err
 		}
 		branch := "tyrs-hand/discord/" + strings.ReplaceAll(forumID.String()[:8], "-", "")
-		_, err = m.db.ExecContext(ctx, `INSERT INTO discord_forum_workspaces
+		_, err = tx.ExecContext(ctx, `INSERT INTO discord_forum_workspaces
 			(forum_id, environment_id, relative_path, branch)
 			VALUES ($1, $2, $3, $4)`, forumID, environmentID,
 			"workspaces/"+repositoryName, branch)
+		if err == nil {
+			_, err = tx.ExecContext(ctx, `INSERT INTO discord_development_operations
+				(environment_id, forum_id, operation, execution_node_id)
+				SELECT id, $2, 'provision', execution_node_id
+				FROM discord_development_environments WHERE id = $1`, environmentID, forumID)
+		}
+		if err == nil {
+			err = tx.Commit()
+		}
 		return map[string]any{"environmentId": environmentID, "forumId": forumID}, err
 	default:
 		return nil, fmt.Errorf("未知初始化步骤 %q", action.Kind)

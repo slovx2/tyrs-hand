@@ -187,7 +187,7 @@ func (c Config) ValidateWorker() error {
 	if c.WorkerRole != "all" && c.WorkerRole != "github" && c.WorkerRole != "discord" {
 		return errors.New("远程 worker_role 必须是 all、github 或 discord")
 	}
-	if c.WorkerProtocolVersion != 9 {
+	if c.WorkerProtocolVersion != 10 {
 		return errors.New("当前 Worker 只支持协议版本 9")
 	}
 	if c.WorkerCredentialFile == "." || strings.TrimSpace(c.WorkerCredentialFile) == "" {
@@ -299,7 +299,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("worker_control_url", "")
 	v.SetDefault("worker_credential_file", ".local/worker/node-credential")
 	v.SetDefault("worker_enrollment_token", "")
-	v.SetDefault("worker_protocol_version", 9)
+	v.SetDefault("worker_protocol_version", 10)
 	v.SetDefault("development_runtime_dir", ".local/worker/development-runtime")
 	v.SetDefault("development_runtime_host_dir", ".local/worker/development-runtime")
 	v.SetDefault("enable_ssh", false)

@@ -9,7 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 9
+const Version = 10
 
 type EnrollRequest struct {
 	Token string `json:"token"`
@@ -67,6 +67,7 @@ type DevelopmentOperation struct {
 	LeaseToken        string      `json:"leaseToken"`
 	LeaseEpoch        int64       `json:"leaseEpoch"`
 	EnvironmentID     uuid.UUID   `json:"environmentId"`
+	EnvironmentStatus string      `json:"environmentStatus,omitempty"`
 	ForumID           *uuid.UUID  `json:"forumId,omitempty"`
 	ContainerName     string      `json:"containerName"`
 	ImageRef          string      `json:"imageRef,omitempty"`
@@ -74,6 +75,12 @@ type DevelopmentOperation struct {
 	HomeVolume        string      `json:"homeVolume"`
 	Network           string      `json:"network"`
 	Workspace         string      `json:"workspace,omitempty"`
+	WorkspaceStatus   string      `json:"workspaceStatus,omitempty"`
+	WorkspaceHeadSHA  string      `json:"workspaceHeadSha,omitempty"`
+	WorkspaceBranch   string      `json:"workspaceBranch,omitempty"`
+	Repository        string      `json:"repository,omitempty"`
+	CloneURL          string      `json:"cloneUrl,omitempty"`
+	DefaultRef        string      `json:"defaultRef,omitempty"`
 	ConversationIDs   []uuid.UUID `json:"conversationIds,omitempty"`
 	RuntimeUser       string      `json:"runtimeUser,omitempty"`
 	RuntimeUID        int64       `json:"runtimeUid,omitempty"`
@@ -95,13 +102,19 @@ type DevelopmentOperationLease struct {
 
 type DevelopmentOperationTerminal struct {
 	DevelopmentOperationLease
-	IdempotencyKey  string `json:"idempotencyKey"`
-	Error           string `json:"error,omitempty"`
-	AppliedRevision int64  `json:"appliedRevision,omitempty"`
-	ContainerID     string `json:"containerId,omitempty"`
-	ImageRef        string `json:"imageRef,omitempty"`
-	ImageID         string `json:"imageId,omitempty"`
-	DaemonStatus    string `json:"daemonStatus,omitempty"`
+	IdempotencyKey   string `json:"idempotencyKey"`
+	Error            string `json:"error,omitempty"`
+	AppliedRevision  int64  `json:"appliedRevision,omitempty"`
+	ContainerID      string `json:"containerId,omitempty"`
+	ImageRef         string `json:"imageRef,omitempty"`
+	ImageID          string `json:"imageId,omitempty"`
+	DaemonStatus     string `json:"daemonStatus,omitempty"`
+	RuntimeUser      string `json:"runtimeUser,omitempty"`
+	RuntimeUID       int64  `json:"runtimeUid,omitempty"`
+	RuntimeGID       int64  `json:"runtimeGid,omitempty"`
+	RuntimeHome      string `json:"runtimeHome,omitempty"`
+	WorkspaceStatus  string `json:"workspaceStatus,omitempty"`
+	WorkspaceHeadSHA string `json:"workspaceHeadSha,omitempty"`
 }
 
 type EnvironmentManifest struct {

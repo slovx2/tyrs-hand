@@ -117,6 +117,12 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT relative_path
 		FROM discord_forum_workspaces WHERE forum_id = $1`, secondForumID).Scan(&secondWorkspace))
 	require.Equal(t, "workspaces/second", secondWorkspace)
+	var provisionNodeID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT execution_node_id
+		FROM discord_development_operations
+		WHERE forum_id = $1 AND operation = 'provision'`, secondForumID).
+		Scan(&provisionNodeID))
+	require.Equal(t, seed.executionNodeID, provisionNodeID)
 	environments, err := manager.DevelopmentEnvironments(ctx)
 	require.NoError(t, err)
 	require.Len(t, environments, 1)

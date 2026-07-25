@@ -1165,6 +1165,87 @@ func TestWorkerAPIMissingDefaultAndDevelopmentOperationRecovery(t *testing.T) {
 	require.Equal(t, "completed", operationStatus)
 }
 
+func TestWorkerAPIProvisionOperationCarriesRepositoryAndPersistsRuntime(t *testing.T) {
+	db := workerDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	server, endpoint := workerTestServer(t, db)
+	node, enrollment, err := server.nodes.Create(ctx, "provision-node", []string{"discord"}, 2)
+	require.NoError(t, err)
+	_, credential, err := server.nodes.Enroll(ctx, enrollment)
+	require.NoError(t, err)
+	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
+	repositoryID, _, _ := seedWorkerGitHubQueue(t, db, 301)
+	var expectedRepository, expectedName string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT owner || '/' || name, name
+		FROM repositories WHERE id=$1`, repositoryID).
+		Scan(&expectedRepository, &expectedName))
+	environmentID, forumID := seedDevelopmentOperation(t, db, repositoryID, node.ID)
+	_, err = db.ExecContext(ctx, `UPDATE discord_development_environments SET
+		status='pending', image_id=NULL, container_id=NULL, runtime_user=NULL,
+		runtime_uid=NULL, runtime_gid=NULL, runtime_home=NULL WHERE id=$1`, environmentID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE discord_forum_workspaces SET
+		status='pending', head_sha=NULL WHERE forum_id=$1`, forumID)
+	require.NoError(t, err)
+	var operationID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_development_operations
+		(environment_id, forum_id, operation, execution_node_id)
+		VALUES ($1,$2,'provision',$3) RETURNING id`, environmentID, forumID, node.ID).
+		Scan(&operationID))
+
+	claim, err := client.Claim(ctx, workerprotocol.ClaimRequest{
+		WorkerID: "provision-worker", Role: "discord",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, claim.DevelopmentOperation)
+	operation := claim.DevelopmentOperation
+	require.Equal(t, operationID, operation.ID)
+	require.Equal(t, "pending", operation.EnvironmentStatus)
+	require.Equal(t, "workspaces/"+expectedName, operation.Workspace)
+	require.Equal(t, expectedRepository, operation.Repository)
+	require.Equal(t, "https://example.invalid/repo.git", operation.CloneURL)
+	require.Equal(t, "main", operation.DefaultRef)
+	require.Equal(t, "worker/test", operation.WorkspaceBranch)
+
+	stale := *operation
+	stale.LeaseToken = "invalid"
+	_, err = client.DevelopmentOperationGitCredential(ctx, &stale)
+	require.Error(t, err)
+
+	operation.ContainerID = "provisioned-container"
+	operation.ImageID = "sha256:provisioned-image"
+	operation.RuntimeUser = "developer"
+	operation.RuntimeUID = 1000
+	operation.RuntimeGID = 1000
+	operation.RuntimeHome = "/home/developer"
+	operation.WorkspaceStatus = "ready"
+	operation.WorkspaceHeadSHA = "provisioned-head"
+	operation.DaemonStatus = "running"
+	require.NoError(t, client.CompleteDevelopmentOperation(ctx, operation))
+
+	var status, containerID, imageID, runtimeUser, runtimeHome string
+	var runtimeUID, runtimeGID int64
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status, container_id, image_id,
+		runtime_user, runtime_uid, runtime_gid, runtime_home
+		FROM discord_development_environments WHERE id=$1`, environmentID).
+		Scan(&status, &containerID, &imageID, &runtimeUser, &runtimeUID, &runtimeGID,
+			&runtimeHome))
+	require.Equal(t, "running", status)
+	require.Equal(t, "provisioned-container", containerID)
+	require.Equal(t, "sha256:provisioned-image", imageID)
+	require.Equal(t, "developer", runtimeUser)
+	require.EqualValues(t, 1000, runtimeUID)
+	require.EqualValues(t, 1000, runtimeGID)
+	require.Equal(t, "/home/developer", runtimeHome)
+	var workspaceStatus, headSHA string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status, head_sha
+		FROM discord_forum_workspaces WHERE forum_id=$1`, forumID).
+		Scan(&workspaceStatus, &headSHA))
+	require.Equal(t, "ready", workspaceStatus)
+	require.Equal(t, "provisioned-head", headSHA)
+}
+
 func TestEnvironmentRelayRuntimeMigrationQueuesExistingEnvironmentsOnce(t *testing.T) {
 	db := workerDatabase(t)
 	ctx := context.Background()

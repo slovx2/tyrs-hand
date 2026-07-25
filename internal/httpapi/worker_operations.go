@@ -30,13 +30,19 @@ func (s *Server) claimDevelopmentOperation(ctx context.Context, nodeID uuid.UUID
 	var sshPort sql.NullInt64
 	var previousEpoch int64
 	err = tx.QueryRowContext(ctx, `SELECT o.id, o.operation, o.environment_id,
-		o.forum_id::text, o.lease_epoch, e.container_name, e.image_ref,
+		o.forum_id::text, o.lease_epoch, e.status, e.container_name, e.image_ref,
+		COALESCE(e.image_id,''), COALESCE(e.container_id,''),
 		e.data_volume_name, e.home_volume_name, e.network_name, fw.relative_path,
+		COALESCE(fw.status,''), COALESCE(fw.branch,''),
+		COALESCE(r.owner || '/' || r.name,''), COALESCE(r.clone_url,''),
+		COALESCE(r.default_branch,''),
 		e.runtime_user, COALESCE(e.runtime_uid,0), COALESCE(e.runtime_gid,0), e.runtime_home,
 		e.ssh_public_key, e.ssh_port, e.ssh_config_revision
 		FROM discord_development_operations o
 		JOIN discord_development_environments e ON e.id = o.environment_id
 		LEFT JOIN discord_forum_workspaces fw ON fw.forum_id = o.forum_id
+		LEFT JOIN discord_forums f ON f.id = o.forum_id
+		LEFT JOIN repositories r ON r.id = f.repository_id
 		WHERE o.execution_node_id = $1 AND (
 			o.status = 'pending' OR (o.status = 'running' AND o.lease_expires_at < now()))
 		AND (o.operation NOT IN ('reconfigure','rebase') OR NOT EXISTS (
@@ -46,9 +52,12 @@ func (s *Server) claimDevelopmentOperation(ctx context.Context, nodeID uuid.UUID
 		))
 		ORDER BY o.created_at FOR UPDATE OF o SKIP LOCKED LIMIT 1`, nodeID).Scan(
 		&result.ID, &result.Operation, &result.EnvironmentID, &forumID, &previousEpoch,
-		&result.ContainerName, &imageRef, &result.DataVolume, &result.HomeVolume,
-		&result.Network, &workspace, &runtimeUser, &result.RuntimeUID, &result.RuntimeGID,
-		&runtimeHome, &sshPublicKey, &sshPort, &result.SSHConfigRevision)
+		&result.EnvironmentStatus, &result.ContainerName, &imageRef, &result.ImageID,
+		&result.ContainerID, &result.DataVolume, &result.HomeVolume,
+		&result.Network, &workspace, &result.WorkspaceStatus, &result.WorkspaceBranch,
+		&result.Repository, &result.CloneURL, &result.DefaultRef, &runtimeUser,
+		&result.RuntimeUID, &result.RuntimeGID, &runtimeHome, &sshPublicKey, &sshPort,
+		&result.SSHConfigRevision)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -131,6 +140,48 @@ func (s *Server) workerDevelopmentOperationHeartbeat(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func (s *Server) workerDevelopmentOperationGitCredential(c *gin.Context) {
+	id, ok := parseDevelopmentOperationID(c)
+	if !ok {
+		return
+	}
+	var request workerprotocol.DevelopmentOperationLease
+	if err := c.ShouldBindJSON(&request); err != nil {
+		badRequest(c, err)
+		return
+	}
+	var installationID int64
+	err := s.db.QueryRowContext(c, `SELECT installation.external_id
+		FROM discord_development_operations operation
+		JOIN discord_forums forum ON forum.id = operation.forum_id
+		JOIN repositories repository ON repository.id = forum.repository_id
+		JOIN scm_installations installation ON installation.id = repository.installation_id
+		WHERE operation.id = $1 AND operation.execution_node_id = $2
+		AND operation.operation = 'provision' AND operation.status = 'running'
+		AND operation.lease_token = $3 AND operation.lease_epoch = $4`,
+		id, workerNode(c).ID, security.Digest(request.LeaseToken),
+		request.LeaseEpoch).Scan(&installationID)
+	if errors.Is(err, sql.ErrNoRows) {
+		problem(c, http.StatusConflict, "开发环境 Provision Lease 已失效", nil)
+		return
+	}
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取开发环境仓库凭据失败", err)
+		return
+	}
+	_, app, _, configured := s.github.Current()
+	if !configured {
+		problem(c, http.StatusServiceUnavailable, "GitHub App 尚未配置", nil)
+		return
+	}
+	token, err := app.InstallationToken(c, installationID)
+	if err != nil {
+		problem(c, http.StatusBadGateway, "签发开发环境仓库凭据失败", err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"token": token, "expiresInSeconds": 3600})
 }
 
 func (s *Server) workerCompleteDevelopmentOperation(c *gin.Context) {
@@ -221,6 +272,31 @@ func completeDevelopmentOperation(ctx context.Context, tx *sql.Tx, operation str
 	environmentID, forumID sql.NullString, request workerprotocol.DevelopmentOperationTerminal,
 ) error {
 	switch operation {
+	case "provision":
+		if request.ContainerID == "" || request.ImageID == "" ||
+			request.RuntimeUser == "" || request.RuntimeUID <= 0 ||
+			request.RuntimeGID <= 0 || request.RuntimeHome == "" ||
+			request.WorkspaceStatus != "ready" || request.DaemonStatus != "running" {
+			return errors.New("worker 未返回有效的 Provision 结果")
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE discord_development_environments SET
+			status = 'running', image_id = $2, container_id = $3,
+			runtime_user = $4, runtime_uid = $5, runtime_gid = $6, runtime_home = $7,
+			ssh_applied_revision = GREATEST(ssh_applied_revision, $8),
+			daemon_status = 'running', app_server_status = 'running',
+			relay_status = 'running',
+			ssh_daemon_status = CASE WHEN ssh_public_key IS NULL THEN 'disabled' ELSE 'running' END,
+			daemon_error = NULL, error = NULL, last_used_at = now(), updated_at = now()
+			WHERE id = $1`, environmentID.String, request.ImageID, request.ContainerID,
+			request.RuntimeUser, request.RuntimeUID, request.RuntimeGID,
+			request.RuntimeHome, request.AppliedRevision); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE discord_forum_workspaces SET
+			status = 'ready', head_sha = NULLIF($2,''), dirty = false, error = NULL,
+			last_used_at = now(), updated_at = now() WHERE forum_id = $1`,
+			forumID.String, request.WorkspaceHeadSHA)
+		return err
 	case "reconfigure":
 		if request.AppliedRevision <= 0 || request.ContainerID == "" || request.DaemonStatus != "running" {
 			return errors.New("worker 未返回有效的 daemon 应用状态")

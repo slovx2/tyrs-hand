@@ -66,6 +66,8 @@ func (s *Server) registerWorkerRoutes(router *gin.Engine) {
 	authorized.POST("/runs/:id/git-credential", s.workerGitCredential)
 	authorized.GET("/runs/:id/attachments/:attachmentId", s.workerDownloadAttachment)
 	authorized.POST("/development-operations/:id/heartbeat", s.workerDevelopmentOperationHeartbeat)
+	authorized.POST("/development-operations/:id/git-credential",
+		s.workerDevelopmentOperationGitCredential)
 	authorized.POST("/development-operations/:id/complete", s.workerCompleteDevelopmentOperation)
 	authorized.POST("/development-operations/:id/fail", s.workerFailDevelopmentOperation)
 }

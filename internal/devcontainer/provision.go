@@ -56,7 +56,8 @@ func (m *Manager) provision(ctx context.Context, item *workspace, credential str
 		"--add-host", "host.docker.internal:host-gateway"}
 	if m.sshEnabled {
 		createArguments = append(createArguments, "--mount", "type=bind,source="+
-			m.sshAgentHostDir+",target="+m.sshAgentDir)
+			m.sshAgentHostDir+",target="+m.sshAgentDir,
+			"--env", "SSH_AUTH_SOCK="+filepath.Join(m.sshAgentDir, "current.sock"))
 	}
 	if m.browserEnabled {
 		createArguments = append(createArguments, "--mount", "type=bind,source="+

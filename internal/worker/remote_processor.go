@@ -65,7 +65,8 @@ func (p *RemoteProcessor) ProcessDevelopmentOperation(ctx context.Context,
 	operation *workerprotocol.DevelopmentOperation,
 ) error {
 	processEnvironment := []string(nil)
-	if operation.Operation == "reconfigure" || operation.Operation == "rebase" {
+	if operation.Operation == "provision" || operation.Operation == "reconfigure" ||
+		operation.Operation == "rebase" {
 		credential, err := p.client.EnvironmentRuntimeCredential(ctx, operation.EnvironmentID)
 		if err != nil {
 			return err
@@ -74,6 +75,9 @@ func (p *RemoteProcessor) ProcessDevelopmentOperation(ctx context.Context,
 		if err != nil {
 			return err
 		}
+	}
+	if operation.Operation == "provision" {
+		return p.processDevelopmentProvision(ctx, operation, processEnvironment)
 	}
 	err := p.development.RunRemoteOperation(ctx, devcontainer.RemoteOperation{
 		EnvironmentID: operation.EnvironmentID, Operation: operation.Operation,
@@ -102,6 +106,55 @@ func (p *RemoteProcessor) ProcessDevelopmentOperation(ctx context.Context,
 			return err
 		}
 	}
+	return nil
+}
+
+func (p *RemoteProcessor) processDevelopmentProvision(ctx context.Context,
+	operation *workerprotocol.DevelopmentOperation, processEnvironment []string,
+) error {
+	if operation.ForumID == nil {
+		return errors.New("开发环境 Provision 缺少 Forum")
+	}
+	gitCredential, err := p.client.DevelopmentOperationGitCredential(ctx, operation)
+	if err != nil {
+		return err
+	}
+	runtime, state, err := p.development.EnsureRemote(ctx, devcontainer.RemoteSpec{
+		EnvironmentID: operation.EnvironmentID, ForumID: *operation.ForumID,
+		WorkspaceStatus:   operation.WorkspaceStatus,
+		WorkspaceRelative: operation.Workspace, WorkspaceBranch: operation.WorkspaceBranch,
+		Repository: operation.Repository, CloneURL: operation.CloneURL,
+		DefaultRef: operation.DefaultRef, EnvironmentStatus: operation.EnvironmentStatus,
+		ImageRef: operation.ImageRef, ImageID: operation.ImageID,
+		ContainerName: operation.ContainerName, ContainerID: operation.ContainerID,
+		DataVolume: operation.DataVolume, HomeVolume: operation.HomeVolume,
+		Network: operation.Network, RuntimeUser: operation.RuntimeUser,
+		RuntimeUID: operation.RuntimeUID, RuntimeGID: operation.RuntimeGID,
+		RuntimeHome: operation.RuntimeHome,
+	}, gitCredential, processEnvironment)
+	if err != nil {
+		return err
+	}
+	runtime.ProcessEnvironment = processEnvironment
+	manifest := workerprotocol.EnvironmentManifest{
+		EnvironmentID: operation.EnvironmentID, ContainerName: operation.ContainerName,
+		ContainerID: state.ContainerID, ImageRef: state.ImageRef,
+		DataVolume: operation.DataVolume, HomeVolume: operation.HomeVolume,
+		Network: operation.Network, RuntimeUser: runtime.User, RuntimeUID: runtime.UID,
+		RuntimeGID: runtime.GID, RuntimeHome: runtime.Home,
+		SSHPublicKey: operation.SSHPublicKey, SSHPort: operation.SSHPort,
+		SSHConfigRevision: operation.SSHConfigRevision,
+	}
+	if err := p.development.EnsureRemoteDaemons(ctx, manifest, runtime); err != nil {
+		return err
+	}
+	operation.ContainerID, operation.ImageRef, operation.ImageID = state.ContainerID,
+		state.ImageRef, state.ImageID
+	operation.RuntimeUser, operation.RuntimeUID = runtime.User, runtime.UID
+	operation.RuntimeGID, operation.RuntimeHome = runtime.GID, runtime.Home
+	operation.WorkspaceStatus, operation.WorkspaceHeadSHA = state.WorkspaceStatus,
+		state.WorkspaceHeadSHA
+	operation.AppliedRevision, operation.DaemonStatus = operation.SSHConfigRevision, "running"
 	return nil
 }
 
