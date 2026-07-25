@@ -113,6 +113,10 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT development_environment_id FROM discord_forums WHERE id = $1`,
 		secondForumID).Scan(&secondEnvironmentID))
 	require.Equal(t, firstEnvironmentID, secondEnvironmentID, "同一 Discord 用户的不同仓库必须复用环境")
+	var secondWorkspace string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT relative_path
+		FROM discord_forum_workspaces WHERE forum_id = $1`, secondForumID).Scan(&secondWorkspace))
+	require.Equal(t, "workspaces/second", secondWorkspace)
 	environments, err := manager.DevelopmentEnvironments(ctx)
 	require.NoError(t, err)
 	require.Len(t, environments, 1)
@@ -816,7 +820,7 @@ func seedDiscordManagerData(t *testing.T, db *sql.DB) discordManagerSeed {
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_forum_workspaces
 		(forum_id, environment_id, relative_path, branch, status)
 		VALUES ($1, $2, $3, 'tyrs-hand/discord/seed', 'ready')`, seed.developmentForumID,
-		environmentID, "workspaces/"+seed.developmentForumID.String())
+		environmentID, "workspaces/repo")
 	require.NoError(t, err)
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO work_items
 		(repository_id, kind, external_number, title) VALUES ($1, 'issue', 7, 'Needs help') RETURNING id`, repositoryID).Scan(&seed.workItemID))
@@ -1397,18 +1401,22 @@ func testDiscordRecoveryOrchestration(t *testing.T, ctx context.Context, db *sql
 	}, actionRemote)
 	require.NoError(t, err)
 
-	developmentResource := insertDiscordResource(t, db, "forum.development.record-test", "100000000000000051", "forum", "codex-bob", seed.codexCategoryID)
+	developmentResource := insertDiscordResource(t, db, "forum.development.record-test", "100000000000000051", "forum", "codex-charlie", seed.codexCategoryID)
 	_ = developmentResource
 	forumID := uuid.New()
 	_, err = manager.executeInitializationAction(ctx, testGuildID, InitializationAction{
-		Kind: "forum.development.record", OwnerUserID: "1002", RepositoryID: seed.repositoryID.String(),
+		Kind: "forum.development.record", OwnerUserID: "1003", RepositoryID: seed.repositoryID.String(),
 		ForumID: forumID.String(), Spec: ChannelSpec{Key: "forum.development.record-test"},
 	}, actionRemote)
 	require.NoError(t, err)
-	var bobEnvironmentID uuid.UUID
+	var charlieEnvironmentID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT development_environment_id FROM discord_forums
-		WHERE id = $1`, forumID).Scan(&bobEnvironmentID))
-	require.NotEqual(t, uuid.Nil, bobEnvironmentID)
+		WHERE id = $1`, forumID).Scan(&charlieEnvironmentID))
+	require.NotEqual(t, uuid.Nil, charlieEnvironmentID)
+	var charlieWorkspace string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT relative_path
+		FROM discord_forum_workspaces WHERE forum_id = $1`, forumID).Scan(&charlieWorkspace))
+	require.Equal(t, "workspaces/repo", charlieWorkspace)
 	repositoryResource := insertDiscordResource(t, db, "forum.repository.record-test", "100000000000000052", "forum", "repo-record", "")
 	_ = repositoryResource
 	_, err = manager.executeInitializationAction(ctx, testGuildID, InitializationAction{

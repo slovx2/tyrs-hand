@@ -838,6 +838,9 @@ func seedDevelopmentEnvironment(t *testing.T, db *sql.DB, firstClone, secondClon
 		"tyrs-test-home-"+compact, "tyrs-test-net-"+compact).Scan(&environmentID))
 	insertForum := func(suffix string, repositoryID uuid.UUID) uuid.UUID {
 		forumID := uuid.New()
+		var repositoryName string
+		require.NoError(t, db.QueryRowContext(ctx, `SELECT name FROM repositories WHERE id = $1`,
+			repositoryID).Scan(&repositoryName))
 		var resourceID uuid.UUID
 		require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_resources
 			(guild_id, resource_key, discord_id, kind, name, managed_marker)
@@ -850,7 +853,7 @@ func seedDevelopmentEnvironment(t *testing.T, db *sql.DB, firstClone, secondClon
 			forumID, resourceID, repositoryID, environmentID).Scan(&forumID))
 		_, err := db.ExecContext(ctx, `INSERT INTO discord_forum_workspaces
 			(forum_id, environment_id, relative_path, branch)
-			VALUES ($1, $2, $3, $4)`, forumID, environmentID, "workspaces/"+forumID.String(),
+			VALUES ($1, $2, $3, $4)`, forumID, environmentID, "workspaces/"+repositoryName,
 			"tyrs-hand/discord/"+suffix)
 		require.NoError(t, err)
 		return forumID

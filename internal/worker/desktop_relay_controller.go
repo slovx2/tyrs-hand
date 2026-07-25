@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -38,6 +39,10 @@ type desktopLifecycleCallState struct {
 	request workerprotocol.ThreadLifecycleState
 }
 
+type desktopThreadCallState struct {
+	request workerprotocol.DesktopThreadState
+}
+
 type desktopToolRuntime struct {
 	task    *workerprotocol.Task
 	runtime devcontainer.Runtime
@@ -45,7 +50,7 @@ type desktopToolRuntime struct {
 	err     error
 }
 
-func (c *desktopRelayController) PrepareCall(_ context.Context,
+func (c *desktopRelayController) PrepareCall(ctx context.Context,
 	call codexrelay.Call,
 ) (codexrelay.CallPlan, error) {
 	plan := codexrelay.CallPlan{Params: append(json.RawMessage(nil), call.Params...), Forward: true}
@@ -77,6 +82,21 @@ func (c *desktopRelayController) PrepareCall(_ context.Context,
 	case "thread/start":
 		plan.Params = c.injectDesktopRuntime(call.Params, true)
 		plan.Params = participantidentity.AppendDeveloperInstructions(plan.Params)
+		if call.Role == codexrelay.RoleDesktop {
+			state, err := c.prepareDesktopThread(ctx, call)
+			if err != nil {
+				return plan, err
+			}
+			plan.State = &desktopThreadCallState{request: state}
+		}
+	case "thread/fork":
+		if call.Role == codexrelay.RoleDesktop {
+			state, err := c.prepareDesktopThread(ctx, call)
+			if err != nil {
+				return plan, err
+			}
+			plan.State = &desktopThreadCallState{request: state}
+		}
 	case "thread/resume":
 		plan.Params = c.injectDesktopRuntime(call.Params, false)
 	case "turn/start":
@@ -166,9 +186,11 @@ func (c *desktopRelayController) CompleteCall(_ context.Context, call codexrelay
 		c.cleanupDesktopCall(plan, cause)
 		return result, cause
 	}
+	if state, ok := plan.State.(*desktopThreadCallState); ok {
+		go c.completeDesktopThread(state.request, result)
+	}
 	switch call.Method {
 	case "thread/start", "thread/fork":
-		go c.observeDesktopThread(call, result)
 		if threadID, name := desktopThreadName(result); threadID != "" && name != "" {
 			go c.environment.recordThreadName(c.processor.environments.ctx, threadID, name)
 		}
@@ -370,40 +392,30 @@ func (c *desktopRelayController) injectDesktopRuntime(params json.RawMessage,
 	return result
 }
 
-func (c *desktopRelayController) observeDesktopThread(call codexrelay.Call,
-	result json.RawMessage,
+func (c *desktopRelayController) prepareDesktopThread(ctx context.Context,
+	call codexrelay.Call,
+) (workerprotocol.DesktopThreadState, error) {
+	requestCtx, cancel := context.WithTimeout(ctx, c.controlTimeout())
+	defer cancel()
+	return c.processor.client.PrepareDesktopThread(requestCtx,
+		workerprotocol.DesktopThreadPrepareRequest{
+			EnvironmentID: c.environment.runtime.EnvironmentID,
+			Operation:     strings.TrimPrefix(call.Method, "thread/"),
+			RequestKey: desktopRequestKey(call.Method, call.Params,
+				json.RawMessage(uuid.NewString())),
+			Params: call.Params,
+		})
+}
+
+func (c *desktopRelayController) completeDesktopThread(
+	state workerprotocol.DesktopThreadState, result json.RawMessage,
 ) {
-	threadID, _ := relayCallScope(result)
-	if threadID == "" {
+	if state.ID == uuid.Nil {
 		return
 	}
-	requestKey := desktopRequestKey(call.Method, call.Params, result)
 	ctx := c.processor.environments.ctx
-	var state workerprotocol.DesktopThreadState
-	for ctx.Err() == nil {
-		requestCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
-		var err error
-		state, err = c.processor.client.PrepareDesktopThread(requestCtx,
-			workerprotocol.DesktopThreadPrepareRequest{
-				EnvironmentID: c.environment.runtime.EnvironmentID,
-				Operation:     strings.TrimPrefix(call.Method, "thread/"), RequestKey: requestKey,
-				Params: call.Params,
-			})
-		cancel()
-		if err == nil {
-			break
-		}
-		c.processor.logger.Warn("异步登记 Desktop Thread 失败，稍后重试",
-			zap.String("thread_id", threadID), zap.Error(err))
-		if !waitContext(ctx, 3*time.Second) {
-			return
-		}
-	}
-	for ctx.Err() == nil {
-		if state.Status != "preparing" {
-			return
-		}
-		requestCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
+	for attempt := 0; attempt < 8 && ctx.Err() == nil; attempt++ {
+		requestCtx, cancel := context.WithTimeout(ctx, c.controlTimeout())
 		_, err := c.processor.client.CompleteDesktopThread(requestCtx, state.ID,
 			workerprotocol.DesktopThreadCompleteRequest{
 				EnvironmentID: c.environment.runtime.EnvironmentID, Response: result,
@@ -412,12 +424,54 @@ func (c *desktopRelayController) observeDesktopThread(call codexrelay.Call,
 		if err == nil {
 			return
 		}
-		c.processor.logger.Warn("异步绑定 Desktop Thread 失败，稍后重试",
-			zap.String("thread_id", threadID), zap.Error(err))
-		if !waitContext(ctx, 500*time.Millisecond) {
+		c.processor.logger.Warn("提交 Desktop Thread 绑定失败",
+			zap.String("request_id", state.ID.String()), zap.Error(err))
+		if !retryableDesktopControlError(err) || !waitContext(ctx, 500*time.Millisecond) {
 			return
 		}
 	}
+}
+
+func (c *desktopRelayController) failDesktopThread(
+	state workerprotocol.DesktopThreadState, cause error,
+) {
+	if state.ID == uuid.Nil || cause == nil {
+		return
+	}
+	ctx := c.processor.environments.ctx
+	for attempt := 0; attempt < 8 && ctx.Err() == nil; attempt++ {
+		requestCtx, cancel := context.WithTimeout(ctx, c.controlTimeout())
+		err := c.processor.client.FailDesktopThread(requestCtx, state.ID,
+			workerprotocol.DesktopThreadFailRequest{
+				EnvironmentID: c.environment.runtime.EnvironmentID, Error: cause.Error(),
+			})
+		cancel()
+		if err == nil {
+			return
+		}
+		c.processor.logger.Warn("提交 Desktop Thread 失败状态失败",
+			zap.String("request_id", state.ID.String()), zap.Error(err))
+		if !retryableDesktopControlError(err) || !waitContext(ctx, 500*time.Millisecond) {
+			return
+		}
+	}
+}
+
+func (c *desktopRelayController) controlTimeout() time.Duration {
+	if c.processor.cfg.ControlTimeout > 0 {
+		return c.processor.cfg.ControlTimeout
+	}
+	return time.Minute
+}
+
+func retryableDesktopControlError(err error) bool {
+	var response *workerprotocol.HTTPError
+	if !errors.As(err, &response) {
+		return true
+	}
+	return response.StatusCode == http.StatusRequestTimeout ||
+		response.StatusCode == http.StatusTooManyRequests ||
+		response.StatusCode >= http.StatusInternalServerError
 }
 
 func (c *desktopRelayController) observeDesktopTurn(call codexrelay.Call,
@@ -557,14 +611,15 @@ func (c *desktopRelayController) desktopTurnHeartbeat(ctx context.Context,
 }
 
 func (c *desktopRelayController) cleanupDesktopCall(plan codexrelay.CallPlan, cause error) {
-	state, _ := plan.State.(*desktopRelayCallState)
-	if state == nil {
-		return
+	switch state := plan.State.(type) {
+	case *desktopRelayCallState:
+		state.toolReady <- desktopToolRuntime{err: cause}
+		state.subscription.Close()
+		state.unbind()
+		state.unbindInput()
+	case *desktopThreadCallState:
+		go c.failDesktopThread(state.request, cause)
 	}
-	state.toolReady <- desktopToolRuntime{err: cause}
-	state.subscription.Close()
-	state.unbind()
-	state.unbindInput()
 }
 
 func (c *desktopRelayController) answerDesktopInteractive(ctx context.Context,

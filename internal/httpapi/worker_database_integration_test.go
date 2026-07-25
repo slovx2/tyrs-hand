@@ -317,7 +317,14 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "Desktop Alice", manifests[0].SSHParticipant.DisplayName)
 	require.Equal(t, participantidentity.ID("worker-test-guild", "desktop-user"),
 		manifests[0].SSHParticipant.ParticipantID)
-	workspace := "/var/lib/tyrs-hand/workspaces/" + forumID.String()
+	var workspaceRelative string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT relative_path
+		FROM discord_forum_workspaces WHERE forum_id = $1`, forumID).Scan(&workspaceRelative))
+	var repositoryName string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT name FROM repositories WHERE id = $1`,
+		repositoryID).Scan(&repositoryName))
+	require.Equal(t, "workspaces/"+repositoryName, workspaceRelative)
+	workspace := "/var/lib/tyrs-hand/" + workspaceRelative
 
 	state, err := client.PrepareDesktopThread(ctx, workerprotocol.DesktopThreadPrepareRequest{
 		EnvironmentID: environmentID, Operation: "start", RequestKey: strings.Repeat("a", 64),
@@ -1621,10 +1628,13 @@ func seedDevelopmentOperation(t *testing.T, db *sql.DB, repositoryID,
 		 development_environment_id)
 		VALUES ('worker-test-guild',$1,'development','worker-owner',$2,$3) RETURNING id`,
 		resourceID, repositoryID, environmentID).Scan(&forumID))
+	var repositoryName string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT name FROM repositories WHERE id = $1`,
+		repositoryID).Scan(&repositoryName))
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_forum_workspaces
 		(forum_id, environment_id, relative_path, branch, status)
 		VALUES ($1,$2,$3,'worker/test','ready')`, forumID, environmentID,
-		"workspaces/"+forumID.String())
+		"workspaces/"+repositoryName)
 	require.NoError(t, err)
 	return environmentID, forumID
 }

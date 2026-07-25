@@ -3,9 +3,11 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -94,10 +96,23 @@ func TestDesktopRelayWithoutSSHIdentityStripsReservedIdentityContext(t *testing.
 }
 
 func TestDesktopRelayForcesGlobalModelAndOmitsPlatformGitHubTools(t *testing.T) {
+	environmentID := uuid.New()
+	requestID := uuid.New()
+	control := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
+		request *http.Request,
+	) {
+		require.Equal(t, "/worker/v1/desktop-thread-requests", request.URL.Path)
+		require.NoError(t, json.NewEncoder(response).Encode(workerprotocol.DesktopThreadState{
+			ID: requestID, EnvironmentID: environmentID, Operation: "start", Status: "preparing",
+		}))
+	}))
+	t.Cleanup(control.Close)
 	controller := &desktopRelayController{
-		processor: &RemoteProcessor{logger: zap.NewNop()},
+		processor: &RemoteProcessor{cfg: config.Config{ControlTimeout: time.Second},
+			client: workerprotocol.NewClient(control.URL, "credential", time.Second),
+			logger: zap.NewNop()},
 		environment: &environmentCodex{runtime: devcontainer.Runtime{
-			ModelSource:  "provider",
+			EnvironmentID: environmentID, ModelSource: "provider",
 			ModelBaseURL: "https://api.example.com/v1",
 		}},
 	}
@@ -264,6 +279,7 @@ func TestDesktopRelayAccountCapabilitiesFollowModelSource(t *testing.T) {
 }
 
 func TestDesktopThreadCompletionDoesNotWaitForDiscordControl(t *testing.T) {
+	requestID := uuid.New()
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		time.Sleep(100 * time.Millisecond)
 		http.Error(response, "control unavailable", http.StatusServiceUnavailable)
@@ -282,11 +298,135 @@ func TestDesktopThreadCompletionDoesNotWaitForDiscordControl(t *testing.T) {
 	result := json.RawMessage(`{"thread":{"id":"desktop-thread"}}`)
 	completed, err := controller.CompleteCall(context.Background(), codexrelay.Call{
 		Method: "thread/start", Params: json.RawMessage(`{"cwd":"/workspace"}`),
-	}, codexrelay.CallPlan{Forward: true}, result, nil)
+	}, codexrelay.CallPlan{Forward: true, State: &desktopThreadCallState{
+		request: workerprotocol.DesktopThreadState{
+			ID: requestID, EnvironmentID: controller.environment.runtime.EnvironmentID,
+			Status: "preparing",
+		},
+	}}, result, nil)
 	require.NoError(t, err)
 	require.JSONEq(t, string(result), string(completed))
 	require.Less(t, time.Since(started), 50*time.Millisecond,
 		"Discord/Control 不可用不得延迟 Desktop thread/start 响应")
+}
+
+func TestDesktopRelayRejectsInvalidCWDBeforeCallingAppServer(t *testing.T) {
+	var prepareCalls atomic.Int64
+	control := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
+		request *http.Request,
+	) {
+		prepareCalls.Add(1)
+		http.Error(response, "cwd 没有匹配本环境的 Development Forum", http.StatusForbidden)
+	}))
+	t.Cleanup(control.Close)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	processor := &RemoteProcessor{cfg: config.Config{ControlTimeout: time.Second},
+		client: workerprotocol.NewClient(control.URL, "credential", time.Second), logger: zap.NewNop()}
+	processor.environments = &environmentCodexRegistry{ctx: ctx, processor: processor,
+		entries: make(map[uuid.UUID]*environmentCodex)}
+	controller := &desktopRelayController{processor: processor, environment: &environmentCodex{
+		runtime: devcontainer.Runtime{EnvironmentID: uuid.New()},
+	}}
+	mock, err := mockcodex.Start(t)
+	require.NoError(t, err)
+	relayRoot, err := os.MkdirTemp("/tmp", "tyrs-invalid-cwd-relay-")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(relayRoot) })
+	relay, err := codexrelay.Start(ctx, codexrelay.Options{
+		SocketPath: relayRoot + "/relay.sock", UpstreamSocketPath: mock.SocketPath,
+		Controller: controller,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = relay.Close() })
+	client, err := relay.OpenClient(codexrelay.ClientOptions{Role: codexrelay.RoleDesktop})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = client.Close() })
+
+	_, err = client.StartThread(context.Background(),
+		json.RawMessage(`{"cwd":"/var/lib/tyrs-hand/workspaces/missing"}`))
+	require.ErrorContains(t, err, "403")
+	require.Equal(t, int64(1), prepareCalls.Load())
+	require.Zero(t, mock.RequestCount("thread/start"),
+		"cwd 预检失败后不得调用 app-server 创建 Thread")
+	time.Sleep(50 * time.Millisecond)
+	require.Equal(t, int64(1), prepareCalls.Load(), "永久性 403 不得后台重试")
+}
+
+func TestDesktopRelayPreparesStartAndForkBeforeCompleting(t *testing.T) {
+	environmentID := uuid.New()
+	requestID := uuid.New()
+	operations := make(chan string, 4)
+	completed := make(chan struct{}, 1)
+	failed := make(chan struct{}, 1)
+	control := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
+		request *http.Request,
+	) {
+		switch {
+		case request.URL.Path == "/worker/v1/desktop-thread-requests":
+			var input workerprotocol.DesktopThreadPrepareRequest
+			require.NoError(t, json.NewDecoder(request.Body).Decode(&input))
+			operations <- input.Operation
+			require.Len(t, input.RequestKey, 64)
+			require.NoError(t, json.NewEncoder(response).Encode(workerprotocol.DesktopThreadState{
+				ID: requestID, EnvironmentID: environmentID,
+				Operation: input.Operation, Status: "preparing",
+			}))
+		case strings.HasSuffix(request.URL.Path, "/complete"):
+			completed <- struct{}{}
+			require.NoError(t, json.NewEncoder(response).Encode(workerprotocol.DesktopThreadState{
+				ID: requestID, EnvironmentID: environmentID, Status: "waiting_for_input",
+			}))
+		case strings.HasSuffix(request.URL.Path, "/fail"):
+			failed <- struct{}{}
+			response.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(response, request)
+		}
+	}))
+	t.Cleanup(control.Close)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	processor := &RemoteProcessor{cfg: config.Config{ControlTimeout: time.Second},
+		client: workerprotocol.NewClient(control.URL, "credential", time.Second), logger: zap.NewNop()}
+	processor.environments = &environmentCodexRegistry{ctx: ctx, processor: processor,
+		entries: make(map[uuid.UUID]*environmentCodex)}
+	controller := &desktopRelayController{processor: processor, environment: &environmentCodex{
+		runtime: devcontainer.Runtime{EnvironmentID: environmentID},
+	}}
+
+	startPlan, err := controller.PrepareCall(ctx, codexrelay.Call{
+		Role: codexrelay.RoleDesktop, Method: "thread/start",
+		Params: json.RawMessage(`{"cwd":"/var/lib/tyrs-hand/workspaces/WakeQora"}`),
+	})
+	require.NoError(t, err)
+	require.Equal(t, "start", <-operations)
+	_, err = controller.CompleteCall(ctx, codexrelay.Call{
+		Role: codexrelay.RoleDesktop, Method: "thread/start",
+	}, startPlan, json.RawMessage(`{"thread":{"id":"desktop-thread"}}`), nil)
+	require.NoError(t, err)
+	select {
+	case <-completed:
+	case <-time.After(time.Second):
+		t.Fatal("Desktop Thread 成功后没有提交 reservation")
+	}
+
+	forkPlan, err := controller.PrepareCall(ctx, codexrelay.Call{
+		Role: codexrelay.RoleDesktop, Method: "thread/fork",
+		Params: json.RawMessage(`{"threadId":"desktop-thread"}`),
+	})
+	require.NoError(t, err)
+	require.Equal(t, "fork", <-operations)
+	upstreamErr := errors.New("app-server fork 失败")
+	_, err = controller.CompleteCall(ctx, codexrelay.Call{
+		Role: codexrelay.RoleDesktop, Method: "thread/fork",
+	}, forkPlan, nil, upstreamErr)
+	require.ErrorIs(t, err, upstreamErr)
+	select {
+	case <-failed:
+	case <-time.After(time.Second):
+		t.Fatal("app-server 失败后没有释放 Desktop Thread reservation")
+	}
 }
 
 func TestDesktopToolRuntimeUsesBoundDiscordWorkspace(t *testing.T) {

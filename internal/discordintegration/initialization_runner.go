@@ -149,6 +149,11 @@ func (m *Manager) executeInitializationAction(ctx context.Context, guildID strin
 		if err != nil {
 			return nil, err
 		}
+		var repositoryName string
+		if err := m.db.QueryRowContext(ctx, `SELECT name FROM repositories WHERE id = $1`,
+			repositoryID).Scan(&repositoryName); err != nil {
+			return nil, err
+		}
 		forumID, err := uuid.Parse(action.ForumID)
 		if err != nil {
 			return nil, err
@@ -168,7 +173,7 @@ func (m *Manager) executeInitializationAction(ctx context.Context, guildID strin
 		_, err = m.db.ExecContext(ctx, `INSERT INTO discord_forum_workspaces
 			(forum_id, environment_id, relative_path, branch)
 			VALUES ($1, $2, $3, $4)`, forumID, environmentID,
-			"workspaces/"+forumID.String(), branch)
+			"workspaces/"+repositoryName, branch)
 		return map[string]any{"environmentId": environmentID, "forumId": forumID}, err
 	default:
 		return nil, fmt.Errorf("未知初始化步骤 %q", action.Kind)
