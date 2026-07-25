@@ -130,7 +130,7 @@ func TestTitleGeneratorRunOnceClaimsAndSchedulesFallback(t *testing.T) {
 	require.NoError(t, err)
 	conversationID := uuid.New()
 	mock.ExpectBegin()
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.thread_id, COALESCE(m.body, '')")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.thread_id, COALESCE(m.body, desktop.first_input_text, '')")).
 		WithArgs("pending").WillReturnRows(sqlmock.NewRows([]string{"id", "thread_id", "body"}).
 		AddRow(conversationID, "thread-1", strings.Repeat("消息", 40)))
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE discord_conversations")).
@@ -164,7 +164,7 @@ func TestTitleGeneratorReturnsIdleWithoutPendingConversation(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
 	mock.ExpectBegin()
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.thread_id, COALESCE(m.body, '')")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.thread_id, COALESCE(m.body, desktop.first_input_text, '')")).
 		WithArgs("pending").WillReturnError(sql.ErrNoRows)
 	mock.ExpectRollback()
 	generator := &TitleGenerator{db: db}
@@ -174,13 +174,34 @@ func TestTitleGeneratorReturnsIdleWithoutPendingConversation(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestTitleGeneratorClaimsDesktopFirstInput(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	conversationID := uuid.New()
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.thread_id, COALESCE(m.body, desktop.first_input_text, '')")).
+		WithArgs("pending").WillReturnRows(sqlmock.NewRows([]string{"id", "thread_id", "body"}).
+		AddRow(conversationID, "desktop-discord-thread", "Desktop 首条输入"))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE discord_conversations")).
+		WithArgs(conversationID).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	claimed, err := (&TitleGenerator{db: db}).claim(context.Background(), "pending")
+	require.NoError(t, err)
+	require.Equal(t, conversationID, claimed.ID)
+	require.Equal(t, "desktop-discord-thread", claimed.ThreadID)
+	require.Equal(t, "Desktop 首条输入", claimed.Body)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestTitleGeneratorRecoversGeneratingWithoutCallingProvider(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
 	conversationID := uuid.New()
 	mock.ExpectBegin()
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.thread_id, COALESCE(m.body, '')")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.thread_id, COALESCE(m.body, desktop.first_input_text, '')")).
 		WithArgs("generating").WillReturnRows(sqlmock.NewRows([]string{"id", "thread_id", "body"}).
 		AddRow(conversationID, "thread-1", "中断前的首条消息"))
 	mock.ExpectCommit()
@@ -195,7 +216,7 @@ func TestTitleGeneratorRecoversGeneratingWithoutCallingProvider(t *testing.T) {
 			sqlmock.AnyArg(), "").WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 	mock.ExpectBegin()
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.thread_id, COALESCE(m.body, '')")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT c.id, c.thread_id, COALESCE(m.body, desktop.first_input_text, '')")).
 		WithArgs("generating").WillReturnError(sql.ErrNoRows)
 	mock.ExpectRollback()
 	generator := &TitleGenerator{db: db}

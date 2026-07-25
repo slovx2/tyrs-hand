@@ -438,8 +438,8 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 			ON control.discord_conversation_id=conversation.id WHERE conversation.id=$1`, state.ConversationID).
 		Scan(&conversationControlID, &titleRenameStatus))
 	require.Equal(t, state.ControlID, conversationControlID)
-	require.Equal(t, "skipped", titleRenameStatus,
-		"Desktop 投影只使用 Codex 自己的标题，不进入 Luna 队列")
+	require.Equal(t, "pending", titleRenameStatus,
+		"Desktop 投影应使用首条输入进入 Luna 标题队列")
 	var memberAddPayload string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT payload::text FROM integration_outbox
 		WHERE operation_key=$1`, "desktop-thread-member:"+state.ID.String()).

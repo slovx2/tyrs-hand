@@ -79,9 +79,10 @@ func (g *TitleGenerator) claim(ctx context.Context, status string) (claimedConve
 	}
 	defer func() { _ = tx.Rollback() }()
 	var claimed claimedConversationTitle
-	err = tx.QueryRowContext(ctx, `SELECT c.id, c.thread_id, COALESCE(m.body, '')
+	err = tx.QueryRowContext(ctx, `SELECT c.id, c.thread_id, COALESCE(m.body, desktop.first_input_text, '')
 		FROM discord_conversations c
 		LEFT JOIN discord_input_messages m ON m.message_id = c.starter_message_id
+		LEFT JOIN desktop_thread_requests desktop ON desktop.conversation_id = c.id
 		WHERE c.title_rename_status = $1 ORDER BY c.created_at, c.id
 		FOR UPDATE OF c SKIP LOCKED LIMIT 1`, status).
 		Scan(&claimed.ID, &claimed.ThreadID, &claimed.Body)
