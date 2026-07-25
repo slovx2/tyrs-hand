@@ -286,6 +286,35 @@ func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_thread_controls
 		WHERE discord_conversation_id=$1`, conversationID).Scan(&controls))
 	require.Equal(t, 1, controls)
+	require.NoError(t, client.RecordSubmission(ctx, claimed.Task, "discord-active-turn"))
+	require.NoError(t, client.ConfirmTurn(ctx, claimed.Task, "discord-active-turn"))
+	desktopSteer := workerprotocol.DesktopSteerRecordRequest{
+		EnvironmentID: environmentID, RequestKey: strings.Repeat("a", 64),
+		Params: json.RawMessage(`{"threadId":"codex-desktop-bound-thread",` +
+			`"expectedTurnId":"discord-active-turn",` +
+			`"clientUserMessageId":"desktop-steers-discord-turn",` +
+			`"input":[{"type":"text","text":"desktop joins the discord turn"}]}`),
+	}
+	require.NoError(t, client.RecordDesktopSteer(ctx, desktopSteer))
+	require.NoError(t, client.RecordDesktopSteer(ctx, desktopSteer),
+		"Desktop 重试记录同一条 Steer 时必须幂等")
+	var desktopSteerSurface, desktopSteerStatus, desktopSteerAction, desktopSteerText string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT input_surface, status,
+		resolved_action, instruction FROM codex_turn_intents
+		WHERE idempotency_key=$1`, "desktop-steer:"+environmentID.String()+":"+
+		strings.Repeat("a", 64)).Scan(&desktopSteerSurface, &desktopSteerStatus,
+		&desktopSteerAction, &desktopSteerText))
+	require.Equal(t, "desktop", desktopSteerSurface)
+	require.Equal(t, "running", desktopSteerStatus)
+	require.Equal(t, "steer", desktopSteerAction)
+	require.Equal(t, "desktop joins the discord turn", desktopSteerText)
+	heartbeat, err := client.RunHeartbeat(ctx, claimed.Task)
+	require.NoError(t, err)
+	require.Empty(t, heartbeat.Commands,
+		"Desktop 已直接提交给同一 App Server 的 Steer 不得再回送给 Worker")
+	require.NoError(t, client.Complete(ctx, claimed.Task, codexcontrol.TurnResult{
+		TurnID: "discord-active-turn", FinalAnswer: "completed from shared thread",
+	}))
 }
 
 func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
@@ -573,6 +602,91 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 
 	require.NoError(t, client.RecordSubmission(ctx, &task, "desktop-turn-1"))
 	require.NoError(t, client.ConfirmTurn(ctx, &task, "desktop-turn-1"))
+	require.NoError(t, discordintegration.NewConversationService(db).Reply(ctx,
+		discordintegration.IncomingMessage{
+			GuildID: "worker-test-guild", ThreadID: "desktop-discord-thread",
+			MessageID: "discord-steer-desktop-1", DiscordUserID: "desktop-user",
+			DisplayName: "Desktop Alice", Username: "desktop",
+			Body: "discord follows up while desktop is running",
+		}))
+	heartbeat, err := client.RunHeartbeat(ctx, &task)
+	require.NoError(t, err)
+	require.Len(t, heartbeat.Commands, 1)
+	require.NotNil(t, heartbeat.Commands[0].Discord)
+	require.Equal(t, "discord follows up while desktop is running",
+		heartbeat.Commands[0].Instruction)
+	require.Equal(t, "discord-steer-desktop-1", heartbeat.Commands[0].Discord.MessageID)
+	require.Equal(t, "discord follows up while desktop is running",
+		heartbeat.Commands[0].Discord.Body)
+	require.NoError(t, client.AckCommand(ctx, &task, heartbeat.Commands[0],
+		"steer", "desktop-turn-1"))
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_members
+		(guild_id, discord_user_id, username, display_name)
+		VALUES ('worker-test-guild','discord-operator','operator','Discord Operator')`)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_forum_access
+		(forum_id, discord_user_id, access_level)
+		VALUES ($1,'discord-operator','operator')`, forumID)
+	require.NoError(t, err)
+	conversationService := discordintegration.NewConversationService(db)
+	require.NoError(t, conversationService.Reply(ctx, discordintegration.IncomingMessage{
+		GuildID: "worker-test-guild", ThreadID: "desktop-discord-thread",
+		MessageID: "discord-steer-desktop-2", DiscordUserID: "discord-operator",
+		DisplayName: "Discord Operator", Username: "operator",
+		Body: "operator adds a file from discord",
+		Attachments: []discordintegration.IncomingAttachment{{
+			ID: "discord-attachment-1", URL: "https://example.invalid/context.txt",
+			Filename: "context.txt", MediaType: "text/plain", Size: 12,
+			Kind: "file", SHA256: strings.Repeat("a", 64),
+			StorageKey: "discord/discord-steer-desktop-2/context.txt",
+		}},
+	}))
+	heartbeat, err = client.RunHeartbeat(ctx, &task)
+	require.NoError(t, err)
+	require.Len(t, heartbeat.Commands, 1)
+	operatorCommand := heartbeat.Commands[0]
+	require.NotNil(t, operatorCommand.Discord)
+	require.Equal(t, "discord-steer-desktop-2", operatorCommand.Discord.MessageID)
+	require.Equal(t, "operator adds a file from discord", operatorCommand.Discord.Body)
+	require.Equal(t, "discord-operator", operatorCommand.Discord.UserID)
+	require.Equal(t, "Discord Operator", operatorCommand.Discord.DisplayName)
+	require.Equal(t, "operator", operatorCommand.Discord.Access)
+	require.NotNil(t, operatorCommand.Discord.Development)
+	require.Equal(t, state.ConversationID,
+		operatorCommand.Discord.Development.ConversationID)
+	require.Len(t, operatorCommand.Discord.Attachments, 1)
+	require.Equal(t, "context.txt", operatorCommand.Discord.Attachments[0].Filename)
+	require.Equal(t, strings.Repeat("a", 64), operatorCommand.Discord.Attachments[0].SHA256)
+	repeatedHeartbeat, err := client.RunHeartbeat(ctx, &task)
+	require.NoError(t, err)
+	require.Len(t, repeatedHeartbeat.Commands, 1)
+	require.Equal(t, operatorCommand.ID, repeatedHeartbeat.Commands[0].ID)
+	require.Equal(t, operatorCommand.Discord.MessageID,
+		repeatedHeartbeat.Commands[0].Discord.MessageID)
+	require.NoError(t, client.AckCommand(ctx, &task, operatorCommand,
+		"steer", "desktop-turn-1"))
+
+	for _, message := range []struct{ id, body string }{
+		{"discord-steer-desktop-3", "third input from discord"},
+		{"discord-steer-desktop-4", "fourth input from discord"},
+	} {
+		require.NoError(t, conversationService.Reply(ctx, discordintegration.IncomingMessage{
+			GuildID: "worker-test-guild", ThreadID: "desktop-discord-thread",
+			MessageID: message.id, DiscordUserID: "desktop-user",
+			DisplayName: "Desktop Alice", Username: "desktop", Body: message.body,
+		}))
+	}
+	heartbeat, err = client.RunHeartbeat(ctx, &task)
+	require.NoError(t, err)
+	require.Len(t, heartbeat.Commands, 2)
+	require.Equal(t, "discord-steer-desktop-3", heartbeat.Commands[0].Discord.MessageID)
+	require.Equal(t, "third input from discord", heartbeat.Commands[0].Discord.Body)
+	require.Equal(t, "discord-steer-desktop-4", heartbeat.Commands[1].Discord.MessageID)
+	require.Equal(t, "fourth input from discord", heartbeat.Commands[1].Discord.Body)
+	for _, command := range heartbeat.Commands {
+		require.NoError(t, client.AckCommand(ctx, &task, command,
+			"steer", "desktop-turn-1"))
+	}
 	require.NoError(t, client.Events(ctx, &task, []workerprotocol.EventInput{
 		{Sequence: 1, Type: "item/completed", Payload: json.RawMessage(
 			`{"item":{"id":"desktop-user-item-1","type":"userMessage",` +
@@ -937,9 +1051,26 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Empty(t, unboundTask.Snapshot.Discord.Username)
 	require.NoError(t, client.RecordSubmission(ctx, &unboundTask, "desktop-turn-2"))
 	require.NoError(t, client.ConfirmTurn(ctx, &unboundTask, "desktop-turn-2"))
-	require.NoError(t, client.Complete(ctx, &unboundTask, codexcontrol.TurnResult{
-		TurnID: "desktop-turn-2", FinalAnswer: "local desktop done",
-	}))
+	stopped, err := conversationService.Stop(ctx, "worker-test-guild",
+		"desktop-discord-thread", "desktop-user")
+	require.NoError(t, err)
+	require.EqualValues(t, 1, stopped)
+	heartbeat, err = client.RunHeartbeat(ctx, &unboundTask)
+	require.NoError(t, err)
+	require.Len(t, heartbeat.Commands, 1)
+	require.Equal(t, "interrupt", heartbeat.Commands[0].Operation)
+	require.Nil(t, heartbeat.Commands[0].Discord)
+	require.NoError(t, client.AckCommand(ctx, &unboundTask, heartbeat.Commands[0],
+		"interrupt", "desktop-turn-2"))
+	require.NoError(t, client.Fail(ctx, &unboundTask, "user_interrupt",
+		errors.New("stopped from Discord")))
+	var stoppedRunStatus, stoppedIntentStatus string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT r.status, i.status
+		FROM codex_turn_runs r JOIN codex_turn_intents i ON i.id=r.primary_intent_id
+		WHERE r.id=$1`, unboundTask.Claimed.RunID).
+		Scan(&stoppedRunStatus, &stoppedIntentStatus))
+	require.Equal(t, "canceled", stoppedRunStatus)
+	require.Equal(t, "canceled", stoppedIntentStatus)
 
 	failed, err := client.PrepareDesktopThread(ctx, workerprotocol.DesktopThreadPrepareRequest{
 		EnvironmentID: environmentID, Operation: "start", RequestKey: strings.Repeat("c", 64),

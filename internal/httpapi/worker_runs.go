@@ -61,7 +61,10 @@ func (s *Server) pendingRunCommands(ctx context.Context,
 		}
 		if claimed.SourceType == codexcontrol.SourceDiscord && messageID != "" {
 			copyClaimed := *claimed
-			copyClaimed.ID, copyClaimed.DiscordMessageID = command.ID, messageID
+			copyClaimed.ID, copyClaimed.Sequence = command.ID, command.Sequence
+			copyClaimed.InputSurface = "discord"
+			copyClaimed.DiscordMessageID = messageID
+			copyClaimed.Instruction = command.Instruction
 			command.Discord, err = s.loadDiscordWorkerSnapshot(ctx, &copyClaimed)
 			if err != nil {
 				return nil, err
