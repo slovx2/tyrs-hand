@@ -101,9 +101,14 @@ func (m *Manager) AnswerInteractive(ctx context.Context, guildID string, id uuid
 	}
 	complete := nextInteractiveQuestion(request) < 0
 	if complete {
+		finalAnswer, marshalErr := json.Marshal(map[string]any{"answers": request.Draft})
+		if marshalErr != nil {
+			return ComponentCardPayload{}, marshalErr
+		}
 		_, err = tx.ExecContext(ctx, `UPDATE codex_interactive_requests SET
-			draft_answers=$2, answer=$2, status='resolved', answer_surface='discord',
-			resolved_at=now(), updated_at=now() WHERE id=$1 AND status='pending'`, id, draft)
+			draft_answers=$2, answer=$3, status='resolved', answer_surface='discord',
+			resolved_at=now(), updated_at=now() WHERE id=$1 AND status='pending'`, id, draft,
+			finalAnswer)
 		request.Status, request.Surface = "resolved", "discord"
 	} else {
 		_, err = tx.ExecContext(ctx, `UPDATE codex_interactive_requests SET

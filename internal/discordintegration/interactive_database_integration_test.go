@@ -54,7 +54,8 @@ func TestInteractiveProjectionCollectsDiscordAnswers(t *testing.T) {
 		FROM codex_interactive_requests WHERE id=$1`, requestID).Scan(&status, &surface, &answer))
 	require.Equal(t, "resolved", status)
 	require.Equal(t, "discord", surface)
-	require.JSONEq(t, `{"choice":{"answers":["是"]},"detail":{"answers":["因为需要"]}}`, string(answer))
+	require.JSONEq(t, `{"answers":{"choice":{"answers":["是"]},`+
+		`"detail":{"answers":["因为需要"]}}}`, string(answer))
 
 	card, err = manager.AnswerInteractive(ctx, testGuildID, requestID, 0, 1, "")
 	require.NoError(t, err, "旧按钮必须幂等返回已完成状态")
