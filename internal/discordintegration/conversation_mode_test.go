@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/disgoorg/disgo/discord"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
@@ -52,4 +53,20 @@ func TestProgressCardOnlyShowsPlanMode(t *testing.T) {
 	waiting := interactiveCard(InteractiveProjection{Status: "pending", CollaborationMode: "plan",
 		Questions: []InteractiveQuestion{{ID: "q", Header: "确认", Question: "继续？"}}})
 	require.Contains(t, waiting.Body, "模式：Plan")
+}
+
+func TestCommandInteractionUpdateSetsComponentsV2Flag(t *testing.T) {
+	components, err := discordCardComponents(conversationModeCard(ConversationModeState{
+		ConversationID: uuid.New(), Mode: "plan", Revision: 1,
+	}, ""))
+	require.NoError(t, err)
+
+	update := commandInteractionUpdate("", components)
+	require.NotNil(t, update.Flags)
+	require.True(t, update.Flags.Has(discord.MessageFlagIsComponentsV2))
+	require.NotNil(t, update.Components)
+
+	plain := commandInteractionUpdate("操作完成", nil)
+	require.Nil(t, plain.Flags)
+	require.Equal(t, "操作完成", *plain.Content)
 }

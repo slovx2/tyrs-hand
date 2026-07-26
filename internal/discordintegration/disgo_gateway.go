@@ -299,11 +299,20 @@ func (c *DisgoConnector) onCommand(event *events.ApplicationCommandInteractionCr
 	if err != nil {
 		content = err.Error()
 	}
-	update := discord.MessageUpdate{Content: &content}
-	if components != nil {
-		update.Components = &components
+	update := commandInteractionUpdate(content, components)
+	_, responseErr := event.Client().Rest.UpdateInteractionResponse(event.ApplicationID(), event.Token(), update)
+	err = errors.Join(err, responseErr)
+}
+
+func commandInteractionUpdate(content string, components []discord.LayoutComponent) discord.MessageUpdate {
+	if components == nil {
+		return discord.MessageUpdate{Content: &content}
 	}
-	_, _ = event.Client().Rest.UpdateInteractionResponse(event.ApplicationID(), event.Token(), update)
+	update := discord.NewMessageUpdateV2(components...)
+	emptyEmbeds := []discord.Embed{}
+	update.Content, update.Embeds = &content, &emptyEmbeds
+	update.AllowedMentions = &discord.AllowedMentions{}
+	return update
 }
 
 func (c *DisgoConnector) onComponent(event *events.ComponentInteractionCreate) {
