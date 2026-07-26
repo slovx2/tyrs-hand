@@ -3,7 +3,6 @@ set -euo pipefail
 
 agent_label=ai.tyrs-hand.browser-agent
 agent_root="$HOME/Library/Application Support/Tyrs Hand/browser-agent"
-policy_backup_root="$HOME/Library/Application Support/Tyrs Hand/chrome-policy-backups"
 launch_agent="$HOME/Library/LaunchAgents/$agent_label.plist"
 log_root="$HOME/Library/Logs/Tyrs Hand"
 
@@ -18,67 +17,6 @@ read_json_value() {
   local file=$1 key=$2
   [[ -f $file ]] || return 1
   /usr/bin/plutil -extract "$key" raw -o - "$file" 2>/dev/null
-}
-
-backup_chrome_policy() {
-  local policy=$1
-  local backup_root="$policy_backup_root"
-  mkdir -p "$backup_root"
-  if sudo test -f "$policy"; then
-    sudo cat "$policy" > "$backup_root/com.google.Chrome.$(date -u +%Y%m%dT%H%M%SZ).$$.plist"
-    local backups=()
-    while IFS= read -r backup; do
-      backups+=("$backup")
-    done < <(find "$backup_root" -maxdepth 1 -type f -name 'com.google.Chrome.*.plist' -print | sort -r)
-    if (( ${#backups[@]} > 4 )); then
-      rm -f "${backups[@]:4}"
-    fi
-  fi
-}
-
-install_chrome_policy() {
-  local id=$1 update_url=$2 policy=/Library/Managed\ Preferences/com.google.Chrome.plist
-  backup_chrome_policy "$policy"
-  sudo mkdir -p "$(dirname "$policy")"
-  if ! sudo test -f "$policy"; then
-    sudo /usr/bin/plutil -create xml1 "$policy"
-  fi
-  if ! sudo /usr/libexec/PlistBuddy -c 'Print :ExtensionInstallForcelist' "$policy" >/dev/null 2>&1; then
-    sudo /usr/libexec/PlistBuddy -c 'Add :ExtensionInstallForcelist array' "$policy"
-  fi
-  local entry="$id;$update_url"
-  local index=0 current found=0
-  while current=$(sudo /usr/libexec/PlistBuddy -c "Print :ExtensionInstallForcelist:$index" "$policy" 2>/dev/null); do
-    if [[ $current == "$id;"* ]]; then
-      sudo /usr/libexec/PlistBuddy -c "Set :ExtensionInstallForcelist:$index $entry" "$policy"
-      found=1
-      break
-    fi
-    ((index += 1))
-  done
-  if (( found == 0 )); then
-    sudo /usr/libexec/PlistBuddy -c "Add :ExtensionInstallForcelist:$index string $entry" "$policy"
-  fi
-  sudo chmod 0644 "$policy"
-}
-
-remove_chrome_policy() {
-  local policy=/Library/Managed\ Preferences/com.google.Chrome.plist
-  local id
-  id=$(read_json_value "$agent_root/config.json" extensionId || true)
-  [[ -n $id ]] || return 0
-  sudo test -f "$policy" || return 0
-  backup_chrome_policy "$policy"
-  local index=0 entry indexes=()
-  while entry=$(sudo /usr/libexec/PlistBuddy -c "Print :ExtensionInstallForcelist:$index" "$policy" 2>/dev/null); do
-    if [[ $entry == "$id;"* ]]; then
-      indexes+=("$index")
-    fi
-    ((index += 1))
-  done
-  for ((index = ${#indexes[@]} - 1; index >= 0; index--)); do
-    sudo /usr/libexec/PlistBuddy -c "Delete :ExtensionInstallForcelist:${indexes[index]}" "$policy"
-  done
 }
 
 usage() {
@@ -109,12 +47,10 @@ case "$operation" in
     exit 0
     ;;
   uninstall)
-    sudo -v
     launchctl bootout "gui/$(id -u)" "$launch_agent" 2>/dev/null || true
     rm -f "$launch_agent"
-    remove_chrome_policy
     rm -rf "$agent_root"
-    echo "桌面端 Browser Agent 已卸载；Chrome 策略备份保留在 $policy_backup_root。"
+    echo "桌面端 Browser Agent 已卸载。"
     exit 0
     ;;
   *) usage ;;
@@ -131,7 +67,6 @@ extension_id=$8
 [[ -f $bundle && -f $identity_file && -f $known_hosts_file ]] || { echo "安装文件或 SSH 文件不存在" >&2; exit 1; }
 [[ $ssh_port =~ ^[0-9]+$ && $extension_id =~ ^[a-p]{32}$ ]] || { echo "SSH 端口或扩展 ID 无效" >&2; exit 1; }
 (( ssh_port >= 1 && ssh_port <= 65535 )) || { echo "SSH 端口超出范围" >&2; exit 1; }
-sudo -v
 
 mkdir -p "$agent_root/releases" "$log_root" "$HOME/Library/LaunchAgents"
 temporary=$(mktemp -d "$agent_root/releases/.install.XXXXXX")
@@ -170,6 +105,8 @@ if [[ -L $agent_root/current && -d $(readlink "$agent_root/current") ]]; then
   replace_link "$agent_root/previous" "$(readlink "$agent_root/current")"
 fi
 replace_link "$agent_root/current" "$destination"
+"$destination/node" "$script_dir/prepare-unpacked-extension.mjs" \
+  "$destination/app/tyrs-browser-extension.crx" "$agent_root/unpacked-extension" "$extension_id"
 
 "$destination/node" - "$launch_agent" "$agent_label" "$agent_root" "$config" "$log_root" <<'NODE'
 const fs = require('fs');
@@ -187,10 +124,10 @@ fs.writeFileSync(file, JSON.stringify({
 NODE
 /usr/bin/plutil -convert xml1 "$launch_agent"
 chmod 0644 "$launch_agent"
-install_chrome_policy "$extension_id" "http://127.0.0.1:8931/extension/update.xml"
 launchctl bootout "gui/$(id -u)" "$launch_agent" 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "$launch_agent"
 launchctl kickstart -k "gui/$(id -u)/$agent_label"
 trap - EXIT
 rm -rf "$temporary"
 echo "桌面端 Browser Agent $version 已安装。"
+echo "请在 chrome://extensions 开启开发者模式并加载：$agent_root/unpacked-extension"
