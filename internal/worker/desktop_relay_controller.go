@@ -372,7 +372,8 @@ func (c *desktopRelayController) injectDesktopRuntime(params json.RawMessage,
 	}
 	applyModelProviderConfig(config, c.environment.runtime.ModelSource,
 		c.environment.runtime.ModelBaseURL)
-	hideModelAPIKey(config)
+	applyBrowserMCPConfig(config, c.processor.cfg)
+	hideManagedSecrets(config)
 	value["config"] = config
 	if includeTools {
 		cwd, _ := value["cwd"].(string)

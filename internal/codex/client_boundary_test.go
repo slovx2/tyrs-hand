@@ -51,7 +51,7 @@ func TestClientEnforcesManagedAppServerConfiguration(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, ManagedAppServerArguments("stdio://"), launcher.specs[0].Args)
 	require.Contains(t, launcher.specs[0].Args,
-		`shell_environment_policy.exclude=["TYRS_HAND_MODEL_API_KEY"]`)
+		`shell_environment_policy.exclude=["TYRS_HAND_MODEL_API_KEY","TYRS_BROWSER_MCP_TOKEN"]`)
 	require.Contains(t, launcher.specs[0].Args, "allow_login_shell=false")
 	require.Contains(t, launcher.specs[0].Args,
 		`openai_base_url="https://chatgpt.com/backend-api/codex"`)

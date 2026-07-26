@@ -142,7 +142,7 @@ func (p *RemoteProcessor) coordinateEnvironment(ctx context.Context,
 		if err == nil {
 			runtime.ModelSource = credential.ModelSource
 			runtime.ModelBaseURL = credential.BaseURL
-			runtime.ProcessEnvironment, err = remoteCredentialEnvironment(credential)
+			runtime.ProcessEnvironment, err = remoteCodexProcessEnvironment(credential, p.cfg)
 		}
 		if err == nil {
 			var changed bool

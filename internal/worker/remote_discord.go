@@ -45,7 +45,7 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
-	processEnvironment, err := remoteCredentialEnvironment(runtimeCredential)
+	processEnvironment, err := remoteCodexProcessEnvironment(runtimeCredential, p.cfg)
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}

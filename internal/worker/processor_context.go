@@ -667,15 +667,7 @@ func codexRuntimeConfig(environment []string, workerDataRoot string,
 ) map[string]any {
 	config := replygate.SessionConfig()
 	if len(capabilities) > 0 {
-		cfg := capabilities[0]
-		if cfg.BrowserMCPURL != "" && environmentValue(environment,
-			"TYRS_BROWSER_MCP_TOKEN") != "" {
-			config["mcp_servers"] = map[string]any{"chrome": map[string]any{
-				"url": cfg.BrowserMCPURL, "bearer_token_env_var": "TYRS_BROWSER_MCP_TOKEN",
-				"startup_timeout_sec": 10.0, "tool_timeout_sec": 120.0,
-				"required": false, "default_tools_approval_mode": "approve",
-			}}
-		}
+		applyBrowserMCPConfig(config, capabilities[0])
 	}
 	values := make(map[string]any, len(environment))
 	for _, entry := range environment {
@@ -689,7 +681,7 @@ func codexRuntimeConfig(environment []string, workerDataRoot string,
 		"inherit": "all",
 		"set":     values,
 	}
-	hideModelAPIKey(config)
+	hideManagedSecrets(config)
 	if strings.TrimSpace(workerDataRoot) != "" {
 		config["sandbox_workspace_write"] = map[string]any{
 			"writable_roots": []string{
@@ -699,6 +691,22 @@ func codexRuntimeConfig(environment []string, workerDataRoot string,
 		}
 	}
 	return config
+}
+
+func applyBrowserMCPConfig(runtimeConfig map[string]any, cfg config.Config) {
+	if cfg.BrowserMCPURL == "" {
+		return
+	}
+	servers, _ := runtimeConfig["mcp_servers"].(map[string]any)
+	if servers == nil {
+		servers = make(map[string]any)
+	}
+	servers["chrome"] = map[string]any{
+		"url": cfg.BrowserMCPURL, "bearer_token_env_var": "TYRS_BROWSER_MCP_TOKEN",
+		"startup_timeout_sec": 10.0, "tool_timeout_sec": 120.0,
+		"required": false, "default_tools_approval_mode": "approve",
+	}
+	runtimeConfig["mcp_servers"] = servers
 }
 
 func applyModelProviderConfig(config map[string]any, modelSource, baseURL string) {
@@ -722,13 +730,14 @@ func applyModelProviderConfig(config map[string]any, modelSource, baseURL string
 	config["model_providers"] = providers
 }
 
-func hideModelAPIKey(config map[string]any) {
+func hideManagedSecrets(config map[string]any) {
 	policy, _ := config["shell_environment_policy"].(map[string]any)
 	if policy == nil {
 		policy = map[string]any{"inherit": "all"}
 	}
 	if values, ok := policy["set"].(map[string]any); ok {
 		delete(values, "TYRS_HAND_MODEL_API_KEY")
+		delete(values, "TYRS_BROWSER_MCP_TOKEN")
 	}
 	excluded := make([]string, 0, 4)
 	switch values := policy["exclude"].(type) {
@@ -741,14 +750,19 @@ func hideModelAPIKey(config map[string]any) {
 			}
 		}
 	}
-	for _, value := range excluded {
-		if value == "TYRS_HAND_MODEL_API_KEY" {
-			policy["exclude"] = excluded
-			config["shell_environment_policy"] = policy
-			return
+	for _, managed := range []string{"TYRS_HAND_MODEL_API_KEY", "TYRS_BROWSER_MCP_TOKEN"} {
+		found := false
+		for _, value := range excluded {
+			if value == managed {
+				found = true
+				break
+			}
+		}
+		if !found {
+			excluded = append(excluded, managed)
 		}
 	}
-	policy["exclude"] = append(excluded, "TYRS_HAND_MODEL_API_KEY")
+	policy["exclude"] = excluded
 	config["shell_environment_policy"] = policy
 }
 
@@ -760,7 +774,7 @@ func prepareCodexRuntime(environment []string, workerDataRoot string,
 }
 
 func codexProcessEnvironment(environment []string, cfg config.Config) []string {
-	result := append([]string(nil), environment...)
+	result := removeEnvironmentValue(environment, "TYRS_BROWSER_MCP_TOKEN")
 	if cfg.EnableSSH {
 		result = setEnvironmentValue(result, "SSH_AUTH_SOCK",
 			filepath.Join(cfg.SSHAgentDir, "current.sock"))
@@ -774,6 +788,18 @@ func codexProcessEnvironment(environment []string, cfg config.Config) []string {
 	}
 	return setEnvironmentValue(result, "TYRS_BROWSER_MCP_TOKEN",
 		strings.TrimSpace(string(token)))
+}
+
+func removeEnvironmentValue(environment []string, key string) []string {
+	result := make([]string, 0, len(environment))
+	for _, entry := range environment {
+		entryKey, _, found := strings.Cut(entry, "=")
+		if found && entryKey == key {
+			continue
+		}
+		result = append(result, entry)
+	}
+	return result
 }
 
 func setEnvironmentValue(environment []string, key, value string) []string {

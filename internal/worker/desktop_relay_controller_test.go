@@ -108,7 +108,10 @@ func TestDesktopRelayForcesGlobalModelAndOmitsPlatformGitHubTools(t *testing.T) 
 	}))
 	t.Cleanup(control.Close)
 	controller := &desktopRelayController{
-		processor: &RemoteProcessor{cfg: config.Config{ControlTimeout: time.Second},
+		processor: &RemoteProcessor{cfg: config.Config{
+			ControlTimeout: time.Second,
+			BrowserMCPURL:  "http://host.docker.internal:8931/mcp",
+		},
 			client: workerprotocol.NewClient(control.URL, "credential", time.Second),
 			logger: zap.NewNop()},
 		environment: &environmentCodex{runtime: devcontainer.Runtime{
@@ -123,9 +126,12 @@ func TestDesktopRelayForcesGlobalModelAndOmitsPlatformGitHubTools(t *testing.T) 
 			"dynamicTools":[{"type":"namespace","name":"personal","tools":[]}],
 			"config":{
 				"model_providers":{"personal":{"base_url":"https://personal.example/v1"}},
-				"mcp_servers":{"personal":{"url":"https://mcp.example"}},
+				"mcp_servers":{
+					"personal":{"url":"https://mcp.example"},
+					"chrome":{"url":"https://user.example/mcp"}
+				},
 				"shell_environment_policy":{
-					"set":{"PERSONAL":"keep","TYRS_HAND_MODEL_API_KEY":"leak"},
+					"set":{"PERSONAL":"keep","TYRS_HAND_MODEL_API_KEY":"leak","TYRS_BROWSER_MCP_TOKEN":"leak"},
 					"exclude":["PERSONAL_SECRET"]
 				}
 			}
@@ -137,10 +143,16 @@ func TestDesktopRelayForcesGlobalModelAndOmitsPlatformGitHubTools(t *testing.T) 
 	runtimeConfig := params["config"].(map[string]any)
 	require.Equal(t, "tyrs-hand-provider", runtimeConfig["model_provider"])
 	require.Contains(t, runtimeConfig["model_providers"], "personal")
-	require.Contains(t, runtimeConfig, "mcp_servers")
+	mcpServers := runtimeConfig["mcp_servers"].(map[string]any)
+	require.Contains(t, mcpServers, "personal")
+	chrome := mcpServers["chrome"].(map[string]any)
+	require.Equal(t, "http://host.docker.internal:8931/mcp", chrome["url"])
+	require.Equal(t, false, chrome["required"])
 	policy := runtimeConfig["shell_environment_policy"].(map[string]any)
 	require.NotContains(t, policy["set"], "TYRS_HAND_MODEL_API_KEY")
-	require.ElementsMatch(t, []any{"PERSONAL_SECRET", "TYRS_HAND_MODEL_API_KEY"},
+	require.NotContains(t, policy["set"], "TYRS_BROWSER_MCP_TOKEN")
+	require.ElementsMatch(t, []any{"PERSONAL_SECRET", "TYRS_HAND_MODEL_API_KEY",
+		"TYRS_BROWSER_MCP_TOKEN"},
 		policy["exclude"])
 	tools := params["dynamicTools"].([]any)
 	encodedTools, err := json.Marshal(tools)
@@ -155,7 +167,12 @@ func TestDesktopRelayForcesGlobalModelAndOmitsPlatformGitHubTools(t *testing.T) 
 		Params: json.RawMessage(`{"threadId":"thread","config":{}}`),
 	})
 	require.NoError(t, err)
-	require.Contains(t, string(resume.Params), `"model_provider":"openai"`)
+	var resumeParams map[string]any
+	require.NoError(t, json.Unmarshal(resume.Params, &resumeParams))
+	resumeConfig := resumeParams["config"].(map[string]any)
+	require.Equal(t, "openai", resumeConfig["model_provider"])
+	resumeMCP := resumeConfig["mcp_servers"].(map[string]any)
+	require.Contains(t, resumeMCP, "chrome")
 	require.NotContains(t, string(resume.Params), `"dynamicTools"`)
 }
 

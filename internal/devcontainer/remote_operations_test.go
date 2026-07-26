@@ -232,7 +232,8 @@ func TestReconfigureRemoteEnvironmentKeepsContainerRunningAndSecuresSSH(t *testi
 	require.True(t, runner.contains("chmod 0666 /run/tyrs-hand/app-server.sock"))
 	require.True(t, runner.contains("docker exec --detach --user 0:0"))
 	require.True(t, runner.contains("sshd -D -e"))
-	require.True(t, runner.contains(`shell_environment_policy.exclude=["TYRS_HAND_MODEL_API_KEY"]`))
+	require.True(t, runner.contains(
+		`shell_environment_policy.exclude=["TYRS_HAND_MODEL_API_KEY","TYRS_BROWSER_MCP_TOKEN"]`))
 	require.True(t, runner.contains("allow_login_shell=false"))
 	require.True(t, runner.contains(`openai_base_url="https://chatgpt.com/backend-api/codex"`))
 }

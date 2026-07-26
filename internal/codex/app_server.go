@@ -7,7 +7,7 @@ func ManagedAppServerArguments(listen string) []string {
 	return []string{
 		"--config", `shell_environment_policy.inherit="core"`,
 		"--config", "shell_environment_policy.ignore_default_excludes=false",
-		"--config", `shell_environment_policy.exclude=["TYRS_HAND_MODEL_API_KEY"]`,
+		"--config", `shell_environment_policy.exclude=["TYRS_HAND_MODEL_API_KEY","TYRS_BROWSER_MCP_TOKEN"]`,
 		"--config", "allow_login_shell=false",
 		"--config", `openai_base_url="` + chatGPTCodexBaseURL + `"`,
 		"app-server", "--listen", listen,

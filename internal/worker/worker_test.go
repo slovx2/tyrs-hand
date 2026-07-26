@@ -221,7 +221,8 @@ func TestPrepareCodexRuntimeInjectsManagedCapabilities(t *testing.T) {
 	values := policy["set"].(map[string]any)
 	require.NotContains(t, values, "TYRS_BROWSER_MCP_TOKEN")
 	require.NotContains(t, values, "TYRS_HAND_MODEL_API_KEY")
-	require.Contains(t, policy["exclude"], "TYRS_HAND_MODEL_API_KEY")
+	require.ElementsMatch(t, []string{"TYRS_HAND_MODEL_API_KEY", "TYRS_BROWSER_MCP_TOKEN"},
+		policy["exclude"])
 	require.Equal(t, "/run/tyrs-hand-ssh-agent/current.sock", values["SSH_AUTH_SOCK"])
 	mcpServers := runtimeConfig["mcp_servers"].(map[string]any)
 	chrome := mcpServers["chrome"].(map[string]any)
@@ -247,12 +248,13 @@ func TestModelProviderConfigPreservesPersonalSettings(t *testing.T) {
 			"inherit": "all",
 			"set": map[string]any{
 				"PERSONAL": "keep", "TYRS_HAND_MODEL_API_KEY": "must-not-leak",
+				"TYRS_BROWSER_MCP_TOKEN": "must-not-leak",
 			},
 			"exclude": []any{"PERSONAL_SECRET"},
 		},
 	}
 	applyModelProviderConfig(runtimeConfig, settings.ModelSourceProvider, "")
-	hideModelAPIKey(runtimeConfig)
+	hideManagedSecrets(runtimeConfig)
 	require.Equal(t, "tyrs-hand-provider", runtimeConfig["model_provider"])
 	providers := runtimeConfig["model_providers"].(map[string]any)
 	require.Contains(t, providers, "personal")
@@ -264,7 +266,9 @@ func TestModelProviderConfigPreservesPersonalSettings(t *testing.T) {
 	policy := runtimeConfig["shell_environment_policy"].(map[string]any)
 	require.Equal(t, "keep", policy["set"].(map[string]any)["PERSONAL"])
 	require.NotContains(t, policy["set"], "TYRS_HAND_MODEL_API_KEY")
-	require.ElementsMatch(t, []string{"PERSONAL_SECRET", "TYRS_HAND_MODEL_API_KEY"},
+	require.NotContains(t, policy["set"], "TYRS_BROWSER_MCP_TOKEN")
+	require.ElementsMatch(t, []string{"PERSONAL_SECRET", "TYRS_HAND_MODEL_API_KEY",
+		"TYRS_BROWSER_MCP_TOKEN"},
 		policy["exclude"])
 
 	applyModelProviderConfig(runtimeConfig, settings.ModelSourceChatGPT, "")
@@ -285,29 +289,55 @@ func TestPrepareCodexRuntimeBrowserTokenBranches(t *testing.T) {
 		name      string
 		url       string
 		tokenPath string
-		enabled   bool
+		hasToken  bool
+		hasMCP    bool
 	}{
-		{name: "有效 Token", url: "http://host.docker.internal:8931/mcp", tokenPath: validToken, enabled: true},
+		{name: "有效 Token", url: "http://host.docker.internal:8931/mcp", tokenPath: validToken,
+			hasToken: true, hasMCP: true},
 		{name: "未配置 URL", tokenPath: validToken},
-		{name: "Token 文件缺失", url: "http://host.docker.internal:8931/mcp", tokenPath: filepath.Join(root, "missing")},
-		{name: "Token 文件为空", url: "http://host.docker.internal:8931/mcp", tokenPath: emptyToken},
-		{name: "Token 只有空白", url: "http://host.docker.internal:8931/mcp", tokenPath: whitespaceToken},
-		{name: "Token 路径是目录", url: "http://host.docker.internal:8931/mcp", tokenPath: root},
+		{name: "Token 文件缺失", url: "http://host.docker.internal:8931/mcp",
+			tokenPath: filepath.Join(root, "missing"), hasMCP: true},
+		{name: "Token 文件为空", url: "http://host.docker.internal:8931/mcp",
+			tokenPath: emptyToken, hasMCP: true},
+		{name: "Token 只有空白", url: "http://host.docker.internal:8931/mcp",
+			tokenPath: whitespaceToken, hasMCP: true},
+		{name: "Token 路径是目录", url: "http://host.docker.internal:8931/mcp",
+			tokenPath: root, hasMCP: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			environment, runtimeConfig := prepareCodexRuntime([]string{"PATH=/usr/bin"}, "",
+			environment, runtimeConfig := prepareCodexRuntime([]string{
+				"PATH=/usr/bin", "TYRS_BROWSER_MCP_TOKEN=stale",
+			}, "",
 				config.Config{BrowserMCPURL: test.url, BrowserMCPTokenFile: test.tokenPath})
-			if test.enabled {
+			if test.hasToken {
 				require.Equal(t, "token-value", environmentValue(environment,
 					"TYRS_BROWSER_MCP_TOKEN"))
-				require.Contains(t, runtimeConfig, "mcp_servers")
-				return
+			} else {
+				require.Empty(t, environmentValue(environment, "TYRS_BROWSER_MCP_TOKEN"))
 			}
-			require.Empty(t, environmentValue(environment, "TYRS_BROWSER_MCP_TOKEN"))
-			require.NotContains(t, runtimeConfig, "mcp_servers")
+			if test.hasMCP {
+				require.Contains(t, runtimeConfig, "mcp_servers")
+			} else {
+				require.NotContains(t, runtimeConfig, "mcp_servers")
+			}
 		})
 	}
+}
+
+func TestRemoteCodexProcessEnvironmentIncludesBrowserToken(t *testing.T) {
+	tokenPath := filepath.Join(t.TempDir(), "browser-token")
+	require.NoError(t, os.WriteFile(tokenPath, []byte("browser-secret\n"), 0o600))
+	environment, err := remoteCodexProcessEnvironment(workerprotocol.RuntimeCredential{
+		ModelSource: settings.ModelSourceProvider, APIKey: "model-secret",
+	}, config.Config{
+		BrowserMCPURL:       "http://host.docker.internal:8931/mcp",
+		BrowserMCPTokenFile: tokenPath,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "model-secret", environmentValue(environment, "TYRS_HAND_MODEL_API_KEY"))
+	require.Equal(t, "browser-secret", environmentValue(environment,
+		"TYRS_BROWSER_MCP_TOKEN"))
 }
 
 func environmentKeyCount(environment []string, key string) int {

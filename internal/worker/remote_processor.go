@@ -361,6 +361,16 @@ func remoteCredentialEnvironment(credential workerprotocol.RuntimeCredential) ([
 	return environment, nil
 }
 
+func remoteCodexProcessEnvironment(credential workerprotocol.RuntimeCredential,
+	cfg config.Config,
+) ([]string, error) {
+	environment, err := remoteCredentialEnvironment(credential)
+	if err != nil {
+		return nil, err
+	}
+	return codexProcessEnvironment(environment, cfg), nil
+}
+
 func remoteGitHubAdditionalContext(job *workerprotocol.GitHubSnapshot,
 	workspace ports.Workspace,
 ) map[string]ports.AdditionalContextEntry {
