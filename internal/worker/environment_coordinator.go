@@ -142,7 +142,8 @@ func (p *RemoteProcessor) coordinateEnvironment(ctx context.Context,
 		if err == nil {
 			runtime.ModelSource = credential.ModelSource
 			runtime.ModelBaseURL = credential.BaseURL
-			runtime.ProcessEnvironment, err = remoteCodexProcessEnvironment(credential, p.cfg)
+			runtime.ProcessEnvironment, err = remoteCodexProcessEnvironment(credential, p.cfg,
+				manifest.EnvironmentID.String())
 		}
 		if err == nil {
 			var changed bool
@@ -174,6 +175,9 @@ func (p *RemoteProcessor) coordinateEnvironment(ctx context.Context,
 	}
 	if err == nil {
 		_, err = p.environments.ensure(runtime, manifest)
+	}
+	if err == nil && p.browserAgent != nil {
+		err = p.browserAgent.Ensure(manifest.EnvironmentID)
 	}
 	if err != nil {
 		state.Status, state.Error = "error", err.Error()

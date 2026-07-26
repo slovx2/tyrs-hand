@@ -181,11 +181,12 @@ func TestValidateWorkerCapabilities(t *testing.T) {
 
 	valid := Config{
 		EnableSSH: true, SSHAgentDir: "/run/tyrs-hand-ssh-agent",
-		SSHAgentHostDir:      "/opt/tyrs-hand/ssh-agent",
-		BrowserMCPURL:        "http://host.docker.internal:8931/mcp",
-		BrowserMCPTokenFile:  "/run/secrets/browser_mcp_token",
-		BrowserFilesRoot:     "/run/tyrs-hand-browser-files",
-		BrowserFilesHostRoot: "/opt/tyrs-hand/browser-files",
+		SSHAgentHostDir:          "/opt/tyrs-hand/ssh-agent",
+		BrowserMCPURL:            "http://host.docker.internal:8931/mcp",
+		BrowserMCPTokenFile:      "/run/secrets/browser_mcp_token",
+		BrowserAgentRelayAddress: "host.docker.internal:8934",
+		BrowserFilesRoot:         "/run/tyrs-hand-browser-files",
+		BrowserFilesHostRoot:     "/opt/tyrs-hand/browser-files",
 	}
 	require.NoError(t, valid.validateWorkerCapabilities())
 }

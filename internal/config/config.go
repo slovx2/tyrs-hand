@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net"
 	"net/netip"
 	"net/url"
 	"os"
@@ -66,6 +67,7 @@ type Config struct {
 	SSHAgentHostDir                string
 	BrowserMCPURL                  string
 	BrowserMCPTokenFile            string
+	BrowserAgentRelayAddress       string
 	BrowserFilesRoot               string
 	BrowserFilesHostRoot           string
 }
@@ -134,6 +136,7 @@ func load(workerProcess bool) (Config, error) {
 		SSHAgentHostDir:                filepath.Clean(v.GetString("ssh_agent_host_dir")),
 		BrowserMCPURL:                  strings.TrimSpace(v.GetString("browser_mcp_url")),
 		BrowserMCPTokenFile:            filepath.Clean(v.GetString("browser_mcp_token_file")),
+		BrowserAgentRelayAddress:       strings.TrimSpace(v.GetString("browser_agent_relay_address")),
 		BrowserFilesRoot:               filepath.Clean(v.GetString("browser_files_root")),
 		BrowserFilesHostRoot:           filepath.Clean(v.GetString("browser_files_host_root")),
 	}
@@ -218,6 +221,9 @@ func (c Config) validateWorkerCapabilities() error {
 		if c.BrowserMCPTokenFile == "." || c.BrowserFilesRoot == "." ||
 			c.BrowserFilesHostRoot == "." {
 			return errors.New("启用浏览器时必须配置 Token 文件和文件交换目录")
+		}
+		if _, _, err := net.SplitHostPort(c.BrowserAgentRelayAddress); err != nil {
+			return errors.New("浏览器 Agent relay 地址必须是 host:port")
 		}
 	}
 	return nil
@@ -307,6 +313,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("ssh_agent_host_dir", "/opt/tyrs-hand/ssh-agent")
 	v.SetDefault("browser_mcp_url", "")
 	v.SetDefault("browser_mcp_token_file", "/run/secrets/browser_mcp_token")
+	v.SetDefault("browser_agent_relay_address", "host.docker.internal:8934")
 	v.SetDefault("browser_files_root", "/run/tyrs-hand-browser-files")
 	v.SetDefault("browser_files_host_root", "/opt/tyrs-hand/browser-files")
 	v.SetDefault("worker_api_ip_allowlist", "")

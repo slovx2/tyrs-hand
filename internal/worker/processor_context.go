@@ -767,13 +767,13 @@ func hideManagedSecrets(config map[string]any) {
 }
 
 func prepareCodexRuntime(environment []string, workerDataRoot string,
-	cfg config.Config,
+	cfg config.Config, scope string,
 ) ([]string, map[string]any) {
-	processEnvironment := codexProcessEnvironment(environment, cfg)
+	processEnvironment := codexProcessEnvironment(environment, cfg, scope)
 	return processEnvironment, codexRuntimeConfig(processEnvironment, workerDataRoot, cfg)
 }
 
-func codexProcessEnvironment(environment []string, cfg config.Config) []string {
+func codexProcessEnvironment(environment []string, cfg config.Config, scope string) []string {
 	result := removeEnvironmentValue(environment, "TYRS_BROWSER_MCP_TOKEN")
 	if cfg.EnableSSH {
 		result = setEnvironmentValue(result, "SSH_AUTH_SOCK",
@@ -782,12 +782,16 @@ func codexProcessEnvironment(environment []string, cfg config.Config) []string {
 	if cfg.BrowserMCPURL == "" {
 		return result
 	}
-	token, err := os.ReadFile(cfg.BrowserMCPTokenFile)
-	if err != nil || strings.TrimSpace(string(token)) == "" {
+	secret, err := os.ReadFile(cfg.BrowserMCPTokenFile)
+	if err != nil {
+		return result
+	}
+	token, err := deriveBrowserToken(string(secret), scope)
+	if err != nil {
 		return result
 	}
 	return setEnvironmentValue(result, "TYRS_BROWSER_MCP_TOKEN",
-		strings.TrimSpace(string(token)))
+		token)
 }
 
 func removeEnvironmentValue(environment []string, key string) []string {
@@ -828,7 +832,7 @@ func browserDeveloperInstructions(cfg config.Config, current string) string {
 	if cfg.BrowserMCPURL == "" {
 		return current
 	}
-	return current + "\nThe host Chrome profile is the only browser backend. Use host_browser tools only to expose local services or exchange files with it. If the chrome MCP is unavailable, report that directly; do not start Chrome, CDP, a container browser, or a headless browser."
+	return current + "\nUse the single chrome MCP and browser_select to choose between the worker browser and desktop browser. Use browser_files.stage_file and browser_files.import_download for file exchange. browser_files.resolve_worker_url only works with the worker browser; the desktop browser cannot reach development-container services in this release. If the chrome MCP is unavailable, report that directly; do not start another Chrome, CDP, container browser, or headless browser."
 }
 
 func withoutGenericReply(tools []string) []string {

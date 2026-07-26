@@ -205,12 +205,14 @@ func TestPrepareCodexRuntimeInjectsManagedCapabilities(t *testing.T) {
 		EnableSSH: true, SSHAgentDir: "/run/tyrs-hand-ssh-agent",
 		BrowserMCPURL:       "http://host.docker.internal:8931/mcp",
 		BrowserMCPTokenFile: tokenPath,
-	})
+	}, "worker")
 
 	require.Equal(t, original, base)
 	require.Equal(t, "/run/tyrs-hand-ssh-agent/current.sock",
 		environmentValue(environment, "SSH_AUTH_SOCK"))
-	require.Equal(t, "managed-token", environmentValue(environment,
+	expectedToken, err := deriveBrowserToken("managed-token", "worker")
+	require.NoError(t, err)
+	require.Equal(t, expectedToken, environmentValue(environment,
 		"TYRS_BROWSER_MCP_TOKEN"))
 	require.Equal(t, "model-secret", environmentValue(environment,
 		"TYRS_HAND_MODEL_API_KEY"))
@@ -309,9 +311,12 @@ func TestPrepareCodexRuntimeBrowserTokenBranches(t *testing.T) {
 			environment, runtimeConfig := prepareCodexRuntime([]string{
 				"PATH=/usr/bin", "TYRS_BROWSER_MCP_TOKEN=stale",
 			}, "",
-				config.Config{BrowserMCPURL: test.url, BrowserMCPTokenFile: test.tokenPath})
+				config.Config{BrowserMCPURL: test.url, BrowserMCPTokenFile: test.tokenPath},
+				"worker")
 			if test.hasToken {
-				require.Equal(t, "token-value", environmentValue(environment,
+				expected, err := deriveBrowserToken("token-value", "worker")
+				require.NoError(t, err)
+				require.Equal(t, expected, environmentValue(environment,
 					"TYRS_BROWSER_MCP_TOKEN"))
 			} else {
 				require.Empty(t, environmentValue(environment, "TYRS_BROWSER_MCP_TOKEN"))
@@ -333,11 +338,12 @@ func TestRemoteCodexProcessEnvironmentIncludesBrowserToken(t *testing.T) {
 	}, config.Config{
 		BrowserMCPURL:       "http://host.docker.internal:8931/mcp",
 		BrowserMCPTokenFile: tokenPath,
-	})
+	}, "11111111-1111-4111-8111-111111111111")
 	require.NoError(t, err)
 	require.Equal(t, "model-secret", environmentValue(environment, "TYRS_HAND_MODEL_API_KEY"))
-	require.Equal(t, "browser-secret", environmentValue(environment,
-		"TYRS_BROWSER_MCP_TOKEN"))
+	expected, err := deriveBrowserToken("browser-secret", "11111111-1111-4111-8111-111111111111")
+	require.NoError(t, err)
+	require.Equal(t, expected, environmentValue(environment, "TYRS_BROWSER_MCP_TOKEN"))
 }
 
 func environmentKeyCount(environment []string, key string) int {

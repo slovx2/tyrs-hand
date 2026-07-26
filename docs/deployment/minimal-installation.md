@@ -225,7 +225,7 @@ Agent 使用生成的 SSH Config，支持 `ssh`、`scp`、`sftp`、PTY、ProxyJu
 - `/usr/local/bin/node` 可执行文件；Bridge 的依赖和版本由发布制品锁定。
 - `systemd --user` 和该用户的 D-Bus，`/run/user/<uid>/bus` 必须存在。
 - `setfacl`；Ubuntu 可通过系统包 `acl` 提供。
-- Docker/Compose，以及未向 LAN 或 Tailscale 发布的宿主端口 `8931`、`8932` 和内部端口 `8933`。
+- Docker/Compose，以及未向 LAN 或 Tailscale 发布的宿主端口 `8931`、`8932`、内部端口 `8933` 和 Browser Agent relay 端口 `8934`。
 
 在 Tyrs Hand 源码根目录执行：
 
@@ -299,9 +299,9 @@ sudo -u "$desktop_user" env \
 
 只有 `/health` 为 `ready` 还不能证明 Agent 链路完整。安装后至少执行一次真实 Codex 任务，验证普通 shell 命令、`chrome.browser_tabs` 打开页面、读取标题并关闭新标签页，全程没有 Codex 审批或 Chrome 调试确认窗。
 
-Bridge 只允许 loopback 和 Docker bridge CIDR，防火墙也不应向 LAN/Tailscale 开放这些端口。Agent 验证开发服务时，服务必须监听 `0.0.0.0`；平台会通过 `host_browser.resolve_local_url` 把 Worker 或当前开发容器的端口解析成宿主 Chrome 可访问的地址。`host_browser` 避开了 Responses API 保留的 `browser` 动态工具命名空间。
+Bridge 只允许 loopback 和 Docker bridge CIDR，防火墙也不应向 LAN/Tailscale 开放这些端口。唯一的 `chrome` MCP 默认控制“worker 浏览器”；开发环境 Session 可以调用 `browser_select` 切换到已注册的“桌面端浏览器”。开发服务必须监听 `0.0.0.0`，再通过 `browser_files.resolve_worker_url` 生成仅供 worker 浏览器访问的地址；首期不会把开发容器网络转发到桌面端浏览器。上传和下载统一使用 `browser_files.stage_file` 与 `browser_files.import_download`。
 
-安全边界按整台受管开发机划分：扩展可以控制当前 Profile 的全部普通标签页，但只有受管扩展能使用 Extension Token 接入 Relay，Worker 只能使用另一枚 MCP Token。扩展或 Bridge 失联后会停止浏览器 Session 并释放 debugger；不通过标签分组、每次确认弹窗或 Remote Debugging 端口限制标签页范围。
+安全边界按整台受管开发机划分：扩展可以控制当前 Profile 的全部普通标签页，但只有受管扩展能使用 Extension Token 接入 Relay。MCP Token 文件保存 HMAC 主密钥，Worker 只向 Codex 注入 `worker` 或环境 UUID 的派生 bearer，主密钥不会进入开发容器；Browser Agent 只持有本机 Extension Token 和独立 SSH 配置。扩展、Agent 或 Bridge 失联后会停止对应 Browser generation 并释放 debugger；不通过标签分组、每次确认弹窗或 Remote Debugging 端口限制标签页范围。
 
 浏览器上传和下载使用 `/opt/tyrs-hand/browser-files` 交换目录。工作区文件需要先通过平台工具暂存，单文件上限为 25 MiB；符号链接和工作区越界路径会被拒绝。任务结束时会清理文件，Sweeper 也会删除超过 1 小时的残留。
 
@@ -328,7 +328,7 @@ sudo deploy/browser/install-host-release.sh <desktop-user>
 
 发布或升级浏览器制品前必须逐项核对：
 
-1. Extension 与 Bridge 两个 fork 的目标提交、Release Tag 和源码锁完全对应，工作区没有未记录改动。
+1. Extension 与 Bridge 两个 fork 的目标提交、Release Tag 和源码锁完全对应，工作区没有未记录改动；Bridge Release 同时包含 macOS arm64/x64 Browser Agent bundle 及其 SHA256 清单。
 2. Extension Release 的 `extension-release.json` 中扩展 ID 与现有制品锁一致；除非明确执行签名密钥轮换，否则发现变化必须停止发布。
 3. Bridge CI 和 Release Workflow 下载的 Playwright Core Release 已同步到本次 Extension/Core 版本，不能继续引用旧的硬编码 Tag。
 4. `browser-artifacts.lock.json` 记录的 URL、提交、版本和 SHA256 均来自已发布制品，不使用本机临时产物替代生产 Release。

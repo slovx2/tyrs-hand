@@ -127,7 +127,8 @@ func (p *Processor) Process(ctx context.Context, claimed *codexcontrol.ClaimedCo
 	if err != nil {
 		return codexcontrol.TurnResult{}, err
 	}
-	environment, runtimeConfig := prepareCodexRuntime(environment, p.cfg.WorkerDataRoot, p.cfg)
+	environment, runtimeConfig := prepareCodexRuntime(environment, p.cfg.WorkerDataRoot, p.cfg,
+		"worker")
 	applyModelProviderConfig(runtimeConfig, provider.ModelSource, provider.BaseURL)
 	if err := replygate.Install(codexHome); err != nil {
 		return codexcontrol.TurnResult{}, fmt.Errorf("安装 GitHub 回复 Stop Hook: %w", err)

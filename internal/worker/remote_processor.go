@@ -33,6 +33,7 @@ type RemoteProcessor struct {
 	environments *environmentCodexRegistry
 	journals     *journalStore
 	logger       *zap.Logger
+	browserAgent *browserAgentRelayManager
 }
 
 func NewRemoteProcessor(ctx context.Context, cfg config.Config, client *workerprotocol.Client,
@@ -47,6 +48,18 @@ func NewRemoteProcessor(ctx context.Context, cfg config.Config, client *workerpr
 		logger.Error("初始化 Desktop Run Journal 失败", zap.Error(err))
 	}
 	processor.environments = newEnvironmentCodexRegistry(ctx, processor)
+	if cfg.BrowserMCPURL != "" && cfg.EnableDevelopmentContainers {
+		manager, err := newBrowserAgentRelayManager(cfg, logger)
+		if err != nil {
+			logger.Error("初始化桌面端 Browser Agent relay 失败", zap.Error(err))
+		} else {
+			processor.browserAgent = manager
+			go func() {
+				<-ctx.Done()
+				manager.Close()
+			}()
+		}
+	}
 	return processor
 }
 
@@ -64,6 +77,9 @@ func (p *RemoteProcessor) ProcessRemote(ctx context.Context, task *workerprotoco
 func (p *RemoteProcessor) ProcessDevelopmentOperation(ctx context.Context,
 	operation *workerprotocol.DevelopmentOperation,
 ) error {
+	if p.browserAgent != nil && operation.Operation != "provision" {
+		p.browserAgent.Reset(operation.EnvironmentID)
+	}
 	processEnvironment := []string(nil)
 	if operation.Operation == "provision" || operation.Operation == "reconfigure" ||
 		operation.Operation == "rebase" {
@@ -103,6 +119,11 @@ func (p *RemoteProcessor) ProcessDevelopmentOperation(ctx context.Context,
 	if operation.Operation == "rebase" {
 		operation.ImageID, err = p.development.ImageID(ctx, operation.ImageRef)
 		if err != nil {
+			return err
+		}
+	}
+	if p.browserAgent != nil {
+		if err := p.browserAgent.Ensure(operation.EnvironmentID); err != nil {
 			return err
 		}
 	}
@@ -152,6 +173,11 @@ func (p *RemoteProcessor) processDevelopmentProvision(ctx context.Context,
 	}
 	if err := p.development.EnsureRemoteDaemons(ctx, manifest, runtime); err != nil {
 		return err
+	}
+	if p.browserAgent != nil {
+		if err := p.browserAgent.Ensure(operation.EnvironmentID); err != nil {
+			return err
+		}
 	}
 	operation.ContainerID, operation.ImageRef, operation.ImageID = state.ContainerID,
 		state.ImageRef, state.ImageID
@@ -227,7 +253,8 @@ func (p *RemoteProcessor) processRemoteGitHub(ctx context.Context, task *workerp
 	if err != nil {
 		return codexcontrol.TurnResult{}, err
 	}
-	environment, runtimeConfig := prepareCodexRuntime(environment, p.cfg.WorkerDataRoot, p.cfg)
+	environment, runtimeConfig := prepareCodexRuntime(environment, p.cfg.WorkerDataRoot, p.cfg,
+		"worker")
 	applyModelProviderConfig(runtimeConfig, credential.ModelSource, credential.BaseURL)
 	if err := replygate.Install(codexHome); err != nil {
 		return codexcontrol.TurnResult{}, fmt.Errorf("安装 GitHub 回复 Stop Hook: %w", err)
@@ -362,13 +389,13 @@ func remoteCredentialEnvironment(credential workerprotocol.RuntimeCredential) ([
 }
 
 func remoteCodexProcessEnvironment(credential workerprotocol.RuntimeCredential,
-	cfg config.Config,
+	cfg config.Config, scope string,
 ) ([]string, error) {
 	environment, err := remoteCredentialEnvironment(credential)
 	if err != nil {
 		return nil, err
 	}
-	return codexProcessEnvironment(environment, cfg), nil
+	return codexProcessEnvironment(environment, cfg, scope), nil
 }
 
 func remoteGitHubAdditionalContext(job *workerprotocol.GitHubSnapshot,

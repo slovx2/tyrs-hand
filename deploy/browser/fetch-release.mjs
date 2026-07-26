@@ -20,6 +20,11 @@ try {
     lock.playwright?.artifacts?.playwrightCore,
     lock.playwrightMcp?.artifacts?.bundle,
   ];
+  if (lock.playwrightMcp?.browserAgent) {
+    artifacts.push(
+        lock.playwrightMcp.browserAgent.artifacts?.['darwin-arm64'],
+        lock.playwrightMcp.browserAgent.artifacts?.['darwin-x64']);
+  }
   for (const artifact of artifacts)
     await downloadArtifact(artifact, temporaryRoot);
   await writeFile(join(temporaryRoot, 'browser-artifacts.lock.json'), `${JSON.stringify(lock, null, 2)}\n`);

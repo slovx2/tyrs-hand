@@ -45,7 +45,8 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
-	processEnvironment, err := remoteCodexProcessEnvironment(runtimeCredential, p.cfg)
+	processEnvironment, err := remoteCodexProcessEnvironment(runtimeCredential, p.cfg,
+		snapshot.Development.EnvironmentID.String())
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
@@ -82,7 +83,8 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
-	_, runtimeConfig := prepareCodexRuntime(nil, "", p.cfg)
+	_, runtimeConfig := prepareCodexRuntime(nil, "", p.cfg,
+		snapshot.Development.EnvironmentID.String())
 	environmentCodex, err := p.environments.ensure(runtime, nil)
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err

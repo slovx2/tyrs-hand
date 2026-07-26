@@ -112,7 +112,8 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	if err != nil {
 		return result, err
 	}
-	environment, runtimeConfig := prepareCodexRuntime(environment, "", p.cfg)
+	environment, runtimeConfig := prepareCodexRuntime(environment, "", p.cfg,
+		jobCtx.EnvironmentID.String())
 	applyModelProviderConfig(runtimeConfig, provider.ModelSource, provider.BaseURL)
 	if err := p.development.CopyToRuntime(ctx, containerRuntime, temporaryHome, containerRuntime.CodexHome); err != nil {
 		return result, err

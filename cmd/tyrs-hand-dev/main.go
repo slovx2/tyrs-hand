@@ -1,15 +1,20 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
+
+	"github.com/slovx2/tyrs-hand/internal/codexproxy"
 )
 
 var exactVersion = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
@@ -22,8 +27,13 @@ func main() {
 }
 
 func run(arguments []string) error {
+	if len(arguments) == 2 && arguments[0] == "browser" && arguments[1] == "proxy" {
+		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		defer cancel()
+		return codexproxy.ServeStdio(ctx, "/run/tyrs-hand/browser-agent.sock")
+	}
 	if len(arguments) < 2 || arguments[0] != "codex" {
-		return errors.New("用法：tyrs-hand-dev codex <install|status|rollback|reset> [version]")
+		return errors.New("tyrs-hand-dev 需要 codex 或 browser 子命令")
 	}
 	root, marker, err := userPaths()
 	if err != nil {

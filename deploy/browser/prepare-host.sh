@@ -18,5 +18,6 @@ if [[ ! -s /opt/tyrs-hand/browser/browser_extension_token ]]; then
   openssl rand -hex 32 > /opt/tyrs-hand/browser/browser_extension_token
 fi
 chown "$desktop_uid:$desktop_gid" /opt/tyrs-hand/browser/browser_*_token
-chmod 0444 /opt/tyrs-hand/browser/browser_mcp_token
+chmod 0400 /opt/tyrs-hand/browser/browser_mcp_token
+setfacl -m u:10001:r /opt/tyrs-hand/browser/browser_mcp_token
 chmod 0400 /opt/tyrs-hand/browser/browser_extension_token

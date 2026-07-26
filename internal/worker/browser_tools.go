@@ -24,7 +24,7 @@ import (
 
 const (
 	browserFileLimit     = 25 * 1024 * 1024
-	browserToolNamespace = "host_browser"
+	browserToolNamespace = "browser_files"
 )
 
 type stagedBrowserFile struct {
@@ -36,16 +36,16 @@ type stagedBrowserFile struct {
 func browserToolSpec() ports.DynamicToolSpec {
 	return ports.DynamicToolSpec{
 		Type: "namespace", Name: browserToolNamespace,
-		Description: "Expose local development servers and exchange files with the managed host Chrome.",
+		Description: "Exchange files with the selected browser and expose development services to the worker browser.",
 		Tools: []ports.DynamicToolSpec{
-			{Type: "function", Name: "resolve_local_url",
-				Description: "Resolve a service listening on 0.0.0.0 to a URL reachable by host Chrome.",
+			{Type: "function", Name: "resolve_worker_url",
+				Description: "Resolve a service listening on 0.0.0.0 to a URL reachable only by the worker browser.",
 				InputSchema: json.RawMessage(`{"type":"object","properties":{"port":{"type":"integer","minimum":1,"maximum":65535}},"required":["port"],"additionalProperties":false}`)},
 			{Type: "function", Name: "stage_file",
-				Description: "Copy a regular file from the current workspace into the host browser exchange directory.",
+				Description: "Copy a regular file from the current workspace into the browser exchange directory for worker or desktop upload.",
 				InputSchema: json.RawMessage(`{"type":"object","properties":{"source":{"type":"string","minLength":1}},"required":["source"],"additionalProperties":false}`)},
 			{Type: "function", Name: "import_download",
-				Description: "Copy a browser download from the exchange directory into the current workspace.",
+				Description: "Copy a worker or desktop browser download from the exchange directory into the current workspace.",
 				InputSchema: json.RawMessage(`{"type":"object","properties":{"source":{"type":"string","minLength":1},"destination":{"type":"string","minLength":1}},"required":["source","destination"],"additionalProperties":false}`)},
 		},
 	}
@@ -66,7 +66,7 @@ func executeBrowserTool(ctx context.Context, cfg config.Config, taskID, workspac
 		return codex.ToolCallResult{}, errors.New("宿主浏览器能力未配置")
 	}
 	switch request.Tool {
-	case "resolve_local_url":
+	case "resolve_worker_url":
 		var arguments struct {
 			Port int `json:"port"`
 		}

@@ -3,11 +3,11 @@
   "playwright": {
     "repository": "https://github.com/slovx2/playwright",
     "upstreamCommit": "9fb36027c64c8edcf08bf06f618b3ca97a7b0d97",
-    "commit": "5206c3826528161d7c7c62b84c0fda66b3a323f4"
+    "commit": "5c8549d49fd7d66713e204a6cce34e5683dc4022"
   },
   "playwrightMcp": {
     "repository": "https://github.com/slovx2/playwright-mcp",
     "upstreamCommit": "5f8fc00210b27b4407c375b59cda4838045d429c",
-    "commit": "3da91ebd097b1571f2d64c4467b0d5daa5b2d335"
+    "commit": "9e63fb806e6ff326eb484e7a2b57ac7c5b924073"
   }
 }
