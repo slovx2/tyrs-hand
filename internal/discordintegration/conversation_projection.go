@@ -41,12 +41,21 @@ func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadI
 	}
 	page := len(timeline.Pages) - 1
 	rawRunID := ""
+	mode := "default"
 	if runID != uuid.Nil {
 		rawRunID = runID.String()
+		err = db.QueryRowContext(ctx, `SELECT collaboration_mode FROM codex_turn_runs
+			WHERE id = $1`, runID).Scan(&mode)
+	} else {
+		err = db.QueryRowContext(ctx, `SELECT collaboration_mode FROM discord_conversations
+			WHERE id = $1`, conversationID).Scan(&mode)
 	}
-	card := conversationProgressCard(state, timeline, page, rawRunID)
+	if err != nil {
+		return err
+	}
+	card := conversationProgressCard(state, timeline, page, rawRunID, mode)
 	progress := conversationProgressPayload{FormatVersion: conversationProgressFormatVersion,
-		RunID: rawRunID, State: state, Summary: detail, Page: page}
+		RunID: rawRunID, State: state, Summary: detail, Page: page, CollaborationMode: mode}
 	key := "conversation:" + conversationID.String() + ":message:" + inputMessageID
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -83,13 +92,13 @@ func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadI
 func ProjectConversationConfiguration(ctx context.Context, db *sql.DB, guildID, threadID string,
 	conversationID uuid.UUID, inputMessageID string,
 ) error {
-	var model, effort, tier string
+	var model, effort, tier, mode string
 	if err := db.QueryRowContext(ctx, `SELECT COALESCE(model,''), COALESCE(reasoning_effort,''),
-		COALESCE(service_tier,'standard')
-		FROM discord_conversations WHERE id = $1`, conversationID).Scan(&model, &effort, &tier); err != nil {
+		COALESCE(service_tier,'standard'), collaboration_mode
+		FROM discord_conversations WHERE id = $1`, conversationID).Scan(&model, &effort, &tier, &mode); err != nil {
 		return err
 	}
-	card := conversationConfigurationCard(model, effort, tier)
+	card := conversationConfigurationCard(model, effort, tier, mode)
 	key := "conversation:" + conversationID.String() + ":message:" + inputMessageID
 	buttons := []ComponentButtonPayload{
 		{Label: "按默认值开始", CustomID: "codex-config-start:" + conversationID.String(), Style: "primary"},
@@ -138,14 +147,15 @@ func ProjectConversationReply(ctx context.Context, db *sql.DB, threadID string,
 }
 
 type conversationProgressPayload struct {
-	FormatVersion int                  `json:"formatVersion"`
-	RunID         string               `json:"runId,omitempty"`
-	State         ConversationProgress `json:"state"`
-	Summary       string               `json:"summary"`
-	Page          int                  `json:"page"`
+	FormatVersion     int                  `json:"formatVersion"`
+	RunID             string               `json:"runId,omitempty"`
+	State             ConversationProgress `json:"state"`
+	Summary           string               `json:"summary"`
+	Page              int                  `json:"page"`
+	CollaborationMode string               `json:"collaborationMode"`
 }
 
-const conversationProgressFormatVersion = 3
+const conversationProgressFormatVersion = 4
 
 func conversationTimelineForRun(ctx context.Context, db *sql.DB, runID uuid.UUID,
 	summary string,
@@ -253,13 +263,16 @@ func reconcileConversationProgressCard(ctx context.Context, db *sql.DB, guildID,
 			return err
 		}
 		runID = parsed
-		var runStatus string
-		err = db.QueryRowContext(ctx, `SELECT status FROM codex_turn_runs WHERE id = $1`,
-			runID).Scan(&runStatus)
+		var runStatus, mode string
+		err = db.QueryRowContext(ctx, `SELECT status, collaboration_mode FROM codex_turn_runs WHERE id = $1`,
+			runID).Scan(&runStatus, &mode)
 		if errors.Is(err, sql.ErrNoRows) {
 			runID = uuid.Nil
 		} else if err != nil {
 			return err
+		}
+		if runID != uuid.Nil {
+			desired.Progress.CollaborationMode = mode
 		}
 		switch runStatus {
 		case "canceled":
@@ -270,6 +283,17 @@ func reconcileConversationProgressCard(ctx context.Context, db *sql.DB, guildID,
 			desired.Progress.Summary = "本轮处理未完成。"
 		}
 	}
+	if desired.Progress.CollaborationMode == "" {
+		parts := strings.Split(projectionKey, ":")
+		if len(parts) >= 2 {
+			conversationID, parseErr := uuid.Parse(parts[1])
+			if parseErr == nil {
+				_ = db.QueryRowContext(ctx, `SELECT collaboration_mode
+					FROM discord_conversations WHERE id = $1`, conversationID).
+					Scan(&desired.Progress.CollaborationMode)
+			}
+		}
+	}
 	timeline, err := conversationTimelineForRun(ctx, db, runID, desired.Progress.Summary)
 	if err != nil {
 		return err
@@ -277,7 +301,7 @@ func reconcileConversationProgressCard(ctx context.Context, db *sql.DB, guildID,
 	desired.Progress.FormatVersion = conversationProgressFormatVersion
 	desired.Progress.Page = len(timeline.Pages) - 1
 	card := conversationProgressCard(desired.Progress.State, timeline, desired.Progress.Page,
-		desired.Progress.RunID)
+		desired.Progress.RunID, desired.Progress.CollaborationMode)
 	payload := map[string]any{"channelId": resourceID, "card": card,
 		"progress": desired.Progress}
 	operation, nonce := "message.create", "conversation-progress-reconcile-"+projectionKey

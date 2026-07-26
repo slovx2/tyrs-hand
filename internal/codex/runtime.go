@@ -63,6 +63,15 @@ func (r *Runtime) StartTurn(ctx context.Context, threadID string, input ports.Tu
 	payload := map[string]any{
 		"threadId": threadID, "clientUserMessageId": input.ClientUserMessageID, "input": items,
 	}
+	if input.CollaborationMode != nil {
+		payload["collaborationMode"] = map[string]any{
+			"mode": input.CollaborationMode.Mode,
+			"settings": map[string]any{
+				"model":            input.CollaborationMode.Model,
+				"reasoning_effort": input.CollaborationMode.ReasoningEffort,
+			},
+		}
+	}
 	addTurnContext(payload, input.AdditionalContext)
 	err := r.client.Call(ctx, "turn/start", payload, &result)
 	if err != nil {

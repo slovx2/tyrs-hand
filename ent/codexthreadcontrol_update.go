@@ -191,6 +191,41 @@ func (_u *CodexThreadControlUpdate) SetNillableStatus(v *string) *CodexThreadCon
 	return _u
 }
 
+// SetCollaborationMode sets the "collaboration_mode" field.
+func (_u *CodexThreadControlUpdate) SetCollaborationMode(v string) *CodexThreadControlUpdate {
+	_u.mutation.SetCollaborationMode(v)
+	return _u
+}
+
+// SetNillableCollaborationMode sets the "collaboration_mode" field if the given value is not nil.
+func (_u *CodexThreadControlUpdate) SetNillableCollaborationMode(v *string) *CodexThreadControlUpdate {
+	if v != nil {
+		_u.SetCollaborationMode(*v)
+	}
+	return _u
+}
+
+// SetCollaborationModeRevision sets the "collaboration_mode_revision" field.
+func (_u *CodexThreadControlUpdate) SetCollaborationModeRevision(v int64) *CodexThreadControlUpdate {
+	_u.mutation.ResetCollaborationModeRevision()
+	_u.mutation.SetCollaborationModeRevision(v)
+	return _u
+}
+
+// SetNillableCollaborationModeRevision sets the "collaboration_mode_revision" field if the given value is not nil.
+func (_u *CodexThreadControlUpdate) SetNillableCollaborationModeRevision(v *int64) *CodexThreadControlUpdate {
+	if v != nil {
+		_u.SetCollaborationModeRevision(*v)
+	}
+	return _u
+}
+
+// AddCollaborationModeRevision adds value to the "collaboration_mode_revision" field.
+func (_u *CodexThreadControlUpdate) AddCollaborationModeRevision(v int64) *CodexThreadControlUpdate {
+	_u.mutation.AddCollaborationModeRevision(v)
+	return _u
+}
+
 // SetNextSequenceNo sets the "next_sequence_no" field.
 func (_u *CodexThreadControlUpdate) SetNextSequenceNo(v int64) *CodexThreadControlUpdate {
 	_u.mutation.ResetNextSequenceNo()
@@ -588,6 +623,15 @@ func (_u *CodexThreadControlUpdate) sqlSave(ctx context.Context) (_node int, err
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(codexthreadcontrol.FieldStatus, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.CollaborationMode(); ok {
+		_spec.SetField(codexthreadcontrol.FieldCollaborationMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CollaborationModeRevision(); ok {
+		_spec.SetField(codexthreadcontrol.FieldCollaborationModeRevision, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedCollaborationModeRevision(); ok {
+		_spec.AddField(codexthreadcontrol.FieldCollaborationModeRevision, field.TypeInt64, value)
+	}
 	if value, ok := _u.mutation.NextSequenceNo(); ok {
 		_spec.SetField(codexthreadcontrol.FieldNextSequenceNo, field.TypeInt64, value)
 	}
@@ -857,6 +901,41 @@ func (_u *CodexThreadControlUpdateOne) SetNillableStatus(v *string) *CodexThread
 	if v != nil {
 		_u.SetStatus(*v)
 	}
+	return _u
+}
+
+// SetCollaborationMode sets the "collaboration_mode" field.
+func (_u *CodexThreadControlUpdateOne) SetCollaborationMode(v string) *CodexThreadControlUpdateOne {
+	_u.mutation.SetCollaborationMode(v)
+	return _u
+}
+
+// SetNillableCollaborationMode sets the "collaboration_mode" field if the given value is not nil.
+func (_u *CodexThreadControlUpdateOne) SetNillableCollaborationMode(v *string) *CodexThreadControlUpdateOne {
+	if v != nil {
+		_u.SetCollaborationMode(*v)
+	}
+	return _u
+}
+
+// SetCollaborationModeRevision sets the "collaboration_mode_revision" field.
+func (_u *CodexThreadControlUpdateOne) SetCollaborationModeRevision(v int64) *CodexThreadControlUpdateOne {
+	_u.mutation.ResetCollaborationModeRevision()
+	_u.mutation.SetCollaborationModeRevision(v)
+	return _u
+}
+
+// SetNillableCollaborationModeRevision sets the "collaboration_mode_revision" field if the given value is not nil.
+func (_u *CodexThreadControlUpdateOne) SetNillableCollaborationModeRevision(v *int64) *CodexThreadControlUpdateOne {
+	if v != nil {
+		_u.SetCollaborationModeRevision(*v)
+	}
+	return _u
+}
+
+// AddCollaborationModeRevision adds value to the "collaboration_mode_revision" field.
+func (_u *CodexThreadControlUpdateOne) AddCollaborationModeRevision(v int64) *CodexThreadControlUpdateOne {
+	_u.mutation.AddCollaborationModeRevision(v)
 	return _u
 }
 
@@ -1286,6 +1365,15 @@ func (_u *CodexThreadControlUpdateOne) sqlSave(ctx context.Context) (_node *Code
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(codexthreadcontrol.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CollaborationMode(); ok {
+		_spec.SetField(codexthreadcontrol.FieldCollaborationMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CollaborationModeRevision(); ok {
+		_spec.SetField(codexthreadcontrol.FieldCollaborationModeRevision, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedCollaborationModeRevision(); ok {
+		_spec.AddField(codexthreadcontrol.FieldCollaborationModeRevision, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.NextSequenceNo(); ok {
 		_spec.SetField(codexthreadcontrol.FieldNextSequenceNo, field.TypeInt64, value)

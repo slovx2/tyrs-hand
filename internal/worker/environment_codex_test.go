@@ -81,6 +81,7 @@ func TestEnvironmentCodexObserverSubmitsThreadNamesFromRelay(t *testing.T) {
 	mock.Emit(threadID, "thread/settings/updated", map[string]any{
 		"threadId": threadID, "threadSettings": map[string]any{
 			"model": "gpt-5.6-sol", "effort": "ultra", "serviceTier": "priority",
+			"collaborationMode": map[string]any{"mode": "plan"},
 		},
 	})
 	mock.Emit(threadID, "thread/name/updated", map[string]any{
@@ -97,6 +98,7 @@ func TestEnvironmentCodexObserverSubmitsThreadNamesFromRelay(t *testing.T) {
 		require.Equal(t, "gpt-5.6-sol", request.Events[0].Model)
 		require.Equal(t, "ultra", request.Events[0].ReasoningEffort)
 		require.Equal(t, "priority", request.Events[0].ServiceTier)
+		require.Equal(t, "plan", request.Events[0].CollaborationMode)
 	case <-time.After(3 * time.Second):
 		t.Fatal("Worker 没有提交 Relay 广播的 Thread 设置")
 	}

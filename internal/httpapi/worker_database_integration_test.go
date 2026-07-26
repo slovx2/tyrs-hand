@@ -179,9 +179,9 @@ func TestWorkerAPIDiscordRuntimePreferencesFreeze(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_conversations
 		(guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
 		 repository_id, agent_profile_id, title, model, reasoning_effort, service_tier,
-		 configuration_status, title_rename_status)
+		 collaboration_mode, configuration_status, title_rename_status)
 		VALUES ('worker-test-guild',$1,'runtime-thread','runtime-message-1','worker-owner',
-		 $2,$3,'runtime','gpt-5.6-sol','xhigh','standard','configured','completed')
+		 $2,$3,'runtime','gpt-5.6-sol','xhigh','standard','plan','configured','completed')
 		RETURNING id`, forumID, repositoryID, profileID).Scan(&conversationID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_input_messages
 		(message_id, conversation_id, discord_user_id, display_name, username,
@@ -199,6 +199,11 @@ func TestWorkerAPIDiscordRuntimePreferencesFreeze(t *testing.T) {
 	require.Equal(t, "gpt-5.6-sol", first.Task.Snapshot.Runtime.Model)
 	require.Equal(t, "xhigh", first.Task.Snapshot.Runtime.ReasoningEffort)
 	require.Equal(t, "standard", first.Task.Snapshot.Runtime.ServiceTier)
+	require.Equal(t, "plan", first.Task.Snapshot.Runtime.CollaborationMode)
+	var runMode string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT collaboration_mode FROM codex_turn_runs
+		WHERE id = $1`, first.Task.Claimed.RunID).Scan(&runMode))
+	require.Equal(t, "plan", runMode)
 	var frozenModel, frozenEffort, frozenTier string
 	var frozen bool
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT COALESCE(model,''),
@@ -233,6 +238,7 @@ func TestWorkerAPIDiscordRuntimePreferencesFreeze(t *testing.T) {
 	require.Equal(t, "gpt-5.6-sol", second.Task.Snapshot.Runtime.Model)
 	require.Equal(t, "xhigh", second.Task.Snapshot.Runtime.ReasoningEffort)
 	require.Equal(t, "standard", second.Task.Snapshot.Runtime.ServiceTier)
+	require.Equal(t, "plan", second.Task.Snapshot.Runtime.CollaborationMode)
 }
 
 func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
@@ -433,6 +439,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		Events: []workerprotocol.ThreadMetadataEvent{{
 			ThreadID: "codex-desktop-thread", Sequence: 1, Kind: "settings",
 			Model: "gpt-5.6-sol", ReasoningEffort: "ultra", ServiceTier: "priority",
+			CollaborationMode: "plan",
 		}},
 	}))
 	state, err = client.DesktopThreadState(ctx, state.ID)
@@ -440,11 +447,37 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "gpt-5.6-sol", state.Config.Model)
 	require.Equal(t, "ultra", state.Config.ReasoningEffort)
 	require.Equal(t, "priority", state.Config.ServiceTier)
+	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
+		EnvironmentID: environmentID, Generation: 12,
+		Events: []workerprotocol.ThreadMetadataEvent{{
+			ThreadID: "codex-desktop-thread", Sequence: 2, Kind: "settings",
+			CollaborationMode: "default",
+		}},
+	}))
+	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
+		EnvironmentID: environmentID, Generation: 12,
+		Events: []workerprotocol.ThreadMetadataEvent{{
+			ThreadID: "codex-desktop-thread", Sequence: 1, Kind: "settings",
+			CollaborationMode: "plan",
+		}},
+	}))
+	var metadataMode string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT collaboration_mode
+		FROM codex_thread_controls WHERE id = $1`, state.ControlID).Scan(&metadataMode))
+	require.Equal(t, "default", metadataMode, "乱序 settings 事件不能覆盖较新模式")
+	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
+		EnvironmentID: environmentID, Generation: 12,
+		Events: []workerprotocol.ThreadMetadataEvent{{
+			ThreadID: "codex-desktop-thread", Sequence: 3, Kind: "settings",
+			CollaborationMode: "plan",
+		}},
+	}))
 
 	task, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
 		EnvironmentID: environmentID, WorkerID: "desktop-worker",
 		RequestKey: strings.Repeat("d", 64), Params: json.RawMessage(
 			`{"threadId":"codex-desktop-thread","clientUserMessageId":"desktop-client-message-1",` +
+				`"collaborationMode":{"mode":"plan","settings":{"model":"gpt-5.6-sol"}},` +
 				`"input":[{"type":"text","text":"<codex_delegation>\n` +
 				`<source_thread_id>source-thread</source_thread_id>\n` +
 				`<input>desktop asks &amp;&amp; checks</input>\n</codex_delegation>"}]}`),
@@ -456,6 +489,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "gpt-5.6-sol", task.Snapshot.Runtime.Model)
 	require.Equal(t, "ultra", task.Snapshot.Runtime.ReasoningEffort)
 	require.Equal(t, "priority", task.Snapshot.Runtime.ServiceTier)
+	require.Equal(t, "plan", task.Snapshot.Runtime.CollaborationMode)
 	require.Equal(t, "desktop asks && checks", task.Snapshot.Discord.Body)
 	require.Equal(t, "desktop-user", task.Snapshot.Discord.UserID)
 	require.Equal(t, "Desktop Alice", task.Snapshot.Discord.DisplayName)

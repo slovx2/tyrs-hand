@@ -14,18 +14,18 @@ import (
 
 func TestConversationCardsKeepSystemAndReplyVisuallyDistinct(t *testing.T) {
 	timeline := ConversationTimeline{Pages: []string{"working"}, Updates: 2, Duration: 3 * time.Second}
-	running := conversationProgressCard(ConversationRunning, timeline, 0, "")
+	running := conversationProgressCard(ConversationRunning, timeline, 0, "", "default")
 	require.Contains(t, running.Header, "处理中")
 	require.Contains(t, running.Body, "2 项动态")
 	require.NotContains(t, running.Body, "条更新")
 	require.Equal(t, cardColorBlurple, running.AccentColor)
 
-	completed := conversationProgressCard(ConversationCompleted, timeline, 0, "")
+	completed := conversationProgressCard(ConversationCompleted, timeline, 0, "", "default")
 	require.Equal(t, cardColorGreen, completed.AccentColor)
-	canceled := conversationProgressCard(ConversationCanceled, timeline, 0, "")
+	canceled := conversationProgressCard(ConversationCanceled, timeline, 0, "", "default")
 	require.Equal(t, cardColorGray, canceled.AccentColor)
 	require.Contains(t, canceled.Header, "已停止")
-	failed := conversationProgressCard(ConversationFailed, timeline, 0, "")
+	failed := conversationProgressCard(ConversationFailed, timeline, 0, "", "default")
 	require.Equal(t, cardColorRed, failed.AccentColor)
 	require.Contains(t, terminatedControlCard().Body, "没有进入执行队列")
 }
@@ -34,7 +34,7 @@ func TestConversationCardPaginationKeepsStatusAndUsesUniqueButtons(t *testing.T)
 	runID := "00000000-0000-0000-0000-000000000001"
 	timeline := ConversationTimeline{Pages: []string{"older", "newer", "latest"}, Updates: 7,
 		Duration: time.Minute}
-	card := conversationProgressCard(ConversationCompleted, timeline, 1, runID)
+	card := conversationProgressCard(ConversationCompleted, timeline, 1, runID, "default")
 	require.Contains(t, card.Header, "已完成")
 	require.Equal(t, "newer", card.Timeline)
 	require.Len(t, card.Buttons, 4)
@@ -107,11 +107,11 @@ func TestSystemCardSeverity(t *testing.T) {
 func TestEverySystemCardBuildsAsComponentsV2(t *testing.T) {
 	timeline := ConversationTimeline{Pages: []string{"timeline"}, Duration: time.Second}
 	cards := []ComponentCardPayload{
-		conversationProgressCard(ConversationRunning, timeline, 0, ""),
-		conversationProgressCard(ConversationCompleted, timeline, 0, ""),
-		conversationProgressCard(ConversationCanceled, timeline, 0, ""),
-		conversationProgressCard(ConversationFailed, timeline, 0, ""),
-		terminatedControlCard(), conversationConfigurationCard("gpt-5.6-sol", "high", "fast"),
+		conversationProgressCard(ConversationRunning, timeline, 0, "", "default"),
+		conversationProgressCard(ConversationCompleted, timeline, 0, "", "default"),
+		conversationProgressCard(ConversationCanceled, timeline, 0, "", "default"),
+		conversationProgressCard(ConversationFailed, timeline, 0, "", "default"),
+		terminatedControlCard(), conversationConfigurationCard("gpt-5.6-sol", "high", "fast", "default"),
 		archivedConversationCard(), lifecycleCard(uuid.New(), 1),
 		DesktopInputCards("Kal", "hello")[0],
 		interactiveCard(InteractiveProjection{Status: "pending", Questions: []InteractiveQuestion{{

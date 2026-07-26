@@ -20,8 +20,13 @@ const newCodexModalPrefix = "codex-new-modal:"
 
 func (c *DisgoConnector) startConfiguredConversation(event *events.ComponentInteractionCreate, rawID string) {
 	id, err := uuid.Parse(rawID)
+	mode := "default"
 	if err == nil {
 		err = c.conversations.FinalizeConfiguration(context.Background(), id, event.User().ID.String(), nil)
+	}
+	if err == nil {
+		err = c.manager.db.QueryRowContext(context.Background(), `SELECT collaboration_mode
+			FROM discord_conversations WHERE id = $1`, id).Scan(&mode)
 	}
 	if err != nil {
 		_ = event.CreateMessage(discord.NewMessageCreate().WithContent(err.Error()).WithEphemeral(true))
@@ -30,7 +35,7 @@ func (c *DisgoConnector) startConfiguredConversation(event *events.ComponentInte
 	timeline := ConversationTimeline{Pages: []string{"已按默认参数启动，消息正在进入长期开发环境队列。"},
 		Duration: time.Second}
 	components, componentErr := discordCardComponents(conversationProgressCard(ConversationRunning,
-		timeline, 0, ""))
+		timeline, 0, "", mode))
 	if componentErr != nil {
 		return
 	}
@@ -60,10 +65,10 @@ func (c *DisgoConnector) editConversationConfiguration(event *events.ComponentIn
 }
 
 func (c *DisgoConnector) configurationModal(ctx context.Context, conversationID uuid.UUID) (discord.ModalCreate, error) {
-	var model, effort, tier string
+	var model, effort, tier, mode string
 	err := c.manager.db.QueryRowContext(ctx, `SELECT COALESCE(model,''), COALESCE(reasoning_effort,''),
-		COALESCE(service_tier,'standard')
-		FROM discord_conversations WHERE id = $1`, conversationID).Scan(&model, &effort, &tier)
+		COALESCE(service_tier,'standard'), collaboration_mode
+		FROM discord_conversations WHERE id = $1`, conversationID).Scan(&model, &effort, &tier, &mode)
 	if err != nil {
 		return discord.ModalCreate{}, err
 	}
@@ -91,9 +96,13 @@ func (c *DisgoConnector) configurationModal(ctx context.Context, conversationID 
 		discord.NewStringSelectMenuOption("中", "medium").WithDefault(effort == "medium"),
 		discord.NewStringSelectMenuOption("高", "high").WithDefault(effort == "high"),
 		discord.NewStringSelectMenuOption("极高", "xhigh").WithDefault(effort == "xhigh")).WithRequired(true)
+	modeSelect := discord.NewStringSelectMenu("collaboration_mode", "选择协作模式",
+		discord.NewStringSelectMenuOption("Default", "default").WithDefault(mode != "plan"),
+		discord.NewStringSelectMenuOption("Plan", "plan").WithDefault(mode == "plan")).WithRequired(true)
 	return discord.NewModalCreate(configurationModalPrefix+conversationID.String(), "调整本次 Codex 参数",
 		discord.NewLabel("模型", modelSelect), discord.NewLabel("自定义模型", custom),
-		discord.NewLabel("服务等级", tierSelect), discord.NewLabel("思考等级", effortSelect)), nil
+		discord.NewLabel("服务等级", tierSelect), discord.NewLabel("思考等级", effortSelect),
+		discord.NewLabel("模式", modeSelect)), nil
 }
 
 func (c *DisgoConnector) onModalSubmit(event *events.ModalSubmitInteractionCreate) {
@@ -133,12 +142,14 @@ func (c *DisgoConnector) onModalSubmit(event *events.ModalSubmitInteractionCreat
 		effort = ""
 	}
 	tier := firstModalValue(event.Data.StringValues("service_tier"))
+	mode := firstModalValue(event.Data.StringValues("collaboration_mode"))
 	if err == nil && customSelected && model == "" {
 		err = errors.New("选择自定义模型时必须填写模型名称")
 	}
 	if err == nil {
 		err = c.conversations.FinalizeConfiguration(context.Background(), id, event.User().ID.String(),
-			&ConversationConfiguration{Model: model, ReasoningEffort: effort, ServiceTier: tier})
+			&ConversationConfiguration{Model: model, ReasoningEffort: effort, ServiceTier: tier,
+				CollaborationMode: mode})
 	}
 	message := "配置已保存，Codex 会话开始运行。"
 	if err != nil {
@@ -165,7 +176,9 @@ func (c *DisgoConnector) showForumSelector(event *events.ComponentInteractionCre
 	_ = event.CreateMessage(message)
 }
 
-func (c *DisgoConnector) newCodexModal(ctx context.Context, forumDiscordID, userID string) (discord.ModalCreate, error) {
+func (c *DisgoConnector) newCodexModal(ctx context.Context, forumDiscordID, userID,
+	mode string,
+) (discord.ModalCreate, error) {
 	forumID, repositoryID, profileID, err := c.authorizedForum(ctx, forumDiscordID, userID)
 	if err != nil {
 		return discord.ModalCreate{}, err
@@ -182,7 +195,13 @@ func (c *DisgoConnector) newCodexModal(ctx context.Context, forumDiscordID, user
 	effortSelect := effortModalSelect(preferences.ReasoningEffort)
 	task := discord.NewParagraphTextInput("task").WithRequired(true).WithMinLength(1).WithMaxLength(2000).
 		WithPlaceholder("描述希望 Codex 完成的任务")
-	return discord.NewModalCreate(newCodexModalPrefix+forumDiscordID, "新建 Codex 帖子",
+	if mode == "" {
+		mode = "default"
+	}
+	if mode != "default" && mode != "plan" {
+		return discord.ModalCreate{}, errors.New("新建会话模式无效")
+	}
+	return discord.NewModalCreate(newCodexModalPrefix+forumDiscordID+":"+mode, "新建 Codex 帖子",
 		discord.NewLabel("任务", task), discord.NewLabel("模型", modelSelect),
 		discord.NewLabel("自定义模型", custom), discord.NewLabel("服务等级", tierSelect),
 		discord.NewLabel("思考等级", effortSelect)), nil
@@ -241,7 +260,12 @@ func effortModalSelect(effort string) discord.StringSelectMenuComponent {
 }
 
 func (c *DisgoConnector) createCodexPost(event *events.ModalSubmitInteractionCreate) {
-	forumDiscordID := strings.TrimPrefix(event.Data.CustomID, newCodexModalPrefix)
+	parts := strings.Split(strings.TrimPrefix(event.Data.CustomID, newCodexModalPrefix), ":")
+	if len(parts) != 2 {
+		_ = event.CreateMessage(discord.NewMessageCreate().WithContent("新建会话参数无效。").WithEphemeral(true))
+		return
+	}
+	forumDiscordID, mode := parts[0], parts[1]
 	body := strings.TrimSpace(event.Data.Text("task"))
 	model := firstModalValue(event.Data.StringValues("model"))
 	customSelected := model == "__custom__"
@@ -287,7 +311,7 @@ func (c *DisgoConnector) createCodexPost(event *events.ModalSubmitInteractionCre
 				MessageID: post.Message.ID.String(), DiscordUserID: event.User().ID.String(),
 				DisplayName: event.User().EffectiveName(), Username: event.User().Username,
 				Title: "Codex 正在生成标题", Body: body, Model: model, ReasoningEffort: effort,
-				ServiceTier: tier, ConfigurationConfirmed: true}
+				ServiceTier: tier, CollaborationMode: mode, ConfigurationConfirmed: true}
 			var conversationID uuid.UUID
 			conversationID, err = c.conversations.BeginPost(ctx, input)
 			if err == nil {

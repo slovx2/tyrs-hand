@@ -29,8 +29,8 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 	var status, guildID, ownerID, sshUserID, sshDisplayName, previewTitle, desiredName string
 	var desiredSource, firstProjectionKey, firstInputText string
 	var environmentID, forumID, repositoryID, profileID, controlID uuid.UUID
-	var desiredRevision, lifecycleRevision int64
-	var lifecycleState string
+	var desiredRevision, lifecycleRevision, modeRevision int64
+	var lifecycleState, mode string
 	var model, effort sql.NullString
 	var serviceTier string
 	err = tx.QueryRowContext(ctx, `SELECT r.status, r.environment_id, r.forum_id,
@@ -44,7 +44,8 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 		COALESCE(r.preview_title,''), COALESCE(ct.desired_thread_name,''),
 		COALESCE(ct.desired_thread_name_source,''), ct.desired_thread_name_revision,
 		COALESCE(r.first_input_projection_key,''), COALESCE(r.first_input_text,''),
-		ct.lifecycle_state, ct.lifecycle_revision
+		ct.lifecycle_state, ct.lifecycle_revision,
+		ct.collaboration_mode, ct.collaboration_mode_revision
 		FROM desktop_thread_requests r JOIN discord_forums f ON f.id = r.forum_id
 		JOIN discord_development_environments e ON e.id = r.environment_id
 		JOIN codex_thread_controls ct ON ct.id = r.control_id
@@ -55,7 +56,7 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 		&controlID, &guildID, &ownerID, &sshUserID, &sshDisplayName, &repositoryID, &profileID,
 		&model, &effort, &serviceTier, &previewTitle, &desiredName,
 		&desiredSource, &desiredRevision, &firstProjectionKey, &firstInputText,
-		&lifecycleState, &lifecycleRevision)
+		&lifecycleState, &lifecycleRevision, &mode, &modeRevision)
 	if err != nil {
 		return err
 	}
@@ -80,11 +81,11 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 		(id, guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
 		 repository_id, agent_profile_id, title, status, model, reasoning_effort, service_tier,
 		 configuration_status, configured_by_discord_user_id, title_rename_status,
-		 lifecycle_state, lifecycle_revision)
+		 lifecycle_state, lifecycle_revision, collaboration_mode, collaboration_mode_revision)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'active',NULLIF($10,''),NULLIF($11,''),NULLIF($12,''),
-			'configured',$6,'pending',$13,$14)`, conversationID, guildID, forumID, result.ThreadID,
+			'configured',$6,'pending',$13,$14,$15,$16)`, conversationID, guildID, forumID, result.ThreadID,
 		result.MessageID, ownerID, repositoryID, profileID, title,
-		model.String, effort.String, serviceTier, lifecycleState, lifecycleRevision)
+		model.String, effort.String, serviceTier, lifecycleState, lifecycleRevision, mode, modeRevision)
 	if err != nil {
 		return err
 	}

@@ -63,14 +63,15 @@ type Intent struct {
 
 type ClaimedControl struct {
 	Intent
-	RunID            uuid.UUID
-	Capability       string
-	LeaseToken       string
-	LeaseEpoch       int64
-	LeaseExpiresAt   time.Time
-	ExternalThreadID string
-	CodexHomeKey     string
-	Recovering       bool
+	RunID             uuid.UUID
+	Capability        string
+	LeaseToken        string
+	LeaseEpoch        int64
+	LeaseExpiresAt    time.Time
+	ExternalThreadID  string
+	CodexHomeKey      string
+	Recovering        bool
+	CollaborationMode string
 }
 
 type EnqueueRequest struct {

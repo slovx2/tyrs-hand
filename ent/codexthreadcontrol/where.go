@@ -100,6 +100,16 @@ func Status(v string) predicate.CodexThreadControl {
 	return predicate.CodexThreadControl(sql.FieldEQ(FieldStatus, v))
 }
 
+// CollaborationMode applies equality check predicate on the "collaboration_mode" field. It's identical to CollaborationModeEQ.
+func CollaborationMode(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldEQ(FieldCollaborationMode, v))
+}
+
+// CollaborationModeRevision applies equality check predicate on the "collaboration_mode_revision" field. It's identical to CollaborationModeRevisionEQ.
+func CollaborationModeRevision(v int64) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldEQ(FieldCollaborationModeRevision, v))
+}
+
 // NextSequenceNo applies equality check predicate on the "next_sequence_no" field. It's identical to NextSequenceNoEQ.
 func NextSequenceNo(v int64) predicate.CodexThreadControl {
 	return predicate.CodexThreadControl(sql.FieldEQ(FieldNextSequenceNo, v))
@@ -698,6 +708,111 @@ func StatusEqualFold(v string) predicate.CodexThreadControl {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.CodexThreadControl {
 	return predicate.CodexThreadControl(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// CollaborationModeEQ applies the EQ predicate on the "collaboration_mode" field.
+func CollaborationModeEQ(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldEQ(FieldCollaborationMode, v))
+}
+
+// CollaborationModeNEQ applies the NEQ predicate on the "collaboration_mode" field.
+func CollaborationModeNEQ(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldNEQ(FieldCollaborationMode, v))
+}
+
+// CollaborationModeIn applies the In predicate on the "collaboration_mode" field.
+func CollaborationModeIn(vs ...string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldIn(FieldCollaborationMode, vs...))
+}
+
+// CollaborationModeNotIn applies the NotIn predicate on the "collaboration_mode" field.
+func CollaborationModeNotIn(vs ...string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldNotIn(FieldCollaborationMode, vs...))
+}
+
+// CollaborationModeGT applies the GT predicate on the "collaboration_mode" field.
+func CollaborationModeGT(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldGT(FieldCollaborationMode, v))
+}
+
+// CollaborationModeGTE applies the GTE predicate on the "collaboration_mode" field.
+func CollaborationModeGTE(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldGTE(FieldCollaborationMode, v))
+}
+
+// CollaborationModeLT applies the LT predicate on the "collaboration_mode" field.
+func CollaborationModeLT(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldLT(FieldCollaborationMode, v))
+}
+
+// CollaborationModeLTE applies the LTE predicate on the "collaboration_mode" field.
+func CollaborationModeLTE(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldLTE(FieldCollaborationMode, v))
+}
+
+// CollaborationModeContains applies the Contains predicate on the "collaboration_mode" field.
+func CollaborationModeContains(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldContains(FieldCollaborationMode, v))
+}
+
+// CollaborationModeHasPrefix applies the HasPrefix predicate on the "collaboration_mode" field.
+func CollaborationModeHasPrefix(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldHasPrefix(FieldCollaborationMode, v))
+}
+
+// CollaborationModeHasSuffix applies the HasSuffix predicate on the "collaboration_mode" field.
+func CollaborationModeHasSuffix(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldHasSuffix(FieldCollaborationMode, v))
+}
+
+// CollaborationModeEqualFold applies the EqualFold predicate on the "collaboration_mode" field.
+func CollaborationModeEqualFold(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldEqualFold(FieldCollaborationMode, v))
+}
+
+// CollaborationModeContainsFold applies the ContainsFold predicate on the "collaboration_mode" field.
+func CollaborationModeContainsFold(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldContainsFold(FieldCollaborationMode, v))
+}
+
+// CollaborationModeRevisionEQ applies the EQ predicate on the "collaboration_mode_revision" field.
+func CollaborationModeRevisionEQ(v int64) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldEQ(FieldCollaborationModeRevision, v))
+}
+
+// CollaborationModeRevisionNEQ applies the NEQ predicate on the "collaboration_mode_revision" field.
+func CollaborationModeRevisionNEQ(v int64) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldNEQ(FieldCollaborationModeRevision, v))
+}
+
+// CollaborationModeRevisionIn applies the In predicate on the "collaboration_mode_revision" field.
+func CollaborationModeRevisionIn(vs ...int64) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldIn(FieldCollaborationModeRevision, vs...))
+}
+
+// CollaborationModeRevisionNotIn applies the NotIn predicate on the "collaboration_mode_revision" field.
+func CollaborationModeRevisionNotIn(vs ...int64) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldNotIn(FieldCollaborationModeRevision, vs...))
+}
+
+// CollaborationModeRevisionGT applies the GT predicate on the "collaboration_mode_revision" field.
+func CollaborationModeRevisionGT(v int64) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldGT(FieldCollaborationModeRevision, v))
+}
+
+// CollaborationModeRevisionGTE applies the GTE predicate on the "collaboration_mode_revision" field.
+func CollaborationModeRevisionGTE(v int64) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldGTE(FieldCollaborationModeRevision, v))
+}
+
+// CollaborationModeRevisionLT applies the LT predicate on the "collaboration_mode_revision" field.
+func CollaborationModeRevisionLT(v int64) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldLT(FieldCollaborationModeRevision, v))
+}
+
+// CollaborationModeRevisionLTE applies the LTE predicate on the "collaboration_mode_revision" field.
+func CollaborationModeRevisionLTE(v int64) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldLTE(FieldCollaborationModeRevision, v))
 }
 
 // NextSequenceNoEQ applies the EQ predicate on the "next_sequence_no" field.

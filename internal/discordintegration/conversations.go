@@ -30,6 +30,7 @@ type IncomingMessage struct {
 	Model                  string
 	ReasoningEffort        string
 	ServiceTier            string
+	CollaborationMode      string
 	ConfigurationConfirmed bool
 	Attachments            []IncomingAttachment
 }
@@ -179,6 +180,10 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 	if input.ServiceTier != "" {
 		preferences.ServiceTier = input.ServiceTier
 	}
+	mode := input.CollaborationMode
+	if mode == "" {
+		mode = "default"
+	}
 	status, configurationStatus := "active", "configured"
 	var deadline any
 	if !input.ConfigurationConfirmed {
@@ -189,17 +194,18 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 	err = tx.QueryRowContext(ctx, `INSERT INTO discord_conversations
 		(guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
 		 repository_id, project_id, agent_profile_id, title, status, model, reasoning_effort, service_tier,
+		 collaboration_mode,
 		 configuration_status, configuration_deadline, configured_by_discord_user_id,
 		 title_rename_status)
 		VALUES ($1, $2, $3, $4, $5, NULLIF($6::text,'')::uuid, NULLIF($7::text,'')::uuid,
-			$8, $9, $10, NULLIF($11,''), NULLIF($12,''), $13,
-			$14, CASE WHEN $15::text IS NULL THEN NULL ELSE now() + $15::interval END, $16,
+			$8, $9, $10, NULLIF($11,''), NULLIF($12,''), $13, $14,
+			$15, CASE WHEN $16::text IS NULL THEN NULL ELSE now() + $16::interval END, $17,
 			'pending')
 		ON CONFLICT(guild_id, thread_id) DO UPDATE SET last_activity_at = now(), updated_at = now()
 		RETURNING id`, input.GuildID, forumID, input.ThreadID, input.MessageID, ownerID,
 		optionalUUID(repositoryID), optionalUUID(projectID), profileID, input.Title, status,
 		preferences.Model, preferences.ReasoningEffort,
-		preferences.ServiceTier, configurationStatus, deadline, input.DiscordUserID).Scan(&conversationID)
+		preferences.ServiceTier, mode, configurationStatus, deadline, input.DiscordUserID).Scan(&conversationID)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -278,9 +284,10 @@ func (s *ConversationService) Reply(ctx context.Context, input IncomingMessage) 
 }
 
 type ConversationConfiguration struct {
-	Model           string
-	ReasoningEffort string
-	ServiceTier     string
+	Model             string
+	ReasoningEffort   string
+	ServiceTier       string
+	CollaborationMode string
 }
 
 func (s *ConversationService) BeginConfigurationEdit(ctx context.Context, conversationID uuid.UUID,
@@ -316,16 +323,16 @@ func (s *ConversationService) finalizeConfiguration(ctx context.Context, convers
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	var model, effort, tier string
+	var model, effort, tier, mode string
 	var forumID uuid.UUID
 	var owner, configuredBy, status string
 	err = tx.QueryRowContext(ctx, `SELECT COALESCE(model,''), COALESCE(reasoning_effort,''),
-		COALESCE(service_tier,'standard'),
+		COALESCE(service_tier,'standard'), collaboration_mode,
 		forum_id, owner_discord_user_id, COALESCE(configured_by_discord_user_id,''), configuration_status
 		FROM discord_conversations WHERE id = $1 AND (
 			$2 = false OR (configuration_status IN ('awaiting','editing') AND configuration_deadline <= now())
 		) FOR UPDATE`, conversationID, requireDue).
-		Scan(&model, &effort, &tier, &forumID, &owner, &configuredBy, &status)
+		Scan(&model, &effort, &tier, &mode, &forumID, &owner, &configuredBy, &status)
 	if err != nil {
 		return err
 	}
@@ -347,11 +354,15 @@ func (s *ConversationService) finalizeConfiguration(ctx context.Context, convers
 			return err
 		}
 		model, effort, tier = strings.TrimSpace(selected.Model), selected.ReasoningEffort, selected.ServiceTier
+		if selected.CollaborationMode != "default" && selected.CollaborationMode != "plan" {
+			return errors.New("所选 Collaboration Mode 无效")
+		}
+		mode = selected.CollaborationMode
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE discord_conversations SET model = NULLIF($2,''),
 		reasoning_effort = NULLIF($3,''), service_tier = $4, configuration_status = 'configured',
-		configuration_deadline = NULL, status = 'active', updated_at = now() WHERE id = $1`,
-		conversationID, model, effort, tier)
+		collaboration_mode = $5, configuration_deadline = NULL, status = 'active',
+		updated_at = now() WHERE id = $1`, conversationID, model, effort, tier, mode)
 	if err != nil {
 		return err
 	}
@@ -581,6 +592,10 @@ func validateIncomingMessage(input IncomingMessage) error {
 	}
 	if len(input.Attachments) > DefaultMaxAttachments {
 		return fmt.Errorf("discord 附件不能超过 %d 个", DefaultMaxAttachments)
+	}
+	if input.CollaborationMode != "" && input.CollaborationMode != "default" &&
+		input.CollaborationMode != "plan" {
+		return errors.New("discord collaboration mode 无效")
 	}
 	_, err := json.Marshal(input)
 	return err

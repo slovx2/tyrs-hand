@@ -142,8 +142,9 @@ supports_websockets = false
 		"threadId": thread.Thread.ID,
 		"input":    []map[string]any{{"type": "text", "text": "Ask me.", "textElements": []any{}}},
 		"collaborationMode": map[string]any{"mode": "plan", "settings": map[string]any{
-			"model": "mock-model", "reasoningEffort": "medium"}},
+			"model": "mock-model", "reasoning_effort": "medium"}},
 	}, &turn))
+	waitForRelayCollaborationMode(t, subscription.Events(), thread.Thread.ID, "plan")
 	select {
 	case request := <-desktopRequest:
 		require.False(t, strings.Contains(string(request.Params), "autoResolutionMs"))
@@ -157,6 +158,47 @@ supports_websockets = false
 		t.Fatal("Worker没有同时收到真实 requestUserInput")
 	}
 	waitForRelayTurnCompleted(t, subscription.Events(), thread.Thread.ID, turn.Turn.ID)
+	var defaultTurn struct {
+		Turn struct {
+			ID string `json:"id"`
+		} `json:"turn"`
+	}
+	require.NoError(t, desktop.Call(context.Background(), "turn/start", map[string]any{
+		"threadId": thread.Thread.ID,
+		"input":    []map[string]any{{"type": "text", "text": "Continue.", "textElements": []any{}}},
+		"collaborationMode": map[string]any{"mode": "default", "settings": map[string]any{
+			"model": "mock-model", "reasoning_effort": "medium"}},
+	}, &defaultTurn))
+	waitForRelayCollaborationMode(t, subscription.Events(), thread.Thread.ID, "default")
+	waitForRelayTurnCompleted(t, subscription.Events(), thread.Thread.ID, defaultTurn.Turn.ID)
+}
+
+func waitForRelayCollaborationMode(t *testing.T, events <-chan codex.Event, threadID, mode string) {
+	t.Helper()
+	timer := time.NewTimer(15 * time.Second)
+	defer timer.Stop()
+	for {
+		select {
+		case event := <-events:
+			if event.Method != "thread/settings/updated" {
+				continue
+			}
+			var value struct {
+				ThreadID       string `json:"threadId"`
+				ThreadSettings struct {
+					CollaborationMode struct {
+						Mode string `json:"mode"`
+					} `json:"collaborationMode"`
+				} `json:"threadSettings"`
+			}
+			require.NoError(t, json.Unmarshal(event.Params, &value))
+			if value.ThreadID == threadID && value.ThreadSettings.CollaborationMode.Mode == mode {
+				return
+			}
+		case <-timer.C:
+			t.Fatalf("等待 collaboration mode %s 超时", mode)
+		}
+	}
 }
 
 func inputAnswer() map[string]any {

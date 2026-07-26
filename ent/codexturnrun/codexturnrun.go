@@ -36,6 +36,8 @@ const (
 	FieldActiveSlot = "active_slot"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldCollaborationMode holds the string denoting the collaboration_mode field in the database.
+	FieldCollaborationMode = "collaboration_mode"
 	// FieldCodexSubmissionID holds the string denoting the codex_submission_id field in the database.
 	FieldCodexSubmissionID = "codex_submission_id"
 	// FieldConfirmedCodexTurnID holds the string denoting the confirmed_codex_turn_id field in the database.
@@ -72,6 +74,7 @@ var Columns = []string{
 	FieldWorkerTerminalKey,
 	FieldActiveSlot,
 	FieldStatus,
+	FieldCollaborationMode,
 	FieldCodexSubmissionID,
 	FieldConfirmedCodexTurnID,
 	FieldAppendCount,
@@ -98,6 +101,8 @@ var (
 	DefaultWorkerEventSequence int64
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
+	// DefaultCollaborationMode holds the default value on creation for the "collaboration_mode" field.
+	DefaultCollaborationMode string
 	// DefaultAppendCount holds the default value on creation for the "append_count" field.
 	DefaultAppendCount int
 	// DefaultMaxAppendCount holds the default value on creation for the "max_append_count" field.
@@ -171,6 +176,11 @@ func ByActiveSlot(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByCollaborationMode orders the results by the collaboration_mode field.
+func ByCollaborationMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCollaborationMode, opts...).ToFunc()
 }
 
 // ByCodexSubmissionID orders the results by the codex_submission_id field.

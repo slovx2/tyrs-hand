@@ -179,14 +179,18 @@ func (e *environmentCodex) observeMetadata(ctx context.Context) {
 				var value struct {
 					ThreadID       string `json:"threadId"`
 					ThreadSettings struct {
-						Model       string `json:"model"`
-						ServiceTier string `json:"serviceTier"`
-						Effort      string `json:"effort"`
+						Model             string `json:"model"`
+						ServiceTier       string `json:"serviceTier"`
+						Effort            string `json:"effort"`
+						CollaborationMode struct {
+							Mode string `json:"mode"`
+						} `json:"collaborationMode"`
 					} `json:"threadSettings"`
 				}
 				if json.Unmarshal(event.Params, &value) == nil {
 					e.recordThreadSettings(ctx, value.ThreadID, value.ThreadSettings.Model,
-						value.ThreadSettings.Effort, value.ThreadSettings.ServiceTier)
+						value.ThreadSettings.Effort, value.ThreadSettings.ServiceTier,
+						value.ThreadSettings.CollaborationMode.Mode)
 				}
 			}
 		case <-ctx.Done():
@@ -214,14 +218,14 @@ func (e *environmentCodex) recordThreadLifecycle(ctx context.Context, threadID, 
 }
 
 func (e *environmentCodex) recordThreadSettings(ctx context.Context, threadID, model,
-	effort, tier string,
+	effort, tier, collaborationMode string,
 ) {
-	if e.processor == nil || threadID == "" || model == "" {
+	if e.processor == nil || threadID == "" || (model == "" && collaborationMode == "") {
 		return
 	}
 	event := workerprotocol.ThreadMetadataEvent{ThreadID: threadID,
 		Sequence: e.settingsSequence.Add(1), Kind: "settings", Model: model,
-		ReasoningEffort: effort, ServiceTier: tier}
+		ReasoningEffort: effort, ServiceTier: tier, CollaborationMode: collaborationMode}
 	e.recordThreadMetadata(ctx, event)
 }
 

@@ -13,6 +13,37 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type recordingRuntimeClient struct {
+	method  string
+	payload map[string]any
+}
+
+func (c *recordingRuntimeClient) Call(_ context.Context, method string, payload, result any) error {
+	c.method = method
+	c.payload = payload.(map[string]any)
+	return json.Unmarshal([]byte(`{"turn":{"id":"turn-1"}}`), result)
+}
+
+func TestStartTurnCarriesCollaborationMode(t *testing.T) {
+	for _, mode := range []string{"default", "plan"} {
+		t.Run(mode, func(t *testing.T) {
+			client := &recordingRuntimeClient{}
+			turnID, err := NewRuntime(client).StartTurn(context.Background(), "thread-1",
+				ports.TurnInput{Text: "test", CollaborationMode: &ports.CollaborationMode{
+					Mode: mode, Model: "gpt-5.6-sol", ReasoningEffort: "high",
+				}})
+			require.NoError(t, err)
+			require.Equal(t, "turn-1", turnID)
+			require.Equal(t, "turn/start", client.method)
+			collaboration := client.payload["collaborationMode"].(map[string]any)
+			require.Equal(t, mode, collaboration["mode"])
+			settings := collaboration["settings"].(map[string]any)
+			require.Equal(t, "gpt-5.6-sol", settings["model"])
+			require.Equal(t, "high", settings["reasoning_effort"])
+		})
+	}
+}
+
 func TestThreadPayloadAndSkillInput(t *testing.T) {
 	root := t.TempDir()
 	payload := threadPayload(ports.ThreadOptions{

@@ -135,6 +135,8 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 		}
 	}
 	input := remoteDiscordTurnInput(snapshot, runtime, attachments, skills)
+	input.CollaborationMode = &ports.CollaborationMode{Mode: settings.CollaborationMode,
+		Model: settings.Model, ReasoningEffort: settings.ReasoningEffort}
 	turnID, err := codexRuntime.StartTurn(ctx, threadID, input)
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err

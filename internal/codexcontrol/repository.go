@@ -108,17 +108,27 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 			return uuid.Nil, false, err
 		}
 		_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls control SET
-			desired_thread_name = conversation.generated_title,
-			desired_thread_name_source = 'luna',
-			desired_thread_name_revision = desired_thread_name_revision + 1,
-			thread_name_last_error = NULL, updated_at = now()
-			FROM discord_conversations conversation
-			WHERE control.id = $1 AND conversation.id = $2
-				AND control.discord_conversation_id = conversation.id
-				AND COALESCE(conversation.generated_title, '') <> ''
+			collaboration_mode = conversation.collaboration_mode,
+			collaboration_mode_revision = conversation.collaboration_mode_revision,
+			desired_thread_name = CASE WHEN COALESCE(conversation.generated_title, '') <> ''
 				AND conversation.title_rename_status IN ('scheduled','completed','failed')
 				AND (control.desired_thread_name_source IS DISTINCT FROM 'luna'
-					OR control.desired_thread_name IS DISTINCT FROM conversation.generated_title)`,
+					OR control.desired_thread_name IS DISTINCT FROM conversation.generated_title)
+				THEN conversation.generated_title ELSE control.desired_thread_name END,
+			desired_thread_name_source = CASE WHEN COALESCE(conversation.generated_title, '') <> ''
+				AND conversation.title_rename_status IN ('scheduled','completed','failed')
+				THEN 'luna' ELSE control.desired_thread_name_source END,
+			desired_thread_name_revision = desired_thread_name_revision + CASE
+				WHEN COALESCE(conversation.generated_title, '') <> ''
+					AND conversation.title_rename_status IN ('scheduled','completed','failed')
+					AND (control.desired_thread_name_source IS DISTINCT FROM 'luna'
+						OR control.desired_thread_name IS DISTINCT FROM conversation.generated_title)
+				THEN 1 ELSE 0 END,
+			thread_name_last_error = CASE WHEN COALESCE(conversation.generated_title, '') <> ''
+				THEN NULL ELSE control.thread_name_last_error END, updated_at = now()
+			FROM discord_conversations conversation
+			WHERE control.id = $1 AND conversation.id = $2
+				AND control.discord_conversation_id = conversation.id`,
 			controlID, request.DiscordConversationID)
 		if err != nil {
 			return uuid.Nil, false, err
@@ -279,7 +289,8 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 		i.actor_display_name, i.reply_policy, i.reply_status,
 		i.attempt_count + 1, $2::integer, COALESCE(i.codex_submission_id,''),
 		COALESCE(i.confirmed_codex_turn_id,''), i.created_at,
-		c.external_thread_id, c.codex_home_key, c.lease_epoch + 1
+		c.external_thread_id, c.codex_home_key, c.lease_epoch + 1,
+		c.collaboration_mode
 		FROM codex_turn_intents i JOIN codex_thread_controls c ON c.id = i.control_id
 		WHERE i.control_id = $1 AND i.status IN ('queued','retry_wait','reconciling')
 		  AND i.available_at <= now() AND i.attempt_count < $2
@@ -292,7 +303,8 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 		&claimed.ActorPermission, &actorParticipantID, &claimed.ActorDisplayName,
 		&claimed.ReplyPolicy, &claimed.ReplyStatus,
 		&claimed.Attempt, &claimed.MaxAttempts, &claimed.SubmissionID, &claimed.ConfirmedTurnID,
-		&claimed.CreatedAt, &externalThreadID, &codexHomeKey, &claimed.LeaseEpoch)
+		&claimed.CreatedAt, &externalThreadID, &codexHomeKey, &claimed.LeaseEpoch,
+		&claimed.CollaborationMode)
 	if err != nil {
 		return nil, err
 	}
@@ -339,10 +351,10 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 	}
 	err = tx.QueryRowContext(ctx, `INSERT INTO codex_turn_runs
 		(control_id, primary_intent_id, attempt, worker_id, lease_epoch, capability_hash,
-		 active_slot, max_append_count, execution_node_id)
-		VALUES ($1,$2,$3,$4,$5,$6,1,$7,NULLIF($8,'')::uuid) RETURNING id`, controlID, claimed.ID,
+		 active_slot, max_append_count, execution_node_id, collaboration_mode)
+		VALUES ($1,$2,$3,$4,$5,$6,1,$7,NULLIF($8,'')::uuid,$9) RETURNING id`, controlID, claimed.ID,
 		claimed.Attempt, workerID, claimed.LeaseEpoch, security.Digest(capability), r.maxSteers,
-		executionNodeID).Scan(&claimed.RunID)
+		executionNodeID, claimed.CollaborationMode).Scan(&claimed.RunID)
 	if err != nil {
 		return nil, err
 	}

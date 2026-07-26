@@ -37,6 +37,92 @@ import (
 	"go.uber.org/zap"
 )
 
+func TestConversationModeSwitching(t *testing.T) {
+	db := discordDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	_, err := db.ExecContext(ctx, `INSERT INTO discord_guilds(guild_id, name, enabled)
+		VALUES ($1, 'mode-test', true)`, testGuildID)
+	require.NoError(t, err)
+	seed := seedDiscordManagerData(t, db)
+	service := NewConversationService(db)
+	_, err = service.ConversationMode(ctx, testGuildID, "100000000000000499", "1001")
+	require.ErrorContains(t, err, "不是 Codex 会话 Post")
+	conversationID, err := service.BeginPost(ctx, IncomingMessage{
+		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
+		ThreadID: "100000000000000401", MessageID: "100000000000000402",
+		DiscordUserID: "1001", DisplayName: "Alice", Username: "alice",
+		Title: "Plan mode", Body: "先规划", ConfigurationConfirmed: false,
+	})
+	require.NoError(t, err)
+	state, err := service.ConversationMode(ctx, testGuildID, "100000000000000401", "1001")
+	require.NoError(t, err)
+	require.Equal(t, "default", state.Mode)
+	require.False(t, state.Busy)
+
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{"id":"9901","channel_id":"100000000000000401","content":"updated"}`))
+	}))
+	t.Cleanup(server.Close)
+	remote := NewDisgoRemote("token", server.URL, server.Client())
+	t.Cleanup(func() { remote.Close(context.Background()) })
+	client := &bot.Client{ApplicationID: snowflake.ID(900), Rest: remote.rest}
+	connector := &DisgoConnector{manager: &Manager{db: db}, conversations: service,
+		guildID: testGuildID, logger: zap.NewNop()}
+	connector.onComponent(newComponentEvent(t, client, "100000000000000403",
+		"100000000000000401", modeButtonID(state, "plan"), nil))
+	state, err = service.ConversationMode(ctx, testGuildID, "100000000000000401", "1001")
+	require.NoError(t, err)
+	require.Equal(t, "plan", state.Mode)
+	require.EqualValues(t, 1, state.Revision)
+
+	state, stale, err := service.SetConversationMode(ctx, testGuildID, "100000000000000401",
+		"1001", conversationID, state.Revision, "plan")
+	require.NoError(t, err)
+	require.False(t, stale)
+
+	latest, stale, err := service.SetConversationMode(ctx, testGuildID, "100000000000000401",
+		"1001", conversationID, 0, "default")
+	require.NoError(t, err)
+	require.True(t, stale)
+	require.Equal(t, "plan", latest.Mode)
+	_, _, err = service.SetConversationMode(ctx, testGuildID, "100000000000000401",
+		"1001", uuid.New(), latest.Revision, "default")
+	require.ErrorContains(t, err, "不属于当前")
+	_, _, err = service.SetConversationMode(ctx, testGuildID, "100000000000000401",
+		"1001", conversationID, latest.Revision, "invalid")
+	require.ErrorContains(t, err, "目标模式无效")
+	connector.onComponent(newComponentEvent(t, client, "100000000000000404",
+		"100000000000000401", "codex-mode:bad", nil))
+
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_forum_access
+		(forum_id, discord_user_id, access_level) VALUES ($1, '1002', 'readonly')`,
+		seed.developmentForumID)
+	require.NoError(t, err)
+	_, err = service.ConversationMode(ctx, testGuildID, "100000000000000401", "1002")
+	require.ErrorContains(t, err, "readonly")
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_forum_access
+		(forum_id, discord_user_id, access_level) VALUES ($1, '1003', 'operator')`,
+		seed.developmentForumID)
+	require.NoError(t, err)
+	_, err = service.ConversationMode(ctx, testGuildID, "100000000000000401", "1003")
+	require.NoError(t, err)
+
+	require.NoError(t, service.FinalizeConfiguration(ctx, conversationID, "1001", nil))
+	busy, err := service.ConversationMode(ctx, testGuildID, "100000000000000401", "1001")
+	require.NoError(t, err)
+	require.True(t, busy.Busy)
+	_, _, err = service.SetConversationMode(ctx, testGuildID, "100000000000000401",
+		"1001", conversationID, busy.Revision, "default")
+	require.ErrorContains(t, err, "暂时不能切换")
+	_, err = db.ExecContext(ctx, `UPDATE discord_conversations SET lifecycle_state = 'archived'
+		WHERE id = $1`, conversationID)
+	require.NoError(t, err)
+	_, err = service.ConversationMode(ctx, testGuildID, "100000000000000401", "1001")
+	require.ErrorIs(t, err, codexcontrol.ErrControlArchived)
+}
+
 func TestDiscordManagerForumsAndProjections(t *testing.T) {
 	db := discordDatabase(t)
 	ctx := context.Background()
@@ -814,7 +900,7 @@ func TestReconcileConversationProgressCardsUpdatesExistingMessage(t *testing.T) 
 		WHERE projection.guild_id=$1 AND projection.projection_key=$2`, testGuildID,
 		projectionKey).Scan(&desiredPayload, &operationType))
 	require.Equal(t, "message.update", operationType)
-	require.Contains(t, string(desiredPayload), `"formatVersion": 3`)
+	require.Contains(t, string(desiredPayload), `"formatVersion": 4`)
 	require.Contains(t, string(desiredPayload), "项动态")
 	require.NotContains(t, string(desiredPayload), "条更新")
 }
@@ -845,7 +931,7 @@ func TestReconcileConversationProgressCardsUpdatesOrphanedRun(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT desired_payload::text
 		FROM discord_projections WHERE guild_id=$1 AND projection_key=$2`,
 		testGuildID, projectionKey).Scan(&desiredPayload))
-	require.Contains(t, desiredPayload, `"formatVersion": 3`)
+	require.Contains(t, desiredPayload, `"formatVersion": 4`)
 	require.NotContains(t, desiredPayload, `"footer"`)
 	var outboxStatus string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM integration_outbox
@@ -1148,7 +1234,8 @@ func testGatewayHandlers(t *testing.T, ctx context.Context, db *sql.DB, manager 
 	require.NoError(t, err)
 	require.False(t, started, "调整参数后延长的截止时间不能被旧的超时扫描启动")
 	require.NoError(t, conversationService.FinalizeConfiguration(ctx, conversationID, "1001",
-		&ConversationConfiguration{Model: "gpt-5.6-terra", ReasoningEffort: "high", ServiceTier: "fast"}))
+		&ConversationConfiguration{Model: "gpt-5.6-terra", ReasoningEffort: "high",
+			ServiceTier: "fast", CollaborationMode: "default"}))
 	var configuredModel, configuredEffort, configuredTier string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT status, model, reasoning_effort, service_tier
 		FROM discord_conversations WHERE id = $1`, conversationID).
@@ -1242,9 +1329,9 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 
 	connector.onComponent(newComponentEvent(t, client, "5100", seed.developmentForumChannelID,
 		"codex-new-open", nil))
-	modal, err := connector.newCodexModal(ctx, seed.developmentForumChannelID, "1001")
+	modal, err := connector.newCodexModal(ctx, seed.developmentForumChannelID, "1001", "default")
 	require.NoError(t, err)
-	require.Equal(t, newCodexModalPrefix+seed.developmentForumChannelID, modal.CustomID)
+	require.Equal(t, newCodexModalPrefix+seed.developmentForumChannelID+":default", modal.CustomID)
 	require.Len(t, modal.Components, 5)
 	_, _, _, err = connector.authorizedForum(ctx, seed.developmentForumChannelID, "1003")
 	require.NoError(t, err)
@@ -1252,7 +1339,7 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 	require.Error(t, err)
 	_, _, _, err = connector.authorizedForum(ctx, "999999999999999999", "1001")
 	require.Error(t, err)
-	_, err = connector.newCodexModal(ctx, seed.developmentForumChannelID, "1002")
+	_, err = connector.newCodexModal(ctx, seed.developmentForumChannelID, "1002", "default")
 	require.Error(t, err)
 	_, err = connector.configurationModal(ctx, uuid.New())
 	require.Error(t, err)
@@ -1277,16 +1364,19 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 			discord.NewLabel("自定义模型", discord.TextInputComponent{CustomID: "custom_model", Value: "private-model"}),
 			discord.NewLabel("服务等级", discord.StringSelectMenuComponent{CustomID: "service_tier", Values: []string{"fast"}}),
 			discord.NewLabel("思考等级", discord.StringSelectMenuComponent{CustomID: "reasoning_effort", Values: []string{"xhigh"}}),
+			discord.NewLabel("模式", discord.StringSelectMenuComponent{CustomID: "collaboration_mode", Values: []string{"plan"}}),
 		})
 	connector.onModalSubmit(configurationSubmit)
 	connector.onModalSubmit(configurationSubmit)
-	var model, effort, tier string
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT configuration_status, model, reasoning_effort, service_tier
-		FROM discord_conversations WHERE id = $1`, editID).Scan(&status, &model, &effort, &tier))
+	var model, effort, tier, collaborationMode string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT configuration_status, model, reasoning_effort,
+		service_tier, collaboration_mode FROM discord_conversations WHERE id = $1`, editID).
+		Scan(&status, &model, &effort, &tier, &collaborationMode))
 	require.Equal(t, "configured", status)
 	require.Equal(t, "private-model", model)
 	require.Equal(t, "xhigh", effort)
 	require.Equal(t, "fast", tier)
+	require.Equal(t, "plan", collaborationMode)
 	_, err = connector.configurationModal(ctx, editID)
 	require.NoError(t, err)
 
@@ -1313,7 +1403,7 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 	require.False(t, started)
 
 	newPostSubmit := newModalEvent(t, client, "5104", seed.developmentForumChannelID,
-		newCodexModalPrefix+seed.developmentForumChannelID, []discord.LayoutComponent{
+		newCodexModalPrefix+seed.developmentForumChannelID+":plan", []discord.LayoutComponent{
 			discord.NewLabel("任务", discord.TextInputComponent{CustomID: "task", Value: "bot-created task"}),
 			discord.NewLabel("模型", discord.StringSelectMenuComponent{CustomID: "model", Values: []string{"gpt-5.6-sol"}}),
 			discord.NewLabel("自定义模型", discord.TextInputComponent{CustomID: "custom_model"}),
@@ -1322,12 +1412,14 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 		})
 	connector.onModalSubmit(newPostSubmit)
 	createdID := conversationIDForThread(t, ctx, db, "2010")
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT configuration_status, title_rename_status
-		FROM discord_conversations WHERE id = $1`, createdID).Scan(&status, &model))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT configuration_status, title_rename_status,
+		collaboration_mode FROM discord_conversations WHERE id = $1`, createdID).
+		Scan(&status, &model, &collaborationMode))
 	require.Equal(t, "configured", status)
 	require.Equal(t, "pending", model)
+	require.Equal(t, "plan", collaborationMode)
 	emptyCustom := newModalEvent(t, client, "5107", seed.developmentForumChannelID,
-		newCodexModalPrefix+seed.developmentForumChannelID, []discord.LayoutComponent{
+		newCodexModalPrefix+seed.developmentForumChannelID+":default", []discord.LayoutComponent{
 			discord.NewLabel("任务", discord.TextInputComponent{CustomID: "task", Value: "invalid custom model"}),
 			discord.NewLabel("模型", discord.StringSelectMenuComponent{CustomID: "model", Values: []string{"__custom__"}}),
 			discord.NewLabel("自定义模型", discord.TextInputComponent{CustomID: "custom_model"}),
@@ -1336,7 +1428,7 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 		})
 	connector.onModalSubmit(emptyCustom)
 	emptyTask := newModalEvent(t, client, "5108", seed.developmentForumChannelID,
-		newCodexModalPrefix+seed.developmentForumChannelID, []discord.LayoutComponent{
+		newCodexModalPrefix+seed.developmentForumChannelID+":default", []discord.LayoutComponent{
 			discord.NewLabel("任务", discord.TextInputComponent{CustomID: "task"}),
 			discord.NewLabel("模型", discord.StringSelectMenuComponent{CustomID: "model", Values: []string{"__default__"}}),
 			discord.NewLabel("自定义模型", discord.TextInputComponent{CustomID: "custom_model"}),
@@ -1373,7 +1465,7 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 	for _, value := range []struct{ effort, tier string }{
 		{"low", "standard"}, {"medium", "fast"}, {"high", "standard"}, {"xhigh", "fast"}, {"unknown", "standard"},
 	} {
-		card := conversationConfigurationCard("", value.effort, value.tier)
+		card := conversationConfigurationCard("", value.effort, value.tier, "default")
 		require.Contains(t, card.Body, "**模型**")
 		require.Contains(t, card.Body, "**服务等级**")
 		require.Contains(t, card.Body, "**思考等级**")
@@ -1682,20 +1774,30 @@ func testDiscordRecoveryOrchestration(t *testing.T, ctx context.Context, db *sql
 		var commands []struct {
 			Name    string `json:"name"`
 			Options []struct {
-				Name string `json:"name"`
+				Name    string `json:"name"`
+				Options []struct {
+					Name string `json:"name"`
+				} `json:"options"`
 			} `json:"options"`
 		}
 		require.NoError(t, json.NewDecoder(request.Body).Decode(&commands))
-		var codexSubcommands []string
+		var codexSubcommands, newOptions []string
 		for _, command := range commands {
 			if command.Name == "codex" {
 				for _, option := range command.Options {
 					codexSubcommands = append(codexSubcommands, option.Name)
+					if option.Name == "new" {
+						for _, child := range option.Options {
+							newOptions = append(newOptions, child.Name)
+						}
+					}
 				}
 			}
 		}
 		require.Contains(t, codexSubcommands, "archive")
 		require.Contains(t, codexSubcommands, "restore")
+		require.Contains(t, codexSubcommands, "mode")
+		require.Contains(t, newOptions, "mode")
 		response.Header().Set("Content-Type", "application/json")
 		_, _ = response.Write([]byte(`[]`))
 	}))

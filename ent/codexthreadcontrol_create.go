@@ -131,6 +131,34 @@ func (_c *CodexThreadControlCreate) SetNillableStatus(v *string) *CodexThreadCon
 	return _c
 }
 
+// SetCollaborationMode sets the "collaboration_mode" field.
+func (_c *CodexThreadControlCreate) SetCollaborationMode(v string) *CodexThreadControlCreate {
+	_c.mutation.SetCollaborationMode(v)
+	return _c
+}
+
+// SetNillableCollaborationMode sets the "collaboration_mode" field if the given value is not nil.
+func (_c *CodexThreadControlCreate) SetNillableCollaborationMode(v *string) *CodexThreadControlCreate {
+	if v != nil {
+		_c.SetCollaborationMode(*v)
+	}
+	return _c
+}
+
+// SetCollaborationModeRevision sets the "collaboration_mode_revision" field.
+func (_c *CodexThreadControlCreate) SetCollaborationModeRevision(v int64) *CodexThreadControlCreate {
+	_c.mutation.SetCollaborationModeRevision(v)
+	return _c
+}
+
+// SetNillableCollaborationModeRevision sets the "collaboration_mode_revision" field if the given value is not nil.
+func (_c *CodexThreadControlCreate) SetNillableCollaborationModeRevision(v *int64) *CodexThreadControlCreate {
+	if v != nil {
+		_c.SetCollaborationModeRevision(*v)
+	}
+	return _c
+}
+
 // SetNextSequenceNo sets the "next_sequence_no" field.
 func (_c *CodexThreadControlCreate) SetNextSequenceNo(v int64) *CodexThreadControlCreate {
 	_c.mutation.SetNextSequenceNo(v)
@@ -408,6 +436,14 @@ func (_c *CodexThreadControlCreate) defaults() {
 		v := codexthreadcontrol.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.CollaborationMode(); !ok {
+		v := codexthreadcontrol.DefaultCollaborationMode
+		_c.mutation.SetCollaborationMode(v)
+	}
+	if _, ok := _c.mutation.CollaborationModeRevision(); !ok {
+		v := codexthreadcontrol.DefaultCollaborationModeRevision
+		_c.mutation.SetCollaborationModeRevision(v)
+	}
 	if _, ok := _c.mutation.NextSequenceNo(); !ok {
 		v := codexthreadcontrol.DefaultNextSequenceNo
 		_c.mutation.SetNextSequenceNo(v)
@@ -440,6 +476,12 @@ func (_c *CodexThreadControlCreate) check() error {
 	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "CodexThreadControl.status"`)}
+	}
+	if _, ok := _c.mutation.CollaborationMode(); !ok {
+		return &ValidationError{Name: "collaboration_mode", err: errors.New(`ent: missing required field "CodexThreadControl.collaboration_mode"`)}
+	}
+	if _, ok := _c.mutation.CollaborationModeRevision(); !ok {
+		return &ValidationError{Name: "collaboration_mode_revision", err: errors.New(`ent: missing required field "CodexThreadControl.collaboration_mode_revision"`)}
 	}
 	if _, ok := _c.mutation.NextSequenceNo(); !ok {
 		return &ValidationError{Name: "next_sequence_no", err: errors.New(`ent: missing required field "CodexThreadControl.next_sequence_no"`)}
@@ -523,6 +565,14 @@ func (_c *CodexThreadControlCreate) createSpec() (*CodexThreadControl, *sqlgraph
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(codexthreadcontrol.FieldStatus, field.TypeString, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.CollaborationMode(); ok {
+		_spec.SetField(codexthreadcontrol.FieldCollaborationMode, field.TypeString, value)
+		_node.CollaborationMode = value
+	}
+	if value, ok := _c.mutation.CollaborationModeRevision(); ok {
+		_spec.SetField(codexthreadcontrol.FieldCollaborationModeRevision, field.TypeInt64, value)
+		_node.CollaborationModeRevision = value
 	}
 	if value, ok := _c.mutation.NextSequenceNo(); ok {
 		_spec.SetField(codexthreadcontrol.FieldNextSequenceNo, field.TypeInt64, value)

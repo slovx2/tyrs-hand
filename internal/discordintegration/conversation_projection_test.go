@@ -48,6 +48,9 @@ func TestProjectConversationStatusUsesSingleProjectionOutboxKey(t *testing.T) {
 	})
 	conversationID := uuid.New()
 	projectionKey := "conversation:" + conversationID.String() + ":message:message-1"
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT collaboration_mode FROM discord_conversations")).
+		WithArgs(conversationID).
+		WillReturnRows(sqlmock.NewRows([]string{"collaboration_mode"}).AddRow("default"))
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO discord_projections")).
 		WithArgs("guild-1", projectionKey, "thread-1", sqlmock.AnyArg()).

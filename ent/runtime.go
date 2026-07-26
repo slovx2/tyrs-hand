@@ -105,20 +105,28 @@ func init() {
 	codexthreadcontrolDescStatus := codexthreadcontrolFields[9].Descriptor()
 	// codexthreadcontrol.DefaultStatus holds the default value on creation for the status field.
 	codexthreadcontrol.DefaultStatus = codexthreadcontrolDescStatus.Default.(string)
+	// codexthreadcontrolDescCollaborationMode is the schema descriptor for collaboration_mode field.
+	codexthreadcontrolDescCollaborationMode := codexthreadcontrolFields[10].Descriptor()
+	// codexthreadcontrol.DefaultCollaborationMode holds the default value on creation for the collaboration_mode field.
+	codexthreadcontrol.DefaultCollaborationMode = codexthreadcontrolDescCollaborationMode.Default.(string)
+	// codexthreadcontrolDescCollaborationModeRevision is the schema descriptor for collaboration_mode_revision field.
+	codexthreadcontrolDescCollaborationModeRevision := codexthreadcontrolFields[11].Descriptor()
+	// codexthreadcontrol.DefaultCollaborationModeRevision holds the default value on creation for the collaboration_mode_revision field.
+	codexthreadcontrol.DefaultCollaborationModeRevision = codexthreadcontrolDescCollaborationModeRevision.Default.(int64)
 	// codexthreadcontrolDescNextSequenceNo is the schema descriptor for next_sequence_no field.
-	codexthreadcontrolDescNextSequenceNo := codexthreadcontrolFields[10].Descriptor()
+	codexthreadcontrolDescNextSequenceNo := codexthreadcontrolFields[12].Descriptor()
 	// codexthreadcontrol.DefaultNextSequenceNo holds the default value on creation for the next_sequence_no field.
 	codexthreadcontrol.DefaultNextSequenceNo = codexthreadcontrolDescNextSequenceNo.Default.(int64)
 	// codexthreadcontrolDescLeaseEpoch is the schema descriptor for lease_epoch field.
-	codexthreadcontrolDescLeaseEpoch := codexthreadcontrolFields[15].Descriptor()
+	codexthreadcontrolDescLeaseEpoch := codexthreadcontrolFields[17].Descriptor()
 	// codexthreadcontrol.DefaultLeaseEpoch holds the default value on creation for the lease_epoch field.
 	codexthreadcontrol.DefaultLeaseEpoch = codexthreadcontrolDescLeaseEpoch.Default.(int64)
 	// codexthreadcontrolDescCreatedAt is the schema descriptor for created_at field.
-	codexthreadcontrolDescCreatedAt := codexthreadcontrolFields[24].Descriptor()
+	codexthreadcontrolDescCreatedAt := codexthreadcontrolFields[26].Descriptor()
 	// codexthreadcontrol.DefaultCreatedAt holds the default value on creation for the created_at field.
 	codexthreadcontrol.DefaultCreatedAt = codexthreadcontrolDescCreatedAt.Default.(func() time.Time)
 	// codexthreadcontrolDescUpdatedAt is the schema descriptor for updated_at field.
-	codexthreadcontrolDescUpdatedAt := codexthreadcontrolFields[25].Descriptor()
+	codexthreadcontrolDescUpdatedAt := codexthreadcontrolFields[27].Descriptor()
 	// codexthreadcontrol.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	codexthreadcontrol.DefaultUpdatedAt = codexthreadcontrolDescUpdatedAt.Default.(func() time.Time)
 	// codexthreadcontrol.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -225,20 +233,24 @@ func init() {
 	codexturnrunDescStatus := codexturnrunFields[11].Descriptor()
 	// codexturnrun.DefaultStatus holds the default value on creation for the status field.
 	codexturnrun.DefaultStatus = codexturnrunDescStatus.Default.(string)
+	// codexturnrunDescCollaborationMode is the schema descriptor for collaboration_mode field.
+	codexturnrunDescCollaborationMode := codexturnrunFields[12].Descriptor()
+	// codexturnrun.DefaultCollaborationMode holds the default value on creation for the collaboration_mode field.
+	codexturnrun.DefaultCollaborationMode = codexturnrunDescCollaborationMode.Default.(string)
 	// codexturnrunDescAppendCount is the schema descriptor for append_count field.
-	codexturnrunDescAppendCount := codexturnrunFields[14].Descriptor()
+	codexturnrunDescAppendCount := codexturnrunFields[15].Descriptor()
 	// codexturnrun.DefaultAppendCount holds the default value on creation for the append_count field.
 	codexturnrun.DefaultAppendCount = codexturnrunDescAppendCount.Default.(int)
 	// codexturnrunDescMaxAppendCount is the schema descriptor for max_append_count field.
-	codexturnrunDescMaxAppendCount := codexturnrunFields[15].Descriptor()
+	codexturnrunDescMaxAppendCount := codexturnrunFields[16].Descriptor()
 	// codexturnrun.DefaultMaxAppendCount holds the default value on creation for the max_append_count field.
 	codexturnrun.DefaultMaxAppendCount = codexturnrunDescMaxAppendCount.Default.(int)
 	// codexturnrunDescStartedAt is the schema descriptor for started_at field.
-	codexturnrunDescStartedAt := codexturnrunFields[16].Descriptor()
+	codexturnrunDescStartedAt := codexturnrunFields[17].Descriptor()
 	// codexturnrun.DefaultStartedAt holds the default value on creation for the started_at field.
 	codexturnrun.DefaultStartedAt = codexturnrunDescStartedAt.Default.(func() time.Time)
 	// codexturnrunDescHeartbeatAt is the schema descriptor for heartbeat_at field.
-	codexturnrunDescHeartbeatAt := codexturnrunFields[17].Descriptor()
+	codexturnrunDescHeartbeatAt := codexturnrunFields[18].Descriptor()
 	// codexturnrun.DefaultHeartbeatAt holds the default value on creation for the heartbeat_at field.
 	codexturnrun.DefaultHeartbeatAt = codexturnrunDescHeartbeatAt.Default.(func() time.Time)
 	// codexturnrunDescID is the schema descriptor for id field.

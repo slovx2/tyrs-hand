@@ -34,6 +34,13 @@ type TurnInput struct {
 	LocalImages         []LocalImageInput
 	AdditionalContext   map[string]AdditionalContextEntry
 	Skills              []SkillRef
+	CollaborationMode   *CollaborationMode
+}
+
+type CollaborationMode struct {
+	Mode            string
+	Model           string
+	ReasoningEffort string
 }
 
 type LocalImageInput struct {

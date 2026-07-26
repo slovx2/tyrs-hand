@@ -39,7 +39,7 @@ const (
 )
 
 func conversationProgressCard(state ConversationProgress, timeline ConversationTimeline,
-	page int, runID string,
+	page int, runID, mode string,
 ) ComponentCardPayload {
 	header, color := "⚙️ Codex · 处理中", cardColorBlurple
 	switch state {
@@ -57,6 +57,9 @@ func conversationProgressCard(state ConversationProgress, timeline ConversationT
 	card := ComponentCardPayload{AccentColor: color, Header: header,
 		Body:     fmt.Sprintf("`%s` · `%d 项动态`", compactDuration(timeline.Duration), timeline.Updates),
 		Timeline: timeline.Pages[page]}
+	if mode == "plan" {
+		card.Body += " · `模式：Plan`"
+	}
 	if len(timeline.Pages) > 1 && runID != "" {
 		last := len(timeline.Pages) - 1
 		card.Buttons = []ComponentButtonPayload{
@@ -81,7 +84,7 @@ func archivedConversationCard() ComponentCardPayload {
 		Body:   "当前消息没有进入执行队列。请先恢复这个会话，再继续对话。"}
 }
 
-func conversationConfigurationCard(model, effort, tier string) ComponentCardPayload {
+func conversationConfigurationCard(model, effort, tier, mode string) ComponentCardPayload {
 	if model == "" {
 		model = "Codex 默认"
 	}
@@ -106,7 +109,15 @@ func conversationConfigurationCard(model, effort, tier string) ComponentCardPayl
 		Body: "可以直接使用后台默认值，或在 20 秒内调整本次会话参数。参数确认后会固定到本会话。\n\n" +
 			"**模型**  `" + cardText(model, 128) + "`\n" +
 			"**服务等级**  `" + cardText(tier, 32) + "`\n" +
-			"**思考等级**  `" + cardText(effort, 32) + "`"}
+			"**思考等级**  `" + cardText(effort, 32) + "`\n" +
+			"**模式**  `" + collaborationModeLabel(mode) + "`"}
+}
+
+func collaborationModeLabel(mode string) string {
+	if mode == "plan" {
+		return "Plan"
+	}
+	return "Default"
 }
 
 func taskStatePresentation(state string) (string, int) {

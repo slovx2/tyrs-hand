@@ -110,6 +110,11 @@ func Status(v string) predicate.CodexTurnRun {
 	return predicate.CodexTurnRun(sql.FieldEQ(FieldStatus, v))
 }
 
+// CollaborationMode applies equality check predicate on the "collaboration_mode" field. It's identical to CollaborationModeEQ.
+func CollaborationMode(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldEQ(FieldCollaborationMode, v))
+}
+
 // CodexSubmissionID applies equality check predicate on the "codex_submission_id" field. It's identical to CodexSubmissionIDEQ.
 func CodexSubmissionID(v string) predicate.CodexTurnRun {
 	return predicate.CodexTurnRun(sql.FieldEQ(FieldCodexSubmissionID, v))
@@ -723,6 +728,71 @@ func StatusEqualFold(v string) predicate.CodexTurnRun {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.CodexTurnRun {
 	return predicate.CodexTurnRun(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// CollaborationModeEQ applies the EQ predicate on the "collaboration_mode" field.
+func CollaborationModeEQ(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldEQ(FieldCollaborationMode, v))
+}
+
+// CollaborationModeNEQ applies the NEQ predicate on the "collaboration_mode" field.
+func CollaborationModeNEQ(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldNEQ(FieldCollaborationMode, v))
+}
+
+// CollaborationModeIn applies the In predicate on the "collaboration_mode" field.
+func CollaborationModeIn(vs ...string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldIn(FieldCollaborationMode, vs...))
+}
+
+// CollaborationModeNotIn applies the NotIn predicate on the "collaboration_mode" field.
+func CollaborationModeNotIn(vs ...string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldNotIn(FieldCollaborationMode, vs...))
+}
+
+// CollaborationModeGT applies the GT predicate on the "collaboration_mode" field.
+func CollaborationModeGT(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldGT(FieldCollaborationMode, v))
+}
+
+// CollaborationModeGTE applies the GTE predicate on the "collaboration_mode" field.
+func CollaborationModeGTE(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldGTE(FieldCollaborationMode, v))
+}
+
+// CollaborationModeLT applies the LT predicate on the "collaboration_mode" field.
+func CollaborationModeLT(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldLT(FieldCollaborationMode, v))
+}
+
+// CollaborationModeLTE applies the LTE predicate on the "collaboration_mode" field.
+func CollaborationModeLTE(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldLTE(FieldCollaborationMode, v))
+}
+
+// CollaborationModeContains applies the Contains predicate on the "collaboration_mode" field.
+func CollaborationModeContains(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldContains(FieldCollaborationMode, v))
+}
+
+// CollaborationModeHasPrefix applies the HasPrefix predicate on the "collaboration_mode" field.
+func CollaborationModeHasPrefix(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldHasPrefix(FieldCollaborationMode, v))
+}
+
+// CollaborationModeHasSuffix applies the HasSuffix predicate on the "collaboration_mode" field.
+func CollaborationModeHasSuffix(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldHasSuffix(FieldCollaborationMode, v))
+}
+
+// CollaborationModeEqualFold applies the EqualFold predicate on the "collaboration_mode" field.
+func CollaborationModeEqualFold(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldEqualFold(FieldCollaborationMode, v))
+}
+
+// CollaborationModeContainsFold applies the ContainsFold predicate on the "collaboration_mode" field.
+func CollaborationModeContainsFold(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldContainsFold(FieldCollaborationMode, v))
 }
 
 // CodexSubmissionIDEQ applies the EQ predicate on the "codex_submission_id" field.

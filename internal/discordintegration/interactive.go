@@ -30,14 +30,15 @@ type InteractiveOption struct {
 }
 
 type InteractiveProjection struct {
-	ID        uuid.UUID
-	GuildID   string
-	ThreadID  string
-	MessageID string
-	Status    string
-	Surface   string
-	Questions []InteractiveQuestion
-	Draft     map[string]json.RawMessage
+	ID                uuid.UUID
+	GuildID           string
+	ThreadID          string
+	MessageID         string
+	Status            string
+	Surface           string
+	CollaborationMode string
+	Questions         []InteractiveQuestion
+	Draft             map[string]json.RawMessage
 }
 
 func ProjectInteractiveRequest(ctx context.Context, db *sql.DB, id uuid.UUID) error {
@@ -134,8 +135,10 @@ func loadInteractiveProjectionTx(ctx context.Context, tx *sql.Tx, id uuid.UUID,
 
 func interactiveProjectionQuery(lock bool) string {
 	query := `SELECT q.id, c.guild_id, c.thread_id, COALESCE(q.discord_message_id,''),
-		q.status, COALESCE(q.answer_surface,''), q.questions, q.draft_answers
+		q.status, COALESCE(q.answer_surface,''), run.collaboration_mode,
+		q.questions, q.draft_answers
 		FROM codex_interactive_requests q JOIN codex_thread_controls ct ON ct.id=q.control_id
+		JOIN codex_turn_runs run ON run.id=q.run_id
 		JOIN discord_conversations c ON c.id=ct.discord_conversation_id WHERE q.id=$1`
 	if lock {
 		query += " FOR UPDATE OF q"
@@ -151,7 +154,7 @@ func scanInteractiveProjection(row rowScanner) (InteractiveProjection, error) {
 	var result InteractiveProjection
 	var questions, draft json.RawMessage
 	if err := row.Scan(&result.ID, &result.GuildID, &result.ThreadID, &result.MessageID,
-		&result.Status, &result.Surface, &questions, &draft); err != nil {
+		&result.Status, &result.Surface, &result.CollaborationMode, &questions, &draft); err != nil {
 		return InteractiveProjection{}, err
 	}
 	if err := json.Unmarshal(questions, &result.Questions); err != nil {
@@ -177,8 +180,12 @@ func interactiveCard(request InteractiveProjection) ComponentCardPayload {
 		default:
 			source = "自动超时"
 		}
+		body := "回答来源：`" + cardText(source, 64) + "`"
+		if request.CollaborationMode == "plan" {
+			body += " · `模式：Plan`"
+		}
 		return ComponentCardPayload{AccentColor: cardColorGreen,
-			Header: "✅ Codex · 已收到回答", Body: "回答来源：`" + cardText(source, 64) + "`"}
+			Header: "✅ Codex · 已收到回答", Body: body}
 	}
 	index := nextInteractiveQuestion(request)
 	if index < 0 {
@@ -193,6 +200,9 @@ func interactiveCard(request InteractiveProjection) ComponentCardPayload {
 		cardText(header, 128), cardText(question.Question, 3000))
 	card := ComponentCardPayload{AccentColor: cardColorYellow,
 		Header: "❓ Codex · 等待输入", Body: body}
+	if request.CollaborationMode == "plan" {
+		card.Body = "`模式：Plan`\n\n" + card.Body
+	}
 	if question.IsSecret {
 		card.Body += "\n\n🔒 此问题包含敏感信息，请在 Codex Desktop 回答。"
 		return card

@@ -186,6 +186,8 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	if err != nil {
 		return result, err
 	}
+	input.CollaborationMode = &ports.CollaborationMode{Mode: claimed.CollaborationMode,
+		Model: jobCtx.Model, ReasoningEffort: jobCtx.ReasoningEffort}
 	turnID, err := runtime.StartTurn(ctx, threadID, input)
 	if err != nil {
 		return result, err

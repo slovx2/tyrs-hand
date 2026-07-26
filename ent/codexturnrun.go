@@ -40,6 +40,8 @@ type CodexTurnRun struct {
 	ActiveSlot *int `json:"active_slot,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
+	// CollaborationMode holds the value of the "collaboration_mode" field.
+	CollaborationMode string `json:"collaboration_mode,omitempty"`
 	// CodexSubmissionID holds the value of the "codex_submission_id" field.
 	CodexSubmissionID *string `json:"codex_submission_id,omitempty"`
 	// ConfirmedCodexTurnID holds the value of the "confirmed_codex_turn_id" field.
@@ -70,7 +72,7 @@ func (*CodexTurnRun) scanValues(columns []string) ([]any, error) {
 			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		case codexturnrun.FieldAttempt, codexturnrun.FieldLeaseEpoch, codexturnrun.FieldWorkerEventSequence, codexturnrun.FieldActiveSlot, codexturnrun.FieldAppendCount, codexturnrun.FieldMaxAppendCount:
 			values[i] = new(sql.NullInt64)
-		case codexturnrun.FieldWorkerID, codexturnrun.FieldCapabilityHash, codexturnrun.FieldWorkerTerminalKey, codexturnrun.FieldStatus, codexturnrun.FieldCodexSubmissionID, codexturnrun.FieldConfirmedCodexTurnID, codexturnrun.FieldErrorCode, codexturnrun.FieldErrorMessage:
+		case codexturnrun.FieldWorkerID, codexturnrun.FieldCapabilityHash, codexturnrun.FieldWorkerTerminalKey, codexturnrun.FieldStatus, codexturnrun.FieldCollaborationMode, codexturnrun.FieldCodexSubmissionID, codexturnrun.FieldConfirmedCodexTurnID, codexturnrun.FieldErrorCode, codexturnrun.FieldErrorMessage:
 			values[i] = new(sql.NullString)
 		case codexturnrun.FieldStartedAt, codexturnrun.FieldHeartbeatAt, codexturnrun.FieldFinishedAt:
 			values[i] = new(sql.NullTime)
@@ -165,6 +167,12 @@ func (_m *CodexTurnRun) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field status", values[i])
 			} else if value.Valid {
 				_m.Status = value.String
+			}
+		case codexturnrun.FieldCollaborationMode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field collaboration_mode", values[i])
+			} else if value.Valid {
+				_m.CollaborationMode = value.String
 			}
 		case codexturnrun.FieldCodexSubmissionID:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -298,6 +306,9 @@ func (_m *CodexTurnRun) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)
+	builder.WriteString(", ")
+	builder.WriteString("collaboration_mode=")
+	builder.WriteString(_m.CollaborationMode)
 	builder.WriteString(", ")
 	if v := _m.CodexSubmissionID; v != nil {
 		builder.WriteString("codex_submission_id=")

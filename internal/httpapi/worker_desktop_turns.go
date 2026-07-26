@@ -32,6 +32,11 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		badRequest(c, errors.New("desktop turn 参数无效"))
 		return
 	}
+	explicitMode, err := desktopCollaborationMode(request.Params)
+	if err != nil {
+		badRequest(c, err)
+		return
+	}
 	projectionKey := desktopInputProjectionKey(request.Params, request.RequestKey)
 	leaseToken, err := security.RandomToken(32)
 	if err != nil {
@@ -63,6 +68,23 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		problem(c, http.StatusTooManyRequests, "当前执行节点没有可用的 Turn 槽位", nil)
 		return
 	}
+	var lockConversationID sql.NullString
+	err = tx.QueryRowContext(c.Request.Context(), `SELECT discord_conversation_id::text
+		FROM codex_thread_controls WHERE external_thread_id = $1
+			AND development_environment_id = $2 AND execution_node_id = $3`,
+		threadID, request.EnvironmentID, node.ID).Scan(&lockConversationID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		problem(c, http.StatusInternalServerError, "锁定 Desktop Conversation 失败", err)
+		return
+	}
+	if lockConversationID.Valid {
+		var locked uuid.UUID
+		if err := tx.QueryRowContext(c.Request.Context(), `SELECT id FROM discord_conversations
+			WHERE id = $1::uuid FOR UPDATE`, lockConversationID.String).Scan(&locked); err != nil {
+			problem(c, http.StatusInternalServerError, "锁定 Desktop Conversation 失败", err)
+			return
+		}
+	}
 	var claimed codexcontrol.ClaimedControl
 	var controlStatus, lifecycleState string
 	var allowedJSON, dangerousJSON []byte
@@ -72,7 +94,7 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	var conversationID, repositoryID, projectID sql.NullString
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT ct.id, ct.discord_conversation_id,
 		ct.repository_id::text, ct.project_id::text, ct.agent_profile_id, ct.status, ct.lifecycle_state,
-		ct.next_sequence_no,
+		ct.next_sequence_no, ct.collaboration_mode,
 		ct.lease_epoch, COALESCE(ct.external_thread_id,''), COALESCE(ct.codex_home_key,''),
 		p.allowed_tools, '[]'::jsonb,
 		e.guild_id, COALESCE(e.ssh_discord_user_id, ''),
@@ -87,7 +109,7 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		AND (ct.project_id IS NULL OR project.status='active') FOR UPDATE OF ct`, threadID, request.EnvironmentID,
 		node.ID).Scan(&claimed.ControlID, &conversationID,
 		&repositoryID, &projectID, &claimed.AgentProfileID, &controlStatus, &lifecycleState,
-		&nextSequence,
+		&nextSequence, &claimed.CollaborationMode,
 		&oldLeaseEpoch, &claimed.ExternalThreadID,
 		&claimed.CodexHomeKey, &allowedJSON, &dangerousJSON,
 		&actorGuildID, &actorUserID, &actorDisplayName)
@@ -109,6 +131,26 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	if controlStatus != "idle" {
 		problem(c, http.StatusConflict, "该 Thread 已有活动 Turn", nil)
 		return
+	}
+	if explicitMode != "" {
+		err = tx.QueryRowContext(c.Request.Context(), `UPDATE codex_thread_controls SET
+			collaboration_mode = $2,
+			collaboration_mode_revision = collaboration_mode_revision +
+				CASE WHEN collaboration_mode = $2 THEN 0 ELSE 1 END,
+			updated_at = now() WHERE id = $1 RETURNING collaboration_mode`,
+			claimed.ControlID, explicitMode).Scan(&claimed.CollaborationMode)
+		if err == nil && claimed.DiscordConversationID != uuid.Nil {
+			_, err = tx.ExecContext(c.Request.Context(), `UPDATE discord_conversations conversation SET
+				collaboration_mode = control.collaboration_mode,
+				collaboration_mode_revision = control.collaboration_mode_revision,
+				updated_at = now() FROM codex_thread_controls control
+				WHERE conversation.id = $1 AND control.id = $2`,
+				claimed.DiscordConversationID, claimed.ControlID)
+		}
+		if err != nil {
+			problem(c, http.StatusInternalServerError, "同步 Desktop Collaboration Mode 失败", err)
+			return
+		}
 	}
 	_ = json.Unmarshal(allowedJSON, &claimed.AllowedTools)
 	_ = json.Unmarshal(dangerousJSON, &claimed.DangerousActions)
@@ -175,10 +217,10 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	if err == nil {
 		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO codex_turn_runs
 			(id, control_id, primary_intent_id, attempt, worker_id, lease_epoch, capability_hash,
-			 active_slot, max_append_count, execution_node_id)
-			VALUES ($1,$2,$3,1,$4,$5,$6,1,$7,$8)`, claimed.RunID, claimed.ControlID,
+			 active_slot, max_append_count, execution_node_id, collaboration_mode)
+			VALUES ($1,$2,$3,1,$4,$5,$6,1,$7,$8,$9)`, claimed.RunID, claimed.ControlID,
 			claimed.ID, request.WorkerID, claimed.LeaseEpoch, security.Digest(capability),
-			max(1, s.cfg.CodexMaxSteersPerTurn), node.ID)
+			max(1, s.cfg.CodexMaxSteersPerTurn), node.ID, claimed.CollaborationMode)
 	}
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "持久化 Desktop Turn 失败", err)
@@ -231,6 +273,25 @@ func desktopTurnInput(params json.RawMessage) (string, string, error) {
 		}
 	}
 	return value.ThreadID, strings.Join(parts, "\n\n"), nil
+}
+
+func desktopCollaborationMode(params json.RawMessage) (string, error) {
+	var value struct {
+		CollaborationMode *struct {
+			Mode string `json:"mode"`
+		} `json:"collaborationMode"`
+	}
+	if err := json.Unmarshal(params, &value); err != nil {
+		return "", err
+	}
+	if value.CollaborationMode == nil {
+		return "", nil
+	}
+	mode := strings.TrimSpace(value.CollaborationMode.Mode)
+	if mode != "default" && mode != "plan" {
+		return "", errors.New("desktop turn collaborationMode 无效")
+	}
+	return mode, nil
 }
 
 func desktopProjectionText(value string) string {

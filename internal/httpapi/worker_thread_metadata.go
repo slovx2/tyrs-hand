@@ -33,12 +33,23 @@ func (s *Server) workerRecordThreadMetadata(c *gin.Context) {
 			badRequest(c, errors.New("thread metadata event 无效"))
 			return
 		}
+		if err := s.lockThreadMetadataConversation(c, tx, request.EnvironmentID,
+			event.ThreadID); err != nil {
+			problem(c, http.StatusInternalServerError, "锁定 Thread Conversation 失败", err)
+			return
+		}
 		if event.Kind == "settings" {
 			event.Model = strings.TrimSpace(event.Model)
 			event.ReasoningEffort = strings.TrimSpace(event.ReasoningEffort)
 			event.ServiceTier = strings.TrimSpace(event.ServiceTier)
-			if event.Model == "" {
+			event.CollaborationMode = strings.TrimSpace(event.CollaborationMode)
+			if event.Model == "" && event.CollaborationMode == "" {
 				badRequest(c, errors.New("thread settings event 无效"))
+				return
+			}
+			if event.CollaborationMode != "" && event.CollaborationMode != "default" &&
+				event.CollaborationMode != "plan" {
+				badRequest(c, errors.New("thread settings collaboration mode 无效"))
 				return
 			}
 			if err := s.recordThreadSettingsEvent(c, tx, request, event); err != nil {
@@ -116,13 +127,39 @@ func (s *Server) workerRecordThreadMetadata(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+func (s *Server) lockThreadMetadataConversation(c *gin.Context, tx *sql.Tx,
+	environmentID uuid.UUID, threadID string,
+) error {
+	var conversationID sql.NullString
+	err := tx.QueryRowContext(c.Request.Context(), `SELECT control.discord_conversation_id::text
+		FROM codex_thread_controls control JOIN discord_development_environments environment
+			ON environment.id = control.development_environment_id
+		WHERE control.development_environment_id = $1 AND control.external_thread_id = $2
+			AND environment.execution_node_id = $3`, environmentID, threadID,
+		workerNode(c).ID).Scan(&conversationID)
+	if errors.Is(err, sql.ErrNoRows) || !conversationID.Valid {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var locked uuid.UUID
+	return tx.QueryRowContext(c.Request.Context(), `SELECT id FROM discord_conversations
+		WHERE id = $1::uuid FOR UPDATE`, conversationID.String).Scan(&locked)
+}
+
 func (s *Server) recordThreadSettingsEvent(c *gin.Context, tx *sql.Tx,
 	request workerprotocol.ThreadMetadataRequest, event workerprotocol.ThreadMetadataEvent,
 ) error {
 	var controlID uuid.UUID
 	var conversationID sql.NullString
 	err := tx.QueryRowContext(c.Request.Context(), `UPDATE codex_thread_controls control SET
-		model = NULLIF($4,''), reasoning_effort = NULLIF($5,''), service_tier = NULLIF($6,''),
+		model = COALESCE(NULLIF($4,''), model),
+		reasoning_effort = CASE WHEN $4 <> '' THEN NULLIF($5,'') ELSE reasoning_effort END,
+		service_tier = CASE WHEN $4 <> '' THEN NULLIF($6,'') ELSE service_tier END,
+		collaboration_mode = COALESCE(NULLIF($9,''), collaboration_mode),
+		collaboration_mode_revision = collaboration_mode_revision + CASE
+			WHEN NULLIF($9,'') IS NOT NULL AND collaboration_mode <> $9 THEN 1 ELSE 0 END,
 		runtime_preferences_frozen_at = now(), app_server_settings_generation = $7,
 		app_server_settings_sequence = $8, updated_at = now()
 		FROM discord_development_environments environment
@@ -135,7 +172,7 @@ func (s *Server) recordThreadSettingsEvent(c *gin.Context, tx *sql.Tx,
 					AND $8 > control.app_server_settings_sequence))
 		RETURNING control.id, control.discord_conversation_id::text`, request.EnvironmentID,
 		workerNode(c).ID, event.ThreadID, event.Model, event.ReasoningEffort,
-		event.ServiceTier, request.Generation, event.Sequence).
+		event.ServiceTier, request.Generation, event.Sequence, event.CollaborationMode).
 		Scan(&controlID, &conversationID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
@@ -144,9 +181,16 @@ func (s *Server) recordThreadSettingsEvent(c *gin.Context, tx *sql.Tx,
 		return err
 	}
 	_, err = tx.ExecContext(c.Request.Context(), `UPDATE discord_conversations SET
-		model = NULLIF($2,''), reasoning_effort = NULLIF($3,''),
-		service_tier = NULLIF($4,''), updated_at = now() WHERE id = $1`,
-		conversationID.String, event.Model, event.ReasoningEffort, event.ServiceTier)
+		model = COALESCE(NULLIF($2,''), discord_conversations.model),
+		reasoning_effort = CASE WHEN $2 <> '' THEN NULLIF($3,'')
+			ELSE discord_conversations.reasoning_effort END,
+		service_tier = CASE WHEN $2 <> '' THEN NULLIF($4,'')
+			ELSE discord_conversations.service_tier END,
+		collaboration_mode = control.collaboration_mode,
+		collaboration_mode_revision = control.collaboration_mode_revision, updated_at = now()
+		FROM codex_thread_controls control WHERE discord_conversations.id = $1
+			AND control.id = $5`, conversationID.String, event.Model, event.ReasoningEffort,
+		event.ServiceTier, controlID)
 	return err
 }
 

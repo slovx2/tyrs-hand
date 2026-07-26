@@ -44,6 +44,13 @@ func (s *Server) loadWorkerSnapshot(ctx context.Context,
 	result.Runtime.Model = preferences.Model
 	result.Runtime.ReasoningEffort = preferences.ReasoningEffort
 	result.Runtime.ServiceTier = preferences.ServiceTier
+	if claimed.SourceType == codexcontrol.SourceDiscord {
+		if err := s.db.QueryRowContext(ctx, `SELECT collaboration_mode
+			FROM codex_turn_runs WHERE id = $1`, claimed.RunID).
+			Scan(&result.Runtime.CollaborationMode); err != nil {
+			return result, err
+		}
+	}
 	if claimed.SourceType == codexcontrol.SourceGitHub {
 		result.GitHub, err = s.loadGitHubWorkerSnapshot(ctx, claimed)
 	} else {

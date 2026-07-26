@@ -196,7 +196,7 @@ func (c *desktopRelayController) CompleteCall(_ context.Context, call codexrelay
 		}
 		if threadID, model, effort, tier := desktopThreadRuntime(result); threadID != "" {
 			go c.environment.recordThreadSettings(c.processor.environments.ctx, threadID,
-				model, effort, tier)
+				model, effort, tier, "")
 		}
 	case "thread/resume":
 		if threadID, name := desktopThreadName(result); threadID != "" && name != "" {
@@ -204,7 +204,7 @@ func (c *desktopRelayController) CompleteCall(_ context.Context, call codexrelay
 		}
 		if threadID, model, effort, tier := desktopThreadRuntime(result); threadID != "" {
 			go c.environment.recordThreadSettings(c.processor.environments.ctx, threadID,
-				model, effort, tier)
+				model, effort, tier, "")
 		}
 	case "turn/start":
 		state, _ := plan.State.(*desktopRelayCallState)

@@ -9,7 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 11
+const Version = 12
 
 type EnrollRequest struct {
 	Token string `json:"token"`
@@ -207,14 +207,15 @@ type DesktopThreadFailRequest struct {
 }
 
 type ThreadMetadataEvent struct {
-	ThreadID        string `json:"threadId"`
-	Sequence        int64  `json:"sequence"`
-	Kind            string `json:"kind"`
-	Name            string `json:"name,omitempty"`
-	LifecycleState  string `json:"lifecycleState,omitempty"`
-	Model           string `json:"model,omitempty"`
-	ReasoningEffort string `json:"reasoningEffort,omitempty"`
-	ServiceTier     string `json:"serviceTier,omitempty"`
+	ThreadID          string `json:"threadId"`
+	Sequence          int64  `json:"sequence"`
+	Kind              string `json:"kind"`
+	Name              string `json:"name,omitempty"`
+	LifecycleState    string `json:"lifecycleState,omitempty"`
+	Model             string `json:"model,omitempty"`
+	ReasoningEffort   string `json:"reasoningEffort,omitempty"`
+	ServiceTier       string `json:"serviceTier,omitempty"`
+	CollaborationMode string `json:"collaborationMode,omitempty"`
 }
 
 type ThreadMetadataRequest struct {
@@ -314,18 +315,19 @@ type TaskSnapshot struct {
 }
 
 type RuntimeSnapshot struct {
-	ProfileName     string `json:"profileName"`
-	Model           string `json:"model,omitempty"`
-	ReasoningEffort string `json:"reasoningEffort,omitempty"`
-	ServiceTier     string `json:"serviceTier,omitempty"`
-	Sandbox         string `json:"sandbox"`
-	ApprovalPolicy  string `json:"approvalPolicy"`
-	NetworkEnabled  bool   `json:"networkEnabled"`
-	ModelSource     string `json:"modelSource"`
-	BaseURL         string `json:"baseUrl,omitempty"`
-	ProxyURL        string `json:"proxyUrl,omitempty"`
-	ConfigSignature string `json:"configSignature"`
-	GlobalAgents    string `json:"globalAgents"`
+	ProfileName       string `json:"profileName"`
+	Model             string `json:"model,omitempty"`
+	ReasoningEffort   string `json:"reasoningEffort,omitempty"`
+	ServiceTier       string `json:"serviceTier,omitempty"`
+	Sandbox           string `json:"sandbox"`
+	ApprovalPolicy    string `json:"approvalPolicy"`
+	NetworkEnabled    bool   `json:"networkEnabled"`
+	ModelSource       string `json:"modelSource"`
+	BaseURL           string `json:"baseUrl,omitempty"`
+	ProxyURL          string `json:"proxyUrl,omitempty"`
+	ConfigSignature   string `json:"configSignature"`
+	GlobalAgents      string `json:"globalAgents"`
+	CollaborationMode string `json:"collaborationMode,omitempty"`
 }
 
 type GitHubSnapshot struct {

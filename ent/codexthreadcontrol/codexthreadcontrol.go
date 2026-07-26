@@ -32,6 +32,10 @@ const (
 	FieldCodexHomeKey = "codex_home_key"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldCollaborationMode holds the string denoting the collaboration_mode field in the database.
+	FieldCollaborationMode = "collaboration_mode"
+	// FieldCollaborationModeRevision holds the string denoting the collaboration_mode_revision field in the database.
+	FieldCollaborationModeRevision = "collaboration_mode_revision"
 	// FieldNextSequenceNo holds the string denoting the next_sequence_no field in the database.
 	FieldNextSequenceNo = "next_sequence_no"
 	// FieldActiveIntentID holds the string denoting the active_intent_id field in the database.
@@ -80,6 +84,8 @@ var Columns = []string{
 	FieldExternalThreadID,
 	FieldCodexHomeKey,
 	FieldStatus,
+	FieldCollaborationMode,
+	FieldCollaborationModeRevision,
 	FieldNextSequenceNo,
 	FieldActiveIntentID,
 	FieldRemoteStatus,
@@ -111,6 +117,10 @@ func ValidColumn(column string) bool {
 var (
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
+	// DefaultCollaborationMode holds the default value on creation for the "collaboration_mode" field.
+	DefaultCollaborationMode string
+	// DefaultCollaborationModeRevision holds the default value on creation for the "collaboration_mode_revision" field.
+	DefaultCollaborationModeRevision int64
 	// DefaultNextSequenceNo holds the default value on creation for the "next_sequence_no" field.
 	DefaultNextSequenceNo int64
 	// DefaultLeaseEpoch holds the default value on creation for the "lease_epoch" field.
@@ -176,6 +186,16 @@ func ByCodexHomeKey(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByCollaborationMode orders the results by the collaboration_mode field.
+func ByCollaborationMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCollaborationMode, opts...).ToFunc()
+}
+
+// ByCollaborationModeRevision orders the results by the collaboration_mode_revision field.
+func ByCollaborationModeRevision(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCollaborationModeRevision, opts...).ToFunc()
 }
 
 // ByNextSequenceNo orders the results by the next_sequence_no field.

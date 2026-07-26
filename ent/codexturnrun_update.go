@@ -229,6 +229,20 @@ func (_u *CodexTurnRunUpdate) SetNillableStatus(v *string) *CodexTurnRunUpdate {
 	return _u
 }
 
+// SetCollaborationMode sets the "collaboration_mode" field.
+func (_u *CodexTurnRunUpdate) SetCollaborationMode(v string) *CodexTurnRunUpdate {
+	_u.mutation.SetCollaborationMode(v)
+	return _u
+}
+
+// SetNillableCollaborationMode sets the "collaboration_mode" field if the given value is not nil.
+func (_u *CodexTurnRunUpdate) SetNillableCollaborationMode(v *string) *CodexTurnRunUpdate {
+	if v != nil {
+		_u.SetCollaborationMode(*v)
+	}
+	return _u
+}
+
 // SetCodexSubmissionID sets the "codex_submission_id" field.
 func (_u *CodexTurnRunUpdate) SetCodexSubmissionID(v string) *CodexTurnRunUpdate {
 	_u.mutation.SetCodexSubmissionID(v)
@@ -494,6 +508,9 @@ func (_u *CodexTurnRunUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(codexturnrun.FieldStatus, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.CollaborationMode(); ok {
+		_spec.SetField(codexturnrun.FieldCollaborationMode, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.CodexSubmissionID(); ok {
 		_spec.SetField(codexturnrun.FieldCodexSubmissionID, field.TypeString, value)
 	}
@@ -758,6 +775,20 @@ func (_u *CodexTurnRunUpdateOne) SetStatus(v string) *CodexTurnRunUpdateOne {
 func (_u *CodexTurnRunUpdateOne) SetNillableStatus(v *string) *CodexTurnRunUpdateOne {
 	if v != nil {
 		_u.SetStatus(*v)
+	}
+	return _u
+}
+
+// SetCollaborationMode sets the "collaboration_mode" field.
+func (_u *CodexTurnRunUpdateOne) SetCollaborationMode(v string) *CodexTurnRunUpdateOne {
+	_u.mutation.SetCollaborationMode(v)
+	return _u
+}
+
+// SetNillableCollaborationMode sets the "collaboration_mode" field if the given value is not nil.
+func (_u *CodexTurnRunUpdateOne) SetNillableCollaborationMode(v *string) *CodexTurnRunUpdateOne {
+	if v != nil {
+		_u.SetCollaborationMode(*v)
 	}
 	return _u
 }
@@ -1056,6 +1087,9 @@ func (_u *CodexTurnRunUpdateOne) sqlSave(ctx context.Context) (_node *CodexTurnR
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(codexturnrun.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CollaborationMode(); ok {
+		_spec.SetField(codexturnrun.FieldCollaborationMode, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.CodexSubmissionID(); ok {
 		_spec.SetField(codexturnrun.FieldCodexSubmissionID, field.TypeString, value)

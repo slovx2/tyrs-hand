@@ -204,7 +204,8 @@ func (c *DisgoConnector) onCommand(event *events.ApplicationCommandInteractionCr
 			_ = event.CreateMessage(discord.NewMessageCreate().WithContent("请选择开发 Forum。").WithEphemeral(true))
 			return
 		}
-		modal, err := c.newCodexModal(context.Background(), forum.ID.String(), event.User().ID.String())
+		mode, _ := data.OptString("mode")
+		modal, err := c.newCodexModal(context.Background(), forum.ID.String(), event.User().ID.String(), mode)
 		if err != nil {
 			_ = event.CreateMessage(discord.NewMessageCreate().WithContent(err.Error()).WithEphemeral(true))
 			return
@@ -243,6 +244,19 @@ func (c *DisgoConnector) onCommand(event *events.ApplicationCommandInteractionCr
 		count, err = c.conversations.Stop(ctx, c.guildID, event.Channel().ID().String(), userID)
 		if err == nil {
 			content = fmt.Sprintf("已停止 %d 个正在运行或排队的任务。", count)
+		}
+	case "/codex/mode":
+		var state ConversationModeState
+		state, err = c.conversations.ConversationMode(ctx, c.guildID,
+			event.Channel().ID().String(), userID)
+		if err == nil {
+			var componentErr error
+			components, componentErr = discordCardComponents(conversationModeCard(state, ""))
+			if componentErr != nil {
+				err = componentErr
+			} else {
+				content = ""
+			}
 		}
 	case "/codex/restore":
 		threadID := event.Channel().ID().String()
@@ -316,6 +330,10 @@ func (c *DisgoConnector) onComponent(event *events.ComponentInteractionCreate) {
 		return
 	}
 	defer func() { _ = c.manager.CompleteInboundEvent(context.Background(), eventID, nil) }()
+	if strings.HasPrefix(customID, "codex-mode:") {
+		c.changeConversationMode(event, customID)
+		return
+	}
 	if strings.HasPrefix(customID, "codex-config-start:") {
 		c.startConfiguredConversation(event, strings.TrimPrefix(customID, "codex-config-start:"))
 		return
@@ -330,7 +348,7 @@ func (c *DisgoConnector) onComponent(event *events.ComponentInteractionCreate) {
 			_ = event.CreateMessage(discord.NewMessageCreate().WithContent("请选择开发 Forum。").WithEphemeral(true))
 			return
 		}
-		modal, err := c.newCodexModal(context.Background(), values[0].String(), event.User().ID.String())
+		modal, err := c.newCodexModal(context.Background(), values[0].String(), event.User().ID.String(), "default")
 		if err != nil {
 			_ = event.CreateMessage(discord.NewMessageCreate().WithContent(err.Error()).WithEphemeral(true))
 			return
@@ -430,7 +448,59 @@ func (c *DisgoConnector) conversationProgressPage(ctx context.Context, guildID, 
 	if err != nil || page >= len(timeline.Pages) {
 		return ComponentCardPayload{}, errors.New("discord 翻页目标不存在")
 	}
-	return conversationProgressCard(desired.Progress.State, timeline, page, runID.String()), nil
+	return conversationProgressCard(desired.Progress.State, timeline, page, runID.String(),
+		desired.Progress.CollaborationMode), nil
+}
+
+func (c *DisgoConnector) changeConversationMode(event *events.ComponentInteractionCreate,
+	customID string,
+) {
+	conversationID, revision, target, err := parseModeButton(customID)
+	if err != nil {
+		_ = event.CreateMessage(discord.NewMessageCreate().WithContent(
+			"这个模式按钮无效，请重新运行 `/codex mode`。").WithEphemeral(true))
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	state, stale, err := c.conversations.SetConversationMode(ctx, c.guildID,
+		event.Channel().ID().String(), event.User().ID.String(), conversationID, revision, target)
+	if err != nil {
+		_ = event.CreateMessage(discord.NewMessageCreate().WithContent(err.Error()).WithEphemeral(true))
+		return
+	}
+	notice := "模式已切换；下一次 Turn 将使用 `" + collaborationModeLabel(state.Mode) + "`。"
+	if stale {
+		notice = "这张卡片已经过期，已刷新为会话的最新模式。"
+	}
+	components, err := discordCardComponents(conversationModeCard(state, notice))
+	if err != nil {
+		_ = event.CreateMessage(discord.NewMessageCreate().WithContent(
+			"模式已保存，但状态卡暂时无法刷新。").WithEphemeral(true))
+		return
+	}
+	update := discord.NewMessageUpdateV2(components...)
+	emptyContent := ""
+	emptyEmbeds := []discord.Embed{}
+	update.Content, update.Embeds = &emptyContent, &emptyEmbeds
+	update.AllowedMentions = &discord.AllowedMentions{}
+	_ = event.UpdateMessage(update)
+}
+
+func parseModeButton(customID string) (uuid.UUID, int64, string, error) {
+	parts := strings.Split(strings.TrimPrefix(customID, "codex-mode:"), ":")
+	if len(parts) != 3 || (parts[2] != "default" && parts[2] != "plan") {
+		return uuid.Nil, 0, "", errors.New("discord 模式按钮无效")
+	}
+	conversationID, err := uuid.Parse(parts[0])
+	if err != nil {
+		return uuid.Nil, 0, "", err
+	}
+	revision, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || revision < 0 {
+		return uuid.Nil, 0, "", errors.New("discord 模式 revision 无效")
+	}
+	return conversationID, revision, parts[2], nil
 }
 
 func (c *DisgoConnector) registerCommands(ctx context.Context, client *bot.Client) error {
@@ -451,7 +521,11 @@ func (c *DisgoConnector) registerCommands(ctx context.Context, client *bot.Clien
 			discord.ApplicationCommandOptionSubCommand{Name: "new", Description: "新建 Codex Forum 帖子", Options: []discord.ApplicationCommandOption{
 				discord.ApplicationCommandOptionChannel{Name: "forum", Description: "目标开发 Forum", Required: true,
 					ChannelTypes: []discord.ChannelType{discord.ChannelTypeGuildForum}},
+				discord.ApplicationCommandOptionString{Name: "mode", Description: "初始协作模式", Choices: []discord.ApplicationCommandOptionChoiceString{
+					{Name: "Default", Value: "default"}, {Name: "Plan", Value: "plan"},
+				}},
 			}},
+			discord.ApplicationCommandOptionSubCommand{Name: "mode", Description: "查看或切换当前会话模式"},
 			discord.ApplicationCommandOptionSubCommand{Name: "stop", Description: "停止当前会话的活动任务"},
 			discord.ApplicationCommandOptionSubCommand{Name: "archive", Description: "归档 Codex 会话并隐藏原 Post", Options: []discord.ApplicationCommandOption{
 				discord.ApplicationCommandOptionString{Name: "post", Description: "原 Post mention 或 ID；在原 Post 内可省略"},

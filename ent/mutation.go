@@ -2424,40 +2424,43 @@ func (m *AuditLogMutation) ResetEdge(name string) error {
 // CodexThreadControlMutation represents an operation that mutates the CodexThreadControl nodes in the graph.
 type CodexThreadControlMutation struct {
 	config
-	op                      Op
-	typ                     string
-	id                      *uuid.UUID
-	source_type             *string
-	work_item_id            *uuid.UUID
-	discord_conversation_id *uuid.UUID
-	repository_id           *uuid.UUID
-	agent_profile_id        *uuid.UUID
-	execution_node_id       *uuid.UUID
-	external_thread_id      *string
-	codex_home_key          *string
-	status                  *string
-	next_sequence_no        *int64
-	addnext_sequence_no     *int64
-	active_intent_id        *uuid.UUID
-	remote_status           *string
-	active_codex_turn_id    *string
-	active_client_id        *string
-	lease_epoch             *int64
-	addlease_epoch          *int64
-	lease_expires_at        *time.Time
-	heartbeat_at            *time.Time
-	last_reconciled_at      *time.Time
-	next_wakeup_at          *time.Time
-	worker_id               *string
-	lease_token             *string
-	last_error_code         *string
-	last_error_message      *string
-	created_at              *time.Time
-	updated_at              *time.Time
-	clearedFields           map[string]struct{}
-	done                    bool
-	oldValue                func(context.Context) (*CodexThreadControl, error)
-	predicates              []predicate.CodexThreadControl
+	op                             Op
+	typ                            string
+	id                             *uuid.UUID
+	source_type                    *string
+	work_item_id                   *uuid.UUID
+	discord_conversation_id        *uuid.UUID
+	repository_id                  *uuid.UUID
+	agent_profile_id               *uuid.UUID
+	execution_node_id              *uuid.UUID
+	external_thread_id             *string
+	codex_home_key                 *string
+	status                         *string
+	collaboration_mode             *string
+	collaboration_mode_revision    *int64
+	addcollaboration_mode_revision *int64
+	next_sequence_no               *int64
+	addnext_sequence_no            *int64
+	active_intent_id               *uuid.UUID
+	remote_status                  *string
+	active_codex_turn_id           *string
+	active_client_id               *string
+	lease_epoch                    *int64
+	addlease_epoch                 *int64
+	lease_expires_at               *time.Time
+	heartbeat_at                   *time.Time
+	last_reconciled_at             *time.Time
+	next_wakeup_at                 *time.Time
+	worker_id                      *string
+	lease_token                    *string
+	last_error_code                *string
+	last_error_message             *string
+	created_at                     *time.Time
+	updated_at                     *time.Time
+	clearedFields                  map[string]struct{}
+	done                           bool
+	oldValue                       func(context.Context) (*CodexThreadControl, error)
+	predicates                     []predicate.CodexThreadControl
 }
 
 var _ ent.Mutation = (*CodexThreadControlMutation)(nil)
@@ -2964,6 +2967,98 @@ func (m *CodexThreadControlMutation) OldStatus(ctx context.Context) (v string, e
 // ResetStatus resets all changes to the "status" field.
 func (m *CodexThreadControlMutation) ResetStatus() {
 	m.status = nil
+}
+
+// SetCollaborationMode sets the "collaboration_mode" field.
+func (m *CodexThreadControlMutation) SetCollaborationMode(s string) {
+	m.collaboration_mode = &s
+}
+
+// CollaborationMode returns the value of the "collaboration_mode" field in the mutation.
+func (m *CodexThreadControlMutation) CollaborationMode() (r string, exists bool) {
+	v := m.collaboration_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCollaborationMode returns the old "collaboration_mode" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexThreadControlMutation) OldCollaborationMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCollaborationMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCollaborationMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCollaborationMode: %w", err)
+	}
+	return oldValue.CollaborationMode, nil
+}
+
+// ResetCollaborationMode resets all changes to the "collaboration_mode" field.
+func (m *CodexThreadControlMutation) ResetCollaborationMode() {
+	m.collaboration_mode = nil
+}
+
+// SetCollaborationModeRevision sets the "collaboration_mode_revision" field.
+func (m *CodexThreadControlMutation) SetCollaborationModeRevision(i int64) {
+	m.collaboration_mode_revision = &i
+	m.addcollaboration_mode_revision = nil
+}
+
+// CollaborationModeRevision returns the value of the "collaboration_mode_revision" field in the mutation.
+func (m *CodexThreadControlMutation) CollaborationModeRevision() (r int64, exists bool) {
+	v := m.collaboration_mode_revision
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCollaborationModeRevision returns the old "collaboration_mode_revision" field's value of the CodexThreadControl entity.
+// If the CodexThreadControl object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexThreadControlMutation) OldCollaborationModeRevision(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCollaborationModeRevision is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCollaborationModeRevision requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCollaborationModeRevision: %w", err)
+	}
+	return oldValue.CollaborationModeRevision, nil
+}
+
+// AddCollaborationModeRevision adds i to the "collaboration_mode_revision" field.
+func (m *CodexThreadControlMutation) AddCollaborationModeRevision(i int64) {
+	if m.addcollaboration_mode_revision != nil {
+		*m.addcollaboration_mode_revision += i
+	} else {
+		m.addcollaboration_mode_revision = &i
+	}
+}
+
+// AddedCollaborationModeRevision returns the value that was added to the "collaboration_mode_revision" field in this mutation.
+func (m *CodexThreadControlMutation) AddedCollaborationModeRevision() (r int64, exists bool) {
+	v := m.addcollaboration_mode_revision
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCollaborationModeRevision resets all changes to the "collaboration_mode_revision" field.
+func (m *CodexThreadControlMutation) ResetCollaborationModeRevision() {
+	m.collaboration_mode_revision = nil
+	m.addcollaboration_mode_revision = nil
 }
 
 // SetNextSequenceNo sets the "next_sequence_no" field.
@@ -3772,7 +3867,7 @@ func (m *CodexThreadControlMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *CodexThreadControlMutation) Fields() []string {
-	fields := make([]string, 0, 25)
+	fields := make([]string, 0, 27)
 	if m.source_type != nil {
 		fields = append(fields, codexthreadcontrol.FieldSourceType)
 	}
@@ -3799,6 +3894,12 @@ func (m *CodexThreadControlMutation) Fields() []string {
 	}
 	if m.status != nil {
 		fields = append(fields, codexthreadcontrol.FieldStatus)
+	}
+	if m.collaboration_mode != nil {
+		fields = append(fields, codexthreadcontrol.FieldCollaborationMode)
+	}
+	if m.collaboration_mode_revision != nil {
+		fields = append(fields, codexthreadcontrol.FieldCollaborationModeRevision)
 	}
 	if m.next_sequence_no != nil {
 		fields = append(fields, codexthreadcontrol.FieldNextSequenceNo)
@@ -3874,6 +3975,10 @@ func (m *CodexThreadControlMutation) Field(name string) (ent.Value, bool) {
 		return m.CodexHomeKey()
 	case codexthreadcontrol.FieldStatus:
 		return m.Status()
+	case codexthreadcontrol.FieldCollaborationMode:
+		return m.CollaborationMode()
+	case codexthreadcontrol.FieldCollaborationModeRevision:
+		return m.CollaborationModeRevision()
 	case codexthreadcontrol.FieldNextSequenceNo:
 		return m.NextSequenceNo()
 	case codexthreadcontrol.FieldActiveIntentID:
@@ -3933,6 +4038,10 @@ func (m *CodexThreadControlMutation) OldField(ctx context.Context, name string) 
 		return m.OldCodexHomeKey(ctx)
 	case codexthreadcontrol.FieldStatus:
 		return m.OldStatus(ctx)
+	case codexthreadcontrol.FieldCollaborationMode:
+		return m.OldCollaborationMode(ctx)
+	case codexthreadcontrol.FieldCollaborationModeRevision:
+		return m.OldCollaborationModeRevision(ctx)
 	case codexthreadcontrol.FieldNextSequenceNo:
 		return m.OldNextSequenceNo(ctx)
 	case codexthreadcontrol.FieldActiveIntentID:
@@ -4036,6 +4145,20 @@ func (m *CodexThreadControlMutation) SetField(name string, value ent.Value) erro
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStatus(v)
+		return nil
+	case codexthreadcontrol.FieldCollaborationMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCollaborationMode(v)
+		return nil
+	case codexthreadcontrol.FieldCollaborationModeRevision:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCollaborationModeRevision(v)
 		return nil
 	case codexthreadcontrol.FieldNextSequenceNo:
 		v, ok := value.(int64)
@@ -4157,6 +4280,9 @@ func (m *CodexThreadControlMutation) SetField(name string, value ent.Value) erro
 // this mutation.
 func (m *CodexThreadControlMutation) AddedFields() []string {
 	var fields []string
+	if m.addcollaboration_mode_revision != nil {
+		fields = append(fields, codexthreadcontrol.FieldCollaborationModeRevision)
+	}
 	if m.addnext_sequence_no != nil {
 		fields = append(fields, codexthreadcontrol.FieldNextSequenceNo)
 	}
@@ -4171,6 +4297,8 @@ func (m *CodexThreadControlMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *CodexThreadControlMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case codexthreadcontrol.FieldCollaborationModeRevision:
+		return m.AddedCollaborationModeRevision()
 	case codexthreadcontrol.FieldNextSequenceNo:
 		return m.AddedNextSequenceNo()
 	case codexthreadcontrol.FieldLeaseEpoch:
@@ -4184,6 +4312,13 @@ func (m *CodexThreadControlMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *CodexThreadControlMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case codexthreadcontrol.FieldCollaborationModeRevision:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCollaborationModeRevision(v)
+		return nil
 	case codexthreadcontrol.FieldNextSequenceNo:
 		v, ok := value.(int64)
 		if !ok {
@@ -4362,6 +4497,12 @@ func (m *CodexThreadControlMutation) ResetField(name string) error {
 		return nil
 	case codexthreadcontrol.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case codexthreadcontrol.FieldCollaborationMode:
+		m.ResetCollaborationMode()
+		return nil
+	case codexthreadcontrol.FieldCollaborationModeRevision:
+		m.ResetCollaborationModeRevision()
 		return nil
 	case codexthreadcontrol.FieldNextSequenceNo:
 		m.ResetNextSequenceNo()
@@ -8277,6 +8418,7 @@ type CodexTurnRunMutation struct {
 	active_slot              *int
 	addactive_slot           *int
 	status                   *string
+	collaboration_mode       *string
 	codex_submission_id      *string
 	confirmed_codex_turn_id  *string
 	append_count             *int
@@ -8914,6 +9056,42 @@ func (m *CodexTurnRunMutation) ResetStatus() {
 	m.status = nil
 }
 
+// SetCollaborationMode sets the "collaboration_mode" field.
+func (m *CodexTurnRunMutation) SetCollaborationMode(s string) {
+	m.collaboration_mode = &s
+}
+
+// CollaborationMode returns the value of the "collaboration_mode" field in the mutation.
+func (m *CodexTurnRunMutation) CollaborationMode() (r string, exists bool) {
+	v := m.collaboration_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCollaborationMode returns the old "collaboration_mode" field's value of the CodexTurnRun entity.
+// If the CodexTurnRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnRunMutation) OldCollaborationMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCollaborationMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCollaborationMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCollaborationMode: %w", err)
+	}
+	return oldValue.CollaborationMode, nil
+}
+
+// ResetCollaborationMode resets all changes to the "collaboration_mode" field.
+func (m *CodexTurnRunMutation) ResetCollaborationMode() {
+	m.collaboration_mode = nil
+}
+
 // SetCodexSubmissionID sets the "codex_submission_id" field.
 func (m *CodexTurnRunMutation) SetCodexSubmissionID(s string) {
 	m.codex_submission_id = &s
@@ -9377,7 +9555,7 @@ func (m *CodexTurnRunMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *CodexTurnRunMutation) Fields() []string {
-	fields := make([]string, 0, 20)
+	fields := make([]string, 0, 21)
 	if m.control_id != nil {
 		fields = append(fields, codexturnrun.FieldControlID)
 	}
@@ -9410,6 +9588,9 @@ func (m *CodexTurnRunMutation) Fields() []string {
 	}
 	if m.status != nil {
 		fields = append(fields, codexturnrun.FieldStatus)
+	}
+	if m.collaboration_mode != nil {
+		fields = append(fields, codexturnrun.FieldCollaborationMode)
 	}
 	if m.codex_submission_id != nil {
 		fields = append(fields, codexturnrun.FieldCodexSubmissionID)
@@ -9468,6 +9649,8 @@ func (m *CodexTurnRunMutation) Field(name string) (ent.Value, bool) {
 		return m.ActiveSlot()
 	case codexturnrun.FieldStatus:
 		return m.Status()
+	case codexturnrun.FieldCollaborationMode:
+		return m.CollaborationMode()
 	case codexturnrun.FieldCodexSubmissionID:
 		return m.CodexSubmissionID()
 	case codexturnrun.FieldConfirmedCodexTurnID:
@@ -9517,6 +9700,8 @@ func (m *CodexTurnRunMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldActiveSlot(ctx)
 	case codexturnrun.FieldStatus:
 		return m.OldStatus(ctx)
+	case codexturnrun.FieldCollaborationMode:
+		return m.OldCollaborationMode(ctx)
 	case codexturnrun.FieldCodexSubmissionID:
 		return m.OldCodexSubmissionID(ctx)
 	case codexturnrun.FieldConfirmedCodexTurnID:
@@ -9620,6 +9805,13 @@ func (m *CodexTurnRunMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStatus(v)
+		return nil
+	case codexturnrun.FieldCollaborationMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCollaborationMode(v)
 		return nil
 	case codexturnrun.FieldCodexSubmissionID:
 		v, ok := value.(string)
@@ -9891,6 +10083,9 @@ func (m *CodexTurnRunMutation) ResetField(name string) error {
 		return nil
 	case codexturnrun.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case codexturnrun.FieldCollaborationMode:
+		m.ResetCollaborationMode()
 		return nil
 	case codexturnrun.FieldCodexSubmissionID:
 		m.ResetCodexSubmissionID()

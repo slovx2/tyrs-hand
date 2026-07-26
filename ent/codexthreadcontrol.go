@@ -36,6 +36,10 @@ type CodexThreadControl struct {
 	CodexHomeKey *string `json:"codex_home_key,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
+	// CollaborationMode holds the value of the "collaboration_mode" field.
+	CollaborationMode string `json:"collaboration_mode,omitempty"`
+	// CollaborationModeRevision holds the value of the "collaboration_mode_revision" field.
+	CollaborationModeRevision int64 `json:"collaboration_mode_revision,omitempty"`
 	// NextSequenceNo holds the value of the "next_sequence_no" field.
 	NextSequenceNo int64 `json:"next_sequence_no,omitempty"`
 	// ActiveIntentID holds the value of the "active_intent_id" field.
@@ -78,9 +82,9 @@ func (*CodexThreadControl) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case codexthreadcontrol.FieldWorkItemID, codexthreadcontrol.FieldDiscordConversationID, codexthreadcontrol.FieldRepositoryID, codexthreadcontrol.FieldExecutionNodeID, codexthreadcontrol.FieldActiveIntentID:
 			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
-		case codexthreadcontrol.FieldNextSequenceNo, codexthreadcontrol.FieldLeaseEpoch:
+		case codexthreadcontrol.FieldCollaborationModeRevision, codexthreadcontrol.FieldNextSequenceNo, codexthreadcontrol.FieldLeaseEpoch:
 			values[i] = new(sql.NullInt64)
-		case codexthreadcontrol.FieldSourceType, codexthreadcontrol.FieldExternalThreadID, codexthreadcontrol.FieldCodexHomeKey, codexthreadcontrol.FieldStatus, codexthreadcontrol.FieldRemoteStatus, codexthreadcontrol.FieldActiveCodexTurnID, codexthreadcontrol.FieldActiveClientID, codexthreadcontrol.FieldWorkerID, codexthreadcontrol.FieldLeaseToken, codexthreadcontrol.FieldLastErrorCode, codexthreadcontrol.FieldLastErrorMessage:
+		case codexthreadcontrol.FieldSourceType, codexthreadcontrol.FieldExternalThreadID, codexthreadcontrol.FieldCodexHomeKey, codexthreadcontrol.FieldStatus, codexthreadcontrol.FieldCollaborationMode, codexthreadcontrol.FieldRemoteStatus, codexthreadcontrol.FieldActiveCodexTurnID, codexthreadcontrol.FieldActiveClientID, codexthreadcontrol.FieldWorkerID, codexthreadcontrol.FieldLeaseToken, codexthreadcontrol.FieldLastErrorCode, codexthreadcontrol.FieldLastErrorMessage:
 			values[i] = new(sql.NullString)
 		case codexthreadcontrol.FieldLeaseExpiresAt, codexthreadcontrol.FieldHeartbeatAt, codexthreadcontrol.FieldLastReconciledAt, codexthreadcontrol.FieldNextWakeupAt, codexthreadcontrol.FieldCreatedAt, codexthreadcontrol.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -166,6 +170,18 @@ func (_m *CodexThreadControl) assignValues(columns []string, values []any) error
 				return fmt.Errorf("unexpected type %T for field status", values[i])
 			} else if value.Valid {
 				_m.Status = value.String
+			}
+		case codexthreadcontrol.FieldCollaborationMode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field collaboration_mode", values[i])
+			} else if value.Valid {
+				_m.CollaborationMode = value.String
+			}
+		case codexthreadcontrol.FieldCollaborationModeRevision:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field collaboration_mode_revision", values[i])
+			} else if value.Valid {
+				_m.CollaborationModeRevision = value.Int64
 			}
 		case codexthreadcontrol.FieldNextSequenceNo:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -349,6 +365,12 @@ func (_m *CodexThreadControl) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)
+	builder.WriteString(", ")
+	builder.WriteString("collaboration_mode=")
+	builder.WriteString(_m.CollaborationMode)
+	builder.WriteString(", ")
+	builder.WriteString("collaboration_mode_revision=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CollaborationModeRevision))
 	builder.WriteString(", ")
 	builder.WriteString("next_sequence_no=")
 	builder.WriteString(fmt.Sprintf("%v", _m.NextSequenceNo))
