@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 agent_label=ai.tyrs-hand.browser-agent
 agent_root="$HOME/Library/Application Support/Tyrs Hand/browser-agent"
 launch_agent="$HOME/Library/LaunchAgents/$agent_label.plist"
