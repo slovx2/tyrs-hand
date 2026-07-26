@@ -79,6 +79,8 @@ fi
 runuser -u "$desktop_user" -- env XDG_RUNTIME_DIR="$runtime_dir" \
   DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" systemctl --user daemon-reload
 runuser -u "$desktop_user" -- env XDG_RUNTIME_DIR="$runtime_dir" \
-  DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" systemctl --user enable --now tyrs-browser-bridge.service
+  DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" systemctl --user enable tyrs-browser-bridge.service
+runuser -u "$desktop_user" -- env XDG_RUNTIME_DIR="$runtime_dir" \
+  DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" systemctl --user restart tyrs-browser-bridge.service
 runuser -u "$desktop_user" -- env XDG_RUNTIME_DIR="$runtime_dir" \
   DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" systemctl --user --no-pager status tyrs-browser-bridge.service
