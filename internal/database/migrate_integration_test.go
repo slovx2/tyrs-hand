@@ -390,61 +390,61 @@ func TestDevelopmentEnvironmentProjectsMigrationPreservesHistory(t *testing.T) {
 			'migration-project-data','migration-project-home','migration-project-network',
 			$1,'running') RETURNING id`, nodeID).Scan(&environmentID))
 
-	var wakeResourceID, commonResourceID uuid.UUID
+	var legacyResourceID, notesResourceID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_resources
 		(guild_id,resource_key,discord_id,kind,name,managed_marker)
 		VALUES ('migration-project-guild','forum.legacy','legacy-forum','forum','legacy-repository',
-			'managed') RETURNING id`).Scan(&wakeResourceID))
+			'managed') RETURNING id`).Scan(&legacyResourceID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_resources
 		(guild_id,resource_key,discord_id,kind,name,managed_marker)
 		VALUES ('migration-project-guild','forum.notes','notes-forum','forum','notes',
-			'managed') RETURNING id`).Scan(&commonResourceID))
+			'managed') RETURNING id`).Scan(&notesResourceID))
 
-	var wakeForumID uuid.UUID
+	var legacyForumID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_forums
 		(guild_id,resource_id,forum_type,owner_discord_user_id,repository_id,
 			development_environment_id)
 		VALUES ('migration-project-guild',$1,'development','migration-owner',$2,$3)
-		RETURNING id`, wakeResourceID, repositoryID, environmentID).Scan(&wakeForumID))
+		RETURNING id`, legacyResourceID, repositoryID, environmentID).Scan(&legacyForumID))
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_forum_workspaces
 		(forum_id,environment_id,relative_path,branch,head_sha,status,dirty)
 		VALUES ($1,$2,'workspaces/legacy-repository','main','legacy-head','ready',false)`,
-		wakeForumID, environmentID)
+		legacyForumID, environmentID)
 	require.NoError(t, err)
 
-	commonProjectID, commonForumID := uuid.New(), uuid.New()
+	notesProjectID, notesForumID := uuid.New(), uuid.New()
 	_, err = db.ExecContext(ctx, `INSERT INTO projects
 		(id,guild_id,owner_discord_user_id,forum_id,name,status,requested_by)
 		VALUES ($1,'migration-project-guild','migration-owner',$2,'notes','active',$3)`,
-		commonProjectID, commonForumID, administratorID)
+		notesProjectID, notesForumID, administratorID)
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_forums
 		(id,guild_id,resource_id,forum_type,owner_discord_user_id,project_id,
 			development_environment_id)
 		VALUES ($1,'migration-project-guild',$2,'development','migration-owner',$3,$4)`,
-		commonForumID, commonResourceID, commonProjectID, environmentID)
+		notesForumID, notesResourceID, notesProjectID, environmentID)
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_forum_workspaces
 		(forum_id,environment_id,relative_path,branch,head_sha,status,dirty)
 		VALUES ($1,$2,'workspaces/projects/notes-a1b2c3','main','notes-head',
-			'ready',true)`, commonForumID, environmentID)
+			'ready',true)`, notesForumID, environmentID)
 	require.NoError(t, err)
 
-	wakeConversationID, commonConversationID := uuid.New(), uuid.New()
+	legacyConversationID, notesConversationID := uuid.New(), uuid.New()
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_conversations
 		(id,guild_id,forum_id,thread_id,owner_discord_user_id,repository_id,
 			agent_profile_id,title)
-		VALUES ($1,'migration-project-guild',$2,'wake-thread','migration-owner',$3,$4,
-			'Wake thread')`, wakeConversationID, wakeForumID, repositoryID, profileID)
+		VALUES ($1,'migration-project-guild',$2,'legacy-thread','migration-owner',$3,$4,
+			'Legacy thread')`, legacyConversationID, legacyForumID, repositoryID, profileID)
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_conversations
 		(id,guild_id,forum_id,thread_id,owner_discord_user_id,project_id,
 			agent_profile_id,title)
-		VALUES ($1,'migration-project-guild',$2,'common-thread','migration-owner',$3,$4,
-			'Common thread')`, commonConversationID, commonForumID, commonProjectID, profileID)
+		VALUES ($1,'migration-project-guild',$2,'notes-thread','migration-owner',$3,$4,
+			'Notes thread')`, notesConversationID, notesForumID, notesProjectID, profileID)
 	require.NoError(t, err)
 
-	wakeControlID, desktopControlID, commonControlID := uuid.New(), uuid.New(), uuid.New()
+	legacyControlID, desktopControlID, notesControlID := uuid.New(), uuid.New(), uuid.New()
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_thread_controls
 		(id,source_type,discord_conversation_id,repository_id,project_id,agent_profile_id,
 			development_environment_id)
@@ -452,11 +452,11 @@ func TestDevelopmentEnvironmentProjectsMigrationPreservesHistory(t *testing.T) {
 			($1,'discord_conversation',$4,$5,NULL,$6,$7),
 			($2,'desktop_thread',NULL,$5,NULL,$6,$7),
 			($3,'discord_conversation',$8,NULL,$9,$6,$7)`,
-		wakeControlID, desktopControlID, commonControlID, wakeConversationID,
-		repositoryID, profileID, environmentID, commonConversationID, commonProjectID)
+		legacyControlID, desktopControlID, notesControlID, legacyConversationID,
+		repositoryID, profileID, environmentID, notesConversationID, notesProjectID)
 	require.NoError(t, err)
 
-	wakeIntentID, desktopIntentID, commonIntentID := uuid.New(), uuid.New(), uuid.New()
+	legacyIntentID, desktopIntentID, notesIntentID := uuid.New(), uuid.New(), uuid.New()
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_intents
 		(id,control_id,sequence_no,source_type,input_surface,discord_conversation_id,
 			repository_id,project_id,agent_profile_id,idempotency_key,status)
@@ -464,46 +464,46 @@ func TestDevelopmentEnvironmentProjectsMigrationPreservesHistory(t *testing.T) {
 			($1,$4,1,'discord_conversation','discord',$7,$8,NULL,$9,$10,'completed'),
 			($2,$5,1,'discord_conversation','desktop',NULL,$8,NULL,$9,$11,'completed'),
 			($3,$6,1,'discord_conversation','discord',$12,NULL,$13,$9,$14,'completed')`,
-		wakeIntentID, desktopIntentID, commonIntentID, wakeControlID, desktopControlID,
-		commonControlID, wakeConversationID, repositoryID, profileID,
-		"wake-"+wakeIntentID.String(), "desktop-"+desktopIntentID.String(),
-		commonConversationID, commonProjectID, "common-"+commonIntentID.String())
+		legacyIntentID, desktopIntentID, notesIntentID, legacyControlID, desktopControlID,
+		notesControlID, legacyConversationID, repositoryID, profileID,
+		"legacy-"+legacyIntentID.String(), "desktop-"+desktopIntentID.String(),
+		notesConversationID, notesProjectID, "notes-"+notesIntentID.String())
 	require.NoError(t, err)
 	var legacyOperationID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_development_operations
 		(environment_id,forum_id,operation,status,execution_node_id)
 		VALUES ($1,$2,'clone','completed',$3) RETURNING id`,
-		environmentID, wakeForumID, nodeID).Scan(&legacyOperationID))
+		environmentID, legacyForumID, nodeID).Scan(&legacyOperationID))
 
 	require.NoError(t, Migrate(ctx, db))
 
-	var wakeProjectID uuid.UUID
-	var wakeRemote, wakePath, wakeKind, commonPath, commonTarget string
-	var commonDirty bool
+	var legacyProjectID uuid.UUID
+	var legacyRemote, legacyPath, legacyKind, notesPath, notesTarget string
+	var notesDirty bool
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT id,relative_path,project_kind,remote_url
 		FROM development_projects WHERE relative_path='workspaces/legacy-repository'`).
-		Scan(&wakeProjectID, &wakePath, &wakeKind, &wakeRemote))
-	require.Equal(t, "workspaces/legacy-repository", wakePath)
-	require.Equal(t, "git", wakeKind)
-	require.Equal(t, "https://example.invalid/owner/legacy-repository.git", wakeRemote)
+		Scan(&legacyProjectID, &legacyPath, &legacyKind, &legacyRemote))
+	require.Equal(t, "workspaces/legacy-repository", legacyPath)
+	require.Equal(t, "git", legacyKind)
+	require.Equal(t, "https://example.invalid/owner/legacy-repository.git", legacyRemote)
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT relative_path,desired_relative_path,dirty
-		FROM development_projects WHERE id=$1`, commonProjectID).
-		Scan(&commonPath, &commonTarget, &commonDirty))
-	require.Equal(t, "workspaces/projects/notes-a1b2c3", commonPath)
-	require.Equal(t, "workspaces/notes", commonTarget)
-	require.True(t, commonDirty)
+		FROM development_projects WHERE id=$1`, notesProjectID).
+		Scan(&notesPath, &notesTarget, &notesDirty))
+	require.Equal(t, "workspaces/projects/notes-a1b2c3", notesPath)
+	require.Equal(t, "workspaces/notes", notesTarget)
+	require.True(t, notesDirty)
 
 	for _, item := range []struct {
 		table string
 		id    uuid.UUID
 		want  uuid.UUID
 	}{
-		{"discord_forums", wakeForumID, wakeProjectID},
-		{"discord_conversations", wakeConversationID, wakeProjectID},
-		{"codex_thread_controls", wakeControlID, wakeProjectID},
-		{"codex_thread_controls", desktopControlID, wakeProjectID},
-		{"codex_turn_intents", wakeIntentID, wakeProjectID},
-		{"codex_turn_intents", desktopIntentID, wakeProjectID},
+		{"discord_forums", legacyForumID, legacyProjectID},
+		{"discord_conversations", legacyConversationID, legacyProjectID},
+		{"codex_thread_controls", legacyControlID, legacyProjectID},
+		{"codex_thread_controls", desktopControlID, legacyProjectID},
+		{"codex_turn_intents", legacyIntentID, legacyProjectID},
+		{"codex_turn_intents", desktopIntentID, legacyProjectID},
 	} {
 		var projectID uuid.UUID
 		require.NoError(t, db.QueryRowContext(ctx, fmt.Sprintf(
@@ -516,7 +516,7 @@ func TestDevelopmentEnvironmentProjectsMigrationPreservesHistory(t *testing.T) {
 		WHERE forum_type='development' AND repository_id IS NOT NULL`).Scan(&repositoryReferences))
 	require.Zero(t, repositoryReferences)
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_development_operations
-		WHERE development_project_id=$1 AND operation='relocate_project'`, commonProjectID).
+		WHERE development_project_id=$1 AND operation='relocate_project'`, notesProjectID).
 		Scan(&relocationOperations))
 	require.Equal(t, 1, relocationOperations)
 	var legacyOperation string
