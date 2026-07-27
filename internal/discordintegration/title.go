@@ -1,6 +1,7 @@
 package discordintegration
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"database/sql"
@@ -353,21 +354,76 @@ func (g *TitleGenerator) requestTitle(ctx context.Context, client *http.Client, 
 		}
 	}
 	mediaType, _, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
-	if err != nil || mediaType != "application/json" {
+	if err != nil {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 64<<10))
-		return "", generationError("protocol_error", errors.New("luna 标题响应不是 application/json"))
+		return "", generationError("protocol_error", errors.New("luna 标题响应缺少有效 Content-Type"))
 	}
-	var payload struct {
-		Output []struct {
-			Content []struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
-			} `json:"content"`
-		} `json:"output"`
+	switch mediaType {
+	case "application/json":
+		return decodeJSONTitle(response.Body)
+	case "text/event-stream":
+		return decodeSSETitle(response.Body)
+	default:
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 64<<10))
+		return "", generationError("protocol_error", fmt.Errorf("luna 标题响应协议不受支持: %s", mediaType))
 	}
-	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&payload); err != nil {
+}
+
+type titleResponsePayload struct {
+	Output []struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	} `json:"output"`
+}
+
+func decodeJSONTitle(body io.Reader) (string, *titleGenerationError) {
+	var payload titleResponsePayload
+	if err := json.NewDecoder(io.LimitReader(body, 1<<20)).Decode(&payload); err != nil {
 		return "", generationError("response_parse_error", err)
 	}
+	return titleFromPayload(payload)
+}
+
+func decodeSSETitle(body io.Reader) (string, *titleGenerationError) {
+	scanner := bufio.NewScanner(io.LimitReader(body, 1<<20))
+	scanner.Buffer(make([]byte, 64<<10), 1<<20)
+	for scanner.Scan() {
+		line := strings.TrimSuffix(scanner.Text(), "\r")
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if data == "" || data == "[DONE]" {
+			continue
+		}
+		var event struct {
+			Type     string               `json:"type"`
+			Text     string               `json:"text"`
+			Response titleResponsePayload `json:"response"`
+		}
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			return "", generationError("response_parse_error", err)
+		}
+		if event.Type == "response.output_text.done" {
+			if title := cleanGeneratedTitle(event.Text); title != "" {
+				return title, nil
+			}
+		}
+		if event.Type == "response.completed" {
+			if title, _ := titleFromPayload(event.Response); title != "" {
+				return title, nil
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", generationError("response_parse_error", err)
+	}
+	return "", generationError("empty_output", errors.New("luna 标题 SSE 响应没有有效 output_text"))
+}
+
+func titleFromPayload(payload titleResponsePayload) (string, *titleGenerationError) {
 	for _, output := range payload.Output {
 		for _, content := range output.Content {
 			if content.Type == "output_text" {

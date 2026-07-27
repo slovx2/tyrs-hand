@@ -144,17 +144,38 @@ func TestTitleGeneratorRejectsBadOrEmptyResponsesWithoutRetry(t *testing.T) {
 	}
 }
 
-func TestTitleGeneratorRejectsSSEProtocolWithoutRetry(t *testing.T) {
+func TestTitleGeneratorParsesProviderSSEDespiteStreamFalse(t *testing.T) {
 	requestCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		requestCount++
-		response.Header().Set("Content-Type", "text/event-stream")
-		_, _ = response.Write([]byte("data: {\"type\":\"response.completed\"}\n\n"))
+		response.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+		_, _ = response.Write([]byte("event: response.output_text.done\n" +
+			"data: {\"type\":\"response.output_text.done\",\"text\":\"标题：SSE 返回的 Luna 标题\"}\n\n" +
+			"data: [DONE]\n\n"))
 	}))
 	t.Cleanup(server.Close)
 	generator, mock, closeDB := titleGeneratorForProvider(t, server.URL, true)
 	defer closeDB()
 	generator.client = server.Client()
+	title, err := generator.generate(context.Background(), claimedConversationTitle{Body: "message"})
+	require.NoError(t, err)
+	require.Equal(t, "SSE 返回的 Luna 标题", title)
+	require.Equal(t, 1, requestCount)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestTitleGeneratorRejectsUnsupportedResponseProtocolWithoutRetry(t *testing.T) {
+	requestCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		requestCount++
+		response.Header().Set("Content-Type", "text/plain")
+		_, _ = response.Write([]byte("not a supported response"))
+	}))
+	t.Cleanup(server.Close)
+	generator, mock, closeDB := titleGeneratorForProvider(t, server.URL, true)
+	defer closeDB()
+	generator.client = server.Client()
+
 	_, err := generator.generate(context.Background(), claimedConversationTitle{Body: "message"})
 	require.Error(t, err)
 	var generationErr *titleGenerationError
@@ -162,6 +183,13 @@ func TestTitleGeneratorRejectsSSEProtocolWithoutRetry(t *testing.T) {
 	require.Equal(t, "protocol_error", generationErr.kind)
 	require.Equal(t, 1, requestCount)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestDecodeSSETitleRejectsMalformedOrEmptyEvents(t *testing.T) {
+	_, malformedErr := decodeSSETitle(strings.NewReader("data: {\n\n"))
+	require.Equal(t, "response_parse_error", malformedErr.kind)
+	_, emptyErr := decodeSSETitle(strings.NewReader("data: {\"type\":\"response.completed\"}\n\n"))
+	require.Equal(t, "empty_output", emptyErr.kind)
 }
 
 func TestTitleGeneratorDoesNotRetryHTTP400AndSanitizesLogs(t *testing.T) {
