@@ -85,7 +85,7 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 			 configuration_status, configured_by_discord_user_id, title_rename_status,
 			 lifecycle_state, lifecycle_revision, collaboration_mode, collaboration_mode_revision)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'active',NULLIF($11,''),NULLIF($12,''),NULLIF($13,''),
-			'configured',$6,'pending',$14,$15,$16,$17)`, conversationID, guildID, forumID, result.ThreadID,
+			'configured',$6,'skipped',$14,$15,$16,$17)`, conversationID, guildID, forumID, result.ThreadID,
 		result.MessageID, ownerID, repositoryID, projectID, profileID, title,
 		model.String, effort.String, serviceTier, lifecycleState, lifecycleRevision, mode, modeRevision)
 	if err != nil {
