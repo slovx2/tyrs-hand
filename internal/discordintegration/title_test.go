@@ -28,14 +28,13 @@ func TestNormalizeConversationTitle(t *testing.T) {
 	got := normalizeConversationTitle("  修复\n\t登录流程\x00  ")
 	require.Equal(t, "修复 登录流程", got)
 	long := normalizeConversationTitle(strings.Repeat("界", 120))
-	require.Equal(t, 50, utf8.RuneCountInString(long))
-	require.True(t, strings.HasSuffix(long, "…"))
+	require.Equal(t, 120, utf8.RuneCountInString(long))
 	require.Equal(t, "Codex 开发任务", fallbackTitle("\n\t"))
 }
 
-func TestFallbackTitleUsesFiftyUnicodeCharacters(t *testing.T) {
+func TestFallbackTitleUsesSixtyUnicodeCharacters(t *testing.T) {
 	got := fallbackTitle(strings.Repeat("任", 80))
-	require.Equal(t, 50, utf8.RuneCountInString(got))
+	require.Equal(t, titleFallbackMaxRunes, utf8.RuneCountInString(got))
 	require.True(t, strings.HasSuffix(got, "…"))
 	require.Equal(t, "short title", fallbackTitle(" short   title "))
 }
@@ -54,7 +53,7 @@ func TestCleanGeneratedTitle(t *testing.T) {
 		want  string
 	}{
 		{name: "think-prefix-and-lines", input: "<think>分析\n过程</think>\n标题：\"修复 HTTP 400 与 Luna\"\n说明", want: "修复 HTTP 400 与 Luna"},
-		{name: "english-prefix", input: "\nTitle: `Keep OpenCode file.go #42`\nextra", want: "Keep OpenCode file.go #42"},
+		{name: "english-prefix", input: "\nTitle: `Keep OpenCode file.go #42`!\nextra", want: "Keep OpenCode file.go #42"},
 		{name: "unclosed-think", input: "可用标题<think>不会结束", want: "可用标题"},
 		{name: "only-think", input: "<think>只有分析</think>", want: ""},
 	}
@@ -64,7 +63,7 @@ func TestCleanGeneratedTitle(t *testing.T) {
 		})
 	}
 	long := cleanGeneratedTitle(strings.Repeat("技", 60))
-	require.Equal(t, 50, utf8.RuneCountInString(long))
+	require.Equal(t, titleMaxRunes, utf8.RuneCountInString(long))
 	require.True(t, strings.HasSuffix(long, "…"))
 }
 
@@ -76,7 +75,7 @@ func TestTitleGeneratorSendsExactLunaRequest(t *testing.T) {
 		require.Equal(t, "application/json", request.Header.Get("Accept"))
 		require.NoError(t, json.NewDecoder(request.Body).Decode(&requestBody))
 		response.Header().Set("Content-Type", "application/json")
-		_, _ = response.Write([]byte(`{"output":[{"content":[{"type":"output_text","text":"标题：修复 HTTP 400 与登录标题\n其他内容"}]}]}`))
+		_, _ = response.Write([]byte(`{"output":[{"content":[{"type":"output_text","text":"{\"title\":\"修复 HTTP 400 与登录标题\",\"description\":\"修复 Luna 标题请求\"}"}]}]}`))
 	}))
 	t.Cleanup(server.Close)
 	generator, mock, closeDB := titleGeneratorForProvider(t, server.URL, true)
@@ -92,16 +91,75 @@ func TestTitleGeneratorSendsExactLunaRequest(t *testing.T) {
 	require.Equal(t, false, requestBody["stream"])
 	require.NotContains(t, requestBody, "max_output_tokens")
 	require.Equal(t, "low", requestBody["reasoning"].(map[string]any)["effort"])
+	format := requestBody["text"].(map[string]any)["format"].(map[string]any)
+	require.Equal(t, "json_schema", format["type"])
+	require.Equal(t, "thread_metadata", format["name"])
+	require.Equal(t, true, format["strict"])
+	schema := format["schema"].(map[string]any)
+	properties := schema["properties"].(map[string]any)
+	require.EqualValues(t, titleMaxRunes, properties["title"].(map[string]any)["maxLength"])
+	require.EqualValues(t, titleDescriptionRunes, properties["description"].(map[string]any)["maxLength"])
 	input := requestBody["input"].([]any)
 	developerInput := input[0].(map[string]any)
 	require.Equal(t, "developer", developerInput["role"])
-	require.Contains(t, developerInput["content"], "相同的语言")
-	require.Contains(t, developerInput["content"], "HTTP 状态码")
-	require.Contains(t, developerInput["content"], "50 个 Unicode 字符")
+	require.Contains(t, developerInput["content"], "up to 36 Unicode characters")
+	require.Contains(t, developerInput["content"], "Write the title in the user's locale")
+	require.Contains(t, developerInput["content"], "HTTP status codes")
 	userInput := input[1].(map[string]any)
 	require.Equal(t, "user", userInput["role"])
 	require.Equal(t, claimed.Body, userInput["content"])
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestTitleGeneratorTruncatesUserPromptToTwoThousandRunes(t *testing.T) {
+	var requestBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		require.NoError(t, json.NewDecoder(request.Body).Decode(&requestBody))
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{"output":[{"content":[{"type":"output_text","text":"{\"title\":\"整理长输入\",\"description\":\"验证输入截断规则\"}"}]}]}`))
+	}))
+	t.Cleanup(server.Close)
+	generator, mock, closeDB := titleGeneratorForProvider(t, server.URL, true)
+	defer closeDB()
+	generator.client = server.Client()
+
+	_, err := generator.generate(context.Background(), claimedConversationTitle{Body: strings.Repeat("甲", 2100)})
+	require.NoError(t, err)
+	input := requestBody["input"].([]any)
+	userInput := input[1].(map[string]any)["content"].(string)
+	require.Equal(t, titlePromptMaxRunes, utf8.RuneCountInString(userInput))
+	require.Equal(t, strings.Repeat("甲", titlePromptMaxRunes), userInput)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestDecodeStructuredTitleValidatesMetadata(t *testing.T) {
+	encoded, err := json.Marshal(generatedThreadMetadata{
+		Title:       "Title: `修复 Luna 标题。`",
+		Description: "用于检索的简短说明",
+	})
+	require.NoError(t, err)
+	title, generationErr := decodeStructuredTitle(string(encoded))
+	require.Nil(t, generationErr)
+	require.Equal(t, "修复 Luna 标题", title)
+
+	for _, test := range []struct {
+		name     string
+		metadata generatedThreadMetadata
+		kind     string
+	}{
+		{name: "empty-description", metadata: generatedThreadMetadata{Title: "有效标题"}, kind: "empty_output"},
+		{name: "long-description", metadata: generatedThreadMetadata{
+			Title: "有效标题", Description: strings.Repeat("长", titleDescriptionRunes+1),
+		}, kind: "response_parse_error"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			value, marshalErr := json.Marshal(test.metadata)
+			require.NoError(t, marshalErr)
+			_, metadataErr := decodeStructuredTitle(string(value))
+			require.NotNil(t, metadataErr)
+			require.Equal(t, test.kind, metadataErr.kind)
+		})
+	}
 }
 
 func TestTitleGeneratorFallsBackWithoutProviderConfiguration(t *testing.T) {
@@ -120,7 +178,8 @@ func TestTitleGeneratorRejectsBadOrEmptyResponsesWithoutRetry(t *testing.T) {
 	}{
 		{name: "malformed-json", body: `{`, kind: "response_parse_error"},
 		{name: "missing-output", body: `{"output":[]}`, kind: "empty_output"},
-		{name: "empty-title", body: `{"output":[{"content":[{"type":"output_text","text":"  "}]}]}`, kind: "empty_output"},
+		{name: "malformed-structured-output", body: `{"output":[{"content":[{"type":"output_text","text":"{"}]}]}`, kind: "response_parse_error"},
+		{name: "empty-title", body: `{"output":[{"content":[{"type":"output_text","text":"{\"title\":\"  \",\"description\":\"summary\"}"}]}]}`, kind: "empty_output"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			requestCount := 0
@@ -150,7 +209,7 @@ func TestTitleGeneratorParsesProviderSSEDespiteStreamFalse(t *testing.T) {
 		requestCount++
 		response.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 		_, _ = response.Write([]byte("event: response.output_text.done\n" +
-			"data: {\"type\":\"response.output_text.done\",\"text\":\"标题：SSE 返回的 Luna 标题\"}\n\n" +
+			"data: {\"type\":\"response.output_text.done\",\"text\":\"{\\\"title\\\":\\\"SSE 返回的 Luna 标题\\\",\\\"description\\\":\\\"验证 SSE 响应解析\\\"}\"}\n\n" +
 			"data: [DONE]\n\n"))
 	}))
 	t.Cleanup(server.Close)
@@ -240,7 +299,7 @@ func TestTitleGeneratorRetries429ThenSucceeds(t *testing.T) {
 			_, _ = response.Write([]byte(`{"error":{"message":"slow down","type":"rate_limit_error","code":"rate_limit"}}`))
 			return
 		}
-		_, _ = response.Write([]byte(`{"output":[{"content":[{"type":"output_text","text":"重试成功"}]}]}`))
+		_, _ = response.Write([]byte(`{"output":[{"content":[{"type":"output_text","text":"{\"title\":\"重试成功\",\"description\":\"429 后重试成功\"}"}]}]}`))
 	}))
 	t.Cleanup(server.Close)
 	generator, mock, closeDB := titleGeneratorForProvider(t, server.URL, true)
