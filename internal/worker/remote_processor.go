@@ -80,22 +80,14 @@ func (p *RemoteProcessor) ProcessDevelopmentOperation(ctx context.Context,
 	if p.browserAgent != nil && operation.Operation != "provision" {
 		p.browserAgent.Reset(operation.EnvironmentID)
 	}
-	processEnvironment := []string(nil)
-	if operation.Operation == "provision" || operation.Operation == "reconfigure" ||
-		operation.Operation == "rebase" {
-		credential, err := p.client.EnvironmentRuntimeCredential(ctx, operation.EnvironmentID)
-		if err != nil {
-			return err
-		}
-		processEnvironment, err = remoteCredentialEnvironment(credential)
-		if err != nil {
-			return err
-		}
+	processEnvironment, err := p.developmentOperationProcessEnvironment(ctx, operation)
+	if err != nil {
+		return err
 	}
 	if operation.Operation == "provision" {
 		return p.processDevelopmentProvision(ctx, operation, processEnvironment)
 	}
-	err := p.development.RunRemoteOperation(ctx, devcontainer.RemoteOperation{
+	err = p.development.RunRemoteOperation(ctx, devcontainer.RemoteOperation{
 		EnvironmentID: operation.EnvironmentID, Operation: operation.Operation,
 		ContainerName: operation.ContainerName,
 		ImageRef:      operation.ImageRef, DataVolume: operation.DataVolume,
@@ -128,6 +120,20 @@ func (p *RemoteProcessor) ProcessDevelopmentOperation(ctx context.Context,
 		}
 	}
 	return nil
+}
+
+func (p *RemoteProcessor) developmentOperationProcessEnvironment(ctx context.Context,
+	operation *workerprotocol.DevelopmentOperation,
+) ([]string, error) {
+	if operation.Operation != "provision" && operation.Operation != "reconfigure" &&
+		operation.Operation != "rebase" {
+		return nil, nil
+	}
+	credential, err := p.client.EnvironmentRuntimeCredential(ctx, operation.EnvironmentID)
+	if err != nil {
+		return nil, err
+	}
+	return remoteCodexProcessEnvironment(credential, p.cfg, operation.EnvironmentID.String())
 }
 
 func (p *RemoteProcessor) processDevelopmentProvision(ctx context.Context,

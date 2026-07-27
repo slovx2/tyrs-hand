@@ -346,6 +346,52 @@ func TestRemoteCodexProcessEnvironmentIncludesBrowserToken(t *testing.T) {
 	require.Equal(t, expected, environmentValue(environment, "TYRS_BROWSER_MCP_TOKEN"))
 }
 
+func TestDevelopmentOperationProcessEnvironmentIncludesScopedBrowserToken(t *testing.T) {
+	environmentID := uuid.MustParse("11111111-1111-4111-8111-111111111111")
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
+		request *http.Request,
+	) {
+		require.Equal(t, http.MethodPost, request.Method)
+		require.Equal(t, "/worker/v1/development-environments/"+environmentID.String()+
+			"/runtime-credential", request.URL.Path)
+		_ = json.NewEncoder(response).Encode(workerprotocol.RuntimeCredential{
+			ModelSource: settings.ModelSourceProvider, APIKey: "model-secret",
+		})
+	}))
+	t.Cleanup(server.Close)
+	tokenPath := filepath.Join(t.TempDir(), "browser-token")
+	require.NoError(t, os.WriteFile(tokenPath, []byte("browser-secret\n"), 0o600))
+	processor := &RemoteProcessor{
+		client: workerprotocol.NewClient(server.URL, "worker-credential", time.Second),
+		cfg: config.Config{
+			BrowserMCPURL:       "http://host.docker.internal:8931/mcp",
+			BrowserMCPTokenFile: tokenPath,
+		},
+	}
+
+	for _, operationName := range []string{"provision", "reconfigure", "rebase"} {
+		t.Run(operationName, func(t *testing.T) {
+			environment, err := processor.developmentOperationProcessEnvironment(
+				context.Background(), &workerprotocol.DevelopmentOperation{
+					EnvironmentID: environmentID, Operation: operationName,
+				})
+			require.NoError(t, err)
+			require.Equal(t, "model-secret",
+				environmentValue(environment, "TYRS_HAND_MODEL_API_KEY"))
+			expected, err := deriveBrowserToken("browser-secret", environmentID.String())
+			require.NoError(t, err)
+			require.Equal(t, expected,
+				environmentValue(environment, "TYRS_BROWSER_MCP_TOKEN"))
+		})
+	}
+
+	environment, err := processor.developmentOperationProcessEnvironment(context.Background(),
+		&workerprotocol.DevelopmentOperation{EnvironmentID: environmentID,
+			Operation: "delete_environment"})
+	require.NoError(t, err)
+	require.Nil(t, environment)
+}
+
 func environmentKeyCount(environment []string, key string) int {
 	count := 0
 	for _, entry := range environment {
