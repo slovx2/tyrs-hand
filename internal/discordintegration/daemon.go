@@ -37,7 +37,7 @@ func NewDaemon(manager *Manager, conversations *ConversationService, bindings *B
 	redisClient *redis.Client, logger *zap.Logger,
 ) *Daemon {
 	d := &Daemon{manager: manager, conversations: conversations, bindings: bindings,
-		titles: NewTitleGenerator(manager.db, settingsService), redis: redisClient,
+		titles: NewTitleGenerator(manager.db, settingsService, logger), redis: redisClient,
 		logger: logger, apiURL: "https://discord.com/api/v10",
 		outboxInterval: 250 * time.Millisecond, operationInterval: 2 * time.Second,
 		projectionInterval: time.Minute, permissionInterval: 5 * time.Minute}
