@@ -10,10 +10,10 @@ import (
 func TestDevelopmentProjectForumName(t *testing.T) {
 	forumID := uuid.MustParse("12345678-1234-1234-1234-1234567890ab")
 	require.Equal(t, "custom", developmentProjectForumName(
-		RemoteGuild{}, "Custom", "Kal", "kal", "workspace", forumID))
-	require.Equal(t, "kal-workspace", developmentProjectForumName(
-		RemoteGuild{}, "", "Kal", "kal", "workspace", forumID))
-	require.Equal(t, "kal-workspace-123456", developmentProjectForumName(RemoteGuild{
-		Channels: []RemoteChannel{{Name: "kal-workspace"}},
-	}, "", "Kal", "kal", "workspace", forumID))
+		RemoteGuild{}, "Custom", "Avery", "avery", "workspace", forumID))
+	require.Equal(t, "avery-workspace", developmentProjectForumName(
+		RemoteGuild{}, "", "Avery", "avery", "workspace", forumID))
+	require.Equal(t, "avery-workspace-123456", developmentProjectForumName(RemoteGuild{
+		Channels: []RemoteChannel{{Name: "avery-workspace"}},
+	}, "", "Avery", "avery", "workspace", forumID))
 }

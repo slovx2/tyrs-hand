@@ -414,7 +414,7 @@ func TestDesktopRelayPreparesStartAndForkBeforeCompleting(t *testing.T) {
 
 	startPlan, err := controller.PrepareCall(ctx, codexrelay.Call{
 		Role: codexrelay.RoleDesktop, Method: "thread/start",
-		Params: json.RawMessage(`{"cwd":"/var/lib/tyrs-hand/workspaces/WakeQora"}`),
+		Params: json.RawMessage(`{"cwd":"/var/lib/tyrs-hand/workspaces/atlas"}`),
 	})
 	require.NoError(t, err)
 	require.Equal(t, "start", <-operations)

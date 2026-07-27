@@ -551,7 +551,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		EnvironmentID: environmentID, Generation: 10,
 		Events: []workerprotocol.ThreadMetadataEvent{{
 			ThreadID: "codex-desktop-thread", Sequence: 2, Kind: "name",
-			Name: "WakeQora 正式标题",
+			Name: "Atlas 正式标题",
 		}},
 	}))
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
@@ -568,13 +568,13 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		JOIN discord_conversations c ON c.id = ct.discord_conversation_id
 		WHERE ct.id = $1`, state.ControlID).
 		Scan(&desiredName, &desiredRevision, &conversationTitle))
-	require.Equal(t, "WakeQora 正式标题", desiredName)
+	require.Equal(t, "Atlas 正式标题", desiredName)
 	require.Equal(t, int64(2), desiredRevision)
 	require.Equal(t, desiredName, conversationTitle)
 	var renamePayload string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT payload::text FROM integration_outbox
 		WHERE operation_key = $1`, "thread-name:"+state.ControlID.String()).Scan(&renamePayload))
-	require.Contains(t, renamePayload, "WakeQora 正式标题")
+	require.Contains(t, renamePayload, "Atlas 正式标题")
 	require.Contains(t, renamePayload, `"revision": 2`)
 	var renameItem *discordintegration.OutboxItem
 	for {

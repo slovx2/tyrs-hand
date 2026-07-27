@@ -113,7 +113,7 @@ func TestEverySystemCardBuildsAsComponentsV2(t *testing.T) {
 		conversationProgressCard(ConversationFailed, timeline, 0, "", "default"),
 		terminatedControlCard(), conversationConfigurationCard("gpt-5.6-sol", "high", "fast", "default"),
 		archivedConversationCard(), lifecycleCard(uuid.New(), 1),
-		DesktopInputCards("Kal", "hello")[0],
+		DesktopInputCards("Avery", "hello")[0],
 		interactiveCard(InteractiveProjection{Status: "pending", Questions: []InteractiveQuestion{{
 			ID: "confirm", Header: "确认", Question: "继续吗？",
 		}}}),

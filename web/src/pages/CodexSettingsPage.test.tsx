@@ -16,7 +16,7 @@ describe('CodexSettingsPage', () => {
           items: [
             {
               id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-              owner: 'datawake-ai',
+              owner: 'example-org',
               name: 'tyrs-hand',
               settings: {
                 model: null,
