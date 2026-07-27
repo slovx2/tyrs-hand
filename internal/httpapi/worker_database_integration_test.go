@@ -506,8 +506,8 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NotContains(t, string(item.Payload), "codex_delegation")
 	require.NotContains(t, string(item.Payload), "source_thread_id")
 	require.Contains(t, string(item.Payload), "首条输入前的正式标题")
-	require.NoError(t, outbox.Complete(ctx, *item,
-		json.RawMessage(`{"threadId":"desktop-discord-thread","messageId":"desktop-starter"}`)))
+	completeWorkerOutbox(t, ctx, outbox, item,
+		json.RawMessage(`{"threadId":"desktop-discord-thread","messageId":"desktop-starter"}`))
 	state, err = client.DesktopThreadState(ctx, state.ID)
 	require.NoError(t, err)
 	require.Equal(t, "completed", state.Status)
@@ -579,7 +579,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		if renameItem.OperationKey == "thread-name:"+state.ControlID.String() {
 			break
 		}
-		require.NoError(t, outbox.Retry(ctx, *renameItem, time.Now().Add(time.Hour),
+		require.NoError(t, outbox.RetryDelivery(ctx, *renameItem, time.Now().Add(time.Hour),
 			errors.New("推迟无关投影")))
 	}
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
@@ -589,7 +589,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 			Name: "竞争后的最新标题",
 		}},
 	}))
-	require.NoError(t, outbox.Complete(ctx, *renameItem, json.RawMessage(`{}`)))
+	completeWorkerOutbox(t, ctx, outbox, renameItem, json.RawMessage(`{}`))
 	var appliedName, renameStatus string
 	var appliedRevision int64
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT desired_thread_name,
@@ -612,7 +612,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	renameItem, err = outbox.Claim(ctx, time.Minute)
 	require.NoError(t, err)
 	require.NotNil(t, renameItem)
-	require.NoError(t, outbox.Complete(ctx, *renameItem, json.RawMessage(`{}`)))
+	completeWorkerOutbox(t, ctx, outbox, renameItem, json.RawMessage(`{}`))
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT COALESCE(applied_thread_name,''),
 		applied_thread_name_revision FROM codex_thread_controls WHERE id=$1`,
 		state.ControlID).Scan(&appliedName, &appliedRevision))
@@ -639,7 +639,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 			Name: "失败竞争后的最新标题",
 		}},
 	}))
-	require.NoError(t, outbox.Fail(ctx, *renameItem, errors.New("旧 rename 失败")))
+	require.NoError(t, outbox.FailDelivery(ctx, *renameItem, errors.New("旧 rename 失败")))
 	var lastNameError sql.NullString
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT status, payload::text
 		FROM integration_outbox WHERE operation_key=$1`,
@@ -1049,13 +1049,13 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		if forkPost.OperationKey == "desktop-thread-post:"+fork.ID.String() {
 			break
 		}
-		require.NoError(t, outbox.Retry(ctx, *forkPost, time.Now().Add(time.Hour),
+		require.NoError(t, outbox.RetryDelivery(ctx, *forkPost, time.Now().Add(time.Hour),
 			errors.New("推迟无关投影")))
 	}
 	require.Contains(t, string(forkPost.Payload), "Desktop Alice")
 	require.Contains(t, string(forkPost.Payload), "fork first input")
-	require.NoError(t, outbox.Complete(ctx, *forkPost,
-		json.RawMessage(`{"threadId":"desktop-discord-fork","messageId":"desktop-fork-starter"}`)))
+	completeWorkerOutbox(t, ctx, outbox, forkPost,
+		json.RawMessage(`{"threadId":"desktop-discord-fork","messageId":"desktop-fork-starter"}`))
 	fork, err = client.DesktopThreadState(ctx, fork.ID)
 	require.NoError(t, err)
 	require.Equal(t, "completed", fork.Status)
@@ -1148,9 +1148,9 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		if item.OperationKey == "desktop-thread-post:"+failed.ID.String() {
 			break
 		}
-		require.NoError(t, outbox.Fail(ctx, *item, errors.New("skip fork post")))
+		require.NoError(t, outbox.FailDelivery(ctx, *item, errors.New("skip fork post")))
 	}
-	require.NoError(t, outbox.Fail(ctx, *item, errors.New("discord unavailable")))
+	require.NoError(t, outbox.FailDelivery(ctx, *item, errors.New("discord unavailable")))
 	failed, err = client.DesktopThreadState(ctx, failed.ID)
 	require.NoError(t, err)
 	require.Equal(t, "post_failed", failed.Status)
@@ -1179,15 +1179,15 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		if recoveredPost.OperationKey == "desktop-thread-post:"+failed.ID.String() {
 			break
 		}
-		require.NoError(t, outbox.Retry(ctx, *recoveredPost, time.Now().Add(time.Hour),
+		require.NoError(t, outbox.RetryDelivery(ctx, *recoveredPost, time.Now().Add(time.Hour),
 			errors.New("推迟无关投影")))
 	}
 	require.Contains(t, string(recoveredPost.Payload), "offline post")
 	require.NotContains(t, string(recoveredPost.Payload), "second while recovering",
 		"重试创建 Forum Post 必须保留最初的 Starter Message")
-	require.NoError(t, outbox.Complete(ctx, *recoveredPost,
+	completeWorkerOutbox(t, ctx, outbox, recoveredPost,
 		json.RawMessage(`{"threadId":"desktop-discord-recovered",`+
-			`"messageId":"desktop-recovered-starter"}`)))
+			`"messageId":"desktop-recovered-starter"}`))
 	failed, err = client.DesktopThreadState(ctx, failed.ID)
 	require.NoError(t, err)
 	require.Equal(t, "completed", failed.Status)
@@ -1821,6 +1821,15 @@ func enqueueWorkerDiscordIntent(t *testing.T, db *sql.DB, conversationID uuid.UU
 	require.True(t, inserted)
 	require.NoError(t, tx.Commit())
 	return intentID
+}
+
+func completeWorkerOutbox(t *testing.T, ctx context.Context,
+	store *discordintegration.SQLoutbox, item *discordintegration.OutboxItem,
+	response json.RawMessage,
+) {
+	t.Helper()
+	require.NoError(t, store.RecordDelivery(ctx, item, response))
+	require.NoError(t, store.Apply(ctx, *item))
 }
 
 func enqueueWorkerOperation(t *testing.T, db *sql.DB, repositoryID, itemID, profileID uuid.UUID,

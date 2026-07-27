@@ -140,7 +140,7 @@ func testOutboxRecovery(t *testing.T, ctx context.Context, db *sql.DB, guildID s
 	require.NoError(t, discordintegration.ProjectConversationStatus(ctx, db, guildID, "2001", conversationID,
 		"3001", uuid.Nil, discordintegration.ConversationCompleted, "completed"))
 	response := json.RawMessage(`{"messageId":"5001"}`)
-	require.NoError(t, store.Complete(ctx, *first, response))
+	completeDiscordDelivery(t, ctx, store, first, response)
 	var status string
 	var applied, desired int64
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT o.status, p.applied_version, p.desired_version
@@ -158,7 +158,7 @@ func testOutboxRecovery(t *testing.T, ctx context.Context, db *sql.DB, guildID s
 	require.NotNil(t, latest)
 	require.Equal(t, "message.update", latest.OperationType)
 	require.Contains(t, string(latest.Payload), "已完成")
-	require.NoError(t, store.Complete(ctx, *latest, nil))
+	completeDiscordDelivery(t, ctx, store, latest, nil)
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT applied_version, desired_version
 		FROM discord_projections WHERE projection_key = $1`, projectionKey).Scan(&applied, &desired))
 	require.Equal(t, desired, applied)
@@ -170,7 +170,7 @@ func testOutboxRecovery(t *testing.T, ctx context.Context, db *sql.DB, guildID s
 	require.NotNil(t, nextTurn)
 	require.Equal(t, "message.create", nextTurn.OperationType)
 	require.NotEqual(t, first.OperationKey, nextTurn.OperationKey)
-	require.NoError(t, store.Complete(ctx, *nextTurn, json.RawMessage(`{"messageId":"5002"}`)))
+	completeDiscordDelivery(t, ctx, store, nextTurn, json.RawMessage(`{"messageId":"5002"}`))
 
 	require.NoError(t, discordintegration.ProjectConversationReply(ctx, db, "2001", conversationID, "3002", "final reply"))
 	reply, err := store.Claim(ctx, 30*time.Second)
@@ -178,7 +178,7 @@ func testOutboxRecovery(t *testing.T, ctx context.Context, db *sql.DB, guildID s
 	require.NotNil(t, reply)
 	require.Equal(t, "message.create", reply.OperationType)
 	require.JSONEq(t, `{"channelId":"2001","content":"final reply"}`, string(reply.Payload))
-	require.NoError(t, store.Complete(ctx, *reply, json.RawMessage(`{"messageId":"5003"}`)))
+	completeDiscordDelivery(t, ctx, store, reply, json.RawMessage(`{"messageId":"5003"}`))
 
 	require.NoError(t, store.Enqueue(ctx, "crash-recovery", "message.create", "channels/2001/messages",
 		map[string]string{"channelId": "2001", "content": "recover"}, "crash-nonce"))
@@ -190,17 +190,42 @@ func testOutboxRecovery(t *testing.T, ctx context.Context, db *sql.DB, guildID s
 	require.NoError(t, err)
 	recovered, err := store.Claim(ctx, time.Second)
 	require.NoError(t, err)
+	require.Nil(t, recovered, "结果未知的外部写入不得自动重发")
+	var ambiguousStatus string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM integration_outbox WHERE id=$1`,
+		crashed.ID).Scan(&ambiguousStatus))
+	require.Equal(t, "ambiguous", ambiguousStatus)
+	resolved, err := store.ResolveAmbiguousDelivery(ctx, crashed.OperationKey,
+		json.RawMessage(`{"messageId":"recovered-message"}`))
+	require.NoError(t, err)
+	require.NoError(t, store.Apply(ctx, *resolved))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM integration_outbox WHERE id=$1`,
+		crashed.ID).Scan(&ambiguousStatus))
+	require.Equal(t, "completed", ambiguousStatus)
+
+	require.NoError(t, store.Enqueue(ctx, "known-retry", "message.create", "channels/2001/messages",
+		map[string]string{"channelId": "2001", "content": "retry"}, "retry-nonce"))
+	recovered, err = store.Claim(ctx, time.Second)
+	require.NoError(t, err)
 	require.NotNil(t, recovered)
-	require.Equal(t, crashed.ID, recovered.ID)
-	require.Equal(t, crashed.Attempt+1, recovered.Attempt)
-	require.NoError(t, store.Retry(ctx, *recovered, time.Now().Add(-time.Second), errors.New("retry once")))
+	require.NoError(t, store.RetryDelivery(ctx, *recovered, time.Now().Add(-time.Second),
+		errors.New("retry once")))
 	retried, err := store.Claim(ctx, time.Second)
 	require.NoError(t, err)
 	require.NotNil(t, retried)
-	require.NoError(t, store.Fail(ctx, *retried, errors.New("permanent failure")))
+	require.NoError(t, store.FailDelivery(ctx, *retried, errors.New("permanent failure")))
 	var failedStatus string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM integration_outbox WHERE id = $1`, retried.ID).Scan(&failedStatus))
 	require.Equal(t, "failed", failedStatus)
+}
+
+func completeDiscordDelivery(t *testing.T, ctx context.Context,
+	store *discordintegration.SQLoutbox, item *discordintegration.OutboxItem,
+	response json.RawMessage,
+) {
+	t.Helper()
+	require.NoError(t, store.RecordDelivery(ctx, item, response))
+	require.NoError(t, store.Apply(ctx, *item))
 }
 
 type ambiguousInitializationRemote struct {

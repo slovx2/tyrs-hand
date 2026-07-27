@@ -106,8 +106,10 @@ func (m *Manager) Status(ctx context.Context) (Status, error) {
 	}
 	err = m.db.QueryRowContext(ctx, `
 		SELECT last_gateway_status, COALESCE(last_gateway_error, ''), last_gateway_at,
-			(SELECT count(*) FROM integration_outbox WHERE integration = 'discord' AND status IN ('pending', 'retrying')),
-			(SELECT count(*) FROM integration_outbox WHERE integration = 'discord' AND status = 'failed'),
+			(SELECT count(*) FROM integration_outbox WHERE integration = 'discord'
+				AND status IN ('pending','retrying','sending','applying')),
+			(SELECT count(*) FROM integration_outbox WHERE integration = 'discord'
+				AND status IN ('failed','ambiguous')),
 			(SELECT count(*) FROM discord_initialization_operations WHERE status IN ('pending', 'running'))
 		FROM discord_guilds WHERE guild_id = $1`, settings.GuildID).
 		Scan(&result.GatewayStatus, &result.GatewayError, &result.LastGatewayAt,

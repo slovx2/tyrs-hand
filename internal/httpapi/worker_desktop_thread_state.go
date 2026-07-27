@@ -116,14 +116,9 @@ func enqueueDesktopThreadFailure(c *gin.Context, tx *sql.Tx, requestID uuid.UUID
 			safeDesktopFailure(message)}
 	payload, _ := json.Marshal(map[string]any{"channelId": threadID, "messageId": messageID,
 		"card": card})
-	_, err := tx.ExecContext(c.Request.Context(), `INSERT INTO integration_outbox
-		(integration, operation_key, operation_type, route_key, payload)
-		VALUES ('discord',$1,'message.update',$2,$3)
-		ON CONFLICT(integration, operation_key) DO UPDATE SET payload = EXCLUDED.payload,
-			status = CASE WHEN integration_outbox.status = 'sending' THEN 'sending' ELSE 'pending' END,
-			updated_at = now()`, "desktop-thread-failure:"+requestID.String(),
-		"channels/"+threadID+"/messages/"+messageID, payload)
-	return err
+	return discordintegration.EnqueueTx(c.Request.Context(), tx,
+		"desktop-thread-failure:"+requestID.String(), "message.update",
+		"channels/"+threadID+"/messages/"+messageID, json.RawMessage(payload), "")
 }
 
 func safeDesktopFailure(value string) string {

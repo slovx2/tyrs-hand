@@ -55,6 +55,13 @@ func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 			_, _ = response.Write([]byte(channelJSON("12", 15, "tasks")))
 		case "DELETE /channels/11":
 			response.WriteHeader(http.StatusNoContent)
+		case "GET /guilds/123/threads/active":
+			_, _ = response.Write([]byte(`{"threads":[
+				{"id":"40","guild_id":"123","parent_id":"12","type":11,"name":"target","owner_id":"1","message_count":1,"member_count":1,"rate_limit_per_user":0,"thread_metadata":{"archived":false,"auto_archive_duration":10080,"archive_timestamp":"2026-07-27T00:00:00Z","locked":false}},
+				{"id":"41","guild_id":"123","parent_id":"99","type":11,"name":"other","owner_id":"1","message_count":1,"member_count":1,"rate_limit_per_user":0,"thread_metadata":{"archived":false,"auto_archive_duration":10080,"archive_timestamp":"2026-07-27T00:00:00Z","locked":false}}
+			],"members":[]}`))
+		case "GET /channels/40/messages":
+			_, _ = response.Write([]byte(`[{"id":"42","channel_id":"40","timestamp":"2026-07-27T00:00:00Z","author":{"id":"1","username":"bot","discriminator":"0","bot":true},"content":"","nonce":"desktop-request"}]`))
 		case "DELETE /channels/20/messages/21":
 			response.WriteHeader(http.StatusNoContent)
 		case "PUT /channels/30/thread-members/456":
@@ -124,6 +131,12 @@ func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 	require.NoError(t, remote.UpdateChannel(ctx, "11", ChannelSpec{Name: "status", Kind: "text", ParentKey: "10"}))
 	require.NoError(t, remote.UpdateChannel(ctx, "12", ChannelSpec{Name: "tasks", Kind: "forum", ParentKey: "10"}))
 	require.NoError(t, remote.DeleteChannel(ctx, "11"))
+	receipts, err := remote.ActiveForumPostReceipts(ctx, "123", "12")
+	require.NoError(t, err)
+	require.Len(t, receipts, 1)
+	require.Equal(t, "40", receipts[0].ThreadID)
+	require.Equal(t, "42", receipts[0].MessageID)
+	require.Equal(t, "desktop-request", receipts[0].Nonce)
 
 	testDisgoSendOperations(t, ctx, remote)
 	mu.Lock()

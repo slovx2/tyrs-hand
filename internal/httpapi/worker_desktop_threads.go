@@ -195,16 +195,9 @@ func enqueueDesktopThreadPost(ctx context.Context, tx *sql.Tx, requestID uuid.UU
 	card := discordintegration.DesktopInputCards(actor, input)[0]
 	payload, _ := json.Marshal(map[string]any{"channelId": target.forumDiscord,
 		"threadName": name, "card": card, "desktopThreadRequestId": requestID.String()})
-	_, err := tx.ExecContext(ctx, `INSERT INTO integration_outbox
-		(integration, operation_key, operation_type, route_key, payload, nonce)
-		VALUES ('discord',$1,'forum.post.create',$2,$3,$4)
-		ON CONFLICT(integration, operation_key) DO UPDATE SET
-			operation_type = EXCLUDED.operation_type, route_key = EXCLUDED.route_key,
-			payload = EXCLUDED.payload, nonce = EXCLUDED.nonce, status = 'pending',
-			attempt_count = 0, available_at = now(), last_error = NULL, updated_at = now()`,
-		"desktop-thread-post:"+requestID.String(), "channels/"+target.forumDiscord+"/threads",
-		payload, "desktop-thread-"+requestID.String())
-	return err
+	return discordintegration.EnqueueTx(ctx, tx, "desktop-thread-post:"+requestID.String(),
+		"forum.post.create", "channels/"+target.forumDiscord+"/threads", json.RawMessage(payload),
+		"desktop-thread-"+requestID.String())
 }
 
 func normalizeDesktopTitle(value string) string {

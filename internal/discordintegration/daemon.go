@@ -293,7 +293,8 @@ func (d *Daemon) refreshSystemStatus(ctx context.Context, guildID string) error 
 	)
 	SELECT queued, running, failed,
 		(SELECT count(*) FROM worker_nodes WHERE status = 'online' AND heartbeat_at > now() - interval '2 minutes'),
-		(SELECT count(*) FROM integration_outbox WHERE integration = 'discord' AND status IN ('pending','retrying','sending')),
+			(SELECT count(*) FROM integration_outbox WHERE integration = 'discord'
+				AND status IN ('pending','retrying','sending','applying','ambiguous')),
 		COALESCE((SELECT last_gateway_status FROM discord_guilds WHERE guild_id = $1), 'unknown')
 		FROM job_counts`, guildID).
 		Scan(&queued, &running, &failed, &workers, &outbox, &gatewayStatus)
@@ -338,7 +339,8 @@ func (d *Daemon) refreshSystemAlerts(ctx context.Context, guildID string) error 
 	var workers, failedOutbox int64
 	err = d.manager.db.QueryRowContext(ctx, `SELECT last_gateway_status, COALESCE(last_gateway_error, ''),
 		(SELECT count(*) FROM worker_nodes WHERE status = 'online' AND heartbeat_at > now() - interval '2 minutes'),
-		(SELECT count(*) FROM integration_outbox WHERE integration = 'discord' AND status = 'failed')
+			(SELECT count(*) FROM integration_outbox WHERE integration = 'discord'
+				AND status IN ('failed','ambiguous'))
 		FROM discord_guilds WHERE guild_id = $1`, guildID).Scan(&gatewayStatus, &gatewayError, &workers, &failedOutbox)
 	if err != nil {
 		return err

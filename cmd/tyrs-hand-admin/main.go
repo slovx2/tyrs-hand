@@ -10,13 +10,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/pquerna/otp/totp"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/database"
+	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/gitworkspace"
+	"github.com/slovx2/tyrs-hand/internal/secrets"
 	"github.com/slovx2/tyrs-hand/internal/security"
 	"github.com/slovx2/tyrs-hand/internal/settings"
 )
@@ -57,6 +61,11 @@ func main() {
 	case "gc":
 		requireArgs(2)
 		garbageCollect(ctx, db, cfg)
+	case "discord-reconcile-posts":
+		if len(os.Args) < 4 {
+			usage()
+		}
+		fatal(reconcileDiscordPosts(ctx, db, cfg, os.Args[2], os.Args[3:]))
 	default:
 		usage()
 	}
@@ -249,6 +258,138 @@ func garbageCollect(ctx context.Context, db *sql.DB, cfg config.Config) {
 	fmt.Printf("GC 完成：Worktree %d，Repo Cache %d，Session %d。\n", removed, cacheCount, sessionCount)
 }
 
+const discordPostCleanupConfirmation = "DELETE DUPLICATE DISCORD POSTS"
+
+type discordPostRepair struct {
+	requestID, operationKey string
+	guildID, forumID        string
+	nonce, status           string
+}
+
+func reconcileDiscordPosts(ctx context.Context, db *sql.DB, cfg config.Config,
+	confirmation string, rawRequestIDs []string,
+) error {
+	if confirmation != discordPostCleanupConfirmation {
+		return fmt.Errorf("确认文本必须精确等于 %q", discordPostCleanupConfirmation)
+	}
+	if len(cfg.MasterKey) != 32 {
+		return errors.New("对账 Discord Post 必须配置主密钥")
+	}
+	box, err := security.NewSecretBox(cfg.MasterKey)
+	if err != nil {
+		return err
+	}
+	manager := discordintegration.NewManager(db, secrets.NewStore(db, box), "")
+	settings, err := manager.Settings(ctx)
+	if err != nil {
+		return err
+	}
+	token, err := manager.BotToken(ctx)
+	if err != nil {
+		return err
+	}
+	remote := discordintegration.NewDisgoRemote(token, "", nil)
+	defer remote.Close(context.Background())
+
+	repairs := make([]discordPostRepair, 0, len(rawRequestIDs))
+	for _, rawID := range rawRequestIDs {
+		requestID, err := uuid.Parse(rawID)
+		if err != nil {
+			return fmt.Errorf("desktop request ID 无效: %s", rawID)
+		}
+		var repair discordPostRepair
+		repair.requestID = requestID.String()
+		err = db.QueryRowContext(ctx, `SELECT outbox.operation_key, forum.guild_id,
+			resource.discord_id, COALESCE(outbox.inflight_nonce,outbox.nonce,''), outbox.status
+			FROM desktop_thread_requests request
+			JOIN integration_outbox outbox
+				ON outbox.operation_key='desktop-thread-post:' || request.id::text
+			JOIN discord_forums forum ON forum.id=request.forum_id
+			JOIN discord_resources resource ON resource.id=forum.resource_id
+			WHERE request.id=$1 AND outbox.integration='discord'
+				AND outbox.status IN ('ambiguous','completed')`, requestID).
+			Scan(&repair.operationKey, &repair.guildID, &repair.forumID,
+				&repair.nonce, &repair.status)
+		if err != nil {
+			return fmt.Errorf("读取待对账 Desktop Post %s: %w", requestID, err)
+		}
+		if repair.guildID != settings.GuildID || repair.nonce == "" {
+			return fmt.Errorf("desktop Post %s 的 Guild 或 nonce 无效", requestID)
+		}
+		repairs = append(repairs, repair)
+	}
+
+	receiptsByForum := make(map[string][]discordintegration.ForumPostReceipt)
+	store := discordintegration.NewSQLoutbox(db)
+	for _, repair := range repairs {
+		key := repair.guildID + ":" + repair.forumID
+		receipts, ok := receiptsByForum[key]
+		if !ok {
+			receipts, err = remote.ActiveForumPostReceipts(ctx, repair.guildID, repair.forumID)
+			if err != nil {
+				return fmt.Errorf("读取 Discord Forum Post 回执: %w", err)
+			}
+			receiptsByForum[key] = receipts
+		}
+		matchedByThread := make(map[string]discordintegration.ForumPostReceipt)
+		for _, receipt := range receipts {
+			if receipt.Nonce != repair.nonce {
+				continue
+			}
+			current, exists := matchedByThread[receipt.ThreadID]
+			if !exists || receipt.CreatedAt.Before(current.CreatedAt) {
+				matchedByThread[receipt.ThreadID] = receipt
+			}
+		}
+		matched := make([]discordintegration.ForumPostReceipt, 0, len(matchedByThread))
+		for _, receipt := range matchedByThread {
+			matched = append(matched, receipt)
+		}
+		sort.Slice(matched, func(i, j int) bool {
+			if matched[i].CreatedAt.Equal(matched[j].CreatedAt) {
+				return matched[i].ThreadID < matched[j].ThreadID
+			}
+			return matched[i].CreatedAt.Before(matched[j].CreatedAt)
+		})
+		if len(matched) == 0 {
+			return fmt.Errorf("desktop Post %s 没有找到 nonce 匹配项", repair.requestID)
+		}
+		keep := matched[0]
+		if repair.status == "ambiguous" {
+			response, err := json.Marshal(map[string]string{
+				"threadId": keep.ThreadID, "messageId": keep.MessageID,
+			})
+			if err != nil {
+				return err
+			}
+			item, err := store.ResolveAmbiguousDelivery(ctx, repair.operationKey, response)
+			if err != nil {
+				return fmt.Errorf("恢复 Desktop Post %s 的远端回执: %w", repair.requestID, err)
+			}
+			if err := store.Apply(ctx, *item); err != nil {
+				return fmt.Errorf("应用 Desktop Post %s 的本地状态: %w", repair.requestID, err)
+			}
+		}
+		deleted := 0
+		for _, duplicate := range matched[1:] {
+			if err := remote.DeleteChannel(ctx, duplicate.ThreadID); err != nil {
+				return fmt.Errorf("删除 Desktop Post %s 的重复 Thread: %w", repair.requestID, err)
+			}
+			deleted++
+		}
+		_, err = db.ExecContext(ctx, `INSERT INTO audit_logs
+			(action,resource_type,resource_id,metadata)
+			VALUES ('discord.outbox.reconcile','desktop_thread_request',$1,
+				jsonb_build_object('matched',$2::integer,'deleted',$3::integer))`,
+			repair.requestID, len(matched), deleted)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Desktop Post %s 已对账：保留 1，删除 %d。\n", repair.requestID, deleted)
+	}
+	return nil
+}
+
 func collectRepoCaches(ctx context.Context, db *sql.DB, cfg config.Config) int {
 	rows, err := db.QueryContext(ctx, `
 		SELECT rc.id, rc.path FROM repo_caches rc
@@ -340,6 +481,7 @@ Usage:
   tyrs-hand-admin reset-totp <username>
   tyrs-hand-admin rotate-master-key <new-master-key-file>
   tyrs-hand-admin codex-login
+  tyrs-hand-admin discord-reconcile-posts "DELETE DUPLICATE DISCORD POSTS" <desktop-request-id>...
   tyrs-hand-admin gc`))
 	os.Exit(2)
 }

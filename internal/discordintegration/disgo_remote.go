@@ -186,6 +186,52 @@ func (r *DisgoRemote) DeleteChannel(ctx context.Context, channelID string) error
 	return r.rest.DeleteChannel(id, disgorest.WithCtx(ctx))
 }
 
+type ForumPostReceipt struct {
+	ThreadID  string
+	MessageID string
+	Nonce     string
+	CreatedAt time.Time
+}
+
+// ActiveForumPostReceipts 只读取活跃 Forum Post 的消息回执元数据，不返回正文。
+func (r *DisgoRemote) ActiveForumPostReceipts(ctx context.Context, guildID,
+	forumID string,
+) ([]ForumPostReceipt, error) {
+	guild, err := snowflake.Parse(guildID)
+	if err != nil {
+		return nil, err
+	}
+	forum, err := snowflake.Parse(forumID)
+	if err != nil {
+		return nil, err
+	}
+	active, err := r.rest.GetActiveGuildThreads(guild, disgorest.WithCtx(ctx))
+	if err != nil {
+		return nil, err
+	}
+	result := make([]ForumPostReceipt, 0)
+	for _, thread := range active.Threads {
+		parent := thread.ParentID()
+		if parent == nil || *parent != forum {
+			continue
+		}
+		messages, err := r.rest.GetMessages(thread.ID(), 0, 0, 0, 100,
+			disgorest.WithCtx(ctx))
+		if err != nil {
+			return nil, err
+		}
+		for _, message := range messages {
+			if message.Nonce == "" {
+				continue
+			}
+			result = append(result, ForumPostReceipt{ThreadID: thread.ID().String(),
+				MessageID: message.ID.String(), Nonce: string(message.Nonce),
+				CreatedAt: message.CreatedAt})
+		}
+	}
+	return result, nil
+}
+
 func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessage, error) {
 	item.Nonce = discordNonce(item.Nonce)
 	var payload struct {

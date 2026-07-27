@@ -26,11 +26,14 @@ func TestDiscordNonceIsStableAndWithinDiscordLimit(t *testing.T) {
 }
 
 type fakeOutboxStore struct {
-	item      *OutboxItem
-	completed bool
-	failed    error
-	retryAt   time.Time
-	retryErr  error
+	item               *OutboxItem
+	recorded           json.RawMessage
+	completed          bool
+	applicationErr     error
+	applicationRetryAt time.Time
+	failed             error
+	retryAt            time.Time
+	retryErr           error
 }
 
 func (s *fakeOutboxStore) Claim(context.Context, time.Duration) (*OutboxItem, error) {
@@ -38,15 +41,32 @@ func (s *fakeOutboxStore) Claim(context.Context, time.Duration) (*OutboxItem, er
 	s.item = nil
 	return item, nil
 }
-func (s *fakeOutboxStore) Complete(context.Context, OutboxItem, json.RawMessage) error {
-	s.completed = true
+func (s *fakeOutboxStore) RecordDelivery(_ context.Context, item *OutboxItem,
+	response json.RawMessage,
+) error {
+	s.recorded = response
+	item.Response = response
+	item.phase = outboxPhaseApply
+	item.ApplyAttempt = 1
 	return nil
 }
-func (s *fakeOutboxStore) Retry(_ context.Context, _ OutboxItem, at time.Time, err error) error {
+func (s *fakeOutboxStore) Apply(context.Context, OutboxItem) error {
+	s.completed = true
+	return s.applicationErr
+}
+func (s *fakeOutboxStore) RetryDelivery(_ context.Context, _ OutboxItem,
+	at time.Time, err error,
+) error {
 	s.retryAt, s.retryErr = at, err
 	return nil
 }
-func (s *fakeOutboxStore) Fail(_ context.Context, _ OutboxItem, err error) error {
+func (s *fakeOutboxStore) RetryApplication(_ context.Context, _ OutboxItem,
+	at time.Time, _ error,
+) error {
+	s.applicationRetryAt = at
+	return nil
+}
+func (s *fakeOutboxStore) FailDelivery(_ context.Context, _ OutboxItem, err error) error {
 	s.failed = err
 	return nil
 }
@@ -69,6 +89,42 @@ func (f *fakeRemote) Send(_ context.Context, item OutboxItem) (json.RawMessage, 
 	return f.send(item)
 }
 func (f *fakeRemote) Close(context.Context) {}
+
+func TestDispatcherPersistsDeliveryBeforeApplyingLocally(t *testing.T) {
+	response := json.RawMessage(`{"threadId":"10","messageId":"11"}`)
+	store := &fakeOutboxStore{item: &OutboxItem{ID: "1", Attempt: 1,
+		MaxAttempts: 3, RequestRevision: 1}}
+	dispatcher := NewDispatcher(store, &fakeRemote{send: func(OutboxItem) (json.RawMessage, error) {
+		return response, nil
+	}})
+
+	worked, err := dispatcher.RunOnce(context.Background())
+	require.NoError(t, err)
+	require.True(t, worked)
+	require.JSONEq(t, string(response), string(store.recorded))
+	require.True(t, store.completed)
+}
+
+func TestDispatcherRetriesPersistedApplicationWithoutCallingRemote(t *testing.T) {
+	applyErr := errors.New("local projection unavailable")
+	store := &fakeOutboxStore{item: &OutboxItem{ID: "1", phase: outboxPhaseApply,
+		ApplyAttempt: 2, Response: json.RawMessage(`{"threadId":"10","messageId":"11"}`)},
+		applicationErr: applyErr}
+	remoteCalls := 0
+	dispatcher := NewDispatcher(store, &fakeRemote{send: func(OutboxItem) (json.RawMessage, error) {
+		remoteCalls++
+		return nil, errors.New("不应调用远端")
+	}})
+	now := time.Date(2026, 7, 27, 0, 0, 0, 0, time.UTC)
+	dispatcher.now = func() time.Time { return now }
+	dispatcher.jitter = func(time.Duration) time.Duration { return 0 }
+
+	worked, err := dispatcher.RunOnce(context.Background())
+	require.ErrorIs(t, err, applyErr)
+	require.True(t, worked)
+	require.Zero(t, remoteCalls)
+	require.Equal(t, now.Add(2*time.Second), store.applicationRetryAt)
+}
 
 func TestDispatcherRetries429UsingServerDelay(t *testing.T) {
 	header := make(http.Header)

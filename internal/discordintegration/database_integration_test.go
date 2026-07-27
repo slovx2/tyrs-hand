@@ -429,6 +429,47 @@ func TestGenericProjectInitializationAndDisableAreIdempotent(t *testing.T) {
 	var profileID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM agent_profiles WHERE name='Default'`).
 		Scan(&profileID))
+	desktopControlID, desktopRequestID := uuid.New(), uuid.New()
+	_, err = db.ExecContext(ctx, `INSERT INTO codex_thread_controls
+		(id, source_type, project_id, agent_profile_id, external_thread_id,
+		 development_environment_id, codex_home_key)
+		VALUES ($1,'desktop_thread',$2,$3,'generic-project-desktop-thread',$4,$5)`,
+		desktopControlID, projectID, profileID, environmentID, environmentID.String())
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `INSERT INTO desktop_thread_requests
+		(id, environment_id, operation, request_key, cwd, request_params, status,
+		 forum_id, control_id, external_thread_id, first_input_projection_key,
+		 first_input_text, preview_title)
+		VALUES ($1,$2,'start',$3,$4,'{}','post_pending',$5,$6,
+		'generic-project-desktop-thread','generic-project-first-input',
+		'validate generic project scope','Generic project desktop')`,
+		desktopRequestID, environmentID, strings.Repeat("d", 64), workspace,
+		forumID, desktopControlID)
+	require.NoError(t, err)
+	require.NoError(t, NewSQLoutbox(db).Enqueue(ctx,
+		"desktop-thread-post:"+desktopRequestID.String(), "forum.post.create",
+		"channels/100000000000000060/threads",
+		map[string]any{"channelId": "100000000000000060",
+			"threadName": "Generic project desktop"},
+		"desktop-thread-"+desktopRequestID.String()))
+	completeOutboxForTest(t, ctx, db, "desktop-thread-post:"+desktopRequestID.String(),
+		json.RawMessage(`{"threadId":"generic-project-discord-thread",`+
+			`"messageId":"generic-project-starter"}`))
+	var desktopConversationID uuid.UUID
+	var desktopRepositoryID *uuid.UUID
+	var desktopProjectID uuid.UUID
+	var desktopRequestStatus string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT request.conversation_id,
+		conversation.repository_id, conversation.project_id, request.status
+		FROM desktop_thread_requests request
+		JOIN discord_conversations conversation ON conversation.id=request.conversation_id
+		WHERE request.id=$1`, desktopRequestID).Scan(&desktopConversationID,
+		&desktopRepositoryID, &desktopProjectID, &desktopRequestStatus))
+	require.NotEqual(t, uuid.Nil, desktopConversationID)
+	require.Nil(t, desktopRepositoryID)
+	require.Equal(t, projectID, desktopProjectID)
+	require.Equal(t, "completed", desktopRequestStatus)
+
 	var conversationID, controlID, activeIntentID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_conversations
 		(guild_id, forum_id, thread_id, owner_discord_user_id, project_id, agent_profile_id)
@@ -651,15 +692,18 @@ func TestConversationLifecycleProjectionAndRestore(t *testing.T) {
 	var staleID uuid.UUID
 	staleItem.LeaseToken = strings.Repeat("b", 64)
 	require.NoError(t, db.QueryRowContext(ctx, `UPDATE integration_outbox SET
-		status='sending', lease_token=$2, lease_expires_at=now()+interval '1 minute'
+		status='sending', inflight_revision=request_revision,
+		inflight_operation_type=operation_type, inflight_route_key=route_key,
+		inflight_payload=payload, inflight_nonce=nonce,
+		lease_token=$2, lease_expires_at=now()+interval '1 minute'
 		WHERE operation_key=$1 RETURNING id, operation_key, operation_type, route_key,
-			payload, COALESCE(nonce,''), attempt_count, max_attempts`,
+			payload, COALESCE(nonce,''), attempt_count, max_attempts, request_revision`,
 		"conversation-lifecycle:"+conversationID.String(), staleItem.LeaseToken).
 		Scan(&staleID, &staleItem.OperationKey, &staleItem.OperationType,
 			&staleItem.RouteKey, &staleItem.Payload, &staleItem.Nonce,
-			&staleItem.Attempt, &staleItem.MaxAttempts))
+			&staleItem.Attempt, &staleItem.MaxAttempts, &staleItem.RequestRevision))
 	staleItem.ID = staleID.String()
-	require.NoError(t, NewSQLoutbox(db).Fail(ctx, staleItem,
+	require.NoError(t, NewSQLoutbox(db).FailDelivery(ctx, staleItem,
 		errors.New("旧 lifecycle 回调失败")))
 	var projectionError sql.NullString
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT lifecycle_state,
@@ -1136,14 +1180,18 @@ func completeOutboxForTest(t *testing.T, ctx context.Context, db *sql.DB, key st
 	var item OutboxItem
 	var id uuid.UUID
 	item.LeaseToken = strings.Repeat("a", 64)
-	require.NoError(t, db.QueryRowContext(ctx, `UPDATE integration_outbox SET status = 'sending',
-		lease_token = $2, lease_expires_at = now() + interval '1 minute'
+	require.NoError(t, db.QueryRowContext(ctx, `UPDATE integration_outbox SET status='sending',
+		inflight_revision=request_revision, inflight_operation_type=operation_type,
+		inflight_route_key=route_key, inflight_payload=payload, inflight_nonce=nonce,
+		lease_token=$2, lease_expires_at=now()+interval '1 minute'
 		WHERE operation_key = $1 RETURNING id, operation_key, operation_type, route_key, payload,
-		COALESCE(nonce, ''), attempt_count, max_attempts`, key, item.LeaseToken).
+		COALESCE(nonce, ''), attempt_count, max_attempts, request_revision`, key, item.LeaseToken).
 		Scan(&id, &item.OperationKey, &item.OperationType, &item.RouteKey, &item.Payload,
-			&item.Nonce, &item.Attempt, &item.MaxAttempts))
+			&item.Nonce, &item.Attempt, &item.MaxAttempts, &item.RequestRevision))
 	item.ID = id.String()
-	require.NoError(t, NewSQLoutbox(db).Complete(ctx, item, response))
+	store := NewSQLoutbox(db)
+	require.NoError(t, store.RecordDelivery(ctx, &item, response))
+	require.NoError(t, store.Apply(ctx, item))
 }
 
 func testGatewayHandlers(t *testing.T, ctx context.Context, db *sql.DB, manager *Manager, seed discordManagerSeed) {

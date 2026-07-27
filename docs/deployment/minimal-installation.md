@@ -305,6 +305,79 @@ Bridge 只允许 loopback 和 Docker bridge CIDR，防火墙也不应向 LAN/Tai
 
 浏览器上传和下载使用 `/opt/tyrs-hand/browser-files` 交换目录。工作区文件需要先通过平台工具暂存，单文件上限为 25 MiB；符号链接和工作区越界路径会被拒绝。任务结束时会清理文件，Sweeper 也会删除超过 1 小时的残留。
 
+### 安装 macOS 桌面端浏览器
+
+macOS Browser Agent 让开发环境中的同一套 `chrome` MCP 在“worker 浏览器”和“桌面端浏览器”之间切换。它是独立于 Codex App 的 LaunchAgent：自己建立和重连 SSH Session，不复用 Codex App 进程或 SSH 连接，也不使用端口转发。桌面端 Chrome 可以保留现有 Profile 和登录态。
+
+安装前确认：
+
+- macOS 上已经安装 Google Chrome，并由需要复用登录态的用户执行安装。
+- `deploy/browser/browser-artifacts.lock.json` 中包含当前发布的 `darwin-arm64`、`darwin-x64` Agent URL、SHA256 和扩展 ID。
+- SSH 目标可以直接登录对应开发环境，并包含当前镜像提供的 `tyrs-hand-dev browser proxy`。
+- 私钥和 `known_hosts` 已由用户准备；安装器只记录路径，不复制私钥，也不会读取 Codex App 凭据。
+
+先按 CPU 架构从制品锁选择 Agent bundle。`arm64` 对应 `darwin-arm64`，Intel 的 `x86_64` 对应 `darwin-x64`。下载后必须使用锁中的完整 SHA256 校验，不能使用未经锁定的临时包：
+
+```bash
+uname -m
+curl --fail --location --output /tmp/tyrs-browser-agent.tgz '<lock 中对应架构的 url>'
+echo '<lock 中对应架构的 sha256>  /tmp/tyrs-browser-agent.tgz' | shasum -a 256 --check
+```
+
+首次连接前核对 SSH Host Key。可以复用已经包含目标记录的专用 `known_hosts` 文件；新建文件时必须通过可信渠道核对指纹，不能在安装命令里关闭 `StrictHostKeyChecking`：
+
+```bash
+install -m 0600 /dev/null "$HOME/.ssh/known_hosts.tyrs-browser-agent"
+ssh-keyscan -p <ssh-port> <ssh-host> >> "$HOME/.ssh/known_hosts.tyrs-browser-agent"
+ssh-keygen -lf "$HOME/.ssh/known_hosts.tyrs-browser-agent"
+```
+
+确认指纹后，以桌面用户在源码根目录安装。最后一个参数必须使用制品锁中的扩展 ID：
+
+```bash
+deploy/browser/install-macos-agent.sh install \
+  /tmp/tyrs-browser-agent.tgz \
+  <ssh-host> <ssh-port> <ssh-user> \
+  "$HOME/.ssh/<identity-file>" \
+  "$HOME/.ssh/known_hosts.tyrs-browser-agent" \
+  <extension-id>
+```
+
+安装器会执行以下操作：
+
+- 安装自包含的精确 Node runtime 与 Agent 到 `~/Library/Application Support/Tyrs Hand/browser-agent/releases/<version>`。
+- 以 `current`、`previous` 链接管理升级和回滚，配置文件权限固定为 `0600`。
+- 创建 `~/Library/LaunchAgents/ai.tyrs-hand.browser-agent.plist`，设置 `RunAtLoad` 和 `KeepAlive`。
+- 在 `~/Library/Application Support/Tyrs Hand/browser-agent/unpacked-extension` 准备与 Agent 匹配的 Chrome 扩展。
+- 只在本机 loopback 暴露扩展配置与 Relay；Extension Token 不经过 SSH，Browser Agent 不持有 Control 或 MCP Token。
+
+当前 macOS 安装使用 unpacked extension。打开 `chrome://extensions`，开启“开发者模式”，点击“加载已解压的扩展程序”，选择安装器输出的 `unpacked-extension` 目录。完成后在扩展卡片上点击一次“重新加载”，再检查 Agent：
+
+```bash
+deploy/browser/install-macos-agent.sh status
+launchctl print "gui/$(id -u)/ai.tyrs-hand.browser-agent"
+tail -n 100 "$HOME/Library/Logs/Tyrs Hand/browser-agent.log"
+```
+
+`status` 最终应返回 `ready`，并显示 Extension、Chrome 与标签页状态。SSH 暂时不可达时 LaunchAgent 不应退出；Agent 会按退避策略重连。不要向文档、工单或日志复制 `config.json`，其中包含仅供本机扩展使用的 Token。
+
+未受企业管理的 Chrome 不允许通过 `ExtensionInstallForcelist` 从 localhost 强制安装非 Chrome Web Store 扩展。出现“扩展程序 ID 无效”或“只能自动安装 Chrome 应用商店中的扩展程序”时，应删除这条无效 Policy，并按上面的 unpacked extension 步骤加载；不要反复修改扩展 ID，也不要把 localhost 更新地址伪装成 Web Store 地址。
+
+安装后从新的 Codex Session 验证完整链路：
+
+1. 不调用 `browser_select` 时，`browser_tabs` 默认操作“worker 浏览器”。
+2. 调用 `browser_select({"browser":"desktop"})` 后，查询标签页并读取一个普通网页标题。
+3. 再切回 `worker`，确认双方标签页状态都保留。
+4. 停止并重新启动 Browser Agent，确认桌面端返回 unavailable 而不是静默操作 worker，并在重连后恢复。
+
+升级、回滚和卸载都使用同一安装器；卸载会移除 Agent 与 LaunchAgent，但不会删除 Chrome Profile 或用户下载：
+
+```bash
+deploy/browser/install-macos-agent.sh status
+deploy/browser/install-macos-agent.sh rollback
+deploy/browser/install-macos-agent.sh uninstall
+```
+
 ## 12. 可选的 Worker API IP 白名单
 
 Control 可限制能够访问 `/worker/v1` 的 Worker 出口地址：

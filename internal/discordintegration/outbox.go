@@ -21,22 +21,35 @@ import (
 )
 
 type OutboxItem struct {
-	ID            string          `json:"id"`
-	OperationKey  string          `json:"operationKey"`
-	OperationType string          `json:"operationType"`
-	RouteKey      string          `json:"routeKey"`
-	Payload       json.RawMessage `json:"payload"`
-	Nonce         string          `json:"nonce,omitempty"`
-	Attempt       int             `json:"attempt"`
-	MaxAttempts   int             `json:"maxAttempts"`
-	LeaseToken    string          `json:"-"`
+	ID              string          `json:"id"`
+	OperationKey    string          `json:"operationKey"`
+	OperationType   string          `json:"operationType"`
+	RouteKey        string          `json:"routeKey"`
+	Payload         json.RawMessage `json:"payload"`
+	Nonce           string          `json:"nonce,omitempty"`
+	Attempt         int             `json:"attempt"`
+	MaxAttempts     int             `json:"maxAttempts"`
+	ApplyAttempt    int             `json:"-"`
+	RequestRevision int64           `json:"-"`
+	Response        json.RawMessage `json:"-"`
+	LeaseToken      string          `json:"-"`
+	phase           outboxPhase
 }
+
+type outboxPhase uint8
+
+const (
+	outboxPhaseDeliver outboxPhase = iota
+	outboxPhaseApply
+)
 
 type OutboxStore interface {
 	Claim(context.Context, time.Duration) (*OutboxItem, error)
-	Complete(context.Context, OutboxItem, json.RawMessage) error
-	Retry(context.Context, OutboxItem, time.Time, error) error
-	Fail(context.Context, OutboxItem, error) error
+	RecordDelivery(context.Context, *OutboxItem, json.RawMessage) error
+	Apply(context.Context, OutboxItem) error
+	RetryDelivery(context.Context, OutboxItem, time.Time, error) error
+	RetryApplication(context.Context, OutboxItem, time.Time, error) error
+	FailDelivery(context.Context, OutboxItem, error) error
 }
 
 type SQLoutbox struct {
@@ -47,6 +60,12 @@ func NewSQLoutbox(db *sql.DB) *SQLoutbox { return &SQLoutbox{db: db} }
 
 func (s *SQLoutbox) Enqueue(ctx context.Context, operationKey, operationType, routeKey string, payload any, nonce string) error {
 	return enqueueDiscordOutbox(ctx, s.db, operationKey, operationType, routeKey, payload, nonce)
+}
+
+func EnqueueTx(ctx context.Context, tx *sql.Tx, operationKey, operationType,
+	routeKey string, payload any, nonce string,
+) error {
+	return enqueueDiscordOutbox(ctx, tx, operationKey, operationType, routeKey, payload, nonce)
 }
 
 type discordOutboxExecer interface {
@@ -67,12 +86,32 @@ func enqueueDiscordOutbox(ctx context.Context, execer discordOutboxExecer,
 		ON CONFLICT(integration, operation_key) DO UPDATE SET
 			operation_type = EXCLUDED.operation_type, route_key = EXCLUDED.route_key,
 			payload = EXCLUDED.payload, nonce = EXCLUDED.nonce,
-			status = CASE WHEN integration_outbox.status = 'sending' THEN 'sending' ELSE 'pending' END,
-			attempt_count = CASE WHEN integration_outbox.status = 'sending' THEN integration_outbox.attempt_count ELSE 0 END,
+			request_revision = integration_outbox.request_revision + CASE
+				WHEN integration_outbox.status IN ('sending','applying','ambiguous')
+					AND integration_outbox.operation_type = EXCLUDED.operation_type
+					AND integration_outbox.route_key = EXCLUDED.route_key
+					AND integration_outbox.payload = EXCLUDED.payload
+					AND integration_outbox.nonce IS NOT DISTINCT FROM EXCLUDED.nonce THEN 0
+				ELSE 1 END,
+			status = CASE
+				WHEN integration_outbox.status IN ('sending','applying','ambiguous')
+					THEN integration_outbox.status ELSE 'pending' END,
+			attempt_count = CASE
+				WHEN integration_outbox.status IN ('sending','applying','ambiguous')
+					THEN integration_outbox.attempt_count ELSE 0 END,
+			apply_attempt_count = CASE
+				WHEN integration_outbox.status IN ('sending','applying','ambiguous')
+					THEN integration_outbox.apply_attempt_count ELSE 0 END,
 			available_at = CASE
 				WHEN integration_outbox.status = 'completed' THEN now() + interval '5 seconds'
 				ELSE integration_outbox.available_at
 			END,
+			response = CASE WHEN integration_outbox.status IN ('sending','applying','ambiguous')
+				THEN integration_outbox.response ELSE NULL END,
+			delivered_at = CASE WHEN integration_outbox.status IN ('sending','applying','ambiguous')
+				THEN integration_outbox.delivered_at ELSE NULL END,
+			last_error = CASE WHEN integration_outbox.status IN ('sending','applying','ambiguous')
+				THEN integration_outbox.last_error ELSE NULL END,
 			updated_at = now()`, operationKey, operationType, routeKey, encoded, nonce)
 	return err
 }
@@ -91,22 +130,109 @@ func (s *SQLoutbox) Claim(ctx context.Context, lease time.Duration) (*OutboxItem
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	_, err = tx.ExecContext(ctx, `UPDATE integration_outbox SET status='ambiguous',
+		lease_token=NULL, lease_expires_at=NULL,
+		last_error='Discord 投递租约失效；结果未知，为避免重复外部写入已停止自动重发',
+		updated_at=now() WHERE integration='discord' AND status='sending'
+		AND lease_expires_at < now()`)
+	if err != nil {
+		return nil, err
+	}
 	var item OutboxItem
 	var id uuid.UUID
+	var status string
+	var response []byte
 	err = tx.QueryRowContext(ctx, `
-		SELECT id, operation_key, operation_type, route_key, payload, COALESCE(nonce, ''), attempt_count + 1, max_attempts
+		SELECT id, operation_key, status,
+			CASE WHEN status='applying' THEN inflight_operation_type ELSE operation_type END,
+			CASE WHEN status='applying' THEN inflight_route_key ELSE route_key END,
+			CASE WHEN status='applying' THEN inflight_payload ELSE payload END,
+			CASE WHEN status='applying' THEN COALESCE(inflight_nonce,'') ELSE COALESCE(nonce,'') END,
+			CASE WHEN status='applying' THEN attempt_count ELSE attempt_count + 1 END,
+			max_attempts,
+			CASE WHEN status='applying' THEN apply_attempt_count + 1 ELSE 0 END,
+			CASE WHEN status='applying' THEN inflight_revision ELSE request_revision END,
+			response
 		FROM integration_outbox
-		WHERE integration = 'discord' AND (
-			(status IN ('pending', 'retrying') AND available_at <= now()
-				AND (lease_expires_at IS NULL OR lease_expires_at < now()))
-			OR (status = 'sending' AND lease_expires_at < now())
-		)
+		WHERE integration = 'discord' AND available_at <= now() AND (
+			(status IN ('pending', 'retrying') AND lease_token IS NULL)
+			OR (status='applying' AND (lease_expires_at IS NULL OR lease_expires_at < now())))
 		ORDER BY available_at, created_at FOR UPDATE SKIP LOCKED LIMIT 1`).
-		Scan(&id, &item.OperationKey, &item.OperationType, &item.RouteKey, &item.Payload,
-			&item.Nonce, &item.Attempt, &item.MaxAttempts)
+		Scan(&id, &item.OperationKey, &status, &item.OperationType, &item.RouteKey,
+			&item.Payload, &item.Nonce, &item.Attempt, &item.MaxAttempts,
+			&item.ApplyAttempt, &item.RequestRevision, &response)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
+		return nil, tx.Commit()
 	}
+	if err != nil {
+		return nil, err
+	}
+	item.Response = response
+	token, err := security.RandomToken(32)
+	if err != nil {
+		return nil, err
+	}
+	item.ID, item.LeaseToken = id.String(), token
+	if status == "applying" {
+		item.phase = outboxPhaseApply
+		_, err = tx.ExecContext(ctx, `UPDATE integration_outbox SET
+			apply_attempt_count=$2, lease_token=$3,
+			lease_expires_at=now()+$4::interval, updated_at=now() WHERE id=$1`,
+			id, item.ApplyAttempt, token, intervalLiteral(lease))
+	} else {
+		item.phase = outboxPhaseDeliver
+		_, err = tx.ExecContext(ctx, `UPDATE integration_outbox SET status='sending',
+			attempt_count=$2, apply_attempt_count=0, inflight_revision=$3,
+			inflight_operation_type=$4, inflight_route_key=$5, inflight_payload=$6,
+			inflight_nonce=NULLIF($7,''), response=NULL, delivered_at=NULL,
+			lease_token=$8, lease_expires_at=now()+$9::interval,
+			last_error=NULL, updated_at=now() WHERE id=$1`, id, item.Attempt,
+			item.RequestRevision, item.OperationType, item.RouteKey, item.Payload,
+			item.Nonce, token, intervalLiteral(lease))
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &item, tx.Commit()
+}
+
+func (s *SQLoutbox) RecordDelivery(ctx context.Context, item *OutboxItem,
+	response json.RawMessage,
+) error {
+	result, err := s.db.ExecContext(ctx, `UPDATE integration_outbox SET
+		status='applying', response=$4, delivered_at=now(), apply_attempt_count=1,
+		available_at=now(), last_error=NULL, updated_at=now()
+		WHERE id=$1 AND lease_token=$2 AND status='sending' AND inflight_revision=$3`,
+		item.ID, item.LeaseToken, item.RequestRevision, nullableJSON(response))
+	if err := changedOne(result, err); err != nil {
+		return err
+	}
+	item.phase = outboxPhaseApply
+	item.ApplyAttempt = 1
+	item.Response = response
+	return nil
+}
+
+// ResolveAmbiguousDelivery 由运维在远端结果已经人工对账后恢复本地应用阶段。
+// 它只接受 ambiguous，绝不会主动重发外部请求。
+func (s *SQLoutbox) ResolveAmbiguousDelivery(ctx context.Context, operationKey string,
+	response json.RawMessage,
+) (*OutboxItem, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var item OutboxItem
+	var id uuid.UUID
+	var nonce sql.NullString
+	err = tx.QueryRowContext(ctx, `SELECT id, operation_key, inflight_operation_type,
+		inflight_route_key, inflight_payload, inflight_nonce, attempt_count, max_attempts,
+		apply_attempt_count+1, inflight_revision
+		FROM integration_outbox WHERE integration='discord' AND operation_key=$1
+		AND status='ambiguous' FOR UPDATE`, operationKey).Scan(&id, &item.OperationKey,
+		&item.OperationType, &item.RouteKey, &item.Payload, &nonce, &item.Attempt,
+		&item.MaxAttempts, &item.ApplyAttempt, &item.RequestRevision)
 	if err != nil {
 		return nil, err
 	}
@@ -114,17 +240,23 @@ func (s *SQLoutbox) Claim(ctx context.Context, lease time.Duration) (*OutboxItem
 	if err != nil {
 		return nil, err
 	}
-	item.ID, item.LeaseToken = id.String(), token
-	_, err = tx.ExecContext(ctx, `UPDATE integration_outbox SET status = 'sending', attempt_count = $2,
-		lease_token = $3, lease_expires_at = now() + $4::interval, updated_at = now() WHERE id = $1`,
-		id, item.Attempt, token, intervalLiteral(lease))
-	if err != nil {
+	item.ID, item.Nonce, item.LeaseToken = id.String(), nonce.String, token
+	item.Response, item.phase = response, outboxPhaseApply
+	result, err := tx.ExecContext(ctx, `UPDATE integration_outbox SET status='applying',
+		response=$3, delivered_at=COALESCE(delivered_at,now()), apply_attempt_count=$4,
+		available_at=now(), lease_token=$5, lease_expires_at=now()+interval '5 minutes',
+		last_error=NULL, updated_at=now() WHERE id=$1 AND inflight_revision=$2`,
+		id, item.RequestRevision, nullableJSON(response), item.ApplyAttempt, token)
+	if err := changedOne(result, err); err != nil {
 		return nil, err
 	}
-	return &item, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &item, nil
 }
 
-func (s *SQLoutbox) Complete(ctx context.Context, item OutboxItem, response json.RawMessage) error {
+func (s *SQLoutbox) Apply(ctx context.Context, item OutboxItem) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -140,13 +272,21 @@ func (s *SQLoutbox) Complete(ctx context.Context, item OutboxItem, response json
 		}
 	}
 	result, err := tx.ExecContext(ctx, `UPDATE integration_outbox SET
-		status = CASE WHEN payload = $4::jsonb THEN 'completed' ELSE 'pending' END,
-		available_at = CASE WHEN payload = $4::jsonb THEN available_at ELSE now() + interval '5 seconds' END,
-		response = $3, lease_token = NULL, lease_expires_at = NULL, last_error = NULL, updated_at = now()
-		WHERE id = $1 AND lease_token = $2`, item.ID, item.LeaseToken, nullableJSON(response), item.Payload)
+		status = CASE WHEN request_revision=$3 THEN 'completed' ELSE 'pending' END,
+		available_at = CASE WHEN request_revision=$3 THEN available_at ELSE now()+interval '5 seconds' END,
+		response = CASE WHEN request_revision=$3 THEN response ELSE NULL END,
+		delivered_at = CASE WHEN request_revision=$3 THEN delivered_at ELSE NULL END,
+		attempt_count = CASE WHEN request_revision=$3 THEN attempt_count ELSE 0 END,
+		apply_attempt_count = CASE WHEN request_revision=$3 THEN apply_attempt_count ELSE 0 END,
+		inflight_revision=NULL, inflight_operation_type=NULL, inflight_route_key=NULL,
+		inflight_payload=NULL, inflight_nonce=NULL,
+		lease_token=NULL, lease_expires_at=NULL, last_error=NULL, updated_at=now()
+		WHERE id=$1 AND lease_token=$2 AND status='applying' AND inflight_revision=$3`,
+		item.ID, item.LeaseToken, item.RequestRevision)
 	if err := changedOne(result, err); err != nil {
 		return err
 	}
+	response := item.Response
 	if strings.HasPrefix(item.OperationKey, "projection:") {
 		var value struct {
 			ThreadID  string `json:"threadId"`
@@ -169,7 +309,7 @@ func (s *SQLoutbox) Complete(ctx context.Context, item OutboxItem, response json
 				operation_type = 'message.update', nonce = NULL,
 				route_key = 'channels/' || p.resource_id || '/messages/' || $2,
 				payload = o.payload || jsonb_build_object('channelId', p.resource_id, 'messageId', $2),
-				updated_at = now()
+				request_revision=request_revision+1, updated_at = now()
 				FROM discord_projections p
 				WHERE o.id = $1 AND o.status = 'pending' AND p.projection_key = $3`,
 				item.ID, value.MessageID, strings.TrimPrefix(item.OperationKey, "projection:"))
@@ -361,14 +501,31 @@ func (s *SQLoutbox) Complete(ctx context.Context, item OutboxItem, response json
 	return nil
 }
 
-func (s *SQLoutbox) Retry(ctx context.Context, item OutboxItem, at time.Time, cause error) error {
-	result, err := s.db.ExecContext(ctx, `UPDATE integration_outbox SET status = 'retrying', available_at = $3,
-		lease_token = NULL, lease_expires_at = NULL, last_error = $4, updated_at = now()
-		WHERE id = $1 AND lease_token = $2`, item.ID, item.LeaseToken, at, cause.Error())
+func (s *SQLoutbox) RetryDelivery(ctx context.Context, item OutboxItem,
+	at time.Time, cause error,
+) error {
+	result, err := s.db.ExecContext(ctx, `UPDATE integration_outbox SET status='retrying',
+		attempt_count=CASE WHEN request_revision=$3 THEN attempt_count ELSE 0 END,
+		available_at=$4, inflight_revision=NULL, inflight_operation_type=NULL,
+		inflight_route_key=NULL, inflight_payload=NULL, inflight_nonce=NULL,
+		lease_token=NULL, lease_expires_at=NULL, last_error=$5, updated_at=now()
+		WHERE id=$1 AND lease_token=$2 AND status='sending' AND inflight_revision=$3`,
+		item.ID, item.LeaseToken, item.RequestRevision, at, cause.Error())
 	return changedOne(result, err)
 }
 
-func (s *SQLoutbox) Fail(ctx context.Context, item OutboxItem, cause error) error {
+func (s *SQLoutbox) RetryApplication(ctx context.Context, item OutboxItem,
+	at time.Time, cause error,
+) error {
+	result, err := s.db.ExecContext(ctx, `UPDATE integration_outbox SET
+		available_at=$3, lease_token=NULL, lease_expires_at=NULL,
+		last_error=$4, updated_at=now()
+		WHERE id=$1 AND lease_token=$2 AND status='applying'`,
+		item.ID, item.LeaseToken, at, cause.Error())
+	return changedOne(result, err)
+}
+
+func (s *SQLoutbox) FailDelivery(ctx context.Context, item OutboxItem, cause error) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -376,13 +533,18 @@ func (s *SQLoutbox) Fail(ctx context.Context, item OutboxItem, cause error) erro
 	defer func() { _ = tx.Rollback() }()
 	var status string
 	err = tx.QueryRowContext(ctx, `UPDATE integration_outbox SET
-		status = CASE WHEN payload = $4::jsonb THEN 'failed' ELSE 'pending' END,
-		available_at = CASE WHEN payload = $4::jsonb THEN available_at ELSE now() END,
+		status = CASE WHEN request_revision=$4 THEN 'failed' ELSE 'pending' END,
+		available_at = CASE WHEN request_revision=$4 THEN available_at ELSE now() END,
+		attempt_count = CASE WHEN request_revision=$4 THEN attempt_count ELSE 0 END,
+		apply_attempt_count=0, response=NULL, delivered_at=NULL,
+		inflight_revision=NULL, inflight_operation_type=NULL, inflight_route_key=NULL,
+		inflight_payload=NULL, inflight_nonce=NULL,
 		lease_token = NULL, lease_expires_at = NULL,
-		last_error = CASE WHEN payload = $4::jsonb THEN $3 ELSE NULL END,
+		last_error = CASE WHEN request_revision=$4 THEN $3 ELSE NULL END,
 		updated_at = now()
-		WHERE id = $1 AND lease_token = $2 RETURNING status`,
-		item.ID, item.LeaseToken, cause.Error(), item.Payload).Scan(&status)
+		WHERE id=$1 AND lease_token=$2 AND status='sending' AND inflight_revision=$4
+		RETURNING status`, item.ID, item.LeaseToken, cause.Error(), item.RequestRevision).
+		Scan(&status)
 	if errors.Is(err, sql.ErrNoRows) {
 		return errors.New("outbox lease 已失效")
 	}
@@ -457,24 +619,48 @@ func (d *Dispatcher) RunOnce(ctx context.Context) (bool, error) {
 	if err != nil || item == nil {
 		return false, err
 	}
+	if item.phase == outboxPhaseApply {
+		return true, d.apply(ctx, *item)
+	}
 	response, sendErr := d.remote.Send(ctx, *item)
 	if sendErr == nil {
-		return true, d.store.Complete(ctx, *item, response)
+		if err := d.store.RecordDelivery(ctx, item, response); err != nil {
+			return true, err
+		}
+		return true, d.apply(ctx, *item)
 	}
 	retry, wait, classified := classifyRemoteError(sendErr)
 	if retry && item.Attempt < item.MaxAttempts {
 		if wait <= 0 {
 			wait = time.Duration(1<<(item.Attempt-1))*time.Second + d.jitter(500*time.Millisecond)
 		}
-		return true, d.store.Retry(ctx, *item, d.now().Add(wait), classified)
+		return true, d.store.RetryDelivery(ctx, *item, d.now().Add(wait), classified)
 	}
-	if err := d.store.Fail(ctx, *item, classified); err != nil {
+	if err := d.store.FailDelivery(ctx, *item, classified); err != nil {
 		return true, err
 	}
 	if errors.Is(classified, ErrUnauthorized) {
 		return true, classified
 	}
 	return true, nil
+}
+
+func (d *Dispatcher) apply(ctx context.Context, item OutboxItem) error {
+	if err := d.store.Apply(ctx, item); err != nil {
+		shift := item.ApplyAttempt - 1
+		if shift < 0 {
+			shift = 0
+		}
+		if shift > 6 {
+			shift = 6
+		}
+		wait := time.Duration(1<<shift)*time.Second + d.jitter(500*time.Millisecond)
+		if retryErr := d.store.RetryApplication(ctx, item, d.now().Add(wait), err); retryErr != nil {
+			return errors.Join(err, retryErr)
+		}
+		return err
+	}
+	return nil
 }
 
 func classifyRemoteError(err error) (bool, time.Duration, error) {
