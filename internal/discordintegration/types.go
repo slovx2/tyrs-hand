@@ -56,6 +56,13 @@ type RemoteGuild struct {
 	Channels         []RemoteChannel
 }
 
+type RemoteMember struct {
+	DiscordUserID string
+	Username      string
+	DisplayName   string
+	IsBot         bool
+}
+
 type RemoteChannel struct {
 	ID       string
 	ParentID string

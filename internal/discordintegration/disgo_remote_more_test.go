@@ -28,6 +28,11 @@ func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 		switch request.Method + " " + request.URL.Path {
 		case "GET /guilds/123":
 			_, _ = response.Write([]byte(`{"id":"123","name":"private","owner_id":"1","features":["COMMUNITY"]}`))
+		case "GET /guilds/123/members":
+			_, _ = response.Write([]byte(`[
+				{"user":{"id":"456","username":"alice","global_name":"Alice","discriminator":"0","bot":false},"nick":"Atlas","roles":[],"joined_at":"2026-07-27T00:00:00Z"},
+				{"user":{"id":"900","username":"helper","discriminator":"0","bot":true},"roles":[],"joined_at":"2026-07-27T00:00:00Z"}
+			]`))
 		case "GET /guilds/123/channels":
 			_, _ = response.Write([]byte(`[
 				{"id":"10","guild_id":"123","type":4,"name":"System","position":0,"permission_overwrites":[]},
@@ -112,6 +117,12 @@ func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 	require.Len(t, guild.Channels, 3)
 	require.Equal(t, "10", guild.Channels[1].ParentID)
 	require.Equal(t, "91", guild.Channels[2].Tags["Running"])
+	members, err := remote.Members(ctx, "123")
+	require.NoError(t, err)
+	require.Equal(t, []RemoteMember{
+		{DiscordUserID: "456", Username: "alice", DisplayName: "Atlas"},
+		{DiscordUserID: "900", Username: "helper", DisplayName: "helper", IsBot: true},
+	}, members)
 	require.NoError(t, remote.DisableCommunity(ctx, "123"))
 	require.NoError(t, remote.EnableCommunity(ctx, "123", "11", "11"))
 	mu.Lock()
@@ -196,6 +207,8 @@ func TestDisgoRemoteRejectsMalformedRequestsBeforeNetworkWrites(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := remote.Guild(ctx, "bad")
+	require.Error(t, err)
+	_, err = remote.Members(ctx, "bad")
 	require.Error(t, err)
 	require.Error(t, remote.DisableCommunity(ctx, "bad"))
 	require.Error(t, remote.EnableCommunity(ctx, "bad", "2", "3"))

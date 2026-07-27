@@ -64,6 +64,33 @@ func (r *DisgoRemote) Guild(ctx context.Context, guildID string) (RemoteGuild, e
 	return result, nil
 }
 
+func (r *DisgoRemote) Members(ctx context.Context, guildID string) ([]RemoteMember, error) {
+	id, err := snowflake.Parse(guildID)
+	if err != nil {
+		return nil, err
+	}
+	var result []RemoteMember
+	var after snowflake.ID
+	for {
+		members, err := r.rest.GetMembers(id, 1000, after, disgorest.WithCtx(ctx))
+		if err != nil {
+			return nil, err
+		}
+		for _, member := range members {
+			result = append(result, RemoteMember{
+				DiscordUserID: member.User.ID.String(),
+				Username:      member.User.Username,
+				DisplayName:   member.EffectiveName(),
+				IsBot:         member.User.Bot,
+			})
+		}
+		if len(members) < 1000 {
+			return result, nil
+		}
+		after = members[len(members)-1].User.ID
+	}
+}
+
 func (r *DisgoRemote) DisableCommunity(ctx context.Context, guildID string) error {
 	id, err := snowflake.Parse(guildID)
 	if err != nil {

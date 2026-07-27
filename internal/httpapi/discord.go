@@ -135,6 +135,29 @@ func (s *Server) getDiscordInitialization(c *gin.Context) {
 }
 
 func (s *Server) listDiscordMembers(c *gin.Context) {
+	settings, err := s.discord.Settings(c)
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取 Discord 设置失败", err)
+		return
+	}
+	if settings.GuildID != "" && settings.TokenConfigured {
+		token, tokenErr := s.discord.BotToken(c)
+		if tokenErr != nil {
+			problem(c, http.StatusInternalServerError, "读取 Discord Bot 配置失败", tokenErr)
+			return
+		}
+		remote := discordintegration.NewDisgoRemote(token, "", nil)
+		defer remote.Close(c)
+		remoteMembers, syncErr := remote.Members(c, settings.GuildID)
+		if syncErr != nil {
+			problem(c, http.StatusBadGateway, "同步 Discord 成员失败", syncErr)
+			return
+		}
+		if syncErr := s.discord.ReplaceMembers(c, settings.GuildID, remoteMembers); syncErr != nil {
+			problem(c, http.StatusInternalServerError, "保存 Discord 成员失败", syncErr)
+			return
+		}
+	}
 	members, err := s.discord.Members(c)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取 Discord 成员失败", err)

@@ -168,6 +168,31 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 	for _, member := range members {
 		require.Equal(t, testGuildID, member.GuildID)
 	}
+	require.NoError(t, manager.ReplaceMembers(ctx, testGuildID, []RemoteMember{
+		{DiscordUserID: "1001", Username: "owner-current", DisplayName: "Owner Current"},
+		{DiscordUserID: "1002", Username: "readonly-current", DisplayName: "Readonly Current"},
+		{DiscordUserID: "1003", Username: "operator-current", DisplayName: "Operator Current"},
+		{DiscordUserID: "1004", Username: "automation", DisplayName: "Automation", IsBot: true},
+	}))
+	members, err = manager.Members(ctx)
+	require.NoError(t, err)
+	require.Len(t, members, 3)
+	require.Contains(t, members, Member{
+		GuildID: testGuildID, DiscordUserID: "1001",
+		Username: "owner-current", DisplayName: "Owner Current",
+		Bound: true, GitHubLogin: "alice",
+	})
+	var botActive bool
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT active FROM discord_members
+		WHERE guild_id=$1 AND discord_user_id='1004'`, testGuildID).Scan(&botActive))
+	require.True(t, botActive)
+	require.Error(t, manager.ReplaceMembers(ctx, testGuildID, []RemoteMember{{
+		DiscordUserID: "invalid", Username: "invalid", DisplayName: "Invalid",
+	}}))
+	var ownerActive bool
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT active FROM discord_members
+		WHERE guild_id=$1 AND discord_user_id='1001'`, testGuildID).Scan(&ownerActive))
+	require.True(t, ownerActive, "失败的成员快照不能把既有成员批量标记为 inactive")
 
 	remoteGuild := RemoteGuild{ID: testGuildID, CommunityEnabled: true, Channels: []RemoteChannel{
 		{ID: seed.codexCategoryID, Name: "Codex 会话 01", Kind: "category"},

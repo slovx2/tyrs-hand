@@ -141,7 +141,7 @@ func (m *Manager) Members(ctx context.Context) ([]Member, error) {
 		FROM discord_members m
 		LEFT JOIN discord_identity_bindings b ON b.guild_id = m.guild_id
 			AND b.discord_user_id = m.discord_user_id AND b.status = 'active'
-		WHERE m.active = true AND m.guild_id = $1
+		WHERE m.active = true AND NOT m.is_bot AND m.guild_id = $1
 		ORDER BY lower(m.display_name), m.discord_user_id`, settings.GuildID)
 	if err != nil {
 		return nil, err
@@ -157,6 +157,38 @@ func (m *Manager) Members(ctx context.Context) ([]Member, error) {
 		result = append(result, member)
 	}
 	return result, rows.Err()
+}
+
+func (m *Manager) ReplaceMembers(ctx context.Context, guildID string, members []RemoteMember) error {
+	if !validSnowflake(guildID) {
+		return errors.New("discord Server ID 必须是有效的 Snowflake")
+	}
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `UPDATE discord_members
+		SET active=false, last_synced_at=now()
+		WHERE guild_id=$1`, guildID); err != nil {
+		return err
+	}
+	for _, member := range members {
+		if !validSnowflake(member.DiscordUserID) {
+			return errors.New("discord 成员 ID 必须是有效的 Snowflake")
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO discord_members
+			(guild_id, discord_user_id, username, display_name, is_bot, active, last_synced_at)
+			VALUES ($1, $2, $3, $4, $5, true, now())
+			ON CONFLICT(guild_id, discord_user_id) DO UPDATE SET
+				username=EXCLUDED.username, display_name=EXCLUDED.display_name,
+				is_bot=EXCLUDED.is_bot, active=true, last_synced_at=now()`,
+			guildID, member.DiscordUserID, member.Username, member.DisplayName,
+			member.IsBot); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func validSnowflake(value string) bool {
