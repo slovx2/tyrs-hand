@@ -57,11 +57,14 @@ func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 			response.WriteHeader(http.StatusNoContent)
 		case "GET /guilds/123/threads/active":
 			_, _ = response.Write([]byte(`{"threads":[
-				{"id":"40","guild_id":"123","parent_id":"12","type":11,"name":"target","owner_id":"1","message_count":1,"member_count":1,"rate_limit_per_user":0,"thread_metadata":{"archived":false,"auto_archive_duration":10080,"archive_timestamp":"2026-07-27T00:00:00Z","locked":false}},
+				{"id":"40","guild_id":"123","parent_id":"12","type":11,"name":"target","owner_id":"900","message_count":1,"member_count":1,"rate_limit_per_user":0,"applied_tags":["91"],"thread_metadata":{"archived":false,"auto_archive_duration":10080,"archive_timestamp":"2026-07-27T00:00:00Z","locked":false}},
+				{"id":"43","guild_id":"123","parent_id":"12","type":11,"name":"empty","owner_id":"900","message_count":0,"member_count":1,"rate_limit_per_user":0,"thread_metadata":{"archived":false,"auto_archive_duration":10080,"archive_timestamp":"2026-07-27T00:00:00Z","locked":false}},
 				{"id":"41","guild_id":"123","parent_id":"99","type":11,"name":"other","owner_id":"1","message_count":1,"member_count":1,"rate_limit_per_user":0,"thread_metadata":{"archived":false,"auto_archive_duration":10080,"archive_timestamp":"2026-07-27T00:00:00Z","locked":false}}
 			],"members":[]}`))
 		case "GET /channels/40/messages":
-			_, _ = response.Write([]byte(`[{"id":"42","channel_id":"40","timestamp":"2026-07-27T00:00:00Z","author":{"id":"1","username":"bot","discriminator":"0","bot":true},"content":"","nonce":"desktop-request"}]`))
+			_, _ = fmt.Fprintf(response, `[{"id":"44","channel_id":"40","timestamp":"2026-07-27T00:01:00Z","author":{"id":"900","username":"bot","discriminator":"0","bot":true},"content":"later"},{"id":"42","channel_id":"40","timestamp":"2026-07-27T00:00:00Z","author":{"id":"900","username":"bot","discriminator":"0","bot":true},"content":"","flags":32768,"components":[{"type":17,"id":101,"accent_color":%d,"components":[{"type":10,"id":102,"content":"Task"},{"type":14,"id":103,"divider":true,"spacing":1},{"type":10,"id":104,"content":"Friendly"}]}]}]`, cardColorGreen)
+		case "GET /channels/43/messages":
+			_, _ = response.Write([]byte(`[]`))
 		case "DELETE /channels/20/messages/21":
 			response.WriteHeader(http.StatusNoContent)
 		case "PUT /channels/30/thread-members/456":
@@ -136,7 +139,35 @@ func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 	require.Len(t, receipts, 1)
 	require.Equal(t, "40", receipts[0].ThreadID)
 	require.Equal(t, "42", receipts[0].MessageID)
-	require.Equal(t, "desktop-request", receipts[0].Nonce)
+	fingerprint, err := ForumPostRequestFingerprint(rawJSON(map[string]any{
+		"threadName": "target", "tagIds": []string{"91"},
+		"card": ComponentCardPayload{Header: "Task", Body: "Friendly",
+			AccentColor: cardColorGreen},
+	}), "900")
+	require.NoError(t, err)
+	require.Equal(t, fingerprint, receipts[0].Fingerprint)
+	plainFingerprint, err := ForumPostRequestFingerprint(rawJSON(map[string]any{
+		"threadName": "plain", "content": "body", "tagIds": []string{"92", "91"},
+	}), "900")
+	require.NoError(t, err)
+	expectedPlain, err := forumPostFingerprint("plain", "body", nil,
+		[]string{"91", "92"}, "900")
+	require.NoError(t, err)
+	require.Equal(t, expectedPlain, plainFingerprint)
+	_, err = ForumPostRequestFingerprint(json.RawMessage(`{`), "900")
+	require.Error(t, err)
+	_, err = ForumPostRequestFingerprint(rawJSON(map[string]string{"threadName": "x"}), "bad")
+	require.Error(t, err)
+	_, err = ForumPostRequestFingerprint(rawJSON(map[string]string{"threadName": " "}), "900")
+	require.Error(t, err)
+	_, err = ForumPostRequestFingerprint(rawJSON(map[string]any{
+		"threadName": "x", "tagIds": []string{"bad"},
+	}), "900")
+	require.Error(t, err)
+	_, err = ForumPostRequestFingerprint(rawJSON(map[string]any{
+		"threadName": "x", "card": ComponentCardPayload{},
+	}), "900")
+	require.Error(t, err)
 
 	testDisgoSendOperations(t, ctx, remote)
 	mu.Lock()

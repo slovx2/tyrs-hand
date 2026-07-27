@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pquerna/otp/totp"
@@ -263,7 +264,11 @@ const discordPostCleanupConfirmation = "DELETE DUPLICATE DISCORD POSTS"
 type discordPostRepair struct {
 	requestID, operationKey string
 	guildID, forumID        string
-	nonce, status           string
+	routeKey, status        string
+	payload                 json.RawMessage
+	fingerprint             string
+	attempt                 int
+	createdAt               time.Time
 }
 
 func reconcileDiscordPosts(ctx context.Context, db *sql.DB, cfg config.Config,
@@ -284,6 +289,9 @@ func reconcileDiscordPosts(ctx context.Context, db *sql.DB, cfg config.Config,
 	if err != nil {
 		return err
 	}
+	if settings.BotUserID == "" {
+		return errors.New("对账 Discord Post 必须配置 Bot User ID")
+	}
 	token, err := manager.BotToken(ctx)
 	if err != nil {
 		return err
@@ -300,7 +308,9 @@ func reconcileDiscordPosts(ctx context.Context, db *sql.DB, cfg config.Config,
 		var repair discordPostRepair
 		repair.requestID = requestID.String()
 		err = db.QueryRowContext(ctx, `SELECT outbox.operation_key, forum.guild_id,
-			resource.discord_id, COALESCE(outbox.inflight_nonce,outbox.nonce,''), outbox.status
+			resource.discord_id, COALESCE(outbox.inflight_route_key,outbox.route_key),
+			COALESCE(outbox.inflight_payload,outbox.payload),
+			outbox.status, outbox.attempt_count, outbox.created_at
 			FROM desktop_thread_requests request
 			JOIN integration_outbox outbox
 				ON outbox.operation_key='desktop-thread-post:' || request.id::text
@@ -309,14 +319,23 @@ func reconcileDiscordPosts(ctx context.Context, db *sql.DB, cfg config.Config,
 			WHERE request.id=$1 AND outbox.integration='discord'
 				AND outbox.status IN ('ambiguous','completed')`, requestID).
 			Scan(&repair.operationKey, &repair.guildID, &repair.forumID,
-				&repair.nonce, &repair.status)
+				&repair.routeKey, &repair.payload, &repair.status, &repair.attempt,
+				&repair.createdAt)
 		if err != nil {
 			return fmt.Errorf("读取待对账 Desktop Post %s: %w", requestID, err)
 		}
-		if repair.guildID != settings.GuildID || repair.nonce == "" {
-			return fmt.Errorf("desktop Post %s 的 Guild 或 nonce 无效", requestID)
+		if repair.guildID != settings.GuildID || repair.routeKey == "" {
+			return fmt.Errorf("desktop Post %s 的 Guild 或请求快照无效", requestID)
+		}
+		repair.fingerprint, err = discordintegration.ForumPostRequestFingerprint(
+			repair.payload, settings.BotUserID)
+		if err != nil {
+			return fmt.Errorf("计算 Desktop Post %s 请求指纹: %w", requestID, err)
 		}
 		repairs = append(repairs, repair)
+	}
+	if err := validateDiscordPostFingerprints(ctx, db, settings.BotUserID, repairs); err != nil {
+		return err
 	}
 
 	receiptsByForum := make(map[string][]discordintegration.ForumPostReceipt)
@@ -333,7 +352,8 @@ func reconcileDiscordPosts(ctx context.Context, db *sql.DB, cfg config.Config,
 		}
 		matchedByThread := make(map[string]discordintegration.ForumPostReceipt)
 		for _, receipt := range receipts {
-			if receipt.Nonce != repair.nonce {
+			if receipt.Fingerprint != repair.fingerprint ||
+				receipt.CreatedAt.Before(repair.createdAt.Add(-time.Minute)) {
 				continue
 			}
 			current, exists := matchedByThread[receipt.ThreadID]
@@ -352,7 +372,10 @@ func reconcileDiscordPosts(ctx context.Context, db *sql.DB, cfg config.Config,
 			return matched[i].CreatedAt.Before(matched[j].CreatedAt)
 		})
 		if len(matched) == 0 {
-			return fmt.Errorf("desktop Post %s 没有找到 nonce 匹配项", repair.requestID)
+			return fmt.Errorf("desktop Post %s 没有找到精确指纹匹配项", repair.requestID)
+		}
+		if len(matched) > repair.attempt {
+			return fmt.Errorf("desktop Post %s 的匹配数超过投递次数，拒绝删除", repair.requestID)
 		}
 		keep := matched[0]
 		if repair.status == "ambiguous" {
@@ -388,6 +411,50 @@ func reconcileDiscordPosts(ctx context.Context, db *sql.DB, cfg config.Config,
 		fmt.Printf("Desktop Post %s 已对账：保留 1，删除 %d。\n", repair.requestID, deleted)
 	}
 	return nil
+}
+
+func validateDiscordPostFingerprints(ctx context.Context, db *sql.DB, botUserID string,
+	repairs []discordPostRepair,
+) error {
+	targets := make(map[string]string, len(repairs))
+	selected := make(map[string]bool, len(repairs))
+	targetRoutes := make(map[string]bool, len(repairs))
+	for _, repair := range repairs {
+		key := repair.routeKey + "\x00" + repair.fingerprint
+		if previous, exists := targets[key]; exists {
+			return fmt.Errorf("desktop Post %s 与 %s 的远端语义指纹相同，拒绝删除",
+				repair.requestID, previous)
+		}
+		targets[key], selected[repair.operationKey] = repair.requestID, true
+		targetRoutes[repair.routeKey] = true
+	}
+	rows, err := db.QueryContext(ctx, `SELECT operation_key,
+		COALESCE(inflight_route_key,route_key), COALESCE(inflight_payload,payload)
+		FROM integration_outbox WHERE integration='discord'
+			AND COALESCE(inflight_operation_type,operation_type)='forum.post.create'`)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var operationKey, routeKey string
+		var payload json.RawMessage
+		if err := rows.Scan(&operationKey, &routeKey, &payload); err != nil {
+			return err
+		}
+		if selected[operationKey] || !targetRoutes[routeKey] {
+			continue
+		}
+		fingerprint, err := discordintegration.ForumPostRequestFingerprint(payload, botUserID)
+		if err != nil {
+			return fmt.Errorf("计算已有 Discord Forum Post 请求指纹: %w", err)
+		}
+		if requestID, exists := targets[routeKey+"\x00"+fingerprint]; exists {
+			return fmt.Errorf("desktop Post %s 与另一条 Outbox 的远端语义指纹相同，拒绝删除",
+				requestID)
+		}
+	}
+	return rows.Err()
 }
 
 func collectRepoCaches(ctx context.Context, db *sql.DB, cfg config.Config) int {

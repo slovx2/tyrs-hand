@@ -2,6 +2,7 @@ package discordintegration
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -187,13 +188,52 @@ func (r *DisgoRemote) DeleteChannel(ctx context.Context, channelID string) error
 }
 
 type ForumPostReceipt struct {
-	ThreadID  string
-	MessageID string
-	Nonce     string
-	CreatedAt time.Time
+	ThreadID    string
+	MessageID   string
+	Fingerprint string
+	CreatedAt   time.Time
 }
 
-// ActiveForumPostReceipts 只读取活跃 Forum Post 的消息回执元数据，不返回正文。
+// ForumPostRequestFingerprint 生成实际 Discord Forum Post 的语义指纹。
+// 指纹包含标题、正文、Components V2、Tag 与 Bot 作者，但不包含请求内部字段。
+func ForumPostRequestFingerprint(payload json.RawMessage, botUserID string) (string, error) {
+	if _, err := snowflake.Parse(botUserID); err != nil {
+		return "", errors.New("discord Bot User ID 无效")
+	}
+	var request struct {
+		ThreadName string                `json:"threadName"`
+		Content    string                `json:"content"`
+		TagIDs     []string              `json:"tagIds"`
+		Card       *ComponentCardPayload `json:"card"`
+	}
+	if err := json.Unmarshal(payload, &request); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(request.ThreadName) == "" {
+		return "", errors.New("discord Forum Post 标题为空")
+	}
+	var components []discord.LayoutComponent
+	if request.Card != nil {
+		var err error
+		components, err = discordCardComponents(*request.Card)
+		if err != nil {
+			return "", err
+		}
+		request.Content = ""
+	}
+	for index, rawID := range request.TagIDs {
+		id, err := snowflake.Parse(rawID)
+		if err != nil {
+			return "", err
+		}
+		request.TagIDs[index] = id.String()
+	}
+	return forumPostFingerprint(request.ThreadName, request.Content, components,
+		request.TagIDs, botUserID)
+}
+
+// ActiveForumPostReceipts 只返回活跃 Forum Post 的不可逆语义指纹和回执元数据，
+// 不把消息正文或组件内容暴露给调用方。
 func (r *DisgoRemote) ActiveForumPostReceipts(ctx context.Context, guildID,
 	forumID string,
 ) ([]ForumPostReceipt, error) {
@@ -220,16 +260,89 @@ func (r *DisgoRemote) ActiveForumPostReceipts(ctx context.Context, guildID,
 		if err != nil {
 			return nil, err
 		}
-		for _, message := range messages {
-			if message.Nonce == "" {
-				continue
-			}
-			result = append(result, ForumPostReceipt{ThreadID: thread.ID().String(),
-				MessageID: message.ID.String(), Nonce: string(message.Nonce),
-				CreatedAt: message.CreatedAt})
+		if len(messages) == 0 {
+			continue
 		}
+		slices.SortFunc(messages, func(left, right discord.Message) int {
+			if left.CreatedAt.Before(right.CreatedAt) {
+				return -1
+			}
+			if left.CreatedAt.After(right.CreatedAt) {
+				return 1
+			}
+			return strings.Compare(left.ID.String(), right.ID.String())
+		})
+		starter := messages[0]
+		tags := make([]string, 0, len(thread.AppliedTags))
+		for _, tag := range thread.AppliedTags {
+			tags = append(tags, tag.String())
+		}
+		fingerprint, err := forumPostFingerprint(thread.Name(), starter.Content,
+			starter.Components, tags, starter.Author.ID.String())
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, ForumPostReceipt{ThreadID: thread.ID().String(),
+			MessageID: starter.ID.String(), Fingerprint: fingerprint,
+			CreatedAt: starter.CreatedAt})
 	}
 	return result, nil
+}
+
+func forumPostFingerprint(threadName, content string, components []discord.LayoutComponent,
+	tagIDs []string, authorID string,
+) (string, error) {
+	canonicalComponents, err := canonicalDiscordComponents(components)
+	if err != nil {
+		return "", err
+	}
+	tags := append([]string(nil), tagIDs...)
+	slices.Sort(tags)
+	encoded, err := json.Marshal(struct {
+		ThreadName string   `json:"threadName"`
+		Content    string   `json:"content"`
+		Components any      `json:"components"`
+		TagIDs     []string `json:"tagIds"`
+		AuthorID   string   `json:"authorId"`
+	}{threadName, content, canonicalComponents, tags, authorID})
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(encoded)
+	return fmt.Sprintf("%x", digest[:]), nil
+}
+
+func canonicalDiscordComponents(components []discord.LayoutComponent) (any, error) {
+	if len(components) == 0 {
+		return []any{}, nil
+	}
+	encoded, err := json.Marshal(components)
+	if err != nil {
+		return nil, err
+	}
+	var value any
+	if err := json.Unmarshal(encoded, &value); err != nil {
+		return nil, err
+	}
+	stripDiscordComponentIDs(value)
+	return value, nil
+}
+
+func stripDiscordComponentIDs(value any) {
+	switch typed := value.(type) {
+	case []any:
+		for _, item := range typed {
+			stripDiscordComponentIDs(item)
+		}
+	case map[string]any:
+		delete(typed, "id")
+		if divider, ok := typed["divider"].(bool); ok && divider {
+			delete(typed, "divider")
+		}
+		for _, item := range typed {
+			stripDiscordComponentIDs(item)
+		}
+	}
 }
 
 func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessage, error) {
