@@ -34,7 +34,7 @@ func (m *Manager) ScanRemoteProjects(ctx context.Context,
 	output, err := m.docker(ctx, "exec", "--user", owner, "--env", "HOME="+manifest.RuntimeHome,
 		manifest.ContainerName, "find", developmentWorkspacesRoot,
 		"-mindepth", "1", "-maxdepth", "1", "-type", "d", "!", "-name", ".*",
-		"-printf", "%f\x00")
+		"-printf", "%f\\0")
 	if err != nil {
 		return nil, fmt.Errorf("扫描开发项目目录: %w", err)
 	}

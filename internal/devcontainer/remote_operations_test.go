@@ -152,6 +152,83 @@ func TestScanRemoteProjectsClassifiesDirectoriesAndRedactsRemote(t *testing.T) {
 		{Name: "notes", RelativePath: "workspaces/notes", ProjectKind: "directory"},
 	}, projects)
 	require.True(t, runner.contains("-type d ! -name .*"))
+	require.True(t, runner.contains("-printf %f\\0"))
+}
+
+func TestScanRemoteProjectsReportsCommandFailures(t *testing.T) {
+	tests := []struct {
+		name         string
+		failContains string
+	}{
+		{name: "启动容器", failContains: "start development"},
+		{name: "创建根目录", failContains: "mkdir -p /var/lib/tyrs-hand/workspaces"},
+		{name: "修正根目录权限", failContains: "chown 1000:1000"},
+		{name: "扫描一级目录", failContains: "find /var/lib/tyrs-hand/workspaces"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			manager := &Manager{dockerBin: "docker", dockerHost: "inherit",
+				runner: &recordingCommandRunner{failContains: test.failContains}}
+			_, err := manager.ScanRemoteProjects(context.Background(),
+				workerprotocol.EnvironmentManifest{
+					ContainerName: "development", RuntimeUID: 1000, RuntimeGID: 1000,
+					RuntimeHome: "/home/developer",
+				})
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestScanRemoteProjectsReportsInvalidGitMetadata(t *testing.T) {
+	tests := []struct {
+		name         string
+		failContains string
+		resultFor    map[string]string
+		errorText    string
+	}{
+		{
+			name: "Git 标记检测失败", resultFor: map[string]string{
+				"find /var/lib/tyrs-hand/workspaces": "atlas\x00.hidden\x00nested/path\x00",
+				"workspaces/atlas/.git":              "unexpected",
+			}, errorText: "容器路径检测返回无效结果",
+		},
+		{
+			name: "Git 根目录读取失败", failContains: "rev-parse --show-toplevel",
+			resultFor: map[string]string{
+				"find /var/lib/tyrs-hand/workspaces": "atlas\x00",
+				"workspaces/atlas/.git":              "1",
+			}, errorText: "读取项目",
+		},
+		{
+			name: "Git 根目录不匹配", resultFor: map[string]string{
+				"find /var/lib/tyrs-hand/workspaces": "atlas\x00",
+				"workspaces/atlas/.git":              "1",
+				"rev-parse --show-toplevel":          "/var/lib/tyrs-hand/workspaces/other",
+			}, errorText: "Git 根目录不匹配",
+		},
+		{
+			name: "Git 状态读取失败", failContains: "status --porcelain=v1",
+			resultFor: map[string]string{
+				"find /var/lib/tyrs-hand/workspaces": "atlas\x00",
+				"workspaces/atlas/.git":              "1",
+				"rev-parse --show-toplevel":          "/var/lib/tyrs-hand/workspaces/atlas",
+			}, errorText: "读取项目",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			manager := &Manager{dockerBin: "docker", dockerHost: "inherit",
+				runner: &recordingCommandRunner{
+					failContains: test.failContains, resultFor: test.resultFor,
+				}}
+			_, err := manager.ScanRemoteProjects(context.Background(),
+				workerprotocol.EnvironmentManifest{
+					ContainerName: "development", RuntimeUID: 1000, RuntimeGID: 1000,
+					RuntimeHome: "/home/developer",
+				})
+			require.ErrorContains(t, err, test.errorText)
+		})
+	}
 }
 
 func TestRelocateRemoteProjectIsAtomicAndIdempotent(t *testing.T) {
@@ -188,6 +265,75 @@ func TestRelocateRemoteProjectIsAtomicAndIdempotent(t *testing.T) {
 				"mv -- /var/lib/tyrs-hand/workspaces/source /var/lib/tyrs-hand/workspaces/target"))
 		})
 	}
+}
+
+func TestRelocateRemoteProjectReportsCommandFailures(t *testing.T) {
+	tests := []struct {
+		name         string
+		failContains string
+		resultFor    map[string]string
+		errorText    string
+	}{
+		{
+			name: "源目录检测失败", failContains: "workspaces/source",
+			errorText: "injected command failure",
+		},
+		{
+			name: "目标目录检测结果无效", resultFor: map[string]string{
+				"workspaces/source": "1",
+				"workspaces/target": "unexpected",
+			}, errorText: "容器路径检测返回无效结果",
+		},
+		{
+			name: "创建目标父目录失败", failContains: "mkdir -p",
+			resultFor: map[string]string{
+				"workspaces/source": "1",
+				"workspaces/target": "0",
+			}, errorText: "injected command failure",
+		},
+		{
+			name: "原子移动失败", failContains: "mv --",
+			resultFor: map[string]string{
+				"workspaces/source": "1",
+				"workspaces/target": "0",
+			}, errorText: "injected command failure",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			manager := &Manager{enabled: true, dockerBin: "docker", dockerHost: "inherit",
+				runner: &recordingCommandRunner{
+					failContains: test.failContains, resultFor: test.resultFor,
+				}}
+			err := manager.RunRemoteOperation(context.Background(), RemoteOperation{
+				Operation: "relocate_project", ContainerName: "development",
+				Workspace: "workspaces/source", TargetWorkspace: "workspaces/target",
+			})
+			require.ErrorContains(t, err, test.errorText)
+		})
+	}
+}
+
+func TestRelocateRemoteProjectAcceptsIdenticalPath(t *testing.T) {
+	manager := &Manager{enabled: true, dockerBin: "docker", dockerHost: "inherit",
+		runner: &recordingCommandRunner{}}
+	require.NoError(t, manager.RunRemoteOperation(context.Background(), RemoteOperation{
+		Operation: "relocate_project", ContainerName: "development",
+		Workspace: "workspaces/atlas", TargetWorkspace: "workspaces/atlas",
+	}))
+}
+
+func TestRelocateRemoteProjectRejectsInvalidPaths(t *testing.T) {
+	manager := &Manager{enabled: true, dockerBin: "docker", dockerHost: "inherit",
+		runner: &recordingCommandRunner{}}
+	require.Error(t, manager.RunRemoteOperation(context.Background(), RemoteOperation{
+		Operation: "relocate_project", ContainerName: "development",
+		Workspace: "", TargetWorkspace: "workspaces/atlas",
+	}))
+	require.Error(t, manager.RunRemoteOperation(context.Background(), RemoteOperation{
+		Operation: "relocate_project", ContainerName: "development",
+		Workspace: "workspaces/atlas", TargetWorkspace: "../atlas",
+	}))
 }
 
 func TestRedactGitRemoteKeepsSSHAndRemovesHTTPSecrets(t *testing.T) {
@@ -243,6 +389,64 @@ func TestRunRemoteDevelopmentOperations(t *testing.T) {
 	require.Error(t, manager.RunRemoteOperation(context.Background(), RemoteOperation{
 		Operation: "stop", ContainerName: "dev-container",
 	}))
+}
+
+func TestRemoteResourceCleanupHandlesMissingAndCommandFailures(t *testing.T) {
+	missingRunner := &recordingCommandRunner{failContains: "container inspect"}
+	manager := &Manager{enabled: true, dockerBin: "docker", dockerHost: "inherit",
+		runner: missingRunner}
+	require.NoError(t, manager.RunRemoteOperation(context.Background(), RemoteOperation{
+		Operation: "delete_forum", ContainerName: "missing-container",
+		Workspace: "workspaces/atlas",
+	}))
+	require.NoError(t, manager.removeDockerResource(context.Background(), "container", ""))
+	require.NoError(t, manager.removeDockerResource(context.Background(),
+		"container", "missing-container"))
+	require.False(t, manager.dockerResourceExists(context.Background(), "container", ""))
+
+	startFailure := &Manager{enabled: true, dockerBin: "docker", dockerHost: "inherit",
+		runner: &recordingCommandRunner{failContains: "start development"}}
+	require.Error(t, startFailure.RunRemoteOperation(context.Background(), RemoteOperation{
+		Operation: "delete_forum", ContainerName: "development",
+		Workspace: "workspaces/atlas",
+	}))
+
+	removeFailure := &Manager{dockerBin: "docker", dockerHost: "inherit",
+		runner: &recordingCommandRunner{failContains: "container rm"}}
+	require.Error(t, removeFailure.removeDockerResource(context.Background(),
+		"container", "development"))
+}
+
+func TestRunRemoteDevelopmentOperationReportsMaintenanceFailures(t *testing.T) {
+	imageFailure := &Manager{enabled: true, dockerBin: "docker", dockerHost: "inherit",
+		runner: &recordingCommandRunner{failContains: "image inspect"}}
+	require.Error(t, imageFailure.RunRemoteOperation(context.Background(), RemoteOperation{
+		Operation: "rebase", ImageRef: "development-image",
+	}))
+
+	incompatible := &Manager{enabled: true, dockerBin: "docker", dockerHost: "inherit",
+		runner: &recordingCommandRunner{resultFor: map[string]string{
+			`index .Config.Labels`:        "1",
+			`{{.Config.User}}`:            "developer",
+			`TYRS_RUNTIME_USER=developer`: "developer:1000:1000:/home/developer",
+		}}}
+	require.ErrorContains(t, incompatible.RunRemoteOperation(context.Background(),
+		RemoteOperation{
+			Operation: "rebase", ImageRef: "development-image",
+			RuntimeUID: 2000, RuntimeGID: 2000, RuntimeHome: "/home/other",
+		}), "不兼容")
+
+	for _, failure := range []string{
+		"container rm", "volume rm data-volume", "network rm development-network",
+	} {
+		manager := &Manager{enabled: true, dockerBin: "docker", dockerHost: "inherit",
+			runner: &recordingCommandRunner{failContains: failure}}
+		require.Error(t, manager.RunRemoteOperation(context.Background(), RemoteOperation{
+			Operation: "delete_environment", ContainerName: "development",
+			DataVolume: "data-volume", HomeVolume: "home-volume",
+			Network: "development-network",
+		}))
+	}
 }
 
 func TestReconfigureRemoteEnvironmentKeepsContainerRunningAndSecuresSSH(t *testing.T) {
