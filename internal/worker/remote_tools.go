@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/devcontainer"
 	"github.com/slovx2/tyrs-hand/internal/ports"
@@ -86,6 +85,9 @@ func (p *RemoteProcessor) executeRemoteContainerGit(ctx context.Context,
 	if request.ThreadID == "" || request.TurnID == "" || request.CallID == "" {
 		return codex.ToolCallResult{}, errors.New("本地 Tool Call 缺少 thread、turn 或 call ID")
 	}
+	if runtime.ProjectKind != "git" {
+		return codex.ToolCallResult{}, errors.New("当前项目不是 Git 仓库")
+	}
 	switch request.Tool {
 	case "status":
 		status, err := p.development.Git(ctx, runtime, "status", "--porcelain=v1", "--branch")
@@ -101,15 +103,10 @@ func (p *RemoteProcessor) executeRemoteContainerGit(ctx context.Context,
 		return codex.TextToolResult(fmt.Sprintf(`{"sha":%q}`, strings.TrimSpace(sha)),
 			err == nil), err
 	case "publish_branch":
-		if task.Claimed.ProjectID != uuid.Nil {
-			return codex.ToolCallResult{}, errors.New("普通项目没有远端，不能发布分支")
+		if runtime.RemoteURL == "" {
+			return codex.ToolCallResult{}, errors.New("当前项目没有远端，不能发布分支")
 		}
-		credential, err := p.client.GitCredential(ctx, task, "push",
-			request.ThreadID, request.TurnID)
-		if err != nil {
-			return codex.ToolCallResult{}, err
-		}
-		branch, sha, err := p.development.Publish(ctx, runtime, credential)
+		branch, sha, err := p.development.Publish(ctx, runtime)
 		return codex.TextToolResult(fmt.Sprintf(`{"branch":%q,"sha":%q}`, branch, sha),
 			err == nil), err
 	default:

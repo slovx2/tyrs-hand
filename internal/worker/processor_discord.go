@@ -28,11 +28,11 @@ type discordJobContext struct {
 	ThreadID       string
 	MessageID      string
 	OwnerUserID    string
-	RepositoryID   uuid.UUID
 	ProjectID      uuid.UUID
 	EnvironmentID  uuid.UUID
 	ForumID        uuid.UUID
-	HasRepository  bool
+	ProjectKind    string
+	HasRemote      bool
 	Body           string
 	DiscordUserID  string
 	DisplayName    string
@@ -74,15 +74,8 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		}
 	}()
 	progress.project(ctx, discordintegration.ConversationRunning, "已接收消息，正在准备工作区。", 0)
-	credential := ""
-	if jobCtx.HasRepository {
-		credential, err = p.control.GitCredential(ctx, claimed.Capability, "fetch")
-		if err != nil {
-			return result, err
-		}
-	}
 	containerRuntime, err := p.development.Ensure(ctx, jobCtx.EnvironmentID, jobCtx.ForumID,
-		jobCtx.ConversationID, credential)
+		jobCtx.ConversationID, "")
 	if err != nil {
 		return result, err
 	}
@@ -137,12 +130,11 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		RuntimeConfig:         runtimeConfig,
 		DeveloperInstructions: browserDeveloperInstructions(p.cfg, discordintegration.MultiplayerDeveloperInstructions),
 	})
-	if jobCtx.HasRepository {
-		options.DynamicTools = append(options.DynamicTools, localGitSpec(true))
-		options.DeveloperInstructions += "\nFollow repository AGENTS.md and the explicitly attached skills. Use only the selected repository and persistent Discord clone. The container and Home are shared with the owner's other forums, so never inspect or modify sibling workspaces outside the current CWD. Use git.commit and git.publish_branch for writes."
+	if jobCtx.ProjectKind == "git" {
+		options.DynamicTools = append(options.DynamicTools, localGitSpec(jobCtx.HasRemote))
+		options.DeveloperInstructions += "\nFollow repository AGENTS.md and the explicitly attached skills. Use only the selected persistent project. The container and Home are shared with the owner's other forums, so never inspect or modify sibling workspaces outside the current CWD. Use git.commit for commits and git.publish_branch only when it is available."
 	} else {
-		options.DynamicTools = append(options.DynamicTools, localGitSpec(false))
-		options.DeveloperInstructions += "\nUse only the current persistent project workspace. The container and Home are shared with the owner's other forums, so never inspect or modify sibling workspaces outside the current CWD. Local commits are allowed, but this project has no remote and must not be published."
+		options.DeveloperInstructions += "\nUse only the current persistent project directory. The container and Home are shared with the owner's other forums, so never inspect or modify sibling workspaces outside the current CWD. This directory is not a Git repository, so Git tools are unavailable."
 	}
 	options.DynamicTools = withBrowserTools(p.cfg, options.DynamicTools...)
 	if err := runtime.ValidateSkills(ctx, workspace, skills); err != nil {
@@ -287,24 +279,28 @@ func (p *Processor) projectDiscordReply(ctx context.Context, jobCtx discordJobCo
 
 func (p *Processor) loadDiscordContext(ctx context.Context, job codexcontrol.Intent) (discordJobContext, error) {
 	var result discordJobContext
-	var repositoryID, projectID sql.NullString
+	var projectID sql.NullString
 	err := p.db.QueryRowContext(ctx, `SELECT c.id, c.guild_id, c.thread_id, m.message_id, c.owner_discord_user_id,
 		f.id, f.development_environment_id,
-		COALESCE(c.repository_id::text, ''), COALESCE(c.project_id::text, ''),
-		COALESCE(r.owner, ''), COALESCE(r.name, ''),
-		COALESCE(r.clone_url, ''), COALESCE(r.default_branch, ''),
+		COALESCE(c.development_project_id::text, ''),
+		'', project.name, COALESCE(project.remote_url, ''), '', project.project_kind,
 		p.name, COALESCE(p.model, ''), COALESCE(p.reasoning_effort, ''), COALESCE(p.service_tier, ''),
 		p.sandbox, p.approval_policy, p.network_enabled, m.body, m.discord_user_id,
 		m.display_name, m.username, COALESCE(m.github_user_id, 0), COALESCE(m.github_login, ''),
 		COALESCE(m.github_binding_id::text, ''), COALESCE(m.binding_version, 0), m.access_snapshot
 		FROM discord_conversations c JOIN discord_input_messages m ON m.conversation_id = c.id
 		JOIN discord_forums f ON f.id = c.forum_id AND f.forum_type = 'development'
+		JOIN discord_development_environments environment ON environment.id=f.development_environment_id
+		JOIN development_projects project ON project.id=c.development_project_id
 		JOIN agent_profiles p ON p.id = c.agent_profile_id
-		LEFT JOIN repositories r ON r.id = c.repository_id
-		WHERE c.id = $1 AND m.message_id = $2`, job.DiscordConversationID, job.DiscordMessageID).
+		WHERE c.id = $1 AND m.message_id = $2
+			AND f.binding_status='active'
+			AND project.availability_status='available'
+			AND environment.status='running'`, job.DiscordConversationID, job.DiscordMessageID).
 		Scan(&result.ConversationID, &result.GuildID, &result.ThreadID, &result.MessageID, &result.OwnerUserID,
 			&result.ForumID, &result.EnvironmentID,
-			&repositoryID, &projectID, &result.Owner, &result.Repository, &result.CloneURL, &result.DefaultBranch,
+			&projectID, &result.Owner, &result.Repository, &result.CloneURL, &result.DefaultBranch,
+			&result.ProjectKind,
 			&result.ProfileName, &result.Model, &result.ReasoningEffort,
 			&result.ServiceTier, &result.Sandbox, &result.ApprovalPolicy, &result.NetworkEnabled,
 			&result.Body, &result.DiscordUserID, &result.DisplayName, &result.Username,
@@ -312,13 +308,10 @@ func (p *Processor) loadDiscordContext(ctx context.Context, job codexcontrol.Int
 	if err != nil {
 		return discordJobContext{}, err
 	}
-	if repositoryID.String != "" {
-		result.RepositoryID, err = uuid.Parse(repositoryID.String)
-		result.HasRepository = err == nil
-	}
 	if projectID.String != "" {
 		result.ProjectID, err = uuid.Parse(projectID.String)
 	}
+	result.HasRemote = strings.TrimSpace(result.CloneURL) != ""
 	return result, err
 }
 
@@ -342,6 +335,9 @@ func (p *Processor) handleDiscordTool(ctx context.Context, claimed *codexcontrol
 func (p *Processor) executeDiscordLocalTool(ctx context.Context, claimed *codexcontrol.ClaimedControl,
 	runtime devcontainer.Runtime, workspace ports.Workspace, request codex.ToolCallRequest,
 ) (codex.ToolCallResult, error) {
+	if runtime.ProjectKind != "git" {
+		return codex.ToolCallResult{}, errors.New("当前项目不是 Git 仓库")
+	}
 	switch request.Tool {
 	case "status":
 		status, err := p.development.Git(ctx, runtime, "status", "--porcelain=v1", "--branch")
@@ -355,22 +351,24 @@ func (p *Processor) executeDiscordLocalTool(ctx context.Context, claimed *codexc
 		}
 		sha, err := p.development.Commit(ctx, runtime, arguments.Message)
 		if err == nil {
-			_, err = p.db.ExecContext(ctx, `UPDATE discord_forum_workspaces SET head_sha = $2, dirty = false,
-				last_used_at = now(), updated_at = now() WHERE forum_id = $1`, runtime.ForumID, sha)
+			_, err = p.db.ExecContext(ctx, `UPDATE development_projects project
+				SET head_sha=$2, dirty=false, updated_at=now()
+				FROM discord_forums forum
+				WHERE forum.id=$1 AND forum.development_project_id=project.id`,
+				runtime.ForumID, sha)
 		}
 		return codex.TextToolResult(fmt.Sprintf(`{"sha":%q}`, sha), err == nil), err
 	case "publish_branch":
-		if claimed.ProjectID != uuid.Nil {
-			return codex.ToolCallResult{}, errors.New("普通项目没有远端，不能发布分支")
+		if runtime.RemoteURL == "" {
+			return codex.ToolCallResult{}, errors.New("当前项目没有远端，不能发布分支")
 		}
-		credential, err := p.control.GitCredential(ctx, claimed.Capability, "push", request.ThreadID, request.TurnID)
-		if err != nil {
-			return codex.ToolCallResult{}, err
-		}
-		branch, sha, err := p.development.Publish(ctx, runtime, credential)
+		branch, sha, err := p.development.Publish(ctx, runtime)
 		if err == nil {
-			_, err = p.db.ExecContext(ctx, `UPDATE discord_forum_workspaces SET base_sha = $2, head_sha = $2,
-				last_used_at = now(), updated_at = now() WHERE forum_id = $1`, runtime.ForumID, sha)
+			_, err = p.db.ExecContext(ctx, `UPDATE development_projects project
+				SET head_sha=$2, dirty=false, branch=$3, updated_at=now()
+				FROM discord_forums forum
+				WHERE forum.id=$1 AND forum.development_project_id=project.id`,
+				runtime.ForumID, sha, branch)
 		}
 		return codex.TextToolResult(fmt.Sprintf(`{"branch":%q,"sha":%q}`, branch, sha), err == nil), err
 	default:
@@ -379,6 +377,9 @@ func (p *Processor) executeDiscordLocalTool(ctx context.Context, claimed *codexc
 }
 
 func (p *Processor) refreshDiscordWorkspaceState(ctx context.Context, runtime devcontainer.Runtime) {
+	if runtime.ProjectKind != "git" {
+		return
+	}
 	status, statusErr := p.development.Git(ctx, runtime, "status", "--porcelain=v1")
 	head, headErr := p.development.Git(ctx, runtime, "rev-parse", "HEAD")
 	if statusErr != nil || headErr != nil {
@@ -386,11 +387,13 @@ func (p *Processor) refreshDiscordWorkspaceState(ctx context.Context, runtime de
 		if cause == nil {
 			cause = headErr
 		}
-		_, _ = p.db.ExecContext(ctx, `UPDATE discord_forum_workspaces
-			SET error = $2, updated_at = now() WHERE forum_id = $1`, runtime.ForumID, cause.Error())
+		p.logger.Warn("刷新开发项目 Git 状态失败", zap.Error(cause),
+			zap.String("forum_id", runtime.ForumID.String()))
 		return
 	}
-	_, _ = p.db.ExecContext(ctx, `UPDATE discord_forum_workspaces SET head_sha = $2, dirty = $3,
-		error = NULL, last_used_at = now(), updated_at = now() WHERE forum_id = $1`,
+	_, _ = p.db.ExecContext(ctx, `UPDATE development_projects project
+		SET head_sha=$2, dirty=$3, updated_at=now()
+		FROM discord_forums forum
+		WHERE forum.id=$1 AND forum.development_project_id=project.id`,
 		runtime.ForumID, strings.TrimSpace(head), strings.TrimSpace(status) != "")
 }

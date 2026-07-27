@@ -106,22 +106,16 @@ func (c *Client) DevelopmentEnvironments(ctx context.Context) ([]EnvironmentMani
 	return result.Environments, err
 }
 
-func (c *Client) DevelopmentOperationGitCredential(ctx context.Context,
-	operation *DevelopmentOperation,
-) (string, error) {
-	var response struct {
-		Token string `json:"token"`
-	}
-	err := c.call(ctx, http.MethodPost, "/worker/v1/development-operations/"+
-		operation.ID.String()+"/git-credential", DevelopmentOperationLease{
-		LeaseToken: operation.LeaseToken, LeaseEpoch: operation.LeaseEpoch,
-	}, &response, true)
-	return response.Token, err
-}
-
 func (c *Client) EnvironmentDaemonState(ctx context.Context, state EnvironmentDaemonState) error {
 	return c.call(ctx, http.MethodPost, "/worker/v1/development-environments/"+
 		state.EnvironmentID.String()+"/daemon-state", state, nil, true)
+}
+
+func (c *Client) DevelopmentProjectSnapshot(ctx context.Context,
+	request DevelopmentProjectSnapshotRequest,
+) error {
+	return c.call(ctx, http.MethodPost, "/worker/v1/development-environments/"+
+		request.EnvironmentID.String()+"/projects/snapshot", request, nil, true)
 }
 
 func (c *Client) InterruptEnvironmentInteractive(ctx context.Context,

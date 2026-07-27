@@ -9,7 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 12
+const Version = 13
 
 type EnrollRequest struct {
 	Token string `json:"token"`
@@ -69,12 +69,14 @@ type DevelopmentOperation struct {
 	EnvironmentID     uuid.UUID   `json:"environmentId"`
 	EnvironmentStatus string      `json:"environmentStatus,omitempty"`
 	ForumID           *uuid.UUID  `json:"forumId,omitempty"`
+	ProjectID         *uuid.UUID  `json:"developmentProjectId,omitempty"`
 	ContainerName     string      `json:"containerName"`
 	ImageRef          string      `json:"imageRef,omitempty"`
 	DataVolume        string      `json:"dataVolume"`
 	HomeVolume        string      `json:"homeVolume"`
 	Network           string      `json:"network"`
 	Workspace         string      `json:"workspace,omitempty"`
+	TargetWorkspace   string      `json:"targetWorkspace,omitempty"`
 	WorkspaceStatus   string      `json:"workspaceStatus,omitempty"`
 	WorkspaceHeadSHA  string      `json:"workspaceHeadSha,omitempty"`
 	WorkspaceBranch   string      `json:"workspaceBranch,omitempty"`
@@ -138,6 +140,22 @@ type EnvironmentManifest struct {
 	Forums            []EnvironmentForum   `json:"forums"`
 }
 
+type DevelopmentProjectSnapshot struct {
+	Name         string `json:"name"`
+	RelativePath string `json:"relativePath"`
+	ProjectKind  string `json:"projectKind"`
+	Branch       string `json:"branch,omitempty"`
+	HeadSHA      string `json:"headSha,omitempty"`
+	Dirty        bool   `json:"dirty"`
+	RemoteURL    string `json:"remoteUrl,omitempty"`
+}
+
+type DevelopmentProjectSnapshotRequest struct {
+	EnvironmentID uuid.UUID                    `json:"environmentId"`
+	Projects      []DevelopmentProjectSnapshot `json:"projects"`
+	Error         string                       `json:"error,omitempty"`
+}
+
 type ParticipantIdentity struct {
 	ParticipantID uuid.UUID `json:"participantId"`
 	DiscordUserID string    `json:"discordUserId"`
@@ -149,8 +167,7 @@ type EnvironmentForum struct {
 	GuildID           string     `json:"guildId"`
 	DiscordForumID    string     `json:"discordForumId"`
 	OwnerUserID       string     `json:"ownerUserId"`
-	RepositoryID      *uuid.UUID `json:"repositoryId,omitempty"`
-	ProjectID         *uuid.UUID `json:"projectId,omitempty"`
+	ProjectID         *uuid.UUID `json:"developmentProjectId,omitempty"`
 	WorkspaceKind     string     `json:"workspaceKind"`
 	WorkspaceRelative string     `json:"workspaceRelative"`
 	WorkspaceStatus   string     `json:"workspaceStatus"`

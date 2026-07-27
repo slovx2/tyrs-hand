@@ -77,23 +77,24 @@ func (p *RemoteProcessor) ProcessRemote(ctx context.Context, task *workerprotoco
 func (p *RemoteProcessor) ProcessDevelopmentOperation(ctx context.Context,
 	operation *workerprotocol.DevelopmentOperation,
 ) error {
-	if p.browserAgent != nil && operation.Operation != "provision" {
+	if p.browserAgent != nil && operation.Operation != "provision_environment" {
 		p.browserAgent.Reset(operation.EnvironmentID)
 	}
 	processEnvironment, err := p.developmentOperationProcessEnvironment(ctx, operation)
 	if err != nil {
 		return err
 	}
-	if operation.Operation == "provision" {
-		return p.processDevelopmentProvision(ctx, operation, processEnvironment)
+	if operation.Operation == "provision_environment" {
+		return p.processDevelopmentEnvironmentProvision(ctx, operation, processEnvironment)
 	}
 	err = p.development.RunRemoteOperation(ctx, devcontainer.RemoteOperation{
 		EnvironmentID: operation.EnvironmentID, Operation: operation.Operation,
 		ContainerName: operation.ContainerName,
 		ImageRef:      operation.ImageRef, DataVolume: operation.DataVolume,
 		HomeVolume: operation.HomeVolume, Network: operation.Network,
-		Workspace: operation.Workspace, ConversationIDs: operation.ConversationIDs,
-		RuntimeUser: operation.RuntimeUser, RuntimeUID: operation.RuntimeUID,
+		Workspace: operation.Workspace, TargetWorkspace: operation.TargetWorkspace,
+		ConversationIDs: operation.ConversationIDs,
+		RuntimeUser:     operation.RuntimeUser, RuntimeUID: operation.RuntimeUID,
 		RuntimeGID: operation.RuntimeGID, RuntimeHome: operation.RuntimeHome,
 		SSHPublicKey: operation.SSHPublicKey, SSHPort: operation.SSHPort,
 		SSHConfigRevision:  operation.SSHConfigRevision,
@@ -125,7 +126,7 @@ func (p *RemoteProcessor) ProcessDevelopmentOperation(ctx context.Context,
 func (p *RemoteProcessor) developmentOperationProcessEnvironment(ctx context.Context,
 	operation *workerprotocol.DevelopmentOperation,
 ) ([]string, error) {
-	if operation.Operation != "provision" && operation.Operation != "reconfigure" &&
+	if operation.Operation != "provision_environment" && operation.Operation != "reconfigure" &&
 		operation.Operation != "rebase" {
 		return nil, nil
 	}
@@ -136,41 +137,33 @@ func (p *RemoteProcessor) developmentOperationProcessEnvironment(ctx context.Con
 	return remoteCodexProcessEnvironment(credential, p.cfg, operation.EnvironmentID.String())
 }
 
-func (p *RemoteProcessor) processDevelopmentProvision(ctx context.Context,
+func (p *RemoteProcessor) processDevelopmentEnvironmentProvision(ctx context.Context,
 	operation *workerprotocol.DevelopmentOperation, processEnvironment []string,
 ) error {
-	if operation.ForumID == nil {
-		return errors.New("开发环境 Provision 缺少 Forum")
-	}
-	gitCredential := ""
-	var err error
-	if operation.WorkspaceKind != "project" {
-		gitCredential, err = p.client.DevelopmentOperationGitCredential(ctx, operation)
-		if err != nil {
-			return err
-		}
-	}
-	runtime, state, err := p.development.EnsureRemote(ctx, devcontainer.RemoteSpec{
-		EnvironmentID: operation.EnvironmentID, ForumID: *operation.ForumID,
-		WorkspaceStatus:   operation.WorkspaceStatus,
-		WorkspaceRelative: operation.Workspace, WorkspaceBranch: operation.WorkspaceBranch,
-		WorkspaceKind: operation.WorkspaceKind,
-		Repository:    operation.Repository, CloneURL: operation.CloneURL,
-		DefaultRef: operation.DefaultRef, EnvironmentStatus: operation.EnvironmentStatus,
-		ImageRef: operation.ImageRef, ImageID: operation.ImageID,
+	remoteOperation := devcontainer.RemoteOperation{
+		EnvironmentID: operation.EnvironmentID, Operation: operation.Operation,
 		ContainerName: operation.ContainerName, ContainerID: operation.ContainerID,
+		ImageRef: operation.ImageRef, ImageID: operation.ImageID,
 		DataVolume: operation.DataVolume, HomeVolume: operation.HomeVolume,
 		Network: operation.Network, RuntimeUser: operation.RuntimeUser,
 		RuntimeUID: operation.RuntimeUID, RuntimeGID: operation.RuntimeGID,
-		RuntimeHome: operation.RuntimeHome,
-	}, gitCredential, processEnvironment)
+		RuntimeHome: operation.RuntimeHome, SSHPublicKey: operation.SSHPublicKey,
+		SSHPort: operation.SSHPort, SSHConfigRevision: operation.SSHConfigRevision,
+		ProcessEnvironment: processEnvironment,
+	}
+	runtime, err := p.development.ProvisionRemoteEnvironment(ctx, &remoteOperation)
 	if err != nil {
 		return err
 	}
-	runtime.ProcessEnvironment = processEnvironment
+	operation.ContainerID, operation.ImageRef, operation.ImageID = remoteOperation.ContainerID,
+		remoteOperation.ImageRef, remoteOperation.ImageID
+	operation.RuntimeUser, operation.RuntimeUID = remoteOperation.RuntimeUser,
+		remoteOperation.RuntimeUID
+	operation.RuntimeGID, operation.RuntimeHome = remoteOperation.RuntimeGID,
+		remoteOperation.RuntimeHome
 	manifest := workerprotocol.EnvironmentManifest{
 		EnvironmentID: operation.EnvironmentID, ContainerName: operation.ContainerName,
-		ContainerID: state.ContainerID, ImageRef: state.ImageRef,
+		ContainerID: operation.ContainerID, ImageRef: operation.ImageRef,
 		DataVolume: operation.DataVolume, HomeVolume: operation.HomeVolume,
 		Network: operation.Network, RuntimeUser: runtime.User, RuntimeUID: runtime.UID,
 		RuntimeGID: runtime.GID, RuntimeHome: runtime.Home,
@@ -185,12 +178,6 @@ func (p *RemoteProcessor) processDevelopmentProvision(ctx context.Context,
 			return err
 		}
 	}
-	operation.ContainerID, operation.ImageRef, operation.ImageID = state.ContainerID,
-		state.ImageRef, state.ImageID
-	operation.RuntimeUser, operation.RuntimeUID = runtime.User, runtime.UID
-	operation.RuntimeGID, operation.RuntimeHome = runtime.GID, runtime.Home
-	operation.WorkspaceStatus, operation.WorkspaceHeadSHA = state.WorkspaceStatus,
-		state.WorkspaceHeadSHA
 	operation.AppliedRevision, operation.DaemonStatus = operation.SSHConfigRevision, "running"
 	return nil
 }

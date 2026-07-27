@@ -20,6 +20,7 @@ import { SettingsPage } from './pages/SettingsPage'
 import { CodexSettingsPage } from './pages/CodexSettingsPage'
 import { ExecutionNodesPage } from './pages/ExecutionNodesPage'
 import { SSHPage } from './pages/SSHPage'
+import { DevelopmentEnvironmentsPage } from './pages/DevelopmentEnvironmentsPage'
 import { useUI } from './state'
 
 interface SetupStatus {
@@ -30,6 +31,7 @@ interface SetupStatus {
 const navigation: Array<{ to: string; label: MessageKey }> = [
   { to: '/', label: 'overview' },
   { to: '/repositories', label: 'repositories' },
+  { to: '/development-environments', label: 'developmentEnvironments' },
   { to: '/installations', label: 'github' },
   { to: '/trigger-rules', label: 'rules' },
   { to: '/agent-profiles', label: 'profiles' },
@@ -78,6 +80,10 @@ export function App() {
         <Route
           path="repositories"
           element={<ResourcePage resource="repositories" title="仓库" />}
+        />
+        <Route
+          path="development-environments"
+          element={<DevelopmentEnvironmentsPage />}
         />
         <Route
           path="installations"

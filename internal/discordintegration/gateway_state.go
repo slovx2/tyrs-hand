@@ -102,7 +102,8 @@ func (s *ConversationService) Stop(ctx context.Context, guildID, threadID, reque
 	}
 	var profileID uuid.UUID
 	var repositoryID, projectID sql.NullString
-	if err := tx.QueryRowContext(ctx, `SELECT agent_profile_id, repository_id::text, project_id::text
+	if err := tx.QueryRowContext(ctx, `SELECT agent_profile_id, repository_id::text,
+		development_project_id::text
 		FROM discord_conversations WHERE id = $1`, conversationID).Scan(
 		&profileID, &repositoryID, &projectID); err != nil {
 		return 0, err

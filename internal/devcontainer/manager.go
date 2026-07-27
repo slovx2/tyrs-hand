@@ -33,6 +33,7 @@ type Manager struct {
 	browserEnabled            bool
 	browserFilesRoot          string
 	browserFilesHostRoot      string
+	developmentImage          string
 }
 
 func NewManager(cfg config.Config, db *sql.DB, logger *zap.Logger) (*Manager, error) {
@@ -59,6 +60,7 @@ func NewManager(cfg config.Config, db *sql.DB, logger *zap.Logger) (*Manager, er
 		sshEnabled: cfg.EnableSSH, sshAgentDir: cfg.SSHAgentDir,
 		sshAgentHostDir: cfg.SSHAgentHostDir, browserEnabled: cfg.BrowserMCPURL != "",
 		browserFilesRoot: cfg.BrowserFilesRoot, browserFilesHostRoot: cfg.BrowserFilesHostRoot,
+		developmentImage: cfg.DevelopmentImage,
 	}
 	if !manager.enabled {
 		return manager, nil
@@ -72,7 +74,7 @@ func NewManager(cfg config.Config, db *sql.DB, logger *zap.Logger) (*Manager, er
 func (m *Manager) Enabled() bool { return m != nil && m.enabled }
 
 func (m *Manager) Ensure(ctx context.Context, environmentID, forumID, conversationID uuid.UUID,
-	credential string,
+	_ string,
 ) (Runtime, error) {
 	if !m.Enabled() {
 		return Runtime{}, errors.New("discord 开发容器未启用")
@@ -94,17 +96,11 @@ func (m *Manager) Ensure(ctx context.Context, environmentID, forumID, conversati
 	if err != nil {
 		return Runtime{}, err
 	}
-	if item.Environment.Status == "pending" || item.Environment.Status == "error" || item.Environment.ContainerID == "" {
-		if err := m.provision(ctx, &item, credential, nil); err != nil {
-			m.failEnvironment(environmentID, err)
-			return Runtime{}, err
-		}
+	if item.Environment.Status != "running" || item.Environment.ContainerID == "" {
+		return Runtime{}, errors.New("长期开发环境尚未运行")
 	}
 	if item.Status != "ready" {
-		if err := m.prepareWorkspace(ctx, &item, credential); err != nil {
-			m.failWorkspace(forumID, err)
-			return Runtime{}, err
-		}
+		return Runtime{}, errors.New("开发项目不可用")
 	}
 	if _, err := m.docker(ctx, "start", item.Environment.ContainerName); err != nil {
 		return Runtime{}, err
@@ -125,6 +121,7 @@ func (m *Manager) Ensure(ctx context.Context, environmentID, forumID, conversati
 	return Runtime{
 		EnvironmentID: environmentID, ForumID: forumID, Container: item.Environment.ContainerName,
 		Workspace: filepath.ToSlash(filepath.Join(containerRoot, item.Relative)), CodexHome: codexHome,
+		ProjectKind: item.Kind, RemoteURL: item.CloneURL,
 		User: item.Environment.RuntimeUser, UID: item.Environment.RuntimeUID,
 		GID: item.Environment.RuntimeGID, Home: item.Environment.RuntimeHome,
 		AppServerSocket: filepath.Join(m.developmentRuntimeDir, environmentID.String(), "app-server.sock"),
@@ -142,9 +139,10 @@ func (m *Manager) Runtime(ctx context.Context, environmentID, forumID, conversat
 	}
 	return Runtime{
 		EnvironmentID: environmentID, ForumID: forumID, Container: item.Environment.ContainerName,
-		Workspace: filepath.ToSlash(filepath.Join(containerRoot, item.Relative)),
-		CodexHome: filepath.ToSlash(filepath.Join(containerRoot, "codex")),
-		User:      item.Environment.RuntimeUser, UID: item.Environment.RuntimeUID,
+		Workspace:   filepath.ToSlash(filepath.Join(containerRoot, item.Relative)),
+		CodexHome:   filepath.ToSlash(filepath.Join(containerRoot, "codex")),
+		ProjectKind: item.Kind, RemoteURL: item.CloneURL,
+		User: item.Environment.RuntimeUser, UID: item.Environment.RuntimeUID,
 		GID: item.Environment.RuntimeGID, Home: item.Environment.RuntimeHome,
 		AppServerSocket: filepath.Join(m.developmentRuntimeDir, environmentID.String(), "app-server.sock"),
 		RelaySocket:     filepath.Join(m.developmentRuntimeDir, environmentID.String(), "relay.sock"),
@@ -154,18 +152,17 @@ func (m *Manager) Runtime(ctx context.Context, environmentID, forumID, conversat
 func (m *Manager) loadWorkspace(ctx context.Context, environmentID, forumID uuid.UUID) (workspace, error) {
 	var item workspace
 	var imageRef, imageID, containerID, runtimeUser, runtimeHome sql.NullString
-	err := m.db.QueryRowContext(ctx, `SELECT fw.forum_id, fw.relative_path, fw.status, fw.branch,
-		CASE WHEN f.project_id IS NULL THEN 'repository' ELSE 'project' END,
-		COALESCE(r.owner || '/' || r.name, project.name, ''),
-		COALESCE(r.clone_url,''), COALESCE(r.default_branch,''),
+	err := m.db.QueryRowContext(ctx, `SELECT f.id, project.relative_path, 'ready',
+		COALESCE(project.branch,''), project.project_kind, project.name,
+		COALESCE(project.remote_url,''), '',
 		e.id, e.status, e.image_ref, e.image_id, e.container_name, e.container_id,
 		e.data_volume_name, e.home_volume_name, e.network_name, e.runtime_user,
 		COALESCE(e.runtime_uid, 0), COALESCE(e.runtime_gid, 0), e.runtime_home
-		FROM discord_forum_workspaces fw JOIN discord_development_environments e ON e.id = fw.environment_id
-		JOIN discord_forums f ON f.id = fw.forum_id
-		LEFT JOIN repositories r ON r.id = f.repository_id
-		LEFT JOIN projects project ON project.id=f.project_id
-		WHERE fw.forum_id = $1 AND e.id = $2`, forumID, environmentID).Scan(
+		FROM discord_forums f
+		JOIN discord_development_environments e ON e.id=f.development_environment_id
+		JOIN development_projects project ON project.id=f.development_project_id
+		WHERE f.id=$1 AND e.id=$2 AND f.binding_status='active'
+			AND project.availability_status='available'`, forumID, environmentID).Scan(
 		&item.ForumID, &item.Relative, &item.Status, &item.Branch, &item.Kind,
 		&item.Repository, &item.CloneURL, &item.DefaultRef,
 		&item.Environment.ID, &item.Environment.Status,
@@ -184,22 +181,6 @@ func (m *Manager) docker(ctx context.Context, arguments ...string) (string, erro
 		environment = []string{"DOCKER_HOST=" + m.dockerHost}
 	}
 	return m.runner.Run(ctx, environment, "", append([]string{m.dockerBin}, arguments...)...)
-}
-
-func (m *Manager) failEnvironment(id uuid.UUID, cause error) {
-	if m.db == nil {
-		return
-	}
-	_, _ = m.db.ExecContext(context.Background(), `UPDATE discord_development_environments
-		SET status = 'error', error = $2, updated_at = now() WHERE id = $1`, id, cause.Error())
-}
-
-func (m *Manager) failWorkspace(id uuid.UUID, cause error) {
-	if m.db == nil {
-		return
-	}
-	_, _ = m.db.ExecContext(context.Background(), `UPDATE discord_forum_workspaces
-		SET status = 'error', error = $2, updated_at = now() WHERE forum_id = $1`, id, cause.Error())
 }
 
 func parseIdentity(value string) (int64, int64, string, error) {

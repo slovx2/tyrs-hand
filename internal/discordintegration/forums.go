@@ -15,8 +15,8 @@ import (
 
 var channelNamePart = regexp.MustCompile(`[^a-z0-9-]+`)
 
-func (m *Manager) DevelopmentForumPlan(ctx context.Context, remoteGuild RemoteGuild,
-	memberID string, repositoryID uuid.UUID, requestedName string,
+func (m *Manager) DevelopmentProjectForumPlan(ctx context.Context, remoteGuild RemoteGuild,
+	projectID uuid.UUID, requestedName string,
 ) (InitializationPlan, error) {
 	settings, err := m.Settings(ctx)
 	if err != nil {
@@ -25,24 +25,23 @@ func (m *Manager) DevelopmentForumPlan(ctx context.Context, remoteGuild RemoteGu
 	if settings.GuildID == "" || settings.BotUserID == "" {
 		return InitializationPlan{}, errors.New("创建开发 Forum 前必须配置 Guild ID 和 Bot User ID")
 	}
-	var username, displayName, owner, repository string
-	err = m.db.QueryRowContext(ctx, `SELECT m.username, m.display_name, r.owner, r.name
-		FROM discord_members m CROSS JOIN repositories r
-		JOIN discord_identity_bindings b ON b.guild_id = m.guild_id
-			AND b.discord_user_id = m.discord_user_id AND b.status = 'active'
-		WHERE m.guild_id = $1 AND m.discord_user_id = $2 AND m.active = true
-			AND r.id = $3 AND r.enabled = true`, settings.GuildID, memberID, repositoryID).
-		Scan(&username, &displayName, &owner, &repository)
+	var memberID, username, displayName, projectName string
+	err = m.db.QueryRowContext(ctx, `SELECT environment.owner_discord_user_id,
+		member.username, member.display_name, project.name
+		FROM development_projects project
+		JOIN discord_development_environments environment ON environment.id=project.environment_id
+		JOIN discord_members member ON member.guild_id=environment.guild_id
+			AND member.discord_user_id=environment.owner_discord_user_id
+		WHERE project.id=$1 AND environment.guild_id=$2 AND member.active
+		  AND project.availability_status='available'
+		  AND environment.status IN ('ready','running')
+		  AND NOT EXISTS (
+			SELECT 1 FROM discord_forums forum
+			WHERE forum.development_project_id=project.id
+			  AND forum.binding_status='active')`, projectID, settings.GuildID).
+		Scan(&memberID, &username, &displayName, &projectName)
 	if err != nil {
-		return InitializationPlan{}, errors.New("成员必须已绑定 GitHub，且仓库必须处于启用状态")
-	}
-	var allowed bool
-	err = m.db.QueryRowContext(ctx, `SELECT EXISTS(
-		SELECT 1 FROM discord_forums f JOIN discord_forum_access a ON a.forum_id = f.id
-		WHERE f.repository_id = $1 AND f.forum_type = 'repository'
-			AND a.discord_user_id = $2 AND a.access_level = 'readonly')`, repositoryID, memberID).Scan(&allowed)
-	if err != nil || !allowed {
-		return InitializationPlan{}, errors.New("成员没有该仓库的 GitHub 读取权限")
+		return InitializationPlan{}, errors.New("项目不可用、环境未就绪或已经存在活跃 Forum")
 	}
 	categoryKey, categoryID, err := m.availableCodexCategory(ctx, settings.GuildID)
 	if err != nil {
@@ -55,8 +54,8 @@ func (m *Manager) DevelopmentForumPlan(ctx context.Context, remoteGuild RemoteGu
 			Name: fmt.Sprintf("Codex 会话 %02d", index), Kind: "category"})
 	}
 	forumID := uuid.New()
-	name := developmentForumName(remoteGuild, requestedName, displayName, username,
-		owner, repository, forumID)
+	name := developmentProjectForumName(remoteGuild, requestedName, displayName, username,
+		projectName, forumID)
 	if name == "" {
 		return InitializationPlan{}, errors.New("开发 Forum 名称无效")
 	}
@@ -66,7 +65,7 @@ func (m *Manager) DevelopmentForumPlan(ctx context.Context, remoteGuild RemoteGu
 		discord.PermissionSendMessagesInThreads | discord.PermissionAttachFiles | discord.PermissionEmbedLinks
 	botAllow := allow | discord.PermissionManageChannels | discord.PermissionManageThreads | discord.PermissionManageMessages
 	forum := ChannelSpec{Key: key, ParentKey: categoryKey, Name: name, Kind: "forum",
-		Topic: "Tyrs Hand 长期开发环境 · " + displayName + " · " + owner + "/" + repository,
+		Topic: "Tyrs Hand 个人长期开发环境 · " + displayName + " · " + projectName,
 		PermissionOverwrites: []PermissionSpec{
 			{ID: settings.GuildID, Type: "role", Deny: int64(discord.PermissionViewChannel)},
 			{ID: memberID, Type: "member", Allow: int64(allow)},
@@ -81,9 +80,138 @@ func (m *Manager) DevelopmentForumPlan(ctx context.Context, remoteGuild RemoteGu
 	if err != nil {
 		return InitializationPlan{}, err
 	}
-	plan.Actions = append(plan.Actions, InitializationAction{Kind: "forum.development.record",
-		Spec: forum, OwnerUserID: memberID, RepositoryID: repositoryID.String(), ForumID: forumID.String()})
+	plan.Actions = append(plan.Actions, InitializationAction{Kind: "forum.development_project.record",
+		Spec: forum, OwnerUserID: memberID, ProjectID: projectID.String(),
+		ForumID: forumID.String()})
 	return plan, nil
+}
+
+func developmentProjectForumName(guild RemoteGuild, requestedName, displayName, username,
+	project string, forumID uuid.UUID,
+) string {
+	if strings.TrimSpace(requestedName) != "" {
+		return channelName(requestedName)
+	}
+	member := displayName
+	if strings.TrimSpace(member) == "" {
+		member = username
+	}
+	base := channelName(member + "-" + project)
+	for _, channel := range guild.Channels {
+		if channelName(channel.Name) == base {
+			suffix := strings.ReplaceAll(forumID.String(), "-", "")[:6]
+			return channelName(base + "-" + suffix)
+		}
+	}
+	return base
+}
+
+func (m *Manager) RestoreDevelopmentForum(ctx context.Context, projectID,
+	forumID uuid.UUID,
+) error {
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `UPDATE discord_forums forum
+		SET binding_status='active'
+		FROM development_projects project
+		JOIN discord_development_environments environment ON environment.id=project.environment_id
+		WHERE forum.id=$2 AND forum.development_project_id=project.id
+		  AND project.id=$1 AND forum.forum_type='development'
+		  AND forum.binding_status='inactive'
+		  AND project.availability_status='available'
+		  AND environment.status IN ('ready','running')
+		  AND NOT EXISTS (
+			SELECT 1 FROM discord_forums active
+			WHERE active.development_project_id=project.id
+			  AND active.binding_status='active')`, projectID, forumID)
+	if err != nil {
+		return err
+	}
+	if changed, _ := result.RowsAffected(); changed != 1 {
+		return errors.New("无法恢复 Forum：项目缺失或已经存在活跃 Forum")
+	}
+	if err := syncForumPermissions(ctx, tx, forumID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (m *Manager) DisableDevelopmentForum(ctx context.Context, forumID uuid.UUID) error {
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `UPDATE discord_forums
+		SET binding_status='inactive'
+		WHERE id=$1 AND forum_type='development' AND binding_status='active'`, forumID)
+	if err != nil {
+		return err
+	}
+	if changed, _ := result.RowsAffected(); changed != 1 {
+		return errors.New("活跃开发 Forum 不存在")
+	}
+	if err := syncForumPermissions(ctx, tx, forumID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (m *Manager) EnableDevelopmentForum(ctx context.Context, forumID uuid.UUID) error {
+	var projectID uuid.UUID
+	if err := m.db.QueryRowContext(ctx, `SELECT development_project_id
+		FROM discord_forums WHERE id=$1 AND forum_type='development'`, forumID).
+		Scan(&projectID); err != nil {
+		return errors.New("开发 Forum 不存在")
+	}
+	return m.RestoreDevelopmentForum(ctx, projectID, forumID)
+}
+
+func (m *Manager) ForumAccess(ctx context.Context, forumID uuid.UUID) ([]ForumAccess, error) {
+	rows, err := m.db.QueryContext(ctx, `SELECT forum_id::text, discord_user_id, access_level
+		FROM discord_forum_access WHERE forum_id=$1 ORDER BY discord_user_id`, forumID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	result := make([]ForumAccess, 0)
+	for rows.Next() {
+		var item ForumAccess
+		if err := rows.Scan(&item.ForumID, &item.MemberID, &item.AccessLevel); err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+	return result, rows.Err()
+}
+
+func (m *Manager) SetDevelopmentProjectForumAccess(ctx context.Context, projectID,
+	forumID uuid.UUID, memberID, level string, administratorID uuid.UUID,
+) error {
+	var matches bool
+	if err := m.db.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM discord_forums
+		WHERE id=$2 AND development_project_id=$1 AND forum_type='development')`,
+		projectID, forumID).Scan(&matches); err != nil || !matches {
+		return errors.New("项目 Forum 不存在")
+	}
+	return m.SetForumAccess(ctx, forumID, memberID, level, administratorID)
+}
+
+func (m *Manager) DeleteDevelopmentProjectForumAccess(ctx context.Context, projectID,
+	forumID uuid.UUID, memberID string,
+) error {
+	var matches bool
+	if err := m.db.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM discord_forums
+		WHERE id=$2 AND development_project_id=$1 AND forum_type='development')`,
+		projectID, forumID).Scan(&matches); err != nil || !matches {
+		return errors.New("项目 Forum 不存在")
+	}
+	return m.DeleteForumAccess(ctx, forumID, memberID)
 }
 
 func developmentForumName(guild RemoteGuild, requestedName, displayName, username,
@@ -211,42 +339,79 @@ func (m *Manager) SetForumAccess(ctx context.Context, forumID uuid.UUID, memberI
 	if level != AccessReadOnly && level != AccessOperator {
 		return errors.New("forum 权限必须是 readonly 或 operator")
 	}
-	_, err := m.db.ExecContext(ctx, `INSERT INTO discord_forum_access
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	_, err = tx.ExecContext(ctx, `INSERT INTO discord_forum_access
 		(forum_id, discord_user_id, access_level, granted_by) VALUES ($1, $2, $3, $4)
 		ON CONFLICT(forum_id, discord_user_id) DO UPDATE SET access_level = EXCLUDED.access_level,
 			granted_by = EXCLUDED.granted_by, updated_at = now()`, forumID, memberID, level, administratorID)
 	if err != nil {
 		return err
 	}
-	return m.syncForumPermissions(ctx, forumID)
+	if err := syncForumPermissions(ctx, tx, forumID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (m *Manager) DeleteForumAccess(ctx context.Context, forumID uuid.UUID, memberID string) error {
-	_, err := m.db.ExecContext(ctx, `DELETE FROM discord_forum_access WHERE forum_id = $1 AND discord_user_id = $2`, forumID, memberID)
+	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	return m.syncForumPermissions(ctx, forumID)
+	defer func() { _ = tx.Rollback() }()
+	_, err = tx.ExecContext(ctx, `DELETE FROM discord_forum_access
+		WHERE forum_id = $1 AND discord_user_id = $2`, forumID, memberID)
+	if err != nil {
+		return err
+	}
+	if err := syncForumPermissions(ctx, tx, forumID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (m *Manager) syncForumPermissions(ctx context.Context, forumID uuid.UUID) error {
-	var guildID, channelID, ownerID, botID string
-	err := m.db.QueryRowContext(ctx, `SELECT f.guild_id, r.discord_id, f.owner_discord_user_id,
-		COALESCE(g.bot_user_id, '') FROM discord_forums f JOIN discord_resources r ON r.id = f.resource_id
+	return syncForumPermissions(ctx, m.db, forumID)
+}
+
+type forumPermissionStore interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func syncForumPermissions(ctx context.Context, store forumPermissionStore,
+	forumID uuid.UUID,
+) error {
+	var guildID, channelID, ownerID, botID, bindingStatus string
+	err := store.QueryRowContext(ctx, `SELECT f.guild_id, r.discord_id, f.owner_discord_user_id,
+		COALESCE(g.bot_user_id, ''), f.binding_status
+		FROM discord_forums f JOIN discord_resources r ON r.id = f.resource_id
 		JOIN discord_guilds g ON g.guild_id = f.guild_id WHERE f.id = $1 AND f.forum_type = 'development'`, forumID).
-		Scan(&guildID, &channelID, &ownerID, &botID)
+		Scan(&guildID, &channelID, &ownerID, &botID, &bindingStatus)
 	if err != nil {
 		return err
 	}
 	viewRead := discord.PermissionViewChannel | discord.PermissionReadMessageHistory
 	operate := viewRead | discord.PermissionSendMessages | discord.PermissionCreatePublicThreads |
 		discord.PermissionSendMessagesInThreads | discord.PermissionAttachFiles | discord.PermissionEmbedLinks
+	ownerPermission := PermissionSpec{ID: ownerID, Type: "member", Allow: int64(operate)}
+	if bindingStatus == "inactive" {
+		ownerPermission.Allow = int64(viewRead)
+		ownerPermission.Deny = int64(discord.PermissionSendMessages |
+			discord.PermissionCreatePublicThreads | discord.PermissionCreatePrivateThreads |
+			discord.PermissionSendMessagesInThreads)
+	}
 	permissions := []PermissionSpec{
 		{ID: guildID, Type: "role", Deny: int64(discord.PermissionViewChannel)},
-		{ID: ownerID, Type: "member", Allow: int64(operate)},
+		ownerPermission,
 		{ID: botID, Type: "member", Allow: int64(operate | discord.PermissionManageChannels | discord.PermissionManageThreads | discord.PermissionManageMessages)},
 	}
-	rows, err := m.db.QueryContext(ctx, `SELECT discord_user_id, access_level FROM discord_forum_access
+	rows, err := store.QueryContext(ctx, `SELECT discord_user_id, access_level FROM discord_forum_access
 		WHERE forum_id = $1 ORDER BY discord_user_id`, forumID)
 	if err != nil {
 		return err
@@ -258,16 +423,19 @@ func (m *Manager) syncForumPermissions(ctx context.Context, forumID uuid.UUID) e
 			return err
 		}
 		permission := PermissionSpec{ID: memberID, Type: "member", Allow: int64(viewRead)}
-		if level == AccessOperator {
+		if level == AccessOperator && bindingStatus == "active" {
 			permission.Allow = int64(operate)
 		} else {
-			permission.Deny = int64(discord.PermissionSendMessages | discord.PermissionCreatePublicThreads | discord.PermissionSendMessagesInThreads)
+			permission.Deny = int64(discord.PermissionSendMessages |
+				discord.PermissionCreatePublicThreads | discord.PermissionCreatePrivateThreads |
+				discord.PermissionSendMessagesInThreads)
 		}
 		permissions = append(permissions, permission)
 	}
 	if err := rows.Close(); err != nil {
 		return err
 	}
-	return NewSQLoutbox(m.db).Enqueue(ctx, "forum-permissions:"+forumID.String(), "channel.permissions",
-		"channels/"+channelID, map[string]any{"channelId": channelID, "permissions": permissions}, "")
+	return enqueueDiscordOutbox(ctx, store, "forum-permissions:"+forumID.String(),
+		"channel.permissions", "channels/"+channelID,
+		map[string]any{"channelId": channelID, "permissions": permissions}, "")
 }

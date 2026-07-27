@@ -41,7 +41,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-func TestUserEnvironmentSharesHomeAndKeepsIndependentRepositoryClones(t *testing.T) {
+func TestUserEnvironmentSharesHomeAndUsesExistingProjects(t *testing.T) {
 	ctx := context.Background()
 	db := developmentDatabase(t)
 	require.NoError(t, database.Migrate(ctx, db))
@@ -57,12 +57,15 @@ func TestUserEnvironmentSharesHomeAndKeepsIndependentRepositoryClones(t *testing
 	manager, err := NewManager(config.Config{
 		WorkerDataRoot: root, WorkerRole: "discord", EnableDevelopmentContainers: true,
 		DevelopmentRuntimeDir: runtimeRoot, DevelopmentRuntimeHostDir: runtimeRoot,
+		DevelopmentImage: "pending",
 	}, db, zap.NewNop())
 	require.NoError(t, err)
 	imageRef := buildDevelopmentTestImage(t, manager, root, "dev", 1001, "initial")
 	environmentID, firstForumID, secondForumID := seedDevelopmentEnvironment(t, db,
 		firstRepository, secondRepository, imageRef)
 	t.Cleanup(func() { cleanupDevelopmentResources(manager, environmentID) })
+	provisionSeedDevelopmentProjects(t, manager, environmentID, imageRef,
+		firstRepository, secondRepository)
 
 	conversationOne := mustUUID(t, "10000000-0000-0000-0000-000000000001")
 	first, err := manager.Ensure(ctx, environmentID, firstForumID, conversationOne, "")
@@ -142,16 +145,12 @@ ln -s "$HOME/.local/share/tyrs-hand/codex/versions/0.145.0-user" "$HOME/.local/s
 	require.NotEmpty(t, commitSHA)
 	_, err = manager.Git(ctx, first, "init", "--bare", first.Home+"/push.git")
 	require.NoError(t, err)
-	_, err = manager.Git(ctx, first, "remote", "set-url", "origin", first.Home+"/push.git")
+	_, err = manager.Git(ctx, first, "remote", "add", "origin", first.Home+"/push.git")
 	require.NoError(t, err)
-	branch, publishedSHA, err := manager.Publish(ctx, first, "")
+	branch, publishedSHA, err := manager.Publish(ctx, first)
 	require.NoError(t, err)
-	require.Equal(t, "tyrs-hand/discord/1", branch)
+	require.Equal(t, "main", branch)
 	require.Equal(t, commitSHA, publishedSHA)
-	unchangedSHA, err := manager.Commit(ctx, first, "test: no changes")
-	require.NoError(t, err)
-	require.Equal(t, commitSHA, unchangedSHA)
-
 	_, err = manager.docker(ctx, "stop", first.Container)
 	require.NoError(t, err)
 	first, err = manager.Ensure(ctx, environmentID, firstForumID, conversationOne, "")
@@ -171,9 +170,14 @@ ln -s "$HOME/.local/share/tyrs-hand/codex/versions/0.145.0-user" "$HOME/.local/s
 	testRemoteSSHAndDesktopProxy(t, manager, environmentID, first)
 
 	rebaseImage := buildDevelopmentTestImage(t, manager, root, "dev", 1001, "rebase")
+	manager.developmentImage = rebaseImage
 	_, err = db.ExecContext(ctx, `UPDATE discord_development_environments
-		SET status = 'pending', image_ref = $2 WHERE id = $1`, environmentID, rebaseImage)
+		SET status='building' WHERE id=$1`, environmentID)
 	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_development_operations
+		(environment_id,operation) VALUES ($1,'rebase')`, environmentID)
+	require.NoError(t, err)
+	manager.processOperation(ctx)
 	first, err = manager.Ensure(ctx, environmentID, firstForumID, conversationOne, "")
 	require.NoError(t, err)
 	require.Equal(t, "home", dockerRead(t, manager, first, first.Home+"/home-marker"))
@@ -183,55 +187,31 @@ ln -s "$HOME/.local/share/tyrs-hand/codex/versions/0.145.0-user" "$HOME/.local/s
 	require.Equal(t, "rebase", dockerRead(t, manager, first, "/image-version"))
 
 	invalidImage := buildDevelopmentTestImage(t, manager, root, "other", 1002, "invalid-user")
+	manager.developmentImage = invalidImage
+	var invalidOperationID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_development_operations
+		(environment_id,operation) VALUES ($1,'rebase') RETURNING id`, environmentID).
+		Scan(&invalidOperationID))
 	_, err = db.ExecContext(ctx, `UPDATE discord_development_environments
-		SET status = 'pending', image_ref = $2 WHERE id = $1`, environmentID, invalidImage)
+		SET status='building' WHERE id=$1`, environmentID)
 	require.NoError(t, err)
-	_, err = manager.Ensure(ctx, environmentID, firstForumID, conversationOne, "")
-	require.ErrorContains(t, err, "改变了 USER、UID/GID 或 Home")
+	manager.processOperation(ctx)
+	var invalidStatus string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status
+		FROM discord_development_operations WHERE id=$1`, invalidOperationID).
+		Scan(&invalidStatus))
+	require.Equal(t, "failed", invalidStatus)
 	require.Equal(t, "home", dockerRead(t, manager, first, first.Home+"/home-marker"))
 	require.Equal(t, "rebase", dockerRead(t, manager, first, "/image-version"))
-	var unsupportedOperationID uuid.UUID
-	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_development_operations
-		(environment_id, forum_id, operation) VALUES ($1, $2, 'rebase') RETURNING id`,
-		environmentID, secondForumID).Scan(&unsupportedOperationID))
-	manager.processOperation(ctx)
-	var unsupportedStatus string
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM discord_development_operations WHERE id = $1`,
-		unsupportedOperationID).Scan(&unsupportedStatus))
-	require.Equal(t, "failed", unsupportedStatus)
-
-	var dataVolume, homeVolume, network string
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT data_volume_name, home_volume_name, network_name
-		FROM discord_development_environments WHERE id = $1`, environmentID).
-		Scan(&dataVolume, &homeVolume, &network))
-	_, err = db.ExecContext(ctx, `INSERT INTO discord_development_operations
-		(environment_id, forum_id, operation) VALUES ($1, $2, 'delete_forum')`, environmentID, secondForumID)
+	_, err = db.ExecContext(ctx, `UPDATE discord_forums
+		SET binding_status='inactive' WHERE id=$1`, secondForumID)
 	require.NoError(t, err)
-	manager.processOperation(ctx)
-	var secondForumCount int
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_forums WHERE id = $1`,
-		secondForumID).Scan(&secondForumCount))
-	require.Zero(t, secondForumCount)
-	var operationType string
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT operation_type FROM integration_outbox
-		WHERE operation_key = $1`, "development-forum-delete:"+secondForumID.String()).Scan(&operationType))
-	require.Equal(t, "channel.delete", operationType)
-	_, err = db.ExecContext(ctx, `INSERT INTO discord_development_operations
-		(environment_id, forum_id, operation) VALUES ($1, $2, 'delete_environment')`, environmentID, firstForumID)
-	require.NoError(t, err)
-	manager.processOperation(ctx)
 	var environmentCount int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_development_environments WHERE id = $1`,
 		environmentID).Scan(&environmentCount))
-	require.Zero(t, environmentCount)
-	for kind, name := range map[string]string{"volume": dataVolume, "home": homeVolume, "network": network} {
-		inspectKind := kind
-		if kind == "home" {
-			inspectKind = "volume"
-		}
-		_, inspectErr := manager.docker(ctx, inspectKind, "inspect", name)
-		require.Error(t, inspectErr)
-	}
+	require.Equal(t, 1, environmentCount)
+	_, err = manager.Runtime(ctx, environmentID, secondForumID, conversationTwo)
+	require.Error(t, err, "停用 Forum 后不得启动新任务")
 }
 
 func developmentTestDockerfile(user string, uid int, version string) string {
@@ -814,20 +794,15 @@ func seedDevelopmentEnvironment(t *testing.T, db *sql.DB, firstClone, secondClon
 		(guild_id, discord_user_id, username, display_name)
 		VALUES ('100000000000000001', '1001', 'owner', 'Owner')`)
 	require.NoError(t, err)
-	var installationID uuid.UUID
-	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO scm_installations
-		(provider, external_id, account_login, account_type)
-		VALUES ('github', 7001, 'owner', 'Organization') RETURNING id`).Scan(&installationID))
-	insertRepository := func(externalID int64, name, clone string) uuid.UUID {
+	insertProject := func(environmentID uuid.UUID, name, clone string) uuid.UUID {
 		var id uuid.UUID
-		require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO repositories
-			(installation_id, provider, external_id, owner, name, default_branch, clone_url)
-			VALUES ($1, 'github', $2, 'owner', $3, 'main', $4) RETURNING id`,
-			installationID, externalID, name, clone).Scan(&id))
+		require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO development_projects
+			(environment_id,relative_path,name,project_kind,availability_status,
+			 branch,head_sha,dirty,remote_url,last_seen_at)
+			VALUES ($1,$2,$3,'git','available','main','seed',false,$4,now())
+			RETURNING id`, environmentID, "workspaces/"+name, name, clone).Scan(&id))
 		return id
 	}
-	firstRepositoryID := insertRepository(7002, "first", firstClone)
-	secondRepositoryID := insertRepository(7003, "second", secondClone)
 	environmentID := uuid.New()
 	compact := strings.ReplaceAll(environmentID.String(), "-", "")
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_development_environments
@@ -836,29 +811,53 @@ func seedDevelopmentEnvironment(t *testing.T, db *sql.DB, firstClone, secondClon
 		VALUES ($1, '100000000000000001', '1001', $2, $3, $4, $5, $6) RETURNING id`,
 		environmentID, imageRef, "tyrs-test-dev-"+compact, "tyrs-test-data-"+compact,
 		"tyrs-test-home-"+compact, "tyrs-test-net-"+compact).Scan(&environmentID))
-	insertForum := func(suffix string, repositoryID uuid.UUID) uuid.UUID {
+	firstProjectID := insertProject(environmentID, "first", firstClone)
+	secondProjectID := insertProject(environmentID, "second", secondClone)
+	insertForum := func(suffix string, projectID uuid.UUID) uuid.UUID {
 		forumID := uuid.New()
-		var repositoryName string
-		require.NoError(t, db.QueryRowContext(ctx, `SELECT name FROM repositories WHERE id = $1`,
-			repositoryID).Scan(&repositoryName))
 		var resourceID uuid.UUID
 		require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_resources
 			(guild_id, resource_key, discord_id, kind, name, managed_marker)
 			VALUES ('100000000000000001', $1, $2, 'forum', $3, $1) RETURNING id`,
 			"forum.development."+suffix, "800"+suffix, "dev-"+suffix).Scan(&resourceID))
 		require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_forums
-			(id, guild_id, resource_id, forum_type, owner_discord_user_id,
-			 repository_id, development_environment_id)
-			VALUES ($1, '100000000000000001', $2, 'development', '1001', $3, $4) RETURNING id`,
-			forumID, resourceID, repositoryID, environmentID).Scan(&forumID))
-		_, err := db.ExecContext(ctx, `INSERT INTO discord_forum_workspaces
-			(forum_id, environment_id, relative_path, branch)
-			VALUES ($1, $2, $3, $4)`, forumID, environmentID, "workspaces/"+repositoryName,
-			"tyrs-hand/discord/"+suffix)
-		require.NoError(t, err)
+				(id, guild_id, resource_id, forum_type, owner_discord_user_id,
+				 development_project_id, development_environment_id)
+				VALUES ($1, '100000000000000001', $2, 'development', '1001', $3, $4) RETURNING id`,
+			forumID, resourceID, projectID, environmentID).Scan(&forumID))
 		return forumID
 	}
-	return environmentID, insertForum("1", firstRepositoryID), insertForum("2", secondRepositoryID)
+	return environmentID, insertForum("1", firstProjectID), insertForum("2", secondProjectID)
+}
+
+func provisionSeedDevelopmentProjects(t *testing.T, manager *Manager,
+	environmentID uuid.UUID, imageRef, firstProject, secondProject string,
+) {
+	t.Helper()
+	ctx := context.Background()
+	var operation RemoteOperation
+	require.NoError(t, manager.db.QueryRowContext(ctx, `SELECT container_name,
+		data_volume_name,home_volume_name,network_name
+		FROM discord_development_environments WHERE id=$1`, environmentID).
+		Scan(&operation.ContainerName, &operation.DataVolume,
+			&operation.HomeVolume, &operation.Network))
+	operation.EnvironmentID, operation.ImageRef = environmentID, imageRef
+	runtime, err := manager.ProvisionRemoteEnvironment(ctx, &operation)
+	require.NoError(t, err)
+	for name, source := range map[string]string{
+		"first": firstProject, "second": secondProject,
+	} {
+		target := filepath.Join(containerRoot, "workspaces", name)
+		_, err = manager.docker(ctx, "exec", "--user", "0:0",
+			runtime.Container, "mkdir", "-p", target)
+		require.NoError(t, err)
+		_, err = manager.docker(ctx, "cp", filepath.Clean(source)+"/.",
+			runtime.Container+":"+target)
+		require.NoError(t, err)
+		_, err = manager.docker(ctx, "exec", "--user", "0:0", runtime.Container,
+			"chown", "-R", fmt.Sprintf("%d:%d", runtime.UID, runtime.GID), target)
+		require.NoError(t, err)
+	}
 }
 
 func cleanupDevelopmentResources(manager *Manager, environmentID uuid.UUID) {

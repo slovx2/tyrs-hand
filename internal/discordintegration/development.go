@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,31 +12,33 @@ import (
 )
 
 type DevelopmentEnvironment struct {
-	ID                 uuid.UUID          `json:"id"`
-	OwnerUserID        string             `json:"ownerDiscordUserId"`
-	OwnerName          string             `json:"ownerName"`
-	Status             string             `json:"status"`
-	ImageRef           string             `json:"imageRef"`
-	ImageID            string             `json:"imageId,omitempty"`
-	RuntimeUser        string             `json:"runtimeUser,omitempty"`
-	CodexVersion       string             `json:"codexVersion,omitempty"`
-	CodexUserOverride  bool               `json:"codexUserOverride"`
-	LastUsedAt         time.Time          `json:"lastUsedAt"`
-	Error              string             `json:"error,omitempty"`
-	ExecutionNodeID    *uuid.UUID         `json:"executionNodeId,omitempty"`
-	SSHPublicKey       string             `json:"sshPublicKey,omitempty"`
-	SSHFingerprint     string             `json:"sshFingerprint,omitempty"`
-	SSHPort            int                `json:"sshPort,omitempty"`
-	SSHDiscordUserID   string             `json:"sshDiscordUserId,omitempty"`
-	SSHDisplayName     string             `json:"sshDisplayName,omitempty"`
-	SSHConfigRevision  int64              `json:"sshConfigRevision"`
-	SSHAppliedRevision int64              `json:"sshAppliedRevision"`
-	DaemonStatus       string             `json:"daemonStatus"`
-	DaemonError        string             `json:"daemonError,omitempty"`
-	AppServerStatus    string             `json:"appServerStatus"`
-	SSHStatus          string             `json:"sshStatus"`
-	RelayStatus        string             `json:"relayStatus"`
-	Forums             []DevelopmentForum `json:"forums"`
+	ID                 uuid.UUID            `json:"id"`
+	OwnerUserID        string               `json:"ownerDiscordUserId"`
+	OwnerName          string               `json:"ownerName"`
+	Status             string               `json:"status"`
+	ImageRef           string               `json:"imageRef"`
+	ImageID            string               `json:"imageId,omitempty"`
+	RuntimeUser        string               `json:"runtimeUser,omitempty"`
+	CodexVersion       string               `json:"codexVersion,omitempty"`
+	CodexUserOverride  bool                 `json:"codexUserOverride"`
+	LastUsedAt         time.Time            `json:"lastUsedAt"`
+	Error              string               `json:"error,omitempty"`
+	ExecutionNodeID    *uuid.UUID           `json:"executionNodeId,omitempty"`
+	SSHPublicKey       string               `json:"sshPublicKey,omitempty"`
+	SSHFingerprint     string               `json:"sshFingerprint,omitempty"`
+	SSHPort            int                  `json:"sshPort,omitempty"`
+	SSHDiscordUserID   string               `json:"sshDiscordUserId,omitempty"`
+	SSHDisplayName     string               `json:"sshDisplayName,omitempty"`
+	SSHConfigRevision  int64                `json:"sshConfigRevision"`
+	SSHAppliedRevision int64                `json:"sshAppliedRevision"`
+	DaemonStatus       string               `json:"daemonStatus"`
+	DaemonError        string               `json:"daemonError,omitempty"`
+	AppServerStatus    string               `json:"appServerStatus"`
+	SSHStatus          string               `json:"sshStatus"`
+	RelayStatus        string               `json:"relayStatus"`
+	ProjectsScannedAt  *time.Time           `json:"projectsScannedAt,omitempty"`
+	ProjectScanError   string               `json:"projectScanError,omitempty"`
+	Projects           []DevelopmentProject `json:"projects"`
 }
 
 type DevelopmentEnvironmentSSHInput struct {
@@ -46,26 +48,27 @@ type DevelopmentEnvironmentSSHInput struct {
 }
 
 type DevelopmentForum struct {
-	ID            uuid.UUID  `json:"id"`
-	Name          string     `json:"name"`
-	DiscordID     string     `json:"discordId"`
-	RepositoryID  *uuid.UUID `json:"repositoryId,omitempty"`
-	ProjectID     *uuid.UUID `json:"projectId,omitempty"`
-	WorkspaceKind string     `json:"workspaceKind"`
-	Repository    string     `json:"repository"`
-	Status        string     `json:"status"`
-	Branch        string     `json:"branch"`
-	Dirty         bool       `json:"dirty"`
-	Error         string     `json:"error,omitempty"`
+	ID            uuid.UUID     `json:"id"`
+	Name          string        `json:"name"`
+	DiscordID     string        `json:"discordId"`
+	BindingStatus string        `json:"bindingStatus"`
+	Collaborators []ForumAccess `json:"collaborators"`
 }
 
-type DevelopmentDeletePreflight struct {
-	ForumID            uuid.UUID `json:"forumId"`
-	Dirty              bool      `json:"dirty"`
-	Unpushed           bool      `json:"unpushed"`
-	Active             bool      `json:"active"`
-	DeletesEnvironment bool      `json:"deletesEnvironment"`
-	Confirmation       string    `json:"confirmation"`
+type DevelopmentProject struct {
+	ID                  uuid.UUID          `json:"id"`
+	Name                string             `json:"name"`
+	RelativePath        string             `json:"relativePath"`
+	DesiredRelativePath string             `json:"desiredRelativePath,omitempty"`
+	ProjectKind         string             `json:"projectKind"`
+	AvailabilityStatus  string             `json:"availabilityStatus"`
+	Branch              string             `json:"branch,omitempty"`
+	HeadSHA             string             `json:"headSha,omitempty"`
+	Dirty               bool               `json:"dirty"`
+	RemoteURL           string             `json:"remoteUrl,omitempty"`
+	LastSeenAt          time.Time          `json:"lastSeenAt"`
+	ScanError           string             `json:"scanError,omitempty"`
+	Forums              []DevelopmentForum `json:"forums"`
 }
 
 func (m *Manager) DevelopmentEnvironments(ctx context.Context) ([]DevelopmentEnvironment, error) {
@@ -78,32 +81,22 @@ func (m *Manager) DevelopmentEnvironments(ctx context.Context) ([]DevelopmentEnv
 		COALESCE(NULLIF(ssh_dm.display_name, ''), ssh_dm.username, ''),
 		e.ssh_config_revision, e.ssh_applied_revision,
 		e.daemon_status, COALESCE(e.daemon_error, ''), e.app_server_status,
-		e.ssh_daemon_status, e.relay_status,
-		f.id, COALESCE(dr.name, ''), COALESCE(dr.discord_id, ''),
-		f.repository_id::text, f.project_id::text,
-		CASE WHEN f.project_id IS NULL THEN 'repository' ELSE 'project' END,
-		COALESCE(r.owner || '/' || r.name, project.name, ''), COALESCE(fw.status, ''),
-		COALESCE(fw.branch, ''), COALESCE(fw.dirty, false), COALESCE(fw.error, '')
+		e.ssh_daemon_status, e.relay_status, e.projects_scanned_at,
+		COALESCE(e.project_scan_error,'')
 		FROM discord_development_environments e
 		JOIN discord_members dm ON dm.guild_id = e.guild_id AND dm.discord_user_id = e.owner_discord_user_id
 		LEFT JOIN discord_members ssh_dm ON ssh_dm.guild_id = e.guild_id
 			AND ssh_dm.discord_user_id = e.ssh_discord_user_id
-		LEFT JOIN discord_forums f ON f.development_environment_id = e.id AND f.forum_type = 'development'
-		LEFT JOIN repositories r ON r.id = f.repository_id
-		LEFT JOIN projects project ON project.id=f.project_id
-		LEFT JOIN discord_resources dr ON dr.id = f.resource_id
-		LEFT JOIN discord_forum_workspaces fw ON fw.forum_id = f.id
-		ORDER BY lower(dm.display_name), lower(r.owner), lower(r.name), dr.name`)
+		ORDER BY lower(COALESCE(NULLIF(dm.display_name,''),dm.username)), e.created_at`)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	var result []DevelopmentEnvironment
-	byID := make(map[uuid.UUID]int)
+	result := make([]DevelopmentEnvironment, 0)
 	for rows.Next() {
 		var environment DevelopmentEnvironment
-		var forumID, executionNodeID, repositoryID, projectID sql.NullString
-		var forum DevelopmentForum
+		var executionNodeID sql.NullString
+		var projectsScannedAt sql.NullTime
 		if err := rows.Scan(&environment.ID, &environment.OwnerUserID, &environment.OwnerName,
 			&environment.Status, &environment.ImageRef, &environment.ImageID,
 			&environment.RuntimeUser, &environment.CodexVersion, &environment.CodexUserOverride,
@@ -112,49 +105,154 @@ func (m *Manager) DevelopmentEnvironments(ctx context.Context) ([]DevelopmentEnv
 			&environment.SSHPort, &environment.SSHDiscordUserID, &environment.SSHDisplayName,
 			&environment.SSHConfigRevision, &environment.SSHAppliedRevision,
 			&environment.DaemonStatus, &environment.DaemonError, &environment.AppServerStatus,
-			&environment.SSHStatus, &environment.RelayStatus,
-			&forumID, &forum.Name, &forum.DiscordID, &repositoryID, &projectID,
-			&forum.WorkspaceKind, &forum.Repository,
-			&forum.Status, &forum.Branch, &forum.Dirty, &forum.Error); err != nil {
+			&environment.SSHStatus, &environment.RelayStatus, &projectsScannedAt,
+			&environment.ProjectScanError); err != nil {
 			return nil, err
 		}
-		index, exists := byID[environment.ID]
-		if !exists {
-			if executionNodeID.Valid {
-				id, parseErr := uuid.Parse(executionNodeID.String)
-				if parseErr != nil {
-					return nil, parseErr
-				}
-				environment.ExecutionNodeID = &id
+		if executionNodeID.Valid {
+			id, parseErr := uuid.Parse(executionNodeID.String)
+			if parseErr != nil {
+				return nil, parseErr
 			}
-			environment.Forums = []DevelopmentForum{}
-			result = append(result, environment)
+			environment.ExecutionNodeID = &id
+		}
+		if projectsScannedAt.Valid {
+			environment.ProjectsScannedAt = &projectsScannedAt.Time
+		}
+		environment.Projects = []DevelopmentProject{}
+		result = append(result, environment)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	for index := range result {
+		projects, err := m.developmentProjects(ctx, result[index].ID)
+		if err != nil {
+			return nil, err
+		}
+		result[index].Projects = projects
+	}
+	return result, nil
+}
+
+func (m *Manager) developmentProjects(ctx context.Context,
+	environmentID uuid.UUID,
+) ([]DevelopmentProject, error) {
+	rows, err := m.db.QueryContext(ctx, `SELECT project.id, project.name,
+		project.relative_path, COALESCE(project.desired_relative_path,''),
+		project.project_kind, project.availability_status, COALESCE(project.branch,''),
+		COALESCE(project.head_sha,''), project.dirty, COALESCE(project.remote_url,''),
+		project.last_seen_at, COALESCE(project.scan_error,''),
+		forum.id::text, COALESCE(resource.name,''), COALESCE(resource.discord_id,''),
+		COALESCE(forum.binding_status,'')
+		FROM development_projects project
+		LEFT JOIN discord_forums forum ON forum.development_project_id=project.id
+			AND forum.forum_type='development'
+		LEFT JOIN discord_resources resource ON resource.id=forum.resource_id
+		WHERE project.environment_id=$1
+		ORDER BY lower(project.name), project.relative_path, forum.created_at`,
+		environmentID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	result := make([]DevelopmentProject, 0)
+	byID := make(map[uuid.UUID]int)
+	for rows.Next() {
+		var project DevelopmentProject
+		var forumID sql.NullString
+		var forum DevelopmentForum
+		if err := rows.Scan(&project.ID, &project.Name, &project.RelativePath,
+			&project.DesiredRelativePath, &project.ProjectKind, &project.AvailabilityStatus,
+			&project.Branch, &project.HeadSHA, &project.Dirty, &project.RemoteURL,
+			&project.LastSeenAt, &project.ScanError, &forumID, &forum.Name,
+			&forum.DiscordID, &forum.BindingStatus); err != nil {
+			return nil, err
+		}
+		index, exists := byID[project.ID]
+		if !exists {
+			project.Forums = []DevelopmentForum{}
+			result = append(result, project)
 			index = len(result) - 1
-			byID[environment.ID] = index
+			byID[project.ID] = index
 		}
 		if forumID.Valid {
 			forum.ID, err = uuid.Parse(forumID.String)
 			if err != nil {
 				return nil, err
 			}
-			if repositoryID.Valid {
-				repository, parseErr := uuid.Parse(repositoryID.String)
-				if parseErr != nil {
-					return nil, parseErr
-				}
-				forum.RepositoryID = &repository
-			}
-			if projectID.Valid {
-				project, parseErr := uuid.Parse(projectID.String)
-				if parseErr != nil {
-					return nil, parseErr
-				}
-				forum.ProjectID = &project
+			forum.Collaborators, err = m.ForumAccess(ctx, forum.ID)
+			if err != nil {
+				return nil, err
 			}
 			result[index].Forums = append(result[index].Forums, forum)
 		}
 	}
 	return result, rows.Err()
+}
+
+func (m *Manager) CreateDevelopmentEnvironment(ctx context.Context, ownerID string,
+	administratorID uuid.UUID,
+) (uuid.UUID, uuid.UUID, error) {
+	if m.developmentImage == "" {
+		return uuid.Nil, uuid.Nil, errors.New("尚未配置 TYRS_HAND_DEVELOPMENT_IMAGE")
+	}
+	settings, err := m.Settings(ctx)
+	if err != nil || settings.GuildID == "" {
+		return uuid.Nil, uuid.Nil, errors.New("Discord Guild 尚未配置")
+	}
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var eligible bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM discord_members member
+		WHERE member.guild_id=$1 AND member.discord_user_id=$2 AND member.active
+		  AND NOT EXISTS (
+			SELECT 1 FROM discord_development_environments environment
+			WHERE environment.guild_id=member.guild_id
+			  AND environment.owner_discord_user_id=member.discord_user_id))`,
+		settings.GuildID, ownerID).Scan(&eligible); err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+	if !eligible {
+		return uuid.Nil, uuid.Nil, errors.New("成员不活跃或已经拥有长期开发环境")
+	}
+	environmentID := uuid.New()
+	compact := strings.ReplaceAll(environmentID.String(), "-", "")
+	var nodeID uuid.UUID
+	err = tx.QueryRowContext(ctx, `SELECT node.id
+		FROM platform_settings setting
+		JOIN execution_nodes node ON node.id=(setting.value->>'nodeId')::uuid
+		WHERE setting.setting_key='execution.default.discord'
+		  AND node.enabled AND node.roles ? 'discord'`).Scan(&nodeID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return uuid.Nil, uuid.Nil, errors.New("尚未配置可用的 Discord 默认执行节点")
+	}
+	if err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO discord_development_environments
+		(id,guild_id,owner_discord_user_id,image_ref,container_name,data_volume_name,
+			home_volume_name,network_name,execution_node_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		environmentID, settings.GuildID, ownerID, m.developmentImage,
+		"tyrs-hand-dev-"+compact, "tyrs-hand-dev-data-"+compact,
+		"tyrs-hand-dev-home-"+compact, "tyrs-hand-dev-net-"+compact, nodeID)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+	var operationID uuid.UUID
+	err = tx.QueryRowContext(ctx, `INSERT INTO discord_development_operations
+		(environment_id,operation,requested_by,execution_node_id)
+		VALUES ($1,'provision_environment',$2,$3) RETURNING id`,
+		environmentID, administratorID, nodeID).Scan(&operationID)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+	return environmentID, operationID, tx.Commit()
 }
 
 func (m *Manager) SaveDevelopmentEnvironmentSSH(ctx context.Context, id uuid.UUID,
@@ -281,90 +379,4 @@ func (m *Manager) RebaseDevelopmentEnvironment(ctx context.Context, id uuid.UUID
 		return err
 	}
 	return tx.Commit()
-}
-
-func (m *Manager) DevelopmentForumDeletePreflight(ctx context.Context,
-	forumID uuid.UUID,
-) (DevelopmentDeletePreflight, error) {
-	var result DevelopmentDeletePreflight
-	result.ForumID = forumID
-	var environmentID uuid.UUID
-	var count int
-	err := m.db.QueryRowContext(ctx, `SELECT fw.environment_id, fw.dirty,
-		COALESCE(fw.head_sha IS DISTINCT FROM fw.base_sha, false),
-		EXISTS(SELECT 1 FROM discord_conversations c JOIN codex_turn_intents i
-			ON i.discord_conversation_id = c.id WHERE c.forum_id = fw.forum_id
-			AND i.status IN ('queued','retry_wait','dispatching','awaiting_confirmation','running','reconciling')),
-		(SELECT count(*) FROM discord_forum_workspaces other
-			WHERE other.environment_id = fw.environment_id AND other.status <> 'deleting')
-		FROM discord_forum_workspaces fw WHERE fw.forum_id = $1 AND fw.status <> 'deleting'`, forumID).
-		Scan(&environmentID, &result.Dirty, &result.Unpushed, &result.Active, &count)
-	if err != nil {
-		return DevelopmentDeletePreflight{}, err
-	}
-	result.DeletesEnvironment = count == 1
-	result.Confirmation = "DELETE " + forumID.String()
-	return result, nil
-}
-
-func (m *Manager) DeleteDevelopmentForum(ctx context.Context, forumID uuid.UUID,
-	confirmation string, administratorID uuid.UUID,
-) (uuid.UUID, error) {
-	tx, err := m.db.BeginTx(ctx, nil)
-	if err != nil {
-		return uuid.Nil, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	var environmentID uuid.UUID
-	err = tx.QueryRowContext(ctx, `SELECT fw.environment_id FROM discord_forum_workspaces fw
-		JOIN discord_development_environments e ON e.id = fw.environment_id
-		WHERE fw.forum_id = $1 AND fw.status <> 'deleting' FOR UPDATE OF e`, forumID).Scan(&environmentID)
-	if err != nil {
-		return uuid.Nil, err
-	}
-	preflight := DevelopmentDeletePreflight{ForumID: forumID, Confirmation: "DELETE " + forumID.String()}
-	var count int
-	err = tx.QueryRowContext(ctx, `SELECT fw.dirty,
-		COALESCE(fw.head_sha IS DISTINCT FROM fw.base_sha, false),
-		EXISTS(SELECT 1 FROM discord_conversations c JOIN codex_turn_intents i
-			ON i.discord_conversation_id = c.id WHERE c.forum_id = fw.forum_id
-			AND i.status IN ('queued','retry_wait','dispatching','awaiting_confirmation','running','reconciling')),
-		(SELECT count(*) FROM discord_forum_workspaces other
-			WHERE other.environment_id = fw.environment_id AND other.status <> 'deleting')
-		FROM discord_forum_workspaces fw WHERE fw.forum_id = $1 AND fw.status <> 'deleting'`, forumID).
-		Scan(&preflight.Dirty, &preflight.Unpushed, &preflight.Active, &count)
-	if err != nil {
-		return uuid.Nil, err
-	}
-	preflight.DeletesEnvironment = count == 1
-	if confirmation != preflight.Confirmation {
-		return uuid.Nil, fmt.Errorf("确认文本必须是 %q", preflight.Confirmation)
-	}
-	if preflight.Active {
-		return uuid.Nil, errors.New("Forum 仍有任务排队或运行，停止或等待任务结束后再删除")
-	}
-	operation := "delete_forum"
-	if preflight.DeletesEnvironment {
-		operation = "delete_environment"
-	}
-	var operationID uuid.UUID
-	err = tx.QueryRowContext(ctx, `INSERT INTO discord_development_operations
-		(environment_id, forum_id, operation, requested_by, execution_node_id)
-		SELECT $1, $2, $3, $4, execution_node_id FROM discord_development_environments
-		WHERE id = $1 AND execution_node_id IS NOT NULL RETURNING id`,
-		environmentID, forumID, operation, administratorID).Scan(&operationID)
-	if err != nil {
-		return uuid.Nil, err
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE discord_forum_workspaces SET status = 'deleting', updated_at = now()
-		WHERE forum_id = $1`, forumID); err != nil {
-		return uuid.Nil, err
-	}
-	if preflight.DeletesEnvironment {
-		if _, err = tx.ExecContext(ctx, `UPDATE discord_development_environments SET status = 'deleting',
-			updated_at = now() WHERE id = $1`, environmentID); err != nil {
-			return uuid.Nil, err
-		}
-	}
-	return operationID, tx.Commit()
 }

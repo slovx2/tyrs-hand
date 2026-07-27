@@ -210,13 +210,19 @@ func (c *DisgoConnector) newCodexModal(ctx context.Context, forumDiscordID, user
 func (c *DisgoConnector) authorizedForum(ctx context.Context, forumDiscordID, userID string) (
 	uuid.UUID, uuid.UUID, uuid.UUID, error,
 ) {
-	var forumID, repositoryID, profileID uuid.UUID
+	var forumID, profileID uuid.UUID
 	var owner string
-	err := c.manager.db.QueryRowContext(ctx, `SELECT f.id, f.repository_id, f.owner_discord_user_id,
+	err := c.manager.db.QueryRowContext(ctx, `SELECT f.id, f.owner_discord_user_id,
 		(SELECT id FROM agent_profiles ORDER BY created_at LIMIT 1)
 		FROM discord_forums f JOIN discord_resources r ON r.id = f.resource_id
-		WHERE f.guild_id = $1 AND r.discord_id = $2 AND f.forum_type = 'development'`,
-		c.guildID, forumDiscordID).Scan(&forumID, &repositoryID, &owner, &profileID)
+		JOIN development_projects project ON project.id=f.development_project_id
+		JOIN discord_development_environments environment
+			ON environment.id=f.development_environment_id
+		WHERE f.guild_id=$1 AND r.discord_id=$2 AND f.forum_type='development'
+			AND f.binding_status='active'
+			AND project.availability_status='available'
+			AND environment.status='running'`,
+		c.guildID, forumDiscordID).Scan(&forumID, &owner, &profileID)
 	if err != nil {
 		return uuid.Nil, uuid.Nil, uuid.Nil, errors.New("所选频道不是可用的开发 Forum")
 	}
@@ -229,7 +235,7 @@ func (c *DisgoConnector) authorizedForum(ctx context.Context, forumDiscordID, us
 			return uuid.Nil, uuid.Nil, uuid.Nil, errors.New("当前用户没有在该 Forum 新建 Codex 会话的权限")
 		}
 	}
-	return forumID, repositoryID, profileID, nil
+	return forumID, uuid.Nil, profileID, nil
 }
 
 func modelModalOptions(model string) ([]discord.StringSelectMenuOption, discord.TextInputComponent) {

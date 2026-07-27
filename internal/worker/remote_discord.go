@@ -32,14 +32,6 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	report("discord.progress", remoteEventPayload(map[string]string{
 		"state": "running", "detail": "已接收消息，正在准备工作区。",
 	}))
-	fetchCredential := ""
-	var err error
-	if snapshot.Development.WorkspaceKind != "project" {
-		fetchCredential, err = p.client.GitCredential(ctx, task, "fetch", "", "")
-		if err != nil {
-			return workerprotocol.CompleteRequest{}, err
-		}
-	}
 	runtimeCredential, err := p.client.EnvironmentRuntimeCredential(ctx,
 		snapshot.Development.EnvironmentID)
 	if err != nil {
@@ -52,7 +44,7 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	}
 	defer cleanupBrowserTask(p.cfg, task.Claimed.ID.String())
 	spec := remoteDevelopmentSpec(*snapshot.Development)
-	runtime, state, err := p.development.EnsureRemote(ctx, spec, fetchCredential,
+	runtime, state, err := p.development.EnsureRemote(ctx, spec, "",
 		processEnvironment)
 	p.reportDevelopmentState(ctx, task, state)
 	if err != nil {
@@ -62,15 +54,17 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	runtime.ModelBaseURL = runtimeCredential.BaseURL
 	runtime.ProcessEnvironment = processEnvironment
 	defer func() {
-		status, statusErr := p.development.Git(context.Background(), runtime,
-			"status", "--porcelain=v1")
-		head, headErr := p.development.Git(context.Background(), runtime, "rev-parse", "HEAD")
-		state.WorkspaceDirty = strings.TrimSpace(status) != ""
-		state.WorkspaceHeadSHA = strings.TrimSpace(head)
-		if statusErr != nil {
-			state.Error = statusErr.Error()
-		} else if headErr != nil {
-			state.Error = headErr.Error()
+		if snapshot.Development.WorkspaceKind == "git" {
+			status, statusErr := p.development.Git(context.Background(), runtime,
+				"status", "--porcelain=v1")
+			head, headErr := p.development.Git(context.Background(), runtime, "rev-parse", "HEAD")
+			state.WorkspaceDirty = strings.TrimSpace(status) != ""
+			state.WorkspaceHeadSHA = strings.TrimSpace(head)
+			if statusErr != nil {
+				state.Error = statusErr.Error()
+			} else if headErr != nil {
+				state.Error = headErr.Error()
+			}
 		}
 		p.reportDevelopmentState(context.Background(), task, state)
 	}()
@@ -101,7 +95,8 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 		NetworkEnabled:        settings.NetworkEnabled,
 		RuntimeConfig:         runtimeConfig,
 		DeveloperInstructions: browserDeveloperInstructions(p.cfg, discordintegration.MultiplayerDeveloperInstructions),
-		DynamicTools:          withBrowserTools(p.cfg, localGitSpec(snapshot.Development.WorkspaceKind != "project")),
+		DynamicTools: withBrowserTools(p.cfg,
+			developmentGitTools(snapshot.Development)...),
 	})
 	if err := codexRuntime.ValidateSkills(ctx, runtime.Workspace, skills); err != nil {
 		return workerprotocol.CompleteRequest{}, err
@@ -156,6 +151,13 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 		"state": "completed", "detail": "本轮处理完成。",
 	}))
 	return workerprotocol.CompleteRequest{Result: result}, nil
+}
+
+func developmentGitTools(spec *workerprotocol.DevelopmentSpec) []ports.DynamicToolSpec {
+	if spec.WorkspaceKind != "git" {
+		return nil
+	}
+	return []ports.DynamicToolSpec{localGitSpec(spec.CloneURL != "")}
 }
 
 func remoteDiscordEventReporter(report func(string, json.RawMessage)) func(string, json.RawMessage) {

@@ -55,24 +55,14 @@ func (s *Server) workerDevelopmentState(c *gin.Context) {
 		status, request.ImageRef, request.ImageID, request.ContainerID, request.RuntimeUser,
 		request.RuntimeUID, request.RuntimeGID, request.RuntimeHome, request.Error)
 	if err == nil {
-		workspaceStatus := request.WorkspaceStatus
-		if request.Error != "" {
-			workspaceStatus = "error"
-		}
-		_, err = tx.ExecContext(c.Request.Context(), `UPDATE discord_forum_workspaces SET
-			status = $2, head_sha = NULLIF($3,''), dirty = $4, error = NULLIF($5,''),
-			last_used_at = now(), updated_at = now() WHERE forum_id = $1`, request.ForumID,
-			workspaceStatus, request.WorkspaceHeadSHA, request.WorkspaceDirty, request.Error)
-	}
-	if err == nil {
-		projectStatus := "active"
-		if request.Error != "" {
-			projectStatus = "error"
-		}
-		_, err = tx.ExecContext(c.Request.Context(), `UPDATE projects SET status=$2,
-			error=NULLIF($3,''), updated_at=now()
-			WHERE id=(SELECT project_id FROM discord_forums WHERE id=$1)
-			AND status<>'disabled'`, request.ForumID, projectStatus, request.Error)
+		_, err = tx.ExecContext(c.Request.Context(), `UPDATE development_projects project SET
+			head_sha=CASE WHEN project.project_kind='git'
+				THEN COALESCE(NULLIF($2,''), project.head_sha) ELSE NULL END,
+			dirty=CASE WHEN project.project_kind='git' THEN $3 ELSE false END,
+			updated_at=now()
+			FROM discord_forums forum
+			WHERE forum.id=$1 AND forum.development_project_id=project.id`,
+			request.ForumID, request.WorkspaceHeadSHA, request.WorkspaceDirty)
 	}
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "保存开发环境状态失败", err)

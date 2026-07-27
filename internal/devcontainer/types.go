@@ -27,6 +27,8 @@ type Runtime struct {
 	Container          string
 	Workspace          string
 	CodexHome          string
+	ProjectKind        string
+	RemoteURL          string
 	User               string
 	UID                int64
 	GID                int64
@@ -74,11 +76,14 @@ type RemoteOperation struct {
 	EnvironmentID      uuid.UUID
 	Operation          string
 	ContainerName      string
+	ContainerID        string
 	ImageRef           string
+	ImageID            string
 	DataVolume         string
 	HomeVolume         string
 	Network            string
 	Workspace          string
+	TargetWorkspace    string
 	ConversationIDs    []uuid.UUID
 	RuntimeUser        string
 	RuntimeUID         int64

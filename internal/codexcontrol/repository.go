@@ -89,14 +89,15 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 			WHERE c.id = $1`, request.DiscordConversationID).
 			Scan(&executionNodeID, &developmentEnvironmentID)
 		err := tx.QueryRowContext(ctx, `INSERT INTO codex_thread_controls
-			(source_type, discord_conversation_id, repository_id, project_id, agent_profile_id,
+			(source_type, discord_conversation_id, repository_id, development_project_id, agent_profile_id,
 			 execution_node_id, development_environment_id)
 			VALUES ('discord_conversation', $1, NULLIF($2::text, '')::uuid,
 			 NULLIF($3::text, '')::uuid, $4, NULLIF($5,'')::uuid, NULLIF($6,'')::uuid)
 			ON CONFLICT(discord_conversation_id) WHERE discord_conversation_id IS NOT NULL
 			DO UPDATE SET repository_id = COALESCE(EXCLUDED.repository_id,
 				codex_thread_controls.repository_id),
-				project_id = COALESCE(EXCLUDED.project_id, codex_thread_controls.project_id),
+				development_project_id = COALESCE(EXCLUDED.development_project_id,
+					codex_thread_controls.development_project_id),
 				execution_node_id = COALESCE(codex_thread_controls.execution_node_id,
 					EXCLUDED.execution_node_id),
 				development_environment_id = COALESCE(codex_thread_controls.development_environment_id,
@@ -170,7 +171,8 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 	}
 	err := tx.QueryRowContext(ctx, `INSERT INTO codex_turn_intents(
 		control_id, sequence_no, operation, behavior, source_type, work_item_id,
-		discord_conversation_id, discord_message_id, repository_id, project_id, agent_profile_id,
+		discord_conversation_id, discord_message_id, repository_id, development_project_id,
+		agent_profile_id,
 		webhook_delivery_id, trigger_rule_id, trigger_evidence, idempotency_key,
 		instruction, skills, allowed_tools, dangerous_actions, priority,
 		actor_login, actor_permission, actor_participant_id, actor_display_name,
@@ -253,8 +255,15 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 		FROM codex_thread_controls c
 		WHERE c.status <> 'error'
 		  AND c.lifecycle_state = 'active'
-		  AND (c.project_id IS NULL OR EXISTS (
-			SELECT 1 FROM projects project WHERE project.id=c.project_id AND project.status='active'))
+		  AND (c.development_project_id IS NULL OR EXISTS (
+			SELECT 1 FROM development_projects project
+			WHERE project.id=c.development_project_id
+			  AND project.availability_status='available'))
+		  AND ($2 <> 'discord_conversation' OR EXISTS (
+			SELECT 1 FROM discord_conversations conversation
+			JOIN discord_forums forum ON forum.id=conversation.forum_id
+			WHERE conversation.id=c.discord_conversation_id
+			  AND forum.binding_status='active'))
 		  AND ($3 = '' OR c.execution_node_id = $3::uuid)
 			  AND ($2 <> 'discord_conversation' OR NOT EXISTS (
 				SELECT 1 FROM discord_conversations dc
@@ -283,7 +292,8 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 	var externalThreadID, codexHomeKey sql.NullString
 	err = tx.QueryRowContext(ctx, `SELECT i.id, i.sequence_no, i.operation, COALESCE(i.behavior,''),
 		i.source_type, COALESCE(i.input_surface,''), i.work_item_id::text, i.discord_conversation_id::text,
-		i.repository_id::text, i.project_id::text, i.agent_profile_id, COALESCE(i.discord_message_id,''),
+		i.repository_id::text, i.development_project_id::text, i.agent_profile_id,
+		COALESCE(i.discord_message_id,''),
 		i.instruction, i.skills, i.allowed_tools, i.dangerous_actions,
 		i.actor_login, i.actor_permission, i.actor_participant_id::text,
 		i.actor_display_name, i.reply_policy, i.reply_status,

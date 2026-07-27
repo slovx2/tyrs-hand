@@ -402,7 +402,7 @@ func (c *desktopRelayController) desktopWorkspaceAllowsPublish(cwd string) bool 
 	for _, forum := range forums {
 		workspace, err := devcontainer.ContainerWorkspacePath(forum.WorkspaceRelative)
 		if err == nil && workspace == cwd {
-			return forum.WorkspaceKind == "repository"
+			return forum.WorkspaceKind == "git"
 		}
 	}
 	return false

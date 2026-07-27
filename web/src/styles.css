@@ -73,9 +73,7 @@ body {
   min-height: 100vh;
   margin: 0;
   color: var(--ink);
-  background:
-    radial-gradient(70rem 38rem at 78% -18%, var(--ambient), transparent 68%),
-    var(--canvas);
+  background: var(--canvas);
   transition:
     color 180ms ease,
     background-color 180ms ease;
@@ -102,7 +100,7 @@ a {
 
 h1,
 h2 {
-  letter-spacing: -0.035em;
+  letter-spacing: 0;
 }
 
 ::selection {
@@ -121,7 +119,7 @@ h2 {
   gap: 0.65rem;
   color: var(--ink);
   font-weight: 720;
-  letter-spacing: -0.035em;
+  letter-spacing: 0;
 }
 
 .brand-logo {
@@ -465,6 +463,448 @@ h2 {
 
 .table-row:hover {
   background: var(--hover);
+}
+
+.development-page-header,
+.development-environment-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.development-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-top: 2rem;
+  border-block: 1px solid var(--border);
+  padding-block: 0.9rem;
+}
+
+.development-metric {
+  display: inline-flex;
+  min-width: 7rem;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.development-metric strong {
+  margin-left: auto;
+  font-size: 1.1rem;
+}
+
+.development-metric.is-warning,
+.status-badge.is-danger {
+  color: #b42318;
+}
+
+:root.dark .development-metric.is-warning,
+:root.dark .status-badge.is-danger {
+  color: #ffb4ab;
+}
+
+.development-environment-list {
+  margin-top: 2rem;
+}
+
+.development-environment {
+  border-top: 1px solid var(--border-strong);
+  padding-block: 1.5rem 2rem;
+}
+
+.development-environment:last-child {
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.development-empty,
+.project-empty {
+  border-block: 1px solid var(--border);
+  padding: 2rem 0;
+}
+
+.environment-facts {
+  display: grid;
+  grid-template-columns: minmax(12rem, 2fr) minmax(9rem, 1fr) minmax(10rem, 1fr);
+  gap: 0.7rem 1.25rem;
+  margin-top: 0.8rem;
+}
+
+.environment-facts dt,
+.runtime-status-grid dt {
+  color: var(--ink-muted);
+  font-size: 0.7rem;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+
+.environment-facts dd,
+.runtime-status-grid dd {
+  overflow: hidden;
+  margin: 0.2rem 0 0;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-badge,
+.project-kind,
+.forum-binding {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  padding: 0.12rem 0.45rem;
+  color: var(--ink-muted);
+  background: var(--surface-muted);
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.status-badge.is-success,
+.forum-binding.is-active {
+  border-color: color-mix(in srgb, #168a52 40%, var(--border));
+  color: #126b42;
+  background: color-mix(in srgb, #168a52 9%, var(--surface));
+}
+
+:root.dark .status-badge.is-success,
+:root.dark .forum-binding.is-active {
+  color: #78d6a7;
+}
+
+.environment-alert,
+.missing-message {
+  margin-top: 1rem;
+  border-left: 3px solid #b42318;
+  color: var(--ink);
+  background: color-mix(in srgb, #b42318 7%, var(--surface));
+  padding: 0.75rem 0.9rem;
+  font-size: 0.85rem;
+}
+
+.environment-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.environment-tabs button {
+  display: inline-flex;
+  cursor: pointer;
+  align-items: center;
+  gap: 0.45rem;
+  border-bottom: 2px solid transparent;
+  color: var(--ink-muted);
+  padding: 0.65rem 0.8rem;
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+.environment-tabs button:hover,
+.environment-tabs button.is-active {
+  color: var(--ink);
+}
+
+.environment-tabs button.is-active {
+  border-bottom-color: var(--ink);
+}
+
+.environment-tabs button span {
+  min-width: 1.2rem;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  padding-inline: 0.35rem;
+  font-size: 0.7rem;
+  text-align: center;
+}
+
+.project-table {
+  overflow: hidden;
+  margin-top: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+
+.project-table-head,
+.development-project-grid {
+  display: grid;
+  grid-template-columns:
+    minmax(10rem, 1.65fr) minmax(4.5rem, 0.5fr) minmax(9rem, 1.35fr)
+    minmax(4.5rem, 0.55fr) minmax(7rem, 1fr) 2.5rem;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.project-table-head {
+  color: var(--ink-muted);
+  background: var(--surface-muted);
+  padding: 0.55rem 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 650;
+}
+
+.development-project {
+  border-top: 1px solid var(--border);
+}
+
+.development-project:first-of-type {
+  border-top: 0;
+}
+
+.development-project.is-missing {
+  background: color-mix(in srgb, #b42318 5%, var(--surface));
+}
+
+.development-project-grid {
+  position: relative;
+  min-height: 4.4rem;
+  padding: 0.65rem 0.75rem;
+}
+
+.project-identity,
+.project-git-status {
+  min-width: 0;
+}
+
+.project-path,
+.project-remote {
+  display: block;
+  overflow: hidden;
+  margin-top: 0.25rem;
+  color: var(--ink-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-git-status > span:not(.project-remote) {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.22rem;
+  margin-right: 0.55rem;
+  font-size: 0.72rem;
+}
+
+.dirty-indicator {
+  color: #b54708;
+  font-weight: 700;
+}
+
+:root.dark .dirty-indicator {
+  color: #fdb022;
+}
+
+.project-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.project-row-error {
+  margin: -0.35rem 0.75rem 0.7rem;
+  font-size: 0.75rem;
+}
+
+.project-forum-panel {
+  border-top: 1px solid var(--border);
+  background: var(--surface-raised);
+  padding: 1rem;
+}
+
+.active-forum {
+  border-left: 2px solid var(--border-strong);
+  padding-left: 1rem;
+}
+
+.new-forum-form,
+.collaborator-form {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) auto;
+  align-items: end;
+  gap: 0.6rem;
+}
+
+.forum-history,
+.forum-collaborators,
+.ssh-section {
+  margin-top: 1rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+
+.forum-history-row,
+.collaborator-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 2.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  background: var(--surface);
+  padding: 0.4rem 0.55rem;
+}
+
+.collaborator-form {
+  grid-template-columns: minmax(9rem, 1fr) minmax(7rem, 0.55fr) auto;
+}
+
+.collaborator-row {
+  grid-template-columns: minmax(0, 1fr) auto 2rem;
+}
+
+.runtime-panel {
+  padding-top: 1rem;
+}
+
+.runtime-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.runtime-status-grid > div {
+  min-width: 0;
+  border-left: 2px solid var(--border);
+  padding-left: 0.75rem;
+}
+
+.ssh-form-grid {
+  display: grid;
+  grid-template-columns: minmax(16rem, 1.5fr) minmax(12rem, 0.7fr);
+  gap: 1rem;
+}
+
+.icon-label-button {
+  gap: 0.45rem;
+  white-space: nowrap;
+}
+
+.icon-button {
+  display: inline-grid;
+  width: 2rem;
+  height: 2rem;
+  cursor: pointer;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 0.4rem;
+  color: var(--ink-muted);
+  background: transparent;
+}
+
+.icon-button:hover:not(:disabled) {
+  border-color: var(--border);
+  color: var(--ink);
+  background: var(--surface-muted);
+}
+
+.icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.rotate-180 {
+  transform: rotate(180deg);
+}
+
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.modal-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 48%);
+  padding: 1rem;
+}
+
+.modal-dialog {
+  width: min(30rem, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  box-shadow: 0 28px 70px -32px rgb(0 0 0 / 70%);
+  padding: 1.25rem;
+}
+
+@media (max-width: 800px) {
+  .development-page-header,
+  .development-environment-header {
+    display: grid;
+  }
+
+  .environment-facts,
+  .runtime-status-grid,
+  .ssh-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .project-table-head {
+    display: none;
+  }
+
+  .development-project-grid {
+    grid-template-columns: 1fr;
+    gap: 0.55rem;
+    padding: 0.85rem;
+  }
+
+  .development-project-grid > [data-label] {
+    display: grid;
+    grid-template-columns: 5.25rem minmax(0, 1fr);
+    align-items: start;
+    gap: 0.6rem;
+  }
+
+  .development-project-grid > [data-label]::before {
+    content: attr(data-label);
+    color: var(--ink-muted);
+    font-size: 0.7rem;
+    font-weight: 650;
+  }
+
+  .project-identity > div,
+  .project-identity > span,
+  .project-git-status > span {
+    grid-column: 2;
+  }
+
+  .project-identity > div {
+    grid-row: 1;
+  }
+
+  .project-path {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .project-actions {
+    position: absolute;
+    top: 0.7rem;
+    right: 0.55rem;
+  }
+
+  .new-forum-form,
+  .collaborator-form {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (min-width: 1024px) {

@@ -93,19 +93,17 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 		return nil, desktopThreadTarget{}, errors.New("不支持 path-based fork")
 	}
 	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT f.id, r.discord_id,
-		COALESCE(repo.owner || '/' || repo.name, project.name, ''), fw.relative_path,
+		project.name, project.relative_path,
 		COALESCE(e.ssh_discord_user_id, ''),
 		COALESCE(NULLIF(m.display_name, ''), m.username, '')
 		FROM discord_development_environments e
 		JOIN discord_forums f ON f.development_environment_id = e.id
 		JOIN discord_resources r ON r.id = f.resource_id
-		LEFT JOIN repositories repo ON repo.id = f.repository_id
-		LEFT JOIN projects project ON project.id=f.project_id
-		JOIN discord_forum_workspaces fw ON fw.forum_id = f.id
+		JOIN development_projects project ON project.id=f.development_project_id
 		LEFT JOIN discord_members m ON m.guild_id = e.guild_id
 			AND m.discord_user_id = e.ssh_discord_user_id
-		WHERE e.id = $1 AND e.execution_node_id = $2 AND e.status NOT IN ('deleting','error')
-		AND (f.project_id IS NULL OR project.status='active')`,
+		WHERE e.id = $1 AND e.execution_node_id = $2 AND e.status = 'running'
+		AND f.binding_status='active' AND project.availability_status='available'`,
 		request.EnvironmentID, workerNode(c).ID)
 	if err != nil {
 		return nil, desktopThreadTarget{}, err
@@ -266,15 +264,18 @@ func (s *Server) workerCompleteDesktopThread(c *gin.Context) {
 	defer func() { _ = tx.Rollback() }()
 	var status string
 	var environmentID, controlID, forumID, executionNodeID uuid.UUID
-	var sourceControl, repositoryID, projectID sql.NullString
+	var sourceControl, projectID sql.NullString
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT r.environment_id, r.status,
-		r.forum_id, r.source_control_id::text, f.repository_id::text, f.project_id::text,
+		r.forum_id, r.source_control_id::text, f.development_project_id::text,
 		e.execution_node_id
 			FROM desktop_thread_requests r JOIN discord_development_environments e
 			ON e.id = r.environment_id JOIN discord_forums f ON f.id = r.forum_id
-			WHERE r.id = $1 AND e.execution_node_id = $2 FOR UPDATE`,
+			JOIN development_projects project ON project.id=f.development_project_id
+			WHERE r.id = $1 AND e.execution_node_id = $2
+			AND e.status='running' AND f.binding_status='active'
+			AND project.availability_status='available' FOR UPDATE`,
 		requestID, workerNode(c).ID).Scan(&environmentID, &status, &forumID,
-		&sourceControl, &repositoryID, &projectID, &executionNodeID)
+		&sourceControl, &projectID, &executionNodeID)
 	if err != nil {
 		problem(c, http.StatusNotFound, "Desktop Thread reservation 不存在", err)
 		return
@@ -292,12 +293,12 @@ func (s *Server) workerCompleteDesktopThread(c *gin.Context) {
 		}
 		controlID = uuid.New()
 		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO codex_thread_controls
-			(id, source_type, repository_id, project_id, agent_profile_id, external_thread_id,
+			(id, source_type, repository_id, development_project_id, agent_profile_id, external_thread_id,
 			 execution_node_id, development_environment_id, model, reasoning_effort, service_tier,
 			 runtime_preferences_frozen_at, codex_home_key)
 			VALUES ($1,'desktop_thread',NULLIF($2,'')::uuid,NULLIF($3,'')::uuid,$4,$5,$6,$7,
 				NULLIF($8,''),NULLIF($9,''),NULLIF($10,''),now(),$11)`, controlID,
-			repositoryID.String, projectID.String, profileID, threadID,
+			"", projectID.String, profileID, threadID,
 			executionNodeID, environmentID, model, effort, tier, environmentID.String())
 		if err == nil {
 			_, err = tx.ExecContext(c.Request.Context(), `UPDATE desktop_thread_requests SET

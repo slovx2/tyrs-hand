@@ -4,6 +4,7 @@ const messages = {
   'zh-CN': {
     overview: '概览',
     repositories: '仓库',
+    developmentEnvironments: '开发环境',
     rules: '触发规则',
     profiles: 'Agent 配置',
     workItems: '工作项',
@@ -23,6 +24,7 @@ const messages = {
   'en-US': {
     overview: 'Overview',
     repositories: 'Repositories',
+    developmentEnvironments: 'Development environments',
     rules: 'Trigger rules',
     profiles: 'Agent profiles',
     workItems: 'Work items',

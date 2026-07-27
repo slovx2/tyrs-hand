@@ -125,26 +125,76 @@ func TestProvisionStartsInitialAppServerWithRuntimeCredential(t *testing.T) {
 	require.True(t, runner.contains("--env TYRS_HAND_MODEL_API_KEY=managed-secret"))
 }
 
-func TestPrepareProjectWorkspaceInitializesLocalGitWithoutClone(t *testing.T) {
+func TestScanRemoteProjectsClassifiesDirectoriesAndRedactsRemote(t *testing.T) {
 	runner := &recordingCommandRunner{resultFor: map[string]string{
-		"rev-parse HEAD": "0123456789abcdef",
+		"find /var/lib/tyrs-hand/workspaces": "atlas\x00notes\x00",
+		"workspaces/atlas/.git":              "1",
+		"workspaces/notes/.git":              "0",
+		"rev-parse --show-toplevel":          "/var/lib/tyrs-hand/workspaces/atlas",
+		"status --porcelain=v1":              " M README.md",
+		"symbolic-ref --short":               "main",
+		"rev-parse --verify HEAD":            "0123456789abcdef",
+		"remote get-url origin":              "https://token@example.invalid/owner/atlas.git?access_token=secret",
 	}}
 	manager := &Manager{dockerBin: "docker", dockerHost: "inherit", runner: runner}
-	item := workspace{
-		Kind: "project", Relative: "workspaces/projects/common-12345678",
-		Environment: environment{
+	projects, err := manager.ScanRemoteProjects(context.Background(),
+		workerprotocol.EnvironmentManifest{
 			ContainerName: "development", RuntimeUID: 1000, RuntimeGID: 1000,
 			RuntimeHome: "/home/developer",
+		})
+	require.NoError(t, err)
+	require.Equal(t, []workerprotocol.DevelopmentProjectSnapshot{
+		{
+			Name: "atlas", RelativePath: "workspaces/atlas", ProjectKind: "git",
+			Branch: "main", HeadSHA: "0123456789abcdef", Dirty: true,
+			RemoteURL: "https://example.invalid/owner/atlas.git",
 		},
-	}
+		{Name: "notes", RelativePath: "workspaces/notes", ProjectKind: "directory"},
+	}, projects)
+	require.True(t, runner.contains("-type d ! -name .*"))
+}
 
-	require.NoError(t, manager.prepareWorkspace(context.Background(), &item, "unused-credential"))
-	require.Equal(t, "ready", item.Status)
-	require.True(t, runner.contains("git init --initial-branch=main"))
-	require.True(t, runner.contains("commit --allow-empty -m Initialize project"))
-	require.True(t, runner.contains("git rev-parse HEAD"))
-	require.False(t, runner.contains("clone"))
-	require.False(t, runner.contains("unused-credential"))
+func TestRelocateRemoteProjectIsAtomicAndIdempotent(t *testing.T) {
+	tests := []struct {
+		name         string
+		sourceExists string
+		targetExists string
+		wantMove     bool
+		wantError    string
+	}{
+		{name: "移动", sourceExists: "1", targetExists: "0", wantMove: true},
+		{name: "完成后重试", sourceExists: "0", targetExists: "1"},
+		{name: "目标冲突", sourceExists: "1", targetExists: "1",
+			wantError: "项目迁移目标已存在"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			runner := &recordingCommandRunner{resultFor: map[string]string{
+				"workspaces/source": test.sourceExists,
+				"workspaces/target": test.targetExists,
+			}}
+			manager := &Manager{enabled: true, dockerBin: "docker", dockerHost: "inherit",
+				runner: runner}
+			err := manager.RunRemoteOperation(context.Background(), RemoteOperation{
+				Operation: "relocate_project", ContainerName: "development",
+				Workspace: "workspaces/source", TargetWorkspace: "workspaces/target",
+			})
+			if test.wantError != "" {
+				require.ErrorContains(t, err, test.wantError)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, test.wantMove, runner.contains(
+				"mv -- /var/lib/tyrs-hand/workspaces/source /var/lib/tyrs-hand/workspaces/target"))
+		})
+	}
+}
+
+func TestRedactGitRemoteKeepsSSHAndRemovesHTTPSecrets(t *testing.T) {
+	require.Equal(t, "git@example.invalid:owner/repo.git",
+		RedactGitRemote("git@example.invalid:owner/repo.git"))
+	require.Equal(t, "https://example.invalid/owner/repo.git",
+		RedactGitRemote("https://user:password@example.invalid/owner/repo.git?token=secret"))
 }
 
 func TestRunRemoteDevelopmentOperations(t *testing.T) {
@@ -353,7 +403,8 @@ func TestEnsureRemoteUsesExistingEnvironment(t *testing.T) {
 	runtime, state, err := manager.EnsureRemote(context.Background(), RemoteSpec{
 		EnvironmentID: environmentID, ForumID: forumID, ConversationID: conversationID,
 		WorkspaceStatus: "ready", WorkspaceRelative: "workspaces/forum", WorkspaceBranch: "main",
-		Repository: "owner/repo", CloneURL: "https://example.invalid/owner/repo.git",
+		WorkspaceKind: "git",
+		Repository:    "owner/repo", CloneURL: "https://example.invalid/owner/repo.git",
 		DefaultRef: "main", EnvironmentStatus: "running", ImageRef: "dev-image",
 		ImageID: "sha256:image", ContainerName: "dev-container", ContainerID: "container-id",
 		DataVolume: "dev-data", HomeVolume: "dev-home", Network: "dev-network",

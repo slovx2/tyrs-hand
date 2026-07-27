@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func (m *Manager) provision(ctx context.Context, item *workspace, credential string,
+func (m *Manager) provision(ctx context.Context, item *workspace, _ string,
 	processEnvironment []string,
 ) error {
 	firstProvision := item.Environment.ContainerID == ""
@@ -132,123 +132,6 @@ func (m *Manager) restorePreviousContainer(backupName, containerName string) {
 	}
 	_, _ = m.docker(context.Background(), "rename", backupName, containerName)
 	_, _ = m.docker(context.Background(), "start", containerName)
-}
-
-func (m *Manager) cloneWorkspace(ctx context.Context, item *workspace, credential string) error {
-	if m.db != nil {
-		_, _ = m.db.ExecContext(ctx, `UPDATE discord_forum_workspaces
-			SET status = 'cloning', error = NULL, updated_at = now() WHERE forum_id = $1`, item.ForumID)
-	}
-	checkout, cleanup, err := m.checkoutRepository(ctx, item.CloneURL, item.DefaultRef, item.Branch, credential)
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-	return m.copyCheckout(ctx, item, checkout)
-}
-
-func (m *Manager) prepareWorkspace(ctx context.Context, item *workspace, credential string) error {
-	if item.Kind == "project" {
-		return m.initializeProjectWorkspace(ctx, item)
-	}
-	return m.cloneWorkspace(ctx, item, credential)
-}
-
-func (m *Manager) initializeProjectWorkspace(ctx context.Context, item *workspace) error {
-	if m.db != nil {
-		_, _ = m.db.ExecContext(ctx, `UPDATE discord_forum_workspaces
-			SET status='cloning', error=NULL, updated_at=now() WHERE forum_id=$1`, item.ForumID)
-	}
-	target := filepath.ToSlash(filepath.Join(containerRoot, item.Relative))
-	owner := fmt.Sprintf("%d:%d", item.Environment.RuntimeUID, item.Environment.RuntimeGID)
-	if _, err := m.docker(ctx, "exec", "--user", "0:0", item.Environment.ContainerName,
-		"mkdir", "-p", target); err != nil {
-		return err
-	}
-	if _, err := m.docker(ctx, "exec", "--user", "0:0", item.Environment.ContainerName,
-		"chown", "-R", owner, target); err != nil {
-		return err
-	}
-	base := []string{"exec", "--user", owner, "--env", "HOME=" + item.Environment.RuntimeHome,
-		"--workdir", target, item.Environment.ContainerName, "git"}
-	if _, err := m.docker(ctx, append(base, "init", "--initial-branch=main")...); err != nil {
-		return err
-	}
-	commit := append(base, "-c", "user.name=TyrsHand Agent",
-		"-c", "user.email=tyrs-hand[bot]@users.noreply.github.com",
-		"commit", "--allow-empty", "-m", "Initialize project")
-	if _, err := m.docker(ctx, commit...); err != nil {
-		return err
-	}
-	sha, err := m.docker(ctx, append(base, "rev-parse", "HEAD")...)
-	if err != nil {
-		return err
-	}
-	item.Status = "ready"
-	if m.db == nil {
-		return nil
-	}
-	_, err = m.db.ExecContext(ctx, `UPDATE discord_forum_workspaces SET status='ready',
-		base_sha=$2, head_sha=$2, dirty=false, error=NULL, last_used_at=now(), updated_at=now()
-		WHERE forum_id=$1`, item.ForumID, strings.TrimSpace(sha))
-	return err
-}
-
-func (m *Manager) checkoutRepository(ctx context.Context, cloneURL, defaultRef, branch, credential string) (string, func(), error) {
-	root := filepath.Join(m.dataRoot, "tmp")
-	if err := os.MkdirAll(root, 0o750); err != nil {
-		return "", func() {}, err
-	}
-	directory, err := os.MkdirTemp(root, "development-checkout-*")
-	if err != nil {
-		return "", func() {}, err
-	}
-	cleanup := func() { _ = os.RemoveAll(directory) }
-	askpass, askCleanup, err := createAskPass(credential)
-	if err != nil {
-		cleanup()
-		return "", func() {}, err
-	}
-	environment := []string{"GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=" + askpass, "TYRS_GIT_TOKEN=" + credential}
-	if _, err := m.runner.Run(ctx, environment, "", "git", "clone", "--branch", defaultRef,
-		"--single-branch", "--", cloneURL, directory); err != nil {
-		askCleanup()
-		cleanup()
-		return "", func() {}, err
-	}
-	askCleanup()
-	if branch != "" {
-		if _, err := m.runner.Run(ctx, nil, directory, "git", "checkout", "-b", branch); err != nil {
-			cleanup()
-			return "", func() {}, err
-		}
-	}
-	return directory, cleanup, nil
-}
-
-func (m *Manager) copyCheckout(ctx context.Context, item *workspace, checkout string) error {
-	target := filepath.ToSlash(filepath.Join(containerRoot, item.Relative))
-	owner := fmt.Sprintf("%d:%d", item.Environment.RuntimeUID, item.Environment.RuntimeGID)
-	if _, err := m.docker(ctx, "exec", "--user", "0:0", item.Environment.ContainerName,
-		"mkdir", "-p", target); err != nil {
-		return err
-	}
-	if _, err := m.docker(ctx, "cp", filepath.Clean(checkout)+"/.", item.Environment.ContainerName+":"+target); err != nil {
-		return err
-	}
-	if _, err := m.docker(ctx, "exec", "--user", "0:0", item.Environment.ContainerName,
-		"chown", "-R", owner, target); err != nil {
-		return err
-	}
-	sha, _ := m.runner.Run(ctx, nil, checkout, "git", "rev-parse", "HEAD")
-	if m.db == nil {
-		item.Status = "ready"
-		return nil
-	}
-	_, err := m.db.ExecContext(ctx, `UPDATE discord_forum_workspaces SET status = 'ready',
-		base_sha = $2, head_sha = $2, dirty = false, error = NULL, last_used_at = now(), updated_at = now()
-		WHERE forum_id = $1`, item.ForumID, sha)
-	return err
 }
 
 type developmentImageIdentity struct {

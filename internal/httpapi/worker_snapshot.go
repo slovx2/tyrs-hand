@@ -147,19 +147,18 @@ func (s *Server) loadDiscordWorkerSnapshot(ctx context.Context,
 	var development workerprotocol.DevelopmentSpec
 	var projectID sql.NullString
 	development.ConversationID = claimed.DiscordConversationID
-	err = s.db.QueryRowContext(ctx, `SELECT e.id, f.id, fw.status, fw.relative_path,
-		fw.branch, CASE WHEN f.project_id IS NULL THEN 'repository' ELSE 'project' END,
-		f.project_id::text, COALESCE(r.owner || '/' || r.name, project.name, ''),
-		COALESCE(r.clone_url,''), COALESCE(r.default_branch,''),
+	err = s.db.QueryRowContext(ctx, `SELECT e.id, f.id, 'ready', project.relative_path,
+		COALESCE(project.branch,''), project.project_kind,
+		project.id::text, project.name, COALESCE(project.remote_url,''), '',
 		e.status, COALESCE(e.image_ref,''), COALESCE(e.image_id,''), e.container_name,
 		COALESCE(e.container_id,''), e.data_volume_name, e.home_volume_name, e.network_name,
 		COALESCE(e.runtime_user,''), COALESCE(e.runtime_uid,0), COALESCE(e.runtime_gid,0),
 		COALESCE(e.runtime_home,'')
 		FROM discord_forums f
 		JOIN discord_development_environments e ON e.id = f.development_environment_id
-		JOIN discord_forum_workspaces fw ON fw.forum_id = f.id
-		LEFT JOIN repositories r ON r.id = f.repository_id
-		LEFT JOIN projects project ON project.id=f.project_id WHERE f.id = $1`, result.ForumID).
+		JOIN development_projects project ON project.id=f.development_project_id
+		WHERE f.id = $1 AND f.binding_status = 'active'
+			AND project.availability_status = 'available' AND e.status = 'running'`, result.ForumID).
 		Scan(&development.EnvironmentID, &development.ForumID,
 			&development.WorkspaceStatus, &development.WorkspaceRelative,
 			&development.WorkspaceBranch, &development.WorkspaceKind, &projectID,
@@ -221,19 +220,18 @@ func (s *Server) loadDesktopDiscordWorkerSnapshot(ctx context.Context,
 	development := &workerprotocol.DevelopmentSpec{}
 	var projectID sql.NullString
 	development.ConversationID, _ = uuid.Parse(conversationID)
-	err = s.db.QueryRowContext(ctx, `SELECT e.id, f.id, fw.status, fw.relative_path,
-		fw.branch, CASE WHEN f.project_id IS NULL THEN 'repository' ELSE 'project' END,
-		f.project_id::text, COALESCE(r.owner || '/' || r.name, project.name, ''),
-		COALESCE(r.clone_url,''), COALESCE(r.default_branch,''),
+	err = s.db.QueryRowContext(ctx, `SELECT e.id, f.id, 'ready', project.relative_path,
+		COALESCE(project.branch,''), project.project_kind,
+		project.id::text, project.name, COALESCE(project.remote_url,''), '',
 		e.status, COALESCE(e.image_ref,''), COALESCE(e.image_id,''), e.container_name,
 		COALESCE(e.container_id,''), e.data_volume_name, e.home_volume_name, e.network_name,
 		COALESCE(e.runtime_user,''), COALESCE(e.runtime_uid,0), COALESCE(e.runtime_gid,0),
 		COALESCE(e.runtime_home,'')
 		FROM discord_forums f
 		JOIN discord_development_environments e ON e.id = f.development_environment_id
-		JOIN discord_forum_workspaces fw ON fw.forum_id = f.id
-		LEFT JOIN repositories r ON r.id = f.repository_id
-		LEFT JOIN projects project ON project.id=f.project_id WHERE f.id = $1`, result.ForumID).
+		JOIN development_projects project ON project.id=f.development_project_id
+		WHERE f.id = $1 AND f.binding_status = 'active'
+			AND project.availability_status = 'available' AND e.status = 'running'`, result.ForumID).
 		Scan(&development.EnvironmentID, &development.ForumID,
 			&development.WorkspaceStatus, &development.WorkspaceRelative,
 			&development.WorkspaceBranch, &development.WorkspaceKind, &projectID,

@@ -14,7 +14,7 @@ import (
 var remoteEnvironmentLocks sync.Map
 
 func (m *Manager) EnsureRemote(ctx context.Context, spec RemoteSpec,
-	credential string, processEnvironment []string,
+	_ string, _ []string,
 ) (Runtime, RemoteState, error) {
 	if !m.Enabled() {
 		return Runtime{}, RemoteState{}, errors.New("discord 开发容器未启用")
@@ -42,17 +42,13 @@ func (m *Manager) EnsureRemote(ctx context.Context, spec RemoteSpec,
 		}
 		return result
 	}
-	if item.Environment.Status == "pending" || item.Environment.Status == "error" ||
-		item.Environment.ContainerID == "" {
-		provisionErr := m.provision(ctx, &item, credential, processEnvironment)
-		if provisionErr != nil {
-			return Runtime{}, state(provisionErr), provisionErr
-		}
+	if item.Environment.Status != "running" || item.Environment.ContainerID == "" {
+		err := errors.New("长期开发环境尚未运行")
+		return Runtime{}, state(err), err
 	}
 	if item.Status != "ready" {
-		if err := m.prepareWorkspace(ctx, &item, credential); err != nil {
-			return Runtime{}, state(err), err
-		}
+		err := errors.New("开发项目不可用")
+		return Runtime{}, state(err), err
 	}
 	if _, err := m.docker(ctx, "start", item.Environment.ContainerName); err != nil {
 		return Runtime{}, state(err), err
@@ -70,11 +66,15 @@ func (m *Manager) EnsureRemote(ctx context.Context, spec RemoteSpec,
 	runtime := Runtime{EnvironmentID: spec.EnvironmentID, ForumID: spec.ForumID,
 		Container: item.Environment.ContainerName,
 		Workspace: filepath.ToSlash(filepath.Join(containerRoot, item.Relative)), CodexHome: codexHome,
+		ProjectKind: item.Kind, RemoteURL: item.CloneURL,
 		User: item.Environment.RuntimeUser, UID: item.Environment.RuntimeUID,
 		GID: item.Environment.RuntimeGID, Home: item.Environment.RuntimeHome,
 		AppServerSocket: filepath.Join(m.developmentRuntimeDir, spec.EnvironmentID.String(), "app-server.sock"),
 		RelaySocket:     filepath.Join(m.developmentRuntimeDir, spec.EnvironmentID.String(), "relay.sock")}
 	result := state(nil)
+	if item.Kind != "git" {
+		return runtime, result, nil
+	}
 	status, statusErr := m.Git(ctx, runtime, "status", "--porcelain=v1")
 	head, headErr := m.Git(ctx, runtime, "rev-parse", "HEAD")
 	if statusErr != nil {

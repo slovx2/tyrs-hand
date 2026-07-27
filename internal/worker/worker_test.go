@@ -177,18 +177,18 @@ func TestProcessorHelpersAndLocalTools(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestProjectRejectsPublishBranchBeforeRequestingCredential(t *testing.T) {
+func TestDevelopmentProjectRejectsPublishWithoutRemote(t *testing.T) {
 	namespace := "git"
 	processor := &RemoteProcessor{}
 	_, err := processor.executeRemoteContainerGit(context.Background(), &workerprotocol.Task{
 		Claimed: codexcontrol.ClaimedControl{
 			Intent: codexcontrol.Intent{ProjectID: uuid.New()},
 		},
-	}, devcontainer.Runtime{}, codex.ToolCallRequest{
+	}, devcontainer.Runtime{ProjectKind: "git"}, codex.ToolCallRequest{
 		ThreadID: "thread", TurnID: "turn", CallID: "call", Namespace: &namespace,
 		Tool: "publish_branch",
 	})
-	require.ErrorContains(t, err, "普通项目没有远端")
+	require.ErrorContains(t, err, "当前项目没有远端")
 }
 
 func TestPrepareCodexRuntimeInjectsManagedCapabilities(t *testing.T) {
@@ -369,7 +369,7 @@ func TestDevelopmentOperationProcessEnvironmentIncludesScopedBrowserToken(t *tes
 		},
 	}
 
-	for _, operationName := range []string{"provision", "reconfigure", "rebase"} {
+	for _, operationName := range []string{"provision_environment", "reconfigure", "rebase"} {
 		t.Run(operationName, func(t *testing.T) {
 			environment, err := processor.developmentOperationProcessEnvironment(
 				context.Background(), &workerprotocol.DevelopmentOperation{

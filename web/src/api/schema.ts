@@ -390,39 +390,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/discord/development-environments": {
+    "/development-environments": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["listDiscordDevelopmentEnvironments"];
+        get: operations["listDevelopmentEnvironments"];
         put?: never;
+        post: operations["createDevelopmentEnvironment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/development-environments/{id}/rebase": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["rebaseDevelopmentEnvironment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/development-environments/{id}/ssh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["putDevelopmentEnvironmentSSH"];
         post?: never;
-        delete?: never;
+        delete: operations["deleteDevelopmentEnvironmentSSH"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/projects": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listProjects"];
-        put?: never;
-        post: operations["createProject"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/projects/{id}/retry": {
+    "/development-projects/{id}/forums": {
         parameters: {
             query?: never;
             header?: never;
@@ -431,14 +447,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["retryProject"];
+        post: operations["createDevelopmentProjectForum"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/projects/{id}/disable": {
+    "/development-forums/{id}/disable": {
         parameters: {
             query?: never;
             header?: never;
@@ -447,14 +463,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["disableProject"];
+        post: operations["disableDevelopmentForum"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/projects/{id}/enable": {
+    "/development-forums/{id}/enable": {
         parameters: {
             query?: never;
             header?: never;
@@ -463,88 +479,28 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["enableProject"];
+        post: operations["enableDevelopmentForum"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/discord/development-environments/{id}/rebase": {
+    "/development-projects/{id}/forums/{forumId}/collaborators/{memberId}": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+                forumId: string;
+                memberId: string;
+            };
             cookie?: never;
         };
         get?: never;
-        put?: never;
-        post: operations["rebaseDiscordDevelopmentEnvironment"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/discord/development-environments/{id}/ssh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put: operations["putDiscordDevelopmentEnvironmentSSH"];
+        put: operations["putDevelopmentProjectForumCollaborator"];
         post?: never;
-        delete: operations["deleteDiscordDevelopmentEnvironmentSSH"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/discord/development-forums/{id}/delete-preflight": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["preflightDiscordDevelopmentForumDeletion"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/discord/development-forums/{id}/delete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["deleteDiscordDevelopmentForum"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/discord/members/{id}/forum": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["createDiscordMemberForum"];
-        delete?: never;
+        delete: operations["deleteDevelopmentProjectForumCollaborator"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1830,24 +1786,43 @@ export interface components {
             bound: boolean;
             githubLogin?: string;
         };
-        DiscordDevelopmentForum: {
+        DevelopmentForumCollaborator: {
+            /** Format: uuid */
+            forumId: string;
+            memberId: string;
+            /** @enum {string} */
+            accessLevel: "readonly" | "operator";
+            administratorBypass: boolean;
+        };
+        DevelopmentForum: {
             /** Format: uuid */
             id: string;
             name: string;
             discordId: string;
-            /** Format: uuid */
-            repositoryId?: string;
-            /** Format: uuid */
-            projectId?: string;
             /** @enum {string} */
-            workspaceKind: "repository" | "project";
-            repository: string;
-            status: string;
-            branch: string;
-            dirty: boolean;
-            error?: string;
+            bindingStatus: "active" | "inactive";
+            collaborators: components["schemas"]["DevelopmentForumCollaborator"][];
         };
-        DiscordDevelopmentEnvironment: {
+        DevelopmentProject: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            relativePath: string;
+            desiredRelativePath?: string;
+            /** @enum {string} */
+            projectKind: "directory" | "git";
+            /** @enum {string} */
+            availabilityStatus: "available" | "missing";
+            branch?: string;
+            headSha?: string;
+            dirty: boolean;
+            remoteUrl?: string;
+            /** Format: date-time */
+            lastSeenAt: string;
+            scanError?: string;
+            forums: components["schemas"]["DevelopmentForum"][];
+        };
+        DevelopmentEnvironment: {
             /** Format: uuid */
             id: string;
             ownerDiscordUserId: string;
@@ -1861,6 +1836,8 @@ export interface components {
             /** Format: date-time */
             lastUsedAt: string;
             error?: string;
+            /** Format: uuid */
+            executionNodeId?: string;
             sshPublicKey?: string;
             readonly sshFingerprint?: string;
             sshPort?: number;
@@ -1879,54 +1856,35 @@ export interface components {
             sshStatus: "disabled" | "pending" | "starting" | "running" | "error";
             /** @enum {string} */
             relayStatus: "pending" | "starting" | "running" | "error";
-            forums: components["schemas"]["DiscordDevelopmentForum"][];
+            /** Format: date-time */
+            projectsScannedAt?: string;
+            projectScanError?: string;
+            projects: components["schemas"]["DevelopmentProject"][];
         };
-        DiscordDevelopmentEnvironmentSSHInput: {
+        DevelopmentEnvironmentList: {
+            items: components["schemas"]["DevelopmentEnvironment"][];
+        };
+        DevelopmentEnvironmentSSHInput: {
             publicKey: string;
             port: number;
             discordUserId: string;
         };
-        DiscordDevelopmentDeletePreflight: {
-            /** Format: uuid */
-            forumId: string;
-            dirty: boolean;
-            unpushed: boolean;
-            active: boolean;
-            deletesEnvironment: boolean;
-            confirmation: string;
-        };
-        IDResource: {
-            /** Format: uuid */
-            id: string;
-        };
-        Project: {
-            /** Format: uuid */
-            id: string;
-            name: string;
-            /** @enum {string} */
-            status: "provisioning" | "active" | "disabled" | "error";
-            error?: string;
-            ownerDiscordUserId: string;
-            ownerName: string;
-            /** Format: uuid */
-            forumId: string;
-            forumName?: string;
-            discordId?: string;
-            /** Format: uuid */
-            environmentId?: string;
-            workspaceStatus?: string;
-            workspaceRelative?: string;
-            branch?: string;
-            headSha?: string;
-            dirty: boolean;
-            /** Format: uuid */
-            initializationId?: string;
-        };
-        ProjectOperation: {
+        DevelopmentEnvironmentOperation: {
             /** Format: uuid */
             id: string;
             /** Format: uuid */
             operationId: string;
+        };
+        DevelopmentProjectForumInput: {
+            /** @enum {string} */
+            mode: "new" | "restore";
+            /** Format: uuid */
+            forumId?: string;
+            name?: string;
+        };
+        IDResource: {
+            /** Format: uuid */
+            id: string;
         };
         ResourceList: {
             items: {
@@ -2880,7 +2838,7 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    listDiscordDevelopmentEnvironments: {
+    listDevelopmentEnvironments: {
         parameters: {
             query?: never;
             header?: never;
@@ -2895,36 +2853,13 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DiscordDevelopmentEnvironment"][];
+                    "application/json": components["schemas"]["DevelopmentEnvironmentList"];
                 };
             };
             default: components["responses"]["Problem"];
         };
     };
-    listProjects: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 普通项目列表 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        items: components["schemas"]["Project"][];
-                    };
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    createProject: {
+    createDevelopmentEnvironment: {
         parameters: {
             query?: never;
             header: {
@@ -2936,98 +2871,24 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    name: string;
                     ownerDiscordUserId: string;
                 };
             };
         };
         responses: {
-            /** @description 项目与 Forum 创建已排队 */
+            /** @description 环境创建已排队 */
             202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProjectOperation"];
+                    "application/json": components["schemas"]["DevelopmentEnvironmentOperation"];
                 };
             };
             default: components["responses"]["Problem"];
         };
     };
-    retryProject: {
-        parameters: {
-            query?: never;
-            header: {
-                "X-CSRF-Token": components["parameters"]["CSRFToken"];
-            };
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 项目恢复操作已排队 */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProjectOperation"];
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    disableProject: {
-        parameters: {
-            query?: never;
-            header: {
-                "X-CSRF-Token": components["parameters"]["CSRFToken"];
-            };
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 项目已停用，运行中的 Turn 正在中断 */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    enableProject: {
-        parameters: {
-            query?: never;
-            header: {
-                "X-CSRF-Token": components["parameters"]["CSRFToken"];
-            };
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 项目已重新启用 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Project"];
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    rebaseDiscordDevelopmentEnvironment: {
+    rebaseDevelopmentEnvironment: {
         parameters: {
             query?: never;
             header: {
@@ -3050,7 +2911,7 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    putDiscordDevelopmentEnvironmentSSH: {
+    putDevelopmentEnvironmentSSH: {
         parameters: {
             query?: never;
             header: {
@@ -3063,7 +2924,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["DiscordDevelopmentEnvironmentSSHInput"];
+                "application/json": components["schemas"]["DevelopmentEnvironmentSSHInput"];
             };
         };
         responses: {
@@ -3077,7 +2938,7 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    deleteDiscordDevelopmentEnvironmentSSH: {
+    deleteDevelopmentEnvironmentSSH: {
         parameters: {
             query?: never;
             header: {
@@ -3100,10 +2961,39 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    preflightDiscordDevelopmentForumDeletion: {
+    createDevelopmentProjectForum: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevelopmentProjectForumInput"];
+            };
+        };
+        responses: {
+            /** @description Forum 创建已排队或历史 Forum 已恢复 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    disableDevelopmentForum: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
             path: {
                 id: string;
             };
@@ -3111,19 +3001,17 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 删除预检 */
-            200: {
+            /** @description Forum 配对已停用并切换为只读 */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["DiscordDevelopmentDeletePreflight"];
-                };
+                content?: never;
             };
             default: components["responses"]["Problem"];
         };
     };
-    deleteDiscordDevelopmentForum: {
+    enableDevelopmentForum: {
         parameters: {
             query?: never;
             header: {
@@ -3134,27 +3022,19 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": {
-                    confirmation: string;
-                };
-            };
-        };
+        requestBody?: never;
         responses: {
-            /** @description 删除已排队 */
+            /** @description Forum 配对已恢复 */
             202: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["IDResource"];
-                };
+                content?: never;
             };
             default: components["responses"]["Problem"];
         };
     };
-    createDiscordMemberForum: {
+    putDevelopmentProjectForumCollaborator: {
         parameters: {
             query?: never;
             header: {
@@ -3162,27 +3042,51 @@ export interface operations {
             };
             path: {
                 id: string;
+                forumId: string;
+                memberId: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
                 "application/json": {
-                    /** Format: uuid */
-                    repositoryId: string;
-                    name?: string;
+                    /** @enum {string} */
+                    accessLevel: "readonly" | "operator";
                 };
             };
         };
         responses: {
-            /** @description Forum 创建已排队 */
-            202: {
+            /** @description 已更新 */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["IDResource"];
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    deleteDevelopmentProjectForumCollaborator: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+                forumId: string;
+                memberId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已删除 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
                 };
+                content?: never;
             };
             default: components["responses"]["Problem"];
         };

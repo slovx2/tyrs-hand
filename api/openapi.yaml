@@ -13,6 +13,7 @@ tags:
   - name: Resources
   - name: Settings
   - name: Discord
+  - name: Development Environments
   - name: Execution Nodes
   - name: SSH
   - name: Worker Protocol
@@ -367,35 +368,20 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/DiscordMember" } }
         default: { $ref: "#/components/responses/Problem" }
-  /discord/development-environments:
+  /development-environments:
     get:
-      operationId: listDiscordDevelopmentEnvironments
-      tags: [Discord]
+      operationId: listDevelopmentEnvironments
+      tags: [Development Environments]
       responses:
         "200":
           description: 长期开发环境
           content:
             application/json:
-              schema: { type: array, items: { $ref: "#/components/schemas/DiscordDevelopmentEnvironment" } }
-        default: { $ref: "#/components/responses/Problem" }
-  /projects:
-    get:
-      operationId: listProjects
-      tags: [Projects]
-      responses:
-        "200":
-          description: 普通项目列表
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [items]
-                properties:
-                  items: { type: array, items: { $ref: "#/components/schemas/Project" } }
+              schema: { $ref: "#/components/schemas/DevelopmentEnvironmentList" }
         default: { $ref: "#/components/responses/Problem" }
     post:
-      operationId: createProject
-      tags: [Projects]
+      operationId: createDevelopmentEnvironment
+      tags: [Development Environments]
       parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
       requestBody:
         required: true
@@ -403,95 +389,50 @@ paths:
           application/json:
             schema:
               type: object
-              required: [name, ownerDiscordUserId]
+              required: [ownerDiscordUserId]
               properties:
-                name: { type: string, minLength: 1, maxLength: 80 }
                 ownerDiscordUserId: { type: string, minLength: 1 }
       responses:
         "202":
-          description: 项目与 Forum 创建已排队
-          content: { application/json: { schema: { $ref: "#/components/schemas/ProjectOperation" } } }
+          description: 环境创建已排队
+          content: { application/json: { schema: { $ref: "#/components/schemas/DevelopmentEnvironmentOperation" } } }
         default: { $ref: "#/components/responses/Problem" }
-  /projects/{id}/retry:
+  /development-environments/{id}/rebase:
     post:
-      operationId: retryProject
-      tags: [Projects]
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-        - { $ref: "#/components/parameters/CSRFToken" }
-      responses:
-        "202":
-          description: 项目恢复操作已排队
-          content: { application/json: { schema: { $ref: "#/components/schemas/ProjectOperation" } } }
-        default: { $ref: "#/components/responses/Problem" }
-  /projects/{id}/disable:
-    post:
-      operationId: disableProject
-      tags: [Projects]
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-        - { $ref: "#/components/parameters/CSRFToken" }
-      responses:
-        "202": { description: 项目已停用，运行中的 Turn 正在中断 }
-        default: { $ref: "#/components/responses/Problem" }
-  /projects/{id}/enable:
-    post:
-      operationId: enableProject
-      tags: [Projects]
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-        - { $ref: "#/components/parameters/CSRFToken" }
-      responses:
-        "200":
-          description: 项目已重新启用
-          content: { application/json: { schema: { $ref: "#/components/schemas/Project" } } }
-        default: { $ref: "#/components/responses/Problem" }
-  /discord/development-environments/{id}/rebase:
-    post:
-      operationId: rebaseDiscordDevelopmentEnvironment
-      tags: [Discord]
+      operationId: rebaseDevelopmentEnvironment
+      tags: [Development Environments]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
         - { $ref: "#/components/parameters/CSRFToken" }
       responses:
         "202": { description: 已排队 Rebase 到当前官方开发镜像 }
         default: { $ref: "#/components/responses/Problem" }
-  /discord/development-environments/{id}/ssh:
+  /development-environments/{id}/ssh:
     put:
-      operationId: putDiscordDevelopmentEnvironmentSSH
-      tags: [Discord]
+      operationId: putDevelopmentEnvironmentSSH
+      tags: [Development Environments]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
         - { $ref: "#/components/parameters/CSRFToken" }
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: "#/components/schemas/DiscordDevelopmentEnvironmentSSHInput" } } }
+        content: { application/json: { schema: { $ref: "#/components/schemas/DevelopmentEnvironmentSSHInput" } } }
       responses:
         "202": { description: SSH 配置已排队 }
         default: { $ref: "#/components/responses/Problem" }
     delete:
-      operationId: deleteDiscordDevelopmentEnvironmentSSH
-      tags: [Discord]
+      operationId: deleteDevelopmentEnvironmentSSH
+      tags: [Development Environments]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
         - { $ref: "#/components/parameters/CSRFToken" }
       responses:
         "202": { description: SSH 停用已排队 }
         default: { $ref: "#/components/responses/Problem" }
-  /discord/development-forums/{id}/delete-preflight:
-    get:
-      operationId: preflightDiscordDevelopmentForumDeletion
-      tags: [Discord]
-      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
-      responses:
-        "200":
-          description: 删除预检
-          content: { application/json: { schema: { $ref: "#/components/schemas/DiscordDevelopmentDeletePreflight" } } }
-        default: { $ref: "#/components/responses/Problem" }
-  /discord/development-forums/{id}/delete:
+  /development-projects/{id}/forums:
     post:
-      operationId: deleteDiscordDevelopmentForum
-      tags: [Discord]
+      operationId: createDevelopmentProjectForum
+      tags: [Development Environments]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
         - { $ref: "#/components/parameters/CSRFToken" }
@@ -499,36 +440,56 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [confirmation]
-              properties: { confirmation: { type: string } }
+            schema: { $ref: "#/components/schemas/DevelopmentProjectForumInput" }
       responses:
-        "202":
-          description: 删除已排队
-          content: { application/json: { schema: { $ref: "#/components/schemas/IDResource" } } }
+        "202": { description: Forum 创建已排队或历史 Forum 已恢复 }
         default: { $ref: "#/components/responses/Problem" }
-  /discord/members/{id}/forum:
+  /development-forums/{id}/disable:
     post:
-      operationId: createDiscordMemberForum
-      tags: [Discord]
+      operationId: disableDevelopmentForum
+      tags: [Development Environments]
       parameters:
-        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
         - { $ref: "#/components/parameters/CSRFToken" }
+      responses:
+        "202": { description: Forum 配对已停用并切换为只读 }
+        default: { $ref: "#/components/responses/Problem" }
+  /development-forums/{id}/enable:
+    post:
+      operationId: enableDevelopmentForum
+      tags: [Development Environments]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/CSRFToken" }
+      responses:
+        "202": { description: Forum 配对已恢复 }
+        default: { $ref: "#/components/responses/Problem" }
+  /development-projects/{id}/forums/{forumId}/collaborators/{memberId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: forumId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: memberId, in: path, required: true, schema: { type: string } }
+    put:
+      operationId: putDevelopmentProjectForumCollaborator
+      tags: [Development Environments]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [repositoryId]
-              properties:
-                repositoryId: { type: string, format: uuid }
-                name: { type: string }
+              required: [accessLevel]
+              properties: { accessLevel: { type: string, enum: [readonly, operator] } }
       responses:
-        "202":
-          description: Forum 创建已排队
-          content: { application/json: { schema: { $ref: "#/components/schemas/IDResource" } } }
+        "204": { description: 已更新 }
+        default: { $ref: "#/components/responses/Problem" }
+    delete:
+      operationId: deleteDevelopmentProjectForumCollaborator
+      tags: [Development Environments]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      responses:
+        "204": { description: 已删除 }
         default: { $ref: "#/components/responses/Problem" }
   /discord/forums/{forumId}/access/{memberId}:
     parameters:
@@ -1725,24 +1686,47 @@ components:
         displayName: { type: string }
         bound: { type: boolean }
         githubLogin: { type: string }
-    DiscordDevelopmentForum:
+    DevelopmentForumCollaborator:
       type: object
-      required: [id, name, discordId, workspaceKind, repository, status, branch, dirty]
+      required: [forumId, memberId, accessLevel, administratorBypass]
+      properties:
+        forumId: { type: string, format: uuid }
+        memberId: { type: string }
+        accessLevel: { type: string, enum: [readonly, operator] }
+        administratorBypass: { type: boolean }
+    DevelopmentForum:
+      type: object
+      required: [id, name, discordId, bindingStatus, collaborators]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         discordId: { type: string }
-        repositoryId: { type: string, format: uuid }
-        projectId: { type: string, format: uuid }
-        workspaceKind: { type: string, enum: [repository, project] }
-        repository: { type: string }
-        status: { type: string }
-        branch: { type: string }
-        dirty: { type: boolean }
-        error: { type: string }
-    DiscordDevelopmentEnvironment:
+        bindingStatus: { type: string, enum: [active, inactive] }
+        collaborators:
+          type: array
+          items: { $ref: "#/components/schemas/DevelopmentForumCollaborator" }
+    DevelopmentProject:
       type: object
-      required: [id, ownerDiscordUserId, ownerName, status, imageRef, codexUserOverride, lastUsedAt, sshConfigRevision, sshAppliedRevision, daemonStatus, appServerStatus, sshStatus, relayStatus, forums]
+      required: [id, name, relativePath, projectKind, availabilityStatus, dirty, lastSeenAt, forums]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        relativePath: { type: string }
+        desiredRelativePath: { type: string }
+        projectKind: { type: string, enum: [directory, git] }
+        availabilityStatus: { type: string, enum: [available, missing] }
+        branch: { type: string }
+        headSha: { type: string }
+        dirty: { type: boolean }
+        remoteUrl: { type: string }
+        lastSeenAt: { type: string, format: date-time }
+        scanError: { type: string }
+        forums:
+          type: array
+          items: { $ref: "#/components/schemas/DevelopmentForum" }
+    DevelopmentEnvironment:
+      type: object
+      required: [id, ownerDiscordUserId, ownerName, status, imageRef, codexUserOverride, lastUsedAt, sshConfigRevision, sshAppliedRevision, daemonStatus, appServerStatus, sshStatus, relayStatus, projects]
       properties:
         id: { type: string, format: uuid }
         ownerDiscordUserId: { type: string }
@@ -1755,6 +1739,7 @@ components:
         codexUserOverride: { type: boolean }
         lastUsedAt: { type: string, format: date-time }
         error: { type: string }
+        executionNodeId: { type: string, format: uuid }
         sshPublicKey: { type: string }
         sshFingerprint: { type: string, readOnly: true }
         sshPort: { type: integer, minimum: 1, maximum: 65535 }
@@ -1767,55 +1752,43 @@ components:
         appServerStatus: { type: string, enum: [pending, starting, running, error] }
         sshStatus: { type: string, enum: [disabled, pending, starting, running, error] }
         relayStatus: { type: string, enum: [pending, starting, running, error] }
-        forums: { type: array, items: { $ref: "#/components/schemas/DiscordDevelopmentForum" } }
-    DiscordDevelopmentEnvironmentSSHInput:
+        projectsScannedAt: { type: string, format: date-time }
+        projectScanError: { type: string }
+        projects:
+          type: array
+          items: { $ref: "#/components/schemas/DevelopmentProject" }
+    DevelopmentEnvironmentList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/DevelopmentEnvironment" }
+    DevelopmentEnvironmentSSHInput:
       type: object
       required: [publicKey, port, discordUserId]
       properties:
         publicKey: { type: string, minLength: 1 }
         port: { type: integer, minimum: 1, maximum: 65535 }
         discordUserId: { type: string, minLength: 1 }
-    DiscordDevelopmentDeletePreflight:
-      type: object
-      required: [forumId, dirty, unpushed, active, deletesEnvironment, confirmation]
-      properties:
-        forumId: { type: string, format: uuid }
-        dirty: { type: boolean }
-        unpushed: { type: boolean }
-        active: { type: boolean }
-        deletesEnvironment: { type: boolean }
-        confirmation: { type: string }
-    IDResource:
-      type: object
-      required: [id]
-      properties:
-        id: { type: string, format: uuid }
-    Project:
-      type: object
-      required: [id, name, status, ownerDiscordUserId, ownerName, forumId, dirty]
-      properties:
-        id: { type: string, format: uuid }
-        name: { type: string }
-        status: { type: string, enum: [provisioning, active, disabled, error] }
-        error: { type: string }
-        ownerDiscordUserId: { type: string }
-        ownerName: { type: string }
-        forumId: { type: string, format: uuid }
-        forumName: { type: string }
-        discordId: { type: string }
-        environmentId: { type: string, format: uuid }
-        workspaceStatus: { type: string }
-        workspaceRelative: { type: string }
-        branch: { type: string }
-        headSha: { type: string }
-        dirty: { type: boolean }
-        initializationId: { type: string, format: uuid }
-    ProjectOperation:
+    DevelopmentEnvironmentOperation:
       type: object
       required: [id, operationId]
       properties:
         id: { type: string, format: uuid }
         operationId: { type: string, format: uuid }
+    DevelopmentProjectForumInput:
+      type: object
+      required: [mode]
+      properties:
+        mode: { type: string, enum: [new, restore] }
+        forumId: { type: string, format: uuid }
+        name: { type: string, maxLength: 100 }
+    IDResource:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
     ResourceList:
       type: object
       required: [items]

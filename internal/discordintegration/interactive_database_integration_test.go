@@ -102,19 +102,20 @@ func insertInteractiveControl(t *testing.T, db *sql.DB, seed discordManagerSeed)
 		WHERE id=$1`, seed.developmentForumID).Scan(&environmentID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_conversations
 		(guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
-		 repository_id, agent_profile_id, title)
+		 development_project_id, agent_profile_id, title)
 		VALUES ($1,$2,'interactive-thread','interactive-starter','1001',$3,$4,'Interactive') RETURNING id`,
-		testGuildID, seed.developmentForumID, seed.repositoryID, profileID).Scan(&conversationID))
+		testGuildID, seed.developmentForumID, seed.developmentProjectID, profileID).Scan(&conversationID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_thread_controls
-		(source_type, discord_conversation_id, repository_id, agent_profile_id,
+		(source_type, discord_conversation_id, development_project_id, agent_profile_id,
 		 execution_node_id, development_environment_id, external_thread_id)
 		VALUES ('discord_conversation',$1,$2,$3,$4,$5,'codex-interactive-thread') RETURNING id`,
-		conversationID, seed.repositoryID, profileID, seed.executionNodeID, environmentID).Scan(&controlID))
+		conversationID, seed.developmentProjectID, profileID, seed.executionNodeID, environmentID).Scan(&controlID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_turn_intents
 		(control_id, sequence_no, behavior, source_type, discord_conversation_id,
-		 repository_id, agent_profile_id, idempotency_key, status)
+		 development_project_id, agent_profile_id, idempotency_key, status)
 		VALUES ($1,1,'start_when_idle','discord_conversation',$2,$3,$4,$5,'waiting_for_user') RETURNING id`,
-		controlID, conversationID, seed.repositoryID, profileID, "interactive-"+uuid.NewString()).Scan(&intentID))
+		controlID, conversationID, seed.developmentProjectID, profileID,
+		"interactive-"+uuid.NewString()).Scan(&intentID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_turn_runs
 		(control_id, primary_intent_id, attempt, worker_id, lease_epoch, capability_hash,
 		 status, execution_node_id)

@@ -31,6 +31,8 @@ func (s *Server) registerWorkerRoutes(router *gin.Engine) {
 	authorized.GET("/ssh-configuration", s.workerSSHConfiguration)
 	authorized.GET("/development-environments", s.workerDevelopmentEnvironments)
 	authorized.POST("/development-environments/:id/daemon-state", s.workerEnvironmentDaemonState)
+	authorized.POST("/development-environments/:id/projects/snapshot",
+		s.workerDevelopmentProjectSnapshot)
 	authorized.POST("/development-environments/:id/interactive/interrupted",
 		s.workerInterruptEnvironmentInteractive)
 	authorized.POST("/development-environments/:id/runtime-credential", s.workerEnvironmentRuntimeCredential)
@@ -66,8 +68,6 @@ func (s *Server) registerWorkerRoutes(router *gin.Engine) {
 	authorized.POST("/runs/:id/git-credential", s.workerGitCredential)
 	authorized.GET("/runs/:id/attachments/:attachmentId", s.workerDownloadAttachment)
 	authorized.POST("/development-operations/:id/heartbeat", s.workerDevelopmentOperationHeartbeat)
-	authorized.POST("/development-operations/:id/git-credential",
-		s.workerDevelopmentOperationGitCredential)
 	authorized.POST("/development-operations/:id/complete", s.workerCompleteDevelopmentOperation)
 	authorized.POST("/development-operations/:id/fail", s.workerFailDevelopmentOperation)
 }
@@ -251,7 +251,7 @@ func (s *Server) claimedRemoteRun(ctx context.Context, nodeID, runID uuid.UUID,
 		r.lease_epoch, i.source_type, COALESCE(i.input_surface,''),
 		i.attempt_count, i.max_attempts,
 		i.discord_conversation_id::text, i.work_item_id::text, i.repository_id::text,
-		i.project_id::text,
+		i.development_project_id::text,
 		COALESCE(i.discord_message_id,''), i.agent_profile_id, i.sequence_no,
 		i.status = 'reconciling' OR i.codex_submission_id IS NOT NULL,
 		COALESCE(i.codex_submission_id,''), COALESCE(i.confirmed_codex_turn_id,''),

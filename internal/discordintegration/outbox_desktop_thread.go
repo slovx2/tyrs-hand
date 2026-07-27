@@ -40,7 +40,7 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 			e.ssh_discord_user_id, ''),
 		COALESCE(NULLIF(r.first_input_actor_display_name,''),
 			NULLIF(member.display_name,''), member.username, ''),
-		f.repository_id, f.project_id, ct.agent_profile_id, ct.model,
+		f.repository_id, f.development_project_id, ct.agent_profile_id, ct.model,
 		ct.reasoning_effort, COALESCE(ct.service_tier,''),
 		COALESCE(r.preview_title,''), COALESCE(ct.desired_thread_name,''),
 		COALESCE(ct.desired_thread_name_source,''), ct.desired_thread_name_revision,
@@ -81,7 +81,8 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 	conversationID := uuid.New()
 	_, err = tx.ExecContext(ctx, `INSERT INTO discord_conversations
 		(id, guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
-			 repository_id, project_id, agent_profile_id, title, status, model, reasoning_effort, service_tier,
+			 repository_id, development_project_id, agent_profile_id, title, status,
+			 model, reasoning_effort, service_tier,
 			 configuration_status, configured_by_discord_user_id, title_rename_status,
 			 lifecycle_state, lifecycle_revision, collaboration_mode, collaboration_mode_revision)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'active',NULLIF($11,''),NULLIF($12,''),NULLIF($13,''),

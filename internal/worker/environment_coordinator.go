@@ -184,6 +184,10 @@ func (p *RemoteProcessor) coordinateEnvironment(ctx context.Context,
 		state.AppServerStatus, state.RelayStatus = "error", "error"
 		state.SSHStatus = environmentSSHState(manifest, "error")
 		_ = p.client.EnvironmentDaemonState(context.Background(), state)
+		_ = p.client.DevelopmentProjectSnapshot(ctx,
+			workerprotocol.DevelopmentProjectSnapshotRequest{
+				EnvironmentID: manifest.EnvironmentID, Error: err.Error(),
+			})
 		return err
 	}
 	state.Status, state.AppServerStatus, state.RelayStatus = "running", "running", "running"
@@ -193,7 +197,27 @@ func (p *RemoteProcessor) coordinateEnvironment(ctx context.Context,
 		state.Status, state.Error = "error", err.Error()
 		return p.client.EnvironmentDaemonState(ctx, state)
 	}
-	return p.client.EnvironmentDaemonState(ctx, state)
+	if err := p.client.EnvironmentDaemonState(ctx, state); err != nil {
+		return err
+	}
+	return p.scanDevelopmentProjects(ctx, manifest)
+}
+
+func (p *RemoteProcessor) scanDevelopmentProjects(ctx context.Context,
+	manifest *workerprotocol.EnvironmentManifest,
+) error {
+	projects, scanErr := p.development.ScanRemoteProjects(ctx, *manifest)
+	request := workerprotocol.DevelopmentProjectSnapshotRequest{
+		EnvironmentID: manifest.EnvironmentID, Projects: projects,
+	}
+	if scanErr != nil {
+		request.Error = scanErr.Error()
+		request.Projects = nil
+	}
+	if err := p.client.DevelopmentProjectSnapshot(ctx, request); err != nil {
+		return fmt.Errorf("上报开发项目快照: %w", err)
+	}
+	return scanErr
 }
 
 func environmentSSHState(manifest *workerprotocol.EnvironmentManifest, state string) string {

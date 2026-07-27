@@ -175,14 +175,15 @@ func TestWorkerAPIDiscordRuntimePreferencesFreeze(t *testing.T) {
 
 	repositoryID, _, profileID := seedWorkerGitHubQueue(t, db, 31)
 	_, forumID := seedDevelopmentOperation(t, db, repositoryID, node.ID)
+	projectID := developmentProjectIDForForum(t, db, forumID)
 	var conversationID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_conversations
 		(guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
-		 repository_id, agent_profile_id, title, model, reasoning_effort, service_tier,
+		 development_project_id, agent_profile_id, title, model, reasoning_effort, service_tier,
 		 collaboration_mode, configuration_status, title_rename_status)
 		VALUES ('worker-test-guild',$1,'runtime-thread','runtime-message-1','worker-owner',
 		 $2,$3,'runtime','gpt-5.6-sol','xhigh','standard','plan','configured','completed')
-		RETURNING id`, forumID, repositoryID, profileID).Scan(&conversationID))
+		RETURNING id`, forumID, projectID, profileID).Scan(&conversationID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_input_messages
 		(message_id, conversation_id, discord_user_id, display_name, username,
 		 access_snapshot, body) VALUES
@@ -257,18 +258,20 @@ func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
 
 	repositoryID, _, profileID := seedWorkerGitHubQueue(t, db, 42)
 	environmentID, forumID := seedDevelopmentOperation(t, db, repositoryID, node.ID)
+	projectID := developmentProjectIDForForum(t, db, forumID)
 	var conversationID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_conversations
-		(guild_id, forum_id, thread_id, owner_discord_user_id, repository_id, agent_profile_id, title)
+		(guild_id, forum_id, thread_id, owner_discord_user_id,
+		 development_project_id, agent_profile_id, title)
 		VALUES ('worker-test-guild',$1,'desktop-bound-thread','worker-owner',$2,$3,
-			'Desktop bound thread') RETURNING id`, forumID, repositoryID, profileID).
+		'Desktop bound thread') RETURNING id`, forumID, projectID, profileID).
 		Scan(&conversationID))
 	var controlID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_thread_controls
-		(source_type, discord_conversation_id, repository_id, agent_profile_id,
+		(source_type, discord_conversation_id, development_project_id, agent_profile_id,
 			execution_node_id, development_environment_id, external_thread_id)
 		VALUES ('desktop_thread',$1,$2,$3,$4,$5,'codex-desktop-bound-thread')
-		RETURNING id`, conversationID, repositoryID, profileID, node.ID, environmentID).
+		RETURNING id`, conversationID, projectID, profileID, node.ID, environmentID).
 		Scan(&controlID))
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_input_messages
 		(message_id, conversation_id, discord_user_id, display_name, username,
@@ -359,7 +362,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `UPDATE discord_development_environments SET
 		ssh_public_key='ssh-ed25519 test', ssh_fingerprint='SHA256:test', ssh_port=2222,
-		ssh_discord_user_id='desktop-user', status='ready', container_id='desktop-container'
+		ssh_discord_user_id='desktop-user', status='running', container_id='desktop-container'
 		WHERE id=$1`, environmentID)
 	require.NoError(t, err)
 	manifests, err := client.DevelopmentEnvironments(ctx)
@@ -371,8 +374,10 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, participantidentity.ID("worker-test-guild", "desktop-user"),
 		manifests[0].SSHParticipant.ParticipantID)
 	var workspaceRelative string
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT relative_path
-		FROM discord_forum_workspaces WHERE forum_id = $1`, forumID).Scan(&workspaceRelative))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT project.relative_path
+		FROM discord_forums forum JOIN development_projects project
+		ON project.id=forum.development_project_id WHERE forum.id=$1`, forumID).
+		Scan(&workspaceRelative))
 	var repositoryName string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT name FROM repositories WHERE id = $1`,
 		repositoryID).Scan(&repositoryName))
@@ -1238,7 +1243,7 @@ func TestDiscordDevelopmentEnvironmentSSHAPIBindsParticipantAndRedactsAudit(t *t
 		}
 		recorder := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(recorder)
-		c.Request = httptest.NewRequest(method, "/discord/development-environments/"+
+		c.Request = httptest.NewRequest(method, "/development-environments/"+
 			environmentID.String()+"/ssh", bytes.NewReader(body))
 		c.Request.Header.Set("Content-Type", "application/json")
 		c.Params = gin.Params{{Key: "id", Value: environmentID.String()}}
@@ -1248,7 +1253,7 @@ func TestDiscordDevelopmentEnvironmentSSHAPIBindsParticipantAndRedactsAudit(t *t
 	c, _ := request(http.MethodPut, map[string]any{
 		"publicKey": publicKey, "port": 2222, "discordUserId": "100000000000000009",
 	})
-	server.putDiscordDevelopmentEnvironmentSSH(c)
+	server.putDevelopmentEnvironmentSSH(c)
 	require.Equal(t, http.StatusAccepted, c.Writer.Status())
 	var savedUserID string
 	var revision int64
@@ -1259,7 +1264,7 @@ func TestDiscordDevelopmentEnvironmentSSHAPIBindsParticipantAndRedactsAudit(t *t
 	require.Equal(t, int64(1), revision)
 	var auditMetadata string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT metadata::text FROM audit_logs
-		WHERE action='discord.development_environment.ssh.update'
+		WHERE action='development_environment.ssh.update'
 		ORDER BY created_at DESC LIMIT 1`).Scan(&auditMetadata))
 	require.Contains(t, auditMetadata, "100000000000000009")
 	require.Contains(t, auditMetadata, "SHA256:")
@@ -1268,23 +1273,26 @@ func TestDiscordDevelopmentEnvironmentSSHAPIBindsParticipantAndRedactsAudit(t *t
 	listRecorder := httptest.NewRecorder()
 	listContext, _ := gin.CreateTestContext(listRecorder)
 	listContext.Request = httptest.NewRequest(http.MethodGet,
-		"/discord/development-environments", nil)
-	server.listDiscordDevelopmentEnvironments(listContext)
+		"/development-environments", nil)
+	server.listDevelopmentEnvironments(listContext)
 	require.Equal(t, http.StatusOK, listRecorder.Code)
-	var environments []discordintegration.DevelopmentEnvironment
-	require.NoError(t, json.Unmarshal(listRecorder.Body.Bytes(), &environments))
-	require.Len(t, environments, 1)
-	require.Equal(t, "100000000000000009", environments[0].SSHDiscordUserID)
-	require.Equal(t, "Desktop Member", environments[0].SSHDisplayName)
+	var environmentResponse struct {
+		Items []discordintegration.DevelopmentEnvironment `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(listRecorder.Body.Bytes(), &environmentResponse))
+	require.Len(t, environmentResponse.Items, 1)
+	require.Equal(t, "100000000000000009",
+		environmentResponse.Items[0].SSHDiscordUserID)
+	require.Equal(t, "Desktop Member", environmentResponse.Items[0].SSHDisplayName)
 
 	c, _ = request(http.MethodPut, map[string]any{
 		"publicKey": publicKey, "port": 2222, "discordUserId": "100000000000000099",
 	})
-	server.putDiscordDevelopmentEnvironmentSSH(c)
+	server.putDevelopmentEnvironmentSSH(c)
 	require.Equal(t, http.StatusConflict, c.Writer.Status())
 
 	c, _ = request(http.MethodDelete, nil)
-	server.deleteDiscordDevelopmentEnvironmentSSH(c)
+	server.deleteDevelopmentEnvironmentSSH(c)
 	require.Equal(t, http.StatusAccepted, c.Writer.Status())
 	var cleared bool
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT ssh_public_key IS NULL
@@ -1315,10 +1323,13 @@ func TestWorkerAPIMissingDefaultAndDevelopmentOperationRecovery(t *testing.T) {
 	assertPlacement(t, db, itemID, intentID, node.ID, "queued")
 
 	environmentID, forumID := seedDevelopmentOperation(t, db, repositoryID, node.ID)
+	_, err = db.ExecContext(ctx, `UPDATE discord_development_environments
+		SET ssh_config_revision=1 WHERE id=$1`, environmentID)
+	require.NoError(t, err)
 	var operationID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_development_operations
-		(environment_id, forum_id, operation, execution_node_id)
-		VALUES ($1,$2,'delete_forum',$3) RETURNING id`, environmentID, forumID, node.ID).
+		(environment_id, operation, execution_node_id)
+		VALUES ($1,'reconfigure',$2) RETURNING id`, environmentID, node.ID).
 		Scan(&operationID))
 	first, err := client.Claim(ctx, workerprotocol.ClaimRequest{WorkerID: "home-worker",
 		Role: "discord"})
@@ -1335,46 +1346,122 @@ func TestWorkerAPIMissingDefaultAndDevelopmentOperationRecovery(t *testing.T) {
 	require.Greater(t, second.DevelopmentOperation.LeaseEpoch, firstEpoch)
 	require.Error(t, client.CompleteDevelopmentOperation(ctx, first.DevelopmentOperation),
 		"旧 Lease 不能完成 Operation")
+	second.DevelopmentOperation.ContainerID = "dev-worker-container"
+	second.DevelopmentOperation.AppliedRevision = 1
+	second.DevelopmentOperation.DaemonStatus = "running"
 	require.NoError(t, client.CompleteDevelopmentOperation(ctx, second.DevelopmentOperation))
 	require.NoError(t, client.CompleteDevelopmentOperation(ctx, second.DevelopmentOperation),
 		"重复完成 Operation 必须幂等")
 	var forumCount int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_forums WHERE id = $1`,
 		forumID).Scan(&forumCount))
-	require.Zero(t, forumCount)
+	require.Equal(t, 1, forumCount)
 	var operationStatus string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM discord_development_operations
 		WHERE id = $1`, operationID).Scan(&operationStatus))
 	require.Equal(t, "completed", operationStatus)
 }
 
-func TestWorkerAPIProvisionOperationCarriesRepositoryAndPersistsRuntime(t *testing.T) {
+func TestWorkerAPIRelocationRecoversAfterMoveAndTargetSnapshot(t *testing.T) {
 	db := workerDatabase(t)
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))
 	server, endpoint := workerTestServer(t, db)
+	node, enrollment, err := server.nodes.Create(ctx, "relocation-retry", []string{"discord"}, 2)
+	require.NoError(t, err)
+	_, credential, err := server.nodes.Enroll(ctx, enrollment)
+	require.NoError(t, err)
+	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
+	repositoryID, _, _ := seedWorkerGitHubQueue(t, db, 303)
+	environmentID, forumID := seedDevelopmentOperation(t, db, repositoryID, node.ID)
+	projectID := developmentProjectIDForForum(t, db, forumID)
+	_, err = db.ExecContext(ctx, `UPDATE development_projects
+		SET relative_path='workspaces/projects/notes-a1b2c3',
+			desired_relative_path='workspaces/notes', name='notes', dirty=true
+		WHERE id=$1`, projectID)
+	require.NoError(t, err)
+	var operationID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_development_operations
+		(environment_id,development_project_id,operation,execution_node_id)
+		VALUES ($1,$2,'relocate_project',$3) RETURNING id`,
+		environmentID, projectID, node.ID).Scan(&operationID))
+
+	first, err := client.Claim(ctx, workerprotocol.ClaimRequest{
+		WorkerID: "relocation-worker", Role: "discord",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, first.DevelopmentOperation)
+	require.Equal(t, operationID, first.DevelopmentOperation.ID)
+	require.Equal(t, "workspaces/projects/notes-a1b2c3",
+		first.DevelopmentOperation.Workspace)
+	require.Equal(t, "workspaces/notes", first.DevelopmentOperation.TargetWorkspace)
+
+	require.NoError(t, client.DevelopmentProjectSnapshot(ctx,
+		workerprotocol.DevelopmentProjectSnapshotRequest{
+			EnvironmentID: environmentID,
+			Projects: []workerprotocol.DevelopmentProjectSnapshot{
+				{Name: "notes", RelativePath: "workspaces/notes", ProjectKind: "directory"},
+			},
+		}), "目录移动后、Operation 完成前的扫描可能先创建目标路径记录")
+	var targetID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM development_projects
+		WHERE environment_id=$1 AND relative_path='workspaces/notes'`, environmentID).
+		Scan(&targetID))
+	require.NotEqual(t, projectID, targetID)
+
+	_, err = db.ExecContext(ctx, `UPDATE discord_development_operations
+		SET lease_expires_at=now()-interval '1 second' WHERE id=$1`, operationID)
+	require.NoError(t, err)
+	second, err := client.Claim(ctx, workerprotocol.ClaimRequest{
+		WorkerID: "relocation-worker", Role: "discord",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, second.DevelopmentOperation)
+	require.Greater(t, second.DevelopmentOperation.LeaseEpoch,
+		first.DevelopmentOperation.LeaseEpoch)
+	require.Error(t, client.CompleteDevelopmentOperation(ctx, first.DevelopmentOperation),
+		"崩溃前的旧 Lease 不能完成 relocation")
+	require.NoError(t, client.CompleteDevelopmentOperation(ctx, second.DevelopmentOperation))
+	require.NoError(t, client.CompleteDevelopmentOperation(ctx, second.DevelopmentOperation),
+		"relocation 完成回调必须幂等")
+
+	var relativePath string
+	var dirty bool
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT relative_path,dirty
+		FROM development_projects WHERE id=$1`, projectID).Scan(&relativePath, &dirty))
+	require.Equal(t, "workspaces/notes", relativePath)
+	require.True(t, dirty)
+	var targetCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM development_projects
+		WHERE id=$1`, targetID).Scan(&targetCount))
+	require.Zero(t, targetCount, "无引用的自动扫描目标记录必须在完成事务中删除")
+	var forumProjectID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT development_project_id
+		FROM discord_forums WHERE id=$1`, forumID).Scan(&forumProjectID))
+	require.Equal(t, projectID, forumProjectID)
+}
+
+func TestWorkerAPIProvisionEnvironmentDoesNotCarryRepositoryCredential(t *testing.T) {
+	db := workerDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	server, endpoint := workerTestServer(t, db)
+	server.cfg.DevelopmentImage = "tyrs-hand-development:test"
 	node, enrollment, err := server.nodes.Create(ctx, "provision-node", []string{"discord"}, 2)
 	require.NoError(t, err)
 	_, credential, err := server.nodes.Enroll(ctx, enrollment)
 	require.NoError(t, err)
 	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
 	repositoryID, _, _ := seedWorkerGitHubQueue(t, db, 301)
-	var expectedRepository, expectedName string
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT owner || '/' || name, name
-		FROM repositories WHERE id=$1`, repositoryID).
-		Scan(&expectedRepository, &expectedName))
 	environmentID, forumID := seedDevelopmentOperation(t, db, repositoryID, node.ID)
 	_, err = db.ExecContext(ctx, `UPDATE discord_development_environments SET
 		status='pending', image_id=NULL, container_id=NULL, runtime_user=NULL,
 		runtime_uid=NULL, runtime_gid=NULL, runtime_home=NULL WHERE id=$1`, environmentID)
 	require.NoError(t, err)
-	_, err = db.ExecContext(ctx, `UPDATE discord_forum_workspaces SET
-		status='pending', head_sha=NULL WHERE forum_id=$1`, forumID)
-	require.NoError(t, err)
 	var operationID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_development_operations
-		(environment_id, forum_id, operation, execution_node_id)
-		VALUES ($1,$2,'provision',$3) RETURNING id`, environmentID, forumID, node.ID).
+		(environment_id, operation, execution_node_id)
+		VALUES ($1,'provision_environment',$2) RETURNING id`, environmentID, node.ID).
 		Scan(&operationID))
 
 	claim, err := client.Claim(ctx, workerprotocol.ClaimRequest{
@@ -1385,16 +1472,11 @@ func TestWorkerAPIProvisionOperationCarriesRepositoryAndPersistsRuntime(t *testi
 	operation := claim.DevelopmentOperation
 	require.Equal(t, operationID, operation.ID)
 	require.Equal(t, "pending", operation.EnvironmentStatus)
-	require.Equal(t, "workspaces/"+expectedName, operation.Workspace)
-	require.Equal(t, expectedRepository, operation.Repository)
-	require.Equal(t, "https://example.invalid/repo.git", operation.CloneURL)
-	require.Equal(t, "main", operation.DefaultRef)
-	require.Equal(t, "worker/test", operation.WorkspaceBranch)
-
-	stale := *operation
-	stale.LeaseToken = "invalid"
-	_, err = client.DevelopmentOperationGitCredential(ctx, &stale)
-	require.Error(t, err)
+	require.Empty(t, operation.Workspace)
+	require.Empty(t, operation.Repository)
+	require.Empty(t, operation.CloneURL)
+	require.Empty(t, operation.DefaultRef)
+	require.Nil(t, operation.ProjectID)
 
 	operation.ContainerID = "provisioned-container"
 	operation.ImageID = "sha256:provisioned-image"
@@ -1402,8 +1484,6 @@ func TestWorkerAPIProvisionOperationCarriesRepositoryAndPersistsRuntime(t *testi
 	operation.RuntimeUID = 1000
 	operation.RuntimeGID = 1000
 	operation.RuntimeHome = "/home/developer"
-	operation.WorkspaceStatus = "ready"
-	operation.WorkspaceHeadSHA = "provisioned-head"
 	operation.DaemonStatus = "running"
 	require.NoError(t, client.CompleteDevelopmentOperation(ctx, operation))
 
@@ -1421,12 +1501,111 @@ func TestWorkerAPIProvisionOperationCarriesRepositoryAndPersistsRuntime(t *testi
 	require.EqualValues(t, 1000, runtimeUID)
 	require.EqualValues(t, 1000, runtimeGID)
 	require.Equal(t, "/home/developer", runtimeHome)
-	var workspaceStatus, headSHA string
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT status, head_sha
-		FROM discord_forum_workspaces WHERE forum_id=$1`, forumID).
-		Scan(&workspaceStatus, &headSHA))
-	require.Equal(t, "ready", workspaceStatus)
-	require.Equal(t, "provisioned-head", headSHA)
+	var headSHA string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT project.head_sha
+		FROM development_projects project JOIN discord_forums forum
+		ON forum.development_project_id=project.id WHERE forum.id=$1`, forumID).
+		Scan(&headSHA))
+	require.Equal(t, "worker-head", headSHA)
+}
+
+func TestWorkerAPIDevelopmentProjectSnapshotSynchronizesMissingAndRecovery(t *testing.T) {
+	db := workerDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	server, endpoint := workerTestServer(t, db)
+	node, enrollment, err := server.nodes.Create(ctx, "project-snapshot", []string{"discord"}, 2)
+	require.NoError(t, err)
+	_, credential, err := server.nodes.Enroll(ctx, enrollment)
+	require.NoError(t, err)
+	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
+	repositoryID, _, _ := seedWorkerGitHubQueue(t, db, 302)
+	environmentID, _ := seedDevelopmentOperation(t, db, repositoryID, node.ID)
+
+	require.NoError(t, client.DevelopmentProjectSnapshot(ctx,
+		workerprotocol.DevelopmentProjectSnapshotRequest{
+			EnvironmentID: environmentID,
+			Projects: []workerprotocol.DevelopmentProjectSnapshot{
+				{
+					Name: "atlas", RelativePath: "workspaces/atlas", ProjectKind: "git",
+					Branch: "main", HeadSHA: "atlas-head", Dirty: true,
+					RemoteURL: "https://example.invalid/team/atlas.git",
+				},
+				{Name: "notes", RelativePath: "workspaces/notes", ProjectKind: "directory"},
+			},
+		}))
+	var atlasID, notesID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM development_projects
+		WHERE environment_id=$1 AND relative_path='workspaces/atlas'`, environmentID).
+		Scan(&atlasID))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM development_projects
+		WHERE environment_id=$1 AND relative_path='workspaces/notes'`, environmentID).
+		Scan(&notesID))
+	var availableCount, missingCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT
+		count(*) FILTER (WHERE availability_status='available'),
+		count(*) FILTER (WHERE availability_status='missing')
+		FROM development_projects WHERE environment_id=$1`, environmentID).
+		Scan(&availableCount, &missingCount))
+	require.Equal(t, 2, availableCount)
+	require.Equal(t, 1, missingCount, "首次完整快照必须把未出现的旧项目标为缺失")
+
+	require.NoError(t, client.DevelopmentProjectSnapshot(ctx,
+		workerprotocol.DevelopmentProjectSnapshotRequest{
+			EnvironmentID: environmentID,
+			Projects: []workerprotocol.DevelopmentProjectSnapshot{
+				{
+					Name: "atlas", RelativePath: "workspaces/atlas", ProjectKind: "git",
+					Branch: "feature", HeadSHA: "atlas-next",
+				},
+			},
+		}))
+	var notesStatus, atlasBranch string
+	var scannedAt time.Time
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT availability_status
+		FROM development_projects WHERE id=$1`, notesID).Scan(&notesStatus))
+	require.Equal(t, "missing", notesStatus)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT branch
+		FROM development_projects WHERE id=$1`, atlasID).Scan(&atlasBranch))
+	require.Equal(t, "feature", atlasBranch)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT projects_scanned_at
+		FROM discord_development_environments WHERE id=$1`, environmentID).Scan(&scannedAt))
+
+	require.NoError(t, client.DevelopmentProjectSnapshot(ctx,
+		workerprotocol.DevelopmentProjectSnapshotRequest{
+			EnvironmentID: environmentID, Error: "container unavailable",
+		}))
+	var scannedAfterFailure time.Time
+	var scanError string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT projects_scanned_at,project_scan_error
+		FROM discord_development_environments WHERE id=$1`, environmentID).
+		Scan(&scannedAfterFailure, &scanError))
+	require.Equal(t, scannedAt, scannedAfterFailure)
+	require.Equal(t, "container unavailable", scanError)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT availability_status
+		FROM development_projects WHERE id=$1`, atlasID).Scan(&notesStatus))
+	require.Equal(t, "available", notesStatus,
+		"扫描失败不得把未上报的项目批量标记为缺失")
+
+	require.NoError(t, client.DevelopmentProjectSnapshot(ctx,
+		workerprotocol.DevelopmentProjectSnapshotRequest{EnvironmentID: environmentID}))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM development_projects
+		WHERE environment_id=$1 AND availability_status='missing'`, environmentID).
+		Scan(&missingCount))
+	require.Equal(t, 3, missingCount, "成功空快照必须将完整旧快照标记为缺失")
+
+	require.NoError(t, client.DevelopmentProjectSnapshot(ctx,
+		workerprotocol.DevelopmentProjectSnapshotRequest{
+			EnvironmentID: environmentID,
+			Projects: []workerprotocol.DevelopmentProjectSnapshot{
+				{Name: "atlas", RelativePath: "workspaces/atlas", ProjectKind: "git"},
+			},
+		}))
+	var recoveredID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM development_projects
+		WHERE environment_id=$1 AND relative_path='workspaces/atlas'
+		  AND availability_status='available'`, environmentID).Scan(&recoveredID))
+	require.Equal(t, atlasID, recoveredID, "同路径恢复必须复用原项目记录")
 }
 
 func TestEnvironmentRelayRuntimeMigrationQueuesExistingEnvironmentsOnce(t *testing.T) {
@@ -1477,13 +1656,14 @@ func TestWorkerAPIReconfigureWaitsForActiveEnvironmentTurn(t *testing.T) {
 
 	repositoryID, _, profileID := seedWorkerGitHubQueue(t, db, 72)
 	environmentID, forumID := seedDevelopmentOperation(t, db, repositoryID, node.ID)
+	projectID := developmentProjectIDForForum(t, db, forumID)
 	var conversationID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_conversations
 		(guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
-		 repository_id, agent_profile_id, title, configuration_status, title_rename_status)
+		 development_project_id, agent_profile_id, title, configuration_status, title_rename_status)
 		VALUES ('worker-test-guild',$1,'reconfigure-thread','reconfigure-message',
 		 'worker-owner',$2,$3,'reconfigure','configured','completed') RETURNING id`,
-		forumID, repositoryID, profileID).Scan(&conversationID))
+		forumID, projectID, profileID).Scan(&conversationID))
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_input_messages
 		(message_id, conversation_id, discord_user_id, display_name, username,
 		 access_snapshot, body) VALUES
@@ -1805,15 +1985,18 @@ func enqueueWorkerIntent(t *testing.T, db *sql.DB, repositoryID, itemID, profile
 }
 
 func enqueueWorkerDiscordIntent(t *testing.T, db *sql.DB, conversationID uuid.UUID,
-	messageID string, repositoryID, profileID uuid.UUID,
+	messageID string, _ uuid.UUID, profileID uuid.UUID,
 ) uuid.UUID {
 	t.Helper()
+	var projectID uuid.UUID
+	require.NoError(t, db.QueryRow(`SELECT development_project_id
+		FROM discord_conversations WHERE id=$1`, conversationID).Scan(&projectID))
 	tx, err := db.BeginTx(context.Background(), nil)
 	require.NoError(t, err)
 	intentID, inserted, err := codexcontrol.NewRepository(db, 2*time.Second).Enqueue(
 		context.Background(), tx, codexcontrol.EnqueueRequest{
 			SourceType: codexcontrol.SourceDiscord, DiscordConversationID: conversationID,
-			DiscordMessageID: messageID, RepositoryID: repositoryID, AgentProfileID: profileID,
+			DiscordMessageID: messageID, ProjectID: projectID, AgentProfileID: profileID,
 			IdempotencyKey: "discord:" + messageID,
 			Instruction:    messageID, ReplyPolicy: "silent", Behavior: "steer_if_active",
 		})
@@ -1821,6 +2004,14 @@ func enqueueWorkerDiscordIntent(t *testing.T, db *sql.DB, conversationID uuid.UU
 	require.True(t, inserted)
 	require.NoError(t, tx.Commit())
 	return intentID
+}
+
+func developmentProjectIDForForum(t *testing.T, db *sql.DB, forumID uuid.UUID) uuid.UUID {
+	t.Helper()
+	var projectID uuid.UUID
+	require.NoError(t, db.QueryRow(`SELECT development_project_id
+		FROM discord_forums WHERE id=$1`, forumID).Scan(&projectID))
+	return projectID
 }
 
 func completeWorkerOutbox(t *testing.T, ctx context.Context,
@@ -1885,11 +2076,23 @@ func seedDevelopmentOperation(t *testing.T, db *sql.DB, repositoryID,
 	var environmentID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_development_environments
 		(guild_id, owner_discord_user_id, image_ref, container_name,
-		 data_volume_name, home_volume_name, network_name, execution_node_id)
+		 data_volume_name, home_volume_name, network_name, execution_node_id,
+		 status,container_id,runtime_user,runtime_uid,runtime_gid,runtime_home)
 		VALUES ('worker-test-guild','worker-owner','tyrs-hand-development:test',
-		'dev-worker','dev-worker-data','dev-worker-home','dev-worker-net',$1)
+		'dev-worker','dev-worker-data','dev-worker-home','dev-worker-net',$1,
+		'running','dev-worker-container','developer',1000,1000,'/home/developer')
 		RETURNING id`, nodeID).
 		Scan(&environmentID))
+	var repositoryName, remoteURL string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT name,clone_url
+		FROM repositories WHERE id=$1`, repositoryID).Scan(&repositoryName, &remoteURL))
+	var projectID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO development_projects
+		(environment_id,relative_path,name,project_kind,availability_status,
+		 branch,head_sha,dirty,remote_url,last_seen_at)
+		VALUES ($1,$2,$3,'git','available','worker/test','worker-head',false,$4,now())
+		RETURNING id`, environmentID, "workspaces/"+repositoryName,
+		repositoryName, remoteURL).Scan(&projectID))
 	var resourceID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_resources
 		(guild_id, resource_key, discord_id, kind, name, managed_marker)
@@ -1897,17 +2100,9 @@ func seedDevelopmentOperation(t *testing.T, db *sql.DB, repositoryID,
 		RETURNING id`).Scan(&resourceID))
 	var forumID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_forums
-		(guild_id, resource_id, forum_type, owner_discord_user_id, repository_id,
+		(guild_id, resource_id, forum_type, owner_discord_user_id, development_project_id,
 		 development_environment_id)
 		VALUES ('worker-test-guild',$1,'development','worker-owner',$2,$3) RETURNING id`,
-		resourceID, repositoryID, environmentID).Scan(&forumID))
-	var repositoryName string
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT name FROM repositories WHERE id = $1`,
-		repositoryID).Scan(&repositoryName))
-	_, err = db.ExecContext(ctx, `INSERT INTO discord_forum_workspaces
-		(forum_id, environment_id, relative_path, branch, status)
-		VALUES ($1,$2,$3,'worker/test','ready')`, forumID, environmentID,
-		"workspaces/"+repositoryName)
-	require.NoError(t, err)
+		resourceID, projectID, environmentID).Scan(&forumID))
 	return environmentID, forumID
 }

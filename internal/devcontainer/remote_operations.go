@@ -23,6 +23,8 @@ func (m *Manager) RunRemoteOperation(ctx context.Context, operation RemoteOperat
 		return errors.New("discord 开发容器未启用")
 	}
 	switch operation.Operation {
+	case "relocate_project":
+		return m.RelocateRemoteProject(ctx, operation)
 	case "reconfigure":
 		return m.reconfigureRemote(ctx, operation)
 	case "rebase":
@@ -55,6 +57,52 @@ func (m *Manager) RunRemoteOperation(ctx context.Context, operation RemoteOperat
 	default:
 		return fmt.Errorf("不支持的远程开发环境 Operation %q", operation.Operation)
 	}
+}
+
+func (m *Manager) ProvisionRemoteEnvironment(ctx context.Context,
+	operation *RemoteOperation,
+) (Runtime, error) {
+	if !m.Enabled() {
+		return Runtime{}, errors.New("discord 开发容器未启用")
+	}
+	unlock := LockRemoteEnvironment(operation.EnvironmentID)
+	defer unlock()
+	item := workspace{Environment: environment{
+		ID: operation.EnvironmentID, Status: "pending", ImageRef: operation.ImageRef,
+		ImageID: operation.ImageID, ContainerName: operation.ContainerName,
+		ContainerID: operation.ContainerID, DataVolume: operation.DataVolume,
+		HomeVolume: operation.HomeVolume, Network: operation.Network,
+		RuntimeUser: operation.RuntimeUser, RuntimeUID: operation.RuntimeUID,
+		RuntimeGID: operation.RuntimeGID, RuntimeHome: operation.RuntimeHome,
+	}}
+	if err := m.provision(ctx, &item, "", operation.ProcessEnvironment); err != nil {
+		return Runtime{}, err
+	}
+	operation.ContainerID = item.Environment.ContainerID
+	operation.ImageRef, operation.ImageID = item.Environment.ImageRef, item.Environment.ImageID
+	operation.RuntimeUser, operation.RuntimeUID = item.Environment.RuntimeUser,
+		item.Environment.RuntimeUID
+	operation.RuntimeGID, operation.RuntimeHome = item.Environment.RuntimeGID,
+		item.Environment.RuntimeHome
+	codexHome := filepath.ToSlash(filepath.Join(containerRoot, "codex"))
+	owner := fmt.Sprintf("%d:%d", operation.RuntimeUID, operation.RuntimeGID)
+	if _, err := m.docker(ctx, "exec", "--user", "0:0", operation.ContainerName,
+		"mkdir", "-p", codexHome, developmentWorkspacesRoot); err != nil {
+		return Runtime{}, err
+	}
+	if _, err := m.docker(ctx, "exec", "--user", "0:0", operation.ContainerName,
+		"chown", owner, codexHome, developmentWorkspacesRoot); err != nil {
+		return Runtime{}, err
+	}
+	return Runtime{
+		EnvironmentID: operation.EnvironmentID, Container: operation.ContainerName,
+		CodexHome: codexHome, User: operation.RuntimeUser, UID: operation.RuntimeUID,
+		GID: operation.RuntimeGID, Home: operation.RuntimeHome,
+		AppServerSocket: filepath.Join(m.developmentRuntimeDir,
+			operation.EnvironmentID.String(), "app-server.sock"),
+		RelaySocket: filepath.Join(m.developmentRuntimeDir,
+			operation.EnvironmentID.String(), "relay.sock"),
+	}, nil
 }
 
 func (m *Manager) deleteRemoteForum(ctx context.Context, operation RemoteOperation) error {

@@ -42,6 +42,10 @@ describe('App', () => {
     )
 
     expect(await screen.findByText('控制面概览')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '开发环境' })).toHaveAttribute(
+      'href',
+      '/development-environments',
+    )
     expect(useUI.getState().csrfToken).toBe('restored-csrf')
   })
 })
