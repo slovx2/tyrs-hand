@@ -240,7 +240,7 @@ func canonicalPath(path string) string {
 func threadPayload(options ports.ThreadOptions) map[string]any {
 	config := map[string]any{
 		"sandbox_workspace_write": map[string]any{"network_access": options.NetworkEnabled},
-		"features":                map[string]any{"unified_exec": true, "memory_tool": false, "hooks": true},
+		"features":                map[string]any{"unified_exec": true, "memories": false, "hooks": true},
 	}
 	mergeConfig(config, options.RuntimeConfig)
 	payload := map[string]any{

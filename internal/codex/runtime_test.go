@@ -62,7 +62,7 @@ func TestThreadPayloadAndSkillInput(t *testing.T) {
 	require.Equal(t, "high", payload["effort"])
 	require.Equal(t, filepath.Clean(root), payload["cwd"])
 	config := payload["config"].(map[string]any)
-	require.Equal(t, false, config["features"].(map[string]any)["memory_tool"])
+	require.Equal(t, false, config["features"].(map[string]any)["memories"])
 	require.Equal(t, true, config["features"].(map[string]any)["custom"])
 	require.Equal(t, []any{"hook"}, config["hooks"].(map[string]any)["Stop"])
 	sandbox := config["sandbox_workspace_write"].(map[string]any)
