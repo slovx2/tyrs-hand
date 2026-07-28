@@ -21,8 +21,18 @@ type recordingRuntimeClient struct {
 func (c *recordingRuntimeClient) Call(_ context.Context, method string, payload, result any) error {
 	c.method = method
 	c.payload = payload.(map[string]any)
+	if result == nil {
+		return nil
+	}
 	return json.Unmarshal([]byte(`{"turn":{"id":"turn-1"}}`), result)
 }
+
+type eventRuntimeClient struct {
+	recordingRuntimeClient
+	events chan Event
+}
+
+func (c *eventRuntimeClient) Events() <-chan Event { return c.events }
 
 func TestStartTurnCarriesCollaborationMode(t *testing.T) {
 	for _, mode := range []string{"default", "plan"} {
@@ -91,6 +101,39 @@ func TestThreadPayloadAndSkillInput(t *testing.T) {
 	context := payload["additionalContext"].(map[string]map[string]string)
 	require.Equal(t, "application", context[participantidentity.IdentityContextKey]["kind"])
 	require.Equal(t, "untrusted", context[participantidentity.ProfileContextKey]["kind"])
+}
+
+func TestRuntimeSnapshotHelpersAndForwarding(t *testing.T) {
+	closedEvents := NewRuntime(&recordingRuntimeClient{}).Events()
+	_, open := <-closedEvents
+	require.False(t, open)
+
+	eventClient := &eventRuntimeClient{events: make(chan Event, 1)}
+	eventClient.events <- Event{Method: "turn/completed"}
+	require.Equal(t, "turn/completed", (<-NewRuntime(eventClient).Events()).Method)
+
+	require.Equal(t, "idle", (ThreadSnapshot{Status: json.RawMessage(`{"type":"idle"}`)}).StatusType())
+	require.Empty(t, (ThreadSnapshot{Status: json.RawMessage(`invalid`)}).StatusType())
+
+	final := TurnSnapshot{Items: []ItemSnapshot{
+		{Type: "agentMessage", Text: "progress"},
+		{Type: "agentMessage", Phase: "final_answer", Text: "done"},
+	}}
+	require.Equal(t, "done", final.FinalAnswer())
+	require.Equal(t, "progress", (TurnSnapshot{Items: final.Items[:1]}).FinalAnswer())
+	require.Empty(t, (TurnSnapshot{Items: []ItemSnapshot{{Type: "userMessage", Text: "hello"}}}).FinalAnswer())
+
+	snapshot := ThreadSnapshot{Turns: []TurnSnapshot{{ID: "turn-1", Status: "completed"}}}
+	_, found := snapshot.TurnByID("missing")
+	require.False(t, found)
+	_, active := snapshot.ActiveTurn()
+	require.False(t, active)
+
+	client := &recordingRuntimeClient{}
+	require.NoError(t, NewRuntime(client).SetThreadName(context.Background(), "thread-1", "New name"))
+	require.Equal(t, "thread/name/set", client.method)
+	require.Equal(t, "thread-1", client.payload["threadId"])
+	require.Equal(t, "New name", client.payload["name"])
 }
 
 func TestPoolRoutesByThreadAndReleasesJobProcess(t *testing.T) {
