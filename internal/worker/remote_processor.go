@@ -276,7 +276,7 @@ func (p *RemoteProcessor) processRemoteGitHub(ctx context.Context, task *workerp
 	if err := runtime.ValidateSkills(ctx, workspace.WorktreePath, skills); err != nil {
 		return codexcontrol.TurnResult{}, err
 	}
-	threadID, err := p.ensureRemoteThread(ctx, runtime, task, options, codexHome)
+	threadID, err := p.ensureRemoteThread(ctx, runtime, task, options, codexHome, report)
 	if err != nil {
 		return codexcontrol.TurnResult{}, err
 	}
@@ -309,6 +309,7 @@ func (p *RemoteProcessor) processRemoteGitHub(ctx context.Context, task *workerp
 	if err != nil {
 		return codexcontrol.TurnResult{}, err
 	}
+	reportRuntimeSettingsApplied(report, task.Snapshot.Runtime, "turn/start")
 	if err := p.client.RecordSubmission(ctx, task, turnID); err != nil {
 		return codexcontrol.TurnResult{}, err
 	}

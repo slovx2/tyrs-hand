@@ -220,12 +220,40 @@ func TestWorkerAPIDiscordRuntimePreferencesFreeze(t *testing.T) {
 	require.Equal(t, "xhigh", frozenEffort)
 	require.Equal(t, "standard", frozenTier)
 	require.True(t, frozen)
+	appliedPayload, err := json.Marshal(workerprotocol.RuntimeSettingsApplied{
+		Phase: "turn/start", Model: first.Task.Snapshot.Runtime.Model,
+		ReasoningEffort:   first.Task.Snapshot.Runtime.ReasoningEffort,
+		ServiceTier:       first.Task.Snapshot.Runtime.ServiceTier,
+		CollaborationMode: first.Task.Snapshot.Runtime.CollaborationMode,
+		SettingsRevision:  first.Task.Snapshot.Runtime.SettingsRevision,
+	})
+	require.NoError(t, err)
+	require.NoError(t, client.Events(ctx, first.Task, []workerprotocol.EventInput{{
+		Sequence: 1, Type: "runtime.settings_applied", Payload: appliedPayload,
+	}}))
+	var appliedModel, appliedEffort, appliedTier, appliedMode string
+	var appliedRevision int64
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COALESCE(applied_model,''),
+		COALESCE(applied_reasoning_effort,''), COALESCE(applied_service_tier,''),
+		COALESCE(applied_collaboration_mode,''), applied_settings_revision
+		FROM codex_turn_runs WHERE id = $1`, first.Task.Claimed.RunID).
+		Scan(&appliedModel, &appliedEffort, &appliedTier, &appliedMode, &appliedRevision))
+	require.Equal(t, "gpt-5.6-sol", appliedModel)
+	require.Equal(t, "xhigh", appliedEffort)
+	require.Equal(t, "standard", appliedTier)
+	require.Equal(t, "plan", appliedMode)
+	require.Equal(t, first.Task.Snapshot.Runtime.SettingsRevision, appliedRevision)
 	require.NoError(t, client.Complete(ctx, first.Task, codexcontrol.TurnResult{
 		TurnID: "runtime-turn-1", FinalAnswer: "done",
 	}))
 
 	_, err = db.ExecContext(ctx, `UPDATE discord_conversations SET model = 'gpt-5.4',
-		reasoning_effort = 'low', service_tier = 'fast' WHERE id = $1`, conversationID)
+		reasoning_effort = 'low', service_tier = 'fast', settings_revision = settings_revision + 1
+		WHERE id = $1`, conversationID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE codex_thread_controls SET model = 'gpt-5.4',
+		reasoning_effort = 'low', service_tier = 'fast', settings_revision = settings_revision + 1
+		WHERE discord_conversation_id = $1`, conversationID)
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_input_messages
 		(message_id, conversation_id, discord_user_id, display_name, username,
@@ -240,9 +268,9 @@ func TestWorkerAPIDiscordRuntimePreferencesFreeze(t *testing.T) {
 	require.NotNil(t, second.Task)
 	require.Equal(t, secondIntent, second.Task.Claimed.ID)
 	require.Equal(t, first.Task.Claimed.ControlID, second.Task.Claimed.ControlID)
-	require.Equal(t, "gpt-5.6-sol", second.Task.Snapshot.Runtime.Model)
-	require.Equal(t, "xhigh", second.Task.Snapshot.Runtime.ReasoningEffort)
-	require.Equal(t, "standard", second.Task.Snapshot.Runtime.ServiceTier)
+	require.Equal(t, "gpt-5.4", second.Task.Snapshot.Runtime.Model)
+	require.Equal(t, "low", second.Task.Snapshot.Runtime.ReasoningEffort)
+	require.Equal(t, "fast", second.Task.Snapshot.Runtime.ServiceTier)
 	require.Equal(t, "plan", second.Task.Snapshot.Runtime.CollaborationMode)
 }
 
@@ -446,7 +474,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
 		EnvironmentID: environmentID, Generation: 12,
 		Events: []workerprotocol.ThreadMetadataEvent{{
-			ThreadID: "codex-desktop-thread", Sequence: 1, Kind: "settings",
+			ThreadID: "codex-desktop-thread", Sequence: 1, Kind: "settings", Source: "desktop",
 			Model: "gpt-5.6-sol", ReasoningEffort: "ultra", ServiceTier: "priority",
 			CollaborationMode: "plan",
 		}},
@@ -459,14 +487,14 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
 		EnvironmentID: environmentID, Generation: 12,
 		Events: []workerprotocol.ThreadMetadataEvent{{
-			ThreadID: "codex-desktop-thread", Sequence: 2, Kind: "settings",
+			ThreadID: "codex-desktop-thread", Sequence: 2, Kind: "settings", Source: "desktop",
 			CollaborationMode: "default",
 		}},
 	}))
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
 		EnvironmentID: environmentID, Generation: 12,
 		Events: []workerprotocol.ThreadMetadataEvent{{
-			ThreadID: "codex-desktop-thread", Sequence: 1, Kind: "settings",
+			ThreadID: "codex-desktop-thread", Sequence: 1, Kind: "settings", Source: "desktop",
 			CollaborationMode: "plan",
 		}},
 	}))
@@ -477,10 +505,27 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
 		EnvironmentID: environmentID, Generation: 12,
 		Events: []workerprotocol.ThreadMetadataEvent{{
-			ThreadID: "codex-desktop-thread", Sequence: 3, Kind: "settings",
+			ThreadID: "codex-desktop-thread", Sequence: 3, Kind: "settings", Source: "desktop",
 			CollaborationMode: "plan",
 		}},
 	}))
+	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
+		EnvironmentID: environmentID, Generation: 12,
+		Events: []workerprotocol.ThreadMetadataEvent{{
+			ThreadID: "codex-desktop-thread", Sequence: 4, Kind: "settings", Source: "app_server",
+			Model: "gpt-5.6-terra", ReasoningEffort: "low", ServiceTier: "fast",
+			CollaborationMode: "default", SettingsRevision: 2,
+		}},
+	}))
+	var desiredModel, desiredMode, appliedModel, appliedMode string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COALESCE(model,''), collaboration_mode,
+		COALESCE(applied_model,''), COALESCE(applied_collaboration_mode,'')
+		FROM codex_thread_controls WHERE id = $1`, state.ControlID).
+		Scan(&desiredModel, &desiredMode, &appliedModel, &appliedMode))
+	require.Equal(t, "gpt-5.6-sol", desiredModel)
+	require.Equal(t, "plan", desiredMode)
+	require.Equal(t, "gpt-5.6-terra", appliedModel)
+	require.Equal(t, "default", appliedMode)
 
 	task, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
 		EnvironmentID: environmentID, WorkerID: "desktop-worker",

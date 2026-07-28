@@ -606,13 +606,17 @@ func discordCardComponents(card ComponentCardPayload) ([]discord.LayoutComponent
 			return nil, err
 		}
 	}
+	buttonRows := card.ButtonRows
 	if len(card.Buttons) > 0 {
-		if len(card.Buttons) > 5 {
+		buttonRows = append([][]ComponentButtonPayload{card.Buttons}, buttonRows...)
+	}
+	seen := make(map[string]bool)
+	for _, row := range buttonRows {
+		if len(row) == 0 || len(row) > 5 {
 			return nil, fmt.Errorf("discord Action Row 最多包含 5 个按钮")
 		}
-		buttons := make([]discord.InteractiveComponent, 0, len(card.Buttons))
-		seen := make(map[string]bool, len(card.Buttons))
-		for _, button := range card.Buttons {
+		buttons := make([]discord.InteractiveComponent, 0, len(row))
+		for _, button := range row {
 			if (button.CustomID == "") == (button.URL == "") || len(button.CustomID) > 100 ||
 				(button.CustomID != "" && seen[button.CustomID]) ||
 				utf8.RuneCountInString(button.Label) == 0 || utf8.RuneCountInString(button.Label) > 80 {

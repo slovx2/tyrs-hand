@@ -9,7 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 14
+const Version = 15
 
 type EnrollRequest struct {
 	Token string `json:"token"`
@@ -227,12 +227,14 @@ type ThreadMetadataEvent struct {
 	ThreadID          string `json:"threadId"`
 	Sequence          int64  `json:"sequence"`
 	Kind              string `json:"kind"`
+	Source            string `json:"source"`
 	Name              string `json:"name,omitempty"`
 	LifecycleState    string `json:"lifecycleState,omitempty"`
 	Model             string `json:"model,omitempty"`
 	ReasoningEffort   string `json:"reasoningEffort,omitempty"`
 	ServiceTier       string `json:"serviceTier,omitempty"`
 	CollaborationMode string `json:"collaborationMode,omitempty"`
+	SettingsRevision  int64  `json:"settingsRevision,omitempty"`
 }
 
 type ThreadMetadataRequest struct {
@@ -345,6 +347,16 @@ type RuntimeSnapshot struct {
 	ConfigSignature   string `json:"configSignature"`
 	GlobalAgents      string `json:"globalAgents"`
 	CollaborationMode string `json:"collaborationMode,omitempty"`
+	SettingsRevision  int64  `json:"settingsRevision"`
+}
+
+type RuntimeSettingsApplied struct {
+	Phase             string `json:"phase"`
+	Model             string `json:"model,omitempty"`
+	ReasoningEffort   string `json:"reasoningEffort,omitempty"`
+	ServiceTier       string `json:"serviceTier,omitempty"`
+	CollaborationMode string `json:"collaborationMode,omitempty"`
+	SettingsRevision  int64  `json:"settingsRevision"`
 }
 
 type GitHubSnapshot struct {

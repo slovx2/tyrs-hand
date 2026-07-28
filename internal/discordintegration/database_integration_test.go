@@ -76,22 +76,28 @@ func TestConversationModeSwitching(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "plan", state.Mode)
 	require.EqualValues(t, 1, state.Revision)
-
-	state, stale, err := service.SetConversationMode(ctx, testGuildID, "100000000000000401",
-		"1001", conversationID, state.Revision, "plan")
+	connector.onComponent(newComponentEvent(t, client, "100000000000000407",
+		"100000000000000401", triggerModeButtonID(state, "discussion"), nil))
+	state, err = service.ConversationMode(ctx, testGuildID, "100000000000000401", "1001")
 	require.NoError(t, err)
-	require.False(t, stale)
+	require.Equal(t, "discussion", state.TriggerMode)
 
-	latest, stale, err := service.SetConversationMode(ctx, testGuildID, "100000000000000401",
+	update, err := service.SetConversationMode(ctx, testGuildID, "100000000000000401",
+		"1001", conversationID, state.SettingsRevision, "plan")
+	require.NoError(t, err)
+	require.False(t, update.Stale)
+
+	update, err = service.SetConversationMode(ctx, testGuildID, "100000000000000401",
 		"1001", conversationID, 0, "default")
 	require.NoError(t, err)
-	require.True(t, stale)
+	require.True(t, update.Stale)
+	latest := update.State
 	require.Equal(t, "plan", latest.Mode)
-	_, _, err = service.SetConversationMode(ctx, testGuildID, "100000000000000401",
-		"1001", uuid.New(), latest.Revision, "default")
+	_, err = service.SetConversationMode(ctx, testGuildID, "100000000000000401",
+		"1001", uuid.New(), latest.SettingsRevision, "default")
 	require.ErrorContains(t, err, "不属于当前")
-	_, _, err = service.SetConversationMode(ctx, testGuildID, "100000000000000401",
-		"1001", conversationID, latest.Revision, "invalid")
+	_, err = service.SetConversationMode(ctx, testGuildID, "100000000000000401",
+		"1001", conversationID, latest.SettingsRevision, "invalid")
 	require.ErrorContains(t, err, "目标模式无效")
 	connector.onComponent(newComponentEvent(t, client, "100000000000000404",
 		"100000000000000401", "codex-mode:bad", nil))
@@ -101,21 +107,38 @@ func TestConversationModeSwitching(t *testing.T) {
 		seed.developmentForumID)
 	require.NoError(t, err)
 	_, err = service.ConversationMode(ctx, testGuildID, "100000000000000401", "1002")
-	require.ErrorContains(t, err, "readonly")
+	require.ErrorContains(t, err, "Post 创建者")
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_forum_access
 		(forum_id, discord_user_id, access_level) VALUES ($1, '1003', 'operator')`,
 		seed.developmentForumID)
 	require.NoError(t, err)
 	_, err = service.ConversationMode(ctx, testGuildID, "100000000000000401", "1003")
-	require.NoError(t, err)
+	require.ErrorContains(t, err, "Post 创建者")
 
-	require.NoError(t, service.FinalizeConfiguration(ctx, conversationID, "1001", nil))
+	require.NoError(t, service.FinalizeConfiguration(ctx, conversationID, "1001"))
+	_, err = service.ConversationMode(ctx, testGuildID, "100000000000000401", "1002")
+	require.ErrorContains(t, err, "readonly")
+	_, err = service.ConversationMode(ctx, testGuildID, "100000000000000401", "1003")
+	require.NoError(t, err)
 	busy, err := service.ConversationMode(ctx, testGuildID, "100000000000000401", "1001")
 	require.NoError(t, err)
 	require.True(t, busy.Busy)
-	_, _, err = service.SetConversationMode(ctx, testGuildID, "100000000000000401",
-		"1001", conversationID, busy.Revision, "default")
-	require.ErrorContains(t, err, "暂时不能切换")
+	update, err = service.SetConversationMode(ctx, testGuildID, "100000000000000401",
+		"1001", conversationID, busy.SettingsRevision, "default")
+	require.NoError(t, err)
+	require.Equal(t, "default", update.State.Mode)
+	operatorConversationID, err := service.BeginPost(ctx, IncomingMessage{
+		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
+		ThreadID: "100000000000000405", MessageID: "100000000000000406",
+		DiscordUserID: "1003", DisplayName: "Operator", Username: "operator",
+		Title: "Operator post", Body: "由 operator 创建", ConfigurationConfirmed: false,
+	})
+	require.NoError(t, err)
+	_, err = service.ConversationMode(ctx, testGuildID, "100000000000000405", "1003")
+	require.NoError(t, err, "等待阶段应允许实际 Post 创建者配置")
+	_, err = service.ConversationMode(ctx, testGuildID, "100000000000000405", "1001")
+	require.ErrorContains(t, err, "Post 创建者")
+	require.NoError(t, service.FinalizeConfiguration(ctx, operatorConversationID, "1003"))
 	_, err = db.ExecContext(ctx, `UPDATE discord_conversations SET lifecycle_state = 'archived'
 		WHERE id = $1`, conversationID)
 	require.NoError(t, err)
@@ -142,11 +165,17 @@ func TestDiscordDiscussionTriggerBatchesPendingMessages(t *testing.T) {
 	state, err := service.ConversationMode(ctx, testGuildID, "100000000000000451", "1001")
 	require.NoError(t, err)
 	require.Equal(t, "interactive", state.TriggerMode)
-	state, stale, err := service.SetTriggerMode(ctx, testGuildID, "100000000000000451",
-		"1001", conversationID, state.TriggerRevision, "discussion")
+	update, err := service.SetTriggerMode(ctx, testGuildID, "100000000000000451",
+		"1001", conversationID, state.SettingsRevision, "discussion")
 	require.NoError(t, err)
-	require.False(t, stale)
+	require.False(t, update.Stale)
+	state = update.State
 	require.Equal(t, "discussion", state.TriggerMode)
+	var controlSettingsRevision int64
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT settings_revision
+		FROM codex_thread_controls WHERE discord_conversation_id = $1`, conversationID).
+		Scan(&controlSettingsRevision))
+	require.Equal(t, state.SettingsRevision, controlSettingsRevision)
 
 	require.NoError(t, service.Reply(ctx, IncomingMessage{
 		GuildID: testGuildID, ThreadID: "100000000000000451",
@@ -188,9 +217,10 @@ func TestDiscordDiscussionTriggerBatchesPendingMessages(t *testing.T) {
 		MessageID: "100000000000000455", DiscordUserID: "1001",
 		DisplayName: "Alice", Username: "alice", Body: "切换前缓存",
 	}))
-	state, _, err = service.SetTriggerMode(ctx, testGuildID, "100000000000000451",
-		"1001", conversationID, state.TriggerRevision, "interactive")
+	update, err = service.SetTriggerMode(ctx, testGuildID, "100000000000000451",
+		"1001", conversationID, state.SettingsRevision, "interactive")
 	require.NoError(t, err)
+	state = update.State
 	require.NoError(t, service.Reply(ctx, IncomingMessage{
 		GuildID: testGuildID, ThreadID: "100000000000000451",
 		MessageID: "100000000000000456", DiscordUserID: "1001",
@@ -202,9 +232,10 @@ func TestDiscordDiscussionTriggerBatchesPendingMessages(t *testing.T) {
 		Scan(&transitionCount))
 	require.Equal(t, 1, transitionCount)
 
-	state, _, err = service.SetTriggerMode(ctx, testGuildID, "100000000000000451",
-		"1001", conversationID, state.TriggerRevision, "discussion")
+	update, err = service.SetTriggerMode(ctx, testGuildID, "100000000000000451",
+		"1001", conversationID, state.SettingsRevision, "discussion")
 	require.NoError(t, err)
+	state = update.State
 	attachmentMessages := []IncomingMessage{
 		{GuildID: testGuildID, ThreadID: "100000000000000451",
 			MessageID: "100000000000000458", DiscordUserID: "1001",
@@ -257,6 +288,123 @@ func TestDiscordDiscussionTriggerBatchesPendingMessages(t *testing.T) {
 			OR message_id = '100000000000000457'`).Scan(&batched, &skipped))
 	require.Equal(t, 200, batched)
 	require.Equal(t, 6, skipped)
+}
+
+func TestDiscordStartupPreferencesCrossForumAndMemberJoin(t *testing.T) {
+	db := discordDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	_, err := db.ExecContext(ctx, `INSERT INTO discord_guilds(guild_id, name, enabled)
+		VALUES ($1, 'preferences-test', true)`, testGuildID)
+	require.NoError(t, err)
+	seed := seedDiscordManagerData(t, db)
+	secondForumChannelID := "100000000000000512"
+	secondResource := insertDiscordResource(t, db, "forum.development.preferences",
+		secondForumChannelID, "forum", "preferences", seed.codexCategoryID)
+	var secondProjectID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO development_projects
+		(environment_id, relative_path, name, project_kind, availability_status,
+		 branch, head_sha, dirty, remote_url, last_seen_at)
+		VALUES ($1,'workspaces/second','second','git','available','main','seed-head',false,
+		 'https://example.invalid/second.git',now()) RETURNING id`, seed.environmentID).
+		Scan(&secondProjectID))
+	var secondForumID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_forums
+		(guild_id, resource_id, forum_type, owner_discord_user_id,
+		 development_project_id, development_environment_id)
+		VALUES ($1,$2,'development','1001',$3,$4) RETURNING id`, testGuildID,
+		secondResource, secondProjectID, seed.environmentID).Scan(&secondForumID))
+	require.NoError(t, func() error {
+		_, insertErr := db.ExecContext(ctx, `INSERT INTO discord_forum_access
+			(forum_id, discord_user_id, access_level) VALUES
+			($1,'1003','operator'),($1,'1002','readonly')`, secondForumID)
+		return insertErr
+	}())
+	service := NewConversationService(db)
+
+	firstID, err := service.BeginPost(ctx, IncomingMessage{
+		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
+		ThreadID: "100000000000000513", MessageID: "100000000000000514",
+		DiscordUserID: "1001", DisplayName: "Alice", Username: "alice",
+		Title: "remember A", Body: "first",
+	})
+	require.NoError(t, err)
+	state, err := service.ConversationMode(ctx, testGuildID, "100000000000000513", "1001")
+	require.NoError(t, err)
+	runtimeUpdate, err := service.SetRuntimePreferences(ctx, testGuildID,
+		"100000000000000513", "1001", firstID, state.SettingsRevision,
+		ConversationConfiguration{Model: "gpt-5.6-sol", ReasoningEffort: "low",
+			ServiceTier: "standard"})
+	require.NoError(t, err)
+	modeUpdate, err := service.SetConversationMode(ctx, testGuildID,
+		"100000000000000513", "1001", firstID, runtimeUpdate.State.SettingsRevision, "plan")
+	require.NoError(t, err)
+	triggerUpdate, err := service.SetTriggerMode(ctx, testGuildID,
+		"100000000000000513", "1001", firstID, modeUpdate.State.SettingsRevision, "discussion")
+	require.NoError(t, err)
+	require.Equal(t, "discussion", triggerUpdate.State.TriggerMode)
+	require.NoError(t, service.FinalizeConfiguration(ctx, firstID, "1001"))
+
+	secondID, err := service.BeginPost(ctx, IncomingMessage{
+		GuildID: testGuildID, ForumID: secondForumChannelID,
+		ThreadID: "100000000000000515", MessageID: "100000000000000516",
+		DiscordUserID: "1001", DisplayName: "Alice", Username: "alice",
+		Title: "cross forum", Body: "second",
+	})
+	require.NoError(t, err)
+	secondState, err := service.ConversationMode(ctx, testGuildID, "100000000000000515", "1001")
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.6-sol", secondState.Model)
+	require.Equal(t, "low", secondState.ReasoningEffort)
+	require.Equal(t, "standard", secondState.ServiceTier)
+	require.Equal(t, "plan", secondState.Mode)
+	require.Equal(t, "discussion", secondState.TriggerMode)
+	require.NoError(t, service.FinalizeConfiguration(ctx, secondID, "1001"))
+	secondState, err = service.ConversationMode(ctx, testGuildID, "100000000000000515", "1001")
+	require.NoError(t, err)
+
+	runtimeUpdate, err = service.SetRuntimePreferences(ctx, testGuildID,
+		"100000000000000515", "1001", secondID, secondState.SettingsRevision,
+		ConversationConfiguration{Model: "gpt-5.6-terra", ReasoningEffort: "xhigh",
+			ServiceTier: "fast"})
+	require.NoError(t, err)
+	modeUpdate, err = service.SetConversationMode(ctx, testGuildID,
+		"100000000000000515", "1001", secondID, runtimeUpdate.State.SettingsRevision, "default")
+	require.NoError(t, err)
+	_, err = service.SetTriggerMode(ctx, testGuildID, "100000000000000515", "1001",
+		secondID, modeUpdate.State.SettingsRevision, "interactive")
+	require.NoError(t, err)
+
+	thirdID, err := service.BeginPost(ctx, IncomingMessage{
+		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
+		ThreadID: "100000000000000517", MessageID: "100000000000000518",
+		DiscordUserID: "1001", DisplayName: "Alice", Username: "alice",
+		Title: "still A", Body: "third",
+	})
+	require.NoError(t, err)
+	thirdState, err := service.ConversationMode(ctx, testGuildID, "100000000000000517", "1001")
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.6-sol", thirdState.Model)
+	require.Equal(t, "low", thirdState.ReasoningEffort)
+	require.Equal(t, "standard", thirdState.ServiceTier)
+	require.Equal(t, "plan", thirdState.Mode)
+	require.Equal(t, "discussion", thirdState.TriggerMode)
+	require.NotEqual(t, uuid.Nil, thirdID)
+
+	require.NoError(t, service.Reply(ctx, IncomingMessage{GuildID: testGuildID,
+		ThreadID: "100000000000000515", MessageID: "100000000000000519",
+		DiscordUserID: "1003", DisplayName: "Charlie", Username: "charlie", Body: "join"}))
+	require.NoError(t, service.Reply(ctx, IncomingMessage{GuildID: testGuildID,
+		ThreadID: "100000000000000515", MessageID: "100000000000000520",
+		DiscordUserID: "1003", DisplayName: "Charlie", Username: "charlie", Body: "again"}))
+	var memberOperations int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM integration_outbox
+		WHERE operation_key = $1 AND operation_type = 'thread.member.add'`,
+		"conversation-member:"+secondID.String()+":1003").Scan(&memberOperations))
+	require.Equal(t, 1, memberOperations)
+	require.Error(t, service.Reply(ctx, IncomingMessage{GuildID: testGuildID,
+		ThreadID: "100000000000000515", MessageID: "100000000000000521",
+		DiscordUserID: "1002", DisplayName: "Bob", Username: "bob", Body: "readonly"}))
 }
 
 func TestConversationStatusMovesAndRefreshesHistoryLinks(t *testing.T) {
@@ -632,7 +780,7 @@ func TestDiscordLunaTitleSynchronizesBeforeAndAfterControlBinding(t *testing.T) 
 	require.NoError(t, err)
 	require.Equal(t, titleFirstID, claimed.ID)
 	require.NoError(t, generator.schedule(ctx, claimed, "标题先完成"))
-	require.NoError(t, service.FinalizeConfiguration(ctx, titleFirstID, "1001", nil))
+	require.NoError(t, service.FinalizeConfiguration(ctx, titleFirstID, "1001"))
 	var titleFirstControl uuid.UUID
 	var desiredTitle, desiredSource string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT control.id,
@@ -1351,15 +1499,20 @@ func testGatewayHandlers(t *testing.T, ctx context.Context, db *sql.DB, manager 
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_intents
 		WHERE discord_conversation_id = $1`, conversationID).Scan(&queuedBeforeConfiguration))
 	require.Zero(t, queuedBeforeConfiguration)
-	require.Error(t, conversationService.BeginConfigurationEdit(ctx, conversationID, "1003"),
-		"新 Post 参数只能由创建者操作")
-	require.NoError(t, conversationService.BeginConfigurationEdit(ctx, conversationID, "1001"))
+	_, err = conversationService.ConversationMode(ctx, testGuildID, "2001", "1003")
+	require.Error(t, err, "新 Post 参数只能由创建者操作")
 	started, err := conversationService.StartDueConfiguration(ctx)
 	require.NoError(t, err)
-	require.False(t, started, "调整参数后延长的截止时间不能被旧的超时扫描启动")
-	require.NoError(t, conversationService.FinalizeConfiguration(ctx, conversationID, "1001",
-		&ConversationConfiguration{Model: "gpt-5.6-terra", ReasoningEffort: "high",
-			ServiceTier: "fast", CollaborationMode: "default"}))
+	require.False(t, started)
+	configurationState, err := conversationService.ConversationMode(ctx, testGuildID, "2001", "1001")
+	require.NoError(t, err)
+	configurationUpdate, err := conversationService.SetRuntimePreferences(ctx, testGuildID, "2001",
+		"1001", conversationID, configurationState.SettingsRevision,
+		ConversationConfiguration{Model: "gpt-5.6-terra", ReasoningEffort: "high",
+			ServiceTier: "fast"})
+	require.NoError(t, err)
+	require.NoError(t, conversationService.FinalizeConfiguration(ctx, conversationID, "1001"))
+	require.Len(t, configurationUpdate.Changes, 3)
 	var configuredModel, configuredEffort, configuredTier string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT status, model, reasoning_effort, service_tier
 		FROM discord_conversations WHERE id = $1`, conversationID).
@@ -1469,8 +1622,6 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 	require.Error(t, err)
 	_, err = connector.newCodexModal(ctx, seed.developmentForumChannelID, "1002", "default")
 	require.Error(t, err)
-	_, err = connector.configurationModal(ctx, uuid.New())
-	require.Error(t, err)
 	options, custom := modelModalOptions("private-model")
 	require.Len(t, options, len(codexsettings.PresetModels)+2)
 	require.Equal(t, "private-model", custom.Value)
@@ -1479,44 +1630,61 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 
 	connector.onMessage(newMessageEvent(t, client, "2011", "3012", "edit configuration"))
 	editID := conversationIDForThread(t, ctx, db, "2011")
+	editState, err := connector.conversations.ConversationMode(ctx, testGuildID, "2011", "1001")
+	require.NoError(t, err)
+	staleStartButton := configurationStartButtonID(editState)
 	connector.onComponent(newComponentEvent(t, client, "5101", "2011",
-		"codex-config-edit:"+editID.String(), nil))
+		runtimePreferencesButtonID(editState), nil))
 	var status string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT configuration_status FROM discord_conversations
 		WHERE id = $1`, editID).Scan(&status))
-	require.Equal(t, "editing", status)
+	require.Equal(t, "awaiting", status)
 
-	configurationSubmit := newModalEvent(t, client, "5102", "2011", configurationModalPrefix+editID.String(),
+	configurationSubmit := newModalEvent(t, client, "5102", "2011",
+		fmt.Sprintf("%s%s:%d", runtimeConfigurationModalPrefix, editID, editState.SettingsRevision),
 		[]discord.LayoutComponent{
 			discord.NewLabel("模型", discord.StringSelectMenuComponent{CustomID: "model", Values: []string{"__custom__"}}),
 			discord.NewLabel("自定义模型", discord.TextInputComponent{CustomID: "custom_model", Value: "private-model"}),
-			discord.NewLabel("服务等级", discord.StringSelectMenuComponent{CustomID: "service_tier", Values: []string{"fast"}}),
 			discord.NewLabel("思考等级", discord.StringSelectMenuComponent{CustomID: "reasoning_effort", Values: []string{"xhigh"}}),
-			discord.NewLabel("模式", discord.StringSelectMenuComponent{CustomID: "collaboration_mode", Values: []string{"plan"}}),
+			discord.NewLabel("速度", discord.StringSelectMenuComponent{CustomID: "service_tier", Values: []string{"fast"}}),
 		})
 	connector.onModalSubmit(configurationSubmit)
 	connector.onModalSubmit(configurationSubmit)
+	connector.onComponent(newComponentEvent(t, client, "5110", "2011", staleStartButton, nil))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT configuration_status
+		FROM discord_conversations WHERE id = $1`, editID).Scan(&status))
+	require.Equal(t, "awaiting", status, "过期等待卡只能刷新，不能启动会话")
+	editState, err = connector.conversations.ConversationMode(ctx, testGuildID, "2011", "1001")
+	require.NoError(t, err)
+	connector.onComponent(newComponentEvent(t, client, "5111", "2011",
+		modeButtonID(editState, "plan"), nil))
 	var model, effort, tier, collaborationMode string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT configuration_status, model, reasoning_effort,
 		service_tier, collaboration_mode FROM discord_conversations WHERE id = $1`, editID).
 		Scan(&status, &model, &effort, &tier, &collaborationMode))
-	require.Equal(t, "configured", status)
+	require.Equal(t, "awaiting", status)
 	require.Equal(t, "private-model", model)
 	require.Equal(t, "xhigh", effort)
 	require.Equal(t, "fast", tier)
 	require.Equal(t, "plan", collaborationMode)
-	_, err = connector.configurationModal(ctx, editID)
+	editState, err = connector.conversations.ConversationMode(ctx, testGuildID, "2011", "1001")
 	require.NoError(t, err)
+	connector.onComponent(newComponentEvent(t, client, "5112", "2011",
+		configurationStartButtonID(editState), nil))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT configuration_status
+		FROM discord_conversations WHERE id = $1`, editID).Scan(&status))
+	require.Equal(t, "configured", status)
 
 	connector.onMessage(newMessageEvent(t, client, "2012", "3013", "start defaults"))
 	startID := conversationIDForThread(t, ctx, db, "2012")
+	startState, err := connector.conversations.ConversationMode(ctx, testGuildID, "2012", "1001")
+	require.NoError(t, err)
 	connector.onComponent(newComponentEvent(t, client, "5103", "2012",
-		"codex-config-start:"+startID.String(), nil))
+		configurationStartButtonID(startState), nil))
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT configuration_status FROM discord_conversations
 		WHERE id = $1`, startID).Scan(&status))
 	require.Equal(t, "configured", status)
 	connector.onComponent(newComponentEvent(t, client, "5105", "2012", "codex-config-start:bad-id", nil))
-	connector.onComponent(newComponentEvent(t, client, "5106", "2012", "codex-config-edit:bad-id", nil))
 
 	connector.onMessage(newMessageEvent(t, client, "2013", "3014", "timeout defaults"))
 	timeoutID := conversationIDForThread(t, ctx, db, "2013")
@@ -1565,15 +1733,6 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 		})
 	connector.onModalSubmit(emptyTask)
 	connector.onModalSubmit(newModalEvent(t, client, "5109", "2012", "unrelated-modal", nil))
-	connector.onMessage(newMessageEvent(t, client, "2014", "3015", "invalid configuration"))
-	invalidConfigurationID := conversationIDForThread(t, ctx, db, "2014")
-	connector.onModalSubmit(newModalEvent(t, client, "5110", "2014",
-		configurationModalPrefix+invalidConfigurationID.String(), []discord.LayoutComponent{
-			discord.NewLabel("模型", discord.StringSelectMenuComponent{CustomID: "model", Values: []string{"__custom__"}}),
-			discord.NewLabel("自定义模型", discord.TextInputComponent{CustomID: "custom_model"}),
-			discord.NewLabel("服务等级", discord.StringSelectMenuComponent{CustomID: "service_tier", Values: []string{"standard"}}),
-			discord.NewLabel("思考等级", discord.StringSelectMenuComponent{CustomID: "reasoning_effort", Values: []string{"__default__"}}),
-		}))
 	_, err = db.ExecContext(ctx, `UPDATE discord_conversations SET title_rename_status = 'skipped'
 		WHERE title_rename_status = 'pending' AND id <> $1`, createdID)
 	require.NoError(t, err)
@@ -1593,9 +1752,11 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 	for _, value := range []struct{ effort, tier string }{
 		{"low", "standard"}, {"medium", "fast"}, {"high", "standard"}, {"xhigh", "fast"}, {"unknown", "standard"},
 	} {
-		card := conversationConfigurationCard("", value.effort, value.tier, "default")
+		card := conversationModeCard(ConversationModeState{ConversationID: uuid.New(),
+			Mode: "default", TriggerMode: "interactive", ReasoningEffort: value.effort,
+			ServiceTier: value.tier, Awaiting: true}, "")
 		require.Contains(t, card.Body, "**模型**")
-		require.Contains(t, card.Body, "**服务等级**")
+		require.Contains(t, card.Body, "**速度**")
 		require.Contains(t, card.Body, "**思考等级**")
 	}
 }
@@ -1908,7 +2069,8 @@ func testDiscordRecoveryOrchestration(t *testing.T, ctx context.Context, db *sql
 		}
 		require.Contains(t, codexSubcommands, "archive")
 		require.Contains(t, codexSubcommands, "restore")
-		require.Contains(t, codexSubcommands, "mode")
+		require.Contains(t, codexSubcommands, "config")
+		require.NotContains(t, codexSubcommands, "mode")
 		require.Contains(t, newOptions, "mode")
 		response.Header().Set("Content-Type", "application/json")
 		_, _ = response.Write([]byte(`[]`))

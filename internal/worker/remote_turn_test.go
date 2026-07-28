@@ -71,6 +71,24 @@ func TestWaitRemoteTurnMapsInterruptedSnapshot(t *testing.T) {
 	require.ErrorIs(t, err, errRemoteInterrupt)
 }
 
+func TestReportRuntimeSettingsAppliedUsesAcceptedSnapshot(t *testing.T) {
+	var eventType string
+	var payload json.RawMessage
+	reportRuntimeSettingsApplied(func(kind string, value json.RawMessage) {
+		eventType, payload = kind, value
+	}, workerprotocol.RuntimeSnapshot{Model: "gpt-5.6-terra", ReasoningEffort: "xhigh",
+		ServiceTier: "fast", CollaborationMode: "plan", SettingsRevision: 7}, "turn/start")
+	require.Equal(t, "runtime.settings_applied", eventType)
+	var applied workerprotocol.RuntimeSettingsApplied
+	require.NoError(t, json.Unmarshal(payload, &applied))
+	require.Equal(t, "turn/start", applied.Phase)
+	require.Equal(t, "gpt-5.6-terra", applied.Model)
+	require.Equal(t, "xhigh", applied.ReasoningEffort)
+	require.Equal(t, "fast", applied.ServiceTier)
+	require.Equal(t, "plan", applied.CollaborationMode)
+	require.EqualValues(t, 7, applied.SettingsRevision)
+}
+
 func remoteTurnTask() workerprotocol.Task {
 	return workerprotocol.Task{Claimed: codexcontrol.ClaimedControl{
 		Intent: codexcontrol.Intent{ID: uuid.New()},

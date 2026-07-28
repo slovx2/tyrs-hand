@@ -190,7 +190,7 @@ func (e *environmentCodex) observeMetadata(ctx context.Context) {
 				if json.Unmarshal(event.Params, &value) == nil {
 					e.recordThreadSettings(ctx, value.ThreadID, value.ThreadSettings.Model,
 						value.ThreadSettings.Effort, value.ThreadSettings.ServiceTier,
-						value.ThreadSettings.CollaborationMode.Mode)
+						value.ThreadSettings.CollaborationMode.Mode, "app_server")
 				}
 			}
 		case <-ctx.Done():
@@ -218,13 +218,13 @@ func (e *environmentCodex) recordThreadLifecycle(ctx context.Context, threadID, 
 }
 
 func (e *environmentCodex) recordThreadSettings(ctx context.Context, threadID, model,
-	effort, tier, collaborationMode string,
+	effort, tier, collaborationMode, source string,
 ) {
 	if e.processor == nil || threadID == "" || (model == "" && collaborationMode == "") {
 		return
 	}
 	event := workerprotocol.ThreadMetadataEvent{ThreadID: threadID,
-		Sequence: e.settingsSequence.Add(1), Kind: "settings", Model: model,
+		Sequence: e.settingsSequence.Add(1), Kind: "settings", Source: source, Model: model,
 		ReasoningEffort: effort, ServiceTier: tier, CollaborationMode: collaborationMode}
 	e.recordThreadMetadata(ctx, event)
 }

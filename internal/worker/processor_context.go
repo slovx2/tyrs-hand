@@ -84,6 +84,13 @@ func (p *Processor) freezeRuntimePreferences(ctx context.Context,
 	claimed *codexcontrol.ClaimedControl,
 ) (codexsettings.EffectivePreferences, error) {
 	var result codexsettings.EffectivePreferences
+	if claimed.SourceType == codexcontrol.SourceDiscord {
+		err := p.db.QueryRowContext(ctx, `SELECT COALESCE(model,''),
+			COALESCE(reasoning_effort,''), COALESCE(service_tier,'standard')
+			FROM codex_turn_runs WHERE id = $1`, claimed.RunID).
+			Scan(&result.Model, &result.ReasoningEffort, &result.ServiceTier)
+		return result, err
+	}
 	var model, effort, tier sql.NullString
 	var frozen sql.NullTime
 	err := p.db.QueryRowContext(ctx, `SELECT model, reasoning_effort, service_tier,
@@ -100,15 +107,8 @@ func (p *Processor) freezeRuntimePreferences(ctx context.Context,
 		}
 		return result, nil
 	}
-	if claimed.SourceType == codexcontrol.SourceDiscord {
-		err = p.db.QueryRowContext(ctx, `SELECT COALESCE(model,''), COALESCE(reasoning_effort,''),
-			COALESCE(service_tier,'standard')
-			FROM discord_conversations WHERE id = $1`, claimed.DiscordConversationID).
-			Scan(&result.Model, &result.ReasoningEffort, &result.ServiceTier)
-	} else {
-		result, err = codexsettings.NewService(p.db).Resolve(ctx, claimed.RepositoryID, uuid.Nil,
-			claimed.AgentProfileID)
-	}
+	result, err = codexsettings.NewService(p.db).Resolve(ctx, claimed.RepositoryID, uuid.Nil,
+		claimed.AgentProfileID)
 	if err != nil {
 		return codexsettings.EffectivePreferences{}, err
 	}

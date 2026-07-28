@@ -33,6 +33,7 @@ type IncomingMessage struct {
 	CollaborationMode      string
 	MentionsBot            bool
 	ConfigurationConfirmed bool
+	RememberPreferences    bool
 	Attachments            []IncomingAttachment
 }
 
@@ -176,18 +177,33 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 	if err != nil {
 		return uuid.Nil, err
 	}
-	if input.Model != "" {
+	userPreferences, remembered, err := loadUserCodexPreferences(ctx, tx,
+		input.GuildID, input.DiscordUserID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if remembered {
+		applyUserCodexPreferences(&preferences, userPreferences)
+	}
+	if input.RememberPreferences || input.Model != "" {
 		preferences.Model = input.Model
 	}
-	if input.ReasoningEffort != "" {
+	if input.RememberPreferences || input.ReasoningEffort != "" {
 		preferences.ReasoningEffort = input.ReasoningEffort
 	}
-	if input.ServiceTier != "" {
+	if input.RememberPreferences || input.ServiceTier != "" {
 		preferences.ServiceTier = input.ServiceTier
 	}
 	mode := input.CollaborationMode
 	if mode == "" {
-		mode = "default"
+		mode = userPreferences.CollaborationMode
+		if mode == "" {
+			mode = "default"
+		}
+	}
+	triggerMode := userPreferences.TriggerMode
+	if triggerMode == "" {
+		triggerMode = "interactive"
 	}
 	status, configurationStatus := "active", "configured"
 	var deadline any
@@ -200,18 +216,19 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 			(guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
 			 repository_id, development_project_id, agent_profile_id, title, status,
 			 model, reasoning_effort, service_tier,
-		 collaboration_mode,
+		 collaboration_mode, trigger_mode,
 		 configuration_status, configuration_deadline, configured_by_discord_user_id,
 		 title_rename_status)
 		VALUES ($1, $2, $3, $4, $5, NULLIF($6::text,'')::uuid, NULLIF($7::text,'')::uuid,
-			$8, $9, $10, NULLIF($11,''), NULLIF($12,''), $13, $14,
-			$15, CASE WHEN $16::text IS NULL THEN NULL ELSE now() + $16::interval END, $17,
+			$8, $9, $10, NULLIF($11,''), NULLIF($12,''), $13, $14, $15,
+			$16, CASE WHEN $17::text IS NULL THEN NULL ELSE now() + $17::interval END, $18,
 			'pending')
 		ON CONFLICT(guild_id, thread_id) DO UPDATE SET last_activity_at = now(), updated_at = now()
 		RETURNING id`, input.GuildID, forumID, input.ThreadID, input.MessageID, ownerID,
 		optionalUUID(repositoryID), optionalUUID(projectID), profileID, input.Title, status,
 		preferences.Model, preferences.ReasoningEffort,
-		preferences.ServiceTier, mode, configurationStatus, deadline, input.DiscordUserID).Scan(&conversationID)
+		preferences.ServiceTier, mode, triggerMode, configurationStatus, deadline,
+		input.DiscordUserID).Scan(&conversationID)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -221,6 +238,14 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 	}
 	if !inserted {
 		return conversationID, tx.Commit()
+	}
+	if input.RememberPreferences {
+		if err := saveUserCodexPreferences(ctx, tx, input.GuildID, input.DiscordUserID,
+			userCodexPreferences{Model: preferences.Model,
+				ReasoningEffort: preferences.ReasoningEffort, ServiceTier: preferences.ServiceTier,
+				CollaborationMode: mode, TriggerMode: triggerMode}); err != nil {
+			return uuid.Nil, err
+		}
 	}
 	if input.ConfigurationConfirmed {
 		if err := s.enqueueMessage(ctx, tx, conversationID, input.MessageID); err != nil {
@@ -276,6 +301,14 @@ func (s *ConversationService) Reply(ctx context.Context, input IncomingMessage) 
 	if err != nil || !inserted {
 		return err
 	}
+	if input.DiscordUserID != ownerID {
+		memberKey := "conversation-member:" + conversationID.String() + ":" + input.DiscordUserID
+		if err := enqueueDiscordOutbox(ctx, tx, memberKey, "thread.member.add",
+			"channels/"+input.ThreadID+"/thread-members/"+input.DiscordUserID,
+			map[string]string{"channelId": input.ThreadID, "userId": input.DiscordUserID}, ""); err != nil {
+			return err
+		}
+	}
 	shouldEnqueue := status == "active" && (triggerMode == "interactive" || input.MentionsBot)
 	if shouldEnqueue {
 		if err := s.enqueuePendingMessages(ctx, tx, conversationID, input.MessageID); err != nil {
@@ -301,108 +334,102 @@ func (s *ConversationService) Reply(ctx context.Context, input IncomingMessage) 
 }
 
 type ConversationConfiguration struct {
-	Model             string
-	ReasoningEffort   string
-	ServiceTier       string
-	CollaborationMode string
-}
-
-func (s *ConversationService) BeginConfigurationEdit(ctx context.Context, conversationID uuid.UUID,
-	userID string,
-) error {
-	result, err := s.db.ExecContext(ctx, `UPDATE discord_conversations c SET configuration_status = 'editing',
-		configuration_deadline = now() + interval '2 minutes', updated_at = now()
-		WHERE c.id = $1 AND c.configuration_status IN ('awaiting','editing')
-			AND c.configured_by_discord_user_id = $2`, conversationID, userID)
-	if err != nil {
-		return err
-	}
-	changed, _ := result.RowsAffected()
-	if changed != 1 {
-		return errors.New("配置已生效，或当前用户没有修改权限")
-	}
-	return nil
+	Model           string
+	ReasoningEffort string
+	ServiceTier     string
 }
 
 func (s *ConversationService) FinalizeConfiguration(ctx context.Context, conversationID uuid.UUID,
-	userID string, selected *ConversationConfiguration,
+	userID string,
 ) error {
-	return s.finalizeConfiguration(ctx, conversationID, userID, selected, false)
+	_, err := s.finalizeConfiguration(ctx, conversationID, userID, false, nil)
+	return err
+}
+
+func (s *ConversationService) FinalizeConfigurationRevision(ctx context.Context,
+	conversationID uuid.UUID, userID string, expectedRevision int64,
+) (bool, error) {
+	return s.finalizeConfiguration(ctx, conversationID, userID, false, &expectedRevision)
 }
 
 func (s *ConversationService) finalizeConfiguration(ctx context.Context, conversationID uuid.UUID,
-	userID string, selected *ConversationConfiguration, requireDue bool,
-) error {
+	userID string, requireDue bool, expectedRevision *int64,
+) (bool, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	var model, effort, tier, mode string
+	var model, effort, tier, mode, triggerMode, guildID, threadID string
+	var settingsRevision int64
 	var forumID uuid.UUID
 	var owner, configuredBy, status string
 	err = tx.QueryRowContext(ctx, `SELECT COALESCE(model,''), COALESCE(reasoning_effort,''),
 		COALESCE(service_tier,'standard'), collaboration_mode,
-		forum_id, owner_discord_user_id, COALESCE(configured_by_discord_user_id,''), configuration_status
+		trigger_mode, guild_id, thread_id, forum_id, owner_discord_user_id,
+		COALESCE(configured_by_discord_user_id,''), configuration_status, settings_revision
 		FROM discord_conversations WHERE id = $1 AND (
 			$2 = false OR (configuration_status IN ('awaiting','editing') AND configuration_deadline <= now())
 		) FOR UPDATE`, conversationID, requireDue).
-		Scan(&model, &effort, &tier, &mode, &forumID, &owner, &configuredBy, &status)
+		Scan(&model, &effort, &tier, &mode, &triggerMode, &guildID, &threadID, &forumID, &owner,
+			&configuredBy, &status, &settingsRevision)
 	if err != nil {
-		return err
-	}
-	if status == "configured" {
-		return errors.New("该会话已经启动")
+		return false, err
 	}
 	if userID != "" && userID != configuredBy {
-		return errors.New("只有 Post 创建者可以修改该会话配置")
+		return false, errors.New("只有 Post 创建者可以修改该会话配置")
 	}
-	if selected != nil {
-		value := codexsettings.Preferences{Model: optionalPreference(selected.Model),
-			ReasoningEffort: optionalPreference(selected.ReasoningEffort), ServiceTier: &selected.ServiceTier}
-		if err := codexsettings.ValidatePreferences(value); err != nil {
-			return err
-		}
-		model, effort, tier = strings.TrimSpace(selected.Model), selected.ReasoningEffort, selected.ServiceTier
-		if selected.CollaborationMode != "default" && selected.CollaborationMode != "plan" {
-			return errors.New("所选 Collaboration Mode 无效")
-		}
-		mode = selected.CollaborationMode
+	if expectedRevision != nil && settingsRevision != *expectedRevision {
+		return true, tx.Commit()
+	}
+	if status == "configured" {
+		return false, errors.New("该会话已经启动")
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE discord_conversations SET model = NULLIF($2,''),
 		reasoning_effort = NULLIF($3,''), service_tier = $4, configuration_status = 'configured',
 		collaboration_mode = $5, configuration_deadline = NULL, status = 'active',
-		updated_at = now() WHERE id = $1`, conversationID, model, effort, tier, mode)
+		settings_revision = settings_revision + 1, updated_at = now() WHERE id = $1`,
+		conversationID, model, effort, tier, mode)
 	if err != nil {
-		return err
+		return false, err
+	}
+	if err := saveUserCodexPreferences(ctx, tx, guildID, configuredBy, userCodexPreferences{
+		Model: model, ReasoningEffort: effort, ServiceTier: tier,
+		CollaborationMode: mode, TriggerMode: triggerMode,
+	}); err != nil {
+		return false, err
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT message_id FROM discord_input_messages
 		WHERE conversation_id = $1 AND status = 'received' ORDER BY received_at, message_id`, conversationID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	var messages []string
 	for rows.Next() {
 		var messageID string
 		if err := rows.Scan(&messageID); err != nil {
 			_ = rows.Close()
-			return err
+			return false, err
 		}
 		messages = append(messages, messageID)
 	}
 	if err := rows.Close(); err != nil {
-		return err
+		return false, err
 	}
 	for _, messageID := range messages {
 		if err := s.enqueueMessage(ctx, tx, conversationID, messageID); err != nil {
-			return err
+			return false, err
+		}
+		if err := ProjectConversationThinkingTx(ctx, tx, guildID, threadID,
+			conversationID, messageID); err != nil {
+			return false, err
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return err
+		return false, err
 	}
 	s.notifyJobs(ctx)
-	return nil
+	return false, nil
 }
 
 func optionalPreference(value string) *string {
@@ -424,7 +451,7 @@ func (s *ConversationService) StartDueConfiguration(ctx context.Context) (bool, 
 	if err != nil {
 		return false, err
 	}
-	err = s.finalizeConfiguration(ctx, conversationID, "", nil, true)
+	_, err = s.finalizeConfiguration(ctx, conversationID, "", true, nil)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}

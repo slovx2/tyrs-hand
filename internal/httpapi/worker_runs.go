@@ -219,6 +219,13 @@ func (s *Server) workerRunEvents(c *gin.Context) {
 				}
 			}
 		}
+		if event.Type == "runtime.settings_applied" {
+			if err := recordRuntimeSettingsApplied(c.Request.Context(), tx, claimed,
+				event.Payload); err != nil {
+				badRequest(c, err)
+				return
+			}
+		}
 		lastSequence = event.Sequence
 	}
 	if _, err := tx.ExecContext(c.Request.Context(), `UPDATE codex_turn_runs
@@ -256,6 +263,51 @@ func (s *Server) workerRunEvents(c *gin.Context) {
 		}
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func recordRuntimeSettingsApplied(ctx context.Context, tx *sql.Tx,
+	claimed *codexcontrol.ClaimedControl, payload json.RawMessage,
+) error {
+	var value workerprotocol.RuntimeSettingsApplied
+	if err := json.Unmarshal(payload, &value); err != nil {
+		return fmt.Errorf("runtime.settings_applied payload 无效: %w", err)
+	}
+	if value.Phase != "thread/start" && value.Phase != "thread/resume" &&
+		value.Phase != "turn/start" {
+		return errors.New("runtime.settings_applied phase 无效")
+	}
+	if value.ReasoningEffort != "" && value.ReasoningEffort != "low" &&
+		value.ReasoningEffort != "medium" && value.ReasoningEffort != "high" &&
+		value.ReasoningEffort != "xhigh" {
+		return errors.New("runtime.settings_applied reasoningEffort 无效")
+	}
+	if value.ServiceTier != "" && value.ServiceTier != "standard" && value.ServiceTier != "fast" {
+		return errors.New("runtime.settings_applied serviceTier 无效")
+	}
+	if value.CollaborationMode != "" && value.CollaborationMode != "default" &&
+		value.CollaborationMode != "plan" {
+		return errors.New("runtime.settings_applied collaborationMode 无效")
+	}
+	if value.SettingsRevision < 0 {
+		return errors.New("runtime.settings_applied settingsRevision 无效")
+	}
+	_, err := tx.ExecContext(ctx, `UPDATE codex_turn_runs SET
+		applied_model = NULLIF($2,''), applied_reasoning_effort = NULLIF($3,''),
+		applied_service_tier = NULLIF($4,''), applied_collaboration_mode = NULLIF($5,''),
+		applied_settings_revision = $6, settings_applied_at = now()
+		WHERE id = $1`, claimed.RunID, value.Model, value.ReasoningEffort,
+		value.ServiceTier, value.CollaborationMode, value.SettingsRevision)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET
+		applied_model = NULLIF($2,''), applied_reasoning_effort = NULLIF($3,''),
+		applied_service_tier = NULLIF($4,''), applied_collaboration_mode = NULLIF($5,''),
+		applied_settings_revision = $6, settings_applied_at = now(), updated_at = now()
+		WHERE id = $1 AND (applied_settings_revision IS NULL OR applied_settings_revision <= $6)`,
+		claimed.ControlID, value.Model, value.ReasoningEffort, value.ServiceTier,
+		value.CollaborationMode, value.SettingsRevision)
+	return err
 }
 
 func completedUserMessage(payload json.RawMessage) (string, string, bool) {

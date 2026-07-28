@@ -14,7 +14,7 @@ import (
 func TestModeButtonRevisionAndCard(t *testing.T) {
 	id := uuid.New()
 	state := ConversationModeState{ConversationID: id, Mode: "plan", Revision: 7,
-		TriggerMode: "interactive", TriggerRevision: 3}
+		TriggerMode: "interactive", TriggerRevision: 3, SettingsRevision: 7}
 	card := conversationModeCard(state, "")
 	require.Contains(t, card.Body, "`Plan`")
 	require.Contains(t, card.Body, "`交互模式`")
@@ -44,7 +44,7 @@ func TestModeButtonRevisionAndCard(t *testing.T) {
 	parsedID, revision, target, err = parseTriggerModeButton(card.Buttons[1].CustomID)
 	require.NoError(t, err)
 	require.Equal(t, id, parsedID)
-	require.EqualValues(t, 3, revision)
+	require.EqualValues(t, 7, revision)
 	require.Equal(t, "discussion", target)
 	for _, customID := range []string{
 		"codex-trigger-mode:not-a-uuid:1:discussion",
@@ -65,7 +65,7 @@ func TestModeButtonRevisionAndCard(t *testing.T) {
 	require.False(t, card.Buttons[0].Disabled)
 	require.True(t, card.Buttons[1].Disabled)
 	require.True(t, card.Buttons[2].Disabled)
-	require.True(t, card.Buttons[3].Disabled)
+	require.False(t, card.Buttons[3].Disabled)
 }
 
 func TestMessageMentionsUserUsesStructuredMentions(t *testing.T) {
@@ -81,8 +81,25 @@ func TestMessageMentionsUserUsesStructuredMentions(t *testing.T) {
 }
 
 func TestModeCommandResponseIsEphemeral(t *testing.T) {
-	require.True(t, commandResponseEphemeral("/codex/mode"))
+	require.True(t, commandResponseEphemeral("/codex/config"))
 	require.True(t, commandResponseEphemeral("/codex/stop"))
+}
+
+func TestConfigurationAnnouncementContainsOnlyChanges(t *testing.T) {
+	interactive := configurationAnnouncement("1001", "<@900>", []ConfigurationChange{{
+		Field: "trigger_mode", Before: "discussion", After: "interactive",
+	}})
+	require.Contains(t, interactive, "【当前为交互模式，发送消息会直接触发 Codex】")
+	require.NotContains(t, interactive, "模型：")
+	require.NotContains(t, interactive, "协作模式：")
+
+	discussion := configurationAnnouncement("1001", "<@900>", []ConfigurationChange{
+		{Field: "trigger_mode", Before: "interactive", After: "discussion"},
+		{Field: "model", Before: "gpt-5.6-sol", After: "gpt-5.6-terra"},
+	})
+	require.Contains(t, discussion, "【当前为讨论模式，必须 <@900> 才会触发 Codex】")
+	require.Contains(t, discussion, "模型：`gpt-5.6-terra`")
+	require.NotContains(t, discussion, "速度：")
 }
 
 func TestProgressCardOnlyShowsPlanMode(t *testing.T) {

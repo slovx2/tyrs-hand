@@ -43,6 +43,7 @@ func (s *Server) workerRecordThreadMetadata(c *gin.Context) {
 			event.ReasoningEffort = strings.TrimSpace(event.ReasoningEffort)
 			event.ServiceTier = strings.TrimSpace(event.ServiceTier)
 			event.CollaborationMode = strings.TrimSpace(event.CollaborationMode)
+			event.Source = strings.TrimSpace(event.Source)
 			if event.Model == "" && event.CollaborationMode == "" {
 				badRequest(c, errors.New("thread settings event 无效"))
 				return
@@ -50,6 +51,10 @@ func (s *Server) workerRecordThreadMetadata(c *gin.Context) {
 			if event.CollaborationMode != "" && event.CollaborationMode != "default" &&
 				event.CollaborationMode != "plan" {
 				badRequest(c, errors.New("thread settings collaboration mode 无效"))
+				return
+			}
+			if event.Source != "desktop" && event.Source != "app_server" {
+				badRequest(c, errors.New("thread settings source 无效"))
 				return
 			}
 			if err := s.recordThreadSettingsEvent(c, tx, request, event); err != nil {
@@ -153,15 +158,32 @@ func (s *Server) recordThreadSettingsEvent(c *gin.Context, tx *sql.Tx,
 ) error {
 	var controlID uuid.UUID
 	var conversationID sql.NullString
+	var settingsRevision int64
+	desktop := event.Source == "desktop"
 	err := tx.QueryRowContext(c.Request.Context(), `UPDATE codex_thread_controls control SET
-		model = COALESCE(NULLIF($4,''), model),
-		reasoning_effort = CASE WHEN $4 <> '' THEN NULLIF($5,'') ELSE reasoning_effort END,
-		service_tier = CASE WHEN $4 <> '' THEN NULLIF($6,'') ELSE service_tier END,
-		collaboration_mode = COALESCE(NULLIF($9,''), collaboration_mode),
-		collaboration_mode_revision = collaboration_mode_revision + CASE
-			WHEN NULLIF($9,'') IS NOT NULL AND collaboration_mode <> $9 THEN 1 ELSE 0 END,
-		runtime_preferences_frozen_at = now(), app_server_settings_generation = $7,
-		app_server_settings_sequence = $8, updated_at = now()
+		model = CASE WHEN $10 THEN COALESCE(NULLIF($4,''), model) ELSE model END,
+		reasoning_effort = CASE WHEN $10 AND $4 <> '' THEN NULLIF($5,'') ELSE reasoning_effort END,
+		service_tier = CASE WHEN $10 AND $4 <> '' THEN NULLIF($6,'') ELSE service_tier END,
+		collaboration_mode = CASE WHEN $10 THEN COALESCE(NULLIF($9,''), collaboration_mode)
+			ELSE collaboration_mode END,
+		collaboration_mode_revision = collaboration_mode_revision + CASE WHEN $10
+			AND NULLIF($9,'') IS NOT NULL AND collaboration_mode <> $9 THEN 1 ELSE 0 END,
+		settings_revision = settings_revision + CASE WHEN $10 AND (
+			($4 <> '' AND (model IS DISTINCT FROM NULLIF($4,'')
+				OR reasoning_effort IS DISTINCT FROM NULLIF($5,'')
+				OR service_tier IS DISTINCT FROM NULLIF($6,'')))
+			OR (NULLIF($9,'') IS NOT NULL AND collaboration_mode <> $9)) THEN 1 ELSE 0 END,
+		applied_model = NULLIF($4,''), applied_reasoning_effort = NULLIF($5,''),
+		applied_service_tier = NULLIF($6,''),
+		applied_collaboration_mode = COALESCE(NULLIF($9,''), applied_collaboration_mode),
+		applied_settings_revision = CASE WHEN $10 THEN settings_revision + CASE WHEN
+			($4 <> '' AND (model IS DISTINCT FROM NULLIF($4,'')
+				OR reasoning_effort IS DISTINCT FROM NULLIF($5,'')
+				OR service_tier IS DISTINCT FROM NULLIF($6,'')))
+			OR (NULLIF($9,'') IS NOT NULL AND collaboration_mode <> $9) THEN 1 ELSE 0 END
+			ELSE COALESCE(NULLIF($11,0), applied_settings_revision) END,
+		settings_applied_at = now(), runtime_preferences_frozen_at = now(),
+		app_server_settings_generation = $7, app_server_settings_sequence = $8, updated_at = now()
 		FROM discord_development_environments environment
 		WHERE control.development_environment_id = environment.id
 			AND control.external_thread_id = $3
@@ -170,14 +192,16 @@ func (s *Server) recordThreadSettingsEvent(c *gin.Context, tx *sql.Tx,
 			AND ($7 > control.app_server_settings_generation OR
 				($7 = control.app_server_settings_generation
 					AND $8 > control.app_server_settings_sequence))
-		RETURNING control.id, control.discord_conversation_id::text`, request.EnvironmentID,
+		RETURNING control.id, control.discord_conversation_id::text, control.settings_revision`,
+		request.EnvironmentID,
 		workerNode(c).ID, event.ThreadID, event.Model, event.ReasoningEffort,
-		event.ServiceTier, request.Generation, event.Sequence, event.CollaborationMode).
-		Scan(&controlID, &conversationID)
+		event.ServiceTier, request.Generation, event.Sequence, event.CollaborationMode,
+		desktop, event.SettingsRevision).
+		Scan(&controlID, &conversationID, &settingsRevision)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
-	if err != nil || !conversationID.Valid {
+	if err != nil || !conversationID.Valid || !desktop {
 		return err
 	}
 	_, err = tx.ExecContext(c.Request.Context(), `UPDATE discord_conversations SET
@@ -187,10 +211,11 @@ func (s *Server) recordThreadSettingsEvent(c *gin.Context, tx *sql.Tx,
 		service_tier = CASE WHEN $2 <> '' THEN NULLIF($4,'')
 			ELSE discord_conversations.service_tier END,
 		collaboration_mode = control.collaboration_mode,
-		collaboration_mode_revision = control.collaboration_mode_revision, updated_at = now()
+		collaboration_mode_revision = control.collaboration_mode_revision,
+		settings_revision = $6, updated_at = now()
 		FROM codex_thread_controls control WHERE discord_conversations.id = $1
 			AND control.id = $5`, conversationID.String, event.Model, event.ReasoningEffort,
-		event.ServiceTier, controlID)
+		event.ServiceTier, controlID, settingsRevision)
 	return err
 }
 

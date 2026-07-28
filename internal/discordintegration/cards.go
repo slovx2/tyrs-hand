@@ -15,11 +15,12 @@ const (
 )
 
 type ComponentCardPayload struct {
-	AccentColor int                      `json:"accentColor"`
-	Header      string                   `json:"header"`
-	Body        string                   `json:"body,omitempty"`
-	Timeline    string                   `json:"timeline,omitempty"`
-	Buttons     []ComponentButtonPayload `json:"buttons,omitempty"`
+	AccentColor int                        `json:"accentColor"`
+	Header      string                     `json:"header"`
+	Body        string                     `json:"body,omitempty"`
+	Timeline    string                     `json:"timeline,omitempty"`
+	Buttons     []ComponentButtonPayload   `json:"buttons,omitempty"`
+	ButtonRows  [][]ComponentButtonPayload `json:"buttonRows,omitempty"`
 }
 
 type ComponentButtonPayload struct {
@@ -87,35 +88,6 @@ func archivedConversationCard() ComponentCardPayload {
 	return ComponentCardPayload{AccentColor: cardColorGray,
 		Header: "🔒 Codex · 会话已归档",
 		Body:   "当前消息没有进入执行队列。请先恢复这个会话，再继续对话。"}
-}
-
-func conversationConfigurationCard(model, effort, tier, mode string) ComponentCardPayload {
-	if model == "" {
-		model = "Codex 默认"
-	}
-	switch effort {
-	case "low":
-		effort = "轻"
-	case "medium":
-		effort = "中"
-	case "high":
-		effort = "高"
-	case "xhigh":
-		effort = "极高"
-	default:
-		effort = "Codex 默认"
-	}
-	if tier == "fast" {
-		tier = "快速"
-	} else {
-		tier = "标准"
-	}
-	return ComponentCardPayload{AccentColor: cardColorYellow, Header: "⚙️ Codex · 即将启动",
-		Body: "可以直接使用后台默认值，或在 20 秒内调整本次会话参数。参数确认后会固定到本会话。\n\n" +
-			"**模型**  `" + cardText(model, 128) + "`\n" +
-			"**服务等级**  `" + cardText(tier, 32) + "`\n" +
-			"**思考等级**  `" + cardText(effort, 32) + "`\n" +
-			"**模式**  `" + collaborationModeLabel(mode) + "`"}
 }
 
 func collaborationModeLabel(mode string) string {

@@ -111,6 +111,24 @@ func TestDiscordComponentsV2CardStructureAndLimits(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestDiscordComponentsV2SupportsMultipleButtonRows(t *testing.T) {
+	card := ComponentCardPayload{AccentColor: cardColorYellow, Header: "settings",
+		Buttons: []ComponentButtonPayload{{Label: "first", CustomID: "first"}},
+		ButtonRows: [][]ComponentButtonPayload{{{
+			Label: "start", CustomID: "start", Style: "primary",
+		}}}}
+	components, err := discordCardComponents(card)
+	require.NoError(t, err)
+	container := components[0].(discord.ContainerComponent)
+	actionRows := 0
+	for _, component := range container.Components {
+		if _, ok := component.(discord.ActionRowComponent); ok {
+			actionRows++
+		}
+	}
+	require.Equal(t, 2, actionRows)
+}
+
 func TestConversationCardsOmitInternalPlaceholderDetails(t *testing.T) {
 	tracker := NewConversationActionTracker(time.Now())
 	for _, detail := range []string{"正在处理请求。", "思考中", "本轮处理完成。",
@@ -139,7 +157,9 @@ func TestEverySystemCardBuildsAsComponentsV2(t *testing.T) {
 		conversationProgressCard(ConversationCompleted, timeline, 0, "", "default"),
 		conversationProgressCard(ConversationCanceled, timeline, 0, "", "default"),
 		conversationProgressCard(ConversationFailed, timeline, 0, "", "default"),
-		terminatedControlCard(), conversationConfigurationCard("gpt-5.6-sol", "high", "fast", "default"),
+		terminatedControlCard(), conversationModeCard(ConversationModeState{ConversationID: uuid.New(),
+			Mode: "default", TriggerMode: "interactive", Model: "gpt-5.6-sol",
+			ReasoningEffort: "high", ServiceTier: "fast", Awaiting: true}, ""),
 		archivedConversationCard(), lifecycleCard(uuid.New(), 1),
 		DesktopInputCards("Avery", "hello")[0],
 		interactiveCard(InteractiveProjection{Status: "pending", Questions: []InteractiveQuestion{{

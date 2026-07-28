@@ -140,9 +140,17 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	if err := runtime.ValidateSkills(ctx, workspace, skills); err != nil {
 		return result, err
 	}
+	threadPhase := "thread/start"
+	if claimed.ExternalThreadID != "" {
+		threadPhase = "thread/resume"
+	}
 	threadID, err := p.ensureThread(ctx, runtime, claimed, options,
 		containerRuntime.EnvironmentID.String())
 	if err != nil {
+		return result, err
+	}
+	if err := p.recordLocalRuntimeSettingsApplied(ctx, claimed, threadPhase,
+		jobCtx.Model, jobCtx.ReasoningEffort, string(jobCtx.ServiceTier)); err != nil {
 		return result, err
 	}
 	portWorkspace := ports.Workspace{WorktreePath: workspace}
@@ -185,6 +193,11 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	if err != nil {
 		return result, err
 	}
+	if err := p.recordLocalRuntimeSettingsApplied(ctx, claimed, "turn/start",
+		jobCtx.Model, jobCtx.ReasoningEffort, string(jobCtx.ServiceTier)); err != nil {
+		interruptTurnBestEffort(runtime, threadID, turnID)
+		return result, err
+	}
 	if err := p.controls.RecordSubmission(ctx, claimed, turnID); err != nil {
 		return result, err
 	}
@@ -211,6 +224,52 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		result.FinalAnswer, progress.detail("本轮处理完成。", result.DurationMillis))
 	finalProjected = true
 	return result, nil
+}
+
+func (p *Processor) recordLocalRuntimeSettingsApplied(ctx context.Context,
+	claimed *codexcontrol.ClaimedControl, phase, model, effort, tier string,
+) error {
+	tx, err := p.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var revision int64
+	if err := tx.QueryRowContext(ctx, `SELECT settings_revision FROM codex_turn_runs
+		WHERE id = $1 FOR UPDATE`, claimed.RunID).Scan(&revision); err != nil {
+		return err
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"phase": phase, "model": model, "reasoningEffort": effort,
+		"serviceTier": tier, "collaborationMode": claimed.CollaborationMode,
+		"settingsRevision": revision,
+	})
+	_, err = tx.ExecContext(ctx, `INSERT INTO agent_events
+		(control_id, intent_id, run_id, event_type, external_event_id, payload)
+		VALUES ($1,$2,$3,'runtime.settings_applied',$4,$5)
+		ON CONFLICT(run_id, external_event_id) WHERE run_id IS NOT NULL
+			AND external_event_id IS NOT NULL DO NOTHING`, claimed.ControlID, claimed.ID,
+		claimed.RunID, "local:"+phase, payload)
+	if err == nil {
+		_, err = tx.ExecContext(ctx, `UPDATE codex_turn_runs SET
+			applied_model = NULLIF($2,''), applied_reasoning_effort = NULLIF($3,''),
+			applied_service_tier = NULLIF($4,''), applied_collaboration_mode = $5,
+			applied_settings_revision = $6, settings_applied_at = now() WHERE id = $1`,
+			claimed.RunID, model, effort, tier, claimed.CollaborationMode, revision)
+	}
+	if err == nil {
+		_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET
+			applied_model = NULLIF($2,''), applied_reasoning_effort = NULLIF($3,''),
+			applied_service_tier = NULLIF($4,''), applied_collaboration_mode = $5,
+			applied_settings_revision = $6, settings_applied_at = now(), updated_at = now()
+			WHERE id = $1 AND (applied_settings_revision IS NULL
+				OR applied_settings_revision <= $6)`, claimed.ControlID, model, effort, tier,
+			claimed.CollaborationMode, revision)
+	}
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (p *Processor) projectDiscordRunContributors(ctx context.Context, runID uuid.UUID,

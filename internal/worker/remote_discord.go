@@ -99,7 +99,7 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 		return workerprotocol.CompleteRequest{}, err
 	}
 	threadID, err := p.ensureRemoteThread(ctx, codexRuntime, task, options,
-		runtime.EnvironmentID.String())
+		runtime.EnvironmentID.String(), report)
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
@@ -135,6 +135,7 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
+	reportRuntimeSettingsApplied(report, task.Snapshot.Runtime, "turn/start")
 	if err := p.client.RecordSubmission(ctx, task, turnID); err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}

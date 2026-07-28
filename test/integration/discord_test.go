@@ -50,11 +50,17 @@ func TestDiscordPersistencePermissionsAndRecovery(t *testing.T) {
 	operator.Body = "steer this"
 	require.NoError(t, service.Reply(ctx, operator))
 	require.NoError(t, service.Reply(ctx, operator))
+	memberStore := discordintegration.NewSQLoutbox(db)
+	memberOperation, err := memberStore.Claim(ctx, 30*time.Second)
+	require.NoError(t, err)
+	require.NotNil(t, memberOperation)
+	require.Equal(t, "thread.member.add", memberOperation.OperationType)
+	completeDiscordDelivery(t, ctx, memberStore, memberOperation, nil)
 	var jobs, messages, attachments int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_intents
 		WHERE discord_conversation_id = $1`, conversationID).Scan(&jobs))
 	require.Zero(t, jobs)
-	require.NoError(t, service.FinalizeConfiguration(ctx, conversationID, "1001", nil))
+	require.NoError(t, service.FinalizeConfiguration(ctx, conversationID, "1001"))
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_intents
 		WHERE discord_conversation_id = $1`, conversationID).Scan(&jobs))
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_input_messages
@@ -90,6 +96,10 @@ func TestDiscordPersistencePermissionsAndRecovery(t *testing.T) {
 	require.EqualValues(t, 1, snapshotVersion)
 
 	testGatewayPersistence(t, ctx, manager, seed.guildID)
+	_, err = db.ExecContext(ctx, `UPDATE integration_outbox SET status = 'completed',
+		available_at = now(), updated_at = now() WHERE integration = 'discord'
+		AND status IN ('pending','retrying')`)
+	require.NoError(t, err)
 	testOutboxRecovery(t, ctx, db, seed.guildID, conversationID)
 	testInitializationRecovery(t, ctx, db, manager, seed)
 }
@@ -129,6 +139,9 @@ func testOutboxRecovery(t *testing.T, ctx context.Context, db *sql.DB, guildID s
 	projectionKey := "conversation:" + conversationID.String() + ":message:3001"
 	require.NoError(t, discordintegration.ProjectConversationStatus(ctx, db, guildID, "2001", conversationID,
 		"3001", uuid.Nil, discordintegration.ConversationRunning, "processing"))
+	_, err := db.ExecContext(ctx, `UPDATE integration_outbox SET available_at = now()
+		WHERE operation_key = $1`, "projection:"+projectionKey)
+	require.NoError(t, err)
 	first, err := store.Claim(ctx, 30*time.Second)
 	require.NoError(t, err)
 	require.NotNil(t, first)

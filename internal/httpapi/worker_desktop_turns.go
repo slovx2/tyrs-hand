@@ -141,12 +141,15 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 			collaboration_mode = $2,
 			collaboration_mode_revision = collaboration_mode_revision +
 				CASE WHEN collaboration_mode = $2 THEN 0 ELSE 1 END,
+			settings_revision = settings_revision +
+				CASE WHEN collaboration_mode = $2 THEN 0 ELSE 1 END,
 			updated_at = now() WHERE id = $1 RETURNING collaboration_mode`,
 			claimed.ControlID, explicitMode).Scan(&claimed.CollaborationMode)
 		if err == nil && claimed.DiscordConversationID != uuid.Nil {
 			_, err = tx.ExecContext(c.Request.Context(), `UPDATE discord_conversations conversation SET
 				collaboration_mode = control.collaboration_mode,
 				collaboration_mode_revision = control.collaboration_mode_revision,
+				settings_revision = control.settings_revision,
 				updated_at = now() FROM codex_thread_controls control
 				WHERE conversation.id = $1 AND control.id = $2`,
 				claimed.DiscordConversationID, claimed.ControlID)
@@ -221,10 +224,13 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	if err == nil {
 		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO codex_turn_runs
 			(id, control_id, primary_intent_id, attempt, worker_id, lease_epoch, capability_hash,
-			 active_slot, max_append_count, execution_node_id, collaboration_mode)
-			VALUES ($1,$2,$3,1,$4,$5,$6,1,$7,$8,$9)`, claimed.RunID, claimed.ControlID,
+			 active_slot, max_append_count, execution_node_id, collaboration_mode,
+			 model, reasoning_effort, service_tier, settings_revision)
+			SELECT $1,$2,$3,1,$4,$5,$6,1,$7,$8,control.collaboration_mode,
+				control.model, control.reasoning_effort, control.service_tier, control.settings_revision
+			FROM codex_thread_controls control WHERE control.id = $2`, claimed.RunID, claimed.ControlID,
 			claimed.ID, request.WorkerID, claimed.LeaseEpoch, security.Digest(capability),
-			max(1, s.cfg.CodexMaxSteersPerTurn), node.ID, claimed.CollaborationMode)
+			max(1, s.cfg.CodexMaxSteersPerTurn), node.ID)
 	}
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "持久化 Desktop Turn 失败", err)

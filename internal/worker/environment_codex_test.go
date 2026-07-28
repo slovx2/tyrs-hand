@@ -94,6 +94,7 @@ func TestEnvironmentCodexObserverSubmitsThreadNamesFromRelay(t *testing.T) {
 	select {
 	case request := <-received:
 		require.Equal(t, "settings", request.Events[0].Kind)
+		require.Equal(t, "app_server", request.Events[0].Source)
 		require.Equal(t, int64(1), request.Events[0].Sequence)
 		require.Equal(t, "gpt-5.6-sol", request.Events[0].Model)
 		require.Equal(t, "ultra", request.Events[0].ReasoningEffort)

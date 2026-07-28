@@ -22,6 +22,7 @@ type remoteCommandHandler func(context.Context, *codex.Runtime, string, string,
 
 func (p *RemoteProcessor) ensureRemoteThread(ctx context.Context, runtime *codex.Runtime,
 	task *workerprotocol.Task, options ports.ThreadOptions, codexHomeKey string,
+	report func(string, json.RawMessage),
 ) (string, error) {
 	claimed := &task.Claimed
 	threadID := claimed.ExternalThreadID
@@ -32,12 +33,14 @@ func (p *RemoteProcessor) ensureRemoteThread(ctx context.Context, runtime *codex
 		if err := runtime.ResumeThread(ctx, threadID, options); err != nil {
 			return "", fmt.Errorf("恢复 Codex Thread: %w", err)
 		}
+		reportRuntimeSettingsApplied(report, task.Snapshot.Runtime, "thread/resume")
 	} else {
 		var err error
 		threadID, err = runtime.StartThread(ctx, options)
 		if err != nil {
 			return "", err
 		}
+		reportRuntimeSettingsApplied(report, task.Snapshot.Runtime, "thread/start")
 	}
 	if err := p.client.SetThread(ctx, task, threadID, codexHomeKey); err != nil {
 		return "", err
@@ -45,6 +48,19 @@ func (p *RemoteProcessor) ensureRemoteThread(ctx context.Context, runtime *codex
 	claimed.ExternalThreadID = threadID
 	claimed.CodexHomeKey = codexHomeKey
 	return threadID, nil
+}
+
+func reportRuntimeSettingsApplied(report func(string, json.RawMessage),
+	settings workerprotocol.RuntimeSnapshot, phase string,
+) {
+	if report == nil {
+		return
+	}
+	report("runtime.settings_applied", remoteEventPayload(workerprotocol.RuntimeSettingsApplied{
+		Phase: phase, Model: settings.Model, ReasoningEffort: settings.ReasoningEffort,
+		ServiceTier: settings.ServiceTier, CollaborationMode: settings.CollaborationMode,
+		SettingsRevision: settings.SettingsRevision,
+	}))
 }
 
 func (p *RemoteProcessor) reconcileRemoteTurn(ctx context.Context, runtime *codex.Runtime,

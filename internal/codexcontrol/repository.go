@@ -109,8 +109,13 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 			return uuid.Nil, false, err
 		}
 		_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls control SET
+			model = conversation.model,
+			reasoning_effort = conversation.reasoning_effort,
+			service_tier = conversation.service_tier,
 			collaboration_mode = conversation.collaboration_mode,
 			collaboration_mode_revision = conversation.collaboration_mode_revision,
+			settings_revision = conversation.settings_revision,
+			runtime_preferences_frozen_at = now(),
 			desired_thread_name = CASE WHEN COALESCE(conversation.generated_title, '') <> ''
 				AND conversation.title_rename_status IN ('scheduled','completed','failed')
 				AND (control.desired_thread_name_source IS DISTINCT FROM 'luna'
@@ -289,7 +294,8 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 	var claimed ClaimedControl
 	var skillsJSON, toolsJSON, dangerousJSON []byte
 	var workItemID, conversationID, repositoryID, projectID, discordMessageID, actorParticipantID sql.NullString
-	var externalThreadID, codexHomeKey sql.NullString
+	var externalThreadID, codexHomeKey, runModel, runEffort, runTier sql.NullString
+	var settingsRevision int64
 	err = tx.QueryRowContext(ctx, `SELECT i.id, i.sequence_no, i.operation, COALESCE(i.behavior,''),
 		i.source_type, COALESCE(i.input_surface,''), i.work_item_id::text, i.discord_conversation_id::text,
 		i.repository_id::text, i.development_project_id::text, i.agent_profile_id,
@@ -300,7 +306,7 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 		i.attempt_count + 1, $2::integer, COALESCE(i.codex_submission_id,''),
 		COALESCE(i.confirmed_codex_turn_id,''), i.created_at,
 		c.external_thread_id, c.codex_home_key, c.lease_epoch + 1,
-		c.collaboration_mode
+		c.collaboration_mode, c.model, c.reasoning_effort, c.service_tier, c.settings_revision
 		FROM codex_turn_intents i JOIN codex_thread_controls c ON c.id = i.control_id
 		WHERE i.control_id = $1 AND i.status IN ('queued','retry_wait','reconciling')
 		  AND i.available_at <= now() AND i.attempt_count < $2
@@ -314,7 +320,7 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 		&claimed.ReplyPolicy, &claimed.ReplyStatus,
 		&claimed.Attempt, &claimed.MaxAttempts, &claimed.SubmissionID, &claimed.ConfirmedTurnID,
 		&claimed.CreatedAt, &externalThreadID, &codexHomeKey, &claimed.LeaseEpoch,
-		&claimed.CollaborationMode)
+		&claimed.CollaborationMode, &runModel, &runEffort, &runTier, &settingsRevision)
 	if err != nil {
 		return nil, err
 	}
@@ -361,10 +367,13 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 	}
 	err = tx.QueryRowContext(ctx, `INSERT INTO codex_turn_runs
 		(control_id, primary_intent_id, attempt, worker_id, lease_epoch, capability_hash,
-		 active_slot, max_append_count, execution_node_id, collaboration_mode)
-		VALUES ($1,$2,$3,$4,$5,$6,1,$7,NULLIF($8,'')::uuid,$9) RETURNING id`, controlID, claimed.ID,
+		 active_slot, max_append_count, execution_node_id, collaboration_mode,
+		 model, reasoning_effort, service_tier, settings_revision)
+		VALUES ($1,$2,$3,$4,$5,$6,1,$7,NULLIF($8,'')::uuid,$9,$10,$11,$12,$13)
+		RETURNING id`, controlID, claimed.ID,
 		claimed.Attempt, workerID, claimed.LeaseEpoch, security.Digest(capability), r.maxSteers,
-		executionNodeID, claimed.CollaborationMode).Scan(&claimed.RunID)
+		executionNodeID, claimed.CollaborationMode, runModel, runEffort, runTier,
+		settingsRevision).Scan(&claimed.RunID)
 	if err != nil {
 		return nil, err
 	}
