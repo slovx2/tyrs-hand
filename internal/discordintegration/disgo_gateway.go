@@ -129,6 +129,7 @@ func (c *DisgoConnector) handleMessage(ctx context.Context, event *events.Messag
 		GuildID: c.guildID, ThreadID: event.ChannelID.String(), MessageID: event.Message.ID.String(),
 		DiscordUserID: event.Message.Author.ID.String(), DisplayName: displayName,
 		Username: event.Message.Author.Username, Body: event.Message.Content,
+		MentionsBot: messageMentionsUser(event.Message, connectorUserID(event.Client())),
 	}
 	for _, attachment := range event.Message.Attachments {
 		mediaType := ""
@@ -213,7 +214,7 @@ func (c *DisgoConnector) onCommand(event *events.ApplicationCommandInteractionCr
 		_ = event.Modal(modal)
 		return
 	}
-	if err := event.DeferCreateMessage(true); err != nil {
+	if err := event.DeferCreateMessage(commandResponseEphemeral(path)); err != nil {
 		return
 	}
 	eventID := "interaction:" + event.ID().String()
@@ -304,6 +305,10 @@ func (c *DisgoConnector) onCommand(event *events.ApplicationCommandInteractionCr
 	err = errors.Join(err, responseErr)
 }
 
+func commandResponseEphemeral(path string) bool {
+	return path != "/codex/mode"
+}
+
 func commandInteractionUpdate(content string, components []discord.LayoutComponent) discord.MessageUpdate {
 	if components == nil {
 		return discord.MessageUpdate{Content: &content}
@@ -341,6 +346,10 @@ func (c *DisgoConnector) onComponent(event *events.ComponentInteractionCreate) {
 	defer func() { _ = c.manager.CompleteInboundEvent(context.Background(), eventID, nil) }()
 	if strings.HasPrefix(customID, "codex-mode:") {
 		c.changeConversationMode(event, customID)
+		return
+	}
+	if strings.HasPrefix(customID, "codex-trigger-mode:") {
+		c.changeTriggerMode(event, customID)
 		return
 	}
 	if strings.HasPrefix(customID, "codex-config-start:") {
@@ -510,6 +519,78 @@ func parseModeButton(customID string) (uuid.UUID, int64, string, error) {
 		return uuid.Nil, 0, "", errors.New("discord 模式 revision 无效")
 	}
 	return conversationID, revision, parts[2], nil
+}
+
+func (c *DisgoConnector) changeTriggerMode(event *events.ComponentInteractionCreate,
+	customID string,
+) {
+	conversationID, revision, target, err := parseTriggerModeButton(customID)
+	if err != nil {
+		_ = event.CreateMessage(discord.NewMessageCreate().WithContent(
+			"这个消息触发模式按钮无效，请重新运行 `/codex mode`。").WithEphemeral(true))
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	state, stale, err := c.conversations.SetTriggerMode(ctx, c.guildID,
+		event.Channel().ID().String(), event.User().ID.String(), conversationID, revision, target)
+	if err != nil {
+		_ = event.CreateMessage(discord.NewMessageCreate().WithContent(err.Error()).WithEphemeral(true))
+		return
+	}
+	notice := "消息触发模式已切换为 `" + triggerModeLabel(state.TriggerMode) + "`。"
+	if stale {
+		notice = "这张卡片已经过期，已刷新为会话的最新模式。"
+	}
+	components, err := discordCardComponents(conversationModeCard(state, notice))
+	if err != nil {
+		_ = event.CreateMessage(discord.NewMessageCreate().WithContent(
+			"模式已保存，但状态卡暂时无法刷新。").WithEphemeral(true))
+		return
+	}
+	update := discord.NewMessageUpdateV2(components...)
+	emptyContent := ""
+	emptyEmbeds := []discord.Embed{}
+	update.Content, update.Embeds = &emptyContent, &emptyEmbeds
+	update.AllowedMentions = &discord.AllowedMentions{}
+	_ = event.UpdateMessage(update)
+}
+
+func parseTriggerModeButton(customID string) (uuid.UUID, int64, string, error) {
+	parts := strings.Split(strings.TrimPrefix(customID, "codex-trigger-mode:"), ":")
+	if len(parts) != 3 || (parts[2] != "interactive" && parts[2] != "discussion") {
+		return uuid.Nil, 0, "", errors.New("discord 消息触发模式按钮无效")
+	}
+	conversationID, err := uuid.Parse(parts[0])
+	if err != nil {
+		return uuid.Nil, 0, "", err
+	}
+	revision, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || revision < 0 {
+		return uuid.Nil, 0, "", errors.New("discord 消息触发模式 revision 无效")
+	}
+	return conversationID, revision, parts[2], nil
+}
+
+func messageMentionsUser(message discord.Message, userID snowflake.ID) bool {
+	for _, mentioned := range message.Mentions {
+		if mentioned.ID == userID {
+			return true
+		}
+	}
+	return false
+}
+
+func connectorUserID(client *bot.Client) snowflake.ID {
+	if client == nil {
+		return 0
+	}
+	if client.Caches != nil {
+		if self, ok := client.Caches.SelfUser(); ok {
+			return self.ID
+		}
+	}
+	return client.ApplicationID
 }
 
 func (c *DisgoConnector) registerCommands(ctx context.Context, client *bot.Client) error {

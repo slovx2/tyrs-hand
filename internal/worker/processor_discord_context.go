@@ -19,7 +19,7 @@ func (p *Processor) discordTurnInput(ctx context.Context, jobCtx discordJobConte
 	if err != nil {
 		return ports.TurnInput{}, err
 	}
-	attachments, err := p.prepareDiscordAttachments(ctx, jobCtx.MessageID, runtime)
+	attachments, err := p.prepareDiscordAttachments(ctx, jobCtx.IntentID, jobCtx.MessageID, runtime)
 	if err != nil {
 		return ports.TurnInput{}, err
 	}
@@ -57,12 +57,18 @@ func (p *Processor) discordTurnInput(ctx context.Context, jobCtx discordJobConte
 		LocalImages: images, AdditionalContext: additional, Skills: skills}, nil
 }
 
-func (p *Processor) prepareDiscordAttachments(ctx context.Context, messageID string,
-	runtime devcontainer.Runtime,
+func (p *Processor) prepareDiscordAttachments(ctx context.Context, intentID uuid.UUID,
+	messageID string, runtime devcontainer.Runtime,
 ) ([]discordintegration.SavedAttachment, error) {
-	rows, err := p.db.QueryContext(ctx, `SELECT discord_attachment_id, source_url, original_filename,
-		media_type, size_bytes FROM discord_attachments WHERE message_id = $1 AND status = 'pending'
-		ORDER BY created_at, id`, messageID)
+	rows, err := p.db.QueryContext(ctx, `SELECT attachment.discord_attachment_id,
+		attachment.source_url, attachment.original_filename,
+		attachment.media_type, attachment.size_bytes FROM discord_attachments attachment
+		JOIN discord_input_messages message ON message.message_id = attachment.message_id
+		WHERE attachment.status = 'pending' AND
+			(message.turn_intent_id = NULLIF($1::text, '')::uuid OR
+			 ($1 = '' AND message.message_id = $2))
+		ORDER BY message.received_at DESC, attachment.created_at DESC, attachment.id DESC
+		LIMIT $3`, optionalUUIDString(intentID), messageID, discordintegration.DefaultMaxAttachments)
 	if err != nil {
 		return nil, err
 	}
@@ -92,18 +98,28 @@ func (p *Processor) prepareDiscordAttachments(ctx context.Context, messageID str
 			return nil, err
 		}
 		for _, attachment := range saved {
-			_, err = p.db.ExecContext(ctx, `UPDATE discord_attachments SET kind = $3, media_type = $4,
-				size_bytes = $5, sha256 = $6, relative_path = $7, status = 'ready'
-				WHERE message_id = $1 AND discord_attachment_id = $2`, messageID, attachment.ID,
-				attachment.Kind, attachment.MediaType, attachment.Size, attachment.SHA256, attachment.RelativePath)
+			_, err = p.db.ExecContext(ctx, `UPDATE discord_attachments SET kind = $4, media_type = $5,
+				size_bytes = $6, sha256 = $7, relative_path = $8, status = 'ready'
+				WHERE discord_attachment_id = $2 AND message_id IN (
+					SELECT message_id FROM discord_input_messages WHERE
+					turn_intent_id = NULLIF($1::text, '')::uuid OR ($1 = '' AND message_id = $3)
+				)`, optionalUUIDString(intentID), attachment.ID,
+				messageID, attachment.Kind, attachment.MediaType, attachment.Size,
+				attachment.SHA256, attachment.RelativePath)
 			if err != nil {
 				return nil, err
 			}
 		}
 	}
-	rows, err = p.db.QueryContext(ctx, `SELECT discord_attachment_id, kind, original_filename,
-		media_type, size_bytes, sha256, relative_path FROM discord_attachments
-		WHERE message_id = $1 AND status = 'ready' ORDER BY created_at, id`, messageID)
+	rows, err = p.db.QueryContext(ctx, `SELECT attachment.discord_attachment_id, attachment.kind,
+		attachment.original_filename, attachment.media_type, attachment.size_bytes,
+		attachment.sha256, attachment.relative_path FROM discord_attachments attachment
+		JOIN discord_input_messages message ON message.message_id = attachment.message_id
+		WHERE attachment.status = 'ready' AND
+			(message.turn_intent_id = NULLIF($1::text, '')::uuid OR
+			 ($1 = '' AND message.message_id = $2))
+		ORDER BY message.received_at DESC, attachment.created_at DESC, attachment.id DESC
+		LIMIT $3`, optionalUUIDString(intentID), messageID, discordintegration.DefaultMaxAttachments)
 	if err != nil {
 		return nil, err
 	}
@@ -120,14 +136,23 @@ func (p *Processor) prepareDiscordAttachments(ctx context.Context, messageID str
 	return result, rows.Err()
 }
 
-func (p *Processor) addDiscordContributor(ctx context.Context, runID, conversationID uuid.UUID,
-	turnID, messageID string,
+func (p *Processor) addDiscordContributor(ctx context.Context, runID, conversationID,
+	intentID uuid.UUID, turnID string,
 ) error {
 	_, err := p.db.ExecContext(ctx, `INSERT INTO discord_turn_contributors
 		(run_id, conversation_id, external_turn_id, discord_user_id, first_message_id,
 		github_binding_id, github_user_id, github_login, binding_version)
-		SELECT $1, $2, $3, discord_user_id, message_id, github_binding_id,
-		github_user_id, github_login, binding_version FROM discord_input_messages WHERE message_id = $4
-		ON CONFLICT(run_id, discord_user_id) DO NOTHING`, runID, conversationID, turnID, messageID)
+		SELECT DISTINCT ON (discord_user_id) $1, $2, $3, discord_user_id, message_id,
+		github_binding_id, github_user_id, github_login, binding_version
+		FROM discord_input_messages WHERE turn_intent_id = $4
+		ORDER BY discord_user_id, received_at, message_id
+		ON CONFLICT(run_id, discord_user_id) DO NOTHING`, runID, conversationID, turnID, intentID)
 	return err
+}
+
+func optionalUUIDString(value uuid.UUID) string {
+	if value == uuid.Nil {
+		return ""
+	}
+	return value.String()
 }

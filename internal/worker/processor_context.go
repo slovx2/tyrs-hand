@@ -415,7 +415,8 @@ func (p *Processor) dispatchPendingIntent(ctx context.Context, runtime *codex.Ru
 	input := ports.TurnInput{Text: instruction, ClientUserMessageID: intentID.String()}
 	if claimed.SourceType == codexcontrol.SourceDiscord && messageID != "" {
 		jobCtx, loadErr := p.loadDiscordContext(ctx, codexcontrol.Intent{
-			DiscordConversationID: claimed.DiscordConversationID, DiscordMessageID: messageID,
+			ID: intentID, DiscordConversationID: claimed.DiscordConversationID,
+			DiscordMessageID: messageID, Instruction: instruction,
 		})
 		if loadErr != nil {
 			return loadErr
@@ -498,7 +499,8 @@ func (p *Processor) markSteerApplied(ctx context.Context, claimed *codexcontrol.
 			WHERE id = $1 AND append_count < max_append_count`, claimed.RunID)
 	}
 	if err == nil && claimed.SourceType == codexcontrol.SourceDiscord {
-		err = p.addDiscordContributor(ctx, claimed.RunID, claimed.DiscordConversationID, turnID, messageID)
+		err = p.addDiscordContributor(ctx, claimed.RunID, claimed.DiscordConversationID,
+			intentID, turnID)
 	}
 	return err
 }

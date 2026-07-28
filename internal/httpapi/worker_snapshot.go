@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/codexsettings"
+	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
@@ -143,6 +144,9 @@ func (s *Server) loadDiscordWorkerSnapshot(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+	if claimed.Instruction != "" {
+		result.Body = claimed.Instruction
+	}
 	result.BindingID = bindingID.String
 	var development workerprotocol.DevelopmentSpec
 	var projectID sql.NullString
@@ -173,9 +177,13 @@ func (s *Server) loadDiscordWorkerSnapshot(ctx context.Context,
 	}
 	development.ProjectID = parseOptionalUUID(projectID)
 	result.Development = &development
-	rows, err := s.db.QueryContext(ctx, `SELECT id, kind, original_filename, media_type,
-		size_bytes, COALESCE(sha256,'') FROM discord_attachments
-		WHERE message_id = $1 AND status = 'ready' ORDER BY created_at, id`, result.MessageID)
+	rows, err := s.db.QueryContext(ctx, `SELECT attachment.id, attachment.kind,
+		attachment.original_filename, attachment.media_type, attachment.size_bytes,
+		COALESCE(attachment.sha256,'') FROM discord_attachments attachment
+		JOIN discord_input_messages message ON message.message_id = attachment.message_id
+		WHERE message.turn_intent_id = $1 AND attachment.status = 'ready'
+		ORDER BY message.received_at DESC, attachment.created_at DESC, attachment.id DESC
+		LIMIT $2`, claimed.ID, discordintegration.DefaultMaxAttachments)
 	if err != nil {
 		return nil, err
 	}

@@ -23,6 +23,7 @@ import (
 
 type discordJobContext struct {
 	jobContext
+	IntentID       uuid.UUID
 	ConversationID uuid.UUID
 	GuildID        string
 	ThreadID       string
@@ -188,7 +189,8 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	if err := p.controls.RecordSubmission(ctx, claimed, turnID); err != nil {
 		return result, err
 	}
-	if err := p.addDiscordContributor(ctx, claimed.RunID, claimed.DiscordConversationID, turnID, claimed.DiscordMessageID); err != nil {
+	if err := p.addDiscordContributor(ctx, claimed.RunID, claimed.DiscordConversationID,
+		claimed.ID, turnID); err != nil {
 		interruptTurnBestEffort(runtime, threadID, turnID)
 		return result, err
 	}
@@ -199,8 +201,8 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		}
 		return result, err
 	}
-	_, err = p.db.ExecContext(ctx, `UPDATE discord_input_messages SET status = 'processed', processed_at = now()
-		WHERE message_id = $1`, claimed.DiscordMessageID)
+	_, err = p.db.ExecContext(ctx, `UPDATE discord_input_messages SET status = 'processed',
+		processed_at = now() WHERE turn_intent_id = $1`, claimed.ID)
 	if err != nil {
 		return result, err
 	}
@@ -215,7 +217,8 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 func (p *Processor) projectDiscordRunContributors(ctx context.Context, runID uuid.UUID,
 	primaryMessageID, finalAnswer, detail string,
 ) {
-	rows, err := p.db.QueryContext(ctx, `SELECT i.discord_conversation_id, i.discord_message_id
+	rows, err := p.db.QueryContext(ctx, `SELECT i.id, i.discord_conversation_id,
+		i.discord_message_id, i.instruction
 		FROM codex_turn_intents i JOIN codex_turn_runs r ON r.control_id = i.control_id
 		WHERE r.id = $1 AND i.resolved_action = 'steer' AND i.status = 'running'
 		  AND i.discord_message_id <> $2 ORDER BY i.sequence_no`, runID, primaryMessageID)
@@ -224,20 +227,24 @@ func (p *Processor) projectDiscordRunContributors(ctx context.Context, runID uui
 		return
 	}
 	type contributor struct {
+		intentID       uuid.UUID
 		conversationID uuid.UUID
 		messageID      string
+		instruction    string
 	}
 	var contributors []contributor
 	for rows.Next() {
 		var item contributor
-		if rows.Scan(&item.conversationID, &item.messageID) == nil {
+		if rows.Scan(&item.intentID, &item.conversationID, &item.messageID,
+			&item.instruction) == nil {
 			contributors = append(contributors, item)
 		}
 	}
 	_ = rows.Close()
 	for _, item := range contributors {
 		jobCtx, loadErr := p.loadDiscordContext(ctx, codexcontrol.Intent{
-			DiscordConversationID: item.conversationID, DiscordMessageID: item.messageID,
+			ID: item.intentID, DiscordConversationID: item.conversationID,
+			DiscordMessageID: item.messageID, Instruction: item.instruction,
 		})
 		if loadErr != nil {
 			p.logger.Warn("加载 Discord Contributor 消息失败", zap.Error(loadErr))
@@ -246,7 +253,7 @@ func (p *Processor) projectDiscordRunContributors(ctx context.Context, runID uui
 		p.projectDiscordConversation(ctx, jobCtx, runID, discordintegration.ConversationCompleted, detail)
 		p.projectDiscordReply(ctx, jobCtx, finalAnswer)
 		_, _ = p.db.ExecContext(ctx, `UPDATE discord_input_messages SET status = 'processed',
-			processed_at = now() WHERE message_id = $1`, item.messageID)
+			processed_at = now() WHERE turn_intent_id = $1`, item.intentID)
 	}
 }
 
@@ -279,6 +286,7 @@ func (p *Processor) projectDiscordReply(ctx context.Context, jobCtx discordJobCo
 
 func (p *Processor) loadDiscordContext(ctx context.Context, job codexcontrol.Intent) (discordJobContext, error) {
 	var result discordJobContext
+	result.IntentID = job.ID
 	var projectID sql.NullString
 	err := p.db.QueryRowContext(ctx, `SELECT c.id, c.guild_id, c.thread_id, m.message_id, c.owner_discord_user_id,
 		f.id, f.development_environment_id,
@@ -307,6 +315,9 @@ func (p *Processor) loadDiscordContext(ctx context.Context, job codexcontrol.Int
 			&result.GitHubUserID, &result.GitHubLogin, &result.BindingID, &result.BindingVersion, &result.Access)
 	if err != nil {
 		return discordJobContext{}, err
+	}
+	if job.Instruction != "" {
+		result.Body = job.Instruction
 	}
 	if projectID.String != "" {
 		result.ProjectID, err = uuid.Parse(projectID.String)

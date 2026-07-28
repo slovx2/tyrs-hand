@@ -128,6 +128,10 @@ func (s *Server) workerCommandAck(c *gin.Context) {
 				append_count = append_count + 1 WHERE id = $1 AND append_count < max_append_count`,
 				claimed.RunID)
 		}
+		if err == nil && claimed.SourceType == codexcontrol.SourceDiscord {
+			err = recordDiscordIntentContributors(c.Request.Context(), tx, claimed.RunID,
+				claimed.DiscordConversationID, request.CommandID, request.TurnID)
+		}
 	}
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "确认远程 Run 指令失败", err)
@@ -402,7 +406,10 @@ func (s *Server) projectRemoteDiscordComplete(ctx context.Context,
 		return err
 	}
 	_, err = s.db.ExecContext(ctx, `UPDATE discord_input_messages SET status = 'processed',
-		processed_at = now() WHERE message_id = $1`, claimed.DiscordMessageID)
+		processed_at = now() WHERE turn_intent_id IN (
+			SELECT id FROM codex_turn_intents WHERE control_id = $1 AND
+				(id = $2 OR (resolved_action = 'steer' AND confirmed_codex_turn_id = $3))
+		)`, claimed.ControlID, claimed.ID, result.TurnID)
 	return err
 }
 
@@ -411,6 +418,21 @@ func discordProjectionAnchor(claimed *codexcontrol.ClaimedControl) string {
 		return claimed.DiscordMessageID
 	}
 	return "desktop-" + claimed.ID.String()
+}
+
+func recordDiscordIntentContributors(ctx context.Context, tx *sql.Tx, runID,
+	conversationID, intentID uuid.UUID, turnID string,
+) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO discord_turn_contributors
+		(run_id, conversation_id, external_turn_id, discord_user_id, first_message_id,
+		 github_binding_id, github_user_id, github_login, binding_version)
+		SELECT DISTINCT ON (message.discord_user_id) $1, $2, $3,
+			message.discord_user_id, message.message_id, message.github_binding_id,
+			message.github_user_id, message.github_login, message.binding_version
+		FROM discord_input_messages message WHERE message.turn_intent_id = $4
+		ORDER BY message.discord_user_id, message.received_at, message.message_id
+		ON CONFLICT(run_id, discord_user_id) DO NOTHING`, runID, conversationID, turnID, intentID)
+	return err
 }
 
 func (s *Server) workerRunFail(c *gin.Context) {
@@ -541,6 +563,20 @@ func (s *Server) workerRecordSubmission(c *gin.Context) {
 	if err == nil {
 		err = codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration).RecordSubmission(
 			c.Request.Context(), claimed, request.SubmissionID)
+	}
+	if err == nil && claimed.SourceType == codexcontrol.SourceDiscord &&
+		claimed.DiscordConversationID != uuid.Nil {
+		tx, txErr := s.db.BeginTx(c.Request.Context(), nil)
+		if txErr == nil {
+			txErr = recordDiscordIntentContributors(c.Request.Context(), tx, claimed.RunID,
+				claimed.DiscordConversationID, claimed.ID, request.SubmissionID)
+			if txErr == nil {
+				txErr = tx.Commit()
+			} else {
+				_ = tx.Rollback()
+			}
+		}
+		err = txErr
 	}
 	if err != nil {
 		remoteRunError(c, "记录远程 Codex 提交失败", err)

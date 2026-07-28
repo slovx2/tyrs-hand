@@ -62,7 +62,7 @@ func (s *Service) List(ctx context.Context) ([]RepositorySettings, error) {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	var result []RepositorySettings
+	result := make([]RepositorySettings, 0)
 	for rows.Next() {
 		var item RepositorySettings
 		if err := rows.Scan(&item.ID, &item.Owner, &item.Name); err != nil {
@@ -93,7 +93,7 @@ func (s *Service) forums(ctx context.Context, repositoryID uuid.UUID) ([]ForumSe
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	var result []ForumSettings
+	result := make([]ForumSettings, 0)
 	for rows.Next() {
 		var item ForumSettings
 		if err := rows.Scan(&item.ID, &item.Name, &item.OwnerDiscordUserID); err != nil {

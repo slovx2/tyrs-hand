@@ -31,6 +31,7 @@ type IncomingMessage struct {
 	ReasoningEffort        string
 	ServiceTier            string
 	CollaborationMode      string
+	MentionsBot            bool
 	ConfigurationConfirmed bool
 	Attachments            []IncomingAttachment
 }
@@ -99,8 +100,12 @@ func (s *ConversationService) CleanupAttachments(ctx context.Context) error {
 	rows, err := s.db.QueryContext(ctx, `SELECT a.id, a.storage_key
 		FROM discord_attachments a WHERE a.status = 'ready'
 		AND a.stored_at < now() - interval '7 days'
-		AND NOT EXISTS (SELECT 1 FROM codex_turn_intents i
-			WHERE i.discord_message_id = a.message_id AND i.status IN
+		AND NOT EXISTS (SELECT 1 FROM discord_input_messages pending
+			WHERE pending.message_id = a.message_id AND pending.status = 'received'
+				AND pending.turn_intent_id IS NULL)
+		AND NOT EXISTS (SELECT 1 FROM discord_input_messages message
+			JOIN codex_turn_intents i ON i.id = message.turn_intent_id
+			WHERE message.message_id = a.message_id AND i.status IN
 			('placement_pending','queued','dispatching','awaiting_confirmation','running',
 			 'reconciling','retry_wait'))
 		ORDER BY a.stored_at LIMIT 100`)
@@ -241,9 +246,10 @@ func (s *ConversationService) Reply(ctx context.Context, input IncomingMessage) 
 	}
 	defer func() { _ = tx.Rollback() }()
 	var conversationID, forumID uuid.UUID
-	var ownerID, status, lifecycleState string
+	var ownerID, status, lifecycleState, triggerMode string
 	err = tx.QueryRowContext(ctx, `SELECT conversation.id, conversation.forum_id,
-		conversation.owner_discord_user_id, conversation.status, conversation.lifecycle_state
+		conversation.owner_discord_user_id, conversation.status, conversation.lifecycle_state,
+		conversation.trigger_mode
 			FROM discord_conversations conversation
 			JOIN discord_forums forum ON forum.id=conversation.forum_id
 			JOIN development_projects project ON project.id=forum.development_project_id
@@ -251,7 +257,7 @@ func (s *ConversationService) Reply(ctx context.Context, input IncomingMessage) 
 			AND forum.binding_status='active'
 			AND project.availability_status='available' FOR UPDATE OF conversation`,
 		input.GuildID, input.ThreadID).Scan(&conversationID, &forumID, &ownerID, &status,
-		&lifecycleState)
+		&lifecycleState, &triggerMode)
 	if err != nil {
 		return err
 	}
@@ -266,8 +272,9 @@ func (s *ConversationService) Reply(ctx context.Context, input IncomingMessage) 
 	if err != nil || !inserted {
 		return err
 	}
-	if status == "active" {
-		if err := s.enqueueMessage(ctx, tx, conversationID, input.MessageID); err != nil {
+	shouldEnqueue := status == "active" && (triggerMode == "interactive" || input.MentionsBot)
+	if shouldEnqueue {
+		if err := s.enqueuePendingMessages(ctx, tx, conversationID, input.MessageID); err != nil {
 			return err
 		}
 	}
@@ -279,7 +286,7 @@ func (s *ConversationService) Reply(ctx context.Context, input IncomingMessage) 
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	if status == "active" {
+	if shouldEnqueue {
 		s.notifyJobs(ctx)
 	}
 	return nil
@@ -522,7 +529,7 @@ func (s *ConversationService) enqueueMessage(ctx context.Context, tx *sql.Tx, co
 	if err := json.Unmarshal(allowedJSON, &allowed); err != nil {
 		return err
 	}
-	_, _, err = codexcontrol.NewRepository(s.db, 0).Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
+	intentID, inserted, err := codexcontrol.NewRepository(s.db, 0).Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
 		SourceType: codexcontrol.SourceDiscord, DiscordConversationID: conversationID,
 		DiscordMessageID: messageID, RepositoryID: repository, ProjectID: project,
 		AgentProfileID: profileID,
@@ -531,6 +538,11 @@ func (s *ConversationService) enqueueMessage(ctx context.Context, tx *sql.Tx, co
 		ActorParticipantID: actorParticipantID, ActorDisplayName: actorDisplayName,
 		ReplyPolicy: "silent", Behavior: "steer_if_active",
 	})
+	if err != nil || !inserted {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE discord_input_messages SET turn_intent_id = $2
+		WHERE message_id = $1 AND turn_intent_id IS NULL`, messageID, intentID)
 	return err
 }
 

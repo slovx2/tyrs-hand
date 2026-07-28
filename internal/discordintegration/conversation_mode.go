@@ -11,10 +11,12 @@ import (
 )
 
 type ConversationModeState struct {
-	ConversationID uuid.UUID
-	Mode           string
-	Revision       int64
-	Busy           bool
+	ConversationID  uuid.UUID
+	Mode            string
+	Revision        int64
+	TriggerMode     string
+	TriggerRevision int64
+	Busy            bool
 }
 
 func (s *ConversationService) ConversationMode(ctx context.Context, guildID, threadID,
@@ -74,12 +76,47 @@ func (s *ConversationService) SetConversationMode(ctx context.Context, guildID, 
 	return state, false, tx.Commit()
 }
 
+func (s *ConversationService) SetTriggerMode(ctx context.Context, guildID, threadID,
+	userID string, expectedConversationID uuid.UUID, expectedRevision int64, target string,
+) (ConversationModeState, bool, error) {
+	if target != "interactive" && target != "discussion" {
+		return ConversationModeState{}, false, errors.New("目标消息触发模式无效")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ConversationModeState{}, false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	state, _, err := s.conversationModeState(ctx, tx, guildID, threadID, userID, true)
+	if err != nil {
+		return ConversationModeState{}, false, err
+	}
+	if state.ConversationID != expectedConversationID {
+		return ConversationModeState{}, false, errors.New("这个模式按钮不属于当前 Codex 会话")
+	}
+	if state.TriggerRevision != expectedRevision {
+		return state, true, tx.Commit()
+	}
+	if state.TriggerMode != target {
+		state.TriggerMode = target
+		state.TriggerRevision++
+		_, err = tx.ExecContext(ctx, `UPDATE discord_conversations SET trigger_mode = $2,
+			trigger_mode_revision = $3, updated_at = now() WHERE id = $1`,
+			state.ConversationID, state.TriggerMode, state.TriggerRevision)
+		if err != nil {
+			return ConversationModeState{}, false, err
+		}
+	}
+	return state, false, tx.Commit()
+}
+
 func (s *ConversationService) conversationModeState(ctx context.Context, tx *sql.Tx,
 	guildID, threadID, userID string, lock bool,
 ) (ConversationModeState, uuid.UUID, error) {
 	query := `SELECT conversation.id, conversation.forum_id,
 		conversation.owner_discord_user_id, conversation.lifecycle_state,
 		conversation.collaboration_mode, conversation.collaboration_mode_revision,
+		conversation.trigger_mode, conversation.trigger_mode_revision,
 		COALESCE(control.id::text, '')
 		FROM discord_conversations conversation
 		LEFT JOIN codex_thread_controls control
@@ -92,7 +129,8 @@ func (s *ConversationService) conversationModeState(ctx context.Context, tx *sql
 	var forumID uuid.UUID
 	var ownerID, lifecycle, controlRaw string
 	err := tx.QueryRowContext(ctx, query, guildID, threadID).Scan(&state.ConversationID,
-		&forumID, &ownerID, &lifecycle, &state.Mode, &state.Revision, &controlRaw)
+		&forumID, &ownerID, &lifecycle, &state.Mode, &state.Revision,
+		&state.TriggerMode, &state.TriggerRevision, &controlRaw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ConversationModeState{}, uuid.Nil, errors.New("当前频道不是 Codex 会话 Post")
 	}
@@ -133,15 +171,22 @@ func (s *ConversationService) conversationModeState(ctx context.Context, tx *sql
 }
 
 func conversationModeCard(state ConversationModeState, notice string) ComponentCardPayload {
-	body := "**当前模式**  `" + collaborationModeLabel(state.Mode) + "`"
+	body := "**消息触发模式**  `" + triggerModeLabel(state.TriggerMode) + "`\n" +
+		triggerModeDescription(state.TriggerMode) + "\n\n**Codex 协作模式**  `" +
+		collaborationModeLabel(state.Mode) + "`"
 	if state.Busy {
-		body += "\n\n当前有排队、运行或等待回答的 Turn，完成或停止后才能切换。"
+		body += "\n\n当前有排队、运行或等待回答的 Turn；消息触发模式仍可切换，" +
+			"Codex 协作模式需在完成或停止后切换。"
 	}
 	if notice != "" {
 		body += "\n\n" + notice
 	}
 	return ComponentCardPayload{AccentColor: cardColorBlurple, Header: "🧭 Codex · 会话模式",
 		Body: body, Buttons: []ComponentButtonPayload{
+			{Label: "交互模式", CustomID: triggerModeButtonID(state, "interactive"),
+				Style: "primary", Disabled: state.TriggerMode == "interactive"},
+			{Label: "讨论模式", CustomID: triggerModeButtonID(state, "discussion"),
+				Disabled: state.TriggerMode == "discussion"},
 			{Label: "进入 Plan", CustomID: modeButtonID(state, "plan"), Style: "primary",
 				Disabled: state.Busy || state.Mode == "plan"},
 			{Label: "退出 Plan", CustomID: modeButtonID(state, "default"),
@@ -151,4 +196,23 @@ func conversationModeCard(state ConversationModeState, notice string) ComponentC
 
 func modeButtonID(state ConversationModeState, target string) string {
 	return fmt.Sprintf("codex-mode:%s:%d:%s", state.ConversationID, state.Revision, target)
+}
+
+func triggerModeButtonID(state ConversationModeState, target string) string {
+	return fmt.Sprintf("codex-trigger-mode:%s:%d:%s", state.ConversationID,
+		state.TriggerRevision, target)
+}
+
+func triggerModeLabel(mode string) string {
+	if mode == "discussion" {
+		return "讨论模式"
+	}
+	return "交互模式"
+}
+
+func triggerModeDescription(mode string) string {
+	if mode == "discussion" {
+		return "普通消息只会加入讨论；直接 @ Codex 时才会提交最近的讨论。"
+	}
+	return "每条用户消息都会立即启动或引导当前 Turn。"
 }

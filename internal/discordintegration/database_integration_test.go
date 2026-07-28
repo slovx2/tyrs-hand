@@ -123,6 +123,132 @@ func TestConversationModeSwitching(t *testing.T) {
 	require.ErrorIs(t, err, codexcontrol.ErrControlArchived)
 }
 
+func TestDiscordDiscussionTriggerBatchesPendingMessages(t *testing.T) {
+	db := discordDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	_, err := db.ExecContext(ctx, `INSERT INTO discord_guilds(guild_id, name, enabled)
+		VALUES ($1, 'discussion-test', true)`, testGuildID)
+	require.NoError(t, err)
+	seed := seedDiscordManagerData(t, db)
+	service := NewConversationService(db)
+	conversationID, err := service.BeginPost(ctx, IncomingMessage{
+		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
+		ThreadID: "100000000000000451", MessageID: "100000000000000452",
+		DiscordUserID: "1001", DisplayName: "Alice", Username: "alice",
+		Title: "Discussion", Body: "初始任务", ConfigurationConfirmed: true,
+	})
+	require.NoError(t, err)
+	state, err := service.ConversationMode(ctx, testGuildID, "100000000000000451", "1001")
+	require.NoError(t, err)
+	require.Equal(t, "interactive", state.TriggerMode)
+	state, stale, err := service.SetTriggerMode(ctx, testGuildID, "100000000000000451",
+		"1001", conversationID, state.TriggerRevision, "discussion")
+	require.NoError(t, err)
+	require.False(t, stale)
+	require.Equal(t, "discussion", state.TriggerMode)
+
+	require.NoError(t, service.Reply(ctx, IncomingMessage{
+		GuildID: testGuildID, ThreadID: "100000000000000451",
+		MessageID: "100000000000000453", DiscordUserID: "1001",
+		DisplayName: "Alice", Username: "alice", Body: "先讨论方案",
+	}))
+	var pendingIntent sql.NullString
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT turn_intent_id::text
+		FROM discord_input_messages WHERE message_id = '100000000000000453'`).Scan(&pendingIntent))
+	require.False(t, pendingIntent.Valid)
+
+	require.NoError(t, service.Reply(ctx, IncomingMessage{
+		GuildID: testGuildID, ThreadID: "100000000000000451",
+		MessageID: "100000000000000454", DiscordUserID: "1001",
+		DisplayName: "Alice", Username: "alice", Body: "<@900> 请按讨论执行", MentionsBot: true,
+	}))
+	var firstIntent, secondIntent, instruction string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT turn_intent_id::text
+		FROM discord_input_messages WHERE message_id = '100000000000000453'`).Scan(&firstIntent))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT turn_intent_id::text
+		FROM discord_input_messages WHERE message_id = '100000000000000454'`).Scan(&secondIntent))
+	require.Equal(t, firstIntent, secondIntent)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT instruction FROM codex_turn_intents
+		WHERE id = $1`, firstIntent).Scan(&instruction))
+	require.Less(t, strings.Index(instruction, "先讨论方案"), strings.Index(instruction, "请按讨论执行"))
+
+	require.NoError(t, service.Reply(ctx, IncomingMessage{
+		GuildID: testGuildID, ThreadID: "100000000000000451",
+		MessageID: "100000000000000455", DiscordUserID: "1001",
+		DisplayName: "Alice", Username: "alice", Body: "切换前缓存",
+	}))
+	state, _, err = service.SetTriggerMode(ctx, testGuildID, "100000000000000451",
+		"1001", conversationID, state.TriggerRevision, "interactive")
+	require.NoError(t, err)
+	require.NoError(t, service.Reply(ctx, IncomingMessage{
+		GuildID: testGuildID, ThreadID: "100000000000000451",
+		MessageID: "100000000000000456", DiscordUserID: "1001",
+		DisplayName: "Alice", Username: "alice", Body: "切换后的第一条",
+	}))
+	var transitionCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(DISTINCT turn_intent_id)
+		FROM discord_input_messages WHERE message_id IN ('100000000000000455','100000000000000456')`).
+		Scan(&transitionCount))
+	require.Equal(t, 1, transitionCount)
+
+	state, _, err = service.SetTriggerMode(ctx, testGuildID, "100000000000000451",
+		"1001", conversationID, state.TriggerRevision, "discussion")
+	require.NoError(t, err)
+	attachmentMessages := []IncomingMessage{
+		{GuildID: testGuildID, ThreadID: "100000000000000451",
+			MessageID: "100000000000000458", DiscordUserID: "1001",
+			DisplayName: "Alice", Username: "alice", Body: "第一组附件"},
+		{GuildID: testGuildID, ThreadID: "100000000000000451",
+			MessageID: "100000000000000459", DiscordUserID: "1001",
+			DisplayName: "Alice", Username: "alice", Body: "第二组附件"},
+	}
+	for messageIndex := range attachmentMessages {
+		for attachmentIndex := 0; attachmentIndex < 6; attachmentIndex++ {
+			id := fmt.Sprintf("attachment-%d-%d", messageIndex, attachmentIndex)
+			attachmentMessages[messageIndex].Attachments = append(
+				attachmentMessages[messageIndex].Attachments, IncomingAttachment{
+					ID: id, URL: "https://cdn.discordapp.com/attachments/test/" + id + ".txt",
+					Filename: id + ".txt", MediaType: "text/plain", Size: 10,
+				})
+		}
+		require.NoError(t, service.Reply(ctx, attachmentMessages[messageIndex]))
+	}
+	require.NoError(t, service.Reply(ctx, IncomingMessage{
+		GuildID: testGuildID, ThreadID: "100000000000000451",
+		MessageID: "100000000000000460", DiscordUserID: "1001",
+		DisplayName: "Alice", Username: "alice", Body: "<@900> 检查附件", MentionsBot: true,
+	}))
+	var attachmentInstruction string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT intent.instruction
+		FROM codex_turn_intents intent JOIN discord_input_messages message
+			ON message.turn_intent_id = intent.id
+		WHERE message.message_id = '100000000000000460'`).Scan(&attachmentInstruction))
+	require.Contains(t, attachmentInstruction, "共有 12 个附件，仅携带时间最新的 10 个")
+
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_input_messages
+		(message_id, conversation_id, discord_user_id, display_name, username,
+		 access_snapshot, body, received_at)
+		SELECT 'overflow-' || lpad(value::text, 3, '0'), $1, '1001', 'Alice', 'alice',
+			'owner', '讨论消息 ' || value::text,
+			now() - ((206 - value) * interval '1 second')
+		FROM generate_series(1, 205) value`, conversationID)
+	require.NoError(t, err)
+	require.NoError(t, service.Reply(ctx, IncomingMessage{
+		GuildID: testGuildID, ThreadID: "100000000000000451",
+		MessageID: "100000000000000457", DiscordUserID: "1001",
+		DisplayName: "Alice", Username: "alice", Body: "<@900> 汇总", MentionsBot: true,
+	}))
+	var batched, skipped int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT
+		count(*) FILTER (WHERE turn_intent_id IS NOT NULL),
+		count(*) FILTER (WHERE status = 'skipped')
+		FROM discord_input_messages WHERE message_id LIKE 'overflow-%'
+			OR message_id = '100000000000000457'`).Scan(&batched, &skipped))
+	require.Equal(t, 200, batched)
+	require.Equal(t, 6, skipped)
+}
+
 func TestDiscordManagerForumsAndProjections(t *testing.T) {
 	db := discordDatabase(t)
 	ctx := context.Background()

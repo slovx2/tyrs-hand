@@ -45,7 +45,8 @@ func (s *Server) workerDownloadAttachment(c *gin.Context) {
 	var size int64
 	err = s.db.QueryRowContext(c.Request.Context(), `SELECT a.storage_key, a.original_filename,
 		a.media_type, a.size_bytes, a.sha256 FROM discord_attachments a
-		JOIN codex_turn_intents i ON i.discord_message_id = a.message_id
+		JOIN discord_input_messages message ON message.message_id = a.message_id
+		JOIN codex_turn_intents i ON i.id = message.turn_intent_id
 		WHERE a.id = $1 AND i.control_id = $2 AND a.status = 'ready'
 		AND a.storage_key IS NOT NULL`, attachmentID, claimed.ControlID).
 		Scan(&storageKey, &filename, &mediaType, &size, &sha256)
