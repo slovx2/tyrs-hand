@@ -176,6 +176,43 @@ func TestDesktopRelayForcesGlobalModelAndOmitsPlatformGitHubTools(t *testing.T) 
 	require.NotContains(t, string(resume.Params), `"dynamicTools"`)
 }
 
+func TestDesktopRelayInjectsRuntimeIntoEphemeralThreadWithoutTools(t *testing.T) {
+	controller := &desktopRelayController{
+		processor: &RemoteProcessor{cfg: config.Config{
+			BrowserMCPURL: "http://host.docker.internal:8931/mcp",
+		}},
+		environment: &environmentCodex{runtime: devcontainer.Runtime{
+			ModelSource:  settings.ModelSourceProvider,
+			ModelBaseURL: "https://api.example.com/v1",
+		}},
+	}
+	for _, method := range []string{"thread/start", "thread/fork"} {
+		t.Run(method, func(t *testing.T) {
+			configured, err := controller.ConfigureEphemeralThread(context.Background(),
+				codexrelay.Call{Role: codexrelay.RoleDesktop, Method: method,
+					Params: json.RawMessage(`{
+						"threadId":"source-thread",
+						"ephemeral":true,
+						"model":"gpt-5.6-luna",
+						"dynamicTools":null,
+						"config":{"features.plugins":false,"web_search":"disabled"}
+					}`),
+				})
+			require.NoError(t, err)
+			var params map[string]any
+			require.NoError(t, json.Unmarshal(configured, &params))
+			runtimeConfig := params["config"].(map[string]any)
+			require.Equal(t, "tyrs-hand-provider", runtimeConfig["model_provider"])
+			require.Equal(t, false, runtimeConfig["features.plugins"])
+			require.Equal(t, "disabled", runtimeConfig["web_search"])
+			provider := runtimeConfig["model_providers"].(map[string]any)["tyrs-hand-provider"].(map[string]any)
+			require.Equal(t, "https://api.example.com/v1", provider["base_url"])
+			require.Nil(t, params["dynamicTools"])
+			require.NotContains(t, runtimeConfig, "mcp_servers")
+		})
+	}
+}
+
 func TestDesktopRelayAlwaysListsEveryProvider(t *testing.T) {
 	controller := &desktopRelayController{environment: &environmentCodex{}}
 	for _, test := range []struct {

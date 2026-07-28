@@ -21,6 +21,18 @@ func (r *Relay) routeCall(ctx context.Context, source *session, method string,
 	call := Call{Role: source.role, Method: method, Params: append(json.RawMessage(nil), params...)}
 	plan := CallPlan{Params: params, Forward: true}
 	ephemeral := r.callIsEphemeral(method, params)
+	if ephemeral && source.role == RoleDesktop &&
+		(method == "thread/start" || method == "thread/fork") {
+		if configurator, ok := r.options.Controller.(EphemeralThreadConfigurator); ok {
+			configured, err := configurator.ConfigureEphemeralThread(ctx, call)
+			if err != nil {
+				return nil, err
+			}
+			if len(configured) > 0 {
+				plan.Params = configured
+			}
+		}
+	}
 	controlled := class == methodControlled && source.role == RoleDesktop && !ephemeral
 	var reservedArchive *archiveOperation
 	var reservedArchiveLeader bool

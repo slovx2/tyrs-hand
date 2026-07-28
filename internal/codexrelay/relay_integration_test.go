@@ -838,6 +838,47 @@ func TestRelayKeepsEphemeralDesktopThreadsOutsideController(t *testing.T) {
 	require.Equal(t, []string{"thread/start"}, controller.methods())
 }
 
+func TestRelayConfiguresEphemeralDesktopThreadWithoutEnteringController(t *testing.T) {
+	mock, err := mockcodex.Start(t)
+	require.NoError(t, err)
+	directory := shortTempDir(t)
+	controller := &ephemeralConfigController{}
+	relay, err := codexrelay.Start(context.Background(), codexrelay.Options{
+		SocketPath: directory + "/relay.sock", UpstreamSocketPath: mock.SocketPath,
+		Controller: controller,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, relay.Close()) })
+	desktop := connectDesktop(t, relay.SocketPath())
+	desktop.initialize(t, 1)
+
+	desktop.write(t, rpcMessage{ID: rawID(2), Method: "thread/start",
+		Params: mustJSON(map[string]any{"cwd": t.TempDir(), "ephemeral": true,
+			"config": map[string]any{"features.plugins": false}})})
+	require.NotEmpty(t, responseThreadID(t, desktop.response(t, rawID(2)).Result))
+
+	deadline := time.After(time.Second)
+	for {
+		select {
+		case request := <-mock.Requests():
+			if request.Message.Method != "thread/start" {
+				continue
+			}
+			var params map[string]any
+			require.NoError(t, json.Unmarshal(request.Message.Params, &params))
+			config := params["config"].(map[string]any)
+			require.Equal(t, "ephemeral-provider", config["model_provider"])
+			require.Equal(t, false, config["features.plugins"])
+			require.Empty(t, controller.methods(),
+				"ephemeral Thread 不应进入事务 Controller")
+			require.Equal(t, []string{"thread/start"}, controller.configuredMethods())
+			return
+		case <-deadline:
+			t.Fatal("Relay 没有转发配置后的 ephemeral thread/start")
+		}
+	}
+}
+
 func TestRelayRoutesDesktopThreadListThroughController(t *testing.T) {
 	mock, err := mockcodex.Start(t)
 	require.NoError(t, err)
@@ -884,6 +925,37 @@ func TestRelayArchivesEphemeralThreadWithoutEnteringController(t *testing.T) {
 type recordingController struct {
 	mu    sync.Mutex
 	calls []string
+}
+
+type ephemeralConfigController struct {
+	recordingController
+	configMu   sync.Mutex
+	configured []string
+}
+
+func (c *ephemeralConfigController) ConfigureEphemeralThread(_ context.Context,
+	call codexrelay.Call,
+) (json.RawMessage, error) {
+	c.configMu.Lock()
+	c.configured = append(c.configured, call.Method)
+	c.configMu.Unlock()
+	var params map[string]any
+	if err := json.Unmarshal(call.Params, &params); err != nil {
+		return nil, err
+	}
+	config, _ := params["config"].(map[string]any)
+	if config == nil {
+		config = make(map[string]any)
+	}
+	config["model_provider"] = "ephemeral-provider"
+	params["config"] = config
+	return json.Marshal(params)
+}
+
+func (c *ephemeralConfigController) configuredMethods() []string {
+	c.configMu.Lock()
+	defer c.configMu.Unlock()
+	return append([]string(nil), c.configured...)
 }
 
 func (c *recordingController) PrepareCall(_ context.Context,

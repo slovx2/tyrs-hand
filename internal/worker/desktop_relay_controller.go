@@ -80,7 +80,9 @@ func (c *desktopRelayController) PrepareCall(ctx context.Context,
 			plan.Params = desktopThreadListAllProviders(call.Params)
 		}
 	case "thread/start":
-		plan.Params = c.injectDesktopRuntime(call.Params, true)
+		plan.Params = c.injectDesktopRuntime(call.Params, desktopRuntimeInjection{
+			includeBrowserMCP: true, includeDynamicTools: true,
+		})
 		plan.Params = participantidentity.AppendDeveloperInstructions(plan.Params)
 		if call.Role == codexrelay.RoleDesktop {
 			state, err := c.prepareDesktopThread(ctx, call)
@@ -98,7 +100,9 @@ func (c *desktopRelayController) PrepareCall(ctx context.Context,
 			plan.State = &desktopThreadCallState{request: state}
 		}
 	case "thread/resume":
-		plan.Params = c.injectDesktopRuntime(call.Params, false)
+		plan.Params = c.injectDesktopRuntime(call.Params, desktopRuntimeInjection{
+			includeBrowserMCP: true,
+		})
 	case "turn/start":
 		threadID, _ := relayCallScope(plan.Params)
 		if threadID == "" {
@@ -327,6 +331,19 @@ func desktopThreadListAllProviders(params json.RawMessage) json.RawMessage {
 	return result
 }
 
+func (c *desktopRelayController) ConfigureEphemeralThread(_ context.Context,
+	call codexrelay.Call,
+) (json.RawMessage, error) {
+	switch call.Method {
+	case "thread/start", "thread/fork":
+		// 标题、描述等临时 Thread 必须沿用当前环境的 Provider，
+		// 但不应改变桌面端为该任务设置的工具边界或进入 Discord Control。
+		return c.injectDesktopRuntime(call.Params, desktopRuntimeInjection{}), nil
+	default:
+		return append(json.RawMessage(nil), call.Params...), nil
+	}
+}
+
 func (c *desktopRelayController) ResolveInteractive(ctx context.Context,
 	request codex.ServerRequest, answer json.RawMessage, surface codexrelay.Role,
 ) (bool, json.RawMessage, error) {
@@ -359,8 +376,13 @@ func (c *desktopRelayController) ResolveInteractive(ctx context.Context,
 	return true, state.Answer, nil
 }
 
+type desktopRuntimeInjection struct {
+	includeBrowserMCP   bool
+	includeDynamicTools bool
+}
+
 func (c *desktopRelayController) injectDesktopRuntime(params json.RawMessage,
-	includeTools bool,
+	options desktopRuntimeInjection,
 ) json.RawMessage {
 	var value map[string]any
 	if json.Unmarshal(params, &value) != nil {
@@ -372,10 +394,12 @@ func (c *desktopRelayController) injectDesktopRuntime(params json.RawMessage,
 	}
 	applyModelProviderConfig(config, c.environment.runtime.ModelSource,
 		c.environment.runtime.ModelBaseURL)
-	applyBrowserMCPConfig(config, c.processor.cfg)
+	if options.includeBrowserMCP {
+		applyBrowserMCPConfig(config, c.processor.cfg)
+	}
 	hideManagedSecrets(config)
 	value["config"] = config
-	if includeTools {
+	if options.includeDynamicTools {
 		cwd, _ := value["cwd"].(string)
 		allowPublish := c.desktopWorkspaceAllowsPublish(cwd)
 		specs := withBrowserTools(c.processor.cfg, localGitSpec(allowPublish))
@@ -809,3 +833,4 @@ func (r *desktopEventReporter) saveLocked() {
 
 var _ codexrelay.Controller = (*desktopRelayController)(nil)
 var _ codexrelay.ArchiveGate = (*desktopRelayController)(nil)
+var _ codexrelay.EphemeralThreadConfigurator = (*desktopRelayController)(nil)

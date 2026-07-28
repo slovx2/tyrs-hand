@@ -98,6 +98,12 @@ type Controller interface {
 	ResolveInteractive(context.Context, codex.ServerRequest, json.RawMessage, Role) (bool, json.RawMessage, error)
 }
 
+// EphemeralThreadConfigurator 只为 Desktop 创建的临时 Thread 注入运行时配置，
+// 不让该 Thread 进入 Control 事务、Worker 订阅或持久化投影。
+type EphemeralThreadConfigurator interface {
+	ConfigureEphemeralThread(context.Context, Call) (json.RawMessage, error)
+}
+
 // ArchiveGate 在 app-server 已空闲后等待外部 Control Run 完成，再允许官方归档。
 // 未实现该接口的嵌入场景仍保持纯 Relay 语义。
 type ArchiveGate interface {
