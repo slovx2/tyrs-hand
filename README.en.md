@@ -10,13 +10,26 @@
 [![Security](https://github.com/slovx2/tyrs-hand/actions/workflows/security.yml/badge.svg)](https://github.com/slovx2/tyrs-hand/actions/workflows/security.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Tyrs Hand is a self-hosted GitHub and Discord agent control plane. GitHub tasks use isolated temporary worktrees for read-only or lightweight edits. Discord development forums use long-lived per-user development containers with persistent repository clones, Home directories, and Codex sessions.
+Tyrs Hand is a self-hosted agent collaboration platform that connects GitHub, Discord, Codex Desktop, and your own compute. A public Control owns events, state, and permissions, while Pull Workers run Codex, workspaces, development containers, and browser tools on your computers.
 
 The project is at an early stage. Evaluate it on controlled repositories before production use. The default agent profile can access the public network and write to its worktree, so review trigger rules, tool allowlists, and permission policies first.
 
-## Highlights
+## Core Highlights
 
-- **Turn idle home computers into execution nodes.** Run the public Control on a small internet-facing server while powerful machines at home pull Codex work over HTTPS. Home networks need no public IP, port forwarding, or SSH reverse tunnel; Cloudflare remains optional. Route all new resources to one default node first, then add nodes and placement policies later.
+### Distributed deployment that puts idle computers to work
+
+Separate the control service from the computers that do the work. Idle machines at home, in the office, or in a server room can all contribute compute and storage without a public IP or port forwarding. Add more computers whenever you need more capacity.
+
+### Connect Codex Desktop and use your desktop browser
+
+Open and continue Tyrs Hand projects and conversations directly from Codex Desktop. The agent can also use sites already signed in and ordinary tabs already open in desktop Chrome, reducing repeated logins and context switching.
+
+### Bidirectional Discord sync and multi-user collaboration
+
+Codex Desktop and Discord keep messages, progress, and results in sync, so the conversation can continue from either side. Invite read-only or operator collaborators and let multiple people discuss and move work forward around the same project and agent conversation.
+
+## More Capabilities
+
 - GitHub App identity with HMAC-verified and deduplicated webhooks
 - PostgreSQL-backed durable jobs, leases, retries, and recovery
 - One bare clone cache per repository and one temporary worktree per GitHub work item, removed seven days after closure
@@ -24,11 +37,11 @@ The project is at an early stage. Evaluate it on controlled repositories before 
 - Repository skills loaded from `.agents/skills/<name>/SKILL.md`
 - GitHub MCP tools and controlled local Git dynamic tools
 - Private Discord servers with long-lived development forums, GitHub task projections, and persistent conversations
-- One reusable container and Home per Discord user, with one independent full clone per forum
+- One reusable container and Home per Discord user; environments discover Git repositories and ordinary directories as projects that can be bound to multiple forums
 - Idempotent tool calls keyed by `(thread, turn, call)`
 - Natural Codex final answers with platform-owned control state and managed reply gates
 - Public HTTPS Control and Pull Workers with frozen per-resource placement
-- React administration UI for repositories, rules, profiles, jobs, threads, execution nodes, default placement, and audit logs
+- React administration UI for repositories, rules, profiles, jobs, threads, development environments, execution nodes, SSH, default placement, and audit logs
 
 ## Architecture
 
@@ -46,11 +59,14 @@ flowchart LR
     Discord["Discord Server"] <--> Gateway
     subgraph Home["Home or compute node (no public IP)"]
         Worker["Pull Worker"]
-        Workspace["Repo cache + worktrees\nDevelopment containers"]
+        Workspace["Repo cache + worktrees\nLong-lived environments"]
         Codex["Codex App Server"]
+        Browser["Worker / desktop Chrome"]
         Worker <--> Workspace
         Worker <--> Codex
+        Worker <--> Browser
     end
+    Desktop["Codex Desktop"] <-->|"SSH + App Server Relay"| Worker
     Worker -->|"HTTPS long polling / events / tools"| Server
 ```
 
@@ -149,7 +165,7 @@ The default rules accept `/tyrs-hand` on the first line of an Issue or Pull Requ
 
 ## Discord Development Containers
 
-An execution node with the `discord` role manages Discord development environments. The first release can use one default node for both GitHub and Discord work; it does not force a Discord-user-to-node binding. A development environment freezes the current default node when it is created, and its forums, conversations, and Codex controls keep using that node.
+An execution node with the `discord` role manages Discord development environments. The same node can handle both GitHub and Discord work. A development environment freezes the current default node when it is created, and its projects, forums, conversations, and Codex controls keep using that node.
 
 Only Workers with development containers enabled mount the host Docker socket. The socket is never exposed inside the agent's development container. Start the Worker with the separate Compose file:
 
@@ -157,18 +173,18 @@ Only Workers with development containers enabled mount the host Docker socket. T
 docker compose -f compose.worker.yaml up -d worker
 ```
 
-- A Discord user has one container, data volume, Home volume, and network per Guild. Forums for multiple repositories reuse that environment.
-- The per-user container is the security boundary. Operator collaborators can drive the agent and must be trusted by the environment owner.
+- A Discord user has one container, data volume, Home volume, and network per Guild. Git repositories and ordinary directories inside it are discovered as projects, each of which can be bound to one or more forums.
+- The per-user container is the security boundary. Forums can invite read-only or operator collaborators; operators can drive the agent and must be trusted by the environment owner.
 - Control pins the configured official `TYRS_HAND_DEVELOPMENT_IMAGE` digest for each new environment; repositories do not need to provide a Dockerfile.
-- Every forum has an independent full clone. Environment containers stay running, and the Worker restores the container, environment-level Codex App Server, and Relay after worker or host restarts.
-- Each environment shares one `CODEX_HOME` and one App Server. Codex Desktop and Discord connect through a thin protocol Relay. Explicit rebases preserve Home, clones, user-installed Codex versions, and sessions while resetting the writable system layer.
+- Environment containers stay running, and the Worker restores the container, environment-level Codex App Server, and Relay after worker or host restarts without losing Home, projects, or Codex sessions.
+- Each environment shares one `CODEX_HOME` and one App Server. Codex Desktop and Discord connect through a thin protocol Relay. Explicit rebases preserve Home, projects, user-installed Codex versions, and sessions while resetting the writable system layer.
 - Administrators can configure one SSH public key and host port for an environment. The development image must provide `sshd`, `ssh-keygen`, and an SFTP server; Desktop connects by running `codex app-server proxy` over SSH.
-- The SSH credential is bound to one active Discord member, so Desktop and Discord messages from that member use the same stable participant identity. Desktop messages, titles, progress, and final replies are projected to Discord asynchronously; Discord failures do not block Desktop threads or turns.
+- The SSH credential is bound to one active Discord member, so Desktop and Discord messages from that member use the same stable participant identity. A durable outbox projects Desktop messages, titles, progress, and final replies to Discord, while Discord replies continue the same thread; Discord failures do not block Desktop threads or turns.
 - Desktop-created and resumed threads keep the model, reasoning effort, and service tier selected by Desktop and the real App Server. Control-plane defaults apply only to conversations started from Discord.
+- After the Browser Bridge is installed, development sessions can switch between the Worker browser and registered desktop Chrome while preserving its profile, signed-in state, and ordinary tabs.
 - System-created Discord posts auto-hide after seven inactive days. An unlocked Discord archive only changes visibility; `/codex archive` archives the Codex thread and locks the post, while `/codex restore` restores the original thread and post.
 - Users can run `tyrs-hand-dev codex install <exact-version>` to override the bundled Codex in persistent Home; it activates when the environment is idle and rolls back automatically on startup failure.
 - A rebase is rejected if `USER`, UID/GID, or the Home path changes. devcontainer.json, Features, Compose, arbitrary mounts, Docker sockets, privileged mode, and arbitrary published ports are not supported.
-- Deleting the final forum also deletes the user's container, image, volumes, network, and Home after an explicit confirmation.
 
 Repository task skills must live at:
 

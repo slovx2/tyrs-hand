@@ -10,15 +10,25 @@
 [![Security](https://github.com/slovx2/tyrs-hand/actions/workflows/security.yml/badge.svg)](https://github.com/slovx2/tyrs-hand/actions/workflows/security.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Tyrs Hand 是一个面向 GitHub 与 Discord 的自托管 Agent 控制系统。GitHub 任务在隔离的临时 Git Worktree 中执行轻量修改；Discord 开发 Forum 则使用用户级长期开发容器，并持久化仓库 clone、Home 和 Codex 会话。
+Tyrs Hand 是一个把 GitHub、Discord、Codex Desktop 和自有算力连接在一起的自托管 Agent 协作平台。公网 Control 负责事件、状态和权限，Pull Worker 在你自己的电脑上运行 Codex、工作区、开发容器和浏览器工具。
 
 项目目前处于早期版本，适合在受控仓库中评估和二次开发。默认 Agent 配置允许访问公网并写入 Worktree；接入生产仓库前，请先审查工具白名单、触发规则和权限策略。
 
-## 亮点功能：把闲置家庭电脑变成执行节点
+## 核心特色
 
-Tyrs Hand 支持把公网 Control 与实际运行 Codex 的 Worker 分开部署。公网小服务器负责稳定接收 GitHub Webhook、连接 Discord 和调用外部 API；家里的高性能电脑只需通过 HTTPS 主动领取任务，就能贡献 CPU、内存、磁盘和 Docker 能力。家庭网络不需要公网 IP、端口转发或 SSH 反向隧道，Cloudflare 也只是可选代理。首版可以让所有新建资源使用一个默认家庭节点，之后再扩展更多节点和分配策略。
+### 分布式部署，让闲置电脑成为执行节点
 
-## 能做什么
+把控制服务和真正执行任务的电脑分开部署。家里、办公室或机房里的闲置电脑都可以加入，提供更多算力和存储空间；不需要公网 IP，也不用折腾端口转发。需要更多能力时，继续添加电脑即可。
+
+### Codex Desktop 直连，并使用桌面端浏览器
+
+可以直接从 Codex Desktop 打开和继续 Tyrs Hand 中的项目与会话。Agent 还能使用你桌面端 Chrome 中已经登录的网站和已打开的普通页面，减少重复登录和来回切换。
+
+### Discord 双向同步与多人协作
+
+Codex Desktop 与 Discord 会同步消息、进度和结果，可以在任意一端继续对话。项目可以邀请只读或可操作的协作者，让多人围绕同一个项目、同一段 Agent 会话一起讨论和推进工作。
+
+## 更多能力
 
 - 通过 GitHub App 接收并验签 Webhook，不需要普通机器账号。
 - 将 GitHub 事件标准化为持久化 Work Item 和 Durable Job。
@@ -28,9 +38,9 @@ Tyrs Hand 支持把公网 Control 与实际运行 Codex 的 Worker 分开部署�
 - 从仓库 `.agents/skills/<name>/SKILL.md` 加载任务 Skill。
 - 将 GitHub 官方 MCP 工具和受控本地 Git 工具暴露为 Codex Dynamic Tools。
 - 通过 Discord 私有 Server 提供长期开发 Forum、GitHub 任务投影和持续会话。
-- 同一 Discord 用户复用一个开发容器与 Home；每个 Forum 固定一个仓库并保留独立完整 clone。
+- 同一 Discord 用户复用一个开发容器与 Home；环境自动发现 Git 仓库和普通目录项目，并可将项目绑定到多个 Forum。
 - 通过公网 HTTPS Control 与 Pull Worker 分离部署，家庭执行节点不需要公网 IP。
-- 管理 GitHub App、仓库、规则、Agent Profile、任务、Thread、执行节点、默认 Placement 和审计日志。
+- 管理 GitHub App、仓库、规则、Agent Profile、任务、Thread、长期开发环境、执行节点、SSH、默认 Placement 和审计日志。
 - Codex 使用自然最终回复；平台根据 App Server 终态、持久化 Control 和受控回复门禁判定任务结果。
 
 ## 架构
@@ -49,11 +59,14 @@ flowchart LR
     Discord["Discord Server"] <--> Gateway
     subgraph Home["家庭或算力节点（无需公网 IP）"]
         Worker["Pull Worker"]
-        Workspace["Repo Cache + Worktree\n开发容器"]
+        Workspace["Repo Cache + Worktree\n长期开发环境"]
         Codex["Codex App Server"]
+        Browser["Worker / 桌面端 Chrome"]
         Worker <--> Workspace
         Worker <--> Codex
+        Worker <--> Browser
     end
+    Desktop["Codex Desktop"] <-->|"SSH + App Server Relay"| Worker
     Worker -->|"HTTPS 长轮询 / 事件回传 / 工具调用"| Server
 ```
 
@@ -128,7 +141,7 @@ TYRS_HAND_WEBHOOK_HTTP_ADDR=:8081
 
 ## Discord 长期开发容器
 
-Discord 开发环境由带 `discord` 角色的执行节点管理。第一版可让同一个默认节点同时承担 GitHub 和 Discord 任务；系统不会强制建立“Discord 用户—节点”绑定。开发环境创建时会冻结当时的默认节点，后续 Forum、Conversation 和 Codex Control 都沿用该节点。
+Discord 开发环境由带 `discord` 角色的执行节点管理。同一个节点可以同时承担 GitHub 和 Discord 任务；开发环境创建时会冻结当时的默认节点，后续 Project、Forum、Conversation 和 Codex Control 都沿用该节点。
 
 只有启用 Discord 开发容器的 Worker 挂载宿主 Docker Socket，Socket 不会进入 Agent 所在的开发容器。部署前将 Worker 宿主 `/var/run/docker.sock` 的数字 GID 写入 Worker `.env` 的 `TYRS_HAND_DOCKER_GID`。Linux 可使用 `stat -c '%g' /var/run/docker.sock` 查询，然后使用独立 Compose 启动：
 
@@ -138,18 +151,18 @@ docker compose -f compose.worker.yaml up -d worker
 
 开发环境规则：
 
-- 同一 Guild 中，一个 Discord 用户只有一个容器、数据卷、Home 卷和网络；多个仓库 Forum 复用它们。
-- 用户级容器是安全边界；可操作协作者能够驱动 Agent，因此只能授权给该环境 owner 信任的成员。
+- 同一 Guild 中，一个 Discord 用户只有一个容器、数据卷、Home 卷和网络；其中的 Git 仓库和普通目录会被发现为 Project，并可分别绑定一个或多个 Forum。
+- 用户级容器是安全边界；Forum 可邀请只读或可操作协作者，可操作协作者能够驱动 Agent，因此只能授权给环境 owner 信任的成员。
 - Control 为新环境固化官方 `TYRS_HAND_DEVELOPMENT_IMAGE` digest；业务仓库不需要提供 Dockerfile。
-- 每个 Forum 使用独立完整 clone。环境容器永久运行；Worker/宿主重启后会主动拉起容器、环境级 Codex app-server 和 Relay，且不会丢失 Home、clone 或 Codex 会话。
-- 每个环境共享一个 `CODEX_HOME` 和一个 app-server；Desktop 与 Discord 通过薄 Relay 复用同一协议连接。显式 Rebase 保留 Home、clone、用户 Codex 和会话，但重置系统可写层。
+- 环境容器永久运行；Worker/宿主重启后会主动拉起容器、环境级 Codex App Server 和 Relay，且不会丢失 Home、项目或 Codex 会话。
+- 每个环境共享一个 `CODEX_HOME` 和一个 App Server；Desktop 与 Discord 通过薄 Relay 复用同一协议连接。显式 Rebase 保留 Home、项目、用户 Codex 和会话，但重置系统可写层。
 - 管理后台可为环境配置一个 SSH 公钥和宿主机端口。镜像必须原生提供 `sshd`、`ssh-keygen` 与 SFTP server；Desktop 通过 SSH 执行 `codex app-server proxy`。
-- SSH 凭据绑定一个活跃 Discord 成员，Desktop 与该成员从 Discord 发言时使用同一个稳定参与者身份。Desktop 主 Thread 的消息、标题、进度和最终回复会异步投影到 Discord；Discord 故障不会中断 Desktop Thread 或 Turn。
+- SSH 凭据绑定一个活跃 Discord 成员，Desktop 与该成员从 Discord 发言时使用同一个稳定参与者身份。Desktop 主 Thread 的消息、标题、进度和最终回复通过持久化 Outbox 投影到 Discord，Discord 回复则继续同一个 Thread；Discord 故障不会中断 Desktop Thread 或 Turn。
 - Desktop 创建或恢复 Thread 时，模型、思考强度和 service tier 以 Desktop 与真实 app-server 状态为准。管理后台的默认参数只用于从 Discord 发起的新会话。
+- 安装 Browser Bridge 后，开发会话可在 Worker 浏览器和已注册的桌面端 Chrome 之间切换；桌面端保留原有 Profile、登录态和普通标签页。
 - 系统创建的 Discord Post 在七天不活跃后自动隐藏。未锁定的 Discord 归档只改变展示状态；`/codex archive` 才会真正归档 Codex Thread 并锁定 Post，`/codex restore` 会恢复原 Thread 和 Post。
 - 用户可用 `tyrs-hand-dev codex install <精确版本>` 在持久 Home 中覆盖镜像内置 Codex；环境空闲后生效，失败会自动回退。
 - Rebase 改变 `USER`、UID/GID 或 Home 路径时会被拒绝并保留旧容器。平台不支持 devcontainer.json、Features、Compose、任意 Mount、Docker Socket、privileged 或任意端口发布。
-- 删除 Forum 前会显示未提交、未推送和运行中状态；删除最后一个 Forum 会同时删除整个用户环境和 Home。
 
 ## GitHub App 权限
 
