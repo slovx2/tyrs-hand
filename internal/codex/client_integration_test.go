@@ -121,8 +121,16 @@ func TestClientTimeoutAndProcessExitRejectPendingRequest(t *testing.T) {
 	t.Run("exit", func(t *testing.T) {
 		client := startFakeClient(t, "exit", 2*time.Second)
 		err := client.Call(context.Background(), "test/exit", map[string]any{}, nil)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "Codex App Server")
+		var requestErr *RequestError
+		require.ErrorAs(t, err, &requestErr)
+		require.Equal(t, "test/exit", requestErr.Method)
+		require.Equal(t, RequestUnknown, requestErr.State)
+		require.Error(t, requestErr.Cause)
+		select {
+		case <-client.Done():
+		default:
+			t.Fatal("App Server 退出后客户端仍未结束")
+		}
 	})
 }
 
