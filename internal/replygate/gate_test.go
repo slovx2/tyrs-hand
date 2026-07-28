@@ -3,7 +3,6 @@ package replygate
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -41,19 +40,28 @@ func TestReplyGateAllowsDeliveredBypassAndBrokenState(t *testing.T) {
 	require.False(t, Evaluate(home, "broken").Block)
 }
 
-func TestInstallWritesHookAndTrust(t *testing.T) {
+func TestInstallRemovesLegacyGlobalHook(t *testing.T) {
 	home := t.TempDir()
+	config := `model = "mock-model"
+
+# BEGIN TYRS HAND REPLY HOOK
+[[hooks.Stop]]
+[[hooks.Stop.hooks]]
+type = "command"
+command = "tyrs-hand-reply-hook"
+# END TYRS HAND REPLY HOOK
+`
+	require.NoError(t, os.WriteFile(filepath.Join(home, "config.toml"), []byte(config), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(home, "hooks.json"), []byte("{}\n"), 0o600))
 	require.NoError(t, Install(home))
-	hooks, err := os.ReadFile(filepath.Join(home, "hooks.json"))
+	updated, err := os.ReadFile(filepath.Join(home, "config.toml"))
 	require.NoError(t, err)
-	require.Contains(t, string(hooks), HookCommand)
-	config, err := os.ReadFile(filepath.Join(home, "config.toml"))
-	require.NoError(t, err)
-	require.Contains(t, string(config), "trusted_hash")
+	require.Contains(t, string(updated), `model = "mock-model"`)
+	require.NotContains(t, string(updated), "TYRS HAND REPLY HOOK")
+	require.NotContains(t, string(updated), HookCommand)
+	_, err = os.Stat(filepath.Join(home, "hooks.json"))
+	require.ErrorIs(t, err, os.ErrNotExist)
 	require.NoError(t, Install(home))
-	config, err = os.ReadFile(filepath.Join(home, "config.toml"))
-	require.NoError(t, err)
-	require.Equal(t, 1, strings.Count(string(config), "# BEGIN TYRS HAND REPLY HOOK"))
 }
 
 func TestSessionConfigUsesSessionFlagsTrustKey(t *testing.T) {

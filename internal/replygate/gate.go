@@ -43,21 +43,17 @@ func Evaluate(codexHome, threadID string) Decision {
 		Reason: "You must call tyrs_hand.reply_to_github once with the final user-facing result before ending this turn."}
 }
 
+// Install 清理旧版写入 CODEX_HOME 的全局 Hook。
+// GitHub 回复门禁只通过 SessionConfig 注入目标 Thread，避免影响同一 Home 中的其他会话。
 func Install(codexHome string) error {
-	hooks := map[string]any{"hooks": map[string]any{"Stop": []any{map[string]any{
-		"hooks": []any{map[string]any{"type": "command", "command": HookCommand,
-			"timeout": HookTimeoutSeconds}},
-	}}}}
-	data, err := json.MarshalIndent(hooks, "", "  ")
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
 	hookPath := filepath.Join(codexHome, "hooks.json")
-	if err := atomicWrite(hookPath, data, 0o600); err != nil {
+	if err := removeInstalledHookConfig(codexHome); err != nil {
 		return err
 	}
-	return writeTrust(codexHome, hookPath)
+	if err := os.Remove(hookPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 // SessionConfig 返回 app-server 当前 Thread 使用的 Hook 配置。
@@ -154,30 +150,23 @@ func atomicWrite(path string, data []byte, mode os.FileMode) error {
 	return nil
 }
 
-func writeTrust(codexHome, hookPath string) error {
+func removeInstalledHookConfig(codexHome string) error {
 	configPath := filepath.Join(codexHome, "config.toml")
 	existing, err := os.ReadFile(configPath)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
 		return err
 	}
 	content := removeBlock(string(existing), "# BEGIN TYRS HAND REPLY HOOK", "# END TYRS HAND REPLY HOOK")
-	trusted := hookTrustedHash()
-	block := []string{
-		"# BEGIN TYRS HAND REPLY HOOK",
-		"[[hooks.Stop]]", "", "[[hooks.Stop.hooks]]",
-		`type = "command"`, "command = " + strconv.Quote(HookCommand),
-		fmt.Sprintf("timeout = %d", HookTimeoutSeconds), "",
+	if content == string(existing) {
+		return nil
 	}
-	for _, path := range []string{configPath, hookPath} {
-		key := path + ":stop:0:0"
-		block = append(block, "[hooks.state."+strconv.Quote(key)+"]", "trusted_hash = "+strconv.Quote(trusted), "")
-	}
-	block = append(block, "# END TYRS HAND REPLY HOOK")
 	content = strings.TrimSpace(content)
 	if content != "" {
-		content += "\n\n"
+		content += "\n"
 	}
-	content += strings.Join(block, "\n") + "\n"
 	return atomicWrite(configPath, []byte(content), 0o600)
 }
 
