@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	ProtocolVersion       = 13
+	ProtocolVersion       = 14
 	GitHubDefaultSetting  = "execution.default.github"
 	DiscordDefaultSetting = "execution.default.discord"
 )
@@ -372,4 +372,9 @@ func (s *Service) SetDefaults(ctx context.Context, defaults Defaults) error {
 	return tx.Commit()
 }
 
-func HasRole(node Node, role string) bool { return slices.Contains(node.Roles, role) }
+func HasRole(node Node, role string) bool {
+	if role == "all" {
+		return slices.Contains(node.Roles, "github") && slices.Contains(node.Roles, "discord")
+	}
+	return slices.Contains(node.Roles, role)
+}

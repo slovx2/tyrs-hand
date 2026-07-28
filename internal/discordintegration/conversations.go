@@ -226,6 +226,10 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 		if err := s.enqueueMessage(ctx, tx, conversationID, input.MessageID); err != nil {
 			return uuid.Nil, err
 		}
+		if err := ProjectConversationThinkingTx(ctx, tx, input.GuildID, input.ThreadID,
+			conversationID, input.MessageID); err != nil {
+			return uuid.Nil, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return uuid.Nil, err
@@ -277,6 +281,10 @@ func (s *ConversationService) Reply(ctx context.Context, input IncomingMessage) 
 		if err := s.enqueuePendingMessages(ctx, tx, conversationID, input.MessageID); err != nil {
 			return err
 		}
+		if err := ProjectConversationThinkingTx(ctx, tx, input.GuildID, input.ThreadID,
+			conversationID, input.MessageID); err != nil {
+			return err
+		}
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE discord_conversations SET last_activity_at = now(), updated_at = now()
 		WHERE id = $1`, conversationID)
@@ -304,10 +312,8 @@ func (s *ConversationService) BeginConfigurationEdit(ctx context.Context, conver
 ) error {
 	result, err := s.db.ExecContext(ctx, `UPDATE discord_conversations c SET configuration_status = 'editing',
 		configuration_deadline = now() + interval '2 minutes', updated_at = now()
-		WHERE c.id = $1 AND c.configuration_status IN ('awaiting','editing') AND (
-			c.configured_by_discord_user_id = $2 OR c.owner_discord_user_id = $2 OR EXISTS(
-				SELECT 1 FROM discord_forum_access a WHERE a.forum_id = c.forum_id
-				AND a.discord_user_id = $2 AND a.access_level = 'operator'))`, conversationID, userID)
+		WHERE c.id = $1 AND c.configuration_status IN ('awaiting','editing')
+			AND c.configured_by_discord_user_id = $2`, conversationID, userID)
 	if err != nil {
 		return err
 	}
@@ -348,13 +354,8 @@ func (s *ConversationService) finalizeConfiguration(ctx context.Context, convers
 	if status == "configured" {
 		return errors.New("该会话已经启动")
 	}
-	if userID != "" && userID != configuredBy && userID != owner {
-		var operator bool
-		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM discord_forum_access
-			WHERE forum_id = $1 AND discord_user_id = $2 AND access_level = 'operator')`, forumID, userID).
-			Scan(&operator); err != nil || !operator {
-			return errors.New("当前用户没有修改该会话配置的权限")
-		}
+	if userID != "" && userID != configuredBy {
+		return errors.New("只有 Post 创建者可以修改该会话配置")
 	}
 	if selected != nil {
 		value := codexsettings.Preferences{Model: optionalPreference(selected.Model),

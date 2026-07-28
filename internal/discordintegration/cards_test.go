@@ -15,7 +15,7 @@ import (
 func TestConversationCardsKeepSystemAndReplyVisuallyDistinct(t *testing.T) {
 	timeline := ConversationTimeline{Pages: []string{"working"}, Updates: 2, Duration: 3 * time.Second}
 	running := conversationProgressCard(ConversationRunning, timeline, 0, "", "default")
-	require.Contains(t, running.Header, "处理中")
+	require.Contains(t, running.Header, "思考中")
 	require.Contains(t, running.Body, "2 项动态")
 	require.NotContains(t, running.Body, "条更新")
 	require.Equal(t, cardColorBlurple, running.AccentColor)
@@ -94,6 +94,34 @@ func TestDiscordComponentsV2CardStructureAndLimits(t *testing.T) {
 	}}
 	_, err = discordCardComponents(duplicate)
 	require.ErrorContains(t, err, "重复")
+	link := guidedConversationCard("https://discord.com/channels/1/2/3")
+	require.Equal(t, "Codex · 已引导对话", link.Header)
+	require.Empty(t, link.Body)
+	require.Empty(t, link.Timeline)
+	require.Equal(t, "查看最新状态", link.Buttons[0].Label)
+	_, err = discordCardComponents(link)
+	require.NoError(t, err)
+	_, err = discordCardComponents(ComponentCardPayload{Header: "x", Buttons: []ComponentButtonPayload{{
+		Label: "invalid", CustomID: "id", URL: "https://discord.com",
+	}}})
+	require.Error(t, err)
+	_, err = discordCardComponents(ComponentCardPayload{Header: "x", Buttons: []ComponentButtonPayload{{
+		Label: "invalid", URL: "javascript:alert(1)",
+	}}})
+	require.Error(t, err)
+}
+
+func TestConversationCardsOmitInternalPlaceholderDetails(t *testing.T) {
+	tracker := NewConversationActionTracker(time.Now())
+	for _, detail := range []string{"正在处理请求。", "思考中", "本轮处理完成。",
+		"本轮已由 Discord 用户主动停止。", "本轮处理未完成。",
+		"Codex Desktop 正在处理请求。"} {
+		timeline := tracker.Timeline(detail, time.Second)
+		require.Empty(t, timeline.Pages, detail)
+		card := conversationProgressCard(ConversationRunning, timeline, 0, "", "default")
+		require.Empty(t, card.Timeline, detail)
+	}
+	require.Equal(t, []string{"参数已确认"}, tracker.Timeline("参数已确认", time.Second).Pages)
 }
 
 func TestSystemCardSeverity(t *testing.T) {

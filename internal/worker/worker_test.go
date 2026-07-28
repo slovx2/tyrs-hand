@@ -415,13 +415,10 @@ func TestRemoteDiscordEventReporterForwardsTimeline(t *testing.T) {
 	item := json.RawMessage(`{"item":{"id":"commentary-1","type":"agentMessage","phase":"commentary"}}`)
 	reporter("item/started", item)
 	reporter("turn/started", json.RawMessage(`{"turn":{"id":"turn-1"}}`))
-	require.Len(t, events, 3)
+	require.Len(t, events, 2)
 	require.Equal(t, "item/started", events[0].eventType)
 	require.JSONEq(t, string(item), string(events[0].payload))
 	require.Equal(t, "turn/started", events[1].eventType)
-	require.Equal(t, "discord.progress", events[2].eventType)
-	require.JSONEq(t, `{"detail":"Codex 正在处理当前消息。","state":"running"}`,
-		string(events[2].payload))
 }
 
 func TestRemoteEventUploadIsRateLimitedToBatches(t *testing.T) {

@@ -29,9 +29,6 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	if p.development == nil || !p.development.Enabled() {
 		return workerprotocol.CompleteRequest{}, errors.New("discord 执行节点没有启用开发容器")
 	}
-	report("discord.progress", remoteEventPayload(map[string]string{
-		"state": "running", "detail": "已接收消息，正在准备工作区。",
-	}))
 	runtimeCredential, err := p.client.EnvironmentRuntimeCredential(ctx,
 		snapshot.Development.EnvironmentID)
 	if err != nil {
@@ -147,9 +144,6 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 		interruptTurnBestEffort(codexRuntime, threadID, turnID)
 		return workerprotocol.CompleteRequest{}, err
 	}
-	report("discord.progress", remoteEventPayload(map[string]string{
-		"state": "completed", "detail": "本轮处理完成。",
-	}))
 	return workerprotocol.CompleteRequest{Result: result}, nil
 }
 
@@ -163,11 +157,6 @@ func developmentGitTools(spec *workerprotocol.DevelopmentSpec) []ports.DynamicTo
 func remoteDiscordEventReporter(report func(string, json.RawMessage)) func(string, json.RawMessage) {
 	return func(eventType string, payload json.RawMessage) {
 		report(eventType, payload)
-		if eventType == "turn/started" {
-			report("discord.progress", remoteEventPayload(map[string]string{
-				"state": "running", "detail": "Codex 正在处理当前消息。",
-			}))
-		}
 	}
 }
 

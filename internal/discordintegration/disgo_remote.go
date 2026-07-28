@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -612,14 +613,24 @@ func discordCardComponents(card ComponentCardPayload) ([]discord.LayoutComponent
 		buttons := make([]discord.InteractiveComponent, 0, len(card.Buttons))
 		seen := make(map[string]bool, len(card.Buttons))
 		for _, button := range card.Buttons {
-			if button.CustomID == "" || len(button.CustomID) > 100 || seen[button.CustomID] ||
+			if (button.CustomID == "") == (button.URL == "") || len(button.CustomID) > 100 ||
+				(button.CustomID != "" && seen[button.CustomID]) ||
 				utf8.RuneCountInString(button.Label) == 0 || utf8.RuneCountInString(button.Label) > 80 {
 				return nil, fmt.Errorf("discord 按钮 custom_id 无效或重复")
 			}
-			seen[button.CustomID] = true
-			component := discord.NewSecondaryButton(button.Label, button.CustomID)
-			if button.Style == "primary" {
-				component = discord.NewPrimaryButton(button.Label, button.CustomID)
+			var component discord.ButtonComponent
+			if button.URL != "" {
+				parsed, parseErr := url.ParseRequestURI(button.URL)
+				if parseErr != nil || parsed.Scheme != "https" || parsed.Host == "" {
+					return nil, fmt.Errorf("discord Link Button URL 无效")
+				}
+				component = discord.NewLinkButton(button.Label, button.URL)
+			} else {
+				seen[button.CustomID] = true
+				component = discord.NewSecondaryButton(button.Label, button.CustomID)
+				if button.Style == "primary" {
+					component = discord.NewPrimaryButton(button.Label, button.CustomID)
+				}
 			}
 			component.Disabled = button.Disabled
 			buttons = append(buttons, component)

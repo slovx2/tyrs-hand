@@ -24,7 +24,8 @@ type ComponentCardPayload struct {
 
 type ComponentButtonPayload struct {
 	Label    string `json:"label"`
-	CustomID string `json:"customId"`
+	CustomID string `json:"customId,omitempty"`
+	URL      string `json:"url,omitempty"`
 	Style    string `json:"style,omitempty"`
 	Disabled bool   `json:"disabled,omitempty"`
 }
@@ -41,7 +42,7 @@ const (
 func conversationProgressCard(state ConversationProgress, timeline ConversationTimeline,
 	page int, runID, mode string,
 ) ComponentCardPayload {
-	header, color := "⚙️ Codex · 处理中", cardColorBlurple
+	header, color := "⚙️ Codex · 思考中", cardColorBlurple
 	switch state {
 	case ConversationCompleted:
 		header, color = "✅ Codex · 已完成", cardColorGreen
@@ -50,13 +51,12 @@ func conversationProgressCard(state ConversationProgress, timeline ConversationT
 	case ConversationFailed:
 		header, color = "❌ Codex · 处理失败", cardColorRed
 	}
-	if len(timeline.Pages) == 0 {
-		timeline.Pages = []string{"正在处理请求。"}
-	}
-	page = min(max(page, 0), len(timeline.Pages)-1)
 	card := ComponentCardPayload{AccentColor: color, Header: header,
-		Body:     fmt.Sprintf("`%s` · `%d 项动态`", compactDuration(timeline.Duration), timeline.Updates),
-		Timeline: timeline.Pages[page]}
+		Body: fmt.Sprintf("`%s` · `%d 项动态`", compactDuration(timeline.Duration), timeline.Updates)}
+	if len(timeline.Pages) > 0 {
+		page = min(max(page, 0), len(timeline.Pages)-1)
+		card.Timeline = timeline.Pages[page]
+	}
 	if mode == "plan" {
 		card.Body += " · `模式：Plan`"
 	}
@@ -71,6 +71,11 @@ func conversationProgressCard(state ConversationProgress, timeline ConversationT
 		}
 	}
 	return card
+}
+
+func guidedConversationCard(latestURL string) ComponentCardPayload {
+	return ComponentCardPayload{AccentColor: cardColorBlurple, Header: "Codex · 已引导对话",
+		Buttons: []ComponentButtonPayload{{Label: "查看最新状态", URL: latestURL}}}
 }
 
 func terminatedControlCard() ComponentCardPayload {

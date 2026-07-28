@@ -87,6 +87,10 @@ func TestWorkerAPIPlacementLeaseEventsAndIdempotency(t *testing.T) {
 		WorkerID: "github-only", Role: "discord",
 	})
 	require.Error(t, err, "节点不能越权领取未授权角色")
+	_, err = githubOnlyClient.Claim(ctx, workerprotocol.ClaimRequest{
+		WorkerID: "github-only", Role: "all",
+	})
+	require.Error(t, err, "all 领取要求节点同时具备 GitHub 和 Discord 角色")
 	require.NoError(t, nodes.SetDefaults(ctx, executionnode.Defaults{
 		GitHubNodeID: &nodeA.ID, DiscordNodeID: &nodeA.ID,
 	}))
@@ -111,7 +115,7 @@ func TestWorkerAPIPlacementLeaseEventsAndIdempotency(t *testing.T) {
 	require.NotNil(t, claimB.Task)
 	require.Equal(t, secondItemID, claimB.Task.Claimed.WorkItemID)
 	claimA, err := clientA.Claim(ctx, workerprotocol.ClaimRequest{WorkerID: "worker-a",
-		Role: "github"})
+		Role: "all"})
 	require.NoError(t, err)
 	require.NotNil(t, claimA.Task)
 	require.Equal(t, firstItemID, claimA.Task.Claimed.WorkItemID)
@@ -1332,7 +1336,7 @@ func TestWorkerAPIMissingDefaultAndDevelopmentOperationRecovery(t *testing.T) {
 		VALUES ($1,'reconfigure',$2) RETURNING id`, environmentID, node.ID).
 		Scan(&operationID))
 	first, err := client.Claim(ctx, workerprotocol.ClaimRequest{WorkerID: "home-worker",
-		Role: "discord"})
+		Role: "all"})
 	require.NoError(t, err)
 	require.NotNil(t, first.DevelopmentOperation)
 	require.Equal(t, operationID, first.DevelopmentOperation.ID)
@@ -1341,7 +1345,7 @@ func TestWorkerAPIMissingDefaultAndDevelopmentOperationRecovery(t *testing.T) {
 		SET lease_expires_at = now() - interval '1 second' WHERE id = $1`, operationID)
 	require.NoError(t, err)
 	second, err := client.Claim(ctx, workerprotocol.ClaimRequest{WorkerID: "home-worker",
-		Role: "discord"})
+		Role: "all"})
 	require.NoError(t, err)
 	require.Greater(t, second.DevelopmentOperation.LeaseEpoch, firstEpoch)
 	require.Error(t, client.CompleteDevelopmentOperation(ctx, first.DevelopmentOperation),

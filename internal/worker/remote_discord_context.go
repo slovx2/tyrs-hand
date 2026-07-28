@@ -148,9 +148,6 @@ func (p *RemoteProcessor) discordCommandHandler(primary *workerprotocol.Task,
 		if err := p.client.AckCommand(ctx, primary, command, "steer", turnID); err != nil {
 			return err
 		}
-		report("discord.progress", remoteEventPayload(map[string]string{
-			"state": "running", "detail": "已将新消息合并到当前 Codex Turn。",
-		}))
 		return nil
 	}
 }

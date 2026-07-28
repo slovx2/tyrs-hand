@@ -157,6 +157,11 @@ func TestDiscordDiscussionTriggerBatchesPendingMessages(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT turn_intent_id::text
 		FROM discord_input_messages WHERE message_id = '100000000000000453'`).Scan(&pendingIntent))
 	require.False(t, pendingIntent.Valid)
+	var ordinaryProjectionCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_projections
+		WHERE projection_key=$1`, "conversation:"+conversationID.String()+
+		":message:100000000000000453").Scan(&ordinaryProjectionCount))
+	require.Zero(t, ordinaryProjectionCount)
 
 	require.NoError(t, service.Reply(ctx, IncomingMessage{
 		GuildID: testGuildID, ThreadID: "100000000000000451",
@@ -172,6 +177,11 @@ func TestDiscordDiscussionTriggerBatchesPendingMessages(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT instruction FROM codex_turn_intents
 		WHERE id = $1`, firstIntent).Scan(&instruction))
 	require.Less(t, strings.Index(instruction, "先讨论方案"), strings.Index(instruction, "请按讨论执行"))
+	var immediateHeader string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT desired_payload->'card'->>'header'
+		FROM discord_projections WHERE projection_key=$1`, "conversation:"+conversationID.String()+
+		":message:100000000000000454").Scan(&immediateHeader))
+	require.Equal(t, "⚙️ Codex · 思考中", immediateHeader)
 
 	require.NoError(t, service.Reply(ctx, IncomingMessage{
 		GuildID: testGuildID, ThreadID: "100000000000000451",
@@ -247,6 +257,132 @@ func TestDiscordDiscussionTriggerBatchesPendingMessages(t *testing.T) {
 			OR message_id = '100000000000000457'`).Scan(&batched, &skipped))
 	require.Equal(t, 200, batched)
 	require.Equal(t, 6, skipped)
+}
+
+func TestConversationStatusMovesAndRefreshesHistoryLinks(t *testing.T) {
+	db := discordDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	_, err := db.ExecContext(ctx, `INSERT INTO discord_guilds(guild_id,name,enabled)
+		VALUES ($1,'status-move',true)`, testGuildID)
+	require.NoError(t, err)
+	seed := seedDiscordManagerData(t, db)
+	service := NewConversationService(db)
+	conversationID, err := service.BeginPost(ctx, IncomingMessage{
+		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
+		ThreadID: "100000000000000601", MessageID: "100000000000000602",
+		DiscordUserID: "1001", DisplayName: "Alice", Username: "alice",
+		Title: "Status move", Body: "first", ConfigurationConfirmed: true,
+	})
+	require.NoError(t, err)
+	initialKey := "conversation:" + conversationID.String() + ":message:100000000000000602"
+	_, err = db.ExecContext(ctx, `UPDATE discord_projections SET message_id='100000000000000603'
+		WHERE guild_id=$1 AND projection_key=$2`, testGuildID, initialKey)
+	require.NoError(t, err)
+	var intentID, controlID, runID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT id, control_id FROM codex_turn_intents
+		WHERE discord_message_id='100000000000000602'`).Scan(&intentID, &controlID))
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_turn_runs
+		(control_id,primary_intent_id,attempt,worker_id,lease_epoch,capability_hash,
+		 active_slot,status,collaboration_mode)
+		VALUES ($1,$2,1,'worker',1,repeat('a',64),1,'running','default') RETURNING id`,
+		controlID, intentID).Scan(&runID))
+	require.NoError(t, ProjectConversationStatus(ctx, db, testGuildID, "100000000000000601",
+		conversationID, "100000000000000602", runID, ConversationRunning,
+		"正在核对状态迁移"))
+
+	move := func(inputID, cardID string, deliverAfterRegistration bool) string {
+		require.NoError(t, service.Reply(ctx, IncomingMessage{
+			GuildID: testGuildID, ThreadID: "100000000000000601", MessageID: inputID,
+			DiscordUserID: "1001", DisplayName: "Alice", Username: "alice", Body: "steer",
+		}))
+		key := "conversation:" + conversationID.String() + ":message:" + inputID
+		tx, beginErr := db.BeginTx(ctx, nil)
+		require.NoError(t, beginErr)
+		if !deliverAfterRegistration {
+			_, updateErr := tx.ExecContext(ctx, `UPDATE discord_projections SET message_id=$3
+				WHERE guild_id=$1 AND projection_key=$2`, testGuildID, key, cardID)
+			require.NoError(t, updateErr)
+		}
+		require.NoError(t, RegisterConversationStatusSteerTx(ctx, tx, runID, conversationID,
+			testGuildID, inputID))
+		require.NoError(t, tx.Commit())
+		if deliverAfterRegistration {
+			var role string
+			require.NoError(t, db.QueryRowContext(ctx, `SELECT role FROM discord_turn_status_cards
+				WHERE run_id=$1 AND projection_key=$2`, runID, key).Scan(&role))
+			require.Equal(t, "pending", role)
+			_, updateErr := db.ExecContext(ctx, `UPDATE discord_projections SET message_id=$3
+				WHERE guild_id=$1 AND projection_key=$2`, testGuildID, key, cardID)
+			require.NoError(t, updateErr)
+			tx, beginErr = db.BeginTx(ctx, nil)
+			require.NoError(t, beginErr)
+			require.NoError(t, promotePendingConversationStatusTx(ctx, tx, testGuildID, key))
+			require.NoError(t, tx.Commit())
+		}
+		return key
+	}
+	secondKey := move("100000000000000604", "100000000000000605", true)
+	thirdKey := move("100000000000000606", "100000000000000607", false)
+	registerPending := func(inputID string) string {
+		require.NoError(t, service.Reply(ctx, IncomingMessage{
+			GuildID: testGuildID, ThreadID: "100000000000000601", MessageID: inputID,
+			DiscordUserID: "1001", DisplayName: "Alice", Username: "alice", Body: "steer",
+		}))
+		key := "conversation:" + conversationID.String() + ":message:" + inputID
+		tx, beginErr := db.BeginTx(ctx, nil)
+		require.NoError(t, beginErr)
+		require.NoError(t, RegisterConversationStatusSteerTx(ctx, tx, runID, conversationID,
+			testGuildID, inputID))
+		require.NoError(t, tx.Commit())
+		return key
+	}
+	fourthKey := registerPending("100000000000000608")
+	fifthKey := registerPending("100000000000000609")
+	deliverPending := func(key, cardID string) {
+		_, updateErr := db.ExecContext(ctx, `UPDATE discord_projections SET message_id=$3
+			WHERE guild_id=$1 AND projection_key=$2`, testGuildID, key, cardID)
+		require.NoError(t, updateErr)
+		tx, beginErr := db.BeginTx(ctx, nil)
+		require.NoError(t, beginErr)
+		require.NoError(t, promotePendingConversationStatusTx(ctx, tx, testGuildID, key))
+		require.NoError(t, tx.Commit())
+	}
+	// 较新的卡先送达，较旧卡晚到时只能成为历史卡，不能覆盖 current。
+	deliverPending(fifthKey, "100000000000000611")
+	deliverPending(fourthKey, "100000000000000610")
+
+	rows, err := db.QueryContext(ctx, `SELECT card.projection_key, card.role,
+		projection.desired_payload->'card'->>'header',
+		COALESCE(projection.desired_payload->'card'->'buttons'->0->>'url','')
+		FROM discord_turn_status_cards card JOIN discord_projections projection
+		ON projection.guild_id=card.guild_id AND projection.projection_key=card.projection_key
+		WHERE card.run_id=$1 ORDER BY card.revision`, runID)
+	require.NoError(t, err)
+	defer func() { _ = rows.Close() }()
+	type cardState struct{ key, role, header, url string }
+	var cards []cardState
+	for rows.Next() {
+		var item cardState
+		require.NoError(t, rows.Scan(&item.key, &item.role, &item.header, &item.url))
+		cards = append(cards, item)
+	}
+	require.NoError(t, rows.Err())
+	require.Len(t, cards, 5)
+	latestURL := "https://discord.com/channels/" + testGuildID +
+		"/100000000000000601/100000000000000611"
+	for _, item := range cards[:4] {
+		require.Equal(t, "history", item.role)
+		require.Equal(t, "Codex · 已引导对话", item.header)
+		require.Equal(t, latestURL, item.url)
+	}
+	require.Equal(t, fifthKey, cards[4].key)
+	require.Equal(t, "current", cards[4].role)
+	require.Equal(t, "⚙️ Codex · 思考中", cards[4].header)
+	require.Empty(t, cards[4].url)
+	require.Equal(t, secondKey, cards[1].key)
+	require.Equal(t, thirdKey, cards[2].key)
+	require.Equal(t, fourthKey, cards[3].key)
 }
 
 func TestDiscordManagerForumsAndProjections(t *testing.T) {
@@ -1215,6 +1351,8 @@ func testGatewayHandlers(t *testing.T, ctx context.Context, db *sql.DB, manager 
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_intents
 		WHERE discord_conversation_id = $1`, conversationID).Scan(&queuedBeforeConfiguration))
 	require.Zero(t, queuedBeforeConfiguration)
+	require.Error(t, conversationService.BeginConfigurationEdit(ctx, conversationID, "1003"),
+		"新 Post 参数只能由创建者操作")
 	require.NoError(t, conversationService.BeginConfigurationEdit(ctx, conversationID, "1001"))
 	started, err := conversationService.StartDueConfiguration(ctx)
 	require.NoError(t, err)

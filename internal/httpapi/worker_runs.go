@@ -97,10 +97,11 @@ func (s *Server) workerCommandAck(c *gin.Context) {
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-	var operation, status string
-	err = tx.QueryRowContext(c.Request.Context(), `SELECT operation, status
+	var operation, status, discordMessageID, inputSurface string
+	err = tx.QueryRowContext(c.Request.Context(), `SELECT operation, status,
+		COALESCE(discord_message_id,''), COALESCE(input_surface,'')
 		FROM codex_turn_intents WHERE id = $1 AND control_id = $2 FOR UPDATE`,
-		request.CommandID, claimed.ControlID).Scan(&operation, &status)
+		request.CommandID, claimed.ControlID).Scan(&operation, &status, &discordMessageID, &inputSurface)
 	if err != nil {
 		remoteRunError(c, "Run 指令不存在", err)
 		return
@@ -131,6 +132,23 @@ func (s *Server) workerCommandAck(c *gin.Context) {
 		if err == nil && claimed.SourceType == codexcontrol.SourceDiscord {
 			err = recordDiscordIntentContributors(c.Request.Context(), tx, claimed.RunID,
 				claimed.DiscordConversationID, request.CommandID, request.TurnID)
+		}
+		if err == nil && claimed.SourceType == codexcontrol.SourceDiscord {
+			var guildID, threadID string
+			err = tx.QueryRowContext(c.Request.Context(), `SELECT guild_id, thread_id
+				FROM discord_conversations WHERE id=$1`, claimed.DiscordConversationID).
+				Scan(&guildID, &threadID)
+			if err == nil {
+				if discordMessageID == "" && inputSurface == "desktop" {
+					discordMessageID = "desktop-" + request.CommandID.String()
+					err = discordintegration.ProjectConversationThinkingTx(c.Request.Context(), tx,
+						guildID, threadID, claimed.DiscordConversationID, discordMessageID)
+				}
+			}
+			if err == nil && discordMessageID != "" {
+				err = discordintegration.RegisterConversationStatusSteerTx(c.Request.Context(), tx,
+					claimed.RunID, claimed.DiscordConversationID, guildID, discordMessageID)
+			}
 		}
 	}
 	if err != nil {

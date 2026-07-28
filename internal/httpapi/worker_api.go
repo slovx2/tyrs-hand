@@ -164,13 +164,15 @@ func (s *Server) workerClaim(c *gin.Context) {
 		source = codexcontrol.SourceGitHub
 	case "discord":
 		source = codexcontrol.SourceDiscord
+	case "all":
+		source = ""
 	default:
-		badRequest(c, errors.New("role 必须是 github 或 discord"))
+		badRequest(c, errors.New("role 必须是 all、github 或 discord"))
 		return
 	}
 	deadline := time.Now()
 	if request.Wait {
-		deadline = deadline.Add(25 * time.Second)
+		deadline = deadline.Add(10 * time.Second)
 	}
 	repository := codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration,
 		s.cfg.CodexMaxSteersPerTurn, s.cfg.CodexReconcileMaxAttempts)
@@ -198,7 +200,7 @@ func (s *Server) workerClaim(c *gin.Context) {
 			}
 			continue
 		}
-		if request.Role == "discord" {
+		if request.Role == "discord" || request.Role == "all" {
 			operation, err := s.claimDevelopmentOperation(c.Request.Context(), node.ID,
 				request.WorkerID)
 			if err != nil {

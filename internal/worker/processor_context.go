@@ -16,6 +16,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/codexsettings"
 	"github.com/slovx2/tyrs-hand/internal/config"
+	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/replygate"
 	"github.com/slovx2/tyrs-hand/internal/settings"
@@ -491,18 +492,42 @@ func steerSnapshotApplied(snapshot codex.ThreadSnapshot, turnID, clientID string
 func (p *Processor) markSteerApplied(ctx context.Context, claimed *codexcontrol.ClaimedControl,
 	intentID uuid.UUID, turnID, messageID string,
 ) error {
-	_, err := p.db.ExecContext(ctx, `UPDATE codex_turn_intents SET status = 'running',
+	tx, err := p.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	_, err = tx.ExecContext(ctx, `UPDATE codex_turn_intents SET status = 'running',
 		resolved_action = 'steer', confirmed_codex_turn_id = $2, confirmed_at = now(), updated_at = now()
 		WHERE id = $1 AND status IN ('queued','retry_wait')`, intentID, turnID)
 	if err == nil {
-		_, err = p.db.ExecContext(ctx, `UPDATE codex_turn_runs SET append_count = append_count + 1
+		_, err = tx.ExecContext(ctx, `UPDATE codex_turn_runs SET append_count = append_count + 1
 			WHERE id = $1 AND append_count < max_append_count`, claimed.RunID)
 	}
 	if err == nil && claimed.SourceType == codexcontrol.SourceDiscord {
-		err = p.addDiscordContributor(ctx, claimed.RunID, claimed.DiscordConversationID,
+		err = p.addDiscordContributorTx(ctx, tx, claimed.RunID, claimed.DiscordConversationID,
 			intentID, turnID)
 	}
-	return err
+	if err == nil && claimed.SourceType == codexcontrol.SourceDiscord {
+		var guildID, threadID string
+		err = tx.QueryRowContext(ctx, `SELECT guild_id, thread_id FROM discord_conversations WHERE id=$1`,
+			claimed.DiscordConversationID).Scan(&guildID, &threadID)
+		if err == nil {
+			if messageID == "" {
+				messageID = "desktop-" + intentID.String()
+				err = discordintegration.ProjectConversationThinkingTx(ctx, tx, guildID, threadID,
+					claimed.DiscordConversationID, messageID)
+			}
+		}
+		if err == nil {
+			err = discordintegration.RegisterConversationStatusSteerTx(ctx, tx, claimed.RunID,
+				claimed.DiscordConversationID, guildID, messageID)
+		}
+	}
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func completedTurn(raw json.RawMessage, threadID, turnID string) (bool, string) {

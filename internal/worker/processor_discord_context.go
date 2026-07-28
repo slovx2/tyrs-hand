@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -139,7 +140,17 @@ func (p *Processor) prepareDiscordAttachments(ctx context.Context, intentID uuid
 func (p *Processor) addDiscordContributor(ctx context.Context, runID, conversationID,
 	intentID uuid.UUID, turnID string,
 ) error {
-	_, err := p.db.ExecContext(ctx, `INSERT INTO discord_turn_contributors
+	return p.addDiscordContributorTx(ctx, p.db, runID, conversationID, intentID, turnID)
+}
+
+type discordContributorExecer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func (p *Processor) addDiscordContributorTx(ctx context.Context, execer discordContributorExecer,
+	runID, conversationID, intentID uuid.UUID, turnID string,
+) error {
+	_, err := execer.ExecContext(ctx, `INSERT INTO discord_turn_contributors
 		(run_id, conversation_id, external_turn_id, discord_user_id, first_message_id,
 		github_binding_id, github_user_id, github_login, binding_version)
 		SELECT DISTINCT ON (discord_user_id) $1, $2, $3, discord_user_id, message_id,

@@ -74,7 +74,6 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 			}
 		}
 	}()
-	progress.project(ctx, discordintegration.ConversationRunning, "已接收消息，正在准备工作区。", 0)
 	containerRuntime, err := p.development.Ensure(ctx, jobCtx.EnvironmentID, jobCtx.ForumID,
 		jobCtx.ConversationID, "")
 	if err != nil {

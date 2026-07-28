@@ -135,7 +135,7 @@ func testOutboxRecovery(t *testing.T, ctx context.Context, db *sql.DB, guildID s
 	require.Equal(t, "message.create", first.OperationType)
 	require.Contains(t, string(first.Payload), `"card"`)
 	require.NotContains(t, string(first.Payload), `"embeds"`)
-	require.Contains(t, string(first.Payload), "处理中")
+	require.Contains(t, string(first.Payload), "思考中")
 
 	require.NoError(t, discordintegration.ProjectConversationStatus(ctx, db, guildID, "2001", conversationID,
 		"3001", uuid.Nil, discordintegration.ConversationCompleted, "completed"))

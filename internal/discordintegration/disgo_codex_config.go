@@ -32,7 +32,7 @@ func (c *DisgoConnector) startConfiguredConversation(event *events.ComponentInte
 		_ = event.CreateMessage(discord.NewMessageCreate().WithContent(err.Error()).WithEphemeral(true))
 		return
 	}
-	timeline := ConversationTimeline{Pages: []string{"已按默认参数启动，消息正在进入长期开发环境队列。"},
+	timeline := ConversationTimeline{Pages: []string{"已按默认参数启动"},
 		Duration: time.Second}
 	components, componentErr := discordCardComponents(conversationProgressCard(ConversationRunning,
 		timeline, 0, "", mode))
@@ -163,7 +163,7 @@ func (c *DisgoConnector) onModalSubmit(event *events.ModalSubmitInteractionCreat
 			Scan(&guildID, &threadID, &starterID)
 		if queryErr == nil {
 			_ = ProjectConversationStatus(context.Background(), c.manager.db, guildID, threadID, id,
-				starterID, uuid.Nil, ConversationRunning, "参数已确认，消息正在进入长期开发环境队列。")
+				starterID, uuid.Nil, ConversationRunning, "参数已确认")
 		}
 	}
 }
@@ -318,12 +318,7 @@ func (c *DisgoConnector) createCodexPost(event *events.ModalSubmitInteractionCre
 				DisplayName: event.User().EffectiveName(), Username: event.User().Username,
 				Title: "Codex 正在生成标题", Body: body, Model: model, ReasoningEffort: effort,
 				ServiceTier: tier, CollaborationMode: mode, ConfigurationConfirmed: true}
-			var conversationID uuid.UUID
-			conversationID, err = c.conversations.BeginPost(ctx, input)
-			if err == nil {
-				err = ProjectConversationStatus(ctx, c.manager.db, c.guildID, threadID, conversationID,
-					input.MessageID, uuid.Nil, ConversationRunning, "帖子已创建，消息正在进入长期开发环境队列。")
-			}
+			_, err = c.conversations.BeginPost(ctx, input)
 		}
 	}
 	message := "已创建 Codex 帖子：<#" + threadID + ">"

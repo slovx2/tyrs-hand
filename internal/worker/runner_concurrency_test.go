@@ -49,6 +49,12 @@ func TestRunnerFiltersClaimsByWorkerRole(t *testing.T) {
 	}
 }
 
+func TestRemoteRunnerUsesSingleAllClaim(t *testing.T) {
+	runner := &RemoteRunner{cfg: config.Config{WorkerRole: "all"}}
+	require.Equal(t, "all", runner.claimRole())
+	require.Equal(t, []string{"github", "discord"}, runner.roles())
+}
+
 func (*concurrencyQueue) Heartbeat(context.Context, *codexcontrol.ClaimedControl) error { return nil }
 
 func (q *concurrencyQueue) Complete(context.Context, *codexcontrol.ClaimedControl, codexcontrol.TurnResult) error {

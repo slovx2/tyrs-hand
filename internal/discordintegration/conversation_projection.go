@@ -57,12 +57,19 @@ func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadI
 	card := conversationProgressCard(state, timeline, page, rawRunID, mode)
 	progress := conversationProgressPayload{FormatVersion: conversationProgressFormatVersion,
 		RunID: rawRunID, State: state, Summary: detail, Page: page, CollaborationMode: mode}
-	key := "conversation:" + conversationID.String() + ":message:" + inputMessageID
+	requestedKey := "conversation:" + conversationID.String() + ":message:" + inputMessageID
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	key := requestedKey
+	if runID != uuid.Nil {
+		key, err = currentConversationStatusKeyTx(ctx, tx, runID, requestedKey)
+		if err != nil {
+			return err
+		}
+	}
 	var resourceID, messageID string
 	err = tx.QueryRowContext(ctx, `INSERT INTO discord_projections
 		(guild_id, projection_key, resource_id, desired_payload)
@@ -74,6 +81,11 @@ func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadI
 		mustJSON(map[string]any{"card": card, "progress": progress})).Scan(&resourceID, &messageID)
 	if err != nil {
 		return err
+	}
+	if runID != uuid.Nil {
+		if err := registerInitialConversationStatusTx(ctx, tx, runID, guildID, key); err != nil {
+			return err
+		}
 	}
 	operationType := "message.create"
 	payload := map[string]any{"channelId": resourceID, "card": card, "progress": progress}
@@ -88,6 +100,41 @@ func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadI
 		return err
 	}
 	return tx.Commit()
+}
+
+func ProjectConversationThinkingTx(ctx context.Context, tx *sql.Tx, guildID, threadID string,
+	conversationID uuid.UUID, inputMessageID string,
+) error {
+	var mode string
+	if err := tx.QueryRowContext(ctx, `SELECT collaboration_mode FROM discord_conversations
+		WHERE id = $1`, conversationID).Scan(&mode); err != nil {
+		return err
+	}
+	timeline := ConversationTimeline{Duration: time.Second}
+	card := conversationProgressCard(ConversationRunning, timeline, 0, "", mode)
+	progress := conversationProgressPayload{FormatVersion: conversationProgressFormatVersion,
+		State: ConversationRunning, CollaborationMode: mode}
+	key := "conversation:" + conversationID.String() + ":message:" + inputMessageID
+	var resourceID, messageID string
+	err := tx.QueryRowContext(ctx, `INSERT INTO discord_projections
+		(guild_id, projection_key, resource_id, desired_payload)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT(guild_id, projection_key) DO UPDATE SET
+			resource_id = EXCLUDED.resource_id, desired_payload = EXCLUDED.desired_payload,
+			desired_version = discord_projections.desired_version + 1, updated_at = now()
+		RETURNING resource_id, COALESCE(message_id, '')`, guildID, key, threadID,
+		mustJSON(map[string]any{"card": card, "progress": progress})).Scan(&resourceID, &messageID)
+	if err != nil {
+		return err
+	}
+	operation, nonce := "message.create", "conversation-status-"+conversationID.String()+"-"+inputMessageID
+	payload := map[string]any{"channelId": resourceID, "card": card, "progress": progress}
+	if messageID != "" {
+		operation, nonce = "message.update", ""
+		payload["messageId"] = messageID
+	}
+	return enqueueDiscordOutbox(ctx, tx, "projection:"+key, operation,
+		"channels/"+resourceID+"/messages", payload, nonce)
 }
 
 func ProjectConversationConfiguration(ctx context.Context, db *sql.DB, guildID, threadID string,
@@ -200,7 +247,12 @@ type conversationProgressPayload struct {
 
 const conversationProgressFormatVersion = 4
 
-func conversationTimelineForRun(ctx context.Context, db *sql.DB, runID uuid.UUID,
+type conversationQueryer interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func conversationTimelineForRun(ctx context.Context, db conversationQueryer, runID uuid.UUID,
 	summary string,
 ) (ConversationTimeline, error) {
 	if runID == uuid.Nil {

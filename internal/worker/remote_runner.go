@@ -102,8 +102,6 @@ func (r *RemoteRunner) Run(ctx context.Context) error {
 		go r.runJournal(ctx, journal, slots, &active)
 	}
 
-	roles := r.roles()
-	nextRole := 0
 	for ctx.Err() == nil {
 		select {
 		case slots <- struct{}{}:
@@ -111,10 +109,8 @@ func (r *RemoteRunner) Run(ctx context.Context) error {
 			active.Wait()
 			return ctx.Err()
 		}
-		role := roles[nextRole%len(roles)]
-		nextRole++
 		claim, claimErr := r.client.Claim(ctx, workerprotocol.ClaimRequest{
-			WorkerID: r.cfg.WorkerID, Role: role, Wait: true,
+			WorkerID: r.cfg.WorkerID, Role: r.claimRole(), Wait: true,
 		})
 		if claimErr != nil {
 			<-slots
@@ -197,6 +193,13 @@ func (r *RemoteRunner) roles() []string {
 		return []string{"github", "discord"}
 	}
 	return []string{r.cfg.WorkerRole}
+}
+
+func (r *RemoteRunner) claimRole() string {
+	if r.cfg.WorkerRole == "all" {
+		return "all"
+	}
+	return r.cfg.WorkerRole
 }
 
 func (r *RemoteRunner) roleAllowed(source string) bool {

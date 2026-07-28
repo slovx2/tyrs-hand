@@ -9,7 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 13
+const Version = 14
 
 type EnrollRequest struct {
 	Token string `json:"token"`

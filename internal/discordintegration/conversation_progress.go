@@ -115,7 +115,9 @@ func (t *ConversationActionTracker) Timeline(summary string, duration time.Durat
 	}
 	blocks := make([]string, 0, len(t.order))
 	if len(t.order) == 0 {
-		blocks = append(blocks, sanitizeDiscordTimeline(summary))
+		if summary = visibleConversationSummary(summary); summary != "" {
+			blocks = append(blocks, sanitizeDiscordTimeline(summary))
+		}
 	} else {
 		var toolLines []string
 		flushTools := func() {
@@ -138,16 +140,29 @@ func (t *ConversationActionTracker) Timeline(summary string, duration time.Durat
 		flushTools()
 	}
 	pages := paginateConversationBlocks(blocks, conversationPageBudget)
-	if len(pages) == 0 {
-		pages = []string{"正在处理请求。"}
-	}
 	return ConversationTimeline{Pages: pages, Updates: len(t.actions), Duration: duration}
 }
 
 func (t *ConversationActionTracker) Render(summary string, duration time.Duration) string {
 	timeline := t.Timeline(summary, duration)
-	return fmt.Sprintf("`%s` · `%d 项动态`\n\n%s", compactDuration(timeline.Duration),
-		timeline.Updates, timeline.Pages[len(timeline.Pages)-1])
+	result := fmt.Sprintf("`%s` · `%d 项动态`", compactDuration(timeline.Duration), timeline.Updates)
+	if len(timeline.Pages) > 0 {
+		result += "\n\n" + timeline.Pages[len(timeline.Pages)-1]
+	}
+	return result
+}
+
+func visibleConversationSummary(summary string) string {
+	summary = strings.TrimSpace(summary)
+	switch summary {
+	case "正在处理请求。", "思考中", "Codex 正在处理当前消息。",
+		"已接收消息，正在准备工作区。", "本轮处理完成。",
+		"本轮已由 Discord 用户主动停止。", "本轮已停止。", "已停止",
+		"本轮处理未完成。", "Codex Desktop 正在处理请求。",
+		"帖子已创建，消息正在进入长期开发环境队列。":
+		return ""
+	}
+	return summary
 }
 
 func (t *ConversationActionTracker) applyItem(item map[string]any, state conversationActionState) bool {

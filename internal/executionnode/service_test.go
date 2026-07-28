@@ -11,6 +11,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestHasRoleAllRequiresBothRoles(t *testing.T) {
+	require.True(t, HasRole(Node{Roles: []string{"github", "discord"}}, "all"))
+	require.False(t, HasRole(Node{Roles: []string{"github"}}, "all"))
+	require.True(t, HasRole(Node{Roles: []string{"discord"}}, "discord"))
+}
+
 func TestEnrollmentTokenCanOnlyBeConsumedOnce(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)

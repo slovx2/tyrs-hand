@@ -316,6 +316,16 @@ func (s *SQLoutbox) Apply(ctx context.Context, item OutboxItem) error {
 			if err != nil {
 				return err
 			}
+			var guildID string
+			if err = tx.QueryRowContext(ctx, `SELECT guild_id FROM discord_projections
+				WHERE projection_key = $1`, strings.TrimPrefix(item.OperationKey, "projection:")).
+				Scan(&guildID); err != nil {
+				return err
+			}
+			if err = promotePendingConversationStatusTx(ctx, tx, guildID,
+				strings.TrimPrefix(item.OperationKey, "projection:")); err != nil {
+				return err
+			}
 		}
 	}
 	if strings.HasPrefix(item.OperationKey, "task-post:") {
