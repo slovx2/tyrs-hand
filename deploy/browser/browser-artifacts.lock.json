@@ -1,47 +1,47 @@
 {
   "schemaVersion": 1,
-  "release": "tyrs-v0.2.2",
+  "release": "tyrs-v0.3.0",
   "extensionId": "ljjpfmlebedjianbadehibibioaknkfb",
   "playwright": {
     "repository": "https://github.com/slovx2/playwright",
-    "commit": "a228924d56cf3ca64c3a0abccf8b920988139854",
-    "extensionVersion": "0.2.1",
+    "commit": "7f87721e06e38d9345d229ce564e23d7bcd0755b",
+    "extensionVersion": "0.3.0",
     "playwrightCoreVersion": "1.62.0-next",
     "artifacts": {
       "extension": {
-        "url": "https://github.com/slovx2/playwright/releases/download/tyrs-v0.2.1/tyrs-browser-extension.crx",
-        "sha256": "ef9be03a0dbf53dbe091f05e351d386c0cbb94a0a0299c4d7abfb43fd69d2738"
+        "url": "https://github.com/slovx2/playwright/releases/download/tyrs-v0.3.0/tyrs-browser-extension.crx",
+        "sha256": "47d1ceb726a0a4c68ff05fd29e2a431a7b3b2738be5d228790cc5440e29ac5c5"
       },
       "playwrightCore": {
-        "url": "https://github.com/slovx2/playwright/releases/download/tyrs-v0.2.1/playwright-core.tgz",
-        "sha256": "7256c60f4209e65a72a8d483142234367622882d09860c242adb36d3d8fca354"
+        "url": "https://github.com/slovx2/playwright/releases/download/tyrs-v0.3.0/playwright-core.tgz",
+        "sha256": "c4ab3e4d5d39348c8b4c00d0f2cedc6d32e046e2eee267443af761a56b3e90e9"
       }
     }
   },
   "playwrightMcp": {
     "repository": "https://github.com/slovx2/playwright-mcp",
-    "commit": "63447e50c7a63bea0dab01064437ca69b5768b39",
-    "bridgeVersion": "0.2.2",
+    "commit": "ce21aabc0cf48fcf5c2d242394ca86f588e22180",
+    "bridgeVersion": "0.3.0",
     "artifacts": {
       "bundle": {
-        "url": "https://github.com/slovx2/playwright-mcp/releases/download/tyrs-v0.2.2/tyrs-browser-bridge-bundle.tgz",
-        "sha256": "3deb1f40485c4e50d3b597623defca0fd0bd1e9f082518df863917cd10b2a4d2"
+        "url": "https://github.com/slovx2/playwright-mcp/releases/download/tyrs-v0.3.0/tyrs-browser-bridge-bundle.tgz",
+        "sha256": "0020aee3f9da272c1663916e8deaafc0892566a16604db106cc28b51b4253a7a"
       }
     },
     "browserAgent": {
       "repository": "https://github.com/slovx2/playwright-mcp",
-      "commit": "63447e50c7a63bea0dab01064437ca69b5768b39",
-      "agentVersion": "0.1.1",
-      "extensionVersion": "0.2.1",
+      "commit": "ce21aabc0cf48fcf5c2d242394ca86f588e22180",
+      "agentVersion": "0.2.0",
+      "extensionVersion": "0.3.0",
       "nodeVersion": "22.17.1",
       "artifacts": {
         "darwin-arm64": {
-          "url": "https://github.com/slovx2/playwright-mcp/releases/download/tyrs-v0.2.2/tyrs-browser-agent-darwin-arm64.tgz",
-          "sha256": "638c597a8adc8c8b20ab9a5f9cae8e259063b80e4e0db3fab6a38339bc8fe3de"
+          "url": "https://github.com/slovx2/playwright-mcp/releases/download/tyrs-v0.3.0/tyrs-browser-agent-darwin-arm64.tgz",
+          "sha256": "b3d47f300ac603f0f96f5d852031ace3c812ceb169d78bf8276bb4ce6d53a356"
         },
         "darwin-x64": {
-          "url": "https://github.com/slovx2/playwright-mcp/releases/download/tyrs-v0.2.2/tyrs-browser-agent-darwin-x64.tgz",
-          "sha256": "54c1644878ce0346ba8dec43692cb0fd93cc9486ff876279b0c35571a77ab629"
+          "url": "https://github.com/slovx2/playwright-mcp/releases/download/tyrs-v0.3.0/tyrs-browser-agent-darwin-x64.tgz",
+          "sha256": "8f6a8b88d0714339a006e6895dbff6b58cefd44689ea9cee203e2cfb277ac6e3"
         }
       }
     }
