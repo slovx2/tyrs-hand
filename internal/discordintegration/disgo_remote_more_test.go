@@ -279,6 +279,32 @@ func TestDisgoRemoteDefersMessageUpdateForArchivedThread(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestDisgoRemoteAllowsOnlyExplicitUserMentions(t *testing.T) {
+	var body map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		require.Equal(t, "POST /channels/20/messages", request.Method+" "+request.URL.Path)
+		require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{"id":"22","channel_id":"20","content":"done"}`))
+	}))
+	t.Cleanup(server.Close)
+	remote := NewDisgoRemote("token", server.URL, server.Client())
+	t.Cleanup(func() { remote.Close(context.Background()) })
+
+	_, err := remote.Send(context.Background(), OutboxItem{OperationType: "message.create",
+		Payload: rawJSON(map[string]any{
+			"channelId": "20", "content": "<@456> done", "mentionUserIds": []string{"456"},
+		})})
+	require.NoError(t, err)
+	allowed := body["allowed_mentions"].(map[string]any)
+	require.Equal(t, []any{"456"}, allowed["users"])
+	require.Nil(t, allowed["parse"])
+	require.Equal(t, false, allowed["replied_user"])
+
+	_, err = explicitUserMentions([]string{"invalid"})
+	require.Error(t, err)
+}
+
 func TestDiscordRestoreReferencesAndCardRevision(t *testing.T) {
 	id, err := parseDiscordPostReference("<#100000000000000070>")
 	require.NoError(t, err)

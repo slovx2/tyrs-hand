@@ -180,6 +180,18 @@ func testOutboxRecovery(t *testing.T, ctx context.Context, db *sql.DB, guildID s
 	require.JSONEq(t, `{"channelId":"2001","content":"final reply"}`, string(reply.Payload))
 	completeDiscordDelivery(t, ctx, store, reply, json.RawMessage(`{"messageId":"5003"}`))
 
+	require.NoError(t, discordintegration.ProjectConversationReply(ctx, db, "2001",
+		conversationID, "3003", "operator reply"))
+	mentionedReply, err := store.Claim(ctx, 30*time.Second)
+	require.NoError(t, err)
+	require.NotNil(t, mentionedReply)
+	require.JSONEq(t, `{
+		"channelId":"2001",
+		"content":"<@1003> operator reply",
+		"mentionUserIds":["1003"]
+	}`, string(mentionedReply.Payload))
+	completeDiscordDelivery(t, ctx, store, mentionedReply, json.RawMessage(`{"messageId":"5004"}`))
+
 	require.NoError(t, store.Enqueue(ctx, "crash-recovery", "message.create", "channels/2001/messages",
 		map[string]string{"channelId": "2001", "content": "recover"}, "crash-nonce"))
 	crashed, err := store.Claim(ctx, time.Second)

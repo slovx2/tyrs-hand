@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/disgoorg/snowflake/v2"
 	"github.com/google/uuid"
 )
 
@@ -141,9 +142,51 @@ func ProjectConversationReply(ctx context.Context, db *sql.DB, threadID string,
 	if content == "" {
 		content = "本轮已完成。"
 	}
+	mentionUserID, err := conversationReplyMentionUser(ctx, db, conversationID, inputMessageID)
+	if err != nil {
+		return err
+	}
+	payload := conversationReplyPayload(threadID, content, mentionUserID)
 	key := "conversation-reply:" + conversationID.String() + ":message:" + inputMessageID
 	return NewSQLoutbox(db).Enqueue(ctx, key, "message.create", "channels/"+threadID+"/messages",
-		map[string]any{"channelId": threadID, "content": content}, key)
+		payload, key)
+}
+
+func conversationReplyMentionUser(ctx context.Context, db *sql.DB, conversationID uuid.UUID,
+	inputMessageID string,
+) (string, error) {
+	var userID string
+	var multiplayer bool
+	err := db.QueryRowContext(ctx, `SELECT message.discord_user_id,
+		EXISTS(SELECT 1
+		 FROM discord_input_messages participant
+		 WHERE participant.conversation_id = message.conversation_id
+		   AND participant.discord_user_id <> message.discord_user_id)
+		FROM discord_input_messages message
+		WHERE message.conversation_id = $1 AND message.message_id = $2`,
+		conversationID, inputMessageID).Scan(&userID, &multiplayer)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if !multiplayer {
+		return "", nil
+	}
+	if _, err := snowflake.Parse(userID); err != nil {
+		return "", nil
+	}
+	return userID, nil
+}
+
+func conversationReplyPayload(threadID, content, mentionUserID string) map[string]any {
+	payload := map[string]any{"channelId": threadID, "content": content}
+	if mentionUserID != "" {
+		payload["content"] = "<@" + mentionUserID + "> " + content
+		payload["mentionUserIds"] = []string{mentionUserID}
+	}
+	return payload
 }
 
 type conversationProgressPayload struct {

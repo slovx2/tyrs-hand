@@ -305,8 +305,8 @@ func (c *DisgoConnector) onCommand(event *events.ApplicationCommandInteractionCr
 	err = errors.Join(err, responseErr)
 }
 
-func commandResponseEphemeral(path string) bool {
-	return path != "/codex/mode"
+func commandResponseEphemeral(_ string) bool {
+	return true
 }
 
 func commandInteractionUpdate(content string, components []discord.LayoutComponent) discord.MessageUpdate {

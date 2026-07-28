@@ -80,8 +80,8 @@ func TestMessageMentionsUserUsesStructuredMentions(t *testing.T) {
 	require.Equal(t, botID, connectorUserID(&bot.Client{ApplicationID: botID}))
 }
 
-func TestModeCommandResponseIsPublic(t *testing.T) {
-	require.False(t, commandResponseEphemeral("/codex/mode"))
+func TestModeCommandResponseIsEphemeral(t *testing.T) {
+	require.True(t, commandResponseEphemeral("/codex/mode"))
 	require.True(t, commandResponseEphemeral("/codex/stop"))
 }
 

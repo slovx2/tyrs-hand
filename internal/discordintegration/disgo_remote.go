@@ -388,9 +388,14 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 		Archived         bool                  `json:"archived"`
 		Locked           bool                  `json:"locked"`
 		ConversationID   string                `json:"conversationId"`
+		MentionUserIDs   []string              `json:"mentionUserIds"`
 		Card             *ComponentCardPayload `json:"card"`
 	}
 	if err := json.Unmarshal(item.Payload, &payload); err != nil {
+		return nil, err
+	}
+	allowedMentions, err := explicitUserMentions(payload.MentionUserIDs)
+	if err != nil {
 		return nil, err
 	}
 	switch item.OperationType {
@@ -407,7 +412,7 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 			return nil, err
 		}
 		create := discord.MessageCreate{Content: payload.Content, Nonce: item.Nonce,
-			EnforceNonce: item.Nonce != "", AllowedMentions: &discord.AllowedMentions{}}
+			EnforceNonce: item.Nonce != "", AllowedMentions: allowedMentions}
 		if payload.Card != nil {
 			components, componentErr := discordCardComponents(*payload.Card)
 			if componentErr != nil {
@@ -415,7 +420,7 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 			}
 			create = discord.NewMessageCreateV2(components...)
 			create.Nonce, create.EnforceNonce = item.Nonce, item.Nonce != ""
-			create.AllowedMentions = &discord.AllowedMentions{}
+			create.AllowedMentions = allowedMentions
 		}
 		message, err := r.rest.CreateMessage(channel, create, disgorest.WithCtx(ctx))
 		if err != nil {
@@ -429,7 +434,7 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 		}
 		emptyComponents := []discord.LayoutComponent{}
 		update := discord.MessageUpdate{Content: &payload.Content, Components: &emptyComponents,
-			AllowedMentions: &discord.AllowedMentions{}}
+			AllowedMentions: allowedMentions}
 		if payload.Card != nil {
 			components, componentErr := discordCardComponents(*payload.Card)
 			if componentErr != nil {
@@ -439,7 +444,7 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 			emptyContent := ""
 			emptyEmbeds := []discord.Embed{}
 			update.Content, update.Embeds = &emptyContent, &emptyEmbeds
-			update.AllowedMentions = &discord.AllowedMentions{}
+			update.AllowedMentions = allowedMentions
 		}
 		_, err = r.rest.UpdateMessage(channel, message, update, disgorest.WithCtx(ctx))
 		if discordThreadArchived(err) {
@@ -651,6 +656,20 @@ func permissionOverwrites(specs []PermissionSpec) ([]discord.PermissionOverwrite
 		}
 	}
 	return result, nil
+}
+
+func explicitUserMentions(rawIDs []string) (*discord.AllowedMentions, error) {
+	mentions := &discord.AllowedMentions{}
+	for _, rawID := range rawIDs {
+		id, err := snowflake.Parse(rawID)
+		if err != nil {
+			return nil, fmt.Errorf("discord mention user id 无效: %w", err)
+		}
+		if !slices.Contains(mentions.Users, id) {
+			mentions.Users = append(mentions.Users, id)
+		}
+	}
+	return mentions, nil
 }
 
 func twoSnowflakes(first, second string) (snowflake.ID, snowflake.ID, error) {
