@@ -17,6 +17,36 @@ func TestRuntimeServiceTier(t *testing.T) {
 	if got := RuntimeServiceTier("standard"); got != "" {
 		t.Fatalf("standard 应省略，得到 %q", got)
 	}
+	if got := RuntimeServiceTier("priority"); got != "fast" {
+		t.Fatalf("priority 应归一化为 fast，得到 %q", got)
+	}
+}
+
+func TestServiceTierBoundaries(t *testing.T) {
+	tests := []struct {
+		input     string
+		canonical string
+		applied   string
+	}{
+		{input: "", canonical: "", applied: ""},
+		{input: "standard", canonical: "standard", applied: "default"},
+		{input: "default", canonical: "standard", applied: "default"},
+		{input: "fast", canonical: "fast", applied: "priority"},
+		{input: "priority", canonical: "fast", applied: "priority"},
+	}
+	for _, item := range tests {
+		canonical, ok := CanonicalServiceTier(item.input)
+		if !ok || canonical != item.canonical {
+			t.Fatalf("CanonicalServiceTier(%q) = %q, %v", item.input, canonical, ok)
+		}
+		applied, ok := AppliedServiceTier(item.input)
+		if !ok || applied != item.applied {
+			t.Fatalf("AppliedServiceTier(%q) = %q, %v", item.input, applied, ok)
+		}
+	}
+	if _, ok := CanonicalServiceTier("flex"); ok {
+		t.Fatal("未声明的 flex 不应进入产品配置")
+	}
 }
 
 func TestPreferenceLayersOverrideOnlyExplicitValues(t *testing.T) {

@@ -212,10 +212,38 @@ func (s *Service) providerDefaults(ctx context.Context) (Preferences, error) {
 }
 
 func RuntimeServiceTier(value string) string {
-	if value == "fast" {
+	canonical, ok := CanonicalServiceTier(value)
+	if ok && canonical == "fast" {
 		return "fast"
 	}
 	return ""
+}
+
+func CanonicalServiceTier(value string) (string, bool) {
+	switch strings.TrimSpace(value) {
+	case "":
+		return "", true
+	case "default", "standard":
+		return "standard", true
+	case "fast", "priority":
+		return "fast", true
+	default:
+		return "", false
+	}
+}
+
+func AppliedServiceTier(value string) (string, bool) {
+	canonical, ok := CanonicalServiceTier(value)
+	if !ok {
+		return "", false
+	}
+	if canonical == "" {
+		return "", true
+	}
+	if canonical == "fast" {
+		return "priority", true
+	}
+	return "default", true
 }
 
 func ValidatePreferences(value Preferences) error {

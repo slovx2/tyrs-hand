@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/codexsettings"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
@@ -278,12 +279,15 @@ func recordRuntimeSettingsApplied(ctx context.Context, tx *sql.Tx,
 	}
 	if value.ReasoningEffort != "" && value.ReasoningEffort != "low" &&
 		value.ReasoningEffort != "medium" && value.ReasoningEffort != "high" &&
-		value.ReasoningEffort != "xhigh" {
+		value.ReasoningEffort != "xhigh" && value.ReasoningEffort != "max" &&
+		value.ReasoningEffort != "ultra" {
 		return errors.New("runtime.settings_applied reasoningEffort 无效")
 	}
-	if value.ServiceTier != "" && value.ServiceTier != "standard" && value.ServiceTier != "fast" {
+	appliedTier, ok := codexsettings.AppliedServiceTier(value.ServiceTier)
+	if !ok {
 		return errors.New("runtime.settings_applied serviceTier 无效")
 	}
+	value.ServiceTier = appliedTier
 	if value.CollaborationMode != "" && value.CollaborationMode != "default" &&
 		value.CollaborationMode != "plan" {
 		return errors.New("runtime.settings_applied collaborationMode 无效")

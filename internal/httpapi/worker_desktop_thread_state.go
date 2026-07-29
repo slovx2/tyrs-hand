@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codexsettings"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
@@ -94,9 +95,10 @@ func desktopRuntimeFromResponse(response json.RawMessage) workerprotocol.Desktop
 		ServiceTier     string `json:"serviceTier"`
 	}
 	_ = json.Unmarshal(response, &value)
+	tier, _ := codexsettings.CanonicalServiceTier(value.ServiceTier)
 	return workerprotocol.DesktopThreadConfig{Model: strings.TrimSpace(value.Model),
 		ReasoningEffort: strings.TrimSpace(value.ReasoningEffort),
-		ServiceTier:     strings.TrimSpace(value.ServiceTier)}
+		ServiceTier:     tier}
 }
 
 func parseOptionalUUID(value sql.NullString) uuid.UUID {

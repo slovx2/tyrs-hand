@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codexsettings"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
@@ -160,6 +161,18 @@ func (s *Server) recordThreadSettingsEvent(c *gin.Context, tx *sql.Tx,
 	var conversationID sql.NullString
 	var settingsRevision int64
 	desktop := event.Source == "desktop"
+	desiredTier := event.ServiceTier
+	if desktop {
+		var ok bool
+		desiredTier, ok = codexsettings.CanonicalServiceTier(event.ServiceTier)
+		if !ok {
+			return errors.New("thread settings serviceTier 无效")
+		}
+	}
+	appliedTier, ok := codexsettings.AppliedServiceTier(event.ServiceTier)
+	if !ok {
+		return errors.New("thread settings applied serviceTier 无效")
+	}
 	err := tx.QueryRowContext(c.Request.Context(), `UPDATE codex_thread_controls control SET
 		model = CASE WHEN $10 THEN COALESCE(NULLIF($4,''), model) ELSE model END,
 		reasoning_effort = CASE WHEN $10 AND $4 <> '' THEN NULLIF($5,'') ELSE reasoning_effort END,
@@ -173,8 +186,9 @@ func (s *Server) recordThreadSettingsEvent(c *gin.Context, tx *sql.Tx,
 				OR reasoning_effort IS DISTINCT FROM NULLIF($5,'')
 				OR service_tier IS DISTINCT FROM NULLIF($6,'')))
 			OR (NULLIF($9,'') IS NOT NULL AND collaboration_mode <> $9)) THEN 1 ELSE 0 END,
-		applied_model = NULLIF($4,''), applied_reasoning_effort = NULLIF($5,''),
-		applied_service_tier = NULLIF($6,''),
+		applied_model = COALESCE(NULLIF($4,''), applied_model),
+		applied_reasoning_effort = COALESCE(NULLIF($5,''), applied_reasoning_effort),
+		applied_service_tier = COALESCE(NULLIF($12,''), applied_service_tier),
 		applied_collaboration_mode = COALESCE(NULLIF($9,''), applied_collaboration_mode),
 		applied_settings_revision = CASE WHEN $10 THEN settings_revision + CASE WHEN
 			($4 <> '' AND (model IS DISTINCT FROM NULLIF($4,'')
@@ -195,8 +209,8 @@ func (s *Server) recordThreadSettingsEvent(c *gin.Context, tx *sql.Tx,
 		RETURNING control.id, control.discord_conversation_id::text, control.settings_revision`,
 		request.EnvironmentID,
 		workerNode(c).ID, event.ThreadID, event.Model, event.ReasoningEffort,
-		event.ServiceTier, request.Generation, event.Sequence, event.CollaborationMode,
-		desktop, event.SettingsRevision).
+		desiredTier, request.Generation, event.Sequence, event.CollaborationMode,
+		desktop, event.SettingsRevision, appliedTier).
 		Scan(&controlID, &conversationID, &settingsRevision)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
@@ -215,7 +229,7 @@ func (s *Server) recordThreadSettingsEvent(c *gin.Context, tx *sql.Tx,
 		settings_revision = $6, updated_at = now()
 		FROM codex_thread_controls control WHERE discord_conversations.id = $1
 			AND control.id = $5`, conversationID.String, event.Model, event.ReasoningEffort,
-		event.ServiceTier, controlID, settingsRevision)
+		desiredTier, controlID, settingsRevision)
 	return err
 }
 

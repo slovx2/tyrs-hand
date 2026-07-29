@@ -240,7 +240,7 @@ func TestWorkerAPIDiscordRuntimePreferencesFreeze(t *testing.T) {
 		Scan(&appliedModel, &appliedEffort, &appliedTier, &appliedMode, &appliedRevision))
 	require.Equal(t, "gpt-5.6-sol", appliedModel)
 	require.Equal(t, "xhigh", appliedEffort)
-	require.Equal(t, "standard", appliedTier)
+	require.Equal(t, "default", appliedTier)
 	require.Equal(t, "plan", appliedMode)
 	require.Equal(t, first.Task.Snapshot.Runtime.SettingsRevision, appliedRevision)
 	require.NoError(t, client.Complete(ctx, first.Task, codexcontrol.TurnResult{
@@ -483,7 +483,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "gpt-5.6-sol", state.Config.Model)
 	require.Equal(t, "ultra", state.Config.ReasoningEffort)
-	require.Equal(t, "priority", state.Config.ServiceTier)
+	require.Equal(t, "fast", state.Config.ServiceTier)
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
 		EnvironmentID: environmentID, Generation: 12,
 		Events: []workerprotocol.ThreadMetadataEvent{{
@@ -517,15 +517,18 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 			CollaborationMode: "default", SettingsRevision: 2,
 		}},
 	}))
-	var desiredModel, desiredMode, appliedModel, appliedMode string
+	var desiredModel, desiredMode, desiredTier, appliedModel, appliedMode, appliedTier string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT COALESCE(model,''), collaboration_mode,
-		COALESCE(applied_model,''), COALESCE(applied_collaboration_mode,'')
+		COALESCE(service_tier,''), COALESCE(applied_model,''),
+		COALESCE(applied_collaboration_mode,''), COALESCE(applied_service_tier,'')
 		FROM codex_thread_controls WHERE id = $1`, state.ControlID).
-		Scan(&desiredModel, &desiredMode, &appliedModel, &appliedMode))
+		Scan(&desiredModel, &desiredMode, &desiredTier, &appliedModel, &appliedMode, &appliedTier))
 	require.Equal(t, "gpt-5.6-sol", desiredModel)
 	require.Equal(t, "plan", desiredMode)
+	require.Equal(t, "fast", desiredTier)
 	require.Equal(t, "gpt-5.6-terra", appliedModel)
 	require.Equal(t, "default", appliedMode)
+	require.Equal(t, "priority", appliedTier)
 
 	task, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
 		EnvironmentID: environmentID, WorkerID: "desktop-worker",
@@ -542,7 +545,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NotNil(t, task.Snapshot.Discord)
 	require.Equal(t, "gpt-5.6-sol", task.Snapshot.Runtime.Model)
 	require.Equal(t, "ultra", task.Snapshot.Runtime.ReasoningEffort)
-	require.Equal(t, "priority", task.Snapshot.Runtime.ServiceTier)
+	require.Equal(t, "fast", task.Snapshot.Runtime.ServiceTier)
 	require.Equal(t, "plan", task.Snapshot.Runtime.CollaborationMode)
 	require.Equal(t, "desktop asks && checks", task.Snapshot.Discord.Body)
 	require.Equal(t, "desktop-user", task.Snapshot.Discord.UserID)

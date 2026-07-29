@@ -84,7 +84,7 @@ func TestReportRuntimeSettingsAppliedUsesAcceptedSnapshot(t *testing.T) {
 	require.Equal(t, "turn/start", applied.Phase)
 	require.Equal(t, "gpt-5.6-terra", applied.Model)
 	require.Equal(t, "xhigh", applied.ReasoningEffort)
-	require.Equal(t, "fast", applied.ServiceTier)
+	require.Equal(t, "priority", applied.ServiceTier)
 	require.Equal(t, "plan", applied.CollaborationMode)
 	require.EqualValues(t, 7, applied.SettingsRevision)
 }

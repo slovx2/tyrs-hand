@@ -229,6 +229,10 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 func (p *Processor) recordLocalRuntimeSettingsApplied(ctx context.Context,
 	claimed *codexcontrol.ClaimedControl, phase, model, effort, tier string,
 ) error {
+	appliedTier, ok := codexsettings.AppliedServiceTier(tier)
+	if !ok {
+		return errors.New("runtime.settings_applied serviceTier 无效")
+	}
 	tx, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -241,7 +245,7 @@ func (p *Processor) recordLocalRuntimeSettingsApplied(ctx context.Context,
 	}
 	payload, _ := json.Marshal(map[string]any{
 		"phase": phase, "model": model, "reasoningEffort": effort,
-		"serviceTier": tier, "collaborationMode": claimed.CollaborationMode,
+		"serviceTier": appliedTier, "collaborationMode": claimed.CollaborationMode,
 		"settingsRevision": revision,
 	})
 	_, err = tx.ExecContext(ctx, `INSERT INTO agent_events
@@ -255,7 +259,7 @@ func (p *Processor) recordLocalRuntimeSettingsApplied(ctx context.Context,
 			applied_model = NULLIF($2,''), applied_reasoning_effort = NULLIF($3,''),
 			applied_service_tier = NULLIF($4,''), applied_collaboration_mode = $5,
 			applied_settings_revision = $6, settings_applied_at = now() WHERE id = $1`,
-			claimed.RunID, model, effort, tier, claimed.CollaborationMode, revision)
+			claimed.RunID, model, effort, appliedTier, claimed.CollaborationMode, revision)
 	}
 	if err == nil {
 		_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET
@@ -263,7 +267,7 @@ func (p *Processor) recordLocalRuntimeSettingsApplied(ctx context.Context,
 			applied_service_tier = NULLIF($4,''), applied_collaboration_mode = $5,
 			applied_settings_revision = $6, settings_applied_at = now(), updated_at = now()
 			WHERE id = $1 AND (applied_settings_revision IS NULL
-				OR applied_settings_revision <= $6)`, claimed.ControlID, model, effort, tier,
+					OR applied_settings_revision <= $6)`, claimed.ControlID, model, effort, appliedTier,
 			claimed.CollaborationMode, revision)
 	}
 	if err != nil {

@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/codexsettings"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
@@ -56,9 +57,10 @@ func reportRuntimeSettingsApplied(report func(string, json.RawMessage),
 	if report == nil {
 		return
 	}
+	appliedTier, _ := codexsettings.AppliedServiceTier(settings.ServiceTier)
 	report("runtime.settings_applied", remoteEventPayload(workerprotocol.RuntimeSettingsApplied{
 		Phase: phase, Model: settings.Model, ReasoningEffort: settings.ReasoningEffort,
-		ServiceTier: settings.ServiceTier, CollaborationMode: settings.CollaborationMode,
+		ServiceTier: appliedTier, CollaborationMode: settings.CollaborationMode,
 		SettingsRevision: settings.SettingsRevision,
 	}))
 }
