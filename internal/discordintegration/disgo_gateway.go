@@ -344,6 +344,10 @@ func (c *DisgoConnector) onComponent(event *events.ComponentInteractionCreate) {
 		return
 	}
 	defer func() { _ = c.manager.CompleteInboundEvent(context.Background(), eventID, nil) }()
+	if strings.HasPrefix(customID, planExecuteButtonPrefix) {
+		c.executePlanComponent(event, customID)
+		return
+	}
 	if strings.HasPrefix(customID, "codex-mode:") {
 		c.changeConversationMode(event, customID)
 		return

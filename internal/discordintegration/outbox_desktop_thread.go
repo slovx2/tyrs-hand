@@ -249,7 +249,7 @@ func (s *SQLoutbox) replayDesktopProjection(ctx context.Context, requestID uuid.
 			}
 			if item.answer != "" {
 				if err := ProjectConversationReply(ctx, s.db, threadID, conversationID,
-					anchor, item.answer); err != nil {
+					anchor, item.runID, item.answer); err != nil {
 					return err
 				}
 			}

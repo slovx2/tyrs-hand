@@ -593,10 +593,12 @@ func finalAnswerFromEvent(event codex.Event) string {
 			Text  string `json:"text"`
 		} `json:"item"`
 	}
-	if json.Unmarshal(event.Params, &payload) != nil || payload.Item.Type != "agentMessage" {
+	if json.Unmarshal(event.Params, &payload) != nil {
 		return ""
 	}
-	if payload.Item.Phase == "final_answer" || payload.Item.Phase == "" {
+	if payload.Item.Type == "plan" ||
+		(payload.Item.Type == "agentMessage" &&
+			(payload.Item.Phase == "final_answer" || payload.Item.Phase == "")) {
 		return strings.TrimSpace(payload.Item.Text)
 	}
 	return ""

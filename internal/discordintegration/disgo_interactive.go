@@ -26,11 +26,20 @@ func (c *DisgoConnector) answerInteractiveComponent(event *events.ComponentInter
 		_ = event.Modal(modal)
 		return
 	}
-	card, err := c.manager.AnswerInteractive(context.Background(), c.guildID, id,
+	result, err := c.manager.AnswerInteractive(context.Background(), c.guildID, id,
 		question, option, "")
 	if err != nil {
 		_ = event.CreateMessage(discord.NewMessageCreate().WithContent(err.Error()).WithEphemeral(true))
 		return
+	}
+	card := result.Card
+	if result.Complete {
+		if err := ProjectInteractiveRequest(context.Background(), c.manager.db, id); err != nil {
+			_ = event.CreateMessage(discord.NewMessageCreate().
+				WithContent("回答已保存，但完整回答卡暂时无法投递。").WithEphemeral(true))
+			return
+		}
+		card = interactiveSubmittedCard()
 	}
 	components, err := discordCardComponents(card)
 	if err != nil {
@@ -48,20 +57,38 @@ func (c *DisgoConnector) answerInteractiveComponent(event *events.ComponentInter
 func (c *DisgoConnector) answerInteractiveModal(event *events.ModalSubmitInteractionCreate) {
 	id, question, err := parseInteractiveModal(event.Data.CustomID)
 	answer := strings.TrimSpace(event.Data.Text("answer"))
+	var result InteractiveAnswerResult
 	if err == nil && answer == "" {
 		err = errors.New("回答不能为空")
 	}
 	if err == nil {
-		_, err = c.manager.AnswerInteractive(context.Background(), c.guildID, id,
+		result, err = c.manager.AnswerInteractive(context.Background(), c.guildID, id,
 			question, -1, answer)
 	}
-	message := "回答已提交，Codex 会继续运行。"
 	if err != nil {
-		message = err.Error()
-	} else {
-		_ = ProjectInteractiveRequest(context.Background(), c.manager.db, id)
+		_ = event.CreateMessage(discord.NewMessageCreate().WithContent(err.Error()).WithEphemeral(true))
+		return
 	}
-	_ = event.CreateMessage(discord.NewMessageCreate().WithContent(message).WithEphemeral(true))
+	if result.Complete {
+		if err = ProjectInteractiveRequest(context.Background(), c.manager.db, id); err != nil {
+			_ = event.CreateMessage(discord.NewMessageCreate().
+				WithContent("回答已保存，但完整回答卡暂时无法投递。").WithEphemeral(true))
+			return
+		}
+		result.Card = interactiveSubmittedCard()
+	}
+	components, err := discordCardComponents(result.Card)
+	if err != nil {
+		_ = event.CreateMessage(discord.NewMessageCreate().
+			WithContent("回答已保存，但卡片暂时无法更新。").WithEphemeral(true))
+		return
+	}
+	update := discord.NewMessageUpdateV2(components...)
+	emptyContent := ""
+	emptyEmbeds := []discord.Embed{}
+	update.Content, update.Embeds = &emptyContent, &emptyEmbeds
+	update.AllowedMentions = &discord.AllowedMentions{}
+	_ = event.UpdateMessage(update)
 }
 
 func parseInteractiveModal(value string) (uuid.UUID, int, error) {

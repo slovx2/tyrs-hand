@@ -1,0 +1,173 @@
+package discordintegration
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+)
+
+const (
+	planExecuteButtonPrefix = "codex-plan-execute:"
+	planExecuteInstruction  = "Implement the plan."
+)
+
+var (
+	ErrPlanExecutionBusy  = errors.New("当前会话仍在处理中，请等待本轮结束后再执行计划")
+	ErrPlanExecutionStale = errors.New("这个执行按钮对应的已不是当前最新 Plan")
+)
+
+type PlanExecutionResult struct {
+	AlreadyExecuted bool
+}
+
+func (s *ConversationService) ExecutePlan(ctx context.Context, guildID, threadID, userID,
+	displayName, username string, runID uuid.UUID,
+) (PlanExecutionResult, error) {
+	if runID == uuid.Nil {
+		return PlanExecutionResult{}, errors.New("Plan Run ID 无效")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return PlanExecutionResult{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var controlID, conversationID, forumID uuid.UUID
+	var runStatus, runMode, actualGuildID, actualThreadID, ownerID string
+	var lifecycle, conversationStatus, currentMode string
+	var runStarted time.Time
+	var runFinished sql.NullTime
+	var modeRevision, settingsRevision int64
+	err = tx.QueryRowContext(ctx, `SELECT run.control_id, conversation.id,
+		conversation.forum_id, run.status, run.collaboration_mode,
+		conversation.guild_id, conversation.thread_id,
+		conversation.owner_discord_user_id, conversation.lifecycle_state,
+		conversation.status, conversation.collaboration_mode,
+		conversation.collaboration_mode_revision, conversation.settings_revision,
+		run.started_at, run.finished_at
+		FROM codex_turn_runs run
+		JOIN codex_thread_controls control ON control.id = run.control_id
+		JOIN discord_conversations conversation
+			ON conversation.id = control.discord_conversation_id
+		WHERE run.id = $1 FOR UPDATE OF run, control, conversation`, runID).Scan(
+		&controlID, &conversationID, &forumID, &runStatus, &runMode,
+		&actualGuildID, &actualThreadID, &ownerID, &lifecycle, &conversationStatus,
+		&currentMode, &modeRevision, &settingsRevision, &runStarted, &runFinished)
+	if errors.Is(err, sql.ErrNoRows) {
+		return PlanExecutionResult{}, errors.New("这个 Plan 已不存在")
+	}
+	if err != nil {
+		return PlanExecutionResult{}, err
+	}
+	if actualGuildID != guildID || actualThreadID != threadID {
+		return PlanExecutionResult{}, errors.New("这个执行按钮不属于当前 Codex 会话")
+	}
+	access, err := s.access(ctx, tx, forumID, ownerID, userID)
+	if err != nil {
+		if errors.Is(err, ErrReadOnly) {
+			return PlanExecutionResult{}, errors.New("readonly 用户不能执行计划")
+		}
+		return PlanExecutionResult{}, err
+	}
+	messageID := "plan-execution:" + runID.String()
+	var exists bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM discord_input_messages WHERE message_id = $1
+	)`, messageID).Scan(&exists); err != nil {
+		return PlanExecutionResult{}, err
+	}
+	if exists {
+		return PlanExecutionResult{AlreadyExecuted: true}, tx.Commit()
+	}
+	if runStatus != "completed" || runMode != "plan" || !runFinished.Valid {
+		return PlanExecutionResult{}, errors.New("这个 Plan 尚未完成，不能执行")
+	}
+	if lifecycle != "active" || conversationStatus != "active" {
+		return PlanExecutionResult{}, codexcontrol.ErrControlArchived
+	}
+	var busy bool
+	err = tx.QueryRowContext(ctx, `SELECT
+		EXISTS(SELECT 1 FROM codex_turn_intents intent
+			WHERE intent.control_id = $1 AND intent.status IN
+			('placement_pending','queued','dispatching','awaiting_confirmation',
+			 'running','waiting_for_user','reconciling','retry_wait')) OR
+		EXISTS(SELECT 1 FROM codex_turn_runs active
+			WHERE active.control_id = $1 AND active.status IN
+			('starting','running','waiting_for_user','reconciling'))`, controlID).Scan(&busy)
+	if err != nil {
+		return PlanExecutionResult{}, err
+	}
+	if busy {
+		return PlanExecutionResult{}, ErrPlanExecutionBusy
+	}
+	var stale bool
+	err = tx.QueryRowContext(ctx, `SELECT
+		EXISTS(SELECT 1 FROM codex_turn_runs newer
+			WHERE newer.control_id = $1 AND newer.id <> $2
+			AND newer.started_at > $3) OR
+		EXISTS(SELECT 1 FROM codex_turn_intents newer
+			WHERE newer.control_id = $1
+			AND newer.id <> (SELECT primary_intent_id FROM codex_turn_runs WHERE id=$2)
+			AND newer.created_at > $4)`,
+		controlID, runID, runStarted, runFinished.Time).Scan(&stale)
+	if err != nil {
+		return PlanExecutionResult{}, err
+	}
+	if stale {
+		return PlanExecutionResult{}, ErrPlanExecutionStale
+	}
+	if currentMode != "default" {
+		modeRevision++
+		settingsRevision++
+		_, err = tx.ExecContext(ctx, `UPDATE discord_conversations SET
+			collaboration_mode='default', collaboration_mode_revision=$2,
+			settings_revision=$3, updated_at=now() WHERE id=$1`,
+			conversationID, modeRevision, settingsRevision)
+		if err == nil {
+			_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET
+				collaboration_mode='default', collaboration_mode_revision=$2,
+				settings_revision=$3, updated_at=now() WHERE id=$1`,
+				controlID, modeRevision, settingsRevision)
+		}
+		if err != nil {
+			return PlanExecutionResult{}, err
+		}
+	}
+	displayName = strings.TrimSpace(displayName)
+	if displayName == "" {
+		displayName = strings.TrimSpace(username)
+	}
+	inserted, err := s.insertMessage(ctx, tx, conversationID, access, IncomingMessage{
+		GuildID: guildID, ThreadID: threadID, MessageID: messageID,
+		DiscordUserID: userID, DisplayName: displayName, Username: username,
+		Body: planExecuteInstruction,
+	})
+	if err != nil {
+		return PlanExecutionResult{}, err
+	}
+	if !inserted {
+		return PlanExecutionResult{AlreadyExecuted: true}, tx.Commit()
+	}
+	if err := s.enqueueMessage(ctx, tx, conversationID, messageID); err != nil {
+		return PlanExecutionResult{}, err
+	}
+	if err := ProjectConversationThinkingTx(ctx, tx, guildID, threadID,
+		conversationID, messageID); err != nil {
+		return PlanExecutionResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return PlanExecutionResult{}, err
+	}
+	s.notifyJobs(ctx)
+	return PlanExecutionResult{}, nil
+}
+
+func planExecutionStartedCard() ComponentCardPayload {
+	return ComponentCardPayload{AccentColor: cardColorGreen,
+		Header: "✅ Codex · 已开始执行", Body: "`模式：Default`"}
+}

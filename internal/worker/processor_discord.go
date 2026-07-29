@@ -176,7 +176,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		}
 		if recovered {
 			progress.project(ctx, discordintegration.ConversationCompleted, "本轮处理完成。", result.DurationMillis)
-			p.projectDiscordReply(ctx, jobCtx, result.FinalAnswer)
+			p.projectDiscordReply(ctx, jobCtx, claimed.RunID, result.FinalAnswer)
 			p.projectDiscordRunContributors(ctx, claimed.RunID, claimed.DiscordMessageID,
 				result.FinalAnswer, progress.detail("本轮处理完成。", result.DurationMillis))
 			finalProjected = true
@@ -219,7 +219,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		return result, err
 	}
 	progress.project(ctx, discordintegration.ConversationCompleted, "本轮处理完成。", result.DurationMillis)
-	p.projectDiscordReply(ctx, jobCtx, result.FinalAnswer)
+	p.projectDiscordReply(ctx, jobCtx, claimed.RunID, result.FinalAnswer)
 	p.projectDiscordRunContributors(ctx, claimed.RunID, claimed.DiscordMessageID,
 		result.FinalAnswer, progress.detail("本轮处理完成。", result.DurationMillis))
 	finalProjected = true
@@ -309,7 +309,7 @@ func (p *Processor) projectDiscordRunContributors(ctx context.Context, runID uui
 			continue
 		}
 		p.projectDiscordConversation(ctx, jobCtx, runID, discordintegration.ConversationCompleted, detail)
-		p.projectDiscordReply(ctx, jobCtx, finalAnswer)
+		p.projectDiscordReply(ctx, jobCtx, runID, finalAnswer)
 		_, _ = p.db.ExecContext(ctx, `UPDATE discord_input_messages SET status = 'processed',
 			processed_at = now() WHERE turn_intent_id = $1`, item.intentID)
 	}
@@ -334,9 +334,11 @@ func (p *Processor) projectDiscordConversation(ctx context.Context, jobCtx disco
 	}
 }
 
-func (p *Processor) projectDiscordReply(ctx context.Context, jobCtx discordJobContext, content string) {
+func (p *Processor) projectDiscordReply(ctx context.Context, jobCtx discordJobContext,
+	runID uuid.UUID, content string,
+) {
 	if err := discordintegration.ProjectConversationReply(ctx, p.db, jobCtx.ThreadID,
-		jobCtx.ConversationID, jobCtx.MessageID, content); err != nil {
+		jobCtx.ConversationID, jobCtx.MessageID, runID, content); err != nil {
 		p.logger.Warn("投影 Discord Conversation 最终回复失败", zap.Error(err),
 			zap.String("conversation_id", jobCtx.ConversationID.String()))
 	}

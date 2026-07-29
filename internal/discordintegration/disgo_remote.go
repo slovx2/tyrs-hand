@@ -601,7 +601,9 @@ func discordCardComponents(card ComponentCardPayload) ([]discord.LayoutComponent
 		parts = append(parts, discord.NewTextDisplay(value))
 		return nil
 	}
-	for _, value := range []string{card.Header, card.Body, card.Timeline} {
+	values := append([]string{card.Header, card.Body}, card.Sections...)
+	values = append(values, card.Timeline)
+	for _, value := range values {
 		if err := addText(value); err != nil {
 			return nil, err
 		}

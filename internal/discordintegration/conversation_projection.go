@@ -26,14 +26,15 @@ const (
 )
 
 type conversationReplyChain struct {
-	Stage              string   `json:"stage"`
-	SourceOperationKey string   `json:"sourceOperationKey"`
-	GuildID            string   `json:"guildId"`
-	ThreadID           string   `json:"threadId"`
-	Index              int      `json:"index"`
-	NextIndex          int      `json:"nextIndex,omitempty"`
-	TailMessageID      string   `json:"tailMessageId,omitempty"`
-	Chunks             []string `json:"chunks,omitempty"`
+	Stage              string                `json:"stage"`
+	SourceOperationKey string                `json:"sourceOperationKey"`
+	GuildID            string                `json:"guildId"`
+	ThreadID           string                `json:"threadId"`
+	Index              int                   `json:"index"`
+	NextIndex          int                   `json:"nextIndex,omitempty"`
+	TailMessageID      string                `json:"tailMessageId,omitempty"`
+	Chunks             []string              `json:"chunks,omitempty"`
+	TailCard           *ComponentCardPayload `json:"tailCard,omitempty"`
 }
 
 func SanitizeDiscordResult(value string) string {
@@ -220,7 +221,7 @@ func upsertWaitingConfigurationProjectionTx(ctx context.Context, tx *sql.Tx,
 }
 
 func ProjectConversationReply(ctx context.Context, db *sql.DB, threadID string,
-	conversationID uuid.UUID, inputMessageID, content string,
+	conversationID uuid.UUID, inputMessageID string, runID uuid.UUID, content string,
 ) error {
 	content = SanitizeDiscordResult(content)
 	if content == "" {
@@ -232,27 +233,62 @@ func ProjectConversationReply(ctx context.Context, db *sql.DB, threadID string,
 	}
 	key := "conversation-reply:" + conversationID.String() + ":message:" + inputMessageID
 	payload := conversationReplyPayload(threadID, content, mentionUserID)
-	if utf8.RuneCountInString(textValue(payload["content"])) <= discordReplyMessageBudget {
+	guildID, mode, err := conversationReplyMode(ctx, db, conversationID, threadID, runID)
+	if err != nil {
+		return err
+	}
+	if mode != "plan" &&
+		utf8.RuneCountInString(textValue(payload["content"])) <= discordReplyMessageBudget {
 		return NewSQLoutbox(db).Enqueue(ctx, key, "message.create", "channels/"+threadID+"/messages",
 			payload, key)
 	}
-	var guildID string
-	if err := db.QueryRowContext(ctx, `SELECT guild_id FROM discord_conversations
-		WHERE id = $1 AND thread_id = $2`, conversationID, threadID).Scan(&guildID); err != nil {
-		return err
-	}
 	chunks := splitConversationReply(content, guildID, threadID, mentionUserID)
-	if len(chunks) < 2 {
+	if len(chunks) == 0 || (mode != "plan" && len(chunks) < 2) {
 		return errors.New("discord 长回复分片失败")
 	}
-	payload = conversationReplyPayload(threadID, chunks[0]+plainReplyNextMarker(), mentionUserID)
+	first := chunks[0]
+	if len(chunks) > 1 {
+		first += plainReplyNextMarker()
+	}
+	payload = conversationReplyPayload(threadID, first, mentionUserID)
+	var tailCard *ComponentCardPayload
+	if mode == "plan" {
+		card := planCompletedCard(runID)
+		tailCard = &card
+	}
 	payload["replyChain"] = conversationReplyChain{Stage: "create", SourceOperationKey: key,
-		GuildID: guildID, ThreadID: threadID, Index: 0, Chunks: chunks}
+		GuildID: guildID, ThreadID: threadID, Index: 0, Chunks: chunks, TailCard: tailCard}
 	if utf8.RuneCountInString(textValue(payload["content"])) > discordReplyMessageBudget {
 		return errors.New("discord 首个回复分片超过长度限制")
 	}
 	return NewSQLoutbox(db).Enqueue(ctx, key, "message.create", "channels/"+threadID+"/messages",
 		payload, key)
+}
+
+func conversationReplyMode(ctx context.Context, db *sql.DB, conversationID uuid.UUID,
+	threadID string, runID uuid.UUID,
+) (string, string, error) {
+	var guildID, mode string
+	if runID == uuid.Nil {
+		err := db.QueryRowContext(ctx, `SELECT guild_id, collaboration_mode
+			FROM discord_conversations WHERE id = $1 AND thread_id = $2`,
+			conversationID, threadID).Scan(&guildID, &mode)
+		return guildID, mode, err
+	}
+	err := db.QueryRowContext(ctx, `SELECT conversation.guild_id, run.collaboration_mode
+		FROM codex_turn_runs run
+		JOIN codex_thread_controls control ON control.id = run.control_id
+		JOIN discord_conversations conversation
+			ON conversation.id = control.discord_conversation_id
+		WHERE run.id = $1 AND conversation.id = $2 AND conversation.thread_id = $3`,
+		runID, conversationID, threadID).Scan(&guildID, &mode)
+	return guildID, mode, err
+}
+
+func planCompletedCard(runID uuid.UUID) ComponentCardPayload {
+	return ComponentCardPayload{AccentColor: cardColorGreen, Header: "📋 Codex · Plan 已完成",
+		Buttons: []ComponentButtonPayload{{Label: "执行计划",
+			CustomID: "codex-plan-execute:" + runID.String(), Style: "primary"}}}
 }
 
 func plainReplyNextMarker() string {

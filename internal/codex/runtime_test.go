@@ -120,6 +120,8 @@ func TestRuntimeSnapshotHelpersAndForwarding(t *testing.T) {
 		{Type: "agentMessage", Phase: "final_answer", Text: "done"},
 	}}
 	require.Equal(t, "done", final.FinalAnswer())
+	require.Equal(t, "plan body", (TurnSnapshot{Items: append(final.Items,
+		ItemSnapshot{Type: "plan", Text: "plan body"})}).FinalAnswer())
 	require.Equal(t, "progress", (TurnSnapshot{Items: final.Items[:1]}).FinalAnswer())
 	require.Empty(t, (TurnSnapshot{Items: []ItemSnapshot{{Type: "userMessage", Text: "hello"}}}).FinalAnswer())
 

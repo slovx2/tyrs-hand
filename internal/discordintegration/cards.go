@@ -18,6 +18,7 @@ type ComponentCardPayload struct {
 	AccentColor int                        `json:"accentColor"`
 	Header      string                     `json:"header"`
 	Body        string                     `json:"body,omitempty"`
+	Sections    []string                   `json:"sections,omitempty"`
 	Timeline    string                     `json:"timeline,omitempty"`
 	Buttons     []ComponentButtonPayload   `json:"buttons,omitempty"`
 	ButtonRows  [][]ComponentButtonPayload `json:"buttonRows,omitempty"`

@@ -472,7 +472,7 @@ func (s *Server) projectRemoteDiscordComplete(ctx context.Context,
 		return err
 	}
 	if err := discordintegration.ProjectConversationReply(ctx, s.db, threadID,
-		claimed.DiscordConversationID, anchor, result.FinalAnswer); err != nil {
+		claimed.DiscordConversationID, anchor, claimed.RunID, result.FinalAnswer); err != nil {
 		return err
 	}
 	_, err = s.db.ExecContext(ctx, `UPDATE discord_input_messages SET status = 'processed',

@@ -167,6 +167,12 @@ func (s ThreadSnapshot) ActiveTurn() (TurnSnapshot, bool) {
 func (s TurnSnapshot) FinalAnswer() string {
 	for index := len(s.Items) - 1; index >= 0; index-- {
 		item := s.Items[index]
+		if item.Type == "plan" && item.Text != "" {
+			return item.Text
+		}
+	}
+	for index := len(s.Items) - 1; index >= 0; index-- {
+		item := s.Items[index]
 		if item.Type == "agentMessage" && item.Phase == "final_answer" && item.Text != "" {
 			return item.Text
 		}

@@ -372,6 +372,46 @@ func (s *SQLoutbox) Apply(ctx context.Context, item OutboxItem) error {
 			if err != nil {
 				return err
 			}
+			requestID, parseErr := uuid.Parse(strings.TrimPrefix(item.OperationKey, "interactive:"))
+			if parseErr != nil {
+				return parseErr
+			}
+			request, loadErr := loadInteractiveProjectionTx(ctx, tx, requestID, false)
+			if loadErr != nil {
+				return loadErr
+			}
+			if request.Status == "resolved" && request.AnswerMessageID != "" {
+				if err = enqueueInteractiveAnswerLinkTx(ctx, tx, request); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	if strings.HasPrefix(item.OperationKey, "interactive-answer:") {
+		var value struct {
+			MessageID string `json:"messageId"`
+		}
+		if json.Unmarshal(response, &value) == nil && value.MessageID != "" {
+			requestID, parseErr := uuid.Parse(strings.TrimPrefix(item.OperationKey,
+				"interactive-answer:"))
+			if parseErr != nil {
+				return parseErr
+			}
+			_, err = tx.ExecContext(ctx, `UPDATE codex_interactive_requests SET
+				discord_answer_message_id=$2, updated_at=now() WHERE id=$1`,
+				requestID, value.MessageID)
+			if err != nil {
+				return err
+			}
+			request, loadErr := loadInteractiveProjectionTx(ctx, tx, requestID, false)
+			if loadErr != nil {
+				return loadErr
+			}
+			if request.MessageID != "" {
+				if err = enqueueInteractiveAnswerLinkTx(ctx, tx, request); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	if strings.HasPrefix(item.OperationKey, "task-log:") || strings.HasPrefix(item.OperationKey, "task-card:") {
@@ -550,7 +590,7 @@ func (s *SQLoutbox) applyConversationReplyChainTx(ctx context.Context, tx *sql.T
 			if len(source.Chunks) > 1 {
 				return enqueueConversationReplyChunkTx(ctx, tx, source, 1, delivered.MessageID)
 			}
-			return nil
+			return enqueueConversationReplyTailTx(ctx, tx, source)
 		}
 		return enqueueConversationReplyLinkTx(ctx, tx, chain, delivered.MessageID)
 	case "link":
@@ -562,7 +602,7 @@ func (s *SQLoutbox) applyConversationReplyChainTx(ctx context.Context, tx *sql.T
 			return enqueueConversationReplyChunkTx(ctx, tx, source,
 				chain.NextIndex, chain.TailMessageID)
 		}
-		return nil
+		return enqueueConversationReplyTailTx(ctx, tx, source)
 	default:
 		return fmt.Errorf("未知 Discord 回复分片阶段 %q", chain.Stage)
 	}
@@ -578,10 +618,22 @@ func loadConversationReplySourceTx(ctx context.Context, tx *sql.Tx,
 	}
 	var envelope conversationReplyEnvelope
 	if json.Unmarshal(payload, &envelope) != nil || envelope.ReplyChain == nil ||
-		len(envelope.ReplyChain.Chunks) < 2 {
+		len(envelope.ReplyChain.Chunks) == 0 {
 		return conversationReplyChain{}, errors.New("discord 回复分片源数据无效")
 	}
 	return *envelope.ReplyChain, nil
+}
+
+func enqueueConversationReplyTailTx(ctx context.Context, tx *sql.Tx,
+	source conversationReplyChain,
+) error {
+	if source.TailCard == nil {
+		return nil
+	}
+	key := source.SourceOperationKey + ":action"
+	payload := map[string]any{"channelId": source.ThreadID, "card": source.TailCard}
+	return enqueueDiscordOutbox(ctx, tx, key, "message.create",
+		"channels/"+source.ThreadID+"/messages", payload, key)
 }
 
 func enqueueConversationReplyChunkTx(ctx context.Context, tx *sql.Tx,

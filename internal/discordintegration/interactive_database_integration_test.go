@@ -6,8 +6,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/disgoorg/disgo/bot"
 	"github.com/disgoorg/disgo/discord"
@@ -36,17 +38,29 @@ func TestInteractiveProjectionCollectsDiscordAnswers(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT operation_type FROM integration_outbox
 		WHERE operation_key=$1`, "interactive:"+requestID.String()).Scan(&operationType))
 	require.Equal(t, "message.create", operationType)
-
-	_, err := manager.AnswerInteractive(ctx, "other-guild", requestID, 0, 0, "")
-	require.ErrorContains(t, err, "不属于")
-	card, err := manager.AnswerInteractive(ctx, testGuildID, requestID, 0, 0, "")
+	outbox := NewSQLoutbox(db)
+	questionItem, err := outbox.Claim(ctx, 30*time.Second)
 	require.NoError(t, err)
+	require.Equal(t, "interactive:"+requestID.String(), questionItem.OperationKey)
+	completeDiscordDelivery(t, ctx, outbox, questionItem,
+		json.RawMessage(`{"messageId":"interactive-question-message"}`))
+
+	_, err = manager.AnswerInteractive(ctx, "other-guild", requestID, 0, 0, "")
+	require.ErrorContains(t, err, "不属于")
+	answerResult, err := manager.AnswerInteractive(ctx, testGuildID, requestID, 0, 0, "")
+	require.NoError(t, err)
+	card := answerResult.Card
 	require.Len(t, card.Buttons, 1)
 	require.Equal(t, "填写答案", card.Buttons[0].Label)
-	card, err = manager.AnswerInteractive(ctx, testGuildID, requestID, 1, -1, "  因为需要  ")
+	answerResult, err = manager.AnswerInteractive(ctx, testGuildID, requestID, 1, -1, "  因为需要  ")
 	require.NoError(t, err)
+	card = answerResult.Card
+	require.True(t, answerResult.Complete)
 	require.Empty(t, card.Buttons)
 	require.Contains(t, card.Body, "Discord")
+	require.Len(t, card.Sections, 2)
+	require.Contains(t, card.Sections[0], "是")
+	require.Contains(t, card.Sections[1], "因为需要")
 
 	var status, surface string
 	var answer json.RawMessage
@@ -56,9 +70,29 @@ func TestInteractiveProjectionCollectsDiscordAnswers(t *testing.T) {
 	require.Equal(t, "discord", surface)
 	require.JSONEq(t, `{"answers":{"choice":{"answers":["是"]},`+
 		`"detail":{"answers":["因为需要"]}}}`, string(answer))
+	require.NoError(t, ProjectInteractiveRequest(ctx, db, requestID))
+	answerItem, err := outbox.Claim(ctx, 30*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "interactive-answer:"+requestID.String(), answerItem.OperationKey)
+	require.Equal(t, "message.create", answerItem.OperationType)
+	completeDiscordDelivery(t, ctx, outbox, answerItem,
+		json.RawMessage(`{"messageId":"interactive-answer-message"}`))
+	linkItem, err := outbox.Claim(ctx, 30*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "interactive-answer-link:"+requestID.String(), linkItem.OperationKey)
+	require.Equal(t, "message.update", linkItem.OperationType)
+	require.Contains(t, string(linkItem.Payload), "interactive-answer-message")
+	var questionMessageID, answerMessageID string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT discord_message_id,
+		discord_answer_message_id FROM codex_interactive_requests WHERE id=$1`,
+		requestID).Scan(&questionMessageID, &answerMessageID))
+	require.Equal(t, "interactive-question-message", questionMessageID)
+	require.Equal(t, "interactive-answer-message", answerMessageID)
 
-	card, err = manager.AnswerInteractive(ctx, testGuildID, requestID, 0, 1, "")
+	answerResult, err = manager.AnswerInteractive(ctx, testGuildID, requestID, 0, 1, "")
 	require.NoError(t, err, "旧按钮必须幂等返回已完成状态")
+	card = answerResult.Card
+	require.True(t, answerResult.Complete)
 	require.Empty(t, card.Buttons)
 	_, err = loadInteractiveProjection(ctx, db, requestID, true)
 	require.ErrorContains(t, err, "事务")
@@ -93,6 +127,110 @@ func TestInteractiveProjectionCollectsDiscordAnswers(t *testing.T) {
 	connector.answerInteractiveModal(newModalEvent(t, client, "9105", "2001", "invalid", nil))
 }
 
+func TestExecutePlanSwitchesDefaultAndIsIdempotent(t *testing.T) {
+	db := discordDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	insertInteractiveGuild(t, db)
+	seed := seedDiscordManagerData(t, db)
+	controlID, runID := insertInteractiveControl(t, db, seed)
+	var conversationID, forumID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT discord_conversation_id
+		FROM codex_thread_controls WHERE id=$1`, controlID).Scan(&conversationID))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT forum_id FROM discord_conversations
+		WHERE id=$1`, conversationID).Scan(&forumID))
+	_, err := db.ExecContext(ctx, `UPDATE codex_turn_runs SET status='completed',
+		active_slot=NULL, collaboration_mode='plan', finished_at=now()-interval '1 second'
+		WHERE id=$1`, runID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE codex_turn_intents SET status='completed',
+		finished_at=now()-interval '1 second' WHERE id=(
+			SELECT primary_intent_id FROM codex_turn_runs WHERE id=$1)`, runID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE discord_conversations SET collaboration_mode='plan',
+		collaboration_mode_revision=1, settings_revision=1 WHERE id=$1`, conversationID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE codex_thread_controls SET collaboration_mode='plan',
+		collaboration_mode_revision=1, settings_revision=1 WHERE id=$1`, controlID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_forum_access
+		(forum_id, discord_user_id, access_level) VALUES ($1,'2002','operator')`, forumID)
+	require.NoError(t, err)
+
+	planBody := strings.Repeat("计划步骤内容\n", 700)
+	require.NoError(t, ProjectConversationReply(ctx, db, "interactive-thread",
+		conversationID, "desktop-plan", runID, planBody))
+	outbox := NewSQLoutbox(db)
+	created, linked, actionFound := 0, 0, false
+	for step := 0; step < 30; step++ {
+		item, claimErr := outbox.Claim(ctx, 30*time.Second)
+		require.NoError(t, claimErr)
+		require.NotNil(t, item)
+		if strings.HasSuffix(item.OperationKey, ":action") {
+			require.Contains(t, string(item.Payload), planExecuteButtonPrefix+runID.String())
+			actionFound = true
+			break
+		}
+		if item.OperationType == "message.create" {
+			created++
+			completeDiscordDelivery(t, ctx, outbox, item, json.RawMessage(
+				fmt.Sprintf(`{"messageId":"plan-part-%d"}`, created)))
+		} else {
+			linked++
+			completeDiscordDelivery(t, ctx, outbox, item, json.RawMessage(`{}`))
+		}
+	}
+	require.True(t, actionFound)
+	require.Greater(t, created, 1)
+	require.Greater(t, linked, 0)
+
+	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_intents
+		(control_id, sequence_no, behavior, source_type, discord_conversation_id,
+		 development_project_id, agent_profile_id, idempotency_key, status)
+		SELECT control.id, 2, 'start_when_idle', 'discord_conversation',
+			control.discord_conversation_id, control.development_project_id,
+			control.agent_profile_id, $2, 'queued'
+		FROM codex_thread_controls control WHERE control.id=$1`,
+		controlID, "plan-busy-"+uuid.NewString())
+	require.NoError(t, err)
+	service := NewConversationService(db)
+	_, err = service.ExecutePlan(ctx, testGuildID, "interactive-thread",
+		"2002", "Operator", "operator", runID)
+	require.ErrorIs(t, err, ErrPlanExecutionBusy)
+	_, err = db.ExecContext(ctx, `DELETE FROM codex_turn_intents
+		WHERE control_id=$1 AND sequence_no=2`, controlID)
+	require.NoError(t, err)
+
+	result, err := service.ExecutePlan(ctx, testGuildID, "interactive-thread",
+		"2002", "Operator", "operator", runID)
+	require.NoError(t, err)
+	require.False(t, result.AlreadyExecuted)
+	var conversationMode, controlMode, body, access string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT conversation.collaboration_mode,
+		control.collaboration_mode FROM discord_conversations conversation
+		JOIN codex_thread_controls control ON control.discord_conversation_id=conversation.id
+		WHERE conversation.id=$1`, conversationID).Scan(&conversationMode, &controlMode))
+	require.Equal(t, "default", conversationMode)
+	require.Equal(t, "default", controlMode)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT body, access_snapshot
+		FROM discord_input_messages WHERE message_id=$1`,
+		"plan-execution:"+runID.String()).Scan(&body, &access))
+	require.Equal(t, planExecuteInstruction, body)
+	require.Equal(t, AccessOperator, access)
+
+	result, err = service.ExecutePlan(ctx, testGuildID, "interactive-thread",
+		"1001", "Owner", "owner", runID)
+	require.NoError(t, err)
+	require.True(t, result.AlreadyExecuted)
+	_, err = service.ExecutePlan(ctx, testGuildID, "interactive-thread",
+		"2999", "Read only", "readonly", runID)
+	require.ErrorContains(t, err, "readonly")
+	var count int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_input_messages
+		WHERE message_id=$1`, "plan-execution:"+runID.String()).Scan(&count))
+	require.Equal(t, 1, count)
+}
+
 func insertInteractiveControl(t *testing.T, db *sql.DB, seed discordManagerSeed) (uuid.UUID, uuid.UUID) {
 	t.Helper()
 	ctx := context.Background()
@@ -121,6 +259,9 @@ func insertInteractiveControl(t *testing.T, db *sql.DB, seed discordManagerSeed)
 		 status, execution_node_id)
 		VALUES ($1,$2,1,'worker',1,$3,'waiting_for_user',$4) RETURNING id`, controlID, intentID,
 		strings.Repeat("a", 64), seed.executionNodeID).Scan(&runID))
+	_, err := db.ExecContext(ctx, `UPDATE codex_thread_controls
+		SET next_sequence_no=2 WHERE id=$1`, controlID)
+	require.NoError(t, err)
 	return controlID, runID
 }
 
@@ -135,6 +276,14 @@ func insertInteractiveRequest(t *testing.T, db *sql.DB, controlID, runID uuid.UU
 		VALUES ($1,$2,'codex-interactive-thread','turn-1',$3,1,'"request-1"',$4) RETURNING id`,
 		controlID, runID, itemID, questions).Scan(&id))
 	return id
+}
+
+func completeDiscordDelivery(t *testing.T, ctx context.Context, store *SQLoutbox,
+	item *OutboxItem, response json.RawMessage,
+) {
+	t.Helper()
+	require.NoError(t, store.RecordDelivery(ctx, item, response))
+	require.NoError(t, store.Apply(ctx, *item))
 }
 
 func TestClearDevelopmentEnvironmentSSHQueuesReconfigure(t *testing.T) {

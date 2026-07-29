@@ -187,7 +187,8 @@ func testOutboxRecovery(t *testing.T, ctx context.Context, db *sql.DB, guildID s
 	require.NotEqual(t, first.OperationKey, nextTurn.OperationKey)
 	completeDiscordDelivery(t, ctx, store, nextTurn, json.RawMessage(`{"messageId":"5002"}`))
 
-	require.NoError(t, discordintegration.ProjectConversationReply(ctx, db, "2001", conversationID, "3002", "final reply"))
+	require.NoError(t, discordintegration.ProjectConversationReply(ctx, db, "2001",
+		conversationID, "3002", uuid.Nil, "final reply"))
 	reply, err := store.Claim(ctx, 30*time.Second)
 	require.NoError(t, err)
 	require.NotNil(t, reply)
@@ -196,7 +197,7 @@ func testOutboxRecovery(t *testing.T, ctx context.Context, db *sql.DB, guildID s
 	completeDiscordDelivery(t, ctx, store, reply, json.RawMessage(`{"messageId":"5003"}`))
 
 	require.NoError(t, discordintegration.ProjectConversationReply(ctx, db, "2001",
-		conversationID, "3003", "operator reply"))
+		conversationID, "3003", uuid.Nil, "operator reply"))
 	mentionedReply, err := store.Claim(ctx, 30*time.Second)
 	require.NoError(t, err)
 	require.NotNil(t, mentionedReply)
@@ -254,7 +255,7 @@ func testLongConversationReply(t *testing.T, ctx context.Context,
 	line := strings.Repeat("完整内容", 24)
 	answer := strings.Repeat(line+"\n", 80)
 	require.NoError(t, discordintegration.ProjectConversationReply(ctx, db, "2001",
-		conversationID, "3001", answer))
+		conversationID, "3001", uuid.Nil, answer))
 	prefix := "conversation-reply:" + conversationID.String() + ":message:3001"
 	var createdContents, updatedContents, createdIDs []string
 	for step := 0; step < 30; step++ {
