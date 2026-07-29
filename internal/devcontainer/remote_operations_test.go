@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/stretchr/testify/require"
 )
@@ -465,7 +466,14 @@ func TestReconfigureRemoteEnvironmentKeepsContainerRunningAndSecuresSSH(t *testi
 		HomeVolume: "dev-home", Network: "dev-network", RuntimeUser: "agent",
 		RuntimeUID: 1000, RuntimeGID: 1000, RuntimeHome: "/home/agent",
 		SSHPort: 2222, SSHPublicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest",
-		SSHConfigRevision:  3,
+		SSHConfigRevision: 3,
+		AppServerConfig: codex.ManagedAppServerConfig{
+			ModelProvider: codex.ManagedModelProvider{
+				ID: "tyrs-hand-provider", Name: "Tyrs Hand Provider",
+				BaseURL: "https://api.example.com/v1", WireAPI: "responses",
+				EnvKey: "TYRS_HAND_MODEL_API_KEY", RequiresOpenAIAuth: true,
+			},
+		},
 		ProcessEnvironment: []string{"TYRS_TEST_RUNTIME=value"},
 	})
 	require.NoError(t, err)
@@ -490,6 +498,9 @@ func TestReconfigureRemoteEnvironmentKeepsContainerRunningAndSecuresSSH(t *testi
 		`shell_environment_policy.exclude=["TYRS_HAND_MODEL_API_KEY","TYRS_BROWSER_MCP_TOKEN"]`))
 	require.True(t, runner.contains("allow_login_shell=false"))
 	require.True(t, runner.contains(`openai_base_url="https://chatgpt.com/backend-api/codex"`))
+	require.True(t, runner.contains(`model_provider="tyrs-hand-provider"`))
+	require.True(t, runner.contains(
+		`model_providers.tyrs-hand-provider.base_url="https://api.example.com/v1"`))
 }
 
 func TestReconfigureRemoteUpdatesSSHKeyInPlaceWhenPortIsUnchanged(t *testing.T) {

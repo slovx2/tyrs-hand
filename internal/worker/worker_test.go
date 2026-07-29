@@ -264,6 +264,13 @@ func TestModelProviderConfigPreservesPersonalSettings(t *testing.T) {
 	require.Equal(t, "https://api.openai.com/v1", managed["base_url"])
 	require.Equal(t, "responses", managed["wire_api"])
 	require.Equal(t, "TYRS_HAND_MODEL_API_KEY", managed["env_key"])
+	appServerConfig := managedAppServerConfig(settings.ModelSourceProvider,
+		"https://api.example.com/v1/")
+	require.Equal(t, codex.ManagedModelProvider{
+		ID: managedModelProviderID, Name: "Tyrs Hand Provider",
+		BaseURL: "https://api.example.com/v1", WireAPI: "responses",
+		EnvKey: "TYRS_HAND_MODEL_API_KEY", RequiresOpenAIAuth: true,
+	}, appServerConfig.ModelProvider)
 	require.Contains(t, runtimeConfig, "mcp_servers")
 	policy := runtimeConfig["shell_environment_policy"].(map[string]any)
 	require.Equal(t, "keep", policy["set"].(map[string]any)["PERSONAL"])
@@ -276,6 +283,8 @@ func TestModelProviderConfigPreservesPersonalSettings(t *testing.T) {
 	applyModelProviderConfig(runtimeConfig, settings.ModelSourceChatGPT, "")
 	require.Equal(t, "openai", runtimeConfig["model_provider"])
 	require.Contains(t, runtimeConfig["model_providers"], "personal")
+	require.Equal(t, codex.ManagedModelProvider{ID: "openai"},
+		managedAppServerConfig(settings.ModelSourceChatGPT, "").ModelProvider)
 }
 
 func TestPrepareCodexRuntimeBrowserTokenBranches(t *testing.T) {

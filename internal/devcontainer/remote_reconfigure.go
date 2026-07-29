@@ -236,7 +236,8 @@ exec "$@" >>/run/tyrs-hand/app-server.log 2>&1`
 	arguments = append(arguments, container, "/bin/sh", "-c", appServerCommand,
 		"tyrs-hand-app-server", "codex")
 	arguments = append(arguments,
-		codex.ManagedAppServerArguments("unix:///run/tyrs-hand/app-server.sock")...)
+		codex.ManagedAppServerArguments("unix:///run/tyrs-hand/app-server.sock",
+			operation.AppServerConfig)...)
 	if _, err := m.docker(ctx, arguments...); err != nil {
 		return fmt.Errorf("启动环境 Codex app-server: %w", err)
 	}

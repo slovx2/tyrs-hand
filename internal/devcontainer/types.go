@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codex"
 )
 
 const (
@@ -37,6 +38,7 @@ type Runtime struct {
 	RelaySocket        string
 	ModelSource        string
 	ModelBaseURL       string
+	AppServerConfig    codex.ManagedAppServerConfig
 	ProcessEnvironment []string
 }
 
@@ -92,6 +94,7 @@ type RemoteOperation struct {
 	SSHPublicKey       string
 	SSHPort            int
 	SSHConfigRevision  int64
+	AppServerConfig    codex.ManagedAppServerConfig
 	ProcessEnvironment []string
 }
 

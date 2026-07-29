@@ -95,7 +95,7 @@ func TestDesktopRelayWithoutSSHIdentityStripsReservedIdentityContext(t *testing.
 	require.NotContains(t, string(plan.Params), "forged")
 }
 
-func TestDesktopRelayForcesGlobalModelAndOmitsPlatformGitHubTools(t *testing.T) {
+func TestDesktopRelayConfiguresManagedRuntimeAcrossThreadLifecycle(t *testing.T) {
 	environmentID := uuid.New()
 	requestID := uuid.New()
 	control := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
@@ -161,6 +161,24 @@ func TestDesktopRelayForcesGlobalModelAndOmitsPlatformGitHubTools(t *testing.T) 
 	require.Contains(t, string(encodedTools), `"name":"git"`)
 	require.NotContains(t, string(encodedTools), `"name":"github"`)
 
+	fork, err := controller.PrepareCall(context.Background(), codexrelay.Call{
+		Role: codexrelay.RoleDesktop, Method: "thread/fork",
+		Params: json.RawMessage(`{"threadId":"thread","config":{
+			"model_providers":{"personal":{"base_url":"https://personal.example/v1"}},
+			"mcp_servers":{"personal":{"url":"https://mcp.example"}}
+		}}`),
+	})
+	require.NoError(t, err)
+	var forkParams map[string]any
+	require.NoError(t, json.Unmarshal(fork.Params, &forkParams))
+	forkConfig := forkParams["config"].(map[string]any)
+	require.Equal(t, "tyrs-hand-provider", forkConfig["model_provider"])
+	require.Contains(t, forkConfig["model_providers"], "personal")
+	require.Contains(t, forkConfig["mcp_servers"], "personal")
+	require.Contains(t, forkConfig["mcp_servers"], "chrome")
+	require.Contains(t, forkParams["developerInstructions"], participantidentity.IdentityContextKey)
+	require.NotContains(t, forkParams, "dynamicTools")
+
 	controller.environment.runtime.ModelSource = "chatgpt"
 	resume, err := controller.PrepareCall(context.Background(), codexrelay.Call{
 		Role: codexrelay.RoleDesktop, Method: "thread/resume",
@@ -174,6 +192,7 @@ func TestDesktopRelayForcesGlobalModelAndOmitsPlatformGitHubTools(t *testing.T) 
 	resumeMCP := resumeConfig["mcp_servers"].(map[string]any)
 	require.Contains(t, resumeMCP, "chrome")
 	require.NotContains(t, string(resume.Params), `"dynamicTools"`)
+	require.Contains(t, resumeParams["developerInstructions"], participantidentity.IdentityContextKey)
 }
 
 func TestDesktopRelayInjectsRuntimeIntoEphemeralThreadWithoutTools(t *testing.T) {

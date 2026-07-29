@@ -15,6 +15,8 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
+const environmentCodexConfigRevision = "provider-baseline-v1"
+
 func (p *RemoteProcessor) CoordinateEnvironments(ctx context.Context) error {
 	if p.development == nil || !p.development.Enabled() {
 		return nil
@@ -142,6 +144,8 @@ func (p *RemoteProcessor) coordinateEnvironment(ctx context.Context,
 		if err == nil {
 			runtime.ModelSource = credential.ModelSource
 			runtime.ModelBaseURL = credential.BaseURL
+			runtime.AppServerConfig = managedAppServerConfig(credential.ModelSource,
+				credential.BaseURL)
 			runtime.ProcessEnvironment, err = remoteCodexProcessEnvironment(credential, p.cfg,
 				manifest.EnvironmentID.String())
 		}
@@ -240,8 +244,9 @@ func (p *RemoteProcessor) installEnvironmentCodexHome(ctx context.Context,
 	runtime devcontainer.Runtime, credential workerprotocol.RuntimeCredential,
 ) (bool, error) {
 	marker := filepath.Join(filepath.Dir(runtime.AppServerSocket), "codex-config-signature")
+	expectedSignature := environmentCodexConfigRevision + ":" + credential.ConfigSignature
 	current, markerErr := os.ReadFile(marker)
-	if markerErr == nil && string(current) == credential.ConfigSignature {
+	if markerErr == nil && string(current) == expectedSignature {
 		return false, nil
 	}
 	if !p.environments.idle(runtime.EnvironmentID) {
@@ -263,7 +268,7 @@ func (p *RemoteProcessor) installEnvironmentCodexHome(ctx context.Context,
 	if err := p.development.CopyToRuntime(ctx, runtime, temporaryHome, runtime.CodexHome); err != nil {
 		return false, err
 	}
-	if err := os.WriteFile(marker, []byte(credential.ConfigSignature), 0o600); err != nil {
+	if err := os.WriteFile(marker, []byte(expectedSignature), 0o600); err != nil {
 		return false, err
 	}
 	return true, nil

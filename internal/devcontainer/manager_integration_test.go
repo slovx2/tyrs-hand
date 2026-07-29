@@ -314,7 +314,8 @@ func testRemoteSSHAndDesktopProxy(t *testing.T, manager *Manager, environmentID 
 		fmt.Sprintf("%d:%d", runtime.UID, runtime.GID), runtime.Container,
 		"/opt/tyrs-hand/codex/bin/codex"}
 	appServerArguments = append(appServerArguments,
-		codex.ManagedAppServerArguments("unix:///run/tyrs-hand/relay.sock")...)
+		codex.ManagedAppServerArguments("unix:///run/tyrs-hand/relay.sock",
+			codex.ManagedAppServerConfig{})...)
 	_, err = manager.docker(context.Background(), appServerArguments...)
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {

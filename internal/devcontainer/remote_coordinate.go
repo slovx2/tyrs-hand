@@ -63,6 +63,7 @@ func (m *Manager) EnsureRemoteDaemons(ctx context.Context,
 			RuntimeUID: manifest.RuntimeUID, RuntimeGID: manifest.RuntimeGID,
 			RuntimeHome: manifest.RuntimeHome, SSHPublicKey: manifest.SSHPublicKey,
 			SSHPort: manifest.SSHPort, SSHConfigRevision: manifest.SSHConfigRevision,
+			AppServerConfig:    runtime.AppServerConfig,
 			ProcessEnvironment: runtime.ProcessEnvironment}
 		if err := m.configureRemoteDaemons(ctx, manifest.ContainerName, operation); err != nil {
 			return err

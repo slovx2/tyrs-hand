@@ -24,7 +24,8 @@ func main() {
 		return
 	}
 	if len(os.Args) < 2 || !slices.Equal(os.Args[1:],
-		codex.ManagedAppServerArguments(os.Args[len(os.Args)-1])) ||
+		codex.ManagedAppServerArguments(os.Args[len(os.Args)-1],
+			codex.ManagedAppServerConfig{})) ||
 		!strings.HasPrefix(os.Args[len(os.Args)-1], "unix://") {
 		_, _ = os.Stderr.WriteString("unsupported mock codex invocation\n")
 		os.Exit(2)

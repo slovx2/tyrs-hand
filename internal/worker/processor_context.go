@@ -29,6 +29,7 @@ const (
 	turnCleanupTimeout        = 5 * time.Second
 	workerCodexSandbox        = "danger-full-access"
 	workerCodexApprovalPolicy = "never"
+	managedModelProviderID    = "tyrs-hand-provider"
 )
 
 // workerThreadOptions 在平台边界固定无人值守 Codex 的命令权限，避免 Profile 或任务快照覆盖。
@@ -737,24 +738,35 @@ func applyBrowserMCPConfig(runtimeConfig map[string]any, cfg config.Config) {
 }
 
 func applyModelProviderConfig(config map[string]any, modelSource, baseURL string) {
-	if modelSource == settings.ModelSourceChatGPT {
-		config["model_provider"] = "openai"
+	managed := managedAppServerConfig(modelSource, baseURL).ModelProvider
+	config["model_provider"] = managed.ID
+	if managed.BaseURL == "" {
 		return
 	}
-	if strings.TrimSpace(baseURL) == "" {
-		baseURL = "https://api.openai.com/v1"
-	}
-	config["model_provider"] = "tyrs-hand-provider"
 	providers, _ := config["model_providers"].(map[string]any)
 	if providers == nil {
 		providers = make(map[string]any)
 	}
-	providers["tyrs-hand-provider"] = map[string]any{
-		"name": "Tyrs Hand Provider", "base_url": strings.TrimRight(baseURL, "/"),
-		"wire_api": "responses", "env_key": "TYRS_HAND_MODEL_API_KEY",
-		"requires_openai_auth": true,
+	providers[managed.ID] = map[string]any{
+		"name": managed.Name, "base_url": managed.BaseURL,
+		"wire_api": managed.WireAPI, "env_key": managed.EnvKey,
+		"requires_openai_auth": managed.RequiresOpenAIAuth,
 	}
 	config["model_providers"] = providers
+}
+
+func managedAppServerConfig(modelSource, baseURL string) codex.ManagedAppServerConfig {
+	if modelSource == settings.ModelSourceChatGPT {
+		return codex.ManagedAppServerConfig{ModelProvider: codex.ManagedModelProvider{ID: "openai"}}
+	}
+	if strings.TrimSpace(baseURL) == "" {
+		baseURL = "https://api.openai.com/v1"
+	}
+	return codex.ManagedAppServerConfig{ModelProvider: codex.ManagedModelProvider{
+		ID: managedModelProviderID, Name: "Tyrs Hand Provider",
+		BaseURL: strings.TrimRight(baseURL, "/"), WireAPI: "responses",
+		EnvKey: "TYRS_HAND_MODEL_API_KEY", RequiresOpenAIAuth: true,
+	}}
 }
 
 func hideManagedSecrets(config map[string]any) {

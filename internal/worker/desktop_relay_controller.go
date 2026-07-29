@@ -64,6 +64,7 @@ func (c *desktopRelayController) PrepareCall(ctx context.Context,
 			plan.Params = participantidentity.StripTurnContext(plan.Params)
 		}
 	}
+	plan.Params = c.configureDesktopThreadRuntime(call, plan.Params)
 	switch call.Method {
 	case "model/list":
 		if call.Role == codexrelay.RoleDesktop &&
@@ -80,10 +81,6 @@ func (c *desktopRelayController) PrepareCall(ctx context.Context,
 			plan.Params = desktopThreadListAllProviders(call.Params)
 		}
 	case "thread/start":
-		plan.Params = c.injectDesktopRuntime(call.Params, desktopRuntimeInjection{
-			includeBrowserMCP: true, includeDynamicTools: true,
-		})
-		plan.Params = participantidentity.AppendDeveloperInstructions(plan.Params)
 		if call.Role == codexrelay.RoleDesktop {
 			state, err := c.prepareDesktopThread(ctx, call)
 			if err != nil {
@@ -99,10 +96,6 @@ func (c *desktopRelayController) PrepareCall(ctx context.Context,
 			}
 			plan.State = &desktopThreadCallState{request: state}
 		}
-	case "thread/resume":
-		plan.Params = c.injectDesktopRuntime(call.Params, desktopRuntimeInjection{
-			includeBrowserMCP: true,
-		})
 	case "turn/start":
 		threadID, _ := relayCallScope(plan.Params)
 		if threadID == "" {
@@ -379,6 +372,26 @@ func (c *desktopRelayController) ResolveInteractive(ctx context.Context,
 type desktopRuntimeInjection struct {
 	includeBrowserMCP   bool
 	includeDynamicTools bool
+}
+
+func (c *desktopRelayController) configureDesktopThreadRuntime(call codexrelay.Call,
+	params json.RawMessage,
+) json.RawMessage {
+	if call.Role != codexrelay.RoleDesktop {
+		return params
+	}
+	var options desktopRuntimeInjection
+	switch call.Method {
+	case "thread/start":
+		options.includeBrowserMCP = true
+		options.includeDynamicTools = true
+	case "thread/fork", "thread/resume":
+		options.includeBrowserMCP = true
+	default:
+		return params
+	}
+	params = c.injectDesktopRuntime(params, options)
+	return participantidentity.AppendDeveloperInstructions(params)
 }
 
 func (c *desktopRelayController) injectDesktopRuntime(params json.RawMessage,

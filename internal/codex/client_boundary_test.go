@@ -49,13 +49,41 @@ func TestClientEnforcesManagedAppServerConfiguration(t *testing.T) {
 		Launcher:    launcher, RequestTimeout: time.Second,
 	})
 	require.NoError(t, err)
-	require.Equal(t, ManagedAppServerArguments("stdio://"), launcher.specs[0].Args)
+	require.Equal(t, ManagedAppServerArguments("stdio://", ManagedAppServerConfig{}),
+		launcher.specs[0].Args)
 	require.Contains(t, launcher.specs[0].Args,
 		`shell_environment_policy.exclude=["TYRS_HAND_MODEL_API_KEY","TYRS_BROWSER_MCP_TOKEN"]`)
 	require.Contains(t, launcher.specs[0].Args, "allow_login_shell=false")
 	require.Contains(t, launcher.specs[0].Args,
 		`openai_base_url="https://chatgpt.com/backend-api/codex"`)
 	require.NoError(t, client.Close())
+}
+
+func TestManagedAppServerArgumentsSetEnvironmentProviderBaseline(t *testing.T) {
+	arguments := ManagedAppServerArguments("unix:///run/tyrs-hand/app-server.sock",
+		ManagedAppServerConfig{ModelProvider: ManagedModelProvider{
+			ID: "tyrs-hand-provider", Name: "Tyrs Hand Provider",
+			BaseURL: "https://api.example.com/v1", WireAPI: "responses",
+			EnvKey: "TYRS_HAND_MODEL_API_KEY", RequiresOpenAIAuth: true,
+		}})
+	require.Contains(t, arguments, `model_provider="tyrs-hand-provider"`)
+	require.Contains(t, arguments,
+		`model_providers.tyrs-hand-provider.name="Tyrs Hand Provider"`)
+	require.Contains(t, arguments,
+		`model_providers.tyrs-hand-provider.base_url="https://api.example.com/v1"`)
+	require.Contains(t, arguments,
+		`model_providers.tyrs-hand-provider.wire_api="responses"`)
+	require.Contains(t, arguments,
+		`model_providers.tyrs-hand-provider.env_key="TYRS_HAND_MODEL_API_KEY"`)
+	require.Contains(t, arguments,
+		"model_providers.tyrs-hand-provider.requires_openai_auth=true")
+	require.Equal(t, []string{"app-server", "--listen",
+		"unix:///run/tyrs-hand/app-server.sock"}, arguments[len(arguments)-3:])
+
+	chatGPTArguments := ManagedAppServerArguments("stdio://",
+		ManagedAppServerConfig{ModelProvider: ManagedModelProvider{ID: "openai"}})
+	require.Contains(t, chatGPTArguments, `model_provider="openai"`)
+	require.NotContains(t, strings.Join(chatGPTArguments, " "), "model_providers.openai")
 }
 
 func TestReadFrameBoundaries(t *testing.T) {
