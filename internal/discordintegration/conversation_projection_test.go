@@ -14,9 +14,8 @@ import (
 
 func TestSanitizeDiscordResult(t *testing.T) {
 	value := SanitizeDiscordResult("完成 /Volumes/workspace/private/file.go，token=ghp_abcdefghijklmnopqrstuvwxyz")
-	require.NotContains(t, value, "/Volumes/workspace")
+	require.Contains(t, value, "/Volumes/workspace/private/file.go")
 	require.NotContains(t, value, "ghp_")
-	require.Contains(t, value, "[已隐藏路径]")
 	require.Contains(t, value, "[已隐藏凭据]")
 
 	long := SanitizeDiscordResult(strings.Repeat("你", 2100))

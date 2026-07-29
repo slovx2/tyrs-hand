@@ -179,7 +179,6 @@ func systemAlertsCard(gatewayStatus string, gatewayError bool, workers, failedOu
 func cardText(value string, limit int) string {
 	value = strings.TrimSpace(value)
 	value = discordSecretPattern.ReplaceAllString(value, "[已隐藏凭据]")
-	value = discordPathPattern.ReplaceAllString(value, "$1[已隐藏路径]")
 	if limit <= 0 || utf8.RuneCountInString(value) <= limit {
 		return value
 	}

@@ -304,8 +304,7 @@ func firstNonEmpty(values ...string) string {
 
 func sanitizeDiscordTimeline(value string) string {
 	value = strings.TrimSpace(value)
-	value = discordSecretPattern.ReplaceAllString(value, "[已隐藏凭据]")
-	return discordPathPattern.ReplaceAllString(value, "$1[已隐藏路径]")
+	return discordSecretPattern.ReplaceAllString(value, "[已隐藏凭据]")
 }
 
 func supportedActionType(value string) bool {

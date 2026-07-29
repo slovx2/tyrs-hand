@@ -16,10 +16,7 @@ import (
 	"github.com/google/uuid"
 )
 
-var (
-	discordSecretPattern = regexp.MustCompile(`(?i)\b(?:sk|ghp|github_pat)_[a-z0-9_-]{12,}\b|\bBearer\s+[a-z0-9._~+/-]{12,}`)
-	discordPathPattern   = regexp.MustCompile(`(?m)(^|[\s("'])/(?:Users|home|root|tmp|var|Volumes|workspace|data)(?:/[^\s"',，。；;、]*)?`)
-)
+var discordSecretPattern = regexp.MustCompile(`(?i)\b(?:sk|ghp|github_pat)_[a-z0-9_-]{12,}\b|\bBearer\s+[a-z0-9._~+/-]{12,}`)
 
 const (
 	discordReplyMessageBudget = 1900
@@ -41,8 +38,7 @@ type conversationReplyChain struct {
 
 func SanitizeDiscordResult(value string) string {
 	value = strings.TrimSpace(value)
-	value = discordSecretPattern.ReplaceAllString(value, "[已隐藏凭据]")
-	return discordPathPattern.ReplaceAllString(value, "$1[已隐藏路径]")
+	return discordSecretPattern.ReplaceAllString(value, "[已隐藏凭据]")
 }
 
 func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadID string,

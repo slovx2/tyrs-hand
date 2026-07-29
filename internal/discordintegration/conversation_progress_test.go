@@ -54,6 +54,13 @@ func TestConversationActionTrackerPackagesAndUpdatesActions(t *testing.T) {
 	require.NotContains(t, rendered, "sk_")
 }
 
+func TestSanitizeDiscordTimelinePreservesPathAndHidesCredential(t *testing.T) {
+	value := sanitizeDiscordTimeline("读取 /Volumes/workspace/private/file.go，token=ghp_abcdefghijklmnopqrstuvwxyz")
+	require.Contains(t, value, "/Volumes/workspace/private/file.go")
+	require.NotContains(t, value, "ghp_")
+	require.Contains(t, value, "[已隐藏凭据]")
+}
+
 func TestConversationActionTrackerPackagesSearchCommand(t *testing.T) {
 	tracker := NewConversationActionTracker(time.Now())
 	event := progressEvent(t, map[string]any{

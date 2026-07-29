@@ -51,7 +51,7 @@ func TestConversationCardPaginationKeepsStatusAndUsesUniqueButtons(t *testing.T)
 
 func TestCardsSanitizeUntrustedContentAndRespectLimits(t *testing.T) {
 	value := cardText("/Volumes/workspace/private ghp_abcdefghijklmnopqrstuvwxyz", 256)
-	require.NotContains(t, value, "/Volumes/workspace")
+	require.Contains(t, value, "/Volumes/workspace/private")
 	require.NotContains(t, value, "ghp_")
 	require.Equal(t, 10, utf8.RuneCountInString(cardText(strings.Repeat("你", 20), 10)))
 
