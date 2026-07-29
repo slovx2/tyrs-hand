@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	disgorest "github.com/disgoorg/disgo/rest"
 	"github.com/google/uuid"
@@ -287,6 +288,9 @@ func (s *SQLoutbox) Apply(ctx context.Context, item OutboxItem) error {
 		return err
 	}
 	response := item.Response
+	if err := s.applyConversationReplyChainTx(ctx, tx, item, response); err != nil {
+		return err
+	}
 	if strings.HasPrefix(item.OperationKey, "projection:") {
 		var value struct {
 			ThreadID  string `json:"threadId"`
@@ -509,6 +513,148 @@ func (s *SQLoutbox) Apply(ctx context.Context, item OutboxItem) error {
 		return s.replayDesktopProjection(ctx, desktopRequestID)
 	}
 	return nil
+}
+
+type conversationReplyEnvelope struct {
+	ChannelID      string                  `json:"channelId"`
+	MessageID      string                  `json:"messageId"`
+	Content        string                  `json:"content"`
+	MentionUserIDs []string                `json:"mentionUserIds"`
+	ReplyChain     *conversationReplyChain `json:"replyChain"`
+}
+
+func (s *SQLoutbox) applyConversationReplyChainTx(ctx context.Context, tx *sql.Tx,
+	item OutboxItem, response json.RawMessage,
+) error {
+	var envelope conversationReplyEnvelope
+	if json.Unmarshal(item.Payload, &envelope) != nil || envelope.ReplyChain == nil {
+		return nil
+	}
+	chain := *envelope.ReplyChain
+	if chain.SourceOperationKey == "" || chain.ThreadID == "" || chain.GuildID == "" {
+		return errors.New("discord 回复分片元数据无效")
+	}
+	switch chain.Stage {
+	case "create":
+		var delivered struct {
+			MessageID string `json:"messageId"`
+		}
+		if json.Unmarshal(response, &delivered) != nil || delivered.MessageID == "" {
+			return errors.New("discord 回复分片创建结果无效")
+		}
+		if chain.Index == 0 {
+			source, err := loadConversationReplySourceTx(ctx, tx, chain.SourceOperationKey)
+			if err != nil {
+				return err
+			}
+			if len(source.Chunks) > 1 {
+				return enqueueConversationReplyChunkTx(ctx, tx, source, 1, delivered.MessageID)
+			}
+			return nil
+		}
+		return enqueueConversationReplyLinkTx(ctx, tx, chain, delivered.MessageID)
+	case "link":
+		source, err := loadConversationReplySourceTx(ctx, tx, chain.SourceOperationKey)
+		if err != nil {
+			return err
+		}
+		if chain.NextIndex < len(source.Chunks) {
+			return enqueueConversationReplyChunkTx(ctx, tx, source,
+				chain.NextIndex, chain.TailMessageID)
+		}
+		return nil
+	default:
+		return fmt.Errorf("未知 Discord 回复分片阶段 %q", chain.Stage)
+	}
+}
+
+func loadConversationReplySourceTx(ctx context.Context, tx *sql.Tx,
+	operationKey string,
+) (conversationReplyChain, error) {
+	var payload json.RawMessage
+	if err := tx.QueryRowContext(ctx, `SELECT payload FROM integration_outbox
+		WHERE integration = 'discord' AND operation_key = $1`, operationKey).Scan(&payload); err != nil {
+		return conversationReplyChain{}, err
+	}
+	var envelope conversationReplyEnvelope
+	if json.Unmarshal(payload, &envelope) != nil || envelope.ReplyChain == nil ||
+		len(envelope.ReplyChain.Chunks) < 2 {
+		return conversationReplyChain{}, errors.New("discord 回复分片源数据无效")
+	}
+	return *envelope.ReplyChain, nil
+}
+
+func enqueueConversationReplyChunkTx(ctx context.Context, tx *sql.Tx,
+	source conversationReplyChain, index int, previousMessageID string,
+) error {
+	if index <= 0 || index >= len(source.Chunks) || previousMessageID == "" {
+		return errors.New("discord 回复分片序号或上条消息无效")
+	}
+	content := replyPreviousLink(source.GuildID, source.ThreadID, previousMessageID) +
+		source.Chunks[index]
+	if index < len(source.Chunks)-1 {
+		content += plainReplyNextMarker()
+	}
+	if utf8.RuneCountInString(content) > discordReplyMessageBudget {
+		return errors.New("discord 回复分片超过长度限制")
+	}
+	key := source.SourceOperationKey + ":chunk:" + strconv.Itoa(index)
+	payload := map[string]any{
+		"channelId": source.ThreadID,
+		"content":   content,
+		"replyChain": conversationReplyChain{Stage: "create",
+			SourceOperationKey: source.SourceOperationKey, GuildID: source.GuildID,
+			ThreadID: source.ThreadID, Index: index},
+	}
+	return enqueueDiscordOutbox(ctx, tx, key, "message.create",
+		"channels/"+source.ThreadID+"/messages", payload, key)
+}
+
+func enqueueConversationReplyLinkTx(ctx context.Context, tx *sql.Tx,
+	chain conversationReplyChain, nextMessageID string,
+) error {
+	previousIndex := chain.Index - 1
+	previousKey := chain.SourceOperationKey
+	if previousIndex > 0 {
+		previousKey += ":chunk:" + strconv.Itoa(previousIndex)
+	}
+	var payload, response json.RawMessage
+	if err := tx.QueryRowContext(ctx, `SELECT payload, response FROM integration_outbox
+		WHERE integration = 'discord' AND operation_key = $1 AND status = 'completed'`,
+		previousKey).Scan(&payload, &response); err != nil {
+		return err
+	}
+	var previous conversationReplyEnvelope
+	var delivered struct {
+		MessageID string `json:"messageId"`
+	}
+	if json.Unmarshal(payload, &previous) != nil || json.Unmarshal(response, &delivered) != nil ||
+		delivered.MessageID == "" {
+		return errors.New("discord 上一回复分片数据无效")
+	}
+	if !strings.HasSuffix(previous.Content, plainReplyNextMarker()) {
+		return errors.New("discord 上一回复分片缺少续接标记")
+	}
+	content := strings.TrimSuffix(previous.Content, plainReplyNextMarker()) +
+		replyNextLink(chain.GuildID, chain.ThreadID, nextMessageID)
+	if utf8.RuneCountInString(content) > discordReplyMessageBudget {
+		return errors.New("discord 回复分片链接更新超过长度限制")
+	}
+	linkKey := chain.SourceOperationKey + ":link:" + strconv.Itoa(previousIndex)
+	linkPayload := map[string]any{
+		"channelId": chain.ThreadID,
+		"messageId": delivered.MessageID,
+		"content":   content,
+		"replyChain": conversationReplyChain{Stage: "link",
+			SourceOperationKey: chain.SourceOperationKey, GuildID: chain.GuildID,
+			ThreadID: chain.ThreadID, Index: previousIndex, NextIndex: chain.Index + 1,
+			TailMessageID: nextMessageID},
+	}
+	if len(previous.MentionUserIDs) > 0 {
+		linkPayload["mentionUserIds"] = previous.MentionUserIDs
+	}
+	return enqueueDiscordOutbox(ctx, tx, linkKey, "message.update",
+		"channels/"+chain.ThreadID+"/messages/"+delivered.MessageID, linkPayload, "")
 }
 
 func (s *SQLoutbox) RetryDelivery(ctx context.Context, item OutboxItem,

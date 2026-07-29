@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -26,7 +27,7 @@ const (
 
 type conversationAction struct {
 	id         string
-	line       string
+	lines      []string
 	commentary bool
 }
 
@@ -120,6 +121,7 @@ func (t *ConversationActionTracker) Timeline(summary string, duration time.Durat
 		}
 	} else {
 		var toolLines []string
+		updates := 0
 		flushTools := func() {
 			if len(toolLines) > 0 {
 				blocks = append(blocks, strings.Join(toolLines, "\n"))
@@ -129,18 +131,24 @@ func (t *ConversationActionTracker) Timeline(summary string, duration time.Durat
 		for _, id := range t.order {
 			action := t.actions[id]
 			if action.commentary {
+				updates++
 				flushTools()
-				if text := sanitizeDiscordTimeline(action.line); text != "" {
+				if text := sanitizeDiscordTimeline(firstNonEmpty(action.lines...)); text != "" {
 					blocks = append(blocks, text)
 				}
 				continue
 			}
-			toolLines = append(toolLines, "> ↳ "+action.line)
+			updates += len(action.lines)
+			for _, line := range action.lines {
+				toolLines = append(toolLines, "> ↳ "+line)
+			}
 		}
 		flushTools()
+		pages := paginateConversationBlocks(blocks, conversationPageBudget)
+		return ConversationTimeline{Pages: pages, Updates: updates, Duration: duration}
 	}
 	pages := paginateConversationBlocks(blocks, conversationPageBudget)
-	return ConversationTimeline{Pages: pages, Updates: len(t.actions), Duration: duration}
+	return ConversationTimeline{Pages: pages, Duration: duration}
 }
 
 func (t *ConversationActionTracker) Render(summary string, duration time.Duration) string {
@@ -174,20 +182,22 @@ func (t *ConversationActionTracker) applyItem(item map[string]any, state convers
 	if id == "" {
 		return false
 	}
-	line := formatConversationAction(itemType, item, state)
-	if line == "" {
+	lines := formatConversationActions(itemType, item, state)
+	if len(lines) == 0 {
 		return false
 	}
-	line = truncateDisplayLine(line, conversationLineWidth)
+	for index := range lines {
+		lines[index] = truncateDisplayLine(lines[index], conversationLineWidth)
+	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if existing, ok := t.actions[id]; ok && existing.line == line {
+	if existing, ok := t.actions[id]; ok && !existing.commentary && slices.Equal(existing.lines, lines) {
 		return false
 	}
 	if _, ok := t.actions[id]; !ok {
 		t.order = append(t.order, id)
 	}
-	t.actions[id] = conversationAction{id: id, line: line}
+	t.actions[id] = conversationAction{id: id, lines: lines}
 	return true
 }
 
@@ -199,13 +209,13 @@ func (t *ConversationActionTracker) applyCommentary(id, text string) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	existing, exists := t.actions[id]
-	if exists && existing.commentary && existing.line == text {
+	if exists && existing.commentary && slices.Equal(existing.lines, []string{text}) {
 		return false
 	}
 	if !exists {
 		t.order = append(t.order, id)
 	}
-	t.actions[id] = conversationAction{id: id, line: text, commentary: true}
+	t.actions[id] = conversationAction{id: id, lines: []string{text}, commentary: true}
 	return true
 }
 
@@ -221,9 +231,12 @@ func (t *ConversationActionTracker) applyCommentaryDelta(id, phase, delta string
 	}
 	if !exists {
 		t.order = append(t.order, id)
-		existing = conversationAction{id: id, commentary: true}
+		existing = conversationAction{id: id, lines: []string{""}, commentary: true}
 	}
-	existing.line += delta
+	if len(existing.lines) == 0 {
+		existing.lines = []string{""}
+	}
+	existing.lines[0] += delta
 	t.actions[id] = existing
 	return true
 }
@@ -313,39 +326,72 @@ func itemFailed(item map[string]any) bool {
 	return ok && exitCode != 0
 }
 
-func formatConversationAction(itemType string, item map[string]any, state conversationActionState) string {
+func formatConversationActions(itemType string, item map[string]any,
+	state conversationActionState,
+) []string {
 	switch itemType {
 	case "commandExecution":
-		return formatCommandAction(item, state)
+		return formatCommandActions(item, state)
 	case "mcpToolCall", "dynamicToolCall":
-		return formatToolAction(item, state)
+		return []string{formatToolAction(item, state)}
 	case "collabAgentToolCall":
-		return formatCollaborationAction(item, state)
+		return []string{formatCollaborationAction(item, state)}
 	case "webSearch":
-		return stateLine("搜索网页", quotedTarget(firstText(item, "query", "text")), state)
+		return []string{stateLine("搜索网页", quotedTarget(firstText(item, "query", "text")), state)}
 	case "fileChange":
-		return formatFileChangeAction(item, state)
+		return []string{formatFileChangeAction(item, state)}
 	case "imageView":
-		return stateLine("查看", codeTarget(displayPath(firstText(item, "path", "fileName", "name"))), state)
+		return []string{stateLine("查看",
+			codeTarget(displayPath(firstText(item, "path", "fileName", "name"))), state)}
 	case "imageGeneration":
-		return stateLine("生成", "控制台预览图", state)
+		return []string{stateLine("生成", "控制台预览图", state)}
 	default:
-		return ""
+		return nil
 	}
 }
 
-func formatCommandAction(item map[string]any, state conversationActionState) string {
-	command := displayCommand(textValue(item["command"]))
-	if isSearchCommand(command) {
-		return stateLine("搜索", codeTarget(command), state)
-	}
-	if actions, ok := item["commandActions"].([]any); ok && len(actions) > 0 {
-		if action, ok := actions[0].(map[string]any); ok && textValue(action["type"]) == "read" {
-			target := displayPath(firstText(action, "path", "name"))
-			return stateLine("读取", codeTarget(target), state)
+func formatCommandActions(item map[string]any, state conversationActionState) []string {
+	var lines []string
+	if actions, ok := item["commandActions"].([]any); ok {
+		for _, value := range actions {
+			action, ok := value.(map[string]any)
+			if !ok {
+				continue
+			}
+			line := formatStructuredCommandAction(action, state)
+			if line != "" {
+				lines = append(lines, line)
+			}
 		}
 	}
-	return stateLine("执行", codeTarget(command), state)
+	if len(lines) > 0 {
+		return lines
+	}
+	command := displayCommand(textValue(item["command"]))
+	if isSearchCommand(command) {
+		return []string{stateLine("搜索", codeTarget(command), state)}
+	}
+	return []string{stateLine("执行", codeTarget(command), state)}
+}
+
+func formatStructuredCommandAction(action map[string]any, state conversationActionState) string {
+	switch textValue(action["type"]) {
+	case "read":
+		return stateLine("读取", codeTarget(displayPath(firstText(action, "path", "name"))), state)
+	case "search":
+		target := quotedTarget(firstText(action, "query", "command", "path"))
+		return stateLine("搜索", target, state)
+	case "listFiles":
+		return stateLine("列出", codeTarget(displayPath(firstText(action, "path", "name"))), state)
+	case "unknown":
+		return stateLine("执行", codeTarget(displayCommand(firstText(action, "command", "name"))), state)
+	default:
+		command := displayCommand(firstText(action, "command", "name"))
+		if command != "" {
+			return stateLine("执行", codeTarget(command), state)
+		}
+		return ""
+	}
 }
 
 func formatToolAction(item map[string]any, state conversationActionState) string {

@@ -67,6 +67,36 @@ func TestConversationActionTrackerPackagesSearchCommand(t *testing.T) {
 	require.NotContains(t, rendered, "/bin/zsh -lc")
 }
 
+func TestConversationActionTrackerExpandsStructuredCommandActions(t *testing.T) {
+	tracker := NewConversationActionTracker(time.Now())
+	actions := []any{
+		map[string]any{"type": "read", "path": "/workspace/project_subagent_service.py"},
+		map[string]any{"type": "read", "path": "/workspace/project_subagent_service.py"},
+		map[string]any{"type": "search", "path": "services", "query": "thread_start_options"},
+		map[string]any{"type": "listFiles", "path": "/workspace/frontend"},
+		map[string]any{"type": "unknown", "command": "git status --short"},
+	}
+	started := progressEvent(t, map[string]any{
+		"id": "command-batch", "type": "commandExecution", "commandActions": actions,
+	})
+	require.True(t, tracker.ApplyEvent("item/started", started))
+	require.Contains(t, tracker.Render("", time.Second), "正在读取")
+
+	completed := progressEvent(t, map[string]any{
+		"id": "command-batch", "type": "commandExecution", "status": "completed",
+		"commandActions": actions,
+	})
+	require.True(t, tracker.ApplyEvent("item/completed", completed))
+	require.False(t, tracker.ApplyEvent("item/completed", completed))
+	timeline := tracker.Timeline("", time.Second)
+	require.Equal(t, 5, timeline.Updates)
+	rendered := strings.Join(timeline.Pages, "\n")
+	require.Equal(t, 2, strings.Count(rendered, "已读取 `project_subagent_service.py`"))
+	require.Contains(t, rendered, "已搜索 “thread_start_options”")
+	require.Contains(t, rendered, "已列出 `frontend`")
+	require.Contains(t, rendered, "已执行 `git status --short`")
+}
+
 func TestConversationActionTrackerKeepsAllActionsInOrder(t *testing.T) {
 	tracker := NewConversationActionTracker(time.Now())
 	for index := 1; index <= 10; index++ {

@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/disgoorg/snowflake/v2"
@@ -20,16 +21,28 @@ var (
 	discordPathPattern   = regexp.MustCompile(`(?m)(^|[\s("'])/(?:Users|home|root|tmp|var|Volumes|workspace|data)(?:/[^\s"',，。；;、]*)?`)
 )
 
+const (
+	discordReplyMessageBudget = 1900
+	replyPreviousLabel        = "【上接消息】"
+	replyNextLabel            = "【内容未完整，下接消息】"
+	replyFenceReserve         = 128
+)
+
+type conversationReplyChain struct {
+	Stage              string   `json:"stage"`
+	SourceOperationKey string   `json:"sourceOperationKey"`
+	GuildID            string   `json:"guildId"`
+	ThreadID           string   `json:"threadId"`
+	Index              int      `json:"index"`
+	NextIndex          int      `json:"nextIndex,omitempty"`
+	TailMessageID      string   `json:"tailMessageId,omitempty"`
+	Chunks             []string `json:"chunks,omitempty"`
+}
+
 func SanitizeDiscordResult(value string) string {
 	value = strings.TrimSpace(value)
 	value = discordSecretPattern.ReplaceAllString(value, "[已隐藏凭据]")
-	value = discordPathPattern.ReplaceAllString(value, "$1[已隐藏路径]")
-	const maxRunes = 1900
-	if utf8.RuneCountInString(value) > maxRunes {
-		runes := []rune(value)
-		value = string(runes[:maxRunes]) + "\n\n（内容已截断）"
-	}
-	return value
+	return discordPathPattern.ReplaceAllString(value, "$1[已隐藏路径]")
 }
 
 func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadID string,
@@ -221,10 +234,194 @@ func ProjectConversationReply(ctx context.Context, db *sql.DB, threadID string,
 	if err != nil {
 		return err
 	}
-	payload := conversationReplyPayload(threadID, content, mentionUserID)
 	key := "conversation-reply:" + conversationID.String() + ":message:" + inputMessageID
+	payload := conversationReplyPayload(threadID, content, mentionUserID)
+	if utf8.RuneCountInString(textValue(payload["content"])) <= discordReplyMessageBudget {
+		return NewSQLoutbox(db).Enqueue(ctx, key, "message.create", "channels/"+threadID+"/messages",
+			payload, key)
+	}
+	var guildID string
+	if err := db.QueryRowContext(ctx, `SELECT guild_id FROM discord_conversations
+		WHERE id = $1 AND thread_id = $2`, conversationID, threadID).Scan(&guildID); err != nil {
+		return err
+	}
+	chunks := splitConversationReply(content, guildID, threadID, mentionUserID)
+	if len(chunks) < 2 {
+		return errors.New("discord 长回复分片失败")
+	}
+	payload = conversationReplyPayload(threadID, chunks[0]+plainReplyNextMarker(), mentionUserID)
+	payload["replyChain"] = conversationReplyChain{Stage: "create", SourceOperationKey: key,
+		GuildID: guildID, ThreadID: threadID, Index: 0, Chunks: chunks}
+	if utf8.RuneCountInString(textValue(payload["content"])) > discordReplyMessageBudget {
+		return errors.New("discord 首个回复分片超过长度限制")
+	}
 	return NewSQLoutbox(db).Enqueue(ctx, key, "message.create", "channels/"+threadID+"/messages",
 		payload, key)
+}
+
+func plainReplyNextMarker() string {
+	return "\n\n" + replyNextLabel
+}
+
+func replyJumpURL(guildID, threadID, messageID string) string {
+	return fmt.Sprintf("https://discord.com/channels/%s/%s/%s", guildID, threadID, messageID)
+}
+
+func replyPreviousLink(guildID, threadID, messageID string) string {
+	return fmt.Sprintf("[%s](%s)\n\n", replyPreviousLabel,
+		replyJumpURL(guildID, threadID, messageID))
+}
+
+func replyNextLink(guildID, threadID, messageID string) string {
+	return fmt.Sprintf("\n\n[%s](%s)", replyNextLabel,
+		replyJumpURL(guildID, threadID, messageID))
+}
+
+func splitConversationReply(content, guildID, threadID, mentionUserID string) []string {
+	placeholderID := strings.Repeat("9", 20)
+	prefix := replyPreviousLink(guildID, threadID, placeholderID)
+	suffix := replyNextLink(guildID, threadID, placeholderID)
+	mention := ""
+	if mentionUserID != "" {
+		mention = "<@" + mentionUserID + "> "
+	}
+	wrapper := max(utf8.RuneCountInString(prefix+suffix),
+		utf8.RuneCountInString(mention+suffix))
+	budget := discordReplyMessageBudget - wrapper - replyFenceReserve
+	if budget < 256 {
+		budget = 256
+	}
+	return balanceReplyCodeFences(splitReplyText(content, budget))
+}
+
+func splitReplyText(content string, budget int) []string {
+	remaining := []rune(strings.TrimSpace(content))
+	var chunks []string
+	for len(remaining) > budget {
+		cut, boundary := replyChunkBoundary(remaining, budget)
+		part, rest := remaining[:cut], remaining[cut:]
+		switch boundary {
+		case 'n':
+			part = trimTrailingNewlines(part)
+			rest = trimLeadingNewlines(rest)
+		case 's':
+			part = trimTrailingSpaces(part)
+			rest = trimLeadingSpaces(rest)
+		}
+		if len(part) == 0 {
+			part, rest = remaining[:budget], remaining[budget:]
+		}
+		chunks = append(chunks, string(part))
+		remaining = rest
+	}
+	if len(remaining) > 0 {
+		chunks = append(chunks, string(remaining))
+	}
+	return chunks
+}
+
+func replyChunkBoundary(value []rune, budget int) (int, rune) {
+	limit := min(len(value), budget)
+	for index := limit - 1; index >= 0; index-- {
+		if value[index] == '\n' {
+			return index + 1, 'n'
+		}
+	}
+	for index := limit - 1; index >= 0; index-- {
+		if unicode.IsSpace(value[index]) || strings.ContainsRune("，。；！？、,.!?;:", value[index]) {
+			boundary := 'p'
+			if unicode.IsSpace(value[index]) {
+				boundary = 's'
+			}
+			return index + 1, boundary
+		}
+	}
+	return limit, 'h'
+}
+
+func trimTrailingNewlines(value []rune) []rune {
+	for len(value) > 0 && (value[len(value)-1] == '\n' || value[len(value)-1] == '\r') {
+		value = value[:len(value)-1]
+	}
+	return value
+}
+
+func trimLeadingNewlines(value []rune) []rune {
+	for len(value) > 0 && (value[0] == '\n' || value[0] == '\r') {
+		value = value[1:]
+	}
+	return value
+}
+
+func trimTrailingSpaces(value []rune) []rune {
+	for len(value) > 0 && unicode.IsSpace(value[len(value)-1]) {
+		value = value[:len(value)-1]
+	}
+	return value
+}
+
+func trimLeadingSpaces(value []rune) []rune {
+	for len(value) > 0 && unicode.IsSpace(value[0]) {
+		value = value[1:]
+	}
+	return value
+}
+
+type replyFenceState struct {
+	marker  string
+	opening string
+}
+
+func balanceReplyCodeFences(chunks []string) []string {
+	state := replyFenceState{}
+	result := make([]string, 0, len(chunks))
+	for index, chunk := range chunks {
+		prefix := ""
+		if state.marker != "" {
+			prefix = state.opening + "\n"
+		}
+		state = scanReplyCodeFences(chunk, state)
+		body := prefix + chunk
+		if state.marker != "" && index < len(chunks)-1 {
+			body += "\n" + state.marker
+		}
+		result = append(result, body)
+	}
+	return result
+}
+
+func scanReplyCodeFences(value string, state replyFenceState) replyFenceState {
+	for line := range strings.SplitSeq(value, "\n") {
+		trimmed := strings.TrimSpace(line)
+		marker := replyFenceMarker(trimmed)
+		if marker == "" {
+			continue
+		}
+		if state.marker == "" {
+			if utf8.RuneCountInString(trimmed) <= 96 {
+				state = replyFenceState{marker: marker, opening: trimmed}
+			}
+			continue
+		}
+		if marker[0] == state.marker[0] && strings.TrimSpace(strings.TrimPrefix(trimmed, marker)) == "" {
+			state = replyFenceState{}
+		}
+	}
+	return state
+}
+
+func replyFenceMarker(value string) string {
+	if len(value) < 3 || (value[0] != '`' && value[0] != '~') {
+		return ""
+	}
+	index := 1
+	for index < len(value) && value[index] == value[0] {
+		index++
+	}
+	if index < 3 {
+		return ""
+	}
+	return value[:index]
 }
 
 func conversationReplyMentionUser(ctx context.Context, db *sql.DB, conversationID uuid.UUID,

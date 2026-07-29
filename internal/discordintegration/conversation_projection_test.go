@@ -20,8 +20,52 @@ func TestSanitizeDiscordResult(t *testing.T) {
 	require.Contains(t, value, "[已隐藏凭据]")
 
 	long := SanitizeDiscordResult(strings.Repeat("你", 2100))
-	require.LessOrEqual(t, len([]rune(long)), 1910)
-	require.Contains(t, long, "内容已截断")
+	require.Len(t, []rune(long), 2100)
+	require.NotContains(t, long, "内容已截断")
+}
+
+func TestSplitConversationReplyKeepsLinesAndMarkdownFences(t *testing.T) {
+	line := strings.Repeat("内容", 40)
+	content := strings.Repeat(line+"\n", 60)
+	chunks := splitConversationReply(content, "100000000000000001",
+		"100000000000000002", "")
+	require.GreaterOrEqual(t, len(chunks), 3)
+	for _, chunk := range chunks {
+		for value := range strings.SplitSeq(chunk, "\n") {
+			require.True(t, value == line || value == "", value)
+		}
+	}
+
+	code := "```go\n" + strings.Repeat("fmt.Println(\"完整代码行\")\n", 180) + "```"
+	codeChunks := splitConversationReply(code, "100000000000000001",
+		"100000000000000002", "100000000000000003")
+	require.Greater(t, len(codeChunks), 1)
+	for _, chunk := range codeChunks {
+		require.Zero(t, strings.Count(chunk, "```")%2)
+	}
+}
+
+func TestSplitConversationReplyReservesBidirectionalLinks(t *testing.T) {
+	content := strings.Repeat("没有换行但有句号。", 500)
+	guildID, threadID := "100000000000000001", "100000000000000002"
+	chunks := splitConversationReply(content, guildID, threadID, "100000000000000003")
+	require.Greater(t, len(chunks), 2)
+	for index, chunk := range chunks {
+		rendered := chunk
+		if index > 0 {
+			rendered = replyPreviousLink(guildID, threadID, "100000000000000010") + rendered
+		}
+		if index < len(chunks)-1 {
+			rendered += replyNextLink(guildID, threadID, "100000000000000011")
+		}
+		if index == 0 {
+			rendered = "<@100000000000000003> " + rendered
+		}
+		require.LessOrEqual(t, len([]rune(rendered)), discordReplyMessageBudget)
+		if index < len(chunks)-1 {
+			require.True(t, strings.HasSuffix(chunk, "。"))
+		}
+	}
 }
 
 func TestConversationReplyMentionUser(t *testing.T) {

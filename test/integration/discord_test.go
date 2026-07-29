@@ -7,6 +7,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -204,6 +206,7 @@ func testOutboxRecovery(t *testing.T, ctx context.Context, db *sql.DB, guildID s
 		"mentionUserIds":["1003"]
 	}`, string(mentionedReply.Payload))
 	completeDiscordDelivery(t, ctx, store, mentionedReply, json.RawMessage(`{"messageId":"5004"}`))
+	testLongConversationReply(t, ctx, store, db, guildID, conversationID)
 
 	require.NoError(t, store.Enqueue(ctx, "crash-recovery", "message.create", "channels/2001/messages",
 		map[string]string{"channelId": "2001", "content": "recover"}, "crash-nonce"))
@@ -242,6 +245,59 @@ func testOutboxRecovery(t *testing.T, ctx context.Context, db *sql.DB, guildID s
 	var failedStatus string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM integration_outbox WHERE id = $1`, retried.ID).Scan(&failedStatus))
 	require.Equal(t, "failed", failedStatus)
+}
+
+func testLongConversationReply(t *testing.T, ctx context.Context,
+	store *discordintegration.SQLoutbox, db *sql.DB, guildID string, conversationID uuid.UUID,
+) {
+	t.Helper()
+	line := strings.Repeat("完整内容", 24)
+	answer := strings.Repeat(line+"\n", 80)
+	require.NoError(t, discordintegration.ProjectConversationReply(ctx, db, "2001",
+		conversationID, "3001", answer))
+	prefix := "conversation-reply:" + conversationID.String() + ":message:3001"
+	var createdContents, updatedContents, createdIDs []string
+	for step := 0; step < 30; step++ {
+		item, err := store.Claim(ctx, 30*time.Second)
+		require.NoError(t, err)
+		if item == nil {
+			break
+		}
+		require.True(t, strings.HasPrefix(item.OperationKey, prefix), item.OperationKey)
+		var payload struct {
+			Content string `json:"content"`
+		}
+		require.NoError(t, json.Unmarshal(item.Payload, &payload))
+		require.LessOrEqual(t, len([]rune(payload.Content)), 1900)
+		switch item.OperationType {
+		case "message.create":
+			messageID := fmt.Sprintf("60%02d", len(createdIDs)+1)
+			createdIDs = append(createdIDs, messageID)
+			createdContents = append(createdContents, payload.Content)
+			completeDiscordDelivery(t, ctx, store, item,
+				json.RawMessage(fmt.Sprintf(`{"messageId":%q}`, messageID)))
+		case "message.update":
+			updatedContents = append(updatedContents, payload.Content)
+			completeDiscordDelivery(t, ctx, store, item, json.RawMessage(`{}`))
+		default:
+			t.Fatalf("unexpected reply operation %s", item.OperationType)
+		}
+	}
+	require.GreaterOrEqual(t, len(createdContents), 3)
+	require.Len(t, updatedContents, len(createdContents)-1)
+	require.Contains(t, createdContents[0], "<@1001>")
+	require.NotContains(t, createdContents[0], "【上接消息】")
+	require.Contains(t, createdContents[0], "【内容未完整，下接消息】")
+	for index := 1; index < len(createdContents); index++ {
+		require.Contains(t, createdContents[index], "[【上接消息】](https://discord.com/channels/"+
+			guildID+"/2001/"+createdIDs[index-1]+")")
+		require.NotContains(t, createdContents[index], "<@1001>")
+	}
+	require.NotContains(t, createdContents[len(createdContents)-1], "【内容未完整，下接消息】")
+	for index, content := range updatedContents {
+		require.Contains(t, content, "[【内容未完整，下接消息】](https://discord.com/channels/"+
+			guildID+"/2001/"+createdIDs[index+1]+")")
+	}
 }
 
 func completeDiscordDelivery(t *testing.T, ctx context.Context,
