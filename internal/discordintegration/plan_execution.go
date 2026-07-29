@@ -29,7 +29,7 @@ func (s *ConversationService) ExecutePlan(ctx context.Context, guildID, threadID
 	displayName, username string, runID uuid.UUID,
 ) (PlanExecutionResult, error) {
 	if runID == uuid.Nil {
-		return PlanExecutionResult{}, errors.New("Plan Run ID 无效")
+		return PlanExecutionResult{}, errors.New("计划 Run ID 无效")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
