@@ -139,7 +139,17 @@ func TestExecutePlanSwitchesDefaultAndIsIdempotent(t *testing.T) {
 		FROM codex_thread_controls WHERE id=$1`, controlID).Scan(&conversationID))
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT forum_id FROM discord_conversations
 		WHERE id=$1`, conversationID).Scan(&forumID))
-	_, err := db.ExecContext(ctx, `UPDATE codex_turn_runs SET status='completed',
+	service := NewConversationService(db)
+	_, err := service.ExecutePlan(ctx, testGuildID, "interactive-thread",
+		"1001", "Owner", "owner", uuid.Nil)
+	require.ErrorContains(t, err, "Run ID")
+	_, err = service.ExecutePlan(ctx, testGuildID, "interactive-thread",
+		"1001", "Owner", "owner", uuid.New())
+	require.ErrorContains(t, err, "不存在")
+	_, err = service.ExecutePlan(ctx, testGuildID, "interactive-thread",
+		"1001", "Owner", "owner", runID)
+	require.ErrorContains(t, err, "尚未完成")
+	_, err = db.ExecContext(ctx, `UPDATE codex_turn_runs SET status='completed',
 		active_slot=NULL, collaboration_mode='plan', finished_at=now()-interval '1 second'
 		WHERE id=$1`, runID)
 	require.NoError(t, err)
@@ -156,6 +166,9 @@ func TestExecutePlanSwitchesDefaultAndIsIdempotent(t *testing.T) {
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_forum_access
 		(forum_id, discord_user_id, access_level) VALUES ($1,'2002','operator')`, forumID)
 	require.NoError(t, err)
+	_, err = service.ExecutePlan(ctx, "wrong-guild", "interactive-thread",
+		"1001", "Owner", "owner", runID)
+	require.ErrorContains(t, err, "不属于")
 
 	planBody := strings.Repeat("计划步骤内容\n", 700)
 	require.NoError(t, ProjectConversationReply(ctx, db, "interactive-thread",
@@ -193,16 +206,21 @@ func TestExecutePlanSwitchesDefaultAndIsIdempotent(t *testing.T) {
 		FROM codex_thread_controls control WHERE control.id=$1`,
 		controlID, "plan-busy-"+uuid.NewString())
 	require.NoError(t, err)
-	service := NewConversationService(db)
 	_, err = service.ExecutePlan(ctx, testGuildID, "interactive-thread",
 		"2002", "Operator", "operator", runID)
 	require.ErrorIs(t, err, ErrPlanExecutionBusy)
+	_, err = db.ExecContext(ctx, `UPDATE codex_turn_intents SET status='completed',
+		finished_at=now() WHERE control_id=$1 AND sequence_no=2`, controlID)
+	require.NoError(t, err)
+	_, err = service.ExecutePlan(ctx, testGuildID, "interactive-thread",
+		"2002", "Operator", "operator", runID)
+	require.ErrorIs(t, err, ErrPlanExecutionStale)
 	_, err = db.ExecContext(ctx, `DELETE FROM codex_turn_intents
 		WHERE control_id=$1 AND sequence_no=2`, controlID)
 	require.NoError(t, err)
 
 	result, err := service.ExecutePlan(ctx, testGuildID, "interactive-thread",
-		"2002", "Operator", "operator", runID)
+		"2002", "", "operator", runID)
 	require.NoError(t, err)
 	require.False(t, result.AlreadyExecuted)
 	var conversationMode, controlMode, body, access string
@@ -217,12 +235,23 @@ func TestExecutePlanSwitchesDefaultAndIsIdempotent(t *testing.T) {
 		"plan-execution:"+runID.String()).Scan(&body, &access))
 	require.Equal(t, planExecuteInstruction, body)
 	require.Equal(t, AccessOperator, access)
+	_, err = db.ExecContext(ctx, `UPDATE discord_conversations SET thread_id='2001'
+		WHERE id=$1`, conversationID)
+	require.NoError(t, err)
+	connector := NewDisgoConnector(NewManager(db, nil, ""), service, nil,
+		testGuildID, "token", nil)
+	client := &bot.Client{}
+	customID := planExecuteButtonPrefix + runID.String()
+	connector.executePlanComponent(newComponentEvent(t, client, "9201",
+		"2001", customID, nil), customID)
+	connector.executePlanComponent(newComponentEvent(t, client, "9202",
+		"2001", "invalid", nil), "invalid")
 
-	result, err = service.ExecutePlan(ctx, testGuildID, "interactive-thread",
+	result, err = service.ExecutePlan(ctx, testGuildID, "2001",
 		"1001", "Owner", "owner", runID)
 	require.NoError(t, err)
 	require.True(t, result.AlreadyExecuted)
-	_, err = service.ExecutePlan(ctx, testGuildID, "interactive-thread",
+	_, err = service.ExecutePlan(ctx, testGuildID, "2001",
 		"2999", "Read only", "readonly", runID)
 	require.ErrorContains(t, err, "readonly")
 	var count int

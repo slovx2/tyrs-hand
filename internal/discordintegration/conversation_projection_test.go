@@ -116,6 +116,48 @@ func TestConversationReplyPayloadMentionsOnlyExplicitUser(t *testing.T) {
 	require.NotContains(t, payload, "mentionUserIds")
 }
 
+func TestConversationReplyModeUsesRunSnapshot(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+	conversationID, runID := uuid.New(), uuid.New()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT conversation.guild_id, run.collaboration_mode")).
+		WithArgs(runID, conversationID, "thread-1").
+		WillReturnRows(sqlmock.NewRows([]string{"guild_id", "collaboration_mode"}).
+			AddRow("guild-1", "plan"))
+	guildID, mode, err := conversationReplyMode(context.Background(), db,
+		conversationID, "thread-1", runID)
+	require.NoError(t, err)
+	require.Equal(t, "guild-1", guildID)
+	require.Equal(t, "plan", mode)
+
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT guild_id, collaboration_mode")).
+		WithArgs(conversationID, "thread-1").
+		WillReturnRows(sqlmock.NewRows([]string{"guild_id", "collaboration_mode"}).
+			AddRow("guild-1", "default"))
+	guildID, mode, err = conversationReplyMode(context.Background(), db,
+		conversationID, "thread-1", uuid.Nil)
+	require.NoError(t, err)
+	require.Equal(t, "guild-1", guildID)
+	require.Equal(t, "default", mode)
+	mock.ExpectClose()
+}
+
+func TestPlanExecutionCards(t *testing.T) {
+	runID := uuid.New()
+	completed := planCompletedCard(runID)
+	require.Equal(t, "📋 Codex · Plan 已完成", completed.Header)
+	require.Len(t, completed.Buttons, 1)
+	require.Equal(t, planExecuteButtonPrefix+runID.String(), completed.Buttons[0].CustomID)
+
+	started := planExecutionStartedCard()
+	require.Equal(t, "✅ Codex · 已开始执行", started.Header)
+	require.Empty(t, started.Buttons)
+}
+
 func TestValidateIncomingMessageBoundaries(t *testing.T) {
 	base := IncomingMessage{GuildID: "1", ThreadID: "2", MessageID: "3", DiscordUserID: "4", Body: "hello"}
 	require.NoError(t, validateIncomingMessage(base))
