@@ -155,6 +155,9 @@ func TestWorkerAPIPlacementLeaseEventsAndIdempotency(t *testing.T) {
 	require.NoError(t, clientA.Complete(ctx, claimA.Task, codexcontrol.TurnResult{
 		TurnID: "turn-a", FinalAnswer: "done",
 	}), "重复完成必须幂等")
+	require.NoError(t, clientA.Events(ctx, claimA.Task, []workerprotocol.EventInput{{
+		Sequence: 2, Type: "turn.delta", Payload: json.RawMessage(`{"state":"late"}`),
+	}}), "终态完成后仍必须接受 Journal 补发的中间事件")
 	_, err = clientB.RunHeartbeat(ctx, claimA.Task)
 	require.Error(t, err, "其他节点不能续租该 Run")
 	require.Error(t, nodes.Delete(ctx, nodeA.ID), "仍被资源引用的节点不能删除")

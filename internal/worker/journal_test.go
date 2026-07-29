@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -103,8 +104,11 @@ func TestJournalKeepsEventsWhileControlIsUnavailableAndFlushesOnce(t *testing.T)
 	require.Empty(t, loaded[0].PendingEvents)
 }
 
-func TestDeliverTerminalWaitsForPendingEvents(t *testing.T) {
+func TestDeliverTerminalKeepsPendingEventsAfterCompletion(t *testing.T) {
+	var eventsAvailable atomic.Bool
+	var acceptedEvents atomic.Int64
 	var completed atomic.Int64
+	var heartbeats atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
 		request *http.Request,
 	) {
@@ -113,7 +117,17 @@ func TestDeliverTerminalWaitsForPendingEvents(t *testing.T) {
 			response.WriteHeader(http.StatusNoContent)
 			return
 		}
-		http.Error(response, "control unavailable", http.StatusServiceUnavailable)
+		if strings.HasSuffix(request.URL.Path, "/events") {
+			if eventsAvailable.Load() {
+				acceptedEvents.Add(1)
+				response.WriteHeader(http.StatusNoContent)
+				return
+			}
+			http.Error(response, "control unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		heartbeats.Add(1)
+		http.Error(response, "run finished", http.StatusConflict)
 	}))
 	defer server.Close()
 	store, err := newJournalStore(t.TempDir())
@@ -132,7 +146,27 @@ func TestDeliverTerminalWaitsForPendingEvents(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 	defer cancel()
 	runner.deliverTerminal(ctx, journal, zap.NewNop())
-	require.Zero(t, completed.Load())
+	require.EqualValues(t, 1, completed.Load())
+	require.True(t, journal.TerminalDelivered)
+	require.Len(t, journal.PendingEvents, 1)
 	_, err = os.Stat(store.path(journal.Task.Claimed.RunID))
 	require.NoError(t, err)
+	loaded, err := store.loadAll()
+	require.NoError(t, err)
+	require.Len(t, loaded, 1)
+	require.True(t, loaded[0].TerminalDelivered)
+	require.Len(t, loaded[0].PendingEvents, 1)
+
+	eventsAvailable.Store(true)
+	slots := make(chan struct{}, 1)
+	slots <- struct{}{}
+	var active sync.WaitGroup
+	active.Add(1)
+	runner.runJournal(context.Background(), loaded[0], slots, &active)
+	active.Wait()
+	require.EqualValues(t, 1, acceptedEvents.Load())
+	require.EqualValues(t, 1, completed.Load(), "补发事件时不能重复提交终态")
+	require.Zero(t, heartbeats.Load(), "恢复已提交终态的 Journal 时不能再恢复 Lease")
+	_, err = os.Stat(store.path(journal.Task.Claimed.RunID))
+	require.ErrorIs(t, err, os.ErrNotExist)
 }

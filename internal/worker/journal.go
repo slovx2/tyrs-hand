@@ -16,12 +16,13 @@ import (
 )
 
 type runJournal struct {
-	Task          workerprotocol.Task         `json:"task"`
-	NextSequence  int64                       `json:"nextSequence"`
-	PendingEvents []workerprotocol.EventInput `json:"pendingEvents,omitempty"`
-	Result        *codexcontrol.TurnResult    `json:"result,omitempty"`
-	FailureCode   string                      `json:"failureCode,omitempty"`
-	Failure       string                      `json:"failure,omitempty"`
+	Task              workerprotocol.Task         `json:"task"`
+	NextSequence      int64                       `json:"nextSequence"`
+	PendingEvents     []workerprotocol.EventInput `json:"pendingEvents,omitempty"`
+	Result            *codexcontrol.TurnResult    `json:"result,omitempty"`
+	FailureCode       string                      `json:"failureCode,omitempty"`
+	Failure           string                      `json:"failure,omitempty"`
+	TerminalDelivered bool                        `json:"terminalDelivered,omitempty"`
 }
 
 type journalStore struct {

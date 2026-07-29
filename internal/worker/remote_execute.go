@@ -21,6 +21,10 @@ func (r *RemoteRunner) runJournal(ctx context.Context, journal *runJournal, slot
 	task := &journal.Task
 	logger := r.logger.With(zap.String("run_id", task.Claimed.RunID.String()),
 		zap.String("intent_id", task.Claimed.ID.String()))
+	if journal.TerminalDelivered {
+		r.deliverTerminal(ctx, journal, logger)
+		return
+	}
 
 	commands := make(chan workerprotocol.RunCommand, 16)
 	if !r.restoreLease(ctx, task, commands, logger) {
@@ -195,32 +199,34 @@ func (r *RemoteRunner) deliverTerminal(ctx context.Context, journal *runJournal,
 ) {
 	for ctx.Err() == nil {
 		r.flushEvents(ctx, journal, logger)
-		if len(journal.PendingEvents) > 0 {
-			if !waitContext(ctx, 3*time.Second) {
-				return
+		if !journal.TerminalDelivered {
+			requestCtx, cancel := context.WithTimeout(ctx, r.cfg.ControlTimeout)
+			var err error
+			if journal.Result != nil {
+				err = r.client.Complete(requestCtx, &journal.Task, *journal.Result)
+			} else {
+				cause := errors.New(journal.Failure)
+				err = r.client.Fail(requestCtx, &journal.Task, journal.FailureCode, cause)
 			}
-			continue
+			cancel()
+			if err == nil || workerprotocol.IsAlreadyFinished(err) {
+				journal.TerminalDelivered = true
+				if saveErr := r.journals.save(journal); saveErr != nil {
+					logger.Error("持久化最终结果提交状态失败", zap.Error(saveErr))
+				}
+			} else if workerprotocol.IsLeaseLost(err) {
+				logger.Error("最终结果未被接受，Run Lease 已失效", zap.Error(err))
+				return
+			} else {
+				logger.Warn("提交最终结果失败，稍后重试", zap.Error(err))
+			}
 		}
-		requestCtx, cancel := context.WithTimeout(ctx, r.cfg.ControlTimeout)
-		var err error
-		if journal.Result != nil {
-			err = r.client.Complete(requestCtx, &journal.Task, *journal.Result)
-		} else {
-			cause := errors.New(journal.Failure)
-			err = r.client.Fail(requestCtx, &journal.Task, journal.FailureCode, cause)
-		}
-		cancel()
-		if err == nil || workerprotocol.IsAlreadyFinished(err) {
+		if journal.TerminalDelivered && len(journal.PendingEvents) == 0 {
 			if removeErr := r.journals.remove(journal.Task.Claimed.RunID); removeErr != nil {
 				logger.Error("删除已确认的 Run Journal 失败", zap.Error(removeErr))
 			}
 			return
 		}
-		if workerprotocol.IsLeaseLost(err) {
-			logger.Error("最终结果未被接受，Run Lease 已失效", zap.Error(err))
-			return
-		}
-		logger.Warn("提交最终结果失败，稍后重试", zap.Error(err))
 		if !waitContext(ctx, 3*time.Second) {
 			return
 		}
