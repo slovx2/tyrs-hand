@@ -6,11 +6,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/stretchr/testify/require"
@@ -99,4 +101,38 @@ func TestJournalKeepsEventsWhileControlIsUnavailableAndFlushesOnce(t *testing.T)
 	loaded, err = store.loadAll()
 	require.NoError(t, err)
 	require.Empty(t, loaded[0].PendingEvents)
+}
+
+func TestDeliverTerminalWaitsForPendingEvents(t *testing.T) {
+	var completed atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
+		request *http.Request,
+	) {
+		if strings.HasSuffix(request.URL.Path, "/complete") {
+			completed.Add(1)
+			response.WriteHeader(http.StatusNoContent)
+			return
+		}
+		http.Error(response, "control unavailable", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	store, err := newJournalStore(t.TempDir())
+	require.NoError(t, err)
+	runner := &RemoteRunner{cfg: config.Config{ControlTimeout: time.Second},
+		client: workerprotocol.NewClient(server.URL, "node-token", time.Second),
+		logger: zap.NewNop(), journals: store}
+	journal := &runJournal{NextSequence: 2,
+		PendingEvents: []workerprotocol.EventInput{{Sequence: 1, Type: "turn.started"}},
+		Result:        &codexcontrol.TurnResult{FinalAnswer: "done"}}
+	journal.Task.Claimed.RunID = uuid.New()
+	journal.Task.Claimed.LeaseToken = "lease"
+	journal.Task.Claimed.LeaseEpoch = 1
+	require.NoError(t, store.save(journal))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	defer cancel()
+	runner.deliverTerminal(ctx, journal, zap.NewNop())
+	require.Zero(t, completed.Load())
+	_, err = os.Stat(store.path(journal.Task.Claimed.RunID))
+	require.NoError(t, err)
 }

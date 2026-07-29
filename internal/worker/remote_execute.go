@@ -195,6 +195,12 @@ func (r *RemoteRunner) deliverTerminal(ctx context.Context, journal *runJournal,
 ) {
 	for ctx.Err() == nil {
 		r.flushEvents(ctx, journal, logger)
+		if len(journal.PendingEvents) > 0 {
+			if !waitContext(ctx, 3*time.Second) {
+				return
+			}
+			continue
+		}
 		requestCtx, cancel := context.WithTimeout(ctx, r.cfg.ControlTimeout)
 		var err error
 		if journal.Result != nil {
