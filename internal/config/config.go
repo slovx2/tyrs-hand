@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/spf13/viper"
 )
 
@@ -190,8 +191,8 @@ func (c Config) ValidateWorker() error {
 	if c.WorkerRole != "all" && c.WorkerRole != "github" && c.WorkerRole != "discord" {
 		return errors.New("远程 worker_role 必须是 all、github 或 discord")
 	}
-	if c.WorkerProtocolVersion != 15 {
-		return errors.New("当前 Worker 只支持协议版本 15")
+	if c.WorkerProtocolVersion != workerprotocol.Version {
+		return fmt.Errorf("当前 Worker 只支持协议版本 %d", workerprotocol.Version)
 	}
 	if c.WorkerCredentialFile == "." || strings.TrimSpace(c.WorkerCredentialFile) == "" {
 		return errors.New("远程 Worker 必须配置凭据文件")
