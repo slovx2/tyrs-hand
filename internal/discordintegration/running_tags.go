@@ -2,9 +2,12 @@ package discordintegration
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
+
+const runningTagRepairInterval = 15 * time.Minute
 
 // refreshConversationRunningTags 周期重投影，修复漏投以及人工移除 Running Tag。
 func (d *Daemon) refreshConversationRunningTags(ctx context.Context, guildID string) error {
@@ -17,8 +20,12 @@ func (d *Daemon) refreshConversationRunningTags(ctx context.Context, guildID str
 					AND COALESCE(intent.replacement_phase,'reserved') <> 'terminal')))
 		FROM discord_conversations conversation
 		JOIN discord_forums forum ON forum.id = conversation.forum_id
+		LEFT JOIN integration_outbox outbox ON outbox.integration = 'discord'
+			AND outbox.operation_key = 'conversation-running-tag:' || conversation.id::text
 		WHERE conversation.guild_id = $1 AND forum.forum_type = 'development'
-			AND forum.binding_status = 'active'`, guildID)
+			AND forum.binding_status = 'active'
+			AND (outbox.id IS NULL OR (outbox.status IN ('completed','failed')
+				AND outbox.updated_at <= $2))`, guildID, time.Now().Add(-runningTagRepairInterval))
 	if err != nil {
 		return err
 	}

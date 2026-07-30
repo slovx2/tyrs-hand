@@ -515,6 +515,71 @@ func TestDiscordStartupPreferencesCrossForumAndMemberJoin(t *testing.T) {
 		DiscordUserID: "1002", DisplayName: "Bob", Username: "bob", Body: "readonly"}))
 }
 
+func TestRefreshConversationRunningTagsThrottlesCompletedRepairs(t *testing.T) {
+	db := discordDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	_, err := db.ExecContext(ctx, `INSERT INTO discord_guilds(guild_id, name, enabled)
+		VALUES ($1, 'running-tag-refresh-test', true)`, testGuildID)
+	require.NoError(t, err)
+	seed := seedDiscordManagerData(t, db)
+	service := NewConversationService(db)
+	conversationID, err := service.BeginPost(ctx, IncomingMessage{
+		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
+		ThreadID: "100000000000000521", MessageID: "100000000000000522",
+		DiscordUserID: "1001", DisplayName: "Alice", Username: "alice",
+		Title: "Running tag refresh", Body: "等待配置", ConfigurationConfirmed: false,
+	})
+	require.NoError(t, err)
+	operationKey := "conversation-running-tag:" + conversationID.String()
+	_, err = db.ExecContext(ctx, `DELETE FROM integration_outbox
+		WHERE integration='discord' AND operation_key=$1`, operationKey)
+	require.NoError(t, err)
+
+	daemon := &Daemon{manager: &Manager{db: db}}
+	require.NoError(t, daemon.refreshConversationRunningTags(ctx, testGuildID))
+	var status string
+	var revision int64
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status,request_revision
+		FROM integration_outbox WHERE integration='discord' AND operation_key=$1`, operationKey).
+		Scan(&status, &revision))
+	require.Equal(t, "pending", status)
+	require.EqualValues(t, 1, revision)
+
+	_, err = db.ExecContext(ctx, `UPDATE integration_outbox
+		SET status='completed',updated_at=now() WHERE integration='discord' AND operation_key=$1`,
+		operationKey)
+	require.NoError(t, err)
+	require.NoError(t, daemon.refreshConversationRunningTags(ctx, testGuildID))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status,request_revision
+		FROM integration_outbox WHERE integration='discord' AND operation_key=$1`, operationKey).
+		Scan(&status, &revision))
+	require.Equal(t, "completed", status)
+	require.EqualValues(t, 1, revision)
+
+	_, err = db.ExecContext(ctx, `UPDATE integration_outbox
+		SET updated_at=now()-interval '16 minutes' WHERE integration='discord' AND operation_key=$1`,
+		operationKey)
+	require.NoError(t, err)
+	require.NoError(t, daemon.refreshConversationRunningTags(ctx, testGuildID))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status,request_revision
+		FROM integration_outbox WHERE integration='discord' AND operation_key=$1`, operationKey).
+		Scan(&status, &revision))
+	require.Equal(t, "pending", status)
+	require.EqualValues(t, 2, revision)
+
+	_, err = db.ExecContext(ctx, `UPDATE integration_outbox
+		SET updated_at=now()-interval '1 hour' WHERE integration='discord' AND operation_key=$1`,
+		operationKey)
+	require.NoError(t, err)
+	require.NoError(t, daemon.refreshConversationRunningTags(ctx, testGuildID))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status,request_revision
+		FROM integration_outbox WHERE integration='discord' AND operation_key=$1`, operationKey).
+		Scan(&status, &revision))
+	require.Equal(t, "pending", status)
+	require.EqualValues(t, 2, revision)
+}
+
 func TestConversationStatusMovesAndRefreshesHistoryLinks(t *testing.T) {
 	db := discordDatabase(t)
 	ctx := context.Background()
