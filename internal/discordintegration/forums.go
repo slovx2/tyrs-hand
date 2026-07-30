@@ -66,6 +66,7 @@ func (m *Manager) DevelopmentProjectForumPlan(ctx context.Context, remoteGuild R
 	botAllow := allow | discord.PermissionManageChannels | discord.PermissionManageThreads | discord.PermissionManageMessages
 	forum := ChannelSpec{Key: key, ParentKey: categoryKey, Name: name, Kind: "forum",
 		Topic: "Tyrs Hand 个人长期开发环境 · " + displayName + " · " + projectName,
+		Tags:  []string{"Running"},
 		PermissionOverwrites: []PermissionSpec{
 			{ID: settings.GuildID, Type: "role", Deny: int64(discord.PermissionViewChannel)},
 			{ID: memberID, Type: "member", Allow: int64(allow)},

@@ -48,6 +48,9 @@ func (s *Server) registerWorkerRoutes(router *gin.Engine) {
 	authorized.GET("/thread-lifecycle-requests/:id", s.workerThreadLifecycleState)
 	authorized.POST("/thread-lifecycle-requests/:id/complete", s.workerCompleteThreadLifecycle)
 	authorized.POST("/desktop-turns", s.workerPrepareDesktopTurn)
+	authorized.POST("/desktop-turns/preflight", s.workerPreflightDesktopTurn)
+	authorized.POST("/desktop-rollbacks", s.workerPrepareDesktopRollback)
+	authorized.POST("/desktop-rollbacks/:id/complete", s.workerCompleteDesktopRollback)
 	authorized.POST("/desktop-steers", s.workerRecordDesktopSteer)
 	authorized.POST("/runs/:id/interactive", s.workerRegisterInteractive)
 	authorized.GET("/interactive/:id", s.workerInteractiveState)
@@ -249,12 +252,15 @@ func (s *Server) claimedRemoteRun(ctx context.Context, nodeID, runID uuid.UUID,
 	var claimed codexcontrol.ClaimedControl
 	var source string
 	var conversationID, workItemID, repositoryID, projectID sql.NullString
+	var targetIntentID sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT r.control_id, r.primary_intent_id, r.id,
-		r.lease_epoch, i.source_type, COALESCE(i.input_surface,''),
+		r.lease_epoch, i.source_type, COALESCE(i.input_surface,''), i.operation,
 		i.attempt_count, i.max_attempts,
 		i.discord_conversation_id::text, i.work_item_id::text, i.repository_id::text,
 		i.development_project_id::text,
 		COALESCE(i.discord_message_id,''), i.agent_profile_id, i.sequence_no,
+		i.target_intent_id::text, COALESCE(i.projection_anchor,''),
+		i.message_edit_revision, COALESCE(i.replacement_phase,''),
 		i.status = 'reconciling' OR i.codex_submission_id IS NOT NULL,
 		COALESCE(i.codex_submission_id,''), COALESCE(i.confirmed_codex_turn_id,''),
 		COALESCE(c.external_thread_id,''), COALESCE(c.codex_home_key,'')
@@ -262,9 +268,11 @@ func (s *Server) claimedRemoteRun(ctx context.Context, nodeID, runID uuid.UUID,
 		JOIN codex_thread_controls c ON c.id = r.control_id
 		WHERE r.id = $1 AND r.execution_node_id = $2`, runID, nodeID).Scan(
 		&claimed.ControlID, &claimed.ID, &claimed.RunID, &claimed.LeaseEpoch, &source,
-		&claimed.InputSurface, &claimed.Attempt, &claimed.MaxAttempts,
+		&claimed.InputSurface, &claimed.Operation, &claimed.Attempt, &claimed.MaxAttempts,
 		&conversationID, &workItemID, &repositoryID, &projectID,
 		&claimed.DiscordMessageID, &claimed.AgentProfileID, &claimed.Sequence,
+		&targetIntentID, &claimed.ProjectionAnchor, &claimed.MessageEditRevision,
+		&claimed.ReplacementPhase,
 		&claimed.Recovering, &claimed.SubmissionID, &claimed.ConfirmedTurnID,
 		&claimed.ExternalThreadID, &claimed.CodexHomeKey)
 	if err != nil {
@@ -274,6 +282,9 @@ func (s *Server) claimedRemoteRun(ctx context.Context, nodeID, runID uuid.UUID,
 		return nil, codexcontrol.ErrLeaseLost
 	}
 	claimed.LeaseToken, claimed.SourceType = lease.LeaseToken, source
+	if targetIntentID.Valid {
+		claimed.TargetIntentID, err = uuid.Parse(targetIntentID.String)
+	}
 	if conversationID.Valid {
 		claimed.DiscordConversationID, err = uuid.Parse(conversationID.String)
 	}

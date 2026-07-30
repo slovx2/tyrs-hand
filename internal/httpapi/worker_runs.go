@@ -111,15 +111,18 @@ func (s *Server) workerCommandAck(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 		return
 	}
-	if operation != request.Action && (operation != "turn_input" || request.Action != "steer") {
+	if operation != request.Action && (operation != "turn_input" || request.Action != "steer") &&
+		(operation != "replace_last_turn" || request.Action != "interrupt") {
 		badRequest(c, errors.New("run 指令确认与原操作不匹配"))
 		return
 	}
 	if request.Action == "interrupt" {
-		_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_turn_intents SET
-			status = 'completed', resolved_action = 'interrupt', confirmed_codex_turn_id = $2,
-			finished_at = now(), updated_at = now() WHERE id = $1`, request.CommandID,
-			request.TurnID)
+		if operation != "replace_last_turn" {
+			_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_turn_intents SET
+				status = 'completed', resolved_action = 'interrupt', confirmed_codex_turn_id = $2,
+				finished_at = now(), updated_at = now() WHERE id = $1`, request.CommandID,
+				request.TurnID)
+		}
 	} else {
 		_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_turn_intents SET
 			status = 'running', resolved_action = 'steer', confirmed_codex_turn_id = $2,
@@ -488,6 +491,9 @@ func (s *Server) projectRemoteDiscordComplete(ctx context.Context,
 }
 
 func discordProjectionAnchor(claimed *codexcontrol.ClaimedControl) string {
+	if claimed.ProjectionAnchor != "" {
+		return claimed.ProjectionAnchor
+	}
 	if claimed.DiscordMessageID != "" {
 		return claimed.DiscordMessageID
 	}

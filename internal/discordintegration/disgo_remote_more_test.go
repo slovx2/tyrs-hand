@@ -58,6 +58,8 @@ func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 			_, _ = response.Write([]byte(channelJSON("11", 0, "status")))
 		case "PATCH /channels/12":
 			_, _ = response.Write([]byte(channelJSON("12", 15, "tasks")))
+		case "GET /channels/12":
+			_, _ = response.Write([]byte(`{"id":"12","guild_id":"123","type":15,"name":"tasks","position":2,"topic":"forum","permission_overwrites":[],"available_tags":[{"id":"91","name":"Running","moderated":false,"emoji_id":null,"emoji_name":null},{"id":"92","name":"Manual","moderated":false,"emoji_id":null,"emoji_name":null}],"default_sort_order":null,"default_forum_layout":1,"default_reaction_emoji":null}`))
 		case "DELETE /channels/11":
 			response.WriteHeader(http.StatusNoContent)
 		case "GET /guilds/123/threads/active":
@@ -102,6 +104,8 @@ func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 			threadBodies = append(threadBodies, body)
 			mu.Unlock()
 			_, _ = response.Write([]byte(`{"id":"30","guild_id":"123","parent_id":"12","type":11,"name":"Issue","owner_id":"1","message_count":1,"member_count":1,"rate_limit_per_user":0,"thread_metadata":{"archived":false,"auto_archive_duration":10080,"archive_timestamp":"2026-07-18T00:00:00Z","locked":false}}`))
+		case "GET /channels/30":
+			_, _ = response.Write([]byte(`{"id":"30","guild_id":"123","parent_id":"12","type":11,"name":"Issue","owner_id":"1","message_count":1,"member_count":1,"rate_limit_per_user":0,"applied_tags":["92"],"thread_metadata":{"archived":false,"auto_archive_duration":10080,"archive_timestamp":"2026-07-18T00:00:00Z","locked":false}}`))
 		default:
 			http.NotFound(response, request)
 		}
@@ -184,6 +188,7 @@ func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 	mu.Lock()
 	require.GreaterOrEqual(t, requests["PATCH /channels/30"], 3)
 	require.Contains(t, threadBodies, map[string]any{"archived": true, "locked": true})
+	require.Contains(t, threadBodies, map[string]any{"applied_tags": []any{"92", "91"}})
 	require.Len(t, messageBodies, 3)
 	allowedMentions := messageBodies[0]["allowed_mentions"].(map[string]any)
 	require.Equal(t, false, allowedMentions["replied_user"])
@@ -332,6 +337,9 @@ func testDisgoSendOperations(t *testing.T, ctx context.Context, remote *DisgoRem
 			"channelId": "30", "archived": true, "locked": true,
 		})},
 		{OperationType: "thread.tags", Payload: rawJSON(map[string]any{"channelId": "30", "tagIds": []string{"91"}})},
+		{OperationType: "thread.tag.toggle", Payload: rawJSON(map[string]any{
+			"channelId": "30", "tagName": "Running", "enabled": true,
+		})},
 		{OperationType: "thread.member.add", Payload: rawJSON(map[string]any{"channelId": "30", "userId": "456"})},
 		{OperationType: "thread.rename", Payload: rawJSON(map[string]any{"channelId": "30", "threadName": "Renamed"})},
 		{OperationType: "message.delete", Payload: rawJSON(map[string]any{"channelId": "20", "messageId": "21"})},

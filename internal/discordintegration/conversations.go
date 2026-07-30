@@ -565,6 +565,7 @@ func (s *ConversationService) enqueueMessage(ctx context.Context, tx *sql.Tx, co
 		Instruction:    body, AllowedTools: allowed, ActorLogin: actor, ActorPermission: permission,
 		ActorParticipantID: actorParticipantID, ActorDisplayName: actorDisplayName,
 		ReplyPolicy: "silent", Behavior: "steer_if_active",
+		ProjectionAnchor: messageID,
 	})
 	if err != nil || !inserted {
 		return err

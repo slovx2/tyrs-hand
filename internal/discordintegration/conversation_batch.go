@@ -20,6 +20,7 @@ type pendingDiscussionMessage struct {
 	Username    string
 	Body        string
 	ReceivedAt  time.Time
+	Sequence    int64
 }
 
 func (s *ConversationService) enqueuePendingMessages(ctx context.Context, tx *sql.Tx,

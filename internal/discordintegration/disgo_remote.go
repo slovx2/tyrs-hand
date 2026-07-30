@@ -386,6 +386,8 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 		Permissions      []PermissionSpec      `json:"permissions"`
 		ThreadName       string                `json:"threadName"`
 		TagIDs           []string              `json:"tagIds"`
+		TagName          string                `json:"tagName"`
+		Enabled          bool                  `json:"enabled"`
 		Archived         bool                  `json:"archived"`
 		Locked           bool                  `json:"locked"`
 		ConversationID   string                `json:"conversationId"`
@@ -564,6 +566,81 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 		}
 		_, err = r.rest.UpdateChannel(thread, discord.GuildPostUpdate{AppliedTags: &tags}, disgorest.WithCtx(ctx))
 		return nil, err
+	case "thread.tag.toggle":
+		threadID, err := snowflake.Parse(payload.ChannelID)
+		if err != nil {
+			return nil, err
+		}
+		channel, err := r.rest.GetChannel(threadID, disgorest.WithCtx(ctx))
+		if err != nil {
+			return nil, err
+		}
+		var thread discord.GuildThread
+		switch value := channel.(type) {
+		case discord.GuildThread:
+			thread = value
+		case *discord.GuildThread:
+			thread = *value
+		default:
+			return nil, errors.New("running Tag 目标不是 Discord Post")
+		}
+		parent, err := r.rest.GetChannel(*thread.ParentID(), disgorest.WithCtx(ctx))
+		if err != nil {
+			return nil, err
+		}
+		var forum discord.GuildForumChannel
+		switch value := parent.(type) {
+		case discord.GuildForumChannel:
+			forum = value
+		case *discord.GuildForumChannel:
+			forum = *value
+		default:
+			return nil, errors.New("running Tag 的父频道不是 Forum")
+		}
+		var tagID snowflake.ID
+		for _, tag := range forum.AvailableTags {
+			if tag.Name == payload.TagName {
+				tagID = tag.ID
+				break
+			}
+		}
+		if tagID == 0 {
+			tags := append([]discord.ChannelTag(nil), forum.AvailableTags...)
+			tags = append(tags, discord.ChannelTag{Name: payload.TagName})
+			updated, updateErr := r.rest.UpdateChannel(forum.ID(),
+				discord.GuildForumChannelUpdate{AvailableTags: &tags}, disgorest.WithCtx(ctx))
+			if updateErr != nil {
+				return nil, updateErr
+			}
+			var updatedForum discord.GuildForumChannel
+			switch value := updated.(type) {
+			case discord.GuildForumChannel:
+				updatedForum = value
+			case *discord.GuildForumChannel:
+				updatedForum = *value
+			default:
+				return nil, errors.New("更新 Forum Available Tags 后响应类型无效")
+			}
+			for _, tag := range updatedForum.AvailableTags {
+				if tag.Name == payload.TagName {
+					tagID = tag.ID
+					break
+				}
+			}
+		}
+		if tagID == 0 {
+			return nil, errors.New("forum 中没有可用的 Running Tag")
+		}
+		tags := append([]snowflake.ID(nil), thread.AppliedTags...)
+		index := slices.Index(tags, tagID)
+		if payload.Enabled && index < 0 {
+			tags = append(tags, tagID)
+		} else if !payload.Enabled && index >= 0 {
+			tags = slices.Delete(tags, index, index+1)
+		}
+		_, err = r.rest.UpdateChannel(threadID,
+			discord.GuildPostUpdate{AppliedTags: &tags}, disgorest.WithCtx(ctx))
+		return json.RawMessage(`{}`), err
 	default:
 		return nil, fmt.Errorf("不支持的 Discord Outbox 操作 %q", item.OperationType)
 	}

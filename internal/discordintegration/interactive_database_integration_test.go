@@ -39,7 +39,7 @@ func TestInteractiveProjectionCollectsDiscordAnswers(t *testing.T) {
 		WHERE operation_key=$1`, "interactive:"+requestID.String()).Scan(&operationType))
 	require.Equal(t, "message.create", operationType)
 	outbox := NewSQLoutbox(db)
-	questionItem, err := outbox.Claim(ctx, 30*time.Second)
+	questionItem, err := claimOutboxOperation(t, ctx, outbox, "interactive:"+requestID.String())
 	require.NoError(t, err)
 	require.Equal(t, "interactive:"+requestID.String(), questionItem.OperationKey)
 	completeDiscordDelivery(t, ctx, outbox, questionItem,
@@ -174,28 +174,26 @@ func TestExecutePlanSwitchesDefaultAndIsIdempotent(t *testing.T) {
 	require.NoError(t, ProjectConversationReply(ctx, db, "interactive-thread",
 		conversationID, "desktop-plan", runID, planBody))
 	outbox := NewSQLoutbox(db)
-	created, linked, actionFound := 0, 0, false
+	created, actionFound := 0, false
 	for step := 0; step < 30; step++ {
 		item, claimErr := outbox.Claim(ctx, 30*time.Second)
 		require.NoError(t, claimErr)
 		require.NotNil(t, item)
-		if strings.HasSuffix(item.OperationKey, ":action") {
-			require.Contains(t, string(item.Payload), planExecuteButtonPrefix+runID.String())
-			actionFound = true
-			break
-		}
+		hasAction := strings.Contains(string(item.Payload), planExecuteButtonPrefix+runID.String())
 		if item.OperationType == "message.create" {
 			created++
 			completeDiscordDelivery(t, ctx, outbox, item, json.RawMessage(
 				fmt.Sprintf(`{"messageId":"plan-part-%d"}`, created)))
 		} else {
-			linked++
 			completeDiscordDelivery(t, ctx, outbox, item, json.RawMessage(`{}`))
+		}
+		if hasAction {
+			actionFound = true
+			break
 		}
 	}
 	require.True(t, actionFound)
 	require.Greater(t, created, 1)
-	require.Greater(t, linked, 0)
 
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_intents
 		(control_id, sequence_no, behavior, source_type, discord_conversation_id,
@@ -258,6 +256,23 @@ func TestExecutePlanSwitchesDefaultAndIsIdempotent(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_input_messages
 		WHERE message_id=$1`, "plan-execution:"+runID.String()).Scan(&count))
 	require.Equal(t, 1, count)
+}
+
+func claimOutboxOperation(t *testing.T, ctx context.Context, outbox *SQLoutbox,
+	operationKey string,
+) (*OutboxItem, error) {
+	t.Helper()
+	for attempt := 0; attempt < 10; attempt++ {
+		item, err := outbox.Claim(ctx, 30*time.Second)
+		if err != nil || item == nil {
+			return item, err
+		}
+		if item.OperationKey == operationKey {
+			return item, nil
+		}
+		completeDiscordDelivery(t, ctx, outbox, item, json.RawMessage(`{}`))
+	}
+	return nil, fmt.Errorf("未领取到 Outbox 操作 %s", operationKey)
 }
 
 func insertInteractiveControl(t *testing.T, db *sql.DB, seed discordManagerSeed) (uuid.UUID, uuid.UUID) {

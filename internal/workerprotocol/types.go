@@ -9,7 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 15
+const Version = 16
 
 type EnrollRequest struct {
 	Token string `json:"token"`
@@ -286,6 +286,36 @@ type DesktopTurnPrepareRequest struct {
 	WorkerID      string          `json:"workerId"`
 	RequestKey    string          `json:"requestKey"`
 	Params        json.RawMessage `json:"params"`
+}
+
+type DesktopRollbackPrepareRequest struct {
+	EnvironmentID uuid.UUID       `json:"environmentId"`
+	RequestKey    string          `json:"requestKey"`
+	Params        json.RawMessage `json:"params"`
+}
+
+type DesktopRollbackState struct {
+	ID            uuid.UUID       `json:"id"`
+	EnvironmentID uuid.UUID       `json:"environmentId"`
+	ThreadID      string          `json:"threadId"`
+	Status        string          `json:"status"`
+	TargetTurnID  string          `json:"targetTurnId"`
+	Params        json.RawMessage `json:"params,omitempty"`
+}
+
+type DesktopRollbackCompleteRequest struct {
+	EnvironmentID uuid.UUID       `json:"environmentId"`
+	Response      json.RawMessage `json:"response,omitempty"`
+	Error         string          `json:"error,omitempty"`
+}
+
+type DesktopTurnPreflightRequest struct {
+	EnvironmentID uuid.UUID       `json:"environmentId"`
+	Params        json.RawMessage `json:"params"`
+}
+
+type DesktopTurnPreflightResponse struct {
+	Params json.RawMessage `json:"params"`
 }
 
 type DesktopSteerRecordRequest struct {

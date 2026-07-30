@@ -290,6 +290,114 @@ func TestDiscordDiscussionTriggerBatchesPendingMessages(t *testing.T) {
 	require.Equal(t, 6, skipped)
 }
 
+func TestDiscordMessageEditReservesLatestTurnAndFreezesDiscussion(t *testing.T) {
+	db := discordDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	_, err := db.ExecContext(ctx, `INSERT INTO discord_guilds(guild_id,name,enabled)
+		VALUES ($1,'message-edit-test',true)`, testGuildID)
+	require.NoError(t, err)
+	seed := seedDiscordManagerData(t, db)
+	service := NewConversationService(db)
+	conversationID, err := service.BeginPost(ctx, IncomingMessage{
+		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
+		ThreadID: "100000000000000471", MessageID: "100000000000000472",
+		DiscordUserID: "1001", DisplayName: "Alice", Username: "alice",
+		Title: "Editable", Body: "原始请求", ConfigurationConfirmed: true,
+	})
+	require.NoError(t, err)
+	state, err := service.ConversationMode(ctx, testGuildID, "100000000000000471", "1001")
+	require.NoError(t, err)
+	_, err = service.SetTriggerMode(ctx, testGuildID, "100000000000000471", "1001",
+		conversationID, state.SettingsRevision, "discussion")
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE codex_turn_intents SET status='completed',
+		confirmed_codex_turn_id='turn-original',finished_at=now()
+		WHERE discord_message_id='100000000000000472'`)
+	require.NoError(t, err)
+	desktopIntentID := uuid.New()
+	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_intents
+		(id,control_id,sequence_no,operation,behavior,resolved_action,source_type,input_surface,
+		 discord_conversation_id,development_project_id,agent_profile_id,idempotency_key,
+		 instruction,status,confirmed_codex_turn_id,confirmed_at,finished_at,reply_status,
+		 result_delivery_status,projection_anchor)
+		SELECT $1,control_id,2,'turn_input','steer_if_active','steer','discord_conversation',
+		'desktop',discord_conversation_id,development_project_id,agent_profile_id,$2,$3,
+		'completed','turn-original',now(),now(),'skipped','delivered','desktop-replay-anchor'
+		FROM codex_turn_intents WHERE discord_message_id='100000000000000472'`,
+		desktopIntentID, "message-edit-desktop-replay", "Desktop 中间补充")
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE codex_thread_controls SET next_sequence_no=3
+		WHERE id=(SELECT control_id FROM codex_turn_intents WHERE id=$1)`, desktopIntentID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_forum_access
+		(forum_id,discord_user_id,access_level) VALUES ($1,'1003','operator')`,
+		seed.developmentForumID)
+	require.NoError(t, err)
+	require.NoError(t, service.Reply(ctx, IncomingMessage{
+		GuildID: testGuildID, ThreadID: "100000000000000471",
+		MessageID: "100000000000000473", DiscordUserID: "1003",
+		DisplayName: "Operator", Username: "operator", Body: "补充 steer", MentionsBot: true,
+	}))
+	_, err = db.ExecContext(ctx, `UPDATE codex_turn_intents SET status='completed',
+		confirmed_codex_turn_id='turn-original',resolved_action='steer',finished_at=now()
+		WHERE discord_message_id='100000000000000473'`)
+	require.NoError(t, err)
+	require.NoError(t, service.Reply(ctx, IncomingMessage{
+		GuildID: testGuildID, ThreadID: "100000000000000471",
+		MessageID: "100000000000000474", DiscordUserID: "1001",
+		DisplayName: "Alice", Username: "alice", Body: "待提交多人讨论",
+	}))
+	outcome, err := service.HandleMessageEdit(ctx, testGuildID, "100000000000000471",
+		"100000000000000474", "1001", "待提交多人讨论（已编辑）", time.Now())
+	require.NoError(t, err)
+	require.Equal(t, MessageEditBuffered, outcome)
+
+	outcome, err = service.HandleMessageEdit(ctx, testGuildID, "100000000000000471",
+		"100000000000000473", "1003", "修改后的 steer", time.Now())
+	require.NoError(t, err)
+	require.Equal(t, MessageEditReserved, outcome)
+	var replacementID, targetID, primaryMessageID, instruction, phase string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT id::text,target_intent_id::text,
+		discord_message_id,instruction,replacement_phase FROM codex_turn_intents
+		WHERE operation='replace_last_turn' AND discord_conversation_id=$1`, conversationID).
+		Scan(&replacementID, &targetID, &primaryMessageID, &instruction, &phase))
+	require.NotEmpty(t, targetID)
+	require.Equal(t, "100000000000000474", primaryMessageID)
+	require.Equal(t, "reserved", phase)
+	require.Less(t, strings.Index(instruction, "原始请求"),
+		strings.Index(instruction, "Desktop 中间补充"))
+	require.Less(t, strings.Index(instruction, "Desktop 中间补充"),
+		strings.Index(instruction, "修改后的 steer"))
+	require.Less(t, strings.Index(instruction, "修改后的 steer"),
+		strings.Index(instruction, "待提交多人讨论（已编辑）"))
+	var boundCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_input_messages
+		WHERE turn_intent_id=$1`, replacementID).Scan(&boundCount))
+	require.Equal(t, 3, boundCount)
+
+	outcome, err = service.HandleMessageEdit(ctx, testGuildID, "100000000000000471",
+		"100000000000000473", "1003", "再次编辑较早消息", time.Now())
+	require.NoError(t, err)
+	require.Equal(t, MessageEditNotLatest, outcome)
+	outcome, err = service.HandleMessageEdit(ctx, testGuildID, "100000000000000471",
+		"100000000000000474", "1001", "最新参与者修订", time.Now())
+	require.NoError(t, err)
+	require.Equal(t, MessageEditCoalesced, outcome)
+	var runningTagEnabled bool
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT (payload->>'enabled')::boolean
+		FROM integration_outbox WHERE operation_key=$1`,
+		"conversation-running-tag:"+conversationID.String()).Scan(&runningTagEnabled))
+	require.True(t, runningTagEnabled)
+	_, err = db.ExecContext(ctx, `UPDATE codex_turn_intents
+		SET status='canceled',replacement_phase='terminal' WHERE id=$1`, replacementID)
+	require.NoError(t, err)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT (payload->>'enabled')::boolean
+		FROM integration_outbox WHERE operation_key=$1`,
+		"conversation-running-tag:"+conversationID.String()).Scan(&runningTagEnabled))
+	require.False(t, runningTagEnabled)
+}
+
 func TestDiscordStartupPreferencesCrossForumAndMemberJoin(t *testing.T) {
 	db := discordDatabase(t)
 	ctx := context.Background()

@@ -256,7 +256,7 @@ func testLongConversationReply(t *testing.T, ctx context.Context,
 	answer := strings.Repeat(line+"\n", 80)
 	require.NoError(t, discordintegration.ProjectConversationReply(ctx, db, "2001",
 		conversationID, "3001", uuid.Nil, answer))
-	prefix := "conversation-reply:" + conversationID.String() + ":message:3001"
+	prefix := "projection:conversation-reply:" + conversationID.String() + ":message:3001"
 	var createdContents, updatedContents, createdIDs []string
 	for step := 0; step < 30; step++ {
 		item, err := store.Claim(ctx, 30*time.Second)
@@ -285,19 +285,16 @@ func testLongConversationReply(t *testing.T, ctx context.Context,
 		}
 	}
 	require.GreaterOrEqual(t, len(createdContents), 3)
-	require.Len(t, updatedContents, len(createdContents)-1)
+	require.Empty(t, updatedContents)
 	require.Contains(t, createdContents[0], "<@1001>")
-	require.NotContains(t, createdContents[0], "【上接消息】")
-	require.Contains(t, createdContents[0], "【内容未完整，下接消息】")
-	for index := 1; index < len(createdContents); index++ {
-		require.Contains(t, createdContents[index], "[【上接消息】](https://discord.com/channels/"+
-			guildID+"/2001/"+createdIDs[index-1]+")")
-		require.NotContains(t, createdContents[index], "<@1001>")
-	}
-	require.NotContains(t, createdContents[len(createdContents)-1], "【内容未完整，下接消息】")
-	for index, content := range updatedContents {
-		require.Contains(t, content, "[【内容未完整，下接消息】](https://discord.com/channels/"+
-			guildID+"/2001/"+createdIDs[index+1]+")")
+	for index, content := range createdContents {
+		require.Contains(t, content,
+			fmt.Sprintf("**Codex 回复 · %d/%d**", index+1, len(createdContents)))
+		if index > 0 {
+			require.NotContains(t, content, "<@1001>")
+		}
+		require.NotContains(t, content, "【上接消息】")
+		require.NotContains(t, content, "【内容未完整，下接消息】")
 	}
 }
 

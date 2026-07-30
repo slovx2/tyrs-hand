@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/participantidentity"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
@@ -50,13 +51,14 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 	var controlID, conversationID, profileID uuid.UUID
 	var nullableConversation, projectID sql.NullString
 	var nextSequence int64
-	var controlStatus, lifecycleState, activeTurnID, guildID, actorUserID, actorDisplayName string
+	var controlStatus, lifecycleState, activeTurnID, guildID, conversationThreadID string
+	var actorUserID, actorDisplayName string
 	var allowedJSON, dangerousJSON []byte
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT ct.id, ct.discord_conversation_id,
 		ct.development_project_id::text, ct.agent_profile_id, ct.next_sequence_no, ct.status,
 		ct.lifecycle_state,
 		COALESCE(ct.active_codex_turn_id,''), p.allowed_tools, '[]'::jsonb,
-		e.guild_id, COALESCE(e.ssh_discord_user_id, ''),
+		e.guild_id, COALESCE(conversation.thread_id,''), COALESCE(e.ssh_discord_user_id, ''),
 		COALESCE(NULLIF(m.display_name, ''), m.username, '')
 		FROM codex_thread_controls ct JOIN agent_profiles p ON p.id = ct.agent_profile_id
 		JOIN discord_development_environments e ON e.id = ct.development_environment_id
@@ -73,7 +75,7 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 		AND project.availability_status='available' FOR UPDATE OF ct`, threadID, request.EnvironmentID,
 		node.ID).Scan(&controlID, &nullableConversation, &projectID, &profileID, &nextSequence,
 		&controlStatus, &lifecycleState, &activeTurnID, &allowedJSON, &dangerousJSON, &guildID,
-		&actorUserID, &actorDisplayName)
+		&conversationThreadID, &actorUserID, &actorDisplayName)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusForbidden, "Desktop Steer 的 Thread 未绑定到当前环境", err)
 		return
@@ -89,16 +91,16 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 	conversationID = parseOptionalUUID(nullableConversation)
 
 	intentStatus := "completed"
+	var activeRunID uuid.UUID
 	if controlStatus == "active" && activeTurnID == expectedTurnID {
-		var runID uuid.UUID
 		err = tx.QueryRowContext(c.Request.Context(), `SELECT id FROM codex_turn_runs
 			WHERE control_id = $1 AND confirmed_codex_turn_id = $2
 			AND status IN ('starting','running','waiting_for_user','reconciling')
-			ORDER BY started_at DESC LIMIT 1 FOR UPDATE`, controlID, expectedTurnID).Scan(&runID)
+			ORDER BY started_at DESC LIMIT 1 FOR UPDATE`, controlID, expectedTurnID).Scan(&activeRunID)
 		if err == nil {
 			intentStatus = "running"
 			_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_turn_runs
-				SET append_count = append_count + 1 WHERE id = $1`, runID)
+				SET append_count = append_count + 1 WHERE id = $1`, activeRunID)
 		}
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			problem(c, http.StatusInternalServerError, "关联 Desktop Steer Run 失败", err)
@@ -117,14 +119,14 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 		 priority, actor_login, actor_permission, actor_participant_id, actor_display_name,
 			 reply_policy, reply_status, status, attempt_count, confirmed_codex_turn_id,
 			 confirmed_at, finished_at, result_delivery_status, result_delivered_at,
-			 desktop_input_projection_key, desktop_input_projection_status)
+			 desktop_input_projection_key, desktop_input_projection_status, projection_anchor)
 			VALUES ($1,$2,$3,'turn_input','steer_if_active','steer','discord_conversation',
 			'desktop',NULLIF($4::text,'')::uuid,NULLIF($5,'')::uuid,NULLIF($6,'')::uuid,$7,$8,
 			$9,$10,$11,$12,100,'codex-desktop','owner',NULLIF($13::text,'')::uuid,$14,
 			'silent','skipped',$15,1,$16,now(),
 				CASE WHEN $15='completed' THEN now() ELSE NULL END,
 				CASE WHEN $15='completed' THEN 'delivered' ELSE 'pending' END,
-				CASE WHEN $15='completed' THEN now() ELSE NULL END,$17,'pending')`,
+				CASE WHEN $15='completed' THEN now() ELSE NULL END,$17,'pending',$17)`,
 		intentID, controlID, nextSequence, nilUUIDString(conversationID), "",
 		projectID.String, profileID, idempotencyKey, instruction, request.Params, allowedJSON,
 		dangerousJSON, nilUUIDString(actorParticipantID), actorDisplayName, intentStatus,
@@ -136,6 +138,14 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 	if err == nil && conversationID != uuid.Nil {
 		err = enqueueDesktopInputProjection(c.Request.Context(), tx, conversationID,
 			projectionKey, actorDisplayName, instruction)
+	}
+	if err == nil && conversationID != uuid.Nil && activeRunID != uuid.Nil {
+		err = discordintegration.ProjectConversationThinkingTx(c.Request.Context(), tx, guildID,
+			conversationThreadID, conversationID, projectionKey)
+	}
+	if err == nil && conversationID != uuid.Nil && activeRunID != uuid.Nil {
+		err = discordintegration.RegisterConversationStatusSteerTx(c.Request.Context(), tx,
+			activeRunID, conversationID, guildID, projectionKey)
 	}
 	if err == nil && conversationID != uuid.Nil {
 		_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_turn_intents SET

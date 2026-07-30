@@ -50,7 +50,8 @@ func (c *DisgoConnector) Open(ctx context.Context, resume *GatewaySession) error
 		bot.WithRestClientConfigOpts(disgorest.WithRateLimiterConfigOpts(disgorest.WithMaxRetries(3))),
 		bot.WithRestConfigOpts(disgorest.WithDefaultAllowedMentions(discord.AllowedMentions{})),
 		bot.WithEventListenerFunc(c.onReady), bot.WithEventListenerFunc(c.onResumed),
-		bot.WithEventListenerFunc(c.onMessage), bot.WithEventListenerFunc(c.onCommand),
+		bot.WithEventListenerFunc(c.onMessage), bot.WithEventListenerFunc(c.onMessageUpdate),
+		bot.WithEventListenerFunc(c.onCommand),
 		bot.WithEventListenerFunc(c.onComponent), bot.WithEventListenerFunc(c.onModalSubmit),
 		bot.WithEventListenerFunc(c.onThreadUpdate),
 	)
@@ -112,6 +113,41 @@ func (c *DisgoConnector) onMessage(event *events.MessageCreate) {
 	_ = c.manager.CompleteInboundEvent(context.Background(), eventID, err)
 	if err != nil {
 		c.logger.Warn("处理 Discord 消息失败", zap.Error(err), zap.String("message_id", event.Message.ID.String()))
+	}
+}
+
+func (c *DisgoConnector) onMessageUpdate(event *events.MessageUpdate) {
+	if event.GuildID == nil || event.GuildID.String() != c.guildID || event.Message.Author.Bot {
+		return
+	}
+	c.persistSession(event.SequenceNumber())
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	editedAt := time.Time{}
+	if event.Message.EditedTimestamp != nil {
+		editedAt = *event.Message.EditedTimestamp
+	}
+	revision := editedAt.UnixNano()
+	if editedAt.IsZero() {
+		revision = int64(event.SequenceNumber())
+	}
+	eventID := fmt.Sprintf("message-update:%s:%d", event.Message.ID.String(), revision)
+	inserted, err := c.manager.RecordInboundEvent(ctx, eventID, c.guildID, "MESSAGE_UPDATE", event.Message)
+	if err != nil || !inserted {
+		return
+	}
+	outcome, err := c.conversations.HandleMessageEdit(ctx, c.guildID,
+		event.Message.ChannelID.String(), event.Message.ID.String(), event.Message.Author.ID.String(),
+		event.Message.Content, editedAt)
+	if err == nil && outcome == MessageEditNotLatest {
+		_, err = event.Client().Rest.CreateMessage(event.Message.ChannelID,
+			discord.NewMessageCreate().WithContent(EarlierMessageEditNotice).
+				WithMessageReferenceByID(event.Message.ID), disgorest.WithCtx(ctx))
+	}
+	_ = c.manager.CompleteInboundEvent(context.Background(), eventID, err)
+	if err != nil {
+		c.logger.Warn("处理 Discord 消息编辑失败", zap.Error(err),
+			zap.String("message_id", event.Message.ID.String()))
 	}
 }
 

@@ -28,6 +28,8 @@ type discordJobContext struct {
 	GuildID        string
 	ThreadID       string
 	MessageID      string
+	ReplyMessageID string
+	ProjectionID   string
 	OwnerUserID    string
 	ProjectID      uuid.UUID
 	EnvironmentID  uuid.UUID
@@ -52,7 +54,26 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	if err != nil {
 		return result, err
 	}
+	jobCtx.ReplyMessageID = jobCtx.MessageID
+	jobCtx.ProjectionID = claimed.ProjectionAnchor
+	if jobCtx.ProjectionID == "" {
+		jobCtx.ProjectionID = jobCtx.MessageID
+	}
+	if claimed.Operation == "replace_last_turn" {
+		_ = p.db.QueryRowContext(ctx, `SELECT COALESCE(discord_message_id,$2)
+			FROM codex_turn_intents WHERE id=$1`, claimed.TargetIntentID, jobCtx.MessageID).
+			Scan(&jobCtx.ReplyMessageID)
+	}
 	defer cleanupBrowserTask(p.cfg, claimed.ID.String())
+	if claimed.Operation == "replace_last_turn" {
+		defer func() {
+			if processErr != nil {
+				releaseCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				p.releaseTerminalReplacement(releaseCtx, claimed, processErr)
+			}
+		}()
+	}
 	preferences, err := p.freezeRuntimePreferences(ctx, claimed)
 	if err != nil {
 		return result, err
@@ -61,6 +82,39 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	jobCtx.ReasoningEffort = preferences.ReasoningEffort
 	jobCtx.ServiceTier = codexsettings.RuntimeServiceTier(preferences.ServiceTier)
 	progress := p.newDiscordProgressReporter(ctx, claimed, jobCtx)
+	if claimed.Operation == "replace_last_turn" {
+		progress.project(ctx, discordintegration.ConversationRunning,
+			"消息已编辑，正在重新生成。", 0)
+		if jobCtx.MessageID != jobCtx.ProjectionID {
+			tx, txErr := p.db.BeginTx(ctx, nil)
+			if txErr == nil {
+				txErr = discordintegration.ProjectConversationThinkingTx(ctx, tx, jobCtx.GuildID,
+					jobCtx.ThreadID, jobCtx.ConversationID, jobCtx.MessageID)
+			}
+			if txErr == nil {
+				txErr = discordintegration.RegisterConversationStatusSteerTx(ctx, tx,
+					claimed.RunID, jobCtx.ConversationID, jobCtx.GuildID, jobCtx.MessageID)
+			}
+			if txErr == nil {
+				txErr = tx.Commit()
+			} else if tx != nil {
+				_ = tx.Rollback()
+			}
+			if txErr != nil {
+				p.logger.Warn("移动 replacement 进度卡失败", zap.Error(txErr))
+			}
+		}
+		var hasReply bool
+		_ = p.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM discord_projections
+			WHERE projection_key=$1)`, "conversation-reply:"+jobCtx.ConversationID.String()+
+			":message:"+jobCtx.ProjectionID).Scan(&hasReply)
+		if hasReply {
+			if err := discordintegration.ProjectConversationReplyRegenerating(ctx, p.db,
+				jobCtx.ThreadID, jobCtx.ConversationID, jobCtx.ProjectionID); err != nil {
+				p.logger.Warn("失效 replacement 旧结果失败", zap.Error(err))
+			}
+		}
+	}
 	finalProjected := false
 	defer func() {
 		if processErr != nil && !finalProjected {
@@ -168,6 +222,19 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		return result, err
 	}
 	defer unbind()
+	if claimed.Operation == "replace_last_turn" && !claimed.Recovering {
+		if err := p.prepareDiscordReplacement(ctx, runtime, claimed, threadID); err != nil {
+			if errors.Is(err, errReplacementSuperseded) {
+				_ = discordintegration.NewSQLoutbox(p.db).Enqueue(ctx,
+					"replacement-rejected:"+claimed.ID.String(), "message.create",
+					"channels/"+jobCtx.ThreadID+"/messages", map[string]any{
+						"channelId": jobCtx.ThreadID,
+						"content":   discordintegration.EarlierMessageEditNotice,
+					}, "replacement-rejected-"+claimed.ID.String())
+			}
+			return result, err
+		}
+	}
 	if claimed.Recovering {
 		var recovered bool
 		result, recovered, err = p.reconcileTurn(ctx, runtime, claimed, threadID, progress.observeEvent)
@@ -175,6 +242,9 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 			return result, err
 		}
 		if recovered {
+			if claimed.Operation == "replace_last_turn" {
+				_ = p.setReplacementPhase(ctx, claimed.ID, "terminal", "")
+			}
 			progress.project(ctx, discordintegration.ConversationCompleted, "本轮处理完成。", result.DurationMillis)
 			p.projectDiscordReply(ctx, jobCtx, claimed.RunID, result.FinalAnswer)
 			p.projectDiscordRunContributors(ctx, claimed.RunID, claimed.DiscordMessageID,
@@ -189,7 +259,20 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	}
 	input.CollaborationMode = &ports.CollaborationMode{Mode: claimed.CollaborationMode,
 		Model: jobCtx.Model, ReasoningEffort: jobCtx.ReasoningEffort}
-	turnID, err := runtime.StartTurn(ctx, threadID, input)
+	if claimed.Operation == "replace_last_turn" {
+		input.ClientUserMessageID = claimed.ID.String()
+	}
+	turnID := ""
+	if claimed.Operation == "replace_last_turn" {
+		if snapshot, readErr := runtime.ReadThread(ctx, threadID); readErr == nil {
+			if existing, ok := snapshot.TurnByClientID(claimed.ID.String()); ok {
+				turnID = existing.ID
+			}
+		}
+	}
+	if turnID == "" {
+		turnID, err = runtime.StartTurn(ctx, threadID, input)
+	}
 	if err != nil {
 		return result, err
 	}
@@ -201,6 +284,16 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	if err := p.controls.RecordSubmission(ctx, claimed, turnID); err != nil {
 		return result, err
 	}
+	if claimed.Operation == "replace_last_turn" {
+		if err := p.setReplacementPhase(ctx, claimed.ID, "running", ""); err != nil {
+			interruptTurnBestEffort(runtime, threadID, turnID)
+			return result, err
+		}
+		if err := p.finalizeReplacementMessages(ctx, claimed); err != nil {
+			interruptTurnBestEffort(runtime, threadID, turnID)
+			return result, err
+		}
+	}
 	if err := p.addDiscordContributor(ctx, claimed.RunID, claimed.DiscordConversationID,
 		claimed.ID, turnID); err != nil {
 		interruptTurnBestEffort(runtime, threadID, turnID)
@@ -208,6 +301,12 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	}
 	result, err = p.waitTurn(ctx, runtime, client.Events(), claimed, threadID, turnID, progress.observeEvent)
 	if err != nil {
+		if errors.Is(err, errDiscordTurnReplaced) {
+			progress.project(ctx, discordintegration.ConversationRunning,
+				"消息已编辑，正在重新生成。", 0)
+			finalProjected = true
+			return codexcontrol.TurnResult{TurnID: turnID, Evidence: "replaced"}, nil
+		}
 		if needsCleanupInterrupt(err) {
 			interruptTurnBestEffort(runtime, threadID, turnID)
 		}
@@ -223,6 +322,9 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	p.projectDiscordRunContributors(ctx, claimed.RunID, claimed.DiscordMessageID,
 		result.FinalAnswer, progress.detail("本轮处理完成。", result.DurationMillis))
 	finalProjected = true
+	if claimed.Operation == "replace_last_turn" {
+		_ = p.setReplacementPhase(ctx, claimed.ID, "terminal", "")
+	}
 	return result, nil
 }
 
@@ -332,7 +434,7 @@ func (p *Processor) projectDiscordConversation(ctx context.Context, jobCtx disco
 	runID uuid.UUID, state discordintegration.ConversationProgress, detail string,
 ) {
 	if err := discordintegration.ProjectConversationStatus(ctx, p.db, jobCtx.GuildID,
-		jobCtx.ThreadID, jobCtx.ConversationID, jobCtx.MessageID, runID, state, detail); err != nil {
+		jobCtx.ThreadID, jobCtx.ConversationID, jobCtx.ProjectionID, runID, state, detail); err != nil {
 		p.logger.Warn("投影 Discord Conversation 状态失败", zap.Error(err),
 			zap.String("conversation_id", jobCtx.ConversationID.String()))
 	}
@@ -342,7 +444,7 @@ func (p *Processor) projectDiscordReply(ctx context.Context, jobCtx discordJobCo
 	runID uuid.UUID, content string,
 ) {
 	if err := discordintegration.ProjectConversationReply(ctx, p.db, jobCtx.ThreadID,
-		jobCtx.ConversationID, jobCtx.MessageID, runID, content); err != nil {
+		jobCtx.ConversationID, jobCtx.ProjectionID, runID, content, jobCtx.ReplyMessageID); err != nil {
 		p.logger.Warn("投影 Discord Conversation 最终回复失败", zap.Error(err),
 			zap.String("conversation_id", jobCtx.ConversationID.String()))
 	}

@@ -392,7 +392,8 @@ func (p *Processor) dispatchPendingIntent(ctx context.Context, runtime *codex.Ru
 	err := p.db.QueryRowContext(ctx, `SELECT id, operation, instruction, COALESCE(discord_message_id,'')
 		FROM codex_turn_intents WHERE control_id = $1 AND sequence_no > $2
 		  AND status IN ('queued','retry_wait') AND available_at <= now()
-		  AND (SELECT append_count < max_append_count FROM codex_turn_runs WHERE id = $3)
+		  AND (operation IN ('interrupt','replace_last_turn') OR
+			(SELECT append_count < max_append_count FROM codex_turn_runs WHERE id = $3))
 		ORDER BY sequence_no LIMIT 1`, claimed.ControlID, claimed.Sequence, claimed.RunID).Scan(
 		&intentID, &operation, &instruction, &messageID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -413,6 +414,12 @@ func (p *Processor) dispatchPendingIntent(ctx context.Context, runtime *codex.Ru
 			return err
 		}
 		return errDiscordTurnStopped
+	}
+	if operation == "replace_last_turn" {
+		if err := runtime.InterruptTurn(ctx, threadID, turnID); err != nil {
+			return err
+		}
+		return errDiscordTurnReplaced
 	}
 	input := ports.TurnInput{Text: instruction, ClientUserMessageID: intentID.String()}
 	if claimed.SourceType == codexcontrol.SourceDiscord && messageID != "" {

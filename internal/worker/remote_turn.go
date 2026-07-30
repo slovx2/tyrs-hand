@@ -181,7 +181,7 @@ func (p *RemoteProcessor) waitRemoteTurn(ctx context.Context, runtime *codex.Run
 			if appliedCommands[command.ID] {
 				continue
 			}
-			if command.Operation == "interrupt" {
+			if command.Operation == "interrupt" || command.Operation == "replace_last_turn" {
 				if err := runtime.InterruptTurn(ctx, threadID, turnID); err != nil {
 					return codexcontrol.TurnResult{}, err
 				}

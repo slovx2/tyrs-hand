@@ -76,7 +76,7 @@ var methodClasses = map[string]methodClass{
 	"thread/inject_items":                      methodForward,
 	"thread/metadata/update":                   methodForward,
 	"thread/name/set":                          methodForward,
-	"thread/rollback":                          methodForward,
+	"thread/rollback":                          methodControlled,
 	"thread/shellCommand":                      methodForward,
 	"thread/settings/update":                   methodForward,
 	"thread/unarchive":                         methodControlled,

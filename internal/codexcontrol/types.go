@@ -40,6 +40,10 @@ type Intent struct {
 	WorkItemID            uuid.UUID
 	DiscordConversationID uuid.UUID
 	DiscordMessageID      string
+	TargetIntentID        uuid.UUID
+	ProjectionAnchor      string
+	MessageEditRevision   int64
+	ReplacementPhase      string
 	RepositoryID          uuid.UUID
 	ProjectID             uuid.UUID
 	AgentProfileID        uuid.UUID
@@ -99,6 +103,10 @@ type EnqueueRequest struct {
 	ReplyPolicy           string
 	Operation             string
 	Behavior              string
+	TargetIntentID        uuid.UUID
+	ProjectionAnchor      string
+	MessageEditRevision   int64
+	ReplacementPhase      string
 }
 
 type TurnResult struct {

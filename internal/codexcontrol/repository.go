@@ -181,13 +181,15 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 		webhook_delivery_id, trigger_rule_id, trigger_evidence, idempotency_key,
 		instruction, skills, allowed_tools, dangerous_actions, priority,
 		actor_login, actor_permission, actor_participant_id, actor_display_name,
-		reply_policy, reply_status, status, input_surface)
+		reply_policy, reply_status, status, input_surface, target_intent_id,
+		projection_anchor, message_edit_revision, replacement_phase)
 		VALUES ($1,$2,$3,NULLIF($4,''),$5,NULLIF($6::text,'')::uuid,NULLIF($7::text,'')::uuid,
 		NULLIF($8,''),NULLIF($9::text,'')::uuid,NULLIF($10::text,'')::uuid,$11,
 		NULLIF($12::text,'')::uuid,NULLIF($13::text,'')::uuid,$14,$15,$16,$17,$18,$19,$20,$21,$22,
 		NULLIF($23::text,'')::uuid,$24,$25,
 		CASE WHEN $25 = 'required' THEN 'pending' ELSE 'skipped' END,
-		$26, NULLIF($27,''))
+		$26, NULLIF($27,''), NULLIF($28::text,'')::uuid, NULLIF($29,''), $30,
+		NULLIF($31,''))
 		ON CONFLICT(idempotency_key) DO NOTHING RETURNING id`, controlID, sequence,
 		request.Operation, request.Behavior, request.SourceType, nilUUID(request.WorkItemID),
 		nilUUID(request.DiscordConversationID), request.DiscordMessageID, nilUUID(request.RepositoryID),
@@ -196,7 +198,8 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 		encode(request.Skills), encode(request.AllowedTools), encode(request.DangerousActions),
 		request.Priority, request.ActorLogin, request.ActorPermission,
 		nilUUID(request.ActorParticipantID), request.ActorDisplayName, request.ReplyPolicy,
-		initialStatus, inputSurface).Scan(&intentID)
+		initialStatus, inputSurface, nilUUID(request.TargetIntentID), request.ProjectionAnchor,
+		request.MessageEditRevision, request.ReplacementPhase).Scan(&intentID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return uuid.Nil, false, nil
 	}
@@ -294,6 +297,7 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 	var claimed ClaimedControl
 	var skillsJSON, toolsJSON, dangerousJSON []byte
 	var workItemID, conversationID, repositoryID, projectID, discordMessageID, actorParticipantID sql.NullString
+	var targetIntentID sql.NullString
 	var externalThreadID, codexHomeKey, runModel, runEffort, runTier sql.NullString
 	var settingsRevision int64
 	err = tx.QueryRowContext(ctx, `SELECT i.id, i.sequence_no, i.operation, COALESCE(i.behavior,''),
@@ -305,6 +309,8 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 		i.actor_display_name, i.reply_policy, i.reply_status,
 		i.attempt_count + 1, $2::integer, COALESCE(i.codex_submission_id,''),
 		COALESCE(i.confirmed_codex_turn_id,''), i.created_at,
+		i.target_intent_id::text, COALESCE(i.projection_anchor,''), i.message_edit_revision,
+		COALESCE(i.replacement_phase,''),
 		c.external_thread_id, c.codex_home_key, c.lease_epoch + 1,
 		c.collaboration_mode, c.model, c.reasoning_effort, c.service_tier, c.settings_revision
 		FROM codex_turn_intents i JOIN codex_thread_controls c ON c.id = i.control_id
@@ -319,7 +325,9 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 		&claimed.ActorPermission, &actorParticipantID, &claimed.ActorDisplayName,
 		&claimed.ReplyPolicy, &claimed.ReplyStatus,
 		&claimed.Attempt, &claimed.MaxAttempts, &claimed.SubmissionID, &claimed.ConfirmedTurnID,
-		&claimed.CreatedAt, &externalThreadID, &codexHomeKey, &claimed.LeaseEpoch,
+		&claimed.CreatedAt, &targetIntentID, &claimed.ProjectionAnchor,
+		&claimed.MessageEditRevision, &claimed.ReplacementPhase,
+		&externalThreadID, &codexHomeKey, &claimed.LeaseEpoch,
 		&claimed.CollaborationMode, &runModel, &runEffort, &runTier, &settingsRevision)
 	if err != nil {
 		return nil, err
@@ -329,6 +337,12 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 	claimed.DiscordMessageID = discordMessageID.String
 	claimed.ExternalThreadID = externalThreadID.String
 	claimed.CodexHomeKey = codexHomeKey.String
+	if targetIntentID.Valid {
+		claimed.TargetIntentID, err = uuid.Parse(targetIntentID.String)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if actorParticipantID.Valid {
 		claimed.ActorParticipantID, err = uuid.Parse(actorParticipantID.String)
 		if err != nil {
@@ -448,7 +462,37 @@ func (r *Repository) RecordSubmission(ctx context.Context, claimed *ClaimedContr
 		return err
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE codex_turn_intents SET status = 'awaiting_confirmation',
-		codex_submission_id = $2, updated_at = now() WHERE id = $1`, claimed.ID, submissionID)
+		codex_submission_id = $2,
+		replacement_phase = CASE WHEN operation='replace_last_turn' THEN 'running'
+			ELSE replacement_phase END, updated_at = now() WHERE id = $1`, claimed.ID, submissionID)
+	if err == nil && claimed.Operation == "replace_last_turn" &&
+		claimed.DiscordConversationID != uuid.Nil {
+		_, err = tx.ExecContext(ctx, `INSERT INTO discord_turn_contributors
+			(run_id,conversation_id,external_turn_id,discord_user_id,first_message_id,
+			 github_binding_id,github_user_id,github_login,binding_version)
+			SELECT DISTINCT ON (source.discord_user_id) $1,$2,$3,source.discord_user_id,
+				source.first_message_id,source.github_binding_id,source.github_user_id,
+				source.github_login,source.binding_version FROM (
+				SELECT message.discord_user_id,message.message_id AS first_message_id,
+					message.github_binding_id,message.github_user_id,message.github_login,
+					message.binding_version,message.received_at
+				FROM discord_input_messages message WHERE message.turn_intent_id=$4
+				UNION ALL
+				SELECT contributor.discord_user_id,contributor.first_message_id,
+					contributor.github_binding_id,contributor.github_user_id,
+					contributor.github_login,contributor.binding_version,
+					'-infinity'::timestamptz
+				FROM discord_turn_contributors contributor
+				JOIN codex_turn_runs old_run ON old_run.id=contributor.run_id
+				WHERE old_run.primary_intent_id=$5
+			) source ORDER BY source.discord_user_id,source.received_at,source.first_message_id
+			ON CONFLICT(run_id,discord_user_id) DO NOTHING`, claimed.RunID,
+			claimed.DiscordConversationID, submissionID, claimed.ID, claimed.TargetIntentID)
+	}
+	if err == nil && claimed.Operation == "replace_last_turn" {
+		_, err = tx.ExecContext(ctx, `UPDATE discord_input_messages
+			SET replacement_previous_intent_id=NULL WHERE turn_intent_id=$1`, claimed.ID)
+	}
 	if err == nil {
 		_, err = tx.ExecContext(ctx, `UPDATE codex_turn_runs SET status = 'running',
 			codex_submission_id = $2, heartbeat_at = now() WHERE id = $1`, claimed.RunID, submissionID)
@@ -527,6 +571,8 @@ func (r *Repository) Reconcile(ctx context.Context, claimed *ClaimedControl, cod
 	}
 	_, err = tx.ExecContext(ctx, fmt.Sprintf(`UPDATE codex_turn_intents SET status = $2,
 		last_error_code = $3, last_error_message = $4, available_at = %s,
+		replacement_phase = CASE WHEN $2 = 'failed' AND operation='replace_last_turn'
+			THEN 'terminal' ELSE replacement_phase END,
 		finished_at = CASE WHEN $2 = 'failed' THEN now() ELSE NULL END, updated_at = now() WHERE id = $1`, available),
 		claimed.ID, intentStatus, code, message)
 	if err == nil {
@@ -568,6 +614,8 @@ func (r *Repository) finish(ctx context.Context, claimed *ClaimedControl, status
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE codex_turn_intents SET status = $2,
 		result = $3, last_error_code = NULLIF($4,''), last_error_message = NULLIF($5,''),
+		replacement_phase = CASE WHEN operation='replace_last_turn' THEN 'terminal'
+			ELSE replacement_phase END,
 		finished_at = now(), result_delivery_status = CASE
 			WHEN $2 = 'completed' AND source_type = 'github_work_item' THEN 'skipped'
 			WHEN $2 = 'completed' THEN 'delivered' ELSE result_delivery_status END,

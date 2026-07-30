@@ -816,7 +816,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	var timelineProjection, emptyAnchorProjection int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_projections
 		WHERE projection_key = $1`, "conversation:"+state.ConversationID.String()+
-		":message:desktop-"+task.Claimed.ID.String()).Scan(&timelineProjection))
+		":message:"+task.Claimed.ProjectionAnchor).Scan(&timelineProjection))
 	require.Equal(t, 1, timelineProjection,
 		"Desktop timeline-only 事件必须复用该 Intent 的投影锚点")
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_projections
@@ -837,15 +837,56 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		"Desktop Steer 重试不得重复创建 Intent")
 	var steerInputProjection int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM integration_outbox
-		WHERE operation_key LIKE $1`, "desktop-input:"+state.ConversationID.String()+":"+
+		WHERE operation_key LIKE $1`, "projection:desktop-input:"+state.ConversationID.String()+":"+
 		"desktop-client-steer-1:%").Scan(&steerInputProjection))
 	require.Equal(t, 1, steerInputProjection)
 	var steerPayload string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT payload::text FROM integration_outbox
-		WHERE operation_key LIKE $1`, "desktop-input:"+state.ConversationID.String()+":"+
+		WHERE operation_key LIKE $1`, "projection:desktop-input:"+state.ConversationID.String()+":"+
 		"desktop-client-steer-1:%").Scan(&steerPayload))
 	require.Contains(t, steerPayload, "desktop follows up")
 	require.NotContains(t, steerPayload, "codex_delegation")
+	desktopSteerStatusKey := "conversation:" + state.ConversationID.String() +
+		":message:desktop-client-steer-1"
+	var desktopSteerCardRole string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT role FROM discord_turn_status_cards
+		WHERE run_id=$1 AND projection_key=$2`, task.Claimed.RunID, desktopSteerStatusKey).
+		Scan(&desktopSteerCardRole))
+	require.Equal(t, "pending", desktopSteerCardRole,
+		"Desktop Steer 的新过程卡应等待 Discord 创建消息后迁移")
+	var desktopSteerStatusOutbox *discordintegration.OutboxItem
+	for attempt := 0; attempt < 100; attempt++ {
+		candidate, claimErr := outbox.Claim(ctx, time.Minute)
+		require.NoError(t, claimErr)
+		require.NotNil(t, candidate)
+		if candidate.OperationKey == "projection:"+desktopSteerStatusKey {
+			desktopSteerStatusOutbox = candidate
+			break
+		}
+		require.NoError(t, outbox.RetryDelivery(ctx, *candidate, time.Now().Add(time.Hour),
+			errors.New("推迟无关投影")))
+	}
+	require.NotNil(t, desktopSteerStatusOutbox)
+	completeWorkerOutbox(t, ctx, outbox, desktopSteerStatusOutbox,
+		json.RawMessage(`{"threadId":"desktop-discord-thread",`+
+			`"messageId":"desktop-steer-status-card"}`))
+	var initialCardRole, initialCardHeader, initialCardURL string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT card.role,
+		projection.desired_payload->'card'->>'header',
+		COALESCE(projection.desired_payload->'card'->'buttons'->0->>'url','')
+		FROM discord_turn_status_cards card JOIN discord_projections projection
+		ON projection.guild_id=card.guild_id AND projection.projection_key=card.projection_key
+		WHERE card.run_id=$1 AND card.projection_key=$2`, task.Claimed.RunID,
+		"conversation:"+state.ConversationID.String()+":message:"+task.Claimed.ProjectionAnchor).
+		Scan(&initialCardRole, &initialCardHeader, &initialCardURL))
+	require.Equal(t, "history", initialCardRole)
+	require.Equal(t, "Codex · 已引导对话", initialCardHeader)
+	require.Contains(t, initialCardURL, "/desktop-steer-status-card")
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT role FROM discord_turn_status_cards
+		WHERE run_id=$1 AND projection_key=$2`, task.Claimed.RunID, desktopSteerStatusKey).
+		Scan(&desktopSteerCardRole))
+	require.Equal(t, "current", desktopSteerCardRole,
+		"Desktop Steer 过程卡投影完成后应成为当前过程卡")
 	var steerIntentID, steerParticipantID uuid.UUID
 	var steerStatus, steerDisplayName, steerProjectionStatus string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT id, status, actor_participant_id,
@@ -960,9 +1001,39 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "completed", steerStatus)
 	var projectedReply int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM integration_outbox
-		WHERE operation_key = $1`, "conversation-reply:"+state.ConversationID.String()+
-		":message:desktop-"+task.Claimed.ID.String()).Scan(&projectedReply))
+		WHERE operation_key = $1`, "projection:conversation-reply:"+state.ConversationID.String()+
+		":message:"+task.Claimed.ProjectionAnchor).Scan(&projectedReply))
 	require.Equal(t, 1, projectedReply)
+	rollback, err := client.PrepareDesktopRollback(ctx,
+		workerprotocol.DesktopRollbackPrepareRequest{
+			EnvironmentID: environmentID, RequestKey: strings.Repeat("b", 64),
+			Params: json.RawMessage(`{"threadId":"codex-desktop-thread","numTurns":1}`),
+		})
+	require.NoError(t, err)
+	require.Equal(t, "reserved", rollback.Status)
+	require.NoError(t, client.CompleteDesktopRollback(ctx, rollback.ID,
+		workerprotocol.DesktopRollbackCompleteRequest{EnvironmentID: environmentID,
+			Response: json.RawMessage(`{}`)}))
+	preflight, err := client.PreflightDesktopTurn(ctx, workerprotocol.DesktopTurnPreflightRequest{
+		EnvironmentID: environmentID,
+		Params: json.RawMessage(`{"threadId":"codex-desktop-thread",` +
+			`"clientUserMessageId":"desktop-edited",` +
+			`"input":[{"type":"text","text":"desktop edited"}]}`),
+	})
+	require.NoError(t, err)
+	require.Contains(t, string(preflight.Params), rollback.ID.String())
+	replacementTask, err := client.PrepareDesktopTurn(ctx,
+		workerprotocol.DesktopTurnPrepareRequest{EnvironmentID: environmentID,
+			WorkerID: "desktop-worker", RequestKey: strings.Repeat("c", 64), Params: preflight.Params})
+	require.NoError(t, err)
+	require.Equal(t, rollback.ID, replacementTask.Claimed.ID)
+	require.Equal(t, "replace_last_turn", replacementTask.Claimed.Operation)
+	require.Equal(t, "desktop-client-steer-1", replacementTask.Claimed.ProjectionAnchor)
+	require.NoError(t, client.RecordSubmission(ctx, &replacementTask, "desktop-turn-replacement"))
+	require.NoError(t, client.ConfirmTurn(ctx, &replacementTask, "desktop-turn-replacement"))
+	require.NoError(t, client.Complete(ctx, &replacementTask, codexcontrol.TurnResult{
+		TurnID: "desktop-turn-replacement", FinalAnswer: "desktop edited done",
+	}))
 
 	cancelableArchive, err := client.PrepareDesktopThreadLifecycle(ctx,
 		workerprotocol.ThreadLifecyclePrepareRequest{
@@ -1253,13 +1324,13 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "completed", failed.Status)
 	var recoveredSecondInput, recoveredFirstReply int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM integration_outbox
-		WHERE operation_key LIKE $1`, "desktop-input:"+failed.ConversationID.String()+
+		WHERE operation_key LIKE $1`, "projection:desktop-input:"+failed.ConversationID.String()+
 		":offline-second:%").Scan(&recoveredSecondInput))
 	require.Equal(t, 1, recoveredSecondInput,
 		"Post 恢复后必须补投影故障期间的后续 Desktop 输入")
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM integration_outbox
-		WHERE operation_key=$1`, "conversation-reply:"+failed.ConversationID.String()+
-		":message:desktop-"+failedTask.Claimed.ID.String()).Scan(&recoveredFirstReply))
+		WHERE operation_key=$1`, "projection:conversation-reply:"+failed.ConversationID.String()+
+		":message:"+failedTask.Claimed.ProjectionAnchor).Scan(&recoveredFirstReply))
 	require.Equal(t, 1, recoveredFirstReply,
 		"Post 恢复后必须补投影已经完成的最终回复")
 	require.NoError(t, client.RecordSubmission(ctx, &recoveryTask, "desktop-offline-turn-2"))

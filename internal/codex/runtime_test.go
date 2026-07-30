@@ -54,6 +54,17 @@ func TestStartTurnCarriesCollaborationMode(t *testing.T) {
 	}
 }
 
+func TestRollbackThreadUsesSingleLatestTurn(t *testing.T) {
+	client := &recordingRuntimeClient{}
+	err := NewRuntime(client).RollbackThread(context.Background(), "thread-1", 1)
+	require.NoError(t, err)
+	require.Equal(t, "thread/rollback", client.method)
+	require.Equal(t, "thread-1", client.payload["threadId"])
+	require.Equal(t, 1, client.payload["numTurns"])
+	require.ErrorContains(t, NewRuntime(client).RollbackThread(context.Background(), "thread-1", 2),
+		"只允许 rollback 最新一个 turn")
+}
+
 func TestThreadPayloadAndSkillInput(t *testing.T) {
 	root := t.TempDir()
 	payload := threadPayload(ports.ThreadOptions{

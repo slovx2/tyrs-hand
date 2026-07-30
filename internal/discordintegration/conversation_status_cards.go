@@ -71,6 +71,15 @@ func ensureInitialConversationStatusTx(ctx context.Context, tx *sql.Tx, runID uu
 	if err != nil {
 		return "", err
 	}
+	var projectionExists bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM discord_projections
+		WHERE guild_id=$1 AND projection_key=$2)`, guildID, projectionKey).
+		Scan(&projectionExists); err != nil {
+		return "", err
+	}
+	if !projectionExists {
+		return "", nil
+	}
 	if err := registerInitialConversationStatusTx(ctx, tx, runID, guildID, projectionKey); err != nil {
 		return "", err
 	}

@@ -163,7 +163,40 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	_ = json.Unmarshal(dangerousJSON, &claimed.DangerousActions)
 	claimed.ID, claimed.RunID = uuid.New(), uuid.New()
 	claimed.Sequence, claimed.Operation, claimed.Behavior = nextSequence, "turn_input", "start_when_idle"
+	isReplacement := false
+	if reservationID, parseErr := uuid.Parse(projectionKey); parseErr == nil {
+		var targetID sql.NullString
+		err = tx.QueryRowContext(c.Request.Context(), `SELECT sequence_no, operation, behavior,
+			target_intent_id::text, COALESCE(projection_anchor,''), message_edit_revision,
+			COALESCE(replacement_phase,'') FROM codex_turn_intents
+			WHERE id=$1 AND control_id=$2 AND input_surface='desktop'
+				AND operation='replace_last_turn' AND status='awaiting_confirmation'
+				AND replacement_phase='start_pending' FOR UPDATE`, reservationID, claimed.ControlID).
+			Scan(&claimed.Sequence, &claimed.Operation, &claimed.Behavior, &targetID,
+				&claimed.ProjectionAnchor, &claimed.MessageEditRevision, &claimed.ReplacementPhase)
+		if err == nil {
+			claimed.ID, isReplacement = reservationID, true
+			if targetID.Valid {
+				targetIntentID, parseTargetErr := uuid.Parse(targetID.String)
+				if parseTargetErr != nil {
+					problem(c, http.StatusInternalServerError,
+						"解析 Desktop replacement target 失败", parseTargetErr)
+					return
+				}
+				claimed.TargetIntentID = targetIntentID
+			}
+			if claimed.ProjectionAnchor != "" {
+				projectionKey = claimed.ProjectionAnchor
+			}
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			problem(c, http.StatusInternalServerError, "读取 Desktop replacement reservation 失败", err)
+			return
+		}
+	}
 	claimed.SourceType, claimed.InputSurface = codexcontrol.SourceDiscord, "desktop"
+	if !isReplacement {
+		claimed.ProjectionAnchor = projectionKey
+	}
 	claimed.Status, claimed.Instruction = codexcontrol.IntentDispatching, instruction
 	claimed.ActorLogin, claimed.ActorPermission, claimed.ReplyPolicy = "codex-desktop", "owner", "silent"
 	if actorUserID != "" {
@@ -181,22 +214,30 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	claimed.LeaseToken, claimed.LeaseEpoch = leaseToken, oldLeaseEpoch+1
 	claimed.LeaseExpiresAt = time.Now().Add(s.cfg.LeaseDuration)
 	idempotencyKey := "desktop-turn:" + request.EnvironmentID.String() + ":" + request.RequestKey
-	_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO codex_turn_intents
+	if isReplacement {
+		_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_turn_intents SET
+			instruction=$2,prepared_input=$3,status='dispatching',attempt_count=1,max_attempts=$4,
+			dispatched_at=now(),desktop_input_projection_key=$5,
+			desktop_input_projection_status='pending',updated_at=now() WHERE id=$1`,
+			claimed.ID, instruction, request.Params, claimed.MaxAttempts, projectionKey)
+	} else {
+		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO codex_turn_intents
 			(id, control_id, sequence_no, operation, behavior, source_type, input_surface,
 			 discord_conversation_id, repository_id, development_project_id, agent_profile_id, idempotency_key,
 			 instruction, prepared_input, allowed_tools, dangerous_actions, priority,
 			 actor_login, actor_permission, actor_participant_id, actor_display_name,
 			 reply_policy, reply_status, status, attempt_count, max_attempts, dispatched_at,
-			 desktop_input_projection_key, desktop_input_projection_status)
+			 desktop_input_projection_key, desktop_input_projection_status, projection_anchor)
 			VALUES ($1,$2,$3,'turn_input','start_when_idle','discord_conversation','desktop',
 				NULLIF($4::text,'')::uuid,NULLIF($5::text,'')::uuid,NULLIF($6::text,'')::uuid,$7,$8,
 				$9,$10,$11,$12,100,'codex-desktop','owner',NULLIF($13::text,'')::uuid,$14,
-				'silent','skipped','dispatching',1,$15,now(),$16,'pending')`,
-		claimed.ID, claimed.ControlID, claimed.Sequence, nilUUIDString(claimed.DiscordConversationID),
-		"", nilUUIDString(claimed.ProjectID),
-		claimed.AgentProfileID, idempotencyKey, instruction, request.Params,
-		allowedJSON, dangerousJSON, nilUUIDString(claimed.ActorParticipantID),
-		claimed.ActorDisplayName, claimed.MaxAttempts, projectionKey)
+				'silent','skipped','dispatching',1,$15,now(),$16,'pending',$16)`,
+			claimed.ID, claimed.ControlID, claimed.Sequence, nilUUIDString(claimed.DiscordConversationID),
+			"", nilUUIDString(claimed.ProjectID),
+			claimed.AgentProfileID, idempotencyKey, instruction, request.Params,
+			allowedJSON, dangerousJSON, nilUUIDString(claimed.ActorParticipantID),
+			claimed.ActorDisplayName, claimed.MaxAttempts, projectionKey)
+	}
 	if err != nil {
 		problem(c, http.StatusConflict, "Desktop Turn 已提交或发生并发冲突", err)
 		return
@@ -218,9 +259,10 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_thread_controls SET
 		status = 'dispatching', active_intent_id = $2, worker_id = $3, lease_token = $4,
 		lease_epoch = $5, lease_expires_at = now() + $6::interval, heartbeat_at = now(),
-		next_sequence_no = next_sequence_no + 1, updated_at = now() WHERE id = $1`,
+		next_sequence_no = next_sequence_no + CASE WHEN $7 THEN 0 ELSE 1 END,
+		updated_at = now() WHERE id = $1`,
 		claimed.ControlID, claimed.ID, request.WorkerID, security.Digest(leaseToken),
-		claimed.LeaseEpoch, s.cfg.LeaseDuration.String())
+		claimed.LeaseEpoch, s.cfg.LeaseDuration.String(), isReplacement)
 	if err == nil {
 		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO codex_turn_runs
 			(id, control_id, primary_intent_id, attempt, worker_id, lease_epoch, capability_hash,

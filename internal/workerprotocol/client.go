@@ -227,6 +227,29 @@ func (c *Client) PrepareDesktopTurn(ctx context.Context,
 	return result, err
 }
 
+func (c *Client) PrepareDesktopRollback(ctx context.Context,
+	request DesktopRollbackPrepareRequest,
+) (DesktopRollbackState, error) {
+	var result DesktopRollbackState
+	err := c.call(ctx, http.MethodPost, "/worker/v1/desktop-rollbacks", request, &result, true)
+	return result, err
+}
+
+func (c *Client) CompleteDesktopRollback(ctx context.Context, requestID uuid.UUID,
+	request DesktopRollbackCompleteRequest,
+) error {
+	return c.call(ctx, http.MethodPost, "/worker/v1/desktop-rollbacks/"+requestID.String()+
+		"/complete", request, nil, true)
+}
+
+func (c *Client) PreflightDesktopTurn(ctx context.Context,
+	request DesktopTurnPreflightRequest,
+) (DesktopTurnPreflightResponse, error) {
+	var result DesktopTurnPreflightResponse
+	err := c.call(ctx, http.MethodPost, "/worker/v1/desktop-turns/preflight", request, &result, true)
+	return result, err
+}
+
 func (c *Client) RecordDesktopSteer(ctx context.Context,
 	request DesktopSteerRecordRequest,
 ) error {

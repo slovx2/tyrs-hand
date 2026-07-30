@@ -214,7 +214,8 @@ func (s *SQLoutbox) replayDesktopProjection(ctx context.Context, requestID uuid.
 		return err
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT i.id, r.id, r.status,
-		COALESCE(i.result->>'finalAnswer','')
+		COALESCE(i.result->>'finalAnswer',''),
+		COALESCE(i.projection_anchor,'desktop-' || i.id::text)
 		FROM codex_turn_intents i
 		JOIN codex_turn_runs r ON r.primary_intent_id = i.id
 		WHERE i.control_id = $1 AND i.input_surface = 'desktop'
@@ -228,11 +229,13 @@ func (s *SQLoutbox) replayDesktopProjection(ctx context.Context, requestID uuid.
 		runID    uuid.UUID
 		status   string
 		answer   string
+		anchor   string
 	}
 	var projections []projection
 	for rows.Next() {
 		var item projection
-		if err := rows.Scan(&item.intentID, &item.runID, &item.status, &item.answer); err != nil {
+		if err := rows.Scan(&item.intentID, &item.runID, &item.status, &item.answer,
+			&item.anchor); err != nil {
 			return err
 		}
 		projections = append(projections, item)
@@ -241,7 +244,7 @@ func (s *SQLoutbox) replayDesktopProjection(ctx context.Context, requestID uuid.
 		return err
 	}
 	for _, item := range projections {
-		anchor := "desktop-" + item.intentID.String()
+		anchor := item.anchor
 		if item.status == "completed" {
 			if err := ProjectConversationStatus(ctx, s.db, guildID, threadID, conversationID,
 				anchor, item.runID, ConversationCompleted, "本轮处理完成。"); err != nil {

@@ -43,6 +43,10 @@ type desktopThreadCallState struct {
 	request workerprotocol.DesktopThreadState
 }
 
+type desktopRollbackCallState struct {
+	request workerprotocol.DesktopRollbackState
+}
+
 type desktopToolRuntime struct {
 	task    *workerprotocol.Task
 	runtime devcontainer.Runtime
@@ -97,6 +101,20 @@ func (c *desktopRelayController) PrepareCall(ctx context.Context,
 			plan.State = &desktopThreadCallState{request: state}
 		}
 	case "turn/start":
+		if c.processor != nil && c.processor.client != nil {
+			requestCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
+			preflight, err := c.processor.client.PreflightDesktopTurn(requestCtx,
+				workerprotocol.DesktopTurnPreflightRequest{
+					EnvironmentID: c.environment.runtime.EnvironmentID, Params: plan.Params,
+				})
+			cancel()
+			if err != nil {
+				return plan, err
+			}
+			if len(preflight.Params) > 0 {
+				plan.Params = preflight.Params
+			}
+		}
 		threadID, _ := relayCallScope(plan.Params)
 		if threadID == "" {
 			return plan, nil
@@ -139,6 +157,18 @@ func (c *desktopRelayController) PrepareCall(ctx context.Context,
 				}
 			})
 		plan.State = state
+	case "thread/rollback":
+		requestCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
+		state, err := c.processor.client.PrepareDesktopRollback(requestCtx,
+			workerprotocol.DesktopRollbackPrepareRequest{
+				EnvironmentID: c.environment.runtime.EnvironmentID,
+				RequestKey:    desktopRequestKey(call.Method, plan.Params, nil), Params: plan.Params,
+			})
+		cancel()
+		if err != nil {
+			return plan, err
+		}
+		plan.State = &desktopRollbackCallState{request: state}
 	case "thread/archive", "thread/unarchive":
 		threadID, _ := relayCallScope(plan.Params)
 		if threadID == "" {
@@ -179,7 +209,50 @@ func (c *desktopRelayController) CompleteCall(_ context.Context, call codexrelay
 	if lifecycle, ok := plan.State.(*desktopLifecycleCallState); ok {
 		go c.completeDesktopLifecycle(lifecycle.request, result, cause)
 	}
+	if rollback, ok := plan.State.(*desktopRollbackCallState); ok {
+		var requestErr *codex.RequestError
+		if cause != nil && errors.As(cause, &requestErr) && requestErr.State == codex.RequestUnknown {
+			runtime := codex.NewRuntime(c.environment.client)
+			if snapshot, err := runtime.ReadThread(c.processor.environments.ctx,
+				rollback.request.ThreadID); err == nil {
+				if _, exists := snapshot.TurnByID(rollback.request.TargetTurnID); !exists {
+					cause = nil
+					result = json.RawMessage(`{}`)
+				}
+			}
+		}
+		request := workerprotocol.DesktopRollbackCompleteRequest{
+			EnvironmentID: rollback.request.EnvironmentID, Response: result,
+		}
+		if cause != nil {
+			request.Error = cause.Error()
+		}
+		ctx, cancel := context.WithTimeout(c.processor.environments.ctx,
+			c.processor.cfg.ControlTimeout)
+		err := c.processor.client.CompleteDesktopRollback(ctx, rollback.request.ID, request)
+		cancel()
+		if err != nil {
+			return result, err
+		}
+	}
 	if cause != nil {
+		var requestErr *codex.RequestError
+		responseUnknown := errors.As(cause, &requestErr) && requestErr.State == codex.RequestUnknown
+		if call.Method == "turn/start" && !responseUnknown {
+			var params struct {
+				ClientUserMessageID string `json:"clientUserMessageId"`
+			}
+			_ = json.Unmarshal(plan.Params, &params)
+			if reservationID, err := uuid.Parse(params.ClientUserMessageID); err == nil {
+				ctx, cancel := context.WithTimeout(c.processor.environments.ctx,
+					c.processor.cfg.ControlTimeout)
+				_ = c.processor.client.CompleteDesktopRollback(ctx, reservationID,
+					workerprotocol.DesktopRollbackCompleteRequest{
+						EnvironmentID: c.environment.runtime.EnvironmentID, Error: cause.Error(),
+					})
+				cancel()
+			}
+		}
 		c.cleanupDesktopCall(plan, cause)
 		return result, cause
 	}
@@ -206,6 +279,7 @@ func (c *desktopRelayController) CompleteCall(_ context.Context, call codexrelay
 	case "turn/start":
 		state, _ := plan.State.(*desktopRelayCallState)
 		if state != nil {
+			call.Params = plan.Params
 			go c.observeDesktopTurn(call, result, state)
 		}
 	case "turn/steer":

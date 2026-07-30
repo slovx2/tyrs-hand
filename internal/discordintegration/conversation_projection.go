@@ -222,12 +222,17 @@ func upsertWaitingConfigurationProjectionTx(ctx context.Context, tx *sql.Tx,
 
 func ProjectConversationReply(ctx context.Context, db *sql.DB, threadID string,
 	conversationID uuid.UUID, inputMessageID string, runID uuid.UUID, content string,
+	replyMessageID ...string,
 ) error {
 	content = SanitizeDiscordResult(content)
 	if content == "" {
 		content = "本轮已完成。"
 	}
-	mentionUserID, err := conversationReplyMentionUser(ctx, db, conversationID, inputMessageID)
+	mentionSource := inputMessageID
+	if len(replyMessageID) > 0 && replyMessageID[0] != "" {
+		mentionSource = replyMessageID[0]
+	}
+	mentionUserID, err := conversationReplyMentionUser(ctx, db, conversationID, mentionSource)
 	if err != nil {
 		return err
 	}
@@ -239,30 +244,119 @@ func ProjectConversationReply(ctx context.Context, db *sql.DB, threadID string,
 	}
 	if mode != "plan" &&
 		utf8.RuneCountInString(textValue(payload["content"])) <= discordReplyMessageBudget {
-		return NewSQLoutbox(db).Enqueue(ctx, key, "message.create", "channels/"+threadID+"/messages",
-			payload, key)
+		return projectConversationReplyPages(ctx, db, guildID, threadID, key, mentionUserID,
+			[]string{content}, mode, runID)
 	}
 	chunks := splitConversationReply(content, guildID, threadID, mentionUserID)
 	if len(chunks) == 0 || (mode != "plan" && len(chunks) < 2) {
 		return errors.New("discord 长回复分片失败")
 	}
-	first := chunks[0]
-	if len(chunks) > 1 {
-		first += plainReplyNextMarker()
+	return projectConversationReplyPages(ctx, db, guildID, threadID, key, mentionUserID,
+		chunks, mode, runID)
+}
+
+// ProjectConversationReplyRegenerating 原位失效旧结果和 Plan 按钮。
+func ProjectConversationReplyRegenerating(ctx context.Context, db *sql.DB, threadID string,
+	conversationID uuid.UUID, inputMessageID string,
+) error {
+	var guildID string
+	if err := db.QueryRowContext(ctx, `SELECT guild_id FROM discord_conversations
+		WHERE id=$1 AND thread_id=$2`, conversationID, threadID).Scan(&guildID); err != nil {
+		return err
 	}
-	payload = conversationReplyPayload(threadID, first, mentionUserID)
-	var tailCard *ComponentCardPayload
+	key := "conversation-reply:" + conversationID.String() + ":message:" + inputMessageID
+	return projectConversationReplyPages(ctx, db, guildID, threadID, key, "",
+		[]string{"消息已编辑，正在重新生成。"}, "default", uuid.Nil)
+}
+
+func projectConversationReplyPages(ctx context.Context, db *sql.DB, guildID, threadID,
+	baseKey, mentionUserID string, chunks []string, mode string, runID uuid.UUID,
+) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	total := len(chunks)
 	if mode == "plan" {
-		card := planCompletedCard(runID)
-		tailCard = &card
+		total++
 	}
-	payload["replyChain"] = conversationReplyChain{Stage: "create", SourceOperationKey: key,
-		GuildID: guildID, ThreadID: threadID, Index: 0, Chunks: chunks, TailCard: tailCard}
-	if utf8.RuneCountInString(textValue(payload["content"])) > discordReplyMessageBudget {
-		return errors.New("discord 首个回复分片超过长度限制")
+	for page := 0; page < total; page++ {
+		key := baseKey
+		if page > 0 {
+			key += ":page:" + fmt.Sprint(page)
+		}
+		payload := map[string]any{"channelId": threadID}
+		if page < len(chunks) {
+			content := chunks[page]
+			if len(chunks) > 1 {
+				content = fmt.Sprintf("**Codex 回复 · %d/%d**\n%s", page+1, len(chunks), content)
+			}
+			payload = conversationReplyPayload(threadID, content, "")
+			if page == 0 && mentionUserID != "" {
+				payload = conversationReplyPayload(threadID, content, mentionUserID)
+			}
+		} else {
+			payload["card"] = planCompletedCard(runID)
+		}
+		var messageID string
+		if err := tx.QueryRowContext(ctx, `INSERT INTO discord_projections
+			(guild_id,projection_key,resource_id,desired_payload) VALUES ($1,$2,$3,$4)
+			ON CONFLICT(guild_id,projection_key) DO UPDATE SET
+			resource_id=EXCLUDED.resource_id,desired_payload=EXCLUDED.desired_payload,
+			desired_version=discord_projections.desired_version+1,updated_at=now()
+			RETURNING COALESCE(message_id,'')`, guildID, key, threadID,
+			mustJSON(payload)).Scan(&messageID); err != nil {
+			return err
+		}
+		operation, nonce := "message.create", key
+		if messageID != "" {
+			operation, nonce = "message.update", ""
+			payload["messageId"] = messageID
+		}
+		if err := enqueueDiscordOutbox(ctx, tx, "projection:"+key, operation,
+			"channels/"+threadID+"/messages", payload, nonce); err != nil {
+			return err
+		}
 	}
-	return NewSQLoutbox(db).Enqueue(ctx, key, "message.create", "channels/"+threadID+"/messages",
-		payload, key)
+	rows, err := tx.QueryContext(ctx, `SELECT projection_key,COALESCE(message_id,'')
+		FROM discord_projections WHERE guild_id=$1 AND
+		(projection_key=$2 OR left(projection_key,length($2)+6)=$2 || ':page:')`,
+		guildID, baseKey)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var key, messageID string
+		if err := rows.Scan(&key, &messageID); err != nil {
+			return err
+		}
+		page := 0
+		if key != baseKey {
+			if _, scanErr := fmt.Sscanf(strings.TrimPrefix(key, baseKey), ":page:%d", &page); scanErr != nil {
+				continue
+			}
+		}
+		if page < total {
+			continue
+		}
+		if messageID != "" {
+			if err := enqueueDiscordOutbox(ctx, tx, "projection-delete:"+key,
+				"message.delete", "channels/"+threadID+"/messages/"+messageID,
+				map[string]any{"channelId": threadID, "messageId": messageID}, ""); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM discord_projections
+			WHERE guild_id=$1 AND projection_key=$2`, guildID, key); err != nil {
+			return err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func conversationReplyMode(ctx context.Context, db *sql.DB, conversationID uuid.UUID,
