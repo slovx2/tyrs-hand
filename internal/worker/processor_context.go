@@ -730,7 +730,7 @@ func codexRuntimeConfig(environment []string, workerDataRoot string,
 	return config
 }
 
-func applyBrowserMCPConfig(runtimeConfig map[string]any, cfg config.Config) {
+func applyBrowserMCPConfig(runtimeConfig map[string]any, cfg config.Config, taskIDs ...string) {
 	if cfg.BrowserMCPURL == "" {
 		return
 	}
@@ -738,11 +738,17 @@ func applyBrowserMCPConfig(runtimeConfig map[string]any, cfg config.Config) {
 	if servers == nil {
 		servers = make(map[string]any)
 	}
-	servers["chrome"] = map[string]any{
+	chrome := map[string]any{
 		"url": cfg.BrowserMCPURL, "bearer_token_env_var": "TYRS_BROWSER_MCP_TOKEN",
 		"startup_timeout_sec": 10.0, "tool_timeout_sec": 120.0,
 		"required": false, "default_tools_approval_mode": "approve",
 	}
+	if len(taskIDs) > 0 && taskIDs[0] != "" {
+		chrome["http_headers"] = map[string]string{
+			"X-Tyrs-Browser-Task-Id": taskIDs[0],
+		}
+	}
+	servers["chrome"] = chrome
 	runtimeConfig["mcp_servers"] = servers
 }
 
@@ -815,10 +821,14 @@ func hideManagedSecrets(config map[string]any) {
 }
 
 func prepareCodexRuntime(environment []string, workerDataRoot string,
-	cfg config.Config, scope string,
+	cfg config.Config, scope string, taskIDs ...string,
 ) ([]string, map[string]any) {
 	processEnvironment := codexProcessEnvironment(environment, cfg, scope)
-	return processEnvironment, codexRuntimeConfig(processEnvironment, workerDataRoot, cfg)
+	runtimeConfig := codexRuntimeConfig(processEnvironment, workerDataRoot, cfg)
+	if len(taskIDs) > 0 && taskIDs[0] != "" {
+		applyBrowserMCPConfig(runtimeConfig, cfg, taskIDs[0])
+	}
+	return processEnvironment, runtimeConfig
 }
 
 func codexProcessEnvironment(environment []string, cfg config.Config, scope string) []string {
@@ -880,7 +890,7 @@ func browserDeveloperInstructions(cfg config.Config, current string) string {
 	if cfg.BrowserMCPURL == "" {
 		return current
 	}
-	return current + "\nUse the single chrome MCP and browser_select to choose between the worker browser and desktop browser. Use browser_files.stage_file and browser_files.import_download for file exchange. browser_files.resolve_worker_url only works with the worker browser; the desktop browser cannot reach development-container services in this release. If the chrome MCP is unavailable, report that directly; do not start another Chrome, CDP, container browser, or headless browser."
+	return current + "\nUse the single chrome MCP and browser_select to choose between the worker browser and desktop browser. Use browser_files.stage_file and browser_files.import_download for file exchange. Worker and desktop browsers cannot directly access development-environment localhost ports. After starting a service, call browser_expose_service and use the returned loopback endpoint. If the chrome MCP is unavailable, report that directly; do not start another Chrome, CDP, container browser, or headless browser."
 }
 
 func withoutGenericReply(tools []string) []string {

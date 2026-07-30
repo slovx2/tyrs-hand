@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -36,11 +36,8 @@ type stagedBrowserFile struct {
 func browserToolSpec() ports.DynamicToolSpec {
 	return ports.DynamicToolSpec{
 		Type: "namespace", Name: browserToolNamespace,
-		Description: "Exchange files with the selected browser and expose development services to the worker browser.",
+		Description: "Exchange files with the selected browser.",
 		Tools: []ports.DynamicToolSpec{
-			{Type: "function", Name: "resolve_worker_url",
-				Description: "Resolve a service listening on 0.0.0.0 to a URL reachable only by the worker browser.",
-				InputSchema: json.RawMessage(`{"type":"object","properties":{"port":{"type":"integer","minimum":1,"maximum":65535}},"required":["port"],"additionalProperties":false}`)},
 			{Type: "function", Name: "stage_file",
 				Description: "Copy a regular file from the current workspace into the browser exchange directory for worker or desktop upload.",
 				InputSchema: json.RawMessage(`{"type":"object","properties":{"source":{"type":"string","minLength":1}},"required":["source"],"additionalProperties":false}`)},
@@ -66,26 +63,6 @@ func executeBrowserTool(ctx context.Context, cfg config.Config, taskID, workspac
 		return codex.ToolCallResult{}, errors.New("宿主浏览器能力未配置")
 	}
 	switch request.Tool {
-	case "resolve_worker_url":
-		var arguments struct {
-			Port int `json:"port"`
-		}
-		if err := json.Unmarshal(request.Arguments, &arguments); err != nil {
-			return codex.ToolCallResult{}, err
-		}
-		address, err := workerIPv4()
-		if runtime != nil {
-			address, err = development.ContainerIP(ctx, *runtime)
-		}
-		if err != nil {
-			return codex.ToolCallResult{}, err
-		}
-		if err := probePort(ctx, address, arguments.Port); err != nil {
-			return codex.ToolCallResult{}, err
-		}
-		value := (&url.URL{Scheme: "http", Host: net.JoinHostPort(address,
-			fmt.Sprintf("%d", arguments.Port))}).String()
-		return browserJSONResult(map[string]string{"url": value})
 	case "stage_file":
 		var arguments struct {
 			Source string `json:"source"`
@@ -303,32 +280,6 @@ func fileSHA256(path string) (string, error) {
 	return hex.EncodeToString(digest.Sum(nil)), nil
 }
 
-func workerIPv4() (string, error) {
-	addresses, err := net.InterfaceAddrs()
-	if err != nil {
-		return "", err
-	}
-	for _, address := range addresses {
-		ip, _, parseErr := net.ParseCIDR(address.String())
-		if parseErr == nil && ip.To4() != nil && !ip.IsLoopback() && ip.IsPrivate() {
-			return ip.String(), nil
-		}
-	}
-	return "", errors.New("worker 容器没有可用的私有 IPv4 地址")
-}
-
-func probePort(ctx context.Context, address string, port int) error {
-	if port < 1 || port > 65535 {
-		return errors.New("端口必须在 1 到 65535 之间")
-	}
-	dialer := net.Dialer{Timeout: time.Second}
-	connection, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(address, fmt.Sprintf("%d", port)))
-	if err != nil {
-		return fmt.Errorf("端口不可达，请确认开发服务监听 0.0.0.0:%d: %w", port, err)
-	}
-	return connection.Close()
-}
-
 func pathInside(root, path string) bool {
 	relative, err := filepath.Rel(root, path)
 	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
@@ -342,9 +293,51 @@ func browserJSONResult(value any) (codex.ToolCallResult, error) {
 	return codex.TextToolResult(string(data), true), nil
 }
 
-func cleanupBrowserTask(cfg config.Config, taskID string) {
+func cleanupBrowserTask(cfg config.Config, taskID string, scopes ...string) {
 	if cfg.BrowserMCPURL != "" && taskID != "" {
 		_ = os.RemoveAll(filepath.Join(cfg.BrowserFilesRoot, taskID))
+	}
+	if cfg.BrowserMCPURL == "" || taskID == "" || len(scopes) == 0 || scopes[0] == "" {
+		return
+	}
+	postBrowserServiceCleanup(cfg, scopes[0], "/browser-services/task/end", taskID)
+}
+
+func cleanupBrowserEnvironment(cfg config.Config, scope string) {
+	postBrowserServiceCleanup(cfg, scope, "/browser-services/environment/end", "")
+}
+
+func postBrowserServiceCleanup(cfg config.Config, scope, path, taskID string) {
+	if cfg.BrowserMCPURL == "" || scope == "" {
+		return
+	}
+	secret, err := os.ReadFile(cfg.BrowserMCPTokenFile)
+	if err != nil {
+		return
+	}
+	token, err := deriveBrowserToken(string(secret), scope)
+	if err != nil {
+		return
+	}
+	endpoint, err := url.Parse(cfg.BrowserMCPURL)
+	if err != nil {
+		return
+	}
+	endpoint.Path = path
+	endpoint.RawQuery = ""
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), nil)
+	if err != nil {
+		return
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	if taskID != "" {
+		request.Header.Set("X-Tyrs-Browser-Task-Id", taskID)
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err == nil {
+		_ = response.Body.Close()
 	}
 }
 

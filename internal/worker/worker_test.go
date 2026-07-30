@@ -205,7 +205,7 @@ func TestPrepareCodexRuntimeInjectsManagedCapabilities(t *testing.T) {
 		EnableSSH: true, SSHAgentDir: "/run/tyrs-hand-ssh-agent",
 		BrowserMCPURL:       "http://host.docker.internal:8931/mcp",
 		BrowserMCPTokenFile: tokenPath,
-	}, "worker")
+	}, "worker", "11111111-1111-4111-8111-111111111111")
 
 	require.Equal(t, original, base)
 	require.Equal(t, "/run/tyrs-hand-ssh-agent/current.sock",
@@ -234,6 +234,9 @@ func TestPrepareCodexRuntimeInjectsManagedCapabilities(t *testing.T) {
 	require.Equal(t, 120.0, chrome["tool_timeout_sec"])
 	require.Equal(t, false, chrome["required"])
 	require.Equal(t, "approve", chrome["default_tools_approval_mode"])
+	require.Equal(t, map[string]string{
+		"X-Tyrs-Browser-Task-Id": "11111111-1111-4111-8111-111111111111",
+	}, chrome["http_headers"])
 	require.NotContains(t, chrome, "bearer_token")
 	serializedConfig, err := json.Marshal(runtimeConfig)
 	require.NoError(t, err)

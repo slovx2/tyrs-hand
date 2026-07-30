@@ -39,7 +39,8 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
-	defer cleanupBrowserTask(p.cfg, task.Claimed.ID.String())
+	defer cleanupBrowserTask(p.cfg, task.Claimed.ID.String(),
+		snapshot.Development.EnvironmentID.String())
 	spec := remoteDevelopmentSpec(*snapshot.Development)
 	runtime, state, err := p.development.EnsureRemote(ctx, spec, "",
 		processEnvironment)
@@ -75,7 +76,7 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 		return workerprotocol.CompleteRequest{}, err
 	}
 	_, runtimeConfig := prepareCodexRuntime(nil, "", p.cfg,
-		snapshot.Development.EnvironmentID.String())
+		snapshot.Development.EnvironmentID.String(), task.Claimed.ID.String())
 	environmentCodex, err := p.environments.ensure(runtime, nil)
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err

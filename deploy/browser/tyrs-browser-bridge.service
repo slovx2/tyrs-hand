@@ -15,7 +15,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/tyrs-hand/browser-files
+ReadWritePaths=/opt/tyrs-hand/browser-files /opt/tyrs-hand/browser-services
 
 [Install]
 WantedBy=graphical-session.target

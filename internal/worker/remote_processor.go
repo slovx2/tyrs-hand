@@ -80,6 +80,9 @@ func (p *RemoteProcessor) ProcessDevelopmentOperation(ctx context.Context,
 	if p.browserAgent != nil && operation.Operation != "provision_environment" {
 		p.browserAgent.Reset(operation.EnvironmentID)
 	}
+	if operation.Operation != "provision_environment" {
+		cleanupBrowserEnvironment(p.cfg, operation.EnvironmentID.String())
+	}
 	processEnvironment, err := p.developmentOperationProcessEnvironment(ctx, operation)
 	if err != nil {
 		return err
@@ -195,7 +198,7 @@ func (p *RemoteProcessor) processRemoteGitHub(ctx context.Context, task *workerp
 	if err != nil {
 		return codexcontrol.TurnResult{}, err
 	}
-	defer cleanupBrowserTask(p.cfg, claimed.ID.String())
+	defer cleanupBrowserTask(p.cfg, claimed.ID.String(), "worker")
 	baseRef := "refs/remotes/origin/" + job.DefaultBranch
 	if job.Kind == "pull_request" {
 		baseRef = fmt.Sprintf("refs/remotes/pull/%d", job.Number)
@@ -247,7 +250,7 @@ func (p *RemoteProcessor) processRemoteGitHub(ctx context.Context, task *workerp
 		return codexcontrol.TurnResult{}, err
 	}
 	environment, runtimeConfig := prepareCodexRuntime(environment, p.cfg.WorkerDataRoot, p.cfg,
-		"worker")
+		"worker", claimed.ID.String())
 	applyModelProviderConfig(runtimeConfig, credential.ModelSource, credential.BaseURL)
 	if err := replygate.Install(codexHome); err != nil {
 		return codexcontrol.TurnResult{}, fmt.Errorf("安装 GitHub 回复 Stop Hook: %w", err)

@@ -71,6 +71,8 @@ type Config struct {
 	BrowserAgentRelayAddress       string
 	BrowserFilesRoot               string
 	BrowserFilesHostRoot           string
+	BrowserServicesRoot            string
+	BrowserServicesHostRoot        string
 }
 
 func Load() (Config, error) {
@@ -140,6 +142,8 @@ func load(workerProcess bool) (Config, error) {
 		BrowserAgentRelayAddress:       strings.TrimSpace(v.GetString("browser_agent_relay_address")),
 		BrowserFilesRoot:               filepath.Clean(v.GetString("browser_files_root")),
 		BrowserFilesHostRoot:           filepath.Clean(v.GetString("browser_files_host_root")),
+		BrowserServicesRoot:            filepath.Clean(v.GetString("browser_services_root")),
+		BrowserServicesHostRoot:        filepath.Clean(v.GetString("browser_services_host_root")),
 	}
 	var err error
 	cfg.WorkerAPIAllowlist, err = parseNetworkList(v.GetString("worker_api_ip_allowlist"))
@@ -220,8 +224,9 @@ func (c Config) validateWorkerCapabilities() error {
 			return errors.New("浏览器 MCP URL 必须是有效的绝对 URL")
 		}
 		if c.BrowserMCPTokenFile == "." || c.BrowserFilesRoot == "." ||
-			c.BrowserFilesHostRoot == "." {
-			return errors.New("启用浏览器时必须配置 Token 文件和文件交换目录")
+			c.BrowserFilesHostRoot == "." || c.BrowserServicesRoot == "." ||
+			c.BrowserServicesHostRoot == "." {
+			return errors.New("启用浏览器时必须配置 Token、文件交换目录和服务转发目录")
 		}
 		if _, _, err := net.SplitHostPort(c.BrowserAgentRelayAddress); err != nil {
 			return errors.New("浏览器 Agent relay 地址必须是 host:port")
@@ -317,6 +322,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("browser_agent_relay_address", "host.docker.internal:8934")
 	v.SetDefault("browser_files_root", "/run/tyrs-hand-browser-files")
 	v.SetDefault("browser_files_host_root", "/opt/tyrs-hand/browser-files")
+	v.SetDefault("browser_services_root", "/run/tyrs-hand-browser-services")
+	v.SetDefault("browser_services_host_root", "/opt/tyrs-hand/browser-services")
 	v.SetDefault("worker_api_ip_allowlist", "")
 	v.SetDefault("worker_api_trusted_proxies", "127.0.0.1/32,::1/128")
 	v.SetDefault("lease_duration", "90s")

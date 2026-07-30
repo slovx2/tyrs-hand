@@ -32,8 +32,13 @@ func run(arguments []string) error {
 		defer cancel()
 		return codexproxy.ServeStdio(ctx, "/run/tyrs-hand/browser-agent.sock")
 	}
+	if len(arguments) == 2 && arguments[0] == "service" && arguments[1] == "proxy" {
+		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		defer cancel()
+		return serveServiceProxy(ctx, "/run/tyrs-hand-browser-services/proxy.sock")
+	}
 	if len(arguments) < 2 || arguments[0] != "codex" {
-		return errors.New("tyrs-hand-dev 需要 codex 或 browser 子命令")
+		return errors.New("tyrs-hand-dev 需要 codex、browser 或 service 子命令")
 	}
 	root, marker, err := userPaths()
 	if err != nil {

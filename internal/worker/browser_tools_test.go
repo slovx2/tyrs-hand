@@ -3,7 +3,8 @@ package worker
 import (
 	"context"
 	"encoding/json"
-	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -54,6 +55,10 @@ func TestBrowserToolNamespaceAvoidsResponsesReservedName(t *testing.T) {
 	enabled := withBrowserTools(config.Config{BrowserMCPURL: "http://host.docker.internal:8931/mcp"})
 	require.Len(t, enabled, 1)
 	require.Equal(t, browserToolNamespace, enabled[0].Name)
+	require.Len(t, spec.Tools, 2)
+	for _, tool := range spec.Tools {
+		require.NotEqual(t, "resolve_worker_url", tool.Name)
+	}
 	require.Empty(t, withBrowserTools(config.Config{}))
 }
 
@@ -117,7 +122,7 @@ func TestBrowserFileExchangeRejectsUnsafeDownloadsAndDestinations(t *testing.T) 
 	require.Equal(t, filepath.Join(exchange, "nested", "download.txt"), workerPath)
 }
 
-func TestBrowserToolsRejectInvalidCallsAndProbePorts(t *testing.T) {
+func TestBrowserToolsRejectInvalidCalls(t *testing.T) {
 	disabled := config.Config{}
 	_, err := executeBrowserTool(context.Background(), disabled, "task", t.TempDir(), nil, nil,
 		codex.ToolCallRequest{Tool: "stage_file", Arguments: json.RawMessage(`{}`)})
@@ -130,18 +135,6 @@ func TestBrowserToolsRejectInvalidCallsAndProbePorts(t *testing.T) {
 	_, err = executeBrowserTool(context.Background(), cfg, "task", t.TempDir(), nil, nil,
 		codex.ToolCallRequest{Tool: "stage_file", Arguments: json.RawMessage(`{"source":`)})
 	require.Error(t, err)
-	require.Error(t, probePort(context.Background(), "127.0.0.1", 0))
-
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = listener.Close() })
-	port := listener.Addr().(*net.TCPAddr).Port
-	require.NoError(t, probePort(context.Background(), "127.0.0.1", port))
-	_ = listener.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	err = probePort(ctx, "127.0.0.1", port)
-	require.ErrorContains(t, err, "监听 0.0.0.0")
 }
 
 func TestBrowserTaskCleanupAndSweeper(t *testing.T) {
@@ -165,4 +158,27 @@ func TestBrowserTaskCleanupAndSweeper(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrNotExist)
 	_, err = os.Stat(fresh)
 	require.NoError(t, err)
+}
+
+func TestBrowserTaskCleanupReleasesScopedServiceLeases(t *testing.T) {
+	taskID := "22222222-2222-4222-8222-222222222222"
+	scope := "11111111-1111-4111-8111-111111111111"
+	requested := make(chan struct{}, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		require.Equal(t, "/browser-services/task/end", request.URL.Path)
+		require.Equal(t, taskID, request.Header.Get("X-Tyrs-Browser-Task-Id"))
+		expected, err := deriveBrowserToken("secret", scope)
+		require.NoError(t, err)
+		require.Equal(t, "Bearer "+expected, request.Header.Get("Authorization"))
+		response.WriteHeader(http.StatusNoContent)
+		requested <- struct{}{}
+	}))
+	defer server.Close()
+	tokenPath := filepath.Join(t.TempDir(), "token")
+	require.NoError(t, os.WriteFile(tokenPath, []byte("secret"), 0o600))
+	cleanupBrowserTask(config.Config{
+		BrowserMCPURL: server.URL + "/mcp", BrowserMCPTokenFile: tokenPath,
+		BrowserFilesRoot: t.TempDir(),
+	}, taskID, scope)
+	<-requested
 }

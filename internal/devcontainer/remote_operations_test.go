@@ -460,7 +460,11 @@ func TestReconfigureRemoteEnvironmentKeepsContainerRunningAndSecuresSSH(t *testi
 	manager := &Manager{enabled: true, dockerBin: "docker", dockerHost: "inherit", runner: runner,
 		developmentRuntimeDir: runtimeDir, developmentRuntimeHostDir: "/host/runtime",
 		sshEnabled: true, sshAgentDir: "/run/tyrs-hand-ssh-agent",
-		sshAgentHostDir: "/host/ssh-agent"}
+		sshAgentHostDir: "/host/ssh-agent",
+		browserEnabled:  true, browserFilesRoot: "/run/tyrs-hand-browser-files",
+		browserFilesHostRoot:    "/host/browser-files",
+		browserServicesRoot:     filepath.Join(runtimeDir, "browser-services"),
+		browserServicesHostRoot: "/host/browser-services"}
 	environmentID := uuid.New()
 	err := manager.RunRemoteOperation(context.Background(), RemoteOperation{
 		Operation: "reconfigure", EnvironmentID: environmentID,
@@ -486,9 +490,14 @@ func TestReconfigureRemoteEnvironmentKeepsContainerRunningAndSecuresSSH(t *testi
 	require.True(t, runner.contains("--env SSH_AUTH_SOCK=/run/tyrs-hand-ssh-agent/current.sock"))
 	require.True(t, runner.contains("--env TYRS_TEST_RUNTIME=value"))
 	require.True(t, runner.contains("type=bind,source=/host/runtime/"+environmentID.String()+",target=/run/tyrs-hand"))
+	require.True(t, runner.contains("type=bind,source=/host/browser-services/"+
+		environmentID.String()+",target=/run/tyrs-hand-browser-services"))
 	require.True(t, runner.contains("PasswordAuthentication no"))
 	require.True(t, runner.contains("PermitRootLogin no"))
-	require.True(t, runner.contains("DisableForwarding yes"))
+	require.True(t, runner.contains("AllowTcpForwarding local"))
+	require.True(t, runner.contains("PermitOpen 127.0.0.1:*"))
+	require.True(t, runner.contains("GatewayPorts no"))
+	require.False(t, runner.contains("DisableForwarding yes"))
 	require.True(t, runner.contains("AuthenticationMethods publickey"))
 	require.True(t, runner.contains("chown \"$TYRS_OWNER\" /run/tyrs-hand"))
 	require.True(t, runner.contains("chmod 0700 /run/tyrs-hand"))
@@ -496,6 +505,7 @@ func TestReconfigureRemoteEnvironmentKeepsContainerRunningAndSecuresSSH(t *testi
 	require.True(t, runner.contains("chmod 0666 /run/tyrs-hand/app-server.sock"))
 	require.True(t, runner.contains("docker exec --detach --user 0:0"))
 	require.True(t, runner.contains("sshd -D -e"))
+	require.True(t, runner.contains("tyrs-hand-dev service proxy"))
 	require.True(t, runner.contains(
 		`shell_environment_policy.exclude=["TYRS_HAND_MODEL_API_KEY","TYRS_BROWSER_MCP_TOKEN"]`))
 	require.True(t, runner.contains("allow_login_shell=false"))

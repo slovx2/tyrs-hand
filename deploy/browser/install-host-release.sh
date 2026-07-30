@@ -57,6 +57,7 @@ TYRS_BROWSER_EXTENSION_TOKEN_FILE=/opt/tyrs-hand/browser/browser_extension_token
 TYRS_BROWSER_EXTENSION_ID=$extension_id
 TYRS_BROWSER_RELEASE_DIR=/opt/tyrs-hand/browser/releases/current
 TYRS_BROWSER_FILES_ROOT=/opt/tyrs-hand/browser-files
+TYRS_BROWSER_SERVICES_ROOT=/opt/tyrs-hand/browser-services
 EOF
 chown "$desktop_uid:$desktop_gid" /opt/tyrs-hand/browser/browser.env
 

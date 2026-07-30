@@ -299,7 +299,7 @@ sudo -u "$desktop_user" env \
 
 只有 `/health` 为 `ready` 还不能证明 Agent 链路完整。安装后至少执行一次真实 Codex 任务，验证普通 shell 命令、`chrome.browser_tabs` 打开页面、读取标题并关闭新标签页，全程没有 Codex 审批或 Chrome 调试确认窗。
 
-Bridge 只允许 loopback 和 Docker bridge CIDR，防火墙也不应向 LAN/Tailscale 开放这些端口。唯一的 `chrome` MCP 默认控制“worker 浏览器”；开发环境 Session 可以调用 `browser_select` 切换到已注册的“桌面端浏览器”。开发服务必须监听 `0.0.0.0`，再通过 `browser_files.resolve_worker_url` 生成仅供 worker 浏览器访问的地址；首期不会把开发容器网络转发到桌面端浏览器。上传和下载统一使用 `browser_files.stage_file` 与 `browser_files.import_download`。
+Bridge 只允许 loopback 和 Docker bridge CIDR，防火墙也不应向 LAN/Tailscale 开放这些端口。唯一的 `chrome` MCP 默认控制“worker 浏览器”；开发环境 Session 可以调用 `browser_select` 切换到已注册的“桌面端浏览器”。Worker 和桌面执行端都不能直接访问开发环境的 localhost 端口；服务启动后调用 `browser_expose_service`，并使用返回的 loopback TCP endpoint。开发服务可以只监听容器内的 `127.0.0.1`。上传和下载统一使用 `browser_files.stage_file` 与 `browser_files.import_download`。
 
 安全边界按整台受管开发机划分：扩展可以控制当前 Profile 的全部普通标签页，但只有受管扩展能使用 Extension Token 接入 Relay。MCP Token 文件保存 HMAC 主密钥，Worker 只向 Codex 注入 `worker` 或环境 UUID 的派生 bearer，主密钥不会进入开发容器；Browser Agent 只持有本机 Extension Token 和独立 SSH 配置。扩展、Agent 或 Bridge 失联后会停止对应 Browser generation 并释放 debugger；不通过标签分组、每次确认弹窗或 Remote Debugging 端口限制标签页范围。
 

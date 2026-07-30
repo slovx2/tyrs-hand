@@ -64,7 +64,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 			FROM codex_turn_intents WHERE id=$1`, claimed.TargetIntentID, jobCtx.MessageID).
 			Scan(&jobCtx.ReplyMessageID)
 	}
-	defer cleanupBrowserTask(p.cfg, claimed.ID.String())
+	defer cleanupBrowserTask(p.cfg, claimed.ID.String(), jobCtx.EnvironmentID.String())
 	if claimed.Operation == "replace_last_turn" {
 		defer func() {
 			if processErr != nil {
@@ -160,7 +160,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		return result, err
 	}
 	environment, runtimeConfig := prepareCodexRuntime(environment, "", p.cfg,
-		jobCtx.EnvironmentID.String())
+		jobCtx.EnvironmentID.String(), claimed.ID.String())
 	applyModelProviderConfig(runtimeConfig, provider.ModelSource, provider.BaseURL)
 	if err := p.development.CopyToRuntime(ctx, containerRuntime, temporaryHome, containerRuntime.CodexHome); err != nil {
 		return result, err

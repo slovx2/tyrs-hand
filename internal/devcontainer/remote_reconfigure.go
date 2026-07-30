@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	containerRunDir = "/run/tyrs-hand"
-	appServerSocket = containerRunDir + "/app-server.sock"
+	containerRunDir             = "/run/tyrs-hand"
+	containerBrowserServicesDir = "/run/tyrs-hand-browser-services"
+	appServerSocket             = containerRunDir + "/app-server.sock"
 )
 
 func (m *Manager) reconfigureRemote(ctx context.Context, operation RemoteOperation) error {
@@ -46,6 +47,9 @@ func (m *Manager) reconfigureRemote(ctx context.Context, operation RemoteOperati
 		return fmt.Errorf("设置环境运行目录权限: %w", err)
 	}
 	hostRuntimeDir := filepath.Join(m.developmentRuntimeHostDir, operation.EnvironmentID.String())
+	if err := m.prepareBrowserServicesDirectory(operation.EnvironmentID); err != nil {
+		return err
+	}
 	candidate := operation.ContainerName + "-candidate-" + time.Now().UTC().Format("20060102150405.000000000")
 	_, _ = m.docker(ctx, "rm", "--force", candidate)
 	if oldExists {
@@ -171,7 +175,9 @@ func (m *Manager) remoteContainerCreateArguments(operation RemoteOperation, name
 	}
 	if m.browserEnabled {
 		arguments = append(arguments, "--mount", "type=bind,source="+
-			m.browserFilesHostRoot+",target="+m.browserFilesRoot)
+			m.browserFilesHostRoot+",target="+m.browserFilesRoot,
+			"--mount", "type=bind,source="+filepath.Join(m.browserServicesHostRoot,
+				operation.EnvironmentID.String())+",target="+containerBrowserServicesDir)
 	}
 	return append(arguments, "--entrypoint", "/bin/sh", operation.ImageRef,
 		"-c", "while :; do sleep 3600; done")
@@ -222,6 +228,11 @@ fi`
 		if _, err := m.docker(ctx, "exec", "--detach", "--user", "0:0", container,
 			"/usr/sbin/sshd", "-D", "-e", "-f", "/var/lib/tyrs-hand/system/ssh/sshd_config"); err != nil {
 			return fmt.Errorf("启动开发容器 SSH: %w", err)
+		}
+	}
+	if m.browserEnabled {
+		if err := m.startBrowserServiceProxy(ctx, container, owner); err != nil {
+			return err
 		}
 	}
 	appServerCommand := `set -eu
@@ -305,8 +316,57 @@ func remoteSSHDConfig(runtimeUser string) string {
 		"AuthenticationMethods publickey", "PubkeyAuthentication yes",
 		"PasswordAuthentication no", "KbdInteractiveAuthentication no",
 		"PermitRootLogin no", "PermitEmptyPasswords no", "UsePAM yes",
-		"DisableForwarding yes", "X11Forwarding no", "PermitTunnel no",
+		"AllowTcpForwarding local", "PermitOpen 127.0.0.1:*",
+		"GatewayPorts no", "X11Forwarding no", "PermitTunnel no",
 		"AllowUsers " + runtimeUser,
 		"Subsystem sftp /usr/lib/openssh/sftp-server",
 	}, "\n")
+}
+
+func (m *Manager) prepareBrowserServicesDirectory(environmentID uuid.UUID) error {
+	if !m.browserEnabled {
+		return nil
+	}
+	directory := filepath.Join(m.browserServicesRoot, environmentID.String())
+	if err := os.MkdirAll(directory, 0o770); err != nil {
+		return fmt.Errorf("创建浏览器服务转发目录: %w", err)
+	}
+	if err := os.Chmod(directory, 0o770); err != nil {
+		return fmt.Errorf("设置浏览器服务转发目录权限: %w", err)
+	}
+	return nil
+}
+
+func (m *Manager) startBrowserServiceProxy(ctx context.Context, container, owner string) error {
+	setup := `set -eu
+chown "$TYRS_OWNER" /run/tyrs-hand-browser-services
+chmod 0770 /run/tyrs-hand-browser-services
+if test -s /run/tyrs-hand-browser-services/proxy.pid &&
+  kill -0 "$(cat /run/tyrs-hand-browser-services/proxy.pid)" 2>/dev/null; then
+  kill "$(cat /run/tyrs-hand-browser-services/proxy.pid)" || true
+fi
+rm -f /run/tyrs-hand-browser-services/proxy.pid /run/tyrs-hand-browser-services/proxy.sock`
+	if _, err := m.docker(ctx, "exec", "--user", "0:0", "--env",
+		"TYRS_OWNER="+owner, container, "/bin/sh", "-c", setup); err != nil {
+		return fmt.Errorf("准备开发环境服务代理: %w", err)
+	}
+	script := `set -eu
+echo $$ > /run/tyrs-hand-browser-services/proxy.pid
+exec tyrs-hand-dev service proxy >>/run/tyrs-hand-browser-services/proxy.log 2>&1`
+	if _, err := m.docker(ctx, "exec", "--detach", "--user", owner,
+		container, "/bin/sh", "-c", script); err != nil {
+		return fmt.Errorf("启动开发环境服务代理: %w", err)
+	}
+	for attempt := 0; attempt < 50; attempt++ {
+		if _, err := m.docker(ctx, "exec", container, "test", "-S",
+			"/run/tyrs-hand-browser-services/proxy.sock"); err == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	return errors.New("开发环境服务代理 Socket 未就绪")
 }

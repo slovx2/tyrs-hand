@@ -46,6 +46,9 @@ func (m *Manager) provision(ctx context.Context, item *workspace, _ string,
 		return fmt.Errorf("创建环境运行目录: %w", err)
 	}
 	hostRuntimeDir := filepath.Join(m.developmentRuntimeHostDir, item.Environment.ID.String())
+	if err := m.prepareBrowserServicesDirectory(item.Environment.ID); err != nil {
+		return err
+	}
 	candidateName := item.Environment.ContainerName + "-candidate-" + time.Now().UTC().Format("20060102150405")
 	_, _ = m.docker(ctx, "rm", "--force", candidateName)
 	createArguments := []string{"create", "--name", candidateName, "--restart", "unless-stopped",
@@ -61,7 +64,9 @@ func (m *Manager) provision(ctx context.Context, item *workspace, _ string,
 	}
 	if m.browserEnabled {
 		createArguments = append(createArguments, "--mount", "type=bind,source="+
-			m.browserFilesHostRoot+",target="+m.browserFilesRoot)
+			m.browserFilesHostRoot+",target="+m.browserFilesRoot,
+			"--mount", "type=bind,source="+filepath.Join(m.browserServicesHostRoot,
+				item.Environment.ID.String())+",target="+containerBrowserServicesDir)
 	}
 	createArguments = append(createArguments, "--entrypoint", "/bin/sh", imageRef,
 		"-c", "while :; do sleep 3600; done")

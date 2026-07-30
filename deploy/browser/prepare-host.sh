@@ -8,6 +8,9 @@ desktop_gid=$(id -g "$desktop_user")
 setfacl -m "u:$desktop_user:--x" /opt/tyrs-hand
 install -d -o 10001 -g 10001 -m 0755 /opt/tyrs-hand/ssh-agent
 install -d -o "$desktop_uid" -g "$desktop_gid" -m 0777 /opt/tyrs-hand/browser-files
+install -d -o "$desktop_uid" -g "$desktop_gid" -m 0770 /opt/tyrs-hand/browser-services
+setfacl -m u:10001:rwx,d:u:10001:rwx,d:u:"$desktop_user":rwx \
+  /opt/tyrs-hand/browser-services
 install -d -o "$desktop_uid" -g "$desktop_gid" -m 0750 /opt/tyrs-hand/browser
 install -d -o "$desktop_uid" -g "$desktop_gid" -m 0755 /opt/tyrs-hand/browser/releases
 

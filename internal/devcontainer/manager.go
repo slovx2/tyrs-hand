@@ -33,6 +33,8 @@ type Manager struct {
 	browserEnabled            bool
 	browserFilesRoot          string
 	browserFilesHostRoot      string
+	browserServicesRoot       string
+	browserServicesHostRoot   string
 	developmentImage          string
 }
 
@@ -60,7 +62,9 @@ func NewManager(cfg config.Config, db *sql.DB, logger *zap.Logger) (*Manager, er
 		sshEnabled: cfg.EnableSSH, sshAgentDir: cfg.SSHAgentDir,
 		sshAgentHostDir: cfg.SSHAgentHostDir, browserEnabled: cfg.BrowserMCPURL != "",
 		browserFilesRoot: cfg.BrowserFilesRoot, browserFilesHostRoot: cfg.BrowserFilesHostRoot,
-		developmentImage: cfg.DevelopmentImage,
+		browserServicesRoot:     cfg.BrowserServicesRoot,
+		browserServicesHostRoot: cfg.BrowserServicesHostRoot,
+		developmentImage:        cfg.DevelopmentImage,
 	}
 	if !manager.enabled {
 		return manager, nil

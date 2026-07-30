@@ -170,7 +170,7 @@ func TestValidateWorkerCapabilities(t *testing.T) {
 			config: Config{BrowserMCPURL: "http://host.docker.internal:8931/mcp",
 				BrowserMCPTokenFile: "/run/secrets/browser_mcp_token", BrowserFilesRoot: ".",
 				BrowserFilesHostRoot: "/opt/tyrs-hand/browser-files"},
-			message: "Token 文件和文件交换目录",
+			message: "Token、文件交换目录和服务转发目录",
 		},
 	}
 	for _, test := range tests {
@@ -187,6 +187,8 @@ func TestValidateWorkerCapabilities(t *testing.T) {
 		BrowserAgentRelayAddress: "host.docker.internal:8934",
 		BrowserFilesRoot:         "/run/tyrs-hand-browser-files",
 		BrowserFilesHostRoot:     "/opt/tyrs-hand/browser-files",
+		BrowserServicesRoot:      "/run/tyrs-hand-browser-services",
+		BrowserServicesHostRoot:  "/opt/tyrs-hand/browser-services",
 	}
 	require.NoError(t, valid.validateWorkerCapabilities())
 }
