@@ -158,6 +158,8 @@ func (s *Server) recordThreadSettingsEvent(c *gin.Context, tx *sql.Tx,
 	request workerprotocol.ThreadMetadataRequest, event workerprotocol.ThreadMetadataEvent,
 ) error {
 	var controlID uuid.UUID
+	var conversationID sql.NullString
+	var settingsRevision int64
 	desktop := event.Source == "desktop"
 	desiredTier := event.ServiceTier
 	if desktop {
@@ -204,15 +206,30 @@ func (s *Server) recordThreadSettingsEvent(c *gin.Context, tx *sql.Tx,
 			AND ($7 > control.app_server_settings_generation OR
 				($7 = control.app_server_settings_generation
 					AND $8 > control.app_server_settings_sequence))
-		RETURNING control.id`,
+		RETURNING control.id, control.discord_conversation_id::text, control.settings_revision`,
 		request.EnvironmentID,
 		workerNode(c).ID, event.ThreadID, event.Model, event.ReasoningEffort,
 		desiredTier, request.Generation, event.Sequence, event.CollaborationMode,
 		desktop, event.SettingsRevision, appliedTier).
-		Scan(&controlID)
+		Scan(&controlID, &conversationID, &settingsRevision)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
+	if err != nil || !conversationID.Valid || !desktop {
+		return err
+	}
+	_, err = tx.ExecContext(c.Request.Context(), `UPDATE discord_conversations SET
+		model = COALESCE(NULLIF($2,''), discord_conversations.model),
+		reasoning_effort = CASE WHEN $2 <> '' THEN NULLIF($3,'')
+			ELSE discord_conversations.reasoning_effort END,
+		service_tier = CASE WHEN $2 <> '' THEN NULLIF($4,'')
+			ELSE discord_conversations.service_tier END,
+		collaboration_mode = control.collaboration_mode,
+		collaboration_mode_revision = control.collaboration_mode_revision,
+		settings_revision = $6, updated_at = now()
+		FROM codex_thread_controls control WHERE discord_conversations.id = $1
+			AND control.id = $5`, conversationID.String, event.Model, event.ReasoningEffort,
+		desiredTier, controlID, settingsRevision)
 	return err
 }
 

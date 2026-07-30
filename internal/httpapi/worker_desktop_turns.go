@@ -145,8 +145,17 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 				CASE WHEN collaboration_mode = $2 THEN 0 ELSE 1 END,
 			updated_at = now() WHERE id = $1 RETURNING collaboration_mode`,
 			claimed.ControlID, explicitMode).Scan(&claimed.CollaborationMode)
+		if err == nil && claimed.DiscordConversationID != uuid.Nil {
+			_, err = tx.ExecContext(c.Request.Context(), `UPDATE discord_conversations conversation SET
+				collaboration_mode = control.collaboration_mode,
+				collaboration_mode_revision = control.collaboration_mode_revision,
+				settings_revision = control.settings_revision,
+				updated_at = now() FROM codex_thread_controls control
+				WHERE conversation.id = $1 AND control.id = $2`,
+				claimed.DiscordConversationID, claimed.ControlID)
+		}
 		if err != nil {
-			problem(c, http.StatusInternalServerError, "更新 Desktop Collaboration Mode 失败", err)
+			problem(c, http.StatusInternalServerError, "同步 Desktop Collaboration Mode 失败", err)
 			return
 		}
 	}

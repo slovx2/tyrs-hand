@@ -594,8 +594,8 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		JOIN discord_conversations conversation ON conversation.id=control.discord_conversation_id
 		WHERE control.id=$1`, state.ControlID).Scan(&controlMode, &discordMode))
 	require.Equal(t, "default", controlMode)
-	require.Equal(t, "plan", discordMode,
-		"Desktop 模式只能更新 Desktop Control，不能污染 Discord 会话记忆")
+	require.Equal(t, "default", discordMode,
+		"Desktop 模式需要同步到关联的 Discord 会话")
 	var memberAddPayload string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT payload::text FROM integration_outbox
 		WHERE operation_key=$1`, "desktop-thread-member:"+state.ID.String()).
