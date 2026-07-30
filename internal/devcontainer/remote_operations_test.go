@@ -2,6 +2,8 @@ package devcontainer
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net"
 	"os"
@@ -687,4 +689,47 @@ func TestCoordinateRemoteStartsPermanentDaemons(t *testing.T) {
 	manifest.RuntimeUID = 0
 	_, err = manager.PrepareRemoteRuntime(context.Background(), manifest)
 	require.ErrorContains(t, err, "Manifest")
+}
+
+func TestPrepareRemoteRuntimeRefreshesSSHConfiguration(t *testing.T) {
+	agentDir := t.TempDir()
+	sshConfig := filepath.Join(agentDir, "ssh_config")
+	require.NoError(t, os.WriteFile(sshConfig, []byte("Host server\n"), 0o644))
+	runner := &recordingCommandRunner{}
+	manager := &Manager{enabled: true, dockerBin: "docker", dockerHost: "inherit",
+		runner: runner, developmentRuntimeDir: t.TempDir(), sshEnabled: true,
+		sshAgentDir: agentDir}
+	manifest := workerprotocol.EnvironmentManifest{
+		EnvironmentID: uuid.New(), ContainerName: "dev-container", RuntimeUser: "agent",
+		RuntimeUID: 1000, RuntimeGID: 1000, RuntimeHome: "/home/agent",
+	}
+
+	_, err := manager.PrepareRemoteRuntime(context.Background(), manifest)
+	require.NoError(t, err)
+	require.True(t, runner.contains("docker start dev-container"))
+	require.True(t, runner.contains("docker cp "+sshConfig+" dev-container:"+
+		managedSSHConfigPath+".tmp"))
+	require.False(t, runner.contains("sshd -D -e"))
+	require.False(t, runner.contains("tyrs-hand-app-server"))
+}
+
+func TestPrepareRemoteRuntimeKeepsCurrentSSHConfiguration(t *testing.T) {
+	agentDir := t.TempDir()
+	content := []byte("Host server\n")
+	require.NoError(t, os.WriteFile(filepath.Join(agentDir, "ssh_config"), content, 0o644))
+	digest := sha256.Sum256(content)
+	runner := &recordingCommandRunner{resultFor: map[string]string{
+		"cat " + managedSSHConfigPath + ".sha256": hex.EncodeToString(digest[:]),
+	}}
+	manager := &Manager{enabled: true, dockerBin: "docker", dockerHost: "inherit",
+		runner: runner, developmentRuntimeDir: t.TempDir(), sshEnabled: true,
+		sshAgentDir: agentDir}
+	manifest := workerprotocol.EnvironmentManifest{
+		EnvironmentID: uuid.New(), ContainerName: "dev-container", RuntimeUser: "agent",
+		RuntimeUID: 1000, RuntimeGID: 1000, RuntimeHome: "/home/agent",
+	}
+
+	_, err := manager.PrepareRemoteRuntime(context.Background(), manifest)
+	require.NoError(t, err)
+	require.False(t, runner.contains("docker cp"))
 }

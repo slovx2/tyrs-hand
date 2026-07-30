@@ -47,10 +47,17 @@ func (m *Manager) PrepareRemoteRuntime(ctx context.Context,
 		return Runtime{}, err
 	}
 	hostSocket := filepath.Join(runtimeDir, "app-server.sock")
-	return Runtime{EnvironmentID: manifest.EnvironmentID, Container: manifest.ContainerName,
+	runtime := Runtime{EnvironmentID: manifest.EnvironmentID, Container: manifest.ContainerName,
 		CodexHome: "/var/lib/tyrs-hand/codex", User: manifest.RuntimeUser,
 		UID: manifest.RuntimeUID, GID: manifest.RuntimeGID, Home: manifest.RuntimeHome,
-		AppServerSocket: hostSocket, RelaySocket: filepath.Join(runtimeDir, "relay.sock")}, nil
+		AppServerSocket: hostSocket, RelaySocket: filepath.Join(runtimeDir, "relay.sock")}
+	if m.sshEnabled {
+		owner := fmt.Sprintf("%d:%d", runtime.UID, runtime.GID)
+		if err := m.installSSHConfiguration(ctx, runtime.Container, runtime.Home, owner); err != nil {
+			return Runtime{}, fmt.Errorf("刷新 SSH 配置: %w", err)
+		}
+	}
+	return runtime, nil
 }
 
 func (m *Manager) EnsureRemoteDaemons(ctx context.Context,
