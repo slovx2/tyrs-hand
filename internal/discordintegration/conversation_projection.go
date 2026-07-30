@@ -25,18 +25,6 @@ const (
 	replyFenceReserve         = 128
 )
 
-type conversationReplyChain struct {
-	Stage              string                `json:"stage"`
-	SourceOperationKey string                `json:"sourceOperationKey"`
-	GuildID            string                `json:"guildId"`
-	ThreadID           string                `json:"threadId"`
-	Index              int                   `json:"index"`
-	NextIndex          int                   `json:"nextIndex,omitempty"`
-	TailMessageID      string                `json:"tailMessageId,omitempty"`
-	Chunks             []string              `json:"chunks,omitempty"`
-	TailCard           *ComponentCardPayload `json:"tailCard,omitempty"`
-}
-
 func SanitizeDiscordResult(value string) string {
 	value = strings.TrimSpace(value)
 	return discordSecretPattern.ReplaceAllString(value, "[已隐藏凭据]")
@@ -326,10 +314,15 @@ func projectConversationReplyPages(ctx context.Context, db *sql.DB, guildID, thr
 	if err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
+	type obsoletePage struct {
+		key       string
+		messageID string
+	}
+	obsolete := make([]obsoletePage, 0)
 	for rows.Next() {
 		var key, messageID string
 		if err := rows.Scan(&key, &messageID); err != nil {
+			_ = rows.Close()
 			return err
 		}
 		page := 0
@@ -341,20 +334,27 @@ func projectConversationReplyPages(ctx context.Context, db *sql.DB, guildID, thr
 		if page < total {
 			continue
 		}
-		if messageID != "" {
-			if err := enqueueDiscordOutbox(ctx, tx, "projection-delete:"+key,
-				"message.delete", "channels/"+threadID+"/messages/"+messageID,
-				map[string]any{"channelId": threadID, "messageId": messageID}, ""); err != nil {
+		obsolete = append(obsolete, obsoletePage{key: key, messageID: messageID})
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, page := range obsolete {
+		if page.messageID != "" {
+			if err := enqueueDiscordOutbox(ctx, tx, "projection-delete:"+page.key,
+				"message.delete", "channels/"+threadID+"/messages/"+page.messageID,
+				map[string]any{"channelId": threadID, "messageId": page.messageID}, ""); err != nil {
 				return err
 			}
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM discord_projections
-			WHERE guild_id=$1 AND projection_key=$2`, guildID, key); err != nil {
+			WHERE guild_id=$1 AND projection_key=$2`, guildID, page.key); err != nil {
 			return err
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
 	}
 	return tx.Commit()
 }
@@ -383,10 +383,6 @@ func planCompletedCard(runID uuid.UUID) ComponentCardPayload {
 	return ComponentCardPayload{AccentColor: cardColorGreen, Header: "📋 Codex · Plan 已完成",
 		Buttons: []ComponentButtonPayload{{Label: "执行计划",
 			CustomID: "codex-plan-execute:" + runID.String(), Style: "primary"}}}
-}
-
-func plainReplyNextMarker() string {
-	return "\n\n" + replyNextLabel
 }
 
 func replyJumpURL(guildID, threadID, messageID string) string {

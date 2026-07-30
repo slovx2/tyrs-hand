@@ -229,9 +229,6 @@ func (d *Daemon) refreshAllProjections(ctx context.Context, guildID string, remo
 		{name: "系统状态", run: func() error { return d.refreshSystemStatus(ctx, guildID) }},
 		{name: "系统告警", run: func() error { return d.refreshSystemAlerts(ctx, guildID) }},
 		{name: "任务 Forum", run: func() error { return d.refreshTaskProjections(ctx, guildID, remote) }},
-		{name: "开发 Post Running Tag", run: func() error {
-			return d.refreshConversationRunningTags(ctx, guildID)
-		}},
 	}
 	for _, refresh := range refreshes {
 		if err := refresh.run(); err != nil {

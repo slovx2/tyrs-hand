@@ -515,7 +515,7 @@ func TestDiscordStartupPreferencesCrossForumAndMemberJoin(t *testing.T) {
 		DiscordUserID: "1002", DisplayName: "Bob", Username: "bob", Body: "readonly"}))
 }
 
-func TestRefreshConversationRunningTagsThrottlesCompletedRepairs(t *testing.T) {
+func TestRefreshAllProjectionsDoesNotRequeueRunningTag(t *testing.T) {
 	db := discordDatabase(t)
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))
@@ -536,48 +536,61 @@ func TestRefreshConversationRunningTagsThrottlesCompletedRepairs(t *testing.T) {
 		WHERE integration='discord' AND operation_key=$1`, operationKey)
 	require.NoError(t, err)
 
-	daemon := &Daemon{manager: &Manager{db: db}}
-	require.NoError(t, daemon.refreshConversationRunningTags(ctx, testGuildID))
-	var status string
-	var revision int64
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT status,request_revision
-		FROM integration_outbox WHERE integration='discord' AND operation_key=$1`, operationKey).
-		Scan(&status, &revision))
-	require.Equal(t, "pending", status)
-	require.EqualValues(t, 1, revision)
+	daemon := &Daemon{manager: &Manager{db: db}, logger: zap.NewNop()}
+	daemon.refreshAllProjections(ctx, testGuildID,
+		&projectionRemote{guild: RemoteGuild{ID: testGuildID}})
+	var count int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM integration_outbox
+		WHERE integration='discord' AND operation_key=$1`, operationKey).Scan(&count))
+	require.Zero(t, count)
+}
 
-	_, err = db.ExecContext(ctx, `UPDATE integration_outbox
-		SET status='completed',updated_at=now() WHERE integration='discord' AND operation_key=$1`,
-		operationKey)
+func TestConversationReplyRegeneratingUpdatesFirstPageAndDeletesOverflow(t *testing.T) {
+	db := discordDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	_, err := db.ExecContext(ctx, `INSERT INTO discord_guilds(guild_id, name, enabled)
+		VALUES ($1, 'reply-regenerating-test', true)`, testGuildID)
 	require.NoError(t, err)
-	require.NoError(t, daemon.refreshConversationRunningTags(ctx, testGuildID))
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT status,request_revision
-		FROM integration_outbox WHERE integration='discord' AND operation_key=$1`, operationKey).
-		Scan(&status, &revision))
-	require.Equal(t, "completed", status)
-	require.EqualValues(t, 1, revision)
+	seed := seedDiscordManagerData(t, db)
+	service := NewConversationService(db)
+	conversationID, err := service.BeginPost(ctx, IncomingMessage{
+		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
+		ThreadID: "100000000000000531", MessageID: "100000000000000532",
+		DiscordUserID: "1001", DisplayName: "Alice", Username: "alice",
+		Title: "Reply regeneration", Body: "生成长回复", ConfigurationConfirmed: false,
+	})
+	require.NoError(t, err)
+	require.NoError(t, ProjectConversationReply(ctx, db, "100000000000000531",
+		conversationID, "100000000000000532", uuid.Nil, strings.Repeat("长回复内容。", 1000)))
+	baseKey := "conversation-reply:" + conversationID.String() + ":message:100000000000000532"
+	var pageCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_projections
+		WHERE guild_id=$1 AND (projection_key=$2 OR projection_key LIKE $2 || ':page:%')`,
+		testGuildID, baseKey).Scan(&pageCount))
+	require.Greater(t, pageCount, 1)
+	_, err = db.ExecContext(ctx, `UPDATE discord_projections
+		SET message_id='message-' || substr(md5(projection_key),1,16), applied_version=desired_version
+		WHERE guild_id=$1 AND (projection_key=$2 OR projection_key LIKE $2 || ':page:%')`,
+		testGuildID, baseKey)
+	require.NoError(t, err)
 
-	_, err = db.ExecContext(ctx, `UPDATE integration_outbox
-		SET updated_at=now()-interval '16 minutes' WHERE integration='discord' AND operation_key=$1`,
-		operationKey)
-	require.NoError(t, err)
-	require.NoError(t, daemon.refreshConversationRunningTags(ctx, testGuildID))
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT status,request_revision
-		FROM integration_outbox WHERE integration='discord' AND operation_key=$1`, operationKey).
-		Scan(&status, &revision))
-	require.Equal(t, "pending", status)
-	require.EqualValues(t, 2, revision)
-
-	_, err = db.ExecContext(ctx, `UPDATE integration_outbox
-		SET updated_at=now()-interval '1 hour' WHERE integration='discord' AND operation_key=$1`,
-		operationKey)
-	require.NoError(t, err)
-	require.NoError(t, daemon.refreshConversationRunningTags(ctx, testGuildID))
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT status,request_revision
-		FROM integration_outbox WHERE integration='discord' AND operation_key=$1`, operationKey).
-		Scan(&status, &revision))
-	require.Equal(t, "pending", status)
-	require.EqualValues(t, 2, revision)
+	require.NoError(t, ProjectConversationReplyRegenerating(ctx, db, "100000000000000531",
+		conversationID, "100000000000000532"))
+	var payload string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT desired_payload::text
+		FROM discord_projections WHERE guild_id=$1 AND projection_key=$2`,
+		testGuildID, baseKey).Scan(&payload))
+	require.Contains(t, payload, "消息已编辑，正在重新生成。")
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_projections
+		WHERE guild_id=$1 AND projection_key LIKE $2 || ':page:%'`,
+		testGuildID, baseKey).Scan(&pageCount))
+	require.Zero(t, pageCount)
+	var deleteCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM integration_outbox
+		WHERE integration='discord' AND operation_key LIKE 'projection-delete:' || $1 || ':page:%'
+			AND operation_type='message.delete'`, baseKey).Scan(&deleteCount))
+	require.Greater(t, deleteCount, 0)
 }
 
 func TestConversationStatusMovesAndRefreshesHistoryLinks(t *testing.T) {
@@ -1651,6 +1664,16 @@ func testGatewayHandlers(t *testing.T, ctx context.Context, db *sql.DB, manager 
 		Scan(&attachmentKind, &attachmentMediaType))
 	require.Equal(t, "file", attachmentKind)
 	require.Equal(t, contentType, attachmentMediaType)
+	messageUpdate := newMessageUpdateEvent(t, client, "2001", "3001", "first message edited")
+	connector.onMessageUpdate(messageUpdate)
+	connector.onMessageUpdate(messageUpdate)
+	var editedBody string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT body FROM discord_input_messages
+		WHERE conversation_id=$1 AND message_id='3001'`, conversationID).Scan(&editedBody))
+	require.Equal(t, "first message edited", editedBody)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_inbound_events
+		WHERE event_id LIKE 'message-update:3001:%'`).Scan(&eventCount))
+	require.Equal(t, 1, eventCount)
 
 	normalMessage := newMessageEvent(t, client, "2099", "3099", "普通频道消息")
 	connector.onMessage(normalMessage)
@@ -1972,6 +1995,16 @@ func newMessageEvent(t *testing.T, client *bot.Client, threadID, messageID, cont
 		Message: discord.Message{ID: id, ChannelID: channelID, Content: content,
 			Author: discord.User{ID: snowflake.ID(1001), Username: "alice", Discriminator: "0"}},
 	}}
+}
+
+func newMessageUpdateEvent(t *testing.T, client *bot.Client, threadID, messageID,
+	content string,
+) *events.MessageUpdate {
+	t.Helper()
+	created := newMessageEvent(t, client, threadID, messageID, content)
+	editedAt := time.Now().UTC()
+	created.Message.EditedTimestamp = &editedAt
+	return &events.MessageUpdate{GenericMessage: created.GenericMessage}
 }
 
 func newCommandEvent(t *testing.T, client *bot.Client, id, channelID, command, subcommand string) *events.ApplicationCommandInteractionCreate {
