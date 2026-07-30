@@ -152,16 +152,6 @@ func (d *Daemon) runBackground(ctx context.Context, guildID string, remote Remot
 			if err := ReconcileConversationProgressCards(ctx, d.manager.db, guildID); err != nil {
 				d.logger.Warn("重算 Discord 旧版进度卡失败", zap.Error(err))
 			}
-			for count := 0; count < 20; count++ {
-				worked, err := d.conversations.StartDueConfiguration(ctx)
-				if err != nil {
-					d.logger.Warn("启动到期 Discord 会话失败", zap.Error(err))
-					break
-				}
-				if !worked {
-					break
-				}
-			}
 		case <-projectionTicker.C:
 			d.refreshAllProjections(ctx, guildID, remote)
 		case <-permissionTicker.C:

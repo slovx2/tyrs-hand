@@ -581,6 +581,21 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, state.ControlID, conversationControlID)
 	require.Equal(t, "skipped", titleRenameStatus,
 		"Desktop 投影必须由 Codex 标题链路负责，不能进入 Luna 标题队列")
+	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
+		EnvironmentID: environmentID, Generation: 12,
+		Events: []workerprotocol.ThreadMetadataEvent{{
+			ThreadID: "codex-desktop-thread", Sequence: 5, Kind: "settings", Source: "desktop",
+			CollaborationMode: "default",
+		}},
+	}))
+	var controlMode, discordMode string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT control.collaboration_mode,
+		conversation.collaboration_mode FROM codex_thread_controls control
+		JOIN discord_conversations conversation ON conversation.id=control.discord_conversation_id
+		WHERE control.id=$1`, state.ControlID).Scan(&controlMode, &discordMode))
+	require.Equal(t, "default", controlMode)
+	require.Equal(t, "plan", discordMode,
+		"Desktop 模式只能更新 Desktop Control，不能污染 Discord 会话记忆")
 	var memberAddPayload string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT payload::text FROM integration_outbox
 		WHERE operation_key=$1`, "desktop-thread-member:"+state.ID.String()).

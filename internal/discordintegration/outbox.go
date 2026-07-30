@@ -157,7 +157,8 @@ func (s *SQLoutbox) Claim(ctx context.Context, lease time.Duration) (*OutboxItem
 		WHERE integration = 'discord' AND available_at <= now() AND (
 			(status IN ('pending', 'retrying') AND lease_token IS NULL)
 			OR (status='applying' AND (lease_expires_at IS NULL OR lease_expires_at < now())))
-		ORDER BY available_at, created_at FOR UPDATE SKIP LOCKED LIMIT 1`).
+		ORDER BY available_at, created_at, enqueue_sequence
+		FOR UPDATE SKIP LOCKED LIMIT 1`).
 		Scan(&id, &item.OperationKey, &status, &item.OperationType, &item.RouteKey,
 			&item.Payload, &item.Nonce, &item.Attempt, &item.MaxAttempts,
 			&item.ApplyAttempt, &item.RequestRevision, &response)

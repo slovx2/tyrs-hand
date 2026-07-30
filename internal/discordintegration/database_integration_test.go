@@ -146,6 +146,32 @@ func TestConversationModeSwitching(t *testing.T) {
 	require.ErrorIs(t, err, codexcontrol.ErrControlArchived)
 }
 
+func TestDiscordOutboxClaimUsesEnqueueOrder(t *testing.T) {
+	db := discordDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	keys := []string{
+		"projection:conversation-reply:test",
+		"projection:conversation-reply:test:page:1",
+		"projection:conversation-reply:test:page:2",
+	}
+	for _, key := range keys {
+		require.NoError(t, EnqueueTx(ctx, tx, key, "message.create", "channels/test/messages",
+			map[string]string{"channelId": "test"}, key))
+	}
+	require.NoError(t, tx.Commit())
+
+	outbox := NewSQLoutbox(db)
+	for _, expected := range keys {
+		item, claimErr := outbox.Claim(ctx, time.Minute)
+		require.NoError(t, claimErr)
+		require.NotNil(t, item)
+		require.Equal(t, expected, item.OperationKey)
+	}
+}
+
 func TestDiscordDiscussionTriggerBatchesPendingMessages(t *testing.T) {
 	db := discordDatabase(t)
 	ctx := context.Background()
@@ -1697,9 +1723,10 @@ func testGatewayHandlers(t *testing.T, ctx context.Context, db *sql.DB, manager 
 	require.Zero(t, queuedBeforeConfiguration)
 	_, err = conversationService.ConversationMode(ctx, testGuildID, "2001", "1003")
 	require.Error(t, err, "新 Post 参数只能由创建者操作")
-	started, err := conversationService.StartDueConfiguration(ctx)
-	require.NoError(t, err)
-	require.False(t, started)
+	var configurationDeadline sql.NullTime
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT configuration_deadline
+		FROM discord_conversations WHERE id = $1`, conversationID).Scan(&configurationDeadline))
+	require.False(t, configurationDeadline.Valid)
 	configurationState, err := conversationService.ConversationMode(ctx, testGuildID, "2001", "1001")
 	require.NoError(t, err)
 	configurationUpdate, err := conversationService.SetRuntimePreferences(ctx, testGuildID, "2001",
@@ -1882,17 +1909,15 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 	require.Equal(t, "configured", status)
 	connector.onComponent(newComponentEvent(t, client, "5105", "2012", "codex-config-start:bad-id", nil))
 
-	connector.onMessage(newMessageEvent(t, client, "2013", "3014", "timeout defaults"))
-	timeoutID := conversationIDForThread(t, ctx, db, "2013")
-	_, err = db.ExecContext(ctx, `UPDATE discord_conversations SET configuration_deadline = now() - interval '1 second'
-		WHERE id = $1`, timeoutID)
-	require.NoError(t, err)
-	started, err := connector.conversations.StartDueConfiguration(ctx)
-	require.NoError(t, err)
-	require.True(t, started)
-	started, err = connector.conversations.StartDueConfiguration(ctx)
-	require.NoError(t, err)
-	require.False(t, started)
+	connector.onMessage(newMessageEvent(t, client, "2013", "3014", "wait for confirmation"))
+	waitingID := conversationIDForThread(t, ctx, db, "2013")
+	var waitingStatus string
+	var configurationDeadline sql.NullTime
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT configuration_status,
+		configuration_deadline FROM discord_conversations WHERE id = $1`, waitingID).
+		Scan(&waitingStatus, &configurationDeadline))
+	require.Equal(t, "awaiting", waitingStatus)
+	require.False(t, configurationDeadline.Valid)
 
 	newPostSubmit := newModalEvent(t, client, "5104", seed.developmentForumChannelID,
 		newCodexModalPrefix+seed.developmentForumChannelID+":plan", []discord.LayoutComponent{

@@ -294,7 +294,7 @@ func conversationModeCard(state ConversationModeState, notice string) ComponentC
 	if state.Busy {
 		body += "\n\n当前 Turn 保持原设置；模型、思考、速度和 Default/Plan 将从下一 Turn 生效。"
 	} else if state.Awaiting {
-		body = "可以在 20 秒内调整；确认或超时后会用完整设置启动并记为你的新 Post 默认值。\n\n" + body
+		body = "请调整并确认设置；Post 会一直等待你的明确确认，启动后会将完整设置记为你的新 Post 默认值。\n\n" + body
 	}
 	if notice != "" {
 		body += "\n\n" + notice

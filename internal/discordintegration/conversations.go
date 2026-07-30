@@ -206,10 +206,8 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 		triggerMode = "interactive"
 	}
 	status, configurationStatus := "active", "configured"
-	var deadline any
 	if !input.ConfigurationConfirmed {
 		status, configurationStatus = "awaiting_configuration", "awaiting"
-		deadline = "20 seconds"
 	}
 	var conversationID uuid.UUID
 	err = tx.QueryRowContext(ctx, `INSERT INTO discord_conversations
@@ -221,13 +219,13 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 		 title_rename_status)
 		VALUES ($1, $2, $3, $4, $5, NULLIF($6::text,'')::uuid, NULLIF($7::text,'')::uuid,
 			$8, $9, $10, NULLIF($11,''), NULLIF($12,''), $13, $14, $15,
-			$16, CASE WHEN $17::text IS NULL THEN NULL ELSE now() + $17::interval END, $18,
+			$16, NULL, $17,
 			'pending')
 		ON CONFLICT(guild_id, thread_id) DO UPDATE SET last_activity_at = now(), updated_at = now()
 		RETURNING id`, input.GuildID, forumID, input.ThreadID, input.MessageID, ownerID,
 		optionalUUID(repositoryID), optionalUUID(projectID), profileID, input.Title, status,
 		preferences.Model, preferences.ReasoningEffort,
-		preferences.ServiceTier, mode, triggerMode, configurationStatus, deadline,
+		preferences.ServiceTier, mode, triggerMode, configurationStatus,
 		input.DiscordUserID).Scan(&conversationID)
 	if err != nil {
 		return uuid.Nil, err
@@ -342,18 +340,18 @@ type ConversationConfiguration struct {
 func (s *ConversationService) FinalizeConfiguration(ctx context.Context, conversationID uuid.UUID,
 	userID string,
 ) error {
-	_, err := s.finalizeConfiguration(ctx, conversationID, userID, false, nil)
+	_, err := s.finalizeConfiguration(ctx, conversationID, userID, nil)
 	return err
 }
 
 func (s *ConversationService) FinalizeConfigurationRevision(ctx context.Context,
 	conversationID uuid.UUID, userID string, expectedRevision int64,
 ) (bool, error) {
-	return s.finalizeConfiguration(ctx, conversationID, userID, false, &expectedRevision)
+	return s.finalizeConfiguration(ctx, conversationID, userID, &expectedRevision)
 }
 
 func (s *ConversationService) finalizeConfiguration(ctx context.Context, conversationID uuid.UUID,
-	userID string, requireDue bool, expectedRevision *int64,
+	userID string, expectedRevision *int64,
 ) (bool, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -368,9 +366,7 @@ func (s *ConversationService) finalizeConfiguration(ctx context.Context, convers
 		COALESCE(service_tier,'standard'), collaboration_mode,
 		trigger_mode, guild_id, thread_id, forum_id, owner_discord_user_id,
 		COALESCE(configured_by_discord_user_id,''), configuration_status, settings_revision
-		FROM discord_conversations WHERE id = $1 AND (
-			$2 = false OR (configuration_status IN ('awaiting','editing') AND configuration_deadline <= now())
-		) FOR UPDATE`, conversationID, requireDue).
+		FROM discord_conversations WHERE id = $1 FOR UPDATE`, conversationID).
 		Scan(&model, &effort, &tier, &mode, &triggerMode, &guildID, &threadID, &forumID, &owner,
 			&configuredBy, &status, &settingsRevision)
 	if err != nil {
@@ -438,27 +434,6 @@ func optionalPreference(value string) *string {
 		return nil
 	}
 	return &value
-}
-
-func (s *ConversationService) StartDueConfiguration(ctx context.Context) (bool, error) {
-	var conversationID uuid.UUID
-	err := s.db.QueryRowContext(ctx, `SELECT id FROM discord_conversations
-		WHERE configuration_status IN ('awaiting','editing') AND configuration_deadline <= now()
-		ORDER BY configuration_deadline LIMIT 1`).Scan(&conversationID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	_, err = s.finalizeConfiguration(ctx, conversationID, "", true, nil)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
-	if err != nil && strings.Contains(err.Error(), "已经启动") {
-		return true, nil
-	}
-	return err == nil, err
 }
 
 func (s *ConversationService) notifyJobs(ctx context.Context) {

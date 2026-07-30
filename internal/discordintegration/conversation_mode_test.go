@@ -23,6 +23,13 @@ func TestModeButtonRevisionAndCard(t *testing.T) {
 	require.True(t, card.Buttons[2].Disabled)
 	require.False(t, card.Buttons[3].Disabled)
 
+	state.Awaiting = true
+	card = conversationModeCard(state, "")
+	require.Contains(t, card.Body, "一直等待你的明确确认")
+	require.NotContains(t, card.Body, "20 秒")
+	require.Len(t, card.ButtonRows, 1)
+	state.Awaiting = false
+
 	parsedID, revision, target, err := parseModeButton(card.Buttons[3].CustomID)
 	require.NoError(t, err)
 	require.Equal(t, id, parsedID)
