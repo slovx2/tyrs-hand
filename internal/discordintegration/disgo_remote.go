@@ -821,8 +821,8 @@ func (r *DisgoRemote) patchDesktopImage(ctx context.Context, channelID, messageI
 		requestID = response.Header.Get("X-Discord-Trace-Id")
 	}
 	bodySummary := strings.TrimSpace(string(responseBody))
-	if len(bodySummary) > 4096 {
-		bodySummary = bodySummary[:4096]
+	if len(bodySummary) > 512 {
+		bodySummary = bodySummary[:512]
 	}
 	return "", fmt.Errorf("discord 图片上传响应缺少附件（HTTP %d，附件数=%d，请求标识=%q，响应=%q）",
 		response.StatusCode, len(result.Attachments), requestID, bodySummary)
