@@ -331,6 +331,7 @@ func TestDisgoRemoteStreamsDesktopImageAndReconcilesByFilename(t *testing.T) {
 	require.Equal(t, "30", attachments[0].(map[string]any)["id"])
 	require.Equal(t, float64(0), attachments[1].(map[string]any)["id"])
 	require.Equal(t, filename, attachments[1].(map[string]any)["filename"])
+	require.NotContains(t, payload, "flags")
 	container := payload["components"].([]any)[0].(map[string]any)
 	components := container["components"].([]any)
 	require.Equal(t, float64(discord.ComponentTypeMediaGallery),
@@ -343,6 +344,47 @@ func TestDisgoRemoteStreamsDesktopImageAndReconcilesByFilename(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "31", attachmentID)
 	require.Equal(t, 2, patches)
+}
+
+func TestDisgoRemoteAcceptsDesktopImageAttachmentFromPatchResponse(t *testing.T) {
+	const filename = "01-0123456789ab-shot.png"
+	gets := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
+		request *http.Request,
+	) {
+		response.Header().Set("Content-Type", "application/json")
+		switch request.Method + " " + request.URL.Path {
+		case "GET /channels/20/messages/21":
+			gets++
+			_, _ = response.Write([]byte(`{"id":"21","channel_id":"20","attachments":[]}`))
+		case "PATCH /channels/20/messages/21":
+			reader, err := request.MultipartReader()
+			require.NoError(t, err)
+			for {
+				_, partErr := reader.NextPart()
+				if partErr == io.EOF {
+					break
+				}
+				require.NoError(t, partErr)
+			}
+			_, _ = response.Write([]byte(`{"id":"21","channel_id":"20","attachments":[` +
+				`{"id":"31","filename":"` + filename + `"}]}`))
+		default:
+			http.NotFound(response, request)
+		}
+	}))
+	t.Cleanup(server.Close)
+	remote := NewDisgoRemote("token", server.URL, server.Client())
+	t.Cleanup(func() { remote.Close(context.Background()) })
+	card := ComponentCardPayload{AccentColor: cardColorBlurple, Header: "Desktop",
+		Media: []ComponentMediaPayload{{Filename: filename, Description: "shot.png"}}}
+
+	attachmentID, err := remote.UploadDesktopImage(context.Background(), "20", "21", card,
+		filename, "shot.png", bytes.NewReader([]byte("image-content")))
+
+	require.NoError(t, err)
+	require.Equal(t, "31", attachmentID)
+	require.Equal(t, 1, gets)
 }
 
 func TestDiscordCardComponentsRejectsInvalidMedia(t *testing.T) {

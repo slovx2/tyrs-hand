@@ -729,7 +729,6 @@ type desktopImageMessagePayload struct {
 	Components      []discord.LayoutComponent       `json:"components"`
 	Attachments     []desktopImageAttachmentPayload `json:"attachments"`
 	AllowedMentions discord.AllowedMentions         `json:"allowed_mentions"`
-	Flags           discord.MessageFlags            `json:"flags"`
 }
 
 type desktopImageUploadResponse struct {
@@ -759,10 +758,9 @@ func (r *DisgoRemote) patchDesktopImage(ctx context.Context, channelID, messageI
 	// AttachmentCreate omits it, which makes the API silently discard uploads.
 	attachments = append(attachments, desktopImageAttachmentPayload{ID: 0,
 		Filename: filename, Description: description})
-	flags := discord.MessageFlagIsComponentsV2
 	payload, err := json.Marshal(desktopImageMessagePayload{
 		Content: "", Embeds: []discord.Embed{}, Components: components,
-		Attachments: attachments, AllowedMentions: discord.AllowedMentions{}, Flags: flags,
+		Attachments: attachments, AllowedMentions: discord.AllowedMentions{},
 	})
 	if err != nil {
 		return "", err
@@ -820,12 +818,8 @@ func (r *DisgoRemote) patchDesktopImage(ctx context.Context, channelID, messageI
 	if requestID == "" {
 		requestID = response.Header.Get("X-Discord-Trace-Id")
 	}
-	bodySummary := strings.TrimSpace(string(responseBody))
-	if len(bodySummary) > 512 {
-		bodySummary = bodySummary[:512]
-	}
-	return "", fmt.Errorf("discord 图片上传响应缺少附件（HTTP %d，附件数=%d，请求标识=%q，响应=%q）",
-		response.StatusCode, len(result.Attachments), requestID, bodySummary)
+	return "", fmt.Errorf("discord 图片上传响应缺少附件（HTTP %d，附件数=%d，请求标识=%q）",
+		response.StatusCode, len(result.Attachments), requestID)
 }
 
 func desktopImageMultipartPrefix(payload []byte, filename string) ([]byte, []byte, string, error) {
