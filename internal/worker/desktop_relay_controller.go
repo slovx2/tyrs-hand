@@ -162,13 +162,23 @@ func (c *desktopRelayController) PrepareCall(ctx context.Context,
 			})
 		plan.State = state
 	case "thread/rollback":
-		requestCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
-		state, err := c.processor.client.PrepareDesktopRollback(requestCtx,
-			workerprotocol.DesktopRollbackPrepareRequest{
-				EnvironmentID: c.environment.runtime.EnvironmentID,
-				RequestKey:    desktopRequestKey(call.Method, plan.Params, nil), Params: plan.Params,
-			})
-		cancel()
+		request := workerprotocol.DesktopRollbackPrepareRequest{
+			EnvironmentID: c.environment.runtime.EnvironmentID,
+			RequestKey:    desktopRequestKey(call.Method, plan.Params, nil), Params: plan.Params,
+		}
+		var state workerprotocol.DesktopRollbackState
+		var err error
+		for attempt := 0; attempt < 8; attempt++ {
+			requestCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
+			state, err = c.processor.client.PrepareDesktopRollback(requestCtx, request)
+			cancel()
+			if err == nil || !strings.Contains(err.Error(), "409 Conflict") || attempt == 7 {
+				break
+			}
+			if !waitContext(ctx, 300*time.Millisecond) {
+				break
+			}
+		}
 		if err != nil {
 			return plan, err
 		}
