@@ -694,7 +694,7 @@ func (r *DisgoRemote) UploadDesktopImage(ctx context.Context, channelID, message
 		return "", err
 	}
 	attachmentID, err := r.patchDesktopImage(ctx, channelID, messageID,
-		current.Attachments, filename, description, source)
+		current.Attachments, card, filename, description, source)
 	if err == nil && attachmentID != "" {
 		if err := r.UpdateDesktopCard(ctx, channelID, messageID, card); err != nil {
 			return "", err
@@ -731,6 +731,8 @@ type desktopImageAttachmentPayload struct {
 
 type desktopImageMessagePayload struct {
 	Attachments []desktopImageAttachmentPayload `json:"attachments"`
+	Flags       discord.MessageFlags            `json:"flags"`
+	Components  []discord.LayoutComponent       `json:"components"`
 }
 
 type desktopImageUploadResponse struct {
@@ -749,7 +751,7 @@ type desktopImageFinalizingReader interface {
 }
 
 func (r *DisgoRemote) patchDesktopImage(ctx context.Context, channelID, messageID string,
-	existing []discord.Attachment,
+	existing []discord.Attachment, card ComponentCardPayload,
 	filename, description string, source io.Reader,
 ) (string, error) {
 	attachments := make([]desktopImageAttachmentPayload, 0, len(existing)+1)
@@ -761,8 +763,14 @@ func (r *DisgoRemote) patchDesktopImage(ctx context.Context, channelID, messageI
 	// Discord 的 MessageAttachmentRequest.id 是雪花 ID 字符串；新文件使用 "0"。
 	attachments = append(attachments, desktopImageAttachmentPayload{ID: "0",
 		Filename: filename, Description: description})
+	components, err := discordCardComponents(card)
+	if err != nil {
+		return "", err
+	}
 	payload, err := json.Marshal(desktopImageMessagePayload{
 		Attachments: attachments,
+		Flags:       discord.MessageFlagIsComponentsV2,
+		Components:  components,
 	})
 	if err != nil {
 		return "", err

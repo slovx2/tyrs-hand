@@ -331,8 +331,8 @@ func TestDisgoRemoteStreamsDesktopImageAndReconcilesByFilename(t *testing.T) {
 	require.Equal(t, "30", attachments[0].(map[string]any)["id"])
 	require.Equal(t, "0", attachments[1].(map[string]any)["id"])
 	require.Equal(t, "shot.png", attachments[1].(map[string]any)["description"])
-	require.NotContains(t, uploadPayload, "flags")
-	require.NotContains(t, uploadPayload, "components")
+	require.Equal(t, float64(discord.MessageFlagIsComponentsV2), uploadPayload["flags"])
+	require.Contains(t, uploadPayload, "components")
 	container := updatePayload["components"].([]any)[0].(map[string]any)
 	components := container["components"].([]any)
 	require.Equal(t, float64(discord.ComponentTypeMediaGallery),
