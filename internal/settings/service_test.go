@@ -52,6 +52,25 @@ func TestWriteSecretFile(t *testing.T) {
 	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 }
 
+func TestInstallBuiltinSkills(t *testing.T) {
+	home := t.TempDir()
+	require.NoError(t, InstallBuiltinSkills(home))
+	skillPath := filepath.Join(home, "skills", "tyrs-browser", "SKILL.md")
+	data, err := os.ReadFile(skillPath)
+	require.NoError(t, err)
+	require.Contains(t, string(data), "name: tyrs-browser")
+	require.FileExists(t, filepath.Join(home, "skills", "tyrs-browser", "agents", "openai.yaml"))
+	firstRevision := BuiltinSkillsRevision()
+	require.Len(t, firstRevision, 64)
+	require.Equal(t, firstRevision, BuiltinSkillsRevision())
+
+	require.NoError(t, os.WriteFile(skillPath, []byte("stale"), 0o600))
+	require.NoError(t, InstallBuiltinSkills(home))
+	data, err = os.ReadFile(skillPath)
+	require.NoError(t, err)
+	require.Contains(t, string(data), "name: tyrs-browser")
+}
+
 func TestSyncChatGPTAuthOnlyOverwritesOnRevisionChanges(t *testing.T) {
 	sharedHome := t.TempDir()
 	codexHome := t.TempDir()

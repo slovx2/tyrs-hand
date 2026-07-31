@@ -886,11 +886,16 @@ func environmentValue(environment []string, key string) string {
 	return ""
 }
 
-func browserDeveloperInstructions(cfg config.Config, current string) string {
-	if cfg.BrowserMCPURL == "" {
-		return current
-	}
-	return current + "\nUse the single chrome MCP and browser_select to choose between the worker browser and desktop browser. Use browser_files.stage_file and browser_files.import_download for file exchange. Worker and desktop browsers cannot directly access development-environment localhost ports. After starting a service, call browser_expose_service and use the returned loopback endpoint. If the chrome MCP is unavailable, report that directly; do not start another Chrome, CDP, container browser, or headless browser."
+func browserDeveloperInstructions(_ config.Config, current string) string {
+	return current
+}
+
+func withBuiltinSkills(codexHome string, skills []ports.SkillRef) []ports.SkillRef {
+	result := append([]ports.SkillRef(nil), skills...)
+	return append(result, ports.SkillRef{
+		Name: "tyrs-browser",
+		Path: filepath.Join(codexHome, "skills", "tyrs-browser", "SKILL.md"),
+	})
 }
 
 func withoutGenericReply(tools []string) []string {

@@ -294,13 +294,12 @@ func browserJSONResult(value any) (codex.ToolCallResult, error) {
 }
 
 func cleanupBrowserTask(cfg config.Config, taskID string, scopes ...string) {
+	if cfg.BrowserMCPURL != "" && taskID != "" && len(scopes) > 0 && scopes[0] != "" {
+		postBrowserServiceCleanup(cfg, scopes[0], "/browser-services/task/end", taskID)
+	}
 	if cfg.BrowserMCPURL != "" && taskID != "" {
 		_ = os.RemoveAll(filepath.Join(cfg.BrowserFilesRoot, taskID))
 	}
-	if cfg.BrowserMCPURL == "" || taskID == "" || len(scopes) == 0 || scopes[0] == "" {
-		return
-	}
-	postBrowserServiceCleanup(cfg, scopes[0], "/browser-services/task/end", taskID)
 }
 
 func cleanupBrowserEnvironment(cfg config.Config, scope string) {
@@ -325,7 +324,7 @@ func postBrowserServiceCleanup(cfg config.Config, scope, path, taskID string) {
 	}
 	endpoint.Path = path
 	endpoint.RawQuery = ""
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), nil)
 	if err != nil {

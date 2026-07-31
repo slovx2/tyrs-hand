@@ -276,7 +276,8 @@ func (p *RemoteProcessor) processRemoteGitHub(ctx context.Context, task *workerp
 		RuntimeConfig:         runtimeConfig,
 		DeveloperInstructions: browserDeveloperInstructions(p.cfg, "Follow repository AGENTS.md and the explicitly attached skills. Use only the authorized GitHub work item and current worktree. Use git.commit for commits and git.publish_branch for pushes. After all business actions, call tyrs_hand.reply_to_github exactly once with the user-facing result, then provide a natural final answer."),
 	})
-	if err := runtime.ValidateSkills(ctx, workspace.WorktreePath, skills); err != nil {
+	if err := runtime.ValidateSkills(ctx, workspace.WorktreePath,
+		withBuiltinSkills(codexHome, skills)); err != nil {
 		return codexcontrol.TurnResult{}, err
 	}
 	threadID, err := p.ensureRemoteThread(ctx, runtime, task, options, codexHome, report)
@@ -337,6 +338,9 @@ func prepareRemoteCodexHome(home string, credential workerprotocol.RuntimeCreden
 	globalAgents string,
 ) ([]string, error) {
 	if err := os.MkdirAll(home, 0o700); err != nil {
+		return nil, err
+	}
+	if err := settings.InstallBuiltinSkills(home); err != nil {
 		return nil, err
 	}
 	if err := settings.WriteGlobalAgents(filepath.Join(home, "AGENTS.md"), globalAgents); err != nil {

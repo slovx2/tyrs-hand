@@ -235,6 +235,9 @@ func (s *Service) PrepareCodexHome(ctx context.Context, codexHome, sharedHome st
 	if err := os.MkdirAll(codexHome, 0o700); err != nil {
 		return AgentProvider{}, nil, err
 	}
+	if err := InstallBuiltinSkills(codexHome); err != nil {
+		return AgentProvider{}, nil, err
+	}
 	agents, err := s.GlobalAgents(ctx)
 	if err != nil {
 		return AgentProvider{}, nil, err

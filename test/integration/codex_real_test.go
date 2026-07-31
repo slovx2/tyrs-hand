@@ -18,9 +18,29 @@ import (
 
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/ports"
+	"github.com/slovx2/tyrs-hand/internal/settings"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
+
+func TestRealCodexDiscoversBuiltinTyrsBrowserSkill(t *testing.T) {
+	root := temporaryDir(t, "tyrs-hand-browser-skill-")
+	codexHome := filepath.Join(root, "codex-home")
+	worktree := filepath.Join(root, "worktree")
+	require.NoError(t, os.MkdirAll(worktree, 0o755))
+	require.NoError(t, settings.InstallBuiltinSkills(codexHome))
+
+	client, err := codex.Start(context.Background(), codex.ClientOptions{
+		Bin: fixedCodexBinary(t), CWD: worktree, CodexHome: codexHome,
+		RequestTimeout: 30 * time.Second, Logger: zap.NewNop(),
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = client.Close() })
+
+	skillPath := filepath.Join(codexHome, "skills", "tyrs-browser", "SKILL.md")
+	require.NoError(t, codex.NewRuntime(client).ValidateSkills(context.Background(), worktree,
+		[]ports.SkillRef{{Name: "tyrs-browser", Path: skillPath}}))
+}
 
 func TestRealCodexAppServerWithMockResponsesAndDynamicTool(t *testing.T) {
 	bin := fixedCodexBinary(t)

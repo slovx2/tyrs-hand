@@ -191,7 +191,8 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		options.DeveloperInstructions += "\nUse only the current persistent project directory. The container and Home are shared with the owner's other forums, so never inspect or modify sibling workspaces outside the current CWD. This directory is not a Git repository, so Git tools are unavailable."
 	}
 	options.DynamicTools = withBrowserTools(p.cfg, options.DynamicTools...)
-	if err := runtime.ValidateSkills(ctx, workspace, skills); err != nil {
+	if err := runtime.ValidateSkills(ctx, workspace,
+		withBuiltinSkills(containerRuntime.CodexHome, skills)); err != nil {
 		return result, err
 	}
 	threadPhase := "thread/start"

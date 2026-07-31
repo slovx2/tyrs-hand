@@ -96,7 +96,8 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 		DynamicTools: withBrowserTools(p.cfg,
 			developmentGitTools(snapshot.Development)...),
 	})
-	if err := codexRuntime.ValidateSkills(ctx, runtime.Workspace, skills); err != nil {
+	if err := codexRuntime.ValidateSkills(ctx, runtime.Workspace,
+		withBuiltinSkills(runtime.CodexHome, skills)); err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
 	threadID, err := p.ensureRemoteThread(ctx, codexRuntime, task, options,

@@ -12,10 +12,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/devcontainer"
+	"github.com/slovx2/tyrs-hand/internal/settings"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
-const environmentCodexConfigRevision = "provider-baseline-v1"
+const environmentCodexConfigRevision = "provider-baseline-v2"
 
 func (p *RemoteProcessor) CoordinateEnvironments(ctx context.Context) error {
 	if p.development == nil || !p.development.Enabled() {
@@ -244,7 +245,8 @@ func (p *RemoteProcessor) installEnvironmentCodexHome(ctx context.Context,
 	runtime devcontainer.Runtime, credential workerprotocol.RuntimeCredential,
 ) (bool, error) {
 	marker := filepath.Join(filepath.Dir(runtime.AppServerSocket), "codex-config-signature")
-	expectedSignature := environmentCodexConfigRevision + ":" + credential.ConfigSignature
+	expectedSignature := environmentCodexConfigRevision + ":" +
+		settings.BuiltinSkillsRevision() + ":" + credential.ConfigSignature
 	current, markerErr := os.ReadFile(marker)
 	if markerErr == nil && string(current) == expectedSignature {
 		return false, nil

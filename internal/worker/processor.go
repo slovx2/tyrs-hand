@@ -152,7 +152,8 @@ func (p *Processor) Process(ctx context.Context, claimed *codexcontrol.ClaimedCo
 		RuntimeConfig:         runtimeConfig,
 		DeveloperInstructions: browserDeveloperInstructions(p.cfg, "Follow repository AGENTS.md and the explicitly attached skills. Use only the authorized GitHub work item and current worktree. This is a temporary lightweight worktree: the platform does not install dependencies or prepare toolchains, and local builds, tests, and debugging are not recommended unless the user explicitly requests them and the required tools are already available. Use git.commit for commits and git.publish_branch for pushes; do not write shared Git metadata with shell commands. After all business actions, call tyrs_hand.reply_to_github exactly once with the user-facing result, then provide a natural final answer."),
 	})
-	if err := runtime.ValidateSkills(ctx, workspace.WorktreePath, skills); err != nil {
+	if err := runtime.ValidateSkills(ctx, workspace.WorktreePath,
+		withBuiltinSkills(codexHome, skills)); err != nil {
 		return codexcontrol.TurnResult{}, err
 	}
 	threadID, err := p.ensureThread(ctx, runtime, claimed, options, codexHome)
