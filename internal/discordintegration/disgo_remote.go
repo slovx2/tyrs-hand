@@ -8,10 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
 	"net/url"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -824,7 +826,14 @@ func desktopImageMultipartPrefix(payload []byte, filename string) ([]byte, []byt
 	if _, err := part.Write(payload); err != nil {
 		return nil, nil, "", err
 	}
-	if _, err := writer.CreateFormFile("files[0]", filename); err != nil {
+	contentType := mime.TypeByExtension(filepath.Ext(filename))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	if _, err := writer.CreatePart(textproto.MIMEHeader{
+		"Content-Disposition": []string{fmt.Sprintf(`form-data; name="files[0]"; filename="%s"`, filename)},
+		"Content-Type":        []string{contentType},
+	}); err != nil {
 		return nil, nil, "", err
 	}
 	boundary := writer.Boundary()
