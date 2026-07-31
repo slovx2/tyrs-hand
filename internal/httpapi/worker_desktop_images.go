@@ -241,10 +241,26 @@ func desktopImageOrdinal(c *gin.Context) (int, bool) {
 
 type validatedDesktopImageReader struct {
 	source    io.Reader
+	size      int64
 	remaining int64
 	digest    hash.Hash
 	expected  string
 	checked   bool
+}
+
+func (r *validatedDesktopImageReader) Size() int64 { return r.size }
+
+func (r *validatedDesktopImageReader) Finalize() error {
+	if r.remaining != 0 {
+		return errors.New("图片大小与元数据不一致")
+	}
+	if !r.checked {
+		r.checked = true
+	}
+	if hex.EncodeToString(r.digest.Sum(nil)) != r.expected {
+		return errors.New("图片 SHA-256 与元数据不一致")
+	}
+	return nil
 }
 
 func (r *validatedDesktopImageReader) Read(buffer []byte) (int, error) {
@@ -499,7 +515,7 @@ func readDesktopImageUpload(c *gin.Context, image desktopImageRecord) (
 		return metadata, nil, errors.New("desktop 图片 MIME 与元数据不一致")
 	}
 	stream := &validatedDesktopImageReader{
-		source: io.MultiReader(bytes.NewReader(prefix), part), remaining: image.size,
+		source: io.MultiReader(bytes.NewReader(prefix), part), size: image.size, remaining: image.size,
 		digest: sha256.New(), expected: image.sha256,
 	}
 	return metadata, stream, nil

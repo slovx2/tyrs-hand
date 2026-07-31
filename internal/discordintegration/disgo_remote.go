@@ -1,6 +1,7 @@
 package discordintegration
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -736,6 +737,14 @@ type desktopImageUploadResponse struct {
 	} `json:"attachments"`
 }
 
+type desktopImageSizedReader interface {
+	Size() int64
+}
+
+type desktopImageFinalizingReader interface {
+	Finalize() error
+}
+
 func (r *DisgoRemote) patchDesktopImage(ctx context.Context, channelID, messageID string,
 	components []discord.LayoutComponent, existing []discord.Attachment,
 	filename, description string, source io.Reader,
@@ -756,49 +765,35 @@ func (r *DisgoRemote) patchDesktopImage(ctx context.Context, channelID, messageI
 	if err != nil {
 		return "", err
 	}
-	pipeReader, pipeWriter := io.Pipe()
-	multipartWriter := multipart.NewWriter(pipeWriter)
-	writeResult := make(chan error, 1)
-	go func() {
-		var writeErr error
-		part, createErr := multipartWriter.CreatePart(textproto.MIMEHeader{
-			"Content-Disposition": []string{`form-data; name="payload_json"`},
-			"Content-Type":        []string{"application/json"},
-		})
-		if createErr == nil {
-			_, writeErr = part.Write(payload)
-		}
-		if writeErr == nil {
-			part, writeErr = multipartWriter.CreateFormFile("files[0]", filename)
-		}
-		if writeErr == nil {
-			_, writeErr = io.Copy(part, source)
-		}
-		if closeErr := multipartWriter.Close(); writeErr == nil {
-			writeErr = closeErr
-		}
-		_ = pipeWriter.CloseWithError(writeErr)
-		writeResult <- writeErr
-	}()
-	request, err := http.NewRequestWithContext(ctx, http.MethodPatch,
-		r.apiBaseURL+"/channels/"+channelID+"/messages/"+messageID, pipeReader)
+	prefix, suffix, contentType, err := desktopImageMultipartPrefix(payload, filename)
 	if err != nil {
-		_ = pipeReader.CloseWithError(err)
-		<-writeResult
 		return "", err
+	}
+	body := io.Reader(io.MultiReader(bytes.NewReader(prefix), source, bytes.NewReader(suffix)))
+	contentLength := int64(len(prefix) + len(suffix))
+	if sized, ok := source.(desktopImageSizedReader); ok {
+		contentLength += sized.Size()
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPatch,
+		r.apiBaseURL+"/channels/"+channelID+"/messages/"+messageID, body)
+	if err != nil {
+		return "", err
+	}
+	if contentLength > int64(len(prefix)+len(suffix)) {
+		request.ContentLength = contentLength
 	}
 	request.Header.Set("Authorization", "Bot "+r.token)
 	request.Header.Set("User-Agent", "Tyrs-Hand/discord-v1")
-	request.Header.Set("Content-Type", multipartWriter.FormDataContentType())
+	request.Header.Set("Content-Type", contentType)
 	response, err := r.httpClient.Do(request)
-	_ = pipeReader.CloseWithError(err)
-	writeErr := <-writeResult
 	if err != nil {
 		return "", err
 	}
 	defer func() { _ = response.Body.Close() }()
-	if writeErr != nil {
-		return "", writeErr
+	if finalizer, ok := source.(desktopImageFinalizingReader); ok {
+		if err := finalizer.Finalize(); err != nil {
+			return "", err
+		}
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(response.Body, 32<<10))
@@ -814,6 +809,35 @@ func (r *DisgoRemote) patchDesktopImage(ctx context.Context, channelID, messageI
 		}
 	}
 	return "", nil
+}
+
+func desktopImageMultipartPrefix(payload []byte, filename string) ([]byte, []byte, string, error) {
+	var buffer bytes.Buffer
+	writer := multipart.NewWriter(&buffer)
+	part, err := writer.CreatePart(textproto.MIMEHeader{
+		"Content-Disposition": []string{`form-data; name="payload_json"`},
+		"Content-Type":        []string{"application/json"},
+	})
+	if err != nil {
+		return nil, nil, "", err
+	}
+	if _, err := part.Write(payload); err != nil {
+		return nil, nil, "", err
+	}
+	if _, err := writer.CreateFormFile("files[0]", filename); err != nil {
+		return nil, nil, "", err
+	}
+	boundary := writer.Boundary()
+	if err := writer.Close(); err != nil {
+		return nil, nil, "", err
+	}
+	suffix := []byte("\r\n--" + boundary + "--\r\n")
+	encoded := buffer.Bytes()
+	if len(encoded) < len(suffix) || !bytes.Equal(encoded[len(encoded)-len(suffix):], suffix) {
+		return nil, nil, "", errors.New("生成 Discord 图片 multipart 边界失败")
+	}
+	prefix := append([]byte(nil), encoded[:len(encoded)-len(suffix)]...)
+	return prefix, suffix, writer.FormDataContentType(), nil
 }
 
 func (r *DisgoRemote) UpdateDesktopCard(ctx context.Context, channelID, messageID string,
