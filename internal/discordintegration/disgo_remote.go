@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"slices"
 	"strings"
@@ -21,12 +23,19 @@ import (
 )
 
 type DisgoRemote struct {
-	rest disgorest.Rest
+	rest       disgorest.Rest
+	httpClient *http.Client
+	token      string
+	apiBaseURL string
 }
 
 func NewDisgoRemote(token, apiURL string, httpClient *http.Client) *DisgoRemote {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 20 * time.Second}
+	}
+	baseURL := strings.TrimRight(apiURL, "/")
+	if baseURL == "" {
+		baseURL = "https://discord.com/api/v10"
 	}
 	options := []disgorest.ClientConfigOpt{
 		disgorest.WithHTTPClient(httpClient),
@@ -38,7 +47,8 @@ func NewDisgoRemote(token, apiURL string, httpClient *http.Client) *DisgoRemote 
 	}
 	client := disgorest.NewClient(token, options...)
 	return &DisgoRemote{rest: disgorest.New(client,
-		disgorest.WithDefaultAllowedMentions(discord.AllowedMentions{}))}
+		disgorest.WithDefaultAllowedMentions(discord.AllowedMentions{})),
+		httpClient: httpClient, token: token, apiBaseURL: baseURL}
 }
 
 func (r *DisgoRemote) Guild(ctx context.Context, guildID string) (RemoteGuild, error) {
@@ -680,25 +690,10 @@ func (r *DisgoRemote) UploadDesktopImage(ctx context.Context, channelID, message
 	if err != nil {
 		return "", err
 	}
-	attachments := make([]discord.AttachmentUpdate, 0, len(current.Attachments))
-	for _, attachment := range current.Attachments {
-		attachments = append(attachments, discord.AttachmentKeep{ID: attachment.ID})
-	}
-	update := discord.NewMessageUpdateV2(components...)
-	emptyContent := ""
-	emptyEmbeds := []discord.Embed{}
-	update.Content, update.Embeds = &emptyContent, &emptyEmbeds
-	update.Attachments = &attachments
-	update.Files = []*discord.File{discord.NewFile(filename, description, source)}
-	update.AllowedMentions = &discord.AllowedMentions{}
-	updated, err := r.rest.UpdateMessage(channel, message, update, disgorest.WithCtx(ctx))
-	if err != nil {
-		return "", err
-	}
-	for _, attachment := range updated.Attachments {
-		if attachment.Filename == filename {
-			return attachment.ID.String(), nil
-		}
+	attachmentID, err := r.patchDesktopImage(ctx, channelID, messageID, components,
+		current.Attachments, filename, description, source)
+	if err == nil && attachmentID != "" {
+		return attachmentID, nil
 	}
 	// Discord 的 multipart PATCH 可能返回成功但省略 attachments；
 	// 重新读取消息，按确定性文件名对账，避免把已上传的附件误判为失败。
@@ -710,10 +705,115 @@ func (r *DisgoRemote) UploadDesktopImage(ctx context.Context, channelID, message
 			}
 		}
 	}
+	if err != nil {
+		return "", err
+	}
 	if reconcileErr != nil {
 		return "", fmt.Errorf("Discord 图片上传响应缺少附件且对账失败: %w", reconcileErr)
 	}
 	return "", errors.New("discord 图片上传响应缺少附件")
+}
+
+type desktopImageAttachmentPayload struct {
+	ID          any    `json:"id"`
+	Filename    string `json:"filename,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+type desktopImageMessagePayload struct {
+	Content         string                          `json:"content"`
+	Embeds          []discord.Embed                 `json:"embeds"`
+	Components      []discord.LayoutComponent       `json:"components"`
+	Attachments     []desktopImageAttachmentPayload `json:"attachments"`
+	AllowedMentions discord.AllowedMentions         `json:"allowed_mentions"`
+	Flags           discord.MessageFlags            `json:"flags"`
+}
+
+type desktopImageUploadResponse struct {
+	Attachments []struct {
+		ID       snowflake.ID `json:"id"`
+		Filename string       `json:"filename"`
+	} `json:"attachments"`
+}
+
+func (r *DisgoRemote) patchDesktopImage(ctx context.Context, channelID, messageID string,
+	components []discord.LayoutComponent, existing []discord.Attachment,
+	filename, description string, source io.Reader,
+) (string, error) {
+	attachments := make([]desktopImageAttachmentPayload, 0, len(existing)+1)
+	for _, attachment := range existing {
+		attachments = append(attachments, desktopImageAttachmentPayload{ID: attachment.ID})
+	}
+	// Discord requires the new attachment's filename in payload_json. DisGo's
+	// AttachmentCreate omits it, which makes the API silently discard uploads.
+	attachments = append(attachments, desktopImageAttachmentPayload{ID: 0,
+		Filename: filename, Description: description})
+	flags := discord.MessageFlagIsComponentsV2
+	payload, err := json.Marshal(desktopImageMessagePayload{
+		Content: "", Embeds: []discord.Embed{}, Components: components,
+		Attachments: attachments, AllowedMentions: discord.AllowedMentions{}, Flags: flags,
+	})
+	if err != nil {
+		return "", err
+	}
+	pipeReader, pipeWriter := io.Pipe()
+	multipartWriter := multipart.NewWriter(pipeWriter)
+	writeResult := make(chan error, 1)
+	go func() {
+		var writeErr error
+		part, createErr := multipartWriter.CreatePart(textproto.MIMEHeader{
+			"Content-Disposition": []string{`form-data; name="payload_json"`},
+			"Content-Type":        []string{"application/json"},
+		})
+		if createErr == nil {
+			_, writeErr = part.Write(payload)
+		}
+		if writeErr == nil {
+			part, writeErr = multipartWriter.CreateFormFile("files[0]", filename)
+		}
+		if writeErr == nil {
+			_, writeErr = io.Copy(part, source)
+		}
+		if closeErr := multipartWriter.Close(); writeErr == nil {
+			writeErr = closeErr
+		}
+		_ = pipeWriter.CloseWithError(writeErr)
+		writeResult <- writeErr
+	}()
+	request, err := http.NewRequestWithContext(ctx, http.MethodPatch,
+		r.apiBaseURL+"/channels/"+channelID+"/messages/"+messageID, pipeReader)
+	if err != nil {
+		_ = pipeReader.CloseWithError(err)
+		<-writeResult
+		return "", err
+	}
+	request.Header.Set("Authorization", "Bot "+r.token)
+	request.Header.Set("User-Agent", "Tyrs-Hand/discord-v1")
+	request.Header.Set("Content-Type", multipartWriter.FormDataContentType())
+	response, err := r.httpClient.Do(request)
+	_ = pipeReader.CloseWithError(err)
+	writeErr := <-writeResult
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = response.Body.Close() }()
+	if writeErr != nil {
+		return "", writeErr
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 32<<10))
+		return "", fmt.Errorf("Discord 图片上传 HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var result desktopImageUploadResponse
+	if err := json.NewDecoder(response.Body).Decode(&result); err != nil && !errors.Is(err, io.EOF) {
+		return "", err
+	}
+	for _, attachment := range result.Attachments {
+		if attachment.Filename == filename {
+			return attachment.ID.String(), nil
+		}
+	}
+	return "", nil
 }
 
 func (r *DisgoRemote) UpdateDesktopCard(ctx context.Context, channelID, messageID string,

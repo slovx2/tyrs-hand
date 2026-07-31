@@ -329,6 +329,8 @@ func TestDisgoRemoteStreamsDesktopImageAndReconcilesByFilename(t *testing.T) {
 	attachments := payload["attachments"].([]any)
 	require.Len(t, attachments, 2)
 	require.Equal(t, "30", attachments[0].(map[string]any)["id"])
+	require.Equal(t, float64(0), attachments[1].(map[string]any)["id"])
+	require.Equal(t, filename, attachments[1].(map[string]any)["filename"])
 	container := payload["components"].([]any)[0].(map[string]any)
 	components := container["components"].([]any)
 	require.Equal(t, float64(discord.ComponentTypeMediaGallery),
