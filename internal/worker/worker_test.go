@@ -161,11 +161,12 @@ func TestProcessorHelpersAndLocalTools(t *testing.T) {
 		"HTTP_PROXY=https://proxy.example.com", "HTTPS_PROXY=https://proxy.example.com"},
 		remoteEnvironment)
 
-	completed, err := remoteCompletedResult(" final answer ", "turn-1", 123, "thread/read")
+	completed, err := remoteCompletedResult(" final answer ", "agentMessage", "turn-1", 123,
+		"thread/read")
 	require.NoError(t, err)
 	require.Equal(t, "final answer", completed.FinalAnswer)
 	require.EqualValues(t, 123, completed.DurationMillis)
-	_, err = remoteCompletedResult(" \n ", "turn-1", 0, "thread/read")
+	_, err = remoteCompletedResult(" \n ", "", "turn-1", 0, "thread/read")
 	require.ErrorContains(t, err, "没有最终回复")
 
 	workspace := &fakeWorkspace{status: "## main\n M file.go"}

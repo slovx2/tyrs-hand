@@ -307,7 +307,12 @@ func (s *ConversationService) Reply(ctx context.Context, input IncomingMessage) 
 			return err
 		}
 	}
-	shouldEnqueue := status == "active" && (triggerMode == "interactive" || input.MentionsBot)
+	actionablePlan, err := conversationHasActionablePlanTx(ctx, tx, conversationID)
+	if err != nil {
+		return err
+	}
+	shouldEnqueue := status == "active" &&
+		(triggerMode == "interactive" || input.MentionsBot || actionablePlan)
 	if shouldEnqueue {
 		if err := s.enqueuePendingMessages(ctx, tx, conversationID, input.MessageID); err != nil {
 			return err

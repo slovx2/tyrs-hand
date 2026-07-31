@@ -230,7 +230,8 @@ func (p *Processor) reconcileTurn(ctx context.Context, runtime *codex.Runtime,
 		return codexcontrol.TurnResult{}, false, err
 	}
 	if turn.Status == "completed" {
-		return codexcontrol.TurnResult{FinalAnswer: turn.FinalAnswer(), TurnID: turn.ID,
+		answer, outputType := turn.FinalOutput()
+		return codexcontrol.TurnResult{FinalAnswer: answer, FinalOutputType: outputType, TurnID: turn.ID,
 			Evidence: "thread/read"}, true, nil
 	}
 	if !isActiveCodexTurnStatus(turn.Status) {
@@ -257,7 +258,7 @@ func (p *Processor) waitTurn(ctx context.Context, runtime *codex.Runtime, events
 	pollTicker := time.NewTicker(pollInterval)
 	defer pollTicker.Stop()
 	confirmed := claimed.ConfirmedTurnID != ""
-	finalAnswer := ""
+	finalAnswer, finalOutputType := "", ""
 	var finalDelta strings.Builder
 	for {
 		select {
@@ -287,8 +288,8 @@ func (p *Processor) waitTurn(ctx context.Context, runtime *codex.Runtime, events
 					confirmed = true
 				}
 			}
-			if value := finalAnswerFromEvent(event); value != "" {
-				finalAnswer = value
+			if value, outputType := finalOutputFromEvent(event); value != "" {
+				finalAnswer, finalOutputType = value, outputType
 			}
 			if value := finalAnswerDelta(event); value != "" {
 				finalDelta.WriteString(value)
@@ -299,12 +300,13 @@ func (p *Processor) waitTurn(ctx context.Context, runtime *codex.Runtime, events
 					return codexcontrol.TurnResult{}, fmt.Errorf("codex turn 结束状态为 %s", status)
 				}
 				if finalAnswer == "" {
-					finalAnswer = p.readFinalAnswer(ctx, runtime, threadID, turnID)
+					finalAnswer, finalOutputType = p.readFinalOutput(ctx, runtime, threadID, turnID)
 				}
 				if finalAnswer == "" {
 					finalAnswer = strings.TrimSpace(finalDelta.String())
 				}
-				return codexcontrol.TurnResult{FinalAnswer: finalAnswer, TurnID: turnID,
+				return codexcontrol.TurnResult{FinalAnswer: finalAnswer,
+					FinalOutputType: finalOutputType, TurnID: turnID,
 					DurationMillis: time.Since(startedAt).Milliseconds(), Evidence: "turn/completed"}, nil
 			}
 		case <-steerTicker.C:
@@ -323,7 +325,9 @@ func (p *Processor) waitTurn(ctx context.Context, runtime *codex.Runtime, events
 				turn, found = snapshot.TurnByClientID(claimed.ID.String())
 			}
 			if found && turn.Status == "completed" {
-				return codexcontrol.TurnResult{FinalAnswer: turn.FinalAnswer(), TurnID: turn.ID,
+				answer, outputType := turn.FinalOutput()
+				return codexcontrol.TurnResult{FinalAnswer: answer, FinalOutputType: outputType,
+					TurnID:         turn.ID,
 					DurationMillis: time.Since(startedAt).Milliseconds(), Evidence: "thread/read"}, nil
 			}
 			if found && (turn.Status == "failed" || turn.Status == "interrupted") {
@@ -339,25 +343,27 @@ func (p *Processor) waitTurn(ctx context.Context, runtime *codex.Runtime, events
 	}
 }
 
-func (p *Processor) readFinalAnswer(ctx context.Context, runtime *codex.Runtime, threadID, turnID string) string {
+func (p *Processor) readFinalOutput(ctx context.Context, runtime *codex.Runtime,
+	threadID, turnID string,
+) (string, string) {
 	for attempt := 0; attempt < 3; attempt++ {
 		snapshot, err := runtime.ReadThread(ctx, threadID)
 		if err == nil {
 			if turn, ok := snapshot.TurnByID(turnID); ok {
-				if answer := turn.FinalAnswer(); answer != "" {
-					return answer
+				if answer, outputType := turn.FinalOutput(); answer != "" {
+					return answer, outputType
 				}
 			}
 		}
 		if attempt < 2 {
 			select {
 			case <-ctx.Done():
-				return ""
+				return "", ""
 			case <-time.After(100 * time.Millisecond):
 			}
 		}
 	}
-	return ""
+	return "", ""
 }
 
 func (p *Processor) snapshotTerminal(ctx context.Context, runtime *codex.Runtime,
@@ -374,7 +380,8 @@ func (p *Processor) snapshotTerminal(ctx context.Context, runtime *codex.Runtime
 	if !found || turn.Status != "completed" {
 		return codexcontrol.TurnResult{}, false, nil
 	}
-	return codexcontrol.TurnResult{FinalAnswer: turn.FinalAnswer(), TurnID: turn.ID,
+	answer, outputType := turn.FinalOutput()
+	return codexcontrol.TurnResult{FinalAnswer: answer, FinalOutputType: outputType, TurnID: turn.ID,
 		DurationMillis: time.Since(startedAt).Milliseconds(), Evidence: "thread/read"}, true, nil
 }
 
@@ -590,8 +597,13 @@ func eventTurnID(raw json.RawMessage) string {
 }
 
 func finalAnswerFromEvent(event codex.Event) string {
+	answer, _ := finalOutputFromEvent(event)
+	return answer
+}
+
+func finalOutputFromEvent(event codex.Event) (string, string) {
 	if event.Method != "item/completed" {
-		return ""
+		return "", ""
 	}
 	var payload struct {
 		Item struct {
@@ -601,14 +613,16 @@ func finalAnswerFromEvent(event codex.Event) string {
 		} `json:"item"`
 	}
 	if json.Unmarshal(event.Params, &payload) != nil {
-		return ""
+		return "", ""
 	}
-	if payload.Item.Type == "plan" ||
-		(payload.Item.Type == "agentMessage" &&
-			(payload.Item.Phase == "final_answer" || payload.Item.Phase == "")) {
-		return strings.TrimSpace(payload.Item.Text)
+	if payload.Item.Type == "plan" {
+		return strings.TrimSpace(payload.Item.Text), "plan"
 	}
-	return ""
+	if payload.Item.Type == "agentMessage" &&
+		(payload.Item.Phase == "final_answer" || payload.Item.Phase == "") {
+		return strings.TrimSpace(payload.Item.Text), "agentMessage"
+	}
+	return "", ""
 }
 
 func finalAnswerDelta(event codex.Event) string {

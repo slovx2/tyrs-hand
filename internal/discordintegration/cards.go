@@ -20,8 +20,15 @@ type ComponentCardPayload struct {
 	Body        string                     `json:"body,omitempty"`
 	Sections    []string                   `json:"sections,omitempty"`
 	Timeline    string                     `json:"timeline,omitempty"`
+	Media       []ComponentMediaPayload    `json:"media,omitempty"`
 	Buttons     []ComponentButtonPayload   `json:"buttons,omitempty"`
 	ButtonRows  [][]ComponentButtonPayload `json:"buttonRows,omitempty"`
+}
+
+type ComponentMediaPayload struct {
+	Filename    string `json:"filename"`
+	Description string `json:"description,omitempty"`
+	Spoiler     bool   `json:"spoiler,omitempty"`
 }
 
 type ComponentButtonPayload struct {

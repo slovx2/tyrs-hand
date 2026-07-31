@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -225,6 +227,77 @@ func (c *Client) PrepareDesktopTurn(ctx context.Context,
 	var result Task
 	err := c.call(ctx, http.MethodPost, "/worker/v1/desktop-turns", request, &result, true)
 	return result, err
+}
+
+func (c *Client) DesktopImageTarget(ctx context.Context,
+	intentID uuid.UUID,
+) (DesktopImageTarget, error) {
+	var result DesktopImageTarget
+	err := c.call(ctx, http.MethodGet, "/worker/v1/desktop-turns/"+intentID.String()+
+		"/images/target", nil, &result, true)
+	return result, err
+}
+
+func (c *Client) UploadDesktopImage(ctx context.Context, intentID uuid.UUID,
+	ordinal int, image DesktopImage, finalAttempt bool,
+) (DesktopImageUploadResult, error) {
+	var result DesktopImageUploadResult
+	file, err := os.Open(image.SourcePath)
+	if err != nil {
+		return result, err
+	}
+	defer func() { _ = file.Close() }()
+	reader, writer := io.Pipe()
+	multipartWriter := multipart.NewWriter(writer)
+	writeResult := make(chan error, 1)
+	go func() {
+		metadata, marshalErr := json.Marshal(DesktopImageUploadMetadata{FinalAttempt: finalAttempt})
+		if marshalErr == nil {
+			var field io.Writer
+			field, marshalErr = multipartWriter.CreateFormField("metadata")
+			if marshalErr == nil {
+				_, marshalErr = field.Write(metadata)
+			}
+		}
+		if marshalErr == nil {
+			var part io.Writer
+			part, marshalErr = multipartWriter.CreateFormFile("file", image.Filename)
+			if marshalErr == nil {
+				_, marshalErr = io.Copy(part, file)
+			}
+		}
+		if closeErr := multipartWriter.Close(); marshalErr == nil {
+			marshalErr = closeErr
+		}
+		_ = writer.CloseWithError(marshalErr)
+		writeResult <- marshalErr
+	}()
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		fmt.Sprintf("%s/worker/v1/desktop-turns/%s/images/%d", c.baseURL, intentID, ordinal),
+		reader)
+	if err != nil {
+		_ = reader.CloseWithError(err)
+		return result, err
+	}
+	request.Header.Set("Content-Type", multipartWriter.FormDataContentType())
+	err = c.execute(request, &result, true)
+	_ = reader.CloseWithError(err)
+	if writeErr := <-writeResult; err == nil {
+		err = writeErr
+	}
+	return result, err
+}
+
+func (c *Client) FailDesktopImage(ctx context.Context, intentID uuid.UUID,
+	ordinal int, cause error,
+) error {
+	message := "图片同步失败"
+	if cause != nil && strings.TrimSpace(cause.Error()) != "" {
+		message = cause.Error()
+	}
+	return c.call(ctx, http.MethodPost, fmt.Sprintf(
+		"/worker/v1/desktop-turns/%s/images/%d/fail", intentID, ordinal),
+		DesktopImageFailureRequest{Error: message}, nil, true)
 }
 
 func (c *Client) PrepareDesktopRollback(ctx context.Context,
@@ -495,6 +568,10 @@ func (c *Client) call(ctx context.Context, method, path string, input, output an
 		return err
 	}
 	request.Header.Set("Content-Type", "application/json")
+	return c.execute(request, output, authenticated)
+}
+
+func (c *Client) execute(request *http.Request, output any, authenticated bool) error {
 	if authenticated {
 		if c.credential == "" {
 			return errors.New("执行节点尚未注册")

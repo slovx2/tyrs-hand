@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"slices"
@@ -36,7 +37,8 @@ func NewDisgoRemote(token, apiURL string, httpClient *http.Client) *DisgoRemote 
 		options = append(options, disgorest.WithURL(strings.TrimRight(apiURL, "/")))
 	}
 	client := disgorest.NewClient(token, options...)
-	return &DisgoRemote{rest: disgorest.New(client, disgorest.WithDefaultAllowedMentions(discord.AllowedMentions{}))}
+	return &DisgoRemote{rest: disgorest.New(client,
+		disgorest.WithDefaultAllowedMentions(discord.AllowedMentions{}))}
 }
 
 func (r *DisgoRemote) Guild(ctx context.Context, guildID string) (RemoteGuild, error) {
@@ -658,6 +660,69 @@ func discordThreadArchived(err error) bool {
 		restErr.Code == disgorest.JSONErrorCodeOperationOnArchivedThread
 }
 
+func (r *DisgoRemote) UploadDesktopImage(ctx context.Context, channelID, messageID string,
+	card ComponentCardPayload, filename, description string, source io.Reader,
+) (string, error) {
+	channel, message, err := twoSnowflakes(channelID, messageID)
+	if err != nil {
+		return "", err
+	}
+	current, err := r.rest.GetMessage(channel, message, disgorest.WithCtx(ctx))
+	if err != nil {
+		return "", err
+	}
+	for _, attachment := range current.Attachments {
+		if attachment.Filename == filename {
+			return attachment.ID.String(), nil
+		}
+	}
+	components, err := discordCardComponents(card)
+	if err != nil {
+		return "", err
+	}
+	attachments := make([]discord.AttachmentUpdate, 0, len(current.Attachments))
+	for _, attachment := range current.Attachments {
+		attachments = append(attachments, discord.AttachmentKeep{ID: attachment.ID})
+	}
+	update := discord.NewMessageUpdateV2(components...)
+	emptyContent := ""
+	emptyEmbeds := []discord.Embed{}
+	update.Content, update.Embeds = &emptyContent, &emptyEmbeds
+	update.Attachments = &attachments
+	update.Files = []*discord.File{discord.NewFile(filename, description, source)}
+	update.AllowedMentions = &discord.AllowedMentions{}
+	updated, err := r.rest.UpdateMessage(channel, message, update, disgorest.WithCtx(ctx))
+	if err != nil {
+		return "", err
+	}
+	for _, attachment := range updated.Attachments {
+		if attachment.Filename == filename {
+			return attachment.ID.String(), nil
+		}
+	}
+	return "", errors.New("discord 图片上传响应缺少附件")
+}
+
+func (r *DisgoRemote) UpdateDesktopCard(ctx context.Context, channelID, messageID string,
+	card ComponentCardPayload,
+) error {
+	channel, message, err := twoSnowflakes(channelID, messageID)
+	if err != nil {
+		return err
+	}
+	components, err := discordCardComponents(card)
+	if err != nil {
+		return err
+	}
+	update := discord.NewMessageUpdateV2(components...)
+	emptyContent := ""
+	emptyEmbeds := []discord.Embed{}
+	update.Content, update.Embeds = &emptyContent, &emptyEmbeds
+	update.AllowedMentions = &discord.AllowedMentions{}
+	_, err = r.rest.UpdateMessage(channel, message, update, disgorest.WithCtx(ctx))
+	return err
+}
+
 func (r *DisgoRemote) Close(ctx context.Context) { r.rest.Close(ctx) }
 
 func discordCardComponents(card ComponentCardPayload) ([]discord.LayoutComponent, error) {
@@ -684,6 +749,28 @@ func discordCardComponents(card ComponentCardPayload) ([]discord.LayoutComponent
 		if err := addText(value); err != nil {
 			return nil, err
 		}
+	}
+	if len(card.Media) > 10 {
+		return nil, fmt.Errorf("discord Media Gallery 最多包含 10 个项目")
+	}
+	if len(card.Media) > 0 {
+		items := make([]discord.MediaGalleryItem, 0, len(card.Media))
+		seenMedia := make(map[string]bool)
+		for _, media := range card.Media {
+			filename := strings.TrimSpace(media.Filename)
+			if filename == "" || strings.ContainsAny(filename, "/\\") || seenMedia[filename] {
+				return nil, fmt.Errorf("discord Media Gallery 文件名无效或重复")
+			}
+			seenMedia[filename] = true
+			items = append(items, discord.MediaGalleryItem{
+				Media:       discord.UnfurledMediaItem{URL: "attachment://" + filename},
+				Description: media.Description, Spoiler: media.Spoiler,
+			})
+		}
+		if len(parts) > 0 {
+			parts = append(parts, discord.NewSmallSeparator())
+		}
+		parts = append(parts, discord.NewMediaGallery(items...))
 	}
 	buttonRows := card.ButtonRows
 	if len(card.Buttons) > 0 {

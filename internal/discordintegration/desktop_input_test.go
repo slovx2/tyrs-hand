@@ -2,6 +2,7 @@ package discordintegration
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -31,6 +32,20 @@ func TestDesktopInputCardsUseStableFallbacksForEmptyIdentityAndText(t *testing.T
 	require.Len(t, cards, 1)
 	require.Contains(t, cards[0].Header, "Desktop · Desktop")
 	require.Equal(t, "（无文本输入）", cards[0].Body)
+}
+
+func TestFormatDesktopProjectionInputHidesStructuredLocalPath(t *testing.T) {
+	formatted := FormatDesktopProjectionInput("检查 /private/tmp/shot.png 后回复",
+		json.RawMessage(`{"input":[{"type":"localImage","path":"/private/tmp/shot.png"}]}`),
+		[]string{"broken.webp（读取失败）"})
+
+	require.NotContains(t, formatted, "/private/tmp")
+	require.Contains(t, formatted, "shot.png")
+	require.Contains(t, formatted, "broken.webp（读取失败）")
+
+	ordinary := FormatDesktopProjectionInput("保留 /private/tmp/shot.png",
+		json.RawMessage(`{"input":[{"type":"text","path":"/private/tmp/shot.png"}]}`), nil)
+	require.Contains(t, ordinary, "/private/tmp/shot.png")
 }
 
 func TestEnqueueDesktopInputPagesNormalizesStartAndSkipsExistingPages(t *testing.T) {

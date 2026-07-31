@@ -1,11 +1,14 @@
 package discordintegration
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -255,6 +258,107 @@ func TestDisgoRemoteRejectsMalformedRequestsBeforeNetworkWrites(t *testing.T) {
 		_, err = remote.Send(ctx, operation)
 		require.Error(t, err, operation.OperationType)
 	}
+}
+
+func TestDisgoRemoteStreamsDesktopImageAndReconcilesByFilename(t *testing.T) {
+	const filename = "01-0123456789ab-shot.png"
+	patches := 0
+	delivered := false
+	var payload map[string]any
+	var uploaded []byte
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
+		request *http.Request,
+	) {
+		response.Header().Set("Content-Type", "application/json")
+		switch request.Method + " " + request.URL.Path {
+		case "GET /channels/20/messages/21":
+			attachments := `[{"id":"30","filename":"existing.png"}]`
+			if delivered {
+				attachments = `[{"id":"30","filename":"existing.png"},` +
+					`{"id":"31","filename":"` + filename + `"}]`
+			}
+			_, _ = response.Write([]byte(`{"id":"21","channel_id":"20","attachments":` +
+				attachments + `}`))
+		case "PATCH /channels/20/messages/21":
+			patches++
+			if strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
+				require.NoError(t, json.NewDecoder(request.Body).Decode(&payload))
+				_, _ = response.Write([]byte(`{"id":"21","channel_id":"20"}`))
+				return
+			}
+			reader, err := request.MultipartReader()
+			require.NoError(t, err)
+			for {
+				part, partErr := reader.NextPart()
+				if partErr == io.EOF {
+					break
+				}
+				require.NoError(t, partErr)
+				body, readErr := io.ReadAll(part)
+				require.NoError(t, readErr)
+				if part.FormName() == "payload_json" {
+					require.NoError(t, json.Unmarshal(body, &payload))
+				} else {
+					uploaded = body
+				}
+			}
+			delivered = true
+			_, _ = response.Write([]byte(`{"id":"21","channel_id":"20","attachments":[` +
+				`{"id":"30","filename":"existing.png"},` +
+				`{"id":"31","filename":"` + filename + `"}]}`))
+		default:
+			http.NotFound(response, request)
+		}
+	}))
+	t.Cleanup(server.Close)
+	remote := NewDisgoRemote("token", server.URL, server.Client())
+	t.Cleanup(func() { remote.Close(context.Background()) })
+	card := ComponentCardPayload{AccentColor: cardColorBlurple, Header: "Desktop",
+		Media: []ComponentMediaPayload{
+			{Filename: "existing.png", Description: "existing.png"},
+			{Filename: filename, Description: "shot.png"},
+		}}
+
+	attachmentID, err := remote.UploadDesktopImage(context.Background(), "20", "21", card,
+		filename, "shot.png", bytes.NewReader([]byte("image-content")))
+
+	require.NoError(t, err)
+	require.Equal(t, "31", attachmentID)
+	require.Equal(t, []byte("image-content"), uploaded)
+	require.Equal(t, 1, patches)
+	attachments := payload["attachments"].([]any)
+	require.Len(t, attachments, 2)
+	require.Equal(t, "30", attachments[0].(map[string]any)["id"])
+	container := payload["components"].([]any)[0].(map[string]any)
+	components := container["components"].([]any)
+	require.Equal(t, float64(discord.ComponentTypeMediaGallery),
+		components[len(components)-1].(map[string]any)["type"])
+	require.NoError(t, remote.UpdateDesktopCard(context.Background(), "20", "21", card))
+	require.Equal(t, 2, patches)
+
+	attachmentID, err = remote.UploadDesktopImage(context.Background(), "20", "21", card,
+		filename, "shot.png", bytes.NewReader([]byte("must-not-upload")))
+	require.NoError(t, err)
+	require.Equal(t, "31", attachmentID)
+	require.Equal(t, 2, patches)
+}
+
+func TestDiscordCardComponentsRejectsInvalidMedia(t *testing.T) {
+	card := ComponentCardPayload{AccentColor: cardColorBlurple, Header: "Desktop"}
+	for index := 0; index < 11; index++ {
+		card.Media = append(card.Media, ComponentMediaPayload{
+			Filename: fmt.Sprintf("image-%d.png", index)})
+	}
+	_, err := discordCardComponents(card)
+	require.ErrorContains(t, err, "最多包含 10")
+
+	card.Media = []ComponentMediaPayload{{Filename: "bad/path.png"}}
+	_, err = discordCardComponents(card)
+	require.ErrorContains(t, err, "文件名无效")
+
+	card.Media = []ComponentMediaPayload{{Filename: "same.png"}, {Filename: "same.png"}}
+	_, err = discordCardComponents(card)
+	require.ErrorContains(t, err, "重复")
 }
 
 func TestDisgoRemoteTreatsDeletedLifecycleCardAsIdempotent(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -78,6 +79,40 @@ func TestDesktopRelayWithoutSSHIdentityKeepsTurnUnchanged(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.JSONEq(t, string(params), string(plan.Params))
+}
+
+func TestDesktopImagesFromTurnValidatesAndDeduplicatesLocalImages(t *testing.T) {
+	root := t.TempDir()
+	validPath := filepath.Join(root, "shot.png")
+	content := append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 64)...)
+	require.NoError(t, os.WriteFile(validPath, content, 0o600))
+	wrongExtension := filepath.Join(root, "shot.jpg")
+	require.NoError(t, os.WriteFile(wrongExtension, content, 0o600))
+	symlinkPath := filepath.Join(root, "link.png")
+	require.NoError(t, os.Symlink(validPath, symlinkPath))
+	params, err := json.Marshal(map[string]any{"input": []map[string]string{
+		{"type": "localImage", "path": validPath},
+		{"type": "localImage", "path": validPath},
+		{"type": "localImage", "path": wrongExtension},
+		{"type": "localImage", "path": symlinkPath},
+		{"type": "localImage", "path": filepath.Join(root, "missing.png")},
+	}})
+	require.NoError(t, err)
+
+	images, notice, err := desktopImagesFromTurn(params)
+
+	require.NoError(t, err)
+	require.Empty(t, notice)
+	require.Len(t, images, 4)
+	require.Equal(t, validPath, images[0].SourcePath)
+	require.Equal(t, "image/png", images[0].MediaType)
+	require.Len(t, images[0].SHA256, 64)
+	require.Contains(t, images[1].Error, "不匹配")
+	require.NotEmpty(t, images[2].Error)
+	require.NotEmpty(t, images[3].Error)
+	encoded, err := json.Marshal(images[0])
+	require.NoError(t, err)
+	require.NotContains(t, string(encoded), validPath)
 }
 
 func TestDesktopRelayWithoutSSHIdentityStripsReservedIdentityContext(t *testing.T) {

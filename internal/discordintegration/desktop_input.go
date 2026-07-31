@@ -3,7 +3,9 @@ package discordintegration
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -11,6 +13,27 @@ import (
 )
 
 const desktopInputPageRunes = 3500
+
+func FormatDesktopProjectionInput(input string, params json.RawMessage, failures []string) string {
+	var value struct {
+		Input []struct {
+			Type string `json:"type"`
+			Path string `json:"path"`
+		} `json:"input"`
+	}
+	input = strings.TrimSpace(input)
+	if json.Unmarshal(params, &value) == nil {
+		for _, item := range value.Input {
+			if item.Type == "localImage" && strings.TrimSpace(item.Path) != "" {
+				input = strings.ReplaceAll(input, item.Path, filepath.Base(item.Path))
+			}
+		}
+	}
+	if len(failures) > 0 {
+		input += "\n\n**图片同步失败：** " + strings.Join(failures, "、")
+	}
+	return strings.TrimSpace(input)
+}
 
 // DesktopInputCards 把 Desktop 用户输入转换为稳定分页的 Discord 身份卡片。
 func DesktopInputCards(displayName, input string) []ComponentCardPayload {

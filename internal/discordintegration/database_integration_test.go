@@ -316,6 +316,46 @@ func TestDiscordDiscussionTriggerBatchesPendingMessages(t *testing.T) {
 	require.Equal(t, 6, skipped)
 }
 
+func TestDiscordDiscussionFollowupConsumesActionablePlanWithoutMention(t *testing.T) {
+	db := discordDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	_, err := db.ExecContext(ctx, `INSERT INTO discord_guilds(guild_id,name,enabled)
+		VALUES ($1,'discussion-plan-test',true)`, testGuildID)
+	require.NoError(t, err)
+	seed := seedDiscordManagerData(t, db)
+	service := NewConversationService(db)
+	conversationID, err := service.BeginPost(ctx, IncomingMessage{
+		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
+		ThreadID: "100000000000000461", MessageID: "100000000000000462",
+		DiscordUserID: "1001", DisplayName: "Alice", Username: "alice",
+		Title: "Discussion plan", Body: "先给计划", ConfigurationConfirmed: true,
+	})
+	require.NoError(t, err)
+	state, err := service.ConversationMode(ctx, testGuildID, "100000000000000461", "1001")
+	require.NoError(t, err)
+	_, err = service.SetTriggerMode(ctx, testGuildID, "100000000000000461", "1001",
+		conversationID, state.SettingsRevision, "discussion")
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE codex_turn_intents SET status='completed',
+		result='{"finalAnswer":"plan","finalOutputType":"plan","turnId":"turn-plan"}'::jsonb,
+		finished_at=now() WHERE discord_conversation_id=$1`, conversationID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE codex_thread_controls SET status='idle',
+		active_intent_id=NULL WHERE discord_conversation_id=$1`, conversationID)
+	require.NoError(t, err)
+
+	require.NoError(t, service.Reply(ctx, IncomingMessage{
+		GuildID: testGuildID, ThreadID: "100000000000000461",
+		MessageID: "100000000000000463", DiscordUserID: "1001",
+		DisplayName: "Alice", Username: "alice", Body: "这个计划需要调整",
+	}))
+	var intentID sql.NullString
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT turn_intent_id::text
+		FROM discord_input_messages WHERE message_id='100000000000000463'`).Scan(&intentID))
+	require.True(t, intentID.Valid, "有效 Plan 后的第一条讨论消息应直接触发下一轮")
+}
+
 func TestDiscordMessageEditReservesLatestTurnAndFreezesDiscussion(t *testing.T) {
 	db := discordDatabase(t)
 	ctx := context.Background()
@@ -588,7 +628,8 @@ func TestConversationReplyRegeneratingUpdatesFirstPageAndDeletesOverflow(t *test
 	})
 	require.NoError(t, err)
 	require.NoError(t, ProjectConversationReply(ctx, db, "100000000000000531",
-		conversationID, "100000000000000532", uuid.Nil, strings.Repeat("长回复内容。", 1000)))
+		conversationID, "100000000000000532", uuid.Nil,
+		strings.Repeat("长回复内容。", 1000), "agentMessage"))
 	baseKey := "conversation-reply:" + conversationID.String() + ":message:100000000000000532"
 	var pageCount int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_projections

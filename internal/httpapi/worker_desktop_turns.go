@@ -203,9 +203,12 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		claimed.ActorParticipantID = participantidentity.ID(actorGuildID, actorUserID)
 		claimed.ActorDisplayName = actorDisplayName
 	}
+	images, imageFailures := prepareDesktopImages(request.Images, request.ImageError)
+	projectionInput := discordintegration.FormatDesktopProjectionInput(
+		desktopProjectionText(instruction), request.Params, imageFailures)
 	if claimed.DiscordConversationID == uuid.Nil {
 		if err := s.queueFirstDesktopInput(c.Request.Context(), tx, claimed.ControlID,
-			projectionKey, request.Params, instruction); err != nil {
+			projectionKey, request.Params, projectionInput); err != nil {
 			problem(c, http.StatusInternalServerError, "排队 Desktop Starter Message 失败", err)
 			return
 		}
@@ -242,10 +245,14 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		problem(c, http.StatusConflict, "Desktop Turn 已提交或发生并发冲突", err)
 		return
 	}
+	if err := insertDesktopImagesTx(c.Request.Context(), tx, claimed.ID, images); err != nil {
+		problem(c, http.StatusInternalServerError, "记录 Desktop 图片失败", err)
+		return
+	}
 	if claimed.DiscordConversationID != uuid.Nil {
 		if err := enqueueDesktopInputProjection(c.Request.Context(), tx,
 			claimed.DiscordConversationID, projectionKey, claimed.ActorDisplayName,
-			instruction); err != nil {
+			projectionInput); err != nil {
 			problem(c, http.StatusInternalServerError, "投影 Desktop 用户消息失败", err)
 			return
 		}
@@ -366,7 +373,7 @@ func desktopProjectionText(value string) string {
 }
 
 func (s *Server) queueFirstDesktopInput(ctx context.Context, tx *sql.Tx, controlID uuid.UUID,
-	projectionKey string, params json.RawMessage, instruction string,
+	projectionKey string, params json.RawMessage, projectionInput string,
 ) error {
 	var requestID uuid.UUID
 	var status, desiredName, desiredSource string
@@ -411,7 +418,7 @@ func (s *Server) queueFirstDesktopInput(ctx context.Context, tx *sql.Tx, control
 		}
 		return enqueueDesktopThreadPost(ctx, tx, requestID, target, firstTitle, firstInputText)
 	}
-	title := normalizeDesktopTitle(instruction)
+	title := normalizeDesktopTitle(projectionInput)
 	if desiredSource == "codex" && desiredName != "" {
 		title = desiredName
 	}
@@ -419,12 +426,12 @@ func (s *Server) queueFirstDesktopInput(ctx context.Context, tx *sql.Tx, control
 		first_input_projection_key = $2, first_input = $3, first_input_text = $4,
 		preview_title = $5, first_input_actor_discord_user_id = NULLIF($6,''),
 		first_input_actor_display_name = NULLIF($7,''), error = NULL, updated_at = now()
-		WHERE id = $1`, requestID, projectionKey, params, instruction, title,
+		WHERE id = $1`, requestID, projectionKey, params, projectionInput, title,
 		target.actorID, target.actorName)
 	if err != nil {
 		return err
 	}
-	return enqueueDesktopThreadPost(ctx, tx, requestID, target, title, instruction)
+	return enqueueDesktopThreadPost(ctx, tx, requestID, target, title, projectionInput)
 }
 
 func enqueueDesktopInputProjection(ctx context.Context, tx *sql.Tx, conversationID uuid.UUID,

@@ -479,7 +479,8 @@ func (s *Server) projectRemoteDiscordComplete(ctx context.Context,
 		return err
 	}
 	if err := discordintegration.ProjectConversationReply(ctx, s.db, threadID,
-		claimed.DiscordConversationID, anchor, claimed.RunID, result.FinalAnswer); err != nil {
+		claimed.DiscordConversationID, anchor, claimed.RunID, result.FinalAnswer,
+		result.FinalOutputType); err != nil {
 		return err
 	}
 	_, err = s.db.ExecContext(ctx, `UPDATE discord_input_messages SET status = 'processed',
@@ -643,6 +644,13 @@ func (s *Server) workerRecordSubmission(c *gin.Context) {
 	if err == nil {
 		err = codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration).RecordSubmission(
 			c.Request.Context(), claimed, request.SubmissionID)
+	}
+	if err == nil && claimed.SourceType == codexcontrol.SourceDiscord {
+		s.hydrateDesktopConversation(c.Request.Context(), claimed)
+		if claimed.DiscordConversationID != uuid.Nil {
+			err = discordintegration.ExpireConversationPlanCards(c.Request.Context(), s.db,
+				claimed.DiscordConversationID, claimed.RunID)
+		}
 	}
 	if err == nil && claimed.SourceType == codexcontrol.SourceDiscord &&
 		claimed.DiscordConversationID != uuid.Nil {

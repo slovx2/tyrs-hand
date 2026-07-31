@@ -8,13 +8,17 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -38,6 +42,30 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/crypto/ssh"
 )
+
+type fakeDesktopImageRemote struct {
+	content []byte
+	card    discordintegration.ComponentCardPayload
+}
+
+func (r *fakeDesktopImageRemote) UploadDesktopImage(_ context.Context, _, _ string,
+	card discordintegration.ComponentCardPayload, _, _ string, source io.Reader,
+) (string, error) {
+	content, err := io.ReadAll(source)
+	if err != nil {
+		return "", err
+	}
+	r.content, r.card = content, card
+	return "desktop-attachment", nil
+}
+
+func (r *fakeDesktopImageRemote) UpdateDesktopCard(context.Context, string, string,
+	discordintegration.ComponentCardPayload,
+) error {
+	return nil
+}
+
+func (r *fakeDesktopImageRemote) Close(context.Context) {}
 
 func TestWorkerAPIPlacementLeaseEventsAndIdempotency(t *testing.T) {
 	db := workerDatabase(t)
@@ -384,6 +412,10 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))
 	server, endpoint := workerTestServer(t, db)
+	media := &fakeDesktopImageRemote{}
+	server.desktopImageRemote = func(context.Context) (desktopImageDiscord, error) {
+		return media, nil
+	}
 	node, enrollment, err := server.nodes.Create(ctx, "desktop-node", []string{"discord"}, 2)
 	require.NoError(t, err)
 	_, credential, err := server.nodes.Enroll(ctx, enrollment)
@@ -533,6 +565,10 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "default", appliedMode)
 	require.Equal(t, "priority", appliedTier)
 
+	imageContent := append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte{0}, 128)...)
+	imagePath := filepath.Join(t.TempDir(), "desktop-shot.png")
+	require.NoError(t, os.WriteFile(imagePath, imageContent, 0o600))
+	imageDigest := fmt.Sprintf("%x", sha256.Sum256(imageContent))
 	task, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
 		EnvironmentID: environmentID, WorkerID: "desktop-worker",
 		RequestKey: strings.Repeat("d", 64), Params: json.RawMessage(
@@ -540,7 +576,10 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 				`"collaborationMode":{"mode":"plan","settings":{"model":"gpt-5.6-sol"}},` +
 				`"input":[{"type":"text","text":"<codex_delegation>\n` +
 				`<source_thread_id>source-thread</source_thread_id>\n` +
-				`<input>desktop asks &amp;&amp; checks</input>\n</codex_delegation>"}]}`),
+				`<input>desktop asks &amp;&amp; checks ` + imagePath +
+				`</input>\n</codex_delegation>"},{"type":"localImage","path":"` + imagePath + `"}]}`),
+		Images: []workerprotocol.DesktopImage{{Filename: filepath.Base(imagePath),
+			MediaType: "image/png", Size: int64(len(imageContent)), SHA256: imageDigest}},
 	})
 	require.NoError(t, err)
 	require.Equal(t, "desktop", task.Claimed.InputSurface)
@@ -550,12 +589,15 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "ultra", task.Snapshot.Runtime.ReasoningEffort)
 	require.Equal(t, "fast", task.Snapshot.Runtime.ServiceTier)
 	require.Equal(t, "plan", task.Snapshot.Runtime.CollaborationMode)
-	require.Equal(t, "desktop asks && checks", task.Snapshot.Discord.Body)
+	require.Equal(t, "desktop asks && checks "+imagePath, task.Snapshot.Discord.Body)
 	require.Equal(t, "desktop-user", task.Snapshot.Discord.UserID)
 	require.Equal(t, "Desktop Alice", task.Snapshot.Discord.DisplayName)
 	require.Equal(t, participantidentity.ID("worker-test-guild", "desktop-user"),
 		task.Claimed.ActorParticipantID)
 	require.Equal(t, "Desktop Alice", task.Claimed.ActorDisplayName)
+	target, err := client.DesktopImageTarget(ctx, task.Claimed.ID)
+	require.NoError(t, err)
+	require.Equal(t, "waiting", target.Status)
 	outbox := discordintegration.NewSQLoutbox(db)
 	item, err := outbox.Claim(ctx, time.Minute)
 	require.NoError(t, err)
@@ -563,11 +605,28 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "desktop-thread-post:"+state.ID.String(), item.OperationKey)
 	require.Contains(t, string(item.Payload), "Desktop Alice")
 	require.Contains(t, string(item.Payload), "desktop asks && checks")
+	require.Contains(t, string(item.Payload), filepath.Base(imagePath))
+	require.NotContains(t, string(item.Payload), imagePath)
 	require.NotContains(t, string(item.Payload), "codex_delegation")
 	require.NotContains(t, string(item.Payload), "source_thread_id")
 	require.Contains(t, string(item.Payload), "首条输入前的正式标题")
 	completeWorkerOutbox(t, ctx, outbox, item,
 		json.RawMessage(`{"threadId":"desktop-discord-thread","messageId":"desktop-starter"}`))
+	target, err = client.DesktopImageTarget(ctx, task.Claimed.ID)
+	require.NoError(t, err)
+	require.Equal(t, "ready", target.Status)
+	uploaded, err := client.UploadDesktopImage(ctx, task.Claimed.ID, 0,
+		workerprotocol.DesktopImage{Filename: filepath.Base(imagePath), SourcePath: imagePath}, false)
+	require.NoError(t, err)
+	require.Equal(t, "delivered", uploaded.Status)
+	require.Equal(t, imageContent, media.content)
+	require.Len(t, media.card.Media, 1)
+	var imageStatus, attachmentID string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status,
+		COALESCE(discord_attachment_id,'') FROM desktop_turn_images
+		WHERE intent_id=$1 AND ordinal=0`, task.Claimed.ID).Scan(&imageStatus, &attachmentID))
+	require.Equal(t, "delivered", imageStatus)
+	require.Equal(t, "desktop-attachment", attachmentID)
 	state, err = client.DesktopThreadState(ctx, state.ID)
 	require.NoError(t, err)
 	require.Equal(t, "completed", state.Status)
@@ -1026,6 +1085,13 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		})
 	require.NoError(t, err)
 	require.Equal(t, "reserved", rollback.Status)
+	retriedRollback, err := client.PrepareDesktopRollback(ctx,
+		workerprotocol.DesktopRollbackPrepareRequest{
+			EnvironmentID: environmentID, RequestKey: strings.Repeat("b", 64),
+			Params: json.RawMessage(`{"threadId":"codex-desktop-thread","numTurns":1}`),
+		})
+	require.NoError(t, err)
+	require.Equal(t, rollback.ID, retriedRollback.ID, "同一目标的重试必须保持幂等")
 	require.NoError(t, client.CompleteDesktopRollback(ctx, rollback.ID,
 		workerprotocol.DesktopRollbackCompleteRequest{EnvironmentID: environmentID,
 			Response: json.RawMessage(`{}`)}))
@@ -1049,6 +1115,28 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, client.Complete(ctx, &replacementTask, codexcontrol.TurnResult{
 		TurnID: "desktop-turn-replacement", FinalAnswer: "desktop edited done",
 	}))
+	nextTask, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
+		EnvironmentID: environmentID, WorkerID: "desktop-worker", RequestKey: strings.Repeat("0", 64),
+		Params: json.RawMessage(`{"threadId":"codex-desktop-thread",` +
+			`"clientUserMessageId":"desktop-next",` +
+			`"input":[{"type":"text","text":"next turn"}]}`),
+	})
+	require.NoError(t, err)
+	require.NoError(t, client.RecordSubmission(ctx, &nextTask, "desktop-turn-next"))
+	require.NoError(t, client.ConfirmTurn(ctx, &nextTask, "desktop-turn-next"))
+	require.NoError(t, client.Complete(ctx, &nextTask, codexcontrol.TurnResult{
+		TurnID: "desktop-turn-next", FinalAnswer: "next done",
+	}))
+	secondRollback, err := client.PrepareDesktopRollback(ctx,
+		workerprotocol.DesktopRollbackPrepareRequest{
+			EnvironmentID: environmentID, RequestKey: strings.Repeat("b", 64),
+			Params: json.RawMessage(`{"threadId":"codex-desktop-thread","numTurns":1}`),
+		})
+	require.NoError(t, err, "同一 Thread 的后续 turn 必须允许再次 rollback")
+	require.NotEqual(t, rollback.ID, secondRollback.ID)
+	require.NoError(t, client.CompleteDesktopRollback(ctx, secondRollback.ID,
+		workerprotocol.DesktopRollbackCompleteRequest{EnvironmentID: environmentID,
+			Error: "test cleanup"}))
 
 	cancelableArchive, err := client.PrepareDesktopThreadLifecycle(ctx,
 		workerprotocol.ThreadLifecyclePrepareRequest{

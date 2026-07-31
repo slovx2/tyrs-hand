@@ -176,25 +176,30 @@ func (s ThreadSnapshot) ActiveTurn() (TurnSnapshot, bool) {
 }
 
 func (s TurnSnapshot) FinalAnswer() string {
+	answer, _ := s.FinalOutput()
+	return answer
+}
+
+func (s TurnSnapshot) FinalOutput() (string, string) {
 	for index := len(s.Items) - 1; index >= 0; index-- {
 		item := s.Items[index]
 		if item.Type == "plan" && item.Text != "" {
-			return item.Text
+			return item.Text, "plan"
 		}
 	}
 	for index := len(s.Items) - 1; index >= 0; index-- {
 		item := s.Items[index]
 		if item.Type == "agentMessage" && item.Phase == "final_answer" && item.Text != "" {
-			return item.Text
+			return item.Text, "agentMessage"
 		}
 	}
 	for index := len(s.Items) - 1; index >= 0; index-- {
 		item := s.Items[index]
 		if item.Type == "agentMessage" && item.Text != "" {
-			return item.Text
+			return item.Text, "agentMessage"
 		}
 	}
-	return ""
+	return "", ""
 }
 
 func (r *Runtime) SteerTurn(ctx context.Context, threadID, turnID string, input ports.TurnInput) error {

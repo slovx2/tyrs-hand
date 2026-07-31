@@ -243,13 +243,19 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 			return result, err
 		}
 		if recovered {
+			if expireErr := discordintegration.ExpireConversationPlanCards(ctx, p.db,
+				jobCtx.ConversationID, claimed.RunID); expireErr != nil {
+				p.logger.Warn("失效旧 Plan 卡片失败", zap.Error(expireErr))
+			}
 			if claimed.Operation == "replace_last_turn" {
 				_ = p.setReplacementPhase(ctx, claimed.ID, "terminal", "")
 			}
 			progress.project(ctx, discordintegration.ConversationCompleted, "本轮处理完成。", result.DurationMillis)
-			p.projectDiscordReply(ctx, jobCtx, claimed.RunID, result.FinalAnswer)
+			p.projectDiscordReply(ctx, jobCtx, claimed.RunID, result.FinalAnswer,
+				result.FinalOutputType)
 			p.projectDiscordRunContributors(ctx, claimed.RunID, claimed.DiscordMessageID,
-				result.FinalAnswer, progress.detail("本轮处理完成。", result.DurationMillis))
+				result.FinalAnswer, result.FinalOutputType,
+				progress.detail("本轮处理完成。", result.DurationMillis))
 			finalProjected = true
 			return result, nil
 		}
@@ -276,6 +282,10 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	}
 	if err != nil {
 		return result, err
+	}
+	if expireErr := discordintegration.ExpireConversationPlanCards(ctx, p.db,
+		jobCtx.ConversationID, claimed.RunID); expireErr != nil {
+		p.logger.Warn("失效旧 Plan 卡片失败", zap.Error(expireErr))
 	}
 	if err := p.recordLocalRuntimeSettingsApplied(ctx, claimed, "turn/start",
 		jobCtx.Model, jobCtx.ReasoningEffort, string(jobCtx.ServiceTier)); err != nil {
@@ -319,9 +329,10 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		return result, err
 	}
 	progress.project(ctx, discordintegration.ConversationCompleted, "本轮处理完成。", result.DurationMillis)
-	p.projectDiscordReply(ctx, jobCtx, claimed.RunID, result.FinalAnswer)
+	p.projectDiscordReply(ctx, jobCtx, claimed.RunID, result.FinalAnswer, result.FinalOutputType)
 	p.projectDiscordRunContributors(ctx, claimed.RunID, claimed.DiscordMessageID,
-		result.FinalAnswer, progress.detail("本轮处理完成。", result.DurationMillis))
+		result.FinalAnswer, result.FinalOutputType,
+		progress.detail("本轮处理完成。", result.DurationMillis))
 	finalProjected = true
 	if claimed.Operation == "replace_last_turn" {
 		_ = p.setReplacementPhase(ctx, claimed.ID, "terminal", "")
@@ -380,7 +391,7 @@ func (p *Processor) recordLocalRuntimeSettingsApplied(ctx context.Context,
 }
 
 func (p *Processor) projectDiscordRunContributors(ctx context.Context, runID uuid.UUID,
-	primaryMessageID, finalAnswer, detail string,
+	primaryMessageID, finalAnswer, finalOutputType, detail string,
 ) {
 	rows, err := p.db.QueryContext(ctx, `SELECT i.id, i.discord_conversation_id,
 		i.discord_message_id, i.instruction
@@ -416,7 +427,7 @@ func (p *Processor) projectDiscordRunContributors(ctx context.Context, runID uui
 			continue
 		}
 		p.projectDiscordConversation(ctx, jobCtx, runID, discordintegration.ConversationCompleted, detail)
-		p.projectDiscordReply(ctx, jobCtx, runID, finalAnswer)
+		p.projectDiscordReply(ctx, jobCtx, runID, finalAnswer, finalOutputType)
 		_, _ = p.db.ExecContext(ctx, `UPDATE discord_input_messages SET status = 'processed',
 			processed_at = now() WHERE turn_intent_id = $1`, item.intentID)
 	}
@@ -442,10 +453,11 @@ func (p *Processor) projectDiscordConversation(ctx context.Context, jobCtx disco
 }
 
 func (p *Processor) projectDiscordReply(ctx context.Context, jobCtx discordJobContext,
-	runID uuid.UUID, content string,
+	runID uuid.UUID, content, finalOutputType string,
 ) {
 	if err := discordintegration.ProjectConversationReply(ctx, p.db, jobCtx.ThreadID,
-		jobCtx.ConversationID, jobCtx.ProjectionID, runID, content, jobCtx.ReplyMessageID); err != nil {
+		jobCtx.ConversationID, jobCtx.ProjectionID, runID, content, finalOutputType,
+		jobCtx.ReplyMessageID); err != nil {
 		p.logger.Warn("投影 Discord Conversation 最终回复失败", zap.Error(err),
 			zap.String("conversation_id", jobCtx.ConversationID.String()))
 	}

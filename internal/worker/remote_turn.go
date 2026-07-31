@@ -90,7 +90,8 @@ func (p *RemoteProcessor) reconcileRemoteTurn(ctx context.Context, runtime *code
 		return codexcontrol.TurnResult{}, false, err
 	}
 	if turn.Status == "completed" {
-		result, resultErr := remoteCompletedResult(turn.FinalAnswer(), turn.ID, 0, "thread/read")
+		answer, outputType := turn.FinalOutput()
+		result, resultErr := remoteCompletedResult(answer, outputType, turn.ID, 0, "thread/read")
 		return result, true, resultErr
 	}
 	if !isActiveCodexTurnStatus(turn.Status) {
@@ -117,7 +118,7 @@ func (p *RemoteProcessor) waitRemoteTurn(ctx context.Context, runtime *codex.Run
 	}
 	pollTicker := time.NewTicker(pollInterval)
 	defer pollTicker.Stop()
-	finalAnswer := ""
+	finalAnswer, finalOutputType := "", ""
 	var finalDelta strings.Builder
 	appliedCommands := make(map[uuid.UUID]bool)
 	for {
@@ -141,8 +142,8 @@ func (p *RemoteProcessor) waitRemoteTurn(ctx context.Context, runtime *codex.Run
 					}
 				}
 			}
-			if value := finalAnswerFromEvent(event); value != "" {
-				finalAnswer = value
+			if value, outputType := finalOutputFromEvent(event); value != "" {
+				finalAnswer, finalOutputType = value, outputType
 			}
 			if value := finalAnswerDelta(event); value != "" {
 				finalDelta.WriteString(value)
@@ -153,12 +154,12 @@ func (p *RemoteProcessor) waitRemoteTurn(ctx context.Context, runtime *codex.Run
 					return codexcontrol.TurnResult{}, remoteTurnTerminalError("结束", status)
 				}
 				if finalAnswer == "" {
-					finalAnswer = p.remoteFinalAnswer(ctx, runtime, threadID, turnID)
+					finalAnswer, finalOutputType = p.remoteFinalOutput(ctx, runtime, threadID, turnID)
 				}
 				if finalAnswer == "" {
 					finalAnswer = strings.TrimSpace(finalDelta.String())
 				}
-				return remoteCompletedResult(finalAnswer, turnID,
+				return remoteCompletedResult(finalAnswer, finalOutputType, turnID,
 					time.Since(startedAt).Milliseconds(), "turn/completed")
 			}
 		case <-pollTicker.C:
@@ -171,7 +172,8 @@ func (p *RemoteProcessor) waitRemoteTurn(ctx context.Context, runtime *codex.Run
 				turn, found = snapshot.TurnByClientID(task.Claimed.ID.String())
 			}
 			if found && turn.Status == "completed" {
-				return remoteCompletedResult(turn.FinalAnswer(), turn.ID,
+				answer, outputType := turn.FinalOutput()
+				return remoteCompletedResult(answer, outputType, turn.ID,
 					time.Since(startedAt).Milliseconds(), "thread/read")
 			}
 			if found && !isActiveCodexTurnStatus(turn.Status) {
@@ -207,21 +209,23 @@ func (p *RemoteProcessor) waitRemoteTurn(ctx context.Context, runtime *codex.Run
 	}
 }
 
-func (p *RemoteProcessor) remoteFinalAnswer(ctx context.Context, runtime *codex.Runtime,
+func (p *RemoteProcessor) remoteFinalOutput(ctx context.Context, runtime *codex.Runtime,
 	threadID, turnID string,
-) string {
+) (string, string) {
 	for attempt := 0; attempt < 3; attempt++ {
 		snapshot, err := runtime.ReadThread(ctx, threadID)
 		if err == nil {
-			if turn, found := snapshot.TurnByID(turnID); found && turn.FinalAnswer() != "" {
-				return turn.FinalAnswer()
+			if turn, found := snapshot.TurnByID(turnID); found {
+				if answer, outputType := turn.FinalOutput(); answer != "" {
+					return answer, outputType
+				}
 			}
 		}
 		if !waitContext(ctx, 100*time.Millisecond) {
-			return ""
+			return "", ""
 		}
 	}
-	return ""
+	return "", ""
 }
 
 func (p *RemoteProcessor) remoteSnapshotTerminal(ctx context.Context, runtime *codex.Runtime,
@@ -241,7 +245,8 @@ func (p *RemoteProcessor) remoteSnapshotTerminal(ctx context.Context, runtime *c
 	if turn.Status != "completed" {
 		return codexcontrol.TurnResult{}, remoteTurnTerminalError("快照", turn.Status)
 	}
-	return remoteCompletedResult(turn.FinalAnswer(), turn.ID,
+	answer, outputType := turn.FinalOutput()
+	return remoteCompletedResult(answer, outputType, turn.ID,
 		time.Since(startedAt).Milliseconds(), "thread/read")
 }
 
@@ -255,13 +260,13 @@ func remoteTurnTerminalError(evidence, status string) error {
 	}
 }
 
-func remoteCompletedResult(finalAnswer, turnID string, durationMillis int64,
+func remoteCompletedResult(finalAnswer, finalOutputType, turnID string, durationMillis int64,
 	evidence string,
 ) (codexcontrol.TurnResult, error) {
 	finalAnswer = strings.TrimSpace(finalAnswer)
 	if finalAnswer == "" {
 		return codexcontrol.TurnResult{}, errors.New("codex turn 已完成但没有最终回复")
 	}
-	return codexcontrol.TurnResult{FinalAnswer: finalAnswer, TurnID: turnID,
+	return codexcontrol.TurnResult{FinalAnswer: finalAnswer, FinalOutputType: finalOutputType, TurnID: turnID,
 		DurationMillis: durationMillis, Evidence: evidence}, nil
 }

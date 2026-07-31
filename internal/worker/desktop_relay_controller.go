@@ -6,7 +6,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -597,6 +601,7 @@ func retryableDesktopControlError(err error) bool {
 		return true
 	}
 	return response.StatusCode == http.StatusRequestTimeout ||
+		response.StatusCode == http.StatusTooEarly ||
 		response.StatusCode == http.StatusTooManyRequests ||
 		response.StatusCode >= http.StatusInternalServerError
 }
@@ -615,6 +620,11 @@ func (c *desktopRelayController) observeDesktopTurn(call codexrelay.Call,
 	}
 	ctx := c.processor.environments.ctx
 	requestKey := desktopRequestKey(call.Method, call.Params, result)
+	images, imageNotice, imageErr := desktopImagesFromTurn(call.Params)
+	if imageErr != nil {
+		c.processor.logger.Warn("读取 Desktop 图片失败，继续投影文本",
+			zap.String("request_key", requestKey), zap.Error(imageErr))
+	}
 	var task workerprotocol.Task
 	for ctx.Err() == nil {
 		requestCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
@@ -622,7 +632,8 @@ func (c *desktopRelayController) observeDesktopTurn(call codexrelay.Call,
 		task, err = c.processor.client.PrepareDesktopTurn(requestCtx,
 			workerprotocol.DesktopTurnPrepareRequest{
 				EnvironmentID: c.environment.runtime.EnvironmentID,
-				WorkerID:      c.processor.cfg.WorkerID, RequestKey: requestKey, Params: call.Params,
+				WorkerID:      c.processor.cfg.WorkerID, RequestKey: requestKey,
+				Params: call.Params, Images: images, ImageError: imageNotice,
 			})
 		cancel()
 		if err == nil {
@@ -634,6 +645,11 @@ func (c *desktopRelayController) observeDesktopTurn(call codexrelay.Call,
 			state.toolReady <- desktopToolRuntime{err: ctx.Err()}
 			return
 		}
+	}
+	if len(images) > 0 {
+		taskCopy := task
+		imagesCopy := append([]workerprotocol.DesktopImage(nil), images...)
+		go c.syncDesktopImages(&taskCopy, imagesCopy)
 	}
 	reporter := newDesktopEventReporter(ctx, c.processor, &task)
 	toolRuntime, runtimeErr := desktopRuntimeForTask(c.environment.runtime, &task)
@@ -666,6 +682,161 @@ func (c *desktopRelayController) observeDesktopTurn(call codexrelay.Call,
 		}))
 	}
 	c.finishDesktopTurn(ctx, &task, reporter, resultValue, err)
+}
+
+func desktopImagesFromTurn(params json.RawMessage) ([]workerprotocol.DesktopImage, string, error) {
+	var value struct {
+		Input []struct {
+			Type string `json:"type"`
+			Path string `json:"path"`
+		} `json:"input"`
+	}
+	if err := json.Unmarshal(params, &value); err != nil {
+		return nil, "", err
+	}
+	images := make([]workerprotocol.DesktopImage, 0)
+	seen := make(map[string]struct{})
+	total := int64(0)
+	skipped := 0
+	for _, item := range value.Input {
+		path := filepath.Clean(strings.TrimSpace(item.Path))
+		if item.Type != "localImage" || path == "." {
+			continue
+		}
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		if len(images) >= workerprotocol.DesktopImageCountLimit {
+			skipped++
+			continue
+		}
+		seen[path] = struct{}{}
+		filename := filepath.Base(path)
+		image := workerprotocol.DesktopImage{Filename: filename}
+		info, err := os.Lstat(path)
+		if err != nil || !filepath.IsAbs(path) || !info.Mode().IsRegular() || info.Size() <= 0 ||
+			info.Size() > workerprotocol.DesktopImageFileLimit ||
+			total+info.Size() > workerprotocol.DesktopImageTotalLimit {
+			image.Error = "文件不存在、不是普通文件或超过大小限制"
+			images = append(images, image)
+			continue
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			image.Error = "无法打开文件"
+			images = append(images, image)
+			continue
+		}
+		header := make([]byte, 512)
+		n, readErr := file.Read(header)
+		digest := sha256.New()
+		_, _ = digest.Write(header[:n])
+		copied, copyErr := io.Copy(digest, io.LimitReader(file,
+			workerprotocol.DesktopImageFileLimit+1-int64(n)))
+		closeErr := file.Close()
+		if (readErr != nil && !errors.Is(readErr, io.EOF)) || copyErr != nil || closeErr != nil ||
+			int64(n)+copied != info.Size() {
+			image.Error = "读取文件失败"
+			images = append(images, image)
+			continue
+		}
+		mediaType := http.DetectContentType(header[:n])
+		if !desktopImageTypeMatches(filename, mediaType) {
+			image.Error = "扩展名与图片内容不匹配"
+			images = append(images, image)
+			continue
+		}
+		image.MediaType, image.Size = mediaType, info.Size()
+		image.SHA256, image.SourcePath = fmt.Sprintf("%x", digest.Sum(nil)), path
+		images = append(images, image)
+		total += info.Size()
+	}
+	notice := ""
+	if skipped > 0 {
+		notice = fmt.Sprintf("另有 %d 张图片超过 %d 张限制", skipped,
+			workerprotocol.DesktopImageCountLimit)
+	}
+	return images, notice, nil
+}
+
+func desktopImageTypeMatches(filename, mediaType string) bool {
+	extension := strings.ToLower(filepath.Ext(filename))
+	switch mediaType {
+	case "image/png":
+		return extension == ".png"
+	case "image/jpeg":
+		return extension == ".jpg" || extension == ".jpeg"
+	case "image/gif":
+		return extension == ".gif"
+	case "image/webp":
+		return extension == ".webp"
+	default:
+		return false
+	}
+}
+
+func (c *desktopRelayController) syncDesktopImages(task *workerprotocol.Task,
+	images []workerprotocol.DesktopImage,
+) {
+	ctx, cancel := context.WithTimeout(c.processor.environments.ctx, 2*time.Minute)
+	defer cancel()
+	waitDeadline := time.NewTimer(time.Minute)
+	defer waitDeadline.Stop()
+	for {
+		requestCtx, requestCancel := context.WithTimeout(ctx, c.controlTimeout())
+		target, err := c.processor.client.DesktopImageTarget(requestCtx, task.Claimed.ID)
+		requestCancel()
+		if err == nil && (target.Status == "ready" || target.Status == "complete") {
+			if target.Status == "complete" {
+				return
+			}
+			break
+		}
+		if err != nil && !retryableDesktopControlError(err) {
+			c.processor.logger.Warn("读取 Desktop 图片投影目标失败",
+				zap.String("intent_id", task.Claimed.ID.String()), zap.Error(err))
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-waitDeadline.C:
+			c.processor.logger.Warn("等待 Desktop 图片投影目标超时",
+				zap.String("intent_id", task.Claimed.ID.String()))
+			return
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+	for ordinal, image := range images {
+		if image.Error != "" || image.SourcePath == "" {
+			continue
+		}
+		var uploadErr error
+		for attempt := 0; attempt < 3; attempt++ {
+			requestCtx, requestCancel := context.WithTimeout(ctx, c.controlTimeout())
+			_, uploadErr = c.processor.client.UploadDesktopImage(requestCtx,
+				task.Claimed.ID, ordinal, image, attempt == 2)
+			requestCancel()
+			if uploadErr == nil {
+				break
+			}
+			if !retryableDesktopControlError(uploadErr) || attempt == 2 {
+				break
+			}
+			if !waitContext(ctx, time.Duration(attempt+1)*500*time.Millisecond) {
+				return
+			}
+		}
+		if uploadErr == nil {
+			continue
+		}
+		c.processor.logger.Warn("同步 Desktop 图片到 Discord 失败",
+			zap.String("intent_id", task.Claimed.ID.String()),
+			zap.String("filename", image.Filename), zap.Error(uploadErr))
+		requestCtx, requestCancel := context.WithTimeout(ctx, c.controlTimeout())
+		_ = c.processor.client.FailDesktopImage(requestCtx, task.Claimed.ID, ordinal, uploadErr)
+		requestCancel()
+	}
 }
 
 func (c *desktopRelayController) observeDesktopSteer(call codexrelay.Call,

@@ -9,7 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 16
+const Version = 17
 
 type EnrollRequest struct {
 	Token string `json:"token"`
@@ -286,7 +286,41 @@ type DesktopTurnPrepareRequest struct {
 	WorkerID      string          `json:"workerId"`
 	RequestKey    string          `json:"requestKey"`
 	Params        json.RawMessage `json:"params"`
+	Images        []DesktopImage  `json:"images,omitempty"`
+	ImageError    string          `json:"imageError,omitempty"`
 }
+
+type DesktopImage struct {
+	Filename   string `json:"filename"`
+	MediaType  string `json:"mediaType,omitempty"`
+	Size       int64  `json:"size,omitempty"`
+	SHA256     string `json:"sha256,omitempty"`
+	Error      string `json:"error,omitempty"`
+	SourcePath string `json:"-"`
+}
+
+type DesktopImageTarget struct {
+	Status string `json:"status"`
+}
+
+type DesktopImageUploadMetadata struct {
+	FinalAttempt bool `json:"finalAttempt"`
+}
+
+type DesktopImageUploadResult struct {
+	Status       string `json:"status"`
+	AttachmentID string `json:"attachmentId,omitempty"`
+}
+
+type DesktopImageFailureRequest struct {
+	Error string `json:"error"`
+}
+
+const (
+	DesktopImageCountLimit = 10
+	DesktopImageFileLimit  = 10 << 20
+	DesktopImageTotalLimit = 25 << 20
+)
 
 type DesktopRollbackPrepareRequest struct {
 	EnvironmentID uuid.UUID       `json:"environmentId"`

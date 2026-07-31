@@ -3,6 +3,7 @@ package discordintegration
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"regexp"
 	"strings"
 	"testing"
@@ -144,6 +145,96 @@ func TestConversationReplyModeUsesRunSnapshot(t *testing.T) {
 	require.Equal(t, "guild-1", guildID)
 	require.Equal(t, "default", mode)
 	mock.ExpectClose()
+}
+
+func TestExpireConversationPlanCardsPropagatesDatabaseErrors(t *testing.T) {
+	conversationID := uuid.New()
+	startedRunID := uuid.New()
+	databaseError := errors.New("database error")
+	newMock := func(t *testing.T) (*sql.DB, sqlmock.Sqlmock) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		mock.MatchExpectationsInOrder(false)
+		mock.ExpectClose()
+		t.Cleanup(func() {
+			require.NoError(t, db.Close())
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+		return db, mock
+	}
+	expectConversation := func(mock sqlmock.Sqlmock) {
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT guild_id, thread_id FROM discord_conversations")).
+			WithArgs(conversationID).
+			WillReturnRows(sqlmock.NewRows([]string{"guild_id", "thread_id"}).
+				AddRow("guild-1", "thread-1"))
+	}
+
+	t.Run("begin", func(t *testing.T) {
+		db, mock := newMock(t)
+		mock.ExpectBegin().WillReturnError(databaseError)
+		require.ErrorIs(t, ExpireConversationPlanCards(context.Background(), db,
+			conversationID, startedRunID), databaseError)
+	})
+
+	t.Run("conversation", func(t *testing.T) {
+		db, mock := newMock(t)
+		mock.ExpectBegin()
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT guild_id, thread_id FROM discord_conversations")).
+			WithArgs(conversationID).WillReturnError(databaseError)
+		mock.ExpectRollback()
+		require.ErrorIs(t, ExpireConversationPlanCards(context.Background(), db,
+			conversationID, startedRunID), databaseError)
+	})
+
+	t.Run("projections", func(t *testing.T) {
+		db, mock := newMock(t)
+		mock.ExpectBegin()
+		expectConversation(mock)
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT projection_key, COALESCE(message_id,'')")).
+			WillReturnError(databaseError)
+		mock.ExpectRollback()
+		require.ErrorIs(t, ExpireConversationPlanCards(context.Background(), db,
+			conversationID, startedRunID), databaseError)
+	})
+
+	t.Run("scan", func(t *testing.T) {
+		db, mock := newMock(t)
+		mock.ExpectBegin()
+		expectConversation(mock)
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT projection_key, COALESCE(message_id,'')")).
+			WillReturnRows(sqlmock.NewRows([]string{"projection_key"}).AddRow("plan-key"))
+		mock.ExpectRollback()
+		require.Error(t, ExpireConversationPlanCards(context.Background(), db,
+			conversationID, startedRunID))
+	})
+
+	t.Run("enqueue", func(t *testing.T) {
+		db, mock := newMock(t)
+		mock.ExpectBegin()
+		expectConversation(mock)
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT projection_key, COALESCE(message_id,'')")).
+			WillReturnRows(sqlmock.NewRows([]string{"projection_key", "message_id"}).
+				AddRow("plan-key", "message-1"))
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO integration_outbox")).
+			WillReturnError(databaseError)
+		mock.ExpectRollback()
+		require.ErrorIs(t, ExpireConversationPlanCards(context.Background(), db,
+			conversationID, startedRunID), databaseError)
+	})
+
+	t.Run("delete", func(t *testing.T) {
+		db, mock := newMock(t)
+		mock.ExpectBegin()
+		expectConversation(mock)
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT projection_key, COALESCE(message_id,'')")).
+			WillReturnRows(sqlmock.NewRows([]string{"projection_key", "message_id"}).
+				AddRow("plan-key", ""))
+		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM discord_projections")).
+			WillReturnError(databaseError)
+		mock.ExpectRollback()
+		require.ErrorIs(t, ExpireConversationPlanCards(context.Background(), db,
+			conversationID, startedRunID), databaseError)
+	})
 }
 
 func TestPlanExecutionCards(t *testing.T) {

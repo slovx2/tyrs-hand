@@ -162,7 +162,7 @@ func enqueuePendingDesktopInputs(ctx context.Context, tx *sql.Tx, controlID uuid
 	threadID string, conversationID uuid.UUID, firstProjectionKey string,
 ) error {
 	rows, err := tx.QueryContext(ctx, `SELECT id, desktop_input_projection_key,
-		COALESCE(actor_display_name,''), instruction
+		COALESCE(actor_display_name,''), instruction, prepared_input
 		FROM codex_turn_intents
 		WHERE control_id = $1 AND input_surface = 'desktop'
 			AND desktop_input_projection_key IS NOT NULL
@@ -176,11 +176,13 @@ func enqueuePendingDesktopInputs(ctx context.Context, tx *sql.Tx, controlID uuid
 		key         string
 		displayName string
 		input       string
+		params      json.RawMessage
 	}
 	inputs := make([]pendingInput, 0)
 	for rows.Next() {
 		var item pendingInput
-		if err := rows.Scan(&item.id, &item.key, &item.displayName, &item.input); err != nil {
+		if err := rows.Scan(&item.id, &item.key, &item.displayName, &item.input,
+			&item.params); err != nil {
 			_ = rows.Close()
 			return err
 		}
@@ -190,8 +192,13 @@ func enqueuePendingDesktopInputs(ctx context.Context, tx *sql.Tx, controlID uuid
 		return err
 	}
 	for _, item := range inputs {
+		failures, err := desktopImageFailures(ctx, tx, item.id)
+		if err != nil {
+			return err
+		}
+		input := FormatDesktopProjectionInput(item.input, item.params, failures)
 		if err := EnqueueDesktopInputPages(ctx, tx, threadID, conversationID,
-			item.key, item.displayName, item.input, 0); err != nil {
+			item.key, item.displayName, input, 0); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE codex_turn_intents SET
@@ -201,6 +208,27 @@ func enqueuePendingDesktopInputs(ctx context.Context, tx *sql.Tx, controlID uuid
 		}
 	}
 	return nil
+}
+
+func desktopImageFailures(ctx context.Context, tx *sql.Tx, intentID uuid.UUID) ([]string, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT original_filename, COALESCE(error,'')
+		FROM desktop_turn_images WHERE intent_id=$1 AND status='failed' ORDER BY ordinal`, intentID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var failures []string
+	for rows.Next() {
+		var filename, failure string
+		if err := rows.Scan(&filename, &failure); err != nil {
+			return nil, err
+		}
+		if failure == "" {
+			failure = "图片同步失败"
+		}
+		failures = append(failures, filename+"（"+failure+"）")
+	}
+	return failures, rows.Err()
 }
 
 func (s *SQLoutbox) replayDesktopProjection(ctx context.Context, requestID uuid.UUID) error {
@@ -214,7 +242,7 @@ func (s *SQLoutbox) replayDesktopProjection(ctx context.Context, requestID uuid.
 		return err
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT i.id, r.id, r.status,
-		COALESCE(i.result->>'finalAnswer',''),
+		COALESCE(i.result->>'finalAnswer',''), COALESCE(i.result->>'finalOutputType',''),
 		COALESCE(i.projection_anchor,'desktop-' || i.id::text)
 		FROM codex_turn_intents i
 		JOIN codex_turn_runs r ON r.primary_intent_id = i.id
@@ -225,16 +253,17 @@ func (s *SQLoutbox) replayDesktopProjection(ctx context.Context, requestID uuid.
 	}
 	defer func() { _ = rows.Close() }()
 	type projection struct {
-		intentID uuid.UUID
-		runID    uuid.UUID
-		status   string
-		answer   string
-		anchor   string
+		intentID   uuid.UUID
+		runID      uuid.UUID
+		status     string
+		answer     string
+		outputType string
+		anchor     string
 	}
 	var projections []projection
 	for rows.Next() {
 		var item projection
-		if err := rows.Scan(&item.intentID, &item.runID, &item.status, &item.answer,
+		if err := rows.Scan(&item.intentID, &item.runID, &item.status, &item.answer, &item.outputType,
 			&item.anchor); err != nil {
 			return err
 		}
@@ -252,7 +281,7 @@ func (s *SQLoutbox) replayDesktopProjection(ctx context.Context, requestID uuid.
 			}
 			if item.answer != "" {
 				if err := ProjectConversationReply(ctx, s.db, threadID, conversationID,
-					anchor, item.runID, item.answer); err != nil {
+					anchor, item.runID, item.answer, item.outputType); err != nil {
 					return err
 				}
 			}

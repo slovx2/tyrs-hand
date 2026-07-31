@@ -30,21 +30,22 @@ import (
 const sessionCookie = "tyrs_hand_session"
 
 type Server struct {
-	cfg       config.Config
-	db        *sql.DB
-	redis     *redis.Client
-	auth      *auth.Service
-	github    *ghadapter.Manager
-	catalog   *githubtools.Catalog
-	settings  *platformsettings.Service
-	codexAuth *codexauth.Manager
-	discord   *discordintegration.Manager
-	bindings  *discordintegration.BindingService
-	nodes     *executionnode.Service
-	ssh       *sshconfig.Service
-	secrets   *secrets.Store
-	logger    *zap.Logger
-	assets    fs.FS
+	cfg                config.Config
+	db                 *sql.DB
+	redis              *redis.Client
+	auth               *auth.Service
+	github             *ghadapter.Manager
+	catalog            *githubtools.Catalog
+	settings           *platformsettings.Service
+	codexAuth          *codexauth.Manager
+	discord            *discordintegration.Manager
+	desktopImageRemote func(context.Context) (desktopImageDiscord, error)
+	bindings           *discordintegration.BindingService
+	nodes              *executionnode.Service
+	ssh                *sshconfig.Service
+	secrets            *secrets.Store
+	logger             *zap.Logger
+	assets             fs.FS
 }
 
 func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authService *auth.Service, githubManager *ghadapter.Manager, catalog *githubtools.Catalog, settingsService *platformsettings.Service, discordManager *discordintegration.Manager, bindingService *discordintegration.BindingService, secretStore *secrets.Store, logger *zap.Logger) (*Server, error) {

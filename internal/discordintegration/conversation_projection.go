@@ -209,7 +209,7 @@ func upsertWaitingConfigurationProjectionTx(ctx context.Context, tx *sql.Tx,
 }
 
 func ProjectConversationReply(ctx context.Context, db *sql.DB, threadID string,
-	conversationID uuid.UUID, inputMessageID string, runID uuid.UUID, content string,
+	conversationID uuid.UUID, inputMessageID string, runID uuid.UUID, content, finalOutputType string,
 	replyMessageID ...string,
 ) error {
 	content = SanitizeDiscordResult(content)
@@ -230,17 +230,18 @@ func ProjectConversationReply(ctx context.Context, db *sql.DB, threadID string,
 	if err != nil {
 		return err
 	}
+	actionablePlan := mode == "plan" && finalOutputType == "plan"
 	if mode != "plan" &&
 		utf8.RuneCountInString(textValue(payload["content"])) <= discordReplyMessageBudget {
 		return projectConversationReplyPages(ctx, db, guildID, threadID, key, mentionUserID,
-			[]string{content}, mode, runID)
+			[]string{content}, actionablePlan, runID)
 	}
 	chunks := splitConversationReply(content, guildID, threadID, mentionUserID)
 	if len(chunks) == 0 || (mode != "plan" && len(chunks) < 2) {
 		return errors.New("discord 长回复分片失败")
 	}
 	return projectConversationReplyPages(ctx, db, guildID, threadID, key, mentionUserID,
-		chunks, mode, runID)
+		chunks, actionablePlan, runID)
 }
 
 // ProjectConversationReplyRegenerating 原位失效旧结果和 Plan 按钮。
@@ -254,11 +255,11 @@ func ProjectConversationReplyRegenerating(ctx context.Context, db *sql.DB, threa
 	}
 	key := "conversation-reply:" + conversationID.String() + ":message:" + inputMessageID
 	return projectConversationReplyPages(ctx, db, guildID, threadID, key, "",
-		[]string{"消息已编辑，正在重新生成。"}, "default", uuid.Nil)
+		[]string{"消息已编辑，正在重新生成。"}, false, uuid.Nil)
 }
 
 func projectConversationReplyPages(ctx context.Context, db *sql.DB, guildID, threadID,
-	baseKey, mentionUserID string, chunks []string, mode string, runID uuid.UUID,
+	baseKey, mentionUserID string, chunks []string, actionablePlan bool, runID uuid.UUID,
 ) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -266,7 +267,7 @@ func projectConversationReplyPages(ctx context.Context, db *sql.DB, guildID, thr
 	}
 	defer func() { _ = tx.Rollback() }()
 	total := len(chunks)
-	if mode == "plan" {
+	if actionablePlan {
 		total++
 	}
 	for page := 0; page < total; page++ {

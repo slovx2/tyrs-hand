@@ -170,9 +170,18 @@ func TestExecutePlanSwitchesDefaultAndIsIdempotent(t *testing.T) {
 		"1001", "Owner", "owner", runID)
 	require.ErrorContains(t, err, "不属于")
 
+	require.NoError(t, ProjectConversationReply(ctx, db, "interactive-thread",
+		conversationID, "desktop-explanation", runID, "这只是解释，不是计划。", "agentMessage"))
+	var unexpectedPlanCards int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_projections
+		WHERE projection_key LIKE $1 AND desired_payload->'card'->>'header'=$2`,
+		"conversation-reply:"+conversationID.String()+":message:desktop-explanation%",
+		"📋 Codex · Plan 已完成").Scan(&unexpectedPlanCards))
+	require.Zero(t, unexpectedPlanCards)
+
 	planBody := strings.Repeat("计划步骤内容\n", 700)
 	require.NoError(t, ProjectConversationReply(ctx, db, "interactive-thread",
-		conversationID, "desktop-plan", runID, planBody))
+		conversationID, "desktop-plan", runID, planBody, "plan"))
 	outbox := NewSQLoutbox(db)
 	created, actionFound := 0, false
 	for step := 0; step < 30; step++ {
@@ -194,6 +203,18 @@ func TestExecutePlanSwitchesDefaultAndIsIdempotent(t *testing.T) {
 	}
 	require.True(t, actionFound)
 	require.Greater(t, created, 1)
+	startedRunID := uuid.New()
+	require.NoError(t, ExpireConversationPlanCards(ctx, db, conversationID, startedRunID))
+	var activePlanCards, expiredPlanCards int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_projections
+		WHERE desired_payload->'card'->>'header'='📋 Codex · Plan 已完成'
+			AND projection_key LIKE $1`, "conversation-reply:"+conversationID.String()+"%").
+		Scan(&activePlanCards))
+	require.Zero(t, activePlanCards)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM integration_outbox
+		WHERE operation_key LIKE $1 AND operation_type='message.delete'`,
+		"plan-expire:"+startedRunID.String()+":%").Scan(&expiredPlanCards))
+	require.Equal(t, 1, expiredPlanCards)
 
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_intents
 		(control_id, sequence_no, behavior, source_type, discord_conversation_id,

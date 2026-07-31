@@ -49,6 +49,8 @@ func (s *Server) workerPrepareDesktopRollback(c *gin.Context) {
 		JOIN LATERAL (SELECT * FROM codex_turn_intents candidate
 			WHERE candidate.control_id=control.id
 				AND candidate.operation IN ('turn_input','replace_last_turn')
+				AND COALESCE(candidate.confirmed_codex_turn_id,
+					candidate.codex_submission_id,'') <> ''
 			ORDER BY candidate.sequence_no DESC LIMIT 1) intent ON true
 		WHERE control.external_thread_id=$1 AND control.development_environment_id=$2
 			AND control.execution_node_id=$3 FOR UPDATE OF control, intent`,
@@ -67,6 +69,24 @@ func (s *Server) workerPrepareDesktopRollback(c *gin.Context) {
 		problem(c, http.StatusConflict, "Desktop rollback 目标仍在运行或尚未确认", nil)
 		return
 	}
+	idempotencyKey := "desktop-rollback:" + request.EnvironmentID.String() + ":" + targetID.String()
+	var existingID uuid.UUID
+	err = tx.QueryRowContext(c.Request.Context(), `SELECT id FROM codex_turn_intents
+		WHERE idempotency_key=$1`, idempotencyKey).Scan(&existingID)
+	if err == nil {
+		if err := tx.Commit(); err != nil {
+			problem(c, http.StatusInternalServerError, "提交 Desktop rollback 幂等读取失败", err)
+			return
+		}
+		c.JSON(http.StatusOK, workerprotocol.DesktopRollbackState{ID: existingID,
+			EnvironmentID: request.EnvironmentID, ThreadID: params.ThreadID, Status: "reserved",
+			TargetTurnID: targetTurnID, Params: request.Params})
+		return
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		problem(c, http.StatusInternalServerError, "读取 Desktop rollback 幂等状态失败", err)
+		return
+	}
 	reservationID := uuid.New()
 	_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO codex_turn_intents
 		(id,control_id,sequence_no,operation,behavior,resolved_action,target_intent_id,
@@ -79,7 +99,7 @@ func (s *Server) workerPrepareDesktopRollback(c *gin.Context) {
 		agent_profile_id,$4,'',skills,allowed_tools,dangerous_actions,
 		'codex-desktop','owner','silent','skipped','awaiting_confirmation',$5,'reserved'
 		FROM codex_turn_intents WHERE id=$3`, reservationID, sequence, targetID,
-		"desktop-rollback:"+request.EnvironmentID.String()+":"+request.RequestKey, projectionAnchor)
+		idempotencyKey, projectionAnchor)
 	if err != nil {
 		problem(c, http.StatusConflict, "Desktop rollback 已提交或发生并发冲突", err)
 		return
