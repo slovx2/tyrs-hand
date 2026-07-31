@@ -264,7 +264,7 @@ func TestDisgoRemoteStreamsDesktopImageAndReconcilesByFilename(t *testing.T) {
 	const filename = "01-0123456789ab-shot.png"
 	patches := 0
 	delivered := false
-	var payload map[string]any
+	var uploadPayload, updatePayload map[string]any
 	var uploaded []byte
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
 		request *http.Request,
@@ -282,7 +282,7 @@ func TestDisgoRemoteStreamsDesktopImageAndReconcilesByFilename(t *testing.T) {
 		case "PATCH /channels/20/messages/21":
 			patches++
 			if strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
-				require.NoError(t, json.NewDecoder(request.Body).Decode(&payload))
+				require.NoError(t, json.NewDecoder(request.Body).Decode(&updatePayload))
 				_, _ = response.Write([]byte(`{"id":"21","channel_id":"20"}`))
 				return
 			}
@@ -297,7 +297,7 @@ func TestDisgoRemoteStreamsDesktopImageAndReconcilesByFilename(t *testing.T) {
 				body, readErr := io.ReadAll(part)
 				require.NoError(t, readErr)
 				if part.FormName() == "payload_json" {
-					require.NoError(t, json.Unmarshal(body, &payload))
+					require.NoError(t, json.Unmarshal(body, &uploadPayload))
 				} else {
 					uploaded = body
 				}
@@ -325,25 +325,26 @@ func TestDisgoRemoteStreamsDesktopImageAndReconcilesByFilename(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "31", attachmentID)
 	require.Equal(t, []byte("image-content"), uploaded)
-	require.Equal(t, 1, patches)
-	attachments := payload["attachments"].([]any)
+	require.Equal(t, 2, patches)
+	attachments := uploadPayload["attachments"].([]any)
 	require.Len(t, attachments, 2)
 	require.Equal(t, "30", attachments[0].(map[string]any)["id"])
 	require.Equal(t, float64(0), attachments[1].(map[string]any)["id"])
 	require.Equal(t, filename, attachments[1].(map[string]any)["filename"])
-	require.NotContains(t, payload, "flags")
-	container := payload["components"].([]any)[0].(map[string]any)
+	require.NotContains(t, uploadPayload, "flags")
+	require.NotContains(t, uploadPayload, "components")
+	container := updatePayload["components"].([]any)[0].(map[string]any)
 	components := container["components"].([]any)
 	require.Equal(t, float64(discord.ComponentTypeMediaGallery),
 		components[len(components)-1].(map[string]any)["type"])
 	require.NoError(t, remote.UpdateDesktopCard(context.Background(), "20", "21", card))
-	require.Equal(t, 2, patches)
+	require.Equal(t, 3, patches)
 
 	attachmentID, err = remote.UploadDesktopImage(context.Background(), "20", "21", card,
 		filename, "shot.png", bytes.NewReader([]byte("must-not-upload")))
 	require.NoError(t, err)
 	require.Equal(t, "31", attachmentID)
-	require.Equal(t, 2, patches)
+	require.Equal(t, 4, patches)
 }
 
 func TestDisgoRemoteAcceptsDesktopImageAttachmentFromPatchResponse(t *testing.T) {
@@ -358,6 +359,10 @@ func TestDisgoRemoteAcceptsDesktopImageAttachmentFromPatchResponse(t *testing.T)
 			gets++
 			_, _ = response.Write([]byte(`{"id":"21","channel_id":"20","attachments":[]}`))
 		case "PATCH /channels/20/messages/21":
+			if strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
+				_, _ = response.Write([]byte(`{"id":"21","channel_id":"20"}`))
+				return
+			}
 			reader, err := request.MultipartReader()
 			require.NoError(t, err)
 			for {

@@ -686,16 +686,21 @@ func (r *DisgoRemote) UploadDesktopImage(ctx context.Context, channelID, message
 	}
 	for _, attachment := range current.Attachments {
 		if attachment.Filename == filename {
+			if err := r.UpdateDesktopCard(ctx, channelID, messageID, card); err != nil {
+				return "", err
+			}
 			return attachment.ID.String(), nil
 		}
 	}
-	components, err := discordCardComponents(card)
-	if err != nil {
+	if _, err := discordCardComponents(card); err != nil {
 		return "", err
 	}
-	attachmentID, err := r.patchDesktopImage(ctx, channelID, messageID, components,
+	attachmentID, err := r.patchDesktopImage(ctx, channelID, messageID,
 		current.Attachments, filename, description, source)
 	if err == nil && attachmentID != "" {
+		if err := r.UpdateDesktopCard(ctx, channelID, messageID, card); err != nil {
+			return "", err
+		}
 		return attachmentID, nil
 	}
 	// Discord 的 multipart PATCH 可能返回成功但省略 attachments；
@@ -704,6 +709,9 @@ func (r *DisgoRemote) UploadDesktopImage(ctx context.Context, channelID, message
 	if reconcileErr == nil {
 		for _, attachment := range reconciled.Attachments {
 			if attachment.Filename == filename {
+				if err := r.UpdateDesktopCard(ctx, channelID, messageID, card); err != nil {
+					return "", err
+				}
 				return attachment.ID.String(), nil
 			}
 		}
@@ -724,11 +732,7 @@ type desktopImageAttachmentPayload struct {
 }
 
 type desktopImageMessagePayload struct {
-	Content         string                          `json:"content"`
-	Embeds          []discord.Embed                 `json:"embeds"`
-	Components      []discord.LayoutComponent       `json:"components"`
-	Attachments     []desktopImageAttachmentPayload `json:"attachments"`
-	AllowedMentions discord.AllowedMentions         `json:"allowed_mentions"`
+	Attachments []desktopImageAttachmentPayload `json:"attachments"`
 }
 
 type desktopImageUploadResponse struct {
@@ -747,7 +751,7 @@ type desktopImageFinalizingReader interface {
 }
 
 func (r *DisgoRemote) patchDesktopImage(ctx context.Context, channelID, messageID string,
-	components []discord.LayoutComponent, existing []discord.Attachment,
+	existing []discord.Attachment,
 	filename, description string, source io.Reader,
 ) (string, error) {
 	attachments := make([]desktopImageAttachmentPayload, 0, len(existing)+1)
@@ -759,8 +763,7 @@ func (r *DisgoRemote) patchDesktopImage(ctx context.Context, channelID, messageI
 	attachments = append(attachments, desktopImageAttachmentPayload{ID: 0,
 		Filename: filename, Description: description})
 	payload, err := json.Marshal(desktopImageMessagePayload{
-		Content: "", Embeds: []discord.Embed{}, Components: components,
-		Attachments: attachments, AllowedMentions: discord.AllowedMentions{},
+		Attachments: attachments,
 	})
 	if err != nil {
 		return "", err
