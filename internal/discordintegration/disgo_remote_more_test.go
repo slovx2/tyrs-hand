@@ -303,9 +303,9 @@ func TestDisgoRemoteStreamsDesktopImageAndReconcilesByFilename(t *testing.T) {
 				}
 			}
 			delivered = true
-			_, _ = response.Write([]byte(`{"id":"21","channel_id":"20","attachments":[` +
-				`{"id":"30","filename":"existing.png"},` +
-				`{"id":"31","filename":"` + filename + `"}]}`))
+			// Discord 真实 API 可能在 multipart PATCH 成功响应中省略 attachments；
+			// 客户端必须随后 GET 消息按文件名对账。
+			_, _ = response.Write([]byte(`{"id":"21","channel_id":"20"}`))
 		default:
 			http.NotFound(response, request)
 		}

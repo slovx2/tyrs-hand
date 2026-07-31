@@ -700,6 +700,19 @@ func (r *DisgoRemote) UploadDesktopImage(ctx context.Context, channelID, message
 			return attachment.ID.String(), nil
 		}
 	}
+	// Discord 的 multipart PATCH 可能返回成功但省略 attachments；
+	// 重新读取消息，按确定性文件名对账，避免把已上传的附件误判为失败。
+	reconciled, reconcileErr := r.rest.GetMessage(channel, message, disgorest.WithCtx(ctx))
+	if reconcileErr == nil {
+		for _, attachment := range reconciled.Attachments {
+			if attachment.Filename == filename {
+				return attachment.ID.String(), nil
+			}
+		}
+	}
+	if reconcileErr != nil {
+		return "", fmt.Errorf("Discord 图片上传响应缺少附件且对账失败: %w", reconcileErr)
+	}
 	return "", errors.New("discord 图片上传响应缺少附件")
 }
 
