@@ -801,16 +801,31 @@ func (r *DisgoRemote) patchDesktopImage(ctx context.Context, channelID, messageI
 		body, _ := io.ReadAll(io.LimitReader(response.Body, 32<<10))
 		return "", fmt.Errorf("discord 图片上传 HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
 	}
+	responseBody, readErr := io.ReadAll(io.LimitReader(response.Body, 32<<10))
+	if readErr != nil {
+		return "", fmt.Errorf("读取 Discord 图片上传响应失败: %w", readErr)
+	}
 	var result desktopImageUploadResponse
-	if err := json.NewDecoder(response.Body).Decode(&result); err != nil && !errors.Is(err, io.EOF) {
-		return "", err
+	if len(bytes.TrimSpace(responseBody)) > 0 {
+		if err := json.Unmarshal(responseBody, &result); err != nil {
+			return "", fmt.Errorf("解析 Discord 图片上传响应失败: %w", err)
+		}
 	}
 	for _, attachment := range result.Attachments {
 		if attachment.Filename == filename {
 			return attachment.ID.String(), nil
 		}
 	}
-	return "", nil
+	requestID := response.Header.Get("X-RateLimit-Global")
+	if requestID == "" {
+		requestID = response.Header.Get("X-Discord-Trace-Id")
+	}
+	bodySummary := strings.TrimSpace(string(responseBody))
+	if len(bodySummary) > 512 {
+		bodySummary = bodySummary[:512]
+	}
+	return "", fmt.Errorf("discord 图片上传响应缺少附件（HTTP %d，附件数=%d，请求标识=%q，响应=%q）",
+		response.StatusCode, len(result.Attachments), requestID, bodySummary)
 }
 
 func desktopImageMultipartPrefix(payload []byte, filename string) ([]byte, []byte, string, error) {
