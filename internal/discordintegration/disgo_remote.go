@@ -709,7 +709,7 @@ func (r *DisgoRemote) UploadDesktopImage(ctx context.Context, channelID, message
 		return "", err
 	}
 	if reconcileErr != nil {
-		return "", fmt.Errorf("Discord 图片上传响应缺少附件且对账失败: %w", reconcileErr)
+		return "", fmt.Errorf("discord 图片上传响应缺少附件且对账失败: %w", reconcileErr)
 	}
 	return "", errors.New("discord 图片上传响应缺少附件")
 }
@@ -802,7 +802,7 @@ func (r *DisgoRemote) patchDesktopImage(ctx context.Context, channelID, messageI
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(response.Body, 32<<10))
-		return "", fmt.Errorf("Discord 图片上传 HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
+		return "", fmt.Errorf("discord 图片上传 HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
 	}
 	var result desktopImageUploadResponse
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil && !errors.Is(err, io.EOF) {
