@@ -330,7 +330,7 @@ func TestDisgoRemoteStreamsDesktopImageAndReconcilesByFilename(t *testing.T) {
 	require.Len(t, attachments, 2)
 	require.Equal(t, "30", attachments[0].(map[string]any)["id"])
 	require.Equal(t, float64(0), attachments[1].(map[string]any)["id"])
-	require.Equal(t, filename, attachments[1].(map[string]any)["filename"])
+	require.Equal(t, "shot.png", attachments[1].(map[string]any)["description"])
 	require.NotContains(t, uploadPayload, "flags")
 	require.NotContains(t, uploadPayload, "components")
 	container := updatePayload["components"].([]any)[0].(map[string]any)

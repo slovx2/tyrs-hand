@@ -8,12 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
 	"net/url"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -761,7 +759,7 @@ func (r *DisgoRemote) patchDesktopImage(ctx context.Context, channelID, messageI
 	// Discord requires the new attachment's filename in payload_json. DisGo's
 	// AttachmentCreate omits it, which makes the API silently discard uploads.
 	attachments = append(attachments, desktopImageAttachmentPayload{ID: 0,
-		Filename: filename, Description: description})
+		Description: description})
 	payload, err := json.Marshal(desktopImageMessagePayload{
 		Attachments: attachments,
 	})
@@ -838,13 +836,9 @@ func desktopImageMultipartPrefix(payload []byte, filename string) ([]byte, []byt
 	if _, err := part.Write(payload); err != nil {
 		return nil, nil, "", err
 	}
-	contentType := mime.TypeByExtension(filepath.Ext(filename))
-	if contentType == "" {
-		contentType = "application/octet-stream"
-	}
 	if _, err := writer.CreatePart(textproto.MIMEHeader{
 		"Content-Disposition": []string{fmt.Sprintf(`form-data; name="files[0]"; filename="%s"`, filename)},
-		"Content-Type":        []string{contentType},
+		"Content-Type":        []string{"application/octet-stream"},
 	}); err != nil {
 		return nil, nil, "", err
 	}
