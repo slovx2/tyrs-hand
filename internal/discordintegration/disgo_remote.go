@@ -758,7 +758,8 @@ func (r *DisgoRemote) patchDesktopImage(ctx context.Context, channelID, messageI
 	}
 	// Discord requires the new attachment's filename in payload_json. DisGo's
 	// AttachmentCreate omits it, which makes the API silently discard uploads.
-	attachments = append(attachments, desktopImageAttachmentPayload{ID: 0,
+	// Discord 的 MessageAttachmentRequest.id 是雪花 ID 字符串；新文件使用 "0"。
+	attachments = append(attachments, desktopImageAttachmentPayload{ID: "0",
 		Filename: filename, Description: description})
 	payload, err := json.Marshal(desktopImageMessagePayload{
 		Attachments: attachments,
