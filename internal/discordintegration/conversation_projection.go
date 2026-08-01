@@ -674,6 +674,15 @@ func ReconcileConversationProgressCards(ctx context.Context, db *sql.DB, guildID
 				OR EXISTS (
 					SELECT 1 FROM codex_turn_runs AS run
 					WHERE run.id::text = desired_payload->'progress'->>'runId'
+						AND NOT EXISTS (
+							SELECT 1
+							FROM discord_turn_status_cards AS current_card
+							JOIN discord_turn_status_cards AS later_card
+								ON later_card.run_id = current_card.run_id
+								AND later_card.revision > current_card.revision
+							WHERE current_card.run_id = run.id
+								AND current_card.projection_key = discord_projections.projection_key
+						)
 						AND (
 							(run.status = 'canceled'
 								AND COALESCE(desired_payload->'progress'->>'state','') <> 'canceled')

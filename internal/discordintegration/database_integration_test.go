@@ -1550,6 +1550,20 @@ func TestReconcileConversationProgressCardsUsesTerminalRunState(t *testing.T) {
 		runID, controlID, intentID, strings.Repeat("f", 64))
 	require.NoError(t, err)
 
+	historyKey := "conversation:" + conversationID.String() + ":message:history-input"
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_projections
+		(guild_id, projection_key, resource_id, message_id, desired_payload)
+		VALUES ($1,$2,'terminal-thread','history-message',$3)`, testGuildID,
+		historyKey, mustJSON(map[string]any{
+			"card": ComponentCardPayload{AccentColor: cardColorBlurple,
+				Header: "Codex · 已引导对话"},
+			"progress": conversationProgressPayload{
+				FormatVersion: conversationProgressFormatVersion,
+				RunID:         runID.String(), State: ConversationGuided,
+				Summary: "引导前的历史动态。", Page: 0,
+			},
+		}))
+	require.NoError(t, err)
 	projectionKey := "conversation:" + conversationID.String() + ":message:desktop-input"
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_projections
 		(guild_id, projection_key, resource_id, message_id, desired_payload)
@@ -1563,6 +1577,11 @@ func TestReconcileConversationProgressCardsUsesTerminalRunState(t *testing.T) {
 				Summary: "本轮处理未完成。", Page: 0,
 			},
 		}))
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_turn_status_cards
+		(run_id, guild_id, projection_key, revision, role)
+		VALUES ($1,$2,$3,0,'history'), ($1,$2,$4,1,'current')`,
+		runID, testGuildID, historyKey, projectionKey)
 	require.NoError(t, err)
 
 	require.NoError(t, ReconcileConversationProgressCards(ctx, db, testGuildID))
@@ -1578,6 +1597,27 @@ func TestReconcileConversationProgressCardsUsesTerminalRunState(t *testing.T) {
 	require.Equal(t, ConversationCanceled, desired.Progress.State)
 	require.Equal(t, "本轮已停止。", desired.Progress.Summary)
 	require.Equal(t, "⏹️ Codex · 已停止", desired.Card.Header)
+	var historyVersion, currentVersion int64
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT desired_version
+		FROM discord_projections WHERE guild_id=$1 AND projection_key=$2`,
+		testGuildID, historyKey).Scan(&historyVersion))
+	require.EqualValues(t, 1, historyVersion)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT desired_version
+		FROM discord_projections WHERE guild_id=$1 AND projection_key=$2`,
+		testGuildID, projectionKey).Scan(&currentVersion))
+	require.EqualValues(t, 2, currentVersion)
+
+	// 第二次重算必须保持幂等；历史卡仍为“已引导”，当前卡已是正确终态。
+	require.NoError(t, ReconcileConversationProgressCards(ctx, db, testGuildID))
+	var historyVersionAfter, currentVersionAfter int64
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT desired_version
+		FROM discord_projections WHERE guild_id=$1 AND projection_key=$2`,
+		testGuildID, historyKey).Scan(&historyVersionAfter))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT desired_version
+		FROM discord_projections WHERE guild_id=$1 AND projection_key=$2`,
+		testGuildID, projectionKey).Scan(&currentVersionAfter))
+	require.Equal(t, historyVersion, historyVersionAfter)
+	require.Equal(t, currentVersion, currentVersionAfter)
 }
 
 const (
