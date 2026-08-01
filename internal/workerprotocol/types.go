@@ -9,7 +9,25 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 17
+const Version = 18
+
+// CodexTurnError 保留 Codex error 通知的结构化字段，供 Control 决定是否重试
+// 并在 Discord 失败过程卡中展示。
+type CodexTurnError struct {
+	Message           string          `json:"message"`
+	CodexErrorInfo    json.RawMessage `json:"codexErrorInfo,omitempty"`
+	AdditionalDetails string          `json:"additionalDetails,omitempty"`
+	WillRetry         bool            `json:"willRetry"`
+	ThreadID          string          `json:"threadId"`
+	TurnID            string          `json:"turnId"`
+}
+
+func (e *CodexTurnError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return e.Message
+}
 
 type EnrollRequest struct {
 	Token string `json:"token"`
@@ -554,9 +572,10 @@ type CompleteRequest struct {
 
 type FailRequest struct {
 	RunLeaseRequest
-	IdempotencyKey string `json:"idempotencyKey"`
-	Code           string `json:"code"`
-	Message        string `json:"message"`
+	IdempotencyKey string          `json:"idempotencyKey"`
+	Code           string          `json:"code"`
+	Message        string          `json:"message"`
+	CodexError     *CodexTurnError `json:"codexError,omitempty"`
 }
 
 type EventInput struct {

@@ -81,6 +81,11 @@ func (r *RemoteRunner) runJournal(ctx context.Context, journal *runJournal, slot
 		if errors.Is(err, errRemoteInterrupt) {
 			journal.FailureCode = "user_interrupt"
 		}
+		var codexErr *workerprotocol.CodexTurnError
+		if errors.As(err, &codexErr) && !codexErr.WillRetry {
+			journal.FailureCode = "codex_non_retryable_error"
+			journal.CodexError = codexErr
+		}
 		journal.Failure = err.Error()
 	}
 	if saveErr := r.journals.save(journal); saveErr != nil {
@@ -206,7 +211,8 @@ func (r *RemoteRunner) deliverTerminal(ctx context.Context, journal *runJournal,
 				err = r.client.Complete(requestCtx, &journal.Task, *journal.Result)
 			} else {
 				cause := errors.New(journal.Failure)
-				err = r.client.Fail(requestCtx, &journal.Task, journal.FailureCode, cause)
+				err = r.client.FailWithCodexError(requestCtx, &journal.Task,
+					journal.FailureCode, cause, journal.CodexError)
 			}
 			cancel()
 			if err == nil || workerprotocol.IsAlreadyFinished(err) {

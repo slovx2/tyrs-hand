@@ -144,7 +144,9 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	result, err := p.waitRemoteTurn(ctx, codexRuntime, subscription.Events(), task, threadID,
 		turnID, commands, p.discordCommandHandler(task, runtime, skills, report), codexReport)
 	if err != nil {
-		interruptTurnBestEffort(codexRuntime, threadID, turnID)
+		if needsCleanupInterrupt(err) {
+			interruptTurnBestEffort(codexRuntime, threadID, turnID)
+		}
 		return workerprotocol.CompleteRequest{}, err
 	}
 	return workerprotocol.CompleteRequest{Result: result}, nil

@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -60,6 +61,8 @@ type CodexTurnRun struct {
 	ErrorCode *string `json:"error_code,omitempty"`
 	// ErrorMessage holds the value of the "error_message" field.
 	ErrorMessage *string `json:"error_message,omitempty"`
+	// CodexError holds the value of the "codex_error" field.
+	CodexError   map[string]interface{} `json:"codex_error,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -70,6 +73,8 @@ func (*CodexTurnRun) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case codexturnrun.FieldExecutionNodeID:
 			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
+		case codexturnrun.FieldCodexError:
+			values[i] = new([]byte)
 		case codexturnrun.FieldAttempt, codexturnrun.FieldLeaseEpoch, codexturnrun.FieldWorkerEventSequence, codexturnrun.FieldActiveSlot, codexturnrun.FieldAppendCount, codexturnrun.FieldMaxAppendCount:
 			values[i] = new(sql.NullInt64)
 		case codexturnrun.FieldWorkerID, codexturnrun.FieldCapabilityHash, codexturnrun.FieldWorkerTerminalKey, codexturnrun.FieldStatus, codexturnrun.FieldCollaborationMode, codexturnrun.FieldCodexSubmissionID, codexturnrun.FieldConfirmedCodexTurnID, codexturnrun.FieldErrorCode, codexturnrun.FieldErrorMessage:
@@ -233,6 +238,14 @@ func (_m *CodexTurnRun) assignValues(columns []string, values []any) error {
 				_m.ErrorMessage = new(string)
 				*_m.ErrorMessage = value.String
 			}
+		case codexturnrun.FieldCodexError:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field codex_error", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.CodexError); err != nil {
+					return fmt.Errorf("unmarshal field codex_error: %w", err)
+				}
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -346,6 +359,9 @@ func (_m *CodexTurnRun) String() string {
 		builder.WriteString("error_message=")
 		builder.WriteString(*v)
 	}
+	builder.WriteString(", ")
+	builder.WriteString("codex_error=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CodexError))
 	builder.WriteByte(')')
 	return builder.String()
 }

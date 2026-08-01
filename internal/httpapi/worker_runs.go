@@ -553,10 +553,45 @@ func (s *Server) workerRunFail(c *gin.Context) {
 	}
 	claimed, err := s.claimedRemoteRun(c.Request.Context(), node.ID, runID, request.RunLeaseRequest)
 	if err == nil {
+		if request.Code == "codex_non_retryable_error" && request.CodexError == nil {
+			badRequest(c, errors.New("不可重试 Codex 错误缺少结构化详情"))
+			return
+		}
+		if request.CodexError != nil {
+			if request.Code != "codex_non_retryable_error" {
+				badRequest(c, errors.New("结构化 Codex 错误只能用于不可重试失败码"))
+				return
+			}
+			if request.CodexError.WillRetry || request.CodexError.Message == "" ||
+				request.CodexError.ThreadID == "" || request.CodexError.TurnID == "" {
+				badRequest(c, errors.New("不可重试 Codex 错误字段不完整"))
+				return
+			}
+			if request.Message != request.CodexError.Message {
+				badRequest(c, errors.New("结构化 Codex 错误消息与终态消息不一致"))
+				return
+			}
+			if claimed.ExternalThreadID != "" && request.CodexError.ThreadID != claimed.ExternalThreadID {
+				badRequest(c, errors.New("结构化 Codex 错误 Thread ID 与 Run 不匹配"))
+				return
+			}
+			expectedTurnID := claimed.ConfirmedTurnID
+			if expectedTurnID == "" {
+				expectedTurnID = claimed.SubmissionID
+			}
+			if expectedTurnID != "" && request.CodexError.TurnID != expectedTurnID {
+				badRequest(c, errors.New("结构化 Codex 错误 Turn ID 与 Run 不匹配"))
+				return
+			}
+		}
 		repository := codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration)
-		if request.Code == "user_interrupt" {
+		switch request.Code {
+		case "user_interrupt":
 			err = repository.Cancel(c.Request.Context(), claimed, request.Code, request.Message)
-		} else {
+		case "codex_non_retryable_error":
+			err = repository.FailWithCodexError(c.Request.Context(), claimed, request.Code,
+				emptyMessageError(request.Message), request.CodexError)
+		default:
 			err = repository.Reconcile(c.Request.Context(), claimed, request.Code,
 				emptyMessageError(request.Message))
 		}
@@ -574,9 +609,13 @@ func (s *Server) workerRunFail(c *gin.Context) {
 				state = discordintegration.ConversationCanceled
 				detail = "本轮已由 Discord 用户主动停止。"
 			}
+			var errorDetails *discordintegration.ComponentErrorPayload
+			if request.CodexError != nil {
+				errorDetails = discordintegration.CodexErrorForProjection(request.CodexError)
+			}
 			_ = discordintegration.ProjectConversationStatus(c.Request.Context(), s.db,
 				guildID, threadID, claimed.DiscordConversationID, discordProjectionAnchor(claimed), claimed.RunID,
-				state, detail)
+				state, detail, errorDetails)
 		}
 	}
 	_, _ = s.db.ExecContext(c.Request.Context(), `UPDATE codex_turn_runs

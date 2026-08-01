@@ -20,6 +20,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/replygate"
 	"github.com/slovx2/tyrs-hand/internal/settings"
+	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
 )
 
@@ -40,7 +41,14 @@ func workerThreadOptions(options ports.ThreadOptions) ports.ThreadOptions {
 }
 
 func needsCleanupInterrupt(err error) bool {
-	return err != nil && !errors.Is(err, errDiscordTurnStopped)
+	if err == nil || errors.Is(err, errDiscordTurnStopped) {
+		return false
+	}
+	var codexErr *workerprotocol.CodexTurnError
+	if errors.As(err, &codexErr) {
+		return codexErr.WillRetry
+	}
+	return true
 }
 
 func interruptTurnBestEffort(runtime *codex.Runtime, threadID, turnID string) {
@@ -235,6 +243,9 @@ func (p *Processor) reconcileTurn(ctx context.Context, runtime *codex.Runtime,
 			Evidence: "thread/read"}, true, nil
 	}
 	if !isActiveCodexTurnStatus(turn.Status) {
+		if codexErr := codexErrorFromSnapshot(threadID, turn.ID, turn.Error); codexErr != nil {
+			return codexcontrol.TurnResult{}, false, codexErr
+		}
 		return codexcontrol.TurnResult{}, false, fmt.Errorf("codex turn 快照终态为 %s", turn.Status)
 	}
 	result, err := p.waitTurn(ctx, runtime, runtime.Events(), claimed, threadID, turn.ID, observer)
@@ -294,9 +305,15 @@ func (p *Processor) waitTurn(ctx context.Context, runtime *codex.Runtime, events
 			if value := finalAnswerDelta(event); value != "" {
 				finalDelta.WriteString(value)
 			}
+			if codexErr, ok := codexErrorFromEvent(event); ok && !codexErr.WillRetry {
+				return codexcontrol.TurnResult{}, codexErr
+			}
 			if event.Method == "turn/completed" {
 				_, status := completedTurn(event.Params, threadID, turnID)
 				if status != "completed" {
+					if codexErr := codexErrorFromCompletedEvent(event.Params, threadID, turnID); codexErr != nil {
+						return codexcontrol.TurnResult{}, codexErr
+					}
 					return codexcontrol.TurnResult{}, fmt.Errorf("codex turn 结束状态为 %s", status)
 				}
 				if finalAnswer == "" {
@@ -331,6 +348,9 @@ func (p *Processor) waitTurn(ctx context.Context, runtime *codex.Runtime, events
 					DurationMillis: time.Since(startedAt).Milliseconds(), Evidence: "thread/read"}, nil
 			}
 			if found && (turn.Status == "failed" || turn.Status == "interrupted") {
+				if codexErr := codexErrorFromSnapshot(threadID, turn.ID, turn.Error); codexErr != nil {
+					return codexcontrol.TurnResult{}, codexErr
+				}
 				return codexcontrol.TurnResult{}, fmt.Errorf("codex turn 快照终态为 %s", turn.Status)
 			}
 		case <-idleTimer.C:
@@ -377,7 +397,13 @@ func (p *Processor) snapshotTerminal(ctx context.Context, runtime *codex.Runtime
 	if !found {
 		turn, found = snapshot.TurnByClientID(claimed.ID.String())
 	}
-	if !found || turn.Status != "completed" {
+	if !found {
+		return codexcontrol.TurnResult{}, false, nil
+	}
+	if turn.Status != "completed" {
+		if codexErr := codexErrorFromSnapshot(threadID, turn.ID, turn.Error); codexErr != nil {
+			return codexcontrol.TurnResult{}, false, codexErr
+		}
 		return codexcontrol.TurnResult{}, false, nil
 	}
 	answer, outputType := turn.FinalOutput()

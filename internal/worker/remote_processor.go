@@ -319,7 +319,7 @@ func (p *RemoteProcessor) processRemoteGitHub(ctx context.Context, task *workerp
 	}
 	result, err := p.waitRemoteTurn(ctx, runtime, client.Events(), task, threadID, turnID,
 		commands, nil, report)
-	if err != nil {
+	if needsCleanupInterrupt(err) {
 		interruptTurnBestEffort(runtime, threadID, turnID)
 	}
 	return result, err

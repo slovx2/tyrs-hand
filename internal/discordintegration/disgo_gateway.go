@@ -509,7 +509,7 @@ func (c *DisgoConnector) conversationProgressPage(ctx context.Context, guildID, 
 		return ComponentCardPayload{}, errors.New("discord 翻页目标不存在")
 	}
 	return conversationProgressCard(desired.Progress.State, timeline, page, runID.String(),
-		desired.Progress.CollaborationMode), nil
+		desired.Progress.CollaborationMode, desired.Progress.Error), nil
 }
 
 func (c *DisgoConnector) changeConversationMode(event *events.ComponentInteractionCreate,

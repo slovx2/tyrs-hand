@@ -24,6 +24,29 @@ func TestSanitizeDiscordResult(t *testing.T) {
 	require.NotContains(t, long, "内容已截断")
 }
 
+func TestCodexErrorFallbackReadsLatestNonRetryableAgentEvent(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+	runID := uuid.New()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT event.payload FROM agent_events event")).
+		WithArgs(runID).
+		WillReturnRows(sqlmock.NewRows([]string{"payload"}).AddRow([]byte(
+			`{"error":{"message":"at capacity","codexErrorInfo":"serverOverloaded","additionalDetails":"later"},"willRetry":false,"threadId":"thread-1","turnId":"turn-1"}`)))
+	mock.ExpectClose()
+
+	value := codexErrorFromStoredOrEvent(context.Background(), db, runID, nil)
+	require.NotNil(t, value)
+	require.Equal(t, "at capacity", value.Message)
+	require.JSONEq(t, `"serverOverloaded"`, string(value.CodexErrorInfo))
+	require.False(t, value.WillRetry)
+	require.Equal(t, "thread-1", value.ThreadID)
+	require.Equal(t, "turn-1", value.TurnID)
+}
+
 func TestSplitConversationReplyKeepsLinesAndMarkdownFences(t *testing.T) {
 	line := strings.Repeat("内容", 40)
 	content := strings.Repeat(line+"\n", 60)

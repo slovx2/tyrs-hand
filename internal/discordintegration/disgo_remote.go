@@ -988,6 +988,13 @@ func discordCardComponentsWithMedia(card ComponentCardPayload,
 			return nil, err
 		}
 	}
+	if card.Error != nil {
+		for _, value := range componentErrorSections(*card.Error) {
+			if err := addText(value); err != nil {
+				return nil, err
+			}
+		}
+	}
 	if len(card.Media) > 10 {
 		return nil, fmt.Errorf("discord Media Gallery 最多包含 10 个项目")
 	}
@@ -1051,6 +1058,50 @@ func discordCardComponentsWithMedia(card ComponentCardPayload,
 	}
 	container := discord.NewContainer(parts...).WithAccentColor(card.AccentColor)
 	return []discord.LayoutComponent{container}, nil
+}
+
+func componentErrorSections(errorDetails ComponentErrorPayload) []string {
+	lines := []string{"**Codex 错误**", "消息：" + cardText(errorDetails.Message, 0)}
+	if info := componentErrorInfoText(errorDetails.CodexErrorInfo); info != "" {
+		lines = append(lines, "类型：`"+cardText(info, 1000)+"`")
+	}
+	if details := strings.TrimSpace(errorDetails.AdditionalDetails); details != "" {
+		lines = append(lines, "补充详情：\n"+cardText(details, 0))
+	}
+	lines = append(lines, fmt.Sprintf("willRetry：`%t`", errorDetails.WillRetry))
+	if errorDetails.ThreadID != "" {
+		lines = append(lines, "threadId：`"+cardText(errorDetails.ThreadID, 256)+"`")
+	}
+	if errorDetails.TurnID != "" {
+		lines = append(lines, "turnId：`"+cardText(errorDetails.TurnID, 256)+"`")
+	}
+	value := strings.Join(lines, "\n")
+	if utf8.RuneCountInString(value) <= 4000 {
+		return []string{value}
+	}
+	return splitCardText(value, 4000)
+}
+
+func componentErrorInfoText(raw json.RawMessage) string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var value string
+	if json.Unmarshal(raw, &value) == nil {
+		return value
+	}
+	return string(raw)
+}
+
+func splitCardText(value string, limit int) []string {
+	runes := []rune(value)
+	result := make([]string, 0, (len(runes)+limit-1)/limit)
+	for len(runes) > 0 {
+		count := min(len(runes), limit)
+		result = append(result, string(runes[:count]))
+		runes = runes[count:]
+	}
+	return result
 }
 
 func optionalSnowflake(value string) (snowflake.ID, error) {

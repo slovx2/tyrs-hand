@@ -130,6 +130,8 @@ docker compose -f compose.yaml -f compose.production.yaml up -d server discord
 
 仓库中的 `compose.worker.yaml` 是版本化部署制品，不只是首次安装模板。Worker Protocol 版本和宿主目录挂载都固定在该文件中；协议、挂载或容器能力发生变化时，不能只替换镜像 Digest，必须把经过审阅的 Compose 文件同步到 Worker 主机。
 
+Worker Protocol 升级时先部署并完成 Control 数据库迁移，再同步新的 `compose.worker.yaml` 和 Worker 镜像。重启 Worker 前记录仍在运行的 Run；重启后由本地 Journal 和 Control Lease 恢复同一 Run，不应重新提交 Codex turn。Control 与 Worker 必须使用同一发布版本，不能跨协议版本混用。
+
 ```bash
 stat -c '%g' /var/run/docker.sock
 ```

@@ -1,6 +1,7 @@
 package discordintegration
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -20,9 +21,19 @@ type ComponentCardPayload struct {
 	Body        string                     `json:"body,omitempty"`
 	Sections    []string                   `json:"sections,omitempty"`
 	Timeline    string                     `json:"timeline,omitempty"`
+	Error       *ComponentErrorPayload     `json:"error,omitempty"`
 	Media       []ComponentMediaPayload    `json:"media,omitempty"`
 	Buttons     []ComponentButtonPayload   `json:"buttons,omitempty"`
 	ButtonRows  [][]ComponentButtonPayload `json:"buttonRows,omitempty"`
+}
+
+type ComponentErrorPayload struct {
+	Message           string          `json:"message"`
+	CodexErrorInfo    json.RawMessage `json:"codexErrorInfo,omitempty"`
+	AdditionalDetails string          `json:"additionalDetails,omitempty"`
+	WillRetry         bool            `json:"willRetry"`
+	ThreadID          string          `json:"threadId"`
+	TurnID            string          `json:"turnId"`
 }
 
 type ComponentMediaPayload struct {
@@ -50,7 +61,7 @@ const (
 )
 
 func conversationProgressCard(state ConversationProgress, timeline ConversationTimeline,
-	page int, runID, mode string,
+	page int, runID, mode string, errorDetails ...*ComponentErrorPayload,
 ) ComponentCardPayload {
 	header, color := "⚙️ Codex · 思考中", cardColorBlurple
 	switch state {
@@ -71,6 +82,9 @@ func conversationProgressCard(state ConversationProgress, timeline ConversationT
 	}
 	if mode == "plan" {
 		card.Body += " · `模式：Plan`"
+	}
+	if len(errorDetails) > 0 && errorDetails[0] != nil {
+		card.Error = errorDetails[0]
 	}
 	if len(timeline.Pages) > 1 && runID != "" {
 		last := len(timeline.Pages) - 1

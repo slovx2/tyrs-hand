@@ -257,6 +257,45 @@ func TestCancelFinishesSteerIntents(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestNonRetryableCodexErrorFinishesImmediatelyAndPersistsDetails(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+	claimed := &ClaimedControl{Intent: Intent{
+		ID: uuid.New(), ControlID: uuid.New(), ConfirmedTurnID: "turn-1",
+	}, RunID: uuid.New(), LeaseToken: "lease-token", LeaseEpoch: 2}
+	codexError := map[string]any{"message": "at capacity", "willRetry": false,
+		"threadId": "thread-1", "turnId": "turn-1"}
+	encoded := encode(codexError)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT EXISTS(SELECT 1 FROM codex_thread_controls")).
+		WithArgs(claimed.ControlID, sqlmock.AnyArg(), claimed.LeaseEpoch, claimed.ID).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectExec("UPDATE codex_turn_intents SET status = \\$2").
+		WithArgs(claimed.ID, IntentFailed, nil, "codex_non_retryable_error", "at capacity").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE codex_turn_intents SET status = \\$4").
+		WithArgs(claimed.ControlID, claimed.ID, claimed.ConfirmedTurnID, IntentFailed,
+			"codex_non_retryable_error", "at capacity").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("UPDATE codex_turn_runs SET status = \\$2").
+		WithArgs(claimed.RunID, IntentFailed, "codex_non_retryable_error", "at capacity", encoded).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE codex_thread_controls SET status = \\$2").
+		WithArgs(claimed.ControlID, "error", "codex_non_retryable_error", "at capacity").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	mock.ExpectClose()
+
+	err = NewRepository(db, time.Minute).FailWithCodexError(context.Background(), claimed,
+		"codex_non_retryable_error", errors.New("at capacity"), codexError)
+	require.NoError(t, err)
+}
+
 func TestRequeueExpiredDesktopIntentReturnsControlToIdle(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)

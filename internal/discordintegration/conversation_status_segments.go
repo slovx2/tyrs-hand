@@ -144,7 +144,8 @@ func refreshConversationStatusCardTx(ctx context.Context, tx *sql.Tx, runID uuid
 	desired.Progress.State = state
 	desired.Progress.Page = len(timeline.Pages) - 1
 	desired.Progress.CollaborationMode = mode
-	card := conversationProgressCard(state, timeline, desired.Progress.Page, runID.String(), mode)
+	card := conversationProgressCard(state, timeline, desired.Progress.Page, runID.String(), mode,
+		desired.Progress.Error)
 	return updateStatusProjectionTx(ctx, tx, guildID, key,
 		map[string]any{"card": card, "progress": desired.Progress})
 }

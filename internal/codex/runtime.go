@@ -94,6 +94,15 @@ type TurnSnapshot struct {
 	Status              string         `json:"status"`
 	ClientUserMessageID string         `json:"clientUserMessageId"`
 	Items               []ItemSnapshot `json:"items"`
+	Error               *TurnError     `json:"error,omitempty"`
+}
+
+// TurnError 是 Codex thread/read 返回的终态错误。CodexErrorInfo 使用 RawMessage
+// 保留协议未来新增的枚举值，不在 Worker 侧丢弃未知字段。
+type TurnError struct {
+	Message           string          `json:"message"`
+	CodexErrorInfo    json.RawMessage `json:"codexErrorInfo,omitempty"`
+	AdditionalDetails string          `json:"additionalDetails,omitempty"`
 }
 
 type ItemSnapshot struct {

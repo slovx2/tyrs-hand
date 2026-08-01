@@ -71,6 +71,72 @@ func TestWaitRemoteTurnMapsInterruptedSnapshot(t *testing.T) {
 	require.ErrorIs(t, err, errRemoteInterrupt)
 }
 
+func TestWaitRemoteTurnStopsOnNonRetryableCodexError(t *testing.T) {
+	processor := &RemoteProcessor{cfg: config.Config{
+		TurnMaxDuration: time.Second, TurnIdleTimeout: time.Second,
+		CodexStatusPollInterval: time.Hour,
+	}}
+	threadID, turnID := "thread-1", "turn-1"
+	task := remoteTurnTask()
+	events := make(chan codex.Event, 1)
+	events <- codex.Event{Method: "error", Params: json.RawMessage(fmt.Sprintf(
+		`{"threadId":%q,"turnId":%q,"willRetry":false,"error":{"message":"at capacity","codexErrorInfo":"serverOverloaded","additionalDetails":"try later"}}`,
+		threadID, turnID))}
+
+	_, err := processor.waitRemoteTurn(context.Background(), nil, events, &task,
+		threadID, turnID, make(chan workerprotocol.RunCommand), nil, nil)
+	var codexErr *workerprotocol.CodexTurnError
+	require.ErrorAs(t, err, &codexErr)
+	require.Equal(t, "at capacity", codexErr.Message)
+	require.JSONEq(t, `"serverOverloaded"`, string(codexErr.CodexErrorInfo))
+	require.False(t, codexErr.WillRetry)
+	require.Equal(t, threadID, codexErr.ThreadID)
+	require.Equal(t, turnID, codexErr.TurnID)
+}
+
+func TestWaitRemoteTurnContinuesAfterRetryableCodexError(t *testing.T) {
+	processor := &RemoteProcessor{cfg: config.Config{
+		TurnMaxDuration: time.Second, TurnIdleTimeout: time.Second,
+		CodexStatusPollInterval: time.Hour,
+	}}
+	threadID, turnID := "thread-1", "turn-1"
+	task := remoteTurnTask()
+	events := make(chan codex.Event, 3)
+	events <- codex.Event{Method: "error", Params: json.RawMessage(fmt.Sprintf(
+		`{"threadId":%q,"turnId":%q,"willRetry":true,"error":{"message":"reconnecting"}}`,
+		threadID, turnID))}
+	events <- codex.Event{Method: "item/completed", Params: json.RawMessage(fmt.Sprintf(
+		`{"threadId":%q,"turnId":%q,"item":{"type":"agentMessage","phase":"final_answer","text":"done"}}`,
+		threadID, turnID))}
+	events <- codex.Event{Method: "turn/completed", Params: json.RawMessage(fmt.Sprintf(
+		`{"threadId":%q,"turn":{"id":%q,"status":"completed"}}`, threadID, turnID))}
+
+	result, err := processor.waitRemoteTurn(context.Background(), nil, events, &task,
+		threadID, turnID, make(chan workerprotocol.RunCommand), nil, nil)
+	require.NoError(t, err)
+	require.Equal(t, "done", result.FinalAnswer)
+}
+
+func TestWaitRemoteTurnReadsCodexErrorFromFailedSnapshot(t *testing.T) {
+	processor := &RemoteProcessor{cfg: config.Config{
+		TurnMaxDuration: time.Second, TurnIdleTimeout: time.Second,
+		CodexStatusPollInterval: time.Millisecond,
+	}}
+	threadID, turnID := "thread-1", "turn-1"
+	task := remoteTurnTask()
+	runtime := codex.NewRuntime(snapshotRuntimeClient{snapshot: codex.ThreadSnapshot{
+		ID: threadID, Turns: []codex.TurnSnapshot{{ID: turnID, Status: "failed",
+			Error: &codex.TurnError{Message: "bad request",
+				CodexErrorInfo: json.RawMessage(`"badRequest"`)}}},
+	}})
+
+	_, err := processor.waitRemoteTurn(context.Background(), runtime, make(chan codex.Event),
+		&task, threadID, turnID, make(chan workerprotocol.RunCommand), nil, nil)
+	var codexErr *workerprotocol.CodexTurnError
+	require.ErrorAs(t, err, &codexErr)
+	require.Equal(t, "bad request", codexErr.Message)
+}
+
 func TestReportRuntimeSettingsAppliedUsesAcceptedSnapshot(t *testing.T) {
 	var eventType string
 	var payload json.RawMessage

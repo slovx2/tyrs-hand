@@ -1305,6 +1305,16 @@ func ErrorMessageContainsFold(v string) predicate.CodexTurnRun {
 	return predicate.CodexTurnRun(sql.FieldContainsFold(FieldErrorMessage, v))
 }
 
+// CodexErrorIsNil applies the IsNil predicate on the "codex_error" field.
+func CodexErrorIsNil() predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldIsNull(FieldCodexError))
+}
+
+// CodexErrorNotNil applies the NotNil predicate on the "codex_error" field.
+func CodexErrorNotNil() predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldNotNull(FieldCodexError))
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.CodexTurnRun) predicate.CodexTurnRun {
 	return predicate.CodexTurnRun(sql.AndPredicates(predicates...))

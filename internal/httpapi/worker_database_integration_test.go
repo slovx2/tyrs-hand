@@ -235,6 +235,56 @@ func TestWorkerAPICancelFinishesAcknowledgedSteer(t *testing.T) {
 	require.Equal(t, "canceled", steerStatus)
 }
 
+func TestWorkerAPINonRetryableCodexErrorDoesNotRequeue(t *testing.T) {
+	db := workerDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	server, endpoint := workerTestServer(t, db)
+	node, enrollment, err := server.nodes.Create(ctx, "codex-non-retry", []string{"github"}, 1)
+	require.NoError(t, err)
+	_, credential, err := server.nodes.Enroll(ctx, enrollment)
+	require.NoError(t, err)
+	require.NoError(t, server.nodes.SetDefaults(ctx, executionnode.Defaults{GitHubNodeID: &node.ID}))
+	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
+
+	repositoryID, itemID, profileID := seedWorkerGitHubQueue(t, db, 92)
+	intentID := enqueueWorkerIntent(t, db, repositoryID, itemID, profileID, "capacity")
+	claimed, err := client.Claim(ctx, workerprotocol.ClaimRequest{
+		WorkerID: "codex-non-retry-worker", Role: "github",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, claimed.Task)
+	require.Equal(t, intentID, claimed.Task.Claimed.ID)
+	require.NoError(t, client.SetThread(ctx, claimed.Task, "thread-capacity", "github-home"))
+	require.NoError(t, client.RecordSubmission(ctx, claimed.Task, "turn-capacity"))
+	require.NoError(t, client.ConfirmTurn(ctx, claimed.Task, "turn-capacity"))
+
+	codexError := &workerprotocol.CodexTurnError{
+		Message:        "Selected model is at capacity. Please try a different model.",
+		CodexErrorInfo: json.RawMessage(`"serverOverloaded"`), WillRetry: false,
+		ThreadID: "thread-capacity", TurnID: "turn-capacity",
+	}
+	require.NoError(t, client.FailWithCodexError(ctx, claimed.Task,
+		"codex_non_retryable_error", codexError, codexError))
+
+	var intentStatus, runStatus, errorType string
+	var attempts int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT intent.status, intent.attempt_count,
+		run.status, run.codex_error->>'codexErrorInfo'
+		FROM codex_turn_intents intent JOIN codex_turn_runs run ON run.primary_intent_id=intent.id
+		WHERE intent.id=$1`, intentID).Scan(&intentStatus, &attempts, &runStatus, &errorType))
+	require.Equal(t, "failed", intentStatus)
+	require.Equal(t, 1, attempts)
+	require.Equal(t, "failed", runStatus)
+	require.Equal(t, "serverOverloaded", errorType)
+
+	next, err := client.Claim(ctx, workerprotocol.ClaimRequest{
+		WorkerID: "codex-non-retry-worker", Role: "github",
+	})
+	require.NoError(t, err)
+	require.Nil(t, next.Task)
+}
+
 func TestWorkerAPIDiscordRuntimePreferencesFreeze(t *testing.T) {
 	db := workerDatabase(t)
 	ctx := context.Background()

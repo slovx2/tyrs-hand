@@ -460,13 +460,19 @@ func (c *Client) CompleteDomain(ctx context.Context, task *Task, result Complete
 }
 
 func (c *Client) Fail(ctx context.Context, task *Task, code string, cause error) error {
+	return c.FailWithCodexError(ctx, task, code, cause, nil)
+}
+
+func (c *Client) FailWithCodexError(ctx context.Context, task *Task, code string,
+	cause error, codexError *CodexTurnError,
+) error {
 	message := ""
 	if cause != nil {
 		message = cause.Error()
 	}
 	return c.call(ctx, http.MethodPost, runPath(task, "/fail"), FailRequest{
 		RunLeaseRequest: lease(task), IdempotencyKey: task.Claimed.RunID.String() + ":fail",
-		Code: code, Message: message,
+		Code: code, Message: message, CodexError: codexError,
 	}, nil, true)
 }
 

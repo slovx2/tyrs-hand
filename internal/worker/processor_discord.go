@@ -18,6 +18,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/devcontainer"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/ports"
+	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
 )
 
@@ -120,10 +121,10 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		if processErr != nil && !finalProjected {
 			projectCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			state, detail := discordFailureProjection(projectCtx, p.db, claimed.ID, processErr)
+			state, detail, errorDetails := discordFailureProjection(projectCtx, p.db, claimed.ID, processErr)
 			if projectErr := discordintegration.ProjectConversationStatus(projectCtx, p.db, jobCtx.GuildID,
 				jobCtx.ThreadID, jobCtx.ConversationID, jobCtx.MessageID, claimed.RunID,
-				state, detail); projectErr != nil {
+				state, detail, errorDetails); projectErr != nil {
 				p.logger.Warn("投影 Discord Conversation 失败状态失败", zap.Error(projectErr))
 			}
 		}
@@ -435,11 +436,16 @@ func (p *Processor) projectDiscordRunContributors(ctx context.Context, runID uui
 
 func discordFailureProjection(ctx context.Context, db *sql.DB, jobID uuid.UUID,
 	cause error,
-) (discordintegration.ConversationProgress, string) {
+) (discordintegration.ConversationProgress, string, *discordintegration.ComponentErrorPayload) {
 	if discordStopRequested(ctx, db, jobID, cause) {
-		return discordintegration.ConversationCanceled, "本轮已由 Discord 用户主动停止。"
+		return discordintegration.ConversationCanceled, "本轮已由 Discord 用户主动停止。", nil
 	}
-	return discordintegration.ConversationFailed, "本轮处理未完成。"
+	var codexErr *workerprotocol.CodexTurnError
+	if errors.As(cause, &codexErr) && !codexErr.WillRetry {
+		return discordintegration.ConversationFailed, "本轮处理未完成。",
+			discordintegration.CodexErrorForProjection(codexErr)
+	}
+	return discordintegration.ConversationFailed, "本轮处理未完成。", nil
 }
 
 func (p *Processor) projectDiscordConversation(ctx context.Context, jobCtx discordJobContext,

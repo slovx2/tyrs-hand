@@ -56,6 +56,8 @@ const (
 	FieldErrorCode = "error_code"
 	// FieldErrorMessage holds the string denoting the error_message field in the database.
 	FieldErrorMessage = "error_message"
+	// FieldCodexError holds the string denoting the codex_error field in the database.
+	FieldCodexError = "codex_error"
 	// Table holds the table name of the codexturnrun in the database.
 	Table = "codex_turn_runs"
 )
@@ -84,6 +86,7 @@ var Columns = []string{
 	FieldFinishedAt,
 	FieldErrorCode,
 	FieldErrorMessage,
+	FieldCodexError,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).

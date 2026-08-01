@@ -1097,6 +1097,11 @@ func (r *desktopEventReporter) Finish(result codexcontrol.TurnResult, cause erro
 		if errors.Is(cause, errRemoteInterrupt) {
 			r.journal.FailureCode = "user_interrupt"
 		}
+		var codexErr *workerprotocol.CodexTurnError
+		if errors.As(cause, &codexErr) && !codexErr.WillRetry {
+			r.journal.FailureCode = "codex_non_retryable_error"
+			r.journal.CodexError = codexErr
+		}
 	}
 	r.saveLocked()
 	r.mu.Unlock()
@@ -1107,8 +1112,8 @@ func (r *desktopEventReporter) Finish(result codexcontrol.TurnResult, cause erro
 		if r.journal.Result != nil {
 			err = r.processor.client.Complete(requestCtx, r.task, *r.journal.Result)
 		} else {
-			err = r.processor.client.Fail(requestCtx, r.task, r.journal.FailureCode,
-				errors.New(r.journal.Failure))
+			err = r.processor.client.FailWithCodexError(requestCtx, r.task,
+				r.journal.FailureCode, errors.New(r.journal.Failure), r.journal.CodexError)
 		}
 		cancel()
 		if err == nil || workerprotocol.IsAlreadyFinished(err) {

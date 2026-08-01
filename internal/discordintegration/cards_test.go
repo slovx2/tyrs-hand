@@ -131,6 +131,41 @@ func TestDiscordComponentsV2SupportsMultipleButtonRows(t *testing.T) {
 	require.Equal(t, 2, actionRows)
 }
 
+func TestFailedProgressCardAppendsCodexErrorAfterExistingTimeline(t *testing.T) {
+	errorDetails := &ComponentErrorPayload{
+		Message:        "Selected model is at capacity. Please try a different model.",
+		CodexErrorInfo: json.RawMessage(`"serverOverloaded"`), AdditionalDetails: "try later",
+		WillRetry: false, ThreadID: "thread-1", TurnID: "turn-1",
+	}
+	card := conversationProgressCard(ConversationFailed, ConversationTimeline{
+		Pages: []string{"已经存在的过程动态"}, Updates: 3, Duration: time.Second,
+	}, 0, "run-1", "default", errorDetails)
+	require.Equal(t, "已经存在的过程动态", card.Timeline)
+	require.Equal(t, errorDetails, card.Error)
+
+	components, err := discordCardComponents(card)
+	require.NoError(t, err)
+	encoded, err := json.Marshal(components)
+	require.NoError(t, err)
+	value := string(encoded)
+	require.Less(t, strings.Index(value, "已经存在的过程动态"), strings.Index(value, "Codex 错误"))
+	require.Contains(t, value, "serverOverloaded")
+	require.Contains(t, value, "willRetry")
+}
+
+func TestCodexErrorSectionsPreserveLongTextAndSanitizeSecrets(t *testing.T) {
+	message := strings.Repeat("长错误", 1800) + " ghp_abcdefghijklmnopqrstuvwxyz"
+	sections := componentErrorSections(ComponentErrorPayload{Message: message, WillRetry: false})
+	require.Greater(t, len(sections), 1)
+	for _, section := range sections {
+		require.LessOrEqual(t, utf8.RuneCountInString(section), 4000)
+	}
+	joined := strings.Join(sections, "")
+	require.Contains(t, joined, strings.Repeat("长错误", 100))
+	require.NotContains(t, joined, "ghp_")
+	require.Contains(t, joined, "[已隐藏凭据]")
+}
+
 func TestConversationCardsOmitInternalPlaceholderDetails(t *testing.T) {
 	tracker := NewConversationActionTracker(time.Now())
 	for _, detail := range []string{"正在处理请求。", "思考中", "本轮处理完成。",

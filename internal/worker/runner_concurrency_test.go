@@ -70,6 +70,11 @@ func (*concurrencyQueue) Cancel(context.Context, *codexcontrol.ClaimedControl, s
 func (*concurrencyQueue) Fail(context.Context, *codexcontrol.ClaimedControl, string, error) error {
 	return nil
 }
+func (*concurrencyQueue) FailWithCodexError(context.Context, *codexcontrol.ClaimedControl,
+	string, error, any,
+) error {
+	return nil
+}
 func (*concurrencyQueue) Reconcile(context.Context, *codexcontrol.ClaimedControl, string, error) error {
 	return nil
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/devcontainer"
+	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
 )
 
@@ -31,6 +32,7 @@ type controlQueue interface {
 	Complete(context.Context, *codexcontrol.ClaimedControl, codexcontrol.TurnResult) error
 	Cancel(context.Context, *codexcontrol.ClaimedControl, string, string) error
 	Fail(context.Context, *codexcontrol.ClaimedControl, string, error) error
+	FailWithCodexError(context.Context, *codexcontrol.ClaimedControl, string, error, any) error
 	Reconcile(context.Context, *codexcontrol.ClaimedControl, string, error) error
 	ReplySatisfied(context.Context, *codexcontrol.ClaimedControl) (bool, error)
 	RequeueExpired(context.Context) (int64, error)
@@ -212,6 +214,16 @@ func (r *Runner) execute(parent context.Context, claimed *codexcontrol.ClaimedCo
 		_ = r.controls.Fail(finishCtx, claimed, "required_reply_missing", err)
 		r.publish(finishCtx, "intent.failed", claimed.ID.String())
 	} else {
+		var codexErr *workerprotocol.CodexTurnError
+		if errors.As(err, &codexErr) && !codexErr.WillRetry {
+			if finishErr := r.controls.FailWithCodexError(finishCtx, claimed,
+				"codex_non_retryable_error", err, codexErr); finishErr != nil &&
+				!errors.Is(finishErr, codexcontrol.ErrLeaseLost) {
+				r.logger.Error("记录 Codex 不可重试失败状态失败", zap.Error(finishErr))
+			}
+			r.publish(finishCtx, "intent.failed", claimed.ID.String())
+			return
+		}
 		r.logger.Error("任务执行失败", zap.String("job_id", claimed.ID.String()), zap.Error(err))
 		if claimed.SourceType == codexcontrol.SourceGitHub && claimed.Attempt >= claimed.MaxAttempts {
 			if processor, ok := r.processor.(*Processor); ok {

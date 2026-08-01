@@ -186,6 +186,7 @@ var (
 		{Name: "finished_at", Type: field.TypeTime, Nullable: true},
 		{Name: "error_code", Type: field.TypeString, Nullable: true},
 		{Name: "error_message", Type: field.TypeString, Nullable: true},
+		{Name: "codex_error", Type: field.TypeJSON, Nullable: true},
 	}
 	// CodexTurnRunsTable holds the schema information for the "codex_turn_runs" table.
 	CodexTurnRunsTable = &schema.Table{

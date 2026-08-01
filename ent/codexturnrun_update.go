@@ -413,6 +413,18 @@ func (_u *CodexTurnRunUpdate) ClearErrorMessage() *CodexTurnRunUpdate {
 	return _u
 }
 
+// SetCodexError sets the "codex_error" field.
+func (_u *CodexTurnRunUpdate) SetCodexError(v map[string]interface{}) *CodexTurnRunUpdate {
+	_u.mutation.SetCodexError(v)
+	return _u
+}
+
+// ClearCodexError clears the value of the "codex_error" field.
+func (_u *CodexTurnRunUpdate) ClearCodexError() *CodexTurnRunUpdate {
+	_u.mutation.ClearCodexError()
+	return _u
+}
+
 // Mutation returns the CodexTurnRunMutation object of the builder.
 func (_u *CodexTurnRunUpdate) Mutation() *CodexTurnRunMutation {
 	return _u.mutation
@@ -558,6 +570,12 @@ func (_u *CodexTurnRunUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if _u.mutation.ErrorMessageCleared() {
 		_spec.ClearField(codexturnrun.FieldErrorMessage, field.TypeString)
+	}
+	if value, ok := _u.mutation.CodexError(); ok {
+		_spec.SetField(codexturnrun.FieldCodexError, field.TypeJSON, value)
+	}
+	if _u.mutation.CodexErrorCleared() {
+		_spec.ClearField(codexturnrun.FieldCodexError, field.TypeJSON)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -963,6 +981,18 @@ func (_u *CodexTurnRunUpdateOne) ClearErrorMessage() *CodexTurnRunUpdateOne {
 	return _u
 }
 
+// SetCodexError sets the "codex_error" field.
+func (_u *CodexTurnRunUpdateOne) SetCodexError(v map[string]interface{}) *CodexTurnRunUpdateOne {
+	_u.mutation.SetCodexError(v)
+	return _u
+}
+
+// ClearCodexError clears the value of the "codex_error" field.
+func (_u *CodexTurnRunUpdateOne) ClearCodexError() *CodexTurnRunUpdateOne {
+	_u.mutation.ClearCodexError()
+	return _u
+}
+
 // Mutation returns the CodexTurnRunMutation object of the builder.
 func (_u *CodexTurnRunUpdateOne) Mutation() *CodexTurnRunMutation {
 	return _u.mutation
@@ -1138,6 +1168,12 @@ func (_u *CodexTurnRunUpdateOne) sqlSave(ctx context.Context) (_node *CodexTurnR
 	}
 	if _u.mutation.ErrorMessageCleared() {
 		_spec.ClearField(codexturnrun.FieldErrorMessage, field.TypeString)
+	}
+	if value, ok := _u.mutation.CodexError(); ok {
+		_spec.SetField(codexturnrun.FieldCodexError, field.TypeJSON, value)
+	}
+	if _u.mutation.CodexErrorCleared() {
+		_spec.ClearField(codexturnrun.FieldCodexError, field.TypeJSON)
 	}
 	_node = &CodexTurnRun{config: _u.config}
 	_spec.Assign = _node.assignValues

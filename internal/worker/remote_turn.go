@@ -95,6 +95,9 @@ func (p *RemoteProcessor) reconcileRemoteTurn(ctx context.Context, runtime *code
 		return result, true, resultErr
 	}
 	if !isActiveCodexTurnStatus(turn.Status) {
+		if codexErr := codexErrorFromSnapshot(threadID, turn.ID, turn.Error); codexErr != nil {
+			return codexcontrol.TurnResult{}, false, codexErr
+		}
 		return codexcontrol.TurnResult{}, false, remoteTurnTerminalError("快照", turn.Status)
 	}
 	result, err := p.waitRemoteTurn(ctx, runtime, events, task, threadID, turn.ID,
@@ -148,9 +151,15 @@ func (p *RemoteProcessor) waitRemoteTurn(ctx context.Context, runtime *codex.Run
 			if value := finalAnswerDelta(event); value != "" {
 				finalDelta.WriteString(value)
 			}
+			if codexErr, ok := codexErrorFromEvent(event); ok && !codexErr.WillRetry {
+				return codexcontrol.TurnResult{}, codexErr
+			}
 			if event.Method == "turn/completed" {
 				_, status := completedTurn(event.Params, threadID, turnID)
 				if status != "completed" {
+					if codexErr := codexErrorFromCompletedEvent(event.Params, threadID, turnID); codexErr != nil {
+						return codexcontrol.TurnResult{}, codexErr
+					}
 					return codexcontrol.TurnResult{}, remoteTurnTerminalError("结束", status)
 				}
 				if finalAnswer == "" {
@@ -177,6 +186,9 @@ func (p *RemoteProcessor) waitRemoteTurn(ctx context.Context, runtime *codex.Run
 					time.Since(startedAt).Milliseconds(), "thread/read")
 			}
 			if found && !isActiveCodexTurnStatus(turn.Status) {
+				if codexErr := codexErrorFromSnapshot(threadID, turn.ID, turn.Error); codexErr != nil {
+					return codexcontrol.TurnResult{}, codexErr
+				}
 				return codexcontrol.TurnResult{}, remoteTurnTerminalError("快照", turn.Status)
 			}
 		case command := <-commands:
@@ -243,6 +255,9 @@ func (p *RemoteProcessor) remoteSnapshotTerminal(ctx context.Context, runtime *c
 		return codexcontrol.TurnResult{}, errors.New("codex stdio 在 turn 完成前关闭")
 	}
 	if turn.Status != "completed" {
+		if codexErr := codexErrorFromSnapshot(threadID, turn.ID, turn.Error); codexErr != nil {
+			return codexcontrol.TurnResult{}, codexErr
+		}
 		return codexcontrol.TurnResult{}, remoteTurnTerminalError("快照", turn.Status)
 	}
 	answer, outputType := turn.FinalOutput()

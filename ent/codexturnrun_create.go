@@ -267,6 +267,12 @@ func (_c *CodexTurnRunCreate) SetNillableErrorMessage(v *string) *CodexTurnRunCr
 	return _c
 }
 
+// SetCodexError sets the "codex_error" field.
+func (_c *CodexTurnRunCreate) SetCodexError(v map[string]interface{}) *CodexTurnRunCreate {
+	_c.mutation.SetCodexError(v)
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *CodexTurnRunCreate) SetID(v uuid.UUID) *CodexTurnRunCreate {
 	_c.mutation.SetID(v)
@@ -509,6 +515,10 @@ func (_c *CodexTurnRunCreate) createSpec() (*CodexTurnRun, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.ErrorMessage(); ok {
 		_spec.SetField(codexturnrun.FieldErrorMessage, field.TypeString, value)
 		_node.ErrorMessage = &value
+	}
+	if value, ok := _c.mutation.CodexError(); ok {
+		_spec.SetField(codexturnrun.FieldCodexError, field.TypeJSON, value)
+		_node.CodexError = value
 	}
 	return _node, _spec
 }

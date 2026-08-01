@@ -8430,6 +8430,7 @@ type CodexTurnRunMutation struct {
 	finished_at              *time.Time
 	error_code               *string
 	error_message            *string
+	codex_error              *map[string]interface{}
 	clearedFields            map[string]struct{}
 	done                     bool
 	oldValue                 func(context.Context) (*CodexTurnRun, error)
@@ -9521,6 +9522,55 @@ func (m *CodexTurnRunMutation) ResetErrorMessage() {
 	delete(m.clearedFields, codexturnrun.FieldErrorMessage)
 }
 
+// SetCodexError sets the "codex_error" field.
+func (m *CodexTurnRunMutation) SetCodexError(value map[string]interface{}) {
+	m.codex_error = &value
+}
+
+// CodexError returns the value of the "codex_error" field in the mutation.
+func (m *CodexTurnRunMutation) CodexError() (r map[string]interface{}, exists bool) {
+	v := m.codex_error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCodexError returns the old "codex_error" field's value of the CodexTurnRun entity.
+// If the CodexTurnRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodexTurnRunMutation) OldCodexError(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCodexError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCodexError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCodexError: %w", err)
+	}
+	return oldValue.CodexError, nil
+}
+
+// ClearCodexError clears the value of the "codex_error" field.
+func (m *CodexTurnRunMutation) ClearCodexError() {
+	m.codex_error = nil
+	m.clearedFields[codexturnrun.FieldCodexError] = struct{}{}
+}
+
+// CodexErrorCleared returns if the "codex_error" field was cleared in this mutation.
+func (m *CodexTurnRunMutation) CodexErrorCleared() bool {
+	_, ok := m.clearedFields[codexturnrun.FieldCodexError]
+	return ok
+}
+
+// ResetCodexError resets all changes to the "codex_error" field.
+func (m *CodexTurnRunMutation) ResetCodexError() {
+	m.codex_error = nil
+	delete(m.clearedFields, codexturnrun.FieldCodexError)
+}
+
 // Where appends a list predicates to the CodexTurnRunMutation builder.
 func (m *CodexTurnRunMutation) Where(ps ...predicate.CodexTurnRun) {
 	m.predicates = append(m.predicates, ps...)
@@ -9555,7 +9605,7 @@ func (m *CodexTurnRunMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *CodexTurnRunMutation) Fields() []string {
-	fields := make([]string, 0, 21)
+	fields := make([]string, 0, 22)
 	if m.control_id != nil {
 		fields = append(fields, codexturnrun.FieldControlID)
 	}
@@ -9619,6 +9669,9 @@ func (m *CodexTurnRunMutation) Fields() []string {
 	if m.error_message != nil {
 		fields = append(fields, codexturnrun.FieldErrorMessage)
 	}
+	if m.codex_error != nil {
+		fields = append(fields, codexturnrun.FieldCodexError)
+	}
 	return fields
 }
 
@@ -9669,6 +9722,8 @@ func (m *CodexTurnRunMutation) Field(name string) (ent.Value, bool) {
 		return m.ErrorCode()
 	case codexturnrun.FieldErrorMessage:
 		return m.ErrorMessage()
+	case codexturnrun.FieldCodexError:
+		return m.CodexError()
 	}
 	return nil, false
 }
@@ -9720,6 +9775,8 @@ func (m *CodexTurnRunMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldErrorCode(ctx)
 	case codexturnrun.FieldErrorMessage:
 		return m.OldErrorMessage(ctx)
+	case codexturnrun.FieldCodexError:
+		return m.OldCodexError(ctx)
 	}
 	return nil, fmt.Errorf("unknown CodexTurnRun field %s", name)
 }
@@ -9876,6 +9933,13 @@ func (m *CodexTurnRunMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetErrorMessage(v)
 		return nil
+	case codexturnrun.FieldCodexError:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCodexError(v)
+		return nil
 	}
 	return fmt.Errorf("unknown CodexTurnRun field %s", name)
 }
@@ -10005,6 +10069,9 @@ func (m *CodexTurnRunMutation) ClearedFields() []string {
 	if m.FieldCleared(codexturnrun.FieldErrorMessage) {
 		fields = append(fields, codexturnrun.FieldErrorMessage)
 	}
+	if m.FieldCleared(codexturnrun.FieldCodexError) {
+		fields = append(fields, codexturnrun.FieldCodexError)
+	}
 	return fields
 }
 
@@ -10042,6 +10109,9 @@ func (m *CodexTurnRunMutation) ClearField(name string) error {
 		return nil
 	case codexturnrun.FieldErrorMessage:
 		m.ClearErrorMessage()
+		return nil
+	case codexturnrun.FieldCodexError:
+		m.ClearCodexError()
 		return nil
 	}
 	return fmt.Errorf("unknown CodexTurnRun nullable field %s", name)
@@ -10113,6 +10183,9 @@ func (m *CodexTurnRunMutation) ResetField(name string) error {
 		return nil
 	case codexturnrun.FieldErrorMessage:
 		m.ResetErrorMessage()
+		return nil
+	case codexturnrun.FieldCodexError:
+		m.ResetCodexError()
 		return nil
 	}
 	return fmt.Errorf("unknown CodexTurnRun field %s", name)

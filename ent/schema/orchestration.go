@@ -137,6 +137,7 @@ func (CodexTurnRun) Fields() []ent.Field {
 		field.Time("started_at").Default(time.Now),
 		field.Time("heartbeat_at").Default(time.Now), field.Time("finished_at").Optional().Nillable(),
 		field.String("error_code").Optional().Nillable(), field.String("error_message").Optional().Nillable(),
+		field.JSON("codex_error", map[string]any{}).Optional(),
 	}
 }
 

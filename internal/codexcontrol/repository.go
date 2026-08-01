@@ -218,6 +218,13 @@ func encode(value any) []byte {
 	return data
 }
 
+func encodeOptional(value any) []byte {
+	if value == nil {
+		return nil
+	}
+	return encode(value)
+}
+
 func defaultJSON(value json.RawMessage) json.RawMessage {
 	if len(value) == 0 {
 		return json.RawMessage(`{}`)
@@ -543,11 +550,23 @@ func (r *Repository) Cancel(ctx context.Context, claimed *ClaimedControl, code, 
 }
 
 func (r *Repository) Fail(ctx context.Context, claimed *ClaimedControl, code string, cause error) error {
+	return r.failWithCodexError(ctx, claimed, code, cause, nil)
+}
+
+func (r *Repository) FailWithCodexError(ctx context.Context, claimed *ClaimedControl,
+	code string, cause error, codexError any,
+) error {
+	return r.failWithCodexError(ctx, claimed, code, cause, encodeOptional(codexError))
+}
+
+func (r *Repository) failWithCodexError(ctx context.Context, claimed *ClaimedControl,
+	code string, cause error, codexError []byte,
+) error {
 	message := ""
 	if cause != nil {
 		message = cause.Error()
 	}
-	return r.finish(ctx, claimed, IntentFailed, code, message, TurnResult{})
+	return r.finishWithCodexError(ctx, claimed, IntentFailed, code, message, TurnResult{}, codexError)
 }
 
 func (r *Repository) Reconcile(ctx context.Context, claimed *ClaimedControl, code string, cause error) error {
@@ -608,6 +627,12 @@ func (r *Repository) Reconcile(ctx context.Context, claimed *ClaimedControl, cod
 func (r *Repository) finish(ctx context.Context, claimed *ClaimedControl, status IntentStatus,
 	code, message string, turnResult TurnResult,
 ) error {
+	return r.finishWithCodexError(ctx, claimed, status, code, message, turnResult, nil)
+}
+
+func (r *Repository) finishWithCodexError(ctx context.Context, claimed *ClaimedControl, status IntentStatus,
+	code, message string, turnResult TurnResult, codexError []byte,
+) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -652,9 +677,15 @@ func (r *Repository) finish(ctx context.Context, claimed *ClaimedControl, status
 		if status == IntentCompleted {
 			runStatus = "completed"
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE codex_turn_runs SET status = $2, active_slot = NULL,
-			error_code = NULLIF($3,''), error_message = NULLIF($4,''), finished_at = now()
-			WHERE id = $1`, claimed.RunID, runStatus, code, message)
+		if codexError == nil {
+			_, err = tx.ExecContext(ctx, `UPDATE codex_turn_runs SET status = $2, active_slot = NULL,
+				error_code = NULLIF($3,''), error_message = NULLIF($4,''), finished_at = now()
+				WHERE id = $1`, claimed.RunID, runStatus, code, message)
+		} else {
+			_, err = tx.ExecContext(ctx, `UPDATE codex_turn_runs SET status = $2, active_slot = NULL,
+				error_code = NULLIF($3,''), error_message = NULLIF($4,''), codex_error = $5,
+				finished_at = now() WHERE id = $1`, claimed.RunID, runStatus, code, message, codexError)
+		}
 	}
 	if err == nil {
 		controlStatus := "idle"

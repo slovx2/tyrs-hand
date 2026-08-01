@@ -515,16 +515,24 @@ func TestLocalToolCallAuditIsIdempotent(t *testing.T) {
 }
 
 func TestDiscordStopUsesCanceledProjection(t *testing.T) {
-	state, detail := discordFailureProjection(context.Background(), nil, uuid.Nil, errDiscordTurnStopped)
+	state, detail, errorDetails := discordFailureProjection(context.Background(), nil, uuid.Nil,
+		errDiscordTurnStopped)
 	require.Equal(t, discordintegration.ConversationCanceled, state)
 	require.Contains(t, detail, "主动停止")
+	require.Nil(t, errorDetails)
 	require.False(t, needsCleanupInterrupt(errDiscordTurnStopped))
 	require.False(t, needsCleanupInterrupt(fmt.Errorf("包装停止错误: %w", errDiscordTurnStopped)))
+	require.False(t, needsCleanupInterrupt(&workerprotocol.CodexTurnError{Message: "failed"}))
+	require.True(t, needsCleanupInterrupt(&workerprotocol.CodexTurnError{
+		Message: "retrying", WillRetry: true,
+	}))
 	require.True(t, needsCleanupInterrupt(errors.New("stdio 中断")))
 
-	state, detail = discordFailureProjection(context.Background(), nil, uuid.Nil, errors.New("runtime failed"))
+	state, detail, errorDetails = discordFailureProjection(context.Background(), nil, uuid.Nil,
+		errors.New("runtime failed"))
 	require.Equal(t, discordintegration.ConversationFailed, state)
 	require.Equal(t, "本轮处理未完成。", detail)
+	require.Nil(t, errorDetails)
 }
 
 func TestDiscordStopSurvivesHeartbeatCancellationRace(t *testing.T) {

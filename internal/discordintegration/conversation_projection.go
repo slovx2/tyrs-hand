@@ -32,7 +32,7 @@ func SanitizeDiscordResult(value string) string {
 
 func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadID string,
 	conversationID uuid.UUID, inputMessageID string, runID uuid.UUID,
-	state ConversationProgress, detail string,
+	state ConversationProgress, detail string, errorDetails ...*ComponentErrorPayload,
 ) error {
 	rawRunID := ""
 	mode := "default"
@@ -71,9 +71,12 @@ func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadI
 		return err
 	}
 	page := len(timeline.Pages) - 1
-	card := conversationProgressCard(state, timeline, page, rawRunID, mode)
+	card := conversationProgressCard(state, timeline, page, rawRunID, mode, errorDetails...)
 	progress := conversationProgressPayload{FormatVersion: conversationProgressFormatVersion,
 		RunID: rawRunID, State: state, Summary: detail, Page: page, CollaborationMode: mode}
+	if len(errorDetails) > 0 {
+		progress.Error = errorDetails[0]
+	}
 	var resourceID, messageID string
 	err = tx.QueryRowContext(ctx, `INSERT INTO discord_projections
 		(guild_id, projection_key, resource_id, desired_payload)
@@ -591,12 +594,13 @@ func conversationReplyPayload(threadID, content, mentionUserID string) map[strin
 }
 
 type conversationProgressPayload struct {
-	FormatVersion     int                  `json:"formatVersion"`
-	RunID             string               `json:"runId,omitempty"`
-	State             ConversationProgress `json:"state"`
-	Summary           string               `json:"summary"`
-	Page              int                  `json:"page"`
-	CollaborationMode string               `json:"collaborationMode"`
+	FormatVersion     int                    `json:"formatVersion"`
+	RunID             string                 `json:"runId,omitempty"`
+	State             ConversationProgress   `json:"state"`
+	Summary           string                 `json:"summary"`
+	Page              int                    `json:"page"`
+	CollaborationMode string                 `json:"collaborationMode"`
+	Error             *ComponentErrorPayload `json:"error,omitempty"`
 }
 
 const conversationProgressFormatVersion = 5
@@ -689,6 +693,16 @@ func ReconcileConversationProgressCards(ctx context.Context, db *sql.DB, guildID
 							OR
 							(run.status = 'failed'
 								AND COALESCE(desired_payload->'progress'->>'state','') <> 'failed')
+							OR
+							(run.status = 'failed'
+								AND COALESCE(desired_payload->'progress'->>'state','') = 'failed'
+								AND NOT (desired_payload->'progress' ? 'error')
+								AND (run.codex_error IS NOT NULL OR EXISTS (
+									SELECT 1 FROM agent_events event
+									JOIN codex_turn_runs event_run ON event_run.id=event.run_id
+									WHERE event_run.primary_intent_id=run.primary_intent_id
+										AND event.event_type = 'error'
+										AND event.payload->>'willRetry' = 'false')))
 						)
 				)
 			)
@@ -740,8 +754,10 @@ func reconcileConversationProgressCard(ctx context.Context, db *sql.DB, guildID,
 		}
 		runID = parsed
 		var runStatus, mode string
-		err = db.QueryRowContext(ctx, `SELECT status, collaboration_mode FROM codex_turn_runs WHERE id = $1`,
-			runID).Scan(&runStatus, &mode)
+		var codexErrorJSON []byte
+		err = db.QueryRowContext(ctx, `SELECT status, collaboration_mode, codex_error
+			FROM codex_turn_runs WHERE id = $1`, runID).
+			Scan(&runStatus, &mode, &codexErrorJSON)
 		if errors.Is(err, sql.ErrNoRows) {
 			runID = uuid.Nil
 		} else if err != nil {
@@ -749,6 +765,9 @@ func reconcileConversationProgressCard(ctx context.Context, db *sql.DB, guildID,
 		}
 		if runID != uuid.Nil {
 			desired.Progress.CollaborationMode = mode
+		}
+		if runStatus == "failed" && desired.Progress.Error == nil {
+			desired.Progress.Error = codexErrorFromStoredOrEvent(ctx, db, runID, codexErrorJSON)
 		}
 		switch runStatus {
 		case "canceled":
@@ -793,7 +812,7 @@ func reconcileConversationProgressCard(ctx context.Context, db *sql.DB, guildID,
 	desired.Progress.FormatVersion = conversationProgressFormatVersion
 	desired.Progress.Page = len(timeline.Pages) - 1
 	card := conversationProgressCard(desired.Progress.State, timeline, desired.Progress.Page,
-		desired.Progress.RunID, desired.Progress.CollaborationMode)
+		desired.Progress.RunID, desired.Progress.CollaborationMode, desired.Progress.Error)
 	payload := map[string]any{"channelId": resourceID, "card": card,
 		"progress": desired.Progress}
 	operation, nonce := "message.create", "conversation-progress-reconcile-"+projectionKey
@@ -818,6 +837,44 @@ func reconcileConversationProgressCard(ctx context.Context, db *sql.DB, guildID,
 		return err
 	}
 	return tx.Commit()
+}
+
+func codexErrorFromStoredOrEvent(ctx context.Context, db conversationQueryer,
+	runID uuid.UUID, stored []byte,
+) *ComponentErrorPayload {
+	if len(stored) > 0 && string(stored) != "null" {
+		var value ComponentErrorPayload
+		if json.Unmarshal(stored, &value) == nil && value.Message != "" {
+			return &value
+		}
+	}
+	var raw []byte
+	err := db.QueryRowContext(ctx, `SELECT event.payload FROM agent_events event
+		JOIN codex_turn_runs event_run ON event_run.id=event.run_id
+		JOIN codex_turn_runs current_run ON current_run.id=$1
+			AND current_run.primary_intent_id=event_run.primary_intent_id
+		WHERE event.event_type='error' AND event.payload->>'willRetry'='false'
+		ORDER BY event.id DESC LIMIT 1`, runID).Scan(&raw)
+	if err != nil {
+		return nil
+	}
+	var event struct {
+		Error ComponentErrorPayload `json:"error"`
+	}
+	if json.Unmarshal(raw, &event) != nil || event.Error.Message == "" {
+		return nil
+	}
+	var metadata struct {
+		WillRetry bool   `json:"willRetry"`
+		ThreadID  string `json:"threadId"`
+		TurnID    string `json:"turnId"`
+	}
+	if json.Unmarshal(raw, &metadata) == nil {
+		event.Error.WillRetry = metadata.WillRetry
+		event.Error.ThreadID = metadata.ThreadID
+		event.Error.TurnID = metadata.TurnID
+	}
+	return &event.Error
 }
 
 func progressButtonID(action, runID string, page int) string {
