@@ -630,7 +630,8 @@ func (c *desktopRelayController) observeDesktopTurn(call codexrelay.Call,
 	}
 	ctx := c.processor.environments.ctx
 	requestKey := desktopRequestKey(call.Method, call.Params, result)
-	images, imageNotice, imageErr := desktopImagesFromTurn(call.Params)
+	images, imageNotice, imageErr := desktopImagesFromTurn(ctx, call.Params,
+		c.openDesktopImage)
 	if imageErr != nil {
 		c.processor.logger.Warn("读取 Desktop 图片失败，继续投影文本",
 			zap.String("request_key", requestKey), zap.Error(imageErr))
@@ -694,7 +695,11 @@ func (c *desktopRelayController) observeDesktopTurn(call codexrelay.Call,
 	c.finishDesktopTurn(ctx, &task, reporter, resultValue, err)
 }
 
-func desktopImagesFromTurn(params json.RawMessage) ([]workerprotocol.DesktopImage, string, error) {
+type desktopImageOpener func(context.Context, string) (io.ReadCloser, int64, error)
+
+func desktopImagesFromTurn(ctx context.Context, params json.RawMessage,
+	open desktopImageOpener,
+) ([]workerprotocol.DesktopImage, string, error) {
 	var value struct {
 		Input []struct {
 			Type string `json:"type"`
@@ -723,17 +728,13 @@ func desktopImagesFromTurn(params json.RawMessage) ([]workerprotocol.DesktopImag
 		seen[path] = struct{}{}
 		filename := filepath.Base(path)
 		image := workerprotocol.DesktopImage{Filename: filename}
-		info, err := os.Lstat(path)
-		if err != nil || !filepath.IsAbs(path) || !info.Mode().IsRegular() || info.Size() <= 0 ||
-			info.Size() > workerprotocol.DesktopImageFileLimit ||
-			total+info.Size() > workerprotocol.DesktopImageTotalLimit {
+		file, size, err := open(ctx, path)
+		if err != nil || size <= 0 || size > workerprotocol.DesktopImageFileLimit ||
+			total+size > workerprotocol.DesktopImageTotalLimit {
+			if file != nil {
+				_ = file.Close()
+			}
 			image.Error = "文件不存在、不是普通文件或超过大小限制"
-			images = append(images, image)
-			continue
-		}
-		file, err := os.Open(path)
-		if err != nil {
-			image.Error = "无法打开文件"
 			images = append(images, image)
 			continue
 		}
@@ -745,7 +746,7 @@ func desktopImagesFromTurn(params json.RawMessage) ([]workerprotocol.DesktopImag
 			workerprotocol.DesktopImageFileLimit+1-int64(n)))
 		closeErr := file.Close()
 		if (readErr != nil && !errors.Is(readErr, io.EOF)) || copyErr != nil || closeErr != nil ||
-			int64(n)+copied != info.Size() {
+			int64(n)+copied != size {
 			image.Error = "读取文件失败"
 			images = append(images, image)
 			continue
@@ -756,10 +757,10 @@ func desktopImagesFromTurn(params json.RawMessage) ([]workerprotocol.DesktopImag
 			images = append(images, image)
 			continue
 		}
-		image.MediaType, image.Size = mediaType, info.Size()
+		image.MediaType, image.Size = mediaType, size
 		image.SHA256, image.SourcePath = fmt.Sprintf("%x", digest.Sum(nil)), path
 		images = append(images, image)
-		total += info.Size()
+		total += size
 	}
 	notice := ""
 	if skipped > 0 {
@@ -767,6 +768,30 @@ func desktopImagesFromTurn(params json.RawMessage) ([]workerprotocol.DesktopImag
 			workerprotocol.DesktopImageCountLimit)
 	}
 	return images, notice, nil
+}
+
+func openLocalDesktopImage(_ context.Context, source string) (io.ReadCloser, int64, error) {
+	path := filepath.Clean(strings.TrimSpace(source))
+	info, err := os.Lstat(path)
+	if err != nil || !filepath.IsAbs(path) || !info.Mode().IsRegular() {
+		return nil, 0, errors.New("图片不是本地普通文件")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, 0, err
+	}
+	return file, info.Size(), nil
+}
+
+func (c *desktopRelayController) openDesktopImage(ctx context.Context,
+	source string,
+) (io.ReadCloser, int64, error) {
+	if c.processor == nil || c.processor.development == nil || c.environment == nil ||
+		c.environment.runtime.Container == "" {
+		return openLocalDesktopImage(ctx, source)
+	}
+	return c.processor.development.OpenCodexAttachment(ctx, c.environment.runtime, source,
+		workerprotocol.DesktopImageFileLimit)
 }
 
 func desktopImageTypeMatches(filename, mediaType string) bool {
@@ -824,8 +849,21 @@ func (c *desktopRelayController) syncDesktopImages(task *workerprotocol.Task,
 		var uploadErr error
 		for attempt := 0; attempt < 3; attempt++ {
 			requestCtx, requestCancel := context.WithTimeout(ctx, c.controlTimeout())
-			_, uploadErr = c.processor.client.UploadDesktopImage(requestCtx,
-				task.Claimed.ID, ordinal, image, attempt == 2)
+			var source io.ReadCloser
+			var size int64
+			source, size, uploadErr = c.openDesktopImage(requestCtx, image.SourcePath)
+			if uploadErr == nil && size != image.Size {
+				uploadErr = errors.New("desktop 图片在上传前发生变化")
+			}
+			if uploadErr == nil {
+				_, uploadErr = c.processor.client.UploadDesktopImageReader(requestCtx,
+					task.Claimed.ID, ordinal, image, attempt == 2, source)
+			}
+			if source != nil {
+				if closeErr := source.Close(); uploadErr == nil {
+					uploadErr = closeErr
+				}
+			}
 			requestCancel()
 			if uploadErr == nil {
 				break

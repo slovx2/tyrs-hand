@@ -37,6 +37,7 @@ services:
       - ${TYRS_HAND_DOCKER_GID:?请设置宿主 Docker Socket 的数字 GID}
     volumes:
       - worker-data:/data/worker
+      # 管理开发容器，并从其 Codex attachments 目录一次性流式读取 Desktop 图片。
       - type: bind
         source: /var/run/docker.sock
         target: /var/run/docker.sock

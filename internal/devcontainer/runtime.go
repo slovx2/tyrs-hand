@@ -160,6 +160,49 @@ func (m *Manager) ContainerIP(ctx context.Context, runtime Runtime) (string, err
 	return "", errors.New("开发容器没有可用的 IPv4 地址")
 }
 
+// OpenCodexAttachment 只从当前开发容器的 Codex 附件目录打开普通文件。
+func (m *Manager) OpenCodexAttachment(ctx context.Context, runtime Runtime,
+	source string, maxSize int64,
+) (io.ReadCloser, int64, error) {
+	clean := filepath.ToSlash(filepath.Clean(strings.TrimSpace(source)))
+	root := strings.TrimSuffix(filepath.ToSlash(filepath.Clean(runtime.CodexHome)), "/") +
+		"/attachments"
+	if runtime.Container == "" || root == "/attachments" || !filepath.IsAbs(clean) ||
+		!strings.HasPrefix(clean, root+"/") {
+		return nil, 0, errors.New("图片不在当前 Codex 附件目录")
+	}
+	resolved, err := m.docker(ctx, "exec", runtime.Container, "realpath", "-e", "--", clean)
+	if err != nil || strings.TrimSpace(resolved) != clean {
+		return nil, 0, errors.New("图片不存在或包含符号链接")
+	}
+	metadata, err := m.docker(ctx, "exec", runtime.Container, "stat", "-c", "%F:%s", "--", clean)
+	if err != nil {
+		return nil, 0, err
+	}
+	parts := strings.Split(strings.TrimSpace(metadata), ":")
+	if len(parts) != 2 || parts[0] != "regular file" {
+		return nil, 0, errors.New("图片不是普通文件")
+	}
+	size, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || size <= 0 || size > maxSize {
+		return nil, 0, errors.New("图片大小超过限制")
+	}
+	runner, ok := m.runner.(commandStreamRunner)
+	if !ok {
+		return nil, 0, errors.New("docker 命令执行器不支持流式读取")
+	}
+	environment := []string(nil)
+	if m.dockerHost != "inherit" {
+		environment = []string{"DOCKER_HOST=" + m.dockerHost}
+	}
+	reader, err := runner.Open(ctx, environment, "", m.dockerBin, "exec",
+		runtime.Container, "cat", "--", clean)
+	if err != nil {
+		return nil, 0, err
+	}
+	return reader, size, nil
+}
+
 func (m *Manager) ExportWorkspaceFile(ctx context.Context, runtime Runtime,
 	source, target string,
 ) error {

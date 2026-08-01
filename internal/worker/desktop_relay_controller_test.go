@@ -99,7 +99,8 @@ func TestDesktopImagesFromTurnValidatesAndDeduplicatesLocalImages(t *testing.T) 
 	}})
 	require.NoError(t, err)
 
-	images, notice, err := desktopImagesFromTurn(params)
+	images, notice, err := desktopImagesFromTurn(context.Background(), params,
+		openLocalDesktopImage)
 
 	require.NoError(t, err)
 	require.Empty(t, notice)

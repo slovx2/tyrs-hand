@@ -3,6 +3,7 @@ package devcontainer
 import (
 	"context"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 
@@ -19,6 +20,32 @@ type scriptedCommandRunner struct {
 	results    []scriptedCommandResult
 	commands   [][]string
 	nextResult int
+	stream     io.ReadCloser
+	streamErr  error
+	openCalls  [][]string
+	openEnv    [][]string
+}
+
+type runOnlyCommandRunner struct{ delegate *scriptedCommandRunner }
+
+func (r runOnlyCommandRunner) Run(ctx context.Context, environment []string, directory string,
+	arguments ...string,
+) (string, error) {
+	return r.delegate.Run(ctx, environment, directory, arguments...)
+}
+
+func (r *scriptedCommandRunner) Open(_ context.Context, environment []string, _ string,
+	arguments ...string,
+) (io.ReadCloser, error) {
+	r.openCalls = append(r.openCalls, append([]string(nil), arguments...))
+	r.openEnv = append(r.openEnv, append([]string(nil), environment...))
+	if r.streamErr != nil {
+		return nil, r.streamErr
+	}
+	if r.stream == nil {
+		return nil, errors.New("未配置流式结果")
+	}
+	return r.stream, nil
 }
 
 func (r *scriptedCommandRunner) Run(_ context.Context, _ []string, _ string,
@@ -58,6 +85,79 @@ func TestContainerIPHandlesInspectResults(t *testing.T) {
 		_, err := manager.ContainerIP(context.Background(), runtime)
 		require.ErrorContains(t, err, "没有可用的 IPv4")
 	})
+}
+
+func TestOpenCodexAttachmentStreamsOnlyManagedRegularFiles(t *testing.T) {
+	const source = "/var/lib/tyrs-hand/codex/attachments/id/shot.png"
+	runtime := Runtime{Container: "dev-1", CodexHome: "/var/lib/tyrs-hand/codex"}
+	t.Run("流式读取", func(t *testing.T) {
+		manager, runner := browserRuntimeManager(t,
+			scriptedCommandResult{output: source},
+			scriptedCommandResult{output: "regular file:7"})
+		runner.stream = io.NopCloser(strings.NewReader("content"))
+		reader, size, err := manager.OpenCodexAttachment(context.Background(), runtime,
+			source, 10)
+		require.NoError(t, err)
+		require.Equal(t, int64(7), size)
+		content, err := io.ReadAll(reader)
+		require.NoError(t, err)
+		require.NoError(t, reader.Close())
+		require.Equal(t, "content", string(content))
+		require.Len(t, runner.openCalls, 1)
+		require.Contains(t, strings.Join(runner.openCalls[0], " "),
+			"exec dev-1 cat -- "+source)
+	})
+	t.Run("拒绝目录外路径", func(t *testing.T) {
+		manager, runner := browserRuntimeManager(t)
+		_, _, err := manager.OpenCodexAttachment(context.Background(), runtime,
+			"/etc/passwd", 10)
+		require.ErrorContains(t, err, "不在当前 Codex 附件目录")
+		require.Empty(t, runner.commands)
+	})
+	t.Run("拒绝符号链接", func(t *testing.T) {
+		manager, _ := browserRuntimeManager(t,
+			scriptedCommandResult{output: "/var/lib/tyrs-hand/codex/attachments/other.png"})
+		_, _, err := manager.OpenCodexAttachment(context.Background(), runtime, source, 10)
+		require.ErrorContains(t, err, "包含符号链接")
+	})
+	t.Run("返回 stat 错误", func(t *testing.T) {
+		manager, _ := browserRuntimeManager(t, scriptedCommandResult{output: source},
+			scriptedCommandResult{err: errors.New("stat failed")})
+		_, _, err := manager.OpenCodexAttachment(context.Background(), runtime, source, 10)
+		require.ErrorContains(t, err, "stat failed")
+	})
+	t.Run("返回流式命令错误", func(t *testing.T) {
+		manager, runner := browserRuntimeManager(t, scriptedCommandResult{output: source},
+			scriptedCommandResult{output: "regular file:7"})
+		manager.dockerHost = "unix:///run/docker.sock"
+		runner.streamErr = errors.New("stream failed")
+		_, _, err := manager.OpenCodexAttachment(context.Background(), runtime, source, 10)
+		require.ErrorContains(t, err, "stream failed")
+		require.Equal(t, []string{"DOCKER_HOST=unix:///run/docker.sock"}, runner.openEnv[0])
+	})
+	t.Run("拒绝不支持流式读取的命令执行器", func(t *testing.T) {
+		manager, runner := browserRuntimeManager(t, scriptedCommandResult{output: source},
+			scriptedCommandResult{output: "regular file:7"})
+		manager.runner = runOnlyCommandRunner{delegate: runner}
+		_, _, err := manager.OpenCodexAttachment(context.Background(), runtime, source, 10)
+		require.ErrorContains(t, err, "不支持流式读取")
+	})
+	for _, metadata := range []string{"directory:7", "regular file:0", "regular file:11"} {
+		metadata := metadata
+		t.Run("拒绝元数据_"+strings.ReplaceAll(metadata, ":", "_"), func(t *testing.T) {
+			manager, _ := browserRuntimeManager(t,
+				scriptedCommandResult{output: source}, scriptedCommandResult{output: metadata})
+			_, _, err := manager.OpenCodexAttachment(context.Background(), runtime, source, 10)
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestCopyToRuntimePropagatesPrepareError(t *testing.T) {
+	manager, _ := browserRuntimeManager(t, scriptedCommandResult{err: errors.New("mkdir failed")})
+	err := manager.CopyToRuntime(context.Background(), Runtime{Container: "dev-1"},
+		"/source", "/target")
+	require.ErrorContains(t, err, "mkdir failed")
 }
 
 func TestExportWorkspaceFileValidatesEveryBoundary(t *testing.T) {

@@ -143,7 +143,7 @@ TYRS_HAND_WEBHOOK_HTTP_ADDR=:8081
 
 Discord 开发环境由带 `discord` 角色的执行节点管理。同一个节点可以同时承担 GitHub 和 Discord 任务；开发环境创建时会冻结当时的默认节点，后续 Project、Forum、Conversation 和 Codex Control 都沿用该节点。
 
-只有启用 Discord 开发容器的 Worker 挂载宿主 Docker Socket，Socket 不会进入 Agent 所在的开发容器。部署前将 Worker 宿主 `/var/run/docker.sock` 的数字 GID 写入 Worker `.env` 的 `TYRS_HAND_DOCKER_GID`。Linux 可使用 `stat -c '%g' /var/run/docker.sock` 查询，然后使用独立 Compose 启动：
+只有启用 Discord 开发容器的 Worker 挂载宿主 Docker Socket，Socket 不会进入 Agent 所在的开发容器。Worker 同时通过该 Socket 从受管容器的 `CODEX_HOME/attachments/` 读取 Desktop 图片，并一次性流经 Control 上传到 Discord；不需要共享附件卷，Control 不保存图片副本。部署前将 Worker 宿主 `/var/run/docker.sock` 的数字 GID 写入 Worker `.env` 的 `TYRS_HAND_DOCKER_GID`。Linux 可使用 `stat -c '%g' /var/run/docker.sock` 查询，然后使用独立 Compose 启动：
 
 ```bash
 docker compose -f compose.worker.yaml up -d worker

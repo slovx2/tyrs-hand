@@ -3,7 +3,9 @@ package devcontainer
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -52,9 +54,34 @@ func TestExecRunnerAndAskPass(t *testing.T) {
 	_, err = runner.Run(context.Background(), nil, directory, "sh", "-c", "printf failed; exit 9")
 	require.ErrorContains(t, err, "failed")
 
+	_, err = runner.Open(context.Background(), nil, "")
+	require.ErrorContains(t, err, "不能为空")
+	stream, err := runner.Open(context.Background(), []string{"TEST_VALUE=streamed"}, directory,
+		"sh", "-c", "printf '%s:%s' \"$TEST_VALUE\" \"$PWD\"")
+	require.NoError(t, err)
+	data, err := io.ReadAll(stream)
+	require.NoError(t, err)
+	require.Equal(t, "streamed:"+resolvedDirectory, string(data))
+	require.NoError(t, stream.Close())
+	require.NoError(t, stream.Close())
+
+	stream, err = runner.Open(context.Background(), nil, directory, "sh", "-c",
+		"printf partial; printf detail >&2; exit 9")
+	require.NoError(t, err)
+	data, err = io.ReadAll(stream)
+	require.NoError(t, err)
+	require.Equal(t, "partial", string(data))
+	require.ErrorContains(t, stream.Close(), "detail")
+	require.ErrorContains(t, stream.Close(), "detail")
+	_, err = runner.Open(context.Background(), nil, directory, "tyrs-hand-command-does-not-exist")
+	require.Error(t, err)
+	process := &dockerProcess{command: exec.Command("true")}
+	require.ErrorIs(t, process.Signal(os.Interrupt), os.ErrProcessDone)
+	require.ErrorIs(t, process.Kill(), os.ErrProcessDone)
+
 	path, cleanup, err := createAskPass("secret")
 	require.NoError(t, err)
-	data, err := os.ReadFile(path)
+	data, err = os.ReadFile(path)
 	require.NoError(t, err)
 	require.Contains(t, string(data), "TYRS_GIT_TOKEN")
 	info, err := os.Stat(path)

@@ -153,6 +153,7 @@ TYRS_HAND_BROWSER_MCP_URL=http://host.docker.internal:8931/mcp
 
 当前 `compose.worker.yaml` 还包含这些能力所需的宿主集成，部署时不要遗漏：
 
+- 挂载 `/var/run/docker.sock`，供 Worker 管理受管开发容器，并从容器内 `CODEX_HOME/attachments/` 一次性流式读取 Desktop 图片。
 - 把 `/opt/tyrs-hand/ssh-agent` 挂载到 Worker 的 `/run/tyrs-hand-ssh-agent`。
 - 把 `/opt/tyrs-hand/browser-files` 挂载到 `/run/tyrs-hand-browser-files`。
 - 把 `/opt/tyrs-hand/browser/browser_mcp_token` 只读挂载到 `/run/tyrs-hand-browser/browser_mcp_token`。
@@ -182,7 +183,7 @@ docker compose -f compose.worker.yaml ps
 docker compose -f compose.worker.yaml up -d --force-recreate worker
 ```
 
-Worker 不应配置 PostgreSQL、Redis、Control 主密钥、Discord Bot Token 或 Provider API Key；运行所需凭据由 Control 按 Run 限定下发。Discord 角色需要 Docker Socket 来管理开发容器；只承担 GitHub 角色的节点可以移除该挂载并关闭开发容器能力。
+Worker 不应配置 PostgreSQL、Redis、Control 主密钥、Discord Bot Token 或 Provider API Key；运行所需凭据由 Control 按 Run 限定下发。Discord 角色需要启用开发容器并挂载 Docker Socket，既用于管理容器，也用于读取 Codex Desktop 附件；只承担 GitHub 角色的节点可以移除该挂载并关闭开发容器能力。附件从开发容器直接流经 Worker 和 Control 上传到 Discord，不需要给 Worker 或 Control 挂载共享附件目录，Control 也不会保存图片副本。
 
 ## 9. 配置 Codex Desktop 入站 SSH
 

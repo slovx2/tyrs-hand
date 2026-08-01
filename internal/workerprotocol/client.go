@@ -247,6 +247,13 @@ func (c *Client) UploadDesktopImage(ctx context.Context, intentID uuid.UUID,
 		return result, err
 	}
 	defer func() { _ = file.Close() }()
+	return c.UploadDesktopImageReader(ctx, intentID, ordinal, image, finalAttempt, file)
+}
+
+func (c *Client) UploadDesktopImageReader(ctx context.Context, intentID uuid.UUID,
+	ordinal int, image DesktopImage, finalAttempt bool, source io.Reader,
+) (DesktopImageUploadResult, error) {
+	var result DesktopImageUploadResult
 	reader, writer := io.Pipe()
 	multipartWriter := multipart.NewWriter(writer)
 	writeResult := make(chan error, 1)
@@ -263,7 +270,7 @@ func (c *Client) UploadDesktopImage(ctx context.Context, intentID uuid.UUID,
 			var part io.Writer
 			part, marshalErr = multipartWriter.CreateFormFile("file", image.Filename)
 			if marshalErr == nil {
-				_, marshalErr = io.Copy(part, file)
+				_, marshalErr = io.Copy(part, source)
 			}
 		}
 		if closeErr := multipartWriter.Close(); marshalErr == nil {
