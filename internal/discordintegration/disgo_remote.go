@@ -684,36 +684,32 @@ func (r *DisgoRemote) UploadDesktopImage(ctx context.Context, channelID, message
 	if err != nil {
 		return "", err
 	}
-	for _, attachment := range current.Attachments {
-		if attachment.Filename == filename {
-			if err := r.UpdateDesktopCard(ctx, channelID, messageID, card); err != nil {
-				return "", err
-			}
-			return attachment.ID.String(), nil
+	if reference, ok := desktopImageReference(*current, filename); ok {
+		if err := r.UpdateDesktopCard(ctx, channelID, messageID, card); err != nil {
+			return "", err
 		}
+		return reference.AttachmentID, nil
 	}
 	if _, err := discordCardComponents(card); err != nil {
 		return "", err
 	}
 	attachmentID, err := r.patchDesktopImage(ctx, channelID, messageID,
-		current.Attachments, card, filename, description, source)
+		*current, card, filename, description, source)
 	if err == nil && attachmentID != "" {
 		if err := r.UpdateDesktopCard(ctx, channelID, messageID, card); err != nil {
 			return "", err
 		}
 		return attachmentID, nil
 	}
-	// Discord 的 multipart PATCH 可能返回成功但省略 attachments；
-	// 重新读取消息，按确定性文件名对账，避免把已上传的附件误判为失败。
+	// Discord 的 Components V2 图片不出现在顶层 attachments；重新读取消息，
+	// 同时检查 Media Gallery，避免把已上传的附件误判为失败。
 	reconciled, reconcileErr := r.rest.GetMessage(channel, message, disgorest.WithCtx(ctx))
 	if reconcileErr == nil {
-		for _, attachment := range reconciled.Attachments {
-			if attachment.Filename == filename {
-				if err := r.UpdateDesktopCard(ctx, channelID, messageID, card); err != nil {
-					return "", err
-				}
-				return attachment.ID.String(), nil
+		if reference, ok := desktopImageReference(*reconciled, filename); ok {
+			if err := r.UpdateDesktopCard(ctx, channelID, messageID, card); err != nil {
+				return "", err
 			}
+			return reference.AttachmentID, nil
 		}
 	}
 	if err != nil {
@@ -737,11 +733,9 @@ type desktopImageMessagePayload struct {
 	Components  []discord.LayoutComponent       `json:"components"`
 }
 
-type desktopImageUploadResponse struct {
-	Attachments []struct {
-		ID       snowflake.ID `json:"id"`
-		Filename string       `json:"filename"`
-	} `json:"attachments"`
+type componentMediaReference struct {
+	URL          string
+	AttachmentID string
 }
 
 type desktopImageSizedReader interface {
@@ -753,18 +747,18 @@ type desktopImageFinalizingReader interface {
 }
 
 func (r *DisgoRemote) patchDesktopImage(ctx context.Context, channelID, messageID string,
-	existing []discord.Attachment, card ComponentCardPayload,
+	current discord.Message, card ComponentCardPayload,
 	filename, description string, source io.Reader,
 ) (string, error) {
-	attachments := make([]desktopImageAttachmentPayload, 0, len(existing)+1)
-	for _, attachment := range existing {
+	attachments := make([]desktopImageAttachmentPayload, 0, len(current.Attachments)+1)
+	for _, attachment := range current.Attachments {
 		attachments = append(attachments, desktopImageAttachmentPayload{ID: attachment.ID})
 	}
 	// 新文件的名称由 multipart 文件 part 提供；payload 只声明新附件序号和描述。
 	// Discord multipart 新附件沿用 DisGo 的整数索引格式。
 	attachments = append(attachments, desktopImageAttachmentPayload{ID: 0,
 		Description: description})
-	components, err := discordCardComponents(card)
+	components, err := discordCardComponentsWithMedia(card, componentMediaReferences(current))
 	if err != nil {
 		return "", err
 	}
@@ -814,16 +808,14 @@ func (r *DisgoRemote) patchDesktopImage(ctx context.Context, channelID, messageI
 	if readErr != nil {
 		return "", fmt.Errorf("读取 Discord 图片上传响应失败: %w", readErr)
 	}
-	var result desktopImageUploadResponse
+	var result discord.Message
 	if len(bytes.TrimSpace(responseBody)) > 0 {
 		if err := json.Unmarshal(responseBody, &result); err != nil {
 			return "", fmt.Errorf("解析 Discord 图片上传响应失败: %w", err)
 		}
 	}
-	for _, attachment := range result.Attachments {
-		if attachment.Filename == filename {
-			return attachment.ID.String(), nil
-		}
+	if reference, ok := desktopImageReference(result, filename); ok {
+		return reference.AttachmentID, nil
 	}
 	requestID := response.Header.Get("X-RateLimit-Global")
 	if requestID == "" {
@@ -831,6 +823,72 @@ func (r *DisgoRemote) patchDesktopImage(ctx context.Context, channelID, messageI
 	}
 	return "", fmt.Errorf("discord 图片上传响应缺少附件（HTTP %d，附件数=%d，请求标识=%q）",
 		response.StatusCode, len(result.Attachments), requestID)
+}
+
+func componentMediaReferences(message discord.Message) map[string]componentMediaReference {
+	references := make(map[string]componentMediaReference)
+	for _, attachment := range message.Attachments {
+		if attachment.Filename == "" || attachment.ID == 0 {
+			continue
+		}
+		references[attachment.Filename] = componentMediaReference{
+			URL: attachment.URL, AttachmentID: attachment.ID.String(),
+		}
+	}
+	for component := range message.AllComponents() {
+		gallery, ok := component.(discord.MediaGalleryComponent)
+		if !ok {
+			continue
+		}
+		for _, item := range gallery.Items {
+			filename := componentMediaFilename(item.Media.URL)
+			attachmentID := item.Media.AttachmentID.String()
+			if item.Media.AttachmentID == 0 {
+				attachmentID = componentMediaAttachmentID(item.Media.URL)
+			}
+			if filename == "" || attachmentID == "" {
+				continue
+			}
+			references[filename] = componentMediaReference{
+				URL: item.Media.URL, AttachmentID: attachmentID,
+			}
+		}
+	}
+	return references
+}
+
+func desktopImageReference(message discord.Message, filename string) (componentMediaReference, bool) {
+	reference, ok := componentMediaReferences(message)[filename]
+	return reference, ok
+}
+
+func componentMediaFilename(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return ""
+	}
+	filename, err := url.PathUnescape(filepath.Base(parsed.Path))
+	if err != nil || filename == "." || filename == "/" || filename == "" {
+		return ""
+	}
+	return filename
+}
+
+func componentMediaAttachmentID(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return ""
+	}
+	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	for index := 0; index+3 < len(segments); index++ {
+		if segments[index] != "attachments" {
+			continue
+		}
+		if id, parseErr := snowflake.Parse(segments[index+2]); parseErr == nil {
+			return id.String()
+		}
+	}
+	return ""
 }
 
 func desktopImageMultipartPrefix(payload []byte, filename string) ([]byte, []byte, string, error) {
@@ -876,7 +934,15 @@ func (r *DisgoRemote) UpdateDesktopCard(ctx context.Context, channelID, messageI
 	if err != nil {
 		return err
 	}
-	components, err := discordCardComponents(card)
+	resolvedMedia := map[string]componentMediaReference(nil)
+	if len(card.Media) > 0 {
+		current, getErr := r.rest.GetMessage(channel, message, disgorest.WithCtx(ctx))
+		if getErr != nil {
+			return getErr
+		}
+		resolvedMedia = componentMediaReferences(*current)
+	}
+	components, err := discordCardComponentsWithMedia(card, resolvedMedia)
 	if err != nil {
 		return err
 	}
@@ -892,6 +958,12 @@ func (r *DisgoRemote) UpdateDesktopCard(ctx context.Context, channelID, messageI
 func (r *DisgoRemote) Close(ctx context.Context) { r.rest.Close(ctx) }
 
 func discordCardComponents(card ComponentCardPayload) ([]discord.LayoutComponent, error) {
+	return discordCardComponentsWithMedia(card, nil)
+}
+
+func discordCardComponentsWithMedia(card ComponentCardPayload,
+	resolved map[string]componentMediaReference,
+) ([]discord.LayoutComponent, error) {
 	if card.AccentColor < 0 || card.AccentColor > 0xFFFFFF || strings.TrimSpace(card.Header) == "" {
 		return nil, fmt.Errorf("discord Components V2 卡片无效")
 	}
@@ -928,8 +1000,12 @@ func discordCardComponents(card ComponentCardPayload) ([]discord.LayoutComponent
 				return nil, fmt.Errorf("discord Media Gallery 文件名无效或重复")
 			}
 			seenMedia[filename] = true
+			mediaURL := "attachment://" + filename
+			if reference, ok := resolved[filename]; ok && reference.URL != "" {
+				mediaURL = reference.URL
+			}
 			items = append(items, discord.MediaGalleryItem{
-				Media:       discord.UnfurledMediaItem{URL: "attachment://" + filename},
+				Media:       discord.UnfurledMediaItem{URL: mediaURL},
 				Description: media.Description, Spoiler: media.Spoiler,
 			})
 		}

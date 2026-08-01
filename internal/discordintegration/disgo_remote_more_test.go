@@ -262,6 +262,8 @@ func TestDisgoRemoteRejectsMalformedRequestsBeforeNetworkWrites(t *testing.T) {
 
 func TestDisgoRemoteStreamsDesktopImageAndReconcilesByFilename(t *testing.T) {
 	const filename = "01-0123456789ab-shot.png"
+	const existingURL = "https://cdn.discordapp.com/attachments/20/30/existing.png"
+	const uploadedURL = "https://cdn.discordapp.com/attachments/20/31/01-0123456789ab-shot.png"
 	patches := 0
 	delivered := false
 	var uploadPayload, updatePayload map[string]any
@@ -272,13 +274,13 @@ func TestDisgoRemoteStreamsDesktopImageAndReconcilesByFilename(t *testing.T) {
 		response.Header().Set("Content-Type", "application/json")
 		switch request.Method + " " + request.URL.Path {
 		case "GET /channels/20/messages/21":
-			attachments := `[{"id":"30","filename":"existing.png"}]`
+			items := `[{"media":{"url":"` + existingURL + `","attachment_id":"30"}}]`
 			if delivered {
-				attachments = `[{"id":"30","filename":"existing.png"},` +
-					`{"id":"31","filename":"` + filename + `"}]`
+				items = `[{"media":{"url":"` + existingURL + `","attachment_id":"30"}},` +
+					`{"media":{"url":"` + uploadedURL + `","attachment_id":"31"}}]`
 			}
-			_, _ = response.Write([]byte(`{"id":"21","channel_id":"20","attachments":` +
-				attachments + `}`))
+			_, _ = response.Write([]byte(`{"id":"21","channel_id":"20","attachments":[],` +
+				`"components":[{"type":17,"components":[{"type":12,"items":` + items + `}]}]}`))
 		case "PATCH /channels/20/messages/21":
 			patches++
 			if strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
@@ -327,17 +329,18 @@ func TestDisgoRemoteStreamsDesktopImageAndReconcilesByFilename(t *testing.T) {
 	require.Equal(t, []byte("image-content"), uploaded)
 	require.Equal(t, 2, patches)
 	attachments := uploadPayload["attachments"].([]any)
-	require.Len(t, attachments, 2)
-	require.Equal(t, "30", attachments[0].(map[string]any)["id"])
-	require.Equal(t, float64(0), attachments[1].(map[string]any)["id"])
-	require.NotContains(t, attachments[1].(map[string]any), "filename")
-	require.Equal(t, "shot.png", attachments[1].(map[string]any)["description"])
+	require.Len(t, attachments, 1)
+	require.Equal(t, float64(0), attachments[0].(map[string]any)["id"])
+	require.NotContains(t, attachments[0].(map[string]any), "filename")
+	require.Equal(t, "shot.png", attachments[0].(map[string]any)["description"])
 	require.Equal(t, float64(discord.MessageFlagIsComponentsV2), uploadPayload["flags"])
-	require.Contains(t, uploadPayload, "components")
+	require.Equal(t, []string{existingURL, "attachment://" + filename},
+		desktopImageMediaURLs(t, uploadPayload))
 	container := updatePayload["components"].([]any)[0].(map[string]any)
 	components := container["components"].([]any)
 	require.Equal(t, float64(discord.ComponentTypeMediaGallery),
 		components[len(components)-1].(map[string]any)["type"])
+	require.Equal(t, []string{existingURL, uploadedURL}, desktopImageMediaURLs(t, updatePayload))
 	require.NoError(t, remote.UpdateDesktopCard(context.Background(), "20", "21", card))
 	require.Equal(t, 3, patches)
 
@@ -351,6 +354,7 @@ func TestDisgoRemoteStreamsDesktopImageAndReconcilesByFilename(t *testing.T) {
 func TestDisgoRemoteAcceptsDesktopImageAttachmentFromPatchResponse(t *testing.T) {
 	const filename = "01-0123456789ab-shot.png"
 	gets := 0
+	delivered := false
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
 		request *http.Request,
 	) {
@@ -358,12 +362,19 @@ func TestDisgoRemoteAcceptsDesktopImageAttachmentFromPatchResponse(t *testing.T)
 		switch request.Method + " " + request.URL.Path {
 		case "GET /channels/20/messages/21":
 			gets++
-			_, _ = response.Write([]byte(`{"id":"21","channel_id":"20","attachments":[]}`))
+			attachments := `[]`
+			if delivered {
+				attachments = `[{"id":"31","filename":"` + filename + `",` +
+					`"url":"https://cdn.discordapp.com/attachments/20/31/` + filename + `"}]`
+			}
+			_, _ = response.Write([]byte(`{"id":"21","channel_id":"20","attachments":` +
+				attachments + `}`))
 		case "PATCH /channels/20/messages/21":
 			if strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
 				_, _ = response.Write([]byte(`{"id":"21","channel_id":"20"}`))
 				return
 			}
+			delivered = true
 			reader, err := request.MultipartReader()
 			require.NoError(t, err)
 			for {
@@ -390,7 +401,108 @@ func TestDisgoRemoteAcceptsDesktopImageAttachmentFromPatchResponse(t *testing.T)
 
 	require.NoError(t, err)
 	require.Equal(t, "31", attachmentID)
-	require.Equal(t, 1, gets)
+	require.Equal(t, 2, gets)
+}
+
+func TestDisgoRemoteAcceptsDesktopImageFromGalleryPatchResponse(t *testing.T) {
+	const filename = "01-0123456789ab-shot.png"
+	const mediaURL = "https://cdn.discordapp.com/attachments/20/31/01-0123456789ab-shot.png"
+	gets := 0
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
+		request *http.Request,
+	) {
+		response.Header().Set("Content-Type", "application/json")
+		switch request.Method + " " + request.URL.Path {
+		case "GET /channels/20/messages/21":
+			gets++
+			items := `[]`
+			if gets > 1 {
+				items = `[{"media":{"url":"` + mediaURL + `","attachment_id":"31"}}]`
+			}
+			_, _ = response.Write([]byte(`{"id":"21","channel_id":"20","attachments":[],` +
+				`"components":[{"type":17,"components":[{"type":12,"items":` + items + `}]}]}`))
+		case "PATCH /channels/20/messages/21":
+			if strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
+				_, _ = response.Write([]byte(`{"id":"21","channel_id":"20"}`))
+				return
+			}
+			_, _ = response.Write([]byte(`{"id":"21","channel_id":"20","attachments":[],` +
+				`"components":[{"type":17,"components":[{"type":12,"items":[` +
+				`{"media":{"url":"` + mediaURL + `","attachment_id":"31"}}]}]}]}`))
+		default:
+			http.NotFound(response, request)
+		}
+	}))
+	t.Cleanup(server.Close)
+	remote := NewDisgoRemote("token", server.URL, server.Client())
+	t.Cleanup(func() { remote.Close(context.Background()) })
+	card := ComponentCardPayload{AccentColor: cardColorBlurple, Header: "Desktop",
+		Media: []ComponentMediaPayload{{Filename: filename, Description: "shot.png"}}}
+
+	attachmentID, err := remote.UploadDesktopImage(context.Background(), "20", "21", card,
+		filename, "shot.png", bytes.NewReader([]byte("image-content")))
+
+	require.NoError(t, err)
+	require.Equal(t, "31", attachmentID)
+	require.Equal(t, 2, gets)
+}
+
+func TestComponentMediaReferencesDerivesAttachmentIDFromCDNURL(t *testing.T) {
+	const mediaURL = "https://cdn.discordapp.com/attachments/20/31/image%20one.png?ex=1"
+	var message discord.Message
+	require.NoError(t, json.Unmarshal([]byte(`{"id":"21","channel_id":"20",`+
+		`"components":[{"type":17,"components":[{"type":12,"items":[`+
+		`{"media":{"url":"`+mediaURL+`"}}]}]}]}`), &message))
+
+	reference, ok := desktopImageReference(message, "image one.png")
+
+	require.True(t, ok)
+	require.Equal(t, "31", reference.AttachmentID)
+	require.Equal(t, mediaURL, reference.URL)
+}
+
+func TestComponentMediaReferencesIgnoreInvalidAttachmentsAndURLs(t *testing.T) {
+	message := discord.Message{
+		Attachments: []discord.Attachment{
+			{ID: 1},
+			{Filename: "missing-id.png"},
+		},
+		Components: []discord.LayoutComponent{
+			discord.NewTextDisplay("not a gallery"),
+			discord.NewMediaGallery(
+				discord.MediaGalleryItem{Media: discord.UnfurledMediaItem{
+					URL: "attachment://pending.png", AttachmentID: 31,
+				}},
+				discord.MediaGalleryItem{Media: discord.UnfurledMediaItem{
+					URL: "https://example.com/image.png",
+				}},
+			),
+		},
+	}
+
+	require.Empty(t, componentMediaReferences(message))
+	require.Empty(t, componentMediaFilename("%"))
+	require.Empty(t, componentMediaFilename("attachment://pending.png"))
+	require.Empty(t, componentMediaFilename("https://cdn.discordapp.com/"))
+	require.Empty(t, componentMediaAttachmentID("%"))
+	require.Empty(t, componentMediaAttachmentID("attachment://pending.png"))
+	require.Empty(t, componentMediaAttachmentID("https://example.com/image.png"))
+	require.Empty(t, componentMediaAttachmentID(
+		"https://cdn.discordapp.com/attachments/20/not-an-id/image.png"))
+}
+
+func desktopImageMediaURLs(t *testing.T, payload map[string]any) []string {
+	t.Helper()
+	container := payload["components"].([]any)[0].(map[string]any)
+	components := container["components"].([]any)
+	gallery := components[len(components)-1].(map[string]any)
+	items := gallery["items"].([]any)
+	urls := make([]string, 0, len(items))
+	for _, item := range items {
+		media := item.(map[string]any)["media"].(map[string]any)
+		urls = append(urls, media["url"].(string))
+	}
+	return urls
 }
 
 func TestDiscordCardComponentsRejectsInvalidMedia(t *testing.T) {
