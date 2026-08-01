@@ -194,6 +194,47 @@ func TestWorkerAPIPlacementLeaseEventsAndIdempotency(t *testing.T) {
 	require.Error(t, err, "禁用节点不能继续领取任务")
 }
 
+func TestWorkerAPICancelFinishesAcknowledgedSteer(t *testing.T) {
+	db := workerDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	server, endpoint := workerTestServer(t, db)
+	node, enrollment, err := server.nodes.Create(ctx, "cancel-steer", []string{"github"}, 1)
+	require.NoError(t, err)
+	_, credential, err := server.nodes.Enroll(ctx, enrollment)
+	require.NoError(t, err)
+	require.NoError(t, server.nodes.SetDefaults(ctx, executionnode.Defaults{GitHubNodeID: &node.ID}))
+	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
+
+	repositoryID, itemID, profileID := seedWorkerGitHubQueue(t, db, 91)
+	primaryIntent := enqueueWorkerIntent(t, db, repositoryID, itemID, profileID, "primary")
+	claimed, err := client.Claim(ctx, workerprotocol.ClaimRequest{
+		WorkerID: "cancel-steer-worker", Role: "github",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, claimed.Task)
+	require.Equal(t, primaryIntent, claimed.Task.Claimed.ID)
+	require.NoError(t, client.RecordSubmission(ctx, claimed.Task, "cancel-steer-turn"))
+	require.NoError(t, client.ConfirmTurn(ctx, claimed.Task, "cancel-steer-turn"))
+
+	steerIntent := enqueueWorkerIntent(t, db, repositoryID, itemID, profileID, "follow-up")
+	heartbeat, err := client.RunHeartbeat(ctx, claimed.Task)
+	require.NoError(t, err)
+	require.Len(t, heartbeat.Commands, 1)
+	require.Equal(t, steerIntent, heartbeat.Commands[0].ID)
+	require.NoError(t, client.AckCommand(ctx, claimed.Task, heartbeat.Commands[0],
+		"steer", "cancel-steer-turn"))
+	require.NoError(t, client.Fail(ctx, claimed.Task, "user_interrupt", errors.New("stopped")))
+
+	var primaryStatus, steerStatus string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM codex_turn_intents WHERE id=$1`,
+		primaryIntent).Scan(&primaryStatus))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM codex_turn_intents WHERE id=$1`,
+		steerIntent).Scan(&steerStatus))
+	require.Equal(t, "canceled", primaryStatus)
+	require.Equal(t, "canceled", steerStatus)
+}
+
 func TestWorkerAPIDiscordRuntimePreferencesFreeze(t *testing.T) {
 	db := workerDatabase(t)
 	ctx := context.Background()

@@ -576,6 +576,14 @@ func (r *Repository) Reconcile(ctx context.Context, claimed *ClaimedControl, cod
 		finished_at = CASE WHEN $2 = 'failed' THEN now() ELSE NULL END, updated_at = now() WHERE id = $1`, available),
 		claimed.ID, intentStatus, code, message)
 	if err == nil {
+		_, err = tx.ExecContext(ctx, `UPDATE codex_turn_intents SET status = 'failed',
+			last_error_code = NULLIF($3,''), last_error_message = NULLIF($4,''),
+			finished_at = now(), result_delivery_available_at = now(), updated_at = now()
+			WHERE control_id = $1 AND id <> $2 AND status = 'running'
+			  AND resolved_action = 'steer' AND confirmed_codex_turn_id = $5`,
+			claimed.ControlID, claimed.ID, code, message, claimed.ConfirmedTurnID)
+	}
+	if err == nil {
 		_, err = tx.ExecContext(ctx, `UPDATE codex_turn_runs SET status = 'failed', active_slot = NULL,
 			error_code = $2, error_message = $3, finished_at = now() WHERE id = $1`, claimed.RunID, code, message)
 	}
@@ -630,6 +638,14 @@ func (r *Repository) finish(ctx context.Context, claimed *ClaimedControl, status
 			WHERE control_id = $1 AND id <> $2 AND status = 'running'
 			  AND resolved_action = 'steer' AND confirmed_codex_turn_id = $4`,
 			claimed.ControlID, claimed.ID, resultJSON, turnResult.TurnID)
+	}
+	if err == nil && status != IntentCompleted {
+		_, err = tx.ExecContext(ctx, `UPDATE codex_turn_intents SET status = $4,
+			last_error_code = NULLIF($5,''), last_error_message = NULLIF($6,''),
+			finished_at = now(), result_delivery_available_at = now(), updated_at = now()
+			WHERE control_id = $1 AND id <> $2 AND status = 'running'
+			  AND resolved_action = 'steer' AND confirmed_codex_turn_id = $3`,
+			claimed.ControlID, claimed.ID, claimed.ConfirmedTurnID, status, code, message)
 	}
 	if err == nil {
 		runStatus := string(status)
