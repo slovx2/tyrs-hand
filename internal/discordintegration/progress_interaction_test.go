@@ -43,9 +43,13 @@ func TestConversationProgressPageValidatesMessageAndRun(t *testing.T) {
 		RunID: runID.String(), State: ConversationCompleted, Summary: "本轮完成", Page: 1,
 	}})
 	require.NoError(t, err)
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT desired_payload")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT projection_key, desired_payload")).
 		WithArgs("guild", "channel", "message").
-		WillReturnRows(sqlmock.NewRows([]string{"desired_payload"}).AddRow(desired))
+		WillReturnRows(sqlmock.NewRows([]string{"projection_key", "desired_payload"}).
+			AddRow("conversation:test:message:input", desired))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT revision, boundary_client_id, boundary_event_id")).
+		WithArgs(runID, "conversation:test:message:input").
+		WillReturnRows(sqlmock.NewRows([]string{"revision", "boundary_client_id", "boundary_event_id"}))
 	started := time.Now().Add(-time.Minute)
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT started_at, finished_at FROM codex_turn_runs WHERE id = $1")).
 		WithArgs(runID).WillReturnRows(sqlmock.NewRows([]string{"started_at", "finished_at"}).
@@ -56,8 +60,9 @@ func TestConversationProgressPageValidatesMessageAndRun(t *testing.T) {
 	}})
 	require.NoError(t, err)
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT event_type, payload FROM agent_events")).
-		WithArgs(runID).WillReturnRows(sqlmock.NewRows([]string{"event_type", "payload"}).
-		AddRow("item/completed", commentary))
+		WithArgs(runID, int64(0), int64(0)).
+		WillReturnRows(sqlmock.NewRows([]string{"event_type", "payload"}).
+			AddRow("item/completed", commentary))
 	connector := &DisgoConnector{manager: &Manager{db: db}}
 	card, err := connector.conversationProgressPage(context.Background(), "guild", "channel",
 		"message", runID, 0)
@@ -78,9 +83,10 @@ func TestConversationProgressPageRejectsStaleOrForgedTargets(t *testing.T) {
 		RunID: uuid.NewString(), State: ConversationRunning, Summary: "running",
 	}})
 	require.NoError(t, err)
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT desired_payload")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT projection_key, desired_payload")).
 		WithArgs("guild", "channel", "message").
-		WillReturnRows(sqlmock.NewRows([]string{"desired_payload"}).AddRow(desired))
+		WillReturnRows(sqlmock.NewRows([]string{"projection_key", "desired_payload"}).
+			AddRow("conversation:test:message:input", desired))
 	connector := &DisgoConnector{manager: &Manager{db: db}}
 	_, err = connector.conversationProgressPage(context.Background(), "guild", "channel",
 		"message", runID, 0)

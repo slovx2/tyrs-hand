@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 
 	"github.com/google/uuid"
 )
@@ -18,7 +17,7 @@ func currentConversationStatusKeyTx(ctx context.Context, tx *sql.Tx, runID uuid.
 	}
 	var key string
 	err := tx.QueryRowContext(ctx, `SELECT projection_key FROM discord_turn_status_cards
-		WHERE run_id = $1 AND role = 'current'`, runID).Scan(&key)
+		WHERE run_id = $1 ORDER BY revision DESC LIMIT 1`, runID).Scan(&key)
 	if errors.Is(err, sql.ErrNoRows) {
 		return fallback, nil
 	}
@@ -121,8 +120,14 @@ func RegisterConversationStatusSteerTx(ctx context.Context, tx *sql.Tx, runID,
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO discord_turn_status_cards
-		(run_id,guild_id,projection_key,revision,role) VALUES ($1,$2,$3,$4,'pending')`,
-		runID, guildID, key, revision); err != nil {
+		(run_id,guild_id,projection_key,revision,role,boundary_client_id)
+		VALUES ($1,$2,$3,$4,'pending',$5)`, runID, guildID, key, revision, messageID); err != nil {
+		return err
+	}
+	if err := resolveStoredConversationStatusBoundaryTx(ctx, tx, runID, messageID); err != nil {
+		return err
+	}
+	if err := freezePreviousConversationStatusCardTx(ctx, tx, runID, revision); err != nil {
 		return err
 	}
 	if projectedMessageID != "" {
@@ -163,37 +168,31 @@ func promotePendingConversationStatusTx(ctx context.Context, tx *sql.Tx, guildID
 func promoteConversationStatusCardTx(ctx context.Context, tx *sql.Tx, runID uuid.UUID,
 	guildID, targetKey string,
 ) error {
-	var mode, runStatus string
-	if err := tx.QueryRowContext(ctx, `SELECT collaboration_mode, status FROM codex_turn_runs
-		WHERE id = $1 FOR UPDATE`, runID).Scan(&mode, &runStatus); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM codex_turn_runs
+		WHERE id = $1 FOR UPDATE`, runID).Scan(&runID); err != nil {
 		return err
 	}
 	var targetRevision int64
-	var targetThreadID, targetMessageID string
-	if err := tx.QueryRowContext(ctx, `SELECT card.revision, projection.resource_id,
+	var targetMessageID string
+	if err := tx.QueryRowContext(ctx, `SELECT card.revision,
 		COALESCE(projection.message_id,'') FROM discord_turn_status_cards card
 		JOIN discord_projections projection ON projection.guild_id=card.guild_id
 			AND projection.projection_key=card.projection_key
 		WHERE card.run_id=$1 AND card.projection_key=$2 FOR UPDATE OF card, projection`,
-		runID, targetKey).Scan(&targetRevision, &targetThreadID, &targetMessageID); err != nil {
+		runID, targetKey).Scan(&targetRevision, &targetMessageID); err != nil {
 		return err
 	}
 	if targetMessageID == "" {
 		return nil
 	}
-	var currentKey, currentThreadID, currentMessageID string
+	var currentKey string
 	var currentRevision int64
-	var currentPayload json.RawMessage
-	err := tx.QueryRowContext(ctx, `SELECT card.projection_key, card.revision,
-		projection.resource_id, COALESCE(projection.message_id,''), projection.desired_payload
-		FROM discord_turn_status_cards card JOIN discord_projections projection
-		ON projection.guild_id=card.guild_id AND projection.projection_key=card.projection_key
-		WHERE card.run_id=$1 AND card.role='current' FOR UPDATE OF card, projection`, runID).
-		Scan(&currentKey, &currentRevision, &currentThreadID, &currentMessageID, &currentPayload)
+	err := tx.QueryRowContext(ctx, `SELECT projection_key, revision
+		FROM discord_turn_status_cards WHERE run_id=$1 AND role='current' FOR UPDATE`, runID).
+		Scan(&currentKey, &currentRevision)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	latestKey, latestThreadID, latestMessageID := currentKey, currentThreadID, currentMessageID
 	if errors.Is(err, sql.ErrNoRows) || targetRevision > currentRevision {
 		if currentKey != "" {
 			if _, err := tx.ExecContext(ctx, `UPDATE discord_turn_status_cards SET role='history',
@@ -205,76 +204,11 @@ func promoteConversationStatusCardTx(ctx context.Context, tx *sql.Tx, runID uuid
 			updated_at=now() WHERE run_id=$1 AND projection_key=$2`, runID, targetKey); err != nil {
 			return err
 		}
-		latestKey, latestThreadID, latestMessageID = targetKey, targetThreadID, targetMessageID
-		progress := progressForMovedStatus(currentPayload, runID, mode, runStatus)
-		timeline, err := conversationTimelineForRun(ctx, tx, runID, progress.Summary)
-		if err != nil {
-			return err
-		}
-		progress.Page = len(timeline.Pages) - 1
-		card := conversationProgressCard(progress.State, timeline, progress.Page,
-			runID.String(), progress.CollaborationMode)
-		if err := updateStatusProjectionTx(ctx, tx, guildID, targetKey,
-			map[string]any{"card": card, "progress": progress}); err != nil {
-			return err
-		}
 	} else if _, err := tx.ExecContext(ctx, `UPDATE discord_turn_status_cards SET role='history',
 		updated_at=now() WHERE run_id=$1 AND projection_key=$2`, runID, targetKey); err != nil {
 		return err
 	}
-	if latestMessageID == "" {
-		return nil
-	}
-	latestURL := fmt.Sprintf("https://discord.com/channels/%s/%s/%s",
-		guildID, latestThreadID, latestMessageID)
-	rows, err := tx.QueryContext(ctx, `SELECT projection_key FROM discord_turn_status_cards
-		WHERE run_id=$1 AND role='history' ORDER BY revision`, runID)
-	if err != nil {
-		return err
-	}
-	var history []string
-	for rows.Next() {
-		var key string
-		if err := rows.Scan(&key); err != nil {
-			_ = rows.Close()
-			return err
-		}
-		history = append(history, key)
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-	for _, key := range history {
-		if key == latestKey {
-			continue
-		}
-		if err := updateStatusProjectionTx(ctx, tx, guildID, key,
-			map[string]any{"card": guidedConversationCard(latestURL)}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func progressForMovedStatus(raw json.RawMessage, runID uuid.UUID, mode, status string) conversationProgressPayload {
-	var value struct {
-		Progress conversationProgressPayload `json:"progress"`
-	}
-	_ = json.Unmarshal(raw, &value)
-	progress := value.Progress
-	progress.FormatVersion = conversationProgressFormatVersion
-	progress.RunID = runID.String()
-	progress.CollaborationMode = mode
-	progress.State = ConversationRunning
-	switch status {
-	case "completed":
-		progress.State = ConversationCompleted
-	case "canceled":
-		progress.State = ConversationCanceled
-	case "failed":
-		progress.State = ConversationFailed
-	}
-	return progress
+	return refreshConversationStatusCardTx(ctx, tx, runID, guildID, targetKey)
 }
 
 func updateStatusProjectionTx(ctx context.Context, tx *sql.Tx, guildID, key string,
@@ -286,7 +220,7 @@ func updateStatusProjectionTx(ctx context.Context, tx *sql.Tx, guildID, key stri
 		WHERE guild_id=$1 AND projection_key=$2
 		RETURNING resource_id, COALESCE(message_id,'')`, guildID, key, mustJSON(desired)).
 		Scan(&threadID, &messageID)
-	if err != nil || messageID == "" {
+	if err != nil {
 		return err
 	}
 	var payload map[string]any
@@ -294,7 +228,12 @@ func updateStatusProjectionTx(ctx context.Context, tx *sql.Tx, guildID, key stri
 	if err := json.Unmarshal(encoded, &payload); err != nil {
 		return err
 	}
-	payload["channelId"], payload["messageId"] = threadID, messageID
+	payload["channelId"] = threadID
+	if messageID == "" {
+		return enqueueDiscordOutbox(ctx, tx, "projection:"+key, "message.create",
+			"channels/"+threadID+"/messages", payload, conversationStatusNonceForKey(key))
+	}
+	payload["messageId"] = messageID
 	return enqueueDiscordOutbox(ctx, tx, "projection:"+key, "message.update",
 		"channels/"+threadID+"/messages/"+messageID, payload, "")
 }

@@ -43,6 +43,7 @@ type ConversationProgress string
 
 const (
 	ConversationRunning   ConversationProgress = "running"
+	ConversationGuided    ConversationProgress = "guided"
 	ConversationCompleted ConversationProgress = "completed"
 	ConversationCanceled  ConversationProgress = "canceled"
 	ConversationFailed    ConversationProgress = "failed"
@@ -53,6 +54,8 @@ func conversationProgressCard(state ConversationProgress, timeline ConversationT
 ) ComponentCardPayload {
 	header, color := "⚙️ Codex · 思考中", cardColorBlurple
 	switch state {
+	case ConversationGuided:
+		header = "Codex · 已引导对话"
 	case ConversationCompleted:
 		header, color = "✅ Codex · 已完成", cardColorGreen
 	case ConversationCanceled:
@@ -80,11 +83,6 @@ func conversationProgressCard(state ConversationProgress, timeline ConversationT
 		}
 	}
 	return card
-}
-
-func guidedConversationCard(latestURL string) ComponentCardPayload {
-	return ComponentCardPayload{AccentColor: cardColorBlurple, Header: "Codex · 已引导对话",
-		Buttons: []ComponentButtonPayload{{Label: "查看最新状态", URL: latestURL}}}
 }
 
 func terminatedControlCard() ComponentCardPayload {

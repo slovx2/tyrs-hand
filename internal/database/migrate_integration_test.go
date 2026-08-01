@@ -16,6 +16,57 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+func TestDiscordStatusCardSegmentMigrationLeavesHistoricalCardsUntouched(t *testing.T) {
+	ctx := context.Background()
+	db := migrationTestDatabase(t)
+	_, err := db.ExecContext(ctx, `CREATE TABLE schema_migrations (
+		version text PRIMARY KEY,
+		checksum char(64) NOT NULL,
+		applied_at timestamptz NOT NULL DEFAULT now())`)
+	require.NoError(t, err)
+	migrations, err := loadMigrations()
+	require.NoError(t, err)
+	connection, err := db.Conn(ctx)
+	require.NoError(t, err)
+	for _, item := range migrations {
+		if item.version >= "046_" {
+			break
+		}
+		if item.nonTx {
+			require.NoError(t, applyNonTransactional(ctx, connection, item))
+		} else {
+			require.NoError(t, applyTransactional(ctx, connection, item))
+		}
+	}
+	require.NoError(t, connection.Close())
+
+	runID := uuid.New()
+	require.NoError(t, func() error {
+		conn, connErr := db.Conn(ctx)
+		if connErr != nil {
+			return connErr
+		}
+		defer func() { _ = conn.Close() }()
+		if _, connErr = conn.ExecContext(ctx, `SET session_replication_role = replica`); connErr != nil {
+			return connErr
+		}
+		defer func() { _, _ = conn.ExecContext(ctx, `SET session_replication_role = DEFAULT`) }()
+		_, connErr = conn.ExecContext(ctx, `INSERT INTO discord_turn_status_cards
+			(run_id,guild_id,projection_key,revision,role)
+			VALUES ($1,'legacy-guild','legacy-card',3,'history')`, runID)
+		return connErr
+	}())
+	require.NoError(t, Migrate(ctx, db))
+	var role string
+	var boundaryClient, boundaryEvent sql.NullString
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT role, boundary_client_id,
+		boundary_event_id::text FROM discord_turn_status_cards WHERE run_id=$1`, runID).
+		Scan(&role, &boundaryClient, &boundaryEvent))
+	require.Equal(t, "history", role)
+	require.False(t, boundaryClient.Valid)
+	require.False(t, boundaryEvent.Valid)
+}
+
 func TestParticipantIdentityMigrationBindsExistingSSHToEnvironmentOwner(t *testing.T) {
 	ctx := context.Background()
 	db := migrationTestDatabase(t)

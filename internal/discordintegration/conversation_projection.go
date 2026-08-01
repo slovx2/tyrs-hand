@@ -34,13 +34,9 @@ func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadI
 	conversationID uuid.UUID, inputMessageID string, runID uuid.UUID,
 	state ConversationProgress, detail string,
 ) error {
-	timeline, err := conversationTimelineForRun(ctx, db, runID, detail)
-	if err != nil {
-		return err
-	}
-	page := len(timeline.Pages) - 1
 	rawRunID := ""
 	mode := "default"
+	var err error
 	if runID != uuid.Nil {
 		rawRunID = runID.String()
 		err = db.QueryRowContext(ctx, `SELECT collaboration_mode FROM codex_turn_runs
@@ -52,9 +48,6 @@ func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadI
 	if err != nil {
 		return err
 	}
-	card := conversationProgressCard(state, timeline, page, rawRunID, mode)
-	progress := conversationProgressPayload{FormatVersion: conversationProgressFormatVersion,
-		RunID: rawRunID, State: state, Summary: detail, Page: page, CollaborationMode: mode}
 	requestedKey := "conversation:" + conversationID.String() + ":message:" + inputMessageID
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -68,6 +61,19 @@ func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadI
 			return err
 		}
 	}
+	var timeline ConversationTimeline
+	if runID == uuid.Nil {
+		timeline, err = conversationTimelineForRun(ctx, tx, runID, detail)
+	} else {
+		timeline, err = conversationTimelineForStatusCard(ctx, tx, runID, key, detail)
+	}
+	if err != nil {
+		return err
+	}
+	page := len(timeline.Pages) - 1
+	card := conversationProgressCard(state, timeline, page, rawRunID, mode)
+	progress := conversationProgressPayload{FormatVersion: conversationProgressFormatVersion,
+		RunID: rawRunID, State: state, Summary: detail, Page: page, CollaborationMode: mode}
 	var resourceID, messageID string
 	err = tx.QueryRowContext(ctx, `INSERT INTO discord_projections
 		(guild_id, projection_key, resource_id, desired_payload)
@@ -87,7 +93,7 @@ func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadI
 	}
 	operationType := "message.create"
 	payload := map[string]any{"channelId": resourceID, "card": card, "progress": progress}
-	nonce := "conversation-status-" + conversationID.String() + "-" + inputMessageID
+	nonce := conversationStatusNonceForKey(key)
 	if messageID != "" {
 		operationType = "message.update"
 		payload["messageId"] = messageID
@@ -125,7 +131,7 @@ func ProjectConversationThinkingTx(ctx context.Context, tx *sql.Tx, guildID, thr
 	if err != nil {
 		return err
 	}
-	operation, nonce := "message.create", "conversation-status-"+conversationID.String()+"-"+inputMessageID
+	operation, nonce := "message.create", conversationStatusNonceForKey(key)
 	payload := map[string]any{"channelId": resourceID, "card": card, "progress": progress}
 	if messageID != "" {
 		operation, nonce = "message.update", ""
@@ -593,7 +599,7 @@ type conversationProgressPayload struct {
 	CollaborationMode string               `json:"collaborationMode"`
 }
 
-const conversationProgressFormatVersion = 4
+const conversationProgressFormatVersion = 5
 
 type conversationQueryer interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
@@ -602,6 +608,12 @@ type conversationQueryer interface {
 
 func conversationTimelineForRun(ctx context.Context, db conversationQueryer, runID uuid.UUID,
 	summary string,
+) (ConversationTimeline, error) {
+	return conversationTimelineForRunRange(ctx, db, runID, summary, 0, 0)
+}
+
+func conversationTimelineForRunRange(ctx context.Context, db conversationQueryer, runID uuid.UUID,
+	summary string, afterEventID, beforeEventID int64,
 ) (ConversationTimeline, error) {
 	if runID == uuid.Nil {
 		tracker := NewConversationActionTracker(time.Now())
@@ -613,9 +625,16 @@ func conversationTimelineForRun(ctx context.Context, db conversationQueryer, run
 		runID).Scan(&started, &finished); err != nil {
 		return ConversationTimeline{}, err
 	}
+	if afterEventID > 0 {
+		if err := db.QueryRowContext(ctx, `SELECT occurred_at FROM agent_events
+			WHERE run_id=$1 AND id=$2`, runID, afterEventID).Scan(&started); err != nil {
+			return ConversationTimeline{}, err
+		}
+	}
 	tracker := NewConversationActionTracker(started)
 	rows, err := db.QueryContext(ctx, `SELECT event_type, payload FROM agent_events
-		WHERE run_id = $1 ORDER BY id`, runID)
+		WHERE run_id=$1 AND id>$2 AND ($3=0 OR id<$3) ORDER BY id`,
+		runID, afterEventID, beforeEventID)
 	if err != nil {
 		return ConversationTimeline{}, err
 	}
@@ -632,7 +651,12 @@ func conversationTimelineForRun(ctx context.Context, db conversationQueryer, run
 		return ConversationTimeline{}, err
 	}
 	end := time.Now()
-	if finished.Valid {
+	if beforeEventID > 0 {
+		if err := db.QueryRowContext(ctx, `SELECT occurred_at FROM agent_events
+			WHERE run_id=$1 AND id=$2`, runID, beforeEventID).Scan(&end); err != nil {
+			return ConversationTimeline{}, err
+		}
+	} else if finished.Valid {
 		end = finished.Time
 	}
 	return tracker.Timeline(summary, end.Sub(started)), nil
@@ -737,7 +761,23 @@ func reconcileConversationProgressCard(ctx context.Context, db *sql.DB, guildID,
 			}
 		}
 	}
-	timeline, err := conversationTimelineForRun(ctx, db, runID, desired.Progress.Summary)
+	if runID != uuid.Nil {
+		hasLater, laterErr := conversationStatusCardHasLater(ctx, db, runID, projectionKey)
+		if laterErr != nil {
+			return laterErr
+		}
+		if hasLater {
+			desired.Progress.State = ConversationGuided
+		}
+	}
+	var timeline ConversationTimeline
+	var err error
+	if runID == uuid.Nil {
+		timeline, err = conversationTimelineForRun(ctx, db, runID, desired.Progress.Summary)
+	} else {
+		timeline, err = conversationTimelineForStatusCard(ctx, db, runID, projectionKey,
+			desired.Progress.Summary)
+	}
 	if err != nil {
 		return err
 	}

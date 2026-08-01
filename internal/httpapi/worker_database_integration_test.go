@@ -955,7 +955,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		Scan(&initialCardRole, &initialCardHeader, &initialCardURL))
 	require.Equal(t, "history", initialCardRole)
 	require.Equal(t, "Codex · 已引导对话", initialCardHeader)
-	require.Contains(t, initialCardURL, "/desktop-steer-status-card")
+	require.Empty(t, initialCardURL)
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT role FROM discord_turn_status_cards
 		WHERE run_id=$1 AND projection_key=$2`, task.Claimed.RunID, desktopSteerStatusKey).
 		Scan(&desktopSteerCardRole))

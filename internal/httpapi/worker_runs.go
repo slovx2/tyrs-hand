@@ -203,14 +203,27 @@ func (s *Server) workerRunEvents(c *gin.Context) {
 				lastSequence, event.Sequence))
 			return
 		}
-		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO agent_events
+		externalEventID := fmt.Sprintf("worker:%d", event.Sequence)
+		var eventID int64
+		err = tx.QueryRowContext(c.Request.Context(), `INSERT INTO agent_events
 			(control_id, intent_id, run_id, event_type, external_event_id, payload)
 			VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT(run_id, external_event_id)
-			WHERE run_id IS NOT NULL AND external_event_id IS NOT NULL DO NOTHING`,
+			WHERE run_id IS NOT NULL AND external_event_id IS NOT NULL DO NOTHING
+			RETURNING id`,
 			claimed.ControlID, claimed.ID, claimed.RunID, event.Type,
-			fmt.Sprintf("worker:%d", event.Sequence), event.Payload)
+			externalEventID, event.Payload).Scan(&eventID)
+		if errors.Is(err, sql.ErrNoRows) {
+			err = tx.QueryRowContext(c.Request.Context(), `SELECT id FROM agent_events
+				WHERE run_id=$1 AND external_event_id=$2`, claimed.RunID, externalEventID).
+				Scan(&eventID)
+		}
 		if err != nil {
 			problem(c, http.StatusInternalServerError, "记录远程事件失败", err)
+			return
+		}
+		if err = discordintegration.ResolveConversationStatusBoundaryTx(c.Request.Context(), tx,
+			claimed.RunID, eventID, event.Type, event.Payload); err != nil {
+			problem(c, http.StatusInternalServerError, "解析过程卡分段边界失败", err)
 			return
 		}
 		if event.Type == "item/completed" {

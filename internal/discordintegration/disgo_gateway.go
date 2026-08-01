@@ -488,10 +488,12 @@ func (c *DisgoConnector) conversationProgressPage(ctx context.Context, guildID, 
 	if page < 0 {
 		return ComponentCardPayload{}, errors.New("discord 翻页页码无效")
 	}
+	var projectionKey string
 	var rawPayload json.RawMessage
-	err := c.manager.db.QueryRowContext(ctx, `SELECT desired_payload
+	err := c.manager.db.QueryRowContext(ctx, `SELECT projection_key, desired_payload
 		FROM discord_projections WHERE guild_id = $1 AND resource_id = $2 AND message_id = $3
-		AND projection_key LIKE 'conversation:%'`, guildID, channelID, messageID).Scan(&rawPayload)
+		AND projection_key LIKE 'conversation:%'`, guildID, channelID, messageID).
+		Scan(&projectionKey, &rawPayload)
 	var desired struct {
 		Progress conversationProgressPayload `json:"progress"`
 	}
@@ -501,8 +503,8 @@ func (c *DisgoConnector) conversationProgressPage(ctx context.Context, guildID, 
 	if err != nil || desired.Progress.RunID != runID.String() {
 		return ComponentCardPayload{}, errors.New("discord 翻页卡片与 Run 不匹配")
 	}
-	timeline, err := conversationTimelineForRun(ctx, c.manager.db, runID,
-		desired.Progress.Summary)
+	timeline, err := conversationTimelineForStatusCard(ctx, c.manager.db, runID,
+		projectionKey, desired.Progress.Summary)
 	if err != nil || page >= len(timeline.Pages) {
 		return ComponentCardPayload{}, errors.New("discord 翻页目标不存在")
 	}

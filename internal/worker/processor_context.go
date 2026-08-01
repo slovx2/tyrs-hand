@@ -386,9 +386,28 @@ func (p *Processor) snapshotTerminal(ctx context.Context, runtime *codex.Runtime
 }
 
 func (p *Processor) persistAgentEvent(ctx context.Context, claimed *codexcontrol.ClaimedControl, event codex.Event) {
-	_, _ = p.db.ExecContext(ctx, `INSERT INTO agent_events
-		(control_id, intent_id, run_id, event_type, payload) VALUES ($1,$2,$3,$4,$5)`,
-		claimed.ControlID, claimed.ID, claimed.RunID, event.Method, event.Params)
+	tx, err := p.db.BeginTx(ctx, nil)
+	if err != nil {
+		p.logger.Warn("创建 Codex 事件事务失败", zap.Error(err))
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	var eventID int64
+	err = tx.QueryRowContext(ctx, `INSERT INTO agent_events
+		(control_id, intent_id, run_id, event_type, payload) VALUES ($1,$2,$3,$4,$5)
+		RETURNING id`, claimed.ControlID, claimed.ID, claimed.RunID, event.Method, event.Params).
+		Scan(&eventID)
+	if err == nil {
+		err = discordintegration.ResolveConversationStatusBoundaryTx(ctx, tx, claimed.RunID,
+			eventID, event.Method, event.Params)
+	}
+	if err == nil {
+		err = tx.Commit()
+	}
+	if err != nil {
+		p.logger.Warn("持久化 Codex 事件失败", zap.Error(err),
+			zap.String("event_type", event.Method))
+	}
 }
 
 func (p *Processor) dispatchPendingIntent(ctx context.Context, runtime *codex.Runtime,

@@ -94,12 +94,14 @@ func TestDiscordComponentsV2CardStructureAndLimits(t *testing.T) {
 	}}
 	_, err = discordCardComponents(duplicate)
 	require.ErrorContains(t, err, "重复")
-	link := guidedConversationCard("https://discord.com/channels/1/2/3")
-	require.Equal(t, "Codex · 已引导对话", link.Header)
-	require.Empty(t, link.Body)
-	require.Empty(t, link.Timeline)
-	require.Equal(t, "查看最新状态", link.Buttons[0].Label)
-	_, err = discordCardComponents(link)
+	guided := conversationProgressCard(ConversationGuided,
+		ConversationTimeline{Pages: []string{"引导前动态"}, Updates: 1, Duration: time.Second},
+		0, "", "default")
+	require.Equal(t, "Codex · 已引导对话", guided.Header)
+	require.Contains(t, guided.Body, "1 项动态")
+	require.Equal(t, "引导前动态", guided.Timeline)
+	require.Empty(t, guided.Buttons)
+	_, err = discordCardComponents(guided)
 	require.NoError(t, err)
 	_, err = discordCardComponents(ComponentCardPayload{Header: "x", Buttons: []ComponentButtonPayload{{
 		Label: "invalid", CustomID: "id", URL: "https://discord.com",
@@ -154,6 +156,7 @@ func TestEverySystemCardBuildsAsComponentsV2(t *testing.T) {
 	timeline := ConversationTimeline{Pages: []string{"timeline"}, Duration: time.Second}
 	cards := []ComponentCardPayload{
 		conversationProgressCard(ConversationRunning, timeline, 0, "", "default"),
+		conversationProgressCard(ConversationGuided, timeline, 0, "", "default"),
 		conversationProgressCard(ConversationCompleted, timeline, 0, "", "default"),
 		conversationProgressCard(ConversationCanceled, timeline, 0, "", "default"),
 		conversationProgressCard(ConversationFailed, timeline, 0, "", "default"),

@@ -660,7 +660,7 @@ func TestConversationReplyRegeneratingUpdatesFirstPageAndDeletesOverflow(t *test
 	require.Greater(t, deleteCount, 0)
 }
 
-func TestConversationStatusMovesAndRefreshesHistoryLinks(t *testing.T) {
+func TestConversationStatusSplitsTimelineAndKeepsNaturalCards(t *testing.T) {
 	db := discordDatabase(t)
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))
@@ -690,7 +690,32 @@ func TestConversationStatusMovesAndRefreshesHistoryLinks(t *testing.T) {
 		controlID, intentID).Scan(&runID))
 	require.NoError(t, ProjectConversationStatus(ctx, db, testGuildID, "100000000000000601",
 		conversationID, "100000000000000602", runID, ConversationRunning,
-		"正在核对状态迁移"))
+		"正在核对状态分段"))
+	addEvent := func(eventType string, payload any) {
+		tx, beginErr := db.BeginTx(ctx, nil)
+		require.NoError(t, beginErr)
+		var eventID int64
+		require.NoError(t, tx.QueryRowContext(ctx, `INSERT INTO agent_events
+			(control_id,run_id,event_type,payload) VALUES ($1,$2,$3,$4) RETURNING id`,
+			controlID, runID, eventType, mustJSON(payload)).Scan(&eventID))
+		require.NoError(t, ResolveConversationStatusBoundaryTx(ctx, tx, runID, eventID,
+			eventType, mustJSON(payload)))
+		require.NoError(t, tx.Commit())
+	}
+	addCommentary := func(id, text string) {
+		addEvent("item/completed", map[string]any{"item": map[string]any{
+			"id": id, "type": "agentMessage", "phase": "commentary", "text": text,
+		}})
+		require.NoError(t, ProjectConversationStatus(ctx, db, testGuildID,
+			"100000000000000601", conversationID, "100000000000000602", runID,
+			ConversationRunning, "正在处理请求。"))
+	}
+	resolveBoundary := func(inputID string) {
+		addEvent("item/completed", map[string]any{"item": map[string]any{
+			"id": "user-" + inputID, "type": "userMessage", "clientId": inputID,
+		}})
+	}
+	addCommentary("initial-progress", strings.Repeat("初始输入后的动态。", 600))
 
 	move := func(inputID, cardID string, deliverAfterRegistration bool) string {
 		require.NoError(t, service.Reply(ctx, IncomingMessage{
@@ -708,6 +733,7 @@ func TestConversationStatusMovesAndRefreshesHistoryLinks(t *testing.T) {
 		require.NoError(t, RegisterConversationStatusSteerTx(ctx, tx, runID, conversationID,
 			testGuildID, inputID))
 		require.NoError(t, tx.Commit())
+		resolveBoundary(inputID)
 		if deliverAfterRegistration {
 			var role string
 			require.NoError(t, db.QueryRowContext(ctx, `SELECT role FROM discord_turn_status_cards
@@ -724,7 +750,9 @@ func TestConversationStatusMovesAndRefreshesHistoryLinks(t *testing.T) {
 		return key
 	}
 	secondKey := move("100000000000000604", "100000000000000605", true)
+	addCommentary("second-progress", "第一次引导后的动态")
 	thirdKey := move("100000000000000606", "100000000000000607", false)
+	addCommentary("third-progress", "第二次引导后的动态")
 	registerPending := func(inputID string) string {
 		require.NoError(t, service.Reply(ctx, IncomingMessage{
 			GuildID: testGuildID, ThreadID: "100000000000000601", MessageID: inputID,
@@ -736,10 +764,13 @@ func TestConversationStatusMovesAndRefreshesHistoryLinks(t *testing.T) {
 		require.NoError(t, RegisterConversationStatusSteerTx(ctx, tx, runID, conversationID,
 			testGuildID, inputID))
 		require.NoError(t, tx.Commit())
+		resolveBoundary(inputID)
 		return key
 	}
 	fourthKey := registerPending("100000000000000608")
+	addCommentary("fourth-progress", "第三次引导后的动态")
 	fifthKey := registerPending("100000000000000609")
+	addCommentary("fifth-progress", "第四次引导后的动态")
 	deliverPending := func(key, cardID string) {
 		_, updateErr := db.ExecContext(ctx, `UPDATE discord_projections SET message_id=$3
 			WHERE guild_id=$1 AND projection_key=$2`, testGuildID, key, cardID)
@@ -755,35 +786,61 @@ func TestConversationStatusMovesAndRefreshesHistoryLinks(t *testing.T) {
 
 	rows, err := db.QueryContext(ctx, `SELECT card.projection_key, card.role,
 		projection.desired_payload->'card'->>'header',
+		COALESCE(projection.desired_payload->'card'->>'timeline',''),
 		COALESCE(projection.desired_payload->'card'->'buttons'->0->>'url','')
 		FROM discord_turn_status_cards card JOIN discord_projections projection
 		ON projection.guild_id=card.guild_id AND projection.projection_key=card.projection_key
 		WHERE card.run_id=$1 ORDER BY card.revision`, runID)
 	require.NoError(t, err)
 	defer func() { _ = rows.Close() }()
-	type cardState struct{ key, role, header, url string }
+	type cardState struct{ key, role, header, timeline, url string }
 	var cards []cardState
 	for rows.Next() {
 		var item cardState
-		require.NoError(t, rows.Scan(&item.key, &item.role, &item.header, &item.url))
+		require.NoError(t, rows.Scan(&item.key, &item.role, &item.header, &item.timeline, &item.url))
 		cards = append(cards, item)
 	}
 	require.NoError(t, rows.Err())
 	require.Len(t, cards, 5)
-	latestURL := "https://discord.com/channels/" + testGuildID +
-		"/100000000000000601/100000000000000611"
 	for _, item := range cards[:4] {
 		require.Equal(t, "history", item.role)
 		require.Equal(t, "Codex · 已引导对话", item.header)
-		require.Equal(t, latestURL, item.url)
+		require.Empty(t, item.url)
 	}
+	require.Contains(t, cards[0].timeline, "初始输入后的动态")
+	require.NotContains(t, cards[0].timeline, "第一次引导后的动态")
+	require.Contains(t, cards[1].timeline, "第一次引导后的动态")
+	require.NotContains(t, cards[1].timeline, "第二次引导后的动态")
+	require.Contains(t, cards[2].timeline, "第二次引导后的动态")
+	require.Contains(t, cards[3].timeline, "第三次引导后的动态")
 	require.Equal(t, fifthKey, cards[4].key)
 	require.Equal(t, "current", cards[4].role)
 	require.Equal(t, "⚙️ Codex · 思考中", cards[4].header)
+	require.Contains(t, cards[4].timeline, "第四次引导后的动态")
 	require.Empty(t, cards[4].url)
 	require.Equal(t, secondKey, cards[1].key)
 	require.Equal(t, thirdKey, cards[2].key)
 	require.Equal(t, fourthKey, cards[3].key)
+	require.NoError(t, rows.Close())
+	initialTimeline, err := conversationTimelineForStatusCard(ctx, db, runID,
+		initialKey, "正在处理请求。")
+	require.NoError(t, err)
+	require.Greater(t, len(initialTimeline.Pages), 1)
+	require.Contains(t, strings.Join(initialTimeline.Pages, "\n"), "初始输入后的动态")
+	require.NotContains(t, strings.Join(initialTimeline.Pages, "\n"), "第一次引导后的动态")
+
+	require.NoError(t, ProjectConversationStatus(ctx, db, testGuildID,
+		"100000000000000601", conversationID, "100000000000000602", runID,
+		ConversationCompleted, "本轮处理完成。"))
+	var initialHeader, latestHeader string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT desired_payload->'card'->>'header'
+		FROM discord_projections WHERE guild_id=$1 AND projection_key=$2`,
+		testGuildID, initialKey).Scan(&initialHeader))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT desired_payload->'card'->>'header'
+		FROM discord_projections WHERE guild_id=$1 AND projection_key=$2`,
+		testGuildID, fifthKey).Scan(&latestHeader))
+	require.Equal(t, "Codex · 已引导对话", initialHeader)
+	require.Equal(t, "✅ Codex · 已完成", latestHeader)
 }
 
 func TestDiscordManagerForumsAndProjections(t *testing.T) {
@@ -1413,7 +1470,7 @@ func TestReconcileConversationProgressCardsUpdatesExistingMessage(t *testing.T) 
 		WHERE projection.guild_id=$1 AND projection.projection_key=$2`, testGuildID,
 		projectionKey).Scan(&desiredPayload, &operationType))
 	require.Equal(t, "message.update", operationType)
-	require.Contains(t, string(desiredPayload), `"formatVersion": 4`)
+	require.Contains(t, string(desiredPayload), `"formatVersion": 5`)
 	require.Contains(t, string(desiredPayload), "项动态")
 	require.NotContains(t, string(desiredPayload), "条更新")
 }
@@ -1444,7 +1501,7 @@ func TestReconcileConversationProgressCardsUpdatesOrphanedRun(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT desired_payload::text
 		FROM discord_projections WHERE guild_id=$1 AND projection_key=$2`,
 		testGuildID, projectionKey).Scan(&desiredPayload))
-	require.Contains(t, desiredPayload, `"formatVersion": 4`)
+	require.Contains(t, desiredPayload, `"formatVersion": 5`)
 	require.NotContains(t, desiredPayload, `"footer"`)
 	var outboxStatus string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM integration_outbox
