@@ -374,9 +374,40 @@ func (c *DisgoConnector) onComponent(event *events.ComponentInteractionCreate) {
 		return
 	}
 	eventID := "interaction:" + event.ID().String()
+	startedAt := time.Now()
 	inserted, err := c.manager.RecordInboundEvent(context.Background(), eventID, c.guildID,
 		"MESSAGE_COMPONENT", map[string]string{"id": event.ID().String(), "customId": customID})
-	if err != nil || !inserted {
+	if err != nil {
+		if strings.HasPrefix(customID, "codex-runtime-config:") {
+			c.logger.Warn("记录 Discord 参数设置交互失败", zap.Error(err),
+				zap.String("interaction_id", event.ID().String()),
+				zap.String("channel_id", event.Channel().ID().String()))
+		}
+		return
+	}
+	if !inserted {
+		return
+	}
+	if strings.HasPrefix(customID, "codex-runtime-config:") {
+		stage, responseErr := c.editRuntimeConfiguration(event, customID)
+		completeErr := c.manager.CompleteInboundEvent(context.Background(), eventID, responseErr)
+		fields := []zap.Field{
+			zap.String("interaction_id", event.ID().String()),
+			zap.String("channel_id", event.Channel().ID().String()),
+			zap.String("message_id", event.Message.ID.String()),
+			zap.String("stage", stage),
+			zap.Duration("duration", time.Since(startedAt)),
+		}
+		if responseErr != nil {
+			c.logger.Warn("响应 Discord 参数设置交互失败",
+				append(fields, zap.Error(responseErr))...)
+		} else {
+			c.logger.Info("已响应 Discord 参数设置交互", fields...)
+		}
+		if completeErr != nil {
+			c.logger.Warn("保存 Discord 参数设置交互结果失败",
+				zap.String("interaction_id", event.ID().String()), zap.Error(completeErr))
+		}
 		return
 	}
 	defer func() { _ = c.manager.CompleteInboundEvent(context.Background(), eventID, nil) }()
@@ -390,10 +421,6 @@ func (c *DisgoConnector) onComponent(event *events.ComponentInteractionCreate) {
 	}
 	if strings.HasPrefix(customID, "codex-trigger-mode:") {
 		c.changeTriggerMode(event, customID)
-		return
-	}
-	if strings.HasPrefix(customID, "codex-runtime-config:") {
-		c.editRuntimeConfiguration(event, customID)
 		return
 	}
 	if strings.HasPrefix(customID, "codex-config-start:") {
@@ -622,27 +649,49 @@ func (c *DisgoConnector) changeTriggerMode(event *events.ComponentInteractionCre
 
 func (c *DisgoConnector) editRuntimeConfiguration(event *events.ComponentInteractionCreate,
 	customID string,
-) {
+) (string, error) {
 	parts := strings.Split(strings.TrimPrefix(customID, "codex-runtime-config:"), ":")
 	if len(parts) != 2 {
-		_ = event.CreateMessage(discord.NewMessageCreate().WithContent(
+		err := event.CreateMessage(discord.NewMessageCreate().WithContent(
 			"这个设置按钮无效，请重新运行 `/codex config`。").WithEphemeral(true))
-		return
+		return "invalid_button_reply", safeDiscordInteractionResponseError(err)
 	}
 	conversationID, err := uuid.Parse(parts[0])
 	revision, revisionErr := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil || revisionErr != nil || revision < 0 {
-		_ = event.CreateMessage(discord.NewMessageCreate().WithContent(
+		err = event.CreateMessage(discord.NewMessageCreate().WithContent(
 			"这个设置按钮无效，请重新运行 `/codex config`。").WithEphemeral(true))
-		return
+		return "invalid_button_reply", safeDiscordInteractionResponseError(err)
 	}
 	modal, err := c.runtimeConfigurationModal(context.Background(), conversationID, revision,
 		event.User().ID.String())
 	if err != nil {
-		_ = event.CreateMessage(discord.NewMessageCreate().WithContent(err.Error()).WithEphemeral(true))
-		return
+		replyErr := event.CreateMessage(discord.NewMessageCreate().WithContent(err.Error()).WithEphemeral(true))
+		return "state_error_reply", safeDiscordInteractionResponseError(replyErr)
 	}
-	_ = event.Modal(modal)
+	return "modal_response", safeDiscordInteractionResponseError(event.Modal(modal))
+}
+
+func safeDiscordInteractionResponseError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var restErr *disgorest.Error
+	if errors.As(err, &restErr) {
+		status := 0
+		if restErr.Response != nil {
+			status = restErr.Response.StatusCode
+		}
+		return fmt.Errorf("discord API status=%d code=%d: %s", status, restErr.Code,
+			sanitizeLogValue(restErr.Error(), 1024))
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return errors.New("discord 交互响应超时")
+	}
+	if errors.Is(err, context.Canceled) {
+		return errors.New("discord 交互响应已取消")
+	}
+	return fmt.Errorf("discord 交互传输失败（%T）", err)
 }
 
 func (c *DisgoConnector) announceConversationConfig(ctx context.Context, threadID,
