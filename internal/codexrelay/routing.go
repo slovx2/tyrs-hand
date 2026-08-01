@@ -154,7 +154,8 @@ func (r *Relay) subscribeCreatedThread(source *session, threadID string, ephemer
 	r.mu.Lock()
 	sessions := make([]*session, 0, len(r.sessions))
 	for _, item := range r.sessions {
-		if item == source || !ephemeral {
+		// Worker 隐式消费环境内的所有普通 Thread，不维护逐 Thread 订阅状态。
+		if item.role == RoleDesktop && (item == source || !ephemeral) {
 			sessions = append(sessions, item)
 		}
 	}
@@ -171,8 +172,13 @@ func (r *Relay) unsubscribe(ctx context.Context, source *session,
 	if threadID == "" {
 		return nil, errors.New("thread/unsubscribe 缺少 threadId")
 	}
-	wasSubscribed := source.unsubscribe(threadID)
-	if r.anySubscribed(threadID) {
+	wasSubscribed := false
+	if source.role == RoleDesktop {
+		wasSubscribed = source.unsubscribe(threadID)
+	}
+	// 普通 Thread 始终由 Worker 隐式消费，任何 Desktop 都不能取消唯一的 upstream 订阅。
+	// 临时 Thread 不进入 Worker，最后一个 Desktop 离开时才通知 upstream。
+	if !r.isEphemeral(threadID) || r.anyDesktopSubscribed(threadID) {
 		status := "notSubscribed"
 		if wasSubscribed {
 			status = "unsubscribed"
@@ -186,11 +192,13 @@ func (r *Relay) unsubscribe(ctx context.Context, source *session,
 	return result, nil
 }
 
-func (r *Relay) anySubscribed(threadID string) bool {
+func (r *Relay) anyDesktopSubscribed(threadID string) bool {
 	r.mu.Lock()
 	sessions := make([]*session, 0, len(r.sessions))
 	for _, item := range r.sessions {
-		sessions = append(sessions, item)
+		if item.role == RoleDesktop {
+			sessions = append(sessions, item)
+		}
 	}
 	r.mu.Unlock()
 	for _, item := range sessions {
@@ -215,10 +223,14 @@ func (r *Relay) forwardEvents() {
 		r.mu.Lock()
 		sessions := make([]*session, 0, len(r.sessions))
 		for _, item := range r.sessions {
-			if ephemeral && item.role == RoleWorker {
+			if item.role == RoleWorker {
+				if !ephemeral {
+					sessions = append(sessions, item)
+				}
 				continue
 			}
-			if threadID == "" || event.Method == "thread/started" || item.subscribed(threadID) {
+			if threadID == "" || event.Method == "thread/started" ||
+				item.subscribed(threadID) {
 				sessions = append(sessions, item)
 			}
 		}
@@ -505,10 +517,13 @@ func (r *Relay) firstDesktopAnswer(ctx context.Context, request codex.ServerRequ
 }
 
 func (r *Relay) workerForThread(threadID string) *session {
+	if r.isEphemeral(threadID) {
+		return nil
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, item := range r.sessions {
-		if item.role == RoleWorker && (threadID == "" || item.subscribed(threadID)) {
+		if item.role == RoleWorker {
 			return item
 		}
 	}
@@ -570,10 +585,17 @@ func (r *Relay) firstInteractiveAnswer(ctx context.Context, request codex.Server
 }
 
 func (r *Relay) interactiveTargets(threadID string) []*session {
+	ephemeral := r.isEphemeral(threadID)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	result := make([]*session, 0, len(r.sessions))
 	for _, item := range r.sessions {
+		if item.role == RoleWorker {
+			if !ephemeral {
+				result = append(result, item)
+			}
+			continue
+		}
 		if threadID == "" || item.subscribed(threadID) {
 			result = append(result, item)
 		}

@@ -64,32 +64,151 @@ func TestRelayBroadcastsNewThreadsCreatedByWorkerToDesktop(t *testing.T) {
 	require.Equal(t, threadID, eventThreadID(t, started.Params))
 }
 
-func TestRelayKeepsSubscriptionUntilLastClientLeaves(t *testing.T) {
+func TestRelayKeepsRegularThreadUpstreamAfterEveryDesktopUnsubscribes(t *testing.T) {
 	mock, err := mockcodex.Start(t)
 	require.NoError(t, err)
 	relay := startRelay(t, mock.SocketPath)
+	first := connectDesktop(t, relay.SocketPath())
+	second := connectDesktop(t, relay.SocketPath())
+	first.initialize(t, 1)
+	second.initialize(t, 1)
+
+	first.write(t, rpcMessage{ID: rawID(2), Method: "thread/start",
+		Params: mustJSON(map[string]any{"cwd": t.TempDir()})})
+	threadID := responseThreadID(t, first.response(t, rawID(2)).Result)
+	first.write(t, rpcMessage{ID: rawID(3), Method: "thread/unsubscribe",
+		Params: mustJSON(map[string]string{"threadId": threadID})})
+	require.Nil(t, first.response(t, rawID(3)).Error)
+	mock.Emit(threadID, "item/started", map[string]any{"threadId": threadID,
+		"item": map[string]any{"id": "second-still-subscribed", "type": "commandExecution"}})
+	require.Equal(t, "item/started", second.notification(t, "item/started").Method)
+	second.write(t, rpcMessage{ID: rawID(2), Method: "thread/unsubscribe",
+		Params: mustJSON(map[string]string{"threadId": threadID})})
+	require.Nil(t, second.response(t, rawID(2)).Error)
+	require.Equal(t, 0, mock.RequestCount("thread/unsubscribe"),
+		"普通 Thread 的 upstream 订阅由 Worker 隐式持有")
+
 	worker, err := relay.OpenClient(codexrelay.ClientOptions{Role: codexrelay.RoleWorker})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = worker.Close() })
+	subscription := worker.Subscribe(codex.ThreadFilter{ThreadID: threadID})
+	t.Cleanup(subscription.Close)
+	mock.Emit(threadID, "thread/archived", map[string]any{"threadId": threadID})
+	require.Equal(t, "thread/archived", receiveEvent(t, subscription.Events()).Method)
+}
+
+func TestRelayUnsubscribesEphemeralThreadAfterLastDesktopLeaves(t *testing.T) {
+	mock, err := mockcodex.Start(t)
+	require.NoError(t, err)
+	relay := startRelay(t, mock.SocketPath)
+	first := connectDesktop(t, relay.SocketPath())
+	second := connectDesktop(t, relay.SocketPath())
+	first.initialize(t, 1)
+	second.initialize(t, 1)
+
+	first.write(t, rpcMessage{ID: rawID(2), Method: "thread/start",
+		Params: mustJSON(map[string]any{"cwd": t.TempDir(), "ephemeral": true})})
+	threadID := responseThreadID(t, first.response(t, rawID(2)).Result)
+	second.write(t, rpcMessage{ID: rawID(2), Method: "thread/resume",
+		Params: mustJSON(map[string]string{"threadId": threadID})})
+	require.Nil(t, second.response(t, rawID(2)).Error)
+
+	first.write(t, rpcMessage{ID: rawID(3), Method: "thread/unsubscribe",
+		Params: mustJSON(map[string]string{"threadId": threadID})})
+	require.Nil(t, first.response(t, rawID(3)).Error)
+	require.Equal(t, 0, mock.RequestCount("thread/unsubscribe"))
+	second.write(t, rpcMessage{ID: rawID(3), Method: "thread/unsubscribe",
+		Params: mustJSON(map[string]string{"threadId": threadID})})
+	require.Nil(t, second.response(t, rawID(3)).Error)
+	require.Equal(t, 1, mock.RequestCount("thread/unsubscribe"))
+}
+
+func TestRelayKeepsEphemeralThreadOutsideWorker(t *testing.T) {
+	mock, err := mockcodex.Start(t)
+	require.NoError(t, err)
+	relay := startRelay(t, mock.SocketPath)
+	workerRequests := make(chan codex.ServerRequest, 1)
+	worker, err := relay.OpenClient(codexrelay.ClientOptions{Role: codexrelay.RoleWorker,
+		ServerRequestHandler: func(_ context.Context, request codex.ServerRequest) (any, error) {
+			workerRequests <- request
+			return nil, nil
+		}})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = worker.Close() })
+	workerEvents := worker.Subscribe(codex.ThreadFilter{})
+	t.Cleanup(workerEvents.Close)
 	desktop := connectDesktop(t, relay.SocketPath())
 	desktop.initialize(t, 1)
 
-	threadID, err := worker.StartThread(context.Background(), mustJSON(map[string]any{
-		"cwd": t.TempDir(), "approvalPolicy": "never", "sandbox": "read-only",
-	}))
-	require.NoError(t, err)
-	desktop.write(t, rpcMessage{ID: rawID(2), Method: "thread/resume",
-		Params: mustJSON(map[string]string{"threadId": threadID})})
-	require.Nil(t, desktop.response(t, rawID(2)).Error)
-	desktop.write(t, rpcMessage{ID: rawID(3), Method: "thread/unsubscribe",
-		Params: mustJSON(map[string]string{"threadId": threadID})})
-	require.Nil(t, desktop.response(t, rawID(3)).Error)
-
-	subscription := worker.Subscribe(codex.ThreadFilter{ThreadID: threadID})
-	t.Cleanup(subscription.Close)
+	desktop.write(t, rpcMessage{ID: rawID(2), Method: "thread/start",
+		Params: mustJSON(map[string]any{"cwd": t.TempDir(), "ephemeral": true})})
+	threadID := responseThreadID(t, desktop.response(t, rawID(2)).Result)
 	mock.Emit(threadID, "item/started", map[string]any{"threadId": threadID,
-		"item": map[string]any{"id": "still-live", "type": "commandExecution"}})
-	require.Equal(t, "item/started", receiveEvent(t, subscription.Events()).Method)
+		"item": map[string]any{"id": "ephemeral-item", "type": "commandExecution"}})
+	select {
+	case event := <-workerEvents.Events():
+		t.Fatalf("临时 Thread 事件不应发送给 Worker: %s", event.Method)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	requestID := mock.RequestUserInput(threadID, "turn-1", "input-1", []map[string]any{{
+		"id": "choice", "header": "Choose", "question": "Continue?",
+	}}, 60_000)
+	request := desktop.serverRequest(t, "item/tool/requestUserInput")
+	desktop.write(t, rpcMessage{ID: request.ID, Result: mustJSON(map[string]any{
+		"answers": map[string]any{"choice": map[string]any{"answers": []string{"desktop"}}},
+	})})
+	require.Eventually(t, func() bool {
+		_, responses, resolved := mock.ResolvedRequest(requestID)
+		return resolved && responses == 1
+	}, 3*time.Second, 10*time.Millisecond)
+	select {
+	case request := <-workerRequests:
+		t.Fatalf("临时 Thread Server Request 不应发送给 Worker: %s", request.Method)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestRelayRoutesExistingThreadServerRequestsToFreshWorker(t *testing.T) {
+	mock, err := mockcodex.Start(t)
+	require.NoError(t, err)
+	relay := startRelay(t, mock.SocketPath)
+	desktop := connectDesktop(t, relay.SocketPath())
+	desktop.initialize(t, 1)
+	desktop.write(t, rpcMessage{ID: rawID(2), Method: "thread/start",
+		Params: mustJSON(map[string]any{"cwd": t.TempDir()})})
+	threadID := responseThreadID(t, desktop.response(t, rawID(2)).Result)
+	require.NoError(t, desktop.ws.Close())
+
+	requests := make(chan codex.ServerRequest, 2)
+	worker, err := relay.OpenClient(codexrelay.ClientOptions{Role: codexrelay.RoleWorker,
+		ServerRequestHandler: func(_ context.Context, request codex.ServerRequest) (any, error) {
+			requests <- request
+			if request.Method == "item/tool/call" {
+				return codex.TextToolResult("worker-ok", true), nil
+			}
+			return map[string]any{"answers": map[string]any{"choice": map[string]any{
+				"answers": []string{"worker"}}}}, nil
+		}})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = worker.Close() })
+
+	toolRequestID := mock.RequestDynamicTool(threadID, "turn-1", "call-1", "github", "echo",
+		map[string]any{"message": "hello"})
+	require.Equal(t, "item/tool/call", receiveServerRequest(t, requests).Method)
+	require.Eventually(t, func() bool {
+		_, responses, resolved := mock.ResolvedRequest(toolRequestID)
+		return resolved && responses == 1
+	}, 3*time.Second, 10*time.Millisecond)
+
+	inputRequestID := mock.RequestUserInput(threadID, "turn-1", "input-1", []map[string]any{{
+		"id": "choice", "header": "Choose", "question": "Continue?",
+	}}, 60_000)
+	require.Equal(t, "item/tool/requestUserInput", receiveServerRequest(t, requests).Method)
+	require.Eventually(t, func() bool {
+		_, responses, resolved := mock.ResolvedRequest(inputRequestID)
+		return resolved && responses == 1
+	}, 3*time.Second, 10*time.Millisecond)
 }
 
 func TestRelayRoutesDynamicToolsOnlyToWorker(t *testing.T) {
@@ -1158,6 +1277,17 @@ func receiveEvent(t *testing.T, events <-chan codex.Event) codex.Event {
 	case <-time.After(3 * time.Second):
 		t.Fatal("等待 Relay 事件超时")
 		return codex.Event{}
+	}
+}
+
+func receiveServerRequest(t *testing.T, requests <-chan codex.ServerRequest) codex.ServerRequest {
+	t.Helper()
+	select {
+	case request := <-requests:
+		return request
+	case <-time.After(3 * time.Second):
+		t.Fatal("等待 Relay Server Request 超时")
+		return codex.ServerRequest{}
 	}
 }
 
