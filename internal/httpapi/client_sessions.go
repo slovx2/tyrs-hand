@@ -268,8 +268,8 @@ func (s *Server) clientCreateSession(c *gin.Context) {
 	if err == nil {
 		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO client_updates(
 			session_id,update_type,entity_id,entity_seq,payload)
-			VALUES ($1,'session.created',$1::text,0,
-				jsonb_build_object('sessionId',$1::text))`, created.ID)
+			VALUES ($1::uuid,'session.created',($1::uuid)::text,0,
+				jsonb_build_object('sessionId',($1::uuid)::text))`, created.ID)
 	}
 	if err == nil {
 		err = tx.Commit()

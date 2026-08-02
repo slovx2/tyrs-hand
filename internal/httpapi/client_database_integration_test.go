@@ -76,6 +76,22 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 	require.NoError(t, err)
 	defer func() { _ = second.Close() }()
 
+	createdSession := clientJSONRequest(t, http.MethodPost,
+		endpoint+"/api/v1/client/sessions", loginBody.AccessToken, map[string]any{
+			"developmentEnvironmentId": environmentID,
+			"developmentProjectId":     projectID,
+			"agentProfileId":           profileID,
+			"title":                    "Created through client protocol",
+		})
+	require.Equal(t, http.StatusCreated, createdSession.Code)
+	var createdSessionBody clientSession
+	require.NoError(t, json.Unmarshal(createdSession.Body.Bytes(), &createdSessionBody))
+	require.NotEqual(t, uuid.Nil, createdSessionBody.ID)
+	firstSessionUpdate := readClientUpdate(t, first)
+	secondSessionUpdate := readClientUpdate(t, second)
+	require.Equal(t, "session.created", firstSessionUpdate.Params.Type)
+	require.Equal(t, firstSessionUpdate.Params.Cursor, secondSessionUpdate.Params.Cursor)
+
 	messageURL := endpoint + "/api/v1/client/sessions/" + sessionID.String() + "/messages"
 	created := clientJSONRequest(t, http.MethodPost, messageURL, loginBody.AccessToken,
 		map[string]any{"localId": "mobile-local-1", "text": "hello from mobile"})
@@ -171,6 +187,7 @@ func clientIntegrationServer(t *testing.T, db *sql.DB, authService *auth.Service
 	router.POST("/api/v1/client/auth/login", server.clientLogin)
 	client := router.Group("/api/v1/client")
 	client.Use(server.requireClientBearer())
+	client.POST("/sessions", server.clientCreateSession)
 	client.GET("/sessions/:id/messages", server.clientListMessages)
 	client.POST("/sessions/:id/messages", server.clientCreateMessage)
 	client.POST("/interactive/:id/answer", server.clientAnswerInteractive)
