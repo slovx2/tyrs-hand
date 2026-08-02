@@ -56,7 +56,7 @@ export default function ConnectionsScreen() {
       })() },
     ]);
   return <Screen>
-    <View style={styles.header}><View><Title>Control 连接</Title><Muted>凭证存储在系统 SecureStore，缓存按 serverId 完全隔离。</Muted></View>
+    <View style={styles.header}><View style={styles.headerCopy}><Title>Control 连接</Title><Muted>凭证存储在系统 SecureStore，缓存按 serverId 完全隔离。</Muted></View>
       <Button testID="connection:add" title="扫码添加" onPress={() => void openScanner()} /></View>
     <View style={styles.theme}><Muted>外观</Muted><SegmentedControl testIDPrefix="theme" value={mode} options={[
       { value: "system", label: "跟随系统" }, { value: "light", label: "浅色" }, { value: "dark", label: "深色" },
@@ -101,6 +101,7 @@ export default function ConnectionsScreen() {
 
 const styles = StyleSheet.create({
   header: { padding: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  headerCopy: { flex: 1, minWidth: 0 },
   theme: { paddingHorizontal: 16, gap: 6 }, list: { padding: 16, gap: 8 }, connection: { padding: 13 },
   row: { flexDirection: "row", alignItems: "center", gap: 10 }, scanner: { flex: 1, justifyContent: "flex-end" },
   scannerOverlay: { margin: 20, padding: 18, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.92)", gap: 8 },

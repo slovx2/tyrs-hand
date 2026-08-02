@@ -21,6 +21,10 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - tapOn:
     id: "composer:input"
 - inputText: "E2E_BASIC verify live markdown settings"
+- assertVisible:
+    id: "composer:parameters"
+- assertVisible:
+    id: "composer:send"
 - hideKeyboard
 - tapOn:
     id: "composer:send"

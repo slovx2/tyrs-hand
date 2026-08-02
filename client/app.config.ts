@@ -23,6 +23,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   android: {
     package: `com.tyrshand.app${suffix}`,
+    softwareKeyboardLayoutMode: "pan",
     adaptiveIcon: { backgroundColor: "#f6f8fa" },
   },
   plugins: [

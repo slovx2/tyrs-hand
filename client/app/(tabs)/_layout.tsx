@@ -10,6 +10,7 @@ export default function TabLayout() {
   const tablet = useTablet();
   const theme = useTheme();
   return <Tabs screenOptions={{ headerShown: true, tabBarPosition: tablet ? "left" : "bottom",
+    tabBarHideOnKeyboard: !tablet,
     tabBarStyle: { backgroundColor: theme.colors.rail, borderColor: theme.colors.border,
       ...(tablet ? { width: 88 } : {}) }, tabBarActiveTintColor: theme.colors.accent,
     tabBarInactiveTintColor: theme.colors.textMuted, headerStyle: { backgroundColor: theme.colors.surface },
