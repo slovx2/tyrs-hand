@@ -54,15 +54,12 @@ func TestStartTurnCarriesCollaborationMode(t *testing.T) {
 	}
 }
 
-func TestStartTurnOmitsEmptyCollaborationSettings(t *testing.T) {
+func TestStartTurnOmitsCollaborationModeWithoutModel(t *testing.T) {
 	client := &recordingRuntimeClient{}
 	_, err := NewRuntime(client).StartTurn(context.Background(), "thread-1",
 		ports.TurnInput{Text: "test", CollaborationMode: &ports.CollaborationMode{Mode: "default"}})
 	require.NoError(t, err)
-	collaboration := client.payload["collaborationMode"].(map[string]any)
-	settings := collaboration["settings"].(map[string]any)
-	require.NotContains(t, settings, "model")
-	require.NotContains(t, settings, "reasoning_effort")
+	require.NotContains(t, client.payload, "collaborationMode")
 }
 
 func TestRollbackThreadUsesSingleLatestTurn(t *testing.T) {
