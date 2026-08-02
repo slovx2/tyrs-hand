@@ -143,7 +143,7 @@ TYRS_HAND_WEBHOOK_HTTP_ADDR=:8081
 
 Discord 开发环境由带 `discord` 角色的执行节点管理。同一个节点可以同时承担 GitHub 和 Discord 任务；开发环境创建时会冻结当时的默认节点，后续 Project、Forum、Conversation 和 Codex Control 都沿用该节点。
 
-只有启用 Discord 开发容器的 Worker 挂载宿主 Docker Socket，Socket 不会进入 Agent 所在的开发容器。Worker 同时通过该 Socket 从受管容器的 `CODEX_HOME/attachments/` 读取 Desktop 图片，并一次性流经 Control 上传到 Discord；不需要共享附件卷，Control 不保存图片副本。部署前将 Worker 宿主 `/var/run/docker.sock` 的数字 GID 写入 Worker `.env` 的 `TYRS_HAND_DOCKER_GID`。Linux 可使用 `stat -c '%g' /var/run/docker.sock` 查询，然后使用独立 Compose 启动：
+官方 Worker Compose 默认启用 `TYRS_HAND_DEVELOPMENT_HOST_DOCKER=true`：开发容器使用 Linux host 网络，挂载宿主 `/var/run/docker.sock`，并内置锁定版本的 Docker CLI 与 Docker Compose。Worker 会读取 Socket 的数字 GID 并把同一附加组授予开发容器，使非 root 运行用户可以管理宿主 Docker；这等同于宿主 root 级能力，只应为受信任的开发环境开启。Worker 也通过该 Socket 从受管容器的 `CODEX_HOME/attachments/` 读取 Desktop 图片，并一次性流经 Control 上传到 Discord；不需要共享附件卷，Control 不保存图片副本。部署前将 Worker 宿主 `/var/run/docker.sock` 的数字 GID 写入 Worker `.env` 的 `TYRS_HAND_DOCKER_GID`。Linux 可使用 `stat -c '%g' /var/run/docker.sock` 查询，然后使用独立 Compose 启动：
 
 ```bash
 docker compose -f compose.worker.yaml up -d worker
@@ -212,7 +212,7 @@ Manifest 订阅 Repository、Issues、Issue Comment、Pull Request、Review、Re
 - Server、Worker 与 Discord 开发镜像均要求以非 root 用户运行。
 - Worker 只通过 HTTPS Worker API 访问 Control，不直连 PostgreSQL 或 Redis，也不在长期配置或进程环境中持有主密钥、Discord Bot Token 或 Provider Key；运行所需凭据由 Control 按 Run 限定下发。
 - Worker API 支持单个 IP 和 CIDR 白名单；直连不依赖 Cloudflare，只有可信代理链才采信转发来源头。
-- 只有启用 Discord 开发容器的 Worker 可以访问宿主 Docker Socket，开发容器自身不可访问。
+- 官方 Worker Compose 默认允许开发容器访问宿主 Docker Socket，并使用 host 网络；裸跑 Worker 默认关闭。Docker Socket 等同宿主 root 级权限，必须只部署到隔离且受信任的执行节点。
 
 生产 Control 应使用 `compose.production.yaml`，通过 Secret 文件提供主密钥；Worker 使用独立的 `compose.worker.yaml`：
 

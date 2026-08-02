@@ -167,7 +167,7 @@ The default rules accept `/tyrs-hand` on the first line of an Issue or Pull Requ
 
 An execution node with the `discord` role manages Discord development environments. The same node can handle both GitHub and Discord work. A development environment freezes the current default node when it is created, and its projects, forums, conversations, and Codex controls keep using that node.
 
-Only Workers with development containers enabled mount the host Docker socket. The socket is never exposed inside the agent's development container. Start the Worker with the separate Compose file:
+The official Worker Compose enables `TYRS_HAND_DEVELOPMENT_HOST_DOCKER=true` by default. Development containers use Linux host networking, mount `/var/run/docker.sock`, and include pinned Docker CLI and Docker Compose versions. The Worker grants the container the socket's numeric supplementary GID so the non-root runtime user can manage host Docker. This is equivalent to host-root access and must only be enabled for trusted development environments. Start the Worker with the separate Compose file:
 
 ```bash
 docker compose -f compose.worker.yaml up -d worker
@@ -184,7 +184,7 @@ docker compose -f compose.worker.yaml up -d worker
 - After the Browser Bridge is installed, development sessions can switch between the Worker browser and registered desktop Chrome while preserving its profile, signed-in state, and ordinary tabs.
 - System-created Discord posts auto-hide after seven inactive days. An unlocked Discord archive only changes visibility; `/codex archive` archives the Codex thread and locks the post, while `/codex restore` restores the original thread and post.
 - Users can run `tyrs-hand-dev codex install <exact-version>` to override the bundled Codex in persistent Home; it activates when the environment is idle and rolls back automatically on startup failure.
-- A rebase is rejected if `USER`, UID/GID, or the Home path changes. devcontainer.json, Features, Compose, arbitrary mounts, Docker sockets, privileged mode, and arbitrary published ports are not supported.
+- A rebase is rejected if `USER`, UID/GID, or the Home path changes. devcontainer.json, Features, Compose, arbitrary mounts, privileged mode, and arbitrary published ports are not supported. The official Worker Compose is the only supported path for host Docker access; standalone Workers keep it disabled by default.
 
 Repository task skills must live at:
 
