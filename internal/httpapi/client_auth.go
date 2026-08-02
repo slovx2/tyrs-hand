@@ -44,9 +44,19 @@ func (s *Server) requireClientBearer() gin.HandlerFunc {
 			problem(c, http.StatusUnauthorized, "需要 Bearer Token", auth.ErrSessionInvalid)
 			return
 		}
-		session, err := s.auth.Authenticate(c.Request.Context(), token)
+		var session auth.Session
+		var err error
+		if strings.HasPrefix(token, "tdv1.") {
+			session, err = s.authenticateClientDevice(c.Request.Context(), token)
+		} else {
+			session, err = s.auth.Authenticate(c.Request.Context(), token)
+		}
 		if err != nil {
-			problem(c, http.StatusUnauthorized, "客户端会话无效", err)
+			if errors.Is(err, auth.ErrSessionInvalid) {
+				problem(c, http.StatusUnauthorized, "客户端会话无效", err)
+			} else {
+				problem(c, http.StatusInternalServerError, "客户端认证失败", err)
+			}
 			return
 		}
 		c.Set("session", session)
