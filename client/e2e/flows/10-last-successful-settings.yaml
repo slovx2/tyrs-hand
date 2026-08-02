@@ -1,0 +1,21 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- runFlow:
+    when:
+      visible:
+        id: "session:back"
+    commands:
+      - tapOn:
+          id: "session:back"
+- tapOn:
+    id: "tab:projects"
+- tapOn:
+    id: "project:row:0"
+- tapOn:
+    id: "composer:parameters"
+- assertVisible:
+    id: "parameters:mode:plan:selected"
+- assertVisible:
+    id: "parameters:tier:fast:selected"
+- tapOn:
+    id: "parameters:done"

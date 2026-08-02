@@ -43,12 +43,21 @@ func (s *Server) workerDownloadAttachment(c *gin.Context) {
 	}
 	var storageKey, filename, mediaType, sha256 string
 	var size int64
-	err = s.db.QueryRowContext(c.Request.Context(), `SELECT a.storage_key, a.original_filename,
-		a.media_type, a.size_bytes, a.sha256 FROM discord_attachments a
-		JOIN discord_input_messages message ON message.message_id = a.message_id
-		JOIN codex_turn_intents i ON i.id = message.turn_intent_id
-		WHERE a.id = $1 AND i.control_id = $2 AND a.status = 'ready'
-		AND a.storage_key IS NOT NULL`, attachmentID, claimed.ControlID).
+	err = s.db.QueryRowContext(c.Request.Context(), `SELECT storage_key,original_filename,
+		media_type,size_bytes,sha256 FROM (
+		SELECT a.storage_key,a.original_filename,a.media_type,a.size_bytes,a.sha256,0 AS priority
+		FROM session_attachments a
+		JOIN session_message_attachments link ON link.attachment_id=a.id
+		JOIN session_messages message ON message.id=link.message_id
+		WHERE a.id=$1 AND message.turn_intent_id=$2 AND a.status='attached'
+		UNION ALL
+		SELECT a.storage_key,a.original_filename,a.media_type,a.size_bytes,a.sha256,1
+		FROM discord_attachments a
+		JOIN discord_input_messages message ON message.message_id=a.message_id
+		JOIN codex_turn_intents intent ON intent.id=message.turn_intent_id
+		WHERE a.id=$1 AND intent.control_id=$3 AND a.status='ready'
+		AND a.storage_key IS NOT NULL) candidates ORDER BY priority LIMIT 1`,
+		attachmentID, claimed.ID, claimed.ControlID).
 		Scan(&storageKey, &filename, &mediaType, &size, &sha256)
 	if err != nil {
 		problem(c, http.StatusNotFound, "Discord 附件不存在", err)

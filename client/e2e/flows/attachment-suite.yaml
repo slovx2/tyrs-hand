@@ -1,0 +1,4 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- runFlow: 01-pair-controls.yaml
+- runFlow: 11-attachments.yaml

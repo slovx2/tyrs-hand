@@ -1,0 +1,30 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: allow
+- extendedWaitUntil:
+    visible:
+      id: "tab:connections"
+    timeout: 30000
+- runFlow:
+    file: _shared/open-link.yaml
+    env:
+      PAIRING_URI: ${TYRS_HAND_E2E_PAIRING_URI}
+- runFlow:
+    file: _shared/open-link.yaml
+    env:
+      PAIRING_URI: ${TYRS_HAND_E2E_SECOND_PAIRING_URI}
+- assertVisible:
+    id: "connection:active"
+- assertVisible:
+    id: "connection:inactive"
+- tapOn:
+    id: "connection:inactive"
+- tapOn:
+    id: "tab:projects"
+- extendedWaitUntil:
+    visible:
+      id: "project:row:0"
+    timeout: 60000

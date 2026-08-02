@@ -14,13 +14,17 @@ import (
 )
 
 type clientUpdate struct {
-	Cursor    int64           `json:"cursor"`
-	SessionID *uuid.UUID      `json:"sessionId"`
-	Type      string          `json:"type"`
-	EntityID  string          `json:"entityId"`
-	EntitySeq *int64          `json:"entitySeq"`
-	Payload   json.RawMessage `json:"payload"`
-	CreatedAt time.Time       `json:"createdAt"`
+	Kind          string          `json:"kind"`
+	Cursor        int64           `json:"cursor,omitempty"`
+	SessionID     *uuid.UUID      `json:"sessionId"`
+	Type          string          `json:"type"`
+	EntityType    string          `json:"entityType,omitempty"`
+	EntityID      string          `json:"entityId"`
+	EntitySeq     *int64          `json:"entitySeq"`
+	EntityVersion *int64          `json:"entityVersion,omitempty"`
+	RunEventSeq   *int64          `json:"runEventSeq,omitempty"`
+	Payload       json.RawMessage `json:"payload"`
+	CreatedAt     time.Time       `json:"createdAt"`
 }
 
 type clientRPCNotification struct {
@@ -52,6 +56,8 @@ func (s *Server) clientUpdates(c *gin.Context) {
 	if err != nil {
 		return
 	}
+	clientSyncConnections.Inc()
+	defer clientSyncConnections.Dec()
 	defer func() { _ = connection.Close() }()
 	var live <-chan clientUpdate
 	cancelSubscription := func() {}
@@ -113,7 +119,8 @@ func (s *Server) sendClientUpdates(c *gin.Context, connection *websocket.Conn,
 	cursor int64,
 ) (int64, error) {
 	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT cursor,session_id::text,
-		update_type,entity_id,entity_seq,payload,created_at FROM client_updates
+		update_type,COALESCE(entity_type,''),entity_id,entity_seq,entity_version,payload,created_at
+		FROM client_updates
 		WHERE cursor>$1 ORDER BY cursor LIMIT 100`, cursor)
 	if err != nil {
 		return cursor, err
@@ -122,9 +129,10 @@ func (s *Server) sendClientUpdates(c *gin.Context, connection *websocket.Conn,
 	for rows.Next() {
 		var update clientUpdate
 		var sessionID sql.NullString
-		var entitySeq sql.NullInt64
-		if err = rows.Scan(&update.Cursor, &sessionID, &update.Type, &update.EntityID,
-			&entitySeq, &update.Payload, &update.CreatedAt); err != nil {
+		var entitySeq, entityVersion sql.NullInt64
+		if err = rows.Scan(&update.Cursor, &sessionID, &update.Type, &update.EntityType,
+			&update.EntityID, &entitySeq, &entityVersion, &update.Payload,
+			&update.CreatedAt); err != nil {
 			return cursor, err
 		}
 		if sessionID.Valid {
@@ -137,6 +145,10 @@ func (s *Server) sendClientUpdates(c *gin.Context, connection *websocket.Conn,
 		if entitySeq.Valid {
 			update.EntitySeq = &entitySeq.Int64
 		}
+		if entityVersion.Valid {
+			update.EntityVersion = &entityVersion.Int64
+		}
+		update.Kind = "durable"
 		_ = connection.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		if err = connection.WriteJSON(clientRPCNotification{Method: "update", Params: update}); err != nil {
 			return cursor, err

@@ -27,10 +27,13 @@ type remoteSavedAttachment struct {
 func (p *RemoteProcessor) prepareRemoteAttachments(ctx context.Context,
 	task *workerprotocol.Task, runtime devcontainer.Runtime,
 ) ([]remoteSavedAttachment, error) {
-	if task.Snapshot.Discord == nil {
-		return nil, nil
+	var attachments []workerprotocol.Attachment
+	if task.Snapshot.Development != nil {
+		attachments = task.Snapshot.Development.Attachments
 	}
-	attachments := task.Snapshot.Discord.Attachments
+	if task.Snapshot.Discord != nil && len(task.Snapshot.Discord.Attachments) > 0 {
+		attachments = task.Snapshot.Discord.Attachments
+	}
 	if len(attachments) == 0 {
 		return nil, nil
 	}
@@ -100,8 +103,28 @@ func remoteDevelopmentTurnInput(snapshot *workerprotocol.DevelopmentSnapshot,
 		input.ClientUserMessageID = snapshot.MessageID
 		return input
 	}
+	var images []ports.LocalImageInput
+	var files []map[string]string
+	for _, attachment := range attachments {
+		path := filepath.ToSlash(filepath.Join(runtime.Workspace,
+			filepath.FromSlash(attachment.RelativePath)))
+		if attachment.Kind == "image" {
+			images = append(images, ports.LocalImageInput{Path: path, Detail: "auto"})
+		} else {
+			files = append(files, map[string]string{"filename": attachment.Filename,
+				"relative_path": attachment.RelativePath, "media_type": attachment.MediaType,
+				"sha256": attachment.SHA256})
+		}
+	}
+	additional := map[string]ports.AdditionalContextEntry{}
+	if len(files) > 0 {
+		encoded, _ := json.Marshal(map[string]any{"message_id": snapshot.MessageID,
+			"files": files})
+		additional["session_message_attachments"] = ports.AdditionalContextEntry{
+			Kind: "application", Value: string(encoded)}
+	}
 	return ports.TurnInput{Text: snapshot.Body, ClientUserMessageID: snapshot.MessageID,
-		Skills: skills}
+		LocalImages: images, AdditionalContext: additional, Skills: skills}
 }
 
 func remoteDiscordTurnInput(snapshot *workerprotocol.DiscordSnapshot,

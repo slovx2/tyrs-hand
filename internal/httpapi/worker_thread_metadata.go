@@ -289,11 +289,12 @@ func (s *Server) recordThreadLifecycleEvent(c *gin.Context, tx *sql.Tx,
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(c.Request.Context(), `UPDATE development_sessions session SET
+	var sessionID uuid.UUID
+	err = tx.QueryRowContext(c.Request.Context(), `UPDATE development_sessions session SET
 		lifecycle_state=$2, updated_at=now()
 		FROM codex_thread_controls control
-		WHERE control.id=$1 AND session.id=control.session_id`, controlID,
-		event.LifecycleState)
+		WHERE control.id=$1 AND session.id=control.session_id
+		RETURNING session.id`, controlID, event.LifecycleState).Scan(&sessionID)
 	if err != nil {
 		return err
 	}
@@ -301,6 +302,15 @@ func (s *Server) recordThreadLifecycleEvent(c *gin.Context, tx *sql.Tx,
 		status = 'completed', error = NULL, completed_at = now(), updated_at = now()
 		WHERE control_id = $1 AND desired_state = $2
 			AND status IN ('waiting_for_turn','applying')`, controlID, event.LifecycleState)
+	if err == nil {
+		var snapshot clientSession
+		snapshot, err = scanClientSession(tx.QueryRowContext(c.Request.Context(), `SELECT `+
+			clientSessionColumns+` FROM development_sessions WHERE id=$1`, sessionID))
+		if err == nil {
+			_, err = insertClientUpdate(c.Request.Context(), tx, &sessionID,
+				"session.lifecycle", "session", sessionID.String(), nil, &revision, snapshot)
+		}
+	}
 	if err != nil || !conversationID.Valid {
 		return err
 	}

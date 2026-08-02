@@ -93,7 +93,12 @@ func (s *Server) createClientDevicePairing(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "创建设备绑定失败", err)
 		return
 	}
-	pairingURI := devicePairingURI(s.cfg.PublicURL, pairing.ID, secret, pairing.ExpiresAt)
+	serverID, err := s.clientControlInstanceID(c.Request.Context())
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取 Control 身份失败", err)
+		return
+	}
+	pairingURI := devicePairingURI(s.cfg.PublicURL, serverID, pairing.ID, secret, pairing.ExpiresAt)
 	qrDataURL, err := qrDataURL(pairingURI)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "生成设备二维码失败", err)
@@ -101,7 +106,8 @@ func (s *Server) createClientDevicePairing(c *gin.Context) {
 	}
 	c.JSON(http.StatusCreated, gin.H{
 		"id": pairing.ID, "status": pairing.Status, "expiresAt": pairing.ExpiresAt,
-		"createdAt": pairing.CreatedAt, "pairingUri": pairingURI, "qrDataUrl": qrDataURL,
+		"createdAt": pairing.CreatedAt, "serverId": serverID,
+		"pairingUri": pairingURI, "qrDataUrl": qrDataURL,
 	})
 }
 
@@ -346,12 +352,13 @@ func parseClientDeviceToken(token string) (uuid.UUID, bool) {
 	return deviceID, true
 }
 
-func devicePairingURI(serverURL string, pairingID uuid.UUID, secret string,
+func devicePairingURI(serverURL string, serverID, pairingID uuid.UUID, secret string,
 	expiresAt time.Time,
 ) string {
 	query := url.Values{}
-	query.Set("v", "1")
+	query.Set("v", "2")
 	query.Set("server", strings.TrimRight(serverURL, "/"))
+	query.Set("serverId", serverID.String())
 	query.Set("pairingId", pairingID.String())
 	query.Set("secret", secret)
 	query.Set("expiresAt", expiresAt.UTC().Format(time.RFC3339))

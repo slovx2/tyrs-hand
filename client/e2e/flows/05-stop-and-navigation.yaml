@@ -1,0 +1,37 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- runFlow:
+    file: _shared/create-task.yaml
+    env:
+      TASK_TEXT: "E2E_BLOCK wait for mobile stop"
+- extendedWaitUntil:
+    visible:
+      id: "session:stop"
+    timeout: 120000
+- tapOn:
+    id: "session:stop"
+- extendedWaitUntil:
+    notVisible:
+      id: "session:stop"
+    timeout: 60000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - pressKey: BACK
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: 2%, 50%
+          end: 90%, 50%
+          duration: 500
+- assertVisible:
+    id: "sessions:list"
+- tapOn:
+    id: "session:row:0"
+- tapOn:
+    id: "session:back"
+- assertVisible:
+    id: "sessions:list"

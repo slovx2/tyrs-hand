@@ -191,7 +191,7 @@ func (s *Server) workerPendingThreadLifecycles(c *gin.Context) {
 		FROM codex_thread_controls control, discord_development_environments environment
 		WHERE request.control_id = control.id
 			AND environment.id = request.environment_id
-			AND request.source = 'discord' AND request.status = 'waiting_for_turn'
+			AND request.source IN ('discord','client') AND request.status = 'waiting_for_turn'
 			AND request.revision = control.lifecycle_revision
 			AND environment.execution_node_id = $1
 			AND NOT EXISTS (SELECT 1 FROM codex_turn_runs run
@@ -210,7 +210,7 @@ func (s *Server) workerPendingThreadLifecycles(c *gin.Context) {
 		JOIN codex_thread_controls control ON control.id = request.control_id
 		JOIN discord_development_environments environment
 			ON environment.id = request.environment_id
-		WHERE request.source = 'discord' AND request.status = 'applying'
+		WHERE request.source IN ('discord','client') AND request.status = 'applying'
 			AND request.response IS NULL
 			AND environment.execution_node_id = $1
 		ORDER BY request.created_at, request.id`, workerNode(c).ID)

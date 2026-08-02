@@ -1,0 +1,64 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- tapOn:
+    id: "tab:projects"
+- tapOn:
+    id: "project:row:0"
+- tapOn:
+    id: "composer:attachments"
+- tapOn:
+    id: "composer:attachment:library"
+- tapOn:
+    point: 18%, 28%
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn:
+          point: 82%, 91%
+- runFlow:
+    when:
+      platform: iOS
+      visible: "Add"
+    commands:
+      - tapOn: "Add"
+- extendedWaitUntil:
+    visible:
+      id: "composer:attachment:0"
+    timeout: 30000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn:
+          id: "composer:attachments"
+      - tapOn:
+          id: "composer:attachment:document"
+      - tapOn:
+          point: 7%, 7%
+      - tapOn:
+          id: "android:id/title"
+          text: "Downloads"
+      - tapOn: "tyrs-hand-e2e.txt"
+      - extendedWaitUntil:
+          visible:
+            id: "composer:attachment:1"
+          timeout: 30000
+- tapOn:
+    id: "composer:input"
+- inputText: "E2E_BASIC_ATTACHMENT verify image and file"
+- hideKeyboard
+- tapOn:
+    id: "composer:send"
+- tapOn:
+    id: "tab:sessions"
+- extendedWaitUntil:
+    visible:
+      id: "session:row:0"
+    timeout: 30000
+- tapOn:
+    id: "session:row:0"
+- extendedWaitUntil:
+    visible:
+      id: "message:role:agent"
+    timeout: 120000

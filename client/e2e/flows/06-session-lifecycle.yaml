@@ -1,0 +1,27 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- tapOn:
+    id: "session:row:0"
+- tapOn:
+    id: "session:rename"
+- tapOn:
+    id: "session:rename:input"
+- eraseText
+- inputText: "Mobile E2E renamed"
+- hideKeyboard
+- tapOn:
+    id: "session:rename:save"
+- tapOn:
+    id: "session:archive"
+- tapOn:
+    id: "session:back"
+- tapOn:
+    id: "sessions:filter:archived"
+- extendedWaitUntil:
+    visible:
+      id: "session:row:0"
+    timeout: 60000
+- tapOn:
+    id: "session:row:0"
+- tapOn:
+    id: "session:restore"

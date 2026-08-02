@@ -1,0 +1,116 @@
+name: Mobile E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 要运行的平台
+        required: true
+        type: choice
+        default: both
+        options: [both, android, ios]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-e2e-${{ github.ref }}-${{ inputs.platform }}
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: 1.26.5
+  NODE_VERSION: 24.14.0
+  PNPM_VERSION: 11.14.0
+  CODEX_VERSION: 0.145.0
+  MAESTRO_VERSION: 2.3.0
+
+jobs:
+  android-phone:
+    if: inputs.platform == 'both' || inputs.platform == 'android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with: { go-version: "1.26.5", cache: true }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: "24.14.0" }
+      - name: 安装精确工具链
+        run: |
+          npm install --global pnpm@11.14.0
+          npm install --global @openai/codex@0.145.0
+          ./tools/mobile-e2e/install-maestro.sh
+      - name: 创建 Android 35 手机模拟器
+        run: |
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager "platform-tools" "platforms;android-35" "system-images;android-35;google_apis;x86_64"
+          echo no | avdmanager create avd --force --name tyrs_hand_e2e_api35 \
+            --package "system-images;android-35;google_apis;x86_64" --device "pixel_7"
+          sudo chmod 666 /dev/kvm
+          nohup emulator -avd tyrs_hand_e2e_api35 -no-window -no-audio -no-boot-anim \
+            -gpu swiftshader_indirect >"${RUNNER_TEMP}/android-emulator.log" 2>&1 &
+          adb wait-for-device
+          until [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; do sleep 2; done
+          adb shell settings put global window_animation_scale 0
+          adb shell settings put global transition_animation_scale 0
+          adb shell settings put global animator_duration_scale 0
+      - name: 安装客户端依赖
+        run: pnpm --dir client install --frozen-lockfile
+      - name: Android 真实 Codex 完整矩阵
+        env:
+          TYRS_HAND_E2E_MAESTRO_BIN: /home/runner/.local/bin/maestro
+          TYRS_HAND_E2E_DEVELOPMENT_IMAGE: tyrs-hand-development:e2e
+        run: make client-e2e-android
+      - name: 上传失败证据
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mobile-e2e-android-${{ github.run_id }}
+          path: |
+            .local/e2e/evidence/
+            ${{ runner.temp }}/android-emulator.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  iphone:
+    if: inputs.platform == 'both' || inputs.platform == 'ios'
+    runs-on: macos-15
+    timeout-minutes: 120
+    env:
+      TYRS_HAND_E2E_NATIVE_SERVICES: "1"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with: { go-version: "1.26.5", cache: true }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: "24.14.0" }
+      - name: 安装并验证精确工具链
+        run: |
+          npm install --global pnpm@11.14.0
+          brew install postgresql@18 redis
+          echo "$(brew --prefix postgresql@18)/bin" >> "${GITHUB_PATH}"
+          ./tools/mobile-e2e/install-maestro.sh
+          "$(brew --prefix postgresql@18)/bin/postgres" --version | grep -F "18.3"
+          redis-server --version | grep -F "v=8.4.0"
+      - name: 启动 iPhone 模拟器
+        run: |
+          runtime="$(xcrun simctl list runtimes available -j | \
+            jq -r '.runtimes | map(select(.platform == "iOS")) | sort_by(.version) | last.identifier')"
+          device_type="com.apple.CoreSimulator.SimDeviceType.iPhone-16"
+          udid="$(xcrun simctl create "Tyrs Hand E2E" "${device_type}" "${runtime}")"
+          xcrun simctl boot "${udid}"
+          xcrun simctl bootstatus "${udid}" -b
+      - name: 安装客户端依赖
+        run: pnpm --dir client install --frozen-lockfile
+      - name: iPhone 真实 Control + 协议 Worker 完整矩阵
+        env:
+          TYRS_HAND_E2E_MAESTRO_BIN: /Users/runner/.local/bin/maestro
+        run: make client-e2e-ios
+      - name: 上传失败证据
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mobile-e2e-ios-${{ github.run_id }}
+          path: .local/e2e/evidence/
+          if-no-files-found: warn
+          retention-days: 14

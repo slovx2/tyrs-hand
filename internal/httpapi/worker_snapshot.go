@@ -167,6 +167,28 @@ func (s *Server) loadDevelopmentWorkerSnapshot(ctx context.Context,
 			return nil, err
 		}
 	}
+	rows, err := s.db.QueryContext(ctx, `SELECT attachment.id,attachment.kind,
+		attachment.original_filename,attachment.media_type,attachment.size_bytes,
+		attachment.sha256 FROM session_attachments attachment
+		JOIN session_message_attachments link ON link.attachment_id=attachment.id
+		JOIN session_messages message ON message.id=link.message_id
+		WHERE message.turn_intent_id=$1 AND attachment.status='attached'
+		ORDER BY link.ordinal LIMIT $2`, claimed.ID, discordintegration.DefaultMaxAttachments)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var item workerprotocol.Attachment
+		if err = rows.Scan(&item.ID, &item.Kind, &item.Filename, &item.MediaType,
+			&item.Size, &item.SHA256); err != nil {
+			return nil, err
+		}
+		result.Attachments = append(result.Attachments, item)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
 	return &result, nil
 }
 

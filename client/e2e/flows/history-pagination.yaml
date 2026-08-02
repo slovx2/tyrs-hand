@@ -1,0 +1,24 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- launchApp:
+    clearState: false
+- tapOn:
+    id: "tab:sessions"
+- tapOn:
+    id: "session:row:0"
+- extendedWaitUntil:
+    visible:
+      id: "message:history-180"
+    timeout: 60000
+- repeat:
+    times: 45
+    commands:
+      - swipe:
+          start: 50%, 25%
+          end: 50%, 90%
+          duration: 250
+- extendedWaitUntil:
+    visible:
+      id: "message:history-001"
+    timeout: 60000
+- stopApp

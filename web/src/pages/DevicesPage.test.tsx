@@ -34,7 +34,8 @@ describe('DevicesPage', () => {
             id: '11111111-1111-1111-1111-111111111111',
             status: 'waiting_scan',
             expiresAt: '2026-08-02T10:10:00Z',
-            pairingUri: 'tyrshand://device-pair?v=1',
+            pairingUri:
+              'tyrshand://device-pair?v=2&serverId=00000000-0000-0000-0000-000000000001',
             qrDataUrl: 'data:image/png;base64,ZmFrZQ==',
           },
           { status: 201 },

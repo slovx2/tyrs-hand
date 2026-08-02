@@ -1,0 +1,38 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- runFlow:
+    file: _shared/create-task.yaml
+    env:
+      TASK_TEXT: "E2E_BLOCK keep run active for steer"
+- extendedWaitUntil:
+    visible:
+      id: "session:stop"
+    timeout: 120000
+- tapOn:
+    id: "composer:parameters"
+- tapOn:
+    id: "parameters:mode:default"
+- tapOn:
+    id: "parameters:reasoning:ultra"
+- tapOn:
+    id: "parameters:done"
+- assertVisible:
+    id: "session:next-turn-settings"
+- assertVisible:
+    id: "run:actual-settings"
+- tapOn:
+    id: "composer:input"
+- inputText: "E2E_STEER append while busy"
+- hideKeyboard
+- tapOn:
+    id: "composer:send"
+- extendedWaitUntil:
+    visible:
+      id: "message:role:user"
+    timeout: 30000
+- tapOn:
+    id: "session:stop"
+- extendedWaitUntil:
+    notVisible:
+      id: "session:stop"
+    timeout: 60000

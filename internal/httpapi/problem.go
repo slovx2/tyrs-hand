@@ -7,12 +7,13 @@ import (
 )
 
 type Problem struct {
-	Type      string `json:"type"`
-	Title     string `json:"title"`
-	Status    int    `json:"status"`
-	Detail    string `json:"detail,omitempty"`
-	Instance  string `json:"instance,omitempty"`
-	RequestID string `json:"requestId,omitempty"`
+	Type          string `json:"type"`
+	Title         string `json:"title"`
+	Status        int    `json:"status"`
+	Detail        string `json:"detail,omitempty"`
+	Instance      string `json:"instance,omitempty"`
+	RequestID     string `json:"requestId,omitempty"`
+	ResetRequired bool   `json:"resetRequired,omitempty"`
 }
 
 func problem(c *gin.Context, status int, title string, err error) {

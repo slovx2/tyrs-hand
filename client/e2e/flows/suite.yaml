@@ -1,0 +1,13 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- runFlow: 01-pair-controls.yaml
+- runFlow: 02-parameters-and-default-turn.yaml
+- runFlow: 03-interactive.yaml
+- runFlow: 04-plan-execute.yaml
+- runFlow: 05-stop-and-navigation.yaml
+- runFlow: 06-session-lifecycle.yaml
+- runFlow: 07-theme-and-modal-back.yaml
+- runFlow: 08-steer-and-next-settings.yaml
+- runFlow: 09-secret-and-failure.yaml
+- runFlow: 10-last-successful-settings.yaml
+- runFlow: 11-attachments.yaml

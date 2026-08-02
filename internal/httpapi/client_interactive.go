@@ -74,8 +74,8 @@ func (s *Server) clientAnswerInteractive(c *gin.Context) {
 			payload, _ := json.Marshal(gin.H{"requestId": id, "status": "resolved",
 				"surface": "client"})
 			_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO client_updates(
-				session_id,update_type,entity_id,payload)
-				VALUES ($1,'interactive.resolved',$2,$3)`, sessionID, id.String(), payload)
+				session_id,update_type,entity_type,entity_id,entity_version,payload)
+				VALUES ($1,'interactive.resolved','interactive',$2,2,$3)`, sessionID, id.String(), payload)
 		}
 	}
 	if err == nil {

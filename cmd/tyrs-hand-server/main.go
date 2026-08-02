@@ -55,6 +55,11 @@ func main() {
 			}
 		}()
 	}
+	go func() {
+		if err := app.API.RunBackground(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			app.Logger.Error("客户端后台任务退出", zap.Error(err))
+		}
+	}()
 	<-ctx.Done()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()

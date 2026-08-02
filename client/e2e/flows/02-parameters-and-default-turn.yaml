@@ -1,0 +1,40 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- tapOn:
+    id: "tab:projects"
+- tapOn:
+    id: "project:row:0"
+- tapOn:
+    id: "composer:parameters"
+- assertVisible:
+    id: "parameters:sheet"
+- tapOn:
+    id: "parameters:model:gpt-5.6-sol"
+- tapOn:
+    id: "parameters:reasoning:max"
+- tapOn:
+    id: "parameters:tier:fast"
+- tapOn:
+    id: "parameters:mode:default"
+- tapOn:
+    id: "parameters:done"
+- tapOn:
+    id: "composer:input"
+- inputText: "E2E_BASIC verify live markdown settings"
+- hideKeyboard
+- tapOn:
+    id: "composer:send"
+- tapOn:
+    id: "tab:sessions"
+- extendedWaitUntil:
+    visible:
+      id: "session:row:0"
+    timeout: 30000
+- tapOn:
+    id: "session:row:0"
+- extendedWaitUntil:
+    visible:
+      id: "message:role:agent"
+    timeout: 120000
+- assertVisible:
+    id: "run:.*:progress"

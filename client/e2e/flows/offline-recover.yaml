@@ -1,0 +1,18 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- launchApp:
+    clearState: false
+- tapOn:
+    id: "tab:sessions"
+- extendedWaitUntil:
+    visible:
+      id: "session:row:0"
+    timeout: 120000
+- tapOn:
+    id: "session:row:0"
+- extendedWaitUntil:
+    visible:
+      id: "message:role:agent"
+    timeout: 120000
+- assertNotVisible:
+    id: "outbox:.*:failed"

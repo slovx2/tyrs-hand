@@ -1,0 +1,19 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- launchApp:
+    clearState: false
+- tapOn:
+    id: "tab:projects"
+- tapOn:
+    id: "project:row:0"
+- tapOn:
+    id: "composer:input"
+- inputText: "E2E_OFFLINE_IDEMPOTENT"
+- hideKeyboard
+- tapOn:
+    id: "composer:send"
+- extendedWaitUntil:
+    visible:
+      id: "outbox:.*:failed"
+    timeout: 30000
+- stopApp

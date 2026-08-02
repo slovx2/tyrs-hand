@@ -133,8 +133,19 @@ func (s *Server) workerRegisterInteractive(c *gin.Context) {
 			payload, _ := json.Marshal(gin.H{"requestId": id, "questions": params.Questions,
 				"deadlineAt": nullableTime(deadline), "secret": secret})
 			_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO client_updates(
-				session_id,update_type,entity_id,payload)
-				VALUES ($1,'interactive.created',$2,$3)`, claimed.SessionID, id.String(), payload)
+				session_id,update_type,entity_type,entity_id,entity_version,payload)
+				VALUES ($1,'interactive.created','interactive',$2,1,$3)`, claimed.SessionID, id.String(), payload)
+		}
+		if err == nil && claimed.SessionID != uuid.Nil && !secret {
+			_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO client_notification_outbox(
+				administrator_id,session_id,notification_type,idempotency_key,title,body,data)
+				SELECT session.created_by_administrator_id,session.id,'interactive.required',$2,
+				'Tyrs Hand','任务需要你的回答',jsonb_build_object(
+				'serverId',instance.id,'sessionId',session.id)
+				FROM development_sessions session CROSS JOIN control_instances instance
+				WHERE session.id=$1 AND session.created_by_administrator_id IS NOT NULL
+				ON CONFLICT(idempotency_key) DO NOTHING`, claimed.SessionID,
+				"interactive:"+id.String())
 		}
 		if err != nil {
 			problem(c, http.StatusInternalServerError, "释放交互等待调度槽失败", err)

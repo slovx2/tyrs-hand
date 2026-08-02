@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	ProtocolVersion       = 19
+	ProtocolVersion       = 20
 	GitHubDefaultSetting  = "execution.default.github"
 	DiscordDefaultSetting = "execution.default.discord"
 )

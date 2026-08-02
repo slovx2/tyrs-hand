@@ -274,9 +274,7 @@ func validate(scope string, value Preferences) error {
 		*value.Model = text
 	}
 	if value.ReasoningEffort != nil {
-		switch *value.ReasoningEffort {
-		case "low", "medium", "high", "xhigh":
-		default:
+		if !ValidReasoningEffort(valueString(value.Model), *value.ReasoningEffort) {
 			return fmt.Errorf("不支持的思考等级 %q", *value.ReasoningEffort)
 		}
 	}
@@ -299,12 +297,17 @@ func normalizedEffort(value sql.NullString) *string {
 	if result == nil {
 		return nil
 	}
-	switch *result {
-	case "low", "medium", "high", "xhigh":
-		return result
-	default:
+	if !ValidReasoningEffort("", *result) {
 		return nil
 	}
+	return result
+}
+
+func valueString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(*value)
 }
 
 func normalizedTier(value sql.NullString) *string {

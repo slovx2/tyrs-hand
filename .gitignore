@@ -16,6 +16,12 @@ community-research/
 # 前端
 /web/**/node_modules/
 /web/dist/
+/client/node_modules/
+/client/dist/
+/client/.expo/
+/client/android/
+/client/ios/
+/client/.e2e-build/
 /web/coverage/
 /web/playwright-report/
 /web/test-results/

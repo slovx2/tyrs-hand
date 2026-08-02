@@ -1,15 +1,17 @@
 PNPM ?= pnpm
 LOCAL_IMAGE ?= tyrs-hand:local
 
-.PHONY: dependencies generate generate-check format format-check vet lint web-check test test-unit test-race test-integration test-runtime-image test-coverage web-install web-build build build-local image-local ci ci-local
+.PHONY: dependencies generate generate-check format format-check vet lint web-check client-install client-check client-export client-e2e-contract client-e2e-android client-e2e-ios test test-unit test-race test-integration test-runtime-image test-coverage web-install web-build build build-local image-local ci ci-local
 
 dependencies:
 	go mod download
 	go mod verify
+	$(MAKE) client-install
 
 generate:
 	go generate ./...
 	$(PNPM) --dir web generate:api
+	$(PNPM) --dir client generate:api
 
 generate-check:
 	@before="$$(mktemp)"; after="$$(mktemp)"; \
@@ -41,6 +43,27 @@ lint:
 
 web-check:
 	$(PNPM) --dir web typecheck
+
+client-install:
+	$(PNPM) --dir client install --frozen-lockfile
+
+client-check:
+	$(PNPM) --dir client typecheck
+	$(PNPM) --dir client lint
+	$(PNPM) --dir client test
+
+client-export:
+	$(PNPM) --dir client export:ios
+	$(PNPM) --dir client export:android
+
+client-e2e-contract:
+	$(PNPM) --dir client e2e:contract
+
+client-e2e-android:
+	./tools/mobile-e2e/run.sh android
+
+client-e2e-ios:
+	TYRS_HAND_E2E_NATIVE_SERVICES=1 ./tools/mobile-e2e/run.sh ios
 
 test: test-unit
 
@@ -86,11 +109,14 @@ ci:
 	$(MAKE) vet
 	$(MAKE) lint
 	$(MAKE) web-check
+	$(MAKE) client-check
+	$(MAKE) client-e2e-contract
 	$(MAKE) test-unit
 	$(MAKE) test-race
 	$(MAKE) test-integration
 	$(MAKE) test-coverage
 	$(MAKE) build
+	$(MAKE) client-export
 
 ci-local:
 	./tools/with-local-toolchain.sh ./tools/ci-local.sh

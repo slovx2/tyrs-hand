@@ -1,0 +1,20 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- openLink: ${PAIRING_URI}
+- runFlow:
+    when:
+      platform: Android
+      visible: "Open with.*"
+    commands:
+      - tapOn: "Tyrs Hand.*"
+      - tapOn: "Just once"
+- runFlow:
+    when:
+      platform: iOS
+      visible: "Open"
+    commands:
+      - tapOn: "Open"
+- extendedWaitUntil:
+    visible:
+      id: "connection:active"
+    timeout: 90000

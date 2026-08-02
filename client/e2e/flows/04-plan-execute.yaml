@@ -1,0 +1,47 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- runFlow:
+    when:
+      visible:
+        id: "session:back"
+    commands:
+      - tapOn:
+          id: "session:back"
+- tapOn:
+    id: "tab:projects"
+- tapOn:
+    id: "project:row:0"
+- tapOn:
+    id: "composer:parameters"
+- tapOn:
+    id: "parameters:mode:plan"
+- tapOn:
+    id: "parameters:done"
+- tapOn:
+    id: "composer:input"
+- inputText: "E2E_PLAN prepare deterministic plan"
+- hideKeyboard
+- tapOn:
+    id: "composer:send"
+- tapOn:
+    id: "tab:sessions"
+- extendedWaitUntil:
+    visible:
+      id: "session:row:0"
+    timeout: 30000
+- tapOn:
+    id: "session:row:0"
+- extendedWaitUntil:
+    visible:
+      id: "message:role:agent"
+    timeout: 120000
+- scrollUntilVisible:
+    element:
+      id: "plan:execute"
+    direction: DOWN
+- tapOn:
+    id: "plan:execute"
+- extendedWaitUntil:
+    notVisible:
+      id: "plan:execute"
+    timeout: 120000

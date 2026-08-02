@@ -147,6 +147,64 @@ func (g *TitleGenerator) RecoverInterrupted(ctx context.Context) error {
 	}
 }
 
+// RunSessionOnce 为通用 Session 的首条消息生成标题；revision 可阻止异步结果覆盖手动改名。
+func (g *TitleGenerator) RunSessionOnce(ctx context.Context) (bool, error) {
+	tx, err := g.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var claimed claimedConversationTitle
+	var revision int64
+	err = tx.QueryRowContext(ctx, `SELECT session.id,session.title_revision,
+		COALESCE(message.content#>>'{v,content,data,message}',message.content->>'text','')
+		FROM development_sessions session JOIN session_messages message
+		ON message.session_id=session.id AND message.seq=1
+		WHERE session.title_source='fallback' ORDER BY session.created_at,session.id
+		FOR UPDATE OF session SKIP LOCKED LIMIT 1`).Scan(&claimed.ID, &revision, &claimed.Body)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE development_sessions SET title_source='generating',
+		updated_at=now() WHERE id=$1 AND title_revision=$2 AND title_source='fallback'`,
+		claimed.ID, revision)
+	if err != nil {
+		return false, err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil || changed != 1 {
+		return false, err
+	}
+	if err = tx.Commit(); err != nil {
+		return false, err
+	}
+	title := fallbackTitle(claimed.Body)
+	if generated, generateErr := g.generate(ctx, claimed); generateErr == nil {
+		title = generated
+	}
+	title = normalizeConversationTitle(title)
+	if title == "" {
+		title = fallbackTitle(claimed.Body)
+	}
+	_, err = g.db.ExecContext(ctx, `WITH updated AS (
+		UPDATE development_sessions SET title=$3,generated_title=$3,title_source='generated',
+		updated_at=now() WHERE id=$1 AND title_revision=$2 AND title_source='generating'
+		RETURNING *) INSERT INTO client_updates(session_id,update_type,entity_type,entity_id,
+		entity_version,payload,durable) SELECT id,'session.updated','session',id::text,
+		settings_version,to_jsonb(updated),true FROM updated`, claimed.ID, revision, title)
+	return true, err
+}
+
+// RecoverInterruptedSessions 让进程中断的标题任务可以安全重试。
+func (g *TitleGenerator) RecoverInterruptedSessions(ctx context.Context) error {
+	_, err := g.db.ExecContext(ctx, `UPDATE development_sessions SET title_source='fallback',
+		updated_at=now() WHERE title_source='generating'`)
+	return err
+}
+
 func (g *TitleGenerator) claim(ctx context.Context, status string) (claimedConversationTitle, error) {
 	tx, err := g.db.BeginTx(ctx, nil)
 	if err != nil {

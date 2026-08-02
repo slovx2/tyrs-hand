@@ -23,6 +23,9 @@ func (r *RemoteRunner) runDevelopmentOperation(ctx context.Context,
 		r.developmentOperationHeartbeat(operationCtx, operation, logger)
 	}()
 	err := r.processor.ProcessDevelopmentOperation(operationCtx, operation)
+	if err != nil {
+		logger.Error("执行开发环境 Operation 失败", zap.Error(err))
+	}
 	cancel()
 	<-heartbeatDone
 	for ctx.Err() == nil {

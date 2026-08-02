@@ -48,6 +48,9 @@ func (s *Server) requireClientBearer() gin.HandlerFunc {
 		var err error
 		if strings.HasPrefix(token, "tdv1.") {
 			session, err = s.authenticateClientDevice(c.Request.Context(), token)
+			if deviceID, ok := parseClientDeviceToken(token); ok {
+				c.Set(clientDeviceContext, deviceID)
+			}
 		} else {
 			session, err = s.auth.Authenticate(c.Request.Context(), token)
 		}

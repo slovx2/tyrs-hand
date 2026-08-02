@@ -1,0 +1,39 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- runFlow:
+    when:
+      visible:
+        id: "session:back"
+    commands:
+      - tapOn:
+          id: "session:back"
+- tapOn:
+    id: "tab:projects"
+- tapOn:
+    id: "project:row:0"
+- tapOn:
+    id: "composer:parameters"
+- tapOn:
+    id: "parameters:mode:plan"
+- tapOn:
+    id: "parameters:done"
+- runFlow:
+    file: _shared/create-task.yaml
+    env:
+      TASK_TEXT: "E2E_ASK request user input"
+- extendedWaitUntil:
+    visible:
+      id: "interactive:option:0"
+    timeout: 120000
+- tapOn:
+    id: "interactive:option:0"
+- scrollUntilVisible:
+    element:
+      id: "interactive:.*:submit"
+    direction: DOWN
+- tapOn:
+    id: "interactive:.*:submit"
+- extendedWaitUntil:
+    visible:
+      id: "message:role:agent"
+    timeout: 120000

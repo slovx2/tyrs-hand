@@ -21,6 +21,7 @@ import (
 )
 
 const (
+	ClientBearerScopes  = "clientBearer.Scopes"
 	NodeBearerScopes    = "nodeBearer.Scopes"
 	SessionCookieScopes = "sessionCookie.Scopes"
 )
@@ -46,6 +47,96 @@ const (
 	ChatGPTLoginOperationStatusPending      ChatGPTLoginOperationStatus = "pending"
 )
 
+// Defines values for ClientBootstrapProtocolVersion.
+const (
+	N2 ClientBootstrapProtocolVersion = 2
+)
+
+// Defines values for ClientModelDefaultReasoningEffort.
+const (
+	ClientModelDefaultReasoningEffortHigh   ClientModelDefaultReasoningEffort = "high"
+	ClientModelDefaultReasoningEffortLow    ClientModelDefaultReasoningEffort = "low"
+	ClientModelDefaultReasoningEffortMax    ClientModelDefaultReasoningEffort = "max"
+	ClientModelDefaultReasoningEffortMedium ClientModelDefaultReasoningEffort = "medium"
+	ClientModelDefaultReasoningEffortUltra  ClientModelDefaultReasoningEffort = "ultra"
+	ClientModelDefaultReasoningEffortXhigh  ClientModelDefaultReasoningEffort = "xhigh"
+)
+
+// Defines values for ClientModelDefaultServiceTier.
+const (
+	ClientModelDefaultServiceTierFast     ClientModelDefaultServiceTier = "fast"
+	ClientModelDefaultServiceTierStandard ClientModelDefaultServiceTier = "standard"
+)
+
+// Defines values for ClientModelInputModalities.
+const (
+	Image ClientModelInputModalities = "image"
+	Text  ClientModelInputModalities = "text"
+)
+
+// Defines values for ClientModelServiceTiersId.
+const (
+	ClientModelServiceTiersIdFast ClientModelServiceTiersId = "fast"
+)
+
+// Defines values for ClientModelSupportedReasoningEffortsId.
+const (
+	ClientModelSupportedReasoningEffortsIdHigh   ClientModelSupportedReasoningEffortsId = "high"
+	ClientModelSupportedReasoningEffortsIdLow    ClientModelSupportedReasoningEffortsId = "low"
+	ClientModelSupportedReasoningEffortsIdMax    ClientModelSupportedReasoningEffortsId = "max"
+	ClientModelSupportedReasoningEffortsIdMedium ClientModelSupportedReasoningEffortsId = "medium"
+	ClientModelSupportedReasoningEffortsIdUltra  ClientModelSupportedReasoningEffortsId = "ultra"
+	ClientModelSupportedReasoningEffortsIdXhigh  ClientModelSupportedReasoningEffortsId = "xhigh"
+)
+
+// Defines values for ClientSessionCollaborationMode.
+const (
+	ClientSessionCollaborationModeDefault ClientSessionCollaborationMode = "default"
+	ClientSessionCollaborationModePlan    ClientSessionCollaborationMode = "plan"
+)
+
+// Defines values for ClientSessionHistoryCompleteness.
+const (
+	Complete ClientSessionHistoryCompleteness = "complete"
+	Partial  ClientSessionHistoryCompleteness = "partial"
+)
+
+// Defines values for ClientSessionLifecycleState.
+const (
+	ClientSessionLifecycleStateActive           ClientSessionLifecycleState = "active"
+	ClientSessionLifecycleStateArchivePending   ClientSessionLifecycleState = "archive_pending"
+	ClientSessionLifecycleStateArchived         ClientSessionLifecycleState = "archived"
+	ClientSessionLifecycleStateUnarchivePending ClientSessionLifecycleState = "unarchive_pending"
+)
+
+// Defines values for ClientSessionServiceTier.
+const (
+	ClientSessionServiceTierFast     ClientSessionServiceTier = "fast"
+	ClientSessionServiceTierStandard ClientSessionServiceTier = "standard"
+)
+
+// Defines values for ClientSessionSettingsCollaborationMode.
+const (
+	ClientSessionSettingsCollaborationModeDefault ClientSessionSettingsCollaborationMode = "default"
+	ClientSessionSettingsCollaborationModePlan    ClientSessionSettingsCollaborationMode = "plan"
+)
+
+// Defines values for ClientSessionSettingsReasoningEffort.
+const (
+	ClientSessionSettingsReasoningEffortHigh   ClientSessionSettingsReasoningEffort = "high"
+	ClientSessionSettingsReasoningEffortLow    ClientSessionSettingsReasoningEffort = "low"
+	ClientSessionSettingsReasoningEffortMax    ClientSessionSettingsReasoningEffort = "max"
+	ClientSessionSettingsReasoningEffortMedium ClientSessionSettingsReasoningEffort = "medium"
+	ClientSessionSettingsReasoningEffortUltra  ClientSessionSettingsReasoningEffort = "ultra"
+	ClientSessionSettingsReasoningEffortXhigh  ClientSessionSettingsReasoningEffort = "xhigh"
+)
+
+// Defines values for ClientSessionSettingsServiceTier.
+const (
+	ClientSessionSettingsServiceTierFast     ClientSessionSettingsServiceTier = "fast"
+	ClientSessionSettingsServiceTierStandard ClientSessionSettingsServiceTier = "standard"
+)
+
 // Defines values for CodexEffectivePreferencesServiceTier.
 const (
 	CodexEffectivePreferencesServiceTierFast     CodexEffectivePreferencesServiceTier = "fast"
@@ -54,10 +145,10 @@ const (
 
 // Defines values for CodexPreferencesReasoningEffort.
 const (
-	High   CodexPreferencesReasoningEffort = "high"
-	Low    CodexPreferencesReasoningEffort = "low"
-	Medium CodexPreferencesReasoningEffort = "medium"
-	Xhigh  CodexPreferencesReasoningEffort = "xhigh"
+	CodexPreferencesReasoningEffortHigh   CodexPreferencesReasoningEffort = "high"
+	CodexPreferencesReasoningEffortLow    CodexPreferencesReasoningEffort = "low"
+	CodexPreferencesReasoningEffortMedium CodexPreferencesReasoningEffort = "medium"
+	CodexPreferencesReasoningEffortXhigh  CodexPreferencesReasoningEffort = "xhigh"
 )
 
 // Defines values for CodexPreferencesServiceTier.
@@ -101,8 +192,8 @@ const (
 
 // Defines values for DevelopmentForumBindingStatus.
 const (
-	Active   DevelopmentForumBindingStatus = "active"
-	Inactive DevelopmentForumBindingStatus = "inactive"
+	DevelopmentForumBindingStatusActive   DevelopmentForumBindingStatus = "active"
+	DevelopmentForumBindingStatusInactive DevelopmentForumBindingStatus = "inactive"
 )
 
 // Defines values for DevelopmentForumCollaboratorAccessLevel.
@@ -219,6 +310,33 @@ const (
 	Provider WorkerRuntimeCredentialModelSource = "provider"
 )
 
+// Defines values for ClientPutPushTokenJSONBodyAppEnvironment.
+const (
+	Development ClientPutPushTokenJSONBodyAppEnvironment = "development"
+	Preview     ClientPutPushTokenJSONBodyAppEnvironment = "preview"
+	Production  ClientPutPushTokenJSONBodyAppEnvironment = "production"
+)
+
+// Defines values for ClientPutPushTokenJSONBodyPlatform.
+const (
+	Android ClientPutPushTokenJSONBodyPlatform = "android"
+	Ios     ClientPutPushTokenJSONBodyPlatform = "ios"
+)
+
+// Defines values for ClientListSessionsParamsLifecycle.
+const (
+	Active           ClientListSessionsParamsLifecycle = "active"
+	ArchivePending   ClientListSessionsParamsLifecycle = "archive_pending"
+	Archived         ClientListSessionsParamsLifecycle = "archived"
+	UnarchivePending ClientListSessionsParamsLifecycle = "unarchive_pending"
+)
+
+// Defines values for ClientCreateMessageJSONBodyBehavior.
+const (
+	StartWhenIdle ClientCreateMessageJSONBodyBehavior = "start_when_idle"
+	SteerIfActive ClientCreateMessageJSONBodyBehavior = "steer_if_active"
+)
+
 // Defines values for PutDevelopmentProjectForumCollaboratorJSONBodyAccessLevel.
 const (
 	PutDevelopmentProjectForumCollaboratorJSONBodyAccessLevelOperator PutDevelopmentProjectForumCollaboratorJSONBodyAccessLevel = "operator"
@@ -292,6 +410,138 @@ type ChatGPTLoginOperation struct {
 
 // ChatGPTLoginOperationStatus defines model for ChatGPTLoginOperation.Status.
 type ChatGPTLoginOperationStatus string
+
+// ClientBootstrap defines model for ClientBootstrap.
+type ClientBootstrap struct {
+	AgentProfiles []struct {
+		Id   openapi_types.UUID `json:"id"`
+		Name string             `json:"name"`
+	} `json:"agentProfiles"`
+	Capabilities        map[string]bool                `json:"capabilities"`
+	CurrentCursor       int64                          `json:"currentCursor"`
+	Environments        []map[string]interface{}       `json:"environments"`
+	LastStartedSettings *ClientSessionSettings         `json:"lastStartedSettings"`
+	ModelCatalog        []ClientModel                  `json:"modelCatalog"`
+	Projects            []ClientProject                `json:"projects"`
+	ProtocolVersion     ClientBootstrapProtocolVersion `json:"protocolVersion"`
+	ServerId            openapi_types.UUID             `json:"serverId"`
+	User                struct {
+		Id       openapi_types.UUID `json:"id"`
+		Username string             `json:"username"`
+	} `json:"user"`
+}
+
+// ClientBootstrapProtocolVersion defines model for ClientBootstrap.ProtocolVersion.
+type ClientBootstrapProtocolVersion int
+
+// ClientCreateSession defines model for ClientCreateSession.
+type ClientCreateSession struct {
+	InitialMessage struct {
+		AttachmentIds *[]openapi_types.UUID `json:"attachmentIds,omitempty"`
+		LocalId       string                `json:"localId"`
+		Text          string                `json:"text"`
+	} `json:"initialMessage"`
+	ProjectId openapi_types.UUID    `json:"projectId"`
+	Settings  ClientSessionSettings `json:"settings"`
+}
+
+// ClientModel defines model for ClientModel.
+type ClientModel struct {
+	Default                bool                              `json:"default"`
+	DefaultReasoningEffort ClientModelDefaultReasoningEffort `json:"defaultReasoningEffort"`
+	DefaultServiceTier     ClientModelDefaultServiceTier     `json:"defaultServiceTier"`
+	Description            string                            `json:"description"`
+	DisplayName            string                            `json:"displayName"`
+	Id                     string                            `json:"id"`
+	InputModalities        []ClientModelInputModalities      `json:"inputModalities"`
+	ServiceTiers           []struct {
+		Description string                    `json:"description"`
+		Id          ClientModelServiceTiersId `json:"id"`
+		Name        string                    `json:"name"`
+	} `json:"serviceTiers"`
+	SupportedReasoningEfforts []struct {
+		Description string                                 `json:"description"`
+		Id          ClientModelSupportedReasoningEffortsId `json:"id"`
+	} `json:"supportedReasoningEfforts"`
+}
+
+// ClientModelDefaultReasoningEffort defines model for ClientModel.DefaultReasoningEffort.
+type ClientModelDefaultReasoningEffort string
+
+// ClientModelDefaultServiceTier defines model for ClientModel.DefaultServiceTier.
+type ClientModelDefaultServiceTier string
+
+// ClientModelInputModalities defines model for ClientModel.InputModalities.
+type ClientModelInputModalities string
+
+// ClientModelServiceTiersId defines model for ClientModel.ServiceTiers.Id.
+type ClientModelServiceTiersId string
+
+// ClientModelSupportedReasoningEffortsId defines model for ClientModel.SupportedReasoningEfforts.Id.
+type ClientModelSupportedReasoningEffortsId string
+
+// ClientProject defines model for ClientProject.
+type ClientProject struct {
+	AvailabilityStatus string             `json:"availabilityStatus"`
+	Branch             *string            `json:"branch"`
+	Dirty              bool               `json:"dirty"`
+	EnvironmentId      openapi_types.UUID `json:"environmentId"`
+	Id                 openapi_types.UUID `json:"id"`
+	Kind               string             `json:"kind"`
+	Name               string             `json:"name"`
+	RelativePath       string             `json:"relativePath"`
+}
+
+// ClientSession defines model for ClientSession.
+type ClientSession struct {
+	AgentProfileId           openapi_types.UUID               `json:"agentProfileId"`
+	CollaborationMode        ClientSessionCollaborationMode   `json:"collaborationMode"`
+	CreatedAt                time.Time                        `json:"createdAt"`
+	DevelopmentEnvironmentId openapi_types.UUID               `json:"developmentEnvironmentId"`
+	DevelopmentProjectId     openapi_types.UUID               `json:"developmentProjectId"`
+	HistoryCompleteness      ClientSessionHistoryCompleteness `json:"historyCompleteness"`
+	Id                       openapi_types.UUID               `json:"id"`
+	LastActivityAt           time.Time                        `json:"lastActivityAt"`
+	LastMessageSeq           int64                            `json:"lastMessageSeq"`
+	LifecycleState           ClientSessionLifecycleState      `json:"lifecycleState"`
+	Model                    *string                          `json:"model"`
+	ReasoningEffort          *string                          `json:"reasoningEffort"`
+	ServiceTier              ClientSessionServiceTier         `json:"serviceTier"`
+	SettingsVersion          int64                            `json:"settingsVersion"`
+	Title                    string                           `json:"title"`
+	UpdatedAt                time.Time                        `json:"updatedAt"`
+}
+
+// ClientSessionCollaborationMode defines model for ClientSession.CollaborationMode.
+type ClientSessionCollaborationMode string
+
+// ClientSessionHistoryCompleteness defines model for ClientSession.HistoryCompleteness.
+type ClientSessionHistoryCompleteness string
+
+// ClientSessionLifecycleState defines model for ClientSession.LifecycleState.
+type ClientSessionLifecycleState string
+
+// ClientSessionServiceTier defines model for ClientSession.ServiceTier.
+type ClientSessionServiceTier string
+
+// ClientSessionSettings defines model for ClientSessionSettings.
+type ClientSessionSettings struct {
+	AgentProfileId    openapi_types.UUID                     `json:"agentProfileId"`
+	CollaborationMode ClientSessionSettingsCollaborationMode `json:"collaborationMode"`
+	Model             *string                                `json:"model"`
+	ReasoningEffort   *ClientSessionSettingsReasoningEffort  `json:"reasoningEffort"`
+	ServiceTier       ClientSessionSettingsServiceTier       `json:"serviceTier"`
+	SettingsVersion   int64                                  `json:"settingsVersion"`
+}
+
+// ClientSessionSettingsCollaborationMode defines model for ClientSessionSettings.CollaborationMode.
+type ClientSessionSettingsCollaborationMode string
+
+// ClientSessionSettingsReasoningEffort defines model for ClientSessionSettings.ReasoningEffort.
+type ClientSessionSettingsReasoningEffort string
+
+// ClientSessionSettingsServiceTier defines model for ClientSessionSettings.ServiceTier.
+type ClientSessionSettingsServiceTier string
 
 // CodexEffectivePreferences defines model for CodexEffectivePreferences.
 type CodexEffectivePreferences struct {
@@ -973,6 +1223,92 @@ type LogoutParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
+// ClientClaimDevicePairingJSONBody defines parameters for ClientClaimDevicePairing.
+type ClientClaimDevicePairingJSONBody struct {
+	CredentialHash string             `json:"credentialHash"`
+	DeviceId       openapi_types.UUID `json:"deviceId"`
+	Name           string             `json:"name"`
+	PairingSecret  string             `json:"pairingSecret"`
+	Platform       string             `json:"platform"`
+}
+
+// ClientDevicePairingStatusParams defines parameters for ClientDevicePairingStatus.
+type ClientDevicePairingStatusParams struct {
+	Authorization string `json:"Authorization"`
+}
+
+// ClientDeletePushTokenParams defines parameters for ClientDeletePushToken.
+type ClientDeletePushTokenParams struct {
+	Token string `form:"token" json:"token"`
+}
+
+// ClientPutPushTokenJSONBody defines parameters for ClientPutPushToken.
+type ClientPutPushTokenJSONBody struct {
+	AppEnvironment ClientPutPushTokenJSONBodyAppEnvironment `json:"appEnvironment"`
+	Platform       ClientPutPushTokenJSONBodyPlatform       `json:"platform"`
+	Token          string                                   `json:"token"`
+}
+
+// ClientPutPushTokenJSONBodyAppEnvironment defines parameters for ClientPutPushToken.
+type ClientPutPushTokenJSONBodyAppEnvironment string
+
+// ClientPutPushTokenJSONBodyPlatform defines parameters for ClientPutPushToken.
+type ClientPutPushTokenJSONBodyPlatform string
+
+// ClientAnswerInteractiveJSONBody defines parameters for ClientAnswerInteractive.
+type ClientAnswerInteractiveJSONBody struct {
+	Answer map[string]interface{} `json:"answer"`
+}
+
+// ClientListSessionsParams defines parameters for ClientListSessions.
+type ClientListSessionsParams struct {
+	Cursor    *string                            `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit     *int                               `form:"limit,omitempty" json:"limit,omitempty"`
+	ProjectId *openapi_types.UUID                `form:"projectId,omitempty" json:"projectId,omitempty"`
+	Lifecycle *ClientListSessionsParamsLifecycle `form:"lifecycle,omitempty" json:"lifecycle,omitempty"`
+}
+
+// ClientListSessionsParamsLifecycle defines parameters for ClientListSessions.
+type ClientListSessionsParamsLifecycle string
+
+// ClientPatchSessionJSONBody defines parameters for ClientPatchSession.
+type ClientPatchSessionJSONBody map[string]interface{}
+
+// ClientListMessagesParams defines parameters for ClientListMessages.
+type ClientListMessagesParams struct {
+	BeforeSeq *int64 `form:"beforeSeq,omitempty" json:"beforeSeq,omitempty"`
+	AfterSeq  *int64 `form:"afterSeq,omitempty" json:"afterSeq,omitempty"`
+	Limit     *int   `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ClientCreateMessageJSONBody defines parameters for ClientCreateMessage.
+type ClientCreateMessageJSONBody struct {
+	AttachmentIds *[]openapi_types.UUID                `json:"attachmentIds,omitempty"`
+	Behavior      *ClientCreateMessageJSONBodyBehavior `json:"behavior,omitempty"`
+	LocalId       string                               `json:"localId"`
+	Text          string                               `json:"text"`
+}
+
+// ClientCreateMessageJSONBodyBehavior defines parameters for ClientCreateMessage.
+type ClientCreateMessageJSONBodyBehavior string
+
+// ClientSyncParams defines parameters for ClientSync.
+type ClientSyncParams struct {
+	AfterCursor *int64 `form:"afterCursor,omitempty" json:"afterCursor,omitempty"`
+	Limit       *int   `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ClientUpdatesWebSocketParams defines parameters for ClientUpdatesWebSocket.
+type ClientUpdatesWebSocketParams struct {
+	Cursor *int64 `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// ClientUploadMultipartBody defines parameters for ClientUpload.
+type ClientUploadMultipartBody struct {
+	File    openapi_types.File `json:"file"`
+	LocalId string             `json:"localId"`
+}
+
 // CreateDevelopmentEnvironmentJSONBody defines parameters for CreateDevelopmentEnvironment.
 type CreateDevelopmentEnvironmentJSONBody struct {
 	OwnerDiscordUserId string `json:"ownerDiscordUserId"`
@@ -1261,6 +1597,30 @@ type GetWorkerSSHConfigurationParams struct {
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
+// ClientLoginJSONRequestBody defines body for ClientLogin for application/json ContentType.
+type ClientLoginJSONRequestBody = LoginRequest
+
+// ClientClaimDevicePairingJSONRequestBody defines body for ClientClaimDevicePairing for application/json ContentType.
+type ClientClaimDevicePairingJSONRequestBody ClientClaimDevicePairingJSONBody
+
+// ClientPutPushTokenJSONRequestBody defines body for ClientPutPushToken for application/json ContentType.
+type ClientPutPushTokenJSONRequestBody ClientPutPushTokenJSONBody
+
+// ClientAnswerInteractiveJSONRequestBody defines body for ClientAnswerInteractive for application/json ContentType.
+type ClientAnswerInteractiveJSONRequestBody ClientAnswerInteractiveJSONBody
+
+// ClientCreateSessionJSONRequestBody defines body for ClientCreateSession for application/json ContentType.
+type ClientCreateSessionJSONRequestBody = ClientCreateSession
+
+// ClientPatchSessionJSONRequestBody defines body for ClientPatchSession for application/json ContentType.
+type ClientPatchSessionJSONRequestBody ClientPatchSessionJSONBody
+
+// ClientCreateMessageJSONRequestBody defines body for ClientCreateMessage for application/json ContentType.
+type ClientCreateMessageJSONRequestBody ClientCreateMessageJSONBody
+
+// ClientUploadMultipartRequestBody defines body for ClientUpload for multipart/form-data ContentType.
+type ClientUploadMultipartRequestBody ClientUploadMultipartBody
+
 // CreateDevelopmentEnvironmentJSONRequestBody defines body for CreateDevelopmentEnvironment for application/json ContentType.
 type CreateDevelopmentEnvironmentJSONRequestBody CreateDevelopmentEnvironmentJSONBody
 
@@ -1422,6 +1782,72 @@ type ServerInterface interface {
 
 	// (GET /auth/me)
 	GetCurrentAdministrator(c *gin.Context)
+
+	// (GET /client/attachments/{id}/content)
+	ClientDownloadAttachment(c *gin.Context, id openapi_types.UUID)
+
+	// (POST /client/auth/login)
+	ClientLogin(c *gin.Context)
+
+	// (GET /client/bootstrap)
+	ClientBootstrap(c *gin.Context)
+
+	// (DELETE /client/device)
+	ClientDeleteDevice(c *gin.Context)
+
+	// (POST /client/device-pairings/{id}/claim)
+	ClientClaimDevicePairing(c *gin.Context, id openapi_types.UUID)
+
+	// (GET /client/device-pairings/{id}/status)
+	ClientDevicePairingStatus(c *gin.Context, id openapi_types.UUID, params ClientDevicePairingStatusParams)
+
+	// (DELETE /client/device/push-token)
+	ClientDeletePushToken(c *gin.Context, params ClientDeletePushTokenParams)
+
+	// (PUT /client/device/push-token)
+	ClientPutPushToken(c *gin.Context)
+
+	// (POST /client/interactive/{id}/answer)
+	ClientAnswerInteractive(c *gin.Context, id openapi_types.UUID)
+
+	// (GET /client/sessions)
+	ClientListSessions(c *gin.Context, params ClientListSessionsParams)
+
+	// (POST /client/sessions)
+	ClientCreateSession(c *gin.Context)
+
+	// (GET /client/sessions/{id})
+	ClientGetSession(c *gin.Context, id openapi_types.UUID)
+
+	// (PATCH /client/sessions/{id})
+	ClientPatchSession(c *gin.Context, id openapi_types.UUID)
+
+	// (POST /client/sessions/{id}/archive)
+	ClientArchiveSession(c *gin.Context, id openapi_types.UUID)
+
+	// (GET /client/sessions/{id}/messages)
+	ClientListMessages(c *gin.Context, id openapi_types.UUID, params ClientListMessagesParams)
+
+	// (POST /client/sessions/{id}/messages)
+	ClientCreateMessage(c *gin.Context, id openapi_types.UUID)
+
+	// (POST /client/sessions/{id}/plans/{runId}/execute)
+	ClientExecutePlan(c *gin.Context, id openapi_types.UUID, runId openapi_types.UUID)
+
+	// (POST /client/sessions/{id}/restore)
+	ClientRestoreSession(c *gin.Context, id openapi_types.UUID)
+
+	// (POST /client/sessions/{id}/stop)
+	ClientStopSession(c *gin.Context, id openapi_types.UUID)
+
+	// (GET /client/sync)
+	ClientSync(c *gin.Context, params ClientSyncParams)
+
+	// (GET /client/updates)
+	ClientUpdatesWebSocket(c *gin.Context, params ClientUpdatesWebSocketParams)
+
+	// (POST /client/uploads)
+	ClientUpload(c *gin.Context)
 
 	// (GET /development-environments)
 	ListDevelopmentEnvironments(c *gin.Context)
@@ -1821,6 +2247,616 @@ func (siw *ServerInterfaceWrapper) GetCurrentAdministrator(c *gin.Context) {
 	}
 
 	siw.Handler.GetCurrentAdministrator(c)
+}
+
+// ClientDownloadAttachment operation middleware
+func (siw *ServerInterfaceWrapper) ClientDownloadAttachment(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ClientBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientDownloadAttachment(c, id)
+}
+
+// ClientLogin operation middleware
+func (siw *ServerInterfaceWrapper) ClientLogin(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientLogin(c)
+}
+
+// ClientBootstrap operation middleware
+func (siw *ServerInterfaceWrapper) ClientBootstrap(c *gin.Context) {
+
+	c.Set(ClientBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientBootstrap(c)
+}
+
+// ClientDeleteDevice operation middleware
+func (siw *ServerInterfaceWrapper) ClientDeleteDevice(c *gin.Context) {
+
+	c.Set(ClientBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientDeleteDevice(c)
+}
+
+// ClientClaimDevicePairing operation middleware
+func (siw *ServerInterfaceWrapper) ClientClaimDevicePairing(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientClaimDevicePairing(c, id)
+}
+
+// ClientDevicePairingStatus operation middleware
+func (siw *ServerInterfaceWrapper) ClientDevicePairingStatus(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ClientDevicePairingStatusParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "Authorization" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Authorization")]; found {
+		var Authorization string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for Authorization, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Authorization", valueList[0], &Authorization, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter Authorization: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.Authorization = Authorization
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter Authorization is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientDevicePairingStatus(c, id, params)
+}
+
+// ClientDeletePushToken operation middleware
+func (siw *ServerInterfaceWrapper) ClientDeletePushToken(c *gin.Context) {
+
+	var err error
+
+	c.Set(ClientBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ClientDeletePushTokenParams
+
+	// ------------- Required query parameter "token" -------------
+
+	if paramValue := c.Query("token"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Query argument token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "token", c.Request.URL.Query(), &params.Token)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter token: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientDeletePushToken(c, params)
+}
+
+// ClientPutPushToken operation middleware
+func (siw *ServerInterfaceWrapper) ClientPutPushToken(c *gin.Context) {
+
+	c.Set(ClientBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientPutPushToken(c)
+}
+
+// ClientAnswerInteractive operation middleware
+func (siw *ServerInterfaceWrapper) ClientAnswerInteractive(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ClientBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientAnswerInteractive(c, id)
+}
+
+// ClientListSessions operation middleware
+func (siw *ServerInterfaceWrapper) ClientListSessions(c *gin.Context) {
+
+	var err error
+
+	c.Set(ClientBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ClientListSessionsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "cursor", c.Request.URL.Query(), &params.Cursor)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter cursor: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "projectId" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "projectId", c.Request.URL.Query(), &params.ProjectId)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter projectId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "lifecycle" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "lifecycle", c.Request.URL.Query(), &params.Lifecycle)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter lifecycle: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientListSessions(c, params)
+}
+
+// ClientCreateSession operation middleware
+func (siw *ServerInterfaceWrapper) ClientCreateSession(c *gin.Context) {
+
+	c.Set(ClientBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientCreateSession(c)
+}
+
+// ClientGetSession operation middleware
+func (siw *ServerInterfaceWrapper) ClientGetSession(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ClientBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientGetSession(c, id)
+}
+
+// ClientPatchSession operation middleware
+func (siw *ServerInterfaceWrapper) ClientPatchSession(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ClientBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientPatchSession(c, id)
+}
+
+// ClientArchiveSession operation middleware
+func (siw *ServerInterfaceWrapper) ClientArchiveSession(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ClientBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientArchiveSession(c, id)
+}
+
+// ClientListMessages operation middleware
+func (siw *ServerInterfaceWrapper) ClientListMessages(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ClientBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ClientListMessagesParams
+
+	// ------------- Optional query parameter "beforeSeq" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "beforeSeq", c.Request.URL.Query(), &params.BeforeSeq)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter beforeSeq: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "afterSeq" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "afterSeq", c.Request.URL.Query(), &params.AfterSeq)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter afterSeq: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientListMessages(c, id, params)
+}
+
+// ClientCreateMessage operation middleware
+func (siw *ServerInterfaceWrapper) ClientCreateMessage(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ClientBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientCreateMessage(c, id)
+}
+
+// ClientExecutePlan operation middleware
+func (siw *ServerInterfaceWrapper) ClientExecutePlan(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "runId" -------------
+	var runId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "runId", c.Param("runId"), &runId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter runId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ClientBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientExecutePlan(c, id, runId)
+}
+
+// ClientRestoreSession operation middleware
+func (siw *ServerInterfaceWrapper) ClientRestoreSession(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ClientBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientRestoreSession(c, id)
+}
+
+// ClientStopSession operation middleware
+func (siw *ServerInterfaceWrapper) ClientStopSession(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ClientBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientStopSession(c, id)
+}
+
+// ClientSync operation middleware
+func (siw *ServerInterfaceWrapper) ClientSync(c *gin.Context) {
+
+	var err error
+
+	c.Set(ClientBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ClientSyncParams
+
+	// ------------- Optional query parameter "afterCursor" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "afterCursor", c.Request.URL.Query(), &params.AfterCursor)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter afterCursor: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientSync(c, params)
+}
+
+// ClientUpdatesWebSocket operation middleware
+func (siw *ServerInterfaceWrapper) ClientUpdatesWebSocket(c *gin.Context) {
+
+	var err error
+
+	c.Set(ClientBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ClientUpdatesWebSocketParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "cursor", c.Request.URL.Query(), &params.Cursor)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter cursor: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientUpdatesWebSocket(c, params)
+}
+
+// ClientUpload operation middleware
+func (siw *ServerInterfaceWrapper) ClientUpload(c *gin.Context) {
+
+	c.Set(ClientBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientUpload(c)
 }
 
 // ListDevelopmentEnvironments operation middleware
@@ -4966,6 +6002,28 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/auth/login", wrapper.Login)
 	router.POST(options.BaseURL+"/auth/logout", wrapper.Logout)
 	router.GET(options.BaseURL+"/auth/me", wrapper.GetCurrentAdministrator)
+	router.GET(options.BaseURL+"/client/attachments/:id/content", wrapper.ClientDownloadAttachment)
+	router.POST(options.BaseURL+"/client/auth/login", wrapper.ClientLogin)
+	router.GET(options.BaseURL+"/client/bootstrap", wrapper.ClientBootstrap)
+	router.DELETE(options.BaseURL+"/client/device", wrapper.ClientDeleteDevice)
+	router.POST(options.BaseURL+"/client/device-pairings/:id/claim", wrapper.ClientClaimDevicePairing)
+	router.GET(options.BaseURL+"/client/device-pairings/:id/status", wrapper.ClientDevicePairingStatus)
+	router.DELETE(options.BaseURL+"/client/device/push-token", wrapper.ClientDeletePushToken)
+	router.PUT(options.BaseURL+"/client/device/push-token", wrapper.ClientPutPushToken)
+	router.POST(options.BaseURL+"/client/interactive/:id/answer", wrapper.ClientAnswerInteractive)
+	router.GET(options.BaseURL+"/client/sessions", wrapper.ClientListSessions)
+	router.POST(options.BaseURL+"/client/sessions", wrapper.ClientCreateSession)
+	router.GET(options.BaseURL+"/client/sessions/:id", wrapper.ClientGetSession)
+	router.PATCH(options.BaseURL+"/client/sessions/:id", wrapper.ClientPatchSession)
+	router.POST(options.BaseURL+"/client/sessions/:id/archive", wrapper.ClientArchiveSession)
+	router.GET(options.BaseURL+"/client/sessions/:id/messages", wrapper.ClientListMessages)
+	router.POST(options.BaseURL+"/client/sessions/:id/messages", wrapper.ClientCreateMessage)
+	router.POST(options.BaseURL+"/client/sessions/:id/plans/:runId/execute", wrapper.ClientExecutePlan)
+	router.POST(options.BaseURL+"/client/sessions/:id/restore", wrapper.ClientRestoreSession)
+	router.POST(options.BaseURL+"/client/sessions/:id/stop", wrapper.ClientStopSession)
+	router.GET(options.BaseURL+"/client/sync", wrapper.ClientSync)
+	router.GET(options.BaseURL+"/client/updates", wrapper.ClientUpdatesWebSocket)
+	router.POST(options.BaseURL+"/client/uploads", wrapper.ClientUpload)
 	router.GET(options.BaseURL+"/development-environments", wrapper.ListDevelopmentEnvironments)
 	router.POST(options.BaseURL+"/development-environments", wrapper.CreateDevelopmentEnvironment)
 	router.POST(options.BaseURL+"/development-environments/:id/rebase", wrapper.RebaseDevelopmentEnvironment)
@@ -5062,141 +6120,176 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"31ra+r8AAAD//1Uic/uzAAEA",
+	"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",
+	"QAEA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

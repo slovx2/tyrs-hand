@@ -89,15 +89,23 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 
 	createdSession := clientJSONRequest(t, http.MethodPost,
 		endpoint+"/api/v1/client/sessions", loginBody.AccessToken, map[string]any{
-			"developmentEnvironmentId": environmentID,
-			"developmentProjectId":     projectID,
-			"agentProfileId":           profileID,
-			"title":                    "Created through client protocol",
+			"projectId": projectID,
+			"settings": map[string]any{"agentProfileId": profileID, "model": "gpt-5.6-sol",
+				"reasoningEffort": "high", "serviceTier": "standard",
+				"collaborationMode": "default", "settingsVersion": 0},
+			"initialMessage": map[string]any{"localId": "atomic-session-1",
+				"text": "Created through client protocol", "attachmentIds": []string{}},
 		})
 	require.Equal(t, http.StatusCreated, createdSession.Code)
-	var createdSessionBody clientSession
+	var createdSessionBody struct {
+		Session clientSession `json:"session"`
+	}
 	require.NoError(t, json.Unmarshal(createdSession.Body.Bytes(), &createdSessionBody))
-	require.NotEqual(t, uuid.Nil, createdSessionBody.ID)
+	require.NotEqual(t, uuid.Nil, createdSessionBody.Session.ID)
+	firstMessageUpdate := readClientUpdate(t, first)
+	secondMessageUpdate := readClientUpdate(t, second)
+	require.Equal(t, "message.created", firstMessageUpdate.Params.Type)
+	require.Equal(t, firstMessageUpdate.Params.Cursor, secondMessageUpdate.Params.Cursor)
 	firstSessionUpdate := readClientUpdate(t, first)
 	secondSessionUpdate := readClientUpdate(t, second)
 	require.Equal(t, "session.created", firstSessionUpdate.Params.Type)
@@ -144,6 +152,16 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 		codexcontrol.SourceDevelopment, node.ID)
 	require.NoError(t, err)
 	require.NotNil(t, claimed)
+	if claimed.SessionID != sessionID {
+		require.NoError(t, repository.Complete(ctx, claimed, codexcontrol.TurnResult{
+			TurnID: "atomic-turn", FinalAnswer: "atomic session completed",
+		}))
+		claimed, err = repository.ClaimNode(ctx, "client-protocol-worker",
+			codexcontrol.SourceDevelopment, node.ID)
+		require.NoError(t, err)
+		require.NotNil(t, claimed)
+	}
+	require.Equal(t, sessionID, claimed.SessionID)
 	interactiveID := uuid.New()
 	questions := json.RawMessage(`[ {"id":"choice","question":"Continue?","options":[]} ]`)
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_interactive_requests(

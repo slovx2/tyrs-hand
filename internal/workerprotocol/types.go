@@ -9,7 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 19
+const Version = 20
 
 // CodexTurnError 保留 Codex error 通知的结构化字段，供 Control 决定是否重试
 // 并在 Discord 失败过程卡中展示。
@@ -484,6 +484,7 @@ type DevelopmentSnapshot struct {
 	ParticipantID uuid.UUID        `json:"participantId,omitempty"`
 	DisplayName   string           `json:"displayName,omitempty"`
 	InputSurface  string           `json:"inputSurface"`
+	Attachments   []Attachment     `json:"attachments,omitempty"`
 	Development   *DevelopmentSpec `json:"development"`
 }
 

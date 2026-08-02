@@ -487,7 +487,7 @@ func appendDesktopSessionMessageTx(ctx context.Context, tx *sql.Tx, sessionID uu
 	payload, _ := json.Marshal(gin.H{"messageId": messageID, "sessionId": sessionID,
 		"seq": sequence, "localId": localID, "role": "user", "content": json.RawMessage(content)})
 	_, err = tx.ExecContext(ctx, `INSERT INTO client_updates(
-		session_id,update_type,entity_id,entity_seq,payload)
-		VALUES ($1,'message.created',$2,$3,$4)`, sessionID, messageID.String(), sequence, payload)
+		session_id,update_type,entity_type,entity_id,entity_seq,entity_version,payload)
+		VALUES ($1,'message.created','message',$2,$3,$3,$4)`, sessionID, messageID.String(), sequence, payload)
 	return err
 }

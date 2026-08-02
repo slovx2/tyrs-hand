@@ -1096,6 +1096,8 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.False(t, activeSlot.Valid, "等待用户回答时必须释放计算槽")
 	require.Equal(t, "waiting_for_user", runStatus)
 	require.Equal(t, "waiting_for_user", intentStatus)
+	_, err = client.RunHeartbeat(ctx, &task)
+	require.NoError(t, err, "等待用户回答时必须保留 Run 租约以接收停止和 steer 指令")
 	answered, err := client.AnswerInteractive(ctx, workerprotocol.InteractiveAnswerRequest{
 		EnvironmentID: environmentID, ThreadID: "codex-desktop-thread", TurnID: "desktop-turn-1",
 		ItemID: "question-1", Surface: "discord",
@@ -1292,6 +1294,14 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT lifecycle_state
 		FROM discord_conversations WHERE id=$1`, state.ConversationID).Scan(&lifecycleState))
 	require.Equal(t, "archived", lifecycleState)
+	var clientLifecycleUpdates int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM client_updates update_event
+		JOIN codex_thread_controls control ON control.session_id=update_event.session_id
+		WHERE control.id=$1 AND update_event.update_type='session.lifecycle'
+			AND update_event.payload->>'lifecycleState'='archived'`, archive.ControlID).
+		Scan(&clientLifecycleUpdates))
+	require.Equal(t, 1, clientLifecycleUpdates,
+		"最终 lifecycle 必须作为 durable 事件通知原生客户端")
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
 		EnvironmentID: environmentID, Generation: 10,
 		Events: []workerprotocol.ThreadMetadataEvent{{
@@ -1355,6 +1365,13 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NotEmpty(t, pendingLifecycles)
 	require.Equal(t, discordArchive.ID, pendingLifecycles[0].ID)
 	require.Equal(t, "archived", pendingLifecycles[0].DesiredState)
+	_, err = db.ExecContext(ctx, `UPDATE codex_thread_lifecycle_requests
+		SET source='client' WHERE id=$1`, discordArchive.ID)
+	require.NoError(t, err)
+	pendingLifecycles, err = client.PendingThreadLifecycles(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, pendingLifecycles, "客户端 lifecycle 也必须交给 Worker 应用")
+	require.Equal(t, discordArchive.ID, pendingLifecycles[0].ID)
 	require.NoError(t, client.CompleteThreadLifecycle(ctx, discordArchive.ID,
 		workerprotocol.ThreadLifecycleCompleteRequest{EnvironmentID: environmentID,
 			Error: "archive test rollback"}))
@@ -2266,6 +2283,10 @@ func workerDatabase(t *testing.T) *sql.DB {
 	host, err := container.Host(ctx)
 	require.NoError(t, err)
 	port, err := container.MappedPort(ctx, "5432/tcp")
+	for attempt := 0; err != nil && attempt < 50; attempt++ {
+		time.Sleep(100 * time.Millisecond)
+		port, err = container.MappedPort(ctx, "5432/tcp")
+	}
 	require.NoError(t, err)
 	db, err := database.Open(ctx, "postgres://tyrs_hand:test-password@"+host+":"+port.Port()+"/tyrs_hand?sslmode=disable")
 	require.NoError(t, err)

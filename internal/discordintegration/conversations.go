@@ -553,6 +553,32 @@ func (s *ConversationService) enqueueMessage(ctx context.Context, tx *sql.Tx, co
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE discord_input_messages SET turn_intent_id = $2
 		WHERE message_id = $1 AND turn_intent_id IS NULL`, messageID, intentID)
+	if err == nil {
+		_, err = tx.ExecContext(ctx, `INSERT INTO session_attachments(id,session_id,source_type,
+			source_key,kind,original_filename,media_type,size_bytes,sha256,storage_key,status,
+			attached_at,created_at)
+			SELECT attachment.id,intent.session_id,'discord',attachment.discord_attachment_id,
+			attachment.kind,attachment.original_filename,attachment.media_type,
+			attachment.size_bytes,attachment.sha256,attachment.storage_key,'attached',now(),
+			attachment.created_at FROM discord_attachments attachment
+			JOIN discord_input_messages message ON message.message_id=attachment.message_id
+			JOIN codex_turn_intents intent ON intent.id=message.turn_intent_id
+			WHERE message.message_id=$1 AND attachment.status='ready'
+			AND attachment.storage_key IS NOT NULL AND attachment.sha256 IS NOT NULL
+			ON CONFLICT(source_type,source_key) DO NOTHING`, messageID)
+	}
+	if err == nil {
+		_, err = tx.ExecContext(ctx, `INSERT INTO session_message_attachments(
+			message_id,attachment_id,ordinal)
+			SELECT session_message.id,attachment.id,
+			row_number() OVER (ORDER BY discord_attachment.created_at,discord_attachment.id)-1
+			FROM discord_input_messages input
+			JOIN session_messages session_message ON session_message.turn_intent_id=input.turn_intent_id
+			JOIN discord_attachments discord_attachment ON discord_attachment.message_id=input.message_id
+			JOIN session_attachments attachment ON attachment.source_type='discord'
+			AND attachment.source_key=discord_attachment.discord_attachment_id
+			WHERE input.message_id=$1 ON CONFLICT(message_id,attachment_id) DO NOTHING`, messageID)
+	}
 	return err
 }
 

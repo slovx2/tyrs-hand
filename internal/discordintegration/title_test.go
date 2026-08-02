@@ -494,6 +494,61 @@ func TestTitleGeneratorRecoversGeneratingWithoutCallingProvider(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestTitleGeneratorRunSessionOnceUsesFallbackAndPublishesSnapshot(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	box, err := security.NewSecretBox([]byte(strings.Repeat("c", 32)))
+	require.NoError(t, err)
+	sessionID := uuid.New()
+	body := "  修复客户端\n同步游标  "
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT session.id,session.title_revision,")).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "title_revision", "body"}).
+			AddRow(sessionID, int64(3), body))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE development_sessions SET title_source='generating'")).
+		WithArgs(sessionID, int64(3)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT value FROM platform_settings WHERE setting_key = $1")).
+		WithArgs("agent.provider").WillReturnError(sql.ErrNoRows)
+	mock.ExpectExec(regexp.QuoteMeta("WITH updated AS (")).
+		WithArgs(sessionID, int64(3), "修复客户端 同步游标").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	generator := NewTitleGenerator(db, settings.NewService(db, secrets.NewStore(db, box)), zap.NewNop())
+	worked, err := generator.RunSessionOnce(context.Background())
+	require.NoError(t, err)
+	require.True(t, worked)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestTitleGeneratorRunSessionOnceReturnsIdle(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT session.id,session.title_revision,")).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectRollback()
+
+	worked, err := (&TitleGenerator{db: db}).RunSessionOnce(context.Background())
+	require.NoError(t, err)
+	require.False(t, worked)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestTitleGeneratorRecoversInterruptedSessions(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE development_sessions SET title_source='fallback'")).
+		WillReturnResult(sqlmock.NewResult(0, 2))
+
+	require.NoError(t, (&TitleGenerator{db: db}).RecoverInterruptedSessions(context.Background()))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func titleClaimQueryPattern() string {
 	return "(?s)" + regexp.QuoteMeta("SELECT c.id, c.thread_id, m.body") + ".*" +
 		regexp.QuoteMeta("JOIN discord_input_messages m ON m.message_id = c.starter_message_id") + ".*" +

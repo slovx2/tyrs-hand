@@ -276,8 +276,8 @@ func (s *Server) workerRunEvents(c *gin.Context) {
 				updateType = "message.delta"
 			}
 			s.clientUpdateHub.publish(clientUpdate{
-				SessionID: &claimed.SessionID, Type: updateType,
-				EntityID: claimed.RunID.String(), EntitySeq: &sequence,
+				Kind: "live", SessionID: &claimed.SessionID, Type: updateType,
+				EntityType: "run", EntityID: claimed.RunID.String(), RunEventSeq: &sequence,
 				Payload: payload, CreatedAt: time.Now().UTC(),
 			})
 		}
