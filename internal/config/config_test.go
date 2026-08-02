@@ -156,6 +156,11 @@ func TestValidateWorkerCapabilities(t *testing.T) {
 		message string
 	}{
 		{
+			name:    "宿主 Docker 未启用开发容器",
+			config:  Config{DevelopmentHostDocker: true},
+			message: "要求启用开发容器",
+		},
+		{
 			name:    "SSH 缺少 Agent 目录",
 			config:  Config{EnableSSH: true, SSHAgentDir: ".", SSHAgentHostDir: "/opt/tyrs-hand/ssh-agent"},
 			message: "Agent 容器目录和宿主目录",

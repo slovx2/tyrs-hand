@@ -98,11 +98,27 @@ func (m *Manager) reconfigureRemote(ctx context.Context, operation RemoteOperati
 }
 
 func (m *Manager) remoteSSHPort(ctx context.Context, container string) (int, error) {
+	networkMode, err := m.docker(ctx, "inspect", "--format", `{{.HostConfig.NetworkMode}}`, container)
+	if err != nil {
+		return 0, err
+	}
+	if strings.TrimSpace(networkMode) == "host" {
+		value, labelErr := m.docker(ctx, "inspect", "--format",
+			`{{index .Config.Labels "com.tyrs-hand.ssh-port"}}`, container)
+		if labelErr != nil {
+			return 0, labelErr
+		}
+		return parseRemoteSSHPort(value)
+	}
 	value, err := m.docker(ctx, "inspect", "--format",
 		`{{with (index .NetworkSettings.Ports "22/tcp")}}{{(index . 0).HostPort}}{{end}}`, container)
 	if err != nil {
 		return 0, err
 	}
+	return parseRemoteSSHPort(value)
+}
+
+func parseRemoteSSHPort(value string) (int, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return 0, nil
@@ -114,9 +130,48 @@ func (m *Manager) remoteSSHPort(ctx context.Context, container string) (int, err
 	return port, nil
 }
 
+func (m *Manager) containerSSHPort(ctx context.Context, container string, assignedPort int) (int, error) {
+	if assignedPort == 0 {
+		return 22, nil
+	}
+	networkMode, err := m.docker(ctx, "inspect", "--format", `{{.HostConfig.NetworkMode}}`, container)
+	if err != nil {
+		return 0, fmt.Errorf("读取开发容器网络模式: %w", err)
+	}
+	if strings.TrimSpace(networkMode) == "host" {
+		return assignedPort, nil
+	}
+	return 22, nil
+}
+
+func (m *Manager) appendDevelopmentDockerArguments(arguments []string, network string,
+	sshPort int,
+) []string {
+	if !m.hostDocker {
+		arguments = append(arguments, "--network", network,
+			"--add-host", "host.docker.internal:host-gateway")
+		if sshPort > 0 {
+			arguments = append(arguments, "--publish", strconv.Itoa(sshPort)+":22")
+		}
+		return arguments
+	}
+	arguments = append(arguments,
+		"--network", "host",
+		"--mount", "type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock",
+		"--group-add", strconv.FormatUint(uint64(m.dockerSocketGID), 10))
+	if sshPort > 0 {
+		arguments = append(arguments, "--label", "com.tyrs-hand.ssh-port="+strconv.Itoa(sshPort))
+	}
+	return arguments
+}
+
 func (m *Manager) configureRemoteSSH(ctx context.Context, container string,
 	operation RemoteOperation,
 ) error {
+	sshPort, err := m.containerSSHPort(ctx, container, operation.SSHPort)
+	if err != nil {
+		return err
+	}
 	owner := fmt.Sprintf("%d:%d", operation.RuntimeUID, operation.RuntimeGID)
 	script := `set -eu
 if test -s /run/tyrs-hand/sshd.pid && kill -0 "$(cat /run/tyrs-hand/sshd.pid)" 2>/dev/null; then
@@ -141,7 +196,7 @@ chmod 0600 /var/lib/tyrs-hand/system/ssh/ssh_host_ed25519_key`
 		"--env", "TYRS_GID="+strconv.FormatInt(operation.RuntimeGID, 10),
 		"--env", "TYRS_OWNER="+owner, "--env", "TYRS_HOME="+operation.RuntimeHome,
 		"--env", "TYRS_SSH_PUBLIC_KEY="+operation.SSHPublicKey,
-		"--env", "TYRS_SSHD_CONFIG="+remoteSSHDConfig(operation.RuntimeUser),
+		"--env", "TYRS_SSHD_CONFIG="+remoteSSHDConfig(operation.RuntimeUser, sshPort),
 		container, "/bin/sh", "-c", script); err != nil {
 		return fmt.Errorf("更新开发容器 SSH: %w", err)
 	}
@@ -160,14 +215,10 @@ func (m *Manager) remoteContainerCreateArguments(operation RemoteOperation, name
 ) []string {
 	arguments := []string{"create", "--name", name, "--restart", "unless-stopped",
 		"--label", "com.tyrs-hand.development-environment=" + operation.EnvironmentID.String(),
-		"--network", operation.Network,
 		"--volume", operation.DataVolume + ":" + containerRoot,
 		"--volume", operation.HomeVolume + ":" + operation.RuntimeHome,
-		"--mount", "type=bind,source=" + hostRuntimeDir + ",target=" + containerRunDir,
-		"--add-host", "host.docker.internal:host-gateway"}
-	if operation.SSHPort > 0 {
-		arguments = append(arguments, "--publish", strconv.Itoa(operation.SSHPort)+":22")
-	}
+		"--mount", "type=bind,source=" + hostRuntimeDir + ",target=" + containerRunDir}
+	arguments = m.appendDevelopmentDockerArguments(arguments, operation.Network, operation.SSHPort)
 	if m.sshEnabled {
 		arguments = append(arguments, "--mount", "type=bind,source="+
 			m.sshAgentHostDir+",target="+m.sshAgentDir,
@@ -186,6 +237,10 @@ func (m *Manager) remoteContainerCreateArguments(operation RemoteOperation, name
 func (m *Manager) configureRemoteDaemons(ctx context.Context, container string,
 	operation RemoteOperation,
 ) error {
+	sshPort, err := m.containerSSHPort(ctx, container, operation.SSHPort)
+	if err != nil {
+		return err
+	}
 	owner := fmt.Sprintf("%d:%d", operation.RuntimeUID, operation.RuntimeGID)
 	setup := `set -eu
 install -d -m 0770 /run/tyrs-hand
@@ -210,7 +265,7 @@ if test -n "$TYRS_SSH_PUBLIC_KEY"; then
   printf '%s\n' "$TYRS_SSHD_CONFIG" > /var/lib/tyrs-hand/system/ssh/sshd_config
   chmod 0600 /var/lib/tyrs-hand/system/ssh/ssh_host_ed25519_key
 fi`
-	config := remoteSSHDConfig(operation.RuntimeUser)
+	config := remoteSSHDConfig(operation.RuntimeUser, sshPort)
 	if _, err := m.docker(ctx, "exec", "--user", "0:0",
 		"--env", "TYRS_UID="+strconv.FormatInt(operation.RuntimeUID, 10),
 		"--env", "TYRS_GID="+strconv.FormatInt(operation.RuntimeGID, 10),
@@ -309,9 +364,9 @@ func (m *Manager) waitForAppServerSocket(ctx context.Context, container string) 
 	return errors.New("app-server socket 未就绪")
 }
 
-func remoteSSHDConfig(runtimeUser string) string {
+func remoteSSHDConfig(runtimeUser string, port int) string {
 	return strings.Join([]string{
-		"Port 22", "HostKey /var/lib/tyrs-hand/system/ssh/ssh_host_ed25519_key",
+		"Port " + strconv.Itoa(port), "HostKey /var/lib/tyrs-hand/system/ssh/ssh_host_ed25519_key",
 		"PidFile /run/tyrs-hand/sshd.pid", "AuthorizedKeysFile .ssh/authorized_keys",
 		"AuthenticationMethods publickey", "PubkeyAuthentication yes",
 		"PasswordAuthentication no", "KbdInteractiveAuthentication no",

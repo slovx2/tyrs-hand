@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/config"
@@ -36,6 +37,8 @@ type Manager struct {
 	browserServicesRoot       string
 	browserServicesHostRoot   string
 	developmentImage          string
+	hostDocker                bool
+	dockerSocketGID           uint32
 }
 
 func NewManager(cfg config.Config, db *sql.DB, logger *zap.Logger) (*Manager, error) {
@@ -65,12 +68,27 @@ func NewManager(cfg config.Config, db *sql.DB, logger *zap.Logger) (*Manager, er
 		browserServicesRoot:     cfg.BrowserServicesRoot,
 		browserServicesHostRoot: cfg.BrowserServicesHostRoot,
 		developmentImage:        cfg.DevelopmentImage,
+		hostDocker:              cfg.DevelopmentHostDocker,
 	}
 	if !manager.enabled {
 		return manager, nil
 	}
 	if _, err := manager.docker(context.Background(), "version", "--format", "{{.Server.Version}}"); err != nil {
 		return nil, fmt.Errorf("连接开发容器 Docker Daemon: %w", err)
+	}
+	if manager.hostDocker {
+		info, err := os.Stat("/var/run/docker.sock")
+		if err != nil {
+			return nil, fmt.Errorf("检查宿主 Docker Socket: %w", err)
+		}
+		if info.Mode()&os.ModeSocket == 0 {
+			return nil, errors.New("宿主 Docker Socket 不是 Unix Socket")
+		}
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok {
+			return nil, errors.New("读取宿主 Docker Socket GID 失败")
+		}
+		manager.dockerSocketGID = stat.Gid
 	}
 	return manager, nil
 }

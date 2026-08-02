@@ -53,10 +53,10 @@ func (m *Manager) provision(ctx context.Context, item *workspace, _ string,
 	_, _ = m.docker(ctx, "rm", "--force", candidateName)
 	createArguments := []string{"create", "--name", candidateName, "--restart", "unless-stopped",
 		"--label", "com.tyrs-hand.development-environment=" + item.Environment.ID.String(),
-		"--network", item.Environment.Network, "--volume", item.Environment.DataVolume + ":" + containerRoot,
+		"--volume", item.Environment.DataVolume + ":" + containerRoot,
 		"--volume", item.Environment.HomeVolume + ":" + home,
-		"--mount", "type=bind,source=" + hostRuntimeDir + ",target=" + containerRunDir,
-		"--add-host", "host.docker.internal:host-gateway"}
+		"--mount", "type=bind,source=" + hostRuntimeDir + ",target=" + containerRunDir}
+	createArguments = m.appendDevelopmentDockerArguments(createArguments, item.Environment.Network, 0)
 	if m.sshEnabled {
 		createArguments = append(createArguments, "--mount", "type=bind,source="+
 			m.sshAgentHostDir+",target="+m.sshAgentDir,

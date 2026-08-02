@@ -11,7 +11,7 @@ identity="$(docker run --rm --entrypoint sh "$image" -c 'printf "%s:%s:%s" "$(id
 
 docker run --rm --entrypoint sh "$image" -c '
 set -eu
-for tool in git git-lfs ssh sshd sftp sudo curl gh jq rg fd zip unzip cmake ninja clang pkg-config mise uv node corepack pnpm python3 go rustc cargo codex apply_patch tyrs-hand-dev; do
+for tool in git git-lfs ssh sshd sftp sudo curl gh jq rg fd zip unzip cmake ninja clang pkg-config mise uv node corepack pnpm python3 go rustc cargo docker codex apply_patch tyrs-hand-dev; do
   command -v "$tool" >/dev/null
 done
 sudo -n true
@@ -26,6 +26,8 @@ test "$(pnpm --version)" = "11.14.0"
 test "$(python3 --version)" = "Python 3.13.14"
 test "$(go version | awk "{print \$3}")" = "go1.26.5"
 test "$(rustc --version | awk "{print \$2}")" = "1.97.1"
+test "$(docker --version | sed -n "s/^Docker version \([^,]*\),.*/\1/p")" = "29.6.2"
+test "$(docker compose version --short)" = "5.3.1"
 test "$(gh --version | awk "NR == 1 {print \$3}")" = "2.23.0"
 test "$(jq --version)" = "jq-1.6"
 test "$(rg --version | awk "NR == 1 {print \$2}")" = "13.0.0"

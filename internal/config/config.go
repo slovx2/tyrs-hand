@@ -60,6 +60,7 @@ type Config struct {
 	CodexMaxSteersPerTurn          int
 	GitHubReplyGateMaxBlocks       int
 	EnableDevelopmentContainers    bool
+	DevelopmentHostDocker          bool
 	DevelopmentImage               string
 	DevelopmentRuntimeDir          string
 	DevelopmentRuntimeHostDir      string
@@ -131,6 +132,7 @@ func load(workerProcess bool) (Config, error) {
 		CodexMaxSteersPerTurn:          v.GetInt("codex_max_steers_per_turn"),
 		GitHubReplyGateMaxBlocks:       v.GetInt("github_reply_gate_max_blocks"),
 		EnableDevelopmentContainers:    v.GetBool("enable_development_containers"),
+		DevelopmentHostDocker:          v.GetBool("development_host_docker"),
 		DevelopmentImage:               strings.TrimSpace(v.GetString("development_image")),
 		DevelopmentRuntimeDir:          filepath.Clean(v.GetString("development_runtime_dir")),
 		DevelopmentRuntimeHostDir:      filepath.Clean(v.GetString("development_runtime_host_dir")),
@@ -211,6 +213,9 @@ func (c Config) ValidateWorker() error {
 }
 
 func (c Config) validateWorkerCapabilities() error {
+	if c.DevelopmentHostDocker && !c.EnableDevelopmentContainers {
+		return errors.New("宿主 Docker 模式要求启用开发容器")
+	}
 	if c.EnableDevelopmentContainers &&
 		(c.DevelopmentRuntimeDir == "." || c.DevelopmentRuntimeHostDir == ".") {
 		return errors.New("启用开发容器时必须配置环境运行目录和宿主目录")
@@ -338,6 +343,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("codex_max_steers_per_turn", 5)
 	v.SetDefault("github_reply_gate_max_blocks", 3)
 	v.SetDefault("enable_development_containers", false)
+	v.SetDefault("development_host_docker", false)
 	v.SetDefault("development_image", "")
 }
 

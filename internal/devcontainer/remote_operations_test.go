@@ -515,6 +515,31 @@ func TestReconfigureRemoteEnvironmentKeepsContainerRunningAndSecuresSSH(t *testi
 		`model_providers.tyrs-hand-provider.base_url="https://api.example.com/v1"`))
 }
 
+func TestHostDockerUsesHostNetworkSocketAndAssignedSSHPort(t *testing.T) {
+	runner := &recordingCommandRunner{resultFor: map[string]string{
+		`HostConfig.NetworkMode`: "host",
+	}, failContains: "container inspect dev-container"}
+	manager := &Manager{enabled: true, dockerBin: "docker", dockerHost: "inherit",
+		runner: runner, hostDocker: true, dockerSocketGID: 984,
+		developmentRuntimeDir: t.TempDir(), developmentRuntimeHostDir: "/host/runtime"}
+	err := manager.RunRemoteOperation(context.Background(), RemoteOperation{
+		Operation: "reconfigure", EnvironmentID: uuid.New(), ContainerName: "dev-container",
+		ImageRef: "dev-image", DataVolume: "dev-data", HomeVolume: "dev-home",
+		Network: "dev-network", RuntimeUser: "developer", RuntimeUID: 1000,
+		RuntimeGID: 1000, RuntimeHome: "/home/developer", SSHPort: 22222,
+		SSHPublicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest",
+	})
+	require.NoError(t, err)
+	require.True(t, runner.contains("--network host"))
+	require.True(t, runner.contains(
+		"type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock"))
+	require.True(t, runner.contains("--group-add 984"))
+	require.True(t, runner.contains("com.tyrs-hand.ssh-port=22222"))
+	require.True(t, runner.contains("Port 22222"))
+	require.False(t, runner.contains("--publish"))
+	require.False(t, runner.contains("host.docker.internal:host-gateway"))
+}
+
 func TestReconfigureRemoteUpdatesSSHKeyInPlaceWhenPortIsUnchanged(t *testing.T) {
 	runner := &recordingCommandRunner{resultFor: map[string]string{
 		`NetworkSettings.Ports`: "2222",

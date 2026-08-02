@@ -21,6 +21,7 @@ services:
       TYRS_HAND_WORKTREE_ROOT: /data/worker/workspaces/github
       TYRS_HAND_CODEX_HOME_ROOT: /data/worker/codex-homes
       TYRS_HAND_ENABLE_DEVELOPMENT_CONTAINERS: ${TYRS_HAND_ENABLE_DEVELOPMENT_CONTAINERS:-true}
+      TYRS_HAND_DEVELOPMENT_HOST_DOCKER: ${TYRS_HAND_DEVELOPMENT_HOST_DOCKER:-true}
       TYRS_HAND_DEVELOPMENT_RUNTIME_DIR: /run/tyrs-hand-development-runtime
       TYRS_HAND_DEVELOPMENT_RUNTIME_HOST_DIR: /opt/tyrs-hand/development-runtime
       TYRS_HAND_ENABLE_SSH: ${TYRS_HAND_ENABLE_SSH:-false}
