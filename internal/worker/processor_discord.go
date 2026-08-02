@@ -48,25 +48,34 @@ type discordJobContext struct {
 	Access         string
 }
 
-func (p *Processor) processDiscordConversation(ctx context.Context,
+func (p *Processor) processDevelopmentSession(ctx context.Context,
 	claimed *codexcontrol.ClaimedControl,
 ) (result codexcontrol.TurnResult, processErr error) {
-	jobCtx, err := p.loadDiscordContext(ctx, claimed.Intent)
+	hasDiscordInput := claimed.InputSurface == "discord" &&
+		claimed.DiscordConversationID != uuid.Nil && claimed.DiscordMessageID != ""
+	var jobCtx discordJobContext
+	var err error
+	if hasDiscordInput {
+		jobCtx, err = p.loadDiscordContext(ctx, claimed.Intent)
+	} else {
+		jobCtx, err = p.loadDevelopmentContext(ctx, claimed)
+	}
 	if err != nil {
 		return result, err
 	}
+	hasDiscordProjection := hasDiscordInput && jobCtx.ConversationID != uuid.Nil
 	jobCtx.ReplyMessageID = jobCtx.MessageID
 	jobCtx.ProjectionID = claimed.ProjectionAnchor
 	if jobCtx.ProjectionID == "" {
 		jobCtx.ProjectionID = jobCtx.MessageID
 	}
-	if claimed.Operation == "replace_last_turn" {
+	if claimed.Operation == "replace_last_turn" && hasDiscordProjection {
 		_ = p.db.QueryRowContext(ctx, `SELECT COALESCE(discord_message_id,$2)
 			FROM codex_turn_intents WHERE id=$1`, claimed.TargetIntentID, jobCtx.MessageID).
 			Scan(&jobCtx.ReplyMessageID)
 	}
 	defer cleanupBrowserTask(p.cfg, claimed.ID.String(), jobCtx.EnvironmentID.String())
-	if claimed.Operation == "replace_last_turn" {
+	if claimed.Operation == "replace_last_turn" && hasDiscordProjection {
 		defer func() {
 			if processErr != nil {
 				releaseCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -83,7 +92,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	jobCtx.ReasoningEffort = preferences.ReasoningEffort
 	jobCtx.ServiceTier = codexsettings.RuntimeServiceTier(preferences.ServiceTier)
 	progress := p.newDiscordProgressReporter(ctx, claimed, jobCtx)
-	if claimed.Operation == "replace_last_turn" {
+	if claimed.Operation == "replace_last_turn" && hasDiscordProjection {
 		progress.project(ctx, discordintegration.ConversationRunning,
 			"消息已编辑，正在重新生成。", 0)
 		if jobCtx.MessageID != jobCtx.ProjectionID {
@@ -118,7 +127,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	}
 	finalProjected := false
 	defer func() {
-		if processErr != nil && !finalProjected {
+		if processErr != nil && !finalProjected && hasDiscordProjection {
 			projectCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			state, detail, errorDetails := discordFailureProjection(projectCtx, p.db, claimed.ID, processErr)
@@ -129,8 +138,14 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 			}
 		}
 	}()
-	containerRuntime, err := p.development.Ensure(ctx, jobCtx.EnvironmentID, jobCtx.ForumID,
-		jobCtx.ConversationID, "")
+	var containerRuntime devcontainer.Runtime
+	if hasDiscordInput {
+		containerRuntime, err = p.development.Ensure(ctx, jobCtx.EnvironmentID, jobCtx.ForumID,
+			jobCtx.ConversationID, "")
+	} else {
+		containerRuntime, err = p.development.EnsureProject(ctx, jobCtx.EnvironmentID,
+			jobCtx.ProjectID)
+	}
 	if err != nil {
 		return result, err
 	}
@@ -224,7 +239,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		return result, err
 	}
 	defer unbind()
-	if claimed.Operation == "replace_last_turn" && !claimed.Recovering {
+	if claimed.Operation == "replace_last_turn" && !claimed.Recovering && hasDiscordProjection {
 		if err := p.prepareDiscordReplacement(ctx, runtime, claimed, threadID); err != nil {
 			if errors.Is(err, errReplacementSuperseded) {
 				_ = discordintegration.NewSQLoutbox(p.db).Enqueue(ctx,
@@ -244,6 +259,9 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 			return result, err
 		}
 		if recovered {
+			if !hasDiscordProjection {
+				return result, nil
+			}
 			if expireErr := discordintegration.ExpireConversationPlanCards(ctx, p.db,
 				jobCtx.ConversationID, claimed.RunID); expireErr != nil {
 				p.logger.Warn("失效旧 Plan 卡片失败", zap.Error(expireErr))
@@ -261,9 +279,13 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 			return result, nil
 		}
 	}
-	input, err := p.discordTurnInput(ctx, jobCtx, workspace, skills)
-	if err != nil {
-		return result, err
+	input := ports.TurnInput{Text: jobCtx.Body, ClientUserMessageID: jobCtx.MessageID,
+		Skills: skills}
+	if hasDiscordInput {
+		input, err = p.discordTurnInput(ctx, jobCtx, workspace, skills)
+		if err != nil {
+			return result, err
+		}
 	}
 	input.CollaborationMode = &ports.CollaborationMode{Mode: claimed.CollaborationMode,
 		Model: jobCtx.Model, ReasoningEffort: jobCtx.ReasoningEffort}
@@ -284,9 +306,11 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	if err != nil {
 		return result, err
 	}
-	if expireErr := discordintegration.ExpireConversationPlanCards(ctx, p.db,
-		jobCtx.ConversationID, claimed.RunID); expireErr != nil {
-		p.logger.Warn("失效旧 Plan 卡片失败", zap.Error(expireErr))
+	if hasDiscordProjection {
+		if expireErr := discordintegration.ExpireConversationPlanCards(ctx, p.db,
+			jobCtx.ConversationID, claimed.RunID); expireErr != nil {
+			p.logger.Warn("失效旧 Plan 卡片失败", zap.Error(expireErr))
+		}
 	}
 	if err := p.recordLocalRuntimeSettingsApplied(ctx, claimed, "turn/start",
 		jobCtx.Model, jobCtx.ReasoningEffort, string(jobCtx.ServiceTier)); err != nil {
@@ -296,7 +320,7 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 	if err := p.controls.RecordSubmission(ctx, claimed, turnID); err != nil {
 		return result, err
 	}
-	if claimed.Operation == "replace_last_turn" {
+	if claimed.Operation == "replace_last_turn" && hasDiscordProjection {
 		if err := p.setReplacementPhase(ctx, claimed.ID, "running", ""); err != nil {
 			interruptTurnBestEffort(runtime, threadID, turnID)
 			return result, err
@@ -306,10 +330,12 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 			return result, err
 		}
 	}
-	if err := p.addDiscordContributor(ctx, claimed.RunID, claimed.DiscordConversationID,
-		claimed.ID, turnID); err != nil {
-		interruptTurnBestEffort(runtime, threadID, turnID)
-		return result, err
+	if hasDiscordInput {
+		if err := p.addDiscordContributor(ctx, claimed.RunID, claimed.DiscordConversationID,
+			claimed.ID, turnID); err != nil {
+			interruptTurnBestEffort(runtime, threadID, turnID)
+			return result, err
+		}
 	}
 	result, err = p.waitTurn(ctx, runtime, client.Events(), claimed, threadID, turnID, progress.observeEvent)
 	if err != nil {
@@ -324,18 +350,22 @@ func (p *Processor) processDiscordConversation(ctx context.Context,
 		}
 		return result, err
 	}
-	_, err = p.db.ExecContext(ctx, `UPDATE discord_input_messages SET status = 'processed',
-		processed_at = now() WHERE turn_intent_id = $1`, claimed.ID)
-	if err != nil {
-		return result, err
+	if hasDiscordInput {
+		_, err = p.db.ExecContext(ctx, `UPDATE discord_input_messages SET status = 'processed',
+			processed_at = now() WHERE turn_intent_id = $1`, claimed.ID)
+		if err != nil {
+			return result, err
+		}
 	}
-	progress.project(ctx, discordintegration.ConversationCompleted, "本轮处理完成。", result.DurationMillis)
-	p.projectDiscordReply(ctx, jobCtx, claimed.RunID, result.FinalAnswer, result.FinalOutputType)
-	p.projectDiscordRunContributors(ctx, claimed.RunID, claimed.DiscordMessageID,
-		result.FinalAnswer, result.FinalOutputType,
-		progress.detail("本轮处理完成。", result.DurationMillis))
-	finalProjected = true
-	if claimed.Operation == "replace_last_turn" {
+	if hasDiscordProjection {
+		progress.project(ctx, discordintegration.ConversationCompleted, "本轮处理完成。", result.DurationMillis)
+		p.projectDiscordReply(ctx, jobCtx, claimed.RunID, result.FinalAnswer, result.FinalOutputType)
+		p.projectDiscordRunContributors(ctx, claimed.RunID, claimed.DiscordMessageID,
+			result.FinalAnswer, result.FinalOutputType,
+			progress.detail("本轮处理完成。", result.DurationMillis))
+		finalProjected = true
+	}
+	if claimed.Operation == "replace_last_turn" && hasDiscordProjection {
 		_ = p.setReplacementPhase(ctx, claimed.ID, "terminal", "")
 	}
 	return result, nil
@@ -511,6 +541,33 @@ func (p *Processor) loadDiscordContext(ctx context.Context, job codexcontrol.Int
 	return result, err
 }
 
+func (p *Processor) loadDevelopmentContext(ctx context.Context,
+	claimed *codexcontrol.ClaimedControl,
+) (discordJobContext, error) {
+	result := discordJobContext{
+		IntentID: claimed.ID, MessageID: claimed.ID.String(), Body: claimed.Instruction,
+		DisplayName: claimed.ActorDisplayName,
+	}
+	err := p.db.QueryRowContext(ctx, `SELECT environment.id, project.id, project.name,
+		COALESCE(project.remote_url,''), project.project_kind,
+		profile.name, COALESCE(profile.model,''), COALESCE(profile.reasoning_effort,''),
+		COALESCE(profile.service_tier,'standard'), profile.sandbox, profile.approval_policy,
+		profile.network_enabled
+		FROM development_sessions session
+		JOIN discord_development_environments environment
+			ON environment.id=session.development_environment_id
+		JOIN development_projects project ON project.id=session.development_project_id
+		JOIN agent_profiles profile ON profile.id=session.agent_profile_id
+		WHERE session.id=$1 AND session.lifecycle_state='active'
+		  AND environment.status='running'
+		  AND project.availability_status='available'`, claimed.SessionID).Scan(
+		&result.EnvironmentID, &result.ProjectID, &result.Repository, &result.CloneURL,
+		&result.ProjectKind, &result.ProfileName, &result.Model, &result.ReasoningEffort,
+		&result.ServiceTier, &result.Sandbox, &result.ApprovalPolicy, &result.NetworkEnabled)
+	result.HasRemote = strings.TrimSpace(result.CloneURL) != ""
+	return result, err
+}
+
 func (p *Processor) handleDiscordTool(ctx context.Context, claimed *codexcontrol.ClaimedControl,
 	runtime devcontainer.Runtime, workspace ports.Workspace, request codex.ToolCallRequest,
 ) (codex.ToolCallResult, error) {
@@ -547,11 +604,9 @@ func (p *Processor) executeDiscordLocalTool(ctx context.Context, claimed *codexc
 		}
 		sha, err := p.development.Commit(ctx, runtime, arguments.Message)
 		if err == nil {
-			_, err = p.db.ExecContext(ctx, `UPDATE development_projects project
-				SET head_sha=$2, dirty=false, updated_at=now()
-				FROM discord_forums forum
-				WHERE forum.id=$1 AND forum.development_project_id=project.id`,
-				runtime.ForumID, sha)
+			_, err = p.db.ExecContext(ctx, `UPDATE development_projects
+				SET head_sha=$2, dirty=false, updated_at=now() WHERE id=$1`,
+				runtime.ProjectID, sha)
 		}
 		return codex.TextToolResult(fmt.Sprintf(`{"sha":%q}`, sha), err == nil), err
 	case "publish_branch":
@@ -560,11 +615,9 @@ func (p *Processor) executeDiscordLocalTool(ctx context.Context, claimed *codexc
 		}
 		branch, sha, err := p.development.Publish(ctx, runtime)
 		if err == nil {
-			_, err = p.db.ExecContext(ctx, `UPDATE development_projects project
-				SET head_sha=$2, dirty=false, branch=$3, updated_at=now()
-				FROM discord_forums forum
-				WHERE forum.id=$1 AND forum.development_project_id=project.id`,
-				runtime.ForumID, sha, branch)
+			_, err = p.db.ExecContext(ctx, `UPDATE development_projects
+				SET head_sha=$2, dirty=false, branch=$3, updated_at=now() WHERE id=$1`,
+				runtime.ProjectID, sha, branch)
 		}
 		return codex.TextToolResult(fmt.Sprintf(`{"branch":%q,"sha":%q}`, branch, sha), err == nil), err
 	default:
@@ -584,12 +637,10 @@ func (p *Processor) refreshDiscordWorkspaceState(ctx context.Context, runtime de
 			cause = headErr
 		}
 		p.logger.Warn("刷新开发项目 Git 状态失败", zap.Error(cause),
-			zap.String("forum_id", runtime.ForumID.String()))
+			zap.String("project_id", runtime.ProjectID.String()))
 		return
 	}
-	_, _ = p.db.ExecContext(ctx, `UPDATE development_projects project
-		SET head_sha=$2, dirty=$3, updated_at=now()
-		FROM discord_forums forum
-		WHERE forum.id=$1 AND forum.development_project_id=project.id`,
-		runtime.ForumID, strings.TrimSpace(head), strings.TrimSpace(status) != "")
+	_, _ = p.db.ExecContext(ctx, `UPDATE development_projects
+		SET head_sha=$2, dirty=$3, updated_at=now() WHERE id=$1`,
+		runtime.ProjectID, strings.TrimSpace(head), strings.TrimSpace(status) != "")
 }

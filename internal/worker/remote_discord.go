@@ -22,12 +22,12 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	commands <-chan workerprotocol.RunCommand,
 	report func(string, json.RawMessage),
 ) (workerprotocol.CompleteRequest, error) {
-	snapshot := task.Snapshot.Discord
+	snapshot := task.Snapshot.Development
 	if snapshot == nil || snapshot.Development == nil {
-		return workerprotocol.CompleteRequest{}, errors.New("discord 任务缺少开发环境快照")
+		return workerprotocol.CompleteRequest{}, errors.New("development session 任务缺少开发环境快照")
 	}
 	if p.development == nil || !p.development.Enabled() {
-		return workerprotocol.CompleteRequest{}, errors.New("discord 执行节点没有启用开发容器")
+		return workerprotocol.CompleteRequest{}, errors.New("development session 执行节点没有启用开发容器")
 	}
 	runtimeCredential, err := p.client.EnvironmentRuntimeCredential(ctx,
 		snapshot.Development.EnvironmentID)
@@ -130,7 +130,7 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 			return workerprotocol.CompleteRequest{Result: result}, nil
 		}
 	}
-	input := remoteDiscordTurnInput(snapshot, runtime, attachments, skills)
+	input := remoteDevelopmentTurnInput(snapshot, task.Snapshot.Discord, runtime, attachments, skills)
 	input.CollaborationMode = &ports.CollaborationMode{Mode: settings.CollaborationMode,
 		Model: settings.Model, ReasoningEffort: settings.ReasoningEffort}
 	turnID, err := codexRuntime.StartTurn(ctx, threadID, input)
@@ -168,7 +168,8 @@ func remoteDiscordEventReporter(report func(string, json.RawMessage)) func(strin
 func remoteDevelopmentSpec(value workerprotocol.DevelopmentSpec) devcontainer.RemoteSpec {
 	return devcontainer.RemoteSpec{
 		EnvironmentID: value.EnvironmentID, ForumID: value.ForumID,
-		ConversationID: value.ConversationID, WorkspaceStatus: value.WorkspaceStatus,
+		ConversationID: value.ConversationID, ProjectID: value.ProjectID,
+		WorkspaceStatus:   value.WorkspaceStatus,
 		WorkspaceRelative: value.WorkspaceRelative, WorkspaceBranch: value.WorkspaceBranch,
 		WorkspaceKind: value.WorkspaceKind,
 		Repository:    value.Repository, CloneURL: value.CloneURL, DefaultRef: value.DefaultRef,
@@ -184,7 +185,8 @@ func remoteDevelopmentSpec(value workerprotocol.DevelopmentSpec) devcontainer.Re
 func protocolDevelopmentState(value devcontainer.RemoteState) workerprotocol.DevelopmentState {
 	return workerprotocol.DevelopmentState{DevelopmentSpec: workerprotocol.DevelopmentSpec{
 		EnvironmentID: value.EnvironmentID, ForumID: value.ForumID,
-		ConversationID: value.ConversationID, WorkspaceStatus: value.WorkspaceStatus,
+		ConversationID: value.ConversationID, ProjectID: value.ProjectID,
+		WorkspaceStatus:   value.WorkspaceStatus,
 		WorkspaceRelative: value.WorkspaceRelative, WorkspaceBranch: value.WorkspaceBranch,
 		WorkspaceKind: value.WorkspaceKind,
 		Repository:    value.Repository, CloneURL: value.CloneURL, DefaultRef: value.DefaultRef,

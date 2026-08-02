@@ -124,7 +124,7 @@ func (s *ConversationService) Stop(ctx context.Context, guildID, threadID, reque
 	}
 	requestID := uuid.New()
 	_, inserted, err := codexcontrol.NewRepository(s.db, 0).Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
-		SourceType: codexcontrol.SourceDiscord, DiscordConversationID: conversationID,
+		SourceType: codexcontrol.SourceDevelopment, DiscordConversationID: conversationID,
 		RepositoryID: repository, ProjectID: project, AgentProfileID: profileID,
 		IdempotencyKey: "discord:stop:" + requestID.String(), Operation: "interrupt",
 		Instruction: "stopped from Discord", ReplyPolicy: "silent", ActorLogin: requesterID,

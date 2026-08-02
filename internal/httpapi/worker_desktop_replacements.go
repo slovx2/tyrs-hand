@@ -90,12 +90,12 @@ func (s *Server) workerPrepareDesktopRollback(c *gin.Context) {
 	reservationID := uuid.New()
 	_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO codex_turn_intents
 		(id,control_id,sequence_no,operation,behavior,resolved_action,target_intent_id,
-		source_type,input_surface,discord_conversation_id,repository_id,development_project_id,
+		source_type,input_surface,session_id,discord_conversation_id,repository_id,development_project_id,
 		agent_profile_id,idempotency_key,instruction,skills,allowed_tools,dangerous_actions,
 		actor_login,actor_permission,reply_policy,reply_status,status,projection_anchor,
 		replacement_phase)
 		SELECT $1,control_id,$2,'replace_last_turn','start_when_idle','replace',$3,
-		source_type,'desktop',discord_conversation_id,repository_id,development_project_id,
+		source_type,'desktop',session_id,discord_conversation_id,repository_id,development_project_id,
 		agent_profile_id,$4,'',skills,allowed_tools,dangerous_actions,
 		'codex-desktop','owner','silent','skipped','awaiting_confirmation',$5,'reserved'
 		FROM codex_turn_intents WHERE id=$3`, reservationID, sequence, targetID,

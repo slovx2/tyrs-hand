@@ -139,7 +139,7 @@ func (r *Runner) fillSlots(ctx context.Context, slots chan struct{}, active *syn
 		case "github":
 			sourceType = codexcontrol.SourceGitHub
 		case "discord":
-			sourceType = codexcontrol.SourceDiscord
+			sourceType = codexcontrol.SourceDevelopment
 		}
 		claimed, err := r.controls.ClaimSource(ctx, r.cfg.WorkerID, sourceType)
 		if err != nil {

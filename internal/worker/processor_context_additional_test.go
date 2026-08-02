@@ -94,7 +94,7 @@ func TestDiscordThreadResumesExistingThread(t *testing.T) {
 	})
 	claimed := &codexcontrol.ClaimedControl{
 		Intent: codexcontrol.Intent{ID: uuid.New(), ControlID: uuid.New(),
-			SourceType: codexcontrol.SourceDiscord},
+			SourceType: codexcontrol.SourceDevelopment},
 		ExternalThreadID: "discord-thread", CodexHomeKey: "shared-home",
 		Recovering: true,
 		LeaseToken: "lease", LeaseEpoch: 4,
@@ -144,7 +144,7 @@ func TestGitHubThreadResumesExistingThread(t *testing.T) {
 
 func TestDiscordResumeFailureDoesNotStartReplacementThread(t *testing.T) {
 	claimed := &codexcontrol.ClaimedControl{
-		Intent:           codexcontrol.Intent{SourceType: codexcontrol.SourceDiscord},
+		Intent:           codexcontrol.Intent{SourceType: codexcontrol.SourceDevelopment},
 		ExternalThreadID: "missing-thread", CodexHomeKey: "shared-home",
 		Recovering: true,
 	}

@@ -111,6 +111,14 @@ func (s *Server) workerRecordThreadMetadata(c *gin.Context) {
 			problem(c, http.StatusInternalServerError, "记录 Thread metadata 失败", err)
 			return
 		}
+		_, err = tx.ExecContext(c.Request.Context(), `UPDATE development_sessions session SET
+			title=$2, updated_at=now()
+			FROM codex_thread_controls control
+			WHERE control.id=$1 AND session.id=control.session_id`, controlID, name)
+		if err != nil {
+			problem(c, http.StatusInternalServerError, "更新 Session 标题失败", err)
+			return
+		}
 		if conversationID.Valid {
 			var threadID string
 			err = tx.QueryRowContext(c.Request.Context(), `UPDATE discord_conversations
@@ -215,8 +223,24 @@ func (s *Server) recordThreadSettingsEvent(c *gin.Context, tx *sql.Tx,
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
-	if err != nil || !conversationID.Valid || !desktop {
+	if err != nil {
 		return err
+	}
+	if desktop {
+		_, err = tx.ExecContext(c.Request.Context(), `UPDATE development_sessions session SET
+			model=COALESCE(NULLIF($2,''),session.model),
+			reasoning_effort=CASE WHEN $2<>'' THEN NULLIF($3,'') ELSE session.reasoning_effort END,
+			service_tier=CASE WHEN $2<>'' THEN $4 ELSE session.service_tier END,
+			collaboration_mode=control.collaboration_mode, settings_version=$5, updated_at=now()
+			FROM codex_thread_controls control
+			WHERE control.id=$1 AND session.id=control.session_id`, controlID, event.Model,
+			event.ReasoningEffort, desiredTier, settingsRevision)
+		if err != nil {
+			return err
+		}
+	}
+	if !conversationID.Valid || !desktop {
+		return nil
 	}
 	_, err = tx.ExecContext(c.Request.Context(), `UPDATE discord_conversations SET
 		model = COALESCE(NULLIF($2,''), discord_conversations.model),
@@ -262,6 +286,14 @@ func (s *Server) recordThreadLifecycleEvent(c *gin.Context, tx *sql.Tx,
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(c.Request.Context(), `UPDATE development_sessions session SET
+		lifecycle_state=$2, updated_at=now()
+		FROM codex_thread_controls control
+		WHERE control.id=$1 AND session.id=control.session_id`, controlID,
+		event.LifecycleState)
 	if err != nil {
 		return err
 	}

@@ -72,8 +72,8 @@ func (p *Processor) Process(ctx context.Context, claimed *codexcontrol.ClaimedCo
 	if claimed.Operation == "interrupt" {
 		return codexcontrol.TurnResult{Evidence: "interrupt_when_idle"}, nil
 	}
-	if claimed.SourceType == codexcontrol.SourceDiscord {
-		return p.processDiscordConversation(ctx, claimed)
+	if claimed.SourceType == codexcontrol.SourceDevelopment {
+		return p.processDevelopmentSession(ctx, claimed)
 	}
 	jobCtx, err := p.loadContext(ctx, claimed.Intent)
 	if err != nil {

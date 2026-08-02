@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
@@ -105,6 +106,9 @@ func (r *discordProgressReporter) detail(summary string, durationMillis int64) s
 func (r *discordProgressReporter) project(ctx context.Context, state discordintegration.ConversationProgress,
 	summary string, durationMillis int64,
 ) {
+	if r.jobCtx.ConversationID == uuid.Nil {
+		return
+	}
 	r.processor.projectDiscordConversation(ctx, r.jobCtx, r.claimed.RunID, state, summary)
 }
 

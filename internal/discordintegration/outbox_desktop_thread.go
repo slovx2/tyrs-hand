@@ -28,7 +28,7 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 	}
 	var status, guildID, ownerID, sshUserID, sshDisplayName, previewTitle, desiredName string
 	var desiredSource, firstProjectionKey, firstInputText string
-	var environmentID, forumID, profileID, controlID uuid.UUID
+	var environmentID, forumID, profileID, controlID, sessionID uuid.UUID
 	var repositoryID, projectID uuid.NullUUID
 	var desiredRevision, lifecycleRevision, modeRevision int64
 	var lifecycleState, mode string
@@ -40,7 +40,7 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 			e.ssh_discord_user_id, ''),
 		COALESCE(NULLIF(r.first_input_actor_display_name,''),
 			NULLIF(member.display_name,''), member.username, ''),
-		f.repository_id, f.development_project_id, ct.agent_profile_id, ct.model,
+		f.repository_id, f.development_project_id, ct.session_id, ct.agent_profile_id, ct.model,
 		ct.reasoning_effort, COALESCE(ct.service_tier,''),
 		COALESCE(r.preview_title,''), COALESCE(ct.desired_thread_name,''),
 		COALESCE(ct.desired_thread_name_source,''), ct.desired_thread_name_revision,
@@ -55,7 +55,7 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 				NULLIF(r.first_input_actor_discord_user_id,''), e.ssh_discord_user_id)
 		WHERE r.id = $1 FOR UPDATE OF r, ct`, requestID).Scan(&status, &environmentID, &forumID,
 		&controlID, &guildID, &ownerID, &sshUserID, &sshDisplayName,
-		&repositoryID, &projectID, &profileID,
+		&repositoryID, &projectID, &sessionID, &profileID,
 		&model, &effort, &serviceTier, &previewTitle, &desiredName,
 		&desiredSource, &desiredRevision, &firstProjectionKey, &firstInputText,
 		&lifecycleState, &lifecycleRevision, &mode, &modeRevision)
@@ -81,14 +81,22 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 	conversationID := uuid.New()
 	_, err = tx.ExecContext(ctx, `INSERT INTO discord_conversations
 		(id, guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
-			 repository_id, development_project_id, agent_profile_id, title, status,
+			 repository_id, development_project_id, session_id, agent_profile_id, title, status,
 			 model, reasoning_effort, service_tier,
 			 configuration_status, configured_by_discord_user_id, title_rename_status,
 			 lifecycle_state, lifecycle_revision, collaboration_mode, collaboration_mode_revision)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'active',NULLIF($11,''),NULLIF($12,''),NULLIF($13,''),
-			'configured',$6,'skipped',$14,$15,$16,$17)`, conversationID, guildID, forumID, result.ThreadID,
-		result.MessageID, ownerID, repositoryID, projectID, profileID, title,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'active',NULLIF($12,''),NULLIF($13,''),NULLIF($14,''),
+			'configured',$6,'skipped',$15,$16,$17,$18)`, conversationID, guildID, forumID, result.ThreadID,
+		result.MessageID, ownerID, repositoryID, projectID, sessionID, profileID, title,
 		model.String, effort.String, serviceTier, lifecycleState, lifecycleRevision, mode, modeRevision)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO session_surface_bindings(
+		session_id,surface_type,external_key,metadata)
+		VALUES ($1,'discord',$2 || ':' || $3,
+			jsonb_build_object('conversationId',$4::text,'guildId',$2,'threadId',$3))`,
+		sessionID, guildID, result.ThreadID, conversationID)
 	if err != nil {
 		return err
 	}

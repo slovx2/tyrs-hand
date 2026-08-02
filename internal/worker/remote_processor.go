@@ -67,7 +67,7 @@ func (p *RemoteProcessor) ProcessRemote(ctx context.Context, task *workerprotoco
 	commands <-chan workerprotocol.RunCommand,
 	report func(string, json.RawMessage),
 ) (workerprotocol.CompleteRequest, error) {
-	if task.Claimed.SourceType == codexcontrol.SourceDiscord {
+	if task.Claimed.SourceType == codexcontrol.SourceDevelopment {
 		return p.processRemoteDiscord(ctx, task, commands, report)
 	}
 	result, err := p.processRemoteGitHub(ctx, task, commands, report)

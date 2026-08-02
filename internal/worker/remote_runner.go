@@ -205,7 +205,7 @@ func (r *RemoteRunner) claimRole() string {
 func (r *RemoteRunner) roleAllowed(source string) bool {
 	return r.cfg.WorkerRole == "all" ||
 		(r.cfg.WorkerRole == "github" && source == "github_work_item") ||
-		(r.cfg.WorkerRole == "discord" && source == "discord_conversation")
+		(r.cfg.WorkerRole == "discord" && source == "development_session")
 }
 
 func (r *RemoteRunner) sendHeartbeat(ctx context.Context) error {

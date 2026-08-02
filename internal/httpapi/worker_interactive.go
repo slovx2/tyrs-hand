@@ -102,11 +102,12 @@ func (s *Server) workerRegisterInteractive(c *gin.Context) {
 	var id uuid.UUID
 	var inserted bool
 	err = tx.QueryRowContext(c.Request.Context(), `INSERT INTO codex_interactive_requests
-		(control_id, run_id, thread_id, turn_id, item_id, app_server_generation,
+		(control_id, run_id, session_id, thread_id, turn_id, item_id, app_server_generation,
 		 app_server_request_id, questions, deadline_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+		VALUES ($1,$2,NULLIF($3::text,'')::uuid,$4,$5,$6,$7,$8,$9,$10)
 		ON CONFLICT(thread_id, turn_id, item_id) DO NOTHING RETURNING id`,
-		claimed.ControlID, runID, params.ThreadID, params.TurnID, params.ItemID,
+		claimed.ControlID, runID, nilUUIDString(claimed.SessionID), params.ThreadID,
+		params.TurnID, params.ItemID,
 		request.AppServerGeneration, request.RequestID, questions, nullableTime(deadline)).
 		Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -127,6 +128,13 @@ func (s *Server) workerRegisterInteractive(c *gin.Context) {
 		if err == nil {
 			_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_turn_intents
 				SET status='waiting_for_user', updated_at=now() WHERE id=$1`, claimed.ID)
+		}
+		if err == nil && claimed.SessionID != uuid.Nil {
+			payload, _ := json.Marshal(gin.H{"requestId": id, "questions": params.Questions,
+				"deadlineAt": nullableTime(deadline), "secret": secret})
+			_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO client_updates(
+				session_id,update_type,entity_id,payload)
+				VALUES ($1,'interactive.created',$2,$3)`, claimed.SessionID, id.String(), payload)
 		}
 		if err != nil {
 			problem(c, http.StatusInternalServerError, "释放交互等待调度槽失败", err)

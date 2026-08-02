@@ -93,7 +93,7 @@ func (p *Processor) freezeRuntimePreferences(ctx context.Context,
 	claimed *codexcontrol.ClaimedControl,
 ) (codexsettings.EffectivePreferences, error) {
 	var result codexsettings.EffectivePreferences
-	if claimed.SourceType == codexcontrol.SourceDiscord {
+	if claimed.SourceType == codexcontrol.SourceDevelopment {
 		err := p.db.QueryRowContext(ctx, `SELECT COALESCE(model,''),
 			COALESCE(reasoning_effort,''), COALESCE(service_tier,'standard')
 			FROM codex_turn_runs WHERE id = $1`, claimed.RunID).
@@ -327,7 +327,7 @@ func (p *Processor) waitTurn(ctx context.Context, runtime *codex.Runtime, events
 					DurationMillis: time.Since(startedAt).Milliseconds(), Evidence: "turn/completed"}, nil
 			}
 		case <-steerTicker.C:
-			if confirmed && claimed.SourceType == codexcontrol.SourceDiscord {
+			if confirmed && claimed.SourceType == codexcontrol.SourceDevelopment {
 				if err := p.dispatchPendingIntent(ctx, runtime, claimed, threadID, turnID); err != nil {
 					return codexcontrol.TurnResult{}, fmt.Errorf("合并同一 control 的后续 intent: %w", err)
 				}
@@ -441,13 +441,15 @@ func (p *Processor) dispatchPendingIntent(ctx context.Context, runtime *codex.Ru
 ) error {
 	var intentID uuid.UUID
 	var operation, instruction, messageID string
-	err := p.db.QueryRowContext(ctx, `SELECT id, operation, instruction, COALESCE(discord_message_id,'')
+	var conversationRaw sql.NullString
+	err := p.db.QueryRowContext(ctx, `SELECT id, operation, instruction,
+		COALESCE(discord_message_id,''), discord_conversation_id::text
 		FROM codex_turn_intents WHERE control_id = $1 AND sequence_no > $2
 		  AND status IN ('queued','retry_wait') AND available_at <= now()
 		  AND (operation IN ('interrupt','replace_last_turn') OR
 			(SELECT append_count < max_append_count FROM codex_turn_runs WHERE id = $3))
 		ORDER BY sequence_no LIMIT 1`, claimed.ControlID, claimed.Sequence, claimed.RunID).Scan(
-		&intentID, &operation, &instruction, &messageID)
+		&intentID, &operation, &instruction, &messageID, &conversationRaw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -474,9 +476,16 @@ func (p *Processor) dispatchPendingIntent(ctx context.Context, runtime *codex.Ru
 		return errDiscordTurnReplaced
 	}
 	input := ports.TurnInput{Text: instruction, ClientUserMessageID: intentID.String()}
-	if claimed.SourceType == codexcontrol.SourceDiscord && messageID != "" {
+	conversationID := uuid.Nil
+	if conversationRaw.Valid {
+		conversationID, err = uuid.Parse(conversationRaw.String)
+		if err != nil {
+			return err
+		}
+	}
+	if claimed.SourceType == codexcontrol.SourceDevelopment && messageID != "" {
 		jobCtx, loadErr := p.loadDiscordContext(ctx, codexcontrol.Intent{
-			ID: intentID, DiscordConversationID: claimed.DiscordConversationID,
+			ID: intentID, DiscordConversationID: conversationID,
 			DiscordMessageID: messageID, Instruction: instruction,
 		})
 		if loadErr != nil {
@@ -525,7 +534,7 @@ func (p *Processor) dispatchPendingIntent(ctx context.Context, runtime *codex.Ru
 			}
 		}
 	}
-	return p.markSteerApplied(ctx, claimed, intentID, turnID, messageID)
+	return p.markSteerApplied(ctx, claimed, intentID, conversationID, turnID, messageID)
 }
 
 func (p *Processor) steerAlreadyApplied(ctx context.Context, runtime *codex.Runtime,
@@ -550,7 +559,7 @@ func steerSnapshotApplied(snapshot codex.ThreadSnapshot, turnID, clientID string
 }
 
 func (p *Processor) markSteerApplied(ctx context.Context, claimed *codexcontrol.ClaimedControl,
-	intentID uuid.UUID, turnID, messageID string,
+	intentID, conversationID uuid.UUID, turnID, messageID string,
 ) error {
 	tx, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -564,24 +573,26 @@ func (p *Processor) markSteerApplied(ctx context.Context, claimed *codexcontrol.
 		_, err = tx.ExecContext(ctx, `UPDATE codex_turn_runs SET append_count = append_count + 1
 			WHERE id = $1 AND append_count < max_append_count`, claimed.RunID)
 	}
-	if err == nil && claimed.SourceType == codexcontrol.SourceDiscord {
-		err = p.addDiscordContributorTx(ctx, tx, claimed.RunID, claimed.DiscordConversationID,
+	if err == nil && claimed.SourceType == codexcontrol.SourceDevelopment &&
+		conversationID != uuid.Nil {
+		err = p.addDiscordContributorTx(ctx, tx, claimed.RunID, conversationID,
 			intentID, turnID)
 	}
-	if err == nil && claimed.SourceType == codexcontrol.SourceDiscord {
+	if err == nil && claimed.SourceType == codexcontrol.SourceDevelopment &&
+		conversationID != uuid.Nil {
 		var guildID, threadID string
 		err = tx.QueryRowContext(ctx, `SELECT guild_id, thread_id FROM discord_conversations WHERE id=$1`,
-			claimed.DiscordConversationID).Scan(&guildID, &threadID)
+			conversationID).Scan(&guildID, &threadID)
 		if err == nil {
 			if messageID == "" {
 				messageID = "desktop-" + intentID.String()
 				err = discordintegration.ProjectConversationThinkingTx(ctx, tx, guildID, threadID,
-					claimed.DiscordConversationID, messageID)
+					conversationID, messageID)
 			}
 		}
 		if err == nil {
 			err = discordintegration.RegisterConversationStatusSteerTx(ctx, tx, claimed.RunID,
-				claimed.DiscordConversationID, guildID, messageID)
+				conversationID, guildID, messageID)
 		}
 	}
 	if err != nil {

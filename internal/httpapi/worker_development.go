@@ -22,9 +22,9 @@ func (s *Server) workerDevelopmentState(c *gin.Context) {
 		remoteRunError(c, "校验开发环境状态请求失败", err)
 		return
 	}
-	if claimed.SourceType != codexcontrol.SourceDiscord || request.EnvironmentID == uuid.Nil ||
-		request.ForumID == uuid.Nil {
-		badRequest(c, errors.New("开发环境状态只允许用于 Discord Run"))
+	if claimed.SourceType != codexcontrol.SourceDevelopment || request.EnvironmentID == uuid.Nil ||
+		request.ProjectID == uuid.Nil {
+		badRequest(c, errors.New("开发环境状态只允许用于 Development Session Run"))
 		return
 	}
 	tx, err := s.db.BeginTx(c.Request.Context(), nil)
@@ -35,9 +35,10 @@ func (s *Server) workerDevelopmentState(c *gin.Context) {
 	defer func() { _ = tx.Rollback() }()
 	var matches bool
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT EXISTS(
-		SELECT 1 FROM discord_conversations c JOIN discord_forums f ON f.id = c.forum_id
-		WHERE c.id = $1 AND f.id = $2 AND f.development_environment_id = $3)`,
-		claimed.DiscordConversationID, request.ForumID, request.EnvironmentID).Scan(&matches)
+		SELECT 1 FROM development_sessions session
+		WHERE session.id=$1 AND session.development_environment_id=$2
+			AND session.development_project_id=$3)`, claimed.SessionID,
+		request.EnvironmentID, request.ProjectID).Scan(&matches)
 	if err != nil || !matches {
 		problem(c, http.StatusForbidden, "开发环境不属于当前 Run", err)
 		return
@@ -59,10 +60,8 @@ func (s *Server) workerDevelopmentState(c *gin.Context) {
 			head_sha=CASE WHEN project.project_kind='git'
 				THEN COALESCE(NULLIF($2,''), project.head_sha) ELSE NULL END,
 			dirty=CASE WHEN project.project_kind='git' THEN $3 ELSE false END,
-			updated_at=now()
-			FROM discord_forums forum
-			WHERE forum.id=$1 AND forum.development_project_id=project.id`,
-			request.ForumID, request.WorkspaceHeadSHA, request.WorkspaceDirty)
+			updated_at=now() WHERE project.id=$1`, request.ProjectID,
+			request.WorkspaceHeadSHA, request.WorkspaceDirty)
 	}
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "保存开发环境状态失败", err)

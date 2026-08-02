@@ -421,11 +421,19 @@ func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
 		'Desktop bound thread') RETURNING id`, forumID, projectID, profileID).
 		Scan(&conversationID))
 	var controlID uuid.UUID
+	var sessionID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO development_sessions(
+		development_environment_id,development_project_id,agent_profile_id,title)
+		VALUES ($1,$2,$3,'Desktop bound thread') RETURNING id`, environmentID, projectID,
+		profileID).Scan(&sessionID))
+	_, err = db.ExecContext(ctx, `UPDATE discord_conversations SET session_id=$2 WHERE id=$1`,
+		conversationID, sessionID)
+	require.NoError(t, err)
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_thread_controls
-		(source_type, discord_conversation_id, development_project_id, agent_profile_id,
+		(source_type, session_id, discord_conversation_id, development_project_id, agent_profile_id,
 			execution_node_id, development_environment_id, external_thread_id)
-		VALUES ('desktop_thread',$1,$2,$3,$4,$5,'codex-desktop-bound-thread')
-		RETURNING id`, conversationID, projectID, profileID, node.ID, environmentID).
+		VALUES ('development_session',$1,$2,$3,$4,$5,$6,'codex-desktop-bound-thread')
+		RETURNING id`, sessionID, conversationID, projectID, profileID, node.ID, environmentID).
 		Scan(&controlID))
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_input_messages
 		(message_id, conversation_id, discord_user_id, display_name, username,
@@ -443,7 +451,7 @@ func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
 	require.NotNil(t, claimed.Task)
 	require.Equal(t, intentID, claimed.Task.Claimed.ID)
 	require.Equal(t, controlID, claimed.Task.Claimed.ControlID)
-	require.Equal(t, codexcontrol.SourceDiscord, claimed.Task.Claimed.SourceType)
+	require.Equal(t, codexcontrol.SourceDevelopment, claimed.Task.Claimed.SourceType)
 	require.Equal(t, "codex-desktop-bound-thread", claimed.Task.Claimed.ExternalThreadID)
 	var controls int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_thread_controls
@@ -675,14 +683,13 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "desktop", task.Claimed.InputSurface)
 	require.Empty(t, task.Claimed.DiscordMessageID)
-	require.NotNil(t, task.Snapshot.Discord)
+	require.NotNil(t, task.Snapshot.Development)
 	require.Equal(t, "gpt-5.6-sol", task.Snapshot.Runtime.Model)
 	require.Equal(t, "ultra", task.Snapshot.Runtime.ReasoningEffort)
 	require.Equal(t, "fast", task.Snapshot.Runtime.ServiceTier)
 	require.Equal(t, "plan", task.Snapshot.Runtime.CollaborationMode)
-	require.Equal(t, "desktop asks && checks "+imagePath, task.Snapshot.Discord.Body)
-	require.Equal(t, "desktop-user", task.Snapshot.Discord.UserID)
-	require.Equal(t, "Desktop Alice", task.Snapshot.Discord.DisplayName)
+	require.Equal(t, "desktop asks && checks "+imagePath, task.Snapshot.Development.Body)
+	require.Equal(t, "Desktop Alice", task.Snapshot.Development.DisplayName)
 	require.Equal(t, participantidentity.ID("worker-test-guild", "desktop-user"),
 		task.Claimed.ActorParticipantID)
 	require.Equal(t, "Desktop Alice", task.Claimed.ActorDisplayName)
@@ -1465,7 +1472,8 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 				`"input":[{"type":"text","text":"offline post"}]}`),
 	})
 	require.NoError(t, err)
-	require.NotNil(t, failedTask.Snapshot.Discord)
+	require.NotNil(t, failedTask.Snapshot.Development)
+	require.Nil(t, failedTask.Snapshot.Discord)
 	for {
 		item, err = outbox.Claim(ctx, time.Minute)
 		require.NoError(t, err)
@@ -2315,7 +2323,7 @@ func enqueueWorkerDiscordIntent(t *testing.T, db *sql.DB, conversationID uuid.UU
 	require.NoError(t, err)
 	intentID, inserted, err := codexcontrol.NewRepository(db, 2*time.Second).Enqueue(
 		context.Background(), tx, codexcontrol.EnqueueRequest{
-			SourceType: codexcontrol.SourceDiscord, DiscordConversationID: conversationID,
+			SourceType: codexcontrol.SourceDevelopment, DiscordConversationID: conversationID,
 			DiscordMessageID: messageID, ProjectID: projectID, AgentProfileID: profileID,
 			IdempotencyKey: "discord:" + messageID,
 			Instruction:    messageID, ReplyPolicy: "silent", Behavior: "steer_if_active",

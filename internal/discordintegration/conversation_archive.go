@@ -80,6 +80,12 @@ func (s *ConversationService) Archive(ctx context.Context, guildID, threadID,
 			result.ControlID, result.Revision)
 	}
 	if err == nil {
+		_, err = tx.ExecContext(ctx, `UPDATE development_sessions session SET
+			lifecycle_state='archive_pending', updated_at=now()
+			FROM codex_thread_controls control
+			WHERE control.id=$1 AND session.id=control.session_id`, result.ControlID)
+	}
+	if err == nil {
 		_, err = tx.ExecContext(ctx, `UPDATE discord_conversations SET
 			lifecycle_state = 'archive_pending', lifecycle_revision = $2,
 			lifecycle_projection_error = NULL, updated_at = now() WHERE id = $1`,

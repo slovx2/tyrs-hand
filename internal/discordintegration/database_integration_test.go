@@ -384,11 +384,11 @@ func TestDiscordMessageEditReservesLatestTurnAndFreezesDiscussion(t *testing.T) 
 	desktopIntentID := uuid.New()
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_intents
 		(id,control_id,sequence_no,operation,behavior,resolved_action,source_type,input_surface,
-		 discord_conversation_id,development_project_id,agent_profile_id,idempotency_key,
+		 discord_conversation_id,session_id,development_project_id,agent_profile_id,idempotency_key,
 		 instruction,status,confirmed_codex_turn_id,confirmed_at,finished_at,reply_status,
 		 result_delivery_status,projection_anchor)
-		SELECT $1,control_id,2,'turn_input','steer_if_active','steer','discord_conversation',
-		'desktop',discord_conversation_id,development_project_id,agent_profile_id,$2,$3,
+		SELECT $1,control_id,2,'turn_input','steer_if_active','steer','development_session',
+		'desktop',discord_conversation_id,session_id,development_project_id,agent_profile_id,$2,$3,
 		'completed','turn-original',now(),now(),'skipped','delivered','desktop-replay-anchor'
 		FROM codex_turn_intents WHERE discord_message_id='100000000000000472'`,
 		desktopIntentID, "message-edit-desktop-replay", "Desktop 中间补充")
@@ -1143,12 +1143,13 @@ func TestConversationLifecycleProjectionAndRestore(t *testing.T) {
 		'Lifecycle','archived',3)`, conversationID, testGuildID,
 		seed.developmentForumID, seed.developmentProjectID, profileID)
 	require.NoError(t, err)
+	sessionID := bindDiscordConversationSessionForTest(t, db, conversationID)
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_thread_controls
-		(id, source_type, discord_conversation_id, development_project_id, agent_profile_id,
+		(id, source_type, discord_conversation_id, session_id, development_project_id, agent_profile_id,
 			external_thread_id, execution_node_id,
 			development_environment_id, lifecycle_state, lifecycle_revision)
-		VALUES ($1,'discord_conversation',$2,$3,$4,'thread-lifecycle',$5,$6,'archived',3)`,
-		controlID, conversationID, seed.developmentProjectID, profileID, seed.executionNodeID,
+		VALUES ($1,'development_session',$2,$3,$4,$5,'thread-lifecycle',$6,$7,'archived',3)`,
+		controlID, conversationID, sessionID, seed.developmentProjectID, profileID, seed.executionNodeID,
 		environmentID)
 	require.NoError(t, err)
 
@@ -1262,10 +1263,10 @@ func TestConversationLifecycleProjectionAndRestore(t *testing.T) {
 
 	intentID, runID := uuid.New(), uuid.New()
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_intents
-		(id, control_id, sequence_no, source_type, discord_conversation_id,
+		(id, control_id, sequence_no, source_type, discord_conversation_id, session_id,
 			development_project_id, agent_profile_id, idempotency_key, status)
-		VALUES ($1,$2,1,'discord_conversation',$3,$4,$5,$6,'running')`, intentID,
-		controlID, conversationID, seed.developmentProjectID, profileID,
+		VALUES ($1,$2,1,'development_session',$3,$4,$5,$6,$7,'running')`, intentID,
+		controlID, conversationID, sessionID, seed.developmentProjectID, profileID,
 		"lifecycle-active-"+intentID.String())
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_runs
@@ -1307,13 +1308,14 @@ func TestConversationLifecycleProjectionAndRestore(t *testing.T) {
 			'Gateway Lifecycle','archived',7)`, gatewayConversationID, testGuildID,
 		seed.developmentForumID, gatewayThreadID, seed.developmentProjectID, profileID)
 	require.NoError(t, err)
+	gatewaySessionID := bindDiscordConversationSessionForTest(t, db, gatewayConversationID)
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_thread_controls
-		(id, source_type, discord_conversation_id, development_project_id, agent_profile_id,
+		(id, source_type, discord_conversation_id, session_id, development_project_id, agent_profile_id,
 			external_thread_id, execution_node_id,
 			development_environment_id, lifecycle_state, lifecycle_revision)
-		VALUES ($1,'discord_conversation',$2,$3,$4,'thread-lifecycle-gateway',$5,$6,
-		'archived',7)`, gatewayControlID, gatewayConversationID, seed.developmentProjectID,
-		profileID, seed.executionNodeID, environmentID)
+		VALUES ($1,'development_session',$2,$3,$4,$5,'thread-lifecycle-gateway',$6,$7,
+		'archived',7)`, gatewayControlID, gatewayConversationID, gatewaySessionID,
+		seed.developmentProjectID, profileID, seed.executionNodeID, environmentID)
 	require.NoError(t, err)
 
 	require.NoError(t, ReconcileConversationLifecycles(ctx, db, testGuildID))
@@ -1530,17 +1532,19 @@ func TestReconcileConversationProgressCardsUsesTerminalRunState(t *testing.T) {
 		VALUES ($1,$2,$3,'terminal-thread','terminal-starter','1001',$4,$5,'Terminal')`,
 		conversationID, testGuildID, seed.developmentForumID, seed.developmentProjectID, profileID)
 	require.NoError(t, err)
+	sessionID := bindDiscordConversationSessionForTest(t, db, conversationID)
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_thread_controls
-		(id, source_type, discord_conversation_id, development_project_id, agent_profile_id,
+		(id, source_type, discord_conversation_id, session_id, development_project_id, agent_profile_id,
 			execution_node_id, development_environment_id)
-		VALUES ($1,'discord_conversation',$2,$3,$4,$5,$6)`,
-		controlID, conversationID, seed.developmentProjectID, profileID, seed.executionNodeID, environmentID)
+		VALUES ($1,'development_session',$2,$3,$4,$5,$6,$7)`,
+		controlID, conversationID, sessionID, seed.developmentProjectID, profileID,
+		seed.executionNodeID, environmentID)
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_intents
-		(id, control_id, sequence_no, source_type, input_surface, discord_conversation_id,
+		(id, control_id, sequence_no, source_type, input_surface, discord_conversation_id, session_id,
 			development_project_id, agent_profile_id, idempotency_key, status, finished_at)
-		VALUES ($1,$2,1,'discord_conversation','desktop',$3,$4,$5,$6,'canceled',now())`,
-		intentID, controlID, conversationID, seed.developmentProjectID, profileID,
+		VALUES ($1,$2,1,'development_session','desktop',$3,$4,$5,$6,$7,'canceled',now())`,
+		intentID, controlID, conversationID, sessionID, seed.developmentProjectID, profileID,
 		"terminal-progress-"+intentID.String())
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_runs
@@ -2539,6 +2543,29 @@ func (r *projectionRemote) Send(context.Context, OutboxItem) (json.RawMessage, e
 	return nil, nil
 }
 func (r *projectionRemote) Close(context.Context) {}
+
+func bindDiscordConversationSessionForTest(t *testing.T, db *sql.DB,
+	conversationID uuid.UUID,
+) uuid.UUID {
+	t.Helper()
+	ctx := context.Background()
+	var sessionID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO development_sessions(
+		development_environment_id,development_project_id,agent_profile_id,title,lifecycle_state,
+		model,reasoning_effort,service_tier,collaboration_mode,settings_version,last_activity_at)
+		SELECT forum.development_environment_id,conversation.development_project_id,
+			conversation.agent_profile_id,COALESCE(conversation.generated_title,conversation.title),
+			conversation.lifecycle_state,conversation.model,conversation.reasoning_effort,
+			COALESCE(conversation.service_tier,'standard'),conversation.collaboration_mode,
+			conversation.settings_revision,conversation.last_activity_at
+		FROM discord_conversations conversation
+		JOIN discord_forums forum ON forum.id=conversation.forum_id
+		WHERE conversation.id=$1 RETURNING id`, conversationID).Scan(&sessionID))
+	_, err := db.ExecContext(ctx, `UPDATE discord_conversations SET session_id=$2
+		WHERE id=$1`, conversationID, sessionID)
+	require.NoError(t, err)
+	return sessionID
+}
 
 func discordDatabase(t *testing.T) *sql.DB {
 	t.Helper()

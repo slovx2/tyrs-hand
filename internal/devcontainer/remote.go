@@ -23,7 +23,7 @@ func (m *Manager) EnsureRemote(ctx context.Context, spec RemoteSpec,
 	defer unlock()
 
 	item := workspace{
-		ForumID: spec.ForumID, Relative: spec.WorkspaceRelative,
+		ForumID: spec.ForumID, ProjectID: spec.ProjectID, Relative: spec.WorkspaceRelative,
 		Status: spec.WorkspaceStatus, Branch: spec.WorkspaceBranch, Kind: spec.WorkspaceKind,
 		Repository: spec.Repository, CloneURL: spec.CloneURL, DefaultRef: spec.DefaultRef,
 		Environment: environment{
@@ -64,6 +64,7 @@ func (m *Manager) EnsureRemote(ctx context.Context, spec RemoteSpec,
 		return Runtime{}, state(err), err
 	}
 	runtime := Runtime{EnvironmentID: spec.EnvironmentID, ForumID: spec.ForumID,
+		ProjectID: spec.ProjectID,
 		Container: item.Environment.ContainerName,
 		Workspace: filepath.ToSlash(filepath.Join(containerRoot, item.Relative)), CodexHome: codexHome,
 		ProjectKind: item.Kind, RemoteURL: item.CloneURL,
@@ -98,7 +99,7 @@ func LockRemoteEnvironment(environmentID uuid.UUID) func() {
 func remoteState(item workspace, conversationID uuid.UUID) RemoteState {
 	return RemoteState{RemoteSpec: RemoteSpec{
 		EnvironmentID: item.Environment.ID, ForumID: item.ForumID,
-		ConversationID: conversationID, WorkspaceStatus: item.Status,
+		ConversationID: conversationID, ProjectID: item.ProjectID, WorkspaceStatus: item.Status,
 		WorkspaceRelative: item.Relative, WorkspaceBranch: item.Branch,
 		WorkspaceKind: item.Kind,
 		Repository:    item.Repository, CloneURL: item.CloneURL, DefaultRef: item.DefaultRef,

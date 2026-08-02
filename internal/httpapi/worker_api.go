@@ -169,7 +169,7 @@ func (s *Server) workerClaim(c *gin.Context) {
 	case "github":
 		source = codexcontrol.SourceGitHub
 	case "discord":
-		source = codexcontrol.SourceDiscord
+		source = codexcontrol.SourceDevelopment
 	case "all":
 		source = ""
 	default:
@@ -254,12 +254,12 @@ func (s *Server) claimedRemoteRun(ctx context.Context, nodeID, runID uuid.UUID,
 ) (*codexcontrol.ClaimedControl, error) {
 	var claimed codexcontrol.ClaimedControl
 	var source string
-	var conversationID, workItemID, repositoryID, projectID sql.NullString
+	var conversationID, sessionID, workItemID, repositoryID, projectID sql.NullString
 	var targetIntentID sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT r.control_id, r.primary_intent_id, r.id,
 		r.lease_epoch, i.source_type, COALESCE(i.input_surface,''), i.operation,
 		i.attempt_count, i.max_attempts,
-		i.discord_conversation_id::text, i.work_item_id::text, i.repository_id::text,
+		i.discord_conversation_id::text, i.session_id::text, i.work_item_id::text, i.repository_id::text,
 		i.development_project_id::text,
 		COALESCE(i.discord_message_id,''), i.agent_profile_id, i.sequence_no,
 		i.target_intent_id::text, COALESCE(i.projection_anchor,''),
@@ -272,7 +272,7 @@ func (s *Server) claimedRemoteRun(ctx context.Context, nodeID, runID uuid.UUID,
 		WHERE r.id = $1 AND r.execution_node_id = $2`, runID, nodeID).Scan(
 		&claimed.ControlID, &claimed.ID, &claimed.RunID, &claimed.LeaseEpoch, &source,
 		&claimed.InputSurface, &claimed.Operation, &claimed.Attempt, &claimed.MaxAttempts,
-		&conversationID, &workItemID, &repositoryID, &projectID,
+		&conversationID, &sessionID, &workItemID, &repositoryID, &projectID,
 		&claimed.DiscordMessageID, &claimed.AgentProfileID, &claimed.Sequence,
 		&targetIntentID, &claimed.ProjectionAnchor, &claimed.MessageEditRevision,
 		&claimed.ReplacementPhase,
@@ -290,6 +290,9 @@ func (s *Server) claimedRemoteRun(ctx context.Context, nodeID, runID uuid.UUID,
 	}
 	if conversationID.Valid {
 		claimed.DiscordConversationID, err = uuid.Parse(conversationID.String)
+	}
+	if err == nil && sessionID.Valid {
+		claimed.SessionID, err = uuid.Parse(sessionID.String)
 	}
 	if err == nil && workItemID.Valid {
 		claimed.WorkItemID, err = uuid.Parse(workItemID.String)

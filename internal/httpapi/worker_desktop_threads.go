@@ -292,14 +292,23 @@ func (s *Server) workerCompleteDesktopThread(c *gin.Context) {
 			return
 		}
 		controlID = uuid.New()
-		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO codex_thread_controls
-			(id, source_type, repository_id, development_project_id, agent_profile_id, external_thread_id,
+		sessionID := uuid.New()
+		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO development_sessions(
+			id,development_environment_id,development_project_id,agent_profile_id,title,
+			model,reasoning_effort,service_tier)
+			VALUES ($1,$2,$3,$4,$5,NULLIF($6,''),NULLIF($7,''),
+				COALESCE(NULLIF($8,''),'standard'))`, sessionID,
+			environmentID, projectID.String, profileID, threadID, model, effort, tier)
+		if err == nil {
+			_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO codex_thread_controls
+			(id, source_type, session_id, development_project_id, agent_profile_id, external_thread_id,
 			 execution_node_id, development_environment_id, model, reasoning_effort, service_tier,
 			 runtime_preferences_frozen_at, codex_home_key)
-			VALUES ($1,'desktop_thread',NULLIF($2,'')::uuid,NULLIF($3,'')::uuid,$4,$5,$6,$7,
+			VALUES ($1,'development_session',$2,$3,$4,$5,$6,$7,
 				NULLIF($8,''),NULLIF($9,''),NULLIF($10,''),now(),$11)`, controlID,
-			"", projectID.String, profileID, threadID,
-			executionNodeID, environmentID, model, effort, tier, environmentID.String())
+				sessionID, projectID.String, profileID, threadID,
+				executionNodeID, environmentID, model, effort, tier, environmentID.String())
+		}
 		if err == nil {
 			_, err = tx.ExecContext(c.Request.Context(), `UPDATE desktop_thread_requests SET
 				status = 'waiting_for_input', control_id = $2, external_thread_id = $3,

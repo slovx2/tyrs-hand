@@ -27,6 +27,9 @@ type remoteSavedAttachment struct {
 func (p *RemoteProcessor) prepareRemoteAttachments(ctx context.Context,
 	task *workerprotocol.Task, runtime devcontainer.Runtime,
 ) ([]remoteSavedAttachment, error) {
+	if task.Snapshot.Discord == nil {
+		return nil, nil
+	}
 	attachments := task.Snapshot.Discord.Attachments
 	if len(attachments) == 0 {
 		return nil, nil
@@ -87,6 +90,20 @@ func (p *RemoteProcessor) prepareRemoteAttachments(ctx context.Context,
 	return result, nil
 }
 
+func remoteDevelopmentTurnInput(snapshot *workerprotocol.DevelopmentSnapshot,
+	discord *workerprotocol.DiscordSnapshot, runtime devcontainer.Runtime,
+	attachments []remoteSavedAttachment, skills []ports.SkillRef,
+) ports.TurnInput {
+	if discord != nil {
+		input := remoteDiscordTurnInput(discord, runtime, attachments, skills)
+		input.Text = snapshot.Body
+		input.ClientUserMessageID = snapshot.MessageID
+		return input
+	}
+	return ports.TurnInput{Text: snapshot.Body, ClientUserMessageID: snapshot.MessageID,
+		Skills: skills}
+}
+
 func remoteDiscordTurnInput(snapshot *workerprotocol.DiscordSnapshot,
 	runtime devcontainer.Runtime, attachments []remoteSavedAttachment,
 	skills []ports.SkillRef,
@@ -130,18 +147,23 @@ func (p *RemoteProcessor) discordCommandHandler(primary *workerprotocol.Task,
 	return func(ctx context.Context, runtime *codex.Runtime, threadID, turnID string,
 		command workerprotocol.RunCommand,
 	) error {
-		if command.Discord == nil {
-			return errors.New("discord steer 指令缺少消息快照")
+		if command.Development == nil {
+			return errors.New("development steer 指令缺少消息快照")
 		}
 		commandTask := *primary
 		commandTask.Claimed.ID = command.ID
-		commandTask.Claimed.DiscordMessageID = command.Discord.MessageID
+		commandTask.Claimed.DiscordMessageID = ""
+		if command.Discord != nil {
+			commandTask.Claimed.DiscordMessageID = command.Discord.MessageID
+		}
+		commandTask.Snapshot.Development = command.Development
 		commandTask.Snapshot.Discord = command.Discord
 		attachments, err := p.prepareRemoteAttachments(ctx, &commandTask, containerRuntime)
 		if err != nil {
 			return err
 		}
-		input := remoteDiscordTurnInput(command.Discord, containerRuntime, attachments, skills)
+		input := remoteDevelopmentTurnInput(command.Development, command.Discord,
+			containerRuntime, attachments, skills)
 		if err := runtime.SteerTurn(ctx, threadID, turnID, input); err != nil {
 			return err
 		}

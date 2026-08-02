@@ -25,6 +25,7 @@ func ContainerWorkspacePath(relative string) (string, error) {
 type Runtime struct {
 	EnvironmentID      uuid.UUID
 	ForumID            uuid.UUID
+	ProjectID          uuid.UUID
 	Container          string
 	Workspace          string
 	CodexHome          string
@@ -46,6 +47,7 @@ type RemoteSpec struct {
 	EnvironmentID     uuid.UUID
 	ForumID           uuid.UUID
 	ConversationID    uuid.UUID
+	ProjectID         uuid.UUID
 	WorkspaceStatus   string
 	WorkspaceRelative string
 	WorkspaceBranch   string
@@ -116,6 +118,7 @@ type environment struct {
 
 type workspace struct {
 	ForumID     uuid.UUID
+	ProjectID   uuid.UUID
 	Relative    string
 	Status      string
 	Branch      string

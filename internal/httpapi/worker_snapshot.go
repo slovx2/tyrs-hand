@@ -38,7 +38,7 @@ func (s *Server) loadWorkerSnapshot(ctx context.Context,
 		return result, err
 	}
 	result.Runtime.GlobalAgents = agents.Content
-	if claimed.SourceType == codexcontrol.SourceDiscord {
+	if claimed.SourceType == codexcontrol.SourceDevelopment {
 		if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(model,''),
 			COALESCE(reasoning_effort,''), COALESCE(service_tier,'standard'),
 			collaboration_mode, settings_revision
@@ -60,7 +60,11 @@ func (s *Server) loadWorkerSnapshot(ctx context.Context,
 	if claimed.SourceType == codexcontrol.SourceGitHub {
 		result.GitHub, err = s.loadGitHubWorkerSnapshot(ctx, claimed)
 	} else {
-		result.Discord, err = s.loadDiscordWorkerSnapshot(ctx, claimed)
+		result.Development, err = s.loadDevelopmentWorkerSnapshot(ctx, claimed)
+		if err == nil && claimed.DiscordConversationID != uuid.Nil &&
+			(claimed.DiscordMessageID != "" || claimed.InputSurface == "desktop") {
+			result.Discord, err = s.loadDiscordWorkerSnapshot(ctx, claimed)
+		}
 	}
 	return result, err
 }
@@ -85,11 +89,10 @@ func (s *Server) freezeWorkerRuntimePreferences(ctx context.Context,
 		}
 		return result, nil
 	}
-	if claimed.SourceType == codexcontrol.SourceDiscord {
+	if claimed.SourceType == codexcontrol.SourceDevelopment {
 		err = s.db.QueryRowContext(ctx, `SELECT COALESCE(model,''),
 			COALESCE(reasoning_effort,''), COALESCE(service_tier,'standard')
-			FROM discord_conversations WHERE id = $1`,
-			claimed.DiscordConversationID).
+			FROM development_sessions WHERE id = $1`, claimed.SessionID).
 			Scan(&result.Model, &result.ReasoningEffort, &result.ServiceTier)
 	} else {
 		result, err = codexsettings.NewService(s.db).Resolve(ctx, claimed.RepositoryID,
@@ -109,6 +112,62 @@ func (s *Server) freezeWorkerRuntimePreferences(ctx context.Context,
 		return s.freezeWorkerRuntimePreferences(ctx, claimed)
 	}
 	return result, err
+}
+
+func (s *Server) loadDevelopmentWorkerSnapshot(ctx context.Context,
+	claimed *codexcontrol.ClaimedControl,
+) (*workerprotocol.DevelopmentSnapshot, error) {
+	result := workerprotocol.DevelopmentSnapshot{
+		SessionID: claimed.SessionID, MessageID: claimed.ID.String(), Body: claimed.Instruction,
+		ParticipantID: claimed.ActorParticipantID, DisplayName: claimed.ActorDisplayName,
+		InputSurface: claimed.InputSurface, Development: &workerprotocol.DevelopmentSpec{},
+	}
+	if claimed.DiscordMessageID != "" {
+		result.MessageID = claimed.DiscordMessageID
+	}
+	var forumID, conversationID sql.NullString
+	development := result.Development
+	err := s.db.QueryRowContext(ctx, `SELECT environment.id, forum.id::text,
+		conversation.id::text, 'ready', project.relative_path, COALESCE(project.branch,''),
+		project.project_kind, project.id, project.name, COALESCE(project.remote_url,''),
+		COALESCE(project.branch,''), environment.status, COALESCE(environment.image_ref,''),
+		COALESCE(environment.image_id,''), environment.container_name,
+		COALESCE(environment.container_id,''), environment.data_volume_name,
+		environment.home_volume_name, environment.network_name,
+		COALESCE(environment.runtime_user,''), COALESCE(environment.runtime_uid,0),
+		COALESCE(environment.runtime_gid,0), COALESCE(environment.runtime_home,'')
+		FROM development_sessions session
+		JOIN discord_development_environments environment
+			ON environment.id=session.development_environment_id
+		JOIN development_projects project ON project.id=session.development_project_id
+		LEFT JOIN discord_conversations conversation ON conversation.session_id=session.id
+		LEFT JOIN discord_forums forum ON forum.id=conversation.forum_id
+		WHERE session.id=$1 AND project.availability_status='available'
+		  AND environment.status='running'`, claimed.SessionID).Scan(
+		&development.EnvironmentID, &forumID, &conversationID,
+		&development.WorkspaceStatus, &development.WorkspaceRelative,
+		&development.WorkspaceBranch, &development.WorkspaceKind, &development.ProjectID,
+		&development.Repository, &development.CloneURL, &development.DefaultRef,
+		&development.EnvironmentStatus, &development.ImageRef, &development.ImageID,
+		&development.ContainerName, &development.ContainerID, &development.DataVolume,
+		&development.HomeVolume, &development.Network, &development.RuntimeUser,
+		&development.RuntimeUID, &development.RuntimeGID, &development.RuntimeHome)
+	if err != nil {
+		return nil, err
+	}
+	if forumID.Valid {
+		development.ForumID, err = uuid.Parse(forumID.String)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if conversationID.Valid {
+		development.ConversationID, err = uuid.Parse(conversationID.String)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &result, nil
 }
 
 func (s *Server) loadGitHubWorkerSnapshot(ctx context.Context,

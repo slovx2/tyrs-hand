@@ -10,8 +10,8 @@ import (
 const WakeupChannel = "tyrs-hand:codex-controls"
 
 const (
-	SourceGitHub  = "github_work_item"
-	SourceDiscord = "discord_conversation"
+	SourceGitHub      = "github_work_item"
+	SourceDevelopment = "development_session"
 )
 
 type IntentStatus string
@@ -39,6 +39,7 @@ type Intent struct {
 	InputSurface          string
 	WorkItemID            uuid.UUID
 	DiscordConversationID uuid.UUID
+	SessionID             uuid.UUID
 	DiscordMessageID      string
 	TargetIntentID        uuid.UUID
 	ProjectionAnchor      string
@@ -83,6 +84,7 @@ type EnqueueRequest struct {
 	InputSurface          string
 	WorkItemID            uuid.UUID
 	DiscordConversationID uuid.UUID
+	SessionID             uuid.UUID
 	DiscordMessageID      string
 	RepositoryID          uuid.UUID
 	ProjectID             uuid.UUID
@@ -91,6 +93,7 @@ type EnqueueRequest struct {
 	TriggerRuleID         uuid.UUID
 	TriggerEvidence       json.RawMessage
 	IdempotencyKey        string
+	MessageLocalID        string
 	Instruction           string
 	Skills                []string
 	AllowedTools          []string

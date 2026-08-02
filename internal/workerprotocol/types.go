@@ -9,7 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 18
+const Version = 19
 
 // CodexTurnError 保留 Codex error 通知的结构化字段，供 Control 决定是否重试
 // 并在 Discord 失败过程卡中展示。
@@ -410,9 +410,10 @@ type Task struct {
 }
 
 type TaskSnapshot struct {
-	GitHub  *GitHubSnapshot  `json:"github,omitempty"`
-	Discord *DiscordSnapshot `json:"discord,omitempty"`
-	Runtime RuntimeSnapshot  `json:"runtime"`
+	GitHub      *GitHubSnapshot      `json:"github,omitempty"`
+	Development *DevelopmentSnapshot `json:"development,omitempty"`
+	Discord     *DiscordSnapshot     `json:"discord,omitempty"`
+	Runtime     RuntimeSnapshot      `json:"runtime"`
 }
 
 type RuntimeSnapshot struct {
@@ -476,6 +477,16 @@ type DiscordSnapshot struct {
 	Development    *DevelopmentSpec `json:"development,omitempty"`
 }
 
+type DevelopmentSnapshot struct {
+	SessionID     uuid.UUID        `json:"sessionId"`
+	MessageID     string           `json:"messageId"`
+	Body          string           `json:"body"`
+	ParticipantID uuid.UUID        `json:"participantId,omitempty"`
+	DisplayName   string           `json:"displayName,omitempty"`
+	InputSurface  string           `json:"inputSurface"`
+	Development   *DevelopmentSpec `json:"development"`
+}
+
 type DevelopmentSpec struct {
 	EnvironmentID     uuid.UUID `json:"environmentId"`
 	ForumID           uuid.UUID `json:"forumId"`
@@ -537,11 +548,12 @@ type RunLeaseRequest struct {
 }
 
 type RunCommand struct {
-	ID          uuid.UUID        `json:"id"`
-	Sequence    int64            `json:"sequence"`
-	Operation   string           `json:"operation"`
-	Instruction string           `json:"instruction,omitempty"`
-	Discord     *DiscordSnapshot `json:"discord,omitempty"`
+	ID          uuid.UUID            `json:"id"`
+	Sequence    int64                `json:"sequence"`
+	Operation   string               `json:"operation"`
+	Instruction string               `json:"instruction,omitempty"`
+	Development *DevelopmentSnapshot `json:"development,omitempty"`
+	Discord     *DiscordSnapshot     `json:"discord,omitempty"`
 }
 
 type RunHeartbeatResponse struct {

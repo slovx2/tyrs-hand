@@ -63,8 +63,9 @@ func (s *Server) workerPrepareDesktopThreadLifecycle(c *gin.Context) {
 		return
 	}
 	var conversationID sql.NullString
+	var sessionID uuid.UUID
 	var currentState string
-	err = tx.QueryRowContext(c.Request.Context(), `SELECT control.id,
+	err = tx.QueryRowContext(c.Request.Context(), `SELECT control.id, control.session_id,
 		control.discord_conversation_id::text, control.lifecycle_state,
 		control.lifecycle_revision
 		FROM codex_thread_controls control
@@ -74,7 +75,7 @@ func (s *Server) workerPrepareDesktopThreadLifecycle(c *gin.Context) {
 			AND control.external_thread_id = $2
 			AND environment.execution_node_id = $3
 		FOR UPDATE OF control`, request.EnvironmentID, request.ThreadID, workerNode(c).ID).
-		Scan(&result.ControlID, &conversationID, &currentState, &result.Revision)
+		Scan(&result.ControlID, &sessionID, &conversationID, &currentState, &result.Revision)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusNotFound, "当前环境没有绑定这个 Codex Thread", err)
 		return
@@ -105,6 +106,10 @@ func (s *Server) workerPrepareDesktopThreadLifecycle(c *gin.Context) {
 					lifecycle_state='active', lifecycle_revision=$2,
 					lifecycle_last_error=NULL, updated_at=now() WHERE id=$1`,
 					result.ControlID, result.Revision)
+			}
+			if err == nil {
+				_, err = tx.ExecContext(c.Request.Context(), `UPDATE development_sessions SET
+					lifecycle_state='active', updated_at=now() WHERE id=$1`, sessionID)
 			}
 			if err == nil && conversationID.Valid {
 				_, err = tx.ExecContext(c.Request.Context(), `UPDATE discord_conversations SET
@@ -147,6 +152,10 @@ func (s *Server) workerPrepareDesktopThreadLifecycle(c *gin.Context) {
 	_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_thread_controls SET
 		lifecycle_state = $2, lifecycle_revision = $3, lifecycle_last_error = NULL,
 		updated_at = now() WHERE id = $1`, result.ControlID, pendingState, result.Revision)
+	if err == nil {
+		_, err = tx.ExecContext(c.Request.Context(), `UPDATE development_sessions SET
+			lifecycle_state=$2, updated_at=now() WHERE id=$1`, sessionID, pendingState)
+	}
 	if err == nil && conversationID.Valid {
 		_, err = tx.ExecContext(c.Request.Context(), `UPDATE discord_conversations SET
 			lifecycle_state = $2, lifecycle_revision = $3,
@@ -315,12 +324,12 @@ func (s *Server) workerCompleteThreadLifecycle(c *gin.Context) {
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-	var controlID uuid.UUID
+	var controlID, sessionID uuid.UUID
 	var conversationID sql.NullString
 	var desiredState string
 	var revision int64
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT request.control_id,
-		control.discord_conversation_id::text,
+		control.session_id, control.discord_conversation_id::text,
 		request.desired_state, request.revision
 		FROM codex_thread_lifecycle_requests request
 		JOIN codex_thread_controls control ON control.id = request.control_id
@@ -330,7 +339,7 @@ func (s *Server) workerCompleteThreadLifecycle(c *gin.Context) {
 			AND environment.execution_node_id = $3
 			AND request.status IN ('waiting_for_turn','applying')
 		FOR UPDATE OF request, control`, requestID, request.EnvironmentID, workerNode(c).ID).
-		Scan(&controlID, &conversationID, &desiredState, &revision)
+		Scan(&controlID, &sessionID, &conversationID, &desiredState, &revision)
 	if errors.Is(err, sql.ErrNoRows) {
 		c.Status(http.StatusNoContent)
 		return
@@ -358,6 +367,10 @@ func (s *Server) workerCompleteThreadLifecycle(c *gin.Context) {
 				lifecycle_state = $2, lifecycle_last_error = $3,
 				updated_at = now() WHERE id = $1 AND lifecycle_revision = $4`,
 				controlID, finalState, failure, revision)
+		}
+		if err == nil {
+			_, err = tx.ExecContext(c.Request.Context(), `UPDATE development_sessions SET
+				lifecycle_state=$2, updated_at=now() WHERE id=$1`, sessionID, finalState)
 		}
 		if err == nil && conversationID.Valid {
 			_, err = tx.ExecContext(c.Request.Context(), `UPDATE discord_conversations SET

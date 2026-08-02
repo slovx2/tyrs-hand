@@ -549,7 +549,7 @@ func TestDesktopToolRuntimeUsesBoundDiscordWorkspace(t *testing.T) {
 		Home:          "/home/vscode",
 	}
 	task := workerprotocol.Task{Snapshot: workerprotocol.TaskSnapshot{
-		Discord: &workerprotocol.DiscordSnapshot{Development: &workerprotocol.DevelopmentSpec{
+		Development: &workerprotocol.DevelopmentSnapshot{Development: &workerprotocol.DevelopmentSpec{
 			EnvironmentID:     environmentID,
 			WorkspaceRelative: "workspaces/wakeqora",
 		}},
@@ -564,7 +564,7 @@ func TestDesktopToolRuntimeUsesBoundDiscordWorkspace(t *testing.T) {
 func TestDesktopToolRuntimeRejectsMissingDevelopmentSnapshot(t *testing.T) {
 	_, err := desktopRuntimeForTask(devcontainer.Runtime{EnvironmentID: uuid.New()},
 		&workerprotocol.Task{})
-	require.EqualError(t, err, "desktop turn 缺少 Discord 开发环境快照")
+	require.EqualError(t, err, "desktop turn 缺少开发环境快照")
 }
 
 func TestDesktopEventReporterPersistsUntilControlAcceptsTerminal(t *testing.T) {

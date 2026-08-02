@@ -36,7 +36,7 @@ func (q *concurrencyQueue) ClaimSource(_ context.Context, _ string, source strin
 func TestRunnerFiltersClaimsByWorkerRole(t *testing.T) {
 	for _, test := range []struct{ role, source string }{
 		{role: "github", source: codexcontrol.SourceGitHub},
-		{role: "discord", source: codexcontrol.SourceDiscord},
+		{role: "discord", source: codexcontrol.SourceDevelopment},
 		{role: "all", source: ""},
 	} {
 		t.Run(test.role, func(t *testing.T) {

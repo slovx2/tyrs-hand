@@ -914,10 +914,11 @@ func (c *desktopRelayController) observeDesktopSteer(call codexrelay.Call,
 func desktopRuntimeForTask(environment devcontainer.Runtime,
 	task *workerprotocol.Task,
 ) (devcontainer.Runtime, error) {
-	if task == nil || task.Snapshot.Discord == nil || task.Snapshot.Discord.Development == nil {
-		return devcontainer.Runtime{}, errors.New("desktop turn 缺少 Discord 开发环境快照")
+	if task == nil || task.Snapshot.Development == nil ||
+		task.Snapshot.Development.Development == nil {
+		return devcontainer.Runtime{}, errors.New("desktop turn 缺少开发环境快照")
 	}
-	development := task.Snapshot.Discord.Development
+	development := task.Snapshot.Development.Development
 	if development.EnvironmentID == uuid.Nil || development.EnvironmentID != environment.EnvironmentID {
 		return devcontainer.Runtime{}, errors.New("desktop turn 开发环境快照与 Relay 环境不一致")
 	}

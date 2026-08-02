@@ -126,7 +126,7 @@ func (s *ConversationService) HandleMessageEdit(ctx context.Context, guildID, th
 		}
 		replacementID, _, err = codexcontrol.NewRepository(s.db, 0).Enqueue(ctx, tx,
 			codexcontrol.EnqueueRequest{
-				SourceType: codexcontrol.SourceDiscord, DiscordConversationID: conversationID,
+				SourceType: codexcontrol.SourceDevelopment, DiscordConversationID: conversationID,
 				DiscordMessageID: messageID, RepositoryID: repositoryID, ProjectID: projectID,
 				AgentProfileID: profileID, IdempotencyKey: fmt.Sprintf("discord:message-edit:%s:%d", messageID, revision),
 				Skills: skills, AllowedTools: tools, DangerousActions: dangerous,

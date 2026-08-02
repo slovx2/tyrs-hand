@@ -217,10 +217,10 @@ func TestExecutePlanSwitchesDefaultAndIsIdempotent(t *testing.T) {
 	require.Equal(t, 1, expiredPlanCards)
 
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_intents
-		(control_id, sequence_no, behavior, source_type, discord_conversation_id,
+		(control_id, sequence_no, behavior, source_type, discord_conversation_id, session_id,
 		 development_project_id, agent_profile_id, idempotency_key, status)
-		SELECT control.id, 2, 'start_when_idle', 'discord_conversation',
-			control.discord_conversation_id, control.development_project_id,
+		SELECT control.id, 2, 'start_when_idle', 'development_session',
+			control.discord_conversation_id, control.session_id, control.development_project_id,
 			control.agent_profile_id, $2, 'queued'
 		FROM codex_thread_controls control WHERE control.id=$1`,
 		controlID, "plan-busy-"+uuid.NewString())
@@ -308,16 +308,18 @@ func insertInteractiveControl(t *testing.T, db *sql.DB, seed discordManagerSeed)
 		 development_project_id, agent_profile_id, title)
 		VALUES ($1,$2,'interactive-thread','interactive-starter','1001',$3,$4,'Interactive') RETURNING id`,
 		testGuildID, seed.developmentForumID, seed.developmentProjectID, profileID).Scan(&conversationID))
+	sessionID := bindDiscordConversationSessionForTest(t, db, conversationID)
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_thread_controls
-		(source_type, discord_conversation_id, development_project_id, agent_profile_id,
+		(source_type, discord_conversation_id, session_id, development_project_id, agent_profile_id,
 		 execution_node_id, development_environment_id, external_thread_id)
-		VALUES ('discord_conversation',$1,$2,$3,$4,$5,'codex-interactive-thread') RETURNING id`,
-		conversationID, seed.developmentProjectID, profileID, seed.executionNodeID, environmentID).Scan(&controlID))
+		VALUES ('development_session',$1,$2,$3,$4,$5,$6,'codex-interactive-thread') RETURNING id`,
+		conversationID, sessionID, seed.developmentProjectID, profileID, seed.executionNodeID,
+		environmentID).Scan(&controlID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_turn_intents
-		(control_id, sequence_no, behavior, source_type, discord_conversation_id,
+		(control_id, sequence_no, behavior, source_type, discord_conversation_id, session_id,
 		 development_project_id, agent_profile_id, idempotency_key, status)
-		VALUES ($1,1,'start_when_idle','discord_conversation',$2,$3,$4,$5,'waiting_for_user') RETURNING id`,
-		controlID, conversationID, seed.developmentProjectID, profileID,
+		VALUES ($1,1,'start_when_idle','development_session',$2,$3,$4,$5,$6,'waiting_for_user') RETURNING id`,
+		controlID, conversationID, sessionID, seed.developmentProjectID, profileID,
 		"interactive-"+uuid.NewString()).Scan(&intentID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_turn_runs
 		(control_id, primary_intent_id, attempt, worker_id, lease_epoch, capability_hash,

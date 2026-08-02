@@ -92,14 +92,15 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	var oldLeaseEpoch int64
 	var actorGuildID, actorUserID, actorDisplayName string
 	var conversationID, projectID sql.NullString
-	err = tx.QueryRowContext(c.Request.Context(), `SELECT ct.id, ct.discord_conversation_id,
-		ct.development_project_id::text, ct.agent_profile_id, ct.status, ct.lifecycle_state,
+	err = tx.QueryRowContext(c.Request.Context(), `SELECT ct.id, ct.session_id, ct.discord_conversation_id,
+		ct.development_project_id::text, ct.agent_profile_id, ct.status, session.lifecycle_state,
 		ct.next_sequence_no, ct.collaboration_mode,
 		ct.lease_epoch, COALESCE(ct.external_thread_id,''), COALESCE(ct.codex_home_key,''),
 		p.allowed_tools, '[]'::jsonb,
 		e.guild_id, COALESCE(e.ssh_discord_user_id, ''),
 		COALESCE(NULLIF(m.display_name, ''), m.username, '')
 		FROM codex_thread_controls ct JOIN agent_profiles p ON p.id = ct.agent_profile_id
+		JOIN development_sessions session ON session.id=ct.session_id
 		JOIN discord_development_environments e ON e.id = ct.development_environment_id
 		JOIN development_projects project ON project.id=ct.development_project_id
 		LEFT JOIN discord_conversations conversation ON conversation.id=ct.discord_conversation_id
@@ -111,8 +112,8 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		WHERE ct.external_thread_id = $1 AND ct.development_environment_id = $2
 		AND ct.execution_node_id = $3 AND e.status='running'
 		AND forum.binding_status='active'
-		AND project.availability_status='available' FOR UPDATE OF ct`, threadID, request.EnvironmentID,
-		node.ID).Scan(&claimed.ControlID, &conversationID,
+		AND project.availability_status='available' FOR UPDATE OF ct,session`, threadID, request.EnvironmentID,
+		node.ID).Scan(&claimed.ControlID, &claimed.SessionID, &conversationID,
 		&projectID, &claimed.AgentProfileID, &controlStatus, &lifecycleState,
 		&nextSequence, &claimed.CollaborationMode,
 		&oldLeaseEpoch, &claimed.ExternalThreadID,
@@ -193,7 +194,7 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 			return
 		}
 	}
-	claimed.SourceType, claimed.InputSurface = codexcontrol.SourceDiscord, "desktop"
+	claimed.SourceType, claimed.InputSurface = codexcontrol.SourceDevelopment, "desktop"
 	if !isReplacement {
 		claimed.ProjectionAnchor = projectionKey
 	}
@@ -226,17 +227,18 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	} else {
 		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO codex_turn_intents
 			(id, control_id, sequence_no, operation, behavior, source_type, input_surface,
-			 discord_conversation_id, repository_id, development_project_id, agent_profile_id, idempotency_key,
+			 session_id, discord_conversation_id, repository_id, development_project_id,
+			 agent_profile_id, idempotency_key,
 			 instruction, prepared_input, allowed_tools, dangerous_actions, priority,
 			 actor_login, actor_permission, actor_participant_id, actor_display_name,
 			 reply_policy, reply_status, status, attempt_count, max_attempts, dispatched_at,
 			 desktop_input_projection_key, desktop_input_projection_status, projection_anchor)
-			VALUES ($1,$2,$3,'turn_input','start_when_idle','discord_conversation','desktop',
-				NULLIF($4::text,'')::uuid,NULLIF($5::text,'')::uuid,NULLIF($6::text,'')::uuid,$7,$8,
-				$9,$10,$11,$12,100,'codex-desktop','owner',NULLIF($13::text,'')::uuid,$14,
-				'silent','skipped','dispatching',1,$15,now(),$16,'pending',$16)`,
-			claimed.ID, claimed.ControlID, claimed.Sequence, nilUUIDString(claimed.DiscordConversationID),
-			"", nilUUIDString(claimed.ProjectID),
+			VALUES ($1,$2,$3,'turn_input','start_when_idle','development_session','desktop',$4,
+				NULLIF($5::text,'')::uuid,NULLIF($6::text,'')::uuid,NULLIF($7::text,'')::uuid,$8,$9,
+				$10,$11,$12,$13,100,'codex-desktop','owner',NULLIF($14::text,'')::uuid,$15,
+				'silent','skipped','dispatching',1,$16,now(),$17,'pending',$17)`,
+			claimed.ID, claimed.ControlID, claimed.Sequence, claimed.SessionID,
+			nilUUIDString(claimed.DiscordConversationID), "", nilUUIDString(claimed.ProjectID),
 			claimed.AgentProfileID, idempotencyKey, instruction, request.Params,
 			allowedJSON, dangerousJSON, nilUUIDString(claimed.ActorParticipantID),
 			claimed.ActorDisplayName, claimed.MaxAttempts, projectionKey)
@@ -244,6 +246,15 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	if err != nil {
 		problem(c, http.StatusConflict, "Desktop Turn 已提交或发生并发冲突", err)
 		return
+	}
+	if !isReplacement {
+		err = appendDesktopSessionMessageTx(c.Request.Context(), tx, claimed.SessionID,
+			"desktop:"+idempotencyKey, instruction, claimed.ActorParticipantID,
+			claimed.ActorDisplayName)
+		if err != nil {
+			problem(c, http.StatusInternalServerError, "记录 Desktop Session 消息失败", err)
+			return
+		}
 	}
 	if err := insertDesktopImagesTx(c.Request.Context(), tx, claimed.ID, images); err != nil {
 		problem(c, http.StatusInternalServerError, "记录 Desktop 图片失败", err)
@@ -444,4 +455,39 @@ func enqueueDesktopInputProjection(ctx context.Context, tx *sql.Tx, conversation
 	}
 	return discordintegration.EnqueueDesktopInputPages(ctx, tx, threadID, conversationID,
 		projectionKey, displayName, desktopProjectionText(input), 0)
+}
+
+func appendDesktopSessionMessageTx(ctx context.Context, tx *sql.Tx, sessionID uuid.UUID,
+	localID, instruction string, participantID uuid.UUID, displayName string,
+) error {
+	if participantID != uuid.Nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO participants(id,kind,display_name)
+			VALUES ($1,'discord',$2) ON CONFLICT(id) DO UPDATE SET
+			display_name=EXCLUDED.display_name,updated_at=now()`, participantID, displayName); err != nil {
+			return err
+		}
+	}
+	content, _ := json.Marshal(gin.H{"t": "plain", "v": gin.H{
+		"role": "user", "content": gin.H{"type": "codex", "data": gin.H{
+			"type": "message", "message": instruction,
+		}},
+	}})
+	var messageID uuid.UUID
+	var sequence int64
+	err := tx.QueryRowContext(ctx, `WITH sequence AS (
+		UPDATE development_sessions SET last_message_seq=last_message_seq+1,
+			last_activity_at=now(),updated_at=now() WHERE id=$1 RETURNING last_message_seq)
+		INSERT INTO session_messages(session_id,seq,local_id,participant_id,message_role,content)
+		SELECT $1,last_message_seq,$2,NULLIF($3::text,'')::uuid,'user',$4 FROM sequence
+		RETURNING id,seq`, sessionID, localID, nilUUIDString(participantID), content).
+		Scan(&messageID, &sequence)
+	if err != nil {
+		return err
+	}
+	payload, _ := json.Marshal(gin.H{"messageId": messageID, "sessionId": sessionID,
+		"seq": sequence, "localId": localID, "role": "user", "content": json.RawMessage(content)})
+	_, err = tx.ExecContext(ctx, `INSERT INTO client_updates(
+		session_id,update_type,entity_id,entity_seq,payload)
+		VALUES ($1,'message.created',$2,$3,$4)`, sessionID, messageID.String(), sequence, payload)
+	return err
 }

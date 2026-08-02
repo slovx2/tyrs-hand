@@ -46,6 +46,7 @@ type Server struct {
 	secrets            *secrets.Store
 	logger             *zap.Logger
 	assets             fs.FS
+	clientUpdateHub    *clientUpdateHub
 }
 
 func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authService *auth.Service, githubManager *ghadapter.Manager, catalog *githubtools.Catalog, settingsService *platformsettings.Service, discordManager *discordintegration.Manager, bindingService *discordintegration.BindingService, secretStore *secrets.Store, logger *zap.Logger) (*Server, error) {
@@ -57,7 +58,8 @@ func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authSer
 		catalog: catalog, settings: settingsService, discord: discordManager, bindings: bindingService,
 		nodes: executionnode.NewService(db), ssh: sshconfig.NewService(db, secretStore),
 		secrets: secretStore, logger: logger, assets: assets,
-		codexAuth: codexauth.NewManager(cfg, db, settingsService, logger)}, nil
+		codexAuth:       codexauth.NewManager(cfg, db, settingsService, logger),
+		clientUpdateHub: newClientUpdateHub()}, nil
 }
 
 func (s *Server) baseRouter() *gin.Engine {
@@ -98,8 +100,18 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	api.GET("/setup/status", s.setupStatus)
 	api.POST("/setup/admin", s.setupAdmin)
 	api.POST("/auth/login", s.login)
+	api.POST("/client/auth/login", s.clientLogin)
 	api.GET("/github/app/manifest/callback", s.githubManifestCallback)
 	api.GET("/discord/github/bind/callback", s.discordGitHubBindCallback)
+	client := api.Group("/client")
+	client.Use(s.requireClientBearer())
+	client.GET("/bootstrap", s.clientBootstrap)
+	client.GET("/sessions", s.clientListSessions)
+	client.POST("/sessions", s.clientCreateSession)
+	client.GET("/sessions/:id/messages", s.clientListMessages)
+	client.POST("/sessions/:id/messages", s.clientCreateMessage)
+	client.POST("/interactive/:id/answer", s.clientAnswerInteractive)
+	client.GET("/updates", s.clientUpdates)
 
 	authenticated := api.Group("")
 	authenticated.Use(s.requireSession())

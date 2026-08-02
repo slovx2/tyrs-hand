@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -60,15 +61,24 @@ func (s *Server) pendingRunCommands(ctx context.Context,
 			&command.Instruction, &messageID); err != nil {
 			return nil, err
 		}
-		if claimed.SourceType == codexcontrol.SourceDiscord && messageID != "" {
+		if claimed.SourceType == codexcontrol.SourceDevelopment {
 			copyClaimed := *claimed
 			copyClaimed.ID, copyClaimed.Sequence = command.ID, command.Sequence
-			copyClaimed.InputSurface = "discord"
+			copyClaimed.InputSurface = "client"
+			if messageID != "" {
+				copyClaimed.InputSurface = "discord"
+			}
 			copyClaimed.DiscordMessageID = messageID
 			copyClaimed.Instruction = command.Instruction
-			command.Discord, err = s.loadDiscordWorkerSnapshot(ctx, &copyClaimed)
+			command.Development, err = s.loadDevelopmentWorkerSnapshot(ctx, &copyClaimed)
 			if err != nil {
 				return nil, err
+			}
+			if messageID != "" && claimed.DiscordConversationID != uuid.Nil {
+				command.Discord, err = s.loadDiscordWorkerSnapshot(ctx, &copyClaimed)
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 		commands = append(commands, command)
@@ -133,11 +143,13 @@ func (s *Server) workerCommandAck(c *gin.Context) {
 				append_count = append_count + 1 WHERE id = $1 AND append_count < max_append_count`,
 				claimed.RunID)
 		}
-		if err == nil && claimed.SourceType == codexcontrol.SourceDiscord {
+		if err == nil && claimed.SourceType == codexcontrol.SourceDevelopment &&
+			claimed.DiscordConversationID != uuid.Nil {
 			err = recordDiscordIntentContributors(c.Request.Context(), tx, claimed.RunID,
 				claimed.DiscordConversationID, request.CommandID, request.TurnID)
 		}
-		if err == nil && claimed.SourceType == codexcontrol.SourceDiscord {
+		if err == nil && claimed.SourceType == codexcontrol.SourceDevelopment &&
+			claimed.DiscordConversationID != uuid.Nil {
 			var guildID, threadID string
 			err = tx.QueryRowContext(c.Request.Context(), `SELECT guild_id, thread_id
 				FROM discord_conversations WHERE id=$1`, claimed.DiscordConversationID).
@@ -254,7 +266,23 @@ func (s *Server) workerRunEvents(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "提交远程事件失败", err)
 		return
 	}
-	if claimed.SourceType == codexcontrol.SourceDiscord {
+	if claimed.SourceType == codexcontrol.SourceDevelopment && claimed.SessionID != uuid.Nil &&
+		s.clientUpdateHub != nil {
+		for _, event := range request.Events {
+			sequence := event.Sequence
+			payload, _ := json.Marshal(gin.H{"eventType": event.Type, "data": event.Payload})
+			updateType := "agent.event"
+			if event.Type == "item/agentMessage/delta" || event.Type == "item/delta" {
+				updateType = "message.delta"
+			}
+			s.clientUpdateHub.publish(clientUpdate{
+				SessionID: &claimed.SessionID, Type: updateType,
+				EntityID: claimed.RunID.String(), EntitySeq: &sequence,
+				Payload: payload, CreatedAt: time.Now().UTC(),
+			})
+		}
+	}
+	if claimed.SourceType == codexcontrol.SourceDevelopment {
 		s.hydrateDesktopConversation(c.Request.Context(), claimed)
 		hasExplicitProgress := false
 		timelineChanged := false
@@ -414,7 +442,7 @@ func (s *Server) workerRunComplete(c *gin.Context) {
 			err = errors.New("required_reply_missing")
 		}
 	}
-	if err == nil && claimed.SourceType == codexcontrol.SourceDiscord {
+	if err == nil && claimed.SourceType == codexcontrol.SourceDevelopment {
 		s.hydrateDesktopConversation(c.Request.Context(), claimed)
 		if claimed.DiscordConversationID != uuid.Nil {
 			projectionErr := s.projectRemoteDiscordComplete(c.Request.Context(), claimed, request.Result)
@@ -600,7 +628,7 @@ func (s *Server) workerRunFail(c *gin.Context) {
 		remoteRunError(c, "提交远程任务失败状态失败", err)
 		return
 	}
-	if claimed.SourceType == codexcontrol.SourceDiscord {
+	if claimed.SourceType == codexcontrol.SourceDevelopment {
 		guildID, threadID, targetErr := s.discordProjectionTarget(c.Request.Context(), claimed)
 		if targetErr == nil {
 			state := discordintegration.ConversationFailed
@@ -697,14 +725,14 @@ func (s *Server) workerRecordSubmission(c *gin.Context) {
 		err = codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration).RecordSubmission(
 			c.Request.Context(), claimed, request.SubmissionID)
 	}
-	if err == nil && claimed.SourceType == codexcontrol.SourceDiscord {
+	if err == nil && claimed.SourceType == codexcontrol.SourceDevelopment {
 		s.hydrateDesktopConversation(c.Request.Context(), claimed)
 		if claimed.DiscordConversationID != uuid.Nil {
 			err = discordintegration.ExpireConversationPlanCards(c.Request.Context(), s.db,
 				claimed.DiscordConversationID, claimed.RunID)
 		}
 	}
-	if err == nil && claimed.SourceType == codexcontrol.SourceDiscord &&
+	if err == nil && claimed.SourceType == codexcontrol.SourceDevelopment &&
 		claimed.DiscordConversationID != uuid.Nil {
 		tx, txErr := s.db.BeginTx(c.Request.Context(), nil)
 		if txErr == nil {

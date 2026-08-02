@@ -91,6 +91,13 @@ func (s *ConversationService) SetConversationMode(ctx context.Context, guildID, 
 				updated_at = now() WHERE id = $1`, controlID, state.Mode,
 				state.Revision, state.SettingsRevision)
 		}
+		if err == nil {
+			_, err = tx.ExecContext(ctx, `UPDATE development_sessions session SET
+				collaboration_mode=$2, settings_version=$3, updated_at=now()
+				FROM discord_conversations conversation
+				WHERE conversation.id=$1 AND session.id=conversation.session_id`,
+				state.ConversationID, state.Mode, state.SettingsRevision)
+		}
 		if err != nil {
 			return ConfigurationUpdate{}, err
 		}
@@ -204,6 +211,14 @@ func (s *ConversationService) SetRuntimePreferences(ctx context.Context, guildID
 				settings_revision = $5, runtime_preferences_frozen_at = now(),
 				updated_at = now() WHERE id = $1`, controlID, model, effort, tier,
 				state.SettingsRevision)
+		}
+		if err == nil {
+			_, err = tx.ExecContext(ctx, `UPDATE development_sessions session SET
+				model=NULLIF($2,''), reasoning_effort=NULLIF($3,''), service_tier=$4,
+				settings_version=$5, updated_at=now()
+				FROM discord_conversations conversation
+				WHERE conversation.id=$1 AND session.id=conversation.session_id`,
+				state.ConversationID, model, effort, tier, state.SettingsRevision)
 		}
 		if err != nil {
 			return ConfigurationUpdate{}, err

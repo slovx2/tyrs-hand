@@ -538,10 +538,11 @@ func (s *ConversationService) enqueueMessage(ctx context.Context, tx *sql.Tx, co
 		return err
 	}
 	intentID, inserted, err := codexcontrol.NewRepository(s.db, 0).Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
-		SourceType: codexcontrol.SourceDiscord, DiscordConversationID: conversationID,
+		SourceType: codexcontrol.SourceDevelopment, DiscordConversationID: conversationID,
 		DiscordMessageID: messageID, RepositoryID: repository, ProjectID: project,
 		AgentProfileID: profileID,
 		IdempotencyKey: "discord:message:" + messageID,
+		MessageLocalID: "discord:" + messageID,
 		Instruction:    body, AllowedTools: allowed, ActorLogin: actor, ActorPermission: permission,
 		ActorParticipantID: actorParticipantID, ActorDisplayName: actorDisplayName,
 		ReplyPolicy: "silent", Behavior: "steer_if_active",
