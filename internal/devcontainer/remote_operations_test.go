@@ -548,6 +548,9 @@ func TestHostDockerUsesHostNetworkSocketAndAssignedSSHPort(t *testing.T) {
 	require.True(t, runner.contains(
 		"type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock"))
 	require.True(t, runner.contains("--group-add 984"))
+	require.True(t, runner.contains("TYRS_DOCKER_GID=984"))
+	require.True(t, runner.contains("TYRS_RUNTIME_USER=developer"))
+	require.True(t, runner.contains("usermod --append --groups"))
 	require.True(t, runner.contains("com.tyrs-hand.ssh-port=22222"))
 	require.True(t, runner.contains("Port 22222"))
 	require.False(t, runner.contains("--publish"))

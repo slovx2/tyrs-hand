@@ -248,6 +248,14 @@ chown "$TYRS_OWNER" /run/tyrs-hand
 chmod 0700 /run/tyrs-hand
 install -d -m 0755 /run/sshd
 install -d -o "$TYRS_UID" -g "$TYRS_GID" -m 0700 /var/lib/tyrs-hand/codex
+if test -n "${TYRS_DOCKER_GID:-}"; then
+  TYRS_DOCKER_GROUP="$(getent group "$TYRS_DOCKER_GID" | cut -d: -f1 || true)"
+  if test -z "$TYRS_DOCKER_GROUP"; then
+    TYRS_DOCKER_GROUP="tyrs-docker-$TYRS_DOCKER_GID"
+    groupadd --gid "$TYRS_DOCKER_GID" "$TYRS_DOCKER_GROUP"
+  fi
+  usermod --append --groups "$TYRS_DOCKER_GROUP" "$TYRS_RUNTIME_USER"
+fi
 if test -s /run/tyrs-hand/app-server.pid && kill -0 "$(cat /run/tyrs-hand/app-server.pid)" 2>/dev/null; then
   kill "$(cat /run/tyrs-hand/app-server.pid)" || true
   n=0
@@ -266,12 +274,19 @@ if test -n "$TYRS_SSH_PUBLIC_KEY"; then
   chmod 0600 /var/lib/tyrs-hand/system/ssh/ssh_host_ed25519_key
 fi`
 	config := remoteSSHDConfig(operation.RuntimeUser, sshPort)
-	if _, err := m.docker(ctx, "exec", "--user", "0:0",
-		"--env", "TYRS_UID="+strconv.FormatInt(operation.RuntimeUID, 10),
-		"--env", "TYRS_GID="+strconv.FormatInt(operation.RuntimeGID, 10),
-		"--env", "TYRS_OWNER="+owner, "--env", "TYRS_HOME="+operation.RuntimeHome,
-		"--env", "TYRS_SSH_PUBLIC_KEY="+operation.SSHPublicKey,
-		"--env", "TYRS_SSHD_CONFIG="+config, container, "/bin/sh", "-c", setup); err != nil {
+	setupArguments := []string{"exec", "--user", "0:0",
+		"--env", "TYRS_UID=" + strconv.FormatInt(operation.RuntimeUID, 10),
+		"--env", "TYRS_GID=" + strconv.FormatInt(operation.RuntimeGID, 10),
+		"--env", "TYRS_OWNER=" + owner, "--env", "TYRS_HOME=" + operation.RuntimeHome,
+		"--env", "TYRS_SSH_PUBLIC_KEY=" + operation.SSHPublicKey,
+		"--env", "TYRS_SSHD_CONFIG=" + config}
+	if m.hostDocker {
+		setupArguments = append(setupArguments,
+			"--env", "TYRS_DOCKER_GID="+strconv.FormatUint(uint64(m.dockerSocketGID), 10),
+			"--env", "TYRS_RUNTIME_USER="+operation.RuntimeUser)
+	}
+	setupArguments = append(setupArguments, container, "/bin/sh", "-c", setup)
+	if _, err := m.docker(ctx, setupArguments...); err != nil {
 		return fmt.Errorf("配置开发容器 daemon: %w", err)
 	}
 	if m.sshEnabled {
