@@ -383,7 +383,21 @@ func (m *Manager) prepareBrowserServicesDirectory(environmentID uuid.UUID) error
 		return nil
 	}
 	directory := filepath.Join(m.browserServicesRoot, environmentID.String())
-	if err := os.MkdirAll(directory, 0o770); err != nil {
+	if err := os.MkdirAll(filepath.Dir(directory), 0o770); err != nil {
+		return fmt.Errorf("创建浏览器服务转发目录: %w", err)
+	}
+	if err := os.Mkdir(directory, 0o770); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			info, statErr := os.Stat(directory)
+			if statErr != nil {
+				return fmt.Errorf("检查浏览器服务转发目录: %w", statErr)
+			}
+			if !info.IsDir() {
+				return errors.New("浏览器服务转发路径不是目录")
+			}
+			// 开发容器会把这个 bind 目录交给运行用户；Worker 后续不得再修改所有权或权限。
+			return nil
+		}
 		return fmt.Errorf("创建浏览器服务转发目录: %w", err)
 	}
 	if err := os.Chmod(directory, 0o770); err != nil {

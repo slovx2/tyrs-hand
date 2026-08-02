@@ -515,6 +515,20 @@ func TestReconfigureRemoteEnvironmentKeepsContainerRunningAndSecuresSSH(t *testi
 		`model_providers.tyrs-hand-provider.base_url="https://api.example.com/v1"`))
 }
 
+func TestPrepareBrowserServicesDirectoryPreservesExistingRuntimeOwnership(t *testing.T) {
+	root := t.TempDir()
+	environmentID := uuid.New()
+	directory := filepath.Join(root, environmentID.String())
+	require.NoError(t, os.Mkdir(directory, 0o750))
+	require.NoError(t, os.Chmod(directory, 0o750))
+
+	manager := &Manager{browserEnabled: true, browserServicesRoot: root}
+	require.NoError(t, manager.prepareBrowserServicesDirectory(environmentID))
+	info, err := os.Stat(directory)
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o750), info.Mode().Perm())
+}
+
 func TestHostDockerUsesHostNetworkSocketAndAssignedSSHPort(t *testing.T) {
 	runner := &recordingCommandRunner{resultFor: map[string]string{
 		`HostConfig.NetworkMode`: "host",
