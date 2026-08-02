@@ -204,21 +204,7 @@ COPY --from=codex-cli --chown=root:root /out/codex /opt/tyrs-hand/codex/bin/code
 COPY --from=worker --chown=root:root /usr/local/libexec/tyrs-hand/docker /usr/local/bin/docker
 RUN set -eux; \
     runtime_lock=/usr/local/share/tyrs-hand/development-runtime.lock.json; \
-    test "$(docker --version | sed -n 's/^Docker version \([^,]*\),.*/\1/p')" = "$(node -p "require('${runtime_lock}').dockerCli")"; \
-    compose_version="$(node -p "require('${runtime_lock}').dockerCompose")"; \
-    compose_sha="$(node -p "require('${runtime_lock}').downloads.dockerCompose['${TARGETARCH}']")"; \
-    test -n "${compose_sha}"; \
-    case "${TARGETARCH}" in \
-      amd64) compose_arch=x86_64 ;; \
-      arm64) compose_arch=aarch64 ;; \
-      *) echo "unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
-    esac; \
-    compose_asset="docker-compose-linux-${compose_arch}"; \
-    curl --fail --location --silent --show-error --retry 5 --retry-all-errors --output /tmp/docker-compose \
-      "https://github.com/docker/compose/releases/download/v${compose_version}/${compose_asset}"; \
-    echo "${compose_sha}  /tmp/docker-compose" | sha256sum --check --strict; \
-    install -D -m 0755 /tmp/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose; \
-    rm -f /tmp/docker-compose
+    test "$(docker --version | sed -n 's/^Docker version \([^,]*\),.*/\1/p')" = "$(node -p "require('${runtime_lock}').dockerCli")"
 COPY --from=go-build --chown=root:root /out/tyrs-hand-codex /usr/local/bin/codex
 COPY --from=go-build --chown=root:root /out/tyrs-hand-dev /usr/local/bin/tyrs-hand-dev
 RUN ln -s /usr/local/bin/codex /usr/local/bin/apply_patch

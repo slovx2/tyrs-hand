@@ -7,7 +7,6 @@
   "npm": "11.18.0",
   "corepack": "0.35.0",
   "dockerCli": "29.6.2",
-  "dockerCompose": "5.3.1",
   "npmPackages": {
     "brace-expansion": {
       "version": "5.0.8",
@@ -22,10 +21,6 @@
     "uv": {
       "amd64": "04f8b82f5d47f0512dcd32c67a4a6f16a0ea27c81537c338fd0ad6b23cebe829",
       "arm64": "94500fb064ae3c971a873cba64d94694c50677e0a4dbf78735c80509e7429919"
-    },
-    "dockerCompose": {
-      "amd64": "f9ebc6ebdb19d769b793c245a736caaeb198c62587f13b25c660c13b4987f959",
-      "arm64": "aa611e811d0ea25897839c404bfb5bf93ce706dc51c500a4457890f5d0606a86"
     }
   },
   "systemPackages": {
