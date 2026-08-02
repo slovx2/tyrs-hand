@@ -60,6 +60,27 @@ func TestEnqueueRejectsTerminatedControl(t *testing.T) {
 	require.NoError(t, tx.Rollback())
 }
 
+func TestClaimEntryPointsAndOptionalEncoding(t *testing.T) {
+	require.Nil(t, encodeOptional(nil))
+	require.JSONEq(t, `{"value":"ok"}`, string(encodeOptional(map[string]string{"value": "ok"})))
+
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+	beginError := errors.New("begin failed")
+	mock.ExpectBegin().WillReturnError(beginError)
+	_, err = NewRepository(db, time.Minute).Claim(context.Background(), "worker-1")
+	require.ErrorIs(t, err, beginError)
+	mock.ExpectBegin().WillReturnError(beginError)
+	_, err = NewRepository(db, time.Minute).ClaimSource(context.Background(), "worker-1",
+		SourceDevelopment)
+	require.ErrorIs(t, err, beginError)
+	mock.ExpectClose()
+}
+
 func TestEnqueueDevelopmentUsesSessionUniqueControl(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)

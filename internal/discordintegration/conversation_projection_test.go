@@ -10,8 +10,29 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/stretchr/testify/require"
 )
+
+func TestProjectionBoundaryHelpersAndCodexError(t *testing.T) {
+	require.Nil(t, CodexErrorForProjection(nil))
+	projected := CodexErrorForProjection(&workerprotocol.CodexTurnError{
+		Message: "at capacity", WillRetry: true, ThreadID: "thread-1", TurnID: "turn-1",
+	})
+	require.Equal(t, "at capacity", projected.Message)
+	require.True(t, projected.WillRetry)
+	require.Equal(t, "thread-1", projected.ThreadID)
+	require.Equal(t, "turn-1", projected.TurnID)
+
+	require.Equal(t, "body", string(trimTrailingSpaces([]rune("body \t"))))
+	require.Equal(t, "body", string(trimLeadingSpaces([]rune(" \tbody"))))
+	require.Equal(t, "body", string(trimLeadingNewlines([]rune("\r\nbody"))))
+	boundary, kind := replyChunkBoundary([]rune("abcdef"), 3)
+	require.Equal(t, 3, boundary)
+	require.Equal(t, 'h', kind)
+	require.Empty(t, displayPath("  "))
+	require.Equal(t, "relative/file.go", displayPath("relative/file.go"))
+}
 
 func TestSanitizeDiscordResult(t *testing.T) {
 	value := SanitizeDiscordResult("完成 /Volumes/workspace/private/file.go，token=ghp_abcdefghijklmnopqrstuvwxyz")

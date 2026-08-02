@@ -65,6 +65,17 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 	require.NoError(t, json.Unmarshal(login.Body.Bytes(), &loginBody))
 	require.NotEmpty(t, loginBody.AccessToken)
 
+	bootstrap := clientJSONRequest(t, http.MethodGet, endpoint+"/api/v1/client/bootstrap",
+		loginBody.AccessToken, nil)
+	require.Equal(t, http.StatusOK, bootstrap.Code)
+	require.Contains(t, bootstrap.Body.String(), environmentID.String())
+	require.Contains(t, bootstrap.Body.String(), projectID.String())
+	require.Contains(t, bootstrap.Body.String(), profileID.String())
+	listedSessions := clientJSONRequest(t, http.MethodGet,
+		endpoint+"/api/v1/client/sessions?limit=10", loginBody.AccessToken, nil)
+	require.Equal(t, http.StatusOK, listedSessions.Code)
+	require.Contains(t, listedSessions.Body.String(), sessionID.String())
+
 	wsURL := "ws" + strings.TrimPrefix(endpoint, "http") + "/api/v1/client/updates?cursor=0"
 	protocol := clientBearerWebSocketPrefix + loginBody.AccessToken
 	dialer := websocket.Dialer{Subprotocols: []string{protocol}}
@@ -187,6 +198,8 @@ func clientIntegrationServer(t *testing.T, db *sql.DB, authService *auth.Service
 	router.POST("/api/v1/client/auth/login", server.clientLogin)
 	client := router.Group("/api/v1/client")
 	client.Use(server.requireClientBearer())
+	client.GET("/bootstrap", server.clientBootstrap)
+	client.GET("/sessions", server.clientListSessions)
 	client.POST("/sessions", server.clientCreateSession)
 	client.GET("/sessions/:id/messages", server.clientListMessages)
 	client.POST("/sessions/:id/messages", server.clientCreateMessage)
