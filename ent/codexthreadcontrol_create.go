@@ -75,16 +75,16 @@ func (_c *CodexThreadControlCreate) SetAgentProfileID(v uuid.UUID) *CodexThreadC
 	return _c
 }
 
-// SetExecutionNodeID sets the "execution_node_id" field.
-func (_c *CodexThreadControlCreate) SetExecutionNodeID(v uuid.UUID) *CodexThreadControlCreate {
-	_c.mutation.SetExecutionNodeID(v)
+// SetWorkerID sets the "worker_id" field.
+func (_c *CodexThreadControlCreate) SetWorkerID(v uuid.UUID) *CodexThreadControlCreate {
+	_c.mutation.SetWorkerID(v)
 	return _c
 }
 
-// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
-func (_c *CodexThreadControlCreate) SetNillableExecutionNodeID(v *uuid.UUID) *CodexThreadControlCreate {
+// SetNillableWorkerID sets the "worker_id" field if the given value is not nil.
+func (_c *CodexThreadControlCreate) SetNillableWorkerID(v *uuid.UUID) *CodexThreadControlCreate {
 	if v != nil {
-		_c.SetExecutionNodeID(*v)
+		_c.SetWorkerID(*v)
 	}
 	return _c
 }
@@ -99,20 +99,6 @@ func (_c *CodexThreadControlCreate) SetExternalThreadID(v string) *CodexThreadCo
 func (_c *CodexThreadControlCreate) SetNillableExternalThreadID(v *string) *CodexThreadControlCreate {
 	if v != nil {
 		_c.SetExternalThreadID(*v)
-	}
-	return _c
-}
-
-// SetCodexHomeKey sets the "codex_home_key" field.
-func (_c *CodexThreadControlCreate) SetCodexHomeKey(v string) *CodexThreadControlCreate {
-	_c.mutation.SetCodexHomeKey(v)
-	return _c
-}
-
-// SetNillableCodexHomeKey sets the "codex_home_key" field if the given value is not nil.
-func (_c *CodexThreadControlCreate) SetNillableCodexHomeKey(v *string) *CodexThreadControlCreate {
-	if v != nil {
-		_c.SetCodexHomeKey(*v)
 	}
 	return _c
 }
@@ -299,16 +285,16 @@ func (_c *CodexThreadControlCreate) SetNillableNextWakeupAt(v *time.Time) *Codex
 	return _c
 }
 
-// SetWorkerID sets the "worker_id" field.
-func (_c *CodexThreadControlCreate) SetWorkerID(v string) *CodexThreadControlCreate {
-	_c.mutation.SetWorkerID(v)
+// SetLeaseOwner sets the "lease_owner" field.
+func (_c *CodexThreadControlCreate) SetLeaseOwner(v string) *CodexThreadControlCreate {
+	_c.mutation.SetLeaseOwner(v)
 	return _c
 }
 
-// SetNillableWorkerID sets the "worker_id" field if the given value is not nil.
-func (_c *CodexThreadControlCreate) SetNillableWorkerID(v *string) *CodexThreadControlCreate {
+// SetNillableLeaseOwner sets the "lease_owner" field if the given value is not nil.
+func (_c *CodexThreadControlCreate) SetNillableLeaseOwner(v *string) *CodexThreadControlCreate {
 	if v != nil {
-		_c.SetWorkerID(*v)
+		_c.SetLeaseOwner(*v)
 	}
 	return _c
 }
@@ -550,17 +536,13 @@ func (_c *CodexThreadControlCreate) createSpec() (*CodexThreadControl, *sqlgraph
 		_spec.SetField(codexthreadcontrol.FieldAgentProfileID, field.TypeUUID, value)
 		_node.AgentProfileID = value
 	}
-	if value, ok := _c.mutation.ExecutionNodeID(); ok {
-		_spec.SetField(codexthreadcontrol.FieldExecutionNodeID, field.TypeUUID, value)
-		_node.ExecutionNodeID = &value
+	if value, ok := _c.mutation.WorkerID(); ok {
+		_spec.SetField(codexthreadcontrol.FieldWorkerID, field.TypeUUID, value)
+		_node.WorkerID = &value
 	}
 	if value, ok := _c.mutation.ExternalThreadID(); ok {
 		_spec.SetField(codexthreadcontrol.FieldExternalThreadID, field.TypeString, value)
 		_node.ExternalThreadID = &value
-	}
-	if value, ok := _c.mutation.CodexHomeKey(); ok {
-		_spec.SetField(codexthreadcontrol.FieldCodexHomeKey, field.TypeString, value)
-		_node.CodexHomeKey = &value
 	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(codexthreadcontrol.FieldStatus, field.TypeString, value)
@@ -614,9 +596,9 @@ func (_c *CodexThreadControlCreate) createSpec() (*CodexThreadControl, *sqlgraph
 		_spec.SetField(codexthreadcontrol.FieldNextWakeupAt, field.TypeTime, value)
 		_node.NextWakeupAt = &value
 	}
-	if value, ok := _c.mutation.WorkerID(); ok {
-		_spec.SetField(codexthreadcontrol.FieldWorkerID, field.TypeString, value)
-		_node.WorkerID = &value
+	if value, ok := _c.mutation.LeaseOwner(); ok {
+		_spec.SetField(codexthreadcontrol.FieldLeaseOwner, field.TypeString, value)
+		_node.LeaseOwner = &value
 	}
 	if value, ok := _c.mutation.LeaseToken(); ok {
 		_spec.SetField(codexthreadcontrol.FieldLeaseToken, field.TypeString, value)

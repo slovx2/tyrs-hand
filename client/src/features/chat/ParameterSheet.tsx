@@ -21,11 +21,11 @@ function Choice({ label, selected, onPress, testID }: {
   </Pressable>;
 }
 
-export function ParameterSheet({ visible, bootstrap, environmentId, value, currentRunLabel,
+export function ParameterSheet({ visible, bootstrap, workspaceId, value, currentRunLabel,
   onChange, onClose, onCancel }: {
   visible: boolean;
   bootstrap: Bootstrap;
-  environmentId: string;
+  workspaceId: string;
   value: SessionSettings;
   currentRunLabel?: string;
   onChange: (value: SessionSettings) => void;
@@ -33,7 +33,7 @@ export function ParameterSheet({ visible, bootstrap, environmentId, value, curre
   onCancel?: () => void;
 }) {
   const theme = useTheme();
-  const models = (bootstrap.modelCatalogs[environmentId]?.data ?? []).filter((item) => !item.hidden);
+  const models = (bootstrap.modelCatalogs[workspaceId]?.data ?? []).filter((item) => !item.hidden);
   const model = models.find((item) => item.id === value.model) ?? models[0];
   const supportsFast = model?.serviceTiers.some((tier) => tier.id === "priority" || tier.id === "fast") ||
     model?.additionalSpeedTiers.includes("fast");

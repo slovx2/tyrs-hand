@@ -24,14 +24,14 @@ func (s *ConversationService) Archive(ctx context.Context, guildID, threadID,
 	err = tx.QueryRowContext(ctx, `SELECT conversation.id, conversation.forum_id,
 		conversation.owner_discord_user_id, conversation.lifecycle_state,
 		conversation.lifecycle_revision, control.id,
-		control.development_environment_id, control.external_thread_id
+		control.workspace_id, control.external_thread_id
 		FROM discord_conversations conversation
 		JOIN codex_thread_controls control
 			ON control.discord_conversation_id = conversation.id
 		WHERE conversation.guild_id = $1 AND conversation.thread_id = $2
 		FOR UPDATE OF conversation, control`, guildID, threadID).
 		Scan(&conversationID, &forumID, &ownerID, &currentState, &result.Revision,
-			&result.ControlID, &result.EnvironmentID, &result.ThreadID)
+			&result.ControlID, &result.WorkspaceID, &result.ThreadID)
 	if err != nil {
 		return workerprotocol.ThreadLifecycleState{}, err
 	}
@@ -80,7 +80,7 @@ func (s *ConversationService) Archive(ctx context.Context, guildID, threadID,
 			result.ControlID, result.Revision)
 	}
 	if err == nil {
-		_, err = tx.ExecContext(ctx, `UPDATE development_sessions session SET
+		_, err = tx.ExecContext(ctx, `UPDATE workspace_sessions session SET
 			lifecycle_state='archive_pending', updated_at=now()
 			FROM codex_thread_controls control
 			WHERE control.id=$1 AND session.id=control.session_id`, result.ControlID)
@@ -93,10 +93,10 @@ func (s *ConversationService) Archive(ctx context.Context, guildID, threadID,
 	}
 	if err == nil {
 		_, err = tx.ExecContext(ctx, `INSERT INTO codex_thread_lifecycle_requests
-			(id, control_id, environment_id, source, desired_state, status, revision,
+			(id, control_id, workspace_id, source, desired_state, status, revision,
 				requested_by_discord_user_id)
 			VALUES ($1,$2,$3,'discord','archived',$4,$5,$6)`,
-			result.ID, result.ControlID, result.EnvironmentID, result.Status,
+			result.ID, result.ControlID, result.WorkspaceID, result.Status,
 			result.Revision, requesterID)
 	}
 	if err != nil {

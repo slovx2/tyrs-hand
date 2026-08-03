@@ -10,17 +10,16 @@ import {
   useLocation,
 } from 'react-router'
 import { api } from './api/client'
-import { t, type MessageKey } from './i18n'
+import { t } from './i18n'
 import { GitHubPage } from './pages/GitHubPage'
 import { DiscordPage } from './pages/DiscordPage'
 import { LoginPage } from './pages/LoginPage'
 import { ResourcePage } from './pages/ResourcePage'
 import { SetupPage } from './pages/SetupPage'
 import { SettingsPage } from './pages/SettingsPage'
-import { CodexSettingsPage } from './pages/CodexSettingsPage'
-import { ExecutionNodesPage } from './pages/ExecutionNodesPage'
+import { GitHubAgentSettingsPage } from './pages/GitHubAgentSettingsPage'
+import { WorkersPage } from './pages/WorkersPage'
 import { SSHPage } from './pages/SSHPage'
-import { DevelopmentEnvironmentsPage } from './pages/DevelopmentEnvironmentsPage'
 import { DevicesPage } from './pages/DevicesPage'
 import { useUI } from './state'
 
@@ -29,25 +28,37 @@ interface SetupStatus {
   githubConfigured: boolean
 }
 
-const navigation: Array<{ to: string; label: MessageKey }> = [
-  { to: '/', label: 'overview' },
-  { to: '/repositories', label: 'repositories' },
-  { to: '/development-environments', label: 'developmentEnvironments' },
-  { to: '/installations', label: 'github' },
-  { to: '/trigger-rules', label: 'rules' },
-  { to: '/agent-profiles', label: 'profiles' },
-  { to: '/work-items', label: 'workItems' },
-  { to: '/threads', label: 'workItems' },
-  { to: '/jobs', label: 'jobs' },
-  { to: '/workers', label: 'workers' },
-  { to: '/devices', label: 'devices' },
-  { to: '/ssh', label: 'ssh' },
-  { to: '/worktrees', label: 'workers' },
-  { to: '/audit-logs', label: 'audit' },
-  { to: '/settings/github', label: 'github' },
-  { to: '/settings/discord', label: 'discord' },
-  { to: '/settings/codex', label: 'codex' },
-  { to: '/settings', label: 'settings' },
+const navigation = [
+  { label: '概览', items: [{ to: '/', label: '健康与容量' }] },
+  {
+    label: 'Workers',
+    items: [{ to: '/workers', label: 'Worker 与 Workspace' }],
+  },
+  { label: 'Clients', items: [{ to: '/devices', label: '设备与配对' }] },
+  {
+    label: 'Integrations',
+    items: [
+      { to: '/settings/github', label: 'GitHub App' },
+      { to: '/installations', label: 'Installations' },
+      { to: '/repositories', label: '仓库' },
+      { to: '/trigger-rules', label: '触发规则' },
+      { to: '/agent-profiles', label: 'Agent Profiles' },
+      { to: '/settings/github-agent', label: 'GitHub Agent 参数' },
+      { to: '/settings/github-agent-instructions', label: 'GitHub Agent 指令' },
+      { to: '/settings/discord', label: 'Discord' },
+    ],
+  },
+  { label: 'Access', items: [{ to: '/ssh', label: '出站 SSH' }] },
+  {
+    label: 'Operations',
+    items: [
+      { to: '/work-items', label: 'Work Items' },
+      { to: '/threads', label: 'Thread / Turn' },
+      { to: '/jobs', label: 'Jobs' },
+      { to: '/worktrees', label: '缓存 / Worktree' },
+      { to: '/audit-logs', label: '审计日志' },
+    ],
+  },
 ]
 
 export function App() {
@@ -81,10 +92,6 @@ export function App() {
         <Route
           path="repositories"
           element={<ResourcePage resource="repositories" title="仓库" />}
-        />
-        <Route
-          path="development-environments"
-          element={<DevelopmentEnvironmentsPage />}
         />
         <Route
           path="installations"
@@ -123,7 +130,7 @@ export function App() {
           path="jobs"
           element={<ResourcePage resource="jobs" title="任务与尝试" />}
         />
-        <Route path="workers" element={<ExecutionNodesPage />} />
+        <Route path="workers" element={<WorkersPage />} />
         <Route path="devices" element={<DevicesPage />} />
         <Route path="ssh" element={<SSHPage />} />
         <Route
@@ -138,8 +145,14 @@ export function App() {
         />
         <Route path="settings/github" element={<GitHubPage />} />
         <Route path="settings/discord" element={<DiscordPage />} />
-        <Route path="settings/codex" element={<CodexSettingsPage />} />
-        <Route path="settings" element={<SettingsPage />} />
+        <Route
+          path="settings/github-agent"
+          element={<GitHubAgentSettingsPage />}
+        />
+        <Route
+          path="settings/github-agent-instructions"
+          element={<SettingsPage />}
+        />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
@@ -173,22 +186,27 @@ function AuthenticatedLayout() {
           <img className="brand-logo" src="/tyrs-hand.png" alt="" />
           tyrs-hand
         </Link>
-        <nav className="grid grid-cols-2 gap-1 sm:grid-cols-4 lg:grid-cols-1">
-          {navigation.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === '/'}
-              className={({ isActive }) =>
-                `nav-item px-3 py-2 text-sm ${isActive ? 'nav-item-active' : ''}`
-              }
-            >
-              {item.to === '/threads'
-                ? 'Thread / Turn'
-                : item.to === '/worktrees'
-                  ? '缓存 / Worktree'
-                  : t(locale, item.label)}
-            </NavLink>
+        <nav className="grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 lg:grid-cols-1">
+          {navigation.map((group) => (
+            <div key={group.label}>
+              <div className="muted mb-1 px-3 text-[11px] font-semibold tracking-[0.12em] uppercase">
+                {group.label}
+              </div>
+              <div className="grid gap-1">
+                {group.items.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.to === '/'}
+                    className={({ isActive }) =>
+                      `nav-item px-3 py-2 text-sm ${isActive ? 'nav-item-active' : ''}`
+                    }
+                  >
+                    {item.label}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
         <div className="muted mt-8 text-xs">{me.data?.username}</div>
@@ -224,7 +242,7 @@ function Dashboard() {
               {resource}
             </div>
             <div className="mt-3 text-4xl font-semibold tracking-[-0.05em]">
-              {queries[index].data?.items.length ?? '—'}
+              {queries[index].data?.items?.length ?? '—'}
             </div>
           </div>
         ))}

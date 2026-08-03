@@ -6,11 +6,8 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/slovx2/tyrs-hand/internal/auth"
-	"github.com/slovx2/tyrs-hand/internal/codex"
-	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/database"
-	"github.com/slovx2/tyrs-hand/internal/devcontainer"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
 	"github.com/slovx2/tyrs-hand/internal/githubtools"
@@ -20,7 +17,6 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/secrets"
 	"github.com/slovx2/tyrs-hand/internal/security"
 	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
-	"github.com/slovx2/tyrs-hand/internal/worker"
 	"go.uber.org/zap"
 )
 
@@ -28,14 +24,6 @@ type ServerApp struct {
 	API    *httpapi.Server
 	DB     *sql.DB
 	Redis  *redis.Client
-	Logger *zap.Logger
-}
-
-type WorkerApp struct {
-	Runner *worker.Runner
-	DB     *sql.DB
-	Redis  *redis.Client
-	Pool   *codex.Pool
 	Logger *zap.Logger
 }
 
@@ -95,33 +83,12 @@ func provideWorkspace(cfg config.Config) *gitworkspace.Manager {
 	return gitworkspace.NewManager(cfg.RepoCacheRoot, cfg.WorktreeRoot)
 }
 
-func provideControl(cfg config.Config) *worker.ControlClient {
-	return worker.NewControlClient(cfg.InternalServerURL, cfg.ToolTimeout)
-}
-
-func provideControlRepository(cfg config.Config, db *sql.DB) *codexcontrol.Repository {
-	return codexcontrol.NewRepository(db, cfg.LeaseDuration, cfg.CodexMaxSteersPerTurn,
-		cfg.CodexReconcileMaxAttempts)
-}
-
-func providePool(ctx context.Context, cfg config.Config, logger *zap.Logger) (*codex.Pool, func(), error) {
-	if err := codex.ValidateVersion(ctx, cfg.CodexBin); err != nil {
-		return nil, nil, err
-	}
-	pool := codex.NewPool(codex.PoolOptions{Bin: cfg.CodexBin, RequestTimeout: cfg.ControlTimeout, ToolTimeout: cfg.ToolTimeout, Logger: logger})
-	return pool, func() { _ = pool.Close() }, nil
-}
-
-func provideDevelopmentContainers(cfg config.Config, db *sql.DB, logger *zap.Logger) (*devcontainer.Manager, error) {
-	return devcontainer.NewManager(cfg, db, logger)
-}
-
-func provideSettings(db *sql.DB, store *secrets.Store) *platformsettings.Service {
-	return platformsettings.NewService(db, store)
+func provideSettings(db *sql.DB) *platformsettings.Service {
+	return platformsettings.NewService(db)
 }
 
 func provideDiscordManager(cfg config.Config, db *sql.DB, store *secrets.Store) *discordintegration.Manager {
-	return discordintegration.NewManager(db, store, cfg.DevelopmentImage)
+	return discordintegration.NewManager(db, store)
 }
 
 func provideConversationService(cfg config.Config, db *sql.DB) *discordintegration.ConversationService {

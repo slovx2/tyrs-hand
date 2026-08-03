@@ -19,7 +19,7 @@ func (s *Server) workerRecordThreadMetadata(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
-	if request.EnvironmentID == uuid.Nil || request.Generation <= 0 || len(request.Events) == 0 {
+	if request.WorkspaceID == uuid.Nil || request.Generation <= 0 || len(request.Events) == 0 {
 		badRequest(c, errors.New("thread metadata 请求无效"))
 		return
 	}
@@ -34,7 +34,7 @@ func (s *Server) workerRecordThreadMetadata(c *gin.Context) {
 			badRequest(c, errors.New("thread metadata event 无效"))
 			return
 		}
-		if err := s.lockThreadMetadataConversation(c, tx, request.EnvironmentID,
+		if err := s.lockThreadMetadataConversation(c, tx, request.WorkspaceID,
 			event.ThreadID); err != nil {
 			problem(c, http.StatusInternalServerError, "锁定 Thread Conversation 失败", err)
 			return
@@ -92,16 +92,16 @@ func (s *Server) workerRecordThreadMetadata(c *gin.Context) {
 			desired_thread_name_revision = desired_thread_name_revision + 1,
 			thread_name_last_error = NULL, app_server_event_generation = $5,
 			app_server_event_sequence = $6, updated_at = now()
-			FROM discord_development_environments environment
-			WHERE control.development_environment_id = environment.id
+			FROM worker_workspaces environment
+			WHERE control.workspace_id = environment.id
 				AND control.external_thread_id = $3
-				AND control.development_environment_id = $1
-				AND environment.execution_node_id = $2
+				AND control.workspace_id = $1
+				AND environment.worker_id = $2
 				AND ($5 > control.app_server_event_generation OR
 					($5 = control.app_server_event_generation
 						AND $6 > control.app_server_event_sequence))
 			RETURNING control.id, control.discord_conversation_id::text,
-				control.desired_thread_name_revision`, request.EnvironmentID, workerNode(c).ID,
+				control.desired_thread_name_revision`, request.WorkspaceID, currentWorker(c).ID,
 			event.ThreadID, name, request.Generation, event.Sequence).
 			Scan(&controlID, &conversationID, &revision)
 		if errors.Is(err, sql.ErrNoRows) {
@@ -111,7 +111,7 @@ func (s *Server) workerRecordThreadMetadata(c *gin.Context) {
 			problem(c, http.StatusInternalServerError, "记录 Thread metadata 失败", err)
 			return
 		}
-		_, err = tx.ExecContext(c.Request.Context(), `UPDATE development_sessions session SET
+		_, err = tx.ExecContext(c.Request.Context(), `UPDATE workspace_sessions session SET
 			title=$2, updated_at=now()
 			FROM codex_thread_controls control
 			WHERE control.id=$1 AND session.id=control.session_id`, controlID, name)
@@ -142,15 +142,15 @@ func (s *Server) workerRecordThreadMetadata(c *gin.Context) {
 }
 
 func (s *Server) lockThreadMetadataConversation(c *gin.Context, tx *sql.Tx,
-	environmentID uuid.UUID, threadID string,
+	workspaceID uuid.UUID, threadID string,
 ) error {
 	var conversationID sql.NullString
 	err := tx.QueryRowContext(c.Request.Context(), `SELECT control.discord_conversation_id::text
-		FROM codex_thread_controls control JOIN discord_development_environments environment
-			ON environment.id = control.development_environment_id
-		WHERE control.development_environment_id = $1 AND control.external_thread_id = $2
-			AND environment.execution_node_id = $3`, environmentID, threadID,
-		workerNode(c).ID).Scan(&conversationID)
+		FROM codex_thread_controls control JOIN worker_workspaces environment
+			ON environment.id = control.workspace_id
+		WHERE control.workspace_id = $1 AND control.external_thread_id = $2
+			AND environment.worker_id = $3`, workspaceID, threadID,
+		currentWorker(c).ID).Scan(&conversationID)
 	if errors.Is(err, sql.ErrNoRows) || !conversationID.Valid {
 		return nil
 	}
@@ -206,17 +206,17 @@ func (s *Server) recordThreadSettingsEvent(c *gin.Context, tx *sql.Tx,
 			ELSE COALESCE(NULLIF($11,0), applied_settings_revision) END,
 		settings_applied_at = now(), runtime_preferences_frozen_at = now(),
 		app_server_settings_generation = $7, app_server_settings_sequence = $8, updated_at = now()
-		FROM discord_development_environments environment
-		WHERE control.development_environment_id = environment.id
+		FROM worker_workspaces environment
+		WHERE control.workspace_id = environment.id
 			AND control.external_thread_id = $3
-			AND control.development_environment_id = $1
-			AND environment.execution_node_id = $2
+			AND control.workspace_id = $1
+			AND environment.worker_id = $2
 			AND ($7 > control.app_server_settings_generation OR
 				($7 = control.app_server_settings_generation
 					AND $8 > control.app_server_settings_sequence))
 		RETURNING control.id, control.discord_conversation_id::text, control.settings_revision`,
-		request.EnvironmentID,
-		workerNode(c).ID, event.ThreadID, event.Model, event.ReasoningEffort,
+		request.WorkspaceID,
+		currentWorker(c).ID, event.ThreadID, event.Model, event.ReasoningEffort,
 		desiredTier, request.Generation, event.Sequence, event.CollaborationMode,
 		desktop, event.SettingsRevision, appliedTier).
 		Scan(&controlID, &conversationID, &settingsRevision)
@@ -227,7 +227,7 @@ func (s *Server) recordThreadSettingsEvent(c *gin.Context, tx *sql.Tx,
 		return err
 	}
 	if desktop {
-		_, err = tx.ExecContext(c.Request.Context(), `UPDATE development_sessions session SET
+		_, err = tx.ExecContext(c.Request.Context(), `UPDATE workspace_sessions session SET
 			model=COALESCE(NULLIF($2,''),session.model),
 			reasoning_effort=CASE WHEN $2<>'' THEN NULLIF($3,'') ELSE session.reasoning_effort END,
 			service_tier=CASE WHEN $2<>'' THEN $4 ELSE session.service_tier END,
@@ -271,16 +271,16 @@ func (s *Server) recordThreadLifecycleEvent(c *gin.Context, tx *sql.Tx,
 		app_server_lifecycle_generation = $5,
 		app_server_lifecycle_sequence = $6,
 		updated_at = now()
-		FROM discord_development_environments environment
-		WHERE control.development_environment_id = environment.id
+		FROM worker_workspaces environment
+		WHERE control.workspace_id = environment.id
 			AND control.external_thread_id = $3
-			AND control.development_environment_id = $1
-			AND environment.execution_node_id = $2
+			AND control.workspace_id = $1
+			AND environment.worker_id = $2
 			AND ($5 > control.app_server_lifecycle_generation OR
 				($5 = control.app_server_lifecycle_generation
 					AND $6 > control.app_server_lifecycle_sequence))
 		RETURNING control.id, control.discord_conversation_id::text,
-			control.lifecycle_revision`, request.EnvironmentID, workerNode(c).ID,
+			control.lifecycle_revision`, request.WorkspaceID, currentWorker(c).ID,
 		event.ThreadID, event.LifecycleState, request.Generation, event.Sequence).
 		Scan(&controlID, &conversationID, &revision)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -290,7 +290,7 @@ func (s *Server) recordThreadLifecycleEvent(c *gin.Context, tx *sql.Tx,
 		return err
 	}
 	var sessionID uuid.UUID
-	err = tx.QueryRowContext(c.Request.Context(), `UPDATE development_sessions session SET
+	err = tx.QueryRowContext(c.Request.Context(), `UPDATE workspace_sessions session SET
 		lifecycle_state=$2, updated_at=now()
 		FROM codex_thread_controls control
 		WHERE control.id=$1 AND session.id=control.session_id
@@ -305,7 +305,7 @@ func (s *Server) recordThreadLifecycleEvent(c *gin.Context, tx *sql.Tx,
 	if err == nil {
 		var snapshot clientSession
 		snapshot, err = scanClientSession(tx.QueryRowContext(c.Request.Context(), `SELECT `+
-			clientSessionColumns+` FROM development_sessions WHERE id=$1`, sessionID))
+			clientSessionColumns+` FROM workspace_sessions WHERE id=$1`, sessionID))
 		if err == nil {
 			_, err = insertClientUpdate(c.Request.Context(), tx, &sessionID,
 				"session.lifecycle", "session", sessionID.String(), nil, &revision, snapshot)
@@ -343,17 +343,17 @@ func (s *Server) recordThreadLifecycleEvent(c *gin.Context, tx *sql.Tx,
 
 func (s *Server) workerPendingThreadNames(c *gin.Context) {
 	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT control.id,
-		control.development_environment_id, control.external_thread_id,
+		control.workspace_id, control.external_thread_id,
 		control.desired_thread_name, control.desired_thread_name_revision
 		FROM codex_thread_controls control
-		JOIN discord_development_environments environment
-			ON environment.id = control.development_environment_id
+		JOIN worker_workspaces workspace
+			ON workspace.id = control.workspace_id
 		JOIN discord_conversations conversation ON conversation.id = control.discord_conversation_id
-		WHERE environment.execution_node_id = $1
-			AND control.desired_thread_name_source = 'luna'
+		WHERE workspace.worker_id = $1
+			AND control.desired_thread_name_source = 'fallback'
 			AND control.desired_thread_name_revision > control.applied_thread_name_revision
 			AND control.external_thread_id IS NOT NULL
-		ORDER BY control.updated_at, control.id`, workerNode(c).ID)
+		ORDER BY control.updated_at, control.id`, currentWorker(c).ID)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取待应用 Thread 标题失败", err)
 		return
@@ -362,7 +362,7 @@ func (s *Server) workerPendingThreadNames(c *gin.Context) {
 	result := make([]workerprotocol.ThreadNameUpdate, 0)
 	for rows.Next() {
 		var item workerprotocol.ThreadNameUpdate
-		if err := rows.Scan(&item.ControlID, &item.EnvironmentID, &item.ThreadID,
+		if err := rows.Scan(&item.ControlID, &item.WorkspaceID, &item.ThreadID,
 			&item.Name, &item.Revision); err != nil {
 			problem(c, http.StatusInternalServerError, "读取待应用 Thread 标题失败", err)
 			return
@@ -387,7 +387,7 @@ func (s *Server) workerAckThreadName(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
-	if request.EnvironmentID == uuid.Nil || request.Revision <= 0 {
+	if request.WorkspaceID == uuid.Nil || request.Revision <= 0 {
 		badRequest(c, errors.New("thread name ack 无效"))
 		return
 	}
@@ -395,21 +395,21 @@ func (s *Server) workerAckThreadName(c *gin.Context) {
 		_, err = s.db.ExecContext(c.Request.Context(), `UPDATE codex_thread_controls control SET
 			applied_thread_name = desired_thread_name,
 			applied_thread_name_revision = $4, thread_name_last_error = NULL, updated_at = now()
-			FROM discord_development_environments environment
-			WHERE control.id = $1 AND control.development_environment_id = $2
-				AND environment.id = control.development_environment_id
-				AND environment.execution_node_id = $3
+			FROM worker_workspaces environment
+			WHERE control.id = $1 AND control.workspace_id = $2
+				AND environment.id = control.workspace_id
+				AND environment.worker_id = $3
 				AND control.desired_thread_name_revision = $4`,
-			controlID, request.EnvironmentID, workerNode(c).ID, request.Revision)
+			controlID, request.WorkspaceID, currentWorker(c).ID, request.Revision)
 	} else {
 		_, err = s.db.ExecContext(c.Request.Context(), `UPDATE codex_thread_controls control SET
 			thread_name_last_error = $4, updated_at = now()
-			FROM discord_development_environments environment
-			WHERE control.id = $1 AND control.development_environment_id = $2
-				AND environment.id = control.development_environment_id
-				AND environment.execution_node_id = $3
+			FROM worker_workspaces environment
+			WHERE control.id = $1 AND control.workspace_id = $2
+				AND environment.id = control.workspace_id
+				AND environment.worker_id = $3
 				AND control.desired_thread_name_revision = $5`,
-			controlID, request.EnvironmentID, workerNode(c).ID,
+			controlID, request.WorkspaceID, currentWorker(c).ID,
 			safeDesktopFailure(request.Error), request.Revision)
 	}
 	if err != nil {

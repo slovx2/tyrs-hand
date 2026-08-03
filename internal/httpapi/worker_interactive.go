@@ -37,36 +37,13 @@ type interactiveOption struct {
 	Description string `json:"description"`
 }
 
-func (s *Server) workerInterruptEnvironmentInteractive(c *gin.Context) {
-	environmentID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		badRequest(c, err)
-		return
-	}
-	result, err := s.db.ExecContext(c.Request.Context(), `UPDATE codex_interactive_requests q
-		SET status='interrupted', resolved_at=now(), updated_at=now()
-		FROM codex_thread_controls ct WHERE q.control_id=ct.id AND q.status='pending'
-		AND ct.development_environment_id=$1 AND ct.execution_node_id=$2`, environmentID,
-		workerNode(c).ID)
-	if err != nil {
-		problem(c, http.StatusInternalServerError, "中断环境交互请求失败", err)
-		return
-	}
-	count, _ := result.RowsAffected()
-	if count > 0 && s.logger != nil {
-		s.logger.Warn("app-server 重启中断了待回答请求", zap.String("environment_id",
-			environmentID.String()), zap.Int64("request_count", count))
-	}
-	c.Status(http.StatusNoContent)
-}
-
 func (s *Server) workerRegisterInteractive(c *gin.Context) {
 	var request workerprotocol.InteractiveRegisterRequest
-	runID, node, ok := requireRunLease(c, &request)
+	runID, worker, ok := requireRunLease(c, &request)
 	if !ok {
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), node.ID, runID,
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID,
 		request.RunLeaseRequest)
 	if err != nil {
 		remoteRunError(c, "校验交互请求所属 Run 失败", err)
@@ -142,7 +119,7 @@ func (s *Server) workerRegisterInteractive(c *gin.Context) {
 				SELECT session.created_by_administrator_id,session.id,'interactive.required',$2,
 				'Tyrs Hand','任务需要你的回答',jsonb_build_object(
 				'serverId',instance.id,'sessionId',session.id)
-				FROM development_sessions session CROSS JOIN control_instances instance
+				FROM workspace_sessions session CROSS JOIN control_instances instance
 				WHERE session.id=$1 AND session.created_by_administrator_id IS NOT NULL
 				ON CONFLICT(idempotency_key) DO NOTHING`, claimed.SessionID,
 				"interactive:"+id.String())
@@ -157,7 +134,7 @@ func (s *Server) workerRegisterInteractive(c *gin.Context) {
 		return
 	}
 	s.projectInteractiveBestEffort(c.Request.Context(), id)
-	state, err := s.loadInteractiveState(c.Request.Context(), id, node.ID)
+	state, err := s.loadInteractiveState(c.Request.Context(), id, worker.ID)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取交互请求状态失败", err)
 		return
@@ -172,17 +149,17 @@ func (s *Server) workerInteractiveState(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
-	if err := s.expireInteractive(c.Request.Context(), id, workerNode(c).ID); err != nil {
+	if err := s.expireInteractive(c.Request.Context(), id, currentWorker(c).ID); err != nil {
 		problem(c, http.StatusInternalServerError, "更新交互请求超时状态失败", err)
 		return
 	}
-	state, err := s.loadInteractiveState(c.Request.Context(), id, workerNode(c).ID)
+	state, err := s.loadInteractiveState(c.Request.Context(), id, currentWorker(c).ID)
 	if err != nil {
 		remoteRunError(c, "读取交互请求失败", err)
 		return
 	}
 	if state.Status == "resolved" || state.Status == "expired" {
-		state.Ready, err = s.tryResumeInteractive(c.Request.Context(), id, workerNode(c).ID)
+		state.Ready, err = s.tryResumeInteractive(c.Request.Context(), id, currentWorker(c).ID)
 		if err != nil {
 			problem(c, http.StatusInternalServerError, "恢复交互请求调度槽失败", err)
 			return
@@ -200,14 +177,14 @@ func (s *Server) workerAnswerInteractive(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
-	if request.EnvironmentID == uuid.Nil || strings.TrimSpace(request.ThreadID) == "" ||
+	if request.WorkspaceID == uuid.Nil || strings.TrimSpace(request.ThreadID) == "" ||
 		strings.TrimSpace(request.TurnID) == "" || strings.TrimSpace(request.ItemID) == "" ||
 		(request.Surface != "desktop" && request.Surface != "discord" && request.Surface != "auto") ||
 		!validInteractiveAnswer(request.Answer) {
 		badRequest(c, errors.New("交互回答参数无效"))
 		return
 	}
-	node := workerNode(c)
+	worker := currentWorker(c)
 	tx, err := s.db.BeginTx(c.Request.Context(), nil)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "提交交互回答失败", err)
@@ -221,9 +198,9 @@ func (s *Server) workerAnswerInteractive(c *gin.Context) {
 		FROM codex_interactive_requests q
 		JOIN codex_thread_controls ct ON ct.id=q.control_id
 		WHERE q.thread_id=$1 AND q.turn_id=$2 AND q.item_id=$3
-		AND ct.development_environment_id=$4 AND ct.execution_node_id=$5
+		AND ct.workspace_id=$4 AND ct.worker_id=$5
 		FOR UPDATE OF q`, request.ThreadID, request.TurnID, request.ItemID,
-		request.EnvironmentID, node.ID).Scan(&id, &status, &questions)
+		request.WorkspaceID, worker.ID).Scan(&id, &status, &questions)
 	if err != nil {
 		remoteRunError(c, "交互请求不存在", err)
 		return
@@ -267,14 +244,14 @@ func (s *Server) workerAnswerInteractive(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "提交交互回答失败", err)
 		return
 	}
-	state, err := s.loadInteractiveState(c.Request.Context(), id, node.ID)
+	state, err := s.loadInteractiveState(c.Request.Context(), id, worker.ID)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取交互回答结果失败", err)
 		return
 	}
 	state.Accepted = accepted
 	if state.Status == "resolved" || state.Status == "expired" {
-		state.Ready, err = s.tryResumeInteractive(c.Request.Context(), id, node.ID)
+		state.Ready, err = s.tryResumeInteractive(c.Request.Context(), id, worker.ID)
 		if err != nil {
 			problem(c, http.StatusInternalServerError, "恢复交互回答调度槽失败", err)
 			return
@@ -330,7 +307,7 @@ func interactiveQuestionsSecret(raw json.RawMessage) bool {
 	return false
 }
 
-func (s *Server) loadInteractiveState(ctx context.Context, id, nodeID uuid.UUID) (workerprotocol.InteractiveState, error) {
+func (s *Server) loadInteractiveState(ctx context.Context, id, workerID uuid.UUID) (workerprotocol.InteractiveState, error) {
 	var state workerprotocol.InteractiveState
 	var answer json.RawMessage
 	var secretID sql.NullString
@@ -339,7 +316,7 @@ func (s *Server) loadInteractiveState(ctx context.Context, id, nodeID uuid.UUID)
 		COALESCE(q.answer,'null'::jsonb), q.answer_secret_id::text, q.deadline_at,
 		COALESCE(q.answer_surface,''), COALESCE(r.active_slot=1,false)
 		FROM codex_interactive_requests q JOIN codex_turn_runs r ON r.id=q.run_id
-		WHERE q.id=$1 AND r.execution_node_id=$2`, id, nodeID).Scan(&state.ID, &state.Status,
+		WHERE q.id=$1 AND r.worker_id=$2`, id, workerID).Scan(&state.ID, &state.Status,
 		&state.Questions, &answer, &secretID, &deadline, &state.Surface, &state.Ready)
 	if err != nil {
 		return workerprotocol.InteractiveState{}, err
@@ -363,16 +340,16 @@ func (s *Server) loadInteractiveState(ctx context.Context, id, nodeID uuid.UUID)
 	return state, nil
 }
 
-func (s *Server) expireInteractive(ctx context.Context, id, nodeID uuid.UUID) error {
+func (s *Server) expireInteractive(ctx context.Context, id, workerID uuid.UUID) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE codex_interactive_requests q SET
 		status='expired', answer='{"answers":{}}'::jsonb, answer_surface='auto',
 		resolved_at=now(), updated_at=now()
-		FROM codex_turn_runs r WHERE q.id=$1 AND q.run_id=r.id AND r.execution_node_id=$2
-		AND q.status='pending' AND q.deadline_at IS NOT NULL AND q.deadline_at <= now()`, id, nodeID)
+		FROM codex_turn_runs r WHERE q.id=$1 AND q.run_id=r.id AND r.worker_id=$2
+		AND q.status='pending' AND q.deadline_at IS NOT NULL AND q.deadline_at <= now()`, id, workerID)
 	return err
 }
 
-func (s *Server) tryResumeInteractive(ctx context.Context, id, nodeID uuid.UUID) (bool, error) {
+func (s *Server) tryResumeInteractive(ctx context.Context, id, workerID uuid.UUID) (bool, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
@@ -384,8 +361,8 @@ func (s *Server) tryResumeInteractive(ctx context.Context, id, nodeID uuid.UUID)
 	var maxJobs int
 	err = tx.QueryRowContext(ctx, `SELECT q.run_id, q.control_id, r.primary_intent_id,
 		q.status, r.active_slot, n.max_concurrent_jobs FROM codex_interactive_requests q
-		JOIN codex_turn_runs r ON r.id=q.run_id JOIN execution_nodes n ON n.id=r.execution_node_id
-		WHERE q.id=$1 AND r.execution_node_id=$2 FOR UPDATE OF q,r,n`, id, nodeID).
+		JOIN codex_turn_runs r ON r.id=q.run_id JOIN workers n ON n.id=r.worker_id
+		WHERE q.id=$1 AND r.worker_id=$2 FOR UPDATE OF q,r,n`, id, workerID).
 		Scan(&runID, &controlID, &intentID, &status, &activeSlot, &maxJobs)
 	if err != nil {
 		return false, err
@@ -397,10 +374,8 @@ func (s *Server) tryResumeInteractive(ctx context.Context, id, nodeID uuid.UUID)
 		return true, tx.Commit()
 	}
 	var active int
-	if err := tx.QueryRowContext(ctx, `SELECT
-		(SELECT count(*) FROM codex_turn_runs WHERE execution_node_id=$1 AND active_slot=1) +
-		(SELECT count(*) FROM discord_development_operations WHERE execution_node_id=$1
-		 AND status='running' AND lease_expires_at >= now())`, nodeID).Scan(&active); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_runs
+		WHERE worker_id=$1 AND active_slot=1`, workerID).Scan(&active); err != nil {
 		return false, err
 	}
 	if active >= maxJobs {

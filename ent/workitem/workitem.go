@@ -38,8 +38,8 @@ const (
 	FieldHeadRepository = "head_repository"
 	// FieldHTMLURL holds the string denoting the html_url field in the database.
 	FieldHTMLURL = "html_url"
-	// FieldExecutionNodeID holds the string denoting the execution_node_id field in the database.
-	FieldExecutionNodeID = "execution_node_id"
+	// FieldWorkerID holds the string denoting the worker_id field in the database.
+	FieldWorkerID = "worker_id"
 	// FieldClosedAt holds the string denoting the closed_at field in the database.
 	FieldClosedAt = "closed_at"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -65,7 +65,7 @@ var Columns = []string{
 	FieldHeadRef,
 	FieldHeadRepository,
 	FieldHTMLURL,
-	FieldExecutionNodeID,
+	FieldWorkerID,
 	FieldClosedAt,
 	FieldCreatedAt,
 	FieldUpdatedAt,
@@ -166,9 +166,9 @@ func ByHTMLURL(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldHTMLURL, opts...).ToFunc()
 }
 
-// ByExecutionNodeID orders the results by the execution_node_id field.
-func ByExecutionNodeID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldExecutionNodeID, opts...).ToFunc()
+// ByWorkerID orders the results by the worker_id field.
+func ByWorkerID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWorkerID, opts...).ToFunc()
 }
 
 // ByClosedAt orders the results by the closed_at field.

@@ -50,8 +50,8 @@ func TestFetchPreservesCodexPagesAndOpaqueCapabilities(t *testing.T) {
 }
 
 func TestModelsPreserveNativeCapabilities(t *testing.T) {
-	environmentID := uuid.New()
-	catalogs := map[uuid.UUID]json.RawMessage{environmentID: json.RawMessage(`{"data":[
+	workspaceID := uuid.New()
+	catalogs := map[uuid.UUID]json.RawMessage{workspaceID: json.RawMessage(`{"data":[
 		{"id":"standard","supportedReasoningEfforts":[],"defaultReasoningEffort":"low"},
 		{"id":"fast","supportedReasoningEfforts":[],"defaultReasoningEffort":"low",
 		 "serviceTiers":[{"id":"priority"}],"additionalSpeedTiers":["fast"]}]}`)}

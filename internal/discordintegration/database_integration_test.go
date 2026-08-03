@@ -30,7 +30,6 @@ import (
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
 	"github.com/slovx2/tyrs-hand/internal/secrets"
 	"github.com/slovx2/tyrs-hand/internal/security"
-	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -49,7 +48,7 @@ func TestConversationModeSwitching(t *testing.T) {
 	_, err = service.ConversationMode(ctx, testGuildID, "100000000000000499", "1001")
 	require.ErrorContains(t, err, "不是 Codex 会话 Post")
 	conversationID, err := service.BeginPost(ctx, IncomingMessage{
-		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
+		GuildID: testGuildID, ForumID: seed.workspaceForumChannelID,
 		ThreadID: "100000000000000401", MessageID: "100000000000000402",
 		DiscordUserID: "1001", DisplayName: "Alice", Username: "alice",
 		Title: "Plan mode", Body: "先规划", ConfigurationConfirmed: false,
@@ -104,13 +103,13 @@ func TestConversationModeSwitching(t *testing.T) {
 
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_forum_access
 		(forum_id, discord_user_id, access_level) VALUES ($1, '1002', 'readonly')`,
-		seed.developmentForumID)
+		seed.workspaceForumID)
 	require.NoError(t, err)
 	_, err = service.ConversationMode(ctx, testGuildID, "100000000000000401", "1002")
 	require.ErrorContains(t, err, "Post 创建者")
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_forum_access
 		(forum_id, discord_user_id, access_level) VALUES ($1, '1003', 'operator')`,
-		seed.developmentForumID)
+		seed.workspaceForumID)
 	require.NoError(t, err)
 	_, err = service.ConversationMode(ctx, testGuildID, "100000000000000401", "1003")
 	require.ErrorContains(t, err, "Post 创建者")
@@ -128,7 +127,7 @@ func TestConversationModeSwitching(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "default", update.State.Mode)
 	operatorConversationID, err := service.BeginPost(ctx, IncomingMessage{
-		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
+		GuildID: testGuildID, ForumID: seed.workspaceForumChannelID,
 		ThreadID: "100000000000000405", MessageID: "100000000000000406",
 		DiscordUserID: "1003", DisplayName: "Operator", Username: "operator",
 		Title: "Operator post", Body: "由 operator 创建", ConfigurationConfirmed: false,
@@ -182,7 +181,7 @@ func TestDiscordDiscussionTriggerBatchesPendingMessages(t *testing.T) {
 	seed := seedDiscordManagerData(t, db)
 	service := NewConversationService(db)
 	conversationID, err := service.BeginPost(ctx, IncomingMessage{
-		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
+		GuildID: testGuildID, ForumID: seed.workspaceForumChannelID,
 		ThreadID: "100000000000000451", MessageID: "100000000000000452",
 		DiscordUserID: "1001", DisplayName: "Alice", Username: "alice",
 		Title: "Discussion", Body: "初始任务", ConfigurationConfirmed: true,
@@ -326,7 +325,7 @@ func TestDiscordDiscussionFollowupConsumesActionablePlanWithoutMention(t *testin
 	seed := seedDiscordManagerData(t, db)
 	service := NewConversationService(db)
 	conversationID, err := service.BeginPost(ctx, IncomingMessage{
-		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
+		GuildID: testGuildID, ForumID: seed.workspaceForumChannelID,
 		ThreadID: "100000000000000461", MessageID: "100000000000000462",
 		DiscordUserID: "1001", DisplayName: "Alice", Username: "alice",
 		Title: "Discussion plan", Body: "先给计划", ConfigurationConfirmed: true,
@@ -366,7 +365,7 @@ func TestDiscordMessageEditReservesLatestTurnAndFreezesDiscussion(t *testing.T) 
 	seed := seedDiscordManagerData(t, db)
 	service := NewConversationService(db)
 	conversationID, err := service.BeginPost(ctx, IncomingMessage{
-		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
+		GuildID: testGuildID, ForumID: seed.workspaceForumChannelID,
 		ThreadID: "100000000000000471", MessageID: "100000000000000472",
 		DiscordUserID: "1001", DisplayName: "Alice", Username: "alice",
 		Title: "Editable", Body: "原始请求", ConfigurationConfirmed: true,
@@ -384,11 +383,11 @@ func TestDiscordMessageEditReservesLatestTurnAndFreezesDiscussion(t *testing.T) 
 	desktopIntentID := uuid.New()
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_intents
 		(id,control_id,sequence_no,operation,behavior,resolved_action,source_type,input_surface,
-		 discord_conversation_id,session_id,development_project_id,agent_profile_id,idempotency_key,
+		 discord_conversation_id,session_id,workspace_project_id,agent_profile_id,idempotency_key,
 		 instruction,status,confirmed_codex_turn_id,confirmed_at,finished_at,reply_status,
 		 result_delivery_status,projection_anchor)
-		SELECT $1,control_id,2,'turn_input','steer_if_active','steer','development_session',
-		'desktop',discord_conversation_id,session_id,development_project_id,agent_profile_id,$2,$3,
+		SELECT $1,control_id,2,'turn_input','steer_if_active','steer','workspace_session',
+		'desktop',discord_conversation_id,session_id,workspace_project_id,agent_profile_id,$2,$3,
 		'completed','turn-original',now(),now(),'skipped','delivered','desktop-replay-anchor'
 		FROM codex_turn_intents WHERE discord_message_id='100000000000000472'`,
 		desktopIntentID, "message-edit-desktop-replay", "Desktop 中间补充")
@@ -398,7 +397,7 @@ func TestDiscordMessageEditReservesLatestTurnAndFreezesDiscussion(t *testing.T) 
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_forum_access
 		(forum_id,discord_user_id,access_level) VALUES ($1,'1003','operator')`,
-		seed.developmentForumID)
+		seed.workspaceForumID)
 	require.NoError(t, err)
 	require.NoError(t, service.Reply(ctx, IncomingMessage{
 		GuildID: testGuildID, ThreadID: "100000000000000471",
@@ -473,21 +472,21 @@ func TestDiscordStartupPreferencesCrossForumAndMemberJoin(t *testing.T) {
 	require.NoError(t, err)
 	seed := seedDiscordManagerData(t, db)
 	secondForumChannelID := "100000000000000512"
-	secondResource := insertDiscordResource(t, db, "forum.development.preferences",
+	secondResource := insertDiscordResource(t, db, "forum.workspace.preferences",
 		secondForumChannelID, "forum", "preferences", seed.codexCategoryID)
 	var secondProjectID uuid.UUID
-	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO development_projects
-		(environment_id, relative_path, name, project_kind, availability_status,
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO workspace_projects
+		(workspace_id, relative_path, name, project_kind, availability_status,
 		 branch, head_sha, dirty, remote_url, last_seen_at)
 		VALUES ($1,'workspaces/second','second','git','available','main','seed-head',false,
-		 'https://example.invalid/second.git',now()) RETURNING id`, seed.environmentID).
+		 'https://example.invalid/second.git',now()) RETURNING id`, seed.workspaceID).
 		Scan(&secondProjectID))
 	var secondForumID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_forums
 		(guild_id, resource_id, forum_type, owner_discord_user_id,
-		 development_project_id, development_environment_id)
-		VALUES ($1,$2,'development','1001',$3,$4) RETURNING id`, testGuildID,
-		secondResource, secondProjectID, seed.environmentID).Scan(&secondForumID))
+		 workspace_project_id, workspace_id)
+		VALUES ($1,$2,'workspace','1001',$3,$4) RETURNING id`, testGuildID,
+		secondResource, secondProjectID, seed.workspaceID).Scan(&secondForumID))
 	require.NoError(t, func() error {
 		_, insertErr := db.ExecContext(ctx, `INSERT INTO discord_forum_access
 			(forum_id, discord_user_id, access_level) VALUES
@@ -497,7 +496,7 @@ func TestDiscordStartupPreferencesCrossForumAndMemberJoin(t *testing.T) {
 	service := NewConversationService(db)
 
 	firstID, err := service.BeginPost(ctx, IncomingMessage{
-		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
+		GuildID: testGuildID, ForumID: seed.workspaceForumChannelID,
 		ThreadID: "100000000000000513", MessageID: "100000000000000514",
 		DiscordUserID: "1001", DisplayName: "Alice", Username: "alice",
 		Title: "remember A", Body: "first",
@@ -550,7 +549,7 @@ func TestDiscordStartupPreferencesCrossForumAndMemberJoin(t *testing.T) {
 	require.NoError(t, err)
 
 	thirdID, err := service.BeginPost(ctx, IncomingMessage{
-		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
+		GuildID: testGuildID, ForumID: seed.workspaceForumChannelID,
 		ThreadID: "100000000000000517", MessageID: "100000000000000518",
 		DiscordUserID: "1001", DisplayName: "Alice", Username: "alice",
 		Title: "still A", Body: "third",
@@ -591,7 +590,7 @@ func TestRefreshAllProjectionsDoesNotRequeueRunningTag(t *testing.T) {
 	seed := seedDiscordManagerData(t, db)
 	service := NewConversationService(db)
 	conversationID, err := service.BeginPost(ctx, IncomingMessage{
-		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
+		GuildID: testGuildID, ForumID: seed.workspaceForumChannelID,
 		ThreadID: "100000000000000521", MessageID: "100000000000000522",
 		DiscordUserID: "1001", DisplayName: "Alice", Username: "alice",
 		Title: "Running tag refresh", Body: "等待配置", ConfigurationConfirmed: false,
@@ -621,7 +620,7 @@ func TestConversationReplyRegeneratingUpdatesFirstPageAndDeletesOverflow(t *test
 	seed := seedDiscordManagerData(t, db)
 	service := NewConversationService(db)
 	conversationID, err := service.BeginPost(ctx, IncomingMessage{
-		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
+		GuildID: testGuildID, ForumID: seed.workspaceForumChannelID,
 		ThreadID: "100000000000000531", MessageID: "100000000000000532",
 		DiscordUserID: "1001", DisplayName: "Alice", Username: "alice",
 		Title: "Reply regeneration", Body: "生成长回复", ConfigurationConfirmed: false,
@@ -670,7 +669,7 @@ func TestConversationStatusSplitsTimelineAndKeepsNaturalCards(t *testing.T) {
 	seed := seedDiscordManagerData(t, db)
 	service := NewConversationService(db)
 	conversationID, err := service.BeginPost(ctx, IncomingMessage{
-		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
+		GuildID: testGuildID, ForumID: seed.workspaceForumChannelID,
 		ThreadID: "100000000000000601", MessageID: "100000000000000602",
 		DiscordUserID: "1001", DisplayName: "Alice", Username: "alice",
 		Title: "Status move", Body: "first", ConfigurationConfirmed: true,
@@ -684,7 +683,7 @@ func TestConversationStatusSplitsTimelineAndKeepsNaturalCards(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT id, control_id FROM codex_turn_intents
 		WHERE discord_message_id='100000000000000602'`).Scan(&intentID, &controlID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_turn_runs
-		(control_id,primary_intent_id,attempt,worker_id,lease_epoch,capability_hash,
+		(control_id,primary_intent_id,attempt,lease_owner,lease_epoch,capability_hash,
 		 active_slot,status,collaboration_mode)
 		VALUES ($1,$2,1,'worker',1,repeat('a',64),1,'running','default') RETURNING id`,
 		controlID, intentID).Scan(&runID))
@@ -849,7 +848,7 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 	require.NoError(t, database.Migrate(ctx, db))
 	box, err := security.NewSecretBox(make([]byte, 32))
 	require.NoError(t, err)
-	manager := NewManager(db, secrets.NewStore(db, box), "tyrs-hand-development:test")
+	manager := NewManager(db, secrets.NewStore(db, box))
 
 	empty, err := manager.Settings(ctx)
 	require.NoError(t, err)
@@ -917,28 +916,28 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 	remoteGuild := RemoteGuild{ID: testGuildID, CommunityEnabled: true, Channels: []RemoteChannel{
 		{ID: seed.codexCategoryID, Name: "Codex 会话 01", Kind: "category"},
 	}}
-	_, err = manager.DevelopmentProjectForumPlan(ctx, remoteGuild,
-		seed.developmentProjectID, "")
+	_, err = manager.WorkspaceProjectForumPlan(ctx, remoteGuild,
+		seed.workspaceProjectID, "")
 	require.Error(t, err, "已有活跃 Forum 时不能再创建新配对")
 	serverPlan, err := manager.ServerInitializationPlan(ctx, remoteGuild, InitializationIncremental)
 	require.NoError(t, err)
 	require.True(t, serverPlan.Preflight.Safe)
 	require.NotEmpty(t, serverPlan.Actions)
-	environments, err := manager.DevelopmentEnvironments(ctx)
+	environments, err := manager.Workspaces(ctx)
 	require.NoError(t, err)
 	require.Len(t, environments, 1)
 	require.Len(t, environments[0].Projects, 1)
-	require.Equal(t, seed.developmentProjectID, environments[0].Projects[0].ID)
+	require.Equal(t, seed.workspaceProjectID, environments[0].Projects[0].ID)
 	require.Len(t, environments[0].Projects[0].Forums, 1)
-	require.NotNil(t, environments[0].ExecutionNodeID)
-	require.Equal(t, seed.executionNodeID, *environments[0].ExecutionNodeID)
-	require.Error(t, manager.SetForumAccess(ctx, seed.developmentForumID, "1002", "admin", seed.administratorID))
-	require.NoError(t, manager.SetForumAccess(ctx, seed.developmentForumID, "1002", AccessReadOnly, seed.administratorID))
-	require.NoError(t, manager.SetForumAccess(ctx, seed.developmentForumID, "1003", AccessOperator, seed.administratorID))
-	require.NoError(t, manager.DeleteForumAccess(ctx, seed.developmentForumID, "1002"))
+	require.NotNil(t, environments[0].WorkerID)
+	require.Equal(t, seed.workerID, *environments[0].WorkerID)
+	require.Error(t, manager.SetForumAccess(ctx, seed.workspaceForumID, "1002", "admin", seed.administratorID))
+	require.NoError(t, manager.SetForumAccess(ctx, seed.workspaceForumID, "1002", AccessReadOnly, seed.administratorID))
+	require.NoError(t, manager.SetForumAccess(ctx, seed.workspaceForumID, "1003", AccessOperator, seed.administratorID))
+	require.NoError(t, manager.DeleteForumAccess(ctx, seed.workspaceForumID, "1002"))
 	var permissionPayload []byte
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT payload FROM integration_outbox
-		WHERE operation_key = $1`, "forum-permissions:"+seed.developmentForumID.String()).Scan(&permissionPayload))
+		WHERE operation_key = $1`, "forum-permissions:"+seed.workspaceForumID.String()).Scan(&permissionPayload))
 	require.Contains(t, string(permissionPayload), "1003")
 
 	daemon := &Daemon{manager: manager, logger: zap.NewNop()}
@@ -996,13 +995,13 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 	testDiscordRecoveryOrchestration(t, ctx, db, manager, seed)
 }
 
-func TestDevelopmentProjectForumLifecycle(t *testing.T) {
+func TestWorkspaceProjectForumLifecycle(t *testing.T) {
 	db := discordDatabase(t)
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))
 	box, err := security.NewSecretBox(make([]byte, 32))
 	require.NoError(t, err)
-	manager := NewManager(db, secrets.NewStore(db, box), "tyrs-hand-development:test")
+	manager := NewManager(db, secrets.NewStore(db, box))
 	require.NoError(t, manager.SaveSettings(ctx, SettingsInput{
 		GuildID: testGuildID, Enabled: true, BotToken: "test-token",
 		ApplicationID: "100000000000000002", BotUserID: testBotID,
@@ -1012,99 +1011,41 @@ func TestDevelopmentProjectForumLifecycle(t *testing.T) {
 		{ID: seed.codexCategoryID, Name: "Codex 会话 01", Kind: "category"},
 	}}
 
-	require.NoError(t, manager.DisableDevelopmentForum(ctx, seed.developmentForumID))
-	plan, err := manager.DevelopmentProjectForumPlan(ctx, remoteGuild,
-		seed.developmentProjectID, "")
+	require.NoError(t, manager.DisableWorkspaceForum(ctx, seed.workspaceForumID))
+	plan, err := manager.WorkspaceProjectForumPlan(ctx, remoteGuild,
+		seed.workspaceProjectID, "")
 	require.NoError(t, err)
 	require.Equal(t, "alice-repo", plan.Preflight.Creates[0])
 	action := plan.Actions[len(plan.Actions)-1]
-	require.Equal(t, "forum.development_project.record", action.Kind)
+	require.Equal(t, "forum.workspace_project.record", action.Kind)
 	newForumID := uuid.MustParse(action.ForumID)
 	insertDiscordResource(t, db, action.Spec.Key, "100000000000000060",
 		"forum", action.Spec.Name, seed.codexCategoryID)
 	_, err = manager.executeInitializationAction(ctx, testGuildID, action, nil)
 	require.NoError(t, err)
 
-	require.Error(t, manager.RestoreDevelopmentForum(ctx,
-		seed.developmentProjectID, seed.developmentForumID),
+	require.Error(t, manager.RestoreWorkspaceForum(ctx,
+		seed.workspaceProjectID, seed.workspaceForumID),
 		"同一项目只能有一个活跃 Forum")
-	require.NoError(t, manager.DisableDevelopmentForum(ctx, newForumID))
-	require.NoError(t, manager.RestoreDevelopmentForum(ctx,
-		seed.developmentProjectID, seed.developmentForumID))
+	require.NoError(t, manager.DisableWorkspaceForum(ctx, newForumID))
+	require.NoError(t, manager.RestoreWorkspaceForum(ctx,
+		seed.workspaceProjectID, seed.workspaceForumID))
 
-	_, err = db.ExecContext(ctx, `UPDATE development_projects
-		SET availability_status='missing' WHERE id=$1`, seed.developmentProjectID)
+	_, err = db.ExecContext(ctx, `UPDATE workspace_projects
+		SET availability_status='missing' WHERE id=$1`, seed.workspaceProjectID)
 	require.NoError(t, err)
-	require.NoError(t, manager.DisableDevelopmentForum(ctx, seed.developmentForumID))
-	require.Error(t, manager.RestoreDevelopmentForum(ctx,
-		seed.developmentProjectID, seed.developmentForumID))
-	_, err = manager.DevelopmentProjectForumPlan(ctx, remoteGuild,
-		seed.developmentProjectID, "")
+	require.NoError(t, manager.DisableWorkspaceForum(ctx, seed.workspaceForumID))
+	require.Error(t, manager.RestoreWorkspaceForum(ctx,
+		seed.workspaceProjectID, seed.workspaceForumID))
+	_, err = manager.WorkspaceProjectForumPlan(ctx, remoteGuild,
+		seed.workspaceProjectID, "")
 	require.Error(t, err)
 
 	var environmentCount int
 	require.NoError(t, db.QueryRowContext(ctx,
-		`SELECT count(*) FROM discord_development_environments WHERE id=$1`,
-		seed.environmentID).Scan(&environmentCount))
+		`SELECT count(*) FROM worker_workspaces WHERE id=$1`,
+		seed.workspaceID).Scan(&environmentCount))
 	require.Equal(t, 1, environmentCount, "停用最后一个 Forum 不得删除长期环境")
-}
-
-func TestDiscordLunaTitleSynchronizesBeforeAndAfterControlBinding(t *testing.T) {
-	db := discordDatabase(t)
-	ctx := context.Background()
-	require.NoError(t, database.Migrate(ctx, db))
-	_, err := db.ExecContext(ctx, `INSERT INTO discord_guilds(guild_id, name, enabled)
-		VALUES ($1, 'Title Timing Test', true)`, testGuildID)
-	require.NoError(t, err)
-	seed := seedDiscordManagerData(t, db)
-	service := NewConversationService(db)
-	generator := &TitleGenerator{db: db}
-
-	titleFirstID, err := service.BeginPost(ctx, IncomingMessage{
-		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
-		ThreadID: "title-first-thread", MessageID: "title-first-message",
-		DiscordUserID: "1001", DisplayName: "alice", Username: "alice",
-		Title: "Pending", Body: "先生成标题，再创建 Control", ConfigurationConfirmed: false,
-	})
-	require.NoError(t, err)
-	var controls int
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_thread_controls
-		WHERE discord_conversation_id=$1`, titleFirstID).Scan(&controls))
-	require.Zero(t, controls)
-	claimed, err := generator.claim(ctx, "pending")
-	require.NoError(t, err)
-	require.Equal(t, titleFirstID, claimed.ID)
-	require.NoError(t, generator.schedule(ctx, claimed, "标题先完成"))
-	require.NoError(t, service.FinalizeConfiguration(ctx, titleFirstID, "1001"))
-	var titleFirstControl uuid.UUID
-	var desiredTitle, desiredSource string
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT control.id,
-		control.desired_thread_name, control.desired_thread_name_source
-		FROM discord_conversations conversation
-		JOIN codex_thread_controls control ON control.discord_conversation_id=conversation.id
-		WHERE conversation.id=$1`, titleFirstID).
-		Scan(&titleFirstControl, &desiredTitle, &desiredSource))
-	require.NotEqual(t, uuid.Nil, titleFirstControl)
-	require.Equal(t, "标题先完成", desiredTitle)
-	require.Equal(t, "luna", desiredSource)
-
-	controlFirstID, err := service.BeginPost(ctx, IncomingMessage{
-		GuildID: testGuildID, ForumID: seed.developmentForumChannelID,
-		ThreadID: "control-first-thread", MessageID: "control-first-message",
-		DiscordUserID: "1001", DisplayName: "alice", Username: "alice",
-		Title: "Pending", Body: "先创建 Control，再生成标题", ConfigurationConfirmed: true,
-	})
-	require.NoError(t, err)
-	claimed, err = generator.claim(ctx, "pending")
-	require.NoError(t, err)
-	require.Equal(t, controlFirstID, claimed.ID)
-	require.NoError(t, generator.schedule(ctx, claimed, "Control 先完成"))
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT control.desired_thread_name,
-		control.desired_thread_name_source FROM discord_conversations conversation
-		JOIN codex_thread_controls control ON control.discord_conversation_id=conversation.id
-		WHERE conversation.id=$1`, controlFirstID).Scan(&desiredTitle, &desiredSource))
-	require.Equal(t, "Control 先完成", desiredTitle)
-	require.Equal(t, "luna", desiredSource)
 }
 
 func TestConversationLifecycleProjectionAndRestore(t *testing.T) {
@@ -1115,27 +1056,27 @@ func TestConversationLifecycleProjectionAndRestore(t *testing.T) {
 		VALUES ($1, 'Lifecycle Test', true)`, testGuildID)
 	require.NoError(t, err)
 	seed := seedDiscordManagerData(t, db)
-	var profileID, environmentID uuid.UUID
+	var profileID, workspaceID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM agent_profiles
 		ORDER BY created_at LIMIT 1`).Scan(&profileID))
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT development_environment_id
-		FROM discord_forums WHERE id = $1`, seed.developmentForumID).Scan(&environmentID))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT workspace_id
+		FROM discord_forums WHERE id = $1`, seed.workspaceForumID).Scan(&workspaceID))
 	conversationID, controlID := uuid.New(), uuid.New()
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_conversations
 		(id, guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
-			development_project_id, agent_profile_id, title, lifecycle_state, lifecycle_revision)
+			workspace_project_id, agent_profile_id, title, lifecycle_state, lifecycle_revision)
 		VALUES ($1,$2,$3,'100000000000000070','100000000000000071','1001',$4,$5,
 		'Lifecycle','archived',3)`, conversationID, testGuildID,
-		seed.developmentForumID, seed.developmentProjectID, profileID)
+		seed.workspaceForumID, seed.workspaceProjectID, profileID)
 	require.NoError(t, err)
 	sessionID := bindDiscordConversationSessionForTest(t, db, conversationID)
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_thread_controls
-		(id, source_type, discord_conversation_id, session_id, development_project_id, agent_profile_id,
-			external_thread_id, execution_node_id,
-			development_environment_id, lifecycle_state, lifecycle_revision)
-		VALUES ($1,'development_session',$2,$3,$4,$5,'thread-lifecycle',$6,$7,'archived',3)`,
-		controlID, conversationID, sessionID, seed.developmentProjectID, profileID, seed.executionNodeID,
-		environmentID)
+		(id, source_type, discord_conversation_id, session_id, workspace_project_id, agent_profile_id,
+			external_thread_id, worker_id,
+			workspace_id, lifecycle_state, lifecycle_revision)
+		VALUES ($1,'workspace_session',$2,$3,$4,$5,'thread-lifecycle',$6,$7,'archived',3)`,
+		controlID, conversationID, sessionID, seed.workspaceProjectID, profileID, seed.workerID,
+		workspaceID)
 	require.NoError(t, err)
 
 	service := NewConversationService(db)
@@ -1249,13 +1190,13 @@ func TestConversationLifecycleProjectionAndRestore(t *testing.T) {
 	intentID, runID := uuid.New(), uuid.New()
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_intents
 		(id, control_id, sequence_no, source_type, discord_conversation_id, session_id,
-			development_project_id, agent_profile_id, idempotency_key, status)
-		VALUES ($1,$2,1,'development_session',$3,$4,$5,$6,$7,'running')`, intentID,
-		controlID, conversationID, sessionID, seed.developmentProjectID, profileID,
+			workspace_project_id, agent_profile_id, idempotency_key, status)
+		VALUES ($1,$2,1,'workspace_session',$3,$4,$5,$6,$7,'running')`, intentID,
+		controlID, conversationID, sessionID, seed.workspaceProjectID, profileID,
 		"lifecycle-active-"+intentID.String())
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_runs
-		(id, control_id, primary_intent_id, attempt, worker_id, lease_epoch,
+		(id, control_id, primary_intent_id, attempt, lease_owner, lease_epoch,
 			capability_hash, active_slot, status)
 		VALUES ($1,$2,$3,1,'worker',1,$4,1,'running')`, runID, controlID,
 		intentID, strings.Repeat("c", 64))
@@ -1288,19 +1229,19 @@ func TestConversationLifecycleProjectionAndRestore(t *testing.T) {
 	const gatewayThreadID = "100000000000000080"
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_conversations
 		(id, guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
-			development_project_id, agent_profile_id, title, lifecycle_state, lifecycle_revision)
+			workspace_project_id, agent_profile_id, title, lifecycle_state, lifecycle_revision)
 		VALUES ($1,$2,$3,$4,'100000000000000081','1001',$5,$6,
 			'Gateway Lifecycle','archived',7)`, gatewayConversationID, testGuildID,
-		seed.developmentForumID, gatewayThreadID, seed.developmentProjectID, profileID)
+		seed.workspaceForumID, gatewayThreadID, seed.workspaceProjectID, profileID)
 	require.NoError(t, err)
 	gatewaySessionID := bindDiscordConversationSessionForTest(t, db, gatewayConversationID)
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_thread_controls
-		(id, source_type, discord_conversation_id, session_id, development_project_id, agent_profile_id,
-			external_thread_id, execution_node_id,
-			development_environment_id, lifecycle_state, lifecycle_revision)
-		VALUES ($1,'development_session',$2,$3,$4,$5,'thread-lifecycle-gateway',$6,$7,
+		(id, source_type, discord_conversation_id, session_id, workspace_project_id, agent_profile_id,
+			external_thread_id, worker_id,
+			workspace_id, lifecycle_state, lifecycle_revision)
+		VALUES ($1,'workspace_session',$2,$3,$4,$5,'thread-lifecycle-gateway',$6,$7,
 		'archived',7)`, gatewayControlID, gatewayConversationID, gatewaySessionID,
-		seed.developmentProjectID, profileID, seed.executionNodeID, environmentID)
+		seed.workspaceProjectID, profileID, seed.workerID, workspaceID)
 	require.NoError(t, err)
 
 	require.NoError(t, ReconcileConversationLifecycles(ctx, db, testGuildID))
@@ -1504,38 +1445,38 @@ func TestReconcileConversationProgressCardsUsesTerminalRunState(t *testing.T) {
 		VALUES ($1, 'Terminal Progress Test', true)`, testGuildID)
 	require.NoError(t, err)
 	seed := seedDiscordManagerData(t, db)
-	var profileID, environmentID uuid.UUID
+	var profileID, workspaceID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM agent_profiles
 		WHERE name = 'Default'`).Scan(&profileID))
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT development_environment_id
-		FROM discord_forums WHERE id = $1`, seed.developmentForumID).Scan(&environmentID))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT workspace_id
+		FROM discord_forums WHERE id = $1`, seed.workspaceForumID).Scan(&workspaceID))
 
 	conversationID, controlID, intentID, runID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_conversations
 		(id, guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
-			development_project_id, agent_profile_id, title)
+			workspace_project_id, agent_profile_id, title)
 		VALUES ($1,$2,$3,'terminal-thread','terminal-starter','1001',$4,$5,'Terminal')`,
-		conversationID, testGuildID, seed.developmentForumID, seed.developmentProjectID, profileID)
+		conversationID, testGuildID, seed.workspaceForumID, seed.workspaceProjectID, profileID)
 	require.NoError(t, err)
 	sessionID := bindDiscordConversationSessionForTest(t, db, conversationID)
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_thread_controls
-		(id, source_type, discord_conversation_id, session_id, development_project_id, agent_profile_id,
-			execution_node_id, development_environment_id)
-		VALUES ($1,'development_session',$2,$3,$4,$5,$6,$7)`,
-		controlID, conversationID, sessionID, seed.developmentProjectID, profileID,
-		seed.executionNodeID, environmentID)
+		(id, source_type, discord_conversation_id, session_id, workspace_project_id, agent_profile_id,
+			worker_id, workspace_id)
+		VALUES ($1,'workspace_session',$2,$3,$4,$5,$6,$7)`,
+		controlID, conversationID, sessionID, seed.workspaceProjectID, profileID,
+		seed.workerID, workspaceID)
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_intents
 		(id, control_id, sequence_no, source_type, input_surface, discord_conversation_id, session_id,
-			development_project_id, agent_profile_id, idempotency_key, status, finished_at)
-		VALUES ($1,$2,1,'development_session','desktop',$3,$4,$5,$6,$7,'canceled',now())`,
-		intentID, controlID, conversationID, sessionID, seed.developmentProjectID, profileID,
+			workspace_project_id, agent_profile_id, idempotency_key, status, finished_at)
+		VALUES ($1,$2,1,'workspace_session','desktop',$3,$4,$5,$6,$7,'canceled',now())`,
+		intentID, controlID, conversationID, sessionID, seed.workspaceProjectID, profileID,
 		"terminal-progress-"+intentID.String())
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_runs
-		(id, control_id, primary_intent_id, attempt, worker_id, lease_epoch,
+		(id, control_id, primary_intent_id, attempt, lease_owner, lease_epoch,
 			capability_hash, status, finished_at)
-		VALUES ($1,$2,$3,1,'desktop-relay',1,$4,'canceled',now())`,
+		VALUES ($1,$2,$3,1,'desktop-app-server',1,$4,'canceled',now())`,
 		runID, controlID, intentID, strings.Repeat("f", 64))
 	require.NoError(t, err)
 
@@ -1615,34 +1556,34 @@ const (
 )
 
 type discordManagerSeed struct {
-	administratorID           uuid.UUID
-	developmentForumID        uuid.UUID
-	developmentProjectID      uuid.UUID
-	environmentID             uuid.UUID
-	executionNodeID           uuid.UUID
-	workItemID                uuid.UUID
-	codexCategoryID           string
-	repositoryForumChannelID  string
-	developmentForumChannelID string
-	repositoryID              uuid.UUID
-	repositoryForumID         uuid.UUID
+	administratorID          uuid.UUID
+	workspaceForumID         uuid.UUID
+	workspaceProjectID       uuid.UUID
+	workspaceID              uuid.UUID
+	workerID                 uuid.UUID
+	workItemID               uuid.UUID
+	codexCategoryID          string
+	repositoryForumChannelID string
+	workspaceForumChannelID  string
+	repositoryID             uuid.UUID
+	repositoryForumID        uuid.UUID
 }
 
 func seedDiscordManagerData(t *testing.T, db *sql.DB) discordManagerSeed {
 	t.Helper()
 	ctx := context.Background()
 	seed := discordManagerSeed{
-		codexCategoryID: "100000000000000011", developmentForumChannelID: "100000000000000012",
+		codexCategoryID: "100000000000000011", workspaceForumChannelID: "100000000000000012",
 		repositoryForumChannelID: "100000000000000022",
 	}
-	var executionNodeID uuid.UUID
-	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO execution_nodes
+	var workerID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO workers
 		(name, roles, status) VALUES ('discord-test-node', '["github","discord"]', 'online')
-		RETURNING id`).Scan(&executionNodeID))
-	seed.executionNodeID = executionNodeID
+		RETURNING id`).Scan(&workerID))
+	seed.workerID = workerID
 	_, err := db.ExecContext(ctx, `INSERT INTO platform_settings(setting_key, value) VALUES
-		('execution.default.github', jsonb_build_object('nodeId', $1::text)),
-		('execution.default.discord', jsonb_build_object('nodeId', $1::text))`, executionNodeID)
+		('worker.default.github', jsonb_build_object('workerId', $1::text)),
+		('worker.default.discord', jsonb_build_object('workerId', $1::text))`, workerID)
 	require.NoError(t, err)
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO administrators
 		(username, password_hash, totp_secret_ciphertext) VALUES ('discord-admin', 'hash', $1) RETURNING id`,
@@ -1668,32 +1609,30 @@ func seedDiscordManagerData(t *testing.T, db *sql.DB) discordManagerSeed {
 	repositoryResource := insertDiscordResource(t, db, "forum.repository."+repositoryID.String(),
 		seed.repositoryForumChannelID, "forum", "owner-repo", "")
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_forums(guild_id, resource_id, forum_type, repository_id)
-		VALUES ($1, $2, 'repository', $3) RETURNING id`, testGuildID, repositoryResource, repositoryID).Scan(&seed.repositoryForumID))
+		VALUES ($1, $2, 'github', $3) RETURNING id`, testGuildID, repositoryResource, repositoryID).Scan(&seed.repositoryForumID))
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_forum_access(forum_id, discord_user_id, access_level)
 		VALUES ($1, '1001', 'readonly')`, seed.repositoryForumID)
 	require.NoError(t, err)
-	var environmentID uuid.UUID
-	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_development_environments
-		(guild_id, owner_discord_user_id, image_ref, container_name, data_volume_name,
-		 home_volume_name, network_name, execution_node_id, status)
-		VALUES ($1, '1001', 'tyrs-hand-development:test', 'dev-alice', 'dev-alice-data',
-		'dev-alice-home', 'dev-alice-net', $2, 'running') RETURNING id`, testGuildID, executionNodeID).
-		Scan(&environmentID))
-	seed.environmentID = environmentID
-	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO development_projects
-		(environment_id,relative_path,name,project_kind,availability_status,
+	var workspaceID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO worker_workspaces
+		(guild_id, owner_discord_user_id, worker_id)
+		VALUES ($1, '1001', $2) RETURNING id`, testGuildID, workerID).
+		Scan(&workspaceID))
+	seed.workspaceID = workspaceID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO workspace_projects
+		(workspace_id,relative_path,name,project_kind,availability_status,
 		 branch,head_sha,dirty,remote_url,last_seen_at)
 		VALUES ($1,'workspaces/repo','repo','git','available',
 			'main','seed-head',false,'https://example.invalid/repo.git',now())
-		RETURNING id`, environmentID).Scan(&seed.developmentProjectID))
-	developmentResource := insertDiscordResource(t, db, "forum.development.seed", seed.developmentForumChannelID,
+		RETURNING id`, workspaceID).Scan(&seed.workspaceProjectID))
+	workspaceResource := insertDiscordResource(t, db, "forum.workspace.seed", seed.workspaceForumChannelID,
 		"forum", "dev-alice-repo", seed.codexCategoryID)
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_forums
 		(guild_id,resource_id,forum_type,owner_discord_user_id,
-		 development_project_id,development_environment_id)
-		VALUES ($1,$2,'development','1001',$3,$4) RETURNING id`,
-		testGuildID, developmentResource, seed.developmentProjectID, environmentID).
-		Scan(&seed.developmentForumID))
+		 workspace_project_id,workspace_id)
+		VALUES ($1,$2,'workspace','1001',$3,$4) RETURNING id`,
+		testGuildID, workspaceResource, seed.workspaceProjectID, workspaceID).
+		Scan(&seed.workspaceForumID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO work_items
 		(repository_id, kind, external_number, title) VALUES ($1, 'issue', 7, 'Needs help') RETURNING id`, repositoryID).Scan(&seed.workItemID))
 	intentID := insertProjectionIntent(t, db, seed.workItemID, repositoryID, "projection-job", "alice")
@@ -1760,9 +1699,9 @@ func testGatewayHandlers(t *testing.T, ctx context.Context, db *sql.DB, manager 
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
 		switch {
-		case request.Method == http.MethodPost && request.URL.Path == "/channels/"+seed.developmentForumChannelID+"/threads":
+		case request.Method == http.MethodPost && request.URL.Path == "/channels/"+seed.workspaceForumChannelID+"/threads":
 			_, _ = response.Write([]byte(fmt.Sprintf(`{"id":"2010","guild_id":%q,"parent_id":%q,"type":11,"name":"Codex 正在生成标题","owner_id":%q,"message_count":1,"member_count":1,"rate_limit_per_user":0,"thread_metadata":{"archived":false,"auto_archive_duration":10080,"archive_timestamp":"2026-07-18T00:00:00Z","locked":false},"message":{"id":"3011","channel_id":"2010","author":{"id":%q,"username":"bot","discriminator":"0","bot":true},"content":"bot-created task"}}`,
-				testGuildID, seed.developmentForumChannelID, testBotID, testBotID)))
+				testGuildID, seed.workspaceForumChannelID, testBotID, testBotID)))
 		case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/channels/"):
 			threadID := strings.TrimPrefix(request.URL.Path, "/channels/")
 			if threadID == "2099" {
@@ -1770,7 +1709,7 @@ func testGatewayHandlers(t *testing.T, ctx context.Context, db *sql.DB, manager 
 				return
 			}
 			_, _ = response.Write([]byte(fmt.Sprintf(`{"id":%q,"guild_id":%q,"parent_id":%q,"type":11,"name":"Conversation","owner_id":"1001","message_count":1,"member_count":1,"rate_limit_per_user":0,"thread_metadata":{"archived":false,"auto_archive_duration":10080,"archive_timestamp":"2026-07-18T00:00:00Z","locked":false}}`,
-				threadID, testGuildID, seed.developmentForumChannelID)))
+				threadID, testGuildID, seed.workspaceForumChannelID)))
 		case request.Method == http.MethodPatch && strings.Contains(request.URL.Path, "/messages/@original"):
 			_, _ = response.Write([]byte(`{"id":"9901","channel_id":"2001","content":"updated"}`))
 		default:
@@ -1912,11 +1851,11 @@ func testGatewayHandlers(t *testing.T, ctx context.Context, db *sql.DB, manager 
 	var selectedRepository sql.NullString
 	var selectedProject uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT repository_id::text,
-		development_project_id FROM discord_conversations
+		workspace_project_id FROM discord_conversations
 		WHERE id=$1`, repositoryConversationID).
 		Scan(&selectedRepository, &selectedProject))
 	require.False(t, selectedRepository.Valid)
-	require.Equal(t, seed.developmentProjectID, selectedProject)
+	require.Equal(t, seed.workspaceProjectID, selectedProject)
 
 	connector.onComponent(newComponentEvent(t, client, "5005", "2001", "github-unbind-confirm:1001", nil))
 	var activeBinding int
@@ -1958,19 +1897,19 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 ) {
 	t.Helper()
 
-	connector.onComponent(newComponentEvent(t, client, "5100", seed.developmentForumChannelID,
+	connector.onComponent(newComponentEvent(t, client, "5100", seed.workspaceForumChannelID,
 		"codex-new-open", nil))
-	modal, err := connector.newCodexModal(ctx, seed.developmentForumChannelID, "1001", "default")
+	modal, err := connector.newCodexModal(ctx, seed.workspaceForumChannelID, "1001", "default")
 	require.NoError(t, err)
-	require.Equal(t, newCodexModalPrefix+seed.developmentForumChannelID+":default", modal.CustomID)
+	require.Equal(t, newCodexModalPrefix+seed.workspaceForumChannelID+":default", modal.CustomID)
 	require.Len(t, modal.Components, 5)
-	_, _, _, _, err = connector.authorizedForum(ctx, seed.developmentForumChannelID, "1003")
+	_, _, _, _, err = connector.authorizedForum(ctx, seed.workspaceForumChannelID, "1003")
 	require.NoError(t, err)
-	_, _, _, _, err = connector.authorizedForum(ctx, seed.developmentForumChannelID, "1002")
+	_, _, _, _, err = connector.authorizedForum(ctx, seed.workspaceForumChannelID, "1002")
 	require.Error(t, err)
 	_, _, _, _, err = connector.authorizedForum(ctx, "999999999999999999", "1001")
 	require.Error(t, err)
-	_, err = connector.newCodexModal(ctx, seed.developmentForumChannelID, "1002", "default")
+	_, err = connector.newCodexModal(ctx, seed.workspaceForumChannelID, "1002", "default")
 	require.Error(t, err)
 	models := []codexcatalog.Model{
 		{ID: "codex-model", IsDefault: true,
@@ -2057,8 +1996,8 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 	require.Equal(t, "awaiting", waitingStatus)
 	require.False(t, configurationDeadline.Valid)
 
-	newPostSubmit := newModalEvent(t, client, "5104", seed.developmentForumChannelID,
-		newCodexModalPrefix+seed.developmentForumChannelID+":plan", []discord.LayoutComponent{
+	newPostSubmit := newModalEvent(t, client, "5104", seed.workspaceForumChannelID,
+		newCodexModalPrefix+seed.workspaceForumChannelID+":plan", []discord.LayoutComponent{
 			discord.NewLabel("任务", discord.TextInputComponent{CustomID: "task", Value: "bot-created task"}),
 			discord.NewLabel("模型", discord.StringSelectMenuComponent{CustomID: "model", Values: []string{"gpt-5.6-sol"}}),
 			discord.NewLabel("自定义模型", discord.TextInputComponent{CustomID: "custom_model"}),
@@ -2073,8 +2012,8 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 	require.Equal(t, "configured", status)
 	require.Equal(t, "pending", model)
 	require.Equal(t, "plan", collaborationMode)
-	emptyCustom := newModalEvent(t, client, "5107", seed.developmentForumChannelID,
-		newCodexModalPrefix+seed.developmentForumChannelID+":default", []discord.LayoutComponent{
+	emptyCustom := newModalEvent(t, client, "5107", seed.workspaceForumChannelID,
+		newCodexModalPrefix+seed.workspaceForumChannelID+":default", []discord.LayoutComponent{
 			discord.NewLabel("任务", discord.TextInputComponent{CustomID: "task", Value: "invalid custom model"}),
 			discord.NewLabel("模型", discord.StringSelectMenuComponent{CustomID: "model", Values: []string{"__custom__"}}),
 			discord.NewLabel("自定义模型", discord.TextInputComponent{CustomID: "custom_model"}),
@@ -2082,8 +2021,8 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 			discord.NewLabel("思考等级", discord.StringSelectMenuComponent{CustomID: "reasoning_effort", Values: []string{"__default__"}}),
 		})
 	connector.onModalSubmit(emptyCustom)
-	emptyTask := newModalEvent(t, client, "5108", seed.developmentForumChannelID,
-		newCodexModalPrefix+seed.developmentForumChannelID+":default", []discord.LayoutComponent{
+	emptyTask := newModalEvent(t, client, "5108", seed.workspaceForumChannelID,
+		newCodexModalPrefix+seed.workspaceForumChannelID+":default", []discord.LayoutComponent{
 			discord.NewLabel("任务", discord.TextInputComponent{CustomID: "task"}),
 			discord.NewLabel("模型", discord.StringSelectMenuComponent{CustomID: "model", Values: []string{"__default__"}}),
 			discord.NewLabel("自定义模型", discord.TextInputComponent{CustomID: "custom_model"}),
@@ -2239,7 +2178,7 @@ func testDiscordRecoveryOrchestration(t *testing.T, ctx context.Context, db *sql
 	_, _, err = NewGitHubOAuthApp(appManager).Credentials(ctx)
 	require.Error(t, err)
 	daemon := NewDaemon(manager, NewConversationService(db), &BindingService{store: store}, appManager,
-		platformsettings.NewService(db, manager.secrets), nil, zap.NewNop())
+		nil, zap.NewNop())
 	_, err = daemon.githubPermission(ctx, 1, "owner", "repo", "alice")
 	require.Error(t, err)
 	defaultRemote := daemon.newRemote("token", "http://127.0.0.1")
@@ -2546,10 +2485,10 @@ func bindDiscordConversationSessionForTest(t *testing.T, db *sql.DB,
 	t.Helper()
 	ctx := context.Background()
 	var sessionID uuid.UUID
-	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO development_sessions(
-		development_environment_id,development_project_id,agent_profile_id,title,lifecycle_state,
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO workspace_sessions(
+		workspace_id,workspace_project_id,agent_profile_id,title,lifecycle_state,
 		model,reasoning_effort,service_tier,collaboration_mode,settings_version,last_activity_at)
-		SELECT forum.development_environment_id,conversation.development_project_id,
+		SELECT forum.workspace_id,conversation.workspace_project_id,
 			conversation.agent_profile_id,COALESCE(conversation.generated_title,conversation.title),
 			conversation.lifecycle_state,conversation.model,conversation.reasoning_effort,
 			COALESCE(conversation.service_tier,'standard'),conversation.collaboration_mode,
@@ -2583,6 +2522,10 @@ func discordDatabase(t *testing.T) *sql.DB {
 	host, err := container.Host(ctx)
 	require.NoError(t, err)
 	port, err := container.MappedPort(ctx, "5432/tcp")
+	for attempt := 0; err != nil && attempt < 50; attempt++ {
+		time.Sleep(100 * time.Millisecond)
+		port, err = container.MappedPort(ctx, "5432/tcp")
+	}
 	require.NoError(t, err)
 	db, err := database.Open(ctx, "postgres://tyrs_hand:test-password@"+host+":"+port.Port()+"/tyrs_hand?sslmode=disable")
 	require.NoError(t, err)

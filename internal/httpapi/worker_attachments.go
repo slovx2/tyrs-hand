@@ -35,8 +35,8 @@ func (s *Server) workerDownloadAttachment(c *gin.Context) {
 		badRequest(c, errors.New("附件请求缺少 Run Lease Token"))
 		return
 	}
-	node := workerNode(c)
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), node.ID, runID, lease)
+	worker := currentWorker(c)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, lease)
 	if err != nil {
 		remoteRunError(c, "校验附件下载权限失败", err)
 		return

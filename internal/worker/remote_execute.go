@@ -13,7 +13,7 @@ import (
 
 const remoteEventFlushInterval = time.Second
 
-func (r *RemoteRunner) runJournal(ctx context.Context, journal *runJournal, slots chan struct{},
+func (r *Runner) runJournal(ctx context.Context, journal *runJournal, slots chan struct{},
 	active *sync.WaitGroup,
 ) {
 	defer active.Done()
@@ -69,7 +69,7 @@ func (r *RemoteRunner) runJournal(ctx context.Context, journal *runJournal, slot
 		}
 		journalMu.Unlock()
 	}
-	result, err := r.processor.ProcessRemote(processCtx, task, commands, report)
+	result, err := r.processor.Process(processCtx, task, commands, report)
 	cancel()
 	<-heartbeatDone
 	journalMu.Lock()
@@ -101,7 +101,7 @@ func shouldFlushRemoteEvents(lastAttempt, now time.Time) bool {
 	return lastAttempt.IsZero() || now.Sub(lastAttempt) >= remoteEventFlushInterval
 }
 
-func (r *RemoteRunner) restoreLease(ctx context.Context, task *workerprotocol.Task,
+func (r *Runner) restoreLease(ctx context.Context, task *workerprotocol.Task,
 	commands chan<- workerprotocol.RunCommand,
 	logger *zap.Logger,
 ) bool {
@@ -136,12 +136,9 @@ func applyRunRecovery(task *workerprotocol.Task, recovery workerprotocol.RunReco
 	if recovery.ExternalThreadID != "" {
 		task.Claimed.ExternalThreadID = recovery.ExternalThreadID
 	}
-	if recovery.CodexHomeKey != "" {
-		task.Claimed.CodexHomeKey = recovery.CodexHomeKey
-	}
 }
 
-func (r *RemoteRunner) runLeaseHeartbeat(ctx context.Context, task *workerprotocol.Task,
+func (r *Runner) runLeaseHeartbeat(ctx context.Context, task *workerprotocol.Task,
 	commands chan<- workerprotocol.RunCommand,
 	logger *zap.Logger,
 ) {
@@ -177,7 +174,7 @@ func deliverCommands(target chan<- workerprotocol.RunCommand,
 	}
 }
 
-func (r *RemoteRunner) flushEvents(ctx context.Context, journal *runJournal, logger *zap.Logger) {
+func (r *Runner) flushEvents(ctx context.Context, journal *runJournal, logger *zap.Logger) {
 	if len(journal.PendingEvents) == 0 {
 		return
 	}
@@ -193,13 +190,13 @@ func (r *RemoteRunner) flushEvents(ctx context.Context, journal *runJournal, log
 	}
 }
 
-func (r *RemoteRunner) flushEventsLocked(ctx context.Context, journal *runJournal,
+func (r *Runner) flushEventsLocked(ctx context.Context, journal *runJournal,
 	logger *zap.Logger,
 ) {
 	r.flushEvents(ctx, journal, logger)
 }
 
-func (r *RemoteRunner) deliverTerminal(ctx context.Context, journal *runJournal,
+func (r *Runner) deliverTerminal(ctx context.Context, journal *runJournal,
 	logger *zap.Logger,
 ) {
 	for ctx.Err() == nil {

@@ -188,10 +188,10 @@ func TestConversationActionTrackerCountsUniqueCommentaryAndToolItems(t *testing.
 		require.True(t, tracker.ApplyEvent("item/agentMessage/delta", delta))
 	}
 	started := progressEvent(t, map[string]any{
-		"id": "tool-1", "type": "webSearch", "query": "relay protocol",
+		"id": "tool-1", "type": "webSearch", "query": "transport protocol",
 	})
 	completed := progressEvent(t, map[string]any{
-		"id": "tool-1", "type": "webSearch", "query": "relay protocol", "status": "completed",
+		"id": "tool-1", "type": "webSearch", "query": "transport protocol", "status": "completed",
 	})
 	require.True(t, tracker.ApplyEvent("item/started", started))
 	require.True(t, tracker.ApplyEvent("item/completed", completed))

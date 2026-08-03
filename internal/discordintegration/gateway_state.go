@@ -103,7 +103,7 @@ func (s *ConversationService) Stop(ctx context.Context, guildID, threadID, reque
 	var profileID uuid.UUID
 	var repositoryID, projectID sql.NullString
 	if err := tx.QueryRowContext(ctx, `SELECT agent_profile_id, repository_id::text,
-		development_project_id::text
+		workspace_project_id::text
 		FROM discord_conversations WHERE id = $1`, conversationID).Scan(
 		&profileID, &repositoryID, &projectID); err != nil {
 		return 0, err
@@ -124,7 +124,7 @@ func (s *ConversationService) Stop(ctx context.Context, guildID, threadID, reque
 	}
 	requestID := uuid.New()
 	_, inserted, err := codexcontrol.NewRepository(s.db, 0).Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
-		SourceType: codexcontrol.SourceDevelopment, DiscordConversationID: conversationID,
+		SourceType: codexcontrol.SourceWorkspace, DiscordConversationID: conversationID,
 		RepositoryID: repository, ProjectID: project, AgentProfileID: profileID,
 		IdempotencyKey: "discord:stop:" + requestID.String(), Operation: "interrupt",
 		Instruction: "stopped from Discord", ReplyPolicy: "silent", ActorLogin: requesterID,

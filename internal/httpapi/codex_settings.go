@@ -11,10 +11,10 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexsettings"
 )
 
-func (s *Server) listCodexSettings(c *gin.Context) {
+func (s *Server) listGitHubAgentSettings(c *gin.Context) {
 	items, err := codexsettings.NewService(s.db).List(c)
 	if err != nil {
-		problem(c, http.StatusInternalServerError, "读取 Codex 设置失败", err)
+		problem(c, http.StatusInternalServerError, "读取 GitHub Agent 设置失败", err)
 		return
 	}
 	catalogs, err := codexcatalog.OnlineCatalogs(c, s.db)
@@ -26,15 +26,11 @@ func (s *Server) listCodexSettings(c *gin.Context) {
 		"models": codexcatalog.Models(catalogs)})
 }
 
-func (s *Server) putRepositoryCodexSettings(c *gin.Context) {
-	s.putCodexSettings(c, codexsettings.ScopeRepository, "repository")
+func (s *Server) putRepositoryGitHubAgentSettings(c *gin.Context) {
+	s.putGitHubAgentSettings(c, "repository")
 }
 
-func (s *Server) putForumCodexSettings(c *gin.Context) {
-	s.putCodexSettings(c, codexsettings.ScopeDiscordForum, "discord_forum")
-}
-
-func (s *Server) putCodexSettings(c *gin.Context, scope, resourceType string) {
+func (s *Server) putGitHubAgentSettings(c *gin.Context, resourceType string) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		badRequest(c, err)
@@ -45,14 +41,14 @@ func (s *Server) putCodexSettings(c *gin.Context, scope, resourceType string) {
 		badRequest(c, err)
 		return
 	}
-	if err := codexsettings.NewService(s.db).Save(c, scope, id, input); err != nil {
+	if err := codexsettings.NewService(s.db).Save(c, id, input); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			problem(c, http.StatusNotFound, "Codex 设置范围不存在", err)
+			problem(c, http.StatusNotFound, "GitHub Agent 设置范围不存在", err)
 			return
 		}
 		badRequest(c, err)
 		return
 	}
-	s.audit(c, "codex.settings.update", resourceType, id.String(), map[string]any{"scope": scope})
+	s.audit(c, "github_agent.settings.update", resourceType, id.String(), nil)
 	c.Status(http.StatusNoContent)
 }

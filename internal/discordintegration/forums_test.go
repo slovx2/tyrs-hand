@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDevelopmentForumName(t *testing.T) {
+func TestWorkspaceForumName(t *testing.T) {
 	forumID := uuid.MustParse("11111111-2222-4333-8444-555555555555")
 	tests := []struct {
 		name          string
@@ -49,7 +49,7 @@ func TestDevelopmentForumName(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			actual := developmentForumName(test.guild, test.requestedName, test.displayName,
+			actual := workspaceForumName(test.guild, test.requestedName, test.displayName,
 				test.username, test.owner, test.repository, forumID)
 			require.Equal(t, test.expected, actual)
 		})

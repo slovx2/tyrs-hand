@@ -22,7 +22,7 @@ const policy = {
     extensions: {
       [lock.extensionId]: {
         policy: {
-          relayUrl: "ws://127.0.0.1:8932/extension",
+          proxyUrl: "ws://127.0.0.1:8932/extension",
           statusUrl: "http://127.0.0.1:8931/extension-status",
           extensionToken,
         },

@@ -33,14 +33,14 @@ func (s *Server) workerPrepareDesktopThread(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
-	if request.EnvironmentID == uuid.Nil || (request.Operation != "start" && request.Operation != "fork") ||
+	if request.WorkspaceID == uuid.Nil || (request.Operation != "start" && request.Operation != "fork") ||
 		!validDesktopRequestKey(request.RequestKey) {
 		badRequest(c, errors.New("desktop thread reservation 参数无效"))
 		return
 	}
 	params, target, err := s.desktopThreadTarget(c, request)
 	if err != nil {
-		problem(c, http.StatusForbidden, "Desktop Thread 不属于当前开发环境", err)
+		problem(c, http.StatusForbidden, "Desktop Thread 不属于当前Workspace", err)
 		return
 	}
 	tx, err := s.db.BeginTx(c.Request.Context(), nil)
@@ -51,16 +51,16 @@ func (s *Server) workerPrepareDesktopThread(c *gin.Context) {
 	defer func() { _ = tx.Rollback() }()
 	var requestID uuid.UUID
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT id FROM desktop_thread_requests
-			WHERE environment_id = $1 AND request_key = $2
-			AND status NOT IN ('failed') FOR UPDATE`, request.EnvironmentID,
+			WHERE workspace_id = $1 AND request_key = $2
+			AND status NOT IN ('failed') FOR UPDATE`, request.WorkspaceID,
 		request.RequestKey).Scan(&requestID)
 	if errors.Is(err, sql.ErrNoRows) {
 		requestID = uuid.New()
 		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO desktop_thread_requests
-				(id, environment_id, operation, request_key, source_control_id, cwd,
+				(id, workspace_id, operation, request_key, source_control_id, cwd,
 				 request_params, status, forum_id)
 				VALUES ($1,$2,$3,$4,NULLIF($5::text,'')::uuid,$6,$7,'preparing',$8)`,
-			requestID, request.EnvironmentID, request.Operation, request.RequestKey,
+			requestID, request.WorkspaceID, request.Operation, request.RequestKey,
 			nilUUIDString(target.sourceControl), target.workspacePath, params, target.forumID)
 	}
 	if err != nil {
@@ -101,17 +101,17 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 	}
 	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT f.id, r.discord_id,
 		project.name, project.relative_path,
-		COALESCE(e.ssh_discord_user_id, ''),
+		COALESCE(e.owner_discord_user_id, ''),
 		COALESCE(NULLIF(m.display_name, ''), m.username, '')
-		FROM discord_development_environments e
-		JOIN discord_forums f ON f.development_environment_id = e.id
+		FROM worker_workspaces e
+		JOIN discord_forums f ON f.workspace_id = e.id
 		JOIN discord_resources r ON r.id = f.resource_id
-		JOIN development_projects project ON project.id=f.development_project_id
+		JOIN workspace_projects project ON project.id=f.workspace_project_id
 		LEFT JOIN discord_members m ON m.guild_id = e.guild_id
-			AND m.discord_user_id = e.ssh_discord_user_id
-		WHERE e.id = $1 AND e.execution_node_id = $2 AND e.status = 'running'
+			AND m.discord_user_id = e.owner_discord_user_id
+		WHERE e.id = $1 AND e.worker_id = $2
 		AND f.binding_status='active' AND project.availability_status='available'`,
-		request.EnvironmentID, workerNode(c).ID)
+		request.WorkspaceID, currentWorker(c).ID)
 	if err != nil {
 		return nil, desktopThreadTarget{}, err
 	}
@@ -137,7 +137,7 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 		}
 		var sourceForum, sourceEnvironment, sourceControl uuid.UUID
 		err := s.db.QueryRowContext(c.Request.Context(), `SELECT control.id,
-			control.development_environment_id,
+			control.workspace_id,
 			COALESCE(conversation.forum_id, request.forum_id)
 			FROM codex_thread_controls control
 			LEFT JOIN discord_conversations conversation
@@ -145,8 +145,8 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 			LEFT JOIN desktop_thread_requests request ON request.control_id = control.id
 			WHERE control.external_thread_id = $1`, sourceThread).
 			Scan(&sourceControl, &sourceEnvironment, &sourceForum)
-		if err != nil || sourceEnvironment != request.EnvironmentID {
-			return nil, desktopThreadTarget{}, errors.New("fork 源 Thread 未绑定到相同 Development Forum")
+		if err != nil || sourceEnvironment != request.WorkspaceID {
+			return nil, desktopThreadTarget{}, errors.New("fork 源 Thread 未绑定到相同 Workspace Forum")
 		}
 		for _, target := range targets {
 			if target.forumID == sourceForum {
@@ -156,7 +156,7 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 				return normalized, target, marshalErr
 			}
 		}
-		return nil, desktopThreadTarget{}, errors.New("fork 源 Thread 的 Development Forum 已不存在")
+		return nil, desktopThreadTarget{}, errors.New("fork 源 Thread 的 Workspace Forum 已不存在")
 	}
 	cwd, _ := params["cwd"].(string)
 	cwd = path.Clean(strings.TrimSpace(cwd))
@@ -174,7 +174,7 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 		}
 	}
 	if matched == nil {
-		return nil, desktopThreadTarget{}, errors.New("cwd 没有匹配本环境的 Development Forum")
+		return nil, desktopThreadTarget{}, errors.New("cwd 没有匹配本环境的 Workspace Forum")
 	}
 	target := *matched
 	params["cwd"] = target.workspacePath
@@ -259,7 +259,7 @@ func (s *Server) workerCompleteDesktopThread(c *gin.Context) {
 		return
 	}
 	threadID, err := desktopThreadID(request.Response)
-	if err != nil || request.EnvironmentID == uuid.Nil {
+	if err != nil || request.WorkspaceID == uuid.Nil {
 		badRequest(c, errors.New("codex thread 完成结果无效"))
 		return
 	}
@@ -270,25 +270,25 @@ func (s *Server) workerCompleteDesktopThread(c *gin.Context) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	var status string
-	var environmentID, controlID, forumID, executionNodeID uuid.UUID
+	var workspaceID, controlID, forumID, workerID uuid.UUID
 	var sourceControl, projectID sql.NullString
-	err = tx.QueryRowContext(c.Request.Context(), `SELECT r.environment_id, r.status,
-		r.forum_id, r.source_control_id::text, f.development_project_id::text,
-		e.execution_node_id
-			FROM desktop_thread_requests r JOIN discord_development_environments e
-			ON e.id = r.environment_id JOIN discord_forums f ON f.id = r.forum_id
-			JOIN development_projects project ON project.id=f.development_project_id
-			WHERE r.id = $1 AND e.execution_node_id = $2
-			AND e.status='running' AND f.binding_status='active'
+	err = tx.QueryRowContext(c.Request.Context(), `SELECT r.workspace_id, r.status,
+		r.forum_id, r.source_control_id::text, f.workspace_project_id::text,
+		e.worker_id
+			FROM desktop_thread_requests r JOIN worker_workspaces e
+			ON e.id = r.workspace_id JOIN discord_forums f ON f.id = r.forum_id
+			JOIN workspace_projects project ON project.id=f.workspace_project_id
+			WHERE r.id = $1 AND e.worker_id = $2
+			AND f.binding_status='active'
 			AND project.availability_status='available' FOR UPDATE`,
-		requestID, workerNode(c).ID).Scan(&environmentID, &status, &forumID,
-		&sourceControl, &projectID, &executionNodeID)
+		requestID, currentWorker(c).ID).Scan(&workspaceID, &status, &forumID,
+		&sourceControl, &projectID, &workerID)
 	if err != nil {
 		problem(c, http.StatusNotFound, "Desktop Thread reservation 不存在", err)
 		return
 	}
-	if environmentID != request.EnvironmentID {
-		problem(c, http.StatusForbidden, "Desktop Thread 不属于当前开发环境", nil)
+	if workspaceID != request.WorkspaceID {
+		problem(c, http.StatusForbidden, "Desktop Thread 不属于当前Workspace", nil)
 		return
 	}
 	if status == "preparing" {
@@ -300,21 +300,21 @@ func (s *Server) workerCompleteDesktopThread(c *gin.Context) {
 		}
 		controlID = uuid.New()
 		sessionID := uuid.New()
-		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO development_sessions(
-			id,development_environment_id,development_project_id,agent_profile_id,title,
+		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO workspace_sessions(
+			id,workspace_id,workspace_project_id,agent_profile_id,title,
 			model,reasoning_effort,service_tier)
 			VALUES ($1,$2,$3,$4,$5,NULLIF($6,''),NULLIF($7,''),
 				COALESCE(NULLIF($8,''),'standard'))`, sessionID,
-			environmentID, projectID.String, profileID, threadID, model, effort, tier)
+			workspaceID, projectID.String, profileID, threadID, model, effort, tier)
 		if err == nil {
 			_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO codex_thread_controls
-			(id, source_type, session_id, development_project_id, agent_profile_id, external_thread_id,
-			 execution_node_id, development_environment_id, model, reasoning_effort, service_tier,
-			 runtime_preferences_frozen_at, codex_home_key)
-			VALUES ($1,'development_session',$2,$3,$4,$5,$6,$7,
-				NULLIF($8,''),NULLIF($9,''),NULLIF($10,''),now(),$11)`, controlID,
+			(id, source_type, session_id, workspace_project_id, agent_profile_id, external_thread_id,
+			 worker_id, workspace_id, model, reasoning_effort, service_tier,
+			 runtime_preferences_frozen_at)
+			VALUES ($1,'workspace_session',$2,$3,$4,$5,$6,$7,
+				NULLIF($8,''),NULLIF($9,''),NULLIF($10,''),now())`, controlID,
 				sessionID, projectID.String, profileID, threadID,
-				executionNodeID, environmentID, model, effort, tier, environmentID.String())
+				workerID, workspaceID, model, effort, tier)
 		}
 		if err == nil {
 			_, err = tx.ExecContext(c.Request.Context(), `UPDATE desktop_thread_requests SET
@@ -376,7 +376,7 @@ func (s *Server) workerFailDesktopThread(c *gin.Context) {
 		return
 	}
 	request.Error = strings.TrimSpace(request.Error)
-	if request.EnvironmentID == uuid.Nil || request.Error == "" {
+	if request.WorkspaceID == uuid.Nil || request.Error == "" {
 		badRequest(c, errors.New("desktop thread 失败结果无效"))
 		return
 	}
@@ -386,20 +386,20 @@ func (s *Server) workerFailDesktopThread(c *gin.Context) {
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-	var environmentID uuid.UUID
+	var workspaceID uuid.UUID
 	var status, threadID, messageID string
-	err = tx.QueryRowContext(c.Request.Context(), `SELECT r.environment_id, r.status,
+	err = tx.QueryRowContext(c.Request.Context(), `SELECT r.workspace_id, r.status,
 		COALESCE(c.thread_id,''), COALESCE(c.starter_message_id,'')
-		FROM desktop_thread_requests r JOIN discord_development_environments e ON e.id = r.environment_id
+		FROM desktop_thread_requests r JOIN worker_workspaces e ON e.id = r.workspace_id
 		LEFT JOIN discord_conversations c ON c.id = r.conversation_id
-		WHERE r.id = $1 AND e.execution_node_id = $2 FOR UPDATE`, requestID, workerNode(c).ID).
-		Scan(&environmentID, &status, &threadID, &messageID)
+		WHERE r.id = $1 AND e.worker_id = $2 FOR UPDATE`, requestID, currentWorker(c).ID).
+		Scan(&workspaceID, &status, &threadID, &messageID)
 	if err != nil {
 		problem(c, http.StatusNotFound, "Desktop Thread reservation 不存在", err)
 		return
 	}
-	if environmentID != request.EnvironmentID {
-		problem(c, http.StatusForbidden, "Desktop Thread 不属于当前开发环境", nil)
+	if workspaceID != request.WorkspaceID {
+		problem(c, http.StatusForbidden, "Desktop Thread 不属于当前Workspace", nil)
 		return
 	}
 	if status == "completed" {

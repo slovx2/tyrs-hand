@@ -8,7 +8,7 @@ const POSTGRES_IMAGE = 'postgres:18.3-bookworm@sha256:80630f83606d8db77d30b3851b
 const REDIS_IMAGE = 'redis:8.4.0-bookworm@sha256:c22af04bb576503bf16b3e34a1fd2fd82de0f765afd866d2e380145e0af30d78'
 
 export class ControlHarness {
-  constructor({ repoRoot, runDir, label, developmentImage, listenHost = '127.0.0.1' }) {
+  constructor({ repoRoot, runDir, label, listenHost = '127.0.0.1' }) {
     this.repoRoot = repoRoot
     this.runDir = runDir
     this.label = label
@@ -18,7 +18,6 @@ export class ControlHarness {
     this.redisName = `tyrs-hand-mobile-redis-${suffix}`
     this.setupToken = `mobile-e2e-setup-${randomBytes(16).toString('hex')}`
     this.masterKey = randomBytes(32).toString('base64')
-    this.developmentImage = developmentImage
     this.listenHost = listenHost
   }
 
@@ -80,7 +79,6 @@ export class ControlHarness {
       TYRS_HAND_MASTER_KEY: this.masterKey,
       TYRS_HAND_COOKIE_SECURE: 'false',
       TYRS_HAND_ENV: 'development',
-      ...(this.developmentImage ? { TYRS_HAND_DEVELOPMENT_IMAGE: this.developmentImage } : {}),
     }
     const binDir = `${this.runDir}/bin`
     await mkdir(binDir, { recursive: true })

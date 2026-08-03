@@ -6,6 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=@WORKER_USER@
+EnvironmentFile=-/etc/tyrs-hand/codex.env
 EnvironmentFile=/etc/tyrs-hand/worker.env
 ExecStart=/usr/local/bin/tyrs-hand-worker
 Restart=on-failure

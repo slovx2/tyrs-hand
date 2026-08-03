@@ -1,11 +1,8 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
 import { readFile, readdir } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
-
-import { freePort, waitFor } from './lib/process.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -29,8 +26,9 @@ test('Maestro 与运行时依赖全部固定', async () => {
   const control = await readFile(resolve(root, 'tools/mobile-e2e/lib/control.mjs'), 'utf8')
   assert.match(control, /postgres:18\.3-bookworm@sha256:[0-9a-f]{64}/)
   assert.match(control, /redis:8\.4\.0-bookworm@sha256:[0-9a-f]{64}/)
-  const runner = await readFile(resolve(root, 'tools/mobile-e2e/mobile-runner.mjs'), 'utf8')
-  assert.match(runner, /codex-cli 0\.145\.0/)
+  const dependencies = JSON.parse(await readFile(
+    resolve(root, 'deploy/worker/dependencies.json'), 'utf8'))
+  assert.equal(dependencies.codexMinimumVersion, '0.145.0')
 })
 
 test('所有 Flow 只用稳定 ID 操作生产 UI', async () => {
@@ -61,7 +59,7 @@ test('所有 Flow 只用稳定 ID 操作生产 UI', async () => {
   assert.doesNotMatch(flows, /tapOn:\s*\n\s*text:/)
 })
 
-test('真实 Codex 交互场景显式使用 Plan 模式', async () => {
+test('协议 Worker 交互场景显式使用 Plan 模式', async () => {
   for (const flow of ['03-interactive.yaml', '09-secret-and-failure.yaml']) {
     const content = await readFile(resolve(root, 'client/e2e/flows', flow), 'utf8')
     const planIndex = content.indexOf('id: "parameters:mode:plan"')
@@ -71,37 +69,5 @@ test('真实 Codex 交互场景显式使用 Plan 模式', async () => {
   const secretFlow = await readFile(resolve(root,
     'client/e2e/flows/09-secret-and-failure.yaml'), 'utf8')
   assert.equal([...secretFlow.matchAll(/id: "connection:inactive"/g)].length, 2,
-    'Secret 场景必须切到 protocol Control，并在失败态场景前切回 real-codex Control')
-})
-
-test('确定性 Responses 上游可产生 SSE 并记录实际参数', async () => {
-  const port = await freePort()
-  const child = spawn('node', ['tools/mobile-e2e/mock-responses.mjs'], {
-    cwd: root, env: { ...process.env, TYRS_HAND_E2E_RESPONSES_PORT: String(port) },
-    stdio: 'ignore',
-  })
-  try {
-    await waitFor(`http://127.0.0.1:${port}/healthz`)
-    const response = await fetch(`http://127.0.0.1:${port}/v1/responses`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ model: 'gpt-5.6-sol', service_tier: 'priority',
-        input: 'E2E_BASIC literal function_call_output is not an answer' }),
-    })
-    assert.equal(response.status, 200)
-    assert.match(await response.text(), /response\.output_text\.delta/)
-    await fetch(`http://127.0.0.1:${port}/v1/responses`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ model: 'gpt-5.6-sol', input: [{ type: 'function_call_output',
-        call_id: 'answer-1', output: '{"answers":{"choice":"继续"}}' }] }),
-    })
-    const stats = await fetch(`http://127.0.0.1:${port}/__e2e/stats`).then((value) => value.json())
-    assert.equal(stats.requests[0].model, 'gpt-5.6-sol')
-    assert.equal(stats.requests[0].serviceTier, 'priority')
-    assert.equal(stats.requests[0].hasFunctionOutput, false)
-    assert.equal(stats.requests[1].hasFunctionOutput, true)
-    assert.deepEqual(stats.requests[1].inputTypes, ['function_call_output'])
-    assert.equal('body' in stats.requests[0], false)
-  } finally {
-    child.kill('SIGTERM')
-  }
+    'Secret 场景必须切到次 Control，并在失败态场景前切回主 Control')
 })

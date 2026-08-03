@@ -41,7 +41,7 @@ func (s *Server) clientExecutePlan(c *gin.Context) {
 		run.collaboration_mode,session.lifecycle_state,run.started_at,run.finished_at,
 		session.settings_version FROM codex_turn_runs run
 		JOIN codex_thread_controls control ON control.id=run.control_id
-		JOIN development_sessions session ON session.id=control.session_id
+		JOIN workspace_sessions session ON session.id=control.session_id
 		WHERE run.id=$1 AND session.id=$2 FOR UPDATE OF run,control,session`, runID, sessionID).
 		Scan(&controlID, &status, &mode, &lifecycle, &started, &finished, &settingsVersion)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -94,7 +94,7 @@ func (s *Server) clientExecutePlan(c *gin.Context) {
 		return
 	}
 	settingsVersion++
-	_, err = tx.ExecContext(c.Request.Context(), `UPDATE development_sessions SET
+	_, err = tx.ExecContext(c.Request.Context(), `UPDATE workspace_sessions SET
 		collaboration_mode='default',settings_version=$2,updated_at=now() WHERE id=$1`,
 		sessionID, settingsVersion)
 	if err == nil {
@@ -114,7 +114,7 @@ func (s *Server) clientExecutePlan(c *gin.Context) {
 	repository := codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration,
 		s.cfg.CodexMaxSteersPerTurn, s.cfg.CodexReconcileMaxAttempts)
 	intentID, inserted, err := repository.Enqueue(c.Request.Context(), tx,
-		codexcontrol.EnqueueRequest{SourceType: codexcontrol.SourceDevelopment,
+		codexcontrol.EnqueueRequest{SourceType: codexcontrol.SourceWorkspace,
 			SessionID: sessionID, InputSurface: "client", IdempotencyKey: idempotencyKey,
 			MessageLocalID: "plan-execution:" + runID.String(),
 			Instruction:    clientPlanExecuteInstruction, Behavior: "start_when_idle",

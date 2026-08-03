@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/slovx2/tyrs-hand/internal/codex"
-	"github.com/slovx2/tyrs-hand/internal/devcontainer"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
@@ -24,19 +23,19 @@ type remoteSavedAttachment struct {
 	RelativePath string
 }
 
-type hostDevelopmentRuntime struct {
+type hostWorkspaceRuntime struct {
 	Workspace   string
 	CodexHome   string
 	ProjectKind string
 	RemoteURL   string
 }
 
-func (p *RemoteProcessor) prepareRemoteAttachments(ctx context.Context,
-	task *workerprotocol.Task, runtime hostDevelopmentRuntime,
+func (p *Processor) prepareRemoteAttachments(ctx context.Context,
+	task *workerprotocol.Task, runtime hostWorkspaceRuntime,
 ) ([]remoteSavedAttachment, error) {
 	var attachments []workerprotocol.Attachment
-	if task.Snapshot.Development != nil {
-		attachments = task.Snapshot.Development.Attachments
+	if task.Snapshot.Session != nil {
+		attachments = task.Snapshot.Session.Attachments
 	}
 	if task.Snapshot.Discord != nil && len(task.Snapshot.Discord.Attachments) > 0 {
 		attachments = task.Snapshot.Discord.Attachments
@@ -93,8 +92,8 @@ func (p *RemoteProcessor) prepareRemoteAttachments(ctx context.Context,
 	return result, nil
 }
 
-func remoteDevelopmentTurnInput(snapshot *workerprotocol.DevelopmentSnapshot,
-	discord *workerprotocol.DiscordSnapshot, runtime hostDevelopmentRuntime,
+func remoteWorkspaceTurnInput(snapshot *workerprotocol.SessionSnapshot,
+	discord *workerprotocol.DiscordSnapshot, runtime hostWorkspaceRuntime,
 	attachments []remoteSavedAttachment, skills []ports.SkillRef,
 ) ports.TurnInput {
 	if discord != nil {
@@ -128,7 +127,7 @@ func remoteDevelopmentTurnInput(snapshot *workerprotocol.DevelopmentSnapshot,
 }
 
 func remoteDiscordTurnInput(snapshot *workerprotocol.DiscordSnapshot,
-	runtime hostDevelopmentRuntime, attachments []remoteSavedAttachment,
+	runtime hostWorkspaceRuntime, attachments []remoteSavedAttachment,
 	skills []ports.SkillRef,
 ) ports.TurnInput {
 	identity := discordintegration.MessageIdentity{
@@ -163,15 +162,15 @@ func remoteDiscordTurnInput(snapshot *workerprotocol.DiscordSnapshot,
 		LocalImages: images, AdditionalContext: additional, Skills: skills}
 }
 
-func (p *RemoteProcessor) hostDiscordCommandHandler(primary *workerprotocol.Task,
-	hostRuntime hostDevelopmentRuntime, skills []ports.SkillRef,
+func (p *Processor) hostDiscordCommandHandler(primary *workerprotocol.Task,
+	hostRuntime hostWorkspaceRuntime, skills []ports.SkillRef,
 	report func(string, json.RawMessage),
 ) remoteCommandHandler {
 	return func(ctx context.Context, runtime *codex.Runtime, threadID, turnID string,
 		command workerprotocol.RunCommand,
 	) error {
-		if command.Development == nil {
-			return errors.New("development steer 指令缺少消息快照")
+		if command.Session == nil {
+			return errors.New("workspace steer 指令缺少消息快照")
 		}
 		commandTask := *primary
 		commandTask.Claimed.ID = command.ID
@@ -179,13 +178,13 @@ func (p *RemoteProcessor) hostDiscordCommandHandler(primary *workerprotocol.Task
 		if command.Discord != nil {
 			commandTask.Claimed.DiscordMessageID = command.Discord.MessageID
 		}
-		commandTask.Snapshot.Development = command.Development
+		commandTask.Snapshot.Session = command.Session
 		commandTask.Snapshot.Discord = command.Discord
 		attachments, err := p.prepareRemoteAttachments(ctx, &commandTask, hostRuntime)
 		if err != nil {
 			return err
 		}
-		input := remoteDevelopmentTurnInput(command.Development, command.Discord,
+		input := remoteWorkspaceTurnInput(command.Session, command.Discord,
 			hostRuntime, attachments, skills)
 		if err := runtime.SteerTurn(ctx, threadID, turnID, input); err != nil {
 			return err
@@ -195,14 +194,4 @@ func (p *RemoteProcessor) hostDiscordCommandHandler(primary *workerprotocol.Task
 		}
 		return nil
 	}
-}
-
-func (p *RemoteProcessor) discordCommandHandler(primary *workerprotocol.Task,
-	containerRuntime devcontainer.Runtime, skills []ports.SkillRef,
-	report func(string, json.RawMessage),
-) remoteCommandHandler {
-	return p.hostDiscordCommandHandler(primary, hostDevelopmentRuntime{
-		Workspace: containerRuntime.Workspace, CodexHome: containerRuntime.CodexHome,
-		ProjectKind: containerRuntime.ProjectKind, RemoteURL: containerRuntime.RemoteURL,
-	}, skills, report)
 }

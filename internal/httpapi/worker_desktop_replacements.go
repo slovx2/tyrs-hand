@@ -17,7 +17,7 @@ import (
 
 func (s *Server) workerPrepareDesktopRollback(c *gin.Context) {
 	var request workerprotocol.DesktopRollbackPrepareRequest
-	if c.ShouldBindJSON(&request) != nil || request.EnvironmentID == uuid.Nil ||
+	if c.ShouldBindJSON(&request) != nil || request.WorkspaceID == uuid.Nil ||
 		!validDesktopRequestKey(request.RequestKey) {
 		badRequest(c, errors.New("desktop rollback 参数无效"))
 		return
@@ -36,7 +36,7 @@ func (s *Server) workerPrepareDesktopRollback(c *gin.Context) {
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-	node := workerNode(c)
+	worker := currentWorker(c)
 	var controlID, conversationID, targetID, profileID uuid.UUID
 	var sequence, targetSequence int64
 	var controlStatus, targetTurnID, projectionAnchor string
@@ -52,9 +52,9 @@ func (s *Server) workerPrepareDesktopRollback(c *gin.Context) {
 				AND COALESCE(candidate.confirmed_codex_turn_id,
 					candidate.codex_submission_id,'') <> ''
 			ORDER BY candidate.sequence_no DESC LIMIT 1) intent ON true
-		WHERE control.external_thread_id=$1 AND control.development_environment_id=$2
-			AND control.execution_node_id=$3 FOR UPDATE OF control, intent`,
-		params.ThreadID, request.EnvironmentID, node.ID).Scan(&controlID, &conversationID,
+		WHERE control.external_thread_id=$1 AND control.workspace_id=$2
+			AND control.worker_id=$3 FOR UPDATE OF control, intent`,
+		params.ThreadID, request.WorkspaceID, worker.ID).Scan(&controlID, &conversationID,
 		&sequence, &controlStatus, &targetID, &targetSequence, &targetTurnID, &profileID,
 		&projectionAnchor)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -69,7 +69,7 @@ func (s *Server) workerPrepareDesktopRollback(c *gin.Context) {
 		problem(c, http.StatusConflict, "Desktop rollback 目标仍在运行或尚未确认", nil)
 		return
 	}
-	idempotencyKey := "desktop-rollback:" + request.EnvironmentID.String() + ":" + targetID.String()
+	idempotencyKey := "desktop-rollback:" + request.WorkspaceID.String() + ":" + targetID.String()
 	var existingID uuid.UUID
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT id FROM codex_turn_intents
 		WHERE idempotency_key=$1`, idempotencyKey).Scan(&existingID)
@@ -79,7 +79,7 @@ func (s *Server) workerPrepareDesktopRollback(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusOK, workerprotocol.DesktopRollbackState{ID: existingID,
-			EnvironmentID: request.EnvironmentID, ThreadID: params.ThreadID, Status: "reserved",
+			WorkspaceID: request.WorkspaceID, ThreadID: params.ThreadID, Status: "reserved",
 			TargetTurnID: targetTurnID, Params: request.Params})
 		return
 	}
@@ -90,12 +90,12 @@ func (s *Server) workerPrepareDesktopRollback(c *gin.Context) {
 	reservationID := uuid.New()
 	_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO codex_turn_intents
 		(id,control_id,sequence_no,operation,behavior,resolved_action,target_intent_id,
-		source_type,input_surface,session_id,discord_conversation_id,repository_id,development_project_id,
+		source_type,input_surface,session_id,discord_conversation_id,repository_id,workspace_project_id,
 		agent_profile_id,idempotency_key,instruction,skills,allowed_tools,dangerous_actions,
 		actor_login,actor_permission,reply_policy,reply_status,status,projection_anchor,
 		replacement_phase)
 		SELECT $1,control_id,$2,'replace_last_turn','start_when_idle','replace',$3,
-		source_type,'desktop',session_id,discord_conversation_id,repository_id,development_project_id,
+		source_type,'desktop',session_id,discord_conversation_id,repository_id,workspace_project_id,
 		agent_profile_id,$4,'',skills,allowed_tools,dangerous_actions,
 		'codex-desktop','owner','silent','skipped','awaiting_confirmation',$5,'reserved'
 		FROM codex_turn_intents WHERE id=$3`, reservationID, sequence, targetID,
@@ -133,7 +133,7 @@ func (s *Server) workerPrepareDesktopRollback(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, workerprotocol.DesktopRollbackState{ID: reservationID,
-		EnvironmentID: request.EnvironmentID, ThreadID: params.ThreadID, Status: "reserved",
+		WorkspaceID: request.WorkspaceID, ThreadID: params.ThreadID, Status: "reserved",
 		TargetTurnID: targetTurnID, Params: request.Params})
 }
 
@@ -144,7 +144,7 @@ func (s *Server) workerCompleteDesktopRollback(c *gin.Context) {
 		return
 	}
 	var request workerprotocol.DesktopRollbackCompleteRequest
-	if c.ShouldBindJSON(&request) != nil || request.EnvironmentID == uuid.Nil {
+	if c.ShouldBindJSON(&request) != nil || request.WorkspaceID == uuid.Nil {
 		badRequest(c, errors.New("desktop rollback complete 参数无效"))
 		return
 	}
@@ -165,8 +165,8 @@ func (s *Server) workerCompleteDesktopRollback(c *gin.Context) {
 		_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_turn_intents intent
 			SET replacement_phase=$2,status=$3,replacement_error=NULLIF($4,''),updated_at=now()
 			FROM codex_thread_controls control WHERE intent.id=$1
-				AND intent.control_id=control.id AND control.development_environment_id=$5`,
-			requestID, phase, status, request.Error, request.EnvironmentID)
+				AND intent.control_id=control.id AND control.workspace_id=$5`,
+			requestID, phase, status, request.Error, request.WorkspaceID)
 	}
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "记录 Desktop rollback 结果失败", err)
@@ -181,7 +181,7 @@ func (s *Server) workerCompleteDesktopRollback(c *gin.Context) {
 
 func (s *Server) workerPreflightDesktopTurn(c *gin.Context) {
 	var request workerprotocol.DesktopTurnPreflightRequest
-	if c.ShouldBindJSON(&request) != nil || request.EnvironmentID == uuid.Nil {
+	if c.ShouldBindJSON(&request) != nil || request.WorkspaceID == uuid.Nil {
 		badRequest(c, errors.New("desktop turn preflight 参数无效"))
 		return
 	}
@@ -203,12 +203,12 @@ func (s *Server) workerPreflightDesktopTurn(c *gin.Context) {
 			WHERE latest.control_id=control.id
 				AND latest.operation IN ('turn_input','replace_last_turn'))
 		FROM codex_thread_controls control JOIN codex_turn_intents intent ON intent.control_id=control.id
-		WHERE control.external_thread_id=$1 AND control.development_environment_id=$2
+		WHERE control.external_thread_id=$1 AND control.workspace_id=$2
 			AND intent.operation='replace_last_turn' AND intent.input_surface='desktop'
 			AND intent.status='awaiting_confirmation'
 			AND intent.replacement_phase IN ('rollback_applied','start_pending')
 		ORDER BY intent.sequence_no DESC LIMIT 1 FOR UPDATE OF intent`, threadID,
-		request.EnvironmentID).Scan(&reservationID, &stillLatest)
+		request.WorkspaceID).Scan(&reservationID, &stillLatest)
 	if errors.Is(err, sql.ErrNoRows) {
 		c.JSON(http.StatusOK, workerprotocol.DesktopTurnPreflightResponse{Params: request.Params})
 		return

@@ -21,16 +21,13 @@ var errRemoteInterrupt = errors.New("远程 Run 收到用户中断指令")
 type remoteCommandHandler func(context.Context, *codex.Runtime, string, string,
 	workerprotocol.RunCommand) error
 
-func (p *RemoteProcessor) ensureRemoteThread(ctx context.Context, runtime *codex.Runtime,
-	task *workerprotocol.Task, options ports.ThreadOptions, codexHomeKey string,
+func (p *Processor) ensureRemoteThread(ctx context.Context, runtime *codex.Runtime,
+	task *workerprotocol.Task, options ports.ThreadOptions,
 	report func(string, json.RawMessage),
 ) (string, error) {
 	claimed := &task.Claimed
 	threadID := claimed.ExternalThreadID
 	if threadID != "" {
-		if claimed.CodexHomeKey != "" && claimed.CodexHomeKey != codexHomeKey {
-			return "", errors.New("持久化 Control 的 CODEX_HOME 与当前执行节点不一致")
-		}
 		if err := runtime.ResumeThread(ctx, threadID, options); err != nil {
 			return "", fmt.Errorf("恢复 Codex Thread: %w", err)
 		}
@@ -43,11 +40,10 @@ func (p *RemoteProcessor) ensureRemoteThread(ctx context.Context, runtime *codex
 		}
 		reportRuntimeSettingsApplied(report, task.Snapshot.Runtime, "thread/start")
 	}
-	if err := p.client.SetThread(ctx, task, threadID, codexHomeKey); err != nil {
+	if err := p.client.SetThread(ctx, task, threadID); err != nil {
 		return "", err
 	}
 	claimed.ExternalThreadID = threadID
-	claimed.CodexHomeKey = codexHomeKey
 	return threadID, nil
 }
 
@@ -65,7 +61,7 @@ func reportRuntimeSettingsApplied(report func(string, json.RawMessage),
 	}))
 }
 
-func (p *RemoteProcessor) reconcileRemoteTurn(ctx context.Context, runtime *codex.Runtime,
+func (p *Processor) reconcileRemoteTurn(ctx context.Context, runtime *codex.Runtime,
 	events <-chan codex.Event, task *workerprotocol.Task, threadID string,
 	commands <-chan workerprotocol.RunCommand,
 	handleCommand remoteCommandHandler, report func(string, json.RawMessage),
@@ -82,7 +78,7 @@ func (p *RemoteProcessor) reconcileRemoteTurn(ctx context.Context, runtime *code
 	if !found {
 		if claimed.ConfirmedTurnID != "" {
 			return codexcontrol.TurnResult{}, false,
-				errors.New("已确认的 Codex Turn 在执行节点快照中消失")
+				errors.New("已确认的 Codex Turn 在Worker快照中消失")
 		}
 		return codexcontrol.TurnResult{}, false, nil
 	}
@@ -105,7 +101,7 @@ func (p *RemoteProcessor) reconcileRemoteTurn(ctx context.Context, runtime *code
 	return result, true, err
 }
 
-func (p *RemoteProcessor) waitRemoteTurn(ctx context.Context, runtime *codex.Runtime,
+func (p *Processor) waitRemoteTurn(ctx context.Context, runtime *codex.Runtime,
 	events <-chan codex.Event, task *workerprotocol.Task, threadID, turnID string,
 	commands <-chan workerprotocol.RunCommand, handleCommand remoteCommandHandler,
 	report func(string, json.RawMessage),
@@ -221,7 +217,7 @@ func (p *RemoteProcessor) waitRemoteTurn(ctx context.Context, runtime *codex.Run
 	}
 }
 
-func (p *RemoteProcessor) remoteFinalOutput(ctx context.Context, runtime *codex.Runtime,
+func (p *Processor) remoteFinalOutput(ctx context.Context, runtime *codex.Runtime,
 	threadID, turnID string,
 ) (string, string) {
 	for attempt := 0; attempt < 3; attempt++ {
@@ -240,7 +236,7 @@ func (p *RemoteProcessor) remoteFinalOutput(ctx context.Context, runtime *codex.
 	return "", ""
 }
 
-func (p *RemoteProcessor) remoteSnapshotTerminal(ctx context.Context, runtime *codex.Runtime,
+func (p *Processor) remoteSnapshotTerminal(ctx context.Context, runtime *codex.Runtime,
 	task *workerprotocol.Task, threadID, turnID string, startedAt time.Time,
 ) (codexcontrol.TurnResult, error) {
 	snapshot, err := runtime.ReadThread(ctx, threadID)

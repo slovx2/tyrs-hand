@@ -17,12 +17,12 @@ import (
 var remoteUserInfo = regexp.MustCompile(`(?i)^(https?://)[^/@]+@`)
 
 // ScanProjects 只读取宿主固定工作区下的一级目录，不修改仓库和用户文件。
-func ScanProjects(ctx context.Context, root string) ([]workerprotocol.DevelopmentProjectSnapshot, error) {
+func ScanProjects(ctx context.Context, root string) ([]workerprotocol.WorkspaceProjectSnapshot, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return nil, fmt.Errorf("扫描宿主工作区: %w", err)
 	}
-	projects := make([]workerprotocol.DevelopmentProjectSnapshot, 0, len(entries))
+	projects := make([]workerprotocol.WorkspaceProjectSnapshot, 0, len(entries))
 	for _, entry := range entries {
 		name := entry.Name()
 		if !entry.IsDir() || name == "" || strings.HasPrefix(name, ".") ||
@@ -38,9 +38,9 @@ func ScanProjects(ctx context.Context, root string) ([]workerprotocol.Developmen
 	return projects, nil
 }
 
-func scanProject(ctx context.Context, root, name string) (workerprotocol.DevelopmentProjectSnapshot, error) {
+func scanProject(ctx context.Context, root, name string) (workerprotocol.WorkspaceProjectSnapshot, error) {
 	directory := filepath.Join(root, name)
-	result := workerprotocol.DevelopmentProjectSnapshot{
+	result := workerprotocol.WorkspaceProjectSnapshot{
 		Name: name, RelativePath: path.Join("workspaces", name), ProjectKind: "directory",
 	}
 	if _, err := os.Stat(filepath.Join(directory, ".git")); err != nil {

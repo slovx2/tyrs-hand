@@ -82,7 +82,7 @@ func TestJournalKeepsEventsWhileControlIsUnavailableAndFlushesOnce(t *testing.T)
 	store, err := newJournalStore(t.TempDir())
 	require.NoError(t, err)
 	client := workerprotocol.NewClient(server.URL, "node-token", time.Second)
-	runner := &RemoteRunner{cfg: config.Config{ControlTimeout: time.Second}, client: client,
+	runner := &Runner{cfg: config.Config{ControlTimeout: time.Second}, client: client,
 		logger: zap.NewNop(), journals: store}
 	journal := &runJournal{NextSequence: 2,
 		PendingEvents: []workerprotocol.EventInput{{Sequence: 1, Type: "turn.started"}}}
@@ -134,7 +134,7 @@ func TestDeliverTerminalKeepsPendingEventsAfterCompletion(t *testing.T) {
 	defer server.Close()
 	store, err := newJournalStore(t.TempDir())
 	require.NoError(t, err)
-	runner := &RemoteRunner{cfg: config.Config{ControlTimeout: time.Second},
+	runner := &Runner{cfg: config.Config{ControlTimeout: time.Second},
 		client: workerprotocol.NewClient(server.URL, "node-token", time.Second),
 		logger: zap.NewNop(), journals: store}
 	journal := &runJournal{NextSequence: 2,

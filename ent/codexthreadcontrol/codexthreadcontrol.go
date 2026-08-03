@@ -24,12 +24,10 @@ const (
 	FieldRepositoryID = "repository_id"
 	// FieldAgentProfileID holds the string denoting the agent_profile_id field in the database.
 	FieldAgentProfileID = "agent_profile_id"
-	// FieldExecutionNodeID holds the string denoting the execution_node_id field in the database.
-	FieldExecutionNodeID = "execution_node_id"
+	// FieldWorkerID holds the string denoting the worker_id field in the database.
+	FieldWorkerID = "worker_id"
 	// FieldExternalThreadID holds the string denoting the external_thread_id field in the database.
 	FieldExternalThreadID = "external_thread_id"
-	// FieldCodexHomeKey holds the string denoting the codex_home_key field in the database.
-	FieldCodexHomeKey = "codex_home_key"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldCollaborationMode holds the string denoting the collaboration_mode field in the database.
@@ -56,8 +54,8 @@ const (
 	FieldLastReconciledAt = "last_reconciled_at"
 	// FieldNextWakeupAt holds the string denoting the next_wakeup_at field in the database.
 	FieldNextWakeupAt = "next_wakeup_at"
-	// FieldWorkerID holds the string denoting the worker_id field in the database.
-	FieldWorkerID = "worker_id"
+	// FieldLeaseOwner holds the string denoting the lease_owner field in the database.
+	FieldLeaseOwner = "lease_owner"
 	// FieldLeaseToken holds the string denoting the lease_token field in the database.
 	FieldLeaseToken = "lease_token"
 	// FieldLastErrorCode holds the string denoting the last_error_code field in the database.
@@ -80,9 +78,8 @@ var Columns = []string{
 	FieldDiscordConversationID,
 	FieldRepositoryID,
 	FieldAgentProfileID,
-	FieldExecutionNodeID,
+	FieldWorkerID,
 	FieldExternalThreadID,
-	FieldCodexHomeKey,
 	FieldStatus,
 	FieldCollaborationMode,
 	FieldCollaborationModeRevision,
@@ -96,7 +93,7 @@ var Columns = []string{
 	FieldHeartbeatAt,
 	FieldLastReconciledAt,
 	FieldNextWakeupAt,
-	FieldWorkerID,
+	FieldLeaseOwner,
 	FieldLeaseToken,
 	FieldLastErrorCode,
 	FieldLastErrorMessage,
@@ -168,19 +165,14 @@ func ByAgentProfileID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAgentProfileID, opts...).ToFunc()
 }
 
-// ByExecutionNodeID orders the results by the execution_node_id field.
-func ByExecutionNodeID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldExecutionNodeID, opts...).ToFunc()
+// ByWorkerID orders the results by the worker_id field.
+func ByWorkerID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWorkerID, opts...).ToFunc()
 }
 
 // ByExternalThreadID orders the results by the external_thread_id field.
 func ByExternalThreadID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldExternalThreadID, opts...).ToFunc()
-}
-
-// ByCodexHomeKey orders the results by the codex_home_key field.
-func ByCodexHomeKey(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldCodexHomeKey, opts...).ToFunc()
 }
 
 // ByStatus orders the results by the status field.
@@ -248,9 +240,9 @@ func ByNextWakeupAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldNextWakeupAt, opts...).ToFunc()
 }
 
-// ByWorkerID orders the results by the worker_id field.
-func ByWorkerID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldWorkerID, opts...).ToFunc()
+// ByLeaseOwner orders the results by the lease_owner field.
+func ByLeaseOwner(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLeaseOwner, opts...).ToFunc()
 }
 
 // ByLeaseToken orders the results by the lease_token field.

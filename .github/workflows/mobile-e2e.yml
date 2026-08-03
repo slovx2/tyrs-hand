@@ -30,7 +30,6 @@ env:
   GO_VERSION: 1.26.5
   NODE_VERSION: 24.14.0
   PNPM_VERSION: 11.14.0
-  CODEX_VERSION: 0.145.0
   MAESTRO_VERSION: 2.3.0
 
 jobs:
@@ -47,7 +46,6 @@ jobs:
       - name: 安装精确工具链
         run: |
           npm install --global pnpm@11.14.0
-          npm install --global @openai/codex@0.145.0
           ./tools/mobile-e2e/install-maestro.sh
       - name: 创建 Android 35 手机模拟器
         run: |
@@ -65,11 +63,9 @@ jobs:
           adb shell settings put global animator_duration_scale 0
       - name: 安装客户端依赖
         run: pnpm --dir client install --frozen-lockfile
-      - name: Android 真实 Codex 完整矩阵
+      - name: Android Control + Worker Protocol 完整矩阵
         env:
           TYRS_HAND_E2E_MAESTRO_BIN: /home/runner/.local/bin/maestro
-          TYRS_HAND_E2E_DEVELOPMENT_IMAGE: tyrs-hand-development:e2e
-          TYRS_HAND_E2E_LANE: ${{ github.event_name == 'pull_request' && 'protocol' || 'real-codex' }}
         run: make client-e2e-android
       - name: 上传失败证据
         if: always()

@@ -22,8 +22,8 @@ import (
 
 const (
 	ClientBearerScopes  = "clientBearer.Scopes"
-	NodeBearerScopes    = "nodeBearer.Scopes"
 	SessionCookieScopes = "sessionCookie.Scopes"
+	WorkerBearerScopes  = "workerBearer.Scopes"
 )
 
 // Defines values for ClientBootstrapProtocolVersion.
@@ -69,81 +69,6 @@ const (
 	ClientSessionSettingsServiceTierStandard ClientSessionSettingsServiceTier = "standard"
 )
 
-// Defines values for CodexEffectivePreferencesServiceTier.
-const (
-	CodexEffectivePreferencesServiceTierFast     CodexEffectivePreferencesServiceTier = "fast"
-	CodexEffectivePreferencesServiceTierStandard CodexEffectivePreferencesServiceTier = "standard"
-)
-
-// Defines values for CodexPreferencesServiceTier.
-const (
-	CodexPreferencesServiceTierFast     CodexPreferencesServiceTier = "fast"
-	CodexPreferencesServiceTierStandard CodexPreferencesServiceTier = "standard"
-)
-
-// Defines values for DevelopmentEnvironmentAppServerStatus.
-const (
-	DevelopmentEnvironmentAppServerStatusError    DevelopmentEnvironmentAppServerStatus = "error"
-	DevelopmentEnvironmentAppServerStatusPending  DevelopmentEnvironmentAppServerStatus = "pending"
-	DevelopmentEnvironmentAppServerStatusRunning  DevelopmentEnvironmentAppServerStatus = "running"
-	DevelopmentEnvironmentAppServerStatusStarting DevelopmentEnvironmentAppServerStatus = "starting"
-)
-
-// Defines values for DevelopmentEnvironmentDaemonStatus.
-const (
-	DevelopmentEnvironmentDaemonStatusError    DevelopmentEnvironmentDaemonStatus = "error"
-	DevelopmentEnvironmentDaemonStatusPending  DevelopmentEnvironmentDaemonStatus = "pending"
-	DevelopmentEnvironmentDaemonStatusRunning  DevelopmentEnvironmentDaemonStatus = "running"
-	DevelopmentEnvironmentDaemonStatusStarting DevelopmentEnvironmentDaemonStatus = "starting"
-)
-
-// Defines values for DevelopmentEnvironmentHubStatus.
-const (
-	DevelopmentEnvironmentHubStatusError    DevelopmentEnvironmentHubStatus = "error"
-	DevelopmentEnvironmentHubStatusPending  DevelopmentEnvironmentHubStatus = "pending"
-	DevelopmentEnvironmentHubStatusRunning  DevelopmentEnvironmentHubStatus = "running"
-	DevelopmentEnvironmentHubStatusStarting DevelopmentEnvironmentHubStatus = "starting"
-)
-
-// Defines values for DevelopmentEnvironmentSshStatus.
-const (
-	DevelopmentEnvironmentSshStatusDisabled DevelopmentEnvironmentSshStatus = "disabled"
-	DevelopmentEnvironmentSshStatusError    DevelopmentEnvironmentSshStatus = "error"
-	DevelopmentEnvironmentSshStatusPending  DevelopmentEnvironmentSshStatus = "pending"
-	DevelopmentEnvironmentSshStatusRunning  DevelopmentEnvironmentSshStatus = "running"
-	DevelopmentEnvironmentSshStatusStarting DevelopmentEnvironmentSshStatus = "starting"
-)
-
-// Defines values for DevelopmentForumBindingStatus.
-const (
-	DevelopmentForumBindingStatusActive   DevelopmentForumBindingStatus = "active"
-	DevelopmentForumBindingStatusInactive DevelopmentForumBindingStatus = "inactive"
-)
-
-// Defines values for DevelopmentForumCollaboratorAccessLevel.
-const (
-	DevelopmentForumCollaboratorAccessLevelOperator DevelopmentForumCollaboratorAccessLevel = "operator"
-	DevelopmentForumCollaboratorAccessLevelReadonly DevelopmentForumCollaboratorAccessLevel = "readonly"
-)
-
-// Defines values for DevelopmentProjectAvailabilityStatus.
-const (
-	Available DevelopmentProjectAvailabilityStatus = "available"
-	Missing   DevelopmentProjectAvailabilityStatus = "missing"
-)
-
-// Defines values for DevelopmentProjectProjectKind.
-const (
-	Directory DevelopmentProjectProjectKind = "directory"
-	Git       DevelopmentProjectProjectKind = "git"
-)
-
-// Defines values for DevelopmentProjectForumInputMode.
-const (
-	New     DevelopmentProjectForumInputMode = "new"
-	Restore DevelopmentProjectForumInputMode = "restore"
-)
-
 // Defines values for DiscordInitializationInputMode.
 const (
 	DiscordInitializationInputModeFresh       DiscordInitializationInputMode = "fresh"
@@ -161,31 +86,16 @@ const (
 	EnrollmentTokenExpiresInN900 EnrollmentTokenExpiresIn = 900
 )
 
-// Defines values for ExecutionNodeRoles.
+// Defines values for GitHubAgentEffectivePreferencesServiceTier.
 const (
-	ExecutionNodeRolesDiscord ExecutionNodeRoles = "discord"
-	ExecutionNodeRolesGithub  ExecutionNodeRoles = "github"
+	GitHubAgentEffectivePreferencesServiceTierFast     GitHubAgentEffectivePreferencesServiceTier = "fast"
+	GitHubAgentEffectivePreferencesServiceTierStandard GitHubAgentEffectivePreferencesServiceTier = "standard"
 )
 
-// Defines values for ExecutionNodeStatus.
+// Defines values for GitHubAgentPreferencesServiceTier.
 const (
-	Disabled     ExecutionNodeStatus = "disabled"
-	Error        ExecutionNodeStatus = "error"
-	Incompatible ExecutionNodeStatus = "incompatible"
-	Offline      ExecutionNodeStatus = "offline"
-	Online       ExecutionNodeStatus = "online"
-	Pending      ExecutionNodeStatus = "pending"
-)
-
-// Defines values for ExecutionNodeCreatedExpiresIn.
-const (
-	ExecutionNodeCreatedExpiresInN900 ExecutionNodeCreatedExpiresIn = 900
-)
-
-// Defines values for ExecutionNodeInputRoles.
-const (
-	ExecutionNodeInputRolesDiscord ExecutionNodeInputRoles = "discord"
-	ExecutionNodeInputRolesGithub  ExecutionNodeInputRoles = "github"
+	GitHubAgentPreferencesServiceTierFast     GitHubAgentPreferencesServiceTier = "fast"
+	GitHubAgentPreferencesServiceTierStandard GitHubAgentPreferencesServiceTier = "standard"
 )
 
 // Defines values for TriggerRuleInputActorMinPermission.
@@ -204,6 +114,76 @@ const (
 	LegacyMention  TriggerRuleInputTriggerKind = "legacy_mention"
 	MentionCommand TriggerRuleInputTriggerKind = "mention_command"
 	SlashCommand   TriggerRuleInputTriggerKind = "slash_command"
+)
+
+// Defines values for WorkerRoles.
+const (
+	WorkerRolesDiscord WorkerRoles = "discord"
+	WorkerRolesGithub  WorkerRoles = "github"
+)
+
+// Defines values for WorkerStatus.
+const (
+	Disabled     WorkerStatus = "disabled"
+	Error        WorkerStatus = "error"
+	Incompatible WorkerStatus = "incompatible"
+	Offline      WorkerStatus = "offline"
+	Online       WorkerStatus = "online"
+	Pending      WorkerStatus = "pending"
+)
+
+// Defines values for WorkerClaimRequestRole.
+const (
+	WorkerClaimRequestRoleAll     WorkerClaimRequestRole = "all"
+	WorkerClaimRequestRoleDiscord WorkerClaimRequestRole = "discord"
+	WorkerClaimRequestRoleGithub  WorkerClaimRequestRole = "github"
+)
+
+// Defines values for WorkerCommandAckAction.
+const (
+	Interrupt WorkerCommandAckAction = "interrupt"
+	Steer     WorkerCommandAckAction = "steer"
+)
+
+// Defines values for WorkerCreatedExpiresIn.
+const (
+	WorkerCreatedExpiresInN900 WorkerCreatedExpiresIn = 900
+)
+
+// Defines values for WorkerInputRoles.
+const (
+	Discord WorkerInputRoles = "discord"
+	Github  WorkerInputRoles = "github"
+)
+
+// Defines values for WorkspaceForumBindingStatus.
+const (
+	WorkspaceForumBindingStatusActive   WorkspaceForumBindingStatus = "active"
+	WorkspaceForumBindingStatusInactive WorkspaceForumBindingStatus = "inactive"
+)
+
+// Defines values for WorkspaceForumCollaboratorAccessLevel.
+const (
+	WorkspaceForumCollaboratorAccessLevelOperator WorkspaceForumCollaboratorAccessLevel = "operator"
+	WorkspaceForumCollaboratorAccessLevelReadonly WorkspaceForumCollaboratorAccessLevel = "readonly"
+)
+
+// Defines values for WorkspaceProjectAvailabilityStatus.
+const (
+	Available WorkspaceProjectAvailabilityStatus = "available"
+	Missing   WorkspaceProjectAvailabilityStatus = "missing"
+)
+
+// Defines values for WorkspaceProjectProjectKind.
+const (
+	Directory WorkspaceProjectProjectKind = "directory"
+	Git       WorkspaceProjectProjectKind = "git"
+)
+
+// Defines values for WorkspaceProjectForumInputMode.
+const (
+	New     WorkspaceProjectForumInputMode = "new"
+	Restore WorkspaceProjectForumInputMode = "restore"
 )
 
 // Defines values for ClientPutPushTokenJSONBodyAppEnvironment.
@@ -233,16 +213,16 @@ const (
 	SteerIfActive ClientCreateMessageJSONBodyBehavior = "steer_if_active"
 )
 
-// Defines values for PutDevelopmentProjectForumCollaboratorJSONBodyAccessLevel.
-const (
-	PutDevelopmentProjectForumCollaboratorJSONBodyAccessLevelOperator PutDevelopmentProjectForumCollaboratorJSONBodyAccessLevel = "operator"
-	PutDevelopmentProjectForumCollaboratorJSONBodyAccessLevelReadonly PutDevelopmentProjectForumCollaboratorJSONBodyAccessLevel = "readonly"
-)
-
 // Defines values for PutDiscordForumAccessJSONBodyAccessLevel.
 const (
-	Operator PutDiscordForumAccessJSONBodyAccessLevel = "operator"
-	Readonly PutDiscordForumAccessJSONBodyAccessLevel = "readonly"
+	PutDiscordForumAccessJSONBodyAccessLevelOperator PutDiscordForumAccessJSONBodyAccessLevel = "operator"
+	PutDiscordForumAccessJSONBodyAccessLevelReadonly PutDiscordForumAccessJSONBodyAccessLevel = "readonly"
+)
+
+// Defines values for PutWorkspaceProjectForumCollaboratorJSONBodyAccessLevel.
+const (
+	Operator PutWorkspaceProjectForumCollaboratorJSONBodyAccessLevel = "operator"
+	Readonly PutWorkspaceProjectForumCollaboratorJSONBodyAccessLevel = "readonly"
 )
 
 // Administrator defines model for Administrator.
@@ -261,7 +241,6 @@ type ClientBootstrap struct {
 	} `json:"agentProfiles"`
 	Capabilities        map[string]bool                `json:"capabilities"`
 	CurrentCursor       int64                          `json:"currentCursor"`
-	Environments        []map[string]interface{}       `json:"environments"`
 	LastStartedSettings *ClientSessionSettings         `json:"lastStartedSettings"`
 	ModelCatalogs       map[string]ClientModelCatalog  `json:"modelCatalogs"`
 	Projects            []ClientProject                `json:"projects"`
@@ -271,6 +250,7 @@ type ClientBootstrap struct {
 		Id       openapi_types.UUID `json:"id"`
 		Username string             `json:"username"`
 	} `json:"user"`
+	Workspaces []map[string]interface{} `json:"workspaces"`
 }
 
 // ClientBootstrapProtocolVersion defines model for ClientBootstrap.ProtocolVersion.
@@ -321,31 +301,31 @@ type ClientProject struct {
 	AvailabilityStatus string             `json:"availabilityStatus"`
 	Branch             *string            `json:"branch"`
 	Dirty              bool               `json:"dirty"`
-	EnvironmentId      openapi_types.UUID `json:"environmentId"`
 	Id                 openapi_types.UUID `json:"id"`
 	Kind               string             `json:"kind"`
 	Name               string             `json:"name"`
 	RelativePath       string             `json:"relativePath"`
+	WorkspaceId        openapi_types.UUID `json:"workspaceId"`
 }
 
 // ClientSession defines model for ClientSession.
 type ClientSession struct {
-	AgentProfileId           openapi_types.UUID               `json:"agentProfileId"`
-	CollaborationMode        ClientSessionCollaborationMode   `json:"collaborationMode"`
-	CreatedAt                time.Time                        `json:"createdAt"`
-	DevelopmentEnvironmentId openapi_types.UUID               `json:"developmentEnvironmentId"`
-	DevelopmentProjectId     openapi_types.UUID               `json:"developmentProjectId"`
-	HistoryCompleteness      ClientSessionHistoryCompleteness `json:"historyCompleteness"`
-	Id                       openapi_types.UUID               `json:"id"`
-	LastActivityAt           time.Time                        `json:"lastActivityAt"`
-	LastMessageSeq           int64                            `json:"lastMessageSeq"`
-	LifecycleState           ClientSessionLifecycleState      `json:"lifecycleState"`
-	Model                    *string                          `json:"model"`
-	ReasoningEffort          *string                          `json:"reasoningEffort"`
-	ServiceTier              ClientSessionServiceTier         `json:"serviceTier"`
-	SettingsVersion          int64                            `json:"settingsVersion"`
-	Title                    string                           `json:"title"`
-	UpdatedAt                time.Time                        `json:"updatedAt"`
+	AgentProfileId      openapi_types.UUID               `json:"agentProfileId"`
+	CollaborationMode   ClientSessionCollaborationMode   `json:"collaborationMode"`
+	CreatedAt           time.Time                        `json:"createdAt"`
+	HistoryCompleteness ClientSessionHistoryCompleteness `json:"historyCompleteness"`
+	Id                  openapi_types.UUID               `json:"id"`
+	LastActivityAt      time.Time                        `json:"lastActivityAt"`
+	LastMessageSeq      int64                            `json:"lastMessageSeq"`
+	LifecycleState      ClientSessionLifecycleState      `json:"lifecycleState"`
+	Model               *string                          `json:"model"`
+	ProjectId           openapi_types.UUID               `json:"projectId"`
+	ReasoningEffort     *string                          `json:"reasoningEffort"`
+	ServiceTier         ClientSessionServiceTier         `json:"serviceTier"`
+	SettingsVersion     int64                            `json:"settingsVersion"`
+	Title               string                           `json:"title"`
+	UpdatedAt           time.Time                        `json:"updatedAt"`
+	WorkspaceId         openapi_types.UUID               `json:"workspaceId"`
 }
 
 // ClientSessionCollaborationMode defines model for ClientSession.CollaborationMode.
@@ -375,162 +355,6 @@ type ClientSessionSettingsCollaborationMode string
 
 // ClientSessionSettingsServiceTier defines model for ClientSessionSettings.ServiceTier.
 type ClientSessionSettingsServiceTier string
-
-// CodexEffectivePreferences defines model for CodexEffectivePreferences.
-type CodexEffectivePreferences struct {
-	Model           string                               `json:"model"`
-	ReasoningEffort string                               `json:"reasoningEffort"`
-	ServiceTier     CodexEffectivePreferencesServiceTier `json:"serviceTier"`
-}
-
-// CodexEffectivePreferencesServiceTier defines model for CodexEffectivePreferences.ServiceTier.
-type CodexEffectivePreferencesServiceTier string
-
-// CodexForumSettings defines model for CodexForumSettings.
-type CodexForumSettings struct {
-	Effective          CodexEffectivePreferences `json:"effective"`
-	Id                 openapi_types.UUID        `json:"id"`
-	Name               string                    `json:"name"`
-	OwnerDiscordUserId string                    `json:"ownerDiscordUserId"`
-	Settings           CodexPreferences          `json:"settings"`
-}
-
-// CodexPreferences defines model for CodexPreferences.
-type CodexPreferences struct {
-	Model           *string                      `json:"model"`
-	ReasoningEffort *string                      `json:"reasoningEffort"`
-	ServiceTier     *CodexPreferencesServiceTier `json:"serviceTier"`
-}
-
-// CodexPreferencesServiceTier defines model for CodexPreferences.ServiceTier.
-type CodexPreferencesServiceTier string
-
-// CodexRepositorySettings defines model for CodexRepositorySettings.
-type CodexRepositorySettings struct {
-	Effective CodexEffectivePreferences `json:"effective"`
-	Forums    []CodexForumSettings      `json:"forums"`
-	Id        openapi_types.UUID        `json:"id"`
-	Name      string                    `json:"name"`
-	Owner     string                    `json:"owner"`
-	Settings  CodexPreferences          `json:"settings"`
-}
-
-// CodexSettingsList defines model for CodexSettingsList.
-type CodexSettingsList struct {
-	Items  []CodexRepositorySettings `json:"items"`
-	Models []ClientModel             `json:"models"`
-}
-
-// DevelopmentEnvironment defines model for DevelopmentEnvironment.
-type DevelopmentEnvironment struct {
-	AppServerStatus    DevelopmentEnvironmentAppServerStatus `json:"appServerStatus"`
-	CodexUserOverride  bool                                  `json:"codexUserOverride"`
-	CodexVersion       *string                               `json:"codexVersion,omitempty"`
-	DaemonError        *string                               `json:"daemonError,omitempty"`
-	DaemonStatus       DevelopmentEnvironmentDaemonStatus    `json:"daemonStatus"`
-	Error              *string                               `json:"error,omitempty"`
-	ExecutionNodeId    *openapi_types.UUID                   `json:"executionNodeId,omitempty"`
-	HubStatus          DevelopmentEnvironmentHubStatus       `json:"hubStatus"`
-	Id                 openapi_types.UUID                    `json:"id"`
-	ImageId            *string                               `json:"imageId,omitempty"`
-	ImageRef           string                                `json:"imageRef"`
-	LastUsedAt         time.Time                             `json:"lastUsedAt"`
-	OwnerDiscordUserId string                                `json:"ownerDiscordUserId"`
-	OwnerName          string                                `json:"ownerName"`
-	ProjectScanError   *string                               `json:"projectScanError,omitempty"`
-	Projects           []DevelopmentProject                  `json:"projects"`
-	ProjectsScannedAt  *time.Time                            `json:"projectsScannedAt,omitempty"`
-	RuntimeUser        *string                               `json:"runtimeUser,omitempty"`
-	SshAppliedRevision *int64                                `json:"sshAppliedRevision,omitempty"`
-	SshConfigRevision  *int64                                `json:"sshConfigRevision,omitempty"`
-	SshDiscordUserId   *string                               `json:"sshDiscordUserId,omitempty"`
-	SshDisplayName     *string                               `json:"sshDisplayName,omitempty"`
-	SshFingerprint     *string                               `json:"sshFingerprint,omitempty"`
-	SshPort            *int                                  `json:"sshPort,omitempty"`
-	SshPublicKey       *string                               `json:"sshPublicKey,omitempty"`
-	SshStatus          DevelopmentEnvironmentSshStatus       `json:"sshStatus"`
-	Status             string                                `json:"status"`
-}
-
-// DevelopmentEnvironmentAppServerStatus defines model for DevelopmentEnvironment.AppServerStatus.
-type DevelopmentEnvironmentAppServerStatus string
-
-// DevelopmentEnvironmentDaemonStatus defines model for DevelopmentEnvironment.DaemonStatus.
-type DevelopmentEnvironmentDaemonStatus string
-
-// DevelopmentEnvironmentHubStatus defines model for DevelopmentEnvironment.HubStatus.
-type DevelopmentEnvironmentHubStatus string
-
-// DevelopmentEnvironmentSshStatus defines model for DevelopmentEnvironment.SshStatus.
-type DevelopmentEnvironmentSshStatus string
-
-// DevelopmentEnvironmentList defines model for DevelopmentEnvironmentList.
-type DevelopmentEnvironmentList struct {
-	Items []DevelopmentEnvironment `json:"items"`
-}
-
-// DevelopmentEnvironmentSSHInput defines model for DevelopmentEnvironmentSSHInput.
-type DevelopmentEnvironmentSSHInput struct {
-	DiscordUserId string `json:"discordUserId"`
-	Port          int    `json:"port"`
-	PublicKey     string `json:"publicKey"`
-}
-
-// DevelopmentForum defines model for DevelopmentForum.
-type DevelopmentForum struct {
-	BindingStatus DevelopmentForumBindingStatus  `json:"bindingStatus"`
-	Collaborators []DevelopmentForumCollaborator `json:"collaborators"`
-	DiscordId     string                         `json:"discordId"`
-	Id            openapi_types.UUID             `json:"id"`
-	Name          string                         `json:"name"`
-}
-
-// DevelopmentForumBindingStatus defines model for DevelopmentForum.BindingStatus.
-type DevelopmentForumBindingStatus string
-
-// DevelopmentForumCollaborator defines model for DevelopmentForumCollaborator.
-type DevelopmentForumCollaborator struct {
-	AccessLevel         DevelopmentForumCollaboratorAccessLevel `json:"accessLevel"`
-	AdministratorBypass bool                                    `json:"administratorBypass"`
-	ForumId             openapi_types.UUID                      `json:"forumId"`
-	MemberId            string                                  `json:"memberId"`
-}
-
-// DevelopmentForumCollaboratorAccessLevel defines model for DevelopmentForumCollaborator.AccessLevel.
-type DevelopmentForumCollaboratorAccessLevel string
-
-// DevelopmentProject defines model for DevelopmentProject.
-type DevelopmentProject struct {
-	AvailabilityStatus  DevelopmentProjectAvailabilityStatus `json:"availabilityStatus"`
-	Branch              *string                              `json:"branch,omitempty"`
-	DesiredRelativePath *string                              `json:"desiredRelativePath,omitempty"`
-	Dirty               bool                                 `json:"dirty"`
-	Forums              []DevelopmentForum                   `json:"forums"`
-	HeadSha             *string                              `json:"headSha,omitempty"`
-	Id                  openapi_types.UUID                   `json:"id"`
-	LastSeenAt          time.Time                            `json:"lastSeenAt"`
-	Name                string                               `json:"name"`
-	ProjectKind         DevelopmentProjectProjectKind        `json:"projectKind"`
-	RelativePath        string                               `json:"relativePath"`
-	RemoteUrl           *string                              `json:"remoteUrl,omitempty"`
-	ScanError           *string                              `json:"scanError,omitempty"`
-}
-
-// DevelopmentProjectAvailabilityStatus defines model for DevelopmentProject.AvailabilityStatus.
-type DevelopmentProjectAvailabilityStatus string
-
-// DevelopmentProjectProjectKind defines model for DevelopmentProject.ProjectKind.
-type DevelopmentProjectProjectKind string
-
-// DevelopmentProjectForumInput defines model for DevelopmentProjectForumInput.
-type DevelopmentProjectForumInput struct {
-	ForumId *openapi_types.UUID              `json:"forumId,omitempty"`
-	Mode    DevelopmentProjectForumInputMode `json:"mode"`
-	Name    *string                          `json:"name,omitempty"`
-}
-
-// DevelopmentProjectForumInputMode defines model for DevelopmentProjectForumInput.Mode.
-type DevelopmentProjectForumInputMode string
 
 // DiscordConflict defines model for DiscordConflict.
 type DiscordConflict struct {
@@ -625,52 +449,45 @@ type EnrollmentToken struct {
 // EnrollmentTokenExpiresIn defines model for EnrollmentToken.ExpiresIn.
 type EnrollmentTokenExpiresIn int
 
-// ExecutionDefaults defines model for ExecutionDefaults.
-type ExecutionDefaults struct {
-	DiscordNodeId *openapi_types.UUID `json:"discordNodeId"`
-	GithubNodeId  *openapi_types.UUID `json:"githubNodeId"`
+// GitHubAgentEffectivePreferences defines model for GitHubAgentEffectivePreferences.
+type GitHubAgentEffectivePreferences struct {
+	Model           string                                     `json:"model"`
+	ReasoningEffort string                                     `json:"reasoningEffort"`
+	ServiceTier     GitHubAgentEffectivePreferencesServiceTier `json:"serviceTier"`
 }
 
-// ExecutionNode defines model for ExecutionNode.
-type ExecutionNode struct {
-	Enabled           bool                   `json:"enabled"`
-	HeartbeatAt       *time.Time             `json:"heartbeatAt,omitempty"`
-	Id                openapi_types.UUID     `json:"id"`
-	LastError         *string                `json:"lastError,omitempty"`
-	MaxConcurrentJobs int                    `json:"maxConcurrentJobs"`
-	Metadata          map[string]interface{} `json:"metadata"`
-	Name              string                 `json:"name"`
-	ProtocolVersion   int                    `json:"protocolVersion"`
-	Roles             []ExecutionNodeRoles   `json:"roles"`
-	Status            ExecutionNodeStatus    `json:"status"`
-	WorkerVersion     *string                `json:"workerVersion,omitempty"`
+// GitHubAgentEffectivePreferencesServiceTier defines model for GitHubAgentEffectivePreferences.ServiceTier.
+type GitHubAgentEffectivePreferencesServiceTier string
+
+// GitHubAgentInstructions defines model for GitHubAgentInstructions.
+type GitHubAgentInstructions struct {
+	Content string `json:"content"`
 }
 
-// ExecutionNodeRoles defines model for ExecutionNode.Roles.
-type ExecutionNodeRoles string
-
-// ExecutionNodeStatus defines model for ExecutionNode.Status.
-type ExecutionNodeStatus string
-
-// ExecutionNodeCreated defines model for ExecutionNodeCreated.
-type ExecutionNodeCreated struct {
-	EnrollmentToken *string                       `json:"enrollmentToken,omitempty"`
-	ExpiresIn       ExecutionNodeCreatedExpiresIn `json:"expiresIn"`
-	Node            ExecutionNode                 `json:"node"`
+// GitHubAgentPreferences defines model for GitHubAgentPreferences.
+type GitHubAgentPreferences struct {
+	Model           *string                            `json:"model"`
+	ReasoningEffort *string                            `json:"reasoningEffort"`
+	ServiceTier     *GitHubAgentPreferencesServiceTier `json:"serviceTier"`
 }
 
-// ExecutionNodeCreatedExpiresIn defines model for ExecutionNodeCreated.ExpiresIn.
-type ExecutionNodeCreatedExpiresIn int
+// GitHubAgentPreferencesServiceTier defines model for GitHubAgentPreferences.ServiceTier.
+type GitHubAgentPreferencesServiceTier string
 
-// ExecutionNodeInput defines model for ExecutionNodeInput.
-type ExecutionNodeInput struct {
-	MaxConcurrentJobs int                       `json:"maxConcurrentJobs"`
-	Name              string                    `json:"name"`
-	Roles             []ExecutionNodeInputRoles `json:"roles"`
+// GitHubAgentRepositorySettings defines model for GitHubAgentRepositorySettings.
+type GitHubAgentRepositorySettings struct {
+	Effective GitHubAgentEffectivePreferences `json:"effective"`
+	Id        openapi_types.UUID              `json:"id"`
+	Name      string                          `json:"name"`
+	Owner     string                          `json:"owner"`
+	Settings  GitHubAgentPreferences          `json:"settings"`
 }
 
-// ExecutionNodeInputRoles defines model for ExecutionNodeInput.Roles.
-type ExecutionNodeInputRoles string
+// GitHubAgentSettingsList defines model for GitHubAgentSettingsList.
+type GitHubAgentSettingsList struct {
+	Items  []GitHubAgentRepositorySettings `json:"items"`
+	Models []ClientModel                   `json:"models"`
+}
 
 // GitHubAppInput defines model for GitHubAppInput.
 type GitHubAppInput struct {
@@ -688,11 +505,6 @@ type GitHubAppStatus struct {
 	AppSlug    *string `json:"appSlug,omitempty"`
 	ClientId   *string `json:"clientId,omitempty"`
 	Configured bool    `json:"configured"`
-}
-
-// GlobalAgents defines model for GlobalAgents.
-type GlobalAgents struct {
-	Content string `json:"content"`
 }
 
 // IDResource defines model for IDResource.
@@ -773,26 +585,26 @@ type SSHCredentialUpdateInput struct {
 
 // SSHHost defines model for SSHHost.
 type SSHHost struct {
-	Alias            string               `json:"alias"`
-	CredentialId     openapi_types.UUID   `json:"credentialId"`
-	CredentialName   *string              `json:"credentialName,omitempty"`
-	Enabled          bool                 `json:"enabled"`
-	ExecutionNodeIds []openapi_types.UUID `json:"executionNodeIds"`
-	Hostname         string               `json:"hostname"`
-	Id               openapi_types.UUID   `json:"id"`
-	Port             int                  `json:"port"`
-	ProxyJumpAlias   *string              `json:"proxyJumpAlias,omitempty"`
-	ProxyJumpHostId  *openapi_types.UUID  `json:"proxyJumpHostId,omitempty"`
-	UpdatedAt        *time.Time           `json:"updatedAt,omitempty"`
-	Username         string               `json:"username"`
+	Alias           string               `json:"alias"`
+	CredentialId    openapi_types.UUID   `json:"credentialId"`
+	CredentialName  *string              `json:"credentialName,omitempty"`
+	Enabled         bool                 `json:"enabled"`
+	Hostname        string               `json:"hostname"`
+	Id              openapi_types.UUID   `json:"id"`
+	Port            int                  `json:"port"`
+	ProxyJumpAlias  *string              `json:"proxyJumpAlias,omitempty"`
+	ProxyJumpHostId *openapi_types.UUID  `json:"proxyJumpHostId,omitempty"`
+	UpdatedAt       *time.Time           `json:"updatedAt,omitempty"`
+	Username        string               `json:"username"`
+	WorkerIds       []openapi_types.UUID `json:"workerIds"`
 }
 
 // SSHHostImportInput defines model for SSHHostImportInput.
 type SSHHostImportInput struct {
-	CredentialId     openapi_types.UUID   `json:"credentialId"`
-	Enabled          bool                 `json:"enabled"`
-	ExecutionNodeIds []openapi_types.UUID `json:"executionNodeIds"`
-	Hosts            []SSHHostImportItem  `json:"hosts"`
+	CredentialId openapi_types.UUID   `json:"credentialId"`
+	Enabled      bool                 `json:"enabled"`
+	Hosts        []SSHHostImportItem  `json:"hosts"`
+	WorkerIds    []openapi_types.UUID `json:"workerIds"`
 }
 
 // SSHHostImportItem defines model for SSHHostImportItem.
@@ -806,14 +618,14 @@ type SSHHostImportItem struct {
 
 // SSHHostInput defines model for SSHHostInput.
 type SSHHostInput struct {
-	Alias            string               `json:"alias"`
-	CredentialId     openapi_types.UUID   `json:"credentialId"`
-	Enabled          bool                 `json:"enabled"`
-	ExecutionNodeIds []openapi_types.UUID `json:"executionNodeIds"`
-	Hostname         string               `json:"hostname"`
-	Port             int                  `json:"port"`
-	ProxyJumpHostId  *openapi_types.UUID  `json:"proxyJumpHostId,omitempty"`
-	Username         string               `json:"username"`
+	Alias           string               `json:"alias"`
+	CredentialId    openapi_types.UUID   `json:"credentialId"`
+	Enabled         bool                 `json:"enabled"`
+	Hostname        string               `json:"hostname"`
+	Port            int                  `json:"port"`
+	ProxyJumpHostId *openapi_types.UUID  `json:"proxyJumpHostId,omitempty"`
+	Username        string               `json:"username"`
+	WorkerIds       []openapi_types.UUID `json:"workerIds"`
 }
 
 // SSHHostList defines model for SSHHostList.
@@ -868,6 +680,77 @@ type TriggerRuleInputActorMinPermission string
 // TriggerRuleInputTriggerKind defines model for TriggerRuleInput.TriggerKind.
 type TriggerRuleInputTriggerKind string
 
+// Worker defines model for Worker.
+type Worker struct {
+	Enabled           bool                   `json:"enabled"`
+	HeartbeatAt       *time.Time             `json:"heartbeatAt,omitempty"`
+	Id                openapi_types.UUID     `json:"id"`
+	LastError         *string                `json:"lastError,omitempty"`
+	MaxConcurrentJobs int                    `json:"maxConcurrentJobs"`
+	Metadata          map[string]interface{} `json:"metadata"`
+	Name              string                 `json:"name"`
+	ProtocolVersion   int                    `json:"protocolVersion"`
+	Roles             []WorkerRoles          `json:"roles"`
+	Status            WorkerStatus           `json:"status"`
+	WorkerVersion     *string                `json:"workerVersion,omitempty"`
+}
+
+// WorkerRoles defines model for Worker.Roles.
+type WorkerRoles string
+
+// WorkerStatus defines model for Worker.Status.
+type WorkerStatus string
+
+// WorkerClaimRequest defines model for WorkerClaimRequest.
+type WorkerClaimRequest struct {
+	Role WorkerClaimRequestRole `json:"role"`
+	Wait bool                   `json:"wait"`
+}
+
+// WorkerClaimRequestRole defines model for WorkerClaimRequest.Role.
+type WorkerClaimRequestRole string
+
+// WorkerClaimResponse defines model for WorkerClaimResponse.
+type WorkerClaimResponse struct {
+	Task *map[string]interface{} `json:"task,omitempty"`
+}
+
+// WorkerCommandAck defines model for WorkerCommandAck.
+type WorkerCommandAck struct {
+	Action     WorkerCommandAckAction `json:"action"`
+	CommandId  openapi_types.UUID     `json:"commandId"`
+	LeaseEpoch int64                  `json:"leaseEpoch"`
+	LeaseToken *string                `json:"leaseToken,omitempty"`
+	TurnId     *string                `json:"turnId,omitempty"`
+}
+
+// WorkerCommandAckAction defines model for WorkerCommandAck.Action.
+type WorkerCommandAckAction string
+
+// WorkerCompleteRequest defines model for WorkerCompleteRequest.
+type WorkerCompleteRequest struct {
+	IdempotencyKey string                 `json:"idempotencyKey"`
+	LeaseEpoch     int64                  `json:"leaseEpoch"`
+	LeaseToken     *string                `json:"leaseToken,omitempty"`
+	Result         map[string]interface{} `json:"result"`
+}
+
+// WorkerCreated defines model for WorkerCreated.
+type WorkerCreated struct {
+	EnrollmentToken *string                `json:"enrollmentToken,omitempty"`
+	ExpiresIn       WorkerCreatedExpiresIn `json:"expiresIn"`
+	Worker          Worker                 `json:"worker"`
+}
+
+// WorkerCreatedExpiresIn defines model for WorkerCreated.ExpiresIn.
+type WorkerCreatedExpiresIn int
+
+// WorkerDefaults defines model for WorkerDefaults.
+type WorkerDefaults struct {
+	DiscordWorkerId *openapi_types.UUID `json:"discordWorkerId"`
+	GithubWorkerId  *openapi_types.UUID `json:"githubWorkerId"`
+}
+
 // WorkerEnrollRequest defines model for WorkerEnrollRequest.
 type WorkerEnrollRequest struct {
 	Token *string `json:"token,omitempty"`
@@ -876,27 +759,165 @@ type WorkerEnrollRequest struct {
 // WorkerEnrollResponse defines model for WorkerEnrollResponse.
 type WorkerEnrollResponse struct {
 	Credential      *string            `json:"credential,omitempty"`
-	NodeId          openapi_types.UUID `json:"nodeId"`
 	ProtocolVersion int                `json:"protocolVersion"`
+	WorkerId        openapi_types.UUID `json:"workerId"`
 }
 
-// WorkerRequestEnvelope defines model for WorkerRequestEnvelope.
-type WorkerRequestEnvelope struct {
-	// Operation 稳定操作名；sync 仅接受 worker.heartbeat 和 worker.claim。
-	Operation  string             `json:"operation"`
-	Parameters *map[string]string `json:"parameters,omitempty"`
-
-	// Payload 操作对应的 JSON 请求体。
-	Payload   *interface{}       `json:"payload,omitempty"`
-	RequestId openapi_types.UUID `json:"requestId"`
-	Sequence  int64              `json:"sequence"`
+// WorkerEvent defines model for WorkerEvent.
+type WorkerEvent struct {
+	Payload  map[string]interface{} `json:"payload"`
+	Sequence int64                  `json:"sequence"`
+	Type     string                 `json:"type"`
 }
+
+// WorkerEventsRequest defines model for WorkerEventsRequest.
+type WorkerEventsRequest struct {
+	Events     []WorkerEvent `json:"events"`
+	LeaseEpoch int64         `json:"leaseEpoch"`
+	LeaseToken *string       `json:"leaseToken,omitempty"`
+}
+
+// WorkerFailRequest defines model for WorkerFailRequest.
+type WorkerFailRequest struct {
+	Code           string  `json:"code"`
+	IdempotencyKey string  `json:"idempotencyKey"`
+	LeaseEpoch     int64   `json:"leaseEpoch"`
+	LeaseToken     *string `json:"leaseToken,omitempty"`
+	Message        string  `json:"message"`
+}
+
+// WorkerHeartbeat defines model for WorkerHeartbeat.
+type WorkerHeartbeat struct {
+	Metadata        *map[string]interface{} `json:"metadata,omitempty"`
+	ProtocolVersion int                     `json:"protocolVersion"`
+	WorkerVersion   string                  `json:"workerVersion"`
+}
+
+// WorkerInput defines model for WorkerInput.
+type WorkerInput struct {
+	MaxConcurrentJobs int                `json:"maxConcurrentJobs"`
+	Name              string             `json:"name"`
+	Roles             []WorkerInputRoles `json:"roles"`
+}
+
+// WorkerInputRoles defines model for WorkerInput.Roles.
+type WorkerInputRoles string
+
+// WorkerRunLease defines model for WorkerRunLease.
+type WorkerRunLease struct {
+	LeaseEpoch int64   `json:"leaseEpoch"`
+	LeaseToken *string `json:"leaseToken,omitempty"`
+}
+
+// WorkerSSHConfiguration defines model for WorkerSSHConfiguration.
+type WorkerSSHConfiguration struct {
+	Credentials []WorkerSSHCredential `json:"credentials"`
+	Hosts       []WorkerSSHHost       `json:"hosts"`
+	Revision    string                `json:"revision"`
+}
+
+// WorkerSSHCredential defines model for WorkerSSHCredential.
+type WorkerSSHCredential struct {
+	Fingerprint string             `json:"fingerprint"`
+	Id          openapi_types.UUID `json:"id"`
+	Passphrase  *string            `json:"passphrase,omitempty"`
+	PrivateKey  *string            `json:"privateKey,omitempty"`
+	PublicKey   string             `json:"publicKey"`
+}
+
+// WorkerSSHHost defines model for WorkerSSHHost.
+type WorkerSSHHost struct {
+	Alias          string             `json:"alias"`
+	CredentialId   openapi_types.UUID `json:"credentialId"`
+	Hostname       string             `json:"hostname"`
+	Port           int                `json:"port"`
+	ProxyJumpAlias *string            `json:"proxyJumpAlias,omitempty"`
+	Username       string             `json:"username"`
+}
+
+// Workspace defines model for Workspace.
+type Workspace struct {
+	Id                 openapi_types.UUID  `json:"id"`
+	OwnerDiscordUserId string              `json:"ownerDiscordUserId"`
+	OwnerName          string              `json:"ownerName"`
+	ProjectScanError   *string             `json:"projectScanError,omitempty"`
+	Projects           []WorkspaceProject  `json:"projects"`
+	ProjectsScannedAt  *time.Time          `json:"projectsScannedAt,omitempty"`
+	WorkerId           *openapi_types.UUID `json:"workerId,omitempty"`
+}
+
+// WorkspaceForum defines model for WorkspaceForum.
+type WorkspaceForum struct {
+	BindingStatus WorkspaceForumBindingStatus  `json:"bindingStatus"`
+	Collaborators []WorkspaceForumCollaborator `json:"collaborators"`
+	DiscordId     string                       `json:"discordId"`
+	Id            openapi_types.UUID           `json:"id"`
+	Name          string                       `json:"name"`
+}
+
+// WorkspaceForumBindingStatus defines model for WorkspaceForum.BindingStatus.
+type WorkspaceForumBindingStatus string
+
+// WorkspaceForumCollaborator defines model for WorkspaceForumCollaborator.
+type WorkspaceForumCollaborator struct {
+	AccessLevel         WorkspaceForumCollaboratorAccessLevel `json:"accessLevel"`
+	AdministratorBypass bool                                  `json:"administratorBypass"`
+	ForumId             openapi_types.UUID                    `json:"forumId"`
+	MemberId            string                                `json:"memberId"`
+}
+
+// WorkspaceForumCollaboratorAccessLevel defines model for WorkspaceForumCollaborator.AccessLevel.
+type WorkspaceForumCollaboratorAccessLevel string
+
+// WorkspaceList defines model for WorkspaceList.
+type WorkspaceList struct {
+	Items []Workspace `json:"items"`
+}
+
+// WorkspaceProject defines model for WorkspaceProject.
+type WorkspaceProject struct {
+	AvailabilityStatus  WorkspaceProjectAvailabilityStatus `json:"availabilityStatus"`
+	Branch              *string                            `json:"branch,omitempty"`
+	DesiredRelativePath *string                            `json:"desiredRelativePath,omitempty"`
+	Dirty               bool                               `json:"dirty"`
+	Forums              []WorkspaceForum                   `json:"forums"`
+	HeadSha             *string                            `json:"headSha,omitempty"`
+	Id                  openapi_types.UUID                 `json:"id"`
+	LastSeenAt          time.Time                          `json:"lastSeenAt"`
+	Name                string                             `json:"name"`
+	ProjectKind         WorkspaceProjectProjectKind        `json:"projectKind"`
+	RelativePath        string                             `json:"relativePath"`
+	RemoteUrl           *string                            `json:"remoteUrl,omitempty"`
+	ScanError           *string                            `json:"scanError,omitempty"`
+}
+
+// WorkspaceProjectAvailabilityStatus defines model for WorkspaceProject.AvailabilityStatus.
+type WorkspaceProjectAvailabilityStatus string
+
+// WorkspaceProjectProjectKind defines model for WorkspaceProject.ProjectKind.
+type WorkspaceProjectProjectKind string
+
+// WorkspaceProjectForumInput defines model for WorkspaceProjectForumInput.
+type WorkspaceProjectForumInput struct {
+	ForumId *openapi_types.UUID            `json:"forumId,omitempty"`
+	Mode    WorkspaceProjectForumInputMode `json:"mode"`
+	Name    *string                        `json:"name,omitempty"`
+}
+
+// WorkspaceProjectForumInputMode defines model for WorkspaceProjectForumInput.Mode.
+type WorkspaceProjectForumInputMode string
 
 // CSRFToken defines model for CSRFToken.
 type CSRFToken = string
 
+// WorkerResourceID defines model for WorkerResourceID.
+type WorkerResourceID = openapi_types.UUID
+
 // Problem defines model for Problem.
 type Problem = ProblemDetails
+
+// WorkerJSON defines model for WorkerJSON.
+type WorkerJSON map[string]interface{}
 
 // LogoutParams defines parameters for Logout.
 type LogoutParams struct {
@@ -989,59 +1010,6 @@ type ClientUploadMultipartBody struct {
 	LocalId string             `json:"localId"`
 }
 
-// CreateDevelopmentEnvironmentJSONBody defines parameters for CreateDevelopmentEnvironment.
-type CreateDevelopmentEnvironmentJSONBody struct {
-	OwnerDiscordUserId string `json:"ownerDiscordUserId"`
-}
-
-// CreateDevelopmentEnvironmentParams defines parameters for CreateDevelopmentEnvironment.
-type CreateDevelopmentEnvironmentParams struct {
-	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
-}
-
-// DeleteDevelopmentEnvironmentSSHParams defines parameters for DeleteDevelopmentEnvironmentSSH.
-type DeleteDevelopmentEnvironmentSSHParams struct {
-	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
-}
-
-// PutDevelopmentEnvironmentSSHParams defines parameters for PutDevelopmentEnvironmentSSH.
-type PutDevelopmentEnvironmentSSHParams struct {
-	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
-}
-
-// DisableDevelopmentForumParams defines parameters for DisableDevelopmentForum.
-type DisableDevelopmentForumParams struct {
-	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
-}
-
-// EnableDevelopmentForumParams defines parameters for EnableDevelopmentForum.
-type EnableDevelopmentForumParams struct {
-	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
-}
-
-// CreateDevelopmentProjectForumParams defines parameters for CreateDevelopmentProjectForum.
-type CreateDevelopmentProjectForumParams struct {
-	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
-}
-
-// DeleteDevelopmentProjectForumCollaboratorParams defines parameters for DeleteDevelopmentProjectForumCollaborator.
-type DeleteDevelopmentProjectForumCollaboratorParams struct {
-	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
-}
-
-// PutDevelopmentProjectForumCollaboratorJSONBody defines parameters for PutDevelopmentProjectForumCollaborator.
-type PutDevelopmentProjectForumCollaboratorJSONBody struct {
-	AccessLevel PutDevelopmentProjectForumCollaboratorJSONBodyAccessLevel `json:"accessLevel"`
-}
-
-// PutDevelopmentProjectForumCollaboratorParams defines parameters for PutDevelopmentProjectForumCollaborator.
-type PutDevelopmentProjectForumCollaboratorParams struct {
-	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
-}
-
-// PutDevelopmentProjectForumCollaboratorJSONBodyAccessLevel defines parameters for PutDevelopmentProjectForumCollaborator.
-type PutDevelopmentProjectForumCollaboratorJSONBodyAccessLevel string
-
 // DeleteDiscordForumAccessParams defines parameters for DeleteDiscordForumAccess.
 type DeleteDiscordForumAccessParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
@@ -1117,28 +1085,23 @@ type CreateRepositoryParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
-// PutForumCodexSettingsParams defines parameters for PutForumCodexSettings.
-type PutForumCodexSettingsParams struct {
-	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
-}
-
-// PutRepositoryCodexSettingsParams defines parameters for PutRepositoryCodexSettings.
-type PutRepositoryCodexSettingsParams struct {
-	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
-}
-
 // PutDiscordSettingsParams defines parameters for PutDiscordSettings.
 type PutDiscordSettingsParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
-// PutExecutionDefaultsParams defines parameters for PutExecutionDefaults.
-type PutExecutionDefaultsParams struct {
+// PutGitHubAgentInstructionsParams defines parameters for PutGitHubAgentInstructions.
+type PutGitHubAgentInstructionsParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
-// PutGlobalAgentsParams defines parameters for PutGlobalAgents.
-type PutGlobalAgentsParams struct {
+// PutRepositoryGitHubAgentSettingsParams defines parameters for PutRepositoryGitHubAgentSettings.
+type PutRepositoryGitHubAgentSettingsParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// PutWorkerDefaultsParams defines parameters for PutWorkerDefaults.
+type PutWorkerDefaultsParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
@@ -1210,28 +1173,144 @@ type UploadWorkerBlobParams struct {
 	Ordinal int `form:"ordinal" json:"ordinal"`
 }
 
-// CreateHostWorkerParams defines parameters for CreateHostWorker.
-type CreateHostWorkerParams struct {
+// WorkerPrepareDesktopRollbackJSONBody defines parameters for WorkerPrepareDesktopRollback.
+type WorkerPrepareDesktopRollbackJSONBody map[string]interface{}
+
+// WorkerCompleteDesktopRollbackJSONBody defines parameters for WorkerCompleteDesktopRollback.
+type WorkerCompleteDesktopRollbackJSONBody map[string]interface{}
+
+// WorkerRecordDesktopSteerJSONBody defines parameters for WorkerRecordDesktopSteer.
+type WorkerRecordDesktopSteerJSONBody map[string]interface{}
+
+// WorkerPrepareDesktopThreadJSONBody defines parameters for WorkerPrepareDesktopThread.
+type WorkerPrepareDesktopThreadJSONBody map[string]interface{}
+
+// WorkerCompleteDesktopThreadJSONBody defines parameters for WorkerCompleteDesktopThread.
+type WorkerCompleteDesktopThreadJSONBody map[string]interface{}
+
+// WorkerFailDesktopThreadJSONBody defines parameters for WorkerFailDesktopThread.
+type WorkerFailDesktopThreadJSONBody map[string]interface{}
+
+// WorkerPrepareDesktopTurnJSONBody defines parameters for WorkerPrepareDesktopTurn.
+type WorkerPrepareDesktopTurnJSONBody map[string]interface{}
+
+// WorkerPreflightDesktopTurnJSONBody defines parameters for WorkerPreflightDesktopTurn.
+type WorkerPreflightDesktopTurnJSONBody map[string]interface{}
+
+// WorkerFailDesktopImageJSONBody defines parameters for WorkerFailDesktopImage.
+type WorkerFailDesktopImageJSONBody map[string]interface{}
+
+// WorkerAnswerInteractiveJSONBody defines parameters for WorkerAnswerInteractive.
+type WorkerAnswerInteractiveJSONBody map[string]interface{}
+
+// WorkerConfirmTurnJSONBody defines parameters for WorkerConfirmTurn.
+type WorkerConfirmTurnJSONBody map[string]interface{}
+
+// WorkerGitCredentialJSONBody defines parameters for WorkerGitCredential.
+type WorkerGitCredentialJSONBody map[string]interface{}
+
+// WorkerRunHeartbeatJSONBody defines parameters for WorkerRunHeartbeat.
+type WorkerRunHeartbeatJSONBody map[string]interface{}
+
+// WorkerRegisterInteractiveJSONBody defines parameters for WorkerRegisterInteractive.
+type WorkerRegisterInteractiveJSONBody map[string]interface{}
+
+// WorkerRecordSubmissionJSONBody defines parameters for WorkerRecordSubmission.
+type WorkerRecordSubmissionJSONBody map[string]interface{}
+
+// WorkerSetThreadJSONBody defines parameters for WorkerSetThread.
+type WorkerSetThreadJSONBody map[string]interface{}
+
+// WorkerToolCallJSONBody defines parameters for WorkerToolCall.
+type WorkerToolCallJSONBody map[string]interface{}
+
+// WorkerWorkspaceProjectStateJSONBody defines parameters for WorkerWorkspaceProjectState.
+type WorkerWorkspaceProjectStateJSONBody map[string]interface{}
+
+// WorkerWorkspaceStateJSONBody defines parameters for WorkerWorkspaceState.
+type WorkerWorkspaceStateJSONBody map[string]interface{}
+
+// WorkerPrepareDesktopThreadLifecycleJSONBody defines parameters for WorkerPrepareDesktopThreadLifecycle.
+type WorkerPrepareDesktopThreadLifecycleJSONBody map[string]interface{}
+
+// WorkerCompleteThreadLifecycleJSONBody defines parameters for WorkerCompleteThreadLifecycle.
+type WorkerCompleteThreadLifecycleJSONBody map[string]interface{}
+
+// WorkerRecordThreadMetadataJSONBody defines parameters for WorkerRecordThreadMetadata.
+type WorkerRecordThreadMetadataJSONBody map[string]interface{}
+
+// WorkerAckThreadNameJSONBody defines parameters for WorkerAckThreadName.
+type WorkerAckThreadNameJSONBody map[string]interface{}
+
+// WorkerWorkspaceProjectSnapshotJSONBody defines parameters for WorkerWorkspaceProjectSnapshot.
+type WorkerWorkspaceProjectSnapshotJSONBody map[string]interface{}
+
+// CreateWorkerParams defines parameters for CreateWorker.
+type CreateWorkerParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
-// DeleteHostWorkerParams defines parameters for DeleteHostWorker.
-type DeleteHostWorkerParams struct {
+// DeleteWorkerParams defines parameters for DeleteWorker.
+type DeleteWorkerParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
-// SetHostWorkerEnabledJSONBody defines parameters for SetHostWorkerEnabled.
-type SetHostWorkerEnabledJSONBody struct {
+// SetWorkerEnabledJSONBody defines parameters for SetWorkerEnabled.
+type SetWorkerEnabledJSONBody struct {
 	Enabled bool `json:"enabled"`
 }
 
-// SetHostWorkerEnabledParams defines parameters for SetHostWorkerEnabled.
-type SetHostWorkerEnabledParams struct {
+// SetWorkerEnabledParams defines parameters for SetWorkerEnabled.
+type SetWorkerEnabledParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
-// CreateHostWorkerEnrollmentParams defines parameters for CreateHostWorkerEnrollment.
-type CreateHostWorkerEnrollmentParams struct {
+// CreateWorkerEnrollmentParams defines parameters for CreateWorkerEnrollment.
+type CreateWorkerEnrollmentParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// DisableWorkspaceForumParams defines parameters for DisableWorkspaceForum.
+type DisableWorkspaceForumParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// EnableWorkspaceForumParams defines parameters for EnableWorkspaceForum.
+type EnableWorkspaceForumParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// CreateWorkspaceProjectForumParams defines parameters for CreateWorkspaceProjectForum.
+type CreateWorkspaceProjectForumParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// DeleteWorkspaceProjectForumCollaboratorParams defines parameters for DeleteWorkspaceProjectForumCollaborator.
+type DeleteWorkspaceProjectForumCollaboratorParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// PutWorkspaceProjectForumCollaboratorJSONBody defines parameters for PutWorkspaceProjectForumCollaborator.
+type PutWorkspaceProjectForumCollaboratorJSONBody struct {
+	AccessLevel PutWorkspaceProjectForumCollaboratorJSONBodyAccessLevel `json:"accessLevel"`
+}
+
+// PutWorkspaceProjectForumCollaboratorParams defines parameters for PutWorkspaceProjectForumCollaborator.
+type PutWorkspaceProjectForumCollaboratorParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// PutWorkspaceProjectForumCollaboratorJSONBodyAccessLevel defines parameters for PutWorkspaceProjectForumCollaborator.
+type PutWorkspaceProjectForumCollaboratorJSONBodyAccessLevel string
+
+// CreateWorkspaceJSONBody defines parameters for CreateWorkspace.
+type CreateWorkspaceJSONBody struct {
+	OwnerDiscordUserId string             `json:"ownerDiscordUserId"`
+	WorkerId           openapi_types.UUID `json:"workerId"`
+}
+
+// CreateWorkspaceParams defines parameters for CreateWorkspace.
+type CreateWorkspaceParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
@@ -1262,18 +1341,6 @@ type ClientCreateMessageJSONRequestBody ClientCreateMessageJSONBody
 // ClientUploadMultipartRequestBody defines body for ClientUpload for multipart/form-data ContentType.
 type ClientUploadMultipartRequestBody ClientUploadMultipartBody
 
-// CreateDevelopmentEnvironmentJSONRequestBody defines body for CreateDevelopmentEnvironment for application/json ContentType.
-type CreateDevelopmentEnvironmentJSONRequestBody CreateDevelopmentEnvironmentJSONBody
-
-// PutDevelopmentEnvironmentSSHJSONRequestBody defines body for PutDevelopmentEnvironmentSSH for application/json ContentType.
-type PutDevelopmentEnvironmentSSHJSONRequestBody = DevelopmentEnvironmentSSHInput
-
-// CreateDevelopmentProjectForumJSONRequestBody defines body for CreateDevelopmentProjectForum for application/json ContentType.
-type CreateDevelopmentProjectForumJSONRequestBody = DevelopmentProjectForumInput
-
-// PutDevelopmentProjectForumCollaboratorJSONRequestBody defines body for PutDevelopmentProjectForumCollaborator for application/json ContentType.
-type PutDevelopmentProjectForumCollaboratorJSONRequestBody PutDevelopmentProjectForumCollaboratorJSONBody
-
 // PutDiscordForumAccessJSONRequestBody defines body for PutDiscordForumAccess for application/json ContentType.
 type PutDiscordForumAccessJSONRequestBody PutDiscordForumAccessJSONBody
 
@@ -1298,20 +1365,17 @@ type CallInternalToolJSONRequestBody CallInternalToolJSONBody
 // CreateRepositoryJSONRequestBody defines body for CreateRepository for application/json ContentType.
 type CreateRepositoryJSONRequestBody = RepositoryInput
 
-// PutForumCodexSettingsJSONRequestBody defines body for PutForumCodexSettings for application/json ContentType.
-type PutForumCodexSettingsJSONRequestBody = CodexPreferences
-
-// PutRepositoryCodexSettingsJSONRequestBody defines body for PutRepositoryCodexSettings for application/json ContentType.
-type PutRepositoryCodexSettingsJSONRequestBody = CodexPreferences
-
 // PutDiscordSettingsJSONRequestBody defines body for PutDiscordSettings for application/json ContentType.
 type PutDiscordSettingsJSONRequestBody = DiscordSettingsInput
 
-// PutExecutionDefaultsJSONRequestBody defines body for PutExecutionDefaults for application/json ContentType.
-type PutExecutionDefaultsJSONRequestBody = ExecutionDefaults
+// PutGitHubAgentInstructionsJSONRequestBody defines body for PutGitHubAgentInstructions for application/json ContentType.
+type PutGitHubAgentInstructionsJSONRequestBody = GitHubAgentInstructions
 
-// PutGlobalAgentsJSONRequestBody defines body for PutGlobalAgents for application/json ContentType.
-type PutGlobalAgentsJSONRequestBody = GlobalAgents
+// PutRepositoryGitHubAgentSettingsJSONRequestBody defines body for PutRepositoryGitHubAgentSettings for application/json ContentType.
+type PutRepositoryGitHubAgentSettingsJSONRequestBody = GitHubAgentPreferences
+
+// PutWorkerDefaultsJSONRequestBody defines body for PutWorkerDefaults for application/json ContentType.
+type PutWorkerDefaultsJSONRequestBody = WorkerDefaults
 
 // SetupAdministratorJSONRequestBody defines body for SetupAdministrator for application/json ContentType.
 type SetupAdministratorJSONRequestBody = SetupRequest
@@ -1340,20 +1404,113 @@ type ReceiveGitHubWebhookJSONRequestBody ReceiveGitHubWebhookJSONBody
 // UploadWorkerBlobMultipartRequestBody defines body for UploadWorkerBlob for multipart/form-data ContentType.
 type UploadWorkerBlobMultipartRequestBody UploadWorkerBlobMultipartBody
 
+// WorkerClaimJSONRequestBody defines body for WorkerClaim for application/json ContentType.
+type WorkerClaimJSONRequestBody = WorkerClaimRequest
+
+// WorkerPrepareDesktopRollbackJSONRequestBody defines body for WorkerPrepareDesktopRollback for application/json ContentType.
+type WorkerPrepareDesktopRollbackJSONRequestBody WorkerPrepareDesktopRollbackJSONBody
+
+// WorkerCompleteDesktopRollbackJSONRequestBody defines body for WorkerCompleteDesktopRollback for application/json ContentType.
+type WorkerCompleteDesktopRollbackJSONRequestBody WorkerCompleteDesktopRollbackJSONBody
+
+// WorkerRecordDesktopSteerJSONRequestBody defines body for WorkerRecordDesktopSteer for application/json ContentType.
+type WorkerRecordDesktopSteerJSONRequestBody WorkerRecordDesktopSteerJSONBody
+
+// WorkerPrepareDesktopThreadJSONRequestBody defines body for WorkerPrepareDesktopThread for application/json ContentType.
+type WorkerPrepareDesktopThreadJSONRequestBody WorkerPrepareDesktopThreadJSONBody
+
+// WorkerCompleteDesktopThreadJSONRequestBody defines body for WorkerCompleteDesktopThread for application/json ContentType.
+type WorkerCompleteDesktopThreadJSONRequestBody WorkerCompleteDesktopThreadJSONBody
+
+// WorkerFailDesktopThreadJSONRequestBody defines body for WorkerFailDesktopThread for application/json ContentType.
+type WorkerFailDesktopThreadJSONRequestBody WorkerFailDesktopThreadJSONBody
+
+// WorkerPrepareDesktopTurnJSONRequestBody defines body for WorkerPrepareDesktopTurn for application/json ContentType.
+type WorkerPrepareDesktopTurnJSONRequestBody WorkerPrepareDesktopTurnJSONBody
+
+// WorkerPreflightDesktopTurnJSONRequestBody defines body for WorkerPreflightDesktopTurn for application/json ContentType.
+type WorkerPreflightDesktopTurnJSONRequestBody WorkerPreflightDesktopTurnJSONBody
+
+// WorkerFailDesktopImageJSONRequestBody defines body for WorkerFailDesktopImage for application/json ContentType.
+type WorkerFailDesktopImageJSONRequestBody WorkerFailDesktopImageJSONBody
+
 // EnrollWorkerJSONRequestBody defines body for EnrollWorker for application/json ContentType.
 type EnrollWorkerJSONRequestBody = WorkerEnrollRequest
 
-// CallWorkerRPCJSONRequestBody defines body for CallWorkerRPC for application/json ContentType.
-type CallWorkerRPCJSONRequestBody = WorkerRequestEnvelope
+// WorkerHeartbeatJSONRequestBody defines body for WorkerHeartbeat for application/json ContentType.
+type WorkerHeartbeatJSONRequestBody = WorkerHeartbeat
 
-// SyncWorkerJSONRequestBody defines body for SyncWorker for application/json ContentType.
-type SyncWorkerJSONRequestBody = WorkerRequestEnvelope
+// WorkerAnswerInteractiveJSONRequestBody defines body for WorkerAnswerInteractive for application/json ContentType.
+type WorkerAnswerInteractiveJSONRequestBody WorkerAnswerInteractiveJSONBody
 
-// CreateHostWorkerJSONRequestBody defines body for CreateHostWorker for application/json ContentType.
-type CreateHostWorkerJSONRequestBody = ExecutionNodeInput
+// WorkerCommandAckJSONRequestBody defines body for WorkerCommandAck for application/json ContentType.
+type WorkerCommandAckJSONRequestBody = WorkerCommandAck
 
-// SetHostWorkerEnabledJSONRequestBody defines body for SetHostWorkerEnabled for application/json ContentType.
-type SetHostWorkerEnabledJSONRequestBody SetHostWorkerEnabledJSONBody
+// WorkerRunCompleteJSONRequestBody defines body for WorkerRunComplete for application/json ContentType.
+type WorkerRunCompleteJSONRequestBody = WorkerCompleteRequest
+
+// WorkerConfirmTurnJSONRequestBody defines body for WorkerConfirmTurn for application/json ContentType.
+type WorkerConfirmTurnJSONRequestBody WorkerConfirmTurnJSONBody
+
+// WorkerRunEventsJSONRequestBody defines body for WorkerRunEvents for application/json ContentType.
+type WorkerRunEventsJSONRequestBody = WorkerEventsRequest
+
+// WorkerRunFailJSONRequestBody defines body for WorkerRunFail for application/json ContentType.
+type WorkerRunFailJSONRequestBody = WorkerFailRequest
+
+// WorkerGitCredentialJSONRequestBody defines body for WorkerGitCredential for application/json ContentType.
+type WorkerGitCredentialJSONRequestBody WorkerGitCredentialJSONBody
+
+// WorkerRunHeartbeatJSONRequestBody defines body for WorkerRunHeartbeat for application/json ContentType.
+type WorkerRunHeartbeatJSONRequestBody WorkerRunHeartbeatJSONBody
+
+// WorkerRegisterInteractiveJSONRequestBody defines body for WorkerRegisterInteractive for application/json ContentType.
+type WorkerRegisterInteractiveJSONRequestBody WorkerRegisterInteractiveJSONBody
+
+// WorkerRecordSubmissionJSONRequestBody defines body for WorkerRecordSubmission for application/json ContentType.
+type WorkerRecordSubmissionJSONRequestBody WorkerRecordSubmissionJSONBody
+
+// WorkerSetThreadJSONRequestBody defines body for WorkerSetThread for application/json ContentType.
+type WorkerSetThreadJSONRequestBody WorkerSetThreadJSONBody
+
+// WorkerToolCallJSONRequestBody defines body for WorkerToolCall for application/json ContentType.
+type WorkerToolCallJSONRequestBody WorkerToolCallJSONBody
+
+// WorkerWorkspaceProjectStateJSONRequestBody defines body for WorkerWorkspaceProjectState for application/json ContentType.
+type WorkerWorkspaceProjectStateJSONRequestBody WorkerWorkspaceProjectStateJSONBody
+
+// WorkerWorkspaceStateJSONRequestBody defines body for WorkerWorkspaceState for application/json ContentType.
+type WorkerWorkspaceStateJSONRequestBody WorkerWorkspaceStateJSONBody
+
+// WorkerPrepareDesktopThreadLifecycleJSONRequestBody defines body for WorkerPrepareDesktopThreadLifecycle for application/json ContentType.
+type WorkerPrepareDesktopThreadLifecycleJSONRequestBody WorkerPrepareDesktopThreadLifecycleJSONBody
+
+// WorkerCompleteThreadLifecycleJSONRequestBody defines body for WorkerCompleteThreadLifecycle for application/json ContentType.
+type WorkerCompleteThreadLifecycleJSONRequestBody WorkerCompleteThreadLifecycleJSONBody
+
+// WorkerRecordThreadMetadataJSONRequestBody defines body for WorkerRecordThreadMetadata for application/json ContentType.
+type WorkerRecordThreadMetadataJSONRequestBody WorkerRecordThreadMetadataJSONBody
+
+// WorkerAckThreadNameJSONRequestBody defines body for WorkerAckThreadName for application/json ContentType.
+type WorkerAckThreadNameJSONRequestBody WorkerAckThreadNameJSONBody
+
+// WorkerWorkspaceProjectSnapshotJSONRequestBody defines body for WorkerWorkspaceProjectSnapshot for application/json ContentType.
+type WorkerWorkspaceProjectSnapshotJSONRequestBody WorkerWorkspaceProjectSnapshotJSONBody
+
+// CreateWorkerJSONRequestBody defines body for CreateWorker for application/json ContentType.
+type CreateWorkerJSONRequestBody = WorkerInput
+
+// SetWorkerEnabledJSONRequestBody defines body for SetWorkerEnabled for application/json ContentType.
+type SetWorkerEnabledJSONRequestBody SetWorkerEnabledJSONBody
+
+// CreateWorkspaceProjectForumJSONRequestBody defines body for CreateWorkspaceProjectForum for application/json ContentType.
+type CreateWorkspaceProjectForumJSONRequestBody = WorkspaceProjectForumInput
+
+// PutWorkspaceProjectForumCollaboratorJSONRequestBody defines body for PutWorkspaceProjectForumCollaborator for application/json ContentType.
+type PutWorkspaceProjectForumCollaboratorJSONRequestBody PutWorkspaceProjectForumCollaboratorJSONBody
+
+// CreateWorkspaceJSONRequestBody defines body for CreateWorkspace for application/json ContentType.
+type CreateWorkspaceJSONRequestBody CreateWorkspaceJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -1442,33 +1599,6 @@ type ServerInterface interface {
 	// (POST /client/uploads)
 	ClientUpload(c *gin.Context)
 
-	// (GET /development-environments)
-	ListDevelopmentEnvironments(c *gin.Context)
-
-	// (POST /development-environments)
-	CreateDevelopmentEnvironment(c *gin.Context, params CreateDevelopmentEnvironmentParams)
-
-	// (DELETE /development-environments/{id}/ssh)
-	DeleteDevelopmentEnvironmentSSH(c *gin.Context, id openapi_types.UUID, params DeleteDevelopmentEnvironmentSSHParams)
-
-	// (PUT /development-environments/{id}/ssh)
-	PutDevelopmentEnvironmentSSH(c *gin.Context, id openapi_types.UUID, params PutDevelopmentEnvironmentSSHParams)
-
-	// (POST /development-forums/{id}/disable)
-	DisableDevelopmentForum(c *gin.Context, id openapi_types.UUID, params DisableDevelopmentForumParams)
-
-	// (POST /development-forums/{id}/enable)
-	EnableDevelopmentForum(c *gin.Context, id openapi_types.UUID, params EnableDevelopmentForumParams)
-
-	// (POST /development-projects/{id}/forums)
-	CreateDevelopmentProjectForum(c *gin.Context, id openapi_types.UUID, params CreateDevelopmentProjectForumParams)
-
-	// (DELETE /development-projects/{id}/forums/{forumId}/collaborators/{memberId})
-	DeleteDevelopmentProjectForumCollaborator(c *gin.Context, id openapi_types.UUID, forumId openapi_types.UUID, memberId string, params DeleteDevelopmentProjectForumCollaboratorParams)
-
-	// (PUT /development-projects/{id}/forums/{forumId}/collaborators/{memberId})
-	PutDevelopmentProjectForumCollaborator(c *gin.Context, id openapi_types.UUID, forumId openapi_types.UUID, memberId string, params PutDevelopmentProjectForumCollaboratorParams)
-
 	// (DELETE /discord/forums/{forumId}/access/{memberId})
 	DeleteDiscordForumAccess(c *gin.Context, forumId openapi_types.UUID, memberId string, params DeleteDiscordForumAccessParams)
 
@@ -1532,32 +1662,29 @@ type ServerInterface interface {
 	// (POST /repositories)
 	CreateRepository(c *gin.Context, params CreateRepositoryParams)
 
-	// (GET /settings/codex)
-	ListCodexSettings(c *gin.Context)
-
-	// (PUT /settings/codex/forums/{id})
-	PutForumCodexSettings(c *gin.Context, id openapi_types.UUID, params PutForumCodexSettingsParams)
-
-	// (PUT /settings/codex/repositories/{id})
-	PutRepositoryCodexSettings(c *gin.Context, id openapi_types.UUID, params PutRepositoryCodexSettingsParams)
-
 	// (GET /settings/discord)
 	GetDiscordSettings(c *gin.Context)
 
 	// (PUT /settings/discord)
 	PutDiscordSettings(c *gin.Context, params PutDiscordSettingsParams)
 
-	// (GET /settings/execution)
-	GetExecutionDefaults(c *gin.Context)
+	// (GET /settings/github-agent)
+	ListGitHubAgentSettings(c *gin.Context)
 
-	// (PUT /settings/execution)
-	PutExecutionDefaults(c *gin.Context, params PutExecutionDefaultsParams)
+	// (GET /settings/github-agent-instructions)
+	GetGitHubAgentInstructions(c *gin.Context)
 
-	// (GET /settings/global-agents)
-	GetGlobalAgents(c *gin.Context)
+	// (PUT /settings/github-agent-instructions)
+	PutGitHubAgentInstructions(c *gin.Context, params PutGitHubAgentInstructionsParams)
 
-	// (PUT /settings/global-agents)
-	PutGlobalAgents(c *gin.Context, params PutGlobalAgentsParams)
+	// (PUT /settings/github-agent/repositories/{id})
+	PutRepositoryGitHubAgentSettings(c *gin.Context, id openapi_types.UUID, params PutRepositoryGitHubAgentSettingsParams)
+
+	// (GET /settings/workers)
+	GetWorkerDefaults(c *gin.Context)
+
+	// (PUT /settings/workers)
+	PutWorkerDefaults(c *gin.Context, params PutWorkerDefaultsParams)
 
 	// (POST /setup/admin)
 	SetupAdministrator(c *gin.Context)
@@ -1610,35 +1737,164 @@ type ServerInterface interface {
 	// (GET /work-items)
 	GetWorkItems(c *gin.Context)
 
-	// (GET /worker/v2/blobs/{id})
+	// (GET /worker/v1/blobs/{id})
 	DownloadWorkerBlob(c *gin.Context, id openapi_types.UUID, params DownloadWorkerBlobParams)
 
-	// (POST /worker/v2/blobs/{id})
+	// (POST /worker/v1/blobs/{id})
 	UploadWorkerBlob(c *gin.Context, id openapi_types.UUID, params UploadWorkerBlobParams)
 
-	// (POST /worker/v2/enroll)
+	// (POST /worker/v1/claims)
+	WorkerClaim(c *gin.Context)
+
+	// (POST /worker/v1/desktop-rollbacks)
+	WorkerPrepareDesktopRollback(c *gin.Context)
+
+	// (POST /worker/v1/desktop-rollbacks/{id}/complete)
+	WorkerCompleteDesktopRollback(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/desktop-steers)
+	WorkerRecordDesktopSteer(c *gin.Context)
+
+	// (POST /worker/v1/desktop-thread-requests)
+	WorkerPrepareDesktopThread(c *gin.Context)
+
+	// (GET /worker/v1/desktop-thread-requests/{id})
+	WorkerDesktopThreadState(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/desktop-thread-requests/{id}/complete)
+	WorkerCompleteDesktopThread(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/desktop-thread-requests/{id}/fail)
+	WorkerFailDesktopThread(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/desktop-turns)
+	WorkerPrepareDesktopTurn(c *gin.Context)
+
+	// (POST /worker/v1/desktop-turns/preflight)
+	WorkerPreflightDesktopTurn(c *gin.Context)
+
+	// (GET /worker/v1/desktop-turns/{id}/images/target)
+	WorkerDesktopImageTarget(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/desktop-turns/{id}/images/{ordinal}/fail)
+	WorkerFailDesktopImage(c *gin.Context, id WorkerResourceID, ordinal int)
+
+	// (POST /worker/v1/enroll)
 	EnrollWorker(c *gin.Context)
 
-	// (POST /worker/v2/rpc)
-	CallWorkerRPC(c *gin.Context)
+	// (POST /worker/v1/heartbeat)
+	WorkerHeartbeat(c *gin.Context)
 
-	// (POST /worker/v2/sync)
-	SyncWorker(c *gin.Context)
+	// (POST /worker/v1/interactive/answer)
+	WorkerAnswerInteractive(c *gin.Context)
+
+	// (GET /worker/v1/interactive/{id})
+	WorkerInteractiveState(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/commands/ack)
+	WorkerCommandAck(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/complete)
+	WorkerRunComplete(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/confirm)
+	WorkerConfirmTurn(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/events)
+	WorkerRunEvents(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/fail)
+	WorkerRunFail(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/git-credential)
+	WorkerGitCredential(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/heartbeat)
+	WorkerRunHeartbeat(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/interactive)
+	WorkerRegisterInteractive(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/submission)
+	WorkerRecordSubmission(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/thread)
+	WorkerSetThread(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/tools/call)
+	WorkerToolCall(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/workspace-project-state)
+	WorkerWorkspaceProjectState(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/runs/{id}/workspace-state)
+	WorkerWorkspaceState(c *gin.Context, id WorkerResourceID)
+
+	// (GET /worker/v1/ssh-configuration)
+	WorkerSSHConfiguration(c *gin.Context)
+
+	// (GET /worker/v1/thread-lifecycle-requests)
+	WorkerPendingThreadLifecycles(c *gin.Context)
+
+	// (POST /worker/v1/thread-lifecycle-requests/desktop)
+	WorkerPrepareDesktopThreadLifecycle(c *gin.Context)
+
+	// (GET /worker/v1/thread-lifecycle-requests/{id})
+	WorkerThreadLifecycleState(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/thread-lifecycle-requests/{id}/complete)
+	WorkerCompleteThreadLifecycle(c *gin.Context, id WorkerResourceID)
+
+	// (POST /worker/v1/thread-metadata-events)
+	WorkerRecordThreadMetadata(c *gin.Context)
+
+	// (GET /worker/v1/thread-name-updates)
+	WorkerPendingThreadNames(c *gin.Context)
+
+	// (POST /worker/v1/thread-name-updates/{id}/ack)
+	WorkerAckThreadName(c *gin.Context, id WorkerResourceID)
+
+	// (GET /worker/v1/workspace)
+	WorkerWorkspace(c *gin.Context)
+
+	// (POST /worker/v1/workspace/projects/snapshot)
+	WorkerWorkspaceProjectSnapshot(c *gin.Context)
 
 	// (GET /workers)
-	ListHostWorkers(c *gin.Context)
+	ListWorkers(c *gin.Context)
 
 	// (POST /workers)
-	CreateHostWorker(c *gin.Context, params CreateHostWorkerParams)
+	CreateWorker(c *gin.Context, params CreateWorkerParams)
 
 	// (DELETE /workers/{id})
-	DeleteHostWorker(c *gin.Context, id openapi_types.UUID, params DeleteHostWorkerParams)
+	DeleteWorker(c *gin.Context, id openapi_types.UUID, params DeleteWorkerParams)
 
 	// (PUT /workers/{id}/enabled)
-	SetHostWorkerEnabled(c *gin.Context, id openapi_types.UUID, params SetHostWorkerEnabledParams)
+	SetWorkerEnabled(c *gin.Context, id openapi_types.UUID, params SetWorkerEnabledParams)
 
 	// (POST /workers/{id}/enrollments)
-	CreateHostWorkerEnrollment(c *gin.Context, id openapi_types.UUID, params CreateHostWorkerEnrollmentParams)
+	CreateWorkerEnrollment(c *gin.Context, id openapi_types.UUID, params CreateWorkerEnrollmentParams)
+
+	// (POST /workspace-forums/{id}/disable)
+	DisableWorkspaceForum(c *gin.Context, id openapi_types.UUID, params DisableWorkspaceForumParams)
+
+	// (POST /workspace-forums/{id}/enable)
+	EnableWorkspaceForum(c *gin.Context, id openapi_types.UUID, params EnableWorkspaceForumParams)
+
+	// (POST /workspace-projects/{id}/forums)
+	CreateWorkspaceProjectForum(c *gin.Context, id openapi_types.UUID, params CreateWorkspaceProjectForumParams)
+
+	// (DELETE /workspace-projects/{id}/forums/{forumId}/collaborators/{memberId})
+	DeleteWorkspaceProjectForumCollaborator(c *gin.Context, id openapi_types.UUID, forumId openapi_types.UUID, memberId string, params DeleteWorkspaceProjectForumCollaboratorParams)
+
+	// (PUT /workspace-projects/{id}/forums/{forumId}/collaborators/{memberId})
+	PutWorkspaceProjectForumCollaborator(c *gin.Context, id openapi_types.UUID, forumId openapi_types.UUID, memberId string, params PutWorkspaceProjectForumCollaboratorParams)
+
+	// (GET /workspaces)
+	ListWorkspaces(c *gin.Context)
+
+	// (POST /workspaces)
+	CreateWorkspace(c *gin.Context, params CreateWorkspaceParams)
 
 	// (GET /worktrees)
 	GetWorktrees(c *gin.Context)
@@ -2380,472 +2636,6 @@ func (siw *ServerInterfaceWrapper) ClientUpload(c *gin.Context) {
 	siw.Handler.ClientUpload(c)
 }
 
-// ListDevelopmentEnvironments operation middleware
-func (siw *ServerInterfaceWrapper) ListDevelopmentEnvironments(c *gin.Context) {
-
-	c.Set(SessionCookieScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ListDevelopmentEnvironments(c)
-}
-
-// CreateDevelopmentEnvironment operation middleware
-func (siw *ServerInterfaceWrapper) CreateDevelopmentEnvironment(c *gin.Context) {
-
-	var err error
-
-	c.Set(SessionCookieScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params CreateDevelopmentEnvironmentParams
-
-	headers := c.Request.Header
-
-	// ------------- Required header parameter "X-CSRF-Token" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
-		var XCSRFToken CSRFToken
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
-		if err != nil {
-			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
-			return
-		}
-
-		params.XCSRFToken = XCSRFToken
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.CreateDevelopmentEnvironment(c, params)
-}
-
-// DeleteDevelopmentEnvironmentSSH operation middleware
-func (siw *ServerInterfaceWrapper) DeleteDevelopmentEnvironmentSSH(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(SessionCookieScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params DeleteDevelopmentEnvironmentSSHParams
-
-	headers := c.Request.Header
-
-	// ------------- Required header parameter "X-CSRF-Token" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
-		var XCSRFToken CSRFToken
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
-		if err != nil {
-			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
-			return
-		}
-
-		params.XCSRFToken = XCSRFToken
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.DeleteDevelopmentEnvironmentSSH(c, id, params)
-}
-
-// PutDevelopmentEnvironmentSSH operation middleware
-func (siw *ServerInterfaceWrapper) PutDevelopmentEnvironmentSSH(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(SessionCookieScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params PutDevelopmentEnvironmentSSHParams
-
-	headers := c.Request.Header
-
-	// ------------- Required header parameter "X-CSRF-Token" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
-		var XCSRFToken CSRFToken
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
-		if err != nil {
-			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
-			return
-		}
-
-		params.XCSRFToken = XCSRFToken
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.PutDevelopmentEnvironmentSSH(c, id, params)
-}
-
-// DisableDevelopmentForum operation middleware
-func (siw *ServerInterfaceWrapper) DisableDevelopmentForum(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(SessionCookieScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params DisableDevelopmentForumParams
-
-	headers := c.Request.Header
-
-	// ------------- Required header parameter "X-CSRF-Token" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
-		var XCSRFToken CSRFToken
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
-		if err != nil {
-			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
-			return
-		}
-
-		params.XCSRFToken = XCSRFToken
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.DisableDevelopmentForum(c, id, params)
-}
-
-// EnableDevelopmentForum operation middleware
-func (siw *ServerInterfaceWrapper) EnableDevelopmentForum(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(SessionCookieScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params EnableDevelopmentForumParams
-
-	headers := c.Request.Header
-
-	// ------------- Required header parameter "X-CSRF-Token" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
-		var XCSRFToken CSRFToken
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
-		if err != nil {
-			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
-			return
-		}
-
-		params.XCSRFToken = XCSRFToken
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.EnableDevelopmentForum(c, id, params)
-}
-
-// CreateDevelopmentProjectForum operation middleware
-func (siw *ServerInterfaceWrapper) CreateDevelopmentProjectForum(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(SessionCookieScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params CreateDevelopmentProjectForumParams
-
-	headers := c.Request.Header
-
-	// ------------- Required header parameter "X-CSRF-Token" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
-		var XCSRFToken CSRFToken
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
-		if err != nil {
-			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
-			return
-		}
-
-		params.XCSRFToken = XCSRFToken
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.CreateDevelopmentProjectForum(c, id, params)
-}
-
-// DeleteDevelopmentProjectForumCollaborator operation middleware
-func (siw *ServerInterfaceWrapper) DeleteDevelopmentProjectForumCollaborator(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "forumId" -------------
-	var forumId openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "forumId", c.Param("forumId"), &forumId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter forumId: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "memberId" -------------
-	var memberId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "memberId", c.Param("memberId"), &memberId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter memberId: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(SessionCookieScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params DeleteDevelopmentProjectForumCollaboratorParams
-
-	headers := c.Request.Header
-
-	// ------------- Required header parameter "X-CSRF-Token" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
-		var XCSRFToken CSRFToken
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
-		if err != nil {
-			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
-			return
-		}
-
-		params.XCSRFToken = XCSRFToken
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.DeleteDevelopmentProjectForumCollaborator(c, id, forumId, memberId, params)
-}
-
-// PutDevelopmentProjectForumCollaborator operation middleware
-func (siw *ServerInterfaceWrapper) PutDevelopmentProjectForumCollaborator(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "forumId" -------------
-	var forumId openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "forumId", c.Param("forumId"), &forumId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter forumId: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "memberId" -------------
-	var memberId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "memberId", c.Param("memberId"), &memberId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter memberId: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(SessionCookieScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params PutDevelopmentProjectForumCollaboratorParams
-
-	headers := c.Request.Header
-
-	// ------------- Required header parameter "X-CSRF-Token" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
-		var XCSRFToken CSRFToken
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
-		if err != nil {
-			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
-			return
-		}
-
-		params.XCSRFToken = XCSRFToken
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.PutDevelopmentProjectForumCollaborator(c, id, forumId, memberId, params)
-}
-
 // DeleteDiscordForumAccess operation middleware
 func (siw *ServerInterfaceWrapper) DeleteDiscordForumAccess(c *gin.Context) {
 
@@ -3491,127 +3281,6 @@ func (siw *ServerInterfaceWrapper) CreateRepository(c *gin.Context) {
 	siw.Handler.CreateRepository(c, params)
 }
 
-// ListCodexSettings operation middleware
-func (siw *ServerInterfaceWrapper) ListCodexSettings(c *gin.Context) {
-
-	c.Set(SessionCookieScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ListCodexSettings(c)
-}
-
-// PutForumCodexSettings operation middleware
-func (siw *ServerInterfaceWrapper) PutForumCodexSettings(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(SessionCookieScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params PutForumCodexSettingsParams
-
-	headers := c.Request.Header
-
-	// ------------- Required header parameter "X-CSRF-Token" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
-		var XCSRFToken CSRFToken
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
-		if err != nil {
-			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
-			return
-		}
-
-		params.XCSRFToken = XCSRFToken
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.PutForumCodexSettings(c, id, params)
-}
-
-// PutRepositoryCodexSettings operation middleware
-func (siw *ServerInterfaceWrapper) PutRepositoryCodexSettings(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(SessionCookieScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params PutRepositoryCodexSettingsParams
-
-	headers := c.Request.Header
-
-	// ------------- Required header parameter "X-CSRF-Token" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
-		var XCSRFToken CSRFToken
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
-		if err != nil {
-			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
-			return
-		}
-
-		params.XCSRFToken = XCSRFToken
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.PutRepositoryCodexSettings(c, id, params)
-}
-
 // GetDiscordSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetDiscordSettings(c *gin.Context) {
 
@@ -3671,8 +3340,8 @@ func (siw *ServerInterfaceWrapper) PutDiscordSettings(c *gin.Context) {
 	siw.Handler.PutDiscordSettings(c, params)
 }
 
-// GetExecutionDefaults operation middleware
-func (siw *ServerInterfaceWrapper) GetExecutionDefaults(c *gin.Context) {
+// ListGitHubAgentSettings operation middleware
+func (siw *ServerInterfaceWrapper) ListGitHubAgentSettings(c *gin.Context) {
 
 	c.Set(SessionCookieScopes, []string{})
 
@@ -3683,18 +3352,33 @@ func (siw *ServerInterfaceWrapper) GetExecutionDefaults(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetExecutionDefaults(c)
+	siw.Handler.ListGitHubAgentSettings(c)
 }
 
-// PutExecutionDefaults operation middleware
-func (siw *ServerInterfaceWrapper) PutExecutionDefaults(c *gin.Context) {
+// GetGitHubAgentInstructions operation middleware
+func (siw *ServerInterfaceWrapper) GetGitHubAgentInstructions(c *gin.Context) {
+
+	c.Set(SessionCookieScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetGitHubAgentInstructions(c)
+}
+
+// PutGitHubAgentInstructions operation middleware
+func (siw *ServerInterfaceWrapper) PutGitHubAgentInstructions(c *gin.Context) {
 
 	var err error
 
 	c.Set(SessionCookieScopes, []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params PutExecutionDefaultsParams
+	var params PutGitHubAgentInstructionsParams
 
 	headers := c.Request.Header
 
@@ -3727,33 +3411,27 @@ func (siw *ServerInterfaceWrapper) PutExecutionDefaults(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.PutExecutionDefaults(c, params)
+	siw.Handler.PutGitHubAgentInstructions(c, params)
 }
 
-// GetGlobalAgents operation middleware
-func (siw *ServerInterfaceWrapper) GetGlobalAgents(c *gin.Context) {
-
-	c.Set(SessionCookieScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.GetGlobalAgents(c)
-}
-
-// PutGlobalAgents operation middleware
-func (siw *ServerInterfaceWrapper) PutGlobalAgents(c *gin.Context) {
+// PutRepositoryGitHubAgentSettings operation middleware
+func (siw *ServerInterfaceWrapper) PutRepositoryGitHubAgentSettings(c *gin.Context) {
 
 	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
 
 	c.Set(SessionCookieScopes, []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params PutGlobalAgentsParams
+	var params PutRepositoryGitHubAgentSettingsParams
 
 	headers := c.Request.Header
 
@@ -3786,7 +3464,66 @@ func (siw *ServerInterfaceWrapper) PutGlobalAgents(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.PutGlobalAgents(c, params)
+	siw.Handler.PutRepositoryGitHubAgentSettings(c, id, params)
+}
+
+// GetWorkerDefaults operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkerDefaults(c *gin.Context) {
+
+	c.Set(SessionCookieScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetWorkerDefaults(c)
+}
+
+// PutWorkerDefaults operation middleware
+func (siw *ServerInterfaceWrapper) PutWorkerDefaults(c *gin.Context) {
+
+	var err error
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutWorkerDefaultsParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PutWorkerDefaults(c, params)
 }
 
 // SetupAdministrator operation middleware
@@ -4393,7 +4130,7 @@ func (siw *ServerInterfaceWrapper) DownloadWorkerBlob(c *gin.Context) {
 		return
 	}
 
-	c.Set(NodeBearerScopes, []string{})
+	c.Set(WorkerBearerScopes, []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params DownloadWorkerBlobParams
@@ -4483,7 +4220,7 @@ func (siw *ServerInterfaceWrapper) UploadWorkerBlob(c *gin.Context) {
 		return
 	}
 
-	c.Set(NodeBearerScopes, []string{})
+	c.Set(WorkerBearerScopes, []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params UploadWorkerBlobParams
@@ -4513,6 +4250,261 @@ func (siw *ServerInterfaceWrapper) UploadWorkerBlob(c *gin.Context) {
 	siw.Handler.UploadWorkerBlob(c, id, params)
 }
 
+// WorkerClaim operation middleware
+func (siw *ServerInterfaceWrapper) WorkerClaim(c *gin.Context) {
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerClaim(c)
+}
+
+// WorkerPrepareDesktopRollback operation middleware
+func (siw *ServerInterfaceWrapper) WorkerPrepareDesktopRollback(c *gin.Context) {
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerPrepareDesktopRollback(c)
+}
+
+// WorkerCompleteDesktopRollback operation middleware
+func (siw *ServerInterfaceWrapper) WorkerCompleteDesktopRollback(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerCompleteDesktopRollback(c, id)
+}
+
+// WorkerRecordDesktopSteer operation middleware
+func (siw *ServerInterfaceWrapper) WorkerRecordDesktopSteer(c *gin.Context) {
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerRecordDesktopSteer(c)
+}
+
+// WorkerPrepareDesktopThread operation middleware
+func (siw *ServerInterfaceWrapper) WorkerPrepareDesktopThread(c *gin.Context) {
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerPrepareDesktopThread(c)
+}
+
+// WorkerDesktopThreadState operation middleware
+func (siw *ServerInterfaceWrapper) WorkerDesktopThreadState(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerDesktopThreadState(c, id)
+}
+
+// WorkerCompleteDesktopThread operation middleware
+func (siw *ServerInterfaceWrapper) WorkerCompleteDesktopThread(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerCompleteDesktopThread(c, id)
+}
+
+// WorkerFailDesktopThread operation middleware
+func (siw *ServerInterfaceWrapper) WorkerFailDesktopThread(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerFailDesktopThread(c, id)
+}
+
+// WorkerPrepareDesktopTurn operation middleware
+func (siw *ServerInterfaceWrapper) WorkerPrepareDesktopTurn(c *gin.Context) {
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerPrepareDesktopTurn(c)
+}
+
+// WorkerPreflightDesktopTurn operation middleware
+func (siw *ServerInterfaceWrapper) WorkerPreflightDesktopTurn(c *gin.Context) {
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerPreflightDesktopTurn(c)
+}
+
+// WorkerDesktopImageTarget operation middleware
+func (siw *ServerInterfaceWrapper) WorkerDesktopImageTarget(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerDesktopImageTarget(c, id)
+}
+
+// WorkerFailDesktopImage operation middleware
+func (siw *ServerInterfaceWrapper) WorkerFailDesktopImage(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "ordinal" -------------
+	var ordinal int
+
+	err = runtime.BindStyledParameterWithOptions("simple", "ordinal", c.Param("ordinal"), &ordinal, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter ordinal: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerFailDesktopImage(c, id, ordinal)
+}
+
 // EnrollWorker operation middleware
 func (siw *ServerInterfaceWrapper) EnrollWorker(c *gin.Context) {
 
@@ -4526,25 +4518,10 @@ func (siw *ServerInterfaceWrapper) EnrollWorker(c *gin.Context) {
 	siw.Handler.EnrollWorker(c)
 }
 
-// CallWorkerRPC operation middleware
-func (siw *ServerInterfaceWrapper) CallWorkerRPC(c *gin.Context) {
+// WorkerHeartbeat operation middleware
+func (siw *ServerInterfaceWrapper) WorkerHeartbeat(c *gin.Context) {
 
-	c.Set(NodeBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.CallWorkerRPC(c)
-}
-
-// SyncWorker operation middleware
-func (siw *ServerInterfaceWrapper) SyncWorker(c *gin.Context) {
-
-	c.Set(NodeBearerScopes, []string{})
+	c.Set(WorkerBearerScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -4553,11 +4530,573 @@ func (siw *ServerInterfaceWrapper) SyncWorker(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.SyncWorker(c)
+	siw.Handler.WorkerHeartbeat(c)
 }
 
-// ListHostWorkers operation middleware
-func (siw *ServerInterfaceWrapper) ListHostWorkers(c *gin.Context) {
+// WorkerAnswerInteractive operation middleware
+func (siw *ServerInterfaceWrapper) WorkerAnswerInteractive(c *gin.Context) {
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerAnswerInteractive(c)
+}
+
+// WorkerInteractiveState operation middleware
+func (siw *ServerInterfaceWrapper) WorkerInteractiveState(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerInteractiveState(c, id)
+}
+
+// WorkerCommandAck operation middleware
+func (siw *ServerInterfaceWrapper) WorkerCommandAck(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerCommandAck(c, id)
+}
+
+// WorkerRunComplete operation middleware
+func (siw *ServerInterfaceWrapper) WorkerRunComplete(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerRunComplete(c, id)
+}
+
+// WorkerConfirmTurn operation middleware
+func (siw *ServerInterfaceWrapper) WorkerConfirmTurn(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerConfirmTurn(c, id)
+}
+
+// WorkerRunEvents operation middleware
+func (siw *ServerInterfaceWrapper) WorkerRunEvents(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerRunEvents(c, id)
+}
+
+// WorkerRunFail operation middleware
+func (siw *ServerInterfaceWrapper) WorkerRunFail(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerRunFail(c, id)
+}
+
+// WorkerGitCredential operation middleware
+func (siw *ServerInterfaceWrapper) WorkerGitCredential(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerGitCredential(c, id)
+}
+
+// WorkerRunHeartbeat operation middleware
+func (siw *ServerInterfaceWrapper) WorkerRunHeartbeat(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerRunHeartbeat(c, id)
+}
+
+// WorkerRegisterInteractive operation middleware
+func (siw *ServerInterfaceWrapper) WorkerRegisterInteractive(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerRegisterInteractive(c, id)
+}
+
+// WorkerRecordSubmission operation middleware
+func (siw *ServerInterfaceWrapper) WorkerRecordSubmission(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerRecordSubmission(c, id)
+}
+
+// WorkerSetThread operation middleware
+func (siw *ServerInterfaceWrapper) WorkerSetThread(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerSetThread(c, id)
+}
+
+// WorkerToolCall operation middleware
+func (siw *ServerInterfaceWrapper) WorkerToolCall(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerToolCall(c, id)
+}
+
+// WorkerWorkspaceProjectState operation middleware
+func (siw *ServerInterfaceWrapper) WorkerWorkspaceProjectState(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerWorkspaceProjectState(c, id)
+}
+
+// WorkerWorkspaceState operation middleware
+func (siw *ServerInterfaceWrapper) WorkerWorkspaceState(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerWorkspaceState(c, id)
+}
+
+// WorkerSSHConfiguration operation middleware
+func (siw *ServerInterfaceWrapper) WorkerSSHConfiguration(c *gin.Context) {
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerSSHConfiguration(c)
+}
+
+// WorkerPendingThreadLifecycles operation middleware
+func (siw *ServerInterfaceWrapper) WorkerPendingThreadLifecycles(c *gin.Context) {
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerPendingThreadLifecycles(c)
+}
+
+// WorkerPrepareDesktopThreadLifecycle operation middleware
+func (siw *ServerInterfaceWrapper) WorkerPrepareDesktopThreadLifecycle(c *gin.Context) {
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerPrepareDesktopThreadLifecycle(c)
+}
+
+// WorkerThreadLifecycleState operation middleware
+func (siw *ServerInterfaceWrapper) WorkerThreadLifecycleState(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerThreadLifecycleState(c, id)
+}
+
+// WorkerCompleteThreadLifecycle operation middleware
+func (siw *ServerInterfaceWrapper) WorkerCompleteThreadLifecycle(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerCompleteThreadLifecycle(c, id)
+}
+
+// WorkerRecordThreadMetadata operation middleware
+func (siw *ServerInterfaceWrapper) WorkerRecordThreadMetadata(c *gin.Context) {
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerRecordThreadMetadata(c)
+}
+
+// WorkerPendingThreadNames operation middleware
+func (siw *ServerInterfaceWrapper) WorkerPendingThreadNames(c *gin.Context) {
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerPendingThreadNames(c)
+}
+
+// WorkerAckThreadName operation middleware
+func (siw *ServerInterfaceWrapper) WorkerAckThreadName(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id WorkerResourceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerAckThreadName(c, id)
+}
+
+// WorkerWorkspace operation middleware
+func (siw *ServerInterfaceWrapper) WorkerWorkspace(c *gin.Context) {
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerWorkspace(c)
+}
+
+// WorkerWorkspaceProjectSnapshot operation middleware
+func (siw *ServerInterfaceWrapper) WorkerWorkspaceProjectSnapshot(c *gin.Context) {
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerWorkspaceProjectSnapshot(c)
+}
+
+// ListWorkers operation middleware
+func (siw *ServerInterfaceWrapper) ListWorkers(c *gin.Context) {
 
 	c.Set(SessionCookieScopes, []string{})
 
@@ -4568,18 +5107,18 @@ func (siw *ServerInterfaceWrapper) ListHostWorkers(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.ListHostWorkers(c)
+	siw.Handler.ListWorkers(c)
 }
 
-// CreateHostWorker operation middleware
-func (siw *ServerInterfaceWrapper) CreateHostWorker(c *gin.Context) {
+// CreateWorker operation middleware
+func (siw *ServerInterfaceWrapper) CreateWorker(c *gin.Context) {
 
 	var err error
 
 	c.Set(SessionCookieScopes, []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params CreateHostWorkerParams
+	var params CreateWorkerParams
 
 	headers := c.Request.Header
 
@@ -4612,11 +5151,11 @@ func (siw *ServerInterfaceWrapper) CreateHostWorker(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.CreateHostWorker(c, params)
+	siw.Handler.CreateWorker(c, params)
 }
 
-// DeleteHostWorker operation middleware
-func (siw *ServerInterfaceWrapper) DeleteHostWorker(c *gin.Context) {
+// DeleteWorker operation middleware
+func (siw *ServerInterfaceWrapper) DeleteWorker(c *gin.Context) {
 
 	var err error
 
@@ -4632,7 +5171,7 @@ func (siw *ServerInterfaceWrapper) DeleteHostWorker(c *gin.Context) {
 	c.Set(SessionCookieScopes, []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params DeleteHostWorkerParams
+	var params DeleteWorkerParams
 
 	headers := c.Request.Header
 
@@ -4665,11 +5204,11 @@ func (siw *ServerInterfaceWrapper) DeleteHostWorker(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.DeleteHostWorker(c, id, params)
+	siw.Handler.DeleteWorker(c, id, params)
 }
 
-// SetHostWorkerEnabled operation middleware
-func (siw *ServerInterfaceWrapper) SetHostWorkerEnabled(c *gin.Context) {
+// SetWorkerEnabled operation middleware
+func (siw *ServerInterfaceWrapper) SetWorkerEnabled(c *gin.Context) {
 
 	var err error
 
@@ -4685,7 +5224,7 @@ func (siw *ServerInterfaceWrapper) SetHostWorkerEnabled(c *gin.Context) {
 	c.Set(SessionCookieScopes, []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params SetHostWorkerEnabledParams
+	var params SetWorkerEnabledParams
 
 	headers := c.Request.Header
 
@@ -4718,11 +5257,11 @@ func (siw *ServerInterfaceWrapper) SetHostWorkerEnabled(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.SetHostWorkerEnabled(c, id, params)
+	siw.Handler.SetWorkerEnabled(c, id, params)
 }
 
-// CreateHostWorkerEnrollment operation middleware
-func (siw *ServerInterfaceWrapper) CreateHostWorkerEnrollment(c *gin.Context) {
+// CreateWorkerEnrollment operation middleware
+func (siw *ServerInterfaceWrapper) CreateWorkerEnrollment(c *gin.Context) {
 
 	var err error
 
@@ -4738,7 +5277,7 @@ func (siw *ServerInterfaceWrapper) CreateHostWorkerEnrollment(c *gin.Context) {
 	c.Set(SessionCookieScopes, []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params CreateHostWorkerEnrollmentParams
+	var params CreateWorkerEnrollmentParams
 
 	headers := c.Request.Header
 
@@ -4771,7 +5310,367 @@ func (siw *ServerInterfaceWrapper) CreateHostWorkerEnrollment(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.CreateHostWorkerEnrollment(c, id, params)
+	siw.Handler.CreateWorkerEnrollment(c, id, params)
+}
+
+// DisableWorkspaceForum operation middleware
+func (siw *ServerInterfaceWrapper) DisableWorkspaceForum(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DisableWorkspaceForumParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DisableWorkspaceForum(c, id, params)
+}
+
+// EnableWorkspaceForum operation middleware
+func (siw *ServerInterfaceWrapper) EnableWorkspaceForum(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params EnableWorkspaceForumParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.EnableWorkspaceForum(c, id, params)
+}
+
+// CreateWorkspaceProjectForum operation middleware
+func (siw *ServerInterfaceWrapper) CreateWorkspaceProjectForum(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateWorkspaceProjectForumParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateWorkspaceProjectForum(c, id, params)
+}
+
+// DeleteWorkspaceProjectForumCollaborator operation middleware
+func (siw *ServerInterfaceWrapper) DeleteWorkspaceProjectForumCollaborator(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "forumId" -------------
+	var forumId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "forumId", c.Param("forumId"), &forumId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter forumId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "memberId" -------------
+	var memberId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "memberId", c.Param("memberId"), &memberId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter memberId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteWorkspaceProjectForumCollaboratorParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteWorkspaceProjectForumCollaborator(c, id, forumId, memberId, params)
+}
+
+// PutWorkspaceProjectForumCollaborator operation middleware
+func (siw *ServerInterfaceWrapper) PutWorkspaceProjectForumCollaborator(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "forumId" -------------
+	var forumId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "forumId", c.Param("forumId"), &forumId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter forumId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "memberId" -------------
+	var memberId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "memberId", c.Param("memberId"), &memberId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter memberId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutWorkspaceProjectForumCollaboratorParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PutWorkspaceProjectForumCollaborator(c, id, forumId, memberId, params)
+}
+
+// ListWorkspaces operation middleware
+func (siw *ServerInterfaceWrapper) ListWorkspaces(c *gin.Context) {
+
+	c.Set(SessionCookieScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListWorkspaces(c)
+}
+
+// CreateWorkspace operation middleware
+func (siw *ServerInterfaceWrapper) CreateWorkspace(c *gin.Context) {
+
+	var err error
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateWorkspaceParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateWorkspace(c, params)
 }
 
 // GetWorktrees operation middleware
@@ -4844,15 +5743,6 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/client/sync", wrapper.ClientSync)
 	router.GET(options.BaseURL+"/client/updates", wrapper.ClientUpdatesWebSocket)
 	router.POST(options.BaseURL+"/client/uploads", wrapper.ClientUpload)
-	router.GET(options.BaseURL+"/development-environments", wrapper.ListDevelopmentEnvironments)
-	router.POST(options.BaseURL+"/development-environments", wrapper.CreateDevelopmentEnvironment)
-	router.DELETE(options.BaseURL+"/development-environments/:id/ssh", wrapper.DeleteDevelopmentEnvironmentSSH)
-	router.PUT(options.BaseURL+"/development-environments/:id/ssh", wrapper.PutDevelopmentEnvironmentSSH)
-	router.POST(options.BaseURL+"/development-forums/:id/disable", wrapper.DisableDevelopmentForum)
-	router.POST(options.BaseURL+"/development-forums/:id/enable", wrapper.EnableDevelopmentForum)
-	router.POST(options.BaseURL+"/development-projects/:id/forums", wrapper.CreateDevelopmentProjectForum)
-	router.DELETE(options.BaseURL+"/development-projects/:id/forums/:forumId/collaborators/:memberId", wrapper.DeleteDevelopmentProjectForumCollaborator)
-	router.PUT(options.BaseURL+"/development-projects/:id/forums/:forumId/collaborators/:memberId", wrapper.PutDevelopmentProjectForumCollaborator)
 	router.DELETE(options.BaseURL+"/discord/forums/:forumId/access/:memberId", wrapper.DeleteDiscordForumAccess)
 	router.PUT(options.BaseURL+"/discord/forums/:forumId/access/:memberId", wrapper.PutDiscordForumAccess)
 	router.POST(options.BaseURL+"/discord/github/bind", wrapper.StartDiscordGitHubBind)
@@ -4874,15 +5764,14 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/repo-caches", wrapper.GetRepoCaches)
 	router.GET(options.BaseURL+"/repositories", wrapper.GetRepositories)
 	router.POST(options.BaseURL+"/repositories", wrapper.CreateRepository)
-	router.GET(options.BaseURL+"/settings/codex", wrapper.ListCodexSettings)
-	router.PUT(options.BaseURL+"/settings/codex/forums/:id", wrapper.PutForumCodexSettings)
-	router.PUT(options.BaseURL+"/settings/codex/repositories/:id", wrapper.PutRepositoryCodexSettings)
 	router.GET(options.BaseURL+"/settings/discord", wrapper.GetDiscordSettings)
 	router.PUT(options.BaseURL+"/settings/discord", wrapper.PutDiscordSettings)
-	router.GET(options.BaseURL+"/settings/execution", wrapper.GetExecutionDefaults)
-	router.PUT(options.BaseURL+"/settings/execution", wrapper.PutExecutionDefaults)
-	router.GET(options.BaseURL+"/settings/global-agents", wrapper.GetGlobalAgents)
-	router.PUT(options.BaseURL+"/settings/global-agents", wrapper.PutGlobalAgents)
+	router.GET(options.BaseURL+"/settings/github-agent", wrapper.ListGitHubAgentSettings)
+	router.GET(options.BaseURL+"/settings/github-agent-instructions", wrapper.GetGitHubAgentInstructions)
+	router.PUT(options.BaseURL+"/settings/github-agent-instructions", wrapper.PutGitHubAgentInstructions)
+	router.PUT(options.BaseURL+"/settings/github-agent/repositories/:id", wrapper.PutRepositoryGitHubAgentSettings)
+	router.GET(options.BaseURL+"/settings/workers", wrapper.GetWorkerDefaults)
+	router.PUT(options.BaseURL+"/settings/workers", wrapper.PutWorkerDefaults)
 	router.POST(options.BaseURL+"/setup/admin", wrapper.SetupAdministrator)
 	router.GET(options.BaseURL+"/setup/status", wrapper.GetSetupStatus)
 	router.GET(options.BaseURL+"/ssh/credentials", wrapper.ListSSHCredentials)
@@ -4900,163 +5789,223 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/trigger-rules", wrapper.CreateTriggerRule)
 	router.POST(options.BaseURL+"/webhooks/github", wrapper.ReceiveGitHubWebhook)
 	router.GET(options.BaseURL+"/work-items", wrapper.GetWorkItems)
-	router.GET(options.BaseURL+"/worker/v2/blobs/:id", wrapper.DownloadWorkerBlob)
-	router.POST(options.BaseURL+"/worker/v2/blobs/:id", wrapper.UploadWorkerBlob)
-	router.POST(options.BaseURL+"/worker/v2/enroll", wrapper.EnrollWorker)
-	router.POST(options.BaseURL+"/worker/v2/rpc", wrapper.CallWorkerRPC)
-	router.POST(options.BaseURL+"/worker/v2/sync", wrapper.SyncWorker)
-	router.GET(options.BaseURL+"/workers", wrapper.ListHostWorkers)
-	router.POST(options.BaseURL+"/workers", wrapper.CreateHostWorker)
-	router.DELETE(options.BaseURL+"/workers/:id", wrapper.DeleteHostWorker)
-	router.PUT(options.BaseURL+"/workers/:id/enabled", wrapper.SetHostWorkerEnabled)
-	router.POST(options.BaseURL+"/workers/:id/enrollments", wrapper.CreateHostWorkerEnrollment)
+	router.GET(options.BaseURL+"/worker/v1/blobs/:id", wrapper.DownloadWorkerBlob)
+	router.POST(options.BaseURL+"/worker/v1/blobs/:id", wrapper.UploadWorkerBlob)
+	router.POST(options.BaseURL+"/worker/v1/claims", wrapper.WorkerClaim)
+	router.POST(options.BaseURL+"/worker/v1/desktop-rollbacks", wrapper.WorkerPrepareDesktopRollback)
+	router.POST(options.BaseURL+"/worker/v1/desktop-rollbacks/:id/complete", wrapper.WorkerCompleteDesktopRollback)
+	router.POST(options.BaseURL+"/worker/v1/desktop-steers", wrapper.WorkerRecordDesktopSteer)
+	router.POST(options.BaseURL+"/worker/v1/desktop-thread-requests", wrapper.WorkerPrepareDesktopThread)
+	router.GET(options.BaseURL+"/worker/v1/desktop-thread-requests/:id", wrapper.WorkerDesktopThreadState)
+	router.POST(options.BaseURL+"/worker/v1/desktop-thread-requests/:id/complete", wrapper.WorkerCompleteDesktopThread)
+	router.POST(options.BaseURL+"/worker/v1/desktop-thread-requests/:id/fail", wrapper.WorkerFailDesktopThread)
+	router.POST(options.BaseURL+"/worker/v1/desktop-turns", wrapper.WorkerPrepareDesktopTurn)
+	router.POST(options.BaseURL+"/worker/v1/desktop-turns/preflight", wrapper.WorkerPreflightDesktopTurn)
+	router.GET(options.BaseURL+"/worker/v1/desktop-turns/:id/images/target", wrapper.WorkerDesktopImageTarget)
+	router.POST(options.BaseURL+"/worker/v1/desktop-turns/:id/images/:ordinal/fail", wrapper.WorkerFailDesktopImage)
+	router.POST(options.BaseURL+"/worker/v1/enroll", wrapper.EnrollWorker)
+	router.POST(options.BaseURL+"/worker/v1/heartbeat", wrapper.WorkerHeartbeat)
+	router.POST(options.BaseURL+"/worker/v1/interactive/answer", wrapper.WorkerAnswerInteractive)
+	router.GET(options.BaseURL+"/worker/v1/interactive/:id", wrapper.WorkerInteractiveState)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/commands/ack", wrapper.WorkerCommandAck)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/complete", wrapper.WorkerRunComplete)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/confirm", wrapper.WorkerConfirmTurn)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/events", wrapper.WorkerRunEvents)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/fail", wrapper.WorkerRunFail)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/git-credential", wrapper.WorkerGitCredential)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/heartbeat", wrapper.WorkerRunHeartbeat)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/interactive", wrapper.WorkerRegisterInteractive)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/submission", wrapper.WorkerRecordSubmission)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/thread", wrapper.WorkerSetThread)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/tools/call", wrapper.WorkerToolCall)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/workspace-project-state", wrapper.WorkerWorkspaceProjectState)
+	router.POST(options.BaseURL+"/worker/v1/runs/:id/workspace-state", wrapper.WorkerWorkspaceState)
+	router.GET(options.BaseURL+"/worker/v1/ssh-configuration", wrapper.WorkerSSHConfiguration)
+	router.GET(options.BaseURL+"/worker/v1/thread-lifecycle-requests", wrapper.WorkerPendingThreadLifecycles)
+	router.POST(options.BaseURL+"/worker/v1/thread-lifecycle-requests/desktop", wrapper.WorkerPrepareDesktopThreadLifecycle)
+	router.GET(options.BaseURL+"/worker/v1/thread-lifecycle-requests/:id", wrapper.WorkerThreadLifecycleState)
+	router.POST(options.BaseURL+"/worker/v1/thread-lifecycle-requests/:id/complete", wrapper.WorkerCompleteThreadLifecycle)
+	router.POST(options.BaseURL+"/worker/v1/thread-metadata-events", wrapper.WorkerRecordThreadMetadata)
+	router.GET(options.BaseURL+"/worker/v1/thread-name-updates", wrapper.WorkerPendingThreadNames)
+	router.POST(options.BaseURL+"/worker/v1/thread-name-updates/:id/ack", wrapper.WorkerAckThreadName)
+	router.GET(options.BaseURL+"/worker/v1/workspace", wrapper.WorkerWorkspace)
+	router.POST(options.BaseURL+"/worker/v1/workspace/projects/snapshot", wrapper.WorkerWorkspaceProjectSnapshot)
+	router.GET(options.BaseURL+"/workers", wrapper.ListWorkers)
+	router.POST(options.BaseURL+"/workers", wrapper.CreateWorker)
+	router.DELETE(options.BaseURL+"/workers/:id", wrapper.DeleteWorker)
+	router.PUT(options.BaseURL+"/workers/:id/enabled", wrapper.SetWorkerEnabled)
+	router.POST(options.BaseURL+"/workers/:id/enrollments", wrapper.CreateWorkerEnrollment)
+	router.POST(options.BaseURL+"/workspace-forums/:id/disable", wrapper.DisableWorkspaceForum)
+	router.POST(options.BaseURL+"/workspace-forums/:id/enable", wrapper.EnableWorkspaceForum)
+	router.POST(options.BaseURL+"/workspace-projects/:id/forums", wrapper.CreateWorkspaceProjectForum)
+	router.DELETE(options.BaseURL+"/workspace-projects/:id/forums/:forumId/collaborators/:memberId", wrapper.DeleteWorkspaceProjectForumCollaborator)
+	router.PUT(options.BaseURL+"/workspace-projects/:id/forums/:forumId/collaborators/:memberId", wrapper.PutWorkspaceProjectForumCollaborator)
+	router.GET(options.BaseURL+"/workspaces", wrapper.ListWorkspaces)
+	router.POST(options.BaseURL+"/workspaces", wrapper.CreateWorkspace)
 	router.GET(options.BaseURL+"/worktrees", wrapper.GetWorktrees)
 }
 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

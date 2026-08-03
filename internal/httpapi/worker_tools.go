@@ -12,7 +12,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
-func (s *Server) workerCapability(ctx context.Context, runID, nodeID uuid.UUID,
+func (s *Server) workerCapability(ctx context.Context, runID, workerID uuid.UUID,
 	capability string,
 ) error {
 	if capability == "" {
@@ -20,8 +20,8 @@ func (s *Server) workerCapability(ctx context.Context, runID, nodeID uuid.UUID,
 	}
 	var matches bool
 	err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM codex_turn_runs
-		WHERE id = $1 AND execution_node_id = $2 AND capability_hash = $3 AND active_slot = 1)`,
-		runID, nodeID, security.Digest(capability)).Scan(&matches)
+		WHERE id = $1 AND worker_id = $2 AND capability_hash = $3 AND active_slot = 1)`,
+		runID, workerID, security.Digest(capability)).Scan(&matches)
 	if err != nil {
 		return err
 	}
@@ -33,16 +33,16 @@ func (s *Server) workerCapability(ctx context.Context, runID, nodeID uuid.UUID,
 
 func (s *Server) workerToolCall(c *gin.Context) {
 	var request workerprotocol.ToolCallRequest
-	runID, node, ok := requireRunLease(c, &request)
+	runID, worker, ok := requireRunLease(c, &request)
 	if !ok {
 		return
 	}
-	if _, err := s.claimedRemoteRun(c.Request.Context(), node.ID, runID,
+	if _, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID,
 		request.RunLeaseRequest); err != nil {
 		remoteRunError(c, "校验 Dynamic Tool Run 失败", err)
 		return
 	}
-	if err := s.workerCapability(c.Request.Context(), runID, node.ID, request.Capability); err != nil {
+	if err := s.workerCapability(c.Request.Context(), runID, worker.ID, request.Capability); err != nil {
 		problem(c, http.StatusForbidden, "校验 Dynamic Tool Capability 失败", err)
 		return
 	}
@@ -69,16 +69,16 @@ func (s *Server) workerToolCall(c *gin.Context) {
 
 func (s *Server) workerGitCredential(c *gin.Context) {
 	var request workerprotocol.GitCredentialRequest
-	runID, node, ok := requireRunLease(c, &request)
+	runID, worker, ok := requireRunLease(c, &request)
 	if !ok {
 		return
 	}
-	if _, err := s.claimedRemoteRun(c.Request.Context(), node.ID, runID,
+	if _, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID,
 		request.RunLeaseRequest); err != nil {
 		remoteRunError(c, "校验 Git 凭据 Run 失败", err)
 		return
 	}
-	if err := s.workerCapability(c.Request.Context(), runID, node.ID, request.Capability); err != nil {
+	if err := s.workerCapability(c.Request.Context(), runID, worker.ID, request.Capability); err != nil {
 		problem(c, http.StatusForbidden, "校验 Git 凭据 Capability 失败", err)
 		return
 	}

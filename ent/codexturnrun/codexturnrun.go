@@ -20,14 +20,14 @@ const (
 	FieldPrimaryIntentID = "primary_intent_id"
 	// FieldAttempt holds the string denoting the attempt field in the database.
 	FieldAttempt = "attempt"
-	// FieldWorkerID holds the string denoting the worker_id field in the database.
-	FieldWorkerID = "worker_id"
+	// FieldLeaseOwner holds the string denoting the lease_owner field in the database.
+	FieldLeaseOwner = "lease_owner"
 	// FieldLeaseEpoch holds the string denoting the lease_epoch field in the database.
 	FieldLeaseEpoch = "lease_epoch"
 	// FieldCapabilityHash holds the string denoting the capability_hash field in the database.
 	FieldCapabilityHash = "capability_hash"
-	// FieldExecutionNodeID holds the string denoting the execution_node_id field in the database.
-	FieldExecutionNodeID = "execution_node_id"
+	// FieldWorkerID holds the string denoting the worker_id field in the database.
+	FieldWorkerID = "worker_id"
 	// FieldWorkerEventSequence holds the string denoting the worker_event_sequence field in the database.
 	FieldWorkerEventSequence = "worker_event_sequence"
 	// FieldWorkerTerminalKey holds the string denoting the worker_terminal_key field in the database.
@@ -68,10 +68,10 @@ var Columns = []string{
 	FieldControlID,
 	FieldPrimaryIntentID,
 	FieldAttempt,
-	FieldWorkerID,
+	FieldLeaseOwner,
 	FieldLeaseEpoch,
 	FieldCapabilityHash,
-	FieldExecutionNodeID,
+	FieldWorkerID,
 	FieldWorkerEventSequence,
 	FieldWorkerTerminalKey,
 	FieldActiveSlot,
@@ -141,9 +141,9 @@ func ByAttempt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAttempt, opts...).ToFunc()
 }
 
-// ByWorkerID orders the results by the worker_id field.
-func ByWorkerID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldWorkerID, opts...).ToFunc()
+// ByLeaseOwner orders the results by the lease_owner field.
+func ByLeaseOwner(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLeaseOwner, opts...).ToFunc()
 }
 
 // ByLeaseEpoch orders the results by the lease_epoch field.
@@ -156,9 +156,9 @@ func ByCapabilityHash(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCapabilityHash, opts...).ToFunc()
 }
 
-// ByExecutionNodeID orders the results by the execution_node_id field.
-func ByExecutionNodeID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldExecutionNodeID, opts...).ToFunc()
+// ByWorkerID orders the results by the worker_id field.
+func ByWorkerID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWorkerID, opts...).ToFunc()
 }
 
 // ByWorkerEventSequence orders the results by the worker_event_sequence field.

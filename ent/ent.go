@@ -18,8 +18,6 @@ import (
 	"github.com/slovx2/tyrs-hand/ent/codexthreadcontrol"
 	"github.com/slovx2/tyrs-hand/ent/codexturnintent"
 	"github.com/slovx2/tyrs-hand/ent/codexturnrun"
-	"github.com/slovx2/tyrs-hand/ent/executionnode"
-	"github.com/slovx2/tyrs-hand/ent/executionnodeenrollment"
 	"github.com/slovx2/tyrs-hand/ent/platformsetting"
 	"github.com/slovx2/tyrs-hand/ent/repocache"
 	"github.com/slovx2/tyrs-hand/ent/repository"
@@ -29,7 +27,8 @@ import (
 	"github.com/slovx2/tyrs-hand/ent/toolcall"
 	"github.com/slovx2/tyrs-hand/ent/triggerrule"
 	"github.com/slovx2/tyrs-hand/ent/webhookdelivery"
-	"github.com/slovx2/tyrs-hand/ent/workernode"
+	"github.com/slovx2/tyrs-hand/ent/worker"
+	"github.com/slovx2/tyrs-hand/ent/workerenrollment"
 	"github.com/slovx2/tyrs-hand/ent/workitem"
 	"github.com/slovx2/tyrs-hand/ent/worktree"
 )
@@ -92,26 +91,25 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			administrator.Table:           administrator.ValidColumn,
-			agentprofile.Table:            agentprofile.ValidColumn,
-			auditlog.Table:                auditlog.ValidColumn,
-			codexthreadcontrol.Table:      codexthreadcontrol.ValidColumn,
-			codexturnintent.Table:         codexturnintent.ValidColumn,
-			codexturnrun.Table:            codexturnrun.ValidColumn,
-			executionnode.Table:           executionnode.ValidColumn,
-			executionnodeenrollment.Table: executionnodeenrollment.ValidColumn,
-			platformsetting.Table:         platformsetting.ValidColumn,
-			repocache.Table:               repocache.ValidColumn,
-			repository.Table:              repository.ValidColumn,
-			scminstallation.Table:         scminstallation.ValidColumn,
-			sshcredential.Table:           sshcredential.ValidColumn,
-			sshhost.Table:                 sshhost.ValidColumn,
-			toolcall.Table:                toolcall.ValidColumn,
-			triggerrule.Table:             triggerrule.ValidColumn,
-			webhookdelivery.Table:         webhookdelivery.ValidColumn,
-			workitem.Table:                workitem.ValidColumn,
-			workernode.Table:              workernode.ValidColumn,
-			worktree.Table:                worktree.ValidColumn,
+			administrator.Table:      administrator.ValidColumn,
+			agentprofile.Table:       agentprofile.ValidColumn,
+			auditlog.Table:           auditlog.ValidColumn,
+			codexthreadcontrol.Table: codexthreadcontrol.ValidColumn,
+			codexturnintent.Table:    codexturnintent.ValidColumn,
+			codexturnrun.Table:       codexturnrun.ValidColumn,
+			platformsetting.Table:    platformsetting.ValidColumn,
+			repocache.Table:          repocache.ValidColumn,
+			repository.Table:         repository.ValidColumn,
+			scminstallation.Table:    scminstallation.ValidColumn,
+			sshcredential.Table:      sshcredential.ValidColumn,
+			sshhost.Table:            sshhost.ValidColumn,
+			toolcall.Table:           toolcall.ValidColumn,
+			triggerrule.Table:        triggerrule.ValidColumn,
+			webhookdelivery.Table:    webhookdelivery.ValidColumn,
+			workitem.Table:           workitem.ValidColumn,
+			worker.Table:             worker.ValidColumn,
+			workerenrollment.Table:   workerenrollment.ValidColumn,
+			worktree.Table:           worktree.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

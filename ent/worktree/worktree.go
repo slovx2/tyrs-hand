@@ -18,8 +18,8 @@ const (
 	FieldWorkItemID = "work_item_id"
 	// FieldRepoCacheID holds the string denoting the repo_cache_id field in the database.
 	FieldRepoCacheID = "repo_cache_id"
-	// FieldExecutionNodeID holds the string denoting the execution_node_id field in the database.
-	FieldExecutionNodeID = "execution_node_id"
+	// FieldWorkerID holds the string denoting the worker_id field in the database.
+	FieldWorkerID = "worker_id"
 	// FieldPath holds the string denoting the path field in the database.
 	FieldPath = "path"
 	// FieldBranch holds the string denoting the branch field in the database.
@@ -47,7 +47,7 @@ var Columns = []string{
 	FieldID,
 	FieldWorkItemID,
 	FieldRepoCacheID,
-	FieldExecutionNodeID,
+	FieldWorkerID,
 	FieldPath,
 	FieldBranch,
 	FieldBaseSha,
@@ -98,9 +98,9 @@ func ByRepoCacheID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRepoCacheID, opts...).ToFunc()
 }
 
-// ByExecutionNodeID orders the results by the execution_node_id field.
-func ByExecutionNodeID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldExecutionNodeID, opts...).ToFunc()
+// ByWorkerID orders the results by the worker_id field.
+func ByWorkerID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWorkerID, opts...).ToFunc()
 }
 
 // ByPath orders the results by the path field.

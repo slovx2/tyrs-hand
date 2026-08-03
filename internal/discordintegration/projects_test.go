@@ -7,13 +7,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDevelopmentProjectForumName(t *testing.T) {
+func TestWorkspaceProjectForumName(t *testing.T) {
 	forumID := uuid.MustParse("12345678-1234-1234-1234-1234567890ab")
-	require.Equal(t, "custom", developmentProjectForumName(
+	require.Equal(t, "custom", workspaceProjectForumName(
 		RemoteGuild{}, "Custom", "Avery", "avery", "workspace", forumID))
-	require.Equal(t, "avery-workspace", developmentProjectForumName(
+	require.Equal(t, "avery-workspace", workspaceProjectForumName(
 		RemoteGuild{}, "", "Avery", "avery", "workspace", forumID))
-	require.Equal(t, "avery-workspace-123456", developmentProjectForumName(RemoteGuild{
+	require.Equal(t, "avery-workspace-123456", workspaceProjectForumName(RemoteGuild{
 		Channels: []RemoteChannel{{Name: "avery-workspace"}},
 	}, "", "Avery", "avery", "workspace", forumID))
 }

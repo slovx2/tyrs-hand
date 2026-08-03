@@ -4,6 +4,11 @@ import "strconv"
 
 const chatGPTCodexBaseURL = "https://chatgpt.com/backend-api/codex"
 
+const (
+	BrowserMCPWorkerTokenEnvironment  = "TYRS_BROWSER_MCP_WORKER_TOKEN"
+	BrowserMCPDesktopTokenEnvironment = "TYRS_BROWSER_MCP_DESKTOP_TOKEN"
+)
+
 type ManagedModelProvider struct {
 	ID                 string
 	Name               string
@@ -27,7 +32,8 @@ func ManagedAppServerArguments(listen string, config ManagedAppServerConfig) []s
 	arguments := []string{
 		"--config", `shell_environment_policy.inherit="core"`,
 		"--config", "shell_environment_policy.ignore_default_excludes=false",
-		"--config", `shell_environment_policy.exclude=["TYRS_HAND_MODEL_API_KEY","TYRS_BROWSER_MCP_TOKEN"]`,
+		"--config", `shell_environment_policy.exclude=["TYRS_HAND_MODEL_API_KEY","` +
+			BrowserMCPWorkerTokenEnvironment + `","` + BrowserMCPDesktopTokenEnvironment + `"]`,
 		"--config", "allow_login_shell=false",
 		"--config", `openai_base_url="` + chatGPTCodexBaseURL + `"`,
 	}

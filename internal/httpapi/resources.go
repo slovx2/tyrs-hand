@@ -201,19 +201,19 @@ func (s *Server) listWorkItems(c *gin.Context) {
 	s.listRows(c, `SELECT w.id, w.kind, w.external_number, w.title, w.state, w.agent_owned,
 		w.head_sha, w.updated_at, r.owner, r.name, n.name FROM work_items w
 		JOIN repositories r ON r.id = w.repository_id
-		LEFT JOIN execution_nodes n ON n.id = w.execution_node_id
+		LEFT JOIN workers n ON n.id = w.worker_id
 		ORDER BY w.updated_at DESC LIMIT 200`, []string{"id", "kind", "number", "title",
-		"state", "agentOwned", "headSha", "updatedAt", "owner", "repository", "executionNode"})
+		"state", "agentOwned", "headSha", "updatedAt", "owner", "repository", "worker"})
 }
 
 func (s *Server) listJobs(c *gin.Context) {
 	s.listRows(c, `SELECT i.id, i.work_item_id, i.trigger_rule_id, i.trigger_evidence, i.status,
-		i.priority, i.attempt_count, i.max_attempts, c.worker_id, c.lease_epoch,
+		i.priority, i.attempt_count, i.max_attempts, c.lease_owner, c.lease_epoch,
 		c.lease_expires_at, i.last_error_message, i.created_at, i.updated_at, n.name
 		FROM codex_turn_intents i JOIN codex_thread_controls c ON c.id = i.control_id
-		LEFT JOIN execution_nodes n ON n.id = c.execution_node_id
+		LEFT JOIN workers n ON n.id = c.worker_id
 		ORDER BY i.created_at DESC LIMIT 200`,
-		[]string{"id", "workItemId", "triggerRuleId", "triggerEvidence", "status", "priority", "attemptCount", "maxAttempts", "workerId", "leaseEpoch", "leaseExpiresAt", "lastError", "createdAt", "updatedAt", "executionNode"})
+		[]string{"id", "workItemId", "triggerRuleId", "triggerEvidence", "status", "priority", "attemptCount", "maxAttempts", "workerId", "leaseEpoch", "leaseExpiresAt", "lastError", "createdAt", "updatedAt", "worker"})
 }
 
 func (s *Server) listInstallations(c *gin.Context) {
@@ -225,9 +225,9 @@ func (s *Server) listThreads(c *gin.Context) {
 	s.listRows(c, `SELECT t.id, t.source_type, t.external_thread_id, t.status,
 		t.active_codex_turn_id, t.updated_at, t.lease_expires_at, w.kind, w.external_number, n.name
 		FROM codex_thread_controls t LEFT JOIN work_items w ON w.id = t.work_item_id
-		LEFT JOIN execution_nodes n ON n.id = t.execution_node_id
+		LEFT JOIN workers n ON n.id = t.worker_id
 		ORDER BY t.updated_at DESC LIMIT 200`,
-		[]string{"id", "sourceType", "threadId", "status", "lastTurnId", "lastUsedAt", "expiresAt", "kind", "number", "executionNode"})
+		[]string{"id", "sourceType", "threadId", "status", "lastTurnId", "lastUsedAt", "expiresAt", "kind", "number", "worker"})
 }
 
 func (s *Server) listWorktrees(c *gin.Context) {
@@ -235,19 +235,19 @@ func (s *Server) listWorktrees(c *gin.Context) {
 		wt.base_sha, wt.head_sha, wt.status, wt.dirty, wt.last_used_at, wt.expires_at,
 		rc.path AS cache_path, rc.size_bytes, rc.last_fetch_at, n.name
 		FROM worktrees wt JOIN repo_caches rc ON rc.id = wt.repo_cache_id
-		LEFT JOIN execution_nodes n ON n.id = wt.execution_node_id
+		LEFT JOIN workers n ON n.id = wt.worker_id
 		ORDER BY wt.last_used_at DESC LIMIT 200`,
 		[]string{"id", "kind", "path", "branch", "baseSha", "headSha", "status", "dirty",
-			"lastUsedAt", "expiresAt", "cachePath", "cacheSizeBytes", "lastFetchAt", "executionNode"})
+			"lastUsedAt", "expiresAt", "cachePath", "cacheSizeBytes", "lastFetchAt", "worker"})
 }
 
 func (s *Server) listRepoCaches(c *gin.Context) {
 	s.listRows(c, `SELECT rc.id, rc.path, rc.status, rc.size_bytes, rc.last_fetch_at,
 		rc.last_used_at, rc.error, r.owner, r.name, n.name
 		FROM repo_caches rc JOIN repositories r ON r.id = rc.repository_id
-		LEFT JOIN execution_nodes n ON n.id = rc.execution_node_id
+		LEFT JOIN workers n ON n.id = rc.worker_id
 		ORDER BY rc.last_used_at DESC`,
-		[]string{"id", "path", "status", "sizeBytes", "lastFetchAt", "lastUsedAt", "error", "owner", "repository", "executionNode"})
+		[]string{"id", "path", "status", "sizeBytes", "lastFetchAt", "lastUsedAt", "error", "owner", "repository", "worker"})
 }
 
 func (s *Server) systemStatus(c *gin.Context) {
@@ -255,7 +255,7 @@ func (s *Server) systemStatus(c *gin.Context) {
 	for name, query := range map[string]string{
 		"queuedJobs":    "SELECT count(*) FROM codex_turn_intents WHERE status IN ('queued','retry_wait')",
 		"runningJobs":   "SELECT count(*) FROM codex_turn_intents WHERE status IN ('dispatching','awaiting_confirmation','running','reconciling')",
-		"onlineWorkers": "SELECT count(*) FROM worker_nodes WHERE status = 'online' AND heartbeat_at > now() - interval '2 minutes'",
+		"onlineWorkers": "SELECT count(*) FROM workers WHERE status = 'online' AND heartbeat_at > now() - interval '2 minutes'",
 		"activeThreads": "SELECT count(*) FROM codex_thread_controls WHERE status = 'active'",
 	} {
 		var count int64

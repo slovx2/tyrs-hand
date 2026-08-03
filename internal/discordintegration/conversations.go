@@ -159,7 +159,7 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 		return uuid.Nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	forumID, ownerID, repositoryID, projectID, err := s.developmentForum(ctx, tx,
+	forumID, ownerID, repositoryID, projectID, err := s.workspaceForum(ctx, tx,
 		input.GuildID, input.ForumID)
 	if err != nil {
 		return uuid.Nil, err
@@ -168,13 +168,11 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 	if err != nil {
 		return uuid.Nil, err
 	}
+	_ = repositoryID
+	preferences := codexsettings.EffectivePreferences{}
 	var profileID uuid.UUID
 	if err := tx.QueryRowContext(ctx, `SELECT id FROM agent_profiles
 		ORDER BY created_at LIMIT 1`).Scan(&profileID); err != nil {
-		return uuid.Nil, err
-	}
-	preferences, err := codexsettings.NewService(s.db).Resolve(ctx, repositoryID, forumID, profileID)
-	if err != nil {
 		return uuid.Nil, err
 	}
 	userPreferences, remembered, err := loadUserCodexPreferences(ctx, tx,
@@ -212,13 +210,13 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 	var conversationID uuid.UUID
 	err = tx.QueryRowContext(ctx, `INSERT INTO discord_conversations
 			(guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
-			 repository_id, development_project_id, agent_profile_id, title, status,
+			 repository_id, workspace_project_id, agent_profile_id, title, status,
 			 model, reasoning_effort, service_tier,
 		 collaboration_mode, trigger_mode,
 		 configuration_status, configuration_deadline, configured_by_discord_user_id,
 		 title_rename_status)
 		VALUES ($1, $2, $3, $4, $5, NULLIF($6::text,'')::uuid, NULLIF($7::text,'')::uuid,
-			$8, $9, $10, NULLIF($11,''), NULLIF($12,''), $13, $14, $15,
+			$8, $9, $10, NULLIF($11,''), NULLIF($12,''), NULLIF($13,''), $14, $15,
 			$16, NULL, $17,
 			'pending')
 		ON CONFLICT(guild_id, thread_id) DO UPDATE SET last_activity_at = now(), updated_at = now()
@@ -279,7 +277,7 @@ func (s *ConversationService) Reply(ctx context.Context, input IncomingMessage) 
 		conversation.trigger_mode
 			FROM discord_conversations conversation
 			JOIN discord_forums forum ON forum.id=conversation.forum_id
-			JOIN development_projects project ON project.id=forum.development_project_id
+			JOIN workspace_projects project ON project.id=forum.workspace_project_id
 			WHERE conversation.guild_id=$1 AND conversation.thread_id=$2
 			AND forum.binding_status='active'
 			AND project.availability_status='available' FOR UPDATE OF conversation`,
@@ -508,7 +506,7 @@ func (s *ConversationService) enqueueMessage(ctx context.Context, tx *sql.Tx, co
 	var actorParticipantID uuid.UUID
 	var allowedJSON []byte
 	err := tx.QueryRowContext(ctx, `SELECT c.repository_id::text,
-		c.development_project_id::text, c.agent_profile_id,
+		c.workspace_project_id::text, c.agent_profile_id,
 		m.body, COALESCE(m.github_login, ''), m.access_snapshot, m.participant_id,
 		m.display_name, p.allowed_tools
 		FROM discord_conversations c JOIN discord_input_messages m ON m.conversation_id = c.id
@@ -538,7 +536,7 @@ func (s *ConversationService) enqueueMessage(ctx context.Context, tx *sql.Tx, co
 		return err
 	}
 	intentID, inserted, err := codexcontrol.NewRepository(s.db, 0).Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
-		SourceType: codexcontrol.SourceDevelopment, DiscordConversationID: conversationID,
+		SourceType: codexcontrol.SourceWorkspace, DiscordConversationID: conversationID,
 		DiscordMessageID: messageID, RepositoryID: repository, ProjectID: project,
 		AgentProfileID: profileID,
 		IdempotencyKey: "discord:message:" + messageID,
@@ -582,19 +580,19 @@ func (s *ConversationService) enqueueMessage(ctx context.Context, tx *sql.Tx, co
 	return err
 }
 
-func (s *ConversationService) developmentForum(ctx context.Context, tx *sql.Tx,
+func (s *ConversationService) workspaceForum(ctx context.Context, tx *sql.Tx,
 	guildID, discordID string,
 ) (uuid.UUID, string, uuid.UUID, uuid.UUID, error) {
 	var forumID uuid.UUID
 	var repositoryID, projectID sql.NullString
 	var owner string
 	err := tx.QueryRowContext(ctx, `SELECT f.id, f.owner_discord_user_id,
-		f.repository_id::text, f.development_project_id::text FROM discord_forums f
+		f.repository_id::text, f.workspace_project_id::text FROM discord_forums f
 		JOIN discord_resources r ON r.id = f.resource_id
-		JOIN discord_development_environments e ON e.id = f.development_environment_id
-		JOIN development_projects project ON project.id=f.development_project_id
-		WHERE f.guild_id = $1 AND r.discord_id = $2 AND f.forum_type = 'development'
-		  AND f.binding_status='active' AND e.status='running'
+		JOIN worker_workspaces e ON e.id = f.workspace_id
+		JOIN workspace_projects project ON project.id=f.workspace_project_id
+		WHERE f.guild_id = $1 AND r.discord_id = $2 AND f.forum_type = 'workspace'
+		  AND f.binding_status='active'
 		  AND project.availability_status='available'`, guildID, discordID).
 		Scan(&forumID, &owner, &repositoryID, &projectID)
 	if err != nil {

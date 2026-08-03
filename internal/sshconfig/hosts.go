@@ -36,11 +36,11 @@ func normalizeHost(input HostInput) (HostInput, error) {
 	if input.Port < 1 || input.Port > 65535 {
 		return input, errors.New("SSH 端口必须在 1 到 65535 之间")
 	}
-	input.ExecutionNodeIDs = normalizeNodeIDs(input.ExecutionNodeIDs)
+	input.WorkerIDs = normalizeWorkerIDs(input.WorkerIDs)
 	return input, nil
 }
 
-func normalizeNodeIDs(input []uuid.UUID) []uuid.UUID {
+func normalizeWorkerIDs(input []uuid.UUID) []uuid.UUID {
 	seen := make(map[uuid.UUID]bool)
 	result := make([]uuid.UUID, 0, len(input))
 	for _, id := range input {
@@ -56,11 +56,11 @@ func normalizeNodeIDs(input []uuid.UUID) []uuid.UUID {
 func (s *Service) ListHosts(ctx context.Context) ([]Host, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT h.id, h.alias, h.hostname, h.port, h.username,
 		h.credential_id, c.name, h.proxy_jump_host_id, COALESCE(p.alias,''), h.enabled,
-		h.updated_at, COALESCE(array_agg(n.execution_node_id::text ORDER BY n.execution_node_id)
-			FILTER (WHERE n.execution_node_id IS NOT NULL), '{}')
+		h.updated_at, COALESCE(array_agg(n.worker_id::text ORDER BY n.worker_id)
+			FILTER (WHERE n.worker_id IS NOT NULL), '{}')
 		FROM ssh_hosts h JOIN ssh_credentials c ON c.id = h.credential_id
 		LEFT JOIN ssh_hosts p ON p.id = h.proxy_jump_host_id
-		LEFT JOIN ssh_host_execution_nodes n ON n.host_id = h.id
+		LEFT JOIN ssh_host_workers n ON n.host_id = h.id
 		GROUP BY h.id, c.name, p.alias ORDER BY h.alias`)
 	if err != nil {
 		return nil, err
@@ -97,10 +97,10 @@ func scanHost(row rowScanner) (Host, error) {
 		if err != nil {
 			return Host{}, err
 		}
-		item.ExecutionNodeIDs = append(item.ExecutionNodeIDs, id)
+		item.WorkerIDs = append(item.WorkerIDs, id)
 	}
-	if item.ExecutionNodeIDs == nil {
-		item.ExecutionNodeIDs = []uuid.UUID{}
+	if item.WorkerIDs == nil {
+		item.WorkerIDs = []uuid.UUID{}
 	}
 	return item, nil
 }
@@ -123,7 +123,7 @@ func (s *Service) CreateHost(ctx context.Context, input HostInput) (Host, error)
 		return Host{}, err
 	}
 	if err := replaceNodeAssignments(ctx, tx, id, input.ProxyJumpHostID,
-		input.ExecutionNodeIDs, enabledValue(input.Enabled)); err != nil {
+		input.WorkerIDs, enabledValue(input.Enabled)); err != nil {
 		return Host{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -139,14 +139,14 @@ func (s *Service) ImportHosts(ctx context.Context, input HostImportInput) ([]Hos
 	if len(input.Hosts) == 0 || len(input.Hosts) > maxHostImportCount {
 		return nil, fmt.Errorf("每次必须导入 1 到 %d 台主机", maxHostImportCount)
 	}
-	nodeIDs := normalizeNodeIDs(input.ExecutionNodeIDs)
+	workerIDs := normalizeWorkerIDs(input.WorkerIDs)
 	normalized := make([]HostInput, len(input.Hosts))
 	proxyAliases := make([]string, len(input.Hosts))
 	for index, item := range input.Hosts {
 		host, err := normalizeHost(HostInput{
 			Alias: item.Alias, Hostname: item.Hostname, Port: item.Port,
 			Username: item.Username, CredentialID: input.CredentialID,
-			ExecutionNodeIDs: nodeIDs, Enabled: input.Enabled,
+			WorkerIDs: workerIDs, Enabled: input.Enabled,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("主机 %q：%w", strings.TrimSpace(item.Alias), err)
@@ -221,7 +221,7 @@ func (s *Service) ImportHosts(ctx context.Context, input HostImportInput) ([]Hos
 			return nil, err
 		}
 		if err := replaceNodeAssignments(ctx, tx, ids[index], host.ProxyJumpHostID,
-			host.ExecutionNodeIDs, enabledValue(host.Enabled)); err != nil {
+			host.WorkerIDs, enabledValue(host.Enabled)); err != nil {
 			return nil, fmt.Errorf("主机 %q：%w", host.Alias, err)
 		}
 	}
@@ -300,7 +300,7 @@ func (s *Service) UpdateHost(ctx context.Context, id uuid.UUID, input HostInput)
 		return Host{}, sql.ErrNoRows
 	}
 	if err := replaceNodeAssignments(ctx, tx, id, input.ProxyJumpHostID,
-		input.ExecutionNodeIDs, enabledValue(input.Enabled)); err != nil {
+		input.WorkerIDs, enabledValue(input.Enabled)); err != nil {
 		return Host{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -322,16 +322,16 @@ func (s *Service) DeleteHost(ctx context.Context, id uuid.UUID) error {
 }
 
 func replaceNodeAssignments(ctx context.Context, tx *sql.Tx, hostID uuid.UUID,
-	proxyID *uuid.UUID, nodeIDs []uuid.UUID, enabled bool,
+	proxyID *uuid.UUID, workerIDs []uuid.UUID, enabled bool,
 ) error {
-	if len(nodeIDs) > 0 {
+	if len(workerIDs) > 0 {
 		var count int
-		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM execution_nodes
-			WHERE id = ANY($1::uuid[])`, pq.Array(nodeIDs)).Scan(&count); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM workers
+			WHERE id = ANY($1::uuid[])`, pq.Array(workerIDs)).Scan(&count); err != nil {
 			return err
 		}
-		if count != len(nodeIDs) {
-			return errors.New("包含不存在的 Execution Node")
+		if count != len(workerIDs) {
+			return errors.New("包含不存在的 Worker")
 		}
 	}
 	if proxyID != nil {
@@ -341,13 +341,13 @@ func replaceNodeAssignments(ctx context.Context, tx *sql.Tx, hostID uuid.UUID,
 			return err
 		}
 		var count int
-		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM ssh_host_execution_nodes
-			WHERE host_id=$1 AND execution_node_id = ANY($2::uuid[])`, *proxyID,
-			pq.Array(nodeIDs)).Scan(&count); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM ssh_host_workers
+			WHERE host_id=$1 AND worker_id = ANY($2::uuid[])`, *proxyID,
+			pq.Array(workerIDs)).Scan(&count); err != nil {
 			return err
 		}
-		if enabled && (!proxyEnabled || count != len(nodeIDs)) {
-			return errors.New("ProxyJump 主机必须分配到相同的 Execution Node")
+		if enabled && (!proxyEnabled || count != len(workerIDs)) {
+			return errors.New("ProxyJump 主机必须分配到相同的 Worker")
 		}
 		var cycle bool
 		if err := tx.QueryRowContext(ctx, `WITH RECURSIVE chain(id, proxy_id) AS (
@@ -363,21 +363,21 @@ func replaceNodeAssignments(ctx context.Context, tx *sql.Tx, hostID uuid.UUID,
 	}
 	var dependentAssignments int
 	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM ssh_hosts child
-		JOIN ssh_host_execution_nodes n ON n.host_id=child.id
+		JOIN ssh_host_workers n ON n.host_id=child.id
 		WHERE child.proxy_jump_host_id=$1 AND child.enabled
-		AND (NOT $3 OR NOT n.execution_node_id = ANY(COALESCE($2::uuid[], '{}'::uuid[])))`, hostID,
-		pq.Array(nodeIDs), enabled).Scan(&dependentAssignments); err != nil {
+		AND (NOT $3 OR NOT n.worker_id = ANY(COALESCE($2::uuid[], '{}'::uuid[])))`, hostID,
+		pq.Array(workerIDs), enabled).Scan(&dependentAssignments); err != nil {
 		return err
 	}
 	if dependentAssignments != 0 {
 		return errors.New("该主机仍被已启用主机用作 ProxyJump，不能停用或移除其节点分配")
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM ssh_host_execution_nodes WHERE host_id=$1`, hostID); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM ssh_host_workers WHERE host_id=$1`, hostID); err != nil {
 		return err
 	}
-	for _, nodeID := range nodeIDs {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO ssh_host_execution_nodes
-			(host_id, execution_node_id) VALUES ($1,$2)`, hostID, nodeID); err != nil {
+	for _, workerID := range workerIDs {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO ssh_host_workers
+			(host_id, worker_id) VALUES ($1,$2)`, hostID, workerID); err != nil {
 			return err
 		}
 	}
@@ -387,10 +387,10 @@ func replaceNodeAssignments(ctx context.Context, tx *sql.Tx, hostID uuid.UUID,
 func (s *Service) getHost(ctx context.Context, id uuid.UUID) (Host, error) {
 	return scanHost(s.db.QueryRowContext(ctx, `SELECT h.id, h.alias, h.hostname, h.port,
 		h.username, h.credential_id, c.name, h.proxy_jump_host_id, COALESCE(p.alias,''),
-		h.enabled, h.updated_at, COALESCE(array_agg(n.execution_node_id::text ORDER BY n.execution_node_id)
-			FILTER (WHERE n.execution_node_id IS NOT NULL), '{}')
+		h.enabled, h.updated_at, COALESCE(array_agg(n.worker_id::text ORDER BY n.worker_id)
+			FILTER (WHERE n.worker_id IS NOT NULL), '{}')
 		FROM ssh_hosts h JOIN ssh_credentials c ON c.id=h.credential_id
 		LEFT JOIN ssh_hosts p ON p.id=h.proxy_jump_host_id
-		LEFT JOIN ssh_host_execution_nodes n ON n.host_id=h.id
+		LEFT JOIN ssh_host_workers n ON n.host_id=h.id
 		WHERE h.id=$1 GROUP BY h.id, c.name, p.alias`, id))
 }

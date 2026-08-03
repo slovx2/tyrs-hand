@@ -5,16 +5,15 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 mkdir -p coverage
 
-core_packages="github.com/slovx2/tyrs-hand/internal/auth,github.com/slovx2/tyrs-hand/internal/codex,github.com/slovx2/tyrs-hand/internal/codexcontrol,github.com/slovx2/tyrs-hand/internal/config,github.com/slovx2/tyrs-hand/internal/devcontainer,github.com/slovx2/tyrs-hand/internal/discordintegration,github.com/slovx2/tyrs-hand/internal/githubtools,github.com/slovx2/tyrs-hand/internal/orchestrator,github.com/slovx2/tyrs-hand/internal/security,github.com/slovx2/tyrs-hand/internal/settings,github.com/slovx2/tyrs-hand/internal/tools"
+core_packages="github.com/slovx2/tyrs-hand/internal/auth,github.com/slovx2/tyrs-hand/internal/codex,github.com/slovx2/tyrs-hand/internal/codexcontrol,github.com/slovx2/tyrs-hand/internal/config,github.com/slovx2/tyrs-hand/internal/discordintegration,github.com/slovx2/tyrs-hand/internal/githubtools,github.com/slovx2/tyrs-hand/internal/orchestrator,github.com/slovx2/tyrs-hand/internal/security,github.com/slovx2/tyrs-hand/internal/settings,github.com/slovx2/tyrs-hand/internal/tools"
 
-go test -tags=integration \
+go test -p=1 -tags=integration \
   -covermode=atomic \
   -coverpkg="$core_packages" \
   -coverprofile=coverage/go.out \
 	./internal/codex \
 	./internal/codexcontrol \
   ./internal/config \
-  ./internal/devcontainer \
   ./internal/discordintegration \
   ./internal/githubtools \
 	./internal/httpapi \

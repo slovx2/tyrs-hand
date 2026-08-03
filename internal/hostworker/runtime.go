@@ -14,27 +14,29 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/slovx2/tyrs-hand/internal/appserverhub"
 	"github.com/slovx2/tyrs-hand/internal/codex"
-	"github.com/slovx2/tyrs-hand/internal/codexrelay"
 	"go.uber.org/zap"
 )
 
 type RuntimeOptions struct {
-	CodexBin      string
-	CodexHome     string
-	Home          string
-	WorkspaceRoot string
-	StateDir      string
-	SSHAuthSock   string
-	Controller    codexrelay.Controller
-	Logger        *zap.Logger
+	CodexBin            string
+	CodexHome           string
+	Home                string
+	WorkspaceRoot       string
+	StateDir            string
+	SSHAuthSock         string
+	BrowserWorkerToken  string
+	BrowserDesktopToken string
+	Controller          appserverhub.Controller
+	Logger              *zap.Logger
 }
 
 type Runtime struct {
 	options    RuntimeOptions
 	command    *exec.Cmd
-	hub        *codexrelay.Relay
-	client     *codexrelay.Client
+	hub        *appserverhub.Hub
+	client     *appserverhub.Client
 	generation int64
 
 	mu                  sync.Mutex
@@ -87,6 +89,12 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 	if options.SSHAuthSock != "" {
 		values["SSH_AUTH_SOCK"] = options.SSHAuthSock
 	}
+	if options.BrowserWorkerToken != "" {
+		values[codex.BrowserMCPWorkerTokenEnvironment] = options.BrowserWorkerToken
+	}
+	if options.BrowserDesktopToken != "" {
+		values[codex.BrowserMCPDesktopTokenEnvironment] = options.BrowserDesktopToken
+	}
 	command.Env = replaceEnvironment(environment, values)
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
@@ -105,9 +113,9 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 	}
 	controller := options.Controller
 	if controller == nil {
-		controller = codexrelay.PassThroughController{}
+		controller = appserverhub.PassThroughController{}
 	}
-	hub, err := codexrelay.Start(ctx, codexrelay.Options{
+	hub, err := appserverhub.Start(ctx, appserverhub.Options{
 		UpstreamSocketPath: socketPath,
 		Controller:         controller,
 	})
@@ -117,8 +125,8 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 		return nil, fmt.Errorf("启动 Worker AppServerHub: %w", err)
 	}
 	runtime.hub = hub
-	client, err := hub.OpenClient(codexrelay.ClientOptions{
-		Role: codexrelay.RoleWorker, ServerRequestHandler: runtime.handleServerRequest,
+	client, err := hub.OpenClient(appserverhub.ClientOptions{
+		Role: appserverhub.RoleWorker, ServerRequestHandler: runtime.handleServerRequest,
 	})
 	if err != nil {
 		_ = hub.Close()
@@ -130,7 +138,7 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 	return runtime, nil
 }
 
-func (r *Runtime) Client() *codexrelay.Client { return r.client }
+func (r *Runtime) Client() *appserverhub.Client { return r.client }
 
 func (r *Runtime) CodexHome() string { return r.options.CodexHome }
 
@@ -290,7 +298,9 @@ func appServerEnvironment(base []string) []string {
 		switch name {
 		case "OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_ORG_ID", "OPENAI_PROJECT_ID",
 			"CODEX_API_KEY", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
-			"http_proxy", "https_proxy", "all_proxy", "no_proxy":
+			"http_proxy", "https_proxy", "all_proxy", "no_proxy",
+			codex.BrowserMCPWorkerTokenEnvironment,
+			codex.BrowserMCPDesktopTokenEnvironment:
 			continue
 		}
 		result = append(result, item)

@@ -24,12 +24,6 @@ type CodexTurnIntent func(*sql.Selector)
 // CodexTurnRun is the predicate function for codexturnrun builders.
 type CodexTurnRun func(*sql.Selector)
 
-// ExecutionNode is the predicate function for executionnode builders.
-type ExecutionNode func(*sql.Selector)
-
-// ExecutionNodeEnrollment is the predicate function for executionnodeenrollment builders.
-type ExecutionNodeEnrollment func(*sql.Selector)
-
 // PlatformSetting is the predicate function for platformsetting builders.
 type PlatformSetting func(*sql.Selector)
 
@@ -60,8 +54,11 @@ type WebhookDelivery func(*sql.Selector)
 // WorkItem is the predicate function for workitem builders.
 type WorkItem func(*sql.Selector)
 
-// WorkerNode is the predicate function for workernode builders.
-type WorkerNode func(*sql.Selector)
+// Worker is the predicate function for worker builders.
+type Worker func(*sql.Selector)
+
+// WorkerEnrollment is the predicate function for workerenrollment builders.
+type WorkerEnrollment func(*sql.Selector)
 
 // Worktree is the predicate function for worktree builders.
 type Worktree func(*sql.Selector)

@@ -240,23 +240,23 @@ func (_u *WorkItemUpdate) ClearHTMLURL() *WorkItemUpdate {
 	return _u
 }
 
-// SetExecutionNodeID sets the "execution_node_id" field.
-func (_u *WorkItemUpdate) SetExecutionNodeID(v uuid.UUID) *WorkItemUpdate {
-	_u.mutation.SetExecutionNodeID(v)
+// SetWorkerID sets the "worker_id" field.
+func (_u *WorkItemUpdate) SetWorkerID(v uuid.UUID) *WorkItemUpdate {
+	_u.mutation.SetWorkerID(v)
 	return _u
 }
 
-// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
-func (_u *WorkItemUpdate) SetNillableExecutionNodeID(v *uuid.UUID) *WorkItemUpdate {
+// SetNillableWorkerID sets the "worker_id" field if the given value is not nil.
+func (_u *WorkItemUpdate) SetNillableWorkerID(v *uuid.UUID) *WorkItemUpdate {
 	if v != nil {
-		_u.SetExecutionNodeID(*v)
+		_u.SetWorkerID(*v)
 	}
 	return _u
 }
 
-// ClearExecutionNodeID clears the value of the "execution_node_id" field.
-func (_u *WorkItemUpdate) ClearExecutionNodeID() *WorkItemUpdate {
-	_u.mutation.ClearExecutionNodeID()
+// ClearWorkerID clears the value of the "worker_id" field.
+func (_u *WorkItemUpdate) ClearWorkerID() *WorkItemUpdate {
+	_u.mutation.ClearWorkerID()
 	return _u
 }
 
@@ -407,11 +407,11 @@ func (_u *WorkItemUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.HTMLURLCleared() {
 		_spec.ClearField(workitem.FieldHTMLURL, field.TypeString)
 	}
-	if value, ok := _u.mutation.ExecutionNodeID(); ok {
-		_spec.SetField(workitem.FieldExecutionNodeID, field.TypeUUID, value)
+	if value, ok := _u.mutation.WorkerID(); ok {
+		_spec.SetField(workitem.FieldWorkerID, field.TypeUUID, value)
 	}
-	if _u.mutation.ExecutionNodeIDCleared() {
-		_spec.ClearField(workitem.FieldExecutionNodeID, field.TypeUUID)
+	if _u.mutation.WorkerIDCleared() {
+		_spec.ClearField(workitem.FieldWorkerID, field.TypeUUID)
 	}
 	if value, ok := _u.mutation.ClosedAt(); ok {
 		_spec.SetField(workitem.FieldClosedAt, field.TypeTime, value)
@@ -656,23 +656,23 @@ func (_u *WorkItemUpdateOne) ClearHTMLURL() *WorkItemUpdateOne {
 	return _u
 }
 
-// SetExecutionNodeID sets the "execution_node_id" field.
-func (_u *WorkItemUpdateOne) SetExecutionNodeID(v uuid.UUID) *WorkItemUpdateOne {
-	_u.mutation.SetExecutionNodeID(v)
+// SetWorkerID sets the "worker_id" field.
+func (_u *WorkItemUpdateOne) SetWorkerID(v uuid.UUID) *WorkItemUpdateOne {
+	_u.mutation.SetWorkerID(v)
 	return _u
 }
 
-// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
-func (_u *WorkItemUpdateOne) SetNillableExecutionNodeID(v *uuid.UUID) *WorkItemUpdateOne {
+// SetNillableWorkerID sets the "worker_id" field if the given value is not nil.
+func (_u *WorkItemUpdateOne) SetNillableWorkerID(v *uuid.UUID) *WorkItemUpdateOne {
 	if v != nil {
-		_u.SetExecutionNodeID(*v)
+		_u.SetWorkerID(*v)
 	}
 	return _u
 }
 
-// ClearExecutionNodeID clears the value of the "execution_node_id" field.
-func (_u *WorkItemUpdateOne) ClearExecutionNodeID() *WorkItemUpdateOne {
-	_u.mutation.ClearExecutionNodeID()
+// ClearWorkerID clears the value of the "worker_id" field.
+func (_u *WorkItemUpdateOne) ClearWorkerID() *WorkItemUpdateOne {
+	_u.mutation.ClearWorkerID()
 	return _u
 }
 
@@ -853,11 +853,11 @@ func (_u *WorkItemUpdateOne) sqlSave(ctx context.Context) (_node *WorkItem, err 
 	if _u.mutation.HTMLURLCleared() {
 		_spec.ClearField(workitem.FieldHTMLURL, field.TypeString)
 	}
-	if value, ok := _u.mutation.ExecutionNodeID(); ok {
-		_spec.SetField(workitem.FieldExecutionNodeID, field.TypeUUID, value)
+	if value, ok := _u.mutation.WorkerID(); ok {
+		_spec.SetField(workitem.FieldWorkerID, field.TypeUUID, value)
 	}
-	if _u.mutation.ExecutionNodeIDCleared() {
-		_spec.ClearField(workitem.FieldExecutionNodeID, field.TypeUUID)
+	if _u.mutation.WorkerIDCleared() {
+		_spec.ClearField(workitem.FieldWorkerID, field.TypeUUID)
 	}
 	if value, ok := _u.mutation.ClosedAt(); ok {
 		_spec.SetField(workitem.FieldClosedAt, field.TypeTime, value)

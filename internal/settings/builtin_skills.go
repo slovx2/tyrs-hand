@@ -42,7 +42,7 @@ func InstallBuiltinSkills(codexHome string) error {
 	})
 }
 
-// BuiltinSkillsRevision returns a content-derived revision for persistent environment refresh.
+// BuiltinSkillsRevision returns a content-derived revision for Worker installation checks.
 func BuiltinSkillsRevision() string {
 	builtinSkillsRevisionOnce.Do(func() {
 		digest := sha256.New()

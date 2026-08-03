@@ -36,13 +36,13 @@ func (s *Server) clientAnswerInteractive(c *gin.Context) {
 	defer func() { _ = tx.Rollback() }()
 	var status string
 	var questions json.RawMessage
-	var sessionID, nodeID uuid.UUID
+	var sessionID, workerID uuid.UUID
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT request.status,request.questions,
-		request.session_id,run.execution_node_id
+		request.session_id,run.worker_id
 		FROM codex_interactive_requests request
 		JOIN codex_turn_runs run ON run.id=request.run_id
 		WHERE request.id=$1 AND request.session_id IS NOT NULL FOR UPDATE OF request`, id).
-		Scan(&status, &questions, &sessionID, &nodeID)
+		Scan(&status, &questions, &sessionID, &workerID)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusNotFound, "交互请求不存在", err)
 		return
@@ -85,14 +85,14 @@ func (s *Server) clientAnswerInteractive(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "提交交互回答失败", err)
 		return
 	}
-	state, err := s.loadInteractiveState(c.Request.Context(), id, nodeID)
+	state, err := s.loadInteractiveState(c.Request.Context(), id, workerID)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取交互回答结果失败", err)
 		return
 	}
 	state.Accepted = accepted
 	if state.Status == "resolved" {
-		state.Ready, err = s.tryResumeInteractive(c.Request.Context(), id, nodeID)
+		state.Ready, err = s.tryResumeInteractive(c.Request.Context(), id, workerID)
 		if err != nil {
 			problem(c, http.StatusInternalServerError, "恢复交互回答调度槽失败", err)
 			return

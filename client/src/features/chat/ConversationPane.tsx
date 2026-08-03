@@ -272,7 +272,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         parameterLabel={`${settings.model ?? "默认模型"} · ${settings.reasoningEffort ?? "默认"} · ${settings.collaborationMode}`} />
     </View>
     <ParameterSheet visible={showParameters} bootstrap={bootstrap}
-      environmentId={session.developmentEnvironmentId} value={settings}
+      workspaceId={session.workspaceId} value={settings}
       currentRunLabel={running ? "当前 Run 使用已冻结参数；修改将在下一轮生效" : "当前会话参数"}
       onChange={setSettings} onClose={() => void closeParameters()}
       onCancel={() => { setSettings(settingsBeforeSheet ?? savedSettings); setShowParameters(false); }} />

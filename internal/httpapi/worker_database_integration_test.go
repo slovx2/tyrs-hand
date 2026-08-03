@@ -5,7 +5,6 @@ package httpapi
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -15,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -29,17 +27,16 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/database"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
-	"github.com/slovx2/tyrs-hand/internal/executionnode"
 	"github.com/slovx2/tyrs-hand/internal/participantidentity"
 	"github.com/slovx2/tyrs-hand/internal/secrets"
 	"github.com/slovx2/tyrs-hand/internal/security"
 	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
 	"github.com/slovx2/tyrs-hand/internal/sshconfig"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
+	"github.com/slovx2/tyrs-hand/internal/workerregistry"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
-	"go.uber.org/zap"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -72,12 +69,12 @@ func TestWorkerAPIPlacementLeaseEventsAndIdempotency(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))
 	server, endpoint := workerTestServer(t, db)
-	nodes := server.nodes
-	nodeA, enrollmentA, err := nodes.Create(ctx, "home-a", []string{"github", "discord"}, 2)
+	workers := server.workers
+	workerA, enrollmentA, err := workers.Create(ctx, "home-a", []string{"github", "discord"}, 2)
 	require.NoError(t, err)
-	nodeB, enrollmentB, err := nodes.Create(ctx, "home-b", []string{"github", "discord"}, 2)
+	workerB, enrollmentB, err := workers.Create(ctx, "home-b", []string{"github", "discord"}, 2)
 	require.NoError(t, err)
-	_, enrollmentGitHubOnly, err := nodes.Create(ctx, "github-only", []string{"github"}, 1)
+	_, enrollmentGitHubOnly, err := workers.Create(ctx, "github-only", []string{"github"}, 1)
 	require.NoError(t, err)
 
 	clientA := workerprotocol.NewClient(endpoint, "", 5*time.Second)
@@ -86,7 +83,7 @@ func TestWorkerAPIPlacementLeaseEventsAndIdempotency(t *testing.T) {
 	clientA.SetCredential(enrolledA.Credential)
 	_, err = clientA.Enroll(ctx, enrollmentA)
 	require.Error(t, err, "Enrollment Token 只能消费一次")
-	rotationToken, err := nodes.NewEnrollment(ctx, nodeA.ID)
+	rotationToken, err := workers.NewEnrollment(ctx, workerA.ID)
 	require.NoError(t, err)
 	rotated, err := workerprotocol.NewClient(endpoint, "", 5*time.Second).Enroll(ctx, rotationToken)
 	require.NoError(t, err)
@@ -100,50 +97,48 @@ func TestWorkerAPIPlacementLeaseEventsAndIdempotency(t *testing.T) {
 	require.NoError(t, clientA.Heartbeat(ctx, workerprotocol.HeartbeatRequest{
 		WorkerVersion: "future", ProtocolVersion: workerprotocol.Version + 1,
 	}), "协议不兼容时仍允许心跳上报")
-	_, err = clientA.Claim(ctx, workerprotocol.ClaimRequest{WorkerID: "worker-a", Role: "github"})
+	_, err = clientA.Claim(ctx, workerprotocol.ClaimRequest{Role: "github"})
 	require.Error(t, err, "协议不兼容时必须拒绝 Claim")
 	require.NoError(t, clientA.Heartbeat(ctx, workerprotocol.HeartbeatRequest{
 		WorkerVersion: "test", ProtocolVersion: workerprotocol.Version,
 	}))
-	_, credentialB, err := nodes.Enroll(ctx, enrollmentB)
+	_, credentialB, err := workers.Enroll(ctx, enrollmentB)
 	require.NoError(t, err)
 	clientB := workerprotocol.NewClient(endpoint, credentialB, 5*time.Second)
-	_, githubOnlyCredential, err := nodes.Enroll(ctx, enrollmentGitHubOnly)
+	_, githubOnlyCredential, err := workers.Enroll(ctx, enrollmentGitHubOnly)
 	require.NoError(t, err)
 	githubOnlyClient := workerprotocol.NewClient(endpoint, githubOnlyCredential, 5*time.Second)
 	_, err = githubOnlyClient.Claim(ctx, workerprotocol.ClaimRequest{
-		WorkerID: "github-only", Role: "discord",
+		Role: "discord",
 	})
 	require.Error(t, err, "节点不能越权领取未授权角色")
 	_, err = githubOnlyClient.Claim(ctx, workerprotocol.ClaimRequest{
-		WorkerID: "github-only", Role: "all",
+		Role: "all",
 	})
 	require.Error(t, err, "all 领取要求节点同时具备 GitHub 和 Discord 角色")
-	require.NoError(t, nodes.SetDefaults(ctx, executionnode.Defaults{
-		GitHubNodeID: &nodeA.ID, DiscordNodeID: &nodeA.ID,
+	require.NoError(t, workers.SetDefaults(ctx, workerregistry.Defaults{
+		GitHubWorkerID: &workerA.ID, DiscordWorkerID: &workerA.ID,
 	}))
 
 	repositoryID, firstItemID, profileID := seedWorkerGitHubQueue(t, db, 1)
 	firstIntent := enqueueWorkerIntent(t, db, repositoryID, firstItemID, profileID, "first")
-	assertPlacement(t, db, firstItemID, firstIntent, nodeA.ID, "queued")
+	assertPlacement(t, db, firstItemID, firstIntent, workerA.ID, "queued")
 
-	require.NoError(t, nodes.SetDefaults(ctx, executionnode.Defaults{
-		GitHubNodeID: &nodeB.ID, DiscordNodeID: &nodeB.ID,
+	require.NoError(t, workers.SetDefaults(ctx, workerregistry.Defaults{
+		GitHubWorkerID: &workerB.ID, DiscordWorkerID: &workerB.ID,
 	}))
 	secondRepositoryID, secondItemID, secondProfileID := seedWorkerGitHubQueue(t, db, 2)
 	secondIntent := enqueueWorkerIntent(t, db, secondRepositoryID, secondItemID,
 		secondProfileID, "second")
-	assertPlacement(t, db, secondItemID, secondIntent, nodeB.ID, "queued")
+	assertPlacement(t, db, secondItemID, secondIntent, workerB.ID, "queued")
 	thirdIntent := enqueueWorkerIntent(t, db, repositoryID, firstItemID, profileID, "first-again")
-	assertPlacement(t, db, firstItemID, thirdIntent, nodeA.ID, "queued")
+	assertPlacement(t, db, firstItemID, thirdIntent, workerA.ID, "queued")
 
-	claimB, err := clientB.Claim(ctx, workerprotocol.ClaimRequest{WorkerID: "worker-b",
-		Role: "github"})
+	claimB, err := clientB.Claim(ctx, workerprotocol.ClaimRequest{Role: "github"})
 	require.NoError(t, err)
 	require.NotNil(t, claimB.Task)
 	require.Equal(t, secondItemID, claimB.Task.Claimed.WorkItemID)
-	claimA, err := clientA.Claim(ctx, workerprotocol.ClaimRequest{WorkerID: "worker-a",
-		Role: "all"})
+	claimA, err := clientA.Claim(ctx, workerprotocol.ClaimRequest{Role: "all"})
 	require.NoError(t, err)
 	require.NotNil(t, claimA.Task)
 	require.Equal(t, firstItemID, claimA.Task.Claimed.WorkItemID)
@@ -188,9 +183,9 @@ func TestWorkerAPIPlacementLeaseEventsAndIdempotency(t *testing.T) {
 	}}), "终态完成后仍必须接受 Journal 补发的中间事件")
 	_, err = clientB.RunHeartbeat(ctx, claimA.Task)
 	require.Error(t, err, "其他节点不能续租该 Run")
-	require.Error(t, nodes.Delete(ctx, nodeA.ID), "仍被资源引用的节点不能删除")
-	require.NoError(t, nodes.SetEnabled(ctx, nodeB.ID, false))
-	_, err = clientB.Claim(ctx, workerprotocol.ClaimRequest{WorkerID: "worker-b", Role: "github"})
+	require.Error(t, workers.Delete(ctx, workerA.ID), "仍被资源引用的节点不能删除")
+	require.NoError(t, workers.SetEnabled(ctx, workerB.ID, false))
+	_, err = clientB.Claim(ctx, workerprotocol.ClaimRequest{Role: "github"})
 	require.Error(t, err, "禁用节点不能继续领取任务")
 }
 
@@ -199,17 +194,17 @@ func TestWorkerAPICancelFinishesAcknowledgedSteer(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))
 	server, endpoint := workerTestServer(t, db)
-	node, enrollment, err := server.nodes.Create(ctx, "cancel-steer", []string{"github"}, 1)
+	worker, enrollment, err := server.workers.Create(ctx, "cancel-steer", []string{"github"}, 1)
 	require.NoError(t, err)
-	_, credential, err := server.nodes.Enroll(ctx, enrollment)
+	_, credential, err := server.workers.Enroll(ctx, enrollment)
 	require.NoError(t, err)
-	require.NoError(t, server.nodes.SetDefaults(ctx, executionnode.Defaults{GitHubNodeID: &node.ID}))
+	require.NoError(t, server.workers.SetDefaults(ctx, workerregistry.Defaults{GitHubWorkerID: &worker.ID}))
 	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
 
 	repositoryID, itemID, profileID := seedWorkerGitHubQueue(t, db, 91)
 	primaryIntent := enqueueWorkerIntent(t, db, repositoryID, itemID, profileID, "primary")
 	claimed, err := client.Claim(ctx, workerprotocol.ClaimRequest{
-		WorkerID: "cancel-steer-worker", Role: "github",
+		Role: "github",
 	})
 	require.NoError(t, err)
 	require.NotNil(t, claimed.Task)
@@ -240,22 +235,22 @@ func TestWorkerAPINonRetryableCodexErrorDoesNotRequeue(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))
 	server, endpoint := workerTestServer(t, db)
-	node, enrollment, err := server.nodes.Create(ctx, "codex-non-retry", []string{"github"}, 1)
+	worker, enrollment, err := server.workers.Create(ctx, "codex-non-retry", []string{"github"}, 1)
 	require.NoError(t, err)
-	_, credential, err := server.nodes.Enroll(ctx, enrollment)
+	_, credential, err := server.workers.Enroll(ctx, enrollment)
 	require.NoError(t, err)
-	require.NoError(t, server.nodes.SetDefaults(ctx, executionnode.Defaults{GitHubNodeID: &node.ID}))
+	require.NoError(t, server.workers.SetDefaults(ctx, workerregistry.Defaults{GitHubWorkerID: &worker.ID}))
 	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
 
 	repositoryID, itemID, profileID := seedWorkerGitHubQueue(t, db, 92)
 	intentID := enqueueWorkerIntent(t, db, repositoryID, itemID, profileID, "capacity")
 	claimed, err := client.Claim(ctx, workerprotocol.ClaimRequest{
-		WorkerID: "codex-non-retry-worker", Role: "github",
+		Role: "github",
 	})
 	require.NoError(t, err)
 	require.NotNil(t, claimed.Task)
 	require.Equal(t, intentID, claimed.Task.Claimed.ID)
-	require.NoError(t, client.SetThread(ctx, claimed.Task, "thread-capacity", "github-home"))
+	require.NoError(t, client.SetThread(ctx, claimed.Task, "thread-capacity"))
 	require.NoError(t, client.RecordSubmission(ctx, claimed.Task, "turn-capacity"))
 	require.NoError(t, client.ConfirmTurn(ctx, claimed.Task, "turn-capacity"))
 
@@ -279,7 +274,7 @@ func TestWorkerAPINonRetryableCodexErrorDoesNotRequeue(t *testing.T) {
 	require.Equal(t, "serverOverloaded", errorType)
 
 	next, err := client.Claim(ctx, workerprotocol.ClaimRequest{
-		WorkerID: "codex-non-retry-worker", Role: "github",
+		Role: "github",
 	})
 	require.NoError(t, err)
 	require.Nil(t, next.Task)
@@ -290,22 +285,22 @@ func TestWorkerAPIDiscordRuntimePreferencesFreeze(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))
 	server, endpoint := workerTestServer(t, db)
-	node, enrollment, err := server.nodes.Create(ctx, "discord-home", []string{"discord"}, 1)
+	worker, enrollment, err := server.workers.Create(ctx, "discord-home", []string{"discord"}, 1)
 	require.NoError(t, err)
-	_, credential, err := server.nodes.Enroll(ctx, enrollment)
+	_, credential, err := server.workers.Enroll(ctx, enrollment)
 	require.NoError(t, err)
-	require.NoError(t, server.nodes.SetDefaults(ctx, executionnode.Defaults{
-		DiscordNodeID: &node.ID,
+	require.NoError(t, server.workers.SetDefaults(ctx, workerregistry.Defaults{
+		DiscordWorkerID: &worker.ID,
 	}))
 	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
 
 	repositoryID, _, profileID := seedWorkerGitHubQueue(t, db, 31)
-	_, forumID := seedDevelopmentOperation(t, db, repositoryID, node.ID)
-	projectID := developmentProjectIDForForum(t, db, forumID)
+	_, forumID := seedWorkerWorkspace(t, db, repositoryID, worker.ID)
+	projectID := workspaceProjectIDForForum(t, db, forumID)
 	var conversationID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_conversations
 		(guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
-		 development_project_id, agent_profile_id, title, model, reasoning_effort, service_tier,
+		 workspace_project_id, agent_profile_id, title, model, reasoning_effort, service_tier,
 		 collaboration_mode, configuration_status, title_rename_status)
 		VALUES ('worker-test-guild',$1,'runtime-thread','runtime-message-1','worker-owner',
 		 $2,$3,'runtime','gpt-5.6-sol','xhigh','standard','plan','configured','completed')
@@ -318,8 +313,7 @@ func TestWorkerAPIDiscordRuntimePreferencesFreeze(t *testing.T) {
 	firstIntent := enqueueWorkerDiscordIntent(t, db, conversationID, "runtime-message-1",
 		repositoryID, profileID)
 
-	first, err := client.Claim(ctx, workerprotocol.ClaimRequest{WorkerID: "discord-worker",
-		Role: "discord"})
+	first, err := client.Claim(ctx, workerprotocol.ClaimRequest{Role: "discord"})
 	require.NoError(t, err)
 	require.NotNil(t, first.Task)
 	require.Equal(t, firstIntent, first.Task.Claimed.ID)
@@ -384,8 +378,7 @@ func TestWorkerAPIDiscordRuntimePreferencesFreeze(t *testing.T) {
 	require.NoError(t, err)
 	secondIntent := enqueueWorkerDiscordIntent(t, db, conversationID, "runtime-message-2",
 		repositoryID, profileID)
-	second, err := client.Claim(ctx, workerprotocol.ClaimRequest{WorkerID: "discord-worker",
-		Role: "discord"})
+	second, err := client.Claim(ctx, workerprotocol.ClaimRequest{Role: "discord"})
 	require.NoError(t, err)
 	require.NotNil(t, second.Task)
 	require.Equal(t, secondIntent, second.Task.Claimed.ID)
@@ -401,9 +394,9 @@ func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))
 	server, endpoint := workerTestServer(t, db)
-	node, enrollment, err := server.nodes.Create(ctx, "desktop-discord-node", []string{"discord"}, 2)
+	worker, enrollment, err := server.workers.Create(ctx, "desktop-discord-worker", []string{"discord"}, 2)
 	require.NoError(t, err)
-	_, credential, err := server.nodes.Enroll(ctx, enrollment)
+	_, credential, err := server.workers.Enroll(ctx, enrollment)
 	require.NoError(t, err)
 	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
 	require.NoError(t, client.Heartbeat(ctx, workerprotocol.HeartbeatRequest{
@@ -411,29 +404,29 @@ func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
 	}))
 
 	repositoryID, _, profileID := seedWorkerGitHubQueue(t, db, 42)
-	environmentID, forumID := seedDevelopmentOperation(t, db, repositoryID, node.ID)
-	projectID := developmentProjectIDForForum(t, db, forumID)
+	workspaceID, forumID := seedWorkerWorkspace(t, db, repositoryID, worker.ID)
+	projectID := workspaceProjectIDForForum(t, db, forumID)
 	var conversationID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_conversations
 		(guild_id, forum_id, thread_id, owner_discord_user_id,
-		 development_project_id, agent_profile_id, title)
+		 workspace_project_id, agent_profile_id, title)
 		VALUES ('worker-test-guild',$1,'desktop-bound-thread','worker-owner',$2,$3,
 		'Desktop bound thread') RETURNING id`, forumID, projectID, profileID).
 		Scan(&conversationID))
 	var controlID uuid.UUID
 	var sessionID uuid.UUID
-	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO development_sessions(
-		development_environment_id,development_project_id,agent_profile_id,title)
-		VALUES ($1,$2,$3,'Desktop bound thread') RETURNING id`, environmentID, projectID,
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO workspace_sessions(
+		workspace_id,workspace_project_id,agent_profile_id,title)
+		VALUES ($1,$2,$3,'Desktop bound thread') RETURNING id`, workspaceID, projectID,
 		profileID).Scan(&sessionID))
 	_, err = db.ExecContext(ctx, `UPDATE discord_conversations SET session_id=$2 WHERE id=$1`,
 		conversationID, sessionID)
 	require.NoError(t, err)
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_thread_controls
-		(source_type, session_id, discord_conversation_id, development_project_id, agent_profile_id,
-			execution_node_id, development_environment_id, external_thread_id)
-		VALUES ('development_session',$1,$2,$3,$4,$5,$6,'codex-desktop-bound-thread')
-		RETURNING id`, sessionID, conversationID, projectID, profileID, node.ID, environmentID).
+		(source_type, session_id, discord_conversation_id, workspace_project_id, agent_profile_id,
+			worker_id, workspace_id, external_thread_id)
+		VALUES ('workspace_session',$1,$2,$3,$4,$5,$6,'codex-desktop-bound-thread')
+		RETURNING id`, sessionID, conversationID, projectID, profileID, worker.ID, workspaceID).
 		Scan(&controlID))
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_input_messages
 		(message_id, conversation_id, discord_user_id, display_name, username,
@@ -445,13 +438,13 @@ func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
 		repositoryID, profileID)
 
 	claimed, err := client.Claim(ctx, workerprotocol.ClaimRequest{
-		WorkerID: "desktop-discord-worker", Role: "discord",
+		Role: "discord",
 	})
 	require.NoError(t, err)
 	require.NotNil(t, claimed.Task)
 	require.Equal(t, intentID, claimed.Task.Claimed.ID)
 	require.Equal(t, controlID, claimed.Task.Claimed.ControlID)
-	require.Equal(t, codexcontrol.SourceDevelopment, claimed.Task.Claimed.SourceType)
+	require.Equal(t, codexcontrol.SourceWorkspace, claimed.Task.Claimed.SourceType)
 	require.Equal(t, "codex-desktop-bound-thread", claimed.Task.Claimed.ExternalThreadID)
 	var controls int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_thread_controls
@@ -460,7 +453,7 @@ func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
 	require.NoError(t, client.RecordSubmission(ctx, claimed.Task, "discord-active-turn"))
 	require.NoError(t, client.ConfirmTurn(ctx, claimed.Task, "discord-active-turn"))
 	desktopSteer := workerprotocol.DesktopSteerRecordRequest{
-		EnvironmentID: environmentID, RequestKey: strings.Repeat("a", 64),
+		WorkspaceID: workspaceID, RequestKey: strings.Repeat("a", 64),
 		Params: json.RawMessage(`{"threadId":"codex-desktop-bound-thread",` +
 			`"expectedTurnId":"discord-active-turn",` +
 			`"clientUserMessageId":"desktop-steers-discord-turn",` +
@@ -472,7 +465,7 @@ func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
 	var desktopSteerSurface, desktopSteerStatus, desktopSteerAction, desktopSteerText string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT input_surface, status,
 		resolved_action, instruction FROM codex_turn_intents
-		WHERE idempotency_key=$1`, "desktop-steer:"+environmentID.String()+":"+
+		WHERE idempotency_key=$1`, "desktop-steer:"+workspaceID.String()+":"+
 		strings.Repeat("a", 64)).Scan(&desktopSteerSurface, &desktopSteerStatus,
 		&desktopSteerAction, &desktopSteerText))
 	require.Equal(t, "desktop", desktopSteerSurface)
@@ -487,8 +480,7 @@ func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
 		TurnID: "discord-active-turn", FinalAnswer: "completed from shared thread",
 	}))
 	desktopTurn, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
-		EnvironmentID: environmentID, WorkerID: "desktop-discord-worker",
-		RequestKey: strings.Repeat("b", 64), Params: json.RawMessage(
+		WorkspaceID: workspaceID, RequestKey: strings.Repeat("b", 64), Params: json.RawMessage(
 			`{"threadId":"codex-desktop-bound-thread","clientUserMessageId":"desktop-next-turn",` +
 				`"input":[{"type":"text","text":"desktop starts the next turn"}]}`),
 	})
@@ -500,7 +492,7 @@ func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
 	require.NotNil(t, desktopTurn.Snapshot.Discord)
 	require.Equal(t, "desktop starts the next turn", desktopTurn.Snapshot.Discord.Body)
 	require.Equal(t, forumID, desktopTurn.Snapshot.Discord.ForumID)
-	require.Equal(t, environmentID, desktopTurn.Snapshot.Discord.EnvironmentID)
+	require.Equal(t, workspaceID, desktopTurn.Snapshot.Discord.WorkspaceID)
 	require.NoError(t, client.Complete(ctx, &desktopTurn, codexcontrol.TurnResult{
 		TurnID: "desktop-next-turn", FinalAnswer: "completed from desktop",
 	}))
@@ -515,34 +507,32 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	server.desktopImageRemote = func(context.Context) (desktopImageDiscord, error) {
 		return media, nil
 	}
-	node, enrollment, err := server.nodes.Create(ctx, "desktop-node", []string{"discord"}, 2)
+	worker, enrollment, err := server.workers.Create(ctx, "desktop-worker", []string{"discord"}, 2)
 	require.NoError(t, err)
-	_, credential, err := server.nodes.Enroll(ctx, enrollment)
+	_, credential, err := server.workers.Enroll(ctx, enrollment)
 	require.NoError(t, err)
 	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
 	repositoryID, _, _ := seedWorkerGitHubQueue(t, db, 41)
-	environmentID, forumID := seedDevelopmentOperation(t, db, repositoryID, node.ID)
+	workspaceID, forumID := seedWorkerWorkspace(t, db, repositoryID, worker.ID)
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_members
 		(guild_id, discord_user_id, username, display_name)
 		VALUES ('worker-test-guild','desktop-user','desktop','Desktop Alice')`)
 	require.NoError(t, err)
-	_, err = db.ExecContext(ctx, `UPDATE discord_development_environments SET
-		ssh_public_key='ssh-ed25519 test', ssh_fingerprint='SHA256:test', ssh_port=2222,
-		ssh_discord_user_id='desktop-user', status='running', container_id='desktop-container'
-		WHERE id=$1`, environmentID)
+	_, err = db.ExecContext(ctx, `UPDATE worker_workspaces
+		SET owner_discord_user_id='desktop-user' WHERE id=$1`, workspaceID)
 	require.NoError(t, err)
-	manifests, err := client.DevelopmentEnvironments(ctx)
+	manifest, err := client.Workspace(ctx)
 	require.NoError(t, err)
-	require.Len(t, manifests, 1)
-	require.NotNil(t, manifests[0].SSHParticipant)
-	require.Equal(t, "desktop-user", manifests[0].SSHParticipant.DiscordUserID)
-	require.Equal(t, "Desktop Alice", manifests[0].SSHParticipant.DisplayName)
+	require.NotNil(t, manifest)
+	require.NotNil(t, manifest.OwnerParticipant)
+	require.Equal(t, "desktop-user", manifest.OwnerParticipant.DiscordUserID)
+	require.Equal(t, "Desktop Alice", manifest.OwnerParticipant.DisplayName)
 	require.Equal(t, participantidentity.ID("worker-test-guild", "desktop-user"),
-		manifests[0].SSHParticipant.ParticipantID)
+		manifest.OwnerParticipant.ParticipantID)
 	var workspaceRelative string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT project.relative_path
-		FROM discord_forums forum JOIN development_projects project
-		ON project.id=forum.development_project_id WHERE forum.id=$1`, forumID).
+		FROM discord_forums forum JOIN workspace_projects project
+		ON project.id=forum.workspace_project_id WHERE forum.id=$1`, forumID).
 		Scan(&workspaceRelative))
 	var repositoryName string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT name FROM repositories WHERE id = $1`,
@@ -551,16 +541,16 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	workspace := "/var/lib/tyrs-hand/" + workspaceRelative
 
 	state, err := client.PrepareDesktopThread(ctx, workerprotocol.DesktopThreadPrepareRequest{
-		EnvironmentID: environmentID, Operation: "start", RequestKey: strings.Repeat("a", 64),
+		WorkspaceID: workspaceID, Operation: "start", RequestKey: strings.Repeat("a", 64),
 		Params: json.RawMessage(`{"cwd":"` + workspace + `/nested","model":"mock-model","effort":"high"}`),
 	})
 	if err != nil {
 		var requestID uuid.UUID
 		require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM desktop_thread_requests
-			WHERE environment_id = $1 AND request_key = $2`, environmentID, strings.Repeat("a", 64)).Scan(&requestID))
+			WHERE workspace_id = $1 AND request_key = $2`, workspaceID, strings.Repeat("a", 64)).Scan(&requestID))
 		testContext, _ := gin.CreateTestContext(httptest.NewRecorder())
 		testContext.Request = httptest.NewRequest("GET", "/", nil)
-		testContext.Set(workerNodeContextKey, node)
+		testContext.Set(workerContextKey, worker)
 		_, directErr := server.loadDesktopThreadState(testContext, requestID)
 		require.NoError(t, directErr)
 	}
@@ -573,7 +563,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	response := json.RawMessage(`{"thread":{"id":"codex-desktop-thread"},` +
 		`"model":"mock-model","reasoningEffort":"high","serviceTier":"standard"}`)
 	state, err = client.CompleteDesktopThread(ctx, state.ID,
-		workerprotocol.DesktopThreadCompleteRequest{EnvironmentID: environmentID, Response: response})
+		workerprotocol.DesktopThreadCompleteRequest{WorkspaceID: workspaceID, Response: response})
 	require.NoError(t, err)
 	require.Equal(t, "waiting_for_input", state.Status)
 	require.NotEqual(t, uuid.Nil, state.ControlID)
@@ -581,11 +571,11 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "high", state.Config.ReasoningEffort)
 	require.Equal(t, "codex-desktop-thread", state.ExternalThreadID)
 	var boundEnvironment uuid.UUID
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT development_environment_id
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT workspace_id
 		FROM codex_thread_controls WHERE id = $1`, state.ControlID).Scan(&boundEnvironment))
-	require.Equal(t, environmentID, boundEnvironment)
+	require.Equal(t, workspaceID, boundEnvironment)
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
-		EnvironmentID: environmentID, Generation: 10,
+		WorkspaceID: workspaceID, Generation: 10,
 		Events: []workerprotocol.ThreadMetadataEvent{{
 			ThreadID: "codex-desktop-thread", Sequence: 1, Kind: "name",
 			Name: "首条输入前的正式标题",
@@ -593,20 +583,20 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	}))
 
 	fork, err := client.PrepareDesktopThread(ctx, workerprotocol.DesktopThreadPrepareRequest{
-		EnvironmentID: environmentID, Operation: "fork", RequestKey: strings.Repeat("b", 64),
+		WorkspaceID: workspaceID, Operation: "fork", RequestKey: strings.Repeat("b", 64),
 		Params: json.RawMessage(`{"threadId":"codex-desktop-thread"}`),
 	})
 	require.NoError(t, err, "Fork 不应依赖源 Thread 已经创建 Discord Conversation")
 	require.Equal(t, "preparing", fork.Status)
 	fork, err = client.CompleteDesktopThread(ctx, fork.ID,
-		workerprotocol.DesktopThreadCompleteRequest{EnvironmentID: environmentID,
+		workerprotocol.DesktopThreadCompleteRequest{WorkspaceID: workspaceID,
 			Response: json.RawMessage(`{"thread":{"id":"codex-desktop-fork"},` +
 				`"model":"mock-model","reasoningEffort":"high","serviceTier":"standard"}`)})
 	require.NoError(t, err)
 	require.Equal(t, "waiting_for_input", fork.Status)
 	require.Equal(t, state.Config, fork.Config)
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
-		EnvironmentID: environmentID, Generation: 12,
+		WorkspaceID: workspaceID, Generation: 12,
 		Events: []workerprotocol.ThreadMetadataEvent{{
 			ThreadID: "codex-desktop-thread", Sequence: 1, Kind: "settings", Source: "desktop",
 			Model: "gpt-5.6-sol", ReasoningEffort: "ultra", ServiceTier: "priority",
@@ -619,14 +609,14 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "ultra", state.Config.ReasoningEffort)
 	require.Equal(t, "fast", state.Config.ServiceTier)
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
-		EnvironmentID: environmentID, Generation: 12,
+		WorkspaceID: workspaceID, Generation: 12,
 		Events: []workerprotocol.ThreadMetadataEvent{{
 			ThreadID: "codex-desktop-thread", Sequence: 2, Kind: "settings", Source: "desktop",
 			CollaborationMode: "default",
 		}},
 	}))
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
-		EnvironmentID: environmentID, Generation: 12,
+		WorkspaceID: workspaceID, Generation: 12,
 		Events: []workerprotocol.ThreadMetadataEvent{{
 			ThreadID: "codex-desktop-thread", Sequence: 1, Kind: "settings", Source: "desktop",
 			CollaborationMode: "plan",
@@ -637,14 +627,14 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		FROM codex_thread_controls WHERE id = $1`, state.ControlID).Scan(&metadataMode))
 	require.Equal(t, "default", metadataMode, "乱序 settings 事件不能覆盖较新模式")
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
-		EnvironmentID: environmentID, Generation: 12,
+		WorkspaceID: workspaceID, Generation: 12,
 		Events: []workerprotocol.ThreadMetadataEvent{{
 			ThreadID: "codex-desktop-thread", Sequence: 3, Kind: "settings", Source: "desktop",
 			CollaborationMode: "plan",
 		}},
 	}))
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
-		EnvironmentID: environmentID, Generation: 12,
+		WorkspaceID: workspaceID, Generation: 12,
 		Events: []workerprotocol.ThreadMetadataEvent{{
 			ThreadID: "codex-desktop-thread", Sequence: 4, Kind: "settings", Source: "app_server",
 			Model: "gpt-5.6-terra", ReasoningEffort: "low", ServiceTier: "fast",
@@ -669,8 +659,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, os.WriteFile(imagePath, imageContent, 0o600))
 	imageDigest := fmt.Sprintf("%x", sha256.Sum256(imageContent))
 	task, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
-		EnvironmentID: environmentID, WorkerID: "desktop-worker",
-		RequestKey: strings.Repeat("d", 64), Params: json.RawMessage(
+		WorkspaceID: workspaceID, RequestKey: strings.Repeat("d", 64), Params: json.RawMessage(
 			`{"threadId":"codex-desktop-thread","clientUserMessageId":"desktop-client-message-1",` +
 				`"collaborationMode":{"mode":"plan","settings":{"model":"gpt-5.6-sol"}},` +
 				`"input":[{"type":"text","text":"<codex_delegation>\n` +
@@ -683,13 +672,13 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "desktop", task.Claimed.InputSurface)
 	require.Empty(t, task.Claimed.DiscordMessageID)
-	require.NotNil(t, task.Snapshot.Development)
+	require.NotNil(t, task.Snapshot.Session)
 	require.Equal(t, "gpt-5.6-sol", task.Snapshot.Runtime.Model)
 	require.Equal(t, "ultra", task.Snapshot.Runtime.ReasoningEffort)
 	require.Equal(t, "fast", task.Snapshot.Runtime.ServiceTier)
 	require.Equal(t, "plan", task.Snapshot.Runtime.CollaborationMode)
-	require.Equal(t, "desktop asks && checks "+imagePath, task.Snapshot.Development.Body)
-	require.Equal(t, "Desktop Alice", task.Snapshot.Development.DisplayName)
+	require.Equal(t, "desktop asks && checks "+imagePath, task.Snapshot.Session.Body)
+	require.Equal(t, "Desktop Alice", task.Snapshot.Session.DisplayName)
 	require.Equal(t, participantidentity.ID("worker-test-guild", "desktop-user"),
 		task.Claimed.ActorParticipantID)
 	require.Equal(t, "Desktop Alice", task.Claimed.ActorDisplayName)
@@ -739,7 +728,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "skipped", titleRenameStatus,
 		"Desktop 投影必须由 Codex 标题链路负责，不能进入 Luna 标题队列")
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
-		EnvironmentID: environmentID, Generation: 12,
+		WorkspaceID: workspaceID, Generation: 12,
 		Events: []workerprotocol.ThreadMetadataEvent{{
 			ThreadID: "codex-desktop-thread", Sequence: 5, Kind: "settings", Source: "desktop",
 			CollaborationMode: "default",
@@ -775,14 +764,14 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "desktop-client-message-1", firstIntentProjectionKey)
 	require.Equal(t, firstIntentProjectionKey, firstRequestProjectionKey)
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
-		EnvironmentID: environmentID, Generation: 10,
+		WorkspaceID: workspaceID, Generation: 10,
 		Events: []workerprotocol.ThreadMetadataEvent{{
 			ThreadID: "codex-desktop-thread", Sequence: 2, Kind: "name",
 			Name: "Atlas 正式标题",
 		}},
 	}))
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
-		EnvironmentID: environmentID, Generation: 10,
+		WorkspaceID: workspaceID, Generation: 10,
 		Events: []workerprotocol.ThreadMetadataEvent{{
 			ThreadID: "codex-desktop-thread", Sequence: 1, Kind: "name",
 			Name: "迟到的旧标题",
@@ -815,7 +804,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 			errors.New("推迟无关投影")))
 	}
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
-		EnvironmentID: environmentID, Generation: 10,
+		WorkspaceID: workspaceID, Generation: 10,
 		Events: []workerprotocol.ThreadMetadataEvent{{
 			ThreadID: "codex-desktop-thread", Sequence: 3, Kind: "name",
 			Name: "竞争后的最新标题",
@@ -851,7 +840,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, desiredName, appliedName)
 	require.Equal(t, desiredRevision, appliedRevision)
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
-		EnvironmentID: environmentID, Generation: 10,
+		WorkspaceID: workspaceID, Generation: 10,
 		Events: []workerprotocol.ThreadMetadataEvent{{
 			ThreadID: "codex-desktop-thread", Sequence: 4, Kind: "name",
 			Name: "即将失败的旧标题",
@@ -865,7 +854,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NotNil(t, renameItem)
 	require.Equal(t, "thread-name:"+state.ControlID.String(), renameItem.OperationKey)
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
-		EnvironmentID: environmentID, Generation: 10,
+		WorkspaceID: workspaceID, Generation: 10,
 		Events: []workerprotocol.ThreadMetadataEvent{{
 			ThreadID: "codex-desktop-thread", Sequence: 5, Kind: "name",
 			Name: "失败竞争后的最新标题",
@@ -935,9 +924,9 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "discord-operator", operatorCommand.Discord.UserID)
 	require.Equal(t, "Discord Operator", operatorCommand.Discord.DisplayName)
 	require.Equal(t, "operator", operatorCommand.Discord.Access)
-	require.NotNil(t, operatorCommand.Discord.Development)
+	require.NotNil(t, operatorCommand.Discord.Project)
 	require.Equal(t, state.ConversationID,
-		operatorCommand.Discord.Development.ConversationID)
+		operatorCommand.Discord.Project.ConversationID)
 	require.Len(t, operatorCommand.Discord.Attachments, 1)
 	require.Equal(t, "context.txt", operatorCommand.Discord.Attachments[0].Filename)
 	require.Equal(t, strings.Repeat("a", 64), operatorCommand.Discord.Attachments[0].SHA256)
@@ -996,7 +985,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		":message:").Scan(&emptyAnchorProjection))
 	require.Zero(t, emptyAnchorProjection, "Desktop timeline-only 事件不得创建空锚点 Projection")
 	steerRequest := workerprotocol.DesktopSteerRecordRequest{
-		EnvironmentID: environmentID, RequestKey: strings.Repeat("f", 64),
+		WorkspaceID: workspaceID, RequestKey: strings.Repeat("f", 64),
 		Params: json.RawMessage(`{"threadId":"codex-desktop-thread",` +
 			`"expectedTurnId":"desktop-turn-1",` +
 			`"clientUserMessageId":"desktop-client-steer-1",` +
@@ -1064,7 +1053,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT id, status, actor_participant_id,
 		actor_display_name, desktop_input_projection_status
 		FROM codex_turn_intents WHERE idempotency_key=$1`,
-		"desktop-steer:"+environmentID.String()+":"+strings.Repeat("f", 64)).
+		"desktop-steer:"+workspaceID.String()+":"+strings.Repeat("f", 64)).
 		Scan(&steerIntentID, &steerStatus, &steerParticipantID, &steerDisplayName,
 			&steerProjectionStatus))
 	require.Equal(t, "running", steerStatus)
@@ -1099,7 +1088,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	_, err = client.RunHeartbeat(ctx, &task)
 	require.NoError(t, err, "等待用户回答时必须保留 Run 租约以接收停止和 steer 指令")
 	answered, err := client.AnswerInteractive(ctx, workerprotocol.InteractiveAnswerRequest{
-		EnvironmentID: environmentID, ThreadID: "codex-desktop-thread", TurnID: "desktop-turn-1",
+		WorkspaceID: workspaceID, ThreadID: "codex-desktop-thread", TurnID: "desktop-turn-1",
 		ItemID: "question-1", Surface: "discord",
 		Answer: json.RawMessage(`{"answers":{"choice":{"answers":["Yes"]}}}`),
 	})
@@ -1107,7 +1096,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.True(t, answered.Accepted)
 	require.True(t, answered.Ready, "回答获胜后应在有空闲槽时恢复运行")
 	duplicate, err := client.AnswerInteractive(ctx, workerprotocol.InteractiveAnswerRequest{
-		EnvironmentID: environmentID, ThreadID: "codex-desktop-thread", TurnID: "desktop-turn-1",
+		WorkspaceID: workspaceID, ThreadID: "codex-desktop-thread", TurnID: "desktop-turn-1",
 		ItemID: "question-1", Surface: "desktop",
 		Answer: json.RawMessage(`{"answers":{"choice":{"answers":["No"]}}}`),
 	})
@@ -1123,12 +1112,12 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.True(t, secretInput.Secret)
 	secretAnswer := json.RawMessage(`{"answers":{"token":{"answers":["not-plaintext-secret"]}}}`)
 	_, err = client.AnswerInteractive(ctx, workerprotocol.InteractiveAnswerRequest{
-		EnvironmentID: environmentID, ThreadID: "codex-desktop-thread", TurnID: "desktop-turn-1",
+		WorkspaceID: workspaceID, ThreadID: "codex-desktop-thread", TurnID: "desktop-turn-1",
 		ItemID: "question-secret", Surface: "discord", Answer: secretAnswer,
 	})
 	require.Error(t, err, "Secret 回答不得从 Discord 提交")
 	secretState, err := client.AnswerInteractive(ctx, workerprotocol.InteractiveAnswerRequest{
-		EnvironmentID: environmentID, ThreadID: "codex-desktop-thread", TurnID: "desktop-turn-1",
+		WorkspaceID: workspaceID, ThreadID: "codex-desktop-thread", TurnID: "desktop-turn-1",
 		ItemID: "question-secret", Surface: "desktop", Answer: secretAnswer,
 	})
 	require.NoError(t, err)
@@ -1153,16 +1142,6 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "expired", timed.Status)
 	require.True(t, timed.Ready)
 	require.JSONEq(t, `{"answers":{}}`, string(timed.Answer))
-	interrupted, err := client.RegisterInteractive(ctx, &task, json.RawMessage(`"input-restart"`),
-		json.RawMessage(`{"threadId":"codex-desktop-thread","turnId":"desktop-turn-1",`+
-			`"itemId":"question-restart","questions":[{"id":"restart","header":"Restart",`+
-			`"question":"Still there?"}],"autoResolutionMs":60000}`), 1)
-	require.NoError(t, err)
-	require.NoError(t, client.InterruptEnvironmentInteractive(ctx, environmentID))
-	interrupted, err = client.InteractiveState(ctx, interrupted.ID)
-	require.NoError(t, err)
-	require.Equal(t, "interrupted", interrupted.Status)
-	require.False(t, interrupted.Ready)
 	require.NoError(t, client.Events(ctx, &task, []workerprotocol.EventInput{{
 		Sequence: 4, Type: "discord.progress",
 		Payload: json.RawMessage(`{"state":"running","detail":"Desktop running"}`),
@@ -1180,23 +1159,23 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, 1, projectedReply)
 	rollback, err := client.PrepareDesktopRollback(ctx,
 		workerprotocol.DesktopRollbackPrepareRequest{
-			EnvironmentID: environmentID, RequestKey: strings.Repeat("b", 64),
+			WorkspaceID: workspaceID, RequestKey: strings.Repeat("b", 64),
 			Params: json.RawMessage(`{"threadId":"codex-desktop-thread","numTurns":1}`),
 		})
 	require.NoError(t, err)
 	require.Equal(t, "reserved", rollback.Status)
 	retriedRollback, err := client.PrepareDesktopRollback(ctx,
 		workerprotocol.DesktopRollbackPrepareRequest{
-			EnvironmentID: environmentID, RequestKey: strings.Repeat("b", 64),
+			WorkspaceID: workspaceID, RequestKey: strings.Repeat("b", 64),
 			Params: json.RawMessage(`{"threadId":"codex-desktop-thread","numTurns":1}`),
 		})
 	require.NoError(t, err)
 	require.Equal(t, rollback.ID, retriedRollback.ID, "同一目标的重试必须保持幂等")
 	require.NoError(t, client.CompleteDesktopRollback(ctx, rollback.ID,
-		workerprotocol.DesktopRollbackCompleteRequest{EnvironmentID: environmentID,
+		workerprotocol.DesktopRollbackCompleteRequest{WorkspaceID: workspaceID,
 			Response: json.RawMessage(`{}`)}))
 	preflight, err := client.PreflightDesktopTurn(ctx, workerprotocol.DesktopTurnPreflightRequest{
-		EnvironmentID: environmentID,
+		WorkspaceID: workspaceID,
 		Params: json.RawMessage(`{"threadId":"codex-desktop-thread",` +
 			`"clientUserMessageId":"desktop-edited",` +
 			`"input":[{"type":"text","text":"desktop edited"}]}`),
@@ -1204,8 +1183,8 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(preflight.Params), rollback.ID.String())
 	replacementTask, err := client.PrepareDesktopTurn(ctx,
-		workerprotocol.DesktopTurnPrepareRequest{EnvironmentID: environmentID,
-			WorkerID: "desktop-worker", RequestKey: strings.Repeat("c", 64), Params: preflight.Params})
+		workerprotocol.DesktopTurnPrepareRequest{WorkspaceID: workspaceID,
+			RequestKey: strings.Repeat("c", 64), Params: preflight.Params})
 	require.NoError(t, err)
 	require.Equal(t, rollback.ID, replacementTask.Claimed.ID)
 	require.Equal(t, "replace_last_turn", replacementTask.Claimed.Operation)
@@ -1216,7 +1195,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		TurnID: "desktop-turn-replacement", FinalAnswer: "desktop edited done",
 	}))
 	nextTask, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
-		EnvironmentID: environmentID, WorkerID: "desktop-worker", RequestKey: strings.Repeat("0", 64),
+		WorkspaceID: workspaceID, RequestKey: strings.Repeat("0", 64),
 		Params: json.RawMessage(`{"threadId":"codex-desktop-thread",` +
 			`"clientUserMessageId":"desktop-next",` +
 			`"input":[{"type":"text","text":"next turn"}]}`),
@@ -1229,25 +1208,25 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	}))
 	secondRollback, err := client.PrepareDesktopRollback(ctx,
 		workerprotocol.DesktopRollbackPrepareRequest{
-			EnvironmentID: environmentID, RequestKey: strings.Repeat("b", 64),
+			WorkspaceID: workspaceID, RequestKey: strings.Repeat("b", 64),
 			Params: json.RawMessage(`{"threadId":"codex-desktop-thread","numTurns":1}`),
 		})
 	require.NoError(t, err, "同一 Thread 的后续 turn 必须允许再次 rollback")
 	require.NotEqual(t, rollback.ID, secondRollback.ID)
 	require.NoError(t, client.CompleteDesktopRollback(ctx, secondRollback.ID,
-		workerprotocol.DesktopRollbackCompleteRequest{EnvironmentID: environmentID,
+		workerprotocol.DesktopRollbackCompleteRequest{WorkspaceID: workspaceID,
 			Error: "test cleanup"}))
 
 	cancelableArchive, err := client.PrepareDesktopThreadLifecycle(ctx,
 		workerprotocol.ThreadLifecyclePrepareRequest{
-			EnvironmentID: environmentID, ThreadID: "codex-desktop-thread",
+			WorkspaceID: workspaceID, ThreadID: "codex-desktop-thread",
 			DesiredState: "archived",
 		})
 	require.NoError(t, err)
 	require.Equal(t, "waiting_for_turn", cancelableArchive.Status)
 	canceledByUnarchive, err := client.PrepareDesktopThreadLifecycle(ctx,
 		workerprotocol.ThreadLifecyclePrepareRequest{
-			EnvironmentID: environmentID, ThreadID: "codex-desktop-thread",
+			WorkspaceID: workspaceID, ThreadID: "codex-desktop-thread",
 			DesiredState: "active",
 		})
 	require.NoError(t, err)
@@ -1260,7 +1239,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 
 	archive, err := client.PrepareDesktopThreadLifecycle(ctx,
 		workerprotocol.ThreadLifecyclePrepareRequest{
-			EnvironmentID: environmentID, ThreadID: "codex-desktop-thread",
+			WorkspaceID: workspaceID, ThreadID: "codex-desktop-thread",
 			DesiredState: "archived",
 		})
 	require.NoError(t, err)
@@ -1268,16 +1247,15 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	archiveReady, err := client.ThreadLifecycleState(ctx, archive.ID)
 	require.NoError(t, err)
 	require.Equal(t, "applying", archiveReady.Status,
-		"Control Run 终态后才允许 Relay 调用官方 archive")
+		"Control Run 终态后才允许 AppServer Hub 调用官方 archive")
 	_, err = client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
-		EnvironmentID: environmentID, WorkerID: "desktop-worker",
-		RequestKey: strings.Repeat("6", 64), Params: json.RawMessage(
+		WorkspaceID: workspaceID, RequestKey: strings.Repeat("6", 64), Params: json.RawMessage(
 			`{"threadId":"codex-desktop-thread","input":[{"type":"text","text":"blocked"}]}`),
 	})
 	require.Error(t, err, "归档 pending 起必须拒绝新的 Desktop Turn")
 	require.NoError(t, client.CompleteThreadLifecycle(ctx, archive.ID,
 		workerprotocol.ThreadLifecycleCompleteRequest{
-			EnvironmentID: environmentID, Response: json.RawMessage(`{}`),
+			WorkspaceID: workspaceID, Response: json.RawMessage(`{}`),
 		}))
 	var lifecycleState string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT lifecycle_state
@@ -1285,7 +1263,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "archive_pending", lifecycleState,
 		"官方 RPC 返回不能替代 thread/archived 生命周期通知")
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
-		EnvironmentID: environmentID, Generation: 10,
+		WorkspaceID: workspaceID, Generation: 10,
 		Events: []workerprotocol.ThreadMetadataEvent{{
 			ThreadID: "codex-desktop-thread", Sequence: 1, Kind: "lifecycle",
 			LifecycleState: "archived",
@@ -1303,7 +1281,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, 1, clientLifecycleUpdates,
 		"最终 lifecycle 必须作为 durable 事件通知原生客户端")
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
-		EnvironmentID: environmentID, Generation: 10,
+		WorkspaceID: workspaceID, Generation: 10,
 		Events: []workerprotocol.ThreadMetadataEvent{{
 			ThreadID: "codex-desktop-thread", Sequence: 1, Kind: "lifecycle",
 			LifecycleState: "active",
@@ -1315,21 +1293,21 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		"重复或乱序 lifecycle 通知不得覆盖较新事实")
 	unarchive, err := client.PrepareDesktopThreadLifecycle(ctx,
 		workerprotocol.ThreadLifecyclePrepareRequest{
-			EnvironmentID: environmentID, ThreadID: "codex-desktop-thread",
+			WorkspaceID: workspaceID, ThreadID: "codex-desktop-thread",
 			DesiredState: "active",
 		})
 	require.NoError(t, err)
 	require.Equal(t, "applying", unarchive.Status)
 	require.NoError(t, client.CompleteThreadLifecycle(ctx, unarchive.ID,
 		workerprotocol.ThreadLifecycleCompleteRequest{
-			EnvironmentID: environmentID, Response: json.RawMessage(`{}`),
+			WorkspaceID: workspaceID, Response: json.RawMessage(`{}`),
 		}))
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT lifecycle_state
 		FROM discord_conversations WHERE id=$1`, state.ConversationID).Scan(&lifecycleState))
 	require.Equal(t, "unarchive_pending", lifecycleState,
 		"Discord 必须等 thread/unarchived 通知后再解锁")
 	require.NoError(t, client.RecordThreadMetadata(ctx, workerprotocol.ThreadMetadataRequest{
-		EnvironmentID: environmentID, Generation: 10,
+		WorkspaceID: workspaceID, Generation: 10,
 		Events: []workerprotocol.ThreadMetadataEvent{{
 			ThreadID: "codex-desktop-thread", Sequence: 2, Kind: "lifecycle",
 			LifecycleState: "active",
@@ -1340,13 +1318,13 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "active", lifecycleState)
 	failedArchive, err := client.PrepareDesktopThreadLifecycle(ctx,
 		workerprotocol.ThreadLifecyclePrepareRequest{
-			EnvironmentID: environmentID, ThreadID: "codex-desktop-thread",
+			WorkspaceID: workspaceID, ThreadID: "codex-desktop-thread",
 			DesiredState: "archived",
 		})
 	require.NoError(t, err)
 	require.NoError(t, client.CompleteThreadLifecycle(ctx, failedArchive.ID,
 		workerprotocol.ThreadLifecycleCompleteRequest{
-			EnvironmentID: environmentID, Error: "archive unavailable",
+			WorkspaceID: workspaceID, Error: "archive unavailable",
 		}))
 	var lifecycleRequestStatus string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT c.lifecycle_state, r.status
@@ -1373,15 +1351,14 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NotEmpty(t, pendingLifecycles, "客户端 lifecycle 也必须交给 Worker 应用")
 	require.Equal(t, discordArchive.ID, pendingLifecycles[0].ID)
 	require.NoError(t, client.CompleteThreadLifecycle(ctx, discordArchive.ID,
-		workerprotocol.ThreadLifecycleCompleteRequest{EnvironmentID: environmentID,
+		workerprotocol.ThreadLifecycleCompleteRequest{WorkspaceID: workspaceID,
 			Error: "archive test rollback"}))
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT lifecycle_state
 		FROM discord_conversations WHERE id=$1`, state.ConversationID).Scan(&lifecycleState))
 	require.Equal(t, "active", lifecycleState)
 
 	forkTask, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
-		EnvironmentID: environmentID, WorkerID: "desktop-worker",
-		RequestKey: strings.Repeat("8", 64), Params: json.RawMessage(
+		WorkspaceID: workspaceID, RequestKey: strings.Repeat("8", 64), Params: json.RawMessage(
 			`{"threadId":"codex-desktop-fork","clientUserMessageId":"desktop-fork-message-1",` +
 				`"input":[{"type":"text","text":"fork first input"}]}`),
 	})
@@ -1432,64 +1409,55 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	}
 	require.True(t, foundWaitingArchive)
 	require.NoError(t, client.CompleteThreadLifecycle(ctx, waitingArchive.ID,
-		workerprotocol.ThreadLifecycleCompleteRequest{EnvironmentID: environmentID,
+		workerprotocol.ThreadLifecycleCompleteRequest{WorkspaceID: workspaceID,
 			Error: "archive waiting test rollback"}))
 
-	_, err = db.ExecContext(ctx, `UPDATE discord_development_environments SET
-		ssh_public_key=NULL, ssh_fingerprint=NULL, ssh_port=NULL, ssh_discord_user_id=NULL
-		WHERE id=$1`, environmentID)
-	require.NoError(t, err)
-	unboundTask, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
-		EnvironmentID: environmentID, WorkerID: "desktop-worker",
-		RequestKey: strings.Repeat("e", 64), Params: json.RawMessage(
+	secondTask, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
+		WorkspaceID: workspaceID, RequestKey: strings.Repeat("e", 64), Params: json.RawMessage(
 			`{"threadId":"codex-desktop-thread","input":[{"type":"text","text":"local desktop"}]}`),
 	})
 	require.NoError(t, err)
-	require.Equal(t, uuid.Nil, unboundTask.Claimed.ActorParticipantID)
-	require.Empty(t, unboundTask.Claimed.ActorDisplayName)
-	require.Empty(t, unboundTask.Snapshot.Discord.UserID)
-	require.Empty(t, unboundTask.Snapshot.Discord.DisplayName)
-	require.Empty(t, unboundTask.Snapshot.Discord.Username)
-	require.NoError(t, client.RecordSubmission(ctx, &unboundTask, "desktop-turn-2"))
-	require.NoError(t, client.ConfirmTurn(ctx, &unboundTask, "desktop-turn-2"))
+	require.Equal(t, participantidentity.ID("worker-test-guild", "desktop-user"),
+		secondTask.Claimed.ActorParticipantID)
+	require.NoError(t, client.RecordSubmission(ctx, &secondTask, "desktop-turn-2"))
+	require.NoError(t, client.ConfirmTurn(ctx, &secondTask, "desktop-turn-2"))
 	stopped, err := conversationService.Stop(ctx, "worker-test-guild",
 		"desktop-discord-thread", "desktop-user")
 	require.NoError(t, err)
 	require.EqualValues(t, 1, stopped)
-	heartbeat, err = client.RunHeartbeat(ctx, &unboundTask)
+	heartbeat, err = client.RunHeartbeat(ctx, &secondTask)
 	require.NoError(t, err)
 	require.Len(t, heartbeat.Commands, 1)
 	require.Equal(t, "interrupt", heartbeat.Commands[0].Operation)
 	require.Nil(t, heartbeat.Commands[0].Discord)
-	require.NoError(t, client.AckCommand(ctx, &unboundTask, heartbeat.Commands[0],
+	require.NoError(t, client.AckCommand(ctx, &secondTask, heartbeat.Commands[0],
 		"interrupt", "desktop-turn-2"))
-	require.NoError(t, client.Fail(ctx, &unboundTask, "user_interrupt",
+	require.NoError(t, client.Fail(ctx, &secondTask, "user_interrupt",
 		errors.New("stopped from Discord")))
 	var stoppedRunStatus, stoppedIntentStatus string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT r.status, i.status
 		FROM codex_turn_runs r JOIN codex_turn_intents i ON i.id=r.primary_intent_id
-		WHERE r.id=$1`, unboundTask.Claimed.RunID).
+		WHERE r.id=$1`, secondTask.Claimed.RunID).
 		Scan(&stoppedRunStatus, &stoppedIntentStatus))
 	require.Equal(t, "canceled", stoppedRunStatus)
 	require.Equal(t, "canceled", stoppedIntentStatus)
 
 	failed, err := client.PrepareDesktopThread(ctx, workerprotocol.DesktopThreadPrepareRequest{
-		EnvironmentID: environmentID, Operation: "start", RequestKey: strings.Repeat("c", 64),
+		WorkspaceID: workspaceID, Operation: "start", RequestKey: strings.Repeat("c", 64),
 		Params: json.RawMessage(`{"cwd":"` + workspace + `"}`),
 	})
 	require.NoError(t, err)
 	failed, err = client.CompleteDesktopThread(ctx, failed.ID,
-		workerprotocol.DesktopThreadCompleteRequest{EnvironmentID: environmentID,
+		workerprotocol.DesktopThreadCompleteRequest{WorkspaceID: workspaceID,
 			Response: json.RawMessage(`{"thread":{"id":"codex-desktop-failed"}}`)})
 	require.NoError(t, err)
 	failedTask, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
-		EnvironmentID: environmentID, WorkerID: "desktop-worker",
-		RequestKey: strings.Repeat("9", 64), Params: json.RawMessage(
+		WorkspaceID: workspaceID, RequestKey: strings.Repeat("9", 64), Params: json.RawMessage(
 			`{"threadId":"codex-desktop-failed","clientUserMessageId":"offline-first",` +
 				`"input":[{"type":"text","text":"offline post"}]}`),
 	})
 	require.NoError(t, err)
-	require.NotNil(t, failedTask.Snapshot.Development)
+	require.NotNil(t, failedTask.Snapshot.Session)
 	require.Nil(t, failedTask.Snapshot.Discord)
 	for {
 		item, err = outbox.Claim(ctx, time.Minute)
@@ -1515,8 +1483,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	}))
 
 	recoveryTask, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
-		EnvironmentID: environmentID, WorkerID: "desktop-worker",
-		RequestKey: strings.Repeat("7", 64), Params: json.RawMessage(
+		WorkspaceID: workspaceID, RequestKey: strings.Repeat("7", 64), Params: json.RawMessage(
 			`{"threadId":"codex-desktop-failed","clientUserMessageId":"offline-second",` +
 				`"input":[{"type":"text","text":"second while recovering"}]}`),
 	})
@@ -1559,112 +1526,23 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	}))
 }
 
-func TestDiscordDevelopmentEnvironmentSSHAPIBindsParticipantAndRedactsAudit(t *testing.T) {
-	db := workerDatabase(t)
-	ctx := context.Background()
-	require.NoError(t, database.Migrate(ctx, db))
-	nodes := executionnode.NewService(db)
-	node, _, err := nodes.Create(ctx, "ssh-api-node", []string{"discord"}, 2)
-	require.NoError(t, err)
-	repositoryID, _, _ := seedWorkerGitHubQueue(t, db, 51)
-	environmentID, _ := seedDevelopmentOperation(t, db, repositoryID, node.ID)
-	_, err = db.ExecContext(ctx, `INSERT INTO discord_members
-		(guild_id, discord_user_id, username, display_name)
-		VALUES ('worker-test-guild','100000000000000009','desktop','Desktop Member')`)
-	require.NoError(t, err)
-	public, _, err := ed25519.GenerateKey(rand.Reader)
-	require.NoError(t, err)
-	sshKey, err := ssh.NewPublicKey(public)
-	require.NoError(t, err)
-	publicKey := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(sshKey)))
-	server := &Server{db: db, discord: discordintegration.NewManager(db, nil,
-		"tyrs-hand-development:test"), logger: zap.NewNop()}
-	request := func(method string, payload any) (*gin.Context, *httptest.ResponseRecorder) {
-		t.Helper()
-		var body []byte
-		if payload != nil {
-			body, err = json.Marshal(payload)
-			require.NoError(t, err)
-		}
-		recorder := httptest.NewRecorder()
-		c, _ := gin.CreateTestContext(recorder)
-		c.Request = httptest.NewRequest(method, "/development-environments/"+
-			environmentID.String()+"/ssh", bytes.NewReader(body))
-		c.Request.Header.Set("Content-Type", "application/json")
-		c.Params = gin.Params{{Key: "id", Value: environmentID.String()}}
-		return c, recorder
-	}
-
-	c, _ := request(http.MethodPut, map[string]any{
-		"publicKey": publicKey, "port": 2222, "discordUserId": "100000000000000009",
-	})
-	server.putDevelopmentEnvironmentSSH(c)
-	require.Equal(t, http.StatusAccepted, c.Writer.Status())
-	var savedUserID string
-	var revision int64
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT ssh_discord_user_id,
-		ssh_config_revision FROM discord_development_environments WHERE id=$1`,
-		environmentID).Scan(&savedUserID, &revision))
-	require.Equal(t, "100000000000000009", savedUserID)
-	require.Equal(t, int64(1), revision)
-	var auditMetadata string
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT metadata::text FROM audit_logs
-		WHERE action='development_environment.ssh.update'
-		ORDER BY created_at DESC LIMIT 1`).Scan(&auditMetadata))
-	require.Contains(t, auditMetadata, "100000000000000009")
-	require.Contains(t, auditMetadata, "SHA256:")
-	require.NotContains(t, auditMetadata, publicKey)
-
-	listRecorder := httptest.NewRecorder()
-	listContext, _ := gin.CreateTestContext(listRecorder)
-	listContext.Request = httptest.NewRequest(http.MethodGet,
-		"/development-environments", nil)
-	server.listDevelopmentEnvironments(listContext)
-	require.Equal(t, http.StatusOK, listRecorder.Code)
-	var environmentResponse struct {
-		Items []discordintegration.DevelopmentEnvironment `json:"items"`
-	}
-	require.NoError(t, json.Unmarshal(listRecorder.Body.Bytes(), &environmentResponse))
-	require.Len(t, environmentResponse.Items, 1)
-	require.Equal(t, "100000000000000009",
-		environmentResponse.Items[0].SSHDiscordUserID)
-	require.Equal(t, "Desktop Member", environmentResponse.Items[0].SSHDisplayName)
-
-	c, _ = request(http.MethodPut, map[string]any{
-		"publicKey": publicKey, "port": 2222, "discordUserId": "100000000000000099",
-	})
-	server.putDevelopmentEnvironmentSSH(c)
-	require.Equal(t, http.StatusConflict, c.Writer.Status())
-
-	c, _ = request(http.MethodDelete, nil)
-	server.deleteDevelopmentEnvironmentSSH(c)
-	require.Equal(t, http.StatusAccepted, c.Writer.Status())
-	var cleared bool
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT ssh_public_key IS NULL
-		AND ssh_fingerprint IS NULL AND ssh_port IS NULL AND ssh_discord_user_id IS NULL,
-		ssh_config_revision FROM discord_development_environments WHERE id=$1`,
-		environmentID).Scan(&cleared, &revision))
-	require.True(t, cleared)
-	require.Equal(t, int64(2), revision)
-}
-
-func TestWorkerAPIDevelopmentProjectSnapshotSynchronizesMissingAndRecovery(t *testing.T) {
+func TestWorkerAPIWorkspaceProjectSnapshotSynchronizesMissingAndRecovery(t *testing.T) {
 	db := workerDatabase(t)
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))
 	server, endpoint := workerTestServer(t, db)
-	node, enrollment, err := server.nodes.Create(ctx, "project-snapshot", []string{"discord"}, 2)
+	worker, enrollment, err := server.workers.Create(ctx, "project-snapshot", []string{"discord"}, 2)
 	require.NoError(t, err)
-	_, credential, err := server.nodes.Enroll(ctx, enrollment)
+	_, credential, err := server.workers.Enroll(ctx, enrollment)
 	require.NoError(t, err)
 	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
 	repositoryID, _, _ := seedWorkerGitHubQueue(t, db, 302)
-	environmentID, _ := seedDevelopmentOperation(t, db, repositoryID, node.ID)
+	workspaceID, _ := seedWorkerWorkspace(t, db, repositoryID, worker.ID)
 
-	require.NoError(t, client.DevelopmentProjectSnapshot(ctx,
-		workerprotocol.DevelopmentProjectSnapshotRequest{
-			EnvironmentID: environmentID,
-			Projects: []workerprotocol.DevelopmentProjectSnapshot{
+	require.NoError(t, client.WorkspaceProjectSnapshot(ctx,
+		workerprotocol.WorkspaceProjectSnapshotRequest{
+			WorkspaceID: workspaceID,
+			Projects: []workerprotocol.WorkspaceProjectSnapshot{
 				{
 					Name: "atlas", RelativePath: "workspaces/atlas", ProjectKind: "git",
 					Branch: "main", HeadSHA: "atlas-head", Dirty: true,
@@ -1674,25 +1552,25 @@ func TestWorkerAPIDevelopmentProjectSnapshotSynchronizesMissingAndRecovery(t *te
 			},
 		}))
 	var atlasID, notesID uuid.UUID
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM development_projects
-		WHERE environment_id=$1 AND relative_path='workspaces/atlas'`, environmentID).
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM workspace_projects
+		WHERE workspace_id=$1 AND relative_path='workspaces/atlas'`, workspaceID).
 		Scan(&atlasID))
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM development_projects
-		WHERE environment_id=$1 AND relative_path='workspaces/notes'`, environmentID).
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM workspace_projects
+		WHERE workspace_id=$1 AND relative_path='workspaces/notes'`, workspaceID).
 		Scan(&notesID))
 	var availableCount, missingCount int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT
 		count(*) FILTER (WHERE availability_status='available'),
 		count(*) FILTER (WHERE availability_status='missing')
-		FROM development_projects WHERE environment_id=$1`, environmentID).
+		FROM workspace_projects WHERE workspace_id=$1`, workspaceID).
 		Scan(&availableCount, &missingCount))
 	require.Equal(t, 2, availableCount)
 	require.Equal(t, 1, missingCount, "首次完整快照必须把未出现的旧项目标为缺失")
 
-	require.NoError(t, client.DevelopmentProjectSnapshot(ctx,
-		workerprotocol.DevelopmentProjectSnapshotRequest{
-			EnvironmentID: environmentID,
-			Projects: []workerprotocol.DevelopmentProjectSnapshot{
+	require.NoError(t, client.WorkspaceProjectSnapshot(ctx,
+		workerprotocol.WorkspaceProjectSnapshotRequest{
+			WorkspaceID: workspaceID,
+			Projects: []workerprotocol.WorkspaceProjectSnapshot{
 				{
 					Name: "atlas", RelativePath: "workspaces/atlas", ProjectKind: "git",
 					Branch: "feature", HeadSHA: "atlas-next",
@@ -1702,105 +1580,66 @@ func TestWorkerAPIDevelopmentProjectSnapshotSynchronizesMissingAndRecovery(t *te
 	var notesStatus, atlasBranch string
 	var scannedAt time.Time
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT availability_status
-		FROM development_projects WHERE id=$1`, notesID).Scan(&notesStatus))
+		FROM workspace_projects WHERE id=$1`, notesID).Scan(&notesStatus))
 	require.Equal(t, "missing", notesStatus)
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT branch
-		FROM development_projects WHERE id=$1`, atlasID).Scan(&atlasBranch))
+		FROM workspace_projects WHERE id=$1`, atlasID).Scan(&atlasBranch))
 	require.Equal(t, "feature", atlasBranch)
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT projects_scanned_at
-		FROM discord_development_environments WHERE id=$1`, environmentID).Scan(&scannedAt))
+		FROM worker_workspaces WHERE id=$1`, workspaceID).Scan(&scannedAt))
 
-	require.NoError(t, client.DevelopmentProjectSnapshot(ctx,
-		workerprotocol.DevelopmentProjectSnapshotRequest{
-			EnvironmentID: environmentID, Error: "container unavailable",
+	require.NoError(t, client.WorkspaceProjectSnapshot(ctx,
+		workerprotocol.WorkspaceProjectSnapshotRequest{
+			WorkspaceID: workspaceID, Error: "container unavailable",
 		}))
 	var scannedAfterFailure time.Time
 	var scanError string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT projects_scanned_at,project_scan_error
-		FROM discord_development_environments WHERE id=$1`, environmentID).
+		FROM worker_workspaces WHERE id=$1`, workspaceID).
 		Scan(&scannedAfterFailure, &scanError))
 	require.Equal(t, scannedAt, scannedAfterFailure)
 	require.Equal(t, "container unavailable", scanError)
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT availability_status
-		FROM development_projects WHERE id=$1`, atlasID).Scan(&notesStatus))
+		FROM workspace_projects WHERE id=$1`, atlasID).Scan(&notesStatus))
 	require.Equal(t, "available", notesStatus,
 		"扫描失败不得把未上报的项目批量标记为缺失")
 
-	require.NoError(t, client.DevelopmentProjectSnapshot(ctx,
-		workerprotocol.DevelopmentProjectSnapshotRequest{EnvironmentID: environmentID}))
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM development_projects
-		WHERE environment_id=$1 AND availability_status='missing'`, environmentID).
+	require.NoError(t, client.WorkspaceProjectSnapshot(ctx,
+		workerprotocol.WorkspaceProjectSnapshotRequest{WorkspaceID: workspaceID}))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM workspace_projects
+		WHERE workspace_id=$1 AND availability_status='missing'`, workspaceID).
 		Scan(&missingCount))
 	require.Equal(t, 3, missingCount, "成功空快照必须将完整旧快照标记为缺失")
 
-	require.NoError(t, client.DevelopmentProjectSnapshot(ctx,
-		workerprotocol.DevelopmentProjectSnapshotRequest{
-			EnvironmentID: environmentID,
-			Projects: []workerprotocol.DevelopmentProjectSnapshot{
+	require.NoError(t, client.WorkspaceProjectSnapshot(ctx,
+		workerprotocol.WorkspaceProjectSnapshotRequest{
+			WorkspaceID: workspaceID,
+			Projects: []workerprotocol.WorkspaceProjectSnapshot{
 				{Name: "atlas", RelativePath: "workspaces/atlas", ProjectKind: "git"},
 			},
 		}))
 	var recoveredID uuid.UUID
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM development_projects
-		WHERE environment_id=$1 AND relative_path='workspaces/atlas'
-		  AND availability_status='available'`, environmentID).Scan(&recoveredID))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM workspace_projects
+		WHERE workspace_id=$1 AND relative_path='workspaces/atlas'
+		  AND availability_status='available'`, workspaceID).Scan(&recoveredID))
 	require.Equal(t, atlasID, recoveredID, "同路径恢复必须复用原项目记录")
 }
 
-func TestEnvironmentRelayRuntimeMigrationQueuesExistingEnvironmentsOnce(t *testing.T) {
-	db := workerDatabase(t)
-	ctx := context.Background()
-	require.NoError(t, database.Migrate(ctx, db))
-	server, _ := workerTestServer(t, db)
-	node, _, err := server.nodes.Create(ctx, "relay-migration", []string{"discord"}, 1)
-	require.NoError(t, err)
-	repositoryID, _, _ := seedWorkerGitHubQueue(t, db, 71)
-	environmentID, _ := seedDevelopmentOperation(t, db, repositoryID, node.ID)
-	_, err = db.ExecContext(ctx, `UPDATE discord_development_environments
-		SET ssh_config_revision=0, daemon_status='running' WHERE id=$1`, environmentID)
-	require.NoError(t, err)
-
-	migrationSQL, err := os.ReadFile("../database/migrations/019_environment_relay_runtime.sql")
-	require.NoError(t, err)
-	require.NoError(t, execMigrationSQL(ctx, db, string(migrationSQL)))
-	require.NoError(t, execMigrationSQL(ctx, db, string(migrationSQL)),
-		"重复执行迁移不得重复创建 reconfigure Operation")
-
-	var revision int64
-	var daemonStatus string
-	var operationCount int
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT ssh_config_revision, daemon_status
-		FROM discord_development_environments WHERE id=$1`, environmentID).
-		Scan(&revision, &daemonStatus))
-	require.EqualValues(t, 1, revision)
-	require.Equal(t, "pending", daemonStatus)
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*)
-		FROM discord_development_operations WHERE environment_id=$1
-		AND operation='reconfigure' AND status IN ('pending','running')`, environmentID).
-		Scan(&operationCount))
-	require.Equal(t, 1, operationCount)
-}
-
-func execMigrationSQL(ctx context.Context, db *sql.DB, statement string) error {
-	_, err := db.ExecContext(ctx, statement)
-	return err
-}
-
-func TestWorkerAPISSHConfigurationRotationConstraintsAndGlobalAgents(t *testing.T) {
+func TestWorkerAPISSHConfigurationAndGitHubAgentInstructions(t *testing.T) {
 	db := workerDatabase(t)
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))
 	server, endpoint := workerTestServer(t, db)
-	nodeA, enrollmentA, err := server.nodes.Create(ctx, "ssh-a", []string{"github"}, 1)
+	workerA, enrollmentA, err := server.workers.Create(ctx, "ssh-a", []string{"github"}, 1)
 	require.NoError(t, err)
-	nodeB, enrollmentB, err := server.nodes.Create(ctx, "ssh-b", []string{"github"}, 1)
+	workerB, enrollmentB, err := server.workers.Create(ctx, "ssh-b", []string{"github"}, 1)
 	require.NoError(t, err)
-	_, nodeCredential, err := server.nodes.Enroll(ctx, enrollmentA)
+	_, workerCredential, err := server.workers.Enroll(ctx, enrollmentA)
 	require.NoError(t, err)
-	client := workerprotocol.NewClient(endpoint, nodeCredential, 5*time.Second)
-	_, nodeCredentialB, err := server.nodes.Enroll(ctx, enrollmentB)
+	client := workerprotocol.NewClient(endpoint, workerCredential, 5*time.Second)
+	_, workerCredentialB, err := server.workers.Enroll(ctx, enrollmentB)
 	require.NoError(t, err)
-	clientB := workerprotocol.NewClient(endpoint, nodeCredentialB, 5*time.Second)
+	clientB := workerprotocol.NewClient(endpoint, workerCredentialB, 5*time.Second)
 
 	privateKeyA := testSSHPrivateKey(t, "")
 	credential, err := server.ssh.CreateCredential(ctx, sshconfig.CredentialInput{
@@ -1813,30 +1652,30 @@ func TestWorkerAPISSHConfigurationRotationConstraintsAndGlobalAgents(t *testing.
 	require.False(t, bytes.Contains(ciphertext, []byte("PRIVATE KEY")))
 	jump, err := server.ssh.CreateHost(ctx, sshconfig.HostInput{
 		Alias: "jump", Hostname: "192.0.2.1", Port: 22, Username: "ubuntu",
-		CredentialID: credential.ID, ExecutionNodeIDs: []uuid.UUID{nodeA.ID},
+		CredentialID: credential.ID, WorkerIDs: []uuid.UUID{workerA.ID},
 	})
 	require.NoError(t, err)
 	_, err = server.ssh.CreateHost(ctx, sshconfig.HostInput{
-		Alias: "wrong-node", Hostname: "192.0.2.2", Port: 22, Username: "ubuntu",
+		Alias: "wrong-worker", Hostname: "192.0.2.2", Port: 22, Username: "ubuntu",
 		CredentialID: credential.ID, ProxyJumpHostID: &jump.ID,
-		ExecutionNodeIDs: []uuid.UUID{nodeB.ID},
+		WorkerIDs: []uuid.UUID{workerB.ID},
 	})
-	require.ErrorContains(t, err, "相同的 Execution Node")
+	require.ErrorContains(t, err, "相同的 Worker")
 	target, err := server.ssh.CreateHost(ctx, sshconfig.HostInput{
 		Alias: "target", Hostname: "192.0.2.3", Port: 2222, Username: "deploy",
 		CredentialID: credential.ID, ProxyJumpHostID: &jump.ID,
-		ExecutionNodeIDs: []uuid.UUID{nodeA.ID},
+		WorkerIDs: []uuid.UUID{workerA.ID},
 	})
 	require.NoError(t, err)
 	_, err = server.ssh.UpdateHost(ctx, jump.ID, sshconfig.HostInput{
 		Alias: jump.Alias, Hostname: jump.Hostname, Port: jump.Port, Username: jump.Username,
 		CredentialID: credential.ID, ProxyJumpHostID: &target.ID,
-		ExecutionNodeIDs: []uuid.UUID{nodeA.ID},
+		WorkerIDs: []uuid.UUID{workerA.ID},
 	})
 	require.ErrorContains(t, err, "循环")
 	_, err = server.ssh.UpdateHost(ctx, jump.ID, sshconfig.HostInput{
 		Alias: jump.Alias, Hostname: jump.Hostname, Port: jump.Port, Username: jump.Username,
-		CredentialID: credential.ID, ExecutionNodeIDs: nil,
+		CredentialID: credential.ID, WorkerIDs: nil,
 	})
 	require.ErrorContains(t, err, "仍被已启用主机")
 
@@ -1941,39 +1780,22 @@ func TestWorkerAPISSHConfigurationRotationConstraintsAndGlobalAgents(t *testing.
 	require.Equal(t, []string{"ssh_credential.create", "ssh_credential.update",
 		"ssh_credential.delete"}, auditActions)
 
-	repositoryID, itemID, profileID := seedWorkerGitHubQueue(t, db, 80)
-	beforeIntent := enqueueWorkerIntent(t, db, repositoryID, itemID, profileID,
-		"global-agents-before")
-	providerBefore, err := server.settings.AgentProvider(ctx)
+	require.NoError(t, server.settings.SaveGitHubAgentInstructions(ctx,
+		platformsettings.GitHubAgentInstructions{Content: "# GitHub Agent\r\n"}))
+	agents, err := server.settings.GitHubAgentInstructions(ctx)
 	require.NoError(t, err)
-	require.NoError(t, server.settings.SaveGlobalAgents(ctx,
-		platformsettings.GlobalAgents{Content: "# Global\r\n"}))
-	agents, err := server.settings.GlobalAgents(ctx)
-	require.NoError(t, err)
-	require.Equal(t, "# Global\n", agents.Content)
-	providerAfter, err := server.settings.AgentProvider(ctx)
-	require.NoError(t, err)
-	require.NotEqual(t, providerBefore.ConfigSignature, providerAfter.ConfigSignature)
-	require.NoError(t, server.settings.SaveGlobalAgents(ctx,
-		platformsettings.GlobalAgents{Content: "# Global\n"}))
-	afterIntent := enqueueWorkerIntent(t, db, repositoryID, itemID, profileID,
-		"global-agents-after")
-	var beforeControlID, afterControlID uuid.UUID
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT control_id FROM codex_turn_intents
-		WHERE id=$1`, beforeIntent).Scan(&beforeControlID))
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT control_id FROM codex_turn_intents
-		WHERE id=$1`, afterIntent).Scan(&afterControlID))
-	require.Equal(t, beforeControlID, afterControlID)
+	require.Equal(t, "# GitHub Agent\n", agents.Content)
 	agentsRecorder := httptest.NewRecorder()
 	agentsContext, _ := gin.CreateTestContext(agentsRecorder)
-	agentsContext.Request = httptest.NewRequest("PUT", "/api/v1/settings/global-agents",
+	agentsContext.Request = httptest.NewRequest("PUT", "/api/v1/settings/github-agent-instructions",
 		strings.NewReader(`{"content":"# Managed through API\n"}`))
 	agentsContext.Request.Header.Set("Content-Type", "application/json")
-	server.putGlobalAgents(agentsContext)
+	server.putGitHubAgentInstructions(agentsContext)
 	require.Equal(t, 204, agentsContext.Writer.Status())
 	var globalAuditCount int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM audit_logs
-		WHERE action='settings.global_agents.update' AND resource_id='codex.global_agents'`).
+		WHERE action='settings.github_agent_instructions.update'
+		AND resource_id='github.agent.instructions'`).
 		Scan(&globalAuditCount))
 	require.Equal(t, 1, globalAuditCount)
 }
@@ -1997,17 +1819,19 @@ func workerTestServer(t *testing.T, db *sql.DB) (*Server, string) {
 	box, err := security.NewSecretBox(make([]byte, 32))
 	require.NoError(t, err)
 	secretStore := secrets.NewStore(db, box)
-	settings := platformsettings.NewService(db, secretStore)
-	require.NoError(t, settings.SaveAgentProvider(context.Background(),
-		platformsettings.AgentProviderInput{
-			ModelSource: platformsettings.ModelSourceProvider, APIKey: "test-key",
-		}))
+	settings := platformsettings.NewService(db)
 	server := &Server{cfg: config.Config{LeaseDuration: 2 * time.Second,
 		CodexMaxSteersPerTurn: 5, CodexReconcileMaxAttempts: 3}, db: db,
-		nodes: executionnode.NewService(db), settings: settings,
+		workers: workerregistry.NewService(db), settings: settings,
 		ssh: sshconfig.NewService(db, secretStore), secrets: secretStore}
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Next()
+		for _, item := range c.Errors {
+			t.Logf("worker API error: %v", item.Err)
+		}
+	})
 	server.registerWorkerRoutes(router)
 	httpServer := httptest.NewServer(router)
 	t.Cleanup(httpServer.Close)
@@ -2081,13 +1905,13 @@ func enqueueWorkerDiscordIntent(t *testing.T, db *sql.DB, conversationID uuid.UU
 ) uuid.UUID {
 	t.Helper()
 	var projectID uuid.UUID
-	require.NoError(t, db.QueryRow(`SELECT development_project_id
+	require.NoError(t, db.QueryRow(`SELECT workspace_project_id
 		FROM discord_conversations WHERE id=$1`, conversationID).Scan(&projectID))
 	tx, err := db.BeginTx(context.Background(), nil)
 	require.NoError(t, err)
 	intentID, inserted, err := codexcontrol.NewRepository(db, 2*time.Second).Enqueue(
 		context.Background(), tx, codexcontrol.EnqueueRequest{
-			SourceType: codexcontrol.SourceDevelopment, DiscordConversationID: conversationID,
+			SourceType: codexcontrol.SourceWorkspace, DiscordConversationID: conversationID,
 			DiscordMessageID: messageID, ProjectID: projectID, AgentProfileID: profileID,
 			IdempotencyKey: "discord:" + messageID,
 			Instruction:    messageID, ReplyPolicy: "silent", Behavior: "steer_if_active",
@@ -2098,10 +1922,10 @@ func enqueueWorkerDiscordIntent(t *testing.T, db *sql.DB, conversationID uuid.UU
 	return intentID
 }
 
-func developmentProjectIDForForum(t *testing.T, db *sql.DB, forumID uuid.UUID) uuid.UUID {
+func workspaceProjectIDForForum(t *testing.T, db *sql.DB, forumID uuid.UUID) uuid.UUID {
 	t.Helper()
 	var projectID uuid.UUID
-	require.NoError(t, db.QueryRow(`SELECT development_project_id
+	require.NoError(t, db.QueryRow(`SELECT workspace_project_id
 		FROM discord_forums WHERE id=$1`, forumID).Scan(&projectID))
 	return projectID
 }
@@ -2132,29 +1956,29 @@ func enqueueWorkerOperation(t *testing.T, db *sql.DB, repositoryID, itemID, prof
 	return intentID
 }
 
-func assertPlacement(t *testing.T, db *sql.DB, itemID, intentID, expectedNodeID uuid.UUID,
+func assertPlacement(t *testing.T, db *sql.DB, itemID, intentID, expectedWorkerID uuid.UUID,
 	expectedStatus string,
 ) {
 	t.Helper()
-	var itemNode, controlNode sql.NullString
+	var itemWorker, controlWorker sql.NullString
 	var status string
-	require.NoError(t, db.QueryRow(`SELECT w.execution_node_id::text,
-		c.execution_node_id::text, i.status FROM work_items w
+	require.NoError(t, db.QueryRow(`SELECT w.worker_id::text,
+		c.worker_id::text, i.status FROM work_items w
 		JOIN codex_turn_intents i ON i.id = $2
 		JOIN codex_thread_controls c ON c.id = i.control_id WHERE w.id = $1`, itemID, intentID).
-		Scan(&itemNode, &controlNode, &status))
+		Scan(&itemWorker, &controlWorker, &status))
 	require.Equal(t, expectedStatus, status)
-	if expectedNodeID == uuid.Nil {
-		require.False(t, itemNode.Valid)
-		require.False(t, controlNode.Valid)
+	if expectedWorkerID == uuid.Nil {
+		require.False(t, itemWorker.Valid)
+		require.False(t, controlWorker.Valid)
 		return
 	}
-	require.Equal(t, expectedNodeID.String(), itemNode.String)
-	require.Equal(t, expectedNodeID.String(), controlNode.String)
+	require.Equal(t, expectedWorkerID.String(), itemWorker.String)
+	require.Equal(t, expectedWorkerID.String(), controlWorker.String)
 }
 
-func seedDevelopmentOperation(t *testing.T, db *sql.DB, repositoryID,
-	nodeID uuid.UUID,
+func seedWorkerWorkspace(t *testing.T, db *sql.DB, repositoryID,
+	workerID uuid.UUID,
 ) (uuid.UUID, uuid.UUID) {
 	t.Helper()
 	ctx := context.Background()
@@ -2165,25 +1989,21 @@ func seedDevelopmentOperation(t *testing.T, db *sql.DB, repositoryID,
 		(guild_id, discord_user_id, username, display_name)
 		VALUES ('worker-test-guild','worker-owner','owner','Owner')`)
 	require.NoError(t, err)
-	var environmentID uuid.UUID
-	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_development_environments
-		(guild_id, owner_discord_user_id, image_ref, container_name,
-		 data_volume_name, home_volume_name, network_name, execution_node_id,
-		 status,container_id,runtime_user,runtime_uid,runtime_gid,runtime_home)
-		VALUES ('worker-test-guild','worker-owner','tyrs-hand-development:test',
-		'dev-worker','dev-worker-data','dev-worker-home','dev-worker-net',$1,
-		'running','dev-worker-container','developer',1000,1000,'/home/developer')
-		RETURNING id`, nodeID).
-		Scan(&environmentID))
+	var workspaceID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO worker_workspaces
+		(guild_id, owner_discord_user_id, worker_id)
+		VALUES ('worker-test-guild','worker-owner',$1)
+		RETURNING id`, workerID).
+		Scan(&workspaceID))
 	var repositoryName, remoteURL string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT name,clone_url
 		FROM repositories WHERE id=$1`, repositoryID).Scan(&repositoryName, &remoteURL))
 	var projectID uuid.UUID
-	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO development_projects
-		(environment_id,relative_path,name,project_kind,availability_status,
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO workspace_projects
+		(workspace_id,relative_path,name,project_kind,availability_status,
 		 branch,head_sha,dirty,remote_url,last_seen_at)
 		VALUES ($1,$2,$3,'git','available','worker/test','worker-head',false,$4,now())
-		RETURNING id`, environmentID, "workspaces/"+repositoryName,
+		RETURNING id`, workspaceID, "workspaces/"+repositoryName,
 		repositoryName, remoteURL).Scan(&projectID))
 	var resourceID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_resources
@@ -2192,9 +2012,9 @@ func seedDevelopmentOperation(t *testing.T, db *sql.DB, repositoryID,
 		RETURNING id`).Scan(&resourceID))
 	var forumID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_forums
-		(guild_id, resource_id, forum_type, owner_discord_user_id, development_project_id,
-		 development_environment_id)
-		VALUES ('worker-test-guild',$1,'development','worker-owner',$2,$3) RETURNING id`,
-		resourceID, projectID, environmentID).Scan(&forumID))
-	return environmentID, forumID
+		(guild_id, resource_id, forum_type, owner_discord_user_id, workspace_project_id,
+		 workspace_id)
+		VALUES ('worker-test-guild',$1,'workspace','worker-owner',$2,$3) RETURNING id`,
+		resourceID, projectID, workspaceID).Scan(&forumID))
+	return workspaceID, forumID
 }

@@ -20,8 +20,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
-	"github.com/slovx2/tyrs-hand/internal/executionnode"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
+	"github.com/slovx2/tyrs-hand/internal/workerregistry"
 )
 
 const desktopImageUploadOverhead = 1 << 20
@@ -175,7 +175,7 @@ func (s *Server) workerDesktopImageTarget(c *gin.Context) {
 	if !ok {
 		return
 	}
-	status, err := s.desktopImageTargetStatus(c.Request.Context(), workerNode(c), intentID)
+	status, err := s.desktopImageTargetStatus(c.Request.Context(), currentWorker(c), intentID)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusNotFound, "Desktop 图片不存在", err)
 		return
@@ -187,7 +187,7 @@ func (s *Server) workerDesktopImageTarget(c *gin.Context) {
 	c.JSON(http.StatusOK, workerprotocol.DesktopImageTarget{Status: status})
 }
 
-func (s *Server) desktopImageTargetStatus(ctx context.Context, node executionnode.Node,
+func (s *Server) desktopImageTargetStatus(ctx context.Context, worker workerregistry.Worker,
 	intentID uuid.UUID,
 ) (string, error) {
 	var pending int
@@ -195,13 +195,13 @@ func (s *Server) desktopImageTargetStatus(ctx context.Context, node executionnod
 		FROM codex_turn_intents intent
 		JOIN codex_turn_runs run ON run.primary_intent_id=intent.id
 		LEFT JOIN desktop_turn_images image ON image.intent_id=intent.id
-		WHERE intent.id=$1 AND run.execution_node_id=$2`, intentID, node.ID).Scan(&pending); err != nil {
+		WHERE intent.id=$1 AND run.worker_id=$2`, intentID, worker.ID).Scan(&pending); err != nil {
 		return "", err
 	}
 	var exists bool
 	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM codex_turn_intents intent
 		JOIN codex_turn_runs run ON run.primary_intent_id=intent.id
-		WHERE intent.id=$1 AND run.execution_node_id=$2)`, intentID, node.ID).Scan(&exists); err != nil {
+		WHERE intent.id=$1 AND run.worker_id=$2)`, intentID, worker.ID).Scan(&exists); err != nil {
 		return "", err
 	}
 	if !exists {
@@ -307,7 +307,7 @@ func (s *Server) workerUploadDesktopImage(c *gin.Context) {
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-	image, err := lockDesktopImage(c.Request.Context(), tx, workerNode(c), intentID, ordinal)
+	image, err := lockDesktopImage(c.Request.Context(), tx, currentWorker(c), intentID, ordinal)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusNotFound, "Desktop 图片不存在", err)
 		return
@@ -416,8 +416,8 @@ func (s *Server) workerFailDesktopImage(c *gin.Context) {
 		FROM codex_turn_intents intent
 		WHERE image.intent_id=$1 AND image.ordinal=$2 AND image.status='pending'
 		AND intent.id=image.intent_id AND EXISTS(SELECT 1 FROM codex_turn_runs run
-			WHERE run.primary_intent_id=intent.id AND run.execution_node_id=$3)`,
-		intentID, ordinal, workerNode(c).ID, message)
+			WHERE run.primary_intent_id=intent.id AND run.worker_id=$3)`,
+		intentID, ordinal, currentWorker(c).ID, message)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "记录 Desktop 图片失败状态失败", err)
 		return
@@ -427,8 +427,8 @@ func (s *Server) workerFailDesktopImage(c *gin.Context) {
 		if err := s.db.QueryRowContext(c.Request.Context(), `SELECT EXISTS(SELECT 1
 			FROM desktop_turn_images image WHERE image.intent_id=$1 AND image.ordinal=$2
 			AND EXISTS(SELECT 1 FROM codex_turn_runs run
-				WHERE run.primary_intent_id=image.intent_id AND run.execution_node_id=$3))`,
-			intentID, ordinal, workerNode(c).ID).
+				WHERE run.primary_intent_id=image.intent_id AND run.worker_id=$3))`,
+			intentID, ordinal, currentWorker(c).ID).
 			Scan(&exists); err != nil {
 			problem(c, http.StatusInternalServerError, "读取 Desktop 图片状态失败", err)
 			return
@@ -442,7 +442,7 @@ func (s *Server) workerFailDesktopImage(c *gin.Context) {
 	c.JSON(http.StatusOK, workerprotocol.DesktopImageUploadResult{Status: "failed"})
 }
 
-func lockDesktopImage(ctx context.Context, tx *sql.Tx, node executionnode.Node,
+func lockDesktopImage(ctx context.Context, tx *sql.Tx, worker workerregistry.Worker,
 	intentID uuid.UUID, ordinal int,
 ) (desktopImageRecord, error) {
 	var image desktopImageRecord
@@ -454,8 +454,8 @@ func lockDesktopImage(ctx context.Context, tx *sql.Tx, node executionnode.Node,
 		image.discord_attachment_id
 		FROM desktop_turn_images image WHERE image.intent_id=$1 AND image.ordinal=$2
 		AND EXISTS(SELECT 1 FROM codex_turn_runs run
-			WHERE run.primary_intent_id=image.intent_id AND run.execution_node_id=$3)
-		FOR UPDATE`, intentID, ordinal, node.ID).Scan(&image.id, &image.ordinal,
+			WHERE run.primary_intent_id=image.intent_id AND run.worker_id=$3)
+		FOR UPDATE`, intentID, ordinal, worker.ID).Scan(&image.id, &image.ordinal,
 		&image.originalFilename, &image.discordFilename, &image.mediaType, &image.size,
 		&image.sha256, &image.status, &image.error, &attachmentID)
 	if err == nil && attachmentID.Valid {

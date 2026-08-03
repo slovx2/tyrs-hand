@@ -4,10 +4,15 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
 	"net"
+	"net/http"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ssh"
 )
@@ -18,6 +23,72 @@ func (desktopStub) ServeDesktop(connection net.Conn) error {
 	_, err := connection.Write([]byte("desktop-proxy"))
 	return err
 }
+
+type desktopWebSocketStub struct{}
+
+func (desktopWebSocketStub) ServeDesktop(connection net.Conn) error {
+	done := make(chan struct{})
+	tracked := &testSignalConnection{Conn: connection, done: done}
+	listener := &testSingleConnectionListener{connection: tracked, done: done}
+	server := &http.Server{Handler: http.HandlerFunc(func(response http.ResponseWriter,
+		request *http.Request,
+	) {
+		upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+		ws, err := upgrader.Upgrade(response, request, nil)
+		if err == nil {
+			_ = ws.WriteMessage(websocket.TextMessage, []byte("ready"))
+			_ = ws.Close()
+		}
+	})}
+	err := server.Serve(listener)
+	if errors.Is(err, http.ErrServerClosed) || errors.Is(err, net.ErrClosed) {
+		return nil
+	}
+	return err
+}
+
+type testSingleConnectionListener struct {
+	connection net.Conn
+	done       chan struct{}
+	once       sync.Once
+}
+
+func (l *testSingleConnectionListener) Accept() (net.Conn, error) {
+	var connection net.Conn
+	l.once.Do(func() { connection = l.connection })
+	if connection != nil {
+		return connection, nil
+	}
+	<-l.done
+	return nil, net.ErrClosed
+}
+
+func (l *testSingleConnectionListener) Close() error   { return l.connection.Close() }
+func (l *testSingleConnectionListener) Addr() net.Addr { return l.connection.LocalAddr() }
+
+type testSignalConnection struct {
+	net.Conn
+	done chan struct{}
+	once sync.Once
+}
+
+func (c *testSignalConnection) Close() error {
+	c.once.Do(func() { close(c.done) })
+	return c.Conn.Close()
+}
+
+type testSSHConnection struct{ ssh.Channel }
+
+func (testSSHConnection) LocalAddr() net.Addr              { return testAddress("client") }
+func (testSSHConnection) RemoteAddr() net.Addr             { return testAddress("worker") }
+func (testSSHConnection) SetDeadline(time.Time) error      { return nil }
+func (testSSHConnection) SetReadDeadline(time.Time) error  { return nil }
+func (testSSHConnection) SetWriteDeadline(time.Time) error { return nil }
+
+type testAddress string
+
+func (a testAddress) Network() string { return "ssh" }
+func (a testAddress) String() string  { return string(a) }
 
 func TestSSHServerSupportsShellProxyAndRejectsForwarding(t *testing.T) {
 	public, private, err := ed25519.GenerateKey(rand.Reader)
@@ -57,4 +128,67 @@ func TestSSHServerSupportsShellProxyAndRejectsForwarding(t *testing.T) {
 
 	_, err = client.Dial("tcp", "127.0.0.1:80")
 	require.Error(t, err)
+}
+
+func TestSSHServerDesktopProxyCompletesWebSocketHandshakeWithoutEOF(t *testing.T) {
+	public, private, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	signer, err := ssh.NewSignerFromKey(private)
+	require.NoError(t, err)
+	publicKey, err := ssh.NewPublicKey(public)
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	server, err := StartSSHServer(ctx, SSHOptions{
+		ListenAddr: "127.0.0.1:0", HostKeyFile: filepath.Join(t.TempDir(), "host_key"),
+		Home: t.TempDir(), CodexHome: t.TempDir(), Shell: "/bin/sh",
+		AuthorizedClients: []AuthorizedClient{{ID: "desktop", PublicKey: publicKey}},
+		Runtime:           desktopWebSocketStub{},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, server.Close()) })
+	client, err := ssh.Dial("tcp", server.Addr().String(), &ssh.ClientConfig{
+		User: "ignored", Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = client.Close() })
+	channel, requests, err := client.OpenChannel("session", nil)
+	require.NoError(t, err)
+	go ssh.DiscardRequests(requests)
+	accepted, err := channel.SendRequest("exec", true,
+		ssh.Marshal(struct{ Command string }{"codex app-server proxy"}))
+	require.NoError(t, err)
+	require.True(t, accepted)
+
+	connected := make(chan *websocket.Conn, 1)
+	failure := make(chan error, 1)
+	go func() {
+		dialer := websocket.Dialer{NetDialContext: func(context.Context, string, string) (
+			net.Conn, error,
+		) {
+			return testSSHConnection{Channel: channel}, nil
+		}}
+		ws, response, dialErr := dialer.DialContext(context.Background(),
+			"ws://localhost/", http.Header{})
+		if response != nil && response.Body != nil {
+			_ = response.Body.Close()
+		}
+		if dialErr != nil {
+			failure <- dialErr
+			return
+		}
+		connected <- ws
+	}()
+	select {
+	case ws := <-connected:
+		_, message, readErr := ws.ReadMessage()
+		require.NoError(t, readErr)
+		require.Equal(t, "ready", string(message))
+		_ = ws.Close()
+	case dialErr := <-failure:
+		require.NoError(t, dialErr)
+	case <-time.After(time.Second):
+		t.Fatal("Desktop WebSocket 握手等待了客户端 EOF")
+	}
 }

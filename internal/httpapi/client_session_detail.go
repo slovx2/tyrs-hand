@@ -73,7 +73,7 @@ func (s *Server) clientGetSession(c *gin.Context) {
 
 func (s *Server) loadClientSessionDetail(c *gin.Context, id uuid.UUID) (clientSessionDetail, error) {
 	session, err := scanClientSession(s.db.QueryRowContext(c.Request.Context(),
-		`SELECT `+clientSessionColumns+` FROM development_sessions WHERE id=$1`, id))
+		`SELECT `+clientSessionColumns+` FROM workspace_sessions WHERE id=$1`, id))
 	if err != nil {
 		return clientSessionDetail{}, err
 	}
@@ -185,7 +185,7 @@ func (s *Server) clientPatchSession(c *gin.Context) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	current, err := scanClientSession(tx.QueryRowContext(c.Request.Context(),
-		`SELECT `+clientSessionColumns+` FROM development_sessions WHERE id=$1 FOR UPDATE`, id))
+		`SELECT `+clientSessionColumns+` FROM workspace_sessions WHERE id=$1 FOR UPDATE`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusNotFound, "Session 不存在", err)
 		return
@@ -238,7 +238,7 @@ func (s *Server) clientPatchSession(c *gin.Context) {
 			return
 		}
 	}
-	row := tx.QueryRowContext(c.Request.Context(), `UPDATE development_sessions SET
+	row := tx.QueryRowContext(c.Request.Context(), `UPDATE workspace_sessions SET
 		title=$2,agent_profile_id=$3,model=NULLIF($4,''),reasoning_effort=NULLIF($5,''),
 		service_tier=$6,collaboration_mode=$7,
 		settings_version=settings_version+CASE WHEN $8 THEN 1 ELSE 0 END,

@@ -22,8 +22,8 @@ type Worktree struct {
 	WorkItemID uuid.UUID `json:"work_item_id,omitempty"`
 	// RepoCacheID holds the value of the "repo_cache_id" field.
 	RepoCacheID uuid.UUID `json:"repo_cache_id,omitempty"`
-	// ExecutionNodeID holds the value of the "execution_node_id" field.
-	ExecutionNodeID *uuid.UUID `json:"execution_node_id,omitempty"`
+	// WorkerID holds the value of the "worker_id" field.
+	WorkerID *uuid.UUID `json:"worker_id,omitempty"`
 	// Path holds the value of the "path" field.
 	Path string `json:"path,omitempty"`
 	// Branch holds the value of the "branch" field.
@@ -50,7 +50,7 @@ func (*Worktree) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case worktree.FieldExecutionNodeID:
+		case worktree.FieldWorkerID:
 			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		case worktree.FieldDirty:
 			values[i] = new(sql.NullBool)
@@ -93,12 +93,12 @@ func (_m *Worktree) assignValues(columns []string, values []any) error {
 			} else if value != nil {
 				_m.RepoCacheID = *value
 			}
-		case worktree.FieldExecutionNodeID:
+		case worktree.FieldWorkerID:
 			if value, ok := values[i].(*sql.NullScanner); !ok {
-				return fmt.Errorf("unexpected type %T for field execution_node_id", values[i])
+				return fmt.Errorf("unexpected type %T for field worker_id", values[i])
 			} else if value.Valid {
-				_m.ExecutionNodeID = new(uuid.UUID)
-				*_m.ExecutionNodeID = *value.S.(*uuid.UUID)
+				_m.WorkerID = new(uuid.UUID)
+				*_m.WorkerID = *value.S.(*uuid.UUID)
 			}
 		case worktree.FieldPath:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -198,8 +198,8 @@ func (_m *Worktree) String() string {
 	builder.WriteString("repo_cache_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RepoCacheID))
 	builder.WriteString(", ")
-	if v := _m.ExecutionNodeID; v != nil {
-		builder.WriteString("execution_node_id=")
+	if v := _m.WorkerID; v != nil {
+		builder.WriteString("worker_id=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")

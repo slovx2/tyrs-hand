@@ -14,7 +14,7 @@ export type SessionSettings = z.infer<typeof sessionSettingsSchema>;
 
 export const projectSchema = z.object({
   id: z.string().uuid(),
-  environmentId: z.string().uuid(),
+  workspaceId: z.string().uuid(),
   name: z.string(),
   relativePath: z.string(),
   kind: z.string(),
@@ -26,8 +26,8 @@ export type Project = z.infer<typeof projectSchema>;
 
 export const sessionSchema = z.object({
   id: z.string().uuid(),
-  developmentEnvironmentId: z.string().uuid(),
-  developmentProjectId: z.string().uuid(),
+  workspaceId: z.string().uuid(),
+  projectId: z.string().uuid(),
   agentProfileId: z.string().uuid(),
   title: z.string(),
   lifecycleState: z.enum(["active", "archive_pending", "archived", "unarchive_pending"]),

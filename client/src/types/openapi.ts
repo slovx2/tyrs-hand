@@ -164,15 +164,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/settings/global-agents": {
+    "/settings/github-agent-instructions": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["getGlobalAgents"];
-        put: operations["putGlobalAgents"];
+        get: operations["getGitHubAgentInstructions"];
+        put: operations["putGitHubAgentInstructions"];
         post?: never;
         delete?: never;
         options?: never;
@@ -180,14 +180,14 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/settings/codex": {
+    "/settings/github-agent": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["listCodexSettings"];
+        get: operations["listGitHubAgentSettings"];
         put?: never;
         post?: never;
         delete?: never;
@@ -196,7 +196,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/settings/codex/repositories/{id}": {
+    "/settings/github-agent/repositories/{id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -204,23 +204,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put: operations["putRepositoryCodexSettings"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/settings/codex/forums/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put: operations["putForumCodexSettings"];
+        put: operations["putRepositoryGitHubAgentSettings"];
         post?: never;
         delete?: never;
         options?: never;
@@ -324,39 +308,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/development-environments": {
+    "/workspaces": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["listDevelopmentEnvironments"];
+        get: operations["listWorkspaces"];
         put?: never;
-        post: operations["createDevelopmentEnvironment"];
+        post: operations["createWorkspace"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/development-environments/{id}/ssh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put: operations["putDevelopmentEnvironmentSSH"];
-        post?: never;
-        delete: operations["deleteDevelopmentEnvironmentSSH"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/development-projects/{id}/forums": {
+    "/workspace-projects/{id}/forums": {
         parameters: {
             query?: never;
             header?: never;
@@ -365,14 +333,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["createDevelopmentProjectForum"];
+        post: operations["createWorkspaceProjectForum"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/development-forums/{id}/disable": {
+    "/workspace-forums/{id}/disable": {
         parameters: {
             query?: never;
             header?: never;
@@ -381,14 +349,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["disableDevelopmentForum"];
+        post: operations["disableWorkspaceForum"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/development-forums/{id}/enable": {
+    "/workspace-forums/{id}/enable": {
         parameters: {
             query?: never;
             header?: never;
@@ -397,14 +365,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["enableDevelopmentForum"];
+        post: operations["enableWorkspaceForum"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/development-projects/{id}/forums/{forumId}/collaborators/{memberId}": {
+    "/workspace-projects/{id}/forums/{forumId}/collaborators/{memberId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -416,9 +384,9 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put: operations["putDevelopmentProjectForumCollaborator"];
+        put: operations["putWorkspaceProjectForumCollaborator"];
         post?: never;
-        delete: operations["deleteDevelopmentProjectForumCollaborator"];
+        delete: operations["deleteWorkspaceProjectForumCollaborator"];
         options?: never;
         head?: never;
         patch?: never;
@@ -610,9 +578,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["listHostWorkers"];
+        get: operations["listWorkers"];
         put?: never;
-        post: operations["createHostWorker"];
+        post: operations["createWorker"];
         delete?: never;
         options?: never;
         head?: never;
@@ -628,7 +596,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["createHostWorkerEnrollment"];
+        post: operations["createWorkerEnrollment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -645,7 +613,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete: operations["deleteHostWorker"];
+        delete: operations["deleteWorker"];
         options?: never;
         head?: never;
         patch?: never;
@@ -659,7 +627,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put: operations["setHostWorkerEnabled"];
+        put: operations["setWorkerEnabled"];
         post?: never;
         delete?: never;
         options?: never;
@@ -667,15 +635,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/settings/execution": {
+    "/settings/workers": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["getExecutionDefaults"];
-        put: operations["putExecutionDefaults"];
+        get: operations["getWorkerDefaults"];
+        put: operations["putWorkerDefaults"];
         post?: never;
         delete?: never;
         options?: never;
@@ -763,7 +731,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/worker/v2/enroll": {
+    "/worker/v1/enroll": {
         parameters: {
             query?: never;
             header?: never;
@@ -779,7 +747,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/worker/v2/sync": {
+    "/worker/v1/heartbeat": {
         parameters: {
             query?: never;
             header?: never;
@@ -788,14 +756,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["syncWorker"];
+        post: operations["workerHeartbeat"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/worker/v2/rpc": {
+    "/worker/v1/claims": {
         parameters: {
             query?: never;
             header?: never;
@@ -804,14 +772,62 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["callWorkerRPC"];
+        post: operations["workerClaim"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/worker/v2/blobs/{id}": {
+    "/worker/v1/ssh-configuration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["workerSSHConfiguration"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["workerWorkspace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/workspace/projects/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerWorkspaceProjectSnapshot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/blobs/{id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -821,6 +837,534 @@ export interface paths {
         get: operations["downloadWorkerBlob"];
         put?: never;
         post: operations["uploadWorkerBlob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/desktop-thread-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerPrepareDesktopThread"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/desktop-thread-requests/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["workerDesktopThreadState"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/desktop-thread-requests/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerCompleteDesktopThread"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/desktop-thread-requests/{id}/fail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerFailDesktopThread"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/thread-metadata-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerRecordThreadMetadata"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/thread-name-updates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["workerPendingThreadNames"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/thread-name-updates/{id}/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerAckThreadName"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/thread-lifecycle-requests/desktop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerPrepareDesktopThreadLifecycle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/thread-lifecycle-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["workerPendingThreadLifecycles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/thread-lifecycle-requests/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["workerThreadLifecycleState"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/thread-lifecycle-requests/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerCompleteThreadLifecycle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/desktop-turns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerPrepareDesktopTurn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/desktop-turns/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerPreflightDesktopTurn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/desktop-turns/{id}/images/target": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["workerDesktopImageTarget"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/desktop-turns/{id}/images/{ordinal}/fail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerFailDesktopImage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/desktop-rollbacks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerPrepareDesktopRollback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/desktop-rollbacks/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerCompleteDesktopRollback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/desktop-steers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerRecordDesktopSteer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/runs/{id}/interactive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerRegisterInteractive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/interactive/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["workerInteractiveState"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/interactive/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerAnswerInteractive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/runs/{id}/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerRunHeartbeat"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/runs/{id}/commands/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerCommandAck"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/runs/{id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerRunEvents"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/runs/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerRunComplete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/runs/{id}/fail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerRunFail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/runs/{id}/thread": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerSetThread"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/runs/{id}/submission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerRecordSubmission"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/runs/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerConfirmTurn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/runs/{id}/workspace-project-state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerWorkspaceProjectState"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/runs/{id}/workspace-state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerWorkspaceState"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/runs/{id}/tools/call": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerToolCall"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/runs/{id}/git-credential": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerGitCredential"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1220,9 +1764,9 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** Format: uuid */
-            developmentEnvironmentId: string;
+            workspaceId: string;
             /** Format: uuid */
-            developmentProjectId: string;
+            projectId: string;
             /** Format: uuid */
             agentProfileId: string;
             title: string;
@@ -1261,7 +1805,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             /** Format: uuid */
-            environmentId: string;
+            workspaceId: string;
             name: string;
             relativePath: string;
             kind: string;
@@ -1309,7 +1853,7 @@ export interface components {
             capabilities: {
                 [key: string]: boolean;
             };
-            environments: {
+            workspaces: {
                 [key: string]: unknown;
             }[];
             projects: components["schemas"]["ClientProject"][];
@@ -1323,7 +1867,7 @@ export interface components {
             };
             lastStartedSettings: components["schemas"]["ClientSessionSettings"] | null;
         };
-        ExecutionNode: {
+        Worker: {
             /** Format: uuid */
             id: string;
             name: string;
@@ -1341,7 +1885,7 @@ export interface components {
                 [key: string]: unknown;
             };
         };
-        ExecutionNodeInput: {
+        WorkerInput: {
             name: string;
             roles: ("github" | "discord")[];
             maxConcurrentJobs: number;
@@ -1351,14 +1895,14 @@ export interface components {
             /** @enum {integer} */
             expiresIn: 900;
         };
-        ExecutionNodeCreated: components["schemas"]["EnrollmentToken"] & {
-            node: components["schemas"]["ExecutionNode"];
+        WorkerCreated: components["schemas"]["EnrollmentToken"] & {
+            worker: components["schemas"]["Worker"];
         };
-        ExecutionDefaults: {
+        WorkerDefaults: {
             /** Format: uuid */
-            githubNodeId?: string | null;
+            githubWorkerId?: string | null;
             /** Format: uuid */
-            discordNodeId?: string | null;
+            discordWorkerId?: string | null;
         };
         SSHCredential: {
             /** Format: uuid */
@@ -1402,7 +1946,7 @@ export interface components {
             /** Format: uuid */
             proxyJumpHostId?: string;
             readonly proxyJumpAlias?: string;
-            executionNodeIds: string[];
+            workerIds: string[];
             enabled: boolean;
             /** Format: date-time */
             readonly updatedAt: string;
@@ -1416,7 +1960,7 @@ export interface components {
             credentialId: string;
             /** Format: uuid */
             proxyJumpHostId?: string;
-            executionNodeIds: string[];
+            workerIds: string[];
             enabled: boolean;
         };
         SSHHostImportItem: {
@@ -1429,7 +1973,7 @@ export interface components {
         SSHHostImportInput: {
             /** Format: uuid */
             credentialId: string;
-            executionNodeIds: string[];
+            workerIds: string[];
             enabled: boolean;
             hosts: components["schemas"]["SSHHostImportItem"][];
         };
@@ -1463,22 +2007,9 @@ export interface components {
         };
         WorkerEnrollResponse: {
             /** Format: uuid */
-            nodeId: string;
+            workerId: string;
             credential: string;
             protocolVersion: number;
-        };
-        WorkerRequestEnvelope: {
-            /** Format: uuid */
-            requestId: string;
-            /** Format: int64 */
-            sequence: number;
-            /** @description 稳定操作名；sync 仅接受 worker.heartbeat 和 worker.claim。 */
-            operation: string;
-            parameters?: {
-                [key: string]: string;
-            };
-            /** @description 操作对应的 JSON 请求体。 */
-            payload?: unknown;
         };
         WorkerHeartbeat: {
             workerVersion: string;
@@ -1488,7 +2019,6 @@ export interface components {
             };
         };
         WorkerClaimRequest: {
-            workerId: string;
             /** @enum {string} */
             role: "all" | "github" | "discord";
             wait: boolean;
@@ -1531,30 +2061,6 @@ export interface components {
             /** @enum {string} */
             action: "steer" | "interrupt";
             turnId?: string;
-        };
-        WorkerOperationTerminal: components["schemas"]["WorkerRunLease"] & {
-            idempotencyKey: string;
-            error?: string;
-            /** Format: int64 */
-            appliedRevision?: number;
-            containerId?: string;
-            imageRef?: string;
-            imageId?: string;
-            daemonStatus?: string;
-        };
-        WorkerRuntimeCredential: {
-            apiKey?: string;
-            baseUrl?: string;
-            proxyUrl?: string;
-            /** @enum {string} */
-            modelSource: "chatgpt" | "provider";
-            chatgptAuth?: {
-                [key: string]: unknown;
-            };
-            /** Format: int64 */
-            chatgptAuthRevision: number;
-            configSignature?: string;
-            globalAgents?: string;
         };
         ProblemDetails: {
             /** Format: uri-reference */
@@ -1658,40 +2164,31 @@ export interface components {
                 [key: string]: unknown;
             };
         };
-        GlobalAgents: {
+        GitHubAgentInstructions: {
             content: string;
         };
-        CodexPreferences: {
+        GitHubAgentPreferences: {
             model?: string | null;
             reasoningEffort?: string | null;
             /** @enum {string|null} */
             serviceTier?: "standard" | "fast" | null;
         };
-        CodexEffectivePreferences: {
+        GitHubAgentEffectivePreferences: {
             model: string;
             reasoningEffort: string;
             /** @enum {string} */
             serviceTier: "standard" | "fast";
         };
-        CodexForumSettings: {
-            /** Format: uuid */
-            id: string;
-            name: string;
-            ownerDiscordUserId: string;
-            settings: components["schemas"]["CodexPreferences"];
-            effective: components["schemas"]["CodexEffectivePreferences"];
-        };
-        CodexRepositorySettings: {
+        GitHubAgentRepositorySettings: {
             /** Format: uuid */
             id: string;
             owner: string;
             name: string;
-            settings: components["schemas"]["CodexPreferences"];
-            effective: components["schemas"]["CodexEffectivePreferences"];
-            forums: components["schemas"]["CodexForumSettings"][];
+            settings: components["schemas"]["GitHubAgentPreferences"];
+            effective: components["schemas"]["GitHubAgentEffectivePreferences"];
         };
-        CodexSettingsList: {
-            items: components["schemas"]["CodexRepositorySettings"][];
+        GitHubAgentSettingsList: {
+            items: components["schemas"]["GitHubAgentRepositorySettings"][];
             models: components["schemas"]["ClientModel"][];
         };
         DiscordSettings: {
@@ -1765,7 +2262,7 @@ export interface components {
             bound: boolean;
             githubLogin?: string;
         };
-        DevelopmentForumCollaborator: {
+        WorkspaceForumCollaborator: {
             /** Format: uuid */
             forumId: string;
             memberId: string;
@@ -1773,16 +2270,16 @@ export interface components {
             accessLevel: "readonly" | "operator";
             administratorBypass: boolean;
         };
-        DevelopmentForum: {
+        WorkspaceForum: {
             /** Format: uuid */
             id: string;
             name: string;
             discordId: string;
             /** @enum {string} */
             bindingStatus: "active" | "inactive";
-            collaborators: components["schemas"]["DevelopmentForumCollaborator"][];
+            collaborators: components["schemas"]["WorkspaceForumCollaborator"][];
         };
-        DevelopmentProject: {
+        WorkspaceProject: {
             /** Format: uuid */
             id: string;
             name: string;
@@ -1799,56 +2296,24 @@ export interface components {
             /** Format: date-time */
             lastSeenAt: string;
             scanError?: string;
-            forums: components["schemas"]["DevelopmentForum"][];
+            forums: components["schemas"]["WorkspaceForum"][];
         };
-        DevelopmentEnvironment: {
+        Workspace: {
             /** Format: uuid */
             id: string;
             ownerDiscordUserId: string;
             ownerName: string;
-            status: string;
-            imageRef: string;
-            imageId?: string;
-            runtimeUser?: string;
-            codexVersion?: string;
-            codexUserOverride: boolean;
-            /** Format: date-time */
-            lastUsedAt: string;
-            error?: string;
             /** Format: uuid */
-            executionNodeId?: string;
-            sshPublicKey?: string;
-            readonly sshFingerprint?: string;
-            sshPort?: number;
-            sshDiscordUserId?: string;
-            readonly sshDisplayName?: string;
-            /** Format: int64 */
-            readonly sshConfigRevision: number;
-            /** Format: int64 */
-            readonly sshAppliedRevision: number;
-            /** @enum {string} */
-            daemonStatus: "pending" | "starting" | "running" | "error";
-            daemonError?: string;
-            /** @enum {string} */
-            appServerStatus: "pending" | "starting" | "running" | "error";
-            /** @enum {string} */
-            sshStatus: "disabled" | "pending" | "starting" | "running" | "error";
-            /** @enum {string} */
-            hubStatus: "pending" | "starting" | "running" | "error";
+            workerId?: string;
             /** Format: date-time */
             projectsScannedAt?: string;
             projectScanError?: string;
-            projects: components["schemas"]["DevelopmentProject"][];
+            projects: components["schemas"]["WorkspaceProject"][];
         };
-        DevelopmentEnvironmentList: {
-            items: components["schemas"]["DevelopmentEnvironment"][];
+        WorkspaceList: {
+            items: components["schemas"]["Workspace"][];
         };
-        DevelopmentEnvironmentSSHInput: {
-            publicKey: string;
-            port: number;
-            discordUserId: string;
-        };
-        DevelopmentProjectForumInput: {
+        WorkspaceProjectForumInput: {
             /** @enum {string} */
             mode: "new" | "restore";
             /** Format: uuid */
@@ -1885,6 +2350,17 @@ export interface components {
                 "application/json": components["schemas"]["ResourceList"];
             };
         };
+        /** @description Worker 直连协议响应 */
+        WorkerJSON: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
     };
     parameters: {
         CSRFToken: string;
@@ -1892,7 +2368,15 @@ export interface components {
         Limit: number;
         WorkerResourceID: string;
     };
-    requestBodies: never;
+    requestBodies: {
+        WorkerJSON: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+    };
     headers: never;
     pathItems: {
         ListRepositories: {
@@ -2371,7 +2855,7 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    getGlobalAgents: {
+    getGitHubAgentInstructions: {
         parameters: {
             query?: never;
             header?: never;
@@ -2380,19 +2864,19 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 作为任务 developer instructions 注入的全局 Agent 指令 */
+            /** @description 仅注入 GitHub Work Item 的 developer instructions */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GlobalAgents"];
+                    "application/json": components["schemas"]["GitHubAgentInstructions"];
                 };
             };
             default: components["responses"]["Problem"];
         };
     };
-    putGlobalAgents: {
+    putGitHubAgentInstructions: {
         parameters: {
             query?: never;
             header: {
@@ -2403,7 +2887,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["GlobalAgents"];
+                "application/json": components["schemas"]["GitHubAgentInstructions"];
             };
         };
         responses: {
@@ -2417,7 +2901,7 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    listCodexSettings: {
+    listGitHubAgentSettings: {
         parameters: {
             query?: never;
             header?: never;
@@ -2426,19 +2910,19 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 仓库与 Discord Forum 的 Codex 设置 */
+            /** @description GitHub Agent Profile 与仓库参数覆盖 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CodexSettingsList"];
+                    "application/json": components["schemas"]["GitHubAgentSettingsList"];
                 };
             };
             default: components["responses"]["Problem"];
         };
     };
-    putRepositoryCodexSettings: {
+    putRepositoryGitHubAgentSettings: {
         parameters: {
             query?: never;
             header: {
@@ -2451,34 +2935,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CodexPreferences"];
-            };
-        };
-        responses: {
-            /** @description 已保存 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    putForumCodexSettings: {
-        parameters: {
-            query?: never;
-            header: {
-                "X-CSRF-Token": components["parameters"]["CSRFToken"];
-            };
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CodexPreferences"];
+                "application/json": components["schemas"]["GitHubAgentPreferences"];
             };
         };
         responses: {
@@ -2657,7 +3114,7 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    listDevelopmentEnvironments: {
+    listWorkspaces: {
         parameters: {
             query?: never;
             header?: never;
@@ -2666,19 +3123,19 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 长期开发环境 */
+            /** @description Worker 与逻辑 Workspace 绑定 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DevelopmentEnvironmentList"];
+                    "application/json": components["schemas"]["WorkspaceList"];
                 };
             };
             default: components["responses"]["Problem"];
         };
     };
-    createDevelopmentEnvironment: {
+    createWorkspace: {
         parameters: {
             query?: never;
             header: {
@@ -2691,11 +3148,13 @@ export interface operations {
             content: {
                 "application/json": {
                     ownerDiscordUserId: string;
+                    /** Format: uuid */
+                    workerId: string;
                 };
             };
         };
         responses: {
-            /** @description 逻辑环境已创建并绑定 Worker */
+            /** @description Workspace 已创建并绑定 Worker */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -2707,7 +3166,7 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    putDevelopmentEnvironmentSSH: {
+    createWorkspaceProjectForum: {
         parameters: {
             query?: never;
             header: {
@@ -2720,57 +3179,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["DevelopmentEnvironmentSSHInput"];
-            };
-        };
-        responses: {
-            /** @description SSH 配置已排队 */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    deleteDevelopmentEnvironmentSSH: {
-        parameters: {
-            query?: never;
-            header: {
-                "X-CSRF-Token": components["parameters"]["CSRFToken"];
-            };
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description SSH 停用已排队 */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    createDevelopmentProjectForum: {
-        parameters: {
-            query?: never;
-            header: {
-                "X-CSRF-Token": components["parameters"]["CSRFToken"];
-            };
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DevelopmentProjectForumInput"];
+                "application/json": components["schemas"]["WorkspaceProjectForumInput"];
             };
         };
         responses: {
@@ -2784,7 +3193,7 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    disableDevelopmentForum: {
+    disableWorkspaceForum: {
         parameters: {
             query?: never;
             header: {
@@ -2807,7 +3216,7 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    enableDevelopmentForum: {
+    enableWorkspaceForum: {
         parameters: {
             query?: never;
             header: {
@@ -2830,7 +3239,7 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    putDevelopmentProjectForumCollaborator: {
+    putWorkspaceProjectForumCollaborator: {
         parameters: {
             query?: never;
             header: {
@@ -2862,7 +3271,7 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    deleteDevelopmentProjectForumCollaborator: {
+    deleteWorkspaceProjectForumCollaborator: {
         parameters: {
             query?: never;
             header: {
@@ -3100,7 +3509,7 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    listHostWorkers: {
+    listWorkers: {
         parameters: {
             query?: never;
             header?: never;
@@ -3116,13 +3525,13 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        items: components["schemas"]["ExecutionNode"][];
+                        items: components["schemas"]["Worker"][];
                     };
                 };
             };
         };
     };
-    createHostWorker: {
+    createWorker: {
         parameters: {
             query?: never;
             header: {
@@ -3133,7 +3542,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ExecutionNodeInput"];
+                "application/json": components["schemas"]["WorkerInput"];
             };
         };
         responses: {
@@ -3143,12 +3552,12 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ExecutionNodeCreated"];
+                    "application/json": components["schemas"]["WorkerCreated"];
                 };
             };
         };
     };
-    createHostWorkerEnrollment: {
+    createWorkerEnrollment: {
         parameters: {
             query?: never;
             header: {
@@ -3172,7 +3581,7 @@ export interface operations {
             };
         };
     };
-    deleteHostWorker: {
+    deleteWorker: {
         parameters: {
             query?: never;
             header: {
@@ -3195,7 +3604,7 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    setHostWorkerEnabled: {
+    setWorkerEnabled: {
         parameters: {
             query?: never;
             header: {
@@ -3224,7 +3633,7 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    getExecutionDefaults: {
+    getWorkerDefaults: {
         parameters: {
             query?: never;
             header?: never;
@@ -3233,18 +3642,18 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 默认节点 */
+            /** @description 默认 Worker */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ExecutionDefaults"];
+                    "application/json": components["schemas"]["WorkerDefaults"];
                 };
             };
         };
     };
-    putExecutionDefaults: {
+    putWorkerDefaults: {
         parameters: {
             query?: never;
             header: {
@@ -3255,7 +3664,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ExecutionDefaults"];
+                "application/json": components["schemas"]["WorkerDefaults"];
             };
         };
         responses: {
@@ -3509,7 +3918,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 长期节点凭据 */
+            /** @description 长期 Worker 凭据 */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3521,7 +3930,7 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    syncWorker: {
+    workerHeartbeat: {
         parameters: {
             query?: never;
             header?: never;
@@ -3530,22 +3939,11 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["WorkerRequestEnvelope"];
+                "application/json": components["schemas"]["WorkerHeartbeat"];
             };
         };
         responses: {
-            /** @description 同步结果 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description 同步完成，无响应体 */
+            /** @description 心跳已记录 */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -3555,7 +3953,7 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    callWorkerRPC: {
+    workerClaim: {
         parameters: {
             query?: never;
             header?: never;
@@ -3564,11 +3962,60 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["WorkerRequestEnvelope"];
+                "application/json": components["schemas"]["WorkerClaimRequest"];
             };
         };
         responses: {
-            /** @description RPC 结果 */
+            /** @description 可选任务租约 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerClaimResponse"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerSSHConfiguration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前 Worker 的出站 SSH 配置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerSSHConfiguration"];
+                };
+            };
+            /** @description 配置未变化 */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前 Worker 可选 Workspace */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3576,10 +4023,28 @@ export interface operations {
                 content: {
                     "application/json": {
                         [key: string]: unknown;
-                    };
+                    } | null;
                 };
             };
-            /** @description RPC 完成，无响应体 */
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerWorkspaceProjectSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description 项目快照已保存 */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -3649,6 +4114,594 @@ export interface operations {
                     };
                 };
             };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerPrepareDesktopThread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WorkerJSON"];
+        responses: {
+            200: components["responses"]["WorkerJSON"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerDesktopThreadState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["WorkerJSON"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerCompleteDesktopThread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WorkerJSON"];
+        responses: {
+            200: components["responses"]["WorkerJSON"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerFailDesktopThread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WorkerJSON"];
+        responses: {
+            /** @description 失败状态已保存 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerRecordThreadMetadata: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WorkerJSON"];
+        responses: {
+            /** @description 元数据事件已保存 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerPendingThreadNames: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["WorkerJSON"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerAckThreadName: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WorkerJSON"];
+        responses: {
+            /** @description 标题更新已确认 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerPrepareDesktopThreadLifecycle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WorkerJSON"];
+        responses: {
+            200: components["responses"]["WorkerJSON"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerPendingThreadLifecycles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["WorkerJSON"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerThreadLifecycleState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["WorkerJSON"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerCompleteThreadLifecycle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WorkerJSON"];
+        responses: {
+            /** @description 生命周期操作已完成 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerPrepareDesktopTurn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WorkerJSON"];
+        responses: {
+            200: components["responses"]["WorkerJSON"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerPreflightDesktopTurn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WorkerJSON"];
+        responses: {
+            200: components["responses"]["WorkerJSON"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerDesktopImageTarget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["WorkerJSON"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerFailDesktopImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+                ordinal: number;
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WorkerJSON"];
+        responses: {
+            /** @description 图片失败状态已保存 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerPrepareDesktopRollback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WorkerJSON"];
+        responses: {
+            200: components["responses"]["WorkerJSON"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerCompleteDesktopRollback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WorkerJSON"];
+        responses: {
+            /** @description 回滚已完成 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerRecordDesktopSteer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WorkerJSON"];
+        responses: {
+            /** @description Steer 已保存 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerRegisterInteractive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WorkerJSON"];
+        responses: {
+            200: components["responses"]["WorkerJSON"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerInteractiveState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["WorkerJSON"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerAnswerInteractive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WorkerJSON"];
+        responses: {
+            200: components["responses"]["WorkerJSON"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerRunHeartbeat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WorkerJSON"];
+        responses: {
+            200: components["responses"]["WorkerJSON"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerCommandAck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerCommandAck"];
+            };
+        };
+        responses: {
+            /** @description 命令已确认 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerRunEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerEventsRequest"];
+            };
+        };
+        responses: {
+            /** @description 事件已保存 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerRunComplete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerCompleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Run 已完成 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerRunFail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerFailRequest"];
+            };
+        };
+        responses: {
+            /** @description Run 失败状态已保存 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerSetThread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WorkerJSON"];
+        responses: {
+            /** @description Thread 已绑定 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerRecordSubmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WorkerJSON"];
+        responses: {
+            /** @description Submission 已记录 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerConfirmTurn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WorkerJSON"];
+        responses: {
+            /** @description Turn 已确认 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerWorkspaceProjectState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WorkerJSON"];
+        responses: {
+            /** @description 项目状态已保存 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerWorkspaceState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WorkerJSON"];
+        responses: {
+            /** @description Workspace 状态已保存 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerToolCall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WorkerJSON"];
+        responses: {
+            200: components["responses"]["WorkerJSON"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerGitCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["WorkerJSON"];
+        responses: {
+            200: components["responses"]["WorkerJSON"];
             default: components["responses"]["Problem"];
         };
     };

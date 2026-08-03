@@ -3,30 +3,25 @@ package main
 import (
 	"context"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
-	"github.com/slovx2/tyrs-hand/internal/secrets"
-	"github.com/slovx2/tyrs-hand/internal/security"
-	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
 )
 
 type seededFixture struct {
-	EnvironmentID uuid.UUID `json:"environmentId"`
-	ContainerName string    `json:"containerName"`
+	WorkspaceID uuid.UUID `json:"workspaceId"`
+	ProjectID   uuid.UUID `json:"projectId"`
 }
 
 func main() {
 	if len(os.Args) < 2 {
-		log.Fatal("用法：fixture configure-provider|seed|seed-project-matrix|wait-ready|snapshot|notification-target|assert-message-once|assert-session-project|assert-attachment-once|assert-preference|assert-intent-once|seed-history|seed-forward-history|force-cursor-reset")
+		log.Fatal("用法：fixture seed|seed-project-matrix|wait-ready|snapshot|notification-target|assert-message-once|assert-session-project|assert-attachment-once|assert-preference|assert-intent-once|seed-history|seed-forward-history|force-cursor-reset")
 	}
 	databaseURL := os.Getenv("TYRS_HAND_DATABASE_URL")
 	if databaseURL == "" {
@@ -40,8 +35,6 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	switch os.Args[1] {
-	case "configure-provider":
-		configureProvider(ctx, db, os.Args[2:])
 	case "seed":
 		seed(ctx, db, os.Args[2:])
 	case "seed-project-matrix":
@@ -73,63 +66,23 @@ func main() {
 	}
 }
 
-func configureProvider(ctx context.Context, db *sql.DB, arguments []string) {
-	flags := flag.NewFlagSet("configure-provider", flag.ExitOnError)
-	baseURL := flags.String("base-url", "", "OpenAI-compatible Responses API Base URL")
-	_ = flags.Parse(arguments)
-	masterKey, err := base64.StdEncoding.DecodeString(os.Getenv("TYRS_HAND_MASTER_KEY"))
-	if err != nil || len(masterKey) != 32 || strings.TrimSpace(*baseURL) == "" {
-		log.Fatal("configure-provider 需要 --base-url 与 32 字节 base64 TYRS_HAND_MASTER_KEY")
-	}
-	box, err := security.NewSecretBox(masterKey)
-	if err != nil {
-		log.Fatal(err)
-	}
-	service := platformsettings.NewService(db, secrets.NewStore(db, box))
-	err = service.SaveAgentProvider(ctx, platformsettings.AgentProviderInput{
-		ModelSource: platformsettings.ModelSourceProvider,
-		BaseURL:     *baseURL,
-		APIKey:      "mobile-e2e-key",
-		Model:       "gpt-5.6-sol",
-		Reasoning:   "high",
-		ServiceTier: "standard",
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	writeJSON(map[string]any{"configured": true})
-}
-
 func seed(ctx context.Context, db *sql.DB, arguments []string) {
 	flags := flag.NewFlagSet("seed", flag.ExitOnError)
-	nodeText := flags.String("node-id", "", "执行节点 UUID")
-	image := flags.String("image", "", "开发镜像")
-	protocol := flags.Bool("protocol", false, "直接创建协议 Worker 使用的就绪环境")
+	workerText := flags.String("worker-id", "", "Worker UUID")
 	projectName := flags.String("project-name", "e2e-project", "首个项目名称")
 	_ = flags.Parse(arguments)
-	nodeID, err := uuid.Parse(*nodeText)
-	if err != nil || strings.TrimSpace(*image) == "" {
-		log.Fatal("seed 需要 --node-id 与 --image")
+	workerID, err := uuid.Parse(*workerText)
+	if err != nil {
+		log.Fatal("seed 需要 --worker-id")
 	}
-	environmentID := uuid.New()
-	compact := strings.ReplaceAll(environmentID.String(), "-", "")
-	fixture := seededFixture{EnvironmentID: environmentID,
-		ContainerName: "tyrs-hand-e2e-dev-" + compact}
+	workspaceID := uuid.New()
+	projectID := uuid.New()
+	fixture := seededFixture{WorkspaceID: workspaceID, ProjectID: projectID}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	status := "pending"
-	containerID := any(nil)
-	runtimeUser := any(nil)
-	runtimeUID := any(nil)
-	runtimeGID := any(nil)
-	runtimeHome := any(nil)
-	if *protocol {
-		status, containerID, runtimeUser = "running", "protocol-container", "developer"
-		runtimeUID, runtimeGID, runtimeHome = int64(1000), int64(1000), "/home/developer"
-	}
 	statements := []struct {
 		query string
 		args  []any
@@ -139,29 +92,12 @@ func seed(ctx context.Context, db *sql.DB, arguments []string) {
 		{`INSERT INTO discord_members(guild_id,discord_user_id,username,display_name,active)
 			VALUES ('999000000000000001','999000000000000002','mobile-e2e','Mobile E2E',true)
 			ON CONFLICT(guild_id,discord_user_id) DO UPDATE SET active=true`, nil},
-		{`INSERT INTO discord_development_environments
-			(id,guild_id,owner_discord_user_id,image_ref,container_name,data_volume_name,
-			home_volume_name,network_name,execution_node_id,status,container_id,
-			runtime_user,runtime_uid,runtime_gid,runtime_home)
-			VALUES ($1,'999000000000000001','999000000000000002',$2,$3,$4,$5,$6,$7,
-				$8,$9,$10,$11,$12,$13)`,
-			[]any{environmentID, *image, fixture.ContainerName, "tyrs-hand-e2e-data-" + compact,
-				"tyrs-hand-e2e-home-" + compact, "tyrs-hand-e2e-net-" + compact, nodeID,
-				status, containerID, runtimeUser, runtimeUID, runtimeGID, runtimeHome}},
-	}
-	if *protocol {
-		statements = append(statements, struct {
-			query string
-			args  []any
-		}{`INSERT INTO development_projects(environment_id,relative_path,name,project_kind,
-			availability_status,last_seen_at) VALUES ($1,'workspaces/e2e-project',$2,
-			'directory','available',now())`, []any{environmentID, *projectName}})
-	} else {
-		statements = append(statements, struct {
-			query string
-			args  []any
-		}{`INSERT INTO discord_development_operations(environment_id,operation,execution_node_id)
-			VALUES ($1,'provision_environment',$2)`, []any{environmentID, nodeID}})
+		{`INSERT INTO worker_workspaces(id,guild_id,owner_discord_user_id,worker_id)
+			VALUES ($1,'999000000000000001','999000000000000002',$2)`,
+			[]any{workspaceID, workerID}},
+		{`INSERT INTO workspace_projects(id,workspace_id,relative_path,name,project_kind,
+			availability_status,last_seen_at) VALUES ($1,$2,'workspaces/e2e-project',$3,
+			'directory','available',now())`, []any{projectID, workspaceID, *projectName}},
 	}
 	for _, statement := range statements {
 		if _, err = tx.ExecContext(ctx, statement.query, statement.args...); err != nil {
@@ -176,27 +112,27 @@ func seed(ctx context.Context, db *sql.DB, arguments []string) {
 
 func seedProjectMatrix(ctx context.Context, db *sql.DB, arguments []string) {
 	flags := flag.NewFlagSet("seed-project-matrix", flag.ExitOnError)
-	environmentText := flags.String("environment-id", "", "环境 UUID")
+	workspaceText := flags.String("workspace-id", "", "Workspace UUID")
 	primaryName := flags.String("primary-name", "alpha-primary", "首个项目名称")
 	secondaryName := flags.String("secondary-name", "zeta-secondary", "第二项目名称")
 	_ = flags.Parse(arguments)
-	environmentID, err := uuid.Parse(*environmentText)
+	workspaceID, err := uuid.Parse(*workspaceText)
 	if err != nil {
-		log.Fatal("seed-project-matrix 需要 --environment-id")
+		log.Fatal("seed-project-matrix 需要 --workspace-id")
 	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	_, err = tx.ExecContext(ctx, `UPDATE development_projects SET name=$2,updated_at=now()
-		WHERE environment_id=$1 AND relative_path='workspaces/e2e-project'`, environmentID, *primaryName)
+	_, err = tx.ExecContext(ctx, `UPDATE workspace_projects SET name=$2,updated_at=now()
+		WHERE workspace_id=$1 AND relative_path='workspaces/e2e-project'`, workspaceID, *primaryName)
 	if err == nil {
-		_, err = tx.ExecContext(ctx, `INSERT INTO development_projects(environment_id,relative_path,
+		_, err = tx.ExecContext(ctx, `INSERT INTO workspace_projects(workspace_id,relative_path,
 			name,project_kind,availability_status,last_seen_at) VALUES
 			($1,'workspaces/e2e-secondary',$2,'directory','available',now())
-			ON CONFLICT(environment_id,relative_path) DO UPDATE SET name=EXCLUDED.name,
-			availability_status='available',last_seen_at=now(),updated_at=now()`, environmentID, *secondaryName)
+			ON CONFLICT(workspace_id,relative_path) DO UPDATE SET name=EXCLUDED.name,
+			availability_status='available',last_seen_at=now(),updated_at=now()`, workspaceID, *secondaryName)
 	}
 	if err == nil {
 		err = tx.Commit()
@@ -204,42 +140,36 @@ func seedProjectMatrix(ctx context.Context, db *sql.DB, arguments []string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	writeJSON(map[string]any{"environmentId": environmentID, "projects": []string{*primaryName, *secondaryName}})
+	writeJSON(map[string]any{"workspaceId": workspaceID, "projects": []string{*primaryName, *secondaryName}})
 }
 
 func waitReady(ctx context.Context, db *sql.DB, arguments []string) {
 	flags := flag.NewFlagSet("wait-ready", flag.ExitOnError)
-	environmentText := flags.String("environment-id", "", "环境 UUID")
+	workspaceText := flags.String("workspace-id", "", "Workspace UUID")
 	_ = flags.Parse(arguments)
-	environmentID, err := uuid.Parse(*environmentText)
+	workspaceID, err := uuid.Parse(*workspaceText)
 	if err != nil {
-		log.Fatal("wait-ready 需要 --environment-id")
+		log.Fatal("wait-ready 需要 --workspace-id")
 	}
 	for ctx.Err() == nil {
-		var status, container string
 		var projectID sql.NullString
-		err = db.QueryRowContext(ctx, `SELECT environment.status,
-			COALESCE(environment.container_id,''),
-			(SELECT project.id::text FROM development_projects project
-			 WHERE project.environment_id=environment.id
-			   AND project.relative_path='workspaces/e2e-project'
-			   AND project.availability_status='available' LIMIT 1)
-			FROM discord_development_environments environment WHERE environment.id=$1`,
-			environmentID).Scan(&status, &container, &projectID)
-		if err == nil && status == "running" && container != "" && projectID.Valid {
-			writeJSON(map[string]any{"environmentId": environmentID, "projectId": projectID.String,
-				"containerId": container})
+		err = db.QueryRowContext(ctx, `SELECT project.id::text
+			FROM workspace_projects project WHERE project.workspace_id=$1
+			AND project.relative_path='workspaces/e2e-project'
+			AND project.availability_status='available' LIMIT 1`, workspaceID).Scan(&projectID)
+		if err == nil && projectID.Valid {
+			writeJSON(map[string]any{"workspaceId": workspaceID, "projectId": projectID.String})
 			return
 		}
 		time.Sleep(time.Second)
 	}
-	log.Fatal("等待开发环境与 e2e-project 就绪超时")
+	log.Fatal("等待Workspace与 e2e-project 就绪超时")
 }
 
 func snapshot(ctx context.Context, db *sql.DB) {
 	result := map[string]int64{}
 	queries := map[string]string{
-		"sessions":      `SELECT count(*) FROM development_sessions`,
+		"sessions":      `SELECT count(*) FROM workspace_sessions`,
 		"messages":      `SELECT count(*) FROM session_messages`,
 		"runs":          `SELECT count(*) FROM codex_turn_runs`,
 		"completedRuns": `SELECT count(*) FROM codex_turn_runs WHERE status='completed'`,
@@ -268,10 +198,10 @@ func notificationTarget(ctx context.Context, db *sql.DB, arguments []string) {
 		log.Fatal(err)
 	}
 	if *text == "" {
-		err = db.QueryRowContext(ctx, `SELECT id FROM development_sessions
+		err = db.QueryRowContext(ctx, `SELECT id FROM workspace_sessions
 			ORDER BY last_activity_at DESC,id DESC LIMIT 1`).Scan(&sessionID)
 	} else {
-		err = db.QueryRowContext(ctx, `SELECT session.id FROM development_sessions session
+		err = db.QueryRowContext(ctx, `SELECT session.id FROM workspace_sessions session
 			JOIN session_messages message ON message.session_id=session.id
 			WHERE message.message_role='user' AND COALESCE(message.content->>'text',
 			message.content #>> '{v,content,data,message}','')=$1
@@ -313,8 +243,8 @@ func assertSessionProject(ctx context.Context, db *sql.DB, arguments []string) {
 	}
 	var count int
 	err := db.QueryRowContext(ctx, `SELECT count(DISTINCT session.id)
-		FROM development_sessions session
-		JOIN development_projects project ON project.id=session.development_project_id
+		FROM workspace_sessions session
+		JOIN workspace_projects project ON project.id=session.workspace_project_id
 		JOIN session_messages message ON message.session_id=session.id
 		WHERE project.name=$2 AND message.message_role='user'
 		AND COALESCE(message.content->>'text',message.content #>> '{v,content,data,message}','')=$1`,
@@ -410,7 +340,7 @@ func seedHistory(ctx context.Context, db *sql.DB) {
 	defer func() { _ = tx.Rollback() }()
 	var sessionID uuid.UUID
 	var sequence int64
-	err = tx.QueryRowContext(ctx, `SELECT id,last_message_seq FROM development_sessions
+	err = tx.QueryRowContext(ctx, `SELECT id,last_message_seq FROM workspace_sessions
 		ORDER BY last_activity_at DESC,id DESC LIMIT 1 FOR UPDATE`).Scan(&sessionID, &sequence)
 	if err != nil {
 		log.Fatal(err)
@@ -427,7 +357,7 @@ func seedHistory(ctx context.Context, db *sql.DB) {
 			log.Fatal(err)
 		}
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE development_sessions SET last_message_seq=$2,
+	_, err = tx.ExecContext(ctx, `UPDATE workspace_sessions SET last_message_seq=$2,
 		last_activity_at=now(),updated_at=now() WHERE id=$1`, sessionID, sequence)
 	if err == nil {
 		err = tx.Commit()
@@ -446,7 +376,7 @@ func seedForwardHistory(ctx context.Context, db *sql.DB) {
 	defer func() { _ = tx.Rollback() }()
 	var sessionID uuid.UUID
 	var sequence int64
-	err = tx.QueryRowContext(ctx, `SELECT id,last_message_seq FROM development_sessions
+	err = tx.QueryRowContext(ctx, `SELECT id,last_message_seq FROM workspace_sessions
 		ORDER BY last_activity_at DESC,id DESC LIMIT 1 FOR UPDATE`).Scan(&sessionID, &sequence)
 	if err != nil {
 		log.Fatal(err)
@@ -471,7 +401,7 @@ func seedForwardHistory(ctx context.Context, db *sql.DB) {
 			log.Fatal(err)
 		}
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE development_sessions SET last_message_seq=$2,
+	_, err = tx.ExecContext(ctx, `UPDATE workspace_sessions SET last_message_seq=$2,
 		last_activity_at=now(),updated_at=now() WHERE id=$1`, sessionID, sequence)
 	if err == nil {
 		err = tx.Commit()

@@ -77,7 +77,6 @@ test('管理员配置 Discord 并执行 Server 初始化', async ({ page }) => {
   await page.goto('/settings/discord')
   await expect(page.getByRole('heading', { name: 'Discord' })).toBeVisible()
   await expect(page.getByText('普通项目')).toHaveCount(0)
-  await expect(page.getByText('长期开发环境')).toHaveCount(0)
   await page.getByLabel('启用 Discord 常驻服务').check()
   await page.getByRole('button', { name: '保存 Discord 设置' }).click()
 

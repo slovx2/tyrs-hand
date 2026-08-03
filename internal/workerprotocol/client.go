@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,7 +22,6 @@ type Client struct {
 	baseURL    string
 	credential string
 	http       *http.Client
-	sequence   atomic.Uint64
 }
 
 type HTTPError struct {
@@ -60,7 +58,7 @@ func (c *Client) SetCredential(value string) { c.credential = value }
 
 func (c *Client) Enroll(ctx context.Context, token string) (EnrollResponse, error) {
 	var result EnrollResponse
-	err := c.callDirect(ctx, http.MethodPost, "/worker/v2/enroll", EnrollRequest{Token: token},
+	err := c.call(ctx, http.MethodPost, "/worker/v1/enroll", EnrollRequest{Token: token},
 		&result, false)
 	return result, err
 }
@@ -82,40 +80,19 @@ func (c *Client) SSHConfiguration(ctx context.Context, etag string) (SSHConfigur
 	return configuration, nextETag, nextETag != etag, nil
 }
 
-func (c *Client) DevelopmentEnvironments(ctx context.Context) ([]EnvironmentManifest, error) {
+func (c *Client) Workspace(ctx context.Context) (*WorkspaceManifest, error) {
 	var result struct {
-		Environments []EnvironmentManifest `json:"environments"`
+		Workspace *WorkspaceManifest `json:"workspace"`
 	}
-	err := c.call(ctx, http.MethodGet, "/worker/v1/development-environments", nil, &result, true)
-	return result.Environments, err
+	err := c.call(ctx, http.MethodGet, "/worker/v1/workspace", nil, &result, true)
+	return result.Workspace, err
 }
 
-func (c *Client) EnvironmentDaemonState(ctx context.Context, state EnvironmentDaemonState) error {
-	return c.call(ctx, http.MethodPost, "/worker/v1/development-environments/"+
-		state.EnvironmentID.String()+"/daemon-state", state, nil, true)
-}
-
-func (c *Client) DevelopmentProjectSnapshot(ctx context.Context,
-	request DevelopmentProjectSnapshotRequest,
+func (c *Client) WorkspaceProjectSnapshot(ctx context.Context,
+	request WorkspaceProjectSnapshotRequest,
 ) error {
-	return c.call(ctx, http.MethodPost, "/worker/v1/development-environments/"+
-		request.EnvironmentID.String()+"/projects/snapshot", request, nil, true)
-}
-
-func (c *Client) InterruptEnvironmentInteractive(ctx context.Context,
-	environmentID uuid.UUID,
-) error {
-	return c.call(ctx, http.MethodPost, "/worker/v1/development-environments/"+
-		environmentID.String()+"/interactive/interrupted", struct{}{}, nil, true)
-}
-
-func (c *Client) EnvironmentRuntimeCredential(ctx context.Context,
-	environmentID uuid.UUID,
-) (RuntimeCredential, error) {
-	var result RuntimeCredential
-	err := c.call(ctx, http.MethodPost, "/worker/v1/development-environments/"+
-		environmentID.String()+"/runtime-credential", nil, &result, true)
-	return result, err
+	return c.call(ctx, http.MethodPost, "/worker/v1/workspace/projects/snapshot",
+		request, nil, true)
 }
 
 func (c *Client) PrepareDesktopThread(ctx context.Context,
@@ -262,7 +239,7 @@ func (c *Client) UploadDesktopImageReader(ctx context.Context, intentID uuid.UUI
 		writeResult <- marshalErr
 	}()
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		fmt.Sprintf("%s/worker/v2/blobs/%s?ordinal=%d", c.baseURL, intentID, ordinal),
+		fmt.Sprintf("%s/worker/v1/blobs/%s?ordinal=%d", c.baseURL, intentID, ordinal),
 		reader)
 	if err != nil {
 		_ = reader.CloseWithError(err)
@@ -415,24 +392,17 @@ func (c *Client) FailWithCodexError(ctx context.Context, task *Task, code string
 	}, nil, true)
 }
 
-func (c *Client) RuntimeCredential(ctx context.Context, task *Task) (RuntimeCredential, error) {
-	var result RuntimeCredential
-	err := c.call(ctx, http.MethodPost, runPath(task, "/runtime-credential"), lease(task),
-		&result, true)
-	return result, err
-}
-
 func (c *Client) DownloadAttachment(ctx context.Context, task *Task, attachmentID uuid.UUID,
 	destination io.Writer,
 ) (string, int64, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		fmt.Sprintf("%s/worker/v2/blobs/%s?runId=%s", c.baseURL, attachmentID,
+		fmt.Sprintf("%s/worker/v1/blobs/%s?runId=%s", c.baseURL, attachmentID,
 			task.Claimed.RunID), nil)
 	if err != nil {
 		return "", 0, err
 	}
 	if c.credential == "" {
-		return "", 0, errors.New("执行节点尚未注册")
+		return "", 0, errors.New("Worker尚未注册")
 	}
 	request.Header.Set("Authorization", "Bearer "+c.credential)
 	request.Header.Set("X-Run-Lease-Token", task.Claimed.LeaseToken)
@@ -454,9 +424,9 @@ func (c *Client) DownloadAttachment(ctx context.Context, task *Task, attachmentI
 	return response.Header.Get("X-Attachment-SHA256"), written, err
 }
 
-func (c *Client) SetThread(ctx context.Context, task *Task, threadID, home string) error {
+func (c *Client) SetThread(ctx context.Context, task *Task, threadID string) error {
 	return c.call(ctx, http.MethodPost, runPath(task, "/thread"), SetThreadRequest{
-		RunLeaseRequest: lease(task), ThreadID: threadID, CodexHome: home,
+		RunLeaseRequest: lease(task), ThreadID: threadID,
 	}, nil, true)
 }
 
@@ -472,9 +442,9 @@ func (c *Client) ConfirmTurn(ctx context.Context, task *Task, id string) error {
 	}, nil, true)
 }
 
-func (c *Client) DevelopmentState(ctx context.Context, task *Task, state DevelopmentState) error {
+func (c *Client) WorkspaceProjectState(ctx context.Context, task *Task, state WorkspaceProjectState) error {
 	state.RunLeaseRequest = lease(task)
-	return c.call(ctx, http.MethodPost, runPath(task, "/development-state"), state, nil, true)
+	return c.call(ctx, http.MethodPost, runPath(task, "/workspace-project-state"), state, nil, true)
 }
 
 func (c *Client) WorkspaceState(ctx context.Context, task *Task, state WorkspaceState) error {
@@ -508,36 +478,24 @@ func (c *Client) GitCredential(ctx context.Context, task *Task, purpose, threadI
 func (c *Client) call(ctx context.Context, method, path string, input, output any,
 	authenticated bool,
 ) error {
-	return c.callWithParameters(ctx, method, path, nil, input, output, authenticated)
+	return c.callDirect(ctx, method, path, input, output, authenticated)
 }
 
 func (c *Client) callWithParameters(ctx context.Context, method, path string,
 	additional map[string]string, input, output any, authenticated bool,
 ) error {
-	payload, err := json.Marshal(input)
-	if err != nil {
-		return err
-	}
-	operation, parameters, err := ResolveOperation(method, path)
-	if err != nil {
-		return err
-	}
-	for name, value := range additional {
-		if value != "" {
-			parameters[name] = value
-		}
-	}
-	target := "/worker/v2/rpc"
-	if operation == "worker.heartbeat" || operation == "worker.claim" {
-		target = "/worker/v2/sync"
-	}
-	envelope := RequestEnvelope{RequestID: uuid.NewString(), Sequence: c.sequence.Add(1),
-		Operation: operation, Parameters: parameters, Payload: payload}
-	return c.callDirect(ctx, http.MethodPost, target, envelope, output, authenticated)
+	return c.callDirectWithHeaders(ctx, method, path, input, output, authenticated,
+		map[string]string{"If-None-Match": strings.TrimSpace(additional["ifNoneMatch"])})
 }
 
 func (c *Client) callDirect(ctx context.Context, method, path string, input, output any,
 	authenticated bool,
+) error {
+	return c.callDirectWithHeaders(ctx, method, path, input, output, authenticated, nil)
+}
+
+func (c *Client) callDirectWithHeaders(ctx context.Context, method, path string, input,
+	output any, authenticated bool, headers map[string]string,
 ) error {
 	var body io.Reader
 	if input != nil {
@@ -552,13 +510,18 @@ func (c *Client) callDirect(ctx context.Context, method, path string, input, out
 		return err
 	}
 	request.Header.Set("Content-Type", "application/json")
+	for name, value := range headers {
+		if value != "" {
+			request.Header.Set(name, value)
+		}
+	}
 	return c.execute(request, output, authenticated)
 }
 
 func (c *Client) execute(request *http.Request, output any, authenticated bool) error {
 	if authenticated {
 		if c.credential == "" {
-			return errors.New("执行节点尚未注册")
+			return errors.New("Worker尚未注册")
 		}
 		request.Header.Set("Authorization", "Bearer "+c.credential)
 	}

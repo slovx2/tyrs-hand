@@ -15,7 +15,7 @@ if [ -z "${worker_binary}" ] && [ -z "${release_version}" ]; then
 fi
 if { [ -z "${enrollment_token}" ] && [ -z "${credential_source}" ]; } ||
   { [ -n "${enrollment_token}" ] && [ -n "${credential_source}" ]; }; then
-  echo "Enrollment Token 与旧 Worker Credential 必须且只能提供一个" >&2
+  echo "Enrollment Token 与现有 Worker Credential 必须且只能提供一个" >&2
   exit 1
 fi
 
@@ -90,18 +90,41 @@ validate_env_value() {
 repository=${TYRS_HAND_RELEASE_REPOSITORY:-slovx2/tyrs-hand}
 case "${repository}" in *[!A-Za-z0-9_./-]*|*..*|/*|*/|*/*/*) echo "Release 仓库名无效" >&2; exit 1 ;; esac
 if [ -z "${worker_binary}" ]; then
+  if ! command -v cosign >/dev/null 2>&1; then
+    echo "下载 Release 制品需要 cosign 2.5.3，请先安装该精确版本" >&2
+    exit 1
+  fi
   asset="tyrs-hand-worker_${release_version#v}_${os}_${arch}.tar.gz"
   base="https://github.com/${repository}/releases/download/${release_version}"
   temporary=$(mktemp -d)
   trap 'rm -rf "${temporary}"' EXIT
   curl --fail --location --silent --show-error --retry 5 -o "${temporary}/${asset}" "${base}/${asset}"
   curl --fail --location --silent --show-error --retry 5 -o "${temporary}/${asset}.sha256" "${base}/${asset}.sha256"
+  curl --fail --location --silent --show-error --retry 5 -o "${temporary}/${asset}.sigstore.json" "${base}/${asset}.sigstore.json"
   case "${os}" in
     darwin) (cd "${temporary}" && shasum -a 256 -c "${asset}.sha256") ;;
     linux) (cd "${temporary}" && sha256sum -c "${asset}.sha256") ;;
   esac
+  cosign verify-blob \
+    --bundle "${temporary}/${asset}.sigstore.json" \
+    --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+    --certificate-identity-regexp "^https://github.com/${repository}/.github/workflows/release-worker\\.yml@refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+$" \
+    "${temporary}/${asset}"
   tar -xzf "${temporary}/${asset}" -C "${temporary}"
   worker_binary=${temporary}/tyrs-hand-worker
+fi
+if [ -x /usr/local/bin/tyrs-hand-worker ]; then
+  install -d -o root -g root -m 0700 /usr/local/lib/tyrs-hand/worker-backups
+  binary_stamp=$(date +%Y%m%d%H%M%S)
+  cp -p /usr/local/bin/tyrs-hand-worker \
+    "/usr/local/lib/tyrs-hand/worker-backups/tyrs-hand-worker.${binary_stamp}"
+  binary_backup_index=0
+  for backup in $(ls -1t /usr/local/lib/tyrs-hand/worker-backups/tyrs-hand-worker.*); do
+    binary_backup_index=$((binary_backup_index + 1))
+    if [ "${binary_backup_index}" -gt 4 ]; then
+      rm -- "${backup}"
+    fi
+  done
 fi
 install -m 0755 "${worker_binary}" /usr/local/bin/tyrs-hand-worker
 
@@ -111,10 +134,14 @@ case "${os}" in
 esac
 install -d -o "${worker_user}" -g "$(id -gn "${worker_user}")" -m 0700 \
   "${state_root}/ssh" "${state_root}/control-state" "${worker_home}/tyrs-hand/workspaces"
-install -o "${worker_user}" -g "$(id -gn "${worker_user}")" -m 0600 \
-  "${TYRS_HAND_WORKER_PUBLIC_KEYS_FILE}" "${state_root}/ssh/authorized_keys"
-credential_file=${state_root}/control-state/node-credential
-if [ -n "${credential_source}" ]; then
+worker_keys=${state_root}/ssh/authorized_keys
+if [ ! -e "${worker_keys}" ] || [ ! "${TYRS_HAND_WORKER_PUBLIC_KEYS_FILE}" -ef "${worker_keys}" ]; then
+  install -o "${worker_user}" -g "$(id -gn "${worker_user}")" -m 0600 \
+    "${TYRS_HAND_WORKER_PUBLIC_KEYS_FILE}" "${worker_keys}"
+fi
+credential_file=${state_root}/control-state/worker-credential
+if [ -n "${credential_source}" ] &&
+  { [ ! -e "${credential_file}" ] || [ ! "${credential_source}" -ef "${credential_file}" ]; }; then
   install -o "${worker_user}" -g "$(id -gn "${worker_user}")" -m 0600 \
     "${credential_source}" "${credential_file}"
 fi
@@ -131,13 +158,11 @@ if [ -z "${worker_codex_bin}" ]; then
 fi
 case "${worker_codex_bin}" in /*) ;; *) echo "未找到用户系统 Codex，请设置绝对路径 TYRS_HAND_CODEX_BIN" >&2; exit 1 ;; esac
 worker_workspace=${worker_home}/tyrs-hand/workspaces
-worker_keys=${state_root}/ssh/authorized_keys
 worker_listen=${TYRS_HAND_WORKER_SSH_LISTEN_ADDR:-:2222}
 worker_browser_mcp_url=${TYRS_HAND_BROWSER_MCP_URL:-}
 worker_browser_token_file=${TYRS_HAND_BROWSER_MCP_TOKEN_FILE:-}
-worker_browser_relay=${TYRS_HAND_BROWSER_AGENT_RELAY_ADDRESS:-127.0.0.1:8934}
+worker_browser_agent=${TYRS_HAND_BROWSER_AGENT_ADDRESS:-127.0.0.1:8934}
 worker_browser_files=${TYRS_HAND_BROWSER_FILES_ROOT:-${worker_home}/.local/share/tyrs-hand/browser-files}
-worker_browser_services=${TYRS_HAND_BROWSER_SERVICES_ROOT:-${worker_home}/.local/share/tyrs-hand/browser-services}
 for pair in \
   "Control URL:${TYRS_HAND_WORKER_CONTROL_URL}" "Worker ID:${worker_id}" \
   "Enrollment Token:${enrollment_token}" "Home:${worker_home}" \
@@ -145,8 +170,7 @@ for pair in \
   "Shell:${worker_shell}" "PATH:${worker_path}" "Workspace:${worker_workspace}" \
   "Authorized Keys:${worker_keys}" "SSH Listen:${worker_listen}" \
   "Browser MCP URL:${worker_browser_mcp_url}" "Browser Token:${worker_browser_token_file}" \
-  "Browser Relay:${worker_browser_relay}" "Browser Files:${worker_browser_files}" \
-  "Browser Services:${worker_browser_services}"; do
+  "Browser Agent:${worker_browser_agent}" "Browser Files:${worker_browser_files}"; do
   validate_env_value "${pair%%:*}" "${pair#*:}"
 done
 
@@ -180,9 +204,8 @@ fi
   printf "TYRS_HAND_WORKER_WORKSPACE_ROOT='%s'\n" "${worker_workspace}"
   printf "TYRS_HAND_WORKER_AUTHORIZED_KEYS_FILE='%s'\n" "${worker_keys}"
   printf "TYRS_HAND_WORKER_SSH_LISTEN_ADDR='%s'\n" "${worker_listen}"
-  printf "TYRS_HAND_BROWSER_AGENT_RELAY_ADDRESS='%s'\n" "${worker_browser_relay}"
+  printf "TYRS_HAND_BROWSER_AGENT_ADDRESS='%s'\n" "${worker_browser_agent}"
   printf "TYRS_HAND_BROWSER_FILES_ROOT='%s'\n" "${worker_browser_files}"
-  printf "TYRS_HAND_BROWSER_SERVICES_ROOT='%s'\n" "${worker_browser_services}"
   if [ -n "${worker_browser_mcp_url}" ]; then
     printf "TYRS_HAND_BROWSER_MCP_URL='%s'\n" "${worker_browser_mcp_url}"
   fi

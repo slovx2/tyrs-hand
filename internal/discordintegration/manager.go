@@ -13,13 +13,12 @@ import (
 const botTokenSecretKey = "discord.bot_token"
 
 type Manager struct {
-	db               *sql.DB
-	secrets          *secrets.Store
-	developmentImage string
+	db      *sql.DB
+	secrets *secrets.Store
 }
 
-func NewManager(db *sql.DB, secretStore *secrets.Store, developmentImage string) *Manager {
-	return &Manager{db: db, secrets: secretStore, developmentImage: strings.TrimSpace(developmentImage)}
+func NewManager(db *sql.DB, secretStore *secrets.Store) *Manager {
+	return &Manager{db: db, secrets: secretStore}
 }
 
 func (m *Manager) Settings(ctx context.Context) (Settings, error) {

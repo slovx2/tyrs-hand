@@ -134,7 +134,7 @@ func (s *Server) clientListMessages(c *gin.Context) {
 	}
 	var lastSeq int64
 	if err = s.db.QueryRowContext(c.Request.Context(), `SELECT last_message_seq
-		FROM development_sessions WHERE id=$1`, sessionID).Scan(&lastSeq); errors.Is(err, sql.ErrNoRows) {
+		FROM workspace_sessions WHERE id=$1`, sessionID).Scan(&lastSeq); errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusNotFound, "Session 不存在", err)
 		return
 	} else if err != nil {
@@ -189,7 +189,7 @@ func (s *Server) clientCreateMessage(c *gin.Context) {
 	defer func() { _ = tx.Rollback() }()
 	var lifecycle string
 	if err = tx.QueryRowContext(c.Request.Context(), `SELECT lifecycle_state
-		FROM development_sessions WHERE id=$1 FOR UPDATE`, sessionID).Scan(&lifecycle); err != nil {
+		FROM workspace_sessions WHERE id=$1 FOR UPDATE`, sessionID).Scan(&lifecycle); err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, sql.ErrNoRows) {
 			status = http.StatusNotFound
@@ -232,7 +232,7 @@ func (s *Server) clientCreateMessage(c *gin.Context) {
 	}})
 	var created clientMessage
 	row := tx.QueryRowContext(c.Request.Context(), `WITH sequence AS (
-		UPDATE development_sessions SET last_message_seq=last_message_seq+1,
+		UPDATE workspace_sessions SET last_message_seq=last_message_seq+1,
 			last_activity_at=now(),updated_at=now() WHERE id=$1 RETURNING last_message_seq)
 		INSERT INTO session_messages(session_id,seq,local_id,participant_id,message_role,content)
 		SELECT $1,last_message_seq,$2,$3,'user',$4 FROM sequence
@@ -258,7 +258,7 @@ func (s *Server) clientCreateMessage(c *gin.Context) {
 		s.cfg.CodexMaxSteersPerTurn, s.cfg.CodexReconcileMaxAttempts)
 	intentID, inserted, err := repository.Enqueue(c.Request.Context(), tx,
 		codexcontrol.EnqueueRequest{
-			SourceType: codexcontrol.SourceDevelopment, SessionID: sessionID,
+			SourceType: codexcontrol.SourceWorkspace, SessionID: sessionID,
 			InputSurface: "client", AgentProfileID: uuid.Nil,
 			IdempotencyKey: "client:message:" + sessionID.String() + ":" + request.LocalID,
 			Instruction:    request.Text, Behavior: request.Behavior, ReplyPolicy: "silent",

@@ -49,37 +49,37 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 		request.Behavior = "steer_if_active"
 	}
 	var controlID uuid.UUID
-	var executionNodeID sql.NullString
-	var developmentEnvironmentID sql.NullString
+	var workerID sql.NullString
+	var workspaceID sql.NullString
 	switch request.SourceType {
 	case SourceGitHub:
-		if err := tx.QueryRowContext(ctx, `SELECT execution_node_id::text FROM work_items
-			WHERE id = $1 FOR UPDATE`, request.WorkItemID).Scan(&executionNodeID); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT worker_id::text FROM work_items
+			WHERE id = $1 FOR UPDATE`, request.WorkItemID).Scan(&workerID); err != nil {
 			return uuid.Nil, false, err
 		}
-		if !executionNodeID.Valid {
-			_ = tx.QueryRowContext(ctx, `SELECT value->>'nodeId' FROM platform_settings
-				WHERE setting_key = 'execution.default.github'`).Scan(&executionNodeID)
-			if executionNodeID.Valid {
-				if _, err := tx.ExecContext(ctx, `UPDATE work_items SET execution_node_id = $2,
-					updated_at = now() WHERE id = $1 AND execution_node_id IS NULL`,
-					request.WorkItemID, executionNodeID.String); err != nil {
+		if !workerID.Valid {
+			_ = tx.QueryRowContext(ctx, `SELECT value->>'workerId' FROM platform_settings
+				WHERE setting_key = 'worker.default.github'`).Scan(&workerID)
+			if workerID.Valid {
+				if _, err := tx.ExecContext(ctx, `UPDATE work_items SET worker_id = $2,
+					updated_at = now() WHERE id = $1 AND worker_id IS NULL`,
+					request.WorkItemID, workerID.String); err != nil {
 					return uuid.Nil, false, err
 				}
 			}
 		}
 		err := tx.QueryRowContext(ctx, `INSERT INTO codex_thread_controls
-			(source_type, work_item_id, repository_id, agent_profile_id, execution_node_id)
+			(source_type, work_item_id, repository_id, agent_profile_id, worker_id)
 			VALUES ('github_work_item', $1, $2, $3, NULLIF($4,'')::uuid)
 			ON CONFLICT(work_item_id, agent_profile_id) WHERE work_item_id IS NOT NULL
-			DO UPDATE SET execution_node_id = COALESCE(codex_thread_controls.execution_node_id,
-				EXCLUDED.execution_node_id), updated_at = now() RETURNING id`, request.WorkItemID,
-			request.RepositoryID, request.AgentProfileID, executionNodeID.String).Scan(&controlID)
+			DO UPDATE SET worker_id = COALESCE(codex_thread_controls.worker_id,
+				EXCLUDED.worker_id), updated_at = now() RETURNING id`, request.WorkItemID,
+			request.RepositoryID, request.AgentProfileID, workerID.String).Scan(&controlID)
 		if err != nil {
 			return uuid.Nil, false, err
 		}
-	case SourceDevelopment:
-		sessionID, err := r.lockDevelopmentSession(ctx, tx, request.SessionID,
+	case SourceWorkspace:
+		sessionID, err := r.lockWorkspaceSession(ctx, tx, request.SessionID,
 			request.DiscordConversationID)
 		if err != nil {
 			return uuid.Nil, false, err
@@ -90,7 +90,7 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 				WHERE session_id=$1`, sessionID).Scan(&request.DiscordConversationID)
 		}
 		if request.DiscordConversationID != uuid.Nil {
-			result, updateErr := tx.ExecContext(ctx, `UPDATE development_sessions session SET
+			result, updateErr := tx.ExecContext(ctx, `UPDATE workspace_sessions session SET
 				title=conversation.title, lifecycle_state=conversation.lifecycle_state,
 				model=conversation.model, reasoning_effort=conversation.reasoning_effort,
 					service_tier=COALESCE(conversation.service_tier,'standard'),
@@ -111,27 +111,27 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 				return uuid.Nil, false, sql.ErrNoRows
 			}
 		}
-		if err := tx.QueryRowContext(ctx, `SELECT environment.execution_node_id::text,
-			session.development_environment_id::text, session.development_project_id,
-			session.agent_profile_id FROM development_sessions session
-			JOIN discord_development_environments environment
-				ON environment.id=session.development_environment_id
-			WHERE session.id=$1`, sessionID).Scan(&executionNodeID, &developmentEnvironmentID,
+		if err := tx.QueryRowContext(ctx, `SELECT environment.worker_id::text,
+			session.workspace_id::text, session.workspace_project_id,
+			session.agent_profile_id FROM workspace_sessions session
+			JOIN worker_workspaces environment
+				ON environment.id=session.workspace_id
+			WHERE session.id=$1`, sessionID).Scan(&workerID, &workspaceID,
 			&request.ProjectID, &request.AgentProfileID); err != nil {
 			return uuid.Nil, false, err
 		}
 		err = tx.QueryRowContext(ctx, `INSERT INTO codex_thread_controls
-			(source_type, session_id, discord_conversation_id, development_project_id,
-			 agent_profile_id, execution_node_id, development_environment_id)
-			VALUES ('development_session',$1,NULLIF($2::text,'')::uuid,$3,$4,
+			(source_type, session_id, discord_conversation_id, workspace_project_id,
+			 agent_profile_id, worker_id, workspace_id)
+			VALUES ('workspace_session',$1,NULLIF($2::text,'')::uuid,$3,$4,
 			 NULLIF($5,'')::uuid,$6)
 			ON CONFLICT(session_id) WHERE session_id IS NOT NULL DO UPDATE SET
 				discord_conversation_id=COALESCE(codex_thread_controls.discord_conversation_id,
 					EXCLUDED.discord_conversation_id),
-				execution_node_id=COALESCE(codex_thread_controls.execution_node_id,
-					EXCLUDED.execution_node_id), updated_at=now()
+				worker_id=COALESCE(codex_thread_controls.worker_id,
+					EXCLUDED.worker_id), updated_at=now()
 			RETURNING id`, sessionID, nilUUID(request.DiscordConversationID), request.ProjectID,
-			request.AgentProfileID, executionNodeID.String, developmentEnvironmentID.String).
+			request.AgentProfileID, workerID.String, workspaceID.String).
 			Scan(&controlID)
 		if err != nil {
 			return uuid.Nil, false, err
@@ -141,7 +141,7 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 			service_tier=session.service_tier, collaboration_mode=session.collaboration_mode,
 			settings_revision=session.settings_version,
 			runtime_preferences_frozen_at=now(), updated_at=now()
-			FROM development_sessions session
+			FROM workspace_sessions session
 			WHERE control.id=$1 AND session.id=$2 AND control.session_id=session.id`,
 			controlID, sessionID)
 		if err != nil {
@@ -150,7 +150,7 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 		if request.DiscordConversationID != uuid.Nil {
 			_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls control SET
 				desired_thread_name=conversation.generated_title,
-				desired_thread_name_source='luna', desired_thread_name_revision=1,
+				desired_thread_name_source='fallback', desired_thread_name_revision=1,
 				thread_name_last_error=NULL, updated_at=now()
 				FROM discord_conversations conversation
 				WHERE control.id=$1 AND conversation.id=$2
@@ -168,13 +168,13 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 	if err := tx.QueryRowContext(ctx, `SELECT control.status,
 		COALESCE(session.lifecycle_state,control.lifecycle_state)
 		FROM codex_thread_controls control
-		LEFT JOIN development_sessions session ON session.id=control.session_id
+		LEFT JOIN workspace_sessions session ON session.id=control.session_id
 		WHERE control.id = $1`, controlID).
 		Scan(&controlStatus, &lifecycleState); err != nil {
 		return uuid.Nil, false, err
 	}
 	if controlStatus == "error" {
-		if request.SourceType != SourceDevelopment || request.InputSurface != "client" ||
+		if request.SourceType != SourceWorkspace || request.InputSurface != "client" ||
 			request.Operation != "turn_input" {
 			return uuid.Nil, false, ErrControlTerminated
 		}
@@ -206,11 +206,11 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 	}
 	var intentID uuid.UUID
 	initialStatus := "queued"
-	if !executionNodeID.Valid || executionNodeID.String == "" {
+	if !workerID.Valid || workerID.String == "" {
 		initialStatus = "placement_pending"
 	}
 	inputSurface := request.InputSurface
-	if request.SourceType == SourceDevelopment && inputSurface == "" {
+	if request.SourceType == SourceWorkspace && inputSurface == "" {
 		inputSurface = "client"
 		if request.DiscordConversationID != uuid.Nil {
 			inputSurface = "discord"
@@ -218,7 +218,7 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 	}
 	err := tx.QueryRowContext(ctx, `INSERT INTO codex_turn_intents(
 		control_id, sequence_no, operation, behavior, source_type, work_item_id,
-		discord_conversation_id, session_id, discord_message_id, repository_id, development_project_id,
+		discord_conversation_id, session_id, discord_message_id, repository_id, workspace_project_id,
 		agent_profile_id,
 		webhook_delivery_id, trigger_rule_id, trigger_evidence, idempotency_key,
 		instruction, skills, allowed_tools, dangerous_actions, priority,
@@ -247,7 +247,7 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 	if errors.Is(err, sql.ErrNoRows) {
 		return uuid.Nil, false, nil
 	}
-	if err == nil && request.SourceType == SourceDevelopment &&
+	if err == nil && request.SourceType == SourceWorkspace &&
 		request.Operation == "turn_input" && request.MessageLocalID != "" {
 		err = r.appendSessionInputTx(ctx, tx, intentID, request)
 	}
@@ -274,7 +274,7 @@ func (r *Repository) appendSessionInputTx(ctx context.Context, tx *sql.Tx, inten
 	var sequence int64
 	var createdAt time.Time
 	err := tx.QueryRowContext(ctx, `WITH sequence AS (
-		UPDATE development_sessions SET last_message_seq=last_message_seq+1,
+		UPDATE workspace_sessions SET last_message_seq=last_message_seq+1,
 			last_activity_at=now(),updated_at=now() WHERE id=$1 RETURNING last_message_seq)
 		INSERT INTO session_messages(session_id,seq,local_id,participant_id,message_role,content,
 			turn_intent_id)
@@ -297,19 +297,19 @@ func (r *Repository) appendSessionInputTx(ctx context.Context, tx *sql.Tx, inten
 	return err
 }
 
-func (r *Repository) lockDevelopmentSession(ctx context.Context, tx *sql.Tx, sessionID,
+func (r *Repository) lockWorkspaceSession(ctx context.Context, tx *sql.Tx, sessionID,
 	conversationID uuid.UUID,
 ) (uuid.UUID, error) {
 	if sessionID != uuid.Nil {
 		var lockedID uuid.UUID
-		if err := tx.QueryRowContext(ctx, `SELECT id FROM development_sessions
+		if err := tx.QueryRowContext(ctx, `SELECT id FROM workspace_sessions
 			WHERE id=$1 FOR UPDATE`, sessionID).Scan(&lockedID); err != nil {
 			return uuid.Nil, err
 		}
 		return lockedID, nil
 	}
 	if conversationID == uuid.Nil {
-		return uuid.Nil, errors.New("development session 或 Discord conversation 至少需要一个")
+		return uuid.Nil, errors.New("workspace session 或 Discord conversation 至少需要一个")
 	}
 	var existing sql.NullString
 	if err := tx.QueryRowContext(ctx, `SELECT session_id::text FROM discord_conversations
@@ -320,11 +320,11 @@ func (r *Repository) lockDevelopmentSession(ctx context.Context, tx *sql.Tx, ses
 		return uuid.Parse(existing.String)
 	}
 	var created uuid.UUID
-	err := tx.QueryRowContext(ctx, `INSERT INTO development_sessions(
-		development_environment_id,development_project_id,agent_profile_id,title,
+	err := tx.QueryRowContext(ctx, `INSERT INTO workspace_sessions(
+		workspace_id,workspace_project_id,agent_profile_id,title,
 		lifecycle_state,model,reasoning_effort,service_tier,collaboration_mode,
 		settings_version,last_activity_at,created_at,updated_at)
-		SELECT forum.development_environment_id,conversation.development_project_id,
+		SELECT forum.workspace_id,conversation.workspace_project_id,
 			conversation.agent_profile_id,COALESCE(conversation.generated_title,conversation.title),
 			conversation.lifecycle_state,
 				conversation.model,conversation.reasoning_effort,
@@ -333,7 +333,7 @@ func (r *Repository) lockDevelopmentSession(ctx context.Context, tx *sql.Tx, ses
 			conversation.last_activity_at,conversation.created_at,conversation.updated_at
 		FROM discord_conversations conversation
 		JOIN discord_forums forum ON forum.id=conversation.forum_id
-		WHERE conversation.id=$1 AND conversation.development_project_id IS NOT NULL
+		WHERE conversation.id=$1 AND conversation.workspace_project_id IS NOT NULL
 		RETURNING id`, conversationID).Scan(&created)
 	if err != nil {
 		return uuid.Nil, err
@@ -378,22 +378,22 @@ func defaultJSON(value json.RawMessage) json.RawMessage {
 
 func interval(value time.Duration) string { return fmt.Sprintf("%f seconds", value.Seconds()) }
 
-func (r *Repository) Claim(ctx context.Context, workerID string) (*ClaimedControl, error) {
-	return r.ClaimSource(ctx, workerID, "")
+func (r *Repository) Claim(ctx context.Context, leaseOwner string) (*ClaimedControl, error) {
+	return r.ClaimSource(ctx, leaseOwner, "")
 }
 
-func (r *Repository) ClaimSource(ctx context.Context, workerID, sourceType string) (*ClaimedControl, error) {
-	return r.claimSource(ctx, workerID, sourceType, "")
+func (r *Repository) ClaimSource(ctx context.Context, leaseOwner, sourceType string) (*ClaimedControl, error) {
+	return r.claimSource(ctx, leaseOwner, sourceType, "")
 }
 
-func (r *Repository) ClaimNode(ctx context.Context, workerID, sourceType string,
-	executionNodeID uuid.UUID,
+func (r *Repository) ClaimWorker(ctx context.Context, leaseOwner, sourceType string,
+	workerID uuid.UUID,
 ) (*ClaimedControl, error) {
-	return r.claimSource(ctx, workerID, sourceType, executionNodeID.String())
+	return r.claimSource(ctx, leaseOwner, sourceType, workerID.String())
 }
 
-func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
-	executionNodeID string,
+func (r *Repository) claimSource(ctx context.Context, leaseOwner, sourceType,
+	workerID string,
 ) (*ClaimedControl, error) {
 	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
@@ -414,23 +414,16 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 		FROM codex_thread_controls c
 		WHERE c.status <> 'error'
 		  AND c.lifecycle_state = 'active'
-		  AND (c.development_project_id IS NULL OR EXISTS (
-			SELECT 1 FROM development_projects project
-			WHERE project.id=c.development_project_id
+		  AND (c.workspace_project_id IS NULL OR EXISTS (
+			SELECT 1 FROM workspace_projects project
+			WHERE project.id=c.workspace_project_id
 			  AND project.availability_status='available'))
-		  AND ($2 <> 'development_session' OR c.discord_conversation_id IS NULL OR EXISTS (
+		  AND ($2 <> 'workspace_session' OR c.discord_conversation_id IS NULL OR EXISTS (
 			SELECT 1 FROM discord_conversations conversation
 			JOIN discord_forums forum ON forum.id=conversation.forum_id
 			WHERE conversation.id=c.discord_conversation_id
 			  AND forum.binding_status='active'))
-		  AND ($3 = '' OR c.execution_node_id = $3::uuid)
-			  AND ($2 <> 'development_session' OR c.discord_conversation_id IS NULL OR NOT EXISTS (
-				SELECT 1 FROM discord_conversations dc
-				JOIN discord_forums df ON df.id = dc.forum_id
-				JOIN discord_development_operations operation
-					ON operation.environment_id = df.development_environment_id
-				WHERE dc.id = c.discord_conversation_id
-				AND operation.status IN ('pending','running')))
+		  AND ($3 = '' OR c.worker_id = $3::uuid)
 		  AND (c.lease_expires_at IS NULL OR c.lease_expires_at < now())
 		  AND EXISTS (SELECT 1 FROM codex_turn_intents i
 			WHERE i.control_id = c.id AND i.status IN ('queued','retry_wait','reconciling')
@@ -438,7 +431,7 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 			  AND ($2 = '' OR i.source_type = $2))
 		ORDER BY COALESCE(c.next_wakeup_at, c.created_at), c.created_at
 		FOR UPDATE SKIP LOCKED LIMIT 1`, r.maxAttempts, sourceType,
-		executionNodeID).Scan(&controlID, &oldStatus)
+		workerID).Scan(&controlID, &oldStatus)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -450,12 +443,12 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 	var workItemID, conversationID, sessionID, repositoryID, projectID sql.NullString
 	var discordMessageID, actorParticipantID sql.NullString
 	var targetIntentID sql.NullString
-	var externalThreadID, codexHomeKey, runModel, runEffort, runTier sql.NullString
+	var externalThreadID, runModel, runEffort, runTier sql.NullString
 	var settingsRevision int64
 	err = tx.QueryRowContext(ctx, `SELECT i.id, i.sequence_no, i.operation, COALESCE(i.behavior,''),
 		i.source_type, COALESCE(i.input_surface,''), i.work_item_id::text,
 		i.discord_conversation_id::text, i.session_id::text,
-		i.repository_id::text, i.development_project_id::text, i.agent_profile_id,
+		i.repository_id::text, i.workspace_project_id::text, i.agent_profile_id,
 		COALESCE(i.discord_message_id,''),
 		i.instruction, i.skills, i.allowed_tools, i.dangerous_actions,
 		i.actor_login, i.actor_permission, i.actor_participant_id::text,
@@ -464,7 +457,7 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 		COALESCE(i.confirmed_codex_turn_id,''), i.created_at,
 		i.target_intent_id::text, COALESCE(i.projection_anchor,''), i.message_edit_revision,
 		COALESCE(i.replacement_phase,''),
-		c.external_thread_id, c.codex_home_key, c.lease_epoch + 1,
+		c.external_thread_id, c.lease_epoch + 1,
 		c.collaboration_mode, c.model, c.reasoning_effort, c.service_tier, c.settings_revision
 		FROM codex_turn_intents i JOIN codex_thread_controls c ON c.id = i.control_id
 		WHERE i.control_id = $1 AND i.status IN ('queued','retry_wait','reconciling')
@@ -481,7 +474,7 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 		&claimed.Attempt, &claimed.MaxAttempts, &claimed.SubmissionID, &claimed.ConfirmedTurnID,
 		&claimed.CreatedAt, &targetIntentID, &claimed.ProjectionAnchor,
 		&claimed.MessageEditRevision, &claimed.ReplacementPhase,
-		&externalThreadID, &codexHomeKey, &claimed.LeaseEpoch,
+		&externalThreadID, &claimed.LeaseEpoch,
 		&claimed.CollaborationMode, &runModel, &runEffort, &runTier, &settingsRevision)
 	if err != nil {
 		return nil, err
@@ -490,7 +483,6 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 	claimed.Recovering = oldStatus == "reconciling" || claimed.SubmissionID != "" || claimed.ConfirmedTurnID != ""
 	claimed.DiscordMessageID = discordMessageID.String
 	claimed.ExternalThreadID = externalThreadID.String
-	claimed.CodexHomeKey = codexHomeKey.String
 	if targetIntentID.Valid {
 		claimed.TargetIntentID, err = uuid.Parse(targetIntentID.String)
 		if err != nil {
@@ -519,9 +511,9 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 	claimed.LeaseToken = leaseToken
 	claimed.LeaseExpiresAt = time.Now().Add(r.leaseDuration)
 	_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET status = 'dispatching',
-		active_intent_id = $2, worker_id = $3, lease_token = $4, lease_epoch = $5,
+		active_intent_id = $2, lease_owner = $3, lease_token = $4, lease_epoch = $5,
 		lease_expires_at = now() + $6::interval, heartbeat_at = now(), updated_at = now()
-		WHERE id = $1`, controlID, claimed.ID, workerID, security.Digest(leaseToken),
+		WHERE id = $1`, controlID, claimed.ID, leaseOwner, security.Digest(leaseToken),
 		claimed.LeaseEpoch, interval(r.leaseDuration))
 	if err != nil {
 		return nil, err
@@ -534,13 +526,13 @@ func (r *Repository) claimSource(ctx context.Context, workerID, sourceType,
 		return nil, err
 	}
 	err = tx.QueryRowContext(ctx, `INSERT INTO codex_turn_runs
-		(control_id, primary_intent_id, attempt, worker_id, lease_epoch, capability_hash,
-		 active_slot, max_append_count, execution_node_id, collaboration_mode,
+		(control_id, primary_intent_id, attempt, lease_owner, lease_epoch, capability_hash,
+		 active_slot, max_append_count, worker_id, collaboration_mode,
 		 model, reasoning_effort, service_tier, settings_revision)
 		VALUES ($1,$2,$3,$4,$5,$6,1,$7,NULLIF($8,'')::uuid,$9,$10,$11,$12,$13)
 		RETURNING id`, controlID, claimed.ID,
-		claimed.Attempt, workerID, claimed.LeaseEpoch, security.Digest(capability), r.maxSteers,
-		executionNodeID, claimed.CollaborationMode, runModel, runEffort, runTier,
+		claimed.Attempt, leaseOwner, claimed.LeaseEpoch, security.Digest(capability), r.maxSteers,
+		workerID, claimed.CollaborationMode, runModel, runEffort, runTier,
 		settingsRevision).Scan(&claimed.RunID)
 	if err != nil {
 		return nil, err
@@ -595,13 +587,13 @@ func (r *Repository) Heartbeat(ctx context.Context, claimed *ClaimedControl) err
 	return requireOne(result)
 }
 
-func (r *Repository) SetThread(ctx context.Context, claimed *ClaimedControl, threadID, codexHome string) error {
+func (r *Repository) SetThread(ctx context.Context, claimed *ClaimedControl, threadID string) error {
 	result, err := r.db.ExecContext(ctx, `UPDATE codex_thread_controls SET
-		external_thread_id = $4, codex_home_key = $5,
+		external_thread_id = $4,
 		status = 'active', remote_status = 'idle', last_error_code = NULL,
 		last_error_message = NULL, updated_at = now()
 		WHERE id = $1 AND lease_token = $2 AND lease_epoch = $3`, claimed.ControlID,
-		security.Digest(claimed.LeaseToken), claimed.LeaseEpoch, threadID, codexHome)
+		security.Digest(claimed.LeaseToken), claimed.LeaseEpoch, threadID)
 	if err == nil {
 		err = requireOne(result)
 	}
@@ -761,7 +753,7 @@ func (r *Repository) Reconcile(ctx context.Context, claimed *ClaimedControl, cod
 			remote_status = CASE WHEN $2 = 'idle' THEN 'idle' ELSE remote_status END,
 			active_codex_turn_id = CASE WHEN $2 = 'idle' THEN NULL ELSE active_codex_turn_id END,
 			active_client_id = CASE WHEN $2 = 'idle' THEN NULL ELSE active_client_id END,
-			worker_id = NULL, lease_token = NULL, lease_expires_at = NULL,
+			lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
 			last_error_code = $3, last_error_message = $4,
 			next_wakeup_at = CASE WHEN $2 = 'reconciling'
 				THEN now() + interval '15 seconds' ELSE NULL END,
@@ -821,7 +813,7 @@ func (r *Repository) finishWithCodexError(ctx context.Context, claimed *ClaimedC
 			  AND resolved_action = 'steer' AND confirmed_codex_turn_id = $3`,
 			claimed.ControlID, claimed.ID, claimed.ConfirmedTurnID, status, code, message)
 	}
-	if err == nil && claimed.SourceType == SourceDevelopment && claimed.SessionID != uuid.Nil {
+	if err == nil && claimed.SourceType == SourceWorkspace && claimed.SessionID != uuid.Nil {
 		err = r.appendSessionTerminalTx(ctx, tx, claimed, status, code, message, turnResult)
 	}
 	if err == nil {
@@ -847,7 +839,7 @@ func (r *Repository) finishWithCodexError(ctx context.Context, claimed *ClaimedC
 		_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET status = $2,
 			active_intent_id = CASE WHEN $2 = 'error' THEN active_intent_id ELSE NULL END,
 			remote_status = 'idle', active_codex_turn_id = NULL, active_client_id = NULL,
-			worker_id = NULL, lease_token = NULL, lease_expires_at = NULL,
+			lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
 			last_error_code = NULLIF($3,''), last_error_message = NULLIF($4,''), updated_at = now()
 			WHERE id = $1`, claimed.ControlID, controlStatus, code, message)
 	}
@@ -883,7 +875,7 @@ func (r *Repository) appendSessionTerminalTx(ctx context.Context, tx *sql.Tx,
 			administrator_id,session_id,notification_type,idempotency_key,title,body,data)
 			SELECT session.created_by_administrator_id,session.id,$2,$3,'Tyrs Hand',$4,
 			jsonb_build_object('serverId',instance.id,'sessionId',session.id)
-			FROM development_sessions session CROSS JOIN control_instances instance
+			FROM workspace_sessions session CROSS JOIN control_instances instance
 			WHERE session.id=$1 AND session.created_by_administrator_id IS NOT NULL
 			ON CONFLICT(idempotency_key) DO NOTHING`, claimed.SessionID, notificationType,
 			"intent:"+claimed.ID.String()+":"+notificationType, body)
@@ -903,7 +895,7 @@ func (r *Repository) appendSessionTerminalTx(ctx context.Context, tx *sql.Tx,
 	var sequence int64
 	var createdAt time.Time
 	err := tx.QueryRowContext(ctx, `WITH sequence AS (
-		UPDATE development_sessions SET last_message_seq=last_message_seq+1,
+		UPDATE workspace_sessions SET last_message_seq=last_message_seq+1,
 			last_activity_at=now(),updated_at=now() WHERE id=$1 RETURNING last_message_seq)
 		INSERT INTO session_messages(session_id,seq,local_id,message_role,content)
 		SELECT $1,last_message_seq,$2,'agent',$3 FROM sequence
@@ -956,7 +948,7 @@ func (r *Repository) RequeueExpired(ctx context.Context) (int64, error) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	rows, err := tx.QueryContext(ctx, `SELECT control.id, control.active_intent_id,
-			control.execution_node_id::text, COALESCE(intent.input_surface, '')
+			control.worker_id::text, COALESCE(intent.input_surface, '')
 		FROM codex_thread_controls AS control
 		JOIN codex_turn_intents AS intent ON intent.id = control.active_intent_id
 		WHERE lease_expires_at < now() AND active_intent_id IS NOT NULL
@@ -966,13 +958,13 @@ func (r *Repository) RequeueExpired(ctx context.Context) (int64, error) {
 	}
 	type expired struct {
 		controlID, intentID uuid.UUID
-		executionNodeID     sql.NullString
+		workerID            sql.NullString
 		inputSurface        string
 	}
 	var values []expired
 	for rows.Next() {
 		var value expired
-		if err := rows.Scan(&value.controlID, &value.intentID, &value.executionNodeID,
+		if err := rows.Scan(&value.controlID, &value.intentID, &value.workerID,
 			&value.inputSurface); err != nil {
 			_ = rows.Close()
 			return 0, err
@@ -985,7 +977,7 @@ func (r *Repository) RequeueExpired(ctx context.Context) (int64, error) {
 	for _, value := range values {
 		if value.inputSurface == "desktop" {
 			_, err = tx.ExecContext(ctx, `UPDATE codex_turn_intents SET status = 'failed',
-				last_error_code = 'lease_expired', last_error_message = 'desktop relay lease expired',
+				last_error_code = 'lease_expired', last_error_message = 'desktop app-server lease expired',
 				available_at = now(), finished_at = now(), updated_at = now()
 				WHERE id = $1 AND status IN (
 					'dispatching','awaiting_confirmation','running','reconciling'
@@ -995,7 +987,7 @@ func (r *Repository) RequeueExpired(ctx context.Context) (int64, error) {
 			}
 			_, err = tx.ExecContext(ctx, `UPDATE codex_turn_runs SET status = 'failed',
 				active_slot = NULL, error_code = 'lease_expired',
-				error_message = 'desktop relay lease expired', finished_at = now()
+				error_message = 'desktop app-server lease expired', finished_at = now()
 				WHERE control_id = $1 AND active_slot = 1`, value.controlID)
 			if err != nil {
 				return 0, err
@@ -1003,9 +995,9 @@ func (r *Repository) RequeueExpired(ctx context.Context) (int64, error) {
 			_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET status = 'idle',
 				active_intent_id = NULL, remote_status = 'idle',
 				active_codex_turn_id = NULL, active_client_id = NULL,
-				worker_id = NULL, lease_token = NULL, lease_expires_at = NULL,
+				lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
 				last_error_code = 'lease_expired',
-				last_error_message = 'desktop relay lease expired',
+				last_error_message = 'desktop app-server lease expired',
 				next_wakeup_at = NULL, updated_at = now() WHERE id = $1`, value.controlID)
 			if err != nil {
 				return 0, err
@@ -1019,7 +1011,7 @@ func (r *Repository) RequeueExpired(ctx context.Context) (int64, error) {
 		if err != nil {
 			return 0, err
 		}
-		if value.executionNodeID.Valid {
+		if value.workerID.Valid {
 			_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET status = 'reconciling',
 				last_error_code = 'lease_expired', last_error_message = 'worker lease expired',
 				next_wakeup_at = now(), updated_at = now() WHERE id = $1`, value.controlID)
@@ -1035,7 +1027,7 @@ func (r *Repository) RequeueExpired(ctx context.Context) (int64, error) {
 			return 0, err
 		}
 		_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET status = 'reconciling',
-			active_intent_id = NULL, worker_id = NULL, lease_token = NULL, lease_expires_at = NULL,
+			active_intent_id = NULL, lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
 			last_error_code = 'lease_expired', last_error_message = 'worker lease expired',
 			next_wakeup_at = now(), updated_at = now() WHERE id = $1`, value.controlID)
 		if err != nil {

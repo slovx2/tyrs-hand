@@ -61,7 +61,6 @@ describe('DiscordPage', () => {
     ).toBeInTheDocument()
     expect(screen.queryByText('普通项目')).not.toBeInTheDocument()
     expect(screen.queryByText('成员与开发 Forum')).not.toBeInTheDocument()
-    expect(screen.queryByText('长期开发环境')).not.toBeInTheDocument()
   })
 
   it('执行全新初始化预检并要求精确确认', async () => {

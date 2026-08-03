@@ -33,16 +33,16 @@ func (_c *WorktreeCreate) SetRepoCacheID(v uuid.UUID) *WorktreeCreate {
 	return _c
 }
 
-// SetExecutionNodeID sets the "execution_node_id" field.
-func (_c *WorktreeCreate) SetExecutionNodeID(v uuid.UUID) *WorktreeCreate {
-	_c.mutation.SetExecutionNodeID(v)
+// SetWorkerID sets the "worker_id" field.
+func (_c *WorktreeCreate) SetWorkerID(v uuid.UUID) *WorktreeCreate {
+	_c.mutation.SetWorkerID(v)
 	return _c
 }
 
-// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
-func (_c *WorktreeCreate) SetNillableExecutionNodeID(v *uuid.UUID) *WorktreeCreate {
+// SetNillableWorkerID sets the "worker_id" field if the given value is not nil.
+func (_c *WorktreeCreate) SetNillableWorkerID(v *uuid.UUID) *WorktreeCreate {
 	if v != nil {
-		_c.SetExecutionNodeID(*v)
+		_c.SetWorkerID(*v)
 	}
 	return _c
 }
@@ -280,9 +280,9 @@ func (_c *WorktreeCreate) createSpec() (*Worktree, *sqlgraph.CreateSpec) {
 		_spec.SetField(worktree.FieldRepoCacheID, field.TypeUUID, value)
 		_node.RepoCacheID = value
 	}
-	if value, ok := _c.mutation.ExecutionNodeID(); ok {
-		_spec.SetField(worktree.FieldExecutionNodeID, field.TypeUUID, value)
-		_node.ExecutionNodeID = &value
+	if value, ok := _c.mutation.WorkerID(); ok {
+		_spec.SetField(worktree.FieldWorkerID, field.TypeUUID, value)
+		_node.WorkerID = &value
 	}
 	if value, ok := _c.mutation.Path(); ok {
 		_spec.SetField(worktree.FieldPath, field.TypeString, value)

@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
 set -a
+[ ! -f /etc/tyrs-hand/codex.env ] || . /etc/tyrs-hand/codex.env
 . /etc/tyrs-hand/worker.env
 set +a
 exec /usr/local/bin/tyrs-hand-worker "$@"

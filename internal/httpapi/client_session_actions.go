@@ -28,7 +28,7 @@ func (s *Server) clientStopSession(c *gin.Context) {
 	repository := codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration,
 		s.cfg.CodexMaxSteersPerTurn, s.cfg.CodexReconcileMaxAttempts)
 	_, inserted, err := repository.Enqueue(c.Request.Context(), tx, codexcontrol.EnqueueRequest{
-		SourceType: codexcontrol.SourceDevelopment, SessionID: sessionID,
+		SourceType: codexcontrol.SourceWorkspace, SessionID: sessionID,
 		InputSurface: "client", IdempotencyKey: "client:stop:" + requestID.String(),
 		Operation: "interrupt", Instruction: "stopped from Tyrs Hand",
 		ReplyPolicy: "silent", ActorLogin: actor.Username, ActorPermission: "owner",
@@ -98,13 +98,13 @@ func (s *Server) clientChangeSessionLifecycle(c *gin.Context, desired string) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	var result clientLifecycleResult
-	var controlID, environmentID uuid.UUID
+	var controlID, workspaceID uuid.UUID
 	var current string
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT control.id,
-		control.development_environment_id,session.lifecycle_state,control.lifecycle_revision
-		FROM development_sessions session JOIN codex_thread_controls control
+		control.workspace_id,session.lifecycle_state,control.lifecycle_revision
+		FROM workspace_sessions session JOIN codex_thread_controls control
 		ON control.session_id=session.id WHERE session.id=$1 FOR UPDATE OF session,control`,
-		sessionID).Scan(&controlID, &environmentID, &current, &result.Revision)
+		sessionID).Scan(&controlID, &workspaceID, &current, &result.Revision)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusNotFound, "Session 不存在", err)
 		return
@@ -160,7 +160,7 @@ func (s *Server) clientChangeSessionLifecycle(c *gin.Context, desired string) {
 			WHERE id=$1`, controlID, pendingState, result.Revision)
 	}
 	if err == nil {
-		_, err = tx.ExecContext(c.Request.Context(), `UPDATE development_sessions SET
+		_, err = tx.ExecContext(c.Request.Context(), `UPDATE workspace_sessions SET
 			lifecycle_state=$2,updated_at=now() WHERE id=$1`, sessionID, pendingState)
 	}
 	if err == nil {
@@ -170,9 +170,9 @@ func (s *Server) clientChangeSessionLifecycle(c *gin.Context, desired string) {
 	}
 	if err == nil {
 		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO
-			codex_thread_lifecycle_requests(id,control_id,environment_id,source,desired_state,
+			codex_thread_lifecycle_requests(id,control_id,workspace_id,source,desired_state,
 			status,revision,requested_by_administrator_id)
-			VALUES ($1,$2,$3,'client',$4,$5,$6,$7)`, result.ID, controlID, environmentID,
+			VALUES ($1,$2,$3,'client',$4,$5,$6,$7)`, result.ID, controlID, workspaceID,
 			desired, result.Status, result.Revision, actor.AdministratorID)
 	}
 	if err == nil {

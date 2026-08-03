@@ -5,7 +5,7 @@ description: Control the Tyrs Hand Worker or Desktop browser for web navigation,
 
 # Tyrs Browser
 
-Use the single `chrome` MCP. Do not start another Chrome, CDP session, container browser, or headless browser.
+Use the single host `chrome` MCP. Do not start another Chrome, CDP session, or headless browser.
 
 ## Choose the browser
 
@@ -76,8 +76,10 @@ Do not use `browser_evaluate` to bypass these restrictions. Treat redacted outpu
 
 - Stage workspace files with `browser_files.stage_file` before upload.
 - Import completed downloads with `browser_files.import_download`.
-- Worker and Desktop browsers cannot directly reach a development environment's localhost.
-- After starting a local service, call `browser_expose_service` and navigate to the returned loopback endpoint.
+- Worker browser tools use the host Browser MCP and the configured host files directory directly.
+- Desktop browser tools use the dedicated Browser Agent SSH channel; a Desktop disconnect must not affect Worker browser tools or other Desktop clients.
+- For a service bound to a non-browser-visible interface, call `browser_expose_service` and navigate to the returned loopback endpoint.
 - Use task lifetime by default; use review lifetime only for a page the user must inspect after the turn.
+- Browser tokens are read by the Worker from its restricted token file. Never inspect, echo, copy, or return them.
 
 If the `chrome` MCP or file tools are unavailable, report that directly.

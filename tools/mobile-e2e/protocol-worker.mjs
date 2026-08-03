@@ -1,10 +1,7 @@
 const baseURL = String(process.env.TYRS_HAND_E2E_CONTROL_URL ?? '').replace(/\/$/, '')
 const enrollmentToken = process.env.TYRS_HAND_E2E_ENROLLMENT_TOKEN ?? ''
-const environmentID = process.env.TYRS_HAND_E2E_ENVIRONMENT_ID ?? ''
 const workerID = process.env.TYRS_HAND_E2E_WORKER_ID ?? 'mobile-e2e-protocol-worker'
-if (!baseURL || !enrollmentToken || !environmentID) {
-  throw new Error('协议 Worker 缺少 Control URL、Enrollment Token 或 Environment ID')
-}
+if (!baseURL || !enrollmentToken) throw new Error('协议 Worker 缺少 Control URL 或 Enrollment Token')
 
 const modelCatalog = { data: [{
   id: 'gpt-5.6-sol', model: 'gpt-5.6-sol', displayName: 'GPT-5.6 Sol',
@@ -19,10 +16,10 @@ const modelCatalog = { data: [{
 }], nextCursor: null }
 
 let credential = ''
+let workspaceID = ''
 let stopping = false
 const metadataGeneration = Date.now()
 let metadataSequence = 0
-let requestSequence = 0
 let lastWorkerHeartbeatAt = 0
 
 async function directCall(path, { method = 'POST', body, authenticated = true } = {}) {
@@ -37,54 +34,15 @@ async function directCall(path, { method = 'POST', body, authenticated = true } 
   return text ? JSON.parse(text) : undefined
 }
 
-function operationFor(method, path) {
-  const staticOperations = new Map([
-    ['POST /worker/v1/heartbeat', 'worker.heartbeat'],
-    ['POST /worker/v1/claims', 'worker.claim'],
-    ['GET /worker/v1/thread-lifecycle-requests', 'thread.lifecycle.pending'],
-    ['POST /worker/v1/thread-metadata-events', 'thread.metadata.record'],
-  ])
-  const direct = staticOperations.get(`${method} ${path}`)
-  if (direct) return { operation: direct, parameters: {} }
-  const routes = [
-    ['POST', /^\/worker\/v1\/runs\/([^/]+)\/heartbeat$/, 'run.heartbeat'],
-    ['POST', /^\/worker\/v1\/runs\/([^/]+)\/events$/, 'run.events.append'],
-    ['POST', /^\/worker\/v1\/runs\/([^/]+)\/fail$/, 'run.fail'],
-    ['POST', /^\/worker\/v1\/runs\/([^/]+)\/complete$/, 'run.complete'],
-    ['POST', /^\/worker\/v1\/runs\/([^/]+)\/commands\/ack$/, 'run.command.ack'],
-    ['POST', /^\/worker\/v1\/runs\/([^/]+)\/interactive$/, 'run.interactive.register'],
-    ['POST', /^\/worker\/v1\/runs\/([^/]+)\/thread$/, 'run.thread.set'],
-    ['POST', /^\/worker\/v1\/runs\/([^/]+)\/submission$/, 'run.submission.record'],
-    ['POST', /^\/worker\/v1\/runs\/([^/]+)\/confirm$/, 'run.turn.confirm'],
-    ['GET', /^\/worker\/v1\/interactive\/([^/]+)$/, 'interactive.state'],
-    ['POST', /^\/worker\/v1\/thread-lifecycle-requests\/([^/]+)\/complete$/, 'thread.lifecycle.complete'],
-  ]
-  for (const [expectedMethod, pattern, operation] of routes) {
-    const match = expectedMethod === method ? path.match(pattern) : null
-    if (match) return { operation, parameters: { id: match[1] } }
-  }
-  throw new Error(`协议 Worker 没有注册操作：${method} ${path}`)
-}
-
 async function call(path, { method = 'POST', body, authenticated = true } = {}) {
-  if (path === '/worker/v1/enroll') {
-    return directCall('/worker/v2/enroll', { method, body, authenticated })
-  }
-  const { operation, parameters } = operationFor(method, path)
-  requestSequence += 1
-  const target = operation === 'worker.heartbeat' || operation === 'worker.claim'
-    ? '/worker/v2/sync' : '/worker/v2/rpc'
-  return directCall(target, { body: {
-    requestId: crypto.randomUUID(), sequence: requestSequence, operation, parameters,
-    payload: body,
-  }, authenticated })
+  return directCall(path, { method, body, authenticated })
 }
 
 async function publishWorkerHeartbeat(force = false) {
   if (!force && Date.now() - lastWorkerHeartbeatAt < 20_000) return
   await call('/worker/v1/heartbeat', { body: { workerVersion: 'mobile-e2e-protocol',
     protocolVersion: 22, metadata: { lane: 'mobile-protocol',
-      modelCatalogs: { [environmentID]: modelCatalog } } } })
+      modelCatalogs: { [workspaceID]: modelCatalog } } } })
   lastWorkerHeartbeatAt = Date.now()
 }
 
@@ -161,11 +119,11 @@ async function reconcileThreadLifecycles() {
   const requests = await call('/worker/v1/thread-lifecycle-requests', { method: 'GET' })
   for (const request of requests) {
     await call(`/worker/v1/thread-lifecycle-requests/${request.id}/complete`, { body: {
-      environmentId: request.environmentId, response: {},
+      workspaceId: request.workspaceId, response: {},
     } })
     metadataSequence += 1
     await call('/worker/v1/thread-metadata-events', { body: {
-      environmentId: request.environmentId, generation: metadataGeneration,
+      workspaceId: request.workspaceId, generation: metadataGeneration,
       events: [{
         threadId: request.threadId, sequence: metadataSequence, kind: 'lifecycle',
         source: 'app_server', lifecycleState: request.desiredState,
@@ -175,12 +133,12 @@ async function reconcileThreadLifecycles() {
 }
 
 async function processTask(task) {
-  const prompt = task.snapshot.development?.body ?? ''
+  const prompt = task.snapshot.session?.body ?? ''
   const runtime = task.snapshot.runtime
   const threadID = `protocol-thread-${task.claimed.ControlID}`
   const turnID = `protocol-turn-${task.claimed.RunID}`
   await call(`/worker/v1/runs/${task.claimed.RunID}/thread`, { body: {
-    ...lease(task), threadId: threadID, codexHome: task.snapshot.development?.development?.environmentId ?? 'protocol',
+    ...lease(task), threadId: threadID,
   } })
   await call(`/worker/v1/runs/${task.claimed.RunID}/submission`, { body: {
     ...lease(task), submissionId: turnID,
@@ -280,6 +238,9 @@ async function processTask(task) {
 async function main() {
   const enrolled = await call('/worker/v1/enroll', { body: { token: enrollmentToken }, authenticated: false })
   credential = enrolled.credential
+  const manifest = await call('/worker/v1/workspace', { method: 'GET' })
+  workspaceID = manifest.workspace?.workspaceId ?? ''
+  if (!workspaceID) throw new Error('协议 Worker 没有绑定 Workspace')
   await publishWorkerHeartbeat(true)
   while (!stopping) {
     try {

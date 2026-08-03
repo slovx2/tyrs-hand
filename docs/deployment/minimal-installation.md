@@ -1,10 +1,14 @@
 # 最小安装指引
 
-Tyrs Hand 由公网 Control 和一台或多台宿主 Worker 组成。Control 可继续使用 Docker；Worker 与 Relay 已合并为单个宿主常驻进程，不再启动或管理开发容器。
+Tyrs Hand 由公网 Control 与一台或多台宿主 Worker 组成。Control 以签名镜像发布；Worker 以签名薄二进制安装为 systemd service 或 LaunchDaemon。
 
-## Control
+## 1. Control
 
-Control 主机需要 Docker Engine、Docker Compose、PostgreSQL、Redis，以及指向 Control 的 HTTPS 域名。
+Control 主机需要：
+
+- Docker Engine 与 Docker Compose
+- PostgreSQL、Redis（示例 Compose 可直接启动）
+- 指向 Control 的 HTTPS 域名
 
 ```bash
 cp .env.example .env
@@ -12,50 +16,54 @@ install -d -m 0700 .local/secrets
 openssl rand -base64 32 > .local/secrets/master_key
 openssl rand -hex 32 > .local/secrets/postgres_password
 chmod 0600 .env .local/secrets/*
+
 docker compose -f compose.yaml -f compose.production.yaml up -d postgres redis
 docker compose -f compose.yaml -f compose.production.yaml --profile tools run --rm admin migrate
 docker compose -f compose.yaml -f compose.production.yaml up -d server discord
 ```
 
-反向代理需转发 Control 的全部路径，包括 `/worker/v2/*`。Worker API 只有四类入口：
+反向代理必须转发管理 API、GitHub Webhook 和全部 `/worker/v1/*` 路径。Worker API 是直接 REST 接口，包含注册、心跳、领取、Workspace、Desktop、Thread、Turn、Run、Blob、Tool、Git 与 SSH 操作；完整路径见 `api/openapi.yaml`。
 
-```text
-POST /worker/v2/enroll
-POST /worker/v2/sync
-POST /worker/v2/rpc
-GET|POST /worker/v2/blobs/{id}
-```
+Control 管理 GitHub App、Discord、Worker、Workspace、任务参数和出站 SSH。Codex Provider、API Key、ChatGPT 登录态、Base URL、代理与模型目录不属于 Control 配置。
 
-管理后台仍负责 GitHub App、Discord、任务偏好、Worker 注册和 Placement。Codex Provider、API Key、ChatGPT 登录态、Base URL 与代理不在 Control 配置，也不会下发给 Worker。
+### 配置备份
 
-## Worker 宿主依赖
+修改生产 `.env` 前必须创建带时间戳的备份，并只保留最近四份。数据库、Control 配置和 Worker 配置应在每次发布前独立备份。镜像使用不可变 Digest，不使用 `latest`。
 
-支持以下薄二进制：
+## 2. Worker 宿主依赖
 
-- Linux amd64、arm64
-- macOS amd64、arm64
+支持：
 
-宿主机必须预先安装：
+- Linux amd64 / arm64
+- macOS amd64 / arm64
+
+宿主必须安装满足 `deploy/worker/dependencies.json` 的工具：
 
 - Codex CLI `>= 0.145.0`
 - Git `>= 2.39.0`
 - OpenSSH Client（`ssh`、`scp`、`ssh-agent`）`>= 9.2.0`
-- 一个可执行的用户 Shell
+- `curl`、`tar`、`sudo` 与可执行的用户 Shell
+- 从 GitHub Release 下载时使用 Cosign `3.9.2`
 
-SFTP Server、PTY 和 SSH Server 已编译进 Worker 二进制，不需要安装 `sshd`。完整依赖声明见 `deploy/worker/dependencies.json`。Codex、Git、SSH 及用户需要的语言工具链由宿主自行维护，Tyrs Hand 不安装、不升级这些工具。
+SSH Server、SFTP Server 和 PTY 支持已编译进 Worker。宿主自行安装 Codex、Git、SSH、Browser MCP 和业务所需语言工具链。
+
+## 3. 机器用户与目录
 
 每个 Worker 绑定一个真实 OS 用户：
 
-- `HOME` 使用该用户 Home。
-- `CODEX_HOME` 使用服务启动时的 `CODEX_HOME`，未设置时为 `~/.codex`。
-- 固定项目根目录为 `~/tyrs-hand/workspaces`，项目必须是该目录下的一级目录。
-- Codex 会话、登录态、配置和 Skill 均直接使用机器已有数据；安装和旧环境迁移不会复制、改写或清理 Codex Home。
+- `HOME` 是该用户 Home。
+- `CODEX_HOME` 取服务环境中的 `CODEX_HOME`，未设置时为 `~/.codex`。
+- 项目根目录固定为 `~/tyrs-hand/workspaces`，每个一级目录是一个项目。
+- Linux 状态目录为 `~/.local/share/tyrs-hand/worker`。
+- macOS 状态目录为 `~/Library/Application Support/Tyrs Hand/worker`。
 
-## 安装 Worker
+Worker 直接使用该 Home 中已有的会话、登录态、配置和 Skill，不复制或改写 Codex Home。
 
-先在管理后台创建 Worker，选择角色与并发上限；若该 Worker 承载 Discord 或 Desktop，再为它创建唯一逻辑环境。逻辑环境只保存项目、Forum 和参与者绑定，不创建容器。完成绑定后生成一次性 Enrollment Token。准备 Codex Desktop 客户端公钥文件，每行一把标准 OpenSSH 公钥，可在行尾添加客户端名称。
+## 4. 安装 Worker
 
-从与 Release 相同版本的源码制品目录执行：
+在管理后台创建 Worker，选择角色与并发上限，生成一次性 Enrollment Token。若 Worker 承载 Discord、Mobile 或 Desktop 会话，再在 Worker 页面为它创建唯一 Workspace。
+
+准备 Codex Desktop 客户端公钥文件，每行一把标准 OpenSSH 公钥；允许添加行尾名称，不允许 `command=` 等 key option。
 
 ```bash
 sudo env \
@@ -69,75 +77,85 @@ sudo env \
 
 安装脚本会：
 
-1. 下载对应 OS/架构的 Release tarball 并校验 SHA-256。
-2. 安装 `/usr/local/bin/tyrs-hand-worker`。
-3. 创建 Worker 状态目录、固定工作区和多客户端授权公钥文件。
-4. 写入 `/etc/tyrs-hand/worker.env`。
-5. 执行 `tyrs-hand-worker doctor`。
-6. Linux 安装 systemd system unit；macOS 安装 LaunchDaemon。
+1. 下载当前 OS/架构的 tarball、`.sha256` 和 `.sigstore.json`。
+2. 校验 SHA-256、GitHub Actions OIDC issuer 与 Release Workflow 身份。
+3. 备份现有 Worker 二进制，最多保留四份。
+4. 安装 `/usr/local/bin/tyrs-hand-worker` 与运行包装脚本。
+5. 创建状态目录、Workspace 根目录和多客户端授权公钥文件。
+6. 备份 `/etc/tyrs-hand/worker.env`，最多保留四份，再写入新配置。
+7. 执行 `tyrs-hand-worker doctor`。
+8. 安装并启动 Linux systemd unit 或 macOS LaunchDaemon。
 
-安装脚本会等待最长 30 秒确认注册；成功后自动从 `/etc/tyrs-hand/worker.env` 删除一次性 Enrollment Token。长期凭据写入 Worker 状态目录，权限为 `0600`。若超时，检查服务日志后手动删除 Token。
-
-手动检查：
+注册成功后，一次性 Enrollment Token 会从配置中删除；长期 Worker Credential 以 `0600` 保存在用户状态目录。
 
 ```bash
 sudo -u <os-user> /usr/local/libexec/tyrs-hand-worker-run doctor
 ```
 
-## 内置 SSH 与多客户端
+`doctor` 会检查 Codex 最低版本、Home、Codex Home、Workspace、状态目录、SSH 公钥和必需命令。
 
-Worker 默认监听 `:2222`，可通过 `TYRS_HAND_WORKER_SSH_LISTEN_ADDR` 修改。Host Key 自动生成并持久化。授权公钥文件支持多把 key；不允许 `command=` 等公钥选项，也不允许重复 key。
+## 5. Worker 配置
 
-内置 SSH 支持：
+示例见 `deploy/worker/worker.env.example`。主要字段：
 
-- 完整 Shell、远程命令和环境变量白名单
-- PTY 与窗口尺寸变化
+```dotenv
+TYRS_HAND_WORKER_CONTROL_URL=https://agent.example.com
+TYRS_HAND_WORKER_ROLE=all
+TYRS_HAND_WORKER_MAX_CONCURRENT_JOBS=6
+TYRS_HAND_CODEX_BIN=/usr/local/bin/codex
+TYRS_HAND_WORKER_CODEX_HOME=/home/worker/.codex
+TYRS_HAND_WORKER_WORKSPACE_ROOT=/home/worker/tyrs-hand/workspaces
+TYRS_HAND_WORKER_SSH_LISTEN_ADDR=:2222
+TYRS_HAND_BROWSER_MCP_URL=http://127.0.0.1:8931/mcp
+TYRS_HAND_BROWSER_MCP_TOKEN_FILE=/home/worker/.local/share/tyrs-hand/browser/token
+TYRS_HAND_BROWSER_AGENT_ADDRESS=127.0.0.1:8934
+TYRS_HAND_BROWSER_FILES_ROOT=/home/worker/.local/share/tyrs-hand/browser/files
+```
+
+Provider、API Key、ChatGPT Auth、Base URL 与 Proxy 只配置在机器用户自己的 Codex Home 中。Control 不写入 `config.toml`、`auth.json` 或 `AGENTS.md`。
+
+若机器 Codex Home 的 Provider 通过环境变量引用 API Key，可由宿主管理员将对应变量写入可选的 `/etc/tyrs-hand/codex.env`。Linux systemd Worker 和 `tyrs-hand-worker-run` 会加载该文件，但安装器不会创建、改写或备份它；文件应由 `root:<worker-group>` 持有并设置为 `0640`。这些变量仍属于机器 Codex 配置，不进入 Control、Worker 协议或任务快照。
+
+Control 的 GitHub Agent Profile、仓库覆盖和全局 GitHub Agent instructions 只作用于 GitHub Work Item；Desktop、Discord 与 Mobile 的未指定参数由机器 Codex Home 决定。
+
+## 6. SSH 与多客户端
+
+Worker 默认监听 `:2222`，支持：
+
+- Shell、远程命令和有限环境变量
+- PTY 与窗口尺寸更新
 - SCP 与内置 SFTP
-- 多客户端并发连接
-- 拦截 `codex app-server proxy` 并接入唯一宿主 App Server Hub
-- 拦截 `tyrs-hand-worker browser proxy` 并转发 Browser Bridge
+- 多公钥、多客户端并发
+- Codex App Server 特殊通道
+- Browser Agent 特殊通道
 
-除 `session` 外的 SSH channel 一律拒绝，因此本地、远程和动态端口转发均不可用。Agent 出站 SSH 是另一套能力，仍通过 Control 的受管 SSH 配置下发。
+SSH 只接受 `session` channel，不支持本地、远程或动态端口转发。Agent 出站 SSH 是独立能力，由 Control 将 Credential 和 Host 下发给指定 Worker。
 
-## Codex 配置边界
+## 7. Browser
 
-Worker 启动唯一系统 Codex App Server：
+Worker 任务直接访问宿主 Browser MCP 和宿主文件目录。Token 仅从 `TYRS_HAND_BROWSER_MCP_TOKEN_FILE` 读取，文件应为 Worker 用户所有且权限 `0600`。
 
-```text
-codex app-server --listen unix://<worker-state>/app-server.sock
-```
+Codex Desktop 的浏览器操作通过 `TYRS_HAND_BROWSER_AGENT_ADDRESS` 对应的 Browser Agent 通道完成。Worker Browser 与多个 Desktop Browser 客户端可并发运行；任一 Desktop 客户端断开不影响其他连接。
 
-启动时只设置真实 `HOME` 和 `CODEX_HOME`。Control 不注入 Provider、API Key、ChatGPT Auth、Base URL 或 Proxy，也不在 Codex Home 写入 `config.toml`、`auth.json`、`AGENTS.md` 或迁移标记。
+验收 Browser 时必须同时核对：
 
-Control 中保留的模型、推理强度、Service Tier 和协作模式属于任务偏好；全局 Agent 指令通过 Thread developer instructions 发送，不写入机器 Home。
+- 页面可见动作与工具返回值
+- Worker 心跳和 Browser metadata
+- Browser MCP/Agent 状态与文件交换
+- Task、Tool Call、Projection 和 Outbox 记录
+- 并发链路断开后的隔离性
 
-## Browser Bridge
+## 8. 升级与回滚
 
-Browser Bridge 仍在宿主机独立安装。将 `TYRS_HAND_BROWSER_AGENT_RELAY_ADDRESS` 指向 Bridge Registry，默认 `127.0.0.1:8934`。Worker 的 SSH Browser Proxy 和任务 Browser 工具会复用该宿主能力。
+内部部署版本使用 `deploy-N.A`；开源 Release 使用 SemVer，两条版本线互不混用。
 
-## 唯一旧环境迁移
+升级顺序：
 
-先升级 Control 并执行数据库迁移，再注册新宿主 Worker。默认命令只做 dry-run：
+1. 备份数据库、Control 配置、Worker 配置和当前二进制。
+2. 固定新 Control Digest 与 Worker 精确版本。
+3. 停止 Worker 和 Control 写入。
+4. 执行当前 baseline 所需的数据操作和 `tyrs-hand-admin migrate`。
+5. 启动 Control，再启动 Worker。
+6. 完成 GitHub、Discord、Desktop、多客户端、出站 SSH 和 Browser 并发验收。
 
-```bash
-tyrs-hand-admin worker migrate-legacy \
-  --environment-id <old-environment-uuid> \
-  --worker-id <new-worker-uuid>
-```
-
-确认输出的 `workspaces/<name>` 与已有外部 Thread 数量后执行：
-
-```bash
-tyrs-hand-admin worker migrate-legacy \
-  --environment-id <old-environment-uuid> \
-  --worker-id <new-worker-uuid> \
-  --apply
-```
-
-命令只迁移 Control 中的 Worker 关联，不迁移 Codex Home 文件。迁移前应确保旧项目已放到新宿主的 `~/tyrs-hand/workspaces/<name>`，且真实 `CODEX_HOME` 中已有需要保留的聊天记录。
-
-## 升级与回滚
-
-Release 为每个平台提供 tarball 与独立 `.sha256`。升级时先迁移 Control，再替换 Worker 二进制并重启。Worker Journal 和 Control Lease 会恢复已领取任务。
-
-回滚时停止服务、恢复上一个 Worker 二进制并重启。不要回滚或替换用户 `CODEX_HOME`。Worker Protocol 版本必须与 Control 一致；v2 不提供 v1 兼容路由。
+验收完成前保留数据库备份、旧 Control Digest 和旧 Worker 二进制。回滚时停止服务，恢复三者后按原顺序启动。任何回滚都不替换用户 Codex Home。

@@ -210,14 +210,14 @@ func (c *DisgoConnector) handleMessage(ctx context.Context, event *events.Messag
 		return nil
 	}
 	input.ForumID = guildChannel.ParentID().String()
-	var developmentForum bool
+	var workspaceForum bool
 	if err := c.manager.db.QueryRowContext(ctx, `SELECT EXISTS(
 		SELECT 1 FROM discord_forums f JOIN discord_resources r ON r.id = f.resource_id
-		WHERE f.guild_id = $1 AND f.forum_type = 'development' AND r.discord_id = $2
-	)`, c.guildID, input.ForumID).Scan(&developmentForum); err != nil {
+		WHERE f.guild_id = $1 AND f.forum_type = 'workspace' AND r.discord_id = $2
+	)`, c.guildID, input.ForumID).Scan(&workspaceForum); err != nil {
 		return err
 	}
-	if !developmentForum {
+	if !workspaceForum {
 		return nil
 	}
 	input.Title = channel.Name()

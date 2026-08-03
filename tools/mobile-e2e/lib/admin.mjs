@@ -59,7 +59,7 @@ export class AdminClient {
     this.csrf = login.csrfToken
   }
 
-  createNode(name) {
+  createWorker(name) {
     return this.request('/workers', { method: 'POST', csrf: true,
       body: { name, roles: ['discord'], maxConcurrentJobs: 2 } })
   }

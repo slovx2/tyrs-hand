@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS connections (
 CREATE TABLE IF NOT EXISTS projects (
   server_id TEXT NOT NULL,
   id TEXT NOT NULL,
-  environment_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
   name TEXT NOT NULL,
   relative_path TEXT NOT NULL,
   payload TEXT NOT NULL,

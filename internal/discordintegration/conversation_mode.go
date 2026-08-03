@@ -92,7 +92,7 @@ func (s *ConversationService) SetConversationMode(ctx context.Context, guildID, 
 				state.Revision, state.SettingsRevision)
 		}
 		if err == nil {
-			_, err = tx.ExecContext(ctx, `UPDATE development_sessions session SET
+			_, err = tx.ExecContext(ctx, `UPDATE workspace_sessions session SET
 				collaboration_mode=$2, settings_version=$3, updated_at=now()
 				FROM discord_conversations conversation
 				WHERE conversation.id=$1 AND session.id=conversation.session_id`,
@@ -213,7 +213,7 @@ func (s *ConversationService) SetRuntimePreferences(ctx context.Context, guildID
 				state.SettingsRevision)
 		}
 		if err == nil {
-			_, err = tx.ExecContext(ctx, `UPDATE development_sessions session SET
+			_, err = tx.ExecContext(ctx, `UPDATE workspace_sessions session SET
 				model=NULLIF($2,''), reasoning_effort=NULLIF($3,''), service_tier=$4,
 				settings_version=$5, updated_at=now()
 				FROM discord_conversations conversation

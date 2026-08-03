@@ -25,14 +25,14 @@ type CodexTurnRun struct {
 	PrimaryIntentID uuid.UUID `json:"primary_intent_id,omitempty"`
 	// Attempt holds the value of the "attempt" field.
 	Attempt int `json:"attempt,omitempty"`
-	// WorkerID holds the value of the "worker_id" field.
-	WorkerID string `json:"worker_id,omitempty"`
+	// LeaseOwner holds the value of the "lease_owner" field.
+	LeaseOwner string `json:"lease_owner,omitempty"`
 	// LeaseEpoch holds the value of the "lease_epoch" field.
 	LeaseEpoch int64 `json:"lease_epoch,omitempty"`
 	// CapabilityHash holds the value of the "capability_hash" field.
 	CapabilityHash string `json:"-"`
-	// ExecutionNodeID holds the value of the "execution_node_id" field.
-	ExecutionNodeID *uuid.UUID `json:"execution_node_id,omitempty"`
+	// WorkerID holds the value of the "worker_id" field.
+	WorkerID *uuid.UUID `json:"worker_id,omitempty"`
 	// WorkerEventSequence holds the value of the "worker_event_sequence" field.
 	WorkerEventSequence int64 `json:"worker_event_sequence,omitempty"`
 	// WorkerTerminalKey holds the value of the "worker_terminal_key" field.
@@ -71,13 +71,13 @@ func (*CodexTurnRun) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case codexturnrun.FieldExecutionNodeID:
+		case codexturnrun.FieldWorkerID:
 			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		case codexturnrun.FieldCodexError:
 			values[i] = new([]byte)
 		case codexturnrun.FieldAttempt, codexturnrun.FieldLeaseEpoch, codexturnrun.FieldWorkerEventSequence, codexturnrun.FieldActiveSlot, codexturnrun.FieldAppendCount, codexturnrun.FieldMaxAppendCount:
 			values[i] = new(sql.NullInt64)
-		case codexturnrun.FieldWorkerID, codexturnrun.FieldCapabilityHash, codexturnrun.FieldWorkerTerminalKey, codexturnrun.FieldStatus, codexturnrun.FieldCollaborationMode, codexturnrun.FieldCodexSubmissionID, codexturnrun.FieldConfirmedCodexTurnID, codexturnrun.FieldErrorCode, codexturnrun.FieldErrorMessage:
+		case codexturnrun.FieldLeaseOwner, codexturnrun.FieldCapabilityHash, codexturnrun.FieldWorkerTerminalKey, codexturnrun.FieldStatus, codexturnrun.FieldCollaborationMode, codexturnrun.FieldCodexSubmissionID, codexturnrun.FieldConfirmedCodexTurnID, codexturnrun.FieldErrorCode, codexturnrun.FieldErrorMessage:
 			values[i] = new(sql.NullString)
 		case codexturnrun.FieldStartedAt, codexturnrun.FieldHeartbeatAt, codexturnrun.FieldFinishedAt:
 			values[i] = new(sql.NullTime)
@@ -122,11 +122,11 @@ func (_m *CodexTurnRun) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Attempt = int(value.Int64)
 			}
-		case codexturnrun.FieldWorkerID:
+		case codexturnrun.FieldLeaseOwner:
 			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field worker_id", values[i])
+				return fmt.Errorf("unexpected type %T for field lease_owner", values[i])
 			} else if value.Valid {
-				_m.WorkerID = value.String
+				_m.LeaseOwner = value.String
 			}
 		case codexturnrun.FieldLeaseEpoch:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -140,12 +140,12 @@ func (_m *CodexTurnRun) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.CapabilityHash = value.String
 			}
-		case codexturnrun.FieldExecutionNodeID:
+		case codexturnrun.FieldWorkerID:
 			if value, ok := values[i].(*sql.NullScanner); !ok {
-				return fmt.Errorf("unexpected type %T for field execution_node_id", values[i])
+				return fmt.Errorf("unexpected type %T for field worker_id", values[i])
 			} else if value.Valid {
-				_m.ExecutionNodeID = new(uuid.UUID)
-				*_m.ExecutionNodeID = *value.S.(*uuid.UUID)
+				_m.WorkerID = new(uuid.UUID)
+				*_m.WorkerID = *value.S.(*uuid.UUID)
 			}
 		case codexturnrun.FieldWorkerEventSequence:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -291,16 +291,16 @@ func (_m *CodexTurnRun) String() string {
 	builder.WriteString("attempt=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Attempt))
 	builder.WriteString(", ")
-	builder.WriteString("worker_id=")
-	builder.WriteString(_m.WorkerID)
+	builder.WriteString("lease_owner=")
+	builder.WriteString(_m.LeaseOwner)
 	builder.WriteString(", ")
 	builder.WriteString("lease_epoch=")
 	builder.WriteString(fmt.Sprintf("%v", _m.LeaseEpoch))
 	builder.WriteString(", ")
 	builder.WriteString("capability_hash=<sensitive>")
 	builder.WriteString(", ")
-	if v := _m.ExecutionNodeID; v != nil {
-		builder.WriteString("execution_node_id=")
+	if v := _m.WorkerID; v != nil {
+		builder.WriteString("worker_id=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")

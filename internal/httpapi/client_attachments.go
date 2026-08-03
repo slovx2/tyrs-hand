@@ -162,7 +162,7 @@ func (s *Server) clientDownloadAttachment(c *gin.Context) {
 	err = s.db.QueryRowContext(c.Request.Context(), `SELECT attachment.storage_key,
 		attachment.original_filename,attachment.media_type,attachment.size_bytes,attachment.sha256
 		FROM session_attachments attachment
-		LEFT JOIN development_sessions session ON session.id=attachment.session_id
+		LEFT JOIN workspace_sessions session ON session.id=attachment.session_id
 		LEFT JOIN client_devices device ON device.id=attachment.uploaded_by_device_id
 		WHERE attachment.id=$1 AND attachment.status<>'deleted'
 		AND (session.created_by_administrator_id=$2 OR device.administrator_id=$2)`,

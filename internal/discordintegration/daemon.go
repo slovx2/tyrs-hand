@@ -11,7 +11,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
-	"github.com/slovx2/tyrs-hand/internal/settings"
 	"go.uber.org/zap"
 )
 
@@ -33,11 +32,11 @@ type Daemon struct {
 }
 
 func NewDaemon(manager *Manager, conversations *ConversationService, bindings *BindingService,
-	githubManager *ghadapter.Manager, settingsService *settings.Service,
+	githubManager *ghadapter.Manager,
 	redisClient *redis.Client, logger *zap.Logger,
 ) *Daemon {
 	d := &Daemon{manager: manager, conversations: conversations, bindings: bindings,
-		titles: NewTitleGenerator(manager.db, settingsService, logger), redis: redisClient,
+		titles: NewTitleGenerator(manager.db), redis: redisClient,
 		logger: logger, apiURL: "https://discord.com/api/v10",
 		outboxInterval: 250 * time.Millisecond, operationInterval: 2 * time.Second,
 		projectionInterval: time.Minute, permissionInterval: 5 * time.Minute}
@@ -282,7 +281,7 @@ func (d *Daemon) refreshSystemStatus(ctx context.Context, guildID string) error 
 		FROM latest_jobs
 	)
 	SELECT queued, running, failed,
-		(SELECT count(*) FROM worker_nodes WHERE status = 'online' AND heartbeat_at > now() - interval '2 minutes'),
+		(SELECT count(*) FROM workers WHERE status = 'online' AND heartbeat_at > now() - interval '2 minutes'),
 			(SELECT count(*) FROM integration_outbox WHERE integration = 'discord'
 				AND status IN ('pending','retrying','sending','applying','ambiguous')),
 		COALESCE((SELECT last_gateway_status FROM discord_guilds WHERE guild_id = $1), 'unknown')
@@ -328,7 +327,7 @@ func (d *Daemon) refreshSystemAlerts(ctx context.Context, guildID string) error 
 	var gatewayStatus, gatewayError string
 	var workers, failedOutbox int64
 	err = d.manager.db.QueryRowContext(ctx, `SELECT last_gateway_status, COALESCE(last_gateway_error, ''),
-		(SELECT count(*) FROM worker_nodes WHERE status = 'online' AND heartbeat_at > now() - interval '2 minutes'),
+		(SELECT count(*) FROM workers WHERE status = 'online' AND heartbeat_at > now() - interval '2 minutes'),
 			(SELECT count(*) FROM integration_outbox WHERE integration = 'discord'
 				AND status IN ('failed','ambiguous'))
 		FROM discord_guilds WHERE guild_id = $1`, guildID).Scan(&gatewayStatus, &gatewayError, &workers, &failedOutbox)

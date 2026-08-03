@@ -13,7 +13,7 @@ tags:
   - name: Resources
   - name: Settings
   - name: Discord
-  - name: Development Environments
+  - name: Workspaces
   - name: Workers
   - name: SSH
   - name: Worker Protocol
@@ -172,59 +172,46 @@ paths:
       responses:
         "302": { description: 返回 GitHub 设置页 }
         default: { $ref: "#/components/responses/Problem" }
-  /settings/global-agents:
+  /settings/github-agent-instructions:
     get:
-      operationId: getGlobalAgents
+      operationId: getGitHubAgentInstructions
       tags: [Settings]
       responses:
         "200":
-          description: 作为任务 developer instructions 注入的全局 Agent 指令
-          content: { application/json: { schema: { $ref: "#/components/schemas/GlobalAgents" } } }
+          description: 仅注入 GitHub Work Item 的 developer instructions
+          content: { application/json: { schema: { $ref: "#/components/schemas/GitHubAgentInstructions" } } }
         default: { $ref: "#/components/responses/Problem" }
     put:
-      operationId: putGlobalAgents
+      operationId: putGitHubAgentInstructions
       tags: [Settings]
       parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: "#/components/schemas/GlobalAgents" } } }
+        content: { application/json: { schema: { $ref: "#/components/schemas/GitHubAgentInstructions" } } }
       responses:
         "204": { description: 已保存 }
         default: { $ref: "#/components/responses/Problem" }
-  /settings/codex:
+  /settings/github-agent:
     get:
-      operationId: listCodexSettings
+      operationId: listGitHubAgentSettings
       tags: [Settings]
       responses:
         "200":
-          description: 仓库与 Discord Forum 的 Codex 设置
+          description: GitHub Agent Profile 与仓库参数覆盖
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/CodexSettingsList" }
+              schema: { $ref: "#/components/schemas/GitHubAgentSettingsList" }
         default: { $ref: "#/components/responses/Problem" }
-  /settings/codex/repositories/{id}:
+  /settings/github-agent/repositories/{id}:
     put:
-      operationId: putRepositoryCodexSettings
+      operationId: putRepositoryGitHubAgentSettings
       tags: [Settings]
       parameters:
         - { $ref: "#/components/parameters/CSRFToken" }
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: "#/components/schemas/CodexPreferences" } } }
-      responses:
-        "204": { description: 已保存 }
-        default: { $ref: "#/components/responses/Problem" }
-  /settings/codex/forums/{id}:
-    put:
-      operationId: putForumCodexSettings
-      tags: [Settings]
-      parameters:
-        - { $ref: "#/components/parameters/CSRFToken" }
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-      requestBody:
-        required: true
-        content: { application/json: { schema: { $ref: "#/components/schemas/CodexPreferences" } } }
+        content: { application/json: { schema: { $ref: "#/components/schemas/GitHubAgentPreferences" } } }
       responses:
         "204": { description: 已保存 }
         default: { $ref: "#/components/responses/Problem" }
@@ -304,20 +291,20 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/DiscordMember" } }
         default: { $ref: "#/components/responses/Problem" }
-  /development-environments:
+  /workspaces:
     get:
-      operationId: listDevelopmentEnvironments
-      tags: [Development Environments]
+      operationId: listWorkspaces
+      tags: [Workspaces]
       responses:
         "200":
-          description: 长期开发环境
+          description: Worker 与逻辑 Workspace 绑定
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/DevelopmentEnvironmentList" }
+              schema: { $ref: "#/components/schemas/WorkspaceList" }
         default: { $ref: "#/components/responses/Problem" }
     post:
-      operationId: createDevelopmentEnvironment
-      tags: [Development Environments]
+      operationId: createWorkspace
+      tags: [Workspaces]
       parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
       requestBody:
         required: true
@@ -325,40 +312,19 @@ paths:
           application/json:
             schema:
               type: object
-              required: [ownerDiscordUserId]
+              required: [ownerDiscordUserId, workerId]
               properties:
                 ownerDiscordUserId: { type: string, minLength: 1 }
+                workerId: { type: string, format: uuid }
       responses:
         "201":
-          description: 逻辑环境已创建并绑定 Worker
+          description: Workspace 已创建并绑定 Worker
           content: { application/json: { schema: { $ref: "#/components/schemas/IDResource" } } }
         default: { $ref: "#/components/responses/Problem" }
-  /development-environments/{id}/ssh:
-    put:
-      operationId: putDevelopmentEnvironmentSSH
-      tags: [Development Environments]
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-        - { $ref: "#/components/parameters/CSRFToken" }
-      requestBody:
-        required: true
-        content: { application/json: { schema: { $ref: "#/components/schemas/DevelopmentEnvironmentSSHInput" } } }
-      responses:
-        "202": { description: SSH 配置已排队 }
-        default: { $ref: "#/components/responses/Problem" }
-    delete:
-      operationId: deleteDevelopmentEnvironmentSSH
-      tags: [Development Environments]
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-        - { $ref: "#/components/parameters/CSRFToken" }
-      responses:
-        "202": { description: SSH 停用已排队 }
-        default: { $ref: "#/components/responses/Problem" }
-  /development-projects/{id}/forums:
+  /workspace-projects/{id}/forums:
     post:
-      operationId: createDevelopmentProjectForum
-      tags: [Development Environments]
+      operationId: createWorkspaceProjectForum
+      tags: [Workspaces]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
         - { $ref: "#/components/parameters/CSRFToken" }
@@ -366,38 +332,38 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/DevelopmentProjectForumInput" }
+            schema: { $ref: "#/components/schemas/WorkspaceProjectForumInput" }
       responses:
         "202": { description: Forum 创建已排队或历史 Forum 已恢复 }
         default: { $ref: "#/components/responses/Problem" }
-  /development-forums/{id}/disable:
+  /workspace-forums/{id}/disable:
     post:
-      operationId: disableDevelopmentForum
-      tags: [Development Environments]
+      operationId: disableWorkspaceForum
+      tags: [Workspaces]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
         - { $ref: "#/components/parameters/CSRFToken" }
       responses:
         "202": { description: Forum 配对已停用并切换为只读 }
         default: { $ref: "#/components/responses/Problem" }
-  /development-forums/{id}/enable:
+  /workspace-forums/{id}/enable:
     post:
-      operationId: enableDevelopmentForum
-      tags: [Development Environments]
+      operationId: enableWorkspaceForum
+      tags: [Workspaces]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
         - { $ref: "#/components/parameters/CSRFToken" }
       responses:
         "202": { description: Forum 配对已恢复 }
         default: { $ref: "#/components/responses/Problem" }
-  /development-projects/{id}/forums/{forumId}/collaborators/{memberId}:
+  /workspace-projects/{id}/forums/{forumId}/collaborators/{memberId}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       - { name: forumId, in: path, required: true, schema: { type: string, format: uuid } }
       - { name: memberId, in: path, required: true, schema: { type: string } }
     put:
-      operationId: putDevelopmentProjectForumCollaborator
-      tags: [Development Environments]
+      operationId: putWorkspaceProjectForumCollaborator
+      tags: [Workspaces]
       parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
       requestBody:
         required: true
@@ -411,8 +377,8 @@ paths:
         "204": { description: 已更新 }
         default: { $ref: "#/components/responses/Problem" }
     delete:
-      operationId: deleteDevelopmentProjectForumCollaborator
-      tags: [Development Environments]
+      operationId: deleteWorkspaceProjectForumCollaborator
+      tags: [Workspaces]
       parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
       responses:
         "204": { description: 已删除 }
@@ -553,7 +519,7 @@ paths:
     get: { $ref: "#/components/pathItems/ListJobs" }
   /workers:
     get:
-      operationId: listHostWorkers
+      operationId: listWorkers
       tags: [Workers]
       responses:
         "200":
@@ -563,21 +529,21 @@ paths:
               schema:
                 type: object
                 required: [items]
-                properties: { items: { type: array, items: { $ref: "#/components/schemas/ExecutionNode" } } }
+                properties: { items: { type: array, items: { $ref: "#/components/schemas/Worker" } } }
     post:
-      operationId: createHostWorker
+      operationId: createWorker
       tags: [Workers]
       parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: "#/components/schemas/ExecutionNodeInput" } } }
+        content: { application/json: { schema: { $ref: "#/components/schemas/WorkerInput" } } }
       responses:
         "201":
           description: Worker 与一次性注册 Token
-          content: { application/json: { schema: { $ref: "#/components/schemas/ExecutionNodeCreated" } } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/WorkerCreated" } } }
   /workers/{id}/enrollments:
     post:
-      operationId: createHostWorkerEnrollment
+      operationId: createWorkerEnrollment
       tags: [Workers]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -586,7 +552,7 @@ paths:
         "201": { description: 一次性注册 Token, content: { application/json: { schema: { $ref: "#/components/schemas/EnrollmentToken" } } } }
   /workers/{id}:
     delete:
-      operationId: deleteHostWorker
+      operationId: deleteWorker
       tags: [Workers]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -594,23 +560,23 @@ paths:
       responses: { "204": { description: 已删除 }, default: { $ref: "#/components/responses/Problem" } }
   /workers/{id}/enabled:
     put:
-      operationId: setHostWorkerEnabled
+      operationId: setWorkerEnabled
       tags: [Workers]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
         - { $ref: "#/components/parameters/CSRFToken" }
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [enabled], properties: { enabled: { type: boolean } } } } } }
       responses: { "204": { description: 已更新 }, default: { $ref: "#/components/responses/Problem" } }
-  /settings/execution:
+  /settings/workers:
     get:
-      operationId: getExecutionDefaults
+      operationId: getWorkerDefaults
       tags: [Workers]
-      responses: { "200": { description: 默认节点, content: { application/json: { schema: { $ref: "#/components/schemas/ExecutionDefaults" } } } } }
+      responses: { "200": { description: 默认 Worker, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerDefaults" } } } } }
     put:
-      operationId: putExecutionDefaults
+      operationId: putWorkerDefaults
       tags: [Workers]
       parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
-      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ExecutionDefaults" } } } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerDefaults" } } } }
       responses: { "204": { description: 已保存 }, default: { $ref: "#/components/responses/Problem" } }
   /ssh/credentials:
     get:
@@ -715,42 +681,74 @@ paths:
       responses:
         "204": { description: 已删除 }
         default: { $ref: "#/components/responses/Problem" }
-  /worker/v2/enroll:
+  /worker/v1/enroll:
+    servers: [{ url: / }]
     post:
       operationId: enrollWorker
       tags: [Worker Protocol]
       servers: [{ url: / }]
       security: []
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerEnrollRequest" } } } }
-      responses: { "200": { description: 长期节点凭据, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerEnrollResponse" } } } }, default: { $ref: "#/components/responses/Problem" } }
-  /worker/v2/sync:
+      responses: { "200": { description: 长期 Worker 凭据, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerEnrollResponse" } } } }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/heartbeat:
+    servers: [{ url: / }]
     post:
-      operationId: syncWorker
+      operationId: workerHeartbeat
       tags: [Worker Protocol]
       servers: [{ url: / }]
-      security: [{ nodeBearer: [] }]
-      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerRequestEnvelope" } } } }
+      security: [{ workerBearer: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerHeartbeat" } } } }
       responses:
-        "200": { description: 同步结果, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
-        "204": { description: 同步完成，无响应体 }
+        "204": { description: 心跳已记录 }
         default: { $ref: "#/components/responses/Problem" }
-  /worker/v2/rpc:
+  /worker/v1/claims:
+    servers: [{ url: / }]
     post:
-      operationId: callWorkerRPC
+      operationId: workerClaim
       tags: [Worker Protocol]
       servers: [{ url: / }]
-      security: [{ nodeBearer: [] }]
-      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerRequestEnvelope" } } } }
+      security: [{ workerBearer: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerClaimRequest" } } } }
       responses:
-        "200": { description: RPC 结果, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
-        "204": { description: RPC 完成，无响应体 }
+        "200": { description: 可选任务租约, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerClaimResponse" } } } }
         default: { $ref: "#/components/responses/Problem" }
-  /worker/v2/blobs/{id}:
+  /worker/v1/ssh-configuration:
+    servers: [{ url: / }]
+    get:
+      operationId: workerSSHConfiguration
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ workerBearer: [] }]
+      responses:
+        "200": { description: 当前 Worker 的出站 SSH 配置, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerSSHConfiguration" } } } }
+        "304": { description: 配置未变化 }
+        default: { $ref: "#/components/responses/Problem" }
+  /worker/v1/workspace:
+    servers: [{ url: / }]
+    get:
+      operationId: workerWorkspace
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ workerBearer: [] }]
+      responses:
+        "200": { description: 当前 Worker 可选 Workspace, content: { application/json: { schema: { type: object, nullable: true, additionalProperties: true } } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /worker/v1/workspace/projects/snapshot:
+    servers: [{ url: / }]
+    post:
+      operationId: workerWorkspaceProjectSnapshot
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ workerBearer: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+      responses: { "204": { description: 项目快照已保存 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/blobs/{id}:
+    servers: [{ url: / }]
     get:
       operationId: downloadWorkerBlob
       tags: [Worker Protocol]
       servers: [{ url: / }]
-      security: [{ nodeBearer: [] }]
+      security: [{ workerBearer: [] }]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: runId, in: query, required: true, schema: { type: string, format: uuid } }
@@ -761,7 +759,7 @@ paths:
       operationId: uploadWorkerBlob
       tags: [Worker Protocol]
       servers: [{ url: / }]
-      security: [{ nodeBearer: [] }]
+      security: [{ workerBearer: [] }]
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: ordinal, in: query, required: true, schema: { type: integer, minimum: 0 } }
@@ -776,6 +774,289 @@ paths:
                 metadata: { type: string }
                 file: { type: string, format: binary }
       responses: { "200": { description: Blob 上传结果, content: { application/json: { schema: { type: object, additionalProperties: true } } } }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/desktop-thread-requests:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerPrepareDesktopThread
+      security: [{ workerBearer: [] }]
+      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
+      responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/desktop-thread-requests/{id}:
+    servers: [{ url: / }]
+    get:
+      tags: [Worker Protocol]
+      operationId: workerDesktopThreadState
+      security: [{ workerBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/desktop-thread-requests/{id}/complete:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerCompleteDesktopThread
+      security: [{ workerBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
+      responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/desktop-thread-requests/{id}/fail:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerFailDesktopThread
+      security: [{ workerBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
+      responses: { "204": { description: 失败状态已保存 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/thread-metadata-events:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerRecordThreadMetadata
+      security: [{ workerBearer: [] }]
+      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
+      responses: { "204": { description: 元数据事件已保存 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/thread-name-updates:
+    servers: [{ url: / }]
+    get:
+      tags: [Worker Protocol]
+      operationId: workerPendingThreadNames
+      security: [{ workerBearer: [] }]
+      responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/thread-name-updates/{id}/ack:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerAckThreadName
+      security: [{ workerBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
+      responses: { "204": { description: 标题更新已确认 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/thread-lifecycle-requests/desktop:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerPrepareDesktopThreadLifecycle
+      security: [{ workerBearer: [] }]
+      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
+      responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/thread-lifecycle-requests:
+    servers: [{ url: / }]
+    get:
+      tags: [Worker Protocol]
+      operationId: workerPendingThreadLifecycles
+      security: [{ workerBearer: [] }]
+      responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/thread-lifecycle-requests/{id}:
+    servers: [{ url: / }]
+    get:
+      tags: [Worker Protocol]
+      operationId: workerThreadLifecycleState
+      security: [{ workerBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/thread-lifecycle-requests/{id}/complete:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerCompleteThreadLifecycle
+      security: [{ workerBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
+      responses: { "204": { description: 生命周期操作已完成 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/desktop-turns:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerPrepareDesktopTurn
+      security: [{ workerBearer: [] }]
+      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
+      responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/desktop-turns/preflight:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerPreflightDesktopTurn
+      security: [{ workerBearer: [] }]
+      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
+      responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/desktop-turns/{id}/images/target:
+    servers: [{ url: / }]
+    get:
+      tags: [Worker Protocol]
+      operationId: workerDesktopImageTarget
+      security: [{ workerBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/desktop-turns/{id}/images/{ordinal}/fail:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerFailDesktopImage
+      security: [{ workerBearer: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/WorkerResourceID" }
+        - { name: ordinal, in: path, required: true, schema: { type: integer, minimum: 0 } }
+      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
+      responses: { "204": { description: 图片失败状态已保存 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/desktop-rollbacks:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerPrepareDesktopRollback
+      security: [{ workerBearer: [] }]
+      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
+      responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/desktop-rollbacks/{id}/complete:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerCompleteDesktopRollback
+      security: [{ workerBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
+      responses: { "204": { description: 回滚已完成 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/desktop-steers:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerRecordDesktopSteer
+      security: [{ workerBearer: [] }]
+      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
+      responses: { "204": { description: Steer 已保存 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/interactive:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerRegisterInteractive
+      security: [{ workerBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
+      responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/interactive/{id}:
+    servers: [{ url: / }]
+    get:
+      tags: [Worker Protocol]
+      operationId: workerInteractiveState
+      security: [{ workerBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/interactive/answer:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerAnswerInteractive
+      security: [{ workerBearer: [] }]
+      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
+      responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/heartbeat:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerRunHeartbeat
+      security: [{ workerBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
+      responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/commands/ack:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerCommandAck
+      security: [{ workerBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerCommandAck" } } } }
+      responses: { "204": { description: 命令已确认 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/events:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerRunEvents
+      security: [{ workerBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerEventsRequest" } } } }
+      responses: { "204": { description: 事件已保存 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/complete:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerRunComplete
+      security: [{ workerBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerCompleteRequest" } } } }
+      responses: { "204": { description: Run 已完成 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/fail:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerRunFail
+      security: [{ workerBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerFailRequest" } } } }
+      responses: { "204": { description: Run 失败状态已保存 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/thread:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerSetThread
+      security: [{ workerBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
+      responses: { "204": { description: Thread 已绑定 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/submission:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerRecordSubmission
+      security: [{ workerBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
+      responses: { "204": { description: Submission 已记录 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/confirm:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerConfirmTurn
+      security: [{ workerBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
+      responses: { "204": { description: Turn 已确认 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/workspace-project-state:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerWorkspaceProjectState
+      security: [{ workerBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
+      responses: { "204": { description: 项目状态已保存 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/workspace-state:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerWorkspaceState
+      security: [{ workerBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
+      responses: { "204": { description: Workspace 状态已保存 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/tools/call:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerToolCall
+      security: [{ workerBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
+      responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/git-credential:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerGitCredential
+      security: [{ workerBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody: { $ref: "#/components/requestBodies/WorkerJSON" }
+      responses: { "200": { $ref: "#/components/responses/WorkerJSON" }, default: { $ref: "#/components/responses/Problem" } }
   /worktrees:
     get: { $ref: "#/components/pathItems/ListWorktrees" }
   /audit-logs:
@@ -1054,10 +1335,10 @@ components:
       type: apiKey
       in: cookie
       name: tyrs_hand_session
-    nodeBearer:
+    workerBearer:
       type: http
       scheme: bearer
-      bearerFormat: opaque-node-token
+      bearerFormat: opaque-worker-credential
     clientBearer:
       type: http
       scheme: bearer
@@ -1083,6 +1364,12 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+  requestBodies:
+    WorkerJSON:
+      required: true
+      content:
+        application/json:
+          schema: { type: object, additionalProperties: true }
   responses:
     Problem:
       description: RFC 9457 Problem Details
@@ -1094,6 +1381,11 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ResourceList" }
+    WorkerJSON:
+      description: Worker 直连协议响应
+      content:
+        application/json:
+          schema: { type: object, additionalProperties: true }
   pathItems:
     ListRepositories:
       operationId: listRepositories
@@ -1173,13 +1465,13 @@ components:
         settingsVersion: { type: integer, format: int64, minimum: 0 }
     ClientSession:
       type: object
-      required: [id, developmentEnvironmentId, developmentProjectId, agentProfileId, title,
+      required: [id, workspaceId, projectId, agentProfileId, title,
         lifecycleState, historyCompleteness, model, reasoningEffort, serviceTier,
         collaborationMode, settingsVersion, lastMessageSeq, lastActivityAt, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
-        developmentEnvironmentId: { type: string, format: uuid }
-        developmentProjectId: { type: string, format: uuid }
+        workspaceId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
         agentProfileId: { type: string, format: uuid }
         title: { type: string }
         lifecycleState: { type: string, enum: [active, archive_pending, archived, unarchive_pending] }
@@ -1208,10 +1500,10 @@ components:
             attachmentIds: { type: array, maxItems: 10, items: { type: string, format: uuid } }
     ClientProject:
       type: object
-      required: [id, environmentId, name, relativePath, kind, availabilityStatus, branch, dirty]
+      required: [id, workspaceId, name, relativePath, kind, availabilityStatus, branch, dirty]
       properties:
         id: { type: string, format: uuid }
-        environmentId: { type: string, format: uuid }
+        workspaceId: { type: string, format: uuid }
         name: { type: string }
         relativePath: { type: string }
         kind: { type: string }
@@ -1258,7 +1550,7 @@ components:
         nextCursor: { type: string, nullable: true }
     ClientBootstrap:
       type: object
-      required: [serverId, protocolVersion, currentCursor, user, capabilities, environments,
+      required: [serverId, protocolVersion, currentCursor, user, capabilities, workspaces,
         projects, agentProfiles, modelCatalogs, lastStartedSettings]
       properties:
         serverId: { type: string, format: uuid }
@@ -1271,7 +1563,7 @@ components:
             id: { type: string, format: uuid }
             username: { type: string }
         capabilities: { type: object, additionalProperties: { type: boolean } }
-        environments: { type: array, items: { type: object, additionalProperties: true } }
+        workspaces: { type: array, items: { type: object, additionalProperties: true } }
         projects: { type: array, items: { $ref: "#/components/schemas/ClientProject" } }
         agentProfiles:
           type: array
@@ -1287,7 +1579,7 @@ components:
         lastStartedSettings:
           allOf: [{ $ref: "#/components/schemas/ClientSessionSettings" }]
           nullable: true
-    ExecutionNode:
+    Worker:
       type: object
       required: [id, name, roles, enabled, maxConcurrentJobs, protocolVersion, status, metadata]
       properties:
@@ -1302,7 +1594,7 @@ components:
         heartbeatAt: { type: string, format: date-time }
         lastError: { type: string }
         metadata: { type: object, additionalProperties: true }
-    ExecutionNodeInput:
+    WorkerInput:
       type: object
       required: [name, roles, maxConcurrentJobs]
       properties:
@@ -1315,17 +1607,17 @@ components:
       properties:
         enrollmentToken: { type: string, writeOnly: true }
         expiresIn: { type: integer, enum: [900] }
-    ExecutionNodeCreated:
+    WorkerCreated:
       allOf:
         - { $ref: "#/components/schemas/EnrollmentToken" }
         - type: object
-          required: [node]
-          properties: { node: { $ref: "#/components/schemas/ExecutionNode" } }
-    ExecutionDefaults:
+          required: [worker]
+          properties: { worker: { $ref: "#/components/schemas/Worker" } }
+    WorkerDefaults:
       type: object
       properties:
-        githubNodeId: { type: string, format: uuid, nullable: true }
-        discordNodeId: { type: string, format: uuid, nullable: true }
+        githubWorkerId: { type: string, format: uuid, nullable: true }
+        discordWorkerId: { type: string, format: uuid, nullable: true }
     SSHCredential:
       type: object
       required: [id, name, publicKey, fingerprint, enabled, version, hostCount, updatedAt]
@@ -1364,7 +1656,7 @@ components:
         enabled: { type: boolean }
     SSHHost:
       type: object
-      required: [id, alias, hostname, port, username, credentialId, credentialName, executionNodeIds, enabled, updatedAt]
+      required: [id, alias, hostname, port, username, credentialId, credentialName, workerIds, enabled, updatedAt]
       properties:
         id: { type: string, format: uuid }
         alias: { type: string }
@@ -1375,12 +1667,12 @@ components:
         credentialName: { type: string, readOnly: true }
         proxyJumpHostId: { type: string, format: uuid }
         proxyJumpAlias: { type: string, readOnly: true }
-        executionNodeIds: { type: array, items: { type: string, format: uuid } }
+        workerIds: { type: array, items: { type: string, format: uuid } }
         enabled: { type: boolean }
         updatedAt: { type: string, format: date-time, readOnly: true }
     SSHHostInput:
       type: object
-      required: [alias, hostname, port, username, credentialId, executionNodeIds, enabled]
+      required: [alias, hostname, port, username, credentialId, workerIds, enabled]
       properties:
         alias: { type: string, minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9._-]+$" }
         hostname: { type: string, minLength: 1, maxLength: 255 }
@@ -1388,7 +1680,7 @@ components:
         username: { type: string, minLength: 1, maxLength: 128 }
         credentialId: { type: string, format: uuid }
         proxyJumpHostId: { type: string, format: uuid }
-        executionNodeIds: { type: array, items: { type: string, format: uuid }, uniqueItems: true }
+        workerIds: { type: array, items: { type: string, format: uuid }, uniqueItems: true }
         enabled: { type: boolean }
     SSHHostImportItem:
       type: object
@@ -1401,10 +1693,10 @@ components:
         proxyJumpAlias: { type: string, minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9._-]+$" }
     SSHHostImportInput:
       type: object
-      required: [credentialId, executionNodeIds, enabled, hosts]
+      required: [credentialId, workerIds, enabled, hosts]
       properties:
         credentialId: { type: string, format: uuid }
-        executionNodeIds: { type: array, items: { type: string, format: uuid }, uniqueItems: true }
+        workerIds: { type: array, items: { type: string, format: uuid }, uniqueItems: true }
         enabled: { type: boolean }
         hosts:
           type: array
@@ -1448,25 +1740,11 @@ components:
       properties: { token: { type: string, writeOnly: true } }
     WorkerEnrollResponse:
       type: object
-      required: [nodeId, credential, protocolVersion]
+      required: [workerId, credential, protocolVersion]
       properties:
-        nodeId: { type: string, format: uuid }
+        workerId: { type: string, format: uuid }
         credential: { type: string, writeOnly: true }
         protocolVersion: { type: integer }
-    WorkerRequestEnvelope:
-      type: object
-      required: [requestId, sequence, operation]
-      properties:
-        requestId: { type: string, format: uuid }
-        sequence: { type: integer, format: int64, minimum: 1 }
-        operation:
-          type: string
-          description: 稳定操作名；sync 仅接受 worker.heartbeat 和 worker.claim。
-        parameters:
-          type: object
-          additionalProperties: { type: string }
-        payload:
-          description: 操作对应的 JSON 请求体。
     WorkerHeartbeat:
       type: object
       required: [workerVersion, protocolVersion]
@@ -1476,9 +1754,8 @@ components:
         metadata: { type: object, additionalProperties: true }
     WorkerClaimRequest:
       type: object
-      required: [workerId, role, wait]
+      required: [role, wait]
       properties:
-        workerId: { type: string }
         role: { type: string, enum: [all, github, discord] }
         wait: { type: boolean }
     WorkerClaimResponse:
@@ -1531,34 +1808,6 @@ components:
             commandId: { type: string, format: uuid }
             action: { type: string, enum: [steer, interrupt] }
             turnId: { type: string }
-    WorkerOperationTerminal:
-      allOf:
-        - { $ref: "#/components/schemas/WorkerRunLease" }
-        - type: object
-          required: [idempotencyKey]
-          properties:
-            idempotencyKey: { type: string }
-            error: { type: string }
-            appliedRevision: { type: integer, format: int64 }
-            containerId: { type: string }
-            imageRef: { type: string }
-            imageId: { type: string }
-            daemonStatus: { type: string }
-    WorkerRuntimeCredential:
-      type: object
-      required: [modelSource, chatgptAuthRevision]
-      properties:
-        apiKey: { type: string, writeOnly: true }
-        baseUrl: { type: string }
-        proxyUrl: { type: string }
-        modelSource: { type: string, enum: [chatgpt, provider] }
-        chatgptAuth:
-          type: object
-          additionalProperties: true
-          writeOnly: true
-        chatgptAuthRevision: { type: integer, format: int64 }
-        configSignature: { type: string }
-        globalAgents: { type: string }
     ProblemDetails:
       type: object
       required: [type, title, status]
@@ -1667,48 +1916,38 @@ components:
         allowedTools: { type: array, items: { type: string } }
         dangerousActions: { type: array, items: { type: string } }
         filters: { type: object, additionalProperties: true }
-    GlobalAgents:
+    GitHubAgentInstructions:
       type: object
       required: [content]
       properties:
         content: { type: string, maxLength: 262144 }
-    CodexPreferences:
+    GitHubAgentPreferences:
       type: object
       properties:
         model: { type: string, nullable: true, maxLength: 128 }
         reasoningEffort: { type: string, nullable: true, maxLength: 64 }
         serviceTier: { type: string, nullable: true, enum: [standard, fast] }
-    CodexEffectivePreferences:
+    GitHubAgentEffectivePreferences:
       type: object
       required: [model, reasoningEffort, serviceTier]
       properties:
         model: { type: string }
         reasoningEffort: { type: string }
         serviceTier: { type: string, enum: [standard, fast] }
-    CodexForumSettings:
+    GitHubAgentRepositorySettings:
       type: object
-      required: [id, name, ownerDiscordUserId, settings, effective]
-      properties:
-        id: { type: string, format: uuid }
-        name: { type: string }
-        ownerDiscordUserId: { type: string }
-        settings: { $ref: "#/components/schemas/CodexPreferences" }
-        effective: { $ref: "#/components/schemas/CodexEffectivePreferences" }
-    CodexRepositorySettings:
-      type: object
-      required: [id, owner, name, settings, effective, forums]
+      required: [id, owner, name, settings, effective]
       properties:
         id: { type: string, format: uuid }
         owner: { type: string }
         name: { type: string }
-        settings: { $ref: "#/components/schemas/CodexPreferences" }
-        effective: { $ref: "#/components/schemas/CodexEffectivePreferences" }
-        forums: { type: array, items: { $ref: "#/components/schemas/CodexForumSettings" } }
-    CodexSettingsList:
+        settings: { $ref: "#/components/schemas/GitHubAgentPreferences" }
+        effective: { $ref: "#/components/schemas/GitHubAgentEffectivePreferences" }
+    GitHubAgentSettingsList:
       type: object
       required: [items, models]
       properties:
-        items: { type: array, items: { $ref: "#/components/schemas/CodexRepositorySettings" } }
+        items: { type: array, items: { $ref: "#/components/schemas/GitHubAgentRepositorySettings" } }
         models: { type: array, items: { $ref: "#/components/schemas/ClientModel" } }
     DiscordSettings:
       type: object
@@ -1788,7 +2027,7 @@ components:
         displayName: { type: string }
         bound: { type: boolean }
         githubLogin: { type: string }
-    DevelopmentForumCollaborator:
+    WorkspaceForumCollaborator:
       type: object
       required: [forumId, memberId, accessLevel, administratorBypass]
       properties:
@@ -1796,7 +2035,7 @@ components:
         memberId: { type: string }
         accessLevel: { type: string, enum: [readonly, operator] }
         administratorBypass: { type: boolean }
-    DevelopmentForum:
+    WorkspaceForum:
       type: object
       required: [id, name, discordId, bindingStatus, collaborators]
       properties:
@@ -1806,8 +2045,8 @@ components:
         bindingStatus: { type: string, enum: [active, inactive] }
         collaborators:
           type: array
-          items: { $ref: "#/components/schemas/DevelopmentForumCollaborator" }
-    DevelopmentProject:
+          items: { $ref: "#/components/schemas/WorkspaceForumCollaborator" }
+    WorkspaceProject:
       type: object
       required: [id, name, relativePath, projectKind, availabilityStatus, dirty, lastSeenAt, forums]
       properties:
@@ -1825,55 +2064,28 @@ components:
         scanError: { type: string }
         forums:
           type: array
-          items: { $ref: "#/components/schemas/DevelopmentForum" }
-    DevelopmentEnvironment:
+          items: { $ref: "#/components/schemas/WorkspaceForum" }
+    Workspace:
       type: object
-      required: [id, ownerDiscordUserId, ownerName, status, imageRef, codexUserOverride, lastUsedAt, sshConfigRevision, sshAppliedRevision, daemonStatus, appServerStatus, sshStatus, hubStatus, projects]
+      required: [id, ownerDiscordUserId, ownerName, projects]
       properties:
         id: { type: string, format: uuid }
         ownerDiscordUserId: { type: string }
         ownerName: { type: string }
-        status: { type: string }
-        imageRef: { type: string }
-        imageId: { type: string }
-        runtimeUser: { type: string }
-        codexVersion: { type: string }
-        codexUserOverride: { type: boolean }
-        lastUsedAt: { type: string, format: date-time }
-        error: { type: string }
-        executionNodeId: { type: string, format: uuid }
-        sshPublicKey: { type: string }
-        sshFingerprint: { type: string, readOnly: true }
-        sshPort: { type: integer, minimum: 1, maximum: 65535 }
-        sshDiscordUserId: { type: string }
-        sshDisplayName: { type: string, readOnly: true }
-        sshConfigRevision: { type: integer, format: int64, readOnly: true }
-        sshAppliedRevision: { type: integer, format: int64, readOnly: true }
-        daemonStatus: { type: string, enum: [pending, starting, running, error] }
-        daemonError: { type: string }
-        appServerStatus: { type: string, enum: [pending, starting, running, error] }
-        sshStatus: { type: string, enum: [disabled, pending, starting, running, error] }
-        hubStatus: { type: string, enum: [pending, starting, running, error] }
+        workerId: { type: string, format: uuid }
         projectsScannedAt: { type: string, format: date-time }
         projectScanError: { type: string }
         projects:
           type: array
-          items: { $ref: "#/components/schemas/DevelopmentProject" }
-    DevelopmentEnvironmentList:
+          items: { $ref: "#/components/schemas/WorkspaceProject" }
+    WorkspaceList:
       type: object
       required: [items]
       properties:
         items:
           type: array
-          items: { $ref: "#/components/schemas/DevelopmentEnvironment" }
-    DevelopmentEnvironmentSSHInput:
-      type: object
-      required: [publicKey, port, discordUserId]
-      properties:
-        publicKey: { type: string, minLength: 1 }
-        port: { type: integer, minimum: 1, maximum: 65535 }
-        discordUserId: { type: string, minLength: 1 }
-    DevelopmentProjectForumInput:
+          items: { $ref: "#/components/schemas/Workspace" }
+    WorkspaceProjectForumInput:
       type: object
       required: [mode]
       properties:

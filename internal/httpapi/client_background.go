@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 )
 
 const expoPushEndpoint = "https://exp.host/--/api/v2/push/send"
@@ -28,27 +27,6 @@ type clientNotification struct {
 
 // RunBackground 投递移动端通知并清理协议保留期数据；生命周期与 HTTP Server 一致。
 func (s *Server) RunBackground(ctx context.Context) error {
-	titles := discordintegration.NewTitleGenerator(s.db, s.settings, s.logger)
-	if err := titles.RecoverInterruptedSessions(ctx); err != nil {
-		return err
-	}
-	go func() {
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
-		for {
-			worked, err := titles.RunSessionOnce(ctx)
-			if err != nil && s.logger != nil {
-				s.logger.Warn("生成 Session 标题失败")
-			}
-			if !worked {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-				}
-			}
-		}
-	}()
 	pushTicker := time.NewTicker(2 * time.Second)
 	cleanupTicker := time.NewTicker(time.Hour)
 	defer pushTicker.Stop()

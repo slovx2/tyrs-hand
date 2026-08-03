@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { SSHCredentialSection } from './SSHCredentialSection'
 import { SSHHostSection } from './SSHHostSection'
-import type { SSHCredential, SSHExecutionNode, SSHHost } from './sshTypes'
+import type { SSHCredential, SSHWorker, SSHHost } from './sshTypes'
 
 export function SSHPage() {
   const credentials = useQuery({
@@ -14,8 +14,8 @@ export function SSHPage() {
     queryFn: () => api<{ items: SSHHost[] }>('/ssh/hosts'),
   })
   const nodes = useQuery({
-    queryKey: ['execution-nodes'],
-    queryFn: () => api<{ items: SSHExecutionNode[] }>('/workers'),
+    queryKey: ['workers'],
+    queryFn: () => api<{ items: SSHWorker[] }>('/workers'),
   })
   const isLoading = credentials.isLoading || hosts.isLoading || nodes.isLoading
   const error = credentials.error ?? hosts.error ?? nodes.error
@@ -28,7 +28,7 @@ export function SSHPage() {
       <h1 className="text-3xl font-bold">SSH</h1>
       <p className="muted mt-2 max-w-3xl leading-6">
         集中管理 Codex 可以访问的远程主机。私钥由 Control
-        加密保存，只会下发给你指定的执行节点。
+        加密保存，只会下发给指定的 Worker。
       </p>
 
       <ol className="mt-6 grid gap-3 md:grid-cols-3" aria-label="SSH 配置步骤">
@@ -38,7 +38,7 @@ export function SSHPage() {
         <SetupStep number="2" title="添加主机">
           填写连接地址，并选择用于登录的凭证。
         </SetupStep>
-        <SetupStep number="3" title="选择执行节点">
+        <SetupStep number="3" title="选择 Worker">
           指定哪些 Worker 可以收到并使用这份配置。
         </SetupStep>
       </ol>

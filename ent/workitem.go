@@ -42,8 +42,8 @@ type WorkItem struct {
 	HeadRepository *string `json:"head_repository,omitempty"`
 	// HTMLURL holds the value of the "html_url" field.
 	HTMLURL *string `json:"html_url,omitempty"`
-	// ExecutionNodeID holds the value of the "execution_node_id" field.
-	ExecutionNodeID *uuid.UUID `json:"execution_node_id,omitempty"`
+	// WorkerID holds the value of the "worker_id" field.
+	WorkerID *uuid.UUID `json:"worker_id,omitempty"`
 	// ClosedAt holds the value of the "closed_at" field.
 	ClosedAt *time.Time `json:"closed_at,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -58,7 +58,7 @@ func (*WorkItem) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case workitem.FieldExecutionNodeID:
+		case workitem.FieldWorkerID:
 			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		case workitem.FieldAgentOwned:
 			values[i] = new(sql.NullBool)
@@ -169,12 +169,12 @@ func (_m *WorkItem) assignValues(columns []string, values []any) error {
 				_m.HTMLURL = new(string)
 				*_m.HTMLURL = value.String
 			}
-		case workitem.FieldExecutionNodeID:
+		case workitem.FieldWorkerID:
 			if value, ok := values[i].(*sql.NullScanner); !ok {
-				return fmt.Errorf("unexpected type %T for field execution_node_id", values[i])
+				return fmt.Errorf("unexpected type %T for field worker_id", values[i])
 			} else if value.Valid {
-				_m.ExecutionNodeID = new(uuid.UUID)
-				*_m.ExecutionNodeID = *value.S.(*uuid.UUID)
+				_m.WorkerID = new(uuid.UUID)
+				*_m.WorkerID = *value.S.(*uuid.UUID)
 			}
 		case workitem.FieldClosedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -279,8 +279,8 @@ func (_m *WorkItem) String() string {
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
-	if v := _m.ExecutionNodeID; v != nil {
-		builder.WriteString("execution_node_id=")
+	if v := _m.WorkerID; v != nil {
+		builder.WriteString("worker_id=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
