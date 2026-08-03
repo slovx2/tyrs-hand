@@ -18,6 +18,34 @@ const (
 	containerRunDir             = "/run/tyrs-hand"
 	containerBrowserServicesDir = "/run/tyrs-hand-browser-services"
 	appServerSocket             = containerRunDir + "/app-server.sock"
+	stopRemoteAppServersScript  = `tyrs_stop_app_server_pid() {
+  TYRS_APP_SERVER_PID="$1"
+  if ! kill -0 "$TYRS_APP_SERVER_PID" 2>/dev/null; then
+    return
+  fi
+  kill "$TYRS_APP_SERVER_PID" || true
+  n=0
+  while kill -0 "$TYRS_APP_SERVER_PID" 2>/dev/null && test "$n" -lt 50; do n=$((n + 1)); sleep 0.1; done
+  if kill -0 "$TYRS_APP_SERVER_PID" 2>/dev/null; then
+    kill -KILL "$TYRS_APP_SERVER_PID" || true
+    n=0
+    while kill -0 "$TYRS_APP_SERVER_PID" 2>/dev/null && test "$n" -lt 50; do n=$((n + 1)); sleep 0.1; done
+  fi
+  if kill -0 "$TYRS_APP_SERVER_PID" 2>/dev/null; then
+    echo "app-server 未退出: $TYRS_APP_SERVER_PID" >&2
+    exit 1
+  fi
+}
+if test -s /run/tyrs-hand/app-server.pid; then
+  tyrs_stop_app_server_pid "$(cat /run/tyrs-hand/app-server.pid)"
+fi
+for TYRS_APP_SERVER_CMDLINE in /proc/[0-9]*/cmdline; do
+  if tr '\000' '\n' < "$TYRS_APP_SERVER_CMDLINE" 2>/dev/null |
+      grep -Fxq "unix:///run/tyrs-hand/app-server.sock"; then
+    TYRS_APP_SERVER_PID="${TYRS_APP_SERVER_CMDLINE#/proc/}"
+    tyrs_stop_app_server_pid "${TYRS_APP_SERVER_PID%/cmdline}"
+  fi
+done`
 )
 
 func (m *Manager) reconfigureRemote(ctx context.Context, operation RemoteOperation) error {
@@ -256,11 +284,7 @@ if test -n "${TYRS_DOCKER_GID:-}"; then
   fi
   usermod --append --groups "$TYRS_DOCKER_GROUP" "$TYRS_RUNTIME_USER"
 fi
-if test -s /run/tyrs-hand/app-server.pid && kill -0 "$(cat /run/tyrs-hand/app-server.pid)" 2>/dev/null; then
-  kill "$(cat /run/tyrs-hand/app-server.pid)" || true
-  n=0
-  while kill -0 "$(cat /run/tyrs-hand/app-server.pid)" 2>/dev/null && test "$n" -lt 50; do n=$((n + 1)); sleep 0.1; done
-fi
+` + stopRemoteAppServersScript + `
 rm -f /run/tyrs-hand/app-server.pid
 rm -f /run/tyrs-hand/app-server.sock
 if test -n "$TYRS_SSH_PUBLIC_KEY"; then
@@ -357,9 +381,7 @@ chmod 0777 /run/tyrs-hand`
 
 func (m *Manager) StopRemoteAppServer(ctx context.Context, container string) error {
 	script := `set -eu
-if test -s /run/tyrs-hand/app-server.pid && kill -0 "$(cat /run/tyrs-hand/app-server.pid)" 2>/dev/null; then
-  kill "$(cat /run/tyrs-hand/app-server.pid)"
-fi
+` + stopRemoteAppServersScript + `
 rm -f /run/tyrs-hand/app-server.pid /run/tyrs-hand/app-server.sock`
 	_, err := m.docker(ctx, "exec", "--user", "0:0", container, "/bin/sh", "-c", script)
 	return err

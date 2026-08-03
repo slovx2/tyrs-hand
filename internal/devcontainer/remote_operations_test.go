@@ -514,6 +514,8 @@ func TestReconfigureRemoteEnvironmentKeepsContainerRunningAndSecuresSSH(t *testi
 	require.True(t, runner.contains("AuthenticationMethods publickey"))
 	require.True(t, runner.contains("chown \"$TYRS_OWNER\" /run/tyrs-hand"))
 	require.True(t, runner.contains("chmod 0700 /run/tyrs-hand"))
+	require.True(t, runner.contains("kill -KILL \"$TYRS_APP_SERVER_PID\""))
+	require.True(t, runner.contains("grep -Fxq \"unix:///run/tyrs-hand/app-server.sock\""))
 	require.True(t, runner.contains("chmod 0777 /run/tyrs-hand"))
 	require.True(t, runner.contains("chmod 0666 /run/tyrs-hand/app-server.sock"))
 	require.True(t, runner.contains("docker exec --detach --user 0:0"))
@@ -748,6 +750,8 @@ func TestCoordinateRemoteStartsPermanentDaemons(t *testing.T) {
 	require.NoError(t, listener.Close())
 	require.True(t, runner.contains("sshd.pid"))
 	require.NoError(t, manager.StopRemoteAppServer(context.Background(), manifest.ContainerName))
+	require.True(t, runner.contains("kill -KILL \"$TYRS_APP_SERVER_PID\""))
+	require.True(t, runner.contains("grep -Fxq \"unix:///run/tyrs-hand/app-server.sock\""))
 
 	_, err = (&Manager{}).PrepareRemoteRuntime(context.Background(), manifest)
 	require.ErrorContains(t, err, "未启用")
