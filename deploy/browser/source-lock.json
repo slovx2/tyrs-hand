@@ -8,6 +8,6 @@
   "playwrightMcp": {
     "repository": "https://github.com/slovx2/playwright-mcp",
     "upstreamCommit": "5f8fc00210b27b4407c375b59cda4838045d429c",
-    "commit": "0d2b2c6e5ba5b83c3ededf373aa92cfd7253e258"
+    "commit": "c1fa64b1d49987ee60f02820487d0e9e9a28b22b"
   }
 }

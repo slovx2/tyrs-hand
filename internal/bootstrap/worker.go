@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/hostworker"
 	"github.com/slovx2/tyrs-hand/internal/worker"
@@ -61,11 +62,17 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		desktopController = worker.NewHostDesktopController(processor, *manifest)
 		runtimeOptions.Controller = desktopController
 	}
-	runtimeOptions.BrowserMCPToken, err = worker.BrowserAppServerToken(cfg)
+	workspaceID := uuid.Nil
+	if manifest != nil {
+		workspaceID = manifest.WorkspaceID
+	}
+	browserTokens, err := worker.DeriveBrowserAppServerTokens(cfg, workspaceID)
 	if err != nil {
 		cleanupFailure(nil)
 		return nil, nil, err
 	}
+	runtimeOptions.BrowserWorkerToken = browserTokens.Worker
+	runtimeOptions.BrowserDesktopToken = browserTokens.Desktop
 	runtime, err := hostworker.StartRuntime(ctx, runtimeOptions)
 	if err != nil {
 		cleanupFailure(nil)
@@ -88,8 +95,9 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		Home: cfg.WorkerHome, CodexHome: cfg.WorkerCodexHome, Shell: cfg.WorkerShell,
 		AuthorizedClients: clients, Runtime: runtime, Logger: logger,
 	}
-	if cfg.BrowserAgentAddress != "" {
-		sshOptions.BrowserProxy = hostworker.TCPProxy(cfg.BrowserAgentAddress)
+	if cfg.BrowserAgentAddress != "" && browserTokens.Desktop != "" {
+		sshOptions.BrowserProxy = hostworker.BrowserAgentProxy(cfg.BrowserAgentAddress,
+			browserTokens.Desktop)
 	}
 	sshServer, err := hostworker.StartSSHServer(ctx, sshOptions)
 	if err != nil {

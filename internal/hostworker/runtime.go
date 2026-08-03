@@ -20,15 +20,16 @@ import (
 )
 
 type RuntimeOptions struct {
-	CodexBin        string
-	CodexHome       string
-	Home            string
-	WorkspaceRoot   string
-	StateDir        string
-	SSHAuthSock     string
-	BrowserMCPToken string
-	Controller      appserverhub.Controller
-	Logger          *zap.Logger
+	CodexBin            string
+	CodexHome           string
+	Home                string
+	WorkspaceRoot       string
+	StateDir            string
+	SSHAuthSock         string
+	BrowserWorkerToken  string
+	BrowserDesktopToken string
+	Controller          appserverhub.Controller
+	Logger              *zap.Logger
 }
 
 type Runtime struct {
@@ -88,8 +89,11 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 	if options.SSHAuthSock != "" {
 		values["SSH_AUTH_SOCK"] = options.SSHAuthSock
 	}
-	if options.BrowserMCPToken != "" {
-		values["TYRS_BROWSER_MCP_TOKEN"] = options.BrowserMCPToken
+	if options.BrowserWorkerToken != "" {
+		values[codex.BrowserMCPWorkerTokenEnvironment] = options.BrowserWorkerToken
+	}
+	if options.BrowserDesktopToken != "" {
+		values[codex.BrowserMCPDesktopTokenEnvironment] = options.BrowserDesktopToken
 	}
 	command.Env = replaceEnvironment(environment, values)
 	command.Stdout = os.Stdout
@@ -294,7 +298,9 @@ func appServerEnvironment(base []string) []string {
 		switch name {
 		case "OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_ORG_ID", "OPENAI_PROJECT_ID",
 			"CODEX_API_KEY", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
-			"http_proxy", "https_proxy", "all_proxy", "no_proxy":
+			"http_proxy", "https_proxy", "all_proxy", "no_proxy",
+			codex.BrowserMCPWorkerTokenEnvironment,
+			codex.BrowserMCPDesktopTokenEnvironment:
 			continue
 		}
 		result = append(result, item)

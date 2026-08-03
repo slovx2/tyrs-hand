@@ -476,7 +476,8 @@ func (c *desktopController) injectDesktopRuntime(params json.RawMessage,
 	delete(value, "effort")
 	delete(value, "serviceTier")
 	if options.includeBrowserMCP {
-		applyBrowserMCPConfig(config, c.processor.cfg)
+		applyBrowserMCPConfig(config, c.processor.cfg,
+			codex.BrowserMCPDesktopTokenEnvironment)
 	}
 	hideManagedSecrets(config)
 	value["config"] = config

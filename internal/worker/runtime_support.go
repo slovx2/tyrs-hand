@@ -94,7 +94,9 @@ func githubReplySpec() ports.DynamicToolSpec {
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"body":{"type":"string","minLength":1,"maxLength":60000}},"required":["body"],"additionalProperties":false}`)}}}
 }
 
-func applyBrowserMCPConfig(runtimeConfig map[string]any, cfg config.Config, taskIDs ...string) {
+func applyBrowserMCPConfig(runtimeConfig map[string]any, cfg config.Config,
+	tokenEnvironment string, taskIDs ...string,
+) {
 	if cfg.BrowserMCPURL == "" {
 		return
 	}
@@ -103,7 +105,7 @@ func applyBrowserMCPConfig(runtimeConfig map[string]any, cfg config.Config, task
 		servers = make(map[string]any)
 	}
 	browser := map[string]any{"url": cfg.BrowserMCPURL,
-		"bearer_token_env_var": "TYRS_BROWSER_MCP_TOKEN", "startup_timeout_sec": 10.0,
+		"bearer_token_env_var": tokenEnvironment, "startup_timeout_sec": 10.0,
 		"tool_timeout_sec": 120.0, "required": false,
 		"default_tools_approval_mode": "approve"}
 	if len(taskIDs) > 0 && taskIDs[0] != "" {
@@ -119,62 +121,52 @@ func hideManagedSecrets(config map[string]any) {
 		policy = map[string]any{"inherit": "all"}
 	}
 	if values, ok := policy["set"].(map[string]any); ok {
-		delete(values, "TYRS_BROWSER_MCP_TOKEN")
+		delete(values, codex.BrowserMCPWorkerTokenEnvironment)
+		delete(values, codex.BrowserMCPDesktopTokenEnvironment)
 	}
-	excluded := []string{"TYRS_BROWSER_MCP_TOKEN"}
-	if values, ok := policy["exclude"].([]string); ok {
-		excluded = append(values, excluded...)
+	excluded := make([]string, 0, 4)
+	switch values := policy["exclude"].(type) {
+	case []string:
+		excluded = append(excluded, values...)
+	case []any:
+		for _, value := range values {
+			if name, ok := value.(string); ok {
+				excluded = append(excluded, name)
+			}
+		}
 	}
-	policy["exclude"] = excluded
+	policy["exclude"] = appendUniqueStrings(excluded,
+		codex.BrowserMCPWorkerTokenEnvironment,
+		codex.BrowserMCPDesktopTokenEnvironment)
 	config["shell_environment_policy"] = policy
 }
 
-func prepareCodexRuntime(environment []string, workerDataRoot string, cfg config.Config,
-	scope string, taskIDs ...string,
-) ([]string, map[string]any) {
-	processEnvironment := codexProcessEnvironment(environment, cfg, scope)
+func appendUniqueStrings(values []string, additions ...string) []string {
+	seen := make(map[string]struct{}, len(values)+len(additions))
+	result := make([]string, 0, len(values)+len(additions))
+	for _, value := range append(values, additions...) {
+		if _, exists := seen[value]; value == "" || exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
+}
+
+func prepareCodexRuntime(workerDataRoot string, cfg config.Config,
+	taskIDs ...string,
+) map[string]any {
 	runtimeConfig := replygate.SessionConfig()
 	runtimeConfig["shell_environment_policy"] = map[string]any{"inherit": "all"}
 	if workerDataRoot != "" {
 		runtimeConfig["sandbox_workspace_write"] = map[string]any{"writable_roots": []string{
 			filepath.Join(workerDataRoot, "caches"), filepath.Join(workerDataRoot, "state")}}
 	}
-	applyBrowserMCPConfig(runtimeConfig, cfg, taskIDs...)
+	applyBrowserMCPConfig(runtimeConfig, cfg, codex.BrowserMCPWorkerTokenEnvironment,
+		taskIDs...)
 	hideManagedSecrets(runtimeConfig)
-	return processEnvironment, runtimeConfig
-}
-
-func codexProcessEnvironment(environment []string, cfg config.Config, scope string) []string {
-	result := setEnvironmentValue(environment, "TYRS_BROWSER_MCP_TOKEN", "")
-	if cfg.EnableSSH {
-		result = setEnvironmentValue(result, "SSH_AUTH_SOCK", filepath.Join(cfg.SSHAgentDir, "current.sock"))
-	}
-	if cfg.BrowserMCPURL == "" {
-		return result
-	}
-	secret, err := os.ReadFile(cfg.BrowserMCPTokenFile)
-	if err != nil {
-		return result
-	}
-	token, err := deriveBrowserToken(string(secret), scope)
-	if err != nil {
-		return result
-	}
-	return setEnvironmentValue(result, "TYRS_BROWSER_MCP_TOKEN", token)
-}
-
-func setEnvironmentValue(environment []string, key, value string) []string {
-	result := make([]string, 0, len(environment)+1)
-	for _, entry := range environment {
-		entryKey, _, found := strings.Cut(entry, "=")
-		if !found || entryKey != key {
-			result = append(result, entry)
-		}
-	}
-	if value != "" {
-		result = append(result, key+"="+value)
-	}
-	return result
+	return runtimeConfig
 }
 
 func browserDeveloperInstructions(_ config.Config, current string) string { return current }

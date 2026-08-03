@@ -48,7 +48,7 @@ func (p *Processor) processRemoteDiscord(ctx context.Context, task *workerprotoc
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
-	_, runtimeConfig := prepareCodexRuntime(nil, "", p.cfg, "worker", task.Claimed.ID.String())
+	runtimeConfig := prepareCodexRuntime("", p.cfg, task.Claimed.ID.String())
 	client := p.hostRuntime.Client()
 	codexRuntime := codex.NewRuntime(client)
 	settings := task.Snapshot.Runtime

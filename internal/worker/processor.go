@@ -129,8 +129,7 @@ func (p *Processor) processRemoteGitHub(ctx context.Context, task *workerprotoco
 		return codexcontrol.TurnResult{}, errors.New("宿主 Codex Runtime 尚未启动")
 	}
 	codexHome := p.hostRuntime.CodexHome()
-	_, runtimeConfig := prepareCodexRuntime(nil, p.cfg.WorkerDataRoot, p.cfg,
-		"worker", claimed.ID.String())
+	runtimeConfig := prepareCodexRuntime(p.cfg.WorkerDataRoot, p.cfg, claimed.ID.String())
 	client := p.hostRuntime.Client()
 	runtime := codex.NewRuntime(client)
 	settings := task.Snapshot.Runtime

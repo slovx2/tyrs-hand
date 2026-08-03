@@ -13,20 +13,36 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/config"
 )
 
-// BrowserAppServerToken 返回宿主 AppServer 使用的派生 Token，不暴露主密钥。
-func BrowserAppServerToken(cfg config.Config) (string, error) {
+type BrowserAppServerTokens struct {
+	Worker  string
+	Desktop string
+}
+
+// DeriveBrowserAppServerTokens 返回宿主 AppServer 使用的派生 Token，不暴露主密钥。
+func DeriveBrowserAppServerTokens(cfg config.Config,
+	workspaceID uuid.UUID,
+) (BrowserAppServerTokens, error) {
 	if cfg.BrowserMCPURL == "" {
-		return "", nil
+		return BrowserAppServerTokens{}, nil
 	}
 	secret, err := os.ReadFile(cfg.BrowserMCPTokenFile)
 	if err != nil {
-		return "", fmt.Errorf("读取宿主 Browser MCP Token: %w", err)
+		return BrowserAppServerTokens{}, fmt.Errorf("读取宿主 Browser MCP Token: %w", err)
 	}
-	token, err := deriveBrowserToken(string(secret), "worker")
+	workerToken, err := deriveBrowserToken(string(secret), "worker")
 	if err != nil {
-		return "", fmt.Errorf("派生宿主 Browser MCP Token: %w", err)
+		return BrowserAppServerTokens{}, fmt.Errorf("派生宿主 Worker Browser MCP Token: %w", err)
 	}
-	return token, nil
+	result := BrowserAppServerTokens{Worker: workerToken}
+	if workspaceID == uuid.Nil {
+		return result, nil
+	}
+	desktopToken, err := deriveBrowserToken(string(secret), workspaceID.String())
+	if err != nil {
+		return BrowserAppServerTokens{}, fmt.Errorf("派生宿主 Desktop Browser MCP Token: %w", err)
+	}
+	result.Desktop = desktopToken
+	return result, nil
 }
 
 func deriveBrowserToken(secret, scope string) (string, error) {
