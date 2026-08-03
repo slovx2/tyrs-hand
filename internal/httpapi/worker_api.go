@@ -353,7 +353,7 @@ func requireRunLease(c *gin.Context, target any) (uuid.UUID, workerregistry.Work
 
 func emptyMessageError(message string) error {
 	if strings.TrimSpace(message) == "" {
-		return errors.New("远程 Worker 没有提供失败原因")
+		return errors.New("宿主 Worker 没有提供失败原因")
 	}
 	return fmt.Errorf("%s", message)
 }

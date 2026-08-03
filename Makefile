@@ -1,7 +1,7 @@
 PNPM ?= pnpm
 LOCAL_IMAGE ?= tyrs-hand:local
 
-.PHONY: dependencies generate generate-check format format-check vet lint web-check client-install client-check client-export client-e2e-contract client-e2e-android client-e2e-ios test test-unit test-race test-integration test-coverage web-install web-build build build-local image-local worker-binaries ci ci-local
+.PHONY: dependencies generate generate-check check-legacy-architecture format format-check vet lint web-check client-install client-check client-export client-e2e-contract client-e2e-android client-e2e-ios test test-unit test-race test-integration test-coverage web-install web-build build build-local image-local worker-binaries ci ci-local
 
 dependencies:
 	go mod download
@@ -24,6 +24,9 @@ generate-check:
 		diff --unified "$$before" "$$after" || true; \
 		exit 1; \
 	}
+
+check-legacy-architecture:
+	./tools/check-legacy-architecture.sh
 
 format:
 	find cmd internal ent tools -name '*.go' -print0 | xargs -0 gofmt -w
@@ -106,6 +109,7 @@ worker-binaries:
 ci:
 	$(MAKE) dependencies
 	$(MAKE) generate-check
+	$(MAKE) check-legacy-architecture
 	$(MAKE) format-check
 	$(MAKE) vet
 	$(MAKE) lint

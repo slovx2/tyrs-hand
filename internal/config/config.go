@@ -187,7 +187,7 @@ func (c Config) ValidateWorker() error {
 		return errors.New("worker_max_concurrent_jobs 必须大于零")
 	}
 	if c.WorkerRole != "all" && c.WorkerRole != "github" && c.WorkerRole != "discord" {
-		return errors.New("远程 worker_role 必须是 all、github 或 discord")
+		return errors.New("宿主 Worker 的 worker_role 必须是 all、github 或 discord")
 	}
 	if c.WorkerProtocolVersion != workerprotocol.Version {
 		return fmt.Errorf("当前 Worker 只支持协议版本 %d", workerprotocol.Version)

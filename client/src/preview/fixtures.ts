@@ -284,8 +284,8 @@ const secondaryBootstrap: Bootstrap = {
   projects: [{
     id: secondaryProjectId,
     workspaceId: "20000000-0000-4000-8000-000000000007",
-    name: "远程 Worker 示例",
-    relativePath: "workspaces/remote-worker",
+    name: "宿主 Worker 示例",
+    relativePath: "workspaces/host-worker",
     kind: "git",
     availabilityStatus: "available",
     branch: "main",

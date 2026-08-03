@@ -72,11 +72,11 @@ func TestParseWorkerAPINetworkList(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestValidateAndLoadRemoteWorker(t *testing.T) {
+func TestValidateAndLoadHostWorker(t *testing.T) {
 	valid := Config{
 		Environment: "production", WorkerControlURL: "https://tyr.example.com",
 		CodexBin: "codex", WorkerID: "home-1", WorkerRole: "all",
-		WorkerCredentialFile:  "/data/worker/control-state/node-credential",
+		WorkerCredentialFile:  "/data/worker/control-state/worker-credential",
 		WorkerProtocolVersion: workerprotocol.Version, WorkerMaxConcurrentJobs: 2,
 		WorkerSSHListenAddr: ":2222", WorkerSSHHostKeyFile: "/data/worker/ssh/host_key",
 		WorkerAuthorizedKeysFile: "/data/worker/ssh/authorized_keys",
