@@ -491,8 +491,10 @@ func (c *desktopRelayController) injectDesktopRuntime(params json.RawMessage,
 	}
 	delete(value, "effort")
 	delete(value, "serviceTier")
-	applyModelProviderConfig(config, c.environment.runtime.ModelSource,
-		c.environment.runtime.ModelBaseURL)
+	if !c.usesMachineCodexConfiguration() {
+		applyModelProviderConfig(config, c.environment.runtime.ModelSource,
+			c.environment.runtime.ModelBaseURL)
+	}
 	if options.includeBrowserMCP {
 		applyBrowserMCPConfig(config, c.processor.cfg)
 	}
@@ -516,6 +518,12 @@ func (c *desktopRelayController) injectDesktopRuntime(params json.RawMessage,
 		return params
 	}
 	return result
+}
+
+func (c *desktopRelayController) usesMachineCodexConfiguration() bool {
+	c.environment.mu.Lock()
+	defer c.environment.mu.Unlock()
+	return c.environment.hostRuntime != nil
 }
 
 func (c *desktopRelayController) desktopWorkspaceAllowsPublish(cwd string) bool {

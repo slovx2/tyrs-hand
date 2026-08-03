@@ -18,6 +18,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexrelay"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/devcontainer"
+	"github.com/slovx2/tyrs-hand/internal/hostworker"
 	"github.com/slovx2/tyrs-hand/internal/participantidentity"
 	"github.com/slovx2/tyrs-hand/internal/settings"
 	"github.com/slovx2/tyrs-hand/internal/testutil/mockcodex"
@@ -273,6 +274,28 @@ func TestDesktopRelayInjectsRuntimeIntoEphemeralThreadWithoutTools(t *testing.T)
 			require.NotContains(t, runtimeConfig, "mcp_servers")
 		})
 	}
+}
+
+func TestDesktopRelayKeepsMachineProviderForHostRuntime(t *testing.T) {
+	controller := &desktopRelayController{environment: &environmentCodex{
+		hostRuntime: &hostworker.Runtime{},
+	}}
+	configured := controller.injectDesktopRuntime(json.RawMessage(`{
+		"serviceTier":"priority",
+		"config":{
+			"model_provider":"machine-provider",
+			"model_providers":{
+				"machine-provider":{"requires_openai_auth":true}
+			}
+		}
+	}`), desktopRuntimeInjection{})
+	var params map[string]any
+	require.NoError(t, json.Unmarshal(configured, &params))
+	runtimeConfig := params["config"].(map[string]any)
+	require.Equal(t, "machine-provider", runtimeConfig["model_provider"])
+	require.Equal(t, "priority", runtimeConfig["service_tier"])
+	require.Contains(t, runtimeConfig["model_providers"], "machine-provider")
+	require.NotContains(t, runtimeConfig["model_providers"], "tyrs-hand-provider")
 }
 
 func TestDesktopRelayAlwaysListsEveryProvider(t *testing.T) {
