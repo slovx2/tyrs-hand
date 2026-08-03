@@ -207,7 +207,7 @@ func (c *desktopRelayController) PrepareCall(ctx context.Context,
 func (c *desktopRelayController) CompleteCall(_ context.Context, call codexrelay.Call,
 	plan codexrelay.CallPlan, result json.RawMessage, cause error,
 ) (json.RawMessage, error) {
-	if call.Method == "account/read" {
+	if call.Method == "account/read" && !c.usesMachineCodexConfiguration() {
 		return desktopAccountForModelSource(c.environment.runtime.ModelSource, result, cause)
 	}
 	if lifecycle, ok := plan.State.(*desktopLifecycleCallState); ok {

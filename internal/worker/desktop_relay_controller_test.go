@@ -377,6 +377,21 @@ func TestDesktopRelayAccountCapabilitiesFollowModelSource(t *testing.T) {
 	require.JSONEq(t, string(chatGPTResult), string(preserved))
 }
 
+func TestDesktopRelayKeepsMachineAccountCapabilitiesForHostRuntime(t *testing.T) {
+	chatGPTResult := json.RawMessage(
+		`{"account":{"type":"chatgpt","email":"user@example.com","planType":"free"},` +
+			`"requiresOpenaiAuth":true}`)
+	controller := &desktopRelayController{environment: &environmentCodex{
+		runtime:     devcontainer.Runtime{ModelSource: settings.ModelSourceProvider},
+		hostRuntime: &hostworker.Runtime{},
+	}}
+	result, err := controller.CompleteCall(context.Background(), codexrelay.Call{
+		Role: codexrelay.RoleDesktop, Method: "account/read",
+	}, codexrelay.CallPlan{}, chatGPTResult, nil)
+	require.NoError(t, err)
+	require.JSONEq(t, string(chatGPTResult), string(result))
+}
+
 func TestDesktopThreadCompletionDoesNotWaitForDiscordControl(t *testing.T) {
 	requestID := uuid.New()
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
