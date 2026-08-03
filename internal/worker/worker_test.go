@@ -278,6 +278,8 @@ func TestModelProviderConfigPreservesPersonalSettings(t *testing.T) {
 		BaseURL: "https://api.example.com/v1", WireAPI: "responses",
 		EnvKey: "TYRS_HAND_MODEL_API_KEY", RequiresOpenAIAuth: false,
 	}, appServerConfig.ModelProvider)
+	require.Equal(t, "/run/tyrs-hand/provider-model-catalog.json",
+		appServerConfig.ModelCatalogPath)
 	require.Contains(t, runtimeConfig, "mcp_servers")
 	policy := runtimeConfig["shell_environment_policy"].(map[string]any)
 	require.Equal(t, "keep", policy["set"].(map[string]any)["PERSONAL"])
@@ -292,6 +294,8 @@ func TestModelProviderConfigPreservesPersonalSettings(t *testing.T) {
 	require.Contains(t, runtimeConfig["model_providers"], "personal")
 	require.Equal(t, codex.ManagedModelProvider{ID: "openai"},
 		managedAppServerConfig(settings.ModelSourceChatGPT, "").ModelProvider)
+	require.Empty(t,
+		managedAppServerConfig(settings.ModelSourceChatGPT, "").ModelCatalogPath)
 }
 
 func TestPrepareCodexRuntimeBrowserTokenBranches(t *testing.T) {

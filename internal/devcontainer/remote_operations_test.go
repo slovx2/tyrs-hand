@@ -120,7 +120,7 @@ func TestProvisionStartsInitialAppServerWithRuntimeCredential(t *testing.T) {
 		ID: "tyrs-hand-provider", Name: "Tyrs Hand Provider",
 		BaseURL: "https://api.example.com/v1", WireAPI: "responses",
 		EnvKey: "TYRS_HAND_MODEL_API_KEY", RequiresOpenAIAuth: false,
-	}}
+	}, ModelCatalogPath: "/run/tyrs-hand/provider-model-catalog.json"}
 	operation := RemoteOperation{
 		EnvironmentID: uuid.New(), ImageRef: "development-image",
 		ContainerName: "development", DataVolume: "development-data",
@@ -137,6 +137,11 @@ func TestProvisionStartsInitialAppServerWithRuntimeCredential(t *testing.T) {
 		`model_providers.tyrs-hand-provider.base_url="https://api.example.com/v1"`))
 	require.True(t, runner.contains(
 		"model_providers.tyrs-hand-provider.requires_openai_auth=false"))
+	require.True(t, runner.contains(
+		"--env TYRS_MODEL_CATALOG_PATH=/run/tyrs-hand/provider-model-catalog.json"))
+	require.True(t, runner.contains("codex debug models --bundled"))
+	require.True(t, runner.contains(
+		`model_catalog_json="/run/tyrs-hand/provider-model-catalog.json"`))
 	require.Equal(t, appServerConfig, runtime.AppServerConfig)
 	require.Equal(t, operation.ProcessEnvironment, runtime.ProcessEnvironment)
 }
@@ -492,6 +497,7 @@ func TestReconfigureRemoteEnvironmentKeepsContainerRunningAndSecuresSSH(t *testi
 				BaseURL: "https://api.example.com/v1", WireAPI: "responses",
 				EnvKey: "TYRS_HAND_MODEL_API_KEY", RequiresOpenAIAuth: true,
 			},
+			ModelCatalogPath: "/run/tyrs-hand/provider-model-catalog.json",
 		},
 		ProcessEnvironment: []string{"TYRS_TEST_RUNTIME=value"},
 	})
@@ -528,6 +534,9 @@ func TestReconfigureRemoteEnvironmentKeepsContainerRunningAndSecuresSSH(t *testi
 	require.True(t, runner.contains(`model_provider="tyrs-hand-provider"`))
 	require.True(t, runner.contains(
 		`model_providers.tyrs-hand-provider.base_url="https://api.example.com/v1"`))
+	require.True(t, runner.contains("codex debug models --bundled"))
+	require.True(t, runner.contains(
+		`model_catalog_json="/run/tyrs-hand/provider-model-catalog.json"`))
 }
 
 func TestPrepareBrowserServicesDirectoryPreservesExistingRuntimeOwnership(t *testing.T) {

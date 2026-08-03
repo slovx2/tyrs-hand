@@ -847,11 +847,14 @@ func managedAppServerConfig(modelSource, baseURL string) codex.ManagedAppServerC
 	if strings.TrimSpace(baseURL) == "" {
 		baseURL = "https://api.openai.com/v1"
 	}
-	return codex.ManagedAppServerConfig{ModelProvider: codex.ManagedModelProvider{
-		ID: managedModelProviderID, Name: "Tyrs Hand Provider",
-		BaseURL: strings.TrimRight(baseURL, "/"), WireAPI: "responses",
-		EnvKey: "TYRS_HAND_MODEL_API_KEY", RequiresOpenAIAuth: false,
-	}}
+	return codex.ManagedAppServerConfig{
+		ModelProvider: codex.ManagedModelProvider{
+			ID: managedModelProviderID, Name: "Tyrs Hand Provider",
+			BaseURL: strings.TrimRight(baseURL, "/"), WireAPI: "responses",
+			EnvKey: "TYRS_HAND_MODEL_API_KEY", RequiresOpenAIAuth: false,
+		},
+		ModelCatalogPath: "/run/tyrs-hand/provider-model-catalog.json",
+	}
 }
 
 func hideManagedSecrets(config map[string]any) {

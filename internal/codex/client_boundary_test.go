@@ -65,7 +65,9 @@ func TestManagedAppServerArgumentsSetEnvironmentProviderBaseline(t *testing.T) {
 			ID: "tyrs-hand-provider", Name: "Tyrs Hand Provider",
 			BaseURL: "https://api.example.com/v1", WireAPI: "responses",
 			EnvKey: "TYRS_HAND_MODEL_API_KEY", RequiresOpenAIAuth: true,
-		}})
+		}, ModelCatalogPath: "/run/tyrs-hand/provider-model-catalog.json"})
+	require.Contains(t, arguments,
+		`model_catalog_json="/run/tyrs-hand/provider-model-catalog.json"`)
 	require.Contains(t, arguments, `model_provider="tyrs-hand-provider"`)
 	require.Contains(t, arguments,
 		`model_providers.tyrs-hand-provider.name="Tyrs Hand Provider"`)

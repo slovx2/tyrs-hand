@@ -16,7 +16,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
-const environmentCodexConfigRevision = "provider-baseline-v4"
+const environmentCodexConfigRevision = "provider-baseline-v5"
 
 func (p *RemoteProcessor) CoordinateEnvironments(ctx context.Context) error {
 	if p.development == nil || !p.development.Enabled() {
