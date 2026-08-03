@@ -335,16 +335,6 @@ fi`
 	arguments := []string{"exec", "--detach", "--user", owner,
 		"--env", "HOME=" + operation.RuntimeHome,
 		"--env", "CODEX_HOME=/var/lib/tyrs-hand/codex"}
-	if operation.AppServerConfig.ModelCatalogPath != "" {
-		appServerCommand = `set -eu
-		codex debug models --bundled > "$TYRS_MODEL_CATALOG_PATH.tmp"
-		chmod 0600 "$TYRS_MODEL_CATALOG_PATH.tmp"
-		mv "$TYRS_MODEL_CATALOG_PATH.tmp" "$TYRS_MODEL_CATALOG_PATH"
-		echo $$ > /run/tyrs-hand/app-server.pid
-		exec "$@" >>/run/tyrs-hand/app-server.log 2>&1`
-		arguments = append(arguments, "--env",
-			"TYRS_MODEL_CATALOG_PATH="+operation.AppServerConfig.ModelCatalogPath)
-	}
 	for _, entry := range operation.ProcessEnvironment {
 		arguments = append(arguments, "--env", entry)
 	}

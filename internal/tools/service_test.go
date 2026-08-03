@@ -103,3 +103,15 @@ func TestPullRequestNumberExtraction(t *testing.T) {
 	require.Equal(t, 8, findNumber(map[string]any{"nested": map[string]any{"number": float64(8)}}))
 	require.Zero(t, findNumber("none"))
 }
+
+func TestSanitizeFailureCode(t *testing.T) {
+	tests := map[string]string{
+		" timeout-1 ":   "timeout-1",
+		"control_error": "control_error",
+		"":              "control_error",
+		"INVALID CODE":  "control_error",
+	}
+	for input, expected := range tests {
+		require.Equal(t, expected, sanitizeFailureCode(input))
+	}
+}

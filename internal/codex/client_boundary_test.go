@@ -65,9 +65,8 @@ func TestManagedAppServerArgumentsSetEnvironmentProviderBaseline(t *testing.T) {
 			ID: "tyrs-hand-provider", Name: "Tyrs Hand Provider",
 			BaseURL: "https://api.example.com/v1", WireAPI: "responses",
 			EnvKey: "TYRS_HAND_MODEL_API_KEY", RequiresOpenAIAuth: true,
-		}, ModelCatalogPath: "/run/tyrs-hand/provider-model-catalog.json"})
-	require.Contains(t, arguments,
-		`model_catalog_json="/run/tyrs-hand/provider-model-catalog.json"`)
+		}})
+	require.NotContains(t, strings.Join(arguments, " "), "model_catalog_json")
 	require.Contains(t, arguments, `model_provider="tyrs-hand-provider"`)
 	require.Contains(t, arguments,
 		`model_providers.tyrs-hand-provider.name="Tyrs Hand Provider"`)
@@ -86,6 +85,17 @@ func TestManagedAppServerArgumentsSetEnvironmentProviderBaseline(t *testing.T) {
 		ManagedAppServerConfig{ModelProvider: ManagedModelProvider{ID: "openai"}})
 	require.Contains(t, chatGPTArguments, `model_provider="openai"`)
 	require.NotContains(t, strings.Join(chatGPTArguments, " "), "model_providers.openai")
+}
+
+func TestWriteRequestStateTracksWhetherRequestWasSent(t *testing.T) {
+	cause := errors.New("write failed")
+	notSent := &writeError{cause: cause}
+	require.EqualError(t, notSent, "write failed")
+	require.ErrorIs(t, notSent, cause)
+	require.Equal(t, RequestNotSent, writeRequestState(notSent))
+	require.Equal(t, RequestUnknown, writeRequestState(&writeError{written: 1, cause: cause}))
+	require.Equal(t, RequestUnknown, writeRequestState(cause))
+	require.EqualError(t, ioEOF{}, "Codex Socket 已关闭")
 }
 
 func TestReadFrameBoundaries(t *testing.T) {

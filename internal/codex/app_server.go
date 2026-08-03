@@ -14,8 +14,7 @@ type ManagedModelProvider struct {
 }
 
 type ManagedAppServerConfig struct {
-	ModelProvider    ManagedModelProvider
-	ModelCatalogPath string
+	ModelProvider ManagedModelProvider
 }
 
 // ManagedAppServerArguments 固定平台认证边界，其他个人配置仍从 CODEX_HOME 读取。
@@ -28,10 +27,6 @@ func ManagedAppServerArguments(listen string, config ManagedAppServerConfig) []s
 		"--config", `openai_base_url="` + chatGPTCodexBaseURL + `"`,
 	}
 	provider := config.ModelProvider
-	if config.ModelCatalogPath != "" {
-		arguments = append(arguments, "--config",
-			tomlString("model_catalog_json", config.ModelCatalogPath))
-	}
 	if provider.ID != "" {
 		arguments = append(arguments, "--config", tomlString("model_provider", provider.ID))
 	}

@@ -853,7 +853,6 @@ func managedAppServerConfig(modelSource, baseURL string) codex.ManagedAppServerC
 			BaseURL: strings.TrimRight(baseURL, "/"), WireAPI: "responses",
 			EnvKey: "TYRS_HAND_MODEL_API_KEY", RequiresOpenAIAuth: false,
 		},
-		ModelCatalogPath: "/run/tyrs-hand/provider-model-catalog.json",
 	}
 }
 
