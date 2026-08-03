@@ -91,7 +91,7 @@ repository=${TYRS_HAND_RELEASE_REPOSITORY:-slovx2/tyrs-hand}
 case "${repository}" in *[!A-Za-z0-9_./-]*|*..*|/*|*/|*/*/*) echo "Release 仓库名无效" >&2; exit 1 ;; esac
 if [ -z "${worker_binary}" ]; then
   if ! command -v cosign >/dev/null 2>&1; then
-    echo "下载 Release 制品需要 cosign 3.9.2，请先安装该精确版本" >&2
+    echo "下载 Release 制品需要 cosign 2.5.3，请先安装该精确版本" >&2
     exit 1
   fi
   asset="tyrs-hand-worker_${release_version#v}_${os}_${arch}.tar.gz"

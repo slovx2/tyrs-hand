@@ -15,7 +15,7 @@
     "darwin": ["dscl", "launchctl", "shasum"]
   },
   "releaseVerification": {
-    "cosign": "3.9.2"
+    "cosign": "2.5.3"
   },
   "embeddedGoModules": {
     "github.com/creack/pty": "1.1.24",
