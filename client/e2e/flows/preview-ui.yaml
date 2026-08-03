@@ -8,10 +8,15 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     text: "Tyrs Hand 移动客户端"
 - tapOn:
     id: "project:row:0"
+- assertVisible:
+    id: "sessions:list"
+- assertVisible:
+    text: "运行中：完善移动端会话体验"
 - tapOn:
     id: "composer:parameters"
 - assertVisible:
     id: "parameters:model:gpt-5.6-luna"
+- pressKey: BACK
 - pressKey: BACK
 - tapOn:
     id: "tab:sessions"
@@ -36,6 +41,20 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 # 已完成 Plan
 - tapOn:
     id: "session:row:1"
+- assertVisible:
+    id: "run:activity:toggle"
+- tapOn:
+    id: "run:activity:toggle"
+- scrollUntilVisible:
+    element:
+      id: "run:operations:1:toggle"
+    direction: DOWN
+- tapOn:
+    id: "run:operations:1:toggle"
+- assertVisible:
+    text: ".*已运行命令.*"
+- tapOn:
+    id: "run:activity:toggle"
 - scrollUntilVisible:
     element:
       id: "plan:execute"
@@ -81,6 +100,8 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     direction: DOWN
 - tapOn:
     id: "session:row:4"
+- tapOn:
+    id: "run:activity:toggle"
 - scrollUntilVisible:
     element:
       id: "run:error"
@@ -100,6 +121,35 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     text: "图片 · mobile-layout.png"
 - assertVisible:
     text: "文件 · acceptance-report.md"
+- pressKey: BACK
+
+# Markdown 完整排版与中间过程卡片
+- scrollUntilVisible:
+    element:
+      id: "session:row:6"
+    direction: DOWN
+- tapOn:
+    id: "session:row:6"
+- assertVisible:
+    text: "Markdown 排版验收"
+- assertVisible:
+    text: ".*粗体.*斜体.*"
+- scrollUntilVisible:
+    element:
+      text: "表格"
+    direction: DOWN
+- assertVisible:
+    text: "completed"
+- scrollUntilVisible:
+    element:
+      id: "run:activity:toggle"
+    direction: DOWN
+- tapOn:
+    id: "run:activity:toggle"
+- assertVisible:
+    text: "Codex · 已完成"
+- assertVisible:
+    text: ".*Markdown 容器宽度.*"
 - pressKey: BACK
 
 # 归档列表与恢复入口

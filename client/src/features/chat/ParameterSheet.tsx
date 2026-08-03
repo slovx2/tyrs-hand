@@ -21,16 +21,21 @@ function Choice({ label, selected, onPress, testID }: {
   </Pressable>;
 }
 
-export function ParameterSheet({ visible, bootstrap, value, currentRunLabel, onChange, onClose }: {
+export function ParameterSheet({ visible, bootstrap, environmentId, value, currentRunLabel,
+  onChange, onClose }: {
   visible: boolean;
   bootstrap: Bootstrap;
+  environmentId: string;
   value: SessionSettings;
   currentRunLabel?: string;
   onChange: (value: SessionSettings) => void;
   onClose: () => void;
 }) {
   const theme = useTheme();
-  const model = bootstrap.modelCatalog.find((item) => item.id === value.model) ?? bootstrap.modelCatalog[0];
+  const models = (bootstrap.modelCatalogs[environmentId]?.data ?? []).filter((item) => !item.hidden);
+  const model = models.find((item) => item.id === value.model) ?? models[0];
+  const supportsFast = model?.serviceTiers.some((tier) => tier.id === "priority" || tier.id === "fast") ||
+    model?.additionalSpeedTiers.includes("fast");
   return <Modal testID="parameters:sheet" visible={visible} animationType="slide"
     presentationStyle="pageSheet" onRequestClose={onClose}>
     <SafeAreaView style={[styles.sheet, { backgroundColor: theme.colors.app }]}> 
@@ -45,25 +50,28 @@ export function ParameterSheet({ visible, bootstrap, value, currentRunLabel, onC
           selected={profile.id === value.agentProfileId}
           onPress={() => onChange({ ...value, agentProfileId: profile.id })} />)}
         <Title>模型</Title>
-        {bootstrap.modelCatalog.map((option) => <Choice key={option.id} label={option.displayName}
+        {models.map((option) => <Choice key={option.id} label={option.displayName}
           testID={`parameters:model:${encodeURIComponent(option.id)}`}
           selected={option.id === value.model} onPress={() => onChange({ ...value, model: option.id,
-            reasoningEffort: option.defaultReasoningEffort })} />)}
+            reasoningEffort: option.defaultReasoningEffort,
+            serviceTier: value.serviceTier === "fast" && !modelSupportsFast(option) ? "standard" : value.serviceTier })} />)}
         {model && <>
           <Title>推理等级</Title>
           <View style={styles.wrap}>{model.supportedReasoningEfforts.map((effort) =>
-            <Pressable key={effort.id} testID={`parameters:reasoning:${effort.id}`}
-              onPress={() => onChange({ ...value, reasoningEffort: effort.id })}
+            <Pressable key={effort.reasoningEffort} testID={`parameters:reasoning:${effort.reasoningEffort}`}
+              onPress={() => onChange({ ...value, reasoningEffort: effort.reasoningEffort })}
               style={[styles.chip, { borderColor: theme.colors.border,
-                backgroundColor: value.reasoningEffort === effort.id ? theme.colors.accent : theme.colors.surface }]}>
-              <Text style={{ color: value.reasoningEffort === effort.id ? theme.colors.accentForeground : theme.colors.text,
-                fontFamily: "Inter_500Medium" }}>{effort.id}</Text>
+                backgroundColor: value.reasoningEffort === effort.reasoningEffort ? theme.colors.accent : theme.colors.surface }]}>
+              <Text style={{ color: value.reasoningEffort === effort.reasoningEffort ? theme.colors.accentForeground : theme.colors.text,
+                fontFamily: "Inter_500Medium" }}>{effort.reasoningEffort}</Text>
             </Pressable>)}</View>
         </>}
         <Title>速度</Title>
-        <SegmentedControl testIDPrefix="parameters:tier" value={value.serviceTier} options={[
-          { value: "standard", label: "标准" }, { value: "fast", label: "快速" },
-        ] as const} onChange={(serviceTier) => onChange({ ...value, serviceTier })} />
+        <SegmentedControl testIDPrefix="parameters:tier" value={value.serviceTier}
+          options={supportsFast ? [{ value: "standard", label: "标准" },
+            { value: "fast", label: "快速" }] as const :
+            [{ value: "standard", label: "标准" }] as const}
+          onChange={(serviceTier) => onChange({ ...value, serviceTier })} />
         <Title>模式</Title>
         <SegmentedControl testIDPrefix="parameters:mode" value={value.collaborationMode} options={[
           { value: "default", label: "Default" }, { value: "plan", label: "Plan" },
@@ -71,6 +79,11 @@ export function ParameterSheet({ visible, bootstrap, value, currentRunLabel, onC
       </ScrollView>
     </SafeAreaView>
   </Modal>;
+}
+
+function modelSupportsFast(model: Bootstrap["modelCatalogs"][string]["data"][number]) {
+  return model.serviceTiers.some((tier) => tier.id === "priority" || tier.id === "fast") ||
+    model.additionalSpeedTiers.includes("fast");
 }
 
 const styles = StyleSheet.create({

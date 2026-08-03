@@ -18,6 +18,7 @@ function Navigation() {
     <Stack.Screen name="index" options={{ headerShown: false }} />
     <Stack.Screen name="device-pair" options={{ title: "添加 Control", gestureEnabled: false }} />
     <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+    <Stack.Screen name="project/[id]" options={{ title: "项目会话" }} />
     <Stack.Screen name="session/[id]" options={{ title: "会话" }} />
   </Stack>;
 }

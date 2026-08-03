@@ -26,7 +26,9 @@ const environmentId = "20000000-0000-4000-8000-000000000002";
 const projectId = "20000000-0000-4000-8000-000000000003";
 const unavailableProjectId = "20000000-0000-4000-8000-000000000004";
 const secondaryProjectId = "20000000-0000-4000-8000-000000000005";
-const baseTime = "2026-08-03T10:00:00.000+08:00";
+const previewNow = Date.now();
+const baseTime = new Date(previewNow - 134_000).toISOString();
+const finishedTime = new Date(previewNow).toISOString();
 
 const settings: SessionSettings = {
   agentProfileId: profileId,
@@ -83,13 +85,23 @@ function run(index: number, status: RunSnapshot["status"], mode: "default" | "pl
     actualSettings: { model: "gpt-5.6-sol", reasoningEffort: "high", serviceTier: "fast",
       collaborationMode: mode, settingsVersion: 3 },
     startedAt: baseTime,
-    finishedAt: ["completed", "failed", "canceled"].includes(status) ? baseTime : null,
+    finishedAt: ["completed", "failed", "canceled"].includes(status) ? finishedTime : null,
     errorCode: null,
     errorMessage: null,
     timeline: [
-      { sequence: 1, type: "Turn 已创建", payload: {}, occurredAt: baseTime },
-      { sequence: 2, type: "正在分析工作区", payload: {}, occurredAt: baseTime },
-      { sequence: 3, type: "读取并修改代码", payload: {}, occurredAt: baseTime },
+      { sequence: 1, type: "item/completed", payload: { item: { id: `commentary-${index}-1`,
+        type: "agentMessage", phase: "commentary",
+        text: "我先检查现有导航和会话数据边界，再确认哪些组件可以直接复用。" } }, occurredAt: baseTime },
+      { sequence: 2, type: "item/completed", payload: { item: { id: `command-${index}`,
+        type: "commandExecution", command: "rg -n \"ConversationPane|SessionList\" client", status: "completed" } },
+        occurredAt: baseTime },
+      { sequence: 3, type: "item/completed", payload: { item: { id: `commentary-${index}-2`,
+        type: "agentMessage", phase: "commentary",
+        text: "列表和详情的数据源已经统一。接下来调整交互，同时保留生产环境的同步与缓存逻辑。" } },
+        occurredAt: baseTime },
+      { sequence: 4, type: "item/completed", payload: { item: { id: `files-${index}`,
+        type: "fileChange", changes: [{ path: "client/src/features/chat/ConversationPane.tsx" }],
+        status: "completed" } }, occurredAt: baseTime },
     ],
     pendingInteractives: [],
   };
@@ -102,6 +114,7 @@ const secretSession = session(4, "Secret：等待 Desktop 输入");
 const failedSession = session(5, "执行失败：依赖服务不可用", { serviceTier: "standard" });
 const attachmentSession = session(6, "附件与 Markdown 完整展示");
 const archivedSession = session(7, "已归档：旧版通知链路", { lifecycleState: "archived" });
+const markdownSession = session(9, "Markdown 排版与长内容验收");
 
 const runningRun = run(1, "running");
 const planRun = run(2, "completed", "plan");
@@ -127,6 +140,21 @@ secretRun.pendingInteractives = [{
 const failedRun = run(5, "failed");
 failedRun.errorCode = "UPSTREAM_UNAVAILABLE";
 failedRun.errorMessage = "无法连接模型服务，请检查网络后重试。";
+const markdownRun = run(9, "completed");
+markdownRun.timeline = [
+  { sequence: 1, type: "item/completed", payload: { item: { id: "markdown-commentary-1",
+    type: "agentMessage", phase: "commentary",
+    text: "我会先检查 **Markdown 容器宽度** 与 `lineHeight`，确保中文长段落、行内代码和强调文本不会重叠。\n\n> 这段引用用于验证中间过程卡片内的排版。" } }, occurredAt: baseTime },
+  { sequence: 2, type: "item/completed", payload: { item: { id: "markdown-command-1",
+    type: "commandExecution", command: "pnpm typecheck && pnpm lint", status: "completed" } },
+    occurredAt: baseTime },
+  { sequence: 3, type: "item/completed", payload: { item: { id: "markdown-files-1",
+    type: "fileChange", changes: [{ path: "client/src/features/chat/MarkdownContent.tsx" },
+      { path: "client/src/features/chat/RunCards.tsx" }], status: "completed" } }, occurredAt: baseTime },
+  { sequence: 4, type: "item/completed", payload: { item: { id: "markdown-commentary-2",
+    type: "agentMessage", phase: "commentary",
+    text: "排版节点已经统一：\n\n```tsx\n<MarkdownContent compact>{commentary}</MarkdownContent>\n```\n\n接下来核对最终回答；它会保持无卡片正文。" } }, occurredAt: baseTime },
+];
 
 const imageAttachment = {
   id: "60000000-0000-4000-8000-000000000001", sessionId: attachmentSession.id,
@@ -169,39 +197,57 @@ const details: Record<string, PreviewSessionDetail> = {
         "## 验收摘要\n\n配色与 WakeQora 基准一致，代码块如下：\n\n```ts\nconst status = 'passed'\n```"),
     ],
   },
+  [markdownSession.id]: conversation(markdownSession,
+    "# Markdown 排版验收\n\n" +
+    "## 字体与行距\n\n" +
+    "普通段落包含 **粗体**、*斜体*、~~删除线~~、`inline code` 和 [可点击链接](https://example.com)。这是一段刻意加长的中文内容，用于确认小屏幕会自然换行，连续多行之间保持稳定行距，不会出现文字互相覆盖或越出内容区域。\n\n" +
+    "### 引用\n\n> 多行引用的第一行，用来说明验收背景。\n> 第二行仍应位于同一个引用区域，并与正文保持清楚层级。\n\n" +
+    "### 列表\n\n- 无序列表第一项\n  - 嵌套项目包含较长说明，用于检查缩进后的可用宽度\n- 无序列表第二项\n\n" +
+    "1. 有序列表第一项\n2. 有序列表第二项\n   1. 嵌套编号项目\n\n" +
+    "---\n\n### 代码块\n\n```ts\ntype Session = {\n  id: string;\n  title: string;\n};\n\nconst message = \"一行较长但必须正确换行的代码内容\";\n```\n\n" +
+    "### 表格\n\n| 状态 | 说明 |\n| --- | --- |\n| running | 正在处理 |\n| completed | 已完成 |\n\n" +
+    "长路径也不能越界：`/var/lib/tyrs-hand/workspaces/WakeQora/console-server/src/wakeqora_console/app/settings.py:411`\n\n" +
+    "最终回答保持普通正文布局，不增加头像和外层卡片。", markdownRun),
   [archivedSession.id]: conversation(archivedSession, "这条会话已经归档，可随时恢复。"),
 };
+details[runningSession.id]!.messages = details[runningSession.id]!.messages.filter((item) => item.role !== "agent");
 
-const modelCatalog: Bootstrap["modelCatalog"] = [{
+const modelCatalog: Bootstrap["modelCatalogs"][string] = { data: [{
   id: "gpt-5.6-sol",
+  model: "gpt-5.6-sol",
   displayName: "GPT-5.6 Sol",
+  description: "Latest frontier agentic coding model.",
   inputModalities: ["text", "image", "file"],
   supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"].map((id) => ({
-    id: id as "low" | "medium" | "high" | "xhigh" | "max" | "ultra",
+    reasoningEffort: id,
     description: `${id} 推理强度`,
   })),
   defaultReasoningEffort: "high",
-  serviceTiers: [
-    { id: "standard", name: "标准", description: "稳定的标准处理速度" },
-    { id: "fast", name: "快速", description: "更低延迟的优先处理" },
-  ],
-  defaultServiceTier: "standard",
-  default: true,
+  serviceTiers: [{ id: "priority", name: "Fast", description: "更低延迟的优先处理" }],
+  additionalSpeedTiers: ["fast"],
+  defaultServiceTier: null,
+  isDefault: true,
+  hidden: false,
 }, {
   id: "gpt-5.6-luna",
+  model: "gpt-5.6-luna",
   displayName: "GPT-5.6 Luna",
+  description: "Fast and affordable agentic coding model.",
   inputModalities: ["text", "image"],
-  supportedReasoningEfforts: [{ id: "medium", description: "平衡速度与质量" },
-    { id: "high", description: "处理更复杂的任务" }, { id: "max", description: "最大推理强度" }],
+  supportedReasoningEfforts: [{ reasoningEffort: "medium", description: "平衡速度与质量" },
+    { reasoningEffort: "high", description: "处理更复杂的任务" },
+    { reasoningEffort: "max", description: "最大推理强度" }],
   defaultReasoningEffort: "medium",
-  serviceTiers: [{ id: "fast", name: "快速", description: "适合大量简单任务" }],
-  defaultServiceTier: "fast",
-  default: false,
-}];
+  serviceTiers: [{ id: "priority", name: "Fast", description: "适合大量简单任务" }],
+  additionalSpeedTiers: ["fast"],
+  defaultServiceTier: "priority",
+  isDefault: false,
+  hidden: false,
+}], nextCursor: null };
 
 const primaryBootstrap: Bootstrap = {
   serverId: primaryPreviewServerId,
-  protocolVersion: 2,
+  protocolVersion: 3,
   currentCursor: 128,
   user: { id: "80000000-0000-4000-8000-000000000001", username: "UI 验收员" },
   capabilities: { attachments: true, interactive: true, plan: true, push: true, multiControl: true },
@@ -226,7 +272,7 @@ const primaryBootstrap: Bootstrap = {
   }],
   agentProfiles: [{ id: profileId, name: "Codex 默认" },
     { id: "20000000-0000-4000-8000-000000000006", name: "Luna Agent" }],
-  modelCatalog,
+  modelCatalogs: { [environmentId]: modelCatalog },
   lastStartedSettings: settings,
 };
 
@@ -245,6 +291,7 @@ const secondaryBootstrap: Bootstrap = {
     branch: "main",
     dirty: false,
   }],
+  modelCatalogs: { "20000000-0000-4000-8000-000000000007": modelCatalog },
 };
 
 const secondarySession = session(8, "另一 Control 的隔离会话", {
@@ -271,7 +318,7 @@ export function createPreviewSeed(): PreviewSeed {
       [primaryPreviewServerId]: {
         bootstrap: primaryBootstrap,
         sessions: [runningSession, planSession, interactiveSession, secretSession,
-          failedSession, attachmentSession, archivedSession],
+          failedSession, attachmentSession, markdownSession, archivedSession],
         details,
         outbox: [{
           serverId: primaryPreviewServerId,
@@ -314,5 +361,6 @@ export const previewSessionIds = {
   secret: secretSession.id,
   failed: failedSession.id,
   attachments: attachmentSession.id,
+  markdown: markdownSession.id,
   archived: archivedSession.id,
 };

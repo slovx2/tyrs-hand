@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const reasoningEffortSchema = z.enum(["low", "medium", "high", "xhigh", "max", "ultra"]);
+export const reasoningEffortSchema = z.string().min(1).max(64);
 
 export const sessionSettingsSchema = z.object({
   agentProfileId: z.string().uuid(),
@@ -102,24 +102,35 @@ export type RunSnapshot = z.infer<typeof runSnapshotSchema>;
 
 export const modelSchema = z.object({
   id: z.string(),
+  model: z.string().optional(),
   displayName: z.string(),
-  inputModalities: z.array(z.string()),
-  supportedReasoningEfforts: z.array(z.object({ id: reasoningEffortSchema, description: z.string() })),
+  description: z.string(),
+  inputModalities: z.array(z.string()).optional().default([]),
+  supportedReasoningEfforts: z.array(z.object({ reasoningEffort: reasoningEffortSchema,
+    description: z.string() })),
   defaultReasoningEffort: reasoningEffortSchema,
-  serviceTiers: z.array(z.object({ id: z.string(), name: z.string(), description: z.string() })),
-  defaultServiceTier: z.string(),
-  default: z.boolean(),
+  serviceTiers: z.array(z.object({ id: z.string(), name: z.string(), description: z.string() })).
+    optional().default([]),
+  additionalSpeedTiers: z.array(z.string()).optional().default([]),
+  defaultServiceTier: z.string().nullable().optional().default(null),
+  isDefault: z.boolean(),
+  hidden: z.boolean().optional().default(false),
+});
+
+export const modelCatalogSchema = z.object({
+  data: z.array(modelSchema),
+  nextCursor: z.string().nullable().optional().default(null),
 });
 
 export const bootstrapSchema = z.object({
   serverId: z.string().uuid(),
-  protocolVersion: z.literal(2),
+  protocolVersion: z.literal(3),
   currentCursor: z.number().int().nonnegative(),
   user: z.object({ id: z.string().uuid(), username: z.string() }),
   capabilities: z.record(z.string(), z.boolean()),
   projects: z.array(projectSchema),
   agentProfiles: z.array(z.object({ id: z.string().uuid(), name: z.string() })),
-  modelCatalog: z.array(modelSchema),
+  modelCatalogs: z.record(z.string().uuid(), modelCatalogSchema),
   lastStartedSettings: sessionSettingsSchema.nullable(),
 });
 export type Bootstrap = z.infer<typeof bootstrapSchema>;

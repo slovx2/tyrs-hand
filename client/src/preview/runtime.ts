@@ -92,7 +92,8 @@ function queueLiveUpdate(sessionId: string): void {
   if (!isPreviewMode) return;
   setTimeout(() => void import("@/sync/synchronizer").then(({ publishLocalUpdate }) => publishLocalUpdate({
     kind: "live", sessionId, type: "item/agentMessage/delta", entityId: sessionId,
-    runEventSeq: 4, payload: { delta: "正在生成预览响应…" },
+    runEventSeq: 5, payload: { itemId: "commentary-1-2", phase: "commentary",
+      delta: "\n\n正在生成预览响应…" },
   })), 80);
 }
 
