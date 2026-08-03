@@ -850,7 +850,7 @@ func managedAppServerConfig(modelSource, baseURL string) codex.ManagedAppServerC
 	return codex.ManagedAppServerConfig{ModelProvider: codex.ManagedModelProvider{
 		ID: managedModelProviderID, Name: "Tyrs Hand Provider",
 		BaseURL: strings.TrimRight(baseURL, "/"), WireAPI: "responses",
-		EnvKey: "TYRS_HAND_MODEL_API_KEY", RequiresOpenAIAuth: true,
+		EnvKey: "TYRS_HAND_MODEL_API_KEY", RequiresOpenAIAuth: false,
 	}}
 }
 

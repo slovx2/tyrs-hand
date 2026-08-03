@@ -114,18 +114,31 @@ func TestProvisionStartsInitialAppServerWithRuntimeCredential(t *testing.T) {
 		`{{.Config.User}}`:            "developer",
 		`TYRS_RUNTIME_USER=developer`: "developer:1000:1000:/home/developer",
 	}}
-	manager := &Manager{dockerBin: "docker", dockerHost: "inherit", runner: runner,
+	manager := &Manager{enabled: true, dockerBin: "docker", dockerHost: "inherit", runner: runner,
 		developmentRuntimeDir: t.TempDir(), developmentRuntimeHostDir: "/host/runtime"}
-	item := workspace{Environment: environment{
-		ID: uuid.New(), Status: "pending", ImageRef: "development-image",
+	appServerConfig := codex.ManagedAppServerConfig{ModelProvider: codex.ManagedModelProvider{
+		ID: "tyrs-hand-provider", Name: "Tyrs Hand Provider",
+		BaseURL: "https://api.example.com/v1", WireAPI: "responses",
+		EnvKey: "TYRS_HAND_MODEL_API_KEY", RequiresOpenAIAuth: false,
+	}}
+	operation := RemoteOperation{
+		EnvironmentID: uuid.New(), ImageRef: "development-image",
 		ContainerName: "development", DataVolume: "development-data",
 		HomeVolume: "development-home", Network: "development-network",
-	}}
+		AppServerConfig:    appServerConfig,
+		ProcessEnvironment: []string{"TYRS_HAND_MODEL_API_KEY=managed-secret"},
+	}
 
-	err := manager.provision(context.Background(), &item, "git-credential",
-		[]string{"TYRS_HAND_MODEL_API_KEY=managed-secret"})
+	runtime, err := manager.ProvisionRemoteEnvironment(context.Background(), &operation)
 	require.NoError(t, err)
 	require.True(t, runner.contains("--env TYRS_HAND_MODEL_API_KEY=managed-secret"))
+	require.True(t, runner.contains(`model_provider="tyrs-hand-provider"`))
+	require.True(t, runner.contains(
+		`model_providers.tyrs-hand-provider.base_url="https://api.example.com/v1"`))
+	require.True(t, runner.contains(
+		"model_providers.tyrs-hand-provider.requires_openai_auth=false"))
+	require.Equal(t, appServerConfig, runtime.AppServerConfig)
+	require.Equal(t, operation.ProcessEnvironment, runtime.ProcessEnvironment)
 }
 
 func TestScanRemoteProjectsClassifiesDirectoriesAndRedactsRemote(t *testing.T) {

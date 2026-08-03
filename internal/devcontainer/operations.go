@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codex"
 	"go.uber.org/zap"
 )
 
@@ -82,7 +83,7 @@ func (m *Manager) executeLocalOperation(ctx context.Context, operation RemoteOpe
 			RuntimeUser: operation.RuntimeUser, RuntimeUID: operation.RuntimeUID,
 			RuntimeGID: operation.RuntimeGID, RuntimeHome: operation.RuntimeHome,
 		}}
-		if err := m.provision(ctx, &item, "", nil); err != nil {
+		if err := m.provision(ctx, &item, "", nil, codex.ManagedAppServerConfig{}); err != nil {
 			return err
 		}
 		_, err := m.db.ExecContext(ctx, `UPDATE discord_development_environments SET

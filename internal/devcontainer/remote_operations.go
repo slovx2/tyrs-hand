@@ -75,7 +75,8 @@ func (m *Manager) ProvisionRemoteEnvironment(ctx context.Context,
 		RuntimeUser: operation.RuntimeUser, RuntimeUID: operation.RuntimeUID,
 		RuntimeGID: operation.RuntimeGID, RuntimeHome: operation.RuntimeHome,
 	}}
-	if err := m.provision(ctx, &item, "", operation.ProcessEnvironment); err != nil {
+	if err := m.provision(ctx, &item, "", operation.ProcessEnvironment,
+		operation.AppServerConfig); err != nil {
 		return Runtime{}, err
 	}
 	operation.ContainerID = item.Environment.ContainerID
@@ -102,6 +103,8 @@ func (m *Manager) ProvisionRemoteEnvironment(ctx context.Context,
 			operation.EnvironmentID.String(), "app-server.sock"),
 		RelaySocket: filepath.Join(m.developmentRuntimeDir,
 			operation.EnvironmentID.String(), "relay.sock"),
+		AppServerConfig:    operation.AppServerConfig,
+		ProcessEnvironment: operation.ProcessEnvironment,
 	}, nil
 }
 

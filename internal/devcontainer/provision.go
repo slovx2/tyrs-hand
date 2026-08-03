@@ -7,10 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/slovx2/tyrs-hand/internal/codex"
 )
 
 func (m *Manager) provision(ctx context.Context, item *workspace, _ string,
-	processEnvironment []string,
+	processEnvironment []string, appServerConfig codex.ManagedAppServerConfig,
 ) error {
 	firstProvision := item.Environment.ContainerID == ""
 	if m.db != nil {
@@ -85,7 +87,8 @@ func (m *Manager) provision(ctx context.Context, item *workspace, _ string,
 	}
 	if err := m.configureRemoteDaemons(ctx, candidateName, RemoteOperation{
 		EnvironmentID: item.Environment.ID, RuntimeUser: runtimeUser, RuntimeUID: uid,
-		RuntimeGID: gid, RuntimeHome: home, ProcessEnvironment: processEnvironment,
+		RuntimeGID: gid, RuntimeHome: home, AppServerConfig: appServerConfig,
+		ProcessEnvironment: processEnvironment,
 	}); err != nil {
 		return err
 	}

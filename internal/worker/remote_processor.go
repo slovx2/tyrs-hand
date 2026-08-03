@@ -36,6 +36,11 @@ type RemoteProcessor struct {
 	browserAgent *browserAgentRelayManager
 }
 
+type developmentOperationRuntimeConfig struct {
+	ProcessEnvironment []string
+	AppServerConfig    codex.ManagedAppServerConfig
+}
+
 func NewRemoteProcessor(ctx context.Context, cfg config.Config, client *workerprotocol.Client,
 	workspace ports.WorkspaceManager, catalog *githubtools.Catalog, pool *codex.Pool,
 	development *devcontainer.Manager, logger *zap.Logger,
@@ -83,12 +88,12 @@ func (p *RemoteProcessor) ProcessDevelopmentOperation(ctx context.Context,
 	if operation.Operation != "provision_environment" {
 		cleanupBrowserEnvironment(p.cfg, operation.EnvironmentID.String())
 	}
-	processEnvironment, err := p.developmentOperationProcessEnvironment(ctx, operation)
+	runtimeConfig, err := p.developmentOperationRuntimeConfig(ctx, operation)
 	if err != nil {
 		return err
 	}
 	if operation.Operation == "provision_environment" {
-		return p.processDevelopmentEnvironmentProvision(ctx, operation, processEnvironment)
+		return p.processDevelopmentEnvironmentProvision(ctx, operation, runtimeConfig)
 	}
 	err = p.development.RunRemoteOperation(ctx, devcontainer.RemoteOperation{
 		EnvironmentID: operation.EnvironmentID, Operation: operation.Operation,
@@ -101,7 +106,8 @@ func (p *RemoteProcessor) ProcessDevelopmentOperation(ctx context.Context,
 		RuntimeGID: operation.RuntimeGID, RuntimeHome: operation.RuntimeHome,
 		SSHPublicKey: operation.SSHPublicKey, SSHPort: operation.SSHPort,
 		SSHConfigRevision:  operation.SSHConfigRevision,
-		ProcessEnvironment: processEnvironment,
+		AppServerConfig:    runtimeConfig.AppServerConfig,
+		ProcessEnvironment: runtimeConfig.ProcessEnvironment,
 	})
 	if err != nil || (operation.Operation != "reconfigure" && operation.Operation != "rebase") {
 		return err
@@ -126,22 +132,30 @@ func (p *RemoteProcessor) ProcessDevelopmentOperation(ctx context.Context,
 	return nil
 }
 
-func (p *RemoteProcessor) developmentOperationProcessEnvironment(ctx context.Context,
+func (p *RemoteProcessor) developmentOperationRuntimeConfig(ctx context.Context,
 	operation *workerprotocol.DevelopmentOperation,
-) ([]string, error) {
+) (developmentOperationRuntimeConfig, error) {
 	if operation.Operation != "provision_environment" && operation.Operation != "reconfigure" &&
 		operation.Operation != "rebase" {
-		return nil, nil
+		return developmentOperationRuntimeConfig{}, nil
 	}
 	credential, err := p.client.EnvironmentRuntimeCredential(ctx, operation.EnvironmentID)
 	if err != nil {
-		return nil, err
+		return developmentOperationRuntimeConfig{}, err
 	}
-	return remoteCodexProcessEnvironment(credential, p.cfg, operation.EnvironmentID.String())
+	processEnvironment, err := remoteCodexProcessEnvironment(credential, p.cfg,
+		operation.EnvironmentID.String())
+	if err != nil {
+		return developmentOperationRuntimeConfig{}, err
+	}
+	return developmentOperationRuntimeConfig{
+		ProcessEnvironment: processEnvironment,
+		AppServerConfig:    managedAppServerConfig(credential.ModelSource, credential.BaseURL),
+	}, nil
 }
 
 func (p *RemoteProcessor) processDevelopmentEnvironmentProvision(ctx context.Context,
-	operation *workerprotocol.DevelopmentOperation, processEnvironment []string,
+	operation *workerprotocol.DevelopmentOperation, runtimeConfig developmentOperationRuntimeConfig,
 ) error {
 	remoteOperation := devcontainer.RemoteOperation{
 		EnvironmentID: operation.EnvironmentID, Operation: operation.Operation,
@@ -152,7 +166,8 @@ func (p *RemoteProcessor) processDevelopmentEnvironmentProvision(ctx context.Con
 		RuntimeUID: operation.RuntimeUID, RuntimeGID: operation.RuntimeGID,
 		RuntimeHome: operation.RuntimeHome, SSHPublicKey: operation.SSHPublicKey,
 		SSHPort: operation.SSHPort, SSHConfigRevision: operation.SSHConfigRevision,
-		ProcessEnvironment: processEnvironment,
+		AppServerConfig:    runtimeConfig.AppServerConfig,
+		ProcessEnvironment: runtimeConfig.ProcessEnvironment,
 	}
 	runtime, err := p.development.ProvisionRemoteEnvironment(ctx, &remoteOperation)
 	if err != nil {
