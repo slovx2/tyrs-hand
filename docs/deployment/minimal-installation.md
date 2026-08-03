@@ -114,6 +114,8 @@ TYRS_HAND_BROWSER_FILES_ROOT=/home/worker/.local/share/tyrs-hand/browser/files
 
 Provider、API Key、ChatGPT Auth、Base URL 与 Proxy 只配置在机器用户自己的 Codex Home 中。Control 不写入 `config.toml`、`auth.json` 或 `AGENTS.md`。
 
+若机器 Codex Home 的 Provider 通过环境变量引用 API Key，可由宿主管理员将对应变量写入可选的 `/etc/tyrs-hand/codex.env`。Linux systemd Worker 和 `tyrs-hand-worker-run` 会加载该文件，但安装器不会创建、改写或备份它；文件应由 `root:<worker-group>` 持有并设置为 `0640`。这些变量仍属于机器 Codex 配置，不进入 Control、Worker 协议或任务快照。
+
 Control 的 GitHub Agent Profile、仓库覆盖和全局 GitHub Agent instructions 只作用于 GitHub Work Item；Desktop、Discord 与 Mobile 的未指定参数由机器 Codex Home 决定。
 
 ## 6. SSH 与多客户端

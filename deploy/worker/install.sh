@@ -134,10 +134,14 @@ case "${os}" in
 esac
 install -d -o "${worker_user}" -g "$(id -gn "${worker_user}")" -m 0700 \
   "${state_root}/ssh" "${state_root}/control-state" "${worker_home}/tyrs-hand/workspaces"
-install -o "${worker_user}" -g "$(id -gn "${worker_user}")" -m 0600 \
-  "${TYRS_HAND_WORKER_PUBLIC_KEYS_FILE}" "${state_root}/ssh/authorized_keys"
+worker_keys=${state_root}/ssh/authorized_keys
+if [ ! -e "${worker_keys}" ] || [ ! "${TYRS_HAND_WORKER_PUBLIC_KEYS_FILE}" -ef "${worker_keys}" ]; then
+  install -o "${worker_user}" -g "$(id -gn "${worker_user}")" -m 0600 \
+    "${TYRS_HAND_WORKER_PUBLIC_KEYS_FILE}" "${worker_keys}"
+fi
 credential_file=${state_root}/control-state/worker-credential
-if [ -n "${credential_source}" ]; then
+if [ -n "${credential_source}" ] &&
+  { [ ! -e "${credential_file}" ] || [ ! "${credential_source}" -ef "${credential_file}" ]; }; then
   install -o "${worker_user}" -g "$(id -gn "${worker_user}")" -m 0600 \
     "${credential_source}" "${credential_file}"
 fi
@@ -154,7 +158,6 @@ if [ -z "${worker_codex_bin}" ]; then
 fi
 case "${worker_codex_bin}" in /*) ;; *) echo "未找到用户系统 Codex，请设置绝对路径 TYRS_HAND_CODEX_BIN" >&2; exit 1 ;; esac
 worker_workspace=${worker_home}/tyrs-hand/workspaces
-worker_keys=${state_root}/ssh/authorized_keys
 worker_listen=${TYRS_HAND_WORKER_SSH_LISTEN_ADDR:-:2222}
 worker_browser_mcp_url=${TYRS_HAND_BROWSER_MCP_URL:-}
 worker_browser_token_file=${TYRS_HAND_BROWSER_MCP_TOKEN_FILE:-}
