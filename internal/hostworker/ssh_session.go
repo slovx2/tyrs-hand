@@ -13,7 +13,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/creack/pty"
 	"github.com/pkg/sftp"
@@ -40,8 +39,7 @@ func (s *SSHServer) runCommand(channel ssh.Channel, state *sshSessionState, comm
 	trimmed := strings.TrimSpace(command)
 	switch trimmed {
 	case "codex app-server proxy":
-		err := s.options.Runtime.ServeDesktop(&sshChannelConnection{Channel: channel,
-			local: s.listener.Addr(), remote: streamAddress("desktop")})
+		err := s.serveDesktop(channel)
 		if err != nil {
 			s.options.Logger.Warn("Codex Desktop SSH 会话停止", zap.Error(err))
 			s.writeExit(channel, 1)
@@ -86,6 +84,29 @@ func (s *SSHServer) runCommand(channel ssh.Channel, state *sshSessionState, comm
 	process.Stdin, process.Stdout, process.Stderr = channel, channel, channel.Stderr()
 	err := process.Run()
 	s.writeExit(channel, exitStatus(err))
+}
+
+func (s *SSHServer) serveDesktop(channel ssh.Channel) error {
+	// net/http 在 WebSocket Hijack 前依赖 ReadDeadline 中断后台读取；SSH Channel
+	// 不支持 deadline，因此先桥接到支持 deadline 的 net.Pipe。
+	serverConnection, proxyConnection := net.Pipe()
+	finished := make(chan error, 3)
+	go func() { finished <- s.options.Runtime.ServeDesktop(serverConnection) }()
+	go func() {
+		_, err := io.Copy(proxyConnection, channel)
+		finished <- err
+	}()
+	go func() {
+		_, err := io.Copy(channel, proxyConnection)
+		finished <- err
+	}()
+	err := <-finished
+	_ = serverConnection.Close()
+	_ = proxyConnection.Close()
+	if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
+		return nil
+	}
+	return err
 }
 
 func (s *SSHServer) runPTY(channel ssh.Channel, state *sshSessionState, process *exec.Cmd) {
@@ -182,20 +203,3 @@ func atomicWriteSecret(path string, data []byte) error {
 	}
 	return os.Rename(name, path)
 }
-
-type sshChannelConnection struct {
-	ssh.Channel
-	local  net.Addr
-	remote net.Addr
-}
-
-func (c *sshChannelConnection) LocalAddr() net.Addr              { return c.local }
-func (c *sshChannelConnection) RemoteAddr() net.Addr             { return c.remote }
-func (c *sshChannelConnection) SetDeadline(time.Time) error      { return nil }
-func (c *sshChannelConnection) SetReadDeadline(time.Time) error  { return nil }
-func (c *sshChannelConnection) SetWriteDeadline(time.Time) error { return nil }
-
-type streamAddress string
-
-func (a streamAddress) Network() string { return "ssh" }
-func (a streamAddress) String() string  { return string(a) }
