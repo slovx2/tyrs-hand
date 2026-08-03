@@ -109,7 +109,7 @@ func applyBrowserMCPConfig(runtimeConfig map[string]any, cfg config.Config, task
 	if len(taskIDs) > 0 && taskIDs[0] != "" {
 		browser["http_headers"] = map[string]string{"X-Tyrs-Browser-Task-Id": taskIDs[0]}
 	}
-	servers["browser"] = browser
+	servers["chrome"] = browser
 	runtimeConfig["mcp_servers"] = servers
 }
 
