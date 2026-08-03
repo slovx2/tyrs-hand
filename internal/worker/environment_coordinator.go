@@ -2,21 +2,24 @@ package worker
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/devcontainer"
 	"github.com/slovx2/tyrs-hand/internal/settings"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
-const environmentCodexConfigRevision = "provider-baseline-v5"
+const environmentCodexConfigRevision = "provider-baseline-v6"
 
 func (p *RemoteProcessor) CoordinateEnvironments(ctx context.Context) error {
 	if p.development == nil || !p.development.Enabled() {
@@ -251,8 +254,7 @@ func (p *RemoteProcessor) installEnvironmentCodexHome(ctx context.Context,
 	runtime devcontainer.Runtime, credential workerprotocol.RuntimeCredential,
 ) (bool, error) {
 	marker := filepath.Join(filepath.Dir(runtime.AppServerSocket), "codex-config-signature")
-	expectedSignature := environmentCodexConfigRevision + ":" +
-		settings.BuiltinSkillsRevision() + ":" + credential.ConfigSignature
+	expectedSignature := environmentCodexSignature(runtime, credential)
 	current, markerErr := os.ReadFile(marker)
 	if markerErr == nil && string(current) == expectedSignature {
 		return false, nil
@@ -280,4 +282,13 @@ func (p *RemoteProcessor) installEnvironmentCodexHome(ctx context.Context,
 		return false, err
 	}
 	return true, nil
+}
+
+func environmentCodexSignature(runtime devcontainer.Runtime,
+	credential workerprotocol.RuntimeCredential,
+) string {
+	arguments := codex.ManagedAppServerArguments("stdio://", runtime.AppServerConfig)
+	argumentsDigest := sha256.Sum256([]byte(strings.Join(arguments, "\x00")))
+	return fmt.Sprintf("%s:%x:%s:%s", environmentCodexConfigRevision, argumentsDigest,
+		settings.BuiltinSkillsRevision(), credential.ConfigSignature)
 }

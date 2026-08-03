@@ -181,6 +181,18 @@ func TestProcessorHelpersAndLocalTools(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestEnvironmentCodexSignatureTracksManagedAppServerArguments(t *testing.T) {
+	credential := workerprotocol.RuntimeCredential{ConfigSignature: "credential-signature"}
+	providerRuntime := devcontainer.Runtime{AppServerConfig: managedAppServerConfig(
+		settings.ModelSourceProvider, "https://api.konstants.xyz")}
+	chatGPTRuntime := devcontainer.Runtime{AppServerConfig: managedAppServerConfig(
+		settings.ModelSourceChatGPT, "")}
+
+	providerSignature := environmentCodexSignature(providerRuntime, credential)
+	require.Contains(t, providerSignature, environmentCodexConfigRevision+":")
+	require.NotEqual(t, providerSignature, environmentCodexSignature(chatGPTRuntime, credential))
+}
+
 func TestDevelopmentProjectRejectsPublishWithoutRemote(t *testing.T) {
 	namespace := "git"
 	processor := &RemoteProcessor{}
