@@ -61,6 +61,11 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		desktopController = worker.NewHostDesktopController(processor, *manifest)
 		runtimeOptions.Controller = desktopController
 	}
+	runtimeOptions.BrowserMCPToken, err = worker.BrowserAppServerToken(cfg)
+	if err != nil {
+		cleanupFailure(nil)
+		return nil, nil, err
+	}
 	runtime, err := hostworker.StartRuntime(ctx, runtimeOptions)
 	if err != nil {
 		cleanupFailure(nil)

@@ -16,3 +16,12 @@ func TestAppServerEnvironmentOnlyUsesHomeForCodexConfiguration(t *testing.T) {
 	require.ElementsMatch(t, []string{"PATH=/usr/bin", "LANG=zh_CN.UTF-8",
 		"CUSTOM_TOOL_HOME=/opt/custom"}, environment)
 }
+
+func TestReplaceEnvironmentInjectsManagedBrowserToken(t *testing.T) {
+	environment := replaceEnvironment([]string{
+		"PATH=/usr/bin", "TYRS_BROWSER_MCP_TOKEN=stale",
+	}, map[string]string{"TYRS_BROWSER_MCP_TOKEN": "derived"})
+	require.ElementsMatch(t, []string{
+		"PATH=/usr/bin", "TYRS_BROWSER_MCP_TOKEN=derived",
+	}, environment)
+}

@@ -20,14 +20,15 @@ import (
 )
 
 type RuntimeOptions struct {
-	CodexBin      string
-	CodexHome     string
-	Home          string
-	WorkspaceRoot string
-	StateDir      string
-	SSHAuthSock   string
-	Controller    appserverhub.Controller
-	Logger        *zap.Logger
+	CodexBin        string
+	CodexHome       string
+	Home            string
+	WorkspaceRoot   string
+	StateDir        string
+	SSHAuthSock     string
+	BrowserMCPToken string
+	Controller      appserverhub.Controller
+	Logger          *zap.Logger
 }
 
 type Runtime struct {
@@ -86,6 +87,9 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 	}
 	if options.SSHAuthSock != "" {
 		values["SSH_AUTH_SOCK"] = options.SSHAuthSock
+	}
+	if options.BrowserMCPToken != "" {
+		values["TYRS_BROWSER_MCP_TOKEN"] = options.BrowserMCPToken
 	}
 	command.Env = replaceEnvironment(environment, values)
 	command.Stdout = os.Stdout

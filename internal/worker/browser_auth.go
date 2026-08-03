@@ -5,10 +5,29 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"fmt"
+	"os"
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/config"
 )
+
+// BrowserAppServerToken 返回宿主 AppServer 使用的派生 Token，不暴露主密钥。
+func BrowserAppServerToken(cfg config.Config) (string, error) {
+	if cfg.BrowserMCPURL == "" {
+		return "", nil
+	}
+	secret, err := os.ReadFile(cfg.BrowserMCPTokenFile)
+	if err != nil {
+		return "", fmt.Errorf("读取宿主 Browser MCP Token: %w", err)
+	}
+	token, err := deriveBrowserToken(string(secret), "worker")
+	if err != nil {
+		return "", fmt.Errorf("派生宿主 Browser MCP Token: %w", err)
+	}
+	return token, nil
+}
 
 func deriveBrowserToken(secret, scope string) (string, error) {
 	secret = strings.TrimSpace(secret)
