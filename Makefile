@@ -76,7 +76,7 @@ test-race:
 	go test -race ./internal/...
 
 test-integration:
-	go test -p=1 -tags=integration ./internal/database ./internal/devcontainer ./internal/discordintegration ./internal/httpapi ./test/integration
+	go test -p=1 -tags=integration ./internal/database ./internal/discordintegration ./internal/httpapi ./test/integration
 
 test-coverage:
 	./tools/check-go-coverage.sh

@@ -28,19 +28,19 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 	}
 	var status, guildID, ownerID, sshUserID, sshDisplayName, previewTitle, desiredName string
 	var desiredSource, firstProjectionKey, firstInputText string
-	var environmentID, forumID, profileID, controlID, sessionID uuid.UUID
+	var workspaceID, forumID, profileID, controlID, sessionID uuid.UUID
 	var repositoryID, projectID uuid.NullUUID
 	var desiredRevision, lifecycleRevision, modeRevision int64
 	var lifecycleState, mode string
 	var model, effort sql.NullString
 	var serviceTier string
-	err = tx.QueryRowContext(ctx, `SELECT r.status, r.environment_id, r.forum_id,
+	err = tx.QueryRowContext(ctx, `SELECT r.status, r.workspace_id, r.forum_id,
 		r.control_id, f.guild_id, f.owner_discord_user_id,
 		COALESCE(NULLIF(r.first_input_actor_discord_user_id,''),
-			e.ssh_discord_user_id, ''),
+			e.owner_discord_user_id, ''),
 		COALESCE(NULLIF(r.first_input_actor_display_name,''),
 			NULLIF(member.display_name,''), member.username, ''),
-		f.repository_id, f.development_project_id, ct.session_id, ct.agent_profile_id, ct.model,
+		f.repository_id, f.workspace_project_id, ct.session_id, ct.agent_profile_id, ct.model,
 		ct.reasoning_effort, COALESCE(ct.service_tier,''),
 		COALESCE(r.preview_title,''), COALESCE(ct.desired_thread_name,''),
 		COALESCE(ct.desired_thread_name_source,''), ct.desired_thread_name_revision,
@@ -48,12 +48,12 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 		ct.lifecycle_state, ct.lifecycle_revision,
 		ct.collaboration_mode, ct.collaboration_mode_revision
 		FROM desktop_thread_requests r JOIN discord_forums f ON f.id = r.forum_id
-		JOIN discord_development_environments e ON e.id = r.environment_id
+		JOIN worker_workspaces e ON e.id = r.workspace_id
 		JOIN codex_thread_controls ct ON ct.id = r.control_id
 		LEFT JOIN discord_members member ON member.guild_id = e.guild_id
 			AND member.discord_user_id = COALESCE(
-				NULLIF(r.first_input_actor_discord_user_id,''), e.ssh_discord_user_id)
-		WHERE r.id = $1 FOR UPDATE OF r, ct`, requestID).Scan(&status, &environmentID, &forumID,
+				NULLIF(r.first_input_actor_discord_user_id,''), e.owner_discord_user_id)
+		WHERE r.id = $1 FOR UPDATE OF r, ct`, requestID).Scan(&status, &workspaceID, &forumID,
 		&controlID, &guildID, &ownerID, &sshUserID, &sshDisplayName,
 		&repositoryID, &projectID, &sessionID, &profileID,
 		&model, &effort, &serviceTier, &previewTitle, &desiredName,
@@ -81,7 +81,7 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 	conversationID := uuid.New()
 	_, err = tx.ExecContext(ctx, `INSERT INTO discord_conversations
 		(id, guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
-			 repository_id, development_project_id, session_id, agent_profile_id, title, status,
+			 repository_id, workspace_project_id, session_id, agent_profile_id, title, status,
 			 model, reasoning_effort, service_tier,
 			 configuration_status, configured_by_discord_user_id, title_rename_status,
 			 lifecycle_state, lifecycle_revision, collaboration_mode, collaboration_mode_revision)
@@ -162,7 +162,7 @@ func (s *SQLoutbox) completeDesktopThreadPost(ctx context.Context, tx *sql.Tx,
 			return err
 		}
 	}
-	_ = environmentID
+	_ = workspaceID
 	return nil
 }
 

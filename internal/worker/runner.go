@@ -2,274 +2,272 @@ package worker
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
-	"github.com/redis/go-redis/v9"
-	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/config"
-	"github.com/slovx2/tyrs-hand/internal/devcontainer"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
 )
 
+var workerVersion = "dev"
+
+type taskProcessor interface {
+	Process(context.Context, *workerprotocol.Task, <-chan workerprotocol.RunCommand,
+		func(string, json.RawMessage)) (workerprotocol.CompleteRequest, error)
+}
+
+type heartbeatMetadataProvider interface {
+	HeartbeatMetadata() map[string]any
+}
+
 type Runner struct {
-	cfg         config.Config
-	db          *sql.DB
-	redis       *redis.Client
-	controls    controlQueue
-	processor   jobProcessor
-	development *devcontainer.Manager
-	logger      *zap.Logger
+	cfg       config.Config
+	client    *workerprotocol.Client
+	processor taskProcessor
+	logger    *zap.Logger
+	journals  *journalStore
+	ssh       *sshAgentManager
+	browser   *browserHealthMonitor
 }
 
-type controlQueue interface {
-	ClaimSource(context.Context, string, string) (*codexcontrol.ClaimedControl, error)
-	Heartbeat(context.Context, *codexcontrol.ClaimedControl) error
-	Complete(context.Context, *codexcontrol.ClaimedControl, codexcontrol.TurnResult) error
-	Cancel(context.Context, *codexcontrol.ClaimedControl, string, string) error
-	Fail(context.Context, *codexcontrol.ClaimedControl, string, error) error
-	FailWithCodexError(context.Context, *codexcontrol.ClaimedControl, string, error, any) error
-	Reconcile(context.Context, *codexcontrol.ClaimedControl, string, error) error
-	ReplySatisfied(context.Context, *codexcontrol.ClaimedControl) (bool, error)
-	RequeueExpired(context.Context) (int64, error)
-}
-
-type jobProcessor interface {
-	Process(context.Context, *codexcontrol.ClaimedControl) (codexcontrol.TurnResult, error)
-}
-
-func NewRunner(cfg config.Config, db *sql.DB, redisClient *redis.Client, controls *codexcontrol.Repository,
-	processor *Processor, development *devcontainer.Manager, logger *zap.Logger,
-) *Runner {
-	return &Runner{cfg: cfg, db: db, redis: redisClient, controls: controls, processor: processor,
-		development: development, logger: logger}
+func NewRunner(cfg config.Config, client *workerprotocol.Client, processor taskProcessor,
+	logger *zap.Logger,
+) (*Runner, error) {
+	journals, err := newJournalStore(cfg.WorkerDataRoot)
+	if err != nil {
+		return nil, err
+	}
+	runner := &Runner{cfg: cfg, client: client, processor: processor, logger: logger,
+		journals: journals}
+	if cfg.EnableSSH {
+		runner.ssh = newSSHAgentManager(cfg.SSHAgentDir, client, logger)
+	}
+	if cfg.BrowserMCPURL != "" {
+		runner.browser, err = newBrowserHealthMonitor(cfg.BrowserMCPURL)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return runner, nil
 }
 
 func (r *Runner) Run(ctx context.Context) error {
-	if err := r.register(ctx); err != nil {
-		return err
-	}
-	go r.workerHeartbeat(ctx)
-	if r.cfg.WorkerRole != "discord" {
-		go r.runWorktreeSweeper(ctx)
-	}
-	if r.development != nil {
-		go r.development.RunSweeper(ctx)
-	}
-	var wakeups <-chan *redis.Message
-	var subscription *redis.PubSub
-	if r.redis != nil {
-		subscription = r.redis.Subscribe(ctx, codexcontrol.WakeupChannel)
-		defer func() { _ = subscription.Close() }()
-		wakeups = subscription.Channel()
-	}
-	slots := make(chan struct{}, r.cfg.WorkerMaxConcurrentJobs)
-	var active sync.WaitGroup
-	recoveryTicker := time.NewTicker(30 * time.Second)
-	defer recoveryTicker.Stop()
-	idle := time.NewTicker(2 * time.Second)
-	defer idle.Stop()
-	r.fillSlots(ctx, slots, &active)
-	for {
-		select {
-		case <-ctx.Done():
-			done := make(chan struct{})
-			go func() {
-				active.Wait()
-				close(done)
-			}()
-			select {
-			case <-done:
-			case <-time.After(15 * time.Second):
-				r.logger.Warn("Worker 优雅退出超时，未完成任务将等待 Lease 过期后重新入队")
-			}
-			return ctx.Err()
-		case <-recoveryTicker.C:
-			if count, err := r.controls.RequeueExpired(ctx); err != nil {
-				r.logger.Error("恢复过期任务失败", zap.Error(err))
-			} else if count > 0 {
-				r.logger.Warn("已恢复过期任务", zap.Int64("count", count))
-			}
-		case <-idle.C:
-			r.fillSlots(ctx, slots, &active)
-		case _, open := <-wakeups:
-			if !open {
-				wakeups = nil
-				continue
-			}
-			r.fillSlots(ctx, slots, &active)
-		}
-	}
-}
-
-func (r *Runner) runWorktreeSweeper(ctx context.Context) {
-	cleaner, ok := r.processor.(interface{ cleanupClosedWorktrees(context.Context) error })
-	if !ok {
-		return
-	}
-	ticker := time.NewTicker(time.Hour)
-	defer ticker.Stop()
-	for {
-		if err := cleaner.cleanupClosedWorktrees(ctx); err != nil {
-			r.logger.Warn("清理已关闭 GitHub Worktree 失败", zap.Error(err))
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-	}
-}
-
-func (r *Runner) fillSlots(ctx context.Context, slots chan struct{}, active *sync.WaitGroup) {
-	for {
-		select {
-		case slots <- struct{}{}:
-		case <-ctx.Done():
-			return
-		default:
-			return
-		}
-		sourceType := ""
-		switch r.cfg.WorkerRole {
-		case "github":
-			sourceType = codexcontrol.SourceGitHub
-		case "discord":
-			sourceType = codexcontrol.SourceDevelopment
-		}
-		claimed, err := r.controls.ClaimSource(ctx, r.cfg.WorkerID, sourceType)
-		if err != nil {
-			<-slots
-			r.logger.Error("领取任务失败", zap.Error(err))
-			return
-		}
-		if claimed == nil {
-			<-slots
-			return
-		}
-		active.Add(1)
-		go func() {
-			defer active.Done()
-			defer func() { <-slots }()
-			r.execute(ctx, claimed)
-		}()
-	}
-}
-
-func (r *Runner) execute(parent context.Context, claimed *codexcontrol.ClaimedControl) {
-	ctx, cancel := context.WithCancel(parent)
-	defer cancel()
-	heartbeatDone := make(chan struct{})
-	go func() {
-		defer close(heartbeatDone)
-		ticker := time.NewTicker(r.cfg.HeartbeatInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				if err := r.controls.Heartbeat(ctx, claimed); err != nil {
-					r.logger.Error("任务心跳失败", zap.Error(err), zap.String("job_id", claimed.ID.String()))
-					cancel()
-					return
-				}
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-	r.publish(ctx, "job.started", claimed.ID.String())
-	result, err := r.processor.Process(ctx, claimed)
-	cancel()
-	<-heartbeatDone
-	finishCtx, finishCancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer finishCancel()
-	if err == nil {
-		replied, replyErr := r.controls.ReplySatisfied(finishCtx, claimed)
-		if replyErr != nil {
-			err = replyErr
-		} else if !replied {
-			err = errors.New("required_reply_missing")
-		}
-	}
-	if err == nil {
-		if completeErr := r.controls.Complete(finishCtx, claimed, result); completeErr != nil {
-			r.logger.Error("提交任务完成状态失败", zap.Error(completeErr), zap.String("job_id", claimed.ID.String()))
-		} else {
-			r.publish(finishCtx, "intent.completed", claimed.ID.String())
-		}
-	} else if discordStopRequested(finishCtx, r.db, claimed.ID, err) {
-		_ = r.controls.Cancel(finishCtx, claimed, "user_interrupt", "stopped from Discord")
-		r.logger.Info("Discord 任务已由用户停止", zap.String("job_id", claimed.ID.String()))
-		r.publish(finishCtx, "intent.canceled", claimed.ID.String())
-	} else if err.Error() == "required_reply_missing" {
-		if claimed.SourceType == codexcontrol.SourceGitHub {
-			if processor, ok := r.processor.(*Processor); ok {
-				_ = processor.control.ReportFailure(finishCtx, claimed.Capability, "required_reply_missing")
-			}
-		}
-		_ = r.controls.Fail(finishCtx, claimed, "required_reply_missing", err)
-		r.publish(finishCtx, "intent.failed", claimed.ID.String())
-	} else {
-		var codexErr *workerprotocol.CodexTurnError
-		if errors.As(err, &codexErr) && !codexErr.WillRetry {
-			if finishErr := r.controls.FailWithCodexError(finishCtx, claimed,
-				"codex_non_retryable_error", err, codexErr); finishErr != nil &&
-				!errors.Is(finishErr, codexcontrol.ErrLeaseLost) {
-				r.logger.Error("记录 Codex 不可重试失败状态失败", zap.Error(finishErr))
-			}
-			r.publish(finishCtx, "intent.failed", claimed.ID.String())
-			return
-		}
-		r.logger.Error("任务执行失败", zap.String("job_id", claimed.ID.String()), zap.Error(err))
-		if claimed.SourceType == codexcontrol.SourceGitHub && claimed.Attempt >= claimed.MaxAttempts {
-			if processor, ok := r.processor.(*Processor); ok {
-				_ = processor.control.ReportFailure(finishCtx, claimed.Capability, "control_error")
-			}
-		}
-		if finishErr := r.controls.Reconcile(finishCtx, claimed, "control_error", err); finishErr != nil && !errors.Is(finishErr, codexcontrol.ErrLeaseLost) {
-			r.logger.Error("记录任务失败状态失败", zap.Error(finishErr))
-		}
-		r.publish(finishCtx, "intent.reconciling", claimed.ID.String())
-	}
-}
-
-func (r *Runner) register(ctx context.Context) error {
-	metadata, err := json.Marshal(map[string]any{
-		"agent": "codex", "maxConcurrentJobs": r.cfg.WorkerMaxConcurrentJobs, "role": r.cfg.WorkerRole,
-	})
+	lock, err := acquireWorkerDataLock(r.cfg.WorkerDataRoot)
 	if err != nil {
 		return err
 	}
-	_, err = r.db.ExecContext(ctx, `
-		INSERT INTO worker_nodes(id, version, status, metadata)
-		VALUES ($1, '0.1.0', 'online', $2)
-		ON CONFLICT(id) DO UPDATE SET version = EXCLUDED.version, status = 'online', metadata = EXCLUDED.metadata,
-			heartbeat_at = now(), started_at = now()`, r.cfg.WorkerID, metadata)
-	return err
+	defer func() { _ = lock.Close() }()
+	if err := r.Authenticate(ctx); err != nil {
+		return err
+	}
+	if r.ssh != nil {
+		go func() {
+			if err := r.ssh.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				r.logger.Error("SSH Agent 管理器停止", zap.Error(err))
+			}
+		}()
+		defer r.ssh.Close()
+	}
+	if err := r.sendHeartbeat(ctx); err != nil {
+		return fmt.Errorf("首次节点心跳失败: %w", err)
+	}
+	go r.heartbeatLoop(ctx)
+
+	slots := make(chan struct{}, r.cfg.WorkerMaxConcurrentJobs)
+	var active sync.WaitGroup
+	stored, err := r.journals.loadAll()
+	if err != nil {
+		return err
+	}
+	for _, journal := range stored {
+		if !r.roleAllowed(journal.Task.Claimed.SourceType) {
+			return fmt.Errorf("run Journal %s 与当前 Worker 角色不匹配",
+				journal.Task.Claimed.RunID)
+		}
+		slots <- struct{}{}
+		active.Add(1)
+		go r.runJournal(ctx, journal, slots, &active)
+	}
+
+	for ctx.Err() == nil {
+		select {
+		case slots <- struct{}{}:
+		case <-ctx.Done():
+			active.Wait()
+			return ctx.Err()
+		}
+		claim, claimErr := r.client.Claim(ctx, workerprotocol.ClaimRequest{
+			Role: r.claimRole(), Wait: true,
+		})
+		if claimErr != nil {
+			<-slots
+			r.logger.Warn("从 Control 领取任务失败", zap.Error(claimErr))
+			if !waitContext(ctx, 3*time.Second) {
+				break
+			}
+			continue
+		}
+		if claim.Task == nil {
+			<-slots
+			continue
+		}
+		task := claim.Task
+		journal := &runJournal{Task: *task, NextSequence: 1}
+		if err := r.journals.save(journal); err != nil {
+			<-slots
+			return fmt.Errorf("持久化新领取任务: %w", err)
+		}
+		active.Add(1)
+		go r.runJournal(ctx, journal, slots, &active)
+	}
+	active.Wait()
+	return ctx.Err()
 }
 
-func (r *Runner) workerHeartbeat(ctx context.Context) {
+func (r *Runner) Authenticate(ctx context.Context) error {
+	credential, err := readCredential(r.cfg.WorkerCredentialFile)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if credential != "" {
+		r.client.SetCredential(credential)
+		return nil
+	}
+	if r.cfg.WorkerEnrollmentToken == "" {
+		return errors.New("节点尚未注册，且没有提供一次性 Enrollment Token")
+	}
+	response, err := r.client.Enroll(ctx, r.cfg.WorkerEnrollmentToken)
+	if err != nil {
+		return err
+	}
+	if response.ProtocolVersion != r.cfg.WorkerProtocolVersion {
+		return fmt.Errorf("control 协议版本为 %d，Worker 配置为 %d",
+			response.ProtocolVersion, r.cfg.WorkerProtocolVersion)
+	}
+	if err := writeCredential(r.cfg.WorkerCredentialFile, response.Credential); err != nil {
+		return err
+	}
+	r.client.SetCredential(response.Credential)
+	return nil
+}
+
+func (r *Runner) roles() []string {
+	if r.cfg.WorkerRole == "all" {
+		return []string{"github", "discord"}
+	}
+	return []string{r.cfg.WorkerRole}
+}
+
+func (r *Runner) claimRole() string {
+	if r.cfg.WorkerRole == "all" {
+		return "all"
+	}
+	return r.cfg.WorkerRole
+}
+
+func (r *Runner) roleAllowed(source string) bool {
+	return r.cfg.WorkerRole == "all" ||
+		(r.cfg.WorkerRole == "github" && source == "github_work_item") ||
+		(r.cfg.WorkerRole == "discord" && source == "workspace_session")
+}
+
+func (r *Runner) sendHeartbeat(ctx context.Context) error {
+	values := map[string]any{"workerId": r.cfg.WorkerID,
+		"roles": r.roles(), "maxConcurrentJobs": r.cfg.WorkerMaxConcurrentJobs,
+		"protocolVersion": r.cfg.WorkerProtocolVersion}
+	values["ssh"] = map[string]any{"status": "ready",
+		"listenAddress": r.cfg.WorkerSSHListenAddr}
+	if r.ssh != nil {
+		values["outboundSSH"] = r.ssh.Status()
+	}
+	if r.browser != nil {
+		healthCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		r.browser.Refresh(healthCtx)
+		cancel()
+		values["browser"] = r.browser.Status()
+		sweepBrowserFiles(r.cfg.BrowserFilesRoot)
+	}
+	if provider, ok := r.processor.(heartbeatMetadataProvider); ok {
+		for key, value := range provider.HeartbeatMetadata() {
+			values[key] = value
+		}
+	}
+	metadata, _ := json.Marshal(values)
+	return r.client.Heartbeat(ctx, workerprotocol.HeartbeatRequest{
+		WorkerVersion: workerVersion, ProtocolVersion: r.cfg.WorkerProtocolVersion,
+		Metadata: metadata,
+	})
+}
+
+func (r *Runner) heartbeatLoop(ctx context.Context) {
 	ticker := time.NewTicker(r.cfg.HeartbeatInterval)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-ticker.C:
-			_, _ = r.db.ExecContext(ctx, `UPDATE worker_nodes SET heartbeat_at = now(), status = 'online' WHERE id = $1`, r.cfg.WorkerID)
 		case <-ctx.Done():
-			_, _ = r.db.ExecContext(context.Background(), `UPDATE worker_nodes SET status = 'offline' WHERE id = $1`, r.cfg.WorkerID)
 			return
+		case <-ticker.C:
+			if err := r.sendHeartbeat(ctx); err != nil {
+				r.logger.Warn("Worker心跳失败", zap.Error(err))
+			}
 		}
 	}
 }
 
-func (r *Runner) publish(ctx context.Context, eventType, id string) {
-	if r.redis == nil {
-		return
+func readCredential(path string) (string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", err
 	}
-	data, _ := json.Marshal(map[string]string{"type": eventType, "id": id})
-	_ = r.redis.Publish(ctx, "tyrs-hand:events", data).Err()
+	if info.Mode().Perm()&0o077 != 0 {
+		return "", errors.New("节点凭据文件权限必须是 0600")
+	}
+	data, err := os.ReadFile(path)
+	return string(data), err
+}
+
+func writeCredential(path, credential string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".credential-*")
+	if err != nil {
+		return err
+	}
+	name := temporary.Name()
+	defer func() { _ = os.Remove(name) }()
+	if err := temporary.Chmod(0o600); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if _, err := temporary.WriteString(credential); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(name, path); err != nil {
+		return err
+	}
+	return syncDirectory(filepath.Dir(path))
+}
+
+func waitContext(ctx context.Context, duration time.Duration) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(duration):
+		return true
+	}
 }

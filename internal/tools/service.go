@@ -65,7 +65,7 @@ func (s *Service) GitCredential(ctx context.Context, capability, purpose, turnID
 	if purpose != "fetch" && purpose != "push" {
 		return "", errors.New("请求的 Git 凭据用途无效")
 	}
-	if auth.SourceType == "development_session" && auth.ConversationID != uuid.Nil {
+	if auth.SourceType == "workspace_session" && auth.ConversationID != uuid.Nil {
 		if err := s.requireDiscordPermission(ctx, auth, purpose == "push"); err != nil {
 			return "", err
 		}
@@ -101,7 +101,7 @@ func (s *Service) Call(ctx context.Context, request CallRequest) (codex.ToolCall
 	if !ok {
 		return codex.ToolCallResult{}, fmt.Errorf("工具 %s 未注册", request.Tool)
 	}
-	if auth.SourceType == "development_session" && auth.ConversationID != uuid.Nil {
+	if auth.SourceType == "workspace_session" && auth.ConversationID != uuid.Nil {
 		if err := s.requireDiscordPermission(ctx, auth, !readOnly); err != nil {
 			return codex.ToolCallResult{}, err
 		}
@@ -221,7 +221,7 @@ func (s *Service) authorize(ctx context.Context, capability, turnID string) (aut
 		return authorization{}, err
 	}
 	auth.AllowedTools = append(auth.AllowedTools, dangerous...)
-	if auth.SourceType == "development_session" && auth.ConversationID != uuid.Nil {
+	if auth.SourceType == "workspace_session" && auth.ConversationID != uuid.Nil {
 		if err := s.loadDiscordContributors(ctx, capability, turnID, &auth); err != nil {
 			return authorization{}, err
 		}

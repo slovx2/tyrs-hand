@@ -78,16 +78,16 @@ func (_u *CodexTurnRunUpdate) AddAttempt(v int) *CodexTurnRunUpdate {
 	return _u
 }
 
-// SetWorkerID sets the "worker_id" field.
-func (_u *CodexTurnRunUpdate) SetWorkerID(v string) *CodexTurnRunUpdate {
-	_u.mutation.SetWorkerID(v)
+// SetLeaseOwner sets the "lease_owner" field.
+func (_u *CodexTurnRunUpdate) SetLeaseOwner(v string) *CodexTurnRunUpdate {
+	_u.mutation.SetLeaseOwner(v)
 	return _u
 }
 
-// SetNillableWorkerID sets the "worker_id" field if the given value is not nil.
-func (_u *CodexTurnRunUpdate) SetNillableWorkerID(v *string) *CodexTurnRunUpdate {
+// SetNillableLeaseOwner sets the "lease_owner" field if the given value is not nil.
+func (_u *CodexTurnRunUpdate) SetNillableLeaseOwner(v *string) *CodexTurnRunUpdate {
 	if v != nil {
-		_u.SetWorkerID(*v)
+		_u.SetLeaseOwner(*v)
 	}
 	return _u
 }
@@ -127,23 +127,23 @@ func (_u *CodexTurnRunUpdate) SetNillableCapabilityHash(v *string) *CodexTurnRun
 	return _u
 }
 
-// SetExecutionNodeID sets the "execution_node_id" field.
-func (_u *CodexTurnRunUpdate) SetExecutionNodeID(v uuid.UUID) *CodexTurnRunUpdate {
-	_u.mutation.SetExecutionNodeID(v)
+// SetWorkerID sets the "worker_id" field.
+func (_u *CodexTurnRunUpdate) SetWorkerID(v uuid.UUID) *CodexTurnRunUpdate {
+	_u.mutation.SetWorkerID(v)
 	return _u
 }
 
-// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
-func (_u *CodexTurnRunUpdate) SetNillableExecutionNodeID(v *uuid.UUID) *CodexTurnRunUpdate {
+// SetNillableWorkerID sets the "worker_id" field if the given value is not nil.
+func (_u *CodexTurnRunUpdate) SetNillableWorkerID(v *uuid.UUID) *CodexTurnRunUpdate {
 	if v != nil {
-		_u.SetExecutionNodeID(*v)
+		_u.SetWorkerID(*v)
 	}
 	return _u
 }
 
-// ClearExecutionNodeID clears the value of the "execution_node_id" field.
-func (_u *CodexTurnRunUpdate) ClearExecutionNodeID() *CodexTurnRunUpdate {
-	_u.mutation.ClearExecutionNodeID()
+// ClearWorkerID clears the value of the "worker_id" field.
+func (_u *CodexTurnRunUpdate) ClearWorkerID() *CodexTurnRunUpdate {
+	_u.mutation.ClearWorkerID()
 	return _u
 }
 
@@ -478,8 +478,8 @@ func (_u *CodexTurnRunUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if value, ok := _u.mutation.AddedAttempt(); ok {
 		_spec.AddField(codexturnrun.FieldAttempt, field.TypeInt, value)
 	}
-	if value, ok := _u.mutation.WorkerID(); ok {
-		_spec.SetField(codexturnrun.FieldWorkerID, field.TypeString, value)
+	if value, ok := _u.mutation.LeaseOwner(); ok {
+		_spec.SetField(codexturnrun.FieldLeaseOwner, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.LeaseEpoch(); ok {
 		_spec.SetField(codexturnrun.FieldLeaseEpoch, field.TypeInt64, value)
@@ -490,11 +490,11 @@ func (_u *CodexTurnRunUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if value, ok := _u.mutation.CapabilityHash(); ok {
 		_spec.SetField(codexturnrun.FieldCapabilityHash, field.TypeString, value)
 	}
-	if value, ok := _u.mutation.ExecutionNodeID(); ok {
-		_spec.SetField(codexturnrun.FieldExecutionNodeID, field.TypeUUID, value)
+	if value, ok := _u.mutation.WorkerID(); ok {
+		_spec.SetField(codexturnrun.FieldWorkerID, field.TypeUUID, value)
 	}
-	if _u.mutation.ExecutionNodeIDCleared() {
-		_spec.ClearField(codexturnrun.FieldExecutionNodeID, field.TypeUUID)
+	if _u.mutation.WorkerIDCleared() {
+		_spec.ClearField(codexturnrun.FieldWorkerID, field.TypeUUID)
 	}
 	if value, ok := _u.mutation.WorkerEventSequence(); ok {
 		_spec.SetField(codexturnrun.FieldWorkerEventSequence, field.TypeInt64, value)
@@ -646,16 +646,16 @@ func (_u *CodexTurnRunUpdateOne) AddAttempt(v int) *CodexTurnRunUpdateOne {
 	return _u
 }
 
-// SetWorkerID sets the "worker_id" field.
-func (_u *CodexTurnRunUpdateOne) SetWorkerID(v string) *CodexTurnRunUpdateOne {
-	_u.mutation.SetWorkerID(v)
+// SetLeaseOwner sets the "lease_owner" field.
+func (_u *CodexTurnRunUpdateOne) SetLeaseOwner(v string) *CodexTurnRunUpdateOne {
+	_u.mutation.SetLeaseOwner(v)
 	return _u
 }
 
-// SetNillableWorkerID sets the "worker_id" field if the given value is not nil.
-func (_u *CodexTurnRunUpdateOne) SetNillableWorkerID(v *string) *CodexTurnRunUpdateOne {
+// SetNillableLeaseOwner sets the "lease_owner" field if the given value is not nil.
+func (_u *CodexTurnRunUpdateOne) SetNillableLeaseOwner(v *string) *CodexTurnRunUpdateOne {
 	if v != nil {
-		_u.SetWorkerID(*v)
+		_u.SetLeaseOwner(*v)
 	}
 	return _u
 }
@@ -695,23 +695,23 @@ func (_u *CodexTurnRunUpdateOne) SetNillableCapabilityHash(v *string) *CodexTurn
 	return _u
 }
 
-// SetExecutionNodeID sets the "execution_node_id" field.
-func (_u *CodexTurnRunUpdateOne) SetExecutionNodeID(v uuid.UUID) *CodexTurnRunUpdateOne {
-	_u.mutation.SetExecutionNodeID(v)
+// SetWorkerID sets the "worker_id" field.
+func (_u *CodexTurnRunUpdateOne) SetWorkerID(v uuid.UUID) *CodexTurnRunUpdateOne {
+	_u.mutation.SetWorkerID(v)
 	return _u
 }
 
-// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
-func (_u *CodexTurnRunUpdateOne) SetNillableExecutionNodeID(v *uuid.UUID) *CodexTurnRunUpdateOne {
+// SetNillableWorkerID sets the "worker_id" field if the given value is not nil.
+func (_u *CodexTurnRunUpdateOne) SetNillableWorkerID(v *uuid.UUID) *CodexTurnRunUpdateOne {
 	if v != nil {
-		_u.SetExecutionNodeID(*v)
+		_u.SetWorkerID(*v)
 	}
 	return _u
 }
 
-// ClearExecutionNodeID clears the value of the "execution_node_id" field.
-func (_u *CodexTurnRunUpdateOne) ClearExecutionNodeID() *CodexTurnRunUpdateOne {
-	_u.mutation.ClearExecutionNodeID()
+// ClearWorkerID clears the value of the "worker_id" field.
+func (_u *CodexTurnRunUpdateOne) ClearWorkerID() *CodexTurnRunUpdateOne {
+	_u.mutation.ClearWorkerID()
 	return _u
 }
 
@@ -1076,8 +1076,8 @@ func (_u *CodexTurnRunUpdateOne) sqlSave(ctx context.Context) (_node *CodexTurnR
 	if value, ok := _u.mutation.AddedAttempt(); ok {
 		_spec.AddField(codexturnrun.FieldAttempt, field.TypeInt, value)
 	}
-	if value, ok := _u.mutation.WorkerID(); ok {
-		_spec.SetField(codexturnrun.FieldWorkerID, field.TypeString, value)
+	if value, ok := _u.mutation.LeaseOwner(); ok {
+		_spec.SetField(codexturnrun.FieldLeaseOwner, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.LeaseEpoch(); ok {
 		_spec.SetField(codexturnrun.FieldLeaseEpoch, field.TypeInt64, value)
@@ -1088,11 +1088,11 @@ func (_u *CodexTurnRunUpdateOne) sqlSave(ctx context.Context) (_node *CodexTurnR
 	if value, ok := _u.mutation.CapabilityHash(); ok {
 		_spec.SetField(codexturnrun.FieldCapabilityHash, field.TypeString, value)
 	}
-	if value, ok := _u.mutation.ExecutionNodeID(); ok {
-		_spec.SetField(codexturnrun.FieldExecutionNodeID, field.TypeUUID, value)
+	if value, ok := _u.mutation.WorkerID(); ok {
+		_spec.SetField(codexturnrun.FieldWorkerID, field.TypeUUID, value)
 	}
-	if _u.mutation.ExecutionNodeIDCleared() {
-		_spec.ClearField(codexturnrun.FieldExecutionNodeID, field.TypeUUID)
+	if _u.mutation.WorkerIDCleared() {
+		_spec.ClearField(codexturnrun.FieldWorkerID, field.TypeUUID)
 	}
 	if value, ok := _u.mutation.WorkerEventSequence(); ok {
 		_spec.SetField(codexturnrun.FieldWorkerEventSequence, field.TypeInt64, value)

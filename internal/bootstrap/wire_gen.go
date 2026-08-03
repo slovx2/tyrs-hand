@@ -12,7 +12,6 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/httpapi"
 	"github.com/slovx2/tyrs-hand/internal/secrets"
-	"github.com/slovx2/tyrs-hand/internal/worker"
 )
 
 // Injectors from wire.go:
@@ -47,7 +46,7 @@ func InitializeServer(ctx context.Context, cfg config.Config) (*ServerApp, func(
 		cleanup()
 		return nil, nil, err
 	}
-	settingsService := provideSettings(db, store)
+	settingsService := provideSettings(db)
 	discordintegrationManager := provideDiscordManager(cfg, db, store)
 	bindingService := provideBindingService(cfg, db, secretBox, manager)
 	logger, cleanup3, err := provideLogger(cfg)
@@ -76,71 +75,6 @@ func InitializeServer(ctx context.Context, cfg config.Config) (*ServerApp, func(
 	}, nil
 }
 
-func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(), error) {
-	db, cleanup, err := provideDatabase(ctx, cfg)
-	if err != nil {
-		return nil, nil, err
-	}
-	client, cleanup2, err := provideRedis(cfg)
-	if err != nil {
-		cleanup()
-		return nil, nil, err
-	}
-	repository := provideControlRepository(cfg, db)
-	manager := provideWorkspace(cfg)
-	controlClient := provideControl(cfg)
-	catalog, err := provideCatalog()
-	if err != nil {
-		cleanup2()
-		cleanup()
-		return nil, nil, err
-	}
-	secretBox, err := provideSecretBox(cfg)
-	if err != nil {
-		cleanup2()
-		cleanup()
-		return nil, nil, err
-	}
-	store := secrets.NewStore(db, secretBox)
-	service := provideSettings(db, store)
-	logger, cleanup3, err := provideLogger(cfg)
-	if err != nil {
-		cleanup2()
-		cleanup()
-		return nil, nil, err
-	}
-	pool, cleanup4, err := providePool(ctx, cfg, logger)
-	if err != nil {
-		cleanup3()
-		cleanup2()
-		cleanup()
-		return nil, nil, err
-	}
-	devcontainerManager, err := provideDevelopmentContainers(cfg, db, logger)
-	if err != nil {
-		cleanup4()
-		cleanup3()
-		cleanup2()
-		cleanup()
-		return nil, nil, err
-	}
-	processor := worker.NewProcessor(cfg, db, client, manager, controlClient, repository, catalog, service, pool, devcontainerManager, logger)
-	runner := worker.NewRunner(cfg, db, client, repository, processor, devcontainerManager, logger)
-	workerApp := &WorkerApp{
-		Runner: runner,
-		DB:     db,
-		Redis:  client,
-		Pool:   pool,
-		Logger: logger,
-	}
-	return workerApp, func() {
-		cleanup4()
-		cleanup3()
-		cleanup2()
-		cleanup()
-	}, nil
-}
-
 func InitializeDiscord(ctx context.Context, cfg config.Config) (*DiscordApp, func(), error) {
 	db, cleanup, err := provideDatabase(ctx, cfg)
 	if err != nil {
@@ -160,7 +94,6 @@ func InitializeDiscord(ctx context.Context, cfg config.Config) (*DiscordApp, fun
 		return nil, nil, err
 	}
 	bindingService := provideBindingService(cfg, db, secretBox, githubManager)
-	service := provideSettings(db, store)
 	client, cleanup2, err := provideRedis(cfg)
 	if err != nil {
 		cleanup()
@@ -172,7 +105,7 @@ func InitializeDiscord(ctx context.Context, cfg config.Config) (*DiscordApp, fun
 		cleanup()
 		return nil, nil, err
 	}
-	daemon := discordintegration.NewDaemon(manager, conversationService, bindingService, githubManager, service, client, logger)
+	daemon := discordintegration.NewDaemon(manager, conversationService, bindingService, githubManager, client, logger)
 	discordApp := &DiscordApp{
 		Daemon: daemon,
 		DB:     db,

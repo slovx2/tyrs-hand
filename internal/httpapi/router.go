@@ -16,13 +16,13 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/auth"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
-	"github.com/slovx2/tyrs-hand/internal/executionnode"
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
 	"github.com/slovx2/tyrs-hand/internal/githubtools"
 	"github.com/slovx2/tyrs-hand/internal/secrets"
 	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
 	"github.com/slovx2/tyrs-hand/internal/sshconfig"
 	"github.com/slovx2/tyrs-hand/internal/web"
+	"github.com/slovx2/tyrs-hand/internal/workerregistry"
 	"go.uber.org/zap"
 )
 
@@ -39,7 +39,7 @@ type Server struct {
 	discord            *discordintegration.Manager
 	desktopImageRemote func(context.Context) (desktopImageDiscord, error)
 	bindings           *discordintegration.BindingService
-	nodes              *executionnode.Service
+	workers            *workerregistry.Service
 	ssh                *sshconfig.Service
 	secrets            *secrets.Store
 	logger             *zap.Logger
@@ -54,7 +54,7 @@ func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authSer
 	}
 	return &Server{cfg: cfg, db: db, redis: redisClient, auth: authService, github: githubManager,
 		catalog: catalog, settings: settingsService, discord: discordManager, bindings: bindingService,
-		nodes: executionnode.NewService(db), ssh: sshconfig.NewService(db, secretStore),
+		workers: workerregistry.NewService(db), ssh: sshconfig.NewService(db, secretStore),
 		secrets: secretStore, logger: logger, assets: assets,
 		clientUpdateHub: newClientUpdateHub()}, nil
 }
@@ -140,17 +140,17 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	authenticated.POST("/trigger-rules", s.requireCSRF(), s.createTriggerRule)
 	authenticated.GET("/work-items", s.listWorkItems)
 	authenticated.GET("/jobs", s.listJobs)
-	authenticated.GET("/workers", s.listExecutionNodes)
+	authenticated.GET("/workers", s.listWorkers)
 	authenticated.GET("/client-devices", s.listClientDevices)
 	authenticated.DELETE("/client-devices/:id", s.requireCSRF(), s.deleteClientDevice)
 	authenticated.POST("/client-device-pairings", s.requireCSRF(), s.createClientDevicePairing)
 	authenticated.GET("/client-device-pairings/:id", s.getClientDevicePairing)
 	authenticated.POST("/client-device-pairings/:id/approve", s.requireCSRF(), s.approveClientDevicePairing)
 	authenticated.POST("/client-device-pairings/:id/reject", s.requireCSRF(), s.rejectClientDevicePairing)
-	authenticated.POST("/workers", s.requireCSRF(), s.createExecutionNode)
-	authenticated.POST("/workers/:id/enrollments", s.requireCSRF(), s.createExecutionNodeEnrollment)
-	authenticated.PUT("/workers/:id/enabled", s.requireCSRF(), s.setExecutionNodeEnabled)
-	authenticated.DELETE("/workers/:id", s.requireCSRF(), s.deleteExecutionNode)
+	authenticated.POST("/workers", s.requireCSRF(), s.createWorker)
+	authenticated.POST("/workers/:id/enrollments", s.requireCSRF(), s.createWorkerEnrollment)
+	authenticated.PUT("/workers/:id/enabled", s.requireCSRF(), s.setWorkerEnabled)
+	authenticated.DELETE("/workers/:id", s.requireCSRF(), s.deleteWorker)
 	authenticated.GET("/ssh/credentials", s.listSSHCredentials)
 	authenticated.POST("/ssh/credentials", s.requireCSRF(), s.createSSHCredential)
 	authenticated.PUT("/ssh/credentials/:id", s.requireCSRF(), s.updateSSHCredential)
@@ -160,19 +160,18 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	authenticated.POST("/ssh/hosts/import", s.requireCSRF(), s.importSSHHosts)
 	authenticated.PUT("/ssh/hosts/:id", s.requireCSRF(), s.updateSSHHost)
 	authenticated.DELETE("/ssh/hosts/:id", s.requireCSRF(), s.deleteSSHHost)
-	authenticated.GET("/settings/execution", s.getExecutionSettings)
-	authenticated.PUT("/settings/execution", s.requireCSRF(), s.putExecutionSettings)
+	authenticated.GET("/settings/workers", s.getWorkerSettings)
+	authenticated.PUT("/settings/workers", s.requireCSRF(), s.putWorkerSettings)
 	authenticated.GET("/threads", s.listThreads)
 	authenticated.POST("/controls/:id/reconcile", s.requireCSRF(), s.reconcileControl)
 	authenticated.POST("/controls/:id/reset", s.requireCSRF(), s.resetControl)
 	authenticated.GET("/worktrees", s.listWorktrees)
 	authenticated.GET("/repo-caches", s.listRepoCaches)
 	authenticated.GET("/audit-logs", s.listAuditLogs)
-	authenticated.GET("/settings/global-agents", s.getGlobalAgents)
-	authenticated.PUT("/settings/global-agents", s.requireCSRF(), s.putGlobalAgents)
-	authenticated.GET("/settings/codex", s.listCodexSettings)
-	authenticated.PUT("/settings/codex/repositories/:id", s.requireCSRF(), s.putRepositoryCodexSettings)
-	authenticated.PUT("/settings/codex/forums/:id", s.requireCSRF(), s.putForumCodexSettings)
+	authenticated.GET("/settings/github-agent-instructions", s.getGitHubAgentInstructions)
+	authenticated.PUT("/settings/github-agent-instructions", s.requireCSRF(), s.putGitHubAgentInstructions)
+	authenticated.GET("/settings/github-agent", s.listGitHubAgentSettings)
+	authenticated.PUT("/settings/github-agent/repositories/:id", s.requireCSRF(), s.putRepositoryGitHubAgentSettings)
 	authenticated.GET("/settings/discord", s.getDiscordSettings)
 	authenticated.PUT("/settings/discord", s.requireCSRF(), s.putDiscordSettings)
 	authenticated.GET("/discord/status", s.discordStatus)
@@ -180,17 +179,15 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	authenticated.POST("/discord/initializations", s.requireCSRF(), s.createDiscordInitialization)
 	authenticated.GET("/discord/initializations/:id", s.getDiscordInitialization)
 	authenticated.GET("/discord/members", s.listDiscordMembers)
-	authenticated.GET("/development-environments", s.listDevelopmentEnvironments)
-	authenticated.POST("/development-environments", s.requireCSRF(), s.createDevelopmentEnvironment)
-	authenticated.PUT("/development-environments/:id/ssh", s.requireCSRF(), s.putDevelopmentEnvironmentSSH)
-	authenticated.DELETE("/development-environments/:id/ssh", s.requireCSRF(), s.deleteDevelopmentEnvironmentSSH)
-	authenticated.POST("/development-projects/:id/forums", s.requireCSRF(), s.createDevelopmentProjectForum)
-	authenticated.POST("/development-forums/:id/disable", s.requireCSRF(), s.disableDevelopmentForum)
-	authenticated.POST("/development-forums/:id/enable", s.requireCSRF(), s.enableDevelopmentForum)
-	authenticated.PUT("/development-projects/:id/forums/:forumId/collaborators/:memberId",
-		s.requireCSRF(), s.putDevelopmentProjectForumCollaborator)
-	authenticated.DELETE("/development-projects/:id/forums/:forumId/collaborators/:memberId",
-		s.requireCSRF(), s.deleteDevelopmentProjectForumCollaborator)
+	authenticated.GET("/workspaces", s.listWorkspaces)
+	authenticated.POST("/workspaces", s.requireCSRF(), s.createWorkspace)
+	authenticated.POST("/workspace-projects/:id/forums", s.requireCSRF(), s.createWorkspaceProjectForum)
+	authenticated.POST("/workspace-forums/:id/disable", s.requireCSRF(), s.disableWorkspaceForum)
+	authenticated.POST("/workspace-forums/:id/enable", s.requireCSRF(), s.enableWorkspaceForum)
+	authenticated.PUT("/workspace-projects/:id/forums/:forumId/collaborators/:memberId",
+		s.requireCSRF(), s.putWorkspaceProjectForumCollaborator)
+	authenticated.DELETE("/workspace-projects/:id/forums/:forumId/collaborators/:memberId",
+		s.requireCSRF(), s.deleteWorkspaceProjectForumCollaborator)
 	authenticated.PUT("/discord/forums/:forumId/access/:memberId", s.requireCSRF(), s.putDiscordForumAccess)
 	authenticated.DELETE("/discord/forums/:forumId/access/:memberId", s.requireCSRF(), s.deleteDiscordForumAccess)
 	authenticated.POST("/discord/github/bind", s.requireCSRF(), s.startDiscordGitHubBind)
@@ -230,7 +227,7 @@ func (s *Server) rateLimit() gin.HandlerFunc {
 }
 
 func rateLimitPolicy(path string) (string, int64) {
-	if strings.HasPrefix(path, "/worker/v2/") {
+	if strings.HasPrefix(path, "/worker/v1/") {
 		return "worker-api", 10000
 	}
 	switch path {

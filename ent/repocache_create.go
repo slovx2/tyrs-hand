@@ -27,16 +27,16 @@ func (_c *RepoCacheCreate) SetRepositoryID(v uuid.UUID) *RepoCacheCreate {
 	return _c
 }
 
-// SetExecutionNodeID sets the "execution_node_id" field.
-func (_c *RepoCacheCreate) SetExecutionNodeID(v uuid.UUID) *RepoCacheCreate {
-	_c.mutation.SetExecutionNodeID(v)
+// SetWorkerID sets the "worker_id" field.
+func (_c *RepoCacheCreate) SetWorkerID(v uuid.UUID) *RepoCacheCreate {
+	_c.mutation.SetWorkerID(v)
 	return _c
 }
 
-// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
-func (_c *RepoCacheCreate) SetNillableExecutionNodeID(v *uuid.UUID) *RepoCacheCreate {
+// SetNillableWorkerID sets the "worker_id" field if the given value is not nil.
+func (_c *RepoCacheCreate) SetNillableWorkerID(v *uuid.UUID) *RepoCacheCreate {
 	if v != nil {
-		_c.SetExecutionNodeID(*v)
+		_c.SetWorkerID(*v)
 	}
 	return _c
 }
@@ -240,9 +240,9 @@ func (_c *RepoCacheCreate) createSpec() (*RepoCache, *sqlgraph.CreateSpec) {
 		_spec.SetField(repocache.FieldRepositoryID, field.TypeUUID, value)
 		_node.RepositoryID = value
 	}
-	if value, ok := _c.mutation.ExecutionNodeID(); ok {
-		_spec.SetField(repocache.FieldExecutionNodeID, field.TypeUUID, value)
-		_node.ExecutionNodeID = &value
+	if value, ok := _c.mutation.WorkerID(); ok {
+		_spec.SetField(repocache.FieldWorkerID, field.TypeUUID, value)
+		_node.WorkerID = &value
 	}
 	if value, ok := _c.mutation.Path(); ok {
 		_spec.SetField(repocache.FieldPath, field.TypeString, value)

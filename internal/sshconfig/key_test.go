@@ -70,11 +70,11 @@ func TestNormalizeHostDefaultsDeduplicatesAndRejectsInvalidFields(t *testing.T) 
 	nodeA := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	nodeB := uuid.MustParse("22222222-2222-2222-2222-222222222222")
 	input, err := normalizeHost(HostInput{Alias: " server_1 ", Hostname: "example.com",
-		Username: "ubuntu", ExecutionNodeIDs: []uuid.UUID{nodeB, nodeA, nodeB, uuid.Nil}})
+		Username: "ubuntu", WorkerIDs: []uuid.UUID{nodeB, nodeA, nodeB, uuid.Nil}})
 	require.NoError(t, err)
 	require.Equal(t, "server_1", input.Alias)
 	require.Equal(t, 22, input.Port)
-	require.Equal(t, []uuid.UUID{nodeA, nodeB}, input.ExecutionNodeIDs)
+	require.Equal(t, []uuid.UUID{nodeA, nodeB}, input.WorkerIDs)
 
 	for _, test := range []struct {
 		name  string

@@ -3,7 +3,7 @@ import { useState, type FormEvent } from 'react'
 import { api } from '../api/client'
 import { useUI } from '../state'
 import { parseSSHConfig } from './sshConfigParser'
-import type { SSHCredential, SSHExecutionNode, SSHHost } from './sshTypes'
+import type { SSHCredential, SSHWorker, SSHHost } from './sshTypes'
 
 interface HostForm {
   id: string
@@ -13,14 +13,14 @@ interface HostForm {
   username: string
   credentialId: string
   proxyJumpHostId: string
-  executionNodeIds: string[]
+  workerIds: string[]
   enabled: boolean
 }
 
 interface HostImportForm {
   config: string
   credentialId: string
-  executionNodeIds: string[]
+  workerIds: string[]
   enabled: boolean
 }
 
@@ -32,14 +32,14 @@ const emptyHost: HostForm = {
   username: 'root',
   credentialId: '',
   proxyJumpHostId: '',
-  executionNodeIds: [],
+  workerIds: [],
   enabled: true,
 }
 
 const emptyImport: HostImportForm = {
   config: '',
   credentialId: '',
-  executionNodeIds: [],
+  workerIds: [],
   enabled: true,
 }
 
@@ -50,7 +50,7 @@ export function SSHHostSection({
 }: {
   items: SSHHost[]
   credentials: SSHCredential[]
-  nodes: SSHExecutionNode[]
+  nodes: SSHWorker[]
 }) {
   const [form, setForm] = useState<HostForm | null>(null)
   const [importForm, setImportForm] = useState<HostImportForm | null>(null)
@@ -72,7 +72,7 @@ export function SSHHostSection({
           username: values.username,
           credentialId: values.credentialId,
           proxyJumpHostId: values.proxyJumpHostId || null,
-          executionNodeIds: values.executionNodeIds,
+          workerIds: values.workerIds,
           enabled: values.enabled,
         }),
       }),
@@ -89,7 +89,7 @@ export function SSHHostSection({
         method: 'POST',
         body: JSON.stringify({
           credentialId: values.credentialId,
-          executionNodeIds: values.executionNodeIds,
+          workerIds: values.workerIds,
           enabled: values.enabled,
           hosts: parsed.hosts,
         }),
@@ -118,7 +118,7 @@ export function SSHHostSection({
       username: item.username,
       credentialId: item.credentialId,
       proxyJumpHostId: item.proxyJumpHostId ?? '',
-      executionNodeIds: item.executionNodeIds,
+      workerIds: item.workerIds,
       enabled: item.enabled,
     })
   }
@@ -129,11 +129,9 @@ export function SSHHostSection({
         ? {
             ...value,
             proxyJumpHostId,
-            executionNodeIds: proxy
-              ? value.executionNodeIds.filter((id) =>
-                  proxy.executionNodeIds.includes(id),
-                )
-              : value.executionNodeIds,
+            workerIds: proxy
+              ? value.workerIds.filter((id) => proxy.workerIds.includes(id))
+              : value.workerIds,
           }
         : value,
     )
@@ -143,9 +141,9 @@ export function SSHHostSection({
       value
         ? {
             ...value,
-            executionNodeIds: checked
-              ? [...new Set([...value.executionNodeIds, id])]
-              : value.executionNodeIds.filter((item) => item !== id),
+            workerIds: checked
+              ? [...new Set([...value.workerIds, id])]
+              : value.workerIds.filter((item) => item !== id),
           }
         : value,
     )
@@ -155,9 +153,9 @@ export function SSHHostSection({
       value
         ? {
             ...value,
-            executionNodeIds: checked
-              ? [...new Set([...value.executionNodeIds, id])]
-              : value.executionNodeIds.filter((item) => item !== id),
+            workerIds: checked
+              ? [...new Set([...value.workerIds, id])]
+              : value.workerIds.filter((item) => item !== id),
           }
         : value,
     )
@@ -360,19 +358,19 @@ Host production
           </fieldset>
 
           <fieldset className="mt-6 border-t border-[color:var(--border)] pt-6">
-            <legend className="font-semibold">下发到执行节点</legend>
+            <legend className="font-semibold">下发到Worker</legend>
             <p className="muted mt-1 text-sm">
               选中的节点会同时接收本批主机。同批 ProxyJump
               会自动按依赖顺序创建。
             </p>
             {nodes.length === 0 ? (
               <div className="mt-3 rounded-lg border border-dashed border-[color:var(--border-strong)] p-4 text-sm">
-                目前没有执行节点。你可以先导入主机，注册 Worker 后再回来分配。
+                目前没有Worker。你可以先导入主机，注册 Worker 后再回来分配。
               </div>
             ) : (
               <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {nodes.map((node) => {
-                  const checked = importForm.executionNodeIds.includes(node.id)
+                  const checked = importForm.workerIds.includes(node.id)
                   return (
                     <label
                       className={`flex items-start gap-3 rounded-xl border p-3 text-sm transition-colors ${
@@ -440,7 +438,7 @@ Host production
                 {form.id ? `编辑主机：${form.alias}` : '添加主机'}
               </h3>
               <p className="muted mt-1 text-sm">
-                主机保存后，配置会自动同步到选中的执行节点。
+                主机保存后，配置会自动同步到选中的Worker。
               </p>
             </div>
             <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
@@ -560,7 +558,7 @@ Host production
           </fieldset>
 
           <fieldset className="mt-6 border-t border-[color:var(--border)] pt-6">
-            <legend className="font-semibold">下发到执行节点</legend>
+            <legend className="font-semibold">下发到Worker</legend>
             <p className="muted mt-1 text-sm">
               {selectedProxy
                 ? `使用 ${selectedProxy.alias} 作为跳板机时，只能选择它已经覆盖的节点。`
@@ -568,15 +566,14 @@ Host production
             </p>
             {nodes.length === 0 ? (
               <div className="mt-3 rounded-lg border border-dashed border-[color:var(--border-strong)] p-4 text-sm">
-                目前没有执行节点。你可以先保存主机，注册 Worker 后再回来分配。
+                目前没有Worker。你可以先保存主机，注册 Worker 后再回来分配。
               </div>
             ) : (
               <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {nodes.map((node) => {
-                  const checked = form.executionNodeIds.includes(node.id)
+                  const checked = form.workerIds.includes(node.id)
                   const allowedByProxy =
-                    !selectedProxy ||
-                    selectedProxy.executionNodeIds.includes(node.id)
+                    !selectedProxy || selectedProxy.workerIds.includes(node.id)
                   const canSelect = node.enabled && allowedByProxy
                   return (
                     <label
@@ -637,12 +634,12 @@ Host production
             <p className="muted mt-1 text-sm">
               {credentials.length === 0
                 ? '请先在上方添加登录凭证。'
-                : '点击“添加主机”，配置连接地址和执行节点。'}
+                : '点击“添加主机”，配置连接地址和Worker。'}
             </p>
           </div>
         ) : (
           items.map((item) => {
-            const assignedNodes = item.executionNodeIds.map(
+            const assignedNodes = item.workerIds.map(
               (id) => nodes.find((node) => node.id === id)?.name ?? '未知节点',
             )
             return (
@@ -665,7 +662,7 @@ Host production
                         : ''}
                     </p>
                     <p className="muted mt-1 text-xs">
-                      执行节点：
+                      Worker：
                       {assignedNodes.length > 0
                         ? assignedNodes.join('、')
                         : '未分配（不会下发）'}

@@ -4,241 +4,162 @@
 
 <h1 align="center">Tyrs Hand</h1>
 
-<p align="center"><a href="README.md">中文</a></p>
+<p align="center"><a href="README.md">简体中文</a></p>
 
 [![CI](https://github.com/slovx2/tyrs-hand/actions/workflows/ci.yml/badge.svg)](https://github.com/slovx2/tyrs-hand/actions/workflows/ci.yml)
 [![Security](https://github.com/slovx2/tyrs-hand/actions/workflows/security.yml/badge.svg)](https://github.com/slovx2/tyrs-hand/actions/workflows/security.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Tyrs Hand is a self-hosted agent collaboration platform that connects GitHub, Discord, Codex Desktop, and your own compute. A public Control owns events, state, and permissions, while host-native Workers run the machine user's Codex, workspaces, Git, SSH, and browser tools.
+Tyrs Hand is a self-hosted agent collaboration platform connecting GitHub, Discord, Codex Desktop, and your own machines. A public Control stores events, permissions, and durable state. A host Worker executes tasks with the machine user's real Codex Home, projects, and browser capabilities.
 
-The project is at an early stage. Evaluate it on controlled repositories before production use. The default agent profile can access the public network and write to its worktree, so review trigger rules, tool allowlists, and permission policies first.
-
-## Core Highlights
-
-### Distributed deployment that puts idle computers to work
-
-Separate the control service from the computers that do the work. Idle machines at home, in the office, or in a server room can all contribute compute and storage without a public IP or port forwarding. Add more computers whenever you need more capacity.
-
-### Connect Codex Desktop and use your desktop browser
-
-Open and continue Tyrs Hand projects and conversations directly from Codex Desktop. The agent can also use sites already signed in and ordinary tabs already open in desktop Chrome, reducing repeated logins and context switching.
-
-### Bidirectional Discord sync and multi-user collaboration
-
-Codex Desktop and Discord keep messages, progress, and results in sync, so the conversation can continue from either side. Invite read-only or operator collaborators and let multiple people discuss and move work forward around the same project and agent conversation.
-
-## More Capabilities
-
-- GitHub App identity with HMAC-verified and deduplicated webhooks
-- PostgreSQL-backed durable jobs, leases, retries, and recovery
-- One bare clone cache per repository and one temporary worktree per GitHub work item, removed seven days after closure
-- Reusable Codex threads with durable summaries for context handoff
-- Repository skills loaded from `.agents/skills/<name>/SKILL.md`
-- GitHub MCP tools and controlled local Git dynamic tools
-- Private Discord servers with long-lived development forums, GitHub task projections, and persistent conversations
-- Host-native workspaces under `~/tyrs-hand/workspaces`, shared with the machine user's real Codex Home
-- Idempotent tool calls keyed by `(thread, turn, call)`
-- Natural Codex final answers with platform-owned control state and managed reply gates
-- Public HTTPS Control and host-native Pull Workers with frozen per-resource placement
-- React administration UI for repositories, rules, profiles, jobs, threads, Workers, SSH, default placement, and audit logs
+The project is at an early stage and is best evaluated on controlled repositories. The default GitHub Agent may write to worktrees and access the network; review tool allowlists, trigger rules, and permission policies before production use.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
+    GitHub["GitHub App / Webhook"] --> Control
+    Admin["Admin UI"] --> Control
+    Discord["Discord"] <--> Gateway
     subgraph Public["Public Control"]
-        Server["tyrs-hand-server\nWebhooks + Worker API"]
+        Control["tyrs-hand-server\nAdmin API + /worker/v1"]
         Gateway["tyrs-hand-discord\nGateway + Outbox"]
-        State["PostgreSQL + Redis\nAttachment volume"]
-        Server <--> State
+        State["PostgreSQL + Redis"]
+        Control <--> State
         Gateway <--> State
     end
-    GitHub["GitHub App / Webhook"] --> Server
-    Admin["React Admin UI"] --> Server
-    Discord["Discord Server"] <--> Gateway
-    subgraph Home["Linux or macOS host"]
-        Worker["tyrs-hand-worker\nSSH server + Pull Worker"]
-        Workspace["~/tyrs-hand/workspaces"]
-        Codex["System Codex App Server\nReal CODEX_HOME"]
-        Browser["Worker / desktop Chrome"]
-        Worker <--> Workspace
+    subgraph Host["Worker host"]
+        Worker["tyrs-hand-worker\nsystemd / LaunchDaemon"]
+        Codex["System Codex App Server\nreal CODEX_HOME"]
+        Workspace["Workspace + projects\nRepo cache + worktrees"]
+        Browser["Browser MCP + Browser Agent"]
         Worker <--> Codex
+        Worker <--> Workspace
         Worker <--> Browser
     end
-    Desktop["Codex Desktop"] <-->|"SSH + App Server Relay"| Worker
-    Worker -->|"HTTPS long polling / events / tools"| Server
+    Desktop["Codex Desktop clients"] <-->|"SSH AppServer / Browser Agent channels"| Worker
+    Worker -->|"HTTPS claims, events, tools, and blobs"| Control
 ```
 
-The project ships four commands:
+Main processes:
 
-- `tyrs-hand-server`: administration API, GitHub App, webhook receiver, and embedded frontend
-- `tyrs-hand-worker`: a host daemon that pulls through `/worker/v2`, runs workspaces and the system Codex, and serves Codex Desktop over SSH
-- `tyrs-hand-discord`: Discord gateway, forum conversations, projections, and outbox delivery
-- `tyrs-hand-admin`: migrations, diagnostics, administrator recovery, key rotation, and garbage collection
+- `tyrs-hand-server`: admin API, GitHub App, webhooks, Worker API, and web assets.
+- `tyrs-hand-discord`: Discord Gateway, forums, projections, and Outbox delivery.
+- `tyrs-hand-worker`: host service for Codex, Git/SSH, browser tools, and multi-client Desktop access.
+- `tyrs-hand-admin`: migrations, administrator recovery, master-key rotation, and GC.
 
-PostgreSQL is the only authoritative state store. Redis contains only recoverable rate-limit and notification data. Workers connect to neither store directly and hold no Control master key or Discord bot token.
+PostgreSQL is the only authoritative state store. Redis contains rebuildable rate-limit and notification state. Workers do not connect to either database directly.
 
-## Quick Start
+## Worker and Workspace
 
-### Requirements
+A Worker belongs to one real OS user and may bind to at most one Workspace. A Workspace is a logical resource containing auto-discovered projects and Discord forums; it does not hold runtime configuration.
 
-- Docker Engine and Docker Compose for the Control only
-- Go `1.26.5`, Node.js `24.14.0`, and pnpm `11.14.0` for source development
-- On every Worker host: Codex CLI/App Server `0.145.0` or newer, Git `2.39.0` or newer, OpenSSH client tools `9.2.0` or newer, curl, tar, and sudo
+- `HOME`, `CODEX_HOME`, authentication, provider, base URL, proxy, and model catalog come from the machine user.
+- The project root is `~/tyrs-hand/workspaces`; each direct child is a project.
+- GitHub work items use a host repo cache and an isolated worktree.
+- The built-in SSH server supports multiple keys and clients, PTY, SCP, and SFTP, and connects Codex Desktop clients to one AppServer Hub.
+- Control assigns outbound SSH credentials and hosts to Workers. GitHub tokens never enter the Codex environment or Git remotes.
 
-### Run Locally
+The minimum Codex CLI version is `0.145.0`. Worker startup and `doctor` reject older versions.
 
-1. Create local configuration and secrets:
+## Codex configuration boundary
 
-   ```bash
-   cp .env.example .env
-   install -d -m 0700 .local/secrets
-   printf '%s' 'tyrs_hand' > .local/secrets/postgres_password
-   openssl rand -base64 32
-   openssl rand -hex 32
-   ```
+Control does not store or distribute provider settings, API keys, ChatGPT authentication, base URLs, proxies, `config.toml`, or `auth.json`.
 
-   Put the generated values in `.env` as `TYRS_HAND_MASTER_KEY` and `TYRS_HAND_SETUP_TOKEN`. Local PostgreSQL uses `tyrs_hand` by default. In production, replace both `POSTGRES_PASSWORD` and the secret file with the same random password.
+“GitHub Agent settings” apply only to `github_work_item` tasks:
 
-2. Build, migrate, and start the Control:
+- Agent Profiles and repository overrides may set model, reasoning, service tier, sandbox, and tool parameters.
+- Global GitHub Agent instructions are injected as developer instructions for that GitHub turn and are never written to the machine home.
 
-   ```bash
-   docker compose build server
-   docker compose up -d postgres redis
-   docker compose --profile tools run --rm admin migrate
-   docker compose up -d server discord
-   ```
+Desktop, Discord, and Mobile do not consume these defaults. Explicit session or turn choices still apply; unspecified values are resolved by the machine Codex Home. Initial titles use fallback text, followed by native Codex `thread/name/updated` events.
 
-3. Open `http://localhost:8080/setup`, create the administrator, and store the TOTP secret and one-time recovery codes.
+## Browser
 
-4. Create a GitHub App through the Manifest flow or enter an existing App manually. Install it on explicitly selected repositories.
+- Worker tasks call the host Browser MCP and controlled host file directory directly.
+- The browser token is read only from a restricted file owned by the Worker user and never enters Control or task snapshots.
+- Codex Desktop reaches the host browser over the Worker's Browser Agent SSH channel.
+- Worker browser tasks and multiple Desktop clients run concurrently; disconnecting one Desktop client does not interrupt the others.
 
-5. Configure and authenticate Codex in the Worker service user's real `CODEX_HOME`. Control does not store or distribute provider settings, API keys, ChatGPT authentication, base URLs, or proxy settings.
+## Quick start
 
-6. Create a Worker in the admin UI and install the matching release binary on the host. The installer verifies the release checksum, runs `tyrs-hand-worker doctor`, and registers a systemd service or macOS LaunchDaemon. See the [minimal installation guide](docs/deployment/minimal-installation.md).
+See the [minimal installation guide](docs/deployment/minimal-installation.md) for complete production steps.
 
-## Optional Webhook Listener Separation
-
-By default, the admin UI, internal API, and webhook receiver share `TYRS_HAND_HTTP_ADDR` and use one HTTP port.
-
-To isolate webhooks at the network layer:
-
-```dotenv
-TYRS_HAND_SEPARATE_WEBHOOK=true
-TYRS_HAND_WEBHOOK_HTTP_ADDR=:8081
-```
-
-When enabled, the admin listener no longer registers `/webhooks/github`. The webhook listener exposes only health endpoints and the GitHub webhook route. Your deployment must publish and route the second port separately.
-
-## GitHub App Permissions
-
-The default Manifest requests:
-
-| Permission | Access |
-| --- | --- |
-| Metadata | Read |
-| Contents | Read & Write |
-| Issues | Read & Write |
-| Pull Requests | Read & Write |
-| Actions | Read |
-| Checks | Read |
-
-The Manifest subscribes to Repository, Issues, Issue Comment, Pull Request, Review, Review Comment, and Push events. GitHub sends installation lifecycle events automatically.
-
-The default rules accept `/tyrs-hand` on the first line of an Issue or Pull Request comment, a visible exact `@mention` of the App login anywhere on that first line, and structured `tyrs-hand` label events. Mention matching is case-insensitive and ignores later lines, quotes, code, escapes, URLs, and username suffixes. Legacy full-body `@mention` matching remains available only as a disabled-by-default compatibility rule. Regular GitHub App bots cannot be selected directly as reviewers; administrators can explicitly add a `pull_request.review_requested` event rule when any reviewer request should trigger the agent.
-
-## Threads, Skills, and Workspaces
-
-- A `(Work Item, Agent Profile, Context Version)` tuple owns one Codex thread.
-- Follow-up comments on the same Issue or Pull Request resume that thread.
-- Model, profile, tool schema, or skill changes create a new thread with a durable handoff summary.
-- Each GitHub work item owns a temporary worktree and runs serially; it is removed seven days after closure.
-- The GitHub path does not install or share dependencies and does not prepare toolchains. It is intended for read-only or lightweight edits, not local builds, execution, or debugging.
-- Issue and PR URLs and numbers are injected into the prompt. PR source refs are fetched in advance, with source/target branches and SHAs included in context.
-- Pull Requests created from Issues are linked back to the original work item.
-- Failed jobs retain their workspace for recovery; untrusted state is quarantined and rebuilt.
-
-## Host Worker and Codex Desktop
-
-The Worker is a thin native binary for Linux and macOS on amd64 and arm64. It runs permanently as one real operating-system user and binds that user's `HOME`, `CODEX_HOME`, and `~/tyrs-hand/workspaces`. Tyrs Hand neither provisions Docker nor manages any other Codex runtime; the host owner installs the desired toolchains.
-
-- The Worker starts one system Codex App Server and uses the installed `codex` command. Version `0.145.0` is the minimum; newer compatible versions are allowed.
-- Codex configuration comes only from the machine user's `CODEX_HOME`. Existing chats and authentication remain in place and are neither copied nor migrated.
-- The built-in SSH server accepts multiple authorized public keys and supports shell commands, PTY resize, SCP, and SFTP. It intercepts `codex app-server proxy` for Codex Desktop and rejects SSH forwarding.
-- GitHub and Discord tasks share the host runtime while dynamic tools and interactive requests remain bound to their Codex thread.
-- Outbound SSH uses the host Worker agent, and Browser Bridge access remains available when configured.
-- Control communicates through only four public Worker endpoints: `/worker/v2/enroll`, `/worker/v2/sync`, `/worker/v2/rpc`, and `/worker/v2/blobs/{id}`.
-- Legacy environments can be reassigned once with `tyrs-hand-admin worker migrate-legacy`; the command does not read, copy, or modify Codex Home data.
-
-Repository task skills must live at:
-
-```text
-.agents/skills/<skill-name>/SKILL.md
-```
-
-If a configured skill is missing or is not returned by Codex `skills/list`, the job ends with a configuration error.
-
-## Security Model
-
-- Argon2id passwords and AES-256-GCM encrypted secrets
-- Opaque HttpOnly sessions, SameSite cookies, CSRF protection, and TOTP
-- Size-limited, HMAC-SHA256 verified, delivery-deduplicated webhooks
-- Lease token and monotonic epoch checks on every job result
-- Capability, installation, repository, work item, allowlist, and live-permission checks for dynamic tools
-- No GitHub token in the Codex environment, Git remote, or worktree
-- Non-root Control containers and a dedicated real OS user for each host Worker
-- Workers use the HTTPS Worker API instead of direct PostgreSQL or Redis access; no master key or Discord bot token is stored on a Worker, and Codex credentials stay in the machine user's own Codex Home
-- The Worker API supports individual IP and CIDR allowlists without requiring Cloudflare; forwarded source headers are accepted only from trusted proxies
-
-Use `compose.production.yaml` for the production Control to provide the master key through a Docker Secret file:
+Control requires Docker Engine, Docker Compose, PostgreSQL, Redis, and an HTTPS endpoint. Source development additionally requires Go `1.26.5`, Node.js `24.14.0`, pnpm `11.14.0`, and Codex `>= 0.145.0`.
 
 ```bash
-docker compose -f compose.yaml -f compose.production.yaml up -d
+cp .env.example .env
+install -d -m 0700 .local/secrets
+openssl rand -base64 32 > .local/secrets/master_key
+openssl rand -hex 32 > .local/secrets/postgres_password
+docker compose -f compose.yaml -f compose.production.yaml up -d postgres redis
+docker compose -f compose.yaml -f compose.production.yaml --profile tools run --rm admin migrate
+docker compose -f compose.yaml -f compose.production.yaml up -d server discord
 ```
 
-Never commit `.env`, `.local/`, CODEX_HOME, private keys, worktrees, or repository caches.
+After creating an administrator, GitHub App, Discord integration, and Worker in the admin UI, install the host Worker with its one-time enrollment token:
 
-## Development
+```bash
+sudo env \
+  TYRS_HAND_RELEASE_VERSION=v0.2.0 \
+  TYRS_HAND_WORKER_CONTROL_URL=https://agent.example.com \
+  TYRS_HAND_WORKER_ENROLLMENT_TOKEN=<one-time-token> \
+  TYRS_HAND_WORKER_PUBLIC_KEYS_FILE=/path/to/authorized_keys \
+  TYRS_HAND_WORKER_USER=<os-user> \
+  sh deploy/worker/install.sh
+```
+
+The installer verifies SHA-256 and the Sigstore bundle, runs dependency checks, and installs a Linux systemd unit or macOS LaunchDaemon. Exact dependency declarations live in `deploy/worker/dependencies.json`.
+
+## Worker API
+
+Workers use a Bearer credential with a direct, single-version REST API:
+
+```text
+POST /worker/v1/enroll
+POST /worker/v1/heartbeat
+POST /worker/v1/claims
+GET  /worker/v1/workspace
+POST /worker/v1/workspace/projects/snapshot
+GET|POST /worker/v1/blobs/{id}
+... direct Desktop, Thread, Turn, Run, Tool, Git, and SSH endpoints
+```
+
+The protocol has no envelope, RPC route mapper, or version-forwarding layer. See `api/openapi.yaml` for the complete contract.
+
+## Admin UI
+
+The admin UI has six groups:
+
+1. Overview: Control, Worker, Codex, Browser, GitHub, and Discord health.
+2. Workers: enrollment, capacity, dependencies, and embedded Workspace/project/forum management.
+3. Clients: device pairing, status, and revocation.
+4. Integrations: GitHub, repositories, rules, Discord, and GitHub Agent settings.
+5. Access: outbound SSH credentials, hosts, and Worker assignments.
+6. Operations: work items, threads, jobs, caches, and audit data.
+
+## Security
+
+- Administrator passwords use Argon2id; secrets use AES-256-GCM.
+- Sessions use opaque cookies with HttpOnly, SameSite, and CSRF protections.
+- Webhooks are body-limited, HMAC-SHA256 verified, and deduplicated by delivery ID.
+- Run results validate capabilities, lease tokens, and monotonic epochs.
+- Dynamic tools validate installation, repository, work item, allowlists, and live GitHub permissions.
+- Worker API access supports IP/CIDR allowlists and trusts forwarded addresses only from configured proxies.
+- The built-in SSH server accepts session channels only and does not expose port forwarding.
+
+Never commit `.env`, `.local/`, Codex Home data, private keys, worktrees, or repo caches.
+
+## Development and release
 
 ```bash
 pnpm --dir web install --frozen-lockfile
 make generate
-make format-check
-make lint
-make test
-make test-race
-make test-integration
-make test-coverage
-make build
+make ci-local
 ```
 
-Integration tests use Testcontainers for PostgreSQL and Redis. Codex coverage includes a scripted fake App Server and the minimum supported real App Server with a mock Responses SSE upstream; tests never call a real model.
+Integration tests start PostgreSQL and Redis with Testcontainers and validate the App Server with a real supported Codex version against a mock Responses upstream. Browser acceptance must reconcile tool output, host bridge state, file exchange, task records, projections, and Outbox state.
 
-## Images and Releases
-
-Pull Requests and `main` build the Control image without publishing it. Releases build the multi-architecture Control image at:
-
-```text
-ghcr.io/slovx2/tyrs-hand-control
-```
-
-The Worker release workflow publishes checksum-protected thin binaries:
-
-```text
-tyrs-hand-worker_<version>_linux_amd64.tar.gz
-tyrs-hand-worker_<version>_linux_arm64.tar.gz
-tyrs-hand-worker_<version>_darwin_amd64.tar.gz
-tyrs-hand-worker_<version>_darwin_arm64.tar.gz
-```
-
-Go runtime dependencies are linked into the Worker binary. Host commands and their supported baselines are declared in `deploy/worker/dependencies.json`; Codex and toolchains are intentionally not bundled.
-
-Production deployments should pin `sha-<commit>` or an image digest and must not use `latest`.
-
-## Contributing
-
-Run tests appropriate to the change and verify generated code before opening a Pull Request. Redact logs in bug reports, and never post tokens, webhook secrets, private keys, or complete agent events.
+GitHub Actions publishes a provenance/SBOM/keyless-Cosign-signed Control image plus Linux/macOS amd64/arm64 Worker tarballs, SHA-256 files, and Sigstore bundles. Production must pin a Control digest and exact Worker version; do not use `latest`.
 
 ## License
 

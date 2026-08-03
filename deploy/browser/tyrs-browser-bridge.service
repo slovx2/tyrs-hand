@@ -12,8 +12,6 @@ ExecStart=/usr/local/bin/node /opt/tyrs-hand/browser/releases/current/tyrs-brows
 Restart=always
 RestartSec=5
 NoNewPrivileges=true
-# Ubuntu 会把用户级服务的挂载命名空间切到 unprivileged_userns AppArmor
-# profile，继而拒绝连接从开发容器 bind mount 出来的服务代理 Unix Socket。
 
 [Install]
 WantedBy=graphical-session.target

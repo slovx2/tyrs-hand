@@ -82,7 +82,7 @@ func (s *ConversationService) HandleMessageEdit(ctx context.Context, guildID, th
 		intent.status, COALESCE(intent.discord_message_id,''),
 		COALESCE(intent.projection_anchor, intent.discord_message_id, 'desktop-' || intent.id::text),
 		COALESCE(intent.repository_id, '00000000-0000-0000-0000-000000000000'::uuid),
-		COALESCE(intent.development_project_id, '00000000-0000-0000-0000-000000000000'::uuid),
+		COALESCE(intent.workspace_project_id, '00000000-0000-0000-0000-000000000000'::uuid),
 		intent.agent_profile_id, intent.skills, intent.allowed_tools, intent.dangerous_actions
 		FROM codex_turn_intents intent WHERE intent.id = $1 FOR UPDATE`, targetID).
 		Scan(&controlID, &sequence, &operation, &status, &primaryMessageID, &projectionAnchor,
@@ -126,7 +126,7 @@ func (s *ConversationService) HandleMessageEdit(ctx context.Context, guildID, th
 		}
 		replacementID, _, err = codexcontrol.NewRepository(s.db, 0).Enqueue(ctx, tx,
 			codexcontrol.EnqueueRequest{
-				SourceType: codexcontrol.SourceDevelopment, DiscordConversationID: conversationID,
+				SourceType: codexcontrol.SourceWorkspace, DiscordConversationID: conversationID,
 				DiscordMessageID: messageID, RepositoryID: repositoryID, ProjectID: projectID,
 				AgentProfileID: profileID, IdempotencyKey: fmt.Sprintf("discord:message-edit:%s:%d", messageID, revision),
 				Skills: skills, AllowedTools: tools, DangerousActions: dangerous,

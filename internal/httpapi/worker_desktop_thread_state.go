@@ -19,12 +19,12 @@ func (s *Server) loadDesktopThreadState(c *gin.Context,
 	var state workerprotocol.DesktopThreadState
 	var forumID, conversationID, controlID sql.NullString
 	var response sql.NullString
-	err := s.db.QueryRowContext(c.Request.Context(), `SELECT r.id, r.environment_id,
+	err := s.db.QueryRowContext(c.Request.Context(), `SELECT r.id, r.workspace_id,
 		r.operation, r.status, r.forum_id::text, r.conversation_id::text, r.control_id::text,
 		COALESCE(r.external_thread_id,''), r.response, COALESCE(r.error,'')
-		FROM desktop_thread_requests r JOIN discord_development_environments e ON e.id = r.environment_id
-		WHERE r.id = $1 AND e.execution_node_id = $2`, requestID, workerNode(c).ID).
-		Scan(&state.ID, &state.EnvironmentID, &state.Operation, &state.Status, &forumID,
+		FROM desktop_thread_requests r JOIN worker_workspaces e ON e.id = r.workspace_id
+		WHERE r.id = $1 AND e.worker_id = $2`, requestID, currentWorker(c).ID).
+		Scan(&state.ID, &state.WorkspaceID, &state.Operation, &state.Status, &forumID,
 			&conversationID, &controlID, &state.ExternalThreadID, &response, &state.Error)
 	if err != nil {
 		return state, err

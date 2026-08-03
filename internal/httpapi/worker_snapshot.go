@@ -16,21 +16,7 @@ func (s *Server) loadWorkerSnapshot(ctx context.Context,
 	claimed *codexcontrol.ClaimedControl,
 ) (workerprotocol.TaskSnapshot, error) {
 	var result workerprotocol.TaskSnapshot
-	err := s.db.QueryRowContext(ctx, `SELECT name, COALESCE(model,''),
-		COALESCE(reasoning_effort,''), COALESCE(service_tier,''), sandbox,
-		approval_policy, network_enabled FROM agent_profiles WHERE id = $1`,
-		claimed.AgentProfileID).Scan(&result.Runtime.ProfileName, &result.Runtime.Model,
-		&result.Runtime.ReasoningEffort, &result.Runtime.ServiceTier, &result.Runtime.Sandbox,
-		&result.Runtime.ApprovalPolicy, &result.Runtime.NetworkEnabled)
-	if err != nil {
-		return result, err
-	}
-	agents, err := s.settings.GlobalAgents(ctx)
-	if err != nil {
-		return result, err
-	}
-	result.Runtime.GlobalAgents = agents.Content
-	if claimed.SourceType == codexcontrol.SourceDevelopment {
+	if claimed.SourceType == codexcontrol.SourceWorkspace {
 		if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(model,''),
 			COALESCE(reasoning_effort,''), COALESCE(service_tier,'standard'),
 			collaboration_mode, settings_revision
@@ -41,6 +27,21 @@ func (s *Server) loadWorkerSnapshot(ctx context.Context,
 			return result, err
 		}
 	} else {
+		if err := s.db.QueryRowContext(ctx, `SELECT name,COALESCE(model,''),
+			COALESCE(reasoning_effort,''),COALESCE(service_tier,''),sandbox,
+			approval_policy,network_enabled FROM agent_profiles WHERE id=$1`,
+			claimed.AgentProfileID).Scan(&result.Runtime.ProfileName, &result.Runtime.Model,
+			&result.Runtime.ReasoningEffort, &result.Runtime.ServiceTier,
+			&result.Runtime.Sandbox, &result.Runtime.ApprovalPolicy,
+			&result.Runtime.NetworkEnabled); err != nil {
+			return result, err
+		}
+		instructions, err := s.settings.GitHubAgentInstructions(ctx)
+		if err != nil {
+			return result, err
+		}
+		result.GitHubAgent = &workerprotocol.GitHubAgentSnapshot{
+			Instructions: instructions.Content}
 		preferences, preferenceErr := s.freezeWorkerRuntimePreferences(ctx, claimed)
 		if preferenceErr != nil {
 			return result, preferenceErr
@@ -49,10 +50,11 @@ func (s *Server) loadWorkerSnapshot(ctx context.Context,
 		result.Runtime.ReasoningEffort = preferences.ReasoningEffort
 		result.Runtime.ServiceTier = preferences.ServiceTier
 	}
+	var err error
 	if claimed.SourceType == codexcontrol.SourceGitHub {
 		result.GitHub, err = s.loadGitHubWorkerSnapshot(ctx, claimed)
 	} else {
-		result.Development, err = s.loadDevelopmentWorkerSnapshot(ctx, claimed)
+		result.Session, err = s.loadWorkspaceWorkerSnapshot(ctx, claimed)
 		if err == nil && claimed.DiscordConversationID != uuid.Nil &&
 			(claimed.DiscordMessageID != "" || claimed.InputSurface == "desktop") {
 			result.Discord, err = s.loadDiscordWorkerSnapshot(ctx, claimed)
@@ -81,14 +83,14 @@ func (s *Server) freezeWorkerRuntimePreferences(ctx context.Context,
 		}
 		return result, nil
 	}
-	if claimed.SourceType == codexcontrol.SourceDevelopment {
+	if claimed.SourceType == codexcontrol.SourceWorkspace {
 		err = s.db.QueryRowContext(ctx, `SELECT COALESCE(model,''),
 			COALESCE(reasoning_effort,''), COALESCE(service_tier,'standard')
-			FROM development_sessions WHERE id = $1`, claimed.SessionID).
+			FROM workspace_sessions WHERE id = $1`, claimed.SessionID).
 			Scan(&result.Model, &result.ReasoningEffort, &result.ServiceTier)
 	} else {
 		result, err = codexsettings.NewService(s.db).Resolve(ctx, claimed.RepositoryID,
-			uuid.Nil, claimed.AgentProfileID)
+			claimed.AgentProfileID)
 	}
 	if err != nil {
 		return codexsettings.EffectivePreferences{}, err
@@ -106,55 +108,45 @@ func (s *Server) freezeWorkerRuntimePreferences(ctx context.Context,
 	return result, err
 }
 
-func (s *Server) loadDevelopmentWorkerSnapshot(ctx context.Context,
+func (s *Server) loadWorkspaceWorkerSnapshot(ctx context.Context,
 	claimed *codexcontrol.ClaimedControl,
-) (*workerprotocol.DevelopmentSnapshot, error) {
-	result := workerprotocol.DevelopmentSnapshot{
+) (*workerprotocol.SessionSnapshot, error) {
+	result := workerprotocol.SessionSnapshot{
 		SessionID: claimed.SessionID, MessageID: claimed.ID.String(), Body: claimed.Instruction,
 		ParticipantID: claimed.ActorParticipantID, DisplayName: claimed.ActorDisplayName,
-		InputSurface: claimed.InputSurface, Development: &workerprotocol.DevelopmentSpec{},
+		InputSurface: claimed.InputSurface, Project: &workerprotocol.WorkspaceProjectContext{},
 	}
 	if claimed.DiscordMessageID != "" {
 		result.MessageID = claimed.DiscordMessageID
 	}
 	var forumID, conversationID sql.NullString
-	development := result.Development
+	projectContext := result.Project
 	err := s.db.QueryRowContext(ctx, `SELECT environment.id, forum.id::text,
-		conversation.id::text, 'ready', project.relative_path, COALESCE(project.branch,''),
+		conversation.id::text, project.relative_path, COALESCE(project.branch,''),
 		project.project_kind, project.id, project.name, COALESCE(project.remote_url,''),
-		COALESCE(project.branch,''), environment.status, COALESCE(environment.image_ref,''),
-		COALESCE(environment.image_id,''), environment.container_name,
-		COALESCE(environment.container_id,''), environment.data_volume_name,
-		environment.home_volume_name, environment.network_name,
-		COALESCE(environment.runtime_user,''), COALESCE(environment.runtime_uid,0),
-		COALESCE(environment.runtime_gid,0), COALESCE(environment.runtime_home,'')
-		FROM development_sessions session
-		JOIN discord_development_environments environment
-			ON environment.id=session.development_environment_id
-		JOIN development_projects project ON project.id=session.development_project_id
+		COALESCE(project.branch,'')
+		FROM workspace_sessions session
+		JOIN worker_workspaces environment
+			ON environment.id=session.workspace_id
+		JOIN workspace_projects project ON project.id=session.workspace_project_id
 		LEFT JOIN discord_conversations conversation ON conversation.session_id=session.id
 		LEFT JOIN discord_forums forum ON forum.id=conversation.forum_id
-		WHERE session.id=$1 AND project.availability_status='available'
-		  AND environment.status='running'`, claimed.SessionID).Scan(
-		&development.EnvironmentID, &forumID, &conversationID,
-		&development.WorkspaceStatus, &development.WorkspaceRelative,
-		&development.WorkspaceBranch, &development.WorkspaceKind, &development.ProjectID,
-		&development.Repository, &development.CloneURL, &development.DefaultRef,
-		&development.EnvironmentStatus, &development.ImageRef, &development.ImageID,
-		&development.ContainerName, &development.ContainerID, &development.DataVolume,
-		&development.HomeVolume, &development.Network, &development.RuntimeUser,
-		&development.RuntimeUID, &development.RuntimeGID, &development.RuntimeHome)
+		WHERE session.id=$1 AND project.availability_status='available'`, claimed.SessionID).Scan(
+		&projectContext.WorkspaceID, &forumID, &conversationID,
+		&projectContext.WorkspaceRelative,
+		&projectContext.WorkspaceBranch, &projectContext.WorkspaceKind, &projectContext.ProjectID,
+		&projectContext.Repository, &projectContext.CloneURL, &projectContext.DefaultRef)
 	if err != nil {
 		return nil, err
 	}
 	if forumID.Valid {
-		development.ForumID, err = uuid.Parse(forumID.String)
+		projectContext.ForumID, err = uuid.Parse(forumID.String)
 		if err != nil {
 			return nil, err
 		}
 	}
 	if conversationID.Valid {
-		development.ConversationID, err = uuid.Parse(conversationID.String)
+		projectContext.ConversationID, err = uuid.Parse(conversationID.String)
 		if err != nil {
 			return nil, err
 		}
@@ -208,15 +200,15 @@ func (s *Server) loadDiscordWorkerSnapshot(ctx context.Context,
 	var result workerprotocol.DiscordSnapshot
 	var bindingID sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT c.guild_id, c.thread_id, m.message_id,
-		c.owner_discord_user_id, f.id, f.development_environment_id, m.body,
+		c.owner_discord_user_id, f.id, f.workspace_id, m.body,
 		m.discord_user_id, m.display_name, m.username, COALESCE(m.github_user_id,0),
 		COALESCE(m.github_login,''), m.github_binding_id::text, COALESCE(m.binding_version,0),
 		m.access_snapshot FROM discord_conversations c
 		JOIN discord_input_messages m ON m.conversation_id = c.id
-		JOIN discord_forums f ON f.id = c.forum_id AND f.forum_type = 'development'
+		JOIN discord_forums f ON f.id = c.forum_id AND f.forum_type = 'workspace'
 		WHERE c.id = $1 AND m.message_id = $2`, claimed.DiscordConversationID,
 		claimed.DiscordMessageID).Scan(&result.GuildID, &result.ThreadID, &result.MessageID,
-		&result.OwnerUserID, &result.ForumID, &result.EnvironmentID, &result.Body,
+		&result.OwnerUserID, &result.ForumID, &result.WorkspaceID, &result.Body,
 		&result.UserID, &result.DisplayName, &result.Username, &result.GitHubUserID,
 		&result.GitHubLogin, &bindingID, &result.BindingVersion, &result.Access)
 	if err != nil {
@@ -226,35 +218,27 @@ func (s *Server) loadDiscordWorkerSnapshot(ctx context.Context,
 		result.Body = claimed.Instruction
 	}
 	result.BindingID = bindingID.String
-	var development workerprotocol.DevelopmentSpec
+	var projectContext workerprotocol.WorkspaceProjectContext
 	var projectID sql.NullString
-	development.ConversationID = claimed.DiscordConversationID
-	err = s.db.QueryRowContext(ctx, `SELECT e.id, f.id, 'ready', project.relative_path,
+	projectContext.ConversationID = claimed.DiscordConversationID
+	err = s.db.QueryRowContext(ctx, `SELECT e.id, f.id, project.relative_path,
 		COALESCE(project.branch,''), project.project_kind,
-		project.id::text, project.name, COALESCE(project.remote_url,''), '',
-		e.status, COALESCE(e.image_ref,''), COALESCE(e.image_id,''), e.container_name,
-		COALESCE(e.container_id,''), e.data_volume_name, e.home_volume_name, e.network_name,
-		COALESCE(e.runtime_user,''), COALESCE(e.runtime_uid,0), COALESCE(e.runtime_gid,0),
-		COALESCE(e.runtime_home,'')
+		project.id::text, project.name, COALESCE(project.remote_url,''), ''
 		FROM discord_forums f
-		JOIN discord_development_environments e ON e.id = f.development_environment_id
-		JOIN development_projects project ON project.id=f.development_project_id
+		JOIN worker_workspaces e ON e.id = f.workspace_id
+		JOIN workspace_projects project ON project.id=f.workspace_project_id
 		WHERE f.id = $1 AND f.binding_status = 'active'
-			AND project.availability_status = 'available' AND e.status = 'running'`, result.ForumID).
-		Scan(&development.EnvironmentID, &development.ForumID,
-			&development.WorkspaceStatus, &development.WorkspaceRelative,
-			&development.WorkspaceBranch, &development.WorkspaceKind, &projectID,
-			&development.Repository, &development.CloneURL,
-			&development.DefaultRef, &development.EnvironmentStatus,
-			&development.ImageRef, &development.ImageID, &development.ContainerName,
-			&development.ContainerID, &development.DataVolume, &development.HomeVolume,
-			&development.Network, &development.RuntimeUser, &development.RuntimeUID,
-			&development.RuntimeGID, &development.RuntimeHome)
+			AND project.availability_status = 'available'`, result.ForumID).
+		Scan(&projectContext.WorkspaceID, &projectContext.ForumID,
+			&projectContext.WorkspaceRelative,
+			&projectContext.WorkspaceBranch, &projectContext.WorkspaceKind, &projectID,
+			&projectContext.Repository, &projectContext.CloneURL,
+			&projectContext.DefaultRef)
 	if err != nil {
 		return nil, err
 	}
-	development.ProjectID = parseOptionalUUID(projectID)
-	result.Development = &development
+	projectContext.ProjectID = parseOptionalUUID(projectID)
+	result.Project = &projectContext
 	rows, err := s.db.QueryContext(ctx, `SELECT attachment.id, attachment.kind,
 		attachment.original_filename, attachment.media_type, attachment.size_bytes,
 		COALESCE(attachment.sha256,'') FROM discord_attachments attachment
@@ -284,18 +268,18 @@ func (s *Server) loadDesktopDiscordWorkerSnapshot(ctx context.Context,
 	var sshUserID, sshDisplayName, conversationID string
 	err := s.db.QueryRowContext(ctx, `SELECT e.guild_id, COALESCE(c.thread_id,''),
 		f.owner_discord_user_id, f.id, e.id, COALESCE(c.id::text,''),
-		COALESCE(e.ssh_discord_user_id, ''),
+		COALESCE(e.owner_discord_user_id, ''),
 		COALESCE(NULLIF(m.display_name, ''), m.username, '')
 		FROM codex_thread_controls ct
 		LEFT JOIN desktop_thread_requests request ON request.control_id = ct.id
 		LEFT JOIN discord_conversations c ON c.id = ct.discord_conversation_id
 		JOIN discord_forums f ON f.id = COALESCE(c.forum_id, request.forum_id)
-		JOIN discord_development_environments e ON e.id = ct.development_environment_id
+		JOIN worker_workspaces e ON e.id = ct.workspace_id
 		LEFT JOIN discord_members m ON m.guild_id = e.guild_id
-			AND m.discord_user_id = e.ssh_discord_user_id
-		WHERE ct.id = $1 AND f.forum_type = 'development'`, claimed.ControlID).
+			AND m.discord_user_id = e.owner_discord_user_id
+		WHERE ct.id = $1 AND f.forum_type = 'workspace'`, claimed.ControlID).
 		Scan(&result.GuildID, &result.ThreadID, &result.OwnerUserID, &result.ForumID,
-			&result.EnvironmentID, &conversationID, &sshUserID, &sshDisplayName)
+			&result.WorkspaceID, &conversationID, &sshUserID, &sshDisplayName)
 	if err != nil {
 		return nil, err
 	}
@@ -303,34 +287,26 @@ func (s *Server) loadDesktopDiscordWorkerSnapshot(ctx context.Context,
 		result.UserID = sshUserID
 		result.DisplayName = sshDisplayName
 	}
-	development := &workerprotocol.DevelopmentSpec{}
+	projectContext := &workerprotocol.WorkspaceProjectContext{}
 	var projectID sql.NullString
-	development.ConversationID, _ = uuid.Parse(conversationID)
-	err = s.db.QueryRowContext(ctx, `SELECT e.id, f.id, 'ready', project.relative_path,
+	projectContext.ConversationID, _ = uuid.Parse(conversationID)
+	err = s.db.QueryRowContext(ctx, `SELECT e.id, f.id, project.relative_path,
 		COALESCE(project.branch,''), project.project_kind,
-		project.id::text, project.name, COALESCE(project.remote_url,''), '',
-		e.status, COALESCE(e.image_ref,''), COALESCE(e.image_id,''), e.container_name,
-		COALESCE(e.container_id,''), e.data_volume_name, e.home_volume_name, e.network_name,
-		COALESCE(e.runtime_user,''), COALESCE(e.runtime_uid,0), COALESCE(e.runtime_gid,0),
-		COALESCE(e.runtime_home,'')
+		project.id::text, project.name, COALESCE(project.remote_url,''), ''
 		FROM discord_forums f
-		JOIN discord_development_environments e ON e.id = f.development_environment_id
-		JOIN development_projects project ON project.id=f.development_project_id
+		JOIN worker_workspaces e ON e.id = f.workspace_id
+		JOIN workspace_projects project ON project.id=f.workspace_project_id
 		WHERE f.id = $1 AND f.binding_status = 'active'
-			AND project.availability_status = 'available' AND e.status = 'running'`, result.ForumID).
-		Scan(&development.EnvironmentID, &development.ForumID,
-			&development.WorkspaceStatus, &development.WorkspaceRelative,
-			&development.WorkspaceBranch, &development.WorkspaceKind, &projectID,
-			&development.Repository, &development.CloneURL,
-			&development.DefaultRef, &development.EnvironmentStatus,
-			&development.ImageRef, &development.ImageID, &development.ContainerName,
-			&development.ContainerID, &development.DataVolume, &development.HomeVolume,
-			&development.Network, &development.RuntimeUser, &development.RuntimeUID,
-			&development.RuntimeGID, &development.RuntimeHome)
+			AND project.availability_status = 'available'`, result.ForumID).
+		Scan(&projectContext.WorkspaceID, &projectContext.ForumID,
+			&projectContext.WorkspaceRelative,
+			&projectContext.WorkspaceBranch, &projectContext.WorkspaceKind, &projectID,
+			&projectContext.Repository, &projectContext.CloneURL,
+			&projectContext.DefaultRef)
 	if err != nil {
 		return nil, err
 	}
-	development.ProjectID = parseOptionalUUID(projectID)
-	result.Development = development
+	projectContext.ProjectID = parseOptionalUUID(projectID)
+	result.Project = projectContext
 	return result, nil
 }

@@ -16,7 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/database"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
-	"github.com/slovx2/tyrs-hand/internal/executionnode"
+	"github.com/slovx2/tyrs-hand/internal/workerregistry"
 	"github.com/stretchr/testify/require"
 )
 
@@ -24,7 +24,7 @@ func TestDiscordPersistencePermissionsAndRecovery(t *testing.T) {
 	db := postgresDatabase(t)
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))
-	manager := discordintegration.NewManager(db, nil, "tyrs-hand-development:test")
+	manager := discordintegration.NewManager(db, nil)
 	service := discordintegration.NewConversationService(db)
 	seed := seedDiscord(t, db)
 
@@ -388,32 +388,30 @@ func seedDiscord(t *testing.T, db *sql.DB) discordSeed {
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_guilds
 		(guild_id, name, enabled, community_enabled, bot_user_id)
 		VALUES ($1, 'test', true, true, '100000000000000099') RETURNING guild_id`, seed.guildID).Scan(&seed.guildID))
-	nodes := executionnode.NewService(db)
+	nodes := workerregistry.NewService(db)
 	node, _, err := nodes.Create(ctx, "discord-test", []string{"discord"}, 2)
 	require.NoError(t, err)
-	require.NoError(t, nodes.SetDefaults(ctx, executionnode.Defaults{DiscordNodeID: &node.ID}))
-	var environmentID uuid.UUID
-	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_development_environments
-		(guild_id, owner_discord_user_id, status, image_ref, container_name,
-		 data_volume_name, home_volume_name, network_name, execution_node_id)
-		VALUES ($1, '1001', 'running', 'tyrs-hand-development:test', 'dev-owner', 'dev-owner-data',
-		'dev-owner-home', 'dev-owner-net', $2) RETURNING id`, seed.guildID, node.ID).
-		Scan(&environmentID))
+	require.NoError(t, nodes.SetDefaults(ctx, workerregistry.Defaults{DiscordWorkerID: &node.ID}))
+	var workspaceID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO worker_workspaces
+		(guild_id, owner_discord_user_id, worker_id)
+		VALUES ($1, '1001', $2) RETURNING id`, seed.guildID, node.ID).
+		Scan(&workspaceID))
 	var projectID uuid.UUID
-	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO development_projects
-		(environment_id, relative_path, name, project_kind, availability_status)
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO workspace_projects
+		(workspace_id, relative_path, name, project_kind, availability_status)
 		VALUES ($1, 'workspaces/atlas', 'atlas', 'git', 'available') RETURNING id`,
-		environmentID).Scan(&projectID))
+		workspaceID).Scan(&projectID))
 	var resourceID, forumID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_resources
 		(guild_id, resource_key, discord_id, kind, name, managed_marker)
-		VALUES ($1, 'forum.development.owner', $2, 'forum', 'codex-owner', '[tyrs-hand:forum.development.owner]') RETURNING id`,
+		VALUES ($1, 'forum.workspace.owner', $2, 'forum', 'codex-owner', '[tyrs-hand:forum.workspace.owner]') RETURNING id`,
 		seed.guildID, seed.forumChannelID).Scan(&resourceID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_forums
 		(guild_id, resource_id, forum_type, owner_discord_user_id,
-		 development_project_id, development_environment_id)
-		VALUES ($1, $2, 'development', '1001', $3, $4) RETURNING id`, seed.guildID, resourceID,
-		projectID, environmentID).Scan(&forumID))
+		 workspace_project_id, workspace_id)
+		VALUES ($1, $2, 'workspace', '1001', $3, $4) RETURNING id`, seed.guildID, resourceID,
+		projectID, workspaceID).Scan(&forumID))
 	for _, userID := range []string{"1001", "1002", "1003"} {
 		_, err := db.ExecContext(ctx, `INSERT INTO discord_members
 			(guild_id, discord_user_id, username, display_name) VALUES ($1, $2, $2, $2)`, seed.guildID, userID)

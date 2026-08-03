@@ -18,7 +18,7 @@ export default function ProjectSessionsScreen() {
   const allSessions = useAppStore((state) => state.sessions);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const project = bootstrap?.projects.find((item) => item.id === id);
-  const sessions = useMemo(() => allSessions.filter((item) => item.developmentProjectId === id),
+  const sessions = useMemo(() => allSessions.filter((item) => item.projectId === id),
     [allSessions, id]);
   const select = (sessionId: string) => {
     if (tablet) setSelectedId(sessionId);

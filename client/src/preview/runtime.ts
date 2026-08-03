@@ -58,9 +58,9 @@ function createSession(serverId: string, body: Record<string, unknown>): Session
   const timestamp = now();
   const item: Session = {
     id: nextId(),
-    developmentEnvironmentId: value.bootstrap.projects.find((project) => project.id === body.projectId)
-      ?.environmentId ?? value.bootstrap.projects[0]!.environmentId,
-    developmentProjectId: String(body.projectId ?? value.bootstrap.projects[0]!.id),
+    workspaceId: value.bootstrap.projects.find((project) => project.id === body.projectId)
+      ?.workspaceId ?? value.bootstrap.projects[0]!.workspaceId,
+    projectId: String(body.projectId ?? value.bootstrap.projects[0]!.id),
     agentProfileId: incoming.agentProfileId,
     title: String(initial?.text ?? "新的预览任务").slice(0, 28),
     lifecycleState: "active", historyCompleteness: "complete", model: incoming.model,
@@ -139,7 +139,7 @@ export async function requestPreview(serverId: string, path: string, init?: Requ
     const lifecycle = url.searchParams.get("lifecycle");
     const projectId = url.searchParams.get("projectId");
     const sessions = value.sessions.filter((item) => (!lifecycle || item.lifecycleState === lifecycle)
-      && (!projectId || item.developmentProjectId === projectId));
+      && (!projectId || item.projectId === projectId));
     return { sessions: structuredClone(sessions), nextCursor: "" };
   }
   if (url.pathname === "/sessions" && method === "POST") {

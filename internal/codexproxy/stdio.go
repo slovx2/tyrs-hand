@@ -10,12 +10,12 @@ import (
 )
 
 func ServeStdio(ctx context.Context, socketPath string) error {
-	return Relay(ctx, socketPath, os.Stdin, os.Stdout)
+	return Forward(ctx, socketPath, os.Stdin, os.Stdout)
 }
 
-func Relay(ctx context.Context, socketPath string, input io.Reader, output io.Writer) error {
+func Forward(ctx context.Context, socketPath string, input io.Reader, output io.Writer) error {
 	if socketPath == "" {
-		return errors.New("缺少 Codex Desktop Proxy Relay Socket")
+		return errors.New("缺少 Codex Desktop Proxy Socket")
 	}
 	connection, err := (&net.Dialer{}).DialContext(ctx, "unix", socketPath)
 	if err != nil {

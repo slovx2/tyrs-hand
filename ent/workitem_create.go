@@ -165,16 +165,16 @@ func (_c *WorkItemCreate) SetNillableHTMLURL(v *string) *WorkItemCreate {
 	return _c
 }
 
-// SetExecutionNodeID sets the "execution_node_id" field.
-func (_c *WorkItemCreate) SetExecutionNodeID(v uuid.UUID) *WorkItemCreate {
-	_c.mutation.SetExecutionNodeID(v)
+// SetWorkerID sets the "worker_id" field.
+func (_c *WorkItemCreate) SetWorkerID(v uuid.UUID) *WorkItemCreate {
+	_c.mutation.SetWorkerID(v)
 	return _c
 }
 
-// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
-func (_c *WorkItemCreate) SetNillableExecutionNodeID(v *uuid.UUID) *WorkItemCreate {
+// SetNillableWorkerID sets the "worker_id" field if the given value is not nil.
+func (_c *WorkItemCreate) SetNillableWorkerID(v *uuid.UUID) *WorkItemCreate {
 	if v != nil {
-		_c.SetExecutionNodeID(*v)
+		_c.SetWorkerID(*v)
 	}
 	return _c
 }
@@ -405,9 +405,9 @@ func (_c *WorkItemCreate) createSpec() (*WorkItem, *sqlgraph.CreateSpec) {
 		_spec.SetField(workitem.FieldHTMLURL, field.TypeString, value)
 		_node.HTMLURL = &value
 	}
-	if value, ok := _c.mutation.ExecutionNodeID(); ok {
-		_spec.SetField(workitem.FieldExecutionNodeID, field.TypeUUID, value)
-		_node.ExecutionNodeID = &value
+	if value, ok := _c.mutation.WorkerID(); ok {
+		_spec.SetField(workitem.FieldWorkerID, field.TypeUUID, value)
+		_node.WorkerID = &value
 	}
 	if value, ok := _c.mutation.ClosedAt(); ok {
 		_spec.SetField(workitem.FieldClosedAt, field.TypeTime, value)

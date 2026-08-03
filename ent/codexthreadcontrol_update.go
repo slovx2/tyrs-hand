@@ -117,23 +117,23 @@ func (_u *CodexThreadControlUpdate) SetNillableAgentProfileID(v *uuid.UUID) *Cod
 	return _u
 }
 
-// SetExecutionNodeID sets the "execution_node_id" field.
-func (_u *CodexThreadControlUpdate) SetExecutionNodeID(v uuid.UUID) *CodexThreadControlUpdate {
-	_u.mutation.SetExecutionNodeID(v)
+// SetWorkerID sets the "worker_id" field.
+func (_u *CodexThreadControlUpdate) SetWorkerID(v uuid.UUID) *CodexThreadControlUpdate {
+	_u.mutation.SetWorkerID(v)
 	return _u
 }
 
-// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
-func (_u *CodexThreadControlUpdate) SetNillableExecutionNodeID(v *uuid.UUID) *CodexThreadControlUpdate {
+// SetNillableWorkerID sets the "worker_id" field if the given value is not nil.
+func (_u *CodexThreadControlUpdate) SetNillableWorkerID(v *uuid.UUID) *CodexThreadControlUpdate {
 	if v != nil {
-		_u.SetExecutionNodeID(*v)
+		_u.SetWorkerID(*v)
 	}
 	return _u
 }
 
-// ClearExecutionNodeID clears the value of the "execution_node_id" field.
-func (_u *CodexThreadControlUpdate) ClearExecutionNodeID() *CodexThreadControlUpdate {
-	_u.mutation.ClearExecutionNodeID()
+// ClearWorkerID clears the value of the "worker_id" field.
+func (_u *CodexThreadControlUpdate) ClearWorkerID() *CodexThreadControlUpdate {
+	_u.mutation.ClearWorkerID()
 	return _u
 }
 
@@ -154,26 +154,6 @@ func (_u *CodexThreadControlUpdate) SetNillableExternalThreadID(v *string) *Code
 // ClearExternalThreadID clears the value of the "external_thread_id" field.
 func (_u *CodexThreadControlUpdate) ClearExternalThreadID() *CodexThreadControlUpdate {
 	_u.mutation.ClearExternalThreadID()
-	return _u
-}
-
-// SetCodexHomeKey sets the "codex_home_key" field.
-func (_u *CodexThreadControlUpdate) SetCodexHomeKey(v string) *CodexThreadControlUpdate {
-	_u.mutation.SetCodexHomeKey(v)
-	return _u
-}
-
-// SetNillableCodexHomeKey sets the "codex_home_key" field if the given value is not nil.
-func (_u *CodexThreadControlUpdate) SetNillableCodexHomeKey(v *string) *CodexThreadControlUpdate {
-	if v != nil {
-		_u.SetCodexHomeKey(*v)
-	}
-	return _u
-}
-
-// ClearCodexHomeKey clears the value of the "codex_home_key" field.
-func (_u *CodexThreadControlUpdate) ClearCodexHomeKey() *CodexThreadControlUpdate {
-	_u.mutation.ClearCodexHomeKey()
 	return _u
 }
 
@@ -428,23 +408,23 @@ func (_u *CodexThreadControlUpdate) ClearNextWakeupAt() *CodexThreadControlUpdat
 	return _u
 }
 
-// SetWorkerID sets the "worker_id" field.
-func (_u *CodexThreadControlUpdate) SetWorkerID(v string) *CodexThreadControlUpdate {
-	_u.mutation.SetWorkerID(v)
+// SetLeaseOwner sets the "lease_owner" field.
+func (_u *CodexThreadControlUpdate) SetLeaseOwner(v string) *CodexThreadControlUpdate {
+	_u.mutation.SetLeaseOwner(v)
 	return _u
 }
 
-// SetNillableWorkerID sets the "worker_id" field if the given value is not nil.
-func (_u *CodexThreadControlUpdate) SetNillableWorkerID(v *string) *CodexThreadControlUpdate {
+// SetNillableLeaseOwner sets the "lease_owner" field if the given value is not nil.
+func (_u *CodexThreadControlUpdate) SetNillableLeaseOwner(v *string) *CodexThreadControlUpdate {
 	if v != nil {
-		_u.SetWorkerID(*v)
+		_u.SetLeaseOwner(*v)
 	}
 	return _u
 }
 
-// ClearWorkerID clears the value of the "worker_id" field.
-func (_u *CodexThreadControlUpdate) ClearWorkerID() *CodexThreadControlUpdate {
-	_u.mutation.ClearWorkerID()
+// ClearLeaseOwner clears the value of the "lease_owner" field.
+func (_u *CodexThreadControlUpdate) ClearLeaseOwner() *CodexThreadControlUpdate {
+	_u.mutation.ClearLeaseOwner()
 	return _u
 }
 
@@ -602,23 +582,17 @@ func (_u *CodexThreadControlUpdate) sqlSave(ctx context.Context) (_node int, err
 	if value, ok := _u.mutation.AgentProfileID(); ok {
 		_spec.SetField(codexthreadcontrol.FieldAgentProfileID, field.TypeUUID, value)
 	}
-	if value, ok := _u.mutation.ExecutionNodeID(); ok {
-		_spec.SetField(codexthreadcontrol.FieldExecutionNodeID, field.TypeUUID, value)
+	if value, ok := _u.mutation.WorkerID(); ok {
+		_spec.SetField(codexthreadcontrol.FieldWorkerID, field.TypeUUID, value)
 	}
-	if _u.mutation.ExecutionNodeIDCleared() {
-		_spec.ClearField(codexthreadcontrol.FieldExecutionNodeID, field.TypeUUID)
+	if _u.mutation.WorkerIDCleared() {
+		_spec.ClearField(codexthreadcontrol.FieldWorkerID, field.TypeUUID)
 	}
 	if value, ok := _u.mutation.ExternalThreadID(); ok {
 		_spec.SetField(codexthreadcontrol.FieldExternalThreadID, field.TypeString, value)
 	}
 	if _u.mutation.ExternalThreadIDCleared() {
 		_spec.ClearField(codexthreadcontrol.FieldExternalThreadID, field.TypeString)
-	}
-	if value, ok := _u.mutation.CodexHomeKey(); ok {
-		_spec.SetField(codexthreadcontrol.FieldCodexHomeKey, field.TypeString, value)
-	}
-	if _u.mutation.CodexHomeKeyCleared() {
-		_spec.ClearField(codexthreadcontrol.FieldCodexHomeKey, field.TypeString)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(codexthreadcontrol.FieldStatus, field.TypeString, value)
@@ -692,11 +666,11 @@ func (_u *CodexThreadControlUpdate) sqlSave(ctx context.Context) (_node int, err
 	if _u.mutation.NextWakeupAtCleared() {
 		_spec.ClearField(codexthreadcontrol.FieldNextWakeupAt, field.TypeTime)
 	}
-	if value, ok := _u.mutation.WorkerID(); ok {
-		_spec.SetField(codexthreadcontrol.FieldWorkerID, field.TypeString, value)
+	if value, ok := _u.mutation.LeaseOwner(); ok {
+		_spec.SetField(codexthreadcontrol.FieldLeaseOwner, field.TypeString, value)
 	}
-	if _u.mutation.WorkerIDCleared() {
-		_spec.ClearField(codexthreadcontrol.FieldWorkerID, field.TypeString)
+	if _u.mutation.LeaseOwnerCleared() {
+		_spec.ClearField(codexthreadcontrol.FieldLeaseOwner, field.TypeString)
 	}
 	if value, ok := _u.mutation.LeaseToken(); ok {
 		_spec.SetField(codexthreadcontrol.FieldLeaseToken, field.TypeString, value)
@@ -830,23 +804,23 @@ func (_u *CodexThreadControlUpdateOne) SetNillableAgentProfileID(v *uuid.UUID) *
 	return _u
 }
 
-// SetExecutionNodeID sets the "execution_node_id" field.
-func (_u *CodexThreadControlUpdateOne) SetExecutionNodeID(v uuid.UUID) *CodexThreadControlUpdateOne {
-	_u.mutation.SetExecutionNodeID(v)
+// SetWorkerID sets the "worker_id" field.
+func (_u *CodexThreadControlUpdateOne) SetWorkerID(v uuid.UUID) *CodexThreadControlUpdateOne {
+	_u.mutation.SetWorkerID(v)
 	return _u
 }
 
-// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
-func (_u *CodexThreadControlUpdateOne) SetNillableExecutionNodeID(v *uuid.UUID) *CodexThreadControlUpdateOne {
+// SetNillableWorkerID sets the "worker_id" field if the given value is not nil.
+func (_u *CodexThreadControlUpdateOne) SetNillableWorkerID(v *uuid.UUID) *CodexThreadControlUpdateOne {
 	if v != nil {
-		_u.SetExecutionNodeID(*v)
+		_u.SetWorkerID(*v)
 	}
 	return _u
 }
 
-// ClearExecutionNodeID clears the value of the "execution_node_id" field.
-func (_u *CodexThreadControlUpdateOne) ClearExecutionNodeID() *CodexThreadControlUpdateOne {
-	_u.mutation.ClearExecutionNodeID()
+// ClearWorkerID clears the value of the "worker_id" field.
+func (_u *CodexThreadControlUpdateOne) ClearWorkerID() *CodexThreadControlUpdateOne {
+	_u.mutation.ClearWorkerID()
 	return _u
 }
 
@@ -867,26 +841,6 @@ func (_u *CodexThreadControlUpdateOne) SetNillableExternalThreadID(v *string) *C
 // ClearExternalThreadID clears the value of the "external_thread_id" field.
 func (_u *CodexThreadControlUpdateOne) ClearExternalThreadID() *CodexThreadControlUpdateOne {
 	_u.mutation.ClearExternalThreadID()
-	return _u
-}
-
-// SetCodexHomeKey sets the "codex_home_key" field.
-func (_u *CodexThreadControlUpdateOne) SetCodexHomeKey(v string) *CodexThreadControlUpdateOne {
-	_u.mutation.SetCodexHomeKey(v)
-	return _u
-}
-
-// SetNillableCodexHomeKey sets the "codex_home_key" field if the given value is not nil.
-func (_u *CodexThreadControlUpdateOne) SetNillableCodexHomeKey(v *string) *CodexThreadControlUpdateOne {
-	if v != nil {
-		_u.SetCodexHomeKey(*v)
-	}
-	return _u
-}
-
-// ClearCodexHomeKey clears the value of the "codex_home_key" field.
-func (_u *CodexThreadControlUpdateOne) ClearCodexHomeKey() *CodexThreadControlUpdateOne {
-	_u.mutation.ClearCodexHomeKey()
 	return _u
 }
 
@@ -1141,23 +1095,23 @@ func (_u *CodexThreadControlUpdateOne) ClearNextWakeupAt() *CodexThreadControlUp
 	return _u
 }
 
-// SetWorkerID sets the "worker_id" field.
-func (_u *CodexThreadControlUpdateOne) SetWorkerID(v string) *CodexThreadControlUpdateOne {
-	_u.mutation.SetWorkerID(v)
+// SetLeaseOwner sets the "lease_owner" field.
+func (_u *CodexThreadControlUpdateOne) SetLeaseOwner(v string) *CodexThreadControlUpdateOne {
+	_u.mutation.SetLeaseOwner(v)
 	return _u
 }
 
-// SetNillableWorkerID sets the "worker_id" field if the given value is not nil.
-func (_u *CodexThreadControlUpdateOne) SetNillableWorkerID(v *string) *CodexThreadControlUpdateOne {
+// SetNillableLeaseOwner sets the "lease_owner" field if the given value is not nil.
+func (_u *CodexThreadControlUpdateOne) SetNillableLeaseOwner(v *string) *CodexThreadControlUpdateOne {
 	if v != nil {
-		_u.SetWorkerID(*v)
+		_u.SetLeaseOwner(*v)
 	}
 	return _u
 }
 
-// ClearWorkerID clears the value of the "worker_id" field.
-func (_u *CodexThreadControlUpdateOne) ClearWorkerID() *CodexThreadControlUpdateOne {
-	_u.mutation.ClearWorkerID()
+// ClearLeaseOwner clears the value of the "lease_owner" field.
+func (_u *CodexThreadControlUpdateOne) ClearLeaseOwner() *CodexThreadControlUpdateOne {
+	_u.mutation.ClearLeaseOwner()
 	return _u
 }
 
@@ -1345,23 +1299,17 @@ func (_u *CodexThreadControlUpdateOne) sqlSave(ctx context.Context) (_node *Code
 	if value, ok := _u.mutation.AgentProfileID(); ok {
 		_spec.SetField(codexthreadcontrol.FieldAgentProfileID, field.TypeUUID, value)
 	}
-	if value, ok := _u.mutation.ExecutionNodeID(); ok {
-		_spec.SetField(codexthreadcontrol.FieldExecutionNodeID, field.TypeUUID, value)
+	if value, ok := _u.mutation.WorkerID(); ok {
+		_spec.SetField(codexthreadcontrol.FieldWorkerID, field.TypeUUID, value)
 	}
-	if _u.mutation.ExecutionNodeIDCleared() {
-		_spec.ClearField(codexthreadcontrol.FieldExecutionNodeID, field.TypeUUID)
+	if _u.mutation.WorkerIDCleared() {
+		_spec.ClearField(codexthreadcontrol.FieldWorkerID, field.TypeUUID)
 	}
 	if value, ok := _u.mutation.ExternalThreadID(); ok {
 		_spec.SetField(codexthreadcontrol.FieldExternalThreadID, field.TypeString, value)
 	}
 	if _u.mutation.ExternalThreadIDCleared() {
 		_spec.ClearField(codexthreadcontrol.FieldExternalThreadID, field.TypeString)
-	}
-	if value, ok := _u.mutation.CodexHomeKey(); ok {
-		_spec.SetField(codexthreadcontrol.FieldCodexHomeKey, field.TypeString, value)
-	}
-	if _u.mutation.CodexHomeKeyCleared() {
-		_spec.ClearField(codexthreadcontrol.FieldCodexHomeKey, field.TypeString)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(codexthreadcontrol.FieldStatus, field.TypeString, value)
@@ -1435,11 +1383,11 @@ func (_u *CodexThreadControlUpdateOne) sqlSave(ctx context.Context) (_node *Code
 	if _u.mutation.NextWakeupAtCleared() {
 		_spec.ClearField(codexthreadcontrol.FieldNextWakeupAt, field.TypeTime)
 	}
-	if value, ok := _u.mutation.WorkerID(); ok {
-		_spec.SetField(codexthreadcontrol.FieldWorkerID, field.TypeString, value)
+	if value, ok := _u.mutation.LeaseOwner(); ok {
+		_spec.SetField(codexthreadcontrol.FieldLeaseOwner, field.TypeString, value)
 	}
-	if _u.mutation.WorkerIDCleared() {
-		_spec.ClearField(codexthreadcontrol.FieldWorkerID, field.TypeString)
+	if _u.mutation.LeaseOwnerCleared() {
+		_spec.ClearField(codexthreadcontrol.FieldLeaseOwner, field.TypeString)
 	}
 	if value, ok := _u.mutation.LeaseToken(); ok {
 		_spec.SetField(codexthreadcontrol.FieldLeaseToken, field.TypeString, value)

@@ -20,31 +20,31 @@ import (
 
 var remoteAttachmentName = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 
-func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *workerprotocol.Task,
+func (p *Processor) processRemoteDiscord(ctx context.Context, task *workerprotocol.Task,
 	commands <-chan workerprotocol.RunCommand,
 	report func(string, json.RawMessage),
 ) (workerprotocol.CompleteRequest, error) {
-	snapshot := task.Snapshot.Development
-	if snapshot == nil || snapshot.Development == nil {
-		return workerprotocol.CompleteRequest{}, errors.New("development session 任务缺少开发环境快照")
+	snapshot := task.Snapshot.Session
+	if snapshot == nil || snapshot.Project == nil {
+		return workerprotocol.CompleteRequest{}, errors.New("workspace session 任务缺少Workspace快照")
 	}
 	if p.hostRuntime == nil {
 		return workerprotocol.CompleteRequest{}, errors.New("宿主 Codex Runtime 尚未启动")
 	}
-	runtime, err := resolveHostDevelopmentRuntime(p.hostRuntime.WorkspaceRoot(),
-		p.hostRuntime.CodexHome(), snapshot.Development)
+	runtime, err := resolveHostWorkspaceRuntime(p.hostRuntime.WorkspaceRoot(),
+		p.hostRuntime.CodexHome(), snapshot.Project)
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
 	defer cleanupBrowserTask(p.cfg, task.Claimed.ID.String(), "worker")
-	p.reportHostDevelopmentState(ctx, task, runtime, nil)
-	defer p.reportHostDevelopmentState(context.Background(), task, runtime, nil)
+	p.reportHostWorkspaceProjectState(ctx, task, runtime, nil)
+	defer p.reportHostWorkspaceProjectState(context.Background(), task, runtime, nil)
 
 	attachments, err := p.prepareRemoteAttachments(ctx, task, runtime)
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
-	skills, err := resolveContainerSkills(runtime.Workspace, task.Claimed.Skills)
+	skills, err := resolveWorkspaceSkills(runtime.Workspace, task.Claimed.Skills)
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
@@ -52,8 +52,7 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	client := p.hostRuntime.Client()
 	codexRuntime := codex.NewRuntime(client)
 	settings := task.Snapshot.Runtime
-	developerInstructions := strings.TrimSpace(settings.GlobalAgents + "\n\n" +
-		discordintegration.MultiplayerDeveloperInstructions)
+	developerInstructions := strings.TrimSpace(discordintegration.MultiplayerDeveloperInstructions)
 	options := workerThreadOptions(ports.ThreadOptions{
 		CWD: runtime.Workspace, Model: settings.Model,
 		ReasoningEffort: settings.ReasoningEffort,
@@ -62,13 +61,12 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 		RuntimeConfig:   runtimeConfig,
 		DeveloperInstructions: browserDeveloperInstructions(p.cfg,
 			developerInstructions),
-		DynamicTools: withBrowserTools(p.cfg, developmentGitTools(snapshot.Development)...),
+		DynamicTools: withBrowserTools(p.cfg, workspaceGitTools(snapshot.Project)...),
 	})
 	if err := codexRuntime.ValidateSkills(ctx, runtime.Workspace, skills); err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
-	threadID, err := p.ensureRemoteThread(ctx, codexRuntime, task, options,
-		p.hostRuntime.CodexHome(), report)
+	threadID, err := p.ensureRemoteThread(ctx, codexRuntime, task, options, report)
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
@@ -97,7 +95,7 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 			return workerprotocol.CompleteRequest{Result: result}, nil
 		}
 	}
-	input := remoteDevelopmentTurnInput(snapshot, task.Snapshot.Discord, runtime, attachments, skills)
+	input := remoteWorkspaceTurnInput(snapshot, task.Snapshot.Discord, runtime, attachments, skills)
 	input.CollaborationMode = &ports.CollaborationMode{Mode: settings.CollaborationMode,
 		Model: settings.Model, ReasoningEffort: settings.ReasoningEffort}
 	turnID, err := codexRuntime.StartTurn(ctx, threadID, input)
@@ -119,36 +117,36 @@ func (p *RemoteProcessor) processRemoteDiscord(ctx context.Context, task *worker
 	return workerprotocol.CompleteRequest{Result: result}, nil
 }
 
-func resolveHostDevelopmentRuntime(workspaceRoot, codexHome string,
-	spec *workerprotocol.DevelopmentSpec,
-) (hostDevelopmentRuntime, error) {
+func resolveHostWorkspaceRuntime(workspaceRoot, codexHome string,
+	spec *workerprotocol.WorkspaceProjectContext,
+) (hostWorkspaceRuntime, error) {
 	clean := filepath.Clean(filepath.FromSlash(strings.TrimSpace(spec.WorkspaceRelative)))
 	parts := strings.Split(filepath.ToSlash(clean), "/")
 	if len(parts) != 2 || parts[0] != "workspaces" || parts[1] == "" || parts[1] == "." ||
 		parts[1] == ".." {
-		return hostDevelopmentRuntime{}, errors.New("宿主工作区必须是 workspaces/<name>")
+		return hostWorkspaceRuntime{}, errors.New("宿主工作区必须是 workspaces/<name>")
 	}
 	root, err := filepath.EvalSymlinks(workspaceRoot)
 	if err != nil {
-		return hostDevelopmentRuntime{}, fmt.Errorf("读取宿主工作区根目录: %w", err)
+		return hostWorkspaceRuntime{}, fmt.Errorf("读取宿主工作区根目录: %w", err)
 	}
 	workspace, err := filepath.EvalSymlinks(filepath.Join(root, parts[1]))
 	if err != nil {
-		return hostDevelopmentRuntime{}, fmt.Errorf("宿主工作区 %s 不存在: %w", parts[1], err)
+		return hostWorkspaceRuntime{}, fmt.Errorf("宿主工作区 %s 不存在: %w", parts[1], err)
 	}
 	relative, err := filepath.Rel(root, workspace)
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(os.PathSeparator)) {
-		return hostDevelopmentRuntime{}, errors.New("宿主工作区不能逃逸固定工作区根目录")
+		return hostWorkspaceRuntime{}, errors.New("宿主工作区不能逃逸固定工作区根目录")
 	}
 	info, err := os.Stat(workspace)
 	if err != nil || !info.IsDir() {
-		return hostDevelopmentRuntime{}, errors.New("宿主工作区不是目录")
+		return hostWorkspaceRuntime{}, errors.New("宿主工作区不是目录")
 	}
-	return hostDevelopmentRuntime{Workspace: workspace, CodexHome: codexHome,
+	return hostWorkspaceRuntime{Workspace: workspace, CodexHome: codexHome,
 		ProjectKind: spec.WorkspaceKind, RemoteURL: spec.CloneURL}, nil
 }
 
-func developmentGitTools(spec *workerprotocol.DevelopmentSpec) []ports.DynamicToolSpec {
+func workspaceGitTools(spec *workerprotocol.WorkspaceProjectContext) []ports.DynamicToolSpec {
 	if spec.WorkspaceKind != "git" {
 		return nil
 	}
@@ -159,11 +157,14 @@ func remoteDiscordEventReporter(report func(string, json.RawMessage)) func(strin
 	return func(eventType string, payload json.RawMessage) { report(eventType, payload) }
 }
 
-func (p *RemoteProcessor) reportHostDevelopmentState(ctx context.Context, task *workerprotocol.Task,
-	runtime hostDevelopmentRuntime, cause error,
+func (p *Processor) reportHostWorkspaceProjectState(ctx context.Context, task *workerprotocol.Task,
+	runtime hostWorkspaceRuntime, cause error,
 ) {
-	spec := *task.Snapshot.Development.Development
-	state := workerprotocol.DevelopmentState{DevelopmentSpec: spec}
+	spec := *task.Snapshot.Session.Project
+	state := workerprotocol.WorkspaceProjectState{
+		WorkspaceID: spec.WorkspaceID,
+		ProjectID:   spec.ProjectID,
+	}
 	if spec.WorkspaceKind == "git" {
 		status, statusErr := runHostGit(ctx, runtime.Workspace, "status", "--porcelain=v1")
 		head, headErr := runHostGit(ctx, runtime.Workspace, "rev-parse", "HEAD")
@@ -179,7 +180,7 @@ func (p *RemoteProcessor) reportHostDevelopmentState(ctx context.Context, task *
 	}
 	requestCtx, cancel := context.WithTimeout(ctx, p.cfg.ControlTimeout)
 	defer cancel()
-	if err := p.client.DevelopmentState(requestCtx, task, state); err != nil {
+	if err := p.client.WorkspaceProjectState(requestCtx, task, state); err != nil {
 		p.logger.Warn("回传 Discord 宿主工作区状态失败", zap.Error(err))
 	}
 }

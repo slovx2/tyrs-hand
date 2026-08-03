@@ -10,11 +10,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const (
-	ScopeRepository   = "repository"
-	ScopeDiscordForum = "discord_forum"
-)
-
 type Preferences struct {
 	Model           *string `json:"model"`
 	ReasoningEffort *string `json:"reasoningEffort"`
@@ -33,15 +28,6 @@ type RepositorySettings struct {
 	Name      string               `json:"name"`
 	Settings  Preferences          `json:"settings"`
 	Effective EffectivePreferences `json:"effective"`
-	Forums    []ForumSettings      `json:"forums"`
-}
-
-type ForumSettings struct {
-	ID                 uuid.UUID            `json:"id"`
-	Name               string               `json:"name"`
-	OwnerDiscordUserID string               `json:"ownerDiscordUserId"`
-	Settings           Preferences          `json:"settings"`
-	Effective          EffectivePreferences `json:"effective"`
 }
 
 type Service struct{ db *sql.DB }
@@ -60,15 +46,11 @@ func (s *Service) List(ctx context.Context) ([]RepositorySettings, error) {
 		if err := rows.Scan(&item.ID, &item.Owner, &item.Name); err != nil {
 			return nil, err
 		}
-		item.Settings, err = s.load(ctx, ScopeRepository, item.ID)
+		item.Settings, err = s.load(ctx, item.ID)
 		if err != nil {
 			return nil, err
 		}
-		item.Effective, err = s.Resolve(ctx, item.ID, uuid.Nil, uuid.Nil)
-		if err != nil {
-			return nil, err
-		}
-		item.Forums, err = s.forums(ctx, item.ID)
+		item.Effective, err = s.Resolve(ctx, item.ID, uuid.Nil)
 		if err != nil {
 			return nil, err
 		}
@@ -77,78 +59,36 @@ func (s *Service) List(ctx context.Context) ([]RepositorySettings, error) {
 	return result, rows.Err()
 }
 
-func (s *Service) forums(ctx context.Context, repositoryID uuid.UUID) ([]ForumSettings, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT f.id, r.name, f.owner_discord_user_id
-		FROM discord_forums f JOIN discord_resources r ON r.id = f.resource_id
-		WHERE f.repository_id = $1 AND f.forum_type = 'development' ORDER BY r.name`, repositoryID)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	result := make([]ForumSettings, 0)
-	for rows.Next() {
-		var item ForumSettings
-		if err := rows.Scan(&item.ID, &item.Name, &item.OwnerDiscordUserID); err != nil {
-			return nil, err
-		}
-		item.Settings, err = s.load(ctx, ScopeDiscordForum, item.ID)
-		if err != nil {
-			return nil, err
-		}
-		item.Effective, err = s.Resolve(ctx, repositoryID, item.ID, uuid.Nil)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, item)
-	}
-	return result, rows.Err()
-}
-
-func (s *Service) Save(ctx context.Context, scope string, id uuid.UUID, value Preferences) error {
-	if err := validate(scope, value); err != nil {
+func (s *Service) Save(ctx context.Context, id uuid.UUID, value Preferences) error {
+	if err := validate(value); err != nil {
 		return err
 	}
 	var exists bool
 	query := `SELECT EXISTS(SELECT 1 FROM repositories WHERE id = $1)`
-	if scope == ScopeDiscordForum {
-		query = `SELECT EXISTS(SELECT 1 FROM discord_forums WHERE id = $1 AND forum_type = 'development')`
-	}
 	if err := s.db.QueryRowContext(ctx, query, id).Scan(&exists); err != nil {
 		return err
 	}
 	if !exists {
 		return sql.ErrNoRows
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO codex_runtime_settings
-		(scope_type, scope_id, model, reasoning_effort, service_tier)
-		VALUES ($1,$2,$3,$4,$5) ON CONFLICT(scope_type, scope_id) DO UPDATE SET
+	_, err := s.db.ExecContext(ctx, `INSERT INTO github_agent_repository_overrides
+		(repository_id, model, reasoning_effort, service_tier)
+		VALUES ($1,$2,$3,$4) ON CONFLICT(repository_id) DO UPDATE SET
 		model = EXCLUDED.model, reasoning_effort = EXCLUDED.reasoning_effort,
-		service_tier = EXCLUDED.service_tier, updated_at = now()`, scope, id,
+		service_tier = EXCLUDED.service_tier, updated_at = now()`, id,
 		nullable(value.Model), nullable(value.ReasoningEffort), nullable(value.ServiceTier))
 	return err
 }
 
-func (s *Service) Resolve(ctx context.Context, repositoryID, forumID, profileID uuid.UUID) (EffectivePreferences, error) {
+func (s *Service) Resolve(ctx context.Context, repositoryID, profileID uuid.UUID) (EffectivePreferences, error) {
 	result := EffectivePreferences{ServiceTier: "standard"}
-	provider, err := s.providerDefaults(ctx)
-	if err != nil {
-		return result, err
-	}
-	apply(&result, provider)
 	profile, err := s.profileDefaults(ctx, profileID)
 	if err != nil {
 		return result, err
 	}
 	apply(&result, profile)
 	if repositoryID != uuid.Nil {
-		value, loadErr := s.load(ctx, ScopeRepository, repositoryID)
-		if loadErr != nil {
-			return result, loadErr
-		}
-		apply(&result, value)
-	}
-	if forumID != uuid.Nil {
-		value, loadErr := s.load(ctx, ScopeDiscordForum, forumID)
+		value, loadErr := s.load(ctx, repositoryID)
 		if loadErr != nil {
 			return result, loadErr
 		}
@@ -157,10 +97,10 @@ func (s *Service) Resolve(ctx context.Context, repositoryID, forumID, profileID 
 	return result, nil
 }
 
-func (s *Service) load(ctx context.Context, scope string, id uuid.UUID) (Preferences, error) {
+func (s *Service) load(ctx context.Context, id uuid.UUID) (Preferences, error) {
 	var model, effort, tier sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT model, reasoning_effort, service_tier
-		FROM codex_runtime_settings WHERE scope_type = $1 AND scope_id = $2`, scope, id).
+		FROM github_agent_repository_overrides WHERE repository_id = $1`, id).
 		Scan(&model, &effort, &tier)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Preferences{}, nil
@@ -180,20 +120,6 @@ func (s *Service) profileDefaults(ctx context.Context, profileID uuid.UUID) (Pre
 		args = append(args, profileID)
 	}
 	err := s.db.QueryRowContext(ctx, query, args...).Scan(&model, &effort, &tier)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Preferences{}, nil
-	}
-	if err != nil {
-		return Preferences{}, err
-	}
-	return Preferences{Model: pointer(model), ReasoningEffort: normalizedEffort(effort), ServiceTier: normalizedTier(tier)}, nil
-}
-
-func (s *Service) providerDefaults(ctx context.Context) (Preferences, error) {
-	var model, effort, tier sql.NullString
-	err := s.db.QueryRowContext(ctx, `SELECT NULLIF(value->>'model',''), NULLIF(value->>'reasoningEffort',''),
-		NULLIF(value->>'serviceTier','') FROM platform_settings WHERE setting_key = 'agent.provider'`).
-		Scan(&model, &effort, &tier)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Preferences{}, nil
 	}
@@ -239,7 +165,7 @@ func AppliedServiceTier(value string) (string, bool) {
 }
 
 func ValidatePreferences(value Preferences) error {
-	return validate(ScopeRepository, value)
+	return validate(value)
 }
 
 func apply(target *EffectivePreferences, value Preferences) {
@@ -254,10 +180,7 @@ func apply(target *EffectivePreferences, value Preferences) {
 	}
 }
 
-func validate(scope string, value Preferences) error {
-	if scope != ScopeRepository && scope != ScopeDiscordForum {
-		return errors.New("未知 Codex 设置范围")
-	}
+func validate(value Preferences) error {
 	if value.Model != nil {
 		text := strings.TrimSpace(*value.Model)
 		if text == "" || len(text) > 128 {

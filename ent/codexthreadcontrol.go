@@ -28,12 +28,10 @@ type CodexThreadControl struct {
 	RepositoryID *uuid.UUID `json:"repository_id,omitempty"`
 	// AgentProfileID holds the value of the "agent_profile_id" field.
 	AgentProfileID uuid.UUID `json:"agent_profile_id,omitempty"`
-	// ExecutionNodeID holds the value of the "execution_node_id" field.
-	ExecutionNodeID *uuid.UUID `json:"execution_node_id,omitempty"`
+	// WorkerID holds the value of the "worker_id" field.
+	WorkerID *uuid.UUID `json:"worker_id,omitempty"`
 	// ExternalThreadID holds the value of the "external_thread_id" field.
 	ExternalThreadID *string `json:"external_thread_id,omitempty"`
-	// CodexHomeKey holds the value of the "codex_home_key" field.
-	CodexHomeKey *string `json:"codex_home_key,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
 	// CollaborationMode holds the value of the "collaboration_mode" field.
@@ -60,8 +58,8 @@ type CodexThreadControl struct {
 	LastReconciledAt *time.Time `json:"last_reconciled_at,omitempty"`
 	// NextWakeupAt holds the value of the "next_wakeup_at" field.
 	NextWakeupAt *time.Time `json:"next_wakeup_at,omitempty"`
-	// WorkerID holds the value of the "worker_id" field.
-	WorkerID *string `json:"worker_id,omitempty"`
+	// LeaseOwner holds the value of the "lease_owner" field.
+	LeaseOwner *string `json:"lease_owner,omitempty"`
 	// LeaseToken holds the value of the "lease_token" field.
 	LeaseToken *string `json:"-"`
 	// LastErrorCode holds the value of the "last_error_code" field.
@@ -80,11 +78,11 @@ func (*CodexThreadControl) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case codexthreadcontrol.FieldWorkItemID, codexthreadcontrol.FieldDiscordConversationID, codexthreadcontrol.FieldRepositoryID, codexthreadcontrol.FieldExecutionNodeID, codexthreadcontrol.FieldActiveIntentID:
+		case codexthreadcontrol.FieldWorkItemID, codexthreadcontrol.FieldDiscordConversationID, codexthreadcontrol.FieldRepositoryID, codexthreadcontrol.FieldWorkerID, codexthreadcontrol.FieldActiveIntentID:
 			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		case codexthreadcontrol.FieldCollaborationModeRevision, codexthreadcontrol.FieldNextSequenceNo, codexthreadcontrol.FieldLeaseEpoch:
 			values[i] = new(sql.NullInt64)
-		case codexthreadcontrol.FieldSourceType, codexthreadcontrol.FieldExternalThreadID, codexthreadcontrol.FieldCodexHomeKey, codexthreadcontrol.FieldStatus, codexthreadcontrol.FieldCollaborationMode, codexthreadcontrol.FieldRemoteStatus, codexthreadcontrol.FieldActiveCodexTurnID, codexthreadcontrol.FieldActiveClientID, codexthreadcontrol.FieldWorkerID, codexthreadcontrol.FieldLeaseToken, codexthreadcontrol.FieldLastErrorCode, codexthreadcontrol.FieldLastErrorMessage:
+		case codexthreadcontrol.FieldSourceType, codexthreadcontrol.FieldExternalThreadID, codexthreadcontrol.FieldStatus, codexthreadcontrol.FieldCollaborationMode, codexthreadcontrol.FieldRemoteStatus, codexthreadcontrol.FieldActiveCodexTurnID, codexthreadcontrol.FieldActiveClientID, codexthreadcontrol.FieldLeaseOwner, codexthreadcontrol.FieldLeaseToken, codexthreadcontrol.FieldLastErrorCode, codexthreadcontrol.FieldLastErrorMessage:
 			values[i] = new(sql.NullString)
 		case codexthreadcontrol.FieldLeaseExpiresAt, codexthreadcontrol.FieldHeartbeatAt, codexthreadcontrol.FieldLastReconciledAt, codexthreadcontrol.FieldNextWakeupAt, codexthreadcontrol.FieldCreatedAt, codexthreadcontrol.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -144,12 +142,12 @@ func (_m *CodexThreadControl) assignValues(columns []string, values []any) error
 			} else if value != nil {
 				_m.AgentProfileID = *value
 			}
-		case codexthreadcontrol.FieldExecutionNodeID:
+		case codexthreadcontrol.FieldWorkerID:
 			if value, ok := values[i].(*sql.NullScanner); !ok {
-				return fmt.Errorf("unexpected type %T for field execution_node_id", values[i])
+				return fmt.Errorf("unexpected type %T for field worker_id", values[i])
 			} else if value.Valid {
-				_m.ExecutionNodeID = new(uuid.UUID)
-				*_m.ExecutionNodeID = *value.S.(*uuid.UUID)
+				_m.WorkerID = new(uuid.UUID)
+				*_m.WorkerID = *value.S.(*uuid.UUID)
 			}
 		case codexthreadcontrol.FieldExternalThreadID:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -157,13 +155,6 @@ func (_m *CodexThreadControl) assignValues(columns []string, values []any) error
 			} else if value.Valid {
 				_m.ExternalThreadID = new(string)
 				*_m.ExternalThreadID = value.String
-			}
-		case codexthreadcontrol.FieldCodexHomeKey:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field codex_home_key", values[i])
-			} else if value.Valid {
-				_m.CodexHomeKey = new(string)
-				*_m.CodexHomeKey = value.String
 			}
 		case codexthreadcontrol.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -251,12 +242,12 @@ func (_m *CodexThreadControl) assignValues(columns []string, values []any) error
 				_m.NextWakeupAt = new(time.Time)
 				*_m.NextWakeupAt = value.Time
 			}
-		case codexthreadcontrol.FieldWorkerID:
+		case codexthreadcontrol.FieldLeaseOwner:
 			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field worker_id", values[i])
+				return fmt.Errorf("unexpected type %T for field lease_owner", values[i])
 			} else if value.Valid {
-				_m.WorkerID = new(string)
-				*_m.WorkerID = value.String
+				_m.LeaseOwner = new(string)
+				*_m.LeaseOwner = value.String
 			}
 		case codexthreadcontrol.FieldLeaseToken:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -348,18 +339,13 @@ func (_m *CodexThreadControl) String() string {
 	builder.WriteString("agent_profile_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AgentProfileID))
 	builder.WriteString(", ")
-	if v := _m.ExecutionNodeID; v != nil {
-		builder.WriteString("execution_node_id=")
+	if v := _m.WorkerID; v != nil {
+		builder.WriteString("worker_id=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
 	if v := _m.ExternalThreadID; v != nil {
 		builder.WriteString("external_thread_id=")
-		builder.WriteString(*v)
-	}
-	builder.WriteString(", ")
-	if v := _m.CodexHomeKey; v != nil {
-		builder.WriteString("codex_home_key=")
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
@@ -418,8 +404,8 @@ func (_m *CodexThreadControl) String() string {
 		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteString(", ")
-	if v := _m.WorkerID; v != nil {
-		builder.WriteString("worker_id=")
+	if v := _m.LeaseOwner; v != nil {
+		builder.WriteString("lease_owner=")
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")

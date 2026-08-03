@@ -80,19 +80,14 @@ func AgentProfileID(v uuid.UUID) predicate.CodexThreadControl {
 	return predicate.CodexThreadControl(sql.FieldEQ(FieldAgentProfileID, v))
 }
 
-// ExecutionNodeID applies equality check predicate on the "execution_node_id" field. It's identical to ExecutionNodeIDEQ.
-func ExecutionNodeID(v uuid.UUID) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldEQ(FieldExecutionNodeID, v))
+// WorkerID applies equality check predicate on the "worker_id" field. It's identical to WorkerIDEQ.
+func WorkerID(v uuid.UUID) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldEQ(FieldWorkerID, v))
 }
 
 // ExternalThreadID applies equality check predicate on the "external_thread_id" field. It's identical to ExternalThreadIDEQ.
 func ExternalThreadID(v string) predicate.CodexThreadControl {
 	return predicate.CodexThreadControl(sql.FieldEQ(FieldExternalThreadID, v))
-}
-
-// CodexHomeKey applies equality check predicate on the "codex_home_key" field. It's identical to CodexHomeKeyEQ.
-func CodexHomeKey(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldEQ(FieldCodexHomeKey, v))
 }
 
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
@@ -160,9 +155,9 @@ func NextWakeupAt(v time.Time) predicate.CodexThreadControl {
 	return predicate.CodexThreadControl(sql.FieldEQ(FieldNextWakeupAt, v))
 }
 
-// WorkerID applies equality check predicate on the "worker_id" field. It's identical to WorkerIDEQ.
-func WorkerID(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldEQ(FieldWorkerID, v))
+// LeaseOwner applies equality check predicate on the "lease_owner" field. It's identical to LeaseOwnerEQ.
+func LeaseOwner(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldEQ(FieldLeaseOwner, v))
 }
 
 // LeaseToken applies equality check predicate on the "lease_token" field. It's identical to LeaseTokenEQ.
@@ -445,54 +440,54 @@ func AgentProfileIDLTE(v uuid.UUID) predicate.CodexThreadControl {
 	return predicate.CodexThreadControl(sql.FieldLTE(FieldAgentProfileID, v))
 }
 
-// ExecutionNodeIDEQ applies the EQ predicate on the "execution_node_id" field.
-func ExecutionNodeIDEQ(v uuid.UUID) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldEQ(FieldExecutionNodeID, v))
+// WorkerIDEQ applies the EQ predicate on the "worker_id" field.
+func WorkerIDEQ(v uuid.UUID) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldEQ(FieldWorkerID, v))
 }
 
-// ExecutionNodeIDNEQ applies the NEQ predicate on the "execution_node_id" field.
-func ExecutionNodeIDNEQ(v uuid.UUID) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldNEQ(FieldExecutionNodeID, v))
+// WorkerIDNEQ applies the NEQ predicate on the "worker_id" field.
+func WorkerIDNEQ(v uuid.UUID) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldNEQ(FieldWorkerID, v))
 }
 
-// ExecutionNodeIDIn applies the In predicate on the "execution_node_id" field.
-func ExecutionNodeIDIn(vs ...uuid.UUID) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldIn(FieldExecutionNodeID, vs...))
+// WorkerIDIn applies the In predicate on the "worker_id" field.
+func WorkerIDIn(vs ...uuid.UUID) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldIn(FieldWorkerID, vs...))
 }
 
-// ExecutionNodeIDNotIn applies the NotIn predicate on the "execution_node_id" field.
-func ExecutionNodeIDNotIn(vs ...uuid.UUID) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldNotIn(FieldExecutionNodeID, vs...))
+// WorkerIDNotIn applies the NotIn predicate on the "worker_id" field.
+func WorkerIDNotIn(vs ...uuid.UUID) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldNotIn(FieldWorkerID, vs...))
 }
 
-// ExecutionNodeIDGT applies the GT predicate on the "execution_node_id" field.
-func ExecutionNodeIDGT(v uuid.UUID) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldGT(FieldExecutionNodeID, v))
+// WorkerIDGT applies the GT predicate on the "worker_id" field.
+func WorkerIDGT(v uuid.UUID) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldGT(FieldWorkerID, v))
 }
 
-// ExecutionNodeIDGTE applies the GTE predicate on the "execution_node_id" field.
-func ExecutionNodeIDGTE(v uuid.UUID) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldGTE(FieldExecutionNodeID, v))
+// WorkerIDGTE applies the GTE predicate on the "worker_id" field.
+func WorkerIDGTE(v uuid.UUID) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldGTE(FieldWorkerID, v))
 }
 
-// ExecutionNodeIDLT applies the LT predicate on the "execution_node_id" field.
-func ExecutionNodeIDLT(v uuid.UUID) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldLT(FieldExecutionNodeID, v))
+// WorkerIDLT applies the LT predicate on the "worker_id" field.
+func WorkerIDLT(v uuid.UUID) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldLT(FieldWorkerID, v))
 }
 
-// ExecutionNodeIDLTE applies the LTE predicate on the "execution_node_id" field.
-func ExecutionNodeIDLTE(v uuid.UUID) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldLTE(FieldExecutionNodeID, v))
+// WorkerIDLTE applies the LTE predicate on the "worker_id" field.
+func WorkerIDLTE(v uuid.UUID) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldLTE(FieldWorkerID, v))
 }
 
-// ExecutionNodeIDIsNil applies the IsNil predicate on the "execution_node_id" field.
-func ExecutionNodeIDIsNil() predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldIsNull(FieldExecutionNodeID))
+// WorkerIDIsNil applies the IsNil predicate on the "worker_id" field.
+func WorkerIDIsNil() predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldIsNull(FieldWorkerID))
 }
 
-// ExecutionNodeIDNotNil applies the NotNil predicate on the "execution_node_id" field.
-func ExecutionNodeIDNotNil() predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldNotNull(FieldExecutionNodeID))
+// WorkerIDNotNil applies the NotNil predicate on the "worker_id" field.
+func WorkerIDNotNil() predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldNotNull(FieldWorkerID))
 }
 
 // ExternalThreadIDEQ applies the EQ predicate on the "external_thread_id" field.
@@ -568,81 +563,6 @@ func ExternalThreadIDEqualFold(v string) predicate.CodexThreadControl {
 // ExternalThreadIDContainsFold applies the ContainsFold predicate on the "external_thread_id" field.
 func ExternalThreadIDContainsFold(v string) predicate.CodexThreadControl {
 	return predicate.CodexThreadControl(sql.FieldContainsFold(FieldExternalThreadID, v))
-}
-
-// CodexHomeKeyEQ applies the EQ predicate on the "codex_home_key" field.
-func CodexHomeKeyEQ(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldEQ(FieldCodexHomeKey, v))
-}
-
-// CodexHomeKeyNEQ applies the NEQ predicate on the "codex_home_key" field.
-func CodexHomeKeyNEQ(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldNEQ(FieldCodexHomeKey, v))
-}
-
-// CodexHomeKeyIn applies the In predicate on the "codex_home_key" field.
-func CodexHomeKeyIn(vs ...string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldIn(FieldCodexHomeKey, vs...))
-}
-
-// CodexHomeKeyNotIn applies the NotIn predicate on the "codex_home_key" field.
-func CodexHomeKeyNotIn(vs ...string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldNotIn(FieldCodexHomeKey, vs...))
-}
-
-// CodexHomeKeyGT applies the GT predicate on the "codex_home_key" field.
-func CodexHomeKeyGT(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldGT(FieldCodexHomeKey, v))
-}
-
-// CodexHomeKeyGTE applies the GTE predicate on the "codex_home_key" field.
-func CodexHomeKeyGTE(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldGTE(FieldCodexHomeKey, v))
-}
-
-// CodexHomeKeyLT applies the LT predicate on the "codex_home_key" field.
-func CodexHomeKeyLT(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldLT(FieldCodexHomeKey, v))
-}
-
-// CodexHomeKeyLTE applies the LTE predicate on the "codex_home_key" field.
-func CodexHomeKeyLTE(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldLTE(FieldCodexHomeKey, v))
-}
-
-// CodexHomeKeyContains applies the Contains predicate on the "codex_home_key" field.
-func CodexHomeKeyContains(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldContains(FieldCodexHomeKey, v))
-}
-
-// CodexHomeKeyHasPrefix applies the HasPrefix predicate on the "codex_home_key" field.
-func CodexHomeKeyHasPrefix(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldHasPrefix(FieldCodexHomeKey, v))
-}
-
-// CodexHomeKeyHasSuffix applies the HasSuffix predicate on the "codex_home_key" field.
-func CodexHomeKeyHasSuffix(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldHasSuffix(FieldCodexHomeKey, v))
-}
-
-// CodexHomeKeyIsNil applies the IsNil predicate on the "codex_home_key" field.
-func CodexHomeKeyIsNil() predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldIsNull(FieldCodexHomeKey))
-}
-
-// CodexHomeKeyNotNil applies the NotNil predicate on the "codex_home_key" field.
-func CodexHomeKeyNotNil() predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldNotNull(FieldCodexHomeKey))
-}
-
-// CodexHomeKeyEqualFold applies the EqualFold predicate on the "codex_home_key" field.
-func CodexHomeKeyEqualFold(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldEqualFold(FieldCodexHomeKey, v))
-}
-
-// CodexHomeKeyContainsFold applies the ContainsFold predicate on the "codex_home_key" field.
-func CodexHomeKeyContainsFold(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldContainsFold(FieldCodexHomeKey, v))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.
@@ -1370,79 +1290,79 @@ func NextWakeupAtNotNil() predicate.CodexThreadControl {
 	return predicate.CodexThreadControl(sql.FieldNotNull(FieldNextWakeupAt))
 }
 
-// WorkerIDEQ applies the EQ predicate on the "worker_id" field.
-func WorkerIDEQ(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldEQ(FieldWorkerID, v))
+// LeaseOwnerEQ applies the EQ predicate on the "lease_owner" field.
+func LeaseOwnerEQ(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldEQ(FieldLeaseOwner, v))
 }
 
-// WorkerIDNEQ applies the NEQ predicate on the "worker_id" field.
-func WorkerIDNEQ(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldNEQ(FieldWorkerID, v))
+// LeaseOwnerNEQ applies the NEQ predicate on the "lease_owner" field.
+func LeaseOwnerNEQ(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldNEQ(FieldLeaseOwner, v))
 }
 
-// WorkerIDIn applies the In predicate on the "worker_id" field.
-func WorkerIDIn(vs ...string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldIn(FieldWorkerID, vs...))
+// LeaseOwnerIn applies the In predicate on the "lease_owner" field.
+func LeaseOwnerIn(vs ...string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldIn(FieldLeaseOwner, vs...))
 }
 
-// WorkerIDNotIn applies the NotIn predicate on the "worker_id" field.
-func WorkerIDNotIn(vs ...string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldNotIn(FieldWorkerID, vs...))
+// LeaseOwnerNotIn applies the NotIn predicate on the "lease_owner" field.
+func LeaseOwnerNotIn(vs ...string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldNotIn(FieldLeaseOwner, vs...))
 }
 
-// WorkerIDGT applies the GT predicate on the "worker_id" field.
-func WorkerIDGT(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldGT(FieldWorkerID, v))
+// LeaseOwnerGT applies the GT predicate on the "lease_owner" field.
+func LeaseOwnerGT(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldGT(FieldLeaseOwner, v))
 }
 
-// WorkerIDGTE applies the GTE predicate on the "worker_id" field.
-func WorkerIDGTE(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldGTE(FieldWorkerID, v))
+// LeaseOwnerGTE applies the GTE predicate on the "lease_owner" field.
+func LeaseOwnerGTE(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldGTE(FieldLeaseOwner, v))
 }
 
-// WorkerIDLT applies the LT predicate on the "worker_id" field.
-func WorkerIDLT(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldLT(FieldWorkerID, v))
+// LeaseOwnerLT applies the LT predicate on the "lease_owner" field.
+func LeaseOwnerLT(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldLT(FieldLeaseOwner, v))
 }
 
-// WorkerIDLTE applies the LTE predicate on the "worker_id" field.
-func WorkerIDLTE(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldLTE(FieldWorkerID, v))
+// LeaseOwnerLTE applies the LTE predicate on the "lease_owner" field.
+func LeaseOwnerLTE(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldLTE(FieldLeaseOwner, v))
 }
 
-// WorkerIDContains applies the Contains predicate on the "worker_id" field.
-func WorkerIDContains(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldContains(FieldWorkerID, v))
+// LeaseOwnerContains applies the Contains predicate on the "lease_owner" field.
+func LeaseOwnerContains(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldContains(FieldLeaseOwner, v))
 }
 
-// WorkerIDHasPrefix applies the HasPrefix predicate on the "worker_id" field.
-func WorkerIDHasPrefix(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldHasPrefix(FieldWorkerID, v))
+// LeaseOwnerHasPrefix applies the HasPrefix predicate on the "lease_owner" field.
+func LeaseOwnerHasPrefix(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldHasPrefix(FieldLeaseOwner, v))
 }
 
-// WorkerIDHasSuffix applies the HasSuffix predicate on the "worker_id" field.
-func WorkerIDHasSuffix(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldHasSuffix(FieldWorkerID, v))
+// LeaseOwnerHasSuffix applies the HasSuffix predicate on the "lease_owner" field.
+func LeaseOwnerHasSuffix(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldHasSuffix(FieldLeaseOwner, v))
 }
 
-// WorkerIDIsNil applies the IsNil predicate on the "worker_id" field.
-func WorkerIDIsNil() predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldIsNull(FieldWorkerID))
+// LeaseOwnerIsNil applies the IsNil predicate on the "lease_owner" field.
+func LeaseOwnerIsNil() predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldIsNull(FieldLeaseOwner))
 }
 
-// WorkerIDNotNil applies the NotNil predicate on the "worker_id" field.
-func WorkerIDNotNil() predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldNotNull(FieldWorkerID))
+// LeaseOwnerNotNil applies the NotNil predicate on the "lease_owner" field.
+func LeaseOwnerNotNil() predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldNotNull(FieldLeaseOwner))
 }
 
-// WorkerIDEqualFold applies the EqualFold predicate on the "worker_id" field.
-func WorkerIDEqualFold(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldEqualFold(FieldWorkerID, v))
+// LeaseOwnerEqualFold applies the EqualFold predicate on the "lease_owner" field.
+func LeaseOwnerEqualFold(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldEqualFold(FieldLeaseOwner, v))
 }
 
-// WorkerIDContainsFold applies the ContainsFold predicate on the "worker_id" field.
-func WorkerIDContainsFold(v string) predicate.CodexThreadControl {
-	return predicate.CodexThreadControl(sql.FieldContainsFold(FieldWorkerID, v))
+// LeaseOwnerContainsFold applies the ContainsFold predicate on the "lease_owner" field.
+func LeaseOwnerContainsFold(v string) predicate.CodexThreadControl {
+	return predicate.CodexThreadControl(sql.FieldContainsFold(FieldLeaseOwner, v))
 }
 
 // LeaseTokenEQ applies the EQ predicate on the "lease_token" field.

@@ -40,7 +40,7 @@ func (d *Daemon) refreshTaskProjections(ctx context.Context, guildID string, rem
 		w.kind, w.external_number, w.title, repo.owner, repo.name, w.state, COALESCE(j.status, ''), w.closed_at,
 		COALESCE(p.thread_id, ''), COALESCE(p.starter_message_id, ''), COALESCE(p.last_state, ''),
 		COALESCE(p.archived, false)
-		FROM work_items w JOIN discord_forums f ON f.repository_id = w.repository_id AND f.forum_type = 'repository'
+		FROM work_items w JOIN discord_forums f ON f.repository_id = w.repository_id AND f.forum_type = 'github'
 		JOIN discord_resources dr ON dr.id = f.resource_id
 		JOIN repositories repo ON repo.id = w.repository_id
 		LEFT JOIN LATERAL (SELECT status FROM codex_turn_intents WHERE work_item_id = w.id

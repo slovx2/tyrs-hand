@@ -187,7 +187,7 @@ func (m *Manager) createInitializationTx(ctx context.Context, tx *sql.Tx,
 ) (uuid.UUID, error) {
 	var operationID uuid.UUID
 	err := tx.QueryRowContext(ctx, `INSERT INTO discord_initialization_operations
-		(guild_id, mode, requested_by, preflight, confirmation, development_project_id)
+		(guild_id, mode, requested_by, preflight, confirmation, workspace_project_id)
 		VALUES ($1, $2, $3, $4, NULLIF($5, ''), NULLIF($6::text,'')::uuid) RETURNING id`,
 		plan.Preflight.GuildID, plan.Preflight.Mode, administratorID, encodedPreflight,
 		confirmation, optionalUUID(projectID)).Scan(&operationID)

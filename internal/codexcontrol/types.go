@@ -10,8 +10,8 @@ import (
 const WakeupChannel = "tyrs-hand:codex-controls"
 
 const (
-	SourceGitHub      = "github_work_item"
-	SourceDevelopment = "development_session"
+	SourceGitHub    = "github_work_item"
+	SourceWorkspace = "workspace_session"
 )
 
 type IntentStatus string
@@ -74,7 +74,6 @@ type ClaimedControl struct {
 	LeaseEpoch        int64
 	LeaseExpiresAt    time.Time
 	ExternalThreadID  string
-	CodexHomeKey      string
 	Recovering        bool
 	CollaborationMode string
 }

@@ -167,7 +167,7 @@ func visibleConversationSummary(summary string) string {
 		"已接收消息，正在准备工作区。", "本轮处理完成。",
 		"本轮已由 Discord 用户主动停止。", "本轮已停止。", "已停止",
 		"本轮处理未完成。", "Codex Desktop 正在处理请求。",
-		"帖子已创建，消息正在进入长期开发环境队列。":
+		"帖子已创建，消息正在进入长期Workspace队列。":
 		return ""
 	}
 	return summary

@@ -21,8 +21,6 @@ import (
 	"github.com/slovx2/tyrs-hand/ent/codexthreadcontrol"
 	"github.com/slovx2/tyrs-hand/ent/codexturnintent"
 	"github.com/slovx2/tyrs-hand/ent/codexturnrun"
-	"github.com/slovx2/tyrs-hand/ent/executionnode"
-	"github.com/slovx2/tyrs-hand/ent/executionnodeenrollment"
 	"github.com/slovx2/tyrs-hand/ent/platformsetting"
 	"github.com/slovx2/tyrs-hand/ent/repocache"
 	"github.com/slovx2/tyrs-hand/ent/repository"
@@ -32,7 +30,8 @@ import (
 	"github.com/slovx2/tyrs-hand/ent/toolcall"
 	"github.com/slovx2/tyrs-hand/ent/triggerrule"
 	"github.com/slovx2/tyrs-hand/ent/webhookdelivery"
-	"github.com/slovx2/tyrs-hand/ent/workernode"
+	"github.com/slovx2/tyrs-hand/ent/worker"
+	"github.com/slovx2/tyrs-hand/ent/workerenrollment"
 	"github.com/slovx2/tyrs-hand/ent/workitem"
 	"github.com/slovx2/tyrs-hand/ent/worktree"
 )
@@ -54,10 +53,6 @@ type Client struct {
 	CodexTurnIntent *CodexTurnIntentClient
 	// CodexTurnRun is the client for interacting with the CodexTurnRun builders.
 	CodexTurnRun *CodexTurnRunClient
-	// ExecutionNode is the client for interacting with the ExecutionNode builders.
-	ExecutionNode *ExecutionNodeClient
-	// ExecutionNodeEnrollment is the client for interacting with the ExecutionNodeEnrollment builders.
-	ExecutionNodeEnrollment *ExecutionNodeEnrollmentClient
 	// PlatformSetting is the client for interacting with the PlatformSetting builders.
 	PlatformSetting *PlatformSettingClient
 	// RepoCache is the client for interacting with the RepoCache builders.
@@ -78,8 +73,10 @@ type Client struct {
 	WebhookDelivery *WebhookDeliveryClient
 	// WorkItem is the client for interacting with the WorkItem builders.
 	WorkItem *WorkItemClient
-	// WorkerNode is the client for interacting with the WorkerNode builders.
-	WorkerNode *WorkerNodeClient
+	// Worker is the client for interacting with the Worker builders.
+	Worker *WorkerClient
+	// WorkerEnrollment is the client for interacting with the WorkerEnrollment builders.
+	WorkerEnrollment *WorkerEnrollmentClient
 	// Worktree is the client for interacting with the Worktree builders.
 	Worktree *WorktreeClient
 }
@@ -99,8 +96,6 @@ func (c *Client) init() {
 	c.CodexThreadControl = NewCodexThreadControlClient(c.config)
 	c.CodexTurnIntent = NewCodexTurnIntentClient(c.config)
 	c.CodexTurnRun = NewCodexTurnRunClient(c.config)
-	c.ExecutionNode = NewExecutionNodeClient(c.config)
-	c.ExecutionNodeEnrollment = NewExecutionNodeEnrollmentClient(c.config)
 	c.PlatformSetting = NewPlatformSettingClient(c.config)
 	c.RepoCache = NewRepoCacheClient(c.config)
 	c.Repository = NewRepositoryClient(c.config)
@@ -111,7 +106,8 @@ func (c *Client) init() {
 	c.TriggerRule = NewTriggerRuleClient(c.config)
 	c.WebhookDelivery = NewWebhookDeliveryClient(c.config)
 	c.WorkItem = NewWorkItemClient(c.config)
-	c.WorkerNode = NewWorkerNodeClient(c.config)
+	c.Worker = NewWorkerClient(c.config)
+	c.WorkerEnrollment = NewWorkerEnrollmentClient(c.config)
 	c.Worktree = NewWorktreeClient(c.config)
 }
 
@@ -203,28 +199,27 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:                     ctx,
-		config:                  cfg,
-		Administrator:           NewAdministratorClient(cfg),
-		AgentProfile:            NewAgentProfileClient(cfg),
-		AuditLog:                NewAuditLogClient(cfg),
-		CodexThreadControl:      NewCodexThreadControlClient(cfg),
-		CodexTurnIntent:         NewCodexTurnIntentClient(cfg),
-		CodexTurnRun:            NewCodexTurnRunClient(cfg),
-		ExecutionNode:           NewExecutionNodeClient(cfg),
-		ExecutionNodeEnrollment: NewExecutionNodeEnrollmentClient(cfg),
-		PlatformSetting:         NewPlatformSettingClient(cfg),
-		RepoCache:               NewRepoCacheClient(cfg),
-		Repository:              NewRepositoryClient(cfg),
-		SCMInstallation:         NewSCMInstallationClient(cfg),
-		SSHCredential:           NewSSHCredentialClient(cfg),
-		SSHHost:                 NewSSHHostClient(cfg),
-		ToolCall:                NewToolCallClient(cfg),
-		TriggerRule:             NewTriggerRuleClient(cfg),
-		WebhookDelivery:         NewWebhookDeliveryClient(cfg),
-		WorkItem:                NewWorkItemClient(cfg),
-		WorkerNode:              NewWorkerNodeClient(cfg),
-		Worktree:                NewWorktreeClient(cfg),
+		ctx:                ctx,
+		config:             cfg,
+		Administrator:      NewAdministratorClient(cfg),
+		AgentProfile:       NewAgentProfileClient(cfg),
+		AuditLog:           NewAuditLogClient(cfg),
+		CodexThreadControl: NewCodexThreadControlClient(cfg),
+		CodexTurnIntent:    NewCodexTurnIntentClient(cfg),
+		CodexTurnRun:       NewCodexTurnRunClient(cfg),
+		PlatformSetting:    NewPlatformSettingClient(cfg),
+		RepoCache:          NewRepoCacheClient(cfg),
+		Repository:         NewRepositoryClient(cfg),
+		SCMInstallation:    NewSCMInstallationClient(cfg),
+		SSHCredential:      NewSSHCredentialClient(cfg),
+		SSHHost:            NewSSHHostClient(cfg),
+		ToolCall:           NewToolCallClient(cfg),
+		TriggerRule:        NewTriggerRuleClient(cfg),
+		WebhookDelivery:    NewWebhookDeliveryClient(cfg),
+		WorkItem:           NewWorkItemClient(cfg),
+		Worker:             NewWorkerClient(cfg),
+		WorkerEnrollment:   NewWorkerEnrollmentClient(cfg),
+		Worktree:           NewWorktreeClient(cfg),
 	}, nil
 }
 
@@ -242,28 +237,27 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:                     ctx,
-		config:                  cfg,
-		Administrator:           NewAdministratorClient(cfg),
-		AgentProfile:            NewAgentProfileClient(cfg),
-		AuditLog:                NewAuditLogClient(cfg),
-		CodexThreadControl:      NewCodexThreadControlClient(cfg),
-		CodexTurnIntent:         NewCodexTurnIntentClient(cfg),
-		CodexTurnRun:            NewCodexTurnRunClient(cfg),
-		ExecutionNode:           NewExecutionNodeClient(cfg),
-		ExecutionNodeEnrollment: NewExecutionNodeEnrollmentClient(cfg),
-		PlatformSetting:         NewPlatformSettingClient(cfg),
-		RepoCache:               NewRepoCacheClient(cfg),
-		Repository:              NewRepositoryClient(cfg),
-		SCMInstallation:         NewSCMInstallationClient(cfg),
-		SSHCredential:           NewSSHCredentialClient(cfg),
-		SSHHost:                 NewSSHHostClient(cfg),
-		ToolCall:                NewToolCallClient(cfg),
-		TriggerRule:             NewTriggerRuleClient(cfg),
-		WebhookDelivery:         NewWebhookDeliveryClient(cfg),
-		WorkItem:                NewWorkItemClient(cfg),
-		WorkerNode:              NewWorkerNodeClient(cfg),
-		Worktree:                NewWorktreeClient(cfg),
+		ctx:                ctx,
+		config:             cfg,
+		Administrator:      NewAdministratorClient(cfg),
+		AgentProfile:       NewAgentProfileClient(cfg),
+		AuditLog:           NewAuditLogClient(cfg),
+		CodexThreadControl: NewCodexThreadControlClient(cfg),
+		CodexTurnIntent:    NewCodexTurnIntentClient(cfg),
+		CodexTurnRun:       NewCodexTurnRunClient(cfg),
+		PlatformSetting:    NewPlatformSettingClient(cfg),
+		RepoCache:          NewRepoCacheClient(cfg),
+		Repository:         NewRepositoryClient(cfg),
+		SCMInstallation:    NewSCMInstallationClient(cfg),
+		SSHCredential:      NewSSHCredentialClient(cfg),
+		SSHHost:            NewSSHHostClient(cfg),
+		ToolCall:           NewToolCallClient(cfg),
+		TriggerRule:        NewTriggerRuleClient(cfg),
+		WebhookDelivery:    NewWebhookDeliveryClient(cfg),
+		WorkItem:           NewWorkItemClient(cfg),
+		Worker:             NewWorkerClient(cfg),
+		WorkerEnrollment:   NewWorkerEnrollmentClient(cfg),
+		Worktree:           NewWorktreeClient(cfg),
 	}, nil
 }
 
@@ -294,10 +288,10 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.Administrator, c.AgentProfile, c.AuditLog, c.CodexThreadControl,
-		c.CodexTurnIntent, c.CodexTurnRun, c.ExecutionNode, c.ExecutionNodeEnrollment,
-		c.PlatformSetting, c.RepoCache, c.Repository, c.SCMInstallation,
-		c.SSHCredential, c.SSHHost, c.ToolCall, c.TriggerRule, c.WebhookDelivery,
-		c.WorkItem, c.WorkerNode, c.Worktree,
+		c.CodexTurnIntent, c.CodexTurnRun, c.PlatformSetting, c.RepoCache,
+		c.Repository, c.SCMInstallation, c.SSHCredential, c.SSHHost, c.ToolCall,
+		c.TriggerRule, c.WebhookDelivery, c.WorkItem, c.Worker, c.WorkerEnrollment,
+		c.Worktree,
 	} {
 		n.Use(hooks...)
 	}
@@ -308,10 +302,10 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.Administrator, c.AgentProfile, c.AuditLog, c.CodexThreadControl,
-		c.CodexTurnIntent, c.CodexTurnRun, c.ExecutionNode, c.ExecutionNodeEnrollment,
-		c.PlatformSetting, c.RepoCache, c.Repository, c.SCMInstallation,
-		c.SSHCredential, c.SSHHost, c.ToolCall, c.TriggerRule, c.WebhookDelivery,
-		c.WorkItem, c.WorkerNode, c.Worktree,
+		c.CodexTurnIntent, c.CodexTurnRun, c.PlatformSetting, c.RepoCache,
+		c.Repository, c.SCMInstallation, c.SSHCredential, c.SSHHost, c.ToolCall,
+		c.TriggerRule, c.WebhookDelivery, c.WorkItem, c.Worker, c.WorkerEnrollment,
+		c.Worktree,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -332,10 +326,6 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.CodexTurnIntent.mutate(ctx, m)
 	case *CodexTurnRunMutation:
 		return c.CodexTurnRun.mutate(ctx, m)
-	case *ExecutionNodeMutation:
-		return c.ExecutionNode.mutate(ctx, m)
-	case *ExecutionNodeEnrollmentMutation:
-		return c.ExecutionNodeEnrollment.mutate(ctx, m)
 	case *PlatformSettingMutation:
 		return c.PlatformSetting.mutate(ctx, m)
 	case *RepoCacheMutation:
@@ -356,8 +346,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.WebhookDelivery.mutate(ctx, m)
 	case *WorkItemMutation:
 		return c.WorkItem.mutate(ctx, m)
-	case *WorkerNodeMutation:
-		return c.WorkerNode.mutate(ctx, m)
+	case *WorkerMutation:
+		return c.Worker.mutate(ctx, m)
+	case *WorkerEnrollmentMutation:
+		return c.WorkerEnrollment.mutate(ctx, m)
 	case *WorktreeMutation:
 		return c.Worktree.mutate(ctx, m)
 	default:
@@ -1160,272 +1152,6 @@ func (c *CodexTurnRunClient) mutate(ctx context.Context, m *CodexTurnRunMutation
 		return (&CodexTurnRunDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown CodexTurnRun mutation op: %q", m.Op())
-	}
-}
-
-// ExecutionNodeClient is a client for the ExecutionNode schema.
-type ExecutionNodeClient struct {
-	config
-}
-
-// NewExecutionNodeClient returns a client for the ExecutionNode from the given config.
-func NewExecutionNodeClient(c config) *ExecutionNodeClient {
-	return &ExecutionNodeClient{config: c}
-}
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `executionnode.Hooks(f(g(h())))`.
-func (c *ExecutionNodeClient) Use(hooks ...Hook) {
-	c.hooks.ExecutionNode = append(c.hooks.ExecutionNode, hooks...)
-}
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `executionnode.Intercept(f(g(h())))`.
-func (c *ExecutionNodeClient) Intercept(interceptors ...Interceptor) {
-	c.inters.ExecutionNode = append(c.inters.ExecutionNode, interceptors...)
-}
-
-// Create returns a builder for creating a ExecutionNode entity.
-func (c *ExecutionNodeClient) Create() *ExecutionNodeCreate {
-	mutation := newExecutionNodeMutation(c.config, OpCreate)
-	return &ExecutionNodeCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// CreateBulk returns a builder for creating a bulk of ExecutionNode entities.
-func (c *ExecutionNodeClient) CreateBulk(builders ...*ExecutionNodeCreate) *ExecutionNodeCreateBulk {
-	return &ExecutionNodeCreateBulk{config: c.config, builders: builders}
-}
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *ExecutionNodeClient) MapCreateBulk(slice any, setFunc func(*ExecutionNodeCreate, int)) *ExecutionNodeCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &ExecutionNodeCreateBulk{err: fmt.Errorf("calling to ExecutionNodeClient.MapCreateBulk with wrong type %T, need slice", slice)}
-	}
-	builders := make([]*ExecutionNodeCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-	}
-	return &ExecutionNodeCreateBulk{config: c.config, builders: builders}
-}
-
-// Update returns an update builder for ExecutionNode.
-func (c *ExecutionNodeClient) Update() *ExecutionNodeUpdate {
-	mutation := newExecutionNodeMutation(c.config, OpUpdate)
-	return &ExecutionNodeUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOne returns an update builder for the given entity.
-func (c *ExecutionNodeClient) UpdateOne(_m *ExecutionNode) *ExecutionNodeUpdateOne {
-	mutation := newExecutionNodeMutation(c.config, OpUpdateOne, withExecutionNode(_m))
-	return &ExecutionNodeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOneID returns an update builder for the given id.
-func (c *ExecutionNodeClient) UpdateOneID(id uuid.UUID) *ExecutionNodeUpdateOne {
-	mutation := newExecutionNodeMutation(c.config, OpUpdateOne, withExecutionNodeID(id))
-	return &ExecutionNodeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Delete returns a delete builder for ExecutionNode.
-func (c *ExecutionNodeClient) Delete() *ExecutionNodeDelete {
-	mutation := newExecutionNodeMutation(c.config, OpDelete)
-	return &ExecutionNodeDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// DeleteOne returns a builder for deleting the given entity.
-func (c *ExecutionNodeClient) DeleteOne(_m *ExecutionNode) *ExecutionNodeDeleteOne {
-	return c.DeleteOneID(_m.ID)
-}
-
-// DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *ExecutionNodeClient) DeleteOneID(id uuid.UUID) *ExecutionNodeDeleteOne {
-	builder := c.Delete().Where(executionnode.ID(id))
-	builder.mutation.id = &id
-	builder.mutation.op = OpDeleteOne
-	return &ExecutionNodeDeleteOne{builder}
-}
-
-// Query returns a query builder for ExecutionNode.
-func (c *ExecutionNodeClient) Query() *ExecutionNodeQuery {
-	return &ExecutionNodeQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypeExecutionNode},
-		inters: c.Interceptors(),
-	}
-}
-
-// Get returns a ExecutionNode entity by its id.
-func (c *ExecutionNodeClient) Get(ctx context.Context, id uuid.UUID) (*ExecutionNode, error) {
-	return c.Query().Where(executionnode.ID(id)).Only(ctx)
-}
-
-// GetX is like Get, but panics if an error occurs.
-func (c *ExecutionNodeClient) GetX(ctx context.Context, id uuid.UUID) *ExecutionNode {
-	obj, err := c.Get(ctx, id)
-	if err != nil {
-		panic(err)
-	}
-	return obj
-}
-
-// Hooks returns the client hooks.
-func (c *ExecutionNodeClient) Hooks() []Hook {
-	return c.hooks.ExecutionNode
-}
-
-// Interceptors returns the client interceptors.
-func (c *ExecutionNodeClient) Interceptors() []Interceptor {
-	return c.inters.ExecutionNode
-}
-
-func (c *ExecutionNodeClient) mutate(ctx context.Context, m *ExecutionNodeMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&ExecutionNodeCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdate:
-		return (&ExecutionNodeUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdateOne:
-		return (&ExecutionNodeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&ExecutionNodeDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("ent: unknown ExecutionNode mutation op: %q", m.Op())
-	}
-}
-
-// ExecutionNodeEnrollmentClient is a client for the ExecutionNodeEnrollment schema.
-type ExecutionNodeEnrollmentClient struct {
-	config
-}
-
-// NewExecutionNodeEnrollmentClient returns a client for the ExecutionNodeEnrollment from the given config.
-func NewExecutionNodeEnrollmentClient(c config) *ExecutionNodeEnrollmentClient {
-	return &ExecutionNodeEnrollmentClient{config: c}
-}
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `executionnodeenrollment.Hooks(f(g(h())))`.
-func (c *ExecutionNodeEnrollmentClient) Use(hooks ...Hook) {
-	c.hooks.ExecutionNodeEnrollment = append(c.hooks.ExecutionNodeEnrollment, hooks...)
-}
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `executionnodeenrollment.Intercept(f(g(h())))`.
-func (c *ExecutionNodeEnrollmentClient) Intercept(interceptors ...Interceptor) {
-	c.inters.ExecutionNodeEnrollment = append(c.inters.ExecutionNodeEnrollment, interceptors...)
-}
-
-// Create returns a builder for creating a ExecutionNodeEnrollment entity.
-func (c *ExecutionNodeEnrollmentClient) Create() *ExecutionNodeEnrollmentCreate {
-	mutation := newExecutionNodeEnrollmentMutation(c.config, OpCreate)
-	return &ExecutionNodeEnrollmentCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// CreateBulk returns a builder for creating a bulk of ExecutionNodeEnrollment entities.
-func (c *ExecutionNodeEnrollmentClient) CreateBulk(builders ...*ExecutionNodeEnrollmentCreate) *ExecutionNodeEnrollmentCreateBulk {
-	return &ExecutionNodeEnrollmentCreateBulk{config: c.config, builders: builders}
-}
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *ExecutionNodeEnrollmentClient) MapCreateBulk(slice any, setFunc func(*ExecutionNodeEnrollmentCreate, int)) *ExecutionNodeEnrollmentCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &ExecutionNodeEnrollmentCreateBulk{err: fmt.Errorf("calling to ExecutionNodeEnrollmentClient.MapCreateBulk with wrong type %T, need slice", slice)}
-	}
-	builders := make([]*ExecutionNodeEnrollmentCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-	}
-	return &ExecutionNodeEnrollmentCreateBulk{config: c.config, builders: builders}
-}
-
-// Update returns an update builder for ExecutionNodeEnrollment.
-func (c *ExecutionNodeEnrollmentClient) Update() *ExecutionNodeEnrollmentUpdate {
-	mutation := newExecutionNodeEnrollmentMutation(c.config, OpUpdate)
-	return &ExecutionNodeEnrollmentUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOne returns an update builder for the given entity.
-func (c *ExecutionNodeEnrollmentClient) UpdateOne(_m *ExecutionNodeEnrollment) *ExecutionNodeEnrollmentUpdateOne {
-	mutation := newExecutionNodeEnrollmentMutation(c.config, OpUpdateOne, withExecutionNodeEnrollment(_m))
-	return &ExecutionNodeEnrollmentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOneID returns an update builder for the given id.
-func (c *ExecutionNodeEnrollmentClient) UpdateOneID(id uuid.UUID) *ExecutionNodeEnrollmentUpdateOne {
-	mutation := newExecutionNodeEnrollmentMutation(c.config, OpUpdateOne, withExecutionNodeEnrollmentID(id))
-	return &ExecutionNodeEnrollmentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Delete returns a delete builder for ExecutionNodeEnrollment.
-func (c *ExecutionNodeEnrollmentClient) Delete() *ExecutionNodeEnrollmentDelete {
-	mutation := newExecutionNodeEnrollmentMutation(c.config, OpDelete)
-	return &ExecutionNodeEnrollmentDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// DeleteOne returns a builder for deleting the given entity.
-func (c *ExecutionNodeEnrollmentClient) DeleteOne(_m *ExecutionNodeEnrollment) *ExecutionNodeEnrollmentDeleteOne {
-	return c.DeleteOneID(_m.ID)
-}
-
-// DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *ExecutionNodeEnrollmentClient) DeleteOneID(id uuid.UUID) *ExecutionNodeEnrollmentDeleteOne {
-	builder := c.Delete().Where(executionnodeenrollment.ID(id))
-	builder.mutation.id = &id
-	builder.mutation.op = OpDeleteOne
-	return &ExecutionNodeEnrollmentDeleteOne{builder}
-}
-
-// Query returns a query builder for ExecutionNodeEnrollment.
-func (c *ExecutionNodeEnrollmentClient) Query() *ExecutionNodeEnrollmentQuery {
-	return &ExecutionNodeEnrollmentQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypeExecutionNodeEnrollment},
-		inters: c.Interceptors(),
-	}
-}
-
-// Get returns a ExecutionNodeEnrollment entity by its id.
-func (c *ExecutionNodeEnrollmentClient) Get(ctx context.Context, id uuid.UUID) (*ExecutionNodeEnrollment, error) {
-	return c.Query().Where(executionnodeenrollment.ID(id)).Only(ctx)
-}
-
-// GetX is like Get, but panics if an error occurs.
-func (c *ExecutionNodeEnrollmentClient) GetX(ctx context.Context, id uuid.UUID) *ExecutionNodeEnrollment {
-	obj, err := c.Get(ctx, id)
-	if err != nil {
-		panic(err)
-	}
-	return obj
-}
-
-// Hooks returns the client hooks.
-func (c *ExecutionNodeEnrollmentClient) Hooks() []Hook {
-	return c.hooks.ExecutionNodeEnrollment
-}
-
-// Interceptors returns the client interceptors.
-func (c *ExecutionNodeEnrollmentClient) Interceptors() []Interceptor {
-	return c.inters.ExecutionNodeEnrollment
-}
-
-func (c *ExecutionNodeEnrollmentClient) mutate(ctx context.Context, m *ExecutionNodeEnrollmentMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&ExecutionNodeEnrollmentCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdate:
-		return (&ExecutionNodeEnrollmentUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdateOne:
-		return (&ExecutionNodeEnrollmentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&ExecutionNodeEnrollmentDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("ent: unknown ExecutionNodeEnrollment mutation op: %q", m.Op())
 	}
 }
 
@@ -2759,107 +2485,107 @@ func (c *WorkItemClient) mutate(ctx context.Context, m *WorkItemMutation) (Value
 	}
 }
 
-// WorkerNodeClient is a client for the WorkerNode schema.
-type WorkerNodeClient struct {
+// WorkerClient is a client for the Worker schema.
+type WorkerClient struct {
 	config
 }
 
-// NewWorkerNodeClient returns a client for the WorkerNode from the given config.
-func NewWorkerNodeClient(c config) *WorkerNodeClient {
-	return &WorkerNodeClient{config: c}
+// NewWorkerClient returns a client for the Worker from the given config.
+func NewWorkerClient(c config) *WorkerClient {
+	return &WorkerClient{config: c}
 }
 
 // Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `workernode.Hooks(f(g(h())))`.
-func (c *WorkerNodeClient) Use(hooks ...Hook) {
-	c.hooks.WorkerNode = append(c.hooks.WorkerNode, hooks...)
+// A call to `Use(f, g, h)` equals to `worker.Hooks(f(g(h())))`.
+func (c *WorkerClient) Use(hooks ...Hook) {
+	c.hooks.Worker = append(c.hooks.Worker, hooks...)
 }
 
 // Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `workernode.Intercept(f(g(h())))`.
-func (c *WorkerNodeClient) Intercept(interceptors ...Interceptor) {
-	c.inters.WorkerNode = append(c.inters.WorkerNode, interceptors...)
+// A call to `Intercept(f, g, h)` equals to `worker.Intercept(f(g(h())))`.
+func (c *WorkerClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Worker = append(c.inters.Worker, interceptors...)
 }
 
-// Create returns a builder for creating a WorkerNode entity.
-func (c *WorkerNodeClient) Create() *WorkerNodeCreate {
-	mutation := newWorkerNodeMutation(c.config, OpCreate)
-	return &WorkerNodeCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+// Create returns a builder for creating a Worker entity.
+func (c *WorkerClient) Create() *WorkerCreate {
+	mutation := newWorkerMutation(c.config, OpCreate)
+	return &WorkerCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
-// CreateBulk returns a builder for creating a bulk of WorkerNode entities.
-func (c *WorkerNodeClient) CreateBulk(builders ...*WorkerNodeCreate) *WorkerNodeCreateBulk {
-	return &WorkerNodeCreateBulk{config: c.config, builders: builders}
+// CreateBulk returns a builder for creating a bulk of Worker entities.
+func (c *WorkerClient) CreateBulk(builders ...*WorkerCreate) *WorkerCreateBulk {
+	return &WorkerCreateBulk{config: c.config, builders: builders}
 }
 
 // MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
 // a builder and applies setFunc on it.
-func (c *WorkerNodeClient) MapCreateBulk(slice any, setFunc func(*WorkerNodeCreate, int)) *WorkerNodeCreateBulk {
+func (c *WorkerClient) MapCreateBulk(slice any, setFunc func(*WorkerCreate, int)) *WorkerCreateBulk {
 	rv := reflect.ValueOf(slice)
 	if rv.Kind() != reflect.Slice {
-		return &WorkerNodeCreateBulk{err: fmt.Errorf("calling to WorkerNodeClient.MapCreateBulk with wrong type %T, need slice", slice)}
+		return &WorkerCreateBulk{err: fmt.Errorf("calling to WorkerClient.MapCreateBulk with wrong type %T, need slice", slice)}
 	}
-	builders := make([]*WorkerNodeCreate, rv.Len())
+	builders := make([]*WorkerCreate, rv.Len())
 	for i := 0; i < rv.Len(); i++ {
 		builders[i] = c.Create()
 		setFunc(builders[i], i)
 	}
-	return &WorkerNodeCreateBulk{config: c.config, builders: builders}
+	return &WorkerCreateBulk{config: c.config, builders: builders}
 }
 
-// Update returns an update builder for WorkerNode.
-func (c *WorkerNodeClient) Update() *WorkerNodeUpdate {
-	mutation := newWorkerNodeMutation(c.config, OpUpdate)
-	return &WorkerNodeUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+// Update returns an update builder for Worker.
+func (c *WorkerClient) Update() *WorkerUpdate {
+	mutation := newWorkerMutation(c.config, OpUpdate)
+	return &WorkerUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
 // UpdateOne returns an update builder for the given entity.
-func (c *WorkerNodeClient) UpdateOne(_m *WorkerNode) *WorkerNodeUpdateOne {
-	mutation := newWorkerNodeMutation(c.config, OpUpdateOne, withWorkerNode(_m))
-	return &WorkerNodeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+func (c *WorkerClient) UpdateOne(_m *Worker) *WorkerUpdateOne {
+	mutation := newWorkerMutation(c.config, OpUpdateOne, withWorker(_m))
+	return &WorkerUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
 // UpdateOneID returns an update builder for the given id.
-func (c *WorkerNodeClient) UpdateOneID(id string) *WorkerNodeUpdateOne {
-	mutation := newWorkerNodeMutation(c.config, OpUpdateOne, withWorkerNodeID(id))
-	return &WorkerNodeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+func (c *WorkerClient) UpdateOneID(id uuid.UUID) *WorkerUpdateOne {
+	mutation := newWorkerMutation(c.config, OpUpdateOne, withWorkerID(id))
+	return &WorkerUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
-// Delete returns a delete builder for WorkerNode.
-func (c *WorkerNodeClient) Delete() *WorkerNodeDelete {
-	mutation := newWorkerNodeMutation(c.config, OpDelete)
-	return &WorkerNodeDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+// Delete returns a delete builder for Worker.
+func (c *WorkerClient) Delete() *WorkerDelete {
+	mutation := newWorkerMutation(c.config, OpDelete)
+	return &WorkerDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
 // DeleteOne returns a builder for deleting the given entity.
-func (c *WorkerNodeClient) DeleteOne(_m *WorkerNode) *WorkerNodeDeleteOne {
+func (c *WorkerClient) DeleteOne(_m *Worker) *WorkerDeleteOne {
 	return c.DeleteOneID(_m.ID)
 }
 
 // DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *WorkerNodeClient) DeleteOneID(id string) *WorkerNodeDeleteOne {
-	builder := c.Delete().Where(workernode.ID(id))
+func (c *WorkerClient) DeleteOneID(id uuid.UUID) *WorkerDeleteOne {
+	builder := c.Delete().Where(worker.ID(id))
 	builder.mutation.id = &id
 	builder.mutation.op = OpDeleteOne
-	return &WorkerNodeDeleteOne{builder}
+	return &WorkerDeleteOne{builder}
 }
 
-// Query returns a query builder for WorkerNode.
-func (c *WorkerNodeClient) Query() *WorkerNodeQuery {
-	return &WorkerNodeQuery{
+// Query returns a query builder for Worker.
+func (c *WorkerClient) Query() *WorkerQuery {
+	return &WorkerQuery{
 		config: c.config,
-		ctx:    &QueryContext{Type: TypeWorkerNode},
+		ctx:    &QueryContext{Type: TypeWorker},
 		inters: c.Interceptors(),
 	}
 }
 
-// Get returns a WorkerNode entity by its id.
-func (c *WorkerNodeClient) Get(ctx context.Context, id string) (*WorkerNode, error) {
-	return c.Query().Where(workernode.ID(id)).Only(ctx)
+// Get returns a Worker entity by its id.
+func (c *WorkerClient) Get(ctx context.Context, id uuid.UUID) (*Worker, error) {
+	return c.Query().Where(worker.ID(id)).Only(ctx)
 }
 
 // GetX is like Get, but panics if an error occurs.
-func (c *WorkerNodeClient) GetX(ctx context.Context, id string) *WorkerNode {
+func (c *WorkerClient) GetX(ctx context.Context, id uuid.UUID) *Worker {
 	obj, err := c.Get(ctx, id)
 	if err != nil {
 		panic(err)
@@ -2868,27 +2594,160 @@ func (c *WorkerNodeClient) GetX(ctx context.Context, id string) *WorkerNode {
 }
 
 // Hooks returns the client hooks.
-func (c *WorkerNodeClient) Hooks() []Hook {
-	return c.hooks.WorkerNode
+func (c *WorkerClient) Hooks() []Hook {
+	return c.hooks.Worker
 }
 
 // Interceptors returns the client interceptors.
-func (c *WorkerNodeClient) Interceptors() []Interceptor {
-	return c.inters.WorkerNode
+func (c *WorkerClient) Interceptors() []Interceptor {
+	return c.inters.Worker
 }
 
-func (c *WorkerNodeClient) mutate(ctx context.Context, m *WorkerNodeMutation) (Value, error) {
+func (c *WorkerClient) mutate(ctx context.Context, m *WorkerMutation) (Value, error) {
 	switch m.Op() {
 	case OpCreate:
-		return (&WorkerNodeCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+		return (&WorkerCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
 	case OpUpdate:
-		return (&WorkerNodeUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+		return (&WorkerUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
 	case OpUpdateOne:
-		return (&WorkerNodeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+		return (&WorkerUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
 	case OpDelete, OpDeleteOne:
-		return (&WorkerNodeDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+		return (&WorkerDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
-		return nil, fmt.Errorf("ent: unknown WorkerNode mutation op: %q", m.Op())
+		return nil, fmt.Errorf("ent: unknown Worker mutation op: %q", m.Op())
+	}
+}
+
+// WorkerEnrollmentClient is a client for the WorkerEnrollment schema.
+type WorkerEnrollmentClient struct {
+	config
+}
+
+// NewWorkerEnrollmentClient returns a client for the WorkerEnrollment from the given config.
+func NewWorkerEnrollmentClient(c config) *WorkerEnrollmentClient {
+	return &WorkerEnrollmentClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `workerenrollment.Hooks(f(g(h())))`.
+func (c *WorkerEnrollmentClient) Use(hooks ...Hook) {
+	c.hooks.WorkerEnrollment = append(c.hooks.WorkerEnrollment, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `workerenrollment.Intercept(f(g(h())))`.
+func (c *WorkerEnrollmentClient) Intercept(interceptors ...Interceptor) {
+	c.inters.WorkerEnrollment = append(c.inters.WorkerEnrollment, interceptors...)
+}
+
+// Create returns a builder for creating a WorkerEnrollment entity.
+func (c *WorkerEnrollmentClient) Create() *WorkerEnrollmentCreate {
+	mutation := newWorkerEnrollmentMutation(c.config, OpCreate)
+	return &WorkerEnrollmentCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of WorkerEnrollment entities.
+func (c *WorkerEnrollmentClient) CreateBulk(builders ...*WorkerEnrollmentCreate) *WorkerEnrollmentCreateBulk {
+	return &WorkerEnrollmentCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *WorkerEnrollmentClient) MapCreateBulk(slice any, setFunc func(*WorkerEnrollmentCreate, int)) *WorkerEnrollmentCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &WorkerEnrollmentCreateBulk{err: fmt.Errorf("calling to WorkerEnrollmentClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*WorkerEnrollmentCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &WorkerEnrollmentCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for WorkerEnrollment.
+func (c *WorkerEnrollmentClient) Update() *WorkerEnrollmentUpdate {
+	mutation := newWorkerEnrollmentMutation(c.config, OpUpdate)
+	return &WorkerEnrollmentUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *WorkerEnrollmentClient) UpdateOne(_m *WorkerEnrollment) *WorkerEnrollmentUpdateOne {
+	mutation := newWorkerEnrollmentMutation(c.config, OpUpdateOne, withWorkerEnrollment(_m))
+	return &WorkerEnrollmentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *WorkerEnrollmentClient) UpdateOneID(id uuid.UUID) *WorkerEnrollmentUpdateOne {
+	mutation := newWorkerEnrollmentMutation(c.config, OpUpdateOne, withWorkerEnrollmentID(id))
+	return &WorkerEnrollmentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for WorkerEnrollment.
+func (c *WorkerEnrollmentClient) Delete() *WorkerEnrollmentDelete {
+	mutation := newWorkerEnrollmentMutation(c.config, OpDelete)
+	return &WorkerEnrollmentDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *WorkerEnrollmentClient) DeleteOne(_m *WorkerEnrollment) *WorkerEnrollmentDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *WorkerEnrollmentClient) DeleteOneID(id uuid.UUID) *WorkerEnrollmentDeleteOne {
+	builder := c.Delete().Where(workerenrollment.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &WorkerEnrollmentDeleteOne{builder}
+}
+
+// Query returns a query builder for WorkerEnrollment.
+func (c *WorkerEnrollmentClient) Query() *WorkerEnrollmentQuery {
+	return &WorkerEnrollmentQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeWorkerEnrollment},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a WorkerEnrollment entity by its id.
+func (c *WorkerEnrollmentClient) Get(ctx context.Context, id uuid.UUID) (*WorkerEnrollment, error) {
+	return c.Query().Where(workerenrollment.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *WorkerEnrollmentClient) GetX(ctx context.Context, id uuid.UUID) *WorkerEnrollment {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *WorkerEnrollmentClient) Hooks() []Hook {
+	return c.hooks.WorkerEnrollment
+}
+
+// Interceptors returns the client interceptors.
+func (c *WorkerEnrollmentClient) Interceptors() []Interceptor {
+	return c.inters.WorkerEnrollment
+}
+
+func (c *WorkerEnrollmentClient) mutate(ctx context.Context, m *WorkerEnrollmentMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&WorkerEnrollmentCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&WorkerEnrollmentUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&WorkerEnrollmentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&WorkerEnrollmentDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown WorkerEnrollment mutation op: %q", m.Op())
 	}
 }
 
@@ -3029,14 +2888,14 @@ func (c *WorktreeClient) mutate(ctx context.Context, m *WorktreeMutation) (Value
 type (
 	hooks struct {
 		Administrator, AgentProfile, AuditLog, CodexThreadControl, CodexTurnIntent,
-		CodexTurnRun, ExecutionNode, ExecutionNodeEnrollment, PlatformSetting,
-		RepoCache, Repository, SCMInstallation, SSHCredential, SSHHost, ToolCall,
-		TriggerRule, WebhookDelivery, WorkItem, WorkerNode, Worktree []ent.Hook
+		CodexTurnRun, PlatformSetting, RepoCache, Repository, SCMInstallation,
+		SSHCredential, SSHHost, ToolCall, TriggerRule, WebhookDelivery, WorkItem,
+		Worker, WorkerEnrollment, Worktree []ent.Hook
 	}
 	inters struct {
 		Administrator, AgentProfile, AuditLog, CodexThreadControl, CodexTurnIntent,
-		CodexTurnRun, ExecutionNode, ExecutionNodeEnrollment, PlatformSetting,
-		RepoCache, Repository, SCMInstallation, SSHCredential, SSHHost, ToolCall,
-		TriggerRule, WebhookDelivery, WorkItem, WorkerNode, Worktree []ent.Interceptor
+		CodexTurnRun, PlatformSetting, RepoCache, Repository, SCMInstallation,
+		SSHCredential, SSHHost, ToolCall, TriggerRule, WebhookDelivery, WorkItem,
+		Worker, WorkerEnrollment, Worktree []ent.Interceptor
 	}
 )

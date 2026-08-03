@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
 
 import { ControlHarness } from './lib/control.mjs'
-import { freePort, output, run, startProcess, waitFor } from './lib/process.mjs'
+import { output, run, startProcess } from './lib/process.mjs'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const argumentsMap = new Map()
@@ -13,8 +13,8 @@ for (let index = 2; index < process.argv.length; index += 2) {
 }
 const platform = argumentsMap.get('--platform')
 if (platform !== 'android' && platform !== 'ios') throw new Error('--platform 必须是 android 或 ios')
-const lane = argumentsMap.get('--lane') ?? (platform === 'android' ? 'real-codex' : 'protocol')
-if (!['real-codex', 'protocol'].includes(lane)) throw new Error('--lane 必须是 real-codex 或 protocol')
+const lane = argumentsMap.get('--lane') ?? 'protocol'
+if (lane !== 'protocol') throw new Error('Mobile E2E 仅支持宿主架构的 protocol lane')
 const appID = argumentsMap.get('--app-id') ?? 'com.tyrshand.app.dev'
 const flow = resolve(repoRoot, argumentsMap.get('--flow') ?? 'client/e2e/flows/suite.yaml')
 const deviceID = resolveDeviceID()
@@ -24,7 +24,6 @@ const controls = []
 const processes = []
 const maestroProcesses = []
 let failed = true
-let responsesStatsURL = ''
 const redactableExtensions = new Set(['.html', '.json', '.log', '.txt', '.xml', '.yaml', '.yml'])
 
 function resolveDeviceID() {
@@ -50,10 +49,7 @@ function resolveDeviceID() {
 function checkVersions() {
   const maestro = process.env.TYRS_HAND_E2E_MAESTRO_BIN ?? 'maestro'
   if (!output(maestro, ['--version']).includes('2.3.0')) throw new Error('需要 Maestro 2.3.0')
-  if (lane === 'real-codex' && output('codex', ['--version']) !== 'codex-cli 0.145.0') {
-    throw new Error('真实 Codex lane 需要 codex-cli 0.145.0')
-  }
-  if (lane === 'real-codex' || process.env.TYRS_HAND_E2E_NATIVE_SERVICES !== '1') output('docker', ['info'])
+  if (process.env.TYRS_HAND_E2E_NATIVE_SERVICES !== '1') output('docker', ['info'])
   if (process.env.TYRS_HAND_E2E_NATIVE_SERVICES === '1') {
     if (!output('postgres', ['--version']).includes(' 18.3')) throw new Error('需要 PostgreSQL 18.3')
     if (!output('redis-server', ['--version']).includes('v=8.4.0')) throw new Error('需要 Redis 8.4.0')
@@ -74,92 +70,12 @@ async function startProtocolWorker(control, enrollmentToken, label) {
   return managed
 }
 
-async function seed(control, node, image, protocol) {
+async function seed(control, worker) {
   const raw = output('go', ['run', './tools/mobile-e2e/fixture', 'seed',
-    '--node-id', node.node.id, '--image', image, ...(protocol ? ['--protocol'] : [])], {
+    '--worker-id', worker.worker.id], {
     cwd: repoRoot, env: { ...process.env, TYRS_HAND_DATABASE_URL: control.databaseURL },
   })
   return JSON.parse(raw)
-}
-
-async function waitForContainer(name) {
-  const deadline = Date.now() + 120_000
-  while (Date.now() < deadline) {
-    try {
-      output('docker', ['inspect', name])
-      output('docker', ['exec', name, 'test', '-d', '/var/lib/tyrs-hand'])
-      return
-    } catch {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-    }
-  }
-  throw new Error(`等待开发容器 ${name} 超时`)
-}
-
-async function startRealWorker(control, node, fixture, image, workerImage) {
-  const compact = fixture.environmentId.replaceAll('-', '')
-  const workerContainer = `tyrs-hand-mobile-worker-${compact}`
-  const runtimeVolume = `tyrs-hand-mobile-runtime-${compact}`
-  const workerVolume = `tyrs-hand-mobile-worker-data-${compact}`
-  output('docker', ['volume', 'create', runtimeVolume])
-  output('docker', ['volume', 'create', workerVolume])
-  const runtimeMountpoint = output('docker', ['volume', 'inspect', runtimeVolume,
-    '--format', '{{.Mountpoint}}'])
-  const socketGID = output('docker', ['run', '--rm', '--mount',
-    'type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock',
-    '--entrypoint', 'stat', workerImage, '-c', '%g', '/var/run/docker.sock'])
-  run('docker', ['run', '--rm', '--user', '0:0', '--volume', `${runtimeVolume}:/runtime`,
-    '--volume', `${workerVolume}:/data/worker`, '--entrypoint', 'chown', workerImage,
-    '-R', '10001:10001', '/runtime', '/data/worker'])
-  const workerEnvironment = {
-    TYRS_HAND_ENV: 'development',
-    TYRS_HAND_WORKER_CONTROL_URL: `http://host.docker.internal:${control.port}`,
-    TYRS_HAND_WORKER_CREDENTIAL_FILE: '/data/worker/node-credential',
-    TYRS_HAND_WORKER_ENROLLMENT_TOKEN: node.enrollmentToken,
-    TYRS_HAND_WORKER_PROTOCOL_VERSION: '20', TYRS_HAND_WORKER_ID: 'mobile-e2e-real-worker',
-    TYRS_HAND_WORKER_ROLE: 'discord', TYRS_HAND_WORKER_MAX_CONCURRENT_JOBS: '2',
-    TYRS_HAND_WORKER_DATA_ROOT: '/data/worker', TYRS_HAND_REPO_CACHE_ROOT: '/data/worker/repo-cache',
-    TYRS_HAND_WORKTREE_ROOT: '/data/worker/worktrees', TYRS_HAND_CODEX_HOME_ROOT: '/data/worker/codex-homes',
-    TYRS_HAND_ENABLE_DEVELOPMENT_CONTAINERS: 'true', TYRS_HAND_DEVELOPMENT_IMAGE: image,
-    TYRS_HAND_DEVELOPMENT_RUNTIME_DIR: '/run/tyrs-hand-development-runtime',
-    TYRS_HAND_DEVELOPMENT_RUNTIME_HOST_DIR: runtimeMountpoint,
-    TYRS_HAND_DOCKER_HOST: 'unix:///var/run/docker.sock',
-    TYRS_HAND_DEVELOPMENT_HOST_DOCKER: 'false',
-    TYRS_HAND_HEARTBEAT_INTERVAL: '2s', TYRS_HAND_CODEX_BIN: 'codex',
-  }
-  run('docker', ['run', '--detach', '--name', workerContainer,
-    '--add-host', 'host.docker.internal:host-gateway', '--group-add', socketGID,
-    '--mount', 'type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock',
-    '--volume', `${runtimeVolume}:/run/tyrs-hand-development-runtime`,
-    '--volume', `${workerVolume}:/data/worker`,
-    ...Object.keys(workerEnvironment).flatMap((key) => ['--env', key]), workerImage], {
-    env: { ...process.env, ...workerEnvironment },
-  })
-  const managed = {
-    async stop() {
-      let logs = ''
-      try { logs = output('docker', ['logs', workerContainer]) } catch { /* 容器可能已退出 */ }
-      await writeFile(`${runDir}/logs/real-worker.log`, logs)
-      for (const resource of [workerContainer, fixture.containerName]) {
-        try { run('docker', ['rm', '--force', resource]) } catch { /* 最佳努力清理 */ }
-      }
-      for (const resource of [runtimeVolume, workerVolume,
-        `tyrs-hand-e2e-data-${compact}`, `tyrs-hand-e2e-home-${compact}`]) {
-        try { run('docker', ['volume', 'rm', resource]) } catch { /* 最佳努力清理 */ }
-      }
-      try { run('docker', ['network', 'rm', `tyrs-hand-e2e-net-${compact}`]) } catch { /* 最佳努力清理 */ }
-    },
-  }
-  processes.push(managed)
-  await waitForContainer(fixture.containerName)
-  run('docker', ['exec', '--user', '0:0', fixture.containerName, 'mkdir', '-p',
-    '/var/lib/tyrs-hand/workspaces/e2e-project'])
-  run('docker', ['exec', '--user', '0:0', fixture.containerName, 'chown', '-R', '1000:1000',
-    '/var/lib/tyrs-hand/workspaces/e2e-project'])
-  output('go', ['run', './tools/mobile-e2e/fixture', 'wait-ready',
-    '--environment-id', fixture.environmentId], {
-    cwd: repoRoot, env: { ...process.env, TYRS_HAND_DATABASE_URL: control.databaseURL },
-  })
 }
 
 async function assertInstalled() {
@@ -227,37 +143,19 @@ async function runMaestro(environment, label = 'suite', flowPath = flow) {
 async function main() {
   checkVersions()
   await mkdir(`${runDir}/logs`, { recursive: true })
-  const responsesPort = await freePort()
-  const responses = await startProcess('mock-responses', 'node', ['tools/mobile-e2e/mock-responses.mjs'], {
-    cwd: repoRoot, logDir: `${runDir}/logs`, env: { TYRS_HAND_E2E_RESPONSES_PORT: String(responsesPort) },
-  })
-  processes.push(responses)
-  await waitFor(`http://127.0.0.1:${responsesPort}/healthz`, { process: responses })
-  responsesStatsURL = `http://127.0.0.1:${responsesPort}/__e2e/stats`
-
-  const image = process.env.TYRS_HAND_E2E_DEVELOPMENT_IMAGE ?? 'tyrs-hand-development:e2e'
-  const primary = await new ControlHarness({ repoRoot, runDir: `${runDir}/primary`, label: 'primary',
-    developmentImage: image, listenHost: lane === 'real-codex' ? '0.0.0.0' : '127.0.0.1' }).start()
+  const primary = await new ControlHarness({
+    repoRoot, runDir: `${runDir}/primary`, label: 'primary',
+  }).start()
   controls.push(primary)
-  await primary.admin.configureProvider(`http://host.docker.internal:${responsesPort}/v1`)
-  const primaryNode = await primary.admin.createNode(`mobile-e2e-${lane}`)
-  const workerImage = process.env.TYRS_HAND_E2E_WORKER_IMAGE ?? 'tyrs-hand-worker:e2e'
-  if (lane === 'real-codex') {
-    run('docker', ['build', '--target', 'development', '--tag', image, '.'], { cwd: repoRoot })
-    run('docker', ['build', '--target', 'worker', '--tag', workerImage, '.'], { cwd: repoRoot })
-  }
-  const primaryFixture = await seed(primary, primaryNode, image, lane === 'protocol')
-  if (lane === 'real-codex') {
-    await startRealWorker(primary, primaryNode, primaryFixture, image, workerImage)
-  }
-  else await startProtocolWorker(primary, primaryNode.enrollmentToken, 'primary-protocol-worker')
+  const primaryWorker = await primary.admin.createWorker(`mobile-e2e-${lane}`)
+  await seed(primary, primaryWorker)
+  await startProtocolWorker(primary, primaryWorker.enrollmentToken, 'primary-protocol-worker')
 
   const secondary = await new ControlHarness({ repoRoot, runDir: `${runDir}/secondary`, label: 'secondary' }).start()
   controls.push(secondary)
-  await secondary.admin.configureProvider(`http://host.docker.internal:${responsesPort}/v1`)
-  const secondaryNode = await secondary.admin.createNode('mobile-e2e-secondary')
-  await seed(secondary, secondaryNode, 'protocol-development:e2e', true)
-  await startProtocolWorker(secondary, secondaryNode.enrollmentToken, 'secondary-protocol-worker')
+  const secondaryWorker = await secondary.admin.createWorker('mobile-e2e-secondary')
+  await seed(secondary, secondaryWorker)
+  await startProtocolWorker(secondary, secondaryWorker.enrollmentToken, 'secondary-protocol-worker')
 
   const firstPairing = await primary.admin.createPairing()
   const secondPairing = await secondary.admin.createPairing()
@@ -294,7 +192,7 @@ async function main() {
   const snapshots = controls.map((control) => JSON.parse(output('go', [
     'run', './tools/mobile-e2e/fixture', 'snapshot'], { cwd: repoRoot,
     env: { ...process.env, TYRS_HAND_DATABASE_URL: control.databaseURL } })))
-  await primary.writeManifest({ lane, appID, codexVersion: lane === 'real-codex' ? '0.145.0' : null,
+  await primary.writeManifest({ lane, appID, codexVersion: null,
     controls: snapshots })
   failed = false
 }
@@ -303,12 +201,6 @@ try {
   await main()
 } finally {
   for (const managed of maestroProcesses.reverse()) await managed.stop()
-  if (responsesStatsURL) {
-    try {
-      const stats = await fetch(responsesStatsURL).then((response) => response.json())
-      await writeFile(`${runDir}/mock-responses-stats.json`, JSON.stringify(stats, null, 2))
-    } catch { /* 上游进程提前退出时保留其已有日志 */ }
-  }
   for (const managed of processes.reverse()) await managed.stop()
   for (const control of controls.reverse()) await control.stop()
   process.stderr.write(`[mobile-e2e] ${failed ? '失败证据' : '证据'}：${runDir}\n`)

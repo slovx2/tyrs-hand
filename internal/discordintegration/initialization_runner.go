@@ -136,9 +136,9 @@ func (m *Manager) executeInitializationAction(ctx context.Context, guildID strin
 		}
 		_, err = m.db.ExecContext(ctx, `INSERT INTO discord_forums
 			(guild_id, resource_id, forum_type, repository_id)
-			VALUES ($1, $2, 'repository', $3) ON CONFLICT(resource_id) DO NOTHING`, guildID, resourceID, repositoryID)
+			VALUES ($1, $2, 'github', $3) ON CONFLICT(resource_id) DO NOTHING`, guildID, resourceID, repositoryID)
 		return nil, err
-	case "forum.development_project.record":
+	case "forum.workspace_project.record":
 		var resourceID uuid.UUID
 		if err := m.db.QueryRowContext(ctx, `SELECT id FROM discord_resources
 			WHERE guild_id = $1 AND resource_key = $2 AND status = 'active'`, guildID, action.Spec.Key).
@@ -153,32 +153,32 @@ func (m *Manager) executeInitializationAction(ctx context.Context, guildID strin
 		if err != nil {
 			return nil, err
 		}
-		var environmentID uuid.UUID
-		err = m.db.QueryRowContext(ctx, `SELECT environment.id
-			FROM development_projects project
-			JOIN discord_development_environments environment
-				ON environment.id=project.environment_id
-			WHERE project.id=$1 AND environment.guild_id=$2
-			  AND environment.owner_discord_user_id=$3
+		var workspaceID uuid.UUID
+		err = m.db.QueryRowContext(ctx, `SELECT workspace.id
+			FROM workspace_projects project
+			JOIN worker_workspaces workspace
+				ON workspace.id=project.workspace_id
+			WHERE project.id=$1 AND workspace.guild_id=$2
+			  AND workspace.owner_discord_user_id=$3
 			  AND project.availability_status='available'
 			  AND NOT EXISTS (
 				SELECT 1 FROM discord_forums active
-				WHERE active.development_project_id=project.id
+				WHERE active.workspace_project_id=project.id
 				  AND active.binding_status='active')`,
-			projectID, guildID, action.OwnerUserID).Scan(&environmentID)
+			projectID, guildID, action.OwnerUserID).Scan(&workspaceID)
 		if err != nil {
 			return nil, err
 		}
 		_, err = m.db.ExecContext(ctx, `INSERT INTO discord_forums
 			(id,guild_id,resource_id,forum_type,owner_discord_user_id,
-				development_project_id,development_environment_id,binding_status)
-			VALUES ($1,$2,$3,'development',$4,$5,$6,'active')`,
-			forumID, guildID, resourceID, action.OwnerUserID, projectID, environmentID)
+				workspace_project_id,workspace_id,binding_status)
+			VALUES ($1,$2,$3,'workspace',$4,$5,$6,'active')`,
+			forumID, guildID, resourceID, action.OwnerUserID, projectID, workspaceID)
 		if err == nil {
 			err = m.syncForumPermissions(ctx, forumID)
 		}
-		return map[string]any{"environmentId": environmentID, "forumId": forumID,
-			"developmentProjectId": projectID}, err
+		return map[string]any{"workspaceId": workspaceID, "forumId": forumID,
+			"projectId": projectID}, err
 	default:
 		return nil, fmt.Errorf("未知初始化步骤 %q", action.Kind)
 	}

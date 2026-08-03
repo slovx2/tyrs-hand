@@ -10,20 +10,6 @@ import (
 	"github.com/google/uuid"
 )
 
-type WorkerNode struct{ ent.Schema }
-
-func (WorkerNode) Annotations() []schema.Annotation {
-	return []schema.Annotation{entsql.Annotation{Table: "worker_nodes"}}
-}
-func (WorkerNode) Fields() []ent.Field {
-	return []ent.Field{
-		field.String("id").Unique(), field.String("version"), field.String("status").Default("online"),
-		field.UUID("execution_node_id", uuid.UUID{}).Optional().Nillable(),
-		field.JSON("metadata", map[string]any{}).Default(map[string]any{}), field.Time("heartbeat_at").Default(time.Now),
-		field.Time("started_at").Default(time.Now),
-	}
-}
-
 type RepoCache struct{ ent.Schema }
 
 func (RepoCache) Annotations() []schema.Annotation {
@@ -32,7 +18,7 @@ func (RepoCache) Annotations() []schema.Annotation {
 func (RepoCache) Fields() []ent.Field {
 	return []ent.Field{
 		field.UUID("id", uuid.UUID{}).Default(uuid.New), field.UUID("repository_id", uuid.UUID{}),
-		field.UUID("execution_node_id", uuid.UUID{}).Optional().Nillable(),
+		field.UUID("worker_id", uuid.UUID{}).Optional().Nillable(),
 		field.String("path"), field.String("status").Default("ready"), field.Int64("size_bytes").Default(0),
 		field.Time("last_fetch_at").Optional().Nillable(), field.Time("last_used_at").Default(time.Now),
 		field.String("error").Optional().Nillable(),
@@ -47,7 +33,7 @@ func (Worktree) Annotations() []schema.Annotation {
 func (Worktree) Fields() []ent.Field {
 	return []ent.Field{
 		field.UUID("id", uuid.UUID{}).Default(uuid.New), field.UUID("work_item_id", uuid.UUID{}).Unique(),
-		field.UUID("repo_cache_id", uuid.UUID{}), field.UUID("execution_node_id", uuid.UUID{}).Optional().Nillable(),
+		field.UUID("repo_cache_id", uuid.UUID{}), field.UUID("worker_id", uuid.UUID{}).Optional().Nillable(),
 		field.String("path"), field.String("branch"),
 		field.String("base_sha"), field.String("head_sha"), field.String("status").Default("ready"),
 		field.Bool("dirty").Default(false), field.Time("last_used_at").Default(time.Now),
@@ -55,12 +41,12 @@ func (Worktree) Fields() []ent.Field {
 	}
 }
 
-type ExecutionNode struct{ ent.Schema }
+type Worker struct{ ent.Schema }
 
-func (ExecutionNode) Annotations() []schema.Annotation {
-	return []schema.Annotation{entsql.Annotation{Table: "execution_nodes"}}
+func (Worker) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "workers"}}
 }
-func (ExecutionNode) Fields() []ent.Field {
+func (Worker) Fields() []ent.Field {
 	return []ent.Field{
 		field.UUID("id", uuid.UUID{}).Default(uuid.New), field.String("name").Unique(),
 		field.JSON("roles", []string{}).Default([]string{}), field.Bool("enabled").Default(true),
@@ -75,14 +61,14 @@ func (ExecutionNode) Fields() []ent.Field {
 	}
 }
 
-type ExecutionNodeEnrollment struct{ ent.Schema }
+type WorkerEnrollment struct{ ent.Schema }
 
-func (ExecutionNodeEnrollment) Annotations() []schema.Annotation {
-	return []schema.Annotation{entsql.Annotation{Table: "execution_node_enrollments"}}
+func (WorkerEnrollment) Annotations() []schema.Annotation {
+	return []schema.Annotation{entsql.Annotation{Table: "worker_enrollments"}}
 }
-func (ExecutionNodeEnrollment) Fields() []ent.Field {
+func (WorkerEnrollment) Fields() []ent.Field {
 	return []ent.Field{
-		field.UUID("id", uuid.UUID{}).Default(uuid.New), field.UUID("node_id", uuid.UUID{}),
+		field.UUID("id", uuid.UUID{}).Default(uuid.New), field.UUID("worker_id", uuid.UUID{}),
 		field.String("token_hash").Unique().Sensitive(), field.Time("expires_at"),
 		field.Time("consumed_at").Optional().Nillable(), field.Time("created_at").Default(time.Now),
 	}

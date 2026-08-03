@@ -10,237 +10,162 @@
 [![Security](https://github.com/slovx2/tyrs-hand/actions/workflows/security.yml/badge.svg)](https://github.com/slovx2/tyrs-hand/actions/workflows/security.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Tyrs Hand 是一个把 GitHub、Discord、Codex Desktop 和自有算力连接在一起的自托管 Agent 协作平台。公网 Control 负责事件、状态和权限，Pull Worker 在你自己的电脑上运行 Codex、工作区、开发容器和浏览器工具。
+Tyrs Hand 是连接 GitHub、Discord、Codex Desktop 与自有宿主机的自托管 Agent 协作平台。公网 Control 保存事件、权限和持久状态；宿主 Worker 使用机器用户真实的 Codex Home、项目目录和浏览器能力执行任务。
 
-项目目前处于早期版本，适合在受控仓库中评估和二次开发。默认 Agent 配置允许访问公网并写入 Worktree；接入生产仓库前，请先审查工具白名单、触发规则和权限策略。
-
-## 核心特色
-
-### 分布式部署，让闲置电脑成为执行节点
-
-把控制服务和真正执行任务的电脑分开部署。家里、办公室或机房里的闲置电脑都可以加入，提供更多算力和存储空间；不需要公网 IP，也不用折腾端口转发。需要更多能力时，继续添加电脑即可。
-
-### Codex Desktop 直连，并使用桌面端浏览器
-
-可以直接从 Codex Desktop 打开和继续 Tyrs Hand 中的项目与会话。Agent 还能使用你桌面端 Chrome 中已经登录的网站和已打开的普通页面，减少重复登录和来回切换。
-
-### Discord 双向同步与多人协作
-
-Codex Desktop 与 Discord 会同步消息、进度和结果，可以在任意一端继续对话。项目可以邀请只读或可操作的协作者，让多人围绕同一个项目、同一段 Agent 会话一起讨论和推进工作。
-
-## 更多能力
-
-- 通过 GitHub App 接收并验签 Webhook，不需要普通机器账号。
-- 将 GitHub 事件标准化为持久化 Work Item 和 Durable Job。
-- 每个仓库维护 Bare Clone Cache，每个 GitHub Work Item 使用独立临时 Worktree；关闭 7 天后自动清理。
-- 同一 Issue 或 PR 串行处理，不同工作项可以由多个 Worker 并行处理。
-- 同一工作项后续评论复用 Codex Thread；配置变化时使用持久化摘要交接。
-- 从仓库 `.agents/skills/<name>/SKILL.md` 加载任务 Skill。
-- 将 GitHub 官方 MCP 工具和受控本地 Git 工具暴露为 Codex Dynamic Tools。
-- 通过 Discord 私有 Server 提供长期开发 Forum、GitHub 任务投影和持续会话。
-- 同一 Discord 用户复用一个开发容器与 Home；环境自动发现 Git 仓库和普通目录项目，并可将项目绑定到多个 Forum。
-- 通过公网 HTTPS Control 与 Pull Worker 分离部署，家庭执行节点不需要公网 IP。
-- 管理 GitHub App、仓库、规则、Agent Profile、任务、Thread、长期开发环境、执行节点、SSH、默认 Placement 和审计日志。
-- Codex 使用自然最终回复；平台根据 App Server 终态、持久化 Control 和受控回复门禁判定任务结果。
+项目处于早期阶段，适合在受控仓库中评估。默认 GitHub Agent 可写 Worktree 并访问公网，接入生产仓库前请审查工具白名单、触发规则和权限策略。
 
 ## 架构
 
 ```mermaid
 flowchart LR
+    GitHub["GitHub App / Webhook"] --> Control
+    Admin["管理后台"] --> Control
+    Discord["Discord"] <--> Gateway
     subgraph Public["公网 Control"]
-        Server["tyrs-hand-server\nWebhook + Worker API"]
+        Control["tyrs-hand-server\n管理 API + /worker/v1"]
         Gateway["tyrs-hand-discord\nGateway + Outbox"]
-        State["PostgreSQL + Redis\n附件持久卷"]
-        Server <--> State
+        State["PostgreSQL + Redis"]
+        Control <--> State
         Gateway <--> State
     end
-    GitHub["GitHub App / Webhook"] --> Server
-    Admin["React 管理后台"] --> Server
-    Discord["Discord Server"] <--> Gateway
-    subgraph Home["家庭或算力节点（无需公网 IP）"]
-        Worker["Pull Worker"]
-        Workspace["Repo Cache + Worktree\n长期开发环境"]
-        Codex["Codex App Server"]
-        Browser["Worker / 桌面端 Chrome"]
-        Worker <--> Workspace
+    subgraph Host["宿主机"]
+        Worker["tyrs-hand-worker\nsystemd / LaunchDaemon"]
+        Codex["系统 Codex App Server\n真实 CODEX_HOME"]
+        Workspace["Workspace + 项目\nRepo Cache + Worktree"]
+        Browser["Browser MCP + Browser Agent"]
         Worker <--> Codex
+        Worker <--> Workspace
         Worker <--> Browser
     end
-    Desktop["Codex Desktop"] <-->|"SSH + App Server Relay"| Worker
-    Worker -->|"HTTPS 长轮询 / 事件回传 / 工具调用"| Server
+    Desktop["Codex Desktop 客户端"] <-->|"SSH AppServer / Browser Agent 通道"| Worker
+    Worker -->|"HTTPS 领取、事件、工具与 Blob"| Control
 ```
 
-四个可执行入口分别承担不同职责：
+主要进程：
 
-- `tyrs-hand-server`：管理 API、GitHub App、Webhook 和前端静态资源。
-- `tyrs-hand-worker`：宿主常驻 Worker，通过 `/worker/v2` 主动领取任务，并内置多客户端 SSH 与 App Server Hub。
-- `tyrs-hand-discord`：Discord Gateway、Forum 会话、投影和 Outbox 投递。
-- `tyrs-hand-admin`：迁移、诊断、管理员恢复、主密钥轮换和 GC。
+- `tyrs-hand-server`：管理 API、GitHub App、Webhook、Worker API 和前端静态资源。
+- `tyrs-hand-discord`：Discord Gateway、Forum、投影和 Outbox。
+- `tyrs-hand-worker`：宿主常驻进程，运行 Codex、Git/SSH、Browser 和多客户端 Desktop 通道。
+- `tyrs-hand-admin`：数据库迁移、管理员恢复、主密钥轮换和 GC。
 
-PostgreSQL 是唯一权威状态源。Redis 仅保存可以重建的限流和通知状态。Worker 不直连二者，也不持有 Control 主密钥或 Discord Bot Token。
+PostgreSQL 是唯一权威状态源。Redis 只保存可重建的限流与通知状态。Worker 不直连数据库或 Redis。
+
+## Worker 与 Workspace
+
+一个 Worker 对应一个真实 OS 用户，并最多绑定一个 Workspace。Workspace 是逻辑资源，可包含多个自动发现的项目和 Discord Forum，不承载运行时配置。
+
+- `HOME`、`CODEX_HOME`、Codex 登录态、Provider、Base URL、代理和模型目录均来自机器用户。
+- 固定项目根目录为 `~/tyrs-hand/workspaces`，一级目录即项目。
+- GitHub Work Item 使用宿主 Repo Cache 和独立 Worktree。
+- Worker 的 SSH Server 支持多公钥、多客户端、PTY、SCP 和 SFTP，并将 Codex Desktop 接入同一个 AppServer Hub。
+- 出站 SSH Credential 和 Host 由 Control 分配给指定 Worker；GitHub Token 不进入 Codex 环境或 Git Remote。
+
+Codex CLI 最低版本为 `0.145.0`。Worker 启动与 `doctor` 都会拒绝更低版本。
+
+## Codex 配置边界
+
+Control 不保存或下发 Provider、API Key、ChatGPT 登录态、Base URL、代理、`config.toml` 或 `auth.json`。
+
+Control 中的“GitHub Agent 设置”只作用于 `github_work_item`：
+
+- Agent Profile 和仓库覆盖可提供 model、reasoning、service tier、sandbox 与工具参数。
+- 全局 GitHub Agent instructions 作为该次 GitHub Turn 的 developer instructions 注入，不写机器 Home。
+
+Desktop、Discord 和 Mobile 不读取这些默认值；显式会话或 Turn 选择仍然有效，未指定项由机器 Codex Home 决定。初始标题使用回退文本，后续由 Codex 原生 `thread/name/updated` 事件更新。
+
+## Browser
+
+- Worker 任务直接访问宿主 Browser MCP 和受控宿主文件目录。
+- Browser Token 只从 Worker 用户可读的受限文件读取，不进入 Control 或任务快照。
+- Codex Desktop 通过 Worker 的 Browser Agent SSH 通道访问宿主浏览器。
+- Worker 浏览器任务和多个 Desktop Browser 客户端可以并发；任一 Desktop 断开不会中断其他链路。
 
 ## 快速开始
 
-最小生产安装请参阅[最小安装指引](docs/deployment/minimal-installation.md)。
+完整步骤见[最小安装指引](docs/deployment/minimal-installation.md)。
 
-### 环境要求
+### Control 依赖
 
 - Docker Engine 与 Docker Compose
-- 本地源码开发额外需要 Go `1.26.5`、Node.js `24.14.0` 和 pnpm `11.14.0`
-- Worker 宿主需安装 Codex CLI/App Server `>= 0.145.0`、Git 和 OpenSSH Client
+- PostgreSQL、Redis（示例 Compose 已提供）
+- HTTPS 域名与反向代理
 
-### 启动服务
-
-1. 创建本地配置和 Secret：
-
-   ```bash
-   cp .env.example .env
-   install -d -m 0700 .local/secrets
-   printf '%s' 'tyrs_hand' > .local/secrets/postgres_password
-   openssl rand -base64 32
-   openssl rand -hex 32
-   ```
-
-   将两个随机值分别写入 `.env` 的 `TYRS_HAND_MASTER_KEY` 和 `TYRS_HAND_SETUP_TOKEN`。本地默认 PostgreSQL 密码为 `tyrs_hand`；生产环境必须同时替换 `.env` 中的 `POSTGRES_PASSWORD` 和 Secret 文件内容。
-
-2. 构建 Control 镜像并执行显式迁移：
-
-   ```bash
-   docker compose build server
-   docker compose up -d postgres redis
-   docker compose --profile tools run --rm admin migrate
-   docker compose up -d server discord
-   ```
-
-   Server 启动时只检查迁移状态，不会自行修改数据库结构。
-
-3. 打开 `http://localhost:8080/setup`，使用 Setup Token 创建管理员，并立即保存 TOTP Secret 和一次性恢复码。
-
-4. 在 GitHub App 页面通过 Manifest 创建 App，或者手动录入已有 App。安装 App 后，Installation 与 Repository 会通过已验签 Webhook 自动同步。
-
-5. 在管理后台创建 Worker、选择角色和并发上限，并生成一次性注册 Token。
-
-6. 从 GitHub Release 安装宿主 Worker。Codex Provider 和登录态只读取该宿主用户的真实 `CODEX_HOME`，Control 不配置也不下发。
-
-## Webhook 监听分离
-
-默认情况下，管理端、内部 API 与 Webhook 共用 `TYRS_HAND_HTTP_ADDR`，只启动一个 HTTP 端口。
-
-需要在网络层隔离 Webhook 时，可以配置：
-
-```dotenv
-TYRS_HAND_SEPARATE_WEBHOOK=true
-TYRS_HAND_WEBHOOK_HTTP_ADDR=:8081
-```
-
-开启后，管理端口不再注册 `/webhooks/github`，Webhook 端口只注册健康检查和 GitHub Webhook。部署系统还需要单独发布该端口，并由反向代理将 `/webhooks/github` 路由到它。
-
-## 宿主 Worker
-
-Worker 与 Relay 已合并。一个 Worker 绑定一个真实 OS 用户，直接使用该用户的 `HOME`、`CODEX_HOME` 和 `~/tyrs-hand/workspaces`，不创建开发容器，也不迁移或改写已有 Codex 聊天记录。
-
-- Worker 只启动一个系统 Codex App Server，所有 GitHub、Discord、移动端和 Desktop 客户端共享该 Hub。
-- 内置 SSH Server 支持多公钥、多客户端、Shell、PTY、SCP 和 SFTP；拦截 `codex app-server proxy`，并禁止所有端口转发。
-- Codex Provider、API Key、ChatGPT Auth、Base URL 和代理只由机器 `CODEX_HOME` 决定。
-- Control 仍可下发任务的模型、思考强度、Service Tier 和 Agent 指令，但不会写入机器 Home。
-- Browser Bridge、GitHub、Discord、移动客户端和 Agent 出站 SSH 能力保留。
-- 四平台薄二进制、依赖声明和 systemd/LaunchDaemon 安装方法见[最小安装指引](docs/deployment/minimal-installation.md)。
-
-## GitHub App 权限
-
-默认 Manifest 请求以下最小权限：
-
-| 权限 | 级别 |
-| --- | --- |
-| Metadata | Read |
-| Contents | Read & Write |
-| Issues | Read & Write |
-| Pull Requests | Read & Write |
-| Actions | Read |
-| Checks | Read |
-
-Manifest 订阅 Repository、Issues、Issue Comment、Pull Request、Review、Review Comment 和 Push。Installation 生命周期事件由 GitHub 自动发送给 App。
-
-默认规则接受 Issue 和 Pull Request 评论第一行的 `/tyrs-hand` 命令、第一行任意位置可见且精确匹配 App 登录名的 `@mention`，以及名称为 `tyrs-hand` 的结构化 Label 事件。Mention 匹配大小写不敏感，并忽略后续行、引用、代码、转义、URL 和用户名后缀。旧版全文 `@mention` 仅作为默认关闭的兼容规则；GitHub 不允许普通 App Bot 被直接选为 Reviewer，如需在 Reviewer 请求时触发 Agent，管理员可以显式添加 `pull_request.review_requested` 事件规则。
-
-## Thread、Skill 与工作区
-
-- 一个 `(Work Item, Agent Profile, Context Version)` 对应一个 Codex Thread。
-- 同一 Issue 或 PR 的后续指令 Resume 原 Thread。
-- Model、Profile、工具 Schema 或 Skill 配置变化时创建新 Thread，并注入上一轮摘要。
-- 一个 GitHub Work Item 对应一个临时 Worktree；同一工作项严格串行，关闭 7 天后清理。
-- GitHub 路径不安装依赖、不共享依赖，也不准备工具链；定位是只读或轻量修改，不建议在 Worker 本地构建、运行和调试。
-- Issue/PR 地址与编号会注入 Prompt；PR 还会预拉源分支并注入源/目标分支与 SHA。
-- Issue 创建的 PR 会自动关联回原 Work Item。
-- 失败任务保留现场，租约或 Head 不一致时隔离旧 Worktree 并重建。
-
-仓库任务 Skill 必须位于：
-
-```text
-.agents/skills/<skill-name>/SKILL.md
-```
-
-规则中声明的 Skill 不存在或未被 Codex `skills/list` 发现时，任务会以配置错误结束，不会让模型猜测。
-
-## 安全模型
-
-- 管理员密码使用 Argon2id，Secret 使用 AES-256-GCM 加密。
-- Session 使用随机不透明 Cookie，并启用 HttpOnly、SameSite 和 CSRF 防护。
-- Webhook 在限制 Body 大小后执行 HMAC-SHA256 常量时间验签，并按 Delivery ID 去重。
-- Job 结果必须匹配当前 lease token 和单调递增 epoch。
-- Dynamic Tool 同时校验 Capability、Installation、Repository、Work Item、工具白名单和实时 GitHub 权限。
-- Tool Call 以 `(thread, turn, call)` 幂等记录。
-- GitHub Token 不进入 Codex 环境、Git Remote 或 Worktree。
-- Server 与 Worker 均要求以非 root 用户运行。
-- Worker 只通过 HTTPS Worker API 访问 Control，不直连 PostgreSQL 或 Redis，也不持有主密钥、Discord Bot Token 或 Provider Key。
-- Worker API 支持单个 IP 和 CIDR 白名单；直连不依赖 Cloudflare，只有可信代理链才采信转发来源头。
-- 内置 SSH 仅允许 session channel，不允许端口转发；授权公钥不得包含 forced-command 等选项。
-
-生产 Control 应使用 `compose.production.yaml`，通过 Secret 文件提供主密钥；Worker 使用 Release 二进制安装：
+本地源码开发另外需要 Go `1.26.5`、Node.js `24.14.0`、pnpm `11.14.0` 和 Codex `>= 0.145.0`。
 
 ```bash
-docker compose -f compose.yaml -f compose.production.yaml up -d
+cp .env.example .env
+install -d -m 0700 .local/secrets
+openssl rand -base64 32 > .local/secrets/master_key
+openssl rand -hex 32 > .local/secrets/postgres_password
+docker compose -f compose.yaml -f compose.production.yaml up -d postgres redis
+docker compose -f compose.yaml -f compose.production.yaml --profile tools run --rm admin migrate
+docker compose -f compose.yaml -f compose.production.yaml up -d server discord
 ```
 
-不要提交 `.env`、`.local/`、CODEX_HOME、私钥、Worktree 或仓库缓存。
+打开 `/setup` 创建管理员并配置 GitHub App、Discord 和 Worker。随后使用一次性 Enrollment Token 安装宿主 Worker：
 
-## 开发与测试
+```bash
+sudo env \
+  TYRS_HAND_RELEASE_VERSION=v0.2.0 \
+  TYRS_HAND_WORKER_CONTROL_URL=https://agent.example.com \
+  TYRS_HAND_WORKER_ENROLLMENT_TOKEN=<one-time-token> \
+  TYRS_HAND_WORKER_PUBLIC_KEYS_FILE=/path/to/authorized_keys \
+  TYRS_HAND_WORKER_USER=<os-user> \
+  sh deploy/worker/install.sh
+```
+
+安装脚本校验 SHA-256 与 Sigstore bundle，运行依赖检查，并安装 Linux systemd unit 或 macOS LaunchDaemon。精确依赖声明位于 `deploy/worker/dependencies.json`。
+
+## Worker API
+
+Worker 使用 Bearer Credential 直接访问单版本 REST API：
+
+```text
+POST /worker/v1/enroll
+POST /worker/v1/heartbeat
+POST /worker/v1/claims
+GET  /worker/v1/workspace
+POST /worker/v1/workspace/projects/snapshot
+GET|POST /worker/v1/blobs/{id}
+... Desktop、Thread、Turn、Run、Tool、Git 与 SSH 直连接口
+```
+
+协议没有 Envelope、RPC 路由映射或版本转发层。完整定义见 `api/openapi.yaml`。
+
+## 管理后台
+
+后台按六组组织：
+
+1. 概览：Control、Worker、Codex、Browser、GitHub 和 Discord 健康状态。
+2. Workers：注册、容量、依赖状态，以及内嵌 Workspace、项目与 Forum。
+3. Clients：设备配对、状态与撤销。
+4. Integrations：GitHub、仓库、规则、Discord 和 GitHub Agent 设置。
+5. Access：出站 SSH Credential、Host 与 Worker 分配。
+6. Operations：Work Item、Thread、Job、缓存和审计。
+
+## 安全
+
+- 管理员密码使用 Argon2id，Secret 使用 AES-256-GCM。
+- Session 使用随机 Cookie，并启用 HttpOnly、SameSite 和 CSRF 防护。
+- Webhook 经 Body 限制、HMAC-SHA256 验签和 Delivery ID 去重。
+- Run 结果校验 Capability、租约 Token 和单调递增 Epoch。
+- Dynamic Tool 校验 Installation、Repository、Work Item、工具白名单和实时 GitHub 权限。
+- Worker API 支持 IP/CIDR allowlist，只信任配置过的代理来源头。
+- 内置 SSH 只允许 session channel，不开放端口转发。
+
+不要提交 `.env`、`.local/`、Codex Home、私钥、Worktree 或仓库缓存。
+
+## 开发与发布
 
 ```bash
 pnpm --dir web install --frozen-lockfile
 make generate
-make format-check
-make lint
-make test
-make test-race
-make test-integration
-make test-coverage
-make build
+make ci-local
 ```
 
-集成测试使用 Testcontainers 启动 PostgreSQL、Redis，并使用临时 Git Remote 验证 Worktree。Codex 测试包含两层：
+Integration 测试用 Testcontainers 启动 PostgreSQL/Redis，并用满足最低版本的真实 Codex 与 Mock Responses 上游验证 App Server。Browser 验收需同时核对工具结果、宿主 Bridge、文件交换、任务记录、Projection 和 Outbox。
 
-- 脚本化 Fake App Server，覆盖 JSON-RPC、超时、断线、Resume、Steer、Interrupt 和工具回调。
-- 固定 Codex `0.145.0` 配合 Mock Responses SSE 上游，验证真实 App Server 协议，不调用真实模型。
-
-前端测试使用 Vitest、Testing Library、MSW 和 Playwright。OpenAPI 3.1 同时生成 Go Gin 接口与前端 TypeScript 类型。
-
-## 镜像与发布
-
-GitHub Actions 构建 Control 多架构镜像；Worker 以 Linux/macOS、amd64/arm64 薄二进制发布：
-
-```text
-ghcr.io/slovx2/tyrs-hand-control
-tyrs-hand-worker_<version>_<os>_<arch>.tar.gz
-```
-
-Control 镜像构建包含 SBOM、provenance、漏洞扫描和 Cosign keyless 签名；Worker Release 同时发布 SHA-256 校验文件。
-
-生产部署应固定 `sha-<commit>` Tag 或镜像 Digest，不使用 `latest`。
-
-## 贡献
-
-提交改动前请运行与变更范围匹配的测试，并确保生成代码没有漂移。Bug 报告应包含事件类型、期望行为和脱敏后的日志；不要在 Issue 中粘贴 Token、Webhook Secret、Private Key 或完整 Agent Event。
+GitHub Actions 发布带 provenance、SBOM 和 keyless Cosign 签名的 Control 镜像，以及 Linux/macOS、amd64/arm64 Worker tarball、SHA-256 和 Sigstore bundle。生产应固定 Control Digest 和 Worker 精确版本，不使用 `latest`。
 
 ## License
 

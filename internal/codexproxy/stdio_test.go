@@ -12,11 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRelayCopiesDesktopBytesWithoutInterpretingWebSocket(t *testing.T) {
+func TestForwardCopiesDesktopBytesWithoutInterpretingWebSocket(t *testing.T) {
 	directory, err := os.MkdirTemp("/tmp", "tyrs-stdio-")
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, os.RemoveAll(directory)) })
-	socketPath := filepath.Join(directory, "relay.sock")
+	socketPath := filepath.Join(directory, "app-server.sock")
 	listener, err := net.Listen("unix", socketPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = listener.Close() })
@@ -34,7 +34,7 @@ func TestRelayCopiesDesktopBytesWithoutInterpretingWebSocket(t *testing.T) {
 
 	request := []byte("GET / HTTP/1.1\r\nUpgrade: websocket\r\n\r\n\x81\x03raw")
 	var output bytes.Buffer
-	require.NoError(t, Relay(context.Background(), socketPath, bytes.NewReader(request), &output))
+	require.NoError(t, Forward(context.Background(), socketPath, bytes.NewReader(request), &output))
 	require.Equal(t, request, <-upstream)
 	require.Equal(t, "HTTP/1.1 101 Switching Protocols\r\n\r\n\x81\x02ok", output.String())
 }

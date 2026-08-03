@@ -22,10 +22,10 @@ export async function saveBootstrap(serverId: string, bootstrap: Bootstrap): Pro
     await database.runAsync("UPDATE connections SET bootstrap_payload=?,updated_at=? WHERE server_id=?",
       JSON.stringify(bootstrap), now, serverId);
     for (const project of bootstrap.projects) {
-      await database.runAsync(`INSERT INTO projects(server_id,id,environment_id,name,relative_path,payload,updated_at)
-        VALUES (?,?,?,?,?,?,?) ON CONFLICT(server_id,id) DO UPDATE SET environment_id=excluded.environment_id,
+      await database.runAsync(`INSERT INTO projects(server_id,id,workspace_id,name,relative_path,payload,updated_at)
+        VALUES (?,?,?,?,?,?,?) ON CONFLICT(server_id,id) DO UPDATE SET workspace_id=excluded.workspace_id,
         name=excluded.name,relative_path=excluded.relative_path,payload=excluded.payload,updated_at=excluded.updated_at`,
-      serverId, project.id, project.environmentId, project.name, project.relativePath,
+      serverId, project.id, project.workspaceId, project.name, project.relativePath,
       JSON.stringify(project), now);
     }
   });
@@ -54,7 +54,7 @@ export async function saveSessions(serverId: string, sessions: Session[]): Promi
         ON CONFLICT(server_id,id) DO UPDATE SET project_id=excluded.project_id,title=excluded.title,
         lifecycle_state=excluded.lifecycle_state,last_message_seq=excluded.last_message_seq,
         last_activity_at=excluded.last_activity_at,payload=excluded.payload`, serverId,
-      session.id, session.developmentProjectId, session.title, session.lifecycleState,
+      session.id, session.projectId, session.title, session.lifecycleState,
       session.lastMessageSeq, session.lastActivityAt, JSON.stringify(session));
     }
   });

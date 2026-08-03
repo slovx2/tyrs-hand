@@ -19,11 +19,11 @@ import (
 
 func (s *Server) workerRunHeartbeat(c *gin.Context) {
 	var request workerprotocol.RunLeaseRequest
-	runID, node, ok := requireRunLease(c, &request)
+	runID, worker, ok := requireRunLease(c, &request)
 	if !ok {
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), node.ID, runID, request)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, request)
 	if err == nil {
 		err = codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration).Heartbeat(c.Request.Context(), claimed)
 	}
@@ -39,7 +39,7 @@ func (s *Server) workerRunHeartbeat(c *gin.Context) {
 	c.JSON(http.StatusOK, workerprotocol.RunHeartbeatResponse{Commands: commands,
 		Recovery: workerprotocol.RunRecoveryState{Recovering: claimed.Recovering,
 			SubmissionID: claimed.SubmissionID, ConfirmedTurnID: claimed.ConfirmedTurnID,
-			ExternalThreadID: claimed.ExternalThreadID, CodexHomeKey: claimed.CodexHomeKey}})
+			ExternalThreadID: claimed.ExternalThreadID}})
 }
 
 func (s *Server) pendingRunCommands(ctx context.Context,
@@ -61,7 +61,7 @@ func (s *Server) pendingRunCommands(ctx context.Context,
 			&command.Instruction, &messageID); err != nil {
 			return nil, err
 		}
-		if claimed.SourceType == codexcontrol.SourceDevelopment {
+		if claimed.SourceType == codexcontrol.SourceWorkspace {
 			copyClaimed := *claimed
 			copyClaimed.ID, copyClaimed.Sequence = command.ID, command.Sequence
 			copyClaimed.InputSurface = "client"
@@ -70,7 +70,7 @@ func (s *Server) pendingRunCommands(ctx context.Context,
 			}
 			copyClaimed.DiscordMessageID = messageID
 			copyClaimed.Instruction = command.Instruction
-			command.Development, err = s.loadDevelopmentWorkerSnapshot(ctx, &copyClaimed)
+			command.Session, err = s.loadWorkspaceWorkerSnapshot(ctx, &copyClaimed)
 			if err != nil {
 				return nil, err
 			}
@@ -88,11 +88,11 @@ func (s *Server) pendingRunCommands(ctx context.Context,
 
 func (s *Server) workerCommandAck(c *gin.Context) {
 	var request workerprotocol.CommandAckRequest
-	runID, node, ok := requireRunLease(c, &request)
+	runID, worker, ok := requireRunLease(c, &request)
 	if !ok {
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), node.ID, runID,
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID,
 		request.RunLeaseRequest)
 	if err != nil {
 		remoteRunError(c, "校验远程 Run 指令确认失败", err)
@@ -143,12 +143,12 @@ func (s *Server) workerCommandAck(c *gin.Context) {
 				append_count = append_count + 1 WHERE id = $1 AND append_count < max_append_count`,
 				claimed.RunID)
 		}
-		if err == nil && claimed.SourceType == codexcontrol.SourceDevelopment &&
+		if err == nil && claimed.SourceType == codexcontrol.SourceWorkspace &&
 			claimed.DiscordConversationID != uuid.Nil {
 			err = recordDiscordIntentContributors(c.Request.Context(), tx, claimed.RunID,
 				claimed.DiscordConversationID, request.CommandID, request.TurnID)
 		}
-		if err == nil && claimed.SourceType == codexcontrol.SourceDevelopment &&
+		if err == nil && claimed.SourceType == codexcontrol.SourceWorkspace &&
 			claimed.DiscordConversationID != uuid.Nil {
 			var guildID, threadID string
 			err = tx.QueryRowContext(c.Request.Context(), `SELECT guild_id, thread_id
@@ -180,11 +180,11 @@ func (s *Server) workerCommandAck(c *gin.Context) {
 
 func (s *Server) workerRunEvents(c *gin.Context) {
 	var request workerprotocol.EventsRequest
-	runID, node, ok := requireRunLease(c, &request)
+	runID, worker, ok := requireRunLease(c, &request)
 	if !ok {
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), node.ID, runID, request.RunLeaseRequest)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, request.RunLeaseRequest)
 	if err != nil {
 		remoteRunError(c, "校验远程任务失败", err)
 		return
@@ -197,8 +197,8 @@ func (s *Server) workerRunEvents(c *gin.Context) {
 	defer func() { _ = tx.Rollback() }()
 	var lastSequence int64
 	if err := tx.QueryRowContext(c.Request.Context(), `SELECT worker_event_sequence
-		FROM codex_turn_runs WHERE id = $1 AND execution_node_id = $2 FOR UPDATE`,
-		runID, node.ID).Scan(&lastSequence); err != nil {
+		FROM codex_turn_runs WHERE id = $1 AND worker_id = $2 FOR UPDATE`,
+		runID, worker.ID).Scan(&lastSequence); err != nil {
 		problem(c, http.StatusInternalServerError, "锁定远程事件序列失败", err)
 		return
 	}
@@ -266,7 +266,7 @@ func (s *Server) workerRunEvents(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "提交远程事件失败", err)
 		return
 	}
-	if claimed.SourceType == codexcontrol.SourceDevelopment && claimed.SessionID != uuid.Nil &&
+	if claimed.SourceType == codexcontrol.SourceWorkspace && claimed.SessionID != uuid.Nil &&
 		s.clientUpdateHub != nil {
 		for _, event := range request.Events {
 			sequence := event.Sequence
@@ -282,7 +282,7 @@ func (s *Server) workerRunEvents(c *gin.Context) {
 			})
 		}
 	}
-	if claimed.SourceType == codexcontrol.SourceDevelopment {
+	if claimed.SourceType == codexcontrol.SourceWorkspace {
 		s.hydrateDesktopConversation(c.Request.Context(), claimed)
 		hasExplicitProgress := false
 		timelineChanged := false
@@ -417,7 +417,7 @@ func recordDesktopUserMessageItem(ctx context.Context, tx *sql.Tx,
 
 func (s *Server) workerRunComplete(c *gin.Context) {
 	var request workerprotocol.CompleteRequest
-	runID, node, ok := requireRunLease(c, &request)
+	runID, worker, ok := requireRunLease(c, &request)
 	if !ok {
 		return
 	}
@@ -425,7 +425,7 @@ func (s *Server) workerRunComplete(c *gin.Context) {
 		badRequest(c, errors.New("完成请求缺少幂等键"))
 		return
 	}
-	if finished, err := s.remoteRunAlreadyFinished(c.Request.Context(), runID, node.ID,
+	if finished, err := s.remoteRunAlreadyFinished(c.Request.Context(), runID, worker.ID,
 		request.IdempotencyKey, "completed"); err != nil {
 		remoteRunError(c, "检查远程任务完成状态失败", err)
 		return
@@ -433,7 +433,7 @@ func (s *Server) workerRunComplete(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), node.ID, runID, request.RunLeaseRequest)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, request.RunLeaseRequest)
 	repository := codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration)
 	if err == nil {
 		var satisfied bool
@@ -442,7 +442,7 @@ func (s *Server) workerRunComplete(c *gin.Context) {
 			err = errors.New("required_reply_missing")
 		}
 	}
-	if err == nil && claimed.SourceType == codexcontrol.SourceDevelopment {
+	if err == nil && claimed.SourceType == codexcontrol.SourceWorkspace {
 		s.hydrateDesktopConversation(c.Request.Context(), claimed)
 		if claimed.DiscordConversationID != uuid.Nil {
 			projectionErr := s.projectRemoteDiscordComplete(c.Request.Context(), claimed, request.Result)
@@ -559,7 +559,7 @@ func recordDiscordIntentContributors(ctx context.Context, tx *sql.Tx, runID,
 
 func (s *Server) workerRunFail(c *gin.Context) {
 	var request workerprotocol.FailRequest
-	runID, node, ok := requireRunLease(c, &request)
+	runID, worker, ok := requireRunLease(c, &request)
 	if !ok {
 		return
 	}
@@ -571,7 +571,7 @@ func (s *Server) workerRunFail(c *gin.Context) {
 	if request.Code == "user_interrupt" {
 		expectedStatus = "canceled"
 	}
-	if finished, err := s.remoteRunAlreadyFinished(c.Request.Context(), runID, node.ID,
+	if finished, err := s.remoteRunAlreadyFinished(c.Request.Context(), runID, worker.ID,
 		request.IdempotencyKey, expectedStatus); err != nil {
 		remoteRunError(c, "检查远程任务失败状态失败", err)
 		return
@@ -579,7 +579,7 @@ func (s *Server) workerRunFail(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), node.ID, runID, request.RunLeaseRequest)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, request.RunLeaseRequest)
 	if err == nil {
 		if request.Code == "codex_non_retryable_error" && request.CodexError == nil {
 			badRequest(c, errors.New("不可重试 Codex 错误缺少结构化详情"))
@@ -628,7 +628,7 @@ func (s *Server) workerRunFail(c *gin.Context) {
 		remoteRunError(c, "提交远程任务失败状态失败", err)
 		return
 	}
-	if claimed.SourceType == codexcontrol.SourceDevelopment {
+	if claimed.SourceType == codexcontrol.SourceWorkspace {
 		guildID, threadID, targetErr := s.discordProjectionTarget(c.Request.Context(), claimed)
 		if targetErr == nil {
 			state := discordintegration.ConversationFailed
@@ -651,13 +651,13 @@ func (s *Server) workerRunFail(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func (s *Server) remoteRunAlreadyFinished(ctx context.Context, runID, nodeID uuid.UUID,
+func (s *Server) remoteRunAlreadyFinished(ctx context.Context, runID, workerID uuid.UUID,
 	key, expectedStatus string,
 ) (bool, error) {
 	var status string
 	var storedKey sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT status, worker_terminal_key
-		FROM codex_turn_runs WHERE id = $1 AND execution_node_id = $2`, runID, nodeID).
+		FROM codex_turn_runs WHERE id = $1 AND worker_id = $2`, runID, workerID).
 		Scan(&status, &storedKey)
 	if err != nil {
 		return false, err
@@ -680,14 +680,14 @@ func (s *Server) remoteRunAlreadyFinished(ctx context.Context, runID, nodeID uui
 
 func (s *Server) workerSetThread(c *gin.Context) {
 	var request workerprotocol.SetThreadRequest
-	runID, node, ok := requireRunLease(c, &request)
+	runID, worker, ok := requireRunLease(c, &request)
 	if !ok {
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), node.ID, runID, request.RunLeaseRequest)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, request.RunLeaseRequest)
 	if err == nil {
 		err = codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration).SetThread(c.Request.Context(),
-			claimed, request.ThreadID, request.CodexHome)
+			claimed, request.ThreadID)
 	}
 	if err != nil {
 		remoteRunError(c, "保存远程 Codex Thread 失败", err)
@@ -698,23 +698,23 @@ func (s *Server) workerSetThread(c *gin.Context) {
 
 func (s *Server) workerRecordSubmission(c *gin.Context) {
 	var request workerprotocol.SubmissionRequest
-	runID, node, ok := requireRunLease(c, &request)
+	runID, worker, ok := requireRunLease(c, &request)
 	if !ok {
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), node.ID, runID, request.RunLeaseRequest)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, request.RunLeaseRequest)
 	if err == nil {
 		err = codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration).RecordSubmission(
 			c.Request.Context(), claimed, request.SubmissionID)
 	}
-	if err == nil && claimed.SourceType == codexcontrol.SourceDevelopment {
+	if err == nil && claimed.SourceType == codexcontrol.SourceWorkspace {
 		s.hydrateDesktopConversation(c.Request.Context(), claimed)
 		if claimed.DiscordConversationID != uuid.Nil {
 			err = discordintegration.ExpireConversationPlanCards(c.Request.Context(), s.db,
 				claimed.DiscordConversationID, claimed.RunID)
 		}
 	}
-	if err == nil && claimed.SourceType == codexcontrol.SourceDevelopment &&
+	if err == nil && claimed.SourceType == codexcontrol.SourceWorkspace &&
 		claimed.DiscordConversationID != uuid.Nil {
 		tx, txErr := s.db.BeginTx(c.Request.Context(), nil)
 		if txErr == nil {
@@ -737,11 +737,11 @@ func (s *Server) workerRecordSubmission(c *gin.Context) {
 
 func (s *Server) workerConfirmTurn(c *gin.Context) {
 	var request workerprotocol.ConfirmTurnRequest
-	runID, node, ok := requireRunLease(c, &request)
+	runID, worker, ok := requireRunLease(c, &request)
 	if !ok {
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), node.ID, runID, request.RunLeaseRequest)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, request.RunLeaseRequest)
 	if err == nil {
 		err = codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration).ConfirmTurn(
 			c.Request.Context(), claimed, request.TurnID)

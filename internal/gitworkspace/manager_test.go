@@ -29,7 +29,7 @@ func TestEnsureAndPublish(t *testing.T) {
 	run(t, seed, "git", "push", "origin", "main")
 	run(t, root, "git", "--git-dir", remote, "symbolic-ref", "HEAD", "refs/heads/main")
 
-	manager := NewManager(filepath.Join(root, "cache"), filepath.Join(root, "worktrees"))
+	manager := NewManager(filepath.Join(root), filepath.Join(root, "worktrees"))
 	workspace, err := manager.Ensure(ctx, ports.WorkspaceSpec{
 		RepositoryID: "repo-1", WorkItemID: "item-1", CloneURL: remote,
 		BaseRef: "refs/remotes/origin/main", Branch: "tyrs-hand/issue-1-test",

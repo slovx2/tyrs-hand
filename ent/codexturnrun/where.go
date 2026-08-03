@@ -70,9 +70,9 @@ func Attempt(v int) predicate.CodexTurnRun {
 	return predicate.CodexTurnRun(sql.FieldEQ(FieldAttempt, v))
 }
 
-// WorkerID applies equality check predicate on the "worker_id" field. It's identical to WorkerIDEQ.
-func WorkerID(v string) predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldEQ(FieldWorkerID, v))
+// LeaseOwner applies equality check predicate on the "lease_owner" field. It's identical to LeaseOwnerEQ.
+func LeaseOwner(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldEQ(FieldLeaseOwner, v))
 }
 
 // LeaseEpoch applies equality check predicate on the "lease_epoch" field. It's identical to LeaseEpochEQ.
@@ -85,9 +85,9 @@ func CapabilityHash(v string) predicate.CodexTurnRun {
 	return predicate.CodexTurnRun(sql.FieldEQ(FieldCapabilityHash, v))
 }
 
-// ExecutionNodeID applies equality check predicate on the "execution_node_id" field. It's identical to ExecutionNodeIDEQ.
-func ExecutionNodeID(v uuid.UUID) predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldEQ(FieldExecutionNodeID, v))
+// WorkerID applies equality check predicate on the "worker_id" field. It's identical to WorkerIDEQ.
+func WorkerID(v uuid.UUID) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldEQ(FieldWorkerID, v))
 }
 
 // WorkerEventSequence applies equality check predicate on the "worker_event_sequence" field. It's identical to WorkerEventSequenceEQ.
@@ -280,69 +280,69 @@ func AttemptLTE(v int) predicate.CodexTurnRun {
 	return predicate.CodexTurnRun(sql.FieldLTE(FieldAttempt, v))
 }
 
-// WorkerIDEQ applies the EQ predicate on the "worker_id" field.
-func WorkerIDEQ(v string) predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldEQ(FieldWorkerID, v))
+// LeaseOwnerEQ applies the EQ predicate on the "lease_owner" field.
+func LeaseOwnerEQ(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldEQ(FieldLeaseOwner, v))
 }
 
-// WorkerIDNEQ applies the NEQ predicate on the "worker_id" field.
-func WorkerIDNEQ(v string) predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldNEQ(FieldWorkerID, v))
+// LeaseOwnerNEQ applies the NEQ predicate on the "lease_owner" field.
+func LeaseOwnerNEQ(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldNEQ(FieldLeaseOwner, v))
 }
 
-// WorkerIDIn applies the In predicate on the "worker_id" field.
-func WorkerIDIn(vs ...string) predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldIn(FieldWorkerID, vs...))
+// LeaseOwnerIn applies the In predicate on the "lease_owner" field.
+func LeaseOwnerIn(vs ...string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldIn(FieldLeaseOwner, vs...))
 }
 
-// WorkerIDNotIn applies the NotIn predicate on the "worker_id" field.
-func WorkerIDNotIn(vs ...string) predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldNotIn(FieldWorkerID, vs...))
+// LeaseOwnerNotIn applies the NotIn predicate on the "lease_owner" field.
+func LeaseOwnerNotIn(vs ...string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldNotIn(FieldLeaseOwner, vs...))
 }
 
-// WorkerIDGT applies the GT predicate on the "worker_id" field.
-func WorkerIDGT(v string) predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldGT(FieldWorkerID, v))
+// LeaseOwnerGT applies the GT predicate on the "lease_owner" field.
+func LeaseOwnerGT(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldGT(FieldLeaseOwner, v))
 }
 
-// WorkerIDGTE applies the GTE predicate on the "worker_id" field.
-func WorkerIDGTE(v string) predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldGTE(FieldWorkerID, v))
+// LeaseOwnerGTE applies the GTE predicate on the "lease_owner" field.
+func LeaseOwnerGTE(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldGTE(FieldLeaseOwner, v))
 }
 
-// WorkerIDLT applies the LT predicate on the "worker_id" field.
-func WorkerIDLT(v string) predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldLT(FieldWorkerID, v))
+// LeaseOwnerLT applies the LT predicate on the "lease_owner" field.
+func LeaseOwnerLT(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldLT(FieldLeaseOwner, v))
 }
 
-// WorkerIDLTE applies the LTE predicate on the "worker_id" field.
-func WorkerIDLTE(v string) predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldLTE(FieldWorkerID, v))
+// LeaseOwnerLTE applies the LTE predicate on the "lease_owner" field.
+func LeaseOwnerLTE(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldLTE(FieldLeaseOwner, v))
 }
 
-// WorkerIDContains applies the Contains predicate on the "worker_id" field.
-func WorkerIDContains(v string) predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldContains(FieldWorkerID, v))
+// LeaseOwnerContains applies the Contains predicate on the "lease_owner" field.
+func LeaseOwnerContains(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldContains(FieldLeaseOwner, v))
 }
 
-// WorkerIDHasPrefix applies the HasPrefix predicate on the "worker_id" field.
-func WorkerIDHasPrefix(v string) predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldHasPrefix(FieldWorkerID, v))
+// LeaseOwnerHasPrefix applies the HasPrefix predicate on the "lease_owner" field.
+func LeaseOwnerHasPrefix(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldHasPrefix(FieldLeaseOwner, v))
 }
 
-// WorkerIDHasSuffix applies the HasSuffix predicate on the "worker_id" field.
-func WorkerIDHasSuffix(v string) predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldHasSuffix(FieldWorkerID, v))
+// LeaseOwnerHasSuffix applies the HasSuffix predicate on the "lease_owner" field.
+func LeaseOwnerHasSuffix(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldHasSuffix(FieldLeaseOwner, v))
 }
 
-// WorkerIDEqualFold applies the EqualFold predicate on the "worker_id" field.
-func WorkerIDEqualFold(v string) predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldEqualFold(FieldWorkerID, v))
+// LeaseOwnerEqualFold applies the EqualFold predicate on the "lease_owner" field.
+func LeaseOwnerEqualFold(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldEqualFold(FieldLeaseOwner, v))
 }
 
-// WorkerIDContainsFold applies the ContainsFold predicate on the "worker_id" field.
-func WorkerIDContainsFold(v string) predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldContainsFold(FieldWorkerID, v))
+// LeaseOwnerContainsFold applies the ContainsFold predicate on the "lease_owner" field.
+func LeaseOwnerContainsFold(v string) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldContainsFold(FieldLeaseOwner, v))
 }
 
 // LeaseEpochEQ applies the EQ predicate on the "lease_epoch" field.
@@ -450,54 +450,54 @@ func CapabilityHashContainsFold(v string) predicate.CodexTurnRun {
 	return predicate.CodexTurnRun(sql.FieldContainsFold(FieldCapabilityHash, v))
 }
 
-// ExecutionNodeIDEQ applies the EQ predicate on the "execution_node_id" field.
-func ExecutionNodeIDEQ(v uuid.UUID) predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldEQ(FieldExecutionNodeID, v))
+// WorkerIDEQ applies the EQ predicate on the "worker_id" field.
+func WorkerIDEQ(v uuid.UUID) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldEQ(FieldWorkerID, v))
 }
 
-// ExecutionNodeIDNEQ applies the NEQ predicate on the "execution_node_id" field.
-func ExecutionNodeIDNEQ(v uuid.UUID) predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldNEQ(FieldExecutionNodeID, v))
+// WorkerIDNEQ applies the NEQ predicate on the "worker_id" field.
+func WorkerIDNEQ(v uuid.UUID) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldNEQ(FieldWorkerID, v))
 }
 
-// ExecutionNodeIDIn applies the In predicate on the "execution_node_id" field.
-func ExecutionNodeIDIn(vs ...uuid.UUID) predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldIn(FieldExecutionNodeID, vs...))
+// WorkerIDIn applies the In predicate on the "worker_id" field.
+func WorkerIDIn(vs ...uuid.UUID) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldIn(FieldWorkerID, vs...))
 }
 
-// ExecutionNodeIDNotIn applies the NotIn predicate on the "execution_node_id" field.
-func ExecutionNodeIDNotIn(vs ...uuid.UUID) predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldNotIn(FieldExecutionNodeID, vs...))
+// WorkerIDNotIn applies the NotIn predicate on the "worker_id" field.
+func WorkerIDNotIn(vs ...uuid.UUID) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldNotIn(FieldWorkerID, vs...))
 }
 
-// ExecutionNodeIDGT applies the GT predicate on the "execution_node_id" field.
-func ExecutionNodeIDGT(v uuid.UUID) predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldGT(FieldExecutionNodeID, v))
+// WorkerIDGT applies the GT predicate on the "worker_id" field.
+func WorkerIDGT(v uuid.UUID) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldGT(FieldWorkerID, v))
 }
 
-// ExecutionNodeIDGTE applies the GTE predicate on the "execution_node_id" field.
-func ExecutionNodeIDGTE(v uuid.UUID) predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldGTE(FieldExecutionNodeID, v))
+// WorkerIDGTE applies the GTE predicate on the "worker_id" field.
+func WorkerIDGTE(v uuid.UUID) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldGTE(FieldWorkerID, v))
 }
 
-// ExecutionNodeIDLT applies the LT predicate on the "execution_node_id" field.
-func ExecutionNodeIDLT(v uuid.UUID) predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldLT(FieldExecutionNodeID, v))
+// WorkerIDLT applies the LT predicate on the "worker_id" field.
+func WorkerIDLT(v uuid.UUID) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldLT(FieldWorkerID, v))
 }
 
-// ExecutionNodeIDLTE applies the LTE predicate on the "execution_node_id" field.
-func ExecutionNodeIDLTE(v uuid.UUID) predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldLTE(FieldExecutionNodeID, v))
+// WorkerIDLTE applies the LTE predicate on the "worker_id" field.
+func WorkerIDLTE(v uuid.UUID) predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldLTE(FieldWorkerID, v))
 }
 
-// ExecutionNodeIDIsNil applies the IsNil predicate on the "execution_node_id" field.
-func ExecutionNodeIDIsNil() predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldIsNull(FieldExecutionNodeID))
+// WorkerIDIsNil applies the IsNil predicate on the "worker_id" field.
+func WorkerIDIsNil() predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldIsNull(FieldWorkerID))
 }
 
-// ExecutionNodeIDNotNil applies the NotNil predicate on the "execution_node_id" field.
-func ExecutionNodeIDNotNil() predicate.CodexTurnRun {
-	return predicate.CodexTurnRun(sql.FieldNotNull(FieldExecutionNodeID))
+// WorkerIDNotNil applies the NotNil predicate on the "worker_id" field.
+func WorkerIDNotNil() predicate.CodexTurnRun {
+	return predicate.CodexTurnRun(sql.FieldNotNull(FieldWorkerID))
 }
 
 // WorkerEventSequenceEQ applies the EQ predicate on the "worker_event_sequence" field.

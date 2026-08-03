@@ -14,8 +14,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/slovx2/tyrs-hand/internal/appserverhub"
 	"github.com/slovx2/tyrs-hand/internal/codex"
-	"github.com/slovx2/tyrs-hand/internal/codexrelay"
 	"go.uber.org/zap"
 )
 
@@ -26,15 +26,15 @@ type RuntimeOptions struct {
 	WorkspaceRoot string
 	StateDir      string
 	SSHAuthSock   string
-	Controller    codexrelay.Controller
+	Controller    appserverhub.Controller
 	Logger        *zap.Logger
 }
 
 type Runtime struct {
 	options    RuntimeOptions
 	command    *exec.Cmd
-	hub        *codexrelay.Relay
-	client     *codexrelay.Client
+	hub        *appserverhub.Hub
+	client     *appserverhub.Client
 	generation int64
 
 	mu                  sync.Mutex
@@ -105,9 +105,9 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 	}
 	controller := options.Controller
 	if controller == nil {
-		controller = codexrelay.PassThroughController{}
+		controller = appserverhub.PassThroughController{}
 	}
-	hub, err := codexrelay.Start(ctx, codexrelay.Options{
+	hub, err := appserverhub.Start(ctx, appserverhub.Options{
 		UpstreamSocketPath: socketPath,
 		Controller:         controller,
 	})
@@ -117,8 +117,8 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 		return nil, fmt.Errorf("启动 Worker AppServerHub: %w", err)
 	}
 	runtime.hub = hub
-	client, err := hub.OpenClient(codexrelay.ClientOptions{
-		Role: codexrelay.RoleWorker, ServerRequestHandler: runtime.handleServerRequest,
+	client, err := hub.OpenClient(appserverhub.ClientOptions{
+		Role: appserverhub.RoleWorker, ServerRequestHandler: runtime.handleServerRequest,
 	})
 	if err != nil {
 		_ = hub.Close()
@@ -130,7 +130,7 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 	return runtime, nil
 }
 
-func (r *Runtime) Client() *codexrelay.Client { return r.client }
+func (r *Runtime) Client() *appserverhub.Client { return r.client }
 
 func (r *Runtime) CodexHome() string { return r.options.CodexHome }
 

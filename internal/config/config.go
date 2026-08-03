@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -34,14 +33,12 @@ type Config struct {
 	CookieSecure                   bool
 	RepoCacheRoot                  string
 	WorktreeRoot                   string
-	CodexHomeRoot                  string
 	AttachmentRoot                 string
 	CodexBin                       string
 	WorkerDataRoot                 string
 	RepoCacheMaxBytes              int64
 	WorkerID                       string
 	WorkerRole                     string
-	WorkerImageDigest              string
 	WorkerMaxConcurrentJobs        int
 	WorkerControlURL               string
 	WorkerCredentialFile           string
@@ -67,28 +64,19 @@ type Config struct {
 	CodexResultDeliveryMaxAttempts int
 	CodexMaxSteersPerTurn          int
 	GitHubReplyGateMaxBlocks       int
-	EnableDevelopmentContainers    bool
-	DevelopmentHostDocker          bool
-	DevelopmentImage               string
-	DevelopmentRuntimeDir          string
-	DevelopmentRuntimeHostDir      string
 	EnableSSH                      bool
 	SSHAgentDir                    string
-	SSHAgentHostDir                string
 	BrowserMCPURL                  string
 	BrowserMCPTokenFile            string
-	BrowserAgentRelayAddress       string
+	BrowserAgentAddress            string
 	BrowserFilesRoot               string
-	BrowserFilesHostRoot           string
-	BrowserServicesRoot            string
-	BrowserServicesHostRoot        string
 }
 
 func Load() (Config, error) {
 	return load(false)
 }
 
-// LoadWorker 允许远程 Worker 在没有数据库、Redis 和主密钥的环境中启动。
+// LoadWorker 允许宿主 Worker 在没有数据库、Redis 和主密钥的环境中启动。
 func LoadWorker() (Config, error) {
 	return load(true)
 }
@@ -115,14 +103,12 @@ func load(workerProcess bool) (Config, error) {
 		CookieSecure:                   v.GetBool("cookie_secure"),
 		RepoCacheRoot:                  filepath.Clean(v.GetString("repo_cache_root")),
 		WorktreeRoot:                   filepath.Clean(v.GetString("worktree_root")),
-		CodexHomeRoot:                  filepath.Clean(v.GetString("codex_home_root")),
 		AttachmentRoot:                 filepath.Clean(v.GetString("attachment_root")),
 		CodexBin:                       v.GetString("codex_bin"),
 		WorkerDataRoot:                 filepath.Clean(v.GetString("worker_data_root")),
 		RepoCacheMaxBytes:              v.GetInt64("repo_cache_max_bytes"),
 		WorkerID:                       v.GetString("worker_id"),
 		WorkerRole:                     strings.TrimSpace(v.GetString("worker_role")),
-		WorkerImageDigest:              strings.TrimSpace(v.GetString("worker_image_digest")),
 		WorkerMaxConcurrentJobs:        v.GetInt("worker_max_concurrent_jobs"),
 		WorkerControlURL:               strings.TrimRight(v.GetString("worker_control_url"), "/"),
 		WorkerCredentialFile:           filepath.Clean(v.GetString("worker_credential_file")),
@@ -146,21 +132,12 @@ func load(workerProcess bool) (Config, error) {
 		CodexResultDeliveryMaxAttempts: v.GetInt("codex_result_delivery_max_attempts"),
 		CodexMaxSteersPerTurn:          v.GetInt("codex_max_steers_per_turn"),
 		GitHubReplyGateMaxBlocks:       v.GetInt("github_reply_gate_max_blocks"),
-		EnableDevelopmentContainers:    v.GetBool("enable_development_containers"),
-		DevelopmentHostDocker:          v.GetBool("development_host_docker"),
-		DevelopmentImage:               strings.TrimSpace(v.GetString("development_image")),
-		DevelopmentRuntimeDir:          filepath.Clean(v.GetString("development_runtime_dir")),
-		DevelopmentRuntimeHostDir:      filepath.Clean(v.GetString("development_runtime_host_dir")),
 		EnableSSH:                      v.GetBool("enable_ssh"),
 		SSHAgentDir:                    filepath.Clean(v.GetString("ssh_agent_dir")),
-		SSHAgentHostDir:                filepath.Clean(v.GetString("ssh_agent_host_dir")),
 		BrowserMCPURL:                  strings.TrimSpace(v.GetString("browser_mcp_url")),
 		BrowserMCPTokenFile:            filepath.Clean(v.GetString("browser_mcp_token_file")),
-		BrowserAgentRelayAddress:       strings.TrimSpace(v.GetString("browser_agent_relay_address")),
+		BrowserAgentAddress:            strings.TrimSpace(v.GetString("browser_agent_address")),
 		BrowserFilesRoot:               filepath.Clean(v.GetString("browser_files_root")),
-		BrowserFilesHostRoot:           filepath.Clean(v.GetString("browser_files_host_root")),
-		BrowserServicesRoot:            filepath.Clean(v.GetString("browser_services_root")),
-		BrowserServicesHostRoot:        filepath.Clean(v.GetString("browser_services_host_root")),
 	}
 	var err error
 	cfg.WorkerAPIAllowlist, err = parseNetworkList(v.GetString("worker_api_ip_allowlist"))
@@ -197,10 +174,10 @@ func load(workerProcess bool) (Config, error) {
 	return cfg, nil
 }
 
-func (c Config) RemoteWorker() bool { return strings.TrimSpace(c.WorkerControlURL) != "" }
+func (c Config) ConnectedWorker() bool { return strings.TrimSpace(c.WorkerControlURL) != "" }
 
 func (c Config) ValidateWorker() error {
-	if !c.RemoteWorker() {
+	if !c.ConnectedWorker() {
 		return c.Validate()
 	}
 	if c.CodexBin == "" || c.WorkerID == "" {
@@ -212,14 +189,11 @@ func (c Config) ValidateWorker() error {
 	if c.WorkerRole != "all" && c.WorkerRole != "github" && c.WorkerRole != "discord" {
 		return errors.New("远程 worker_role 必须是 all、github 或 discord")
 	}
-	if c.EnableDevelopmentContainers || c.DevelopmentHostDocker {
-		return errors.New("宿主 Worker 已移除开发容器管理，请由宿主自行安装运行环境")
-	}
 	if c.WorkerProtocolVersion != workerprotocol.Version {
 		return fmt.Errorf("当前 Worker 只支持协议版本 %d", workerprotocol.Version)
 	}
 	if c.WorkerCredentialFile == "." || strings.TrimSpace(c.WorkerCredentialFile) == "" {
-		return errors.New("远程 Worker 必须配置凭据文件")
+		return errors.New("宿主 Worker 必须配置凭据文件")
 	}
 	if c.WorkerSSHListenAddr == "" || c.WorkerSSHHostKeyFile == "." ||
 		c.WorkerAuthorizedKeysFile == "." ||
@@ -228,7 +202,7 @@ func (c Config) ValidateWorker() error {
 		return errors.New("宿主 Worker 的 SSH、Home、工作区和 Shell 配置不能为空")
 	}
 	if c.Environment == "production" && !strings.HasPrefix(c.WorkerControlURL, "https://") {
-		return errors.New("生产远程 Worker 的 Control URL 必须使用 HTTPS")
+		return errors.New("生产 Worker 的 Control URL 必须使用 HTTPS")
 	}
 	if err := c.validateWorkerCapabilities(); err != nil {
 		return err
@@ -237,28 +211,19 @@ func (c Config) ValidateWorker() error {
 }
 
 func (c Config) validateWorkerCapabilities() error {
-	if c.DevelopmentHostDocker && !c.EnableDevelopmentContainers {
-		return errors.New("宿主 Docker 模式要求启用开发容器")
-	}
-	if c.EnableDevelopmentContainers &&
-		(c.DevelopmentRuntimeDir == "." || c.DevelopmentRuntimeHostDir == ".") {
-		return errors.New("启用开发容器时必须配置环境运行目录和宿主目录")
-	}
-	if c.EnableSSH && (c.SSHAgentDir == "." || c.SSHAgentHostDir == ".") {
-		return errors.New("启用 SSH 时必须配置 Agent 容器目录和宿主目录")
+	if c.EnableSSH && c.SSHAgentDir == "." {
+		return errors.New("启用 SSH 时必须配置 Agent 目录")
 	}
 	if c.BrowserMCPURL != "" {
 		parsed, err := url.ParseRequestURI(c.BrowserMCPURL)
 		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 			return errors.New("浏览器 MCP URL 必须是有效的绝对 URL")
 		}
-		if c.BrowserMCPTokenFile == "." || c.BrowserFilesRoot == "." ||
-			c.BrowserFilesHostRoot == "." || c.BrowserServicesRoot == "." ||
-			c.BrowserServicesHostRoot == "." {
-			return errors.New("启用浏览器时必须配置 Token、文件交换目录和服务转发目录")
+		if c.BrowserMCPTokenFile == "." || c.BrowserFilesRoot == "." {
+			return errors.New("启用浏览器时必须配置 Token 和文件交换目录")
 		}
-		if _, _, err := net.SplitHostPort(c.BrowserAgentRelayAddress); err != nil {
-			return errors.New("浏览器 Agent relay 地址必须是 host:port")
+		if _, _, err := net.SplitHostPort(c.BrowserAgentAddress); err != nil {
+			return errors.New("浏览器 Agent 地址必须是 host:port")
 		}
 	}
 	return nil
@@ -274,15 +239,6 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.GitHubAppName) == "" {
 		return errors.New("github app 名称不能为空")
 	}
-	if c.CodexBin == "" || c.WorkerID == "" {
-		return errors.New("配置中的 Codex 可执行文件和 Worker ID 不能为空")
-	}
-	if c.WorkerMaxConcurrentJobs <= 0 {
-		return errors.New("worker_max_concurrent_jobs 必须大于零")
-	}
-	if c.WorkerRole != "" && c.WorkerRole != "all" && c.WorkerRole != "github" && c.WorkerRole != "discord" {
-		return errors.New("worker_role 必须是 all、github 或 discord")
-	}
 	if c.CodexStatusPollInterval <= 0 || c.CodexReconcileMaxAttempts <= 0 ||
 		c.CodexResultDeliveryMaxAttempts <= 0 || c.CodexMaxSteersPerTurn <= 0 ||
 		c.GitHubReplyGateMaxBlocks <= 0 {
@@ -290,12 +246,6 @@ func (c Config) Validate() error {
 	}
 	if c.LeaseDuration <= c.HeartbeatInterval*2 {
 		return errors.New("lease_duration 必须大于 heartbeat_interval 的两倍")
-	}
-	if c.RepoCacheMaxBytes <= 0 {
-		return errors.New("配置的 Repo Cache 容量上限必须大于零")
-	}
-	if err := c.validateWorkerCapabilities(); err != nil {
-		return err
 	}
 	if c.Environment == "production" {
 		if len(c.MasterKey) != 32 {
@@ -306,9 +256,6 @@ func (c Config) Validate() error {
 		}
 		if !strings.HasPrefix(c.PublicURL, "https://") {
 			return errors.New("生产环境 Public URL 必须使用 HTTPS")
-		}
-		if c.DevelopmentImage != "" && !developmentImageDigest.MatchString(c.DevelopmentImage) {
-			return errors.New("生产环境开发镜像必须使用完整的 image@sha256:... 引用")
 		}
 	}
 	return nil
@@ -339,16 +286,14 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("worker_data_root", stateRoot)
 	v.SetDefault("repo_cache_root", filepath.Join(stateRoot, "repo-cache"))
 	v.SetDefault("worktree_root", filepath.Join(stateRoot, "worktrees", "github"))
-	v.SetDefault("codex_home_root", codexHome)
 	v.SetDefault("attachment_root", ".local/control/attachments")
 	v.SetDefault("codex_bin", "codex")
 	v.SetDefault("repo_cache_max_bytes", int64(20*1024*1024*1024))
 	v.SetDefault("worker_id", defaultWorkerID())
 	v.SetDefault("worker_role", "all")
-	v.SetDefault("worker_image_digest", "")
 	v.SetDefault("worker_max_concurrent_jobs", 6)
 	v.SetDefault("worker_control_url", "")
-	v.SetDefault("worker_credential_file", filepath.Join(stateRoot, "control-state", "node-credential"))
+	v.SetDefault("worker_credential_file", filepath.Join(stateRoot, "control-state", "worker-credential"))
 	v.SetDefault("worker_enrollment_token", "")
 	v.SetDefault("worker_protocol_version", workerprotocol.Version)
 	v.SetDefault("worker_ssh_listen_addr", ":2222")
@@ -358,18 +303,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("worker_codex_home", codexHome)
 	v.SetDefault("worker_home", home)
 	v.SetDefault("worker_shell", shell)
-	v.SetDefault("development_runtime_dir", ".local/worker/development-runtime")
-	v.SetDefault("development_runtime_host_dir", ".local/worker/development-runtime")
 	v.SetDefault("enable_ssh", true)
 	v.SetDefault("ssh_agent_dir", filepath.Join(stateRoot, "ssh-agent"))
-	v.SetDefault("ssh_agent_host_dir", filepath.Join(stateRoot, "ssh-agent"))
 	v.SetDefault("browser_mcp_url", "")
-	v.SetDefault("browser_mcp_token_file", "/run/secrets/browser_mcp_token")
-	v.SetDefault("browser_agent_relay_address", "127.0.0.1:8934")
-	v.SetDefault("browser_files_root", "/run/tyrs-hand-browser-files")
-	v.SetDefault("browser_files_host_root", "/opt/tyrs-hand/browser-files")
-	v.SetDefault("browser_services_root", "/run/tyrs-hand-browser-services")
-	v.SetDefault("browser_services_host_root", "/opt/tyrs-hand/browser-services")
+	v.SetDefault("browser_mcp_token_file", filepath.Join(stateRoot, "browser", "token"))
+	v.SetDefault("browser_agent_address", "127.0.0.1:8934")
+	v.SetDefault("browser_files_root", filepath.Join(stateRoot, "browser", "files"))
 	v.SetDefault("worker_api_ip_allowlist", "")
 	v.SetDefault("worker_api_trusted_proxies", "127.0.0.1/32,::1/128")
 	v.SetDefault("lease_duration", "90s")
@@ -383,9 +322,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("codex_result_delivery_max_attempts", 5)
 	v.SetDefault("codex_max_steers_per_turn", 5)
 	v.SetDefault("github_reply_gate_max_blocks", 3)
-	v.SetDefault("enable_development_containers", false)
-	v.SetDefault("development_host_docker", false)
-	v.SetDefault("development_image", "")
 }
 
 func defaultHostWorkerStateRoot(home string) string {
@@ -398,8 +334,6 @@ func defaultHostWorkerStateRoot(home string) string {
 	}
 	return filepath.Join(dataRoot, "tyrs-hand", "worker")
 }
-
-var developmentImageDigest = regexp.MustCompile(`^[^[:space:]@]+@sha256:[0-9a-f]{64}$`)
 
 func parseNetworkList(value string) ([]netip.Prefix, error) {
 	var result []netip.Prefix

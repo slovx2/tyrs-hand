@@ -20,8 +20,8 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/auth"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/database"
-	"github.com/slovx2/tyrs-hand/internal/executionnode"
 	"github.com/slovx2/tyrs-hand/internal/security"
+	"github.com/slovx2/tyrs-hand/internal/workerregistry"
 	"github.com/stretchr/testify/require"
 )
 
@@ -143,7 +143,7 @@ func clientDeviceIntegrationServer(t *testing.T, db *sql.DB, authService *auth.S
 ) (*Server, string) {
 	t.Helper()
 	server := &Server{cfg: config.Config{LeaseDuration: time.Minute, PublicURL: "http://127.0.0.1"},
-		db: db, auth: authService, nodes: executionnode.NewService(db),
+		db: db, auth: authService, workers: workerregistry.NewService(db),
 		clientUpdateHub: newClientUpdateHub()}
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

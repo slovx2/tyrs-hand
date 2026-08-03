@@ -6,10 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -17,14 +15,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pquerna/otp/totp"
-	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/database"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/gitworkspace"
 	"github.com/slovx2/tyrs-hand/internal/secrets"
 	"github.com/slovx2/tyrs-hand/internal/security"
-	"github.com/slovx2/tyrs-hand/internal/settings"
 )
 
 func main() {
@@ -43,8 +39,6 @@ func main() {
 		fmt.Println("数据库迁移完成。")
 	case "check-control":
 		fatal(diagnoseControl(ctx, db))
-	case "check-worker":
-		fatal(diagnoseWorker(ctx, db, cfg))
 	case "reset-password":
 		requireArgs(4)
 		resetPassword(ctx, db, os.Args[2], os.Args[3])
@@ -57,14 +51,9 @@ func main() {
 	case "rotate-master-key":
 		requireArgs(3)
 		rotateMasterKey(ctx, db, cfg.MasterKey, os.Args[2])
-	case "codex-login":
-		requireArgs(2)
-		codexLogin(ctx, db, cfg)
 	case "gc":
 		requireArgs(2)
 		garbageCollect(ctx, db, cfg)
-	case "worker":
-		migrateLegacyWorker(ctx, db, os.Args[2:])
 	case "discord-reconcile-posts":
 		if len(os.Args) < 4 {
 			usage()
@@ -73,63 +62,6 @@ func main() {
 	default:
 		usage()
 	}
-}
-
-func migrateLegacyWorker(ctx context.Context, db *sql.DB, arguments []string) {
-	if len(arguments) == 0 || arguments[0] != "migrate-legacy" {
-		usage()
-	}
-	flags := flag.NewFlagSet("worker migrate-legacy", flag.ExitOnError)
-	environmentValue := flags.String("environment-id", "", "旧开发环境 UUID")
-	workerValue := flags.String("worker-id", "", "目标 Worker UUID")
-	apply := flags.Bool("apply", false, "执行迁移；默认只做 dry-run")
-	fatal(flags.Parse(arguments[1:]))
-	environmentID, err := uuid.Parse(*environmentValue)
-	fatal(err)
-	workerID, err := uuid.Parse(*workerValue)
-	fatal(err)
-	var workspace, workerName string
-	var threadCount int
-	fatal(db.QueryRowContext(ctx, `SELECT relative_path FROM development_projects
-		WHERE environment_id=$1 ORDER BY id LIMIT 1`, environmentID).Scan(&workspace))
-	fatal(db.QueryRowContext(ctx, `SELECT name FROM execution_nodes WHERE id=$1`, workerID).
-		Scan(&workerName))
-	fatal(db.QueryRowContext(ctx, `SELECT count(*) FROM codex_thread_controls
-		WHERE development_environment_id=$1 AND external_thread_id IS NOT NULL`, environmentID).
-		Scan(&threadCount))
-	clean := filepath.ToSlash(filepath.Clean(workspace))
-	if !strings.HasPrefix(clean, "workspaces/") || strings.Count(clean, "/") != 1 {
-		fatal(fmt.Errorf("旧环境工作区 %q 不是 workspaces/<name>", workspace))
-	}
-	fmt.Printf("旧环境 %s → Worker %s (%s)，工作区 %s，已有 Thread %d 个。\n",
-		environmentID, workerName, workerID, clean, threadCount)
-	if !*apply {
-		fmt.Println("dry-run 完成；确认宿主工作区和 Thread ID 后添加 --apply。")
-		return
-	}
-	tx, err := db.BeginTx(ctx, nil)
-	fatal(err)
-	defer func() { _ = tx.Rollback() }()
-	_, err = tx.ExecContext(ctx, `UPDATE discord_development_environments
-		SET execution_node_id=$2, updated_at=now() WHERE id=$1`, environmentID, workerID)
-	fatal(err)
-	_, err = tx.ExecContext(ctx, `UPDATE discord_development_operations
-		SET status='failed', error='已切换为宿主 Worker，不再执行开发容器 Operation',
-			lease_token=NULL, lease_expires_at=NULL, finished_at=now(), updated_at=now()
-		WHERE environment_id=$1 AND status IN ('pending','running')`, environmentID)
-	fatal(err)
-	_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls
-		SET execution_node_id=$2, updated_at=now() WHERE development_environment_id=$1`,
-		environmentID, workerID)
-	fatal(err)
-	_, err = tx.ExecContext(ctx, `UPDATE codex_turn_runs run SET execution_node_id=$2
-		FROM codex_thread_controls control
-		WHERE run.control_id=control.id AND control.development_environment_id=$1`,
-		environmentID, workerID)
-	fatal(err)
-	fatal(tx.Commit())
-	audit(ctx, db, "worker.legacy_environment.migrate", "execution_node", workerID.String())
-	fmt.Println("旧环境关系已迁移；未读取、复制或修改任何 Codex Home 文件。")
 }
 
 func resetPassword(ctx context.Context, db *sql.DB, username, password string) {
@@ -230,65 +162,12 @@ func rotateMasterKey(ctx context.Context, db *sql.DB, oldKey []byte, newKeyFile 
 	fmt.Printf("已轮换 %d 个 Secret。请先更新运行环境中的主密钥，再重启服务。\n", len(values))
 }
 
-func codexLogin(ctx context.Context, db *sql.DB, cfg config.Config) {
-	sharedHome := filepath.Join(cfg.CodexHomeRoot, "shared")
-	fatal(os.MkdirAll(sharedHome, 0o700))
-	cmd := exec.CommandContext(ctx, cfg.CodexBin,
-		"-c", `cli_auth_credentials_store="file"`, "login", "--device-auth")
-	cmd.Env = append(codexEnvironment(), "CODEX_HOME="+sharedHome, "HOME="+sharedHome)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	fatal(cmd.Run())
-	fatal(settings.NewService(db, nil).SetChatGPTConfigured(ctx, true))
-	audit(ctx, db, "settings.chatgpt.login.completed", "platform_setting", "agent.provider")
-	fmt.Println("共享 Codex 账号登录完成。")
-}
-
 func diagnoseControl(ctx context.Context, db *sql.DB) error {
 	if err := database.CheckMigrations(ctx, db); err != nil {
 		return err
 	}
 	fmt.Println("数据库迁移状态正常。")
 	return nil
-}
-
-func diagnoseWorker(ctx context.Context, db *sql.DB, cfg config.Config) error {
-	if err := diagnoseControl(ctx, db); err != nil {
-		return err
-	}
-	if err := codex.ValidateVersion(ctx, cfg.CodexBin); err != nil {
-		return err
-	}
-	if cfg.EnableDevelopmentContainers && (cfg.WorkerRole == "discord" || cfg.WorkerRole == "all") {
-		docker := exec.CommandContext(ctx, "/usr/local/libexec/tyrs-hand/docker", "version")
-		docker.Env = append(codexEnvironment(), "DOCKER_HOST=unix:///var/run/docker.sock")
-		if output, err := docker.CombinedOutput(); err != nil {
-			return fmt.Errorf("检查开发容器 Docker Daemon: %w: %s", err, strings.TrimSpace(string(output)))
-		}
-	}
-	for _, path := range []string{cfg.WorkerDataRoot, cfg.RepoCacheRoot, cfg.WorktreeRoot,
-		cfg.CodexHomeRoot} {
-		if err := os.MkdirAll(path, 0o750); err != nil {
-			return fmt.Errorf("检查目录 %s: %w", path, err)
-		}
-	}
-	fmt.Println("Worker 运行时和本地目录均正常。")
-	return nil
-}
-
-func codexEnvironment() []string {
-	allowed := map[string]bool{
-		"PATH": true, "LANG": true, "LC_ALL": true,
-		"HTTP_PROXY": true, "HTTPS_PROXY": true, "ALL_PROXY": true, "NO_PROXY": true,
-		"SSL_CERT_FILE": true, "CODEX_CA_CERTIFICATE": true,
-	}
-	result := make([]string, 0, len(allowed))
-	for _, item := range os.Environ() {
-		key, _, _ := strings.Cut(item, "=")
-		if allowed[key] {
-			result = append(result, item)
-		}
-	}
-	return result
 }
 
 func garbageCollect(ctx context.Context, db *sql.DB, cfg config.Config) {
@@ -349,7 +228,7 @@ func reconcileDiscordPosts(ctx context.Context, db *sql.DB, cfg config.Config,
 	if err != nil {
 		return err
 	}
-	manager := discordintegration.NewManager(db, secrets.NewStore(db, box), "")
+	manager := discordintegration.NewManager(db, secrets.NewStore(db, box))
 	settings, err := manager.Settings(ctx)
 	if err != nil {
 		return err
@@ -643,13 +522,10 @@ func usage() {
 Usage:
   tyrs-hand-admin migrate
   tyrs-hand-admin check-control
-  tyrs-hand-admin check-worker
   tyrs-hand-admin reset-password <username> <new-password>
   tyrs-hand-admin recover-password <username> <recovery-code> <new-password>
   tyrs-hand-admin reset-totp <username>
   tyrs-hand-admin rotate-master-key <new-master-key-file>
-  tyrs-hand-admin codex-login
-  tyrs-hand-admin worker migrate-legacy --environment-id <uuid> --worker-id <uuid> [--apply]
   tyrs-hand-admin discord-reconcile-posts "DELETE DUPLICATE DISCORD POSTS" <desktop-request-id>...
   tyrs-hand-admin gc`))
 	os.Exit(2)

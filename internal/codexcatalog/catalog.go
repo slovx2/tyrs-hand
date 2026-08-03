@@ -146,43 +146,43 @@ func SupportsFast(model Model) bool {
 	return slices.Contains(model.AdditionalSpeedTiers, "fast")
 }
 
-func EnvironmentCatalogs(ctx context.Context, db *sql.DB,
-	environmentIDs []uuid.UUID,
+func WorkspaceCatalogs(ctx context.Context, db *sql.DB,
+	workspaceIDs []uuid.UUID,
 ) (map[uuid.UUID]json.RawMessage, error) {
 	result := make(map[uuid.UUID]json.RawMessage)
-	if len(environmentIDs) == 0 {
+	if len(workspaceIDs) == 0 {
 		return result, nil
 	}
-	ids := make([]string, 0, len(environmentIDs))
-	for _, environmentID := range environmentIDs {
-		ids = append(ids, environmentID.String())
+	ids := make([]string, 0, len(workspaceIDs))
+	for _, workspaceID := range workspaceIDs {
+		ids = append(ids, workspaceID.String())
 	}
-	rows, err := db.QueryContext(ctx, `SELECT environment.id,
-		node.metadata->'modelCatalogs'->environment.id::text
-		FROM discord_development_environments environment
-		JOIN execution_nodes node ON node.id=environment.execution_node_id
-		WHERE environment.id = ANY($1::uuid[]) AND node.enabled AND node.status='online'
-			AND node.heartbeat_at > now() - interval '2 minutes'
-			AND node.metadata->'modelCatalogs'->environment.id::text IS NOT NULL`, pq.Array(ids))
+	rows, err := db.QueryContext(ctx, `SELECT workspace.id,
+		worker.metadata->'modelCatalogs'->workspace.id::text
+		FROM worker_workspaces workspace
+		JOIN workers worker ON worker.id=workspace.worker_id
+		WHERE workspace.id = ANY($1::uuid[]) AND worker.enabled AND worker.status='online'
+			AND worker.heartbeat_at > now() - interval '2 minutes'
+			AND worker.metadata->'modelCatalogs'->workspace.id::text IS NOT NULL`, pq.Array(ids))
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
-		var environmentID uuid.UUID
+		var workspaceID uuid.UUID
 		var raw []byte
-		if err := rows.Scan(&environmentID, &raw); err != nil {
+		if err := rows.Scan(&workspaceID, &raw); err != nil {
 			return nil, err
 		}
 		if _, err := Parse(raw); err == nil {
-			result[environmentID] = append(json.RawMessage(nil), raw...)
+			result[workspaceID] = append(json.RawMessage(nil), raw...)
 		}
 	}
 	return result, rows.Err()
 }
 
 func OnlineCatalogs(ctx context.Context, db *sql.DB) (map[uuid.UUID]json.RawMessage, error) {
-	rows, err := db.QueryContext(ctx, `SELECT metadata->'modelCatalogs' FROM execution_nodes
+	rows, err := db.QueryContext(ctx, `SELECT metadata->'modelCatalogs' FROM workers
 		WHERE enabled AND status='online' AND heartbeat_at > now() - interval '2 minutes'
 			AND metadata ? 'modelCatalogs'`)
 	if err != nil {
@@ -200,12 +200,12 @@ func OnlineCatalogs(ctx context.Context, db *sql.DB) (map[uuid.UUID]json.RawMess
 			continue
 		}
 		for key, catalog := range catalogs {
-			environmentID, err := uuid.Parse(key)
+			workspaceID, err := uuid.Parse(key)
 			if err != nil {
 				continue
 			}
 			if _, err := Parse(catalog); err == nil {
-				result[environmentID] = append(json.RawMessage(nil), catalog...)
+				result[workspaceID] = append(json.RawMessage(nil), catalog...)
 			}
 		}
 	}

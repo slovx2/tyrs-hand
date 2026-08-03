@@ -24,7 +24,7 @@ func TestInteractiveProjectionCollectsDiscordAnswers(t *testing.T) {
 	require.NoError(t, database.Migrate(ctx, db))
 	insertInteractiveGuild(t, db)
 	seed := seedDiscordManagerData(t, db)
-	manager := NewManager(db, nil, "")
+	manager := NewManager(db, nil)
 	controlID, runID := insertInteractiveControl(t, db, seed)
 	questions := json.RawMessage(`[
 		{"id":"choice","header":"确认","question":"继续吗？","options":[
@@ -218,9 +218,9 @@ func TestExecutePlanSwitchesDefaultAndIsIdempotent(t *testing.T) {
 
 	_, err = db.ExecContext(ctx, `INSERT INTO codex_turn_intents
 		(control_id, sequence_no, behavior, source_type, discord_conversation_id, session_id,
-		 development_project_id, agent_profile_id, idempotency_key, status)
-		SELECT control.id, 2, 'start_when_idle', 'development_session',
-			control.discord_conversation_id, control.session_id, control.development_project_id,
+		 workspace_project_id, agent_profile_id, idempotency_key, status)
+		SELECT control.id, 2, 'start_when_idle', 'workspace_session',
+			control.discord_conversation_id, control.session_id, control.workspace_project_id,
 			control.agent_profile_id, $2, 'queued'
 		FROM codex_thread_controls control WHERE control.id=$1`,
 		controlID, "plan-busy-"+uuid.NewString())
@@ -257,7 +257,7 @@ func TestExecutePlanSwitchesDefaultAndIsIdempotent(t *testing.T) {
 	_, err = db.ExecContext(ctx, `UPDATE discord_conversations SET thread_id='2001'
 		WHERE id=$1`, conversationID)
 	require.NoError(t, err)
-	connector := NewDisgoConnector(NewManager(db, nil, ""), service, nil,
+	connector := NewDisgoConnector(NewManager(db, nil), service, nil,
 		testGuildID, "token", nil)
 	client := &bot.Client{}
 	customID := planExecuteButtonPrefix + runID.String()
@@ -299,33 +299,33 @@ func claimOutboxOperation(t *testing.T, ctx context.Context, outbox *SQLoutbox,
 func insertInteractiveControl(t *testing.T, db *sql.DB, seed discordManagerSeed) (uuid.UUID, uuid.UUID) {
 	t.Helper()
 	ctx := context.Background()
-	var profileID, environmentID, conversationID, controlID, intentID, runID uuid.UUID
+	var profileID, workspaceID, conversationID, controlID, intentID, runID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM agent_profiles WHERE name='Default'`).Scan(&profileID))
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT development_environment_id FROM discord_forums
-		WHERE id=$1`, seed.developmentForumID).Scan(&environmentID))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT workspace_id FROM discord_forums
+		WHERE id=$1`, seed.workspaceForumID).Scan(&workspaceID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_conversations
 		(guild_id, forum_id, thread_id, starter_message_id, owner_discord_user_id,
-		 development_project_id, agent_profile_id, title)
+		 workspace_project_id, agent_profile_id, title)
 		VALUES ($1,$2,'interactive-thread','interactive-starter','1001',$3,$4,'Interactive') RETURNING id`,
-		testGuildID, seed.developmentForumID, seed.developmentProjectID, profileID).Scan(&conversationID))
+		testGuildID, seed.workspaceForumID, seed.workspaceProjectID, profileID).Scan(&conversationID))
 	sessionID := bindDiscordConversationSessionForTest(t, db, conversationID)
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_thread_controls
-		(source_type, discord_conversation_id, session_id, development_project_id, agent_profile_id,
-		 execution_node_id, development_environment_id, external_thread_id)
-		VALUES ('development_session',$1,$2,$3,$4,$5,$6,'codex-interactive-thread') RETURNING id`,
-		conversationID, sessionID, seed.developmentProjectID, profileID, seed.executionNodeID,
-		environmentID).Scan(&controlID))
+		(source_type, discord_conversation_id, session_id, workspace_project_id, agent_profile_id,
+		 worker_id, workspace_id, external_thread_id)
+		VALUES ('workspace_session',$1,$2,$3,$4,$5,$6,'codex-interactive-thread') RETURNING id`,
+		conversationID, sessionID, seed.workspaceProjectID, profileID, seed.workerID,
+		workspaceID).Scan(&controlID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_turn_intents
 		(control_id, sequence_no, behavior, source_type, discord_conversation_id, session_id,
-		 development_project_id, agent_profile_id, idempotency_key, status)
-		VALUES ($1,1,'start_when_idle','development_session',$2,$3,$4,$5,$6,'waiting_for_user') RETURNING id`,
-		controlID, conversationID, sessionID, seed.developmentProjectID, profileID,
+		 workspace_project_id, agent_profile_id, idempotency_key, status)
+		VALUES ($1,1,'start_when_idle','workspace_session',$2,$3,$4,$5,$6,'waiting_for_user') RETURNING id`,
+		controlID, conversationID, sessionID, seed.workspaceProjectID, profileID,
 		"interactive-"+uuid.NewString()).Scan(&intentID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_turn_runs
-		(control_id, primary_intent_id, attempt, worker_id, lease_epoch, capability_hash,
-		 status, execution_node_id)
+		(control_id, primary_intent_id, attempt, lease_owner, lease_epoch, capability_hash,
+		 status, worker_id)
 		VALUES ($1,$2,1,'worker',1,$3,'waiting_for_user',$4) RETURNING id`, controlID, intentID,
-		strings.Repeat("a", 64), seed.executionNodeID).Scan(&runID))
+		strings.Repeat("a", 64), seed.workerID).Scan(&runID))
 	_, err := db.ExecContext(ctx, `UPDATE codex_thread_controls
 		SET next_sequence_no=2 WHERE id=$1`, controlID)
 	require.NoError(t, err)
@@ -351,31 +351,6 @@ func completeDiscordDelivery(t *testing.T, ctx context.Context, store *SQLoutbox
 	t.Helper()
 	require.NoError(t, store.RecordDelivery(ctx, item, response))
 	require.NoError(t, store.Apply(ctx, *item))
-}
-
-func TestClearDevelopmentEnvironmentSSHQueuesReconfigure(t *testing.T) {
-	db := discordDatabase(t)
-	ctx := context.Background()
-	require.NoError(t, database.Migrate(ctx, db))
-	insertInteractiveGuild(t, db)
-	seed := seedDiscordManagerData(t, db)
-	var environmentID uuid.UUID
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT development_environment_id FROM discord_forums
-		WHERE id=$1`, seed.developmentForumID).Scan(&environmentID))
-	_, err := db.ExecContext(ctx, `UPDATE discord_development_environments SET ssh_public_key=$2,
-		ssh_fingerprint='SHA256:test', ssh_port=2222,
-		ssh_discord_user_id=owner_discord_user_id WHERE id=$1`, environmentID,
-		"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest")
-	require.NoError(t, err)
-	require.NoError(t, NewManager(db, nil, "").ClearDevelopmentEnvironmentSSH(ctx, environmentID))
-	var key, sshUserID sql.NullString
-	var revision int64
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT ssh_public_key, ssh_discord_user_id,
-		ssh_config_revision FROM discord_development_environments WHERE id=$1`,
-		environmentID).Scan(&key, &sshUserID, &revision))
-	require.False(t, key.Valid)
-	require.False(t, sshUserID.Valid)
-	require.Equal(t, int64(1), revision)
 }
 
 func insertInteractiveGuild(t *testing.T, db *sql.DB) {

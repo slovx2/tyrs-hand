@@ -40,7 +40,7 @@ func TestRemoteTurnInterruptedTerminalStatusesAreUserInterrupts(t *testing.T) {
 }
 
 func TestWaitRemoteTurnMapsInterruptedEvent(t *testing.T) {
-	processor := &RemoteProcessor{cfg: config.Config{
+	processor := &Processor{cfg: config.Config{
 		TurnMaxDuration: time.Second, TurnIdleTimeout: time.Second,
 		CodexStatusPollInterval: time.Hour,
 	}}
@@ -56,7 +56,7 @@ func TestWaitRemoteTurnMapsInterruptedEvent(t *testing.T) {
 }
 
 func TestWaitRemoteTurnMapsInterruptedSnapshot(t *testing.T) {
-	processor := &RemoteProcessor{cfg: config.Config{
+	processor := &Processor{cfg: config.Config{
 		TurnMaxDuration: time.Second, TurnIdleTimeout: time.Second,
 		CodexStatusPollInterval: time.Millisecond,
 	}}
@@ -72,7 +72,7 @@ func TestWaitRemoteTurnMapsInterruptedSnapshot(t *testing.T) {
 }
 
 func TestWaitRemoteTurnStopsOnNonRetryableCodexError(t *testing.T) {
-	processor := &RemoteProcessor{cfg: config.Config{
+	processor := &Processor{cfg: config.Config{
 		TurnMaxDuration: time.Second, TurnIdleTimeout: time.Second,
 		CodexStatusPollInterval: time.Hour,
 	}}
@@ -95,7 +95,7 @@ func TestWaitRemoteTurnStopsOnNonRetryableCodexError(t *testing.T) {
 }
 
 func TestWaitRemoteTurnContinuesAfterRetryableCodexError(t *testing.T) {
-	processor := &RemoteProcessor{cfg: config.Config{
+	processor := &Processor{cfg: config.Config{
 		TurnMaxDuration: time.Second, TurnIdleTimeout: time.Second,
 		CodexStatusPollInterval: time.Hour,
 	}}
@@ -118,7 +118,7 @@ func TestWaitRemoteTurnContinuesAfterRetryableCodexError(t *testing.T) {
 }
 
 func TestWaitRemoteTurnReadsCodexErrorFromFailedSnapshot(t *testing.T) {
-	processor := &RemoteProcessor{cfg: config.Config{
+	processor := &Processor{cfg: config.Config{
 		TurnMaxDuration: time.Second, TurnIdleTimeout: time.Second,
 		CodexStatusPollInterval: time.Millisecond,
 	}}

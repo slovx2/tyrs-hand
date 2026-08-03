@@ -39,9 +39,9 @@ func (_c *CodexTurnRunCreate) SetAttempt(v int) *CodexTurnRunCreate {
 	return _c
 }
 
-// SetWorkerID sets the "worker_id" field.
-func (_c *CodexTurnRunCreate) SetWorkerID(v string) *CodexTurnRunCreate {
-	_c.mutation.SetWorkerID(v)
+// SetLeaseOwner sets the "lease_owner" field.
+func (_c *CodexTurnRunCreate) SetLeaseOwner(v string) *CodexTurnRunCreate {
+	_c.mutation.SetLeaseOwner(v)
 	return _c
 }
 
@@ -57,16 +57,16 @@ func (_c *CodexTurnRunCreate) SetCapabilityHash(v string) *CodexTurnRunCreate {
 	return _c
 }
 
-// SetExecutionNodeID sets the "execution_node_id" field.
-func (_c *CodexTurnRunCreate) SetExecutionNodeID(v uuid.UUID) *CodexTurnRunCreate {
-	_c.mutation.SetExecutionNodeID(v)
+// SetWorkerID sets the "worker_id" field.
+func (_c *CodexTurnRunCreate) SetWorkerID(v uuid.UUID) *CodexTurnRunCreate {
+	_c.mutation.SetWorkerID(v)
 	return _c
 }
 
-// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
-func (_c *CodexTurnRunCreate) SetNillableExecutionNodeID(v *uuid.UUID) *CodexTurnRunCreate {
+// SetNillableWorkerID sets the "worker_id" field if the given value is not nil.
+func (_c *CodexTurnRunCreate) SetNillableWorkerID(v *uuid.UUID) *CodexTurnRunCreate {
 	if v != nil {
-		_c.SetExecutionNodeID(*v)
+		_c.SetWorkerID(*v)
 	}
 	return _c
 }
@@ -367,8 +367,8 @@ func (_c *CodexTurnRunCreate) check() error {
 	if _, ok := _c.mutation.Attempt(); !ok {
 		return &ValidationError{Name: "attempt", err: errors.New(`ent: missing required field "CodexTurnRun.attempt"`)}
 	}
-	if _, ok := _c.mutation.WorkerID(); !ok {
-		return &ValidationError{Name: "worker_id", err: errors.New(`ent: missing required field "CodexTurnRun.worker_id"`)}
+	if _, ok := _c.mutation.LeaseOwner(); !ok {
+		return &ValidationError{Name: "lease_owner", err: errors.New(`ent: missing required field "CodexTurnRun.lease_owner"`)}
 	}
 	if _, ok := _c.mutation.LeaseEpoch(); !ok {
 		return &ValidationError{Name: "lease_epoch", err: errors.New(`ent: missing required field "CodexTurnRun.lease_epoch"`)}
@@ -444,9 +444,9 @@ func (_c *CodexTurnRunCreate) createSpec() (*CodexTurnRun, *sqlgraph.CreateSpec)
 		_spec.SetField(codexturnrun.FieldAttempt, field.TypeInt, value)
 		_node.Attempt = value
 	}
-	if value, ok := _c.mutation.WorkerID(); ok {
-		_spec.SetField(codexturnrun.FieldWorkerID, field.TypeString, value)
-		_node.WorkerID = value
+	if value, ok := _c.mutation.LeaseOwner(); ok {
+		_spec.SetField(codexturnrun.FieldLeaseOwner, field.TypeString, value)
+		_node.LeaseOwner = value
 	}
 	if value, ok := _c.mutation.LeaseEpoch(); ok {
 		_spec.SetField(codexturnrun.FieldLeaseEpoch, field.TypeInt64, value)
@@ -456,9 +456,9 @@ func (_c *CodexTurnRunCreate) createSpec() (*CodexTurnRun, *sqlgraph.CreateSpec)
 		_spec.SetField(codexturnrun.FieldCapabilityHash, field.TypeString, value)
 		_node.CapabilityHash = value
 	}
-	if value, ok := _c.mutation.ExecutionNodeID(); ok {
-		_spec.SetField(codexturnrun.FieldExecutionNodeID, field.TypeUUID, value)
-		_node.ExecutionNodeID = &value
+	if value, ok := _c.mutation.WorkerID(); ok {
+		_spec.SetField(codexturnrun.FieldWorkerID, field.TypeUUID, value)
+		_node.WorkerID = &value
 	}
 	if value, ok := _c.mutation.WorkerEventSequence(); ok {
 		_spec.SetField(codexturnrun.FieldWorkerEventSequence, field.TypeInt64, value)

@@ -27,7 +27,7 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		return
 	}
 	threadID, instruction, err := desktopTurnInput(request.Params)
-	if err != nil || request.EnvironmentID == uuid.Nil || strings.TrimSpace(request.WorkerID) == "" ||
+	if err != nil || request.WorkspaceID == uuid.Nil ||
 		!validDesktopRequestKey(request.RequestKey) {
 		badRequest(c, errors.New("desktop turn 参数无效"))
 		return
@@ -54,25 +54,23 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-	node := workerNode(c)
+	worker := currentWorker(c)
 	var active int
 	if err := tx.QueryRowContext(c.Request.Context(), `SELECT
-		(SELECT count(*) FROM codex_turn_runs WHERE execution_node_id = n.id AND active_slot = 1) +
-		(SELECT count(*) FROM discord_development_operations WHERE execution_node_id = n.id
-			AND status = 'running' AND lease_expires_at >= now())
-		FROM execution_nodes n WHERE n.id = $1 FOR UPDATE`, node.ID).Scan(&active); err != nil {
+		(SELECT count(*) FROM codex_turn_runs WHERE worker_id = n.id AND active_slot = 1)
+		FROM workers n WHERE n.id = $1 FOR UPDATE`, worker.ID).Scan(&active); err != nil {
 		problem(c, http.StatusInternalServerError, "读取 Desktop Turn 调度槽位失败", err)
 		return
 	}
-	if active >= node.MaxConcurrentJobs {
-		problem(c, http.StatusTooManyRequests, "当前执行节点没有可用的 Turn 槽位", nil)
+	if active >= worker.MaxConcurrentJobs {
+		problem(c, http.StatusTooManyRequests, "当前Worker没有可用的 Turn 槽位", nil)
 		return
 	}
 	var lockConversationID sql.NullString
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT discord_conversation_id::text
 		FROM codex_thread_controls WHERE external_thread_id = $1
-			AND development_environment_id = $2 AND execution_node_id = $3`,
-		threadID, request.EnvironmentID, node.ID).Scan(&lockConversationID)
+			AND workspace_id = $2 AND worker_id = $3`,
+		threadID, request.WorkspaceID, worker.ID).Scan(&lockConversationID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusInternalServerError, "锁定 Desktop Conversation 失败", err)
 		return
@@ -93,31 +91,31 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	var actorGuildID, actorUserID, actorDisplayName string
 	var conversationID, projectID sql.NullString
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT ct.id, ct.session_id, ct.discord_conversation_id,
-		ct.development_project_id::text, ct.agent_profile_id, ct.status, session.lifecycle_state,
+		ct.workspace_project_id::text, ct.agent_profile_id, ct.status, session.lifecycle_state,
 		ct.next_sequence_no, ct.collaboration_mode,
-		ct.lease_epoch, COALESCE(ct.external_thread_id,''), COALESCE(ct.codex_home_key,''),
+		ct.lease_epoch, COALESCE(ct.external_thread_id,''),
 		p.allowed_tools, '[]'::jsonb,
-		e.guild_id, COALESCE(e.ssh_discord_user_id, ''),
+		e.guild_id, COALESCE(e.owner_discord_user_id, ''),
 		COALESCE(NULLIF(m.display_name, ''), m.username, '')
 		FROM codex_thread_controls ct JOIN agent_profiles p ON p.id = ct.agent_profile_id
-		JOIN development_sessions session ON session.id=ct.session_id
-		JOIN discord_development_environments e ON e.id = ct.development_environment_id
-		JOIN development_projects project ON project.id=ct.development_project_id
+		JOIN workspace_sessions session ON session.id=ct.session_id
+		JOIN worker_workspaces e ON e.id = ct.workspace_id
+		JOIN workspace_projects project ON project.id=ct.workspace_project_id
 		LEFT JOIN discord_conversations conversation ON conversation.id=ct.discord_conversation_id
 		LEFT JOIN desktop_thread_requests desktop_request ON desktop_request.control_id=ct.id
 		JOIN discord_forums forum
 			ON forum.id=COALESCE(conversation.forum_id, desktop_request.forum_id)
 		LEFT JOIN discord_members m ON m.guild_id = e.guild_id
-			AND m.discord_user_id = e.ssh_discord_user_id
-		WHERE ct.external_thread_id = $1 AND ct.development_environment_id = $2
-		AND ct.execution_node_id = $3 AND e.status='running'
+			AND m.discord_user_id = e.owner_discord_user_id
+		WHERE ct.external_thread_id = $1 AND ct.workspace_id = $2
+		AND ct.worker_id = $3
 		AND forum.binding_status='active'
-		AND project.availability_status='available' FOR UPDATE OF ct,session`, threadID, request.EnvironmentID,
-		node.ID).Scan(&claimed.ControlID, &claimed.SessionID, &conversationID,
+		AND project.availability_status='available' FOR UPDATE OF ct,session`, threadID, request.WorkspaceID,
+		worker.ID).Scan(&claimed.ControlID, &claimed.SessionID, &conversationID,
 		&projectID, &claimed.AgentProfileID, &controlStatus, &lifecycleState,
 		&nextSequence, &claimed.CollaborationMode,
 		&oldLeaseEpoch, &claimed.ExternalThreadID,
-		&claimed.CodexHomeKey, &allowedJSON, &dangerousJSON,
+		&allowedJSON, &dangerousJSON,
 		&actorGuildID, &actorUserID, &actorDisplayName)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusForbidden, "Desktop Turn 的 Thread 未绑定到当前环境", err)
@@ -194,7 +192,7 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 			return
 		}
 	}
-	claimed.SourceType, claimed.InputSurface = codexcontrol.SourceDevelopment, "desktop"
+	claimed.SourceType, claimed.InputSurface = codexcontrol.SourceWorkspace, "desktop"
 	if !isReplacement {
 		claimed.ProjectionAnchor = projectionKey
 	}
@@ -217,7 +215,7 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	claimed.Attempt, claimed.MaxAttempts = 1, max(1, s.cfg.CodexReconcileMaxAttempts)
 	claimed.LeaseToken, claimed.LeaseEpoch = leaseToken, oldLeaseEpoch+1
 	claimed.LeaseExpiresAt = time.Now().Add(s.cfg.LeaseDuration)
-	idempotencyKey := "desktop-turn:" + request.EnvironmentID.String() + ":" + request.RequestKey
+	idempotencyKey := "desktop-turn:" + request.WorkspaceID.String() + ":" + request.RequestKey
 	if isReplacement {
 		_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_turn_intents SET
 			instruction=$2,prepared_input=$3,status='dispatching',attempt_count=1,max_attempts=$4,
@@ -227,13 +225,13 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	} else {
 		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO codex_turn_intents
 			(id, control_id, sequence_no, operation, behavior, source_type, input_surface,
-			 session_id, discord_conversation_id, repository_id, development_project_id,
+			 session_id, discord_conversation_id, repository_id, workspace_project_id,
 			 agent_profile_id, idempotency_key,
 			 instruction, prepared_input, allowed_tools, dangerous_actions, priority,
 			 actor_login, actor_permission, actor_participant_id, actor_display_name,
 			 reply_policy, reply_status, status, attempt_count, max_attempts, dispatched_at,
 			 desktop_input_projection_key, desktop_input_projection_status, projection_anchor)
-			VALUES ($1,$2,$3,'turn_input','start_when_idle','development_session','desktop',$4,
+			VALUES ($1,$2,$3,'turn_input','start_when_idle','workspace_session','desktop',$4,
 				NULLIF($5::text,'')::uuid,NULLIF($6::text,'')::uuid,NULLIF($7::text,'')::uuid,$8,$9,
 				$10,$11,$12,$13,100,'codex-desktop','owner',NULLIF($14::text,'')::uuid,$15,
 				'silent','skipped','dispatching',1,$16,now(),$17,'pending',$17)`,
@@ -275,22 +273,22 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		}
 	}
 	_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_thread_controls SET
-		status = 'dispatching', active_intent_id = $2, worker_id = $3, lease_token = $4,
+		status = 'dispatching', active_intent_id = $2, lease_owner = $3, lease_token = $4,
 		lease_epoch = $5, lease_expires_at = now() + $6::interval, heartbeat_at = now(),
 		next_sequence_no = next_sequence_no + CASE WHEN $7 THEN 0 ELSE 1 END,
 		updated_at = now() WHERE id = $1`,
-		claimed.ControlID, claimed.ID, request.WorkerID, security.Digest(leaseToken),
+		claimed.ControlID, claimed.ID, worker.ID.String(), security.Digest(leaseToken),
 		claimed.LeaseEpoch, s.cfg.LeaseDuration.String(), isReplacement)
 	if err == nil {
 		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO codex_turn_runs
-			(id, control_id, primary_intent_id, attempt, worker_id, lease_epoch, capability_hash,
-			 active_slot, max_append_count, execution_node_id, collaboration_mode,
+			(id, control_id, primary_intent_id, attempt, lease_owner, lease_epoch, capability_hash,
+			 active_slot, max_append_count, worker_id, collaboration_mode,
 			 model, reasoning_effort, service_tier, settings_revision)
 			SELECT $1,$2,$3,1,$4,$5,$6,1,$7,$8,control.collaboration_mode,
 				control.model, control.reasoning_effort, control.service_tier, control.settings_revision
 			FROM codex_thread_controls control WHERE control.id = $2`, claimed.RunID, claimed.ControlID,
-			claimed.ID, request.WorkerID, claimed.LeaseEpoch, security.Digest(capability),
-			max(1, s.cfg.CodexMaxSteersPerTurn), node.ID)
+			claimed.ID, worker.ID.String(), claimed.LeaseEpoch, security.Digest(capability),
+			max(1, s.cfg.CodexMaxSteersPerTurn), worker.ID)
 	}
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "持久化 Desktop Turn 失败", err)
@@ -392,7 +390,7 @@ func (s *Server) queueFirstDesktopInput(ctx context.Context, tx *sql.Tx, control
 	var target desktopThreadTarget
 	err := tx.QueryRowContext(ctx, `SELECT r.id, r.status, f.id, resource.discord_id,
 		project.name, project.relative_path,
-		COALESCE(environment.ssh_discord_user_id, ''),
+		COALESCE(workspace.owner_discord_user_id, ''),
 		COALESCE(NULLIF(member.display_name, ''), member.username, ''),
 		COALESCE(control.desired_thread_name,''), COALESCE(control.desired_thread_name_source,''),
 		COALESCE(r.first_input_projection_key,''), COALESCE(r.first_input_text,''),
@@ -402,10 +400,10 @@ func (s *Server) queueFirstDesktopInput(ctx context.Context, tx *sql.Tx, control
 		JOIN codex_thread_controls control ON control.id = r.control_id
 		JOIN discord_forums f ON f.id = r.forum_id
 		JOIN discord_resources resource ON resource.id = f.resource_id
-		JOIN development_projects project ON project.id=f.development_project_id
-		JOIN discord_development_environments environment ON environment.id = r.environment_id
-	LEFT JOIN discord_members member ON member.guild_id = environment.guild_id
-			AND member.discord_user_id = environment.ssh_discord_user_id
+		JOIN workspace_projects project ON project.id=f.workspace_project_id
+		JOIN worker_workspaces workspace ON workspace.id = r.workspace_id
+	LEFT JOIN discord_members member ON member.guild_id = workspace.guild_id
+			AND member.discord_user_id = workspace.owner_discord_user_id
 		WHERE r.control_id = $1 FOR UPDATE OF r`, controlID).Scan(&requestID, &status,
 		&target.forumID, &target.forumDiscord, &target.repository, &target.workspacePath,
 		&target.actorID, &target.actorName, &desiredName, &desiredSource, &firstProjectionKey,
@@ -475,7 +473,7 @@ func appendDesktopSessionMessageTx(ctx context.Context, tx *sql.Tx, sessionID uu
 	var messageID uuid.UUID
 	var sequence int64
 	err := tx.QueryRowContext(ctx, `WITH sequence AS (
-		UPDATE development_sessions SET last_message_seq=last_message_seq+1,
+		UPDATE workspace_sessions SET last_message_seq=last_message_seq+1,
 			last_activity_at=now(),updated_at=now() WHERE id=$1 RETURNING last_message_seq)
 		INSERT INTO session_messages(session_id,seq,local_id,participant_id,message_role,content)
 		SELECT $1,last_message_seq,$2,NULLIF($3::text,'')::uuid,'user',$4 FROM sequence

@@ -18,7 +18,6 @@ import (
 
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/config"
-	"github.com/slovx2/tyrs-hand/internal/devcontainer"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 )
 
@@ -56,9 +55,9 @@ func withBrowserTools(cfg config.Config, specs ...ports.DynamicToolSpec) []ports
 }
 
 func executeBrowserTool(ctx context.Context, cfg config.Config, taskID, workspace string,
-	runtime *devcontainer.Runtime, development *devcontainer.Manager,
 	request codex.ToolCallRequest,
 ) (codex.ToolCallResult, error) {
+	_ = ctx
 	if cfg.BrowserMCPURL == "" {
 		return codex.ToolCallResult{}, errors.New("宿主浏览器能力未配置")
 	}
@@ -70,7 +69,7 @@ func executeBrowserTool(ctx context.Context, cfg config.Config, taskID, workspac
 		if err := json.Unmarshal(request.Arguments, &arguments); err != nil {
 			return codex.ToolCallResult{}, err
 		}
-		return stageBrowserFile(ctx, cfg, taskID, workspace, runtime, development, arguments.Source)
+		return stageBrowserFile(cfg, taskID, workspace, arguments.Source)
 	case "import_download":
 		var arguments struct {
 			Source      string `json:"source"`
@@ -79,37 +78,26 @@ func executeBrowserTool(ctx context.Context, cfg config.Config, taskID, workspac
 		if err := json.Unmarshal(request.Arguments, &arguments); err != nil {
 			return codex.ToolCallResult{}, err
 		}
-		return importBrowserDownload(ctx, cfg, workspace, runtime, development,
-			arguments.Source, arguments.Destination)
+		return importBrowserDownload(cfg, workspace, arguments.Source, arguments.Destination)
 	default:
 		return codex.ToolCallResult{}, fmt.Errorf("浏览器文件工具 %s 不存在", request.Tool)
 	}
 }
 
-func stageBrowserFile(ctx context.Context, cfg config.Config, taskID, workspace string,
-	runtime *devcontainer.Runtime, development *devcontainer.Manager, source string,
+func stageBrowserFile(cfg config.Config, taskID, workspace, source string,
 ) (codex.ToolCallResult, error) {
-	directory, hostDirectory, err := browserTaskDirectory(cfg, taskID)
+	directory, err := browserTaskDirectory(cfg, taskID)
 	if err != nil {
 		return codex.ToolCallResult{}, err
 	}
 	name := filepath.Base(filepath.Clean(source))
 	target := filepath.Join(directory, name)
-	if runtime == nil {
-		clean, err := secureWorkspaceFile(workspace, source)
-		if err != nil {
-			return codex.ToolCallResult{}, err
-		}
-		if err := copyRegularFile(clean, target); err != nil {
-			return codex.ToolCallResult{}, err
-		}
-	} else {
-		if !filepath.IsAbs(source) {
-			source = filepath.Join(runtime.Workspace, source)
-		}
-		if err := development.ExportWorkspaceFile(ctx, *runtime, source, target); err != nil {
-			return codex.ToolCallResult{}, err
-		}
+	clean, err := secureWorkspaceFile(workspace, source)
+	if err != nil {
+		return codex.ToolCallResult{}, err
+	}
+	if err := copyRegularFile(clean, target); err != nil {
+		return codex.ToolCallResult{}, err
 	}
 	info, err := os.Stat(target)
 	if err != nil || info.Size() > browserFileLimit {
@@ -120,12 +108,11 @@ func stageBrowserFile(ctx context.Context, cfg config.Config, taskID, workspace 
 	if err != nil {
 		return codex.ToolCallResult{}, err
 	}
-	return browserJSONResult(stagedBrowserFile{HostPath: filepath.Join(hostDirectory, name),
+	return browserJSONResult(stagedBrowserFile{HostPath: filepath.Join(directory, name),
 		SHA256: digest, ExpiresAt: time.Now().UTC().Add(time.Hour)})
 }
 
-func importBrowserDownload(ctx context.Context, cfg config.Config, workspace string,
-	runtime *devcontainer.Runtime, development *devcontainer.Manager, source, destination string,
+func importBrowserDownload(cfg config.Config, workspace, source, destination string,
 ) (codex.ToolCallResult, error) {
 	workerSource, err := browserSourcePath(cfg, source)
 	if err != nil {
@@ -138,17 +125,9 @@ func importBrowserDownload(ctx context.Context, cfg config.Config, workspace str
 	if info.Size() > browserFileLimit {
 		return codex.ToolCallResult{}, errors.New("文件大小超过 25 MiB")
 	}
-	if runtime != nil {
-		if !filepath.IsAbs(destination) {
-			destination = filepath.Join(runtime.Workspace, destination)
-		}
-		err = development.ImportWorkspaceFile(ctx, *runtime, workerSource, destination)
-	} else {
-		var target string
-		target, err = secureWorkspaceDestination(workspace, destination)
-		if err == nil {
-			err = copyRegularFile(workerSource, target)
-		}
+	target, err := secureWorkspaceDestination(workspace, destination)
+	if err == nil {
+		err = copyRegularFile(workerSource, target)
 	}
 	if err != nil {
 		return codex.ToolCallResult{}, err
@@ -160,28 +139,21 @@ func importBrowserDownload(ctx context.Context, cfg config.Config, workspace str
 	return browserJSONResult(map[string]string{"path": destination, "sha256": digest})
 }
 
-func browserTaskDirectory(cfg config.Config, taskID string) (string, string, error) {
+func browserTaskDirectory(cfg config.Config, taskID string) (string, error) {
 	random := make([]byte, 12)
 	if _, err := rand.Read(random); err != nil {
-		return "", "", err
+		return "", err
 	}
 	relative := filepath.Join(taskID, hex.EncodeToString(random))
 	directory := filepath.Join(cfg.BrowserFilesRoot, relative)
 	if err := os.MkdirAll(directory, 0o755); err != nil {
-		return "", "", err
+		return "", err
 	}
-	return directory, filepath.Join(cfg.BrowserFilesHostRoot, relative), nil
+	return directory, nil
 }
 
 func browserSourcePath(cfg config.Config, source string) (string, error) {
 	clean := filepath.Clean(source)
-	if filepath.IsAbs(clean) {
-		hostRoot := filepath.Clean(cfg.BrowserFilesHostRoot)
-		if clean == hostRoot || strings.HasPrefix(clean, hostRoot+string(filepath.Separator)) {
-			relative, _ := filepath.Rel(hostRoot, clean)
-			clean = filepath.Join(cfg.BrowserFilesRoot, relative)
-		}
-	}
 	root := filepath.Clean(cfg.BrowserFilesRoot)
 	if clean != root && !strings.HasPrefix(clean, root+string(filepath.Separator)) {
 		return "", errors.New("下载源不在浏览器交换目录内")
@@ -300,10 +272,6 @@ func cleanupBrowserTask(cfg config.Config, taskID string, scopes ...string) {
 	if cfg.BrowserMCPURL != "" && taskID != "" {
 		_ = os.RemoveAll(filepath.Join(cfg.BrowserFilesRoot, taskID))
 	}
-}
-
-func cleanupBrowserEnvironment(cfg config.Config, scope string) {
-	postBrowserServiceCleanup(cfg, scope, "/browser-services/environment/end", "")
 }
 
 func postBrowserServiceCleanup(cfg config.Config, scope, path, taskID string) {

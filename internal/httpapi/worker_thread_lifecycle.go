@@ -20,7 +20,7 @@ func (s *Server) workerPrepareDesktopThreadLifecycle(c *gin.Context) {
 		return
 	}
 	request.ThreadID = strings.TrimSpace(request.ThreadID)
-	if request.EnvironmentID == uuid.Nil || request.ThreadID == "" ||
+	if request.WorkspaceID == uuid.Nil || request.ThreadID == "" ||
 		(request.DesiredState != "active" && request.DesiredState != "archived") {
 		badRequest(c, errors.New("desktop Thread lifecycle 请求无效"))
 		return
@@ -33,21 +33,21 @@ func (s *Server) workerPrepareDesktopThreadLifecycle(c *gin.Context) {
 	defer func() { _ = tx.Rollback() }()
 	var result workerprotocol.ThreadLifecycleState
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT request.id, request.control_id,
-		request.environment_id, control.external_thread_id, request.desired_state,
+		request.workspace_id, control.external_thread_id, request.desired_state,
 		request.status, request.revision, COALESCE(request.response,'null'::jsonb),
 		COALESCE(request.error,'')
 		FROM codex_thread_lifecycle_requests request
 		JOIN codex_thread_controls control ON control.id = request.control_id
-		JOIN discord_development_environments environment
-			ON environment.id = request.environment_id
-		WHERE request.environment_id = $1 AND control.external_thread_id = $2
+		JOIN worker_workspaces workspace
+			ON workspace.id = request.workspace_id
+		WHERE request.workspace_id = $1 AND control.external_thread_id = $2
 			AND request.source = 'desktop'
 			AND request.desired_state = $3
 			AND request.status IN ('waiting_for_turn','applying')
-			AND environment.execution_node_id = $4
+			AND workspace.worker_id = $4
 		ORDER BY request.created_at DESC LIMIT 1 FOR UPDATE OF request, control`,
-		request.EnvironmentID, request.ThreadID, request.DesiredState, workerNode(c).ID).
-		Scan(&result.ID, &result.ControlID, &result.EnvironmentID, &result.ThreadID,
+		request.WorkspaceID, request.ThreadID, request.DesiredState, currentWorker(c).ID).
+		Scan(&result.ID, &result.ControlID, &result.WorkspaceID, &result.ThreadID,
 			&result.DesiredState, &result.Status, &result.Revision, &result.Response,
 			&result.Error)
 	if err == nil {
@@ -69,12 +69,12 @@ func (s *Server) workerPrepareDesktopThreadLifecycle(c *gin.Context) {
 		control.discord_conversation_id::text, control.lifecycle_state,
 		control.lifecycle_revision
 		FROM codex_thread_controls control
-		JOIN discord_development_environments environment
-			ON environment.id = control.development_environment_id
-		WHERE control.development_environment_id = $1
+		JOIN worker_workspaces workspace
+			ON workspace.id = control.workspace_id
+		WHERE control.workspace_id = $1
 			AND control.external_thread_id = $2
-			AND environment.execution_node_id = $3
-		FOR UPDATE OF control`, request.EnvironmentID, request.ThreadID, workerNode(c).ID).
+			AND workspace.worker_id = $3
+		FOR UPDATE OF control`, request.WorkspaceID, request.ThreadID, currentWorker(c).ID).
 		Scan(&result.ControlID, &sessionID, &conversationID, &currentState, &result.Revision)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusNotFound, "当前环境没有绑定这个 Codex Thread", err)
@@ -94,7 +94,7 @@ func (s *Server) workerPrepareDesktopThreadLifecycle(c *gin.Context) {
 			ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, result.ControlID).
 			Scan(&pendingArchiveID, &pendingArchiveStatus)
 		if err == nil && pendingArchiveStatus == "waiting_for_turn" {
-			result.EnvironmentID, result.ThreadID = request.EnvironmentID, request.ThreadID
+			result.WorkspaceID, result.ThreadID = request.WorkspaceID, request.ThreadID
 			result.DesiredState, result.Status = "active", "completed"
 			result.Response = json.RawMessage(`{}`)
 			result.Revision++
@@ -108,7 +108,7 @@ func (s *Server) workerPrepareDesktopThreadLifecycle(c *gin.Context) {
 					result.ControlID, result.Revision)
 			}
 			if err == nil {
-				_, err = tx.ExecContext(c.Request.Context(), `UPDATE development_sessions SET
+				_, err = tx.ExecContext(c.Request.Context(), `UPDATE workspace_sessions SET
 					lifecycle_state='active', updated_at=now() WHERE id=$1`, sessionID)
 			}
 			if err == nil && conversationID.Valid {
@@ -141,7 +141,7 @@ func (s *Server) workerPrepareDesktopThreadLifecycle(c *gin.Context) {
 			return
 		}
 	}
-	result.ID, result.EnvironmentID = uuid.New(), request.EnvironmentID
+	result.ID, result.WorkspaceID = uuid.New(), request.WorkspaceID
 	result.ThreadID, result.DesiredState = request.ThreadID, request.DesiredState
 	result.Revision++
 	result.Status = "applying"
@@ -153,7 +153,7 @@ func (s *Server) workerPrepareDesktopThreadLifecycle(c *gin.Context) {
 		lifecycle_state = $2, lifecycle_revision = $3, lifecycle_last_error = NULL,
 		updated_at = now() WHERE id = $1`, result.ControlID, pendingState, result.Revision)
 	if err == nil {
-		_, err = tx.ExecContext(c.Request.Context(), `UPDATE development_sessions SET
+		_, err = tx.ExecContext(c.Request.Context(), `UPDATE workspace_sessions SET
 			lifecycle_state=$2, updated_at=now() WHERE id=$1`, sessionID, pendingState)
 	}
 	if err == nil && conversationID.Valid {
@@ -164,9 +164,9 @@ func (s *Server) workerPrepareDesktopThreadLifecycle(c *gin.Context) {
 	}
 	if err == nil {
 		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO codex_thread_lifecycle_requests
-			(id, control_id, environment_id, source, desired_state, status, revision)
+			(id, control_id, workspace_id, source, desired_state, status, revision)
 			VALUES ($1,$2,$3,'desktop',$4,$5,$6)`, result.ID, result.ControlID,
-			result.EnvironmentID, result.DesiredState, result.Status, result.Revision)
+			result.WorkspaceID, result.DesiredState, result.Status, result.Revision)
 	}
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "登记 Thread lifecycle 失败", err)
@@ -188,32 +188,32 @@ func (s *Server) workerPendingThreadLifecycles(c *gin.Context) {
 	defer func() { _ = tx.Rollback() }()
 	_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_thread_lifecycle_requests request
 		SET status = 'applying', updated_at = now()
-		FROM codex_thread_controls control, discord_development_environments environment
+		FROM codex_thread_controls control, worker_workspaces workspace
 		WHERE request.control_id = control.id
-			AND environment.id = request.environment_id
+			AND workspace.id = request.workspace_id
 			AND request.source IN ('discord','client') AND request.status = 'waiting_for_turn'
 			AND request.revision = control.lifecycle_revision
-			AND environment.execution_node_id = $1
+			AND workspace.worker_id = $1
 			AND NOT EXISTS (SELECT 1 FROM codex_turn_runs run
 				WHERE run.control_id = request.control_id
 					AND run.status IN ('starting','running','waiting_for_user','reconciling'))`,
-		workerNode(c).ID)
+		currentWorker(c).ID)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "推进待执行 Thread lifecycle 失败", err)
 		return
 	}
 	rows, err := tx.QueryContext(c.Request.Context(), `SELECT request.id,
-		request.control_id, request.environment_id, control.external_thread_id,
+		request.control_id, request.workspace_id, control.external_thread_id,
 		request.desired_state, request.status, request.revision,
 		COALESCE(request.response,'null'::jsonb), COALESCE(request.error,'')
 		FROM codex_thread_lifecycle_requests request
 		JOIN codex_thread_controls control ON control.id = request.control_id
-		JOIN discord_development_environments environment
-			ON environment.id = request.environment_id
+		JOIN worker_workspaces workspace
+			ON workspace.id = request.workspace_id
 		WHERE request.source IN ('discord','client') AND request.status = 'applying'
 			AND request.response IS NULL
-			AND environment.execution_node_id = $1
-		ORDER BY request.created_at, request.id`, workerNode(c).ID)
+			AND workspace.worker_id = $1
+		ORDER BY request.created_at, request.id`, currentWorker(c).ID)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取待执行 Thread lifecycle 失败", err)
 		return
@@ -221,7 +221,7 @@ func (s *Server) workerPendingThreadLifecycles(c *gin.Context) {
 	result := make([]workerprotocol.ThreadLifecycleState, 0)
 	for rows.Next() {
 		var item workerprotocol.ThreadLifecycleState
-		if err := rows.Scan(&item.ID, &item.ControlID, &item.EnvironmentID, &item.ThreadID,
+		if err := rows.Scan(&item.ID, &item.ControlID, &item.WorkspaceID, &item.ThreadID,
 			&item.DesiredState, &item.Status, &item.Revision, &item.Response,
 			&item.Error); err != nil {
 			problem(c, http.StatusInternalServerError, "读取待执行 Thread lifecycle 失败", err)
@@ -259,16 +259,16 @@ func (s *Server) workerThreadLifecycleState(c *gin.Context) {
 	defer func() { _ = tx.Rollback() }()
 	var result workerprotocol.ThreadLifecycleState
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT request.id, request.control_id,
-		request.environment_id, control.external_thread_id, request.desired_state,
+		request.workspace_id, control.external_thread_id, request.desired_state,
 		request.status, request.revision, COALESCE(request.response,'null'::jsonb),
 		COALESCE(request.error,'')
 		FROM codex_thread_lifecycle_requests request
 		JOIN codex_thread_controls control ON control.id = request.control_id
-		JOIN discord_development_environments environment
-			ON environment.id = request.environment_id
-		WHERE request.id = $1 AND environment.execution_node_id = $2
-		FOR UPDATE OF request`, requestID, workerNode(c).ID).
-		Scan(&result.ID, &result.ControlID, &result.EnvironmentID, &result.ThreadID,
+		JOIN worker_workspaces workspace
+			ON workspace.id = request.workspace_id
+		WHERE request.id = $1 AND workspace.worker_id = $2
+		FOR UPDATE OF request`, requestID, currentWorker(c).ID).
+		Scan(&result.ID, &result.ControlID, &result.WorkspaceID, &result.ThreadID,
 			&result.DesiredState, &result.Status, &result.Revision, &result.Response,
 			&result.Error)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -314,7 +314,7 @@ func (s *Server) workerCompleteThreadLifecycle(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
-	if request.EnvironmentID == uuid.Nil {
+	if request.WorkspaceID == uuid.Nil {
 		badRequest(c, errors.New("thread lifecycle complete 缺少环境"))
 		return
 	}
@@ -333,12 +333,12 @@ func (s *Server) workerCompleteThreadLifecycle(c *gin.Context) {
 		request.desired_state, request.revision
 		FROM codex_thread_lifecycle_requests request
 		JOIN codex_thread_controls control ON control.id = request.control_id
-		JOIN discord_development_environments environment
-			ON environment.id = request.environment_id
-		WHERE request.id = $1 AND request.environment_id = $2
-			AND environment.execution_node_id = $3
+		JOIN worker_workspaces workspace
+			ON workspace.id = request.workspace_id
+		WHERE request.id = $1 AND request.workspace_id = $2
+			AND workspace.worker_id = $3
 			AND request.status IN ('waiting_for_turn','applying')
-		FOR UPDATE OF request, control`, requestID, request.EnvironmentID, workerNode(c).ID).
+		FOR UPDATE OF request, control`, requestID, request.WorkspaceID, currentWorker(c).ID).
 		Scan(&controlID, &sessionID, &conversationID, &desiredState, &revision)
 	if errors.Is(err, sql.ErrNoRows) {
 		c.Status(http.StatusNoContent)
@@ -369,7 +369,7 @@ func (s *Server) workerCompleteThreadLifecycle(c *gin.Context) {
 				controlID, finalState, failure, revision)
 		}
 		if err == nil {
-			_, err = tx.ExecContext(c.Request.Context(), `UPDATE development_sessions SET
+			_, err = tx.ExecContext(c.Request.Context(), `UPDATE workspace_sessions SET
 				lifecycle_state=$2, updated_at=now() WHERE id=$1`, sessionID, finalState)
 		}
 		if err == nil && conversationID.Valid {

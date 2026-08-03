@@ -15,26 +15,25 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/auth"
 	"github.com/slovx2/tyrs-hand/internal/codexcatalog"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
-	"github.com/slovx2/tyrs-hand/internal/codexsettings"
 )
 
 type clientSession struct {
-	ID                       uuid.UUID `json:"id"`
-	DevelopmentEnvironmentID uuid.UUID `json:"developmentEnvironmentId"`
-	DevelopmentProjectID     uuid.UUID `json:"developmentProjectId"`
-	AgentProfileID           uuid.UUID `json:"agentProfileId"`
-	Title                    string    `json:"title"`
-	LifecycleState           string    `json:"lifecycleState"`
-	HistoryCompleteness      string    `json:"historyCompleteness"`
-	Model                    *string   `json:"model"`
-	ReasoningEffort          *string   `json:"reasoningEffort"`
-	ServiceTier              string    `json:"serviceTier"`
-	CollaborationMode        string    `json:"collaborationMode"`
-	SettingsVersion          int64     `json:"settingsVersion"`
-	LastMessageSeq           int64     `json:"lastMessageSeq"`
-	LastActivityAt           time.Time `json:"lastActivityAt"`
-	CreatedAt                time.Time `json:"createdAt"`
-	UpdatedAt                time.Time `json:"updatedAt"`
+	ID                  uuid.UUID `json:"id"`
+	WorkspaceID         uuid.UUID `json:"workspaceId"`
+	ProjectID           uuid.UUID `json:"projectId"`
+	AgentProfileID      uuid.UUID `json:"agentProfileId"`
+	Title               string    `json:"title"`
+	LifecycleState      string    `json:"lifecycleState"`
+	HistoryCompleteness string    `json:"historyCompleteness"`
+	Model               *string   `json:"model"`
+	ReasoningEffort     *string   `json:"reasoningEffort"`
+	ServiceTier         string    `json:"serviceTier"`
+	CollaborationMode   string    `json:"collaborationMode"`
+	SettingsVersion     int64     `json:"settingsVersion"`
+	LastMessageSeq      int64     `json:"lastMessageSeq"`
+	LastActivityAt      time.Time `json:"lastActivityAt"`
+	CreatedAt           time.Time `json:"createdAt"`
+	UpdatedAt           time.Time `json:"updatedAt"`
 }
 
 type rowScanner interface {
@@ -44,8 +43,8 @@ type rowScanner interface {
 func scanClientSession(row rowScanner) (clientSession, error) {
 	var result clientSession
 	var model, effort sql.NullString
-	err := row.Scan(&result.ID, &result.DevelopmentEnvironmentID,
-		&result.DevelopmentProjectID, &result.AgentProfileID, &result.Title,
+	err := row.Scan(&result.ID, &result.WorkspaceID,
+		&result.ProjectID, &result.AgentProfileID, &result.Title,
 		&result.LifecycleState, &result.HistoryCompleteness, &model, &effort,
 		&result.ServiceTier, &result.CollaborationMode, &result.SettingsVersion,
 		&result.LastMessageSeq, &result.LastActivityAt, &result.CreatedAt, &result.UpdatedAt)
@@ -58,13 +57,13 @@ func scanClientSession(row rowScanner) (clientSession, error) {
 	return result, err
 }
 
-const clientSessionColumns = `id,development_environment_id,development_project_id,
+const clientSessionColumns = `id,workspace_id,workspace_project_id,
 	agent_profile_id,title,lifecycle_state,history_completeness,model,reasoning_effort,
 	service_tier,collaboration_mode,settings_version,last_message_seq,last_activity_at,
 	created_at,updated_at`
 
-const clientSessionQualifiedColumns = `session.id,session.development_environment_id,
-	session.development_project_id,session.agent_profile_id,session.title,
+const clientSessionQualifiedColumns = `session.id,session.workspace_id,
+	session.workspace_project_id,session.agent_profile_id,session.title,
 	session.lifecycle_state,session.history_completeness,session.model,
 	session.reasoning_effort,session.service_tier,session.collaboration_mode,
 	session.settings_version,session.last_message_seq,session.last_activity_at,
@@ -81,9 +80,13 @@ func (s *Server) clientBootstrap(c *gin.Context) {
 		ID   uuid.UUID `json:"id"`
 		Name string    `json:"name"`
 	}
-	environments := make([]option, 0)
-	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT id,container_name
-		FROM discord_development_environments WHERE status='running' ORDER BY container_name,id`)
+	workspaces := make([]option, 0)
+	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT workspace.id,
+		COALESCE(NULLIF(member.display_name,''), member.username)
+		FROM worker_workspaces workspace
+		JOIN discord_members member ON member.guild_id=workspace.guild_id
+			AND member.discord_user_id=workspace.owner_discord_user_id
+		ORDER BY lower(COALESCE(NULLIF(member.display_name,''), member.username)), workspace.id`)
 	if err == nil {
 		defer func() { _ = rows.Close() }()
 		for rows.Next() {
@@ -91,12 +94,12 @@ func (s *Server) clientBootstrap(c *gin.Context) {
 			if err = rows.Scan(&item.ID, &item.Name); err != nil {
 				break
 			}
-			environments = append(environments, item)
+			workspaces = append(workspaces, item)
 		}
 	}
 	projects := make([]struct {
 		ID                 uuid.UUID `json:"id"`
-		EnvironmentID      uuid.UUID `json:"environmentId"`
+		WorkspaceID        uuid.UUID `json:"workspaceId"`
 		Name               string    `json:"name"`
 		RelativePath       string    `json:"relativePath"`
 		Kind               string    `json:"kind"`
@@ -106,15 +109,15 @@ func (s *Server) clientBootstrap(c *gin.Context) {
 	}, 0)
 	if err == nil {
 		var projectRows *sql.Rows
-		projectRows, err = s.db.QueryContext(c.Request.Context(), `SELECT id,environment_id,name,
+		projectRows, err = s.db.QueryContext(c.Request.Context(), `SELECT id,workspace_id,name,
 			relative_path,project_kind,availability_status,branch,dirty
-			FROM development_projects ORDER BY lower(name),id`)
+			FROM workspace_projects ORDER BY lower(name),id`)
 		if err == nil {
 			defer func() { _ = projectRows.Close() }()
 			for projectRows.Next() {
 				var item struct {
 					ID                 uuid.UUID `json:"id"`
-					EnvironmentID      uuid.UUID `json:"environmentId"`
+					WorkspaceID        uuid.UUID `json:"workspaceId"`
 					Name               string    `json:"name"`
 					RelativePath       string    `json:"relativePath"`
 					Kind               string    `json:"kind"`
@@ -123,7 +126,7 @@ func (s *Server) clientBootstrap(c *gin.Context) {
 					Dirty              bool      `json:"dirty"`
 				}
 				var branch sql.NullString
-				if err = projectRows.Scan(&item.ID, &item.EnvironmentID, &item.Name,
+				if err = projectRows.Scan(&item.ID, &item.WorkspaceID, &item.Name,
 					&item.RelativePath, &item.Kind, &item.AvailabilityStatus, &branch,
 					&item.Dirty); err != nil {
 					break
@@ -153,18 +156,18 @@ func (s *Server) clientBootstrap(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "读取客户端启动数据失败", err)
 		return
 	}
-	environmentIDs := make([]uuid.UUID, 0, len(environments))
-	for _, environment := range environments {
-		environmentIDs = append(environmentIDs, environment.ID)
+	workspaceIDs := make([]uuid.UUID, 0, len(workspaces))
+	for _, workspace := range workspaces {
+		workspaceIDs = append(workspaceIDs, workspace.ID)
 	}
-	catalogs, err := codexcatalog.EnvironmentCatalogs(c.Request.Context(), s.db, environmentIDs)
+	catalogs, err := codexcatalog.WorkspaceCatalogs(c.Request.Context(), s.db, workspaceIDs)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取 Codex 模型目录失败", err)
 		return
 	}
 	modelCatalogs := make(map[string]json.RawMessage, len(catalogs))
-	for environmentID, catalog := range catalogs {
-		modelCatalogs[environmentID.String()] = catalog
+	for workspaceID, catalog := range catalogs {
+		modelCatalogs[workspaceID.String()] = catalog
 	}
 	lastSettings, err := loadClientLastSettings(c.Request.Context(), s.db,
 		session.AdministratorID)
@@ -173,16 +176,8 @@ func (s *Server) clientBootstrap(c *gin.Context) {
 		return
 	}
 	if lastSettings == nil && len(profiles) > 0 {
-		defaults, resolveErr := codexsettings.NewService(s.db).Resolve(c.Request.Context(),
-			uuid.Nil, uuid.Nil, profiles[0].ID)
-		if resolveErr != nil {
-			problem(c, http.StatusInternalServerError, "解析默认会话参数失败", resolveErr)
-			return
-		}
 		lastSettings = &clientLastSettings{AgentProfileID: profiles[0].ID,
-			Model:           optionalClientString(defaults.Model),
-			ReasoningEffort: optionalClientString(defaults.ReasoningEffort),
-			ServiceTier:     defaults.ServiceTier, CollaborationMode: "default"}
+			CollaborationMode: "default"}
 	}
 	var currentCursor int64
 	if err = s.db.QueryRowContext(c.Request.Context(),
@@ -196,7 +191,7 @@ func (s *Server) clientBootstrap(c *gin.Context) {
 		"user":          gin.H{"id": session.AdministratorID, "username": session.Username},
 		"capabilities": gin.H{"attachments": true, "pushNotifications": true,
 			"sessionLifecycle": true, "planExecution": true},
-		"environments": environments, "projects": projects, "agentProfiles": profiles,
+		"workspaces": workspaces, "projects": projects, "agentProfiles": profiles,
 		"modelCatalogs": modelCatalogs, "lastStartedSettings": lastSettings,
 	})
 }
@@ -257,9 +252,9 @@ func (s *Server) clientListSessions(c *gin.Context) {
 		return
 	}
 	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT `+clientSessionColumns+`
-		FROM development_sessions
+		FROM workspace_sessions
 		WHERE ($1::timestamptz IS NULL OR (last_activity_at,id) < ($1,$2))
-		  AND ($4::uuid IS NULL OR development_project_id=$4)
+		  AND ($4::uuid IS NULL OR workspace_project_id=$4)
 		  AND ($5='' OR lifecycle_state=$5)
 		ORDER BY last_activity_at DESC,id DESC LIMIT $3`, clientCursorTime(cursor.Activity),
 		clientCursorUUID(cursor.ID), limit+1, projectID, lifecycle)
@@ -301,9 +296,9 @@ func clientCursorUUID(value uuid.UUID) any {
 }
 
 type createClientSessionRequest struct {
-	DevelopmentProjectID uuid.UUID             `json:"projectId" binding:"required"`
-	Settings             clientSessionSettings `json:"settings" binding:"required"`
-	InitialMessage       struct {
+	ProjectID      uuid.UUID             `json:"projectId" binding:"required"`
+	Settings       clientSessionSettings `json:"settings" binding:"required"`
+	InitialMessage struct {
 		LocalID       string      `json:"localId" binding:"required"`
 		Text          string      `json:"text" binding:"required"`
 		AttachmentIDs []uuid.UUID `json:"attachmentIds"`
@@ -358,13 +353,13 @@ func (s *Server) clientCreateSession(c *gin.Context) {
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-	var environmentID uuid.UUID
-	err = tx.QueryRowContext(c.Request.Context(), `SELECT project.environment_id
-		FROM development_projects project
-		JOIN discord_development_environments environment ON environment.id=project.environment_id
+	var workspaceID uuid.UUID
+	err = tx.QueryRowContext(c.Request.Context(), `SELECT project.workspace_id
+		FROM workspace_projects project
+		JOIN worker_workspaces workspace ON workspace.id=project.workspace_id
 		WHERE project.id=$1 AND project.availability_status='available'
-		  AND environment.status='running' FOR SHARE`, request.DevelopmentProjectID).
-		Scan(&environmentID)
+		  FOR SHARE`, request.ProjectID).
+		Scan(&workspaceID)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusUnprocessableEntity, "项目当前不可用", err)
 		return
@@ -373,20 +368,20 @@ func (s *Server) clientCreateSession(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "读取项目失败", err)
 		return
 	}
-	row := tx.QueryRowContext(c.Request.Context(), `INSERT INTO development_sessions(
-		development_environment_id,development_project_id,agent_profile_id,
+	row := tx.QueryRowContext(c.Request.Context(), `INSERT INTO workspace_sessions(
+		workspace_id,workspace_project_id,agent_profile_id,
 		created_by_administrator_id,title,model,reasoning_effort,service_tier,collaboration_mode,
 		settings_version,title_revision,title_source)
 		SELECT $1,$2,$3,$4,$5,NULLIF($6,''),NULLIF($7,''),$8,$9,1,0,'fallback'
 		WHERE EXISTS(SELECT 1 FROM agent_profiles WHERE id=$3)
-		RETURNING `+clientSessionColumns, environmentID, request.DevelopmentProjectID,
+		RETURNING `+clientSessionColumns, workspaceID, request.ProjectID,
 		request.Settings.AgentProfileID, administrator.AdministratorID,
 		fallbackSessionTitle(request.InitialMessage.Text), stringValue(request.Settings.Model),
 		stringValue(request.Settings.ReasoningEffort), request.Settings.ServiceTier,
 		request.Settings.CollaborationMode)
 	created, err := scanClientSession(row)
 	if errors.Is(err, sql.ErrNoRows) {
-		problem(c, http.StatusUnprocessableEntity, "开发环境、项目或 Agent Profile 不可用", err)
+		problem(c, http.StatusUnprocessableEntity, "Workspace、项目或 Agent Profile 不可用", err)
 		return
 	}
 	if err != nil {
@@ -398,7 +393,7 @@ func (s *Server) clientCreateSession(c *gin.Context) {
 		repository := codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration,
 			s.cfg.CodexMaxSteersPerTurn, s.cfg.CodexReconcileMaxAttempts)
 		_, inserted, enqueueErr := repository.Enqueue(c.Request.Context(), tx,
-			codexcontrol.EnqueueRequest{SourceType: codexcontrol.SourceDevelopment,
+			codexcontrol.EnqueueRequest{SourceType: codexcontrol.SourceWorkspace,
 				SessionID: created.ID, InputSurface: "client",
 				IdempotencyKey: idempotencyKey, MessageLocalID: request.InitialMessage.LocalID,
 				Instruction: request.InitialMessage.Text, Behavior: "start_when_idle",
@@ -457,7 +452,7 @@ func (s *Server) findClientCreatedSession(c *gin.Context, idempotencyKey string)
 	result, err := scanClientSession(s.db.QueryRowContext(c.Request.Context(), `SELECT `+
 		clientSessionQualifiedColumns+`
 		FROM codex_turn_intents intent
-		JOIN development_sessions session ON session.id=intent.session_id
+		JOIN workspace_sessions session ON session.id=intent.session_id
 		WHERE intent.idempotency_key=$1`, idempotencyKey))
 	if errors.Is(err, sql.ErrNoRows) {
 		return clientSession{}, false, nil

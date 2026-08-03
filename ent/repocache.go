@@ -20,8 +20,8 @@ type RepoCache struct {
 	ID uuid.UUID `json:"id,omitempty"`
 	// RepositoryID holds the value of the "repository_id" field.
 	RepositoryID uuid.UUID `json:"repository_id,omitempty"`
-	// ExecutionNodeID holds the value of the "execution_node_id" field.
-	ExecutionNodeID *uuid.UUID `json:"execution_node_id,omitempty"`
+	// WorkerID holds the value of the "worker_id" field.
+	WorkerID *uuid.UUID `json:"worker_id,omitempty"`
 	// Path holds the value of the "path" field.
 	Path string `json:"path,omitempty"`
 	// Status holds the value of the "status" field.
@@ -42,7 +42,7 @@ func (*RepoCache) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case repocache.FieldExecutionNodeID:
+		case repocache.FieldWorkerID:
 			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		case repocache.FieldSizeBytes:
 			values[i] = new(sql.NullInt64)
@@ -79,12 +79,12 @@ func (_m *RepoCache) assignValues(columns []string, values []any) error {
 			} else if value != nil {
 				_m.RepositoryID = *value
 			}
-		case repocache.FieldExecutionNodeID:
+		case repocache.FieldWorkerID:
 			if value, ok := values[i].(*sql.NullScanner); !ok {
-				return fmt.Errorf("unexpected type %T for field execution_node_id", values[i])
+				return fmt.Errorf("unexpected type %T for field worker_id", values[i])
 			} else if value.Valid {
-				_m.ExecutionNodeID = new(uuid.UUID)
-				*_m.ExecutionNodeID = *value.S.(*uuid.UUID)
+				_m.WorkerID = new(uuid.UUID)
+				*_m.WorkerID = *value.S.(*uuid.UUID)
 			}
 		case repocache.FieldPath:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -163,8 +163,8 @@ func (_m *RepoCache) String() string {
 	builder.WriteString("repository_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RepositoryID))
 	builder.WriteString(", ")
-	if v := _m.ExecutionNodeID; v != nil {
-		builder.WriteString("execution_node_id=")
+	if v := _m.WorkerID; v != nil {
+		builder.WriteString("worker_id=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")

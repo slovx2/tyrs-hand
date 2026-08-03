@@ -60,9 +60,9 @@ func RepositoryID(v uuid.UUID) predicate.RepoCache {
 	return predicate.RepoCache(sql.FieldEQ(FieldRepositoryID, v))
 }
 
-// ExecutionNodeID applies equality check predicate on the "execution_node_id" field. It's identical to ExecutionNodeIDEQ.
-func ExecutionNodeID(v uuid.UUID) predicate.RepoCache {
-	return predicate.RepoCache(sql.FieldEQ(FieldExecutionNodeID, v))
+// WorkerID applies equality check predicate on the "worker_id" field. It's identical to WorkerIDEQ.
+func WorkerID(v uuid.UUID) predicate.RepoCache {
+	return predicate.RepoCache(sql.FieldEQ(FieldWorkerID, v))
 }
 
 // Path applies equality check predicate on the "path" field. It's identical to PathEQ.
@@ -135,54 +135,54 @@ func RepositoryIDLTE(v uuid.UUID) predicate.RepoCache {
 	return predicate.RepoCache(sql.FieldLTE(FieldRepositoryID, v))
 }
 
-// ExecutionNodeIDEQ applies the EQ predicate on the "execution_node_id" field.
-func ExecutionNodeIDEQ(v uuid.UUID) predicate.RepoCache {
-	return predicate.RepoCache(sql.FieldEQ(FieldExecutionNodeID, v))
+// WorkerIDEQ applies the EQ predicate on the "worker_id" field.
+func WorkerIDEQ(v uuid.UUID) predicate.RepoCache {
+	return predicate.RepoCache(sql.FieldEQ(FieldWorkerID, v))
 }
 
-// ExecutionNodeIDNEQ applies the NEQ predicate on the "execution_node_id" field.
-func ExecutionNodeIDNEQ(v uuid.UUID) predicate.RepoCache {
-	return predicate.RepoCache(sql.FieldNEQ(FieldExecutionNodeID, v))
+// WorkerIDNEQ applies the NEQ predicate on the "worker_id" field.
+func WorkerIDNEQ(v uuid.UUID) predicate.RepoCache {
+	return predicate.RepoCache(sql.FieldNEQ(FieldWorkerID, v))
 }
 
-// ExecutionNodeIDIn applies the In predicate on the "execution_node_id" field.
-func ExecutionNodeIDIn(vs ...uuid.UUID) predicate.RepoCache {
-	return predicate.RepoCache(sql.FieldIn(FieldExecutionNodeID, vs...))
+// WorkerIDIn applies the In predicate on the "worker_id" field.
+func WorkerIDIn(vs ...uuid.UUID) predicate.RepoCache {
+	return predicate.RepoCache(sql.FieldIn(FieldWorkerID, vs...))
 }
 
-// ExecutionNodeIDNotIn applies the NotIn predicate on the "execution_node_id" field.
-func ExecutionNodeIDNotIn(vs ...uuid.UUID) predicate.RepoCache {
-	return predicate.RepoCache(sql.FieldNotIn(FieldExecutionNodeID, vs...))
+// WorkerIDNotIn applies the NotIn predicate on the "worker_id" field.
+func WorkerIDNotIn(vs ...uuid.UUID) predicate.RepoCache {
+	return predicate.RepoCache(sql.FieldNotIn(FieldWorkerID, vs...))
 }
 
-// ExecutionNodeIDGT applies the GT predicate on the "execution_node_id" field.
-func ExecutionNodeIDGT(v uuid.UUID) predicate.RepoCache {
-	return predicate.RepoCache(sql.FieldGT(FieldExecutionNodeID, v))
+// WorkerIDGT applies the GT predicate on the "worker_id" field.
+func WorkerIDGT(v uuid.UUID) predicate.RepoCache {
+	return predicate.RepoCache(sql.FieldGT(FieldWorkerID, v))
 }
 
-// ExecutionNodeIDGTE applies the GTE predicate on the "execution_node_id" field.
-func ExecutionNodeIDGTE(v uuid.UUID) predicate.RepoCache {
-	return predicate.RepoCache(sql.FieldGTE(FieldExecutionNodeID, v))
+// WorkerIDGTE applies the GTE predicate on the "worker_id" field.
+func WorkerIDGTE(v uuid.UUID) predicate.RepoCache {
+	return predicate.RepoCache(sql.FieldGTE(FieldWorkerID, v))
 }
 
-// ExecutionNodeIDLT applies the LT predicate on the "execution_node_id" field.
-func ExecutionNodeIDLT(v uuid.UUID) predicate.RepoCache {
-	return predicate.RepoCache(sql.FieldLT(FieldExecutionNodeID, v))
+// WorkerIDLT applies the LT predicate on the "worker_id" field.
+func WorkerIDLT(v uuid.UUID) predicate.RepoCache {
+	return predicate.RepoCache(sql.FieldLT(FieldWorkerID, v))
 }
 
-// ExecutionNodeIDLTE applies the LTE predicate on the "execution_node_id" field.
-func ExecutionNodeIDLTE(v uuid.UUID) predicate.RepoCache {
-	return predicate.RepoCache(sql.FieldLTE(FieldExecutionNodeID, v))
+// WorkerIDLTE applies the LTE predicate on the "worker_id" field.
+func WorkerIDLTE(v uuid.UUID) predicate.RepoCache {
+	return predicate.RepoCache(sql.FieldLTE(FieldWorkerID, v))
 }
 
-// ExecutionNodeIDIsNil applies the IsNil predicate on the "execution_node_id" field.
-func ExecutionNodeIDIsNil() predicate.RepoCache {
-	return predicate.RepoCache(sql.FieldIsNull(FieldExecutionNodeID))
+// WorkerIDIsNil applies the IsNil predicate on the "worker_id" field.
+func WorkerIDIsNil() predicate.RepoCache {
+	return predicate.RepoCache(sql.FieldIsNull(FieldWorkerID))
 }
 
-// ExecutionNodeIDNotNil applies the NotNil predicate on the "execution_node_id" field.
-func ExecutionNodeIDNotNil() predicate.RepoCache {
-	return predicate.RepoCache(sql.FieldNotNull(FieldExecutionNodeID))
+// WorkerIDNotNil applies the NotNil predicate on the "worker_id" field.
+func WorkerIDNotNil() predicate.RepoCache {
+	return predicate.RepoCache(sql.FieldNotNull(FieldWorkerID))
 }
 
 // PathEQ applies the EQ predicate on the "path" field.

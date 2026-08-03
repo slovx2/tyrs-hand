@@ -15,7 +15,7 @@ import (
 
 var channelNamePart = regexp.MustCompile(`[^a-z0-9-]+`)
 
-func (m *Manager) DevelopmentProjectForumPlan(ctx context.Context, remoteGuild RemoteGuild,
+func (m *Manager) WorkspaceProjectForumPlan(ctx context.Context, remoteGuild RemoteGuild,
 	projectID uuid.UUID, requestedName string,
 ) (InitializationPlan, error) {
 	settings, err := m.Settings(ctx)
@@ -26,18 +26,17 @@ func (m *Manager) DevelopmentProjectForumPlan(ctx context.Context, remoteGuild R
 		return InitializationPlan{}, errors.New("创建开发 Forum 前必须配置 Guild ID 和 Bot User ID")
 	}
 	var memberID, username, displayName, projectName string
-	err = m.db.QueryRowContext(ctx, `SELECT environment.owner_discord_user_id,
+	err = m.db.QueryRowContext(ctx, `SELECT workspace.owner_discord_user_id,
 		member.username, member.display_name, project.name
-		FROM development_projects project
-		JOIN discord_development_environments environment ON environment.id=project.environment_id
-		JOIN discord_members member ON member.guild_id=environment.guild_id
-			AND member.discord_user_id=environment.owner_discord_user_id
-		WHERE project.id=$1 AND environment.guild_id=$2 AND member.active
+		FROM workspace_projects project
+		JOIN worker_workspaces workspace ON workspace.id=project.workspace_id
+		JOIN discord_members member ON member.guild_id=workspace.guild_id
+			AND member.discord_user_id=workspace.owner_discord_user_id
+		WHERE project.id=$1 AND workspace.guild_id=$2 AND member.active
 		  AND project.availability_status='available'
-		  AND environment.status IN ('ready','running')
 		  AND NOT EXISTS (
 			SELECT 1 FROM discord_forums forum
-			WHERE forum.development_project_id=project.id
+			WHERE forum.workspace_project_id=project.id
 			  AND forum.binding_status='active')`, projectID, settings.GuildID).
 		Scan(&memberID, &username, &displayName, &projectName)
 	if err != nil {
@@ -54,18 +53,18 @@ func (m *Manager) DevelopmentProjectForumPlan(ctx context.Context, remoteGuild R
 			Name: fmt.Sprintf("Codex 会话 %02d", index), Kind: "category"})
 	}
 	forumID := uuid.New()
-	name := developmentProjectForumName(remoteGuild, requestedName, displayName, username,
+	name := workspaceProjectForumName(remoteGuild, requestedName, displayName, username,
 		projectName, forumID)
 	if name == "" {
-		return InitializationPlan{}, errors.New("开发 Forum 名称无效")
+		return InitializationPlan{}, errors.New("Workspace Forum 名称无效")
 	}
-	key := "forum.development." + forumID.String()
+	key := "forum.workspace." + forumID.String()
 	allow := discord.PermissionViewChannel | discord.PermissionSendMessages |
 		discord.PermissionReadMessageHistory | discord.PermissionCreatePublicThreads |
 		discord.PermissionSendMessagesInThreads | discord.PermissionAttachFiles | discord.PermissionEmbedLinks
 	botAllow := allow | discord.PermissionManageChannels | discord.PermissionManageThreads | discord.PermissionManageMessages
 	forum := ChannelSpec{Key: key, ParentKey: categoryKey, Name: name, Kind: "forum",
-		Topic: "Tyrs Hand 个人长期开发环境 · " + displayName + " · " + projectName,
+		Topic: "Tyrs Hand Workspace · " + displayName + " · " + projectName,
 		Tags:  []string{"Running"},
 		PermissionOverwrites: []PermissionSpec{
 			{ID: settings.GuildID, Type: "role", Deny: int64(discord.PermissionViewChannel)},
@@ -81,13 +80,13 @@ func (m *Manager) DevelopmentProjectForumPlan(ctx context.Context, remoteGuild R
 	if err != nil {
 		return InitializationPlan{}, err
 	}
-	plan.Actions = append(plan.Actions, InitializationAction{Kind: "forum.development_project.record",
+	plan.Actions = append(plan.Actions, InitializationAction{Kind: "forum.workspace_project.record",
 		Spec: forum, OwnerUserID: memberID, ProjectID: projectID.String(),
 		ForumID: forumID.String()})
 	return plan, nil
 }
 
-func developmentProjectForumName(guild RemoteGuild, requestedName, displayName, username,
+func workspaceProjectForumName(guild RemoteGuild, requestedName, displayName, username,
 	project string, forumID uuid.UUID,
 ) string {
 	if strings.TrimSpace(requestedName) != "" {
@@ -107,7 +106,7 @@ func developmentProjectForumName(guild RemoteGuild, requestedName, displayName, 
 	return base
 }
 
-func (m *Manager) RestoreDevelopmentForum(ctx context.Context, projectID,
+func (m *Manager) RestoreWorkspaceForum(ctx context.Context, projectID,
 	forumID uuid.UUID,
 ) error {
 	tx, err := m.db.BeginTx(ctx, nil)
@@ -117,16 +116,15 @@ func (m *Manager) RestoreDevelopmentForum(ctx context.Context, projectID,
 	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx, `UPDATE discord_forums forum
 		SET binding_status='active'
-		FROM development_projects project
-		JOIN discord_development_environments environment ON environment.id=project.environment_id
-		WHERE forum.id=$2 AND forum.development_project_id=project.id
-		  AND project.id=$1 AND forum.forum_type='development'
+		FROM workspace_projects project
+		JOIN worker_workspaces workspace ON workspace.id=project.workspace_id
+		WHERE forum.id=$2 AND forum.workspace_project_id=project.id
+		  AND project.id=$1 AND forum.forum_type='workspace'
 		  AND forum.binding_status='inactive'
 		  AND project.availability_status='available'
-		  AND environment.status IN ('ready','running')
 		  AND NOT EXISTS (
 			SELECT 1 FROM discord_forums active
-			WHERE active.development_project_id=project.id
+			WHERE active.workspace_project_id=project.id
 			  AND active.binding_status='active')`, projectID, forumID)
 	if err != nil {
 		return err
@@ -140,7 +138,7 @@ func (m *Manager) RestoreDevelopmentForum(ctx context.Context, projectID,
 	return tx.Commit()
 }
 
-func (m *Manager) DisableDevelopmentForum(ctx context.Context, forumID uuid.UUID) error {
+func (m *Manager) DisableWorkspaceForum(ctx context.Context, forumID uuid.UUID) error {
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -148,7 +146,7 @@ func (m *Manager) DisableDevelopmentForum(ctx context.Context, forumID uuid.UUID
 	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx, `UPDATE discord_forums
 		SET binding_status='inactive'
-		WHERE id=$1 AND forum_type='development' AND binding_status='active'`, forumID)
+		WHERE id=$1 AND forum_type='workspace' AND binding_status='active'`, forumID)
 	if err != nil {
 		return err
 	}
@@ -161,14 +159,14 @@ func (m *Manager) DisableDevelopmentForum(ctx context.Context, forumID uuid.UUID
 	return tx.Commit()
 }
 
-func (m *Manager) EnableDevelopmentForum(ctx context.Context, forumID uuid.UUID) error {
+func (m *Manager) EnableWorkspaceForum(ctx context.Context, forumID uuid.UUID) error {
 	var projectID uuid.UUID
-	if err := m.db.QueryRowContext(ctx, `SELECT development_project_id
-		FROM discord_forums WHERE id=$1 AND forum_type='development'`, forumID).
+	if err := m.db.QueryRowContext(ctx, `SELECT workspace_project_id
+		FROM discord_forums WHERE id=$1 AND forum_type='workspace'`, forumID).
 		Scan(&projectID); err != nil {
 		return errors.New("开发 Forum 不存在")
 	}
-	return m.RestoreDevelopmentForum(ctx, projectID, forumID)
+	return m.RestoreWorkspaceForum(ctx, projectID, forumID)
 }
 
 func (m *Manager) ForumAccess(ctx context.Context, forumID uuid.UUID) ([]ForumAccess, error) {
@@ -189,33 +187,33 @@ func (m *Manager) ForumAccess(ctx context.Context, forumID uuid.UUID) ([]ForumAc
 	return result, rows.Err()
 }
 
-func (m *Manager) SetDevelopmentProjectForumAccess(ctx context.Context, projectID,
+func (m *Manager) SetWorkspaceProjectForumAccess(ctx context.Context, projectID,
 	forumID uuid.UUID, memberID, level string, administratorID uuid.UUID,
 ) error {
 	var matches bool
 	if err := m.db.QueryRowContext(ctx, `SELECT EXISTS(
 		SELECT 1 FROM discord_forums
-		WHERE id=$2 AND development_project_id=$1 AND forum_type='development')`,
+		WHERE id=$2 AND workspace_project_id=$1 AND forum_type='workspace')`,
 		projectID, forumID).Scan(&matches); err != nil || !matches {
 		return errors.New("项目 Forum 不存在")
 	}
 	return m.SetForumAccess(ctx, forumID, memberID, level, administratorID)
 }
 
-func (m *Manager) DeleteDevelopmentProjectForumAccess(ctx context.Context, projectID,
+func (m *Manager) DeleteWorkspaceProjectForumAccess(ctx context.Context, projectID,
 	forumID uuid.UUID, memberID string,
 ) error {
 	var matches bool
 	if err := m.db.QueryRowContext(ctx, `SELECT EXISTS(
 		SELECT 1 FROM discord_forums
-		WHERE id=$2 AND development_project_id=$1 AND forum_type='development')`,
+		WHERE id=$2 AND workspace_project_id=$1 AND forum_type='workspace')`,
 		projectID, forumID).Scan(&matches); err != nil || !matches {
 		return errors.New("项目 Forum 不存在")
 	}
 	return m.DeleteForumAccess(ctx, forumID, memberID)
 }
 
-func developmentForumName(guild RemoteGuild, requestedName, displayName, username,
+func workspaceForumName(guild RemoteGuild, requestedName, displayName, username,
 	owner, repository string, forumID uuid.UUID,
 ) string {
 	if strings.TrimSpace(requestedName) != "" {
@@ -392,7 +390,7 @@ func syncForumPermissions(ctx context.Context, store forumPermissionStore,
 	err := store.QueryRowContext(ctx, `SELECT f.guild_id, r.discord_id, f.owner_discord_user_id,
 		COALESCE(g.bot_user_id, ''), f.binding_status
 		FROM discord_forums f JOIN discord_resources r ON r.id = f.resource_id
-		JOIN discord_guilds g ON g.guild_id = f.guild_id WHERE f.id = $1 AND f.forum_type = 'development'`, forumID).
+		JOIN discord_guilds g ON g.guild_id = f.guild_id WHERE f.id = $1 AND f.forum_type = 'workspace'`, forumID).
 		Scan(&guildID, &channelID, &ownerID, &botID, &bindingStatus)
 	if err != nil {
 		return err

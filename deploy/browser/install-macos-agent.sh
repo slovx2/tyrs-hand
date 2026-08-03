@@ -97,7 +97,7 @@ const fs = require('fs');
 const [file, extensionId, extensionToken, extensionCrxPath, instanceId,
   host, port, user, identityFile, knownHostsFile] = process.argv.slice(2);
 fs.writeFileSync(file, JSON.stringify({ extensionId, extensionToken,
-  extensionCrxPath, instanceId, publicPort: 8931, relayPort: 8932,
+  extensionCrxPath, instanceId, publicPort: 8931, proxyPort: 8932,
   ssh: { host, port: Number(port), user, identityFile, knownHostsFile } }, null, 2) + '\n', { mode: 0o600 });
 NODE
 chmod 0600 "$config"

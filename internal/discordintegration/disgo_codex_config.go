@@ -36,14 +36,14 @@ func (c *DisgoConnector) runtimeConfigurationModal(ctx context.Context,
 	if state.ConversationID != conversationID || state.SettingsRevision != revision {
 		return discord.ModalCreate{}, errors.New("设置卡已过期，请重新运行 `/codex config`")
 	}
-	var environmentID uuid.UUID
-	if err := c.manager.db.QueryRowContext(ctx, `SELECT forum.development_environment_id
+	var workspaceID uuid.UUID
+	if err := c.manager.db.QueryRowContext(ctx, `SELECT forum.workspace_id
 		FROM discord_conversations conversation JOIN discord_forums forum
 		ON forum.id=conversation.forum_id WHERE conversation.id=$1`, conversationID).
-		Scan(&environmentID); err != nil {
+		Scan(&workspaceID); err != nil {
 		return discord.ModalCreate{}, err
 	}
-	models, err := codexModelsForEnvironment(ctx, c.manager.db, environmentID)
+	models, err := codexModelsForEnvironment(ctx, c.manager.db, workspaceID)
 	if err != nil {
 		return discord.ModalCreate{}, err
 	}
@@ -189,14 +189,14 @@ func (c *DisgoConnector) saveRuntimeConfiguration(event *events.ModalSubmitInter
 	}
 	var result ConfigurationUpdate
 	if err == nil {
-		var environmentID uuid.UUID
-		err = c.manager.db.QueryRowContext(context.Background(), `SELECT forum.development_environment_id
+		var workspaceID uuid.UUID
+		err = c.manager.db.QueryRowContext(context.Background(), `SELECT forum.workspace_id
 			FROM discord_conversations conversation JOIN discord_forums forum
 			ON forum.id=conversation.forum_id WHERE conversation.id=$1`, conversationID).
-			Scan(&environmentID)
+			Scan(&workspaceID)
 		if err == nil {
 			var models []codexcatalog.Model
-			models, err = codexModelsForEnvironment(context.Background(), c.manager.db, environmentID)
+			models, err = codexModelsForEnvironment(context.Background(), c.manager.db, workspaceID)
 			if err == nil {
 				err = validateKnownModelSelection(model, effort, tier, models)
 			}
@@ -243,15 +243,12 @@ func (c *DisgoConnector) showForumSelector(event *events.ComponentInteractionCre
 func (c *DisgoConnector) newCodexModal(ctx context.Context, forumDiscordID, userID,
 	mode string,
 ) (discord.ModalCreate, error) {
-	forumID, repositoryID, profileID, environmentID, err := c.authorizedForum(ctx,
+	_, _, _, workspaceID, err := c.authorizedForum(ctx,
 		forumDiscordID, userID)
 	if err != nil {
 		return discord.ModalCreate{}, err
 	}
-	preferences, err := codexsettings.NewService(c.manager.db).Resolve(ctx, repositoryID, forumID, profileID)
-	if err != nil {
-		return discord.ModalCreate{}, err
-	}
+	preferences := codexsettings.EffectivePreferences{}
 	userPreferences, remembered, err := loadUserCodexPreferences(ctx, c.manager.db,
 		c.guildID, userID)
 	if err != nil {
@@ -260,7 +257,7 @@ func (c *DisgoConnector) newCodexModal(ctx context.Context, forumDiscordID, user
 	if remembered {
 		applyUserCodexPreferences(&preferences, userPreferences)
 	}
-	models, err := codexModelsForEnvironment(ctx, c.manager.db, environmentID)
+	models, err := codexModelsForEnvironment(ctx, c.manager.db, workspaceID)
 	if err != nil {
 		return discord.ModalCreate{}, err
 	}
@@ -289,20 +286,20 @@ func (c *DisgoConnector) newCodexModal(ctx context.Context, forumDiscordID, user
 func (c *DisgoConnector) authorizedForum(ctx context.Context, forumDiscordID, userID string) (
 	uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID, error,
 ) {
-	var forumID, profileID, environmentID uuid.UUID
+	var forumID, profileID, workspaceID uuid.UUID
 	var owner string
 	err := c.manager.db.QueryRowContext(ctx, `SELECT f.id,
 		(SELECT id FROM agent_profiles ORDER BY created_at LIMIT 1),
-		f.development_environment_id, f.owner_discord_user_id
+		f.workspace_id, f.owner_discord_user_id
 		FROM discord_forums f JOIN discord_resources r ON r.id = f.resource_id
-		JOIN development_projects project ON project.id=f.development_project_id
-		JOIN discord_development_environments environment
-			ON environment.id=f.development_environment_id
-		WHERE f.guild_id=$1 AND r.discord_id=$2 AND f.forum_type='development'
+		JOIN workspace_projects project ON project.id=f.workspace_project_id
+		JOIN worker_workspaces workspace
+			ON workspace.id=f.workspace_id
+		WHERE f.guild_id=$1 AND r.discord_id=$2 AND f.forum_type='workspace'
 			AND f.binding_status='active'
 			AND project.availability_status='available'
-			AND environment.status='running'`,
-		c.guildID, forumDiscordID).Scan(&forumID, &profileID, &environmentID, &owner)
+			`,
+		c.guildID, forumDiscordID).Scan(&forumID, &profileID, &workspaceID, &owner)
 	if err != nil {
 		return uuid.Nil, uuid.Nil, uuid.Nil, uuid.Nil, errors.New("所选频道不是可用的开发 Forum")
 	}
@@ -316,13 +313,13 @@ func (c *DisgoConnector) authorizedForum(ctx context.Context, forumDiscordID, us
 				errors.New("当前用户没有在该 Forum 新建 Codex 会话的权限")
 		}
 	}
-	return forumID, uuid.Nil, profileID, environmentID, nil
+	return forumID, uuid.Nil, profileID, workspaceID, nil
 }
 
 func codexModelsForEnvironment(ctx context.Context, db *sql.DB,
-	environmentID uuid.UUID,
+	workspaceID uuid.UUID,
 ) ([]codexcatalog.Model, error) {
-	catalogs, err := codexcatalog.EnvironmentCatalogs(ctx, db, []uuid.UUID{environmentID})
+	catalogs, err := codexcatalog.WorkspaceCatalogs(ctx, db, []uuid.UUID{workspaceID})
 	if err != nil {
 		return nil, err
 	}
@@ -450,7 +447,7 @@ func (c *DisgoConnector) createCodexPost(event *events.ModalSubmitInteractionCre
 	}
 	ctx := context.Background()
 	var err error
-	var environmentID uuid.UUID
+	var workspaceID uuid.UUID
 	if customSelected && model == "" {
 		err = errors.New("选择自定义模型时必须填写模型名称")
 	}
@@ -458,11 +455,11 @@ func (c *DisgoConnector) createCodexPost(event *events.ModalSubmitInteractionCre
 		err = errors.New("任务内容不能为空")
 	}
 	if err == nil {
-		_, _, _, environmentID, err = c.authorizedForum(ctx, forumDiscordID, event.User().ID.String())
+		_, _, _, workspaceID, err = c.authorizedForum(ctx, forumDiscordID, event.User().ID.String())
 	}
 	if err == nil {
 		var models []codexcatalog.Model
-		models, err = codexModelsForEnvironment(ctx, c.manager.db, environmentID)
+		models, err = codexModelsForEnvironment(ctx, c.manager.db, workspaceID)
 		if err == nil {
 			err = validateKnownModelSelection(model, effort, tier, models)
 		}

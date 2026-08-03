@@ -18,31 +18,30 @@ import (
 func TestBrowserFileExchangeStaysInsideWorkspace(t *testing.T) {
 	workspace := t.TempDir()
 	exchange := t.TempDir()
-	hostRoot := "/opt/tyrs-hand/browser-files"
-	cfg := config.Config{BrowserMCPURL: "http://host.docker.internal:8931/mcp",
-		BrowserFilesRoot: exchange, BrowserFilesHostRoot: hostRoot}
+	cfg := config.Config{BrowserMCPURL: "http://127.0.0.1:8931/mcp",
+		BrowserFilesRoot: exchange}
 	source := filepath.Join(workspace, "report.txt")
 	require.NoError(t, os.WriteFile(source, []byte("result"), 0o600))
 
 	result, err := executeBrowserTool(context.Background(), cfg, "task-id", workspace,
-		nil, nil, codex.ToolCallRequest{Tool: "stage_file",
+		codex.ToolCallRequest{Tool: "stage_file",
 			Arguments: json.RawMessage(`{"source":"report.txt"}`)})
 	require.NoError(t, err)
 	require.True(t, result.Success)
 	var staged stagedBrowserFile
 	require.NoError(t, json.Unmarshal([]byte(result.ContentItems[0].Text), &staged))
-	require.Contains(t, staged.HostPath, hostRoot)
+	require.Contains(t, staged.HostPath, exchange)
 	require.Len(t, staged.SHA256, 64)
 
 	link := filepath.Join(workspace, "link.txt")
 	require.NoError(t, os.Symlink(source, link))
 	_, err = executeBrowserTool(context.Background(), cfg, "task-id", workspace,
-		nil, nil, codex.ToolCallRequest{Tool: "stage_file",
+		codex.ToolCallRequest{Tool: "stage_file",
 			Arguments: json.RawMessage(`{"source":"link.txt"}`)})
 	require.ErrorContains(t, err, "符号链接")
 
 	_, err = executeBrowserTool(context.Background(), cfg, "task-id", workspace,
-		nil, nil, codex.ToolCallRequest{Tool: "stage_file",
+		codex.ToolCallRequest{Tool: "stage_file",
 			Arguments: json.RawMessage(`{"source":"../outside.txt"}`)})
 	require.Error(t, err)
 }
@@ -52,7 +51,7 @@ func TestBrowserToolNamespaceAvoidsResponsesReservedName(t *testing.T) {
 	require.Equal(t, "browser_files", spec.Name)
 	require.NotEqual(t, "browser", spec.Name)
 
-	enabled := withBrowserTools(config.Config{BrowserMCPURL: "http://host.docker.internal:8931/mcp"})
+	enabled := withBrowserTools(config.Config{BrowserMCPURL: "http://127.0.0.1:8931/mcp"})
 	require.Len(t, enabled, 1)
 	require.Equal(t, browserToolNamespace, enabled[0].Name)
 	require.Len(t, spec.Tools, 2)
@@ -65,13 +64,13 @@ func TestBrowserToolNamespaceAvoidsResponsesReservedName(t *testing.T) {
 func TestBrowserDownloadImport(t *testing.T) {
 	workspace := t.TempDir()
 	exchange := t.TempDir()
-	cfg := config.Config{BrowserMCPURL: "http://host.docker.internal:8931/mcp",
-		BrowserFilesRoot: exchange, BrowserFilesHostRoot: "/opt/tyrs-hand/browser-files"}
+	cfg := config.Config{BrowserMCPURL: "http://127.0.0.1:8931/mcp",
+		BrowserFilesRoot: exchange}
 	download := filepath.Join(exchange, "download.txt")
 	require.NoError(t, os.WriteFile(download, []byte("download"), 0o644))
 
 	result, err := executeBrowserTool(context.Background(), cfg, "task-id", workspace,
-		nil, nil, codex.ToolCallRequest{Tool: "import_download",
+		codex.ToolCallRequest{Tool: "import_download",
 			Arguments: json.RawMessage(`{"source":"` + download + `","destination":"artifacts/download.txt"}`)})
 	require.NoError(t, err)
 	require.True(t, result.Success)
@@ -83,63 +82,53 @@ func TestBrowserDownloadImport(t *testing.T) {
 func TestBrowserFileExchangeRejectsUnsafeDownloadsAndDestinations(t *testing.T) {
 	workspace := t.TempDir()
 	exchange := t.TempDir()
-	hostRoot := "/opt/tyrs-hand/browser-files"
-	cfg := config.Config{BrowserMCPURL: "http://host.docker.internal:8931/mcp",
-		BrowserFilesRoot: exchange, BrowserFilesHostRoot: hostRoot}
+	cfg := config.Config{BrowserMCPURL: "http://127.0.0.1:8931/mcp",
+		BrowserFilesRoot: exchange}
 	outside := filepath.Join(t.TempDir(), "outside.txt")
 	require.NoError(t, os.WriteFile(outside, []byte("outside"), 0o644))
 
-	_, err := importBrowserDownload(context.Background(), cfg, workspace, nil, nil,
-		outside, "download.txt")
+	_, err := importBrowserDownload(cfg, workspace, outside, "download.txt")
 	require.ErrorContains(t, err, "交换目录")
 	link := filepath.Join(exchange, "link.txt")
 	require.NoError(t, os.Symlink(outside, link))
-	_, err = importBrowserDownload(context.Background(), cfg, workspace, nil, nil,
-		link, "download.txt")
+	_, err = importBrowserDownload(cfg, workspace, link, "download.txt")
 	require.ErrorContains(t, err, "普通文件")
 
 	large := filepath.Join(exchange, "large.bin")
 	require.NoError(t, os.WriteFile(large, nil, 0o644))
 	require.NoError(t, os.Truncate(large, browserFileLimit+1))
-	_, err = importBrowserDownload(context.Background(), cfg, workspace, nil, nil,
-		large, "download.bin")
+	_, err = importBrowserDownload(cfg, workspace, large, "download.bin")
 	require.ErrorContains(t, err, "25 MiB")
 
 	download := filepath.Join(exchange, "download.txt")
 	require.NoError(t, os.WriteFile(download, []byte("download"), 0o644))
-	_, err = importBrowserDownload(context.Background(), cfg, workspace, nil, nil,
-		download, "../escape.txt")
+	_, err = importBrowserDownload(cfg, workspace, download, "../escape.txt")
 	require.ErrorContains(t, err, "工作区")
 	linkedDirectory := filepath.Join(workspace, "linked")
 	require.NoError(t, os.Symlink(t.TempDir(), linkedDirectory))
-	_, err = importBrowserDownload(context.Background(), cfg, workspace, nil, nil,
-		download, "linked/download.txt")
+	_, err = importBrowserDownload(cfg, workspace, download, "linked/download.txt")
 	require.ErrorContains(t, err, "符号链接")
 
-	hostPath := filepath.Join(hostRoot, "nested", "download.txt")
-	workerPath, err := browserSourcePath(cfg, hostPath)
-	require.NoError(t, err)
-	require.Equal(t, filepath.Join(exchange, "nested", "download.txt"), workerPath)
 }
 
 func TestBrowserToolsRejectInvalidCalls(t *testing.T) {
 	disabled := config.Config{}
-	_, err := executeBrowserTool(context.Background(), disabled, "task", t.TempDir(), nil, nil,
+	_, err := executeBrowserTool(context.Background(), disabled, "task", t.TempDir(),
 		codex.ToolCallRequest{Tool: "stage_file", Arguments: json.RawMessage(`{}`)})
 	require.ErrorContains(t, err, "未配置")
 
-	cfg := config.Config{BrowserMCPURL: "http://host.docker.internal:8931/mcp"}
-	_, err = executeBrowserTool(context.Background(), cfg, "task", t.TempDir(), nil, nil,
+	cfg := config.Config{BrowserMCPURL: "http://127.0.0.1:8931/mcp"}
+	_, err = executeBrowserTool(context.Background(), cfg, "task", t.TempDir(),
 		codex.ToolCallRequest{Tool: "missing", Arguments: json.RawMessage(`{}`)})
 	require.ErrorContains(t, err, "不存在")
-	_, err = executeBrowserTool(context.Background(), cfg, "task", t.TempDir(), nil, nil,
+	_, err = executeBrowserTool(context.Background(), cfg, "task", t.TempDir(),
 		codex.ToolCallRequest{Tool: "stage_file", Arguments: json.RawMessage(`{"source":`)})
 	require.Error(t, err)
 }
 
 func TestBrowserTaskCleanupAndSweeper(t *testing.T) {
 	root := t.TempDir()
-	cfg := config.Config{BrowserMCPURL: "http://host.docker.internal:8931/mcp",
+	cfg := config.Config{BrowserMCPURL: "http://127.0.0.1:8931/mcp",
 		BrowserFilesRoot: root}
 	taskDirectory := filepath.Join(root, "task-1")
 	require.NoError(t, os.MkdirAll(taskDirectory, 0o755))

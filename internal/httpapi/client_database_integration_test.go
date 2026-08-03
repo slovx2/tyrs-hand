@@ -24,8 +24,8 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/database"
-	"github.com/slovx2/tyrs-hand/internal/executionnode"
 	"github.com/slovx2/tyrs-hand/internal/security"
+	"github.com/slovx2/tyrs-hand/internal/workerregistry"
 	"github.com/stretchr/testify/require"
 )
 
@@ -40,25 +40,25 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 	require.NoError(t, err)
 
 	server, endpoint := clientIntegrationServer(t, db, authService)
-	node, _, err := server.nodes.Create(ctx, "client-protocol-node", []string{"discord"}, 4)
+	worker, _, err := server.workers.Create(ctx, "client-protocol-worker", []string{"discord"}, 4)
 	require.NoError(t, err)
 	repositoryID, _, profileID := seedWorkerGitHubQueue(t, db, 9901)
-	environmentID, forumID := seedDevelopmentOperation(t, db, repositoryID, node.ID)
-	projectID := developmentProjectIDForForum(t, db, forumID)
-	nativeCatalog := `{"modelCatalogs":{"` + environmentID.String() + `":{"data":[{` +
+	workspaceID, forumID := seedWorkerWorkspace(t, db, repositoryID, worker.ID)
+	projectID := workspaceProjectIDForForum(t, db, forumID)
+	nativeCatalog := `{"modelCatalogs":{"` + workspaceID.String() + `":{"data":[{` +
 		`"id":"native-only-model","model":"native-only-model","displayName":"Native",` +
 		`"description":"from Codex","supportedReasoningEfforts":[{` +
 		`"reasoningEffort":"future","description":"future effort"}],` +
 		`"defaultReasoningEffort":"future","serviceTiers":[],` +
 		`"additionalSpeedTiers":[],"defaultServiceTier":null,"isDefault":true,` +
 		`"hidden":false}],"nextCursor":null}}}`
-	_, err = db.ExecContext(ctx, `UPDATE execution_nodes SET status='online',
-		heartbeat_at=now(), metadata=$2::jsonb WHERE id=$1`, node.ID, nativeCatalog)
+	_, err = db.ExecContext(ctx, `UPDATE workers SET status='online',
+		heartbeat_at=now(), metadata=$2::jsonb WHERE id=$1`, worker.ID, nativeCatalog)
 	require.NoError(t, err)
 	var sessionID uuid.UUID
-	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO development_sessions(
-		development_environment_id,development_project_id,agent_profile_id,title)
-		VALUES ($1,$2,$3,'Client protocol') RETURNING id`, environmentID, projectID,
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO workspace_sessions(
+		workspace_id,workspace_project_id,agent_profile_id,title)
+		VALUES ($1,$2,$3,'Client protocol') RETURNING id`, workspaceID, projectID,
 		profileID).Scan(&sessionID))
 
 	code, err := totp.GenerateCode(setup.TOTPSecret, time.Now())
@@ -78,7 +78,7 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 	bootstrap := clientJSONRequest(t, http.MethodGet, endpoint+"/api/v1/client/bootstrap",
 		loginBody.AccessToken, nil)
 	require.Equal(t, http.StatusOK, bootstrap.Code)
-	require.Contains(t, bootstrap.Body.String(), environmentID.String())
+	require.Contains(t, bootstrap.Body.String(), workspaceID.String())
 	require.Contains(t, bootstrap.Body.String(), projectID.String())
 	require.Contains(t, bootstrap.Body.String(), profileID.String())
 	require.Contains(t, bootstrap.Body.String(), `"protocolVersion":3`)
@@ -161,16 +161,16 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 	require.Equal(t, reconnectCursor, replayed.Params.Cursor)
 
 	repository := codexcontrol.NewRepository(db, time.Minute, 5, 3)
-	claimed, err := repository.ClaimNode(ctx, "client-protocol-worker",
-		codexcontrol.SourceDevelopment, node.ID)
+	claimed, err := repository.ClaimWorker(ctx, "client-protocol-worker",
+		codexcontrol.SourceWorkspace, worker.ID)
 	require.NoError(t, err)
 	require.NotNil(t, claimed)
 	if claimed.SessionID != sessionID {
 		require.NoError(t, repository.Complete(ctx, claimed, codexcontrol.TurnResult{
 			TurnID: "atomic-turn", FinalAnswer: "atomic session completed",
 		}))
-		claimed, err = repository.ClaimNode(ctx, "client-protocol-worker",
-			codexcontrol.SourceDevelopment, node.ID)
+		claimed, err = repository.ClaimWorker(ctx, "client-protocol-worker",
+			codexcontrol.SourceWorkspace, worker.ID)
 		require.NoError(t, err)
 		require.NotNil(t, claimed)
 	}
@@ -222,7 +222,7 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 func clientIntegrationServer(t *testing.T, db *sql.DB, authService *auth.Service) (*Server, string) {
 	t.Helper()
 	server := &Server{cfg: config.Config{LeaseDuration: time.Minute, PublicURL: "http://127.0.0.1"},
-		db: db, auth: authService, nodes: executionnode.NewService(db),
+		db: db, auth: authService, workers: workerregistry.NewService(db),
 		clientUpdateHub: newClientUpdateHub()}
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -279,15 +279,15 @@ func TestConcurrentClientsSerializeMessagesWithinSession(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))
 	server, _ := workerTestServer(t, db)
-	node, _, err := server.nodes.Create(ctx, "client-session-node", []string{"discord"}, 8)
+	worker, _, err := server.workers.Create(ctx, "client-session-worker", []string{"discord"}, 8)
 	require.NoError(t, err)
 	repositoryID, _, profileID := seedWorkerGitHubQueue(t, db, 8801)
-	environmentID, forumID := seedDevelopmentOperation(t, db, repositoryID, node.ID)
-	projectID := developmentProjectIDForForum(t, db, forumID)
+	workspaceID, forumID := seedWorkerWorkspace(t, db, repositoryID, worker.ID)
+	projectID := workspaceProjectIDForForum(t, db, forumID)
 	var sessionID uuid.UUID
-	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO development_sessions(
-		development_environment_id,development_project_id,agent_profile_id,title)
-		VALUES ($1,$2,$3,'Concurrent clients') RETURNING id`, environmentID, projectID,
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO workspace_sessions(
+		workspace_id,workspace_project_id,agent_profile_id,title)
+		VALUES ($1,$2,$3,'Concurrent clients') RETURNING id`, workspaceID, projectID,
 		profileID).Scan(&sessionID))
 
 	const clients = 8
@@ -308,7 +308,7 @@ func TestConcurrentClientsSerializeMessagesWithinSession(t *testing.T) {
 			localID := fmt.Sprintf("client-%d", client)
 			_, inserted, enqueueErr := codexcontrol.NewRepository(db, time.Minute).Enqueue(ctx,
 				tx, codexcontrol.EnqueueRequest{
-					SourceType: codexcontrol.SourceDevelopment, SessionID: sessionID,
+					SourceType: codexcontrol.SourceWorkspace, SessionID: sessionID,
 					InputSurface: "client", IdempotencyKey: "client:message:" + localID,
 					MessageLocalID: localID, Instruction: localID,
 					Behavior: "start_when_idle", ReplyPolicy: "silent",

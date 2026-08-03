@@ -35,7 +35,7 @@ func main() {
 		}
 		return
 	}
-	app, cleanup, initializeErr := bootstrap.InitializeRemoteWorker(ctx, cfg)
+	app, cleanup, initializeErr := bootstrap.InitializeWorker(ctx, cfg)
 	if initializeErr != nil {
 		log.Fatal(initializeErr)
 	}

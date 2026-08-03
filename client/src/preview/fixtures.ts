@@ -22,7 +22,7 @@ export type PreviewSeed = {
 };
 
 const profileId = "20000000-0000-4000-8000-000000000001";
-const environmentId = "20000000-0000-4000-8000-000000000002";
+const workspaceId = "20000000-0000-4000-8000-000000000002";
 const projectId = "20000000-0000-4000-8000-000000000003";
 const unavailableProjectId = "20000000-0000-4000-8000-000000000004";
 const secondaryProjectId = "20000000-0000-4000-8000-000000000005";
@@ -42,8 +42,8 @@ const settings: SessionSettings = {
 function session(index: number, title: string, overrides: Partial<Session> = {}): Session {
   return {
     id: `30000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
-    developmentEnvironmentId: environmentId,
-    developmentProjectId: projectId,
+    workspaceId: workspaceId,
+    projectId: projectId,
     agentProfileId: profileId,
     title,
     lifecycleState: "active",
@@ -253,7 +253,7 @@ const primaryBootstrap: Bootstrap = {
   capabilities: { attachments: true, interactive: true, plan: true, push: true, multiControl: true },
   projects: [{
     id: projectId,
-    environmentId,
+    workspaceId,
     name: "Tyrs Hand 移动客户端",
     relativePath: "workspaces/tyrs-hand/client",
     kind: "git",
@@ -262,7 +262,7 @@ const primaryBootstrap: Bootstrap = {
     dirty: true,
   }, {
     id: unavailableProjectId,
-    environmentId,
+    workspaceId,
     name: "名称很长的离线项目，用于验证窄屏换行和边界处理",
     relativePath: "workspaces/archive/a-very-long-project-path-for-layout-acceptance",
     kind: "git",
@@ -272,7 +272,7 @@ const primaryBootstrap: Bootstrap = {
   }],
   agentProfiles: [{ id: profileId, name: "Codex 默认" },
     { id: "20000000-0000-4000-8000-000000000006", name: "Luna Agent" }],
-  modelCatalogs: { [environmentId]: modelCatalog },
+  modelCatalogs: { [workspaceId]: modelCatalog },
   lastStartedSettings: settings,
 };
 
@@ -283,7 +283,7 @@ const secondaryBootstrap: Bootstrap = {
   user: { id: "80000000-0000-4000-8000-000000000002", username: "远程开发者" },
   projects: [{
     id: secondaryProjectId,
-    environmentId: "20000000-0000-4000-8000-000000000007",
+    workspaceId: "20000000-0000-4000-8000-000000000007",
     name: "远程 Worker 示例",
     relativePath: "workspaces/remote-worker",
     kind: "git",
@@ -295,8 +295,8 @@ const secondaryBootstrap: Bootstrap = {
 };
 
 const secondarySession = session(8, "另一 Control 的隔离会话", {
-  developmentProjectId: secondaryProjectId,
-  developmentEnvironmentId: secondaryBootstrap.projects[0]!.environmentId,
+  projectId: secondaryProjectId,
+  workspaceId: secondaryBootstrap.projects[0]!.workspaceId,
 });
 
 export function createPreviewSeed(): PreviewSeed {

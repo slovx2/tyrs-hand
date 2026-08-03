@@ -10,7 +10,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
-func (p *RemoteProcessor) handleRemoteInteractive(ctx context.Context, task *workerprotocol.Task,
+func (p *Processor) handleRemoteInteractive(ctx context.Context, task *workerprotocol.Task,
 	generation int64, request codex.ServerRequest,
 ) (any, error) {
 	state, err := p.client.RegisterInteractive(ctx, task, request.ID, request.Params, generation)

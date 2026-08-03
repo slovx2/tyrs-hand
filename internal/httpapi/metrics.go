@@ -51,7 +51,7 @@ func (s *Server) refreshOperationalMetrics(ctx context.Context) {
 	}
 	for _, status := range []string{"online", "offline"} {
 		var count int64
-		if s.db.QueryRowContext(ctx, "SELECT count(*) FROM worker_nodes WHERE status = $1", status).Scan(&count) == nil {
+		if s.db.QueryRowContext(ctx, "SELECT count(*) FROM workers WHERE status = $1", status).Scan(&count) == nil {
 			workerCount.WithLabelValues(status).Set(float64(count))
 		}
 	}

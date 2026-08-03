@@ -57,23 +57,23 @@ func (_u *WorktreeUpdate) SetNillableRepoCacheID(v *uuid.UUID) *WorktreeUpdate {
 	return _u
 }
 
-// SetExecutionNodeID sets the "execution_node_id" field.
-func (_u *WorktreeUpdate) SetExecutionNodeID(v uuid.UUID) *WorktreeUpdate {
-	_u.mutation.SetExecutionNodeID(v)
+// SetWorkerID sets the "worker_id" field.
+func (_u *WorktreeUpdate) SetWorkerID(v uuid.UUID) *WorktreeUpdate {
+	_u.mutation.SetWorkerID(v)
 	return _u
 }
 
-// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
-func (_u *WorktreeUpdate) SetNillableExecutionNodeID(v *uuid.UUID) *WorktreeUpdate {
+// SetNillableWorkerID sets the "worker_id" field if the given value is not nil.
+func (_u *WorktreeUpdate) SetNillableWorkerID(v *uuid.UUID) *WorktreeUpdate {
 	if v != nil {
-		_u.SetExecutionNodeID(*v)
+		_u.SetWorkerID(*v)
 	}
 	return _u
 }
 
-// ClearExecutionNodeID clears the value of the "execution_node_id" field.
-func (_u *WorktreeUpdate) ClearExecutionNodeID() *WorktreeUpdate {
-	_u.mutation.ClearExecutionNodeID()
+// ClearWorkerID clears the value of the "worker_id" field.
+func (_u *WorktreeUpdate) ClearWorkerID() *WorktreeUpdate {
+	_u.mutation.ClearWorkerID()
 	return _u
 }
 
@@ -262,11 +262,11 @@ func (_u *WorktreeUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.RepoCacheID(); ok {
 		_spec.SetField(worktree.FieldRepoCacheID, field.TypeUUID, value)
 	}
-	if value, ok := _u.mutation.ExecutionNodeID(); ok {
-		_spec.SetField(worktree.FieldExecutionNodeID, field.TypeUUID, value)
+	if value, ok := _u.mutation.WorkerID(); ok {
+		_spec.SetField(worktree.FieldWorkerID, field.TypeUUID, value)
 	}
-	if _u.mutation.ExecutionNodeIDCleared() {
-		_spec.ClearField(worktree.FieldExecutionNodeID, field.TypeUUID)
+	if _u.mutation.WorkerIDCleared() {
+		_spec.ClearField(worktree.FieldWorkerID, field.TypeUUID)
 	}
 	if value, ok := _u.mutation.Path(); ok {
 		_spec.SetField(worktree.FieldPath, field.TypeString, value)
@@ -349,23 +349,23 @@ func (_u *WorktreeUpdateOne) SetNillableRepoCacheID(v *uuid.UUID) *WorktreeUpdat
 	return _u
 }
 
-// SetExecutionNodeID sets the "execution_node_id" field.
-func (_u *WorktreeUpdateOne) SetExecutionNodeID(v uuid.UUID) *WorktreeUpdateOne {
-	_u.mutation.SetExecutionNodeID(v)
+// SetWorkerID sets the "worker_id" field.
+func (_u *WorktreeUpdateOne) SetWorkerID(v uuid.UUID) *WorktreeUpdateOne {
+	_u.mutation.SetWorkerID(v)
 	return _u
 }
 
-// SetNillableExecutionNodeID sets the "execution_node_id" field if the given value is not nil.
-func (_u *WorktreeUpdateOne) SetNillableExecutionNodeID(v *uuid.UUID) *WorktreeUpdateOne {
+// SetNillableWorkerID sets the "worker_id" field if the given value is not nil.
+func (_u *WorktreeUpdateOne) SetNillableWorkerID(v *uuid.UUID) *WorktreeUpdateOne {
 	if v != nil {
-		_u.SetExecutionNodeID(*v)
+		_u.SetWorkerID(*v)
 	}
 	return _u
 }
 
-// ClearExecutionNodeID clears the value of the "execution_node_id" field.
-func (_u *WorktreeUpdateOne) ClearExecutionNodeID() *WorktreeUpdateOne {
-	_u.mutation.ClearExecutionNodeID()
+// ClearWorkerID clears the value of the "worker_id" field.
+func (_u *WorktreeUpdateOne) ClearWorkerID() *WorktreeUpdateOne {
+	_u.mutation.ClearWorkerID()
 	return _u
 }
 
@@ -584,11 +584,11 @@ func (_u *WorktreeUpdateOne) sqlSave(ctx context.Context) (_node *Worktree, err 
 	if value, ok := _u.mutation.RepoCacheID(); ok {
 		_spec.SetField(worktree.FieldRepoCacheID, field.TypeUUID, value)
 	}
-	if value, ok := _u.mutation.ExecutionNodeID(); ok {
-		_spec.SetField(worktree.FieldExecutionNodeID, field.TypeUUID, value)
+	if value, ok := _u.mutation.WorkerID(); ok {
+		_spec.SetField(worktree.FieldWorkerID, field.TypeUUID, value)
 	}
-	if _u.mutation.ExecutionNodeIDCleared() {
-		_spec.ClearField(worktree.FieldExecutionNodeID, field.TypeUUID)
+	if _u.mutation.WorkerIDCleared() {
+		_spec.ClearField(worktree.FieldWorkerID, field.TypeUUID)
 	}
 	if value, ok := _u.mutation.Path(); ok {
 		_spec.SetField(worktree.FieldPath, field.TypeString, value)

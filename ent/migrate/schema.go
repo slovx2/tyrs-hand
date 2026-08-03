@@ -72,9 +72,8 @@ var (
 		{Name: "discord_conversation_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "repository_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "agent_profile_id", Type: field.TypeUUID},
-		{Name: "execution_node_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "worker_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "external_thread_id", Type: field.TypeString, Nullable: true},
-		{Name: "codex_home_key", Type: field.TypeString, Nullable: true},
 		{Name: "status", Type: field.TypeString, Default: "idle"},
 		{Name: "collaboration_mode", Type: field.TypeString, Default: "default"},
 		{Name: "collaboration_mode_revision", Type: field.TypeInt64, Default: 0},
@@ -88,7 +87,7 @@ var (
 		{Name: "heartbeat_at", Type: field.TypeTime, Nullable: true},
 		{Name: "last_reconciled_at", Type: field.TypeTime, Nullable: true},
 		{Name: "next_wakeup_at", Type: field.TypeTime, Nullable: true},
-		{Name: "worker_id", Type: field.TypeString, Nullable: true},
+		{Name: "lease_owner", Type: field.TypeString, Nullable: true},
 		{Name: "lease_token", Type: field.TypeString, Nullable: true},
 		{Name: "last_error_code", Type: field.TypeString, Nullable: true},
 		{Name: "last_error_message", Type: field.TypeString, Nullable: true},
@@ -168,10 +167,10 @@ var (
 		{Name: "control_id", Type: field.TypeUUID},
 		{Name: "primary_intent_id", Type: field.TypeUUID},
 		{Name: "attempt", Type: field.TypeInt},
-		{Name: "worker_id", Type: field.TypeString},
+		{Name: "lease_owner", Type: field.TypeString},
 		{Name: "lease_epoch", Type: field.TypeInt64},
 		{Name: "capability_hash", Type: field.TypeString},
-		{Name: "execution_node_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "worker_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "worker_event_sequence", Type: field.TypeInt64, Default: 0},
 		{Name: "worker_terminal_key", Type: field.TypeString, Nullable: true},
 		{Name: "active_slot", Type: field.TypeInt, Nullable: true},
@@ -194,45 +193,6 @@ var (
 		Columns:    CodexTurnRunsColumns,
 		PrimaryKey: []*schema.Column{CodexTurnRunsColumns[0]},
 	}
-	// ExecutionNodesColumns holds the columns for the "execution_nodes" table.
-	ExecutionNodesColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeUUID},
-		{Name: "name", Type: field.TypeString, Unique: true},
-		{Name: "roles", Type: field.TypeJSON},
-		{Name: "enabled", Type: field.TypeBool, Default: true},
-		{Name: "max_concurrent_jobs", Type: field.TypeInt, Default: 6},
-		{Name: "credential_hash", Type: field.TypeString, Nullable: true},
-		{Name: "credential_version", Type: field.TypeInt64, Default: 0},
-		{Name: "protocol_version", Type: field.TypeInt, Default: 1},
-		{Name: "worker_version", Type: field.TypeString, Nullable: true},
-		{Name: "status", Type: field.TypeString, Default: "pending"},
-		{Name: "heartbeat_at", Type: field.TypeTime, Nullable: true},
-		{Name: "last_error", Type: field.TypeString, Nullable: true},
-		{Name: "metadata", Type: field.TypeJSON},
-		{Name: "created_at", Type: field.TypeTime},
-		{Name: "updated_at", Type: field.TypeTime},
-	}
-	// ExecutionNodesTable holds the schema information for the "execution_nodes" table.
-	ExecutionNodesTable = &schema.Table{
-		Name:       "execution_nodes",
-		Columns:    ExecutionNodesColumns,
-		PrimaryKey: []*schema.Column{ExecutionNodesColumns[0]},
-	}
-	// ExecutionNodeEnrollmentsColumns holds the columns for the "execution_node_enrollments" table.
-	ExecutionNodeEnrollmentsColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeUUID},
-		{Name: "node_id", Type: field.TypeUUID},
-		{Name: "token_hash", Type: field.TypeString, Unique: true},
-		{Name: "expires_at", Type: field.TypeTime},
-		{Name: "consumed_at", Type: field.TypeTime, Nullable: true},
-		{Name: "created_at", Type: field.TypeTime},
-	}
-	// ExecutionNodeEnrollmentsTable holds the schema information for the "execution_node_enrollments" table.
-	ExecutionNodeEnrollmentsTable = &schema.Table{
-		Name:       "execution_node_enrollments",
-		Columns:    ExecutionNodeEnrollmentsColumns,
-		PrimaryKey: []*schema.Column{ExecutionNodeEnrollmentsColumns[0]},
-	}
 	// PlatformSettingsColumns holds the columns for the "platform_settings" table.
 	PlatformSettingsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -251,7 +211,7 @@ var (
 	RepoCachesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
 		{Name: "repository_id", Type: field.TypeUUID},
-		{Name: "execution_node_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "worker_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "path", Type: field.TypeString},
 		{Name: "status", Type: field.TypeString, Default: "ready"},
 		{Name: "size_bytes", Type: field.TypeInt64, Default: 0},
@@ -427,7 +387,7 @@ var (
 		{Name: "head_ref", Type: field.TypeString, Nullable: true},
 		{Name: "head_repository", Type: field.TypeString, Nullable: true},
 		{Name: "html_url", Type: field.TypeString, Nullable: true},
-		{Name: "execution_node_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "worker_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "closed_at", Type: field.TypeTime, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
@@ -438,28 +398,51 @@ var (
 		Columns:    WorkItemsColumns,
 		PrimaryKey: []*schema.Column{WorkItemsColumns[0]},
 	}
-	// WorkerNodesColumns holds the columns for the "worker_nodes" table.
-	WorkerNodesColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeString, Unique: true},
-		{Name: "version", Type: field.TypeString},
-		{Name: "status", Type: field.TypeString, Default: "online"},
-		{Name: "execution_node_id", Type: field.TypeUUID, Nullable: true},
+	// WorkersColumns holds the columns for the "workers" table.
+	WorkersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Unique: true},
+		{Name: "roles", Type: field.TypeJSON},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "max_concurrent_jobs", Type: field.TypeInt, Default: 6},
+		{Name: "credential_hash", Type: field.TypeString, Nullable: true},
+		{Name: "credential_version", Type: field.TypeInt64, Default: 0},
+		{Name: "protocol_version", Type: field.TypeInt, Default: 1},
+		{Name: "worker_version", Type: field.TypeString, Nullable: true},
+		{Name: "status", Type: field.TypeString, Default: "pending"},
+		{Name: "heartbeat_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_error", Type: field.TypeString, Nullable: true},
 		{Name: "metadata", Type: field.TypeJSON},
-		{Name: "heartbeat_at", Type: field.TypeTime},
-		{Name: "started_at", Type: field.TypeTime},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
 	}
-	// WorkerNodesTable holds the schema information for the "worker_nodes" table.
-	WorkerNodesTable = &schema.Table{
-		Name:       "worker_nodes",
-		Columns:    WorkerNodesColumns,
-		PrimaryKey: []*schema.Column{WorkerNodesColumns[0]},
+	// WorkersTable holds the schema information for the "workers" table.
+	WorkersTable = &schema.Table{
+		Name:       "workers",
+		Columns:    WorkersColumns,
+		PrimaryKey: []*schema.Column{WorkersColumns[0]},
+	}
+	// WorkerEnrollmentsColumns holds the columns for the "worker_enrollments" table.
+	WorkerEnrollmentsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "worker_id", Type: field.TypeUUID},
+		{Name: "token_hash", Type: field.TypeString, Unique: true},
+		{Name: "expires_at", Type: field.TypeTime},
+		{Name: "consumed_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// WorkerEnrollmentsTable holds the schema information for the "worker_enrollments" table.
+	WorkerEnrollmentsTable = &schema.Table{
+		Name:       "worker_enrollments",
+		Columns:    WorkerEnrollmentsColumns,
+		PrimaryKey: []*schema.Column{WorkerEnrollmentsColumns[0]},
 	}
 	// WorktreesColumns holds the columns for the "worktrees" table.
 	WorktreesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
 		{Name: "work_item_id", Type: field.TypeUUID, Unique: true},
 		{Name: "repo_cache_id", Type: field.TypeUUID},
-		{Name: "execution_node_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "worker_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "path", Type: field.TypeString},
 		{Name: "branch", Type: field.TypeString},
 		{Name: "base_sha", Type: field.TypeString},
@@ -484,8 +467,6 @@ var (
 		CodexThreadControlsTable,
 		CodexTurnIntentsTable,
 		CodexTurnRunsTable,
-		ExecutionNodesTable,
-		ExecutionNodeEnrollmentsTable,
 		PlatformSettingsTable,
 		RepoCachesTable,
 		RepositoriesTable,
@@ -496,7 +477,8 @@ var (
 		TriggerRulesTable,
 		WebhookDeliveriesTable,
 		WorkItemsTable,
-		WorkerNodesTable,
+		WorkersTable,
+		WorkerEnrollmentsTable,
 		WorktreesTable,
 	}
 )
@@ -519,12 +501,6 @@ func init() {
 	}
 	CodexTurnRunsTable.Annotation = &entsql.Annotation{
 		Table: "codex_turn_runs",
-	}
-	ExecutionNodesTable.Annotation = &entsql.Annotation{
-		Table: "execution_nodes",
-	}
-	ExecutionNodeEnrollmentsTable.Annotation = &entsql.Annotation{
-		Table: "execution_node_enrollments",
 	}
 	PlatformSettingsTable.Annotation = &entsql.Annotation{
 		Table: "platform_settings",
@@ -556,8 +532,11 @@ func init() {
 	WorkItemsTable.Annotation = &entsql.Annotation{
 		Table: "work_items",
 	}
-	WorkerNodesTable.Annotation = &entsql.Annotation{
-		Table: "worker_nodes",
+	WorkersTable.Annotation = &entsql.Annotation{
+		Table: "workers",
+	}
+	WorkerEnrollmentsTable.Annotation = &entsql.Annotation{
+		Table: "worker_enrollments",
 	}
 	WorktreesTable.Annotation = &entsql.Annotation{
 		Table: "worktrees",

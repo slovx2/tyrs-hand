@@ -19,12 +19,12 @@ export interface SSHHost {
   credentialName: string
   proxyJumpHostId?: string
   proxyJumpAlias?: string
-  executionNodeIds: string[]
+  workerIds: string[]
   enabled: boolean
   updatedAt: string
 }
 
-export interface SSHExecutionNode {
+export interface SSHWorker {
   id: string
   name: string
   enabled: boolean

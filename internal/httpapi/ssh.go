@@ -104,7 +104,7 @@ func (s *Server) createSSHHost(c *gin.Context) {
 		return
 	}
 	s.audit(c, "ssh_host.create", "ssh_host", item.ID.String(),
-		map[string]any{"alias": item.Alias, "executionNodeIds": item.ExecutionNodeIDs})
+		map[string]any{"alias": item.Alias, "workerIds": item.WorkerIDs})
 	c.JSON(http.StatusCreated, item)
 }
 
@@ -121,7 +121,7 @@ func (s *Server) importSSHHosts(c *gin.Context) {
 	}
 	for _, item := range items {
 		s.audit(c, "ssh_host.create", "ssh_host", item.ID.String(),
-			map[string]any{"alias": item.Alias, "executionNodeIds": item.ExecutionNodeIDs,
+			map[string]any{"alias": item.Alias, "workerIds": item.WorkerIDs,
 				"source": "ssh_config"})
 	}
 	c.JSON(http.StatusCreated, gin.H{"items": items})
@@ -147,7 +147,7 @@ func (s *Server) updateSSHHost(c *gin.Context) {
 		return
 	}
 	s.audit(c, "ssh_host.update", "ssh_host", id.String(),
-		map[string]any{"alias": item.Alias, "executionNodeIds": item.ExecutionNodeIDs})
+		map[string]any{"alias": item.Alias, "workerIds": item.WorkerIDs})
 	c.JSON(http.StatusOK, item)
 }
 

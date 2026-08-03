@@ -9,12 +9,11 @@ import (
 	"strings"
 
 	"github.com/slovx2/tyrs-hand/internal/codex"
-	"github.com/slovx2/tyrs-hand/internal/devcontainer"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
-func (p *RemoteProcessor) handleRemoteGitHubTool(ctx context.Context,
+func (p *Processor) handleRemoteGitHubTool(ctx context.Context,
 	task *workerprotocol.Task, _ string, workspace ports.Workspace, branch string,
 	request codex.ToolCallRequest, report func(string, json.RawMessage),
 ) (codex.ToolCallResult, error) {
@@ -32,7 +31,7 @@ func (p *RemoteProcessor) handleRemoteGitHubTool(ctx context.Context,
 	}
 	if namespace == browserToolNamespace {
 		result, err := executeBrowserTool(ctx, p.cfg, task.Claimed.ID.String(),
-			workspace.WorktreePath, nil, p.development, request)
+			workspace.WorktreePath, request)
 		report("local_tool.finished", remoteEventPayload(map[string]any{
 			"namespace": namespace, "tool": request.Tool, "callId": request.CallID,
 			"success": err == nil && result.Success, "error": trimError(err),
@@ -50,8 +49,8 @@ func (p *RemoteProcessor) handleRemoteGitHubTool(ctx context.Context,
 	return result, err
 }
 
-func (p *RemoteProcessor) handleRemoteHostDiscordTool(ctx context.Context,
-	task *workerprotocol.Task, runtime hostDevelopmentRuntime, request codex.ToolCallRequest,
+func (p *Processor) handleRemoteHostDiscordTool(ctx context.Context,
+	task *workerprotocol.Task, runtime hostWorkspaceRuntime, request codex.ToolCallRequest,
 	report func(string, json.RawMessage),
 ) (codex.ToolCallResult, error) {
 	namespace := ""
@@ -63,7 +62,7 @@ func (p *RemoteProcessor) handleRemoteHostDiscordTool(ctx context.Context,
 	switch namespace {
 	case browserToolNamespace:
 		result, err = executeBrowserTool(ctx, p.cfg, task.Claimed.ID.String(),
-			runtime.Workspace, nil, nil, request)
+			runtime.Workspace, request)
 	case "git":
 		result, err = p.executeRemoteHostGit(ctx, runtime, request)
 	default:
@@ -75,69 +74,8 @@ func (p *RemoteProcessor) handleRemoteHostDiscordTool(ctx context.Context,
 	return result, err
 }
 
-func (p *RemoteProcessor) handleRemoteDiscordTool(ctx context.Context,
-	task *workerprotocol.Task, runtime devcontainer.Runtime, request codex.ToolCallRequest,
-	report func(string, json.RawMessage),
-) (codex.ToolCallResult, error) {
-	namespace := ""
-	if request.Namespace != nil {
-		namespace = *request.Namespace
-	}
-	var result codex.ToolCallResult
-	var err error
-	switch namespace {
-	case browserToolNamespace:
-		result, err = executeBrowserTool(ctx, p.cfg, task.Claimed.ID.String(),
-			runtime.Workspace, &runtime, p.development, request)
-	case "git":
-		result, err = p.executeRemoteContainerGit(ctx, task, runtime, request)
-	default:
-		err = errors.New("未知 dynamic tool namespace")
-	}
-	report("discord.tool", remoteEventPayload(map[string]any{"namespace": namespace,
-		"tool": request.Tool, "callId": request.CallID,
-		"success": err == nil && result.Success, "error": trimError(err)}))
-	return result, err
-}
-
-func (p *RemoteProcessor) executeRemoteContainerGit(ctx context.Context,
-	_ *workerprotocol.Task, runtime devcontainer.Runtime,
-	request codex.ToolCallRequest,
-) (codex.ToolCallResult, error) {
-	if request.ThreadID == "" || request.TurnID == "" || request.CallID == "" {
-		return codex.ToolCallResult{}, errors.New("本地 Tool Call 缺少 thread、turn 或 call ID")
-	}
-	if runtime.ProjectKind != "git" {
-		return codex.ToolCallResult{}, errors.New("当前项目不是 Git 仓库")
-	}
-	switch request.Tool {
-	case "status":
-		status, err := p.development.Git(ctx, runtime, "status", "--porcelain=v1", "--branch")
-		return codex.TextToolResult(status, err == nil), err
-	case "commit":
-		var arguments struct {
-			Message string `json:"message"`
-		}
-		if err := json.Unmarshal(request.Arguments, &arguments); err != nil {
-			return codex.ToolCallResult{}, err
-		}
-		sha, err := p.development.Commit(ctx, runtime, arguments.Message)
-		return codex.TextToolResult(fmt.Sprintf(`{"sha":%q}`, strings.TrimSpace(sha)),
-			err == nil), err
-	case "publish_branch":
-		if runtime.RemoteURL == "" {
-			return codex.ToolCallResult{}, errors.New("当前项目没有远端，不能发布分支")
-		}
-		branch, sha, err := p.development.Publish(ctx, runtime)
-		return codex.TextToolResult(fmt.Sprintf(`{"branch":%q,"sha":%q}`, branch, sha),
-			err == nil), err
-	default:
-		return codex.ToolCallResult{}, fmt.Errorf("本地 Git 工具 %s 未授权", request.Tool)
-	}
-}
-
-func (p *RemoteProcessor) executeRemoteHostGit(ctx context.Context,
-	runtime hostDevelopmentRuntime,
+func (p *Processor) executeRemoteHostGit(ctx context.Context,
+	runtime hostWorkspaceRuntime,
 	request codex.ToolCallRequest,
 ) (codex.ToolCallResult, error) {
 	if request.ThreadID == "" || request.TurnID == "" || request.CallID == "" {
@@ -205,7 +143,7 @@ func runHostGit(ctx context.Context, workspace string, arguments ...string) (str
 	return value, nil
 }
 
-func (p *RemoteProcessor) executeRemoteGitTool(ctx context.Context, task *workerprotocol.Task,
+func (p *Processor) executeRemoteGitTool(ctx context.Context, task *workerprotocol.Task,
 	workspace ports.Workspace, branch string, request codex.ToolCallRequest,
 ) (codex.ToolCallResult, error) {
 	if request.ThreadID == "" || request.TurnID == "" || request.CallID == "" {

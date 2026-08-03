@@ -121,7 +121,7 @@ func (d *Daemon) repositoryForums(ctx context.Context, guildID string) ([]reposi
 		FROM discord_forums f JOIN discord_resources dr ON dr.id = f.resource_id
 		JOIN repositories r ON r.id = f.repository_id
 		JOIN scm_installations i ON i.id = r.installation_id
-		WHERE f.guild_id = $1 AND f.forum_type = 'repository'
+		WHERE f.guild_id = $1 AND f.forum_type = 'github'
 		ORDER BY r.owner, r.name`, guildID)
 	if err != nil {
 		return nil, err

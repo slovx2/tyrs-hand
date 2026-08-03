@@ -84,7 +84,7 @@ func TestValidateAndLoadRemoteWorker(t *testing.T) {
 		WorkerCodexHome:          "/home/user/.codex", WorkerHome: "/home/user",
 		WorkerShell: "/bin/sh",
 	}
-	require.True(t, valid.RemoteWorker())
+	require.True(t, valid.ConnectedWorker())
 	require.NoError(t, valid.ValidateWorker())
 
 	invalid := valid
@@ -107,7 +107,7 @@ func TestValidateAndLoadRemoteWorker(t *testing.T) {
 	require.Error(t, invalid.ValidateWorker())
 
 	local := Config{}
-	require.False(t, local.RemoteWorker())
+	require.False(t, local.ConnectedWorker())
 	require.Error(t, local.ValidateWorker())
 
 	t.Setenv("TYRS_HAND_ENV", "production")
@@ -127,27 +127,9 @@ func TestValidateAndLoadRemoteWorker(t *testing.T) {
 
 func TestDeploymentWorkerProtocolVersion(t *testing.T) {
 	version := strconv.Itoa(workerprotocol.Version)
-	example, err := os.ReadFile("../../.env.example")
+	example, err := os.ReadFile("../../deploy/worker/worker.env.example")
 	require.NoError(t, err)
 	require.Contains(t, string(example), "TYRS_HAND_WORKER_PROTOCOL_VERSION="+version)
-}
-
-func TestProductionDevelopmentImageRequiresDigest(t *testing.T) {
-	valid := Config{
-		Environment: "production", MasterKey: make([]byte, 32), CookieSecure: true,
-		HTTPAddr: ":8080", DatabaseURL: "postgres://db", RedisURL: "redis://cache",
-		PublicURL: "https://tyr.example.com", GitHubAppName: "TyrsHand", CodexBin: "codex",
-		WorkerID: "control", WorkerRole: "all", WorkerMaxConcurrentJobs: 1,
-		CodexStatusPollInterval: time.Second, CodexReconcileMaxAttempts: 1,
-		CodexResultDeliveryMaxAttempts: 1, CodexMaxSteersPerTurn: 1,
-		GitHubReplyGateMaxBlocks: 1, LeaseDuration: 3 * time.Second,
-		HeartbeatInterval: time.Second, RepoCacheMaxBytes: 1,
-	}
-	require.NoError(t, valid.Validate())
-	valid.DevelopmentImage = "ghcr.io/slovx2/tyrs-hand-development:latest"
-	require.ErrorContains(t, valid.Validate(), "完整的 image@sha256")
-	valid.DevelopmentImage = "ghcr.io/slovx2/tyrs-hand-development@sha256:" + strings.Repeat("a", 64)
-	require.NoError(t, valid.Validate())
 }
 
 func TestValidateWorkerCapabilities(t *testing.T) {
@@ -157,14 +139,9 @@ func TestValidateWorkerCapabilities(t *testing.T) {
 		message string
 	}{
 		{
-			name:    "宿主 Docker 未启用开发容器",
-			config:  Config{DevelopmentHostDocker: true},
-			message: "要求启用开发容器",
-		},
-		{
 			name:    "SSH 缺少 Agent 目录",
-			config:  Config{EnableSSH: true, SSHAgentDir: ".", SSHAgentHostDir: "/opt/tyrs-hand/ssh-agent"},
-			message: "Agent 容器目录和宿主目录",
+			config:  Config{EnableSSH: true, SSHAgentDir: "."},
+			message: "Agent 目录",
 		},
 		{
 			name:    "浏览器 URL 非法",
@@ -173,10 +150,9 @@ func TestValidateWorkerCapabilities(t *testing.T) {
 		},
 		{
 			name: "浏览器缺少交换目录",
-			config: Config{BrowserMCPURL: "http://host.docker.internal:8931/mcp",
-				BrowserMCPTokenFile: "/run/secrets/browser_mcp_token", BrowserFilesRoot: ".",
-				BrowserFilesHostRoot: "/opt/tyrs-hand/browser-files"},
-			message: "Token、文件交换目录和服务转发目录",
+			config: Config{BrowserMCPURL: "http://127.0.0.1:8931/mcp",
+				BrowserMCPTokenFile: "/var/lib/tyrs-hand/browser/token", BrowserFilesRoot: "."},
+			message: "Token 和文件交换目录",
 		},
 	}
 	for _, test := range tests {
@@ -186,15 +162,11 @@ func TestValidateWorkerCapabilities(t *testing.T) {
 	}
 
 	valid := Config{
-		EnableSSH: true, SSHAgentDir: "/run/tyrs-hand-ssh-agent",
-		SSHAgentHostDir:          "/opt/tyrs-hand/ssh-agent",
-		BrowserMCPURL:            "http://host.docker.internal:8931/mcp",
-		BrowserMCPTokenFile:      "/run/secrets/browser_mcp_token",
-		BrowserAgentRelayAddress: "127.0.0.1:8934",
-		BrowserFilesRoot:         "/run/tyrs-hand-browser-files",
-		BrowserFilesHostRoot:     "/opt/tyrs-hand/browser-files",
-		BrowserServicesRoot:      "/run/tyrs-hand-browser-services",
-		BrowserServicesHostRoot:  "/opt/tyrs-hand/browser-services",
+		EnableSSH: true, SSHAgentDir: "/var/lib/tyrs-hand/ssh-agent",
+		BrowserMCPURL:       "http://127.0.0.1:8931/mcp",
+		BrowserMCPTokenFile: "/var/lib/tyrs-hand/browser/token",
+		BrowserAgentAddress: "127.0.0.1:8934",
+		BrowserFilesRoot:    "/var/lib/tyrs-hand/browser/files",
 	}
 	require.NoError(t, valid.validateWorkerCapabilities())
 }

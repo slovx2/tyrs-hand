@@ -24,10 +24,6 @@ type Tx struct {
 	CodexTurnIntent *CodexTurnIntentClient
 	// CodexTurnRun is the client for interacting with the CodexTurnRun builders.
 	CodexTurnRun *CodexTurnRunClient
-	// ExecutionNode is the client for interacting with the ExecutionNode builders.
-	ExecutionNode *ExecutionNodeClient
-	// ExecutionNodeEnrollment is the client for interacting with the ExecutionNodeEnrollment builders.
-	ExecutionNodeEnrollment *ExecutionNodeEnrollmentClient
 	// PlatformSetting is the client for interacting with the PlatformSetting builders.
 	PlatformSetting *PlatformSettingClient
 	// RepoCache is the client for interacting with the RepoCache builders.
@@ -48,8 +44,10 @@ type Tx struct {
 	WebhookDelivery *WebhookDeliveryClient
 	// WorkItem is the client for interacting with the WorkItem builders.
 	WorkItem *WorkItemClient
-	// WorkerNode is the client for interacting with the WorkerNode builders.
-	WorkerNode *WorkerNodeClient
+	// Worker is the client for interacting with the Worker builders.
+	Worker *WorkerClient
+	// WorkerEnrollment is the client for interacting with the WorkerEnrollment builders.
+	WorkerEnrollment *WorkerEnrollmentClient
 	// Worktree is the client for interacting with the Worktree builders.
 	Worktree *WorktreeClient
 
@@ -189,8 +187,6 @@ func (tx *Tx) init() {
 	tx.CodexThreadControl = NewCodexThreadControlClient(tx.config)
 	tx.CodexTurnIntent = NewCodexTurnIntentClient(tx.config)
 	tx.CodexTurnRun = NewCodexTurnRunClient(tx.config)
-	tx.ExecutionNode = NewExecutionNodeClient(tx.config)
-	tx.ExecutionNodeEnrollment = NewExecutionNodeEnrollmentClient(tx.config)
 	tx.PlatformSetting = NewPlatformSettingClient(tx.config)
 	tx.RepoCache = NewRepoCacheClient(tx.config)
 	tx.Repository = NewRepositoryClient(tx.config)
@@ -201,7 +197,8 @@ func (tx *Tx) init() {
 	tx.TriggerRule = NewTriggerRuleClient(tx.config)
 	tx.WebhookDelivery = NewWebhookDeliveryClient(tx.config)
 	tx.WorkItem = NewWorkItemClient(tx.config)
-	tx.WorkerNode = NewWorkerNodeClient(tx.config)
+	tx.Worker = NewWorkerClient(tx.config)
+	tx.WorkerEnrollment = NewWorkerEnrollmentClient(tx.config)
 	tx.Worktree = NewWorktreeClient(tx.config)
 }
 

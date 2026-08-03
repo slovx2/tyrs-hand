@@ -14,6 +14,9 @@
     "linux": ["getent", "systemctl", "sha256sum"],
     "darwin": ["dscl", "launchctl", "shasum"]
   },
+  "releaseVerification": {
+    "cosign": "3.9.2"
+  },
   "embeddedGoModules": {
     "github.com/creack/pty": "1.1.24",
     "github.com/pkg/sftp": "1.13.11"

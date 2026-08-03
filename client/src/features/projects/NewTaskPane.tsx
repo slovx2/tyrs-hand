@@ -24,7 +24,7 @@ export function NewTaskPane({ project, expanded = false }: { project: Project; e
   const defaults = useMemo<SessionSettings | null>(() => {
     if (!bootstrap) return null;
     const profile = bootstrap.agentProfiles[0];
-    const models = (bootstrap.modelCatalogs[project.environmentId]?.data ?? []).filter((item) => !item.hidden);
+    const models = (bootstrap.modelCatalogs[project.workspaceId]?.data ?? []).filter((item) => !item.hidden);
     const remembered = bootstrap.lastStartedSettings;
     const rememberedModel = models.find((item) => item.id === remembered?.model);
     if (remembered && rememberedModel) return remembered;
@@ -38,7 +38,7 @@ export function NewTaskPane({ project, expanded = false }: { project: Project; e
       collaborationMode: "default",
       settingsVersion: 0,
     };
-  }, [bootstrap, project.environmentId]);
+  }, [bootstrap, project.workspaceId]);
   const settings = settingsOverride ?? defaults;
 
   useEffect(() => {
@@ -86,7 +86,7 @@ export function NewTaskPane({ project, expanded = false }: { project: Project; e
       onSend={() => void send()} sending={false}
       parameterLabel={`${settings.model ?? "默认模型"} · ${settings.reasoningEffort ?? "默认"} · ${settings.collaborationMode}`} />}
     {settings && <ParameterSheet visible={showParameters} bootstrap={bootstrap}
-      environmentId={project.environmentId} value={settings}
+      workspaceId={project.workspaceId} value={settings}
       onChange={setSettingsOverride} onClose={() => setShowParameters(false)} />}
   </View>;
 }

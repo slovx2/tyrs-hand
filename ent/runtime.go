@@ -12,8 +12,6 @@ import (
 	"github.com/slovx2/tyrs-hand/ent/codexthreadcontrol"
 	"github.com/slovx2/tyrs-hand/ent/codexturnintent"
 	"github.com/slovx2/tyrs-hand/ent/codexturnrun"
-	"github.com/slovx2/tyrs-hand/ent/executionnode"
-	"github.com/slovx2/tyrs-hand/ent/executionnodeenrollment"
 	"github.com/slovx2/tyrs-hand/ent/platformsetting"
 	"github.com/slovx2/tyrs-hand/ent/repocache"
 	"github.com/slovx2/tyrs-hand/ent/repository"
@@ -24,7 +22,8 @@ import (
 	"github.com/slovx2/tyrs-hand/ent/toolcall"
 	"github.com/slovx2/tyrs-hand/ent/triggerrule"
 	"github.com/slovx2/tyrs-hand/ent/webhookdelivery"
-	"github.com/slovx2/tyrs-hand/ent/workernode"
+	"github.com/slovx2/tyrs-hand/ent/worker"
+	"github.com/slovx2/tyrs-hand/ent/workerenrollment"
 	"github.com/slovx2/tyrs-hand/ent/workitem"
 	"github.com/slovx2/tyrs-hand/ent/worktree"
 )
@@ -102,31 +101,31 @@ func init() {
 	codexthreadcontrolFields := schema.CodexThreadControl{}.Fields()
 	_ = codexthreadcontrolFields
 	// codexthreadcontrolDescStatus is the schema descriptor for status field.
-	codexthreadcontrolDescStatus := codexthreadcontrolFields[9].Descriptor()
+	codexthreadcontrolDescStatus := codexthreadcontrolFields[8].Descriptor()
 	// codexthreadcontrol.DefaultStatus holds the default value on creation for the status field.
 	codexthreadcontrol.DefaultStatus = codexthreadcontrolDescStatus.Default.(string)
 	// codexthreadcontrolDescCollaborationMode is the schema descriptor for collaboration_mode field.
-	codexthreadcontrolDescCollaborationMode := codexthreadcontrolFields[10].Descriptor()
+	codexthreadcontrolDescCollaborationMode := codexthreadcontrolFields[9].Descriptor()
 	// codexthreadcontrol.DefaultCollaborationMode holds the default value on creation for the collaboration_mode field.
 	codexthreadcontrol.DefaultCollaborationMode = codexthreadcontrolDescCollaborationMode.Default.(string)
 	// codexthreadcontrolDescCollaborationModeRevision is the schema descriptor for collaboration_mode_revision field.
-	codexthreadcontrolDescCollaborationModeRevision := codexthreadcontrolFields[11].Descriptor()
+	codexthreadcontrolDescCollaborationModeRevision := codexthreadcontrolFields[10].Descriptor()
 	// codexthreadcontrol.DefaultCollaborationModeRevision holds the default value on creation for the collaboration_mode_revision field.
 	codexthreadcontrol.DefaultCollaborationModeRevision = codexthreadcontrolDescCollaborationModeRevision.Default.(int64)
 	// codexthreadcontrolDescNextSequenceNo is the schema descriptor for next_sequence_no field.
-	codexthreadcontrolDescNextSequenceNo := codexthreadcontrolFields[12].Descriptor()
+	codexthreadcontrolDescNextSequenceNo := codexthreadcontrolFields[11].Descriptor()
 	// codexthreadcontrol.DefaultNextSequenceNo holds the default value on creation for the next_sequence_no field.
 	codexthreadcontrol.DefaultNextSequenceNo = codexthreadcontrolDescNextSequenceNo.Default.(int64)
 	// codexthreadcontrolDescLeaseEpoch is the schema descriptor for lease_epoch field.
-	codexthreadcontrolDescLeaseEpoch := codexthreadcontrolFields[17].Descriptor()
+	codexthreadcontrolDescLeaseEpoch := codexthreadcontrolFields[16].Descriptor()
 	// codexthreadcontrol.DefaultLeaseEpoch holds the default value on creation for the lease_epoch field.
 	codexthreadcontrol.DefaultLeaseEpoch = codexthreadcontrolDescLeaseEpoch.Default.(int64)
 	// codexthreadcontrolDescCreatedAt is the schema descriptor for created_at field.
-	codexthreadcontrolDescCreatedAt := codexthreadcontrolFields[26].Descriptor()
+	codexthreadcontrolDescCreatedAt := codexthreadcontrolFields[25].Descriptor()
 	// codexthreadcontrol.DefaultCreatedAt holds the default value on creation for the created_at field.
 	codexthreadcontrol.DefaultCreatedAt = codexthreadcontrolDescCreatedAt.Default.(func() time.Time)
 	// codexthreadcontrolDescUpdatedAt is the schema descriptor for updated_at field.
-	codexthreadcontrolDescUpdatedAt := codexthreadcontrolFields[27].Descriptor()
+	codexthreadcontrolDescUpdatedAt := codexthreadcontrolFields[26].Descriptor()
 	// codexthreadcontrol.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	codexthreadcontrol.DefaultUpdatedAt = codexthreadcontrolDescUpdatedAt.Default.(func() time.Time)
 	// codexthreadcontrol.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -257,60 +256,6 @@ func init() {
 	codexturnrunDescID := codexturnrunFields[0].Descriptor()
 	// codexturnrun.DefaultID holds the default value on creation for the id field.
 	codexturnrun.DefaultID = codexturnrunDescID.Default.(func() uuid.UUID)
-	executionnodeFields := schema.ExecutionNode{}.Fields()
-	_ = executionnodeFields
-	// executionnodeDescRoles is the schema descriptor for roles field.
-	executionnodeDescRoles := executionnodeFields[2].Descriptor()
-	// executionnode.DefaultRoles holds the default value on creation for the roles field.
-	executionnode.DefaultRoles = executionnodeDescRoles.Default.([]string)
-	// executionnodeDescEnabled is the schema descriptor for enabled field.
-	executionnodeDescEnabled := executionnodeFields[3].Descriptor()
-	// executionnode.DefaultEnabled holds the default value on creation for the enabled field.
-	executionnode.DefaultEnabled = executionnodeDescEnabled.Default.(bool)
-	// executionnodeDescMaxConcurrentJobs is the schema descriptor for max_concurrent_jobs field.
-	executionnodeDescMaxConcurrentJobs := executionnodeFields[4].Descriptor()
-	// executionnode.DefaultMaxConcurrentJobs holds the default value on creation for the max_concurrent_jobs field.
-	executionnode.DefaultMaxConcurrentJobs = executionnodeDescMaxConcurrentJobs.Default.(int)
-	// executionnodeDescCredentialVersion is the schema descriptor for credential_version field.
-	executionnodeDescCredentialVersion := executionnodeFields[6].Descriptor()
-	// executionnode.DefaultCredentialVersion holds the default value on creation for the credential_version field.
-	executionnode.DefaultCredentialVersion = executionnodeDescCredentialVersion.Default.(int64)
-	// executionnodeDescProtocolVersion is the schema descriptor for protocol_version field.
-	executionnodeDescProtocolVersion := executionnodeFields[7].Descriptor()
-	// executionnode.DefaultProtocolVersion holds the default value on creation for the protocol_version field.
-	executionnode.DefaultProtocolVersion = executionnodeDescProtocolVersion.Default.(int)
-	// executionnodeDescStatus is the schema descriptor for status field.
-	executionnodeDescStatus := executionnodeFields[9].Descriptor()
-	// executionnode.DefaultStatus holds the default value on creation for the status field.
-	executionnode.DefaultStatus = executionnodeDescStatus.Default.(string)
-	// executionnodeDescMetadata is the schema descriptor for metadata field.
-	executionnodeDescMetadata := executionnodeFields[12].Descriptor()
-	// executionnode.DefaultMetadata holds the default value on creation for the metadata field.
-	executionnode.DefaultMetadata = executionnodeDescMetadata.Default.(map[string]interface{})
-	// executionnodeDescCreatedAt is the schema descriptor for created_at field.
-	executionnodeDescCreatedAt := executionnodeFields[13].Descriptor()
-	// executionnode.DefaultCreatedAt holds the default value on creation for the created_at field.
-	executionnode.DefaultCreatedAt = executionnodeDescCreatedAt.Default.(func() time.Time)
-	// executionnodeDescUpdatedAt is the schema descriptor for updated_at field.
-	executionnodeDescUpdatedAt := executionnodeFields[14].Descriptor()
-	// executionnode.DefaultUpdatedAt holds the default value on creation for the updated_at field.
-	executionnode.DefaultUpdatedAt = executionnodeDescUpdatedAt.Default.(func() time.Time)
-	// executionnode.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
-	executionnode.UpdateDefaultUpdatedAt = executionnodeDescUpdatedAt.UpdateDefault.(func() time.Time)
-	// executionnodeDescID is the schema descriptor for id field.
-	executionnodeDescID := executionnodeFields[0].Descriptor()
-	// executionnode.DefaultID holds the default value on creation for the id field.
-	executionnode.DefaultID = executionnodeDescID.Default.(func() uuid.UUID)
-	executionnodeenrollmentFields := schema.ExecutionNodeEnrollment{}.Fields()
-	_ = executionnodeenrollmentFields
-	// executionnodeenrollmentDescCreatedAt is the schema descriptor for created_at field.
-	executionnodeenrollmentDescCreatedAt := executionnodeenrollmentFields[5].Descriptor()
-	// executionnodeenrollment.DefaultCreatedAt holds the default value on creation for the created_at field.
-	executionnodeenrollment.DefaultCreatedAt = executionnodeenrollmentDescCreatedAt.Default.(func() time.Time)
-	// executionnodeenrollmentDescID is the schema descriptor for id field.
-	executionnodeenrollmentDescID := executionnodeenrollmentFields[0].Descriptor()
-	// executionnodeenrollment.DefaultID holds the default value on creation for the id field.
-	executionnodeenrollment.DefaultID = executionnodeenrollmentDescID.Default.(func() uuid.UUID)
 	platformsettingFields := schema.PlatformSetting{}.Fields()
 	_ = platformsettingFields
 	// platformsettingDescVersion is the schema descriptor for version field.
@@ -541,24 +486,60 @@ func init() {
 	workitemDescID := workitemFields[0].Descriptor()
 	// workitem.DefaultID holds the default value on creation for the id field.
 	workitem.DefaultID = workitemDescID.Default.(func() uuid.UUID)
-	workernodeFields := schema.WorkerNode{}.Fields()
-	_ = workernodeFields
-	// workernodeDescStatus is the schema descriptor for status field.
-	workernodeDescStatus := workernodeFields[2].Descriptor()
-	// workernode.DefaultStatus holds the default value on creation for the status field.
-	workernode.DefaultStatus = workernodeDescStatus.Default.(string)
-	// workernodeDescMetadata is the schema descriptor for metadata field.
-	workernodeDescMetadata := workernodeFields[4].Descriptor()
-	// workernode.DefaultMetadata holds the default value on creation for the metadata field.
-	workernode.DefaultMetadata = workernodeDescMetadata.Default.(map[string]interface{})
-	// workernodeDescHeartbeatAt is the schema descriptor for heartbeat_at field.
-	workernodeDescHeartbeatAt := workernodeFields[5].Descriptor()
-	// workernode.DefaultHeartbeatAt holds the default value on creation for the heartbeat_at field.
-	workernode.DefaultHeartbeatAt = workernodeDescHeartbeatAt.Default.(func() time.Time)
-	// workernodeDescStartedAt is the schema descriptor for started_at field.
-	workernodeDescStartedAt := workernodeFields[6].Descriptor()
-	// workernode.DefaultStartedAt holds the default value on creation for the started_at field.
-	workernode.DefaultStartedAt = workernodeDescStartedAt.Default.(func() time.Time)
+	workerFields := schema.Worker{}.Fields()
+	_ = workerFields
+	// workerDescRoles is the schema descriptor for roles field.
+	workerDescRoles := workerFields[2].Descriptor()
+	// worker.DefaultRoles holds the default value on creation for the roles field.
+	worker.DefaultRoles = workerDescRoles.Default.([]string)
+	// workerDescEnabled is the schema descriptor for enabled field.
+	workerDescEnabled := workerFields[3].Descriptor()
+	// worker.DefaultEnabled holds the default value on creation for the enabled field.
+	worker.DefaultEnabled = workerDescEnabled.Default.(bool)
+	// workerDescMaxConcurrentJobs is the schema descriptor for max_concurrent_jobs field.
+	workerDescMaxConcurrentJobs := workerFields[4].Descriptor()
+	// worker.DefaultMaxConcurrentJobs holds the default value on creation for the max_concurrent_jobs field.
+	worker.DefaultMaxConcurrentJobs = workerDescMaxConcurrentJobs.Default.(int)
+	// workerDescCredentialVersion is the schema descriptor for credential_version field.
+	workerDescCredentialVersion := workerFields[6].Descriptor()
+	// worker.DefaultCredentialVersion holds the default value on creation for the credential_version field.
+	worker.DefaultCredentialVersion = workerDescCredentialVersion.Default.(int64)
+	// workerDescProtocolVersion is the schema descriptor for protocol_version field.
+	workerDescProtocolVersion := workerFields[7].Descriptor()
+	// worker.DefaultProtocolVersion holds the default value on creation for the protocol_version field.
+	worker.DefaultProtocolVersion = workerDescProtocolVersion.Default.(int)
+	// workerDescStatus is the schema descriptor for status field.
+	workerDescStatus := workerFields[9].Descriptor()
+	// worker.DefaultStatus holds the default value on creation for the status field.
+	worker.DefaultStatus = workerDescStatus.Default.(string)
+	// workerDescMetadata is the schema descriptor for metadata field.
+	workerDescMetadata := workerFields[12].Descriptor()
+	// worker.DefaultMetadata holds the default value on creation for the metadata field.
+	worker.DefaultMetadata = workerDescMetadata.Default.(map[string]interface{})
+	// workerDescCreatedAt is the schema descriptor for created_at field.
+	workerDescCreatedAt := workerFields[13].Descriptor()
+	// worker.DefaultCreatedAt holds the default value on creation for the created_at field.
+	worker.DefaultCreatedAt = workerDescCreatedAt.Default.(func() time.Time)
+	// workerDescUpdatedAt is the schema descriptor for updated_at field.
+	workerDescUpdatedAt := workerFields[14].Descriptor()
+	// worker.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	worker.DefaultUpdatedAt = workerDescUpdatedAt.Default.(func() time.Time)
+	// worker.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	worker.UpdateDefaultUpdatedAt = workerDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// workerDescID is the schema descriptor for id field.
+	workerDescID := workerFields[0].Descriptor()
+	// worker.DefaultID holds the default value on creation for the id field.
+	worker.DefaultID = workerDescID.Default.(func() uuid.UUID)
+	workerenrollmentFields := schema.WorkerEnrollment{}.Fields()
+	_ = workerenrollmentFields
+	// workerenrollmentDescCreatedAt is the schema descriptor for created_at field.
+	workerenrollmentDescCreatedAt := workerenrollmentFields[5].Descriptor()
+	// workerenrollment.DefaultCreatedAt holds the default value on creation for the created_at field.
+	workerenrollment.DefaultCreatedAt = workerenrollmentDescCreatedAt.Default.(func() time.Time)
+	// workerenrollmentDescID is the schema descriptor for id field.
+	workerenrollmentDescID := workerenrollmentFields[0].Descriptor()
+	// workerenrollment.DefaultID holds the default value on creation for the id field.
+	workerenrollment.DefaultID = workerenrollmentDescID.Default.(func() uuid.UUID)
 	worktreeFields := schema.Worktree{}.Fields()
 	_ = worktreeFields
 	// worktreeDescStatus is the schema descriptor for status field.

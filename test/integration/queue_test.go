@@ -14,9 +14,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -30,14 +27,12 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/database"
 	"github.com/slovx2/tyrs-hand/internal/domain"
-	"github.com/slovx2/tyrs-hand/internal/executionnode"
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
 	"github.com/slovx2/tyrs-hand/internal/githubtools"
 	"github.com/slovx2/tyrs-hand/internal/orchestrator"
-	"github.com/slovx2/tyrs-hand/internal/secrets"
 	"github.com/slovx2/tyrs-hand/internal/security"
-	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
 	toolservice "github.com/slovx2/tyrs-hand/internal/tools"
+	"github.com/slovx2/tyrs-hand/internal/workerregistry"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -78,47 +73,7 @@ func TestPostgresMigrationsAndLeaseEpoch(t *testing.T) {
 	require.NoError(t, authService.Logout(ctx, session.Token))
 	_, err = authService.Authenticate(ctx, session.Token)
 	require.ErrorIs(t, err, auth.ErrSessionInvalid)
-	settingsService := platformsettings.NewService(db, secrets.NewStore(db, box))
-	provider, err := settingsService.AgentProvider(ctx)
-	require.NoError(t, err)
-	require.Equal(t, platformsettings.ModelSourceProvider, provider.ModelSource)
-	require.Error(t, settingsService.SaveAgentProvider(ctx,
-		platformsettings.AgentProviderInput{ModelSource: "unknown"}))
-	require.Error(t, settingsService.SaveAgentProvider(ctx,
-		platformsettings.AgentProviderInput{ModelSource: platformsettings.ModelSourceProvider}))
-	require.Error(t, settingsService.SaveAgentProvider(ctx,
-		platformsettings.AgentProviderInput{
-			ModelSource: platformsettings.ModelSourceChatGPT, ProxyURL: "relative",
-		}))
-	require.NoError(t, settingsService.SaveAgentProvider(ctx, platformsettings.AgentProviderInput{
-		ModelSource: platformsettings.ModelSourceProvider,
-		BaseURL:     "https://api.example.com/v1", APIKey: "test-provider-key",
-		Model: "test-model",
-	}))
-	apiKey, err := settingsService.APIKey(ctx)
-	require.NoError(t, err)
-	require.Equal(t, "test-provider-key", string(apiKey))
-	provider, environment, err := settingsService.PrepareCodexHome(ctx, t.TempDir(), t.TempDir())
-	require.NoError(t, err)
-	require.True(t, provider.ProviderConfigured)
-	require.Contains(t, environment, "TYRS_HAND_MODEL_API_KEY=test-provider-key")
-	sharedHome := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(sharedHome, "auth.json"), []byte(`{"tokens":{}}`), 0o600))
-	require.NoError(t, settingsService.SetChatGPTConfigured(ctx, true))
-	require.NoError(t, settingsService.SaveAgentProvider(ctx, platformsettings.AgentProviderInput{
-		ModelSource: platformsettings.ModelSourceChatGPT,
-		BaseURL:     "https://api.example.com/v1", ProxyURL: "https://proxy.example.com",
-	}))
-	deviceHome := t.TempDir()
-	_, _, err = settingsService.PrepareCodexHome(ctx, deviceHome, t.TempDir())
-	require.Error(t, err)
-	provider, environment, err = settingsService.PrepareCodexHome(ctx, deviceHome, sharedHome)
-	require.NoError(t, err)
-	require.Equal(t, platformsettings.ModelSourceChatGPT, provider.ModelSource)
-	require.Contains(t, environment, "HTTP_PROXY=https://proxy.example.com")
-	require.FileExists(t, filepath.Join(deviceHome, "auth.json"))
-
-	repositoryID, workItemID, profileID, nodeID := seedQueue(t, db)
+	repositoryID, workItemID, profileID, workerID := seedQueue(t, db)
 	redisClient, redisContainer := redisInstance(t)
 	require.NoError(t, redisClient.Ping(ctx).Err())
 	require.NoError(t, testcontainers.TerminateContainer(redisContainer))
@@ -146,8 +101,8 @@ func TestPostgresMigrationsAndLeaseEpoch(t *testing.T) {
 		group.Add(1)
 		go func(index int) {
 			defer group.Done()
-			claims[index], claimErrors[index] = repository.ClaimNode(ctx,
-				"worker-"+string(rune('a'+index)), codexcontrol.SourceGitHub, nodeID)
+			claims[index], claimErrors[index] = repository.ClaimWorker(ctx,
+				"worker-"+string(rune('a'+index)), codexcontrol.SourceGitHub, workerID)
 		}(index)
 	}
 	group.Wait()
@@ -176,7 +131,7 @@ func TestPostgresMigrationsAndLeaseEpoch(t *testing.T) {
 	stale := *claimed
 	stale.LeaseEpoch--
 	require.ErrorIs(t, repository.Heartbeat(ctx, &stale), codexcontrol.ErrLeaseLost)
-	require.NoError(t, repository.SetThread(ctx, claimed, "thread", "/tmp/codex-home"))
+	require.NoError(t, repository.SetThread(ctx, claimed, "thread"))
 	require.NoError(t, repository.RecordSubmission(ctx, claimed, "turn"))
 	require.NoError(t, repository.ConfirmTurn(ctx, claimed, "turn"))
 	satisfied, err := repository.ReplySatisfied(ctx, claimed)
@@ -191,7 +146,7 @@ func TestPostgresMigrationsAndLeaseEpoch(t *testing.T) {
 	require.NoError(t, repository.Complete(ctx, claimed, codexcontrol.TurnResult{
 		TurnID: "turn", FinalAnswer: "succeeded, but command exited 127",
 	}))
-	failedClaim, err := repository.ClaimNode(ctx, "worker-failure", codexcontrol.SourceGitHub, nodeID)
+	failedClaim, err := repository.ClaimWorker(ctx, "worker-failure", codexcontrol.SourceGitHub, workerID)
 	require.NoError(t, err)
 	require.NotNil(t, failedClaim)
 	_, err = db.ExecContext(ctx, "UPDATE codex_turn_intents SET reply_status = 'delivered' WHERE id = $1", failedClaim.ID)
@@ -213,7 +168,7 @@ func TestPostgresMigrationsAndLeaseEpoch(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, inserted)
 	require.NoError(t, tx.Commit())
-	reconcileClaim, err := repository.ClaimNode(ctx, "worker-reconcile", codexcontrol.SourceGitHub, nodeID)
+	reconcileClaim, err := repository.ClaimWorker(ctx, "worker-reconcile", codexcontrol.SourceGitHub, workerID)
 	require.NoError(t, err)
 	require.NotNil(t, reconcileClaim)
 	require.NoError(t, repository.Reconcile(ctx, reconcileClaim, "network_lost", errors.New("offline")))
@@ -224,7 +179,7 @@ func TestPostgresMigrationsAndLeaseEpoch(t *testing.T) {
 	_, err = db.ExecContext(ctx, `UPDATE codex_turn_intents SET available_at = now() WHERE id = $1`,
 		reconcileClaim.ID)
 	require.NoError(t, err)
-	reconcileClaim, err = repository.ClaimNode(ctx, "worker-reconcile", codexcontrol.SourceGitHub, nodeID)
+	reconcileClaim, err = repository.ClaimWorker(ctx, "worker-reconcile", codexcontrol.SourceGitHub, workerID)
 	require.NoError(t, err)
 	require.NotNil(t, reconcileClaim)
 	require.Equal(t, 2, reconcileClaim.Attempt)
@@ -239,88 +194,14 @@ func TestPostgresMigrationsAndLeaseEpoch(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, inserted)
 	require.NoError(t, tx.Commit())
-	failedClaim, err = repository.ClaimNode(ctx, "worker-failure", codexcontrol.SourceGitHub, nodeID)
+	failedClaim, err = repository.ClaimWorker(ctx, "worker-failure", codexcontrol.SourceGitHub, workerID)
 	require.NoError(t, err)
 	require.NotNil(t, failedClaim)
 	require.NoError(t, repository.Fail(ctx, failedClaim, "integration_failure", errors.New("integration failure")))
-	emptyClaim, err := repository.ClaimNode(ctx, "worker-empty", codexcontrol.SourceGitHub, nodeID)
+	emptyClaim, err := repository.ClaimWorker(ctx, "worker-empty", codexcontrol.SourceGitHub, workerID)
 	require.NoError(t, err)
 	require.Nil(t, emptyClaim)
 	testWebhookOrchestration(t, db, repositoryID)
-}
-
-func TestTriggerKindMigrationUpgradesExistingRules(t *testing.T) {
-	db := postgresDatabase(t)
-	ctx := context.Background()
-	_, sourceFile, _, ok := runtime.Caller(0)
-	require.True(t, ok)
-	migrationDirectory := filepath.Join(filepath.Dir(sourceFile), "..", "..", "internal", "database", "migrations")
-	paths, err := filepath.Glob(filepath.Join(migrationDirectory, "*.sql"))
-	require.NoError(t, err)
-	for _, path := range paths {
-		if filepath.Base(path) >= "007_trigger_kinds.sql" {
-			continue
-		}
-		content, err := os.ReadFile(path)
-		require.NoError(t, err)
-		_, err = db.ExecContext(ctx, string(content))
-		require.NoError(t, err, filepath.Base(path))
-	}
-
-	var installationID, repositoryID, profileID uuid.UUID
-	require.NoError(t, db.QueryRowContext(ctx, `
-		INSERT INTO scm_installations(provider, external_id, account_login, account_type)
-		VALUES ('github', 1, 'owner', 'Organization') RETURNING id`).Scan(&installationID))
-	require.NoError(t, db.QueryRowContext(ctx, `
-		INSERT INTO repositories(installation_id, provider, external_id, owner, name, default_branch, clone_url)
-		VALUES ($1, 'github', 2, 'owner', 'repo', 'main', 'https://example.invalid/repo.git') RETURNING id`, installationID).Scan(&repositoryID))
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM agent_profiles WHERE name = 'Default'`).Scan(&profileID))
-	_, err = db.ExecContext(ctx, `
-		INSERT INTO trigger_rules(repository_id, agent_profile_id, name, event_name, action, mention_required, instruction_template)
-		VALUES
-			($1, $2, 'mention', 'issue_comment', 'created', true, '{{body}}'),
-			($1, $2, 'custom-mention', 'issue_comment', 'created', true, '{{body}}')`, repositoryID, profileID)
-	require.NoError(t, err)
-
-	upgrade, err := os.ReadFile(filepath.Join(migrationDirectory, "007_trigger_kinds.sql"))
-	require.NoError(t, err)
-	_, err = db.ExecContext(ctx, string(upgrade))
-	require.NoError(t, err)
-
-	var kind, value string
-	require.NoError(t, db.QueryRowContext(ctx, `
-		SELECT trigger_kind, trigger_value FROM trigger_rules
-		WHERE repository_id = $1 AND name = 'command'`, repositoryID).Scan(&kind, &value))
-	require.Equal(t, "slash_command", kind)
-	require.Equal(t, "tyrs-hand", value)
-	require.NoError(t, db.QueryRowContext(ctx, `
-		SELECT trigger_kind FROM trigger_rules
-		WHERE repository_id = $1 AND name = 'custom-mention'`, repositoryID).Scan(&kind))
-	require.Equal(t, "legacy_mention", kind)
-
-	var labelRules int
-	require.NoError(t, db.QueryRowContext(ctx, `
-		SELECT count(*) FROM trigger_rules
-		WHERE repository_id = $1 AND trigger_kind = 'label' AND trigger_value = 'tyrs-hand'`, repositoryID).Scan(&labelRules))
-	require.Equal(t, 2, labelRules)
-
-	var oldColumnCount int
-	require.NoError(t, db.QueryRowContext(ctx, `
-		SELECT count(*) FROM information_schema.columns
-		WHERE table_name = 'trigger_rules' AND column_name = 'mention_required'`).Scan(&oldColumnCount))
-	require.Zero(t, oldColumnCount)
-
-	mentionUpgrade, err := os.ReadFile(filepath.Join(migrationDirectory, "010_mention_command.sql"))
-	require.NoError(t, err)
-	_, err = db.ExecContext(ctx, string(mentionUpgrade))
-	require.NoError(t, err)
-	var enabled bool
-	require.NoError(t, db.QueryRowContext(ctx, `
-		SELECT trigger_kind, enabled, actor_min_permission FROM trigger_rules
-		WHERE repository_id = $1 AND name = 'mention-command'`, repositoryID).Scan(&kind, &enabled, &value))
-	require.Equal(t, "mention_command", kind)
-	require.True(t, enabled)
-	require.Equal(t, "triage", value)
 }
 
 type fakeSCMProvider struct {
@@ -749,6 +630,10 @@ func redisInstance(t *testing.T) (*redis.Client, testcontainers.Container) {
 	host, err := container.Host(ctx)
 	require.NoError(t, err)
 	port, err := container.MappedPort(ctx, "6379/tcp")
+	for attempt := 0; err != nil && attempt < 50; attempt++ {
+		time.Sleep(100 * time.Millisecond)
+		port, err = container.MappedPort(ctx, "6379/tcp")
+	}
 	require.NoError(t, err)
 	client := redis.NewClient(&redis.Options{Addr: host + ":" + port.Port(), DialTimeout: 500 * time.Millisecond})
 	t.Cleanup(func() { _ = client.Close(); _ = testcontainers.TerminateContainer(container) })
@@ -771,6 +656,10 @@ func postgresDatabase(t *testing.T) *sql.DB {
 	host, err := container.Host(ctx)
 	require.NoError(t, err)
 	port, err := container.MappedPort(ctx, "5432/tcp")
+	for attempt := 0; err != nil && attempt < 50; attempt++ {
+		time.Sleep(100 * time.Millisecond)
+		port, err = container.MappedPort(ctx, "5432/tcp")
+	}
 	require.NoError(t, err)
 	db, err := database.Open(ctx, "postgres://tyrs_hand:test-password@"+host+":"+port.Port()+"/tyrs_hand?sslmode=disable")
 	require.NoError(t, err)
@@ -782,10 +671,10 @@ func seedQueue(t *testing.T, db *sql.DB) (uuid.UUID, uuid.UUID, uuid.UUID, uuid.
 	t.Helper()
 	ctx := context.Background()
 	var installationID, repositoryID, workItemID, profileID uuid.UUID
-	nodes := executionnode.NewService(db)
+	nodes := workerregistry.NewService(db)
 	node, _, err := nodes.Create(ctx, "queue-test", []string{"github"}, 2)
 	require.NoError(t, err)
-	require.NoError(t, nodes.SetDefaults(ctx, executionnode.Defaults{GitHubNodeID: &node.ID}))
+	require.NoError(t, nodes.SetDefaults(ctx, workerregistry.Defaults{GitHubWorkerID: &node.ID}))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO scm_installations(provider,external_id,account_login,account_type) VALUES ('github',1,'test','Organization') RETURNING id`).Scan(&installationID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO repositories(installation_id,provider,external_id,owner,name,default_branch,clone_url) VALUES ($1,'github',2,'owner','repo','main','https://example.invalid/repo.git') RETURNING id`, installationID).Scan(&repositoryID))
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM agent_profiles WHERE name = 'Default'`).Scan(&profileID))

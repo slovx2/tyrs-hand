@@ -25,36 +25,36 @@ type CredentialInput struct {
 }
 
 type Host struct {
-	ID               uuid.UUID   `json:"id"`
-	Alias            string      `json:"alias"`
-	Hostname         string      `json:"hostname"`
-	Port             int         `json:"port"`
-	Username         string      `json:"username"`
-	CredentialID     uuid.UUID   `json:"credentialId"`
-	CredentialName   string      `json:"credentialName"`
-	ProxyJumpHostID  *uuid.UUID  `json:"proxyJumpHostId,omitempty"`
-	ProxyJumpAlias   string      `json:"proxyJumpAlias,omitempty"`
-	ExecutionNodeIDs []uuid.UUID `json:"executionNodeIds"`
-	Enabled          bool        `json:"enabled"`
-	UpdatedAt        time.Time   `json:"updatedAt"`
+	ID              uuid.UUID   `json:"id"`
+	Alias           string      `json:"alias"`
+	Hostname        string      `json:"hostname"`
+	Port            int         `json:"port"`
+	Username        string      `json:"username"`
+	CredentialID    uuid.UUID   `json:"credentialId"`
+	CredentialName  string      `json:"credentialName"`
+	ProxyJumpHostID *uuid.UUID  `json:"proxyJumpHostId,omitempty"`
+	ProxyJumpAlias  string      `json:"proxyJumpAlias,omitempty"`
+	WorkerIDs       []uuid.UUID `json:"workerIds"`
+	Enabled         bool        `json:"enabled"`
+	UpdatedAt       time.Time   `json:"updatedAt"`
 }
 
 type HostInput struct {
-	Alias            string      `json:"alias"`
-	Hostname         string      `json:"hostname"`
-	Port             int         `json:"port"`
-	Username         string      `json:"username"`
-	CredentialID     uuid.UUID   `json:"credentialId"`
-	ProxyJumpHostID  *uuid.UUID  `json:"proxyJumpHostId"`
-	ExecutionNodeIDs []uuid.UUID `json:"executionNodeIds"`
-	Enabled          *bool       `json:"enabled"`
+	Alias           string      `json:"alias"`
+	Hostname        string      `json:"hostname"`
+	Port            int         `json:"port"`
+	Username        string      `json:"username"`
+	CredentialID    uuid.UUID   `json:"credentialId"`
+	ProxyJumpHostID *uuid.UUID  `json:"proxyJumpHostId"`
+	WorkerIDs       []uuid.UUID `json:"workerIds"`
+	Enabled         *bool       `json:"enabled"`
 }
 
 type HostImportInput struct {
-	CredentialID     uuid.UUID        `json:"credentialId"`
-	ExecutionNodeIDs []uuid.UUID      `json:"executionNodeIds"`
-	Enabled          *bool            `json:"enabled"`
-	Hosts            []HostImportItem `json:"hosts"`
+	CredentialID uuid.UUID        `json:"credentialId"`
+	WorkerIDs    []uuid.UUID      `json:"workerIds"`
+	Enabled      *bool            `json:"enabled"`
+	Hosts        []HostImportItem `json:"hosts"`
 }
 
 type HostImportItem struct {
@@ -65,7 +65,7 @@ type HostImportItem struct {
 	ProxyJumpAlias string `json:"proxyJumpAlias,omitempty"`
 }
 
-type NodeCredential struct {
+type WorkerCredential struct {
 	ID          uuid.UUID `json:"id"`
 	PrivateKey  string    `json:"privateKey"`
 	Passphrase  string    `json:"passphrase,omitempty"`
@@ -73,7 +73,7 @@ type NodeCredential struct {
 	Fingerprint string    `json:"fingerprint"`
 }
 
-type NodeHost struct {
+type WorkerHost struct {
 	Alias          string    `json:"alias"`
 	Hostname       string    `json:"hostname"`
 	Port           int       `json:"port"`
@@ -82,10 +82,10 @@ type NodeHost struct {
 	ProxyJumpAlias string    `json:"proxyJumpAlias,omitempty"`
 }
 
-type NodeConfiguration struct {
-	Revision    string           `json:"revision"`
-	Credentials []NodeCredential `json:"credentials"`
-	Hosts       []NodeHost       `json:"hosts"`
+type WorkerConfiguration struct {
+	Revision    string             `json:"revision"`
+	Credentials []WorkerCredential `json:"credentials"`
+	Hosts       []WorkerHost       `json:"hosts"`
 }
 
 type secretPayload struct {
