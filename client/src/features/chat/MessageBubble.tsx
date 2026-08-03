@@ -28,7 +28,6 @@ export function MessageBubble({ message }: { message: Message }) {
           {attachment.kind === "image" ? "图片" : "文件"} · {attachment.filename}
         </Text>
       </View>)}
-      <Text style={[styles.author, { color: theme.colors.accentForeground }]}>你</Text>
     </View>
   </View>;
   return <View testID={`message:role:${message.role}`} style={styles.agentRow}>
@@ -48,8 +47,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", justifyContent: "flex-start", paddingHorizontal: 12, paddingVertical: 5 },
   userRow: { justifyContent: "flex-end" },
   userBubble: { maxWidth: "88%", minWidth: 90, borderRadius: 12, paddingHorizontal: 13, paddingVertical: 9 },
-  userText: { fontFamily: "Inter_400Regular", fontSize: 15, lineHeight: 22, marginBottom: 4 },
-  author: { fontFamily: "Inter_400Regular", fontSize: 12, opacity: 0.72 },
+  userText: { fontFamily: "Inter_400Regular", fontSize: 15, lineHeight: 22 },
   agentRow: { paddingHorizontal: 16, paddingVertical: 8 },
   agentBody: { width: "100%" },
   attachment: { marginTop: 6, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 6 },
