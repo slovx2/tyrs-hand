@@ -100,7 +100,7 @@ jobs:
           sha256sum "${asset}" > "${asset}.sha256"
           echo "### host-worker: ${version}" >> "${GITHUB_STEP_SUMMARY}"
           cat "${asset}.sha256" >> "${GITHUB_STEP_SUMMARY}"
-      - uses: actions/upload-artifact@6027e3aa9a7c5b63a8d2a6d40c3d7a2550102f24 # v4.6.2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: host-worker-linux-amd64
           path: |
