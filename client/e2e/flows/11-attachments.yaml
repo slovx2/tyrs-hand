@@ -1,5 +1,12 @@
 appId: ${TYRS_HAND_E2E_APP_ID}
 ---
+- runFlow:
+    when:
+      visible:
+        id: "project:back"
+    commands:
+      - tapOn:
+          id: "project:back"
 - tapOn:
     id: "tab:projects"
 - tapOn:
@@ -8,19 +15,33 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     id: "composer:attachments"
 - tapOn:
     id: "composer:attachment:library"
-- tapOn:
-    point: 18%, 28%
+- runFlow:
+    when:
+      platform: Android
+      visible: "Cloud media app"
+    commands:
+      - tapOn: "None"
+      - pressKey: BACK
+      - tapOn:
+          id: "composer:attachments"
+      - tapOn:
+          id: "composer:attachment:library"
 - runFlow:
     when:
       platform: Android
     commands:
       - tapOn:
-          point: 82%, 91%
+          id: "com.google.android.providers.media.module:id/icon_thumbnail"
+          index: 0
+      - tapOn:
+          id: "com.google.android.providers.media.module:id/button_add"
 - runFlow:
     when:
       platform: iOS
       visible: "Add"
     commands:
+      - tapOn:
+          point: 18%, 28%
       - tapOn: "Add"
 - extendedWaitUntil:
     visible:
@@ -47,11 +68,8 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - tapOn:
     id: "composer:input"
 - inputText: "E2E_BASIC_ATTACHMENT verify image and file"
-- hideKeyboard
 - tapOn:
     id: "composer:send"
-- tapOn:
-    id: "tab:sessions"
 - extendedWaitUntil:
     visible:
       id: "session:row:0"

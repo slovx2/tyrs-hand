@@ -7,6 +7,13 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     commands:
       - tapOn:
           id: "session:back"
+- runFlow:
+    when:
+      visible:
+        id: "project:back"
+    commands:
+      - tapOn:
+          id: "project:back"
 - tapOn:
     id: "tab:projects"
 - tapOn:

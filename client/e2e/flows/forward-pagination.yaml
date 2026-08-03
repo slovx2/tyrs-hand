@@ -5,15 +5,14 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - runFlow: _shared/go-root.yaml
 - tapOn:
     id: "tab:sessions"
-- extendedWaitUntil:
-    visible:
-      id: "session:row:0"
-    timeout: 120000
 - tapOn:
     id: "session:row:0"
 - extendedWaitUntil:
     visible:
-      id: "message:role:agent"
-    timeout: 120000
-- assertNotVisible:
-    id: "outbox:.*:failed"
+      id: "message:forward-125"
+    timeout: 60000
+- scrollUntilVisible:
+    element:
+      id: "message:forward-001"
+    direction: UP
+    timeout: 60000

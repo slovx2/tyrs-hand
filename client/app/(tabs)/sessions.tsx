@@ -13,13 +13,15 @@ export default function SessionsScreen() {
   const theme = useTheme();
   const tablet = useTablet();
   const sessions = useAppStore((state) => state.sessions);
+  const connection = useAppStore((state) => state.activeConnection);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const select = (id: string) => {
     if (tablet) setSelectedId(id);
     else router.push({ pathname: "/session/[id]", params: { id } });
   };
   const list = <View style={[styles.master, tablet && { borderRightColor: theme.colors.border }]}>
-    <SessionListPane sessions={sessions} selectedId={selectedId} onSelect={select} />
+    <SessionListPane sessions={sessions} selectedId={selectedId} onSelect={select}
+      positionKey={`${connection?.serverId ?? "none"}:sessions`} />
   </View>;
   if (!tablet) return <Screen>{list}</Screen>;
   return <Screen style={styles.horizontal}>{list}<View style={styles.detail}>

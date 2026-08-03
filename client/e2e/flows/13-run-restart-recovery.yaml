@@ -1,0 +1,31 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- runFlow:
+    file: _shared/create-task.yaml
+    env:
+      TASK_TEXT: "E2E_RESTART recover active run after process restart"
+- extendedWaitUntil:
+    visible:
+      id: "run:live"
+    timeout: 60000
+- stopApp
+- launchApp:
+    clearState: false
+- runFlow: _shared/go-root.yaml
+- tapOn:
+    id: "tab:sessions"
+- extendedWaitUntil:
+    visible:
+      id: "session:row:0"
+    timeout: 60000
+- tapOn:
+    id: "session:row:0"
+- extendedWaitUntil:
+    visible:
+      id: "session:toolbar"
+    timeout: 60000
+- extendedWaitUntil:
+    visible: "协议级 Worker 已完成。"
+    timeout: 120000
+- assertNotVisible:
+    id: "session:stop"

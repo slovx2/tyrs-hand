@@ -3,17 +3,14 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - runFlow:
     when:
       visible:
-        id: "session:back"
-    commands:
-      - tapOn:
-          id: "session:back"
-- runFlow:
-    when:
-      visible:
         id: "project:back"
     commands:
       - tapOn:
           id: "project:back"
+- tapOn:
+    id: "tab:connections"
+- tapOn:
+    id: "connection:inactive"
 - tapOn:
     id: "tab:projects"
 - tapOn:
@@ -27,13 +24,17 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - runFlow:
     file: _shared/create-task.yaml
     env:
-      TASK_TEXT: "E2E_ASK request user input"
+      TASK_TEXT: "E2E_ASK_MATRIX options and free text"
 - extendedWaitUntil:
     visible:
       id: "interactive:option:0"
     timeout: 120000
 - tapOn:
     id: "interactive:option:0"
+- tapOn:
+    id: "interactive:input:note"
+- inputText: "mobile free text answer"
+- hideKeyboard
 - scrollUntilVisible:
     element:
       id: "interactive:.*:submit"
@@ -42,5 +43,8 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     id: "interactive:.*:submit"
 - extendedWaitUntil:
     visible:
-      id: "message:role:agent"
+      id: "message:intent-result.*"
     timeout: 120000
+- assertVisible: ".*交互闭环完成.*"
+- assertNotVisible:
+    id: "interactive:.*:submit"

@@ -25,11 +25,8 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     id: "composer:parameters"
 - assertVisible:
     id: "composer:send"
-- hideKeyboard
 - tapOn:
     id: "composer:send"
-- tapOn:
-    id: "tab:sessions"
 - extendedWaitUntil:
     visible:
       id: "session:row:0"

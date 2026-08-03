@@ -41,6 +41,10 @@ test('所有 Flow 只用稳定 ID 操作生产 UI', async () => {
   const sourceFiles = (await filesBelow(resolve(root, 'client')))
     .filter((path) => /\.(tsx?|mjs)$/.test(path) && !path.includes('/e2e/'))
   const source = (await Promise.all(sourceFiles.map((path) => readFile(path, 'utf8')))).join('\n')
+  const externalIDs = new Set([
+    'com.google.android.providers.media.module:id/icon_thumbnail',
+    'com.google.android.providers.media.module:id/button_add',
+  ])
   const ids = [...flows.matchAll(/id:\s*"([^"]+)"/g)].map((match) => match[1])
   assert.ok(ids.length > 30)
   for (const id of ids) {
@@ -51,7 +55,7 @@ test('所有 Flow 只用稳定 ID 操作生产 UI', async () => {
       parts.pop()
       candidates.push(`${parts.join(':')}:`)
     }
-    assert.ok(candidates.some((candidate) => source.includes(candidate)),
+    assert.ok(externalIDs.has(id) || candidates.some((candidate) => source.includes(candidate)),
       `Flow ID 没有生产端契约：${id}`)
   }
   assert.doesNotMatch(flows, /tapOn:\s*\n\s*text:/)

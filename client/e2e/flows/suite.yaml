@@ -11,3 +11,11 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - runFlow: 09-secret-and-failure.yaml
 - runFlow: 10-last-successful-settings.yaml
 - runFlow: 11-attachments.yaml
+- runFlow: 12-codex-event-rendering.yaml
+- runFlow: 13-run-restart-recovery.yaml
+- runFlow: 14-settings-memory-and-cancel.yaml
+- runFlow: 15-multi-control-isolation.yaml
+- runFlow: 16-project-scope-and-draft.yaml
+- runFlow: 17-interactive-matrix.yaml
+- runFlow: 18-plan-stop-idempotency.yaml
+- runFlow: 19-failure-recovery-and-session-draft.yaml

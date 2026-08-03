@@ -1,0 +1,24 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- runFlow:
+    when:
+      visible:
+        id: "project:back"
+    commands:
+      - tapOn:
+          id: "project:back"
+- tapOn:
+    id: "tab:projects"
+- assertVisible: "beta-control"
+- assertNotVisible: "alpha-primary"
+- assertNotVisible: "zeta-secondary"
+- tapOn:
+    id: "tab:connections"
+- tapOn:
+    id: "connection:inactive"
+- tapOn:
+    id: "tab:projects"
+- assertVisible: "alpha-primary"
+- assertVisible: "zeta-secondary"
+- assertNotVisible: "beta-control"
+

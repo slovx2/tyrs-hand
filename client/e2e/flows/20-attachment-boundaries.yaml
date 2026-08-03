@@ -1,0 +1,26 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- launchApp:
+    clearState: false
+- runFlow: _shared/go-root.yaml
+- tapOn:
+    id: "tab:projects"
+- tapOn:
+    id: "project:row:0"
+- tapOn:
+    id: "composer:attachments"
+- tapOn:
+    id: "composer:attachment:document"
+- tapOn:
+    point: 7%, 7%
+- tapOn:
+    id: "android:id/title"
+    text: "Downloads"
+- tapOn: "tyrs-hand-too-large.bin"
+- extendedWaitUntil:
+    visible: "附件过大"
+    timeout: 30000
+- assertVisible: ".*超过 25 MiB.*"
+- pressKey: BACK
+- assertNotVisible:
+    id: "composer:attachment:0"

@@ -15,6 +15,7 @@ export default function ProjectSessionsScreen() {
   const tablet = useTablet();
   const { id } = useLocalSearchParams<{ id: string }>();
   const bootstrap = useAppStore((state) => state.bootstrap);
+  const connection = useAppStore((state) => state.activeConnection);
   const allSessions = useAppStore((state) => state.sessions);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const project = bootstrap?.projects.find((item) => item.id === id);
@@ -36,6 +37,7 @@ export default function ProjectSessionsScreen() {
       accessibilityLabel="返回" hitSlop={8} onPress={() => router.back()}
       style={styles.backButton}><Text style={[styles.backText, { color: theme.colors.accent }]}>‹ 返回</Text></Pressable> }} />;
   const list = <SessionListPane sessions={sessions} selectedId={selectedId} onSelect={select}
+    positionKey={`${connection?.serverId ?? "none"}:project:${project.id}:sessions`}
     emptyDetail="这个项目还没有会话，可以直接在下方输入第一条任务。" />;
 
   if (!tablet) return <Screen>{navigation}<View style={styles.mobileList}>{list}</View>

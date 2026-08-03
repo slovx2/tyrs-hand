@@ -1,0 +1,17 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- stopApp
+- openLink: ${TYRS_HAND_E2E_NOTIFICATION_URI}
+- extendedWaitUntil:
+    visible:
+      id: "session:toolbar"
+    timeout: 60000
+- assertVisible:
+    id: "messages:list"
+- openLink: ${TYRS_HAND_E2E_NOTIFICATION_URI}
+- extendedWaitUntil:
+    visible:
+      id: "session:toolbar"
+    timeout: 60000
+- assertVisible:
+    id: "messages:list"

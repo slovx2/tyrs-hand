@@ -1,0 +1,79 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- runFlow:
+    when:
+      visible:
+        id: "session:back"
+    commands:
+      - tapOn:
+          id: "session:back"
+- runFlow:
+    when:
+      visible:
+        id: "project:back"
+    commands:
+      - tapOn:
+          id: "project:back"
+- tapOn:
+    id: "tab:projects"
+- tapOn:
+    id: "project:row:0"
+- tapOn:
+    id: "composer:parameters"
+- tapOn:
+    id: "parameters:reasoning:max"
+- tapOn:
+    id: "parameters:tier:fast"
+- tapOn:
+    id: "parameters:mode:plan"
+- tapOn:
+    id: "parameters:done"
+- tapOn:
+    id: "composer:input"
+- inputText: "E2E_SETTINGS_MEMORY successful launch"
+- tapOn:
+    id: "composer:send"
+- extendedWaitUntil:
+    visible:
+      id: "session:row:0"
+    timeout: 30000
+- tapOn:
+    id: "session:row:0"
+- extendedWaitUntil:
+    visible:
+      id: "message:role:agent"
+    timeout: 120000
+- tapOn:
+    id: "session:back"
+- tapOn:
+    id: "project:back"
+- tapOn:
+    id: "tab:projects"
+- tapOn:
+    id: "project:row:0"
+- tapOn:
+    id: "composer:parameters"
+- assertVisible:
+    id: "parameters:reasoning:max:selected"
+- assertVisible:
+    id: "parameters:tier:fast:selected"
+- assertVisible:
+    id: "parameters:mode:plan:selected"
+- tapOn:
+    id: "parameters:reasoning:low"
+- tapOn:
+    id: "parameters:tier:standard"
+- tapOn:
+    id: "parameters:mode:default"
+- tapOn:
+    id: "parameters:cancel"
+- tapOn:
+    id: "composer:parameters"
+- assertVisible:
+    id: "parameters:reasoning:max:selected"
+- assertVisible:
+    id: "parameters:tier:fast:selected"
+- assertVisible:
+    id: "parameters:mode:plan:selected"
+- tapOn:
+    id: "parameters:cancel"

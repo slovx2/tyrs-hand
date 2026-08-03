@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Card, Muted, Title } from "@/components/ui";
+import { clearDraft, loadDraft, saveDraft } from "@/db/drafts";
 import { ChatComposer } from "@/features/chat/ChatComposer";
 import { ParameterSheet } from "@/features/chat/ParameterSheet";
 import { useOutbox } from "@/hooks/useOutbox";
@@ -20,6 +21,8 @@ export function NewTaskPane({ project, expanded = false }: { project: Project; e
   const [attachments, setAttachments] = useState<LocalAttachment[]>([]);
   const [showParameters, setShowParameters] = useState(false);
   const [settingsOverride, setSettingsOverride] = useState<SessionSettings | null>(null);
+  const [settingsBeforeSheet, setSettingsBeforeSheet] = useState<SessionSettings | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
   const outbox = useOutbox(connection?.serverId);
   const defaults = useMemo<SessionSettings | null>(() => {
     if (!bootstrap) return null;
@@ -40,13 +43,34 @@ export function NewTaskPane({ project, expanded = false }: { project: Project; e
     };
   }, [bootstrap, project.environmentId]);
   const settings = settingsOverride ?? defaults;
+  const draftScope = `project:${project.id}`;
 
   useEffect(() => {
+    if (!connection) return;
+    let canceled = false;
+    setDraftReady(false);
     setText("");
     setAttachments([]);
     setSettingsOverride(null);
+    setSettingsBeforeSheet(null);
     setShowParameters(false);
-  }, [connection?.serverId, project.id]);
+    void loadDraft(connection.serverId, draftScope).then((draft) => {
+      if (canceled) return;
+      if (draft) {
+        setText(draft.text);
+        setAttachments(draft.attachments);
+        setSettingsOverride(draft.settings);
+      }
+      setDraftReady(true);
+    });
+    return () => { canceled = true; };
+  }, [connection, draftScope]);
+  useEffect(() => {
+    if (!connection || !draftReady) return;
+    const timer = setTimeout(() => void saveDraft(connection.serverId, draftScope,
+      { text, attachments, settings: settingsOverride }), 150);
+    return () => clearTimeout(timer);
+  }, [attachments, connection, draftReady, draftScope, settingsOverride, text]);
 
   if (!connection || !bootstrap) return null;
 
@@ -55,6 +79,7 @@ export function NewTaskPane({ project, expanded = false }: { project: Project; e
     const localId = Crypto.randomUUID();
     try {
       await enqueueTask({ connection, localId, projectId: project.id, text: text.trim(), settings, attachments });
+      await clearDraft(connection.serverId, draftScope);
       setText("");
       setAttachments([]);
       await processOutbox(connection);
@@ -65,7 +90,8 @@ export function NewTaskPane({ project, expanded = false }: { project: Project; e
   };
   const pending = outbox.items.filter((item) => item.kind === "create_session" && item.projectId === project.id);
 
-  return <View testID="project:new-task" style={[styles.container, expanded && styles.expanded,
+  return <View testID="project:new-task" style={[styles.container, !expanded && styles.mobile,
+    expanded && styles.expanded,
     { borderColor: theme.colors.border }]}>
     <View style={styles.heading}><View style={styles.headingCopy}><Title>新任务</Title>
       <Muted numberOfLines={1}>{project.name} · 直接发送即可创建会话</Muted></View></View>
@@ -82,17 +108,21 @@ export function NewTaskPane({ project, expanded = false }: { project: Project; e
           <Text style={{ color: theme.colors.danger }}>丢弃</Text></Pressable>
       </View>}</View></Card>)}
     {settings && <ChatComposer value={text} onChange={setText} attachments={attachments}
-      onAttachmentsChange={setAttachments} onParameters={() => setShowParameters(true)}
+      onAttachmentsChange={setAttachments} onParameters={() => {
+        setSettingsBeforeSheet(settingsOverride); setShowParameters(true);
+      }}
       onSend={() => void send()} sending={false}
       parameterLabel={`${settings.model ?? "默认模型"} · ${settings.reasoningEffort ?? "默认"} · ${settings.collaborationMode}`} />}
     {settings && <ParameterSheet visible={showParameters} bootstrap={bootstrap}
       environmentId={project.environmentId} value={settings}
-      onChange={setSettingsOverride} onClose={() => setShowParameters(false)} />}
+      onChange={setSettingsOverride} onClose={() => setShowParameters(false)}
+      onCancel={() => { setSettingsOverride(settingsBeforeSheet); setShowParameters(false); }} />}
   </View>;
 }
 
 const styles = StyleSheet.create({
   container: { borderTopWidth: StyleSheet.hairlineWidth },
+  mobile: { height: 250, flexShrink: 0 },
   expanded: { flex: 1, borderTopWidth: 0, borderLeftWidth: StyleSheet.hairlineWidth },
   heading: { paddingHorizontal: 16, paddingTop: 12 },
   headingCopy: { gap: 2 },

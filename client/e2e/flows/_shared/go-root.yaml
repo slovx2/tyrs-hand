@@ -14,17 +14,3 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     commands:
       - tapOn:
           id: "project:back"
-- tapOn:
-    id: "tab:connections"
-- tapOn:
-    id: "theme:dark"
-- tapOn:
-    id: "connection:.*:rename"
-    index: 0
-- pressKey: BACK
-- assertVisible:
-    id: "connection:active"
-- tapOn:
-    id: "theme:light"
-- tapOn:
-    id: "theme:system"

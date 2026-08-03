@@ -1,0 +1,28 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- runFlow:
+    file: _shared/create-task.yaml
+    env:
+      TASK_TEXT: "E2E_FAIL_429 recover in same session"
+- extendedWaitUntil:
+    visible:
+      id: "run:error"
+    timeout: 120000
+- tapOn:
+    id: "composer:input"
+- inputText: "E2E_SESSION_DRAFT recover after navigation"
+- hideKeyboard
+- tapOn:
+    id: "session:back"
+- tapOn:
+    id: "session:row:0"
+- assertVisible: "E2E_SESSION_DRAFT recover after navigation"
+- tapOn:
+    id: "composer:send"
+- extendedWaitUntil:
+    visible:
+      id: "message:intent-result.*"
+    timeout: 120000
+- assertVisible: ".*协议级 Worker 已完成.*"
+- assertNotVisible:
+    id: "run:error"

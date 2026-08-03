@@ -23,7 +23,6 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - tapOn:
     id: "composer:input"
 - inputText: "E2E_STEER append while busy"
-- hideKeyboard
 - tapOn:
     id: "composer:send"
 - extendedWaitUntil:

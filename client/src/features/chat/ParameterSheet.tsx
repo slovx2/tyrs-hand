@@ -22,7 +22,7 @@ function Choice({ label, selected, onPress, testID }: {
 }
 
 export function ParameterSheet({ visible, bootstrap, environmentId, value, currentRunLabel,
-  onChange, onClose }: {
+  onChange, onClose, onCancel }: {
   visible: boolean;
   bootstrap: Bootstrap;
   environmentId: string;
@@ -30,6 +30,7 @@ export function ParameterSheet({ visible, bootstrap, environmentId, value, curre
   currentRunLabel?: string;
   onChange: (value: SessionSettings) => void;
   onClose: () => void;
+  onCancel?: () => void;
 }) {
   const theme = useTheme();
   const models = (bootstrap.modelCatalogs[environmentId]?.data ?? []).filter((item) => !item.hidden);
@@ -37,11 +38,14 @@ export function ParameterSheet({ visible, bootstrap, environmentId, value, curre
   const supportsFast = model?.serviceTiers.some((tier) => tier.id === "priority" || tier.id === "fast") ||
     model?.additionalSpeedTiers.includes("fast");
   return <Modal testID="parameters:sheet" visible={visible} animationType="slide"
-    presentationStyle="pageSheet" onRequestClose={onClose}>
+    presentationStyle="pageSheet" onRequestClose={onCancel ?? onClose}>
     <SafeAreaView style={[styles.sheet, { backgroundColor: theme.colors.app }]}> 
       <View style={styles.header}>
         <View><Title>会话参数</Title><Muted>{currentRunLabel ?? "发送成功后记为下次默认值"}</Muted></View>
-        <Button testID="parameters:done" title="完成" onPress={onClose} />
+        <View style={styles.headerActions}>
+          <Button testID="parameters:cancel" title="取消" variant="secondary" onPress={onCancel ?? onClose} />
+          <Button testID="parameters:done" title="完成" onPress={onClose} />
+        </View>
       </View>
       <ScrollView contentContainerStyle={styles.content}>
         <Title>Agent Profile</Title>
@@ -64,6 +68,8 @@ export function ParameterSheet({ visible, bootstrap, environmentId, value, curre
                 backgroundColor: value.reasoningEffort === effort.reasoningEffort ? theme.colors.accent : theme.colors.surface }]}>
               <Text style={{ color: value.reasoningEffort === effort.reasoningEffort ? theme.colors.accentForeground : theme.colors.text,
                 fontFamily: "Inter_500Medium" }}>{effort.reasoningEffort}</Text>
+              {value.reasoningEffort === effort.reasoningEffort && <View pointerEvents="none"
+                testID={`parameters:reasoning:${effort.reasoningEffort}:selected`} style={styles.selectedMarker} />}
             </Pressable>)}</View>
         </>}
         <Title>速度</Title>
@@ -89,10 +95,12 @@ function modelSupportsFast(model: Bootstrap["modelCatalogs"][string]["data"][num
 const styles = StyleSheet.create({
   sheet: { flex: 1 },
   header: { padding: 16, paddingTop: 24, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  headerActions: { flexDirection: "row", gap: 8 },
   content: { padding: 16, paddingBottom: 48, gap: 10 },
   choice: { minHeight: 46, borderWidth: StyleSheet.hairlineWidth, borderRadius: 8,
     paddingHorizontal: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   choiceText: { fontFamily: "Inter_500Medium", fontSize: 14 },
   wrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 999, paddingHorizontal: 13, paddingVertical: 8 },
+  selectedMarker: StyleSheet.absoluteFillObject,
 });

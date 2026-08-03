@@ -1,22 +1,26 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { FlatList, Pressable, StyleSheet, View } from "react-native";
 
 import { SegmentedControl } from "@/components/SegmentedControl";
 import { Card, EmptyState, Muted, StatusDot, Title } from "@/components/ui";
 import { useTheme } from "@/theme/ThemeProvider";
 import type { Session } from "@/types/protocol";
+import { loadListOffset, saveListOffset } from "./listPosition";
 
 type Filter = "active" | "archived";
 
-export function SessionListPane({ sessions, selectedId, onSelect, emptyDetail, testIDPrefix = "session" }: {
+export function SessionListPane({ sessions, selectedId, onSelect, emptyDetail, testIDPrefix = "session",
+  positionKey = testIDPrefix }: {
   sessions: Session[];
   selectedId?: string | null;
   onSelect: (id: string) => void;
   emptyDetail?: string;
   testIDPrefix?: string;
+  positionKey?: string;
 }) {
   const theme = useTheme();
   const [filter, setFilter] = useState<Filter>("active");
+  const list = useRef<FlatList<Session>>(null);
   const filtered = useMemo(() => sessions.filter((session) => filter === "archived" ?
     session.lifecycleState === "archived" : session.lifecycleState !== "archived"), [filter, sessions]);
 
@@ -24,7 +28,10 @@ export function SessionListPane({ sessions, selectedId, onSelect, emptyDetail, t
     <View style={styles.filter}><SegmentedControl testIDPrefix={`${testIDPrefix}s:filter`} value={filter} options={[
       { value: "active", label: "进行中" }, { value: "archived", label: "已归档" },
     ] as const} onChange={setFilter} /></View>
-    <FlatList testID={`${testIDPrefix}s:list`} data={filtered} keyExtractor={(item) => item.id}
+    <FlatList ref={list} testID={`${testIDPrefix}s:list`} data={filtered} keyExtractor={(item) => item.id}
+      onLayout={() => list.current?.scrollToOffset({ offset: loadListOffset(`${positionKey}:${filter}`), animated: false })}
+      onScroll={(event) => saveListOffset(`${positionKey}:${filter}`, event.nativeEvent.contentOffset.y)}
+      scrollEventThrottle={100}
       contentContainerStyle={[styles.list, filtered.length === 0 && styles.emptyList]}
       ListEmptyComponent={<EmptyState title="没有会话"
         detail={emptyDetail ?? "从项目页进入对应项目后创建第一个任务。"} />}

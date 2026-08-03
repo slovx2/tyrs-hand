@@ -174,7 +174,25 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 		return uuid.Nil, false, err
 	}
 	if controlStatus == "error" {
-		return uuid.Nil, false, ErrControlTerminated
+		if request.SourceType != SourceDevelopment || request.InputSurface != "client" ||
+			request.Operation != "turn_input" {
+			return uuid.Nil, false, ErrControlTerminated
+		}
+		result, resetErr := tx.ExecContext(ctx, `UPDATE codex_thread_controls SET
+			status='idle',active_intent_id=NULL,active_codex_turn_id=NULL,active_client_id=NULL,
+			remote_status=NULL,worker_id=NULL,lease_token=NULL,lease_expires_at=NULL,
+			last_error_code=NULL,last_error_message=NULL,next_wakeup_at=now(),updated_at=now()
+			WHERE id=$1 AND status='error'`, controlID)
+		if resetErr != nil {
+			return uuid.Nil, false, resetErr
+		}
+		changed, rowsErr := result.RowsAffected()
+		if rowsErr != nil {
+			return uuid.Nil, false, rowsErr
+		}
+		if changed != 1 {
+			return uuid.Nil, false, ErrControlTerminated
+		}
 	}
 	if lifecycleState != "active" {
 		return uuid.Nil, false, ErrControlArchived

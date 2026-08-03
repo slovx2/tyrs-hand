@@ -5,6 +5,7 @@ import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from "reac
 
 import { ClientApi } from "@/api/client";
 import { loadCachedMessages, saveMessages } from "@/db/cache";
+import { clearDraft, loadDraft, saveDraft } from "@/db/drafts";
 import { Button, EmptyState, Muted, Title } from "@/components/ui";
 import { useOutbox } from "@/hooks/useOutbox";
 import { useAppStore } from "@/store/appStore";
@@ -14,6 +15,7 @@ import { useTheme } from "@/theme/ThemeProvider";
 import { type Message, type RunSnapshot, type SessionSettings } from "@/types/protocol";
 import { ChatComposer } from "./ChatComposer";
 import { MessageBubble } from "./MessageBubble";
+import { mergeMessages } from "./messagePagination";
 import { ParameterSheet } from "./ParameterSheet";
 import { InteractiveCard, PlanCard, RunProgressCard } from "./RunCards";
 
@@ -24,6 +26,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const session = useAppStore((state) => state.sessions.find((item) => item.id === sessionId));
   const refreshSessions = useAppStore((state) => state.refresh);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [messagesReady, setMessagesReady] = useState(false);
+  const [initialSyncComplete, setInitialSyncComplete] = useState(false);
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<LocalAttachment[]>([]);
   const [settings, setSettings] = useState<SessionSettings | null>(null);
@@ -31,35 +35,96 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const [currentRun, setCurrentRun] = useState<RunSnapshot | null>(null);
   const [liveEvents, setLiveEvents] = useState<SyncEvent[]>([]);
   const [showParameters, setShowParameters] = useState(false);
+  const [settingsBeforeSheet, setSettingsBeforeSheet] = useState<SessionSettings | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState("");
+  const [draftReady, setDraftReady] = useState(false);
   const list = useRef<FlashListRef<Message>>(null);
+  const refreshPromise = useRef<Promise<void> | null>(null);
+  const historyPagingReady = useRef(false);
+  const nearBottom = useRef(true);
   const outbox = useOutbox(connection?.serverId, sessionId);
+  const draftScope = `session:${sessionId}`;
   const load = useCallback(async (beforeSeq?: number) => {
     if (!connection) return;
     const api = new ClientApi(connection);
     if (beforeSeq === undefined) {
       const cached = await loadCachedMessages(connection.serverId, sessionId);
-      if (cached.length > 0) setMessages(cached);
+      if (cached.length > 0) {
+        setMessages(cached);
+        setMessagesReady(true);
+      }
       const detail = await api.getSession(sessionId);
       setSettings(detail.settings); setSavedSettings(detail.settings);
       setCurrentRun(detail.currentRun);
+      if (cached.length > 0) {
+        let merged = cached;
+        let afterSeq = cached.at(-1)!.seq;
+        for (;;) {
+          const page = await api.listMessages(sessionId, { afterSeq, limit: 80 });
+          await saveMessages(connection.serverId, page.messages);
+          merged = mergeMessages(merged, page.messages);
+          setMessages(merged);
+          if (!page.hasMoreAfter || page.messages.length === 0) break;
+          afterSeq = page.messages.at(-1)!.seq;
+        }
+        setHasMore((merged[0]?.seq ?? 0) > 1);
+        setInitialSyncComplete(true);
+        return;
+      }
     }
     const page = await api.listMessages(sessionId,
       beforeSeq === undefined ? { limit: 80 } : { beforeSeq, limit: 80 });
     await saveMessages(connection.serverId, page.messages);
-    setMessages((current) => beforeSeq === undefined ? page.messages :
-      [...page.messages, ...current.filter((item) => !page.messages.some((next) => next.id === item.id))]);
+    setMessages((current) => beforeSeq === undefined ? page.messages : mergeMessages(current, page.messages));
+    if (beforeSeq === undefined) setMessagesReady(true);
     setHasMore(page.hasMoreBefore);
+    if (beforeSeq === undefined) setInitialSyncComplete(true);
   }, [connection, sessionId]);
-  useEffect(() => { void load(); }, [load]);
+  const refresh = useCallback(() => {
+    if (refreshPromise.current) return refreshPromise.current;
+    const pending = load().finally(() => {
+      if (refreshPromise.current === pending) refreshPromise.current = null;
+    });
+    refreshPromise.current = pending;
+    return pending;
+  }, [load]);
+  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    setMessages([]);
+    setMessagesReady(false);
+    setInitialSyncComplete(false);
+    historyPagingReady.current = false;
+  }, [sessionId]);
+  useEffect(() => {
+    if (!connection) return;
+    let canceled = false;
+    setDraftReady(false);
+    setText("");
+    setAttachments([]);
+    void loadDraft(connection.serverId, draftScope).then((draft) => {
+      if (canceled) return;
+      if (draft) {
+        setText(draft.text);
+        setAttachments(draft.attachments);
+      }
+      setDraftReady(true);
+    });
+    return () => { canceled = true; };
+  }, [connection, draftScope]);
+  useEffect(() => {
+    if (!connection || !draftReady) return;
+    const timer = setTimeout(() => void saveDraft(connection.serverId, draftScope,
+      { text, attachments, settings: null }), 150);
+    return () => clearTimeout(timer);
+  }, [attachments, connection, draftReady, draftScope, text]);
   useEffect(() => setLiveEvents([]), [sessionId]);
   useEffect(() => subscribeToUpdates((event) => {
     if (event.sessionId !== sessionId) return;
     if (event.kind === "live") setLiveEvents((items) => [...items.slice(-49), event]);
-    else void load();
-  }), [load, sessionId]);
+    else void refresh();
+  }), [refresh, sessionId]);
   const presentedRun = useMemo<RunSnapshot | null>(() => {
     if (!currentRun || liveEvents.length === 0) return currentRun;
     const knownSequences = new Set(currentRun.timeline.map((event) => event.sequence));
@@ -73,20 +138,51 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   }, [currentRun, liveEvents]);
   const running = currentRun && ["starting", "running", "waiting_for_user", "reconciling"]
     .includes(String(currentRun.status));
+  useEffect(() => {
+    if (!running) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      try {
+        await refresh();
+      } finally {
+        if (!stopped) timer = setTimeout(() => void poll(), 1500);
+      }
+    };
+    timer = setTimeout(() => void poll(), 1500);
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [refresh, running]);
   const finalMessage = presentedRun?.status === "completed" ?
     [...messages].reverse().find((message) => message.role === "agent") : undefined;
+  const finalMessageId = finalMessage?.id;
+  useEffect(() => {
+    if (!finalMessageId || !nearBottom.current) return;
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      list.current?.scrollToEnd({ animated: false });
+      secondFrame = requestAnimationFrame(() => list.current?.scrollToEnd({ animated: true }));
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      if (secondFrame) cancelAnimationFrame(secondFrame);
+    };
+  }, [finalMessageId]);
   const visibleMessages = finalMessage ? messages.filter((message) => message.id !== finalMessage.id) : messages;
-  if (!connection || !bootstrap || !session || !settings) {
+  if (!connection || !bootstrap || !session || !settings || !messagesReady) {
     return <EmptyState title="正在载入会话" detail="先显示本地缓存，再从 Control 补齐最新消息。" />;
   }
   const send = async () => {
     if (!text.trim()) return;
     await enqueueMessage({ connection, localId: Crypto.randomUUID(), sessionId,
       text: text.trim(), attachments });
+    await clearDraft(connection.serverId, draftScope);
     setText(""); setAttachments([]);
     await outbox.refresh();
     await processOutbox(connection);
-    await Promise.all([load(), outbox.refresh(), refreshSessions()]);
+    await Promise.all([refresh(), outbox.refresh(), refreshSessions()]);
   };
   const closeParameters = async () => {
     setShowParameters(false);
@@ -126,20 +222,36 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         <Muted>{running ? "正在运行 · 参数修改将在下一轮生效" : `${session.serviceTier} · ${session.collaborationMode}`}</Muted>
       </View>
     </View>
-    <FlashList ref={list} testID="messages:list" data={visibleMessages} keyExtractor={(item) => item.id}
+    <FlashList key={`${sessionId}:${initialSyncComplete ? "synced" : "cached"}`} ref={list}
+      testID="messages:list" data={visibleMessages} keyExtractor={(item) => item.id}
       renderItem={({ item }) => <MessageBubble message={item} />}
-      maintainVisibleContentPosition={{ autoscrollToBottomThreshold: 0.1 }}
-      onStartReached={() => { if (hasMore && messages[0]) void load(messages[0].seq); }}
+      keyboardShouldPersistTaps="handled"
+      scrollEventThrottle={100}
+      onScroll={({ nativeEvent }) => {
+        if (!historyPagingReady.current) return;
+        const distance = nativeEvent.contentSize.height - nativeEvent.layoutMeasurement.height -
+          nativeEvent.contentOffset.y;
+        nearBottom.current = distance < 160;
+      }}
+      maintainVisibleContentPosition={{ startRenderingFromBottom: true,
+        autoscrollToBottomThreshold: 0.1 }}
+      onLoad={() => requestAnimationFrame(() => {
+        list.current?.scrollToEnd({ animated: false });
+        if (initialSyncComplete) historyPagingReady.current = true;
+      })}
+      onStartReached={() => {
+        if (historyPagingReady.current && hasMore && messages[0]) void load(messages[0].seq);
+      }}
       onStartReachedThreshold={0.2} contentContainerStyle={{ paddingTop: 10, paddingBottom: 24 }}
       ListFooterComponent={<><View testID={liveEvents.length > 0 ? "run:live" : undefined}>
         {presentedRun && <RunProgressCard run={presentedRun} />}</View>
         {finalMessage && <MessageBubble message={finalMessage} />}
         {presentedRun && <PlanCard run={presentedRun} onExecute={() => void new ClientApi(connection)
-          .executePlan(sessionId, presentedRun.id).then(() => load()).catch((error: unknown) =>
+          .executePlan(sessionId, presentedRun.id).then(() => refresh()).catch((error: unknown) =>
             Alert.alert("执行 Plan 失败", error instanceof Error ? error.message : "请重试"))} />}
         {presentedRun?.pendingInteractives.map((interactive) => <InteractiveCard key={interactive.id}
           interactive={interactive} onSubmit={(answer) => void new ClientApi(connection)
-            .answerInteractive(interactive.id, answer).then(() => load()).catch((error: unknown) =>
+            .answerInteractive(interactive.id, answer).then(() => refresh()).catch((error: unknown) =>
               Alert.alert("提交回答失败", error instanceof Error ? error.message : "请重试"))} />)}</>} />
     {outbox.items.map((item) => <View key={item.localId}
       testID={`outbox:${encodeURIComponent(item.localId)}:${item.status}`}
@@ -153,14 +265,17 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     </View>)}
     <View style={[styles.composerDock, { borderTopColor: theme.colors.border, backgroundColor: theme.colors.app }]}>
       <ChatComposer value={text} onChange={setText} attachments={attachments}
-        onAttachmentsChange={setAttachments} onParameters={() => setShowParameters(true)}
+        onAttachmentsChange={setAttachments} onParameters={() => {
+          setSettingsBeforeSheet(settings); setShowParameters(true);
+        }}
         onSend={() => void send()} sending={false}
         parameterLabel={`${settings.model ?? "默认模型"} · ${settings.reasoningEffort ?? "默认"} · ${settings.collaborationMode}`} />
     </View>
     <ParameterSheet visible={showParameters} bootstrap={bootstrap}
       environmentId={session.developmentEnvironmentId} value={settings}
       currentRunLabel={running ? "当前 Run 使用已冻结参数；修改将在下一轮生效" : "当前会话参数"}
-      onChange={setSettings} onClose={() => void closeParameters()} />
+      onChange={setSettings} onClose={() => void closeParameters()}
+      onCancel={() => { setSettings(settingsBeforeSheet ?? savedSettings); setShowParameters(false); }} />
     <Modal visible={renaming} transparent animationType="fade" onRequestClose={() => setRenaming(false)}>
       <View style={[styles.modal, { backgroundColor: theme.colors.overlay }]}><View style={[styles.rename,
         { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>

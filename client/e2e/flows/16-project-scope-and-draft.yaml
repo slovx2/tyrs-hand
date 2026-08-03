@@ -1,0 +1,36 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- tapOn:
+    id: "project:row:1"
+- assertNotVisible:
+    id: "session:row:0"
+- tapOn:
+    id: "composer:input"
+- inputText: "E2E_PROJECT_DRAFT retained across navigation"
+- hideKeyboard
+- tapOn:
+    id: "project:back"
+- tapOn:
+    id: "project:row:1"
+- assertVisible: "E2E_PROJECT_DRAFT retained across navigation"
+- tapOn:
+    id: "composer:send"
+- extendedWaitUntil:
+    visible:
+      id: "session:row:0"
+    timeout: 30000
+- tapOn:
+    id: "session:row:0"
+- extendedWaitUntil:
+    visible:
+      id: "message:role:agent"
+    timeout: 120000
+- tapOn:
+    id: "session:back"
+- tapOn:
+    id: "project:back"
+- tapOn:
+    id: "tab:projects"
+- tapOn:
+    id: "project:row:0"
+- assertNotVisible: "E2E_PROJECT_DRAFT retained across navigation"

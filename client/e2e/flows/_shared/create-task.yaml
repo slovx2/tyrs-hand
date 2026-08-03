@@ -7,6 +7,13 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     commands:
       - tapOn:
           id: "session:back"
+- runFlow:
+    when:
+      visible:
+        id: "project:back"
+    commands:
+      - tapOn:
+          id: "project:back"
 - tapOn:
     id: "tab:projects"
 - extendedWaitUntil:
@@ -18,13 +25,8 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - tapOn:
     id: "composer:input"
 - inputText: ${TASK_TEXT}
-- hideKeyboard
 - tapOn:
     id: "composer:send"
-- tapOn:
-    id: "tab:sessions"
-- tapOn:
-    id: "sessions:filter:active"
 - extendedWaitUntil:
     visible:
       id: "session:row:0"

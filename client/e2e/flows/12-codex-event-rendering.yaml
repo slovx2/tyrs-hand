@@ -1,0 +1,44 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- runFlow:
+    when:
+      visible:
+        id: "session:back"
+    commands:
+      - tapOn:
+          id: "session:back"
+- runFlow:
+    when:
+      visible:
+        id: "project:back"
+    commands:
+      - tapOn:
+          id: "project:back"
+- tapOn:
+    id: "tab:connections"
+- tapOn:
+    id: "connection:inactive"
+- runFlow:
+    file: _shared/create-task.yaml
+    env:
+      TASK_TEXT: "E2E_EVENTS render complete codex event matrix"
+- extendedWaitUntil:
+    visible: "事件矩阵完成"
+    timeout: 120000
+- scrollUntilVisible:
+    element:
+      id: "run:activity:toggle"
+    direction: DOWN
+- tapOn:
+    id: "run:activity:toggle"
+- scrollUntilVisible:
+    element:
+      id: "run:operations:1:toggle"
+    direction: DOWN
+- tapOn:
+    id: "run:operations:1:toggle"
+- assertVisible: "已运行命令 pnpm typecheck"
+- assertVisible: "已修改文件 client/src/features/chat/RunCards.tsx"
+- assertVisible: "已调用 filesystem.read_file"
+- assertVisible: "已搜索 Tyrs Hand mobile E2E"
+- assertVisible: "已调度子 Agent"

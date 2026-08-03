@@ -60,15 +60,8 @@ export class AdminClient {
   }
 
   createNode(name) {
-    return this.request('/execution-nodes', { method: 'POST', csrf: true,
+    return this.request('/workers', { method: 'POST', csrf: true,
       body: { name, roles: ['discord'], maxConcurrentJobs: 2 } })
-  }
-
-  configureProvider(baseUrl) {
-    return this.request('/settings/agent-provider', { method: 'PUT', csrf: true, body: {
-      modelSource: 'provider', baseUrl, apiKey: 'mobile-e2e-key', model: 'gpt-5.6-sol',
-      reasoningEffort: 'high', serviceTier: 'standard', proxyUrl: '',
-    } })
   }
 
   createPairing() {

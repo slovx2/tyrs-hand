@@ -7,8 +7,12 @@ lane="protocol"
 if [[ "${platform}" == "android" ]]; then
   lane="real-codex"
 fi
+lane="${TYRS_HAND_E2E_LANE:-${lane}}"
 
 "${root}/tools/mobile-e2e/install-maestro.sh"
 "${root}/tools/mobile-e2e/build-client.sh" "${platform}"
-exec node "${root}/tools/mobile-e2e/mobile-runner.mjs" \
-  --platform "${platform}" --lane "${lane}" --app-id com.tyrshand.app.dev
+args=(--platform "${platform}" --lane "${lane}" --app-id com.tyrshand.app.dev)
+if [[ -n "${TYRS_HAND_E2E_FLOW:-}" ]]; then
+  args+=(--flow "${TYRS_HAND_E2E_FLOW}")
+fi
+exec node "${root}/tools/mobile-e2e/mobile-runner.mjs" "${args[@]}"

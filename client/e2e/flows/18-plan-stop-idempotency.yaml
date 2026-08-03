@@ -24,28 +24,31 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     id: "parameters:mode:plan"
 - tapOn:
     id: "parameters:done"
-- tapOn:
-    id: "composer:input"
-- inputText: "E2E_PLAN prepare deterministic plan"
-- tapOn:
-    id: "composer:send"
+- runFlow:
+    file: _shared/create-task.yaml
+    env:
+      TASK_TEXT: "E2E_PLAN_IDEMPOTENT prepare one plan intent"
 - extendedWaitUntil:
     visible:
-      id: "session:row:0"
-    timeout: 30000
-- tapOn:
-    id: "session:row:0"
-- extendedWaitUntil:
-    visible:
-      id: "message:role:agent"
-    timeout: 120000
-- scrollUntilVisible:
-    element:
       id: "plan:execute"
-    direction: DOWN
+    timeout: 120000
 - tapOn:
     id: "plan:execute"
 - extendedWaitUntil:
     notVisible:
       id: "plan:execute"
     timeout: 120000
+- runFlow:
+    file: _shared/create-task.yaml
+    env:
+      TASK_TEXT: "E2E_BLOCK_IDEMPOTENT accept one stop intent"
+- extendedWaitUntil:
+    visible:
+      id: "session:stop"
+    timeout: 120000
+- tapOn:
+    id: "session:stop"
+- extendedWaitUntil:
+    notVisible:
+      id: "session:stop"
+    timeout: 60000

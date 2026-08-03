@@ -1,6 +1,15 @@
 name: Mobile E2E
 
 on:
+  pull_request:
+    paths:
+      - client/**
+      - tools/mobile-e2e/**
+      - internal/httpapi/**
+      - internal/codexcontrol/**
+      - .github/workflows/mobile-e2e.yml
+  schedule:
+    - cron: "17 18 * * *"
   workflow_dispatch:
     inputs:
       platform:
@@ -14,7 +23,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: mobile-e2e-${{ github.ref }}-${{ inputs.platform }}
+  group: mobile-e2e-${{ github.ref }}-${{ inputs.platform || github.event_name }}
   cancel-in-progress: false
 
 env:
@@ -26,7 +35,7 @@ env:
 
 jobs:
   android-phone:
-    if: inputs.platform == 'both' || inputs.platform == 'android'
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'both' || inputs.platform == 'android'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -60,6 +69,7 @@ jobs:
         env:
           TYRS_HAND_E2E_MAESTRO_BIN: /home/runner/.local/bin/maestro
           TYRS_HAND_E2E_DEVELOPMENT_IMAGE: tyrs-hand-development:e2e
+          TYRS_HAND_E2E_LANE: ${{ github.event_name == 'pull_request' && 'protocol' || 'real-codex' }}
         run: make client-e2e-android
       - name: 上传失败证据
         if: always()
@@ -73,7 +83,7 @@ jobs:
           retention-days: 14
 
   iphone:
-    if: inputs.platform == 'both' || inputs.platform == 'ios'
+    if: github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.platform == 'both' || inputs.platform == 'ios')
     runs-on: macos-15
     timeout-minutes: 120
     env:

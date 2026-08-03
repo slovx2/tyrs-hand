@@ -151,7 +151,7 @@ export function RunProgressCard({ run }: { run: RunSnapshot }) {
   const activityCount = parts.reduce((total, part) => total +
     (part.kind === "operations" ? part.operations.length : 1), 0);
   useEffect(() => setExpanded(!terminal), [run.id, terminal]);
-  return <View testID={`run:${encodeURIComponent(run.id)}:progress`}
+  return <View testID={run.status === "failed" ? "run:error" : `run:${encodeURIComponent(run.id)}:progress`}
     style={[styles.activity, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
     <View style={[styles.statusRail, { backgroundColor: statusColor }]} />
     <Pressable testID="run:activity:toggle" accessibilityRole="button"
@@ -181,7 +181,7 @@ export function RunProgressCard({ run }: { run: RunSnapshot }) {
           borderTopWidth: StyleSheet.hairlineWidth }]}>
         <MarkdownContent compact>{part.text}</MarkdownContent>
       </View> : <OperationGroup key={part.id} part={part} index={index} />)}
-      {run.errorMessage && <Text testID="run:error"
+      {run.errorMessage && <Text testID="run:error:message"
         style={[styles.error, { color: theme.colors.danger }]}>{run.errorMessage}</Text>}
     </View>}
   </View>;
@@ -214,7 +214,8 @@ export function InteractiveCard({ interactive, onSubmit }: {
         style={[styles.option, { borderColor: answers[question.id] === option.label ? theme.colors.accent : theme.colors.border,
           backgroundColor: theme.colors.surfaceAlt }]}><Text style={{ color: theme.colors.text,
           fontFamily: "Inter_500Medium" }}>{option.label}</Text><Muted>{option.description}</Muted></Pressable>)}</View> :
-        <TextInput value={answers[question.id] ?? ""}
+        <TextInput testID={`interactive:input:${encodeURIComponent(question.id)}`}
+          value={answers[question.id] ?? ""}
           onChangeText={(value) => setAnswers((current) => ({ ...current, [question.id]: value }))}
           style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.text }]} />}
     </View>)}
