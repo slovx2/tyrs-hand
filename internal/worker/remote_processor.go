@@ -41,6 +41,13 @@ type developmentOperationRuntimeConfig struct {
 	AppServerConfig    codex.ManagedAppServerConfig
 }
 
+func (p *RemoteProcessor) HeartbeatMetadata() map[string]any {
+	if p.environments == nil {
+		return nil
+	}
+	return map[string]any{"modelCatalogs": p.environments.modelCatalogs()}
+}
+
 func NewRemoteProcessor(ctx context.Context, cfg config.Config, client *workerprotocol.Client,
 	workspace ports.WorkspaceManager, catalog *githubtools.Catalog, pool *codex.Pool,
 	development *devcontainer.Manager, logger *zap.Logger,

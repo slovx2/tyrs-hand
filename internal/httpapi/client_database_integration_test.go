@@ -45,6 +45,16 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 	repositoryID, _, profileID := seedWorkerGitHubQueue(t, db, 9901)
 	environmentID, forumID := seedDevelopmentOperation(t, db, repositoryID, node.ID)
 	projectID := developmentProjectIDForForum(t, db, forumID)
+	nativeCatalog := `{"modelCatalogs":{"` + environmentID.String() + `":{"data":[{` +
+		`"id":"native-only-model","model":"native-only-model","displayName":"Native",` +
+		`"description":"from Codex","supportedReasoningEfforts":[{` +
+		`"reasoningEffort":"future","description":"future effort"}],` +
+		`"defaultReasoningEffort":"future","serviceTiers":[],` +
+		`"additionalSpeedTiers":[],"defaultServiceTier":null,"isDefault":true,` +
+		`"hidden":false}],"nextCursor":null}}}`
+	_, err = db.ExecContext(ctx, `UPDATE execution_nodes SET status='online',
+		heartbeat_at=now(), metadata=$2::jsonb WHERE id=$1`, node.ID, nativeCatalog)
+	require.NoError(t, err)
 	var sessionID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO development_sessions(
 		development_environment_id,development_project_id,agent_profile_id,title)
@@ -71,6 +81,9 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 	require.Contains(t, bootstrap.Body.String(), environmentID.String())
 	require.Contains(t, bootstrap.Body.String(), projectID.String())
 	require.Contains(t, bootstrap.Body.String(), profileID.String())
+	require.Contains(t, bootstrap.Body.String(), `"protocolVersion":3`)
+	require.Contains(t, bootstrap.Body.String(), `"modelCatalogs"`)
+	require.Contains(t, bootstrap.Body.String(), "native-only-model")
 	listedSessions := clientJSONRequest(t, http.MethodGet,
 		endpoint+"/api/v1/client/sessions?limit=10", loginBody.AccessToken, nil)
 	require.Equal(t, http.StatusOK, listedSessions.Code)

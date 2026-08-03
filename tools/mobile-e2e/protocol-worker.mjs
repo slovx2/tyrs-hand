@@ -164,7 +164,7 @@ async function main() {
   const enrolled = await call('/worker/v1/enroll', { body: { token: enrollmentToken }, authenticated: false })
   credential = enrolled.credential
   await call('/worker/v1/heartbeat', { body: { workerVersion: 'mobile-e2e-protocol',
-    protocolVersion: 20, metadata: { lane: 'ios-protocol' } } })
+    protocolVersion: 21, metadata: { lane: 'ios-protocol' } } })
   while (!stopping) {
     try {
       await reconcileThreadLifecycles()

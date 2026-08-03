@@ -179,7 +179,13 @@ func (p *RemoteProcessor) coordinateEnvironment(ctx context.Context,
 		err = p.client.InterruptEnvironmentInteractive(ctx, manifest.EnvironmentID)
 	}
 	if err == nil {
-		_, err = p.environments.ensure(runtime, manifest)
+		var environment *environmentCodex
+		environment, err = p.environments.ensure(runtime, manifest)
+		if err == nil {
+			requestCtx, cancel := context.WithTimeout(ctx, p.cfg.ControlTimeout)
+			err = environment.refreshModelCatalog(requestCtx)
+			cancel()
+		}
 	}
 	if err == nil && p.browserAgent != nil {
 		err = p.browserAgent.Ensure(manifest.EnvironmentID)

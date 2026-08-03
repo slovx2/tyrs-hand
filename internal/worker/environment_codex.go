@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
+	"github.com/slovx2/tyrs-hand/internal/codexcatalog"
 	"github.com/slovx2/tyrs-hand/internal/codexrelay"
 	"github.com/slovx2/tyrs-hand/internal/devcontainer"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
@@ -40,6 +41,7 @@ type environmentCodex struct {
 	metadataEvents      *codexrelay.Subscription
 	metadataSequence    atomic.Int64
 	settingsSequence    atomic.Int64
+	modelCatalog        json.RawMessage
 }
 
 type toolBinding struct {
@@ -146,6 +148,32 @@ func (r *environmentCodexRegistry) get(environmentID uuid.UUID) *environmentCode
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.entries[environmentID]
+}
+
+func (r *environmentCodexRegistry) modelCatalogs() map[string]json.RawMessage {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	result := make(map[string]json.RawMessage, len(r.entries))
+	for environmentID, entry := range r.entries {
+		entry.mu.Lock()
+		catalog := append(json.RawMessage(nil), entry.modelCatalog...)
+		entry.mu.Unlock()
+		if len(catalog) > 0 {
+			result[environmentID.String()] = catalog
+		}
+	}
+	return result
+}
+
+func (e *environmentCodex) refreshModelCatalog(ctx context.Context) error {
+	catalog, err := codexcatalog.Fetch(ctx, e.client)
+	if err != nil {
+		return fmt.Errorf("读取 Codex 模型目录: %w", err)
+	}
+	e.mu.Lock()
+	e.modelCatalog = catalog
+	e.mu.Unlock()
+	return nil
 }
 
 func (e *environmentCodex) observeMetadata(ctx context.Context) {

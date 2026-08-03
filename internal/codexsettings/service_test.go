@@ -3,7 +3,6 @@ package codexsettings
 import (
 	"context"
 	"encoding/json"
-	"slices"
 	"strings"
 	"testing"
 
@@ -23,12 +22,12 @@ func TestRuntimeServiceTier(t *testing.T) {
 	}
 }
 
-func TestModelCatalogAlwaysIncludesDefaultServiceTier(t *testing.T) {
-	for _, model := range ModelCatalog() {
-		if !slices.ContainsFunc(model.ServiceTiers,
-			func(tier ServiceTierOption) bool { return tier.ID == model.DefaultServiceTier }) {
-			t.Fatalf("模型 %q 的默认速度档位 %q 不在目录中", model.ID, model.DefaultServiceTier)
-		}
+func TestReasoningEffortFollowsCodexOpaqueValue(t *testing.T) {
+	if !ValidReasoningEffort("future-effort") {
+		t.Fatal("Codex 新增的推理档位不应被本地枚举拒绝")
+	}
+	if ValidReasoningEffort(strings.Repeat("x", 65)) {
+		t.Fatal("推理档位仍需遵守协议长度边界")
 	}
 }
 

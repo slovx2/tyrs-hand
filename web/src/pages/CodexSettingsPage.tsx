@@ -4,7 +4,7 @@ import { api } from '../api/client'
 import { useUI } from '../state'
 
 type ServiceTier = 'standard' | 'fast'
-type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh'
+type ReasoningEffort = string
 
 interface Preferences {
   model: string | null
@@ -38,6 +38,7 @@ interface RepositorySettings {
 interface SettingsResponse {
   items: RepositorySettings[]
   modelOptions: string[]
+  reasoningEffortOptions: string[]
 }
 
 export function CodexSettingsPage() {
@@ -70,6 +71,7 @@ export function CodexSettingsPage() {
               value={repository.settings}
               effective={repository.effective}
               models={settings.data.modelOptions}
+              reasoningEfforts={settings.data.reasoningEffortOptions}
             />
             {repository.forums.length > 0 && (
               <div className="mt-6 grid gap-4 border-t pt-6 [border-color:var(--border)]">
@@ -92,6 +94,7 @@ export function CodexSettingsPage() {
                       value={forum.settings}
                       effective={forum.effective}
                       models={settings.data.modelOptions}
+                      reasoningEfforts={settings.data.reasoningEffortOptions}
                     />
                   </div>
                 ))}
@@ -112,11 +115,13 @@ function ScopeEditor({
   value,
   effective,
   models,
+  reasoningEfforts,
 }: {
   endpoint: string
   value: Preferences
   effective: EffectivePreferences
   models: string[]
+  reasoningEfforts: string[]
 }) {
   const queryClient = useQueryClient()
   const showToast = useUI((state) => state.showToast)
@@ -214,10 +219,16 @@ function ScopeEditor({
             <option value="__inherit__">
               继承（{effortLabel(effective.reasoningEffort)}）
             </option>
-            <option value="low">轻</option>
-            <option value="medium">中</option>
-            <option value="high">高</option>
-            <option value="xhigh">极高</option>
+            {reasoningEffort &&
+              reasoningEffort !== '__inherit__' &&
+              !reasoningEfforts.includes(reasoningEffort) && (
+                <option value={reasoningEffort}>{reasoningEffort}</option>
+              )}
+            {reasoningEfforts.map((effort) => (
+              <option value={effort} key={effort}>
+                {effort}
+              </option>
+            ))}
           </select>
         </label>
       </div>
@@ -241,9 +252,5 @@ function tierLabel(value: ServiceTier) {
 }
 
 function effortLabel(value: EffectivePreferences['reasoningEffort']) {
-  if (value === 'low') return '轻'
-  if (value === 'medium') return '中'
-  if (value === 'high') return '高'
-  if (value === 'xhigh') return '极高'
-  return 'Codex 默认'
+  return value || 'Codex 默认'
 }

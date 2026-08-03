@@ -27,6 +27,10 @@ type environmentCoordinator interface {
 	CoordinateEnvironments(context.Context) error
 }
 
+type heartbeatMetadataProvider interface {
+	HeartbeatMetadata() map[string]any
+}
+
 type RemoteRunner struct {
 	cfg       config.Config
 	client    *workerprotocol.Client
@@ -221,6 +225,11 @@ func (r *RemoteRunner) sendHeartbeat(ctx context.Context) error {
 		cancel()
 		values["browser"] = r.browser.Status()
 		sweepBrowserFiles(r.cfg.BrowserFilesRoot)
+	}
+	if provider, ok := r.processor.(heartbeatMetadataProvider); ok {
+		for key, value := range provider.HeartbeatMetadata() {
+			values[key] = value
+		}
 	}
 	metadata, _ := json.Marshal(values)
 	return r.client.Heartbeat(ctx, workerprotocol.HeartbeatRequest{

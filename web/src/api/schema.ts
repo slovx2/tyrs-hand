@@ -1578,8 +1578,7 @@ export interface components {
             /** Format: uuid */
             agentProfileId: string;
             model: string | null;
-            /** @enum {string|null} */
-            reasoningEffort: "low" | "medium" | "high" | "xhigh" | "max" | "ultra" | null;
+            reasoningEffort: string | null;
             /** @enum {string} */
             serviceTier: "standard" | "fast";
             /** @enum {string} */
@@ -1642,31 +1641,34 @@ export interface components {
         };
         ClientModel: {
             id: string;
+            model?: string;
             displayName: string;
             description: string;
             supportedReasoningEfforts: {
-                /** @enum {string} */
-                id: "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
+                reasoningEffort: string;
                 description: string;
             }[];
-            /** @enum {string} */
-            defaultReasoningEffort: "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
-            inputModalities: ("text" | "image")[];
-            serviceTiers: {
-                /** @enum {string} */
-                id: "fast";
+            defaultReasoningEffort: string;
+            inputModalities?: string[];
+            additionalSpeedTiers?: string[];
+            serviceTiers?: {
+                id: string;
                 name: string;
                 description: string;
             }[];
-            /** @enum {string} */
-            defaultServiceTier: "standard" | "fast";
-            default: boolean;
+            defaultServiceTier?: string | null;
+            isDefault: boolean;
+            hidden?: boolean;
+        };
+        ClientModelCatalog: {
+            data: components["schemas"]["ClientModel"][];
+            nextCursor?: string | null;
         };
         ClientBootstrap: {
             /** Format: uuid */
             serverId: string;
             /** @enum {integer} */
-            protocolVersion: 2;
+            protocolVersion: 3;
             /** Format: int64 */
             currentCursor: number;
             user: {
@@ -1686,7 +1688,9 @@ export interface components {
                 id: string;
                 name: string;
             }[];
-            modelCatalog: components["schemas"]["ClientModel"][];
+            modelCatalogs: {
+                [key: string]: components["schemas"]["ClientModelCatalog"];
+            };
             lastStartedSettings: components["schemas"]["ClientSessionSettings"] | null;
         };
         ExecutionNode: {
@@ -2091,8 +2095,7 @@ export interface components {
         };
         CodexPreferences: {
             model?: string | null;
-            /** @enum {string|null} */
-            reasoningEffort?: "low" | "medium" | "high" | "xhigh" | null;
+            reasoningEffort?: string | null;
             /** @enum {string|null} */
             serviceTier?: "standard" | "fast" | null;
         };
@@ -2122,6 +2125,7 @@ export interface components {
         CodexSettingsList: {
             items: components["schemas"]["CodexRepositorySettings"][];
             modelOptions: string[];
+            reasoningEffortOptions: string[];
         };
         DiscordSettings: {
             guildId: string;

@@ -311,53 +311,7 @@ func TestDesktopRelayAlwaysListsEveryProvider(t *testing.T) {
 	}
 }
 
-func TestDesktopRelayProviderModelCatalogUsesAppKeyCapabilities(t *testing.T) {
-	controller := &desktopRelayController{environment: &environmentCodex{
-		runtime: devcontainer.Runtime{ModelSource: settings.ModelSourceProvider},
-	}}
-	plan, err := controller.PrepareCall(context.Background(), codexrelay.Call{
-		Role: codexrelay.RoleDesktop, Method: "model/list", Params: json.RawMessage(`{}`),
-	})
-	require.NoError(t, err)
-	require.False(t, plan.Forward)
-
-	var catalog struct {
-		Data []struct {
-			ID                        string `json:"id"`
-			IsDefault                 bool   `json:"isDefault"`
-			SupportedReasoningEfforts []struct {
-				ReasoningEffort string `json:"reasoningEffort"`
-			} `json:"supportedReasoningEfforts"`
-			ServiceTiers []struct {
-				ID string `json:"id"`
-			} `json:"serviceTiers"`
-			AdditionalSpeedTiers []string `json:"additionalSpeedTiers"`
-		} `json:"data"`
-	}
-	require.NoError(t, json.Unmarshal(plan.Result, &catalog))
-	for _, model := range catalog.Data {
-		if model.ID != "gpt-5.6-sol" {
-			continue
-		}
-		efforts := make([]string, 0, len(model.SupportedReasoningEfforts))
-		for _, effort := range model.SupportedReasoningEfforts {
-			efforts = append(efforts, effort.ReasoningEffort)
-		}
-		tiers := make([]string, 0, len(model.ServiceTiers))
-		for _, tier := range model.ServiceTiers {
-			tiers = append(tiers, tier.ID)
-		}
-		require.True(t, model.IsDefault)
-		require.Contains(t, efforts, "max")
-		require.Contains(t, efforts, "ultra")
-		require.Contains(t, tiers, "priority")
-		require.Contains(t, model.AdditionalSpeedTiers, "fast")
-		return
-	}
-	t.Fatal("Provider 模型目录缺少 gpt-5.6-sol")
-}
-
-func TestDesktopRelayDoesNotReplaceChatGPTOrWorkerModelCatalog(t *testing.T) {
+func TestDesktopRelayAlwaysForwardsCodexModelCatalog(t *testing.T) {
 	controller := &desktopRelayController{environment: &environmentCodex{
 		runtime: devcontainer.Runtime{ModelSource: settings.ModelSourceChatGPT},
 	}}
@@ -368,6 +322,12 @@ func TestDesktopRelayDoesNotReplaceChatGPTOrWorkerModelCatalog(t *testing.T) {
 	require.True(t, chatGPTPlan.Forward)
 
 	controller.environment.runtime.ModelSource = settings.ModelSourceProvider
+	providerPlan, err := controller.PrepareCall(context.Background(), codexrelay.Call{
+		Role: codexrelay.RoleDesktop, Method: "model/list", Params: json.RawMessage(`{}`),
+	})
+	require.NoError(t, err)
+	require.True(t, providerPlan.Forward)
+
 	workerPlan, err := controller.PrepareCall(context.Background(), codexrelay.Call{
 		Role: codexrelay.RoleWorker, Method: "model/list", Params: json.RawMessage(`{}`),
 	})

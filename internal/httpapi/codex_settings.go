@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codexcatalog"
 	"github.com/slovx2/tyrs-hand/internal/codexsettings"
 )
 
@@ -16,7 +17,14 @@ func (s *Server) listCodexSettings(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "读取 Codex 设置失败", err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": items, "modelOptions": codexsettings.PresetModels})
+	catalogs, err := codexcatalog.OnlineCatalogs(c, s.db)
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取 Codex 模型目录失败", err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items,
+		"modelOptions":           codexcatalog.ModelIDs(catalogs),
+		"reasoningEffortOptions": codexcatalog.ReasoningEfforts(catalogs)})
 }
 
 func (s *Server) putRepositoryCodexSettings(c *gin.Context) {

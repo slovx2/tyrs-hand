@@ -15,14 +15,6 @@ const (
 	ScopeDiscordForum = "discord_forum"
 )
 
-var PresetModels = []string{
-	"gpt-5.6-sol",
-	"gpt-5.6-terra",
-	"gpt-5.6-luna",
-	"gpt-5.5",
-	"gpt-5.4",
-}
-
 type Preferences struct {
 	Model           *string `json:"model"`
 	ReasoningEffort *string `json:"reasoningEffort"`
@@ -274,7 +266,7 @@ func validate(scope string, value Preferences) error {
 		*value.Model = text
 	}
 	if value.ReasoningEffort != nil {
-		if !ValidReasoningEffort(valueString(value.Model), *value.ReasoningEffort) {
+		if !ValidReasoningEffort(*value.ReasoningEffort) {
 			return fmt.Errorf("不支持的思考等级 %q", *value.ReasoningEffort)
 		}
 	}
@@ -297,17 +289,10 @@ func normalizedEffort(value sql.NullString) *string {
 	if result == nil {
 		return nil
 	}
-	if !ValidReasoningEffort("", *result) {
+	if !ValidReasoningEffort(*result) {
 		return nil
 	}
 	return result
-}
-
-func valueString(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return strings.TrimSpace(*value)
 }
 
 func normalizedTier(value sql.NullString) *string {

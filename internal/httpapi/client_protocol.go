@@ -12,7 +12,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexsettings"
 )
 
-const clientProtocolVersion = 2
+const clientProtocolVersion = 3
 const clientDeviceContext = "clientDeviceID"
 
 type clientSessionSettings struct {
@@ -78,8 +78,8 @@ func validateClientSettings(model, effort *string, tier, mode string) error {
 	if modelValue != "" && len(modelValue) > 128 {
 		return errors.New("模型名称过长")
 	}
-	if !codexsettings.ValidReasoningEffort(modelValue, effortValue) {
-		return errors.New("所选模型不支持该思考等级")
+	if !codexsettings.ValidReasoningEffort(effortValue) {
+		return errors.New("思考等级无效")
 	}
 	return nil
 }

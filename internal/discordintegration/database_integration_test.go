@@ -25,7 +25,6 @@ import (
 	"github.com/disgoorg/snowflake/v2"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
-	"github.com/slovx2/tyrs-hand/internal/codexsettings"
 	"github.com/slovx2/tyrs-hand/internal/database"
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
 	"github.com/slovx2/tyrs-hand/internal/secrets"
@@ -1979,18 +1978,18 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 	require.NoError(t, err)
 	require.Equal(t, newCodexModalPrefix+seed.developmentForumChannelID+":default", modal.CustomID)
 	require.Len(t, modal.Components, 5)
-	_, _, _, err = connector.authorizedForum(ctx, seed.developmentForumChannelID, "1003")
+	_, _, _, _, err = connector.authorizedForum(ctx, seed.developmentForumChannelID, "1003")
 	require.NoError(t, err)
-	_, _, _, err = connector.authorizedForum(ctx, seed.developmentForumChannelID, "1002")
+	_, _, _, _, err = connector.authorizedForum(ctx, seed.developmentForumChannelID, "1002")
 	require.Error(t, err)
-	_, _, _, err = connector.authorizedForum(ctx, "999999999999999999", "1001")
+	_, _, _, _, err = connector.authorizedForum(ctx, "999999999999999999", "1001")
 	require.Error(t, err)
 	_, err = connector.newCodexModal(ctx, seed.developmentForumChannelID, "1002", "default")
 	require.Error(t, err)
-	options, custom := modelModalOptions("private-model")
-	require.Len(t, options, len(codexsettings.PresetModels)+2)
+	options, custom := modelModalOptions("private-model", []string{"codex-model"})
+	require.Len(t, options, 3)
 	require.Equal(t, "private-model", custom.Value)
-	require.NotEmpty(t, effortModalSelect("xhigh").Options)
+	require.NotEmpty(t, effortModalSelect("xhigh", []string{"low", "xhigh"}).Options)
 	require.Empty(t, firstModalValue(nil))
 
 	connector.onMessage(newMessageEvent(t, client, "2011", "3012", "edit configuration"))

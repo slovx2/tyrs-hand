@@ -74,16 +74,6 @@ func (c *desktopRelayController) PrepareCall(ctx context.Context,
 	}
 	plan.Params = c.configureDesktopThreadRuntime(call, plan.Params)
 	switch call.Method {
-	case "model/list":
-		if call.Role == codexrelay.RoleDesktop &&
-			c.environment.runtime.ModelSource == settings.ModelSourceProvider {
-			result, err := providerDesktopModelCatalog()
-			if err != nil {
-				return plan, err
-			}
-			plan.Forward = false
-			plan.Result = result
-		}
 	case "thread/list":
 		if call.Role == codexrelay.RoleDesktop {
 			plan.Params = desktopThreadListAllProviders(call.Params)

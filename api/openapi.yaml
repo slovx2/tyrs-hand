@@ -1385,7 +1385,7 @@ components:
       properties:
         agentProfileId: { type: string, format: uuid }
         model: { type: string, nullable: true }
-        reasoningEffort: { type: string, nullable: true, enum: [low, medium, high, xhigh, max, ultra] }
+        reasoningEffort: { type: string, nullable: true, maxLength: 64 }
         serviceTier: { type: string, enum: [standard, fast] }
         collaborationMode: { type: string, enum: [default, plan] }
         settingsVersion: { type: integer, format: int64, minimum: 0 }
@@ -1439,39 +1439,48 @@ components:
     ClientModel:
       type: object
       required: [id, displayName, description, supportedReasoningEfforts,
-        defaultReasoningEffort, inputModalities, serviceTiers, defaultServiceTier, default]
+        defaultReasoningEffort, isDefault]
       properties:
         id: { type: string }
+        model: { type: string }
         displayName: { type: string }
         description: { type: string }
         supportedReasoningEfforts:
           type: array
           items:
             type: object
-            required: [id, description]
+            required: [reasoningEffort, description]
             properties:
-              id: { type: string, enum: [low, medium, high, xhigh, max, ultra] }
+              reasoningEffort: { type: string, minLength: 1 }
               description: { type: string }
-        defaultReasoningEffort: { type: string, enum: [low, medium, high, xhigh, max, ultra] }
-        inputModalities: { type: array, items: { type: string, enum: [text, image] } }
+        defaultReasoningEffort: { type: string, minLength: 1 }
+        inputModalities: { type: array, items: { type: string } }
+        additionalSpeedTiers: { type: array, items: { type: string } }
         serviceTiers:
           type: array
           items:
             type: object
             required: [id, name, description]
             properties:
-              id: { type: string, enum: [fast] }
+              id: { type: string }
               name: { type: string }
               description: { type: string }
-        defaultServiceTier: { type: string, enum: [standard, fast] }
-        default: { type: boolean }
+        defaultServiceTier: { type: string, nullable: true }
+        isDefault: { type: boolean }
+        hidden: { type: boolean }
+    ClientModelCatalog:
+      type: object
+      required: [data]
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/ClientModel" } }
+        nextCursor: { type: string, nullable: true }
     ClientBootstrap:
       type: object
       required: [serverId, protocolVersion, currentCursor, user, capabilities, environments,
-        projects, agentProfiles, modelCatalog, lastStartedSettings]
+        projects, agentProfiles, modelCatalogs, lastStartedSettings]
       properties:
         serverId: { type: string, format: uuid }
-        protocolVersion: { type: integer, enum: [2] }
+        protocolVersion: { type: integer, enum: [3] }
         currentCursor: { type: integer, format: int64, minimum: 0 }
         user:
           type: object
@@ -1490,7 +1499,9 @@ components:
             properties:
               id: { type: string, format: uuid }
               name: { type: string }
-        modelCatalog: { type: array, items: { $ref: "#/components/schemas/ClientModel" } }
+        modelCatalogs:
+          type: object
+          additionalProperties: { $ref: "#/components/schemas/ClientModelCatalog" }
         lastStartedSettings:
           allOf: [{ $ref: "#/components/schemas/ClientSessionSettings" }]
           nullable: true
@@ -1947,7 +1958,7 @@ components:
       type: object
       properties:
         model: { type: string, nullable: true, maxLength: 128 }
-        reasoningEffort: { type: string, nullable: true, enum: [low, medium, high, xhigh] }
+        reasoningEffort: { type: string, nullable: true, maxLength: 64 }
         serviceTier: { type: string, nullable: true, enum: [standard, fast] }
     CodexEffectivePreferences:
       type: object
@@ -1977,10 +1988,11 @@ components:
         forums: { type: array, items: { $ref: "#/components/schemas/CodexForumSettings" } }
     CodexSettingsList:
       type: object
-      required: [items, modelOptions]
+      required: [items, modelOptions, reasoningEffortOptions]
       properties:
         items: { type: array, items: { $ref: "#/components/schemas/CodexRepositorySettings" } }
         modelOptions: { type: array, items: { type: string } }
+        reasoningEffortOptions: { type: array, items: { type: string } }
     DiscordSettings:
       type: object
       required: [guildId, enabled, communityEnabled, tokenConfigured]

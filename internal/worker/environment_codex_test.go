@@ -30,6 +30,19 @@ func TestThreadLifecycleListParamsIncludeEveryProvider(t *testing.T) {
 	require.Empty(t, params["modelProviders"])
 }
 
+func TestHeartbeatMetadataKeepsCatalogsSeparatedByEnvironment(t *testing.T) {
+	firstID, secondID := uuid.New(), uuid.New()
+	registry := &environmentCodexRegistry{entries: map[uuid.UUID]*environmentCodex{
+		firstID:  {modelCatalog: json.RawMessage(`{"data":[{"id":"first"}]}`)},
+		secondID: {modelCatalog: json.RawMessage(`{"data":[{"id":"second"}]}`)},
+	}}
+	metadata := (&RemoteProcessor{environments: registry}).HeartbeatMetadata()
+	catalogs, ok := metadata["modelCatalogs"].(map[string]json.RawMessage)
+	require.True(t, ok)
+	require.JSONEq(t, `{"data":[{"id":"first"}]}`, string(catalogs[firstID.String()]))
+	require.JSONEq(t, `{"data":[{"id":"second"}]}`, string(catalogs[secondID.String()]))
+}
+
 func TestEnvironmentCodexObserverSubmitsThreadNamesFromRelay(t *testing.T) {
 	mock, err := mockcodex.Start(t)
 	require.NoError(t, err)

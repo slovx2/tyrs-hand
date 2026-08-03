@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/auth"
+	"github.com/slovx2/tyrs-hand/internal/codexcatalog"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/codexsettings"
 )
@@ -152,6 +153,19 @@ func (s *Server) clientBootstrap(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "读取客户端启动数据失败", err)
 		return
 	}
+	environmentIDs := make([]uuid.UUID, 0, len(environments))
+	for _, environment := range environments {
+		environmentIDs = append(environmentIDs, environment.ID)
+	}
+	catalogs, err := codexcatalog.EnvironmentCatalogs(c.Request.Context(), s.db, environmentIDs)
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取 Codex 模型目录失败", err)
+		return
+	}
+	modelCatalogs := make(map[string]json.RawMessage, len(catalogs))
+	for environmentID, catalog := range catalogs {
+		modelCatalogs[environmentID.String()] = catalog
+	}
 	lastSettings, err := loadClientLastSettings(c.Request.Context(), s.db,
 		session.AdministratorID)
 	if err != nil {
@@ -183,7 +197,7 @@ func (s *Server) clientBootstrap(c *gin.Context) {
 		"capabilities": gin.H{"attachments": true, "pushNotifications": true,
 			"sessionLifecycle": true, "planExecution": true},
 		"environments": environments, "projects": projects, "agentProfiles": profiles,
-		"modelCatalog": codexsettings.ModelCatalog(), "lastStartedSettings": lastSettings,
+		"modelCatalogs": modelCatalogs, "lastStartedSettings": lastSettings,
 	})
 }
 

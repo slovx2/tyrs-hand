@@ -13,6 +13,7 @@ describe('CodexSettingsPage', () => {
       http.get('/api/v1/settings/codex', () =>
         HttpResponse.json({
           modelOptions: ['gpt-5.6-sol', 'gpt-5.6-terra'],
+          reasoningEffortOptions: ['low', 'medium', 'high', 'xhigh'],
           items: [
             {
               id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
