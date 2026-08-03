@@ -12,8 +12,29 @@ describe('CodexSettingsPage', () => {
     server.use(
       http.get('/api/v1/settings/codex', () =>
         HttpResponse.json({
-          modelOptions: ['gpt-5.6-sol', 'gpt-5.6-terra'],
-          reasoningEffortOptions: ['low', 'medium', 'high', 'xhigh'],
+          models: [
+            {
+              id: 'gpt-5.6-sol',
+              supportedReasoningEfforts: [
+                { reasoningEffort: 'low' },
+                { reasoningEffort: 'medium' },
+                { reasoningEffort: 'high' },
+                { reasoningEffort: 'xhigh' },
+              ],
+              defaultReasoningEffort: 'low',
+              serviceTiers: [{ id: 'priority' }],
+              additionalSpeedTiers: ['fast'],
+              isDefault: true,
+            },
+            {
+              id: 'gpt-5.6-terra',
+              supportedReasoningEfforts: [{ reasoningEffort: 'medium' }],
+              defaultReasoningEffort: 'medium',
+              serviceTiers: [],
+              additionalSpeedTiers: [],
+              isDefault: false,
+            },
+          ],
           items: [
             {
               id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',

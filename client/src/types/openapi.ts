@@ -2124,8 +2124,7 @@ export interface components {
         };
         CodexSettingsList: {
             items: components["schemas"]["CodexRepositorySettings"][];
-            modelOptions: string[];
-            reasoningEffortOptions: string[];
+            models: components["schemas"]["ClientModel"][];
         };
         DiscordSettings: {
             guildId: string;

@@ -37,22 +37,21 @@ func (c *DisgoConnector) runtimeConfigurationModal(ctx context.Context,
 		return discord.ModalCreate{}, errors.New("设置卡已过期，请重新运行 `/codex config`")
 	}
 	var environmentID uuid.UUID
-	if err := c.manager.db.QueryRowContext(ctx, `SELECT session.development_environment_id
-		FROM discord_conversations conversation JOIN development_sessions session
-		ON session.id=conversation.session_id WHERE conversation.id=$1`, conversationID).
+	if err := c.manager.db.QueryRowContext(ctx, `SELECT forum.development_environment_id
+		FROM discord_conversations conversation JOIN discord_forums forum
+		ON forum.id=conversation.forum_id WHERE conversation.id=$1`, conversationID).
 		Scan(&environmentID); err != nil {
 		return discord.ModalCreate{}, err
 	}
-	models, efforts, err := codexOptionsForEnvironment(ctx, c.manager.db, environmentID)
+	models, err := codexModelsForEnvironment(ctx, c.manager.db, environmentID)
 	if err != nil {
 		return discord.ModalCreate{}, err
 	}
 	modelOptions, custom := modelModalOptions(state.Model, models)
 	modelSelect := discord.NewStringSelectMenu("model", "选择模型", modelOptions...).WithRequired(true)
-	tierSelect := discord.NewStringSelectMenu("service_tier", "选择速度",
-		discord.NewStringSelectMenuOption("标准", "standard").WithDefault(state.ServiceTier != "fast"),
-		discord.NewStringSelectMenuOption("快速", "fast").WithDefault(state.ServiceTier == "fast")).WithRequired(true)
-	effortSelect := effortModalSelect(state.ReasoningEffort, efforts)
+	tierSelect := tierModalSelect(state.ServiceTier, state.Model, models, "选择速度")
+	effortSelect := effortModalSelect(state.ReasoningEffort,
+		reasoningEffortsForModel(state.Model, models))
 	return discord.NewModalCreate(fmt.Sprintf("%s%s:%d", runtimeConfigurationModalPrefix,
 		conversationID, revision), "调整 Codex 运行参数",
 		discord.NewLabel("模型", modelSelect), discord.NewLabel("自定义模型", custom),
@@ -190,6 +189,20 @@ func (c *DisgoConnector) saveRuntimeConfiguration(event *events.ModalSubmitInter
 	}
 	var result ConfigurationUpdate
 	if err == nil {
+		var environmentID uuid.UUID
+		err = c.manager.db.QueryRowContext(context.Background(), `SELECT forum.development_environment_id
+			FROM discord_conversations conversation JOIN discord_forums forum
+			ON forum.id=conversation.forum_id WHERE conversation.id=$1`, conversationID).
+			Scan(&environmentID)
+		if err == nil {
+			var models []codexcatalog.Model
+			models, err = codexModelsForEnvironment(context.Background(), c.manager.db, environmentID)
+			if err == nil {
+				err = validateKnownModelSelection(model, effort, tier, models)
+			}
+		}
+	}
+	if err == nil {
 		result, err = c.conversations.SetRuntimePreferences(context.Background(),
 			c.guildID, event.Channel().ID().String(), event.User().ID.String(), conversationID,
 			revision, ConversationConfiguration{Model: model, ReasoningEffort: effort,
@@ -247,16 +260,15 @@ func (c *DisgoConnector) newCodexModal(ctx context.Context, forumDiscordID, user
 	if remembered {
 		applyUserCodexPreferences(&preferences, userPreferences)
 	}
-	models, efforts, err := codexOptionsForEnvironment(ctx, c.manager.db, environmentID)
+	models, err := codexModelsForEnvironment(ctx, c.manager.db, environmentID)
 	if err != nil {
 		return discord.ModalCreate{}, err
 	}
 	modelOptions, custom := modelModalOptions(preferences.Model, models)
 	modelSelect := discord.NewStringSelectMenu("model", "选择模型", modelOptions...).WithRequired(true)
-	tierSelect := discord.NewStringSelectMenu("service_tier", "选择服务等级",
-		discord.NewStringSelectMenuOption("标准", "standard").WithDefault(preferences.ServiceTier != "fast"),
-		discord.NewStringSelectMenuOption("快速", "fast").WithDefault(preferences.ServiceTier == "fast")).WithRequired(true)
-	effortSelect := effortModalSelect(preferences.ReasoningEffort, efforts)
+	tierSelect := tierModalSelect(preferences.ServiceTier, preferences.Model, models, "选择服务等级")
+	effortSelect := effortModalSelect(preferences.ReasoningEffort,
+		reasoningEffortsForModel(preferences.Model, models))
 	task := discord.NewParagraphTextInput("task").WithRequired(true).WithMinLength(1).WithMaxLength(2000).
 		WithPlaceholder("描述希望 Codex 完成的任务")
 	if mode == "" {
@@ -307,17 +319,17 @@ func (c *DisgoConnector) authorizedForum(ctx context.Context, forumDiscordID, us
 	return forumID, uuid.Nil, profileID, environmentID, nil
 }
 
-func codexOptionsForEnvironment(ctx context.Context, db *sql.DB, environmentID uuid.UUID) (
-	[]string, []string, error,
-) {
+func codexModelsForEnvironment(ctx context.Context, db *sql.DB,
+	environmentID uuid.UUID,
+) ([]codexcatalog.Model, error) {
 	catalogs, err := codexcatalog.EnvironmentCatalogs(ctx, db, []uuid.UUID{environmentID})
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return codexcatalog.ModelIDs(catalogs), codexcatalog.ReasoningEfforts(catalogs), nil
+	return codexcatalog.Models(catalogs), nil
 }
 
-func modelModalOptions(model string, models []string) (
+func modelModalOptions(model string, models []codexcatalog.Model) (
 	[]discord.StringSelectMenuOption, discord.TextInputComponent,
 ) {
 	if len(models) > 23 {
@@ -326,9 +338,9 @@ func modelModalOptions(model string, models []string) (
 	options := make([]discord.StringSelectMenuOption, 0, len(models)+2)
 	preset := false
 	for _, value := range models {
-		selected := value == model
+		selected := value.ID == model
 		preset = preset || selected
-		options = append(options, discord.NewStringSelectMenuOption(value, value).WithDefault(selected))
+		options = append(options, discord.NewStringSelectMenuOption(value.ID, value.ID).WithDefault(selected))
 	}
 	options = append(options,
 		discord.NewStringSelectMenuOption("Codex 默认", "__default__").WithDefault(model == ""),
@@ -338,6 +350,60 @@ func modelModalOptions(model string, models []string) (
 		custom = custom.WithValue(model)
 	}
 	return options, custom
+}
+
+func selectedCatalogModel(model string, models []codexcatalog.Model) (codexcatalog.Model, bool) {
+	for _, option := range models {
+		if option.ID == model || (model == "" && option.IsDefault) {
+			return option, true
+		}
+	}
+	return codexcatalog.Model{}, false
+}
+
+func reasoningEffortsForModel(model string, models []codexcatalog.Model) []string {
+	selected, ok := selectedCatalogModel(model, models)
+	if !ok {
+		return nil
+	}
+	result := make([]string, 0, len(selected.SupportedReasoningEfforts))
+	for _, effort := range selected.SupportedReasoningEfforts {
+		if effort.ReasoningEffort != "" {
+			result = append(result, effort.ReasoningEffort)
+		}
+	}
+	return result
+}
+
+func tierModalSelect(tier, model string, models []codexcatalog.Model,
+	placeholder string,
+) discord.StringSelectMenuComponent {
+	selected, known := selectedCatalogModel(model, models)
+	fast := known && codexcatalog.SupportsFast(selected)
+	options := []discord.StringSelectMenuOption{
+		discord.NewStringSelectMenuOption("标准", "standard").WithDefault(tier != "fast" || !fast),
+	}
+	if fast {
+		options = append(options,
+			discord.NewStringSelectMenuOption("快速", "fast").WithDefault(tier == "fast"))
+	}
+	return discord.NewStringSelectMenu("service_tier", placeholder, options...).WithRequired(true)
+}
+
+func validateKnownModelSelection(model, effort, tier string,
+	models []codexcatalog.Model,
+) error {
+	selected, known := selectedCatalogModel(model, models)
+	if !known {
+		return nil
+	}
+	if tier == "fast" && !codexcatalog.SupportsFast(selected) {
+		return fmt.Errorf("模型 %s 不支持快速模式", selected.ID)
+	}
+	if effort != "" && !slices.Contains(reasoningEffortsForModel(model, models), effort) {
+		return fmt.Errorf("模型 %s 不支持思考等级 %s", selected.ID, effort)
+	}
+	return nil
 }
 
 func effortModalSelect(effort string, efforts []string) discord.StringSelectMenuComponent {
@@ -384,6 +450,7 @@ func (c *DisgoConnector) createCodexPost(event *events.ModalSubmitInteractionCre
 	}
 	ctx := context.Background()
 	var err error
+	var environmentID uuid.UUID
 	if customSelected && model == "" {
 		err = errors.New("选择自定义模型时必须填写模型名称")
 	}
@@ -391,7 +458,14 @@ func (c *DisgoConnector) createCodexPost(event *events.ModalSubmitInteractionCre
 		err = errors.New("任务内容不能为空")
 	}
 	if err == nil {
-		_, _, _, _, err = c.authorizedForum(ctx, forumDiscordID, event.User().ID.String())
+		_, _, _, environmentID, err = c.authorizedForum(ctx, forumDiscordID, event.User().ID.String())
+	}
+	if err == nil {
+		var models []codexcatalog.Model
+		models, err = codexModelsForEnvironment(ctx, c.manager.db, environmentID)
+		if err == nil {
+			err = validateKnownModelSelection(model, effort, tier, models)
+		}
 	}
 	forumSnowflake, parseErr := snowflake.Parse(forumDiscordID)
 	if err == nil {

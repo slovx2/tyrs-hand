@@ -24,6 +24,7 @@ import (
 	disgorest "github.com/disgoorg/disgo/rest"
 	"github.com/disgoorg/snowflake/v2"
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codexcatalog"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/database"
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
@@ -1986,10 +1987,21 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 	require.Error(t, err)
 	_, err = connector.newCodexModal(ctx, seed.developmentForumChannelID, "1002", "default")
 	require.Error(t, err)
-	options, custom := modelModalOptions("private-model", []string{"codex-model"})
-	require.Len(t, options, 3)
+	models := []codexcatalog.Model{
+		{ID: "codex-model", IsDefault: true,
+			SupportedReasoningEfforts: []codexcatalog.ReasoningEffort{{ReasoningEffort: "xhigh"}},
+			ServiceTiers:              []codexcatalog.ServiceTier{{ID: "priority"}}},
+		{ID: "standard-model"},
+	}
+	options, custom := modelModalOptions("private-model", models)
+	require.Len(t, options, 4)
 	require.Equal(t, "private-model", custom.Value)
 	require.NotEmpty(t, effortModalSelect("xhigh", []string{"low", "xhigh"}).Options)
+	require.Len(t, tierModalSelect("fast", "codex-model", models, "速度").Options, 2)
+	require.Len(t, tierModalSelect("fast", "standard-model", models, "速度").Options, 1)
+	require.NoError(t, validateKnownModelSelection("codex-model", "xhigh", "fast", models))
+	require.ErrorContains(t,
+		validateKnownModelSelection("standard-model", "xhigh", "fast", models), "不支持快速模式")
 	require.Empty(t, firstModalValue(nil))
 
 	connector.onMessage(newMessageEvent(t, client, "2011", "3012", "edit configuration"))

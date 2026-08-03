@@ -1988,11 +1988,10 @@ components:
         forums: { type: array, items: { $ref: "#/components/schemas/CodexForumSettings" } }
     CodexSettingsList:
       type: object
-      required: [items, modelOptions, reasoningEffortOptions]
+      required: [items, models]
       properties:
         items: { type: array, items: { $ref: "#/components/schemas/CodexRepositorySettings" } }
-        modelOptions: { type: array, items: { type: string } }
-        reasoningEffortOptions: { type: array, items: { type: string } }
+        models: { type: array, items: { $ref: "#/components/schemas/ClientModel" } }
     DiscordSettings:
       type: object
       required: [guildId, enabled, communityEnabled, tokenConfigured]

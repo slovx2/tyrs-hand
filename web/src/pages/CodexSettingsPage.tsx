@@ -37,8 +37,16 @@ interface RepositorySettings {
 
 interface SettingsResponse {
   items: RepositorySettings[]
-  modelOptions: string[]
-  reasoningEffortOptions: string[]
+  models: ModelOption[]
+}
+
+interface ModelOption {
+  id: string
+  supportedReasoningEfforts: { reasoningEffort: string }[]
+  defaultReasoningEffort: string
+  additionalSpeedTiers?: string[]
+  serviceTiers?: { id: string }[]
+  isDefault: boolean
 }
 
 export function CodexSettingsPage() {
@@ -70,8 +78,7 @@ export function CodexSettingsPage() {
               endpoint={`/settings/codex/repositories/${repository.id}`}
               value={repository.settings}
               effective={repository.effective}
-              models={settings.data.modelOptions}
-              reasoningEfforts={settings.data.reasoningEffortOptions}
+              models={settings.data.models}
             />
             {repository.forums.length > 0 && (
               <div className="mt-6 grid gap-4 border-t pt-6 [border-color:var(--border)]">
@@ -93,8 +100,7 @@ export function CodexSettingsPage() {
                       endpoint={`/settings/codex/forums/${forum.id}`}
                       value={forum.settings}
                       effective={forum.effective}
-                      models={settings.data.modelOptions}
-                      reasoningEfforts={settings.data.reasoningEffortOptions}
+                      models={settings.data.models}
                     />
                   </div>
                 ))}
@@ -115,17 +121,16 @@ function ScopeEditor({
   value,
   effective,
   models,
-  reasoningEfforts,
 }: {
   endpoint: string
   value: Preferences
   effective: EffectivePreferences
-  models: string[]
-  reasoningEfforts: string[]
+  models: ModelOption[]
 }) {
   const queryClient = useQueryClient()
   const showToast = useUI((state) => state.showToast)
-  const isPreset = value.model === null || models.includes(value.model)
+  const modelIDs = models.map((model) => model.id)
+  const isPreset = value.model === null || modelIDs.includes(value.model)
   const [modelMode, setModelMode] = useState(
     value.model === null
       ? '__inherit__'
@@ -142,6 +147,34 @@ function ScopeEditor({
   const [reasoningEffort, setReasoningEffort] = useState(
     value.reasoningEffort || '__inherit__',
   )
+  const selectedModelID =
+    modelMode === '__inherit__'
+      ? effective.model
+      : modelMode === '__custom__'
+        ? customModel.trim()
+        : modelMode
+  const selectedModel =
+    models.find((model) => model.id === selectedModelID) ||
+    (selectedModelID ? undefined : models.find((model) => model.isDefault))
+  const reasoningEfforts =
+    selectedModel?.supportedReasoningEfforts.map(
+      (option) => option.reasoningEffort,
+    ) || []
+  const supportsFast = Boolean(
+    selectedModel?.serviceTiers?.some(
+      (tier) => tier.id === 'fast' || tier.id === 'priority',
+    ) || selectedModel?.additionalSpeedTiers?.includes('fast'),
+  )
+  const normalizedServiceTier =
+    serviceTier === 'fast' && !supportsFast ? 'standard' : serviceTier
+  const defaultReasoningEffort = selectedModel?.defaultReasoningEffort || ''
+  const normalizedReasoningEffort =
+    reasoningEffort !== '__inherit__' &&
+    !reasoningEfforts.includes(reasoningEffort)
+      ? reasoningEfforts.includes(defaultReasoningEffort)
+        ? defaultReasoningEffort
+        : '__inherit__'
+      : reasoningEffort
   const mutation = useMutation({
     mutationFn: () => {
       const model =
@@ -154,9 +187,14 @@ function ScopeEditor({
         method: 'PUT',
         body: JSON.stringify({
           model,
-          serviceTier: serviceTier === '__inherit__' ? null : serviceTier,
+          serviceTier:
+            normalizedServiceTier === '__inherit__'
+              ? null
+              : normalizedServiceTier,
           reasoningEffort:
-            reasoningEffort === '__inherit__' ? null : reasoningEffort,
+            normalizedReasoningEffort === '__inherit__'
+              ? null
+              : normalizedReasoningEffort,
         }),
       })
     },
@@ -179,8 +217,8 @@ function ScopeEditor({
               继承（{effective.model || 'Codex 默认'}）
             </option>
             {models.map((model) => (
-              <option value={model} key={model}>
-                {model}
+              <option value={model.id} key={model.id}>
+                {model.id}
               </option>
             ))}
             <option value="__custom__">自定义…</option>
@@ -199,31 +237,26 @@ function ScopeEditor({
           服务等级
           <select
             className="field mt-1"
-            value={serviceTier}
+            value={normalizedServiceTier}
             onChange={(event) => setServiceTier(event.target.value)}
           >
             <option value="__inherit__">
               继承（{tierLabel(effective.serviceTier)}）
             </option>
             <option value="standard">标准</option>
-            <option value="fast">快速</option>
+            {supportsFast && <option value="fast">快速</option>}
           </select>
         </label>
         <label className="text-sm">
           思考等级
           <select
             className="field mt-1"
-            value={reasoningEffort}
+            value={normalizedReasoningEffort}
             onChange={(event) => setReasoningEffort(event.target.value)}
           >
             <option value="__inherit__">
               继承（{effortLabel(effective.reasoningEffort)}）
             </option>
-            {reasoningEffort &&
-              reasoningEffort !== '__inherit__' &&
-              !reasoningEfforts.includes(reasoningEffort) && (
-                <option value={reasoningEffort}>{reasoningEffort}</option>
-              )}
             {reasoningEfforts.map((effort) => (
               <option value={effort} key={effort}>
                 {effort}

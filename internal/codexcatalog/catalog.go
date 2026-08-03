@@ -90,43 +90,60 @@ func Parse(raw json.RawMessage) (Catalog, error) {
 }
 
 func ModelIDs(catalogs map[uuid.UUID]json.RawMessage) []string {
-	result := make([]string, 0)
+	models := Models(catalogs)
+	result := make([]string, 0, len(models))
+	for _, model := range models {
+		result = append(result, model.ID)
+	}
+	return result
+}
+
+func Models(catalogs map[uuid.UUID]json.RawMessage) []Model {
+	byID := make(map[string]Model)
 	for _, raw := range catalogs {
 		catalog, err := Parse(raw)
 		if err != nil {
 			continue
 		}
 		for _, model := range catalog.Data {
-			id := strings.TrimSpace(model.ID)
-			if id != "" && !model.Hidden && !slices.Contains(result, id) {
-				result = append(result, id)
+			model.ID = strings.TrimSpace(model.ID)
+			if model.ID != "" && !model.Hidden {
+				if _, exists := byID[model.ID]; !exists {
+					byID[model.ID] = model
+				}
 			}
 		}
 	}
-	slices.Sort(result)
+	result := make([]Model, 0, len(byID))
+	for _, model := range byID {
+		result = append(result, model)
+	}
+	slices.SortFunc(result, func(left, right Model) int {
+		return strings.Compare(left.ID, right.ID)
+	})
 	return result
 }
 
 func ReasoningEfforts(catalogs map[uuid.UUID]json.RawMessage) []string {
 	result := make([]string, 0)
-	for _, raw := range catalogs {
-		catalog, err := Parse(raw)
-		if err != nil {
-			continue
-		}
-		for _, model := range catalog.Data {
-			if model.Hidden {
-				continue
-			}
-			for _, option := range model.SupportedReasoningEfforts {
-				effort := strings.TrimSpace(option.ReasoningEffort)
-				if effort != "" && !slices.Contains(result, effort) {
-					result = append(result, effort)
-				}
+	for _, model := range Models(catalogs) {
+		for _, option := range model.SupportedReasoningEfforts {
+			effort := strings.TrimSpace(option.ReasoningEffort)
+			if effort != "" && !slices.Contains(result, effort) {
+				result = append(result, effort)
 			}
 		}
 	}
 	return result
+}
+
+func SupportsFast(model Model) bool {
+	for _, tier := range model.ServiceTiers {
+		if tier.ID == "fast" || tier.ID == "priority" {
+			return true
+		}
+	}
+	return slices.Contains(model.AdditionalSpeedTiers, "fast")
 }
 
 func EnvironmentCatalogs(ctx context.Context, db *sql.DB,

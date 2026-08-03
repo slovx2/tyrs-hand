@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 type catalogCaller struct {
@@ -44,5 +46,17 @@ func TestFetchPreservesCodexPagesAndOpaqueCapabilities(t *testing.T) {
 	}
 	if len(catalog.Data) != 2 || catalog.Data[0].SupportedReasoningEfforts[0].ReasoningEffort != "future" {
 		t.Fatalf("Codex 原生目录没有被完整保留: %#v", catalog)
+	}
+}
+
+func TestModelsPreserveNativeCapabilities(t *testing.T) {
+	environmentID := uuid.New()
+	catalogs := map[uuid.UUID]json.RawMessage{environmentID: json.RawMessage(`{"data":[
+		{"id":"standard","supportedReasoningEfforts":[],"defaultReasoningEffort":"low"},
+		{"id":"fast","supportedReasoningEfforts":[],"defaultReasoningEffort":"low",
+		 "serviceTiers":[{"id":"priority"}],"additionalSpeedTiers":["fast"]}]}`)}
+	models := Models(catalogs)
+	if len(models) != 2 || models[0].ID != "fast" || !SupportsFast(models[0]) || SupportsFast(models[1]) {
+		t.Fatalf("模型能力没有忠实保留: %#v", models)
 	}
 }

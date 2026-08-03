@@ -23,8 +23,7 @@ func (s *Server) listCodexSettings(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": items,
-		"modelOptions":           codexcatalog.ModelIDs(catalogs),
-		"reasoningEffortOptions": codexcatalog.ReasoningEfforts(catalogs)})
+		"models": codexcatalog.Models(catalogs)})
 }
 
 func (s *Server) putRepositoryCodexSettings(c *gin.Context) {
