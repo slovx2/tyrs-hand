@@ -6,6 +6,7 @@ import { AppState } from "react-native";
 
 import type { Connection } from "@/db/connections";
 import { registerPush } from "@/notifications/register";
+import { isPreviewMode, isPreviewServerId } from "@/preview/config";
 import { useAppStore } from "@/store/appStore";
 import { processOutbox, recoverFailedOutbox } from "@/sync/outbox";
 import { subscribeToUpdates, Synchronizer } from "@/sync/synchronizer";
@@ -24,6 +25,7 @@ export function AppRuntime({ children }: { children: ReactNode }) {
   }, [initialize]);
   useEffect(() => {
     if (!connection) return;
+    if (isPreviewMode && isPreviewServerId(connection.serverId)) return;
     const synchronizer = new Synchronizer(connection, refresh);
     void synchronizer.start().catch(() => undefined);
     void resumeOutbox(connection).then(refresh).catch(() => undefined);
@@ -39,13 +41,16 @@ export function AppRuntime({ children }: { children: ReactNode }) {
     });
     return () => { synchronizer.stop(); unsubscribeUpdates(); subscription.remove(); };
   }, [connection, refresh]);
-  useEffect(() => Notifications.addNotificationResponseReceivedListener((response) => {
-    const data = response.notification.request.content.data as { serverId?: string; sessionId?: string };
-    if (!data.serverId || !data.sessionId) return;
-    void useAppStore.getState().switchConnection(data.serverId).then(() => {
-      router.push({ pathname: "/session/[id]", params: { id: data.sessionId } });
-    });
-  }).remove, []);
+  useEffect(() => {
+    if (isPreviewMode) return;
+    return Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as { serverId?: string; sessionId?: string };
+      if (!data.serverId || !data.sessionId) return;
+      void useAppStore.getState().switchConnection(data.serverId).then(() => {
+        router.push({ pathname: "/session/[id]", params: { id: data.sessionId } });
+      });
+    }).remove;
+  }, []);
   return <><StatusBar style={theme.dark ? "light" : "dark"} />{children}</>;
 }
 

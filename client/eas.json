@@ -4,15 +4,15 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "env": { "APP_ENV": "development" }
+      "env": { "APP_ENV": "development", "EXPO_PUBLIC_TYRS_HAND_PREVIEW": "false" }
     },
     "preview": {
       "distribution": "internal",
-      "env": { "APP_ENV": "preview" }
+      "env": { "APP_ENV": "preview", "EXPO_PUBLIC_TYRS_HAND_PREVIEW": "true" }
     },
     "production": {
       "autoIncrement": true,
-      "env": { "APP_ENV": "production" }
+      "env": { "APP_ENV": "production", "EXPO_PUBLIC_TYRS_HAND_PREVIEW": "false" }
     }
   }
 }

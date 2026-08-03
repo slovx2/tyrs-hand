@@ -25,6 +25,10 @@ function publish(event: SyncEvent): void {
   for (const listener of listeners) listener(event);
 }
 
+export function publishLocalUpdate(event: SyncEvent): void {
+  publish(event);
+}
+
 export class Synchronizer {
   private socket: WebSocket | null = null;
   private stopped = false;

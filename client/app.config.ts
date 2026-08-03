@@ -36,5 +36,5 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ["expo-notifications", { defaultChannel: "任务状态" }],
   ],
   experiments: { typedRoutes: true },
-  extra: { appEnvironment: environment },
+  extra: { appEnvironment: environment, previewMode: environment === "preview" },
 });

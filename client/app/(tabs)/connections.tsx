@@ -7,6 +7,7 @@ import { Button, Card, EmptyState, Muted, Screen, StatusDot, Title } from "@/com
 import { SegmentedControl } from "@/components/SegmentedControl";
 import { removeConnection, renameConnection } from "@/db/connections";
 import { connectPairingUri } from "@/features/connections/connectPairing";
+import { isPreviewMode } from "@/preview/config";
 import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
 import type { ThemeMode } from "@/theme/tokens";
@@ -38,6 +39,7 @@ export default function ConnectionsScreen() {
     } finally { setClaiming(false); }
   };
   const openScanner = async () => {
+    if (isPreviewMode) { setScanning(true); return; }
     if (!permission?.granted) {
       const next = await requestPermission();
       if (!next.granted) { Alert.alert("需要相机权限", "请在系统设置中允许相机权限。" ); return; }
@@ -81,8 +83,10 @@ export default function ConnectionsScreen() {
         </Pressable>)}
     </View>
     <Modal testID="connection:scanner" visible={scanning} animationType="slide" onRequestClose={() => setScanning(false)}>
-      <View style={styles.scanner}><CameraView style={StyleSheet.absoluteFill} barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-        onBarcodeScanned={({ data }) => void scanned(data)} />
+      <View style={styles.scanner}>{isPreviewMode ? <View style={[StyleSheet.absoluteFill, styles.previewCamera,
+        { backgroundColor: theme.colors.surfaceAlt }]}><View style={[styles.previewQr, { borderColor: theme.colors.textMuted }]} />
+        <Muted>预览模式相机画面</Muted></View> : <CameraView style={StyleSheet.absoluteFill}
+        barcodeScannerSettings={{ barcodeTypes: ["qr"] }} onBarcodeScanned={({ data }) => void scanned(data)} />}
         <View style={styles.scannerOverlay}><Title>扫描设备二维码</Title><Muted>二维码必须是协议 v2，并包含稳定 serverId。</Muted>
           <Button title={claiming ? "等待确认…" : "取消"} disabled={claiming} onPress={() => setScanning(false)} /></View>
       </View>
@@ -104,6 +108,8 @@ const styles = StyleSheet.create({
   headerCopy: { flex: 1, minWidth: 0 },
   theme: { paddingHorizontal: 16, gap: 6 }, list: { padding: 16, gap: 8 }, connection: { padding: 13 },
   row: { flexDirection: "row", alignItems: "center", gap: 10 }, scanner: { flex: 1, justifyContent: "flex-end" },
+  previewCamera: { alignItems: "center", justifyContent: "center", gap: 14 },
+  previewQr: { width: 160, height: 160, borderWidth: 8, borderRadius: 12 },
   scannerOverlay: { margin: 20, padding: 18, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.92)", gap: 8 },
   modalBackdrop: { flex: 1, justifyContent: "center", padding: 24 }, renameCard: { gap: 12 },
   input: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, minHeight: 44, paddingHorizontal: 12,

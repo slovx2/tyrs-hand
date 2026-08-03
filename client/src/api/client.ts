@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { getToken, type Connection } from "@/db/connections";
+import { isPreviewMode, isPreviewServerId } from "@/preview/config";
 import {
   attachmentSchema,
   bootstrapSchema,
@@ -31,6 +32,10 @@ export class ClientApi {
   constructor(readonly connection: Connection) {}
 
   private async request<T>(path: string, schema: z.ZodType<T>, init?: RequestInit): Promise<T> {
+    if (isPreviewMode && isPreviewServerId(this.connection.serverId)) {
+      const { requestPreview } = await import("@/preview/runtime");
+      return schema.parse(await requestPreview(this.connection.serverId, path, init));
+    }
     const token = await getToken(this.connection.serverId);
     if (!token) throw new ApiError("设备凭证不存在，请重新连接", 401);
     const headers = new Headers(init?.headers);

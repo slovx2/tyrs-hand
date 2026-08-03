@@ -1,6 +1,7 @@
 import { ClientApi } from "@/api/client";
 import { getDatabase, runDatabaseWrite } from "@/db/database";
 import type { Connection } from "@/db/connections";
+import { isPreviewMode, isPreviewServerId } from "@/preview/config";
 import type { SessionSettings } from "@/types/protocol";
 
 export type LocalAttachment = {
@@ -35,6 +36,11 @@ export async function enqueueTask(input: {
   settings: SessionSettings;
   attachments: LocalAttachment[];
 }): Promise<void> {
+  if (isPreviewMode && isPreviewServerId(input.connection.serverId)) {
+    const { enqueuePreviewTask } = await import("@/preview/runtime");
+    enqueuePreviewTask(input);
+    return;
+  }
   await insertOutbox(input.connection.serverId, input.localId, "create_session", null,
     input.projectId, { text: input.text, settings: input.settings, attachments: input.attachments });
 }
@@ -46,6 +52,11 @@ export async function enqueueMessage(input: {
   text: string;
   attachments: LocalAttachment[];
 }): Promise<void> {
+  if (isPreviewMode && isPreviewServerId(input.connection.serverId)) {
+    const { enqueuePreviewMessage } = await import("@/preview/runtime");
+    enqueuePreviewMessage(input);
+    return;
+  }
   await insertOutbox(input.connection.serverId, input.localId, "send_message", input.sessionId,
     null, { text: input.text, attachments: input.attachments });
 }
@@ -61,6 +72,10 @@ async function insertOutbox(serverId: string, localId: string, kind: OutboxItem[
 }
 
 export async function listOutbox(serverId: string, sessionId?: string): Promise<OutboxItem[]> {
+  if (isPreviewMode && isPreviewServerId(serverId)) {
+    const { listPreviewOutbox } = await import("@/preview/runtime");
+    return listPreviewOutbox(serverId, sessionId);
+  }
   const database = await getDatabase();
   const rows = sessionId
     ? await database.getAllAsync<Record<string, string | null>>(`SELECT * FROM outbox
@@ -76,18 +91,33 @@ export async function listOutbox(serverId: string, sessionId?: string): Promise<
 }
 
 export async function retryOutbox(serverId: string, localId: string): Promise<void> {
+  if (isPreviewMode && isPreviewServerId(serverId)) {
+    const { retryPreviewOutbox } = await import("@/preview/runtime");
+    retryPreviewOutbox(serverId, localId);
+    return;
+  }
   await runDatabaseWrite((database) => database.runAsync(
     `UPDATE outbox SET status='pending',error=NULL,updated_at=?
     WHERE server_id=? AND local_id=?`, new Date().toISOString(), serverId, localId));
 }
 
 export async function recoverFailedOutbox(serverId: string): Promise<void> {
+  if (isPreviewMode && isPreviewServerId(serverId)) {
+    const { recoverPreviewOutbox } = await import("@/preview/runtime");
+    recoverPreviewOutbox(serverId);
+    return;
+  }
   await runDatabaseWrite((database) => database.runAsync(
     `UPDATE outbox SET status='pending',error=NULL,updated_at=?
     WHERE server_id=? AND status='failed'`, new Date().toISOString(), serverId));
 }
 
 export async function discardOutbox(serverId: string, localId: string): Promise<void> {
+  if (isPreviewMode && isPreviewServerId(serverId)) {
+    const { discardPreviewOutbox } = await import("@/preview/runtime");
+    discardPreviewOutbox(serverId, localId);
+    return;
+  }
   await runDatabaseWrite((database) => database.runAsync(
     "DELETE FROM outbox WHERE server_id=? AND local_id=?", serverId, localId));
 }
@@ -95,6 +125,11 @@ export async function discardOutbox(serverId: string, localId: string): Promise<
 let processing = false;
 
 export async function processOutbox(connection: Connection): Promise<void> {
+  if (isPreviewMode && isPreviewServerId(connection.serverId)) {
+    const { processPreviewOutbox } = await import("@/preview/runtime");
+    processPreviewOutbox(connection);
+    return;
+  }
   if (processing) return;
   processing = true;
   try {
