@@ -88,9 +88,12 @@ func TestThreadPayloadAndSkillInput(t *testing.T) {
 		},
 	})
 	require.Equal(t, "model", payload["model"])
-	require.Equal(t, "high", payload["effort"])
+	require.NotContains(t, payload, "effort")
+	require.NotContains(t, payload, "serviceTier")
 	require.Equal(t, filepath.Clean(root), payload["cwd"])
 	config := payload["config"].(map[string]any)
+	require.Equal(t, "high", config["model_reasoning_effort"])
+	require.Equal(t, "priority", config["service_tier"])
 	require.Equal(t, false, config["features"].(map[string]any)["memories"])
 	require.Equal(t, true, config["features"].(map[string]any)["custom"])
 	require.Equal(t, []any{"hook"}, config["hooks"].(map[string]any)["Stop"])

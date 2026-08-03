@@ -159,6 +159,8 @@ func TestDesktopRelayConfiguresManagedRuntimeAcrossThreadLifecycle(t *testing.T)
 		Role: codexrelay.RoleDesktop, Method: "thread/start",
 		Params: json.RawMessage(`{
 			"cwd":"/workspace",
+			"effort":"xhigh",
+			"serviceTier":"fast",
 			"dynamicTools":[{"type":"namespace","name":"personal","tools":[]}],
 			"config":{
 				"model_providers":{"personal":{"base_url":"https://personal.example/v1"}},
@@ -178,6 +180,10 @@ func TestDesktopRelayConfiguresManagedRuntimeAcrossThreadLifecycle(t *testing.T)
 	require.NoError(t, json.Unmarshal(plan.Params, &params))
 	runtimeConfig := params["config"].(map[string]any)
 	require.Equal(t, "tyrs-hand-provider", runtimeConfig["model_provider"])
+	require.Equal(t, "xhigh", runtimeConfig["model_reasoning_effort"])
+	require.Equal(t, "fast", runtimeConfig["service_tier"])
+	require.NotContains(t, params, "effort")
+	require.NotContains(t, params, "serviceTier")
 	require.Contains(t, runtimeConfig["model_providers"], "personal")
 	mcpServers := runtimeConfig["mcp_servers"].(map[string]any)
 	require.Contains(t, mcpServers, "personal")

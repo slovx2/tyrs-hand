@@ -274,14 +274,14 @@ func threadPayload(options ports.ThreadOptions) map[string]any {
 		"features":                map[string]any{"unified_exec": true, "memories": false, "hooks": true},
 	}
 	mergeConfig(config, options.RuntimeConfig)
+	optional(config, "model_reasoning_effort", options.ReasoningEffort)
+	optional(config, "service_tier", options.ServiceTier)
 	payload := map[string]any{
 		"cwd": absolute(options.CWD), "runtimeWorkspaceRoots": []string{absolute(options.CWD)},
 		"approvalPolicy": options.ApprovalPolicy, "sandbox": options.Sandbox,
 		"config": config, "dynamicTools": options.DynamicTools,
 	}
 	optional(payload, "model", options.Model)
-	optional(payload, "effort", options.ReasoningEffort)
-	optional(payload, "serviceTier", options.ServiceTier)
 	optional(payload, "baseInstructions", options.BaseInstructions)
 	optional(payload, "developerInstructions", options.DeveloperInstructions)
 	return payload

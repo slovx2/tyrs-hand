@@ -493,6 +493,14 @@ func (c *desktopRelayController) injectDesktopRuntime(params json.RawMessage,
 	if config == nil {
 		config = make(map[string]any)
 	}
+	if effort, ok := value["effort"].(string); ok && strings.TrimSpace(effort) != "" {
+		config["model_reasoning_effort"] = strings.TrimSpace(effort)
+	}
+	if tier, ok := value["serviceTier"].(string); ok && strings.TrimSpace(tier) != "" {
+		config["service_tier"] = strings.TrimSpace(tier)
+	}
+	delete(value, "effort")
+	delete(value, "serviceTier")
 	applyModelProviderConfig(config, c.environment.runtime.ModelSource,
 		c.environment.runtime.ModelBaseURL)
 	if options.includeBrowserMCP {
