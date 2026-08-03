@@ -216,13 +216,6 @@ func (s *Server) listJobs(c *gin.Context) {
 		[]string{"id", "workItemId", "triggerRuleId", "triggerEvidence", "status", "priority", "attemptCount", "maxAttempts", "workerId", "leaseEpoch", "leaseExpiresAt", "lastError", "createdAt", "updatedAt", "executionNode"})
 }
 
-func (s *Server) listWorkers(c *gin.Context) {
-	s.listRows(c, `SELECT w.id, w.version, w.status, w.metadata, w.heartbeat_at, w.started_at,
-		n.name FROM worker_nodes w LEFT JOIN execution_nodes n ON n.id = w.execution_node_id
-		ORDER BY w.id`, []string{"id", "version", "status", "metadata", "heartbeatAt",
-		"startedAt", "executionNode"})
-}
-
 func (s *Server) listInstallations(c *gin.Context) {
 	s.listRows(c, `SELECT id, provider, external_id, account_login, account_type, suspended_at, updated_at FROM scm_installations ORDER BY account_login`,
 		[]string{"id", "provider", "externalId", "accountLogin", "accountType", "suspendedAt", "updatedAt"})

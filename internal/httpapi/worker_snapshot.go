@@ -16,11 +16,7 @@ func (s *Server) loadWorkerSnapshot(ctx context.Context,
 	claimed *codexcontrol.ClaimedControl,
 ) (workerprotocol.TaskSnapshot, error) {
 	var result workerprotocol.TaskSnapshot
-	provider, err := s.settings.AgentProvider(ctx)
-	if err != nil {
-		return result, err
-	}
-	err = s.db.QueryRowContext(ctx, `SELECT name, COALESCE(model,''),
+	err := s.db.QueryRowContext(ctx, `SELECT name, COALESCE(model,''),
 		COALESCE(reasoning_effort,''), COALESCE(service_tier,''), sandbox,
 		approval_policy, network_enabled FROM agent_profiles WHERE id = $1`,
 		claimed.AgentProfileID).Scan(&result.Runtime.ProfileName, &result.Runtime.Model,
@@ -29,10 +25,6 @@ func (s *Server) loadWorkerSnapshot(ctx context.Context,
 	if err != nil {
 		return result, err
 	}
-	result.Runtime.ModelSource = provider.ModelSource
-	result.Runtime.BaseURL = provider.BaseURL
-	result.Runtime.ProxyURL = provider.ProxyURL
-	result.Runtime.ConfigSignature = provider.ConfigSignature
 	agents, err := s.settings.GlobalAgents(ctx)
 	if err != nil {
 		return result, err

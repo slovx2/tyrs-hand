@@ -129,7 +129,7 @@ func (p *RemoteProcessor) coordinateEnvironment(ctx context.Context,
 	unlock := devcontainer.LockRemoteEnvironment(manifest.EnvironmentID)
 	defer unlock()
 	state := workerprotocol.EnvironmentDaemonState{EnvironmentID: manifest.EnvironmentID,
-		Status: "starting", AppServerStatus: "starting", RelayStatus: "starting",
+		Status: "starting", AppServerStatus: "starting", HubStatus: "starting",
 		SSHStatus: environmentSSHState(manifest, "starting")}
 	_ = p.client.EnvironmentDaemonState(ctx, state)
 	runtime, err := p.development.PrepareRemoteRuntime(ctx, *manifest)
@@ -195,7 +195,7 @@ func (p *RemoteProcessor) coordinateEnvironment(ctx context.Context,
 	}
 	if err != nil {
 		state.Status, state.Error = "error", err.Error()
-		state.AppServerStatus, state.RelayStatus = "error", "error"
+		state.AppServerStatus, state.HubStatus = "error", "error"
 		state.SSHStatus = environmentSSHState(manifest, "error")
 		_ = p.client.EnvironmentDaemonState(context.Background(), state)
 		_ = p.client.DevelopmentProjectSnapshot(ctx,
@@ -204,7 +204,7 @@ func (p *RemoteProcessor) coordinateEnvironment(ctx context.Context,
 			})
 		return err
 	}
-	state.Status, state.AppServerStatus, state.RelayStatus = "running", "running", "running"
+	state.Status, state.AppServerStatus, state.HubStatus = "running", "running", "running"
 	state.SSHStatus = environmentSSHState(manifest, "running")
 	state.CodexVersion, state.CodexUserOverride, _, err = p.development.CodexState(ctx, runtime)
 	if err != nil {

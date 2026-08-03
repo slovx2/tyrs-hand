@@ -1,7 +1,7 @@
 PNPM ?= pnpm
 LOCAL_IMAGE ?= tyrs-hand:local
 
-.PHONY: dependencies generate generate-check format format-check vet lint web-check client-install client-check client-export client-e2e-contract client-e2e-android client-e2e-ios test test-unit test-race test-integration test-runtime-image test-coverage web-install web-build build build-local image-local ci ci-local
+.PHONY: dependencies generate generate-check format format-check vet lint web-check client-install client-check client-export client-e2e-contract client-e2e-android client-e2e-ios test test-unit test-race test-integration test-coverage web-install web-build build build-local image-local worker-binaries ci ci-local
 
 dependencies:
 	go mod download
@@ -78,10 +78,6 @@ test-race:
 test-integration:
 	go test -p=1 -tags=integration ./internal/database ./internal/devcontainer ./internal/discordintegration ./internal/httpapi ./test/integration
 
-test-runtime-image:
-	./tools/test-worker-runtime.sh $(LOCAL_IMAGE)-worker
-	./tools/test-development-runtime.sh $(LOCAL_IMAGE)-development
-
 test-coverage:
 	./tools/check-go-coverage.sh
 
@@ -99,8 +95,13 @@ build-local:
 
 image-local:
 	docker build --target control --load --tag $(LOCAL_IMAGE)-control .
-	docker build --target worker --load --tag $(LOCAL_IMAGE)-worker .
-	docker build --target development --load --tag $(LOCAL_IMAGE)-development .
+
+worker-binaries:
+	mkdir -p dist
+	for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do \
+		GOOS="$${target%/*}" GOARCH="$${target#*/}" CGO_ENABLED=0 \
+		go build -trimpath -o "dist/tyrs-hand-worker-$${target%/*}-$${target#*/}" ./cmd/tyrs-hand-worker; \
+	done
 
 ci:
 	$(MAKE) dependencies

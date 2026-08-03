@@ -164,72 +164,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/settings/agent-provider": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getAgentProviderSettings"];
-        put: operations["putAgentProviderSettings"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/settings/agent-provider/chatgpt/login": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["startChatGPTLogin"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/settings/agent-provider/chatgpt/login/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        get: operations["getChatGPTLogin"];
-        put?: never;
-        post?: never;
-        delete: operations["cancelChatGPTLogin"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/settings/agent-provider/chatgpt/account": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete: operations["logoutChatGPT"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/settings/global-agents": {
         parameters: {
             query?: never;
@@ -400,22 +334,6 @@ export interface paths {
         get: operations["listDevelopmentEnvironments"];
         put?: never;
         post: operations["createDevelopmentEnvironment"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/development-environments/{id}/rebase": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["rebaseDevelopmentEnvironment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -692,32 +610,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: components["pathItems"]["ListWorkers"];
+        get: operations["listHostWorkers"];
         put?: never;
-        post?: never;
+        post: operations["createHostWorker"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/execution-nodes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listExecutionNodes"];
-        put?: never;
-        post: operations["createExecutionNode"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/execution-nodes/{id}/enrollments": {
+    "/workers/{id}/enrollments": {
         parameters: {
             query?: never;
             header?: never;
@@ -726,14 +628,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["createExecutionNodeEnrollment"];
+        post: operations["createHostWorkerEnrollment"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/execution-nodes/{id}": {
+    "/workers/{id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -743,13 +645,13 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete: operations["deleteExecutionNode"];
+        delete: operations["deleteHostWorker"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/execution-nodes/{id}/enabled": {
+    "/workers/{id}/enabled": {
         parameters: {
             query?: never;
             header?: never;
@@ -757,7 +659,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put: operations["setExecutionNodeEnabled"];
+        put: operations["setHostWorkerEnabled"];
         post?: never;
         delete?: never;
         options?: never;
@@ -861,23 +763,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/worker/v1/ssh-configuration": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getWorkerSSHConfiguration"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/enroll": {
+    "/worker/v2/enroll": {
         parameters: {
             query?: never;
             header?: never;
@@ -893,7 +779,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/worker/v1/heartbeat": {
+    "/worker/v2/sync": {
         parameters: {
             query?: never;
             header?: never;
@@ -902,14 +788,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["heartbeatWorker"];
+        post: operations["syncWorker"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/worker/v1/claims": {
+    "/worker/v2/rpc": {
         parameters: {
             query?: never;
             header?: never;
@@ -918,279 +804,23 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["claimWorkerTask"];
+        post: operations["callWorkerRPC"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/worker/v1/runs/{id}/heartbeat": {
+    "/worker/v2/blobs/{id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["downloadWorkerBlob"];
         put?: never;
-        post: operations["heartbeatWorkerRun"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/runs/{id}/commands/ack": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["acknowledgeWorkerRunCommand"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/runs/{id}/events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["appendWorkerRunEvents"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/runs/{id}/complete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["completeWorkerRun"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/runs/{id}/fail": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["failWorkerRun"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/runs/{id}/runtime-credential": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["getWorkerRuntimeCredential"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/runs/{id}/thread": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["setWorkerRunThread"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/runs/{id}/submission": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["recordWorkerRunSubmission"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/runs/{id}/confirm": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["confirmWorkerRunTurn"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/runs/{id}/development-state": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["updateWorkerDevelopmentState"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/runs/{id}/workspace-state": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["updateWorkerWorkspaceState"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/runs/{id}/tools/call": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["callWorkerDynamicTool"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/runs/{id}/git-credential": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["getWorkerGitCredential"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/runs/{id}/attachments/{attachmentId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["downloadWorkerAttachment"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/development-operations/{id}/heartbeat": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["heartbeatWorkerDevelopmentOperation"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/development-operations/{id}/complete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["completeWorkerDevelopmentOperation"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/development-operations/{id}/fail": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["failWorkerDevelopmentOperation"];
+        post: operations["uploadWorkerBlob"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1837,6 +1467,19 @@ export interface components {
             credential: string;
             protocolVersion: number;
         };
+        WorkerRequestEnvelope: {
+            /** Format: uuid */
+            requestId: string;
+            /** Format: int64 */
+            sequence: number;
+            /** @description 稳定操作名；sync 仅接受 worker.heartbeat 和 worker.claim。 */
+            operation: string;
+            parameters?: {
+                [key: string]: string;
+            };
+            /** @description 操作对应的 JSON 请求体。 */
+            payload?: unknown;
+        };
         WorkerHeartbeat: {
             workerVersion: string;
             protocolVersion: number;
@@ -1847,44 +1490,13 @@ export interface components {
         WorkerClaimRequest: {
             workerId: string;
             /** @enum {string} */
-            role: "github" | "discord";
+            role: "all" | "github" | "discord";
             wait: boolean;
         };
         WorkerClaimResponse: {
             task?: {
                 [key: string]: unknown;
             };
-            developmentOperation?: components["schemas"]["WorkerDevelopmentOperation"];
-        };
-        WorkerDevelopmentOperation: {
-            /** Format: uuid */
-            id: string;
-            /** @enum {string} */
-            operation: "provision" | "clone" | "rebase" | "reconfigure" | "delete_forum" | "delete_environment";
-            leaseToken: string;
-            /** Format: int64 */
-            leaseEpoch: number;
-            /** Format: uuid */
-            environmentId: string;
-            /** Format: uuid */
-            forumId?: string;
-            containerName: string;
-            imageRef?: string;
-            dataVolume: string;
-            homeVolume: string;
-            network: string;
-            workspace?: string;
-            conversationIds?: string[];
-            runtimeUser?: string;
-            /** Format: int64 */
-            runtimeUid?: number;
-            /** Format: int64 */
-            runtimeGid?: number;
-            runtimeHome?: string;
-            sshPublicKey?: string;
-            sshPort?: number;
-            /** Format: int64 */
-            sshConfigRevision?: number;
         };
         WorkerRunLease: {
             leaseToken: string;
@@ -2045,50 +1657,6 @@ export interface components {
             filters?: {
                 [key: string]: unknown;
             };
-        };
-        AgentProviderSettings: {
-            /** @enum {string} */
-            modelSource: "chatgpt" | "provider";
-            baseUrl?: string;
-            model?: string;
-            reasoningEffort?: string;
-            serviceTier?: string;
-            proxyUrl?: string;
-            readonly providerConfigured: boolean;
-            readonly chatgptConfigured: boolean;
-            /** Format: int64 */
-            readonly chatgptAuthRevision: number;
-            readonly configSignature: string;
-            chatgptAccount: components["schemas"]["ChatGPTAccount"];
-        };
-        AgentProviderSettingsInput: {
-            /** @enum {string} */
-            modelSource: "chatgpt" | "provider";
-            baseUrl?: string;
-            apiKey?: string;
-            model?: string;
-            reasoningEffort?: string;
-            serviceTier?: string;
-            proxyUrl?: string;
-        };
-        ChatGPTAccount: {
-            configured: boolean;
-            email?: string;
-            planType?: string;
-        };
-        ChatGPTLoginOperation: {
-            /** Format: uuid */
-            id: string;
-            /** @enum {string} */
-            status: "pending" | "awaiting_user" | "completed" | "failed" | "canceled";
-            /** Format: uri */
-            verificationUrl?: string;
-            userCode?: string;
-            email?: string;
-            planType?: string;
-            error?: string;
-            /** Format: date-time */
-            expiresAt?: string;
         };
         GlobalAgents: {
             content: string;
@@ -2266,7 +1834,7 @@ export interface components {
             /** @enum {string} */
             sshStatus: "disabled" | "pending" | "starting" | "running" | "error";
             /** @enum {string} */
-            relayStatus: "pending" | "starting" | "running" | "error";
+            hubStatus: "pending" | "starting" | "running" | "error";
             /** Format: date-time */
             projectsScannedAt?: string;
             projectScanError?: string;
@@ -2279,12 +1847,6 @@ export interface components {
             publicKey: string;
             port: number;
             discordUserId: string;
-        };
-        DevelopmentEnvironmentOperation: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            operationId: string;
         };
         DevelopmentProjectForumInput: {
             /** @enum {string} */
@@ -2429,25 +1991,6 @@ export interface components {
             trace?: never;
         };
         ListJobs: {
-            parameters: {
-                query?: {
-                    cursor?: components["parameters"]["Cursor"];
-                    limit?: components["parameters"]["Limit"];
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            get?: never;
-            put?: never;
-            post?: never;
-            delete?: never;
-            options?: never;
-            head?: never;
-            patch?: never;
-            trace?: never;
-        };
-        ListWorkers: {
             parameters: {
                 query?: {
                     cursor?: components["parameters"]["Cursor"];
@@ -2828,141 +2371,6 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    getAgentProviderSettings: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Agent Provider 设置 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentProviderSettings"];
-                };
-            };
-        };
-    };
-    putAgentProviderSettings: {
-        parameters: {
-            query?: never;
-            header: {
-                "X-CSRF-Token": components["parameters"]["CSRFToken"];
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AgentProviderSettingsInput"];
-            };
-        };
-        responses: {
-            /** @description 已保存 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    startChatGPTLogin: {
-        parameters: {
-            query?: never;
-            header: {
-                "X-CSRF-Token": components["parameters"]["CSRFToken"];
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 已发起 ChatGPT Device Code 登录 */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ChatGPTLoginOperation"];
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    getChatGPTLogin: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description ChatGPT Device Code 登录状态 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ChatGPTLoginOperation"];
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    cancelChatGPTLogin: {
-        parameters: {
-            query?: never;
-            header: {
-                "X-CSRF-Token": components["parameters"]["CSRFToken"];
-            };
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 已取消登录 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    logoutChatGPT: {
-        parameters: {
-            query?: never;
-            header: {
-                "X-CSRF-Token": components["parameters"]["CSRFToken"];
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 已退出全局 ChatGPT 账号 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
     getGlobalAgents: {
         parameters: {
             query?: never;
@@ -2972,7 +2380,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 注入所有 Codex Home 的全局 AGENTS.md */
+            /** @description 作为任务 developer instructions 注入的全局 Agent 指令 */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3287,37 +2695,14 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 环境创建已排队 */
-            202: {
+            /** @description 逻辑环境已创建并绑定 Worker */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DevelopmentEnvironmentOperation"];
+                    "application/json": components["schemas"]["IDResource"];
                 };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    rebaseDevelopmentEnvironment: {
-        parameters: {
-            query?: never;
-            header: {
-                "X-CSRF-Token": components["parameters"]["CSRFToken"];
-            };
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 已排队 Rebase 到当前官方开发镜像 */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             default: components["responses"]["Problem"];
         };
@@ -3715,7 +3100,7 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    listExecutionNodes: {
+    listHostWorkers: {
         parameters: {
             query?: never;
             header?: never;
@@ -3724,7 +3109,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 执行节点列表 */
+            /** @description 宿主 Worker 列表 */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3737,7 +3122,7 @@ export interface operations {
             };
         };
     };
-    createExecutionNode: {
+    createHostWorker: {
         parameters: {
             query?: never;
             header: {
@@ -3752,7 +3137,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 节点与一次性注册 Token */
+            /** @description Worker 与一次性注册 Token */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -3763,7 +3148,7 @@ export interface operations {
             };
         };
     };
-    createExecutionNodeEnrollment: {
+    createHostWorkerEnrollment: {
         parameters: {
             query?: never;
             header: {
@@ -3787,7 +3172,7 @@ export interface operations {
             };
         };
     };
-    deleteExecutionNode: {
+    deleteHostWorker: {
         parameters: {
             query?: never;
             header: {
@@ -3810,7 +3195,7 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    setExecutionNodeEnabled: {
+    setHostWorkerEnabled: {
         parameters: {
             query?: never;
             header: {
@@ -4111,38 +3496,6 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    getWorkerSSHConfiguration: {
-        parameters: {
-            query?: never;
-            header?: {
-                "If-None-Match"?: string;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 当前执行节点的 SSH 配置 */
-            200: {
-                headers: {
-                    ETag?: string;
-                    "Cache-Control"?: "no-store";
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkerSSHConfiguration"];
-                };
-            };
-            /** @description 配置未变化 */
-            304: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
     enrollWorker: {
         parameters: {
             query?: never;
@@ -4168,7 +3521,7 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    heartbeatWorker: {
+    syncWorker: {
         parameters: {
             query?: never;
             header?: never;
@@ -4177,11 +3530,22 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["WorkerHeartbeat"];
+                "application/json": components["schemas"]["WorkerRequestEnvelope"];
             };
         };
         responses: {
-            /** @description 心跳已记录 */
+            /** @description 同步结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description 同步完成，无响应体 */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -4191,7 +3555,7 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    claimWorkerTask: {
+    callWorkerRPC: {
         parameters: {
             query?: never;
             header?: never;
@@ -4200,38 +3564,11 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["WorkerClaimRequest"];
+                "application/json": components["schemas"]["WorkerRequestEnvelope"];
             };
         };
         responses: {
-            /** @description 任务、开发环境 Operation 或空响应 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkerClaimResponse"];
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    heartbeatWorkerRun: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WorkerRunLease"];
-            };
-        };
-        responses: {
-            /** @description Lease 已续期及待执行命令 */
+            /** @description RPC 结果 */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4242,25 +3579,7 @@ export interface operations {
                     };
                 };
             };
-            default: components["responses"]["Problem"];
-        };
-    };
-    acknowledgeWorkerRunCommand: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WorkerCommandAck"];
-            };
-        };
-        responses: {
-            /** @description 命令已确认 */
+            /** @description RPC 完成，无响应体 */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -4270,321 +3589,23 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    appendWorkerRunEvents: {
+    downloadWorkerBlob: {
         parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
+            query: {
+                runId: string;
             };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WorkerEventsRequest"];
-            };
-        };
-        responses: {
-            /** @description 事件已持久化 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    completeWorkerRun: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WorkerCompleteRequest"];
-            };
-        };
-        responses: {
-            /** @description Run 已完成 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    failWorkerRun: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WorkerFailRequest"];
-            };
-        };
-        responses: {
-            /** @description Run 已失败 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    getWorkerRuntimeCredential: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WorkerRunLease"];
-            };
-        };
-        responses: {
-            /** @description Run 限定运行凭据 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkerRuntimeCredential"];
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    setWorkerRunThread: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
-            };
-        };
-        responses: {
-            /** @description Thread 已记录 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    recordWorkerRunSubmission: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
-            };
-        };
-        responses: {
-            /** @description Submission 已记录 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    confirmWorkerRunTurn: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
-            };
-        };
-        responses: {
-            /** @description Turn 已确认 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    updateWorkerDevelopmentState: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
-            };
-        };
-        responses: {
-            /** @description 开发环境状态已更新 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    updateWorkerWorkspaceState: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
-            };
-        };
-        responses: {
-            /** @description Worktree 状态已更新 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    callWorkerDynamicTool: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
-            };
-        };
-        responses: {
-            /** @description Tool 调用结果 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    getWorkerGitCredential: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
-            };
-        };
-        responses: {
-            /** @description Git 凭据 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    downloadWorkerAttachment: {
-        parameters: {
-            query?: never;
             header: {
                 "X-Run-Lease-Token": string;
                 "X-Run-Lease-Epoch": number;
             };
             path: {
-                id: components["parameters"]["WorkerResourceID"];
-                attachmentId: string;
+                id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Discord 附件 */
+            /** @description 二进制附件 */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4596,77 +3617,37 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    heartbeatWorkerDevelopmentOperation: {
+    uploadWorkerBlob: {
         parameters: {
-            query?: never;
+            query: {
+                ordinal: number;
+            };
             header?: never;
             path: {
-                id: components["parameters"]["WorkerResourceID"];
+                id: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["WorkerRunLease"];
+                "multipart/form-data": {
+                    metadata: string;
+                    /** Format: binary */
+                    file: string;
+                };
             };
         };
         responses: {
-            /** @description Lease 已续期 */
-            204: {
+            /** @description Blob 上传结果 */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    completeWorkerDevelopmentOperation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WorkerOperationTerminal"];
-            };
-        };
-        responses: {
-            /** @description Operation 已完成 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    failWorkerDevelopmentOperation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WorkerOperationTerminal"];
-            };
-        };
-        responses: {
-            /** @description Operation 已失败 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             default: components["responses"]["Problem"];
         };

@@ -56,7 +56,7 @@ export function DevelopmentEnvironmentsPage() {
         <div>
           <h1 className="text-3xl font-bold">开发环境</h1>
           <p className="muted mt-2">
-            管理个人长期容器、自动发现的项目与 Discord Forum 配对。
+            管理 Worker 逻辑绑定、宿主项目与 Discord Forum 配对。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -116,9 +116,10 @@ export function DevelopmentEnvironmentsPage() {
         ))}
         {!environments.isLoading && items.length === 0 && (
           <div className="development-empty">
-            <p className="font-semibold">尚无长期开发环境</p>
+            <p className="font-semibold">尚无逻辑环境</p>
             <p className="muted mt-1 text-sm">
-              创建环境后，直接在容器的 workspaces 目录中建立项目。
+              创建环境后，在 Worker 宿主用户的 ~/tyrs-hand/workspaces
+              中建立项目。
             </p>
           </div>
         )}
@@ -171,12 +172,12 @@ function CreateEnvironmentDialog({
   const [ownerDiscordUserId, setOwnerDiscordUserId] = useState('')
   const create = useMutation({
     mutationFn: () =>
-      api<{ id: string; operationId: string }>('/development-environments', {
+      api<{ id: string }>('/development-environments', {
         method: 'POST',
         body: JSON.stringify({ ownerDiscordUserId }),
       }),
     onSuccess: async () => {
-      showToast('info', '开发环境创建已排队')
+      showToast('success', '逻辑环境已创建')
       await onCreated()
     },
   })
@@ -193,7 +194,7 @@ function CreateEnvironmentDialog({
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 id="create-environment-title" className="text-lg font-semibold">
-              创建长期开发环境
+              创建逻辑环境
             </h2>
             <p className="muted mt-1 text-sm">每位成员只能拥有一个环境。</p>
           </div>

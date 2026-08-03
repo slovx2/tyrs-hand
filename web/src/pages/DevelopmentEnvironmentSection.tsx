@@ -1,8 +1,5 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Container, FolderGit2, RefreshCw, Terminal } from 'lucide-react'
+import { FolderGit2, Server, Terminal } from 'lucide-react'
 import { useState } from 'react'
-import { api } from '../api/client'
-import { useUI } from '../state'
 import { DevelopmentEnvironmentRuntime } from './DevelopmentEnvironmentRuntime'
 import { DevelopmentProjectRow } from './DevelopmentProjectRow'
 import type {
@@ -17,21 +14,7 @@ export function DevelopmentEnvironmentSection({
   environment: DevelopmentEnvironment
   members: DiscordMember[]
 }) {
-  const queryClient = useQueryClient()
-  const showToast = useUI((state) => state.showToast)
   const [tab, setTab] = useState<'projects' | 'runtime'>('projects')
-  const rebase = useMutation({
-    mutationFn: () =>
-      api<void>(`/development-environments/${environment.id}/rebase`, {
-        method: 'POST',
-      }),
-    onSuccess: async () => {
-      showToast('info', '环境 Rebase 已排队')
-      await queryClient.invalidateQueries({
-        queryKey: ['development-environments'],
-      })
-    },
-  })
   const healthy = ['ready', 'running'].includes(environment.status)
   const scanTime = environment.projectsScannedAt
     ? new Date(environment.projectsScannedAt).toLocaleString('zh-CN')
@@ -42,7 +25,7 @@ export function DevelopmentEnvironmentSection({
       <header className="development-environment-header">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <Container aria-hidden size={19} />
+            <Server aria-hidden size={19} />
             <h2 className="text-lg font-semibold">{environment.ownerName}</h2>
             <span
               className={`status-badge ${healthy ? 'is-success' : 'is-warning'}`}
@@ -52,9 +35,9 @@ export function DevelopmentEnvironmentSection({
           </div>
           <dl className="environment-facts">
             <div>
-              <dt>镜像</dt>
-              <dd title={environment.imageRef}>
-                {environment.imageRef || '—'}
+              <dt>Worker</dt>
+              <dd className="font-mono">
+                {environment.executionNodeId || '待分配'}
               </dd>
             </div>
             <div>
@@ -70,20 +53,6 @@ export function DevelopmentEnvironmentSection({
             </div>
           </dl>
         </div>
-        <button
-          type="button"
-          className="button-secondary icon-label-button"
-          title="保留 Home 与项目，重建到当前官方镜像"
-          disabled={rebase.isPending}
-          onClick={() => rebase.mutate()}
-        >
-          <RefreshCw
-            aria-hidden
-            size={16}
-            className={rebase.isPending ? 'spin' : ''}
-          />
-          Rebase
-        </button>
       </header>
 
       {(environment.error || environment.projectScanError) && (
@@ -138,17 +107,15 @@ export function DevelopmentEnvironmentSection({
             <div className="project-empty">
               <p className="font-semibold">未发现项目</p>
               <p className="muted mt-1 text-sm">
-                在容器的 /var/lib/tyrs-hand/workspaces
-                下创建一级目录后会自动出现。
+                在宿主用户的 ~/tyrs-hand/workspaces 下创建一级目录后会自动出现。
               </p>
             </div>
           )}
         </div>
       ) : (
         <DevelopmentEnvironmentRuntime
-          key={`${environment.id}:${environment.sshConfigRevision}:${environment.sshAppliedRevision}`}
+          key={environment.id}
           environment={environment}
-          members={members}
         />
       )}
     </article>

@@ -12,10 +12,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/security"
+	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
 const (
-	ProtocolVersion       = 21
+	ProtocolVersion       = workerprotocol.Version
 	GitHubDefaultSetting  = "execution.default.github"
 	DiscordDefaultSetting = "execution.default.discord"
 )

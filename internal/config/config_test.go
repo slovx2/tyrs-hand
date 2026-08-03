@@ -78,6 +78,11 @@ func TestValidateAndLoadRemoteWorker(t *testing.T) {
 		CodexBin: "codex", WorkerID: "home-1", WorkerRole: "all",
 		WorkerCredentialFile:  "/data/worker/control-state/node-credential",
 		WorkerProtocolVersion: workerprotocol.Version, WorkerMaxConcurrentJobs: 2,
+		WorkerSSHListenAddr: ":2222", WorkerSSHHostKeyFile: "/data/worker/ssh/host_key",
+		WorkerAuthorizedKeysFile: "/data/worker/ssh/authorized_keys",
+		WorkerWorkspaceRoot:      "/home/user/tyrs-hand/workspaces",
+		WorkerCodexHome:          "/home/user/.codex", WorkerHome: "/home/user",
+		WorkerShell: "/bin/sh",
 	}
 	require.True(t, valid.RemoteWorker())
 	require.NoError(t, valid.ValidateWorker())
@@ -122,10 +127,6 @@ func TestValidateAndLoadRemoteWorker(t *testing.T) {
 
 func TestDeploymentWorkerProtocolVersion(t *testing.T) {
 	version := strconv.Itoa(workerprotocol.Version)
-	compose, err := os.ReadFile("../../compose.worker.yaml")
-	require.NoError(t, err)
-	require.Contains(t, string(compose), `TYRS_HAND_WORKER_PROTOCOL_VERSION: "`+version+`"`)
-
 	example, err := os.ReadFile("../../.env.example")
 	require.NoError(t, err)
 	require.Contains(t, string(example), "TYRS_HAND_WORKER_PROTOCOL_VERSION="+version)
@@ -189,7 +190,7 @@ func TestValidateWorkerCapabilities(t *testing.T) {
 		SSHAgentHostDir:          "/opt/tyrs-hand/ssh-agent",
 		BrowserMCPURL:            "http://host.docker.internal:8931/mcp",
 		BrowserMCPTokenFile:      "/run/secrets/browser_mcp_token",
-		BrowserAgentRelayAddress: "host.docker.internal:8934",
+		BrowserAgentRelayAddress: "127.0.0.1:8934",
 		BrowserFilesRoot:         "/run/tyrs-hand-browser-files",
 		BrowserFilesHostRoot:     "/opt/tyrs-hand/browser-files",
 		BrowserServicesRoot:      "/run/tyrs-hand-browser-services",

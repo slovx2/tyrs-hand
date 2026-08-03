@@ -70,6 +70,7 @@ func TestJournalKeepsEventsWhileControlIsUnavailableAndFlushesOnce(t *testing.T)
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
 		request *http.Request,
 	) {
+		unwrapWorkerTestRequest(t, request)
 		if !available.Load() {
 			http.Error(response, "control unavailable", http.StatusServiceUnavailable)
 			return
@@ -112,6 +113,7 @@ func TestDeliverTerminalKeepsPendingEventsAfterCompletion(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
 		request *http.Request,
 	) {
+		unwrapWorkerTestRequest(t, request)
 		if strings.HasSuffix(request.URL.Path, "/complete") {
 			completed.Add(1)
 			response.WriteHeader(http.StatusNoContent)

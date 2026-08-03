@@ -33,8 +33,8 @@ type Relay struct {
 }
 
 func Start(ctx context.Context, options Options) (*Relay, error) {
-	if options.SocketPath == "" || options.UpstreamSocketPath == "" {
-		return nil, errors.New("启动 Codex Relay 缺少下游或上游 Socket")
+	if options.UpstreamSocketPath == "" {
+		return nil, errors.New("启动 Codex Hub 缺少 App Server Socket")
 	}
 	if options.RequestTimeout <= 0 {
 		options.RequestTimeout = 30 * time.Second
@@ -63,10 +63,12 @@ func Start(ctx context.Context, options Options) (*Relay, error) {
 	relay.upstreamEvents = upstream.Subscribe(codex.ThreadFilter{})
 	relay.stats.UpstreamConnections = 1
 	relay.stats.UpstreamInitializations = 1
-	if err := relay.listen(); err != nil {
-		relay.upstreamEvents.Close()
-		_ = upstream.Close()
-		return nil, err
+	if options.SocketPath != "" {
+		if err := relay.listen(); err != nil {
+			relay.upstreamEvents.Close()
+			_ = upstream.Close()
+			return nil, err
+		}
 	}
 	go relay.forwardEvents()
 	go func() {

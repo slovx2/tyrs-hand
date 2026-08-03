@@ -15,16 +15,11 @@ import (
 	"go.uber.org/zap"
 )
 
-const workerVersion = "0.1.0"
+var workerVersion = "dev"
 
 type remoteTaskProcessor interface {
 	ProcessRemote(context.Context, *workerprotocol.Task, <-chan workerprotocol.RunCommand,
 		func(string, json.RawMessage)) (workerprotocol.CompleteRequest, error)
-	ProcessDevelopmentOperation(context.Context, *workerprotocol.DevelopmentOperation) error
-}
-
-type environmentCoordinator interface {
-	CoordinateEnvironments(context.Context) error
 }
 
 type heartbeatMetadataProvider interface {
@@ -68,14 +63,8 @@ func (r *RemoteRunner) Run(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = lock.Close() }()
-	if err := r.authenticate(ctx); err != nil {
+	if err := r.Authenticate(ctx); err != nil {
 		return err
-	}
-	if coordinator, ok := r.processor.(environmentCoordinator); ok {
-		if err := coordinator.CoordinateEnvironments(ctx); err != nil {
-			r.logger.Warn("首次协调常驻开发环境未全部成功", zap.Error(err))
-		}
-		go r.environmentLoop(ctx, coordinator)
 	}
 	if r.ssh != nil {
 		go func() {
@@ -124,13 +113,8 @@ func (r *RemoteRunner) Run(ctx context.Context) error {
 			}
 			continue
 		}
-		if claim.Task == nil && claim.DevelopmentOperation == nil {
+		if claim.Task == nil {
 			<-slots
-			continue
-		}
-		if claim.DevelopmentOperation != nil {
-			active.Add(1)
-			go r.runDevelopmentOperation(ctx, claim.DevelopmentOperation, slots, &active)
 			continue
 		}
 		task := claim.Task
@@ -146,26 +130,7 @@ func (r *RemoteRunner) Run(ctx context.Context) error {
 	return ctx.Err()
 }
 
-func (r *RemoteRunner) environmentLoop(ctx context.Context, coordinator environmentCoordinator) {
-	interval := r.cfg.HeartbeatInterval
-	if interval < 15*time.Second {
-		interval = 15 * time.Second
-	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if err := coordinator.CoordinateEnvironments(ctx); err != nil {
-				r.logger.Warn("协调常驻开发环境未全部成功", zap.Error(err))
-			}
-		}
-	}
-}
-
-func (r *RemoteRunner) authenticate(ctx context.Context) error {
+func (r *RemoteRunner) Authenticate(ctx context.Context) error {
 	credential, err := readCredential(r.cfg.WorkerCredentialFile)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
@@ -216,8 +181,10 @@ func (r *RemoteRunner) sendHeartbeat(ctx context.Context) error {
 	values := map[string]any{"workerId": r.cfg.WorkerID,
 		"roles": r.roles(), "maxConcurrentJobs": r.cfg.WorkerMaxConcurrentJobs,
 		"imageDigest": r.cfg.WorkerImageDigest, "protocolVersion": r.cfg.WorkerProtocolVersion}
+	values["ssh"] = map[string]any{"status": "ready",
+		"listenAddress": r.cfg.WorkerSSHListenAddr}
 	if r.ssh != nil {
-		values["ssh"] = r.ssh.Status()
+		values["outboundSSH"] = r.ssh.Status()
 	}
 	if r.browser != nil {
 		healthCtx, cancel := context.WithTimeout(ctx, 3*time.Second)

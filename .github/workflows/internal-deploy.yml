@@ -1,4 +1,4 @@
-name: Internal deployment images
+name: Internal deployment artifacts
 
 on:
   workflow_dispatch:
@@ -22,10 +22,6 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [control, worker, development]
     permissions:
       contents: read
       packages: write
@@ -37,7 +33,7 @@ jobs:
         name: Resolve internal deployment image
         shell: bash
         env:
-          IMAGE_TARGET: ${{ matrix.target }}
+          IMAGE_TARGET: control
         run: |
           version="deploy-${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
           image="ghcr.io/${GITHUB_REPOSITORY,,}-${IMAGE_TARGET}"
@@ -56,14 +52,14 @@ jobs:
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
           context: .
-          target: ${{ matrix.target }}
+          target: control
           platforms: ${{ inputs.platforms }}
           push: true
           tags: ${{ steps.image.outputs.tag }}
           provenance: mode=max
           sbom: true
-          cache-from: type=gha,scope=internal-${{ matrix.target }}
-          cache-to: type=gha,mode=max,scope=internal-${{ matrix.target }}
+          cache-from: type=gha,scope=internal-control
+          cache-to: type=gha,mode=max,scope=internal-control
       - name: Record immutable digest
         env:
           IMAGE: ${{ steps.image.outputs.repository }}
@@ -85,3 +81,30 @@ jobs:
           IMAGE: ${{ steps.image.outputs.repository }}
           DIGEST: ${{ steps.build.outputs.digest }}
         run: cosign sign --yes "${IMAGE}@${DIGEST}"
+
+  host-worker:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with: { go-version: "1.26.5", cache: true }
+      - name: Build Linux amd64 host Worker
+        shell: bash
+        run: |
+          version="deploy-${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          asset="tyrs-hand-worker_${version}_linux_amd64.tar.gz"
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
+            -ldflags="-s -w -buildid= -X github.com/slovx2/tyrs-hand/internal/worker.workerVersion=${version}" \
+            -o tyrs-hand-worker ./cmd/tyrs-hand-worker
+          tar -czf "${asset}" tyrs-hand-worker deploy/worker
+          sha256sum "${asset}" > "${asset}.sha256"
+          echo "### host-worker: ${version}" >> "${GITHUB_STEP_SUMMARY}"
+          cat "${asset}.sha256" >> "${GITHUB_STEP_SUMMARY}"
+      - uses: actions/upload-artifact@6027e3aa9a7c5b63a8d2a6d40c3d7a2550102f24 # v4.6.2
+        with:
+          name: host-worker-linux-amd64
+          path: |
+            tyrs-hand-worker_*.tar.gz
+            tyrs-hand-worker_*.tar.gz.sha256
+          retention-days: 30
+          if-no-files-found: error

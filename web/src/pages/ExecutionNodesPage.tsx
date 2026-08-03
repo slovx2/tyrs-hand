@@ -17,10 +17,20 @@ interface ExecutionNode {
   metadata?: {
     ssh?: {
       status?: string
+      listenAddress?: string
+    }
+    outboundSSH?: {
+      status?: string
       revision?: string
       credentialCount?: number
       hostCount?: number
       lastError?: string
+    }
+    host?: {
+      home?: string
+      codexHome?: string
+      workspaceRoot?: string
+      appServer?: string
     }
     browser?: {
       status?: string
@@ -49,7 +59,7 @@ export function ExecutionNodesPage() {
   const [token, setToken] = useState('')
   const nodes = useQuery({
     queryKey: ['execution-nodes'],
-    queryFn: () => api<{ items: ExecutionNode[] }>('/execution-nodes'),
+    queryFn: () => api<{ items: ExecutionNode[] }>('/workers'),
   })
   const defaults = useQuery({
     queryKey: ['execution-defaults'],
@@ -63,7 +73,7 @@ export function ExecutionNodesPage() {
   }
   const create = useMutation({
     mutationFn: () =>
-      api<{ enrollmentToken: string }>('/execution-nodes', {
+      api<{ enrollmentToken: string }>('/workers', {
         method: 'POST',
         body: JSON.stringify({
           name,
@@ -77,7 +87,7 @@ export function ExecutionNodesPage() {
       setToken(result.enrollmentToken)
       setName('')
       await refresh()
-      showToast('success', '执行节点已创建')
+      showToast('success', 'Worker 已创建')
     },
   })
   const action = useMutation({
@@ -90,17 +100,17 @@ export function ExecutionNodesPage() {
     }) => {
       if (type === 'enroll') {
         const result = await api<{ enrollmentToken: string }>(
-          `/execution-nodes/${node.id}/enrollments`,
+          `/workers/${node.id}/enrollments`,
           { method: 'POST' },
         )
         setToken(result.enrollmentToken)
       } else if (type === 'toggle') {
-        await api<void>(`/execution-nodes/${node.id}/enabled`, {
+        await api<void>(`/workers/${node.id}/enabled`, {
           method: 'PUT',
           body: JSON.stringify({ enabled: !node.enabled }),
         })
       } else {
-        await api<void>(`/execution-nodes/${node.id}`, { method: 'DELETE' })
+        await api<void>(`/workers/${node.id}`, { method: 'DELETE' })
       }
     },
     onSuccess: refresh,
@@ -113,17 +123,17 @@ export function ExecutionNodesPage() {
       }),
     onSuccess: async () => {
       await refresh()
-      showToast('success', '默认执行节点已保存；已有资源不会迁移')
+      showToast('success', '默认 Worker 已保存；已有资源不会迁移')
     },
   })
   const nodeItems = nodes.data?.items ?? []
 
   return (
     <section>
-      <h1 className="text-3xl font-bold">执行节点</h1>
+      <h1 className="text-3xl font-bold">Worker</h1>
       <p className="muted mt-2">
-        Worker 主动通过 HTTPS 领取任务。默认节点只在新建开发环境或 Work Item
-        首次产生任务时冻结。
+        每个 Worker 绑定一个宿主用户和真实 Codex Home，并主动通过 HTTPS
+        领取任务。默认 Worker 只在新建项目或 Work Item 首次产生任务时冻结。
       </p>
 
       {token && (
@@ -143,7 +153,7 @@ export function ExecutionNodesPage() {
         <h2 className="text-xl font-semibold">默认 Placement</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <NodeSelect
-            label="GitHub 默认执行节点"
+            label="GitHub 默认 Worker"
             role="github"
             nodes={nodeItems}
             value={defaults.data?.githubNodeId ?? ''}
@@ -155,7 +165,7 @@ export function ExecutionNodesPage() {
             }
           />
           <NodeSelect
-            label="Discord 默认执行节点"
+            label="Discord 默认 Worker"
             role="discord"
             nodes={nodeItems}
             value={defaults.data?.discordNodeId ?? ''}
@@ -176,7 +186,7 @@ export function ExecutionNodesPage() {
           create.mutate()
         }}
       >
-        <h2 className="text-xl font-semibold">注册新节点</h2>
+        <h2 className="text-xl font-semibold">注册新 Worker</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-4">
           <label>
             <span className="label">名称</span>
@@ -269,15 +279,30 @@ export function ExecutionNodesPage() {
 
 function CapabilityStatus({ node }: { node: ExecutionNode }) {
   const ssh = node.metadata?.ssh
+  const outboundSSH = node.metadata?.outboundSSH
+  const host = node.metadata?.host
   const browser = node.metadata?.browser
-  if (!ssh && !browser) return null
+  if (!ssh && !outboundSSH && !host && !browser) return null
   return (
     <div className="mt-3 grid gap-1 text-xs">
       {ssh && (
         <p className="muted">
-          SSH：{ssh.status ?? 'unknown'} · {ssh.hostCount ?? 0} 台主机 ·{' '}
-          {ssh.credentialCount ?? 0} 份凭证
-          {ssh.lastError ? ` · ${ssh.lastError}` : ''}
+          内置 SSH：{ssh.status ?? 'unknown'} ·{' '}
+          {ssh.listenAddress ?? '未知地址'}
+        </p>
+      )}
+      {host && (
+        <p className="muted">
+          Codex：{host.appServer ?? 'unknown'} · Home {host.codexHome ?? '未知'}{' '}
+          · 工作区 {host.workspaceRoot ?? '未知'}
+        </p>
+      )}
+      {outboundSSH && (
+        <p className="muted">
+          出站 SSH：{outboundSSH.status ?? 'unknown'} ·{' '}
+          {outboundSSH.hostCount ?? 0} 台主机 ·{' '}
+          {outboundSSH.credentialCount ?? 0} 份凭证
+          {outboundSSH.lastError ? ` · ${outboundSSH.lastError}` : ''}
         </p>
       )}
       {browser && (

@@ -26,7 +26,7 @@ func TestWebhookRouterSeparation(t *testing.T) {
 	require.Contains(t, combined, "GET /api/v1/ssh/hosts")
 	require.Contains(t, combined, "POST /api/v1/ssh/hosts/import")
 	require.Contains(t, combined, "PUT /api/v1/settings/global-agents")
-	require.Contains(t, combined, "GET /worker/v1/ssh-configuration")
+	require.Contains(t, combined, "POST /worker/v2/rpc")
 
 	admin := routeSet(server.AdminRouter())
 	require.NotContains(t, admin, "POST /webhooks/github")
@@ -51,8 +51,8 @@ func TestRateLimitPoliciesUseIndependentBuckets(t *testing.T) {
 		{path: "/api/v1/auth/login", bucket: "auth-login", limit: 10},
 		{path: "/api/v1/setup/admin", bucket: "setup-admin", limit: 10},
 		{path: "/webhooks/github", bucket: "github-webhook", limit: 300},
-		{path: "/worker/v1/runs/run-id/events", bucket: "worker-api", limit: 10000},
-		{path: "/worker/v1/heartbeat", bucket: "worker-api", limit: 10000},
+		{path: "/worker/v2/rpc", bucket: "worker-api", limit: 10000},
+		{path: "/worker/v2/sync", bucket: "worker-api", limit: 10000},
 		{path: "/api/v1/setup/status", bucket: "default", limit: 600},
 	}
 	for _, test := range tests {

@@ -92,6 +92,13 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 	if forkPath, _ := params["path"].(string); strings.TrimSpace(forkPath) != "" {
 		return nil, desktopThreadTarget{}, errors.New("不支持 path-based fork")
 	}
+	workspaceRoot := "/var/lib/tyrs-hand"
+	if strings.TrimSpace(request.WorkspaceRoot) != "" {
+		workspaceRoot = path.Clean(strings.TrimSpace(request.WorkspaceRoot))
+		if !path.IsAbs(workspaceRoot) {
+			return nil, desktopThreadTarget{}, errors.New("宿主工作区根目录必须是绝对路径")
+		}
+	}
 	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT f.id, r.discord_id,
 		project.name, project.relative_path,
 		COALESCE(e.ssh_discord_user_id, ''),
@@ -117,7 +124,7 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 			&relative, &target.actorID, &target.actorName); err != nil {
 			return nil, desktopThreadTarget{}, err
 		}
-		target.workspacePath = path.Join("/var/lib/tyrs-hand", relative)
+		target.workspacePath = path.Join(workspaceRoot, relative)
 		targets = append(targets, target)
 	}
 	if err := rows.Err(); err != nil {

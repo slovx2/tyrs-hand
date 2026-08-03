@@ -16,8 +16,8 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/devcontainer"
 	"github.com/slovx2/tyrs-hand/internal/githubtools"
+	"github.com/slovx2/tyrs-hand/internal/hostworker"
 	"github.com/slovx2/tyrs-hand/internal/ports"
-	"github.com/slovx2/tyrs-hand/internal/replygate"
 	"github.com/slovx2/tyrs-hand/internal/settings"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
@@ -34,6 +34,11 @@ type RemoteProcessor struct {
 	journals     *journalStore
 	logger       *zap.Logger
 	browserAgent *browserAgentRelayManager
+	hostRuntime  *hostworker.Runtime
+}
+
+func (p *RemoteProcessor) UseHostRuntime(runtime *hostworker.Runtime) {
+	p.hostRuntime = runtime
 }
 
 type developmentOperationRuntimeConfig struct {
@@ -42,6 +47,12 @@ type developmentOperationRuntimeConfig struct {
 }
 
 func (p *RemoteProcessor) HeartbeatMetadata() map[string]any {
+	if p.hostRuntime != nil {
+		return map[string]any{"host": map[string]any{
+			"home": p.hostRuntime.Home(), "codexHome": p.hostRuntime.CodexHome(),
+			"workspaceRoot": p.hostRuntime.WorkspaceRoot(), "appServer": "running",
+		}}
+	}
 	if p.environments == nil {
 		return nil
 	}
@@ -89,6 +100,9 @@ func (p *RemoteProcessor) ProcessRemote(ctx context.Context, task *workerprotoco
 func (p *RemoteProcessor) ProcessDevelopmentOperation(ctx context.Context,
 	operation *workerprotocol.DevelopmentOperation,
 ) error {
+	if p.development == nil {
+		return errors.New("宿主 Worker 不支持旧版开发容器 Operation")
+	}
 	if p.browserAgent != nil && operation.Operation != "provision_environment" {
 		p.browserAgent.Reset(operation.EnvironmentID)
 	}
@@ -261,67 +275,43 @@ func (p *RemoteProcessor) processRemoteGitHub(ctx context.Context, task *workerp
 	if err != nil {
 		return codexcontrol.TurnResult{}, err
 	}
-	credential, err := p.client.RuntimeCredential(ctx, task)
-	if err != nil {
-		return codexcontrol.TurnResult{}, err
+	if p.hostRuntime == nil {
+		return codexcontrol.TurnResult{}, errors.New("宿主 Codex Runtime 尚未启动")
 	}
-	codexHome := persistentCodexHome(p.cfg.CodexHomeRoot, claimed)
-	environment, err := prepareRemoteCodexHome(codexHome, credential,
-		task.Snapshot.Runtime.GlobalAgents)
-	if err != nil {
-		return codexcontrol.TurnResult{}, err
-	}
-	environment, runtimeConfig := prepareCodexRuntime(environment, p.cfg.WorkerDataRoot, p.cfg,
+	codexHome := p.hostRuntime.CodexHome()
+	_, runtimeConfig := prepareCodexRuntime(nil, p.cfg.WorkerDataRoot, p.cfg,
 		"worker", claimed.ID.String())
-	applyModelProviderConfig(runtimeConfig, credential.ModelSource, credential.BaseURL)
-	if err := replygate.Install(codexHome); err != nil {
-		return codexcontrol.TurnResult{}, fmt.Errorf("安装 GitHub 回复 Stop Hook: %w", err)
-	}
-	poolKey := "job/" + claimed.ID.String()
-	client, err := p.pool.Acquire(ctx, poolKey, workspace.WorktreePath, codexHome, environment)
-	if err != nil {
-		return codexcontrol.TurnResult{}, err
-	}
-	defer func() {
-		if closeErr := p.pool.Release(poolKey); closeErr != nil {
-			p.logger.Warn("关闭远程 Job Codex App Server 失败", zap.Error(closeErr))
-		}
-	}()
+	client := p.hostRuntime.Client()
 	runtime := codex.NewRuntime(client)
 	settings := task.Snapshot.Runtime
 	options := workerThreadOptions(ports.ThreadOptions{
 		CWD: workspace.WorktreePath, Model: settings.Model,
-		ReasoningEffort:       settings.ReasoningEffort,
-		ServiceTier:           codexsettings.RuntimeServiceTier(settings.ServiceTier),
-		NetworkEnabled:        settings.NetworkEnabled,
-		DynamicTools:          withBrowserTools(p.cfg, githubSpec, localGitSpec(true), githubReplySpec()),
-		RuntimeConfig:         runtimeConfig,
-		DeveloperInstructions: browserDeveloperInstructions(p.cfg, "Follow repository AGENTS.md and the explicitly attached skills. Use only the authorized GitHub work item and current worktree. Use git.commit for commits and git.publish_branch for pushes. After all business actions, call tyrs_hand.reply_to_github exactly once with the user-facing result, then provide a natural final answer."),
+		ReasoningEffort: settings.ReasoningEffort,
+		ServiceTier:     codexsettings.RuntimeServiceTier(settings.ServiceTier),
+		NetworkEnabled:  settings.NetworkEnabled,
+		DynamicTools:    withBrowserTools(p.cfg, githubSpec, localGitSpec(true), githubReplySpec()),
+		RuntimeConfig:   runtimeConfig,
+		DeveloperInstructions: browserDeveloperInstructions(p.cfg,
+			task.Snapshot.Runtime.GlobalAgents+"\n\nFollow repository AGENTS.md and the explicitly attached skills. Use only the authorized GitHub work item and current worktree. Use git.commit for commits and git.publish_branch for pushes. After all business actions, call tyrs_hand.reply_to_github exactly once with the user-facing result, then provide a natural final answer."),
 	})
-	if err := runtime.ValidateSkills(ctx, workspace.WorktreePath,
-		withBuiltinSkills(codexHome, skills)); err != nil {
+	if err := runtime.ValidateSkills(ctx, workspace.WorktreePath, skills); err != nil {
 		return codexcontrol.TurnResult{}, err
 	}
 	threadID, err := p.ensureRemoteThread(ctx, runtime, task, options, codexHome, report)
 	if err != nil {
 		return codexcontrol.TurnResult{}, err
 	}
-	if err := replygate.Initialize(codexHome, threadID, claimed.ID.String(), true,
-		p.cfg.GitHubReplyGateMaxBlocks); err != nil {
-		return codexcontrol.TurnResult{}, err
-	}
-	unbind, err := p.pool.Bind(poolKey, threadID, func(toolCtx context.Context,
+	unbind := p.hostRuntime.BindTool(threadID, func(toolCtx context.Context,
 		request codex.ToolCallRequest,
 	) (codex.ToolCallResult, error) {
 		return p.handleRemoteGitHubTool(toolCtx, task, codexHome, workspace, branch, request,
 			report)
 	})
-	if err != nil {
-		return codexcontrol.TurnResult{}, err
-	}
 	defer unbind()
+	subscription := client.Subscribe(codex.ThreadFilter{ThreadID: threadID})
+	defer subscription.Close()
 	if claimed.Recovering {
-		if result, recovered, recoverErr := p.reconcileRemoteTurn(ctx, runtime, client.Events(),
+		if result, recovered, recoverErr := p.reconcileRemoteTurn(ctx, runtime, subscription.Events(),
 			task, threadID, commands, nil, report); recoverErr != nil {
 			return codexcontrol.TurnResult{}, recoverErr
 		} else if recovered {
@@ -339,7 +329,7 @@ func (p *RemoteProcessor) processRemoteGitHub(ctx context.Context, task *workerp
 	if err := p.client.RecordSubmission(ctx, task, turnID); err != nil {
 		return codexcontrol.TurnResult{}, err
 	}
-	result, err := p.waitRemoteTurn(ctx, runtime, client.Events(), task, threadID, turnID,
+	result, err := p.waitRemoteTurn(ctx, runtime, subscription.Events(), task, threadID, turnID,
 		commands, nil, report)
 	if needsCleanupInterrupt(err) {
 		interruptTurnBestEffort(runtime, threadID, turnID)

@@ -73,7 +73,7 @@ flowchart LR
 四个可执行入口分别承担不同职责：
 
 - `tyrs-hand-server`：管理 API、GitHub App、Webhook 和前端静态资源。
-- `tyrs-hand-worker`：通过 `/worker/v1` 主动领取任务，在执行节点运行工作区、Codex、本地 Git 和开发容器。
+- `tyrs-hand-worker`：宿主常驻 Worker，通过 `/worker/v2` 主动领取任务，并内置多客户端 SSH 与 App Server Hub。
 - `tyrs-hand-discord`：Discord Gateway、Forum 会话、投影和 Outbox 投递。
 - `tyrs-hand-admin`：迁移、诊断、管理员恢复、主密钥轮换和 GC。
 
@@ -87,7 +87,7 @@ PostgreSQL 是唯一权威状态源。Redis 仅保存可以重建的限流和通
 
 - Docker Engine 与 Docker Compose
 - 本地源码开发额外需要 Go `1.26.5`、Node.js `24.14.0` 和 pnpm `11.14.0`
-- Codex CLI/App Server 固定为 `0.145.0`，容器镜像已经包含该版本
+- Worker 宿主需安装 Codex CLI/App Server `>= 0.145.0`、Git 和 OpenSSH Client
 
 ### 启动服务
 
@@ -118,13 +118,9 @@ PostgreSQL 是唯一权威状态源。Redis 仅保存可以重建的限流和通
 
 4. 在 GitHub App 页面通过 Manifest 创建 App，或者手动录入已有 App。安装 App 后，Installation 与 Repository 会通过已验签 Webhook 自动同步。
 
-5. 在系统设置中配置 OpenAI 兼容 Base URL、API Key、模型和推理级别。也可以使用共享账号登录：
+5. 在管理后台创建 Worker、选择角色和并发上限，并生成一次性注册 Token。
 
-   ```bash
-   docker compose --profile tools run --rm admin codex-login
-   ```
-
-6. 完整生产部署还需要在管理后台创建执行节点，并使用独立的 `compose.worker.yaml` 启动 Pull Worker。注册、默认节点和 IP/CIDR 白名单步骤见[最小安装指引](docs/deployment/minimal-installation.md)。
+6. 从 GitHub Release 安装宿主 Worker。Codex Provider 和登录态只读取该宿主用户的真实 `CODEX_HOME`，Control 不配置也不下发。
 
 ## Webhook 监听分离
 
@@ -139,30 +135,16 @@ TYRS_HAND_WEBHOOK_HTTP_ADDR=:8081
 
 开启后，管理端口不再注册 `/webhooks/github`，Webhook 端口只注册健康检查和 GitHub Webhook。部署系统还需要单独发布该端口，并由反向代理将 `/webhooks/github` 路由到它。
 
-## Discord 长期开发容器
+## 宿主 Worker
 
-Discord 开发环境由带 `discord` 角色的执行节点管理。同一个节点可以同时承担 GitHub 和 Discord 任务；开发环境创建时会冻结当时的默认节点，后续 Project、Forum、Conversation 和 Codex Control 都沿用该节点。
+Worker 与 Relay 已合并。一个 Worker 绑定一个真实 OS 用户，直接使用该用户的 `HOME`、`CODEX_HOME` 和 `~/tyrs-hand/workspaces`，不创建开发容器，也不迁移或改写已有 Codex 聊天记录。
 
-官方 Worker Compose 默认启用 `TYRS_HAND_DEVELOPMENT_HOST_DOCKER=true`：开发容器使用 Linux host 网络，挂载宿主 `/var/run/docker.sock`，并内置锁定版本的 Docker CLI。Worker 会读取 Socket 的数字 GID 并把同一附加组授予开发容器，使非 root 运行用户可以管理宿主 Docker；这等同于宿主 root 级能力，只应为受信任的开发环境开启。Worker 也通过该 Socket 从受管容器的 `CODEX_HOME/attachments/` 读取 Desktop 图片，并一次性流经 Control 上传到 Discord；不需要共享附件卷，Control 不保存图片副本。部署前将 Worker 宿主 `/var/run/docker.sock` 的数字 GID 写入 Worker `.env` 的 `TYRS_HAND_DOCKER_GID`。Linux 可使用 `stat -c '%g' /var/run/docker.sock` 查询，然后使用独立 Compose 启动：
-
-```bash
-docker compose -f compose.worker.yaml up -d worker
-```
-
-开发环境规则：
-
-- 同一 Guild 中，一个 Discord 用户只有一个容器、数据卷、Home 卷和网络；其中的 Git 仓库和普通目录会被发现为 Project，并可分别绑定一个或多个 Forum。
-- 用户级容器是安全边界；Forum 可邀请只读或可操作协作者，可操作协作者能够驱动 Agent，因此只能授权给环境 owner 信任的成员。
-- Control 为新环境固化官方 `TYRS_HAND_DEVELOPMENT_IMAGE` digest；业务仓库不需要提供 Dockerfile。
-- 环境容器永久运行；Worker/宿主重启后会主动拉起容器、环境级 Codex App Server 和 Relay，且不会丢失 Home、项目或 Codex 会话。
-- 每个环境共享一个 `CODEX_HOME` 和一个 App Server；Desktop 与 Discord 通过薄 Relay 复用同一协议连接。显式 Rebase 保留 Home、项目、用户 Codex 和会话，但重置系统可写层。
-- 管理后台可为环境配置一个 SSH 公钥和宿主机端口。镜像必须原生提供 `sshd`、`ssh-keygen` 与 SFTP server；Desktop 通过 SSH 执行 `codex app-server proxy`。
-- SSH 凭据绑定一个活跃 Discord 成员，Desktop 与该成员从 Discord 发言时使用同一个稳定参与者身份。Desktop 主 Thread 的消息、标题、进度和最终回复通过持久化 Outbox 投影到 Discord，Discord 回复则继续同一个 Thread；Discord 故障不会中断 Desktop Thread 或 Turn。
-- Desktop 创建或恢复 Thread 时，模型、思考强度和 service tier 以 Desktop 与真实 app-server 状态为准。管理后台的默认参数只用于从 Discord 发起的新会话。
-- 安装 Browser Bridge 后，开发会话可在 Worker 浏览器和已注册的桌面端 Chrome 之间切换；桌面端保留原有 Profile、登录态和普通标签页。
-- 系统创建的 Discord Post 在七天不活跃后自动隐藏。未锁定的 Discord 归档只改变展示状态；`/codex archive` 才会真正归档 Codex Thread 并锁定 Post，`/codex restore` 会恢复原 Thread 和 Post。
-- 用户可用 `tyrs-hand-dev codex install <精确版本>` 在持久 Home 中覆盖镜像内置 Codex；环境空闲后生效，失败会自动回退。
-- Rebase 改变 `USER`、UID/GID 或 Home 路径时会被拒绝并保留旧容器。平台不支持 devcontainer.json、Features、Compose、任意 Mount、Docker Socket、privileged 或任意端口发布。
+- Worker 只启动一个系统 Codex App Server，所有 GitHub、Discord、移动端和 Desktop 客户端共享该 Hub。
+- 内置 SSH Server 支持多公钥、多客户端、Shell、PTY、SCP 和 SFTP；拦截 `codex app-server proxy`，并禁止所有端口转发。
+- Codex Provider、API Key、ChatGPT Auth、Base URL 和代理只由机器 `CODEX_HOME` 决定。
+- Control 仍可下发任务的模型、思考强度、Service Tier 和 Agent 指令，但不会写入机器 Home。
+- Browser Bridge、GitHub、Discord、移动客户端和 Agent 出站 SSH 能力保留。
+- 四平台薄二进制、依赖声明和 systemd/LaunchDaemon 安装方法见[最小安装指引](docs/deployment/minimal-installation.md)。
 
 ## GitHub App 权限
 
@@ -185,7 +167,7 @@ Manifest 订阅 Repository、Issues、Issue Comment、Pull Request、Review、Re
 
 - 一个 `(Work Item, Agent Profile, Context Version)` 对应一个 Codex Thread。
 - 同一 Issue 或 PR 的后续指令 Resume 原 Thread。
-- Provider、Profile、工具 Schema 或 Skill 配置变化时创建新 Thread，并注入上一轮摘要。
+- Model、Profile、工具 Schema 或 Skill 配置变化时创建新 Thread，并注入上一轮摘要。
 - 一个 GitHub Work Item 对应一个临时 Worktree；同一工作项严格串行，关闭 7 天后清理。
 - GitHub 路径不安装依赖、不共享依赖，也不准备工具链；定位是只读或轻量修改，不建议在 Worker 本地构建、运行和调试。
 - Issue/PR 地址与编号会注入 Prompt；PR 还会预拉源分支并注入源/目标分支与 SHA。
@@ -209,12 +191,12 @@ Manifest 订阅 Repository、Issues、Issue Comment、Pull Request、Review、Re
 - Dynamic Tool 同时校验 Capability、Installation、Repository、Work Item、工具白名单和实时 GitHub 权限。
 - Tool Call 以 `(thread, turn, call)` 幂等记录。
 - GitHub Token 不进入 Codex 环境、Git Remote 或 Worktree。
-- Server、Worker 与 Discord 开发镜像均要求以非 root 用户运行。
-- Worker 只通过 HTTPS Worker API 访问 Control，不直连 PostgreSQL 或 Redis，也不在长期配置或进程环境中持有主密钥、Discord Bot Token 或 Provider Key；运行所需凭据由 Control 按 Run 限定下发。
+- Server 与 Worker 均要求以非 root 用户运行。
+- Worker 只通过 HTTPS Worker API 访问 Control，不直连 PostgreSQL 或 Redis，也不持有主密钥、Discord Bot Token 或 Provider Key。
 - Worker API 支持单个 IP 和 CIDR 白名单；直连不依赖 Cloudflare，只有可信代理链才采信转发来源头。
-- 官方 Worker Compose 默认允许开发容器访问宿主 Docker Socket，并使用 host 网络；裸跑 Worker 默认关闭。Docker Socket 等同宿主 root 级权限，必须只部署到隔离且受信任的执行节点。
+- 内置 SSH 仅允许 session channel，不允许端口转发；授权公钥不得包含 forced-command 等选项。
 
-生产 Control 应使用 `compose.production.yaml`，通过 Secret 文件提供主密钥；Worker 使用独立的 `compose.worker.yaml`：
+生产 Control 应使用 `compose.production.yaml`，通过 Secret 文件提供主密钥；Worker 使用 Release 二进制安装：
 
 ```bash
 docker compose -f compose.yaml -f compose.production.yaml up -d
@@ -236,7 +218,7 @@ make test-coverage
 make build
 ```
 
-集成测试使用 Testcontainers 启动 PostgreSQL、Redis 和真实 Docker 开发容器，并使用临时 Git Remote 验证 Worktree、多仓库 clone、Home/重建持久化与删除。Codex 测试包含两层：
+集成测试使用 Testcontainers 启动 PostgreSQL、Redis，并使用临时 Git Remote 验证 Worktree。Codex 测试包含两层：
 
 - 脚本化 Fake App Server，覆盖 JSON-RPC、超时、断线、Resume、Steer、Interrupt 和工具回调。
 - 固定 Codex `0.145.0` 配合 Mock Responses SSE 上游，验证真实 App Server 协议，不调用真实模型。
@@ -245,15 +227,14 @@ make build
 
 ## 镜像与发布
 
-GitHub Actions 对 Pull Request 和 `main` 构建 Control、Worker、Development 镜像但不推送。发布 Release 时会构建 `linux/amd64`、`linux/arm64` 多架构镜像：
+GitHub Actions 构建 Control 多架构镜像；Worker 以 Linux/macOS、amd64/arm64 薄二进制发布：
 
 ```text
 ghcr.io/slovx2/tyrs-hand-control
-ghcr.io/slovx2/tyrs-hand-worker
-ghcr.io/slovx2/tyrs-hand-development
+tyrs-hand-worker_<version>_<os>_<arch>.tar.gz
 ```
 
-发布构建包含 SBOM 和 provenance，并使用 `sha-<commit>` 候选 Tag 执行漏洞扫描和 Cosign keyless 签名。三个候选镜像全部通过后，才会创建 Release 版本 Tag。
+Control 镜像构建包含 SBOM、provenance、漏洞扫描和 Cosign keyless 签名；Worker Release 同时发布 SHA-256 校验文件。
 
 生产部署应固定 `sha-<commit>` Tag 或镜像 Digest，不使用 `latest`。
 

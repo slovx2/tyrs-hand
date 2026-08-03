@@ -7,8 +7,9 @@ let credential = ''
 let stopping = false
 const metadataGeneration = Date.now()
 let metadataSequence = 0
+let requestSequence = 0
 
-async function call(path, { method = 'POST', body, authenticated = true } = {}) {
+async function directCall(path, { method = 'POST', body, authenticated = true } = {}) {
   const headers = { accept: 'application/json' }
   if (authenticated) headers.authorization = `Bearer ${credential}`
   if (body !== undefined) headers['content-type'] = 'application/json'
@@ -18,6 +19,49 @@ async function call(path, { method = 'POST', body, authenticated = true } = {}) 
   const text = await response.text()
   if (!response.ok) throw new Error(`${method} ${path}：${response.status} ${text}`)
   return text ? JSON.parse(text) : undefined
+}
+
+function operationFor(method, path) {
+  const staticOperations = new Map([
+    ['POST /worker/v1/heartbeat', 'worker.heartbeat'],
+    ['POST /worker/v1/claims', 'worker.claim'],
+    ['GET /worker/v1/thread-lifecycle-requests', 'thread.lifecycle.pending'],
+    ['POST /worker/v1/thread-metadata-events', 'thread.metadata.record'],
+  ])
+  const direct = staticOperations.get(`${method} ${path}`)
+  if (direct) return { operation: direct, parameters: {} }
+  const routes = [
+    ['POST', /^\/worker\/v1\/runs\/([^/]+)\/heartbeat$/, 'run.heartbeat'],
+    ['POST', /^\/worker\/v1\/runs\/([^/]+)\/events$/, 'run.events.append'],
+    ['POST', /^\/worker\/v1\/runs\/([^/]+)\/fail$/, 'run.fail'],
+    ['POST', /^\/worker\/v1\/runs\/([^/]+)\/complete$/, 'run.complete'],
+    ['POST', /^\/worker\/v1\/runs\/([^/]+)\/commands\/ack$/, 'run.command.ack'],
+    ['POST', /^\/worker\/v1\/runs\/([^/]+)\/interactive$/, 'run.interactive.register'],
+    ['POST', /^\/worker\/v1\/runs\/([^/]+)\/thread$/, 'run.thread.set'],
+    ['POST', /^\/worker\/v1\/runs\/([^/]+)\/submission$/, 'run.submission.record'],
+    ['POST', /^\/worker\/v1\/runs\/([^/]+)\/confirm$/, 'run.turn.confirm'],
+    ['GET', /^\/worker\/v1\/interactive\/([^/]+)$/, 'interactive.state'],
+    ['POST', /^\/worker\/v1\/thread-lifecycle-requests\/([^/]+)\/complete$/, 'thread.lifecycle.complete'],
+  ]
+  for (const [expectedMethod, pattern, operation] of routes) {
+    const match = expectedMethod === method ? path.match(pattern) : null
+    if (match) return { operation, parameters: { id: match[1] } }
+  }
+  throw new Error(`协议 Worker 没有注册操作：${method} ${path}`)
+}
+
+async function call(path, { method = 'POST', body, authenticated = true } = {}) {
+  if (path === '/worker/v1/enroll') {
+    return directCall('/worker/v2/enroll', { method, body, authenticated })
+  }
+  const { operation, parameters } = operationFor(method, path)
+  requestSequence += 1
+  const target = operation === 'worker.heartbeat' || operation === 'worker.claim'
+    ? '/worker/v2/sync' : '/worker/v2/rpc'
+  return directCall(target, { body: {
+    requestId: crypto.randomUUID(), sequence: requestSequence, operation, parameters,
+    payload: body,
+  }, authenticated })
 }
 
 function lease(task) {
@@ -164,7 +208,7 @@ async function main() {
   const enrolled = await call('/worker/v1/enroll', { body: { token: enrollmentToken }, authenticated: false })
   credential = enrolled.credential
   await call('/worker/v1/heartbeat', { body: { workerVersion: 'mobile-e2e-protocol',
-    protocolVersion: 21, metadata: { lane: 'ios-protocol' } } })
+    protocolVersion: 22, metadata: { lane: 'ios-protocol' } } })
   while (!stopping) {
     try {
       await reconcileThreadLifecycles()

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -35,7 +34,7 @@ type DevelopmentEnvironment struct {
 	DaemonError        string               `json:"daemonError,omitempty"`
 	AppServerStatus    string               `json:"appServerStatus"`
 	SSHStatus          string               `json:"sshStatus"`
-	RelayStatus        string               `json:"relayStatus"`
+	HubStatus          string               `json:"hubStatus"`
 	ProjectsScannedAt  *time.Time           `json:"projectsScannedAt,omitempty"`
 	ProjectScanError   string               `json:"projectScanError,omitempty"`
 	Projects           []DevelopmentProject `json:"projects"`
@@ -105,7 +104,7 @@ func (m *Manager) DevelopmentEnvironments(ctx context.Context) ([]DevelopmentEnv
 			&environment.SSHPort, &environment.SSHDiscordUserID, &environment.SSHDisplayName,
 			&environment.SSHConfigRevision, &environment.SSHAppliedRevision,
 			&environment.DaemonStatus, &environment.DaemonError, &environment.AppServerStatus,
-			&environment.SSHStatus, &environment.RelayStatus, &projectsScannedAt,
+			&environment.SSHStatus, &environment.HubStatus, &projectsScannedAt,
 			&environment.ProjectScanError); err != nil {
 			return nil, err
 		}
@@ -191,19 +190,14 @@ func (m *Manager) developmentProjects(ctx context.Context,
 	return result, rows.Err()
 }
 
-func (m *Manager) CreateDevelopmentEnvironment(ctx context.Context, ownerID string,
-	administratorID uuid.UUID,
-) (uuid.UUID, uuid.UUID, error) {
-	if m.developmentImage == "" {
-		return uuid.Nil, uuid.Nil, errors.New("尚未配置 TYRS_HAND_DEVELOPMENT_IMAGE")
-	}
+func (m *Manager) CreateDevelopmentEnvironment(ctx context.Context, ownerID string) (uuid.UUID, error) {
 	settings, err := m.Settings(ctx)
 	if err != nil || settings.GuildID == "" {
-		return uuid.Nil, uuid.Nil, errors.New("Discord Guild 尚未配置")
+		return uuid.Nil, errors.New("Discord Guild 尚未配置")
 	}
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
-		return uuid.Nil, uuid.Nil, err
+		return uuid.Nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	var eligible bool
@@ -215,13 +209,12 @@ func (m *Manager) CreateDevelopmentEnvironment(ctx context.Context, ownerID stri
 			WHERE environment.guild_id=member.guild_id
 			  AND environment.owner_discord_user_id=member.discord_user_id))`,
 		settings.GuildID, ownerID).Scan(&eligible); err != nil {
-		return uuid.Nil, uuid.Nil, err
+		return uuid.Nil, err
 	}
 	if !eligible {
-		return uuid.Nil, uuid.Nil, errors.New("成员不活跃或已经拥有长期开发环境")
+		return uuid.Nil, errors.New("成员不活跃或已经拥有长期开发环境")
 	}
 	environmentID := uuid.New()
-	compact := strings.ReplaceAll(environmentID.String(), "-", "")
 	var nodeID uuid.UUID
 	err = tx.QueryRowContext(ctx, `SELECT node.id
 		FROM platform_settings setting
@@ -229,30 +222,28 @@ func (m *Manager) CreateDevelopmentEnvironment(ctx context.Context, ownerID stri
 		WHERE setting.setting_key='execution.default.discord'
 		  AND node.enabled AND node.roles ? 'discord'`).Scan(&nodeID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return uuid.Nil, uuid.Nil, errors.New("尚未配置可用的 Discord 默认执行节点")
+		return uuid.Nil, errors.New("尚未配置可用的 Discord 默认 Worker")
 	}
 	if err != nil {
-		return uuid.Nil, uuid.Nil, err
+		return uuid.Nil, err
+	}
+	var nodeAvailable bool
+	if err := tx.QueryRowContext(ctx, `SELECT NOT EXISTS(
+		SELECT 1 FROM discord_development_environments
+		WHERE execution_node_id=$1 AND status <> 'deleting')`, nodeID).Scan(&nodeAvailable); err != nil {
+		return uuid.Nil, err
+	}
+	if !nodeAvailable {
+		return uuid.Nil, errors.New("默认 Discord Worker 已绑定逻辑环境")
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO discord_development_environments
-		(id,guild_id,owner_discord_user_id,image_ref,container_name,data_volume_name,
-			home_volume_name,network_name,execution_node_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-		environmentID, settings.GuildID, ownerID, m.developmentImage,
-		"tyrs-hand-dev-"+compact, "tyrs-hand-dev-data-"+compact,
-		"tyrs-hand-dev-home-"+compact, "tyrs-hand-dev-net-"+compact, nodeID)
+		(id,guild_id,owner_discord_user_id,status,execution_node_id)
+		VALUES ($1,$2,$3,'ready',$4)`,
+		environmentID, settings.GuildID, ownerID, nodeID)
 	if err != nil {
-		return uuid.Nil, uuid.Nil, err
+		return uuid.Nil, err
 	}
-	var operationID uuid.UUID
-	err = tx.QueryRowContext(ctx, `INSERT INTO discord_development_operations
-		(environment_id,operation,requested_by,execution_node_id)
-		VALUES ($1,'provision_environment',$2,$3) RETURNING id`,
-		environmentID, administratorID, nodeID).Scan(&operationID)
-	if err != nil {
-		return uuid.Nil, uuid.Nil, err
-	}
-	return environmentID, operationID, tx.Commit()
+	return environmentID, tx.Commit()
 }
 
 func (m *Manager) SaveDevelopmentEnvironmentSSH(ctx context.Context, id uuid.UUID,
@@ -339,43 +330,6 @@ func (m *Manager) ClearDevelopmentEnvironmentSSH(ctx context.Context, id uuid.UU
 			SELECT 1 FROM discord_development_operations
 			WHERE environment_id = $1 AND operation = 'reconfigure' AND status IN ('pending','running')
 		)`, id, nodeID); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
-func (m *Manager) RebaseDevelopmentEnvironment(ctx context.Context, id uuid.UUID) error {
-	if m.developmentImage == "" {
-		return errors.New("Control 未配置 TYRS_HAND_DEVELOPMENT_IMAGE")
-	}
-	tx, err := m.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	var nodeID uuid.UUID
-	err = tx.QueryRowContext(ctx, `UPDATE discord_development_environments
-		SET status = 'building', error = NULL, updated_at = now()
-		WHERE id = $1 AND status <> 'deleting' AND execution_node_id IS NOT NULL
-		AND NOT EXISTS (
-			SELECT 1 FROM discord_forums f JOIN discord_conversations c ON c.forum_id = f.id
-			JOIN codex_turn_intents i ON i.discord_conversation_id = c.id
-			WHERE f.development_environment_id = $1
-			AND i.status IN ('queued','retry_wait','dispatching','awaiting_confirmation','running','reconciling'))
-		AND NOT EXISTS (
-			SELECT 1 FROM codex_thread_controls ct JOIN codex_turn_runs r ON r.control_id = ct.id
-			WHERE ct.development_environment_id = $1
-			AND r.status IN ('starting','running','waiting_for_user','reconciling'))
-		RETURNING execution_node_id`, id).Scan(&nodeID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return errors.New("开发环境不存在、未分配节点、正在删除或仍有任务排队/运行")
-		}
-		return err
-	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO discord_development_operations
-		(environment_id, operation, execution_node_id) VALUES ($1, 'rebase', $2)`, id, nodeID)
-	if err != nil {
 		return err
 	}
 	return tx.Commit()

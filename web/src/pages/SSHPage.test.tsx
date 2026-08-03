@@ -44,7 +44,7 @@ describe('SSHPage', () => {
         }),
       ),
       http.get('/api/v1/ssh/hosts', () => HttpResponse.json({ items: [] })),
-      http.get('/api/v1/execution-nodes', () =>
+      http.get('/api/v1/workers', () =>
         HttpResponse.json({
           items: [
             {
@@ -132,7 +132,7 @@ describe('SSHPage', () => {
         }),
       ),
       http.get('/api/v1/ssh/hosts', () => HttpResponse.json({ items: [] })),
-      http.get('/api/v1/execution-nodes', () =>
+      http.get('/api/v1/workers', () =>
         HttpResponse.json({
           items: [
             {
@@ -278,7 +278,7 @@ Host production
           ],
         }),
       ),
-      http.get('/api/v1/execution-nodes', () =>
+      http.get('/api/v1/workers', () =>
         HttpResponse.json({
           items: [
             { id: firstNodeID, name: 'song-ubuntu', enabled: true },

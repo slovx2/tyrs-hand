@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+set -a
+. /etc/tyrs-hand/worker.env
+set +a
+exec /usr/local/bin/tyrs-hand-worker "$@"

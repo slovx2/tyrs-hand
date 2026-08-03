@@ -1,11 +1,13 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"time"
 
@@ -19,7 +21,7 @@ import (
 const workerNodeContextKey = "execution_node"
 
 func (s *Server) registerWorkerRoutes(router *gin.Engine) {
-	group := router.Group("/worker/v1")
+	group := router.Group("/worker/v2")
 	group.Use(s.requireWorkerIP())
 	group.Use(func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
@@ -27,55 +29,149 @@ func (s *Server) registerWorkerRoutes(router *gin.Engine) {
 	group.POST("/enroll", s.enrollWorkerNode)
 	authorized := group.Group("")
 	authorized.Use(s.requireWorkerNode())
-	authorized.POST("/heartbeat", s.workerHeartbeat)
-	authorized.GET("/ssh-configuration", s.workerSSHConfiguration)
-	authorized.GET("/development-environments", s.workerDevelopmentEnvironments)
-	authorized.POST("/development-environments/:id/daemon-state", s.workerEnvironmentDaemonState)
-	authorized.POST("/development-environments/:id/projects/snapshot",
-		s.workerDevelopmentProjectSnapshot)
-	authorized.POST("/development-environments/:id/interactive/interrupted",
-		s.workerInterruptEnvironmentInteractive)
-	authorized.POST("/development-environments/:id/runtime-credential", s.workerEnvironmentRuntimeCredential)
-	authorized.POST("/desktop-thread-requests", s.workerPrepareDesktopThread)
-	authorized.GET("/desktop-thread-requests/:id", s.workerDesktopThreadState)
-	authorized.POST("/desktop-thread-requests/:id/complete", s.workerCompleteDesktopThread)
-	authorized.POST("/desktop-thread-requests/:id/fail", s.workerFailDesktopThread)
-	authorized.POST("/thread-metadata-events", s.workerRecordThreadMetadata)
-	authorized.GET("/thread-name-updates", s.workerPendingThreadNames)
-	authorized.POST("/thread-name-updates/:id/ack", s.workerAckThreadName)
-	authorized.POST("/thread-lifecycle-requests/desktop", s.workerPrepareDesktopThreadLifecycle)
-	authorized.GET("/thread-lifecycle-requests", s.workerPendingThreadLifecycles)
-	authorized.GET("/thread-lifecycle-requests/:id", s.workerThreadLifecycleState)
-	authorized.POST("/thread-lifecycle-requests/:id/complete", s.workerCompleteThreadLifecycle)
-	authorized.POST("/desktop-turns", s.workerPrepareDesktopTurn)
-	authorized.POST("/desktop-turns/preflight", s.workerPreflightDesktopTurn)
-	authorized.GET("/desktop-turns/:id/images/target", s.workerDesktopImageTarget)
-	authorized.POST("/desktop-turns/:id/images/:ordinal", s.workerUploadDesktopImage)
-	authorized.POST("/desktop-turns/:id/images/:ordinal/fail", s.workerFailDesktopImage)
-	authorized.POST("/desktop-rollbacks", s.workerPrepareDesktopRollback)
-	authorized.POST("/desktop-rollbacks/:id/complete", s.workerCompleteDesktopRollback)
-	authorized.POST("/desktop-steers", s.workerRecordDesktopSteer)
-	authorized.POST("/runs/:id/interactive", s.workerRegisterInteractive)
-	authorized.GET("/interactive/:id", s.workerInteractiveState)
-	authorized.POST("/interactive/answer", s.workerAnswerInteractive)
-	authorized.POST("/claims", s.workerClaim)
-	authorized.POST("/runs/:id/heartbeat", s.workerRunHeartbeat)
-	authorized.POST("/runs/:id/commands/ack", s.workerCommandAck)
-	authorized.POST("/runs/:id/events", s.workerRunEvents)
-	authorized.POST("/runs/:id/complete", s.workerRunComplete)
-	authorized.POST("/runs/:id/fail", s.workerRunFail)
-	authorized.POST("/runs/:id/runtime-credential", s.workerRuntimeCredential)
-	authorized.POST("/runs/:id/thread", s.workerSetThread)
-	authorized.POST("/runs/:id/submission", s.workerRecordSubmission)
-	authorized.POST("/runs/:id/confirm", s.workerConfirmTurn)
-	authorized.POST("/runs/:id/development-state", s.workerDevelopmentState)
-	authorized.POST("/runs/:id/workspace-state", s.workerWorkspaceState)
-	authorized.POST("/runs/:id/tools/call", s.workerToolCall)
-	authorized.POST("/runs/:id/git-credential", s.workerGitCredential)
-	authorized.GET("/runs/:id/attachments/:attachmentId", s.workerDownloadAttachment)
-	authorized.POST("/development-operations/:id/heartbeat", s.workerDevelopmentOperationHeartbeat)
-	authorized.POST("/development-operations/:id/complete", s.workerCompleteDevelopmentOperation)
-	authorized.POST("/development-operations/:id/fail", s.workerFailDevelopmentOperation)
+	authorized.POST("/sync", s.workerSync)
+	authorized.POST("/rpc", s.workerRPC)
+	authorized.GET("/blobs/:id", s.workerBlob)
+	authorized.POST("/blobs/:id", s.workerBlob)
+}
+
+func (s *Server) registerWorkerOperationRoutes(group *gin.RouterGroup) {
+	group.POST("/heartbeat", s.workerHeartbeat)
+	group.POST("/claims", s.workerClaim)
+	group.GET("/ssh-configuration", s.workerSSHConfiguration)
+	group.GET("/development-environments", s.workerDevelopmentEnvironments)
+	group.POST("/development-environments/:id/daemon-state", s.workerEnvironmentDaemonState)
+	group.POST("/development-environments/:id/projects/snapshot", s.workerDevelopmentProjectSnapshot)
+	group.POST("/development-environments/:id/interactive/interrupted", s.workerInterruptEnvironmentInteractive)
+	group.POST("/desktop-thread-requests", s.workerPrepareDesktopThread)
+	group.GET("/desktop-thread-requests/:id", s.workerDesktopThreadState)
+	group.POST("/desktop-thread-requests/:id/complete", s.workerCompleteDesktopThread)
+	group.POST("/desktop-thread-requests/:id/fail", s.workerFailDesktopThread)
+	group.POST("/thread-metadata-events", s.workerRecordThreadMetadata)
+	group.GET("/thread-name-updates", s.workerPendingThreadNames)
+	group.POST("/thread-name-updates/:id/ack", s.workerAckThreadName)
+	group.POST("/thread-lifecycle-requests/desktop", s.workerPrepareDesktopThreadLifecycle)
+	group.GET("/thread-lifecycle-requests", s.workerPendingThreadLifecycles)
+	group.GET("/thread-lifecycle-requests/:id", s.workerThreadLifecycleState)
+	group.POST("/thread-lifecycle-requests/:id/complete", s.workerCompleteThreadLifecycle)
+	group.POST("/desktop-turns", s.workerPrepareDesktopTurn)
+	group.POST("/desktop-turns/preflight", s.workerPreflightDesktopTurn)
+	group.GET("/desktop-turns/:id/images/target", s.workerDesktopImageTarget)
+	group.POST("/desktop-turns/:id/images/:ordinal/fail", s.workerFailDesktopImage)
+	group.POST("/desktop-rollbacks", s.workerPrepareDesktopRollback)
+	group.POST("/desktop-rollbacks/:id/complete", s.workerCompleteDesktopRollback)
+	group.POST("/desktop-steers", s.workerRecordDesktopSteer)
+	group.POST("/runs/:id/interactive", s.workerRegisterInteractive)
+	group.GET("/interactive/:id", s.workerInteractiveState)
+	group.POST("/interactive/answer", s.workerAnswerInteractive)
+	group.POST("/runs/:id/heartbeat", s.workerRunHeartbeat)
+	group.POST("/runs/:id/commands/ack", s.workerCommandAck)
+	group.POST("/runs/:id/events", s.workerRunEvents)
+	group.POST("/runs/:id/complete", s.workerRunComplete)
+	group.POST("/runs/:id/fail", s.workerRunFail)
+	group.POST("/runs/:id/thread", s.workerSetThread)
+	group.POST("/runs/:id/submission", s.workerRecordSubmission)
+	group.POST("/runs/:id/confirm", s.workerConfirmTurn)
+	group.POST("/runs/:id/development-state", s.workerDevelopmentState)
+	group.POST("/runs/:id/workspace-state", s.workerWorkspaceState)
+	group.POST("/runs/:id/tools/call", s.workerToolCall)
+	group.POST("/runs/:id/git-credential", s.workerGitCredential)
+}
+
+func (s *Server) workerSync(c *gin.Context) {
+	var request workerprotocol.RequestEnvelope
+	if err := c.ShouldBindJSON(&request); err != nil {
+		badRequest(c, err)
+		return
+	}
+	if request.Operation != "worker.heartbeat" && request.Operation != "worker.claim" {
+		badRequest(c, errors.New("sync 仅承载心跳和任务领取"))
+		return
+	}
+	s.dispatchWorkerOperation(c, request)
+}
+
+func (s *Server) workerRPC(c *gin.Context) {
+	var request workerprotocol.RequestEnvelope
+	if err := c.ShouldBindJSON(&request); err != nil {
+		badRequest(c, err)
+		return
+	}
+	if request.Operation == "worker.heartbeat" || request.Operation == "worker.claim" {
+		badRequest(c, errors.New("该操作不允许通过 worker rpc 调用"))
+		return
+	}
+	s.dispatchWorkerOperation(c, request)
+}
+
+func (s *Server) dispatchWorkerOperation(c *gin.Context,
+	request workerprotocol.RequestEnvelope,
+) {
+	if _, err := uuid.Parse(request.RequestID); err != nil || request.Sequence == 0 {
+		badRequest(c, errors.New("worker 请求缺少稳定 requestId 或 sequence"))
+		return
+	}
+	method, path, err := workerprotocol.ResolveOperationRoute(request.Operation,
+		request.Parameters)
+	if err != nil {
+		badRequest(c, err)
+		return
+	}
+	engine := gin.New()
+	node := workerNode(c)
+	engine.Use(func(inner *gin.Context) {
+		inner.Set(workerNodeContextKey, node)
+		inner.Next()
+	})
+	s.registerWorkerOperationRoutes(engine.Group("/worker/v1"))
+	body := bytes.NewReader(request.Payload)
+	innerRequest := httptest.NewRequest(method, path, body).
+		WithContext(c.Request.Context())
+	innerRequest.Header.Set("Content-Type", "application/json")
+	if etag := strings.TrimSpace(request.Parameters["ifNoneMatch"]); etag != "" {
+		innerRequest.Header.Set("If-None-Match", etag)
+	}
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, innerRequest)
+	for name, values := range recorder.Header() {
+		for _, value := range values {
+			c.Writer.Header().Add(name, value)
+		}
+	}
+	c.Data(recorder.Code, recorder.Header().Get("Content-Type"), recorder.Body.Bytes())
+}
+
+func (s *Server) workerBlob(c *gin.Context) {
+	switch c.Request.Method {
+	case http.MethodGet:
+		runID := strings.TrimSpace(c.Query("runId"))
+		if _, err := uuid.Parse(runID); err != nil {
+			badRequest(c, errors.New("blob 下载缺少有效 runId"))
+			return
+		}
+		if _, err := uuid.Parse(c.Param("id")); err != nil {
+			badRequest(c, errors.New("blob id 无效"))
+			return
+		}
+		c.Params = gin.Params{{Key: "id", Value: runID},
+			{Key: "attachmentId", Value: c.Param("id")}}
+		s.workerDownloadAttachment(c)
+	case http.MethodPost:
+		ordinal := strings.TrimSpace(c.Query("ordinal"))
+		if _, err := uuid.Parse(c.Param("id")); err != nil {
+			badRequest(c, errors.New("blob intent id 无效"))
+			return
+		}
+		if ordinal == "" {
+			badRequest(c, errors.New("blob 上传缺少 ordinal"))
+			return
+		}
+		c.Params = gin.Params{{Key: "id", Value: c.Param("id")},
+			{Key: "ordinal", Value: ordinal}}
+		s.workerUploadDesktopImage(c)
+	default:
+		c.Status(http.StatusMethodNotAllowed)
+	}
 }
 
 func (s *Server) workerSSHConfiguration(c *gin.Context) {
@@ -184,12 +280,9 @@ func (s *Server) workerClaim(c *gin.Context) {
 		s.cfg.CodexMaxSteersPerTurn, s.cfg.CodexReconcileMaxAttempts)
 	for {
 		var active int
-		if err := s.db.QueryRowContext(c.Request.Context(), `SELECT
-			(SELECT count(*) FROM codex_turn_runs
-				WHERE execution_node_id = $1 AND active_slot = 1) +
-			(SELECT count(*) FROM discord_development_operations
-				WHERE execution_node_id = $1 AND status = 'running'
-				AND lease_expires_at >= now())`, node.ID).
+		if err := s.db.QueryRowContext(c.Request.Context(), `SELECT count(*)
+			FROM codex_turn_runs
+			WHERE execution_node_id = $1 AND active_slot = 1`, node.ID).
 			Scan(&active); err != nil {
 			problem(c, http.StatusInternalServerError, "读取节点运行槽位失败", err)
 			return
@@ -205,20 +298,6 @@ func (s *Server) workerClaim(c *gin.Context) {
 			case <-time.After(time.Second):
 			}
 			continue
-		}
-		if request.Role == "discord" || request.Role == "all" {
-			operation, err := s.claimDevelopmentOperation(c.Request.Context(), node.ID,
-				request.WorkerID)
-			if err != nil {
-				problem(c, http.StatusInternalServerError, "领取开发环境 Operation 失败", err)
-				return
-			}
-			if operation != nil {
-				c.JSON(http.StatusOK, workerprotocol.ClaimResponse{
-					DevelopmentOperation: operation,
-				})
-				return
-			}
 		}
 		claimed, err := repository.ClaimNode(c.Request.Context(), request.WorkerID, source, node.ID)
 		if err != nil {

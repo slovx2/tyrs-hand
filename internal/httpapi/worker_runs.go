@@ -678,24 +678,6 @@ func (s *Server) remoteRunAlreadyFinished(ctx context.Context, runID, nodeID uui
 	return false, nil
 }
 
-func (s *Server) workerRuntimeCredential(c *gin.Context) {
-	var request workerprotocol.RunLeaseRequest
-	runID, node, ok := requireRunLease(c, &request)
-	if !ok {
-		return
-	}
-	if _, err := s.claimedRemoteRun(c.Request.Context(), node.ID, runID, request); err != nil {
-		remoteRunError(c, "校验运行凭据请求失败", err)
-		return
-	}
-	credential, err := s.codexRuntimeCredential(c.Request.Context())
-	if err != nil {
-		problem(c, http.StatusInternalServerError, "读取 Provider 凭据失败", err)
-		return
-	}
-	c.JSON(http.StatusOK, credential)
-}
-
 func (s *Server) workerSetThread(c *gin.Context) {
 	var request workerprotocol.SetThreadRequest
 	runID, node, ok := requireRunLease(c, &request)

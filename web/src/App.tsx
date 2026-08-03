@@ -40,7 +40,6 @@ const navigation: Array<{ to: string; label: MessageKey }> = [
   { to: '/threads', label: 'workItems' },
   { to: '/jobs', label: 'jobs' },
   { to: '/workers', label: 'workers' },
-  { to: '/execution-nodes', label: 'nodes' },
   { to: '/devices', label: 'devices' },
   { to: '/ssh', label: 'ssh' },
   { to: '/worktrees', label: 'workers' },
@@ -124,11 +123,7 @@ export function App() {
           path="jobs"
           element={<ResourcePage resource="jobs" title="任务与尝试" />}
         />
-        <Route
-          path="workers"
-          element={<ResourcePage resource="workers" title="Worker" />}
-        />
-        <Route path="execution-nodes" element={<ExecutionNodesPage />} />
+        <Route path="workers" element={<ExecutionNodesPage />} />
         <Route path="devices" element={<DevicesPage />} />
         <Route path="ssh" element={<SSHPage />} />
         <Route

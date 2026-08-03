@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"golang.org/x/mod/semver"
 )
 
 const RequiredVersion = "0.145.0"
@@ -14,9 +16,12 @@ func ValidateVersion(ctx context.Context, bin string) error {
 	if err != nil {
 		return fmt.Errorf("读取 Codex 版本: %w", err)
 	}
-	expected := "codex-cli " + RequiredVersion
-	if actual := strings.TrimSpace(string(output)); actual != expected {
-		return fmt.Errorf("要求 Codex 版本为 %s，当前为 %s", RequiredVersion, actual)
+	actual := strings.TrimSpace(string(output))
+	version := strings.TrimPrefix(actual, "codex-cli ")
+	canonical := "v" + version
+	if version == actual || !semver.IsValid(canonical) ||
+		semver.Compare(canonical, "v"+RequiredVersion) < 0 {
+		return fmt.Errorf("要求 Codex 版本不低于 %s，当前为 %s", RequiredVersion, actual)
 	}
 	return nil
 }

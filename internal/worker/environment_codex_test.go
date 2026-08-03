@@ -63,6 +63,7 @@ func TestEnvironmentCodexObserverSubmitsThreadNamesFromRelay(t *testing.T) {
 	control := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
 		request *http.Request,
 	) {
+		unwrapWorkerTestRequest(t, request)
 		require.Equal(t, "/worker/v1/thread-metadata-events", request.URL.Path)
 		require.Equal(t, "Bearer worker-credential", request.Header.Get("Authorization"))
 		var input workerprotocol.ThreadMetadataRequest
@@ -174,6 +175,7 @@ func TestWorkerAppliesLunaThreadNameAndRelayBroadcastsToEveryDesktop(t *testing.
 	control := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
 		request *http.Request,
 	) {
+		unwrapWorkerTestRequest(t, request)
 		switch {
 		case request.Method == http.MethodGet &&
 			request.URL.Path == "/worker/v1/thread-name-updates":

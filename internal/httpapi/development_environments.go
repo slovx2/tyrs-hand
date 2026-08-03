@@ -27,31 +27,14 @@ func (s *Server) createDevelopmentEnvironment(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
-	administratorID := c.MustGet("session").(auth.Session).AdministratorID
-	environmentID, operationID, err := s.discord.CreateDevelopmentEnvironment(
-		c, input.OwnerDiscordUserID, administratorID)
+	environmentID, err := s.discord.CreateDevelopmentEnvironment(c, input.OwnerDiscordUserID)
 	if err != nil {
 		problem(c, http.StatusConflict, "创建开发环境失败", err)
 		return
 	}
 	s.audit(c, "development_environment.create", "development_environment",
-		environmentID.String(), map[string]any{
-			"operationId": operationID, "ownerDiscordUserId": input.OwnerDiscordUserID,
-		})
-	c.JSON(http.StatusAccepted, gin.H{"id": environmentID, "operationId": operationID})
-}
-
-func (s *Server) rebaseDevelopmentEnvironment(c *gin.Context) {
-	id, ok := parseUUIDParam(c, "id")
-	if !ok {
-		return
-	}
-	if err := s.discord.RebaseDevelopmentEnvironment(c, id); err != nil {
-		problem(c, http.StatusConflict, "Rebase 开发环境失败", err)
-		return
-	}
-	s.audit(c, "development_environment.rebase", "development_environment", id.String(), nil)
-	c.Status(http.StatusAccepted)
+		environmentID.String(), map[string]any{"ownerDiscordUserId": input.OwnerDiscordUserID})
+	c.JSON(http.StatusCreated, gin.H{"id": environmentID})
 }
 
 func (s *Server) putDevelopmentEnvironmentSSH(c *gin.Context) {

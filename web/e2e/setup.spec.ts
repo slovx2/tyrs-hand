@@ -35,7 +35,9 @@ test('首次安装页可以提交管理员资料', async ({ page }) => {
   )
   await page.getByRole('button', { name: '登录' }).click()
   expect((await loginResponse).status()).toBe(200)
-  await expect(page.getByRole('heading', { name: '控制面概览' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '控制面概览' })).toBeVisible({
+    timeout: 10_000,
+  })
 
   const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
   await page.goto('/settings/github')

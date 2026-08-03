@@ -10,7 +10,7 @@
 [![Security](https://github.com/slovx2/tyrs-hand/actions/workflows/security.yml/badge.svg)](https://github.com/slovx2/tyrs-hand/actions/workflows/security.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Tyrs Hand is a self-hosted agent collaboration platform that connects GitHub, Discord, Codex Desktop, and your own compute. A public Control owns events, state, and permissions, while Pull Workers run Codex, workspaces, development containers, and browser tools on your computers.
+Tyrs Hand is a self-hosted agent collaboration platform that connects GitHub, Discord, Codex Desktop, and your own compute. A public Control owns events, state, and permissions, while host-native Workers run the machine user's Codex, workspaces, Git, SSH, and browser tools.
 
 The project is at an early stage. Evaluate it on controlled repositories before production use. The default agent profile can access the public network and write to its worktree, so review trigger rules, tool allowlists, and permission policies first.
 
@@ -37,11 +37,11 @@ Codex Desktop and Discord keep messages, progress, and results in sync, so the c
 - Repository skills loaded from `.agents/skills/<name>/SKILL.md`
 - GitHub MCP tools and controlled local Git dynamic tools
 - Private Discord servers with long-lived development forums, GitHub task projections, and persistent conversations
-- One reusable container and Home per Discord user; environments discover Git repositories and ordinary directories as projects that can be bound to multiple forums
+- Host-native workspaces under `~/tyrs-hand/workspaces`, shared with the machine user's real Codex Home
 - Idempotent tool calls keyed by `(thread, turn, call)`
 - Natural Codex final answers with platform-owned control state and managed reply gates
-- Public HTTPS Control and Pull Workers with frozen per-resource placement
-- React administration UI for repositories, rules, profiles, jobs, threads, development environments, execution nodes, SSH, default placement, and audit logs
+- Public HTTPS Control and host-native Pull Workers with frozen per-resource placement
+- React administration UI for repositories, rules, profiles, jobs, threads, Workers, SSH, default placement, and audit logs
 
 ## Architecture
 
@@ -57,10 +57,10 @@ flowchart LR
     GitHub["GitHub App / Webhook"] --> Server
     Admin["React Admin UI"] --> Server
     Discord["Discord Server"] <--> Gateway
-    subgraph Home["Home or compute node (no public IP)"]
-        Worker["Pull Worker"]
-        Workspace["Repo cache + worktrees\nLong-lived environments"]
-        Codex["Codex App Server"]
+    subgraph Home["Linux or macOS host"]
+        Worker["tyrs-hand-worker\nSSH server + Pull Worker"]
+        Workspace["~/tyrs-hand/workspaces"]
+        Codex["System Codex App Server\nReal CODEX_HOME"]
         Browser["Worker / desktop Chrome"]
         Worker <--> Workspace
         Worker <--> Codex
@@ -73,7 +73,7 @@ flowchart LR
 The project ships four commands:
 
 - `tyrs-hand-server`: administration API, GitHub App, webhook receiver, and embedded frontend
-- `tyrs-hand-worker`: pulls work through `/worker/v1` and runs workspaces, Codex, local Git, and development containers on an execution node
+- `tyrs-hand-worker`: a host daemon that pulls through `/worker/v2`, runs workspaces and the system Codex, and serves Codex Desktop over SSH
 - `tyrs-hand-discord`: Discord gateway, forum conversations, projections, and outbox delivery
 - `tyrs-hand-admin`: migrations, diagnostics, administrator recovery, key rotation, and garbage collection
 
@@ -83,9 +83,9 @@ PostgreSQL is the only authoritative state store. Redis contains only recoverabl
 
 ### Requirements
 
-- Docker Engine and Docker Compose
+- Docker Engine and Docker Compose for the Control only
 - Go `1.26.5`, Node.js `24.14.0`, and pnpm `11.14.0` for source development
-- Codex CLI/App Server `0.145.0`; the application image already includes it
+- On every Worker host: Codex CLI/App Server `0.145.0` or newer, Git `2.39.0` or newer, OpenSSH client tools `9.2.0` or newer, curl, tar, and sudo
 
 ### Run Locally
 
@@ -114,13 +114,9 @@ PostgreSQL is the only authoritative state store. Redis contains only recoverabl
 
 4. Create a GitHub App through the Manifest flow or enter an existing App manually. Install it on explicitly selected repositories.
 
-5. Configure an OpenAI-compatible base URL, API key, model, and reasoning effort in system settings. Shared-account authentication is also available:
+5. Configure and authenticate Codex in the Worker service user's real `CODEX_HOME`. Control does not store or distribute provider settings, API keys, ChatGPT authentication, base URLs, or proxy settings.
 
-   ```bash
-   docker compose --profile tools run --rm admin codex-login
-   ```
-
-6. A complete production deployment also creates an execution node in the admin UI and starts a Pull Worker with the separate `compose.worker.yaml`. See the [minimal installation guide](docs/deployment/minimal-installation.md) for enrollment, default placement, and IP/CIDR allowlisting.
+6. Create a Worker in the admin UI and install the matching release binary on the host. The installer verifies the release checksum, runs `tyrs-hand-worker doctor`, and registers a systemd service or macOS LaunchDaemon. See the [minimal installation guide](docs/deployment/minimal-installation.md).
 
 ## Optional Webhook Listener Separation
 
@@ -156,35 +152,24 @@ The default rules accept `/tyrs-hand` on the first line of an Issue or Pull Requ
 
 - A `(Work Item, Agent Profile, Context Version)` tuple owns one Codex thread.
 - Follow-up comments on the same Issue or Pull Request resume that thread.
-- Provider, profile, tool schema, or skill changes create a new thread with a durable handoff summary.
+- Model, profile, tool schema, or skill changes create a new thread with a durable handoff summary.
 - Each GitHub work item owns a temporary worktree and runs serially; it is removed seven days after closure.
 - The GitHub path does not install or share dependencies and does not prepare toolchains. It is intended for read-only or lightweight edits, not local builds, execution, or debugging.
 - Issue and PR URLs and numbers are injected into the prompt. PR source refs are fetched in advance, with source/target branches and SHAs included in context.
 - Pull Requests created from Issues are linked back to the original work item.
 - Failed jobs retain their workspace for recovery; untrusted state is quarantined and rebuilt.
 
-## Discord Development Containers
+## Host Worker and Codex Desktop
 
-An execution node with the `discord` role manages Discord development environments. The same node can handle both GitHub and Discord work. A development environment freezes the current default node when it is created, and its projects, forums, conversations, and Codex controls keep using that node.
+The Worker is a thin native binary for Linux and macOS on amd64 and arm64. It runs permanently as one real operating-system user and binds that user's `HOME`, `CODEX_HOME`, and `~/tyrs-hand/workspaces`. Tyrs Hand neither provisions Docker nor manages any other Codex runtime; the host owner installs the desired toolchains.
 
-The official Worker Compose enables `TYRS_HAND_DEVELOPMENT_HOST_DOCKER=true` by default. Development containers use Linux host networking, mount `/var/run/docker.sock`, and include a pinned Docker CLI version. The Worker grants the container the socket's numeric supplementary GID so the non-root runtime user can manage host Docker. This is equivalent to host-root access and must only be enabled for trusted development environments. Start the Worker with the separate Compose file:
-
-```bash
-docker compose -f compose.worker.yaml up -d worker
-```
-
-- A Discord user has one container, data volume, Home volume, and network per Guild. Git repositories and ordinary directories inside it are discovered as projects, each of which can be bound to one or more forums.
-- The per-user container is the security boundary. Forums can invite read-only or operator collaborators; operators can drive the agent and must be trusted by the environment owner.
-- Control pins the configured official `TYRS_HAND_DEVELOPMENT_IMAGE` digest for each new environment; repositories do not need to provide a Dockerfile.
-- Environment containers stay running, and the Worker restores the container, environment-level Codex App Server, and Relay after worker or host restarts without losing Home, projects, or Codex sessions.
-- Each environment shares one `CODEX_HOME` and one App Server. Codex Desktop and Discord connect through a thin protocol Relay. Explicit rebases preserve Home, projects, user-installed Codex versions, and sessions while resetting the writable system layer.
-- Administrators can configure one SSH public key and host port for an environment. The development image must provide `sshd`, `ssh-keygen`, and an SFTP server; Desktop connects by running `codex app-server proxy` over SSH.
-- The SSH credential is bound to one active Discord member, so Desktop and Discord messages from that member use the same stable participant identity. A durable outbox projects Desktop messages, titles, progress, and final replies to Discord, while Discord replies continue the same thread; Discord failures do not block Desktop threads or turns.
-- Desktop-created and resumed threads keep the model, reasoning effort, and service tier selected by Desktop and the real App Server. Control-plane defaults apply only to conversations started from Discord.
-- After the Browser Bridge is installed, development sessions can switch between the Worker browser and registered desktop Chrome while preserving its profile, signed-in state, and ordinary tabs.
-- System-created Discord posts auto-hide after seven inactive days. An unlocked Discord archive only changes visibility; `/codex archive` archives the Codex thread and locks the post, while `/codex restore` restores the original thread and post.
-- Users can run `tyrs-hand-dev codex install <exact-version>` to override the bundled Codex in persistent Home; it activates when the environment is idle and rolls back automatically on startup failure.
-- A rebase is rejected if `USER`, UID/GID, or the Home path changes. devcontainer.json, Features, Compose, arbitrary mounts, privileged mode, and arbitrary published ports are not supported. The official Worker Compose is the only supported path for host Docker access; standalone Workers keep it disabled by default.
+- The Worker starts one system Codex App Server and uses the installed `codex` command. Version `0.145.0` is the minimum; newer compatible versions are allowed.
+- Codex configuration comes only from the machine user's `CODEX_HOME`. Existing chats and authentication remain in place and are neither copied nor migrated.
+- The built-in SSH server accepts multiple authorized public keys and supports shell commands, PTY resize, SCP, and SFTP. It intercepts `codex app-server proxy` for Codex Desktop and rejects SSH forwarding.
+- GitHub and Discord tasks share the host runtime while dynamic tools and interactive requests remain bound to their Codex thread.
+- Outbound SSH uses the host Worker agent, and Browser Bridge access remains available when configured.
+- Control communicates through only four public Worker endpoints: `/worker/v2/enroll`, `/worker/v2/sync`, `/worker/v2/rpc`, and `/worker/v2/blobs/{id}`.
+- Legacy environments can be reassigned once with `tyrs-hand-admin worker migrate-legacy`; the command does not read, copy, or modify Codex Home data.
 
 Repository task skills must live at:
 
@@ -202,12 +187,11 @@ If a configured skill is missing or is not returned by Codex `skills/list`, the 
 - Lease token and monotonic epoch checks on every job result
 - Capability, installation, repository, work item, allowlist, and live-permission checks for dynamic tools
 - No GitHub token in the Codex environment, Git remote, or worktree
-- Non-root server, worker, and Discord development containers
-- Workers use the HTTPS Worker API instead of direct PostgreSQL or Redis access; no master key, Discord bot token, or provider key is kept in long-lived configuration or the process environment, and run credentials are scoped by the Control
+- Non-root Control containers and a dedicated real OS user for each host Worker
+- Workers use the HTTPS Worker API instead of direct PostgreSQL or Redis access; no master key or Discord bot token is stored on a Worker, and Codex credentials stay in the machine user's own Codex Home
 - The Worker API supports individual IP and CIDR allowlists without requiring Cloudflare; forwarded source headers are accepted only from trusted proxies
-- Access to the host container daemon is limited to Workers with Discord development containers enabled
 
-Use `compose.production.yaml` for the production Control to provide the master key through a Docker Secret file. Workers use the separate `compose.worker.yaml`:
+Use `compose.production.yaml` for the production Control to provide the master key through a Docker Secret file:
 
 ```bash
 docker compose -f compose.yaml -f compose.production.yaml up -d
@@ -229,19 +213,26 @@ make test-coverage
 make build
 ```
 
-Integration tests use Testcontainers for PostgreSQL, Redis, and real Docker development containers. They cover repositories without `.devcontainer`, independent multi-repository clones, persistent Home and data, rebase rollback, and deletion. Codex coverage includes a scripted fake App Server and the pinned real App Server with a mock Responses SSE upstream; tests never call a real model.
+Integration tests use Testcontainers for PostgreSQL and Redis. Codex coverage includes a scripted fake App Server and the minimum supported real App Server with a mock Responses SSE upstream; tests never call a real model.
 
 ## Images and Releases
 
-Pull Requests and `main` build the Control, Worker, and Development images without publishing them. Releases build multi-architecture `linux/amd64` and `linux/arm64` images at:
+Pull Requests and `main` build the Control image without publishing it. Releases build the multi-architecture Control image at:
 
 ```text
 ghcr.io/slovx2/tyrs-hand-control
-ghcr.io/slovx2/tyrs-hand-worker
-ghcr.io/slovx2/tyrs-hand-development
 ```
 
-Release builds include SBOM and provenance. Their `sha-<commit>` candidate tags are vulnerability-scanned and signed with Cosign keyless signing; release-version tags for all images are promoted only after every candidate passes.
+The Worker release workflow publishes checksum-protected thin binaries:
+
+```text
+tyrs-hand-worker_<version>_linux_amd64.tar.gz
+tyrs-hand-worker_<version>_linux_arm64.tar.gz
+tyrs-hand-worker_<version>_darwin_amd64.tar.gz
+tyrs-hand-worker_<version>_darwin_arm64.tar.gz
+```
+
+Go runtime dependencies are linked into the Worker binary. Host commands and their supported baselines are declared in `deploy/worker/dependencies.json`; Codex and toolchains are intentionally not bundled.
 
 Production deployments should pin `sha-<commit>` or an image digest and must not use `latest`.
 

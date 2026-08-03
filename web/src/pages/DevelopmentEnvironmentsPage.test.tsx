@@ -29,7 +29,7 @@ const environment = {
   daemonStatus: 'running',
   appServerStatus: 'running',
   sshStatus: 'running',
-  relayStatus: 'running',
+  hubStatus: 'running',
   projectsScannedAt: '2026-07-27T10:00:00Z',
   projects: [
     {
@@ -146,11 +146,8 @@ describe('DevelopmentEnvironmentsPage', () => {
       http.post('/api/v1/development-environments', async ({ request }) => {
         create(await request.json())
         return HttpResponse.json(
-          {
-            id: 'dddddddd-dddd-dddd-dddd-dddddddddddd',
-            operationId: 'ffffffff-ffff-ffff-ffff-ffffffffffff',
-          },
-          { status: 202 },
+          { id: 'dddddddd-dddd-dddd-dddd-dddddddddddd' },
+          { status: 201 },
         )
       }),
     )
@@ -253,59 +250,20 @@ describe('DevelopmentEnvironmentsPage', () => {
     ).toBeDisabled()
   })
 
-  it('执行环境 Rebase 并保存和停用 SSH', async () => {
+  it('只展示宿主 Worker 状态和机器 Home 配置边界', async () => {
     commonHandlers()
-    const rebase = vi.fn()
-    const save = vi.fn()
-    const disable = vi.fn()
-    server.use(
-      http.post(
-        '/api/v1/development-environments/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/rebase',
-        () => {
-          rebase()
-          return new HttpResponse(null, { status: 202 })
-        },
-      ),
-      http.put(
-        '/api/v1/development-environments/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/ssh',
-        async ({ request }) => {
-          save(await request.json())
-          return new HttpResponse(null, { status: 202 })
-        },
-      ),
-      http.delete(
-        '/api/v1/development-environments/eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee/ssh',
-        () => {
-          disable()
-          return new HttpResponse(null, { status: 202 })
-        },
-      ),
-    )
     renderPage()
     const user = userEvent.setup()
 
     await screen.findByText('workspaces/atlas')
-    await user.click(screen.getByRole('button', { name: 'Rebase' }))
-    expect(rebase).toHaveBeenCalledOnce()
+    expect(
+      screen.queryByRole('button', { name: 'Rebase' }),
+    ).not.toBeInTheDocument()
     await user.click(screen.getByRole('tab', { name: '运行与 SSH' }))
-
-    const key = screen.getByLabelText('Bob SSH 公钥')
-    await user.clear(key)
-    await user.type(key, 'ssh-ed25519 AAAANew')
-    const port = screen.getByLabelText('Bob SSH 端口')
-    await user.clear(port)
-    await user.type(port, '2200')
-    await user.selectOptions(
-      screen.getByLabelText('Bob Desktop 发言身份'),
-      '10',
-    )
-    await user.click(screen.getByRole('button', { name: '保存 SSH' }))
-    expect(save).toHaveBeenCalledWith({
-      publicKey: 'ssh-ed25519 AAAANew',
-      port: 2200,
-      discordUserId: '10',
-    })
-    await user.click(screen.getByRole('button', { name: '停用 SSH' }))
-    expect(disable).toHaveBeenCalledOnce()
+    expect(screen.getByText('机器 Home 配置')).toBeInTheDocument()
+    expect(
+      screen.getByText(/Codex Provider、登录态和配置只读取/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Relay')).not.toBeInTheDocument()
   })
 })

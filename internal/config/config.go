@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 
@@ -46,6 +47,13 @@ type Config struct {
 	WorkerCredentialFile           string
 	WorkerEnrollmentToken          string
 	WorkerProtocolVersion          int
+	WorkerSSHListenAddr            string
+	WorkerSSHHostKeyFile           string
+	WorkerAuthorizedKeysFile       string
+	WorkerWorkspaceRoot            string
+	WorkerCodexHome                string
+	WorkerHome                     string
+	WorkerShell                    string
 	WorkerAPIAllowlist             []netip.Prefix
 	WorkerAPITrustedProxies        []netip.Prefix
 	LeaseDuration                  time.Duration
@@ -120,6 +128,13 @@ func load(workerProcess bool) (Config, error) {
 		WorkerCredentialFile:           filepath.Clean(v.GetString("worker_credential_file")),
 		WorkerEnrollmentToken:          strings.TrimSpace(v.GetString("worker_enrollment_token")),
 		WorkerProtocolVersion:          v.GetInt("worker_protocol_version"),
+		WorkerSSHListenAddr:            strings.TrimSpace(v.GetString("worker_ssh_listen_addr")),
+		WorkerSSHHostKeyFile:           filepath.Clean(v.GetString("worker_ssh_host_key_file")),
+		WorkerAuthorizedKeysFile:       filepath.Clean(v.GetString("worker_authorized_keys_file")),
+		WorkerWorkspaceRoot:            filepath.Clean(v.GetString("worker_workspace_root")),
+		WorkerCodexHome:                filepath.Clean(v.GetString("worker_codex_home")),
+		WorkerHome:                     filepath.Clean(v.GetString("worker_home")),
+		WorkerShell:                    filepath.Clean(v.GetString("worker_shell")),
 		LeaseDuration:                  v.GetDuration("lease_duration"),
 		HeartbeatInterval:              v.GetDuration("heartbeat_interval"),
 		ControlTimeout:                 v.GetDuration("control_timeout"),
@@ -197,11 +212,20 @@ func (c Config) ValidateWorker() error {
 	if c.WorkerRole != "all" && c.WorkerRole != "github" && c.WorkerRole != "discord" {
 		return errors.New("远程 worker_role 必须是 all、github 或 discord")
 	}
+	if c.EnableDevelopmentContainers || c.DevelopmentHostDocker {
+		return errors.New("宿主 Worker 已移除开发容器管理，请由宿主自行安装运行环境")
+	}
 	if c.WorkerProtocolVersion != workerprotocol.Version {
 		return fmt.Errorf("当前 Worker 只支持协议版本 %d", workerprotocol.Version)
 	}
 	if c.WorkerCredentialFile == "." || strings.TrimSpace(c.WorkerCredentialFile) == "" {
 		return errors.New("远程 Worker 必须配置凭据文件")
+	}
+	if c.WorkerSSHListenAddr == "" || c.WorkerSSHHostKeyFile == "." ||
+		c.WorkerAuthorizedKeysFile == "." ||
+		c.WorkerWorkspaceRoot == "." || c.WorkerCodexHome == "." || c.WorkerHome == "." ||
+		c.WorkerShell == "." {
+		return errors.New("宿主 Worker 的 SSH、Home、工作区和 Shell 配置不能为空")
 	}
 	if c.Environment == "production" && !strings.HasPrefix(c.WorkerControlURL, "https://") {
 		return errors.New("生产远程 Worker 的 Control URL 必须使用 HTTPS")
@@ -291,6 +315,16 @@ func (c Config) Validate() error {
 }
 
 func setDefaults(v *viper.Viper) {
+	home, _ := os.UserHomeDir()
+	stateRoot := defaultHostWorkerStateRoot(home)
+	codexHome := strings.TrimSpace(os.Getenv("CODEX_HOME"))
+	if codexHome == "" {
+		codexHome = filepath.Join(home, ".codex")
+	}
+	shell := strings.TrimSpace(os.Getenv("SHELL"))
+	if shell == "" {
+		shell = "/bin/sh"
+	}
 	v.SetDefault("env", "development")
 	v.SetDefault("http_addr", ":8080")
 	v.SetDefault("separate_webhook", false)
@@ -302,10 +336,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("database_url", "postgres://tyrs_hand:tyrs_hand@localhost:5432/tyrs_hand?sslmode=disable")
 	v.SetDefault("redis_url", "redis://localhost:6379/0")
 	v.SetDefault("cookie_secure", false)
-	v.SetDefault("worker_data_root", ".local/worker")
-	v.SetDefault("repo_cache_root", ".local/worker/repo-cache")
-	v.SetDefault("worktree_root", ".local/worker/workspaces/github")
-	v.SetDefault("codex_home_root", ".local/worker/codex-homes")
+	v.SetDefault("worker_data_root", stateRoot)
+	v.SetDefault("repo_cache_root", filepath.Join(stateRoot, "repo-cache"))
+	v.SetDefault("worktree_root", filepath.Join(stateRoot, "worktrees", "github"))
+	v.SetDefault("codex_home_root", codexHome)
 	v.SetDefault("attachment_root", ".local/control/attachments")
 	v.SetDefault("codex_bin", "codex")
 	v.SetDefault("repo_cache_max_bytes", int64(20*1024*1024*1024))
@@ -314,17 +348,24 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("worker_image_digest", "")
 	v.SetDefault("worker_max_concurrent_jobs", 6)
 	v.SetDefault("worker_control_url", "")
-	v.SetDefault("worker_credential_file", ".local/worker/node-credential")
+	v.SetDefault("worker_credential_file", filepath.Join(stateRoot, "control-state", "node-credential"))
 	v.SetDefault("worker_enrollment_token", "")
-	v.SetDefault("worker_protocol_version", 15)
+	v.SetDefault("worker_protocol_version", workerprotocol.Version)
+	v.SetDefault("worker_ssh_listen_addr", ":2222")
+	v.SetDefault("worker_ssh_host_key_file", filepath.Join(stateRoot, "ssh", "host_key"))
+	v.SetDefault("worker_authorized_keys_file", filepath.Join(stateRoot, "ssh", "authorized_keys"))
+	v.SetDefault("worker_workspace_root", filepath.Join(home, "tyrs-hand", "workspaces"))
+	v.SetDefault("worker_codex_home", codexHome)
+	v.SetDefault("worker_home", home)
+	v.SetDefault("worker_shell", shell)
 	v.SetDefault("development_runtime_dir", ".local/worker/development-runtime")
 	v.SetDefault("development_runtime_host_dir", ".local/worker/development-runtime")
-	v.SetDefault("enable_ssh", false)
-	v.SetDefault("ssh_agent_dir", "/run/tyrs-hand-ssh-agent")
-	v.SetDefault("ssh_agent_host_dir", "/opt/tyrs-hand/ssh-agent")
+	v.SetDefault("enable_ssh", true)
+	v.SetDefault("ssh_agent_dir", filepath.Join(stateRoot, "ssh-agent"))
+	v.SetDefault("ssh_agent_host_dir", filepath.Join(stateRoot, "ssh-agent"))
 	v.SetDefault("browser_mcp_url", "")
 	v.SetDefault("browser_mcp_token_file", "/run/secrets/browser_mcp_token")
-	v.SetDefault("browser_agent_relay_address", "host.docker.internal:8934")
+	v.SetDefault("browser_agent_relay_address", "127.0.0.1:8934")
 	v.SetDefault("browser_files_root", "/run/tyrs-hand-browser-files")
 	v.SetDefault("browser_files_host_root", "/opt/tyrs-hand/browser-files")
 	v.SetDefault("browser_services_root", "/run/tyrs-hand-browser-services")
@@ -345,6 +386,17 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("enable_development_containers", false)
 	v.SetDefault("development_host_docker", false)
 	v.SetDefault("development_image", "")
+}
+
+func defaultHostWorkerStateRoot(home string) string {
+	if runtime.GOOS == "darwin" {
+		return filepath.Join(home, "Library", "Application Support", "Tyrs Hand", "worker")
+	}
+	dataRoot := strings.TrimSpace(os.Getenv("XDG_DATA_HOME"))
+	if dataRoot == "" {
+		dataRoot = filepath.Join(home, ".local", "share")
+	}
+	return filepath.Join(dataRoot, "tyrs-hand", "worker")
 }
 
 var developmentImageDigest = regexp.MustCompile(`^[^[:space:]@]+@sha256:[0-9a-f]{64}$`)

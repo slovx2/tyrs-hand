@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -62,6 +63,8 @@ func main() {
 	case "gc":
 		requireArgs(2)
 		garbageCollect(ctx, db, cfg)
+	case "worker":
+		migrateLegacyWorker(ctx, db, os.Args[2:])
 	case "discord-reconcile-posts":
 		if len(os.Args) < 4 {
 			usage()
@@ -70,6 +73,63 @@ func main() {
 	default:
 		usage()
 	}
+}
+
+func migrateLegacyWorker(ctx context.Context, db *sql.DB, arguments []string) {
+	if len(arguments) == 0 || arguments[0] != "migrate-legacy" {
+		usage()
+	}
+	flags := flag.NewFlagSet("worker migrate-legacy", flag.ExitOnError)
+	environmentValue := flags.String("environment-id", "", "旧开发环境 UUID")
+	workerValue := flags.String("worker-id", "", "目标 Worker UUID")
+	apply := flags.Bool("apply", false, "执行迁移；默认只做 dry-run")
+	fatal(flags.Parse(arguments[1:]))
+	environmentID, err := uuid.Parse(*environmentValue)
+	fatal(err)
+	workerID, err := uuid.Parse(*workerValue)
+	fatal(err)
+	var workspace, workerName string
+	var threadCount int
+	fatal(db.QueryRowContext(ctx, `SELECT relative_path FROM development_projects
+		WHERE environment_id=$1 ORDER BY id LIMIT 1`, environmentID).Scan(&workspace))
+	fatal(db.QueryRowContext(ctx, `SELECT name FROM execution_nodes WHERE id=$1`, workerID).
+		Scan(&workerName))
+	fatal(db.QueryRowContext(ctx, `SELECT count(*) FROM codex_thread_controls
+		WHERE development_environment_id=$1 AND external_thread_id IS NOT NULL`, environmentID).
+		Scan(&threadCount))
+	clean := filepath.ToSlash(filepath.Clean(workspace))
+	if !strings.HasPrefix(clean, "workspaces/") || strings.Count(clean, "/") != 1 {
+		fatal(fmt.Errorf("旧环境工作区 %q 不是 workspaces/<name>", workspace))
+	}
+	fmt.Printf("旧环境 %s → Worker %s (%s)，工作区 %s，已有 Thread %d 个。\n",
+		environmentID, workerName, workerID, clean, threadCount)
+	if !*apply {
+		fmt.Println("dry-run 完成；确认宿主工作区和 Thread ID 后添加 --apply。")
+		return
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	fatal(err)
+	defer func() { _ = tx.Rollback() }()
+	_, err = tx.ExecContext(ctx, `UPDATE discord_development_environments
+		SET execution_node_id=$2, updated_at=now() WHERE id=$1`, environmentID, workerID)
+	fatal(err)
+	_, err = tx.ExecContext(ctx, `UPDATE discord_development_operations
+		SET status='failed', error='已切换为宿主 Worker，不再执行开发容器 Operation',
+			lease_token=NULL, lease_expires_at=NULL, finished_at=now(), updated_at=now()
+		WHERE environment_id=$1 AND status IN ('pending','running')`, environmentID)
+	fatal(err)
+	_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls
+		SET execution_node_id=$2, updated_at=now() WHERE development_environment_id=$1`,
+		environmentID, workerID)
+	fatal(err)
+	_, err = tx.ExecContext(ctx, `UPDATE codex_turn_runs run SET execution_node_id=$2
+		FROM codex_thread_controls control
+		WHERE run.control_id=control.id AND control.development_environment_id=$1`,
+		environmentID, workerID)
+	fatal(err)
+	fatal(tx.Commit())
+	audit(ctx, db, "worker.legacy_environment.migrate", "execution_node", workerID.String())
+	fmt.Println("旧环境关系已迁移；未读取、复制或修改任何 Codex Home 文件。")
 }
 
 func resetPassword(ctx context.Context, db *sql.DB, username, password string) {
@@ -589,6 +649,7 @@ Usage:
   tyrs-hand-admin reset-totp <username>
   tyrs-hand-admin rotate-master-key <new-master-key-file>
   tyrs-hand-admin codex-login
+  tyrs-hand-admin worker migrate-legacy --environment-id <uuid> --worker-id <uuid> [--apply]
   tyrs-hand-admin discord-reconcile-posts "DELETE DUPLICATE DISCORD POSTS" <desktop-request-id>...
   tyrs-hand-admin gc`))
 	os.Exit(2)

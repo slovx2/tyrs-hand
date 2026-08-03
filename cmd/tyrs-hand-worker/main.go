@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -10,7 +11,7 @@ import (
 
 	"github.com/slovx2/tyrs-hand/internal/bootstrap"
 	"github.com/slovx2/tyrs-hand/internal/config"
-	"github.com/slovx2/tyrs-hand/internal/database"
+	"github.com/slovx2/tyrs-hand/internal/hostworker"
 	"go.uber.org/zap"
 )
 
@@ -19,31 +20,30 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if !cfg.RemoteWorker() && len(cfg.MasterKey) != 32 {
-		log.Fatal("必须配置 TYRS_HAND_MASTER_KEY")
-	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if cfg.RemoteWorker() {
-		app, cleanup, initializeErr := bootstrap.InitializeRemoteWorker(ctx, cfg)
-		if initializeErr != nil {
-			log.Fatal(initializeErr)
+	if len(os.Args) == 2 && os.Args[1] == "doctor" {
+		checks, doctorErr := hostworker.Doctor(ctx, hostworker.RuntimeOptions{
+			CodexBin: cfg.CodexBin, CodexHome: cfg.WorkerCodexHome, Home: cfg.WorkerHome,
+			WorkspaceRoot: cfg.WorkerWorkspaceRoot, StateDir: cfg.WorkerDataRoot,
+		}, cfg.WorkerShell, cfg.WorkerAuthorizedKeysFile)
+		for _, check := range checks {
+			fmt.Printf("%-18s %s (%s)\n", check.Name, check.Status, check.Path)
 		}
-		defer cleanup()
-		if runErr := app.Runner.Run(ctx); runErr != nil && !errors.Is(runErr, context.Canceled) {
-			app.Logger.Fatal("远程 Worker 退出", zap.Error(runErr))
+		if doctorErr != nil {
+			log.Fatal(doctorErr)
 		}
 		return
 	}
-	app, cleanup, err := bootstrap.InitializeWorker(ctx, cfg)
-	if err != nil {
-		log.Fatal(err)
+	app, cleanup, initializeErr := bootstrap.InitializeRemoteWorker(ctx, cfg)
+	if initializeErr != nil {
+		log.Fatal(initializeErr)
 	}
 	defer cleanup()
-	if err := database.CheckMigrations(ctx, app.DB); err != nil {
-		app.Logger.Fatal("数据库迁移状态无效，请先运行 tyrs-hand-admin migrate", zap.Error(err))
-	}
-	if err := app.Runner.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-		app.Logger.Fatal("Worker 退出", zap.Error(err))
+	app.Logger.Info("宿主 Worker 已启动", zap.String("ssh", app.SSH.Addr().String()),
+		zap.String("home", cfg.WorkerHome), zap.String("codex_home", cfg.WorkerCodexHome),
+		zap.String("workspace_root", cfg.WorkerWorkspaceRoot))
+	if runErr := app.Runner.Run(ctx); runErr != nil && !errors.Is(runErr, context.Canceled) {
+		app.Logger.Fatal("宿主 Worker 退出", zap.Error(runErr))
 	}
 }

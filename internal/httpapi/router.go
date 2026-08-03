@@ -14,7 +14,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"github.com/slovx2/tyrs-hand/internal/auth"
-	"github.com/slovx2/tyrs-hand/internal/codexauth"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/executionnode"
@@ -37,7 +36,6 @@ type Server struct {
 	github             *ghadapter.Manager
 	catalog            *githubtools.Catalog
 	settings           *platformsettings.Service
-	codexAuth          *codexauth.Manager
 	discord            *discordintegration.Manager
 	desktopImageRemote func(context.Context) (desktopImageDiscord, error)
 	bindings           *discordintegration.BindingService
@@ -58,7 +56,6 @@ func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authSer
 		catalog: catalog, settings: settingsService, discord: discordManager, bindings: bindingService,
 		nodes: executionnode.NewService(db), ssh: sshconfig.NewService(db, secretStore),
 		secrets: secretStore, logger: logger, assets: assets,
-		codexAuth:       codexauth.NewManager(cfg, db, settingsService, logger),
 		clientUpdateHub: newClientUpdateHub()}, nil
 }
 
@@ -143,18 +140,17 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	authenticated.POST("/trigger-rules", s.requireCSRF(), s.createTriggerRule)
 	authenticated.GET("/work-items", s.listWorkItems)
 	authenticated.GET("/jobs", s.listJobs)
-	authenticated.GET("/workers", s.listWorkers)
-	authenticated.GET("/execution-nodes", s.listExecutionNodes)
+	authenticated.GET("/workers", s.listExecutionNodes)
 	authenticated.GET("/client-devices", s.listClientDevices)
 	authenticated.DELETE("/client-devices/:id", s.requireCSRF(), s.deleteClientDevice)
 	authenticated.POST("/client-device-pairings", s.requireCSRF(), s.createClientDevicePairing)
 	authenticated.GET("/client-device-pairings/:id", s.getClientDevicePairing)
 	authenticated.POST("/client-device-pairings/:id/approve", s.requireCSRF(), s.approveClientDevicePairing)
 	authenticated.POST("/client-device-pairings/:id/reject", s.requireCSRF(), s.rejectClientDevicePairing)
-	authenticated.POST("/execution-nodes", s.requireCSRF(), s.createExecutionNode)
-	authenticated.POST("/execution-nodes/:id/enrollments", s.requireCSRF(), s.createExecutionNodeEnrollment)
-	authenticated.PUT("/execution-nodes/:id/enabled", s.requireCSRF(), s.setExecutionNodeEnabled)
-	authenticated.DELETE("/execution-nodes/:id", s.requireCSRF(), s.deleteExecutionNode)
+	authenticated.POST("/workers", s.requireCSRF(), s.createExecutionNode)
+	authenticated.POST("/workers/:id/enrollments", s.requireCSRF(), s.createExecutionNodeEnrollment)
+	authenticated.PUT("/workers/:id/enabled", s.requireCSRF(), s.setExecutionNodeEnabled)
+	authenticated.DELETE("/workers/:id", s.requireCSRF(), s.deleteExecutionNode)
 	authenticated.GET("/ssh/credentials", s.listSSHCredentials)
 	authenticated.POST("/ssh/credentials", s.requireCSRF(), s.createSSHCredential)
 	authenticated.PUT("/ssh/credentials/:id", s.requireCSRF(), s.updateSSHCredential)
@@ -172,12 +168,6 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	authenticated.GET("/worktrees", s.listWorktrees)
 	authenticated.GET("/repo-caches", s.listRepoCaches)
 	authenticated.GET("/audit-logs", s.listAuditLogs)
-	authenticated.GET("/settings/agent-provider", s.getAgentProviderSettings)
-	authenticated.PUT("/settings/agent-provider", s.requireCSRF(), s.putAgentProviderSettings)
-	authenticated.POST("/settings/agent-provider/chatgpt/login", s.requireCSRF(), s.startChatGPTLogin)
-	authenticated.GET("/settings/agent-provider/chatgpt/login/:id", s.getChatGPTLogin)
-	authenticated.DELETE("/settings/agent-provider/chatgpt/login/:id", s.requireCSRF(), s.cancelChatGPTLogin)
-	authenticated.DELETE("/settings/agent-provider/chatgpt/account", s.requireCSRF(), s.logoutChatGPT)
 	authenticated.GET("/settings/global-agents", s.getGlobalAgents)
 	authenticated.PUT("/settings/global-agents", s.requireCSRF(), s.putGlobalAgents)
 	authenticated.GET("/settings/codex", s.listCodexSettings)
@@ -192,7 +182,6 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	authenticated.GET("/discord/members", s.listDiscordMembers)
 	authenticated.GET("/development-environments", s.listDevelopmentEnvironments)
 	authenticated.POST("/development-environments", s.requireCSRF(), s.createDevelopmentEnvironment)
-	authenticated.POST("/development-environments/:id/rebase", s.requireCSRF(), s.rebaseDevelopmentEnvironment)
 	authenticated.PUT("/development-environments/:id/ssh", s.requireCSRF(), s.putDevelopmentEnvironmentSSH)
 	authenticated.DELETE("/development-environments/:id/ssh", s.requireCSRF(), s.deleteDevelopmentEnvironmentSSH)
 	authenticated.POST("/development-projects/:id/forums", s.requireCSRF(), s.createDevelopmentProjectForum)
@@ -241,7 +230,7 @@ func (s *Server) rateLimit() gin.HandlerFunc {
 }
 
 func rateLimitPolicy(path string) (string, int64) {
-	if strings.HasPrefix(path, "/worker/v1/") {
+	if strings.HasPrefix(path, "/worker/v2/") {
 		return "worker-api", 10000
 	}
 	switch path {

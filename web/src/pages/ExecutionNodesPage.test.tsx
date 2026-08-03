@@ -27,7 +27,7 @@ describe('ExecutionNodesPage', () => {
     const create = vi.fn()
     const saveDefaults = vi.fn()
     server.use(
-      http.get('/api/v1/execution-nodes', () =>
+      http.get('/api/v1/workers', () =>
         HttpResponse.json({
           items: [
             {
@@ -47,7 +47,7 @@ describe('ExecutionNodesPage', () => {
       http.get('/api/v1/settings/execution', () =>
         HttpResponse.json({ githubNodeId: null, discordNodeId: null }),
       ),
-      http.post('/api/v1/execution-nodes', async ({ request }) => {
+      http.post('/api/v1/workers', async ({ request }) => {
         create(await request.json())
         return HttpResponse.json(
           {
@@ -73,7 +73,7 @@ describe('ExecutionNodesPage', () => {
       await screen.findByRole('heading', { name: 'song-ubuntu' }),
     ).toBeInTheDocument()
     await user.selectOptions(
-      screen.getByLabelText('GitHub 默认执行节点'),
+      screen.getByLabelText('GitHub 默认 Worker'),
       '11111111-1111-1111-1111-111111111111',
     )
     expect(saveDefaults).toHaveBeenCalledWith({
@@ -93,14 +93,14 @@ describe('ExecutionNodesPage', () => {
     expect(
       await screen.findByText('one-time-enrollment-token'),
     ).toBeInTheDocument()
-    expect(await screen.findByText('执行节点已创建')).toBeInTheDocument()
+    expect(await screen.findByText('Worker 已创建')).toBeInTheDocument()
   })
 
   it('轮换凭据与停用节点使用独立管理动作', async () => {
     const rotate = vi.fn()
     const disable = vi.fn()
     server.use(
-      http.get('/api/v1/execution-nodes', () =>
+      http.get('/api/v1/workers', () =>
         HttpResponse.json({
           items: [
             {
@@ -116,20 +116,17 @@ describe('ExecutionNodesPage', () => {
         }),
       ),
       http.get('/api/v1/settings/execution', () => HttpResponse.json({})),
-      http.post('/api/v1/execution-nodes/:id/enrollments', ({ params }) => {
+      http.post('/api/v1/workers/:id/enrollments', ({ params }) => {
         rotate(params.id)
         return HttpResponse.json(
           { enrollmentToken: 'rotated-token', expiresIn: 900 },
           { status: 201 },
         )
       }),
-      http.put(
-        '/api/v1/execution-nodes/:id/enabled',
-        async ({ params, request }) => {
-          disable(params.id, await request.json())
-          return new HttpResponse(null, { status: 204 })
-        },
-      ),
+      http.put('/api/v1/workers/:id/enabled', async ({ params, request }) => {
+        disable(params.id, await request.json())
+        return new HttpResponse(null, { status: 204 })
+      }),
     )
 
     renderPage()

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,6 +23,7 @@ type Client struct {
 	baseURL    string
 	credential string
 	http       *http.Client
+	sequence   atomic.Uint64
 }
 
 type HTTPError struct {
@@ -29,6 +31,8 @@ type HTTPError struct {
 	Status     string
 	Detail     string
 }
+
+var errNotModified = errors.New("Worker 配置未变化")
 
 func (e *HTTPError) Error() string {
 	return fmt.Sprintf("control 返回 %s: %s", e.Status, e.Detail)
@@ -56,7 +60,8 @@ func (c *Client) SetCredential(value string) { c.credential = value }
 
 func (c *Client) Enroll(ctx context.Context, token string) (EnrollResponse, error) {
 	var result EnrollResponse
-	err := c.call(ctx, http.MethodPost, "/worker/v1/enroll", EnrollRequest{Token: token}, &result, false)
+	err := c.callDirect(ctx, http.MethodPost, "/worker/v2/enroll", EnrollRequest{Token: token},
+		&result, false)
 	return result, err
 }
 
@@ -65,39 +70,16 @@ func (c *Client) Heartbeat(ctx context.Context, request HeartbeatRequest) error 
 }
 
 func (c *Client) SSHConfiguration(ctx context.Context, etag string) (SSHConfiguration, string, bool, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		c.baseURL+"/worker/v1/ssh-configuration", nil)
-	if err != nil {
-		return SSHConfiguration{}, etag, false, err
-	}
-	if c.credential == "" {
-		return SSHConfiguration{}, etag, false, errors.New("执行节点尚未注册")
-	}
-	request.Header.Set("Authorization", "Bearer "+c.credential)
-	if etag != "" {
-		request.Header.Set("If-None-Match", etag)
-	}
-	response, err := c.http.Do(request)
-	if err != nil {
-		return SSHConfiguration{}, etag, false, err
-	}
-	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode == http.StatusNotModified {
-		return SSHConfiguration{}, etag, false, nil
-	}
-	data, err := io.ReadAll(io.LimitReader(response.Body, 16<<20))
-	if err != nil {
-		return SSHConfiguration{}, etag, false, err
-	}
-	if response.StatusCode != http.StatusOK {
-		return SSHConfiguration{}, etag, false, &HTTPError{StatusCode: response.StatusCode,
-			Status: response.Status, Detail: strings.TrimSpace(string(data))}
-	}
 	var configuration SSHConfiguration
-	if err := json.Unmarshal(data, &configuration); err != nil {
+	if err := c.callWithParameters(ctx, http.MethodGet, "/worker/v1/ssh-configuration",
+		map[string]string{"ifNoneMatch": etag}, nil, &configuration, true); err != nil {
+		if errors.Is(err, errNotModified) {
+			return SSHConfiguration{}, etag, false, nil
+		}
 		return SSHConfiguration{}, etag, false, err
 	}
-	return configuration, response.Header.Get("ETag"), true, nil
+	nextETag := `"` + configuration.Revision + `"`
+	return configuration, nextETag, nextETag != etag, nil
 }
 
 func (c *Client) DevelopmentEnvironments(ctx context.Context) ([]EnvironmentManifest, error) {
@@ -280,7 +262,7 @@ func (c *Client) UploadDesktopImageReader(ctx context.Context, intentID uuid.UUI
 		writeResult <- marshalErr
 	}()
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		fmt.Sprintf("%s/worker/v1/desktop-turns/%s/images/%d", c.baseURL, intentID, ordinal),
+		fmt.Sprintf("%s/worker/v2/blobs/%s?ordinal=%d", c.baseURL, intentID, ordinal),
 		reader)
 	if err != nil {
 		_ = reader.CloseWithError(err)
@@ -371,49 +353,6 @@ func (c *Client) Claim(ctx context.Context, request ClaimRequest) (ClaimResponse
 	return response, nil
 }
 
-func (c *Client) DevelopmentOperationHeartbeat(ctx context.Context,
-	operation *DevelopmentOperation,
-) error {
-	return c.call(ctx, http.MethodPost, "/worker/v1/development-operations/"+
-		operation.ID.String()+"/heartbeat", DevelopmentOperationLease{
-		LeaseToken: operation.LeaseToken, LeaseEpoch: operation.LeaseEpoch,
-	}, nil, true)
-}
-
-func (c *Client) CompleteDevelopmentOperation(ctx context.Context,
-	operation *DevelopmentOperation,
-) error {
-	return c.call(ctx, http.MethodPost, "/worker/v1/development-operations/"+
-		operation.ID.String()+"/complete", DevelopmentOperationTerminal{
-		DevelopmentOperationLease: DevelopmentOperationLease{
-			LeaseToken: operation.LeaseToken, LeaseEpoch: operation.LeaseEpoch,
-		},
-		IdempotencyKey:  operation.ID.String() + ":complete",
-		AppliedRevision: operation.AppliedRevision, ContainerID: operation.ContainerID,
-		ImageRef: operation.ImageRef, ImageID: operation.ImageID,
-		DaemonStatus: operation.DaemonStatus, RuntimeUser: operation.RuntimeUser,
-		RuntimeUID: operation.RuntimeUID, RuntimeGID: operation.RuntimeGID,
-		RuntimeHome: operation.RuntimeHome, WorkspaceStatus: operation.WorkspaceStatus,
-		WorkspaceHeadSHA: operation.WorkspaceHeadSHA,
-	}, nil, true)
-}
-
-func (c *Client) FailDevelopmentOperation(ctx context.Context,
-	operation *DevelopmentOperation, cause error,
-) error {
-	message := ""
-	if cause != nil {
-		message = cause.Error()
-	}
-	return c.call(ctx, http.MethodPost, "/worker/v1/development-operations/"+
-		operation.ID.String()+"/fail", DevelopmentOperationTerminal{
-		DevelopmentOperationLease: DevelopmentOperationLease{
-			LeaseToken: operation.LeaseToken, LeaseEpoch: operation.LeaseEpoch,
-		},
-		IdempotencyKey: operation.ID.String() + ":fail", Error: message,
-	}, nil, true)
-}
-
 func lease(task *Task) RunLeaseRequest {
 	return RunLeaseRequest{LeaseToken: task.Claimed.LeaseToken,
 		LeaseEpoch: task.Claimed.LeaseEpoch}
@@ -487,7 +426,8 @@ func (c *Client) DownloadAttachment(ctx context.Context, task *Task, attachmentI
 	destination io.Writer,
 ) (string, int64, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		c.baseURL+runPath(task, "/attachments/")+attachmentID.String(), nil)
+		fmt.Sprintf("%s/worker/v2/blobs/%s?runId=%s", c.baseURL, attachmentID,
+			task.Claimed.RunID), nil)
 	if err != nil {
 		return "", 0, err
 	}
@@ -568,6 +508,37 @@ func (c *Client) GitCredential(ctx context.Context, task *Task, purpose, threadI
 func (c *Client) call(ctx context.Context, method, path string, input, output any,
 	authenticated bool,
 ) error {
+	return c.callWithParameters(ctx, method, path, nil, input, output, authenticated)
+}
+
+func (c *Client) callWithParameters(ctx context.Context, method, path string,
+	additional map[string]string, input, output any, authenticated bool,
+) error {
+	payload, err := json.Marshal(input)
+	if err != nil {
+		return err
+	}
+	operation, parameters, err := ResolveOperation(method, path)
+	if err != nil {
+		return err
+	}
+	for name, value := range additional {
+		if value != "" {
+			parameters[name] = value
+		}
+	}
+	target := "/worker/v2/rpc"
+	if operation == "worker.heartbeat" || operation == "worker.claim" {
+		target = "/worker/v2/sync"
+	}
+	envelope := RequestEnvelope{RequestID: uuid.NewString(), Sequence: c.sequence.Add(1),
+		Operation: operation, Parameters: parameters, Payload: payload}
+	return c.callDirect(ctx, http.MethodPost, target, envelope, output, authenticated)
+}
+
+func (c *Client) callDirect(ctx context.Context, method, path string, input, output any,
+	authenticated bool,
+) error {
 	var body io.Reader
 	if input != nil {
 		encoded, err := json.Marshal(input)
@@ -599,6 +570,9 @@ func (c *Client) execute(request *http.Request, output any, authenticated bool) 
 	data, err := io.ReadAll(io.LimitReader(response.Body, 16<<20))
 	if err != nil {
 		return err
+	}
+	if response.StatusCode == http.StatusNotModified {
+		return errNotModified
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return &HTTPError{StatusCode: response.StatusCode, Status: response.Status,

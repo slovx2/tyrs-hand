@@ -137,6 +137,7 @@ func TestDesktopRelayConfiguresManagedRuntimeAcrossThreadLifecycle(t *testing.T)
 	control := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
 		request *http.Request,
 	) {
+		unwrapWorkerTestRequest(t, request)
 		require.Equal(t, "/worker/v1/desktop-thread-requests", request.URL.Path)
 		require.NoError(t, json.NewEncoder(response).Encode(workerprotocol.DesktopThreadState{
 			ID: requestID, EnvironmentID: environmentID, Operation: "start", Status: "preparing",
@@ -437,6 +438,7 @@ func TestDesktopRelayPreparesStartAndForkBeforeCompleting(t *testing.T) {
 	control := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
 		request *http.Request,
 	) {
+		unwrapWorkerTestRequest(t, request)
 		switch {
 		case request.URL.Path == "/worker/v1/desktop-thread-requests":
 			var input workerprotocol.DesktopThreadPrepareRequest
@@ -531,6 +533,18 @@ func TestDesktopToolRuntimeRejectsMissingDevelopmentSnapshot(t *testing.T) {
 	_, err := desktopRuntimeForTask(devcontainer.Runtime{EnvironmentID: uuid.New()},
 		&workerprotocol.Task{})
 	require.EqualError(t, err, "desktop turn 缺少开发环境快照")
+}
+
+func TestHostWorkspacePathRejectsEscape(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspaces")
+	path, err := hostWorkspacePath(root, "project")
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(root, "project"), path)
+
+	_, err = hostWorkspacePath(root, "../outside")
+	require.Error(t, err)
+	_, err = hostWorkspacePath(root, "/outside")
+	require.Error(t, err)
 }
 
 func TestDesktopEventReporterPersistsUntilControlAcceptsTerminal(t *testing.T) {

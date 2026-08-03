@@ -374,58 +374,6 @@ func TestRemoteCodexProcessEnvironmentIncludesBrowserToken(t *testing.T) {
 	require.Equal(t, expected, environmentValue(environment, "TYRS_BROWSER_MCP_TOKEN"))
 }
 
-func TestDevelopmentOperationRuntimeConfigIncludesProviderAndScopedBrowserToken(t *testing.T) {
-	environmentID := uuid.MustParse("11111111-1111-4111-8111-111111111111")
-	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
-		request *http.Request,
-	) {
-		require.Equal(t, http.MethodPost, request.Method)
-		require.Equal(t, "/worker/v1/development-environments/"+environmentID.String()+
-			"/runtime-credential", request.URL.Path)
-		_ = json.NewEncoder(response).Encode(workerprotocol.RuntimeCredential{
-			ModelSource: settings.ModelSourceProvider, APIKey: "model-secret",
-			BaseURL: "https://api.example.com/v1",
-		})
-	}))
-	t.Cleanup(server.Close)
-	tokenPath := filepath.Join(t.TempDir(), "browser-token")
-	require.NoError(t, os.WriteFile(tokenPath, []byte("browser-secret\n"), 0o600))
-	processor := &RemoteProcessor{
-		client: workerprotocol.NewClient(server.URL, "worker-credential", time.Second),
-		cfg: config.Config{
-			BrowserMCPURL:       "http://host.docker.internal:8931/mcp",
-			BrowserMCPTokenFile: tokenPath,
-		},
-	}
-
-	for _, operationName := range []string{"provision_environment", "reconfigure", "rebase"} {
-		t.Run(operationName, func(t *testing.T) {
-			runtimeConfig, err := processor.developmentOperationRuntimeConfig(
-				context.Background(), &workerprotocol.DevelopmentOperation{
-					EnvironmentID: environmentID, Operation: operationName,
-				})
-			require.NoError(t, err)
-			require.Equal(t, "model-secret",
-				environmentValue(runtimeConfig.ProcessEnvironment, "TYRS_HAND_MODEL_API_KEY"))
-			expected, err := deriveBrowserToken("browser-secret", environmentID.String())
-			require.NoError(t, err)
-			require.Equal(t, expected,
-				environmentValue(runtimeConfig.ProcessEnvironment, "TYRS_BROWSER_MCP_TOKEN"))
-			require.Equal(t, codex.ManagedModelProvider{
-				ID: managedModelProviderID, Name: "Tyrs Hand Provider",
-				BaseURL: "https://api.example.com/v1", WireAPI: "responses",
-				EnvKey: "TYRS_HAND_MODEL_API_KEY", RequiresOpenAIAuth: false,
-			}, runtimeConfig.AppServerConfig.ModelProvider)
-		})
-	}
-
-	runtimeConfig, err := processor.developmentOperationRuntimeConfig(context.Background(),
-		&workerprotocol.DevelopmentOperation{EnvironmentID: environmentID,
-			Operation: "delete_environment"})
-	require.NoError(t, err)
-	require.Empty(t, runtimeConfig)
-}
-
 func environmentKeyCount(environment []string, key string) int {
 	count := 0
 	for _, entry := range environment {

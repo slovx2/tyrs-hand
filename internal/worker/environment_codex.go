@@ -14,6 +14,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcatalog"
 	"github.com/slovx2/tyrs-hand/internal/codexrelay"
 	"github.com/slovx2/tyrs-hand/internal/devcontainer"
+	"github.com/slovx2/tyrs-hand/internal/hostworker"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
 )
@@ -27,12 +28,13 @@ type environmentCodexRegistry struct {
 }
 
 type environmentCodex struct {
-	relay      *codexrelay.Relay
-	client     *codexrelay.Client
-	manifest   workerprotocol.EnvironmentManifest
-	runtime    devcontainer.Runtime
-	generation int64
-	processor  *RemoteProcessor
+	relay       *codexrelay.Relay
+	client      *codexrelay.Client
+	manifest    workerprotocol.EnvironmentManifest
+	runtime     devcontainer.Runtime
+	generation  int64
+	processor   *RemoteProcessor
+	hostRuntime *hostworker.Runtime
 
 	mu                  sync.Mutex
 	toolHandlers        map[string]toolBinding
@@ -139,8 +141,10 @@ func (r *environmentCodexRegistry) retain(environmentIDs map[uuid.UUID]bool) {
 		if entry.metadataEvents != nil {
 			entry.metadataEvents.Close()
 		}
-		_ = entry.client.Close()
-		_ = entry.relay.Close()
+		if entry.hostRuntime == nil {
+			_ = entry.client.Close()
+			_ = entry.relay.Close()
+		}
 	}
 }
 
@@ -334,10 +338,16 @@ func (r *environmentCodexRegistry) idle(environmentID uuid.UUID) bool {
 	entry.mu.Lock()
 	toolsIdle := len(entry.toolHandlers) == 0 && len(entry.interactiveHandlers) == 0
 	entry.mu.Unlock()
+	if entry.hostRuntime != nil {
+		return toolsIdle
+	}
 	return toolsIdle && entry.relay.Stats().DesktopConnections == 0
 }
 
 func (e *environmentCodex) bindTool(threadID string, handler codex.ToolHandler) func() {
+	if e.hostRuntime != nil {
+		return e.hostRuntime.BindTool(threadID, handler)
+	}
 	e.mu.Lock()
 	e.nextBinding++
 	binding := toolBinding{id: e.nextBinding, handler: handler}
@@ -355,6 +365,9 @@ func (e *environmentCodex) bindTool(threadID string, handler codex.ToolHandler) 
 func (e *environmentCodex) bindInteractive(threadID string,
 	handler codex.ServerRequestHandler,
 ) func() {
+	if e.hostRuntime != nil {
+		return e.hostRuntime.BindInteractive(threadID, handler)
+	}
 	e.mu.Lock()
 	e.nextBinding++
 	binding := interactiveBinding{id: e.nextBinding, handler: handler}
@@ -421,7 +434,9 @@ func (r *environmentCodexRegistry) close() {
 		if entry.metadataEvents != nil {
 			entry.metadataEvents.Close()
 		}
-		_ = entry.client.Close()
-		_ = entry.relay.Close()
+		if entry.hostRuntime == nil {
+			_ = entry.client.Close()
+			_ = entry.relay.Close()
+		}
 	}
 }

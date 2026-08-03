@@ -932,21 +932,6 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 	require.Len(t, environments[0].Projects[0].Forums, 1)
 	require.NotNil(t, environments[0].ExecutionNodeID)
 	require.Equal(t, seed.executionNodeID, *environments[0].ExecutionNodeID)
-	require.Error(t, manager.RebaseDevelopmentEnvironment(ctx, uuid.New()))
-	require.NoError(t, manager.RebaseDevelopmentEnvironment(ctx, seed.environmentID))
-	var rebaseNodeID uuid.UUID
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT execution_node_id
-		FROM discord_development_operations WHERE environment_id = $1 AND operation = 'rebase'`,
-		seed.environmentID).Scan(&rebaseNodeID))
-	require.Equal(t, seed.executionNodeID, rebaseNodeID)
-	_, err = db.ExecContext(ctx, `UPDATE discord_development_operations SET status = 'completed'
-		WHERE environment_id = $1 AND operation = 'rebase'`,
-		seed.environmentID)
-	require.NoError(t, err)
-	_, err = db.ExecContext(ctx, `UPDATE discord_development_environments
-		SET status='running' WHERE id=$1`, seed.environmentID)
-	require.NoError(t, err)
-
 	require.Error(t, manager.SetForumAccess(ctx, seed.developmentForumID, "1002", "admin", seed.administratorID))
 	require.NoError(t, manager.SetForumAccess(ctx, seed.developmentForumID, "1002", AccessReadOnly, seed.administratorID))
 	require.NoError(t, manager.SetForumAccess(ctx, seed.developmentForumID, "1003", AccessOperator, seed.administratorID))

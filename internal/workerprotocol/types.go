@@ -9,7 +9,15 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 21
+const Version = 22
+
+type RequestEnvelope struct {
+	RequestID  string            `json:"requestId"`
+	Sequence   uint64            `json:"sequence"`
+	Operation  string            `json:"operation"`
+	Parameters map[string]string `json:"parameters,omitempty"`
+	Payload    json.RawMessage   `json:"payload,omitempty"`
+}
 
 // CodexTurnError 保留 Codex error 通知的结构化字段，供 Control 决定是否重试
 // 并在 Discord 失败过程卡中展示。
@@ -75,8 +83,7 @@ type ClaimRequest struct {
 }
 
 type ClaimResponse struct {
-	Task                 *Task                 `json:"task,omitempty"`
-	DevelopmentOperation *DevelopmentOperation `json:"developmentOperation,omitempty"`
+	Task *Task `json:"task,omitempty"`
 }
 
 type DevelopmentOperation struct {
@@ -196,7 +203,7 @@ type EnvironmentDaemonState struct {
 	Status            string    `json:"status"`
 	AppServerStatus   string    `json:"appServerStatus"`
 	SSHStatus         string    `json:"sshStatus"`
-	RelayStatus       string    `json:"relayStatus"`
+	HubStatus         string    `json:"hubStatus"`
 	CodexVersion      string    `json:"codexVersion,omitempty"`
 	CodexUserOverride bool      `json:"codexUserOverride"`
 	Error             string    `json:"error,omitempty"`
@@ -204,6 +211,7 @@ type EnvironmentDaemonState struct {
 
 type DesktopThreadPrepareRequest struct {
 	EnvironmentID uuid.UUID       `json:"environmentId"`
+	WorkspaceRoot string          `json:"workspaceRoot,omitempty"`
 	Operation     string          `json:"operation"`
 	RequestKey    string          `json:"requestKey"`
 	Params        json.RawMessage `json:"params"`
@@ -424,10 +432,10 @@ type RuntimeSnapshot struct {
 	Sandbox           string `json:"sandbox"`
 	ApprovalPolicy    string `json:"approvalPolicy"`
 	NetworkEnabled    bool   `json:"networkEnabled"`
-	ModelSource       string `json:"modelSource"`
+	ModelSource       string `json:"modelSource,omitempty"`
 	BaseURL           string `json:"baseUrl,omitempty"`
 	ProxyURL          string `json:"proxyUrl,omitempty"`
-	ConfigSignature   string `json:"configSignature"`
+	ConfigSignature   string `json:"configSignature,omitempty"`
 	GlobalAgents      string `json:"globalAgents"`
 	CollaborationMode string `json:"collaborationMode,omitempty"`
 	SettingsRevision  int64  `json:"settingsRevision"`

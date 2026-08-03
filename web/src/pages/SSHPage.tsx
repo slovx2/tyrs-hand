@@ -15,7 +15,7 @@ export function SSHPage() {
   })
   const nodes = useQuery({
     queryKey: ['execution-nodes'],
-    queryFn: () => api<{ items: SSHExecutionNode[] }>('/execution-nodes'),
+    queryFn: () => api<{ items: SSHExecutionNode[] }>('/workers'),
   })
   const isLoading = credentials.isLoading || hosts.isLoading || nodes.isLoading
   const error = credentials.error ?? hosts.error ?? nodes.error

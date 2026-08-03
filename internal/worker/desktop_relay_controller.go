@@ -521,9 +521,17 @@ func (c *desktopRelayController) injectDesktopRuntime(params json.RawMessage,
 func (c *desktopRelayController) desktopWorkspaceAllowsPublish(cwd string) bool {
 	c.environment.mu.Lock()
 	forums := append([]workerprotocol.EnvironmentForum(nil), c.environment.manifest.Forums...)
+	hostRuntime := c.environment.hostRuntime
 	c.environment.mu.Unlock()
 	for _, forum := range forums {
-		workspace, err := devcontainer.ContainerWorkspacePath(forum.WorkspaceRelative)
+		var workspace string
+		var err error
+		if hostRuntime != nil {
+			workspace, err = hostWorkspacePath(hostRuntime.WorkspaceRoot(),
+				forum.WorkspaceRelative)
+		} else {
+			workspace, err = devcontainer.ContainerWorkspacePath(forum.WorkspaceRelative)
+		}
 		if err == nil && workspace == cwd {
 			return forum.WorkspaceKind == "git"
 		}
@@ -534,16 +542,31 @@ func (c *desktopRelayController) desktopWorkspaceAllowsPublish(cwd string) bool 
 func (c *desktopRelayController) prepareDesktopThread(ctx context.Context,
 	call codexrelay.Call,
 ) (workerprotocol.DesktopThreadState, error) {
+	workspaceRoot := ""
+	if c.environment.hostRuntime != nil {
+		workspaceRoot = c.environment.hostRuntime.WorkspaceRoot()
+	}
 	requestCtx, cancel := context.WithTimeout(ctx, c.controlTimeout())
 	defer cancel()
 	return c.processor.client.PrepareDesktopThread(requestCtx,
 		workerprotocol.DesktopThreadPrepareRequest{
 			EnvironmentID: c.environment.runtime.EnvironmentID,
+			WorkspaceRoot: workspaceRoot,
 			Operation:     strings.TrimPrefix(call.Method, "thread/"),
 			RequestKey: desktopRequestKey(call.Method, call.Params,
 				json.RawMessage(uuid.NewString())),
 			Params: call.Params,
 		})
+}
+
+func hostWorkspacePath(root, relative string) (string, error) {
+	root = filepath.Clean(strings.TrimSpace(root))
+	relative = filepath.Clean(strings.TrimSpace(relative))
+	if !filepath.IsAbs(root) || relative == "." || filepath.IsAbs(relative) ||
+		relative == ".." || strings.HasPrefix(relative, ".."+string(os.PathSeparator)) {
+		return "", errors.New("宿主 Workspace 相对路径无效")
+	}
+	return filepath.Join(root, relative), nil
 }
 
 func (c *desktopRelayController) completeDesktopThread(

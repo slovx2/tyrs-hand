@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "codexMinimumVersion": "0.145.0",
+  "requiredCommands": {
+    "git": "2.39.0",
+    "ssh": "9.2.0",
+    "scp": "9.2.0",
+    "ssh-agent": "9.2.0",
+    "curl": "7.88.1",
+    "tar": "1.34",
+    "sudo": "1.9.13"
+  },
+  "platformCommands": {
+    "linux": ["getent", "systemctl", "sha256sum"],
+    "darwin": ["dscl", "launchctl", "shasum"]
+  },
+  "embeddedGoModules": {
+    "github.com/creack/pty": "1.1.24",
+    "github.com/pkg/sftp": "1.13.11"
+  }
+}

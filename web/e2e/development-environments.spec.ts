@@ -15,7 +15,7 @@ const environment = {
   daemonStatus: 'running',
   appServerStatus: 'running',
   sshStatus: 'disabled',
-  relayStatus: 'running',
+  hubStatus: 'running',
   projectsScannedAt: '2026-07-27T10:00:00Z',
   projects: [
     {

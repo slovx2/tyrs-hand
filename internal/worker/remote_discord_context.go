@@ -24,8 +24,15 @@ type remoteSavedAttachment struct {
 	RelativePath string
 }
 
+type hostDevelopmentRuntime struct {
+	Workspace   string
+	CodexHome   string
+	ProjectKind string
+	RemoteURL   string
+}
+
 func (p *RemoteProcessor) prepareRemoteAttachments(ctx context.Context,
-	task *workerprotocol.Task, runtime devcontainer.Runtime,
+	task *workerprotocol.Task, runtime hostDevelopmentRuntime,
 ) ([]remoteSavedAttachment, error) {
 	var attachments []workerprotocol.Attachment
 	if task.Snapshot.Development != nil {
@@ -37,13 +44,8 @@ func (p *RemoteProcessor) prepareRemoteAttachments(ctx context.Context,
 	if len(attachments) == 0 {
 		return nil, nil
 	}
-	temporary, err := os.MkdirTemp(filepath.Join(p.cfg.WorkerDataRoot, "tmp"),
-		"discord-attachments-*")
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = os.RemoveAll(temporary) }()
-	directory := filepath.Join(temporary, ".tyrs-hand", "discord-attachments")
+	directory := filepath.Join(runtime.Workspace, ".tyrs-hand", "discord-attachments",
+		task.Claimed.ID.String())
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return nil, err
 	}
@@ -55,8 +57,9 @@ func (p *RemoteProcessor) prepareRemoteAttachments(ctx context.Context,
 			return nil, errors.New("control 返回的附件文件名无效")
 		}
 		relative := filepath.ToSlash(filepath.Join(".tyrs-hand", "discord-attachments",
+			task.Claimed.ID.String(),
 			attachment.ID.String()+"-"+filename))
-		target := filepath.Join(temporary, filepath.FromSlash(relative))
+		target := filepath.Join(runtime.Workspace, filepath.FromSlash(relative))
 		file, err := os.OpenFile(target+".tmp", os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 		if err != nil {
 			return nil, err
@@ -87,14 +90,11 @@ func (p *RemoteProcessor) prepareRemoteAttachments(ctx context.Context,
 		result = append(result, remoteSavedAttachment{Attachment: attachment,
 			RelativePath: relative})
 	}
-	if err := p.development.CopyToRuntime(ctx, runtime, temporary, runtime.Workspace); err != nil {
-		return nil, err
-	}
 	return result, nil
 }
 
 func remoteDevelopmentTurnInput(snapshot *workerprotocol.DevelopmentSnapshot,
-	discord *workerprotocol.DiscordSnapshot, runtime devcontainer.Runtime,
+	discord *workerprotocol.DiscordSnapshot, runtime hostDevelopmentRuntime,
 	attachments []remoteSavedAttachment, skills []ports.SkillRef,
 ) ports.TurnInput {
 	if discord != nil {
@@ -128,7 +128,7 @@ func remoteDevelopmentTurnInput(snapshot *workerprotocol.DevelopmentSnapshot,
 }
 
 func remoteDiscordTurnInput(snapshot *workerprotocol.DiscordSnapshot,
-	runtime devcontainer.Runtime, attachments []remoteSavedAttachment,
+	runtime hostDevelopmentRuntime, attachments []remoteSavedAttachment,
 	skills []ports.SkillRef,
 ) ports.TurnInput {
 	identity := discordintegration.MessageIdentity{
@@ -163,8 +163,8 @@ func remoteDiscordTurnInput(snapshot *workerprotocol.DiscordSnapshot,
 		LocalImages: images, AdditionalContext: additional, Skills: skills}
 }
 
-func (p *RemoteProcessor) discordCommandHandler(primary *workerprotocol.Task,
-	containerRuntime devcontainer.Runtime, skills []ports.SkillRef,
+func (p *RemoteProcessor) hostDiscordCommandHandler(primary *workerprotocol.Task,
+	hostRuntime hostDevelopmentRuntime, skills []ports.SkillRef,
 	report func(string, json.RawMessage),
 ) remoteCommandHandler {
 	return func(ctx context.Context, runtime *codex.Runtime, threadID, turnID string,
@@ -181,12 +181,12 @@ func (p *RemoteProcessor) discordCommandHandler(primary *workerprotocol.Task,
 		}
 		commandTask.Snapshot.Development = command.Development
 		commandTask.Snapshot.Discord = command.Discord
-		attachments, err := p.prepareRemoteAttachments(ctx, &commandTask, containerRuntime)
+		attachments, err := p.prepareRemoteAttachments(ctx, &commandTask, hostRuntime)
 		if err != nil {
 			return err
 		}
 		input := remoteDevelopmentTurnInput(command.Development, command.Discord,
-			containerRuntime, attachments, skills)
+			hostRuntime, attachments, skills)
 		if err := runtime.SteerTurn(ctx, threadID, turnID, input); err != nil {
 			return err
 		}
@@ -195,4 +195,14 @@ func (p *RemoteProcessor) discordCommandHandler(primary *workerprotocol.Task,
 		}
 		return nil
 	}
+}
+
+func (p *RemoteProcessor) discordCommandHandler(primary *workerprotocol.Task,
+	containerRuntime devcontainer.Runtime, skills []ports.SkillRef,
+	report func(string, json.RawMessage),
+) remoteCommandHandler {
+	return p.hostDiscordCommandHandler(primary, hostDevelopmentRuntime{
+		Workspace: containerRuntime.Workspace, CodexHome: containerRuntime.CodexHome,
+		ProjectKind: containerRuntime.ProjectKind, RemoteURL: containerRuntime.RemoteURL,
+	}, skills, report)
 }

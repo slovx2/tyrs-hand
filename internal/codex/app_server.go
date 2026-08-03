@@ -17,6 +17,11 @@ type ManagedAppServerConfig struct {
 	ModelProvider ManagedModelProvider
 }
 
+// HomeAppServerArguments 只指定传输地址，其余 Codex 配置全部由真实 CODEX_HOME 决定。
+func HomeAppServerArguments(listen string) []string {
+	return []string{"app-server", "--listen", listen}
+}
+
 // ManagedAppServerArguments 固定平台认证边界，其他个人配置仍从 CODEX_HOME 读取。
 func ManagedAppServerArguments(listen string, config ManagedAppServerConfig) []string {
 	arguments := []string{
