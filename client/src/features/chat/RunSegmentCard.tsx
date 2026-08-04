@@ -60,11 +60,13 @@ export function RunSegmentCard({ run, segment, continued, active, maxHeight, liv
   const [hasMore, setHasMore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasNew, setHasNew] = useState(false);
+  const [activityViewportHeight, setActivityViewportHeight] = useState(48);
   const nearBottom = useRef(true);
   const scroll = useRef<FlashListRef<RunActivityPart>>(null);
   const watermark = useRef(0);
   const requestedVersion = useRef(0);
   const parts = useMemo(() => buildProjectedRunActivity(activities), [activities]);
+  const activityMaxHeight = Math.max(48, maxHeight - 92);
   const presentation = continued ? { label: "已继续", color: theme.colors.textMuted } :
     run.status === "failed" ? { label: "失败", color: theme.colors.danger } :
     run.status === "canceled" ? { label: "已停止", color: theme.colors.textMuted } :
@@ -94,8 +96,12 @@ export function RunSegmentCard({ run, segment, continued, active, maxHeight, liv
 
   useEffect(() => {
     setExpanded(active);
-    setActivities([]); setReady(false); watermark.current = 0; requestedVersion.current = 0;
+    setActivities([]); setReady(false); setActivityViewportHeight(48);
+    watermark.current = 0; requestedVersion.current = 0;
   }, [active, run.id, segment.id]);
+  useEffect(() => {
+    setActivityViewportHeight((height) => Math.min(height, activityMaxHeight));
+  }, [activityMaxHeight]);
   useEffect(() => () => onInteractionEnd(), [onInteractionEnd]);
   useEffect(() => { if (!expanded) onInteractionEnd(); }, [expanded, onInteractionEnd]);
   useEffect(() => { if (expanded && !ready) void loadLatest(); }, [expanded, loadLatest, ready]);
@@ -148,29 +154,34 @@ export function RunSegmentCard({ run, segment, continued, active, maxHeight, liv
         </Text>
         <Text numberOfLines={1} style={styles.model}>{run.actualSettings.model ?? "默认模型"}</Text>
       </View>
-      <FlashList ref={scroll} data={parts} nestedScrollEnabled bounces={false} overScrollMode="never"
-        keyExtractor={(part) => part.id}
-        renderItem={({ item: part }) => part.kind === "commentary" ?
-          <View style={styles.commentary}><MarkdownContent compact>{part.text}</MarkdownContent></View> :
-          <Operations part={part} />}
-        maintainVisibleContentPosition={{ disabled: false }}
-        style={{ maxHeight: Math.max(120, maxHeight - 92) }}
-        contentContainerStyle={styles.content}
-        onTouchStart={onInteractionStart} onTouchEnd={onInteractionEnd}
-        onTouchCancel={onInteractionEnd} onScrollBeginDrag={onInteractionStart}
-        onScrollEndDrag={onInteractionEnd} onMomentumScrollBegin={onInteractionStart}
-        onMomentumScrollEnd={onInteractionEnd}
-        scrollEventThrottle={80} onScroll={({ nativeEvent }) => {
-          nearBottom.current = nativeEvent.contentSize.height - nativeEvent.layoutMeasurement.height -
-            nativeEvent.contentOffset.y < 80;
-          if (nearBottom.current) setHasNew(false);
-        }}
-        onStartReached={() => void loadOlder()} onStartReachedThreshold={0.15}
-        ListHeaderComponent={loadingOlder ?
-          <Text style={{ color: theme.colors.textMuted }}>正在加载更早动态…</Text> :
-          !ready ? <Text style={{ color: theme.colors.textMuted }}>正在加载动态…</Text> : null}
-        ListFooterComponent={run.errorMessage && !continued ?
-          <Text style={{ color: theme.colors.danger }}>{run.errorMessage}</Text> : null} />
+      <View style={{ height: activityViewportHeight, maxHeight: activityMaxHeight }}>
+        <FlashList ref={scroll} data={parts} nestedScrollEnabled bounces={false} overScrollMode="never"
+          keyExtractor={(part) => part.id}
+          renderItem={({ item: part }) => part.kind === "commentary" ?
+            <View style={styles.commentary}><MarkdownContent compact>{part.text}</MarkdownContent></View> :
+            <Operations part={part} />}
+          maintainVisibleContentPosition={{ disabled: false }} style={styles.activityList}
+          contentContainerStyle={styles.content}
+          onContentSizeChange={(_width, height) => {
+            setActivityViewportHeight(Math.max(48,
+              Math.min(activityMaxHeight, Math.ceil(height))));
+          }}
+          onTouchStart={onInteractionStart} onTouchEnd={onInteractionEnd}
+          onTouchCancel={onInteractionEnd} onScrollBeginDrag={onInteractionStart}
+          onScrollEndDrag={onInteractionEnd} onMomentumScrollBegin={onInteractionStart}
+          onMomentumScrollEnd={onInteractionEnd}
+          scrollEventThrottle={80} onScroll={({ nativeEvent }) => {
+            nearBottom.current = nativeEvent.contentSize.height - nativeEvent.layoutMeasurement.height -
+              nativeEvent.contentOffset.y < 80;
+            if (nearBottom.current) setHasNew(false);
+          }}
+          onStartReached={() => void loadOlder()} onStartReachedThreshold={0.15}
+          ListHeaderComponent={loadingOlder ?
+            <Text style={{ color: theme.colors.textMuted }}>正在加载更早动态…</Text> :
+            !ready ? <Text style={{ color: theme.colors.textMuted }}>正在加载动态…</Text> : null}
+          ListFooterComponent={run.errorMessage && !continued ?
+            <Text style={{ color: theme.colors.danger }}>{run.errorMessage}</Text> : null} />
+      </View>
       {hasNew && <Pressable style={styles.newActivity} onPress={() => {
         setHasNew(false); nearBottom.current = true; scroll.current?.scrollToEnd({ animated: true });
       }}><Text style={{ color: theme.colors.accent }}>有新动态 ↓</Text></Pressable>}
@@ -187,7 +198,8 @@ const styles = StyleSheet.create({
   title: { flex: 1, fontFamily: "Inter_600SemiBold", fontSize: 15 },
   meta: { borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 14, paddingVertical: 7, flexDirection: "row", gap: 8 },
-  model: { flex: 1, textAlign: "right" }, content: { padding: 12, gap: 8 },
+  model: { flex: 1, textAlign: "right" }, activityList: { flex: 1 },
+  content: { padding: 12, gap: 8 },
   commentary: { paddingVertical: 4 }, operation: { gap: 5 },
   operationHeader: { flexDirection: "row", alignItems: "center", gap: 7, minHeight: 32 },
   operationSummary: { flex: 1 }, operationRow: { flexDirection: "row", gap: 7, paddingLeft: 18 },
