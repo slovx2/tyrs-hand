@@ -1,7 +1,7 @@
 import type { Connection } from "@/db/connections";
 import type { LocalAttachment, OutboxItem } from "@/sync/outbox";
 import type { ConversationTurn, Message, RunActivity, Session, SessionSettings } from "@/types/protocol";
-import { isPreviewMode } from "./config";
+import { isPreviewMode, isPreviewStressMode, previewLatencyMs, previewPerfLogging } from "./config";
 import { createPreviewSeed, type PreviewControlSeed } from "./fixtures";
 
 let state = createPreviewSeed();
@@ -174,6 +174,16 @@ export async function requestPreview(serverId: string, path: string, init?: Requ
   const url = new URL(path, "https://preview.tyrshand.local");
   const body = parseBody(init);
   const value = control(serverId);
+  const requestStartedAt = performance.now();
+  const latency = isPreviewStressMode && method === "GET" ? previewLatencyMs : 0;
+  if (previewPerfLogging) {
+    console.info(`[TYRS_PERF] request:start method=${method} path=${url.pathname} latency=${latency}`);
+  }
+  if (latency > 0) await new Promise((resolve) => setTimeout(resolve, latency));
+  if (previewPerfLogging) {
+    console.info(`[TYRS_PERF] request:released method=${method} path=${url.pathname} elapsed=${
+      (performance.now() - requestStartedAt).toFixed(1)}`);
+  }
   if (url.pathname === "/bootstrap") return previewBootstrap(serverId);
   if (url.pathname === "/sessions" && method === "GET") {
     const lifecycle = url.searchParams.get("lifecycle");
@@ -207,20 +217,42 @@ export async function requestPreview(serverId: string, path: string, init?: Requ
   }
   const turnsMatch = /^\/sessions\/([^/]+)\/turns$/.exec(url.pathname);
   if (turnsMatch && method === "GET") {
-    const turn = previewTurn(serverId, turnsMatch[1]!);
-    return { items: turn ? [turn] : [], hasMoreBefore: false, nextCursor: "" };
+    const detail = value.details[turnsMatch[1]!];
+    const single = previewTurn(serverId, turnsMatch[1]!);
+    const all = detail?.turns ?? (single ? [single] : []);
+    const before = Number(url.searchParams.get("beforeCursor") ?? Number.POSITIVE_INFINITY);
+    const limit = Number(url.searchParams.get("limit") ?? 20);
+    const eligible = all.filter((turn) => turn.anchorSeq < before);
+    const items = eligible.slice(-limit);
+    const hasMoreBefore = eligible.length > items.length;
+    return { items: structuredClone(items), hasMoreBefore,
+      nextCursor: hasMoreBefore ? String(items[0]?.anchorSeq ?? "") : "" };
   }
   const turnMatch = /^\/sessions\/([^/]+)\/turns\/([^/]+)$/.exec(url.pathname);
   if (turnMatch && method === "GET") {
-    const turn = previewTurn(serverId, turnMatch[1]!);
+    const detail = value.details[turnMatch[1]!];
+    const turn = detail?.turns?.find((item) => item.id === turnMatch[2]) ??
+      previewTurn(serverId, turnMatch[1]!);
     if (!turn || turn.id !== turnMatch[2]) throw new Error("预览轮次不存在");
     return turn;
   }
   const activityMatch = /^\/runs\/([^/]+)\/segments\/([^/]+)\/activities$/.exec(url.pathname);
   if (activityMatch && method === "GET") {
-    const activities = previewActivities(serverId, activityMatch[1]!);
-    return { activities, hasMoreBefore: false, hasMoreAfter: false,
-      persistedThroughEventSeq: activities.at(-1)?.lastEventSequence ?? 0, finalAnswerDraft: null };
+    const projected = Object.values(value.details)
+      .map((detail) => detail.activities?.[activityMatch[2]!]).find(Boolean);
+    const all = projected ?? previewActivities(serverId, activityMatch[1]!);
+    const limit = Number(url.searchParams.get("limit") ?? 40);
+    const before = url.searchParams.get("beforeActivitySeq");
+    const after = url.searchParams.get("afterEventSeq");
+    const eligible = before ? all.filter((item) => item.firstEventSequence < Number(before)) :
+      after ? all.filter((item) => item.lastEventSequence > Number(after)) : all;
+    const activities = before ? eligible.slice(-limit) : after ? eligible.slice(0, limit) : eligible.slice(-limit);
+    const first = activities[0]?.firstEventSequence ?? Number.POSITIVE_INFINITY;
+    const last = activities.at(-1)?.lastEventSequence ?? 0;
+    return { activities: structuredClone(activities),
+      hasMoreBefore: all.some((item) => item.firstEventSequence < first),
+      hasMoreAfter: all.some((item) => item.lastEventSequence > last),
+      persistedThroughEventSeq: all.at(-1)?.lastEventSequence ?? 0, finalAnswerDraft: null };
   }
   const sessionMatch = /^\/sessions\/([^/]+)$/.exec(url.pathname);
   if (sessionMatch && method === "GET") {

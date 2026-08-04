@@ -22,10 +22,12 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     id: "session:row:0"
 - extendedWaitUntil:
     visible:
-      id: "session:toolbar"
+      id: "session:more"
     timeout: 60000
 - extendedWaitUntil:
     visible: "协议级 Worker 已完成。"
     timeout: 120000
+- tapOn:
+    id: "session:more"
 - assertNotVisible:
     id: "session:stop"

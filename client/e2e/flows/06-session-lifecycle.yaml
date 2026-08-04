@@ -3,6 +3,8 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - tapOn:
     id: "session:row:0"
 - tapOn:
+    id: "session:more"
+- tapOn:
     id: "session:rename"
 - tapOn:
     id: "session:rename:input"
@@ -10,6 +12,8 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - inputText: "Mobile E2E renamed"
 - tapOn:
     id: "session:rename:save"
+- tapOn:
+    id: "session:more"
 - tapOn:
     id: "session:archive"
 - tapOn:
@@ -22,5 +26,7 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     timeout: 60000
 - tapOn:
     id: "session:row:0"
+- tapOn:
+    id: "session:more"
 - tapOn:
     id: "session:restore"

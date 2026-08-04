@@ -1,12 +1,15 @@
 import type { Connection } from "@/db/connections";
 import type { OutboxItem } from "@/sync/outbox";
-import type { Bootstrap, Message, RunSnapshot, Session, SessionSettings } from "@/types/protocol";
+import type { Bootstrap, ConversationTurn, Message, RunActivity, RunSnapshot, Session,
+  SessionSettings } from "@/types/protocol";
 import { primaryPreviewServerId, secondaryPreviewServerId } from "./config";
 
 export type PreviewSessionDetail = {
   settings: SessionSettings;
   currentRun: RunSnapshot | null;
   messages: Message[];
+  turns?: ConversationTurn[];
+  activities?: Record<string, RunActivity[]>;
 };
 
 export type PreviewControlSeed = {
@@ -115,6 +118,9 @@ const failedSession = session(5, "执行失败：依赖服务不可用", { servi
 const attachmentSession = session(6, "附件与 Markdown 完整展示");
 const archivedSession = session(7, "已归档：旧版通知链路", { lifecycleState: "archived" });
 const markdownSession = session(9, "Markdown 排版与长内容验收");
+const stressSession = session(10, "性能压测：20 轮 × 3 段 × 60 项动态", {
+  lastMessageSeq: 80,
+});
 
 const runningRun = run(1, "running");
 const planRun = run(2, "completed", "plan");
@@ -180,6 +186,77 @@ function conversation(item: Session, answer: string, currentRun: RunSnapshot | n
   };
 }
 
+function stressDetail(): PreviewSessionDetail {
+  const turns: ConversationTurn[] = [];
+  const activities: Record<string, RunActivity[]> = {};
+  const allMessages: Message[] = [];
+  for (let turnIndex = 1; turnIndex <= 20; turnIndex++) {
+    const turnId = `a1000000-0000-4000-8000-${String(turnIndex).padStart(12, "0")}`;
+    const runId = `a2000000-0000-4000-8000-${String(turnIndex).padStart(12, "0")}`;
+    const messages = Array.from({ length: 4 }, (_, messageIndex) => {
+      const seq = (turnIndex - 1) * 4 + messageIndex + 1;
+      const role = messageIndex === 3 ? "agent" as const : "user" as const;
+      const labels = [
+        `第 ${turnIndex} 轮：分析复杂页面的渲染与滚动性能。`,
+        `第 ${turnIndex} 轮 steer：继续检查嵌套列表与 Markdown。`,
+        `第 ${turnIndex} 轮交互回答：保留完整活动历史。`,
+        `第 ${turnIndex} 轮完成，已记录布局、网络和帧耗时。`,
+      ];
+      return { ...message(stressSession.id, seq, role, labels[messageIndex]!),
+        conversationTurnId: turnId };
+    });
+    allMessages.push(...messages);
+    const segments = Array.from({ length: 3 }, (_, segmentIndex) => {
+      const segmentId = `a3000000-${String(turnIndex).padStart(4, "0")}-4000-8${String(segmentIndex)
+        .padStart(3, "0")}-${String(turnIndex * 10 + segmentIndex).padStart(12, "0")}`;
+      const start = segmentIndex * 60 + 1;
+      activities[segmentId] = Array.from({ length: 60 }, (_, activityIndex) => {
+        const sequence = start + activityIndex;
+        const commentary = activityIndex % 2 === 0;
+        return {
+          id: `a4000000-${String(turnIndex).padStart(4, "0")}-4${String(segmentIndex).padStart(3, "0")}-8${String(activityIndex).padStart(3, "0")}-${String(sequence).padStart(12, "0")}`,
+          itemId: `stress-${turnIndex}-${segmentIndex}-${activityIndex}`,
+          kind: commentary ? "commentary" as const : "operation" as const,
+          firstEventSequence: sequence,
+          lastEventSequence: sequence,
+          status: "completed" as const,
+          payload: commentary ? { text: `### 步骤 ${activityIndex + 1}\n\n正在分析第 **${turnIndex}** 轮第 \`${segmentIndex + 1}\` 段。这里包含较长的 Markdown 文本、行内代码和列表，用于模拟真实 commentary 的排版成本。\n\n- 检查列表复用\n- 检查高度测量\n- 检查滚动帧` } :
+            { item: { id: `command-${turnIndex}-${segmentIndex}-${activityIndex}`,
+              type: "commandExecution", command: `rg -n \"stress-${activityIndex}\" client/src`,
+              status: "completed" }, eventType: "item/completed" },
+          occurredAt: baseTime,
+        };
+      });
+      return {
+        id: segmentId,
+        sequence: segmentIndex,
+        triggerType: segmentIndex === 0 ? "initial" as const :
+          segmentIndex === 1 ? "steer" as const : "interactive" as const,
+        triggerMessageId: messages[segmentIndex]!.id,
+        interactiveRequestId: segmentIndex === 2 ?
+          `a5000000-0000-4000-8000-${String(turnIndex).padStart(12, "0")}` : null,
+        startEventSequence: start,
+        endEventSequence: start + 59,
+        activityCount: 60,
+      };
+    });
+    turns.push({ kind: "turn", id: turnId, anchorSeq: messages[0]!.seq, messages, runs: [{
+      id: runId,
+      attempt: 1,
+      status: "completed",
+      actualSettings: { model: "gpt-5.6-sol", reasoningEffort: "high", serviceTier: "fast",
+        collaborationMode: "default", settingsVersion: 3 },
+      startedAt: baseTime,
+      finishedAt: finishedTime,
+      errorCode: null,
+      errorMessage: null,
+      segments,
+      pendingInteractives: [],
+    }] });
+  }
+  return { settings, currentRun: null, messages: allMessages, turns, activities };
+}
+
 const details: Record<string, PreviewSessionDetail> = {
   [runningSession.id]: conversation(runningSession,
     "正在检查 **导航、断网恢复和输入框**。\n\n```tsx\n<ChatComposer mode=\"preview\" />\n```", runningRun),
@@ -209,6 +286,7 @@ const details: Record<string, PreviewSessionDetail> = {
     "长路径也不能越界：`/var/lib/tyrs-hand/workspaces/WakeQora/console-server/src/wakeqora_console/app/settings.py:411`\n\n" +
     "最终回答保持普通正文布局，不增加头像和外层卡片。", markdownRun),
   [archivedSession.id]: conversation(archivedSession, "这条会话已经归档，可随时恢复。"),
+  [stressSession.id]: stressDetail(),
 };
 details[runningSession.id]!.messages = details[runningSession.id]!.messages.filter((item) => item.role !== "agent");
 
@@ -318,7 +396,7 @@ export function createPreviewSeed(): PreviewSeed {
       [primaryPreviewServerId]: {
         bootstrap: primaryBootstrap,
         sessions: [runningSession, planSession, interactiveSession, secretSession,
-          failedSession, attachmentSession, markdownSession, archivedSession],
+          failedSession, attachmentSession, markdownSession, stressSession, archivedSession],
         details,
         outbox: [{
           serverId: primaryPreviewServerId,
@@ -362,5 +440,6 @@ export const previewSessionIds = {
   failed: failedSession.id,
   attachments: attachmentSession.id,
   markdown: markdownSession.id,
+  stress: stressSession.id,
   archived: archivedSession.id,
 };

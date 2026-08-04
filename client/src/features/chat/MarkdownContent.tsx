@@ -1,3 +1,4 @@
+import { memo, useMemo } from "react";
 import { Platform, StyleSheet } from "react-native";
 import Markdown from "react-native-markdown-display";
 
@@ -10,10 +11,10 @@ type MarkdownContentProps = {
 
 const monoFont = Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" });
 
-export function MarkdownContent({ children, compact = false }: MarkdownContentProps) {
+export const MarkdownContent = memo(function MarkdownContent({ children, compact = false }: MarkdownContentProps) {
   const theme = useTheme();
   const blockGap = compact ? 5 : 8;
-  return <Markdown mergeStyle={false} style={{
+  const markdownStyle = useMemo(() => StyleSheet.create({
     body: { width: "100%" },
     text: { color: theme.colors.text, fontFamily: "Inter_400Regular", fontSize: 15, lineHeight: 24 },
     textgroup: { color: theme.colors.text, fontFamily: "Inter_400Regular", fontSize: 15, lineHeight: 24 },
@@ -82,5 +83,6 @@ export function MarkdownContent({ children, compact = false }: MarkdownContentPr
     pre: {},
     inline: {},
     span: {},
-  }}>{children}</Markdown>;
-}
+  }), [blockGap, compact, theme]);
+  return <Markdown mergeStyle={false} style={markdownStyle}>{children}</Markdown>;
+});

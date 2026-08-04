@@ -3,6 +3,7 @@ import { Pressable, Text } from "react-native";
 
 import { Screen } from "@/components/ui";
 import { ConversationPane } from "@/features/chat/ConversationPane";
+import { SessionActionsMenu } from "@/features/chat/SessionActionsMenu";
 import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
 
@@ -16,7 +17,7 @@ export default function SessionDetailScreen() {
         accessibilityRole="button" accessibilityLabel="返回" hitSlop={8} onPress={() => router.back()}
         style={{ minHeight: 44, paddingRight: 12, justifyContent: "center" }}>
         <Text style={{ color: theme.colors.accent, fontFamily: "Inter_500Medium", fontSize: 16 }}>‹ 返回</Text>
-      </Pressable> }} />
+      </Pressable>, headerRight: () => <SessionActionsMenu sessionId={id} /> }} />
     <ConversationPane sessionId={id} />
   </Screen>;
 }

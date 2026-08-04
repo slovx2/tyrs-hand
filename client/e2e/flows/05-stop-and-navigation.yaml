@@ -6,8 +6,14 @@ appId: ${TYRS_HAND_E2E_APP_ID}
       TASK_TEXT: "E2E_BLOCK wait for mobile stop"
 - extendedWaitUntil:
     visible:
-      id: "session:stop"
+      id: "session:more"
     timeout: 120000
+- tapOn:
+    id: "session:more"
+- extendedWaitUntil:
+    visible:
+      id: "session:stop"
+    timeout: 30000
 - tapOn:
     id: "session:stop"
 - extendedWaitUntil:

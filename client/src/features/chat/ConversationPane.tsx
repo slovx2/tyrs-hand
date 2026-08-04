@@ -1,13 +1,14 @@
 import * as Crypto from "expo-crypto";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 import { ClientApi } from "@/api/client";
 import { loadCachedTurns, saveTurns } from "@/db/cache";
 import { clearDraft, loadDraft, saveDraft } from "@/db/drafts";
-import { Button, EmptyState, Muted, Title } from "@/components/ui";
+import { Button, EmptyState, Muted } from "@/components/ui";
 import { useOutbox } from "@/hooks/useOutbox";
+import { previewPerf } from "@/preview/perf";
 import { useAppStore } from "@/store/appStore";
 import { enqueueMessage, processOutbox, type LocalAttachment } from "@/sync/outbox";
 import { subscribeToUpdates, type SyncEvent } from "@/sync/synchronizer";
@@ -27,6 +28,17 @@ type ConversationRow =
   | { kind: "interactive"; id: string }
   | { kind: "stream"; runId: string };
 
+const outerPositioning = {
+  animateAutoScrollToBottom: false,
+  startRenderingFromBottom: true,
+} as const;
+
+function conversationRowKey(item: ConversationRow): string {
+  return item.kind === "message" ? `message:${item.message.id}` :
+    item.kind === "segment" ? `segment:${item.segment.id}` :
+    item.kind === "interactive" ? `interactive:${item.id}` : `stream:${item.runId}`;
+}
+
 function liveTimelineEvent(event: SyncEvent): { type: string; payload: unknown } {
   if (!event.payload || typeof event.payload !== "object") {
     return { type: event.type, payload: event.payload };
@@ -39,7 +51,9 @@ function liveTimelineEvent(event: SyncEvent): { type: string; payload: unknown }
 }
 
 export function ConversationPane({ sessionId }: { sessionId: string }) {
+  const renderStartedAt = performance.now();
   const theme = useTheme();
+  const window = useWindowDimensions();
   const connection = useAppStore((state) => state.activeConnection);
   const bootstrap = useAppStore((state) => state.bootstrap);
   const session = useAppStore((state) => state.sessions.find((item) => item.id === sessionId));
@@ -58,11 +72,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const [settingsBeforeSheet, setSettingsBeforeSheet] = useState<SessionSettings | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [turnCursor, setTurnCursor] = useState("");
-  const [outerScrollEnabled, setOuterScrollEnabled] = useState(true);
-  const [messageAreaHeight, setMessageAreaHeight] = useState(600);
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
-  const [renaming, setRenaming] = useState(false);
-  const [title, setTitle] = useState("");
   const [draftReady, setDraftReady] = useState(false);
   const list = useRef<FlashListRef<ConversationRow>>(null);
   const activeSessionId = useRef(sessionId);
@@ -77,6 +87,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const lastAutoScrollKey = useRef<string | undefined>(undefined);
   const activeRunId = useRef<string | null>(null);
   const scrollMetrics = useRef({ contentHeight: 0, viewportHeight: 0, offsetY: 0 });
+  const lastLoggedOffset = useRef(0);
   const outbox = useOutbox(connection?.serverId, sessionId);
   const draftScope = `session:${sessionId}`;
   const updateScrollState = useCallback((contentHeight: number, viewportHeight: number, offsetY: number) => {
@@ -87,7 +98,12 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   }, []);
   const load = useCallback(async (beforeCursor?: string) => {
     if (!connection) return;
+    const startedAt = performance.now();
+    previewPerf("conversation:load:start", { sessionId, beforeCursor: beforeCursor ?? "latest" });
     const api = new ClientApi(connection);
+    const detailPromise = beforeCursor === undefined ? api.getSession(sessionId) : null;
+    const pagePromise = api.listTurns(sessionId, beforeCursor ? { beforeCursor } : {});
+    let page: Awaited<ReturnType<ClientApi["listTurns"]>>;
     if (beforeCursor === undefined) {
       const cached = await loadCachedTurns(connection.serverId, sessionId);
       if (activeSessionId.current !== sessionId) return;
@@ -95,12 +111,15 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         setTurns(cached);
         setMessagesReady(true);
       }
-      const detail = await api.getSession(sessionId);
+      const [detail, initialPage] = await Promise.all([detailPromise!, pagePromise]);
+      previewPerf("conversation:detail:received", { sessionId,
+        elapsed: (performance.now() - startedAt).toFixed(1) });
       if (activeSessionId.current !== sessionId) return;
       setSettings(detail.settings); setSavedSettings(detail.settings);
-    }
-    const page = await api.listTurns(sessionId, beforeCursor ? { beforeCursor } : {});
-    await saveTurns(connection.serverId, sessionId, page.items);
+      page = initialPage;
+    } else page = await pagePromise;
+    previewPerf("conversation:turns:received", { sessionId, turns: page.items.length,
+      elapsed: (performance.now() - startedAt).toFixed(1) });
     if (activeSessionId.current !== sessionId) return;
     setTurns((current) => {
       if (beforeCursor) {
@@ -118,6 +137,9 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       setHasMore(page.hasMoreBefore);
     }
     if (beforeCursor === undefined) setInitialSyncComplete(true);
+    void saveTurns(connection.serverId, sessionId, page.items);
+    previewPerf("conversation:load:state-queued", { sessionId,
+      elapsed: (performance.now() - startedAt).toFixed(1) });
   }, [connection, sessionId]);
   const refresh = useCallback(() => {
     if (refreshPromise.current?.sessionId === sessionId) return refreshPromise.current.promise;
@@ -151,7 +173,6 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     turnCursorRef.current = null;
     historyPaging.current = false;
     finalDraftSequences.current.clear();
-    setOuterScrollEnabled(true);
     setShowScrollToLatest(false);
     nearBottom.current = true;
     initialPositioned.current = false;
@@ -259,6 +280,10 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     }
     return rows;
   }, [latestRun?.id, latestTurn?.id, running, turns]);
+  useEffect(() => {
+    previewPerf("conversation:commit", { sessionId, turns: turns.length, rows: conversationRows.length,
+      renderElapsed: (performance.now() - renderStartedAt).toFixed(1) });
+  });
   const handleFinalDraft = useCallback((runId: string, value: string) => {
     setFinalDrafts((current) => {
       if (current[runId] === value) return current;
@@ -268,8 +293,27 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       return next;
     });
   }, []);
-  const lockOuterScroll = useCallback(() => setOuterScrollEnabled(false), []);
-  const unlockOuterScroll = useCallback(() => setOuterScrollEnabled(true), []);
+  const setOuterScrollEnabled = useCallback((enabled: boolean) => {
+    list.current?.getNativeScrollRef()?.setNativeProps({ scrollEnabled: enabled });
+  }, []);
+  const lockOuterScroll = useCallback(() => setOuterScrollEnabled(false), [setOuterScrollEnabled]);
+  const unlockOuterScroll = useCallback(() => setOuterScrollEnabled(true), [setOuterScrollEnabled]);
+  const segmentCardMaxHeight = Math.min(620, Math.max(420, Math.round(window.height * 0.70)));
+  const renderConversationRow = useCallback(({ item }: { item: ConversationRow }) =>
+    item.kind === "message" ? <MessageBubble message={item.message} /> :
+      item.kind === "segment" ? <RunSegmentCard run={item.run} segment={item.segment}
+        continued={item.continued} active={item.active} maxHeight={segmentCardMaxHeight}
+        liveVersion={liveVersions[item.run.id] ?? 0} onInteractionStart={lockOuterScroll}
+        onInteractionEnd={unlockOuterScroll} onFinalDraft={handleFinalDraft} /> :
+        item.kind === "interactive" ? <View style={styles.interactiveHistory}>
+          <Muted>已提交交互回答，任务继续执行</Muted>
+        </View> : finalDrafts[item.runId] ?
+          <View testID={`run:${item.runId}:stream-final`} style={styles.streamedFinal}>
+            <MarkdownContent>{finalDrafts[item.runId] ?? ""}</MarkdownContent>
+          </View> : null,
+  [finalDrafts, handleFinalDraft, liveVersions, lockOuterScroll, segmentCardMaxHeight,
+    unlockOuterScroll]);
+  const rowExtraData = useMemo(() => ({ finalDrafts, liveVersions }), [finalDrafts, liveVersions]);
   const lastRow = conversationRows.at(-1);
   const finalMessageId = lastRow?.kind === "message" ? lastRow.message.id :
     lastRow?.kind === "stream" ? `${lastRow.runId}:stream` : undefined;
@@ -278,15 +322,12 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     lastAutoScrollKey.current = finalMessageId;
     if (!initialPositioned.current || !nearBottom.current) return;
     const frame = requestAnimationFrame(() => {
+      previewPerf("conversation:programmatic-scroll", { source: "final-message", target: "end" });
       list.current?.scrollToEnd({ animated: true });
       setShowScrollToLatest(false);
     });
     return () => cancelAnimationFrame(frame);
   }, [finalMessageId]);
-  useEffect(() => {
-    if (!initialSyncComplete || !initialPositioned.current) return;
-    historyPagingReady.current = true;
-  }, [initialSyncComplete]);
   if (!connection || !bootstrap) {
     return <EmptyState title="连接不可用" detail="请返回连接页后重试。" />;
   }
@@ -328,69 +369,48 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       Alert.alert("参数没有保存", error instanceof Error ? error.message : "请重试");
     }
   };
-  const action = async (value: "stop" | "archive" | "restore") => {
-    try { await new ClientApi(connection).action(sessionId, value); await refreshSessions(); }
-    catch (error) { Alert.alert("操作失败", error instanceof Error ? error.message : "请重试"); }
-  };
   return <View style={{ flex: 1 }}>
-    <View testID="session:toolbar" style={[styles.toolbar, { borderBottomColor: theme.colors.border }]}> 
-      <View style={styles.toolbarMain}><View style={styles.toolbarTitle}><Title>{session.title}</Title></View>
-        {running && <Button testID="session:stop" title="停止" variant="danger" onPress={() => void action("stop")} />}
-        <Pressable testID="session:rename" onPress={() => { setTitle(session.title); setRenaming(true); }}>
-          <Text style={{ color: theme.colors.textMuted, padding: 10 }}>改名</Text>
-        </Pressable>
-        <Pressable testID={session.lifecycleState === "archived" ? "session:restore" : "session:archive"}
-          onPress={() => void action(session.lifecycleState === "archived" ? "restore" : "archive")}>
-          <Text style={{ color: theme.colors.textMuted, padding: 10 }}>{session.lifecycleState === "archived" ? "恢复" : "归档"}</Text>
-        </Pressable>
-      </View>
-      <View testID={running ? "session:next-turn-settings" : "session:idle-settings"}>
-        <Muted>{running ? "正在运行 · 参数修改将在下一轮生效" :
-          `${session.serviceTier === "fast" ? "快速" : "标准"} · ${session.collaborationMode === "plan" ? "先做计划" : "直接执行"}`}</Muted>
-      </View>
-    </View>
-    <View style={styles.messageArea} onLayout={({ nativeEvent }) =>
-      setMessageAreaHeight((current) => Math.abs(current - nativeEvent.layout.height) < 1 ?
-        current : nativeEvent.layout.height)}>
+    <View style={styles.messageArea} onLayout={({ nativeEvent }) => previewPerf("conversation:layout", {
+      height: nativeEvent.layout.height, width: nativeEvent.layout.width,
+    })}>
       <FlashList key={sessionId} ref={list}
       style={{ flex: 1 }}
-      testID="messages:list" data={conversationRows} extraData={finalDrafts}
-      scrollEnabled={outerScrollEnabled}
-      keyExtractor={(item) => item.kind === "message" ? `message:${item.message.id}` :
-        item.kind === "segment" ? `segment:${item.segment.id}` :
-        item.kind === "interactive" ? `interactive:${item.id}` : `stream:${item.runId}`}
-      renderItem={({ item }) => item.kind === "message" ? <MessageBubble message={item.message} /> :
-        item.kind === "segment" ? <RunSegmentCard run={item.run} segment={item.segment}
-          continued={item.continued} active={item.active} maxHeight={messageAreaHeight * 0.70}
-          liveVersion={liveVersions[item.run.id] ?? 0} onInteractionStart={lockOuterScroll}
-          onInteractionEnd={unlockOuterScroll} onFinalDraft={handleFinalDraft} /> :
-        item.kind === "interactive" ? <View style={styles.interactiveHistory}>
-          <Muted>已提交交互回答，任务继续执行</Muted>
-        </View> : finalDrafts[item.runId] ?
-          <View testID={`run:${item.runId}:stream-final`} style={styles.streamedFinal}>
-            <MarkdownContent>{finalDrafts[item.runId] ?? ""}</MarkdownContent>
-          </View> : null}
+      testID="messages:list" data={conversationRows} extraData={rowExtraData}
+      keyExtractor={conversationRowKey}
+      renderItem={renderConversationRow}
+      drawDistance={160}
+      nestedScrollEnabled
       keyboardShouldPersistTaps="handled"
       scrollEventThrottle={100}
       onScroll={({ nativeEvent }) => {
         scrollMetrics.current = { contentHeight: nativeEvent.contentSize.height,
           viewportHeight: nativeEvent.layoutMeasurement.height, offsetY: nativeEvent.contentOffset.y };
+        if (Math.abs(lastLoggedOffset.current - nativeEvent.contentOffset.y) >= 40) {
+          lastLoggedOffset.current = nativeEvent.contentOffset.y;
+          previewPerf("conversation:offset", { offset: nativeEvent.contentOffset.y.toFixed(1),
+            contentHeight: nativeEvent.contentSize.height.toFixed(1),
+            viewportHeight: nativeEvent.layoutMeasurement.height.toFixed(1) });
+        }
         updateScrollState(scrollMetrics.current.contentHeight, scrollMetrics.current.viewportHeight,
           scrollMetrics.current.offsetY);
       }}
       onContentSizeChange={(_, contentHeight) => {
+        previewPerf("conversation:content-size", { previous: scrollMetrics.current.contentHeight.toFixed(1),
+          next: contentHeight.toFixed(1), offset: scrollMetrics.current.offsetY.toFixed(1) });
         scrollMetrics.current.contentHeight = contentHeight;
         if (scrollMetrics.current.viewportHeight > 0) updateScrollState(contentHeight,
           scrollMetrics.current.viewportHeight, scrollMetrics.current.offsetY);
       }}
-      maintainVisibleContentPosition={{ autoscrollToBottomThreshold: 0.1 }}
-      onLoad={() => requestAnimationFrame(() => {
+      maintainVisibleContentPosition={outerPositioning}
+      onLoad={() => {
         if (initialPositioned.current) return;
         initialPositioned.current = true;
-        list.current?.scrollToEnd({ animated: false });
         setShowScrollToLatest(false);
+        previewPerf("conversation:initial-position", { source: "start-rendering-from-bottom" });
+      }}
+      onScrollBeginDrag={() => {
         if (initialSyncComplete) historyPagingReady.current = true;
-      })}
+      }}
       onStartReached={() => {
         if (!historyPagingReady.current || historyPaging.current || !hasMore || !turnCursor) return;
         historyPaging.current = true;
@@ -408,6 +428,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         accessibilityLabel="回到最新消息" onPress={() => {
           nearBottom.current = true;
           setShowScrollToLatest(false);
+          previewPerf("conversation:programmatic-scroll", { source: "latest-button", target: "end" });
           list.current?.scrollToEnd({ animated: true });
         }} style={({ pressed }) => [styles.scrollToLatest, { backgroundColor: theme.colors.surface,
           borderColor: theme.colors.border, opacity: pressed ? 0.72 : 1 }, theme.shadow]}>
@@ -437,29 +458,10 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       currentRunLabel={running ? "当前任务继续使用启动时的参数；修改将在下一轮生效" : "当前会话参数"}
       onChange={setSettings} onClose={() => void closeParameters()}
       onCancel={() => { setSettings(settingsBeforeSheet ?? savedSettings); setShowParameters(false); }} />
-    <Modal visible={renaming} transparent animationType="fade" onRequestClose={() => setRenaming(false)}>
-      <View style={[styles.modal, { backgroundColor: theme.colors.overlay }]}><View style={[styles.rename,
-        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-        <Title>修改会话名称</Title>
-        <TextInput testID="session:rename:input" autoFocus value={title} onChangeText={setTitle} maxLength={120}
-          style={[styles.titleInput, { color: theme.colors.text, borderColor: theme.colors.border }]} />
-        <View style={{ flexDirection: "row", gap: 8, justifyContent: "flex-end" }}>
-          <Button title="取消" variant="secondary" onPress={() => setRenaming(false)} />
-          <Button testID="session:rename:save" title="保存" disabled={!title.trim()} onPress={() => void new ClientApi(connection)
-            .patchSession(sessionId, { title: title.trim() }).then(() => refreshSessions())
-            .then(() => setRenaming(false)).catch((error: unknown) =>
-              Alert.alert("改名失败", error instanceof Error ? error.message : "请重试"))} />
-        </View>
-      </View></View>
-    </Modal>
   </View>;
 }
 
 const styles = StyleSheet.create({
-  toolbar: { minHeight: 64, paddingHorizontal: 14, paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth, gap: 2 },
-  toolbarMain: { flexDirection: "row", alignItems: "center", gap: 8 },
-  toolbarTitle: { flex: 1, minWidth: 0 },
   messageArea: { flex: 1, minHeight: 0 },
   streamedFinal: { paddingHorizontal: 16, paddingVertical: 8 },
   interactiveHistory: { marginHorizontal: 12, marginVertical: 5, paddingHorizontal: 12,
@@ -471,8 +473,4 @@ const styles = StyleSheet.create({
   composerDock: { borderTopWidth: StyleSheet.hairlineWidth },
   outbox: { marginHorizontal: 12, marginTop: 6, borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 8, padding: 8, flexDirection: "row", alignItems: "center", gap: 8 },
-  modal: { flex: 1, justifyContent: "center", padding: 24 },
-  rename: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, padding: 16, gap: 12 },
-  titleInput: { minHeight: 44, borderWidth: StyleSheet.hairlineWidth, borderRadius: 8,
-    paddingHorizontal: 12, fontFamily: "Inter_400Regular" },
 });

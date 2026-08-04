@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { EmptyState, Screen } from "@/components/ui";
 import { ConversationPane } from "@/features/chat/ConversationPane";
+import { SessionActionsMenu } from "@/features/chat/SessionActionsMenu";
 import { SessionListPane } from "@/features/session-list/SessionListPane";
 import { useTablet } from "@/hooks/useTablet";
 import { useAppStore } from "@/store/appStore";
@@ -32,11 +33,17 @@ export default function ProjectSessionsScreen() {
       <EmptyState title="项目不可用" detail="它可能已被移除，或不在当前连接中。" /></Screen>;
   }
 
-  const navigation = <Stack.Screen options={{ title: project.name, headerBackTitle: "项目",
+  const navigation = <Stack.Screen options={{
+    title: tablet && selectedId ? sessions.find((item) => item.id === selectedId)?.title ?? project.name : project.name,
+    headerBackTitle: "项目",
     gestureEnabled: true, fullScreenGestureEnabled: true,
     headerLeft: () => <Pressable testID="project:back" accessibilityRole="button"
       accessibilityLabel="返回" hitSlop={8} onPress={() => router.back()}
-      style={styles.backButton}><Text style={[styles.backText, { color: theme.colors.accent }]}>‹ 返回</Text></Pressable> }} />;
+      style={styles.backButton}><Text style={[styles.backText, { color: theme.colors.accent }]}>‹ 返回</Text></Pressable>,
+    ...(tablet && selectedId ? {
+      headerRight: () => <SessionActionsMenu sessionId={selectedId} />,
+    } : {}),
+  }} />;
   const list = <SessionListPane sessions={sessions} selectedId={selectedId} onSelect={select}
     positionKey={`${connection?.serverId ?? "none"}:project:${project.id}:sessions`}
     emptyDetail="这个项目还没有会话，点击右下角加号创建第一个任务。" />;

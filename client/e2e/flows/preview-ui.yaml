@@ -28,8 +28,11 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 # 运行中、实时事件与失败 Outbox
 - tapOn:
     id: "session:row:0"
+- tapOn:
+    id: "session:more"
 - assertVisible:
     id: "session:stop"
+- pressKey: BACK
 - scrollUntilVisible:
     element:
       id: "run:.*:progress"
