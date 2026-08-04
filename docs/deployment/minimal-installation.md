@@ -116,6 +116,8 @@ Provider、API Key、ChatGPT Auth、Base URL 与 Proxy 只配置在机器用户�
 
 若机器 Codex Home 的 Provider 通过环境变量引用 API Key，可由宿主管理员将对应变量写入可选的 `/etc/tyrs-hand/codex.env`。Linux systemd Worker 和 `tyrs-hand-worker-run` 会加载该文件，但安装器不会创建、改写或备份它；文件应由 `root:<worker-group>` 持有并设置为 `0640`。这些变量仍属于机器 Codex 配置，不进入 Control、Worker 协议或任务快照。
 
+Worker 启动时读取一次机器 Codex Home 和 `codex.env`，并为整个 Worker 生命周期启动唯一 Codex App Server。配置变更不热加载；修改后应手动重启 Worker，所有 Desktop 客户端随后重新连接同一个新实例。
+
 Control 的 GitHub Agent Profile、仓库覆盖和全局 GitHub Agent instructions 只作用于 GitHub Work Item；Desktop、Discord 与 Mobile 的未指定参数由机器 Codex Home 决定。
 
 ## 6. SSH 与多客户端
@@ -128,6 +130,18 @@ Worker 默认监听 `:2222`，支持：
 - 多公钥、多客户端并发
 - Codex App Server 特殊通道
 - Browser Agent 特殊通道
+
+Codex Desktop 必须使用指向 Worker 监听端口的专用 SSH Host，不能选择宿主系统 SSH 的运维 Host。例如：
+
+```sshconfig
+Host tyrs-worker
+  HostName worker.example.com
+  Port 2222
+  User worker
+  IdentityFile ~/.ssh/tyrs-worker
+```
+
+Worker 会识别 Codex Desktop 的握手包装命令并直接接入唯一 AppServer Hub；无法识别的 App Server Proxy 命令会被拒绝，不会回退到 Shell 启动第二个 App Server。多个 Desktop 分别拥有独立 Hub Session，断开任一客户端不会关闭上游或影响 Worker 任务。
 
 SSH 只接受 `session` channel，不支持本地、远程或动态端口转发。Agent 出站 SSH 是独立能力，由 Control 将 Credential 和 Host 下发给指定 Worker。
 

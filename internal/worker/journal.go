@@ -124,11 +124,12 @@ func syncDirectory(path string) error {
 	return directory.Sync()
 }
 
-type workerDataLock struct {
+type DataLock struct {
 	file *os.File
 }
 
-func acquireWorkerDataLock(root string) (*workerDataLock, error) {
+// AcquireDataLock 在任何宿主运行时启动前锁定 Worker 数据目录。
+func AcquireDataLock(root string) (*DataLock, error) {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return nil, err
 	}
@@ -141,10 +142,10 @@ func acquireWorkerDataLock(root string) (*workerDataLock, error) {
 		_ = file.Close()
 		return nil, errors.New("同一数据目录已经有 Worker 实例运行")
 	}
-	return &workerDataLock{file: file}, nil
+	return &DataLock{file: file}, nil
 }
 
-func (l *workerDataLock) Close() error {
+func (l *DataLock) Close() error {
 	if l == nil || l.file == nil {
 		return nil
 	}

@@ -20,15 +20,52 @@ type WorkerApp struct {
 	Logger  *zap.Logger
 }
 
+func (a *WorkerApp) Run(ctx context.Context) error {
+	return superviseWorker(ctx, a.Runner.Run, a.Runtime.Done, a.Runtime.Err)
+}
+
+func superviseWorker(ctx context.Context, run func(context.Context) error,
+	runtimeDone func() <-chan struct{}, runtimeErr func() error,
+) error {
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	runnerDone := make(chan error, 1)
+	go func() { runnerDone <- run(runCtx) }()
+	select {
+	case err := <-runnerDone:
+		return err
+	case <-runtimeDone():
+		cancel()
+		<-runnerDone
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if err := runtimeErr(); err != nil {
+			return fmt.Errorf("宿主 Codex App Server 异常退出: %w", err)
+		}
+		return fmt.Errorf("宿主 Codex App Server 异常退出")
+	case <-ctx.Done():
+		cancel()
+		<-runnerDone
+		return ctx.Err()
+	}
+}
+
 func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(), error) {
 	logger, cleanupLogger, err := provideLogger(cfg)
 	if err != nil {
+		return nil, nil, err
+	}
+	dataLock, err := worker.AcquireDataLock(cfg.WorkerDataRoot)
+	if err != nil {
+		cleanupLogger()
 		return nil, nil, err
 	}
 	cleanupFailure := func(runtime *hostworker.Runtime) {
 		if runtime != nil {
 			_ = runtime.Close()
 		}
+		_ = dataLock.Close()
 		cleanupLogger()
 	}
 	catalog, err := provideCatalog()
@@ -108,6 +145,7 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 	return app, func() {
 		_ = sshServer.Close()
 		_ = runtime.Close()
+		_ = dataLock.Close()
 		cleanupLogger()
 	}, nil
 }

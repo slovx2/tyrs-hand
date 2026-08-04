@@ -58,6 +58,7 @@ PostgreSQL 是唯一权威状态源。Redis 只保存可重建的限流与通知
 - 固定项目根目录为 `~/tyrs-hand/workspaces`，一级目录即项目。
 - GitHub Work Item 使用宿主 Repo Cache 和独立 Worktree。
 - Worker 的 SSH Server 支持多公钥、多客户端、PTY、SCP 和 SFTP，并将 Codex Desktop 接入同一个 AppServer Hub。
+- Worker 生命周期内只启动一个 Codex App Server；Desktop 连接只是 Hub Session，任一客户端断开都不会重启或终止上游。机器 Codex 配置变更后通过重启 Worker 统一生效。
 - 出站 SSH Credential 和 Host 由 Control 分配给指定 Worker；GitHub Token 不进入 Codex 环境或 Git Remote。
 
 Codex CLI 最低版本为 `0.145.0`。Worker 启动与 `doctor` 都会拒绝更低版本。

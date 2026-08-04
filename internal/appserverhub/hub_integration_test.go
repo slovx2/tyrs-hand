@@ -52,6 +52,32 @@ func TestHubMultiplexesDesktopAndWorkerOverOneUpstream(t *testing.T) {
 	require.Equal(t, int64(1), hub.Stats().UpstreamInitializations)
 }
 
+func TestHubDisconnectsOneDesktopWithoutClosingSharedUpstream(t *testing.T) {
+	mock, err := mockcodex.Start(t)
+	require.NoError(t, err)
+	hub := startHub(t, mock.SocketPath)
+	worker, err := hub.OpenClient(appserverhub.ClientOptions{Role: appserverhub.RoleWorker})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = worker.Close() })
+	first := connectDesktop(t, hub.SocketPath())
+	second := connectDesktop(t, hub.SocketPath())
+	first.initialize(t, 1)
+	second.initialize(t, 1)
+	require.Equal(t, int64(2), hub.Stats().DesktopConnections)
+	require.Equal(t, int64(1), hub.Stats().UpstreamConnections)
+
+	require.NoError(t, first.ws.Close())
+	require.Eventually(t, func() bool {
+		return hub.Stats().DesktopConnections == 1
+	}, time.Second, 10*time.Millisecond)
+	second.write(t, rpcMessage{ID: rawID(2), Method: "thread/start",
+		Params: mustJSON(map[string]any{"cwd": t.TempDir()})})
+	require.Nil(t, second.response(t, rawID(2)).Error)
+	require.Equal(t, int64(1), hub.Stats().UpstreamConnections)
+	require.Equal(t, int64(1), hub.Stats().UpstreamInitializations)
+	require.Equal(t, int64(1), hub.Stats().WorkerConnections)
+}
+
 func TestHubBroadcastsNewThreadsCreatedByWorkerToDesktop(t *testing.T) {
 	mock, err := mockcodex.Start(t)
 	require.NoError(t, err)

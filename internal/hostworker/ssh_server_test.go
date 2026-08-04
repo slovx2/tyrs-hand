@@ -126,6 +126,15 @@ func TestSSHServerSupportsShellProxyAndRejectsForwarding(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "desktop-proxy", string(output))
 
+	session, err = client.NewSession()
+	require.NoError(t, err)
+	wrapped := `printf '%b' '\033\124\376\322\310\106\334\116'; ` +
+		`PATH="${CODEX_INSTALL_DIR:-$HOME/.local/bin}:$PATH"; export PATH; codex app-server proxy`
+	output, err = session.Output(wrapped)
+	require.NoError(t, err)
+	require.Equal(t, append([]byte{0x1b, 'T', 0xfe, 0xd2, 0xc8, 'F', 0xdc, 'N'},
+		[]byte("desktop-proxy")...), output)
+
 	_, err = client.Dial("tcp", "127.0.0.1:80")
 	require.Error(t, err)
 }

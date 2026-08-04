@@ -42,6 +42,7 @@ type Runtime struct {
 	mu                  sync.Mutex
 	closed              bool
 	done                chan struct{}
+	waitErr             error
 	nextBinding         atomic.Uint64
 	toolHandlers        map[string]runtimeToolBinding
 	interactiveHandlers map[string]runtimeInteractiveBinding
@@ -150,6 +151,14 @@ func (r *Runtime) StateDir() string { return r.options.StateDir }
 
 func (r *Runtime) Generation() int64 { return r.generation }
 
+func (r *Runtime) Done() <-chan struct{} { return r.done }
+
+func (r *Runtime) Err() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.waitErr
+}
+
 func (r *Runtime) BindTool(threadID string, handler codex.ToolHandler) func() {
 	id := r.nextBinding.Add(1)
 	r.mu.Lock()
@@ -244,7 +253,10 @@ func (r *Runtime) Close() error {
 }
 
 func (r *Runtime) wait() {
-	_ = r.command.Wait()
+	err := r.command.Wait()
+	r.mu.Lock()
+	r.waitErr = err
+	r.mu.Unlock()
 	close(r.done)
 }
 

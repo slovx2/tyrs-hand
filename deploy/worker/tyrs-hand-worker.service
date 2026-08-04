@@ -11,6 +11,8 @@ EnvironmentFile=/etc/tyrs-hand/worker.env
 ExecStart=/usr/local/bin/tyrs-hand-worker
 Restart=on-failure
 RestartSec=5s
+KillMode=control-group
+TimeoutStopSec=15s
 NoNewPrivileges=true
 
 [Install]

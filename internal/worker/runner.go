@@ -58,11 +58,6 @@ func NewRunner(cfg config.Config, client *workerprotocol.Client, processor taskP
 }
 
 func (r *Runner) Run(ctx context.Context) error {
-	lock, err := acquireWorkerDataLock(r.cfg.WorkerDataRoot)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = lock.Close() }()
 	if err := r.Authenticate(ctx); err != nil {
 		return err
 	}

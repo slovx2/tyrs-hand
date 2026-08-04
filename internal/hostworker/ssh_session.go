@@ -38,15 +38,6 @@ func (s *SSHServer) serveSFTP(channel ssh.Channel) {
 func (s *SSHServer) runCommand(channel ssh.Channel, state *sshSessionState, command string) {
 	trimmed := strings.TrimSpace(command)
 	switch trimmed {
-	case "codex app-server proxy":
-		err := s.serveDesktop(channel)
-		if err != nil {
-			s.options.Logger.Warn("Codex Desktop SSH 会话停止", zap.Error(err))
-			s.writeExit(channel, 1)
-			return
-		}
-		s.writeExit(channel, 0)
-		return
 	case "tyrs-hand-worker browser proxy":
 		if s.options.BrowserProxy == nil {
 			s.writeExit(channel, 127)
@@ -54,6 +45,28 @@ func (s *SSHServer) runCommand(channel ssh.Channel, state *sshSessionState, comm
 		}
 		err := s.options.BrowserProxy(context.Background(), channel)
 		if err != nil {
+			s.writeExit(channel, 1)
+			return
+		}
+		s.writeExit(channel, 0)
+		return
+	}
+	handshake, desktopProxy, err := parseDesktopProxyCommand(trimmed)
+	if err != nil {
+		s.options.Logger.Warn("拒绝无法识别的 Codex Desktop SSH 命令", zap.Error(err))
+		s.writeExit(channel, 127)
+		return
+	}
+	if desktopProxy {
+		if len(handshake) > 0 {
+			if _, err := channel.Write(handshake); err != nil {
+				s.writeExit(channel, 1)
+				return
+			}
+		}
+		err = s.serveDesktop(channel)
+		if err != nil {
+			s.options.Logger.Warn("Codex Desktop SSH 会话停止", zap.Error(err))
 			s.writeExit(channel, 1)
 			return
 		}
@@ -82,7 +95,7 @@ func (s *SSHServer) runCommand(channel ssh.Channel, state *sshSessionState, comm
 		return
 	}
 	process.Stdin, process.Stdout, process.Stderr = channel, channel, channel.Stderr()
-	err := process.Run()
+	err = process.Run()
 	s.writeExit(channel, exitStatus(err))
 }
 
@@ -90,23 +103,40 @@ func (s *SSHServer) serveDesktop(channel ssh.Channel) error {
 	// net/http 在 WebSocket Hijack 前依赖 ReadDeadline 中断后台读取；SSH Channel
 	// 不支持 deadline，因此先桥接到支持 deadline 的 net.Pipe。
 	serverConnection, proxyConnection := net.Pipe()
-	finished := make(chan error, 3)
-	go func() { finished <- s.options.Runtime.ServeDesktop(serverConnection) }()
+	type proxyResult struct {
+		source string
+		err    error
+	}
+	finished := make(chan proxyResult, 3)
+	go func() {
+		finished <- proxyResult{source: "runtime", err: s.options.Runtime.ServeDesktop(serverConnection)}
+	}()
 	go func() {
 		_, err := io.Copy(proxyConnection, channel)
-		finished <- err
+		finished <- proxyResult{source: "input", err: err}
 	}()
 	go func() {
 		_, err := io.Copy(channel, proxyConnection)
-		finished <- err
+		finished <- proxyResult{source: "output", err: err}
 	}()
-	err := <-finished
+	result := <-finished
+	runtimeErr := error(nil)
+	if result.source == "runtime" {
+		runtimeErr = result.err
+		_ = serverConnection.Close()
+		for result.source != "output" {
+			result = <-finished
+		}
+	}
 	_ = serverConnection.Close()
 	_ = proxyConnection.Close()
-	if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
+	if runtimeErr != nil && !errors.Is(runtimeErr, io.EOF) && !errors.Is(runtimeErr, net.ErrClosed) {
+		return runtimeErr
+	}
+	if errors.Is(result.err, io.EOF) || errors.Is(result.err, net.ErrClosed) {
 		return nil
 	}
-	return err
+	return result.err
 }
 
 func (s *SSHServer) runPTY(channel ssh.Channel, state *sshSessionState, process *exec.Cmd) {

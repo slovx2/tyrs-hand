@@ -39,12 +39,12 @@ func TestJournalPersistsAndLocksWorkerData(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 
-	lock, err := acquireWorkerDataLock(root)
+	lock, err := AcquireDataLock(root)
 	require.NoError(t, err)
-	_, err = acquireWorkerDataLock(root)
+	_, err = AcquireDataLock(root)
 	require.ErrorContains(t, err, "已经有 Worker")
 	require.NoError(t, lock.Close())
-	second, err := acquireWorkerDataLock(root)
+	second, err := AcquireDataLock(root)
 	require.NoError(t, err)
 	require.NoError(t, second.Close())
 

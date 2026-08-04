@@ -58,6 +58,7 @@ A Worker belongs to one real OS user and may bind to at most one Workspace. A Wo
 - The project root is `~/tyrs-hand/workspaces`; each direct child is a project.
 - GitHub work items use a host repo cache and an isolated worktree.
 - The built-in SSH server supports multiple keys and clients, PTY, SCP, and SFTP, and connects Codex Desktop clients to one AppServer Hub.
+- A Worker starts exactly one Codex App Server for its lifetime. Desktop connections are Hub sessions, so disconnecting one client never restarts or stops the upstream. Restart the Worker to apply machine Codex configuration changes.
 - Control assigns outbound SSH credentials and hosts to Workers. GitHub tokens never enter the Codex environment or Git remotes.
 
 The minimum Codex CLI version is `0.145.0`. Worker startup and `doctor` reject older versions.
