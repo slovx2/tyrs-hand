@@ -35,7 +35,6 @@ type workspaceCodex struct {
 	metadataEvents   *appserverhub.Subscription
 	metadataSequence atomic.Int64
 	settingsSequence atomic.Int64
-	modelCatalog     json.RawMessage
 }
 
 type workspaceRuntime struct {
@@ -65,21 +64,6 @@ func (r *workspaceCodexRegistry) get(workspaceID uuid.UUID) *workspaceCodex {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.entries[workspaceID]
-}
-
-func (r *workspaceCodexRegistry) modelCatalogs() map[string]json.RawMessage {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	result := make(map[string]json.RawMessage, len(r.entries))
-	for workspaceID, entry := range r.entries {
-		entry.mu.Lock()
-		catalog := append(json.RawMessage(nil), entry.modelCatalog...)
-		entry.mu.Unlock()
-		if len(catalog) > 0 {
-			result[workspaceID.String()] = catalog
-		}
-	}
-	return result
 }
 
 func (e *workspaceCodex) observeMetadata(ctx context.Context) {

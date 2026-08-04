@@ -11,6 +11,7 @@ import { useAppStore } from "@/store/appStore";
 import { enqueueTask, listOutbox, processOutbox, type LocalAttachment } from "@/sync/outbox";
 import { useTheme } from "@/theme/ThemeProvider";
 import type { Project, SessionSettings } from "@/types/protocol";
+import { resolveNewTaskSettings } from "./newTaskSettings";
 
 export function NewTaskPane({ project, expanded = false, onSubmitted }: {
   project: Project;
@@ -28,24 +29,8 @@ export function NewTaskPane({ project, expanded = false, onSubmitted }: {
   const [settingsBeforeSheet, setSettingsBeforeSheet] = useState<SessionSettings | null>(null);
   const [draftReady, setDraftReady] = useState(false);
   const outbox = useOutbox(connection?.serverId);
-  const defaults = useMemo<SessionSettings | null>(() => {
-    if (!bootstrap) return null;
-    const profile = bootstrap.agentProfiles[0];
-    const models = (bootstrap.modelCatalogs[project.workspaceId]?.data ?? []).filter((item) => !item.hidden);
-    const remembered = bootstrap.lastStartedSettings;
-    const rememberedModel = models.find((item) => item.id === remembered?.model);
-    if (remembered && rememberedModel) return remembered;
-    const model = models.find((item) => item.isDefault) ?? models[0];
-    if (!profile || !model) return null;
-    return {
-      agentProfileId: profile.id,
-      model: model.id,
-      reasoningEffort: model.defaultReasoningEffort,
-      serviceTier: model.defaultServiceTier === "priority" || model.defaultServiceTier === "fast" ? "fast" : "standard",
-      collaborationMode: "default",
-      settingsVersion: 0,
-    };
-  }, [bootstrap, project.workspaceId]);
+  const defaults = useMemo<SessionSettings | null>(() => bootstrap ?
+    resolveNewTaskSettings(bootstrap, project) : null, [bootstrap, project]);
   const settings = settingsOverride ?? defaults;
   const draftScope = `project:${project.id}`;
 
@@ -79,7 +64,11 @@ export function NewTaskPane({ project, expanded = false, onSubmitted }: {
   if (!connection || !bootstrap) return null;
 
   const send = async () => {
-    if (!settings || !text.trim()) return;
+    if (!text.trim()) return;
+    if (!settings) {
+      Alert.alert("暂时无法创建任务", "当前没有可用的智能体，请稍后重试。");
+      return;
+    }
     const localId = Crypto.randomUUID();
     try {
       await enqueueTask({ connection, localId, projectId: project.id, text: text.trim(), settings, attachments });
@@ -113,12 +102,16 @@ export function NewTaskPane({ project, expanded = false, onSubmitted }: {
           onPress={() => void outbox.discard(item.localId)}>
           <Text style={{ color: theme.colors.danger }}>丢弃</Text></Pressable>
       </View>}</View></Card>)}
-    {settings && <ChatComposer value={text} onChange={setText} attachments={attachments}
+    <ChatComposer value={text} onChange={setText} attachments={attachments}
       onAttachmentsChange={setAttachments} onParameters={() => {
+        if (!settings) {
+          Alert.alert("参数暂不可用", "当前没有可用的智能体，请稍后重试。");
+          return;
+        }
         setSettingsBeforeSheet(settingsOverride); setShowParameters(true);
       }}
       onSend={() => void send()} sending={false}
-      parameterLabel={`${settings.model ?? "默认模型"} · ${settings.reasoningEffort ?? "默认"} · ${settings.collaborationMode === "plan" ? "先做计划" : "直接执行"}`} />}
+      parameterLabel={settings ? `${settings.model ?? "默认模型"} · ${settings.reasoningEffort ?? "默认"} · ${settings.collaborationMode === "plan" ? "先做计划" : "直接执行"}` : "参数暂不可用"} />
     {settings && <ParameterSheet visible={showParameters} bootstrap={bootstrap}
       workspaceId={project.workspaceId} value={settings}
       onChange={setSettingsOverride} onClose={() => setShowParameters(false)}

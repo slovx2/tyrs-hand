@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/codexsettings"
@@ -19,31 +20,47 @@ import (
 )
 
 type Processor struct {
-	cfg         config.Config
-	client      *workerprotocol.Client
-	workspace   ports.WorkspaceManager
-	catalog     *githubtools.Catalog
-	workspaces  *workspaceCodexRegistry
-	journals    *journalStore
-	logger      *zap.Logger
-	hostRuntime *hostworker.Runtime
+	cfg          config.Config
+	client       *workerprotocol.Client
+	workspace    ports.WorkspaceManager
+	catalog      *githubtools.Catalog
+	workspaces   *workspaceCodexRegistry
+	journals     *journalStore
+	logger       *zap.Logger
+	hostRuntime  *hostworker.Runtime
+	workspaceID  uuid.UUID
+	modelCatalog json.RawMessage
 }
 
-func (p *Processor) UseHostRuntime(runtime *hostworker.Runtime) {
+func (p *Processor) UseHostRuntime(runtime *hostworker.Runtime, workspaceID uuid.UUID,
+	modelCatalog json.RawMessage,
+) {
 	p.hostRuntime = runtime
+	p.workspaceID = workspaceID
+	p.modelCatalog = append(json.RawMessage(nil), modelCatalog...)
 }
 
 func (p *Processor) HeartbeatMetadata() map[string]any {
-	if p.hostRuntime != nil {
-		return map[string]any{"host": map[string]any{
-			"home": p.hostRuntime.Home(), "codexHome": p.hostRuntime.CodexHome(),
-			"workspaceRoot": p.hostRuntime.WorkspaceRoot(), "appServer": "running",
-		}}
+	runtime := p.hostRuntime
+	workspaceID := p.workspaceID
+	modelCatalog := append(json.RawMessage(nil), p.modelCatalog...)
+
+	metadata := make(map[string]any, 2)
+	if runtime != nil {
+		metadata["host"] = map[string]any{
+			"home": runtime.Home(), "codexHome": runtime.CodexHome(),
+			"workspaceRoot": runtime.WorkspaceRoot(), "appServer": "running",
+		}
 	}
-	if p.workspaces == nil {
+	if workspaceID != uuid.Nil && len(modelCatalog) > 0 {
+		metadata["modelCatalogs"] = map[string]json.RawMessage{
+			workspaceID.String(): modelCatalog,
+		}
+	}
+	if len(metadata) == 0 {
 		return nil
 	}
-	return map[string]any{"modelCatalogs": p.workspaces.modelCatalogs()}
+	return metadata
 }
 
 func NewProcessor(ctx context.Context, cfg config.Config, client *workerprotocol.Client,

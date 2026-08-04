@@ -2,10 +2,12 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codexcatalog"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/hostworker"
 	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
@@ -127,7 +129,17 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 			return nil, nil, err
 		}
 	}
-	processor.UseHostRuntime(runtime)
+	var modelCatalog json.RawMessage
+	if manifest != nil {
+		catalogCtx, cancel := context.WithTimeout(ctx, cfg.ControlTimeout)
+		modelCatalog, err = codexcatalog.Fetch(catalogCtx, runtime.Client())
+		cancel()
+		if err != nil {
+			cleanupFailure(runtime)
+			return nil, nil, fmt.Errorf("读取宿主 Codex 模型目录: %w", err)
+		}
+	}
+	processor.UseHostRuntime(runtime, workspaceID, modelCatalog)
 	clients, err := hostworker.LoadAuthorizedClients(cfg.WorkerAuthorizedKeysFile)
 	if err != nil {
 		cleanupFailure(runtime)
