@@ -8,11 +8,15 @@ import { ChatComposer } from "@/features/chat/ChatComposer";
 import { ParameterSheet } from "@/features/chat/ParameterSheet";
 import { useOutbox } from "@/hooks/useOutbox";
 import { useAppStore } from "@/store/appStore";
-import { enqueueTask, processOutbox, type LocalAttachment } from "@/sync/outbox";
+import { enqueueTask, listOutbox, processOutbox, type LocalAttachment } from "@/sync/outbox";
 import { useTheme } from "@/theme/ThemeProvider";
 import type { Project, SessionSettings } from "@/types/protocol";
 
-export function NewTaskPane({ project, expanded = false }: { project: Project; expanded?: boolean }) {
+export function NewTaskPane({ project, expanded = false, onSubmitted }: {
+  project: Project;
+  expanded?: boolean;
+  onSubmitted?: () => void;
+}) {
   const theme = useTheme();
   const connection = useAppStore((state) => state.activeConnection);
   const bootstrap = useAppStore((state) => state.bootstrap);
@@ -84,6 +88,8 @@ export function NewTaskPane({ project, expanded = false }: { project: Project; e
       setAttachments([]);
       await processOutbox(connection);
       await Promise.all([refresh(), outbox.refresh()]);
+      const remaining = await listOutbox(connection.serverId);
+      if (!remaining.some((item) => item.localId === localId)) onSubmitted?.();
     } catch (error) {
       Alert.alert("任务已保存在待发送队列", error instanceof Error ? error.message : "稍后会自动重试");
     }
@@ -123,7 +129,7 @@ export function NewTaskPane({ project, expanded = false }: { project: Project; e
 const styles = StyleSheet.create({
   container: { borderTopWidth: StyleSheet.hairlineWidth },
   mobile: { height: 250, flexShrink: 0 },
-  expanded: { flex: 1, borderTopWidth: 0, borderLeftWidth: StyleSheet.hairlineWidth },
+  expanded: { flex: 1, borderTopWidth: 0 },
   heading: { paddingHorizontal: 16, paddingTop: 12 },
   headingCopy: { gap: 2 },
   pending: { marginHorizontal: 12, marginTop: 8, padding: 10 },

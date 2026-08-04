@@ -20,6 +20,7 @@ function Navigation() {
     <Stack.Screen name="notification" options={{ title: "打开通知" }} />
     <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
     <Stack.Screen name="project/[id]" options={{ title: "项目会话" }} />
+    <Stack.Screen name="project/[id]/new" options={{ title: "新任务" }} />
     <Stack.Screen name="session/[id]" options={{ title: "会话" }} />
   </Stack>;
 }

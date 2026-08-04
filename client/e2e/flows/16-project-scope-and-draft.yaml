@@ -5,13 +5,18 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - assertNotVisible:
     id: "session:row:0"
 - tapOn:
+    id: "project:new-task:add"
+- tapOn:
     id: "composer:input"
 - inputText: "E2E_PROJECT_DRAFT retained across navigation"
 - hideKeyboard
+- pressKey: BACK
 - tapOn:
     id: "project:back"
 - tapOn:
     id: "project:row:1"
+- tapOn:
+    id: "project:new-task:add"
 - assertVisible: "E2E_PROJECT_DRAFT retained across navigation"
 - tapOn:
     id: "composer:send"

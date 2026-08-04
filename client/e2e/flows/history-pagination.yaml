@@ -22,4 +22,14 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     visible:
       id: "message:history-001"
     timeout: 60000
+- assertVisible:
+    id: "chat:scroll-to-latest"
+- tapOn:
+    id: "chat:scroll-to-latest"
+- extendedWaitUntil:
+    visible:
+      id: "message:history-180"
+    timeout: 30000
+- assertNotVisible:
+    id: "chat:scroll-to-latest"
 - stopApp

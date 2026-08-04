@@ -161,7 +161,7 @@ export function RunProgressCard({ run }: { run: RunSnapshot }) {
           <Text style={[styles.statusIconText, { color: presentation.color === "accent" && theme.dark ?
             theme.colors.accentForeground : "#ffffff" }]}>{presentation.icon}</Text>
         </View>
-        <Text style={[styles.activityTitle, { color: theme.colors.text }]}>Codex · {presentation.label}</Text>
+        <Text style={[styles.activityTitle, { color: theme.colors.text }]}>中间过程 · {presentation.label}</Text>
       </View>
       <Text style={[styles.toggleIcon, { color: theme.colors.textMuted }]}>{expanded ? "⌃" : "⌄"}</Text>
     </Pressable>

@@ -15,9 +15,24 @@ import { useTheme } from "@/theme/ThemeProvider";
 import { type Message, type RunSnapshot, type SessionSettings } from "@/types/protocol";
 import { ChatComposer } from "./ChatComposer";
 import { MessageBubble } from "./MessageBubble";
-import { mergeMessages } from "./messagePagination";
+import { deduplicateConsecutiveAgentMessages, mergeMessages } from "./messagePagination";
 import { ParameterSheet } from "./ParameterSheet";
 import { InteractiveCard, PlanCard, RunProgressCard } from "./RunCards";
+
+type ConversationRow =
+  | { kind: "message"; message: Message }
+  | { kind: "run"; run: RunSnapshot };
+
+function liveTimelineEvent(event: SyncEvent): { type: string; payload: unknown } {
+  if (!event.payload || typeof event.payload !== "object") {
+    return { type: event.type, payload: event.payload };
+  }
+  const value = event.payload as Record<string, unknown>;
+  return {
+    type: typeof value.eventType === "string" ? value.eventType : event.type,
+    payload: "data" in value ? value.data : event.payload,
+  };
+}
 
 export function ConversationPane({ sessionId }: { sessionId: string }) {
   const theme = useTheme();
@@ -37,15 +52,22 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const [showParameters, setShowParameters] = useState(false);
   const [settingsBeforeSheet, setSettingsBeforeSheet] = useState<SessionSettings | null>(null);
   const [hasMore, setHasMore] = useState(false);
+  const [showScrollToLatest, setShowScrollToLatest] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState("");
   const [draftReady, setDraftReady] = useState(false);
-  const list = useRef<FlashListRef<Message>>(null);
+  const list = useRef<FlashListRef<ConversationRow>>(null);
   const refreshPromise = useRef<Promise<void> | null>(null);
   const historyPagingReady = useRef(false);
   const nearBottom = useRef(true);
+  const scrollMetrics = useRef({ contentHeight: 0, viewportHeight: 0, offsetY: 0 });
   const outbox = useOutbox(connection?.serverId, sessionId);
   const draftScope = `session:${sessionId}`;
+  const updateScrollState = useCallback((contentHeight: number, viewportHeight: number, offsetY: number) => {
+    const distance = contentHeight - viewportHeight - offsetY;
+    nearBottom.current = distance < 160;
+    setShowScrollToLatest(distance > 320);
+  }, []);
   const load = useCallback(async (beforeSeq?: number) => {
     if (!connection) return;
     const api = new ClientApi(connection);
@@ -95,6 +117,9 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     setMessages([]);
     setMessagesReady(false);
     setInitialSyncComplete(false);
+    setShowScrollToLatest(false);
+    nearBottom.current = true;
+    scrollMetrics.current = { contentHeight: 0, viewportHeight: 0, offsetY: 0 };
     historyPagingReady.current = false;
   }, [sessionId]);
   useEffect(() => {
@@ -128,12 +153,15 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const presentedRun = useMemo<RunSnapshot | null>(() => {
     if (!currentRun || liveEvents.length === 0) return currentRun;
     const knownSequences = new Set(currentRun.timeline.map((event) => event.sequence));
-    const additions = liveEvents.map((event, index) => ({
-      sequence: event.runEventSeq ?? currentRun.timeline.length + index + 1,
-      type: event.type,
-      payload: event.payload,
-      occurredAt: new Date().toISOString(),
-    })).filter((event) => !knownSequences.has(event.sequence));
+    const additions = liveEvents.map((event, index) => {
+      const unwrapped = liveTimelineEvent(event);
+      return {
+        sequence: event.runEventSeq ?? currentRun.timeline.length + index + 1,
+        type: unwrapped.type,
+        payload: unwrapped.payload,
+        occurredAt: new Date().toISOString(),
+      };
+    }).filter((event) => !knownSequences.has(event.sequence));
     return { ...currentRun, timeline: [...currentRun.timeline, ...additions] };
   }, [currentRun, liveEvents]);
   const running = currentRun && ["starting", "running", "waiting_for_user", "reconciling"]
@@ -155,22 +183,33 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       if (timer) clearTimeout(timer);
     };
   }, [refresh, running]);
+  const presentedMessages = useMemo(() => deduplicateConsecutiveAgentMessages(messages), [messages]);
   const finalMessage = presentedRun?.status === "completed" ?
-    [...messages].reverse().find((message) => message.role === "agent") : undefined;
+    [...presentedMessages].reverse().find((message) => message.role === "agent") : undefined;
+  const conversationRows = useMemo<ConversationRow[]>(() => {
+    const rows: ConversationRow[] = presentedMessages
+      .filter((message) => message.id !== finalMessage?.id)
+      .map((message) => ({ kind: "message", message }));
+    if (presentedRun) rows.push({ kind: "run", run: presentedRun });
+    if (finalMessage) rows.push({ kind: "message", message: finalMessage });
+    return rows;
+  }, [finalMessage, presentedMessages, presentedRun]);
   const finalMessageId = finalMessage?.id;
   useEffect(() => {
     if (!finalMessageId || !nearBottom.current) return;
     let secondFrame = 0;
     const firstFrame = requestAnimationFrame(() => {
       list.current?.scrollToEnd({ animated: false });
-      secondFrame = requestAnimationFrame(() => list.current?.scrollToEnd({ animated: true }));
+      secondFrame = requestAnimationFrame(() => {
+        list.current?.scrollToEnd({ animated: true });
+        setShowScrollToLatest(false);
+      });
     });
     return () => {
       cancelAnimationFrame(firstFrame);
       if (secondFrame) cancelAnimationFrame(secondFrame);
     };
   }, [finalMessageId]);
-  const visibleMessages = finalMessage ? messages.filter((message) => message.id !== finalMessage.id) : messages;
   if (!connection || !bootstrap || !session || !settings || !messagesReady) {
     return <EmptyState title="正在载入会话" detail="先显示本地缓存，再从 Control 补齐最新消息。" />;
   }
@@ -222,37 +261,56 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         <Muted>{running ? "正在运行 · 参数修改将在下一轮生效" : `${session.serviceTier} · ${session.collaborationMode}`}</Muted>
       </View>
     </View>
-    <FlashList key={`${sessionId}:${initialSyncComplete ? "synced" : "cached"}`} ref={list}
-      testID="messages:list" data={visibleMessages} keyExtractor={(item) => item.id}
-      renderItem={({ item }) => <MessageBubble message={item} />}
+    <View style={styles.messageArea}>
+      <FlashList key={`${sessionId}:${initialSyncComplete ? "synced" : "cached"}`} ref={list}
+      style={{ flex: 1 }}
+      testID="messages:list" data={conversationRows}
+      keyExtractor={(item) => item.kind === "message" ? `message:${item.message.id}` : `run:${item.run.id}`}
+      renderItem={({ item }) => item.kind === "message" ? <MessageBubble message={item.message} /> :
+        <View testID={liveEvents.length > 0 ? "run:live" : undefined}>
+          <RunProgressCard run={item.run} />
+        </View>}
       keyboardShouldPersistTaps="handled"
       scrollEventThrottle={100}
       onScroll={({ nativeEvent }) => {
-        if (!historyPagingReady.current) return;
-        const distance = nativeEvent.contentSize.height - nativeEvent.layoutMeasurement.height -
-          nativeEvent.contentOffset.y;
-        nearBottom.current = distance < 160;
+        scrollMetrics.current = { contentHeight: nativeEvent.contentSize.height,
+          viewportHeight: nativeEvent.layoutMeasurement.height, offsetY: nativeEvent.contentOffset.y };
+        updateScrollState(scrollMetrics.current.contentHeight, scrollMetrics.current.viewportHeight,
+          scrollMetrics.current.offsetY);
+      }}
+      onContentSizeChange={(_, contentHeight) => {
+        scrollMetrics.current.contentHeight = contentHeight;
+        if (scrollMetrics.current.viewportHeight > 0) updateScrollState(contentHeight,
+          scrollMetrics.current.viewportHeight, scrollMetrics.current.offsetY);
       }}
       maintainVisibleContentPosition={{ startRenderingFromBottom: true,
         autoscrollToBottomThreshold: 0.1 }}
       onLoad={() => requestAnimationFrame(() => {
         list.current?.scrollToEnd({ animated: false });
+        setShowScrollToLatest(false);
         if (initialSyncComplete) historyPagingReady.current = true;
       })}
       onStartReached={() => {
         if (historyPagingReady.current && hasMore && messages[0]) void load(messages[0].seq);
       }}
       onStartReachedThreshold={0.2} contentContainerStyle={{ paddingTop: 10, paddingBottom: 24 }}
-      ListFooterComponent={<><View testID={liveEvents.length > 0 ? "run:live" : undefined}>
-        {presentedRun && <RunProgressCard run={presentedRun} />}</View>
-        {finalMessage && <MessageBubble message={finalMessage} />}
-        {presentedRun && <PlanCard run={presentedRun} onExecute={() => void new ClientApi(connection)
+      ListFooterComponent={<>{presentedRun && <PlanCard run={presentedRun} onExecute={() => void new ClientApi(connection)
           .executePlan(sessionId, presentedRun.id).then(() => refresh()).catch((error: unknown) =>
             Alert.alert("执行 Plan 失败", error instanceof Error ? error.message : "请重试"))} />}
         {presentedRun?.pendingInteractives.map((interactive) => <InteractiveCard key={interactive.id}
           interactive={interactive} onSubmit={(answer) => void new ClientApi(connection)
             .answerInteractive(interactive.id, answer).then(() => refresh()).catch((error: unknown) =>
               Alert.alert("提交回答失败", error instanceof Error ? error.message : "请重试"))} />)}</>} />
+      {showScrollToLatest && <Pressable testID="chat:scroll-to-latest" accessibilityRole="button"
+        accessibilityLabel="回到最新消息" onPress={() => {
+          nearBottom.current = true;
+          setShowScrollToLatest(false);
+          list.current?.scrollToEnd({ animated: true });
+        }} style={({ pressed }) => [styles.scrollToLatest, { backgroundColor: theme.colors.surface,
+          borderColor: theme.colors.border, opacity: pressed ? 0.72 : 1 }, theme.shadow]}>
+        <Text style={[styles.scrollToLatestIcon, { color: theme.colors.text }]}>↓</Text>
+      </Pressable>}
+    </View>
     {outbox.items.map((item) => <View key={item.localId}
       testID={`outbox:${encodeURIComponent(item.localId)}:${item.status}`}
       style={[styles.outbox, { borderColor: theme.colors.border }]}> 
@@ -299,6 +357,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, gap: 2 },
   toolbarMain: { flexDirection: "row", alignItems: "center", gap: 8 },
   toolbarTitle: { flex: 1, minWidth: 0 },
+  messageArea: { flex: 1, minHeight: 0 },
+  scrollToLatest: { position: "absolute", right: 16, bottom: 12, width: 42, height: 42,
+    borderRadius: 21, borderWidth: StyleSheet.hairlineWidth, alignItems: "center",
+    justifyContent: "center", elevation: 5 },
+  scrollToLatestIcon: { fontFamily: "Inter_500Medium", fontSize: 22, lineHeight: 26 },
   composerDock: { borderTopWidth: StyleSheet.hairlineWidth },
   outbox: { marginHorizontal: 12, marginTop: 6, borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 8, padding: 8, flexDirection: "row", alignItems: "center", gap: 8 },
