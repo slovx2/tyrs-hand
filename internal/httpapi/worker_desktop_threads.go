@@ -190,7 +190,7 @@ func desktopWorkspacePath(root, relative string) (string, error) {
 	parts := strings.Split(clean, "/")
 	if len(parts) != 2 || parts[0] != "workspaces" || parts[1] == "" ||
 		parts[1] == "." || parts[1] == ".." {
-		return "", errors.New("Workspace 项目路径必须是 workspaces/<name>")
+		return "", errors.New("workspace 项目路径必须是 workspaces/<name>")
 	}
 	return path.Join(root, parts[1]), nil
 }
