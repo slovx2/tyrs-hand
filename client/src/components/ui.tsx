@@ -29,9 +29,12 @@ export function Title({ children }: { children: ReactNode }) {
   return <Text style={[styles.title, { color: theme.colors.text }]}>{children}</Text>;
 }
 
-export function Muted({ children, numberOfLines }: { children: ReactNode; numberOfLines?: number }) {
+export function Muted({ children, numberOfLines, selectable }: {
+  children: ReactNode; numberOfLines?: number; selectable?: boolean;
+}) {
   const theme = useTheme();
-  return <Text numberOfLines={numberOfLines} style={[styles.muted, { color: theme.colors.textMuted }]}>{children}</Text>;
+  return <Text numberOfLines={numberOfLines} selectable={selectable}
+    style={[styles.muted, { color: theme.colors.textMuted }]}>{children}</Text>;
 }
 
 export function Button({ title, variant = "primary", loading, disabled, style, ...props }:

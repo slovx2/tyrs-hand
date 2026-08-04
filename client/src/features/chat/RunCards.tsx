@@ -26,7 +26,8 @@ function OperationGroup({ part, index }: { part: OperationsPart; index: number }
       style={styles.operationToggle}>
       <View style={[styles.operationRail, { backgroundColor: theme.colors.border }]} />
       <Text style={[styles.operationIcon, { color: theme.colors.textMuted }]}>↳</Text>
-      <Text numberOfLines={1} style={[styles.operationSummary, { color: theme.colors.textMuted }]}>{summary}</Text>
+      <Text selectable numberOfLines={1}
+        style={[styles.operationSummary, { color: theme.colors.textMuted }]}>{summary}</Text>
       <Text style={{ color: theme.colors.textMuted }}>{expanded ? "⌃" : "⌄"}</Text>
     </Pressable>
     {expanded && <View style={[styles.operationList, { borderLeftColor: theme.colors.border }]}>
@@ -34,7 +35,7 @@ function OperationGroup({ part, index }: { part: OperationsPart; index: number }
         <Text style={{ color: operation.status === "failed" ? theme.colors.danger : theme.colors.textMuted }}>
           {operation.status === "running" ? "○" : operation.status === "failed" ? "!" : "✓"}
         </Text>
-        <Text style={[styles.operationText, { color: theme.colors.text }]}>{operation.label}</Text>
+        <Text selectable style={[styles.operationText, { color: theme.colors.text }]}>{operation.label}</Text>
       </View>)}
     </View>}
   </View>;
@@ -75,10 +76,10 @@ export function RunProgressCard({ run }: { run: RunSnapshot }) {
     {expanded && <View style={styles.activityBody}>
       <View style={[styles.runMeta, { borderTopColor: theme.colors.border,
         borderBottomColor: theme.colors.border }]}>
-        <Text style={[styles.duration, { color: theme.colors.textMuted }]}>
+        <Text selectable style={[styles.duration, { color: theme.colors.textMuted }]}>
           {formatDuration(run.startedAt, run.finishedAt)} · {activityCount} 项动态
         </Text>
-        <Text testID="run:actual-settings" numberOfLines={1}
+        <Text testID="run:actual-settings" selectable numberOfLines={1}
           style={[styles.settings, { color: theme.colors.textMuted }]}>
           {run.actualSettings.model ?? "默认模型"} · {run.actualSettings.reasoningEffort ?? "默认"} · {run.actualSettings.serviceTier === "fast" ? "快速" : "标准"}
         </Text>
@@ -88,7 +89,7 @@ export function RunProgressCard({ run }: { run: RunSnapshot }) {
           borderTopWidth: StyleSheet.hairlineWidth }]}>
         <MarkdownContent compact>{part.text}</MarkdownContent>
       </View> : <OperationGroup key={part.id} part={part} index={index} />)}
-      {run.errorMessage && <Text testID="run:error:message"
+      {run.errorMessage && <Text testID="run:error:message" selectable
         style={[styles.error, { color: theme.colors.danger }]}>{run.errorMessage}</Text>}
     </View>}
   </View>;
@@ -97,7 +98,7 @@ export function RunProgressCard({ run }: { run: RunSnapshot }) {
 export function PlanCard({ run, onExecute }: { run: RunSnapshot | TurnRun; onExecute: () => void }) {
   if (run.actualSettings.collaborationMode !== "plan" || run.status !== "completed") return null;
   return <View testID={`run:${encodeURIComponent(run.id)}:plan`}><Card style={styles.card}><Title>计划已准备好</Title>
-    <Muted>确认后将开始执行这份计划。</Muted>
+    <Muted selectable>确认后将开始执行这份计划。</Muted>
     <Button testID="plan:execute" title="执行计划" onPress={onExecute} /></Card></View>;
 }
 
@@ -109,18 +110,18 @@ export function InteractiveCard({ interactive, onSubmit }: {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   if (interactive.secret) {
     return <View testID={`interactive:${encodeURIComponent(interactive.id)}:secret`}><Card style={styles.card}>
-      <Title>需要输入敏感信息</Title><Muted>为保护你的信息，请在 Codex 桌面端完成。</Muted></Card></View>;
+      <Title>需要输入敏感信息</Title><Muted selectable>为保护你的信息，请在 Codex 桌面端完成。</Muted></Card></View>;
   }
   return <View testID={`interactive:${encodeURIComponent(interactive.id)}`}><Card style={styles.card}><Title>需要你的回答</Title>
     {interactive.questions.map((question) => <View key={question.id} style={styles.question}>
-      <Text style={[styles.questionHeader, { color: theme.colors.textMuted }]}>{question.header}</Text>
-      <Text style={[styles.questionText, { color: theme.colors.text }]}>{question.question}</Text>
+      <Text selectable style={[styles.questionHeader, { color: theme.colors.textMuted }]}>{question.header}</Text>
+      <Text selectable style={[styles.questionText, { color: theme.colors.text }]}>{question.question}</Text>
       {question.options?.length ? <View style={styles.options}>{question.options.map((option, index) => <Pressable
         key={option.label} testID={`interactive:option:${index}`}
         onPress={() => setAnswers((value) => ({ ...value, [question.id]: option.label }))}
         style={[styles.option, { borderColor: answers[question.id] === option.label ? theme.colors.accent : theme.colors.border,
-          backgroundColor: theme.colors.surfaceAlt }]}><Text style={{ color: theme.colors.text,
-          fontFamily: "Inter_500Medium" }}>{option.label}</Text><Muted>{option.description}</Muted></Pressable>)}</View> :
+          backgroundColor: theme.colors.surfaceAlt }]}><Text selectable style={{ color: theme.colors.text,
+          fontFamily: "Inter_500Medium" }}>{option.label}</Text><Muted selectable>{option.description}</Muted></Pressable>)}</View> :
         <TextInput testID={`interactive:input:${encodeURIComponent(question.id)}`}
           value={answers[question.id] ?? ""}
           onChangeText={(value) => setAnswers((current) => ({ ...current, [question.id]: value }))}

@@ -32,7 +32,7 @@ const Operations = memo(function Operations({ part }: { part: OperationsPart }) 
   return <View style={styles.operation}>
     <Pressable onPress={() => setExpanded((value) => !value)} style={styles.operationHeader}>
       <Text style={{ color: theme.colors.textMuted }}>↳</Text>
-      <Text numberOfLines={1} style={[styles.operationSummary, { color: theme.colors.textMuted }]}>
+      <Text selectable numberOfLines={1} style={[styles.operationSummary, { color: theme.colors.textMuted }]}>
         {summary}
       </Text>
       <Text style={{ color: theme.colors.textMuted }}>{expanded ? "⌃" : "⌄"}</Text>
@@ -41,7 +41,7 @@ const Operations = memo(function Operations({ part }: { part: OperationsPart }) 
       <Text style={{ color: item.status === "failed" ? theme.colors.danger : theme.colors.textMuted }}>
         {item.status === "running" ? "○" : item.status === "failed" ? "!" : "✓"}
       </Text>
-      <Text style={[styles.operationText, { color: theme.colors.text }]}>{item.label}</Text>
+      <Text selectable style={[styles.operationText, { color: theme.colors.text }]}>{item.label}</Text>
     </View>)}
   </View>;
 });
@@ -330,10 +330,10 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
     </Pressable>
     {expanded && <>
       <View style={[styles.meta, { borderColor: theme.colors.border }]}>
-        <Text style={{ color: theme.colors.textMuted }}>
+        <Text selectable style={{ color: theme.colors.textMuted }}>
           {duration(run)} · {Math.max(segment.activityCount, activities.length)} 项动态
         </Text>
-        <Text numberOfLines={1} style={styles.model}>{run.actualSettings.model ?? "默认模型"}</Text>
+        <Text selectable numberOfLines={1} style={styles.model}>{run.actualSettings.model ?? "默认模型"}</Text>
       </View>
       <View style={[styles.activityViewport, { height: activityViewportHeight,
         maxHeight: activityMaxHeight }]}>
@@ -392,7 +392,7 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
             !ready ? <Text style={{ color: theme.colors.textMuted }}>正在加载动态…</Text> :
               loadFailed ? <Text style={{ color: theme.colors.danger }}>动态加载失败，请收起后重试</Text> : null}
           ListFooterComponent={run.errorMessage && !continued ?
-            <Text style={{ color: theme.colors.danger }}>{run.errorMessage}</Text> : null} />
+            <Text selectable style={{ color: theme.colors.danger }}>{run.errorMessage}</Text> : null} />
       </View>
       {hasNew && <Pressable testID="run:activity:new" style={[styles.newActivity, {
         backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border,

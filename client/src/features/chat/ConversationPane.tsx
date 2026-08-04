@@ -315,7 +315,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         onInteractionEnd={unlockOuterScroll} onFollowLatest={followLatestActivity}
         onFinalDraft={handleFinalDraft} /> :
         item.kind === "interactive" ? <View style={styles.interactiveHistory}>
-          <Muted>已提交交互回答，任务继续执行</Muted>
+          <Muted selectable>已提交交互回答，任务继续执行</Muted>
         </View> : finalDrafts[item.runId] ?
           <View testID={`run:${item.runId}:stream-final`} style={styles.streamedFinal}>
             <MarkdownContent>{finalDrafts[item.runId] ?? ""}</MarkdownContent>

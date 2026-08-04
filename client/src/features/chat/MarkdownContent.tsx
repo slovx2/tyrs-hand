@@ -1,6 +1,6 @@
 import { memo, useMemo } from "react";
-import { Platform, StyleSheet } from "react-native";
-import Markdown from "react-native-markdown-display";
+import { Platform, StyleSheet, Text } from "react-native";
+import Markdown, { type RenderFunction, type RenderRules } from "react-native-markdown-display";
 
 import { useTheme } from "@/theme/ThemeProvider";
 
@@ -10,6 +10,20 @@ type MarkdownContentProps = {
 };
 
 const monoFont = Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" });
+
+const selectableTextGroup: RenderFunction = (node, children, _parents, styles) =>
+  <Text key={node.key} selectable style={styles.textgroup}>{children}</Text>;
+
+const selectableCode: RenderFunction = (node, _children, _parents, styles, inheritedStyles = {}) => {
+  const content = node.content.endsWith("\n") ? node.content.slice(0, -1) : node.content;
+  return <Text key={node.key} selectable style={[inheritedStyles, styles[node.type]]}>{content}</Text>;
+};
+
+const selectableRules: RenderRules = {
+  textgroup: selectableTextGroup,
+  code_block: selectableCode,
+  fence: selectableCode,
+};
 
 export const MarkdownContent = memo(function MarkdownContent({ children, compact = false }: MarkdownContentProps) {
   const theme = useTheme();
@@ -84,5 +98,5 @@ export const MarkdownContent = memo(function MarkdownContent({ children, compact
     inline: {},
     span: {},
   }), [blockGap, compact, theme]);
-  return <Markdown mergeStyle={false} style={markdownStyle}>{children}</Markdown>;
+  return <Markdown mergeStyle={false} rules={selectableRules} style={markdownStyle}>{children}</Markdown>;
 });

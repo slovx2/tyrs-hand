@@ -25,7 +25,7 @@ export const MessageBubble = memo(function MessageBubble({ message }: { message:
       <Text selectable style={[styles.userText, { color: theme.colors.accentForeground }]}>{text}</Text>
       {message.attachments.map((attachment) => <View key={attachment.id}
         style={[styles.attachment, { backgroundColor: "rgba(255,255,255,0.16)" }]}>
-        <Text numberOfLines={1} style={{ color: theme.colors.accentForeground }}>
+        <Text selectable numberOfLines={1} style={{ color: theme.colors.accentForeground }}>
           {attachment.kind === "image" ? "图片" : "文件"} · {attachment.filename}
         </Text>
       </View>)}
@@ -36,7 +36,7 @@ export const MessageBubble = memo(function MessageBubble({ message }: { message:
       <MarkdownContent>{text}</MarkdownContent>
       {message.attachments.map((attachment) => <View key={attachment.id}
         style={[styles.attachment, { backgroundColor: theme.colors.surfaceAlt }]}>
-        <Text numberOfLines={1} style={{ color: theme.colors.text }}>
+        <Text selectable numberOfLines={1} style={{ color: theme.colors.text }}>
           {attachment.kind === "image" ? "图片" : "文件"} · {attachment.filename}
         </Text>
       </View>)}
