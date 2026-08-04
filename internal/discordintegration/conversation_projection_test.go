@@ -14,6 +14,49 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestPreserveTerminalConversationProjectionOnlyChangesStatus(t *testing.T) {
+	runID := uuid.NewString()
+	existing := &conversationProjectionPayload{
+		Card: ComponentCardPayload{
+			AccentColor: cardColorBlurple,
+			Header:      "⚙️ Codex · 思考中",
+			Body:        "`42s` · `3 项动态`",
+			Timeline:    "> ↳ 已检查工作区\n\n正在整理结果。",
+			Buttons:     []ComponentButtonPayload{{Label: "最新", CustomID: "progress-latest"}},
+			Error:       &ComponentErrorPayload{Message: "旧错误"},
+		},
+		Progress: conversationProgressPayload{
+			FormatVersion: conversationProgressFormatVersion,
+			RunID:         runID, State: ConversationRunning, Summary: "正在处理请求。", Page: 0,
+			CollaborationMode: "default", Error: &ComponentErrorPayload{Message: "旧错误"},
+		},
+	}
+
+	card, progress, preserved := preserveTerminalConversationProjection(
+		ConversationCanceled, "本轮已停止。", runID, "default", existing)
+	require.True(t, preserved)
+	require.Equal(t, "⏹️ Codex · 已停止", card.Header)
+	require.Equal(t, cardColorGray, card.AccentColor)
+	require.Equal(t, existing.Card.Body, card.Body)
+	require.Equal(t, existing.Card.Timeline, card.Timeline)
+	require.Equal(t, existing.Card.Buttons, card.Buttons)
+	require.Nil(t, card.Error)
+	require.Equal(t, ConversationCanceled, progress.State)
+	require.Equal(t, "本轮已停止。", progress.Summary)
+	require.Nil(t, progress.Error)
+
+	codexError := &ComponentErrorPayload{Message: "模型不可用"}
+	card, progress, preserved = preserveTerminalConversationProjection(
+		ConversationFailed, "本轮处理未完成。", runID, "default", existing, codexError)
+	require.True(t, preserved)
+	require.Equal(t, "❌ Codex · 处理失败", card.Header)
+	require.Equal(t, cardColorRed, card.AccentColor)
+	require.Equal(t, existing.Card.Timeline, card.Timeline)
+	require.Equal(t, codexError, card.Error)
+	require.Equal(t, ConversationFailed, progress.State)
+	require.Equal(t, codexError, progress.Error)
+}
+
 func TestProjectionBoundaryHelpersAndCodexError(t *testing.T) {
 	require.Nil(t, CodexErrorForProjection(nil))
 	projected := CodexErrorForProjection(&workerprotocol.CodexTurnError{

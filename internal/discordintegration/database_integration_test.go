@@ -1499,12 +1499,14 @@ func TestReconcileConversationProgressCardsUsesTerminalRunState(t *testing.T) {
 		(guild_id, projection_key, resource_id, message_id, desired_payload)
 		VALUES ($1,$2,'terminal-thread','terminal-message',$3)`, testGuildID,
 		projectionKey, mustJSON(map[string]any{
-			"card": ComponentCardPayload{AccentColor: cardColorRed,
-				Header: "❌ Codex · 处理失败"},
+			"card": ComponentCardPayload{AccentColor: cardColorBlurple,
+				Header: "⚙️ Codex · 思考中", Body: "`42s` · `3 项动态`",
+				Timeline: "> ↳ 已检查工作区\n\n正在整理结果。",
+				Buttons:  []ComponentButtonPayload{{Label: "最新", CustomID: "progress-latest"}}},
 			"progress": conversationProgressPayload{
 				FormatVersion: conversationProgressFormatVersion,
-				RunID:         runID.String(), State: ConversationFailed,
-				Summary: "本轮处理未完成。", Page: 0,
+				RunID:         runID.String(), State: ConversationRunning,
+				Summary: "正在处理请求。", Page: 0,
 			},
 		}))
 	require.NoError(t, err)
@@ -1527,6 +1529,9 @@ func TestReconcileConversationProgressCardsUsesTerminalRunState(t *testing.T) {
 	require.Equal(t, ConversationCanceled, desired.Progress.State)
 	require.Equal(t, "本轮已停止。", desired.Progress.Summary)
 	require.Equal(t, "⏹️ Codex · 已停止", desired.Card.Header)
+	require.Equal(t, "`42s` · `3 项动态`", desired.Card.Body)
+	require.Equal(t, "> ↳ 已检查工作区\n\n正在整理结果。", desired.Card.Timeline)
+	require.Equal(t, []ComponentButtonPayload{{Label: "最新", CustomID: "progress-latest"}}, desired.Card.Buttons)
 	var historyVersion, currentVersion int64
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT desired_version
 		FROM discord_projections WHERE guild_id=$1 AND projection_key=$2`,

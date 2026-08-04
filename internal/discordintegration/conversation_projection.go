@@ -61,21 +61,40 @@ func ProjectConversationStatus(ctx context.Context, db *sql.DB, guildID, threadI
 			return err
 		}
 	}
-	var timeline ConversationTimeline
-	if runID == uuid.Nil {
-		timeline, err = conversationTimelineForRun(ctx, tx, runID, detail)
-	} else {
-		timeline, err = conversationTimelineForStatusCard(ctx, tx, runID, key, detail)
+	var card ComponentCardPayload
+	var progress conversationProgressPayload
+	var preserved bool
+	if state == ConversationCanceled || state == ConversationFailed {
+		var rawExisting json.RawMessage
+		err = tx.QueryRowContext(ctx, `SELECT desired_payload FROM discord_projections
+			WHERE guild_id=$1 AND projection_key=$2 FOR UPDATE`, guildID, key).Scan(&rawExisting)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		} else if err == nil {
+			var existing conversationProjectionPayload
+			if json.Unmarshal(rawExisting, &existing) == nil {
+				card, progress, preserved = preserveTerminalConversationProjection(state, detail,
+					rawRunID, mode, &existing, errorDetails...)
+			}
+		}
 	}
-	if err != nil {
-		return err
-	}
-	page := len(timeline.Pages) - 1
-	card := conversationProgressCard(state, timeline, page, rawRunID, mode, errorDetails...)
-	progress := conversationProgressPayload{FormatVersion: conversationProgressFormatVersion,
-		RunID: rawRunID, State: state, Summary: detail, Page: page, CollaborationMode: mode}
-	if len(errorDetails) > 0 {
-		progress.Error = errorDetails[0]
+	if !preserved {
+		var timeline ConversationTimeline
+		if runID == uuid.Nil {
+			timeline, err = conversationTimelineForRun(ctx, tx, runID, detail)
+		} else {
+			timeline, err = conversationTimelineForStatusCard(ctx, tx, runID, key, detail)
+		}
+		if err != nil {
+			return err
+		}
+		page := len(timeline.Pages) - 1
+		card = conversationProgressCard(state, timeline, page, rawRunID, mode, errorDetails...)
+		progress = conversationProgressPayload{FormatVersion: conversationProgressFormatVersion,
+			RunID: rawRunID, State: state, Summary: detail, Page: page, CollaborationMode: mode}
+		if len(errorDetails) > 0 {
+			progress.Error = errorDetails[0]
+		}
 	}
 	var resourceID, messageID string
 	err = tx.QueryRowContext(ctx, `INSERT INTO discord_projections
@@ -603,6 +622,39 @@ type conversationProgressPayload struct {
 	Error             *ComponentErrorPayload `json:"error,omitempty"`
 }
 
+type conversationProjectionPayload struct {
+	Card     ComponentCardPayload        `json:"card"`
+	Progress conversationProgressPayload `json:"progress"`
+}
+
+// preserveTerminalConversationProjection 终止 Run 时只切换状态展示，保留已投影的过程内容。
+func preserveTerminalConversationProjection(state ConversationProgress, detail, runID, mode string,
+	existing *conversationProjectionPayload, errorDetails ...*ComponentErrorPayload,
+) (ComponentCardPayload, conversationProgressPayload, bool) {
+	if (state != ConversationCanceled && state != ConversationFailed) || existing == nil ||
+		existing.Progress.RunID != runID || strings.TrimSpace(existing.Card.Timeline) == "" {
+		return ComponentCardPayload{}, conversationProgressPayload{}, false
+	}
+	progress := existing.Progress
+	progress.FormatVersion = conversationProgressFormatVersion
+	progress.RunID = runID
+	progress.State = state
+	progress.Summary = detail
+	progress.CollaborationMode = mode
+	card := existing.Card
+	card.Header, card.AccentColor = conversationProgressCardPresentation(state)
+	if state == ConversationCanceled {
+		progress.Error = nil
+		card.Error = nil
+	} else if len(errorDetails) > 0 && errorDetails[0] != nil {
+		progress.Error = errorDetails[0]
+		card.Error = errorDetails[0]
+	} else {
+		card.Error = progress.Error
+	}
+	return card, progress, true
+}
+
 const conversationProgressFormatVersion = 5
 
 type conversationQueryer interface {
@@ -740,9 +792,7 @@ func ReconcileConversationProgressCards(ctx context.Context, db *sql.DB, guildID
 func reconcileConversationProgressCard(ctx context.Context, db *sql.DB, guildID,
 	projectionKey, resourceID, messageID string, raw json.RawMessage,
 ) error {
-	var desired struct {
-		Progress conversationProgressPayload `json:"progress"`
-	}
+	var desired conversationProjectionPayload
 	if err := json.Unmarshal(raw, &desired); err != nil {
 		return err
 	}
@@ -798,21 +848,28 @@ func reconcileConversationProgressCard(ctx context.Context, db *sql.DB, guildID,
 			desired.Progress.State = ConversationGuided
 		}
 	}
-	var timeline ConversationTimeline
 	var err error
-	if runID == uuid.Nil {
-		timeline, err = conversationTimelineForRun(ctx, db, runID, desired.Progress.Summary)
+	card, terminalProgress, preserved := preserveTerminalConversationProjection(desired.Progress.State,
+		desired.Progress.Summary, desired.Progress.RunID, desired.Progress.CollaborationMode,
+		&desired, desired.Progress.Error)
+	if !preserved {
+		var timeline ConversationTimeline
+		if runID == uuid.Nil {
+			timeline, err = conversationTimelineForRun(ctx, db, runID, desired.Progress.Summary)
+		} else {
+			timeline, err = conversationTimelineForStatusCard(ctx, db, runID, projectionKey,
+				desired.Progress.Summary)
+		}
+		if err != nil {
+			return err
+		}
+		desired.Progress.FormatVersion = conversationProgressFormatVersion
+		desired.Progress.Page = len(timeline.Pages) - 1
+		card = conversationProgressCard(desired.Progress.State, timeline, desired.Progress.Page,
+			desired.Progress.RunID, desired.Progress.CollaborationMode, desired.Progress.Error)
 	} else {
-		timeline, err = conversationTimelineForStatusCard(ctx, db, runID, projectionKey,
-			desired.Progress.Summary)
+		desired.Progress = terminalProgress
 	}
-	if err != nil {
-		return err
-	}
-	desired.Progress.FormatVersion = conversationProgressFormatVersion
-	desired.Progress.Page = len(timeline.Pages) - 1
-	card := conversationProgressCard(desired.Progress.State, timeline, desired.Progress.Page,
-		desired.Progress.RunID, desired.Progress.CollaborationMode, desired.Progress.Error)
 	payload := map[string]any{"channelId": resourceID, "card": card,
 		"progress": desired.Progress}
 	operation, nonce := "message.create", "conversation-progress-reconcile-"+projectionKey

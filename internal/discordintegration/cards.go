@@ -63,17 +63,7 @@ const (
 func conversationProgressCard(state ConversationProgress, timeline ConversationTimeline,
 	page int, runID, mode string, errorDetails ...*ComponentErrorPayload,
 ) ComponentCardPayload {
-	header, color := "⚙️ Codex · 思考中", cardColorBlurple
-	switch state {
-	case ConversationGuided:
-		header = "Codex · 已引导对话"
-	case ConversationCompleted:
-		header, color = "✅ Codex · 已完成", cardColorGreen
-	case ConversationCanceled:
-		header, color = "⏹️ Codex · 已停止", cardColorGray
-	case ConversationFailed:
-		header, color = "❌ Codex · 处理失败", cardColorRed
-	}
+	header, color := conversationProgressCardPresentation(state)
 	card := ComponentCardPayload{AccentColor: color, Header: header,
 		Body: fmt.Sprintf("`%s` · `%d 项动态`", compactDuration(timeline.Duration), timeline.Updates)}
 	if len(timeline.Pages) > 0 {
@@ -97,6 +87,21 @@ func conversationProgressCard(state ConversationProgress, timeline ConversationT
 		}
 	}
 	return card
+}
+
+func conversationProgressCardPresentation(state ConversationProgress) (string, int) {
+	header, color := "⚙️ Codex · 思考中", cardColorBlurple
+	switch state {
+	case ConversationGuided:
+		header = "Codex · 已引导对话"
+	case ConversationCompleted:
+		header, color = "✅ Codex · 已完成", cardColorGreen
+	case ConversationCanceled:
+		header, color = "⏹️ Codex · 已停止", cardColorGray
+	case ConversationFailed:
+		header, color = "❌ Codex · 处理失败", cardColorRed
+	}
+	return header, color
 }
 
 func terminatedControlCard() ComponentCardPayload {
