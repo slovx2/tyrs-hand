@@ -540,12 +540,13 @@ func (c *desktopController) prepareDesktopThread(ctx context.Context,
 
 func hostWorkspacePath(root, relative string) (string, error) {
 	root = filepath.Clean(strings.TrimSpace(root))
-	relative = filepath.Clean(strings.TrimSpace(relative))
-	if !filepath.IsAbs(root) || relative == "." || filepath.IsAbs(relative) ||
-		relative == ".." || strings.HasPrefix(relative, ".."+string(os.PathSeparator)) {
+	relative = filepath.Clean(filepath.FromSlash(strings.TrimSpace(relative)))
+	parts := strings.Split(filepath.ToSlash(relative), "/")
+	if !filepath.IsAbs(root) || len(parts) != 2 || parts[0] != "workspaces" ||
+		parts[1] == "" || parts[1] == "." || parts[1] == ".." {
 		return "", errors.New("宿主 Workspace 相对路径无效")
 	}
-	return filepath.Join(root, relative), nil
+	return filepath.Join(root, parts[1]), nil
 }
 
 func (c *desktopController) completeDesktopThread(

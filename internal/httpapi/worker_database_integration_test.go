@@ -538,10 +538,12 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT name FROM repositories WHERE id = $1`,
 		repositoryID).Scan(&repositoryName))
 	require.Equal(t, "workspaces/"+repositoryName, workspaceRelative)
-	workspace := "/var/lib/tyrs-hand/" + workspaceRelative
+	workspaceRoot := "/var/lib/tyrs-hand/workspaces"
+	workspace := workspaceRoot + "/" + repositoryName
 
 	state, err := client.PrepareDesktopThread(ctx, workerprotocol.DesktopThreadPrepareRequest{
-		WorkspaceID: workspaceID, Operation: "start", RequestKey: strings.Repeat("a", 64),
+		WorkspaceID: workspaceID, WorkspaceRoot: workspaceRoot,
+		Operation: "start", RequestKey: strings.Repeat("a", 64),
 		Params: json.RawMessage(`{"cwd":"` + workspace + `/nested","model":"mock-model","effort":"high"}`),
 	})
 	if err != nil {
@@ -583,7 +585,8 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	}))
 
 	fork, err := client.PrepareDesktopThread(ctx, workerprotocol.DesktopThreadPrepareRequest{
-		WorkspaceID: workspaceID, Operation: "fork", RequestKey: strings.Repeat("b", 64),
+		WorkspaceID: workspaceID, WorkspaceRoot: workspaceRoot,
+		Operation: "fork", RequestKey: strings.Repeat("b", 64),
 		Params: json.RawMessage(`{"threadId":"codex-desktop-thread"}`),
 	})
 	require.NoError(t, err, "Fork 不应依赖源 Thread 已经创建 Discord Conversation")
@@ -1443,7 +1446,8 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "canceled", stoppedIntentStatus)
 
 	failed, err := client.PrepareDesktopThread(ctx, workerprotocol.DesktopThreadPrepareRequest{
-		WorkspaceID: workspaceID, Operation: "start", RequestKey: strings.Repeat("c", 64),
+		WorkspaceID: workspaceID, WorkspaceRoot: workspaceRoot,
+		Operation: "start", RequestKey: strings.Repeat("c", 64),
 		Params: json.RawMessage(`{"cwd":"` + workspace + `"}`),
 	})
 	require.NoError(t, err)

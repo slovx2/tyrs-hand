@@ -124,7 +124,10 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 			&relative, &target.actorID, &target.actorName); err != nil {
 			return nil, desktopThreadTarget{}, err
 		}
-		target.workspacePath = path.Join(workspaceRoot, relative)
+		target.workspacePath, err = desktopWorkspacePath(workspaceRoot, relative)
+		if err != nil {
+			return nil, desktopThreadTarget{}, err
+		}
 		targets = append(targets, target)
 	}
 	if err := rows.Err(); err != nil {
@@ -180,6 +183,16 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 	params["cwd"] = target.workspacePath
 	normalized, err := json.Marshal(params)
 	return normalized, target, err
+}
+
+func desktopWorkspacePath(root, relative string) (string, error) {
+	clean := path.Clean(strings.TrimSpace(relative))
+	parts := strings.Split(clean, "/")
+	if len(parts) != 2 || parts[0] != "workspaces" || parts[1] == "" ||
+		parts[1] == "." || parts[1] == ".." {
+		return "", errors.New("Workspace 项目路径必须是 workspaces/<name>")
+	}
+	return path.Join(root, parts[1]), nil
 }
 
 func enqueueDesktopThreadPost(ctx context.Context, tx *sql.Tx, requestID uuid.UUID,
