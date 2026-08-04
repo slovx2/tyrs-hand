@@ -138,6 +138,13 @@ func TestSSHServerSupportsShellProxyAndRejectsForwarding(t *testing.T) {
 
 	session, err = client.NewSession()
 	require.NoError(t, err)
+	output, err = session.Output(remoteDesktopLauncherFixture)
+	require.NoError(t, err)
+	require.Equal(t, append([]byte{0xfb, 0xe9, 0x83, 0xd6, ',', 0x10, 0xb5, 0x9b},
+		[]byte("desktop-proxy")...), output)
+
+	session, err = client.NewSession()
+	require.NoError(t, err)
 	stdin, err := session.StdinPipe()
 	require.NoError(t, err)
 	stdout, err := session.StdoutPipe()
