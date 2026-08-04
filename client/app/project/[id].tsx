@@ -29,7 +29,7 @@ export default function ProjectSessionsScreen() {
 
   if (!project) {
     return <Screen><Stack.Screen options={{ title: "项目会话" }} />
-      <EmptyState title="项目不可用" detail="它可能已被移除，或属于另一个 Control。" /></Screen>;
+      <EmptyState title="项目不可用" detail="它可能已被移除，或不在当前连接中。" /></Screen>;
   }
 
   const navigation = <Stack.Screen options={{ title: project.name, headerBackTitle: "项目",

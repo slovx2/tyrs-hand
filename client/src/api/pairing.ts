@@ -15,7 +15,7 @@ export type PairingCode = z.infer<typeof pairingSchema>;
 export function parsePairingCode(value: string): PairingCode {
   const url = new URL(value);
   if (url.protocol !== "tyrshand:" || url.hostname !== "device-pair" || url.searchParams.get("v") !== "2") {
-    throw new Error("这不是 Tyrs Hand v2 设备二维码");
+    throw new Error("无法识别这个设备二维码");
   }
   return pairingSchema.parse(Object.fromEntries(url.searchParams.entries()));
 }

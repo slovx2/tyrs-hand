@@ -26,7 +26,7 @@ export default function SessionsScreen() {
   if (!tablet) return <Screen>{list}</Screen>;
   return <Screen style={styles.horizontal}>{list}<View style={styles.detail}>
     {selectedId ? <ConversationPane sessionId={selectedId} /> :
-      <EmptyState title="选择一个会话" detail="消息、运行进度、Plan 和交互问答会显示在这里。" />}
+      <EmptyState title="选择一个会话" detail="消息、处理进度、计划和交互问答会显示在这里。" />}
   </View></Screen>;
 }
 

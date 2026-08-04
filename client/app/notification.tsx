@@ -14,5 +14,5 @@ export default function NotificationRoute() {
     void openNotificationTarget({ serverId, sessionId }).then((opened) => setInvalid(!opened));
   }, [ready, serverId, sessionId]);
   return <Screen><EmptyState title={invalid ? "无法打开通知" : "正在打开会话"}
-    detail={invalid ? "通知对应的 Control 或会话已经不可用。" : "正在同步对应 Control 的最新状态。"} /></Screen>;
+    detail={invalid ? "通知对应的连接或会话已经不可用。" : "请稍候…"} /></Screen>;
 }

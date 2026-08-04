@@ -48,7 +48,7 @@ export function ParameterSheet({ visible, bootstrap, workspaceId, value, current
         </View>
       </View>
       <ScrollView contentContainerStyle={styles.content}>
-        <Title>Agent Profile</Title>
+        <Title>智能体</Title>
         {bootstrap.agentProfiles.map((profile) => <Choice key={profile.id} label={profile.name}
           testID={`parameters:profile:${encodeURIComponent(profile.id)}`}
           selected={profile.id === value.agentProfileId}
@@ -80,7 +80,7 @@ export function ParameterSheet({ visible, bootstrap, workspaceId, value, current
           onChange={(serviceTier) => onChange({ ...value, serviceTier })} />
         <Title>模式</Title>
         <SegmentedControl testIDPrefix="parameters:mode" value={value.collaborationMode} options={[
-          { value: "default", label: "Default" }, { value: "plan", label: "Plan" },
+          { value: "default", label: "直接执行" }, { value: "plan", label: "先做计划" },
         ] as const} onChange={(collaborationMode) => onChange({ ...value, collaborationMode })} />
       </ScrollView>
     </SafeAreaView>

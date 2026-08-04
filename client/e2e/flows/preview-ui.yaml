@@ -40,7 +40,7 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     id: "outbox:preview-message-failed:failed"
 - pressKey: BACK
 
-# 已完成 Plan
+# 已完成计划
 - tapOn:
     id: "session:row:1"
 - assertVisible:
@@ -80,7 +80,7 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     id: "interactive:option:0"
 - pressKey: BACK
 
-# Secret 问题
+# 敏感信息问题
 - scrollUntilVisible:
     element:
       id: "session:row:3"
@@ -92,10 +92,10 @@ appId: ${TYRS_HAND_E2E_APP_ID}
       id: "interactive:.*:secret"
     direction: DOWN
 - assertVisible:
-    text: ".*只能在 Codex Desktop 完成.*"
+    text: ".*请在 Codex 桌面端完成.*"
 - pressKey: BACK
 
-# 失败 Run
+# 失败任务
 - scrollUntilVisible:
     element:
       id: "session:row:4"
@@ -149,7 +149,7 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - tapOn:
     id: "run:activity:toggle"
 - assertVisible:
-    text: "中间过程 · 已完成"
+    text: "已完成"
 - assertVisible:
     text: ".*Markdown 容器宽度.*"
 - pressKey: BACK
@@ -165,7 +165,7 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     id: "session:restore"
 - pressKey: BACK
 
-# 多 Control、主题、重命名和扫码弹层
+# 多连接、主题、重命名和扫码弹层
 - tapOn:
     id: "tab:connections"
 - assertVisible:

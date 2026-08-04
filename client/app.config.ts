@@ -12,6 +12,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   slug: "tyrs-hand",
   scheme: "tyrshand",
   version: "0.1.0",
+  icon: "./assets/icon.png",
   orientation: "default",
   userInterfaceStyle: "automatic",
   newArchEnabled: true,
@@ -24,7 +25,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   android: {
     package: `com.tyrshand.app${suffix}`,
     softwareKeyboardLayoutMode: "pan",
-    adaptiveIcon: { backgroundColor: "#f6f8fa" },
+    adaptiveIcon: {
+      foregroundImage: "./assets/adaptive-icon.png",
+      backgroundColor: "#09090b",
+    },
   },
   plugins: [
     "expo-router",

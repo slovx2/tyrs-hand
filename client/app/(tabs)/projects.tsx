@@ -12,7 +12,7 @@ export default function ProjectsScreen() {
   const selectProject = useAppStore((state) => state.setSelectedProject);
 
   if (!connection || !bootstrap) {
-    return <Screen><EmptyState title="还没有可用的 Control"
+    return <Screen><EmptyState title="还没有可用的连接"
       detail="请先在连接页扫描管理后台中的设备二维码。" /></Screen>;
   }
 
@@ -23,7 +23,7 @@ export default function ProjectsScreen() {
 
   return <Screen><FlatList testID="projects:list" data={bootstrap.projects}
     keyExtractor={(item) => item.id} contentContainerStyle={styles.list}
-    ListEmptyComponent={<EmptyState title="没有项目" detail="Control 暂时没有可用的开发项目。" />}
+    ListEmptyComponent={<EmptyState title="没有项目" detail="当前连接中暂时没有可用项目。" />}
     renderItem={({ item, index }) => <Pressable testID={`project:row:${index}`}
       accessibilityRole="button" accessibilityLabel={`打开项目 ${item.name}`}
       onPress={() => openProject(item.id)}>

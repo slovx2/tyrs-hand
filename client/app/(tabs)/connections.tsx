@@ -47,7 +47,7 @@ export default function ConnectionsScreen() {
     setScanning(true);
   };
   const revoke = (serverId: string) => Alert.alert("清除连接？",
-    "将撤销当前设备并清除这个 Control 的本地缓存。此操作不能从 App 内恢复。", [
+    "将移除这台设备上的连接和本地数据。移除后需要重新扫码添加。", [
       { text: "取消", style: "cancel" },
       { text: "清除", style: "destructive", onPress: () => void (async () => {
         const connection = connections.find((item) => item.serverId === serverId);
@@ -58,7 +58,7 @@ export default function ConnectionsScreen() {
       })() },
     ]);
   return <Screen>
-    <View style={styles.header}><View style={styles.headerCopy}><Title>Control 连接</Title><Muted>凭证存储在系统 SecureStore，缓存按 serverId 完全隔离。</Muted></View>
+    <View style={styles.header}><View style={styles.headerCopy}><Title>设备连接</Title><Muted>添加并切换可以使用的 Tyrs Hand 服务。</Muted></View>
       <Button testID="connection:add" title="扫码添加" onPress={() => void openScanner()} /></View>
     <View style={styles.theme}><Muted>外观</Muted><SegmentedControl testIDPrefix="theme" value={mode} options={[
       { value: "system", label: "跟随系统" }, { value: "light", label: "浅色" }, { value: "dark", label: "深色" },
@@ -87,7 +87,7 @@ export default function ConnectionsScreen() {
         { backgroundColor: theme.colors.surfaceAlt }]}><View style={[styles.previewQr, { borderColor: theme.colors.textMuted }]} />
         <Muted>预览模式相机画面</Muted></View> : <CameraView style={StyleSheet.absoluteFill}
         barcodeScannerSettings={{ barcodeTypes: ["qr"] }} onBarcodeScanned={({ data }) => void scanned(data)} />}
-        <View style={styles.scannerOverlay}><Title>扫描设备二维码</Title><Muted>二维码必须是协议 v2，并包含稳定 serverId。</Muted>
+        <View style={styles.scannerOverlay}><Title>扫描设备二维码</Title><Muted>请扫描管理后台生成的二维码。</Muted>
           <Button title={claiming ? "等待确认…" : "取消"} disabled={claiming} onPress={() => setScanning(false)} /></View>
       </View>
     </Modal>

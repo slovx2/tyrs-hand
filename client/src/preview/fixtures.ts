@@ -97,7 +97,7 @@ function run(index: number, status: RunSnapshot["status"], mode: "default" | "pl
         occurredAt: baseTime },
       { sequence: 3, type: "item/completed", payload: { item: { id: `commentary-${index}-2`,
         type: "agentMessage", phase: "commentary",
-        text: "列表和详情的数据源已经统一。接下来调整交互，同时保留生产环境的同步与缓存逻辑。" } },
+        text: "列表和详情已经统一。接下来调整交互，并检查断网恢复是否符合预期。" } },
         occurredAt: baseTime },
       { sequence: 4, type: "item/completed", payload: { item: { id: `files-${index}`,
         type: "fileChange", changes: [{ path: "client/src/features/chat/ConversationPane.tsx" }],
@@ -108,9 +108,9 @@ function run(index: number, status: RunSnapshot["status"], mode: "default" | "pl
 }
 
 const runningSession = session(1, "运行中：完善移动端会话体验");
-const planSession = session(2, "Plan 已完成：重构同步状态机", { collaborationMode: "plan" });
+const planSession = session(2, "计划已完成：优化消息恢复", { collaborationMode: "plan" });
 const interactiveSession = session(3, "等待回答：确认实现范围");
-const secretSession = session(4, "Secret：等待 Desktop 输入");
+const secretSession = session(4, "等待桌面端输入敏感信息");
 const failedSession = session(5, "执行失败：依赖服务不可用", { serviceTier: "standard" });
 const attachmentSession = session(6, "附件与 Markdown 完整展示");
 const archivedSession = session(7, "已归档：旧版通知链路", { lifecycleState: "archived" });
@@ -125,7 +125,7 @@ interactiveRun.pendingInteractives = [{
   secret: false,
   deadlineAt: null,
   questions: [{ id: "scope", header: "实现范围", question: "首版优先覆盖哪一项？", options: [
-    { label: "完整交互", description: "覆盖会话、Plan、问答、停止与附件。" },
+    { label: "完整交互", description: "覆盖会话、计划、问答、停止与附件。" },
     { label: "只读预览", description: "先完成展示，暂不模拟写操作。" },
   ] }, { id: "note", header: "补充说明", question: "还有什么验收要求？" }],
 }];
@@ -182,11 +182,11 @@ function conversation(item: Session, answer: string, currentRun: RunSnapshot | n
 
 const details: Record<string, PreviewSessionDetail> = {
   [runningSession.id]: conversation(runningSession,
-    "正在检查 **导航、缓存和输入框**。\n\n```tsx\n<ChatComposer mode=\"preview\" />\n```", runningRun),
+    "正在检查 **导航、断网恢复和输入框**。\n\n```tsx\n<ChatComposer mode=\"preview\" />\n```", runningRun),
   [planSession.id]: conversation(planSession,
-    "## 执行计划\n\n1. 统一同步状态\n2. 补齐断线恢复\n3. 验证幂等发送", planRun),
+    "## 执行计划\n\n1. 统一消息状态\n2. 补齐断线恢复\n3. 验证重复发送保护", planRun),
   [interactiveSession.id]: conversation(interactiveSession, "需要确认两个问题后继续。", interactiveRun),
-  [secretSession.id]: conversation(secretSession, "下一步需要敏感信息，请在 Desktop 中完成。", secretRun),
+  [secretSession.id]: conversation(secretSession, "下一步需要敏感信息，请在 Codex 桌面端完成。", secretRun),
   [failedSession.id]: conversation(failedSession, "任务未能完成，错误详情见运行进度。", failedRun),
   [attachmentSession.id]: {
     ...conversation(attachmentSession,
@@ -284,7 +284,7 @@ const secondaryBootstrap: Bootstrap = {
   projects: [{
     id: secondaryProjectId,
     workspaceId: "20000000-0000-4000-8000-000000000007",
-    name: "宿主 Worker 示例",
+    name: "远程开发示例",
     relativePath: "workspaces/host-worker",
     kind: "git",
     availabilityStatus: "available",
@@ -294,7 +294,7 @@ const secondaryBootstrap: Bootstrap = {
   modelCatalogs: { "20000000-0000-4000-8000-000000000007": modelCatalog },
 };
 
-const secondarySession = session(8, "另一 Control 的隔离会话", {
+const secondarySession = session(8, "另一连接中的独立会话", {
   projectId: secondaryProjectId,
   workspaceId: secondaryBootstrap.projects[0]!.workspaceId,
 });
@@ -304,13 +304,13 @@ export function createPreviewSeed(): PreviewSeed {
     connections: [{
       serverId: primaryPreviewServerId,
       baseUrl: "preview://local-control",
-      name: "本机 Control · UI 全状态",
+      name: "本机服务 · UI 全状态",
       deviceId: "preview-device-primary",
       active: true,
     }, {
       serverId: secondaryPreviewServerId,
       baseUrl: "preview://remote-control-with-a-long-hostname",
-      name: "远程 Control · 数据隔离",
+      name: "远程服务 · 数据隔离",
       deviceId: "preview-device-secondary",
       active: false,
     }],
@@ -345,7 +345,7 @@ export function createPreviewSeed(): PreviewSeed {
         sessions: [secondarySession],
         details: {
           [secondarySession.id]: conversation(secondarySession,
-            "这个会话只存在于远程 Control，用于验证缓存和导航隔离。"),
+            "这个会话只存在于远程连接，用于验证数据和导航互不混淆。"),
         },
         outbox: [],
       },

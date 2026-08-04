@@ -5,100 +5,7 @@ import { Button, Card, Muted, Title } from "@/components/ui";
 import { useTheme } from "@/theme/ThemeProvider";
 import type { RunSnapshot } from "@/types/protocol";
 import { MarkdownContent } from "./MarkdownContent";
-
-type CommentaryPart = { kind: "commentary"; id: string; text: string };
-type Operation = { id: string; label: string; status: "running" | "completed" | "failed" };
-type OperationsPart = { kind: "operations"; id: string; operations: Operation[] };
-export type RunActivityPart = CommentaryPart | OperationsPart;
-
-function record(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" ? value as Record<string, unknown> : {};
-}
-
-function string(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
-function compact(value: string, max = 64): string {
-  const normalized = value.replace(/\s+/g, " ").trim();
-  return normalized.length > max ? `${normalized.slice(0, max - 1)}…` : normalized;
-}
-
-function operationLabel(type: string, item: Record<string, unknown>, eventType: string): string {
-  const status = eventType.endsWith("completed") ? "已" : "正在";
-  if (type === "commandExecution") return `${status}运行命令 ${compact(string(item.command) || string(item.cmd))}`.trim();
-  if (type === "fileChange") {
-    const changes = Array.isArray(item.changes) ? item.changes.map((value) => string(record(value).path)).filter(Boolean) : [];
-    return `${status}修改文件${changes.length ? ` ${compact(changes.join("、"))}` : ""}`;
-  }
-  if (["mcpToolCall", "dynamicToolCall"].includes(type)) {
-    const namespace = string(item.server) || string(item.namespace);
-    const tool = [namespace, string(item.tool) || string(item.name)].filter(Boolean).join(".");
-    return `${status}调用${tool ? ` ${tool}` : "工具"}`;
-  }
-  if (type === "webSearch") return `${status}搜索 ${compact(string(item.query))}`.trim();
-  if (type === "collabAgentToolCall") return `${status}调度子 Agent`;
-  if (type) return `${status}处理 ${type}`;
-  return compact(eventType);
-}
-
-export function buildRunActivity(run: RunSnapshot): RunActivityPart[] {
-  const parts: RunActivityPart[] = [];
-  const commentaryIndexes = new Map<string, number>();
-  const appendCommentary = (id: string, text: string, replace: boolean) => {
-    if (!id || !text) return;
-    const existing = commentaryIndexes.get(id);
-    if (existing !== undefined) {
-      const part = parts[existing];
-      if (part?.kind === "commentary") part.text = replace ? text.trim() : part.text + text;
-      return;
-    }
-    commentaryIndexes.set(id, parts.length);
-    parts.push({ kind: "commentary", id, text: text.trimStart() });
-  };
-  const appendOperation = (operation: Operation) => {
-    for (const part of parts) {
-      if (part.kind !== "operations") continue;
-      const existing = part.operations.findIndex((item) => item.id === operation.id);
-      if (existing >= 0) {
-        part.operations[existing] = operation;
-        return;
-      }
-    }
-    const previous = parts.at(-1);
-    if (previous?.kind === "operations") previous.operations.push(operation);
-    else parts.push({ kind: "operations", id: `operations-${operation.id}`, operations: [operation] });
-  };
-
-  for (const event of run.timeline) {
-    const payload = record(event.payload);
-    const item = record(payload.item);
-    const itemType = string(item.type);
-    const phase = string(item.phase) || string(payload.phase);
-    const id = string(item.id) || string(payload.itemId) || `event-${event.sequence}`;
-    if (itemType === "agentMessage") {
-      if (phase === "commentary") appendCommentary(id, string(item.text), true);
-      continue;
-    }
-    if (event.type === "item/agentMessage/delta" || event.type === "item/delta") {
-      if (phase === "commentary" || commentaryIndexes.has(id)) {
-        appendCommentary(id, string(payload.delta) || string(payload.text), false);
-      }
-      continue;
-    }
-    if (event.type === "item/started" || event.type === "item/completed" ||
-      event.type === "discord/tool/started" || event.type === "discord/tool/completed") {
-      if (!itemType) continue;
-      const failed = string(item.status) === "failed" || record(item.error).message !== undefined;
-      appendOperation({ id, label: operationLabel(itemType, item, event.type),
-        status: failed ? "failed" : event.type.endsWith("completed") ? "completed" : "running" });
-      continue;
-    }
-    if (event.type !== "runtime.settings_applied") appendOperation({ id,
-      label: compact(event.type), status: "completed" });
-  }
-  return parts.filter((part) => part.kind === "operations" || part.text.trim() !== "");
-}
+import { buildRunActivity, type OperationsPart } from "./runActivity";
 
 function formatDuration(startedAt: string, finishedAt: string | null): string {
   const elapsed = Math.max(0, new Date(finishedAt ?? Date.now()).getTime() - new Date(startedAt).getTime());
@@ -161,7 +68,7 @@ export function RunProgressCard({ run }: { run: RunSnapshot }) {
           <Text style={[styles.statusIconText, { color: presentation.color === "accent" && theme.dark ?
             theme.colors.accentForeground : "#ffffff" }]}>{presentation.icon}</Text>
         </View>
-        <Text style={[styles.activityTitle, { color: theme.colors.text }]}>中间过程 · {presentation.label}</Text>
+        <Text style={[styles.activityTitle, { color: theme.colors.text }]}>{presentation.label}</Text>
       </View>
       <Text style={[styles.toggleIcon, { color: theme.colors.textMuted }]}>{expanded ? "⌃" : "⌄"}</Text>
     </Pressable>
@@ -173,7 +80,7 @@ export function RunProgressCard({ run }: { run: RunSnapshot }) {
         </Text>
         <Text testID="run:actual-settings" numberOfLines={1}
           style={[styles.settings, { color: theme.colors.textMuted }]}>
-          {run.actualSettings.model ?? "默认模型"} · {run.actualSettings.reasoningEffort ?? "默认"} · {run.actualSettings.serviceTier ?? "standard"}
+          {run.actualSettings.model ?? "默认模型"} · {run.actualSettings.reasoningEffort ?? "默认"} · {run.actualSettings.serviceTier === "fast" ? "快速" : "标准"}
         </Text>
       </View>
       {parts.map((part, index) => part.kind === "commentary" ? <View key={part.id}
@@ -189,9 +96,9 @@ export function RunProgressCard({ run }: { run: RunSnapshot }) {
 
 export function PlanCard({ run, onExecute }: { run: RunSnapshot; onExecute: () => void }) {
   if (run.actualSettings.collaborationMode !== "plan" || run.status !== "completed") return null;
-  return <View testID={`run:${encodeURIComponent(run.id)}:plan`}><Card style={styles.card}><Title>Plan 已准备好</Title>
-    <Muted>确认后会切换到 Default 模式，并以一条新的 Turn 执行这份 Plan。</Muted>
-    <Button testID="plan:execute" title="执行 Plan" onPress={onExecute} /></Card></View>;
+  return <View testID={`run:${encodeURIComponent(run.id)}:plan`}><Card style={styles.card}><Title>计划已准备好</Title>
+    <Muted>确认后将开始执行这份计划。</Muted>
+    <Button testID="plan:execute" title="执行计划" onPress={onExecute} /></Card></View>;
 }
 
 export function InteractiveCard({ interactive, onSubmit }: {
@@ -202,7 +109,7 @@ export function InteractiveCard({ interactive, onSubmit }: {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   if (interactive.secret) {
     return <View testID={`interactive:${encodeURIComponent(interactive.id)}:secret`}><Card style={styles.card}>
-      <Title>需要 Secret 输入</Title><Muted>为保护敏感信息，这个问题只能在 Codex Desktop 完成。</Muted></Card></View>;
+      <Title>需要输入敏感信息</Title><Muted>为保护你的信息，请在 Codex 桌面端完成。</Muted></Card></View>;
   }
   return <View testID={`interactive:${encodeURIComponent(interactive.id)}`}><Card style={styles.card}><Title>需要你的回答</Title>
     {interactive.questions.map((question) => <View key={question.id} style={styles.question}>

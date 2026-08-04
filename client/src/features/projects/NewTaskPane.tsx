@@ -91,7 +91,7 @@ export function NewTaskPane({ project, expanded = false, onSubmitted }: {
       const remaining = await listOutbox(connection.serverId);
       if (!remaining.some((item) => item.localId === localId)) onSubmitted?.();
     } catch (error) {
-      Alert.alert("任务已保存在待发送队列", error instanceof Error ? error.message : "稍后会自动重试");
+      Alert.alert("暂时无法发送", error instanceof Error ? error.message : "任务已保留，稍后会自动重试");
     }
   };
   const pending = outbox.items.filter((item) => item.kind === "create_session" && item.projectId === project.id);
@@ -118,7 +118,7 @@ export function NewTaskPane({ project, expanded = false, onSubmitted }: {
         setSettingsBeforeSheet(settingsOverride); setShowParameters(true);
       }}
       onSend={() => void send()} sending={false}
-      parameterLabel={`${settings.model ?? "默认模型"} · ${settings.reasoningEffort ?? "默认"} · ${settings.collaborationMode}`} />}
+      parameterLabel={`${settings.model ?? "默认模型"} · ${settings.reasoningEffort ?? "默认"} · ${settings.collaborationMode === "plan" ? "先做计划" : "直接执行"}`} />}
     {settings && <ParameterSheet visible={showParameters} bootstrap={bootstrap}
       workspaceId={project.workspaceId} value={settings}
       onChange={setSettingsOverride} onClose={() => setShowParameters(false)}

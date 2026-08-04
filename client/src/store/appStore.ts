@@ -54,14 +54,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const api = new ClientApi(connection);
       const bootstrap = await api.bootstrap();
-      if (bootstrap.serverId !== connection.serverId) throw new Error("Control 身份与本地连接不一致");
+      if (bootstrap.serverId !== connection.serverId) throw new Error("服务器与当前连接不匹配");
       const page = await api.listSessions();
       await saveBootstrap(connection.serverId, bootstrap);
       await saveSessions(connection.serverId, page.sessions);
       set({ bootstrap, sessions: page.sessions,
         selectedProjectId: get().selectedProjectId ?? bootstrap.projects[0]?.id ?? null });
     } catch (error) {
-      set({ error: error instanceof Error ? error.message : "同步失败" });
+      set({ error: error instanceof Error ? error.message : "刷新失败" });
     } finally {
       set({ refreshing: false });
     }

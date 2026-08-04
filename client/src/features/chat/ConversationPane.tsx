@@ -43,6 +43,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [messagesReady, setMessagesReady] = useState(false);
   const [initialSyncComplete, setInitialSyncComplete] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<LocalAttachment[]>([]);
   const [settings, setSettings] = useState<SessionSettings | null>(null);
@@ -57,7 +58,9 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const [title, setTitle] = useState("");
   const [draftReady, setDraftReady] = useState(false);
   const list = useRef<FlashListRef<ConversationRow>>(null);
-  const refreshPromise = useRef<Promise<void> | null>(null);
+  const activeSessionId = useRef(sessionId);
+  activeSessionId.current = sessionId;
+  const refreshPromise = useRef<{ sessionId: string; promise: Promise<void> } | null>(null);
   const historyPagingReady = useRef(false);
   const nearBottom = useRef(true);
   const scrollMetrics = useRef({ contentHeight: 0, viewportHeight: 0, offsetY: 0 });
@@ -73,11 +76,13 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     const api = new ClientApi(connection);
     if (beforeSeq === undefined) {
       const cached = await loadCachedMessages(connection.serverId, sessionId);
+      if (activeSessionId.current !== sessionId) return;
       if (cached.length > 0) {
         setMessages(cached);
         setMessagesReady(true);
       }
       const detail = await api.getSession(sessionId);
+      if (activeSessionId.current !== sessionId) return;
       setSettings(detail.settings); setSavedSettings(detail.settings);
       setCurrentRun(detail.currentRun);
       if (cached.length > 0) {
@@ -86,6 +91,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         for (;;) {
           const page = await api.listMessages(sessionId, { afterSeq, limit: 80 });
           await saveMessages(connection.serverId, page.messages);
+          if (activeSessionId.current !== sessionId) return;
           merged = mergeMessages(merged, page.messages);
           setMessages(merged);
           if (!page.hasMoreAfter || page.messages.length === 0) break;
@@ -99,29 +105,38 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     const page = await api.listMessages(sessionId,
       beforeSeq === undefined ? { limit: 80 } : { beforeSeq, limit: 80 });
     await saveMessages(connection.serverId, page.messages);
+    if (activeSessionId.current !== sessionId) return;
     setMessages((current) => beforeSeq === undefined ? page.messages : mergeMessages(current, page.messages));
     if (beforeSeq === undefined) setMessagesReady(true);
     setHasMore(page.hasMoreBefore);
     if (beforeSeq === undefined) setInitialSyncComplete(true);
   }, [connection, sessionId]);
   const refresh = useCallback(() => {
-    if (refreshPromise.current) return refreshPromise.current;
-    const pending = load().finally(() => {
-      if (refreshPromise.current === pending) refreshPromise.current = null;
-    });
-    refreshPromise.current = pending;
+    if (refreshPromise.current?.sessionId === sessionId) return refreshPromise.current.promise;
+    setLoadError(false);
+    const pending = load()
+      .catch(() => { if (activeSessionId.current === sessionId) setLoadError(true); })
+      .finally(() => {
+        if (refreshPromise.current?.promise === pending) refreshPromise.current = null;
+      });
+    refreshPromise.current = { sessionId, promise: pending };
     return pending;
-  }, [load]);
-  useEffect(() => { void refresh(); }, [refresh]);
+  }, [load, sessionId]);
   useEffect(() => {
     setMessages([]);
     setMessagesReady(false);
     setInitialSyncComplete(false);
+    setLoadError(false);
+    setSettings(null);
+    setSavedSettings(null);
+    setCurrentRun(null);
+    setLiveEvents([]);
     setShowScrollToLatest(false);
     nearBottom.current = true;
     scrollMetrics.current = { contentHeight: 0, viewportHeight: 0, offsetY: 0 };
     historyPagingReady.current = false;
   }, [sessionId]);
+  useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
     if (!connection) return;
     let canceled = false;
@@ -144,7 +159,6 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       { text, attachments, settings: null }), 150);
     return () => clearTimeout(timer);
   }, [attachments, connection, draftReady, draftScope, text]);
-  useEffect(() => setLiveEvents([]), [sessionId]);
   useEffect(() => subscribeToUpdates((event) => {
     if (event.sessionId !== sessionId) return;
     if (event.kind === "live") setLiveEvents((items) => [...items.slice(-49), event]);
@@ -210,8 +224,18 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       if (secondFrame) cancelAnimationFrame(secondFrame);
     };
   }, [finalMessageId]);
-  if (!connection || !bootstrap || !session || !settings || !messagesReady) {
-    return <EmptyState title="正在载入会话" detail="先显示本地缓存，再从 Control 补齐最新消息。" />;
+  if (!connection || !bootstrap) {
+    return <EmptyState title="连接不可用" detail="请返回连接页后重试。" />;
+  }
+  if (!session) {
+    return <EmptyState title="会话不可用" detail="它可能已被移除，或不在当前连接中。" />;
+  }
+  if ((!settings || !messagesReady) && loadError) {
+    return <EmptyState title="无法加载会话" detail="请检查网络后重试。"
+      action={<Button testID="session:load:retry" title="重试" onPress={() => void refresh()} />} />;
+  }
+  if (!settings || !messagesReady) {
+    return <EmptyState title="正在加载会话" detail="请稍候…" />;
   }
   const send = async () => {
     if (!text.trim()) return;
@@ -258,7 +282,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         </Pressable>
       </View>
       <View testID={running ? "session:next-turn-settings" : "session:idle-settings"}>
-        <Muted>{running ? "正在运行 · 参数修改将在下一轮生效" : `${session.serviceTier} · ${session.collaborationMode}`}</Muted>
+        <Muted>{running ? "正在运行 · 参数修改将在下一轮生效" :
+          `${session.serviceTier === "fast" ? "快速" : "标准"} · ${session.collaborationMode === "plan" ? "先做计划" : "直接执行"}`}</Muted>
       </View>
     </View>
     <View style={styles.messageArea}>
@@ -283,8 +308,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         if (scrollMetrics.current.viewportHeight > 0) updateScrollState(contentHeight,
           scrollMetrics.current.viewportHeight, scrollMetrics.current.offsetY);
       }}
-      maintainVisibleContentPosition={{ startRenderingFromBottom: true,
-        autoscrollToBottomThreshold: 0.1 }}
+      maintainVisibleContentPosition={{ autoscrollToBottomThreshold: 0.1 }}
       onLoad={() => requestAnimationFrame(() => {
         list.current?.scrollToEnd({ animated: false });
         setShowScrollToLatest(false);
@@ -296,7 +320,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       onStartReachedThreshold={0.2} contentContainerStyle={{ paddingTop: 10, paddingBottom: 24 }}
       ListFooterComponent={<>{presentedRun && <PlanCard run={presentedRun} onExecute={() => void new ClientApi(connection)
           .executePlan(sessionId, presentedRun.id).then(() => refresh()).catch((error: unknown) =>
-            Alert.alert("执行 Plan 失败", error instanceof Error ? error.message : "请重试"))} />}
+            Alert.alert("执行计划失败", error instanceof Error ? error.message : "请重试"))} />}
         {presentedRun?.pendingInteractives.map((interactive) => <InteractiveCard key={interactive.id}
           interactive={interactive} onSubmit={(answer) => void new ClientApi(connection)
             .answerInteractive(interactive.id, answer).then(() => refresh()).catch((error: unknown) =>
@@ -327,11 +351,11 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
           setSettingsBeforeSheet(settings); setShowParameters(true);
         }}
         onSend={() => void send()} sending={false}
-        parameterLabel={`${settings.model ?? "默认模型"} · ${settings.reasoningEffort ?? "默认"} · ${settings.collaborationMode}`} />
+        parameterLabel={`${settings.model ?? "默认模型"} · ${settings.reasoningEffort ?? "默认"} · ${settings.collaborationMode === "plan" ? "先做计划" : "直接执行"}`} />
     </View>
     <ParameterSheet visible={showParameters} bootstrap={bootstrap}
       workspaceId={session.workspaceId} value={settings}
-      currentRunLabel={running ? "当前 Run 使用已冻结参数；修改将在下一轮生效" : "当前会话参数"}
+      currentRunLabel={running ? "当前任务继续使用启动时的参数；修改将在下一轮生效" : "当前会话参数"}
       onChange={setSettings} onClose={() => void closeParameters()}
       onCancel={() => { setSettings(settingsBeforeSheet ?? savedSettings); setShowParameters(false); }} />
     <Modal visible={renaming} transparent animationType="fade" onRequestClose={() => setRenaming(false)}>
