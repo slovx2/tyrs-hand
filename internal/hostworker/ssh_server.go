@@ -229,7 +229,7 @@ func (s *SSHServer) handleSession(channel ssh.Channel, requests <-chan *ssh.Requ
 			}
 			state.started = true
 			_ = request.Reply(true, nil)
-			s.runCommand(channel, state, "")
+			s.runShell(channel, state)
 			return
 		default:
 			_ = request.Reply(false, nil)

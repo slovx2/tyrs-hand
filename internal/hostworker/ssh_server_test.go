@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"path/filepath"
@@ -134,6 +135,37 @@ func TestSSHServerSupportsShellProxyAndRejectsForwarding(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, append([]byte{0x1b, 'T', 0xfe, 0xd2, 0xc8, 'F', 0xdc, 'N'},
 		[]byte("desktop-proxy")...), output)
+
+	session, err = client.NewSession()
+	require.NoError(t, err)
+	stdin, err := session.StdinPipe()
+	require.NoError(t, err)
+	stdout, err := session.StdoutPipe()
+	require.NoError(t, err)
+	require.NoError(t, session.Shell())
+	_, err = io.WriteString(stdin, wrapped+"\n")
+	require.NoError(t, err)
+	shellOutput := make([]byte, 8+len("desktop-proxy"))
+	_, err = io.ReadFull(stdout, shellOutput)
+	require.NoError(t, err)
+	require.Equal(t, append([]byte{0x1b, 'T', 0xfe, 0xd2, 0xc8, 'F', 0xdc, 'N'},
+		[]byte("desktop-proxy")...), shellOutput)
+	require.NoError(t, session.Wait())
+
+	session, err = client.NewSession()
+	require.NoError(t, err)
+	stdin, err = session.StdinPipe()
+	require.NoError(t, err)
+	stdout, err = session.StdoutPipe()
+	require.NoError(t, err)
+	require.NoError(t, session.Shell())
+	_, err = io.WriteString(stdin, "printf shell-fallback\n")
+	require.NoError(t, err)
+	require.NoError(t, stdin.Close())
+	fallbackOutput, err := io.ReadAll(stdout)
+	require.NoError(t, err)
+	require.Equal(t, "shell-fallback", string(fallbackOutput))
+	require.NoError(t, session.Wait())
 
 	_, err = client.Dial("tcp", "127.0.0.1:80")
 	require.Error(t, err)
