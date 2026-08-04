@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { useTheme } from "@/theme/ThemeProvider";
@@ -14,7 +15,7 @@ function textContent(content: unknown): string {
   return typeof data?.message === "string" ? data.message : "";
 }
 
-export function MessageBubble({ message }: { message: Message }) {
+export const MessageBubble = memo(function MessageBubble({ message }: { message: Message }) {
   const theme = useTheme();
   const user = message.role === "user";
   const text = textContent(message.content);
@@ -41,7 +42,7 @@ export function MessageBubble({ message }: { message: Message }) {
       </View>)}
     </View>
   </View>;
-}
+});
 
 const styles = StyleSheet.create({
   row: { flexDirection: "row", justifyContent: "flex-start", paddingHorizontal: 12, paddingVertical: 5 },

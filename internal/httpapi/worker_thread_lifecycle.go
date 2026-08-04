@@ -372,6 +372,15 @@ func (s *Server) workerCompleteThreadLifecycle(c *gin.Context) {
 			_, err = tx.ExecContext(c.Request.Context(), `UPDATE workspace_sessions SET
 				lifecycle_state=$2, updated_at=now() WHERE id=$1`, sessionID, finalState)
 		}
+		if err == nil {
+			var snapshot clientSession
+			snapshot, err = scanClientSession(tx.QueryRowContext(c.Request.Context(), `SELECT `+
+				clientSessionColumns+` FROM workspace_sessions WHERE id=$1`, sessionID))
+			if err == nil {
+				_, err = insertClientUpdate(c.Request.Context(), tx, &sessionID,
+					"session.lifecycle", "session", sessionID.String(), nil, &revision, snapshot)
+			}
+		}
 		if err == nil && conversationID.Valid {
 			_, err = tx.ExecContext(c.Request.Context(), `UPDATE discord_conversations SET
 				lifecycle_state = $2, lifecycle_projection_error = $3,

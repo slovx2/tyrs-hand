@@ -1,5 +1,5 @@
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { ClientApi } from "@/api/client";
@@ -45,7 +45,9 @@ function Operations({ part }: { part: OperationsPart }) {
   </View>;
 }
 
-export function RunSegmentCard({ run, segment, continued, active, maxHeight, liveVersion,
+const minimumActivityHeight = 96;
+
+export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, continued, active, maxHeight, liveVersion,
   onInteractionStart, onInteractionEnd, onFinalDraft }: {
   run: TurnRun; segment: RunSegment; continued: boolean; active: boolean; maxHeight: number;
   liveVersion: number; onInteractionStart: () => void; onInteractionEnd: () => void;
@@ -60,13 +62,14 @@ export function RunSegmentCard({ run, segment, continued, active, maxHeight, liv
   const [hasMore, setHasMore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasNew, setHasNew] = useState(false);
-  const [activityViewportHeight, setActivityViewportHeight] = useState(48);
+  const [activityViewportHeight, setActivityViewportHeight] = useState(minimumActivityHeight);
   const nearBottom = useRef(true);
+  const wasActive = useRef(active);
   const scroll = useRef<FlashListRef<RunActivityPart>>(null);
   const watermark = useRef(0);
   const requestedVersion = useRef(0);
   const parts = useMemo(() => buildProjectedRunActivity(activities), [activities]);
-  const activityMaxHeight = Math.max(48, maxHeight - 92);
+  const activityMaxHeight = Math.max(minimumActivityHeight, maxHeight - 92);
   const presentation = continued ? { label: "已继续", color: theme.colors.textMuted } :
     run.status === "failed" ? { label: "失败", color: theme.colors.danger } :
     run.status === "canceled" ? { label: "已停止", color: theme.colors.textMuted } :
@@ -95,13 +98,12 @@ export function RunSegmentCard({ run, segment, continued, active, maxHeight, liv
   }, [applyPage, connection, run.id, segment.id]);
 
   useEffect(() => {
-    setExpanded(active);
-    setActivities([]); setReady(false); setActivityViewportHeight(48);
-    watermark.current = 0; requestedVersion.current = 0;
-  }, [active, run.id, segment.id]);
-  useEffect(() => {
     setActivityViewportHeight((height) => Math.min(height, activityMaxHeight));
   }, [activityMaxHeight]);
+  useEffect(() => {
+    if (wasActive.current !== active) setExpanded(active);
+    wasActive.current = active;
+  }, [active]);
   useEffect(() => () => onInteractionEnd(), [onInteractionEnd]);
   useEffect(() => { if (!expanded) onInteractionEnd(); }, [expanded, onInteractionEnd]);
   useEffect(() => { if (expanded && !ready) void loadLatest(); }, [expanded, loadLatest, ready]);
@@ -163,7 +165,7 @@ export function RunSegmentCard({ run, segment, continued, active, maxHeight, liv
           maintainVisibleContentPosition={{ disabled: false }} style={styles.activityList}
           contentContainerStyle={styles.content}
           onContentSizeChange={(_width, height) => {
-            setActivityViewportHeight(Math.max(48,
+            setActivityViewportHeight(Math.max(minimumActivityHeight,
               Math.min(activityMaxHeight, Math.ceil(height))));
           }}
           onTouchStart={onInteractionStart} onTouchEnd={onInteractionEnd}
@@ -187,7 +189,7 @@ export function RunSegmentCard({ run, segment, continued, active, maxHeight, liv
       }}><Text style={{ color: theme.colors.accent }}>有新动态 ↓</Text></Pressable>}
     </>}
   </View>;
-}
+});
 
 const styles = StyleSheet.create({
   card: { marginHorizontal: 12, marginVertical: 6, borderWidth: StyleSheet.hairlineWidth,

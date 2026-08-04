@@ -25,7 +25,7 @@ type ConversationRow =
   | { kind: "message"; message: Message }
   | { kind: "segment"; run: TurnRun; segment: RunSegment; continued: boolean; active: boolean }
   | { kind: "interactive"; id: string }
-  | { kind: "stream"; runId: string; text: string };
+  | { kind: "stream"; runId: string };
 
 function liveTimelineEvent(event: SyncEvent): { type: string; payload: unknown } {
   if (!event.payload || typeof event.payload !== "object") {
@@ -52,7 +52,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const [attachments, setAttachments] = useState<LocalAttachment[]>([]);
   const [settings, setSettings] = useState<SessionSettings | null>(null);
   const [savedSettings, setSavedSettings] = useState<SessionSettings | null>(null);
-  const [liveVersion, setLiveVersion] = useState(0);
+  const [liveVersions, setLiveVersions] = useState<Record<string, number>>({});
   const [finalDrafts, setFinalDrafts] = useState<Record<string, string>>({});
   const [showParameters, setShowParameters] = useState(false);
   const [settingsBeforeSheet, setSettingsBeforeSheet] = useState<SessionSettings | null>(null);
@@ -73,13 +73,17 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const historyPagingReady = useRef(false);
   const finalDraftSequences = useRef(new Map<string, Set<number>>());
   const nearBottom = useRef(true);
+  const initialPositioned = useRef(false);
+  const lastAutoScrollKey = useRef<string | undefined>(undefined);
+  const activeRunId = useRef<string | null>(null);
   const scrollMetrics = useRef({ contentHeight: 0, viewportHeight: 0, offsetY: 0 });
   const outbox = useOutbox(connection?.serverId, sessionId);
   const draftScope = `session:${sessionId}`;
   const updateScrollState = useCallback((contentHeight: number, viewportHeight: number, offsetY: number) => {
     const distance = contentHeight - viewportHeight - offsetY;
     nearBottom.current = distance < 160;
-    setShowScrollToLatest(distance > 320);
+    const shouldShow = distance > 320;
+    setShowScrollToLatest((current) => current === shouldShow ? current : shouldShow);
   }, []);
   const load = useCallback(async (beforeCursor?: string) => {
     if (!connection) return;
@@ -141,7 +145,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     setLoadError(false);
     setSettings(null);
     setSavedSettings(null);
-    setLiveVersion(0);
+    setLiveVersions({});
     setFinalDrafts({});
     setTurnCursor("");
     turnCursorRef.current = null;
@@ -150,6 +154,9 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     setOuterScrollEnabled(true);
     setShowScrollToLatest(false);
     nearBottom.current = true;
+    initialPositioned.current = false;
+    lastAutoScrollKey.current = undefined;
+    activeRunId.current = null;
     scrollMetrics.current = { contentHeight: 0, viewportHeight: 0, offsetY: 0 };
     historyPagingReady.current = false;
   }, [sessionId]);
@@ -176,15 +183,19 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       { text, attachments, settings: null }), 150);
     return () => clearTimeout(timer);
   }, [attachments, connection, draftReady, draftScope, text]);
+  const bumpLiveVersion = useCallback((runId: string | null) => {
+    if (!runId) return;
+    setLiveVersions((current) => ({ ...current, [runId]: (current[runId] ?? 0) + 1 }));
+  }, []);
   useEffect(() => subscribeToUpdates((event) => {
     if (event.type === "sync.resumed") {
-      setLiveVersion((value) => value + 1);
+      bumpLiveVersion(activeRunId.current);
       void refresh();
       return;
     }
     if (event.sessionId !== sessionId) return;
     if (event.kind === "live") {
-      setLiveVersion((value) => value + 1);
+      bumpLiveVersion(event.entityType === "run" ? event.entityId : activeRunId.current);
       const unwrapped = liveTimelineEvent(event);
       const payload = unwrapped.payload && typeof unwrapped.payload === "object" ?
         unwrapped.payload as Record<string, unknown> : {};
@@ -206,11 +217,12 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       }
     } else if (event.entityType === "turn") void refreshTurn(event.entityId);
     else void refresh();
-  }), [refresh, refreshTurn, sessionId]);
+  }), [bumpLiveVersion, refresh, refreshTurn, sessionId]);
   const latestTurn = turns.at(-1);
   const latestRun = latestTurn?.runs.at(-1);
   const running = latestRun && ["starting", "running", "waiting_for_user", "reconciling"]
     .includes(latestRun.status);
+  activeRunId.current = running ? latestRun.id : null;
   const conversationRows = useMemo<ConversationRow[]>(() => {
     const rows: ConversationRow[] = [];
     for (const turn of turns) {
@@ -241,13 +253,12 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       }
       const draftRun = turn.runs.at(-1);
       if (agents.length === 0 && draftRun && draftRun.actualSettings.collaborationMode !== "plan") {
-        const draft = finalDrafts[draftRun.id];
-        if (draft) rows.push({ kind: "stream", runId: draftRun.id, text: draft });
+        rows.push({ kind: "stream", runId: draftRun.id });
       }
       for (const message of agents) rows.push({ kind: "message", message });
     }
     return rows;
-  }, [finalDrafts, latestRun?.id, latestTurn?.id, running, turns]);
+  }, [latestRun?.id, latestTurn?.id, running, turns]);
   const handleFinalDraft = useCallback((runId: string, value: string) => {
     setFinalDrafts((current) => {
       if (current[runId] === value) return current;
@@ -261,22 +272,21 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const unlockOuterScroll = useCallback(() => setOuterScrollEnabled(true), []);
   const lastRow = conversationRows.at(-1);
   const finalMessageId = lastRow?.kind === "message" ? lastRow.message.id :
-    lastRow?.kind === "stream" ? `${lastRow.runId}:${lastRow.text.length}` : undefined;
+    lastRow?.kind === "stream" ? `${lastRow.runId}:stream` : undefined;
   useEffect(() => {
-    if (!finalMessageId || !nearBottom.current) return;
-    let secondFrame = 0;
-    const firstFrame = requestAnimationFrame(() => {
-      list.current?.scrollToEnd({ animated: false });
-      secondFrame = requestAnimationFrame(() => {
-        list.current?.scrollToEnd({ animated: true });
-        setShowScrollToLatest(false);
-      });
+    if (!finalMessageId || finalMessageId === lastAutoScrollKey.current) return;
+    lastAutoScrollKey.current = finalMessageId;
+    if (!initialPositioned.current || !nearBottom.current) return;
+    const frame = requestAnimationFrame(() => {
+      list.current?.scrollToEnd({ animated: true });
+      setShowScrollToLatest(false);
     });
-    return () => {
-      cancelAnimationFrame(firstFrame);
-      if (secondFrame) cancelAnimationFrame(secondFrame);
-    };
+    return () => cancelAnimationFrame(frame);
   }, [finalMessageId]);
+  useEffect(() => {
+    if (!initialSyncComplete || !initialPositioned.current) return;
+    historyPagingReady.current = true;
+  }, [initialSyncComplete]);
   if (!connection || !bootstrap) {
     return <EmptyState title="连接不可用" detail="请返回连接页后重试。" />;
   }
@@ -340,24 +350,26 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       </View>
     </View>
     <View style={styles.messageArea} onLayout={({ nativeEvent }) =>
-      setMessageAreaHeight(nativeEvent.layout.height)}>
-      <FlashList key={`${sessionId}:${initialSyncComplete ? "synced" : "cached"}`} ref={list}
+      setMessageAreaHeight((current) => Math.abs(current - nativeEvent.layout.height) < 1 ?
+        current : nativeEvent.layout.height)}>
+      <FlashList key={sessionId} ref={list}
       style={{ flex: 1 }}
-      testID="messages:list" data={conversationRows}
+      testID="messages:list" data={conversationRows} extraData={finalDrafts}
       scrollEnabled={outerScrollEnabled}
       keyExtractor={(item) => item.kind === "message" ? `message:${item.message.id}` :
         item.kind === "segment" ? `segment:${item.segment.id}` :
         item.kind === "interactive" ? `interactive:${item.id}` : `stream:${item.runId}`}
       renderItem={({ item }) => item.kind === "message" ? <MessageBubble message={item.message} /> :
         item.kind === "segment" ? <RunSegmentCard run={item.run} segment={item.segment}
-          continued={item.continued} active={item.active} maxHeight={messageAreaHeight * 0.67}
-          liveVersion={liveVersion} onInteractionStart={lockOuterScroll}
+          continued={item.continued} active={item.active} maxHeight={messageAreaHeight * 0.70}
+          liveVersion={liveVersions[item.run.id] ?? 0} onInteractionStart={lockOuterScroll}
           onInteractionEnd={unlockOuterScroll} onFinalDraft={handleFinalDraft} /> :
         item.kind === "interactive" ? <View style={styles.interactiveHistory}>
           <Muted>已提交交互回答，任务继续执行</Muted>
-        </View> : <View testID={`run:${item.runId}:stream-final`} style={styles.streamedFinal}>
-          <MarkdownContent>{item.text}</MarkdownContent>
-        </View>}
+        </View> : finalDrafts[item.runId] ?
+          <View testID={`run:${item.runId}:stream-final`} style={styles.streamedFinal}>
+            <MarkdownContent>{finalDrafts[item.runId] ?? ""}</MarkdownContent>
+          </View> : null}
       keyboardShouldPersistTaps="handled"
       scrollEventThrottle={100}
       onScroll={({ nativeEvent }) => {
@@ -373,6 +385,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       }}
       maintainVisibleContentPosition={{ autoscrollToBottomThreshold: 0.1 }}
       onLoad={() => requestAnimationFrame(() => {
+        if (initialPositioned.current) return;
+        initialPositioned.current = true;
         list.current?.scrollToEnd({ animated: false });
         setShowScrollToLatest(false);
         if (initialSyncComplete) historyPagingReady.current = true;

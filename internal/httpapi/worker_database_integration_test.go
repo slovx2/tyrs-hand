@@ -1336,6 +1336,14 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		Scan(&lifecycleState, &lifecycleRequestStatus))
 	require.Equal(t, "active", lifecycleState)
 	require.Equal(t, "failed", lifecycleRequestStatus)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM client_updates update_event
+		JOIN codex_thread_controls control ON control.session_id=update_event.session_id
+		WHERE control.id=$1 AND update_event.update_type='session.lifecycle'
+			AND update_event.entity_version=$2
+			AND update_event.payload->>'lifecycleState'='active'`, failedArchive.ControlID,
+		failedArchive.Revision).Scan(&clientLifecycleUpdates))
+	require.Equal(t, 1, clientLifecycleUpdates,
+		"lifecycle 应用失败回退后必须通知原生客户端清除 pending 状态")
 
 	discordArchive, err := discordintegration.NewConversationService(db).Archive(ctx,
 		"worker-test-guild", "desktop-discord-thread", "desktop-user")

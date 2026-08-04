@@ -26,6 +26,9 @@ type AppState = {
   upsertSession: (session: Session) => void;
 };
 
+let refreshPromise: Promise<void> | null = null;
+let refreshQueued = false;
+
 export const useAppStore = create<AppState>((set, get) => ({
   ready: false,
   refreshing: false,
@@ -47,24 +50,36 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (activeConnection) void get().refresh();
   },
 
-  refresh: async () => {
-    const connection = get().activeConnection;
-    if (!connection || get().refreshing) return;
+  refresh: () => {
+    refreshQueued = true;
+    if (refreshPromise) return refreshPromise;
     set({ refreshing: true, error: null });
-    try {
-      const api = new ClientApi(connection);
-      const bootstrap = await api.bootstrap();
-      if (bootstrap.serverId !== connection.serverId) throw new Error("服务器与当前连接不匹配");
-      const page = await api.listSessions();
-      await saveBootstrap(connection.serverId, bootstrap);
-      await saveSessions(connection.serverId, page.sessions);
-      set({ bootstrap, sessions: page.sessions,
-        selectedProjectId: get().selectedProjectId ?? bootstrap.projects[0]?.id ?? null });
-    } catch (error) {
-      set({ error: error instanceof Error ? error.message : "刷新失败" });
-    } finally {
+    refreshPromise = (async () => {
+      while (refreshQueued) {
+        refreshQueued = false;
+        const connection = get().activeConnection;
+        if (!connection) continue;
+        try {
+          const api = new ClientApi(connection);
+          const bootstrap = await api.bootstrap();
+          if (bootstrap.serverId !== connection.serverId) throw new Error("服务器与当前连接不匹配");
+          const page = await api.listSessions();
+          await saveBootstrap(connection.serverId, bootstrap);
+          await saveSessions(connection.serverId, page.sessions);
+          if (get().activeConnection?.serverId !== connection.serverId) continue;
+          set({ bootstrap, sessions: page.sessions, error: null,
+            selectedProjectId: get().selectedProjectId ?? bootstrap.projects[0]?.id ?? null });
+        } catch (error) {
+          if (get().activeConnection?.serverId === connection.serverId) {
+            set({ error: error instanceof Error ? error.message : "刷新失败" });
+          }
+        }
+      }
+    })().finally(() => {
+      refreshPromise = null;
       set({ refreshing: false });
-    }
+    });
+    return refreshPromise;
   },
 
   reloadConnections: async () => {
