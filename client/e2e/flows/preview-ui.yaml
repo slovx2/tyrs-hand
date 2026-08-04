@@ -19,6 +19,17 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - assertVisible:
     id: "parameters:model:gpt-5.6-luna"
 - pressKey: BACK
+- tapOn:
+    id: "composer:input"
+- inputText: "PREVIEW_DIRECT_NAVIGATION"
+- tapOn:
+    id: "composer:send"
+- extendedWaitUntil:
+    visible:
+      id: "messages:list"
+    timeout: 10000
+- assertVisible:
+    text: "PREVIEW_DIRECT_NAVIGATION"
 - pressKey: BACK
 - tapOn:
     id: "tab:sessions"

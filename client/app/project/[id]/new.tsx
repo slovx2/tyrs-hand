@@ -14,6 +14,8 @@ export default function NewProjectTaskScreen() {
   }
 
   return <Screen><Stack.Screen options={{ title: project.name }} />
-    <NewTaskPane project={project} expanded onSubmitted={() => router.back()} />
+    <NewTaskPane project={project} expanded onSubmitted={(sessionId) => router.replace({
+      pathname: "/session/[id]", params: { id: sessionId },
+    })} />
   </Screen>;
 }

@@ -1,7 +1,7 @@
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
-import { useEffect, useState } from "react";
-import { Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useState } from "react";
+import { Alert, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import type { LocalAttachment } from "@/sync/outbox";
 import { useTheme } from "@/theme/ThemeProvider";
@@ -19,13 +19,6 @@ export function ChatComposer({ value, onChange, attachments, onAttachmentsChange
 }) {
   const theme = useTheme();
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-  useEffect(() => {
-    if (Platform.OS !== "android") return;
-    const shown = Keyboard.addListener("keyboardDidShow", () => setKeyboardVisible(true));
-    const hidden = Keyboard.addListener("keyboardDidHide", () => setKeyboardVisible(false));
-    return () => { shown.remove(); hidden.remove(); };
-  }, []);
   const add = (items: LocalAttachment[]) => {
     if (attachments.length + items.length > 10) {
       Alert.alert("附件过多", "每条消息最多 10 个附件");
@@ -50,7 +43,6 @@ export function ChatComposer({ value, onChange, attachments, onAttachmentsChange
       mimeType: asset.mimeType ?? null, size: asset.size ?? null })));
   };
   return <View>
-    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
     {attachments.length > 0 && <View testID="composer:attachment-list" style={styles.attachments}>{attachments.map((item, index) =>
       <Pressable key={`${item.uri}-${index}`} testID={`composer:attachment:${index}`}
         onPress={() => onAttachmentsChange(attachments.filter((_, i) => i !== index))}
@@ -65,9 +57,8 @@ export function ChatComposer({ value, onChange, attachments, onAttachmentsChange
     </View>}
     <View style={[styles.container, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
       <TextInput testID="composer:input" value={value} onChangeText={onChange} multiline placeholder="描述你想完成的任务…"
-        placeholderTextColor={theme.colors.textMuted} style={[styles.input, keyboardVisible && styles.inputKeyboard,
-          { color: theme.colors.text }]} />
-      <View style={[styles.actions, keyboardVisible && styles.actionsKeyboard]}>
+        placeholderTextColor={theme.colors.textMuted} style={[styles.input, { color: theme.colors.text }]} />
+      <View style={styles.actions}>
         <Pressable testID="composer:attachments" accessibilityLabel="添加附件" onPress={() => setShowAttachmentMenu((open) => !open)}
           style={styles.iconButton}><Text style={{ color: theme.colors.text, fontSize: 21 }}>＋</Text></Pressable>
         <Pressable testID="composer:parameters" onPress={onParameters} style={[styles.parameter, { backgroundColor: theme.colors.surfaceAlt }]}> 
@@ -81,7 +72,6 @@ export function ChatComposer({ value, onChange, attachments, onAttachmentsChange
         </Pressable>
       </View>
     </View>
-    </KeyboardAvoidingView>
   </View>;
 }
 
@@ -90,10 +80,8 @@ const styles = StyleSheet.create({
     position: "relative" },
   input: { minHeight: 94, maxHeight: 200, fontFamily: "Inter_400Regular", fontSize: 16,
     paddingHorizontal: 4, paddingTop: 4, paddingBottom: 48, textAlignVertical: "top" },
-  inputKeyboard: { paddingBottom: 76 },
   actions: { position: "absolute", left: 10, right: 10, bottom: 10,
     flexDirection: "row", alignItems: "center", gap: 8 },
-  actionsKeyboard: { bottom: 38 },
   iconButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   parameter: { flex: 1, height: 34, borderRadius: 8, paddingHorizontal: 10, justifyContent: "center" },
   send: { width: 36, height: 36, borderRadius: 999, alignItems: "center", justifyContent: "center" },

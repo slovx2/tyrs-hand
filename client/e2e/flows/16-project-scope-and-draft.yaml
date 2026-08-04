@@ -22,10 +22,8 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     id: "composer:send"
 - extendedWaitUntil:
     visible:
-      id: "session:row:0"
+      id: "messages:list"
     timeout: 30000
-- tapOn:
-    id: "session:row:0"
 - extendedWaitUntil:
     visible:
       id: "message:role:agent"

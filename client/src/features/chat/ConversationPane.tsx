@@ -1,7 +1,9 @@
 import * as Crypto from "expo-crypto";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Alert, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, useWindowDimensions,
+  View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ClientApi } from "@/api/client";
 import { loadCachedTurns, saveTurns } from "@/db/cache";
@@ -54,6 +56,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const renderStartedAt = performance.now();
   const theme = useTheme();
   const window = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const connection = useAppStore((state) => state.activeConnection);
   const bootstrap = useAppStore((state) => state.bootstrap);
   const session = useAppStore((state) => state.sessions.find((item) => item.id === sessionId));
@@ -73,6 +76,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const [hasMore, setHasMore] = useState(false);
   const [turnCursor, setTurnCursor] = useState("");
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
+  const [outerScrollEnabled, setOuterScrollEnabled] = useState(true);
   const [draftReady, setDraftReady] = useState(false);
   const list = useRef<FlashListRef<ConversationRow>>(null);
   const activeSessionId = useRef(sessionId);
@@ -174,6 +178,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     historyPaging.current = false;
     finalDraftSequences.current.clear();
     setShowScrollToLatest(false);
+    setOuterScrollEnabled(true);
     nearBottom.current = true;
     initialPositioned.current = false;
     lastAutoScrollKey.current = undefined;
@@ -293,25 +298,29 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       return next;
     });
   }, []);
-  const setOuterScrollEnabled = useCallback((enabled: boolean) => {
-    list.current?.getNativeScrollRef()?.setNativeProps({ scrollEnabled: enabled });
-  }, []);
   const lockOuterScroll = useCallback(() => setOuterScrollEnabled(false), [setOuterScrollEnabled]);
   const unlockOuterScroll = useCallback(() => setOuterScrollEnabled(true), [setOuterScrollEnabled]);
+  const followLatestActivity = useCallback(() => {
+    if (!nearBottom.current) return;
+    previewPerf("conversation:programmatic-scroll", { source: "segment-activity", target: "end" });
+    list.current?.scrollToEnd({ animated: true });
+    setShowScrollToLatest(false);
+  }, []);
   const segmentCardMaxHeight = Math.min(620, Math.max(420, Math.round(window.height * 0.70)));
   const renderConversationRow = useCallback(({ item }: { item: ConversationRow }) =>
     item.kind === "message" ? <MessageBubble message={item.message} /> :
       item.kind === "segment" ? <RunSegmentCard run={item.run} segment={item.segment}
         continued={item.continued} active={item.active} maxHeight={segmentCardMaxHeight}
         liveVersion={liveVersions[item.run.id] ?? 0} onInteractionStart={lockOuterScroll}
-        onInteractionEnd={unlockOuterScroll} onFinalDraft={handleFinalDraft} /> :
+        onInteractionEnd={unlockOuterScroll} onFollowLatest={followLatestActivity}
+        onFinalDraft={handleFinalDraft} /> :
         item.kind === "interactive" ? <View style={styles.interactiveHistory}>
           <Muted>已提交交互回答，任务继续执行</Muted>
         </View> : finalDrafts[item.runId] ?
           <View testID={`run:${item.runId}:stream-final`} style={styles.streamedFinal}>
             <MarkdownContent>{finalDrafts[item.runId] ?? ""}</MarkdownContent>
           </View> : null,
-  [finalDrafts, handleFinalDraft, liveVersions, lockOuterScroll, segmentCardMaxHeight,
+  [finalDrafts, followLatestActivity, handleFinalDraft, liveVersions, lockOuterScroll, segmentCardMaxHeight,
     unlockOuterScroll]);
   const rowExtraData = useMemo(() => ({ finalDrafts, liveVersions }), [finalDrafts, liveVersions]);
   const lastRow = conversationRows.at(-1);
@@ -369,7 +378,9 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       Alert.alert("参数没有保存", error instanceof Error ? error.message : "请重试");
     }
   };
-  return <View style={{ flex: 1 }}>
+  return <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"}
+    keyboardVerticalOffset={insets.top + (Platform.OS === "ios" ? 44 : 56)}
+    style={styles.keyboardAvoiding}>
     <View style={styles.messageArea} onLayout={({ nativeEvent }) => previewPerf("conversation:layout", {
       height: nativeEvent.layout.height, width: nativeEvent.layout.width,
     })}>
@@ -380,6 +391,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       renderItem={renderConversationRow}
       drawDistance={160}
       nestedScrollEnabled
+      scrollEnabled={outerScrollEnabled}
       keyboardShouldPersistTaps="handled"
       scrollEventThrottle={100}
       onScroll={({ nativeEvent }) => {
@@ -458,10 +470,11 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       currentRunLabel={running ? "当前任务继续使用启动时的参数；修改将在下一轮生效" : "当前会话参数"}
       onChange={setSettings} onClose={() => void closeParameters()}
       onCancel={() => { setSettings(settingsBeforeSheet ?? savedSettings); setShowParameters(false); }} />
-  </View>;
+  </KeyboardAvoidingView>;
 }
 
 const styles = StyleSheet.create({
+  keyboardAvoiding: { flex: 1, minHeight: 0 },
   messageArea: { flex: 1, minHeight: 0 },
   streamedFinal: { paddingHorizontal: 16, paddingVertical: 8 },
   interactiveHistory: { marginHorizontal: 12, marginVertical: 5, paddingHorizontal: 12,

@@ -128,4 +128,24 @@ describe("outbox 自动恢复", () => {
       attachmentIds: [],
     });
   });
+
+  it("创建会话后返回 localId 对应的 Session ID", async () => {
+    state.rows = [{
+      server_id: "primary",
+      local_id: "local-create",
+      kind: "create_session",
+      session_id: null,
+      project_id: "project-1",
+      status: "pending",
+      payload: JSON.stringify({ text: "创建后进入详情", attachments: [], settings: {} }),
+      error: null,
+    }];
+    api.createSession.mockResolvedValueOnce({ session: { id: "session-created" }, deduplicated: false });
+
+    const result = await processOutbox(primary);
+
+    expect(result).toEqual([{ localId: "local-create", kind: "create_session",
+      sessionId: "session-created" }]);
+    expect(state.rows).toEqual([]);
+  });
 });

@@ -28,6 +28,12 @@ export type OutboxItem = {
   error: string | null;
 };
 
+export type OutboxProcessResult = {
+  localId: string;
+  kind: OutboxItem["kind"];
+  sessionId: string;
+};
+
 export async function enqueueTask(input: {
   connection: Connection;
   localId: string;
@@ -122,55 +128,69 @@ export async function discardOutbox(serverId: string, localId: string): Promise<
     "DELETE FROM outbox WHERE server_id=? AND local_id=?", serverId, localId));
 }
 
-let processing = false;
+const processing = new Map<string, Promise<OutboxProcessResult[]>>();
 
-export async function processOutbox(connection: Connection): Promise<void> {
+export async function processOutbox(connection: Connection): Promise<OutboxProcessResult[]> {
   if (isPreviewMode && isPreviewServerId(connection.serverId)) {
     const { processPreviewOutbox } = await import("@/preview/runtime");
-    processPreviewOutbox(connection);
-    return;
+    return processPreviewOutbox(connection);
   }
-  if (processing) return;
-  processing = true;
+  const active = processing.get(connection.serverId);
+  if (active) {
+    const completed = await active;
+    return [...completed, ...await processOutbox(connection)];
+  }
+  const pending = processPersistentOutbox(connection);
+  processing.set(connection.serverId, pending);
   try {
-    const api = new ClientApi(connection);
-    for (const item of await listOutbox(connection.serverId)) {
-      if (item.status !== "pending" && item.status !== "uploading" && item.status !== "sending") continue;
-      try {
-        await runDatabaseWrite((database) => database.runAsync(
-          `UPDATE outbox SET status='uploading',error=NULL,updated_at=?
-          WHERE server_id=? AND local_id=?`, new Date().toISOString(), item.serverId, item.localId));
-        const attachmentIds: string[] = [];
-        for (const [index, attachment] of item.payload.attachments.entries()) {
-          if (attachment.size !== null && attachment.size > 25 * 1024 * 1024) {
-            throw new Error(`${attachment.name} 超过 25 MiB`);
-          }
-          const uploaded = await api.upload(`${item.localId}:${index}`, attachment);
-          attachmentIds.push(uploaded.attachment.id);
-        }
-        await runDatabaseWrite((database) => database.runAsync(
-          `UPDATE outbox SET status='sending',updated_at=?
-          WHERE server_id=? AND local_id=?`, new Date().toISOString(), item.serverId, item.localId));
-        if (item.kind === "create_session") {
-          if (!item.projectId || !item.payload.settings) throw new Error("新会话参数不完整");
-          await api.createSession({ projectId: item.projectId, settings: item.payload.settings,
-            initialMessage: { localId: item.localId, text: item.payload.text, attachmentIds } });
-        } else {
-          if (!item.sessionId) throw new Error("会话消息缺少 Session ID");
-          await api.sendMessage(item.sessionId,
-            { localId: item.localId, text: item.payload.text, attachmentIds });
-        }
-        await runDatabaseWrite((database) => database.runAsync(
-          "DELETE FROM outbox WHERE server_id=? AND local_id=?", item.serverId, item.localId));
-      } catch (error) {
-        await runDatabaseWrite((database) => database.runAsync(
-          `UPDATE outbox SET status='failed',attempt_count=attempt_count+1,
-          error=?,updated_at=? WHERE server_id=? AND local_id=?`,
-          error instanceof Error ? error.message : "发送失败", new Date().toISOString(),
-          item.serverId, item.localId));
-      }
-    }
+    return await pending;
   } finally {
-    processing = false;
+    if (processing.get(connection.serverId) === pending) processing.delete(connection.serverId);
   }
+}
+
+async function processPersistentOutbox(connection: Connection): Promise<OutboxProcessResult[]> {
+  const results: OutboxProcessResult[] = [];
+  const api = new ClientApi(connection);
+  for (const item of await listOutbox(connection.serverId)) {
+    if (item.status !== "pending" && item.status !== "uploading" && item.status !== "sending") continue;
+    try {
+      await runDatabaseWrite((database) => database.runAsync(
+        `UPDATE outbox SET status='uploading',error=NULL,updated_at=?
+        WHERE server_id=? AND local_id=?`, new Date().toISOString(), item.serverId, item.localId));
+      const attachmentIds: string[] = [];
+      for (const [index, attachment] of item.payload.attachments.entries()) {
+        if (attachment.size !== null && attachment.size > 25 * 1024 * 1024) {
+          throw new Error(`${attachment.name} 超过 25 MiB`);
+        }
+        const uploaded = await api.upload(`${item.localId}:${index}`, attachment);
+        attachmentIds.push(uploaded.attachment.id);
+      }
+      await runDatabaseWrite((database) => database.runAsync(
+        `UPDATE outbox SET status='sending',updated_at=?
+        WHERE server_id=? AND local_id=?`, new Date().toISOString(), item.serverId, item.localId));
+      let sessionId = item.sessionId;
+      if (item.kind === "create_session") {
+        if (!item.projectId || !item.payload.settings) throw new Error("新会话参数不完整");
+        const created = await api.createSession({ projectId: item.projectId, settings: item.payload.settings,
+          initialMessage: { localId: item.localId, text: item.payload.text, attachmentIds } });
+        sessionId = created.session.id;
+      } else {
+        if (!sessionId) throw new Error("会话消息缺少 Session ID");
+        await api.sendMessage(sessionId,
+          { localId: item.localId, text: item.payload.text, attachmentIds });
+      }
+      if (!sessionId) throw new Error("发送结果缺少 Session ID");
+      results.push({ localId: item.localId, kind: item.kind, sessionId });
+      await runDatabaseWrite((database) => database.runAsync(
+        "DELETE FROM outbox WHERE server_id=? AND local_id=?", item.serverId, item.localId));
+    } catch (error) {
+      await runDatabaseWrite((database) => database.runAsync(
+        `UPDATE outbox SET status='failed',attempt_count=attempt_count+1,
+        error=?,updated_at=? WHERE server_id=? AND local_id=?`,
+        error instanceof Error ? error.message : "发送失败", new Date().toISOString(),
+        item.serverId, item.localId));
+    }
+  }
+  return results;
 }

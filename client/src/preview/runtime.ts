@@ -1,11 +1,12 @@
 import type { Connection } from "@/db/connections";
-import type { LocalAttachment, OutboxItem } from "@/sync/outbox";
+import type { LocalAttachment, OutboxItem, OutboxProcessResult } from "@/sync/outbox";
 import type { ConversationTurn, Message, RunActivity, Session, SessionSettings } from "@/types/protocol";
 import { isPreviewMode, isPreviewStressMode, previewLatencyMs, previewPerfLogging } from "./config";
 import { createPreviewSeed, type PreviewControlSeed } from "./fixtures";
 
 let state = createPreviewSeed();
 let idCounter = 1;
+const queuedLiveSessions = new Set<string>();
 
 function nextId(): string {
   const suffix = String(idCounter++).padStart(12, "0");
@@ -89,12 +90,25 @@ function sendMessage(serverId: string, sessionId: string, body: Record<string, u
 }
 
 function queueLiveUpdate(sessionId: string): void {
-  if (!isPreviewMode) return;
-  setTimeout(() => void import("@/sync/synchronizer").then(({ publishLocalUpdate }) => publishLocalUpdate({
-    kind: "live", sessionId, type: "item/agentMessage/delta", entityId: sessionId,
-    runEventSeq: 5, payload: { itemId: "commentary-1-2", phase: "commentary",
-      delta: "\n\n正在生成预览响应…" },
-  })), 80);
+  if (!isPreviewMode || queuedLiveSessions.has(sessionId)) return;
+  const detail = Object.values(state.controls).map((item) => item.details[sessionId]).find(Boolean);
+  if (!detail?.currentRun) return;
+  queuedLiveSessions.add(sessionId);
+  for (const [index, delay] of [2400, 5200, 12000, 22000].entries()) setTimeout(() => {
+    const current = detail.currentRun;
+    if (!current) return;
+    const sequence = (current.timeline.at(-1)?.sequence ?? 0) + 1;
+    const item = { id: `preview-live-${index + 1}`, type: "agentMessage", phase: "commentary",
+      text: `实时动态 ${index + 1}：已完成新的检查步骤。\n\n` +
+        "- 核对轮次与分段顺序\n- 检查活动分页水位\n- 验证实时事件去重\n" +
+        "- 记录卡内滚动位置\n- 确认外层列表没有被带动\n- 检查新消息是否完整可见\n" +
+        "- 验证离开底部后不抢位置\n- 保存本轮性能与布局证据" };
+    current.timeline.push({ sequence, type: "item/completed", payload: { item }, occurredAt: now() });
+    void import("@/sync/synchronizer").then(({ publishLocalUpdate }) => publishLocalUpdate({
+      kind: "live", sessionId, type: "item/completed", entityType: "run", entityId: current.id,
+      runEventSeq: sequence, payload: { item },
+    }));
+  }, delay);
 }
 
 export function listPreviewConnections(): Connection[] {
@@ -354,29 +368,34 @@ export function recoverPreviewOutbox(serverId: string): void {
   }
 }
 
-export function processPreviewOutbox(connection: Connection): void {
+export function processPreviewOutbox(connection: Connection): OutboxProcessResult[] {
   const value = control(connection.serverId);
   const completed: string[] = [];
+  const results: OutboxProcessResult[] = [];
   for (const item of value.outbox) {
     if (item.status !== "pending") continue;
     item.status = "sending";
     if (item.kind === "create_session" && item.projectId && item.payload.settings) {
-      createSession(connection.serverId, { projectId: item.projectId, settings: item.payload.settings,
+      const created = createSession(connection.serverId, { projectId: item.projectId, settings: item.payload.settings,
         initialMessage: { localId: item.localId, text: item.payload.text, attachmentIds: [] } });
       completed.push(item.localId);
+      results.push({ localId: item.localId, kind: item.kind, sessionId: created.id });
     } else if (item.kind === "send_message" && item.sessionId) {
       sendMessage(connection.serverId, item.sessionId,
         { localId: item.localId, text: item.payload.text, attachmentIds: [] });
       completed.push(item.localId);
+      results.push({ localId: item.localId, kind: item.kind, sessionId: item.sessionId });
     } else {
       item.status = "failed";
       item.error = "预览 Outbox 数据不完整";
     }
   }
   value.outbox = value.outbox.filter((item) => !completed.includes(item.localId));
+  return results;
 }
 
 export function resetPreviewState(): void {
   state = createPreviewSeed();
   idCounter = 1;
+  queuedLiveSessions.clear();
 }

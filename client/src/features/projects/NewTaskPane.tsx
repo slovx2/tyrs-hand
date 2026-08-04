@@ -1,6 +1,7 @@
 import * as Crypto from "expo-crypto";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Card, Muted, Title } from "@/components/ui";
 import { clearDraft, loadDraft, saveDraft } from "@/db/drafts";
@@ -16,9 +17,10 @@ import { resolveNewTaskSettings } from "./newTaskSettings";
 export function NewTaskPane({ project, expanded = false, onSubmitted }: {
   project: Project;
   expanded?: boolean;
-  onSubmitted?: () => void;
+  onSubmitted?: (sessionId: string) => void;
 }) {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const connection = useAppStore((state) => state.activeConnection);
   const bootstrap = useAppStore((state) => state.bootstrap);
   const refresh = useAppStore((state) => state.refresh);
@@ -75,17 +77,20 @@ export function NewTaskPane({ project, expanded = false, onSubmitted }: {
       await clearDraft(connection.serverId, draftScope);
       setText("");
       setAttachments([]);
-      await processOutbox(connection);
+      const processed = await processOutbox(connection);
       await Promise.all([refresh(), outbox.refresh()]);
       const remaining = await listOutbox(connection.serverId);
-      if (!remaining.some((item) => item.localId === localId)) onSubmitted?.();
+      const created = processed.find((item) => item.localId === localId && item.kind === "create_session");
+      if (!remaining.some((item) => item.localId === localId) && created) onSubmitted?.(created.sessionId);
     } catch (error) {
       Alert.alert("暂时无法发送", error instanceof Error ? error.message : "任务已保留，稍后会自动重试");
     }
   };
   const pending = outbox.items.filter((item) => item.kind === "create_session" && item.projectId === project.id);
 
-  return <View testID="project:new-task" style={[styles.container, !expanded && styles.mobile,
+  return <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"}
+    keyboardVerticalOffset={insets.top + (Platform.OS === "ios" ? 44 : 56)}
+    testID="project:new-task" style={[styles.container, !expanded && styles.mobile,
     expanded && styles.expanded,
     { borderColor: theme.colors.border }]}>
     <View style={styles.heading}><View style={styles.headingCopy}><Title>新任务</Title>
@@ -116,7 +121,7 @@ export function NewTaskPane({ project, expanded = false, onSubmitted }: {
       workspaceId={project.workspaceId} value={settings}
       onChange={setSettingsOverride} onClose={() => setShowParameters(false)}
       onCancel={() => { setSettingsOverride(settingsBeforeSheet); setShowParameters(false); }} />}
-  </View>;
+  </KeyboardAvoidingView>;
 }
 
 const styles = StyleSheet.create({

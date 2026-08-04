@@ -68,10 +68,10 @@ function runActivityPartType(part: RunActivityPart): string {
 }
 
 export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, continued, active, maxHeight, liveVersion,
-  onInteractionStart, onInteractionEnd, onFinalDraft }: {
+  onInteractionStart, onInteractionEnd, onFollowLatest, onFinalDraft }: {
   run: TurnRun; segment: RunSegment; continued: boolean; active: boolean; maxHeight: number;
   liveVersion: number; onInteractionStart: () => void; onInteractionEnd: () => void;
-  onFinalDraft: (runId: string, text: string) => void;
+  onFollowLatest: () => void; onFinalDraft: (runId: string, text: string) => void;
 }) {
   const renderStartedAt = performance.now();
   const theme = useTheme();
@@ -92,6 +92,8 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
   const nearBottom = useRef(true);
   const wasActive = useRef(active);
   const scroll = useRef<FlashListRef<RunActivityPart>>(null);
+  const followNextActivityCommit = useRef(false);
+  const revealNewOnNextActivityCommit = useRef(false);
   const watermark = useRef(0);
   const requestedVersion = useRef(0);
   const lastCardHeight = useRef(0);
@@ -108,6 +110,8 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
     watermark.current = 0;
     requestedVersion.current = 0;
     lastCardHeight.current = 0;
+    followNextActivityCommit.current = false;
+    revealNewOnNextActivityCommit.current = false;
     innerHistoryReady.current = false;
     dragging.current = false;
     momentum.current = false;
@@ -116,6 +120,7 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
     loadLatestPromise.current = null;
   }
   const parts = useMemo(() => buildProjectedRunActivity(activities), [activities]);
+  const latestActivitySequence = activities.at(-1)?.lastEventSequence ?? 0;
   const presentation = continued ? { label: "已继续", color: theme.colors.textMuted } :
     run.status === "failed" ? { label: "失败", color: theme.colors.danger } :
     run.status === "canceled" ? { label: "已停止", color: theme.colors.textMuted } :
@@ -202,6 +207,26 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
       renderElapsed: (performance.now() - renderStartedAt).toFixed(1) });
   });
   useEffect(() => {
+    if (!expanded || parts.length === 0 ||
+      (!followNextActivityCommit.current && !revealNewOnNextActivityCommit.current)) return;
+    const targetSegmentId = segment.id;
+    const shouldFollow = followNextActivityCommit.current || nearBottom.current;
+    followNextActivityCommit.current = false;
+    revealNewOnNextActivityCommit.current = false;
+    if (shouldFollow) {
+      setHasNew(false);
+      requestAnimationFrame(() => {
+        if (segmentIdentity.current !== targetSegmentId) return;
+        previewPerf("segment:auto-scroll", { segmentId: targetSegmentId, source: "activity-commit" });
+        scroll.current?.scrollToEnd({ animated: true });
+        onFollowLatest();
+      });
+      return;
+    }
+    setHasNew(true);
+    previewPerf("segment:new-indicator", { segmentId: targetSegmentId, visible: true });
+  }, [expanded, latestActivitySequence, onFollowLatest, parts.length, segment.id, setHasNew]);
+  useEffect(() => {
     if (!active || !expanded || !ready || !connection || liveVersion <= requestedVersion.current) return;
     requestedVersion.current = liveVersion;
     let canceled = false;
@@ -212,13 +237,20 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
         const page = await new ClientApi(connection).listRunActivities(run.id, targetSegmentId,
           { afterEventSeq: cursor });
         if (canceled || segmentIdentity.current !== targetSegmentId) return;
+        if (page.activities.length > 0) {
+          if (nearBottom.current) {
+            followNextActivityCommit.current = true;
+            setHasNew(false);
+            previewPerf("segment:live-follow", { segmentId: targetSegmentId, mode: "bottom" });
+          } else {
+            revealNewOnNextActivityCommit.current = true;
+            previewPerf("segment:live-follow", { segmentId: targetSegmentId, mode: "away" });
+          }
+        }
         applyPage(page, true, targetSegmentId);
         cursor = page.persistedThroughEventSeq;
         if (!page.hasMoreAfter) break;
       }
-      if (canceled || segmentIdentity.current !== targetSegmentId) return;
-      if (nearBottom.current) requestAnimationFrame(() => scroll.current?.scrollToEnd({ animated: true }));
-      else setHasNew(true);
     })().catch(() => undefined), 120);
     return () => { canceled = true; clearTimeout(timer); };
   }, [active, applyPage, connection, expanded, liveVersion, ready, run.id, segment.id, setHasNew]);
@@ -347,9 +379,10 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
           }}
           onMomentumScrollEnd={releaseOuterScroll}
           scrollEventThrottle={80} onScroll={({ nativeEvent }) => {
-            nearBottom.current = nativeEvent.contentSize.height - nativeEvent.layoutMeasurement.height -
-              nativeEvent.contentOffset.y < 80;
-            if (nearBottom.current) setHasNew(false);
+            const distance = nativeEvent.contentSize.height - nativeEvent.layoutMeasurement.height -
+              nativeEvent.contentOffset.y;
+            nearBottom.current = distance < 80;
+            if (distance <= 8) setHasNew(false);
           }}
           onStartReached={() => {
             if (innerHistoryReady.current) void loadOlder();
@@ -361,9 +394,15 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
           ListFooterComponent={run.errorMessage && !continued ?
             <Text style={{ color: theme.colors.danger }}>{run.errorMessage}</Text> : null} />
       </View>
-      {hasNew && <Pressable style={styles.newActivity} onPress={() => {
-        setHasNew(false); nearBottom.current = true; scroll.current?.scrollToEnd({ animated: true });
-      }}><Text style={{ color: theme.colors.accent }}>有新动态 ↓</Text></Pressable>}
+      {hasNew && <Pressable testID="run:activity:new" style={[styles.newActivity, {
+        backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border,
+      }, theme.shadow]} onPress={() => {
+        followNextActivityCommit.current = false;
+        revealNewOnNextActivityCommit.current = false;
+        setHasNew(false); nearBottom.current = true;
+        scroll.current?.scrollToEnd({ animated: true });
+        onFollowLatest();
+      }}><Text style={{ color: theme.colors.accent }}>有新消息 ↓</Text></Pressable>}
     </>}
   </View>;
 });
@@ -386,5 +425,6 @@ const styles = StyleSheet.create({
   operationSummary: { flex: 1 }, operationRow: { flexDirection: "row", gap: 7, paddingLeft: 18 },
   operationText: { flex: 1, fontSize: 13 },
   newActivity: { position: "absolute", left: 48, right: 48, bottom: 10, alignItems: "center",
-    paddingVertical: 7 },
+    paddingHorizontal: 16, paddingVertical: 7, borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth, elevation: 4 },
 });
