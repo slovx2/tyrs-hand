@@ -159,8 +159,33 @@ fi
 case "${worker_codex_bin}" in /*) ;; *) echo "未找到用户系统 Codex，请设置绝对路径 TYRS_HAND_CODEX_BIN" >&2; exit 1 ;; esac
 worker_workspace=${worker_home}/tyrs-hand/workspaces
 worker_listen=${TYRS_HAND_WORKER_SSH_LISTEN_ADDR:-:2222}
-worker_browser_mcp_url=${TYRS_HAND_BROWSER_MCP_URL:-}
-worker_browser_token_file=${TYRS_HAND_BROWSER_MCP_TOKEN_FILE:-}
+worker_env_file=/etc/tyrs-hand/worker.env
+existing_browser_mcp_url=
+existing_browser_token_file=
+if [ -r "${worker_env_file}" ]; then
+  existing_browser_mcp_url=$(awk -F= '$1 == "TYRS_HAND_BROWSER_MCP_URL" {
+    value = substr($0, index($0, "=") + 1)
+    gsub(/^\047|\047$/, "", value)
+    print value
+    exit
+  }' "${worker_env_file}")
+  existing_browser_token_file=$(awk -F= '$1 == "TYRS_HAND_BROWSER_MCP_TOKEN_FILE" {
+    value = substr($0, index($0, "=") + 1)
+    gsub(/^\047|\047$/, "", value)
+    print value
+    exit
+  }' "${worker_env_file}")
+fi
+if [ "${TYRS_HAND_BROWSER_MCP_URL+x}" = x ]; then
+  worker_browser_mcp_url=${TYRS_HAND_BROWSER_MCP_URL}
+else
+  worker_browser_mcp_url=${existing_browser_mcp_url}
+fi
+if [ "${TYRS_HAND_BROWSER_MCP_TOKEN_FILE+x}" = x ]; then
+  worker_browser_token_file=${TYRS_HAND_BROWSER_MCP_TOKEN_FILE}
+else
+  worker_browser_token_file=${existing_browser_token_file}
+fi
 worker_browser_agent=${TYRS_HAND_BROWSER_AGENT_ADDRESS:-127.0.0.1:8934}
 worker_browser_files=${TYRS_HAND_BROWSER_FILES_ROOT:-${worker_home}/.local/share/tyrs-hand/browser-files}
 for pair in \
@@ -175,10 +200,10 @@ for pair in \
 done
 
 install -d -o root -g "${worker_group}" -m 0750 /etc/tyrs-hand
-if [ -f /etc/tyrs-hand/worker.env ]; then
+if [ -f "${worker_env_file}" ]; then
   install -d -o root -g root -m 0700 /etc/tyrs-hand/worker.env-backups
   stamp=$(date +%Y%m%d%H%M%S)
-  cp -p /etc/tyrs-hand/worker.env "/etc/tyrs-hand/worker.env-backups/worker.env.${stamp}"
+  cp -p "${worker_env_file}" "/etc/tyrs-hand/worker.env-backups/worker.env.${stamp}"
   backup_index=0
   for backup in $(ls -1t /etc/tyrs-hand/worker.env-backups/worker.env.*); do
     backup_index=$((backup_index + 1))
@@ -213,9 +238,9 @@ fi
     printf "TYRS_HAND_BROWSER_MCP_TOKEN_FILE='%s'\n" "${worker_browser_token_file}"
   fi
   printf "PATH='%s'\n" "${worker_path}"
-} > /etc/tyrs-hand/worker.env
-chown root:"${worker_group}" /etc/tyrs-hand/worker.env
-chmod 0640 /etc/tyrs-hand/worker.env
+} > "${worker_env_file}"
+chown root:"${worker_group}" "${worker_env_file}"
+chmod 0640 "${worker_env_file}"
 
 install -d -m 0755 /usr/local/libexec
 install -m 0755 "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/tyrs-hand-worker-run" \

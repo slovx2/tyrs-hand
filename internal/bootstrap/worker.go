@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/hostworker"
+	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
 	"github.com/slovx2/tyrs-hand/internal/worker"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
@@ -60,6 +61,11 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 	if err != nil {
 		cleanupLogger()
 		return nil, nil, err
+	}
+	if err := platformsettings.InstallBuiltinSkills(cfg.WorkerCodexHome); err != nil {
+		_ = dataLock.Close()
+		cleanupLogger()
+		return nil, nil, fmt.Errorf("安装宿主 Codex Skill 失败: %w", err)
 	}
 	cleanupFailure := func(runtime *hostworker.Runtime) {
 		if runtime != nil {
