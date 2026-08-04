@@ -92,12 +92,13 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 	conversationID = parseOptionalUUID(nullableConversation)
 
 	intentStatus := "completed"
-	var activeRunID uuid.UUID
+	var activeRunID, primaryTurnID uuid.UUID
 	if controlStatus == "active" && activeTurnID == expectedTurnID {
-		err = tx.QueryRowContext(c.Request.Context(), `SELECT id FROM codex_turn_runs
+		err = tx.QueryRowContext(c.Request.Context(), `SELECT id,primary_intent_id FROM codex_turn_runs
 			WHERE control_id = $1 AND confirmed_codex_turn_id = $2
 			AND status IN ('starting','running','waiting_for_user','reconciling')
-			ORDER BY started_at DESC LIMIT 1 FOR UPDATE`, controlID, expectedTurnID).Scan(&activeRunID)
+			ORDER BY started_at DESC LIMIT 1 FOR UPDATE`, controlID, expectedTurnID).
+			Scan(&activeRunID, &primaryTurnID)
 		if err == nil {
 			intentStatus = "running"
 			_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_turn_runs
@@ -138,8 +139,13 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 			next_sequence_no = next_sequence_no + 1, updated_at = now() WHERE id = $1`, controlID)
 	}
 	if err == nil {
+		conversationTurnID := intentID
+		if primaryTurnID != uuid.Nil {
+			conversationTurnID = primaryTurnID
+		}
 		err = appendDesktopSessionMessageTx(c.Request.Context(), tx, sessionID,
-			"desktop:"+idempotencyKey, instruction, actorParticipantID, actorDisplayName)
+			"desktop:"+idempotencyKey, instruction, actorParticipantID, actorDisplayName,
+			intentID, conversationTurnID)
 	}
 	if err == nil && conversationID != uuid.Nil {
 		err = enqueueDesktopInputProjection(c.Request.Context(), tx, conversationID,

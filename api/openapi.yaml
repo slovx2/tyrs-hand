@@ -1200,6 +1200,45 @@ paths:
       responses:
         "201": { description: 已发送或 steer, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
         default: { $ref: "#/components/responses/Problem" }
+  /client/sessions/{id}/turns:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: clientListTurns
+      tags: [Client Protocol]
+      security: [{ clientBearer: [] }]
+      parameters:
+        - { name: beforeCursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50 } }
+      responses:
+        "200": { description: 按完整轮次分页的聊天历史, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /client/sessions/{id}/turns/{turnId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: turnId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: clientGetTurn
+      tags: [Client Protocol]
+      security: [{ clientBearer: [] }]
+      responses:
+        "200": { description: 单个完整轮次, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /client/runs/{runId}/segments/{segmentId}/activities:
+    parameters:
+      - { name: runId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: segmentId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: clientListRunSegmentActivities
+      tags: [Client Protocol]
+      security: [{ clientBearer: [] }]
+      parameters:
+        - { name: beforeActivitySeq, in: query, schema: { type: integer, format: int64 } }
+        - { name: afterEventSeq, in: query, schema: { type: integer, format: int64 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        "200": { description: Run 分段内的活动分页和流式检查点, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        default: { $ref: "#/components/responses/Problem" }
   /client/sessions/{id}/stop:
     post:
       operationId: clientStopSession

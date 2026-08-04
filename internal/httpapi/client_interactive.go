@@ -76,6 +76,9 @@ func (s *Server) clientAnswerInteractive(c *gin.Context) {
 			_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO client_updates(
 				session_id,update_type,entity_type,entity_id,entity_version,payload)
 				VALUES ($1,'interactive.resolved','interactive',$2,2,$3)`, sessionID, id.String(), payload)
+			if err == nil {
+				err = createInteractiveSegmentTx(c.Request.Context(), tx, id)
+			}
 		}
 	}
 	if err == nil {

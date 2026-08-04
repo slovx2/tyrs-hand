@@ -277,8 +277,8 @@ func (r *Repository) appendSessionInputTx(ctx context.Context, tx *sql.Tx, inten
 		UPDATE workspace_sessions SET last_message_seq=last_message_seq+1,
 			last_activity_at=now(),updated_at=now() WHERE id=$1 RETURNING last_message_seq)
 		INSERT INTO session_messages(session_id,seq,local_id,participant_id,message_role,content,
-			turn_intent_id)
-		SELECT $1,last_message_seq,$2,NULLIF($3::text,'')::uuid,'user',$4,$5 FROM sequence
+			turn_intent_id,conversation_turn_id)
+		SELECT $1,last_message_seq,$2,NULLIF($3::text,'')::uuid,'user',$4,$5,$5 FROM sequence
 		RETURNING id,seq,created_at`, request.SessionID, request.MessageLocalID,
 		nilUUID(request.ActorParticipantID), content, intentID).Scan(&messageID, &sequence, &createdAt)
 	if err != nil {
@@ -287,7 +287,8 @@ func (r *Repository) appendSessionInputTx(ctx context.Context, tx *sql.Tx, inten
 	payload := encode(map[string]any{
 		"messageId": messageID, "sessionId": request.SessionID, "seq": sequence,
 		"localId": request.MessageLocalID, "participantId": request.ActorParticipantID,
-		"role": "user", "content": map[string]any{"type": "text", "text": request.Instruction},
+		"conversationTurnId": intentID,
+		"role":               "user", "content": map[string]any{"type": "text", "text": request.Instruction},
 		"attachments": []any{}, "createdAt": createdAt, "updatedAt": createdAt,
 	})
 	_, err = tx.ExecContext(ctx, `INSERT INTO client_updates(
@@ -536,6 +537,16 @@ func (r *Repository) claimSource(ctx context.Context, leaseOwner, sourceType,
 		settingsRevision).Scan(&claimed.RunID)
 	if err != nil {
 		return nil, err
+	}
+	if claimed.SourceType == SourceWorkspace && claimed.SessionID != uuid.Nil {
+		payload := encode(map[string]any{"runId": claimed.RunID,
+			"conversationTurnId": claimed.ID, "status": "starting"})
+		if _, err = tx.ExecContext(ctx, `INSERT INTO client_updates(
+			session_id,update_type,entity_type,entity_id,payload)
+			VALUES ($1,'run.started','turn',$2,$3)`, claimed.SessionID,
+			claimed.ID.String(), payload); err != nil {
+			return nil, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
@@ -854,7 +865,15 @@ func (r *Repository) appendSessionTerminalTx(ctx context.Context, tx *sql.Tx,
 ) error {
 	payload := map[string]any{
 		"id": claimed.RunID, "sessionId": claimed.SessionID, "intentId": claimed.ID,
-		"status": status, "errorCode": code, "errorMessage": message,
+		"conversationTurnId": claimed.ID,
+		"status":             status, "errorCode": code, "errorMessage": message,
+	}
+	var segmentID sql.NullString
+	if queryErr := tx.QueryRowContext(ctx, `SELECT id::text FROM run_process_segments
+		WHERE run_id=$1 ORDER BY sequence DESC LIMIT 1`, claimed.RunID).Scan(&segmentID); queryErr == nil {
+		payload["segmentId"] = segmentID.String
+	} else if !errors.Is(queryErr, sql.ErrNoRows) {
+		return queryErr
 	}
 	if status == IntentCompleted {
 		payload["result"] = result
@@ -862,8 +881,8 @@ func (r *Repository) appendSessionTerminalTx(ctx context.Context, tx *sql.Tx,
 	payloadJSON := encode(payload)
 	if _, err := tx.ExecContext(ctx, `INSERT INTO client_updates(
 		session_id,update_type,entity_type,entity_id,payload)
-		VALUES ($1,$2,'run',$3,$4)`, claimed.SessionID, "run."+string(status),
-		claimed.RunID.String(), payloadJSON); err != nil {
+		VALUES ($1,$2,'turn',$3,$4)`, claimed.SessionID, "run."+string(status),
+		claimed.ID.String(), payloadJSON); err != nil {
 		return err
 	}
 	if status == IntentCompleted || status == IntentFailed {
@@ -897,9 +916,10 @@ func (r *Repository) appendSessionTerminalTx(ctx context.Context, tx *sql.Tx,
 	err := tx.QueryRowContext(ctx, `WITH sequence AS (
 		UPDATE workspace_sessions SET last_message_seq=last_message_seq+1,
 			last_activity_at=now(),updated_at=now() WHERE id=$1 RETURNING last_message_seq)
-		INSERT INTO session_messages(session_id,seq,local_id,message_role,content)
-		SELECT $1,last_message_seq,$2,'agent',$3 FROM sequence
-		RETURNING id,seq,created_at`, claimed.SessionID, "intent-result:"+claimed.ID.String(), content).
+		INSERT INTO session_messages(session_id,seq,local_id,message_role,content,conversation_turn_id)
+		SELECT $1,last_message_seq,$2,'agent',$3,$4 FROM sequence
+		RETURNING id,seq,created_at`, claimed.SessionID, "intent-result:"+claimed.ID.String(), content,
+		claimed.ID).
 		Scan(&messageID, &sequence, &createdAt)
 	if err != nil {
 		return err
@@ -907,8 +927,9 @@ func (r *Repository) appendSessionTerminalTx(ctx context.Context, tx *sql.Tx,
 	messagePayload := encode(map[string]any{
 		"messageId": messageID, "sessionId": claimed.SessionID, "seq": sequence,
 		"localId": "intent-result:" + claimed.ID.String(), "role": "agent",
-		"content":     map[string]any{"type": "text", "text": result.FinalAnswer},
-		"attachments": []any{}, "createdAt": createdAt, "updatedAt": createdAt,
+		"conversationTurnId": claimed.ID,
+		"content":            map[string]any{"type": "text", "text": result.FinalAnswer},
+		"attachments":        []any{}, "createdAt": createdAt, "updatedAt": createdAt,
 	})
 	_, err = tx.ExecContext(ctx, `INSERT INTO client_updates(
 		session_id,update_type,entity_type,entity_id,entity_seq,entity_version,payload)

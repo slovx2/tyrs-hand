@@ -144,6 +144,21 @@ func (s *Server) workerCommandAck(c *gin.Context) {
 				claimed.RunID)
 		}
 		if err == nil && claimed.SourceType == codexcontrol.SourceWorkspace &&
+			claimed.SessionID != uuid.Nil {
+			_, err = tx.ExecContext(c.Request.Context(), `UPDATE session_messages
+				SET conversation_turn_id=$2,updated_at=now() WHERE turn_intent_id=$1`,
+				request.CommandID, claimed.ID)
+		}
+		if err == nil && claimed.SourceType == codexcontrol.SourceWorkspace &&
+			claimed.SessionID != uuid.Nil {
+			payload, _ := json.Marshal(gin.H{"conversationTurnId": claimed.ID,
+				"runId": claimed.RunID, "steerIntentId": request.CommandID})
+			_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO client_updates(
+				session_id,update_type,entity_type,entity_id,payload)
+				VALUES ($1,'conversation.turn.updated','turn',$2,$3)`, claimed.SessionID,
+				claimed.ID.String(), payload)
+		}
+		if err == nil && claimed.SourceType == codexcontrol.SourceWorkspace &&
 			claimed.DiscordConversationID != uuid.Nil {
 			err = recordDiscordIntentContributors(c.Request.Context(), tx, claimed.RunID,
 				claimed.DiscordConversationID, request.CommandID, request.TurnID)
@@ -217,17 +232,19 @@ func (s *Server) workerRunEvents(c *gin.Context) {
 		}
 		externalEventID := fmt.Sprintf("worker:%d", event.Sequence)
 		var eventID int64
+		var occurredAt time.Time
 		err = tx.QueryRowContext(c.Request.Context(), `INSERT INTO agent_events
-			(control_id, intent_id, run_id, event_type, external_event_id, payload)
-			VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT(run_id, external_event_id)
+			(control_id, intent_id, run_id, event_type, external_event_id, payload,
+			 run_event_sequence)
+			VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(run_id, external_event_id)
 			WHERE run_id IS NOT NULL AND external_event_id IS NOT NULL DO NOTHING
-			RETURNING id`,
+			RETURNING id,occurred_at`,
 			claimed.ControlID, claimed.ID, claimed.RunID, event.Type,
-			externalEventID, event.Payload).Scan(&eventID)
+			externalEventID, event.Payload, event.Sequence).Scan(&eventID, &occurredAt)
 		if errors.Is(err, sql.ErrNoRows) {
-			err = tx.QueryRowContext(c.Request.Context(), `SELECT id FROM agent_events
+			err = tx.QueryRowContext(c.Request.Context(), `SELECT id,occurred_at FROM agent_events
 				WHERE run_id=$1 AND external_event_id=$2`, claimed.RunID, externalEventID).
-				Scan(&eventID)
+				Scan(&eventID, &occurredAt)
 		}
 		if err != nil {
 			problem(c, http.StatusInternalServerError, "记录远程事件失败", err)
@@ -238,6 +255,13 @@ func (s *Server) workerRunEvents(c *gin.Context) {
 			problem(c, http.StatusInternalServerError, "解析过程卡分段边界失败", err)
 			return
 		}
+		if err = projectRunEventTx(c.Request.Context(), tx, claimed.RunID, runEventProjection{
+			Sequence: event.Sequence, Type: event.Type, Payload: event.Payload,
+			OccurredAt: occurredAt,
+		}); err != nil {
+			problem(c, http.StatusInternalServerError, "投影移动端过程动态失败", err)
+			return
+		}
 		if event.Type == "item/completed" {
 			itemID, clientID, isUserMessage := completedUserMessage(event.Payload)
 			if isUserMessage {
@@ -245,6 +269,23 @@ func (s *Server) workerRunEvents(c *gin.Context) {
 					claimed, itemID, clientID); err != nil {
 					problem(c, http.StatusInternalServerError, "确认 Desktop 用户消息失败", err)
 					return
+				}
+				if claimed.SourceType == codexcontrol.SourceWorkspace && claimed.SessionID != uuid.Nil {
+					var segmentID uuid.UUID
+					err = tx.QueryRowContext(c.Request.Context(), `SELECT id FROM run_process_segments
+						WHERE run_id=$1 ORDER BY sequence DESC LIMIT 1`, claimed.RunID).Scan(&segmentID)
+					if err == nil {
+						payload, _ := json.Marshal(gin.H{"conversationTurnId": claimed.ID,
+							"runId": claimed.RunID, "segmentId": segmentID})
+						_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO client_updates(
+							session_id,update_type,entity_type,entity_id,payload)
+							VALUES ($1,'run.segment.updated','turn',$2,$3)`, claimed.SessionID,
+							claimed.ID.String(), payload)
+					}
+					if err != nil {
+						problem(c, http.StatusInternalServerError, "通知移动端过程分段失败", err)
+						return
+					}
 				}
 			}
 		}
@@ -258,7 +299,8 @@ func (s *Server) workerRunEvents(c *gin.Context) {
 		lastSequence = event.Sequence
 	}
 	if _, err := tx.ExecContext(c.Request.Context(), `UPDATE codex_turn_runs
-		SET worker_event_sequence = $2 WHERE id = $1`, runID, lastSequence); err != nil {
+		SET worker_event_sequence = $2,client_projection_sequence=$2 WHERE id = $1`,
+		runID, lastSequence); err != nil {
 		problem(c, http.StatusInternalServerError, "更新远程事件序列失败", err)
 		return
 	}

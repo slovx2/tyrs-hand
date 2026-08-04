@@ -18,29 +18,39 @@ import (
 )
 
 type clientMessage struct {
-	ID            uuid.UUID          `json:"id"`
-	SessionID     uuid.UUID          `json:"sessionId"`
-	Seq           int64              `json:"seq"`
-	LocalID       string             `json:"localId"`
-	ParticipantID *uuid.UUID         `json:"participantId"`
-	Role          string             `json:"role"`
-	Content       json.RawMessage    `json:"content"`
-	CreatedAt     time.Time          `json:"createdAt"`
-	UpdatedAt     time.Time          `json:"updatedAt"`
-	Attachments   []clientAttachment `json:"attachments"`
+	ID                 uuid.UUID          `json:"id"`
+	SessionID          uuid.UUID          `json:"sessionId"`
+	Seq                int64              `json:"seq"`
+	LocalID            string             `json:"localId"`
+	ParticipantID      *uuid.UUID         `json:"participantId"`
+	ConversationTurnID *uuid.UUID         `json:"conversationTurnId"`
+	Role               string             `json:"role"`
+	Content            json.RawMessage    `json:"content"`
+	CreatedAt          time.Time          `json:"createdAt"`
+	UpdatedAt          time.Time          `json:"updatedAt"`
+	Attachments        []clientAttachment `json:"attachments"`
 }
 
 func scanClientMessage(row rowScanner) (clientMessage, error) {
 	var result clientMessage
 	var participant sql.NullString
+	var conversationTurn sql.NullString
 	err := row.Scan(&result.ID, &result.SessionID, &result.Seq, &result.LocalID,
-		&participant, &result.Role, &result.Content, &result.CreatedAt, &result.UpdatedAt)
+		&participant, &result.Role, &result.Content, &result.CreatedAt, &result.UpdatedAt,
+		&conversationTurn)
 	if participant.Valid {
 		value, parseErr := uuid.Parse(participant.String)
 		if parseErr != nil {
 			return clientMessage{}, parseErr
 		}
 		result.ParticipantID = &value
+	}
+	if conversationTurn.Valid {
+		value, parseErr := uuid.Parse(conversationTurn.String)
+		if parseErr != nil {
+			return clientMessage{}, parseErr
+		}
+		result.ConversationTurnID = &value
 	}
 	if err == nil {
 		result.Content = normalizeClientMessageContent(result.Content)
@@ -74,7 +84,7 @@ func normalizeClientMessageContent(raw json.RawMessage) json.RawMessage {
 }
 
 const clientMessageColumns = `id,session_id,seq,local_id,participant_id::text,
-	message_role,content,created_at,updated_at`
+	message_role,content,created_at,updated_at,conversation_turn_id::text`
 
 func (s *Server) clientListMessages(c *gin.Context) {
 	sessionID, err := uuid.Parse(c.Param("id"))
@@ -274,10 +284,11 @@ func (s *Server) clientCreateMessage(c *gin.Context) {
 		return
 	}
 	if _, err = tx.ExecContext(c.Request.Context(), `UPDATE session_messages SET
-		turn_intent_id=$2 WHERE id=$1`, created.ID, intentID); err != nil {
+		turn_intent_id=$2,conversation_turn_id=$2 WHERE id=$1`, created.ID, intentID); err != nil {
 		problem(c, http.StatusInternalServerError, "关联消息 Intent 失败", err)
 		return
 	}
+	created.ConversationTurnID = &intentID
 	payload, _ := json.Marshal(gin.H{"message": created, "intentId": intentID})
 	_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO client_updates(
 		session_id,update_type,entity_type,entity_id,entity_seq,entity_version,payload)

@@ -248,7 +248,7 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	if !isReplacement {
 		err = appendDesktopSessionMessageTx(c.Request.Context(), tx, claimed.SessionID,
 			"desktop:"+idempotencyKey, instruction, claimed.ActorParticipantID,
-			claimed.ActorDisplayName)
+			claimed.ActorDisplayName, claimed.ID, claimed.ID)
 		if err != nil {
 			problem(c, http.StatusInternalServerError, "记录 Desktop Session 消息失败", err)
 			return
@@ -457,6 +457,7 @@ func enqueueDesktopInputProjection(ctx context.Context, tx *sql.Tx, conversation
 
 func appendDesktopSessionMessageTx(ctx context.Context, tx *sql.Tx, sessionID uuid.UUID,
 	localID, instruction string, participantID uuid.UUID, displayName string,
+	intentID, conversationTurnID uuid.UUID,
 ) error {
 	if participantID != uuid.Nil {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO participants(id,kind,display_name)
@@ -475,15 +476,18 @@ func appendDesktopSessionMessageTx(ctx context.Context, tx *sql.Tx, sessionID uu
 	err := tx.QueryRowContext(ctx, `WITH sequence AS (
 		UPDATE workspace_sessions SET last_message_seq=last_message_seq+1,
 			last_activity_at=now(),updated_at=now() WHERE id=$1 RETURNING last_message_seq)
-		INSERT INTO session_messages(session_id,seq,local_id,participant_id,message_role,content)
-		SELECT $1,last_message_seq,$2,NULLIF($3::text,'')::uuid,'user',$4 FROM sequence
-		RETURNING id,seq`, sessionID, localID, nilUUIDString(participantID), content).
+		INSERT INTO session_messages(session_id,seq,local_id,participant_id,message_role,content,
+			turn_intent_id,conversation_turn_id)
+		SELECT $1,last_message_seq,$2,NULLIF($3::text,'')::uuid,'user',$4,$5,$6 FROM sequence
+		RETURNING id,seq`, sessionID, localID, nilUUIDString(participantID), content,
+		intentID, conversationTurnID).
 		Scan(&messageID, &sequence)
 	if err != nil {
 		return err
 	}
 	payload, _ := json.Marshal(gin.H{"messageId": messageID, "sessionId": sessionID,
-		"seq": sequence, "localId": localID, "role": "user", "content": json.RawMessage(content)})
+		"seq": sequence, "localId": localID, "role": "user",
+		"conversationTurnId": conversationTurnID, "content": json.RawMessage(content)})
 	_, err = tx.ExecContext(ctx, `INSERT INTO client_updates(
 		session_id,update_type,entity_type,entity_id,entity_seq,entity_version,payload)
 		VALUES ($1,'message.created','message',$2,$3,$3,$4)`, sessionID, messageID.String(), sequence, payload)

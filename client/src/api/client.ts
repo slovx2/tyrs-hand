@@ -7,6 +7,8 @@ import {
   bootstrapSchema,
   messageSchema,
   runSnapshotSchema,
+  conversationTurnSchema,
+  runActivitySchema,
   sessionSettingsSchema,
   sessionSchema,
   type SessionSettings,
@@ -95,6 +97,34 @@ export class ClientApi {
     return this.request(`/sessions/${id}/messages?${query}`, z.object({
       messages: z.array(messageSchema), lastMessageSeq: z.number().int(),
       hasMoreBefore: z.boolean(), hasMoreAfter: z.boolean(),
+    }));
+  }
+
+  listTurns(id: string, options: { beforeCursor?: string; limit?: number } = {}) {
+    const query = new URLSearchParams({ limit: String(options.limit ?? 20) });
+    if (options.beforeCursor) query.set("beforeCursor", options.beforeCursor);
+    return this.request(`/sessions/${id}/turns?${query}`, z.object({
+      items: z.array(conversationTurnSchema), hasMoreBefore: z.boolean(), nextCursor: z.string(),
+    }));
+  }
+
+  getTurn(id: string, turnId: string) {
+    return this.request(`/sessions/${id}/turns/${turnId}`, conversationTurnSchema);
+  }
+
+  listRunActivities(runId: string, segmentId: string, options: {
+    beforeActivitySeq?: number; afterEventSeq?: number; limit?: number;
+  } = {}) {
+    const query = new URLSearchParams({ limit: String(options.limit ?? 40) });
+    if (options.beforeActivitySeq !== undefined) {
+      query.set("beforeActivitySeq", String(options.beforeActivitySeq));
+    }
+    if (options.afterEventSeq !== undefined) query.set("afterEventSeq", String(options.afterEventSeq));
+    return this.request(`/runs/${runId}/segments/${segmentId}/activities?${query}`, z.object({
+      activities: z.array(runActivitySchema), hasMoreBefore: z.boolean(),
+      hasMoreAfter: z.boolean(),
+      persistedThroughEventSeq: z.number().int().nonnegative(),
+      finalAnswerDraft: z.object({ itemId: z.string(), payload: z.object({ text: z.string() }) }).nullable(),
     }));
   }
 

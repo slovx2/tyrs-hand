@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ClientApi } from "@/api/client";
-import { loadCachedMessages, saveMessages } from "@/db/cache";
+import { loadCachedTurns, saveTurns } from "@/db/cache";
 import { clearDraft, loadDraft, saveDraft } from "@/db/drafts";
 import { Button, EmptyState, Muted, Title } from "@/components/ui";
 import { useOutbox } from "@/hooks/useOutbox";
@@ -12,16 +12,20 @@ import { useAppStore } from "@/store/appStore";
 import { enqueueMessage, processOutbox, type LocalAttachment } from "@/sync/outbox";
 import { subscribeToUpdates, type SyncEvent } from "@/sync/synchronizer";
 import { useTheme } from "@/theme/ThemeProvider";
-import { type Message, type RunSnapshot, type SessionSettings } from "@/types/protocol";
+import { type ConversationTurn, type Message, type RunSegment, type SessionSettings,
+  type TurnRun } from "@/types/protocol";
 import { ChatComposer } from "./ChatComposer";
+import { MarkdownContent } from "./MarkdownContent";
 import { MessageBubble } from "./MessageBubble";
-import { deduplicateConsecutiveAgentMessages, mergeMessages } from "./messagePagination";
 import { ParameterSheet } from "./ParameterSheet";
-import { InteractiveCard, PlanCard, RunProgressCard } from "./RunCards";
+import { InteractiveCard, PlanCard } from "./RunCards";
+import { RunSegmentCard } from "./RunSegmentCard";
 
 type ConversationRow =
   | { kind: "message"; message: Message }
-  | { kind: "run"; run: RunSnapshot };
+  | { kind: "segment"; run: TurnRun; segment: RunSegment; continued: boolean; active: boolean }
+  | { kind: "interactive"; id: string }
+  | { kind: "stream"; runId: string; text: string };
 
 function liveTimelineEvent(event: SyncEvent): { type: string; payload: unknown } {
   if (!event.payload || typeof event.payload !== "object") {
@@ -40,7 +44,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const bootstrap = useAppStore((state) => state.bootstrap);
   const session = useAppStore((state) => state.sessions.find((item) => item.id === sessionId));
   const refreshSessions = useAppStore((state) => state.refresh);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [turns, setTurns] = useState<ConversationTurn[]>([]);
   const [messagesReady, setMessagesReady] = useState(false);
   const [initialSyncComplete, setInitialSyncComplete] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -48,11 +52,14 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const [attachments, setAttachments] = useState<LocalAttachment[]>([]);
   const [settings, setSettings] = useState<SessionSettings | null>(null);
   const [savedSettings, setSavedSettings] = useState<SessionSettings | null>(null);
-  const [currentRun, setCurrentRun] = useState<RunSnapshot | null>(null);
-  const [liveEvents, setLiveEvents] = useState<SyncEvent[]>([]);
+  const [liveVersion, setLiveVersion] = useState(0);
+  const [finalDrafts, setFinalDrafts] = useState<Record<string, string>>({});
   const [showParameters, setShowParameters] = useState(false);
   const [settingsBeforeSheet, setSettingsBeforeSheet] = useState<SessionSettings | null>(null);
   const [hasMore, setHasMore] = useState(false);
+  const [turnCursor, setTurnCursor] = useState("");
+  const [outerScrollEnabled, setOuterScrollEnabled] = useState(true);
+  const [messageAreaHeight, setMessageAreaHeight] = useState(600);
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState("");
@@ -61,7 +68,10 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const activeSessionId = useRef(sessionId);
   activeSessionId.current = sessionId;
   const refreshPromise = useRef<{ sessionId: string; promise: Promise<void> } | null>(null);
+  const turnCursorRef = useRef<string | null>(null);
+  const historyPaging = useRef(false);
   const historyPagingReady = useRef(false);
+  const finalDraftSequences = useRef(new Map<string, Set<number>>());
   const nearBottom = useRef(true);
   const scrollMetrics = useRef({ contentHeight: 0, viewportHeight: 0, offsetY: 0 });
   const outbox = useOutbox(connection?.serverId, sessionId);
@@ -71,45 +81,39 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     nearBottom.current = distance < 160;
     setShowScrollToLatest(distance > 320);
   }, []);
-  const load = useCallback(async (beforeSeq?: number) => {
+  const load = useCallback(async (beforeCursor?: string) => {
     if (!connection) return;
     const api = new ClientApi(connection);
-    if (beforeSeq === undefined) {
-      const cached = await loadCachedMessages(connection.serverId, sessionId);
+    if (beforeCursor === undefined) {
+      const cached = await loadCachedTurns(connection.serverId, sessionId);
       if (activeSessionId.current !== sessionId) return;
       if (cached.length > 0) {
-        setMessages(cached);
+        setTurns(cached);
         setMessagesReady(true);
       }
       const detail = await api.getSession(sessionId);
       if (activeSessionId.current !== sessionId) return;
       setSettings(detail.settings); setSavedSettings(detail.settings);
-      setCurrentRun(detail.currentRun);
-      if (cached.length > 0) {
-        let merged = cached;
-        let afterSeq = cached.at(-1)!.seq;
-        for (;;) {
-          const page = await api.listMessages(sessionId, { afterSeq, limit: 80 });
-          await saveMessages(connection.serverId, page.messages);
-          if (activeSessionId.current !== sessionId) return;
-          merged = mergeMessages(merged, page.messages);
-          setMessages(merged);
-          if (!page.hasMoreAfter || page.messages.length === 0) break;
-          afterSeq = page.messages.at(-1)!.seq;
-        }
-        setHasMore((merged[0]?.seq ?? 0) > 1);
-        setInitialSyncComplete(true);
-        return;
-      }
     }
-    const page = await api.listMessages(sessionId,
-      beforeSeq === undefined ? { limit: 80 } : { beforeSeq, limit: 80 });
-    await saveMessages(connection.serverId, page.messages);
+    const page = await api.listTurns(sessionId, beforeCursor ? { beforeCursor } : {});
+    await saveTurns(connection.serverId, sessionId, page.items);
     if (activeSessionId.current !== sessionId) return;
-    setMessages((current) => beforeSeq === undefined ? page.messages : mergeMessages(current, page.messages));
-    if (beforeSeq === undefined) setMessagesReady(true);
-    setHasMore(page.hasMoreBefore);
-    if (beforeSeq === undefined) setInitialSyncComplete(true);
+    setTurns((current) => {
+      if (beforeCursor) {
+        const existing = new Map(current.map((turn) => [`${turn.kind}:${turn.id}`, turn]));
+        for (const turn of page.items) existing.set(`${turn.kind}:${turn.id}`, turn);
+        return [...existing.values()].sort((left, right) => left.anchorSeq - right.anchorSeq);
+      }
+      const first = page.items[0]?.anchorSeq ?? Number.POSITIVE_INFINITY;
+      return [...current.filter((turn) => turn.anchorSeq < first), ...page.items];
+    });
+    if (beforeCursor === undefined) setMessagesReady(true);
+    if (beforeCursor || turnCursorRef.current === null) {
+      turnCursorRef.current = page.nextCursor;
+      setTurnCursor(page.nextCursor);
+      setHasMore(page.hasMoreBefore);
+    }
+    if (beforeCursor === undefined) setInitialSyncComplete(true);
   }, [connection, sessionId]);
   const refresh = useCallback(() => {
     if (refreshPromise.current?.sessionId === sessionId) return refreshPromise.current.promise;
@@ -122,15 +126,28 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     refreshPromise.current = { sessionId, promise: pending };
     return pending;
   }, [load, sessionId]);
+  const refreshTurn = useCallback(async (turnId: string) => {
+    if (!connection) return;
+    const turn = await new ClientApi(connection).getTurn(sessionId, turnId);
+    await saveTurns(connection.serverId, sessionId, [turn]);
+    if (activeSessionId.current !== sessionId) return;
+    setTurns((current) => [...current.filter((item) => item.id !== turn.id), turn]
+      .sort((left, right) => left.anchorSeq - right.anchorSeq));
+  }, [connection, sessionId]);
   useEffect(() => {
-    setMessages([]);
+    setTurns([]);
     setMessagesReady(false);
     setInitialSyncComplete(false);
     setLoadError(false);
     setSettings(null);
     setSavedSettings(null);
-    setCurrentRun(null);
-    setLiveEvents([]);
+    setLiveVersion(0);
+    setFinalDrafts({});
+    setTurnCursor("");
+    turnCursorRef.current = null;
+    historyPaging.current = false;
+    finalDraftSequences.current.clear();
+    setOuterScrollEnabled(true);
     setShowScrollToLatest(false);
     nearBottom.current = true;
     scrollMetrics.current = { contentHeight: 0, viewportHeight: 0, offsetY: 0 };
@@ -160,55 +177,91 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     return () => clearTimeout(timer);
   }, [attachments, connection, draftReady, draftScope, text]);
   useEffect(() => subscribeToUpdates((event) => {
+    if (event.type === "sync.resumed") {
+      setLiveVersion((value) => value + 1);
+      void refresh();
+      return;
+    }
     if (event.sessionId !== sessionId) return;
-    if (event.kind === "live") setLiveEvents((items) => [...items.slice(-49), event]);
-    else void refresh();
-  }), [refresh, sessionId]);
-  const presentedRun = useMemo<RunSnapshot | null>(() => {
-    if (!currentRun || liveEvents.length === 0) return currentRun;
-    const knownSequences = new Set(currentRun.timeline.map((event) => event.sequence));
-    const additions = liveEvents.map((event, index) => {
+    if (event.kind === "live") {
+      setLiveVersion((value) => value + 1);
       const unwrapped = liveTimelineEvent(event);
-      return {
-        sequence: event.runEventSeq ?? currentRun.timeline.length + index + 1,
-        type: unwrapped.type,
-        payload: unwrapped.payload,
-        occurredAt: new Date().toISOString(),
-      };
-    }).filter((event) => !knownSequences.has(event.sequence));
-    return { ...currentRun, timeline: [...currentRun.timeline, ...additions] };
-  }, [currentRun, liveEvents]);
-  const running = currentRun && ["starting", "running", "waiting_for_user", "reconciling"]
-    .includes(String(currentRun.status));
-  useEffect(() => {
-    if (!running) return;
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const poll = async () => {
-      try {
-        await refresh();
-      } finally {
-        if (!stopped) timer = setTimeout(() => void poll(), 1500);
+      const payload = unwrapped.payload && typeof unwrapped.payload === "object" ?
+        unwrapped.payload as Record<string, unknown> : {};
+      const item = payload.item && typeof payload.item === "object" ?
+        payload.item as Record<string, unknown> : {};
+      const phase = String(item.phase ?? payload.phase ?? "");
+      const delta = String(payload.delta ?? payload.text ?? "");
+      if ((unwrapped.type === "item/agentMessage/delta" || unwrapped.type === "item/delta") &&
+        phase === "final_answer" && delta) {
+        const sequence = event.runEventSeq;
+        if (sequence !== undefined) {
+          const seen = finalDraftSequences.current.get(event.entityId) ?? new Set<number>();
+          if (seen.has(sequence)) return;
+          seen.add(sequence);
+          finalDraftSequences.current.set(event.entityId, seen);
+        }
+        setFinalDrafts((current) => ({ ...current,
+          [event.entityId]: (current[event.entityId] ?? "") + delta }));
       }
-    };
-    timer = setTimeout(() => void poll(), 1500);
-    return () => {
-      stopped = true;
-      if (timer) clearTimeout(timer);
-    };
-  }, [refresh, running]);
-  const presentedMessages = useMemo(() => deduplicateConsecutiveAgentMessages(messages), [messages]);
-  const finalMessage = presentedRun?.status === "completed" ?
-    [...presentedMessages].reverse().find((message) => message.role === "agent") : undefined;
+    } else if (event.entityType === "turn") void refreshTurn(event.entityId);
+    else void refresh();
+  }), [refresh, refreshTurn, sessionId]);
+  const latestTurn = turns.at(-1);
+  const latestRun = latestTurn?.runs.at(-1);
+  const running = latestRun && ["starting", "running", "waiting_for_user", "reconciling"]
+    .includes(latestRun.status);
   const conversationRows = useMemo<ConversationRow[]>(() => {
-    const rows: ConversationRow[] = presentedMessages
-      .filter((message) => message.id !== finalMessage?.id)
-      .map((message) => ({ kind: "message", message }));
-    if (presentedRun) rows.push({ kind: "run", run: presentedRun });
-    if (finalMessage) rows.push({ kind: "message", message: finalMessage });
+    const rows: ConversationRow[] = [];
+    for (const turn of turns) {
+      const rendered = new Set<string>();
+      const users = turn.messages.filter((message) => message.role !== "agent");
+      const agents = turn.messages.filter((message) => message.role === "agent");
+      for (const run of turn.runs) {
+        for (let index = 0; index < run.segments.length; index++) {
+          const segment = run.segments[index]!;
+          const trigger = segment.triggerMessageId ?
+            users.find((message) => message.id === segment.triggerMessageId) :
+            users.find((message) => !rendered.has(message.id));
+          if (trigger && !rendered.has(trigger.id)) {
+            rows.push({ kind: "message", message: trigger });
+            rendered.add(trigger.id);
+          }
+          if (segment.triggerType === "interactive" && segment.interactiveRequestId) {
+            rows.push({ kind: "interactive", id: segment.interactiveRequestId });
+          }
+          const isLatest = turn.id === latestTurn?.id && run.id === latestRun?.id &&
+            segment.id === run.segments.at(-1)?.id;
+          rows.push({ kind: "segment", run, segment, continued: index < run.segments.length - 1,
+            active: Boolean(isLatest && running) });
+        }
+      }
+      for (const message of users) {
+        if (!rendered.has(message.id)) rows.push({ kind: "message", message });
+      }
+      const draftRun = turn.runs.at(-1);
+      if (agents.length === 0 && draftRun && draftRun.actualSettings.collaborationMode !== "plan") {
+        const draft = finalDrafts[draftRun.id];
+        if (draft) rows.push({ kind: "stream", runId: draftRun.id, text: draft });
+      }
+      for (const message of agents) rows.push({ kind: "message", message });
+    }
     return rows;
-  }, [finalMessage, presentedMessages, presentedRun]);
-  const finalMessageId = finalMessage?.id;
+  }, [finalDrafts, latestRun?.id, latestTurn?.id, running, turns]);
+  const handleFinalDraft = useCallback((runId: string, value: string) => {
+    setFinalDrafts((current) => {
+      if (current[runId] === value) return current;
+      const next = { ...current };
+      if (value) next[runId] = value;
+      else delete next[runId];
+      return next;
+    });
+  }, []);
+  const lockOuterScroll = useCallback(() => setOuterScrollEnabled(false), []);
+  const unlockOuterScroll = useCallback(() => setOuterScrollEnabled(true), []);
+  const lastRow = conversationRows.at(-1);
+  const finalMessageId = lastRow?.kind === "message" ? lastRow.message.id :
+    lastRow?.kind === "stream" ? `${lastRow.runId}:${lastRow.text.length}` : undefined;
   useEffect(() => {
     if (!finalMessageId || !nearBottom.current) return;
     let secondFrame = 0;
@@ -286,14 +339,24 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
           `${session.serviceTier === "fast" ? "快速" : "标准"} · ${session.collaborationMode === "plan" ? "先做计划" : "直接执行"}`}</Muted>
       </View>
     </View>
-    <View style={styles.messageArea}>
+    <View style={styles.messageArea} onLayout={({ nativeEvent }) =>
+      setMessageAreaHeight(nativeEvent.layout.height)}>
       <FlashList key={`${sessionId}:${initialSyncComplete ? "synced" : "cached"}`} ref={list}
       style={{ flex: 1 }}
       testID="messages:list" data={conversationRows}
-      keyExtractor={(item) => item.kind === "message" ? `message:${item.message.id}` : `run:${item.run.id}`}
+      scrollEnabled={outerScrollEnabled}
+      keyExtractor={(item) => item.kind === "message" ? `message:${item.message.id}` :
+        item.kind === "segment" ? `segment:${item.segment.id}` :
+        item.kind === "interactive" ? `interactive:${item.id}` : `stream:${item.runId}`}
       renderItem={({ item }) => item.kind === "message" ? <MessageBubble message={item.message} /> :
-        <View testID={liveEvents.length > 0 ? "run:live" : undefined}>
-          <RunProgressCard run={item.run} />
+        item.kind === "segment" ? <RunSegmentCard run={item.run} segment={item.segment}
+          continued={item.continued} active={item.active} maxHeight={messageAreaHeight * 0.67}
+          liveVersion={liveVersion} onInteractionStart={lockOuterScroll}
+          onInteractionEnd={unlockOuterScroll} onFinalDraft={handleFinalDraft} /> :
+        item.kind === "interactive" ? <View style={styles.interactiveHistory}>
+          <Muted>已提交交互回答，任务继续执行</Muted>
+        </View> : <View testID={`run:${item.runId}:stream-final`} style={styles.streamedFinal}>
+          <MarkdownContent>{item.text}</MarkdownContent>
         </View>}
       keyboardShouldPersistTaps="handled"
       scrollEventThrottle={100}
@@ -315,13 +378,15 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         if (initialSyncComplete) historyPagingReady.current = true;
       })}
       onStartReached={() => {
-        if (historyPagingReady.current && hasMore && messages[0]) void load(messages[0].seq);
+        if (!historyPagingReady.current || historyPaging.current || !hasMore || !turnCursor) return;
+        historyPaging.current = true;
+        void load(turnCursor).finally(() => { historyPaging.current = false; });
       }}
       onStartReachedThreshold={0.2} contentContainerStyle={{ paddingTop: 10, paddingBottom: 24 }}
-      ListFooterComponent={<>{presentedRun && <PlanCard run={presentedRun} onExecute={() => void new ClientApi(connection)
-          .executePlan(sessionId, presentedRun.id).then(() => refresh()).catch((error: unknown) =>
+      ListFooterComponent={<>{latestRun && <PlanCard run={latestRun} onExecute={() => void new ClientApi(connection)
+          .executePlan(sessionId, latestRun.id).then(() => refresh()).catch((error: unknown) =>
             Alert.alert("执行计划失败", error instanceof Error ? error.message : "请重试"))} />}
-        {presentedRun?.pendingInteractives.map((interactive) => <InteractiveCard key={interactive.id}
+        {latestRun?.pendingInteractives.map((interactive) => <InteractiveCard key={interactive.id}
           interactive={interactive} onSubmit={(answer) => void new ClientApi(connection)
             .answerInteractive(interactive.id, answer).then(() => refresh()).catch((error: unknown) =>
               Alert.alert("提交回答失败", error instanceof Error ? error.message : "请重试"))} />)}</>} />
@@ -382,6 +447,9 @@ const styles = StyleSheet.create({
   toolbarMain: { flexDirection: "row", alignItems: "center", gap: 8 },
   toolbarTitle: { flex: 1, minWidth: 0 },
   messageArea: { flex: 1, minHeight: 0 },
+  streamedFinal: { paddingHorizontal: 16, paddingVertical: 8 },
+  interactiveHistory: { marginHorizontal: 12, marginVertical: 5, paddingHorizontal: 12,
+    paddingVertical: 9, borderRadius: 8 },
   scrollToLatest: { position: "absolute", right: 16, bottom: 12, width: 42, height: 42,
     borderRadius: 21, borderWidth: StyleSheet.hairlineWidth, alignItems: "center",
     justifyContent: "center", elevation: 5 },

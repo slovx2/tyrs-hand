@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Button, Card, Muted, Title } from "@/components/ui";
 import { useTheme } from "@/theme/ThemeProvider";
-import type { RunSnapshot } from "@/types/protocol";
+import type { RunSnapshot, TurnRun } from "@/types/protocol";
 import { MarkdownContent } from "./MarkdownContent";
 import { buildRunActivity, type OperationsPart } from "./runActivity";
 
@@ -94,7 +94,7 @@ export function RunProgressCard({ run }: { run: RunSnapshot }) {
   </View>;
 }
 
-export function PlanCard({ run, onExecute }: { run: RunSnapshot; onExecute: () => void }) {
+export function PlanCard({ run, onExecute }: { run: RunSnapshot | TurnRun; onExecute: () => void }) {
   if (run.actualSettings.collaborationMode !== "plan" || run.status !== "completed") return null;
   return <View testID={`run:${encodeURIComponent(run.id)}:plan`}><Card style={styles.card}><Title>计划已准备好</Title>
     <Muted>确认后将开始执行这份计划。</Muted>
@@ -102,7 +102,7 @@ export function PlanCard({ run, onExecute }: { run: RunSnapshot; onExecute: () =
 }
 
 export function InteractiveCard({ interactive, onSubmit }: {
-  interactive: RunSnapshot["pendingInteractives"][number];
+  interactive: TurnRun["pendingInteractives"][number];
   onSubmit: (answer: unknown) => void;
 }) {
   const theme = useTheme();

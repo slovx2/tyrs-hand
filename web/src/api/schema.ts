@@ -1567,6 +1567,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/client/sessions/{id}/turns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["clientListTurns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/client/sessions/{id}/turns/{turnId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                turnId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["clientGetTurn"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/client/runs/{runId}/segments/{segmentId}/activities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runId: string;
+                segmentId: string;
+            };
+            cookie?: never;
+        };
+        get: operations["clientListRunSegmentActivities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/client/sessions/{id}/stop": {
         parameters: {
             query?: never;
@@ -5002,6 +5058,90 @@ export interface operations {
         responses: {
             /** @description 已发送或 steer */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    clientListTurns: {
+        parameters: {
+            query?: {
+                beforeCursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 按完整轮次分页的聊天历史 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    clientGetTurn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                turnId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 单个完整轮次 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    clientListRunSegmentActivities: {
+        parameters: {
+            query?: {
+                beforeActivitySeq?: number;
+                afterEventSeq?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                runId: string;
+                segmentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Run 分段内的活动分页和流式检查点 */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

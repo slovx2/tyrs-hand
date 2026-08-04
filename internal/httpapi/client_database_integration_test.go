@@ -182,6 +182,23 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 		require.NotNil(t, claimed)
 	}
 	require.Equal(t, sessionID, claimed.SessionID)
+	projectionTx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	commentaryPayload := json.RawMessage(`{"item":{"id":"commentary-client-test",` +
+		`"type":"agentMessage","phase":"commentary","text":"projected commentary"}}`)
+	var occurredAt time.Time
+	require.NoError(t, projectionTx.QueryRowContext(ctx, `INSERT INTO agent_events(
+		control_id,intent_id,run_id,event_type,external_event_id,payload,run_event_sequence)
+		VALUES ($1,$2,$3,'item/completed','worker:1',$4,1) RETURNING occurred_at`,
+		claimed.ControlID, claimed.ID, claimed.RunID, commentaryPayload).Scan(&occurredAt))
+	require.NoError(t, projectRunEventTx(ctx, projectionTx, claimed.RunID, runEventProjection{
+		Sequence: 1, Type: "item/completed", Payload: commentaryPayload, OccurredAt: occurredAt,
+	}))
+	_, err = projectionTx.ExecContext(ctx, `UPDATE codex_turn_runs SET
+		worker_event_sequence=1,client_projection_sequence=1 WHERE id=$1`,
+		claimed.RunID)
+	require.NoError(t, err)
+	require.NoError(t, projectionTx.Commit())
 	interactiveID := uuid.New()
 	questions := json.RawMessage(`[ {"id":"choice","question":"Continue?","options":[]} ]`)
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_interactive_requests(
@@ -224,6 +241,22 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 	require.Equal(t, http.StatusOK, messages.Code)
 	require.Contains(t, messages.Body.String(), "final answer for every client")
 	require.Contains(t, messages.Body.String(), `"role":"agent"`)
+	turns := clientJSONRequest(t, http.MethodGet, endpoint+"/api/v1/client/sessions/"+
+		sessionID.String()+"/turns", loginBody.AccessToken, nil)
+	require.Equal(t, http.StatusOK, turns.Code)
+	require.Contains(t, turns.Body.String(), "final answer for every client")
+	var turnBody struct {
+		Items []clientTurnPageItem `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(turns.Body.Bytes(), &turnBody))
+	require.NotEmpty(t, turnBody.Items)
+	run := turnBody.Items[len(turnBody.Items)-1].Runs[0]
+	require.NotEmpty(t, run.Segments)
+	activities := clientJSONRequest(t, http.MethodGet, endpoint+"/api/v1/client/runs/"+
+		run.ID.String()+"/segments/"+run.Segments[0].ID.String()+"/activities",
+		loginBody.AccessToken, nil)
+	require.Equal(t, http.StatusOK, activities.Code)
+	require.Contains(t, activities.Body.String(), "projected commentary")
 }
 
 func clientIntegrationServer(t *testing.T, db *sql.DB, authService *auth.Service) (*Server, string) {
@@ -241,6 +274,9 @@ func clientIntegrationServer(t *testing.T, db *sql.DB, authService *auth.Service
 	client.POST("/sessions", server.clientCreateSession)
 	client.GET("/sessions/:id/messages", server.clientListMessages)
 	client.POST("/sessions/:id/messages", server.clientCreateMessage)
+	client.GET("/sessions/:id/turns", server.clientListTurns)
+	client.GET("/sessions/:id/turns/:turnId", server.clientGetTurn)
+	client.GET("/runs/:runId/segments/:segmentId/activities", server.clientListRunActivities)
 	client.POST("/interactive/:id/answer", server.clientAnswerInteractive)
 	client.GET("/updates", server.clientUpdates)
 	httpServer := httptest.NewServer(router)

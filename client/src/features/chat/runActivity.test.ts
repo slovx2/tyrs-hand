@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { RunSnapshot } from "@/types/protocol";
-import { buildRunActivity } from "./runActivity";
+import type { RunActivity, RunSnapshot } from "@/types/protocol";
+import { buildProjectedRunActivity, buildRunActivity } from "./runActivity";
 
 function snapshot(timeline: RunSnapshot["timeline"]): RunSnapshot {
   return {
@@ -50,5 +50,25 @@ describe("buildRunActivity", () => {
     ]));
     expect(result).toEqual([{ kind: "operations", id: "operations-event-1",
       operations: [{ id: "event-1", label: "处理任务", status: "completed" }] }]);
+  });
+});
+
+describe("buildProjectedRunActivity", () => {
+  it("将服务端分页活动保持为自包含说明和操作组", () => {
+    const activities: RunActivity[] = [
+      { id: "00000000-0000-4000-8000-000000000301", itemId: "commentary", kind: "commentary",
+        firstEventSequence: 2, lastEventSequence: 4, status: "completed",
+        payload: { text: "已合并完整 commentary" }, occurredAt: "2026-08-04T00:00:01Z" },
+      { id: "00000000-0000-4000-8000-000000000302", itemId: "tool", kind: "operation",
+        firstEventSequence: 5, lastEventSequence: 6, status: "completed",
+        payload: { eventType: "item/completed", item: { type: "webSearch", query: "分页" } },
+        occurredAt: "2026-08-04T00:00:02Z" },
+    ];
+    expect(buildProjectedRunActivity(activities)).toEqual([
+      { kind: "commentary", id: activities[0]!.id, text: "已合并完整 commentary" },
+      { kind: "operations", id: `operations-${activities[1]!.id}`, operations: [
+        { id: "tool", label: "已搜索 分页", status: "completed" },
+      ] },
+    ]);
   });
 });

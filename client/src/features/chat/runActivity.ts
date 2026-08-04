@@ -1,4 +1,4 @@
-import type { RunSnapshot } from "@/types/protocol";
+import type { RunActivity, RunSnapshot } from "@/types/protocol";
 
 type CommentaryPart = { kind: "commentary"; id: string; text: string };
 export type Operation = { id: string; label: string; status: "running" | "completed" | "failed" };
@@ -93,4 +93,23 @@ export function buildRunActivity(run: RunSnapshot): RunActivityPart[] {
       label: "处理任务", status: "completed" });
   }
   return parts.filter((part) => part.kind === "operations" || part.text.trim() !== "");
+}
+
+export function buildProjectedRunActivity(activities: RunActivity[]): RunActivityPart[] {
+  const parts: RunActivityPart[] = [];
+  for (const activity of activities) {
+    const payload = record(activity.payload);
+    if (activity.kind === "commentary") {
+      const value = string(payload.text);
+      if (value.trim()) parts.push({ kind: "commentary", id: activity.id, text: value });
+      continue;
+    }
+    const item = record(payload.item);
+    const operation = { id: activity.itemId,
+      label: operationLabel(string(item.type), item, string(payload.eventType)), status: activity.status };
+    const previous = parts.at(-1);
+    if (previous?.kind === "operations") previous.operations.push(operation);
+    else parts.push({ kind: "operations", id: `operations-${activity.id}`, operations: [operation] });
+  }
+  return parts;
 }

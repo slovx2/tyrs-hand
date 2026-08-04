@@ -239,6 +239,12 @@ func (s *Server) workerAnswerInteractive(c *gin.Context) {
 			problem(c, http.StatusInternalServerError, "持久化交互回答失败", err)
 			return
 		}
+		if request.Surface != "auto" {
+			if err = createInteractiveSegmentTx(c.Request.Context(), tx, id); err != nil {
+				problem(c, http.StatusInternalServerError, "记录交互回答过程分段失败", err)
+				return
+			}
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		problem(c, http.StatusInternalServerError, "提交交互回答失败", err)

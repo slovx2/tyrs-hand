@@ -71,6 +71,24 @@ CREATE TABLE IF NOT EXISTS runs (
   payload TEXT NOT NULL,
   PRIMARY KEY(server_id,id)
 );
+CREATE TABLE IF NOT EXISTS run_segments (
+  server_id TEXT NOT NULL,
+  id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  PRIMARY KEY(server_id,id)
+);
+CREATE TABLE IF NOT EXISTS run_activities (
+  server_id TEXT NOT NULL,
+  id TEXT NOT NULL,
+  segment_id TEXT NOT NULL,
+  first_event_sequence INTEGER NOT NULL,
+  payload TEXT NOT NULL,
+  PRIMARY KEY(server_id,id)
+);
+CREATE INDEX IF NOT EXISTS run_activities_window
+  ON run_activities(server_id,segment_id,first_event_sequence);
 CREATE TABLE IF NOT EXISTS interactives (
   server_id TEXT NOT NULL,
   id TEXT NOT NULL,
@@ -139,13 +157,14 @@ export async function withDatabaseTransaction(
 async function openDatabase(): Promise<SQLite.SQLiteDatabase> {
   const database = await SQLite.openDatabaseAsync("tyrs-hand.db");
   await database.execAsync(schema);
-  await database.execAsync("PRAGMA user_version = 1");
+  await database.execAsync("PRAGMA user_version = 2");
   return database;
 }
 
 export async function clearServerSnapshot(serverId: string): Promise<void> {
   await withDatabaseTransaction(async (database) => {
-    for (const table of ["projects", "sessions", "messages", "attachments", "runs", "interactives"]) {
+    for (const table of ["projects", "sessions", "messages", "attachments", "runs", "run_segments",
+      "run_activities", "interactives"]) {
       await database.runAsync(`DELETE FROM ${table} WHERE server_id=?`, serverId);
     }
     await database.runAsync("UPDATE sync_state SET cursor=0,last_synced_at=NULL WHERE server_id=?", serverId);

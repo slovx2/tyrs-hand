@@ -8,6 +8,7 @@ export type SyncEvent = {
   cursor?: number;
   sessionId: string | null;
   type: string;
+  entityType?: string | undefined;
   entityId: string;
   runEventSeq?: number;
   payload: unknown;
@@ -85,6 +86,8 @@ export class Synchronizer {
     const base = this.connection.baseUrl.replace(/^http/, "ws");
     this.socket = new WebSocket(`${base}/api/v1/client/updates?cursor=${cursor}`,
       [`tyrs-hand.bearer.${token}`]);
+    this.socket.onopen = () => publish({ kind: "live", sessionId: null,
+      type: "sync.resumed", entityId: "synchronizer", payload: {} });
     this.socket.onmessage = (message) => {
       try {
         const notification = JSON.parse(String(message.data)) as { method: string; params: SyncEvent };

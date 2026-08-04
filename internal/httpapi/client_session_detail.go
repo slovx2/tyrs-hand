@@ -113,23 +113,6 @@ func (s *Server) loadClientSessionDetail(c *gin.Context, id uuid.UUID) (clientSe
 	run.ErrorCode = nullableString(errorCode)
 	run.ErrorMessage = nullableString(errorMessage)
 	run.Timeline = make([]clientTimelineEvent, 0)
-	rows, queryErr := s.db.QueryContext(c.Request.Context(), `SELECT id,event_type,payload,occurred_at
-		FROM agent_events WHERE run_id=$1 ORDER BY id`, run.ID)
-	if queryErr != nil {
-		return clientSessionDetail{}, queryErr
-	}
-	for rows.Next() {
-		var event clientTimelineEvent
-		if queryErr = rows.Scan(&event.Sequence, &event.Type, &event.Payload,
-			&event.OccurredAt); queryErr != nil {
-			_ = rows.Close()
-			return clientSessionDetail{}, queryErr
-		}
-		run.Timeline = append(run.Timeline, event)
-	}
-	if queryErr = rows.Close(); queryErr != nil {
-		return clientSessionDetail{}, queryErr
-	}
 	run.PendingInteractives = make([]clientInteractiveSnapshot, 0)
 	interactiveRows, queryErr := s.db.QueryContext(c.Request.Context(), `SELECT id,status,questions,deadline_at
 		FROM codex_interactive_requests WHERE run_id=$1 AND status='pending' ORDER BY created_at`, run.ID)

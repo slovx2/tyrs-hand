@@ -72,6 +72,7 @@ export const messageSchema = z.object({
   seq: z.number().int().positive(),
   localId: z.string(),
   participantId: z.string().uuid().nullable(),
+  conversationTurnId: z.string().uuid().nullable().optional(),
   role: z.enum(["user", "agent", "event"]),
   content: z.unknown(),
   attachments: z.array(attachmentSchema),
@@ -99,6 +100,43 @@ export const runSnapshotSchema = z.object({
     questions: z.array(interactiveQuestionSchema), secret: z.boolean(), deadlineAt: z.string().nullable() })),
 });
 export type RunSnapshot = z.infer<typeof runSnapshotSchema>;
+
+export const runActivitySchema = z.object({
+  id: z.string().uuid(), itemId: z.string(), kind: z.enum(["commentary", "operation"]),
+  firstEventSequence: z.number().int().positive(), lastEventSequence: z.number().int().positive(),
+  status: z.enum(["running", "completed", "failed"]), payload: z.unknown(), occurredAt: z.string(),
+});
+export type RunActivity = z.infer<typeof runActivitySchema>;
+
+export const runSegmentSchema = z.object({
+  id: z.string().uuid(), sequence: z.number().int().nonnegative(),
+  triggerType: z.enum(["initial", "steer", "interactive"]),
+  triggerMessageId: z.string().uuid().nullable(), interactiveRequestId: z.string().uuid().nullable(),
+  startEventSequence: z.number().int().nonnegative(), endEventSequence: z.number().int().nullable(),
+  activityCount: z.number().int().nonnegative(),
+});
+export type RunSegment = z.infer<typeof runSegmentSchema>;
+
+const interactiveSnapshotSchema = z.object({ id: z.string().uuid(), status: z.string(),
+  questions: z.array(interactiveQuestionSchema), secret: z.boolean(), deadlineAt: z.string().nullable() });
+
+export const turnRunSchema = z.object({
+  id: z.string().uuid(), attempt: z.number().int().positive(),
+  status: z.enum(["starting", "running", "waiting_for_user", "reconciling", "completed", "failed", "canceled"]),
+  actualSettings: z.object({ model: z.string().nullable(), reasoningEffort: z.string().nullable(),
+    serviceTier: z.string().nullable(), collaborationMode: z.enum(["default", "plan"]),
+    settingsVersion: z.number().int() }),
+  startedAt: z.string(), finishedAt: z.string().nullable(), errorCode: z.string().nullable(),
+  errorMessage: z.string().nullable(), segments: z.array(runSegmentSchema),
+  pendingInteractives: z.array(interactiveSnapshotSchema),
+});
+export type TurnRun = z.infer<typeof turnRunSchema>;
+
+export const conversationTurnSchema = z.object({
+  kind: z.enum(["turn", "message"]), id: z.string(), anchorSeq: z.number().int().positive(),
+  messages: z.array(messageSchema), runs: z.array(turnRunSchema),
+});
+export type ConversationTurn = z.infer<typeof conversationTurnSchema>;
 
 export const modelSchema = z.object({
   id: z.string(),

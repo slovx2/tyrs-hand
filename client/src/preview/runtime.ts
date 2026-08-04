@@ -1,6 +1,6 @@
 import type { Connection } from "@/db/connections";
 import type { LocalAttachment, OutboxItem } from "@/sync/outbox";
-import type { Message, Session, SessionSettings } from "@/types/protocol";
+import type { ConversationTurn, Message, RunActivity, Session, SessionSettings } from "@/types/protocol";
 import { isPreviewMode } from "./config";
 import { createPreviewSeed, type PreviewControlSeed } from "./fixtures";
 
@@ -129,6 +129,46 @@ export function previewMessages(serverId: string, sessionId: string) {
   return structuredClone(control(serverId).details[sessionId]?.messages ?? []);
 }
 
+function previewTurn(serverId: string, sessionId: string): ConversationTurn | null {
+  const detail = control(serverId).details[sessionId];
+  if (!detail || detail.messages.length === 0) return null;
+  const turnId = detail.messages[0]!.id;
+  const messages = detail.messages.map((message) => ({ ...message, conversationTurnId: turnId }));
+  const snapshot = detail.currentRun;
+  const runs = snapshot ? [{
+    id: snapshot.id, attempt: 1, status: snapshot.status, actualSettings: snapshot.actualSettings,
+    startedAt: snapshot.startedAt, finishedAt: snapshot.finishedAt, errorCode: snapshot.errorCode,
+    errorMessage: snapshot.errorMessage, segments: [{ id: `80000000-0000-4000-8000-${snapshot.id.slice(-12)}`,
+      sequence: 0, triggerType: "initial" as const, triggerMessageId: messages[0]!.id,
+      interactiveRequestId: null, startEventSequence: 0, endEventSequence: null,
+      activityCount: snapshot.timeline.length }], pendingInteractives: snapshot.pendingInteractives,
+  }] : [];
+  return { kind: "turn", id: turnId, anchorSeq: messages[0]!.seq, messages, runs };
+}
+
+function previewActivities(serverId: string, runId: string): RunActivity[] {
+  const snapshot = Object.values(control(serverId).details).map((item) => item.currentRun)
+    .find((item) => item?.id === runId);
+  if (!snapshot) return [];
+  return snapshot.timeline.flatMap<RunActivity>((event, index) => {
+    const payload = event.payload as { item?: Record<string, unknown> };
+    const item = payload.item ?? {};
+    if (item.type === "agentMessage" && item.phase === "commentary") return [{
+      id: `81000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      itemId: String(item.id ?? `preview-${index}`), kind: "commentary" as const,
+      firstEventSequence: event.sequence, lastEventSequence: event.sequence, status: "completed" as const,
+      payload: { text: String(item.text ?? "") }, occurredAt: event.occurredAt,
+    }];
+    if (typeof item.type === "string" && item.type !== "userMessage") return [{
+      id: `82000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      itemId: String(item.id ?? `preview-${index}`), kind: "operation" as const,
+      firstEventSequence: event.sequence, lastEventSequence: event.sequence, status: "completed" as const,
+      payload: { item, eventType: event.type }, occurredAt: event.occurredAt,
+    }];
+    return [];
+  });
+}
+
 export async function requestPreview(serverId: string, path: string, init?: RequestInit): Promise<unknown> {
   const method = init?.method ?? "GET";
   const url = new URL(path, "https://preview.tyrshand.local");
@@ -164,6 +204,23 @@ export async function requestPreview(serverId: string, path: string, init?: Requ
   if (messageMatch && method === "POST") {
     const item = sendMessage(serverId, messageMatch[1]!, body);
     return { message: item, intentId: nextId(), deduplicated: false };
+  }
+  const turnsMatch = /^\/sessions\/([^/]+)\/turns$/.exec(url.pathname);
+  if (turnsMatch && method === "GET") {
+    const turn = previewTurn(serverId, turnsMatch[1]!);
+    return { items: turn ? [turn] : [], hasMoreBefore: false, nextCursor: "" };
+  }
+  const turnMatch = /^\/sessions\/([^/]+)\/turns\/([^/]+)$/.exec(url.pathname);
+  if (turnMatch && method === "GET") {
+    const turn = previewTurn(serverId, turnMatch[1]!);
+    if (!turn || turn.id !== turnMatch[2]) throw new Error("预览轮次不存在");
+    return turn;
+  }
+  const activityMatch = /^\/runs\/([^/]+)\/segments\/([^/]+)\/activities$/.exec(url.pathname);
+  if (activityMatch && method === "GET") {
+    const activities = previewActivities(serverId, activityMatch[1]!);
+    return { activities, hasMoreBefore: false, hasMoreAfter: false,
+      persistedThroughEventSeq: activities.at(-1)?.lastEventSequence ?? 0, finalAnswerDraft: null };
   }
   const sessionMatch = /^\/sessions\/([^/]+)$/.exec(url.pathname);
   if (sessionMatch && method === "GET") {
