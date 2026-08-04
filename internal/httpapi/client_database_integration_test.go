@@ -84,6 +84,13 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 	require.Contains(t, bootstrap.Body.String(), `"protocolVersion":3`)
 	require.Contains(t, bootstrap.Body.String(), `"modelCatalogs"`)
 	require.Contains(t, bootstrap.Body.String(), "native-only-model")
+	var bootstrapBody struct {
+		LastStartedSettings clientLastSettings `json:"lastStartedSettings"`
+	}
+	require.NoError(t, json.Unmarshal(bootstrap.Body.Bytes(), &bootstrapBody))
+	require.Equal(t, profileID, bootstrapBody.LastStartedSettings.AgentProfileID)
+	require.Equal(t, "standard", bootstrapBody.LastStartedSettings.ServiceTier)
+	require.Equal(t, "default", bootstrapBody.LastStartedSettings.CollaborationMode)
 	listedSessions := clientJSONRequest(t, http.MethodGet,
 		endpoint+"/api/v1/client/sessions?limit=10", loginBody.AccessToken, nil)
 	require.Equal(t, http.StatusOK, listedSessions.Code)

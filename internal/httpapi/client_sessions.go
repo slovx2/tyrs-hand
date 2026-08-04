@@ -15,6 +15,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/auth"
 	"github.com/slovx2/tyrs-hand/internal/codexcatalog"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/codexsettings"
 )
 
 type clientSession struct {
@@ -176,8 +177,16 @@ func (s *Server) clientBootstrap(c *gin.Context) {
 		return
 	}
 	if lastSettings == nil && len(profiles) > 0 {
+		defaults, resolveErr := codexsettings.NewService(s.db).Resolve(c.Request.Context(),
+			uuid.Nil, profiles[0].ID)
+		if resolveErr != nil {
+			problem(c, http.StatusInternalServerError, "解析默认会话参数失败", resolveErr)
+			return
+		}
 		lastSettings = &clientLastSettings{AgentProfileID: profiles[0].ID,
-			CollaborationMode: "default"}
+			Model:           optionalClientString(defaults.Model),
+			ReasoningEffort: optionalClientString(defaults.ReasoningEffort),
+			ServiceTier:     defaults.ServiceTier, CollaborationMode: "default"}
 	}
 	var currentCursor int64
 	if err = s.db.QueryRowContext(c.Request.Context(),
