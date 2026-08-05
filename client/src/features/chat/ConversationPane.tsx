@@ -36,6 +36,7 @@ type ConversationRow =
 const outerPositioning = {
   animateAutoScrollToBottom: false,
 } as const;
+const initialRenderRowCount = 16;
 const emptyTurns: never[] = [];
 
 function conversationRowKey(item: ConversationRow): string {
@@ -103,6 +104,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const outerDragging = useRef(false);
   const outerMomentum = useRef(false);
   const initialPositioned = useRef(false);
+  const initialPositionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initialPositionFrame = useRef<number | null>(null);
   const initialSyncSessionId = useRef<string | null>(null);
   const lastAutoScrollKey = useRef<string | undefined>(undefined);
   const activeRunId = useRef<string | null>(null);
@@ -138,10 +141,18 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     outerDragging.current = false;
     outerMomentum.current = false;
     initialPositioned.current = false;
+    if (initialPositionTimer.current) clearTimeout(initialPositionTimer.current);
+    if (initialPositionFrame.current !== null) cancelAnimationFrame(initialPositionFrame.current);
+    initialPositionTimer.current = null;
+    initialPositionFrame.current = null;
     lastAutoScrollKey.current = undefined;
     activeRunId.current = null;
     scrollMetrics.current = { contentHeight: 0, viewportHeight: 0, offsetY: 0 };
     historyPagingReady.current = false;
+    return () => {
+      if (initialPositionTimer.current) clearTimeout(initialPositionTimer.current);
+      if (initialPositionFrame.current !== null) cancelAnimationFrame(initialPositionFrame.current);
+    };
   }, [sessionId]);
   useEffect(() => {
     if (!connection) return;
@@ -313,6 +324,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     unlockOuterScroll]);
   const rowExtraData = useMemo(() => ({ finalDrafts, liveVersions }), [finalDrafts, liveVersions]);
   const lastRow = conversationRows.at(-1);
+  const initialScrollIndex = Math.max(0, conversationRows.length - initialRenderRowCount);
   const finalMessageId = lastRow?.kind === "message" ? lastRow.message.id :
     lastRow?.kind === "stream" ? `${lastRow.runId}:stream` : undefined;
   useEffect(() => {
@@ -375,8 +387,9 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       height: nativeEvent.layout.height, width: nativeEvent.layout.width,
     })}>
       <FlashList key={sessionId} ref={list}
-      style={{ flex: 1, opacity: listPositioned ? 1 : 0 }}
+      style={[styles.messageList, { opacity: listPositioned ? 1 : 0 }]}
       testID="messages:list" data={conversationRows} extraData={rowExtraData}
+      initialScrollIndex={initialScrollIndex}
       keyExtractor={conversationRowKey}
       renderItem={renderConversationRow}
       drawDistance={160}
@@ -407,16 +420,24 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
           scrollMetrics.current.viewportHeight, scrollMetrics.current.offsetY);
       }}
       maintainVisibleContentPosition={outerPositioning}
-      onLoad={() => {
-        if (initialPositioned.current) return;
-        initialPositioned.current = true;
-        list.current?.scrollToEnd({ animated: false });
-        setShowScrollToLatest(false);
-        requestAnimationFrame(() => {
+      onLoad={({ elapsedTimeInMs }) => {
+        if (initialPositioned.current || initialPositionTimer.current) return;
+        initialPositionTimer.current = setTimeout(() => {
+          initialPositionTimer.current = null;
           if (activeSessionId.current !== sessionId) return;
-          setListPositioned(true);
-          previewPerf("conversation:initial-position", { source: "scroll-to-end-before-reveal" });
-        });
+          initialPositioned.current = true;
+          nearBottom.current = true;
+          outerPinnedToLatest.current = true;
+          list.current?.scrollToEnd({ animated: false });
+          initialPositionFrame.current = requestAnimationFrame(() => {
+            initialPositionFrame.current = null;
+            if (activeSessionId.current !== sessionId) return;
+            setShowScrollToLatest(false);
+            setListPositioned(true);
+            previewPerf("conversation:initial-position", { source: "near-end-before-reveal",
+              initialScrollIndex, elapsed: elapsedTimeInMs.toFixed(1) });
+          });
+        }, 120);
       }}
       onScrollBeginDrag={() => {
         outerDragging.current = true;
@@ -493,6 +514,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
 const styles = StyleSheet.create({
   keyboardAvoiding: { flex: 1, minHeight: 0 },
   messageArea: { flex: 1, minHeight: 0 },
+  messageList: { flex: 1 },
   streamedFinal: { paddingHorizontal: 16, paddingVertical: 8 },
   interactiveHistory: { marginHorizontal: 12, marginVertical: 5, paddingHorizontal: 12,
     paddingVertical: 9, borderRadius: 8 },

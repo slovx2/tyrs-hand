@@ -23,7 +23,6 @@ export type ConversationEntry = {
   status: "idle" | "loading" | "ready" | "offline" | "error";
   refreshing: boolean;
   error: string | null;
-  fingerprint: string;
   appliedCursor: number;
 };
 
@@ -45,7 +44,7 @@ function key(connection: Connection, sessionId: string): string {
 }
 
 function emptyEntry(): ConversationEntry {
-  return { view: null, status: "idle", refreshing: false, error: null, fingerprint: "", appliedCursor: 0 };
+  return { view: null, status: "idle", refreshing: false, error: null, appliedCursor: 0 };
 }
 
 function toView(snapshot: ConversationSnapshotResponse | CachedConversationWindow): ConversationView {
@@ -54,27 +53,30 @@ function toView(snapshot: ConversationSnapshotResponse | CachedConversationWindo
     snapshotCursor: snapshot.snapshotCursor };
 }
 
-function fingerprint(view: ConversationView): string {
-  return JSON.stringify(view);
-}
-
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : "加载会话失败";
 }
 
 export const useConversationStore = create<ConversationState>((set, get) => {
-  const commit = (entryKey: string, view: ConversationView, status: ConversationEntry["status"]) => {
-    const nextFingerprint = fingerprint(view);
+  const commitView = (entryKey: string, view: ConversationView, status: ConversationEntry["status"]) => {
     set((state) => {
       const current = state.entries[entryKey] ?? emptyEntry();
-      if (current.fingerprint === nextFingerprint) {
-        if (current.status === status && !current.refreshing && current.error === null) return state;
-        return { entries: { ...state.entries, [entryKey]: { ...current, status,
-          refreshing: false, error: null,
-          appliedCursor: Math.max(current.appliedCursor, view.snapshotCursor) } } };
-      }
       return { entries: { ...state.entries, [entryKey]: { ...current, view,
-        status, refreshing: false, error: null, fingerprint: nextFingerprint,
+        status, refreshing: false, error: null,
+        appliedCursor: Math.max(current.appliedCursor, view.snapshotCursor) } } };
+    });
+  };
+
+  const commitSnapshot = (entryKey: string, view: ConversationView,
+    status: ConversationEntry["status"]) => {
+    set((state) => {
+      const current = state.entries[entryKey] ?? emptyEntry();
+      if (view.snapshotCursor < current.appliedCursor ||
+        (current.view && view.snapshotCursor < current.view.snapshotCursor)) return state;
+      const sameSnapshot = current.view?.snapshotCursor === view.snapshotCursor;
+      if (sameSnapshot && current.status === status && !current.refreshing && current.error === null) return state;
+      return { entries: { ...state.entries, [entryKey]: { ...current,
+        view: sameSnapshot ? current.view : view, status, refreshing: false, error: null,
         appliedCursor: Math.max(current.appliedCursor, view.snapshotCursor) } } };
     });
   };
@@ -92,7 +94,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         const current = get().entries[entryKey] ?? emptyEntry();
         if (snapshot.snapshotCursor < current.appliedCursor) return;
         await saveConversationSnapshot(connection.serverId, snapshot);
-        commit(entryKey, toView(snapshot), "ready");
+        commitSnapshot(entryKey, toView(snapshot), "ready");
         void hydrateConversation(connection, snapshot);
       } catch (error) {
         set((state) => {
@@ -115,7 +117,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       } } }));
       const network = refresh(connection, sessionId);
       const cached = await loadConversationWindow(connection.serverId, sessionId);
-      if (cached) commit(entryKey, toView(cached), "ready");
+      if (cached) commitSnapshot(entryKey, toView(cached), "ready");
       await network;
     },
     refresh,
@@ -134,7 +136,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       }
       if (older.length === 0) {
         const view = { ...current.view, hasMoreBefore: false };
-        commit(entryKey, view, current.status);
+        commitView(entryKey, view, current.status);
         return;
       }
       const existing = new Map(current.view.turns.map((turn) => [`${turn.kind}:${turn.id}`, turn]));
@@ -145,7 +147,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       const view = { ...current.view,
         turns: [...existing.values()].sort((left, right) => left.anchorSeq - right.anchorSeq),
         hasMoreBefore: remaining.length > 0 || (cacheState ? !cacheState.turnsComplete : older.length === 20) };
-      commit(entryKey, view, current.status);
+      commitView(entryKey, view, current.status);
     },
     refreshTurn: async (connection, sessionId, turnId) => {
       const entryKey = key(connection, sessionId);
@@ -155,7 +157,7 @@ export const useConversationStore = create<ConversationState>((set, get) => {
       if (!current?.view) return;
       const turns = [...current.view.turns.filter((item) => item.id !== turn.id), turn]
         .sort((left, right) => left.anchorSeq - right.anchorSeq);
-      commit(entryKey, { ...current.view, turns }, current.status);
+      commitView(entryKey, { ...current.view, turns }, current.status);
     },
     noteCursor: (connection, sessionId, cursor) => {
       const entryKey = key(connection, sessionId);

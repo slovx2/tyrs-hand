@@ -200,10 +200,10 @@ describe("conversation repository integration", () => {
     }
   });
 
-  it("弱网刷新相同内容时保持 view 引用，断网时继续返回缓存", async () => {
+  it("弱网刷新相同 snapshotCursor 时保持 view 引用，断网时继续返回缓存", async () => {
     const { saveConversationSnapshot } = await import("@/db/conversationCache");
     await saveConversationSnapshot(serverId, snapshot());
-    const remote = await startSnapshotServer(snapshot(), 30);
+    const remote = await startSnapshotServer(snapshot(10, "同游标网络副本"), 30);
     const { useConversationStore } = await import("./conversationStore");
     const connection = { serverId, baseUrl: remote.baseUrl, name: "集成", deviceId: "device", active: true };
     const opening = useConversationStore.getState().open(connection, sessionId);
@@ -211,12 +211,33 @@ describe("conversation repository integration", () => {
     const cachedView = useConversationStore.getState().entries[`${serverId}:${sessionId}`]?.view;
     await opening;
     expect(useConversationStore.getState().entries[`${serverId}:${sessionId}`]?.view).toBe(cachedView);
+    expect(cachedView?.session.title).toBe("缓存会话");
     await new Promise<void>((resolve) => remote.server.close(() => resolve()));
     useConversationStore.setState({ entries: {} });
     await useConversationStore.getState().open(connection, sessionId);
     const offline = useConversationStore.getState().entries[`${serverId}:${sessionId}`];
     expect(offline?.status).toBe("offline");
     expect(offline?.view?.turns).toHaveLength(1);
+  });
+
+  it("网络 snapshotCursor 前进时替换缓存 view", async () => {
+    const { saveConversationSnapshot } = await import("@/db/conversationCache");
+    await saveConversationSnapshot(serverId, snapshot());
+    const remote = await startSnapshotServer(snapshot(11, "网络新快照"), 30);
+    try {
+      const { useConversationStore } = await import("./conversationStore");
+      const connection = { serverId, baseUrl: remote.baseUrl, name: "集成", deviceId: "device", active: true };
+      const opening = useConversationStore.getState().open(connection, sessionId);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const cachedView = useConversationStore.getState().entries[`${serverId}:${sessionId}`]?.view;
+      await opening;
+      const networkView = useConversationStore.getState().entries[`${serverId}:${sessionId}`]?.view;
+      expect(networkView).not.toBe(cachedView);
+      expect(networkView?.snapshotCursor).toBe(11);
+      expect(networkView?.session.title).toBe("网络新快照");
+    } finally {
+      remote.server.close();
+    }
   });
 
   it("拒绝旧 snapshotCursor 覆盖已处理的 durable 更新", async () => {
