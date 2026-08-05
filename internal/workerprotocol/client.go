@@ -67,6 +67,27 @@ func (c *Client) Heartbeat(ctx context.Context, request HeartbeatRequest) error 
 	return c.call(ctx, http.MethodPost, "/worker/v1/heartbeat", request, nil, true)
 }
 
+func (c *Client) ClaimSessionTitle(ctx context.Context) (SessionTitleClaimResponse, error) {
+	var result SessionTitleClaimResponse
+	err := c.call(ctx, http.MethodPost, "/worker/v1/session-title-tasks/claim", nil,
+		&result, true)
+	return result, err
+}
+
+func (c *Client) CompleteSessionTitle(ctx context.Context, taskID uuid.UUID,
+	request SessionTitleCompleteRequest,
+) error {
+	return c.call(ctx, http.MethodPost, "/worker/v1/session-title-tasks/"+
+		taskID.String()+"/complete", request, nil, true)
+}
+
+func (c *Client) FailSessionTitle(ctx context.Context, taskID uuid.UUID,
+	request SessionTitleFailRequest,
+) error {
+	return c.call(ctx, http.MethodPost, "/worker/v1/session-title-tasks/"+
+		taskID.String()+"/fail", request, nil, true)
+}
+
 func (c *Client) SSHConfiguration(ctx context.Context, etag string) (SSHConfiguration, string, bool, error) {
 	var configuration SSHConfiguration
 	if err := c.callWithParameters(ctx, http.MethodGet, "/worker/v1/ssh-configuration",

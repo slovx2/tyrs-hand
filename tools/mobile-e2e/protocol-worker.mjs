@@ -41,7 +41,7 @@ async function call(path, { method = 'POST', body, authenticated = true } = {}) 
 async function publishWorkerHeartbeat(force = false) {
   if (!force && Date.now() - lastWorkerHeartbeatAt < 20_000) return
   await call('/worker/v1/heartbeat', { body: { workerVersion: 'mobile-e2e-protocol',
-    protocolVersion: 22, metadata: { lane: 'mobile-protocol',
+    protocolVersion: 23, metadata: { lane: 'mobile-protocol',
       modelCatalogs: { [workspaceID]: modelCatalog } } } })
   lastWorkerHeartbeatAt = Date.now()
 }

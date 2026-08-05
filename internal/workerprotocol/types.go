@@ -9,7 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 22
+const Version = 23
 
 // CodexTurnError 保留 Codex error 通知的结构化字段，供 Control 决定是否重试
 // 并在 Discord 失败过程卡中展示。
@@ -75,6 +75,32 @@ type ClaimRequest struct {
 
 type ClaimResponse struct {
 	Task *Task `json:"task,omitempty"`
+}
+
+type SessionTitleTask struct {
+	ID             uuid.UUID `json:"id"`
+	SessionID      uuid.UUID `json:"sessionId"`
+	WorkspaceID    uuid.UUID `json:"workspaceId"`
+	FirstMessage   string    `json:"firstMessage"`
+	TitleRevision  int64     `json:"titleRevision"`
+	Attempt        int       `json:"attempt"`
+	LeaseToken     string    `json:"leaseToken"`
+	LeaseExpiresAt time.Time `json:"leaseExpiresAt"`
+}
+
+type SessionTitleClaimResponse struct {
+	Task *SessionTitleTask `json:"task,omitempty"`
+}
+
+type SessionTitleCompleteRequest struct {
+	LeaseToken    string `json:"leaseToken"`
+	TitleRevision int64  `json:"titleRevision"`
+	Title         string `json:"title"`
+}
+
+type SessionTitleFailRequest struct {
+	LeaseToken string `json:"leaseToken"`
+	ErrorCode  string `json:"errorCode"`
 }
 
 type WorkspaceManifest struct {

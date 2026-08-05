@@ -66,13 +66,13 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 		JOIN workspace_projects project ON project.id=ct.workspace_project_id
 		LEFT JOIN discord_conversations conversation ON conversation.id=ct.discord_conversation_id
 		LEFT JOIN desktop_thread_requests desktop_request ON desktop_request.control_id=ct.id
-		JOIN discord_forums forum
+		LEFT JOIN discord_forums forum
 			ON forum.id=COALESCE(conversation.forum_id, desktop_request.forum_id)
 		LEFT JOIN discord_members m ON m.guild_id = e.guild_id
 			AND m.discord_user_id = e.owner_discord_user_id
 		WHERE ct.external_thread_id = $1 AND ct.workspace_id = $2
 		AND ct.worker_id = $3
-		AND forum.binding_status='active'
+		AND (ct.discord_conversation_id IS NULL OR forum.binding_status='active')
 		AND project.availability_status='available' FOR UPDATE OF ct,session`, threadID, request.WorkspaceID,
 		worker.ID).Scan(&controlID, &sessionID, &nullableConversation, &projectID, &profileID, &nextSequence,
 		&controlStatus, &lifecycleState, &activeTurnID, &allowedJSON, &dangerousJSON, &guildID,

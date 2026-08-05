@@ -284,6 +284,10 @@ func (r *Repository) appendSessionInputTx(ctx context.Context, tx *sql.Tx, inten
 	if err != nil {
 		return err
 	}
+	if err := EnqueueSessionTitleTx(ctx, tx, request.SessionID, messageID,
+		request.Instruction); err != nil {
+		return err
+	}
 	payload := encode(map[string]any{
 		"messageId": messageID, "sessionId": request.SessionID, "seq": sequence,
 		"localId": request.MessageLocalID, "participantId": request.ActorParticipantID,

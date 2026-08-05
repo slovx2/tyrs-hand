@@ -35,6 +35,9 @@ func (s *Server) registerWorkerRoutes(router *gin.Engine) {
 func (s *Server) registerWorkerOperationRoutes(group *gin.RouterGroup) {
 	group.POST("/heartbeat", s.workerHeartbeat)
 	group.POST("/claims", s.workerClaim)
+	group.POST("/session-title-tasks/claim", s.workerClaimSessionTitle)
+	group.POST("/session-title-tasks/:id/complete", s.workerCompleteSessionTitle)
+	group.POST("/session-title-tasks/:id/fail", s.workerFailSessionTitle)
 	group.GET("/ssh-configuration", s.workerSSHConfiguration)
 	group.GET("/workspace", s.workerWorkspace)
 	group.POST("/workspace/projects/snapshot", s.workerWorkspaceProjectSnapshot)

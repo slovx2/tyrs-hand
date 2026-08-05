@@ -18,8 +18,7 @@ type claimedConversationTitle struct {
 	Body     string
 }
 
-// TitleGenerator 只负责投递首条消息的回退标题；最终标题来自宿主 Codex 的
-// thread/name/updated 事件。
+// TitleGenerator 只处理没有进入公共 Session 标题任务链路的历史 Conversation。
 type TitleGenerator struct{ db *sql.DB }
 
 func NewTitleGenerator(db *sql.DB) *TitleGenerator { return &TitleGenerator{db: db} }
@@ -63,6 +62,8 @@ func (g *TitleGenerator) claim(ctx context.Context, status string) (claimedConve
 		WHERE c.title_rename_status=$1
 		AND NOT EXISTS (SELECT 1 FROM desktop_thread_requests desktop
 			WHERE desktop.conversation_id=c.id)
+		AND NOT EXISTS (SELECT 1 FROM workspace_session_title_tasks task
+			WHERE task.session_id=c.session_id)
 		ORDER BY c.created_at,c.id FOR UPDATE OF c SKIP LOCKED LIMIT 1`, status).
 		Scan(&claimed.ID, &claimed.ThreadID, &claimed.Body)
 	if err != nil {

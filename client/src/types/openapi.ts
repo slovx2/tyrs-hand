@@ -779,6 +779,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/worker/v1/session-title-tasks/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerClaimSessionTitle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/session-title-tasks/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerCompleteSessionTitle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/session-title-tasks/{id}/fail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerFailSessionTitle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/worker/v1/ssh-configuration": {
         parameters: {
             query?: never;
@@ -2083,6 +2131,34 @@ export interface components {
             task?: {
                 [key: string]: unknown;
             };
+        };
+        WorkerSessionTitleTask: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            sessionId: string;
+            /** Format: uuid */
+            workspaceId: string;
+            firstMessage: string;
+            /** Format: int64 */
+            titleRevision: number;
+            attempt: number;
+            leaseToken: string;
+            /** Format: date-time */
+            leaseExpiresAt: string;
+        };
+        WorkerSessionTitleClaimResponse: {
+            task?: components["schemas"]["WorkerSessionTitleTask"];
+        };
+        WorkerSessionTitleCompleteRequest: {
+            leaseToken: string;
+            /** Format: int64 */
+            titleRevision: number;
+            title: string;
+        };
+        WorkerSessionTitleFailRequest: {
+            leaseToken: string;
+            errorCode: string;
         };
         WorkerRunLease: {
             leaseToken: string;
@@ -4030,6 +4106,77 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["WorkerClaimResponse"];
                 };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerClaimSessionTitle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 可选 Session 标题任务租约 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerSessionTitleClaimResponse"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerCompleteSessionTitle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerSessionTitleCompleteRequest"];
+            };
+        };
+        responses: {
+            /** @description 标题任务已完成或结果已因 revision 变化丢弃 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerFailSessionTitle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerSessionTitleFailRequest"];
+            };
+        };
+        responses: {
+            /** @description 标题任务失败状态已记录 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Problem"];
         };

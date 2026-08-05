@@ -89,11 +89,11 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	var nextSequence int64
 	var oldLeaseEpoch int64
 	var actorGuildID, actorUserID, actorDisplayName string
-	var conversationID, projectID sql.NullString
+	var conversationID, projectID, desktopRequestID sql.NullString
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT ct.id, ct.session_id, ct.discord_conversation_id,
 		ct.workspace_project_id::text, ct.agent_profile_id, ct.status, session.lifecycle_state,
 		ct.next_sequence_no, ct.collaboration_mode,
-		ct.lease_epoch, COALESCE(ct.external_thread_id,''),
+		ct.lease_epoch, COALESCE(ct.external_thread_id,''), desktop_request.id::text,
 		p.allowed_tools, '[]'::jsonb,
 		e.guild_id, COALESCE(e.owner_discord_user_id, ''),
 		COALESCE(NULLIF(m.display_name, ''), m.username, '')
@@ -103,18 +103,18 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		JOIN workspace_projects project ON project.id=ct.workspace_project_id
 		LEFT JOIN discord_conversations conversation ON conversation.id=ct.discord_conversation_id
 		LEFT JOIN desktop_thread_requests desktop_request ON desktop_request.control_id=ct.id
-		JOIN discord_forums forum
+		LEFT JOIN discord_forums forum
 			ON forum.id=COALESCE(conversation.forum_id, desktop_request.forum_id)
 		LEFT JOIN discord_members m ON m.guild_id = e.guild_id
 			AND m.discord_user_id = e.owner_discord_user_id
 		WHERE ct.external_thread_id = $1 AND ct.workspace_id = $2
 		AND ct.worker_id = $3
-		AND forum.binding_status='active'
+		AND (ct.discord_conversation_id IS NULL OR forum.binding_status='active')
 		AND project.availability_status='available' FOR UPDATE OF ct,session`, threadID, request.WorkspaceID,
 		worker.ID).Scan(&claimed.ControlID, &claimed.SessionID, &conversationID,
 		&projectID, &claimed.AgentProfileID, &controlStatus, &lifecycleState,
 		&nextSequence, &claimed.CollaborationMode,
-		&oldLeaseEpoch, &claimed.ExternalThreadID,
+		&oldLeaseEpoch, &claimed.ExternalThreadID, &desktopRequestID,
 		&allowedJSON, &dangerousJSON,
 		&actorGuildID, &actorUserID, &actorDisplayName)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -205,7 +205,7 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	images, imageFailures := prepareDesktopImages(request.Images, request.ImageError)
 	projectionInput := discordintegration.FormatDesktopProjectionInput(
 		desktopProjectionText(instruction), request.Params, imageFailures)
-	if claimed.DiscordConversationID == uuid.Nil {
+	if claimed.DiscordConversationID == uuid.Nil && desktopRequestID.Valid {
 		if err := s.queueFirstDesktopInput(c.Request.Context(), tx, claimed.ControlID,
 			projectionKey, request.Params, projectionInput); err != nil {
 			problem(c, http.StatusInternalServerError, "排队 Desktop Starter Message 失败", err)
@@ -473,21 +473,31 @@ func appendDesktopSessionMessageTx(ctx context.Context, tx *sql.Tx, sessionID uu
 	}})
 	var messageID uuid.UUID
 	var sequence int64
+	var createdAt time.Time
 	err := tx.QueryRowContext(ctx, `WITH sequence AS (
 		UPDATE workspace_sessions SET last_message_seq=last_message_seq+1,
 			last_activity_at=now(),updated_at=now() WHERE id=$1 RETURNING last_message_seq)
 		INSERT INTO session_messages(session_id,seq,local_id,participant_id,message_role,content,
 			turn_intent_id,conversation_turn_id)
 		SELECT $1,last_message_seq,$2,NULLIF($3::text,'')::uuid,'user',$4,$5,$6 FROM sequence
-		RETURNING id,seq`, sessionID, localID, nilUUIDString(participantID), content,
+		RETURNING id,seq,created_at`, sessionID, localID, nilUUIDString(participantID), content,
 		intentID, conversationTurnID).
-		Scan(&messageID, &sequence)
+		Scan(&messageID, &sequence, &createdAt)
 	if err != nil {
 		return err
 	}
-	payload, _ := json.Marshal(gin.H{"messageId": messageID, "sessionId": sessionID,
-		"seq": sequence, "localId": localID, "role": "user",
-		"conversationTurnId": conversationTurnID, "content": json.RawMessage(content)})
+	if err := codexcontrol.EnqueueSessionTitleTx(ctx, tx, sessionID, messageID,
+		instruction); err != nil {
+		return err
+	}
+	created := clientMessage{ID: messageID, SessionID: sessionID, Seq: sequence,
+		LocalID: localID, ConversationTurnID: &conversationTurnID, Role: "user",
+		Content: normalizeClientMessageContent(content), CreatedAt: createdAt,
+		UpdatedAt: createdAt, Attachments: []clientAttachment{}}
+	if participantID != uuid.Nil {
+		created.ParticipantID = &participantID
+	}
+	payload, _ := json.Marshal(gin.H{"message": created, "intentId": intentID})
 	_, err = tx.ExecContext(ctx, `INSERT INTO client_updates(
 		session_id,update_type,entity_type,entity_id,entity_seq,entity_version,payload)
 		VALUES ($1,'message.created','message',$2,$3,$3,$4)`, sessionID, messageID.String(), sequence, payload)

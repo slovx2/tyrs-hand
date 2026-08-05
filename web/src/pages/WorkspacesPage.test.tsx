@@ -124,7 +124,7 @@ function renderPage() {
             roles: ['discord'],
             enabled: true,
             maxConcurrentJobs: 2,
-            protocolVersion: 22,
+            protocolVersion: 23,
             status: 'online',
           },
         ]}

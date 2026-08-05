@@ -112,9 +112,10 @@ func (s *Server) workerRecordThreadMetadata(c *gin.Context) {
 			return
 		}
 		_, err = tx.ExecContext(c.Request.Context(), `UPDATE workspace_sessions session SET
-			title=$2, updated_at=now()
-			FROM codex_thread_controls control
-			WHERE control.id=$1 AND session.id=control.session_id`, controlID, name)
+				title=$2, updated_at=now()
+				FROM codex_thread_controls control
+				WHERE control.id=$1 AND session.id=control.session_id
+				  AND session.title_source NOT IN ('manual','generating')`, controlID, name)
 		if err != nil {
 			problem(c, http.StatusInternalServerError, "更新 Session 标题失败", err)
 			return
@@ -346,11 +347,10 @@ func (s *Server) workerPendingThreadNames(c *gin.Context) {
 		control.workspace_id, control.external_thread_id,
 		control.desired_thread_name, control.desired_thread_name_revision
 		FROM codex_thread_controls control
-		JOIN worker_workspaces workspace
-			ON workspace.id = control.workspace_id
-		JOIN discord_conversations conversation ON conversation.id = control.discord_conversation_id
-		WHERE workspace.worker_id = $1
-			AND control.desired_thread_name_source = 'fallback'
+			JOIN worker_workspaces workspace
+				ON workspace.id = control.workspace_id
+			WHERE workspace.worker_id = $1
+				AND control.desired_thread_name_source = 'fallback'
 			AND control.desired_thread_name_revision > control.applied_thread_name_revision
 			AND control.external_thread_id IS NOT NULL
 		ORDER BY control.updated_at, control.id`, currentWorker(c).ID)

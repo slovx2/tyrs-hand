@@ -6,7 +6,7 @@ const worker = {
   roles: ['github', 'discord'],
   enabled: true,
   maxConcurrentJobs: 6,
-  protocolVersion: 22,
+  protocolVersion: 23,
   workerVersion: 'deploy-1.1',
   status: 'online',
   metadata: {

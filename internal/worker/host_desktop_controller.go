@@ -59,6 +59,7 @@ func (c *HostDesktopController) AttachRuntime(ctx context.Context,
 	go workspace.observeMetadata(ctx)
 	go workspace.reconcileThreadLifecycles(ctx)
 	go c.reconcileControlState(ctx)
+	go c.runSessionTitleLoop(ctx)
 	return nil
 }
 

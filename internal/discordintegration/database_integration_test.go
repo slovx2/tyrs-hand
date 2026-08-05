@@ -2040,10 +2040,22 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 		WHERE title_rename_status = 'pending' AND id <> $1`, createdID)
 	require.NoError(t, err)
 	generator := &TitleGenerator{db: db}
+	_, err = generator.claim(ctx, "pending")
+	require.ErrorIs(t, err, sql.ErrNoRows,
+		"公共 Session 标题任务必须阻止旧 fallback Outbox 与 Luna 结果竞争")
+	var titleTaskStatus string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT task.status
+		FROM workspace_session_title_tasks task
+		JOIN discord_conversations conversation ON conversation.session_id=task.session_id
+		WHERE conversation.id=$1`, createdID).Scan(&titleTaskStatus))
+	require.Equal(t, "pending", titleTaskStatus)
+	_, err = db.ExecContext(ctx, `DELETE FROM workspace_session_title_tasks
+		WHERE session_id=(SELECT session_id FROM discord_conversations WHERE id=$1)`, createdID)
+	require.NoError(t, err)
 	claimedTitle, err := generator.claim(ctx, "pending")
 	require.NoError(t, err)
 	require.Equal(t, createdID, claimedTitle.ID)
-	require.NoError(t, generator.schedule(ctx, claimedTitle, "  Generated\nTitle  "))
+	require.NoError(t, generator.schedule(ctx, claimedTitle, "  Historical\nFallback  "))
 	completeOutboxForTest(t, ctx, db, "conversation-title:"+createdID.String(), nil)
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT title_rename_status FROM discord_conversations
 		WHERE id = $1`, createdID).Scan(&status))
@@ -2051,7 +2063,7 @@ func testCodexConfigurationInteractions(t *testing.T, ctx context.Context, db *s
 	var generated string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT generated_title FROM discord_conversations
 		WHERE id = $1`, createdID).Scan(&generated))
-	require.Equal(t, "Generated Title", generated)
+	require.Equal(t, "Historical Fallback", generated)
 	for _, value := range []struct{ effort, tier string }{
 		{"low", "standard"}, {"medium", "fast"}, {"high", "standard"}, {"xhigh", "fast"}, {"unknown", "standard"},
 	} {

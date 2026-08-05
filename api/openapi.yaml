@@ -712,6 +712,40 @@ paths:
       responses:
         "200": { description: 可选任务租约, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerClaimResponse" } } } }
         default: { $ref: "#/components/responses/Problem" }
+  /worker/v1/session-title-tasks/claim:
+    servers: [{ url: / }]
+    post:
+      operationId: workerClaimSessionTitle
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ workerBearer: [] }]
+      responses:
+        "200": { description: 可选 Session 标题任务租约, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerSessionTitleClaimResponse" } } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /worker/v1/session-title-tasks/{id}/complete:
+    servers: [{ url: / }]
+    post:
+      operationId: workerCompleteSessionTitle
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ workerBearer: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerSessionTitleCompleteRequest" } } } }
+      responses:
+        "204": { description: 标题任务已完成或结果已因 revision 变化丢弃 }
+        default: { $ref: "#/components/responses/Problem" }
+  /worker/v1/session-title-tasks/{id}/fail:
+    servers: [{ url: / }]
+    post:
+      operationId: workerFailSessionTitle
+      tags: [Worker Protocol]
+      servers: [{ url: / }]
+      security: [{ workerBearer: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerSessionTitleFailRequest" } } } }
+      responses:
+        "204": { description: 标题任务失败状态已记录 }
+        default: { $ref: "#/components/responses/Problem" }
   /worker/v1/ssh-configuration:
     servers: [{ url: / }]
     get:
@@ -1801,6 +1835,35 @@ components:
       type: object
       properties:
         task: { type: object, additionalProperties: true }
+    WorkerSessionTitleTask:
+      type: object
+      required: [id, sessionId, workspaceId, firstMessage, titleRevision, attempt, leaseToken, leaseExpiresAt]
+      properties:
+        id: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid }
+        workspaceId: { type: string, format: uuid }
+        firstMessage: { type: string, maxLength: 2000 }
+        titleRevision: { type: integer, format: int64, minimum: 0 }
+        attempt: { type: integer, minimum: 1, maximum: 3 }
+        leaseToken: { type: string, writeOnly: true }
+        leaseExpiresAt: { type: string, format: date-time }
+    WorkerSessionTitleClaimResponse:
+      type: object
+      properties:
+        task: { $ref: "#/components/schemas/WorkerSessionTitleTask" }
+    WorkerSessionTitleCompleteRequest:
+      type: object
+      required: [leaseToken, titleRevision, title]
+      properties:
+        leaseToken: { type: string, writeOnly: true }
+        titleRevision: { type: integer, format: int64, minimum: 0 }
+        title: { type: string, minLength: 1, maxLength: 36 }
+    WorkerSessionTitleFailRequest:
+      type: object
+      required: [leaseToken, errorCode]
+      properties:
+        leaseToken: { type: string, writeOnly: true }
+        errorCode: { type: string, minLength: 1, maxLength: 80 }
     WorkerRunLease:
       type: object
       required: [leaseToken, leaseEpoch]

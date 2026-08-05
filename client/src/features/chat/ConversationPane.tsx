@@ -23,6 +23,7 @@ import { MessageBubble } from "./MessageBubble";
 import { ParameterSheet } from "./ParameterSheet";
 import { InteractiveCard, PlanCard } from "./RunCards";
 import { RunSegmentCard } from "./RunSegmentCard";
+import { conversationTurnIdFromPayload } from "./updateRouting";
 
 type ConversationRow =
   | { kind: "message"; message: Message }
@@ -241,8 +242,16 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         setFinalDrafts((current) => ({ ...current,
           [event.entityId]: (current[event.entityId] ?? "") + delta }));
       }
-    } else if (event.entityType === "turn") void refreshTurn(event.entityId);
-    else void refresh();
+    } else {
+      const conversationTurnId = conversationTurnIdFromPayload(event.payload);
+      if (event.type === "message.created" && conversationTurnId) {
+        void refreshTurn(conversationTurnId);
+      } else if (event.entityType === "turn") {
+        void refreshTurn(event.entityId);
+      } else {
+        void refresh();
+      }
+    }
   }), [bumpLiveVersion, refresh, refreshTurn, sessionId]);
   const latestTurn = turns.at(-1);
   const latestRun = latestTurn?.runs.at(-1);
