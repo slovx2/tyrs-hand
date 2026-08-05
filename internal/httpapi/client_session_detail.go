@@ -114,8 +114,11 @@ func (s *Server) loadClientSessionDetail(c *gin.Context, id uuid.UUID) (clientSe
 	run.ErrorMessage = nullableString(errorMessage)
 	run.Timeline = make([]clientTimelineEvent, 0)
 	run.PendingInteractives = make([]clientInteractiveSnapshot, 0)
-	interactiveRows, queryErr := s.db.QueryContext(c.Request.Context(), `SELECT id,status,questions,deadline_at
-		FROM codex_interactive_requests WHERE run_id=$1 AND status='pending' ORDER BY created_at`, run.ID)
+	interactiveRows, queryErr := s.db.QueryContext(c.Request.Context(), `SELECT request.id,
+		request.status,request.questions,request.deadline_at
+		FROM codex_interactive_requests request JOIN codex_turn_runs run ON run.id=request.run_id
+		WHERE request.run_id=$1 AND request.status='pending' AND run.finished_at IS NULL
+		AND run.status NOT IN ('completed','failed','canceled') ORDER BY request.created_at`, run.ID)
 	if queryErr != nil {
 		return clientSessionDetail{}, queryErr
 	}

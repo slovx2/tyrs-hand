@@ -290,13 +290,17 @@ func finalAnswerDelta(event codex.Event) string {
 }
 
 func resetTimer(timer *time.Timer, duration time.Duration) {
+	stopTimer(timer)
+	timer.Reset(duration)
+}
+
+func stopTimer(timer *time.Timer) {
 	if !timer.Stop() {
 		select {
 		case <-timer.C:
 		default:
 		}
 	}
-	timer.Reset(duration)
 }
 
 func shortID(id uuid.UUID) string { return strings.ReplaceAll(id.String()[:8], "-", "") }

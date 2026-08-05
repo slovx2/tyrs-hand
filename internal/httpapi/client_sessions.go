@@ -105,7 +105,10 @@ const clientSessionSummaryColumns = clientSessionQualifiedColumns + `,
 	COALESCE((SELECT max(message.seq) FROM session_messages message
 		WHERE message.session_id=session.id AND message.message_role='agent'),0),
 	(SELECT request.id FROM codex_interactive_requests request
+		JOIN codex_turn_runs interactive_run ON interactive_run.id=request.run_id
 		WHERE request.session_id=session.id AND request.status='pending'
+		  AND interactive_run.finished_at IS NULL
+		  AND interactive_run.status NOT IN ('completed','failed','canceled')
 		ORDER BY request.created_at DESC,request.id DESC LIMIT 1)`
 
 func (s *Server) clientBootstrap(c *gin.Context) {

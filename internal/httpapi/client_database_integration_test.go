@@ -245,7 +245,9 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 			defer answerWait.Done()
 			result := clientJSONRequest(t, http.MethodPost, endpoint+"/api/v1/client/interactive/"+
 				interactiveID.String()+"/answer", loginBody.AccessToken,
-				map[string]any{"answer": map[string]any{"answers": map[string]any{"choice": value}}})
+				map[string]any{"answer": map[string]any{"answers": map[string]any{
+					"choice": map[string]any{"answers": []string{value}},
+				}}})
 			require.Equal(t, http.StatusOK, result.Code)
 			var body struct {
 				Accepted bool `json:"accepted"`
@@ -264,16 +266,66 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 	}
 	require.Equal(t, 1, accepted)
 
+	cleanupInteractiveID := uuid.New()
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_interactive_requests(
+		id,control_id,run_id,session_id,thread_id,turn_id,item_id,app_server_generation,
+		app_server_request_id,questions) VALUES ($1,$2,$3,$4,'thread-1','turn-1',
+		'cleanup-item',1,'3'::jsonb,$5) RETURNING id`, cleanupInteractiveID,
+		claimed.ControlID, claimed.RunID, sessionID, questions).Scan(&cleanupInteractiveID))
 	require.NoError(t, repository.Complete(ctx, claimed, codexcontrol.TurnResult{
 		TurnID: "turn-1", FinalAnswer: "final answer for every client",
 	}))
+	var cleanupInteractiveStatus string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM codex_interactive_requests
+		WHERE id=$1`, cleanupInteractiveID).Scan(&cleanupInteractiveStatus))
+	require.Equal(t, "interrupted", cleanupInteractiveStatus)
+	terminalInteractiveID := uuid.New()
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_interactive_requests(
+		id,control_id,run_id,session_id,thread_id,turn_id,item_id,app_server_generation,
+		app_server_request_id,questions) VALUES ($1,$2,$3,$4,'thread-1','turn-1',
+		'terminal-item',1,'2'::jsonb,$5) RETURNING id`, terminalInteractiveID,
+		claimed.ControlID, claimed.RunID, sessionID, questions).Scan(&terminalInteractiveID))
+	_, err = db.ExecContext(ctx, `UPDATE codex_turn_runs SET status='running',active_slot=1
+		WHERE id=$1`, claimed.RunID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE codex_turn_intents SET status='running',finished_at=NULL,
+		input_surface='desktop'
+		WHERE id=$1`, claimed.ID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE codex_thread_controls SET status='active',
+		active_intent_id=$2,lease_expires_at=NULL WHERE id=$1`, claimed.ControlID, claimed.ID)
+	require.NoError(t, err)
+	terminalAnswer := clientJSONRequest(t, http.MethodPost, endpoint+"/api/v1/client/interactive/"+
+		terminalInteractiveID.String()+"/answer", loginBody.AccessToken,
+		map[string]any{"answer": map[string]any{"answers": map[string]any{
+			"choice": map[string]any{"answers": []string{"继续"}},
+		}}})
+	require.Equal(t, http.StatusConflict, terminalAnswer.Code, terminalAnswer.Body.String())
+	var terminalInteractiveStatus, terminalRunStatus string
+	var terminalActiveSlot sql.NullInt64
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT q.status,r.status,r.active_slot
+		FROM codex_interactive_requests q JOIN codex_turn_runs r ON r.id=q.run_id
+		WHERE q.id=$1`, terminalInteractiveID).Scan(&terminalInteractiveStatus,
+		&terminalRunStatus, &terminalActiveSlot))
+	require.Equal(t, "pending", terminalInteractiveStatus)
+	require.Equal(t, "running", terminalRunStatus)
+	require.True(t, terminalActiveSlot.Valid)
+	requeued := server.requeueExpiredRuns(ctx)
+	require.EqualValues(t, 1, requeued)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT q.status,r.status,r.active_slot
+		FROM codex_interactive_requests q JOIN codex_turn_runs r ON r.id=q.run_id
+		WHERE q.id=$1`, terminalInteractiveID).Scan(&terminalInteractiveStatus,
+		&terminalRunStatus, &terminalActiveSlot))
+	require.Equal(t, "interrupted", terminalInteractiveStatus)
+	require.Equal(t, "failed", terminalRunStatus)
+	require.False(t, terminalActiveSlot.Valid)
 	completedSessions := clientJSONRequest(t, http.MethodGet,
 		endpoint+"/api/v1/client/sessions?limit=10", loginBody.AccessToken, nil)
 	require.Equal(t, http.StatusOK, completedSessions.Code)
 	require.NoError(t, json.Unmarshal(completedSessions.Body.Bytes(), &listedBody))
 	completedSession := requireClientSession(t, listedBody.Sessions, sessionID)
 	require.False(t, completedSession.IsRunning)
-	require.False(t, completedSession.HasRunIssue)
+	require.True(t, completedSession.HasRunIssue)
 	require.Greater(t, completedSession.LastAgentMessageSeq, int64(0))
 	require.Nil(t, completedSession.PendingInteractiveID)
 	for _, status := range []string{"failed", "canceled"} {
@@ -334,6 +386,8 @@ func clientIntegrationServer(t *testing.T, db *sql.DB, authService *auth.Service
 	client.GET("/bootstrap", server.clientBootstrap)
 	client.GET("/sessions", server.clientListSessions)
 	client.POST("/sessions", server.clientCreateSession)
+	client.POST("/sessions/:id/archive", server.clientArchiveSession)
+	client.POST("/sessions/:id/restore", server.clientRestoreSession)
 	client.GET("/sessions/:id/messages", server.clientListMessages)
 	client.POST("/sessions/:id/messages", server.clientCreateMessage)
 	client.GET("/sessions/:id/turns", server.clientListTurns)

@@ -113,8 +113,11 @@ func (s *Server) loadClientRunSegments(c *gin.Context, runID uuid.UUID) ([]clien
 func (s *Server) loadPendingInteractives(c *gin.Context,
 	runID uuid.UUID,
 ) ([]clientInteractiveSnapshot, error) {
-	rows, err := s.db.QueryContext(c, `SELECT id,status,questions,deadline_at
-		FROM codex_interactive_requests WHERE run_id=$1 AND status='pending' ORDER BY created_at`, runID)
+	rows, err := s.db.QueryContext(c, `SELECT request.id,request.status,request.questions,
+		request.deadline_at FROM codex_interactive_requests request
+		JOIN codex_turn_runs run ON run.id=request.run_id
+		WHERE request.run_id=$1 AND request.status='pending' AND run.finished_at IS NULL
+		AND run.status NOT IN ('completed','failed','canceled') ORDER BY request.created_at`, runID)
 	if err != nil {
 		return nil, err
 	}

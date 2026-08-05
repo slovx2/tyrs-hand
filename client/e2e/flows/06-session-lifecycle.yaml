@@ -16,8 +16,10 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     id: "session:more"
 - tapOn:
     id: "session:archive"
-- tapOn:
-    id: "session:back"
+- extendedWaitUntil:
+    visible:
+      id: "sessions:list"
+    timeout: 10000
 - tapOn:
     id: "sessions:filter:archived"
 - extendedWaitUntil:

@@ -9,7 +9,12 @@ import { useTheme } from "@/theme/ThemeProvider";
 
 const activeRunStatuses = new Set(["starting", "running", "waiting_for_user", "reconciling"]);
 
-export function SessionActionsMenu({ sessionId }: { sessionId: string }) {
+interface SessionActionsMenuProps {
+  sessionId: string;
+  onArchiveAccepted?: () => void;
+}
+
+export function SessionActionsMenu({ sessionId, onArchiveAccepted }: SessionActionsMenuProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const connection = useAppStore((state) => state.activeConnection);
@@ -40,7 +45,12 @@ export function SessionActionsMenu({ sessionId }: { sessionId: string }) {
       await new ClientApi(connection).action(sessionId, value);
       setVisible(false);
       if (value === "stop") setRunning(false);
-      await refreshSessions();
+      if (value === "archive") onArchiveAccepted?.();
+      try {
+        await refreshSessions();
+      } catch (error) {
+        if (value !== "archive") throw error;
+      }
     } catch (error) {
       Alert.alert("操作失败", error instanceof Error ? error.message : "请重试");
     } finally {

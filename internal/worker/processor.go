@@ -189,7 +189,7 @@ func (p *Processor) processRemoteGitHub(ctx context.Context, task *workerprotoco
 	defer subscription.Close()
 	if claimed.Recovering {
 		if result, recovered, recoverErr := p.reconcileRemoteTurn(ctx, runtime, subscription.Events(),
-			task, threadID, commands, nil, report); recoverErr != nil {
+			task, threadID, commands, nil, report, nil); recoverErr != nil {
 			return codexcontrol.TurnResult{}, recoverErr
 		} else if recovered {
 			return result, nil
@@ -207,7 +207,7 @@ func (p *Processor) processRemoteGitHub(ctx context.Context, task *workerprotoco
 		return codexcontrol.TurnResult{}, err
 	}
 	result, err := p.waitRemoteTurn(ctx, runtime, subscription.Events(), task, threadID, turnID,
-		commands, nil, report)
+		commands, nil, report, nil)
 	if needsCleanupInterrupt(err) {
 		interruptTurnBestEffort(runtime, threadID, turnID)
 	}

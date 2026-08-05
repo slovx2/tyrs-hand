@@ -76,8 +76,11 @@ func (p *Processor) processRemoteDiscord(ctx context.Context, task *workerprotoc
 		return p.handleRemoteHostDiscordTool(toolCtx, task, runtime, request, report)
 	})
 	defer unbind()
+	interactive := make(chan bool, 1)
 	unbindInteractive := p.hostRuntime.BindInteractive(threadID,
 		func(inputCtx context.Context, request codex.ServerRequest) (any, error) {
+			publishRemoteInteractiveState(interactive, true)
+			defer publishRemoteInteractiveState(interactive, false)
 			return p.handleRemoteInteractive(inputCtx, task, p.hostRuntime.Generation(), request)
 		})
 	defer unbindInteractive()
@@ -87,7 +90,7 @@ func (p *Processor) processRemoteDiscord(ctx context.Context, task *workerprotoc
 	commandHandler := p.hostDiscordCommandHandler(task, runtime, skills, report)
 	if task.Claimed.Recovering {
 		result, recovered, recoverErr := p.reconcileRemoteTurn(ctx, codexRuntime,
-			subscription.Events(), task, threadID, commands, commandHandler, codexReport)
+			subscription.Events(), task, threadID, commands, commandHandler, codexReport, interactive)
 		if recoverErr != nil {
 			return workerprotocol.CompleteRequest{}, recoverErr
 		}
@@ -107,7 +110,7 @@ func (p *Processor) processRemoteDiscord(ctx context.Context, task *workerprotoc
 		return workerprotocol.CompleteRequest{}, err
 	}
 	result, err := p.waitRemoteTurn(ctx, codexRuntime, subscription.Events(), task, threadID,
-		turnID, commands, commandHandler, codexReport)
+		turnID, commands, commandHandler, codexReport, interactive)
 	if err != nil {
 		if needsCleanupInterrupt(err) {
 			interruptTurnBestEffort(codexRuntime, threadID, turnID)

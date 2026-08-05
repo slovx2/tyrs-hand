@@ -763,6 +763,10 @@ func (r *Repository) Reconcile(ctx context.Context, claimed *ClaimedControl, cod
 			error_code = $2, error_message = $3, finished_at = now() WHERE id = $1`, claimed.RunID, code, message)
 	}
 	if err == nil {
+		_, err = tx.ExecContext(ctx, `UPDATE codex_interactive_requests SET status='interrupted',
+			updated_at=now() WHERE run_id=$1 AND status='pending'`, claimed.RunID)
+	}
+	if err == nil {
 		_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET status = $2,
 			active_intent_id = CASE WHEN $2 = 'reconciling' THEN active_intent_id ELSE NULL END,
 			remote_status = CASE WHEN $2 = 'idle' THEN 'idle' ELSE remote_status END,
@@ -845,6 +849,10 @@ func (r *Repository) finishWithCodexError(ctx context.Context, claimed *ClaimedC
 				error_code = NULLIF($3,''), error_message = NULLIF($4,''), codex_error = $5,
 				finished_at = now() WHERE id = $1`, claimed.RunID, runStatus, code, message, codexError)
 		}
+	}
+	if err == nil {
+		_, err = tx.ExecContext(ctx, `UPDATE codex_interactive_requests SET status='interrupted',
+			updated_at=now() WHERE run_id=$1 AND status='pending'`, claimed.RunID)
 	}
 	if err == nil {
 		controlStatus := "idle"
@@ -976,7 +984,10 @@ func (r *Repository) RequeueExpired(ctx context.Context) (int64, error) {
 			control.worker_id::text, COALESCE(intent.input_surface, '')
 		FROM codex_thread_controls AS control
 		JOIN codex_turn_intents AS intent ON intent.id = control.active_intent_id
-		WHERE lease_expires_at < now() AND active_intent_id IS NOT NULL
+		WHERE (lease_expires_at < now() OR EXISTS(
+			SELECT 1 FROM codex_turn_runs run WHERE run.control_id=control.id
+			AND run.active_slot=1 AND run.finished_at IS NOT NULL
+		)) AND active_intent_id IS NOT NULL
 		AND control.status <> 'reconciling' FOR UPDATE OF control SKIP LOCKED`)
 	if err != nil {
 		return 0, err
@@ -1011,9 +1022,17 @@ func (r *Repository) RequeueExpired(ctx context.Context) (int64, error) {
 				return 0, err
 			}
 			_, err = tx.ExecContext(ctx, `UPDATE codex_turn_runs SET status = 'failed',
-				active_slot = NULL, error_code = 'lease_expired',
-				error_message = 'desktop app-server lease expired', finished_at = now()
+				active_slot = NULL, error_code = COALESCE(error_code,'lease_expired'),
+				error_message = COALESCE(error_message,'desktop app-server lease expired'),
+				finished_at = COALESCE(finished_at,now())
 				WHERE control_id = $1 AND active_slot = 1`, value.controlID)
+			if err != nil {
+				return 0, err
+			}
+			_, err = tx.ExecContext(ctx, `UPDATE codex_interactive_requests request
+				SET status='interrupted',updated_at=now() FROM codex_turn_runs run
+				WHERE request.run_id=run.id AND run.control_id=$1
+				AND request.status='pending'`, value.controlID)
 			if err != nil {
 				return 0, err
 			}

@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Button, Card, Muted, Title } from "@/components/ui";
 import { useTheme } from "@/theme/ThemeProvider";
 import type { RunSnapshot, TurnRun } from "@/types/protocol";
+import { buildInteractiveAnswer } from "./interactiveAnswer";
 import { MarkdownContent } from "./MarkdownContent";
 import { buildRunActivity, type OperationsPart } from "./runActivity";
 
@@ -128,7 +129,8 @@ export function InteractiveCard({ interactive, onSubmit }: {
           style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.text }]} />}
     </View>)}
     <Button title="提交回答" disabled={interactive.questions.some((question) => !answers[question.id]?.trim())}
-      testID={`interactive:${encodeURIComponent(interactive.id)}:submit`} onPress={() => onSubmit({ answers })} />
+      testID={`interactive:${encodeURIComponent(interactive.id)}:submit`}
+      onPress={() => onSubmit(buildInteractiveAnswer(answers))} />
   </Card></View>;
 }
 

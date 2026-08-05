@@ -33,6 +33,7 @@ type desktopController struct {
 type desktopCallState struct {
 	subscription *appserverhub.Subscription
 	toolReady    chan desktopToolRuntime
+	interactive  chan bool
 	unbind       func()
 	unbindInput  func()
 }
@@ -114,6 +115,7 @@ func (c *desktopController) PrepareCall(ctx context.Context,
 		state := &desktopCallState{
 			subscription: c.workspace.client.Subscribe(codex.ThreadFilter{ThreadID: threadID}),
 			toolReady:    make(chan desktopToolRuntime, 1),
+			interactive:  make(chan bool, 1),
 		}
 		state.unbind = c.workspace.bindTool(threadID, func(ctx context.Context,
 			request codex.ToolCallRequest,
@@ -134,6 +136,8 @@ func (c *desktopController) PrepareCall(ctx context.Context,
 		})
 		state.unbindInput = c.workspace.bindInteractive(threadID,
 			func(ctx context.Context, request codex.ServerRequest) (any, error) {
+				publishRemoteInteractiveState(state.interactive, true)
+				defer publishRemoteInteractiveState(state.interactive, false)
 				select {
 				case runtime := <-state.toolReady:
 					state.toolReady <- runtime
@@ -687,7 +691,7 @@ func (c *desktopController) observeDesktopTurn(call appserverhub.Call,
 	resultValue, err := c.processor.waitRemoteTurn(ctx, runtime, state.subscription.Events(),
 		&task, threadID, turnID, commands,
 		c.processor.hostDiscordCommandHandler(&task, toolRuntime, []ports.SkillRef{}, reporter.Report),
-		remoteDiscordEventReporter(reporter.Report))
+		remoteDiscordEventReporter(reporter.Report), state.interactive)
 	cancelHeartbeat()
 	if err == nil {
 		reporter.Report("discord.progress", remoteEventPayload(map[string]string{

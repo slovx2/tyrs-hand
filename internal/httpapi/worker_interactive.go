@@ -192,15 +192,18 @@ func (s *Server) workerAnswerInteractive(c *gin.Context) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	var id uuid.UUID
-	var status string
+	var status, runStatus string
+	var runFinishedAt sql.NullTime
 	var questions json.RawMessage
-	err = tx.QueryRowContext(c.Request.Context(), `SELECT q.id, q.status, q.questions
+	err = tx.QueryRowContext(c.Request.Context(), `SELECT q.id, q.status, q.questions,
+		r.status, r.finished_at
 		FROM codex_interactive_requests q
 		JOIN codex_thread_controls ct ON ct.id=q.control_id
+		JOIN codex_turn_runs r ON r.id=q.run_id
 		WHERE q.thread_id=$1 AND q.turn_id=$2 AND q.item_id=$3
 		AND ct.workspace_id=$4 AND ct.worker_id=$5
-		FOR UPDATE OF q`, request.ThreadID, request.TurnID, request.ItemID,
-		request.WorkspaceID, worker.ID).Scan(&id, &status, &questions)
+		FOR UPDATE OF q,r`, request.ThreadID, request.TurnID, request.ItemID,
+		request.WorkspaceID, worker.ID).Scan(&id, &status, &questions, &runStatus, &runFinishedAt)
 	if err != nil {
 		remoteRunError(c, "交互请求不存在", err)
 		return
@@ -208,6 +211,10 @@ func (s *Server) workerAnswerInteractive(c *gin.Context) {
 	secret := interactiveQuestionsSecret(questions)
 	if secret && request.Surface != "desktop" {
 		problem(c, http.StatusForbidden, "Secret 交互只能在 Codex Desktop 回答", nil)
+		return
+	}
+	if status == "pending" && (runFinishedAt.Valid || terminalRunStatus(runStatus)) {
+		problem(c, http.StatusConflict, "交互请求所属任务已结束", nil)
 		return
 	}
 	accepted := status == "pending"
@@ -295,9 +302,33 @@ func parseInteractiveParams(raw json.RawMessage) (interactiveParams, bool, error
 
 func validInteractiveAnswer(raw json.RawMessage) bool {
 	var value struct {
-		Answers map[string]json.RawMessage `json:"answers"`
+		Answers map[string]struct {
+			Answers []string `json:"answers"`
+		} `json:"answers"`
 	}
-	return len(raw) > 0 && json.Unmarshal(raw, &value) == nil && value.Answers != nil
+	if len(raw) == 0 || json.Unmarshal(raw, &value) != nil || value.Answers == nil {
+		return false
+	}
+	for _, answer := range value.Answers {
+		if len(answer.Answers) == 0 {
+			return false
+		}
+		for _, item := range answer.Answers {
+			if strings.TrimSpace(item) == "" {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func terminalRunStatus(status string) bool {
+	switch status {
+	case "completed", "failed", "canceled":
+		return true
+	default:
+		return false
+	}
 }
 
 func interactiveQuestionsSecret(raw json.RawMessage) bool {
@@ -362,18 +393,24 @@ func (s *Server) tryResumeInteractive(ctx context.Context, id, workerID uuid.UUI
 	}
 	defer func() { _ = tx.Rollback() }()
 	var runID, controlID, intentID uuid.UUID
-	var status string
+	var status, runStatus string
 	var activeSlot sql.NullInt64
+	var runFinishedAt sql.NullTime
 	var maxJobs int
 	err = tx.QueryRowContext(ctx, `SELECT q.run_id, q.control_id, r.primary_intent_id,
-		q.status, r.active_slot, n.max_concurrent_jobs FROM codex_interactive_requests q
+		q.status, r.status, r.active_slot, r.finished_at, n.max_concurrent_jobs
+		FROM codex_interactive_requests q
 		JOIN codex_turn_runs r ON r.id=q.run_id JOIN workers n ON n.id=r.worker_id
 		WHERE q.id=$1 AND r.worker_id=$2 FOR UPDATE OF q,r,n`, id, workerID).
-		Scan(&runID, &controlID, &intentID, &status, &activeSlot, &maxJobs)
+		Scan(&runID, &controlID, &intentID, &status, &runStatus, &activeSlot,
+			&runFinishedAt, &maxJobs)
 	if err != nil {
 		return false, err
 	}
 	if status != "resolved" && status != "expired" {
+		return false, tx.Commit()
+	}
+	if runFinishedAt.Valid || terminalRunStatus(runStatus) {
 		return false, tx.Commit()
 	}
 	if activeSlot.Valid && activeSlot.Int64 == 1 {
@@ -387,8 +424,14 @@ func (s *Server) tryResumeInteractive(ctx context.Context, id, workerID uuid.UUI
 	if active >= maxJobs {
 		return false, tx.Commit()
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE codex_turn_runs SET status='running', active_slot=1
-		WHERE id=$1`, runID); err == nil {
+	var resumedID uuid.UUID
+	err = tx.QueryRowContext(ctx, `UPDATE codex_turn_runs SET status='running', active_slot=1
+		WHERE id=$1 AND status='waiting_for_user' AND finished_at IS NULL RETURNING id`, runID).
+		Scan(&resumedID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, tx.Commit()
+	}
+	if err == nil {
 		_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET status='active',
 			updated_at=now() WHERE id=$1`, controlID)
 	}

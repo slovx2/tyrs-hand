@@ -12,9 +12,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"go.uber.org/zap"
 )
 
 const expoPushEndpoint = "https://exp.host/--/api/v2/push/send"
+
+const runRecoveryInterval = 5 * time.Second
 
 type clientNotification struct {
 	ID              uuid.UUID
@@ -29,8 +33,11 @@ type clientNotification struct {
 func (s *Server) RunBackground(ctx context.Context) error {
 	pushTicker := time.NewTicker(2 * time.Second)
 	cleanupTicker := time.NewTicker(time.Hour)
+	recoveryTicker := time.NewTicker(runRecoveryInterval)
 	defer pushTicker.Stop()
 	defer cleanupTicker.Stop()
+	defer recoveryTicker.Stop()
+	s.requeueExpiredRuns(ctx)
 	for {
 		select {
 		case <-ctx.Done():
@@ -44,8 +51,18 @@ func (s *Server) RunBackground(ctx context.Context) error {
 			}
 		case <-cleanupTicker.C:
 			s.cleanupClientProtocol(ctx)
+		case <-recoveryTicker.C:
+			s.requeueExpiredRuns(ctx)
 		}
 	}
+}
+
+func (s *Server) requeueExpiredRuns(ctx context.Context) int64 {
+	count, err := codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration).RequeueExpired(ctx)
+	if err != nil && s.logger != nil {
+		s.logger.Warn("回收过期或状态不一致的 Run 失败", zap.Error(err))
+	}
+	return count
 }
 
 func (s *Server) dispatchClientNotification(ctx context.Context) (bool, error) {

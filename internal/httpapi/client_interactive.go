@@ -35,14 +35,16 @@ func (s *Server) clientAnswerInteractive(c *gin.Context) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	var status string
+	var runStatus string
+	var runFinishedAt sql.NullTime
 	var questions json.RawMessage
 	var sessionID, workerID uuid.UUID
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT request.status,request.questions,
-		request.session_id,run.worker_id
+		request.session_id,run.worker_id,run.status,run.finished_at
 		FROM codex_interactive_requests request
 		JOIN codex_turn_runs run ON run.id=request.run_id
-		WHERE request.id=$1 AND request.session_id IS NOT NULL FOR UPDATE OF request`, id).
-		Scan(&status, &questions, &sessionID, &workerID)
+		WHERE request.id=$1 AND request.session_id IS NOT NULL FOR UPDATE OF request,run`, id).
+		Scan(&status, &questions, &sessionID, &workerID, &runStatus, &runFinishedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusNotFound, "交互请求不存在", err)
 		return
@@ -53,6 +55,10 @@ func (s *Server) clientAnswerInteractive(c *gin.Context) {
 	}
 	if interactiveQuestionsSecret(questions) {
 		problem(c, http.StatusForbidden, "Secret 交互只能在 Codex Desktop 回答", nil)
+		return
+	}
+	if status == "pending" && (runFinishedAt.Valid || terminalRunStatus(runStatus)) {
+		problem(c, http.StatusConflict, "交互请求所属任务已结束", nil)
 		return
 	}
 	accepted := status == "pending"

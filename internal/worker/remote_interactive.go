@@ -10,6 +10,14 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
+func publishRemoteInteractiveState(target chan bool, waiting bool) {
+	select {
+	case <-target:
+	default:
+	}
+	target <- waiting
+}
+
 func (p *Processor) handleRemoteInteractive(ctx context.Context, task *workerprotocol.Task,
 	generation int64, request codex.ServerRequest,
 ) (any, error) {

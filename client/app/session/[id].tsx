@@ -17,7 +17,8 @@ export default function SessionDetailScreen() {
         accessibilityRole="button" accessibilityLabel="返回" hitSlop={8} onPress={() => router.back()}
         style={{ minHeight: 44, paddingRight: 12, justifyContent: "center" }}>
         <Text style={{ color: theme.colors.accent, fontFamily: "Inter_500Medium", fontSize: 16 }}>‹ 返回</Text>
-      </Pressable>, headerRight: () => <SessionActionsMenu sessionId={id} /> }} />
+      </Pressable>, headerRight: () => <SessionActionsMenu sessionId={id}
+        onArchiveAccepted={() => router.back()} /> }} />
     <ConversationPane sessionId={id} />
   </Screen>;
 }

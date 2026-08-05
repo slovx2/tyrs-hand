@@ -35,7 +35,6 @@ type ConversationRow =
 
 const outerPositioning = {
   animateAutoScrollToBottom: false,
-  startRenderingFromBottom: true,
 } as const;
 
 function conversationRowKey(item: ConversationRow): string {
@@ -82,6 +81,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const [turnCursor, setTurnCursor] = useState("");
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
   const [outerScrollEnabled, setOuterScrollEnabled] = useState(true);
+  const [listPositioned, setListPositioned] = useState(false);
   const [draftReady, setDraftReady] = useState(false);
   const list = useRef<FlashListRef<ConversationRow>>(null);
   const activeSessionId = useRef(sessionId);
@@ -193,6 +193,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     finalDraftSequences.current.clear();
     setShowScrollToLatest(false);
     setOuterScrollEnabled(true);
+    setListPositioned(false);
     nearBottom.current = true;
     outerPinnedToLatest.current = true;
     outerDragging.current = false;
@@ -421,7 +422,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       height: nativeEvent.layout.height, width: nativeEvent.layout.width,
     })}>
       <FlashList key={sessionId} ref={list}
-      style={{ flex: 1 }}
+      style={{ flex: 1, opacity: listPositioned ? 1 : 0 }}
       testID="messages:list" data={conversationRows} extraData={rowExtraData}
       keyExtractor={conversationRowKey}
       renderItem={renderConversationRow}
@@ -456,8 +457,13 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       onLoad={() => {
         if (initialPositioned.current) return;
         initialPositioned.current = true;
+        list.current?.scrollToEnd({ animated: false });
         setShowScrollToLatest(false);
-        previewPerf("conversation:initial-position", { source: "start-rendering-from-bottom" });
+        requestAnimationFrame(() => {
+          if (activeSessionId.current !== sessionId) return;
+          setListPositioned(true);
+          previewPerf("conversation:initial-position", { source: "scroll-to-end-before-reveal" });
+        });
       }}
       onScrollBeginDrag={() => {
         outerDragging.current = true;

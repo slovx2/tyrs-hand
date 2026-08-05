@@ -207,6 +207,8 @@ func TestReconcileExhaustedIntentReturnsControlToIdle(t *testing.T) {
 	mock.ExpectExec("UPDATE codex_turn_runs SET status = 'failed'").
 		WithArgs(claimed.RunID, "desktop_turn_error", "runtime failed").
 		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE codex_interactive_requests SET status='interrupted'").
+		WithArgs(claimed.RunID).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("UPDATE codex_thread_controls SET status").
 		WithArgs(claimed.ControlID, "idle", "desktop_turn_error", "runtime failed").
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -245,6 +247,8 @@ func TestReconcileDesktopIntentReturnsControlToIdleImmediately(t *testing.T) {
 	mock.ExpectExec("UPDATE codex_turn_runs SET status = 'failed'").
 		WithArgs(claimed.RunID, "desktop_turn_error", "runtime failed").
 		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE codex_interactive_requests SET status='interrupted'").
+		WithArgs(claimed.RunID).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("UPDATE codex_thread_controls SET status").
 		WithArgs(claimed.ControlID, "idle", "desktop_turn_error", "runtime failed").
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -283,6 +287,8 @@ func TestCancelFinishesSteerIntents(t *testing.T) {
 	mock.ExpectExec("UPDATE codex_turn_runs SET status = \\$2").
 		WithArgs(claimed.RunID, IntentCanceled, "user_interrupt", "stopped").
 		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE codex_interactive_requests SET status='interrupted'").
+		WithArgs(claimed.RunID).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("UPDATE codex_thread_controls SET status = \\$2").
 		WithArgs(claimed.ControlID, "idle", "user_interrupt", "stopped").
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -322,6 +328,8 @@ func TestNonRetryableCodexErrorFinishesImmediatelyAndPersistsDetails(t *testing.
 	mock.ExpectExec("UPDATE codex_turn_runs SET status = \\$2").
 		WithArgs(claimed.RunID, IntentFailed, "codex_non_retryable_error", "at capacity", encoded).
 		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE codex_interactive_requests SET status='interrupted'").
+		WithArgs(claimed.RunID).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("UPDATE codex_thread_controls SET status = \\$2").
 		WithArgs(claimed.ControlID, "error", "codex_non_retryable_error", "at capacity").
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -352,6 +360,8 @@ func TestRequeueExpiredDesktopIntentReturnsControlToIdle(t *testing.T) {
 	mock.ExpectExec("UPDATE codex_turn_runs SET status = 'failed'").
 		WithArgs(controlID).
 		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE codex_interactive_requests request").
+		WithArgs(controlID).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("UPDATE codex_thread_controls SET status = 'idle'").
 		WithArgs(controlID).
 		WillReturnResult(sqlmock.NewResult(0, 1))
