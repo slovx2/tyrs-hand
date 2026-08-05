@@ -3,8 +3,10 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
+	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/stretchr/testify/require"
 )
 
@@ -59,4 +61,59 @@ func TestNormalizeGeneratedSessionTitle(t *testing.T) {
 	require.Equal(t, "测试 标题", normalizeGeneratedSessionTitle("  测试\n标题  "))
 	require.Len(t, []rune(normalizeGeneratedSessionTitle("一二三四五六七八九十一二三四五六七八九十"+
 		"一二三四五六七八九十一二三四五六七八九十")), sessionTitleMaxRunes)
+}
+
+func TestWaitSessionTitleTurnUsesCompletedItemForEphemeralThread(t *testing.T) {
+	events := make(chan codex.Event, 2)
+	events <- codex.Event{Method: "item/completed", Params: json.RawMessage(
+		`{"threadId":"title-thread","turnId":"title-turn","item":{` +
+			`"type":"agentMessage","phase":"final_answer","text":"{\"title\":\"真实 Luna 标题\"}"}}`)}
+	events <- codex.Event{Method: "turn/completed", Params: json.RawMessage(
+		`{"threadId":"title-thread","turn":{"id":"title-turn","status":"completed"}}`)}
+
+	output, err := waitSessionTitleTurn(context.Background(), events, "title-thread", "title-turn")
+	require.NoError(t, err)
+	require.JSONEq(t, `{"title":"真实 Luna 标题"}`, output)
+}
+
+func TestWaitSessionTitleTurnRejectsCompletedTurnWithoutOutput(t *testing.T) {
+	events := make(chan codex.Event, 1)
+	events <- codex.Event{Method: "turn/completed", Params: json.RawMessage(
+		`{"threadId":"title-thread","turn":{"id":"title-turn","status":"completed"}}`)}
+
+	_, err := waitSessionTitleTurn(context.Background(), events, "title-thread", "title-turn")
+	require.ErrorContains(t, err, "没有最终输出")
+}
+
+func TestWaitSessionTitleTurnErrors(t *testing.T) {
+	t.Run("event stream closed", func(t *testing.T) {
+		events := make(chan codex.Event)
+		close(events)
+		_, err := waitSessionTitleTurn(context.Background(), events, "thread", "turn")
+		require.ErrorContains(t, err, "事件流已关闭")
+	})
+
+	t.Run("context canceled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err := waitSessionTitleTurn(ctx, make(chan codex.Event), "thread", "turn")
+		require.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("terminal failure", func(t *testing.T) {
+		events := make(chan codex.Event, 2)
+		events <- codex.Event{Method: "turn/completed", Params: json.RawMessage(
+			`{"threadId":"other","turn":{"id":"turn","status":"completed"}}`)}
+		events <- codex.Event{Method: "turn/completed", Params: json.RawMessage(
+			`{"threadId":"thread","turn":{"id":"turn","status":"failed"}}`)}
+		_, err := waitSessionTitleTurn(context.Background(), events, "thread", "turn")
+		require.ErrorContains(t, err, "终态为 failed")
+	})
+}
+
+func TestSessionTitleErrorCode(t *testing.T) {
+	require.Equal(t, "timeout", sessionTitleErrorCode(context.DeadlineExceeded))
+	require.Equal(t, "invalid_output", sessionTitleErrorCode(errors.New("luna 标题不符合结构化输出")))
+	require.Equal(t, "invalid_output", sessionTitleErrorCode(errors.New("luna 标题为空")))
+	require.Equal(t, "generation_failed", sessionTitleErrorCode(errors.New("upstream unavailable")))
 }

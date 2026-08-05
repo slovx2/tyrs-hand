@@ -11,7 +11,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/slovx2/tyrs-hand/internal/appserverhub"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
@@ -92,7 +91,7 @@ func (c *HostDesktopController) generateSessionTitle(ctx context.Context,
 	if err != nil {
 		return "", err
 	}
-	raw, err := waitSessionTitleTurn(ctx, client, subscription, threadID, turnID)
+	raw, err := waitSessionTitleTurn(ctx, subscription.Events(), threadID, turnID)
 	if err != nil {
 		return "", err
 	}
@@ -164,16 +163,19 @@ func startSessionTitleTurn(ctx context.Context, client sessionTitleCaller, threa
 	return response.Turn.ID, nil
 }
 
-func waitSessionTitleTurn(ctx context.Context, client *appserverhub.Client,
-	subscription *appserverhub.Subscription, threadID, turnID string,
+func waitSessionTitleTurn(ctx context.Context, events <-chan codex.Event, threadID, turnID string,
 ) (string, error) {
+	var finalOutput string
 	for {
 		select {
 		case <-ctx.Done():
 			return "", ctx.Err()
-		case event, ok := <-subscription.Events():
+		case event, ok := <-events:
 			if !ok {
 				return "", errors.New("luna 标题事件流已关闭")
+			}
+			if output, _ := finalOutputFromEvent(event); output != "" {
+				finalOutput = output
 			}
 			if event.Method != "turn/completed" {
 				continue
@@ -185,19 +187,10 @@ func waitSessionTitleTurn(ctx context.Context, client *appserverhub.Client,
 			if status != "completed" {
 				return "", fmt.Errorf("luna 标题 Turn 终态为 %s", status)
 			}
-			snapshot, err := codex.NewRuntime(client).ReadThread(ctx, threadID)
-			if err != nil {
-				return "", err
-			}
-			turn, found := snapshot.TurnByID(turnID)
-			if !found {
-				return "", errors.New("luna 标题 Turn 快照不存在")
-			}
-			output, _ := turn.FinalOutput()
-			if strings.TrimSpace(output) == "" {
+			if finalOutput == "" {
 				return "", errors.New("luna 标题 Turn 没有最终输出")
 			}
-			return output, nil
+			return finalOutput, nil
 		}
 	}
 }
