@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { RunActivity, RunSnapshot } from "@/types/protocol";
-import { buildProjectedRunActivity, buildRunActivity } from "./runActivity";
+import { buildProjectedRunActivity, buildRunActivity, isUnclosedOperationsPart } from "./runActivity";
 
 function snapshot(timeline: RunSnapshot["timeline"]): RunSnapshot {
   return {
@@ -70,5 +70,25 @@ describe("buildProjectedRunActivity", () => {
         { id: "tool", label: "已搜索 分页", status: "completed" },
       ] },
     ]);
+  });
+
+  it("仅在工具组后没有 commentary 或 final answer 时保持未闭合", () => {
+    const operation: RunActivity = {
+      id: "00000000-0000-4000-8000-000000000303", itemId: "tool", kind: "operation",
+      firstEventSequence: 5, lastEventSequence: 6, status: "completed",
+      payload: { eventType: "item/completed", item: { type: "webSearch", query: "流式" } },
+      occurredAt: "2026-08-04T00:00:02Z",
+    };
+    const trailingOperations = buildProjectedRunActivity([operation]);
+    expect(isUnclosedOperationsPart(trailingOperations, 0, true, false)).toBe(true);
+    expect(isUnclosedOperationsPart(trailingOperations, 0, true, true)).toBe(false);
+    expect(isUnclosedOperationsPart(trailingOperations, 0, false, false)).toBe(false);
+
+    const followedByCommentary = buildProjectedRunActivity([operation, {
+      id: "00000000-0000-4000-8000-000000000304", itemId: "commentary", kind: "commentary",
+      firstEventSequence: 7, lastEventSequence: 8, status: "completed",
+      payload: { text: "工具调用完成，继续处理。" }, occurredAt: "2026-08-04T00:00:03Z",
+    }]);
+    expect(isUnclosedOperationsPart(followedByCommentary, 0, true, false)).toBe(false);
   });
 });

@@ -5,6 +5,12 @@ export type Operation = { id: string; label: string; status: "running" | "comple
 export type OperationsPart = { kind: "operations"; id: string; operations: Operation[] };
 export type RunActivityPart = CommentaryPart | OperationsPart;
 
+export function isUnclosedOperationsPart(parts: RunActivityPart[], index: number,
+  segmentActive: boolean, hasFinalAnswer: boolean): boolean {
+  return segmentActive && !hasFinalAnswer && index === parts.length - 1 &&
+    parts[index]?.kind === "operations";
+}
+
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? value as Record<string, unknown> : {};
 }

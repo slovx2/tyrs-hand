@@ -27,7 +27,8 @@ import { conversationTurnIdFromPayload } from "./updateRouting";
 
 type ConversationRow =
   | { kind: "message"; message: Message }
-  | { kind: "segment"; run: TurnRun; segment: RunSegment; continued: boolean; active: boolean }
+  | { kind: "segment"; run: TurnRun; segment: RunSegment; continued: boolean; active: boolean;
+    hasFinalAnswer: boolean }
   | { kind: "interactive"; id: string }
   | { kind: "stream"; runId: string };
 
@@ -88,6 +89,9 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const historyPagingReady = useRef(false);
   const finalDraftSequences = useRef(new Map<string, Set<number>>());
   const nearBottom = useRef(true);
+  const outerPinnedToLatest = useRef(true);
+  const outerDragging = useRef(false);
+  const outerMomentum = useRef(false);
   const initialPositioned = useRef(false);
   const lastAutoScrollKey = useRef<string | undefined>(undefined);
   const activeRunId = useRef<string | null>(null);
@@ -181,6 +185,9 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     setShowScrollToLatest(false);
     setOuterScrollEnabled(true);
     nearBottom.current = true;
+    outerPinnedToLatest.current = true;
+    outerDragging.current = false;
+    outerMomentum.current = false;
     initialPositioned.current = false;
     lastAutoScrollKey.current = undefined;
     activeRunId.current = null;
@@ -264,6 +271,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       const rendered = new Set<string>();
       const users = turn.messages.filter((message) => message.role !== "agent");
       const agents = turn.messages.filter((message) => message.role === "agent");
+      const finalRun = turn.runs.at(-1);
       for (const run of turn.runs) {
         for (let index = 0; index < run.segments.length; index++) {
           const segment = run.segments[index]!;
@@ -280,7 +288,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
           const isLatest = turn.id === latestTurn?.id && run.id === latestRun?.id &&
             segment.id === run.segments.at(-1)?.id;
           rows.push({ kind: "segment", run, segment, continued: index < run.segments.length - 1,
-            active: Boolean(isLatest && running) });
+            active: Boolean(isLatest && running), hasFinalAnswer: agents.length > 0 &&
+              run.id === finalRun?.id && segment.id === run.segments.at(-1)?.id });
         }
       }
       for (const message of users) {
@@ -309,8 +318,9 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   }, []);
   const lockOuterScroll = useCallback(() => setOuterScrollEnabled(false), [setOuterScrollEnabled]);
   const unlockOuterScroll = useCallback(() => setOuterScrollEnabled(true), [setOuterScrollEnabled]);
-  const followLatestActivity = useCallback(() => {
-    if (!nearBottom.current) return;
+  const followLatestActivity = useCallback((force = false) => {
+    if (!force && !outerPinnedToLatest.current) return;
+    outerPinnedToLatest.current = true;
     previewPerf("conversation:programmatic-scroll", { source: "segment-activity", target: "end" });
     list.current?.scrollToEnd({ animated: true });
     setShowScrollToLatest(false);
@@ -320,7 +330,9 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     item.kind === "message" ? <MessageBubble message={item.message} /> :
       item.kind === "segment" ? <RunSegmentCard run={item.run} segment={item.segment}
         continued={item.continued} active={item.active} maxHeight={segmentCardMaxHeight}
-        liveVersion={liveVersions[item.run.id] ?? 0} onInteractionStart={lockOuterScroll}
+        liveVersion={liveVersions[item.run.id] ?? 0}
+        hasFinalAnswer={item.hasFinalAnswer || Boolean(finalDrafts[item.run.id])}
+        onInteractionStart={lockOuterScroll}
         onInteractionEnd={unlockOuterScroll} onFollowLatest={followLatestActivity}
         onFinalDraft={handleFinalDraft} /> :
         item.kind === "interactive" ? <View style={styles.interactiveHistory}>
@@ -338,7 +350,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     if (!finalMessageId || finalMessageId === lastAutoScrollKey.current) return;
     lastAutoScrollKey.current = finalMessageId;
-    if (!initialPositioned.current || !nearBottom.current) return;
+    if (!initialPositioned.current || !outerPinnedToLatest.current) return;
     const frame = requestAnimationFrame(() => {
       previewPerf("conversation:programmatic-scroll", { source: "final-message", target: "end" });
       list.current?.scrollToEnd({ animated: true });
@@ -414,6 +426,9 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         }
         updateScrollState(scrollMetrics.current.contentHeight, scrollMetrics.current.viewportHeight,
           scrollMetrics.current.offsetY);
+        if (outerDragging.current || outerMomentum.current) {
+          outerPinnedToLatest.current = nearBottom.current;
+        }
       }}
       onContentSizeChange={(_, contentHeight) => {
         previewPerf("conversation:content-size", { previous: scrollMetrics.current.contentHeight.toFixed(1),
@@ -430,7 +445,17 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         previewPerf("conversation:initial-position", { source: "start-rendering-from-bottom" });
       }}
       onScrollBeginDrag={() => {
+        outerDragging.current = true;
         if (initialSyncComplete) historyPagingReady.current = true;
+      }}
+      onScrollEndDrag={() => {
+        outerPinnedToLatest.current = nearBottom.current;
+        outerDragging.current = false;
+      }}
+      onMomentumScrollBegin={() => { outerMomentum.current = true; }}
+      onMomentumScrollEnd={() => {
+        outerPinnedToLatest.current = nearBottom.current;
+        outerMomentum.current = false;
       }}
       onStartReached={() => {
         if (!historyPagingReady.current || historyPaging.current || !hasMore || !turnCursor) return;
@@ -448,6 +473,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       {showScrollToLatest && <Pressable testID="chat:scroll-to-latest" accessibilityRole="button"
         accessibilityLabel="回到最新消息" onPress={() => {
           nearBottom.current = true;
+          outerPinnedToLatest.current = true;
           setShowScrollToLatest(false);
           previewPerf("conversation:programmatic-scroll", { source: "latest-button", target: "end" });
           list.current?.scrollToEnd({ animated: true });
@@ -467,6 +493,13 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
           onPress={() => void outbox.discard(item.localId)} /></>}
     </View>)}
     <View style={[styles.composerDock, { borderTopColor: theme.colors.border, backgroundColor: theme.colors.app }]}>
+      <View pointerEvents="none" style={styles.composerShadow}>
+        {(theme.dark
+          ? ["rgba(0,0,0,0.02)", "rgba(0,0,0,0.05)", "rgba(0,0,0,0.10)", "rgba(0,0,0,0.18)"]
+          : ["rgba(31,35,40,0.01)", "rgba(31,35,40,0.025)", "rgba(31,35,40,0.05)", "rgba(31,35,40,0.09)"]
+        ).map((backgroundColor) => <View key={backgroundColor} style={[styles.composerShadowBand,
+          { backgroundColor }]} />)}
+      </View>
       <ChatComposer value={text} onChange={setText} attachments={attachments}
         onAttachmentsChange={setAttachments} onParameters={() => {
           setSettingsBeforeSheet(settings); setShowParameters(true);
@@ -492,7 +525,9 @@ const styles = StyleSheet.create({
     borderRadius: 21, borderWidth: StyleSheet.hairlineWidth, alignItems: "center",
     justifyContent: "center", elevation: 5 },
   scrollToLatestIcon: { fontFamily: "Inter_500Medium", fontSize: 22, lineHeight: 26 },
-  composerDock: { borderTopWidth: StyleSheet.hairlineWidth },
+  composerDock: { borderTopWidth: StyleSheet.hairlineWidth, position: "relative", zIndex: 2 },
+  composerShadow: { position: "absolute", left: 0, right: 0, top: -20, height: 20 },
+  composerShadowBand: { flex: 1 },
   outbox: { marginHorizontal: 12, marginTop: 6, borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 8, padding: 8, flexDirection: "row", alignItems: "center", gap: 8 },
 });

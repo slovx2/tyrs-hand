@@ -9,7 +9,8 @@ import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
 import type { RunActivity, RunSegment, TurnRun } from "@/types/protocol";
 import { MarkdownContent } from "./MarkdownContent";
-import { buildProjectedRunActivity, type OperationsPart, type RunActivityPart } from "./runActivity";
+import { buildProjectedRunActivity, isUnclosedOperationsPart, type OperationsPart,
+  type RunActivityPart } from "./runActivity";
 
 function mergeActivities(current: RunActivity[], incoming: RunActivity[]): RunActivity[] {
   const values = new Map(current.map((item) => [item.id, item]));
@@ -24,37 +25,44 @@ function duration(run: TurnRun): string {
   return seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`;
 }
 
-const Operations = memo(function Operations({ part }: { part: OperationsPart }) {
+const Operations = memo(function Operations({ part, lockedOpen }: {
+  part: OperationsPart; lockedOpen: boolean;
+}) {
   const theme = useTheme();
   const [expanded, setExpanded] = useRecyclingState(false, [part.id]);
+  const expandable = part.operations.length > 1;
+  const open = lockedOpen || expanded;
   const summary = part.operations.length === 1 ? part.operations[0]!.label :
     `${part.operations[0]!.label}等 ${part.operations.length} 项操作`;
   return <View style={styles.operation}>
-    <Pressable onPress={() => setExpanded((value) => !value)} style={styles.operationHeader}>
+    <Pressable disabled={!expandable || lockedOpen} accessibilityRole={expandable ? "button" : undefined}
+      accessibilityState={expandable ? { expanded: open, disabled: lockedOpen } : undefined}
+      onPress={() => setExpanded((value) => !value)} style={styles.operationHeader}>
       <Text style={{ color: theme.colors.textMuted }}>↳</Text>
-      <Text selectable numberOfLines={1} style={[styles.operationSummary, { color: theme.colors.textMuted }]}>
+      <Text numberOfLines={1} ellipsizeMode="tail"
+        style={[styles.operationSummary, { color: theme.colors.textMuted }]}>
         {summary}
       </Text>
-      <Text style={{ color: theme.colors.textMuted }}>{expanded ? "⌃" : "⌄"}</Text>
+      {expandable ? <Text style={{ color: theme.colors.textMuted }}>{open ? "⌃" : "⌄"}</Text> : null}
     </Pressable>
-    {expanded && part.operations.map((item) => <View key={item.id} style={styles.operationRow}>
-      <Text style={{ color: item.status === "failed" ? theme.colors.danger : theme.colors.textMuted }}>
-        {item.status === "running" ? "○" : item.status === "failed" ? "!" : "✓"}
-      </Text>
-      <Text selectable style={[styles.operationText, { color: theme.colors.text }]}>{item.label}</Text>
-    </View>)}
+    {open && expandable && part.operations.map((item) =>
+      <View key={item.id} style={styles.operationRow}>
+        <Text style={{ color: item.status === "failed" ? theme.colors.danger : theme.colors.textMuted }}>
+          {item.status === "running" ? "○" : item.status === "failed" ? "!" : "✓"}
+        </Text>
+        <Text numberOfLines={1} ellipsizeMode="tail"
+          style={[styles.operationText, { color: theme.colors.text }]}>{item.label}</Text>
+      </View>)}
   </View>;
 });
 
-const RunActivityItem = memo(function RunActivityItem({ part }: { part: RunActivityPart }) {
+const RunActivityItem = memo(function RunActivityItem({ part, lockedOpen }: {
+  part: RunActivityPart; lockedOpen: boolean;
+}) {
   return part.kind === "commentary" ?
     <View style={styles.commentary}><MarkdownContent compact>{part.text}</MarkdownContent></View> :
-    <Operations part={part} />;
+    <Operations part={part} lockedOpen={lockedOpen} />;
 });
-
-function renderRunActivity({ item }: { item: RunActivityPart }) {
-  return <RunActivityItem part={item} />;
-}
 
 const minimumActivityHeight = 96;
 const innerPositioning = {
@@ -68,17 +76,16 @@ function runActivityPartType(part: RunActivityPart): string {
 }
 
 export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, continued, active, maxHeight, liveVersion,
-  onInteractionStart, onInteractionEnd, onFollowLatest, onFinalDraft }: {
+  hasFinalAnswer, onInteractionStart, onInteractionEnd, onFollowLatest, onFinalDraft }: {
   run: TurnRun; segment: RunSegment; continued: boolean; active: boolean; maxHeight: number;
-  liveVersion: number; onInteractionStart: () => void; onInteractionEnd: () => void;
-  onFollowLatest: () => void; onFinalDraft: (runId: string, text: string) => void;
+  liveVersion: number; hasFinalAnswer: boolean; onInteractionStart: () => void; onInteractionEnd: () => void;
+  onFollowLatest: (force?: boolean) => void; onFinalDraft: (runId: string, text: string) => void;
 }) {
   const renderStartedAt = performance.now();
   const theme = useTheme();
   const connection = useAppStore((state) => state.activeConnection);
   const terminal = ["completed", "failed", "canceled"].includes(run.status);
   const activityMaxHeight = Math.max(minimumActivityHeight, maxHeight - 84);
-  const initialActivityHeight = segment.activityCount > 4 ? activityMaxHeight : minimumActivityHeight;
   const [expanded, setExpanded] = useRecyclingState(active, [segment.id]);
   const [activities, setActivities] = useRecyclingState<RunActivity[]>([], [segment.id]);
   const [ready, setReady] = useRecyclingState(false, [segment.id]);
@@ -88,8 +95,9 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
   const [loadingOlder, setLoadingOlder] = useRecyclingState(false, [segment.id]);
   const [hasNew, setHasNew] = useRecyclingState(false, [segment.id]);
   const [activityViewportHeight, setActivityViewportHeight] = useRecyclingState(
-    initialActivityHeight, [segment.id]);
+    minimumActivityHeight, [segment.id]);
   const nearBottom = useRef(true);
+  const pinnedToLatest = useRef(true);
   const wasActive = useRef(active);
   const scroll = useRef<FlashListRef<RunActivityPart>>(null);
   const followNextActivityCommit = useRef(false);
@@ -101,11 +109,13 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
   const innerHistoryReady = useRef(false);
   const dragging = useRef(false);
   const momentum = useRef(false);
+  const followLayoutFrame = useRef<number | null>(null);
   const unlockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadLatestPromise = useRef<{ segmentId: string; promise: Promise<void> } | null>(null);
   if (segmentIdentity.current !== segment.id) {
     segmentIdentity.current = segment.id;
     nearBottom.current = true;
+    pinnedToLatest.current = true;
     wasActive.current = active;
     watermark.current = 0;
     requestedVersion.current = 0;
@@ -115,11 +125,17 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
     innerHistoryReady.current = false;
     dragging.current = false;
     momentum.current = false;
+    if (followLayoutFrame.current !== null) cancelAnimationFrame(followLayoutFrame.current);
+    followLayoutFrame.current = null;
     if (unlockTimer.current) clearTimeout(unlockTimer.current);
     unlockTimer.current = null;
     loadLatestPromise.current = null;
   }
   const parts = useMemo(() => buildProjectedRunActivity(activities), [activities]);
+  const renderRunActivity = useCallback(({ item, index }: { item: RunActivityPart; index: number }) =>
+    <RunActivityItem part={item}
+      lockedOpen={isUnclosedOperationsPart(parts, index, active, hasFinalAnswer)} />,
+  [active, hasFinalAnswer, parts]);
   const latestActivitySequence = activities.at(-1)?.lastEventSequence ?? 0;
   const presentation = continued ? { label: "已继续", color: theme.colors.textMuted } :
     run.status === "failed" ? { label: "失败", color: theme.colors.danger } :
@@ -157,15 +173,11 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
         if (segmentIdentity.current !== targetSegmentId) return;
         previewPerf("segment:cache:received", { segmentId: targetSegmentId, activities: cached.length,
           elapsed: (performance.now() - startedAt).toFixed(1) });
-        if (cached.length) {
-          setActivities(cached);
-          if (cached.length > 4) setActivityViewportHeight(activityMaxHeight);
-        }
+        if (cached.length) setActivities(cached);
         const page = await new ClientApi(connection).listRunActivities(run.id, targetSegmentId);
         if (segmentIdentity.current !== targetSegmentId) return;
         previewPerf("segment:page:received", { segmentId: targetSegmentId,
           activities: page.activities.length, elapsed: (performance.now() - startedAt).toFixed(1) });
-        if (page.activities.length > 4) setActivityViewportHeight(activityMaxHeight);
         applyPage(page, false, targetSegmentId);
       } catch (error) {
         if (segmentIdentity.current === targetSegmentId) setLoadFailed(true);
@@ -182,19 +194,18 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
     });
     loadLatestPromise.current = { segmentId: targetSegmentId, promise };
     return promise;
-  }, [activityMaxHeight, applyPage, connection, run.id, segment.id, setActivities,
-    setActivityViewportHeight, setLoadFailed, setReady]);
+  }, [applyPage, connection, run.id, segment.id, setActivities, setLoadFailed, setReady]);
 
   useEffect(() => {
-    setActivityViewportHeight((value) => segment.activityCount > 4 ? activityMaxHeight :
-      Math.min(value, activityMaxHeight));
-  }, [activityMaxHeight, segment.activityCount, setActivityViewportHeight]);
+    setActivityViewportHeight((value) => Math.min(value, activityMaxHeight));
+  }, [activityMaxHeight, setActivityViewportHeight]);
   useEffect(() => {
     if (wasActive.current !== active) setExpanded(active);
     wasActive.current = active;
   }, [active, setExpanded]);
   useEffect(() => () => {
     if (unlockTimer.current) clearTimeout(unlockTimer.current);
+    if (followLayoutFrame.current !== null) cancelAnimationFrame(followLayoutFrame.current);
     onInteractionEnd();
   }, [onInteractionEnd, segment.id]);
   useEffect(() => { if (!expanded) onInteractionEnd(); }, [expanded, onInteractionEnd]);
@@ -210,7 +221,7 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
     if (!expanded || parts.length === 0 ||
       (!followNextActivityCommit.current && !revealNewOnNextActivityCommit.current)) return;
     const targetSegmentId = segment.id;
-    const shouldFollow = followNextActivityCommit.current || nearBottom.current;
+    const shouldFollow = followNextActivityCommit.current || pinnedToLatest.current;
     followNextActivityCommit.current = false;
     revealNewOnNextActivityCommit.current = false;
     if (shouldFollow) {
@@ -238,7 +249,7 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
           { afterEventSeq: cursor });
         if (canceled || segmentIdentity.current !== targetSegmentId) return;
         if (page.activities.length > 0) {
-          if (nearBottom.current) {
+          if (pinnedToLatest.current) {
             followNextActivityCommit.current = true;
             setHasNew(false);
             previewPerf("segment:live-follow", { segmentId: targetSegmentId, mode: "bottom" });
@@ -337,7 +348,8 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
       </View>
       <View style={[styles.activityViewport, { height: activityViewportHeight,
         maxHeight: activityMaxHeight }]}>
-        <FlashList key={segment.id} ref={scroll} data={parts} nestedScrollEnabled
+        <FlashList key={segment.id} ref={scroll} data={parts}
+          extraData={active && !hasFinalAnswer} nestedScrollEnabled
           bounces={false} overScrollMode="never"
           drawDistance={120}
           getItemType={runActivityPartType}
@@ -346,13 +358,23 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
           maintainVisibleContentPosition={innerPositioning} style={styles.activityList}
           contentContainerStyle={styles.content}
           onContentSizeChange={(_width, contentHeight) => {
-            const longContent = segment.activityCount > 4 || activities.length > 4;
-            const next = longContent ? activityMaxHeight : Math.max(minimumActivityHeight,
+            const next = Math.max(minimumActivityHeight,
               Math.min(activityMaxHeight, Math.ceil(contentHeight)));
             previewPerf("segment:content-size", { segmentId: segment.id,
               contentHeight: contentHeight.toFixed(1), previousViewport: activityViewportHeight,
               nextViewport: next });
             setActivityViewportHeight((current) => current === next ? current : next);
+            if (active && pinnedToLatest.current) {
+              const targetSegmentId = segment.id;
+              if (followLayoutFrame.current !== null) cancelAnimationFrame(followLayoutFrame.current);
+              followLayoutFrame.current = requestAnimationFrame(() => {
+                followLayoutFrame.current = null;
+                if (segmentIdentity.current !== targetSegmentId || !pinnedToLatest.current) return;
+                previewPerf("segment:auto-scroll", { segmentId: targetSegmentId, source: "content-size" });
+                scroll.current?.scrollToEnd({ animated: false });
+                onFollowLatest();
+              });
+            }
           }}
           onTouchStart={() => {
             clearUnlockTimer();
@@ -369,6 +391,7 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
             onInteractionStart();
           }}
           onScrollEndDrag={() => {
+            pinnedToLatest.current = nearBottom.current;
             dragging.current = false;
             scheduleOuterScrollRelease();
           }}
@@ -377,11 +400,15 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
             momentum.current = true;
             onInteractionStart();
           }}
-          onMomentumScrollEnd={releaseOuterScroll}
+          onMomentumScrollEnd={() => {
+            pinnedToLatest.current = nearBottom.current;
+            releaseOuterScroll();
+          }}
           scrollEventThrottle={80} onScroll={({ nativeEvent }) => {
             const distance = nativeEvent.contentSize.height - nativeEvent.layoutMeasurement.height -
               nativeEvent.contentOffset.y;
             nearBottom.current = distance < 80;
+            if (dragging.current || momentum.current) pinnedToLatest.current = nearBottom.current;
             if (distance <= 8) setHasNew(false);
           }}
           onStartReached={() => {
@@ -399,9 +426,9 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
       }, theme.shadow]} onPress={() => {
         followNextActivityCommit.current = false;
         revealNewOnNextActivityCommit.current = false;
-        setHasNew(false); nearBottom.current = true;
+        setHasNew(false); nearBottom.current = true; pinnedToLatest.current = true;
         scroll.current?.scrollToEnd({ animated: true });
-        onFollowLatest();
+        onFollowLatest(true);
       }}><Text style={{ color: theme.colors.accent }}>有新消息 ↓</Text></Pressable>}
     </>}
   </View>;
