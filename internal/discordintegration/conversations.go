@@ -499,7 +499,15 @@ func (s *ConversationService) insertMessage(ctx context.Context, tx *sql.Tx, con
 	return true, nil
 }
 
-func (s *ConversationService) enqueueMessage(ctx context.Context, tx *sql.Tx, conversationID uuid.UUID, messageID string) error {
+func (s *ConversationService) enqueueMessage(ctx context.Context, tx *sql.Tx,
+	conversationID uuid.UUID, messageID string,
+) error {
+	return s.enqueueMessageWithDisplay(ctx, tx, conversationID, messageID, "")
+}
+
+func (s *ConversationService) enqueueMessageWithDisplay(ctx context.Context, tx *sql.Tx,
+	conversationID uuid.UUID, messageID, displayInstruction string,
+) error {
 	var repositoryID, projectID sql.NullString
 	var profileID uuid.UUID
 	var body, actor, permission, actorDisplayName string
@@ -541,7 +549,8 @@ func (s *ConversationService) enqueueMessage(ctx context.Context, tx *sql.Tx, co
 		AgentProfileID: profileID,
 		IdempotencyKey: "discord:message:" + messageID,
 		MessageLocalID: "discord:" + messageID,
-		Instruction:    body, AllowedTools: allowed, ActorLogin: actor, ActorPermission: permission,
+		Instruction:    body, DisplayInstruction: displayInstruction,
+		AllowedTools: allowed, ActorLogin: actor, ActorPermission: permission,
 		ActorParticipantID: actorParticipantID, ActorDisplayName: actorDisplayName,
 		ReplyPolicy: "silent", Behavior: "steer_if_active",
 		ProjectionAnchor: messageID,

@@ -94,6 +94,7 @@ type EnqueueRequest struct {
 	IdempotencyKey        string
 	MessageLocalID        string
 	Instruction           string
+	DisplayInstruction    string
 	Skills                []string
 	AllowedTools          []string
 	DangerousActions      []string

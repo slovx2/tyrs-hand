@@ -265,9 +265,13 @@ func (r *Repository) appendSessionInputTx(ctx context.Context, tx *sql.Tx, inten
 			return err
 		}
 	}
+	displayInstruction := request.DisplayInstruction
+	if displayInstruction == "" {
+		displayInstruction = DisplayInstruction(request.Instruction)
+	}
 	content := encode(map[string]any{"t": "plain", "v": map[string]any{
 		"role": "user", "content": map[string]any{"type": "codex", "data": map[string]any{
-			"type": "message", "message": request.Instruction,
+			"type": "message", "message": displayInstruction,
 		}},
 	}})
 	var messageID uuid.UUID
@@ -285,14 +289,14 @@ func (r *Repository) appendSessionInputTx(ctx context.Context, tx *sql.Tx, inten
 		return err
 	}
 	if err := EnqueueSessionTitleTx(ctx, tx, request.SessionID, messageID,
-		request.Instruction); err != nil {
+		displayInstruction); err != nil {
 		return err
 	}
 	payload := encode(map[string]any{
 		"messageId": messageID, "sessionId": request.SessionID, "seq": sequence,
 		"localId": request.MessageLocalID, "participantId": request.ActorParticipantID,
 		"conversationTurnId": intentID,
-		"role":               "user", "content": map[string]any{"type": "text", "text": request.Instruction},
+		"role":               "user", "content": map[string]any{"type": "text", "text": displayInstruction},
 		"attachments": []any{}, "createdAt": createdAt, "updatedAt": createdAt,
 	})
 	_, err = tx.ExecContext(ctx, `INSERT INTO client_updates(

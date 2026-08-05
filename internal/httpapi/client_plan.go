@@ -12,8 +12,6 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const clientPlanExecuteInstruction = "Implement the plan."
-
 func (s *Server) clientExecutePlan(c *gin.Context) {
 	sessionID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -33,17 +31,21 @@ func (s *Server) clientExecutePlan(c *gin.Context) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	var controlID uuid.UUID
-	var status, mode, lifecycle string
+	var status, mode, lifecycle, planContent, planOutputType string
 	var started time.Time
 	var finished sql.NullTime
 	var settingsVersion int64
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT run.control_id,run.status,
 		run.collaboration_mode,session.lifecycle_state,run.started_at,run.finished_at,
-		session.settings_version FROM codex_turn_runs run
+		session.settings_version,COALESCE(plan_intent.result->>'finalAnswer',''),
+		COALESCE(plan_intent.result->>'finalOutputType','')
+		FROM codex_turn_runs run
 		JOIN codex_thread_controls control ON control.id=run.control_id
+		JOIN codex_turn_intents plan_intent ON plan_intent.id=run.primary_intent_id
 		JOIN workspace_sessions session ON session.id=control.session_id
 		WHERE run.id=$1 AND session.id=$2 FOR UPDATE OF run,control,session`, runID, sessionID).
-		Scan(&controlID, &status, &mode, &lifecycle, &started, &finished, &settingsVersion)
+		Scan(&controlID, &status, &mode, &lifecycle, &started, &finished, &settingsVersion,
+			&planContent, &planOutputType)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusNotFound, "Plan 不存在", err)
 		return
@@ -52,7 +54,8 @@ func (s *Server) clientExecutePlan(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "读取 Plan 失败", err)
 		return
 	}
-	if status != "completed" || mode != "plan" || !finished.Valid {
+	if status != "completed" || mode != "plan" || !finished.Valid || planContent == "" ||
+		planOutputType != "plan" {
 		problem(c, http.StatusConflict, "Plan 尚未完成，不能执行", nil)
 		return
 	}
@@ -116,9 +119,11 @@ func (s *Server) clientExecutePlan(c *gin.Context) {
 	intentID, inserted, err := repository.Enqueue(c.Request.Context(), tx,
 		codexcontrol.EnqueueRequest{SourceType: codexcontrol.SourceWorkspace,
 			SessionID: sessionID, InputSurface: "client", IdempotencyKey: idempotencyKey,
-			MessageLocalID: "plan-execution:" + runID.String(),
-			Instruction:    clientPlanExecuteInstruction, Behavior: "start_when_idle",
-			ReplyPolicy: "silent", ActorLogin: actor.Username, ActorPermission: "owner",
+			MessageLocalID:     "plan-execution:" + runID.String(),
+			Instruction:        codexcontrol.PlanExecutionInstruction(planContent),
+			DisplayInstruction: codexcontrol.PlanExecutionDisplayText,
+			Behavior:           "start_when_idle",
+			ReplyPolicy:        "silent", ActorLogin: actor.Username, ActorPermission: "owner",
 			ActorParticipantID: actor.AdministratorID, ActorDisplayName: actor.Username})
 	if err != nil || !inserted {
 		if err == nil {

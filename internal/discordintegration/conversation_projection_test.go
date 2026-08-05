@@ -10,6 +10,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/stretchr/testify/require"
 )
@@ -332,7 +333,7 @@ func TestPlanExecutionCards(t *testing.T) {
 	require.Equal(t, planExecuteButtonPrefix+runID.String(), completed.Buttons[0].CustomID)
 
 	started := planExecutionStartedCard()
-	require.Equal(t, "✅ Codex · 已开始执行", started.Header)
+	require.Equal(t, "✅ "+codexcontrol.PlanExecutionDisplayText, started.Header)
 	require.Empty(t, started.Buttons)
 }
 

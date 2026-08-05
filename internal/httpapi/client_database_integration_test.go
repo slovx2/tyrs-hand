@@ -360,6 +360,40 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 		loginBody.AccessToken, nil)
 	require.Equal(t, http.StatusOK, activities.Code)
 	require.Contains(t, activities.Body.String(), "projected commentary")
+
+	planContent := "# 移动端执行计划\n\n1. 修改实现\n2. 运行测试"
+	var planIntentID, planRunID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `WITH sequence AS (
+		UPDATE codex_thread_controls SET next_sequence_no=next_sequence_no+1,
+			collaboration_mode='plan',updated_at=now() WHERE id=$1
+			RETURNING next_sequence_no-1 AS value)
+		INSERT INTO codex_turn_intents(control_id,sequence_no,behavior,source_type,input_surface,
+			session_id,workspace_project_id,agent_profile_id,idempotency_key,instruction,status,
+			result,finished_at)
+		SELECT control.id,sequence.value,'start_when_idle','workspace_session','client',
+			control.session_id,control.workspace_project_id,control.agent_profile_id,$2,'create plan',
+			'completed',jsonb_build_object('finalAnswer',$3::text,'finalOutputType','plan'),now()
+		FROM codex_thread_controls control CROSS JOIN sequence WHERE control.id=$1 RETURNING id`,
+		claimed.ControlID, "client-plan-source:"+uuid.NewString(), planContent).Scan(&planIntentID))
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_turn_runs(
+		control_id,primary_intent_id,attempt,lease_owner,lease_epoch,capability_hash,status,
+		worker_id,collaboration_mode,started_at,finished_at)
+		VALUES ($1,$2,1,'client-plan-test',1,$3,'completed',$4,'plan',now(),now()) RETURNING id`,
+		claimed.ControlID, planIntentID, strings.Repeat("b", 64), worker.ID).Scan(&planRunID))
+	_, err = db.ExecContext(ctx, `UPDATE workspace_sessions SET collaboration_mode='plan',
+		updated_at=now() WHERE id=$1`, sessionID)
+	require.NoError(t, err)
+	executedPlan := clientJSONRequest(t, http.MethodPost, endpoint+"/api/v1/client/sessions/"+
+		sessionID.String()+"/plans/"+planRunID.String()+"/execute", loginBody.AccessToken, nil)
+	require.Equal(t, http.StatusCreated, executedPlan.Code, executedPlan.Body.String())
+	var executionInstruction, executionMessage string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT intent.instruction,
+		message.content #>> '{v,content,data,message}' FROM codex_turn_intents intent
+		JOIN session_messages message ON message.turn_intent_id=intent.id
+		WHERE intent.idempotency_key=$1`, "client:plan:"+sessionID.String()+":"+planRunID.String()).
+		Scan(&executionInstruction, &executionMessage))
+	require.Equal(t, codexcontrol.PlanExecutionInstruction(planContent), executionInstruction)
+	require.Equal(t, codexcontrol.PlanExecutionDisplayText, executionMessage)
 }
 
 func requireClientSession(t *testing.T, sessions []clientSession, id uuid.UUID) clientSession {
@@ -392,6 +426,7 @@ func clientIntegrationServer(t *testing.T, db *sql.DB, authService *auth.Service
 	client.POST("/sessions/:id/messages", server.clientCreateMessage)
 	client.GET("/sessions/:id/turns", server.clientListTurns)
 	client.GET("/sessions/:id/turns/:turnId", server.clientGetTurn)
+	client.POST("/sessions/:id/plans/:runId/execute", server.clientExecutePlan)
 	client.GET("/runs/:runId/segments/:segmentId/activities", server.clientListRunActivities)
 	client.POST("/interactive/:id/answer", server.clientAnswerInteractive)
 	client.GET("/updates", server.clientUpdates)

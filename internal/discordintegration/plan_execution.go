@@ -13,7 +13,6 @@ import (
 
 const (
 	planExecuteButtonPrefix = "codex-plan-execute:"
-	planExecuteInstruction  = "Implement the plan."
 )
 
 var (
@@ -38,7 +37,8 @@ func (s *ConversationService) ExecutePlan(ctx context.Context, guildID, threadID
 	defer func() { _ = tx.Rollback() }()
 
 	var controlID, conversationID, forumID uuid.UUID
-	var runStatus, runMode, actualGuildID, actualThreadID, ownerID string
+	var runStatus, runMode, actualGuildID, actualThreadID, ownerID, planContent string
+	var planOutputType string
 	var lifecycle, conversationStatus, currentMode string
 	var runStarted time.Time
 	var runFinished sql.NullTime
@@ -49,15 +49,19 @@ func (s *ConversationService) ExecutePlan(ctx context.Context, guildID, threadID
 		conversation.owner_discord_user_id, conversation.lifecycle_state,
 		conversation.status, conversation.collaboration_mode,
 		conversation.collaboration_mode_revision, conversation.settings_revision,
-		run.started_at, run.finished_at
+		run.started_at, run.finished_at,
+		COALESCE(plan_intent.result->>'finalAnswer',''),
+		COALESCE(plan_intent.result->>'finalOutputType','')
 		FROM codex_turn_runs run
 		JOIN codex_thread_controls control ON control.id = run.control_id
+		JOIN codex_turn_intents plan_intent ON plan_intent.id=run.primary_intent_id
 		JOIN discord_conversations conversation
 			ON conversation.id = control.discord_conversation_id
 		WHERE run.id = $1 FOR UPDATE OF run, control, conversation`, runID).Scan(
 		&controlID, &conversationID, &forumID, &runStatus, &runMode,
 		&actualGuildID, &actualThreadID, &ownerID, &lifecycle, &conversationStatus,
-		&currentMode, &modeRevision, &settingsRevision, &runStarted, &runFinished)
+		&currentMode, &modeRevision, &settingsRevision, &runStarted, &runFinished,
+		&planContent, &planOutputType)
 	if errors.Is(err, sql.ErrNoRows) {
 		return PlanExecutionResult{}, errors.New("这个 Plan 已不存在")
 	}
@@ -84,7 +88,8 @@ func (s *ConversationService) ExecutePlan(ctx context.Context, guildID, threadID
 	if exists {
 		return PlanExecutionResult{AlreadyExecuted: true}, tx.Commit()
 	}
-	if runStatus != "completed" || runMode != "plan" || !runFinished.Valid {
+	if runStatus != "completed" || runMode != "plan" || !runFinished.Valid ||
+		planContent == "" || planOutputType != "plan" {
 		return PlanExecutionResult{}, errors.New("这个 Plan 尚未完成，不能执行")
 	}
 	if lifecycle != "active" || conversationStatus != "active" {
@@ -145,7 +150,7 @@ func (s *ConversationService) ExecutePlan(ctx context.Context, guildID, threadID
 	inserted, err := s.insertMessage(ctx, tx, conversationID, access, IncomingMessage{
 		GuildID: guildID, ThreadID: threadID, MessageID: messageID,
 		DiscordUserID: userID, DisplayName: displayName, Username: username,
-		Body: planExecuteInstruction,
+		Body: codexcontrol.PlanExecutionInstruction(planContent),
 	})
 	if err != nil {
 		return PlanExecutionResult{}, err
@@ -153,7 +158,8 @@ func (s *ConversationService) ExecutePlan(ctx context.Context, guildID, threadID
 	if !inserted {
 		return PlanExecutionResult{AlreadyExecuted: true}, tx.Commit()
 	}
-	if err := s.enqueueMessage(ctx, tx, conversationID, messageID); err != nil {
+	if err := s.enqueueMessageWithDisplay(ctx, tx, conversationID, messageID,
+		codexcontrol.PlanExecutionDisplayText); err != nil {
 		return PlanExecutionResult{}, err
 	}
 	if err := ProjectConversationThinkingTx(ctx, tx, guildID, threadID,
@@ -169,5 +175,5 @@ func (s *ConversationService) ExecutePlan(ctx context.Context, guildID, threadID
 
 func planExecutionStartedCard() ComponentCardPayload {
 	return ComponentCardPayload{AccentColor: cardColorGreen,
-		Header: "✅ Codex · 已开始执行", Body: "`模式：Default`"}
+		Header: "✅ " + codexcontrol.PlanExecutionDisplayText, Body: "`模式：Default`"}
 }

@@ -202,9 +202,10 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		claimed.ActorParticipantID = participantidentity.ID(actorGuildID, actorUserID)
 		claimed.ActorDisplayName = actorDisplayName
 	}
+	displayInstruction := codexcontrol.DisplayInstruction(instruction)
 	images, imageFailures := prepareDesktopImages(request.Images, request.ImageError)
 	projectionInput := discordintegration.FormatDesktopProjectionInput(
-		desktopProjectionText(instruction), request.Params, imageFailures)
+		desktopProjectionText(displayInstruction), request.Params, imageFailures)
 	if claimed.DiscordConversationID == uuid.Nil && desktopRequestID.Valid {
 		if err := s.queueFirstDesktopInput(c.Request.Context(), tx, claimed.ControlID,
 			projectionKey, request.Params, projectionInput); err != nil {
@@ -247,7 +248,7 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	}
 	if !isReplacement {
 		err = appendDesktopSessionMessageTx(c.Request.Context(), tx, claimed.SessionID,
-			"desktop:"+idempotencyKey, instruction, claimed.ActorParticipantID,
+			"desktop:"+idempotencyKey, displayInstruction, claimed.ActorParticipantID,
 			claimed.ActorDisplayName, claimed.ID, claimed.ID)
 		if err != nil {
 			problem(c, http.StatusInternalServerError, "记录 Desktop Session 消息失败", err)

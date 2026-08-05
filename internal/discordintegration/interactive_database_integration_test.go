@@ -14,6 +14,7 @@ import (
 	"github.com/disgoorg/disgo/bot"
 	"github.com/disgoorg/disgo/discord"
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/database"
 	"github.com/stretchr/testify/require"
 )
@@ -153,9 +154,11 @@ func TestExecutePlanSwitchesDefaultAndIsIdempotent(t *testing.T) {
 		active_slot=NULL, collaboration_mode='plan', finished_at=now()-interval '1 second'
 		WHERE id=$1`, runID)
 	require.NoError(t, err)
+	storedPlan := "# 实施计划\n\n1. 修改实现\n2. 运行测试"
 	_, err = db.ExecContext(ctx, `UPDATE codex_turn_intents SET status='completed',
+		result=jsonb_build_object('finalAnswer',$2::text,'finalOutputType','plan'),
 		finished_at=now()-interval '1 second' WHERE id=(
-			SELECT primary_intent_id FROM codex_turn_runs WHERE id=$1)`, runID)
+			SELECT primary_intent_id FROM codex_turn_runs WHERE id=$1)`, runID, storedPlan)
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `UPDATE discord_conversations SET collaboration_mode='plan',
 		collaboration_mode_revision=1, settings_revision=1 WHERE id=$1`, conversationID)
@@ -252,8 +255,18 @@ func TestExecutePlanSwitchesDefaultAndIsIdempotent(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT body, access_snapshot
 		FROM discord_input_messages WHERE message_id=$1`,
 		"plan-execution:"+runID.String()).Scan(&body, &access))
-	require.Equal(t, planExecuteInstruction, body)
+	require.Equal(t, codexcontrol.PlanExecutionInstruction(storedPlan), body)
 	require.Equal(t, AccessOperator, access)
+	var intentInstruction, sessionMessage string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT intent.instruction,
+		message.content #>> '{v,content,data,message}'
+		FROM discord_input_messages input
+		JOIN codex_turn_intents intent ON intent.id=input.turn_intent_id
+		JOIN session_messages message ON message.turn_intent_id=intent.id
+		WHERE input.message_id=$1`, "plan-execution:"+runID.String()).
+		Scan(&intentInstruction, &sessionMessage))
+	require.Equal(t, codexcontrol.PlanExecutionInstruction(storedPlan), intentInstruction)
+	require.Equal(t, codexcontrol.PlanExecutionDisplayText, sessionMessage)
 	_, err = db.ExecContext(ctx, `UPDATE discord_conversations SET thread_id='2001'
 		WHERE id=$1`, conversationID)
 	require.NoError(t, err)
