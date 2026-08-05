@@ -40,6 +40,13 @@ func (p *Processor) UseHostRuntime(runtime *hostworker.Runtime, workspaceID uuid
 	p.modelCatalog = append(json.RawMessage(nil), modelCatalog...)
 }
 
+func (p *Processor) browserScope() string {
+	if p.workspaceID != uuid.Nil {
+		return p.workspaceID.String()
+	}
+	return "worker"
+}
+
 func (p *Processor) HeartbeatMetadata() map[string]any {
 	runtime := p.hostRuntime
 	workspaceID := p.workspaceID
@@ -101,7 +108,7 @@ func (p *Processor) processRemoteGitHub(ctx context.Context, task *workerprotoco
 	if err != nil {
 		return codexcontrol.TurnResult{}, err
 	}
-	defer cleanupBrowserTask(p.cfg, claimed.ID.String(), "worker")
+	defer cleanupBrowserTask(p.cfg, claimed.ID.String(), p.browserScope())
 	baseRef := "refs/remotes/origin/" + job.DefaultBranch
 	if job.Kind == "pull_request" {
 		baseRef = fmt.Sprintf("refs/remotes/pull/%d", job.Number)

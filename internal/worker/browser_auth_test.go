@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDeriveBrowserAppServerTokensUsesSeparateScopes(t *testing.T) {
+func TestDeriveBrowserAppServerTokensUsesWorkspaceScopeForEverySurface(t *testing.T) {
 	tokenFile := filepath.Join(t.TempDir(), "browser-token")
 	require.NoError(t, os.WriteFile(tokenFile, []byte("secret\n"), 0o600))
 	workspaceID := uuid.MustParse("11111111-1111-4111-8111-111111111111")
@@ -20,13 +20,23 @@ func TestDeriveBrowserAppServerTokensUsesSeparateScopes(t *testing.T) {
 		BrowserMCPURL: "http://127.0.0.1:8931/mcp", BrowserMCPTokenFile: tokenFile,
 	}, workspaceID)
 	require.NoError(t, err)
-	require.Equal(t, "v1.worker.w3lxRQZQWESSFoA1cGQcumHLOF6yHToqOgUeybUSSiw", tokens.Worker)
-	require.Contains(t, tokens.Desktop, "v1."+workspaceID.String()+".")
-	require.NotEqual(t, tokens.Worker, tokens.Desktop)
+	require.Contains(t, tokens.Worker, "v1."+workspaceID.String()+".")
+	require.Equal(t, tokens.Worker, tokens.Desktop)
 
 	tokens, err = DeriveBrowserAppServerTokens(config.Config{}, uuid.Nil)
 	require.NoError(t, err)
 	require.Empty(t, tokens)
+}
+
+func TestDeriveBrowserAppServerTokensFallsBackToWorkerWithoutWorkspace(t *testing.T) {
+	tokenFile := filepath.Join(t.TempDir(), "browser-token")
+	require.NoError(t, os.WriteFile(tokenFile, []byte("secret\n"), 0o600))
+	tokens, err := DeriveBrowserAppServerTokens(config.Config{
+		BrowserMCPURL: "http://127.0.0.1:8931/mcp", BrowserMCPTokenFile: tokenFile,
+	}, uuid.Nil)
+	require.NoError(t, err)
+	require.Equal(t, "v1.worker.w3lxRQZQWESSFoA1cGQcumHLOF6yHToqOgUeybUSSiw", tokens.Worker)
+	require.Equal(t, tokens.Worker, tokens.Desktop)
 }
 
 func TestDeriveBrowserTokenScopes(t *testing.T) {
@@ -40,6 +50,12 @@ func TestDeriveBrowserTokenScopes(t *testing.T) {
 		_, cause := deriveBrowserToken("secret", "not-an-environment")
 		return cause
 	}())
+}
+
+func TestProcessorBrowserScopeUsesWorkspaceIdentity(t *testing.T) {
+	workspaceID := uuid.MustParse("11111111-1111-4111-8111-111111111111")
+	require.Equal(t, workspaceID.String(), (&Processor{workspaceID: workspaceID}).browserScope())
+	require.Equal(t, "worker", (&Processor{}).browserScope())
 }
 
 func TestApplyBrowserMCPConfigUsesHostBrowserServerName(t *testing.T) {

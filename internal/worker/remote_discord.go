@@ -36,7 +36,7 @@ func (p *Processor) processRemoteDiscord(ctx context.Context, task *workerprotoc
 	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
-	defer cleanupBrowserTask(p.cfg, task.Claimed.ID.String(), "worker")
+	defer cleanupBrowserTask(p.cfg, task.Claimed.ID.String(), p.browserScope())
 	p.reportHostWorkspaceProjectState(ctx, task, runtime, nil)
 	defer p.reportHostWorkspaceProjectState(context.Background(), task, runtime, nil)
 

@@ -18,7 +18,8 @@ type BrowserAppServerTokens struct {
 	Desktop string
 }
 
-// DeriveBrowserAppServerTokens 返回宿主 AppServer 使用的派生 Token，不暴露主密钥。
+// DeriveBrowserAppServerTokens 返回宿主 AppServer 使用的 Workspace Token，不暴露主密钥。
+// 两个字段保留现有环境变量入口，但使用同一个 scope，避免跨端续写改变浏览器能力。
 func DeriveBrowserAppServerTokens(cfg config.Config,
 	workspaceID uuid.UUID,
 ) (BrowserAppServerTokens, error) {
@@ -29,20 +30,15 @@ func DeriveBrowserAppServerTokens(cfg config.Config,
 	if err != nil {
 		return BrowserAppServerTokens{}, fmt.Errorf("读取宿主 Browser MCP Token: %w", err)
 	}
-	workerToken, err := deriveBrowserToken(string(secret), "worker")
+	scope := "worker"
+	if workspaceID != uuid.Nil {
+		scope = workspaceID.String()
+	}
+	workspaceToken, err := deriveBrowserToken(string(secret), scope)
 	if err != nil {
-		return BrowserAppServerTokens{}, fmt.Errorf("派生宿主 Worker Browser MCP Token: %w", err)
+		return BrowserAppServerTokens{}, fmt.Errorf("派生宿主 Workspace Browser MCP Token: %w", err)
 	}
-	result := BrowserAppServerTokens{Worker: workerToken}
-	if workspaceID == uuid.Nil {
-		return result, nil
-	}
-	desktopToken, err := deriveBrowserToken(string(secret), workspaceID.String())
-	if err != nil {
-		return BrowserAppServerTokens{}, fmt.Errorf("派生宿主 Desktop Browser MCP Token: %w", err)
-	}
-	result.Desktop = desktopToken
-	return result, nil
+	return BrowserAppServerTokens{Worker: workspaceToken, Desktop: workspaceToken}, nil
 }
 
 func deriveBrowserToken(secret, scope string) (string, error) {

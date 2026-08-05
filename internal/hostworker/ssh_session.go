@@ -163,14 +163,23 @@ func (s *SSHServer) serveDesktopInput(channel ssh.Channel, input io.Reader) erro
 		_, err := io.Copy(channel, proxyConnection)
 		finished <- proxyResult{source: "output", err: err}
 	}()
-	result := <-finished
-	runtimeErr := error(nil)
-	if result.source == "runtime" {
-		runtimeErr = result.err
-		_ = serverConnection.Close()
-		for result.source != "output" {
-			result = <-finished
+	var result proxyResult
+	var runtimeErr error
+	for {
+		result = <-finished
+		if result.source == "input" && (result.err == nil || errors.Is(result.err, io.EOF) ||
+			errors.Is(result.err, net.ErrClosed)) {
+			// SSH exec 可以先结束输入、再继续读取 App Server 输出，不能据此截断反向数据。
+			continue
 		}
+		if result.source == "runtime" {
+			runtimeErr = result.err
+			_ = serverConnection.Close()
+			for result.source != "output" {
+				result = <-finished
+			}
+		}
+		break
 	}
 	_ = serverConnection.Close()
 	_ = proxyConnection.Close()
