@@ -130,6 +130,10 @@ func TestDeploymentWorkerProtocolVersion(t *testing.T) {
 	example, err := os.ReadFile("../../deploy/worker/worker.env.example")
 	require.NoError(t, err)
 	require.Contains(t, string(example), "TYRS_HAND_WORKER_PROTOCOL_VERSION="+version)
+	installer, err := os.ReadFile("../../deploy/worker/install.sh")
+	require.NoError(t, err)
+	require.Contains(t, string(installer),
+		"TYRS_HAND_WORKER_PROTOCOL_VERSION='"+version+"'")
 }
 
 func TestValidateWorkerCapabilities(t *testing.T) {
