@@ -6,17 +6,17 @@ import { Alert, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, use
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ClientApi } from "@/api/client";
-import { loadCachedTurns, saveTurns } from "@/db/cache";
 import { clearDraft, loadDraft, saveDraft } from "@/db/drafts";
 import { sessionHasUnread } from "@/db/sessionReadStatus";
 import { Button, EmptyState, Muted } from "@/components/ui";
 import { useOutbox } from "@/hooks/useOutbox";
 import { previewPerf } from "@/preview/perf";
 import { useAppStore } from "@/store/appStore";
+import { useConversationStore } from "@/store/conversationStore";
 import { enqueueMessage, processOutbox, type LocalAttachment } from "@/sync/outbox";
 import { subscribeToUpdates, type SyncEvent } from "@/sync/synchronizer";
 import { useTheme } from "@/theme/ThemeProvider";
-import { type ConversationTurn, type Message, type RunSegment, type SessionSettings,
+import { type Message, type RunSegment, type SessionSettings,
   type TurnRun } from "@/types/protocol";
 import { ChatComposer } from "./ChatComposer";
 import { MarkdownContent } from "./MarkdownContent";
@@ -36,6 +36,7 @@ type ConversationRow =
 const outerPositioning = {
   animateAutoScrollToBottom: false,
 } as const;
+const emptyTurns: never[] = [];
 
 function conversationRowKey(item: ConversationRow): string {
   return item.kind === "message" ? `message:${item.message.id}` :
@@ -61,14 +62,23 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const insets = useSafeAreaInsets();
   const connection = useAppStore((state) => state.activeConnection);
   const bootstrap = useAppStore((state) => state.bootstrap);
-  const session = useAppStore((state) => state.sessions.find((item) => item.id === sessionId));
+  const listedSession = useAppStore((state) => state.sessions.find((item) => item.id === sessionId));
   const refreshSessions = useAppStore((state) => state.refresh);
   const markSessionRead = useAppStore((state) => state.markSessionRead);
   const sessionRead = useAppStore((state) => state.sessionReads[sessionId]);
-  const [turns, setTurns] = useState<ConversationTurn[]>([]);
-  const [messagesReady, setMessagesReady] = useState(false);
+  const conversationKey = connection ? `${connection.serverId}:${sessionId}` : "";
+  const entry = useConversationStore((state) => state.entries[conversationKey]);
+  const openConversation = useConversationStore((state) => state.open);
+  const refreshConversation = useConversationStore((state) => state.refresh);
+  const loadOlderConversation = useConversationStore((state) => state.loadOlder);
+  const refreshConversationTurn = useConversationStore((state) => state.refreshTurn);
+  const noteConversationCursor = useConversationStore((state) => state.noteCursor);
+  const closeConversation = useConversationStore((state) => state.close);
+  const turns = entry?.view?.turns ?? emptyTurns;
+  const session = entry?.view?.session ?? listedSession;
+  const messagesReady = Boolean(entry?.view);
   const [initialSyncComplete, setInitialSyncComplete] = useState(false);
-  const [loadError, setLoadError] = useState(false);
+  const loadError = entry?.status === "error";
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<LocalAttachment[]>([]);
   const [settings, setSettings] = useState<SessionSettings | null>(null);
@@ -77,8 +87,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const [finalDrafts, setFinalDrafts] = useState<Record<string, string>>({});
   const [showParameters, setShowParameters] = useState(false);
   const [settingsBeforeSheet, setSettingsBeforeSheet] = useState<SessionSettings | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [turnCursor, setTurnCursor] = useState("");
+  const hasMore = entry?.view?.hasMoreBefore ?? false;
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
   const [outerScrollEnabled, setOuterScrollEnabled] = useState(true);
   const [listPositioned, setListPositioned] = useState(false);
@@ -86,8 +95,6 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const list = useRef<FlashListRef<ConversationRow>>(null);
   const activeSessionId = useRef(sessionId);
   activeSessionId.current = sessionId;
-  const refreshPromise = useRef<{ sessionId: string; promise: Promise<void> } | null>(null);
-  const turnCursorRef = useRef<string | null>(null);
   const historyPaging = useRef(false);
   const historyPagingReady = useRef(false);
   const finalDraftSequences = useRef(new Map<string, Set<number>>());
@@ -109,86 +116,18 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     const shouldShow = distance > 320;
     setShowScrollToLatest((current) => current === shouldShow ? current : shouldShow);
   }, []);
-  const load = useCallback(async (beforeCursor?: string) => {
-    if (!connection) return;
-    const startedAt = performance.now();
-    previewPerf("conversation:load:start", { sessionId, beforeCursor: beforeCursor ?? "latest" });
-    const api = new ClientApi(connection);
-    const detailPromise = beforeCursor === undefined ? api.getSession(sessionId) : null;
-    const pagePromise = api.listTurns(sessionId, beforeCursor ? { beforeCursor } : {});
-    let page: Awaited<ReturnType<ClientApi["listTurns"]>>;
-    if (beforeCursor === undefined) {
-      const cached = await loadCachedTurns(connection.serverId, sessionId);
-      if (activeSessionId.current !== sessionId) return;
-      if (cached.length > 0) {
-        setTurns(cached);
-        setMessagesReady(true);
-      }
-      const [detail, initialPage] = await Promise.all([detailPromise!, pagePromise]);
-      previewPerf("conversation:detail:received", { sessionId,
-        elapsed: (performance.now() - startedAt).toFixed(1) });
-      if (activeSessionId.current !== sessionId) return;
-      setSettings(detail.settings); setSavedSettings(detail.settings);
-      void markSessionRead(detail.session);
-      page = initialPage;
-    } else page = await pagePromise;
-    previewPerf("conversation:turns:received", { sessionId, turns: page.items.length,
-      elapsed: (performance.now() - startedAt).toFixed(1) });
-    if (activeSessionId.current !== sessionId) return;
-    setTurns((current) => {
-      if (beforeCursor) {
-        const existing = new Map(current.map((turn) => [`${turn.kind}:${turn.id}`, turn]));
-        for (const turn of page.items) existing.set(`${turn.kind}:${turn.id}`, turn);
-        return [...existing.values()].sort((left, right) => left.anchorSeq - right.anchorSeq);
-      }
-      const first = page.items[0]?.anchorSeq ?? Number.POSITIVE_INFINITY;
-      return [...current.filter((turn) => turn.anchorSeq < first), ...page.items];
-    });
-    if (beforeCursor === undefined) setMessagesReady(true);
-    if (beforeCursor || turnCursorRef.current === null) {
-      turnCursorRef.current = page.nextCursor;
-      setTurnCursor(page.nextCursor);
-      setHasMore(page.hasMoreBefore);
-    }
-    if (beforeCursor === undefined) {
-      initialSyncSessionId.current = sessionId;
-      setInitialSyncComplete(true);
-    }
-    void saveTurns(connection.serverId, sessionId, page.items);
-    previewPerf("conversation:load:state-queued", { sessionId,
-      elapsed: (performance.now() - startedAt).toFixed(1) });
-  }, [connection, markSessionRead, sessionId]);
-  const refresh = useCallback(() => {
-    if (refreshPromise.current?.sessionId === sessionId) return refreshPromise.current.promise;
-    setLoadError(false);
-    const pending = load()
-      .catch(() => { if (activeSessionId.current === sessionId) setLoadError(true); })
-      .finally(() => {
-        if (refreshPromise.current?.promise === pending) refreshPromise.current = null;
-      });
-    refreshPromise.current = { sessionId, promise: pending };
-    return pending;
-  }, [load, sessionId]);
-  const refreshTurn = useCallback(async (turnId: string) => {
-    if (!connection) return;
-    const turn = await new ClientApi(connection).getTurn(sessionId, turnId);
-    await saveTurns(connection.serverId, sessionId, [turn]);
-    if (activeSessionId.current !== sessionId) return;
-    setTurns((current) => [...current.filter((item) => item.id !== turn.id), turn]
-      .sort((left, right) => left.anchorSeq - right.anchorSeq));
-  }, [connection, sessionId]);
+  const refresh = useCallback(() => connection ? refreshConversation(connection, sessionId) : Promise.resolve(),
+    [connection, refreshConversation, sessionId]);
+  const refreshTurn = useCallback((turnId: string) => connection ?
+    refreshConversationTurn(connection, sessionId, turnId) : Promise.resolve(),
+  [connection, refreshConversationTurn, sessionId]);
   useEffect(() => {
-    setTurns([]);
-    setMessagesReady(false);
     setInitialSyncComplete(false);
     initialSyncSessionId.current = null;
-    setLoadError(false);
     setSettings(null);
     setSavedSettings(null);
     setLiveVersions({});
     setFinalDrafts({});
-    setTurnCursor("");
-    turnCursorRef.current = null;
     historyPaging.current = false;
     finalDraftSequences.current.clear();
     setShowScrollToLatest(false);
@@ -204,7 +143,18 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     scrollMetrics.current = { contentHeight: 0, viewportHeight: 0, offsetY: 0 };
     historyPagingReady.current = false;
   }, [sessionId]);
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    if (!connection) return;
+    void openConversation(connection, sessionId);
+    return () => closeConversation(connection, sessionId);
+  }, [closeConversation, connection, openConversation, sessionId]);
+  useEffect(() => {
+    const next = entry?.view?.settings;
+    if (!next || showParameters) return;
+    setSettings(next); setSavedSettings(next);
+    initialSyncSessionId.current = sessionId;
+    setInitialSyncComplete(true);
+  }, [entry?.view?.settings, sessionId, showParameters]);
   useEffect(() => {
     if (initialSyncComplete && initialSyncSessionId.current === sessionId && session &&
       sessionHasUnread(session, sessionRead)) {
@@ -240,10 +190,12 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   useEffect(() => subscribeToUpdates((event) => {
     if (event.type === "sync.resumed") {
       bumpLiveVersion(activeRunId.current);
-      void refresh();
       return;
     }
     if (event.sessionId !== sessionId) return;
+    if (connection && event.cursor !== undefined) {
+      noteConversationCursor(connection, sessionId, event.cursor);
+    }
     if (event.kind === "live") {
       bumpLiveVersion(event.entityType === "run" ? event.entityId : activeRunId.current);
       const unwrapped = liveTimelineEvent(event);
@@ -275,7 +227,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         void refresh();
       }
     }
-  }), [bumpLiveVersion, refresh, refreshTurn, sessionId]);
+  }), [bumpLiveVersion, connection, noteConversationCursor, refresh, refreshTurn, sessionId]);
   const latestTurn = turns.at(-1);
   const latestRun = latestTurn?.runs.at(-1);
   const running = latestRun && ["starting", "running", "waiting_for_user", "reconciling"]
@@ -344,7 +296,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const segmentCardMaxHeight = Math.min(620, Math.max(420, Math.round(window.height * 0.70)));
   const renderConversationRow = useCallback(({ item }: { item: ConversationRow }) =>
     item.kind === "message" ? <MessageBubble message={item.message} /> :
-      item.kind === "segment" ? <RunSegmentCard run={item.run} segment={item.segment}
+      item.kind === "segment" ? <RunSegmentCard sessionId={sessionId} run={item.run} segment={item.segment}
         continued={item.continued} active={item.active} maxHeight={segmentCardMaxHeight}
         liveVersion={liveVersions[item.run.id] ?? 0}
         hasFinalAnswer={item.hasFinalAnswer || Boolean(finalDrafts[item.run.id])}
@@ -357,7 +309,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
           <View testID={`run:${item.runId}:stream-final`} style={styles.streamedFinal}>
             <MarkdownContent>{finalDrafts[item.runId] ?? ""}</MarkdownContent>
           </View> : null,
-  [finalDrafts, followLatestActivity, handleFinalDraft, liveVersions, lockOuterScroll, segmentCardMaxHeight,
+  [finalDrafts, followLatestActivity, handleFinalDraft, liveVersions, lockOuterScroll, segmentCardMaxHeight, sessionId,
     unlockOuterScroll]);
   const rowExtraData = useMemo(() => ({ finalDrafts, liveVersions }), [finalDrafts, liveVersions]);
   const lastRow = conversationRows.at(-1);
@@ -380,11 +332,12 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   if (!session) {
     return <EmptyState title="会话不可用" detail="它可能已被移除，或不在当前连接中。" />;
   }
-  if ((!settings || !messagesReady) && loadError) {
+  const resolvedSettings = settings ?? entry?.view?.settings ?? null;
+  if ((!resolvedSettings || !messagesReady) && loadError) {
     return <EmptyState title="无法加载会话" detail="请检查网络后重试。"
       action={<Button testID="session:load:retry" title="重试" onPress={() => void refresh()} />} />;
   }
-  if (!settings || !messagesReady) {
+  if (!resolvedSettings || !messagesReady) {
     return <EmptyState title="正在加载会话" detail="请稍候…" />;
   }
   const send = async () => {
@@ -399,15 +352,15 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   };
   const closeParameters = async () => {
     setShowParameters(false);
-    if (!savedSettings || JSON.stringify(savedSettings) === JSON.stringify(settings)) return;
+    if (!savedSettings || JSON.stringify(savedSettings) === JSON.stringify(resolvedSettings)) return;
     try {
       const updated = await new ClientApi(connection).patchSession(sessionId, {
-        agentProfileId: settings.agentProfileId, model: settings.model,
-        reasoningEffort: settings.reasoningEffort, serviceTier: settings.serviceTier,
-        collaborationMode: settings.collaborationMode,
+        agentProfileId: resolvedSettings.agentProfileId, model: resolvedSettings.model,
+        reasoningEffort: resolvedSettings.reasoningEffort, serviceTier: resolvedSettings.serviceTier,
+        collaborationMode: resolvedSettings.collaborationMode,
         expectedSettingsVersion: savedSettings.settingsVersion,
       });
-      const next = { ...settings, settingsVersion: updated.settingsVersion };
+      const next = { ...resolvedSettings, settingsVersion: updated.settingsVersion };
       setSettings(next); setSavedSettings(next);
       await refreshSessions();
     } catch (error) {
@@ -479,9 +432,10 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         outerMomentum.current = false;
       }}
       onStartReached={() => {
-        if (!historyPagingReady.current || historyPaging.current || !hasMore || !turnCursor) return;
+        if (!connection || !historyPagingReady.current || historyPaging.current || !hasMore) return;
         historyPaging.current = true;
-        void load(turnCursor).finally(() => { historyPaging.current = false; });
+        void loadOlderConversation(connection, sessionId)
+          .finally(() => { historyPaging.current = false; });
       }}
       onStartReachedThreshold={0.2} contentContainerStyle={{ paddingTop: 10, paddingBottom: 24 }}
       ListFooterComponent={<>{latestRun && <PlanCard run={latestRun} onExecute={() => void new ClientApi(connection)
@@ -523,13 +477,13 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       </View>
       <ChatComposer value={text} onChange={setText} attachments={attachments}
         onAttachmentsChange={setAttachments} onParameters={() => {
-          setSettingsBeforeSheet(settings); setShowParameters(true);
+          setSettingsBeforeSheet(resolvedSettings); setShowParameters(true);
         }}
         onSend={() => void send()} sending={false}
-        parameterLabel={`${settings.model ?? "默认模型"} · ${settings.reasoningEffort ?? "默认"} · ${settings.collaborationMode === "plan" ? "先做计划" : "直接执行"}`} />
+        parameterLabel={`${resolvedSettings.model ?? "默认模型"} · ${resolvedSettings.reasoningEffort ?? "默认"} · ${resolvedSettings.collaborationMode === "plan" ? "先做计划" : "直接执行"}`} />
     </View>
     <ParameterSheet visible={showParameters} bootstrap={bootstrap}
-      workspaceId={session.workspaceId} value={settings}
+      workspaceId={session.workspaceId} value={resolvedSettings}
       currentRunLabel={running ? "当前任务继续使用启动时的参数；修改将在下一轮生效" : "当前会话参数"}
       onChange={setSettings} onClose={() => void closeParameters()}
       onCancel={() => { setSettings(settingsBeforeSheet ?? savedSettings); setShowParameters(false); }} />

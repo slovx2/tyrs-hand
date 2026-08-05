@@ -10,6 +10,7 @@ import { registerPush } from "@/notifications/register";
 import { isPreviewMode, isPreviewServerId } from "@/preview/config";
 import { useAppStore } from "@/store/appStore";
 import { processOutbox, recoverFailedOutbox } from "@/sync/outbox";
+import { setAppActive } from "@/sync/appLifecycle";
 import { subscribeToUpdates, Synchronizer } from "@/sync/synchronizer";
 import { useTheme } from "@/theme/ThemeProvider";
 
@@ -33,16 +34,25 @@ export function AppRuntime({ children }: { children: ReactNode }) {
     void synchronizer.start().catch(() => undefined);
     void resumeOutbox(connection).then(refresh).catch(() => undefined);
     void registerPush(connection).catch(() => undefined);
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (refreshTimer) return;
+      refreshTimer = setTimeout(() => { refreshTimer = null; void refresh(); }, 200);
+    };
     const unsubscribeUpdates = subscribeToUpdates((event) => {
-      if (event.kind === "durable") void refresh();
+      if (event.kind === "durable") scheduleRefresh();
     });
     const subscription = AppState.addEventListener("change", (state) => {
+      setAppActive(state === "active");
       if (state === "active") {
         void synchronizer.start().catch(() => undefined);
         void resumeOutbox(connection).then(refresh).catch(() => undefined);
       }
     });
-    return () => { synchronizer.stop(); unsubscribeUpdates(); subscription.remove(); };
+    return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      synchronizer.stop(); unsubscribeUpdates(); subscription.remove();
+    };
   }, [connection, refresh]);
   useEffect(() => {
     if (isPreviewMode) return;

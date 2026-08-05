@@ -1234,6 +1234,18 @@ paths:
       responses:
         "201": { description: 已发送或 steer, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
         default: { $ref: "#/components/responses/Problem" }
+  /client/sessions/{id}/snapshot:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: clientGetSessionSnapshot
+      tags: [Client Protocol]
+      security: [{ clientBearer: [] }]
+      parameters:
+        - { name: turnLimit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        "200": { description: 一致性会话详情与最新轮次快照, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        default: { $ref: "#/components/responses/Problem" }
   /client/sessions/{id}/turns:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }

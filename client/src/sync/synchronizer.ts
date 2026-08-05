@@ -34,16 +34,23 @@ export class Synchronizer {
   private socket: WebSocket | null = null;
   private stopped = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private startPromise: Promise<void> | null = null;
 
   constructor(
     private readonly connection: Connection,
     private readonly onReset: () => Promise<void>,
   ) {}
 
-  async start(): Promise<void> {
+  start(): Promise<void> {
     this.stopped = false;
-    await this.catchUp();
-    await this.connect();
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) return Promise.resolve();
+    if (this.startPromise) return this.startPromise;
+    this.startPromise = (async () => {
+      await this.catchUp();
+      if (this.socket && this.socket.readyState !== WebSocket.CLOSED) this.socket.close();
+      await this.connect();
+    })().finally(() => { this.startPromise = null; });
+    return this.startPromise;
   }
 
   stop(): void {
@@ -51,6 +58,7 @@ export class Synchronizer {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.socket?.close();
     this.socket = null;
+    this.startPromise = null;
   }
 
   private async catchUp(): Promise<void> {

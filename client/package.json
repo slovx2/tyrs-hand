@@ -13,6 +13,7 @@
     "lint": "eslint .",
     "generate:api": "openapi-typescript ../api/openapi.yaml -o src/types/openapi.ts",
     "test": "vitest run",
+    "test:integration": "vitest run src/store/conversationRepository.integration.test.ts",
     "e2e:contract": "node --test ../tools/mobile-e2e/contract.test.mjs",
     "export:ios": "expo export --platform ios --output-dir dist/ios",
     "export:android": "expo export --platform android --output-dir dist/android"

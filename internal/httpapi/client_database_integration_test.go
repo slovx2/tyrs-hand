@@ -148,6 +148,14 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 	secondUpdate := readClientUpdate(t, second)
 	require.Equal(t, "message.created", firstUpdate.Params.Type)
 	require.Equal(t, firstUpdate.Params.Cursor, secondUpdate.Params.Cursor)
+	snapshotResponse := clientJSONRequest(t, http.MethodGet, endpoint+"/api/v1/client/sessions/"+
+		sessionID.String()+"/snapshot?turnLimit=20", loginBody.AccessToken, nil)
+	require.Equal(t, http.StatusOK, snapshotResponse.Code, snapshotResponse.Body.String())
+	var snapshotBody clientSessionSnapshot
+	require.NoError(t, json.Unmarshal(snapshotResponse.Body.Bytes(), &snapshotBody))
+	require.Equal(t, sessionID, snapshotBody.Session.ID)
+	require.NotEmpty(t, snapshotBody.Turns.Items)
+	require.GreaterOrEqual(t, snapshotBody.SnapshotCursor, firstUpdate.Params.Cursor)
 
 	retried := clientJSONRequest(t, http.MethodPost, messageURL, loginBody.AccessToken,
 		map[string]any{"localId": "mobile-local-1", "text": "hello from mobile"})
@@ -425,6 +433,7 @@ func clientIntegrationServer(t *testing.T, db *sql.DB, authService *auth.Service
 	client.GET("/sessions/:id/messages", server.clientListMessages)
 	client.POST("/sessions/:id/messages", server.clientCreateMessage)
 	client.GET("/sessions/:id/turns", server.clientListTurns)
+	client.GET("/sessions/:id/snapshot", server.clientGetSessionSnapshot)
 	client.GET("/sessions/:id/turns/:turnId", server.clientGetTurn)
 	client.POST("/sessions/:id/plans/:runId/execute", server.clientExecutePlan)
 	client.GET("/runs/:runId/segments/:segmentId/activities", server.clientListRunActivities)

@@ -238,18 +238,34 @@ export async function requestPreview(serverId: string, path: string, init?: Requ
     const item = sendMessage(serverId, messageMatch[1]!, body);
     return { message: item, intentId: nextId(), deduplicated: false };
   }
+  const snapshotMatch = /^\/sessions\/([^/]+)\/snapshot$/.exec(url.pathname);
+  if (snapshotMatch && method === "GET") {
+    const sessionId = snapshotMatch[1]!;
+    const detail = value.details[sessionId];
+    const session = value.sessions.find((item) => item.id === sessionId);
+    if (!detail || !session) throw new Error("预览会话快照不存在");
+    const single = previewTurn(serverId, sessionId);
+    const all = detail.turns ?? (single ? [single] : []);
+    const limit = Number(url.searchParams.get("turnLimit") ?? 20);
+    const items = all.slice(-limit);
+    return { session: structuredClone(session), settings: structuredClone(detail.settings),
+      currentRun: structuredClone(detail.currentRun), snapshotCursor: value.bootstrap.currentCursor,
+      turns: { items: structuredClone(items), hasMoreBefore: all.length > items.length,
+        nextCursor: all.length > items.length ? btoa(String(items[0]?.anchorSeq ?? "")) : "" } };
+  }
   const turnsMatch = /^\/sessions\/([^/]+)\/turns$/.exec(url.pathname);
   if (turnsMatch && method === "GET") {
     const detail = value.details[turnsMatch[1]!];
     const single = previewTurn(serverId, turnsMatch[1]!);
     const all = detail?.turns ?? (single ? [single] : []);
-    const before = Number(url.searchParams.get("beforeCursor") ?? Number.POSITIVE_INFINITY);
+    const rawBefore = url.searchParams.get("beforeCursor");
+    const before = rawBefore ? Number(atob(rawBefore)) : Number.POSITIVE_INFINITY;
     const limit = Number(url.searchParams.get("limit") ?? 20);
     const eligible = all.filter((turn) => turn.anchorSeq < before);
     const items = eligible.slice(-limit);
     const hasMoreBefore = eligible.length > items.length;
     return { items: structuredClone(items), hasMoreBefore,
-      nextCursor: hasMoreBefore ? String(items[0]?.anchorSeq ?? "") : "" };
+      nextCursor: hasMoreBefore ? btoa(String(items[0]?.anchorSeq ?? "")) : "" };
   }
   const turnMatch = /^\/sessions\/([^/]+)\/turns\/([^/]+)$/.exec(url.pathname);
   if (turnMatch && method === "GET") {

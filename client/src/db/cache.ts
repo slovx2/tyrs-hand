@@ -1,5 +1,4 @@
-import { bootstrapSchema, conversationTurnSchema, messageSchema, runActivitySchema, sessionSchema,
-  type Bootstrap, type ConversationTurn, type Message, type RunActivity, type Session } from "@/types/protocol";
+import { bootstrapSchema, sessionSchema, type Bootstrap, type Session } from "@/types/protocol";
 import { isPreviewMode, isPreviewServerId } from "@/preview/config";
 import { getDatabase, runDatabaseWrite, withDatabaseTransaction } from "./database";
 
@@ -78,83 +77,6 @@ export async function saveSessions(serverId: string, sessions: Session[]): Promi
     }
     if (initializeBaseline) {
       await database.runAsync("UPDATE connections SET session_reads_initialized=1 WHERE server_id=?", serverId);
-    }
-  });
-}
-
-export async function loadCachedMessages(serverId: string, sessionId: string): Promise<Message[]> {
-  if (isPreviewMode && isPreviewServerId(serverId)) {
-    const { previewMessages } = await import("@/preview/runtime");
-    return previewMessages(serverId, sessionId);
-  }
-  const database = await getDatabase();
-  const rows = await database.getAllAsync<{ payload: string }>(`SELECT payload FROM messages
-    WHERE server_id=? AND session_id=? ORDER BY seq`, serverId, sessionId);
-  return rows.flatMap((row) => {
-    const parsed = messageSchema.safeParse(JSON.parse(row.payload));
-    return parsed.success ? [parsed.data] : [];
-  });
-}
-
-export async function saveMessages(serverId: string, messages: Message[]): Promise<void> {
-  if (isPreviewMode && isPreviewServerId(serverId)) return;
-  if (messages.length === 0) return;
-  await withDatabaseTransaction(async (database) => {
-    for (const message of messages) {
-      await database.runAsync(`INSERT INTO messages(server_id,session_id,id,seq,local_id,role,payload,created_at)
-        VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(server_id,id) DO UPDATE SET payload=excluded.payload`,
-      serverId, message.sessionId, message.id, message.seq, message.localId, message.role,
-      JSON.stringify(message), message.createdAt);
-    }
-  });
-}
-
-export async function loadCachedTurns(serverId: string, sessionId: string): Promise<ConversationTurn[]> {
-  if (isPreviewMode && isPreviewServerId(serverId)) return [];
-  const database = await getDatabase();
-  const rows = await database.getAllAsync<{ payload: string }>(`SELECT payload FROM runs
-    WHERE server_id=? AND session_id=? ORDER BY json_extract(payload,'$.anchorSeq')`, serverId, sessionId);
-  return rows.flatMap((row) => {
-    const parsed = conversationTurnSchema.safeParse(JSON.parse(row.payload));
-    return parsed.success ? [parsed.data] : [];
-  });
-}
-
-export async function saveTurns(serverId: string, sessionId: string,
-  turns: ConversationTurn[]): Promise<void> {
-  if (isPreviewMode && isPreviewServerId(serverId)) return;
-  await withDatabaseTransaction(async (database) => {
-    for (const turn of turns) {
-      await database.runAsync(`INSERT INTO runs(server_id,id,session_id,status,payload)
-        VALUES (?,?,?,?,?) ON CONFLICT(server_id,id) DO UPDATE SET
-        session_id=excluded.session_id,status=excluded.status,payload=excluded.payload`, serverId,
-      `turn:${turn.id}`, sessionId, turn.kind, JSON.stringify(turn));
-    }
-  });
-}
-
-export async function loadCachedRunActivities(serverId: string,
-  segmentId: string): Promise<RunActivity[]> {
-  if (isPreviewMode && isPreviewServerId(serverId)) return [];
-  const database = await getDatabase();
-  const rows = await database.getAllAsync<{ payload: string }>(`SELECT payload FROM run_activities
-    WHERE server_id=? AND segment_id=? ORDER BY first_event_sequence`, serverId, segmentId);
-  return rows.flatMap((row) => {
-    const parsed = runActivitySchema.safeParse(JSON.parse(row.payload));
-    return parsed.success ? [parsed.data] : [];
-  });
-}
-
-export async function saveRunActivities(serverId: string, segmentId: string,
-  activities: RunActivity[]): Promise<void> {
-  if (isPreviewMode && isPreviewServerId(serverId)) return;
-  await withDatabaseTransaction(async (database) => {
-    for (const activity of activities) {
-      await database.runAsync(`INSERT INTO run_activities(
-        server_id,id,segment_id,first_event_sequence,payload) VALUES (?,?,?,?,?)
-        ON CONFLICT(server_id,id) DO UPDATE SET segment_id=excluded.segment_id,
-        first_event_sequence=excluded.first_event_sequence,payload=excluded.payload`, serverId,
-      activity.id, segmentId, activity.firstEventSequence, JSON.stringify(activity));
     }
   });
 }

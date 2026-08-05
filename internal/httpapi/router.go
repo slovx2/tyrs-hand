@@ -108,6 +108,7 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	client.GET("/sessions", s.clientListSessions)
 	client.POST("/sessions", s.clientCreateSession)
 	client.GET("/sessions/:id", s.clientGetSession)
+	client.GET("/sessions/:id/snapshot", s.clientGetSessionSnapshot)
 	client.PATCH("/sessions/:id", s.clientPatchSession)
 	client.POST("/sessions/:id/stop", s.clientStopSession)
 	client.POST("/sessions/:id/archive", s.clientArchiveSession)

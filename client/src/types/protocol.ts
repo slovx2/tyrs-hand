@@ -142,6 +142,16 @@ export const conversationTurnSchema = z.object({
 });
 export type ConversationTurn = z.infer<typeof conversationTurnSchema>;
 
+export const conversationSnapshotSchema = z.object({
+  session: sessionSchema,
+  settings: sessionSettingsSchema,
+  currentRun: runSnapshotSchema.nullable(),
+  turns: z.object({ items: z.array(conversationTurnSchema), hasMoreBefore: z.boolean(),
+    nextCursor: z.string() }),
+  snapshotCursor: z.number().int().nonnegative(),
+});
+export type ConversationSnapshotResponse = z.infer<typeof conversationSnapshotSchema>;
+
 export const modelSchema = z.object({
   id: z.string(),
   model: z.string().optional(),

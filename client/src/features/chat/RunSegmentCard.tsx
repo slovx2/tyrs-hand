@@ -3,7 +3,7 @@ import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { ClientApi } from "@/api/client";
-import { loadCachedRunActivities, saveRunActivities } from "@/db/cache";
+import { loadCachedSegmentActivities, saveSegmentActivityPage } from "@/db/conversationCache";
 import { previewPerf } from "@/preview/perf";
 import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
@@ -75,9 +75,9 @@ function runActivityPartType(part: RunActivityPart): string {
   return part.kind;
 }
 
-export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, continued, active, maxHeight, liveVersion,
+export const RunSegmentCard = memo(function RunSegmentCard({ sessionId, run, segment, continued, active, maxHeight, liveVersion,
   hasFinalAnswer, onInteractionStart, onInteractionEnd, onFollowLatest, onFinalDraft }: {
-  run: TurnRun; segment: RunSegment; continued: boolean; active: boolean; maxHeight: number;
+  sessionId: string; run: TurnRun; segment: RunSegment; continued: boolean; active: boolean; maxHeight: number;
   liveVersion: number; hasFinalAnswer: boolean; onInteractionStart: () => void; onInteractionEnd: () => void;
   onFollowLatest: (force?: boolean) => void; onFinalDraft: (runId: string, text: string) => void;
 }) {
@@ -86,11 +86,11 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
   const connection = useAppStore((state) => state.activeConnection);
   const terminal = ["completed", "failed", "canceled"].includes(run.status);
   const activityMaxHeight = Math.max(minimumActivityHeight, maxHeight - 84);
-  const [expanded, setExpanded] = useRecyclingState(active, [segment.id]);
+  const [expansion, setExpansion] = useRecyclingState<"auto" | "open" | "closed">("auto", [segment.id]);
+  const expanded = expansion === "auto" ? active : expansion === "open";
   const [activities, setActivities] = useRecyclingState<RunActivity[]>([], [segment.id]);
   const [ready, setReady] = useRecyclingState(false, [segment.id]);
   const [loadFailed, setLoadFailed] = useRecyclingState(false, [segment.id]);
-  const [pendingExpand, setPendingExpand] = useRecyclingState(false, [segment.id]);
   const [hasMore, setHasMore] = useRecyclingState(false, [segment.id]);
   const [loadingOlder, setLoadingOlder] = useRecyclingState(false, [segment.id]);
   const [hasNew, setHasNew] = useRecyclingState(false, [segment.id]);
@@ -98,7 +98,6 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
     minimumActivityHeight, [segment.id]);
   const nearBottom = useRef(true);
   const pinnedToLatest = useRef(true);
-  const wasActive = useRef(active);
   const scroll = useRef<FlashListRef<RunActivityPart>>(null);
   const followNextActivityCommit = useRef(false);
   const revealNewOnNextActivityCommit = useRef(false);
@@ -116,7 +115,6 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
     segmentIdentity.current = segment.id;
     nearBottom.current = true;
     pinnedToLatest.current = true;
-    wasActive.current = active;
     watermark.current = 0;
     requestedVersion.current = 0;
     lastCardHeight.current = 0;
@@ -151,12 +149,13 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
     if (!preserveHistory) setHasMore(page.hasMoreBefore);
     watermark.current = page.persistedThroughEventSeq;
     if (connection) {
-      void saveRunActivities(connection.serverId, targetSegmentId, page.activities).catch(() => undefined);
+      void saveSegmentActivityPage(connection.serverId, sessionId, run.id, targetSegmentId, page,
+        terminal && !page.hasMoreBefore).catch(() => undefined);
     }
     const text = page.finalAnswerDraft?.payload.text ?? "";
     if (run.actualSettings.collaborationMode !== "plan") onFinalDraft(run.id, text);
     return true;
-  }, [connection, onFinalDraft, run.actualSettings.collaborationMode, run.id, segment.id,
+  }, [connection, onFinalDraft, run.actualSettings.collaborationMode, run.id, segment.id, sessionId, terminal,
     setActivities, setHasMore]);
 
   const loadLatest = useCallback((): Promise<void> => {
@@ -169,7 +168,7 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
       setLoadFailed(false);
       previewPerf("segment:load:start", { segmentId: targetSegmentId });
       try {
-        const cached = await loadCachedRunActivities(connection.serverId, targetSegmentId);
+        const cached = await loadCachedSegmentActivities(connection.serverId, targetSegmentId);
         if (segmentIdentity.current !== targetSegmentId) return;
         previewPerf("segment:cache:received", { segmentId: targetSegmentId, activities: cached.length,
           elapsed: (performance.now() - startedAt).toFixed(1) });
@@ -199,10 +198,6 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
   useEffect(() => {
     setActivityViewportHeight((value) => Math.min(value, activityMaxHeight));
   }, [activityMaxHeight, setActivityViewportHeight]);
-  useEffect(() => {
-    if (wasActive.current !== active) setExpanded(active);
-    wasActive.current = active;
-  }, [active, setExpanded]);
   useEffect(() => () => {
     if (unlockTimer.current) clearTimeout(unlockTimer.current);
     if (followLayoutFrame.current !== null) cancelAnimationFrame(followLayoutFrame.current);
@@ -283,24 +278,13 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
   const toggleExpanded = () => {
     if (expanded) {
       previewPerf("segment:toggle", { segmentId: segment.id, expanded: false });
-      setExpanded(false);
+      setExpansion("closed");
       return;
     }
-    if (pendingExpand) return;
     const targetSegmentId = segment.id;
-    if (ready && !loadFailed) {
-      previewPerf("segment:toggle", { segmentId: targetSegmentId, expanded: true });
-      setExpanded(true);
-      return;
-    }
-    previewPerf("segment:prepare-expand", { segmentId: targetSegmentId });
-    setPendingExpand(true);
-    void loadLatest().catch(() => undefined).finally(() => {
-      if (segmentIdentity.current !== targetSegmentId) return;
-      setPendingExpand(false);
-      setExpanded(true);
-      previewPerf("segment:toggle", { segmentId: targetSegmentId, expanded: true, source: "loaded" });
-    });
+    setExpansion("open");
+    previewPerf("segment:toggle", { segmentId: targetSegmentId, expanded: true });
+    if (!ready || loadFailed) void loadLatest().catch(() => undefined);
   };
   const clearUnlockTimer = () => {
     if (!unlockTimer.current) return;
@@ -337,7 +321,7 @@ export const RunSegmentCard = memo(function RunSegmentCard({ run, segment, conti
       <View style={[styles.dot, { backgroundColor: presentation.color }]} />
       <Text style={[styles.title, { color: theme.colors.text }]}>{presentation.label}</Text>
       {run.attempt > 1 && <Text style={{ color: theme.colors.textMuted }}>第 {run.attempt} 次尝试</Text>}
-      <Text style={{ color: theme.colors.textMuted }}>{pendingExpand ? "…" : expanded ? "⌃" : "⌄"}</Text>
+      <Text style={{ color: theme.colors.textMuted }}>{expanded ? "⌃" : "⌄"}</Text>
     </Pressable>
     {expanded && <>
       <View style={[styles.meta, { borderColor: theme.colors.border }]}>

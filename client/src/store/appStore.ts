@@ -31,7 +31,6 @@ type AppState = {
 };
 
 let refreshPromise: Promise<void> | null = null;
-let refreshQueued = false;
 
 export const useAppStore = create<AppState>((set, get) => ({
   ready: false,
@@ -59,29 +58,24 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   refresh: () => {
-    refreshQueued = true;
     if (refreshPromise) return refreshPromise;
     set({ refreshing: true, error: null });
     refreshPromise = (async () => {
-      while (refreshQueued) {
-        refreshQueued = false;
-        const connection = get().activeConnection;
-        if (!connection) continue;
-        try {
-          const api = new ClientApi(connection);
-          const bootstrap = await api.bootstrap();
-          if (bootstrap.serverId !== connection.serverId) throw new Error("服务器与当前连接不匹配");
-          const page = await api.listSessions();
-          await saveBootstrap(connection.serverId, bootstrap);
-          await saveSessions(connection.serverId, page.sessions);
-          const sessionReads = await loadSessionReadStates(connection.serverId);
-          if (get().activeConnection?.serverId !== connection.serverId) continue;
-          set({ bootstrap, sessions: page.sessions, sessionReads, error: null,
-            selectedProjectId: get().selectedProjectId ?? bootstrap.projects[0]?.id ?? null });
-        } catch (error) {
-          if (get().activeConnection?.serverId === connection.serverId) {
-            set({ error: error instanceof Error ? error.message : "刷新失败" });
-          }
+      const connection = get().activeConnection;
+      if (!connection) return;
+      try {
+        const api = new ClientApi(connection);
+        const [bootstrap, page] = await Promise.all([api.bootstrap(), api.listSessions()]);
+        if (bootstrap.serverId !== connection.serverId) throw new Error("服务器与当前连接不匹配");
+        await Promise.all([saveBootstrap(connection.serverId, bootstrap),
+          saveSessions(connection.serverId, page.sessions)]);
+        const sessionReads = await loadSessionReadStates(connection.serverId);
+        if (get().activeConnection?.serverId !== connection.serverId) return;
+        set({ bootstrap, sessions: page.sessions, sessionReads, error: null,
+          selectedProjectId: get().selectedProjectId ?? bootstrap.projects[0]?.id ?? null });
+      } catch (error) {
+        if (get().activeConnection?.serverId === connection.serverId) {
+          set({ error: error instanceof Error ? error.message : "刷新失败" });
         }
       }
     })().finally(() => {

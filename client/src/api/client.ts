@@ -8,6 +8,7 @@ import {
   messageSchema,
   runSnapshotSchema,
   conversationTurnSchema,
+  conversationSnapshotSchema,
   runActivitySchema,
   sessionSettingsSchema,
   sessionSchema,
@@ -83,6 +84,10 @@ export class ClientApi {
       settings: sessionSettingsSchema,
       currentRun: runSnapshotSchema.nullable(),
     }));
+  }
+
+  getSessionSnapshot(id: string, turnLimit = 20) {
+    return this.request(`/sessions/${id}/snapshot?turnLimit=${turnLimit}`, conversationSnapshotSchema);
   }
 
   patchSession(id: string, input: Record<string, unknown>) {
