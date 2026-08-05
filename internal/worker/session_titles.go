@@ -68,10 +68,17 @@ func (c *HostDesktopController) runSessionTitleLoop(ctx context.Context) {
 func (c *HostDesktopController) generateSessionTitle(ctx context.Context,
 	task workerprotocol.SessionTitleTask,
 ) (string, error) {
-	client := c.workspace.client
-	if client == nil {
+	c.workspace.mu.Lock()
+	runtime := c.workspace.hostRuntime
+	c.workspace.mu.Unlock()
+	if runtime == nil {
 		return "", errors.New("宿主 App Server 尚未连接")
 	}
+	client, err := runtime.OpenEphemeralClient()
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = client.Close() }()
 	base := filepath.Join(c.processor.cfg.WorkerDataRoot, "session-title-tasks")
 	if err := os.MkdirAll(base, 0o700); err != nil {
 		return "", err

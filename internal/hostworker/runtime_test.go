@@ -27,3 +27,14 @@ func TestReplaceEnvironmentInjectsManagedBrowserToken(t *testing.T) {
 		"PATH=/usr/bin", codex.BrowserMCPWorkerTokenEnvironment + "=derived",
 	}, environment)
 }
+
+func TestOpenEphemeralClientRequiresRunningHub(t *testing.T) {
+	var missing *Runtime
+	client, err := missing.OpenEphemeralClient()
+	require.Nil(t, client)
+	require.ErrorContains(t, err, "Runtime 不可用")
+
+	client, err = (&Runtime{}).OpenEphemeralClient()
+	require.Nil(t, client)
+	require.ErrorContains(t, err, "AppServerHub 尚未启动")
+}

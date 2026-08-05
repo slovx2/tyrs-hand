@@ -199,6 +199,35 @@ func TestHubKeepsEphemeralThreadOutsideWorker(t *testing.T) {
 	}
 }
 
+func TestHubRoutesEphemeralEventsToOwningInternalDesktopClient(t *testing.T) {
+	mock, err := mockcodex.Start(t)
+	require.NoError(t, err)
+	hub := startHub(t, mock.SocketPath)
+	worker, err := hub.OpenClient(appserverhub.ClientOptions{Role: appserverhub.RoleWorker})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = worker.Close() })
+	workerEvents := worker.Subscribe(codex.ThreadFilter{})
+	t.Cleanup(workerEvents.Close)
+	desktop, err := hub.OpenClient(appserverhub.ClientOptions{Role: appserverhub.RoleDesktop})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = desktop.Close() })
+
+	threadID, err := desktop.StartThread(context.Background(), mustJSON(map[string]any{
+		"cwd": t.TempDir(), "ephemeral": true,
+	}))
+	require.NoError(t, err)
+	desktopEvents := desktop.Subscribe(codex.ThreadFilter{ThreadID: threadID})
+	t.Cleanup(desktopEvents.Close)
+	mock.Emit(threadID, "item/completed", map[string]any{"threadId": threadID,
+		"item": map[string]any{"id": "title", "type": "agentMessage", "text": "title"}})
+	require.Equal(t, "item/completed", receiveEvent(t, desktopEvents.Events()).Method)
+	select {
+	case event := <-workerEvents.Events():
+		t.Fatalf("临时 Thread 事件不应发送给普通 Worker: %s", event.Method)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
 func TestHubRoutesExistingThreadServerRequestsToFreshWorker(t *testing.T) {
 	mock, err := mockcodex.Start(t)
 	require.NoError(t, err)

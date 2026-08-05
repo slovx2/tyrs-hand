@@ -141,6 +141,22 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 
 func (r *Runtime) Client() *appserverhub.Client { return r.client }
 
+// OpenEphemeralClient 为 Worker 内部临时任务创建独立的 Desktop 事件域。
+// 调用方只能用它创建 ephemeral Thread，并在任务结束后关闭 Client。
+func (r *Runtime) OpenEphemeralClient() (*appserverhub.Client, error) {
+	if r == nil {
+		return nil, errors.New("宿主 Worker Runtime 不可用")
+	}
+	r.mu.Lock()
+	if r.closed || r.hub == nil {
+		r.mu.Unlock()
+		return nil, errors.New("worker AppServerHub 尚未启动")
+	}
+	hub := r.hub
+	r.mu.Unlock()
+	return hub.OpenClient(appserverhub.ClientOptions{Role: appserverhub.RoleDesktop})
+}
+
 func (r *Runtime) CodexHome() string { return r.options.CodexHome }
 
 func (r *Runtime) Home() string { return r.options.Home }
