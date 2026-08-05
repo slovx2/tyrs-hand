@@ -44,6 +44,33 @@ func TestFreshHostWorkerBaseline(t *testing.T) {
 	require.Zero(t, legacyCount)
 }
 
+func TestWorkerProtocolUpgradeMigration(t *testing.T) {
+	ctx := context.Background()
+	db := migrationTestDatabase(t)
+	_, err := db.ExecContext(ctx, `CREATE TABLE schema_migrations (
+		version text PRIMARY KEY,
+		checksum char(64) NOT NULL,
+		applied_at timestamptz NOT NULL DEFAULT now())`)
+	require.NoError(t, err)
+	migrations, err := loadMigrations()
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(migrations), 4)
+	conn, err := db.Conn(ctx)
+	require.NoError(t, err)
+	for _, item := range migrations[:3] {
+		require.NoError(t, applyTransactional(ctx, conn, item))
+	}
+	require.NoError(t, conn.Close())
+	_, err = db.ExecContext(ctx, `INSERT INTO workers(name,protocol_version)
+		VALUES ('protocol-upgrade-worker',22)`)
+	require.NoError(t, err)
+	require.NoError(t, Migrate(ctx, db))
+	var protocolVersion int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT protocol_version FROM workers
+		WHERE name='protocol-upgrade-worker'`).Scan(&protocolVersion))
+	require.Equal(t, 23, protocolVersion)
+}
+
 func migrationTestDatabase(t *testing.T) *sql.DB {
 	t.Helper()
 	ctx := context.Background()
