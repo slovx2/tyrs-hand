@@ -965,8 +965,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	}
 	require.NoError(t, client.Events(ctx, &task, []workerprotocol.EventInput{
 		{Sequence: 1, Type: "item/completed", Payload: json.RawMessage(
-			`{"item":{"id":"desktop-user-item-1","type":"userMessage",` +
-				`"clientId":"desktop-client-message-1"}}`)},
+			`{"item":{"id":"desktop-user-item-1","type":"userMessage"}}`)},
 		{Sequence: 2, Type: "item/started",
 			Payload: json.RawMessage(`{"item":{"id":"desktop-command","type":"commandExecution"}}`)},
 	}))
@@ -1066,12 +1065,26 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "Desktop Alice", steerDisplayName)
 	require.NoError(t, client.Events(ctx, &task, []workerprotocol.EventInput{{
 		Sequence: 3, Type: "item/completed", Payload: json.RawMessage(
-			`{"item":{"id":"desktop-steer-item-1","type":"userMessage",` +
-				`"clientId":"desktop-client-steer-1"}}`),
+			`{"item":{"id":"desktop-steer-item-1","type":"userMessage"}}`),
 	}}))
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT codex_user_message_item_id
 		FROM codex_turn_intents WHERE id=$1`, steerIntentID).Scan(&intentUserItem))
 	require.Equal(t, "desktop-steer-item-1", intentUserItem)
+	var segmentCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM run_process_segments
+		WHERE run_id=$1`, task.Claimed.RunID).Scan(&segmentCount))
+	require.Equal(t, 2, segmentCount)
+	var initialBoundary, steerBoundary string
+	var steerTriggerMessage sql.NullString
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT initial.boundary_client_id,
+		steer.boundary_client_id,steer.trigger_message_id::text
+		FROM run_process_segments initial JOIN run_process_segments steer
+			ON steer.run_id=initial.run_id
+		WHERE initial.run_id=$1 AND initial.sequence=0 AND steer.sequence=1`,
+		task.Claimed.RunID).Scan(&initialBoundary, &steerBoundary, &steerTriggerMessage))
+	require.Equal(t, "desktop-user-item-1", initialBoundary)
+	require.Equal(t, "desktop-steer-item-1", steerBoundary)
+	require.True(t, steerTriggerMessage.Valid)
 	interactive, err := client.RegisterInteractive(ctx, &task, json.RawMessage(`"input-1"`),
 		json.RawMessage(`{"threadId":"codex-desktop-thread","turnId":"desktop-turn-1",`+
 			`"itemId":"question-1","questions":[{"id":"choice","header":"Choose",`+

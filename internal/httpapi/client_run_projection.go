@@ -63,6 +63,16 @@ func ensureUserBoundaryTx(ctx context.Context, tx *sql.Tx, runID uuid.UUID,
 	if clientID == "" {
 		clientID = mapString(item, "clientUserMessageId")
 	}
+	if clientID == "" {
+		clientID = mapString(item, "id")
+	}
+	if clientID == "" {
+		clientID = fmt.Sprintf("event-%d", event.Sequence)
+	}
+	triggerMessageID, err := runBoundaryMessageIDTx(ctx, tx, runID, event.Sequence, clientID)
+	if err != nil {
+		return err
+	}
 	initialID, err := ensureInitialRunSegmentTx(ctx, tx, runID)
 	if err != nil {
 		return err
@@ -73,14 +83,9 @@ func ensureUserBoundaryTx(ctx context.Context, tx *sql.Tx, runID uuid.UUID,
 		return err
 	}
 	if !initialBoundary.Valid {
-		_, err = tx.ExecContext(ctx, `UPDATE run_process_segments SET boundary_client_id=NULLIF($2,''),
-			trigger_message_id=COALESCE(trigger_message_id,(
-				SELECT message.id FROM session_messages message
-				LEFT JOIN codex_turn_intents intent ON intent.id=message.turn_intent_id
-				WHERE message.local_id=$2 OR message.turn_intent_id::text=$2
-					OR intent.desktop_input_projection_key=$2
-				ORDER BY message.created_at LIMIT 1)),
-			updated_at=now() WHERE id=$1`, initialID, clientID)
+		_, err = tx.ExecContext(ctx, `UPDATE run_process_segments SET boundary_client_id=$2,
+			trigger_message_id=COALESCE(trigger_message_id,$3),updated_at=now() WHERE id=$1`,
+			initialID, clientID, triggerMessageID)
 		return err
 	}
 	var existing uuid.UUID
@@ -105,15 +110,51 @@ func ensureUserBoundaryTx(ctx context.Context, tx *sql.Tx, runID uuid.UUID,
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO run_process_segments(
 		run_id,sequence,trigger_type,trigger_message_id,boundary_client_id,start_event_sequence)
-		VALUES ($1,$2,'steer',(
-			SELECT message.id FROM session_messages message
-			LEFT JOIN codex_turn_intents intent ON intent.id=message.turn_intent_id
-			WHERE message.local_id=$3 OR message.turn_intent_id::text=$3
-				OR intent.desktop_input_projection_key=$3
-			ORDER BY message.created_at LIMIT 1
-		),NULLIF($3,''),$4)`, runID, next, clientID, event.Sequence)
+		VALUES ($1,$2,'steer',$3,$4,$5)`, runID, next, triggerMessageID, clientID,
+		event.Sequence)
 	_ = payload
 	return err
+}
+
+func runBoundaryMessageIDTx(ctx context.Context, tx *sql.Tx, runID uuid.UUID,
+	eventSequence int64, boundaryID string,
+) (*uuid.UUID, error) {
+	var messageID uuid.UUID
+	err := tx.QueryRowContext(ctx, `SELECT message.id FROM session_messages message
+		LEFT JOIN codex_turn_intents intent ON intent.id=message.turn_intent_id
+		JOIN codex_turn_runs run ON run.primary_intent_id=message.conversation_turn_id
+		WHERE run.id=$1 AND message.message_role='user' AND (
+			message.local_id=$2 OR message.turn_intent_id::text=$2
+			OR intent.desktop_input_projection_key=$2
+			OR intent.codex_user_message_item_id=$2)
+		ORDER BY message.seq LIMIT 1`, runID, boundaryID).Scan(&messageID)
+	if err == nil {
+		return &messageID, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	err = tx.QueryRowContext(ctx, `SELECT message.id
+		FROM codex_turn_runs run
+		JOIN LATERAL (
+			SELECT candidate.id FROM session_messages candidate
+			WHERE candidate.conversation_turn_id=run.primary_intent_id
+				AND candidate.message_role='user'
+			ORDER BY candidate.seq
+			OFFSET (SELECT GREATEST(count(*)-1,0) FROM agent_events event
+				WHERE event.run_id=run.id AND event.run_event_sequence<=$2
+					AND event.event_type='item/completed'
+					AND event.payload->'item'->>'type'='userMessage')
+			LIMIT 1
+		) message ON true
+		WHERE run.id=$1`, runID, eventSequence).Scan(&messageID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &messageID, nil
 }
 
 func segmentForRunEventTx(ctx context.Context, tx *sql.Tx, runID uuid.UUID,

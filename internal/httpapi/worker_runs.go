@@ -436,10 +436,15 @@ func recordDesktopUserMessageItem(ctx context.Context, tx *sql.Tx,
 	err := tx.QueryRowContext(ctx, query, claimed.ControlID, clientID, itemID).Scan(&intentID)
 	if errors.Is(err, sql.ErrNoRows) && clientID == "" {
 		err = tx.QueryRowContext(ctx, `UPDATE codex_turn_intents SET
-			codex_user_message_item_id = COALESCE(codex_user_message_item_id, $2),
-			updated_at = now()
-			WHERE id = $1 AND input_surface = 'desktop' RETURNING id`,
-			claimed.ID, itemID).Scan(&intentID)
+			codex_user_message_item_id=$3,updated_at=now()
+			WHERE id=(SELECT id FROM codex_turn_intents
+				WHERE control_id=$1 AND input_surface='desktop'
+					AND confirmed_codex_turn_id=COALESCE(NULLIF($2,''),(
+						SELECT confirmed_codex_turn_id FROM codex_turn_runs WHERE id=$4))
+					AND codex_user_message_item_id IS NULL
+				ORDER BY sequence_no LIMIT 1 FOR UPDATE)
+			RETURNING id`, claimed.ControlID, claimed.ConfirmedTurnID, itemID,
+			claimed.RunID).Scan(&intentID)
 	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
