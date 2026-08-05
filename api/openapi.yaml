@@ -1540,7 +1540,8 @@ components:
       type: object
       required: [id, workspaceId, projectId, agentProfileId, title,
         lifecycleState, historyCompleteness, model, reasoningEffort, serviceTier,
-        collaborationMode, settingsVersion, lastMessageSeq, lastActivityAt, createdAt, updatedAt]
+        collaborationMode, settingsVersion, lastMessageSeq, isRunning, hasRunIssue, lastAgentMessageSeq,
+        pendingInteractiveId, lastActivityAt, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         workspaceId: { type: string, format: uuid }
@@ -1555,6 +1556,10 @@ components:
         collaborationMode: { type: string, enum: [default, plan] }
         settingsVersion: { type: integer, format: int64 }
         lastMessageSeq: { type: integer, format: int64 }
+        isRunning: { type: boolean }
+        hasRunIssue: { type: boolean }
+        lastAgentMessageSeq: { type: integer, format: int64, minimum: 0 }
+        pendingInteractiveId: { type: string, format: uuid, nullable: true }
         lastActivityAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }

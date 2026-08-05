@@ -19,22 +19,26 @@ import (
 )
 
 type clientSession struct {
-	ID                  uuid.UUID `json:"id"`
-	WorkspaceID         uuid.UUID `json:"workspaceId"`
-	ProjectID           uuid.UUID `json:"projectId"`
-	AgentProfileID      uuid.UUID `json:"agentProfileId"`
-	Title               string    `json:"title"`
-	LifecycleState      string    `json:"lifecycleState"`
-	HistoryCompleteness string    `json:"historyCompleteness"`
-	Model               *string   `json:"model"`
-	ReasoningEffort     *string   `json:"reasoningEffort"`
-	ServiceTier         string    `json:"serviceTier"`
-	CollaborationMode   string    `json:"collaborationMode"`
-	SettingsVersion     int64     `json:"settingsVersion"`
-	LastMessageSeq      int64     `json:"lastMessageSeq"`
-	LastActivityAt      time.Time `json:"lastActivityAt"`
-	CreatedAt           time.Time `json:"createdAt"`
-	UpdatedAt           time.Time `json:"updatedAt"`
+	ID                   uuid.UUID  `json:"id"`
+	WorkspaceID          uuid.UUID  `json:"workspaceId"`
+	ProjectID            uuid.UUID  `json:"projectId"`
+	AgentProfileID       uuid.UUID  `json:"agentProfileId"`
+	Title                string     `json:"title"`
+	LifecycleState       string     `json:"lifecycleState"`
+	HistoryCompleteness  string     `json:"historyCompleteness"`
+	Model                *string    `json:"model"`
+	ReasoningEffort      *string    `json:"reasoningEffort"`
+	ServiceTier          string     `json:"serviceTier"`
+	CollaborationMode    string     `json:"collaborationMode"`
+	SettingsVersion      int64      `json:"settingsVersion"`
+	LastMessageSeq       int64      `json:"lastMessageSeq"`
+	IsRunning            bool       `json:"isRunning"`
+	HasRunIssue          bool       `json:"hasRunIssue"`
+	LastAgentMessageSeq  int64      `json:"lastAgentMessageSeq"`
+	PendingInteractiveID *uuid.UUID `json:"pendingInteractiveId"`
+	LastActivityAt       time.Time  `json:"lastActivityAt"`
+	CreatedAt            time.Time  `json:"createdAt"`
+	UpdatedAt            time.Time  `json:"updatedAt"`
 }
 
 type rowScanner interface {
@@ -42,18 +46,36 @@ type rowScanner interface {
 }
 
 func scanClientSession(row rowScanner) (clientSession, error) {
+	return scanClientSessionFields(row, false)
+}
+
+func scanClientSessionSummary(row rowScanner) (clientSession, error) {
+	result, err := scanClientSessionFields(row, true)
+	return result, err
+}
+
+func scanClientSessionFields(row rowScanner, summary bool) (clientSession, error) {
 	var result clientSession
 	var model, effort sql.NullString
-	err := row.Scan(&result.ID, &result.WorkspaceID,
+	dest := []any{&result.ID, &result.WorkspaceID,
 		&result.ProjectID, &result.AgentProfileID, &result.Title,
 		&result.LifecycleState, &result.HistoryCompleteness, &model, &effort,
 		&result.ServiceTier, &result.CollaborationMode, &result.SettingsVersion,
-		&result.LastMessageSeq, &result.LastActivityAt, &result.CreatedAt, &result.UpdatedAt)
+		&result.LastMessageSeq, &result.LastActivityAt, &result.CreatedAt, &result.UpdatedAt}
+	var pendingInteractiveID uuid.NullUUID
+	if summary {
+		dest = append(dest, &result.IsRunning, &result.HasRunIssue,
+			&result.LastAgentMessageSeq, &pendingInteractiveID)
+	}
+	err := row.Scan(dest...)
 	if model.Valid {
 		result.Model = &model.String
 	}
 	if effort.Valid {
 		result.ReasoningEffort = &effort.String
+	}
+	if pendingInteractiveID.Valid {
+		result.PendingInteractiveID = &pendingInteractiveID.UUID
 	}
 	return result, err
 }
@@ -69,6 +91,22 @@ const clientSessionQualifiedColumns = `session.id,session.workspace_id,
 	session.reasoning_effort,session.service_tier,session.collaboration_mode,
 	session.settings_version,session.last_message_seq,session.last_activity_at,
 	session.created_at,session.updated_at`
+
+const clientSessionSummaryColumns = clientSessionQualifiedColumns + `,
+	EXISTS(SELECT 1 FROM codex_thread_controls control
+		JOIN codex_turn_runs run ON run.control_id=control.id
+		WHERE control.session_id=session.id
+		  AND run.status IN ('starting','running','reconciling')),
+	COALESCE((SELECT run.status IN ('failed','canceled')
+		FROM codex_thread_controls control
+		JOIN codex_turn_runs run ON run.control_id=control.id
+		WHERE control.session_id=session.id
+		ORDER BY run.started_at DESC,run.id DESC LIMIT 1),false),
+	COALESCE((SELECT max(message.seq) FROM session_messages message
+		WHERE message.session_id=session.id AND message.message_role='agent'),0),
+	(SELECT request.id FROM codex_interactive_requests request
+		WHERE request.session_id=session.id AND request.status='pending'
+		ORDER BY request.created_at DESC,request.id DESC LIMIT 1)`
 
 func (s *Server) clientBootstrap(c *gin.Context) {
 	session := c.MustGet("session").(auth.Session)
@@ -260,12 +298,12 @@ func (s *Server) clientListSessions(c *gin.Context) {
 		badRequest(c, errors.New("lifecycle 无效"))
 		return
 	}
-	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT `+clientSessionColumns+`
-		FROM workspace_sessions
-		WHERE ($1::timestamptz IS NULL OR (last_activity_at,id) < ($1,$2))
-		  AND ($4::uuid IS NULL OR workspace_project_id=$4)
-		  AND ($5='' OR lifecycle_state=$5)
-		ORDER BY last_activity_at DESC,id DESC LIMIT $3`, clientCursorTime(cursor.Activity),
+	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT `+clientSessionSummaryColumns+`
+		FROM workspace_sessions session
+		WHERE ($1::timestamptz IS NULL OR (session.last_activity_at,session.id) < ($1,$2))
+		  AND ($4::uuid IS NULL OR session.workspace_project_id=$4)
+		  AND ($5='' OR session.lifecycle_state=$5)
+		ORDER BY session.last_activity_at DESC,session.id DESC LIMIT $3`, clientCursorTime(cursor.Activity),
 		clientCursorUUID(cursor.ID), limit+1, projectID, lifecycle)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取 Session 失败", err)
@@ -274,7 +312,7 @@ func (s *Server) clientListSessions(c *gin.Context) {
 	defer func() { _ = rows.Close() }()
 	items := make([]clientSession, 0, limit)
 	for rows.Next() {
-		item, scanErr := scanClientSession(rows)
+		item, scanErr := scanClientSessionSummary(rows)
 		if scanErr != nil {
 			problem(c, http.StatusInternalServerError, "解析 Session 失败", scanErr)
 			return
@@ -458,8 +496,8 @@ func (s *Server) clientCreateSession(c *gin.Context) {
 func (s *Server) findClientCreatedSession(c *gin.Context, idempotencyKey string) (
 	clientSession, bool, error,
 ) {
-	result, err := scanClientSession(s.db.QueryRowContext(c.Request.Context(), `SELECT `+
-		clientSessionQualifiedColumns+`
+	result, err := scanClientSessionSummary(s.db.QueryRowContext(c.Request.Context(), `SELECT `+
+		clientSessionSummaryColumns+`
 		FROM codex_turn_intents intent
 		JOIN workspace_sessions session ON session.id=intent.session_id
 		WHERE intent.idempotency_key=$1`, idempotencyKey))

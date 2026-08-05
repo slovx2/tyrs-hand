@@ -1888,6 +1888,12 @@ export interface components {
             settingsVersion: number;
             /** Format: int64 */
             lastMessageSeq: number;
+            isRunning: boolean;
+            hasRunIssue: boolean;
+            /** Format: int64 */
+            lastAgentMessageSeq: number;
+            /** Format: uuid */
+            pendingInteractiveId: string | null;
             /** Format: date-time */
             lastActivityAt: string;
             /** Format: date-time */

@@ -57,6 +57,10 @@ function session(index: number, title: string, overrides: Partial<Session> = {})
     collaborationMode: "default",
     settingsVersion: 3,
     lastMessageSeq: 2,
+    isRunning: false,
+    hasRunIssue: false,
+    lastAgentMessageSeq: 2,
+    pendingInteractiveId: null,
     lastActivityAt: baseTime,
     createdAt: baseTime,
     updatedAt: baseTime,
@@ -110,11 +114,15 @@ function run(index: number, status: RunSnapshot["status"], mode: "default" | "pl
   };
 }
 
-const runningSession = session(1, "运行中：完善移动端会话体验");
+const runningSession = session(1, "运行中：完善移动端会话体验", { isRunning: true });
 const planSession = session(2, "计划已完成：优化消息恢复", { collaborationMode: "plan" });
-const interactiveSession = session(3, "等待回答：确认实现范围");
+const interactiveSession = session(3, "等待回答：确认实现范围", {
+  pendingInteractiveId: "50000000-0000-4000-8000-000000000003",
+});
 const secretSession = session(4, "等待桌面端输入敏感信息");
-const failedSession = session(5, "执行失败：依赖服务不可用", { serviceTier: "standard" });
+const failedSession = session(5, "执行失败：依赖服务不可用", {
+  serviceTier: "standard", hasRunIssue: true,
+});
 const attachmentSession = session(6, "附件与 Markdown 完整展示");
 const archivedSession = session(7, "已归档：旧版通知链路", { lifecycleState: "archived" });
 const markdownSession = session(9, "Markdown 排版与长内容验收");

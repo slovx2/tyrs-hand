@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS connections (
   name TEXT NOT NULL,
   device_id TEXT NOT NULL,
   active INTEGER NOT NULL DEFAULT 0,
+  session_reads_initialized INTEGER NOT NULL DEFAULT 0,
   bootstrap_payload TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -40,6 +41,16 @@ CREATE TABLE IF NOT EXISTS sessions (
   FOREIGN KEY(server_id) REFERENCES connections(server_id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS sessions_activity ON sessions(server_id,lifecycle_state,last_activity_at DESC);
+CREATE TABLE IF NOT EXISTS session_reads (
+  server_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  last_read_agent_seq INTEGER NOT NULL DEFAULT 0,
+  last_read_interactive_id TEXT,
+  initialized INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(server_id,session_id),
+  FOREIGN KEY(server_id) REFERENCES connections(server_id) ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS messages (
   server_id TEXT NOT NULL,
   session_id TEXT NOT NULL,
@@ -156,8 +167,33 @@ export async function withDatabaseTransaction(
 
 async function openDatabase(): Promise<SQLite.SQLiteDatabase> {
   const database = await SQLite.openDatabaseAsync("tyrs-hand.db");
+  const version = await database.getFirstAsync<{ user_version: number }>("PRAGMA user_version");
   await database.execAsync(schema);
-  await database.execAsync("PRAGMA user_version = 2");
+  const currentVersion = version?.user_version ?? 0;
+  if (currentVersion < 4) {
+    await database.withExclusiveTransactionAsync(async (transaction) => {
+      if (currentVersion > 0 && currentVersion < 3) {
+        await transaction.execAsync(
+          "ALTER TABLE connections ADD COLUMN session_reads_initialized INTEGER NOT NULL DEFAULT 0");
+      }
+      if (currentVersion < 3) {
+        await transaction.execAsync(`
+          UPDATE sessions SET payload=json_set(payload,
+            '$.isRunning',json('false'),
+            '$.hasRunIssue',json('false'),
+            '$.lastAgentMessageSeq',0,
+            '$.pendingInteractiveId',json('null'));
+          INSERT OR IGNORE INTO session_reads(server_id,session_id,last_read_agent_seq,
+            last_read_interactive_id,initialized,updated_at)
+            SELECT server_id,id,last_message_seq,NULL,0,datetime('now') FROM sessions;
+        `);
+      } else {
+        await transaction.execAsync(`UPDATE sessions SET payload=json_set(payload,
+          '$.hasRunIssue',json('false'));`);
+      }
+      await transaction.execAsync("PRAGMA user_version = 4");
+    });
+  }
   return database;
 }
 

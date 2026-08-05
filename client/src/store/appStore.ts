@@ -3,6 +3,8 @@ import { create } from "zustand";
 import { ClientApi } from "@/api/client";
 import { loadCachedBootstrap, loadCachedSessions, saveBootstrap, saveSessions } from "@/db/cache";
 import { listConnections, setActiveConnection, type Connection } from "@/db/connections";
+import { loadSessionReadStates, markSessionRead as persistSessionRead,
+  type SessionReadStates } from "@/db/sessionReads";
 import { loadThemeMode, saveThemeMode } from "@/db/settings";
 import type { Bootstrap, Session } from "@/types/protocol";
 import type { ThemeMode } from "@/theme/tokens";
@@ -16,6 +18,7 @@ type AppState = {
   activeConnection: Connection | null;
   bootstrap: Bootstrap | null;
   sessions: Session[];
+  sessionReads: SessionReadStates;
   selectedProjectId: string | null;
   initialize: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -24,6 +27,7 @@ type AppState = {
   setSelectedProject: (projectId: string | null) => void;
   setThemeMode: (mode: ThemeMode) => void;
   upsertSession: (session: Session) => void;
+  markSessionRead: (session: Session) => Promise<void>;
 };
 
 let refreshPromise: Promise<void> | null = null;
@@ -38,14 +42,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeConnection: null,
   bootstrap: null,
   sessions: [],
+  sessionReads: {},
   selectedProjectId: null,
 
   initialize: async () => {
     const [connections, themeMode] = await Promise.all([listConnections(), loadThemeMode()]);
     const activeConnection = connections.find((item) => item.active) ?? connections[0] ?? null;
-    const bootstrap = activeConnection ? await loadCachedBootstrap(activeConnection.serverId) : null;
-    const sessions = activeConnection ? await loadCachedSessions(activeConnection.serverId) : [];
+    const [bootstrap, sessions, sessionReads] = activeConnection ? await Promise.all([
+      loadCachedBootstrap(activeConnection.serverId), loadCachedSessions(activeConnection.serverId),
+      loadSessionReadStates(activeConnection.serverId),
+    ]) : [null, [], {}];
     set({ ready: true, connections, activeConnection, bootstrap, sessions, themeMode,
+      sessionReads,
       selectedProjectId: bootstrap?.projects[0]?.id ?? null });
     if (activeConnection) void get().refresh();
   },
@@ -66,8 +74,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           const page = await api.listSessions();
           await saveBootstrap(connection.serverId, bootstrap);
           await saveSessions(connection.serverId, page.sessions);
+          const sessionReads = await loadSessionReadStates(connection.serverId);
           if (get().activeConnection?.serverId !== connection.serverId) continue;
-          set({ bootstrap, sessions: page.sessions, error: null,
+          set({ bootstrap, sessions: page.sessions, sessionReads, error: null,
             selectedProjectId: get().selectedProjectId ?? bootstrap.projects[0]?.id ?? null });
         } catch (error) {
           if (get().activeConnection?.serverId === connection.serverId) {
@@ -87,7 +96,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const current = get().activeConnection;
     if (current && !connections.some((item) => item.serverId === current.serverId)) {
       const activeConnection = connections.find((item) => item.active) ?? connections[0] ?? null;
-      set({ connections, activeConnection, bootstrap: null, sessions: [], selectedProjectId: null });
+      set({ connections, activeConnection, bootstrap: null, sessions: [], sessionReads: {},
+        selectedProjectId: null });
       return;
     }
     set({ connections });
@@ -97,9 +107,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     await setActiveConnection(serverId);
     const connections = await listConnections();
     const activeConnection = connections.find((item) => item.serverId === serverId) ?? null;
-    const bootstrap = activeConnection ? await loadCachedBootstrap(serverId) : null;
-    const sessions = activeConnection ? await loadCachedSessions(serverId) : [];
-    set({ connections, activeConnection, bootstrap, sessions, selectedProjectId: null });
+    const [bootstrap, sessions, sessionReads] = activeConnection ? await Promise.all([
+      loadCachedBootstrap(serverId), loadCachedSessions(serverId), loadSessionReadStates(serverId),
+    ]) : [null, [], {}];
+    set({ connections, activeConnection, bootstrap, sessions, sessionReads, selectedProjectId: null });
     await get().refresh();
   },
 
@@ -108,4 +119,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   upsertSession: (session) => set((state) => ({
     sessions: [session, ...state.sessions.filter((item) => item.id !== session.id)],
   })),
+  markSessionRead: async (session) => {
+    const connection = get().activeConnection;
+    if (!connection) return;
+    const readState = await persistSessionRead(connection.serverId, session);
+    if (get().activeConnection?.serverId !== connection.serverId) return;
+    set((state) => ({ sessionReads: { ...state.sessionReads, [session.id]: {
+      lastReadAgentSeq: Math.max(state.sessionReads[session.id]?.lastReadAgentSeq ?? 0,
+        readState.lastReadAgentSeq),
+      lastReadInteractiveId: readState.lastReadInteractiveId,
+    } } }));
+  },
 }));

@@ -67,7 +67,8 @@ function createSession(serverId: string, body: Record<string, unknown>): Session
     lifecycleState: "active", historyCompleteness: "complete", model: incoming.model,
     reasoningEffort: incoming.reasoningEffort, serviceTier: incoming.serviceTier,
     collaborationMode: incoming.collaborationMode, settingsVersion: incoming.settingsVersion + 1,
-    lastMessageSeq: 1, lastActivityAt: timestamp, createdAt: timestamp, updatedAt: timestamp,
+    lastMessageSeq: 1, isRunning: false, hasRunIssue: false, lastAgentMessageSeq: 0,
+    pendingInteractiveId: null, lastActivityAt: timestamp, createdAt: timestamp, updatedAt: timestamp,
   };
   value.sessions.unshift(item);
   value.details[item.id] = {
@@ -137,6 +138,14 @@ export function previewBootstrap(serverId: string) {
 
 export function previewSessions(serverId: string) {
   return structuredClone(control(serverId).sessions);
+}
+
+export function previewSessionReadStates(serverId: string) {
+  return Object.fromEntries(control(serverId).sessions.map((session) => [session.id, {
+    lastReadAgentSeq: session.lastAgentMessageSeq,
+    lastReadInteractiveId: session.pendingInteractiveId ===
+      "50000000-0000-4000-8000-000000000003" ? null : session.pendingInteractiveId,
+  }]));
 }
 
 export function previewMessages(serverId: string, sessionId: string) {

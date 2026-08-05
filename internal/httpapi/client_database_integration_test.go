@@ -93,8 +93,17 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 	require.Equal(t, "default", bootstrapBody.LastStartedSettings.CollaborationMode)
 	listedSessions := clientJSONRequest(t, http.MethodGet,
 		endpoint+"/api/v1/client/sessions?limit=10", loginBody.AccessToken, nil)
-	require.Equal(t, http.StatusOK, listedSessions.Code)
+	require.Equal(t, http.StatusOK, listedSessions.Code, listedSessions.Body.String())
 	require.Contains(t, listedSessions.Body.String(), sessionID.String())
+	var listedBody struct {
+		Sessions []clientSession `json:"sessions"`
+	}
+	require.NoError(t, json.Unmarshal(listedSessions.Body.Bytes(), &listedBody))
+	listedSession := requireClientSession(t, listedBody.Sessions, sessionID)
+	require.False(t, listedSession.IsRunning)
+	require.False(t, listedSession.HasRunIssue)
+	require.Zero(t, listedSession.LastAgentMessageSeq)
+	require.Nil(t, listedSession.PendingInteractiveID)
 
 	wsURL := "ws" + strings.TrimPrefix(endpoint, "http") + "/api/v1/client/updates?cursor=0"
 	protocol := clientBearerWebSocketPrefix + loginBody.AccessToken
@@ -182,6 +191,13 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 		require.NotNil(t, claimed)
 	}
 	require.Equal(t, sessionID, claimed.SessionID)
+	runningSessions := clientJSONRequest(t, http.MethodGet,
+		endpoint+"/api/v1/client/sessions?limit=10", loginBody.AccessToken, nil)
+	require.Equal(t, http.StatusOK, runningSessions.Code)
+	require.NoError(t, json.Unmarshal(runningSessions.Body.Bytes(), &listedBody))
+	runningSession := requireClientSession(t, listedBody.Sessions, sessionID)
+	require.True(t, runningSession.IsRunning)
+	require.False(t, runningSession.HasRunIssue)
 	projectionTx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 	commentaryPayload := json.RawMessage(`{"item":{"id":"commentary-client-test",` +
@@ -206,6 +222,20 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 		app_server_request_id,questions) VALUES ($1,$2,$3,$4,'thread-1','turn-1','item-1',1,
 		'1'::jsonb,$5) RETURNING id`, interactiveID, claimed.ControlID, claimed.RunID,
 		sessionID, questions).Scan(&interactiveID))
+	require.NoError(t, db.QueryRowContext(ctx, `UPDATE codex_turn_runs
+		SET status='waiting_for_user',active_slot=NULL WHERE id=$1 RETURNING id`, claimed.RunID).
+		Scan(&claimed.RunID))
+	waitingSessions := clientJSONRequest(t, http.MethodGet,
+		endpoint+"/api/v1/client/sessions?limit=10", loginBody.AccessToken, nil)
+	require.Equal(t, http.StatusOK, waitingSessions.Code)
+	require.NoError(t, json.Unmarshal(waitingSessions.Body.Bytes(), &listedBody))
+	waitingSession := requireClientSession(t, listedBody.Sessions, sessionID)
+	require.False(t, waitingSession.IsRunning)
+	require.False(t, waitingSession.HasRunIssue)
+	require.Equal(t, interactiveID, *waitingSession.PendingInteractiveID)
+	_, err = db.ExecContext(ctx, `UPDATE codex_turn_runs SET status='starting',active_slot=1 WHERE id=$1`,
+		claimed.RunID)
+	require.NoError(t, err)
 
 	answers := make(chan bool, 2)
 	var answerWait sync.WaitGroup
@@ -237,6 +267,27 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 	require.NoError(t, repository.Complete(ctx, claimed, codexcontrol.TurnResult{
 		TurnID: "turn-1", FinalAnswer: "final answer for every client",
 	}))
+	completedSessions := clientJSONRequest(t, http.MethodGet,
+		endpoint+"/api/v1/client/sessions?limit=10", loginBody.AccessToken, nil)
+	require.Equal(t, http.StatusOK, completedSessions.Code)
+	require.NoError(t, json.Unmarshal(completedSessions.Body.Bytes(), &listedBody))
+	completedSession := requireClientSession(t, listedBody.Sessions, sessionID)
+	require.False(t, completedSession.IsRunning)
+	require.False(t, completedSession.HasRunIssue)
+	require.Greater(t, completedSession.LastAgentMessageSeq, int64(0))
+	require.Nil(t, completedSession.PendingInteractiveID)
+	for _, status := range []string{"failed", "canceled"} {
+		_, err = db.ExecContext(ctx, `UPDATE codex_turn_runs SET status=$2 WHERE id=$1`,
+			claimed.RunID, status)
+		require.NoError(t, err)
+		issueSessions := clientJSONRequest(t, http.MethodGet,
+			endpoint+"/api/v1/client/sessions?limit=10", loginBody.AccessToken, nil)
+		require.Equal(t, http.StatusOK, issueSessions.Code)
+		require.NoError(t, json.Unmarshal(issueSessions.Body.Bytes(), &listedBody))
+		require.True(t, requireClientSession(t, listedBody.Sessions, sessionID).HasRunIssue)
+	}
+	_, err = db.ExecContext(ctx, `UPDATE codex_turn_runs SET status='completed' WHERE id=$1`, claimed.RunID)
+	require.NoError(t, err)
 	messages := clientJSONRequest(t, http.MethodGet, messageURL+"?beforeSeq=999", loginBody.AccessToken, nil)
 	require.Equal(t, http.StatusOK, messages.Code)
 	require.Contains(t, messages.Body.String(), "final answer for every client")
@@ -257,6 +308,17 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 		loginBody.AccessToken, nil)
 	require.Equal(t, http.StatusOK, activities.Code)
 	require.Contains(t, activities.Body.String(), "projected commentary")
+}
+
+func requireClientSession(t *testing.T, sessions []clientSession, id uuid.UUID) clientSession {
+	t.Helper()
+	for _, session := range sessions {
+		if session.ID == id {
+			return session
+		}
+	}
+	require.FailNow(t, "会话列表缺少预期 Session", id.String())
+	return clientSession{}
 }
 
 func clientIntegrationServer(t *testing.T, db *sql.DB, authService *auth.Service) (*Server, string) {

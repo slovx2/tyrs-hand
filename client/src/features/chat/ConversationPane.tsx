@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ClientApi } from "@/api/client";
 import { loadCachedTurns, saveTurns } from "@/db/cache";
 import { clearDraft, loadDraft, saveDraft } from "@/db/drafts";
+import { sessionHasUnread } from "@/db/sessionReadStatus";
 import { Button, EmptyState, Muted } from "@/components/ui";
 import { useOutbox } from "@/hooks/useOutbox";
 import { previewPerf } from "@/preview/perf";
@@ -63,6 +64,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const bootstrap = useAppStore((state) => state.bootstrap);
   const session = useAppStore((state) => state.sessions.find((item) => item.id === sessionId));
   const refreshSessions = useAppStore((state) => state.refresh);
+  const markSessionRead = useAppStore((state) => state.markSessionRead);
+  const sessionRead = useAppStore((state) => state.sessionReads[sessionId]);
   const [turns, setTurns] = useState<ConversationTurn[]>([]);
   const [messagesReady, setMessagesReady] = useState(false);
   const [initialSyncComplete, setInitialSyncComplete] = useState(false);
@@ -93,6 +96,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const outerDragging = useRef(false);
   const outerMomentum = useRef(false);
   const initialPositioned = useRef(false);
+  const initialSyncSessionId = useRef<string | null>(null);
   const lastAutoScrollKey = useRef<string | undefined>(undefined);
   const activeRunId = useRef<string | null>(null);
   const scrollMetrics = useRef({ contentHeight: 0, viewportHeight: 0, offsetY: 0 });
@@ -125,6 +129,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         elapsed: (performance.now() - startedAt).toFixed(1) });
       if (activeSessionId.current !== sessionId) return;
       setSettings(detail.settings); setSavedSettings(detail.settings);
+      void markSessionRead(detail.session);
       page = initialPage;
     } else page = await pagePromise;
     previewPerf("conversation:turns:received", { sessionId, turns: page.items.length,
@@ -145,11 +150,14 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       setTurnCursor(page.nextCursor);
       setHasMore(page.hasMoreBefore);
     }
-    if (beforeCursor === undefined) setInitialSyncComplete(true);
+    if (beforeCursor === undefined) {
+      initialSyncSessionId.current = sessionId;
+      setInitialSyncComplete(true);
+    }
     void saveTurns(connection.serverId, sessionId, page.items);
     previewPerf("conversation:load:state-queued", { sessionId,
       elapsed: (performance.now() - startedAt).toFixed(1) });
-  }, [connection, sessionId]);
+  }, [connection, markSessionRead, sessionId]);
   const refresh = useCallback(() => {
     if (refreshPromise.current?.sessionId === sessionId) return refreshPromise.current.promise;
     setLoadError(false);
@@ -173,6 +181,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     setTurns([]);
     setMessagesReady(false);
     setInitialSyncComplete(false);
+    initialSyncSessionId.current = null;
     setLoadError(false);
     setSettings(null);
     setSavedSettings(null);
@@ -195,6 +204,12 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     historyPagingReady.current = false;
   }, [sessionId]);
   useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    if (initialSyncComplete && initialSyncSessionId.current === sessionId && session &&
+      sessionHasUnread(session, sessionRead)) {
+      void markSessionRead(session);
+    }
+  }, [initialSyncComplete, markSessionRead, session, sessionId, sessionRead]);
   useEffect(() => {
     if (!connection) return;
     let canceled = false;

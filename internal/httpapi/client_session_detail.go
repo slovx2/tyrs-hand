@@ -72,8 +72,8 @@ func (s *Server) clientGetSession(c *gin.Context) {
 }
 
 func (s *Server) loadClientSessionDetail(c *gin.Context, id uuid.UUID) (clientSessionDetail, error) {
-	session, err := scanClientSession(s.db.QueryRowContext(c.Request.Context(),
-		`SELECT `+clientSessionColumns+` FROM workspace_sessions WHERE id=$1`, id))
+	session, err := scanClientSessionSummary(s.db.QueryRowContext(c.Request.Context(),
+		`SELECT `+clientSessionSummaryColumns+` FROM workspace_sessions session WHERE session.id=$1`, id))
 	if err != nil {
 		return clientSessionDetail{}, err
 	}
@@ -242,6 +242,10 @@ func (s *Server) clientPatchSession(c *gin.Context) {
 			runtime_preferences_frozen_at=now(),updated_at=now() WHERE session_id=$1`,
 			id, profileID, stringValue(model), stringValue(effort), tier, mode,
 			updated.SettingsVersion)
+	}
+	if err == nil {
+		updated, err = scanClientSessionSummary(tx.QueryRowContext(c.Request.Context(),
+			`SELECT `+clientSessionSummaryColumns+` FROM workspace_sessions session WHERE session.id=$1`, id))
 	}
 	if err == nil {
 		version := updated.SettingsVersion

@@ -49,6 +49,10 @@ export async function loadCachedSessions(serverId: string): Promise<Session[]> {
 export async function saveSessions(serverId: string, sessions: Session[]): Promise<void> {
   if (isPreviewMode && isPreviewServerId(serverId)) return;
   await withDatabaseTransaction(async (database) => {
+    const connection = await database.getFirstAsync<{ session_reads_initialized: number }>(
+      "SELECT session_reads_initialized FROM connections WHERE server_id=?", serverId);
+    const initializeBaseline = connection?.session_reads_initialized !== 1;
+    const now = new Date().toISOString();
     for (const session of sessions) {
       await database.runAsync(`INSERT INTO sessions(server_id,id,project_id,title,lifecycle_state,
         last_message_seq,last_activity_at,payload) VALUES (?,?,?,?,?,?,?,?)
@@ -57,6 +61,23 @@ export async function saveSessions(serverId: string, sessions: Session[]): Promi
         last_activity_at=excluded.last_activity_at,payload=excluded.payload`, serverId,
       session.id, session.projectId, session.title, session.lifecycleState,
       session.lastMessageSeq, session.lastActivityAt, JSON.stringify(session));
+      if (initializeBaseline) {
+        await database.runAsync(`INSERT INTO session_reads(server_id,session_id,last_read_agent_seq,
+          last_read_interactive_id,initialized,updated_at) VALUES (?,?,?,?,1,?)
+          ON CONFLICT(server_id,session_id) DO UPDATE SET
+          last_read_agent_seq=excluded.last_read_agent_seq,
+          last_read_interactive_id=excluded.last_read_interactive_id,
+          initialized=1,updated_at=excluded.updated_at`, serverId, session.id,
+        session.lastAgentMessageSeq, session.pendingInteractiveId, now);
+      } else {
+        await database.runAsync(`UPDATE session_reads SET last_read_agent_seq=?,
+          last_read_interactive_id=?,initialized=1,updated_at=?
+          WHERE server_id=? AND session_id=? AND initialized=0`, session.lastAgentMessageSeq,
+        session.pendingInteractiveId, now, serverId, session.id);
+      }
+    }
+    if (initializeBaseline) {
+      await database.runAsync("UPDATE connections SET session_reads_initialized=1 WHERE server_id=?", serverId);
     }
   });
 }
