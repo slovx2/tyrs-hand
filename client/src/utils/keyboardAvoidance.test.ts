@@ -3,17 +3,17 @@ import { describe, expect, it } from "vitest";
 import { keyboardAvoidance } from "./keyboardAvoidance";
 
 describe("keyboardAvoidance", () => {
-  it("Android 键盘显示时使用高度避让，确保输入框位于键盘上方", () => {
+  it("Android 键盘显示时只增加底部 padding", () => {
     expect(keyboardAvoidance("android", 24, true)).toEqual({
-      behavior: "height",
+      behavior: "padding",
       keyboardVerticalOffset: 80,
       enabled: true,
     });
   });
 
-  it("Android 键盘收起时禁用高度避让，忽略 React Native 残留的键盘高度", () => {
+  it("Android 键盘收起时清除 padding", () => {
     expect(keyboardAvoidance("android", 24, false)).toEqual({
-      behavior: "height",
+      behavior: "padding",
       keyboardVerticalOffset: 80,
       enabled: false,
     });

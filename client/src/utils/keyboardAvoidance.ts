@@ -7,7 +7,7 @@ export type KeyboardAvoidance = {
 export function keyboardAvoidance(platform: string, topInset: number,
   keyboardVisible = false): KeyboardAvoidance {
   if (platform === "android") return {
-    behavior: "height",
+    behavior: "padding",
     keyboardVerticalOffset: topInset + 56,
     enabled: keyboardVisible,
   };
