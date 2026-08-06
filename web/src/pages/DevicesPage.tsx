@@ -1,4 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  LockKeyhole,
+  Plus,
+  RefreshCw,
+  ShieldCheck,
+  Smartphone,
+} from 'lucide-react'
 import { useState } from 'react'
 import { api } from '../api/client'
 import { useUI } from '../state'
@@ -86,64 +93,89 @@ export function DevicesPage() {
   })
 
   return (
-    <section>
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <section className="devices-page">
+      <div className="devices-page-header">
         <div>
-          <h1 className="text-3xl font-bold">客户端设备</h1>
-          <p className="muted mt-2">
-            扫码绑定 App；删除设备后，其永久凭证会立即失效。
+          <h1>客户端设备</h1>
+          <p className="devices-page-subtitle">
+            管理已授权的移动端设备，扫码即可安全绑定。
           </p>
         </div>
         <button
-          className="button-primary"
+          className="button device-add-button"
           disabled={createPairing.isPending}
           onClick={() => createPairing.mutate()}
         >
-          {createPairing.isPending ? '正在生成…' : '添加设备'}
+          {createPairing.isPending ? (
+            <RefreshCw size={15} className="animate-spin" aria-hidden="true" />
+          ) : (
+            <Plus size={16} aria-hidden="true" />
+          )}
+          <span>{createPairing.isPending ? '正在生成…' : '添加设备'}</span>
         </button>
       </div>
 
       {currentPairing && (
-        <div className="panel mt-6">
-          <h2 className="text-xl font-semibold">绑定新设备</h2>
+        <section className="device-panel device-pairing-panel">
+          <div className="device-panel-header">
+            <h2>绑定新设备</h2>
+            <span className="device-panel-count">步骤 1 / 1</span>
+          </div>
           {currentPairing.status === 'waiting_scan' && (
-            <div className="mt-4 grid gap-4 sm:grid-cols-[320px_1fr] sm:items-center">
+            <div className="device-pairing-content">
               {currentPairing.qrDataUrl && (
-                <img
-                  src={currentPairing.qrDataUrl}
-                  alt="设备绑定二维码"
-                  className="w-full max-w-80 rounded-xl bg-white p-3"
-                />
+                <div className="device-qr-frame">
+                  <img src={currentPairing.qrDataUrl} alt="设备绑定二维码" />
+                </div>
               )}
-              <div>
-                <p>请使用 Tyrs Hand App 扫描二维码。</p>
-                <p className="muted mt-2 text-sm">
-                  二维码十分钟内有效，且只能被一个设备使用。
+              <div className="device-pairing-copy">
+                <div className="device-pairing-eyebrow">Tyrs Hand Mobile</div>
+                <h3>使用 App 扫描二维码</h3>
+                <p>
+                  打开 Tyrs Hand App 的「添加设备」并完成扫描。二维码将在 10
+                  分钟后自动失效，且仅能绑定一台设备。
                 </p>
+                <div className="device-pairing-chips">
+                  <span>
+                    <i />
+                    10 分钟内有效
+                  </span>
+                  <span>单次有效</span>
+                  <span>
+                    <LockKeyhole size={12} />
+                    端到端加密
+                  </span>
+                </div>
                 <button
-                  className="button-secondary mt-4"
+                  className="button-secondary device-refresh-button"
                   onClick={() => pairingStatus.refetch()}
                 >
+                  <RefreshCw size={14} aria-hidden="true" />
                   刷新扫码状态
                 </button>
               </div>
             </div>
           )}
           {currentPairing.status === 'waiting_confirmation' && (
-            <div className="mt-4">
-              <p className="font-semibold">{currentPairing.deviceName}</p>
-              <p className="muted mt-1 text-sm">
-                平台：{currentPairing.platform}
-              </p>
-              <p className="mt-4">
-                请核对手中设备后再确认。确认后该设备凭证永久有效。
-              </p>
-              <div className="mt-4 flex gap-3">
+            <div className="device-confirmation">
+              <div className="device-confirmation-icon">
+                <Smartphone size={22} aria-hidden="true" />
+              </div>
+              <div>
+                <div className="device-pairing-eyebrow">等待确认</div>
+                <h3>{currentPairing.deviceName}</h3>
+                <p>
+                  平台：{currentPairing.platform}
+                  。请核对手中设备后再确认，确认后该设备将获得永久凭证。
+                </p>
+              </div>
+              <div className="device-confirmation-actions">
                 <button
-                  className="button-primary"
+                  className="button"
                   disabled={approve.isPending}
                   onClick={() => approve.mutate()}
                 >
+                  <ShieldCheck size={15} aria-hidden="true" />
                   确认设备
                 </button>
                 <button
@@ -157,36 +189,52 @@ export function DevicesPage() {
           )}
           {(currentPairing.status === 'expired' ||
             currentPairing.status === 'rejected') && (
-            <p className="error-text mt-4">
-              本次绑定已{currentPairing.status === 'expired' ? '过期' : '拒绝'}
-              ，请重新生成二维码。
-            </p>
+            <div className="device-pairing-error">
+              <p>
+                本次绑定已
+                {currentPairing.status === 'expired' ? '过期' : '拒绝'}
+                ，请重新生成二维码。
+              </p>
+            </div>
           )}
-        </div>
+        </section>
       )}
 
-      <div className="mt-8 grid gap-4">
-        {devices.isLoading && <p className="muted">正在加载设备…</p>}
+      <section className="device-panel device-list-panel">
+        <div className="device-panel-header">
+          <h2>已绑定设备</h2>
+          <span className="device-panel-count">
+            {devices.data?.items.length ?? 0} 台设备
+          </span>
+        </div>
+        {devices.isLoading && (
+          <div className="device-list-message">正在加载设备…</div>
+        )}
         {devices.data?.items.length === 0 && (
-          <div className="panel muted">暂无已绑定设备</div>
+          <div className="device-list-message">暂无已绑定设备</div>
         )}
         {devices.data?.items.map((device) => (
-          <article
-            className="panel flex flex-wrap items-center justify-between gap-4"
-            key={device.id}
-          >
-            <div>
-              <h2 className="text-lg font-semibold">{device.name}</h2>
-              <p className="muted mt-1 text-sm">
-                {device.platform} · 添加于{' '}
-                {new Date(device.approvedAt).toLocaleString()}
-              </p>
-              <p className="muted mt-1 text-sm">
-                最近使用：
+          <article className="device-row" key={device.id}>
+            <div className="device-identity">
+              <div className="device-icon">
+                <Smartphone size={19} strokeWidth={1.8} aria-hidden="true" />
+              </div>
+              <div>
+                <h3>{device.name}</h3>
+                <p>{device.platform} · 可信设备</p>
+              </div>
+            </div>
+            <div className="device-metadata">
+              <strong>{new Date(device.approvedAt).toLocaleString()}</strong>
+              <span>添加时间</span>
+            </div>
+            <div className="device-metadata">
+              <strong>
                 {device.lastSeenAt
                   ? new Date(device.lastSeenAt).toLocaleString()
                   : '尚未使用'}
-              </p>
+              </strong>
+              <span>最近使用</span>
             </div>
             <button
               className="button-danger"
@@ -199,11 +247,11 @@ export function DevicesPage() {
                 }
               }}
             >
-              删除设备
+              移除设备
             </button>
           </article>
         ))}
-      </div>
+      </section>
     </section>
   )
 }

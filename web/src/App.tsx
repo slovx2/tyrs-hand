@@ -1,4 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  Activity,
+  AppWindow,
+  Bot,
+  BriefcaseBusiness,
+  ClipboardList,
+  FileText,
+  FolderGit2,
+  GitBranch,
+  GitFork,
+  KeyRound,
+  MessageCircle,
+  MessagesSquare,
+  ScrollText,
+  Server,
+  ShieldCheck,
+  SlidersHorizontal,
+  Smartphone,
+  Workflow,
+  type LucideIcon,
+} from 'lucide-react'
 import { useEffect } from 'react'
 import {
   Link,
@@ -28,35 +49,63 @@ interface SetupStatus {
   githubConfigured: boolean
 }
 
-const navigation = [
-  { label: '概览', items: [{ to: '/', label: '健康与容量' }] },
+interface NavigationItem {
+  to: string
+  label: string
+  icon: LucideIcon
+}
+
+interface NavigationGroup {
+  label: string
+  items: NavigationItem[]
+}
+
+const navigation: NavigationGroup[] = [
   {
-    label: 'Workers',
-    items: [{ to: '/workers', label: 'Worker 与 Workspace' }],
+    label: 'Overview',
+    items: [{ to: '/', label: '健康与容量', icon: Activity }],
   },
-  { label: 'Clients', items: [{ to: '/devices', label: '设备与配对' }] },
+  {
+    label: 'Compute',
+    items: [{ to: '/workers', label: 'Worker 与 Workspace', icon: Server }],
+  },
+  {
+    label: 'Clients',
+    items: [{ to: '/devices', label: '设备与配对', icon: Smartphone }],
+  },
   {
     label: 'Integrations',
     items: [
-      { to: '/settings/github', label: 'GitHub App' },
-      { to: '/installations', label: 'Installations' },
-      { to: '/repositories', label: '仓库' },
-      { to: '/trigger-rules', label: '触发规则' },
-      { to: '/agent-profiles', label: 'Agent Profiles' },
-      { to: '/settings/github-agent', label: 'GitHub Agent 参数' },
-      { to: '/settings/github-agent-instructions', label: 'GitHub Agent 指令' },
-      { to: '/settings/discord', label: 'Discord' },
+      { to: '/settings/github', label: 'GitHub App', icon: GitFork },
+      { to: '/installations', label: 'Installations', icon: AppWindow },
+      { to: '/repositories', label: '仓库', icon: FolderGit2 },
+      { to: '/trigger-rules', label: '触发规则', icon: Workflow },
+      { to: '/agent-profiles', label: 'Agent Profiles', icon: Bot },
+      {
+        to: '/settings/github-agent',
+        label: 'GitHub Agent 参数',
+        icon: SlidersHorizontal,
+      },
+      {
+        to: '/settings/github-agent-instructions',
+        label: 'GitHub Agent 指令',
+        icon: FileText,
+      },
+      { to: '/settings/discord', label: 'Discord', icon: MessageCircle },
     ],
   },
-  { label: 'Access', items: [{ to: '/ssh', label: '出站 SSH' }] },
+  {
+    label: 'Access',
+    items: [{ to: '/ssh', label: '出站 SSH', icon: KeyRound }],
+  },
   {
     label: 'Operations',
     items: [
-      { to: '/work-items', label: 'Work Items' },
-      { to: '/threads', label: 'Thread / Turn' },
-      { to: '/jobs', label: 'Jobs' },
-      { to: '/worktrees', label: '缓存 / Worktree' },
-      { to: '/audit-logs', label: '审计日志' },
+      { to: '/work-items', label: 'Work Items', icon: ClipboardList },
+      { to: '/threads', label: 'Thread / Turn', icon: MessagesSquare },
+      { to: '/jobs', label: 'Jobs', icon: BriefcaseBusiness },
+      { to: '/worktrees', label: '缓存 / Worktree', icon: GitBranch },
+      { to: '/audit-logs', label: '审计日志', icon: ScrollText },
     ],
   },
 ]
@@ -163,6 +212,13 @@ function AuthenticatedLayout() {
   const location = useLocation()
   const locale = useUI((state) => state.locale)
   const setCSRFToken = useUI((state) => state.setCSRFToken)
+  const activeNavigationItem = navigation
+    .flatMap((group) => group.items)
+    .find((item) =>
+      item.to === '/'
+        ? location.pathname === '/'
+        : location.pathname.startsWith(item.to),
+    )
   const me = useQuery({
     queryKey: ['me'],
     queryFn: async () => {
@@ -180,43 +236,63 @@ function AuthenticatedLayout() {
   if (me.isError)
     return <Navigate to="/login" state={{ from: location }} replace />
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[250px_1fr]">
-      <aside className="app-sidebar border-b px-4 py-5 lg:border-r lg:border-b-0">
-        <Link to="/" className="brand mb-7 text-xl">
+    <div className="app-shell">
+      <aside className="app-sidebar">
+        <Link to="/" className="brand">
           <img className="brand-logo" src="/tyrs-hand.png" alt="" />
-          tyrs-hand
+          <span>tyrs-hand</span>
         </Link>
-        <nav className="grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 lg:grid-cols-1">
+        <nav className="app-navigation" aria-label="主导航">
           {navigation.map((group) => (
-            <div key={group.label}>
-              <div className="muted mb-1 px-3 text-[11px] font-semibold tracking-[0.12em] uppercase">
-                {group.label}
-              </div>
-              <div className="grid gap-1">
+            <div className="nav-group" key={group.label}>
+              <div className="nav-group-label">{group.label}</div>
+              <div className="nav-group-items">
                 {group.items.map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}
                     end={item.to === '/'}
+                    aria-label={item.label}
                     className={({ isActive }) =>
-                      `nav-item px-3 py-2 text-sm ${isActive ? 'nav-item-active' : ''}`
+                      `nav-item ${isActive ? 'nav-item-active' : ''}`
                     }
                   >
-                    {item.label}
+                    <item.icon size={16} strokeWidth={1.8} aria-hidden="true" />
+                    <span>{item.label}</span>
                   </NavLink>
                 ))}
               </div>
             </div>
           ))}
         </nav>
-        <div className="muted mt-8 text-xs">{me.data?.username}</div>
-        <LogoutButton onLogout={() => setCSRFToken(undefined)} />
-      </aside>
-      <main className="min-w-0 p-4 sm:p-8 lg:p-10">
-        <div className="app-content">
-          <Outlet />
+        <div className="sidebar-account">
+          <div className="sidebar-account-icon" aria-hidden="true">
+            {me.data?.username.slice(0, 1).toUpperCase()}
+          </div>
+          <div className="sidebar-account-copy">
+            <strong>{me.data?.username}</strong>
+            <span>系统管理员</span>
+          </div>
+          <LogoutButton onLogout={() => setCSRFToken(undefined)} />
         </div>
-      </main>
+      </aside>
+      <div className="app-main">
+        <header className="app-topbar">
+          <div className="app-breadcrumb">
+            控制台 <span>/</span>{' '}
+            <strong>{activeNavigationItem?.label ?? '管理后台'}</strong>
+          </div>
+          <div className="control-status">
+            <ShieldCheck size={14} strokeWidth={2} aria-hidden="true" />
+            <span>Control 正常</span>
+          </div>
+        </header>
+        <main className="app-page">
+          <div className="app-content">
+            <Outlet />
+          </div>
+        </main>
+      </div>
     </div>
   )
 }

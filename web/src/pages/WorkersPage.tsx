@@ -218,7 +218,7 @@ export function WorkersPage() {
           </label>
         </div>
         <button
-          className="button-primary mt-5"
+          className="button mt-5"
           disabled={create.isPending || (!githubRole && !discordRole)}
         >
           创建并生成 Token
