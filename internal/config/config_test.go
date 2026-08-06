@@ -156,7 +156,7 @@ func TestValidateWorkerCapabilities(t *testing.T) {
 			name: "浏览器缺少交换目录",
 			config: Config{BrowserMCPURL: "http://127.0.0.1:8931/mcp",
 				BrowserMCPTokenFile: "/var/lib/tyrs-hand/browser/token", BrowserFilesRoot: "."},
-			message: "Token 和文件交换目录",
+			message: "Token、文件交换目录和服务转发目录",
 		},
 	}
 	for _, test := range tests {
@@ -171,6 +171,7 @@ func TestValidateWorkerCapabilities(t *testing.T) {
 		BrowserMCPTokenFile: "/var/lib/tyrs-hand/browser/token",
 		BrowserAgentAddress: "127.0.0.1:8934",
 		BrowserFilesRoot:    "/var/lib/tyrs-hand/browser/files",
+		BrowserServicesRoot: "/opt/tyrs-hand/browser-services",
 	}
 	require.NoError(t, valid.validateWorkerCapabilities())
 }

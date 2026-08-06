@@ -70,6 +70,7 @@ type Config struct {
 	BrowserMCPTokenFile            string
 	BrowserAgentAddress            string
 	BrowserFilesRoot               string
+	BrowserServicesRoot            string
 }
 
 func Load() (Config, error) {
@@ -138,6 +139,7 @@ func load(workerProcess bool) (Config, error) {
 		BrowserMCPTokenFile:            filepath.Clean(v.GetString("browser_mcp_token_file")),
 		BrowserAgentAddress:            strings.TrimSpace(v.GetString("browser_agent_address")),
 		BrowserFilesRoot:               filepath.Clean(v.GetString("browser_files_root")),
+		BrowserServicesRoot:            filepath.Clean(v.GetString("browser_services_root")),
 	}
 	var err error
 	cfg.WorkerAPIAllowlist, err = parseNetworkList(v.GetString("worker_api_ip_allowlist"))
@@ -219,8 +221,9 @@ func (c Config) validateWorkerCapabilities() error {
 		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 			return errors.New("浏览器 MCP URL 必须是有效的绝对 URL")
 		}
-		if c.BrowserMCPTokenFile == "." || c.BrowserFilesRoot == "." {
-			return errors.New("启用浏览器时必须配置 Token 和文件交换目录")
+		if c.BrowserMCPTokenFile == "." || c.BrowserFilesRoot == "." ||
+			c.BrowserServicesRoot == "." {
+			return errors.New("启用浏览器时必须配置 Token、文件交换目录和服务转发目录")
 		}
 		if _, _, err := net.SplitHostPort(c.BrowserAgentAddress); err != nil {
 			return errors.New("浏览器 Agent 地址必须是 host:port")
@@ -309,6 +312,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("browser_mcp_token_file", filepath.Join(stateRoot, "browser", "token"))
 	v.SetDefault("browser_agent_address", "127.0.0.1:8934")
 	v.SetDefault("browser_files_root", filepath.Join(stateRoot, "browser", "files"))
+	v.SetDefault("browser_services_root", filepath.Join(stateRoot, "browser", "services"))
 	v.SetDefault("worker_api_ip_allowlist", "")
 	v.SetDefault("worker_api_trusted_proxies", "127.0.0.1/32,::1/128")
 	v.SetDefault("lease_duration", "90s")

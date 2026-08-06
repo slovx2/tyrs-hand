@@ -20,24 +20,26 @@ import (
 )
 
 type RuntimeOptions struct {
-	CodexBin            string
-	CodexHome           string
-	Home                string
-	WorkspaceRoot       string
-	StateDir            string
-	SSHAuthSock         string
-	BrowserWorkerToken  string
-	BrowserDesktopToken string
-	Controller          appserverhub.Controller
-	Logger              *zap.Logger
+	CodexBin             string
+	CodexHome            string
+	Home                 string
+	WorkspaceRoot        string
+	StateDir             string
+	SSHAuthSock          string
+	BrowserWorkerToken   string
+	BrowserDesktopToken  string
+	BrowserServiceSocket string
+	Controller           appserverhub.Controller
+	Logger               *zap.Logger
 }
 
 type Runtime struct {
-	options    RuntimeOptions
-	command    *exec.Cmd
-	hub        *appserverhub.Hub
-	client     *appserverhub.Client
-	generation int64
+	options      RuntimeOptions
+	command      *exec.Cmd
+	hub          *appserverhub.Hub
+	client       *appserverhub.Client
+	serviceProxy *serviceProxy
+	generation   int64
 
 	mu                  sync.Mutex
 	closed              bool
@@ -77,6 +79,10 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 			return nil, err
 		}
 	}
+	serviceProxy, err := startServiceProxy(options.BrowserServiceSocket)
+	if err != nil {
+		return nil, fmt.Errorf("启动浏览器服务代理: %w", err)
+	}
 	socketPath := filepath.Join(options.StateDir, "app-server.sock")
 	_ = os.Remove(socketPath)
 	command := exec.Command(options.CodexBin,
@@ -100,9 +106,11 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
 	if err := command.Start(); err != nil {
+		serviceProxy.close()
 		return nil, fmt.Errorf("启动宿主 Codex App Server: %w", err)
 	}
 	runtime := &Runtime{options: options, command: command, done: make(chan struct{}),
+		serviceProxy:        serviceProxy,
 		generation:          time.Now().UnixNano(),
 		toolHandlers:        make(map[string]runtimeToolBinding),
 		interactiveHandlers: make(map[string]runtimeInteractiveBinding)}
@@ -110,6 +118,7 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 	if err := waitSocket(ctx, socketPath, runtime.done, 15*time.Second); err != nil {
 		_ = command.Process.Kill()
 		<-runtime.done
+		serviceProxy.close()
 		return nil, err
 	}
 	controller := options.Controller
@@ -123,6 +132,7 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 	if err != nil {
 		_ = command.Process.Kill()
 		<-runtime.done
+		serviceProxy.close()
 		return nil, fmt.Errorf("启动 Worker AppServerHub: %w", err)
 	}
 	runtime.hub = hub
@@ -133,6 +143,7 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 		_ = hub.Close()
 		_ = command.Process.Kill()
 		<-runtime.done
+		serviceProxy.close()
 		return nil, err
 	}
 	runtime.client = client
@@ -265,6 +276,7 @@ func (r *Runtime) Close() error {
 			<-r.done
 		}
 	}
+	r.serviceProxy.close()
 	return nil
 }
 

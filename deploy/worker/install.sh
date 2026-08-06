@@ -162,6 +162,7 @@ worker_listen=${TYRS_HAND_WORKER_SSH_LISTEN_ADDR:-:2222}
 worker_env_file=/etc/tyrs-hand/worker.env
 existing_browser_mcp_url=
 existing_browser_token_file=
+existing_browser_services_root=
 if [ -r "${worker_env_file}" ]; then
   existing_browser_mcp_url=$(awk -F= '$1 == "TYRS_HAND_BROWSER_MCP_URL" {
     value = substr($0, index($0, "=") + 1)
@@ -170,6 +171,12 @@ if [ -r "${worker_env_file}" ]; then
     exit
   }' "${worker_env_file}")
   existing_browser_token_file=$(awk -F= '$1 == "TYRS_HAND_BROWSER_MCP_TOKEN_FILE" {
+    value = substr($0, index($0, "=") + 1)
+    gsub(/^\047|\047$/, "", value)
+    print value
+    exit
+  }' "${worker_env_file}")
+  existing_browser_services_root=$(awk -F= '$1 == "TYRS_HAND_BROWSER_SERVICES_ROOT" {
     value = substr($0, index($0, "=") + 1)
     gsub(/^\047|\047$/, "", value)
     print value
@@ -186,6 +193,13 @@ if [ "${TYRS_HAND_BROWSER_MCP_TOKEN_FILE+x}" = x ]; then
 else
   worker_browser_token_file=${existing_browser_token_file}
 fi
+if [ "${TYRS_HAND_BROWSER_SERVICES_ROOT+x}" = x ]; then
+  worker_browser_services_root=${TYRS_HAND_BROWSER_SERVICES_ROOT}
+elif [ -n "${existing_browser_services_root}" ]; then
+  worker_browser_services_root=${existing_browser_services_root}
+else
+  worker_browser_services_root=/opt/tyrs-hand/browser-services
+fi
 worker_browser_agent=${TYRS_HAND_BROWSER_AGENT_ADDRESS:-127.0.0.1:8934}
 worker_browser_files=${TYRS_HAND_BROWSER_FILES_ROOT:-${worker_home}/.local/share/tyrs-hand/browser-files}
 for pair in \
@@ -195,11 +209,16 @@ for pair in \
   "Shell:${worker_shell}" "PATH:${worker_path}" "Workspace:${worker_workspace}" \
   "Authorized Keys:${worker_keys}" "SSH Listen:${worker_listen}" \
   "Browser MCP URL:${worker_browser_mcp_url}" "Browser Token:${worker_browser_token_file}" \
-  "Browser Agent:${worker_browser_agent}" "Browser Files:${worker_browser_files}"; do
+  "Browser Agent:${worker_browser_agent}" "Browser Files:${worker_browser_files}" \
+  "Browser Services:${worker_browser_services_root}"; do
   validate_env_value "${pair%%:*}" "${pair#*:}"
 done
 
 install -d -o root -g "${worker_group}" -m 0750 /etc/tyrs-hand
+if [ -n "${worker_browser_mcp_url}" ]; then
+  install -d -o "${worker_user}" -g "${worker_group}" -m 0770 \
+    "${worker_browser_services_root}"
+fi
 if [ -f "${worker_env_file}" ]; then
   install -d -o root -g root -m 0700 /etc/tyrs-hand/worker.env-backups
   stamp=$(date +%Y%m%d%H%M%S)
@@ -231,6 +250,7 @@ fi
   printf "TYRS_HAND_WORKER_SSH_LISTEN_ADDR='%s'\n" "${worker_listen}"
   printf "TYRS_HAND_BROWSER_AGENT_ADDRESS='%s'\n" "${worker_browser_agent}"
   printf "TYRS_HAND_BROWSER_FILES_ROOT='%s'\n" "${worker_browser_files}"
+  printf "TYRS_HAND_BROWSER_SERVICES_ROOT='%s'\n" "${worker_browser_services_root}"
   if [ -n "${worker_browser_mcp_url}" ]; then
     printf "TYRS_HAND_BROWSER_MCP_URL='%s'\n" "${worker_browser_mcp_url}"
   fi

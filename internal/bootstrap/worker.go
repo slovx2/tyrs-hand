@@ -111,6 +111,10 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 	if manifest != nil {
 		workspaceID = manifest.WorkspaceID
 	}
+	if cfg.BrowserMCPURL != "" && workspaceID != uuid.Nil {
+		runtimeOptions.BrowserServiceSocket = filepath.Join(cfg.BrowserServicesRoot,
+			workspaceID.String(), "proxy.sock")
+	}
 	browserTokens, err := worker.DeriveBrowserAppServerTokens(cfg, workspaceID)
 	if err != nil {
 		cleanupFailure(nil)

@@ -1,4 +1,4 @@
 interface:
   display_name: "Tyrs Browser"
-  short_description: "安全控制 Worker 与桌面浏览器并管理标签页生命周期"
+  short_description: "使用 Playwright、Worker 或桌面浏览器完成网页任务"
   default_prompt: "Use $tyrs-browser to inspect and interact with a web page safely."

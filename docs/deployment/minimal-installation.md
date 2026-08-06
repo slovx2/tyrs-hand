@@ -110,6 +110,7 @@ TYRS_HAND_BROWSER_MCP_URL=http://127.0.0.1:8931/mcp
 TYRS_HAND_BROWSER_MCP_TOKEN_FILE=/home/worker/.local/share/tyrs-hand/browser/token
 TYRS_HAND_BROWSER_AGENT_ADDRESS=127.0.0.1:8934
 TYRS_HAND_BROWSER_FILES_ROOT=/home/worker/.local/share/tyrs-hand/browser/files
+TYRS_HAND_BROWSER_SERVICES_ROOT=/opt/tyrs-hand/browser-services
 ```
 
 Provider、API Key、ChatGPT Auth、Base URL 与 Proxy 只配置在机器用户自己的 Codex Home 中。Control 不写入 `config.toml`、`auth.json` 或 `AGENTS.md`。

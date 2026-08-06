@@ -1,23 +1,19 @@
 ---
 name: tyrs-browser
-description: Control the Tyrs Hand Worker or Desktop browser for web navigation, visible-page inspection, UI interaction, screenshots, downloads, uploads, and local web testing. Use whenever a task requires browser UI work or an explicitly requested browser; prefer purpose-built APIs or connectors for non-UI semantic operations.
+description: Use Playwright, the Tyrs Hand Worker browser, or the Desktop browser for web navigation, UI interaction, screenshots, downloads, uploads, and local testing. Use whenever a task requires browser UI work; prefer purpose-built APIs or connectors for non-UI semantic operations.
 ---
 
 # Tyrs Browser
 
-Use the single host `chrome` MCP. Do not start another Chrome, CDP session, or headless browser.
+Choose between Playwright, the Worker browser, and the Desktop browser.
 
 ## Choose the browser
 
-Honor an explicit Worker or Desktop browser request as a hard constraint. If that browser is unavailable, report it; never switch silently.
+Honor an explicit browser choice. When user identity or login state is required, prefer the Worker browser, then the Desktop browser. Otherwise, use Playwright or the Worker browser based on the task.
 
-When the user does not choose:
+Use the `chrome` MCP when selecting Worker or Desktop. Do not control the same page through Playwright and MCP simultaneously.
 
-1. Keep the default Worker browser for public pages, local testing, downloads, and tasks that do not need user state.
-2. Select Desktop only when the task requires an existing login, a user-owned tab, a browser profile, or an installed extension.
-3. Do not switch merely because an operation failed. Switch only when the selected browser lacks a capability the task requires.
-
-Call `browser_select` only to inspect availability or make an intentional selection. A stale or closed tab does not invalidate the browser selection: list tabs again and obtain a fresh tab.
+The remaining MCP-specific instructions apply only to Worker and Desktop. Call `browser_select` only to inspect availability or make an intentional selection. A stale or closed tab does not invalidate the browser selection: list tabs again and obtain a fresh tab.
 
 ## Work with tabs
 
@@ -82,4 +78,4 @@ Do not use `browser_evaluate` to bypass these restrictions. Treat redacted outpu
 - Use task lifetime by default; use review lifetime only for a page the user must inspect after the turn.
 - Browser tokens are read by the Worker from its restricted token file. Never inspect, echo, copy, or return them.
 
-If the `chrome` MCP or file tools are unavailable, report that directly.
+If the selected browser or required file tools are unavailable, report that directly and use another allowed browser when the task permits.
