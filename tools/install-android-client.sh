@@ -7,6 +7,7 @@ client="${root}/client"
 expected_app_id="com.tyrshand.app"
 app_env="production"
 preview_mode="false"
+build_cache_key="production"
 device=""
 
 usage() {
@@ -27,6 +28,7 @@ while [[ $# -gt 0 ]]; do
       expected_app_id="com.tyrshand.app.dev"
       app_env="development"
       preview_mode="true"
+      build_cache_key="preview"
       shift
       ;;
     -h | --help)
@@ -99,9 +101,19 @@ awk '
 }
 mv "${patched_gradle}" "${build_gradle}"
 
+build_cache_root="${root}/.local/android-build/${build_cache_key}"
+gradle_project_cache="${build_cache_root}/gradle-project"
+metro_tmp="${build_cache_root}/metro-tmp"
+mkdir -p "${gradle_project_cache}" "${metro_tmp}"
+
 (
   cd "${client}/android"
-  env "${build_env[@]}" ./gradlew --no-daemon --stacktrace assembleRelease
+  env "${build_env[@]}" "TMPDIR=${metro_tmp}" ./gradlew \
+    --no-daemon \
+    --no-build-cache \
+    --project-cache-dir "${gradle_project_cache}" \
+    --stacktrace \
+    assembleRelease
 )
 
 apk="${client}/android/app/build/outputs/apk/release/app-release.apk"
