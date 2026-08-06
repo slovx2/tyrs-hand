@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"github.com/slovx2/tyrs-hand/internal/security"
 )
 
@@ -909,11 +911,11 @@ func (r *Repository) appendSessionTerminalTx(ctx context.Context, tx *sql.Tx,
 			return notificationErr
 		}
 	}
-	if status != IntentCompleted || result.FinalAnswer == "" {
+	if status != IntentCompleted || result.FinalAnswer == "" && len(result.AttachmentIDs) == 0 {
 		return nil
 	}
 	finalAnswer := RenderableFinalAnswer(result.FinalAnswer)
-	if finalAnswer == "" {
+	if finalAnswer == "" && len(result.AttachmentIDs) == 0 {
 		return nil
 	}
 	content := encode(map[string]any{"t": "plain", "v": map[string]any{
@@ -935,18 +937,70 @@ func (r *Repository) appendSessionTerminalTx(ctx context.Context, tx *sql.Tx,
 	if err != nil {
 		return err
 	}
+	attachments, err := linkAgentAttachmentsTx(ctx, tx, claimed, messageID,
+		result.AttachmentIDs)
+	if err != nil {
+		return err
+	}
 	messagePayload := encode(map[string]any{
 		"messageId": messageID, "sessionId": claimed.SessionID, "seq": sequence,
 		"localId": "intent-result:" + claimed.ID.String(), "role": "agent",
 		"conversationTurnId": claimed.ID,
 		"content":            map[string]any{"type": "text", "text": finalAnswer},
-		"attachments":        []any{}, "createdAt": createdAt, "updatedAt": createdAt,
+		"attachments":        attachments, "createdAt": createdAt, "updatedAt": createdAt,
 	})
 	_, err = tx.ExecContext(ctx, `INSERT INTO client_updates(
 		session_id,update_type,entity_type,entity_id,entity_seq,entity_version,payload)
 		VALUES ($1,'message.created','message',$2,$3,$3,$4)`, claimed.SessionID,
 		messageID.String(), sequence, messagePayload)
 	return err
+}
+
+func linkAgentAttachmentsTx(ctx context.Context, tx *sql.Tx, claimed *ClaimedControl,
+	messageID uuid.UUID, attachmentIDs []uuid.UUID,
+) ([]map[string]any, error) {
+	attachments := make([]map[string]any, 0, len(attachmentIDs))
+	if len(attachmentIDs) == 0 {
+		return attachments, nil
+	}
+	if len(attachmentIDs) > 10 {
+		return nil, errors.New("agent 图片不能超过 10 张")
+	}
+	seen := make(map[uuid.UUID]bool, len(attachmentIDs))
+	for ordinal, attachmentID := range attachmentIDs {
+		if seen[attachmentID] {
+			return nil, errors.New("agent 图片引用重复")
+		}
+		seen[attachmentID] = true
+		var sessionID uuid.UUID
+		var sourceKey, kind, filename, mediaType, digest, status string
+		var size int64
+		var createdAt time.Time
+		err := tx.QueryRowContext(ctx, `SELECT session_id,source_key,kind,original_filename,
+			media_type,size_bytes,sha256,status,created_at FROM session_attachments
+			WHERE id=$1 AND source_type='agent' FOR UPDATE`, attachmentID).Scan(&sessionID,
+			&sourceKey, &kind, &filename, &mediaType, &size, &digest, &status, &createdAt)
+		if err != nil {
+			return nil, fmt.Errorf("读取 agent 图片 %s: %w", attachmentID, err)
+		}
+		if sessionID != claimed.SessionID || status != "uploaded" ||
+			!strings.HasPrefix(sourceKey, claimed.RunID.String()+":") || kind != "image" {
+			return nil, errors.New("agent 图片不属于当前 Run 或状态无效")
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO session_message_attachments(
+			message_id,attachment_id,ordinal) VALUES ($1,$2,$3)`, messageID,
+			attachmentID, ordinal); err != nil {
+			return nil, err
+		}
+		attachments = append(attachments, map[string]any{
+			"id": attachmentID, "sessionId": sessionID, "kind": kind,
+			"filename": filename, "mediaType": mediaType, "sizeBytes": size,
+			"sha256": digest, "status": "attached", "createdAt": createdAt,
+		})
+	}
+	_, err := tx.ExecContext(ctx, `UPDATE session_attachments SET status='attached',
+		attached_at=now() WHERE id=ANY($1::uuid[])`, pq.Array(attachmentIDs))
+	return attachments, err
 }
 
 func (r *Repository) ReplySatisfied(ctx context.Context, claimed *ClaimedControl) (bool, error) {

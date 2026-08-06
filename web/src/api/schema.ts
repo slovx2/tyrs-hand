@@ -1275,6 +1275,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/worker/v1/runs/{id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerUploadAgentAttachment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/worker/v1/runs/{id}/complete": {
         parameters: {
             query?: never;
@@ -4743,6 +4759,54 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerUploadAgentAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    leaseToken: string;
+                    /** Format: int64 */
+                    leaseEpoch: number;
+                    itemId: string;
+                    ordinal: number;
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 幂等请求返回已保存的 Agent 图片 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Agent 图片已保存 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
             };
             default: components["responses"]["Problem"];
         };

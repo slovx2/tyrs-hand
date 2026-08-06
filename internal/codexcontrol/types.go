@@ -113,9 +113,10 @@ type EnqueueRequest struct {
 }
 
 type TurnResult struct {
-	FinalAnswer     string `json:"finalAnswer"`
-	FinalOutputType string `json:"finalOutputType,omitempty"`
-	TurnID          string `json:"turnId"`
-	DurationMillis  int64  `json:"durationMillis"`
-	Evidence        string `json:"terminalEvidence"`
+	FinalAnswer     string      `json:"finalAnswer"`
+	FinalOutputType string      `json:"finalOutputType,omitempty"`
+	TurnID          string      `json:"turnId"`
+	DurationMillis  int64       `json:"durationMillis"`
+	Evidence        string      `json:"terminalEvidence"`
+	AttachmentIDs   []uuid.UUID `json:"attachmentIds,omitempty"`
 }

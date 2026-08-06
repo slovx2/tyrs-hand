@@ -39,7 +39,7 @@ describe("预览模式", () => {
     }
     const attachments = previewMessages(primaryPreviewServerId, previewSessionIds.attachments)
       .map((item) => messageSchema.parse(item)).flatMap((item) => item.attachments);
-    expect(attachments.map((item) => item.kind)).toEqual(["image", "file"]);
+    expect(attachments.map((item) => item.kind)).toEqual(["image", "file", "image"]);
   });
 
   it("保持多 Control 隔离并支持生产界面的写操作", async () => {

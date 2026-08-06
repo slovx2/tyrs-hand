@@ -9,6 +9,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -391,6 +392,7 @@ func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))
 	server, endpoint := workerTestServer(t, db)
+	server.cfg.AttachmentRoot = t.TempDir()
 	worker, enrollment, err := server.workers.Create(ctx, "desktop-discord-worker", []string{"discord"}, 2)
 	require.NoError(t, err)
 	_, credential, err := server.workers.Enroll(ctx, enrollment)
@@ -449,6 +451,27 @@ func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
 	require.Equal(t, 1, controls)
 	require.NoError(t, client.RecordSubmission(ctx, claimed.Task, "discord-active-turn"))
 	require.NoError(t, client.ConfirmTurn(ctx, claimed.Task, "discord-active-turn"))
+	imageBytes, err := base64.StdEncoding.DecodeString(
+		"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
+	require.NoError(t, err)
+	imagePath := filepath.Join(t.TempDir(), "agent.png")
+	require.NoError(t, os.WriteFile(imagePath, imageBytes, 0o600))
+	uploaded, err := client.UploadAgentAttachment(ctx, claimed.Task, "generated-image", 0, imagePath)
+	require.NoError(t, err)
+	require.False(t, uploaded.Deduplicated)
+	require.NotEqual(t, uuid.Nil, uploaded.AttachmentID)
+	retriedUpload, err := client.UploadAgentAttachment(ctx, claimed.Task, "generated-image", 0, imagePath)
+	require.NoError(t, err)
+	require.True(t, retriedUpload.Deduplicated)
+	require.Equal(t, uploaded.AttachmentID, retriedUpload.AttachmentID)
+	lostLeaseTask := *claimed.Task
+	lostLeaseTask.Claimed.LeaseToken = "invalid-lease"
+	_, err = client.UploadAgentAttachment(ctx, &lostLeaseTask, "lost-image", 1, imagePath)
+	require.Error(t, err, "失效 Lease 不能上传 agent 图片")
+	invalidPath := filepath.Join(t.TempDir(), "invalid.png")
+	require.NoError(t, os.WriteFile(invalidPath, []byte("not an image"), 0o600))
+	_, err = client.UploadAgentAttachment(ctx, claimed.Task, "invalid-image", 1, invalidPath)
+	require.Error(t, err, "非图片内容必须拒绝")
 	desktopSteer := workerprotocol.DesktopSteerRecordRequest{
 		WorkspaceID: workspaceID, RequestKey: strings.Repeat("a", 64),
 		Params: json.RawMessage(`{"threadId":"codex-desktop-bound-thread",` +
@@ -475,7 +498,35 @@ func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
 		"Desktop 已直接提交给同一 App Server 的 Steer 不得再回送给 Worker")
 	require.NoError(t, client.Complete(ctx, claimed.Task, codexcontrol.TurnResult{
 		TurnID: "discord-active-turn", FinalAnswer: "completed from shared thread",
+		AttachmentIDs: []uuid.UUID{uploaded.AttachmentID},
 	}))
+	var attachmentStatus string
+	var attachmentLinks int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM session_attachments WHERE id=$1`,
+		uploaded.AttachmentID).Scan(&attachmentStatus))
+	require.Equal(t, "attached", attachmentStatus)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM session_message_attachments
+		WHERE attachment_id=$1`, uploaded.AttachmentID).Scan(&attachmentLinks))
+	require.Equal(t, 1, attachmentLinks)
+	orphanID := uuid.New()
+	orphanStorageKey := filepath.ToSlash(filepath.Join("agent", "orphan", orphanID.String()))
+	orphanPath, err := server.clientAttachmentPath(orphanStorageKey)
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Dir(orphanPath), 0o700))
+	require.NoError(t, os.WriteFile(orphanPath, imageBytes, 0o600))
+	_, err = db.ExecContext(ctx, `INSERT INTO session_attachments(
+		id,session_id,source_type,source_key,kind,original_filename,media_type,
+		size_bytes,sha256,storage_key,status,created_at)
+		VALUES ($1,$2,'agent',$3,'image','orphan.png','image/png',$4,$5,$6,
+		'uploaded',now()-interval '25 hours')`, orphanID, sessionID,
+		"orphan-run:generated-image:0", len(imageBytes), strings.Repeat("0", 64), orphanStorageKey)
+	require.NoError(t, err)
+	server.cleanupClientProtocol(ctx)
+	require.NoFileExists(t, orphanPath)
+	var orphanCount int
+	require.NoError(t, db.QueryRowContext(ctx,
+		"SELECT count(*) FROM session_attachments WHERE id=$1", orphanID).Scan(&orphanCount))
+	require.Zero(t, orphanCount, "超过 24 小时仍未关联的 agent 图片必须清理")
 	desktopTurn, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
 		WorkspaceID: workspaceID, RequestKey: strings.Repeat("b", 64), Params: json.RawMessage(
 			`{"threadId":"codex-desktop-bound-thread","clientUserMessageId":"desktop-next-turn",` +
@@ -490,9 +541,19 @@ func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
 	require.Equal(t, "desktop starts the next turn", desktopTurn.Snapshot.Discord.Body)
 	require.Equal(t, forumID, desktopTurn.Snapshot.Discord.ForumID)
 	require.Equal(t, workspaceID, desktopTurn.Snapshot.Discord.WorkspaceID)
+	desktopImage, err := client.UploadAgentAttachment(ctx, &desktopTurn,
+		"desktop-generated-image", 0, imagePath)
+	require.NoError(t, err)
 	require.NoError(t, client.Complete(ctx, &desktopTurn, codexcontrol.TurnResult{
-		TurnID: "desktop-next-turn", FinalAnswer: "completed from desktop",
+		TurnID: "desktop-next-turn", AttachmentIDs: []uuid.UUID{desktopImage.AttachmentID},
 	}))
+	var pureImageMessages int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM session_messages message
+		JOIN session_message_attachments attachment ON attachment.message_id=message.id
+		WHERE message.conversation_turn_id=$1 AND message.message_role='agent'
+		AND attachment.attachment_id=$2 AND message.content#>>'{v,content,data,message}'=''`,
+		desktopTurn.Claimed.ID, desktopImage.AttachmentID).Scan(&pureImageMessages))
+	require.Equal(t, 1, pureImageMessages, "纯图片 agent 回复也必须创建消息")
 }
 
 func TestWorkerAPIDesktopThreadWithoutDiscordForum(t *testing.T) {

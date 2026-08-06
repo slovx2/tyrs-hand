@@ -572,7 +572,7 @@ func (c *desktopController) completeDesktopThread(
 		}
 		c.processor.logger.Warn("提交 Desktop Thread 绑定失败",
 			zap.String("request_id", state.ID.String()), zap.Error(err))
-		if !retryableDesktopControlError(err) || !waitContext(ctx, 500*time.Millisecond) {
+		if !retryableControlError(err) || !waitContext(ctx, 500*time.Millisecond) {
 			return
 		}
 	}
@@ -597,7 +597,7 @@ func (c *desktopController) failDesktopThread(
 		}
 		c.processor.logger.Warn("提交 Desktop Thread 失败状态失败",
 			zap.String("request_id", state.ID.String()), zap.Error(err))
-		if !retryableDesktopControlError(err) || !waitContext(ctx, 500*time.Millisecond) {
+		if !retryableControlError(err) || !waitContext(ctx, 500*time.Millisecond) {
 			return
 		}
 	}
@@ -610,7 +610,7 @@ func (c *desktopController) controlTimeout() time.Duration {
 	return time.Minute
 }
 
-func retryableDesktopControlError(err error) bool {
+func retryableControlError(err error) bool {
 	var response *workerprotocol.HTTPError
 	if !errors.As(err, &response) {
 		return true
@@ -692,6 +692,10 @@ func (c *desktopController) observeDesktopTurn(call appserverhub.Call,
 		&task, threadID, turnID, commands,
 		c.processor.hostDiscordCommandHandler(&task, toolRuntime, []ports.SkillRef{}, reporter.Report),
 		remoteDiscordEventReporter(reporter.Report), state.interactive)
+	if err == nil {
+		resultValue, err = c.processor.attachAgentImages(ctx, &task, runtime, threadID,
+			toolRuntime.Workspace, resultValue)
+	}
 	cancelHeartbeat()
 	if err == nil {
 		reporter.Report("discord.progress", remoteEventPayload(map[string]string{
@@ -828,7 +832,7 @@ func (c *desktopController) syncDesktopImages(task *workerprotocol.Task,
 			}
 			break
 		}
-		if err != nil && !retryableDesktopControlError(err) {
+		if err != nil && !retryableControlError(err) {
 			c.processor.logger.Warn("读取 Desktop 图片投影目标失败",
 				zap.String("intent_id", task.Claimed.ID.String()), zap.Error(err))
 			return
@@ -869,7 +873,7 @@ func (c *desktopController) syncDesktopImages(task *workerprotocol.Task,
 			if uploadErr == nil {
 				break
 			}
-			if !retryableDesktopControlError(uploadErr) || attempt == 2 {
+			if !retryableControlError(uploadErr) || attempt == 2 {
 				break
 			}
 			if !waitContext(ctx, time.Duration(attempt+1)*500*time.Millisecond) {

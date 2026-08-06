@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { useTheme } from "@/theme/ThemeProvider";
 import type { Message } from "@/types/protocol";
+import { AttachmentImageGallery } from "@/features/images/AttachmentImageGallery";
 import { MarkdownContent } from "./MarkdownContent";
 import { renderableFinalAnswer } from "./responseDirectives";
 
@@ -20,25 +21,31 @@ export const MessageBubble = memo(function MessageBubble({ message }: { message:
   const theme = useTheme();
   const user = message.role === "user";
   const text = textContent(message.content);
+  const imageAttachments = message.attachments.filter((attachment) => attachment.kind === "image");
+  const fileAttachments = message.attachments.filter((attachment) => attachment.kind !== "image");
   const messageId = `message:${encodeURIComponent(message.localId || String(message.seq))}`;
   if (user) return <View testID="message:role:user" style={[styles.row, styles.userRow]}>
     <View testID={messageId} style={[styles.userBubble, { backgroundColor: theme.colors.accent }]}>
-      <Text selectable style={[styles.userText, { color: theme.colors.accentForeground }]}>{text}</Text>
-      {message.attachments.map((attachment) => <View key={attachment.id}
+      {text ? <Text selectable style={[styles.userText, { color: theme.colors.accentForeground }]}>{text}</Text> : null}
+      <AttachmentImageGallery attachments={imageAttachments} role={message.role} />
+      {fileAttachments.map((attachment) => <View key={attachment.id}
         style={[styles.attachment, { backgroundColor: "rgba(255,255,255,0.16)" }]}>
         <Text selectable numberOfLines={1} style={{ color: theme.colors.accentForeground }}>
-          {attachment.kind === "image" ? "图片" : "文件"} · {attachment.filename}
+          文件 · {attachment.filename}
         </Text>
       </View>)}
     </View>
   </View>;
   return <View testID={`message:role:${message.role}`} style={styles.agentRow}>
     <View testID={messageId} style={styles.agentBody}>
-      <MarkdownContent>{renderableFinalAnswer(text)}</MarkdownContent>
-      {message.attachments.map((attachment) => <View key={attachment.id}
+      {text ? <MarkdownContent imageTestPrefix={`message:image:${message.role}:markdown`}>
+        {renderableFinalAnswer(text)}
+      </MarkdownContent> : null}
+      <AttachmentImageGallery attachments={imageAttachments} role={message.role} />
+      {fileAttachments.map((attachment) => <View key={attachment.id}
         style={[styles.attachment, { backgroundColor: theme.colors.surfaceAlt }]}>
         <Text selectable numberOfLines={1} style={{ color: theme.colors.text }}>
-          {attachment.kind === "image" ? "图片" : "文件"} · {attachment.filename}
+          文件 · {attachment.filename}
         </Text>
       </View>)}
     </View>

@@ -95,7 +95,9 @@ func (p *Processor) processRemoteDiscord(ctx context.Context, task *workerprotoc
 			return workerprotocol.CompleteRequest{}, recoverErr
 		}
 		if recovered {
-			return workerprotocol.CompleteRequest{Result: result}, nil
+			result, recoverErr = p.attachAgentImages(ctx, task, codexRuntime, threadID,
+				runtime.Workspace, result)
+			return workerprotocol.CompleteRequest{Result: result}, recoverErr
 		}
 	}
 	input := remoteWorkspaceTurnInput(snapshot, task.Snapshot.Discord, runtime, attachments, skills)
@@ -115,6 +117,10 @@ func (p *Processor) processRemoteDiscord(ctx context.Context, task *workerprotoc
 		if needsCleanupInterrupt(err) {
 			interruptTurnBestEffort(codexRuntime, threadID, turnID)
 		}
+		return workerprotocol.CompleteRequest{}, err
+	}
+	result, err = p.attachAgentImages(ctx, task, codexRuntime, threadID, runtime.Workspace, result)
+	if err != nil {
 		return workerprotocol.CompleteRequest{}, err
 	}
 	return workerprotocol.CompleteRequest{Result: result}, nil

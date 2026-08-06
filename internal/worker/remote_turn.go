@@ -293,9 +293,6 @@ func remoteCompletedResult(finalAnswer, finalOutputType, turnID string, duration
 	evidence string,
 ) (codexcontrol.TurnResult, error) {
 	finalAnswer = strings.TrimSpace(finalAnswer)
-	if finalAnswer == "" {
-		return codexcontrol.TurnResult{}, errors.New("codex turn 已完成但没有最终回复")
-	}
 	return codexcontrol.TurnResult{FinalAnswer: finalAnswer, FinalOutputType: finalOutputType, TurnID: turnID,
 		DurationMillis: durationMillis, Evidence: evidence}, nil
 }

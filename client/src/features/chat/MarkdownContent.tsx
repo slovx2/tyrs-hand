@@ -3,10 +3,12 @@ import { Platform, StyleSheet, Text } from "react-native";
 import Markdown, { type RenderFunction, type RenderRules } from "react-native-markdown-display";
 
 import { useTheme } from "@/theme/ThemeProvider";
+import { CachedMessageImage } from "@/features/images/CachedMessageImage";
 
 type MarkdownContentProps = {
   children: string;
   compact?: boolean;
+  imageTestPrefix?: string;
 };
 
 const monoFont = Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" });
@@ -25,7 +27,8 @@ const selectableRules: RenderRules = {
   fence: selectableCode,
 };
 
-export const MarkdownContent = memo(function MarkdownContent({ children, compact = false }: MarkdownContentProps) {
+export const MarkdownContent = memo(function MarkdownContent({ children, compact = false,
+  imageTestPrefix = "markdown:image" }: MarkdownContentProps) {
   const theme = useTheme();
   const blockGap = compact ? 5 : 8;
   const markdownStyle = useMemo(() => StyleSheet.create({
@@ -98,5 +101,14 @@ export const MarkdownContent = memo(function MarkdownContent({ children, compact
     inline: {},
     span: {},
   }), [blockGap, compact, theme]);
-  return <Markdown mergeStyle={false} rules={selectableRules} style={markdownStyle}>{children}</Markdown>;
+  const rules = useMemo<RenderRules>(() => ({
+    ...selectableRules,
+    image: (node) => {
+      const source = String(node.attributes.src ?? "");
+      const filename = String(node.attributes.alt || source.split("/").at(-1) || "图片");
+      return <CachedMessageImage key={node.key} uri={source} filename={filename}
+        testID={`${imageTestPrefix}:${node.key}`} />;
+    },
+  }), [imageTestPrefix]);
+  return <Markdown mergeStyle={false} rules={rules} style={markdownStyle}>{children}</Markdown>;
 });

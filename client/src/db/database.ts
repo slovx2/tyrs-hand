@@ -151,6 +151,21 @@ CREATE TABLE IF NOT EXISTS app_settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS image_cache_entries (
+  server_id TEXT NOT NULL,
+  cache_key TEXT NOT NULL,
+  uri TEXT NOT NULL,
+  media_type TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  sha256 TEXT NOT NULL,
+  expires_at TEXT,
+  last_accessed_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(server_id,cache_key),
+  FOREIGN KEY(server_id) REFERENCES connections(server_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS image_cache_lru
+  ON image_cache_entries(server_id,last_accessed_at);
 `;
 
 export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {

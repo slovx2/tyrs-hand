@@ -134,9 +134,23 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - tapOn:
     id: "session:row:5"
 - assertVisible:
-    text: "图片 · mobile-layout.png"
+    id: "message:image:user:60000000-0000-4000-8000-000000000001"
+- scrollUntilVisible:
+    element:
+      id: "message:image:agent:60000000-0000-4000-8000-000000000003"
+    direction: DOWN
+- assertVisible:
+    id: "message:image:agent:markdown:.*"
 - assertVisible:
     text: "文件 · acceptance-report.md"
+- tapOn:
+    id: "message:image:agent:60000000-0000-4000-8000-000000000003"
+- assertVisible:
+    id: "image:viewer"
+- tapOn:
+    id: "image:viewer:close"
+- assertNotVisible:
+    id: "image:viewer"
 - pressKey: BACK
 
 # Markdown 完整排版与中间过程卡片

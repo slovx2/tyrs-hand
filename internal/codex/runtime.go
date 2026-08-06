@@ -106,11 +106,13 @@ type TurnError struct {
 }
 
 type ItemSnapshot struct {
-	ID       string `json:"id"`
-	Type     string `json:"type"`
-	Phase    string `json:"phase"`
-	Text     string `json:"text"`
-	ClientID string `json:"clientId"`
+	ID        string `json:"id"`
+	Type      string `json:"type"`
+	Phase     string `json:"phase"`
+	Text      string `json:"text"`
+	ClientID  string `json:"clientId"`
+	Status    string `json:"status"`
+	SavedPath string `json:"savedPath"`
 }
 
 func (s ThreadSnapshot) StatusType() string {

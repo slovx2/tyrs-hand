@@ -65,6 +65,7 @@ func (s *Server) registerWorkerOperationRoutes(group *gin.RouterGroup) {
 	group.POST("/runs/:id/heartbeat", s.workerRunHeartbeat)
 	group.POST("/runs/:id/commands/ack", s.workerCommandAck)
 	group.POST("/runs/:id/events", s.workerRunEvents)
+	group.POST("/runs/:id/attachments", s.workerUploadAgentAttachment)
 	group.POST("/runs/:id/complete", s.workerRunComplete)
 	group.POST("/runs/:id/fail", s.workerRunFail)
 	group.POST("/runs/:id/thread", s.workerSetThread)

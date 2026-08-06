@@ -5,10 +5,12 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 client="${root}/client"
 expected_app_id="com.tyrshand.app"
+app_env="production"
+preview_mode="false"
 device=""
 
 usage() {
-  echo "用法：$0 [--device <adb-serial>]" >&2
+  echo "用法：$0 [--device <adb-serial>] [--dev]" >&2
 }
 
 while [[ $# -gt 0 ]]; do
@@ -20,6 +22,12 @@ while [[ $# -gt 0 ]]; do
       fi
       device="$2"
       shift 2
+      ;;
+    --dev)
+      expected_app_id="com.tyrshand.app.dev"
+      app_env="development"
+      preview_mode="true"
+      shift
       ;;
     -h | --help)
       usage
@@ -64,8 +72,13 @@ fi
 
 "${adb_bin}" "${adb_args[@]}" get-state >/dev/null
 pnpm --dir "${client}" install --frozen-lockfile
-APP_ENV=production EXPO_PUBLIC_TYRS_HAND_PREVIEW=false \
-  pnpm --dir "${client}" exec expo prebuild --clean --platform android --no-install
+build_env=(
+  "APP_ENV=${app_env}"
+  "EXPO_PUBLIC_TYRS_HAND_PREVIEW=${preview_mode}"
+  "NODE_ENV=production"
+  "CI=1"
+)
+env "${build_env[@]}" pnpm --dir "${client}" exec expo prebuild --clean --platform android --no-install
 
 build_gradle="${client}/android/app/build.gradle"
 patched_gradle="$(mktemp "${build_gradle}.XXXXXX")"
@@ -88,7 +101,7 @@ mv "${patched_gradle}" "${build_gradle}"
 
 (
   cd "${client}/android"
-  ./gradlew --no-daemon --stacktrace assembleRelease
+  env "${build_env[@]}" ./gradlew --no-daemon --stacktrace assembleRelease
 )
 
 apk="${client}/android/app/build/outputs/apk/release/app-release.apk"
@@ -117,5 +130,9 @@ fi
 "${adb_bin}" "${adb_args[@]}" install -r "${apk}"
 "${adb_bin}" "${adb_args[@]}" shell pm path "${expected_app_id}" >/dev/null
 
-echo "已安装 ${expected_app_id}：Release、可调试、内置 JavaScript"
+if [[ "${preview_mode}" == "true" ]]; then
+  echo "已安装 ${expected_app_id}：Release、可调试、内置 JavaScript 与预览数据"
+else
+  echo "已安装 ${expected_app_id}：Release、可调试、内置 JavaScript"
+fi
 echo "APK：${apk}"

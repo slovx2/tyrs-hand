@@ -192,6 +192,9 @@ func (p *Processor) processRemoteGitHub(ctx context.Context, task *workerprotoco
 			task, threadID, commands, nil, report, nil); recoverErr != nil {
 			return codexcontrol.TurnResult{}, recoverErr
 		} else if recovered {
+			if result.FinalAnswer == "" {
+				return result, errors.New("codex turn 已完成但没有最终回复")
+			}
 			return result, nil
 		}
 	}
@@ -210,6 +213,9 @@ func (p *Processor) processRemoteGitHub(ctx context.Context, task *workerprotoco
 		commands, nil, report, nil)
 	if needsCleanupInterrupt(err) {
 		interruptTurnBestEffort(runtime, threadID, turnID)
+	}
+	if err == nil && result.FinalAnswer == "" {
+		err = errors.New("codex turn 已完成但没有最终回复")
 	}
 	return result, err
 }

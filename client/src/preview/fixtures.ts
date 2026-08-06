@@ -32,6 +32,7 @@ const secondaryProjectId = "20000000-0000-4000-8000-000000000005";
 const previewNow = Date.now();
 const baseTime = new Date(previewNow - 134_000).toISOString();
 const finishedTime = new Date(previewNow).toISOString();
+const previewMarkdownImage = "preview://agent-markdown";
 
 const settings: SessionSettings = {
   agentProfileId: profileId,
@@ -180,6 +181,11 @@ const fileAttachment = {
   kind: "file" as const, filename: "acceptance-report.md", mediaType: "text/markdown", sizeBytes: 8192,
   sha256: "preview-file", status: "attached" as const, createdAt: baseTime,
 };
+const agentImageAttachment = {
+  id: "60000000-0000-4000-8000-000000000003", sessionId: attachmentSession.id,
+  kind: "image" as const, filename: "agent-generated-preview.png", mediaType: "image/png", sizeBytes: 10240,
+  sha256: "preview-agent-image", status: "attached" as const, createdAt: baseTime,
+};
 
 function conversation(item: Session, answer: string, currentRun: RunSnapshot | null = null):
   PreviewSessionDetail {
@@ -279,7 +285,8 @@ const details: Record<string, PreviewSessionDetail> = {
     messages: [
       message(attachmentSession.id, 1, "user", "请根据附件验收界面。", [imageAttachment, fileAttachment]),
       message(attachmentSession.id, 2, "agent",
-        "## 验收摘要\n\n配色与 WakeQora 基准一致，代码块如下：\n\n```ts\nconst status = 'passed'\n```"),
+        "## 验收摘要\n\n这是正文原位置的 Markdown 图片：\n\n![agent Markdown 图片](" +
+        previewMarkdownImage + ")\n\n下方是 agent 原生图片附件。", [agentImageAttachment]),
     ],
   },
   [markdownSession.id]: conversation(markdownSession,

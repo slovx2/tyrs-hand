@@ -9,7 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 23
+const Version = 24
 
 // CodexTurnError 保留 Codex error 通知的结构化字段，供 Control 决定是否重试
 // 并在 Discord 失败过程卡中展示。
@@ -268,6 +268,11 @@ type DesktopImageUploadMetadata struct {
 type DesktopImageUploadResult struct {
 	Status       string `json:"status"`
 	AttachmentID string `json:"attachmentId,omitempty"`
+}
+
+type AgentAttachmentUploadResult struct {
+	AttachmentID uuid.UUID `json:"attachmentId"`
+	Deduplicated bool      `json:"deduplicated"`
 }
 
 type DesktopImageFailureRequest struct {

@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -273,6 +274,66 @@ func (c *Client) UploadDesktopImageReader(ctx context.Context, intentID uuid.UUI
 		err = writeErr
 	}
 	return result, err
+}
+
+func (c *Client) UploadAgentAttachment(ctx context.Context, task *Task, itemID string,
+	ordinal int, sourcePath string,
+) (AgentAttachmentUploadResult, error) {
+	var result AgentAttachmentUploadResult
+	file, err := os.Open(sourcePath)
+	if err != nil {
+		return result, err
+	}
+	defer func() { _ = file.Close() }()
+	reader, writer := io.Pipe()
+	multipartWriter := multipart.NewWriter(writer)
+	writeResult := make(chan error, 1)
+	go func() {
+		writeErr := writerField(multipartWriter, "leaseToken", task.Claimed.LeaseToken)
+		if writeErr == nil {
+			writeErr = writerField(multipartWriter, "leaseEpoch", fmt.Sprint(task.Claimed.LeaseEpoch))
+		}
+		if writeErr == nil {
+			writeErr = writerField(multipartWriter, "itemId", itemID)
+		}
+		if writeErr == nil {
+			writeErr = writerField(multipartWriter, "ordinal", fmt.Sprint(ordinal))
+		}
+		if writeErr == nil {
+			var part io.Writer
+			part, writeErr = multipartWriter.CreateFormFile("file", filepath.Base(sourcePath))
+			if writeErr == nil {
+				_, writeErr = io.Copy(part, file)
+			}
+		}
+		if closeErr := multipartWriter.Close(); writeErr == nil {
+			writeErr = closeErr
+		}
+		_ = writer.CloseWithError(writeErr)
+		writeResult <- writeErr
+	}()
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.baseURL+runPath(task, "/attachments"), reader)
+	if err != nil {
+		_ = reader.CloseWithError(err)
+		return result, err
+	}
+	request.Header.Set("Content-Type", multipartWriter.FormDataContentType())
+	err = c.execute(request, &result, true)
+	_ = reader.CloseWithError(err)
+	if writeErr := <-writeResult; err == nil {
+		err = writeErr
+	}
+	return result, err
+}
+
+func writerField(writer *multipart.Writer, name, value string) error {
+	field, err := writer.CreateFormField(name)
+	if err != nil {
+		return err
+	}
+	_, err = io.WriteString(field, value)
+	return err
 }
 
 func (c *Client) FailDesktopImage(ctx context.Context, intentID uuid.UUID,

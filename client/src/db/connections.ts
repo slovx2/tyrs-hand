@@ -66,6 +66,8 @@ export async function removeConnection(serverId: string): Promise<void> {
     removePreviewConnection(serverId);
     return;
   }
+  const { clearImageCache } = await import("@/features/images/imageCache");
+  await clearImageCache(serverId);
   await runDatabaseWrite((database) => database.runAsync(
     "DELETE FROM connections WHERE server_id=?", serverId));
   await SecureStore.deleteItemAsync(tokenKey(serverId));

@@ -1010,6 +1010,30 @@ paths:
       parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerEventsRequest" } } } }
       responses: { "204": { description: 事件已保存 }, default: { $ref: "#/components/responses/Problem" } }
+  /worker/v1/runs/{id}/attachments:
+    servers: [{ url: / }]
+    post:
+      tags: [Worker Protocol]
+      operationId: workerUploadAgentAttachment
+      security: [{ workerBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [leaseToken, leaseEpoch, itemId, ordinal, file]
+              properties:
+                leaseToken: { type: string }
+                leaseEpoch: { type: integer, format: int64 }
+                itemId: { type: string }
+                ordinal: { type: integer, minimum: 0, maximum: 9 }
+                file: { type: string, format: binary }
+      responses:
+        "200": { description: 幂等请求返回已保存的 Agent 图片, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        "201": { description: Agent 图片已保存, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        default: { $ref: "#/components/responses/Problem" }
   /worker/v1/runs/{id}/complete:
     servers: [{ url: / }]
     post:
