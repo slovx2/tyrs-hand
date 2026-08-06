@@ -7,11 +7,13 @@ import { Card, Muted, Title } from "@/components/ui";
 import { clearDraft, loadDraft, saveDraft } from "@/db/drafts";
 import { ChatComposer } from "@/features/chat/ChatComposer";
 import { ParameterSheet } from "@/features/chat/ParameterSheet";
+import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
 import { useOutbox } from "@/hooks/useOutbox";
 import { useAppStore } from "@/store/appStore";
 import { enqueueTask, listOutbox, processOutbox, type LocalAttachment } from "@/sync/outbox";
 import { useTheme } from "@/theme/ThemeProvider";
 import type { Project, SessionSettings } from "@/types/protocol";
+import { keyboardAvoidance } from "@/utils/keyboardAvoidance";
 import { resolveNewTaskSettings } from "./newTaskSettings";
 
 export function NewTaskPane({ project, expanded = false, onSubmitted }: {
@@ -21,6 +23,7 @@ export function NewTaskPane({ project, expanded = false, onSubmitted }: {
 }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const keyboardVisible = useKeyboardVisible();
   const connection = useAppStore((state) => state.activeConnection);
   const bootstrap = useAppStore((state) => state.bootstrap);
   const refresh = useAppStore((state) => state.refresh);
@@ -88,8 +91,7 @@ export function NewTaskPane({ project, expanded = false, onSubmitted }: {
   };
   const pending = outbox.items.filter((item) => item.kind === "create_session" && item.projectId === project.id);
 
-  return <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"}
-    keyboardVerticalOffset={insets.top + (Platform.OS === "ios" ? 44 : 56)}
+  return <KeyboardAvoidingView {...keyboardAvoidance(Platform.OS, insets.top, keyboardVisible)}
     testID="project:new-task" style={[styles.container, !expanded && styles.mobile,
     expanded && styles.expanded,
     { borderColor: theme.colors.border }]}>

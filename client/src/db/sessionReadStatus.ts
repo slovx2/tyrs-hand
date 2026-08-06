@@ -7,6 +7,11 @@ export type SessionReadState = {
 
 export type SessionReadStates = Record<string, SessionReadState>;
 
+export function visibleSessionReadSnapshot(listedSession: Session | undefined,
+  detailSession: Session | undefined): Session | undefined {
+  return listedSession ?? detailSession;
+}
+
 export function sessionHasUnread(session: Session, readState?: SessionReadState): boolean {
   const lastReadAgentSeq = readState?.lastReadAgentSeq ?? 0;
   const lastReadInteractiveId = readState?.lastReadInteractiveId ?? null;

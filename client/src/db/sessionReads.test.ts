@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { Session } from "@/types/protocol";
-import { sessionHasUnread, sessionListIndicator, type SessionReadState } from "./sessionReadStatus";
+import { sessionHasUnread, sessionListIndicator, visibleSessionReadSnapshot,
+  type SessionReadState } from "./sessionReadStatus";
 
 const baseSession: Session = {
   id: "10000000-0000-4000-8000-000000000001",
@@ -67,5 +68,13 @@ describe("sessionHasUnread", () => {
 
   it("没有运行和未读时不显示状态", () => {
     expect(sessionListIndicator(baseSession, readState)).toBeNull();
+  });
+
+  it("详情打开期间优先使用外层列表的最新会话水位", () => {
+    const detailSnapshot = { ...baseSession, isRunning: true, lastAgentMessageSeq: 3 };
+    const completedListSnapshot = { ...baseSession, isRunning: false, lastAgentMessageSeq: 4 };
+
+    expect(visibleSessionReadSnapshot(completedListSnapshot, detailSnapshot))
+      .toBe(completedListSnapshot);
   });
 });

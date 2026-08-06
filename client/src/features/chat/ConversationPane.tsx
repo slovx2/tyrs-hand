@@ -7,8 +7,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ClientApi } from "@/api/client";
 import { clearDraft, loadDraft, saveDraft } from "@/db/drafts";
-import { sessionHasUnread } from "@/db/sessionReadStatus";
+import { sessionHasUnread, visibleSessionReadSnapshot } from "@/db/sessionReadStatus";
 import { Button, EmptyState, Muted } from "@/components/ui";
+import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
 import { useOutbox } from "@/hooks/useOutbox";
 import { previewPerf } from "@/preview/perf";
 import { useAppStore } from "@/store/appStore";
@@ -18,12 +19,14 @@ import { subscribeToUpdates, type SyncEvent } from "@/sync/synchronizer";
 import { useTheme } from "@/theme/ThemeProvider";
 import { type Message, type RunSegment, type SessionSettings,
   type TurnRun } from "@/types/protocol";
+import { keyboardAvoidance } from "@/utils/keyboardAvoidance";
 import { ChatComposer } from "./ChatComposer";
 import { MarkdownContent } from "./MarkdownContent";
 import { MessageBubble } from "./MessageBubble";
 import { ParameterSheet } from "./ParameterSheet";
 import { InteractiveCard, PlanCard } from "./RunCards";
 import { RunSegmentCard } from "./RunSegmentCard";
+import { renderableFinalAnswer } from "./responseDirectives";
 import { conversationTurnIdFromPayload } from "./updateRouting";
 
 type ConversationRow =
@@ -61,6 +64,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const theme = useTheme();
   const window = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const keyboardVisible = useKeyboardVisible();
   const connection = useAppStore((state) => state.activeConnection);
   const bootstrap = useAppStore((state) => state.bootstrap);
   const listedSession = useAppStore((state) => state.sessions.find((item) => item.id === sessionId));
@@ -77,6 +81,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const closeConversation = useConversationStore((state) => state.close);
   const turns = entry?.view?.turns ?? emptyTurns;
   const session = entry?.view?.session ?? listedSession;
+  const readSnapshot = visibleSessionReadSnapshot(listedSession, session);
   const messagesReady = Boolean(entry?.view);
   const [initialSyncComplete, setInitialSyncComplete] = useState(false);
   const loadError = entry?.status === "error";
@@ -167,11 +172,11 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     setInitialSyncComplete(true);
   }, [entry?.view?.settings, sessionId, showParameters]);
   useEffect(() => {
-    if (initialSyncComplete && initialSyncSessionId.current === sessionId && session &&
-      sessionHasUnread(session, sessionRead)) {
-      void markSessionRead(session);
+    if (initialSyncComplete && initialSyncSessionId.current === sessionId && readSnapshot &&
+      sessionHasUnread(readSnapshot, sessionRead)) {
+      void markSessionRead(readSnapshot);
     }
-  }, [initialSyncComplete, markSessionRead, session, sessionId, sessionRead]);
+  }, [initialSyncComplete, markSessionRead, readSnapshot, sessionId, sessionRead]);
   useEffect(() => {
     if (!connection) return;
     let canceled = false;
@@ -318,7 +323,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
           <Muted selectable>已提交交互回答，任务继续执行</Muted>
         </View> : finalDrafts[item.runId] ?
           <View testID={`run:${item.runId}:stream-final`} style={styles.streamedFinal}>
-            <MarkdownContent>{finalDrafts[item.runId] ?? ""}</MarkdownContent>
+            <MarkdownContent>{renderableFinalAnswer(finalDrafts[item.runId] ?? "")}</MarkdownContent>
           </View> : null,
   [finalDrafts, followLatestActivity, handleFinalDraft, liveVersions, lockOuterScroll, segmentCardMaxHeight, sessionId,
     unlockOuterScroll]);
@@ -380,8 +385,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       Alert.alert("参数没有保存", error instanceof Error ? error.message : "请重试");
     }
   };
-  return <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"}
-    keyboardVerticalOffset={insets.top + (Platform.OS === "ios" ? 44 : 56)}
+  return <KeyboardAvoidingView {...keyboardAvoidance(Platform.OS, insets.top, keyboardVisible)}
     style={styles.keyboardAvoiding}>
     <View style={styles.messageArea} onLayout={({ nativeEvent }) => previewPerf("conversation:layout", {
       height: nativeEvent.layout.height, width: nativeEvent.layout.width,

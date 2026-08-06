@@ -14,6 +14,7 @@ import (
 
 	"github.com/disgoorg/snowflake/v2"
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
 var discordSecretPattern = regexp.MustCompile(`(?i)\b(?:sk|ghp|github_pat)_[a-z0-9_-]{12,}\b|\bBearer\s+[a-z0-9._~+/-]{12,}`)
@@ -26,7 +27,7 @@ const (
 )
 
 func SanitizeDiscordResult(value string) string {
-	value = strings.TrimSpace(value)
+	value = strings.TrimSpace(codexcontrol.RenderableFinalAnswer(value))
 	return discordSecretPattern.ReplaceAllString(value, "[已隐藏凭据]")
 }
 

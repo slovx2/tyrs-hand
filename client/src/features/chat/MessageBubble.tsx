@@ -4,6 +4,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { useTheme } from "@/theme/ThemeProvider";
 import type { Message } from "@/types/protocol";
 import { MarkdownContent } from "./MarkdownContent";
+import { renderableFinalAnswer } from "./responseDirectives";
 
 function textContent(content: unknown): string {
   if (!content || typeof content !== "object") return "";
@@ -33,7 +34,7 @@ export const MessageBubble = memo(function MessageBubble({ message }: { message:
   </View>;
   return <View testID={`message:role:${message.role}`} style={styles.agentRow}>
     <View testID={messageId} style={styles.agentBody}>
-      <MarkdownContent>{text}</MarkdownContent>
+      <MarkdownContent>{renderableFinalAnswer(text)}</MarkdownContent>
       {message.attachments.map((attachment) => <View key={attachment.id}
         style={[styles.attachment, { backgroundColor: theme.colors.surfaceAlt }]}>
         <Text selectable numberOfLines={1} style={{ color: theme.colors.text }}>

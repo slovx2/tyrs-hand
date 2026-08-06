@@ -79,10 +79,14 @@ func TestProjectionBoundaryHelpersAndCodexError(t *testing.T) {
 }
 
 func TestSanitizeDiscordResult(t *testing.T) {
-	value := SanitizeDiscordResult("完成 /Volumes/workspace/private/file.go，token=ghp_abcdefghijklmnopqrstuvwxyz")
+	value := SanitizeDiscordResult("完成 /Volumes/workspace/private/file.go，token=ghp_abcdefghijklmnopqrstuvwxyz\n" +
+		"::git-commit{cwd=\"/workspace/project\"}\n" +
+		"::git-push{cwd=\"/workspace/project\" branch=\"main\"}")
 	require.Contains(t, value, "/Volumes/workspace/private/file.go")
 	require.NotContains(t, value, "ghp_")
 	require.Contains(t, value, "[已隐藏凭据]")
+	require.NotContains(t, value, "::git-")
+	require.Equal(t, "可手动运行 git push", SanitizeDiscordResult("可手动运行 git push"))
 
 	long := SanitizeDiscordResult(strings.Repeat("你", 2100))
 	require.Len(t, []rune(long), 2100)

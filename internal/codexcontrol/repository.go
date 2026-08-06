@@ -912,9 +912,13 @@ func (r *Repository) appendSessionTerminalTx(ctx context.Context, tx *sql.Tx,
 	if status != IntentCompleted || result.FinalAnswer == "" {
 		return nil
 	}
+	finalAnswer := RenderableFinalAnswer(result.FinalAnswer)
+	if finalAnswer == "" {
+		return nil
+	}
 	content := encode(map[string]any{"t": "plain", "v": map[string]any{
 		"role": "agent", "content": map[string]any{"type": "codex", "data": map[string]any{
-			"type": "message", "message": result.FinalAnswer,
+			"type": "message", "message": finalAnswer,
 		}},
 	}})
 	var messageID uuid.UUID
@@ -935,7 +939,7 @@ func (r *Repository) appendSessionTerminalTx(ctx context.Context, tx *sql.Tx,
 		"messageId": messageID, "sessionId": claimed.SessionID, "seq": sequence,
 		"localId": "intent-result:" + claimed.ID.String(), "role": "agent",
 		"conversationTurnId": claimed.ID,
-		"content":            map[string]any{"type": "text", "text": result.FinalAnswer},
+		"content":            map[string]any{"type": "text", "text": finalAnswer},
 		"attachments":        []any{}, "createdAt": createdAt, "updatedAt": createdAt,
 	})
 	_, err = tx.ExecContext(ctx, `INSERT INTO client_updates(

@@ -221,12 +221,16 @@ async function processTask(task) {
     await event(task, finalSequence++, 'item/completed', { item: { id: 'agent-e2e',
       type: 'collabAgentToolCall', status: 'completed' } })
   }
-  const answer = prompt.includes('E2E_PLAN')
+  const naturalAnswer = prompt.includes('E2E_PLAN')
     ? '## 实施计划\n\n1. 验证参数\n2. 执行任务\n3. 返回结果'
     : prompt.includes('E2E_EVENTS')
       ? '## 事件矩阵完成\n\n最终回答保持无卡片，所有中间操作均可展开。'
       : prompt.includes('E2E_ASK') ? '已收到移动端回答，交互闭环完成。'
       : '协议级 Worker 已完成。'
+  const answer = prompt.includes('E2E_GIT_METADATA')
+    ? `${naturalAnswer}\n\n::git-commit{cwd="/workspace/project"}\n` +
+      '::git-push{cwd="/workspace/project" branch="main"}'
+    : naturalAnswer
   process.stderr.write(`准备写入最终事件：${task.claimed.RunID}\n`)
   await event(task, finalSequence, 'item/completed', { item: { id: 'final-agent',
     type: 'agentMessage', phase: 'final', text: answer } })
