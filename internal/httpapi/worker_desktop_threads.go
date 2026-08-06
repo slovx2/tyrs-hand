@@ -298,7 +298,7 @@ func (s *Server) workerCompleteDesktopThread(c *gin.Context) {
 			LEFT JOIN discord_forums f ON f.id=r.forum_id
 			WHERE r.id = $1 AND e.worker_id = $2
 			AND (r.forum_id IS NULL OR f.binding_status='active')
-			AND project.availability_status='available' FOR UPDATE`,
+			AND project.availability_status='available' FOR UPDATE OF r`,
 		requestID, currentWorker(c).ID).Scan(&workspaceID, &status, &forumID,
 		&sourceControl, &projectID, &workerID)
 	if err != nil {
