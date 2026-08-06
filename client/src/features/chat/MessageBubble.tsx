@@ -47,7 +47,7 @@ export const MessageBubble = memo(function MessageBubble({ message }: { message:
 const styles = StyleSheet.create({
   row: { flexDirection: "row", justifyContent: "flex-start", paddingHorizontal: 12, paddingVertical: 5 },
   userRow: { justifyContent: "flex-end" },
-  userBubble: { maxWidth: "88%", minWidth: 90, borderRadius: 12, paddingHorizontal: 13, paddingVertical: 9 },
+  userBubble: { maxWidth: "88%", borderRadius: 12, paddingHorizontal: 13, paddingVertical: 9 },
   userText: { fontFamily: "Inter_400Regular", fontSize: 15, lineHeight: 22 },
   agentRow: { paddingHorizontal: 16, paddingVertical: 8 },
   agentBody: { width: "100%" },
