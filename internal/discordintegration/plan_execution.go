@@ -42,13 +42,12 @@ func (s *ConversationService) ExecutePlan(ctx context.Context, guildID, threadID
 	var lifecycle, conversationStatus, currentMode string
 	var runStarted time.Time
 	var runFinished sql.NullTime
-	var modeRevision, settingsRevision int64
+	var settingsRevision int64
 	err = tx.QueryRowContext(ctx, `SELECT run.control_id, conversation.id,
 		conversation.forum_id, run.status, run.collaboration_mode,
 		conversation.guild_id, conversation.thread_id,
 		conversation.owner_discord_user_id, conversation.lifecycle_state,
-		conversation.status, conversation.collaboration_mode,
-		conversation.collaboration_mode_revision, conversation.settings_revision,
+		conversation.status, session.collaboration_mode,session.settings_version,
 		run.started_at, run.finished_at,
 		COALESCE(plan_intent.result->>'finalAnswer',''),
 		COALESCE(plan_intent.result->>'finalOutputType','')
@@ -57,10 +56,11 @@ func (s *ConversationService) ExecutePlan(ctx context.Context, guildID, threadID
 		JOIN codex_turn_intents plan_intent ON plan_intent.id=run.primary_intent_id
 		JOIN discord_conversations conversation
 			ON conversation.id = control.discord_conversation_id
-		WHERE run.id = $1 FOR UPDATE OF run, control, conversation`, runID).Scan(
+		JOIN workspace_sessions session ON session.id=control.session_id
+		WHERE run.id = $1 FOR UPDATE OF run, control, session, conversation`, runID).Scan(
 		&controlID, &conversationID, &forumID, &runStatus, &runMode,
 		&actualGuildID, &actualThreadID, &ownerID, &lifecycle, &conversationStatus,
-		&currentMode, &modeRevision, &settingsRevision, &runStarted, &runFinished,
+		&currentMode, &settingsRevision, &runStarted, &runFinished,
 		&planContent, &planOutputType)
 	if errors.Is(err, sql.ErrNoRows) {
 		return PlanExecutionResult{}, errors.New("这个 Plan 已不存在")
@@ -127,21 +127,22 @@ func (s *ConversationService) ExecutePlan(ctx context.Context, guildID, threadID
 		return PlanExecutionResult{}, ErrPlanExecutionStale
 	}
 	if currentMode != "default" {
-		modeRevision++
 		settingsRevision++
-		_, err = tx.ExecContext(ctx, `UPDATE discord_conversations SET
-			collaboration_mode='default', collaboration_mode_revision=$2,
-			settings_revision=$3, updated_at=now() WHERE id=$1`,
-			conversationID, modeRevision, settingsRevision)
-		if err == nil {
-			_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET
-				collaboration_mode='default', collaboration_mode_revision=$2,
-				settings_revision=$3, updated_at=now() WHERE id=$1`,
-				controlID, modeRevision, settingsRevision)
-		}
+		_, err = tx.ExecContext(ctx, `UPDATE workspace_sessions SET
+			collaboration_mode='default',settings_version=$2,updated_at=now() WHERE id=(
+				SELECT session_id FROM codex_thread_controls WHERE id=$1)`, controlID,
+			settingsRevision)
 		if err != nil {
 			return PlanExecutionResult{}, err
 		}
+	}
+	var sessionID uuid.UUID
+	if err = tx.QueryRowContext(ctx, `SELECT session_id FROM codex_thread_controls WHERE id=$1`,
+		controlID).Scan(&sessionID); err != nil {
+		return PlanExecutionResult{}, err
+	}
+	if err = codexcontrol.ProjectWorkspaceSessionSettingsTx(ctx, tx, sessionID); err != nil {
+		return PlanExecutionResult{}, err
 	}
 	displayName = strings.TrimSpace(displayName)
 	if displayName == "" {

@@ -172,7 +172,7 @@ func (s *Server) workerCompleteSessionTitle(c *gin.Context) {
 			completed_at=now(),updated_at=now() WHERE id=$1`, taskID)
 	}
 	if err == nil {
-		err = s.applyGeneratedSessionTitle(c, tx, sessionID, request.Title)
+		err = s.applySessionTitle(c, tx, sessionID, request.Title, true)
 	}
 	if err == nil {
 		version := updated.SettingsVersion
@@ -189,8 +189,8 @@ func (s *Server) workerCompleteSessionTitle(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func (s *Server) applyGeneratedSessionTitle(c *gin.Context, tx *sql.Tx, sessionID uuid.UUID,
-	title string,
+func (s *Server) applySessionTitle(c *gin.Context, tx *sql.Tx, sessionID uuid.UUID,
+	title string, generated bool,
 ) error {
 	var controlID uuid.UUID
 	var conversationID sql.NullString
@@ -210,8 +210,9 @@ func (s *Server) applyGeneratedSessionTitle(c *gin.Context, tx *sql.Tx, sessionI
 	}
 	var threadID string
 	err = tx.QueryRowContext(c.Request.Context(), `UPDATE discord_conversations SET
-		title=$2,generated_title=$2,title_rename_status='completed',updated_at=now()
-		WHERE id=$1 RETURNING thread_id`, conversationID.String, title).Scan(&threadID)
+		title=$2,generated_title=CASE WHEN $3 THEN $2 ELSE NULL END,
+		title_rename_status='completed',updated_at=now()
+		WHERE id=$1 RETURNING thread_id`, conversationID.String, title, generated).Scan(&threadID)
 	if err != nil {
 		return err
 	}

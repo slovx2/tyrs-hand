@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
 type clientRunSettings struct {
@@ -238,13 +239,11 @@ func (s *Server) clientPatchSession(c *gin.Context) {
 		problem(c, http.StatusUnprocessableEntity, "Agent Profile 不存在", err)
 		return
 	}
+	if err == nil && manualTitle {
+		err = s.applySessionTitle(c, tx, id, title, false)
+	}
 	if err == nil && settingsChanged {
-		_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_thread_controls SET
-			agent_profile_id=$2,model=NULLIF($3,''),reasoning_effort=NULLIF($4,''),
-			service_tier=$5,collaboration_mode=$6,settings_revision=$7,
-			runtime_preferences_frozen_at=now(),updated_at=now() WHERE session_id=$1`,
-			id, profileID, stringValue(model), stringValue(effort), tier, mode,
-			updated.SettingsVersion)
+		err = codexcontrol.ProjectWorkspaceSessionSettingsTx(c.Request.Context(), tx, id)
 	}
 	if err == nil {
 		updated, err = scanClientSessionSummary(tx.QueryRowContext(c.Request.Context(),

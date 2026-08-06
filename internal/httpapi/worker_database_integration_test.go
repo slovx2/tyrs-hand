@@ -363,13 +363,10 @@ func TestWorkerAPIDiscordRuntimePreferencesFreeze(t *testing.T) {
 		TurnID: "runtime-turn-1", FinalAnswer: "done",
 	}))
 
-	_, err = db.ExecContext(ctx, `UPDATE discord_conversations SET model = 'gpt-5.4',
-		reasoning_effort = 'low', service_tier = 'fast', settings_revision = settings_revision + 1
-		WHERE id = $1`, conversationID)
-	require.NoError(t, err)
-	_, err = db.ExecContext(ctx, `UPDATE codex_thread_controls SET model = 'gpt-5.4',
-		reasoning_effort = 'low', service_tier = 'fast', settings_revision = settings_revision + 1
-		WHERE discord_conversation_id = $1`, conversationID)
+	_, err = db.ExecContext(ctx, `UPDATE workspace_sessions session SET model = 'gpt-5.4',
+		reasoning_effort = 'low', service_tier = 'fast', settings_version = settings_version + 1
+		FROM discord_conversations conversation
+		WHERE conversation.id = $1 AND session.id=conversation.session_id`, conversationID)
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_input_messages
 		(message_id, conversation_id, discord_user_id, display_name, username,
@@ -583,6 +580,12 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 			Name: "首条输入前的正式标题",
 		}},
 	}))
+	var desktopTitleUpdateCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM client_updates update_row
+		JOIN codex_thread_controls control ON control.session_id=update_row.session_id
+		WHERE control.id=$1 AND update_row.update_type='session.updated'`, state.ControlID).
+		Scan(&desktopTitleUpdateCount))
+	require.Equal(t, 1, desktopTitleUpdateCount)
 
 	fork, err := client.PrepareDesktopThread(ctx, workerprotocol.DesktopThreadPrepareRequest{
 		WorkspaceID: workspaceID, WorkspaceRoot: workspaceRoot,

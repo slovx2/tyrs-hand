@@ -98,6 +98,10 @@ func (s *ConversationService) SetConversationMode(ctx context.Context, guildID, 
 				WHERE conversation.id=$1 AND session.id=conversation.session_id`,
 				state.ConversationID, state.Mode, state.SettingsRevision)
 		}
+		if err == nil {
+			err = enqueueSessionSettingsUpdateTx(ctx, tx, state.ConversationID,
+				state.SettingsRevision)
+		}
 		if err != nil {
 			return ConfigurationUpdate{}, err
 		}
@@ -220,6 +224,10 @@ func (s *ConversationService) SetRuntimePreferences(ctx context.Context, guildID
 				WHERE conversation.id=$1 AND session.id=conversation.session_id`,
 				state.ConversationID, model, effort, tier, state.SettingsRevision)
 		}
+		if err == nil {
+			err = enqueueSessionSettingsUpdateTx(ctx, tx, state.ConversationID,
+				state.SettingsRevision)
+		}
 		if err != nil {
 			return ConfigurationUpdate{}, err
 		}
@@ -231,9 +239,50 @@ func (s *ConversationService) SetRuntimePreferences(ctx context.Context, guildID
 	return update, tx.Commit()
 }
 
+func enqueueSessionSettingsUpdateTx(ctx context.Context, tx *sql.Tx, conversationID uuid.UUID,
+	settingsVersion int64,
+) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO client_updates(
+		session_id,update_type,entity_type,entity_id,entity_version,payload)
+		SELECT conversation.session_id,'session.updated','session',
+			conversation.session_id::text,$2::bigint,
+			jsonb_build_object('sessionId',conversation.session_id,
+				'settingsVersion',$2::bigint)
+		FROM discord_conversations conversation
+		WHERE conversation.id=$1 AND conversation.session_id IS NOT NULL`, conversationID,
+		settingsVersion)
+	return err
+}
+
 func (s *ConversationService) conversationModeState(ctx context.Context, tx *sql.Tx,
 	guildID, threadID, userID string, lock bool,
 ) (ConversationModeState, uuid.UUID, error) {
+	if lock {
+		var sessionRaw, controlRaw sql.NullString
+		err := tx.QueryRowContext(ctx, `SELECT conversation.session_id::text,control.id::text
+			FROM discord_conversations conversation
+			LEFT JOIN codex_thread_controls control
+				ON control.discord_conversation_id=conversation.id
+			WHERE conversation.guild_id=$1 AND conversation.thread_id=$2`, guildID, threadID).
+			Scan(&sessionRaw, &controlRaw)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return ConversationModeState{}, uuid.Nil, err
+		}
+		if sessionRaw.Valid {
+			var sessionID uuid.UUID
+			if err = tx.QueryRowContext(ctx, `SELECT id FROM workspace_sessions
+				WHERE id=$1::uuid FOR UPDATE`, sessionRaw.String).Scan(&sessionID); err != nil {
+				return ConversationModeState{}, uuid.Nil, err
+			}
+		}
+		if controlRaw.Valid {
+			var controlID uuid.UUID
+			if err = tx.QueryRowContext(ctx, `SELECT id FROM codex_thread_controls
+				WHERE id=$1::uuid FOR UPDATE`, controlRaw.String).Scan(&controlID); err != nil {
+				return ConversationModeState{}, uuid.Nil, err
+			}
+		}
+	}
 	query := `SELECT conversation.id, conversation.forum_id,
 		conversation.owner_discord_user_id, conversation.lifecycle_state,
 		conversation.collaboration_mode, conversation.collaboration_mode_revision,

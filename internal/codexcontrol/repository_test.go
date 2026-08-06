@@ -31,8 +31,6 @@ func TestEnqueueRejectsTerminatedControl(t *testing.T) {
 	require.NoError(t, err)
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT id FROM workspace_sessions")).
 		WithArgs(sessionID).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(sessionID))
-	mock.ExpectExec(regexp.QuoteMeta("UPDATE workspace_sessions session SET")).
-		WithArgs(sessionID, conversationID).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT environment.worker_id::text")).
 		WithArgs(sessionID).WillReturnRows(sqlmock.NewRows([]string{
 		"worker_id", "workspace_id", "workspace_project_id", "agent_profile_id",
@@ -40,7 +38,9 @@ func TestEnqueueRejectsTerminatedControl(t *testing.T) {
 	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO codex_thread_controls")).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(controlID))
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE codex_thread_controls control SET")).
-		WithArgs(controlID, sessionID).WillReturnResult(sqlmock.NewResult(0, 1))
+		WithArgs(sessionID).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE discord_conversations conversation SET")).
+		WithArgs(sessionID).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE codex_thread_controls control SET")).
 		WithArgs(controlID, conversationID).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("SELECT control.status,").
@@ -102,8 +102,6 @@ func TestEnqueueWorkspaceUsesSessionUniqueControl(t *testing.T) {
 	require.NoError(t, err)
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT id FROM workspace_sessions")).
 		WithArgs(sessionID).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(sessionID))
-	mock.ExpectExec(regexp.QuoteMeta("UPDATE workspace_sessions session SET")).
-		WithArgs(sessionID, conversationID).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT environment.worker_id::text")).
 		WithArgs(sessionID).WillReturnRows(sqlmock.NewRows([]string{
 		"worker_id", "workspace_id", "workspace_project_id", "agent_profile_id",
@@ -111,7 +109,9 @@ func TestEnqueueWorkspaceUsesSessionUniqueControl(t *testing.T) {
 	mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO codex_thread_controls")).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(controlID))
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE codex_thread_controls control SET")).
-		WithArgs(controlID, sessionID).WillReturnResult(sqlmock.NewResult(0, 1))
+		WithArgs(sessionID).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE discord_conversations conversation SET")).
+		WithArgs(sessionID).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(regexp.QuoteMeta("UPDATE codex_thread_controls control SET")).
 		WithArgs(controlID, conversationID).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("SELECT control.status,").WithArgs(controlID).

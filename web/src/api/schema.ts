@@ -1615,6 +1615,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/client/sessions/{id}/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get: operations["clientGetSessionSnapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/client/sessions/{id}/turns": {
         parameters: {
             query?: never;
@@ -5211,6 +5229,33 @@ export interface operations {
         responses: {
             /** @description 已发送或 steer */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    clientGetSessionSnapshot: {
+        parameters: {
+            query?: {
+                turnLimit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 一致性会话详情与最新轮次快照 */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

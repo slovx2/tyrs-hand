@@ -24,6 +24,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/database"
+	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/security"
 	"github.com/slovx2/tyrs-hand/internal/workerregistry"
 	"github.com/stretchr/testify/require"
@@ -394,7 +395,18 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 		VALUES ($1,$2,1,'client-plan-test',1,$3,'completed',$4,'plan',now(),now()) RETURNING id`,
 		claimed.ControlID, planIntentID, strings.Repeat("b", 64), worker.ID).Scan(&planRunID))
 	_, err = db.ExecContext(ctx, `UPDATE workspace_sessions SET collaboration_mode='plan',
-		updated_at=now() WHERE id=$1`, sessionID)
+		settings_version=8,updated_at=now() WHERE id=$1`, sessionID)
+	require.NoError(t, err)
+	var conversationID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_conversations(
+		guild_id,forum_id,thread_id,owner_discord_user_id,workspace_project_id,
+		agent_profile_id,title,session_id,collaboration_mode,settings_revision)
+		VALUES ('worker-test-guild',$1,'client-plan-thread','worker-owner',$2,$3,
+		'Client protocol',$4,'plan',8) RETURNING id`, forumID, projectID, profileID, sessionID).
+		Scan(&conversationID))
+	_, err = db.ExecContext(ctx, `UPDATE codex_thread_controls SET
+		discord_conversation_id=$2,collaboration_mode='plan',settings_revision=8 WHERE id=$1`,
+		claimed.ControlID, conversationID)
 	require.NoError(t, err)
 	executedPlan := clientJSONRequest(t, http.MethodPost, endpoint+"/api/v1/client/sessions/"+
 		sessionID.String()+"/plans/"+planRunID.String()+"/execute", loginBody.AccessToken, nil)
@@ -407,6 +419,235 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 		Scan(&executionInstruction, &executionMessage))
 	require.Equal(t, codexcontrol.PlanExecutionInstruction(planContent), executionInstruction)
 	require.Equal(t, codexcontrol.PlanExecutionDisplayText, executionMessage)
+	var sessionMode, controlMode, discordMode string
+	var sessionVersion, controlRevision, discordRevision int64
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT session.collaboration_mode,
+		session.settings_version,control.collaboration_mode,control.settings_revision,
+		conversation.collaboration_mode,conversation.settings_revision
+		FROM workspace_sessions session
+		JOIN codex_thread_controls control ON control.session_id=session.id
+		JOIN discord_conversations conversation ON conversation.session_id=session.id
+		WHERE session.id=$1`, sessionID).Scan(&sessionMode, &sessionVersion, &controlMode,
+		&controlRevision, &discordMode, &discordRevision))
+	require.Equal(t, "default", sessionMode)
+	require.Equal(t, "default", controlMode)
+	require.Equal(t, "default", discordMode)
+	require.EqualValues(t, 9, sessionVersion)
+	require.Equal(t, sessionVersion, controlRevision)
+	require.Equal(t, sessionVersion, discordRevision)
+	_, err = db.ExecContext(ctx, `UPDATE workspace_sessions SET collaboration_mode='plan'
+		WHERE id=$1`, sessionID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE codex_thread_controls SET collaboration_mode='plan'
+		WHERE session_id=$1`, sessionID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE discord_conversations SET collaboration_mode='plan'
+		WHERE session_id=$1`, sessionID)
+	require.NoError(t, err)
+	retriedPlan := clientJSONRequest(t, http.MethodPost, endpoint+"/api/v1/client/sessions/"+
+		sessionID.String()+"/plans/"+planRunID.String()+"/execute", loginBody.AccessToken, nil)
+	require.Equal(t, http.StatusOK, retriedPlan.Code, retriedPlan.Body.String())
+	require.Contains(t, retriedPlan.Body.String(), `"deduplicated":true`)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT session.collaboration_mode,
+		control.collaboration_mode,conversation.collaboration_mode
+		FROM workspace_sessions session
+		JOIN codex_thread_controls control ON control.session_id=session.id
+		JOIN discord_conversations conversation ON conversation.session_id=session.id
+		WHERE session.id=$1`, sessionID).Scan(&sessionMode, &controlMode, &discordMode))
+	require.Equal(t, "default", sessionMode)
+	require.Equal(t, "default", controlMode)
+	require.Equal(t, "default", discordMode)
+
+	planExecution, err := repository.ClaimWorker(ctx, "client-plan-execution-worker",
+		codexcontrol.SourceWorkspace, worker.ID)
+	require.NoError(t, err)
+	require.NotNil(t, planExecution)
+	require.Equal(t, "default", planExecution.CollaborationMode)
+	_, err = db.ExecContext(ctx, `UPDATE discord_conversations SET
+		collaboration_mode='plan',settings_revision=99 WHERE id=$1`, conversationID)
+	require.NoError(t, err)
+	staleProjectionMessage := clientJSONRequest(t, http.MethodPost, messageURL,
+		loginBody.AccessToken, map[string]any{"localId": "stale-discord-projection",
+			"text": "Continue after plan", "behavior": "steer_if_active"})
+	require.Equal(t, http.StatusCreated, staleProjectionMessage.Code,
+		staleProjectionMessage.Body.String())
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT session.collaboration_mode,
+		control.collaboration_mode,conversation.collaboration_mode
+		FROM workspace_sessions session
+		JOIN codex_thread_controls control ON control.session_id=session.id
+		JOIN discord_conversations conversation ON conversation.session_id=session.id
+		WHERE session.id=$1`, sessionID).Scan(&sessionMode, &controlMode, &discordMode))
+	require.Equal(t, "default", sessionMode)
+	require.Equal(t, "default", controlMode)
+	require.Equal(t, "default", discordMode)
+	manualTitle := "Mobile and Desktop shared title"
+	renamed := clientJSONRequest(t, http.MethodPatch, endpoint+"/api/v1/client/sessions/"+
+		sessionID.String(), loginBody.AccessToken, map[string]any{"title": manualTitle})
+	require.Equal(t, http.StatusOK, renamed.Code, renamed.Body.String())
+	var sessionTitle, desiredTitle, discordTitle string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT session.title,
+		control.desired_thread_name,conversation.title
+		FROM workspace_sessions session
+		JOIN codex_thread_controls control ON control.session_id=session.id
+		JOIN discord_conversations conversation ON conversation.session_id=session.id
+		WHERE session.id=$1`, sessionID).Scan(&sessionTitle, &desiredTitle, &discordTitle))
+	require.Equal(t, manualTitle, sessionTitle)
+	require.Equal(t, manualTitle, desiredTitle)
+	require.Equal(t, manualTitle, discordTitle)
+	var mobileExpectedVersion, discordExpectedRevision int64
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT session.settings_version,
+		conversation.settings_revision FROM workspace_sessions session
+		JOIN discord_conversations conversation ON conversation.session_id=session.id
+		WHERE session.id=$1`, sessionID).Scan(&mobileExpectedVersion, &discordExpectedRevision))
+	startConcurrentSettings := make(chan struct{})
+	mobileStatus := make(chan int, 1)
+	discordResult := make(chan error, 1)
+	go func() {
+		<-startConcurrentSettings
+		body, _ := json.Marshal(map[string]any{"collaborationMode": "plan",
+			"expectedSettingsVersion": mobileExpectedVersion})
+		request, requestErr := http.NewRequestWithContext(context.Background(), http.MethodPatch,
+			endpoint+"/api/v1/client/sessions/"+sessionID.String(), bytes.NewReader(body))
+		if requestErr != nil {
+			mobileStatus <- 0
+			return
+		}
+		request.Header.Set("Authorization", "Bearer "+loginBody.AccessToken)
+		request.Header.Set("Content-Type", "application/json")
+		response, requestErr := http.DefaultClient.Do(request)
+		if requestErr != nil {
+			mobileStatus <- 0
+			return
+		}
+		_ = response.Body.Close()
+		mobileStatus <- response.StatusCode
+	}()
+	go func() {
+		<-startConcurrentSettings
+		_, updateErr := discordintegration.NewConversationService(db).SetConversationMode(ctx,
+			"worker-test-guild", "client-plan-thread", "worker-owner", conversationID,
+			discordExpectedRevision, "plan")
+		discordResult <- updateErr
+	}()
+	close(startConcurrentSettings)
+	statusCode := <-mobileStatus
+	require.Contains(t, []int{http.StatusOK, http.StatusConflict}, statusCode)
+	require.NoError(t, <-discordResult)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT session.collaboration_mode,
+		control.collaboration_mode,conversation.collaboration_mode
+		FROM workspace_sessions session
+		JOIN codex_thread_controls control ON control.session_id=session.id
+		JOIN discord_conversations conversation ON conversation.session_id=session.id
+		WHERE session.id=$1`, sessionID).Scan(&sessionMode, &controlMode, &discordMode))
+	require.Equal(t, "plan", sessionMode)
+	require.Equal(t, "plan", controlMode)
+	require.Equal(t, "plan", discordMode)
+}
+
+func TestClientMessageSkipsPendingInteractiveAndContinues(t *testing.T) {
+	db := workerDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	box, err := security.NewSecretBox(make([]byte, 32))
+	require.NoError(t, err)
+	authService := auth.NewService(db, box, "client-skip-setup-token", "")
+	setup, err := authService.Setup(ctx, "client-skip-setup-token", "mobile-admin",
+		"test-password-123")
+	require.NoError(t, err)
+	server, endpoint := clientIntegrationServer(t, db, authService)
+	worker, _, err := server.workers.Create(ctx, "client-skip-worker", []string{"discord"}, 2)
+	require.NoError(t, err)
+	repositoryID, _, profileID := seedWorkerGitHubQueue(t, db, 9911)
+	workspaceID, forumID := seedWorkerWorkspace(t, db, repositoryID, worker.ID)
+	projectID := workspaceProjectIDForForum(t, db, forumID)
+	var sessionID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO workspace_sessions(
+		workspace_id,workspace_project_id,agent_profile_id,title)
+		VALUES ($1,$2,$3,'Client interactive skip') RETURNING id`, workspaceID, projectID,
+		profileID).Scan(&sessionID))
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	repository := codexcontrol.NewRepository(db, time.Minute)
+	_, inserted, err := repository.Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
+		SourceType: codexcontrol.SourceWorkspace, SessionID: sessionID,
+		InputSurface: "client", IdempotencyKey: "client-skip-initial",
+		Instruction: "Ask before continuing", Behavior: "start_when_idle",
+		ActorLogin: "mobile-admin", ActorPermission: "owner",
+	})
+	require.NoError(t, err)
+	require.True(t, inserted)
+	require.NoError(t, tx.Commit())
+	claimed, err := repository.ClaimWorker(ctx, "client-skip-worker",
+		codexcontrol.SourceWorkspace, worker.ID)
+	require.NoError(t, err)
+	require.NotNil(t, claimed)
+	interactiveID := uuid.New()
+	questions := json.RawMessage(`[{"id":"choice","question":"Continue?","options":[]}]`)
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO codex_interactive_requests(
+		id,control_id,run_id,session_id,thread_id,turn_id,item_id,app_server_generation,
+		app_server_request_id,questions) VALUES ($1,$2,$3,$4,'thread-skip','turn-skip',
+		'item-skip',1,'1'::jsonb,$5) RETURNING id`, interactiveID, claimed.ControlID,
+		claimed.RunID, sessionID, questions).Scan(&interactiveID))
+	_, err = db.ExecContext(ctx, `UPDATE codex_turn_runs SET status='waiting_for_user',
+		active_slot=NULL WHERE id=$1`, claimed.RunID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE codex_turn_intents SET status='waiting_for_user'
+		WHERE id=$1`, claimed.ID)
+	require.NoError(t, err)
+
+	code, err := totp.GenerateCode(setup.TOTPSecret, time.Now())
+	require.NoError(t, err)
+	login := clientJSONRequest(t, http.MethodPost, endpoint+"/api/v1/client/auth/login", "",
+		map[string]any{"username": "mobile-admin", "password": "test-password-123", "totp": code})
+	require.Equal(t, http.StatusOK, login.Code)
+	var loginBody struct {
+		AccessToken string `json:"accessToken"`
+	}
+	require.NoError(t, json.Unmarshal(login.Body.Bytes(), &loginBody))
+	messageURL := endpoint + "/api/v1/client/sessions/" + sessionID.String() + "/messages"
+	sent := clientJSONRequest(t, http.MethodPost, messageURL, loginBody.AccessToken,
+		map[string]any{"localId": "skip-and-continue-1", "text": "Use the default choice",
+			"behavior": "steer_if_active"})
+	require.Equal(t, http.StatusCreated, sent.Code, sent.Body.String())
+
+	var interactiveStatus, answer, surface, runStatus string
+	var activeSlot sql.NullInt64
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT request.status,request.answer::text,
+		request.answer_surface,run.status,run.active_slot
+		FROM codex_interactive_requests request
+		JOIN codex_turn_runs run ON run.id=request.run_id WHERE request.id=$1`, interactiveID).
+		Scan(&interactiveStatus, &answer, &surface, &runStatus, &activeSlot))
+	require.Equal(t, "resolved", interactiveStatus)
+	require.JSONEq(t, `{"answers":{}}`, answer)
+	require.Equal(t, "client", surface)
+	require.Equal(t, "running", runStatus)
+	require.True(t, activeSlot.Valid)
+	require.EqualValues(t, 1, activeSlot.Int64)
+	var segmentCount, resolvedUpdateCount, messageCount, newIntentCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM run_process_segments
+		WHERE interactive_request_id=$1`, interactiveID).Scan(&segmentCount))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM client_updates
+		WHERE update_type='interactive.resolved' AND entity_id=$1`, interactiveID.String()).
+		Scan(&resolvedUpdateCount))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM session_messages
+		WHERE session_id=$1 AND local_id='skip-and-continue-1'`, sessionID).Scan(&messageCount))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_intents
+		WHERE session_id=$1 AND idempotency_key=$2`, sessionID,
+		"client:message:"+sessionID.String()+":skip-and-continue-1").Scan(&newIntentCount))
+	require.Equal(t, 1, segmentCount)
+	require.Equal(t, 1, resolvedUpdateCount)
+	require.Equal(t, 1, messageCount)
+	require.Equal(t, 1, newIntentCount)
+
+	retried := clientJSONRequest(t, http.MethodPost, messageURL, loginBody.AccessToken,
+		map[string]any{"localId": "skip-and-continue-1", "text": "Use the default choice",
+			"behavior": "steer_if_active"})
+	require.Equal(t, http.StatusOK, retried.Code)
+	require.Contains(t, retried.Body.String(), `"deduplicated":true`)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM client_updates
+		WHERE update_type='interactive.resolved' AND entity_id=$1`, interactiveID.String()).
+		Scan(&resolvedUpdateCount))
+	require.Equal(t, 1, resolvedUpdateCount)
 }
 
 func requireClientSession(t *testing.T, sessions []clientSession, id uuid.UUID) clientSession {
@@ -433,6 +674,7 @@ func clientIntegrationServer(t *testing.T, db *sql.DB, authService *auth.Service
 	client.GET("/bootstrap", server.clientBootstrap)
 	client.GET("/sessions", server.clientListSessions)
 	client.POST("/sessions", server.clientCreateSession)
+	client.PATCH("/sessions/:id", server.clientPatchSession)
 	client.POST("/sessions/:id/archive", server.clientArchiveSession)
 	client.POST("/sessions/:id/restore", server.clientRestoreSession)
 	client.GET("/sessions/:id/messages", server.clientListMessages)

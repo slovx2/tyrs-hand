@@ -15,6 +15,7 @@ import (
 	"github.com/lib/pq"
 	"github.com/slovx2/tyrs-hand/internal/auth"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"go.uber.org/zap"
 )
 
 type clientMessage struct {
@@ -235,6 +236,12 @@ func (s *Server) clientCreateMessage(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "保存消息参与者失败", err)
 		return
 	}
+	skippedInteractiveID, skippedWorkerID, skippedInteractive, err :=
+		skipPendingInteractiveForClientMessageTx(c.Request.Context(), tx, sessionID)
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "跳过待回答问题失败", err)
+		return
+	}
 	content, _ := json.Marshal(gin.H{"t": "plain", "v": gin.H{
 		"role": "user", "content": gin.H{"type": "codex", "data": gin.H{
 			"type": "message", "message": request.Text,
@@ -303,6 +310,14 @@ func (s *Server) clientCreateMessage(c *gin.Context) {
 	if s.redis != nil {
 		_ = s.redis.Publish(c.Request.Context(), codexcontrol.WakeupChannel, "queued").Err()
 	}
+	if skippedInteractive {
+		if _, resumeErr := s.tryResumeInteractive(c.Request.Context(), skippedInteractiveID,
+			skippedWorkerID); resumeErr != nil && s.logger != nil {
+			s.logger.Warn("恢复已跳过的 Codex 问题失败",
+				zap.String("interactive_id", skippedInteractiveID.String()), zap.Error(resumeErr))
+		}
+		s.projectInteractiveBestEffort(c.Request.Context(), skippedInteractiveID)
+	}
 	createdItems := []clientMessage{created}
 	if err = s.loadClientMessageAttachments(c.Request.Context(), createdItems); err != nil {
 		problem(c, http.StatusInternalServerError, "读取消息附件失败", err)
@@ -311,6 +326,53 @@ func (s *Server) clientCreateMessage(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{
 		"message": createdItems[0], "intentId": intentID, "deduplicated": false,
 	})
+}
+
+func skipPendingInteractiveForClientMessageTx(ctx context.Context, tx *sql.Tx,
+	sessionID uuid.UUID,
+) (uuid.UUID, uuid.UUID, bool, error) {
+	var interactiveID, workerID uuid.UUID
+	err := tx.QueryRowContext(ctx, `SELECT request.id,run.worker_id
+		FROM codex_interactive_requests request
+		JOIN codex_turn_runs run ON run.id=request.run_id
+		JOIN codex_thread_controls control ON control.id=request.control_id
+			AND control.active_intent_id=run.primary_intent_id
+		WHERE request.session_id=$1 AND request.status='pending'
+		  AND run.finished_at IS NULL
+		  AND run.status='waiting_for_user' AND control.status IN ('dispatching','active')
+		ORDER BY request.created_at DESC LIMIT 1 FOR UPDATE OF request,run`, sessionID).
+		Scan(&interactiveID, &workerID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return uuid.Nil, uuid.Nil, false, nil
+	}
+	if err != nil {
+		return uuid.Nil, uuid.Nil, false, err
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE codex_interactive_requests SET
+		status='resolved',answer='{"answers":{}}'::jsonb,answer_surface='client',
+		resolved_at=now(),updated_at=now() WHERE id=$1 AND status='pending'`, interactiveID)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, false, err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return uuid.Nil, uuid.Nil, false, err
+	}
+	if changed != 1 {
+		return uuid.Nil, uuid.Nil, false, errors.New("待回答问题已被并发处理")
+	}
+	payload, _ := json.Marshal(gin.H{"requestId": interactiveID, "status": "resolved",
+		"surface": "client", "skipped": true})
+	if _, err = tx.ExecContext(ctx, `INSERT INTO client_updates(
+		session_id,update_type,entity_type,entity_id,entity_version,payload)
+		VALUES ($1,'interactive.resolved','interactive',$2,2,$3)`, sessionID,
+		interactiveID.String(), payload); err != nil {
+		return uuid.Nil, uuid.Nil, false, err
+	}
+	if err = createInteractiveSegmentTx(ctx, tx, interactiveID); err != nil {
+		return uuid.Nil, uuid.Nil, false, err
+	}
+	return interactiveID, workerID, true, nil
 }
 
 func (s *Server) loadClientMessageAttachments(ctx context.Context, messages []clientMessage) error {

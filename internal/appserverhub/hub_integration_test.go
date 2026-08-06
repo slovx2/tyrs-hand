@@ -235,7 +235,11 @@ func TestHubRoutesEphemeralEventsToOwningInternalDesktopClient(t *testing.T) {
 	t.Cleanup(desktopEvents.Close)
 	mock.Emit(threadID, "item/completed", map[string]any{"threadId": threadID,
 		"item": map[string]any{"id": "title", "type": "agentMessage", "text": "title"}})
-	require.Equal(t, "item/completed", receiveEvent(t, desktopEvents.Events()).Method)
+	event := receiveEvent(t, desktopEvents.Events())
+	if event.Method == "thread/started" {
+		event = receiveEvent(t, desktopEvents.Events())
+	}
+	require.Equal(t, "item/completed", event.Method)
 	select {
 	case event := <-workerEvents.Events():
 		t.Fatalf("临时 Thread 事件不应发送给普通 Worker: %s", event.Method)

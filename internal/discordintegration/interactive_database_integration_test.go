@@ -166,6 +166,10 @@ func TestExecutePlanSwitchesDefaultAndIsIdempotent(t *testing.T) {
 	_, err = db.ExecContext(ctx, `UPDATE codex_thread_controls SET collaboration_mode='plan',
 		collaboration_mode_revision=1, settings_revision=1 WHERE id=$1`, controlID)
 	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE workspace_sessions SET collaboration_mode='plan',
+		settings_version=1 WHERE id=(SELECT session_id FROM codex_thread_controls WHERE id=$1)`,
+		controlID)
+	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_forum_access
 		(forum_id, discord_user_id, access_level) VALUES ($1,'2002','operator')`, forumID)
 	require.NoError(t, err)
@@ -245,13 +249,16 @@ func TestExecutePlanSwitchesDefaultAndIsIdempotent(t *testing.T) {
 		"2002", "", "operator", runID)
 	require.NoError(t, err)
 	require.False(t, result.AlreadyExecuted)
-	var conversationMode, controlMode, body, access string
+	var sessionMode, conversationMode, controlMode, body, access string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT conversation.collaboration_mode,
-		control.collaboration_mode FROM discord_conversations conversation
+		control.collaboration_mode,session.collaboration_mode FROM discord_conversations conversation
 		JOIN codex_thread_controls control ON control.discord_conversation_id=conversation.id
-		WHERE conversation.id=$1`, conversationID).Scan(&conversationMode, &controlMode))
+		JOIN workspace_sessions session ON session.id=control.session_id
+		WHERE conversation.id=$1`, conversationID).Scan(&conversationMode, &controlMode,
+		&sessionMode))
 	require.Equal(t, "default", conversationMode)
 	require.Equal(t, "default", controlMode)
+	require.Equal(t, "default", sessionMode)
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT body, access_snapshot
 		FROM discord_input_messages WHERE message_id=$1`,
 		"plan-execution:"+runID.String()).Scan(&body, &access))

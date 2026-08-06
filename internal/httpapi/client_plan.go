@@ -31,12 +31,13 @@ func (s *Server) clientExecutePlan(c *gin.Context) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	var controlID uuid.UUID
-	var status, mode, lifecycle, planContent, planOutputType string
+	var status, mode, lifecycle, sessionMode, planContent, planOutputType string
 	var started time.Time
 	var finished sql.NullTime
 	var settingsVersion int64
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT run.control_id,run.status,
-		run.collaboration_mode,session.lifecycle_state,run.started_at,run.finished_at,
+		run.collaboration_mode,session.lifecycle_state,session.collaboration_mode,
+		run.started_at,run.finished_at,
 		session.settings_version,COALESCE(plan_intent.result->>'finalAnswer',''),
 		COALESCE(plan_intent.result->>'finalOutputType','')
 		FROM codex_turn_runs run
@@ -44,8 +45,8 @@ func (s *Server) clientExecutePlan(c *gin.Context) {
 		JOIN codex_turn_intents plan_intent ON plan_intent.id=run.primary_intent_id
 		JOIN workspace_sessions session ON session.id=control.session_id
 		WHERE run.id=$1 AND session.id=$2 FOR UPDATE OF run,control,session`, runID, sessionID).
-		Scan(&controlID, &status, &mode, &lifecycle, &started, &finished, &settingsVersion,
-			&planContent, &planOutputType)
+		Scan(&controlID, &status, &mode, &lifecycle, &sessionMode, &started, &finished,
+			&settingsVersion, &planContent, &planOutputType)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusNotFound, "Plan 不存在", err)
 		return
@@ -68,6 +69,30 @@ func (s *Server) clientExecutePlan(c *gin.Context) {
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT id FROM codex_turn_intents
 		WHERE idempotency_key=$1`, idempotencyKey).Scan(&existing)
 	if err == nil {
+		settingsChanged := sessionMode != "default"
+		if settingsChanged {
+			settingsVersion++
+			_, err = tx.ExecContext(c.Request.Context(), `UPDATE workspace_sessions SET
+				collaboration_mode='default',settings_version=$2,updated_at=now() WHERE id=$1`,
+				sessionID, settingsVersion)
+		}
+		if err == nil {
+			err = codexcontrol.ProjectWorkspaceSessionSettingsTx(c.Request.Context(), tx, sessionID)
+		}
+		if err == nil && settingsChanged {
+			var repaired clientSession
+			repaired, err = scanClientSessionSummary(tx.QueryRowContext(c.Request.Context(),
+				`SELECT `+clientSessionSummaryColumns+` FROM workspace_sessions session
+				WHERE session.id=$1`, sessionID))
+			if err == nil {
+				_, err = insertClientUpdate(c.Request.Context(), tx, &sessionID, "session.updated",
+					"session", sessionID.String(), nil, &settingsVersion, repaired)
+			}
+		}
+		if err != nil {
+			problem(c, http.StatusInternalServerError, "修复 Plan 执行模式失败", err)
+			return
+		}
 		if err = tx.Commit(); err == nil {
 			c.JSON(http.StatusOK, gin.H{"intentId": existing, "deduplicated": true})
 		}
@@ -77,6 +102,7 @@ func (s *Server) clientExecutePlan(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "检查 Plan 幂等键失败", err)
 		return
 	}
+	err = nil
 	var busy, stale bool
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT
 		EXISTS(SELECT 1 FROM codex_turn_intents WHERE control_id=$1 AND status IN
@@ -96,15 +122,14 @@ func (s *Server) clientExecutePlan(c *gin.Context) {
 		problem(c, http.StatusConflict, "这个 Plan 已不是最新 Plan", nil)
 		return
 	}
-	settingsVersion++
-	_, err = tx.ExecContext(c.Request.Context(), `UPDATE workspace_sessions SET
-		collaboration_mode='default',settings_version=$2,updated_at=now() WHERE id=$1`,
-		sessionID, settingsVersion)
+	if sessionMode != "default" {
+		settingsVersion++
+		_, err = tx.ExecContext(c.Request.Context(), `UPDATE workspace_sessions SET
+			collaboration_mode='default',settings_version=$2,updated_at=now() WHERE id=$1`,
+			sessionID, settingsVersion)
+	}
 	if err == nil {
-		_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_thread_controls SET
-			collaboration_mode='default',settings_revision=$2,
-			runtime_preferences_frozen_at=now(),updated_at=now() WHERE id=$1`,
-			controlID, settingsVersion)
+		err = codexcontrol.ProjectWorkspaceSessionSettingsTx(c.Request.Context(), tx, sessionID)
 	}
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "切换执行模式失败", err)

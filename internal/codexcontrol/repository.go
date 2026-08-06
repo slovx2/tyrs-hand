@@ -89,28 +89,6 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 			_ = tx.QueryRowContext(ctx, `SELECT id FROM discord_conversations
 				WHERE session_id=$1`, sessionID).Scan(&request.DiscordConversationID)
 		}
-		if request.DiscordConversationID != uuid.Nil {
-			result, updateErr := tx.ExecContext(ctx, `UPDATE workspace_sessions session SET
-				title=conversation.title, lifecycle_state=conversation.lifecycle_state,
-				model=conversation.model, reasoning_effort=conversation.reasoning_effort,
-					service_tier=COALESCE(conversation.service_tier,'standard'),
-				collaboration_mode=conversation.collaboration_mode,
-				settings_version=conversation.settings_revision,
-				last_activity_at=GREATEST(session.last_activity_at,conversation.last_activity_at),
-				updated_at=now()
-				FROM discord_conversations conversation
-				WHERE session.id=$1 AND conversation.id=$2
-				  AND conversation.session_id=session.id`, sessionID, request.DiscordConversationID)
-			if updateErr != nil {
-				return uuid.Nil, false, updateErr
-			}
-			if changed, rowsErr := result.RowsAffected(); rowsErr != nil || changed != 1 {
-				if rowsErr != nil {
-					return uuid.Nil, false, rowsErr
-				}
-				return uuid.Nil, false, sql.ErrNoRows
-			}
-		}
 		if err := tx.QueryRowContext(ctx, `SELECT environment.worker_id::text,
 			session.workspace_id::text, session.workspace_project_id,
 			session.agent_profile_id FROM workspace_sessions session
@@ -136,15 +114,7 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 		if err != nil {
 			return uuid.Nil, false, err
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls control SET
-			model=session.model, reasoning_effort=session.reasoning_effort,
-			service_tier=session.service_tier, collaboration_mode=session.collaboration_mode,
-			settings_revision=session.settings_version,
-			runtime_preferences_frozen_at=now(), updated_at=now()
-			FROM workspace_sessions session
-			WHERE control.id=$1 AND session.id=$2 AND control.session_id=session.id`,
-			controlID, sessionID)
-		if err != nil {
+		if err = ProjectWorkspaceSessionSettingsTx(ctx, tx, sessionID); err != nil {
 			return uuid.Nil, false, err
 		}
 		if request.DiscordConversationID != uuid.Nil {
@@ -322,11 +292,32 @@ func (r *Repository) lockWorkspaceSession(ctx context.Context, tx *sql.Tx, sessi
 	}
 	var existing sql.NullString
 	if err := tx.QueryRowContext(ctx, `SELECT session_id::text FROM discord_conversations
+		WHERE id=$1`, conversationID).Scan(&existing); err != nil {
+		return uuid.Nil, err
+	}
+	if existing.Valid {
+		existingID, err := uuid.Parse(existing.String)
+		if err != nil {
+			return uuid.Nil, err
+		}
+		var lockedSession, lockedConversation uuid.UUID
+		if err = tx.QueryRowContext(ctx, `SELECT id FROM workspace_sessions
+			WHERE id=$1 FOR UPDATE`, existingID).Scan(&lockedSession); err != nil {
+			return uuid.Nil, err
+		}
+		if err = tx.QueryRowContext(ctx, `SELECT id FROM discord_conversations
+			WHERE id=$1 AND session_id=$2 FOR UPDATE`, conversationID, existingID).
+			Scan(&lockedConversation); err != nil {
+			return uuid.Nil, err
+		}
+		return lockedSession, nil
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT session_id::text FROM discord_conversations
 		WHERE id=$1 FOR UPDATE`, conversationID).Scan(&existing); err != nil {
 		return uuid.Nil, err
 	}
 	if existing.Valid {
-		return uuid.Parse(existing.String)
+		return uuid.Nil, errors.New("discord conversation 在 Session 创建期间发生并发绑定")
 	}
 	var created uuid.UUID
 	err := tx.QueryRowContext(ctx, `INSERT INTO workspace_sessions(

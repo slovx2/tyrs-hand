@@ -84,7 +84,7 @@ func (s *Server) workerRecordThreadMetadata(c *gin.Context) {
 			badRequest(c, errors.New("thread metadata event 无效"))
 			return
 		}
-		var controlID uuid.UUID
+		var controlID, sessionID uuid.UUID
 		var conversationID sql.NullString
 		var revision int64
 		err = tx.QueryRowContext(c.Request.Context(), `UPDATE codex_thread_controls control SET
@@ -100,10 +100,10 @@ func (s *Server) workerRecordThreadMetadata(c *gin.Context) {
 				AND ($5 > control.app_server_event_generation OR
 					($5 = control.app_server_event_generation
 						AND $6 > control.app_server_event_sequence))
-			RETURNING control.id, control.discord_conversation_id::text,
+			RETURNING control.id,control.session_id,control.discord_conversation_id::text,
 				control.desired_thread_name_revision`, request.WorkspaceID, currentWorker(c).ID,
 			event.ThreadID, name, request.Generation, event.Sequence).
-			Scan(&controlID, &conversationID, &revision)
+			Scan(&controlID, &sessionID, &conversationID, &revision)
 		if errors.Is(err, sql.ErrNoRows) {
 			continue
 		}
@@ -111,14 +111,35 @@ func (s *Server) workerRecordThreadMetadata(c *gin.Context) {
 			problem(c, http.StatusInternalServerError, "记录 Thread metadata 失败", err)
 			return
 		}
-		_, err = tx.ExecContext(c.Request.Context(), `UPDATE workspace_sessions session SET
-				title=$2, updated_at=now()
+		result, updateErr := tx.ExecContext(c.Request.Context(),
+			`UPDATE workspace_sessions session SET title=$2,
+				title_revision=title_revision+CASE WHEN title=$2 THEN 0 ELSE 1 END,
+				updated_at=now()
 				FROM codex_thread_controls control
 				WHERE control.id=$1 AND session.id=control.session_id
 				  AND session.title_source NOT IN ('manual','generating')`, controlID, name)
-		if err != nil {
-			problem(c, http.StatusInternalServerError, "更新 Session 标题失败", err)
+		if updateErr != nil {
+			problem(c, http.StatusInternalServerError, "更新 Session 标题失败", updateErr)
 			return
+		}
+		updatedRows, updateErr := result.RowsAffected()
+		if updateErr != nil {
+			problem(c, http.StatusInternalServerError, "确认 Session 标题更新失败", updateErr)
+			return
+		}
+		if updatedRows == 1 {
+			updated, scanErr := scanClientSessionSummary(tx.QueryRowContext(c.Request.Context(),
+				`SELECT `+clientSessionSummaryColumns+` FROM workspace_sessions session
+				WHERE session.id=$1`, sessionID))
+			if scanErr == nil {
+				version := updated.SettingsVersion
+				_, scanErr = insertClientUpdate(c.Request.Context(), tx, &sessionID, "session.updated",
+					"session", sessionID.String(), nil, &version, updated)
+			}
+			if scanErr != nil {
+				problem(c, http.StatusInternalServerError, "广播 Session 标题失败", scanErr)
+				return
+			}
 		}
 		if conversationID.Valid {
 			var threadID string
