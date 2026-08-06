@@ -318,7 +318,6 @@ func loadSnapshotRuns(ctx context.Context, query clientSnapshotQueryer,
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
 	runs := make([]clientTurnRun, 0)
 	for rows.Next() {
 		var run clientTurnRun
@@ -337,15 +336,26 @@ func loadSnapshotRuns(ctx context.Context, query clientSnapshotQueryer,
 		}
 		run.ErrorCode = nullableString(errorCode)
 		run.ErrorMessage = nullableString(errorMessage)
-		if run.Segments, err = loadSnapshotSegments(ctx, query, run.ID); err != nil {
-			return nil, err
-		}
-		if run.PendingInteractives, err = loadSnapshotInteractives(ctx, query, run.ID); err != nil {
-			return nil, err
-		}
 		runs = append(runs, run)
 	}
-	return runs, rows.Err()
+	if err = rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err = rows.Close(); err != nil {
+		return nil, err
+	}
+	for index := range runs {
+		if runs[index].Segments, err = loadSnapshotSegments(ctx, query, runs[index].ID); err != nil {
+			return nil, err
+		}
+		if runs[index].PendingInteractives, err = loadSnapshotInteractives(
+			ctx, query, runs[index].ID,
+		); err != nil {
+			return nil, err
+		}
+	}
+	return runs, nil
 }
 
 func loadSnapshotSegments(ctx context.Context, query clientSnapshotQueryer,

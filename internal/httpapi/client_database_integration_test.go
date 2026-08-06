@@ -199,6 +199,11 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 		require.NotNil(t, claimed)
 	}
 	require.Equal(t, sessionID, claimed.SessionID)
+	snapshotWithRun := clientJSONRequest(t, http.MethodGet,
+		endpoint+"/api/v1/client/sessions/"+sessionID.String()+"/snapshot?turnLimit=20",
+		loginBody.AccessToken, nil)
+	require.Equal(t, http.StatusOK, snapshotWithRun.Code, snapshotWithRun.Body.String())
+	require.Contains(t, snapshotWithRun.Body.String(), claimed.RunID.String())
 	runningSessions := clientJSONRequest(t, http.MethodGet,
 		endpoint+"/api/v1/client/sessions?limit=10", loginBody.AccessToken, nil)
 	require.Equal(t, http.StatusOK, runningSessions.Code)
