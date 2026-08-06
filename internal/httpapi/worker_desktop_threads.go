@@ -18,6 +18,7 @@ import (
 )
 
 type desktopThreadTarget struct {
+	projectID     uuid.UUID
 	forumID       uuid.UUID
 	forumDiscord  string
 	repository    string
@@ -57,11 +58,13 @@ func (s *Server) workerPrepareDesktopThread(c *gin.Context) {
 	if errors.Is(err, sql.ErrNoRows) {
 		requestID = uuid.New()
 		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO desktop_thread_requests
-				(id, workspace_id, operation, request_key, source_control_id, cwd,
-				 request_params, status, forum_id)
-				VALUES ($1,$2,$3,$4,NULLIF($5::text,'')::uuid,$6,$7,'preparing',$8)`,
-			requestID, request.WorkspaceID, request.Operation, request.RequestKey,
-			nilUUIDString(target.sourceControl), target.workspacePath, params, target.forumID)
+				(id, workspace_id, workspace_project_id, operation, request_key,
+				 source_control_id, cwd, request_params, status, forum_id)
+				VALUES ($1,$2,$3,$4,$5,NULLIF($6::text,'')::uuid,$7,$8,'preparing',
+				 NULLIF($9::text,'')::uuid)`,
+			requestID, request.WorkspaceID, target.projectID, request.Operation, request.RequestKey,
+			nilUUIDString(target.sourceControl), target.workspacePath, params,
+			nilUUIDString(target.forumID))
 	}
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "创建 Desktop Thread reservation 失败", err)
@@ -99,18 +102,19 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 			return nil, desktopThreadTarget{}, errors.New("宿主工作区根目录必须是绝对路径")
 		}
 	}
-	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT f.id, r.discord_id,
-		project.name, project.relative_path,
+	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT project.id,
+		f.id::text, COALESCE(r.discord_id,''), project.name, project.relative_path,
 		COALESCE(e.owner_discord_user_id, ''),
 		COALESCE(NULLIF(m.display_name, ''), m.username, '')
 		FROM worker_workspaces e
-		JOIN discord_forums f ON f.workspace_id = e.id
-		JOIN discord_resources r ON r.id = f.resource_id
-		JOIN workspace_projects project ON project.id=f.workspace_project_id
+		JOIN workspace_projects project ON project.workspace_id=e.id
+		LEFT JOIN discord_forums f ON f.workspace_project_id=project.id
+			AND f.workspace_id=e.id AND f.binding_status='active'
+		LEFT JOIN discord_resources r ON r.id=f.resource_id
 		LEFT JOIN discord_members m ON m.guild_id = e.guild_id
 			AND m.discord_user_id = e.owner_discord_user_id
 		WHERE e.id = $1 AND e.worker_id = $2
-		AND f.binding_status='active' AND project.availability_status='available'`,
+		AND project.availability_status='available'`,
 		request.WorkspaceID, currentWorker(c).ID)
 	if err != nil {
 		return nil, desktopThreadTarget{}, err
@@ -119,11 +123,13 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 	var targets []desktopThreadTarget
 	for rows.Next() {
 		var target desktopThreadTarget
+		var forumID sql.NullString
 		var relative string
-		if err := rows.Scan(&target.forumID, &target.forumDiscord, &target.repository,
-			&relative, &target.actorID, &target.actorName); err != nil {
+		if err := rows.Scan(&target.projectID, &forumID, &target.forumDiscord,
+			&target.repository, &relative, &target.actorID, &target.actorName); err != nil {
 			return nil, desktopThreadTarget{}, err
 		}
+		target.forumID = parseOptionalUUID(forumID)
 		target.workspacePath, err = desktopWorkspacePath(workspaceRoot, relative)
 		if err != nil {
 			return nil, desktopThreadTarget{}, err
@@ -138,28 +144,25 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 		if sourceThread == "" {
 			return nil, desktopThreadTarget{}, errors.New("fork 缺少源 Thread")
 		}
-		var sourceForum, sourceEnvironment, sourceControl uuid.UUID
+		var sourceProject, sourceEnvironment, sourceControl uuid.UUID
 		err := s.db.QueryRowContext(c.Request.Context(), `SELECT control.id,
 			control.workspace_id,
-			COALESCE(conversation.forum_id, request.forum_id)
+			control.workspace_project_id
 			FROM codex_thread_controls control
-			LEFT JOIN discord_conversations conversation
-				ON conversation.id = control.discord_conversation_id
-			LEFT JOIN desktop_thread_requests request ON request.control_id = control.id
 			WHERE control.external_thread_id = $1`, sourceThread).
-			Scan(&sourceControl, &sourceEnvironment, &sourceForum)
+			Scan(&sourceControl, &sourceEnvironment, &sourceProject)
 		if err != nil || sourceEnvironment != request.WorkspaceID {
-			return nil, desktopThreadTarget{}, errors.New("fork 源 Thread 未绑定到相同 Workspace Forum")
+			return nil, desktopThreadTarget{}, errors.New("fork 源 Thread 未绑定到相同 Workspace 项目")
 		}
 		for _, target := range targets {
-			if target.forumID == sourceForum {
+			if target.projectID == sourceProject {
 				target.sourceControl = sourceControl
 				params["cwd"] = target.workspacePath
 				normalized, marshalErr := json.Marshal(params)
 				return normalized, target, marshalErr
 			}
 		}
-		return nil, desktopThreadTarget{}, errors.New("fork 源 Thread 的 Workspace Forum 已不存在")
+		return nil, desktopThreadTarget{}, errors.New("fork 源 Thread 的 Workspace 项目已不存在")
 	}
 	cwd, _ := params["cwd"].(string)
 	cwd = path.Clean(strings.TrimSpace(cwd))
@@ -177,7 +180,7 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 		}
 	}
 	if matched == nil {
-		return nil, desktopThreadTarget{}, errors.New("cwd 没有匹配本环境的 Workspace Forum")
+		return nil, desktopThreadTarget{}, errors.New("cwd 没有匹配本环境的 Workspace 项目")
 	}
 	target := *matched
 	params["cwd"] = target.workspacePath
@@ -283,16 +286,18 @@ func (s *Server) workerCompleteDesktopThread(c *gin.Context) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	var status string
-	var workspaceID, controlID, forumID, workerID uuid.UUID
+	var workspaceID, controlID, workerID uuid.UUID
+	var forumID sql.NullString
 	var sourceControl, projectID sql.NullString
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT r.workspace_id, r.status,
-		r.forum_id, r.source_control_id::text, f.workspace_project_id::text,
+		r.forum_id::text, r.source_control_id::text, r.workspace_project_id::text,
 		e.worker_id
 			FROM desktop_thread_requests r JOIN worker_workspaces e
-			ON e.id = r.workspace_id JOIN discord_forums f ON f.id = r.forum_id
-			JOIN workspace_projects project ON project.id=f.workspace_project_id
+			ON e.id = r.workspace_id
+			JOIN workspace_projects project ON project.id=r.workspace_project_id
+			LEFT JOIN discord_forums f ON f.id=r.forum_id
 			WHERE r.id = $1 AND e.worker_id = $2
-			AND f.binding_status='active'
+			AND (r.forum_id IS NULL OR f.binding_status='active')
 			AND project.availability_status='available' FOR UPDATE`,
 		requestID, currentWorker(c).ID).Scan(&workspaceID, &status, &forumID,
 		&sourceControl, &projectID, &workerID)

@@ -114,6 +114,10 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 		actorParticipantID = participantidentity.ID(guildID, actorUserID)
 	}
 	intentID := uuid.New()
+	projectionStatus := "not_applicable"
+	if conversationID != uuid.Nil {
+		projectionStatus = "pending"
+	}
 	_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO codex_turn_intents
 		(id, control_id, sequence_no, operation, behavior, resolved_action, source_type,
 		 input_surface, session_id, discord_conversation_id, repository_id,
@@ -129,11 +133,11 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 			'silent','skipped',$16,1,$17,now(),
 				CASE WHEN $16='completed' THEN now() ELSE NULL END,
 				CASE WHEN $16='completed' THEN 'delivered' ELSE 'pending' END,
-				CASE WHEN $16='completed' THEN now() ELSE NULL END,$18,'pending',$18)`,
+				CASE WHEN $16='completed' THEN now() ELSE NULL END,$18,$19,$18)`,
 		intentID, controlID, nextSequence, sessionID, nilUUIDString(conversationID), "",
 		projectID.String, profileID, idempotencyKey, instruction, request.Params, allowedJSON,
 		dangerousJSON, nilUUIDString(actorParticipantID), actorDisplayName, intentStatus,
-		expectedTurnID, projectionKey)
+		expectedTurnID, projectionKey, projectionStatus)
 	if err == nil {
 		_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_thread_controls SET
 			next_sequence_no = next_sequence_no + 1, updated_at = now() WHERE id = $1`, controlID)

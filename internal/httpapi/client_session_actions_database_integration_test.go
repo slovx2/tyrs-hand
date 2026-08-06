@@ -57,10 +57,11 @@ func TestClientArchiveEmptyDesktopSessionLocally(t *testing.T) {
 		emptySessionID, projectID, profileID, worker.ID, workspaceID,
 		"empty-desktop-thread").Scan(&emptyControlID))
 	_, err = db.ExecContext(ctx, `INSERT INTO desktop_thread_requests(
-		id,workspace_id,operation,request_key,cwd,request_params,status,forum_id,control_id,
-		external_thread_id) VALUES ($1,$2,'start',$3,'/workspace','{}','waiting_for_input',
-		$4,$5,'empty-desktop-thread')`, uuid.New(), workspaceID, strings.Repeat("e", 64),
-		forumID, emptyControlID)
+		id,workspace_id,workspace_project_id,operation,request_key,cwd,request_params,status,
+		forum_id,control_id,external_thread_id)
+		VALUES ($1,$2,$3,'start',$4,'/workspace','{}','waiting_for_input',$5,$6,
+		'empty-desktop-thread')`, uuid.New(), workspaceID, projectID,
+		strings.Repeat("e", 64), forumID, emptyControlID)
 	require.NoError(t, err)
 
 	archive := clientJSONRequest(t, http.MethodPost, endpoint+"/api/v1/client/sessions/"+

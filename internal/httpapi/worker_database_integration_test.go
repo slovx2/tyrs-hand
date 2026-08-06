@@ -495,6 +495,72 @@ func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
 	}))
 }
 
+func TestWorkerAPIDesktopThreadWithoutDiscordForum(t *testing.T) {
+	db := workerDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	server, endpoint := workerTestServer(t, db)
+	worker, enrollment, err := server.workers.Create(ctx, "desktop-project-only",
+		[]string{"discord"}, 2)
+	require.NoError(t, err)
+	_, credential, err := server.workers.Enroll(ctx, enrollment)
+	require.NoError(t, err)
+	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
+	repositoryID, _, _ := seedWorkerGitHubQueue(t, db, 311)
+	workspaceID, _ := seedWorkerWorkspace(t, db, repositoryID, worker.ID)
+	require.NoError(t, client.WorkspaceProjectSnapshot(ctx,
+		workerprotocol.WorkspaceProjectSnapshotRequest{WorkspaceID: workspaceID,
+			Projects: []workerprotocol.WorkspaceProjectSnapshot{{
+				Name: "MAO-CRM", RelativePath: "workspaces/MAO-CRM", ProjectKind: "git",
+			}}}))
+
+	workspaceRoot := "/home/songsiyu/tyrs-hand/workspaces"
+	state, err := client.PrepareDesktopThread(ctx, workerprotocol.DesktopThreadPrepareRequest{
+		WorkspaceID: workspaceID, WorkspaceRoot: workspaceRoot, Operation: "start",
+		RequestKey: strings.Repeat("1", 64), Params: json.RawMessage(
+			`{"cwd":"` + workspaceRoot + `/MAO-CRM/src","model":"mock-model"}`),
+	})
+	require.NoError(t, err)
+	require.Equal(t, "preparing", state.Status)
+	require.Equal(t, uuid.Nil, state.ForumID,
+		"本地项目没有 Discord Forum 时仍应允许创建 Desktop Thread")
+
+	state, err = client.CompleteDesktopThread(ctx, state.ID,
+		workerprotocol.DesktopThreadCompleteRequest{WorkspaceID: workspaceID,
+			Response: json.RawMessage(`{"thread":{"id":"mao-crm-desktop-thread"},` +
+				`"model":"mock-model","serviceTier":"standard"}`)})
+	require.NoError(t, err)
+	require.Equal(t, "waiting_for_input", state.Status)
+	require.NotEqual(t, uuid.Nil, state.ControlID)
+
+	task, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
+		WorkspaceID: workspaceID, RequestKey: strings.Repeat("2", 64),
+		Params: json.RawMessage(`{"threadId":"mao-crm-desktop-thread",` +
+			`"clientUserMessageId":"mao-crm-first-message",` +
+			`"input":[{"type":"text","text":"检查 CRM 需求"}]}`),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, task.Snapshot.Session)
+	require.Nil(t, task.Snapshot.Discord)
+	require.Equal(t, "workspaces/MAO-CRM", task.Snapshot.Session.Project.WorkspaceRelative)
+	require.Equal(t, uuid.Nil, task.Snapshot.Session.Project.ForumID)
+	var requestStatus, projectionStatus, projectName string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT request.status,
+		intent.desktop_input_projection_status, project.name
+		FROM desktop_thread_requests request
+		JOIN codex_turn_intents intent ON intent.control_id=request.control_id
+		JOIN workspace_projects project ON project.id=request.workspace_project_id
+		WHERE request.id=$1 AND intent.id=$2`, state.ID, task.Claimed.ID).
+		Scan(&requestStatus, &projectionStatus, &projectName))
+	require.Equal(t, "completed", requestStatus)
+	require.Equal(t, "not_applicable", projectionStatus)
+	require.Equal(t, "MAO-CRM", projectName)
+	var discordPosts int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM integration_outbox
+		WHERE operation_key=$1`, "desktop-thread-post:"+state.ID.String()).Scan(&discordPosts))
+	require.Zero(t, discordPosts)
+}
+
 func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	db := workerDatabase(t)
 	ctx := context.Background()

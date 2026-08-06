@@ -57,9 +57,8 @@ func (s *Server) desktopThreadConfig(c *gin.Context,
 		}
 	} else {
 		err := s.db.QueryRowContext(c.Request.Context(), `SELECT p.id,
-			p.allowed_tools, '[]'::jsonb FROM discord_forums f
-			CROSS JOIN LATERAL (SELECT id, allowed_tools FROM agent_profiles
-			ORDER BY created_at, id LIMIT 1) p WHERE f.id = $1`, state.ForumID).
+			p.allowed_tools, '[]'::jsonb FROM agent_profiles p
+			ORDER BY p.created_at, p.id LIMIT 1`).
 			Scan(&profileID, &allowed, &dangerous)
 		if err != nil {
 			return result, err

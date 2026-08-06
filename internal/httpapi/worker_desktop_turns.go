@@ -190,12 +190,19 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	images, imageFailures := prepareDesktopImages(request.Images, request.ImageError)
 	projectionInput := discordintegration.FormatDesktopProjectionInput(
 		desktopProjectionText(displayInstruction), request.Params, imageFailures)
+	projectionStatus := "not_applicable"
 	if claimed.DiscordConversationID == uuid.Nil && desktopRequestID.Valid {
-		if err := s.queueFirstDesktopInput(c.Request.Context(), tx, claimed.ControlID,
-			projectionKey, request.Params, projectionInput); err != nil {
-			problem(c, http.StatusInternalServerError, "排队 Desktop Starter Message 失败", err)
+		projectionQueued, queueErr := s.queueFirstDesktopInput(c.Request.Context(), tx,
+			claimed.ControlID, projectionKey, request.Params, projectionInput)
+		if queueErr != nil {
+			problem(c, http.StatusInternalServerError, "排队 Desktop Starter Message 失败", queueErr)
 			return
 		}
+		if projectionQueued {
+			projectionStatus = "pending"
+		}
+	} else if claimed.DiscordConversationID != uuid.Nil {
+		projectionStatus = "pending"
 	}
 	claimed.Attempt, claimed.MaxAttempts = 1, max(1, s.cfg.CodexReconcileMaxAttempts)
 	claimed.LeaseToken, claimed.LeaseEpoch = leaseToken, oldLeaseEpoch+1
@@ -205,8 +212,9 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_turn_intents SET
 			instruction=$2,prepared_input=$3,status='dispatching',attempt_count=1,max_attempts=$4,
 			dispatched_at=now(),desktop_input_projection_key=$5,
-			desktop_input_projection_status='pending',updated_at=now() WHERE id=$1`,
-			claimed.ID, instruction, request.Params, claimed.MaxAttempts, projectionKey)
+			desktop_input_projection_status=$6,updated_at=now() WHERE id=$1`,
+			claimed.ID, instruction, request.Params, claimed.MaxAttempts, projectionKey,
+			projectionStatus)
 	} else {
 		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO codex_turn_intents
 			(id, control_id, sequence_no, operation, behavior, source_type, input_surface,
@@ -219,12 +227,12 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 			VALUES ($1,$2,$3,'turn_input','start_when_idle','workspace_session','desktop',$4,
 				NULLIF($5::text,'')::uuid,NULLIF($6::text,'')::uuid,NULLIF($7::text,'')::uuid,$8,$9,
 				$10,$11,$12,$13,100,'codex-desktop','owner',NULLIF($14::text,'')::uuid,$15,
-				'silent','skipped','dispatching',1,$16,now(),$17,'pending',$17)`,
+				'silent','skipped','dispatching',1,$16,now(),$17,$18,$17)`,
 			claimed.ID, claimed.ControlID, claimed.Sequence, claimed.SessionID,
 			nilUUIDString(claimed.DiscordConversationID), "", nilUUIDString(claimed.ProjectID),
 			claimed.AgentProfileID, idempotencyKey, instruction, request.Params,
 			allowedJSON, dangerousJSON, nilUUIDString(claimed.ActorParticipantID),
-			claimed.ActorDisplayName, claimed.MaxAttempts, projectionKey)
+			claimed.ActorDisplayName, claimed.MaxAttempts, projectionKey, projectionStatus)
 	}
 	if err != nil {
 		problem(c, http.StatusConflict, "Desktop Turn 已提交或发生并发冲突", err)
@@ -368,12 +376,14 @@ func desktopProjectionText(value string) string {
 
 func (s *Server) queueFirstDesktopInput(ctx context.Context, tx *sql.Tx, controlID uuid.UUID,
 	projectionKey string, params json.RawMessage, projectionInput string,
-) error {
+) (bool, error) {
 	var requestID uuid.UUID
 	var status, desiredName, desiredSource string
 	var firstProjectionKey, firstInputText, firstTitle, firstActorID, firstActorName string
 	var target desktopThreadTarget
-	err := tx.QueryRowContext(ctx, `SELECT r.id, r.status, f.id, resource.discord_id,
+	var forumID sql.NullString
+	err := tx.QueryRowContext(ctx, `SELECT r.id, r.status, f.id::text,
+		COALESCE(resource.discord_id,''),
 		project.name, project.relative_path,
 		COALESCE(workspace.owner_discord_user_id, ''),
 		COALESCE(NULLIF(member.display_name, ''), member.username, ''),
@@ -383,24 +393,32 @@ func (s *Server) queueFirstDesktopInput(ctx context.Context, tx *sql.Tx, control
 		COALESCE(r.first_input_actor_display_name,'')
 		FROM desktop_thread_requests r
 		JOIN codex_thread_controls control ON control.id = r.control_id
-		JOIN discord_forums f ON f.id = r.forum_id
-		JOIN discord_resources resource ON resource.id = f.resource_id
-		JOIN workspace_projects project ON project.id=f.workspace_project_id
+		JOIN workspace_projects project ON project.id=r.workspace_project_id
+		LEFT JOIN discord_forums f ON f.id = r.forum_id
+		LEFT JOIN discord_resources resource ON resource.id = f.resource_id
 		JOIN worker_workspaces workspace ON workspace.id = r.workspace_id
 	LEFT JOIN discord_members member ON member.guild_id = workspace.guild_id
 			AND member.discord_user_id = workspace.owner_discord_user_id
 		WHERE r.control_id = $1 FOR UPDATE OF r`, controlID).Scan(&requestID, &status,
-		&target.forumID, &target.forumDiscord, &target.repository, &target.workspacePath,
+		&forumID, &target.forumDiscord, &target.repository, &target.workspacePath,
 		&target.actorID, &target.actorName, &desiredName, &desiredSource, &firstProjectionKey,
 		&firstInputText, &firstTitle, &firstActorID, &firstActorName)
 	if err != nil {
-		return err
+		return false, err
 	}
+	target.forumID = parseOptionalUUID(forumID)
 	if status == "post_pending" || status == "completed" {
-		return nil
+		return target.forumID != uuid.Nil, nil
 	}
 	if status != "waiting_for_input" && status != "post_failed" {
-		return fmt.Errorf("desktop thread 状态 %q 不能创建首条消息", status)
+		return false, fmt.Errorf("desktop thread 状态 %q 不能创建首条消息", status)
+	}
+	if target.forumID == uuid.Nil {
+		_, err = tx.ExecContext(ctx, `UPDATE desktop_thread_requests SET status='completed',
+			first_input_projection_key=$2, first_input=$3, first_input_text=$4,
+			error=NULL, updated_at=now() WHERE id=$1`, requestID, projectionKey, params,
+			projectionInput)
+		return false, err
 	}
 	if status == "post_failed" && firstProjectionKey != "" {
 		target.actorID, target.actorName = firstActorID, firstActorName
@@ -408,9 +426,9 @@ func (s *Server) queueFirstDesktopInput(ctx context.Context, tx *sql.Tx, control
 			status = 'post_pending', error = NULL, updated_at = now() WHERE id = $1`,
 			requestID)
 		if err != nil {
-			return err
+			return false, err
 		}
-		return enqueueDesktopThreadPost(ctx, tx, requestID, target, firstTitle, firstInputText)
+		return true, enqueueDesktopThreadPost(ctx, tx, requestID, target, firstTitle, firstInputText)
 	}
 	title := normalizeDesktopTitle(projectionInput)
 	if desiredSource == "codex" && desiredName != "" {
@@ -423,9 +441,9 @@ func (s *Server) queueFirstDesktopInput(ctx context.Context, tx *sql.Tx, control
 		WHERE id = $1`, requestID, projectionKey, params, projectionInput, title,
 		target.actorID, target.actorName)
 	if err != nil {
-		return err
+		return false, err
 	}
-	return enqueueDesktopThreadPost(ctx, tx, requestID, target, title, projectionInput)
+	return true, enqueueDesktopThreadPost(ctx, tx, requestID, target, title, projectionInput)
 }
 
 func enqueueDesktopInputProjection(ctx context.Context, tx *sql.Tx, conversationID uuid.UUID,
