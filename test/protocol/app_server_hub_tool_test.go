@@ -1,10 +1,9 @@
 //go:build integration
 
-package integration
+package protocol
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -138,38 +137,4 @@ supports_websockets = false
 	waitForHubTurnCompleted(t, workerEvents.Events(), started.Thread.ID, turn.Turn.ID)
 	require.Equal(t, int64(1), hub.Stats().UpstreamConnections)
 	require.Equal(t, int64(1), hub.Stats().UpstreamInitializations)
-}
-
-func waitForUnixSocket(t *testing.T, path string) {
-	t.Helper()
-	require.Eventually(t, func() bool {
-		info, err := os.Stat(path)
-		return err == nil && info.Mode()&os.ModeSocket != 0
-	}, 10*time.Second, 20*time.Millisecond)
-}
-
-func waitForHubTurnCompleted(t *testing.T, events <-chan codex.Event, threadID, turnID string) {
-	t.Helper()
-	timer := time.NewTimer(30 * time.Second)
-	defer timer.Stop()
-	for {
-		select {
-		case event := <-events:
-			if event.Method != "turn/completed" {
-				continue
-			}
-			var params struct {
-				ThreadID string `json:"threadId"`
-				Turn     struct {
-					ID string `json:"id"`
-				} `json:"turn"`
-			}
-			require.NoError(t, json.Unmarshal(event.Params, &params))
-			if params.ThreadID == threadID && params.Turn.ID == turnID {
-				return
-			}
-		case <-timer.C:
-			t.Fatal("等待 Hub Turn完成超时")
-		}
-	}
 }

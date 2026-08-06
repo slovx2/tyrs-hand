@@ -153,6 +153,21 @@ func TestHubUnsubscribesEphemeralThreadAfterLastDesktopLeaves(t *testing.T) {
 	require.Equal(t, 1, mock.RequestCount("thread/unsubscribe"))
 }
 
+func TestHubUnsubscribesEphemeralThreadWhenOwnerDisconnects(t *testing.T) {
+	mock, err := mockcodex.Start(t)
+	require.NoError(t, err)
+	hub := startHub(t, mock.SocketPath)
+	desktop := connectDesktop(t, hub.SocketPath())
+	desktop.initialize(t, 1)
+	desktop.write(t, rpcMessage{ID: rawID(2), Method: "thread/start",
+		Params: mustJSON(map[string]any{"cwd": t.TempDir(), "ephemeral": true})})
+	require.NotEmpty(t, responseThreadID(t, desktop.response(t, rawID(2)).Result))
+	require.NoError(t, desktop.ws.Close())
+	require.Eventually(t, func() bool {
+		return mock.RequestCount("thread/unsubscribe") == 1
+	}, 3*time.Second, 10*time.Millisecond)
+}
+
 func TestHubKeepsEphemeralThreadOutsideWorker(t *testing.T) {
 	mock, err := mockcodex.Start(t)
 	require.NoError(t, err)

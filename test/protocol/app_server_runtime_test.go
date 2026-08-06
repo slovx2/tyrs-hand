@@ -1,6 +1,6 @@
 //go:build integration
 
-package integration
+package protocol
 
 import (
 	"context"
@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -242,60 +241,6 @@ supports_websockets = false
 	require.Contains(t, output, hiddenMarker)
 	require.NotContains(t, output, visibleMarker)
 	require.Equal(t, int32(2), requestCount.Load())
-}
-
-func fixedCodexBinary(t *testing.T) string {
-	t.Helper()
-	bin := os.Getenv("TYRS_HAND_TEST_CODEX_BIN")
-	if bin == "" {
-		bin = "codex"
-	}
-	path, err := exec.LookPath(bin)
-	if err != nil {
-		if os.Getenv("CI") == "true" {
-			t.Fatalf("CI 缺少固定 Codex: %v", err)
-		}
-		t.Skip("本机没有安装满足最低版本要求的 Codex")
-	}
-	require.NoError(t, codex.ValidateVersion(context.Background(), path))
-	return path
-}
-
-func temporaryDir(t *testing.T, prefix string) string {
-	t.Helper()
-	root, err := os.MkdirTemp("", prefix)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		var removeErr error
-		for attempt := 0; attempt < 10; attempt++ {
-			removeErr = os.RemoveAll(root)
-			if removeErr == nil {
-				return
-			}
-			time.Sleep(50 * time.Millisecond)
-		}
-		require.NoError(t, removeErr)
-	})
-	return root
-}
-
-func sse(events ...map[string]any) string {
-	var result strings.Builder
-	for _, event := range events {
-		data, _ := json.Marshal(event)
-		_, _ = fmt.Fprintf(&result, "event: %s\ndata: %s\n\n", event["type"], data)
-	}
-	return result.String()
-}
-
-func completedResponse(id string) map[string]any {
-	return map[string]any{
-		"type": "response.completed",
-		"response": map[string]any{"id": id, "usage": map[string]any{
-			"input_tokens": 0, "input_tokens_details": nil, "output_tokens": 0,
-			"output_tokens_details": nil, "total_tokens": 0,
-		}},
-	}
 }
 
 func waitForCompletedTurn(t *testing.T, events <-chan codex.Event, threadID, turnID string) {

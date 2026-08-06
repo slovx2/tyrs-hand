@@ -1,6 +1,6 @@
 //go:build integration
 
-package integration
+package protocol
 
 import (
 	"context"
@@ -27,6 +27,100 @@ func TestRealCodexHubRequestUserInputDesktopWins(t *testing.T) {
 
 func TestRealCodexHubRequestUserInputWorkerWins(t *testing.T) {
 	runRealCodexHubRequestUserInputWinner(t, appserverhub.RoleWorker)
+}
+
+func TestUserJourneyQuestionContinuesAfterOneDesktopDisconnects(t *testing.T) {
+	toolArguments, err := json.Marshal(map[string]any{
+		"questions": []map[string]any{{"id": "confirm", "header": "Confirm",
+			"question": "Continue?", "options": []map[string]string{{
+				"label": "Yes (Recommended)", "description": "Continue."}, {
+				"label": "No", "description": "Stop."}}}},
+		"autoResolutionMs": 60_000,
+	})
+	require.NoError(t, err)
+	var responseNumber atomic.Int32
+	responses := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
+		_ *http.Request,
+	) {
+		response.Header().Set("Content-Type", "text/event-stream")
+		response.Header().Set("Cache-Control", "no-cache")
+		if responseNumber.Add(1) == 1 {
+			_, _ = fmt.Fprint(response, sse(
+				map[string]any{"type": "response.created", "response": map[string]any{
+					"id": "disconnect-input-1"}},
+				map[string]any{"type": "response.output_item.done", "item": map[string]any{
+					"type": "function_call", "call_id": "disconnect-input-call",
+					"name": "request_user_input", "arguments": string(toolArguments),
+				}}, completedResponse("disconnect-input-1")))
+			return
+		}
+		_, _ = fmt.Fprint(response, sse(
+			map[string]any{"type": "response.created", "response": map[string]any{
+				"id": "disconnect-input-2"}},
+			map[string]any{"type": "response.output_item.done", "item": map[string]any{
+				"type": "message", "role": "assistant", "id": "disconnect-input-message",
+				"content": []map[string]any{{"type": "output_text", "text": "continued"}},
+			}}, completedResponse("disconnect-input-2")))
+	}))
+	t.Cleanup(responses.Close)
+
+	hub, workspace := startRealHub(t, responses.URL, nil)
+	workerRequest := make(chan codex.ServerRequest, 1)
+	worker, err := hub.OpenClient(appserverhub.ClientOptions{Role: appserverhub.RoleWorker,
+		ServerRequestHandler: func(ctx context.Context, request codex.ServerRequest) (any, error) {
+			workerRequest <- request
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = worker.Close() })
+	firstRequest := make(chan codex.ServerRequest, 1)
+	firstDesktop, err := codex.ConnectSocket(context.Background(), codex.SocketClientOptions{
+		SocketPath: hub.SocketPath(), ServerRequestTimeout: 30 * time.Second,
+		ServerRequestHandler: func(ctx context.Context, request codex.ServerRequest) (any, error) {
+			firstRequest <- request
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = firstDesktop.Close() })
+	allowSecond := make(chan struct{})
+	secondRequest := make(chan codex.ServerRequest, 1)
+	secondDesktop, err := codex.ConnectSocket(context.Background(), codex.SocketClientOptions{
+		SocketPath: hub.SocketPath(), ServerRequestTimeout: 30 * time.Second,
+		ServerRequestHandler: func(_ context.Context, request codex.ServerRequest) (any, error) {
+			secondRequest <- request
+			<-allowSecond
+			return inputAnswer(), nil
+		},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = secondDesktop.Close() })
+
+	threadID, err := worker.StartThread(context.Background(), mustRealJSON(map[string]any{
+		"cwd": workspace, "model": "mock-model", "approvalPolicy": "never",
+		"sandbox": "read-only",
+	}))
+	require.NoError(t, err)
+	events := secondDesktop.Subscribe(codex.ThreadFilter{ThreadID: threadID})
+	t.Cleanup(events.Close)
+	turnID := startRealTurn(t, secondDesktop, threadID, "请向所有在线客户端提问")
+
+	first := receiveRealServerRequest(t, firstRequest)
+	second := receiveRealServerRequest(t, secondRequest)
+	workerCopy := receiveRealServerRequest(t, workerRequest)
+	require.NotContains(t, string(first.Params), "autoResolutionMs")
+	require.NotContains(t, string(second.Params), "autoResolutionMs")
+	require.Contains(t, string(workerCopy.Params), "autoResolutionMs")
+	require.NoError(t, firstDesktop.Close())
+	close(allowSecond)
+	require.Equal(t, "completed", waitForHubTurnStatus(t, events.Events(), threadID, turnID))
+	require.Equal(t, int32(2), responseNumber.Load())
+	var listed any
+	require.NoError(t, secondDesktop.Call(context.Background(), "thread/read",
+		map[string]any{"threadId": threadID, "includeTurns": true}, &listed),
+		"接管回答后剩余 Desktop 连接必须仍可用")
 }
 
 func runRealCodexHubRequestUserInputWinner(t *testing.T, winner appserverhub.Role) {
@@ -173,35 +267,20 @@ supports_websockets = false
 	waitForHubTurnCompleted(t, subscription.Events(), thread.Thread.ID, defaultTurn.Turn.ID)
 }
 
-func waitForHubCollaborationMode(t *testing.T, events <-chan codex.Event, threadID, mode string) {
-	t.Helper()
-	timer := time.NewTimer(15 * time.Second)
-	defer timer.Stop()
-	for {
-		select {
-		case event := <-events:
-			if event.Method != "thread/settings/updated" {
-				continue
-			}
-			var value struct {
-				ThreadID       string `json:"threadId"`
-				ThreadSettings struct {
-					CollaborationMode struct {
-						Mode string `json:"mode"`
-					} `json:"collaborationMode"`
-				} `json:"threadSettings"`
-			}
-			require.NoError(t, json.Unmarshal(event.Params, &value))
-			if value.ThreadID == threadID && value.ThreadSettings.CollaborationMode.Mode == mode {
-				return
-			}
-		case <-timer.C:
-			t.Fatalf("等待 collaboration mode %s 超时", mode)
-		}
-	}
-}
-
 func inputAnswer() map[string]any {
 	return map[string]any{"answers": map[string]any{"confirm": map[string]any{
 		"answers": []string{"yes"}}}}
+}
+
+func receiveRealServerRequest(t *testing.T,
+	requests <-chan codex.ServerRequest,
+) codex.ServerRequest {
+	t.Helper()
+	select {
+	case request := <-requests:
+		return request
+	case <-time.After(10 * time.Second):
+		t.Fatal("等待真实 Codex Server Request 超时")
+		return codex.ServerRequest{}
+	}
 }

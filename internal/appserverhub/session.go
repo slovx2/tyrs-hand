@@ -56,6 +56,16 @@ func (s *session) subscribed(threadID string) bool {
 	return s.subscriptions[threadID]
 }
 
+func (s *session) subscribedThreads() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := make([]string, 0, len(s.subscriptions))
+	for threadID := range s.subscriptions {
+		result = append(result, threadID)
+	}
+	return result
+}
+
 func (s *session) publish(event codex.Event) error {
 	if s.client != nil {
 		return s.client.publish(event)

@@ -63,9 +63,9 @@ func (r *Runtime) StartTurn(ctx context.Context, threadID string, input ports.Tu
 	payload := map[string]any{
 		"threadId": threadID, "clientUserMessageId": input.ClientUserMessageID, "input": items,
 	}
-	if input.CollaborationMode != nil && input.CollaborationMode.Model != "" {
+	if input.CollaborationMode != nil {
 		settings := map[string]any{}
-		optional(settings, "model", input.CollaborationMode.Model)
+		settings["model"] = input.CollaborationMode.Model
 		optional(settings, "reasoning_effort", input.CollaborationMode.ReasoningEffort)
 		payload["collaborationMode"] = map[string]any{
 			"mode":     input.CollaborationMode.Mode,

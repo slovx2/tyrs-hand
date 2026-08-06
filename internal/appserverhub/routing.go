@@ -37,7 +37,7 @@ func (r *Hub) routeCall(ctx context.Context, source *session, method string,
 	var reservedArchive *archiveOperation
 	var reservedArchiveLeader bool
 	var reservedArchiveThreadID string
-	if method == "thread/archive" && source.role == RoleDesktop && !ephemeral {
+	if method == "thread/archive" && !ephemeral {
 		reservedArchiveThreadID, _ = threadScope(params)
 		if reservedArchiveThreadID != "" {
 			reservedArchive, reservedArchiveLeader = r.beginArchive(reservedArchiveThreadID)
@@ -85,7 +85,7 @@ func (r *Hub) routeCall(ctx context.Context, source *session, method string,
 	}
 	var result json.RawMessage
 	var upstreamErr error
-	if method == "thread/archive" && source.role == RoleDesktop && !ephemeral {
+	if method == "thread/archive" && !ephemeral {
 		var gate func(context.Context) error
 		if controlled {
 			if controller, ok := r.options.Controller.(ArchiveGate); ok {
@@ -229,7 +229,7 @@ func (r *Hub) forwardEvents() {
 				}
 				continue
 			}
-			if threadID == "" || event.Method == "thread/started" ||
+			if threadID == "" || (event.Method == "thread/started" && !ephemeral) ||
 				item.subscribed(threadID) {
 				sessions = append(sessions, item)
 			}

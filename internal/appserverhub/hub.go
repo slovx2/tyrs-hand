@@ -165,19 +165,47 @@ func (r *Hub) addSession(role Role, send func(rpcMessage) error,
 	}
 	s := newSession(r.nextID.Add(1), role, send, handler)
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if r.closed {
+		r.mu.Unlock()
 		return nil, errSessionClosed
 	}
+	replaced := make([]*session, 0, 1)
+	if role == RoleWorker {
+		for id, current := range r.sessions {
+			if current.role == RoleWorker {
+				delete(r.sessions, id)
+				replaced = append(replaced, current)
+			}
+		}
+	}
 	r.sessions[s.id] = s
+	r.mu.Unlock()
+	for _, current := range replaced {
+		current.close(errors.New("新的 Worker 已接管 Codex Hub"))
+	}
 	return s, nil
 }
 
 func (r *Hub) removeSession(s *session) {
+	threads := s.subscribedThreads()
 	r.mu.Lock()
 	if r.sessions[s.id] == s {
 		delete(r.sessions, s.id)
 	}
 	r.mu.Unlock()
 	s.close(errSessionClosed)
+	if s.role != RoleDesktop {
+		return
+	}
+	for _, threadID := range threads {
+		if !r.isEphemeral(threadID) || r.anyDesktopSubscribed(threadID) {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), r.options.RequestTimeout)
+		var result any
+		_ = r.upstream.Call(ctx, "thread/unsubscribe", map[string]any{
+			"threadId": threadID,
+		}, &result)
+		cancel()
+	}
 }

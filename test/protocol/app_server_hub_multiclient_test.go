@@ -1,6 +1,6 @@
 //go:build integration
 
-package integration
+package protocol
 
 import (
 	"context"
@@ -628,6 +628,9 @@ supports_websockets = false
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = desktop.Close() })
+	secondDesktop := connectRealDesktop(t, hub)
+	secondDesktopEvents := secondDesktop.Subscribe(codex.ThreadFilter{})
+	t.Cleanup(secondDesktopEvents.Close)
 
 	var started struct {
 		Thread struct {
@@ -656,25 +659,9 @@ supports_websockets = false
 	}, nil)
 	require.ErrorContains(t, nameErr, "ephemeral thread does not support metadata updates")
 	require.Empty(t, controller.Methods())
-	deadline := time.NewTimer(200 * time.Millisecond)
-	defer deadline.Stop()
-	for {
-		select {
-		case event := <-workerEvents.Events():
-			var scope struct {
-				ThreadID string `json:"threadId"`
-				Thread   struct {
-					ID string `json:"id"`
-				} `json:"thread"`
-			}
-			_ = json.Unmarshal(event.Params, &scope)
-			if scope.ThreadID == started.Thread.ID || scope.Thread.ID == started.Thread.ID {
-				t.Fatalf("Worker 不应收到 ephemeral Thread 事件: %s", event.Method)
-			}
-		case <-deadline.C:
-			return
-		}
-	}
+	assertNoThreadScopedEvent(t, workerEvents.Events(), started.Thread.ID, 200*time.Millisecond)
+	assertNoThreadScopedEvent(t, secondDesktopEvents.Events(), started.Thread.ID,
+		200*time.Millisecond)
 }
 
 type realRecordingController struct {
