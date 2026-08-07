@@ -130,6 +130,16 @@ func (s *SQLoutbox) Claim(ctx context.Context, lease time.Duration) (*OutboxItem
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	_, err = tx.ExecContext(ctx, `UPDATE integration_outbox SET status='pending',
+		available_at=now(), apply_attempt_count=0, response=NULL, delivered_at=NULL,
+		inflight_revision=NULL, inflight_operation_type=NULL, inflight_route_key=NULL,
+		inflight_payload=NULL, inflight_nonce=NULL, lease_token=NULL, lease_expires_at=NULL,
+		last_error=NULL, updated_at=now()
+		WHERE integration='discord' AND status='sending' AND lease_expires_at < now()
+		AND inflight_operation_type IN ('message.update','message.delete','thread.tag.toggle')`)
+	if err != nil {
+		return nil, err
+	}
 	_, err = tx.ExecContext(ctx, `UPDATE integration_outbox SET status='ambiguous',
 		lease_token=NULL, lease_expires_at=NULL,
 		last_error='Discord 投递租约失效；结果未知，为避免重复外部写入已停止自动重发',
@@ -264,68 +274,110 @@ func (s *SQLoutbox) Apply(ctx context.Context, item OutboxItem) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 	var desktopRequestID uuid.UUID
+	projectionKey, projectionExists := "", false
 	if strings.HasPrefix(item.OperationKey, "projection:") {
+		projectionKey = strings.TrimPrefix(item.OperationKey, "projection:")
 		var locked int
 		if err := tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT 1 FROM discord_projections
 			WHERE projection_key = $1 FOR UPDATE), 0)`,
-			strings.TrimPrefix(item.OperationKey, "projection:")).Scan(&locked); err != nil {
+			projectionKey).Scan(&locked); err != nil {
 			return err
 		}
+		projectionExists = locked == 1
 	}
+	projectionGone := projectionKey != "" && !projectionExists
 	result, err := tx.ExecContext(ctx, `UPDATE integration_outbox SET
-		status = CASE WHEN request_revision=$3 THEN 'completed' ELSE 'pending' END,
-		available_at = CASE WHEN request_revision=$3 THEN available_at ELSE now()+interval '5 seconds' END,
-		response = CASE WHEN request_revision=$3 THEN response ELSE NULL END,
-		delivered_at = CASE WHEN request_revision=$3 THEN delivered_at ELSE NULL END,
-		attempt_count = CASE WHEN request_revision=$3 THEN attempt_count ELSE 0 END,
-		apply_attempt_count = CASE WHEN request_revision=$3 THEN apply_attempt_count ELSE 0 END,
+		status = CASE WHEN request_revision=$3 OR $4 THEN 'completed' ELSE 'pending' END,
+		available_at = CASE WHEN request_revision=$3 OR $4 THEN available_at ELSE now()+interval '5 seconds' END,
+		response = CASE WHEN request_revision=$3 OR $4 THEN response ELSE NULL END,
+		delivered_at = CASE WHEN request_revision=$3 OR $4 THEN delivered_at ELSE NULL END,
+		attempt_count = CASE WHEN request_revision=$3 OR $4 THEN attempt_count ELSE 0 END,
+		apply_attempt_count = CASE WHEN request_revision=$3 OR $4 THEN apply_attempt_count ELSE 0 END,
 		inflight_revision=NULL, inflight_operation_type=NULL, inflight_route_key=NULL,
 		inflight_payload=NULL, inflight_nonce=NULL,
 		lease_token=NULL, lease_expires_at=NULL, last_error=NULL, updated_at=now()
 		WHERE id=$1 AND lease_token=$2 AND status='applying' AND inflight_revision=$3`,
-		item.ID, item.LeaseToken, item.RequestRevision)
+		item.ID, item.LeaseToken, item.RequestRevision, projectionGone)
 	if err := changedOne(result, err); err != nil {
 		return err
 	}
 	response := item.Response
-	if strings.HasPrefix(item.OperationKey, "projection:") {
+	if projectionKey != "" {
 		var value struct {
 			ThreadID  string `json:"threadId"`
 			MessageID string `json:"messageId"`
 		}
 		_ = json.Unmarshal(response, &value)
-		_, err = tx.ExecContext(ctx, `UPDATE discord_projections SET
+		if !projectionExists {
+			if value.MessageID != "" && (item.OperationType == "message.create" ||
+				item.OperationType == "forum.post.create") {
+				var delivered struct {
+					ChannelID string `json:"channelId"`
+				}
+				_ = json.Unmarshal(item.Payload, &delivered)
+				if value.ThreadID != "" {
+					delivered.ChannelID = value.ThreadID
+				}
+				if delivered.ChannelID == "" {
+					return errors.New("已删除 Projection 的 Discord 创建结果缺少频道 ID")
+				}
+				if err := enqueueDiscordOutbox(ctx, tx,
+					"projection-orphan-delete:"+projectionKey+":"+value.MessageID,
+					"message.delete", "channels/"+delivered.ChannelID+"/messages/"+value.MessageID,
+					map[string]string{"channelId": delivered.ChannelID, "messageId": value.MessageID}, ""); err != nil {
+					return err
+				}
+			}
+		} else {
+			_, err = tx.ExecContext(ctx, `UPDATE discord_projections SET
 			resource_id = COALESCE(NULLIF($3, ''), resource_id),
 			message_id = COALESCE(NULLIF($2, ''), message_id),
 			applied_version = CASE WHEN o.status = 'completed' THEN desired_version ELSE applied_version END,
 			applied_at = CASE WHEN o.status = 'completed' THEN now() ELSE applied_at END,
 			last_error = NULL, updated_at = now()
 			FROM integration_outbox o WHERE projection_key = $1 AND o.id = $4`,
-			strings.TrimPrefix(item.OperationKey, "projection:"), value.MessageID, value.ThreadID, item.ID)
-		if err != nil {
-			return err
-		}
-		if value.MessageID != "" {
-			_, err = tx.ExecContext(ctx, `UPDATE integration_outbox o SET
+				projectionKey, value.MessageID, value.ThreadID, item.ID)
+			if err != nil {
+				return err
+			}
+			if value.MessageID != "" {
+				_, err = tx.ExecContext(ctx, `UPDATE integration_outbox o SET
 				operation_type = 'message.update', nonce = NULL,
 				route_key = 'channels/' || p.resource_id || '/messages/' || $2,
 				payload = o.payload || jsonb_build_object('channelId', p.resource_id, 'messageId', $2),
 				request_revision=request_revision+1, updated_at = now()
 				FROM discord_projections p
 				WHERE o.id = $1 AND o.status = 'pending' AND p.projection_key = $3`,
-				item.ID, value.MessageID, strings.TrimPrefix(item.OperationKey, "projection:"))
-			if err != nil {
-				return err
-			}
-			var guildID string
-			if err = tx.QueryRowContext(ctx, `SELECT guild_id FROM discord_projections
-				WHERE projection_key = $1`, strings.TrimPrefix(item.OperationKey, "projection:")).
-				Scan(&guildID); err != nil {
-				return err
-			}
-			if err = promotePendingConversationStatusTx(ctx, tx, guildID,
-				strings.TrimPrefix(item.OperationKey, "projection:")); err != nil {
-				return err
+					item.ID, value.MessageID, projectionKey)
+				if err != nil {
+					return err
+				}
+				if item.OperationType == "message.update" {
+					var previous struct {
+						ChannelID string `json:"channelId"`
+						MessageID string `json:"messageId"`
+					}
+					_ = json.Unmarshal(item.Payload, &previous)
+					if previous.ChannelID != "" && previous.MessageID != "" &&
+						previous.MessageID != value.MessageID {
+						if err := enqueueDiscordOutbox(ctx, tx,
+							"projection-replaced-delete:"+projectionKey+":"+previous.MessageID,
+							"message.delete", "channels/"+previous.ChannelID+"/messages/"+previous.MessageID,
+							map[string]string{"channelId": previous.ChannelID, "messageId": previous.MessageID}, ""); err != nil {
+							return err
+						}
+					}
+				}
+				var guildID string
+				if err = tx.QueryRowContext(ctx, `SELECT guild_id FROM discord_projections
+				WHERE projection_key = $1`, projectionKey).
+					Scan(&guildID); err != nil {
+					return err
+				}
+				if err = promotePendingConversationStatusTx(ctx, tx, guildID,
+					projectionKey); err != nil {
+					return err
+				}
 			}
 		}
 	}

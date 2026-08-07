@@ -69,6 +69,9 @@ func TestEnqueueDesktopInputPagesNormalizesStartAndSkipsExistingPages(t *testing
 			AddRow("guild-1", "starter-1"))
 	mock.ExpectQuery("INSERT INTO discord_projections").
 		WillReturnRows(sqlmock.NewRows([]string{"message_id"}).AddRow("starter-1"))
+	mock.ExpectExec("UPDATE discord_projections").
+		WithArgs("guild-1", "desktop-input:"+conversationID.String()+":client-message-1:0").
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("SELECT projection_key").
 		WillReturnRows(sqlmock.NewRows([]string{"projection_key", "message_id"}).
 			AddRow("desktop-input:"+conversationID.String()+":client-message-1:0", "starter-1"))

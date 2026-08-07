@@ -171,6 +171,96 @@ func TestDiscordOutboxClaimUsesEnqueueOrder(t *testing.T) {
 	}
 }
 
+func TestDiscordOutboxReclaimsOnlyExpiredIdempotentDeliveries(t *testing.T) {
+	db := discordDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	operations := []struct {
+		key, operation string
+	}{
+		{"expired-update", "message.update"},
+		{"expired-delete", "message.delete"},
+		{"expired-tag", "thread.tag.toggle"},
+		{"expired-create", "message.create"},
+	}
+	for _, operation := range operations {
+		require.NoError(t, NewSQLoutbox(db).Enqueue(ctx, operation.key, operation.operation,
+			"route", map[string]string{"channelId": "20", "messageId": "21"}, ""))
+		_, err := db.ExecContext(ctx, `UPDATE integration_outbox SET status='sending',
+			attempt_count=1, inflight_revision=request_revision,
+			inflight_operation_type=operation_type, inflight_route_key=route_key,
+			inflight_payload=payload, inflight_nonce=nonce,
+			lease_token=$2, lease_expires_at=now()-interval '1 minute'
+			WHERE operation_key=$1`, operation.key, strings.Repeat("a", 64))
+		require.NoError(t, err)
+	}
+	store := NewSQLoutbox(db)
+	for _, expected := range operations[:3] {
+		item, err := store.Claim(ctx, time.Minute)
+		require.NoError(t, err)
+		require.NotNil(t, item)
+		require.Equal(t, expected.key, item.OperationKey)
+	}
+	var createStatus string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM integration_outbox
+		WHERE operation_key='expired-create'`).Scan(&createStatus))
+	require.Equal(t, "ambiguous", createStatus)
+}
+
+func TestDiscordOutboxApplyCleansDeletedAndReplacedProjections(t *testing.T) {
+	db := discordDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	store := NewSQLoutbox(db)
+
+	require.NoError(t, store.Enqueue(ctx, "projection:orphan", "message.create",
+		"channels/20/messages", map[string]string{"channelId": "20", "content": "orphan"},
+		"orphan"))
+	orphan, err := store.Claim(ctx, time.Minute)
+	require.NoError(t, err)
+	require.NoError(t, store.RecordDelivery(ctx, orphan, json.RawMessage(`{"messageId":"21"}`)))
+	require.NoError(t, store.Enqueue(ctx, "projection:orphan", "message.create",
+		"channels/20/messages", map[string]string{"channelId": "20", "content": "newer"},
+		"orphan"))
+	require.NoError(t, store.Apply(ctx, *orphan))
+	var orphanStatus, cleanupType string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM integration_outbox
+		WHERE operation_key='projection:orphan'`).Scan(&orphanStatus))
+	require.Equal(t, "completed", orphanStatus)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT operation_type FROM integration_outbox
+		WHERE operation_key='projection-orphan-delete:orphan:21'`).Scan(&cleanupType))
+	require.Equal(t, "message.delete", cleanupType)
+	_, err = db.ExecContext(ctx, `DELETE FROM integration_outbox
+		WHERE operation_key='projection-orphan-delete:orphan:21'`)
+	require.NoError(t, err)
+
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_guilds(guild_id,name,enabled)
+		VALUES ($1,'projection-test',true)`, testGuildID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `INSERT INTO discord_projections
+		(guild_id,projection_key,resource_id,message_id,desired_version,applied_version,desired_payload)
+		VALUES ($1,'replace','20','21',2,1,'{}')`, testGuildID)
+	require.NoError(t, err)
+	require.NoError(t, store.Enqueue(ctx, "projection:replace", "message.update",
+		"channels/20/messages/21", map[string]string{
+			"channelId": "20", "messageId": "21", "content": "replacement",
+		}, ""))
+	replacement, err := store.Claim(ctx, time.Minute)
+	require.NoError(t, err)
+	require.NoError(t, store.RecordDelivery(ctx, replacement, json.RawMessage(`{"messageId":"22"}`)))
+	require.NoError(t, store.Apply(ctx, *replacement))
+	var messageID string
+	var desiredVersion, appliedVersion int64
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT message_id,desired_version,applied_version
+		FROM discord_projections WHERE projection_key='replace'`).
+		Scan(&messageID, &desiredVersion, &appliedVersion))
+	require.Equal(t, "22", messageID)
+	require.Equal(t, desiredVersion, appliedVersion)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT operation_type FROM integration_outbox
+		WHERE operation_key='projection-replaced-delete:replace:21'`).Scan(&cleanupType))
+	require.Equal(t, "message.delete", cleanupType)
+}
+
 func TestDiscordDiscussionTriggerBatchesPendingMessages(t *testing.T) {
 	db := discordDatabase(t)
 	ctx := context.Background()

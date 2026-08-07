@@ -388,6 +388,24 @@ func stripDiscordComponentIDs(value any) {
 	}
 }
 
+func discordMessageCreate(content string, card *ComponentCardPayload, nonce string,
+	allowedMentions *discord.AllowedMentions,
+) (discord.MessageCreate, error) {
+	create := discord.MessageCreate{Content: content, Nonce: nonce,
+		EnforceNonce: nonce != "", AllowedMentions: allowedMentions}
+	if card == nil {
+		return create, nil
+	}
+	components, err := discordCardComponents(*card)
+	if err != nil {
+		return discord.MessageCreate{}, err
+	}
+	create = discord.NewMessageCreateV2(components...)
+	create.Nonce, create.EnforceNonce = nonce, nonce != ""
+	create.AllowedMentions = allowedMentions
+	return create, nil
+}
+
 func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessage, error) {
 	item.Nonce = discordNonce(item.Nonce)
 	var payload struct {
@@ -429,16 +447,10 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 		if err != nil {
 			return nil, err
 		}
-		create := discord.MessageCreate{Content: payload.Content, Nonce: item.Nonce,
-			EnforceNonce: item.Nonce != "", AllowedMentions: allowedMentions}
-		if payload.Card != nil {
-			components, componentErr := discordCardComponents(*payload.Card)
-			if componentErr != nil {
-				return nil, componentErr
-			}
-			create = discord.NewMessageCreateV2(components...)
-			create.Nonce, create.EnforceNonce = item.Nonce, item.Nonce != ""
-			create.AllowedMentions = allowedMentions
+		create, err := discordMessageCreate(payload.Content, payload.Card, item.Nonce,
+			allowedMentions)
+		if err != nil {
+			return nil, err
 		}
 		message, err := r.rest.CreateMessage(channel, create, disgorest.WithCtx(ctx))
 		if err != nil {
@@ -465,6 +477,21 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 			update.AllowedMentions = allowedMentions
 		}
 		_, err = r.rest.UpdateMessage(channel, message, update, disgorest.WithCtx(ctx))
+		if discordMaximumEditsReached(err) {
+			nonce := discordNonce(fmt.Sprintf("replacement:%s:%d", item.OperationKey,
+				item.RequestRevision))
+			create, createErr := discordMessageCreate(payload.Content, payload.Card, nonce,
+				allowedMentions)
+			if createErr != nil {
+				return nil, createErr
+			}
+			replacement, createErr := r.rest.CreateMessage(channel, create,
+				disgorest.WithCtx(ctx))
+			if createErr != nil {
+				return nil, createErr
+			}
+			return json.Marshal(map[string]string{"messageId": replacement.ID.String()})
+		}
 		if discordThreadArchived(err) {
 			// 隐藏或真正归档的 Thread 不能更新消息；恢复后的自然投影会再次刷新内容。
 			err = nil
@@ -655,6 +682,9 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 		}
 		_, err = r.rest.UpdateChannel(threadID,
 			discord.GuildPostUpdate{AppliedTags: &tags}, disgorest.WithCtx(ctx))
+		if discordThreadArchived(err) {
+			err = nil
+		}
 		return json.RawMessage(`{}`), err
 	default:
 		return nil, fmt.Errorf("不支持的 Discord Outbox 操作 %q", item.OperationType)
@@ -671,6 +701,12 @@ func discordThreadArchived(err error) bool {
 	var restErr *disgorest.Error
 	return errors.As(err, &restErr) &&
 		restErr.Code == disgorest.JSONErrorCodeOperationOnArchivedThread
+}
+
+func discordMaximumEditsReached(err error) bool {
+	var restErr *disgorest.Error
+	return errors.As(err, &restErr) &&
+		restErr.Code == disgorest.JSONErrorCodeMaximumEditsToMessagesOlderThan1HourReached
 }
 
 func (r *DisgoRemote) UploadDesktopImage(ctx context.Context, channelID, messageID string,

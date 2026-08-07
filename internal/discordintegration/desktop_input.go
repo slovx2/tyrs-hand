@@ -104,6 +104,12 @@ func EnqueueDesktopInputPages(ctx context.Context, execer desktopInputExecer, th
 			return err
 		}
 		if page < startPage {
+			if _, err := execer.ExecContext(ctx, `UPDATE discord_projections SET
+				applied_version=desired_version, applied_at=COALESCE(applied_at,now()),
+				last_error=NULL, updated_at=now()
+				WHERE guild_id=$1 AND projection_key=$2`, guildID, key); err != nil {
+				return err
+			}
 			continue
 		}
 		operation, nonce := "message.create", key

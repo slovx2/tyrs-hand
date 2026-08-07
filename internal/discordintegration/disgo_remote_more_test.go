@@ -550,6 +550,66 @@ func TestDisgoRemoteDefersMessageUpdateForArchivedThread(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestDisgoRemoteReplacesMessageAfterDiscordEditLimit(t *testing.T) {
+	var nonces []string
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		switch request.Method + " " + request.URL.Path {
+		case "PATCH /channels/20/messages/21":
+			response.WriteHeader(http.StatusBadRequest)
+			_, _ = response.Write([]byte(`{"message":"Maximum number of edits reached","code":30046}`))
+		case "POST /channels/20/messages":
+			var body map[string]any
+			require.NoError(t, json.NewDecoder(request.Body).Decode(&body))
+			nonces = append(nonces, body["nonce"].(string))
+			require.Equal(t, true, body["enforce_nonce"])
+			_, _ = response.Write([]byte(`{"id":"22","channel_id":"20","content":"updated"}`))
+		default:
+			http.NotFound(response, request)
+		}
+	}))
+	t.Cleanup(server.Close)
+	remote := NewDisgoRemote("token", server.URL, server.Client())
+	t.Cleanup(func() { remote.Close(context.Background()) })
+	item := OutboxItem{OperationKey: "projection:replace-test", OperationType: "message.update",
+		RequestRevision: 7, Payload: rawJSON(map[string]string{
+			"channelId": "20", "messageId": "21", "content": "updated",
+		})}
+	for range 2 {
+		result, err := remote.Send(context.Background(), item)
+		require.NoError(t, err)
+		require.JSONEq(t, `{"messageId":"22"}`, string(result))
+	}
+	require.Len(t, nonces, 2)
+	require.NotEmpty(t, nonces[0])
+	require.Equal(t, nonces[0], nonces[1], "同一请求修订必须使用稳定 nonce")
+}
+
+func TestDisgoRemoteTreatsArchivedThreadTagAsApplied(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		switch request.Method + " " + request.URL.Path {
+		case "GET /channels/30":
+			_, _ = response.Write([]byte(`{"id":"30","guild_id":"123","parent_id":"12","type":11,"name":"Issue","owner_id":"1","message_count":1,"member_count":1,"rate_limit_per_user":0,"applied_tags":[],"thread_metadata":{"archived":true,"auto_archive_duration":10080,"archive_timestamp":"2026-07-18T00:00:00Z","locked":false}}`))
+		case "GET /channels/12":
+			_, _ = response.Write([]byte(`{"id":"12","guild_id":"123","type":15,"name":"tasks","position":2,"permission_overwrites":[],"available_tags":[{"id":"91","name":"Running","moderated":false,"emoji_id":null,"emoji_name":null}],"default_sort_order":null,"default_forum_layout":1,"default_reaction_emoji":null}`))
+		case "PATCH /channels/30":
+			response.WriteHeader(http.StatusBadRequest)
+			_, _ = response.Write([]byte(`{"message":"Thread is archived","code":50083}`))
+		default:
+			http.NotFound(response, request)
+		}
+	}))
+	t.Cleanup(server.Close)
+	remote := NewDisgoRemote("token", server.URL, server.Client())
+	t.Cleanup(func() { remote.Close(context.Background()) })
+	_, err := remote.Send(context.Background(), OutboxItem{OperationType: "thread.tag.toggle",
+		Payload: rawJSON(map[string]any{
+			"channelId": "30", "tagName": "Running", "enabled": true,
+		})})
+	require.NoError(t, err)
+}
+
 func TestDisgoRemoteAllowsOnlyExplicitUserMentions(t *testing.T) {
 	var body map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
