@@ -6,3 +6,9 @@ export function conversationTurnIdFromPayload(payload: unknown): string | null {
   return typeof message.conversationTurnId === "string" && message.conversationTurnId ?
     message.conversationTurnId : null;
 }
+
+export function replacedConversationTurnIdFromPayload(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const value = payload as Record<string, unknown>;
+  return typeof value.steerIntentId === "string" && value.steerIntentId ? value.steerIntentId : null;
+}

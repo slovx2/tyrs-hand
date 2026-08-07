@@ -30,7 +30,13 @@ appId: ${TYRS_HAND_E2E_APP_ID}
       id: "interactive:option:0"
     timeout: 120000
 - tapOn:
-    id: "interactive:option:0"
+    id: "interactive:input:scope"
+- inputText: "custom implementation scope"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "interactive:input:note"
+    direction: DOWN
 - tapOn:
     id: "interactive:input:note"
 - inputText: "mobile free text answer"

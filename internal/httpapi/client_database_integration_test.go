@@ -374,6 +374,21 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 		loginBody.AccessToken, nil)
 	require.Equal(t, http.StatusOK, activities.Code)
 	require.Contains(t, activities.Body.String(), "projected commentary")
+	_, err = db.ExecContext(ctx, `UPDATE codex_turn_runs SET worker_event_sequence=2,
+		client_projection_sequence=1 WHERE id=$1`, run.ID)
+	require.NoError(t, err)
+	unprojected := clientJSONRequest(t, http.MethodGet, endpoint+"/api/v1/client/runs/"+
+		run.ID.String()+"/segments/"+run.Segments[0].ID.String()+"/activities?afterEventSeq=1",
+		loginBody.AccessToken, nil)
+	require.Equal(t, http.StatusOK, unprojected.Code, unprojected.Body.String())
+	var unprojectedBody struct {
+		PersistedThroughEventSeq int64 `json:"persistedThroughEventSeq"`
+	}
+	require.NoError(t, json.Unmarshal(unprojected.Body.Bytes(), &unprojectedBody))
+	require.Equal(t, int64(1), unprojectedBody.PersistedThroughEventSeq,
+		"未投影的 Worker event 不得被客户端游标标记为已消费")
+	_, err = db.ExecContext(ctx, `UPDATE codex_turn_runs SET worker_event_sequence=1 WHERE id=$1`, run.ID)
+	require.NoError(t, err)
 
 	planContent := "# 移动端执行计划\n\n1. 修改实现\n2. 运行测试"
 	var planIntentID, planRunID uuid.UUID

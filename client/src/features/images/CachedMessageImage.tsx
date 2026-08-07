@@ -1,11 +1,12 @@
-import { memo, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Image, Modal, Pressable, StyleSheet, Text, useWindowDimensions,
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, useWindowDimensions,
   View } from "react-native";
+import ImageView from "react-native-image-viewing";
 
 import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
 import type { Attachment } from "@/types/protocol";
-import { resolveImageURI, type ImageReference } from "./imageCache";
+import { logImageFailure, resolveImageURI, type ImageReference } from "./imageCache";
 
 type Props = {
   attachment?: Attachment;
@@ -51,6 +52,13 @@ export const CachedMessageImage = memo(function CachedMessageImage({ attachment,
   const maxWidth = Math.min(window.width - (thumbnail ? 52 : 56), 640);
   const imageHeight = thumbnail ? undefined : Math.min(maxWidth / Math.max(ratio, 0.1), 360);
   const retry = () => setAttempt((value) => value + 1);
+  const ViewerHeader = useCallback(() => <View testID="image:viewer" style={styles.viewerHeader}>
+    <Text numberOfLines={1} style={styles.viewerFilename}>{filename}</Text>
+    <Pressable accessibilityRole="button" accessibilityLabel="关闭图片"
+      testID="image:viewer:close" onPress={() => setViewer(false)} style={styles.closeButton}>
+      <Text style={styles.closeText}>×</Text>
+    </Pressable>
+  </View>, [filename]);
   const content = error ? <Pressable accessibilityRole="button" onPress={retry}
     testID={`${testID}:retry`} style={[styles.placeholder, thumbnail && styles.thumbnail,
       { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceAlt }]}>
@@ -59,7 +67,12 @@ export const CachedMessageImage = memo(function CachedMessageImage({ attachment,
   </Pressable> : resolvedURI ? <Pressable accessibilityRole="imagebutton" accessibilityLabel={`查看图片 ${filename}`}
     testID={testID} onPress={() => setViewer(true)} style={thumbnail && styles.thumbnail}>
     <Image source={{ uri: resolvedURI }} resizeMode={thumbnail ? "cover" : "contain"}
-      onError={() => {
+      onError={(event) => {
+        logImageFailure("rn_image_read", {
+          attachmentId: attachment?.id,
+          mediaType: attachment?.mediaType,
+          declaredSize: attachment?.sizeBytes,
+        }, new Error(event.nativeEvent.error ? "ReactNativeImageError" : "UnknownImageError"));
         setResolvedURI(null);
         if (attempt === 0) setAttempt(1);
         else setError("图片文件无法读取");
@@ -76,19 +89,10 @@ export const CachedMessageImage = memo(function CachedMessageImage({ attachment,
 
   return <>
     <View style={thumbnail ? styles.thumbnailFrame : styles.singleFrame}>{content}</View>
-    <Modal visible={viewer} animationType="fade" statusBarTranslucent
-      onRequestClose={() => setViewer(false)}>
-      <View testID="image:viewer" style={styles.viewer}>
-        <View style={styles.viewerHeader}>
-          <Text numberOfLines={1} style={styles.viewerFilename}>{filename}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="关闭图片"
-            testID="image:viewer:close" onPress={() => setViewer(false)} style={styles.closeButton}>
-            <Text style={styles.closeText}>×</Text>
-          </Pressable>
-        </View>
-        {resolvedURI ? <Image source={{ uri: resolvedURI }} resizeMode="contain" style={styles.viewerImage} /> : null}
-      </View>
-    </Modal>
+    <ImageView images={resolvedURI ? [{ uri: resolvedURI }] : []} imageIndex={0}
+      visible={viewer && Boolean(resolvedURI)} animationType="fade" presentationStyle="overFullScreen"
+      backgroundColor="#050505" swipeToCloseEnabled doubleTapToZoomEnabled
+      HeaderComponent={ViewerHeader} onRequestClose={() => setViewer(false)} />
   </>;
 });
 
@@ -101,8 +105,7 @@ const styles = StyleSheet.create({
     justifyContent: "center", borderWidth: StyleSheet.hairlineWidth, padding: 12 },
   failureTitle: { fontFamily: "Inter_600SemiBold", fontSize: 14 },
   failureDetail: { marginTop: 3, fontFamily: "Inter_400Regular", fontSize: 12 },
-  viewer: { flex: 1, backgroundColor: "#050505" },
-  viewerHeader: { position: "absolute", zIndex: 2, top: 0, left: 0, right: 0, minHeight: 84,
+  viewerHeader: { minHeight: 84,
     paddingTop: 28, paddingLeft: 18, paddingRight: 10, paddingBottom: 8,
     flexDirection: "row", alignItems: "center",
     backgroundColor: "rgba(0,0,0,0.58)" },
@@ -110,5 +113,4 @@ const styles = StyleSheet.create({
   closeButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 22,
     backgroundColor: "rgba(255,255,255,0.14)" },
   closeText: { color: "#fff", fontSize: 30, lineHeight: 34 },
-  viewerImage: { flex: 1, width: "100%", height: "100%" },
 });

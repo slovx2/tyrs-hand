@@ -137,6 +137,19 @@ describe("conversation cache integration", () => {
     expect((await loadConversationWindow(serverId, sessionId))?.turnsComplete).toBe(true);
   });
 
+  it("steer 重归属时原子移除临时孤立轮次", async () => {
+    const { loadConversationWindow, saveConversationSnapshot, saveConversationTurn } =
+      await import("@/db/conversationCache");
+    const current = snapshot();
+    await saveConversationSnapshot(serverId, current);
+    const orphanId = "60000000-0000-4000-8000-000000000002";
+    const orphan = { ...current.turns.items[0]!, id: orphanId, anchorSeq: 2 };
+    await saveConversationTurn(serverId, sessionId, orphan);
+    await saveConversationTurn(serverId, sessionId, current.turns.items[0]!, orphanId);
+    expect((await loadConversationWindow(serverId, sessionId))?.turns.items.map((turn) => turn.id))
+      .toEqual([current.turns.items[0]!.id]);
+  });
+
   it("activities 按 segment 持久化并记录完整状态", async () => {
     const { isSegmentCacheComplete, loadCachedSegmentActivities, saveConversationSnapshot,
       saveSegmentActivityPage } = await import("@/db/conversationCache");

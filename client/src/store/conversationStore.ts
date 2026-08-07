@@ -31,16 +31,24 @@ type ConversationState = {
   open: (connection: Connection, sessionId: string) => Promise<void>;
   refresh: (connection: Connection, sessionId: string) => Promise<void>;
   loadOlder: (connection: Connection, sessionId: string) => Promise<void>;
-  refreshTurn: (connection: Connection, sessionId: string, turnId: string) => Promise<void>;
+  refreshTurn: (connection: Connection, sessionId: string, turnId: string,
+    replacedTurnId?: string) => Promise<void>;
   noteCursor: (connection: Connection, sessionId: string, cursor: number) => void;
   close: (connection: Connection, sessionId: string) => void;
 };
 
 const pendingRefreshes = new Map<string, Promise<void>>();
 const hydrationRuns = new Map<string, Promise<void>>();
+const turnRefreshGenerations = new Map<string, number>();
+const turnRefreshWrites = new Map<string, Promise<void>>();
+let nextTurnRefreshGeneration = 0;
 
 function key(connection: Connection, sessionId: string): string {
   return `${connection.serverId}:${sessionId}`;
+}
+
+function turnKey(connection: Connection, sessionId: string, turnId: string): string {
+  return `${key(connection, sessionId)}:${turnId}`;
 }
 
 function emptyEntry(): ConversationEntry {
@@ -149,15 +157,62 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         hasMoreBefore: remaining.length > 0 || (cacheState ? !cacheState.turnsComplete : older.length === 20) };
       commitView(entryKey, view, current.status);
     },
-    refreshTurn: async (connection, sessionId, turnId) => {
+    refreshTurn: async (connection, sessionId, turnId, replacedTurnId) => {
       const entryKey = key(connection, sessionId);
-      const turn = await new ClientApi(connection).getTurn(sessionId, turnId);
-      await saveConversationTurn(connection.serverId, sessionId, turn);
-      const current = get().entries[entryKey];
-      if (!current?.view) return;
-      const turns = [...current.view.turns.filter((item) => item.id !== turn.id), turn]
-        .sort((left, right) => left.anchorSeq - right.anchorSeq);
-      commitView(entryKey, { ...current.view, turns }, current.status);
+      const refreshKey = turnKey(connection, sessionId, turnId);
+      const generation = ++nextTurnRefreshGeneration;
+      turnRefreshGenerations.set(refreshKey, generation);
+      const replacedRefreshKey = replacedTurnId && replacedTurnId !== turnId ?
+        turnKey(connection, sessionId, replacedTurnId) : null;
+      const replacedGeneration = replacedRefreshKey ? ++nextTurnRefreshGeneration : null;
+      if (replacedRefreshKey && replacedGeneration) {
+        turnRefreshGenerations.set(replacedRefreshKey, replacedGeneration);
+      }
+      let turn: ConversationTurn;
+      try {
+        turn = await new ClientApi(connection).getTurn(sessionId, turnId);
+      } catch (error) {
+        if (turnRefreshGenerations.get(refreshKey) === generation) {
+          turnRefreshGenerations.delete(refreshKey);
+        }
+        if (replacedRefreshKey && turnRefreshGenerations.get(replacedRefreshKey) === replacedGeneration) {
+          turnRefreshGenerations.delete(replacedRefreshKey);
+        }
+        throw error;
+      }
+      if (turnRefreshGenerations.get(refreshKey) !== generation) {
+        if (replacedRefreshKey && turnRefreshGenerations.get(replacedRefreshKey) === replacedGeneration) {
+          turnRefreshGenerations.delete(replacedRefreshKey);
+        }
+        return;
+      }
+      const previousWrite = turnRefreshWrites.get(refreshKey) ?? Promise.resolve();
+      const replacedWrite = replacedRefreshKey ? turnRefreshWrites.get(replacedRefreshKey) : undefined;
+      const write = previousWrite.catch(() => undefined).then(async () => {
+        if (turnRefreshGenerations.get(refreshKey) !== generation) return;
+        await replacedWrite?.catch(() => undefined);
+        if (turnRefreshGenerations.get(refreshKey) !== generation) return;
+        await saveConversationTurn(connection.serverId, sessionId, turn, replacedTurnId);
+        if (turnRefreshGenerations.get(refreshKey) !== generation) return;
+        const current = get().entries[entryKey];
+        if (!current?.view) return;
+        const turns = [...current.view.turns.filter((item) => item.id !== turn.id &&
+          item.id !== replacedTurnId), turn]
+          .sort((left, right) => left.anchorSeq - right.anchorSeq);
+        commitView(entryKey, { ...current.view, turns }, current.status);
+      });
+      turnRefreshWrites.set(refreshKey, write);
+      try {
+        await write;
+      } finally {
+        if (turnRefreshWrites.get(refreshKey) === write) turnRefreshWrites.delete(refreshKey);
+        if (turnRefreshGenerations.get(refreshKey) === generation) {
+          turnRefreshGenerations.delete(refreshKey);
+        }
+        if (replacedRefreshKey && turnRefreshGenerations.get(replacedRefreshKey) === replacedGeneration) {
+          turnRefreshGenerations.delete(replacedRefreshKey);
+        }
+      }
     },
     noteCursor: (connection, sessionId, cursor) => {
       const entryKey = key(connection, sessionId);
@@ -167,7 +222,12 @@ export const useConversationStore = create<ConversationState>((set, get) => {
         return { entries: { ...state.entries, [entryKey]: { ...current, appliedCursor: cursor } } };
       });
     },
-    close: () => undefined,
+    close: (connection, sessionId) => {
+      const prefix = `${key(connection, sessionId)}:`;
+      for (const refreshKey of turnRefreshGenerations.keys()) {
+        if (refreshKey.startsWith(prefix)) turnRefreshGenerations.delete(refreshKey);
+      }
+    },
   };
 });
 

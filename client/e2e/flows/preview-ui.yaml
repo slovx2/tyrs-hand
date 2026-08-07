@@ -92,6 +92,10 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     direction: DOWN
 - assertVisible:
     id: "interactive:option:0"
+- scrollUntilVisible:
+    element:
+      id: "interactive:input:scope"
+    direction: DOWN
 - pressKey: BACK
 
 # 敏感信息问题

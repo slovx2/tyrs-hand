@@ -233,7 +233,7 @@ func (s *Server) clientListRunActivities(c *gin.Context) {
 	}
 	var watermark int64
 	var mode string
-	if err = s.db.QueryRowContext(c, `SELECT worker_event_sequence,
+	if err = s.db.QueryRowContext(c, `SELECT client_projection_sequence,
 		COALESCE(applied_collaboration_mode,collaboration_mode) FROM codex_turn_runs WHERE id=$1`,
 		runID).Scan(&watermark, &mode); err != nil {
 		problem(c, http.StatusNotFound, "Run 不存在", err)

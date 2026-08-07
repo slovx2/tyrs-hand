@@ -61,6 +61,7 @@ vi.mock("expo-file-system", () => {
       if (!bytes) throw new Error("源文件不存在");
       testState.files.set(target.uri, bytes);
       testState.files.delete(this.uri);
+      this.uri = target.uri;
     }
   }
   return { Directory, File, Paths: { cache: "mock-cache" } };
@@ -68,9 +69,11 @@ vi.mock("expo-file-system", () => {
 
 vi.mock("expo-crypto", () => ({
   CryptoDigestAlgorithm: { SHA256: "SHA-256" },
-  digest: vi.fn(async (_algorithm: string, value: ArrayBuffer) => {
+  digest: vi.fn(async (_algorithm: string, value: unknown) => {
+    if (!ArrayBuffer.isView(value)) throw new TypeError("原生 digest 要求 TypedArray");
     const { createHash: createNodeHash } = await import("node:crypto");
-    const bytes = createNodeHash("sha256").update(new Uint8Array(value)).digest();
+    const bytes = createNodeHash("sha256").update(
+      new Uint8Array(value.buffer, value.byteOffset, value.byteLength)).digest();
     return Uint8Array.from(bytes).buffer;
   }),
 }));

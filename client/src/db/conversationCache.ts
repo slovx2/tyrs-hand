@@ -124,9 +124,13 @@ export async function saveConversationTurnPage(serverId: string, sessionId: stri
 }
 
 export async function saveConversationTurn(serverId: string, sessionId: string,
-  turn: ConversationTurn): Promise<void> {
+  turn: ConversationTurn, replacedTurnId?: string): Promise<void> {
   if (isPreviewMode && isPreviewServerId(serverId)) return;
   await withDatabaseTransaction(async (database) => {
+    if (replacedTurnId && replacedTurnId !== turn.id) {
+      await database.runAsync(`DELETE FROM conversation_turns
+        WHERE server_id=? AND session_id=? AND id=?`, serverId, sessionId, replacedTurnId);
+    }
     await upsertTurns(database, serverId, sessionId, [turn], new Date().toISOString());
   });
 }

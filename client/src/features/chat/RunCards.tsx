@@ -109,6 +109,8 @@ export function InteractiveCard({ interactive, onSubmit }: {
 }) {
   const theme = useTheme();
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string | undefined>>({});
+  const [freeAnswers, setFreeAnswers] = useState<Record<string, string>>({});
   if (interactive.secret) {
     return <View testID={`interactive:${encodeURIComponent(interactive.id)}:secret`}><Card style={styles.card}>
       <Title>需要输入敏感信息</Title><Muted selectable>为保护你的信息，请在 Codex 桌面端完成。</Muted></Card></View>;
@@ -117,16 +119,30 @@ export function InteractiveCard({ interactive, onSubmit }: {
     {interactive.questions.map((question) => <View key={question.id} style={styles.question}>
       <Text selectable style={[styles.questionHeader, { color: theme.colors.textMuted }]}>{question.header}</Text>
       <Text selectable style={[styles.questionText, { color: theme.colors.text }]}>{question.question}</Text>
-      {question.options?.length ? <View style={styles.options}>{question.options.map((option, index) => <Pressable
+      {!!question.options?.length && <View style={styles.options}>{question.options.map((option, index) => <Pressable
         key={option.label} testID={`interactive:option:${index}`}
-        onPress={() => setAnswers((value) => ({ ...value, [question.id]: option.label }))}
-        style={[styles.option, { borderColor: answers[question.id] === option.label ? theme.colors.accent : theme.colors.border,
+        onPress={() => {
+          setSelectedOptions((value) => ({ ...value, [question.id]: option.label }));
+          setAnswers((value) => ({ ...value, [question.id]: option.label }));
+        }}
+        style={[styles.option, { borderColor: selectedOptions[question.id] === option.label ?
+          theme.colors.accent : theme.colors.border,
           backgroundColor: theme.colors.surfaceAlt }]}><Text selectable style={{ color: theme.colors.text,
-          fontFamily: "Inter_500Medium" }}>{option.label}</Text><Muted selectable>{option.description}</Muted></Pressable>)}</View> :
-        <TextInput testID={`interactive:input:${encodeURIComponent(question.id)}`}
-          value={answers[question.id] ?? ""}
-          onChangeText={(value) => setAnswers((current) => ({ ...current, [question.id]: value }))}
-          style={[styles.input, { borderColor: theme.colors.border, color: theme.colors.text }]} />}
+          fontFamily: "Inter_500Medium" }}>{option.label}</Text><Muted selectable>{option.description}</Muted></Pressable>)}</View>}
+      {!!question.options?.length && <Muted selectable>或者自由回答</Muted>}
+      <TextInput testID={`interactive:input:${encodeURIComponent(question.id)}`}
+        value={freeAnswers[question.id] ?? ""}
+        placeholder={question.options?.length ? "输入其他回答" : "输入回答"}
+        placeholderTextColor={theme.colors.textMuted}
+        multiline textAlignVertical="top"
+        onChangeText={(value) => {
+          setSelectedOptions((current) => ({ ...current, [question.id]: undefined }));
+          setFreeAnswers((current) => ({ ...current, [question.id]: value }));
+          setAnswers((current) => ({ ...current, [question.id]: value }));
+        }}
+        style={[styles.input, { borderColor: theme.colors.border,
+          color: selectedOptions[question.id] ? theme.colors.textMuted : theme.colors.text,
+          backgroundColor: selectedOptions[question.id] ? theme.colors.surfaceAlt : theme.colors.surface }]} />
     </View>)}
     <Button title="提交回答" disabled={interactive.questions.some((question) => !answers[question.id]?.trim())}
       testID={`interactive:${encodeURIComponent(interactive.id)}:submit`}
@@ -164,5 +180,6 @@ const styles = StyleSheet.create({
   question: { gap: 6 }, questionHeader: { fontFamily: "Inter_600SemiBold", fontSize: 12 },
   questionText: { fontFamily: "Inter_400Regular", fontSize: 15 }, options: { gap: 6 },
   option: { borderWidth: 1, borderRadius: 8, padding: 10 },
-  input: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, minHeight: 44, paddingHorizontal: 10 },
+  input: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, minHeight: 64,
+    paddingHorizontal: 10, paddingVertical: 10 },
 });

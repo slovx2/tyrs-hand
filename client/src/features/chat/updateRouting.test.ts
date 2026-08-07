@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { conversationTurnIdFromPayload } from "./updateRouting";
+import { conversationTurnIdFromPayload, replacedConversationTurnIdFromPayload } from "./updateRouting";
 
 describe("conversationTurnIdFromPayload", () => {
   it("读取标准 message.created 载荷", () => {
@@ -14,5 +14,11 @@ describe("conversationTurnIdFromPayload", () => {
 
   it("缺少轮次时返回 null", () => {
     expect(conversationTurnIdFromPayload({ messageId: "message-1" })).toBeNull();
+  });
+
+  it("读取 steer 确认后需要替换的临时轮次", () => {
+    expect(replacedConversationTurnIdFromPayload({ conversationTurnId: "turn-1",
+      steerIntentId: "turn-temporary" })).toBe("turn-temporary");
+    expect(replacedConversationTurnIdFromPayload({ conversationTurnId: "turn-1" })).toBeNull();
   });
 });

@@ -102,7 +102,7 @@ awk '
 mv "${patched_gradle}" "${build_gradle}"
 
 build_cache_root="${root}/.local/android-build/${build_cache_key}"
-gradle_project_cache="${build_cache_root}/gradle-project"
+gradle_project_cache="${client}/android/.gradle-${build_cache_key}"
 metro_tmp="${build_cache_root}/metro-tmp"
 mkdir -p "${gradle_project_cache}" "${metro_tmp}"
 

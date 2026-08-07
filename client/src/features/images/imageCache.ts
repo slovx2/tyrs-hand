@@ -13,6 +13,53 @@ const HTTP_TTL_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 15_000;
 const pending = new Map<string, Promise<string>>();
 
+type ImageFailureStage = "download" | "response_read" | "validation" | "sha256" |
+  "temp_write" | "atomic_move" | "sqlite_commit" | "rn_image_read";
+
+type ImageLogContext = {
+  attachmentId?: string | undefined;
+  mediaType?: string | undefined;
+  declaredSize?: number | undefined;
+  actualSize?: number | undefined;
+};
+
+function errorName(error: unknown): string {
+  return error instanceof Error && error.name ? error.name : "UnknownError";
+}
+
+function errorCode(stage: ImageFailureStage, error: unknown): string {
+  if (error instanceof Error) {
+    const httpStatus = /^图片下载失败（([0-9]{3})）$/.exec(error.message)?.[1];
+    if (httpStatus) return `http_${httpStatus}`;
+    const known: Record<string, string> = {
+      图片大小校验失败: "size_mismatch",
+      图片类型校验失败: "media_type_mismatch",
+      图片摘要校验失败: "sha256_mismatch",
+      图片缓存写入不完整: "partial_write",
+      图片超过大小限制: "size_limit",
+      远程内容不是图片: "non_image_response",
+    };
+    const knownCode = known[error.message];
+    if (knownCode) return knownCode;
+    if (error.name === "AbortError") return "request_aborted";
+    if (error.name === "TypeError") return "native_type_error";
+  }
+  return `${stage}_failed`;
+}
+
+export function logImageFailure(stage: ImageFailureStage, context: ImageLogContext,
+  error: unknown): void {
+  console.warn("[TYRS_IMAGE]", {
+    stage,
+    attachmentId: context.attachmentId ?? null,
+    mediaType: context.mediaType ?? null,
+    declaredSize: context.declaredSize ?? null,
+    actualSize: context.actualSize ?? null,
+    errorType: errorName(error),
+    errorCode: errorCode(stage, error),
+  });
+}
+
 type CacheRow = {
   uri: string;
   media_type: string;
@@ -31,7 +78,7 @@ function bytesToHex(bytes: Uint8Array): string {
 
 async function sha256(bytes: Uint8Array): Promise<string> {
   const stableBytes = Uint8Array.from(bytes);
-  return bytesToHex(new Uint8Array(await digest(CryptoDigestAlgorithm.SHA256, stableBytes.buffer)));
+  return bytesToHex(new Uint8Array(await digest(CryptoDigestAlgorithm.SHA256, stableBytes)));
 }
 
 async function sourceKey(source: string): Promise<string> {
@@ -66,52 +113,108 @@ async function cached(serverId: string, key: string): Promise<CacheRow | null> {
 }
 
 async function save(serverId: string, key: string, bytes: Uint8Array, expectedMediaType: string,
-  expectedSize?: number, expectedSha?: string, expiresAt?: string): Promise<string> {
-  if (expectedSize !== undefined && bytes.byteLength !== expectedSize) throw new Error("图片大小校验失败");
-  const detected = detectImageType(bytes);
-  if (!detected || !expectedMediaType.toLowerCase().startsWith("image/") ||
-    detected !== expectedMediaType.toLowerCase()) throw new Error("图片类型校验失败");
-  const actualSha = await sha256(bytes);
-  if (expectedSha && actualSha !== expectedSha.toLowerCase()) throw new Error("图片摘要校验失败");
+  expectedSize?: number, expectedSha?: string, expiresAt?: string,
+  logContext: ImageLogContext = {}): Promise<string> {
+  const context = { ...logContext, mediaType: expectedMediaType, declaredSize: expectedSize,
+    actualSize: bytes.byteLength };
+  let detected: string;
+  try {
+    if (expectedSize !== undefined && bytes.byteLength !== expectedSize) throw new Error("图片大小校验失败");
+    const actualType = detectImageType(bytes);
+    if (!actualType || !expectedMediaType.toLowerCase().startsWith("image/") ||
+      actualType !== expectedMediaType.toLowerCase()) throw new Error("图片类型校验失败");
+    detected = actualType;
+  } catch (error) {
+    logImageFailure("validation", context, error);
+    throw error;
+  }
+  let actualSha: string;
+  try {
+    actualSha = await sha256(bytes);
+    if (expectedSha && actualSha !== expectedSha.toLowerCase()) throw new Error("图片摘要校验失败");
+  } catch (error) {
+    logImageFailure("sha256", context, error);
+    throw error;
+  }
 
   const directory = cacheDirectory(serverId);
-  directory.create({ intermediates: true, idempotent: true });
   const temporary = new File(directory, `${key}.${Date.now()}.tmp`);
+  const temporaryURI = temporary.uri;
   const target = new File(directory, `${key}${extension(detected)}`);
   try {
-    temporary.create({ overwrite: true });
-    temporary.write(bytes);
-    if (temporary.size !== bytes.byteLength) throw new Error("图片缓存写入不完整");
-    if (target.exists) target.delete();
-    temporary.move(target);
+    try {
+      directory.create({ intermediates: true, idempotent: true });
+      temporary.create({ overwrite: true });
+      temporary.write(bytes);
+      if (temporary.size !== bytes.byteLength) throw new Error("图片缓存写入不完整");
+    } catch (error) {
+      logImageFailure("temp_write", context, error);
+      throw error;
+    }
+    try {
+      if (target.exists) target.delete();
+      temporary.move(target);
+    } catch (error) {
+      logImageFailure("atomic_move", context, error);
+      throw error;
+    }
     const now = new Date().toISOString();
-    await runDatabaseWrite((database) => database.runAsync(`INSERT INTO image_cache_entries(
-      server_id,cache_key,uri,media_type,size_bytes,sha256,expires_at,last_accessed_at,created_at)
-      VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(server_id,cache_key) DO UPDATE SET
-      uri=excluded.uri,media_type=excluded.media_type,size_bytes=excluded.size_bytes,
-      sha256=excluded.sha256,expires_at=excluded.expires_at,last_accessed_at=excluded.last_accessed_at`,
-    serverId, key, target.uri, detected, bytes.byteLength, actualSha, expiresAt ?? null, now, now));
+    try {
+      await runDatabaseWrite((database) => database.runAsync(`INSERT INTO image_cache_entries(
+        server_id,cache_key,uri,media_type,size_bytes,sha256,expires_at,last_accessed_at,created_at)
+        VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(server_id,cache_key) DO UPDATE SET
+        uri=excluded.uri,media_type=excluded.media_type,size_bytes=excluded.size_bytes,
+        sha256=excluded.sha256,expires_at=excluded.expires_at,last_accessed_at=excluded.last_accessed_at`,
+      serverId, key, target.uri, detected, bytes.byteLength, actualSha, expiresAt ?? null, now, now));
+    } catch (error) {
+      logImageFailure("sqlite_commit", context, error);
+      throw error;
+    }
     await enforceImageCacheBudget(serverId);
     return target.uri;
   } finally {
-    if (temporary.exists) temporary.delete();
+    const leftover = new File(temporaryURI);
+    if (leftover.exists) leftover.delete();
   }
 }
 
-async function fetchBytes(url: string, options: RequestInit, limit: number): Promise<{
+async function fetchBytes(url: string, options: RequestInit, limit: number,
+  logContext: ImageLogContext = {}): Promise<{
   bytes: Uint8Array; mediaType: string;
 }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
-    if (!response.ok) throw new Error(`图片下载失败（${response.status}）`);
+    let response: Response;
+    try {
+      response = await fetch(url, { ...options, signal: controller.signal });
+      if (!response.ok) throw new Error(`图片下载失败（${response.status}）`);
+    } catch (error) {
+      logImageFailure("download", logContext, error);
+      throw error;
+    }
     const mediaType = (response.headers.get("content-type") ?? "").split(";", 1)[0]!.toLowerCase();
-    if (!mediaType.startsWith("image/")) throw new Error("远程内容不是图片");
     const declared = Number(response.headers.get("content-length") ?? "0");
-    if (declared > limit) throw new Error("图片超过大小限制");
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength > limit) throw new Error("图片超过大小限制");
+    const responseContext = { ...logContext, mediaType, declaredSize: declared || undefined };
+    try {
+      if (!mediaType.startsWith("image/")) throw new Error("远程内容不是图片");
+      if (declared > limit) throw new Error("图片超过大小限制");
+    } catch (error) {
+      logImageFailure("validation", responseContext, error);
+      throw error;
+    }
+    let bytes: Uint8Array;
+    try {
+      bytes = new Uint8Array(await response.arrayBuffer());
+    } catch (error) {
+      logImageFailure("response_read", responseContext, error);
+      throw error;
+    }
+    if (bytes.byteLength > limit) {
+      const error = new Error("图片超过大小限制");
+      logImageFailure("validation", { ...responseContext, actualSize: bytes.byteLength }, error);
+      throw error;
+    }
     return { bytes, mediaType };
   } finally {
     clearTimeout(timer);
@@ -134,11 +237,13 @@ async function resolveAttachment(connection: Connection, attachment: Attachment)
   if (hit) return hit.uri;
   const token = await getToken(connection.serverId);
   if (!token) throw new Error("设备凭证不存在，请重新连接");
+  const context = { attachmentId: attachment.id, mediaType: attachment.mediaType,
+    declaredSize: attachment.sizeBytes };
   const result = await fetchBytes(`${connection.baseUrl}/api/v1/client/attachments/${attachment.id}/content`, {
     headers: { Authorization: `Bearer ${token}`, Accept: "image/*" }, credentials: "omit",
-  }, ATTACHMENT_LIMIT);
+  }, ATTACHMENT_LIMIT, context);
   return save(connection.serverId, key, result.bytes, attachment.mediaType,
-    attachment.sizeBytes, attachment.sha256);
+    attachment.sizeBytes, attachment.sha256, undefined, context);
 }
 
 async function resolveExternal(connection: Connection, uri: string): Promise<string> {

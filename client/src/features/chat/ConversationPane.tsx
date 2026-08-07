@@ -27,7 +27,7 @@ import { ParameterSheet } from "./ParameterSheet";
 import { InteractiveCard, PlanCard } from "./RunCards";
 import { RunSegmentCard } from "./RunSegmentCard";
 import { renderableFinalAnswer } from "./responseDirectives";
-import { conversationTurnIdFromPayload } from "./updateRouting";
+import { conversationTurnIdFromPayload, replacedConversationTurnIdFromPayload } from "./updateRouting";
 
 type ConversationRow =
   | { kind: "message"; message: Message }
@@ -126,8 +126,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   }, []);
   const refresh = useCallback(() => connection ? refreshConversation(connection, sessionId) : Promise.resolve(),
     [connection, refreshConversation, sessionId]);
-  const refreshTurn = useCallback((turnId: string) => connection ?
-    refreshConversationTurn(connection, sessionId, turnId) : Promise.resolve(),
+  const refreshTurn = useCallback((turnId: string, replacedTurnId?: string) => connection ?
+    refreshConversationTurn(connection, sessionId, turnId, replacedTurnId) : Promise.resolve(),
   [connection, refreshConversationTurn, sessionId]);
   useEffect(() => {
     setInitialSyncComplete(false);
@@ -235,10 +235,11 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       }
     } else {
       const conversationTurnId = conversationTurnIdFromPayload(event.payload);
+      const replacedTurnId = replacedConversationTurnIdFromPayload(event.payload);
       if (event.type === "message.created" && conversationTurnId) {
         void refreshTurn(conversationTurnId);
       } else if (event.entityType === "turn") {
-        void refreshTurn(event.entityId);
+        void refreshTurn(conversationTurnId ?? event.entityId, replacedTurnId ?? undefined);
       } else {
         void refresh();
       }
