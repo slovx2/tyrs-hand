@@ -83,12 +83,19 @@ func TestInteractiveProjectionCollectsDiscordAnswers(t *testing.T) {
 	require.Equal(t, "interactive-answer-link:"+requestID.String(), linkItem.OperationKey)
 	require.Equal(t, "message.update", linkItem.OperationType)
 	require.Contains(t, string(linkItem.Payload), "interactive-answer-message")
+	completeDiscordDelivery(t, ctx, outbox, linkItem,
+		json.RawMessage(`{"messageId":"interactive-question-replacement"}`))
 	var questionMessageID, answerMessageID string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT discord_message_id,
 		discord_answer_message_id FROM codex_interactive_requests WHERE id=$1`,
 		requestID).Scan(&questionMessageID, &answerMessageID))
-	require.Equal(t, "interactive-question-message", questionMessageID)
+	require.Equal(t, "interactive-question-replacement", questionMessageID)
 	require.Equal(t, "interactive-answer-message", answerMessageID)
+	var deleteOperation string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT operation_type FROM integration_outbox
+		WHERE operation_key=$1`, "message-replaced-delete:interactive-answer-link:"+
+		requestID.String()+":interactive-question-message").Scan(&deleteOperation))
+	require.Equal(t, "message.delete", deleteOperation)
 
 	answerResult, err = manager.AnswerInteractive(ctx, testGuildID, requestID, 0, 1, "")
 	require.NoError(t, err, "旧按钮必须幂等返回已完成状态")

@@ -1049,13 +1049,22 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 	task.WorkItemState, task.JobStatus, task.LastState = "closed", "", "Running"
 	task.ClosedAt = sql.NullTime{Time: time.Now().Add(-8 * 24 * time.Hour), Valid: true}
 	require.NoError(t, daemon.projectTask(ctx, task, map[string]string{"Completed": "7002"}))
-	completeOutboxForTest(t, ctx, db, "task-card:"+seed.workItemID.String(), nil)
+	completeOutboxForTest(t, ctx, db, "task-card:"+seed.workItemID.String(),
+		json.RawMessage(`{"messageId":"7103"}`))
 	completeOutboxForTest(t, ctx, db, "task-archive:"+seed.workItemID.String(), nil)
 	var taskType string
 	var taskPayload, statusPayload, alertsPayload []byte
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT operation_type FROM integration_outbox
 		WHERE operation_key = $1`, "task-post:"+seed.workItemID.String()).Scan(&taskType))
 	require.Equal(t, "forum.post.create", taskType)
+	var taskMessageID, replacementDeleteType string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT starter_message_id
+		FROM discord_task_posts WHERE work_item_id=$1`, seed.workItemID).Scan(&taskMessageID))
+	require.Equal(t, "7103", taskMessageID)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT operation_type FROM integration_outbox
+		WHERE operation_key=$1`, "message-replaced-delete:task-card:"+
+		seed.workItemID.String()+":7102").Scan(&replacementDeleteType))
+	require.Equal(t, "message.delete", replacementDeleteType)
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT payload FROM integration_outbox
 		WHERE operation_key = $1`, "task-post:"+seed.workItemID.String()).Scan(&taskPayload))
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT payload FROM integration_outbox

@@ -341,33 +341,6 @@ func (s *SQLoutbox) Apply(ctx context.Context, item OutboxItem) error {
 				return err
 			}
 			if value.MessageID != "" {
-				_, err = tx.ExecContext(ctx, `UPDATE integration_outbox o SET
-				operation_type = 'message.update', nonce = NULL,
-				route_key = 'channels/' || p.resource_id || '/messages/' || $2,
-				payload = o.payload || jsonb_build_object('channelId', p.resource_id, 'messageId', $2),
-				request_revision=request_revision+1, updated_at = now()
-				FROM discord_projections p
-				WHERE o.id = $1 AND o.status = 'pending' AND p.projection_key = $3`,
-					item.ID, value.MessageID, projectionKey)
-				if err != nil {
-					return err
-				}
-				if item.OperationType == "message.update" {
-					var previous struct {
-						ChannelID string `json:"channelId"`
-						MessageID string `json:"messageId"`
-					}
-					_ = json.Unmarshal(item.Payload, &previous)
-					if previous.ChannelID != "" && previous.MessageID != "" &&
-						previous.MessageID != value.MessageID {
-						if err := enqueueDiscordOutbox(ctx, tx,
-							"projection-replaced-delete:"+projectionKey+":"+previous.MessageID,
-							"message.delete", "channels/"+previous.ChannelID+"/messages/"+previous.MessageID,
-							map[string]string{"channelId": previous.ChannelID, "messageId": previous.MessageID}, ""); err != nil {
-							return err
-						}
-					}
-				}
 				var guildID string
 				if err = tx.QueryRowContext(ctx, `SELECT guild_id FROM discord_projections
 				WHERE projection_key = $1`, projectionKey).
@@ -463,14 +436,35 @@ func (s *SQLoutbox) Apply(ctx context.Context, item OutboxItem) error {
 			}
 		}
 	}
+	if strings.HasPrefix(item.OperationKey, "interactive-answer-link:") {
+		var value struct {
+			MessageID string `json:"messageId"`
+		}
+		if json.Unmarshal(response, &value) == nil && value.MessageID != "" {
+			_, err = tx.ExecContext(ctx, `UPDATE codex_interactive_requests SET
+				discord_message_id=$2, updated_at=now() WHERE id=$1`,
+				strings.TrimPrefix(item.OperationKey, "interactive-answer-link:"), value.MessageID)
+			if err != nil {
+				return err
+			}
+		}
+	}
 	if strings.HasPrefix(item.OperationKey, "task-log:") || strings.HasPrefix(item.OperationKey, "task-card:") {
 		var sent struct {
 			WorkItemID string `json:"workItemId"`
 			State      string `json:"state"`
 		}
+		var value struct {
+			MessageID string `json:"messageId"`
+		}
 		if json.Unmarshal(item.Payload, &sent) == nil && sent.WorkItemID != "" {
+			if strings.HasPrefix(item.OperationKey, "task-card:") {
+				_ = json.Unmarshal(response, &value)
+			}
 			_, err = tx.ExecContext(ctx, `UPDATE discord_task_posts SET last_state = $2,
-				last_projected_at = now() WHERE work_item_id = $1`, sent.WorkItemID, sent.State)
+				starter_message_id=COALESCE(NULLIF($3,''),starter_message_id),
+				last_projected_at = now() WHERE work_item_id = $1`, sent.WorkItemID,
+				sent.State, value.MessageID)
 			if err != nil {
 				return err
 			}
@@ -595,6 +589,41 @@ func (s *SQLoutbox) Apply(ctx context.Context, item OutboxItem) error {
 			}
 		}
 	}
+	if item.OperationType == "message.update" {
+		var value struct {
+			MessageID string `json:"messageId"`
+		}
+		var previous struct {
+			ChannelID string `json:"channelId"`
+			MessageID string `json:"messageId"`
+		}
+		_ = json.Unmarshal(response, &value)
+		_ = json.Unmarshal(item.Payload, &previous)
+		if value.MessageID != "" && previous.ChannelID != "" && previous.MessageID != "" &&
+			value.MessageID != previous.MessageID {
+			if !messageReplacementReferenceSupported(item.OperationKey) {
+				return fmt.Errorf("Discord 替代消息缺少本地引用回写: %s", item.OperationKey)
+			}
+			_, err = tx.ExecContext(ctx, `UPDATE integration_outbox SET
+				operation_type='message.update', nonce=NULL,
+				route_key='channels/' || $2 || '/messages/' || $3,
+				payload=payload || jsonb_build_object('channelId',$2,'messageId',$3),
+				request_revision=request_revision+1, updated_at=now()
+				WHERE id=$1 AND status='pending'`, item.ID, previous.ChannelID, value.MessageID)
+			if err != nil {
+				return err
+			}
+			deleteKey := "message-replaced-delete:" + item.OperationKey + ":" + previous.MessageID
+			if strings.HasPrefix(item.OperationKey, "projection:") {
+				deleteKey = "projection-replaced-delete:" + projectionKey + ":" + previous.MessageID
+			}
+			if err := enqueueDiscordOutbox(ctx, tx, deleteKey, "message.delete",
+				"channels/"+previous.ChannelID+"/messages/"+previous.MessageID,
+				map[string]string{"channelId": previous.ChannelID, "messageId": previous.MessageID}, ""); err != nil {
+				return err
+			}
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -602,6 +631,19 @@ func (s *SQLoutbox) Apply(ctx context.Context, item OutboxItem) error {
 		return s.replayDesktopProjection(ctx, desktopRequestID)
 	}
 	return nil
+}
+
+func messageReplacementReferenceSupported(operationKey string) bool {
+	prefixes := []string{
+		"projection:", "task-card:", "interactive:", "interactive-answer:",
+		"interactive-answer-link:", "conversation-lifecycle-card:",
+	}
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(operationKey, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *SQLoutbox) RetryDelivery(ctx context.Context, item OutboxItem,
