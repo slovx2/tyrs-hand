@@ -351,27 +351,48 @@ func TestExecuteOfficialPlanUsesLatestCompletedItemAndIsIdempotent(t *testing.T)
 				Items: []officialapp.Item{{Type: "plan", ID: "plan-item-2", Text: latestPlan}}},
 		},
 	}))
-	rows, err := db.QueryContext(ctx, `SELECT desired_payload FROM discord_projections
-		WHERE projection_key LIKE $1 ORDER BY projection_key`,
+	rows, err := db.QueryContext(ctx, `SELECT outbox.operation_key,outbox.operation_type,
+		COALESCE(outbox.predecessor_operation_key,''),outbox.payload,projection.desired_payload
+		FROM discord_projections projection
+		JOIN integration_outbox outbox
+		  ON outbox.integration='discord'
+		 AND outbox.operation_key='projection:' || projection.projection_key
+		WHERE projection.projection_key LIKE $1 ORDER BY projection.projection_key`,
 		"official:"+conversationID.String()+":%")
 	require.NoError(t, err)
 	defer rows.Close()
 	projectedCards := make([]ComponentCardPayload, 0, 2)
+	operationKeys := make([]string, 0, 2)
+	predecessors := make([]string, 0, 2)
 	for rows.Next() {
-		var raw []byte
-		require.NoError(t, rows.Scan(&raw))
+		var operationKey, operationType, predecessor string
+		var outboxRaw, projectionRaw []byte
+		require.NoError(t, rows.Scan(&operationKey, &operationType, &predecessor,
+			&outboxRaw, &projectionRaw))
 		var payload struct {
 			Card ComponentCardPayload `json:"card"`
 		}
-		require.NoError(t, json.Unmarshal(raw, &payload))
+		var desired struct {
+			Card ComponentCardPayload `json:"card"`
+		}
+		require.NoError(t, json.Unmarshal(outboxRaw, &payload))
+		require.NoError(t, json.Unmarshal(projectionRaw, &desired))
+		require.Equal(t, desired.Card, payload.Card,
+			"Outbox 必须原样承载官方 Thread 派生的投影卡片")
+		require.Equal(t, "message.create", operationType)
 		require.NoError(t, validateOfficialCard(payload.Card),
-			"官方历史投影必须能通过真实 Discord 组件校验")
+			"Outbox 中的官方历史投影必须能通过真实 Discord 组件校验")
 		projectedCards = append(projectedCards, payload.Card)
+		operationKeys = append(operationKeys, operationKey)
+		predecessors = append(predecessors, predecessor)
 	}
 	require.NoError(t, rows.Err())
 	require.Len(t, projectedCards, 2)
+	require.Equal(t, []string{"", operationKeys[0]}, predecessors,
+		"Outbox 必须按官方 Item 顺序建立前驱依赖")
 	require.Empty(t, projectedCards[0].Buttons)
 	require.Len(t, projectedCards[1].Buttons, 1)
+	require.NotEmpty(t, projectedCards[1].Buttons[0].CustomID)
 	var actionID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT id FROM official_plan_actions
 		WHERE conversation_id=$1 AND turn_id='turn-plan-2'`, conversationID).
