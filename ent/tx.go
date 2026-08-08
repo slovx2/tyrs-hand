@@ -18,6 +18,8 @@ type Tx struct {
 	AgentProfile *AgentProfileClient
 	// AuditLog is the client for interacting with the AuditLog builders.
 	AuditLog *AuditLogClient
+	// ClientMaterialization is the client for interacting with the ClientMaterialization builders.
+	ClientMaterialization *ClientMaterializationClient
 	// CodexThreadControl is the client for interacting with the CodexThreadControl builders.
 	CodexThreadControl *CodexThreadControlClient
 	// CodexTurnIntent is the client for interacting with the CodexTurnIntent builders.
@@ -184,6 +186,7 @@ func (tx *Tx) init() {
 	tx.Administrator = NewAdministratorClient(tx.config)
 	tx.AgentProfile = NewAgentProfileClient(tx.config)
 	tx.AuditLog = NewAuditLogClient(tx.config)
+	tx.ClientMaterialization = NewClientMaterializationClient(tx.config)
 	tx.CodexThreadControl = NewCodexThreadControlClient(tx.config)
 	tx.CodexTurnIntent = NewCodexTurnIntentClient(tx.config)
 	tx.CodexTurnRun = NewCodexTurnRunClient(tx.config)

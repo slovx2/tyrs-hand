@@ -44,7 +44,7 @@ func Doctor(ctx context.Context, options RuntimeOptions, shell, authorizedKeys s
 		return checks, err
 	}
 	checks = append(checks, DependencyCheck{Name: "codex", Path: codexPath,
-		Status: ">=" + codex.RequiredVersion})
+		Status: codex.PinnedVersion})
 	if _, err := LoadAuthorizedClients(authorizedKeys); err != nil {
 		return checks, err
 	}

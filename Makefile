@@ -1,5 +1,6 @@
 PNPM ?= pnpm
 LOCAL_IMAGE ?= tyrs-hand:local
+CODEX ?= codex
 
 .PHONY: dependencies generate generate-check check-legacy-architecture format format-check vet lint web-check client-install client-check client-export client-e2e-contract client-e2e-android client-e2e-ios test test-unit test-race test-integration test-protocol test-coverage web-install web-build build build-local image-local worker-binaries ci ci-local
 
@@ -10,6 +11,7 @@ dependencies:
 
 generate:
 	go generate ./...
+	./tools/generate-codex-schemas.sh "$(CODEX)"
 	$(PNPM) --dir web generate:api
 	$(PNPM) --dir client generate:api
 

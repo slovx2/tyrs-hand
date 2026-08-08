@@ -1,17 +1,14 @@
+import type { ServerRequest } from "@codex-app-server/ServerRequest";
+import type { Thread } from "@codex-app-server/v2/Thread";
+import type { Turn } from "@codex-app-server/v2/Turn";
+import type { UserInput } from "@codex-app-server/v2/UserInput";
+
+import type { AppServerSocket, SocketMessageEvent } from "@/app-server/jsonRpc";
 import type { Connection } from "@/db/connections";
-import type { LocalAttachment, OutboxItem, OutboxProcessResult } from "@/sync/outbox";
-import type { ConversationTurn, Message, RunActivity, Session, SessionSettings } from "@/types/protocol";
-import { isPreviewMode, isPreviewStressMode, previewLatencyMs, previewPerfLogging } from "./config";
 import { createPreviewSeed, type PreviewControlSeed } from "./fixtures";
 
 let state = createPreviewSeed();
 let idCounter = 1;
-const queuedLiveSessions = new Set<string>();
-
-function nextId(): string {
-  const suffix = String(idCounter++).padStart(12, "0");
-  return `90000000-0000-4000-8000-${suffix}`;
-}
 
 function control(serverId: string): PreviewControlSeed {
   const value = state.controls[serverId];
@@ -19,408 +16,231 @@ function control(serverId: string): PreviewControlSeed {
   return value;
 }
 
-function now(): string {
-  return new Date().toISOString();
-}
-
-function parseBody(init?: RequestInit): Record<string, unknown> {
-  if (typeof init?.body !== "string") return {};
-  return JSON.parse(init.body) as Record<string, unknown>;
-}
-
-function findSession(serverId: string, sessionId: string): Session {
-  const item = control(serverId).sessions.find((session) => session.id === sessionId);
-  if (!item) throw new Error("预览会话不存在");
-  return item;
-}
-
-function updateSession(serverId: string, sessionId: string, update: Partial<Session>): Session {
-  const item = findSession(serverId, sessionId);
-  Object.assign(item, update, { updatedAt: now() });
-  return structuredClone(item);
-}
-
-function createMessage(sessionId: string, role: "user" | "agent", text: string,
-  localId = nextId()): Message {
-  const details = Object.values(state.controls).flatMap((item) => Object.values(item.details));
-  const seq = (details.find((item) => item.messages.some((message) => message.sessionId === sessionId))
-    ?.messages.length ?? 0) + 1;
-  const timestamp = now();
-  return {
-    id: nextId(), sessionId, seq, localId, participantId: null, role,
-    content: { type: "text", text }, attachments: [], createdAt: timestamp, updatedAt: timestamp,
-  };
-}
-
-function createSession(serverId: string, body: Record<string, unknown>): Session {
-  const value = control(serverId);
-  const initial = body.initialMessage as { localId?: string; text?: string } | undefined;
-  const incoming = body.settings as SessionSettings;
-  const timestamp = now();
-  const item: Session = {
-    id: nextId(),
-    workspaceId: value.bootstrap.projects.find((project) => project.id === body.projectId)
-      ?.workspaceId ?? value.bootstrap.projects[0]!.workspaceId,
-    projectId: String(body.projectId ?? value.bootstrap.projects[0]!.id),
-    agentProfileId: incoming.agentProfileId,
-    title: String(initial?.text ?? "新的预览任务").slice(0, 28),
-    lifecycleState: "active", historyCompleteness: "complete", model: incoming.model,
-    reasoningEffort: incoming.reasoningEffort, serviceTier: incoming.serviceTier,
-    collaborationMode: incoming.collaborationMode, settingsVersion: incoming.settingsVersion + 1,
-    lastMessageSeq: 1, isRunning: false, hasRunIssue: false, lastAgentMessageSeq: 0,
-    pendingInteractiveId: null, lastActivityAt: timestamp, createdAt: timestamp, updatedAt: timestamp,
-  };
-  value.sessions.unshift(item);
-  value.details[item.id] = {
-    settings: { ...incoming, settingsVersion: item.settingsVersion },
-    currentRun: null,
-    messages: [createMessage(item.id, "user", String(initial?.text ?? ""), initial?.localId)],
-  };
-  value.bootstrap.lastStartedSettings = { ...incoming, settingsVersion: item.settingsVersion };
-  return structuredClone(item);
-}
-
-function sendMessage(serverId: string, sessionId: string, body: Record<string, unknown>): Message {
-  const value = control(serverId);
-  const detail = value.details[sessionId];
-  if (!detail) throw new Error("预览会话详情不存在");
-  const item = createMessage(sessionId, "user", String(body.text ?? ""), String(body.localId ?? ""));
-  detail.messages.push(item);
-  updateSession(serverId, sessionId, { lastMessageSeq: item.seq, lastActivityAt: item.createdAt });
-  return structuredClone(item);
-}
-
-function queueLiveUpdate(sessionId: string): void {
-  if (!isPreviewMode || queuedLiveSessions.has(sessionId)) return;
-  const detail = Object.values(state.controls).map((item) => item.details[sessionId]).find(Boolean);
-  if (!detail?.currentRun) return;
-  queuedLiveSessions.add(sessionId);
-  for (const [index, delay] of [2400, 5200, 12000, 22000].entries()) setTimeout(() => {
-    const current = detail.currentRun;
-    if (!current) return;
-    const sequence = (current.timeline.at(-1)?.sequence ?? 0) + 1;
-    const item = { id: `preview-live-${index + 1}`, type: "agentMessage", phase: "commentary",
-      text: `实时动态 ${index + 1}：已完成新的检查步骤。\n\n` +
-        "- 核对轮次与分段顺序\n- 检查活动分页水位\n- 验证实时事件去重\n" +
-        "- 记录卡内滚动位置\n- 确认外层列表没有被带动\n- 检查新消息是否完整可见\n" +
-        "- 验证离开底部后不抢位置\n- 保存本轮性能与布局证据" };
-    current.timeline.push({ sequence, type: "item/completed", payload: { item }, occurredAt: now() });
-    void import("@/sync/synchronizer").then(({ publishLocalUpdate }) => publishLocalUpdate({
-      kind: "live", sessionId, type: "item/completed", entityType: "run", entityId: current.id,
-      runEventSeq: sequence, payload: { item },
-    }));
-  }, delay);
+function nextId(): string {
+  return `90000000-0000-4000-8000-${String(idCounter++).padStart(12, "0")}`;
 }
 
 export function listPreviewConnections(): Connection[] {
   return structuredClone(state.connections);
 }
 
-export function setPreviewActiveConnection(serverId: string): void {
-  state.connections.forEach((item) => { item.active = item.serverId === serverId; });
+export function setPreviewActiveConnection(profileId: string): void {
+  state.connections.forEach((item) => { item.active = item.profileId === profileId; });
 }
 
-export function renamePreviewConnection(serverId: string, name: string): void {
-  const item = state.connections.find((connection) => connection.serverId === serverId);
+export function renamePreviewConnection(profileId: string, name: string): void {
+  const item = state.connections.find((connection) => connection.profileId === profileId);
   if (item) item.name = name.trim();
 }
 
-export function removePreviewConnection(serverId: string): void {
-  state.connections = state.connections.filter((item) => item.serverId !== serverId);
+export function removePreviewConnection(profileId: string): void {
+  state.connections = state.connections.filter((item) => item.profileId !== profileId);
   if (state.connections.length > 0 && !state.connections.some((item) => item.active)) {
     state.connections[0]!.active = true;
   }
 }
 
-export function previewBootstrap(serverId: string) {
-  return structuredClone(control(serverId).bootstrap);
-}
-
-export function previewSessions(serverId: string) {
-  return structuredClone(control(serverId).sessions);
-}
-
-export function previewSessionReadStates(serverId: string) {
-  return Object.fromEntries(control(serverId).sessions.map((session) => [session.id, {
-    lastReadAgentSeq: session.lastAgentMessageSeq,
-    lastReadInteractiveId: session.pendingInteractiveId ===
-      "50000000-0000-4000-8000-000000000003" ? null : session.pendingInteractiveId,
-  }]));
-}
-
-export function previewMessages(serverId: string, sessionId: string) {
-  return structuredClone(control(serverId).details[sessionId]?.messages ?? []);
-}
-
-function previewTurn(serverId: string, sessionId: string): ConversationTurn | null {
-  const detail = control(serverId).details[sessionId];
-  if (!detail || detail.messages.length === 0) return null;
-  const turnId = detail.messages[0]!.id;
-  const messages = detail.messages.map((message) => ({ ...message, conversationTurnId: turnId }));
-  const snapshot = detail.currentRun;
-  const runs = snapshot ? [{
-    id: snapshot.id, attempt: 1, status: snapshot.status, actualSettings: snapshot.actualSettings,
-    startedAt: snapshot.startedAt, finishedAt: snapshot.finishedAt, errorCode: snapshot.errorCode,
-    errorMessage: snapshot.errorMessage, segments: [{ id: `80000000-0000-4000-8000-${snapshot.id.slice(-12)}`,
-      sequence: 0, triggerType: "initial" as const, triggerMessageId: messages[0]!.id,
-      interactiveRequestId: null, startEventSequence: 0, endEventSequence: null,
-      activityCount: snapshot.timeline.length }], pendingInteractives: snapshot.pendingInteractives,
-  }] : [];
-  return { kind: "turn", id: turnId, anchorSeq: messages[0]!.seq, messages, runs };
-}
-
-function previewActivities(serverId: string, runId: string): RunActivity[] {
-  const snapshot = Object.values(control(serverId).details).map((item) => item.currentRun)
-    .find((item) => item?.id === runId);
-  if (!snapshot) return [];
-  return snapshot.timeline.flatMap<RunActivity>((event, index) => {
-    const payload = event.payload as { item?: Record<string, unknown> };
-    const item = payload.item ?? {};
-    if (item.type === "agentMessage" && item.phase === "commentary") return [{
-      id: `81000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
-      itemId: String(item.id ?? `preview-${index}`), kind: "commentary" as const,
-      firstEventSequence: event.sequence, lastEventSequence: event.sequence, status: "completed" as const,
-      payload: { text: String(item.text ?? "") }, occurredAt: event.occurredAt,
-    }];
-    if (typeof item.type === "string" && item.type !== "userMessage") return [{
-      id: `82000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
-      itemId: String(item.id ?? `preview-${index}`), kind: "operation" as const,
-      firstEventSequence: event.sequence, lastEventSequence: event.sequence, status: "completed" as const,
-      payload: { item, eventType: event.type }, occurredAt: event.occurredAt,
-    }];
-    return [];
-  });
-}
-
-export async function requestPreview(serverId: string, path: string, init?: RequestInit): Promise<unknown> {
+export async function requestPreview(serverId: string, path: string,
+  init?: RequestInit): Promise<unknown> {
   const method = init?.method ?? "GET";
-  const url = new URL(path, "https://preview.tyrshand.local");
-  const body = parseBody(init);
-  const value = control(serverId);
-  const requestStartedAt = performance.now();
-  const latency = isPreviewStressMode && method === "GET" ? previewLatencyMs : 0;
-  if (previewPerfLogging) {
-    console.info(`[TYRS_PERF] request:start method=${method} path=${url.pathname} latency=${latency}`);
+  if (path === "/bootstrap") return structuredClone(control(serverId).bootstrap);
+  if (path === "/tunnels" && method === "POST") return { tunnelId: nextId(),
+    expiresAt: new Date(Date.now() + 45_000).toISOString(), websocketPath: "/preview/app-server" };
+  if (path === "/materializations" && method === "POST") return { attachment: {
+    id: nextId(), sha256: "preview", filename: "预览附件", mediaType: "application/octet-stream",
+    sizeBytes: 1024, remotePath: "/preview/cache/preview-attachment",
+    inputType: "mention" }, deduplicated: false };
+  if (path === "/device" || path === "/device/push-token") return {};
+  throw new Error(`预览 Control API 尚未实现：${method} ${path}`);
+}
+
+export function createPreviewAppServerSocket(serverId: string): AppServerSocket {
+  return new PreviewSocket(serverId);
+}
+
+class PreviewSocket implements AppServerSocket {
+  readyState = 0;
+  onopen: (() => void) | null = null;
+  onmessage: ((event: SocketMessageEvent) => void) | null = null;
+  onerror: (() => void) | null = null;
+  onclose: ((event: { code?: number; reason?: string }) => void) | null = null;
+  private readonly outstandingRequests = new Map<string, ServerRequest>();
+
+  constructor(private readonly serverId: string) {
+    setTimeout(() => { this.readyState = 1; this.onopen?.(); }, 0);
   }
-  if (latency > 0) await new Promise((resolve) => setTimeout(resolve, latency));
-  if (previewPerfLogging) {
-    console.info(`[TYRS_PERF] request:released method=${method} path=${url.pathname} elapsed=${
-      (performance.now() - requestStartedAt).toFixed(1)}`);
-  }
-  if (url.pathname === "/bootstrap") return previewBootstrap(serverId);
-  if (url.pathname === "/sessions" && method === "GET") {
-    const lifecycle = url.searchParams.get("lifecycle");
-    const projectId = url.searchParams.get("projectId");
-    const sessions = value.sessions.filter((item) => (!lifecycle || item.lifecycleState === lifecycle)
-      && (!projectId || item.projectId === projectId));
-    return { sessions: structuredClone(sessions), nextCursor: "" };
-  }
-  if (url.pathname === "/sessions" && method === "POST") {
-    return { session: createSession(serverId, body), deduplicated: false };
-  }
-  if (url.pathname === "/uploads" && method === "POST") {
-    return { attachment: { id: nextId(), sessionId: null, kind: "file", filename: "预览附件",
-      mediaType: "application/octet-stream", sizeBytes: 1024, sha256: "preview-upload", status: "uploaded",
-      createdAt: now() }, deduplicated: false };
-  }
-  const messageMatch = /^\/sessions\/([^/]+)\/messages$/.exec(url.pathname);
-  if (messageMatch && method === "GET") {
-    const all = value.details[messageMatch[1]!]?.messages ?? [];
-    const before = Number(url.searchParams.get("beforeSeq") ?? Number.POSITIVE_INFINITY);
-    const after = Number(url.searchParams.get("afterSeq") ?? 0);
-    const limit = Number(url.searchParams.get("limit") ?? 100);
-    const filtered = all.filter((item) => item.seq < before && item.seq > after);
-    const messages = filtered.slice(-limit);
-    return { messages: structuredClone(messages), lastMessageSeq: all.at(-1)?.seq ?? 0,
-      hasMoreBefore: filtered.length > messages.length, hasMoreAfter: false };
-  }
-  if (messageMatch && method === "POST") {
-    const item = sendMessage(serverId, messageMatch[1]!, body);
-    return { message: item, intentId: nextId(), deduplicated: false };
-  }
-  const snapshotMatch = /^\/sessions\/([^/]+)\/snapshot$/.exec(url.pathname);
-  if (snapshotMatch && method === "GET") {
-    const sessionId = snapshotMatch[1]!;
-    const detail = value.details[sessionId];
-    const session = value.sessions.find((item) => item.id === sessionId);
-    if (!detail || !session) throw new Error("预览会话快照不存在");
-    const single = previewTurn(serverId, sessionId);
-    const all = detail.turns ?? (single ? [single] : []);
-    const limit = Number(url.searchParams.get("turnLimit") ?? 20);
-    const items = all.slice(-limit);
-    return { session: structuredClone(session), settings: structuredClone(detail.settings),
-      currentRun: structuredClone(detail.currentRun), snapshotCursor: value.bootstrap.currentCursor,
-      turns: { items: structuredClone(items), hasMoreBefore: all.length > items.length,
-        nextCursor: all.length > items.length ? btoa(String(items[0]?.anchorSeq ?? "")) : "" } };
-  }
-  const turnsMatch = /^\/sessions\/([^/]+)\/turns$/.exec(url.pathname);
-  if (turnsMatch && method === "GET") {
-    const detail = value.details[turnsMatch[1]!];
-    const single = previewTurn(serverId, turnsMatch[1]!);
-    const all = detail?.turns ?? (single ? [single] : []);
-    const rawBefore = url.searchParams.get("beforeCursor");
-    const before = rawBefore ? Number(atob(rawBefore)) : Number.POSITIVE_INFINITY;
-    const limit = Number(url.searchParams.get("limit") ?? 20);
-    const eligible = all.filter((turn) => turn.anchorSeq < before);
-    const items = eligible.slice(-limit);
-    const hasMoreBefore = eligible.length > items.length;
-    return { items: structuredClone(items), hasMoreBefore,
-      nextCursor: hasMoreBefore ? btoa(String(items[0]?.anchorSeq ?? "")) : "" };
-  }
-  const turnMatch = /^\/sessions\/([^/]+)\/turns\/([^/]+)$/.exec(url.pathname);
-  if (turnMatch && method === "GET") {
-    const detail = value.details[turnMatch[1]!];
-    const turn = detail?.turns?.find((item) => item.id === turnMatch[2]) ??
-      previewTurn(serverId, turnMatch[1]!);
-    if (!turn || turn.id !== turnMatch[2]) throw new Error("预览轮次不存在");
-    return turn;
-  }
-  const activityMatch = /^\/runs\/([^/]+)\/segments\/([^/]+)\/activities$/.exec(url.pathname);
-  if (activityMatch && method === "GET") {
-    const projected = Object.values(value.details)
-      .map((detail) => detail.activities?.[activityMatch[2]!]).find(Boolean);
-    const all = projected ?? previewActivities(serverId, activityMatch[1]!);
-    const limit = Number(url.searchParams.get("limit") ?? 40);
-    const before = url.searchParams.get("beforeActivitySeq");
-    const after = url.searchParams.get("afterEventSeq");
-    const eligible = before ? all.filter((item) => item.firstEventSequence < Number(before)) :
-      after ? all.filter((item) => item.lastEventSequence > Number(after)) : all;
-    const activities = before ? eligible.slice(-limit) : after ? eligible.slice(0, limit) : eligible.slice(-limit);
-    const first = activities[0]?.firstEventSequence ?? Number.POSITIVE_INFINITY;
-    const last = activities.at(-1)?.lastEventSequence ?? 0;
-    return { activities: structuredClone(activities),
-      hasMoreBefore: all.some((item) => item.firstEventSequence < first),
-      hasMoreAfter: all.some((item) => item.lastEventSequence > last),
-      persistedThroughEventSeq: all.at(-1)?.lastEventSequence ?? 0, finalAnswerDraft: null };
-  }
-  const sessionMatch = /^\/sessions\/([^/]+)$/.exec(url.pathname);
-  if (sessionMatch && method === "GET") {
-    const sessionId = sessionMatch[1]!;
-    const detail = value.details[sessionId];
-    if (!detail) throw new Error("预览会话详情不存在");
-    if (detail.currentRun?.status === "running") queueLiveUpdate(sessionId);
-    return { session: structuredClone(findSession(serverId, sessionId)),
-      settings: structuredClone(detail.settings), currentRun: structuredClone(detail.currentRun) };
-  }
-  if (sessionMatch && method === "PATCH") {
-    const sessionId = sessionMatch[1]!;
-    const current = findSession(serverId, sessionId);
-    const detail = value.details[sessionId]!;
-    const nextVersion = current.settingsVersion + 1;
-    const allowed = ["agentProfileId", "model", "reasoningEffort", "serviceTier", "collaborationMode"] as const;
-    for (const key of allowed) if (body[key] !== undefined) {
-      Object.assign(current, { [key]: body[key] });
-      Object.assign(detail.settings, { [key]: body[key] });
+
+  send(raw: string): void {
+    const message = JSON.parse(raw) as Record<string, unknown>;
+    if (typeof message.method === "string" && (typeof message.id === "number" ||
+      typeof message.id === "string")) {
+      void this.handleRequest(message.id, message.method, message.params).catch((error) =>
+        this.emit({ id: message.id, error: { code: -32603,
+          message: error instanceof Error ? error.message : "预览请求失败" } }));
+      return;
     }
-    if (typeof body.title === "string") current.title = body.title;
-    current.settingsVersion = nextVersion;
-    detail.settings.settingsVersion = nextVersion;
-    return updateSession(serverId, sessionId, {});
-  }
-  const actionMatch = /^\/sessions\/([^/]+)\/(stop|archive|restore)$/.exec(url.pathname);
-  if (actionMatch && method === "POST") {
-    const sessionId = actionMatch[1]!;
-    const action = actionMatch[2];
-    if (action === "stop" && value.details[sessionId]?.currentRun) {
-      value.details[sessionId]!.currentRun!.status = "canceled";
-      value.details[sessionId]!.currentRun!.finishedAt = now();
-    } else updateSession(serverId, sessionId,
-      { lifecycleState: action === "archive" ? "archived" : "active" });
-    return {};
-  }
-  const planMatch = /^\/sessions\/([^/]+)\/plans\/[^/]+\/execute$/.exec(url.pathname);
-  if (planMatch && method === "POST") {
-    const detail = value.details[planMatch[1]!]!;
-    if (detail.currentRun) {
-      detail.currentRun.status = "running";
-      detail.currentRun.actualSettings.collaborationMode = "default";
-      detail.currentRun.finishedAt = null;
-    }
-    return {};
-  }
-  const answerMatch = /^\/interactive\/([^/]+)\/answer$/.exec(url.pathname);
-  if (answerMatch && method === "POST") {
-    for (const detail of Object.values(value.details)) if (detail.currentRun) {
-      detail.currentRun.pendingInteractives = detail.currentRun.pendingInteractives
-        .filter((item) => item.id !== answerMatch[1]);
-      if (detail.currentRun.pendingInteractives.length === 0 && detail.currentRun.status === "waiting_for_user") {
-        detail.currentRun.status = "running";
-      }
-    }
-    return {};
-  }
-  if (url.pathname === "/sync") return { updates: [], nextCursor: value.bootstrap.currentCursor,
-    hasMore: false, latestCursor: value.bootstrap.currentCursor };
-  if (url.pathname === "/device" || url.pathname === "/device/push-token") return {};
-  throw new Error(`预览 API 尚未实现：${method} ${url.pathname}`);
-}
-
-export function listPreviewOutbox(serverId: string, sessionId?: string): OutboxItem[] {
-  return structuredClone(control(serverId).outbox.filter((item) => !sessionId || item.sessionId === sessionId));
-}
-
-export function enqueuePreviewTask(input: { connection: Connection; localId: string; projectId: string;
-  text: string; settings: SessionSettings; attachments: LocalAttachment[] }): void {
-  control(input.connection.serverId).outbox.push({
-    serverId: input.connection.serverId, localId: input.localId, kind: "create_session",
-    sessionId: null, projectId: input.projectId, status: "pending", error: null,
-    payload: { text: input.text, settings: input.settings, attachments: input.attachments },
-  });
-}
-
-export function enqueuePreviewMessage(input: { connection: Connection; localId: string; sessionId: string;
-  text: string; attachments: LocalAttachment[] }): void {
-  control(input.connection.serverId).outbox.push({
-    serverId: input.connection.serverId, localId: input.localId, kind: "send_message",
-    sessionId: input.sessionId, projectId: null, status: "pending", error: null,
-    payload: { text: input.text, attachments: input.attachments },
-  });
-}
-
-export function retryPreviewOutbox(serverId: string, localId: string): void {
-  const item = control(serverId).outbox.find((candidate) => candidate.localId === localId);
-  if (item) { item.status = "pending"; item.error = null; }
-}
-
-export function discardPreviewOutbox(serverId: string, localId: string): void {
-  const value = control(serverId);
-  value.outbox = value.outbox.filter((item) => item.localId !== localId);
-}
-
-export function recoverPreviewOutbox(serverId: string): void {
-  for (const item of control(serverId).outbox) if (item.status === "uploading" || item.status === "sending") {
-    item.status = "pending";
-  }
-}
-
-export function processPreviewOutbox(connection: Connection): OutboxProcessResult[] {
-  const value = control(connection.serverId);
-  const completed: string[] = [];
-  const results: OutboxProcessResult[] = [];
-  for (const item of value.outbox) {
-    if (item.status !== "pending") continue;
-    item.status = "sending";
-    if (item.kind === "create_session" && item.projectId && item.payload.settings) {
-      const created = createSession(connection.serverId, { projectId: item.projectId, settings: item.payload.settings,
-        initialMessage: { localId: item.localId, text: item.payload.text, attachmentIds: [] } });
-      completed.push(item.localId);
-      results.push({ localId: item.localId, kind: item.kind, sessionId: created.id });
-    } else if (item.kind === "send_message" && item.sessionId) {
-      sendMessage(connection.serverId, item.sessionId,
-        { localId: item.localId, text: item.payload.text, attachmentIds: [] });
-      completed.push(item.localId);
-      results.push({ localId: item.localId, kind: item.kind, sessionId: item.sessionId });
-    } else {
-      item.status = "failed";
-      item.error = "预览 Outbox 数据不完整";
+    if ((typeof message.id === "number" || typeof message.id === "string") &&
+      ("result" in message || "error" in message)) {
+      const request = this.outstandingRequests.get(String(message.id));
+      if (!request) return;
+      this.outstandingRequests.delete(String(message.id));
+      control(this.serverId).requests = control(this.serverId).requests.filter((item) =>
+        String(item.id) !== String(message.id));
+      this.emit({ method: "serverRequest/resolved", params: {
+        threadId: requestThreadId(request), requestId: request.id,
+      } });
+      const threadId = requestThreadId(request);
+      if (threadId) this.completeActiveTurn(threadId, "已收到回答，继续执行。", 30);
     }
   }
-  value.outbox = value.outbox.filter((item) => !completed.includes(item.localId));
-  return results;
+
+  close(code = 1000, reason = "closed"): void {
+    if (this.readyState === 3) return;
+    this.readyState = 3;
+    this.onclose?.({ code, reason });
+  }
+
+  private async handleRequest(id: string | number, method: string, rawParams: unknown): Promise<void> {
+    const params = (rawParams ?? {}) as Record<string, unknown>;
+    const value = control(this.serverId);
+    if (method === "initialize") { this.emit({ id, result: { userAgent: "preview/0.147.0",
+      platformFamily: "unix", platformOs: "preview" } }); return; }
+    if (method === "thread/list") {
+      const archived = params.archived === true;
+      const cwd = typeof params.cwd === "string" ? params.cwd : null;
+      const data = value.threads.filter((thread) => value.archivedThreadIds.includes(thread.id) === archived &&
+        (!cwd || thread.cwd === cwd)).map((thread) => ({ ...thread, turns: [] }));
+      this.emit({ id, result: { data, nextCursor: null } }); return;
+    }
+    if (method === "thread/read" || method === "thread/resume") {
+      const thread = requireThread(value, String(params.threadId));
+      this.emit({ id, result: { thread: structuredClone(thread) } });
+      if (method === "thread/resume") setTimeout(() => this.emitPending(thread.id), 0);
+      return;
+    }
+    if (method === "thread/start") {
+      const thread = newThread(String(params.cwd ?? "/preview"));
+      value.threads.unshift(thread);
+      this.emit({ id, result: { thread: structuredClone(thread) } });
+      this.emit({ method: "thread/started", params: { thread: { ...thread, turns: [] } } });
+      return;
+    }
+    if (method === "model/list") {
+      this.emit({ id, result: { data: structuredClone(state.models), nextCursor: null } }); return;
+    }
+    if (method === "turn/start") {
+      const thread = requireThread(value, String(params.threadId));
+      const turn = startTurn(thread, params);
+      this.emit({ id, result: { turn: structuredClone(turn) } });
+      this.emit({ method: "turn/started", params: { threadId: thread.id, turn: structuredClone(turn) } });
+      this.completeActiveTurn(thread.id, "预览任务已按官方协议完成。", 80);
+      return;
+    }
+    if (method === "turn/steer") {
+      const thread = requireThread(value, String(params.threadId));
+      const active = [...thread.turns].reverse().find((turn) => turn.status === "inProgress");
+      if (!active) { this.emit({ id, error: { code: -32600, message: "no active turn to steer" } }); return; }
+      if (params.expectedTurnId !== active.id) { this.emit({ id, error: { code: -32600,
+        message: `expected active turn id ${String(params.expectedTurnId)} but found ${active.id}` } }); return; }
+      active.items.push(userItem(params));
+      this.emit({ id, result: { turnId: active.id } });
+      this.completeActiveTurn(thread.id, "已接收 steer 消息。", 80);
+      return;
+    }
+    if (method === "turn/interrupt") {
+      const thread = requireThread(value, String(params.threadId));
+      const turn = thread.turns.find((item) => item.id === params.turnId);
+      if (turn) { turn.status = "interrupted"; turn.completedAt = Math.floor(Date.now() / 1000); }
+      thread.status = { type: "idle" };
+      this.emit({ id, result: {} });
+      if (turn) this.emit({ method: "turn/completed", params: { threadId: thread.id,
+        turn: structuredClone(turn) } });
+      return;
+    }
+    if (method === "thread/archive" || method === "thread/unarchive") {
+      const thread = requireThread(value, String(params.threadId));
+      const archived = method === "thread/archive";
+      value.archivedThreadIds = archived
+        ? [...new Set([...value.archivedThreadIds, thread.id])]
+        : value.archivedThreadIds.filter((item) => item !== thread.id);
+      this.emit({ id, result: archived ? {} : { thread: structuredClone(thread) } });
+      this.emit({ method: archived ? "thread/archived" : "thread/unarchived",
+        params: archived ? { threadId: thread.id } : { thread: structuredClone(thread) } });
+      return;
+    }
+    if (method === "thread/name/set") {
+      const thread = requireThread(value, String(params.threadId));
+      thread.name = String(params.name); thread.updatedAt = Math.floor(Date.now() / 1000);
+      this.emit({ id, result: {} });
+      this.emit({ method: "thread/name/updated", params: { threadId: thread.id, name: thread.name } });
+      return;
+    }
+    this.emit({ id, error: { code: -32601, message: `预览方法未实现：${method}` } });
+  }
+
+  private emitPending(threadId: string): void {
+    for (const request of control(this.serverId).requests.filter((item) =>
+      requestThreadId(item) === threadId)) {
+      this.outstandingRequests.set(String(request.id), request);
+      this.emit(structuredClone(request));
+    }
+  }
+
+  private completeActiveTurn(threadId: string, text: string, delay: number): void {
+    setTimeout(() => {
+      const thread = requireThread(control(this.serverId), threadId);
+      const turn = [...thread.turns].reverse().find((item) => item.status === "inProgress");
+      if (!turn) return;
+      turn.items.push({ type: "agentMessage", id: nextId(), text,
+        phase: "final_answer", memoryCitation: null });
+      turn.status = "completed"; turn.completedAt = Math.floor(Date.now() / 1000);
+      thread.status = { type: "idle" }; thread.updatedAt = turn.completedAt;
+      this.emit({ method: "turn/completed", params: { threadId, turn: structuredClone(turn) } });
+    }, delay);
+  }
+
+  private emit(message: unknown): void {
+    if (this.readyState === 3) return;
+    this.onmessage?.({ data: JSON.stringify(message) });
+  }
+}
+
+function requireThread(value: PreviewControlSeed, id: string): Thread {
+  const thread = value.threads.find((item) => item.id === id);
+  if (!thread) throw new Error("预览 Thread 不存在");
+  return thread;
+}
+
+function requestThreadId(request: ServerRequest): string | null {
+  const params = request.params as { threadId?: unknown };
+  return typeof params.threadId === "string" ? params.threadId : null;
+}
+
+function newThread(cwd: string): Thread {
+  const now = Math.floor(Date.now() / 1000);
+  const id = nextId();
+  return { id, extra: null, sessionId: id, forkedFromId: null, parentThreadId: null,
+    preview: "新的预览任务", ephemeral: false, section: null, sectionEnteredAt: null,
+    historyMode: "legacy", modelProvider: "openai", createdAt: now, updatedAt: now,
+    recencyAt: now, status: { type: "idle" }, path: null, cwd, cliVersion: "0.147.0",
+    source: "appServer", canAcceptDirectInput: true, threadSource: null, agentNickname: null,
+    agentRole: null, gitInfo: null, name: null, turns: [] };
+}
+
+function startTurn(thread: Thread, params: Record<string, unknown>): Turn {
+  const now = Math.floor(Date.now() / 1000);
+  const turn: Turn = { id: nextId(), status: "inProgress", items: [userItem(params)],
+    itemsView: "full", error: null, startedAt: now, completedAt: null, durationMs: null };
+  thread.turns.push(turn); thread.status = { type: "active", activeFlags: [] };
+  return turn;
+}
+
+function userItem(params: Record<string, unknown>): Turn["items"][number] {
+  return { type: "userMessage", id: nextId(),
+    clientId: typeof params.clientUserMessageId === "string" ? params.clientUserMessageId : null,
+    content: Array.isArray(params.input) ? params.input as UserInput[] : [] };
 }
 
 export function resetPreviewState(): void {
-  state = createPreviewSeed();
-  idCounter = 1;
-  queuedLiveSessions.clear();
+  state = createPreviewSeed(); idCounter = 1;
 }

@@ -16,6 +16,11 @@ func TestSocketClientFansOutEventsWithoutCrossConsumption(t *testing.T) {
 	client, err := ConnectSocket(context.Background(), SocketClientOptions{SocketPath: server.SocketPath})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, client.Close()) })
+	require.NotEmpty(t, client.InitializeResult())
+	require.NoError(t, client.Notify("test/notification", map[string]any{"ok": true}))
+	require.NotNil(t, client.Done())
+	require.Error(t, client.Err())
+	client.removePending("missing")
 
 	threadA := startSocketThread(t, client, "/workspace/a")
 	threadB := startSocketThread(t, client, "/workspace/b")

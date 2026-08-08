@@ -17,7 +17,7 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - tapOn:
     id: "composer:parameters"
 - assertVisible:
-    id: "parameters:model:gpt-5.6-luna"
+    id: "parameters:model:gpt-5.6-sol"
 - pressKey: BACK
 - tapOn:
     id: "composer:input"
@@ -30,56 +30,30 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     timeout: 10000
 - assertVisible:
     text: "PREVIEW_DIRECT_NAVIGATION"
-- pressKey: BACK
 - tapOn:
-    id: "tab:sessions"
-- assertVisible:
-    id: "session:row:0"
+    id: "session:back"
 
-# 运行中、实时事件与失败 Outbox
+# 官方运行中 Turn
 - tapOn:
     id: "session:row:0"
-- tapOn:
-    id: "session:more"
 - assertVisible:
     id: "session:stop"
-- pressKey: BACK
-- scrollUntilVisible:
-    element:
-      id: "run:.*:progress"
-    direction: DOWN
-- assertVisible:
-    id: "run:live"
-- assertVisible:
-    id: "outbox:preview-message-failed:failed"
-- pressKey: BACK
+- tapOn:
+    id: "session:back"
 
-# 已完成计划
+# 最新完成 Turn 中的 Plan Item
 - tapOn:
     id: "session:row:1"
-- assertVisible:
-    id: "run:activity:toggle"
-- tapOn:
-    id: "run:activity:toggle"
-- scrollUntilVisible:
-    element:
-      id: "run:operations:1:toggle"
-    direction: DOWN
-- tapOn:
-    id: "run:operations:1:toggle"
-- assertVisible:
-    text: ".*已运行命令.*"
-- tapOn:
-    id: "run:activity:toggle"
 - scrollUntilVisible:
     element:
       id: "plan:execute"
     direction: DOWN
 - assertVisible:
     id: "plan:execute"
-- pressKey: BACK
+- tapOn:
+    id: "session:back"
 
-# 普通交互问答
+# 官方 Server Request
 - scrollUntilVisible:
     element:
       id: "session:row:2"
@@ -91,113 +65,41 @@ appId: ${TYRS_HAND_E2E_APP_ID}
       id: "interactive:option:0"
     direction: DOWN
 - assertVisible:
-    id: "interactive:option:0"
-- scrollUntilVisible:
-    element:
-      id: "interactive:input:scope"
-    direction: DOWN
-- pressKey: BACK
+    id: "interactive:input:scope"
+- tapOn:
+    id: "session:back"
 
-# 敏感信息问题
+# 官方失败 Turn
 - scrollUntilVisible:
     element:
       id: "session:row:3"
     direction: DOWN
 - tapOn:
     id: "session:row:3"
-- scrollUntilVisible:
-    element:
-      id: "interactive:.*:secret"
-    direction: DOWN
 - assertVisible:
-    text: ".*请在 Codex 桌面端完成.*"
-- pressKey: BACK
+    id: "turn:error"
+- tapOn:
+    id: "session:back"
 
-# 失败任务
+# 官方 Agent Item 与 Markdown
 - scrollUntilVisible:
     element:
       id: "session:row:4"
     direction: DOWN
 - tapOn:
     id: "session:row:4"
-- tapOn:
-    id: "run:activity:toggle"
-- scrollUntilVisible:
-    element:
-      id: "run:error"
-    direction: DOWN
 - assertVisible:
-    id: "run:error"
-- pressKey: BACK
+    id: "message:role:agent"
+- assertVisible:
+    text: ".*唯一顺序来源.*"
+- tapOn:
+    id: "session:back"
 
-# Markdown 与附件
-- scrollUntilVisible:
-    element:
-      id: "session:row:5"
-    direction: DOWN
-- tapOn:
-    id: "session:row:5"
-- assertVisible:
-    id: "message:image:user:60000000-0000-4000-8000-000000000001"
-- scrollUntilVisible:
-    element:
-      id: "message:image:agent:60000000-0000-4000-8000-000000000003"
-    direction: DOWN
-- assertVisible:
-    id: "message:image:agent:markdown:.*"
-- assertVisible:
-    text: "文件 · acceptance-report.md"
-- tapOn:
-    id: "message:image:agent:60000000-0000-4000-8000-000000000003"
-- assertVisible:
-    id: "image:viewer"
-- tapOn:
-    id: "image:viewer:close"
-- assertNotVisible:
-    id: "image:viewer"
-- pressKey: BACK
-
-# Markdown 完整排版与中间过程卡片
-- scrollUntilVisible:
-    element:
-      id: "session:row:6"
-    direction: DOWN
-- tapOn:
-    id: "session:row:6"
-- assertVisible:
-    text: "Markdown 排版验收"
-- assertVisible:
-    text: ".*粗体.*斜体.*"
-- scrollUntilVisible:
-    element:
-      text: "表格"
-    direction: DOWN
-- assertVisible:
-    text: "completed"
-- scrollUntilVisible:
-    element:
-      id: "run:activity:toggle"
-    direction: DOWN
-- tapOn:
-    id: "run:activity:toggle"
-- assertVisible:
-    text: "已完成"
-- assertVisible:
-    text: ".*Markdown 容器宽度.*"
-- pressKey: BACK
-
-# 归档列表与恢复入口
+# 归档与独立连接
 - tapOn:
     id: "sessions:filter:archived"
 - assertVisible:
     id: "session:row:0"
-- tapOn:
-    id: "session:row:0"
-- assertVisible:
-    id: "session:restore"
-- pressKey: BACK
-
-# 多连接、主题、重命名和扫码弹层
 - tapOn:
     id: "tab:connections"
 - assertVisible:

@@ -62,10 +62,24 @@ func (s *SQLoutbox) Enqueue(ctx context.Context, operationKey, operationType, ro
 	return enqueueDiscordOutbox(ctx, s.db, operationKey, operationType, routeKey, payload, nonce)
 }
 
+func (s *SQLoutbox) EnqueueAfter(ctx context.Context, operationKey, operationType,
+	routeKey string, payload any, nonce, predecessor string,
+) error {
+	return enqueueDiscordOutboxAfter(ctx, s.db, operationKey, operationType, routeKey,
+		payload, nonce, predecessor)
+}
+
 func EnqueueTx(ctx context.Context, tx *sql.Tx, operationKey, operationType,
 	routeKey string, payload any, nonce string,
 ) error {
 	return enqueueDiscordOutbox(ctx, tx, operationKey, operationType, routeKey, payload, nonce)
+}
+
+func EnqueueTxAfter(ctx context.Context, tx *sql.Tx, operationKey, operationType,
+	routeKey string, payload any, nonce, predecessor string,
+) error {
+	return enqueueDiscordOutboxAfter(ctx, tx, operationKey, operationType, routeKey,
+		payload, nonce, predecessor)
 }
 
 type discordOutboxExecer interface {
@@ -75,17 +89,26 @@ type discordOutboxExecer interface {
 func enqueueDiscordOutbox(ctx context.Context, execer discordOutboxExecer,
 	operationKey, operationType, routeKey string, payload any, nonce string,
 ) error {
+	return enqueueDiscordOutboxAfter(ctx, execer, operationKey, operationType, routeKey,
+		payload, nonce, "")
+}
+
+func enqueueDiscordOutboxAfter(ctx context.Context, execer discordOutboxExecer,
+	operationKey, operationType, routeKey string, payload any, nonce, predecessor string,
+) error {
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
 	nonce = discordNonce(nonce)
 	_, err = execer.ExecContext(ctx, `
-		INSERT INTO integration_outbox(integration, operation_key, operation_type, route_key, payload, nonce)
-		VALUES ('discord', $1, $2, $3, $4, NULLIF($5, ''))
+		INSERT INTO integration_outbox(integration, operation_key, operation_type, route_key,
+			payload, nonce, predecessor_operation_key)
+		VALUES ('discord', $1, $2, $3, $4, NULLIF($5, ''), NULLIF($6, ''))
 		ON CONFLICT(integration, operation_key) DO UPDATE SET
 			operation_type = EXCLUDED.operation_type, route_key = EXCLUDED.route_key,
 			payload = EXCLUDED.payload, nonce = EXCLUDED.nonce,
+			predecessor_operation_key = EXCLUDED.predecessor_operation_key,
 			request_revision = integration_outbox.request_revision + CASE
 				WHEN integration_outbox.status IN ('sending','applying','ambiguous')
 					AND integration_outbox.operation_type = EXCLUDED.operation_type
@@ -112,7 +135,8 @@ func enqueueDiscordOutbox(ctx context.Context, execer discordOutboxExecer,
 				THEN integration_outbox.delivered_at ELSE NULL END,
 			last_error = CASE WHEN integration_outbox.status IN ('sending','applying','ambiguous')
 				THEN integration_outbox.last_error ELSE NULL END,
-			updated_at = now()`, operationKey, operationType, routeKey, encoded, nonce)
+			updated_at = now()`, operationKey, operationType, routeKey, encoded, nonce,
+		predecessor)
 	return err
 }
 
@@ -167,6 +191,11 @@ func (s *SQLoutbox) Claim(ctx context.Context, lease time.Duration) (*OutboxItem
 		WHERE integration = 'discord' AND available_at <= now() AND (
 			(status IN ('pending', 'retrying') AND lease_token IS NULL)
 			OR (status='applying' AND (lease_expires_at IS NULL OR lease_expires_at < now())))
+		AND (predecessor_operation_key IS NULL OR EXISTS(
+			SELECT 1 FROM integration_outbox predecessor
+			WHERE predecessor.integration=integration_outbox.integration
+			  AND predecessor.operation_key=integration_outbox.predecessor_operation_key
+			  AND predecessor.status='completed'))
 		ORDER BY available_at, created_at, enqueue_sequence
 		FOR UPDATE SKIP LOCKED LIMIT 1`).
 		Scan(&id, &item.OperationKey, &status, &item.OperationType, &item.RouteKey,
@@ -273,7 +302,7 @@ func (s *SQLoutbox) Apply(ctx context.Context, item OutboxItem) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	var desktopRequestID uuid.UUID
+	var officialBindingID uuid.UUID
 	projectionKey, projectionExists := "", false
 	if strings.HasPrefix(item.OperationKey, "projection:") {
 		projectionKey = strings.TrimPrefix(item.OperationKey, "projection:")
@@ -340,15 +369,26 @@ func (s *SQLoutbox) Apply(ctx context.Context, item OutboxItem) error {
 			if err != nil {
 				return err
 			}
-			if value.MessageID != "" {
-				var guildID string
-				if err = tx.QueryRowContext(ctx, `SELECT guild_id FROM discord_projections
-				WHERE projection_key = $1`, projectionKey).
-					Scan(&guildID); err != nil {
-					return err
+			if value.MessageID != "" && (item.OperationType == "message.create" ||
+				item.OperationType == "forum.post.create") {
+				var delivered struct {
+					ChannelID string `json:"channelId"`
 				}
-				if err = promotePendingConversationStatusTx(ctx, tx, guildID,
-					projectionKey); err != nil {
+				_ = json.Unmarshal(item.Payload, &delivered)
+				if value.ThreadID != "" {
+					delivered.ChannelID = value.ThreadID
+				}
+				if delivered.ChannelID == "" {
+					return errors.New("待更新 Projection 的 Discord 创建结果缺少频道 ID")
+				}
+				_, err = tx.ExecContext(ctx, `UPDATE integration_outbox SET
+					operation_type='message.update',nonce=NULL,
+					route_key='channels/'||$2::text||'/messages',
+					payload=payload||jsonb_build_object(
+						'channelId',$2::text,'messageId',$3::text),
+					updated_at=now() WHERE id=$1 AND status='pending'`, item.ID,
+					delivered.ChannelID, value.MessageID)
+				if err != nil {
 					return err
 				}
 			}
@@ -377,76 +417,10 @@ func (s *SQLoutbox) Apply(ctx context.Context, item OutboxItem) error {
 			return err
 		}
 	}
-	if strings.HasPrefix(item.OperationKey, "desktop-thread-post:") {
-		if err := s.completeDesktopThreadPost(ctx, tx, item, response); err != nil {
+	if strings.HasPrefix(item.OperationKey, "official-thread-post:") {
+		officialBindingID, err = s.completeOfficialThreadPost(ctx, tx, item, response)
+		if err != nil {
 			return err
-		}
-		desktopRequestID, _ = uuid.Parse(strings.TrimPrefix(item.OperationKey, "desktop-thread-post:"))
-	}
-	if strings.HasPrefix(item.OperationKey, "interactive:") {
-		var value struct {
-			MessageID string `json:"messageId"`
-		}
-		if json.Unmarshal(response, &value) == nil && value.MessageID != "" {
-			_, err = tx.ExecContext(ctx, `UPDATE codex_interactive_requests SET
-				discord_message_id=$2, updated_at=now() WHERE id=$1`,
-				strings.TrimPrefix(item.OperationKey, "interactive:"), value.MessageID)
-			if err != nil {
-				return err
-			}
-			requestID, parseErr := uuid.Parse(strings.TrimPrefix(item.OperationKey, "interactive:"))
-			if parseErr != nil {
-				return parseErr
-			}
-			request, loadErr := loadInteractiveProjectionTx(ctx, tx, requestID, false)
-			if loadErr != nil {
-				return loadErr
-			}
-			if request.Status == "resolved" && request.AnswerMessageID != "" {
-				if err = enqueueInteractiveAnswerLinkTx(ctx, tx, request); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	if strings.HasPrefix(item.OperationKey, "interactive-answer:") {
-		var value struct {
-			MessageID string `json:"messageId"`
-		}
-		if json.Unmarshal(response, &value) == nil && value.MessageID != "" {
-			requestID, parseErr := uuid.Parse(strings.TrimPrefix(item.OperationKey,
-				"interactive-answer:"))
-			if parseErr != nil {
-				return parseErr
-			}
-			_, err = tx.ExecContext(ctx, `UPDATE codex_interactive_requests SET
-				discord_answer_message_id=$2, updated_at=now() WHERE id=$1`,
-				requestID, value.MessageID)
-			if err != nil {
-				return err
-			}
-			request, loadErr := loadInteractiveProjectionTx(ctx, tx, requestID, false)
-			if loadErr != nil {
-				return loadErr
-			}
-			if request.MessageID != "" {
-				if err = enqueueInteractiveAnswerLinkTx(ctx, tx, request); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	if strings.HasPrefix(item.OperationKey, "interactive-answer-link:") {
-		var value struct {
-			MessageID string `json:"messageId"`
-		}
-		if json.Unmarshal(response, &value) == nil && value.MessageID != "" {
-			_, err = tx.ExecContext(ctx, `UPDATE codex_interactive_requests SET
-				discord_message_id=$2, updated_at=now() WHERE id=$1`,
-				strings.TrimPrefix(item.OperationKey, "interactive-answer-link:"), value.MessageID)
-			if err != nil {
-				return err
-			}
 		}
 	}
 	if strings.HasPrefix(item.OperationKey, "task-log:") || strings.HasPrefix(item.OperationKey, "task-card:") {
@@ -489,23 +463,6 @@ func (s *SQLoutbox) Apply(ctx context.Context, item OutboxItem) error {
 			WHERE id = $1 AND title_rename_status = 'scheduled'`, conversationID)
 		if err != nil {
 			return err
-		}
-	}
-	if strings.HasPrefix(item.OperationKey, "thread-name:") {
-		var sent struct {
-			ControlID string `json:"controlId"`
-			Name      string `json:"threadName"`
-			Revision  int64  `json:"revision"`
-		}
-		if json.Unmarshal(item.Payload, &sent) == nil && sent.ControlID != "" {
-			_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET
-				applied_thread_name = $2, applied_thread_name_revision = $3,
-				thread_name_last_error = NULL, updated_at = now()
-				WHERE id = $1 AND desired_thread_name_revision = $3`,
-				sent.ControlID, sent.Name, sent.Revision)
-			if err != nil {
-				return err
-			}
 		}
 	}
 	if strings.HasPrefix(item.OperationKey, "conversation-lifecycle-card:") {
@@ -602,7 +559,7 @@ func (s *SQLoutbox) Apply(ctx context.Context, item OutboxItem) error {
 		if value.MessageID != "" && previous.ChannelID != "" && previous.MessageID != "" &&
 			value.MessageID != previous.MessageID {
 			if !messageReplacementReferenceSupported(item.OperationKey) {
-				return fmt.Errorf("Discord 替代消息缺少本地引用回写: %s", item.OperationKey)
+				return fmt.Errorf("discord 替代消息缺少本地引用回写: %s", item.OperationKey)
 			}
 			_, err = tx.ExecContext(ctx, `UPDATE integration_outbox SET
 				operation_type='message.update', nonce=NULL,
@@ -627,16 +584,15 @@ func (s *SQLoutbox) Apply(ctx context.Context, item OutboxItem) error {
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	if desktopRequestID != uuid.Nil {
-		return s.replayDesktopProjection(ctx, desktopRequestID)
+	if officialBindingID != uuid.Nil {
+		return ReplayOfficialThreadProjection(ctx, s.db, officialBindingID)
 	}
 	return nil
 }
 
 func messageReplacementReferenceSupported(operationKey string) bool {
 	prefixes := []string{
-		"projection:", "task-card:", "interactive:", "interactive-answer:",
-		"interactive-answer-link:", "conversation-lifecycle-card:",
+		"projection:", "task-card:", "conversation-lifecycle-card:",
 	}
 	for _, prefix := range prefixes {
 		if strings.HasPrefix(operationKey, prefix) {
@@ -703,25 +659,6 @@ func (s *SQLoutbox) FailDelivery(ctx context.Context, item OutboxItem, cause err
 		_, err = tx.ExecContext(ctx, `UPDATE discord_conversations SET title_rename_status = 'failed',
 			updated_at = now() WHERE id = $1 AND title_rename_status = 'scheduled'`,
 			strings.TrimPrefix(item.OperationKey, "conversation-title:"))
-		if err != nil {
-			return err
-		}
-	}
-	if strings.HasPrefix(item.OperationKey, "desktop-thread-post:") {
-		requestID := strings.TrimPrefix(item.OperationKey, "desktop-thread-post:")
-		_, err = tx.ExecContext(ctx, `UPDATE desktop_thread_requests SET status = 'post_failed',
-			error = $2, updated_at = now() WHERE id = $1 AND status = 'post_pending'`,
-			requestID, cause.Error())
-		if err != nil {
-			return err
-		}
-	}
-	if strings.HasPrefix(item.OperationKey, "thread-name:") {
-		controlID := strings.TrimPrefix(item.OperationKey, "thread-name:")
-		_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET
-			thread_name_last_error = $2, updated_at = now()
-			WHERE id = $1 AND desired_thread_name_revision > applied_thread_name_revision`,
-			controlID, cause.Error())
 		if err != nil {
 			return err
 		}

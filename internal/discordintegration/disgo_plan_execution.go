@@ -26,7 +26,8 @@ func (c *DisgoConnector) executePlanComponent(event *events.ComponentInteraction
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_, err = service.ExecutePlan(ctx, c.guildID, event.Channel().ID().String(),
-		event.User().ID.String(), event.User().EffectiveName(), event.User().Username, runID)
+		event.User().ID.String(), event.User().EffectiveName(), event.User().Username,
+		runID, event.ID().String())
 	if err != nil {
 		_ = event.CreateMessage(discord.NewMessageCreate().
 			WithContent(err.Error()).WithEphemeral(true))

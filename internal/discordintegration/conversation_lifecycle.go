@@ -75,26 +75,17 @@ func EnqueueConversationLifecycleTx(ctx context.Context, tx *sql.Tx,
 func conversationLifecycleProjectionReady(ctx context.Context, tx *sql.Tx,
 	conversationID uuid.UUID,
 ) (bool, error) {
-	var active bool
-	err := tx.QueryRowContext(ctx, `SELECT EXISTS(
-		SELECT 1 FROM codex_turn_runs run
-		JOIN codex_thread_controls control ON control.id = run.control_id
-		JOIN discord_conversations conversation ON conversation.id = control.discord_conversation_id
-		WHERE conversation.id = $1
-			AND run.status IN ('starting','running','waiting_for_user','reconciling')
-	)`, conversationID).Scan(&active)
-	if err != nil || active {
-		return false, err
-	}
 	var pending bool
-	prefix := conversationID.String()
-	err = tx.QueryRowContext(ctx, `SELECT EXISTS(
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(
 		SELECT 1 FROM integration_outbox
 		WHERE integration = 'discord' AND status <> 'completed' AND (
-			operation_key LIKE $1 OR operation_key LIKE $2 OR operation_key LIKE $3
+			operation_key LIKE $2 OR operation_key IN (
+				SELECT 'official-thread-post:' || binding.id::text
+				FROM official_thread_bindings binding
+				WHERE binding.conversation_id=$1
+			)
 		)
-	)`, "projection:conversation:"+prefix+":%",
-		"conversation-reply:"+prefix+":%", "desktop-input:"+prefix+":%").Scan(&pending)
+	)`, conversationID, "projection:official:"+conversationID.String()+":%").Scan(&pending)
 	return !pending, err
 }
 

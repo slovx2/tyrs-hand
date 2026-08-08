@@ -16,6 +16,8 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - tapOn:
     id: "project:row:0"
 - tapOn:
+    id: "project:new-task:add"
+- tapOn:
     id: "composer:parameters"
 - tapOn:
     id: "parameters:mode:plan"
@@ -49,7 +51,7 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     id: "interactive:.*:submit"
 - extendedWaitUntil:
     visible:
-      id: "message:intent-result.*"
+      id: "message:role:agent"
     timeout: 120000
 - assertVisible: ".*交互闭环完成.*"
 - assertNotVisible:

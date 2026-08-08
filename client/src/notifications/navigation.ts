@@ -25,8 +25,12 @@ export async function openNotificationTarget(data: NotificationTarget): Promise<
   if (typeof data.serverId !== "string" || typeof data.sessionId !== "string" ||
     !data.serverId || !data.sessionId) return false;
   const state = useAppStore.getState();
-  if (!state.connections.some((connection) => connection.serverId === data.serverId)) return false;
-  await state.switchConnection(data.serverId);
+  const connection = state.connections.find((item) =>
+    item.kind === "control" && item.serverId === data.serverId);
+  if (!connection) return false;
+  await state.switchConnection(connection.profileId);
+  await useAppStore.getState().refresh();
+  if (!useAppStore.getState().threads.some((item) => item.thread.id === data.sessionId)) return false;
   router.replace({ pathname: "/session/[id]", params: { id: data.sessionId } });
   return true;
 }

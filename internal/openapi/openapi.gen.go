@@ -28,45 +28,7 @@ const (
 
 // Defines values for ClientBootstrapProtocolVersion.
 const (
-	N3 ClientBootstrapProtocolVersion = 3
-)
-
-// Defines values for ClientSessionCollaborationMode.
-const (
-	ClientSessionCollaborationModeDefault ClientSessionCollaborationMode = "default"
-	ClientSessionCollaborationModePlan    ClientSessionCollaborationMode = "plan"
-)
-
-// Defines values for ClientSessionHistoryCompleteness.
-const (
-	Complete ClientSessionHistoryCompleteness = "complete"
-	Partial  ClientSessionHistoryCompleteness = "partial"
-)
-
-// Defines values for ClientSessionLifecycleState.
-const (
-	ClientSessionLifecycleStateActive           ClientSessionLifecycleState = "active"
-	ClientSessionLifecycleStateArchivePending   ClientSessionLifecycleState = "archive_pending"
-	ClientSessionLifecycleStateArchived         ClientSessionLifecycleState = "archived"
-	ClientSessionLifecycleStateUnarchivePending ClientSessionLifecycleState = "unarchive_pending"
-)
-
-// Defines values for ClientSessionServiceTier.
-const (
-	ClientSessionServiceTierFast     ClientSessionServiceTier = "fast"
-	ClientSessionServiceTierStandard ClientSessionServiceTier = "standard"
-)
-
-// Defines values for ClientSessionSettingsCollaborationMode.
-const (
-	ClientSessionSettingsCollaborationModeDefault ClientSessionSettingsCollaborationMode = "default"
-	ClientSessionSettingsCollaborationModePlan    ClientSessionSettingsCollaborationMode = "plan"
-)
-
-// Defines values for ClientSessionSettingsServiceTier.
-const (
-	ClientSessionSettingsServiceTierFast     ClientSessionSettingsServiceTier = "fast"
-	ClientSessionSettingsServiceTierStandard ClientSessionSettingsServiceTier = "standard"
+	N4 ClientBootstrapProtocolVersion = 4
 )
 
 // Defines values for DiscordInitializationInputMode.
@@ -134,15 +96,7 @@ const (
 
 // Defines values for WorkerClaimRequestRole.
 const (
-	WorkerClaimRequestRoleAll     WorkerClaimRequestRole = "all"
-	WorkerClaimRequestRoleDiscord WorkerClaimRequestRole = "discord"
-	WorkerClaimRequestRoleGithub  WorkerClaimRequestRole = "github"
-)
-
-// Defines values for WorkerCommandAckAction.
-const (
-	Interrupt WorkerCommandAckAction = "interrupt"
-	Steer     WorkerCommandAckAction = "steer"
+	WorkerClaimRequestRoleGithub WorkerClaimRequestRole = "github"
 )
 
 // Defines values for WorkerCreatedExpiresIn.
@@ -158,8 +112,8 @@ const (
 
 // Defines values for WorkspaceForumBindingStatus.
 const (
-	WorkspaceForumBindingStatusActive   WorkspaceForumBindingStatus = "active"
-	WorkspaceForumBindingStatusInactive WorkspaceForumBindingStatus = "inactive"
+	Active   WorkspaceForumBindingStatus = "active"
+	Inactive WorkspaceForumBindingStatus = "inactive"
 )
 
 // Defines values for WorkspaceForumCollaboratorAccessLevel.
@@ -199,20 +153,6 @@ const (
 	Ios     ClientPutPushTokenJSONBodyPlatform = "ios"
 )
 
-// Defines values for ClientListSessionsParamsLifecycle.
-const (
-	Active           ClientListSessionsParamsLifecycle = "active"
-	ArchivePending   ClientListSessionsParamsLifecycle = "archive_pending"
-	Archived         ClientListSessionsParamsLifecycle = "archived"
-	UnarchivePending ClientListSessionsParamsLifecycle = "unarchive_pending"
-)
-
-// Defines values for ClientCreateMessageJSONBodyBehavior.
-const (
-	StartWhenIdle ClientCreateMessageJSONBodyBehavior = "start_when_idle"
-	SteerIfActive ClientCreateMessageJSONBodyBehavior = "steer_if_active"
-)
-
 // Defines values for PutDiscordForumAccessJSONBodyAccessLevel.
 const (
 	PutDiscordForumAccessJSONBodyAccessLevelOperator PutDiscordForumAccessJSONBodyAccessLevel = "operator"
@@ -235,18 +175,11 @@ type Administrator struct {
 
 // ClientBootstrap defines model for ClientBootstrap.
 type ClientBootstrap struct {
-	AgentProfiles []struct {
-		Id   openapi_types.UUID `json:"id"`
-		Name string             `json:"name"`
-	} `json:"agentProfiles"`
-	Capabilities        map[string]bool                `json:"capabilities"`
-	CurrentCursor       int64                          `json:"currentCursor"`
-	LastStartedSettings *ClientSessionSettings         `json:"lastStartedSettings"`
-	ModelCatalogs       map[string]ClientModelCatalog  `json:"modelCatalogs"`
-	Projects            []ClientProject                `json:"projects"`
-	ProtocolVersion     ClientBootstrapProtocolVersion `json:"protocolVersion"`
-	ServerId            openapi_types.UUID             `json:"serverId"`
-	User                struct {
+	Capabilities    map[string]bool                `json:"capabilities"`
+	Projects        []ClientProject                `json:"projects"`
+	ProtocolVersion ClientBootstrapProtocolVersion `json:"protocolVersion"`
+	ServerId        openapi_types.UUID             `json:"serverId"`
+	User            struct {
 		Id       openapi_types.UUID `json:"id"`
 		Username string             `json:"username"`
 	} `json:"user"`
@@ -255,17 +188,6 @@ type ClientBootstrap struct {
 
 // ClientBootstrapProtocolVersion defines model for ClientBootstrap.ProtocolVersion.
 type ClientBootstrapProtocolVersion int
-
-// ClientCreateSession defines model for ClientCreateSession.
-type ClientCreateSession struct {
-	InitialMessage struct {
-		AttachmentIds *[]openapi_types.UUID `json:"attachmentIds,omitempty"`
-		LocalId       string                `json:"localId"`
-		Text          string                `json:"text"`
-	} `json:"initialMessage"`
-	ProjectId openapi_types.UUID    `json:"projectId"`
-	Settings  ClientSessionSettings `json:"settings"`
-}
 
 // ClientModel defines model for ClientModel.
 type ClientModel struct {
@@ -290,14 +212,9 @@ type ClientModel struct {
 	} `json:"supportedReasoningEfforts"`
 }
 
-// ClientModelCatalog defines model for ClientModelCatalog.
-type ClientModelCatalog struct {
-	Data       []ClientModel `json:"data"`
-	NextCursor *string       `json:"nextCursor"`
-}
-
 // ClientProject defines model for ClientProject.
 type ClientProject struct {
+	AbsolutePath       string             `json:"absolutePath"`
 	AvailabilityStatus string             `json:"availabilityStatus"`
 	Branch             *string            `json:"branch"`
 	Dirty              bool               `json:"dirty"`
@@ -307,58 +224,6 @@ type ClientProject struct {
 	RelativePath       string             `json:"relativePath"`
 	WorkspaceId        openapi_types.UUID `json:"workspaceId"`
 }
-
-// ClientSession defines model for ClientSession.
-type ClientSession struct {
-	AgentProfileId       openapi_types.UUID               `json:"agentProfileId"`
-	CollaborationMode    ClientSessionCollaborationMode   `json:"collaborationMode"`
-	CreatedAt            time.Time                        `json:"createdAt"`
-	HasRunIssue          bool                             `json:"hasRunIssue"`
-	HistoryCompleteness  ClientSessionHistoryCompleteness `json:"historyCompleteness"`
-	Id                   openapi_types.UUID               `json:"id"`
-	IsRunning            bool                             `json:"isRunning"`
-	LastActivityAt       time.Time                        `json:"lastActivityAt"`
-	LastAgentMessageSeq  int64                            `json:"lastAgentMessageSeq"`
-	LastMessageSeq       int64                            `json:"lastMessageSeq"`
-	LifecycleState       ClientSessionLifecycleState      `json:"lifecycleState"`
-	Model                *string                          `json:"model"`
-	PendingInteractiveId *openapi_types.UUID              `json:"pendingInteractiveId"`
-	ProjectId            openapi_types.UUID               `json:"projectId"`
-	ReasoningEffort      *string                          `json:"reasoningEffort"`
-	ServiceTier          ClientSessionServiceTier         `json:"serviceTier"`
-	SettingsVersion      int64                            `json:"settingsVersion"`
-	Title                string                           `json:"title"`
-	UpdatedAt            time.Time                        `json:"updatedAt"`
-	WorkspaceId          openapi_types.UUID               `json:"workspaceId"`
-}
-
-// ClientSessionCollaborationMode defines model for ClientSession.CollaborationMode.
-type ClientSessionCollaborationMode string
-
-// ClientSessionHistoryCompleteness defines model for ClientSession.HistoryCompleteness.
-type ClientSessionHistoryCompleteness string
-
-// ClientSessionLifecycleState defines model for ClientSession.LifecycleState.
-type ClientSessionLifecycleState string
-
-// ClientSessionServiceTier defines model for ClientSession.ServiceTier.
-type ClientSessionServiceTier string
-
-// ClientSessionSettings defines model for ClientSessionSettings.
-type ClientSessionSettings struct {
-	AgentProfileId    openapi_types.UUID                     `json:"agentProfileId"`
-	CollaborationMode ClientSessionSettingsCollaborationMode `json:"collaborationMode"`
-	Model             *string                                `json:"model"`
-	ReasoningEffort   *string                                `json:"reasoningEffort"`
-	ServiceTier       ClientSessionSettingsServiceTier       `json:"serviceTier"`
-	SettingsVersion   int64                                  `json:"settingsVersion"`
-}
-
-// ClientSessionSettingsCollaborationMode defines model for ClientSessionSettings.CollaborationMode.
-type ClientSessionSettingsCollaborationMode string
-
-// ClientSessionSettingsServiceTier defines model for ClientSessionSettings.ServiceTier.
-type ClientSessionSettingsServiceTier string
 
 // DiscordConflict defines model for DiscordConflict.
 type DiscordConflict struct {
@@ -719,18 +584,6 @@ type WorkerClaimResponse struct {
 	Task *map[string]interface{} `json:"task,omitempty"`
 }
 
-// WorkerCommandAck defines model for WorkerCommandAck.
-type WorkerCommandAck struct {
-	Action     WorkerCommandAckAction `json:"action"`
-	CommandId  openapi_types.UUID     `json:"commandId"`
-	LeaseEpoch int64                  `json:"leaseEpoch"`
-	LeaseToken *string                `json:"leaseToken,omitempty"`
-	TurnId     *string                `json:"turnId,omitempty"`
-}
-
-// WorkerCommandAckAction defines model for WorkerCommandAck.Action.
-type WorkerCommandAckAction string
-
 // WorkerCompleteRequest defines model for WorkerCompleteRequest.
 type WorkerCompleteRequest struct {
 	IdempotencyKey string                 `json:"idempotencyKey"`
@@ -837,36 +690,6 @@ type WorkerSSHHost struct {
 	Port           int                `json:"port"`
 	ProxyJumpAlias *string            `json:"proxyJumpAlias,omitempty"`
 	Username       string             `json:"username"`
-}
-
-// WorkerSessionTitleClaimResponse defines model for WorkerSessionTitleClaimResponse.
-type WorkerSessionTitleClaimResponse struct {
-	Task *WorkerSessionTitleTask `json:"task,omitempty"`
-}
-
-// WorkerSessionTitleCompleteRequest defines model for WorkerSessionTitleCompleteRequest.
-type WorkerSessionTitleCompleteRequest struct {
-	LeaseToken    *string `json:"leaseToken,omitempty"`
-	Title         string  `json:"title"`
-	TitleRevision int64   `json:"titleRevision"`
-}
-
-// WorkerSessionTitleFailRequest defines model for WorkerSessionTitleFailRequest.
-type WorkerSessionTitleFailRequest struct {
-	ErrorCode  string  `json:"errorCode"`
-	LeaseToken *string `json:"leaseToken,omitempty"`
-}
-
-// WorkerSessionTitleTask defines model for WorkerSessionTitleTask.
-type WorkerSessionTitleTask struct {
-	Attempt        int                `json:"attempt"`
-	FirstMessage   string             `json:"firstMessage"`
-	Id             openapi_types.UUID `json:"id"`
-	LeaseExpiresAt time.Time          `json:"leaseExpiresAt"`
-	LeaseToken     *string            `json:"leaseToken,omitempty"`
-	SessionId      openapi_types.UUID `json:"sessionId"`
-	TitleRevision  int64              `json:"titleRevision"`
-	WorkspaceId    openapi_types.UUID `json:"workspaceId"`
 }
 
 // Workspace defines model for Workspace.
@@ -990,76 +813,16 @@ type ClientPutPushTokenJSONBodyAppEnvironment string
 // ClientPutPushTokenJSONBodyPlatform defines parameters for ClientPutPushToken.
 type ClientPutPushTokenJSONBodyPlatform string
 
-// ClientAnswerInteractiveJSONBody defines parameters for ClientAnswerInteractive.
-type ClientAnswerInteractiveJSONBody struct {
-	Answer map[string]interface{} `json:"answer"`
+// ClientCreateMaterializationMultipartBody defines parameters for ClientCreateMaterialization.
+type ClientCreateMaterializationMultipartBody struct {
+	ClientId    string             `json:"clientId"`
+	File        openapi_types.File `json:"file"`
+	WorkspaceId openapi_types.UUID `json:"workspaceId"`
 }
 
-// ClientListRunSegmentActivitiesParams defines parameters for ClientListRunSegmentActivities.
-type ClientListRunSegmentActivitiesParams struct {
-	BeforeActivitySeq *int64 `form:"beforeActivitySeq,omitempty" json:"beforeActivitySeq,omitempty"`
-	AfterEventSeq     *int64 `form:"afterEventSeq,omitempty" json:"afterEventSeq,omitempty"`
-	Limit             *int   `form:"limit,omitempty" json:"limit,omitempty"`
-}
-
-// ClientListSessionsParams defines parameters for ClientListSessions.
-type ClientListSessionsParams struct {
-	Cursor    *string                            `form:"cursor,omitempty" json:"cursor,omitempty"`
-	Limit     *int                               `form:"limit,omitempty" json:"limit,omitempty"`
-	ProjectId *openapi_types.UUID                `form:"projectId,omitempty" json:"projectId,omitempty"`
-	Lifecycle *ClientListSessionsParamsLifecycle `form:"lifecycle,omitempty" json:"lifecycle,omitempty"`
-}
-
-// ClientListSessionsParamsLifecycle defines parameters for ClientListSessions.
-type ClientListSessionsParamsLifecycle string
-
-// ClientPatchSessionJSONBody defines parameters for ClientPatchSession.
-type ClientPatchSessionJSONBody map[string]interface{}
-
-// ClientListMessagesParams defines parameters for ClientListMessages.
-type ClientListMessagesParams struct {
-	BeforeSeq *int64 `form:"beforeSeq,omitempty" json:"beforeSeq,omitempty"`
-	AfterSeq  *int64 `form:"afterSeq,omitempty" json:"afterSeq,omitempty"`
-	Limit     *int   `form:"limit,omitempty" json:"limit,omitempty"`
-}
-
-// ClientCreateMessageJSONBody defines parameters for ClientCreateMessage.
-type ClientCreateMessageJSONBody struct {
-	AttachmentIds *[]openapi_types.UUID                `json:"attachmentIds,omitempty"`
-	Behavior      *ClientCreateMessageJSONBodyBehavior `json:"behavior,omitempty"`
-	LocalId       string                               `json:"localId"`
-	Text          string                               `json:"text"`
-}
-
-// ClientCreateMessageJSONBodyBehavior defines parameters for ClientCreateMessage.
-type ClientCreateMessageJSONBodyBehavior string
-
-// ClientGetSessionSnapshotParams defines parameters for ClientGetSessionSnapshot.
-type ClientGetSessionSnapshotParams struct {
-	TurnLimit *int `form:"turnLimit,omitempty" json:"turnLimit,omitempty"`
-}
-
-// ClientListTurnsParams defines parameters for ClientListTurns.
-type ClientListTurnsParams struct {
-	BeforeCursor *string `form:"beforeCursor,omitempty" json:"beforeCursor,omitempty"`
-	Limit        *int    `form:"limit,omitempty" json:"limit,omitempty"`
-}
-
-// ClientSyncParams defines parameters for ClientSync.
-type ClientSyncParams struct {
-	AfterCursor *int64 `form:"afterCursor,omitempty" json:"afterCursor,omitempty"`
-	Limit       *int   `form:"limit,omitempty" json:"limit,omitempty"`
-}
-
-// ClientUpdatesWebSocketParams defines parameters for ClientUpdatesWebSocket.
-type ClientUpdatesWebSocketParams struct {
-	Cursor *int64 `form:"cursor,omitempty" json:"cursor,omitempty"`
-}
-
-// ClientUploadMultipartBody defines parameters for ClientUpload.
-type ClientUploadMultipartBody struct {
-	File    openapi_types.File `json:"file"`
-	LocalId string             `json:"localId"`
+// ClientCreateAppServerTunnelJSONBody defines parameters for ClientCreateAppServerTunnel.
+type ClientCreateAppServerTunnelJSONBody struct {
+	WorkspaceId openapi_types.UUID `json:"workspaceId"`
 }
 
 // DeleteDiscordForumAccessParams defines parameters for DeleteDiscordForumAccess.
@@ -1207,62 +970,16 @@ type ReceiveGitHubWebhookParams struct {
 	XGitHubEvent     string `json:"X-GitHub-Event"`
 }
 
-// DownloadWorkerBlobParams defines parameters for DownloadWorkerBlob.
-type DownloadWorkerBlobParams struct {
-	RunId          openapi_types.UUID `form:"runId" json:"runId"`
-	XRunLeaseToken string             `json:"X-Run-Lease-Token"`
-	XRunLeaseEpoch int64              `json:"X-Run-Lease-Epoch"`
+// WorkerCompleteMaterializationJSONBody defines parameters for WorkerCompleteMaterialization.
+type WorkerCompleteMaterializationJSONBody map[string]interface{}
+
+// WorkerDownloadMaterializationParams defines parameters for WorkerDownloadMaterialization.
+type WorkerDownloadMaterializationParams struct {
+	XMaterializationLeaseToken string `json:"X-Materialization-Lease-Token"`
 }
 
-// UploadWorkerBlobMultipartBody defines parameters for UploadWorkerBlob.
-type UploadWorkerBlobMultipartBody struct {
-	File     openapi_types.File `json:"file"`
-	Metadata string             `json:"metadata"`
-}
-
-// UploadWorkerBlobParams defines parameters for UploadWorkerBlob.
-type UploadWorkerBlobParams struct {
-	Ordinal int `form:"ordinal" json:"ordinal"`
-}
-
-// WorkerPrepareDesktopRollbackJSONBody defines parameters for WorkerPrepareDesktopRollback.
-type WorkerPrepareDesktopRollbackJSONBody map[string]interface{}
-
-// WorkerCompleteDesktopRollbackJSONBody defines parameters for WorkerCompleteDesktopRollback.
-type WorkerCompleteDesktopRollbackJSONBody map[string]interface{}
-
-// WorkerRecordDesktopSteerJSONBody defines parameters for WorkerRecordDesktopSteer.
-type WorkerRecordDesktopSteerJSONBody map[string]interface{}
-
-// WorkerPrepareDesktopThreadJSONBody defines parameters for WorkerPrepareDesktopThread.
-type WorkerPrepareDesktopThreadJSONBody map[string]interface{}
-
-// WorkerCompleteDesktopThreadJSONBody defines parameters for WorkerCompleteDesktopThread.
-type WorkerCompleteDesktopThreadJSONBody map[string]interface{}
-
-// WorkerFailDesktopThreadJSONBody defines parameters for WorkerFailDesktopThread.
-type WorkerFailDesktopThreadJSONBody map[string]interface{}
-
-// WorkerPrepareDesktopTurnJSONBody defines parameters for WorkerPrepareDesktopTurn.
-type WorkerPrepareDesktopTurnJSONBody map[string]interface{}
-
-// WorkerPreflightDesktopTurnJSONBody defines parameters for WorkerPreflightDesktopTurn.
-type WorkerPreflightDesktopTurnJSONBody map[string]interface{}
-
-// WorkerFailDesktopImageJSONBody defines parameters for WorkerFailDesktopImage.
-type WorkerFailDesktopImageJSONBody map[string]interface{}
-
-// WorkerAnswerInteractiveJSONBody defines parameters for WorkerAnswerInteractive.
-type WorkerAnswerInteractiveJSONBody map[string]interface{}
-
-// WorkerUploadAgentAttachmentMultipartBody defines parameters for WorkerUploadAgentAttachment.
-type WorkerUploadAgentAttachmentMultipartBody struct {
-	File       openapi_types.File `json:"file"`
-	ItemId     string             `json:"itemId"`
-	LeaseEpoch int64              `json:"leaseEpoch"`
-	LeaseToken string             `json:"leaseToken"`
-	Ordinal    int                `json:"ordinal"`
-}
+// WorkerFailMaterializationJSONBody defines parameters for WorkerFailMaterialization.
+type WorkerFailMaterializationJSONBody map[string]interface{}
 
 // WorkerConfirmTurnJSONBody defines parameters for WorkerConfirmTurn.
 type WorkerConfirmTurnJSONBody map[string]interface{}
@@ -1273,9 +990,6 @@ type WorkerGitCredentialJSONBody map[string]interface{}
 // WorkerRunHeartbeatJSONBody defines parameters for WorkerRunHeartbeat.
 type WorkerRunHeartbeatJSONBody map[string]interface{}
 
-// WorkerRegisterInteractiveJSONBody defines parameters for WorkerRegisterInteractive.
-type WorkerRegisterInteractiveJSONBody map[string]interface{}
-
 // WorkerRecordSubmissionJSONBody defines parameters for WorkerRecordSubmission.
 type WorkerRecordSubmissionJSONBody map[string]interface{}
 
@@ -1285,23 +999,8 @@ type WorkerSetThreadJSONBody map[string]interface{}
 // WorkerToolCallJSONBody defines parameters for WorkerToolCall.
 type WorkerToolCallJSONBody map[string]interface{}
 
-// WorkerWorkspaceProjectStateJSONBody defines parameters for WorkerWorkspaceProjectState.
-type WorkerWorkspaceProjectStateJSONBody map[string]interface{}
-
 // WorkerWorkspaceStateJSONBody defines parameters for WorkerWorkspaceState.
 type WorkerWorkspaceStateJSONBody map[string]interface{}
-
-// WorkerPrepareDesktopThreadLifecycleJSONBody defines parameters for WorkerPrepareDesktopThreadLifecycle.
-type WorkerPrepareDesktopThreadLifecycleJSONBody map[string]interface{}
-
-// WorkerCompleteThreadLifecycleJSONBody defines parameters for WorkerCompleteThreadLifecycle.
-type WorkerCompleteThreadLifecycleJSONBody map[string]interface{}
-
-// WorkerRecordThreadMetadataJSONBody defines parameters for WorkerRecordThreadMetadata.
-type WorkerRecordThreadMetadataJSONBody map[string]interface{}
-
-// WorkerAckThreadNameJSONBody defines parameters for WorkerAckThreadName.
-type WorkerAckThreadNameJSONBody map[string]interface{}
 
 // WorkerWorkspaceProjectSnapshotJSONBody defines parameters for WorkerWorkspaceProjectSnapshot.
 type WorkerWorkspaceProjectSnapshotJSONBody map[string]interface{}
@@ -1387,20 +1086,11 @@ type ClientClaimDevicePairingJSONRequestBody ClientClaimDevicePairingJSONBody
 // ClientPutPushTokenJSONRequestBody defines body for ClientPutPushToken for application/json ContentType.
 type ClientPutPushTokenJSONRequestBody ClientPutPushTokenJSONBody
 
-// ClientAnswerInteractiveJSONRequestBody defines body for ClientAnswerInteractive for application/json ContentType.
-type ClientAnswerInteractiveJSONRequestBody ClientAnswerInteractiveJSONBody
+// ClientCreateMaterializationMultipartRequestBody defines body for ClientCreateMaterialization for multipart/form-data ContentType.
+type ClientCreateMaterializationMultipartRequestBody ClientCreateMaterializationMultipartBody
 
-// ClientCreateSessionJSONRequestBody defines body for ClientCreateSession for application/json ContentType.
-type ClientCreateSessionJSONRequestBody = ClientCreateSession
-
-// ClientPatchSessionJSONRequestBody defines body for ClientPatchSession for application/json ContentType.
-type ClientPatchSessionJSONRequestBody ClientPatchSessionJSONBody
-
-// ClientCreateMessageJSONRequestBody defines body for ClientCreateMessage for application/json ContentType.
-type ClientCreateMessageJSONRequestBody ClientCreateMessageJSONBody
-
-// ClientUploadMultipartRequestBody defines body for ClientUpload for multipart/form-data ContentType.
-type ClientUploadMultipartRequestBody ClientUploadMultipartBody
+// ClientCreateAppServerTunnelJSONRequestBody defines body for ClientCreateAppServerTunnel for application/json ContentType.
+type ClientCreateAppServerTunnelJSONRequestBody ClientCreateAppServerTunnelJSONBody
 
 // PutDiscordForumAccessJSONRequestBody defines body for PutDiscordForumAccess for application/json ContentType.
 type PutDiscordForumAccessJSONRequestBody PutDiscordForumAccessJSONBody
@@ -1462,38 +1152,8 @@ type CreateTriggerRuleJSONRequestBody = TriggerRuleInput
 // ReceiveGitHubWebhookJSONRequestBody defines body for ReceiveGitHubWebhook for application/json ContentType.
 type ReceiveGitHubWebhookJSONRequestBody ReceiveGitHubWebhookJSONBody
 
-// UploadWorkerBlobMultipartRequestBody defines body for UploadWorkerBlob for multipart/form-data ContentType.
-type UploadWorkerBlobMultipartRequestBody UploadWorkerBlobMultipartBody
-
 // WorkerClaimJSONRequestBody defines body for WorkerClaim for application/json ContentType.
 type WorkerClaimJSONRequestBody = WorkerClaimRequest
-
-// WorkerPrepareDesktopRollbackJSONRequestBody defines body for WorkerPrepareDesktopRollback for application/json ContentType.
-type WorkerPrepareDesktopRollbackJSONRequestBody WorkerPrepareDesktopRollbackJSONBody
-
-// WorkerCompleteDesktopRollbackJSONRequestBody defines body for WorkerCompleteDesktopRollback for application/json ContentType.
-type WorkerCompleteDesktopRollbackJSONRequestBody WorkerCompleteDesktopRollbackJSONBody
-
-// WorkerRecordDesktopSteerJSONRequestBody defines body for WorkerRecordDesktopSteer for application/json ContentType.
-type WorkerRecordDesktopSteerJSONRequestBody WorkerRecordDesktopSteerJSONBody
-
-// WorkerPrepareDesktopThreadJSONRequestBody defines body for WorkerPrepareDesktopThread for application/json ContentType.
-type WorkerPrepareDesktopThreadJSONRequestBody WorkerPrepareDesktopThreadJSONBody
-
-// WorkerCompleteDesktopThreadJSONRequestBody defines body for WorkerCompleteDesktopThread for application/json ContentType.
-type WorkerCompleteDesktopThreadJSONRequestBody WorkerCompleteDesktopThreadJSONBody
-
-// WorkerFailDesktopThreadJSONRequestBody defines body for WorkerFailDesktopThread for application/json ContentType.
-type WorkerFailDesktopThreadJSONRequestBody WorkerFailDesktopThreadJSONBody
-
-// WorkerPrepareDesktopTurnJSONRequestBody defines body for WorkerPrepareDesktopTurn for application/json ContentType.
-type WorkerPrepareDesktopTurnJSONRequestBody WorkerPrepareDesktopTurnJSONBody
-
-// WorkerPreflightDesktopTurnJSONRequestBody defines body for WorkerPreflightDesktopTurn for application/json ContentType.
-type WorkerPreflightDesktopTurnJSONRequestBody WorkerPreflightDesktopTurnJSONBody
-
-// WorkerFailDesktopImageJSONRequestBody defines body for WorkerFailDesktopImage for application/json ContentType.
-type WorkerFailDesktopImageJSONRequestBody WorkerFailDesktopImageJSONBody
 
 // EnrollWorkerJSONRequestBody defines body for EnrollWorker for application/json ContentType.
 type EnrollWorkerJSONRequestBody = WorkerEnrollRequest
@@ -1501,14 +1161,11 @@ type EnrollWorkerJSONRequestBody = WorkerEnrollRequest
 // WorkerHeartbeatJSONRequestBody defines body for WorkerHeartbeat for application/json ContentType.
 type WorkerHeartbeatJSONRequestBody = WorkerHeartbeat
 
-// WorkerAnswerInteractiveJSONRequestBody defines body for WorkerAnswerInteractive for application/json ContentType.
-type WorkerAnswerInteractiveJSONRequestBody WorkerAnswerInteractiveJSONBody
+// WorkerCompleteMaterializationJSONRequestBody defines body for WorkerCompleteMaterialization for application/json ContentType.
+type WorkerCompleteMaterializationJSONRequestBody WorkerCompleteMaterializationJSONBody
 
-// WorkerUploadAgentAttachmentMultipartRequestBody defines body for WorkerUploadAgentAttachment for multipart/form-data ContentType.
-type WorkerUploadAgentAttachmentMultipartRequestBody WorkerUploadAgentAttachmentMultipartBody
-
-// WorkerCommandAckJSONRequestBody defines body for WorkerCommandAck for application/json ContentType.
-type WorkerCommandAckJSONRequestBody = WorkerCommandAck
+// WorkerFailMaterializationJSONRequestBody defines body for WorkerFailMaterialization for application/json ContentType.
+type WorkerFailMaterializationJSONRequestBody WorkerFailMaterializationJSONBody
 
 // WorkerRunCompleteJSONRequestBody defines body for WorkerRunComplete for application/json ContentType.
 type WorkerRunCompleteJSONRequestBody = WorkerCompleteRequest
@@ -1528,9 +1185,6 @@ type WorkerGitCredentialJSONRequestBody WorkerGitCredentialJSONBody
 // WorkerRunHeartbeatJSONRequestBody defines body for WorkerRunHeartbeat for application/json ContentType.
 type WorkerRunHeartbeatJSONRequestBody WorkerRunHeartbeatJSONBody
 
-// WorkerRegisterInteractiveJSONRequestBody defines body for WorkerRegisterInteractive for application/json ContentType.
-type WorkerRegisterInteractiveJSONRequestBody WorkerRegisterInteractiveJSONBody
-
 // WorkerRecordSubmissionJSONRequestBody defines body for WorkerRecordSubmission for application/json ContentType.
 type WorkerRecordSubmissionJSONRequestBody WorkerRecordSubmissionJSONBody
 
@@ -1540,29 +1194,8 @@ type WorkerSetThreadJSONRequestBody WorkerSetThreadJSONBody
 // WorkerToolCallJSONRequestBody defines body for WorkerToolCall for application/json ContentType.
 type WorkerToolCallJSONRequestBody WorkerToolCallJSONBody
 
-// WorkerWorkspaceProjectStateJSONRequestBody defines body for WorkerWorkspaceProjectState for application/json ContentType.
-type WorkerWorkspaceProjectStateJSONRequestBody WorkerWorkspaceProjectStateJSONBody
-
 // WorkerWorkspaceStateJSONRequestBody defines body for WorkerWorkspaceState for application/json ContentType.
 type WorkerWorkspaceStateJSONRequestBody WorkerWorkspaceStateJSONBody
-
-// WorkerCompleteSessionTitleJSONRequestBody defines body for WorkerCompleteSessionTitle for application/json ContentType.
-type WorkerCompleteSessionTitleJSONRequestBody = WorkerSessionTitleCompleteRequest
-
-// WorkerFailSessionTitleJSONRequestBody defines body for WorkerFailSessionTitle for application/json ContentType.
-type WorkerFailSessionTitleJSONRequestBody = WorkerSessionTitleFailRequest
-
-// WorkerPrepareDesktopThreadLifecycleJSONRequestBody defines body for WorkerPrepareDesktopThreadLifecycle for application/json ContentType.
-type WorkerPrepareDesktopThreadLifecycleJSONRequestBody WorkerPrepareDesktopThreadLifecycleJSONBody
-
-// WorkerCompleteThreadLifecycleJSONRequestBody defines body for WorkerCompleteThreadLifecycle for application/json ContentType.
-type WorkerCompleteThreadLifecycleJSONRequestBody WorkerCompleteThreadLifecycleJSONBody
-
-// WorkerRecordThreadMetadataJSONRequestBody defines body for WorkerRecordThreadMetadata for application/json ContentType.
-type WorkerRecordThreadMetadataJSONRequestBody WorkerRecordThreadMetadataJSONBody
-
-// WorkerAckThreadNameJSONRequestBody defines body for WorkerAckThreadName for application/json ContentType.
-type WorkerAckThreadNameJSONRequestBody WorkerAckThreadNameJSONBody
 
 // WorkerWorkspaceProjectSnapshotJSONRequestBody defines body for WorkerWorkspaceProjectSnapshot for application/json ContentType.
 type WorkerWorkspaceProjectSnapshotJSONRequestBody WorkerWorkspaceProjectSnapshotJSONBody
@@ -1603,9 +1236,6 @@ type ServerInterface interface {
 	// (GET /auth/me)
 	GetCurrentAdministrator(c *gin.Context)
 
-	// (GET /client/attachments/{id}/content)
-	ClientDownloadAttachment(c *gin.Context, id openapi_types.UUID)
-
 	// (POST /client/auth/login)
 	ClientLogin(c *gin.Context)
 
@@ -1627,59 +1257,20 @@ type ServerInterface interface {
 	// (PUT /client/device/push-token)
 	ClientPutPushToken(c *gin.Context)
 
-	// (POST /client/interactive/{id}/answer)
-	ClientAnswerInteractive(c *gin.Context, id openapi_types.UUID)
+	// (GET /client/legacy/archive/sessions)
+	ClientListLegacyArchive(c *gin.Context)
 
-	// (GET /client/runs/{runId}/segments/{segmentId}/activities)
-	ClientListRunSegmentActivities(c *gin.Context, runId openapi_types.UUID, segmentId openapi_types.UUID, params ClientListRunSegmentActivitiesParams)
+	// (GET /client/legacy/archive/sessions/{id})
+	ClientGetLegacyArchive(c *gin.Context, id openapi_types.UUID)
 
-	// (GET /client/sessions)
-	ClientListSessions(c *gin.Context, params ClientListSessionsParams)
+	// (POST /client/materializations)
+	ClientCreateMaterialization(c *gin.Context)
 
-	// (POST /client/sessions)
-	ClientCreateSession(c *gin.Context)
+	// (POST /client/tunnels)
+	ClientCreateAppServerTunnel(c *gin.Context)
 
-	// (GET /client/sessions/{id})
-	ClientGetSession(c *gin.Context, id openapi_types.UUID)
-
-	// (PATCH /client/sessions/{id})
-	ClientPatchSession(c *gin.Context, id openapi_types.UUID)
-
-	// (POST /client/sessions/{id}/archive)
-	ClientArchiveSession(c *gin.Context, id openapi_types.UUID)
-
-	// (GET /client/sessions/{id}/messages)
-	ClientListMessages(c *gin.Context, id openapi_types.UUID, params ClientListMessagesParams)
-
-	// (POST /client/sessions/{id}/messages)
-	ClientCreateMessage(c *gin.Context, id openapi_types.UUID)
-
-	// (POST /client/sessions/{id}/plans/{runId}/execute)
-	ClientExecutePlan(c *gin.Context, id openapi_types.UUID, runId openapi_types.UUID)
-
-	// (POST /client/sessions/{id}/restore)
-	ClientRestoreSession(c *gin.Context, id openapi_types.UUID)
-
-	// (GET /client/sessions/{id}/snapshot)
-	ClientGetSessionSnapshot(c *gin.Context, id openapi_types.UUID, params ClientGetSessionSnapshotParams)
-
-	// (POST /client/sessions/{id}/stop)
-	ClientStopSession(c *gin.Context, id openapi_types.UUID)
-
-	// (GET /client/sessions/{id}/turns)
-	ClientListTurns(c *gin.Context, id openapi_types.UUID, params ClientListTurnsParams)
-
-	// (GET /client/sessions/{id}/turns/{turnId})
-	ClientGetTurn(c *gin.Context, id openapi_types.UUID, turnId openapi_types.UUID)
-
-	// (GET /client/sync)
-	ClientSync(c *gin.Context, params ClientSyncParams)
-
-	// (GET /client/updates)
-	ClientUpdatesWebSocket(c *gin.Context, params ClientUpdatesWebSocketParams)
-
-	// (POST /client/uploads)
-	ClientUpload(c *gin.Context)
+	// (GET /client/tunnels/{ticket}/connect)
+	ClientConnectAppServerTunnel(c *gin.Context, ticket string)
 
 	// (DELETE /discord/forums/{forumId}/access/{memberId})
 	DeleteDiscordForumAccess(c *gin.Context, forumId openapi_types.UUID, memberId string, params DeleteDiscordForumAccessParams)
@@ -1819,47 +1410,8 @@ type ServerInterface interface {
 	// (GET /work-items)
 	GetWorkItems(c *gin.Context)
 
-	// (GET /worker/v1/blobs/{id})
-	DownloadWorkerBlob(c *gin.Context, id openapi_types.UUID, params DownloadWorkerBlobParams)
-
-	// (POST /worker/v1/blobs/{id})
-	UploadWorkerBlob(c *gin.Context, id openapi_types.UUID, params UploadWorkerBlobParams)
-
 	// (POST /worker/v1/claims)
 	WorkerClaim(c *gin.Context)
-
-	// (POST /worker/v1/desktop-rollbacks)
-	WorkerPrepareDesktopRollback(c *gin.Context)
-
-	// (POST /worker/v1/desktop-rollbacks/{id}/complete)
-	WorkerCompleteDesktopRollback(c *gin.Context, id WorkerResourceID)
-
-	// (POST /worker/v1/desktop-steers)
-	WorkerRecordDesktopSteer(c *gin.Context)
-
-	// (POST /worker/v1/desktop-thread-requests)
-	WorkerPrepareDesktopThread(c *gin.Context)
-
-	// (GET /worker/v1/desktop-thread-requests/{id})
-	WorkerDesktopThreadState(c *gin.Context, id WorkerResourceID)
-
-	// (POST /worker/v1/desktop-thread-requests/{id}/complete)
-	WorkerCompleteDesktopThread(c *gin.Context, id WorkerResourceID)
-
-	// (POST /worker/v1/desktop-thread-requests/{id}/fail)
-	WorkerFailDesktopThread(c *gin.Context, id WorkerResourceID)
-
-	// (POST /worker/v1/desktop-turns)
-	WorkerPrepareDesktopTurn(c *gin.Context)
-
-	// (POST /worker/v1/desktop-turns/preflight)
-	WorkerPreflightDesktopTurn(c *gin.Context)
-
-	// (GET /worker/v1/desktop-turns/{id}/images/target)
-	WorkerDesktopImageTarget(c *gin.Context, id WorkerResourceID)
-
-	// (POST /worker/v1/desktop-turns/{id}/images/{ordinal}/fail)
-	WorkerFailDesktopImage(c *gin.Context, id WorkerResourceID, ordinal int)
 
 	// (POST /worker/v1/enroll)
 	EnrollWorker(c *gin.Context)
@@ -1867,17 +1419,17 @@ type ServerInterface interface {
 	// (POST /worker/v1/heartbeat)
 	WorkerHeartbeat(c *gin.Context)
 
-	// (POST /worker/v1/interactive/answer)
-	WorkerAnswerInteractive(c *gin.Context)
+	// (POST /worker/v1/materializations/claim)
+	WorkerClaimMaterialization(c *gin.Context)
 
-	// (GET /worker/v1/interactive/{id})
-	WorkerInteractiveState(c *gin.Context, id WorkerResourceID)
+	// (POST /worker/v1/materializations/{id}/complete)
+	WorkerCompleteMaterialization(c *gin.Context, id openapi_types.UUID)
 
-	// (POST /worker/v1/runs/{id}/attachments)
-	WorkerUploadAgentAttachment(c *gin.Context, id WorkerResourceID)
+	// (GET /worker/v1/materializations/{id}/content)
+	WorkerDownloadMaterialization(c *gin.Context, id openapi_types.UUID, params WorkerDownloadMaterializationParams)
 
-	// (POST /worker/v1/runs/{id}/commands/ack)
-	WorkerCommandAck(c *gin.Context, id WorkerResourceID)
+	// (POST /worker/v1/materializations/{id}/fail)
+	WorkerFailMaterialization(c *gin.Context, id openapi_types.UUID)
 
 	// (POST /worker/v1/runs/{id}/complete)
 	WorkerRunComplete(c *gin.Context, id WorkerResourceID)
@@ -1897,9 +1449,6 @@ type ServerInterface interface {
 	// (POST /worker/v1/runs/{id}/heartbeat)
 	WorkerRunHeartbeat(c *gin.Context, id WorkerResourceID)
 
-	// (POST /worker/v1/runs/{id}/interactive)
-	WorkerRegisterInteractive(c *gin.Context, id WorkerResourceID)
-
 	// (POST /worker/v1/runs/{id}/submission)
 	WorkerRecordSubmission(c *gin.Context, id WorkerResourceID)
 
@@ -1909,44 +1458,17 @@ type ServerInterface interface {
 	// (POST /worker/v1/runs/{id}/tools/call)
 	WorkerToolCall(c *gin.Context, id WorkerResourceID)
 
-	// (POST /worker/v1/runs/{id}/workspace-project-state)
-	WorkerWorkspaceProjectState(c *gin.Context, id WorkerResourceID)
-
 	// (POST /worker/v1/runs/{id}/workspace-state)
 	WorkerWorkspaceState(c *gin.Context, id WorkerResourceID)
-
-	// (POST /worker/v1/session-title-tasks/claim)
-	WorkerClaimSessionTitle(c *gin.Context)
-
-	// (POST /worker/v1/session-title-tasks/{id}/complete)
-	WorkerCompleteSessionTitle(c *gin.Context, id openapi_types.UUID)
-
-	// (POST /worker/v1/session-title-tasks/{id}/fail)
-	WorkerFailSessionTitle(c *gin.Context, id openapi_types.UUID)
 
 	// (GET /worker/v1/ssh-configuration)
 	WorkerSSHConfiguration(c *gin.Context)
 
-	// (GET /worker/v1/thread-lifecycle-requests)
-	WorkerPendingThreadLifecycles(c *gin.Context)
+	// (POST /worker/v1/tunnels/claim)
+	WorkerClaimAppServerTunnel(c *gin.Context)
 
-	// (POST /worker/v1/thread-lifecycle-requests/desktop)
-	WorkerPrepareDesktopThreadLifecycle(c *gin.Context)
-
-	// (GET /worker/v1/thread-lifecycle-requests/{id})
-	WorkerThreadLifecycleState(c *gin.Context, id WorkerResourceID)
-
-	// (POST /worker/v1/thread-lifecycle-requests/{id}/complete)
-	WorkerCompleteThreadLifecycle(c *gin.Context, id WorkerResourceID)
-
-	// (POST /worker/v1/thread-metadata-events)
-	WorkerRecordThreadMetadata(c *gin.Context)
-
-	// (GET /worker/v1/thread-name-updates)
-	WorkerPendingThreadNames(c *gin.Context)
-
-	// (POST /worker/v1/thread-name-updates/{id}/ack)
-	WorkerAckThreadName(c *gin.Context, id WorkerResourceID)
+	// (GET /worker/v1/tunnels/{id}/connect)
+	WorkerConnectAppServerTunnel(c *gin.Context, id openapi_types.UUID)
 
 	// (GET /worker/v1/workspace)
 	WorkerWorkspace(c *gin.Context)
@@ -2120,32 +1642,6 @@ func (siw *ServerInterfaceWrapper) GetCurrentAdministrator(c *gin.Context) {
 	siw.Handler.GetCurrentAdministrator(c)
 }
 
-// ClientDownloadAttachment operation middleware
-func (siw *ServerInterfaceWrapper) ClientDownloadAttachment(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientDownloadAttachment(c, id)
-}
-
 // ClientLogin operation middleware
 func (siw *ServerInterfaceWrapper) ClientLogin(c *gin.Context) {
 
@@ -2314,8 +1810,23 @@ func (siw *ServerInterfaceWrapper) ClientPutPushToken(c *gin.Context) {
 	siw.Handler.ClientPutPushToken(c)
 }
 
-// ClientAnswerInteractive operation middleware
-func (siw *ServerInterfaceWrapper) ClientAnswerInteractive(c *gin.Context) {
+// ClientListLegacyArchive operation middleware
+func (siw *ServerInterfaceWrapper) ClientListLegacyArchive(c *gin.Context) {
+
+	c.Set(ClientBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientListLegacyArchive(c)
+}
+
+// ClientGetLegacyArchive operation middleware
+func (siw *ServerInterfaceWrapper) ClientGetLegacyArchive(c *gin.Context) {
 
 	var err error
 
@@ -2337,58 +1848,50 @@ func (siw *ServerInterfaceWrapper) ClientAnswerInteractive(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.ClientAnswerInteractive(c, id)
+	siw.Handler.ClientGetLegacyArchive(c, id)
 }
 
-// ClientListRunSegmentActivities operation middleware
-func (siw *ServerInterfaceWrapper) ClientListRunSegmentActivities(c *gin.Context) {
+// ClientCreateMaterialization operation middleware
+func (siw *ServerInterfaceWrapper) ClientCreateMaterialization(c *gin.Context) {
+
+	c.Set(ClientBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientCreateMaterialization(c)
+}
+
+// ClientCreateAppServerTunnel operation middleware
+func (siw *ServerInterfaceWrapper) ClientCreateAppServerTunnel(c *gin.Context) {
+
+	c.Set(ClientBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClientCreateAppServerTunnel(c)
+}
+
+// ClientConnectAppServerTunnel operation middleware
+func (siw *ServerInterfaceWrapper) ClientConnectAppServerTunnel(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "runId" -------------
-	var runId openapi_types.UUID
+	// ------------- Path parameter "ticket" -------------
+	var ticket string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "runId", c.Param("runId"), &runId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "ticket", c.Param("ticket"), &ticket, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter runId: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "segmentId" -------------
-	var segmentId openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "segmentId", c.Param("segmentId"), &segmentId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter segmentId: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ClientListRunSegmentActivitiesParams
-
-	// ------------- Optional query parameter "beforeActivitySeq" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "beforeActivitySeq", c.Request.URL.Query(), &params.BeforeActivitySeq)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter beforeActivitySeq: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "afterEventSeq" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "afterEventSeq", c.Request.URL.Query(), &params.AfterEventSeq)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter afterEventSeq: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter ticket: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -2399,514 +1902,7 @@ func (siw *ServerInterfaceWrapper) ClientListRunSegmentActivities(c *gin.Context
 		}
 	}
 
-	siw.Handler.ClientListRunSegmentActivities(c, runId, segmentId, params)
-}
-
-// ClientListSessions operation middleware
-func (siw *ServerInterfaceWrapper) ClientListSessions(c *gin.Context) {
-
-	var err error
-
-	c.Set(ClientBearerScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ClientListSessionsParams
-
-	// ------------- Optional query parameter "cursor" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "cursor", c.Request.URL.Query(), &params.Cursor)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter cursor: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "projectId" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "projectId", c.Request.URL.Query(), &params.ProjectId)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter projectId: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "lifecycle" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "lifecycle", c.Request.URL.Query(), &params.Lifecycle)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter lifecycle: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientListSessions(c, params)
-}
-
-// ClientCreateSession operation middleware
-func (siw *ServerInterfaceWrapper) ClientCreateSession(c *gin.Context) {
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientCreateSession(c)
-}
-
-// ClientGetSession operation middleware
-func (siw *ServerInterfaceWrapper) ClientGetSession(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientGetSession(c, id)
-}
-
-// ClientPatchSession operation middleware
-func (siw *ServerInterfaceWrapper) ClientPatchSession(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientPatchSession(c, id)
-}
-
-// ClientArchiveSession operation middleware
-func (siw *ServerInterfaceWrapper) ClientArchiveSession(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientArchiveSession(c, id)
-}
-
-// ClientListMessages operation middleware
-func (siw *ServerInterfaceWrapper) ClientListMessages(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ClientListMessagesParams
-
-	// ------------- Optional query parameter "beforeSeq" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "beforeSeq", c.Request.URL.Query(), &params.BeforeSeq)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter beforeSeq: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "afterSeq" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "afterSeq", c.Request.URL.Query(), &params.AfterSeq)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter afterSeq: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientListMessages(c, id, params)
-}
-
-// ClientCreateMessage operation middleware
-func (siw *ServerInterfaceWrapper) ClientCreateMessage(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientCreateMessage(c, id)
-}
-
-// ClientExecutePlan operation middleware
-func (siw *ServerInterfaceWrapper) ClientExecutePlan(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "runId" -------------
-	var runId openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "runId", c.Param("runId"), &runId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter runId: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientExecutePlan(c, id, runId)
-}
-
-// ClientRestoreSession operation middleware
-func (siw *ServerInterfaceWrapper) ClientRestoreSession(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientRestoreSession(c, id)
-}
-
-// ClientGetSessionSnapshot operation middleware
-func (siw *ServerInterfaceWrapper) ClientGetSessionSnapshot(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ClientGetSessionSnapshotParams
-
-	// ------------- Optional query parameter "turnLimit" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "turnLimit", c.Request.URL.Query(), &params.TurnLimit)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter turnLimit: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientGetSessionSnapshot(c, id, params)
-}
-
-// ClientStopSession operation middleware
-func (siw *ServerInterfaceWrapper) ClientStopSession(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientStopSession(c, id)
-}
-
-// ClientListTurns operation middleware
-func (siw *ServerInterfaceWrapper) ClientListTurns(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ClientListTurnsParams
-
-	// ------------- Optional query parameter "beforeCursor" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "beforeCursor", c.Request.URL.Query(), &params.BeforeCursor)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter beforeCursor: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientListTurns(c, id, params)
-}
-
-// ClientGetTurn operation middleware
-func (siw *ServerInterfaceWrapper) ClientGetTurn(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "turnId" -------------
-	var turnId openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "turnId", c.Param("turnId"), &turnId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter turnId: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientGetTurn(c, id, turnId)
-}
-
-// ClientSync operation middleware
-func (siw *ServerInterfaceWrapper) ClientSync(c *gin.Context) {
-
-	var err error
-
-	c.Set(ClientBearerScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ClientSyncParams
-
-	// ------------- Optional query parameter "afterCursor" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "afterCursor", c.Request.URL.Query(), &params.AfterCursor)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter afterCursor: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientSync(c, params)
-}
-
-// ClientUpdatesWebSocket operation middleware
-func (siw *ServerInterfaceWrapper) ClientUpdatesWebSocket(c *gin.Context) {
-
-	var err error
-
-	c.Set(ClientBearerScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ClientUpdatesWebSocketParams
-
-	// ------------- Optional query parameter "cursor" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "cursor", c.Request.URL.Query(), &params.Cursor)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter cursor: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientUpdatesWebSocket(c, params)
-}
-
-// ClientUpload operation middleware
-func (siw *ServerInterfaceWrapper) ClientUpload(c *gin.Context) {
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientUpload(c)
+	siw.Handler.ClientConnectAppServerTunnel(c, ticket)
 }
 
 // DeleteDiscordForumAccess operation middleware
@@ -4389,140 +3385,6 @@ func (siw *ServerInterfaceWrapper) GetWorkItems(c *gin.Context) {
 	siw.Handler.GetWorkItems(c)
 }
 
-// DownloadWorkerBlob operation middleware
-func (siw *ServerInterfaceWrapper) DownloadWorkerBlob(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params DownloadWorkerBlobParams
-
-	// ------------- Required query parameter "runId" -------------
-
-	if paramValue := c.Query("runId"); paramValue != "" {
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Query argument runId is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	err = runtime.BindQueryParameter("form", true, true, "runId", c.Request.URL.Query(), &params.RunId)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter runId: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	headers := c.Request.Header
-
-	// ------------- Required header parameter "X-Run-Lease-Token" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("X-Run-Lease-Token")]; found {
-		var XRunLeaseToken string
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Run-Lease-Token, got %d", n), http.StatusBadRequest)
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "X-Run-Lease-Token", valueList[0], &XRunLeaseToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
-		if err != nil {
-			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Run-Lease-Token: %w", err), http.StatusBadRequest)
-			return
-		}
-
-		params.XRunLeaseToken = XRunLeaseToken
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Run-Lease-Token is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Required header parameter "X-Run-Lease-Epoch" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("X-Run-Lease-Epoch")]; found {
-		var XRunLeaseEpoch int64
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Run-Lease-Epoch, got %d", n), http.StatusBadRequest)
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "X-Run-Lease-Epoch", valueList[0], &XRunLeaseEpoch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
-		if err != nil {
-			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Run-Lease-Epoch: %w", err), http.StatusBadRequest)
-			return
-		}
-
-		params.XRunLeaseEpoch = XRunLeaseEpoch
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Run-Lease-Epoch is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.DownloadWorkerBlob(c, id, params)
-}
-
-// UploadWorkerBlob operation middleware
-func (siw *ServerInterfaceWrapper) UploadWorkerBlob(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params UploadWorkerBlobParams
-
-	// ------------- Required query parameter "ordinal" -------------
-
-	if paramValue := c.Query("ordinal"); paramValue != "" {
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Query argument ordinal is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	err = runtime.BindQueryParameter("form", true, true, "ordinal", c.Request.URL.Query(), &params.Ordinal)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter ordinal: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.UploadWorkerBlob(c, id, params)
-}
-
 // WorkerClaim operation middleware
 func (siw *ServerInterfaceWrapper) WorkerClaim(c *gin.Context) {
 
@@ -4536,246 +3398,6 @@ func (siw *ServerInterfaceWrapper) WorkerClaim(c *gin.Context) {
 	}
 
 	siw.Handler.WorkerClaim(c)
-}
-
-// WorkerPrepareDesktopRollback operation middleware
-func (siw *ServerInterfaceWrapper) WorkerPrepareDesktopRollback(c *gin.Context) {
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.WorkerPrepareDesktopRollback(c)
-}
-
-// WorkerCompleteDesktopRollback operation middleware
-func (siw *ServerInterfaceWrapper) WorkerCompleteDesktopRollback(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id WorkerResourceID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.WorkerCompleteDesktopRollback(c, id)
-}
-
-// WorkerRecordDesktopSteer operation middleware
-func (siw *ServerInterfaceWrapper) WorkerRecordDesktopSteer(c *gin.Context) {
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.WorkerRecordDesktopSteer(c)
-}
-
-// WorkerPrepareDesktopThread operation middleware
-func (siw *ServerInterfaceWrapper) WorkerPrepareDesktopThread(c *gin.Context) {
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.WorkerPrepareDesktopThread(c)
-}
-
-// WorkerDesktopThreadState operation middleware
-func (siw *ServerInterfaceWrapper) WorkerDesktopThreadState(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id WorkerResourceID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.WorkerDesktopThreadState(c, id)
-}
-
-// WorkerCompleteDesktopThread operation middleware
-func (siw *ServerInterfaceWrapper) WorkerCompleteDesktopThread(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id WorkerResourceID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.WorkerCompleteDesktopThread(c, id)
-}
-
-// WorkerFailDesktopThread operation middleware
-func (siw *ServerInterfaceWrapper) WorkerFailDesktopThread(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id WorkerResourceID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.WorkerFailDesktopThread(c, id)
-}
-
-// WorkerPrepareDesktopTurn operation middleware
-func (siw *ServerInterfaceWrapper) WorkerPrepareDesktopTurn(c *gin.Context) {
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.WorkerPrepareDesktopTurn(c)
-}
-
-// WorkerPreflightDesktopTurn operation middleware
-func (siw *ServerInterfaceWrapper) WorkerPreflightDesktopTurn(c *gin.Context) {
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.WorkerPreflightDesktopTurn(c)
-}
-
-// WorkerDesktopImageTarget operation middleware
-func (siw *ServerInterfaceWrapper) WorkerDesktopImageTarget(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id WorkerResourceID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.WorkerDesktopImageTarget(c, id)
-}
-
-// WorkerFailDesktopImage operation middleware
-func (siw *ServerInterfaceWrapper) WorkerFailDesktopImage(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id WorkerResourceID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "ordinal" -------------
-	var ordinal int
-
-	err = runtime.BindStyledParameterWithOptions("simple", "ordinal", c.Param("ordinal"), &ordinal, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter ordinal: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.WorkerFailDesktopImage(c, id, ordinal)
 }
 
 // EnrollWorker operation middleware
@@ -4806,8 +3428,8 @@ func (siw *ServerInterfaceWrapper) WorkerHeartbeat(c *gin.Context) {
 	siw.Handler.WorkerHeartbeat(c)
 }
 
-// WorkerAnswerInteractive operation middleware
-func (siw *ServerInterfaceWrapper) WorkerAnswerInteractive(c *gin.Context) {
+// WorkerClaimMaterialization operation middleware
+func (siw *ServerInterfaceWrapper) WorkerClaimMaterialization(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
@@ -4818,16 +3440,16 @@ func (siw *ServerInterfaceWrapper) WorkerAnswerInteractive(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerAnswerInteractive(c)
+	siw.Handler.WorkerClaimMaterialization(c)
 }
 
-// WorkerInteractiveState operation middleware
-func (siw *ServerInterfaceWrapper) WorkerInteractiveState(c *gin.Context) {
+// WorkerCompleteMaterialization operation middleware
+func (siw *ServerInterfaceWrapper) WorkerCompleteMaterialization(c *gin.Context) {
 
 	var err error
 
 	// ------------- Path parameter "id" -------------
-	var id WorkerResourceID
+	var id openapi_types.UUID
 
 	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
@@ -4844,16 +3466,69 @@ func (siw *ServerInterfaceWrapper) WorkerInteractiveState(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerInteractiveState(c, id)
+	siw.Handler.WorkerCompleteMaterialization(c, id)
 }
 
-// WorkerUploadAgentAttachment operation middleware
-func (siw *ServerInterfaceWrapper) WorkerUploadAgentAttachment(c *gin.Context) {
+// WorkerDownloadMaterialization operation middleware
+func (siw *ServerInterfaceWrapper) WorkerDownloadMaterialization(c *gin.Context) {
 
 	var err error
 
 	// ------------- Path parameter "id" -------------
-	var id WorkerResourceID
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(WorkerBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WorkerDownloadMaterializationParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-Materialization-Lease-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Materialization-Lease-Token")]; found {
+		var XMaterializationLeaseToken string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-Materialization-Lease-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Materialization-Lease-Token", valueList[0], &XMaterializationLeaseToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-Materialization-Lease-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XMaterializationLeaseToken = XMaterializationLeaseToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-Materialization-Lease-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.WorkerDownloadMaterialization(c, id, params)
+}
+
+// WorkerFailMaterialization operation middleware
+func (siw *ServerInterfaceWrapper) WorkerFailMaterialization(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
 
 	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
@@ -4870,33 +3545,7 @@ func (siw *ServerInterfaceWrapper) WorkerUploadAgentAttachment(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerUploadAgentAttachment(c, id)
-}
-
-// WorkerCommandAck operation middleware
-func (siw *ServerInterfaceWrapper) WorkerCommandAck(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id WorkerResourceID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.WorkerCommandAck(c, id)
+	siw.Handler.WorkerFailMaterialization(c, id)
 }
 
 // WorkerRunComplete operation middleware
@@ -5055,32 +3704,6 @@ func (siw *ServerInterfaceWrapper) WorkerRunHeartbeat(c *gin.Context) {
 	siw.Handler.WorkerRunHeartbeat(c, id)
 }
 
-// WorkerRegisterInteractive operation middleware
-func (siw *ServerInterfaceWrapper) WorkerRegisterInteractive(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id WorkerResourceID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.WorkerRegisterInteractive(c, id)
-}
-
 // WorkerRecordSubmission operation middleware
 func (siw *ServerInterfaceWrapper) WorkerRecordSubmission(c *gin.Context) {
 
@@ -5159,32 +3782,6 @@ func (siw *ServerInterfaceWrapper) WorkerToolCall(c *gin.Context) {
 	siw.Handler.WorkerToolCall(c, id)
 }
 
-// WorkerWorkspaceProjectState operation middleware
-func (siw *ServerInterfaceWrapper) WorkerWorkspaceProjectState(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id WorkerResourceID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.WorkerWorkspaceProjectState(c, id)
-}
-
 // WorkerWorkspaceState operation middleware
 func (siw *ServerInterfaceWrapper) WorkerWorkspaceState(c *gin.Context) {
 
@@ -5211,73 +3808,6 @@ func (siw *ServerInterfaceWrapper) WorkerWorkspaceState(c *gin.Context) {
 	siw.Handler.WorkerWorkspaceState(c, id)
 }
 
-// WorkerClaimSessionTitle operation middleware
-func (siw *ServerInterfaceWrapper) WorkerClaimSessionTitle(c *gin.Context) {
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.WorkerClaimSessionTitle(c)
-}
-
-// WorkerCompleteSessionTitle operation middleware
-func (siw *ServerInterfaceWrapper) WorkerCompleteSessionTitle(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.WorkerCompleteSessionTitle(c, id)
-}
-
-// WorkerFailSessionTitle operation middleware
-func (siw *ServerInterfaceWrapper) WorkerFailSessionTitle(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.WorkerFailSessionTitle(c, id)
-}
-
 // WorkerSSHConfiguration operation middleware
 func (siw *ServerInterfaceWrapper) WorkerSSHConfiguration(c *gin.Context) {
 
@@ -5293,8 +3823,8 @@ func (siw *ServerInterfaceWrapper) WorkerSSHConfiguration(c *gin.Context) {
 	siw.Handler.WorkerSSHConfiguration(c)
 }
 
-// WorkerPendingThreadLifecycles operation middleware
-func (siw *ServerInterfaceWrapper) WorkerPendingThreadLifecycles(c *gin.Context) {
+// WorkerClaimAppServerTunnel operation middleware
+func (siw *ServerInterfaceWrapper) WorkerClaimAppServerTunnel(c *gin.Context) {
 
 	c.Set(WorkerBearerScopes, []string{})
 
@@ -5305,31 +3835,16 @@ func (siw *ServerInterfaceWrapper) WorkerPendingThreadLifecycles(c *gin.Context)
 		}
 	}
 
-	siw.Handler.WorkerPendingThreadLifecycles(c)
+	siw.Handler.WorkerClaimAppServerTunnel(c)
 }
 
-// WorkerPrepareDesktopThreadLifecycle operation middleware
-func (siw *ServerInterfaceWrapper) WorkerPrepareDesktopThreadLifecycle(c *gin.Context) {
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.WorkerPrepareDesktopThreadLifecycle(c)
-}
-
-// WorkerThreadLifecycleState operation middleware
-func (siw *ServerInterfaceWrapper) WorkerThreadLifecycleState(c *gin.Context) {
+// WorkerConnectAppServerTunnel operation middleware
+func (siw *ServerInterfaceWrapper) WorkerConnectAppServerTunnel(c *gin.Context) {
 
 	var err error
 
 	// ------------- Path parameter "id" -------------
-	var id WorkerResourceID
+	var id openapi_types.UUID
 
 	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
@@ -5346,89 +3861,7 @@ func (siw *ServerInterfaceWrapper) WorkerThreadLifecycleState(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.WorkerThreadLifecycleState(c, id)
-}
-
-// WorkerCompleteThreadLifecycle operation middleware
-func (siw *ServerInterfaceWrapper) WorkerCompleteThreadLifecycle(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id WorkerResourceID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.WorkerCompleteThreadLifecycle(c, id)
-}
-
-// WorkerRecordThreadMetadata operation middleware
-func (siw *ServerInterfaceWrapper) WorkerRecordThreadMetadata(c *gin.Context) {
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.WorkerRecordThreadMetadata(c)
-}
-
-// WorkerPendingThreadNames operation middleware
-func (siw *ServerInterfaceWrapper) WorkerPendingThreadNames(c *gin.Context) {
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.WorkerPendingThreadNames(c)
-}
-
-// WorkerAckThreadName operation middleware
-func (siw *ServerInterfaceWrapper) WorkerAckThreadName(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id WorkerResourceID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(WorkerBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.WorkerAckThreadName(c, id)
+	siw.Handler.WorkerConnectAppServerTunnel(c, id)
 }
 
 // WorkerWorkspace operation middleware
@@ -6087,7 +4520,6 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/auth/login", wrapper.Login)
 	router.POST(options.BaseURL+"/auth/logout", wrapper.Logout)
 	router.GET(options.BaseURL+"/auth/me", wrapper.GetCurrentAdministrator)
-	router.GET(options.BaseURL+"/client/attachments/:id/content", wrapper.ClientDownloadAttachment)
 	router.POST(options.BaseURL+"/client/auth/login", wrapper.ClientLogin)
 	router.GET(options.BaseURL+"/client/bootstrap", wrapper.ClientBootstrap)
 	router.DELETE(options.BaseURL+"/client/device", wrapper.ClientDeleteDevice)
@@ -6095,24 +4527,11 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/client/device-pairings/:id/status", wrapper.ClientDevicePairingStatus)
 	router.DELETE(options.BaseURL+"/client/device/push-token", wrapper.ClientDeletePushToken)
 	router.PUT(options.BaseURL+"/client/device/push-token", wrapper.ClientPutPushToken)
-	router.POST(options.BaseURL+"/client/interactive/:id/answer", wrapper.ClientAnswerInteractive)
-	router.GET(options.BaseURL+"/client/runs/:runId/segments/:segmentId/activities", wrapper.ClientListRunSegmentActivities)
-	router.GET(options.BaseURL+"/client/sessions", wrapper.ClientListSessions)
-	router.POST(options.BaseURL+"/client/sessions", wrapper.ClientCreateSession)
-	router.GET(options.BaseURL+"/client/sessions/:id", wrapper.ClientGetSession)
-	router.PATCH(options.BaseURL+"/client/sessions/:id", wrapper.ClientPatchSession)
-	router.POST(options.BaseURL+"/client/sessions/:id/archive", wrapper.ClientArchiveSession)
-	router.GET(options.BaseURL+"/client/sessions/:id/messages", wrapper.ClientListMessages)
-	router.POST(options.BaseURL+"/client/sessions/:id/messages", wrapper.ClientCreateMessage)
-	router.POST(options.BaseURL+"/client/sessions/:id/plans/:runId/execute", wrapper.ClientExecutePlan)
-	router.POST(options.BaseURL+"/client/sessions/:id/restore", wrapper.ClientRestoreSession)
-	router.GET(options.BaseURL+"/client/sessions/:id/snapshot", wrapper.ClientGetSessionSnapshot)
-	router.POST(options.BaseURL+"/client/sessions/:id/stop", wrapper.ClientStopSession)
-	router.GET(options.BaseURL+"/client/sessions/:id/turns", wrapper.ClientListTurns)
-	router.GET(options.BaseURL+"/client/sessions/:id/turns/:turnId", wrapper.ClientGetTurn)
-	router.GET(options.BaseURL+"/client/sync", wrapper.ClientSync)
-	router.GET(options.BaseURL+"/client/updates", wrapper.ClientUpdatesWebSocket)
-	router.POST(options.BaseURL+"/client/uploads", wrapper.ClientUpload)
+	router.GET(options.BaseURL+"/client/legacy/archive/sessions", wrapper.ClientListLegacyArchive)
+	router.GET(options.BaseURL+"/client/legacy/archive/sessions/:id", wrapper.ClientGetLegacyArchive)
+	router.POST(options.BaseURL+"/client/materializations", wrapper.ClientCreateMaterialization)
+	router.POST(options.BaseURL+"/client/tunnels", wrapper.ClientCreateAppServerTunnel)
+	router.GET(options.BaseURL+"/client/tunnels/:ticket/connect", wrapper.ClientConnectAppServerTunnel)
 	router.DELETE(options.BaseURL+"/discord/forums/:forumId/access/:memberId", wrapper.DeleteDiscordForumAccess)
 	router.PUT(options.BaseURL+"/discord/forums/:forumId/access/:memberId", wrapper.PutDiscordForumAccess)
 	router.POST(options.BaseURL+"/discord/github/bind", wrapper.StartDiscordGitHubBind)
@@ -6159,49 +4578,26 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/trigger-rules", wrapper.CreateTriggerRule)
 	router.POST(options.BaseURL+"/webhooks/github", wrapper.ReceiveGitHubWebhook)
 	router.GET(options.BaseURL+"/work-items", wrapper.GetWorkItems)
-	router.GET(options.BaseURL+"/worker/v1/blobs/:id", wrapper.DownloadWorkerBlob)
-	router.POST(options.BaseURL+"/worker/v1/blobs/:id", wrapper.UploadWorkerBlob)
 	router.POST(options.BaseURL+"/worker/v1/claims", wrapper.WorkerClaim)
-	router.POST(options.BaseURL+"/worker/v1/desktop-rollbacks", wrapper.WorkerPrepareDesktopRollback)
-	router.POST(options.BaseURL+"/worker/v1/desktop-rollbacks/:id/complete", wrapper.WorkerCompleteDesktopRollback)
-	router.POST(options.BaseURL+"/worker/v1/desktop-steers", wrapper.WorkerRecordDesktopSteer)
-	router.POST(options.BaseURL+"/worker/v1/desktop-thread-requests", wrapper.WorkerPrepareDesktopThread)
-	router.GET(options.BaseURL+"/worker/v1/desktop-thread-requests/:id", wrapper.WorkerDesktopThreadState)
-	router.POST(options.BaseURL+"/worker/v1/desktop-thread-requests/:id/complete", wrapper.WorkerCompleteDesktopThread)
-	router.POST(options.BaseURL+"/worker/v1/desktop-thread-requests/:id/fail", wrapper.WorkerFailDesktopThread)
-	router.POST(options.BaseURL+"/worker/v1/desktop-turns", wrapper.WorkerPrepareDesktopTurn)
-	router.POST(options.BaseURL+"/worker/v1/desktop-turns/preflight", wrapper.WorkerPreflightDesktopTurn)
-	router.GET(options.BaseURL+"/worker/v1/desktop-turns/:id/images/target", wrapper.WorkerDesktopImageTarget)
-	router.POST(options.BaseURL+"/worker/v1/desktop-turns/:id/images/:ordinal/fail", wrapper.WorkerFailDesktopImage)
 	router.POST(options.BaseURL+"/worker/v1/enroll", wrapper.EnrollWorker)
 	router.POST(options.BaseURL+"/worker/v1/heartbeat", wrapper.WorkerHeartbeat)
-	router.POST(options.BaseURL+"/worker/v1/interactive/answer", wrapper.WorkerAnswerInteractive)
-	router.GET(options.BaseURL+"/worker/v1/interactive/:id", wrapper.WorkerInteractiveState)
-	router.POST(options.BaseURL+"/worker/v1/runs/:id/attachments", wrapper.WorkerUploadAgentAttachment)
-	router.POST(options.BaseURL+"/worker/v1/runs/:id/commands/ack", wrapper.WorkerCommandAck)
+	router.POST(options.BaseURL+"/worker/v1/materializations/claim", wrapper.WorkerClaimMaterialization)
+	router.POST(options.BaseURL+"/worker/v1/materializations/:id/complete", wrapper.WorkerCompleteMaterialization)
+	router.GET(options.BaseURL+"/worker/v1/materializations/:id/content", wrapper.WorkerDownloadMaterialization)
+	router.POST(options.BaseURL+"/worker/v1/materializations/:id/fail", wrapper.WorkerFailMaterialization)
 	router.POST(options.BaseURL+"/worker/v1/runs/:id/complete", wrapper.WorkerRunComplete)
 	router.POST(options.BaseURL+"/worker/v1/runs/:id/confirm", wrapper.WorkerConfirmTurn)
 	router.POST(options.BaseURL+"/worker/v1/runs/:id/events", wrapper.WorkerRunEvents)
 	router.POST(options.BaseURL+"/worker/v1/runs/:id/fail", wrapper.WorkerRunFail)
 	router.POST(options.BaseURL+"/worker/v1/runs/:id/git-credential", wrapper.WorkerGitCredential)
 	router.POST(options.BaseURL+"/worker/v1/runs/:id/heartbeat", wrapper.WorkerRunHeartbeat)
-	router.POST(options.BaseURL+"/worker/v1/runs/:id/interactive", wrapper.WorkerRegisterInteractive)
 	router.POST(options.BaseURL+"/worker/v1/runs/:id/submission", wrapper.WorkerRecordSubmission)
 	router.POST(options.BaseURL+"/worker/v1/runs/:id/thread", wrapper.WorkerSetThread)
 	router.POST(options.BaseURL+"/worker/v1/runs/:id/tools/call", wrapper.WorkerToolCall)
-	router.POST(options.BaseURL+"/worker/v1/runs/:id/workspace-project-state", wrapper.WorkerWorkspaceProjectState)
 	router.POST(options.BaseURL+"/worker/v1/runs/:id/workspace-state", wrapper.WorkerWorkspaceState)
-	router.POST(options.BaseURL+"/worker/v1/session-title-tasks/claim", wrapper.WorkerClaimSessionTitle)
-	router.POST(options.BaseURL+"/worker/v1/session-title-tasks/:id/complete", wrapper.WorkerCompleteSessionTitle)
-	router.POST(options.BaseURL+"/worker/v1/session-title-tasks/:id/fail", wrapper.WorkerFailSessionTitle)
 	router.GET(options.BaseURL+"/worker/v1/ssh-configuration", wrapper.WorkerSSHConfiguration)
-	router.GET(options.BaseURL+"/worker/v1/thread-lifecycle-requests", wrapper.WorkerPendingThreadLifecycles)
-	router.POST(options.BaseURL+"/worker/v1/thread-lifecycle-requests/desktop", wrapper.WorkerPrepareDesktopThreadLifecycle)
-	router.GET(options.BaseURL+"/worker/v1/thread-lifecycle-requests/:id", wrapper.WorkerThreadLifecycleState)
-	router.POST(options.BaseURL+"/worker/v1/thread-lifecycle-requests/:id/complete", wrapper.WorkerCompleteThreadLifecycle)
-	router.POST(options.BaseURL+"/worker/v1/thread-metadata-events", wrapper.WorkerRecordThreadMetadata)
-	router.GET(options.BaseURL+"/worker/v1/thread-name-updates", wrapper.WorkerPendingThreadNames)
-	router.POST(options.BaseURL+"/worker/v1/thread-name-updates/:id/ack", wrapper.WorkerAckThreadName)
+	router.POST(options.BaseURL+"/worker/v1/tunnels/claim", wrapper.WorkerClaimAppServerTunnel)
+	router.GET(options.BaseURL+"/worker/v1/tunnels/:id/connect", wrapper.WorkerConnectAppServerTunnel)
 	router.GET(options.BaseURL+"/worker/v1/workspace", wrapper.WorkerWorkspace)
 	router.POST(options.BaseURL+"/worker/v1/workspace/projects/snapshot", wrapper.WorkerWorkspaceProjectSnapshot)
 	router.GET(options.BaseURL+"/workers", wrapper.ListWorkers)
@@ -6222,176 +4618,137 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

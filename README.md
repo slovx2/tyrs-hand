@@ -61,7 +61,7 @@ PostgreSQL 是唯一权威状态源。Redis 只保存可重建的限流与通知
 - Worker 生命周期内只启动一个 Codex App Server；Desktop 连接只是 Hub Session，任一客户端断开都不会重启或终止上游。机器 Codex 配置变更后通过重启 Worker 统一生效。
 - 出站 SSH Credential 和 Host 由 Control 分配给指定 Worker；GitHub Token 不进入 Codex 环境或 Git Remote。
 
-Codex CLI 最低版本为 `0.145.0`。Worker 启动与 `doctor` 都会拒绝更低版本。
+Codex CLI 固定为 `0.147.0`。Worker 启动与 `doctor` 会拒绝任何其他版本。
 
 ## Codex 配置边界
 
@@ -91,7 +91,7 @@ Desktop、Discord 和 Mobile 不读取这些默认值；显式会话或 Turn 选
 - PostgreSQL、Redis（示例 Compose 已提供）
 - HTTPS 域名与反向代理
 
-本地源码开发另外需要 Go `1.26.5`、Node.js `24.14.0`、pnpm `11.14.0` 和 Codex `>= 0.145.0`。
+本地源码开发另外需要 Go `1.26.5`、Node.js `24.14.0`、pnpm `11.14.0` 和 Codex `0.147.0`。
 
 ```bash
 cp .env.example .env

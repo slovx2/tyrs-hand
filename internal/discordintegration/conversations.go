@@ -14,6 +14,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/codexsettings"
+	"github.com/slovx2/tyrs-hand/internal/officialapp"
 	"github.com/slovx2/tyrs-hand/internal/participantidentity"
 )
 
@@ -103,12 +104,12 @@ func (s *ConversationService) CleanupAttachments(ctx context.Context) error {
 		AND a.stored_at < now() - interval '7 days'
 		AND NOT EXISTS (SELECT 1 FROM discord_input_messages pending
 			WHERE pending.message_id = a.message_id AND pending.status = 'received'
-				AND pending.turn_intent_id IS NULL)
+				AND pending.official_submission_id IS NULL)
 		AND NOT EXISTS (SELECT 1 FROM discord_input_messages message
-			JOIN codex_turn_intents i ON i.id = message.turn_intent_id
-			WHERE message.message_id = a.message_id AND i.status IN
-			('placement_pending','queued','dispatching','awaiting_confirmation','running',
-			 'reconciling','retry_wait'))
+			JOIN official_turn_submissions submission
+				ON submission.id = message.official_submission_id
+			WHERE message.message_id = a.message_id AND submission.status IN
+			('queued','submitting','ambiguous'))
 		ORDER BY a.stored_at LIMIT 100`)
 	if err != nil {
 		return err
@@ -247,10 +248,6 @@ func (s *ConversationService) BeginPost(ctx context.Context, input IncomingMessa
 		if err := s.enqueueMessage(ctx, tx, conversationID, input.MessageID); err != nil {
 			return uuid.Nil, err
 		}
-		if err := ProjectConversationThinkingTx(ctx, tx, input.GuildID, input.ThreadID,
-			conversationID, input.MessageID); err != nil {
-			return uuid.Nil, err
-		}
 	}
 	if err := tx.Commit(); err != nil {
 		return uuid.Nil, err
@@ -313,10 +310,6 @@ func (s *ConversationService) Reply(ctx context.Context, input IncomingMessage) 
 		(triggerMode == "interactive" || input.MentionsBot || actionablePlan)
 	if shouldEnqueue {
 		if err := s.enqueuePendingMessages(ctx, tx, conversationID, input.MessageID); err != nil {
-			return err
-		}
-		if err := ProjectConversationThinkingTx(ctx, tx, input.GuildID, input.ThreadID,
-			conversationID, input.MessageID); err != nil {
 			return err
 		}
 	}
@@ -419,10 +412,6 @@ func (s *ConversationService) finalizeConfiguration(ctx context.Context, convers
 		if err := s.enqueueMessage(ctx, tx, conversationID, messageID); err != nil {
 			return false, err
 		}
-		if err := ProjectConversationThinkingTx(ctx, tx, guildID, threadID,
-			conversationID, messageID); err != nil {
-			return false, err
-		}
 	}
 	if err := tx.Commit(); err != nil {
 		return false, err
@@ -441,7 +430,7 @@ func optionalPreference(value string) *string {
 
 func (s *ConversationService) notifyJobs(ctx context.Context) {
 	if s.redis != nil {
-		_ = s.redis.Publish(ctx, codexcontrol.WakeupChannel, "queued").Err()
+		_ = s.redis.Publish(ctx, officialapp.WakeupChannel, "queued").Err()
 	}
 }
 
@@ -508,83 +497,44 @@ func (s *ConversationService) enqueueMessage(ctx context.Context, tx *sql.Tx,
 func (s *ConversationService) enqueueMessageWithDisplay(ctx context.Context, tx *sql.Tx,
 	conversationID uuid.UUID, messageID, displayInstruction string,
 ) error {
-	var repositoryID, projectID sql.NullString
-	var profileID uuid.UUID
-	var body, actor, permission, actorDisplayName string
-	var actorParticipantID uuid.UUID
-	var allowedJSON []byte
-	err := tx.QueryRowContext(ctx, `SELECT c.repository_id::text,
-		c.workspace_project_id::text, c.agent_profile_id,
-		m.body, COALESCE(m.github_login, ''), m.access_snapshot, m.participant_id,
-		m.display_name, p.allowed_tools
-		FROM discord_conversations c JOIN discord_input_messages m ON m.conversation_id = c.id
-		JOIN agent_profiles p ON p.id = c.agent_profile_id
-		WHERE c.id = $1 AND m.message_id = $2`, conversationID, messageID).Scan(
-		&repositoryID, &projectID, &profileID, &body, &actor, &permission,
-		&actorParticipantID, &actorDisplayName, &allowedJSON)
+	var workspaceID uuid.UUID
+	var body, model, effort, tier, mode string
+	err := tx.QueryRowContext(ctx, `SELECT project.workspace_id,m.body,
+		COALESCE(c.model,''),COALESCE(c.reasoning_effort,''),
+		COALESCE(c.service_tier,''),c.collaboration_mode
+		FROM discord_conversations c
+		JOIN discord_input_messages m ON m.conversation_id=c.id
+		JOIN workspace_projects project ON project.id=c.workspace_project_id
+		WHERE c.id=$1 AND m.message_id=$2`, conversationID, messageID).Scan(
+		&workspaceID, &body, &model, &effort, &tier, &mode)
 	if err != nil {
 		return err
 	}
-	var repository uuid.UUID
-	if repositoryID.String != "" {
-		repository, err = uuid.Parse(repositoryID.String)
-		if err != nil {
-			return err
-		}
-	}
-	var project uuid.UUID
-	if projectID.String != "" {
-		project, err = uuid.Parse(projectID.String)
-		if err != nil {
-			return err
-		}
-	}
-	var allowed []string
-	if err := json.Unmarshal(allowedJSON, &allowed); err != nil {
-		return err
-	}
-	intentID, inserted, err := codexcontrol.NewRepository(s.db, 0).Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
-		SourceType: codexcontrol.SourceWorkspace, DiscordConversationID: conversationID,
-		DiscordMessageID: messageID, RepositoryID: repository, ProjectID: project,
-		AgentProfileID: profileID,
-		IdempotencyKey: "discord:message:" + messageID,
-		MessageLocalID: "discord:" + messageID,
-		Instruction:    body, DisplayInstruction: displayInstruction,
-		AllowedTools: allowed, ActorLogin: actor, ActorPermission: permission,
-		ActorParticipantID: actorParticipantID, ActorDisplayName: actorDisplayName,
-		ReplyPolicy: "silent", Behavior: "steer_if_active",
-		ProjectionAnchor: messageID,
+	preferences := officialapp.Preferences{Model: model, CollaborationMode: mode}
+	preferences.ReasoningEffort = optionalPreference(effort)
+	preferences.ServiceTier = optionalPreference(tier)
+	submissionID, inserted, err := officialapp.EnqueueTx(ctx, tx, officialapp.EnqueueRequest{
+		WorkspaceID: workspaceID, ConversationID: conversationID,
+		SourceType: "discord_message", SourceOrder: messageID,
+		DiscordMessageID: messageID, ClientMessageID: "discord:" + messageID,
+		Instruction: body, DisplayInstruction: displayInstruction,
+		Input: []officialapp.UserInput{officialapp.TextInput(body)}, Preferences: preferences,
 	})
 	if err != nil || !inserted {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE discord_input_messages SET turn_intent_id = $2
-		WHERE message_id = $1 AND turn_intent_id IS NULL`, messageID, intentID)
+	_, err = tx.ExecContext(ctx, `UPDATE discord_input_messages
+		SET official_submission_id=$2 WHERE message_id=$1
+		AND official_submission_id IS NULL`, messageID, submissionID)
 	if err == nil {
-		_, err = tx.ExecContext(ctx, `INSERT INTO session_attachments(id,session_id,source_type,
-			source_key,kind,original_filename,media_type,size_bytes,sha256,storage_key,status,
-			attached_at,created_at)
-			SELECT attachment.id,intent.session_id,'discord',attachment.discord_attachment_id,
-			attachment.kind,attachment.original_filename,attachment.media_type,
-			attachment.size_bytes,attachment.sha256,attachment.storage_key,'attached',now(),
-			attachment.created_at FROM discord_attachments attachment
-			JOIN discord_input_messages message ON message.message_id=attachment.message_id
-			JOIN codex_turn_intents intent ON intent.id=message.turn_intent_id
-			WHERE message.message_id=$1 AND attachment.status='ready'
-			AND attachment.storage_key IS NOT NULL AND attachment.sha256 IS NOT NULL
-			ON CONFLICT(source_type,source_key) DO NOTHING`, messageID)
-	}
-	if err == nil {
-		_, err = tx.ExecContext(ctx, `INSERT INTO session_message_attachments(
-			message_id,attachment_id,ordinal)
-			SELECT session_message.id,attachment.id,
-			row_number() OVER (ORDER BY discord_attachment.created_at,discord_attachment.id)-1
-			FROM discord_input_messages input
-			JOIN session_messages session_message ON session_message.turn_intent_id=input.turn_intent_id
-			JOIN discord_attachments discord_attachment ON discord_attachment.message_id=input.message_id
-			JOIN session_attachments attachment ON attachment.source_type='discord'
-			AND attachment.source_key=discord_attachment.discord_attachment_id
-			WHERE input.message_id=$1 ON CONFLICT(message_id,attachment_id) DO NOTHING`, messageID)
+		_, err = tx.ExecContext(ctx, `INSERT INTO official_submission_attachments(
+			submission_id,attachment_id,ordinal)
+			SELECT $2,attachment.id,row_number() OVER(
+				ORDER BY attachment.created_at,attachment.id)-1
+			FROM discord_attachments attachment WHERE attachment.message_id=$1
+			  AND attachment.status='ready' AND attachment.storage_key IS NOT NULL
+			ORDER BY attachment.created_at,attachment.id LIMIT 10
+			ON CONFLICT DO NOTHING`, messageID, submissionID)
 	}
 	return err
 }

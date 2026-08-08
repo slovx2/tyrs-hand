@@ -18,6 +18,7 @@ import (
 	"github.com/slovx2/tyrs-hand/ent/administrator"
 	"github.com/slovx2/tyrs-hand/ent/agentprofile"
 	"github.com/slovx2/tyrs-hand/ent/auditlog"
+	"github.com/slovx2/tyrs-hand/ent/clientmaterialization"
 	"github.com/slovx2/tyrs-hand/ent/codexthreadcontrol"
 	"github.com/slovx2/tyrs-hand/ent/codexturnintent"
 	"github.com/slovx2/tyrs-hand/ent/codexturnrun"
@@ -47,6 +48,8 @@ type Client struct {
 	AgentProfile *AgentProfileClient
 	// AuditLog is the client for interacting with the AuditLog builders.
 	AuditLog *AuditLogClient
+	// ClientMaterialization is the client for interacting with the ClientMaterialization builders.
+	ClientMaterialization *ClientMaterializationClient
 	// CodexThreadControl is the client for interacting with the CodexThreadControl builders.
 	CodexThreadControl *CodexThreadControlClient
 	// CodexTurnIntent is the client for interacting with the CodexTurnIntent builders.
@@ -93,6 +96,7 @@ func (c *Client) init() {
 	c.Administrator = NewAdministratorClient(c.config)
 	c.AgentProfile = NewAgentProfileClient(c.config)
 	c.AuditLog = NewAuditLogClient(c.config)
+	c.ClientMaterialization = NewClientMaterializationClient(c.config)
 	c.CodexThreadControl = NewCodexThreadControlClient(c.config)
 	c.CodexTurnIntent = NewCodexTurnIntentClient(c.config)
 	c.CodexTurnRun = NewCodexTurnRunClient(c.config)
@@ -199,27 +203,28 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:                ctx,
-		config:             cfg,
-		Administrator:      NewAdministratorClient(cfg),
-		AgentProfile:       NewAgentProfileClient(cfg),
-		AuditLog:           NewAuditLogClient(cfg),
-		CodexThreadControl: NewCodexThreadControlClient(cfg),
-		CodexTurnIntent:    NewCodexTurnIntentClient(cfg),
-		CodexTurnRun:       NewCodexTurnRunClient(cfg),
-		PlatformSetting:    NewPlatformSettingClient(cfg),
-		RepoCache:          NewRepoCacheClient(cfg),
-		Repository:         NewRepositoryClient(cfg),
-		SCMInstallation:    NewSCMInstallationClient(cfg),
-		SSHCredential:      NewSSHCredentialClient(cfg),
-		SSHHost:            NewSSHHostClient(cfg),
-		ToolCall:           NewToolCallClient(cfg),
-		TriggerRule:        NewTriggerRuleClient(cfg),
-		WebhookDelivery:    NewWebhookDeliveryClient(cfg),
-		WorkItem:           NewWorkItemClient(cfg),
-		Worker:             NewWorkerClient(cfg),
-		WorkerEnrollment:   NewWorkerEnrollmentClient(cfg),
-		Worktree:           NewWorktreeClient(cfg),
+		ctx:                   ctx,
+		config:                cfg,
+		Administrator:         NewAdministratorClient(cfg),
+		AgentProfile:          NewAgentProfileClient(cfg),
+		AuditLog:              NewAuditLogClient(cfg),
+		ClientMaterialization: NewClientMaterializationClient(cfg),
+		CodexThreadControl:    NewCodexThreadControlClient(cfg),
+		CodexTurnIntent:       NewCodexTurnIntentClient(cfg),
+		CodexTurnRun:          NewCodexTurnRunClient(cfg),
+		PlatformSetting:       NewPlatformSettingClient(cfg),
+		RepoCache:             NewRepoCacheClient(cfg),
+		Repository:            NewRepositoryClient(cfg),
+		SCMInstallation:       NewSCMInstallationClient(cfg),
+		SSHCredential:         NewSSHCredentialClient(cfg),
+		SSHHost:               NewSSHHostClient(cfg),
+		ToolCall:              NewToolCallClient(cfg),
+		TriggerRule:           NewTriggerRuleClient(cfg),
+		WebhookDelivery:       NewWebhookDeliveryClient(cfg),
+		WorkItem:              NewWorkItemClient(cfg),
+		Worker:                NewWorkerClient(cfg),
+		WorkerEnrollment:      NewWorkerEnrollmentClient(cfg),
+		Worktree:              NewWorktreeClient(cfg),
 	}, nil
 }
 
@@ -237,27 +242,28 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:                ctx,
-		config:             cfg,
-		Administrator:      NewAdministratorClient(cfg),
-		AgentProfile:       NewAgentProfileClient(cfg),
-		AuditLog:           NewAuditLogClient(cfg),
-		CodexThreadControl: NewCodexThreadControlClient(cfg),
-		CodexTurnIntent:    NewCodexTurnIntentClient(cfg),
-		CodexTurnRun:       NewCodexTurnRunClient(cfg),
-		PlatformSetting:    NewPlatformSettingClient(cfg),
-		RepoCache:          NewRepoCacheClient(cfg),
-		Repository:         NewRepositoryClient(cfg),
-		SCMInstallation:    NewSCMInstallationClient(cfg),
-		SSHCredential:      NewSSHCredentialClient(cfg),
-		SSHHost:            NewSSHHostClient(cfg),
-		ToolCall:           NewToolCallClient(cfg),
-		TriggerRule:        NewTriggerRuleClient(cfg),
-		WebhookDelivery:    NewWebhookDeliveryClient(cfg),
-		WorkItem:           NewWorkItemClient(cfg),
-		Worker:             NewWorkerClient(cfg),
-		WorkerEnrollment:   NewWorkerEnrollmentClient(cfg),
-		Worktree:           NewWorktreeClient(cfg),
+		ctx:                   ctx,
+		config:                cfg,
+		Administrator:         NewAdministratorClient(cfg),
+		AgentProfile:          NewAgentProfileClient(cfg),
+		AuditLog:              NewAuditLogClient(cfg),
+		ClientMaterialization: NewClientMaterializationClient(cfg),
+		CodexThreadControl:    NewCodexThreadControlClient(cfg),
+		CodexTurnIntent:       NewCodexTurnIntentClient(cfg),
+		CodexTurnRun:          NewCodexTurnRunClient(cfg),
+		PlatformSetting:       NewPlatformSettingClient(cfg),
+		RepoCache:             NewRepoCacheClient(cfg),
+		Repository:            NewRepositoryClient(cfg),
+		SCMInstallation:       NewSCMInstallationClient(cfg),
+		SSHCredential:         NewSSHCredentialClient(cfg),
+		SSHHost:               NewSSHHostClient(cfg),
+		ToolCall:              NewToolCallClient(cfg),
+		TriggerRule:           NewTriggerRuleClient(cfg),
+		WebhookDelivery:       NewWebhookDeliveryClient(cfg),
+		WorkItem:              NewWorkItemClient(cfg),
+		Worker:                NewWorkerClient(cfg),
+		WorkerEnrollment:      NewWorkerEnrollmentClient(cfg),
+		Worktree:              NewWorktreeClient(cfg),
 	}, nil
 }
 
@@ -287,11 +293,11 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.Administrator, c.AgentProfile, c.AuditLog, c.CodexThreadControl,
-		c.CodexTurnIntent, c.CodexTurnRun, c.PlatformSetting, c.RepoCache,
-		c.Repository, c.SCMInstallation, c.SSHCredential, c.SSHHost, c.ToolCall,
-		c.TriggerRule, c.WebhookDelivery, c.WorkItem, c.Worker, c.WorkerEnrollment,
-		c.Worktree,
+		c.Administrator, c.AgentProfile, c.AuditLog, c.ClientMaterialization,
+		c.CodexThreadControl, c.CodexTurnIntent, c.CodexTurnRun, c.PlatformSetting,
+		c.RepoCache, c.Repository, c.SCMInstallation, c.SSHCredential, c.SSHHost,
+		c.ToolCall, c.TriggerRule, c.WebhookDelivery, c.WorkItem, c.Worker,
+		c.WorkerEnrollment, c.Worktree,
 	} {
 		n.Use(hooks...)
 	}
@@ -301,11 +307,11 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.Administrator, c.AgentProfile, c.AuditLog, c.CodexThreadControl,
-		c.CodexTurnIntent, c.CodexTurnRun, c.PlatformSetting, c.RepoCache,
-		c.Repository, c.SCMInstallation, c.SSHCredential, c.SSHHost, c.ToolCall,
-		c.TriggerRule, c.WebhookDelivery, c.WorkItem, c.Worker, c.WorkerEnrollment,
-		c.Worktree,
+		c.Administrator, c.AgentProfile, c.AuditLog, c.ClientMaterialization,
+		c.CodexThreadControl, c.CodexTurnIntent, c.CodexTurnRun, c.PlatformSetting,
+		c.RepoCache, c.Repository, c.SCMInstallation, c.SSHCredential, c.SSHHost,
+		c.ToolCall, c.TriggerRule, c.WebhookDelivery, c.WorkItem, c.Worker,
+		c.WorkerEnrollment, c.Worktree,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -320,6 +326,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AgentProfile.mutate(ctx, m)
 	case *AuditLogMutation:
 		return c.AuditLog.mutate(ctx, m)
+	case *ClientMaterializationMutation:
+		return c.ClientMaterialization.mutate(ctx, m)
 	case *CodexThreadControlMutation:
 		return c.CodexThreadControl.mutate(ctx, m)
 	case *CodexTurnIntentMutation:
@@ -753,6 +761,139 @@ func (c *AuditLogClient) mutate(ctx context.Context, m *AuditLogMutation) (Value
 		return (&AuditLogDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AuditLog mutation op: %q", m.Op())
+	}
+}
+
+// ClientMaterializationClient is a client for the ClientMaterialization schema.
+type ClientMaterializationClient struct {
+	config
+}
+
+// NewClientMaterializationClient returns a client for the ClientMaterialization from the given config.
+func NewClientMaterializationClient(c config) *ClientMaterializationClient {
+	return &ClientMaterializationClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `clientmaterialization.Hooks(f(g(h())))`.
+func (c *ClientMaterializationClient) Use(hooks ...Hook) {
+	c.hooks.ClientMaterialization = append(c.hooks.ClientMaterialization, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `clientmaterialization.Intercept(f(g(h())))`.
+func (c *ClientMaterializationClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ClientMaterialization = append(c.inters.ClientMaterialization, interceptors...)
+}
+
+// Create returns a builder for creating a ClientMaterialization entity.
+func (c *ClientMaterializationClient) Create() *ClientMaterializationCreate {
+	mutation := newClientMaterializationMutation(c.config, OpCreate)
+	return &ClientMaterializationCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ClientMaterialization entities.
+func (c *ClientMaterializationClient) CreateBulk(builders ...*ClientMaterializationCreate) *ClientMaterializationCreateBulk {
+	return &ClientMaterializationCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ClientMaterializationClient) MapCreateBulk(slice any, setFunc func(*ClientMaterializationCreate, int)) *ClientMaterializationCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ClientMaterializationCreateBulk{err: fmt.Errorf("calling to ClientMaterializationClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ClientMaterializationCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ClientMaterializationCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ClientMaterialization.
+func (c *ClientMaterializationClient) Update() *ClientMaterializationUpdate {
+	mutation := newClientMaterializationMutation(c.config, OpUpdate)
+	return &ClientMaterializationUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ClientMaterializationClient) UpdateOne(_m *ClientMaterialization) *ClientMaterializationUpdateOne {
+	mutation := newClientMaterializationMutation(c.config, OpUpdateOne, withClientMaterialization(_m))
+	return &ClientMaterializationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ClientMaterializationClient) UpdateOneID(id uuid.UUID) *ClientMaterializationUpdateOne {
+	mutation := newClientMaterializationMutation(c.config, OpUpdateOne, withClientMaterializationID(id))
+	return &ClientMaterializationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ClientMaterialization.
+func (c *ClientMaterializationClient) Delete() *ClientMaterializationDelete {
+	mutation := newClientMaterializationMutation(c.config, OpDelete)
+	return &ClientMaterializationDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ClientMaterializationClient) DeleteOne(_m *ClientMaterialization) *ClientMaterializationDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ClientMaterializationClient) DeleteOneID(id uuid.UUID) *ClientMaterializationDeleteOne {
+	builder := c.Delete().Where(clientmaterialization.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ClientMaterializationDeleteOne{builder}
+}
+
+// Query returns a query builder for ClientMaterialization.
+func (c *ClientMaterializationClient) Query() *ClientMaterializationQuery {
+	return &ClientMaterializationQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeClientMaterialization},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ClientMaterialization entity by its id.
+func (c *ClientMaterializationClient) Get(ctx context.Context, id uuid.UUID) (*ClientMaterialization, error) {
+	return c.Query().Where(clientmaterialization.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ClientMaterializationClient) GetX(ctx context.Context, id uuid.UUID) *ClientMaterialization {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ClientMaterializationClient) Hooks() []Hook {
+	return c.hooks.ClientMaterialization
+}
+
+// Interceptors returns the client interceptors.
+func (c *ClientMaterializationClient) Interceptors() []Interceptor {
+	return c.inters.ClientMaterialization
+}
+
+func (c *ClientMaterializationClient) mutate(ctx context.Context, m *ClientMaterializationMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ClientMaterializationCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ClientMaterializationUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ClientMaterializationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ClientMaterializationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ClientMaterialization mutation op: %q", m.Op())
 	}
 }
 
@@ -2887,15 +3028,15 @@ func (c *WorktreeClient) mutate(ctx context.Context, m *WorktreeMutation) (Value
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Administrator, AgentProfile, AuditLog, CodexThreadControl, CodexTurnIntent,
-		CodexTurnRun, PlatformSetting, RepoCache, Repository, SCMInstallation,
-		SSHCredential, SSHHost, ToolCall, TriggerRule, WebhookDelivery, WorkItem,
-		Worker, WorkerEnrollment, Worktree []ent.Hook
+		Administrator, AgentProfile, AuditLog, ClientMaterialization,
+		CodexThreadControl, CodexTurnIntent, CodexTurnRun, PlatformSetting, RepoCache,
+		Repository, SCMInstallation, SSHCredential, SSHHost, ToolCall, TriggerRule,
+		WebhookDelivery, WorkItem, Worker, WorkerEnrollment, Worktree []ent.Hook
 	}
 	inters struct {
-		Administrator, AgentProfile, AuditLog, CodexThreadControl, CodexTurnIntent,
-		CodexTurnRun, PlatformSetting, RepoCache, Repository, SCMInstallation,
-		SSHCredential, SSHHost, ToolCall, TriggerRule, WebhookDelivery, WorkItem,
-		Worker, WorkerEnrollment, Worktree []ent.Interceptor
+		Administrator, AgentProfile, AuditLog, ClientMaterialization,
+		CodexThreadControl, CodexTurnIntent, CodexTurnRun, PlatformSetting, RepoCache,
+		Repository, SCMInstallation, SSHCredential, SSHHost, ToolCall, TriggerRule,
+		WebhookDelivery, WorkItem, Worker, WorkerEnrollment, Worktree []ent.Interceptor
 	}
 )

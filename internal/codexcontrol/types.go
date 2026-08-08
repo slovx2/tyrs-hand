@@ -10,8 +10,7 @@ import (
 const WakeupChannel = "tyrs-hand:codex-controls"
 
 const (
-	SourceGitHub    = "github_work_item"
-	SourceWorkspace = "workspace_session"
+	SourceGitHub = "github_work_item"
 )
 
 type IntentStatus string

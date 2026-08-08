@@ -3,15 +3,15 @@ import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 
-import { ClientApi } from "@/api/client";
-import type { Connection } from "@/db/connections";
+import { ControlApi } from "@/api/control";
+import type { ControlConnection } from "@/db/connections";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true,
     shouldPlaySound: false, shouldSetBadge: false }),
 });
 
-export async function registerPush(connection: Connection): Promise<void> {
+export async function registerPush(connection: ControlConnection): Promise<void> {
   if (!Device.isDevice || (Platform.OS !== "ios" && Platform.OS !== "android")) return;
   const current = await Notifications.getPermissionsAsync();
   const permission = current.status === "granted" ? current : await Notifications.requestPermissionsAsync();
@@ -25,5 +25,5 @@ export async function registerPush(connection: Connection): Promise<void> {
   if (!projectId) return;
   const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
   const environment = String(Constants.expoConfig?.extra?.appEnvironment ?? "development");
-  await new ClientApi(connection).putPushToken(token, Platform.OS, environment);
+  await new ControlApi(connection).putPushToken(token, Platform.OS, environment);
 }

@@ -29,22 +29,21 @@ import (
 const sessionCookie = "tyrs_hand_session"
 
 type Server struct {
-	cfg                config.Config
-	db                 *sql.DB
-	redis              *redis.Client
-	auth               *auth.Service
-	github             *ghadapter.Manager
-	catalog            *githubtools.Catalog
-	settings           *platformsettings.Service
-	discord            *discordintegration.Manager
-	desktopImageRemote func(context.Context) (desktopImageDiscord, error)
-	bindings           *discordintegration.BindingService
-	workers            *workerregistry.Service
-	ssh                *sshconfig.Service
-	secrets            *secrets.Store
-	logger             *zap.Logger
-	assets             fs.FS
-	clientUpdateHub    *clientUpdateHub
+	cfg              config.Config
+	db               *sql.DB
+	redis            *redis.Client
+	auth             *auth.Service
+	github           *ghadapter.Manager
+	catalog          *githubtools.Catalog
+	settings         *platformsettings.Service
+	discord          *discordintegration.Manager
+	bindings         *discordintegration.BindingService
+	workers          *workerregistry.Service
+	ssh              *sshconfig.Service
+	secrets          *secrets.Store
+	logger           *zap.Logger
+	assets           fs.FS
+	appServerTunnels *appServerTunnelBroker
 }
 
 func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authService *auth.Service, githubManager *ghadapter.Manager, catalog *githubtools.Catalog, settingsService *platformsettings.Service, discordManager *discordintegration.Manager, bindingService *discordintegration.BindingService, secretStore *secrets.Store, logger *zap.Logger) (*Server, error) {
@@ -56,7 +55,7 @@ func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authSer
 		catalog: catalog, settings: settingsService, discord: discordManager, bindings: bindingService,
 		workers: workerregistry.NewService(db), ssh: sshconfig.NewService(db, secretStore),
 		secrets: secretStore, logger: logger, assets: assets,
-		clientUpdateHub: newClientUpdateHub()}, nil
+		appServerTunnels: newAppServerTunnelBroker()}, nil
 }
 
 func (s *Server) baseRouter() *gin.Engine {
@@ -100,33 +99,19 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	api.POST("/client/auth/login", s.clientLogin)
 	api.POST("/client/device-pairings/:id/claim", s.claimClientDevicePairing)
 	api.GET("/client/device-pairings/:id/status", s.clientDevicePairingStatus)
+	api.GET("/client/tunnels/:ticket/connect", s.clientConnectAppServerTunnel)
 	api.GET("/github/app/manifest/callback", s.githubManifestCallback)
 	api.GET("/discord/github/bind/callback", s.discordGitHubBindCallback)
 	client := api.Group("/client")
 	client.Use(s.requireClientBearer())
 	client.GET("/bootstrap", s.clientBootstrap)
-	client.GET("/sessions", s.clientListSessions)
-	client.POST("/sessions", s.clientCreateSession)
-	client.GET("/sessions/:id", s.clientGetSession)
-	client.GET("/sessions/:id/snapshot", s.clientGetSessionSnapshot)
-	client.PATCH("/sessions/:id", s.clientPatchSession)
-	client.POST("/sessions/:id/stop", s.clientStopSession)
-	client.POST("/sessions/:id/archive", s.clientArchiveSession)
-	client.POST("/sessions/:id/restore", s.clientRestoreSession)
-	client.POST("/sessions/:id/plans/:runId/execute", s.clientExecutePlan)
-	client.GET("/sessions/:id/messages", s.clientListMessages)
-	client.POST("/sessions/:id/messages", s.clientCreateMessage)
-	client.GET("/sessions/:id/turns", s.clientListTurns)
-	client.GET("/sessions/:id/turns/:turnId", s.clientGetTurn)
-	client.GET("/runs/:runId/segments/:segmentId/activities", s.clientListRunActivities)
-	client.POST("/uploads", s.clientUpload)
-	client.GET("/attachments/:id/content", s.clientDownloadAttachment)
-	client.POST("/interactive/:id/answer", s.clientAnswerInteractive)
+	client.POST("/tunnels", s.clientCreateAppServerTunnel)
+	client.POST("/materializations", s.clientCreateMaterialization)
+	client.GET("/legacy/archive/sessions", s.clientListLegacyArchive)
+	client.GET("/legacy/archive/sessions/:id", s.clientGetLegacyArchive)
 	client.PUT("/device/push-token", s.clientPutPushToken)
 	client.DELETE("/device/push-token", s.clientDeletePushToken)
 	client.DELETE("/device", s.clientDeleteDevice)
-	client.GET("/sync", s.clientSync)
-	client.GET("/updates", s.clientUpdates)
 
 	authenticated := api.Group("")
 	authenticated.Use(s.requireSession())

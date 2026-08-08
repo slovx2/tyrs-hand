@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/codexsettings"
@@ -17,9 +16,6 @@ import (
 )
 
 var errRemoteInterrupt = errors.New("远程 Run 收到用户中断指令")
-
-type remoteCommandHandler func(context.Context, *codex.Runtime, string, string,
-	workerprotocol.RunCommand) error
 
 func (p *Processor) ensureRemoteThread(ctx context.Context, runtime *codex.Runtime,
 	task *workerprotocol.Task, options ports.ThreadOptions,
@@ -63,9 +59,7 @@ func reportRuntimeSettingsApplied(report func(string, json.RawMessage),
 
 func (p *Processor) reconcileRemoteTurn(ctx context.Context, runtime *codex.Runtime,
 	events <-chan codex.Event, task *workerprotocol.Task, threadID string,
-	commands <-chan workerprotocol.RunCommand,
-	handleCommand remoteCommandHandler, report func(string, json.RawMessage),
-	interactive <-chan bool,
+	report func(string, json.RawMessage),
 ) (codexcontrol.TurnResult, bool, error) {
 	claimed := &task.Claimed
 	snapshot, err := runtime.ReadThread(ctx, threadID)
@@ -98,14 +92,13 @@ func (p *Processor) reconcileRemoteTurn(ctx context.Context, runtime *codex.Runt
 		return codexcontrol.TurnResult{}, false, remoteTurnTerminalError("快照", turn.Status)
 	}
 	result, err := p.waitRemoteTurn(ctx, runtime, events, task, threadID, turn.ID,
-		commands, handleCommand, report, interactive)
+		report)
 	return result, true, err
 }
 
 func (p *Processor) waitRemoteTurn(ctx context.Context, runtime *codex.Runtime,
 	events <-chan codex.Event, task *workerprotocol.Task, threadID, turnID string,
-	commands <-chan workerprotocol.RunCommand, handleCommand remoteCommandHandler,
-	report func(string, json.RawMessage), interactive <-chan bool,
+	report func(string, json.RawMessage),
 ) (codexcontrol.TurnResult, error) {
 	startedAt := time.Now()
 	maxTimer := time.NewTimer(p.cfg.TurnMaxDuration)
@@ -120,8 +113,6 @@ func (p *Processor) waitRemoteTurn(ctx context.Context, runtime *codex.Runtime,
 	defer pollTicker.Stop()
 	finalAnswer, finalOutputType := "", ""
 	var finalDelta strings.Builder
-	appliedCommands := make(map[uuid.UUID]bool)
-	waitingForInteractive := false
 	for {
 		select {
 		case event, open := <-events:
@@ -131,9 +122,7 @@ func (p *Processor) waitRemoteTurn(ctx context.Context, runtime *codex.Runtime,
 			if !eventBelongsToTurn(event.Params, threadID, turnID, task.Claimed.ID.String()) {
 				continue
 			}
-			if !waitingForInteractive {
-				resetTimer(idleTimer, p.cfg.TurnIdleTimeout)
-			}
+			resetTimer(idleTimer, p.cfg.TurnIdleTimeout)
 			if report != nil {
 				report(event.Method, event.Params)
 			}
@@ -190,40 +179,6 @@ func (p *Processor) waitRemoteTurn(ctx context.Context, runtime *codex.Runtime,
 					return codexcontrol.TurnResult{}, codexErr
 				}
 				return codexcontrol.TurnResult{}, remoteTurnTerminalError("快照", turn.Status)
-			}
-		case command := <-commands:
-			if appliedCommands[command.ID] {
-				continue
-			}
-			if command.Operation == "interrupt" || command.Operation == "replace_last_turn" {
-				if err := runtime.InterruptTurn(ctx, threadID, turnID); err != nil {
-					return codexcontrol.TurnResult{}, err
-				}
-				if err := p.client.AckCommand(ctx, task, command, "interrupt", turnID); err != nil {
-					return codexcontrol.TurnResult{}, err
-				}
-				return codexcontrol.TurnResult{}, errRemoteInterrupt
-			}
-			if handleCommand == nil {
-				continue
-			}
-			if err := handleCommand(ctx, runtime, threadID, turnID, command); err != nil {
-				return codexcontrol.TurnResult{}, err
-			}
-			appliedCommands[command.ID] = true
-		case waiting, open := <-interactive:
-			if !open {
-				interactive = nil
-				continue
-			}
-			if waiting {
-				waitingForInteractive = true
-				stopTimer(idleTimer)
-				stopTimer(maxTimer)
-			} else if waitingForInteractive {
-				waitingForInteractive = false
-				resetTimer(idleTimer, p.cfg.TurnIdleTimeout)
-				resetTimer(maxTimer, p.cfg.TurnMaxDuration)
 			}
 		case <-idleTimer.C:
 			return codexcontrol.TurnResult{}, errors.New("codex turn 长时间没有相关活动")

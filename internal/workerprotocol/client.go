@@ -7,14 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
-	"os"
-	"path/filepath"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
@@ -68,27 +67,6 @@ func (c *Client) Heartbeat(ctx context.Context, request HeartbeatRequest) error 
 	return c.call(ctx, http.MethodPost, "/worker/v1/heartbeat", request, nil, true)
 }
 
-func (c *Client) ClaimSessionTitle(ctx context.Context) (SessionTitleClaimResponse, error) {
-	var result SessionTitleClaimResponse
-	err := c.call(ctx, http.MethodPost, "/worker/v1/session-title-tasks/claim", nil,
-		&result, true)
-	return result, err
-}
-
-func (c *Client) CompleteSessionTitle(ctx context.Context, taskID uuid.UUID,
-	request SessionTitleCompleteRequest,
-) error {
-	return c.call(ctx, http.MethodPost, "/worker/v1/session-title-tasks/"+
-		taskID.String()+"/complete", request, nil, true)
-}
-
-func (c *Client) FailSessionTitle(ctx context.Context, taskID uuid.UUID,
-	request SessionTitleFailRequest,
-) error {
-	return c.call(ctx, http.MethodPost, "/worker/v1/session-title-tasks/"+
-		taskID.String()+"/fail", request, nil, true)
-}
-
 func (c *Client) SSHConfiguration(ctx context.Context, etag string) (SSHConfiguration, string, bool, error) {
 	var configuration SSHConfiguration
 	if err := c.callWithParameters(ctx, http.MethodGet, "/worker/v1/ssh-configuration",
@@ -117,299 +95,97 @@ func (c *Client) WorkspaceProjectSnapshot(ctx context.Context,
 		request, nil, true)
 }
 
-func (c *Client) PrepareDesktopThread(ctx context.Context,
-	request DesktopThreadPrepareRequest,
-) (DesktopThreadState, error) {
-	var result DesktopThreadState
-	err := c.call(ctx, http.MethodPost, "/worker/v1/desktop-thread-requests", request,
-		&result, true)
-	return result, err
-}
-
-func (c *Client) DesktopThreadState(ctx context.Context,
-	requestID uuid.UUID,
-) (DesktopThreadState, error) {
-	var result DesktopThreadState
-	err := c.call(ctx, http.MethodGet, "/worker/v1/desktop-thread-requests/"+
-		requestID.String(), nil, &result, true)
-	return result, err
-}
-
-func (c *Client) CompleteDesktopThread(ctx context.Context, requestID uuid.UUID,
-	request DesktopThreadCompleteRequest,
-) (DesktopThreadState, error) {
-	var result DesktopThreadState
-	err := c.call(ctx, http.MethodPost, "/worker/v1/desktop-thread-requests/"+
-		requestID.String()+"/complete", request, &result, true)
-	return result, err
-}
-
-func (c *Client) FailDesktopThread(ctx context.Context, requestID uuid.UUID,
-	request DesktopThreadFailRequest,
-) error {
-	return c.call(ctx, http.MethodPost, "/worker/v1/desktop-thread-requests/"+
-		requestID.String()+"/fail", request, nil, true)
-}
-
-func (c *Client) RecordThreadMetadata(ctx context.Context,
-	request ThreadMetadataRequest,
-) error {
-	return c.call(ctx, http.MethodPost, "/worker/v1/thread-metadata-events", request, nil, true)
-}
-
-func (c *Client) PendingThreadNames(ctx context.Context) ([]ThreadNameUpdate, error) {
-	var result []ThreadNameUpdate
-	err := c.call(ctx, http.MethodGet, "/worker/v1/thread-name-updates", nil, &result, true)
-	return result, err
-}
-
-func (c *Client) AckThreadName(ctx context.Context, controlID uuid.UUID,
-	request ThreadNameAckRequest,
-) error {
-	return c.call(ctx, http.MethodPost, "/worker/v1/thread-name-updates/"+
-		controlID.String()+"/ack", request, nil, true)
-}
-
-func (c *Client) PrepareDesktopThreadLifecycle(ctx context.Context,
-	request ThreadLifecyclePrepareRequest,
-) (ThreadLifecycleState, error) {
-	var result ThreadLifecycleState
-	err := c.call(ctx, http.MethodPost, "/worker/v1/thread-lifecycle-requests/desktop",
-		request, &result, true)
-	return result, err
-}
-
-func (c *Client) PendingThreadLifecycles(ctx context.Context) ([]ThreadLifecycleState, error) {
-	var result []ThreadLifecycleState
-	err := c.call(ctx, http.MethodGet, "/worker/v1/thread-lifecycle-requests",
-		nil, &result, true)
-	return result, err
-}
-
-func (c *Client) ThreadLifecycleState(ctx context.Context,
-	requestID uuid.UUID,
-) (ThreadLifecycleState, error) {
-	var result ThreadLifecycleState
-	err := c.call(ctx, http.MethodGet, "/worker/v1/thread-lifecycle-requests/"+
-		requestID.String(), nil, &result, true)
-	return result, err
-}
-
-func (c *Client) CompleteThreadLifecycle(ctx context.Context, requestID uuid.UUID,
-	request ThreadLifecycleCompleteRequest,
-) error {
-	return c.call(ctx, http.MethodPost, "/worker/v1/thread-lifecycle-requests/"+
-		requestID.String()+"/complete", request, nil, true)
-}
-
-func (c *Client) PrepareDesktopTurn(ctx context.Context,
-	request DesktopTurnPrepareRequest,
-) (Task, error) {
-	var result Task
-	err := c.call(ctx, http.MethodPost, "/worker/v1/desktop-turns", request, &result, true)
-	return result, err
-}
-
-func (c *Client) DesktopImageTarget(ctx context.Context,
-	intentID uuid.UUID,
-) (DesktopImageTarget, error) {
-	var result DesktopImageTarget
-	err := c.call(ctx, http.MethodGet, "/worker/v1/desktop-turns/"+intentID.String()+
-		"/images/target", nil, &result, true)
-	return result, err
-}
-
-func (c *Client) UploadDesktopImage(ctx context.Context, intentID uuid.UUID,
-	ordinal int, image DesktopImage, finalAttempt bool,
-) (DesktopImageUploadResult, error) {
-	var result DesktopImageUploadResult
-	file, err := os.Open(image.SourcePath)
-	if err != nil {
-		return result, err
-	}
-	defer func() { _ = file.Close() }()
-	return c.UploadDesktopImageReader(ctx, intentID, ordinal, image, finalAttempt, file)
-}
-
-func (c *Client) UploadDesktopImageReader(ctx context.Context, intentID uuid.UUID,
-	ordinal int, image DesktopImage, finalAttempt bool, source io.Reader,
-) (DesktopImageUploadResult, error) {
-	var result DesktopImageUploadResult
-	reader, writer := io.Pipe()
-	multipartWriter := multipart.NewWriter(writer)
-	writeResult := make(chan error, 1)
-	go func() {
-		metadata, marshalErr := json.Marshal(DesktopImageUploadMetadata{FinalAttempt: finalAttempt})
-		if marshalErr == nil {
-			var field io.Writer
-			field, marshalErr = multipartWriter.CreateFormField("metadata")
-			if marshalErr == nil {
-				_, marshalErr = field.Write(metadata)
-			}
-		}
-		if marshalErr == nil {
-			var part io.Writer
-			part, marshalErr = multipartWriter.CreateFormFile("file", image.Filename)
-			if marshalErr == nil {
-				_, marshalErr = io.Copy(part, source)
-			}
-		}
-		if closeErr := multipartWriter.Close(); marshalErr == nil {
-			marshalErr = closeErr
-		}
-		_ = writer.CloseWithError(marshalErr)
-		writeResult <- marshalErr
-	}()
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		fmt.Sprintf("%s/worker/v1/blobs/%s?ordinal=%d", c.baseURL, intentID, ordinal),
-		reader)
-	if err != nil {
-		_ = reader.CloseWithError(err)
-		return result, err
-	}
-	request.Header.Set("Content-Type", multipartWriter.FormDataContentType())
-	err = c.execute(request, &result, true)
-	_ = reader.CloseWithError(err)
-	if writeErr := <-writeResult; err == nil {
-		err = writeErr
-	}
-	return result, err
-}
-
-func (c *Client) UploadAgentAttachment(ctx context.Context, task *Task, itemID string,
-	ordinal int, sourcePath string,
-) (AgentAttachmentUploadResult, error) {
-	var result AgentAttachmentUploadResult
-	file, err := os.Open(sourcePath)
-	if err != nil {
-		return result, err
-	}
-	defer func() { _ = file.Close() }()
-	reader, writer := io.Pipe()
-	multipartWriter := multipart.NewWriter(writer)
-	writeResult := make(chan error, 1)
-	go func() {
-		writeErr := writerField(multipartWriter, "leaseToken", task.Claimed.LeaseToken)
-		if writeErr == nil {
-			writeErr = writerField(multipartWriter, "leaseEpoch", fmt.Sprint(task.Claimed.LeaseEpoch))
-		}
-		if writeErr == nil {
-			writeErr = writerField(multipartWriter, "itemId", itemID)
-		}
-		if writeErr == nil {
-			writeErr = writerField(multipartWriter, "ordinal", fmt.Sprint(ordinal))
-		}
-		if writeErr == nil {
-			var part io.Writer
-			part, writeErr = multipartWriter.CreateFormFile("file", filepath.Base(sourcePath))
-			if writeErr == nil {
-				_, writeErr = io.Copy(part, file)
-			}
-		}
-		if closeErr := multipartWriter.Close(); writeErr == nil {
-			writeErr = closeErr
-		}
-		_ = writer.CloseWithError(writeErr)
-		writeResult <- writeErr
-	}()
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		c.baseURL+runPath(task, "/attachments"), reader)
-	if err != nil {
-		_ = reader.CloseWithError(err)
-		return result, err
-	}
-	request.Header.Set("Content-Type", multipartWriter.FormDataContentType())
-	err = c.execute(request, &result, true)
-	_ = reader.CloseWithError(err)
-	if writeErr := <-writeResult; err == nil {
-		err = writeErr
-	}
-	return result, err
-}
-
-func writerField(writer *multipart.Writer, name, value string) error {
-	field, err := writer.CreateFormField(name)
-	if err != nil {
-		return err
-	}
-	_, err = io.WriteString(field, value)
-	return err
-}
-
-func (c *Client) FailDesktopImage(ctx context.Context, intentID uuid.UUID,
-	ordinal int, cause error,
-) error {
-	message := "图片同步失败"
-	if cause != nil && strings.TrimSpace(cause.Error()) != "" {
-		message = cause.Error()
-	}
-	return c.call(ctx, http.MethodPost, fmt.Sprintf(
-		"/worker/v1/desktop-turns/%s/images/%d/fail", intentID, ordinal),
-		DesktopImageFailureRequest{Error: message}, nil, true)
-}
-
-func (c *Client) PrepareDesktopRollback(ctx context.Context,
-	request DesktopRollbackPrepareRequest,
-) (DesktopRollbackState, error) {
-	var result DesktopRollbackState
-	err := c.call(ctx, http.MethodPost, "/worker/v1/desktop-rollbacks", request, &result, true)
-	return result, err
-}
-
-func (c *Client) CompleteDesktopRollback(ctx context.Context, requestID uuid.UUID,
-	request DesktopRollbackCompleteRequest,
-) error {
-	return c.call(ctx, http.MethodPost, "/worker/v1/desktop-rollbacks/"+requestID.String()+
-		"/complete", request, nil, true)
-}
-
-func (c *Client) PreflightDesktopTurn(ctx context.Context,
-	request DesktopTurnPreflightRequest,
-) (DesktopTurnPreflightResponse, error) {
-	var result DesktopTurnPreflightResponse
-	err := c.call(ctx, http.MethodPost, "/worker/v1/desktop-turns/preflight", request, &result, true)
-	return result, err
-}
-
-func (c *Client) RecordDesktopSteer(ctx context.Context,
-	request DesktopSteerRecordRequest,
-) error {
-	return c.call(ctx, http.MethodPost, "/worker/v1/desktop-steers", request, nil, true)
-}
-
-func (c *Client) RegisterInteractive(ctx context.Context, task *Task,
-	requestID, params json.RawMessage, generation int64,
-) (InteractiveState, error) {
-	var result InteractiveState
-	err := c.call(ctx, http.MethodPost, runPath(task, "/interactive"),
-		InteractiveRegisterRequest{RunLeaseRequest: lease(task), RequestID: requestID,
-			Params: params, AppServerGeneration: generation}, &result, true)
-	return result, err
-}
-
-func (c *Client) InteractiveState(ctx context.Context,
-	requestID uuid.UUID,
-) (InteractiveState, error) {
-	var result InteractiveState
-	err := c.call(ctx, http.MethodGet, "/worker/v1/interactive/"+requestID.String(), nil,
-		&result, true)
-	return result, err
-}
-
-func (c *Client) AnswerInteractive(ctx context.Context,
-	request InteractiveAnswerRequest,
-) (InteractiveState, error) {
-	var result InteractiveState
-	err := c.call(ctx, http.MethodPost, "/worker/v1/interactive/answer", request, &result, true)
-	return result, err
-}
-
 func (c *Client) Claim(ctx context.Context, request ClaimRequest) (ClaimResponse, error) {
 	var response ClaimResponse
 	if err := c.call(ctx, http.MethodPost, "/worker/v1/claims", request, &response, true); err != nil {
 		return ClaimResponse{}, err
 	}
 	return response, nil
+}
+
+func (c *Client) ClaimAppServerTunnel(ctx context.Context) (AppServerTunnelClaimResponse, error) {
+	var response AppServerTunnelClaimResponse
+	err := c.call(ctx, http.MethodPost, "/worker/v1/tunnels/claim", nil, &response, true)
+	return response, err
+}
+
+func (c *Client) OpenAppServerTunnel(ctx context.Context,
+	id uuid.UUID,
+) (*websocket.Conn, error) {
+	if c.credential == "" {
+		return nil, errors.New("Worker尚未注册")
+	}
+	endpoint, err := url.Parse(c.baseURL)
+	if err != nil {
+		return nil, err
+	}
+	if endpoint.Scheme == "https" {
+		endpoint.Scheme = "wss"
+	} else {
+		endpoint.Scheme = "ws"
+	}
+	endpoint.Path = "/worker/v1/tunnels/" + id.String() + "/connect"
+	endpoint.RawQuery = ""
+	headers := http.Header{"Authorization": []string{"Bearer " + c.credential}}
+	connection, response, err := websocket.DefaultDialer.DialContext(ctx, endpoint.String(), headers)
+	if response != nil && response.Body != nil {
+		_ = response.Body.Close()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("连接 Control App Server 隧道: %w", err)
+	}
+	return connection, nil
+}
+
+func (c *Client) ClaimMaterialization(ctx context.Context) (MaterializationClaimResponse, error) {
+	var response MaterializationClaimResponse
+	err := c.call(ctx, http.MethodPost, "/worker/v1/materializations/claim", nil,
+		&response, true)
+	return response, err
+}
+
+func (c *Client) DownloadMaterialization(ctx context.Context, task *MaterializationClaim,
+	destination io.Writer,
+) (string, int64, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		c.baseURL+"/worker/v1/materializations/"+task.ID.String()+"/content", nil)
+	if err != nil {
+		return "", 0, err
+	}
+	if c.credential == "" {
+		return "", 0, errors.New("Worker尚未注册")
+	}
+	request.Header.Set("Authorization", "Bearer "+c.credential)
+	request.Header.Set("X-Materialization-Lease-Token", task.LeaseToken)
+	response, err := c.http.Do(request)
+	if err != nil {
+		return "", 0, err
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		data, _ := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+		return "", 0, &HTTPError{StatusCode: response.StatusCode, Status: response.Status,
+			Detail: strings.TrimSpace(string(data))}
+	}
+	written, err := io.Copy(destination, io.LimitReader(response.Body, (25<<20)+1))
+	if err == nil && written > 25<<20 {
+		err = errors.New("control 返回的 materialization 超过大小限制")
+	}
+	return response.Header.Get("X-Attachment-SHA256"), written, err
+}
+
+func (c *Client) CompleteMaterialization(ctx context.Context, id uuid.UUID,
+	request MaterializationCompleteRequest,
+) error {
+	return c.call(ctx, http.MethodPost, "/worker/v1/materializations/"+id.String()+
+		"/complete", request, nil, true)
+}
+
+func (c *Client) FailMaterialization(ctx context.Context, id uuid.UUID,
+	request MaterializationFailRequest,
+) error {
+	return c.call(ctx, http.MethodPost, "/worker/v1/materializations/"+id.String()+
+		"/fail", request, nil, true)
 }
 
 func lease(task *Task) RunLeaseRequest {
@@ -426,14 +202,6 @@ func (c *Client) RunHeartbeat(ctx context.Context, task *Task) (RunHeartbeatResp
 	err := c.call(ctx, http.MethodPost, runPath(task, "/heartbeat"), lease(task),
 		&response, true)
 	return response, err
-}
-
-func (c *Client) AckCommand(ctx context.Context, task *Task, command RunCommand,
-	action, turnID string,
-) error {
-	return c.call(ctx, http.MethodPost, runPath(task, "/commands/ack"), CommandAckRequest{
-		RunLeaseRequest: lease(task), CommandID: command.ID, Action: action, TurnID: turnID,
-	}, nil, true)
 }
 
 func (c *Client) Events(ctx context.Context, task *Task, events []EventInput) error {
@@ -474,38 +242,6 @@ func (c *Client) FailWithCodexError(ctx context.Context, task *Task, code string
 	}, nil, true)
 }
 
-func (c *Client) DownloadAttachment(ctx context.Context, task *Task, attachmentID uuid.UUID,
-	destination io.Writer,
-) (string, int64, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		fmt.Sprintf("%s/worker/v1/blobs/%s?runId=%s", c.baseURL, attachmentID,
-			task.Claimed.RunID), nil)
-	if err != nil {
-		return "", 0, err
-	}
-	if c.credential == "" {
-		return "", 0, errors.New("Worker尚未注册")
-	}
-	request.Header.Set("Authorization", "Bearer "+c.credential)
-	request.Header.Set("X-Run-Lease-Token", task.Claimed.LeaseToken)
-	request.Header.Set("X-Run-Lease-Epoch", fmt.Sprintf("%d", task.Claimed.LeaseEpoch))
-	response, err := c.http.Do(request)
-	if err != nil {
-		return "", 0, err
-	}
-	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		data, _ := io.ReadAll(io.LimitReader(response.Body, 1<<20))
-		return "", 0, &HTTPError{StatusCode: response.StatusCode, Status: response.Status,
-			Detail: strings.TrimSpace(string(data))}
-	}
-	written, err := io.Copy(destination, io.LimitReader(response.Body, (25<<20)+1))
-	if err == nil && written > 25<<20 {
-		err = errors.New("control 返回的 Discord 附件超过大小限制")
-	}
-	return response.Header.Get("X-Attachment-SHA256"), written, err
-}
-
 func (c *Client) SetThread(ctx context.Context, task *Task, threadID string) error {
 	return c.call(ctx, http.MethodPost, runPath(task, "/thread"), SetThreadRequest{
 		RunLeaseRequest: lease(task), ThreadID: threadID,
@@ -522,11 +258,6 @@ func (c *Client) ConfirmTurn(ctx context.Context, task *Task, id string) error {
 	return c.call(ctx, http.MethodPost, runPath(task, "/confirm"), ConfirmTurnRequest{
 		RunLeaseRequest: lease(task), TurnID: id,
 	}, nil, true)
-}
-
-func (c *Client) WorkspaceProjectState(ctx context.Context, task *Task, state WorkspaceProjectState) error {
-	state.RunLeaseRequest = lease(task)
-	return c.call(ctx, http.MethodPost, runPath(task, "/workspace-project-state"), state, nil, true)
 }
 
 func (c *Client) WorkspaceState(ctx context.Context, task *Task, state WorkspaceState) error {

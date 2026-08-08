@@ -779,7 +779,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/worker/v1/session-title-tasks/claim": {
+    "/worker/v1/tunnels/claim": {
         parameters: {
             query?: never;
             header?: never;
@@ -788,30 +788,30 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["workerClaimSessionTitle"];
+        post: operations["workerClaimAppServerTunnel"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/worker/v1/session-title-tasks/{id}/complete": {
+    "/worker/v1/tunnels/{id}/connect": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["workerConnectAppServerTunnel"];
         put?: never;
-        post: operations["workerCompleteSessionTitle"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/worker/v1/session-title-tasks/{id}/fail": {
+    "/worker/v1/materializations/claim": {
         parameters: {
             query?: never;
             header?: never;
@@ -820,7 +820,55 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["workerFailSessionTitle"];
+        post: operations["workerClaimMaterialization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/materializations/{id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["workerDownloadMaterialization"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/materializations/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerCompleteMaterialization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/worker/v1/materializations/{id}/fail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerFailMaterialization"];
         delete?: never;
         options?: never;
         head?: never;
@@ -875,358 +923,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/worker/v1/blobs/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["downloadWorkerBlob"];
-        put?: never;
-        post: operations["uploadWorkerBlob"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/desktop-thread-requests": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["workerPrepareDesktopThread"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/desktop-thread-requests/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["workerDesktopThreadState"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/desktop-thread-requests/{id}/complete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["workerCompleteDesktopThread"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/desktop-thread-requests/{id}/fail": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["workerFailDesktopThread"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/thread-metadata-events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["workerRecordThreadMetadata"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/thread-name-updates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["workerPendingThreadNames"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/thread-name-updates/{id}/ack": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["workerAckThreadName"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/thread-lifecycle-requests/desktop": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["workerPrepareDesktopThreadLifecycle"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/thread-lifecycle-requests": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["workerPendingThreadLifecycles"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/thread-lifecycle-requests/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["workerThreadLifecycleState"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/thread-lifecycle-requests/{id}/complete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["workerCompleteThreadLifecycle"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/desktop-turns": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["workerPrepareDesktopTurn"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/desktop-turns/preflight": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["workerPreflightDesktopTurn"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/desktop-turns/{id}/images/target": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["workerDesktopImageTarget"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/desktop-turns/{id}/images/{ordinal}/fail": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["workerFailDesktopImage"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/desktop-rollbacks": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["workerPrepareDesktopRollback"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/desktop-rollbacks/{id}/complete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["workerCompleteDesktopRollback"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/desktop-steers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["workerRecordDesktopSteer"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/runs/{id}/interactive": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["workerRegisterInteractive"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/interactive/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["workerInteractiveState"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/interactive/answer": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["workerAnswerInteractive"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/worker/v1/runs/{id}/heartbeat": {
         parameters: {
             query?: never;
@@ -1243,22 +939,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/worker/v1/runs/{id}/commands/ack": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["workerCommandAck"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/worker/v1/runs/{id}/events": {
         parameters: {
             query?: never;
@@ -1269,22 +949,6 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["workerRunEvents"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/runs/{id}/attachments": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["workerUploadAgentAttachment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1365,22 +1029,6 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["workerConfirmTurn"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/runs/{id}/workspace-project-state": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["workerWorkspaceProjectState"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1579,133 +1227,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/client/sessions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["clientListSessions"];
-        put?: never;
-        post: operations["clientCreateSession"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/client/sessions/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        get: operations["clientGetSession"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch: operations["clientPatchSession"];
-        trace?: never;
-    };
-    "/client/sessions/{id}/messages": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        get: operations["clientListMessages"];
-        put?: never;
-        post: operations["clientCreateMessage"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/client/sessions/{id}/snapshot": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        get: operations["clientGetSessionSnapshot"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/client/sessions/{id}/turns": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        get: operations["clientListTurns"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/client/sessions/{id}/turns/{turnId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-                turnId: string;
-            };
-            cookie?: never;
-        };
-        get: operations["clientGetTurn"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/client/runs/{runId}/segments/{segmentId}/activities": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                runId: string;
-                segmentId: string;
-            };
-            cookie?: never;
-        };
-        get: operations["clientListRunSegmentActivities"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/client/sessions/{id}/stop": {
+    "/client/tunnels": {
         parameters: {
             query?: never;
             header?: never;
@@ -1714,85 +1236,21 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["clientStopSession"];
+        post: operations["clientCreateAppServerTunnel"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/client/sessions/{id}/archive": {
+    "/client/tunnels/{ticket}/connect": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
-        post: operations["clientArchiveSession"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/client/sessions/{id}/restore": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["clientRestoreSession"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/client/sessions/{id}/plans/{runId}/execute": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["clientExecutePlan"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/client/uploads": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["clientUpload"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/client/attachments/{id}/content": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["clientDownloadAttachment"];
+        get: operations["clientConnectAppServerTunnel"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1801,7 +1259,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/client/interactive/{id}/answer": {
+    "/client/materializations": {
         parameters: {
             query?: never;
             header?: never;
@@ -1810,21 +1268,21 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["clientAnswerInteractive"];
+        post: operations["clientCreateMaterialization"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/client/sync": {
+    "/client/legacy/archive/sessions": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["clientSync"];
+        get: operations["clientListLegacyArchive"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1833,15 +1291,14 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/client/updates": {
+    "/client/legacy/archive/sessions/{id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** @description 升级为 WebSocket；durable 事件使用全局 cursor，live 事件使用 runEventSeq。 */
-        get: operations["clientUpdatesWebSocket"];
+        get: operations["clientGetLegacyArchive"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1886,65 +1343,6 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        ClientSessionSettings: {
-            /** Format: uuid */
-            agentProfileId: string;
-            model: string | null;
-            reasoningEffort: string | null;
-            /** @enum {string} */
-            serviceTier: "standard" | "fast";
-            /** @enum {string} */
-            collaborationMode: "default" | "plan";
-            /** Format: int64 */
-            settingsVersion: number;
-        };
-        ClientSession: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            workspaceId: string;
-            /** Format: uuid */
-            projectId: string;
-            /** Format: uuid */
-            agentProfileId: string;
-            title: string;
-            /** @enum {string} */
-            lifecycleState: "active" | "archive_pending" | "archived" | "unarchive_pending";
-            /** @enum {string} */
-            historyCompleteness: "complete" | "partial";
-            model: string | null;
-            reasoningEffort: string | null;
-            /** @enum {string} */
-            serviceTier: "standard" | "fast";
-            /** @enum {string} */
-            collaborationMode: "default" | "plan";
-            /** Format: int64 */
-            settingsVersion: number;
-            /** Format: int64 */
-            lastMessageSeq: number;
-            isRunning: boolean;
-            hasRunIssue: boolean;
-            /** Format: int64 */
-            lastAgentMessageSeq: number;
-            /** Format: uuid */
-            pendingInteractiveId: string | null;
-            /** Format: date-time */
-            lastActivityAt: string;
-            /** Format: date-time */
-            createdAt: string;
-            /** Format: date-time */
-            updatedAt: string;
-        };
-        ClientCreateSession: {
-            /** Format: uuid */
-            projectId: string;
-            settings: components["schemas"]["ClientSessionSettings"];
-            initialMessage: {
-                localId: string;
-                text: string;
-                attachmentIds?: string[];
-            };
-        };
         ClientProject: {
             /** Format: uuid */
             id: string;
@@ -1952,6 +1350,7 @@ export interface components {
             workspaceId: string;
             name: string;
             relativePath: string;
+            absolutePath: string;
             kind: string;
             availabilityStatus: string;
             branch: string | null;
@@ -1978,17 +1377,11 @@ export interface components {
             isDefault: boolean;
             hidden?: boolean;
         };
-        ClientModelCatalog: {
-            data: components["schemas"]["ClientModel"][];
-            nextCursor?: string | null;
-        };
         ClientBootstrap: {
             /** Format: uuid */
             serverId: string;
             /** @enum {integer} */
-            protocolVersion: 3;
-            /** Format: int64 */
-            currentCursor: number;
+            protocolVersion: 4;
             user: {
                 /** Format: uuid */
                 id: string;
@@ -2001,15 +1394,6 @@ export interface components {
                 [key: string]: unknown;
             }[];
             projects: components["schemas"]["ClientProject"][];
-            agentProfiles: {
-                /** Format: uuid */
-                id: string;
-                name: string;
-            }[];
-            modelCatalogs: {
-                [key: string]: components["schemas"]["ClientModelCatalog"];
-            };
-            lastStartedSettings: components["schemas"]["ClientSessionSettings"] | null;
         };
         Worker: {
             /** Format: uuid */
@@ -2164,41 +1548,13 @@ export interface components {
         };
         WorkerClaimRequest: {
             /** @enum {string} */
-            role: "all" | "github" | "discord";
+            role: "github";
             wait: boolean;
         };
         WorkerClaimResponse: {
             task?: {
                 [key: string]: unknown;
             };
-        };
-        WorkerSessionTitleTask: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            sessionId: string;
-            /** Format: uuid */
-            workspaceId: string;
-            firstMessage: string;
-            /** Format: int64 */
-            titleRevision: number;
-            attempt: number;
-            leaseToken: string;
-            /** Format: date-time */
-            leaseExpiresAt: string;
-        };
-        WorkerSessionTitleClaimResponse: {
-            task?: components["schemas"]["WorkerSessionTitleTask"];
-        };
-        WorkerSessionTitleCompleteRequest: {
-            leaseToken: string;
-            /** Format: int64 */
-            titleRevision: number;
-            title: string;
-        };
-        WorkerSessionTitleFailRequest: {
-            leaseToken: string;
-            errorCode: string;
         };
         WorkerRunLease: {
             leaseToken: string;
@@ -2226,13 +1582,6 @@ export interface components {
             idempotencyKey: string;
             code: string;
             message: string;
-        };
-        WorkerCommandAck: components["schemas"]["WorkerRunLease"] & {
-            /** Format: uuid */
-            commandId: string;
-            /** @enum {string} */
-            action: "steer" | "interrupt";
-            turnId?: string;
         };
         ProblemDetails: {
             /** Format: uri-reference */
@@ -4150,7 +3499,7 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    workerClaimSessionTitle: {
+    workerClaimAppServerTunnel: {
         parameters: {
             query?: never;
             header?: never;
@@ -4159,19 +3508,90 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 可选 Session 标题任务租约 */
+            /** @description 可选 App Server 透明隧道 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["WorkerSessionTitleClaimResponse"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             default: components["responses"]["Problem"];
         };
     };
-    workerCompleteSessionTitle: {
+    workerConnectAppServerTunnel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description WebSocket 已升级 */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerClaimMaterialization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 可选附件 materialization */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerDownloadMaterialization: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Materialization-Lease-Token": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 待 materialize 附件 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerCompleteMaterialization: {
         parameters: {
             query?: never;
             header?: never;
@@ -4182,11 +3602,13 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["WorkerSessionTitleCompleteRequest"];
+                "application/json": {
+                    [key: string]: unknown;
+                };
             };
         };
         responses: {
-            /** @description 标题任务已完成或结果已因 revision 变化丢弃 */
+            /** @description materialization 已完成 */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -4196,7 +3618,7 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    workerFailSessionTitle: {
+    workerFailMaterialization: {
         parameters: {
             query?: never;
             header?: never;
@@ -4207,11 +3629,13 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["WorkerSessionTitleFailRequest"];
+                "application/json": {
+                    [key: string]: unknown;
+                };
             };
         };
         responses: {
-            /** @description 标题任务失败状态已记录 */
+            /** @description materialization 失败已记录 */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -4297,407 +3721,6 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    downloadWorkerBlob: {
-        parameters: {
-            query: {
-                runId: string;
-            };
-            header: {
-                "X-Run-Lease-Token": string;
-                "X-Run-Lease-Epoch": number;
-            };
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 二进制附件 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/octet-stream": string;
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    uploadWorkerBlob: {
-        parameters: {
-            query: {
-                ordinal: number;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": {
-                    metadata: string;
-                    /** Format: binary */
-                    file: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Blob 上传结果 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerPrepareDesktopThread: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: components["requestBodies"]["WorkerJSON"];
-        responses: {
-            200: components["responses"]["WorkerJSON"];
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerDesktopThreadState: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: components["responses"]["WorkerJSON"];
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerCompleteDesktopThread: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: components["requestBodies"]["WorkerJSON"];
-        responses: {
-            200: components["responses"]["WorkerJSON"];
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerFailDesktopThread: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: components["requestBodies"]["WorkerJSON"];
-        responses: {
-            /** @description 失败状态已保存 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerRecordThreadMetadata: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: components["requestBodies"]["WorkerJSON"];
-        responses: {
-            /** @description 元数据事件已保存 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerPendingThreadNames: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: components["responses"]["WorkerJSON"];
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerAckThreadName: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: components["requestBodies"]["WorkerJSON"];
-        responses: {
-            /** @description 标题更新已确认 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerPrepareDesktopThreadLifecycle: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: components["requestBodies"]["WorkerJSON"];
-        responses: {
-            200: components["responses"]["WorkerJSON"];
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerPendingThreadLifecycles: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: components["responses"]["WorkerJSON"];
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerThreadLifecycleState: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: components["responses"]["WorkerJSON"];
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerCompleteThreadLifecycle: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: components["requestBodies"]["WorkerJSON"];
-        responses: {
-            /** @description 生命周期操作已完成 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerPrepareDesktopTurn: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: components["requestBodies"]["WorkerJSON"];
-        responses: {
-            200: components["responses"]["WorkerJSON"];
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerPreflightDesktopTurn: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: components["requestBodies"]["WorkerJSON"];
-        responses: {
-            200: components["responses"]["WorkerJSON"];
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerDesktopImageTarget: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: components["responses"]["WorkerJSON"];
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerFailDesktopImage: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-                ordinal: number;
-            };
-            cookie?: never;
-        };
-        requestBody: components["requestBodies"]["WorkerJSON"];
-        responses: {
-            /** @description 图片失败状态已保存 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerPrepareDesktopRollback: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: components["requestBodies"]["WorkerJSON"];
-        responses: {
-            200: components["responses"]["WorkerJSON"];
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerCompleteDesktopRollback: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: components["requestBodies"]["WorkerJSON"];
-        responses: {
-            /** @description 回滚已完成 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerRecordDesktopSteer: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: components["requestBodies"]["WorkerJSON"];
-        responses: {
-            /** @description Steer 已保存 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerRegisterInteractive: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: components["requestBodies"]["WorkerJSON"];
-        responses: {
-            200: components["responses"]["WorkerJSON"];
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerInteractiveState: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: components["responses"]["WorkerJSON"];
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerAnswerInteractive: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: components["requestBodies"]["WorkerJSON"];
-        responses: {
-            200: components["responses"]["WorkerJSON"];
-            default: components["responses"]["Problem"];
-        };
-    };
     workerRunHeartbeat: {
         parameters: {
             query?: never;
@@ -4710,31 +3733,6 @@ export interface operations {
         requestBody: components["requestBodies"]["WorkerJSON"];
         responses: {
             200: components["responses"]["WorkerJSON"];
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerCommandAck: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WorkerCommandAck"];
-            };
-        };
-        responses: {
-            /** @description 命令已确认 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
             default: components["responses"]["Problem"];
         };
     };
@@ -4759,54 +3757,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerUploadAgentAttachment: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": {
-                    leaseToken: string;
-                    /** Format: int64 */
-                    leaseEpoch: number;
-                    itemId: string;
-                    ordinal: number;
-                    /** Format: binary */
-                    file: string;
-                };
-            };
-        };
-        responses: {
-            /** @description 幂等请求返回已保存的 Agent 图片 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Agent 图片已保存 */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
             };
             default: components["responses"]["Problem"];
         };
@@ -4915,27 +3865,6 @@ export interface operations {
         requestBody: components["requestBodies"]["WorkerJSON"];
         responses: {
             /** @description Turn 已确认 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerWorkspaceProjectState: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["WorkerResourceID"];
-            };
-            cookie?: never;
-        };
-        requestBody: components["requestBodies"]["WorkerJSON"];
-        responses: {
-            /** @description 项目状态已保存 */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -5118,7 +4047,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 协议 v2 启动快照 */
+            /** @description 协议 v4 启动快照 */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5130,168 +4059,23 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    clientListSessions: {
-        parameters: {
-            query?: {
-                cursor?: string;
-                limit?: number;
-                projectId?: string;
-                lifecycle?: "active" | "archive_pending" | "archived" | "unarchive_pending";
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 会话分页 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        sessions: components["schemas"]["ClientSession"][];
-                        nextCursor: string;
-                    };
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    clientCreateSession: {
+    clientCreateAppServerTunnel: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ClientCreateSession"];
-            };
-        };
-        responses: {
-            /** @description 原子创建会话、首条消息与 Turn */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        session: components["schemas"]["ClientSession"];
-                        deduplicated: boolean;
-                    };
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    clientGetSession: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 会话、目标参数和当前 Run */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    clientPatchSession: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
             cookie?: never;
         };
         requestBody: {
             content: {
                 "application/json": {
-                    [key: string]: unknown;
+                    /** Format: uuid */
+                    workspaceId: string;
                 };
             };
         };
         responses: {
-            /** @description 更新后的会话 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ClientSession"];
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    clientListMessages: {
-        parameters: {
-            query?: {
-                beforeSeq?: number;
-                afterSeq?: number;
-                limit?: number;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 双向消息分页 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    clientCreateMessage: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    localId: string;
-                    text: string;
-                    /** @enum {string} */
-                    behavior?: "start_when_idle" | "steer_if_active";
-                    attachmentIds?: string[];
-                };
-            };
-        };
-        responses: {
-            /** @description 已发送或 steer */
+            /** @description 单次透明隧道 ticket */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -5305,347 +4089,13 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
-    clientGetSessionSnapshot: {
-        parameters: {
-            query?: {
-                turnLimit?: number;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 一致性会话详情与最新轮次快照 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    clientListTurns: {
-        parameters: {
-            query?: {
-                beforeCursor?: string;
-                limit?: number;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 按完整轮次分页的聊天历史 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    clientGetTurn: {
+    clientConnectAppServerTunnel: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: string;
-                turnId: string;
+                ticket: string;
             };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 单个完整轮次 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    clientListRunSegmentActivities: {
-        parameters: {
-            query?: {
-                beforeActivitySeq?: number;
-                afterEventSeq?: number;
-                limit?: number;
-            };
-            header?: never;
-            path: {
-                runId: string;
-                segmentId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Run 分段内的活动分页和流式检查点 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    clientStopSession: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 操作已接受 */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    clientArchiveSession: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 归档请求已接受 */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    clientRestoreSession: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 恢复请求已接受 */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    clientExecutePlan: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-                runId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Plan 执行 Intent */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    clientUpload: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": {
-                    localId: string;
-                    /** Format: binary */
-                    file: string;
-                };
-            };
-        };
-        responses: {
-            /** @description 已上传附件 */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    clientDownloadAttachment: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 附件内容 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/octet-stream": string;
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    clientAnswerInteractive: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    answer: {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-        responses: {
-            /** @description 交互回答状态 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    clientSync: {
-        parameters: {
-            query?: {
-                afterCursor?: number;
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 持久同步事件 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description 游标过期，必须按 Control 重置 */
-            410: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    clientUpdatesWebSocket: {
-        parameters: {
-            query?: {
-                cursor?: number;
-            };
-            header?: never;
-            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -5656,6 +4106,87 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    clientCreateMaterialization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: uuid */
+                    workspaceId: string;
+                    clientId: string;
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Worker 本地附件路径 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    clientListLegacyArchive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 只读旧会话归档 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    clientGetLegacyArchive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 只读旧会话详情与消息 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
             };
             default: components["responses"]["Problem"];
         };

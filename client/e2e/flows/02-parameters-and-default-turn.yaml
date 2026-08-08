@@ -37,5 +37,3 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     visible:
       id: "message:role:agent"
     timeout: 120000
-- assertVisible:
-    id: "run:.*:progress"

@@ -1,0 +1,20 @@
+{
+  "name": "tyrs-ssh-transport",
+  "version": "0.1.0",
+  "description": "Tyrs Hand SSH transport Expo module",
+  "license": "Apache-2.0",
+  "author": "Tyrs Hand",
+  "homepage": "https://github.com/slovx2/tyrs-hand",
+  "main": "src/index.ts",
+  "files": [
+    "android",
+    "ios",
+    "src",
+    "expo-module.config.json"
+  ],
+  "peerDependencies": {
+    "expo": "54.0.32",
+    "expo-modules-core": "3.0.29",
+    "react-native": "0.81.5"
+  }
+}

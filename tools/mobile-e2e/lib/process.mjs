@@ -32,7 +32,9 @@ export function output(command, args, options = {}) {
 export async function startProcess(name, command, args, { cwd, env, logDir }) {
   await mkdir(logDir, { recursive: true })
   const chunks = []
-  const child = spawn(command, args, { cwd, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] })
+  const isolatedProcessGroup = process.platform !== 'win32'
+  const child = spawn(command, args, { cwd, env: { ...process.env, ...env },
+    detached: isolatedProcessGroup, stdio: ['ignore', 'pipe', 'pipe'] })
   const append = (data) => {
     chunks.push(data)
     if (chunks.length > 2000) chunks.shift()
@@ -45,12 +47,22 @@ export async function startProcess(name, command, args, { cwd, env, logDir }) {
     child,
     exit,
     async stop() {
-      if (child.exitCode === null) child.kill('SIGTERM')
+      signalProcess(child, isolatedProcessGroup, 'SIGTERM')
       await Promise.race([exit, new Promise((resolve) => setTimeout(resolve, 5000))])
-      if (child.exitCode === null) child.kill('SIGKILL')
+      signalProcess(child, isolatedProcessGroup, 'SIGKILL')
       await writeFile(`${logDir}/${name}.log`, Buffer.concat(chunks))
     },
   }
+}
+
+function signalProcess(child, isolatedProcessGroup, signal) {
+  if (isolatedProcessGroup && child.pid) {
+    try {
+      process.kill(-child.pid, signal)
+      return
+    } catch { /* 子进程可能恰好已经退出。 */ }
+  }
+  if (child.exitCode === null) child.kill(signal)
 }
 
 export async function waitFor(url, { timeoutMs = 60_000, process: managed } = {}) {

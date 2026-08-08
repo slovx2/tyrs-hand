@@ -6,7 +6,7 @@ import { useAppStore } from "@/store/appStore";
 
 export default function NewProjectTaskScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const project = useAppStore((state) => state.bootstrap?.projects.find((item) => item.id === id));
+  const project = useAppStore((state) => state.projects.find((item) => item.id === id));
 
   if (!project) {
     return <Screen><Stack.Screen options={{ title: "新任务" }} />

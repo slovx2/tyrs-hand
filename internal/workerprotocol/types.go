@@ -9,7 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 24
+const Version = 25
 
 // CodexTurnError 保留 Codex error 通知的结构化字段，供 Control 决定是否重试
 // 并在 Discord 失败过程卡中展示。
@@ -77,30 +77,41 @@ type ClaimResponse struct {
 	Task *Task `json:"task,omitempty"`
 }
 
-type SessionTitleTask struct {
-	ID             uuid.UUID `json:"id"`
-	SessionID      uuid.UUID `json:"sessionId"`
-	WorkspaceID    uuid.UUID `json:"workspaceId"`
-	FirstMessage   string    `json:"firstMessage"`
-	TitleRevision  int64     `json:"titleRevision"`
-	Attempt        int       `json:"attempt"`
-	LeaseToken     string    `json:"leaseToken"`
-	LeaseExpiresAt time.Time `json:"leaseExpiresAt"`
+type AppServerTunnelClaim struct {
+	ID        uuid.UUID `json:"id"`
+	ExpiresAt time.Time `json:"expiresAt"`
 }
 
-type SessionTitleClaimResponse struct {
-	Task *SessionTitleTask `json:"task,omitempty"`
+type AppServerTunnelClaimResponse struct {
+	Tunnel *AppServerTunnelClaim `json:"tunnel,omitempty"`
 }
 
-type SessionTitleCompleteRequest struct {
-	LeaseToken    string `json:"leaseToken"`
-	TitleRevision int64  `json:"titleRevision"`
-	Title         string `json:"title"`
+type MaterializationClaim struct {
+	ID         uuid.UUID `json:"id"`
+	Filename   string    `json:"filename"`
+	MediaType  string    `json:"mediaType"`
+	SizeBytes  int64     `json:"sizeBytes"`
+	SHA256     string    `json:"sha256"`
+	LeaseToken string    `json:"leaseToken"`
+	ExpiresAt  time.Time `json:"expiresAt"`
 }
 
-type SessionTitleFailRequest struct {
+type MaterializationClaimResponse struct {
+	Materialization *MaterializationClaim `json:"materialization,omitempty"`
+}
+
+type MaterializationLeaseRequest struct {
 	LeaseToken string `json:"leaseToken"`
-	ErrorCode  string `json:"errorCode"`
+}
+
+type MaterializationCompleteRequest struct {
+	LeaseToken string `json:"leaseToken"`
+	RemotePath string `json:"remotePath"`
+}
+
+type MaterializationFailRequest struct {
+	LeaseToken string `json:"leaseToken"`
+	Error      string `json:"error"`
 }
 
 type WorkspaceManifest struct {
@@ -142,213 +153,6 @@ type WorkspaceForum struct {
 	WorkspaceStatus   string     `json:"workspaceStatus"`
 }
 
-type DesktopThreadPrepareRequest struct {
-	WorkspaceID   uuid.UUID       `json:"workspaceId"`
-	WorkspaceRoot string          `json:"workspaceRoot,omitempty"`
-	Operation     string          `json:"operation"`
-	RequestKey    string          `json:"requestKey"`
-	Params        json.RawMessage `json:"params"`
-}
-
-type DesktopThreadConfig struct {
-	Model            string   `json:"model,omitempty"`
-	ReasoningEffort  string   `json:"reasoningEffort,omitempty"`
-	ServiceTier      string   `json:"serviceTier,omitempty"`
-	AllowedTools     []string `json:"allowedTools"`
-	DangerousActions []string `json:"dangerousActions"`
-}
-
-type DesktopThreadState struct {
-	ID               uuid.UUID           `json:"id"`
-	WorkspaceID      uuid.UUID           `json:"workspaceId"`
-	Operation        string              `json:"operation"`
-	Status           string              `json:"status"`
-	ForumID          uuid.UUID           `json:"forumId,omitempty"`
-	ConversationID   uuid.UUID           `json:"conversationId,omitempty"`
-	ControlID        uuid.UUID           `json:"controlId,omitempty"`
-	ExternalThreadID string              `json:"externalThreadId,omitempty"`
-	Response         json.RawMessage     `json:"response,omitempty"`
-	Error            string              `json:"error,omitempty"`
-	Config           DesktopThreadConfig `json:"config"`
-}
-
-type DesktopThreadCompleteRequest struct {
-	WorkspaceID uuid.UUID       `json:"workspaceId"`
-	Response    json.RawMessage `json:"response"`
-}
-
-type DesktopThreadFailRequest struct {
-	WorkspaceID uuid.UUID `json:"workspaceId"`
-	Error       string    `json:"error"`
-}
-
-type ThreadMetadataEvent struct {
-	ThreadID          string `json:"threadId"`
-	Sequence          int64  `json:"sequence"`
-	Kind              string `json:"kind"`
-	Source            string `json:"source"`
-	Name              string `json:"name,omitempty"`
-	LifecycleState    string `json:"lifecycleState,omitempty"`
-	Model             string `json:"model,omitempty"`
-	ReasoningEffort   string `json:"reasoningEffort,omitempty"`
-	ServiceTier       string `json:"serviceTier,omitempty"`
-	CollaborationMode string `json:"collaborationMode,omitempty"`
-	SettingsRevision  int64  `json:"settingsRevision,omitempty"`
-}
-
-type ThreadMetadataRequest struct {
-	WorkspaceID uuid.UUID             `json:"workspaceId"`
-	Generation  int64                 `json:"generation"`
-	Events      []ThreadMetadataEvent `json:"events"`
-}
-
-type ThreadNameUpdate struct {
-	ControlID   uuid.UUID `json:"controlId"`
-	WorkspaceID uuid.UUID `json:"workspaceId"`
-	ThreadID    string    `json:"threadId"`
-	Name        string    `json:"name"`
-	Revision    int64     `json:"revision"`
-}
-
-type ThreadNameAckRequest struct {
-	WorkspaceID uuid.UUID `json:"workspaceId"`
-	Revision    int64     `json:"revision"`
-	Error       string    `json:"error,omitempty"`
-}
-
-type ThreadLifecyclePrepareRequest struct {
-	WorkspaceID  uuid.UUID `json:"workspaceId"`
-	ThreadID     string    `json:"threadId"`
-	DesiredState string    `json:"desiredState"`
-}
-
-type ThreadLifecycleState struct {
-	ID           uuid.UUID       `json:"id"`
-	ControlID    uuid.UUID       `json:"controlId"`
-	WorkspaceID  uuid.UUID       `json:"workspaceId"`
-	ThreadID     string          `json:"threadId"`
-	DesiredState string          `json:"desiredState"`
-	Status       string          `json:"status"`
-	Revision     int64           `json:"revision"`
-	Response     json.RawMessage `json:"response,omitempty"`
-	Error        string          `json:"error,omitempty"`
-}
-
-type ThreadLifecycleCompleteRequest struct {
-	WorkspaceID uuid.UUID       `json:"workspaceId"`
-	Response    json.RawMessage `json:"response,omitempty"`
-	Error       string          `json:"error,omitempty"`
-}
-
-type DesktopTurnPrepareRequest struct {
-	WorkspaceID uuid.UUID       `json:"workspaceId"`
-	RequestKey  string          `json:"requestKey"`
-	Params      json.RawMessage `json:"params"`
-	Images      []DesktopImage  `json:"images,omitempty"`
-	ImageError  string          `json:"imageError,omitempty"`
-}
-
-type DesktopImage struct {
-	Filename   string `json:"filename"`
-	MediaType  string `json:"mediaType,omitempty"`
-	Size       int64  `json:"size,omitempty"`
-	SHA256     string `json:"sha256,omitempty"`
-	Error      string `json:"error,omitempty"`
-	SourcePath string `json:"-"`
-}
-
-type DesktopImageTarget struct {
-	Status string `json:"status"`
-}
-
-type DesktopImageUploadMetadata struct {
-	FinalAttempt bool `json:"finalAttempt"`
-}
-
-type DesktopImageUploadResult struct {
-	Status       string `json:"status"`
-	AttachmentID string `json:"attachmentId,omitempty"`
-}
-
-type AgentAttachmentUploadResult struct {
-	AttachmentID uuid.UUID `json:"attachmentId"`
-	Deduplicated bool      `json:"deduplicated"`
-}
-
-type DesktopImageFailureRequest struct {
-	Error string `json:"error"`
-}
-
-const (
-	DesktopImageCountLimit = 10
-	DesktopImageFileLimit  = 10 << 20
-	DesktopImageTotalLimit = 25 << 20
-)
-
-type DesktopRollbackPrepareRequest struct {
-	WorkspaceID uuid.UUID       `json:"workspaceId"`
-	RequestKey  string          `json:"requestKey"`
-	Params      json.RawMessage `json:"params"`
-}
-
-type DesktopRollbackState struct {
-	ID           uuid.UUID       `json:"id"`
-	WorkspaceID  uuid.UUID       `json:"workspaceId"`
-	ThreadID     string          `json:"threadId"`
-	Status       string          `json:"status"`
-	TargetTurnID string          `json:"targetTurnId"`
-	Params       json.RawMessage `json:"params,omitempty"`
-}
-
-type DesktopRollbackCompleteRequest struct {
-	WorkspaceID uuid.UUID       `json:"workspaceId"`
-	Response    json.RawMessage `json:"response,omitempty"`
-	Error       string          `json:"error,omitempty"`
-}
-
-type DesktopTurnPreflightRequest struct {
-	WorkspaceID uuid.UUID       `json:"workspaceId"`
-	Params      json.RawMessage `json:"params"`
-}
-
-type DesktopTurnPreflightResponse struct {
-	Params json.RawMessage `json:"params"`
-}
-
-type DesktopSteerRecordRequest struct {
-	WorkspaceID uuid.UUID       `json:"workspaceId"`
-	RequestKey  string          `json:"requestKey"`
-	Params      json.RawMessage `json:"params"`
-}
-
-type InteractiveRegisterRequest struct {
-	RunLeaseRequest
-	RequestID           json.RawMessage `json:"requestId"`
-	Params              json.RawMessage `json:"params"`
-	AppServerGeneration int64           `json:"appServerGeneration"`
-}
-
-type InteractiveAnswerRequest struct {
-	WorkspaceID uuid.UUID       `json:"workspaceId"`
-	ThreadID    string          `json:"threadId"`
-	TurnID      string          `json:"turnId"`
-	ItemID      string          `json:"itemId"`
-	Surface     string          `json:"surface"`
-	Answer      json.RawMessage `json:"answer"`
-}
-
-type InteractiveState struct {
-	ID         uuid.UUID       `json:"id"`
-	Status     string          `json:"status"`
-	Questions  json.RawMessage `json:"questions,omitempty"`
-	Answer     json.RawMessage `json:"answer,omitempty"`
-	DeadlineAt *time.Time      `json:"deadlineAt,omitempty"`
-	Secret     bool            `json:"secret"`
-	Surface    string          `json:"surface,omitempty"`
-	Accepted   bool            `json:"accepted,omitempty"`
-	Ready      bool            `json:"ready"`
-}
-
 type Task struct {
 	Claimed  codexcontrol.ClaimedControl `json:"claimed"`
 	Snapshot TaskSnapshot                `json:"snapshot"`
@@ -357,8 +161,6 @@ type Task struct {
 type TaskSnapshot struct {
 	GitHub      *GitHubSnapshot      `json:"github,omitempty"`
 	GitHubAgent *GitHubAgentSnapshot `json:"githubAgent,omitempty"`
-	Session     *SessionSnapshot     `json:"session,omitempty"`
-	Discord     *DiscordSnapshot     `json:"discord,omitempty"`
 	Runtime     RuntimeSnapshot      `json:"runtime"`
 }
 
@@ -402,59 +204,6 @@ type GitHubSnapshot struct {
 	HTMLURL        string `json:"htmlUrl,omitempty"`
 }
 
-type DiscordSnapshot struct {
-	GuildID        string                   `json:"guildId"`
-	ThreadID       string                   `json:"threadId"`
-	MessageID      string                   `json:"messageId"`
-	OwnerUserID    string                   `json:"ownerUserId"`
-	ForumID        uuid.UUID                `json:"forumId"`
-	WorkspaceID    uuid.UUID                `json:"workspaceId"`
-	Body           string                   `json:"body"`
-	UserID         string                   `json:"userId"`
-	DisplayName    string                   `json:"displayName"`
-	Username       string                   `json:"username"`
-	GitHubUserID   int64                    `json:"githubUserId,omitempty"`
-	GitHubLogin    string                   `json:"githubLogin,omitempty"`
-	BindingID      string                   `json:"bindingId,omitempty"`
-	BindingVersion int64                    `json:"bindingVersion,omitempty"`
-	Access         string                   `json:"access"`
-	Attachments    []Attachment             `json:"attachments,omitempty"`
-	Project        *WorkspaceProjectContext `json:"project,omitempty"`
-}
-
-type SessionSnapshot struct {
-	SessionID     uuid.UUID                `json:"sessionId"`
-	MessageID     string                   `json:"messageId"`
-	Body          string                   `json:"body"`
-	ParticipantID uuid.UUID                `json:"participantId,omitempty"`
-	DisplayName   string                   `json:"displayName,omitempty"`
-	InputSurface  string                   `json:"inputSurface"`
-	Attachments   []Attachment             `json:"attachments,omitempty"`
-	Project       *WorkspaceProjectContext `json:"project"`
-}
-
-type WorkspaceProjectContext struct {
-	WorkspaceID       uuid.UUID `json:"workspaceId"`
-	ForumID           uuid.UUID `json:"forumId"`
-	ConversationID    uuid.UUID `json:"conversationId"`
-	WorkspaceRelative string    `json:"workspaceRelative"`
-	WorkspaceBranch   string    `json:"workspaceBranch"`
-	WorkspaceKind     string    `json:"workspaceKind"`
-	ProjectID         uuid.UUID `json:"projectId,omitempty"`
-	Repository        string    `json:"repository"`
-	CloneURL          string    `json:"cloneUrl"`
-	DefaultRef        string    `json:"defaultRef"`
-}
-
-type WorkspaceProjectState struct {
-	RunLeaseRequest
-	WorkspaceID      uuid.UUID `json:"workspaceId"`
-	ProjectID        uuid.UUID `json:"projectId"`
-	WorkspaceHeadSHA string    `json:"workspaceHeadSha,omitempty"`
-	WorkspaceDirty   bool      `json:"workspaceDirty"`
-	Error            string    `json:"error,omitempty"`
-}
-
 type WorkspaceState struct {
 	RunLeaseRequest
 	CachePath    string `json:"cachePath"`
@@ -467,31 +216,12 @@ type WorkspaceState struct {
 	Error        string `json:"error,omitempty"`
 }
 
-type Attachment struct {
-	ID        uuid.UUID `json:"id"`
-	Kind      string    `json:"kind"`
-	Filename  string    `json:"filename"`
-	MediaType string    `json:"mediaType"`
-	Size      int64     `json:"size"`
-	SHA256    string    `json:"sha256"`
-}
-
 type RunLeaseRequest struct {
 	LeaseToken string `json:"leaseToken"`
 	LeaseEpoch int64  `json:"leaseEpoch"`
 }
 
-type RunCommand struct {
-	ID          uuid.UUID        `json:"id"`
-	Sequence    int64            `json:"sequence"`
-	Operation   string           `json:"operation"`
-	Instruction string           `json:"instruction,omitempty"`
-	Session     *SessionSnapshot `json:"session,omitempty"`
-	Discord     *DiscordSnapshot `json:"discord,omitempty"`
-}
-
 type RunHeartbeatResponse struct {
-	Commands []RunCommand     `json:"commands"`
 	Recovery RunRecoveryState `json:"recovery"`
 }
 
@@ -500,13 +230,6 @@ type RunRecoveryState struct {
 	SubmissionID     string `json:"submissionId,omitempty"`
 	ConfirmedTurnID  string `json:"confirmedTurnId,omitempty"`
 	ExternalThreadID string `json:"externalThreadId,omitempty"`
-}
-
-type CommandAckRequest struct {
-	RunLeaseRequest
-	CommandID uuid.UUID `json:"commandId"`
-	Action    string    `json:"action"`
-	TurnID    string    `json:"turnId,omitempty"`
 }
 
 type CompleteRequest struct {

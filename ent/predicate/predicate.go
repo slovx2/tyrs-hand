@@ -15,6 +15,9 @@ type AgentProfile func(*sql.Selector)
 // AuditLog is the predicate function for auditlog builders.
 type AuditLog func(*sql.Selector)
 
+// ClientMaterialization is the predicate function for clientmaterialization builders.
+type ClientMaterialization func(*sql.Selector)
+
 // CodexThreadControl is the predicate function for codexthreadcontrol builders.
 type CodexThreadControl func(*sql.Selector)
 

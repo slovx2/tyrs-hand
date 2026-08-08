@@ -28,7 +28,7 @@ func TestReplaceEnvironmentInjectsManagedBrowserToken(t *testing.T) {
 	}, environment)
 }
 
-func TestOpenEphemeralClientRequiresRunningHub(t *testing.T) {
+func TestOpenEphemeralClientRequiresRunningAppServer(t *testing.T) {
 	var missing *Runtime
 	client, err := missing.OpenEphemeralClient()
 	require.Nil(t, client)
@@ -36,5 +36,5 @@ func TestOpenEphemeralClientRequiresRunningHub(t *testing.T) {
 
 	client, err = (&Runtime{}).OpenEphemeralClient()
 	require.Nil(t, client)
-	require.ErrorContains(t, err, "AppServerHub 尚未启动")
+	require.ErrorContains(t, err, "App Server 尚未启动")
 }

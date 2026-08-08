@@ -7,8 +7,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/database"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
+	"github.com/slovx2/tyrs-hand/internal/officialapp"
 	"github.com/slovx2/tyrs-hand/internal/workerregistry"
 	"github.com/stretchr/testify/require"
 )
@@ -41,6 +40,12 @@ func TestDiscordPersistencePermissionsAndRecovery(t *testing.T) {
 	duplicateID, err := service.BeginPost(ctx, first)
 	require.NoError(t, err)
 	require.Equal(t, conversationID, duplicateID)
+	const officialThreadID = "thread-official-integration"
+	_, err = db.ExecContext(ctx, `INSERT INTO official_thread_bindings(
+		workspace_id,conversation_id,workspace_project_id,thread_id)
+		VALUES($1,$2,$3,$4)`, seed.workspaceID, conversationID, seed.projectID,
+		officialThreadID)
+	require.NoError(t, err)
 
 	readonly := first
 	readonly.MessageID, readonly.DiscordUserID, readonly.DisplayName = "3002", "1002", "Read Only"
@@ -58,24 +63,24 @@ func TestDiscordPersistencePermissionsAndRecovery(t *testing.T) {
 	require.NotNil(t, memberOperation)
 	require.Equal(t, "thread.member.add", memberOperation.OperationType)
 	completeDiscordDelivery(t, ctx, memberStore, memberOperation, nil)
-	var jobs, messages, attachments int
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_intents
-		WHERE discord_conversation_id = $1`, conversationID).Scan(&jobs))
-	require.Zero(t, jobs)
+	var submissions, messages, attachments int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM official_turn_submissions
+		WHERE conversation_id=$1`, conversationID).Scan(&submissions))
+	require.Zero(t, submissions)
 	require.NoError(t, service.FinalizeConfiguration(ctx, conversationID, "1001"))
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_intents
-		WHERE discord_conversation_id = $1`, conversationID).Scan(&jobs))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM official_turn_submissions
+		WHERE conversation_id=$1`, conversationID).Scan(&submissions))
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_input_messages
 		WHERE conversation_id = $1`, conversationID).Scan(&messages))
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_attachments
 		WHERE message_id = '3001'`).Scan(&attachments))
-	require.Equal(t, 2, jobs)
+	require.Equal(t, 2, submissions)
 	require.Equal(t, 2, messages)
 	require.Equal(t, 1, attachments)
 
-	_, err = service.Stop(ctx, seed.guildID, first.ThreadID, "1002")
+	_, err = service.Stop(ctx, seed.guildID, first.ThreadID, "1002", "3998")
 	require.ErrorIs(t, err, discordintegration.ErrReadOnly)
-	stopped, err := service.Stop(ctx, seed.guildID, first.ThreadID, "1003")
+	stopped, err := service.Stop(ctx, seed.guildID, first.ThreadID, "1003", "3999")
 	require.NoError(t, err)
 	require.EqualValues(t, 2, stopped)
 	var canceledMessages int
@@ -102,7 +107,7 @@ func TestDiscordPersistencePermissionsAndRecovery(t *testing.T) {
 		available_at = now(), updated_at = now() WHERE integration = 'discord'
 		AND status IN ('pending','retrying')`)
 	require.NoError(t, err)
-	testOutboxRecovery(t, ctx, db, seed.guildID, conversationID)
+	testOutboxRecovery(t, ctx, db, seed.workspaceID, officialThreadID, conversationID)
 	testInitializationRecovery(t, ctx, db, manager, seed)
 }
 
@@ -135,79 +140,87 @@ func testGatewayPersistence(t *testing.T, ctx context.Context, manager *discordi
 	require.NoError(t, manager.CompleteInboundEvent(ctx, "message:3001", errors.New("failed once")))
 }
 
-func testOutboxRecovery(t *testing.T, ctx context.Context, db *sql.DB, guildID string, conversationID uuid.UUID) {
+func testOutboxRecovery(t *testing.T, ctx context.Context, db *sql.DB,
+	workspaceID uuid.UUID, threadID string, conversationID uuid.UUID,
+) {
 	t.Helper()
 	store := discordintegration.NewSQLoutbox(db)
-	projectionKey := "conversation:" + conversationID.String() + ":message:3001"
-	require.NoError(t, discordintegration.ProjectConversationStatus(ctx, db, guildID, "2001", conversationID,
-		"3001", uuid.Nil, discordintegration.ConversationRunning, "processing"))
-	_, err := db.ExecContext(ctx, `UPDATE integration_outbox SET available_at = now()
-		WHERE operation_key = $1`, "projection:"+projectionKey)
-	require.NoError(t, err)
+	clientID := "discord:3001"
+	projectionKey := "official:" + conversationID.String() + ":0000:0001:agent-1"
+	require.NoError(t, discordintegration.ProjectOfficialThread(ctx, db, workspaceID,
+		officialapp.Thread{ID: threadID, Turns: []officialapp.Turn{{
+			ID: "turn-1", Status: "inProgress", Items: []officialapp.Item{
+				{Type: "userMessage", ID: "user-1", ClientID: &clientID, Text: "hello"},
+				{Type: "agentMessage", ID: "agent-1", Text: "processing"},
+			},
+		}}}))
 	first, err := store.Claim(ctx, 30*time.Second)
 	require.NoError(t, err)
 	require.NotNil(t, first)
 	require.Equal(t, "message.create", first.OperationType)
+	require.Equal(t, "projection:"+projectionKey, first.OperationKey)
 	require.Contains(t, string(first.Payload), `"card"`)
 	require.NotContains(t, string(first.Payload), `"embeds"`)
-	require.Contains(t, string(first.Payload), "思考中")
+	require.Contains(t, string(first.Payload), "processing")
 
-	require.NoError(t, discordintegration.ProjectConversationStatus(ctx, db, guildID, "2001", conversationID,
-		"3001", uuid.Nil, discordintegration.ConversationCompleted, "completed"))
-	response := json.RawMessage(`{"messageId":"5001"}`)
-	completeDiscordDelivery(t, ctx, store, first, response)
+	require.NoError(t, discordintegration.ProjectOfficialThread(ctx, db, workspaceID,
+		officialapp.Thread{ID: threadID, Turns: []officialapp.Turn{{
+			ID: "turn-1", Status: "completed", Items: []officialapp.Item{
+				{Type: "userMessage", ID: "user-1", ClientID: &clientID, Text: "hello"},
+				{Type: "agentMessage", ID: "agent-1", Text: "completed"},
+			},
+		}}}))
+	completeDiscordDelivery(t, ctx, store, first, json.RawMessage(`{"messageId":"5001"}`))
 	var status string
 	var applied, desired int64
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT o.status, p.applied_version, p.desired_version
-		FROM integration_outbox o JOIN discord_projections p ON p.projection_key = $1
-		WHERE o.operation_key = 'projection:' || $1`, projectionKey).Scan(&status, &applied, &desired))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT o.status,p.applied_version,p.desired_version
+		FROM integration_outbox o JOIN discord_projections p ON p.projection_key=$1
+		WHERE o.operation_key='projection:'||$1`, projectionKey).
+		Scan(&status, &applied, &desired))
 	require.Equal(t, "pending", status)
 	require.Zero(t, applied)
 	require.Greater(t, desired, applied)
-
-	_, err = db.ExecContext(ctx, `UPDATE integration_outbox SET available_at = now()
-		WHERE operation_key = 'projection:' || $1`, projectionKey)
+	_, err = db.ExecContext(ctx, `UPDATE integration_outbox SET available_at=now()
+		WHERE operation_key=$1`, "projection:"+projectionKey)
 	require.NoError(t, err)
+
 	latest, err := store.Claim(ctx, 30*time.Second)
 	require.NoError(t, err)
 	require.NotNil(t, latest)
 	require.Equal(t, "message.update", latest.OperationType)
-	require.Contains(t, string(latest.Payload), "已完成")
+	require.Contains(t, string(latest.Payload), "completed")
 	completeDiscordDelivery(t, ctx, store, latest, nil)
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT applied_version, desired_version
-		FROM discord_projections WHERE projection_key = $1`, projectionKey).Scan(&applied, &desired))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT applied_version,desired_version
+		FROM discord_projections WHERE projection_key=$1`, projectionKey).
+		Scan(&applied, &desired))
 	require.Equal(t, desired, applied)
 
-	require.NoError(t, discordintegration.ProjectConversationStatus(ctx, db, guildID, "2001", conversationID,
-		"3002", uuid.Nil, discordintegration.ConversationRunning, "next turn"))
-	nextTurn, err := store.Claim(ctx, 30*time.Second)
+	require.NoError(t, discordintegration.ProjectOfficialThread(ctx, db, workspaceID,
+		officialapp.Thread{ID: threadID, Turns: []officialapp.Turn{
+			{ID: "turn-1", Status: "completed", Items: []officialapp.Item{
+				{Type: "userMessage", ID: "user-1", ClientID: &clientID, Text: "hello"},
+				{Type: "agentMessage", ID: "agent-1", Text: "completed"},
+			}},
+			{ID: "turn-2", Status: "completed", Items: []officialapp.Item{
+				{Type: "agentMessage", ID: "agent-2", Text: "ordered first"},
+				{Type: "agentMessage", ID: "agent-3", Text: "ordered second"},
+			}},
+		}}))
+	orderedFirst, err := store.Claim(ctx, 30*time.Second)
 	require.NoError(t, err)
-	require.NotNil(t, nextTurn)
-	require.Equal(t, "message.create", nextTurn.OperationType)
-	require.NotEqual(t, first.OperationKey, nextTurn.OperationKey)
-	completeDiscordDelivery(t, ctx, store, nextTurn, json.RawMessage(`{"messageId":"5002"}`))
-
-	require.NoError(t, discordintegration.ProjectConversationReply(ctx, db, "2001",
-		conversationID, "3002", uuid.Nil, "final reply", "agentMessage"))
-	reply, err := store.Claim(ctx, 30*time.Second)
+	require.NotNil(t, orderedFirst)
+	require.Contains(t, string(orderedFirst.Payload), "ordered first")
+	blocked, err := store.Claim(ctx, 30*time.Second)
 	require.NoError(t, err)
-	require.NotNil(t, reply)
-	require.Equal(t, "message.create", reply.OperationType)
-	require.JSONEq(t, `{"channelId":"2001","content":"final reply"}`, string(reply.Payload))
-	completeDiscordDelivery(t, ctx, store, reply, json.RawMessage(`{"messageId":"5003"}`))
-
-	require.NoError(t, discordintegration.ProjectConversationReply(ctx, db, "2001",
-		conversationID, "3003", uuid.Nil, "operator reply", "agentMessage"))
-	mentionedReply, err := store.Claim(ctx, 30*time.Second)
+	require.Nil(t, blocked, "后继 Item 必须等待前一官方 Item 投递完成")
+	completeDiscordDelivery(t, ctx, store, orderedFirst,
+		json.RawMessage(`{"messageId":"5002"}`))
+	orderedSecond, err := store.Claim(ctx, 30*time.Second)
 	require.NoError(t, err)
-	require.NotNil(t, mentionedReply)
-	require.JSONEq(t, `{
-		"channelId":"2001",
-		"content":"<@1003> operator reply",
-		"mentionUserIds":["1003"]
-	}`, string(mentionedReply.Payload))
-	completeDiscordDelivery(t, ctx, store, mentionedReply, json.RawMessage(`{"messageId":"5004"}`))
-	testLongConversationReply(t, ctx, store, db, guildID, conversationID)
+	require.NotNil(t, orderedSecond)
+	require.Contains(t, string(orderedSecond.Payload), "ordered second")
+	completeDiscordDelivery(t, ctx, store, orderedSecond,
+		json.RawMessage(`{"messageId":"5003"}`))
 
 	require.NoError(t, store.Enqueue(ctx, "crash-recovery", "message.create", "channels/2001/messages",
 		map[string]string{"channelId": "2001", "content": "recover"}, "crash-nonce"))
@@ -246,56 +259,6 @@ func testOutboxRecovery(t *testing.T, ctx context.Context, db *sql.DB, guildID s
 	var failedStatus string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM integration_outbox WHERE id = $1`, retried.ID).Scan(&failedStatus))
 	require.Equal(t, "failed", failedStatus)
-}
-
-func testLongConversationReply(t *testing.T, ctx context.Context,
-	store *discordintegration.SQLoutbox, db *sql.DB, guildID string, conversationID uuid.UUID,
-) {
-	t.Helper()
-	line := strings.Repeat("完整内容", 24)
-	answer := strings.Repeat(line+"\n", 80)
-	require.NoError(t, discordintegration.ProjectConversationReply(ctx, db, "2001",
-		conversationID, "3001", uuid.Nil, answer, "agentMessage"))
-	prefix := "projection:conversation-reply:" + conversationID.String() + ":message:3001"
-	var createdContents, updatedContents, createdIDs []string
-	for step := 0; step < 30; step++ {
-		item, err := store.Claim(ctx, 30*time.Second)
-		require.NoError(t, err)
-		if item == nil {
-			break
-		}
-		require.True(t, strings.HasPrefix(item.OperationKey, prefix), item.OperationKey)
-		var payload struct {
-			Content string `json:"content"`
-		}
-		require.NoError(t, json.Unmarshal(item.Payload, &payload))
-		require.LessOrEqual(t, len([]rune(payload.Content)), 1900)
-		switch item.OperationType {
-		case "message.create":
-			messageID := fmt.Sprintf("60%02d", len(createdIDs)+1)
-			createdIDs = append(createdIDs, messageID)
-			createdContents = append(createdContents, payload.Content)
-			completeDiscordDelivery(t, ctx, store, item,
-				json.RawMessage(fmt.Sprintf(`{"messageId":%q}`, messageID)))
-		case "message.update":
-			updatedContents = append(updatedContents, payload.Content)
-			completeDiscordDelivery(t, ctx, store, item, json.RawMessage(`{}`))
-		default:
-			t.Fatalf("unexpected reply operation %s", item.OperationType)
-		}
-	}
-	require.GreaterOrEqual(t, len(createdContents), 3)
-	require.Empty(t, updatedContents)
-	require.Contains(t, createdContents[0], "<@1001>")
-	for index, content := range createdContents {
-		require.Contains(t, content,
-			fmt.Sprintf("**Codex 回复 · %d/%d**", index+1, len(createdContents)))
-		if index > 0 {
-			require.NotContains(t, content, "<@1001>")
-		}
-		require.NotContains(t, content, "【上接消息】")
-		require.NotContains(t, content, "【内容未完整，下接消息】")
-	}
 }
 
 func completeDiscordDelivery(t *testing.T, ctx context.Context,
@@ -376,6 +339,8 @@ type discordSeed struct {
 	guildID        string
 	forumChannelID string
 	administrator  uuid.UUID
+	workspaceID    uuid.UUID
+	projectID      uuid.UUID
 }
 
 func seedDiscord(t *testing.T, db *sql.DB) discordSeed {
@@ -392,16 +357,14 @@ func seedDiscord(t *testing.T, db *sql.DB) discordSeed {
 	node, _, err := nodes.Create(ctx, "discord-test", []string{"discord"}, 2)
 	require.NoError(t, err)
 	require.NoError(t, nodes.SetDefaults(ctx, workerregistry.Defaults{DiscordWorkerID: &node.ID}))
-	var workspaceID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO worker_workspaces
 		(guild_id, owner_discord_user_id, worker_id)
 		VALUES ($1, '1001', $2) RETURNING id`, seed.guildID, node.ID).
-		Scan(&workspaceID))
-	var projectID uuid.UUID
+		Scan(&seed.workspaceID))
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO workspace_projects
 		(workspace_id, relative_path, name, project_kind, availability_status)
 		VALUES ($1, 'workspaces/atlas', 'atlas', 'git', 'available') RETURNING id`,
-		workspaceID).Scan(&projectID))
+		seed.workspaceID).Scan(&seed.projectID))
 	var resourceID, forumID uuid.UUID
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO discord_resources
 		(guild_id, resource_key, discord_id, kind, name, managed_marker)
@@ -411,7 +374,7 @@ func seedDiscord(t *testing.T, db *sql.DB) discordSeed {
 		(guild_id, resource_id, forum_type, owner_discord_user_id,
 		 workspace_project_id, workspace_id)
 		VALUES ($1, $2, 'workspace', '1001', $3, $4) RETURNING id`, seed.guildID, resourceID,
-		projectID, workspaceID).Scan(&forumID))
+		seed.projectID, seed.workspaceID).Scan(&forumID))
 	for _, userID := range []string{"1001", "1002", "1003"} {
 		_, err := db.ExecContext(ctx, `INSERT INTO discord_members
 			(guild_id, discord_user_id, username, display_name) VALUES ($1, $2, $2, $2)`, seed.guildID, userID)

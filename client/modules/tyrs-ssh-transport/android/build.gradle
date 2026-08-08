@@ -1,0 +1,51 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.tyrshand'
+version = '0.1.0'
+
+def repositoryRoot = file("${projectDir}/../../../..")
+def goMobileDirectory = file("${buildDir}/generated/gomobile")
+def goMobileAAR = file("${goMobileDirectory}/binding.aar")
+def goMobileClasses = file("${goMobileDirectory}/classes.jar")
+
+tasks.register('buildGoMobile', Exec) {
+  workingDir repositoryRoot
+  inputs.dir file("${repositoryRoot}/mobile/sshtransport")
+  inputs.file file("${repositoryRoot}/go.mod")
+  inputs.file file("${repositoryRoot}/go.sum")
+  outputs.files goMobileAAR, goMobileClasses
+  outputs.dir file("${goMobileDirectory}/jni")
+  environment 'TYRS_GO_MOBILE_AAR', goMobileAAR.absolutePath
+  commandLine 'bash', '-lc', '''
+    set -euo pipefail
+    go run golang.org/x/mobile/cmd/gomobile@v0.0.0-20260803200217-62cee1672c8e init
+    export PATH="$(go env GOPATH)/bin:$PATH"
+    rm -rf "$(dirname "$TYRS_GO_MOBILE_AAR")"
+    mkdir -p "$(dirname "$TYRS_GO_MOBILE_AAR")"
+    go run golang.org/x/mobile/cmd/gomobile@v0.0.0-20260803200217-62cee1672c8e bind \
+      -target=android -androidapi 24 -o "$TYRS_GO_MOBILE_AAR" ./mobile/sshtransport
+    cd "$(dirname "$TYRS_GO_MOBILE_AAR")"
+    unzip -q -o binding.aar classes.jar 'jni/*'
+  '''
+}
+
+preBuild.dependsOn tasks.named('buildGoMobile')
+
+android {
+  namespace 'com.tyrshand.sshtransport'
+  defaultConfig {
+    minSdkVersion 24
+    versionCode 1
+    versionName '0.1.0'
+  }
+  sourceSets {
+    main.jniLibs.srcDirs += file("${goMobileDirectory}/jni")
+  }
+}
+
+dependencies {
+  implementation files(goMobileClasses)
+}

@@ -18,8 +18,8 @@ import (
 var workerVersion = "dev"
 
 type taskProcessor interface {
-	Process(context.Context, *workerprotocol.Task, <-chan workerprotocol.RunCommand,
-		func(string, json.RawMessage)) (workerprotocol.CompleteRequest, error)
+	Process(context.Context, *workerprotocol.Task, func(string, json.RawMessage)) (
+		workerprotocol.CompleteRequest, error)
 }
 
 type heartbeatMetadataProvider interface {
@@ -73,6 +73,14 @@ func (r *Runner) Run(ctx context.Context) error {
 		return fmt.Errorf("首次节点心跳失败: %w", err)
 	}
 	go r.heartbeatLoop(ctx)
+	if target, ok := r.processor.(appServerTunnelTarget); ok {
+		go r.appServerTunnelLoop(ctx, target)
+	}
+	if target, ok := r.processor.(materializationTarget); ok {
+		for range 4 {
+			go r.materializationLoop(ctx, target)
+		}
+	}
 
 	slots := make(chan struct{}, r.cfg.WorkerMaxConcurrentJobs)
 	var active sync.WaitGroup
@@ -82,14 +90,22 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 	for _, journal := range stored {
 		if !r.roleAllowed(journal.Task.Claimed.SourceType) {
-			return fmt.Errorf("run Journal %s 与当前 Worker 角色不匹配",
-				journal.Task.Claimed.RunID)
+			r.logger.Warn("忽略不属于 GitHub Job 调度的旧 Run Journal",
+				zap.String("run_id", journal.Task.Claimed.RunID.String()),
+				zap.String("source_type", journal.Task.Claimed.SourceType))
+			continue
 		}
 		slots <- struct{}{}
 		active.Add(1)
 		go r.runJournal(ctx, journal, slots, &active)
 	}
 
+	claimRole := r.claimRole()
+	if claimRole == "" {
+		<-ctx.Done()
+		active.Wait()
+		return ctx.Err()
+	}
 	for ctx.Err() == nil {
 		select {
 		case slots <- struct{}{}:
@@ -160,16 +176,15 @@ func (r *Runner) roles() []string {
 }
 
 func (r *Runner) claimRole() string {
-	if r.cfg.WorkerRole == "all" {
-		return "all"
+	if r.cfg.WorkerRole == "all" || r.cfg.WorkerRole == "github" {
+		return "github"
 	}
-	return r.cfg.WorkerRole
+	return ""
 }
 
 func (r *Runner) roleAllowed(source string) bool {
-	return r.cfg.WorkerRole == "all" ||
-		(r.cfg.WorkerRole == "github" && source == "github_work_item") ||
-		(r.cfg.WorkerRole == "discord" && source == "workspace_session")
+	return (r.cfg.WorkerRole == "all" || r.cfg.WorkerRole == "github") &&
+		source == "github_work_item"
 }
 
 func (r *Runner) sendHeartbeat(ctx context.Context) error {

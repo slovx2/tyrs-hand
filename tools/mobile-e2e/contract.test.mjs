@@ -28,7 +28,7 @@ test('Maestro 与运行时依赖全部固定', async () => {
   assert.match(control, /redis:8\.4\.0-bookworm@sha256:[0-9a-f]{64}/)
   const dependencies = JSON.parse(await readFile(
     resolve(root, 'deploy/worker/dependencies.json'), 'utf8'))
-  assert.equal(dependencies.codexMinimumVersion, '0.145.0')
+  assert.equal(dependencies.codexVersion, '0.147.0')
 })
 
 test('所有 Flow 只用稳定 ID 操作生产 UI', async () => {
@@ -70,4 +70,36 @@ test('协议 Worker 交互场景显式使用 Plan 模式', async () => {
     'client/e2e/flows/09-secret-and-failure.yaml'), 'utf8')
   assert.equal([...secretFlow.matchAll(/id: "connection:inactive"/g)].length, 2,
     'Secret 场景必须切到次 Control，并在失败态场景前切回主 Control')
+})
+
+test('Mobile E2E fixture 只承载协议 25 官方 JSON-RPC', async () => {
+  const [worker, runner, fixture, protocol] = await Promise.all([
+    readFile(resolve(root, 'tools/mobile-e2e/protocol-worker/main.go'), 'utf8'),
+    readFile(resolve(root, 'tools/mobile-e2e/mobile-runner.mjs'), 'utf8'),
+    readFile(resolve(root, 'tools/mobile-e2e/fixture/main.go'), 'utf8'),
+    readFile(resolve(root, 'internal/workerprotocol/types.go'), 'utf8'),
+  ])
+  assert.match(protocol, /const Version = 25/)
+  assert.match(runner, /go', \['run', '\.\/tools\/mobile-e2e\/protocol-worker'/)
+  for (const method of ['initialize', 'thread/list', 'thread/read', 'thread/resume',
+    'thread/start', 'turn/start', 'turn/steer', 'turn/interrupt']) {
+    assert.ok(worker.includes(`"${method}"`), `fixture 缺少官方方法 ${method}`)
+  }
+  assert.match(worker, /ClaimAppServerTunnel/)
+  assert.match(worker, /ClaimMaterialization/)
+  assert.match(fixture, /official_thread_projections/)
+  assert.doesNotMatch(`${worker}\n${runner}\n${fixture}`,
+    /workspace_sessions|session_messages|codex_interactive_requests|commands\/ack|\/runs\//)
+})
+
+test('E2E 断言保持 profile 隔离并清理完整进程树', async () => {
+  const [runner, processHelper] = await Promise.all([
+    readFile(resolve(root, 'tools/mobile-e2e/mobile-runner.mjs'), 'utf8'),
+    readFile(resolve(root, 'tools/mobile-e2e/lib/process.mjs'), 'utf8'),
+  ])
+  const attachmentAssertion = runner.slice(runner.indexOf("'assert-attachment-once'"),
+    runner.indexOf("'assert-attachment-once'") + 400)
+  assert.match(attachmentAssertion, /TYRS_HAND_DATABASE_URL: primary\.databaseURL/)
+  assert.match(processHelper, /detached: isolatedProcessGroup/)
+  assert.match(processHelper, /process\.kill\(-child\.pid, signal\)/)
 })

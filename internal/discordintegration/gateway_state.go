@@ -7,7 +7,7 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
-	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/officialapp"
 )
 
 type GatewaySession struct {
@@ -84,61 +84,37 @@ func (r *GatewayRunner) Run(ctx context.Context) error {
 	return r.connector.Open(ctx, session)
 }
 
-func (s *ConversationService) Stop(ctx context.Context, guildID, threadID, requesterID string) (int64, error) {
+func (s *ConversationService) Stop(ctx context.Context, guildID, threadID, requesterID,
+	sourceOrder string,
+) (int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	var conversationID, forumID uuid.UUID
+	var conversationID, forumID, workspaceID uuid.UUID
 	var ownerID string
-	err = tx.QueryRowContext(ctx, `SELECT id, forum_id, owner_discord_user_id FROM discord_conversations
-		WHERE guild_id = $1 AND thread_id = $2`, guildID, threadID).Scan(&conversationID, &forumID, &ownerID)
+	err = tx.QueryRowContext(ctx, `SELECT conversation.id,conversation.forum_id,
+		conversation.owner_discord_user_id,binding.workspace_id
+		FROM discord_conversations conversation JOIN official_thread_bindings binding
+		ON binding.conversation_id=conversation.id
+		WHERE conversation.guild_id=$1 AND conversation.thread_id=$2`, guildID, threadID).
+		Scan(&conversationID, &forumID, &ownerID, &workspaceID)
 	if err != nil {
 		return 0, err
 	}
 	if _, err := s.access(ctx, tx, forumID, ownerID, requesterID); err != nil {
 		return 0, err
 	}
-	var profileID uuid.UUID
-	var repositoryID, projectID sql.NullString
-	if err := tx.QueryRowContext(ctx, `SELECT agent_profile_id, repository_id::text,
-		workspace_project_id::text
-		FROM discord_conversations WHERE id = $1`, conversationID).Scan(
-		&profileID, &repositoryID, &projectID); err != nil {
-		return 0, err
-	}
-	var project uuid.UUID
-	if projectID.String != "" {
-		project, err = uuid.Parse(projectID.String)
-		if err != nil {
-			return 0, err
-		}
-	}
-	var repository uuid.UUID
-	if repositoryID.String != "" {
-		repository, err = uuid.Parse(repositoryID.String)
-		if err != nil {
-			return 0, err
-		}
-	}
-	requestID := uuid.New()
-	_, inserted, err := codexcontrol.NewRepository(s.db, 0).Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
-		SourceType: codexcontrol.SourceWorkspace, DiscordConversationID: conversationID,
-		RepositoryID: repository, ProjectID: project, AgentProfileID: profileID,
-		IdempotencyKey: "discord:stop:" + requestID.String(), Operation: "interrupt",
-		Instruction: "stopped from Discord", ReplyPolicy: "silent", ActorLogin: requesterID,
-	})
+	_, inserted, err := officialapp.EnqueueThreadActionTx(ctx, tx, workspaceID,
+		conversationID, sourceOrder, "discord:interrupt:"+sourceOrder, "interrupt")
 	if err != nil {
 		return 0, err
 	}
-	updateResult, err := tx.ExecContext(ctx, `UPDATE codex_turn_intents SET status = 'canceled',
-		last_error_code = 'user_interrupt', last_error_message = 'stopped from Discord',
-		finished_at = now(), updated_at = now()
-		WHERE control_id = (SELECT id FROM codex_thread_controls
-			WHERE discord_conversation_id = $1)
-		  AND operation = 'turn_input'
-		  AND status IN ('queued','retry_wait')`, conversationID)
+	updateResult, err := tx.ExecContext(ctx, `UPDATE official_turn_submissions SET
+		status='canceled',last_error='stopped from Discord',updated_at=now()
+		WHERE conversation_id=$1 AND source_order<$2::numeric
+		AND status IN ('queued','ambiguous')`, conversationID, sourceOrder)
 	if err != nil {
 		return 0, err
 	}
@@ -149,13 +125,16 @@ func (s *ConversationService) Stop(ctx context.Context, guildID, threadID, reque
 	if count == 0 && inserted {
 		count = 1
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE discord_input_messages m SET status = 'canceled', processed_at = now()
-		WHERE m.conversation_id = $1 AND m.status = 'received' AND EXISTS (
-			SELECT 1 FROM codex_turn_intents i WHERE i.id = m.turn_intent_id
-				AND i.status = 'canceled' AND i.last_error_code = 'user_interrupt'
-		)`, conversationID)
+	_, err = tx.ExecContext(ctx, `UPDATE discord_input_messages message SET
+		status='canceled',processed_at=now() FROM official_turn_submissions submission
+		WHERE message.official_submission_id=submission.id AND message.conversation_id=$1
+		AND submission.status='canceled'`, conversationID)
 	if err != nil {
 		return 0, err
 	}
-	return count, tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return 0, err
+	}
+	s.notifyJobs(ctx)
+	return count, nil
 }

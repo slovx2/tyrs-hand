@@ -52,7 +52,7 @@ func (Worker) Fields() []ent.Field {
 		field.JSON("roles", []string{}).Default([]string{}), field.Bool("enabled").Default(true),
 		field.Int("max_concurrent_jobs").Default(6),
 		field.String("credential_hash").Optional().Nillable().Sensitive(),
-		field.Int64("credential_version").Default(0), field.Int("protocol_version").Default(1),
+		field.Int64("credential_version").Default(0), field.Int("protocol_version").Default(25),
 		field.String("worker_version").Optional().Nillable(), field.String("status").Default("pending"),
 		field.Time("heartbeat_at").Optional().Nillable(), field.String("last_error").Optional().Nillable(),
 		field.JSON("metadata", map[string]any{}).Default(map[string]any{}),

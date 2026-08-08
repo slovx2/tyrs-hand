@@ -34,23 +34,20 @@ type Service struct {
 }
 
 type authorization struct {
-	RunID                 uuid.UUID
-	IntentID              uuid.UUID
-	ExternalThreadID      string
-	SourceType            string
-	WorkItemID            uuid.UUID
-	ConversationID        uuid.UUID
-	InstallationID        int64
-	Owner                 string
-	Repository            string
-	Number                int
-	AllowedNumbers        []int
-	Actor                 string
-	Kind                  string
-	AgentOwned            bool
-	AllowedTools          []string
-	Contributors          []string
-	HasUnboundContributor bool
+	RunID            uuid.UUID
+	IntentID         uuid.UUID
+	ExternalThreadID string
+	SourceType       string
+	WorkItemID       uuid.UUID
+	InstallationID   int64
+	Owner            string
+	Repository       string
+	Number           int
+	AllowedNumbers   []int
+	Actor            string
+	Kind             string
+	AgentOwned       bool
+	AllowedTools     []string
 }
 
 func NewService(db *sql.DB, app *ghadapter.AppClient, catalog *githubtools.Catalog) *Service {
@@ -65,11 +62,7 @@ func (s *Service) GitCredential(ctx context.Context, capability, purpose, turnID
 	if purpose != "fetch" && purpose != "push" {
 		return "", errors.New("请求的 Git 凭据用途无效")
 	}
-	if auth.SourceType == "workspace_session" && auth.ConversationID != uuid.Nil {
-		if err := s.requireDiscordPermission(ctx, auth, purpose == "push"); err != nil {
-			return "", err
-		}
-	} else if purpose == "push" && !auth.AgentOwned {
+	if purpose == "push" && !auth.AgentOwned {
 		if err := s.requireWritePermission(ctx, auth); err != nil {
 			return "", err
 		}
@@ -101,11 +94,7 @@ func (s *Service) Call(ctx context.Context, request CallRequest) (codex.ToolCall
 	if !ok {
 		return codex.ToolCallResult{}, fmt.Errorf("工具 %s 未注册", request.Tool)
 	}
-	if auth.SourceType == "workspace_session" && auth.ConversationID != uuid.Nil {
-		if err := s.requireDiscordPermission(ctx, auth, !readOnly); err != nil {
-			return codex.ToolCallResult{}, err
-		}
-	} else if !readOnly && !auth.AgentOwned {
+	if !readOnly && !auth.AgentOwned {
 		if err := s.requireWritePermission(ctx, auth); err != nil {
 			return codex.ToolCallResult{}, err
 		}
@@ -188,7 +177,7 @@ func (s *Service) authorize(ctx context.Context, capability, turnID string) (aut
 	var toolsJSON, dangerousJSON []byte
 	err := s.db.QueryRowContext(ctx, `
 			SELECT run.id, intent.id, COALESCE(control.external_thread_id, ''), intent.source_type,
-				intent.work_item_id, intent.discord_conversation_id,
+				intent.work_item_id,
 				i.external_id, r.owner, r.name, COALESCE(w.external_number, 0),
 				intent.actor_login, COALESCE(w.kind, ''), COALESCE(w.agent_owned, false),
 				intent.allowed_tools, intent.dangerous_actions
@@ -199,13 +188,13 @@ func (s *Service) authorize(ctx context.Context, capability, turnID string) (aut
 			JOIN scm_installations i ON i.id = r.installation_id
 			LEFT JOIN work_items w ON w.id = intent.work_item_id
 			WHERE run.capability_hash = $1 AND run.active_slot = 1
+			  AND intent.source_type = 'github_work_item'
 			  AND run.status IN ('starting','running','reconciling')
 			  AND control.lease_epoch = run.lease_epoch AND control.lease_expires_at > now()
 			  AND ($2 = '' OR run.status = 'starting' OR control.active_codex_turn_id = $2 OR run.codex_submission_id = $2
 				OR run.confirmed_codex_turn_id = $2)`,
 		security.Digest(capability), turnID).Scan(&auth.RunID, &auth.IntentID, &auth.ExternalThreadID, &auth.SourceType,
-		&auth.WorkItemID, &auth.ConversationID,
-		&auth.InstallationID, &auth.Owner, &auth.Repository, &auth.Number,
+		&auth.WorkItemID, &auth.InstallationID, &auth.Owner, &auth.Repository, &auth.Number,
 		&auth.Actor, &auth.Kind, &auth.AgentOwned, &toolsJSON, &dangerousJSON)
 	if errors.Is(err, sql.ErrNoRows) {
 		return authorization{}, errors.New("任务 Capability 已失效")
@@ -221,12 +210,6 @@ func (s *Service) authorize(ctx context.Context, capability, turnID string) (aut
 		return authorization{}, err
 	}
 	auth.AllowedTools = append(auth.AllowedTools, dangerous...)
-	if auth.SourceType == "workspace_session" && auth.ConversationID != uuid.Nil {
-		if err := s.loadDiscordContributors(ctx, capability, turnID, &auth); err != nil {
-			return authorization{}, err
-		}
-		return auth, nil
-	}
 	auth.AllowedNumbers = []int{auth.Number}
 	rows, err := s.db.QueryContext(ctx, "SELECT external_number FROM work_item_channels WHERE work_item_id = $1", auth.WorkItemID)
 	if err != nil {
@@ -313,91 +296,6 @@ func (s *Service) requireWritePermission(ctx context.Context, auth authorization
 		return errors.New("当前触发者不再具备 write 以上权限")
 	}
 	return nil
-}
-
-func (s *Service) loadDiscordContributors(ctx context.Context, capability, turnID string, auth *authorization) error {
-	query := `SELECT COALESCE(b.github_login, ''), b.id IS NULL
-		FROM discord_turn_contributors c
-		LEFT JOIN discord_identity_bindings b ON b.id = c.github_binding_id
-			AND b.status = 'active' AND b.github_user_id = c.github_user_id
-		WHERE c.run_id = $1
-		ORDER BY c.contributed_at, c.discord_user_id`
-	rows, err := s.db.QueryContext(ctx, query, auth.RunID)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = rows.Close() }()
-	for rows.Next() {
-		var login string
-		var unbound bool
-		if err := rows.Scan(&login, &unbound); err != nil {
-			return err
-		}
-		auth.HasUnboundContributor = auth.HasUnboundContributor || unbound || login == ""
-		if login != "" {
-			auth.Contributors = append(auth.Contributors, login)
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	if len(auth.Contributors) > 0 || auth.HasUnboundContributor || turnID != "" {
-		return nil
-	}
-	// 初次拉取 Worktree 发生在 Turn 建立前，只能使用本次消息的绑定快照。
-	var login string
-	var unbound bool
-	err = s.db.QueryRowContext(ctx, `SELECT COALESCE(b.github_login, ''), b.id IS NULL
-			FROM codex_turn_runs run JOIN codex_turn_intents intent ON intent.id = run.primary_intent_id
-			JOIN discord_input_messages m ON m.message_id = intent.discord_message_id
-			LEFT JOIN discord_identity_bindings b ON b.id = m.github_binding_id
-				AND b.status = 'active' AND b.github_user_id = m.github_user_id
-			WHERE run.capability_hash = $1`, security.Digest(capability)).Scan(&login, &unbound)
-	if err != nil {
-		return err
-	}
-	auth.HasUnboundContributor = unbound || login == ""
-	if login != "" {
-		auth.Contributors = append(auth.Contributors, login)
-	}
-	return nil
-}
-
-func (s *Service) requireDiscordPermission(ctx context.Context, auth authorization, write bool) error {
-	if auth.HasUnboundContributor || len(auth.Contributors) == 0 {
-		return errors.New("当前 Turn 包含未绑定或已经解绑的 Discord 贡献者，GitHub 操作被拒绝")
-	}
-	required := 1
-	if write {
-		required = 3
-	}
-	for _, login := range auth.Contributors {
-		permission, err := s.app.Permission(ctx, auth.InstallationID, auth.Owner, auth.Repository, login)
-		if err != nil {
-			return fmt.Errorf("实时读取贡献者 %s 的 GitHub 权限: %w", login, err)
-		}
-		if githubPermissionRank(permission) < required {
-			return fmt.Errorf("贡献者 %s 的 GitHub 权限 %s 低于当前操作要求", login, permission)
-		}
-	}
-	return nil
-}
-
-func githubPermissionRank(permission string) int {
-	switch permission {
-	case "admin":
-		return 5
-	case "maintain":
-		return 4
-	case "write", "push":
-		return 3
-	case "triage":
-		return 2
-	case "read", "pull":
-		return 1
-	default:
-		return 0
-	}
 }
 
 func (s *Service) previousResult(ctx context.Context, request CallRequest) (codex.ToolCallResult, error) {

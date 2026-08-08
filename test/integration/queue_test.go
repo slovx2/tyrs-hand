@@ -115,17 +115,28 @@ func TestPostgresMigrationsAndLeaseEpoch(t *testing.T) {
 	require.NotNil(t, claimed)
 	require.NotEqual(t, uuid.Nil, claimed.RunID)
 	require.True(t, claims[0] == nil || claims[1] == nil, "同一 Work Item 只能有一个活动租约")
+	expiredRunID := claimed.RunID
 
 	_, err = db.ExecContext(ctx, "UPDATE codex_thread_controls SET lease_expires_at = now() - interval '1 second' WHERE id = $1", claimed.ControlID)
 	require.NoError(t, err)
 	count, err := repository.RequeueExpired(ctx)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, count)
-	require.NoError(t, repository.Heartbeat(ctx, claimed), "原节点应当使用同一 Lease 恢复 Run")
-	var activeSlot int
-	require.NoError(t, db.QueryRowContext(ctx, `SELECT active_slot FROM codex_turn_runs WHERE id = $1`,
-		claimed.RunID).Scan(&activeSlot))
-	require.Equal(t, 1, activeSlot, "恢复时必须保留原 Run 的活动槽位")
+	require.ErrorIs(t, repository.Heartbeat(ctx, claimed), codexcontrol.ErrLeaseLost,
+		"过期 lease 不得复活已经 fence 的 Run")
+	var oldActiveSlot sql.NullInt64
+	var oldRunStatus string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT active_slot,status
+		FROM codex_turn_runs WHERE id=$1`, expiredRunID).
+		Scan(&oldActiveSlot, &oldRunStatus))
+	require.False(t, oldActiveSlot.Valid)
+	require.Equal(t, "failed", oldRunStatus)
+	claimed, err = repository.ClaimWorker(ctx, "worker-recovery", codexcontrol.SourceGitHub,
+		workerID)
+	require.NoError(t, err)
+	require.NotNil(t, claimed)
+	require.True(t, claimed.Recovering)
+	require.NotEqual(t, expiredRunID, claimed.RunID, "恢复必须创建新的 fenced Run")
 	require.Equal(t, "alice", claimed.ActorLogin)
 	require.Equal(t, "write", claimed.ActorPermission)
 	stale := *claimed

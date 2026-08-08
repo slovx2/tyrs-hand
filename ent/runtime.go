@@ -9,6 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/ent/administrator"
 	"github.com/slovx2/tyrs-hand/ent/agentprofile"
 	"github.com/slovx2/tyrs-hand/ent/auditlog"
+	"github.com/slovx2/tyrs-hand/ent/clientmaterialization"
 	"github.com/slovx2/tyrs-hand/ent/codexthreadcontrol"
 	"github.com/slovx2/tyrs-hand/ent/codexturnintent"
 	"github.com/slovx2/tyrs-hand/ent/codexturnrun"
@@ -98,6 +99,44 @@ func init() {
 	auditlogDescCreatedAt := auditlogFields[8].Descriptor()
 	// auditlog.DefaultCreatedAt holds the default value on creation for the created_at field.
 	auditlog.DefaultCreatedAt = auditlogDescCreatedAt.Default.(func() time.Time)
+	clientmaterializationFields := schema.ClientMaterialization{}.Fields()
+	_ = clientmaterializationFields
+	// clientmaterializationDescSha256 is the schema descriptor for sha256 field.
+	clientmaterializationDescSha256 := clientmaterializationFields[10].Descriptor()
+	// clientmaterialization.Sha256Validator is a validator for the "sha256" field. It is called by the builders before save.
+	clientmaterialization.Sha256Validator = func() func(string) error {
+		validators := clientmaterializationDescSha256.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(sha256 string) error {
+			for _, fn := range fns {
+				if err := fn(sha256); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// clientmaterializationDescStatus is the schema descriptor for status field.
+	clientmaterializationDescStatus := clientmaterializationFields[12].Descriptor()
+	// clientmaterialization.DefaultStatus holds the default value on creation for the status field.
+	clientmaterialization.DefaultStatus = clientmaterializationDescStatus.Default.(string)
+	// clientmaterializationDescCreatedAt is the schema descriptor for created_at field.
+	clientmaterializationDescCreatedAt := clientmaterializationFields[17].Descriptor()
+	// clientmaterialization.DefaultCreatedAt holds the default value on creation for the created_at field.
+	clientmaterialization.DefaultCreatedAt = clientmaterializationDescCreatedAt.Default.(func() time.Time)
+	// clientmaterializationDescUpdatedAt is the schema descriptor for updated_at field.
+	clientmaterializationDescUpdatedAt := clientmaterializationFields[18].Descriptor()
+	// clientmaterialization.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	clientmaterialization.DefaultUpdatedAt = clientmaterializationDescUpdatedAt.Default.(func() time.Time)
+	// clientmaterialization.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	clientmaterialization.UpdateDefaultUpdatedAt = clientmaterializationDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// clientmaterializationDescID is the schema descriptor for id field.
+	clientmaterializationDescID := clientmaterializationFields[0].Descriptor()
+	// clientmaterialization.DefaultID holds the default value on creation for the id field.
+	clientmaterialization.DefaultID = clientmaterializationDescID.Default.(func() uuid.UUID)
 	codexthreadcontrolFields := schema.CodexThreadControl{}.Fields()
 	_ = codexthreadcontrolFields
 	// codexthreadcontrolDescStatus is the schema descriptor for status field.

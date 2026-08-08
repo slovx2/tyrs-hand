@@ -24,8 +24,6 @@ type Processor struct {
 	client       *workerprotocol.Client
 	workspace    ports.WorkspaceManager
 	catalog      *githubtools.Catalog
-	workspaces   *workspaceCodexRegistry
-	journals     *journalStore
 	logger       *zap.Logger
 	hostRuntime  *hostworker.Runtime
 	workspaceID  uuid.UUID
@@ -70,33 +68,25 @@ func (p *Processor) HeartbeatMetadata() map[string]any {
 	return metadata
 }
 
-func NewProcessor(ctx context.Context, cfg config.Config, client *workerprotocol.Client,
+func NewProcessor(cfg config.Config, client *workerprotocol.Client,
 	workspace ports.WorkspaceManager, catalog *githubtools.Catalog, logger *zap.Logger,
 ) *Processor {
-	processor := &Processor{cfg: cfg, client: client, workspace: workspace, catalog: catalog,
+	return &Processor{cfg: cfg, client: client, workspace: workspace, catalog: catalog,
 		logger: logger}
-	if journals, err := newJournalStore(cfg.WorkerDataRoot); err == nil {
-		processor.journals = journals
-	} else {
-		logger.Error("初始化 Desktop Run Journal 失败", zap.Error(err))
-	}
-	processor.workspaces = newWorkspaceCodexRegistry(ctx, processor)
-	return processor
 }
 
 func (p *Processor) Process(ctx context.Context, task *workerprotocol.Task,
-	commands <-chan workerprotocol.RunCommand,
 	report func(string, json.RawMessage),
 ) (workerprotocol.CompleteRequest, error) {
-	if task.Claimed.SourceType == codexcontrol.SourceWorkspace {
-		return p.processRemoteDiscord(ctx, task, commands, report)
+	if task.Claimed.SourceType != codexcontrol.SourceGitHub {
+		return workerprotocol.CompleteRequest{}, fmt.Errorf("worker 不再执行 %q 来源的任务",
+			task.Claimed.SourceType)
 	}
-	result, err := p.processRemoteGitHub(ctx, task, commands, report)
+	result, err := p.processRemoteGitHub(ctx, task, report)
 	return workerprotocol.CompleteRequest{Result: result}, err
 }
 
 func (p *Processor) processRemoteGitHub(ctx context.Context, task *workerprotocol.Task,
-	commands <-chan workerprotocol.RunCommand,
 	report func(string, json.RawMessage),
 ) (codexcontrol.TurnResult, error) {
 	job := task.Snapshot.GitHub
@@ -189,7 +179,7 @@ func (p *Processor) processRemoteGitHub(ctx context.Context, task *workerprotoco
 	defer subscription.Close()
 	if claimed.Recovering {
 		if result, recovered, recoverErr := p.reconcileRemoteTurn(ctx, runtime, subscription.Events(),
-			task, threadID, commands, nil, report, nil); recoverErr != nil {
+			task, threadID, report); recoverErr != nil {
 			return codexcontrol.TurnResult{}, recoverErr
 		} else if recovered {
 			if result.FinalAnswer == "" {
@@ -210,7 +200,7 @@ func (p *Processor) processRemoteGitHub(ctx context.Context, task *workerprotoco
 		return codexcontrol.TurnResult{}, err
 	}
 	result, err := p.waitRemoteTurn(ctx, runtime, subscription.Events(), task, threadID, turnID,
-		commands, nil, report, nil)
+		report)
 	if needsCleanupInterrupt(err) {
 		interruptTurnBestEffort(runtime, threadID, turnID)
 	}

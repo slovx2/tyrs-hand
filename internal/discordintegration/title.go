@@ -18,7 +18,7 @@ type claimedConversationTitle struct {
 	Body     string
 }
 
-// TitleGenerator 只处理没有进入公共 Session 标题任务链路的历史 Conversation。
+// TitleGenerator 用首条 Discord 消息生成稳定的本地标题，不再依赖旧 Session 状态机。
 type TitleGenerator struct{ db *sql.DB }
 
 func NewTitleGenerator(db *sql.DB) *TitleGenerator { return &TitleGenerator{db: db} }
@@ -60,10 +60,6 @@ func (g *TitleGenerator) claim(ctx context.Context, status string) (claimedConve
 		FROM discord_conversations c
 		JOIN discord_input_messages m ON m.message_id=c.starter_message_id
 		WHERE c.title_rename_status=$1
-		AND NOT EXISTS (SELECT 1 FROM desktop_thread_requests desktop
-			WHERE desktop.conversation_id=c.id)
-		AND NOT EXISTS (SELECT 1 FROM workspace_session_title_tasks task
-			WHERE task.session_id=c.session_id)
 		ORDER BY c.created_at,c.id FOR UPDATE OF c SKIP LOCKED LIMIT 1`, status).
 		Scan(&claimed.ID, &claimed.ThreadID, &claimed.Body)
 	if err != nil {

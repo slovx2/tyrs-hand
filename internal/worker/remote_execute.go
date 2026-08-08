@@ -26,8 +26,7 @@ func (r *Runner) runJournal(ctx context.Context, journal *runJournal, slots chan
 		return
 	}
 
-	commands := make(chan workerprotocol.RunCommand, 16)
-	if !r.restoreLease(ctx, task, commands, logger) {
+	if !r.restoreLease(ctx, task, logger) {
 		return
 	}
 	if err := r.journals.save(journal); err != nil {
@@ -47,7 +46,7 @@ func (r *Runner) runJournal(ctx context.Context, journal *runJournal, slots chan
 	heartbeatDone := make(chan struct{})
 	go func() {
 		defer close(heartbeatDone)
-		r.runLeaseHeartbeat(processCtx, task, commands, logger)
+		r.runLeaseHeartbeat(processCtx, task, logger)
 	}()
 	var journalMu sync.Mutex
 	var lastEventFlushAttempt time.Time
@@ -69,7 +68,7 @@ func (r *Runner) runJournal(ctx context.Context, journal *runJournal, slots chan
 		}
 		journalMu.Unlock()
 	}
-	result, err := r.processor.Process(processCtx, task, commands, report)
+	result, err := r.processor.Process(processCtx, task, report)
 	cancel()
 	<-heartbeatDone
 	journalMu.Lock()
@@ -102,7 +101,6 @@ func shouldFlushRemoteEvents(lastAttempt, now time.Time) bool {
 }
 
 func (r *Runner) restoreLease(ctx context.Context, task *workerprotocol.Task,
-	commands chan<- workerprotocol.RunCommand,
 	logger *zap.Logger,
 ) bool {
 	for ctx.Err() == nil {
@@ -111,7 +109,6 @@ func (r *Runner) restoreLease(ctx context.Context, task *workerprotocol.Task,
 		cancel()
 		if err == nil {
 			applyRunRecovery(task, response.Recovery)
-			deliverCommands(commands, response.Commands)
 			return true
 		}
 		if workerprotocol.IsLeaseLost(err) {
@@ -139,7 +136,6 @@ func applyRunRecovery(task *workerprotocol.Task, recovery workerprotocol.RunReco
 }
 
 func (r *Runner) runLeaseHeartbeat(ctx context.Context, task *workerprotocol.Task,
-	commands chan<- workerprotocol.RunCommand,
 	logger *zap.Logger,
 ) {
 	ticker := time.NewTicker(r.cfg.HeartbeatInterval)
@@ -150,26 +146,12 @@ func (r *Runner) runLeaseHeartbeat(ctx context.Context, task *workerprotocol.Tas
 			return
 		case <-ticker.C:
 			requestCtx, cancel := context.WithTimeout(context.Background(), r.cfg.ControlTimeout)
-			response, err := r.client.RunHeartbeat(requestCtx, task)
+			_, err := r.client.RunHeartbeat(requestCtx, task)
 			cancel()
 			if err != nil {
 				// 网络中断不能终止本地 Codex；最终结果由 Journal 负责补交。
 				logger.Warn("Run 续租失败，本地任务继续运行", zap.Error(err))
-			} else {
-				deliverCommands(commands, response.Commands)
 			}
-		}
-	}
-}
-
-func deliverCommands(target chan<- workerprotocol.RunCommand,
-	commands []workerprotocol.RunCommand,
-) {
-	for _, command := range commands {
-		select {
-		case target <- command:
-		default:
-			return
 		}
 	}
 }

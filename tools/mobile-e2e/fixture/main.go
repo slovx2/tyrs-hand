@@ -21,7 +21,7 @@ type seededFixture struct {
 
 func main() {
 	if len(os.Args) < 2 {
-		log.Fatal("用法：fixture seed|seed-project-matrix|wait-ready|snapshot|notification-target|assert-message-once|assert-session-project|assert-attachment-once|assert-preference|assert-intent-once|seed-history|seed-forward-history|force-cursor-reset")
+		log.Fatal("用法：fixture seed|seed-project-matrix|wait-ready|snapshot|notification-target|assert-message-once|assert-session-project|assert-attachment-once|assert-turn-status")
 	}
 	databaseURL := os.Getenv("TYRS_HAND_DATABASE_URL")
 	if databaseURL == "" {
@@ -51,16 +51,8 @@ func main() {
 		assertSessionProject(ctx, db, os.Args[2:])
 	case "assert-attachment-once":
 		assertAttachmentOnce(ctx, db, os.Args[2:])
-	case "assert-preference":
-		assertPreference(ctx, db, os.Args[2:])
-	case "assert-intent-once":
-		assertIntentOnce(ctx, db, os.Args[2:])
-	case "seed-history":
-		seedHistory(ctx, db)
-	case "seed-forward-history":
-		seedForwardHistory(ctx, db)
-	case "force-cursor-reset":
-		forceCursorReset(ctx, db)
+	case "assert-turn-status":
+		assertTurnStatus(ctx, db, os.Args[2:])
 	default:
 		log.Fatalf("未知命令 %q", os.Args[1])
 	}
@@ -169,14 +161,14 @@ func waitReady(ctx context.Context, db *sql.DB, arguments []string) {
 func snapshot(ctx context.Context, db *sql.DB) {
 	result := map[string]int64{}
 	queries := map[string]string{
-		"sessions":      `SELECT count(*) FROM workspace_sessions`,
-		"messages":      `SELECT count(*) FROM session_messages`,
-		"runs":          `SELECT count(*) FROM codex_turn_runs`,
-		"completedRuns": `SELECT count(*) FROM codex_turn_runs WHERE status='completed'`,
-		"failedRuns":    `SELECT count(*) FROM codex_turn_runs WHERE status='failed'`,
-		"canceledRuns":  `SELECT count(*) FROM codex_turn_runs WHERE status='canceled'`,
-		"interactives":  `SELECT count(*) FROM codex_interactive_requests`,
-		"attachments":   `SELECT count(*) FROM session_attachments WHERE status='attached'`,
+		"threadBindings":       `SELECT count(*) FROM official_thread_bindings`,
+		"threadProjections":    `SELECT count(*) FROM official_thread_projections`,
+		"turnSubmissions":      `SELECT count(*) FROM official_turn_submissions`,
+		"threadActions":        `SELECT count(*) FROM official_thread_actions`,
+		"serverRequests":       `SELECT count(*) FROM official_server_requests`,
+		"resolvedRequests":     `SELECT count(*) FROM official_server_requests WHERE status='resolved'`,
+		"materializations":     `SELECT count(*) FROM client_materializations`,
+		"completedAttachments": `SELECT count(*) FROM client_materializations WHERE status='completed'`,
 	}
 	for name, query := range queries {
 		var count int64
@@ -197,16 +189,16 @@ func notificationTarget(ctx context.Context, db *sql.DB, arguments []string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if *text == "" {
-		err = db.QueryRowContext(ctx, `SELECT id FROM workspace_sessions
-			ORDER BY last_activity_at DESC,id DESC LIMIT 1`).Scan(&sessionID)
-	} else {
-		err = db.QueryRowContext(ctx, `SELECT session.id FROM workspace_sessions session
-			JOIN session_messages message ON message.session_id=session.id
-			WHERE message.message_role='user' AND COALESCE(message.content->>'text',
-			message.content #>> '{v,content,data,message}','')=$1
-			ORDER BY session.last_activity_at DESC LIMIT 1`, *text).Scan(&sessionID)
-	}
+	query := `SELECT binding.thread_id FROM official_thread_bindings binding
+		JOIN official_thread_projections projection ON projection.workspace_id=binding.workspace_id
+			AND projection.thread_id=binding.thread_id
+		WHERE ($1='' OR EXISTS (
+			SELECT 1 FROM jsonb_array_elements(COALESCE(projection.thread->'turns','[]')) turn,
+			LATERAL jsonb_array_elements(COALESCE(turn->'items','[]')) item,
+			LATERAL jsonb_array_elements(COALESCE(item->'content','[]')) input
+			WHERE item->>'type'='userMessage' AND input->>'type'='text' AND input->>'text'=$1))
+		ORDER BY projection.observed_at DESC,binding.id DESC LIMIT 1`
+	err = db.QueryRowContext(ctx, query, *text).Scan(&sessionID)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -220,10 +212,13 @@ func assertMessageOnce(ctx context.Context, db *sql.DB, arguments []string) {
 	if *text == "" {
 		log.Fatal("assert-message-once 需要 --text")
 	}
-	var count int
-	err := db.QueryRowContext(ctx, `SELECT count(*) FROM session_messages
-		WHERE message_role='user' AND COALESCE(content #>> '{v,content,data,message}',
-			content->>'text','')=$1`, *text).Scan(&count)
+	query := `SELECT count(*) FROM official_thread_projections projection,
+		LATERAL jsonb_array_elements(COALESCE(projection.thread->'turns','[]')) turn,
+		LATERAL jsonb_array_elements(COALESCE(turn->'items','[]')) item
+		WHERE item->>'type'='userMessage' AND EXISTS (
+			SELECT 1 FROM jsonb_array_elements(COALESCE(item->'content','[]')) input
+			WHERE input->>'type'='text' AND input->>'text'=$1)`
+	count, err := waitForCount(ctx, db, query, 1, *text)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -241,14 +236,17 @@ func assertSessionProject(ctx context.Context, db *sql.DB, arguments []string) {
 	if *text == "" || *projectName == "" {
 		log.Fatal("assert-session-project 需要 --text 与 --project-name")
 	}
-	var count int
-	err := db.QueryRowContext(ctx, `SELECT count(DISTINCT session.id)
-		FROM workspace_sessions session
-		JOIN workspace_projects project ON project.id=session.workspace_project_id
-		JOIN session_messages message ON message.session_id=session.id
-		WHERE project.name=$2 AND message.message_role='user'
-		AND COALESCE(message.content->>'text',message.content #>> '{v,content,data,message}','')=$1`,
-		*text, *projectName).Scan(&count)
+	query := `SELECT count(DISTINCT projection.thread_id)
+		FROM official_thread_projections projection
+		JOIN official_thread_bindings binding ON binding.workspace_id=projection.workspace_id
+			AND binding.thread_id=projection.thread_id
+		JOIN workspace_projects project ON project.id=binding.workspace_project_id
+		WHERE project.name=$2 AND EXISTS (
+			SELECT 1 FROM jsonb_array_elements(COALESCE(projection.thread->'turns','[]')) turn,
+			LATERAL jsonb_array_elements(COALESCE(turn->'items','[]')) item,
+			LATERAL jsonb_array_elements(COALESCE(item->'content','[]')) input
+			WHERE item->>'type'='userMessage' AND input->>'type'='text' AND input->>'text'=$1)`
+	count, err := waitForCount(ctx, db, query, 1, *text, *projectName)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -265,174 +263,78 @@ func assertAttachmentOnce(ctx context.Context, db *sql.DB, arguments []string) {
 	if *text == "" {
 		log.Fatal("assert-attachment-once 需要 --text")
 	}
-	var attachments, links int
-	err := db.QueryRowContext(ctx, `SELECT count(DISTINCT attachment.id),count(link.attachment_id)
-		FROM session_messages message
-		JOIN session_message_attachments link ON link.message_id=message.id
-		JOIN session_attachments attachment ON attachment.id=link.attachment_id
-		WHERE message.message_role='user' AND attachment.status='attached'
-		AND COALESCE(message.content->>'text',message.content #>> '{v,content,data,message}','')=$1`,
-		*text).Scan(&attachments, &links)
-	if err != nil {
-		log.Fatal(err)
+	query := `WITH matched AS (
+		SELECT item FROM official_thread_projections projection,
+		LATERAL jsonb_array_elements(COALESCE(projection.thread->'turns','[]')) turn,
+		LATERAL jsonb_array_elements(COALESCE(turn->'items','[]')) item
+		WHERE item->>'type'='userMessage' AND EXISTS (
+			SELECT 1 FROM jsonb_array_elements(COALESCE(item->'content','[]')) input
+			WHERE input->>'type'='text' AND input->>'text'=$1))
+		SELECT count(*),COALESCE(sum((SELECT count(*) FROM
+			jsonb_array_elements(COALESCE(item->'content','[]')) input
+			WHERE input->>'type' IN ('localImage','mention'))),0) FROM matched`
+	var messages, attachments int
+	deadline := time.NewTicker(150 * time.Millisecond)
+	defer deadline.Stop()
+	for ctx.Err() == nil {
+		err := db.QueryRowContext(ctx, query, *text).Scan(&messages, &attachments)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if messages == 1 && attachments > 0 {
+			writeJSON(map[string]any{"text": *text, "messages": messages,
+				"attachments": attachments})
+			return
+		}
+		<-deadline.C
 	}
-	if attachments != 1 || links != 1 {
-		log.Fatalf("消息 %q 的附件=%d、关联=%d，预期均为 1", *text, attachments, links)
-	}
-	writeJSON(map[string]any{"text": *text, "attachments": attachments, "links": links})
+	log.Fatalf("消息 %q 的官方投影消息=%d、附件=%d，预期一条消息且至少一个附件",
+		*text, messages, attachments)
 }
 
-func assertPreference(ctx context.Context, db *sql.DB, arguments []string) {
-	flags := flag.NewFlagSet("assert-preference", flag.ExitOnError)
-	mode := flags.String("mode", "", "预期 Default/Plan 模式")
-	tier := flags.String("tier", "", "预期速度档位")
-	effort := flags.String("effort", "", "预期推理等级")
+func assertTurnStatus(ctx context.Context, db *sql.DB, arguments []string) {
+	flags := flag.NewFlagSet("assert-turn-status", flag.ExitOnError)
+	text := flags.String("text", "", "用于定位 Turn 的用户消息")
+	status := flags.String("status", "", "预期官方 Turn 状态")
 	_ = flags.Parse(arguments)
-	if *mode == "" || *tier == "" || *effort == "" {
-		log.Fatal("assert-preference 需要 --mode、--tier 与 --effort")
+	if *text == "" || *status == "" {
+		log.Fatal("assert-turn-status 需要 --text 与 --status")
 	}
-	var actualMode, actualTier string
-	var actualEffort sql.NullString
-	err := db.QueryRowContext(ctx, `SELECT collaboration_mode,service_tier,reasoning_effort
-		FROM client_user_preferences ORDER BY updated_at DESC LIMIT 1`).Scan(
-		&actualMode, &actualTier, &actualEffort)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if actualMode != *mode || actualTier != *tier || actualEffort.String != *effort {
-		log.Fatalf("记忆参数为 %s/%s/%s，预期 %s/%s/%s", actualMode, actualTier,
-			actualEffort.String, *mode, *tier, *effort)
-	}
-	writeJSON(map[string]any{"mode": actualMode, "tier": actualTier, "effort": actualEffort.String})
-}
-
-func assertIntentOnce(ctx context.Context, db *sql.DB, arguments []string) {
-	flags := flag.NewFlagSet("assert-intent-once", flag.ExitOnError)
-	text := flags.String("session-text", "", "标识会话的用户消息")
-	operation := flags.String("operation", "turn_input", "Intent operation")
-	instruction := flags.String("instruction", "", "可选的完整 instruction")
-	_ = flags.Parse(arguments)
-	if *text == "" {
-		log.Fatal("assert-intent-once 需要 --session-text")
-	}
-	var count int
-	err := db.QueryRowContext(ctx, `SELECT count(*) FROM codex_turn_intents intent
-		JOIN codex_thread_controls control ON control.id=intent.control_id
-		WHERE control.session_id IN (SELECT message.session_id FROM session_messages message
-			WHERE message.message_role='user' AND COALESCE(message.content->>'text',
-			message.content #>> '{v,content,data,message}','')=$1)
-		AND intent.operation=$2 AND ($3='' OR intent.instruction=$3)`,
-		*text, *operation, *instruction).Scan(&count)
+	query := `SELECT count(*) FROM official_thread_projections projection,
+		LATERAL jsonb_array_elements(COALESCE(projection.thread->'turns','[]')) turn
+		WHERE turn->>'status'=$2 AND EXISTS (
+			SELECT 1 FROM jsonb_array_elements(COALESCE(turn->'items','[]')) item,
+			LATERAL jsonb_array_elements(COALESCE(item->'content','[]')) input
+			WHERE item->>'type'='userMessage' AND input->>'type'='text' AND input->>'text'=$1)`
+	count, err := waitForCount(ctx, db, query, 1, *text, *status)
 	if err != nil {
 		log.Fatal(err)
 	}
 	if count != 1 {
-		log.Fatalf("会话消息 %q 的 %s Intent 数量为 %d，预期 1", *text, *operation, count)
+		log.Fatalf("消息 %q 对应状态 %q 的官方 Turn 数量为 %d，预期 1", *text, *status, count)
 	}
-	writeJSON(map[string]any{"sessionText": *text, "operation": *operation, "count": count})
+	writeJSON(map[string]any{"text": *text, "status": *status, "count": count})
 }
 
-func seedHistory(ctx context.Context, db *sql.DB) {
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	var sessionID uuid.UUID
-	var sequence int64
-	err = tx.QueryRowContext(ctx, `SELECT id,last_message_seq FROM workspace_sessions
-		ORDER BY last_activity_at DESC,id DESC LIMIT 1 FOR UPDATE`).Scan(&sessionID, &sequence)
-	if err != nil {
-		log.Fatal(err)
-	}
-	for index := 1; index <= 180; index++ {
-		sequence++
-		localID := fmt.Sprintf("history-%03d", index)
-		content, _ := json.Marshal(map[string]any{"type": "text",
-			"text": fmt.Sprintf("历史分页消息 %03d", index)})
-		_, err = tx.ExecContext(ctx, `INSERT INTO session_messages
-			(session_id,seq,local_id,message_role,content) VALUES ($1,$2,$3,'agent',$4)`,
-			sessionID, sequence, localID, content)
-		if err != nil {
-			log.Fatal(err)
+func waitForCount(ctx context.Context, db *sql.DB, query string, expected int,
+	arguments ...any,
+) (int, error) {
+	ticker := time.NewTicker(150 * time.Millisecond)
+	defer ticker.Stop()
+	last := 0
+	for {
+		if err := db.QueryRowContext(ctx, query, arguments...).Scan(&last); err != nil {
+			return 0, err
+		}
+		if last == expected {
+			return last, nil
+		}
+		select {
+		case <-ctx.Done():
+			return last, ctx.Err()
+		case <-ticker.C:
 		}
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE workspace_sessions SET last_message_seq=$2,
-		last_activity_at=now(),updated_at=now() WHERE id=$1`, sessionID, sequence)
-	if err == nil {
-		err = tx.Commit()
-	}
-	if err != nil {
-		log.Fatal(err)
-	}
-	writeJSON(map[string]any{"sessionId": sessionID, "messages": 180})
-}
-
-func seedForwardHistory(ctx context.Context, db *sql.DB) {
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	var sessionID uuid.UUID
-	var sequence int64
-	err = tx.QueryRowContext(ctx, `SELECT id,last_message_seq FROM workspace_sessions
-		ORDER BY last_activity_at DESC,id DESC LIMIT 1 FOR UPDATE`).Scan(&sessionID, &sequence)
-	if err != nil {
-		log.Fatal(err)
-	}
-	for index := 1; index <= 125; index++ {
-		sequence++
-		localID := fmt.Sprintf("forward-%03d", index)
-		content, _ := json.Marshal(map[string]any{"type": "text",
-			"text": fmt.Sprintf("向前分页消息 %03d", index)})
-		var messageID uuid.UUID
-		err = tx.QueryRowContext(ctx, `INSERT INTO session_messages
-			(session_id,seq,local_id,message_role,content) VALUES ($1,$2,$3,'agent',$4)
-			RETURNING id`, sessionID, sequence, localID, content).Scan(&messageID)
-		if err != nil {
-			log.Fatal(err)
-		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO client_updates(session_id,update_type,
-			entity_type,entity_id,entity_seq,entity_version,payload,durable)
-			VALUES ($1,'message.created','message',$2,$3,$3,$4,true)`, sessionID,
-			messageID.String(), sequence, content)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-	_, err = tx.ExecContext(ctx, `UPDATE workspace_sessions SET last_message_seq=$2,
-		last_activity_at=now(),updated_at=now() WHERE id=$1`, sessionID, sequence)
-	if err == nil {
-		err = tx.Commit()
-	}
-	if err != nil {
-		log.Fatal(err)
-	}
-	writeJSON(map[string]any{"sessionId": sessionID, "messages": 125})
-}
-
-func forceCursorReset(ctx context.Context, db *sql.DB) {
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err = tx.ExecContext(ctx, `UPDATE client_updates
-		SET created_at=now()-interval '31 days'`); err == nil {
-		_, err = tx.ExecContext(ctx, `INSERT INTO client_updates
-			(update_type,entity_type,entity_id,entity_version,payload,created_at)
-			VALUES ('preference.updated','preference','e2e-expired',1,'{}',
-				now()-interval '31 days'),
-			('preference.updated','preference','e2e-current',2,'{}',now())`)
-	}
-	if err == nil {
-		err = tx.Commit()
-	}
-	if err != nil {
-		log.Fatal(err)
-	}
-	writeJSON(map[string]any{"resetRequired": true})
 }
 
 func writeJSON(value any) {

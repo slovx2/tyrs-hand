@@ -21,9 +21,7 @@ const customFlow = argumentsMap.has('--flow')
 const postFlow = argumentsMap.has('--post-flow')
   ? resolve(repoRoot, argumentsMap.get('--post-flow')) : null
 const postFixture = argumentsMap.get('--post-fixture') ?? ''
-const allowedPostFixtures = new Set([
-  'seed-history', 'seed-forward-history', 'force-cursor-reset', 'notification-target',
-])
+const allowedPostFixtures = new Set(['notification-target'])
 if ((postFlow === null) !== (postFixture === '')) {
   throw new Error('--post-flow 与 --post-fixture 必须同时提供')
 }
@@ -72,7 +70,7 @@ function checkVersions() {
 }
 
 async function startProtocolWorker(control, enrollmentToken, label) {
-  const managed = await startProcess(label, 'node', ['tools/mobile-e2e/protocol-worker.mjs'], {
+  const managed = await startProcess(label, 'go', ['run', './tools/mobile-e2e/protocol-worker'], {
     cwd: repoRoot, logDir: `${runDir}/logs`, env: {
       TYRS_HAND_E2E_CONTROL_URL: control.baseURL,
       TYRS_HAND_E2E_ENROLLMENT_TOKEN: enrollmentToken,
@@ -223,64 +221,31 @@ async function main() {
     const snapshots = controls.map((control) => JSON.parse(output('go', [
       'run', './tools/mobile-e2e/fixture', 'snapshot'], { cwd: repoRoot,
       env: { ...process.env, TYRS_HAND_DATABASE_URL: control.databaseURL } })))
-    await primary.writeManifest({ lane, appID, codexVersion: null,
+    await primary.writeManifest({ lane, appID, codexVersion: '0.147.0',
       controls: snapshots, flow })
     failed = false
     return
   }
 
-  output('go', ['run', './tools/mobile-e2e/fixture', 'assert-preference',
-    '--mode', 'plan', '--tier', 'fast', '--effort', 'max'], { cwd: repoRoot,
-    env: { ...process.env, TYRS_HAND_DATABASE_URL: secondary.databaseURL } })
   output('go', ['run', './tools/mobile-e2e/fixture', 'assert-session-project',
     '--text', 'E2E_PROJECT_DRAFT retained across navigation', '--project-name', 'zeta-secondary'], {
     cwd: repoRoot, env: { ...process.env, TYRS_HAND_DATABASE_URL: primary.databaseURL } })
-  output('go', ['run', './tools/mobile-e2e/fixture', 'assert-intent-once',
-    '--session-text', 'E2E_PLAN_IDEMPOTENT prepare one plan intent',
-    '--instruction', 'Implement the plan.'], { cwd: repoRoot,
+  output('go', ['run', './tools/mobile-e2e/fixture', 'assert-message-once',
+    '--text', 'PLEASE IMPLEMENT THIS PLAN:\n1. 验证参数\n2. 执行任务\n3. 返回结果'], { cwd: repoRoot,
     env: { ...process.env, TYRS_HAND_DATABASE_URL: secondary.databaseURL } })
-  output('go', ['run', './tools/mobile-e2e/fixture', 'assert-intent-once',
-    '--session-text', 'E2E_BLOCK_IDEMPOTENT accept one stop intent', '--operation', 'interrupt'], {
+  output('go', ['run', './tools/mobile-e2e/fixture', 'assert-turn-status',
+    '--text', 'E2E_BLOCK_IDEMPOTENT accept one stop intent', '--status', 'interrupted'], {
     cwd: repoRoot, env: { ...process.env, TYRS_HAND_DATABASE_URL: secondary.databaseURL } })
+  output('go', ['run', './tools/mobile-e2e/fixture', 'assert-message-once',
+    '--text', 'E2E_STEER_AFTER_REQUEST'], { cwd: repoRoot,
+    env: { ...process.env, TYRS_HAND_DATABASE_URL: secondary.databaseURL } })
+  output('go', ['run', './tools/mobile-e2e/fixture', 'assert-attachment-once',
+    '--text', 'E2E_BASIC_ATTACHMENT verify image and file'], { cwd: repoRoot,
+    env: { ...process.env, TYRS_HAND_DATABASE_URL: primary.databaseURL } })
 
   await runMaestro(maestroEnvironment, 'select-primary',
     resolve(repoRoot, 'client/e2e/flows/select-primary-control.yaml'))
 
-  await primary.stopServer()
-  await runMaestro(maestroEnvironment, 'offline-send',
-    resolve(repoRoot, 'client/e2e/flows/offline-send.yaml'))
-  await primary.startServer()
-  await runMaestro(maestroEnvironment, 'offline-recover',
-    resolve(repoRoot, 'client/e2e/flows/offline-recover.yaml'))
-  output('go', ['run', './tools/mobile-e2e/fixture', 'assert-message-once',
-    '--text', 'E2E_OFFLINE_IDEMPOTENT'], { cwd: repoRoot,
-    env: { ...process.env, TYRS_HAND_DATABASE_URL: primary.databaseURL } })
-  if (platform === 'android') {
-    await primary.stopServer()
-    await runMaestro(maestroEnvironment, 'offline-attachment-send',
-      resolve(repoRoot, 'client/e2e/flows/offline-attachment-send.yaml'))
-    await primary.startServer()
-    await runMaestro(maestroEnvironment, 'offline-attachment-recover',
-      resolve(repoRoot, 'client/e2e/flows/offline-attachment-recover.yaml'))
-    output('go', ['run', './tools/mobile-e2e/fixture', 'assert-message-once',
-      '--text', 'E2E_OFFLINE_ATTACHMENT_IDEMPOTENT'], { cwd: repoRoot,
-      env: { ...process.env, TYRS_HAND_DATABASE_URL: primary.databaseURL } })
-    output('go', ['run', './tools/mobile-e2e/fixture', 'assert-attachment-once',
-      '--text', 'E2E_OFFLINE_ATTACHMENT_IDEMPOTENT'], { cwd: repoRoot,
-      env: { ...process.env, TYRS_HAND_DATABASE_URL: primary.databaseURL } })
-  }
-  output('go', ['run', './tools/mobile-e2e/fixture', 'seed-history'], { cwd: repoRoot,
-    env: { ...process.env, TYRS_HAND_DATABASE_URL: primary.databaseURL } })
-  await runMaestro(maestroEnvironment, 'history-pagination',
-    resolve(repoRoot, 'client/e2e/flows/history-pagination.yaml'))
-  output('go', ['run', './tools/mobile-e2e/fixture', 'seed-forward-history'], { cwd: repoRoot,
-    env: { ...process.env, TYRS_HAND_DATABASE_URL: primary.databaseURL } })
-  await runMaestro(maestroEnvironment, 'forward-pagination',
-    resolve(repoRoot, 'client/e2e/flows/forward-pagination.yaml'))
-  output('go', ['run', './tools/mobile-e2e/fixture', 'force-cursor-reset'], { cwd: repoRoot,
-    env: { ...process.env, TYRS_HAND_DATABASE_URL: primary.databaseURL } })
-  await runMaestro(maestroEnvironment, 'cursor-reset',
-    resolve(repoRoot, 'client/e2e/flows/cursor-reset-recover.yaml'))
   const notificationTarget = JSON.parse(output('go', ['run', './tools/mobile-e2e/fixture',
     'notification-target'], { cwd: repoRoot,
     env: { ...process.env, TYRS_HAND_DATABASE_URL: primary.databaseURL } }))
@@ -294,7 +259,7 @@ async function main() {
   const snapshots = controls.map((control) => JSON.parse(output('go', [
     'run', './tools/mobile-e2e/fixture', 'snapshot'], { cwd: repoRoot,
     env: { ...process.env, TYRS_HAND_DATABASE_URL: control.databaseURL } })))
-  await primary.writeManifest({ lane, appID, codexVersion: null,
+  await primary.writeManifest({ lane, appID, codexVersion: '0.147.0',
     controls: snapshots })
   failed = false
 }

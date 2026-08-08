@@ -45,6 +45,18 @@ func (f AuditLogFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, er
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuditLogMutation", m)
 }
 
+// The ClientMaterializationFunc type is an adapter to allow the use of ordinary
+// function as ClientMaterialization mutator.
+type ClientMaterializationFunc func(context.Context, *ent.ClientMaterializationMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ClientMaterializationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ClientMaterializationMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ClientMaterializationMutation", m)
+}
+
 // The CodexThreadControlFunc type is an adapter to allow the use of ordinary
 // function as CodexThreadControl mutator.
 type CodexThreadControlFunc func(context.Context, *ent.CodexThreadControlMutation) (ent.Value, error)

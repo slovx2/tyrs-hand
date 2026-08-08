@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/disgo/events"
@@ -79,7 +78,6 @@ func (c *DisgoConnector) startConfiguredConversation(event *events.ComponentInte
 	if err == nil && (revisionErr != nil || revision < 0) {
 		err = errors.New("启动按钮 revision 无效")
 	}
-	mode := "default"
 	if err == nil {
 		var stale bool
 		stale, err = c.conversations.FinalizeConfigurationRevision(context.Background(), id,
@@ -108,18 +106,11 @@ func (c *DisgoConnector) startConfiguredConversation(event *events.ComponentInte
 			return
 		}
 	}
-	if err == nil {
-		err = c.manager.db.QueryRowContext(context.Background(), `SELECT collaboration_mode
-			FROM discord_conversations WHERE id = $1`, id).Scan(&mode)
-	}
 	if err != nil {
 		_ = event.CreateMessage(discord.NewMessageCreate().WithContent(err.Error()).WithEphemeral(true))
 		return
 	}
-	timeline := ConversationTimeline{Pages: []string{"已使用当前设置启动"},
-		Duration: time.Second}
-	components, componentErr := discordCardComponents(conversationProgressCard(ConversationRunning,
-		timeline, 0, "", mode))
+	components, componentErr := discordCardComponents(submissionQueuedCard())
 	if componentErr != nil {
 		return
 	}
@@ -142,8 +133,8 @@ func (c *DisgoConnector) onModalSubmit(event *events.ModalSubmitInteractionCreat
 		return
 	}
 	defer func() { _ = c.manager.CompleteInboundEvent(context.Background(), eventID, nil) }()
-	if strings.HasPrefix(event.Data.CustomID, interactiveModalPrefix) {
-		c.answerInteractiveModal(event)
+	if strings.HasPrefix(event.Data.CustomID, officialInputModalPrefix) {
+		c.answerOfficialModal(event)
 		return
 	}
 	if strings.HasPrefix(event.Data.CustomID, newCodexModalPrefix) {

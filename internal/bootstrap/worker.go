@@ -82,7 +82,7 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		return nil, nil, err
 	}
 	client := workerprotocol.NewClient(cfg.WorkerControlURL, "", cfg.ControlTimeout)
-	processor := worker.NewProcessor(ctx, cfg, client, provideWorkspace(cfg), catalog, logger)
+	processor := worker.NewProcessor(cfg, client, provideWorkspace(cfg), catalog, logger)
 	runner, err := worker.NewRunner(cfg, client, processor, logger)
 	if err != nil {
 		cleanupFailure(nil)
@@ -105,7 +105,6 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 	}
 	if manifest != nil {
 		desktopController = worker.NewHostDesktopController(processor, *manifest)
-		runtimeOptions.Controller = desktopController
 	}
 	workspaceID := uuid.Nil
 	if manifest != nil {
@@ -128,7 +127,7 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		return nil, nil, err
 	}
 	if desktopController != nil {
-		if err := desktopController.AttachRuntime(ctx, runtime); err != nil {
+		if err := desktopController.Start(ctx); err != nil {
 			cleanupFailure(runtime)
 			return nil, nil, err
 		}

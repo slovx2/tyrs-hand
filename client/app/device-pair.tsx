@@ -27,9 +27,9 @@ export default function DevicePairScreen() {
         const value = initial?.startsWith("tyrshand://device-pair")
           ? initial
           : `tyrshand://device-pair?${query}`;
-        const serverId = await connectPairingUri(value);
+        const profileId = await connectPairingUri(value);
         await useAppStore.getState().reloadConnections();
-        await useAppStore.getState().switchConnection(serverId);
+        await useAppStore.getState().switchConnection(profileId);
         router.replace("/(tabs)/connections");
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : "无法完成设备绑定");

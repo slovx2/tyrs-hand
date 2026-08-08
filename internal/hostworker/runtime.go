@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -14,7 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/slovx2/tyrs-hand/internal/appserverhub"
+	"github.com/gorilla/websocket"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"go.uber.org/zap"
 )
@@ -29,15 +30,14 @@ type RuntimeOptions struct {
 	BrowserWorkerToken   string
 	BrowserDesktopToken  string
 	BrowserServiceSocket string
-	Controller           appserverhub.Controller
 	Logger               *zap.Logger
 }
 
 type Runtime struct {
 	options      RuntimeOptions
 	command      *exec.Cmd
-	hub          *appserverhub.Hub
-	client       *appserverhub.Client
+	socketPath   string
+	client       *codex.SocketClient
 	serviceProxy *serviceProxy
 	generation   int64
 
@@ -109,7 +109,8 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 		serviceProxy.close()
 		return nil, fmt.Errorf("启动宿主 Codex App Server: %w", err)
 	}
-	runtime := &Runtime{options: options, command: command, done: make(chan struct{}),
+	runtime := &Runtime{options: options, command: command, socketPath: socketPath,
+		done:                make(chan struct{}),
 		serviceProxy:        serviceProxy,
 		generation:          time.Now().UnixNano(),
 		toolHandlers:        make(map[string]runtimeToolBinding),
@@ -121,51 +122,37 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 		serviceProxy.close()
 		return nil, err
 	}
-	controller := options.Controller
-	if controller == nil {
-		controller = appserverhub.PassThroughController{}
-	}
-	hub, err := appserverhub.Start(ctx, appserverhub.Options{
-		UpstreamSocketPath: socketPath,
-		Controller:         controller,
+	client, err := codex.ConnectSocket(ctx, codex.SocketClientOptions{
+		SocketPath: socketPath, ServerRequestHandler: runtime.handleServerRequest,
 	})
 	if err != nil {
 		_ = command.Process.Kill()
 		<-runtime.done
 		serviceProxy.close()
-		return nil, fmt.Errorf("启动 Worker AppServerHub: %w", err)
-	}
-	runtime.hub = hub
-	client, err := hub.OpenClient(appserverhub.ClientOptions{
-		Role: appserverhub.RoleWorker, ServerRequestHandler: runtime.handleServerRequest,
-	})
-	if err != nil {
-		_ = hub.Close()
-		_ = command.Process.Kill()
-		<-runtime.done
-		serviceProxy.close()
-		return nil, err
+		return nil, fmt.Errorf("连接 Worker Codex App Server: %w", err)
 	}
 	runtime.client = client
 	return runtime, nil
 }
 
-func (r *Runtime) Client() *appserverhub.Client { return r.client }
+func (r *Runtime) Client() *codex.SocketClient { return r.client }
 
 // OpenEphemeralClient 为 Worker 内部临时任务创建独立的 Desktop 事件域。
 // 调用方只能用它创建 ephemeral Thread，并在任务结束后关闭 Client。
-func (r *Runtime) OpenEphemeralClient() (*appserverhub.Client, error) {
+func (r *Runtime) OpenEphemeralClient() (*codex.SocketClient, error) {
 	if r == nil {
 		return nil, errors.New("宿主 Worker Runtime 不可用")
 	}
 	r.mu.Lock()
-	if r.closed || r.hub == nil {
+	if r.closed || r.socketPath == "" {
 		r.mu.Unlock()
-		return nil, errors.New("worker AppServerHub 尚未启动")
+		return nil, errors.New("worker App Server 尚未启动")
 	}
-	hub := r.hub
+	socketPath := r.socketPath
 	r.mu.Unlock()
-	return hub.OpenClient(appserverhub.ClientOptions{Role: appserverhub.RoleDesktop})
+	return codex.ConnectSocket(context.Background(), codex.SocketClientOptions{
+		SocketPath: socketPath,
+	})
 }
 
 func (r *Runtime) CodexHome() string { return r.options.CodexHome }
@@ -246,10 +233,101 @@ func (r *Runtime) handleServerRequest(ctx context.Context, request codex.ServerR
 }
 
 func (r *Runtime) ServeDesktop(connection net.Conn) error {
-	if r.hub == nil {
-		return errors.New("worker AppServerHub 尚未启动")
+	if r == nil {
+		return errors.New("worker App Server 不可用")
 	}
-	return r.hub.ServeConn(connection)
+	r.mu.Lock()
+	if r.closed || r.socketPath == "" {
+		r.mu.Unlock()
+		return errors.New("worker App Server 尚未启动")
+	}
+	socketPath := r.socketPath
+	r.mu.Unlock()
+	upstream, err := net.Dial("unix", socketPath)
+	if err != nil {
+		return fmt.Errorf("连接 Codex App Server Unix Socket: %w", err)
+	}
+	defer func() { _ = upstream.Close() }()
+	results := make(chan error, 2)
+	go func() {
+		_, copyErr := io.Copy(upstream, connection)
+		results <- copyErr
+	}()
+	go func() {
+		_, copyErr := io.Copy(connection, upstream)
+		results <- copyErr
+	}()
+	first := <-results
+	_ = upstream.Close()
+	_ = connection.Close()
+	second := <-results
+	return errors.Join(normalizeBridgeError(first), normalizeBridgeError(second))
+}
+
+func normalizeBridgeError(err error) error {
+	if err == nil || errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
+		return nil
+	}
+	return err
+}
+
+func (r *Runtime) ServeAppServerTunnel(ctx context.Context,
+	tunnel *websocket.Conn,
+) error {
+	if r == nil || tunnel == nil {
+		return errors.New("worker App Server 隧道不可用")
+	}
+	r.mu.Lock()
+	if r.closed || r.socketPath == "" {
+		r.mu.Unlock()
+		return errors.New("worker App Server 尚未启动")
+	}
+	socketPath := r.socketPath
+	r.mu.Unlock()
+	upstream, err := codex.DialSocketTransport(ctx, socketPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = upstream.Close() }()
+	bridgeDone := make(chan struct{})
+	defer close(bridgeDone)
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = upstream.Close()
+			_ = tunnel.Close()
+		case <-bridgeDone:
+		}
+	}()
+	result := make(chan error, 2)
+	copyMessages := func(destination, source *websocket.Conn) {
+		for {
+			messageType, payload, readErr := source.ReadMessage()
+			if readErr != nil {
+				result <- readErr
+				return
+			}
+			if writeErr := destination.WriteMessage(messageType, payload); writeErr != nil {
+				result <- writeErr
+				return
+			}
+		}
+	}
+	go copyMessages(upstream, tunnel)
+	go copyMessages(tunnel, upstream)
+	first := <-result
+	_ = upstream.Close()
+	_ = tunnel.Close()
+	second := <-result
+	return errors.Join(normalizeWebSocketBridgeError(first), normalizeWebSocketBridgeError(second))
+}
+
+func normalizeWebSocketBridgeError(err error) error {
+	if err == nil || websocket.IsCloseError(err, websocket.CloseNormalClosure,
+		websocket.CloseGoingAway) {
+		return nil
+	}
+	return err
 }
 
 func (r *Runtime) Close() error {
@@ -263,9 +341,6 @@ func (r *Runtime) Close() error {
 	r.mu.Unlock()
 	if r.client != nil {
 		_ = r.client.Close()
-	}
-	if r.hub != nil {
-		_ = r.hub.Close()
 	}
 	if r.command != nil && r.command.Process != nil {
 		_ = r.command.Process.Signal(os.Interrupt)

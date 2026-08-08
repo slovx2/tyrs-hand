@@ -1,7 +1,6 @@
 package worker
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -72,23 +71,4 @@ func TestApplyBrowserMCPConfigUsesHostBrowserServerName(t *testing.T) {
 		chrome["bearer_token_env_var"])
 	require.Equal(t, map[string]string{"X-Tyrs-Browser-Task-Id": "task-id"},
 		chrome["http_headers"])
-}
-
-func TestDesktopBrowserMCPUsesWorkspaceTokenAndHidesBothTokens(t *testing.T) {
-	controller := &desktopController{processor: &Processor{cfg: config.Config{
-		BrowserMCPURL: "http://127.0.0.1:8931/mcp",
-	}}}
-	params := controller.injectDesktopRuntime([]byte(`{"config":{"shell_environment_policy":{"inherit":"all","set":{"TYRS_BROWSER_MCP_WORKER_TOKEN":"bad","TYRS_BROWSER_MCP_DESKTOP_TOKEN":"bad"},"exclude":["EXISTING"]}}}`),
-		desktopRuntimeInjection{includeBrowserMCP: true})
-	var value map[string]any
-	require.NoError(t, json.Unmarshal(params, &value))
-	runtimeConfig := value["config"].(map[string]any)
-	servers := runtimeConfig["mcp_servers"].(map[string]any)
-	chrome := servers["chrome"].(map[string]any)
-	require.Equal(t, codex.BrowserMCPDesktopTokenEnvironment,
-		chrome["bearer_token_env_var"])
-	policy := runtimeConfig["shell_environment_policy"].(map[string]any)
-	require.Empty(t, policy["set"].(map[string]any))
-	require.ElementsMatch(t, []any{"EXISTING", codex.BrowserMCPWorkerTokenEnvironment,
-		codex.BrowserMCPDesktopTokenEnvironment}, policy["exclude"])
 }

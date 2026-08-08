@@ -5,7 +5,10 @@
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "baseUrl": ".",
-    "paths": { "@/*": ["src/*"] }
+    "paths": {
+      "@/*": ["src/*"],
+      "@codex-app-server/*": ["../protocol/codex-app-server/0.147.0/typescript/*"]
+    }
   },
   "include": ["app", "src", "expo-env.d.ts", "app.config.ts"]
 }

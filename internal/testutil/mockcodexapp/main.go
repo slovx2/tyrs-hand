@@ -20,7 +20,7 @@ type message struct {
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
-		_, _ = os.Stdout.WriteString("codex-cli 0.145.0\n")
+		_, _ = os.Stdout.WriteString("codex-cli 0.147.0\n")
 		return
 	}
 	if len(os.Args) < 2 || !slices.Equal(os.Args[1:],

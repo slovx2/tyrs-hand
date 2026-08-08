@@ -60,6 +60,9 @@ func TestClientEnforcesManagedAppServerConfiguration(t *testing.T) {
 }
 
 func TestManagedAppServerArgumentsSetEnvironmentProviderBaseline(t *testing.T) {
+	require.Equal(t, []string{"app-server", "--listen", "unix:///tmp/codex.sock"},
+		HomeAppServerArguments("unix:///tmp/codex.sock"))
+	require.EqualError(t, &RPCError{Code: -32000, Message: "failed"}, "-32000 failed")
 	arguments := ManagedAppServerArguments("unix:///run/tyrs-hand/app-server.sock",
 		ManagedAppServerConfig{ModelProvider: ManagedModelProvider{
 			ID: "tyrs-hand-provider", Name: "Tyrs Hand Provider",

@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["TyrsSSHTransportModule"]
+  },
+  "android": {
+    "modules": ["com.tyrshand.sshtransport.TyrsSSHTransportModule"]
+  }
+}

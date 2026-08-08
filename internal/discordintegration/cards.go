@@ -50,58 +50,9 @@ type ComponentButtonPayload struct {
 	Disabled bool   `json:"disabled,omitempty"`
 }
 
-type ConversationProgress string
-
-const (
-	ConversationRunning   ConversationProgress = "running"
-	ConversationGuided    ConversationProgress = "guided"
-	ConversationCompleted ConversationProgress = "completed"
-	ConversationCanceled  ConversationProgress = "canceled"
-	ConversationFailed    ConversationProgress = "failed"
-)
-
-func conversationProgressCard(state ConversationProgress, timeline ConversationTimeline,
-	page int, runID, mode string, errorDetails ...*ComponentErrorPayload,
-) ComponentCardPayload {
-	header, color := conversationProgressCardPresentation(state)
-	card := ComponentCardPayload{AccentColor: color, Header: header,
-		Body: fmt.Sprintf("`%s` · `%d 项动态`", compactDuration(timeline.Duration), timeline.Updates)}
-	if len(timeline.Pages) > 0 {
-		page = min(max(page, 0), len(timeline.Pages)-1)
-		card.Timeline = timeline.Pages[page]
-	}
-	if mode == "plan" {
-		card.Body += " · `模式：Plan`"
-	}
-	if len(errorDetails) > 0 && errorDetails[0] != nil {
-		card.Error = errorDetails[0]
-	}
-	if len(timeline.Pages) > 1 && runID != "" {
-		last := len(timeline.Pages) - 1
-		card.Buttons = []ComponentButtonPayload{
-			{Label: "较早", CustomID: progressButtonID("older", runID, max(0, page-1)), Disabled: page == 0},
-			{Label: fmt.Sprintf("%d / %d", page+1, len(timeline.Pages)),
-				CustomID: progressButtonID("page", runID, page), Disabled: true},
-			{Label: "较新", CustomID: progressButtonID("newer", runID, min(last, page+1)), Disabled: page == last},
-			{Label: "最新", CustomID: progressButtonID("latest", runID, last), Disabled: page == last},
-		}
-	}
-	return card
-}
-
-func conversationProgressCardPresentation(state ConversationProgress) (string, int) {
-	header, color := "⚙️ Codex · 思考中", cardColorBlurple
-	switch state {
-	case ConversationGuided:
-		header = "Codex · 已引导对话"
-	case ConversationCompleted:
-		header, color = "✅ Codex · 已完成", cardColorGreen
-	case ConversationCanceled:
-		header, color = "⏹️ Codex · 已停止", cardColorGray
-	case ConversationFailed:
-		header, color = "❌ Codex · 处理失败", cardColorRed
-	}
-	return header, color
+func submissionQueuedCard() ComponentCardPayload {
+	return ComponentCardPayload{AccentColor: cardColorBlurple,
+		Header: "Codex · 已提交", Body: "消息已按 Discord 顺序进入官方 Thread。"}
 }
 
 func terminatedControlCard() ComponentCardPayload {

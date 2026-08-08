@@ -15,6 +15,7 @@ import (
 	"github.com/slovx2/tyrs-hand/ent/administrator"
 	"github.com/slovx2/tyrs-hand/ent/agentprofile"
 	"github.com/slovx2/tyrs-hand/ent/auditlog"
+	"github.com/slovx2/tyrs-hand/ent/clientmaterialization"
 	"github.com/slovx2/tyrs-hand/ent/codexthreadcontrol"
 	"github.com/slovx2/tyrs-hand/ent/codexturnintent"
 	"github.com/slovx2/tyrs-hand/ent/codexturnrun"
@@ -43,25 +44,26 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeAdministrator      = "Administrator"
-	TypeAgentProfile       = "AgentProfile"
-	TypeAuditLog           = "AuditLog"
-	TypeCodexThreadControl = "CodexThreadControl"
-	TypeCodexTurnIntent    = "CodexTurnIntent"
-	TypeCodexTurnRun       = "CodexTurnRun"
-	TypePlatformSetting    = "PlatformSetting"
-	TypeRepoCache          = "RepoCache"
-	TypeRepository         = "Repository"
-	TypeSCMInstallation    = "SCMInstallation"
-	TypeSSHCredential      = "SSHCredential"
-	TypeSSHHost            = "SSHHost"
-	TypeToolCall           = "ToolCall"
-	TypeTriggerRule        = "TriggerRule"
-	TypeWebhookDelivery    = "WebhookDelivery"
-	TypeWorkItem           = "WorkItem"
-	TypeWorker             = "Worker"
-	TypeWorkerEnrollment   = "WorkerEnrollment"
-	TypeWorktree           = "Worktree"
+	TypeAdministrator         = "Administrator"
+	TypeAgentProfile          = "AgentProfile"
+	TypeAuditLog              = "AuditLog"
+	TypeClientMaterialization = "ClientMaterialization"
+	TypeCodexThreadControl    = "CodexThreadControl"
+	TypeCodexTurnIntent       = "CodexTurnIntent"
+	TypeCodexTurnRun          = "CodexTurnRun"
+	TypePlatformSetting       = "PlatformSetting"
+	TypeRepoCache             = "RepoCache"
+	TypeRepository            = "Repository"
+	TypeSCMInstallation       = "SCMInstallation"
+	TypeSSHCredential         = "SSHCredential"
+	TypeSSHHost               = "SSHHost"
+	TypeToolCall              = "ToolCall"
+	TypeTriggerRule           = "TriggerRule"
+	TypeWebhookDelivery       = "WebhookDelivery"
+	TypeWorkItem              = "WorkItem"
+	TypeWorker                = "Worker"
+	TypeWorkerEnrollment      = "WorkerEnrollment"
+	TypeWorktree              = "Worktree"
 )
 
 // AdministratorMutation represents an operation that mutates the Administrator nodes in the graph.
@@ -2417,6 +2419,1482 @@ func (m *AuditLogMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *AuditLogMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown AuditLog edge %s", name)
+}
+
+// ClientMaterializationMutation represents an operation that mutates the ClientMaterialization nodes in the graph.
+type ClientMaterializationMutation struct {
+	config
+	op                Op
+	typ               string
+	id                *uuid.UUID
+	device_id         *uuid.UUID
+	workspace_id      *uuid.UUID
+	worker_id         *uuid.UUID
+	source_type       *string
+	source_key        *string
+	client_id         *string
+	original_filename *string
+	media_type        *string
+	size_bytes        *int64
+	addsize_bytes     *int64
+	sha256            *string
+	storage_key       *string
+	status            *string
+	lease_token_hash  *string
+	lease_expires_at  *time.Time
+	remote_path       *string
+	error             *string
+	created_at        *time.Time
+	updated_at        *time.Time
+	completed_at      *time.Time
+	clearedFields     map[string]struct{}
+	done              bool
+	oldValue          func(context.Context) (*ClientMaterialization, error)
+	predicates        []predicate.ClientMaterialization
+}
+
+var _ ent.Mutation = (*ClientMaterializationMutation)(nil)
+
+// clientmaterializationOption allows management of the mutation configuration using functional options.
+type clientmaterializationOption func(*ClientMaterializationMutation)
+
+// newClientMaterializationMutation creates new mutation for the ClientMaterialization entity.
+func newClientMaterializationMutation(c config, op Op, opts ...clientmaterializationOption) *ClientMaterializationMutation {
+	m := &ClientMaterializationMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeClientMaterialization,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withClientMaterializationID sets the ID field of the mutation.
+func withClientMaterializationID(id uuid.UUID) clientmaterializationOption {
+	return func(m *ClientMaterializationMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ClientMaterialization
+		)
+		m.oldValue = func(ctx context.Context) (*ClientMaterialization, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ClientMaterialization.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withClientMaterialization sets the old ClientMaterialization of the mutation.
+func withClientMaterialization(node *ClientMaterialization) clientmaterializationOption {
+	return func(m *ClientMaterializationMutation) {
+		m.oldValue = func(context.Context) (*ClientMaterialization, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ClientMaterializationMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ClientMaterializationMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of ClientMaterialization entities.
+func (m *ClientMaterializationMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ClientMaterializationMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ClientMaterializationMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ClientMaterialization.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetDeviceID sets the "device_id" field.
+func (m *ClientMaterializationMutation) SetDeviceID(u uuid.UUID) {
+	m.device_id = &u
+}
+
+// DeviceID returns the value of the "device_id" field in the mutation.
+func (m *ClientMaterializationMutation) DeviceID() (r uuid.UUID, exists bool) {
+	v := m.device_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeviceID returns the old "device_id" field's value of the ClientMaterialization entity.
+// If the ClientMaterialization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClientMaterializationMutation) OldDeviceID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeviceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeviceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeviceID: %w", err)
+	}
+	return oldValue.DeviceID, nil
+}
+
+// ClearDeviceID clears the value of the "device_id" field.
+func (m *ClientMaterializationMutation) ClearDeviceID() {
+	m.device_id = nil
+	m.clearedFields[clientmaterialization.FieldDeviceID] = struct{}{}
+}
+
+// DeviceIDCleared returns if the "device_id" field was cleared in this mutation.
+func (m *ClientMaterializationMutation) DeviceIDCleared() bool {
+	_, ok := m.clearedFields[clientmaterialization.FieldDeviceID]
+	return ok
+}
+
+// ResetDeviceID resets all changes to the "device_id" field.
+func (m *ClientMaterializationMutation) ResetDeviceID() {
+	m.device_id = nil
+	delete(m.clearedFields, clientmaterialization.FieldDeviceID)
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (m *ClientMaterializationMutation) SetWorkspaceID(u uuid.UUID) {
+	m.workspace_id = &u
+}
+
+// WorkspaceID returns the value of the "workspace_id" field in the mutation.
+func (m *ClientMaterializationMutation) WorkspaceID() (r uuid.UUID, exists bool) {
+	v := m.workspace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspaceID returns the old "workspace_id" field's value of the ClientMaterialization entity.
+// If the ClientMaterialization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClientMaterializationMutation) OldWorkspaceID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspaceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspaceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspaceID: %w", err)
+	}
+	return oldValue.WorkspaceID, nil
+}
+
+// ResetWorkspaceID resets all changes to the "workspace_id" field.
+func (m *ClientMaterializationMutation) ResetWorkspaceID() {
+	m.workspace_id = nil
+}
+
+// SetWorkerID sets the "worker_id" field.
+func (m *ClientMaterializationMutation) SetWorkerID(u uuid.UUID) {
+	m.worker_id = &u
+}
+
+// WorkerID returns the value of the "worker_id" field in the mutation.
+func (m *ClientMaterializationMutation) WorkerID() (r uuid.UUID, exists bool) {
+	v := m.worker_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkerID returns the old "worker_id" field's value of the ClientMaterialization entity.
+// If the ClientMaterialization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClientMaterializationMutation) OldWorkerID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkerID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkerID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkerID: %w", err)
+	}
+	return oldValue.WorkerID, nil
+}
+
+// ResetWorkerID resets all changes to the "worker_id" field.
+func (m *ClientMaterializationMutation) ResetWorkerID() {
+	m.worker_id = nil
+}
+
+// SetSourceType sets the "source_type" field.
+func (m *ClientMaterializationMutation) SetSourceType(s string) {
+	m.source_type = &s
+}
+
+// SourceType returns the value of the "source_type" field in the mutation.
+func (m *ClientMaterializationMutation) SourceType() (r string, exists bool) {
+	v := m.source_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSourceType returns the old "source_type" field's value of the ClientMaterialization entity.
+// If the ClientMaterialization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClientMaterializationMutation) OldSourceType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSourceType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSourceType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSourceType: %w", err)
+	}
+	return oldValue.SourceType, nil
+}
+
+// ResetSourceType resets all changes to the "source_type" field.
+func (m *ClientMaterializationMutation) ResetSourceType() {
+	m.source_type = nil
+}
+
+// SetSourceKey sets the "source_key" field.
+func (m *ClientMaterializationMutation) SetSourceKey(s string) {
+	m.source_key = &s
+}
+
+// SourceKey returns the value of the "source_key" field in the mutation.
+func (m *ClientMaterializationMutation) SourceKey() (r string, exists bool) {
+	v := m.source_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSourceKey returns the old "source_key" field's value of the ClientMaterialization entity.
+// If the ClientMaterialization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClientMaterializationMutation) OldSourceKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSourceKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSourceKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSourceKey: %w", err)
+	}
+	return oldValue.SourceKey, nil
+}
+
+// ResetSourceKey resets all changes to the "source_key" field.
+func (m *ClientMaterializationMutation) ResetSourceKey() {
+	m.source_key = nil
+}
+
+// SetClientID sets the "client_id" field.
+func (m *ClientMaterializationMutation) SetClientID(s string) {
+	m.client_id = &s
+}
+
+// ClientID returns the value of the "client_id" field in the mutation.
+func (m *ClientMaterializationMutation) ClientID() (r string, exists bool) {
+	v := m.client_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClientID returns the old "client_id" field's value of the ClientMaterialization entity.
+// If the ClientMaterialization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClientMaterializationMutation) OldClientID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClientID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClientID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClientID: %w", err)
+	}
+	return oldValue.ClientID, nil
+}
+
+// ClearClientID clears the value of the "client_id" field.
+func (m *ClientMaterializationMutation) ClearClientID() {
+	m.client_id = nil
+	m.clearedFields[clientmaterialization.FieldClientID] = struct{}{}
+}
+
+// ClientIDCleared returns if the "client_id" field was cleared in this mutation.
+func (m *ClientMaterializationMutation) ClientIDCleared() bool {
+	_, ok := m.clearedFields[clientmaterialization.FieldClientID]
+	return ok
+}
+
+// ResetClientID resets all changes to the "client_id" field.
+func (m *ClientMaterializationMutation) ResetClientID() {
+	m.client_id = nil
+	delete(m.clearedFields, clientmaterialization.FieldClientID)
+}
+
+// SetOriginalFilename sets the "original_filename" field.
+func (m *ClientMaterializationMutation) SetOriginalFilename(s string) {
+	m.original_filename = &s
+}
+
+// OriginalFilename returns the value of the "original_filename" field in the mutation.
+func (m *ClientMaterializationMutation) OriginalFilename() (r string, exists bool) {
+	v := m.original_filename
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOriginalFilename returns the old "original_filename" field's value of the ClientMaterialization entity.
+// If the ClientMaterialization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClientMaterializationMutation) OldOriginalFilename(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOriginalFilename is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOriginalFilename requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOriginalFilename: %w", err)
+	}
+	return oldValue.OriginalFilename, nil
+}
+
+// ResetOriginalFilename resets all changes to the "original_filename" field.
+func (m *ClientMaterializationMutation) ResetOriginalFilename() {
+	m.original_filename = nil
+}
+
+// SetMediaType sets the "media_type" field.
+func (m *ClientMaterializationMutation) SetMediaType(s string) {
+	m.media_type = &s
+}
+
+// MediaType returns the value of the "media_type" field in the mutation.
+func (m *ClientMaterializationMutation) MediaType() (r string, exists bool) {
+	v := m.media_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMediaType returns the old "media_type" field's value of the ClientMaterialization entity.
+// If the ClientMaterialization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClientMaterializationMutation) OldMediaType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMediaType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMediaType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMediaType: %w", err)
+	}
+	return oldValue.MediaType, nil
+}
+
+// ResetMediaType resets all changes to the "media_type" field.
+func (m *ClientMaterializationMutation) ResetMediaType() {
+	m.media_type = nil
+}
+
+// SetSizeBytes sets the "size_bytes" field.
+func (m *ClientMaterializationMutation) SetSizeBytes(i int64) {
+	m.size_bytes = &i
+	m.addsize_bytes = nil
+}
+
+// SizeBytes returns the value of the "size_bytes" field in the mutation.
+func (m *ClientMaterializationMutation) SizeBytes() (r int64, exists bool) {
+	v := m.size_bytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSizeBytes returns the old "size_bytes" field's value of the ClientMaterialization entity.
+// If the ClientMaterialization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClientMaterializationMutation) OldSizeBytes(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSizeBytes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSizeBytes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSizeBytes: %w", err)
+	}
+	return oldValue.SizeBytes, nil
+}
+
+// AddSizeBytes adds i to the "size_bytes" field.
+func (m *ClientMaterializationMutation) AddSizeBytes(i int64) {
+	if m.addsize_bytes != nil {
+		*m.addsize_bytes += i
+	} else {
+		m.addsize_bytes = &i
+	}
+}
+
+// AddedSizeBytes returns the value that was added to the "size_bytes" field in this mutation.
+func (m *ClientMaterializationMutation) AddedSizeBytes() (r int64, exists bool) {
+	v := m.addsize_bytes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSizeBytes resets all changes to the "size_bytes" field.
+func (m *ClientMaterializationMutation) ResetSizeBytes() {
+	m.size_bytes = nil
+	m.addsize_bytes = nil
+}
+
+// SetSha256 sets the "sha256" field.
+func (m *ClientMaterializationMutation) SetSha256(s string) {
+	m.sha256 = &s
+}
+
+// Sha256 returns the value of the "sha256" field in the mutation.
+func (m *ClientMaterializationMutation) Sha256() (r string, exists bool) {
+	v := m.sha256
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSha256 returns the old "sha256" field's value of the ClientMaterialization entity.
+// If the ClientMaterialization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClientMaterializationMutation) OldSha256(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSha256 is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSha256 requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSha256: %w", err)
+	}
+	return oldValue.Sha256, nil
+}
+
+// ResetSha256 resets all changes to the "sha256" field.
+func (m *ClientMaterializationMutation) ResetSha256() {
+	m.sha256 = nil
+}
+
+// SetStorageKey sets the "storage_key" field.
+func (m *ClientMaterializationMutation) SetStorageKey(s string) {
+	m.storage_key = &s
+}
+
+// StorageKey returns the value of the "storage_key" field in the mutation.
+func (m *ClientMaterializationMutation) StorageKey() (r string, exists bool) {
+	v := m.storage_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStorageKey returns the old "storage_key" field's value of the ClientMaterialization entity.
+// If the ClientMaterialization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClientMaterializationMutation) OldStorageKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStorageKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStorageKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStorageKey: %w", err)
+	}
+	return oldValue.StorageKey, nil
+}
+
+// ResetStorageKey resets all changes to the "storage_key" field.
+func (m *ClientMaterializationMutation) ResetStorageKey() {
+	m.storage_key = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *ClientMaterializationMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *ClientMaterializationMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the ClientMaterialization entity.
+// If the ClientMaterialization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClientMaterializationMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *ClientMaterializationMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetLeaseTokenHash sets the "lease_token_hash" field.
+func (m *ClientMaterializationMutation) SetLeaseTokenHash(s string) {
+	m.lease_token_hash = &s
+}
+
+// LeaseTokenHash returns the value of the "lease_token_hash" field in the mutation.
+func (m *ClientMaterializationMutation) LeaseTokenHash() (r string, exists bool) {
+	v := m.lease_token_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLeaseTokenHash returns the old "lease_token_hash" field's value of the ClientMaterialization entity.
+// If the ClientMaterialization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClientMaterializationMutation) OldLeaseTokenHash(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLeaseTokenHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLeaseTokenHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLeaseTokenHash: %w", err)
+	}
+	return oldValue.LeaseTokenHash, nil
+}
+
+// ClearLeaseTokenHash clears the value of the "lease_token_hash" field.
+func (m *ClientMaterializationMutation) ClearLeaseTokenHash() {
+	m.lease_token_hash = nil
+	m.clearedFields[clientmaterialization.FieldLeaseTokenHash] = struct{}{}
+}
+
+// LeaseTokenHashCleared returns if the "lease_token_hash" field was cleared in this mutation.
+func (m *ClientMaterializationMutation) LeaseTokenHashCleared() bool {
+	_, ok := m.clearedFields[clientmaterialization.FieldLeaseTokenHash]
+	return ok
+}
+
+// ResetLeaseTokenHash resets all changes to the "lease_token_hash" field.
+func (m *ClientMaterializationMutation) ResetLeaseTokenHash() {
+	m.lease_token_hash = nil
+	delete(m.clearedFields, clientmaterialization.FieldLeaseTokenHash)
+}
+
+// SetLeaseExpiresAt sets the "lease_expires_at" field.
+func (m *ClientMaterializationMutation) SetLeaseExpiresAt(t time.Time) {
+	m.lease_expires_at = &t
+}
+
+// LeaseExpiresAt returns the value of the "lease_expires_at" field in the mutation.
+func (m *ClientMaterializationMutation) LeaseExpiresAt() (r time.Time, exists bool) {
+	v := m.lease_expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLeaseExpiresAt returns the old "lease_expires_at" field's value of the ClientMaterialization entity.
+// If the ClientMaterialization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClientMaterializationMutation) OldLeaseExpiresAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLeaseExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLeaseExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLeaseExpiresAt: %w", err)
+	}
+	return oldValue.LeaseExpiresAt, nil
+}
+
+// ClearLeaseExpiresAt clears the value of the "lease_expires_at" field.
+func (m *ClientMaterializationMutation) ClearLeaseExpiresAt() {
+	m.lease_expires_at = nil
+	m.clearedFields[clientmaterialization.FieldLeaseExpiresAt] = struct{}{}
+}
+
+// LeaseExpiresAtCleared returns if the "lease_expires_at" field was cleared in this mutation.
+func (m *ClientMaterializationMutation) LeaseExpiresAtCleared() bool {
+	_, ok := m.clearedFields[clientmaterialization.FieldLeaseExpiresAt]
+	return ok
+}
+
+// ResetLeaseExpiresAt resets all changes to the "lease_expires_at" field.
+func (m *ClientMaterializationMutation) ResetLeaseExpiresAt() {
+	m.lease_expires_at = nil
+	delete(m.clearedFields, clientmaterialization.FieldLeaseExpiresAt)
+}
+
+// SetRemotePath sets the "remote_path" field.
+func (m *ClientMaterializationMutation) SetRemotePath(s string) {
+	m.remote_path = &s
+}
+
+// RemotePath returns the value of the "remote_path" field in the mutation.
+func (m *ClientMaterializationMutation) RemotePath() (r string, exists bool) {
+	v := m.remote_path
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRemotePath returns the old "remote_path" field's value of the ClientMaterialization entity.
+// If the ClientMaterialization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClientMaterializationMutation) OldRemotePath(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRemotePath is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRemotePath requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRemotePath: %w", err)
+	}
+	return oldValue.RemotePath, nil
+}
+
+// ClearRemotePath clears the value of the "remote_path" field.
+func (m *ClientMaterializationMutation) ClearRemotePath() {
+	m.remote_path = nil
+	m.clearedFields[clientmaterialization.FieldRemotePath] = struct{}{}
+}
+
+// RemotePathCleared returns if the "remote_path" field was cleared in this mutation.
+func (m *ClientMaterializationMutation) RemotePathCleared() bool {
+	_, ok := m.clearedFields[clientmaterialization.FieldRemotePath]
+	return ok
+}
+
+// ResetRemotePath resets all changes to the "remote_path" field.
+func (m *ClientMaterializationMutation) ResetRemotePath() {
+	m.remote_path = nil
+	delete(m.clearedFields, clientmaterialization.FieldRemotePath)
+}
+
+// SetError sets the "error" field.
+func (m *ClientMaterializationMutation) SetError(s string) {
+	m.error = &s
+}
+
+// Error returns the value of the "error" field in the mutation.
+func (m *ClientMaterializationMutation) Error() (r string, exists bool) {
+	v := m.error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldError returns the old "error" field's value of the ClientMaterialization entity.
+// If the ClientMaterialization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClientMaterializationMutation) OldError(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldError: %w", err)
+	}
+	return oldValue.Error, nil
+}
+
+// ClearError clears the value of the "error" field.
+func (m *ClientMaterializationMutation) ClearError() {
+	m.error = nil
+	m.clearedFields[clientmaterialization.FieldError] = struct{}{}
+}
+
+// ErrorCleared returns if the "error" field was cleared in this mutation.
+func (m *ClientMaterializationMutation) ErrorCleared() bool {
+	_, ok := m.clearedFields[clientmaterialization.FieldError]
+	return ok
+}
+
+// ResetError resets all changes to the "error" field.
+func (m *ClientMaterializationMutation) ResetError() {
+	m.error = nil
+	delete(m.clearedFields, clientmaterialization.FieldError)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ClientMaterializationMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ClientMaterializationMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ClientMaterialization entity.
+// If the ClientMaterialization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClientMaterializationMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ClientMaterializationMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *ClientMaterializationMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *ClientMaterializationMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the ClientMaterialization entity.
+// If the ClientMaterialization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClientMaterializationMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *ClientMaterializationMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetCompletedAt sets the "completed_at" field.
+func (m *ClientMaterializationMutation) SetCompletedAt(t time.Time) {
+	m.completed_at = &t
+}
+
+// CompletedAt returns the value of the "completed_at" field in the mutation.
+func (m *ClientMaterializationMutation) CompletedAt() (r time.Time, exists bool) {
+	v := m.completed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCompletedAt returns the old "completed_at" field's value of the ClientMaterialization entity.
+// If the ClientMaterialization object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ClientMaterializationMutation) OldCompletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCompletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCompletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCompletedAt: %w", err)
+	}
+	return oldValue.CompletedAt, nil
+}
+
+// ClearCompletedAt clears the value of the "completed_at" field.
+func (m *ClientMaterializationMutation) ClearCompletedAt() {
+	m.completed_at = nil
+	m.clearedFields[clientmaterialization.FieldCompletedAt] = struct{}{}
+}
+
+// CompletedAtCleared returns if the "completed_at" field was cleared in this mutation.
+func (m *ClientMaterializationMutation) CompletedAtCleared() bool {
+	_, ok := m.clearedFields[clientmaterialization.FieldCompletedAt]
+	return ok
+}
+
+// ResetCompletedAt resets all changes to the "completed_at" field.
+func (m *ClientMaterializationMutation) ResetCompletedAt() {
+	m.completed_at = nil
+	delete(m.clearedFields, clientmaterialization.FieldCompletedAt)
+}
+
+// Where appends a list predicates to the ClientMaterializationMutation builder.
+func (m *ClientMaterializationMutation) Where(ps ...predicate.ClientMaterialization) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ClientMaterializationMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ClientMaterializationMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ClientMaterialization, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ClientMaterializationMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ClientMaterializationMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ClientMaterialization).
+func (m *ClientMaterializationMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ClientMaterializationMutation) Fields() []string {
+	fields := make([]string, 0, 19)
+	if m.device_id != nil {
+		fields = append(fields, clientmaterialization.FieldDeviceID)
+	}
+	if m.workspace_id != nil {
+		fields = append(fields, clientmaterialization.FieldWorkspaceID)
+	}
+	if m.worker_id != nil {
+		fields = append(fields, clientmaterialization.FieldWorkerID)
+	}
+	if m.source_type != nil {
+		fields = append(fields, clientmaterialization.FieldSourceType)
+	}
+	if m.source_key != nil {
+		fields = append(fields, clientmaterialization.FieldSourceKey)
+	}
+	if m.client_id != nil {
+		fields = append(fields, clientmaterialization.FieldClientID)
+	}
+	if m.original_filename != nil {
+		fields = append(fields, clientmaterialization.FieldOriginalFilename)
+	}
+	if m.media_type != nil {
+		fields = append(fields, clientmaterialization.FieldMediaType)
+	}
+	if m.size_bytes != nil {
+		fields = append(fields, clientmaterialization.FieldSizeBytes)
+	}
+	if m.sha256 != nil {
+		fields = append(fields, clientmaterialization.FieldSha256)
+	}
+	if m.storage_key != nil {
+		fields = append(fields, clientmaterialization.FieldStorageKey)
+	}
+	if m.status != nil {
+		fields = append(fields, clientmaterialization.FieldStatus)
+	}
+	if m.lease_token_hash != nil {
+		fields = append(fields, clientmaterialization.FieldLeaseTokenHash)
+	}
+	if m.lease_expires_at != nil {
+		fields = append(fields, clientmaterialization.FieldLeaseExpiresAt)
+	}
+	if m.remote_path != nil {
+		fields = append(fields, clientmaterialization.FieldRemotePath)
+	}
+	if m.error != nil {
+		fields = append(fields, clientmaterialization.FieldError)
+	}
+	if m.created_at != nil {
+		fields = append(fields, clientmaterialization.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, clientmaterialization.FieldUpdatedAt)
+	}
+	if m.completed_at != nil {
+		fields = append(fields, clientmaterialization.FieldCompletedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ClientMaterializationMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case clientmaterialization.FieldDeviceID:
+		return m.DeviceID()
+	case clientmaterialization.FieldWorkspaceID:
+		return m.WorkspaceID()
+	case clientmaterialization.FieldWorkerID:
+		return m.WorkerID()
+	case clientmaterialization.FieldSourceType:
+		return m.SourceType()
+	case clientmaterialization.FieldSourceKey:
+		return m.SourceKey()
+	case clientmaterialization.FieldClientID:
+		return m.ClientID()
+	case clientmaterialization.FieldOriginalFilename:
+		return m.OriginalFilename()
+	case clientmaterialization.FieldMediaType:
+		return m.MediaType()
+	case clientmaterialization.FieldSizeBytes:
+		return m.SizeBytes()
+	case clientmaterialization.FieldSha256:
+		return m.Sha256()
+	case clientmaterialization.FieldStorageKey:
+		return m.StorageKey()
+	case clientmaterialization.FieldStatus:
+		return m.Status()
+	case clientmaterialization.FieldLeaseTokenHash:
+		return m.LeaseTokenHash()
+	case clientmaterialization.FieldLeaseExpiresAt:
+		return m.LeaseExpiresAt()
+	case clientmaterialization.FieldRemotePath:
+		return m.RemotePath()
+	case clientmaterialization.FieldError:
+		return m.Error()
+	case clientmaterialization.FieldCreatedAt:
+		return m.CreatedAt()
+	case clientmaterialization.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case clientmaterialization.FieldCompletedAt:
+		return m.CompletedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ClientMaterializationMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case clientmaterialization.FieldDeviceID:
+		return m.OldDeviceID(ctx)
+	case clientmaterialization.FieldWorkspaceID:
+		return m.OldWorkspaceID(ctx)
+	case clientmaterialization.FieldWorkerID:
+		return m.OldWorkerID(ctx)
+	case clientmaterialization.FieldSourceType:
+		return m.OldSourceType(ctx)
+	case clientmaterialization.FieldSourceKey:
+		return m.OldSourceKey(ctx)
+	case clientmaterialization.FieldClientID:
+		return m.OldClientID(ctx)
+	case clientmaterialization.FieldOriginalFilename:
+		return m.OldOriginalFilename(ctx)
+	case clientmaterialization.FieldMediaType:
+		return m.OldMediaType(ctx)
+	case clientmaterialization.FieldSizeBytes:
+		return m.OldSizeBytes(ctx)
+	case clientmaterialization.FieldSha256:
+		return m.OldSha256(ctx)
+	case clientmaterialization.FieldStorageKey:
+		return m.OldStorageKey(ctx)
+	case clientmaterialization.FieldStatus:
+		return m.OldStatus(ctx)
+	case clientmaterialization.FieldLeaseTokenHash:
+		return m.OldLeaseTokenHash(ctx)
+	case clientmaterialization.FieldLeaseExpiresAt:
+		return m.OldLeaseExpiresAt(ctx)
+	case clientmaterialization.FieldRemotePath:
+		return m.OldRemotePath(ctx)
+	case clientmaterialization.FieldError:
+		return m.OldError(ctx)
+	case clientmaterialization.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case clientmaterialization.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case clientmaterialization.FieldCompletedAt:
+		return m.OldCompletedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ClientMaterialization field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ClientMaterializationMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case clientmaterialization.FieldDeviceID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeviceID(v)
+		return nil
+	case clientmaterialization.FieldWorkspaceID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspaceID(v)
+		return nil
+	case clientmaterialization.FieldWorkerID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkerID(v)
+		return nil
+	case clientmaterialization.FieldSourceType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSourceType(v)
+		return nil
+	case clientmaterialization.FieldSourceKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSourceKey(v)
+		return nil
+	case clientmaterialization.FieldClientID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClientID(v)
+		return nil
+	case clientmaterialization.FieldOriginalFilename:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOriginalFilename(v)
+		return nil
+	case clientmaterialization.FieldMediaType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMediaType(v)
+		return nil
+	case clientmaterialization.FieldSizeBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSizeBytes(v)
+		return nil
+	case clientmaterialization.FieldSha256:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSha256(v)
+		return nil
+	case clientmaterialization.FieldStorageKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStorageKey(v)
+		return nil
+	case clientmaterialization.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case clientmaterialization.FieldLeaseTokenHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLeaseTokenHash(v)
+		return nil
+	case clientmaterialization.FieldLeaseExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLeaseExpiresAt(v)
+		return nil
+	case clientmaterialization.FieldRemotePath:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRemotePath(v)
+		return nil
+	case clientmaterialization.FieldError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetError(v)
+		return nil
+	case clientmaterialization.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case clientmaterialization.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case clientmaterialization.FieldCompletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCompletedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ClientMaterialization field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ClientMaterializationMutation) AddedFields() []string {
+	var fields []string
+	if m.addsize_bytes != nil {
+		fields = append(fields, clientmaterialization.FieldSizeBytes)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ClientMaterializationMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case clientmaterialization.FieldSizeBytes:
+		return m.AddedSizeBytes()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ClientMaterializationMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case clientmaterialization.FieldSizeBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSizeBytes(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ClientMaterialization numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ClientMaterializationMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(clientmaterialization.FieldDeviceID) {
+		fields = append(fields, clientmaterialization.FieldDeviceID)
+	}
+	if m.FieldCleared(clientmaterialization.FieldClientID) {
+		fields = append(fields, clientmaterialization.FieldClientID)
+	}
+	if m.FieldCleared(clientmaterialization.FieldLeaseTokenHash) {
+		fields = append(fields, clientmaterialization.FieldLeaseTokenHash)
+	}
+	if m.FieldCleared(clientmaterialization.FieldLeaseExpiresAt) {
+		fields = append(fields, clientmaterialization.FieldLeaseExpiresAt)
+	}
+	if m.FieldCleared(clientmaterialization.FieldRemotePath) {
+		fields = append(fields, clientmaterialization.FieldRemotePath)
+	}
+	if m.FieldCleared(clientmaterialization.FieldError) {
+		fields = append(fields, clientmaterialization.FieldError)
+	}
+	if m.FieldCleared(clientmaterialization.FieldCompletedAt) {
+		fields = append(fields, clientmaterialization.FieldCompletedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ClientMaterializationMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ClientMaterializationMutation) ClearField(name string) error {
+	switch name {
+	case clientmaterialization.FieldDeviceID:
+		m.ClearDeviceID()
+		return nil
+	case clientmaterialization.FieldClientID:
+		m.ClearClientID()
+		return nil
+	case clientmaterialization.FieldLeaseTokenHash:
+		m.ClearLeaseTokenHash()
+		return nil
+	case clientmaterialization.FieldLeaseExpiresAt:
+		m.ClearLeaseExpiresAt()
+		return nil
+	case clientmaterialization.FieldRemotePath:
+		m.ClearRemotePath()
+		return nil
+	case clientmaterialization.FieldError:
+		m.ClearError()
+		return nil
+	case clientmaterialization.FieldCompletedAt:
+		m.ClearCompletedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ClientMaterialization nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ClientMaterializationMutation) ResetField(name string) error {
+	switch name {
+	case clientmaterialization.FieldDeviceID:
+		m.ResetDeviceID()
+		return nil
+	case clientmaterialization.FieldWorkspaceID:
+		m.ResetWorkspaceID()
+		return nil
+	case clientmaterialization.FieldWorkerID:
+		m.ResetWorkerID()
+		return nil
+	case clientmaterialization.FieldSourceType:
+		m.ResetSourceType()
+		return nil
+	case clientmaterialization.FieldSourceKey:
+		m.ResetSourceKey()
+		return nil
+	case clientmaterialization.FieldClientID:
+		m.ResetClientID()
+		return nil
+	case clientmaterialization.FieldOriginalFilename:
+		m.ResetOriginalFilename()
+		return nil
+	case clientmaterialization.FieldMediaType:
+		m.ResetMediaType()
+		return nil
+	case clientmaterialization.FieldSizeBytes:
+		m.ResetSizeBytes()
+		return nil
+	case clientmaterialization.FieldSha256:
+		m.ResetSha256()
+		return nil
+	case clientmaterialization.FieldStorageKey:
+		m.ResetStorageKey()
+		return nil
+	case clientmaterialization.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case clientmaterialization.FieldLeaseTokenHash:
+		m.ResetLeaseTokenHash()
+		return nil
+	case clientmaterialization.FieldLeaseExpiresAt:
+		m.ResetLeaseExpiresAt()
+		return nil
+	case clientmaterialization.FieldRemotePath:
+		m.ResetRemotePath()
+		return nil
+	case clientmaterialization.FieldError:
+		m.ResetError()
+		return nil
+	case clientmaterialization.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case clientmaterialization.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case clientmaterialization.FieldCompletedAt:
+		m.ResetCompletedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ClientMaterialization field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ClientMaterializationMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ClientMaterializationMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ClientMaterializationMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ClientMaterializationMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ClientMaterializationMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ClientMaterializationMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ClientMaterializationMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ClientMaterialization unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ClientMaterializationMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ClientMaterialization edge %s", name)
 }
 
 // CodexThreadControlMutation represents an operation that mutates the CodexThreadControl nodes in the graph.

@@ -2,7 +2,6 @@ package discordintegration
 
 import (
 	"testing"
-	"time"
 
 	"github.com/disgoorg/disgo/bot"
 	"github.com/disgoorg/disgo/discord"
@@ -107,18 +106,6 @@ func TestConfigurationAnnouncementContainsOnlyChanges(t *testing.T) {
 	require.Contains(t, discussion, "【当前为讨论模式，必须 <@900> 才会触发 Codex】")
 	require.Contains(t, discussion, "模型：`gpt-5.6-terra`")
 	require.NotContains(t, discussion, "速度：")
-}
-
-func TestProgressCardOnlyShowsPlanMode(t *testing.T) {
-	timeline := ConversationTimeline{Pages: []string{"处理中"}, Duration: time.Second, Updates: 1}
-	plan := conversationProgressCard(ConversationRunning, timeline, 0, "", "plan")
-	require.Contains(t, plan.Body, "模式：Plan")
-	defaultMode := conversationProgressCard(ConversationRunning, timeline, 0, "", "default")
-	require.NotContains(t, defaultMode.Body, "模式")
-
-	waiting := interactiveCard(InteractiveProjection{Status: "pending", CollaborationMode: "plan",
-		Questions: []InteractiveQuestion{{ID: "q", Header: "确认", Question: "继续？"}}})
-	require.Contains(t, waiting.Body, "模式：Plan")
 }
 
 func TestCommandInteractionUpdateSetsComponentsV2Flag(t *testing.T) {

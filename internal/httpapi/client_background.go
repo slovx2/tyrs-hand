@@ -8,12 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 const expoPushEndpoint = "https://exp.host/--/api/v2/push/send"
@@ -29,8 +29,15 @@ type clientNotification struct {
 	AttemptCount    int
 }
 
-// RunBackground 投递移动端通知并清理协议保留期数据；生命周期与 HTTP Server 一致。
+// RunBackground 同时维护官方 App Server 系统连接和 Control 后台任务。
 func (s *Server) RunBackground(ctx context.Context) error {
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.Go(func() error { return s.runOfficialConnections(groupCtx) })
+	group.Go(func() error { return s.runClientBackground(groupCtx) })
+	return group.Wait()
+}
+
+func (s *Server) runClientBackground(ctx context.Context) error {
 	pushTicker := time.NewTicker(2 * time.Second)
 	cleanupTicker := time.NewTicker(time.Hour)
 	recoveryTicker := time.NewTicker(runRecoveryInterval)
@@ -185,20 +192,6 @@ func (s *Server) retryClientNotification(ctx context.Context, item clientNotific
 }
 
 func (s *Server) cleanupClientProtocol(ctx context.Context) {
-	_, _ = s.db.ExecContext(ctx, `DELETE FROM client_updates WHERE created_at<$1`,
-		clientSyncRetentionStart())
-	rows, err := s.db.QueryContext(ctx, `DELETE FROM session_attachments WHERE status='uploaded'
-		AND created_at<now()-interval '24 hours' RETURNING storage_key`)
-	if err != nil {
-		return
-	}
-	defer func() { _ = rows.Close() }()
-	for rows.Next() {
-		var storageKey string
-		if rows.Scan(&storageKey) == nil {
-			if path, pathErr := s.clientAttachmentPath(storageKey); pathErr == nil {
-				_ = os.Remove(path)
-			}
-		}
-	}
+	_, _ = s.db.ExecContext(ctx, `DELETE FROM client_materializations
+		WHERE status IN ('ready','failed','expired') AND updated_at<now()-interval '24 hours'`)
 }

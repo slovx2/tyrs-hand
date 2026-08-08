@@ -67,10 +67,6 @@ func resolveSkills(worktree string, names []string) ([]ports.SkillRef, error) {
 	return result, nil
 }
 
-func resolveWorkspaceSkills(workspace string, names []string) ([]ports.SkillRef, error) {
-	return resolveSkills(workspace, names)
-}
-
 func localGitSpec(allowPublish bool) ports.DynamicToolSpec {
 	result := ports.DynamicToolSpec{Type: "namespace", Name: "git",
 		Description: "Inspect and publish the current managed Git workspace.",

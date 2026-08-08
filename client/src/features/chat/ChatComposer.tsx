@@ -3,7 +3,7 @@ import * as ImagePicker from "expo-image-picker";
 import { useState } from "react";
 import { Alert, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import type { LocalAttachment } from "@/sync/outbox";
+import type { LocalAttachment } from "@/app-server/attachments";
 import { useTheme } from "@/theme/ThemeProvider";
 
 export function ChatComposer({ value, onChange, attachments, onAttachmentsChange, onParameters,

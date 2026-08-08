@@ -3,6 +3,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -16,7 +17,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
 	"github.com/slovx2/tyrs-hand/internal/auth"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/database"
@@ -116,13 +116,6 @@ func TestClientDevicePairingApprovalAndRevocation(t *testing.T) {
 	require.Equal(t, http.StatusOK, listed.Code)
 	require.Contains(t, listed.Body.String(), "Pixel E2E")
 
-	wsURL := "ws" + strings.TrimPrefix(endpoint, "http") + "/api/v1/client/updates?cursor=0"
-	protocol := clientBearerWebSocketPrefix + deviceToken
-	connection, response, err := (&websocket.Dialer{Subprotocols: []string{protocol}}).Dial(wsURL, nil)
-	require.NoError(t, err)
-	require.Equal(t, protocol, response.Header.Get("Sec-WebSocket-Protocol"))
-	require.NoError(t, connection.Close())
-
 	approvedStatus := clientPairingStatusRequest(t,
 		endpoint+"/api/v1/client/device-pairings/"+pairing.ID.String()+"/status",
 		claimed.ClaimToken)
@@ -143,8 +136,7 @@ func clientDeviceIntegrationServer(t *testing.T, db *sql.DB, authService *auth.S
 ) (*Server, string) {
 	t.Helper()
 	server := &Server{cfg: config.Config{LeaseDuration: time.Minute, PublicURL: "http://127.0.0.1"},
-		db: db, auth: authService, workers: workerregistry.NewService(db),
-		clientUpdateHub: newClientUpdateHub()}
+		db: db, auth: authService, workers: workerregistry.NewService(db)}
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	administrator := router.Group("/api/v1")
@@ -161,7 +153,6 @@ func clientDeviceIntegrationServer(t *testing.T, db *sql.DB, authService *auth.S
 	client := router.Group("/api/v1/client")
 	client.Use(server.requireClientBearer())
 	client.GET("/bootstrap", server.clientBootstrap)
-	client.GET("/updates", server.clientUpdates)
 	httpServer := httptest.NewServer(router)
 	t.Cleanup(httpServer.Close)
 	return server, httpServer.URL
@@ -172,6 +163,34 @@ func clientPairingStatusRequest(t *testing.T, endpoint, claimToken string) *http
 	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, endpoint, nil)
 	require.NoError(t, err)
 	request.Header.Set("Authorization", "Pairing "+claimToken)
+	response, err := http.DefaultClient.Do(request)
+	require.NoError(t, err)
+	defer func() { _ = response.Body.Close() }()
+	recorder := httptest.NewRecorder()
+	recorder.Code = response.StatusCode
+	_, err = io.Copy(recorder.Body, response.Body)
+	require.NoError(t, err)
+	return recorder
+}
+
+func clientJSONRequest(t *testing.T, method, endpoint, bearer string,
+	payload any,
+) *httptest.ResponseRecorder {
+	t.Helper()
+	var body io.Reader
+	if payload != nil {
+		encoded, err := json.Marshal(payload)
+		require.NoError(t, err)
+		body = bytes.NewReader(encoded)
+	}
+	request, err := http.NewRequestWithContext(context.Background(), method, endpoint, body)
+	require.NoError(t, err)
+	if payload != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
+	if bearer != "" {
+		request.Header.Set("Authorization", "Bearer "+bearer)
+	}
 	response, err := http.DefaultClient.Do(request)
 	require.NoError(t, err)
 	defer func() { _ = response.Body.Close() }()

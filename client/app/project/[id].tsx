@@ -10,17 +10,18 @@ import { SessionListPane } from "@/features/session-list/SessionListPane";
 import { useTablet } from "@/hooks/useTablet";
 import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
+import { threadTitle } from "@/app-server/types";
 
 export default function ProjectSessionsScreen() {
   const theme = useTheme();
   const tablet = useTablet();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const bootstrap = useAppStore((state) => state.bootstrap);
+  const projects = useAppStore((state) => state.projects);
   const connection = useAppStore((state) => state.activeConnection);
-  const allSessions = useAppStore((state) => state.sessions);
+  const allSessions = useAppStore((state) => state.threads);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const project = bootstrap?.projects.find((item) => item.id === id);
+  const project = projects.find((item) => item.id === id);
   const sessions = useMemo(() => allSessions.filter((item) => item.projectId === id),
     [allSessions, id]);
   const select = (sessionId: string) => {
@@ -34,7 +35,10 @@ export default function ProjectSessionsScreen() {
   }
 
   const navigation = <Stack.Screen options={{
-    title: tablet && selectedId ? sessions.find((item) => item.id === selectedId)?.title ?? project.name : project.name,
+    title: tablet && selectedId ? (() => {
+      const record = sessions.find((item) => item.thread.id === selectedId);
+      return record ? threadTitle(record.thread) : project.name;
+    })() : project.name,
     headerBackTitle: "项目",
     gestureEnabled: true, fullScreenGestureEnabled: true,
     headerLeft: () => <Pressable testID="project:back" accessibilityRole="button"
@@ -45,7 +49,7 @@ export default function ProjectSessionsScreen() {
     } : {}),
   }} />;
   const list = <SessionListPane sessions={sessions} selectedId={selectedId} onSelect={select}
-    positionKey={`${connection?.serverId ?? "none"}:project:${project.id}:sessions`}
+    positionKey={`${connection?.profileId ?? "none"}:project:${project.id}:sessions`}
     emptyDetail="这个项目还没有会话，点击右下角加号创建第一个任务。" />;
   const newTaskButton = <Pressable testID="project:new-task:add" accessibilityRole="button"
     accessibilityLabel="新建任务" onPress={() => router.push({

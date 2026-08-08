@@ -1,64 +1,100 @@
+import type { ThreadListResponse } from "@codex-app-server/v2/ThreadListResponse";
+import type { ThreadReadResponse } from "@codex-app-server/v2/ThreadReadResponse";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { bootstrapSchema, messageSchema, runSnapshotSchema, sessionSchema } from "@/types/protocol";
+import { CodexJsonRpcClient } from "@/app-server/jsonRpc";
 import { primaryPreviewServerId, secondaryPreviewServerId } from "./config";
 import { previewSessionIds } from "./fixtures";
 import {
+  createPreviewAppServerSocket,
   listPreviewConnections,
-  listPreviewOutbox,
-  previewMessages,
-  previewSessions,
-  requestPreview,
   resetPreviewState,
   setPreviewActiveConnection,
 } from "./runtime";
 
-describe("预览模式", () => {
+async function previewClient(serverId: string): Promise<CodexJsonRpcClient> {
+  const client = new CodexJsonRpcClient(() => createPreviewAppServerSocket(serverId), 1_000);
+  await client.open();
+  return client;
+}
+
+describe("官方协议预览模式", () => {
   beforeEach(() => resetPreviewState());
 
-  it("提供可通过生产协议校验的全部 UI 状态", async () => {
-    const bootstrap = bootstrapSchema.parse(await requestPreview(primaryPreviewServerId, "/bootstrap"));
-    const sessions = previewSessions(primaryPreviewServerId).map((item) => sessionSchema.parse(item));
-    expect(bootstrap.projects).toHaveLength(2);
-    expect(sessions.some((item) => item.lifecycleState === "archived")).toBe(true);
-    expect(listPreviewOutbox(primaryPreviewServerId).map((item) => item.kind))
-      .toEqual(expect.arrayContaining(["create_session", "send_message"]));
+  it("通过官方 Thread -> Turn -> Item 提供全部关键 UI 状态", async () => {
+    const client = await previewClient(primaryPreviewServerId);
+    const list = await client.request<ThreadListResponse>("thread/list", {
+      cursor: null,
+      limit: 100,
+      sortKey: "updated_at",
+      sortDirection: "desc",
+      archived: false,
+    });
 
-    const expectedRuns = [
-      [previewSessionIds.running, "running"],
-      [previewSessionIds.plan, "completed"],
-      [previewSessionIds.interactive, "waiting_for_user"],
-      [previewSessionIds.secret, "waiting_for_user"],
-      [previewSessionIds.failed, "failed"],
+    expect(list.data).toHaveLength(5);
+    expect(list.data.every((thread) => thread.turns.length === 0)).toBe(true);
+
+    const expected = [
+      [previewSessionIds.running, "inProgress", "agentMessage"],
+      [previewSessionIds.plan, "completed", "plan"],
+      [previewSessionIds.interactive, "inProgress", "userMessage"],
+      [previewSessionIds.failed, "failed", "userMessage"],
     ] as const;
-    for (const [sessionId, status] of expectedRuns) {
-      const detail = await requestPreview(primaryPreviewServerId, `/sessions/${sessionId}`) as {
-        currentRun: unknown;
-      };
-      expect(runSnapshotSchema.parse(detail.currentRun).status).toBe(status);
+    for (const [threadId, status, itemType] of expected) {
+      const detail = await client.request<ThreadReadResponse>("thread/read", {
+        threadId,
+        includeTurns: true,
+      });
+      const latestTurn = detail.thread.turns.at(-1);
+      expect(latestTurn?.status).toBe(status);
+      expect(latestTurn?.items.at(-1)?.type).toBe(itemType);
     }
-    const attachments = previewMessages(primaryPreviewServerId, previewSessionIds.attachments)
-      .map((item) => messageSchema.parse(item)).flatMap((item) => item.attachments);
-    expect(attachments.map((item) => item.kind)).toEqual(["image", "file", "image"]);
+
+    const archived = await client.request<ThreadListResponse>("thread/list", {
+      cursor: null,
+      limit: 100,
+      sortKey: "updated_at",
+      sortDirection: "desc",
+      archived: true,
+    });
+    expect(archived.data.map((thread) => thread.id)).toEqual([previewSessionIds.archived]);
   });
 
-  it("保持多 Control 隔离并支持生产界面的写操作", async () => {
-    const primaryCount = previewSessions(primaryPreviewServerId).length;
-    const secondaryCount = previewSessions(secondaryPreviewServerId).length;
+  it("保持 profile 隔离并只用官方写方法修改 Thread", async () => {
+    const primary = await previewClient(primaryPreviewServerId);
+    const secondary = await previewClient(secondaryPreviewServerId);
     setPreviewActiveConnection(secondaryPreviewServerId);
-    expect(listPreviewConnections().find((item) => item.active)?.serverId).toBe(secondaryPreviewServerId);
+    expect(listPreviewConnections().find((item) => item.active)?.profileId)
+      .toBe(secondaryPreviewServerId);
 
-    await requestPreview(primaryPreviewServerId, `/sessions/${previewSessionIds.running}`, {
-      method: "PATCH",
-      body: JSON.stringify({ title: "预览中修改后的标题" }),
+    await primary.request("thread/name/set", {
+      threadId: previewSessionIds.running,
+      name: "预览中修改后的标题",
     });
-    await requestPreview(primaryPreviewServerId, `/sessions/${previewSessionIds.archived}/restore`,
-      { method: "POST" });
-    expect(previewSessions(primaryPreviewServerId)).toHaveLength(primaryCount);
-    expect(previewSessions(primaryPreviewServerId).find((item) => item.id === previewSessionIds.running)?.title)
-      .toBe("预览中修改后的标题");
-    expect(previewSessions(primaryPreviewServerId).find((item) => item.id === previewSessionIds.archived)
-      ?.lifecycleState).toBe("active");
-    expect(previewSessions(secondaryPreviewServerId)).toHaveLength(secondaryCount);
+    await primary.request("thread/unarchive", { threadId: previewSessionIds.archived });
+
+    const changed = await primary.request<ThreadReadResponse>("thread/read", {
+      threadId: previewSessionIds.running,
+      includeTurns: true,
+    });
+    expect(changed.thread.name).toBe("预览中修改后的标题");
+
+    const primaryList = await primary.request<ThreadListResponse>("thread/list", {
+      cursor: null,
+      limit: 100,
+      sortKey: "updated_at",
+      sortDirection: "desc",
+      archived: false,
+    });
+    const secondaryList = await secondary.request<ThreadListResponse>("thread/list", {
+      cursor: null,
+      limit: 100,
+      sortKey: "updated_at",
+      sortDirection: "desc",
+      archived: false,
+    });
+    expect(primaryList.data).toHaveLength(6);
+    expect(secondaryList.data).toHaveLength(1);
+    expect(secondaryList.data[0]?.name).toBe("另一连接中的独立会话");
   });
 });

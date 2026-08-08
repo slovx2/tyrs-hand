@@ -2,7 +2,6 @@ package discordintegration
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -18,7 +17,6 @@ import (
 	"github.com/disgoorg/snowflake/v2"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
-	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
 )
 
@@ -278,7 +276,8 @@ func (c *DisgoConnector) onCommand(event *events.ApplicationCommandInteractionCr
 		components = []discord.LayoutComponent{discord.NewActionRow(discord.NewDangerButton("确认解绑", "github-unbind-confirm:"+userID))}
 	case "/codex/stop":
 		var count int64
-		count, err = c.conversations.Stop(ctx, c.guildID, event.Channel().ID().String(), userID)
+		count, err = c.conversations.Stop(ctx, c.guildID, event.Channel().ID().String(),
+			userID, event.ID().String())
 		if err == nil {
 			content = fmt.Sprintf("已停止 %d 个正在运行或排队的任务。", count)
 		}
@@ -301,8 +300,9 @@ func (c *DisgoConnector) onCommand(event *events.ApplicationCommandInteractionCr
 			threadID, err = parseDiscordPostReference(rawPost)
 		}
 		if err == nil {
-			var state workerprotocol.ThreadLifecycleState
-			state, err = c.conversations.Restore(ctx, c.guildID, threadID, userID, nil)
+			var state ThreadActionState
+			state, err = c.conversations.Restore(ctx, c.guildID, threadID, userID,
+				event.ID().String(), nil)
 			if err == nil {
 				if state.Status == "completed" {
 					content = "会话已经处于可用状态。"
@@ -317,8 +317,9 @@ func (c *DisgoConnector) onCommand(event *events.ApplicationCommandInteractionCr
 			threadID, err = parseDiscordPostReference(rawPost)
 		}
 		if err == nil {
-			var state workerprotocol.ThreadLifecycleState
-			state, err = c.conversations.Archive(ctx, c.guildID, threadID, userID)
+			var state ThreadActionState
+			state, err = c.conversations.Archive(ctx, c.guildID, threadID, userID,
+				event.ID().String())
 			if err == nil {
 				switch state.Status {
 				case "completed":
@@ -361,14 +362,6 @@ func (c *DisgoConnector) onComponent(event *events.ComponentInteractionCreate) {
 		return
 	}
 	customID := event.Data.CustomID()
-	if strings.HasPrefix(customID, "codex-progress-") {
-		c.updateConversationProgressPage(event, customID)
-		return
-	}
-	if strings.HasPrefix(customID, interactiveButtonPrefix) {
-		c.answerInteractiveComponent(event, customID)
-		return
-	}
 	if strings.HasPrefix(customID, "codex-restore:") {
 		c.restoreConversationComponent(event, customID)
 		return
@@ -411,6 +404,11 @@ func (c *DisgoConnector) onComponent(event *events.ComponentInteractionCreate) {
 		return
 	}
 	defer func() { _ = c.manager.CompleteInboundEvent(context.Background(), eventID, nil) }()
+	if strings.HasPrefix(customID, officialInputButtonPrefix) ||
+		strings.HasPrefix(customID, officialApprovalPrefix) {
+		c.answerOfficialComponent(event, customID)
+		return
+	}
 	if strings.HasPrefix(customID, planExecuteButtonPrefix) {
 		c.executePlanComponent(event, customID)
 		return
@@ -461,82 +459,6 @@ func (c *DisgoConnector) onComponent(event *events.ComponentInteractionCreate) {
 	}
 	empty := []discord.LayoutComponent{}
 	_ = event.UpdateMessage(discord.MessageUpdate{Content: &content, Components: &empty})
-}
-
-func (c *DisgoConnector) updateConversationProgressPage(event *events.ComponentInteractionCreate,
-	customID string,
-) {
-	_, runID, page, err := parseProgressButton(customID)
-	if err != nil || event.GuildID() == nil {
-		_ = event.CreateMessage(discord.NewMessageCreate().WithContent("这个翻页按钮无效，请使用卡片上的最新按钮。").WithEphemeral(true))
-		return
-	}
-	card, err := c.conversationProgressPage(context.Background(), event.GuildID().String(),
-		event.Message.ChannelID.String(), event.Message.ID.String(), runID, page)
-	if err != nil {
-		_ = event.CreateMessage(discord.NewMessageCreate().WithContent("这张卡片已过期，无法继续翻页。").WithEphemeral(true))
-		return
-	}
-	components, err := discordCardComponents(card)
-	if err != nil {
-		_ = event.CreateMessage(discord.NewMessageCreate().WithContent("卡片暂时无法更新，请稍后重试。").WithEphemeral(true))
-		return
-	}
-	update := discord.NewMessageUpdateV2(components...)
-	emptyContent := ""
-	emptyEmbeds := []discord.Embed{}
-	update.Content, update.Embeds = &emptyContent, &emptyEmbeds
-	update.AllowedMentions = &discord.AllowedMentions{}
-	_ = event.UpdateMessage(update)
-}
-
-func parseProgressButton(customID string) (string, uuid.UUID, int, error) {
-	if !strings.HasPrefix(customID, "codex-progress-") {
-		return "", uuid.Nil, 0, errors.New("discord 翻页按钮前缀无效")
-	}
-	parts := strings.Split(strings.TrimPrefix(customID, "codex-progress-"), ":")
-	if len(parts) != 3 || (parts[0] != "older" && parts[0] != "newer" && parts[0] != "latest") {
-		return "", uuid.Nil, 0, errors.New("discord 翻页动作无效")
-	}
-	runID, err := uuid.Parse(parts[1])
-	if err != nil {
-		return "", uuid.Nil, 0, err
-	}
-	page, err := strconv.Atoi(parts[2])
-	if err != nil || page < 0 {
-		return "", uuid.Nil, 0, errors.New("discord 翻页页码无效")
-	}
-	return parts[0], runID, page, nil
-}
-
-func (c *DisgoConnector) conversationProgressPage(ctx context.Context, guildID, channelID,
-	messageID string, runID uuid.UUID, page int,
-) (ComponentCardPayload, error) {
-	if page < 0 {
-		return ComponentCardPayload{}, errors.New("discord 翻页页码无效")
-	}
-	var projectionKey string
-	var rawPayload json.RawMessage
-	err := c.manager.db.QueryRowContext(ctx, `SELECT projection_key, desired_payload
-		FROM discord_projections WHERE guild_id = $1 AND resource_id = $2 AND message_id = $3
-		AND projection_key LIKE 'conversation:%'`, guildID, channelID, messageID).
-		Scan(&projectionKey, &rawPayload)
-	var desired struct {
-		Progress conversationProgressPayload `json:"progress"`
-	}
-	if err == nil {
-		err = json.Unmarshal(rawPayload, &desired)
-	}
-	if err != nil || desired.Progress.RunID != runID.String() {
-		return ComponentCardPayload{}, errors.New("discord 翻页卡片与 Run 不匹配")
-	}
-	timeline, err := conversationTimelineForStatusCard(ctx, c.manager.db, runID,
-		projectionKey, desired.Progress.Summary)
-	if err != nil || page >= len(timeline.Pages) {
-		return ComponentCardPayload{}, errors.New("discord 翻页目标不存在")
-	}
-	return conversationProgressCard(desired.Progress.State, timeline, page, runID.String(),
-		desired.Progress.CollaborationMode, desired.Progress.Error), nil
 }
 
 func (c *DisgoConnector) changeConversationMode(event *events.ComponentInteractionCreate,
@@ -850,9 +772,9 @@ func (c *DisgoConnector) restoreConversationComponent(event *events.ComponentInt
 		WHERE id = $1 AND guild_id = $2`, conversationID, c.guildID).Scan(&threadID)
 	content := "恢复请求已提交；Codex 确认恢复后会自动解锁原 Post。"
 	if err == nil {
-		var state workerprotocol.ThreadLifecycleState
+		var state ThreadActionState
 		state, err = c.conversations.Restore(ctx, c.guildID, threadID,
-			event.User().ID.String(), &revision)
+			event.User().ID.String(), event.ID().String(), &revision)
 		if err == nil && state.Status == "completed" {
 			content = "会话已经处于可用状态。"
 		}

@@ -64,6 +64,47 @@ var (
 		Columns:    AuditLogsColumns,
 		PrimaryKey: []*schema.Column{AuditLogsColumns[0]},
 	}
+	// ClientMaterializationsColumns holds the columns for the "client_materializations" table.
+	ClientMaterializationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "device_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "workspace_id", Type: field.TypeUUID},
+		{Name: "worker_id", Type: field.TypeUUID},
+		{Name: "source_type", Type: field.TypeString},
+		{Name: "source_key", Type: field.TypeString},
+		{Name: "client_id", Type: field.TypeString, Nullable: true},
+		{Name: "original_filename", Type: field.TypeString},
+		{Name: "media_type", Type: field.TypeString},
+		{Name: "size_bytes", Type: field.TypeInt64},
+		{Name: "sha256", Type: field.TypeString, Size: 64},
+		{Name: "storage_key", Type: field.TypeString},
+		{Name: "status", Type: field.TypeString, Default: "queued"},
+		{Name: "lease_token_hash", Type: field.TypeString, Nullable: true},
+		{Name: "lease_expires_at", Type: field.TypeTime, Nullable: true},
+		{Name: "remote_path", Type: field.TypeString, Nullable: true},
+		{Name: "error", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
+	}
+	// ClientMaterializationsTable holds the schema information for the "client_materializations" table.
+	ClientMaterializationsTable = &schema.Table{
+		Name:       "client_materializations",
+		Columns:    ClientMaterializationsColumns,
+		PrimaryKey: []*schema.Column{ClientMaterializationsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "clientmaterialization_source_type_source_key",
+				Unique:  true,
+				Columns: []*schema.Column{ClientMaterializationsColumns[4], ClientMaterializationsColumns[5]},
+			},
+			{
+				Name:    "clientmaterialization_worker_id_created_at_id",
+				Unique:  false,
+				Columns: []*schema.Column{ClientMaterializationsColumns[3], ClientMaterializationsColumns[17], ClientMaterializationsColumns[0]},
+			},
+		},
+	}
 	// CodexThreadControlsColumns holds the columns for the "codex_thread_controls" table.
 	CodexThreadControlsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -407,7 +448,7 @@ var (
 		{Name: "max_concurrent_jobs", Type: field.TypeInt, Default: 6},
 		{Name: "credential_hash", Type: field.TypeString, Nullable: true},
 		{Name: "credential_version", Type: field.TypeInt64, Default: 0},
-		{Name: "protocol_version", Type: field.TypeInt, Default: 1},
+		{Name: "protocol_version", Type: field.TypeInt, Default: 25},
 		{Name: "worker_version", Type: field.TypeString, Nullable: true},
 		{Name: "status", Type: field.TypeString, Default: "pending"},
 		{Name: "heartbeat_at", Type: field.TypeTime, Nullable: true},
@@ -464,6 +505,7 @@ var (
 		AdministratorsTable,
 		AgentProfilesTable,
 		AuditLogsTable,
+		ClientMaterializationsTable,
 		CodexThreadControlsTable,
 		CodexTurnIntentsTable,
 		CodexTurnRunsTable,
@@ -492,6 +534,9 @@ func init() {
 	}
 	AuditLogsTable.Annotation = &entsql.Annotation{
 		Table: "audit_logs",
+	}
+	ClientMaterializationsTable.Annotation = &entsql.Annotation{
+		Table: "client_materializations",
 	}
 	CodexThreadControlsTable.Annotation = &entsql.Annotation{
 		Table: "codex_thread_controls",

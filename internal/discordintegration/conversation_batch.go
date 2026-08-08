@@ -28,8 +28,8 @@ func (s *ConversationService) enqueuePendingMessages(ctx context.Context, tx *sq
 ) error {
 	rows, err := tx.QueryContext(ctx, `SELECT message_id, display_name, username, body, received_at
 		FROM discord_input_messages
-		WHERE conversation_id = $1 AND status = 'received' AND turn_intent_id IS NULL
-		ORDER BY received_at DESC, message_id DESC LIMIT $2`, conversationID,
+		WHERE conversation_id = $1 AND status = 'received' AND official_submission_id IS NULL
+		ORDER BY received_at DESC, message_id DESC LIMIT $2::integer`, conversationID,
 		maxDiscussionMessages+1)
 	if err != nil {
 		return err
@@ -54,7 +54,8 @@ func (s *ConversationService) enqueuePendingMessages(ctx context.Context, tx *sq
 		oldestIncluded := newest[maxDiscussionMessages-1]
 		_, err = tx.ExecContext(ctx, `UPDATE discord_input_messages SET status = 'skipped',
 			processed_at = now() WHERE conversation_id = $1 AND status = 'received'
-			AND turn_intent_id IS NULL AND (received_at, message_id) < ($2, $3)`,
+			AND official_submission_id IS NULL
+			AND (received_at, message_id) < ($2::timestamptz, $3::text)`,
 			conversationID, oldestIncluded.ReceivedAt, oldestIncluded.ID)
 		if err != nil {
 			return err
@@ -72,13 +73,30 @@ func (s *ConversationService) enqueuePendingMessages(ctx context.Context, tx *sq
 	if err := s.enqueueMessage(ctx, tx, conversationID, triggerMessageID); err != nil {
 		return err
 	}
-	var intentID uuid.UUID
-	if err := tx.QueryRowContext(ctx, `SELECT turn_intent_id FROM discord_input_messages
-		WHERE message_id = $1`, triggerMessageID).Scan(&intentID); err != nil {
+	var submissionID uuid.UUID
+	if err := tx.QueryRowContext(ctx, `SELECT official_submission_id FROM discord_input_messages
+		WHERE message_id = $1`, triggerMessageID).Scan(&submissionID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE discord_input_messages SET turn_intent_id = $2
-		WHERE message_id = ANY($1) AND turn_intent_id IS NULL`, pq.Array(ids), intentID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE discord_input_messages
+		SET official_submission_id=$2::uuid WHERE message_id=ANY($1::text[])
+		AND official_submission_id IS NULL`, pq.Array(ids), submissionID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM official_submission_attachments
+		WHERE submission_id=$1`, submissionID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO official_submission_attachments(
+		submission_id,attachment_id,ordinal)
+		SELECT $1,attachment.id,row_number() OVER(
+			ORDER BY message.received_at,attachment.created_at,attachment.id)-1
+		FROM discord_input_messages message
+		JOIN discord_attachments attachment ON attachment.message_id=message.message_id
+		WHERE message.official_submission_id=$1 AND attachment.status='ready'
+		  AND attachment.storage_key IS NOT NULL
+		ORDER BY message.received_at,attachment.created_at,attachment.id LIMIT 10`,
+		submissionID); err != nil {
 		return err
 	}
 
@@ -86,15 +104,17 @@ func (s *ConversationService) enqueuePendingMessages(ctx context.Context, tx *sq
 	var attachmentCount int
 	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM discord_attachments attachment
 		JOIN discord_input_messages message ON message.message_id = attachment.message_id
-		WHERE message.turn_intent_id = $1`, intentID).Scan(&attachmentCount); err != nil {
+		WHERE message.official_submission_id = $1`, submissionID).Scan(&attachmentCount); err != nil {
 		return err
 	}
 	if attachmentCount > DefaultMaxAttachments {
 		instruction += fmt.Sprintf("\n\n[附件说明：本批次共有 %d 个附件，仅携带时间最新的 %d 个。]",
 			attachmentCount, DefaultMaxAttachments)
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE codex_turn_intents SET instruction = $2,
-		updated_at = now() WHERE id = $1`, intentID, instruction)
+	_, err = tx.ExecContext(ctx, `UPDATE official_turn_submissions SET instruction=$2::text,
+		input=jsonb_build_array(jsonb_build_object('type','text','text',$2::text,
+			'text_elements','[]'::jsonb)),updated_at=now() WHERE id=$1`, submissionID,
+		instruction)
 	return err
 }
 
