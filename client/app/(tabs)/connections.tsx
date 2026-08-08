@@ -275,24 +275,27 @@ export default function ConnectionsScreen() {
     <Modal testID="connection:ssh:directory-picker" visible={directoryBrowser !== null}
       animationType="slide" presentationStyle="pageSheet"
       onRequestClose={() => !browsingSSH && setDirectoryBrowser(null)}>
-      <ScrollView style={{ backgroundColor: theme.colors.app }} contentContainerStyle={styles.sshForm}>
+      <View style={[styles.directoryPicker, { backgroundColor: theme.colors.app }]}>
         <Title>选择默认目录</Title>
         {directoryBrowser ? <>
           <Muted>{directoryBrowser.connection.user}@{directoryBrowser.connection.host}</Muted>
           <Card style={styles.directoryBrowser}>
             <Muted numberOfLines={1}>{directoryBrowser.path}</Muted>
-            {directoryBrowser.path !== "/" ? <Pressable style={styles.directoryRow}
-              onPress={() => void loadSSHDirectory(directoryBrowser.connection,
-                parentRemotePath(directoryBrowser.path))}>
-              <Text style={{ color: theme.colors.accent }}>↰ 上一级</Text>
-            </Pressable> : null}
-            {directoryBrowser.entries.filter((entry) => entry.directory).map((entry) =>
-              <Pressable key={entry.path} style={styles.directoryRow}
+            <ScrollView testID="connection:ssh:directory-list" style={styles.directoryList}
+              contentContainerStyle={styles.directoryListContent}>
+              {directoryBrowser.path !== "/" ? <Pressable disabled={browsingSSH}
+                style={styles.directoryRow} onPress={() => void loadSSHDirectory(
+                  directoryBrowser.connection, parentRemotePath(directoryBrowser.path))}>
+                <Text style={{ color: theme.colors.accent }}>↰ 上一级</Text>
+              </Pressable> : null}
+              {directoryBrowser.entries.filter((entry) => entry.directory).map((entry) =>
+                <Pressable disabled={browsingSSH} key={entry.path} style={styles.directoryRow}
                 onPress={() => void loadSSHDirectory(directoryBrowser.connection, entry.path)}>
-                <Text numberOfLines={1} style={{ color: theme.colors.text }}>📁 {entry.name}</Text>
-              </Pressable>)}
-            {directoryBrowser.entries.every((entry) => !entry.directory)
-              ? <Muted>当前目录没有子目录。</Muted> : null}
+                  <Text numberOfLines={1} style={{ color: theme.colors.text }}>📁 {entry.name}</Text>
+                </Pressable>)}
+              {directoryBrowser.entries.every((entry) => !entry.directory)
+                ? <Muted>当前目录没有子目录。</Muted> : null}
+            </ScrollView>
           </Card>
           <View style={styles.formActions}>
             <Button title="取消" variant="secondary" disabled={browsingSSH}
@@ -301,7 +304,7 @@ export default function ConnectionsScreen() {
               loading={browsingSSH} onPress={() => void chooseSSHDirectory()} />
           </View>
         </> : null}
-      </ScrollView>
+      </View>
     </Modal>
     <Modal visible={renameId !== null} transparent animationType="fade"
       onRequestClose={() => setRenameId(null)}><View style={[styles.modalBackdrop,
@@ -354,7 +357,10 @@ const styles = StyleSheet.create({
   keyInput: { minHeight: 140, borderWidth: StyleSheet.hairlineWidth, borderRadius: 8,
     padding: 11, fontFamily: "monospace", fontSize: 12, textAlignVertical: "top" },
   publicKey: { borderRadius: 8, padding: 11, gap: 5 },
-  directoryBrowser: { gap: 2, maxHeight: 300 },
+  directoryPicker: { flex: 1, padding: 20, gap: 13 },
+  directoryBrowser: { flex: 1, gap: 2, minHeight: 0 },
+  directoryList: { flex: 1 },
+  directoryListContent: { paddingVertical: 4 },
   directoryRow: { minHeight: 40, justifyContent: "center", paddingHorizontal: 4 },
   formActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8, marginTop: 6 },
   modalBackdrop: { flex: 1, justifyContent: "center", padding: 24 },
