@@ -144,13 +144,10 @@ func officialItemCard(turn officialapp.Turn, item officialapp.Item, latestPlan *
 			Body: cardText(item.Text, 3600)}
 		current := latestPlan != nil && latestPlan.TurnID == turn.ID &&
 			latestPlan.ItemID == item.ID && planActionID != uuid.Nil
-		card.Buttons = []ComponentButtonPayload{{Label: "执行计划", Disabled: !current,
-			CustomID: func() string {
-				if !current {
-					return ""
-				}
-				return planExecuteButtonPrefix + planActionID.String()
-			}(), Style: "primary"}}
+		if current {
+			card.Buttons = []ComponentButtonPayload{{Label: "执行计划",
+				CustomID: planExecuteButtonPrefix + planActionID.String(), Style: "primary"}}
+		}
 		return card, true
 	case "reasoning":
 		return ComponentCardPayload{AccentColor: cardColorGray, Header: "Codex · 推理",

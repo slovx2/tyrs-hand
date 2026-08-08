@@ -112,6 +112,13 @@ func TestOfficialItemCardsAndDesktopPagination(t *testing.T) {
 		officialapp.Item{Type: "plan", ID: "plan", Text: "steps"}, plan, uuid.New())
 	require.True(t, visible)
 	require.False(t, card.Buttons[0].Disabled)
+	require.NotEmpty(t, card.Buttons[0].CustomID)
+	require.NoError(t, validateOfficialCard(card))
+	stale, visible := officialItemCard(turn,
+		officialapp.Item{Type: "plan", ID: "old-plan", Text: "old steps"}, plan, uuid.New())
+	require.True(t, visible)
+	require.Empty(t, stale.Buttons, "历史 Plan Item 不应生成无效的禁用按钮")
+	require.NoError(t, validateOfficialCard(stale))
 	_, visible = officialItemCard(turn, officialapp.Item{Type: "userMessage", ID: "user"},
 		plan, uuid.Nil)
 	require.False(t, visible)
@@ -132,6 +139,11 @@ func TestOfficialItemCardsAndDesktopPagination(t *testing.T) {
 	cards = DesktopInputCards("Phone", strings.Repeat("a", desktopInputPageRunes+1))
 	require.Len(t, cards, 2)
 	require.Contains(t, cards[0].Header, "1/2")
+}
+
+func validateOfficialCard(card ComponentCardPayload) error {
+	_, err := discordCardComponents(card)
+	return err
 }
 
 func TestProtocolStatusAndErrorCards(t *testing.T) {
