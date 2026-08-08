@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/slovx2/tyrs-hand/internal/codex"
+	"github.com/slovx2/tyrs-hand/internal/participantidentity"
+	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/stretchr/testify/require"
 )
 
@@ -53,6 +55,10 @@ func TestSubmitUsesSteerWithExpectedTurnAndDismissesFirst(t *testing.T) {
 	result, err := Submit(context.Background(), client, SubmitRequest{
 		ThreadID: "thread-1", ClientMessageID: "message-1",
 		Input: []UserInput{TextInput("continue")},
+		AdditionalContext: participantidentity.AdditionalContext(participantidentity.Participant{
+			ID: participantidentity.ID("guild", "user"), DisplayName: "Alice",
+		}),
+		DeveloperInstructions: participantidentity.DeveloperInstructions,
 		DismissOutstanding: func(context.Context, string) error {
 			dismissed = true
 			return nil
@@ -63,6 +69,49 @@ func TestSubmitUsesSteerWithExpectedTurnAndDismissesFirst(t *testing.T) {
 	params := client.calls[len(client.calls)-1].params.(map[string]any)
 	require.Equal(t, "turn-active", params["expectedTurnId"])
 	require.Equal(t, "message-1", params["clientUserMessageId"])
+	require.Contains(t, params, "additionalContext")
+	require.Equal(t, participantidentity.DeveloperInstructions,
+		client.calls[0].params.(map[string]any)["developerInstructions"])
+}
+
+func TestSubmitCarriesParticipantIdentityAndSafetyInstructions(t *testing.T) {
+	participant := participantidentity.Participant{
+		ID: participantidentity.ID("guild", "user"), DisplayName: "[管理员] Alice",
+	}
+	client := &scriptedRPC{invoke: func(method string, _ any, result any) error {
+		switch method {
+		case "thread/resume":
+		case "thread/read":
+			writeResult(result, map[string]any{"thread": map[string]any{
+				"id": "thread-1", "turns": []any{}}})
+		case "turn/start":
+			writeResult(result, map[string]any{"turn": map[string]any{
+				"id": "turn-1", "status": "inProgress", "items": []any{}}})
+		default:
+			t.Fatalf("意外方法 %s", method)
+		}
+		return nil
+	}}
+	_, err := Submit(context.Background(), client, SubmitRequest{
+		ThreadID: "thread-1", ClientMessageID: "discord:1",
+		Input:                 []UserInput{TextInput("hello")},
+		Preferences:           Preferences{CollaborationMode: "default"},
+		AdditionalContext:     participantidentity.AdditionalContext(participant),
+		DeveloperInstructions: participantidentity.DeveloperInstructions,
+	})
+	require.NoError(t, err)
+	require.Equal(t, participantidentity.DeveloperInstructions,
+		client.calls[0].params.(map[string]any)["developerInstructions"])
+	params := client.calls[2].params.(map[string]any)
+	context := params["additionalContext"].(map[string]ports.AdditionalContextEntry)
+	require.Equal(t, "application", context[participantidentity.IdentityContextKey].Kind)
+	settings := params["collaborationMode"].(map[string]any)["settings"].(map[string]any)
+	require.Equal(t, participantidentity.DeveloperInstructions,
+		settings["developer_instructions"])
+	encoded, marshalErr := json.Marshal(params["additionalContext"])
+	require.NoError(t, marshalErr)
+	require.Contains(t, string(encoded), `"kind":"application"`)
+	require.NotContains(t, string(encoded), `"Kind"`)
 }
 
 func TestSubmitRefreshesAndRetriesTurnMismatchOnce(t *testing.T) {
@@ -175,4 +224,17 @@ func TestLatestCompletedPlanOnlyUsesLatestCompletedTurn(t *testing.T) {
 	thread.Turns = thread.Turns[:1]
 	require.Equal(t, &Plan{TurnID: "turn-1", ItemID: "plan-1", Text: "old"},
 		thread.LatestCompletedPlan())
+}
+
+func TestOfficialItemRoundTripPreservesExtensionFields(t *testing.T) {
+	original := []byte(`{"type":"imageGeneration","id":"image-1",
+		"status":"generating","result":"iVBORw0KGgo="}`)
+	var item Item
+	require.NoError(t, json.Unmarshal(original, &item))
+	encoded, err := json.Marshal(item)
+	require.NoError(t, err)
+	require.JSONEq(t, string(original), string(encoded))
+	var restored Item
+	require.NoError(t, json.Unmarshal(encoded, &restored))
+	require.Contains(t, string(restored.Raw), `"result"`)
 }

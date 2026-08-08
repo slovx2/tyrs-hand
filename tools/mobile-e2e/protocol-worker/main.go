@@ -162,8 +162,12 @@ func (s *appServerFixture) handleRequest(client *socketClient, message rpcMessag
 		s.respond(client, message.ID, map[string]any{"data": []any{fixtureModel()}, "nextCursor": nil})
 	case "thread/list":
 		s.listThreads(client, message)
-	case "thread/read", "thread/resume":
+	case "thread/read":
 		s.readThread(client, message)
+	case "thread/resume":
+		s.resumeThread(client, message)
+	case "thread/turns/list":
+		s.listThreadTurns(client, message)
 	case "thread/start":
 		s.startThread(client, message)
 	case "thread/name/set":
@@ -295,7 +299,8 @@ func (s *appServerFixture) listThreads(client *socketClient, message rpcMessage)
 
 func (s *appServerFixture) readThread(client *socketClient, message rpcMessage) {
 	var params struct {
-		ThreadID string `json:"threadId"`
+		ThreadID     string `json:"threadId"`
+		IncludeTurns *bool  `json:"includeTurns"`
 	}
 	if json.Unmarshal(message.Params, &params) != nil || params.ThreadID == "" {
 		s.reject(client, message.ID, -32602, "thread/read 参数无效")
@@ -309,23 +314,155 @@ func (s *appServerFixture) readThread(client *socketClient, message rpcMessage) 
 		return
 	}
 	result := cloneJSON(thread)
-	pending := make([]map[string]any, 0)
-	if message.Method == "thread/resume" {
-		for _, request := range s.pending {
-			if request.ThreadID == params.ThreadID {
-				pending = append(pending, request.Payload)
-			}
-		}
+	if params.IncludeTurns != nil && !*params.IncludeTurns {
+		result["turns"] = []any{}
 	}
 	s.mu.Unlock()
-	if message.Method == "thread/resume" {
-		s.respond(client, message.ID, resumeResult(result, params.ThreadID))
-		for _, request := range pending {
-			_ = client.write(request)
-		}
+	s.respond(client, message.ID, map[string]any{"thread": result})
+}
+
+func (s *appServerFixture) resumeThread(client *socketClient, message rpcMessage) {
+	var params struct {
+		ThreadID         string `json:"threadId"`
+		ExcludeTurns     bool   `json:"excludeTurns"`
+		InitialTurnsPage *struct {
+			Limit         int    `json:"limit"`
+			SortDirection string `json:"sortDirection"`
+			ItemsView     string `json:"itemsView"`
+		} `json:"initialTurnsPage"`
+	}
+	if json.Unmarshal(message.Params, &params) != nil || params.ThreadID == "" {
+		s.reject(client, message.ID, -32602, "thread/resume 参数无效")
 		return
 	}
-	s.respond(client, message.ID, map[string]any{"thread": result})
+	s.mu.Lock()
+	thread := s.findThreadLocked(params.ThreadID)
+	if thread == nil {
+		s.mu.Unlock()
+		s.reject(client, message.ID, -32602, "thread 不存在")
+		return
+	}
+	result := cloneJSON(thread)
+	if params.ExcludeTurns {
+		result["turns"] = []any{}
+	}
+	var initialPage any
+	if params.InitialTurnsPage != nil {
+		page, err := turnsPage(thread, nil, params.InitialTurnsPage.Limit,
+			params.InitialTurnsPage.SortDirection, params.InitialTurnsPage.ItemsView)
+		if err != nil {
+			s.mu.Unlock()
+			s.reject(client, message.ID, -32602, err.Error())
+			return
+		}
+		initialPage = page
+	}
+	pending := make([]map[string]any, 0)
+	for _, request := range s.pending {
+		if request.ThreadID == params.ThreadID {
+			pending = append(pending, request.Payload)
+		}
+	}
+	var turnsBackwardsCursor any
+	if len(thread.Turns) > 0 {
+		turnsBackwardsCursor = thread.Turns[len(thread.Turns)-1].ID
+	}
+	s.mu.Unlock()
+	response := resumeResult(result, params.ThreadID)
+	response["initialTurnsPage"] = initialPage
+	response["turnsBackwardsCursor"] = turnsBackwardsCursor
+	s.respond(client, message.ID, response)
+	for _, request := range pending {
+		_ = client.write(request)
+	}
+}
+
+func (s *appServerFixture) listThreadTurns(client *socketClient, message rpcMessage) {
+	var params struct {
+		ThreadID      string  `json:"threadId"`
+		Cursor        *string `json:"cursor"`
+		Limit         int     `json:"limit"`
+		SortDirection string  `json:"sortDirection"`
+		ItemsView     string  `json:"itemsView"`
+	}
+	if json.Unmarshal(message.Params, &params) != nil || params.ThreadID == "" {
+		s.reject(client, message.ID, -32602, "thread/turns/list 参数无效")
+		return
+	}
+	s.mu.Lock()
+	thread := s.findThreadLocked(params.ThreadID)
+	if thread == nil {
+		s.mu.Unlock()
+		s.reject(client, message.ID, -32602, "thread 不存在")
+		return
+	}
+	page, err := turnsPage(thread, params.Cursor, params.Limit, params.SortDirection,
+		params.ItemsView)
+	s.mu.Unlock()
+	if err != nil {
+		s.reject(client, message.ID, -32602, err.Error())
+		return
+	}
+	s.respond(client, message.ID, page)
+}
+
+func turnsPage(thread *officialThread, cursor *string, limit int,
+	sortDirection, itemsView string,
+) (map[string]any, error) {
+	if sortDirection == "" {
+		sortDirection = "desc"
+	}
+	if sortDirection != "desc" && sortDirection != "asc" {
+		return nil, errors.New("thread/turns/list sortDirection 无效")
+	}
+	if itemsView == "" {
+		itemsView = "summary"
+	}
+	if itemsView != "summary" && itemsView != "full" {
+		return nil, errors.New("thread/turns/list itemsView 无效")
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	start := 0
+	step := 1
+	if sortDirection == "desc" {
+		start = len(thread.Turns) - 1
+		step = -1
+	}
+	if cursor != nil {
+		start = -1
+		for index, turn := range thread.Turns {
+			if turn.ID == *cursor {
+				start = index
+				break
+			}
+		}
+		if start < 0 {
+			return nil, errors.New("thread/turns/list cursor 无效")
+		}
+	}
+	data := make([]any, 0, limit)
+	index := start
+	for index >= 0 && index < len(thread.Turns) && len(data) < limit {
+		turn := cloneJSON(thread.Turns[index])
+		turn["itemsView"] = itemsView
+		data = append(data, turn)
+		index += step
+	}
+	var nextCursor any
+	if index >= 0 && index < len(thread.Turns) {
+		nextCursor = thread.Turns[index].ID
+	}
+	var backwardsCursor any
+	if len(data) > 0 {
+		backwardsCursor = thread.Turns[start].ID
+	}
+	return map[string]any{"data": data, "nextCursor": nextCursor,
+		"backwardsCursor": backwardsCursor}, nil
 }
 
 func resumeResult(thread map[string]any, threadID string) map[string]any {

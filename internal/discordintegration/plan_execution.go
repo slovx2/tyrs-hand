@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/officialapp"
+	"github.com/slovx2/tyrs-hand/internal/participantidentity"
 )
 
 const planExecuteButtonPrefix = "codex-plan-execute:"
@@ -82,13 +84,22 @@ func (s *ConversationService) ExecutePlan(ctx context.Context, guildID, threadID
 		return PlanExecutionResult{}, err
 	}
 	instruction := codexcontrol.PlanExecutionInstruction(planText)
+	participantName := strings.TrimSpace(displayName)
+	if participantName == "" {
+		participantName = username
+	}
+	additionalContext := participantidentity.AdditionalContext(participantidentity.Participant{
+		ID: participantidentity.ID(guildID, userID), DisplayName: participantName,
+	})
 	_, inserted, err := officialapp.EnqueueTx(ctx, tx, officialapp.EnqueueRequest{
 		WorkspaceID: workspaceID, ConversationID: conversationID, PlanActionID: actionID,
 		SourceType: "discord_plan", SourceOrder: sourceOrder,
 		ClientMessageID: "discord-plan:" + actionID.String(), Instruction: instruction,
-		DisplayInstruction: codexcontrol.PlanExecutionDisplayText,
-		Input:              []officialapp.UserInput{officialapp.TextInput(instruction)},
-		Preferences:        officialapp.Preferences{CollaborationMode: "default"},
+		DisplayInstruction:    codexcontrol.PlanExecutionDisplayText,
+		Input:                 []officialapp.UserInput{officialapp.TextInput(instruction)},
+		Preferences:           officialapp.Preferences{CollaborationMode: "default"},
+		AdditionalContext:     additionalContext,
+		DeveloperInstructions: participantidentity.DeveloperInstructions,
 	})
 	if err != nil {
 		return PlanExecutionResult{}, err

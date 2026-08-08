@@ -82,7 +82,7 @@ test('Mobile E2E fixture 只承载协议 25 官方 JSON-RPC', async () => {
   assert.match(protocol, /const Version = 25/)
   assert.match(runner, /go', \['run', '\.\/tools\/mobile-e2e\/protocol-worker'/)
   for (const method of ['initialize', 'thread/list', 'thread/read', 'thread/resume',
-    'thread/start', 'turn/start', 'turn/steer', 'turn/interrupt']) {
+    'thread/turns/list', 'thread/start', 'turn/start', 'turn/steer', 'turn/interrupt']) {
     assert.ok(worker.includes(`"${method}"`), `fixture 缺少官方方法 ${method}`)
   }
   assert.match(worker, /ClaimAppServerTunnel/)

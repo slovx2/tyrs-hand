@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/slovx2/tyrs-hand/internal/codex"
+	"github.com/slovx2/tyrs-hand/internal/ports"
 )
 
 type RPCClient interface {
@@ -13,11 +14,13 @@ type RPCClient interface {
 }
 
 type SubmitRequest struct {
-	ThreadID           string
-	ClientMessageID    string
-	Input              []UserInput
-	Preferences        Preferences
-	DismissOutstanding func(context.Context, string) error
+	ThreadID              string
+	ClientMessageID       string
+	Input                 []UserInput
+	Preferences           Preferences
+	AdditionalContext     map[string]ports.AdditionalContextEntry
+	DeveloperInstructions string
+	DismissOutstanding    func(context.Context, string) error
 }
 
 type SubmitResult struct {
@@ -37,9 +40,11 @@ func ReadThread(ctx context.Context, client RPCClient, threadID string) (Thread,
 }
 
 func Submit(ctx context.Context, client RPCClient, request SubmitRequest) (SubmitResult, error) {
-	if err := client.Call(ctx, "thread/resume", map[string]any{
-		"threadId": request.ThreadID,
-	}, nil); err != nil {
+	resumeParams := map[string]any{"threadId": request.ThreadID}
+	if request.DeveloperInstructions != "" {
+		resumeParams["developerInstructions"] = request.DeveloperInstructions
+	}
+	if err := client.Call(ctx, "thread/resume", resumeParams, nil); err != nil {
 		return SubmitResult{}, err
 	}
 	thread, err := ReadThread(ctx, client, request.ThreadID)
@@ -80,10 +85,14 @@ func submitAgainstState(ctx context.Context, client RPCClient, thread Thread,
 		var response struct {
 			TurnID string `json:"turnId"`
 		}
-		err := client.Call(ctx, "turn/steer", map[string]any{
+		params := map[string]any{
 			"threadId": thread.ID, "clientUserMessageId": request.ClientMessageID,
 			"input": request.Input, "expectedTurnId": active.ID,
-		}, &response)
+		}
+		if len(request.AdditionalContext) > 0 {
+			params["additionalContext"] = request.AdditionalContext
+		}
+		err := client.Call(ctx, "turn/steer", params, &response)
 		return SubmitResult{ThreadID: thread.ID, TurnID: response.TurnID}, err
 	}
 	params := map[string]any{
@@ -96,15 +105,25 @@ func submitAgainstState(ctx context.Context, client RPCClient, thread Thread,
 			"settings": map[string]any{
 				"model":                  request.Preferences.Model,
 				"reasoning_effort":       request.Preferences.ReasoningEffort,
-				"developer_instructions": nil,
+				"developer_instructions": optionalString(request.DeveloperInstructions),
 			},
 		},
+	}
+	if len(request.AdditionalContext) > 0 {
+		params["additionalContext"] = request.AdditionalContext
 	}
 	var response struct {
 		Turn Turn `json:"turn"`
 	}
 	err := client.Call(ctx, "turn/start", params, &response)
 	return SubmitResult{ThreadID: thread.ID, TurnID: response.Turn.ID}, err
+}
+
+func optionalString(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }
 
 func turnStateMismatch(err error) bool {

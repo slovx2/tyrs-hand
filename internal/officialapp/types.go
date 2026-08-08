@@ -14,11 +14,18 @@ type Thread struct {
 }
 
 type Turn struct {
-	ID          string `json:"id"`
-	Status      string `json:"status"`
-	Items       []Item `json:"items"`
-	StartedAt   *int64 `json:"startedAt"`
-	CompletedAt *int64 `json:"completedAt"`
+	ID          string     `json:"id"`
+	Status      string     `json:"status"`
+	Items       []Item     `json:"items"`
+	Error       *TurnError `json:"error"`
+	StartedAt   *int64     `json:"startedAt"`
+	CompletedAt *int64     `json:"completedAt"`
+}
+
+type TurnError struct {
+	Message           string          `json:"message"`
+	CodexErrorInfo    json.RawMessage `json:"codexErrorInfo"`
+	AdditionalDetails *string         `json:"additionalDetails"`
 }
 
 type Item struct {
@@ -39,6 +46,14 @@ func (i *Item) UnmarshalJSON(data []byte) error {
 	*i = Item(value)
 	i.Raw = append(json.RawMessage(nil), data...)
 	return nil
+}
+
+func (i Item) MarshalJSON() ([]byte, error) {
+	if len(i.Raw) > 0 && json.Valid(i.Raw) {
+		return append([]byte(nil), i.Raw...), nil
+	}
+	type alias Item
+	return json.Marshal(alias(i))
 }
 
 func (t Thread) LatestActiveTurn() *Turn {

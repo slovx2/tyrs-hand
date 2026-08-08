@@ -7,6 +7,7 @@ import { ControlApi } from "@/api/control";
 import { materializeUserInput, type LocalAttachment } from "@/app-server/attachments";
 import { latestCompletedPlan, textInput, type TurnPreferences } from "@/app-server/officialClient";
 import { officialClientFor } from "@/app-server/registry";
+import { recoverPendingProfileSubmissions } from "@/app-server/submissionRecovery";
 import { projectForThread, targetKey, type MobileProject, type ThreadRecord } from "@/app-server/types";
 import { loadCachedProjects, loadCachedThreads, replaceCachedThreads,
   saveProjects, saveThreadRecord } from "@/db/cache";
@@ -14,6 +15,8 @@ import { listConnections, setActiveConnection, type Connection } from "@/db/conn
 import { listSSHProjects } from "@/db/sshProjects";
 import { loadThemeMode, saveLastTurnPreferences, saveThemeMode } from "@/db/settings";
 import type { ThemeMode } from "@/theme/tokens";
+import { CoalescingKeyedQueue } from "./coalescingQueue";
+import { mergeOlderPage, mergeTailPage } from "./threadHistory";
 
 type AppState = {
   ready: boolean;
@@ -34,6 +37,8 @@ type AppState = {
   setSelectedProject: (projectId: string | null) => void;
   setThemeMode: (mode: ThemeMode) => void;
   loadThread: (threadId: string) => Promise<void>;
+  refreshThreadTail: (threadId: string) => Promise<void>;
+  loadOlderThread: (threadId: string) => Promise<void>;
   startTask: (projectId: string, text: string, attachments: LocalAttachment[],
     preferences: TurnPreferences, clientMessageId?: string) => Promise<string>;
   submitMessage: (threadId: string, text: string, attachments: LocalAttachment[],
@@ -51,6 +56,10 @@ type StoreGet = () => AppState;
 const refreshPromises = new Map<string, Promise<void>>();
 const subscribedClients = new WeakSet<object>();
 const threadRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const threadLoadPromises = new Map<string, Promise<void>>();
+const threadTailQueue = new CoalescingKeyedQueue();
+const olderThreadPromises = new Map<string, Promise<void>>();
+const hydratedThreads = new Set<string>();
 
 export const useAppStore = create<AppState>((set, get) => ({
   ready: false, refreshing: false, error: null, themeMode: "system", connections: [],
@@ -116,6 +125,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSelectedProject: (selectedProjectId) => set({ selectedProjectId }),
   setThemeMode: (themeMode) => { set({ themeMode }); void saveThemeMode(themeMode); },
   loadThread: async (threadId) => loadOfficialThread(threadId, set, get),
+  refreshThreadTail: async (threadId) => queueThreadTailRefresh(threadId, set, get),
+  loadOlderThread: async (threadId) => loadOlderOfficialThread(threadId, set, get),
 
   startTask: async (projectId, text, attachments, preferences, suppliedId) => {
     const connection = requireConnection(get());
@@ -126,12 +137,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     const input = await materializeUserInput(connection, project, clientMessageId, text, attachments);
     const response = await client.startThread(project.cwd, preferences.model);
     const record: ThreadRecord = { thread: response.thread, archived: false,
-      workspaceId: project.workspaceId, projectId: project.id };
+      workspaceId: project.workspaceId, projectId: project.id,
+      history: { kind: "loaded", olderCursor: null, tailOlderCursor: null,
+        hasLoadedOldest: true } };
     await saveAndSetThread(connection.profileId, record, set, get);
     await client.submitNewThread(response.thread, { clientMessageId, input, preferences,
       projectId: project.id });
     await saveLastTurnPreferences(connection.profileId, preferences).catch(() => undefined);
-    // 首条 userMessage 物化前，官方 thread/read(includeTurns) 会拒绝；item 通知负责触发权威刷新。
+    // 首条 userMessage 物化前，分页读取可能暂不可用；item 通知负责触发权威刷新。
     void get().refresh();
     return response.thread.id;
   },
@@ -145,7 +158,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const client = bindClient(connection, record.workspaceId, set, get);
     await client.connect();
     await client.submit({ threadId, clientMessageId, input, preferences, projectId: project.id });
-    await loadOfficialThread(threadId, set, get);
+    await queueThreadTailRefresh(threadId, set, get).catch(() => undefined);
   },
 
   executePlan: async (threadId, preferences) => {
@@ -159,7 +172,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     await client.submit({ threadId, clientMessageId: clientId,
       input: [textInput(`PLEASE IMPLEMENT THIS PLAN:\n${plan.text}`)],
       preferences: { ...preferences, collaborationMode: "default" }, projectId: record.projectId });
-    await loadOfficialThread(threadId, set, get);
+    await queueThreadTailRefresh(threadId, set, get).catch(() => undefined);
   },
 
   interruptThread: async (threadId) => {
@@ -170,7 +183,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const client = bindClient(connection, record.workspaceId, set, get);
     await client.connect();
     await client.interrupt(threadId, active.id);
-    await loadOfficialThread(threadId, set, get);
+    await queueThreadTailRefresh(threadId, set, get).catch(() => undefined);
   },
 
   answerRequest: (threadId, requestId, result) => {
@@ -200,7 +213,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const client = bindClient(connection, record.workspaceId, set, get);
     await client.connect();
     await client.setThreadName(threadId, name);
-    await loadOfficialThread(threadId, set, get);
+    await queueThreadTailRefresh(threadId, set, get).catch(() => undefined);
   },
 }));
 
@@ -222,6 +235,11 @@ async function refreshProfile(connection: Connection, set: StoreSet, get: StoreG
     return;
   }
   try {
+    const recovery = await recoverPendingProfileSubmissions({
+      profileId: connection.profileId,
+      projects: projectCatalog.projects,
+      clientFor: (workspaceId) => bindClient(connection, workspaceId, set, get),
+    });
     const records: ThreadRecord[] = [];
     const catalogs: Record<string, Model[]> = {};
     for (const workspaceId of uniqueTargets(projectCatalog.projects)) {
@@ -236,17 +254,19 @@ async function refreshProfile(connection: Connection, set: StoreSet, get: StoreG
         const project = projectForThread(projectCatalog.projects.filter((item) =>
           item.workspaceId === workspaceId), thread);
         if (project) records.push({ thread, archived: isArchived, workspaceId,
-          projectId: project.id });
+          projectId: project.id, history: { kind: "summary" } });
       }
     }
     const deduplicated = [...new Map(records.map((record) => [record.thread.id, record])).values()]
       .sort((left, right) => (right.thread.recencyAt ?? right.thread.updatedAt) -
         (left.thread.recencyAt ?? left.thread.updatedAt));
     const existing = get().activeConnection?.profileId === connection.profileId ? get().threads : [];
-    const merged = preserveLoadedTurns(deduplicated, existing);
+    const merged = preserveLoadedHistory(deduplicated, existing);
     await replaceCachedThreads(connection.profileId, merged);
     if (get().activeConnection?.profileId !== connection.profileId) return;
-    set({ threads: merged, modelsByTarget: catalogs, error: null });
+    set({ threads: merged, modelsByTarget: catalogs,
+      error: recovery.errors.length > 0
+        ? `恢复未确认提交失败：${recovery.errors.join("；")}` : null });
   } catch (error) {
     if (get().activeConnection?.profileId === connection.profileId) {
       set({ error: error instanceof Error ? error.message : "刷新失败" });
@@ -254,12 +274,13 @@ async function refreshProfile(connection: Connection, set: StoreSet, get: StoreG
   }
 }
 
-function preserveLoadedTurns(summaries: ThreadRecord[], existing: ThreadRecord[]): ThreadRecord[] {
+function preserveLoadedHistory(summaries: ThreadRecord[], existing: ThreadRecord[]): ThreadRecord[] {
   const byId = new Map(existing.map((record) => [record.thread.id, record]));
   return summaries.map((summary) => {
     const loaded = byId.get(summary.thread.id);
-    if (!loaded || summary.thread.turns.length > 0 || loaded.thread.turns.length === 0) return summary;
-    return { ...summary, thread: { ...summary.thread, turns: loaded.thread.turns } };
+    if (!loaded || loaded.history.kind !== "loaded") return summary;
+    return { ...summary, history: loaded.history,
+      thread: { ...summary.thread, turns: loaded.thread.turns } };
   });
 }
 
@@ -320,12 +341,11 @@ function syncPendingRequests(client: ReturnType<typeof officialClientFor>, threa
 
 function scheduleThreadRefresh(profileId: string, threadId: string, get: StoreGet): void {
   const key = `${profileId}:${threadId}`;
-  const current = threadRefreshTimers.get(key);
-  if (current) clearTimeout(current);
+  if (threadRefreshTimers.has(key)) return;
   threadRefreshTimers.set(key, setTimeout(() => {
     threadRefreshTimers.delete(key);
     if (get().activeConnection?.profileId === profileId) {
-      void get().loadThread(threadId).catch(() => undefined);
+      void get().refreshThreadTail(threadId).catch(() => undefined);
     }
   }, 120));
 }
@@ -341,25 +361,134 @@ function scheduleProfileRefresh(profileId: string, get: StoreGet): void {
 
 async function loadOfficialThread(threadId: string, set: StoreSet, get: StoreGet): Promise<void> {
   const connection = requireConnection(get());
+  const key = threadKey(connection.profileId, threadId);
+  const active = threadLoadPromises.get(key);
+  if (active) return active;
+  const promise = (async () => {
+    const record = requireThread(get(), threadId);
+    const client = bindClient(connection, record.workspaceId, set, get);
+    await client.connect();
+    const resumed = await client.resumeThreadPage(threadId);
+    if (get().activeConnection?.profileId !== connection.profileId) return;
+    const current = requireThread(get(), threadId);
+    const wasHydrated = hydratedThreads.has(key) && current.history.kind === "loaded";
+    const merged = wasHydrated
+      ? mergeTailPage(current.thread.turns, resumed.page.turns)
+      : { turns: resumed.page.turns, overlapped: false };
+    const latest = requireThread(get(), threadId);
+    const preserve = wasHydrated && merged.overlapped && latest.history.kind === "loaded";
+    const turns = merged.turns;
+    const history = preserve && latest.history.kind === "loaded"
+      ? { ...latest.history, tailOlderCursor: resumed.page.nextCursor }
+      : { kind: "loaded" as const,
+        olderCursor: resumed.page.nextCursor,
+        tailOlderCursor: resumed.page.nextCursor,
+        hasLoadedOldest: resumed.page.nextCursor === null };
+    const next: ThreadRecord = { ...latest, thread: { ...resumed.thread, turns }, history };
+    hydratedThreads.add(key);
+    await setAndCacheThread(connection.profileId, next, set, get);
+    syncPendingRequests(client, threadId, set);
+  })().finally(() => {
+    if (threadLoadPromises.get(key) === promise) threadLoadPromises.delete(key);
+  });
+  threadLoadPromises.set(key, promise);
+  return promise;
+}
+
+function queueThreadTailRefresh(threadId: string, set: StoreSet, get: StoreGet): Promise<void> {
+  const connection = requireConnection(get());
+  const key = threadKey(connection.profileId, threadId);
+  return threadTailQueue.run(key, async () => {
+    const loading = threadLoadPromises.get(key);
+    if (loading) await loading;
+    if (get().activeConnection?.profileId !== connection.profileId) return;
+    await refreshOfficialThreadTail(connection, threadId, set, get);
+  });
+}
+
+async function refreshOfficialThreadTail(connection: Connection, threadId: string,
+  set: StoreSet, get: StoreGet): Promise<void> {
   const record = requireThread(get(), threadId);
   const client = bindClient(connection, record.workspaceId, set, get);
   await client.connect();
-  await client.resumeThread(threadId);
-  const thread = await client.readThread(threadId);
+  const [metadata, page] = await Promise.all([
+    client.readThreadMetadata(threadId), client.listTurnPage(threadId, null),
+  ]);
   if (get().activeConnection?.profileId !== connection.profileId) return;
-  const next = { ...record, thread };
-  await saveAndSetThread(connection.profileId, next, set, get);
+  const before = requireThread(get(), threadId);
+  const merged = before.history.kind === "loaded"
+    ? mergeTailPage(before.thread.turns, page.turns)
+    : { turns: page.turns, overlapped: false };
+  const current = requireThread(get(), threadId);
+  const preserve = current.history.kind === "loaded" && merged.overlapped;
+  const turns = merged.turns;
+  const history = preserve && current.history.kind === "loaded"
+    ? { ...current.history, tailOlderCursor: page.nextCursor }
+    : { kind: "loaded" as const,
+      olderCursor: page.nextCursor,
+      tailOlderCursor: page.nextCursor,
+      hasLoadedOldest: page.nextCursor === null };
+  hydratedThreads.add(threadKey(connection.profileId, threadId));
+  await setAndCacheThread(connection.profileId,
+    { ...current, thread: { ...metadata, turns }, history }, set, get);
   syncPendingRequests(client, threadId, set);
 }
 
-async function saveAndSetThread(profileId: string, record: ThreadRecord, set: StoreSet,
+async function loadOlderOfficialThread(threadId: string, set: StoreSet,
   get: StoreGet): Promise<void> {
+  const connection = requireConnection(get());
+  const record = requireThread(get(), threadId);
+  if (record.history.kind !== "loaded" || !record.history.olderCursor) return;
+  const key = threadKey(connection.profileId, threadId);
+  const active = olderThreadPromises.get(key);
+  if (active) return active;
+  const cursor = record.history.olderCursor;
+  const promise = (async () => {
+    const client = bindClient(connection, record.workspaceId, set, get);
+    await client.connect();
+    const page = await client.listTurnPage(threadId, cursor);
+    if (get().activeConnection?.profileId !== connection.profileId) return;
+    const current = requireThread(get(), threadId);
+    if (current.history.kind !== "loaded") return;
+    const merged = mergeOlderPage(current.thread.turns, current.history.olderCursor, cursor, page);
+    if (!merged) return;
+    const next: ThreadRecord = {
+      ...current,
+      thread: { ...current.thread, turns: merged.turns },
+      history: { ...current.history, olderCursor: merged.nextCursor,
+        hasLoadedOldest: merged.hasLoadedOldest },
+    };
+    setThreadRecord(connection.profileId, next, set, get);
+  })().finally(() => {
+    if (olderThreadPromises.get(key) === promise) olderThreadPromises.delete(key);
+  });
+  olderThreadPromises.set(key, promise);
+  return promise;
+}
+
+async function setAndCacheThread(profileId: string, record: ThreadRecord, set: StoreSet,
+  get: StoreGet): Promise<void> {
+  if (!setThreadRecord(profileId, record, set, get)) return;
   await saveThreadRecord(profileId, record);
-  if (get().activeConnection?.profileId !== profileId) return;
+}
+
+function setThreadRecord(profileId: string, record: ThreadRecord, set: StoreSet,
+  get: StoreGet): boolean {
+  if (get().activeConnection?.profileId !== profileId) return false;
   set((state) => ({ threads: [record, ...state.threads.filter((item) =>
     item.thread.id !== record.thread.id)].sort((left, right) =>
     (right.thread.recencyAt ?? right.thread.updatedAt) -
       (left.thread.recencyAt ?? left.thread.updatedAt)) }));
+  return true;
+}
+
+async function saveAndSetThread(profileId: string, record: ThreadRecord, set: StoreSet,
+  get: StoreGet): Promise<void> {
+  await setAndCacheThread(profileId, record, set, get);
+}
+
+function threadKey(profileId: string, threadId: string): string {
+  return `${profileId}:${threadId}`;
 }
 
 function requireConnection(state: AppState): Connection {

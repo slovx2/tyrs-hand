@@ -31,6 +31,7 @@ export const previewSessionIds = {
   interactive: "30000000-0000-4000-8000-000000000003",
   failed: "30000000-0000-4000-8000-000000000005",
   markdown: "30000000-0000-4000-8000-000000000009",
+  long: "30000000-0000-4000-8000-000000000010",
   archived: "30000000-0000-4000-8000-000000000007",
 };
 
@@ -60,6 +61,20 @@ export function createPreviewSeed(): PreviewSeed {
       user("user-markdown", "preview-markdown", "展示完整的官方 Item"),
       agent("agent-markdown", "## 验证结果\n\n官方 `Thread -> Turn -> Item` 已成为唯一顺序来源。\n\n- 列表稳定\n- 计划可执行", "final_answer"),
     ])], now - 40);
+  const longTurns = Array.from({ length: 32 }, (_, index) => {
+    const number = index + 1;
+    const items: Turn["items"] = [
+      user(`user-long-${number}`, `preview-long-${number}`, `长会话第 ${number} 轮`),
+      agent(`agent-long-${number}`, number === 32
+        ? "## 最新结果\n\nLONG_CONVERSATION_LATEST\n\n这是分页首屏应该直接展示的最后一轮。"
+        : `## 第 ${number} 轮结果\n\n${"用于验证 Markdown 高度变化与稳定锚点。\n\n".repeat(3)}`,
+      "final_answer"),
+    ];
+    if (number === 16) items.splice(1, 0, command("command-long-16"));
+    return turn(`turn-long-${String(number).padStart(2, "0")}`, "completed", items);
+  });
+  const long = thread(previewSessionIds.long, "/preview/workspaces/tyrs-hand",
+    "长会话：32 个 Turn 分页与锚点", longTurns, now - 50);
   const archived = thread(previewSessionIds.archived, "/preview/workspaces/tyrs-hand",
     "已归档：旧版通知链路", [turn("turn-archived", "completed", [
       user("user-archived", "preview-archived", "归档这个历史会话"),
@@ -77,7 +92,7 @@ export function createPreviewSeed(): PreviewSeed {
       [primaryPreviewServerId]: { bootstrap: bootstrap(primaryPreviewServerId,
         primaryWorkspaceId, primaryProjectId, "Tyrs Hand", "tyrs-hand",
         "/preview/workspaces/tyrs-hand"),
-      threads: [running, planned, interactive, failed, markdown, archived],
+      threads: [running, planned, interactive, failed, markdown, long, archived],
       archivedThreadIds: [archived.id], requests: [{ id: "preview-question",
         method: "item/tool/requestUserInput", params: { threadId: interactive.id,
           turnId: "turn-interactive", itemId: "question-preview", isBlocking: true,
@@ -139,4 +154,13 @@ function user(id: string, clientId: string, text: string): Turn["items"][number]
 function agent(id: string, text: string, phase: "commentary" | "final_answer"):
   Turn["items"][number] {
   return { type: "agentMessage", id, text, phase, memoryCitation: null };
+}
+
+function command(id: string): Turn["items"][number] {
+  return { type: "commandExecution", id, pluginId: null, scriptPath: null,
+    command: "pnpm test -- --runInBand", cwd: "/preview/workspaces/tyrs-hand",
+    processId: null, source: "agent", status: "completed", commandActions: [],
+    aggregatedOutput: Array.from({ length: 24 }, (_, index) =>
+      `test-${String(index + 1).padStart(2, "0")} passed`).join("\n"),
+    exitCode: 0, durationMs: 1234 };
 }

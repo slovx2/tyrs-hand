@@ -17,6 +17,8 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/database"
 	"github.com/slovx2/tyrs-hand/internal/officialapp"
+	"github.com/slovx2/tyrs-hand/internal/participantidentity"
+	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
@@ -261,11 +263,18 @@ func TestOfficialLifecycleAndLateDesktopBinding(t *testing.T) {
 		VALUES($1,$2,$3) RETURNING id`, seed.workspaceID, seed.workspaceProjectID,
 		desktopThreadID).Scan(&bindingID))
 	clientID := "desktop-client-message"
+	failureDetails := "network unavailable"
 	thread := officialapp.Thread{ID: desktopThreadID, Turns: []officialapp.Turn{{
-		ID: "turn-late", Status: "completed", Items: []officialapp.Item{
+		ID: "turn-late", Status: "failed", Items: []officialapp.Item{
 			{Type: "userMessage", ID: "user-late", ClientID: &clientID, Text: "hello"},
 			{Type: "agentMessage", ID: "agent-late", Text: "world"},
+			{Type: "imageGeneration", ID: "image-late", Raw: json.RawMessage(
+				`{"type":"imageGeneration","id":"image-late","status":"generating",` +
+					`"revisedPrompt":"diagram","result":"iVBORw0KGgo="}`)},
 		},
+		Error: &officialapp.TurnError{Message: "request failed",
+			CodexErrorInfo:    json.RawMessage(`{"kind":"network"}`),
+			AdditionalDetails: &failureDetails},
 	}}}
 	require.NoError(t, ProjectOfficialThread(ctx, db, seed.workspaceID, thread))
 	postKey := "official-thread-post:" + bindingID.String()
@@ -286,7 +295,45 @@ func TestOfficialLifecycleAndLateDesktopBinding(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_projections
 		WHERE projection_key LIKE $1`, "official:"+lateConversationID.String()+":%").
 		Scan(&projectionCount))
-	require.Equal(t, 1, projectionCount)
+	require.Equal(t, 4, projectionCount,
+		"外部输入、回复、生成图片和 Turn 错误都必须进入 Discord 投影")
+	rows, err := db.QueryContext(ctx, `SELECT projection.desired_payload,outbox.payload,
+		COALESCE(outbox.predecessor_operation_key,''),outbox.operation_key
+		FROM discord_projections projection JOIN integration_outbox outbox
+		  ON outbox.operation_key='projection:'||projection.projection_key
+		WHERE projection.projection_key LIKE $1 ORDER BY projection.projection_key`,
+		"official:"+lateConversationID.String()+":%")
+	require.NoError(t, err)
+	var previousKey string
+	var generatedFiles, errorCards int
+	for rows.Next() {
+		var desiredRaw, outboxRaw []byte
+		var predecessor, operationKey string
+		require.NoError(t, rows.Scan(&desiredRaw, &outboxRaw, &predecessor, &operationKey))
+		var desired, payload struct {
+			Card  ComponentCardPayload `json:"card"`
+			Files []MessageFilePayload `json:"files"`
+		}
+		require.NoError(t, json.Unmarshal(desiredRaw, &desired))
+		require.NoError(t, json.Unmarshal(outboxRaw, &payload))
+		require.Equal(t, desired.Card, payload.Card)
+		require.Equal(t, desired.Files, payload.Files)
+		require.Equal(t, previousKey, predecessor,
+			"Outbox 必须严格按官方 Turn/Item 顺序串行")
+		require.NoError(t, validateOfficialCard(payload.Card))
+		if len(payload.Files) > 0 {
+			files, decodeErr := decodeMessageFiles(payload.Files)
+			require.NoError(t, decodeErr)
+			generatedFiles += len(files)
+		}
+		if payload.Card.Error != nil {
+			errorCards++
+		}
+		previousKey = operationKey
+	}
+	require.NoError(t, rows.Close())
+	require.Equal(t, 1, generatedFiles)
+	require.Equal(t, 1, errorCards)
 	require.NoError(t, ReplayOfficialThreadProjection(ctx, db, bindingID))
 
 	tx, err = db.BeginTx(ctx, nil)
@@ -323,6 +370,19 @@ func TestExecuteOfficialPlanUsesLatestCompletedItemAndIsIdempotent(t *testing.T)
 		ConfigurationConfirmed: true,
 	})
 	require.NoError(t, err)
+	var messageContextRaw []byte
+	var messageDeveloperInstructions string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT additional_context,
+		developer_instructions FROM official_turn_submissions
+		WHERE conversation_id=$1 AND source_type='discord_message'`, conversationID).
+		Scan(&messageContextRaw, &messageDeveloperInstructions))
+	var messageContext map[string]ports.AdditionalContextEntry
+	require.NoError(t, json.Unmarshal(messageContextRaw, &messageContext))
+	require.Equal(t, participantidentity.AdditionalContext(participantidentity.Participant{
+		ID: participantidentity.ID(testGuildID, "1001"), DisplayName: "Alice",
+	}), messageContext)
+	require.Equal(t, participantidentity.DeveloperInstructions,
+		messageDeveloperInstructions)
 	const officialThreadID = "thread-official-plan"
 	_, err = db.ExecContext(ctx, `INSERT INTO official_thread_bindings(
 		workspace_id,conversation_id,workspace_project_id,thread_id)
@@ -415,16 +475,26 @@ func TestExecuteOfficialPlanUsesLatestCompletedItemAndIsIdempotent(t *testing.T)
 	require.True(t, repeated.AlreadyExecuted)
 
 	var sourceType, clientMessageID, instruction, displayInstruction, mode, actionStatus string
+	var planContextRaw []byte
+	var planDeveloperInstructions string
 	var submissionCount int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT source_type,client_user_message_id,
-		instruction,display_instruction,preferences->>'collaborationMode'
+		instruction,display_instruction,preferences->>'collaborationMode',
+		additional_context,developer_instructions
 		FROM official_turn_submissions WHERE plan_action_id=$1`, actionID).
-		Scan(&sourceType, &clientMessageID, &instruction, &displayInstruction, &mode))
+		Scan(&sourceType, &clientMessageID, &instruction, &displayInstruction, &mode,
+			&planContextRaw, &planDeveloperInstructions))
 	require.Equal(t, "discord_plan", sourceType)
 	require.Equal(t, "discord-plan:"+actionID.String(), clientMessageID)
 	require.Equal(t, codexcontrol.PlanExecutionInstruction(latestPlan), instruction)
 	require.Equal(t, codexcontrol.PlanExecutionDisplayText, displayInstruction)
 	require.Equal(t, "default", mode)
+	var planContext map[string]ports.AdditionalContextEntry
+	require.NoError(t, json.Unmarshal(planContextRaw, &planContext))
+	require.Equal(t, participantidentity.AdditionalContext(participantidentity.Participant{
+		ID: participantidentity.ID(testGuildID, "1001"), DisplayName: "Alice",
+	}), planContext)
+	require.Equal(t, participantidentity.DeveloperInstructions, planDeveloperInstructions)
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM official_plan_actions
 		WHERE id=$1`, actionID).Scan(&actionStatus))
 	require.Equal(t, "executed", actionStatus)

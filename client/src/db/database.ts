@@ -1,6 +1,10 @@
 import * as SQLite from "expo-sqlite";
 
-const DATABASE_VERSION = 5;
+export const DATABASE_VERSION = 6;
+
+export function needsThreadHistoryCacheReset(currentVersion: number): boolean {
+  return currentVersion >= 4 && currentVersion < DATABASE_VERSION;
+}
 
 let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
 let writeQueue: Promise<void> = Promise.resolve();
@@ -140,7 +144,8 @@ async function openDatabase(): Promise<SQLite.SQLiteDatabase> {
     await migrateToOfficialProtocol(database);
   } else {
     await database.execAsync(schema);
-    if (current < DATABASE_VERSION) await migrateSSHProjects(database);
+    if (current < 5) await migrateSSHProjects(database);
+    if (needsThreadHistoryCacheReset(current)) await migrateThreadHistoryCache(database);
   }
   return database;
 }
@@ -227,12 +232,20 @@ async function migrateSSHProjects(database: SQLite.SQLiteDatabase): Promise<void
         ALTER TABLE connection_profiles_v5 RENAME TO connection_profiles;
         CREATE UNIQUE INDEX connection_profiles_one_active
           ON connection_profiles(active) WHERE active=1;
-        PRAGMA user_version = ${DATABASE_VERSION};
+        PRAGMA user_version = 5;
       `);
     });
   } finally {
     await database.execAsync("PRAGMA foreign_keys = ON");
   }
+}
+
+async function migrateThreadHistoryCache(database: SQLite.SQLiteDatabase): Promise<void> {
+  await database.withExclusiveTransactionAsync(async (transaction) => {
+    // Thread 历史可以从官方 App Server 重建；清空旧全量缓存，避免保留两套历史形状。
+    await transaction.runAsync("DELETE FROM threads");
+    await transaction.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
+  });
 }
 
 export async function clearProfileCache(profileId: string): Promise<void> {

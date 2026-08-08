@@ -1,17 +1,65 @@
-import { memo, useMemo } from "react";
+import { memo, type ReactNode, useMemo } from "react";
 import { Platform, StyleSheet, Text } from "react-native";
-import Markdown, { type RenderFunction, type RenderRules } from "react-native-markdown-display";
+import Markdown, { type ASTNode, MarkdownIt, parser, type RenderFunction,
+  type RenderRules } from "react-native-markdown-display";
 
 import { useTheme } from "@/theme/ThemeProvider";
 import { CachedMessageImage } from "@/features/images/CachedMessageImage";
 
 type MarkdownContentProps = {
   children: string;
+  cacheKey: string;
   compact?: boolean;
   imageTestPrefix?: string;
 };
 
 const monoFont = Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" });
+const markdownIt = new MarkdownIt({ typographer: true });
+const MAX_AST_CACHE_ENTRIES = 48;
+const MAX_AST_CACHE_SOURCE_CHARACTERS = 160_000;
+const MAX_AST_ENTRY_SOURCE_CHARACTERS = 32_000;
+
+type MarkdownAstCacheEntry = {
+  source: string;
+  ast: ASTNode[];
+};
+
+const markdownAstCache = new Map<string, MarkdownAstCacheEntry>();
+let markdownAstCacheSourceCharacters = 0;
+
+const identityRenderer = ((nodes: ASTNode[]) => nodes) as unknown as Parameters<typeof parser>[1];
+
+function parseMarkdownAst(source: string): ASTNode[] {
+  return parser(source, identityRenderer, markdownIt) as ASTNode[];
+}
+
+function cachedMarkdownAst(cacheKey: string, source: string): ASTNode[] {
+  const cached = markdownAstCache.get(cacheKey);
+  if (cached?.source === source) {
+    markdownAstCache.delete(cacheKey);
+    markdownAstCache.set(cacheKey, cached);
+    return cached.ast;
+  }
+  if (cached) {
+    markdownAstCache.delete(cacheKey);
+    markdownAstCacheSourceCharacters -= cached.source.length;
+  }
+
+  const ast = parseMarkdownAst(source);
+  if (source.length > MAX_AST_ENTRY_SOURCE_CHARACTERS) return ast;
+
+  markdownAstCache.set(cacheKey, { source, ast });
+  markdownAstCacheSourceCharacters += source.length;
+  while (markdownAstCache.size > MAX_AST_CACHE_ENTRIES ||
+    markdownAstCacheSourceCharacters > MAX_AST_CACHE_SOURCE_CHARACTERS) {
+    const oldestKey = markdownAstCache.keys().next().value as string | undefined;
+    if (oldestKey === undefined) break;
+    const oldest = markdownAstCache.get(oldestKey);
+    markdownAstCache.delete(oldestKey);
+    markdownAstCacheSourceCharacters -= oldest?.source.length ?? 0;
+  }
+  return ast;
+}
 
 const selectableTextGroup: RenderFunction = (node, children, _parents, styles) =>
   <Text key={node.key} selectable style={styles.textgroup}>{children}</Text>;
@@ -27,9 +75,10 @@ const selectableRules: RenderRules = {
   fence: selectableCode,
 };
 
-export const MarkdownContent = memo(function MarkdownContent({ children, compact = false,
+export const MarkdownContent = memo(function MarkdownContent({ children, cacheKey, compact = false,
   imageTestPrefix = "markdown:image" }: MarkdownContentProps) {
   const theme = useTheme();
+  const ast = useMemo(() => cachedMarkdownAst(cacheKey, children), [cacheKey, children]);
   const blockGap = compact ? 5 : 8;
   const markdownStyle = useMemo(() => StyleSheet.create({
     body: { width: "100%" },
@@ -110,5 +159,7 @@ export const MarkdownContent = memo(function MarkdownContent({ children, compact
         testID={`${imageTestPrefix}:${node.key}`} />;
     },
   }), [imageTestPrefix]);
-  return <Markdown mergeStyle={false} rules={rules} style={markdownStyle}>{children}</Markdown>;
+  return <Markdown markdownit={markdownIt} mergeStyle={false} rules={rules} style={markdownStyle}>
+    {ast as unknown as ReactNode}
+  </Markdown>;
 });

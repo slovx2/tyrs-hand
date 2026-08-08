@@ -19,7 +19,17 @@ export type ThreadRecord = {
   archived: boolean;
   workspaceId: string | null;
   projectId: string | null;
+  history: ThreadHistoryState;
 };
+
+export type ThreadHistoryState =
+  | { kind: "summary" }
+  | {
+    kind: "loaded";
+    olderCursor: string | null;
+    tailOlderCursor: string | null;
+    hasLoadedOldest: boolean;
+  };
 
 export type TargetCatalog = {
   workspaceId: string | null;

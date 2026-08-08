@@ -4,8 +4,6 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     clearState: true
 - assertVisible:
     id: "projects:list"
-- assertVisible:
-    text: "Tyrs Hand 移动客户端"
 - tapOn:
     id: "project:row:0"
 - assertVisible:
@@ -34,16 +32,24 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     id: "session:back"
 
 # 官方运行中 Turn
+- scrollUntilVisible:
+    element:
+      id: "session:30000000-0000-4000-8000-000000000001"
+    direction: DOWN
 - tapOn:
-    id: "session:row:0"
+    id: "session:30000000-0000-4000-8000-000000000001"
 - assertVisible:
     id: "session:stop"
 - tapOn:
     id: "session:back"
 
 # 最新完成 Turn 中的 Plan Item
+- scrollUntilVisible:
+    element:
+      id: "session:30000000-0000-4000-8000-000000000002"
+    direction: DOWN
 - tapOn:
-    id: "session:row:1"
+    id: "session:30000000-0000-4000-8000-000000000002"
 - scrollUntilVisible:
     element:
       id: "plan:execute"
@@ -56,10 +62,10 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 # 官方 Server Request
 - scrollUntilVisible:
     element:
-      id: "session:row:2"
+      id: "session:30000000-0000-4000-8000-000000000003"
     direction: DOWN
 - tapOn:
-    id: "session:row:2"
+    id: "session:30000000-0000-4000-8000-000000000003"
 - scrollUntilVisible:
     element:
       id: "interactive:option:0"
@@ -72,10 +78,10 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 # 官方失败 Turn
 - scrollUntilVisible:
     element:
-      id: "session:row:3"
+      id: "session:30000000-0000-4000-8000-000000000005"
     direction: DOWN
 - tapOn:
-    id: "session:row:3"
+    id: "session:30000000-0000-4000-8000-000000000005"
 - assertVisible:
     id: "turn:error"
 - tapOn:
@@ -84,14 +90,37 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 # 官方 Agent Item 与 Markdown
 - scrollUntilVisible:
     element:
-      id: "session:row:4"
+      id: "session:30000000-0000-4000-8000-000000000009"
     direction: DOWN
 - tapOn:
-    id: "session:row:4"
+    id: "session:30000000-0000-4000-8000-000000000009"
 - assertVisible:
     id: "message:role:agent"
 - assertVisible:
     text: ".*唯一顺序来源.*"
+- tapOn:
+    id: "session:back"
+
+# 32 个 Turn 的官方分页：首屏在最新，上翻按页加载，回到最新不依赖全量读取
+- scrollUntilVisible:
+    element:
+      id: "session:30000000-0000-4000-8000-000000000010"
+    direction: DOWN
+- tapOn:
+    id: "session:30000000-0000-4000-8000-000000000010"
+- assertVisible:
+    text: "LONG_CONVERSATION_LATEST"
+- scrollUntilVisible:
+    element:
+      id: "item:commandExecution:command-long-16"
+    direction: UP
+    timeout: 20000
+- assertVisible:
+    id: "chat:scroll-to-latest"
+- tapOn:
+    id: "chat:scroll-to-latest"
+- assertVisible:
+    text: "LONG_CONVERSATION_LATEST"
 - tapOn:
     id: "session:back"
 
@@ -100,6 +129,8 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     id: "sessions:filter:archived"
 - assertVisible:
     id: "session:row:0"
+- tapOn:
+    id: "project:back"
 - tapOn:
     id: "tab:connections"
 - assertVisible:

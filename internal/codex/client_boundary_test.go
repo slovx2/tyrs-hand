@@ -60,8 +60,14 @@ func TestClientEnforcesManagedAppServerConfiguration(t *testing.T) {
 }
 
 func TestManagedAppServerArgumentsSetEnvironmentProviderBaseline(t *testing.T) {
+	homeArguments := HomeAppServerArguments("unix:///tmp/codex.sock")
+	require.Contains(t, homeArguments,
+		`shell_environment_policy.exclude=["TYRS_BROWSER_MCP_WORKER_TOKEN","TYRS_BROWSER_MCP_DESKTOP_TOKEN"]`)
+	require.Contains(t, homeArguments, `shell_environment_policy.inherit="core"`)
+	require.Contains(t, homeArguments, "shell_environment_policy.ignore_default_excludes=false")
+	require.Contains(t, homeArguments, "allow_login_shell=false")
 	require.Equal(t, []string{"app-server", "--listen", "unix:///tmp/codex.sock"},
-		HomeAppServerArguments("unix:///tmp/codex.sock"))
+		homeArguments[len(homeArguments)-3:])
 	require.EqualError(t, &RPCError{Code: -32000, Message: "failed"}, "-32000 failed")
 	arguments := ManagedAppServerArguments("unix:///run/tyrs-hand/app-server.sock",
 		ManagedAppServerConfig{ModelProvider: ManagedModelProvider{

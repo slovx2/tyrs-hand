@@ -497,28 +497,35 @@ func (s *ConversationService) enqueueMessage(ctx context.Context, tx *sql.Tx,
 func (s *ConversationService) enqueueMessageWithDisplay(ctx context.Context, tx *sql.Tx,
 	conversationID uuid.UUID, messageID, displayInstruction string,
 ) error {
-	var workspaceID uuid.UUID
+	var workspaceID, participantID uuid.UUID
 	var body, model, effort, tier, mode string
-	err := tx.QueryRowContext(ctx, `SELECT project.workspace_id,m.body,
+	var displayName string
+	err := tx.QueryRowContext(ctx, `SELECT project.workspace_id,m.participant_id,
+		COALESCE(NULLIF(m.display_name,''),m.username),m.body,
 		COALESCE(c.model,''),COALESCE(c.reasoning_effort,''),
 		COALESCE(c.service_tier,''),c.collaboration_mode
 		FROM discord_conversations c
 		JOIN discord_input_messages m ON m.conversation_id=c.id
 		JOIN workspace_projects project ON project.id=c.workspace_project_id
 		WHERE c.id=$1 AND m.message_id=$2`, conversationID, messageID).Scan(
-		&workspaceID, &body, &model, &effort, &tier, &mode)
+		&workspaceID, &participantID, &displayName, &body, &model, &effort, &tier, &mode)
 	if err != nil {
 		return err
 	}
 	preferences := officialapp.Preferences{Model: model, CollaborationMode: mode}
 	preferences.ReasoningEffort = optionalPreference(effort)
 	preferences.ServiceTier = optionalPreference(tier)
+	additionalContext := participantidentity.AdditionalContext(participantidentity.Participant{
+		ID: participantID, DisplayName: displayName,
+	})
 	submissionID, inserted, err := officialapp.EnqueueTx(ctx, tx, officialapp.EnqueueRequest{
 		WorkspaceID: workspaceID, ConversationID: conversationID,
 		SourceType: "discord_message", SourceOrder: messageID,
 		DiscordMessageID: messageID, ClientMessageID: "discord:" + messageID,
 		Instruction: body, DisplayInstruction: displayInstruction,
 		Input: []officialapp.UserInput{officialapp.TextInput(body)}, Preferences: preferences,
+		AdditionalContext:     additionalContext,
+		DeveloperInstructions: participantidentity.DeveloperInstructions,
 	})
 	if err != nil || !inserted {
 		return err

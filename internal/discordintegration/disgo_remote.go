@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -388,11 +389,15 @@ func stripDiscordComponentIDs(value any) {
 	}
 }
 
-func discordMessageCreate(content string, card *ComponentCardPayload, nonce string,
-	allowedMentions *discord.AllowedMentions,
+func discordMessageCreate(content string, card *ComponentCardPayload, files []MessageFilePayload,
+	nonce string, allowedMentions *discord.AllowedMentions,
 ) (discord.MessageCreate, error) {
+	discordFiles, err := decodeMessageFiles(files)
+	if err != nil {
+		return discord.MessageCreate{}, err
+	}
 	create := discord.MessageCreate{Content: content, Nonce: nonce,
-		EnforceNonce: nonce != "", AllowedMentions: allowedMentions}
+		EnforceNonce: nonce != "", AllowedMentions: allowedMentions, Files: discordFiles}
 	if card == nil {
 		return create, nil
 	}
@@ -403,7 +408,37 @@ func discordMessageCreate(content string, card *ComponentCardPayload, nonce stri
 	create = discord.NewMessageCreateV2(components...)
 	create.Nonce, create.EnforceNonce = nonce, nonce != ""
 	create.AllowedMentions = allowedMentions
+	create.Files = discordFiles
 	return create, nil
+}
+
+func decodeMessageFiles(files []MessageFilePayload) ([]*discord.File, error) {
+	if len(files) > DefaultMaxAttachments {
+		return nil, fmt.Errorf("discord 消息附件不能超过 %d 个", DefaultMaxAttachments)
+	}
+	result := make([]*discord.File, 0, len(files))
+	seen := make(map[string]bool, len(files))
+	for _, file := range files {
+		if file.Filename == "" || filepath.Base(file.Filename) != file.Filename ||
+			strings.ContainsAny(file.Filename, "/\\") || seen[file.Filename] {
+			return nil, errors.New("discord 消息附件文件名无效或重复")
+		}
+		seen[file.Filename] = true
+		if int64(base64.StdEncoding.DecodedLen(len(file.Base64))) > DefaultMaxFileBytes {
+			return nil, errors.New("discord 消息附件超过 25 MiB")
+		}
+		data, err := base64.StdEncoding.Strict().DecodeString(file.Base64)
+		if err != nil || int64(len(data)) > DefaultMaxFileBytes {
+			return nil, errors.New("discord 消息附件 Base64 无效或超过 25 MiB")
+		}
+		mediaType, _ := generatedImageMediaType(data)
+		if mediaType == "" || mediaType != file.MediaType {
+			return nil, errors.New("discord 消息附件类型无效")
+		}
+		result = append(result, discord.NewFile(file.Filename,
+			cardText(file.Description, 1000), bytes.NewReader(data)))
+	}
+	return result, nil
 }
 
 func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessage, error) {
@@ -426,6 +461,7 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 		ConversationID   string                `json:"conversationId"`
 		MentionUserIDs   []string              `json:"mentionUserIds"`
 		Card             *ComponentCardPayload `json:"card"`
+		Files            []MessageFilePayload  `json:"files"`
 	}
 	if err := json.Unmarshal(item.Payload, &payload); err != nil {
 		return nil, err
@@ -447,7 +483,7 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 		if err != nil {
 			return nil, err
 		}
-		create, err := discordMessageCreate(payload.Content, payload.Card, item.Nonce,
+		create, err := discordMessageCreate(payload.Content, payload.Card, payload.Files, item.Nonce,
 			allowedMentions)
 		if err != nil {
 			return nil, err
@@ -465,6 +501,11 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 		emptyComponents := []discord.LayoutComponent{}
 		update := discord.MessageUpdate{Content: &payload.Content, Components: &emptyComponents,
 			AllowedMentions: allowedMentions}
+		files, fileErr := decodeMessageFiles(payload.Files)
+		if fileErr != nil {
+			return nil, fileErr
+		}
+		update.Files = files
 		if payload.Card != nil {
 			components, componentErr := discordCardComponents(*payload.Card)
 			if componentErr != nil {
@@ -480,7 +521,7 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 		if discordMaximumEditsReached(err) {
 			nonce := discordNonce(fmt.Sprintf("replacement:%s:%d", item.OperationKey,
 				item.RequestRevision))
-			create, createErr := discordMessageCreate(payload.Content, payload.Card, nonce,
+			create, createErr := discordMessageCreate(payload.Content, payload.Card, payload.Files, nonce,
 				allowedMentions)
 			if createErr != nil {
 				return nil, createErr

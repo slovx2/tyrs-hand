@@ -1,5 +1,6 @@
 import type { LocalAttachment } from "@/app-server/attachments";
 import type { TurnPreferences } from "@/app-server/officialClient";
+import { isPreviewMode } from "@/preview/config";
 import { getDatabase, runDatabaseWrite } from "./database";
 
 export type Draft = {
@@ -9,6 +10,7 @@ export type Draft = {
 };
 
 export async function loadDraft(profileId: string, scope: string): Promise<Draft | null> {
+  if (isPreviewMode) return null;
   const database = await getDatabase();
   const row = await database.getFirstAsync<{
     text: string;
@@ -28,6 +30,7 @@ export async function loadDraft(profileId: string, scope: string): Promise<Draft
 }
 
 export async function saveDraft(profileId: string, scope: string, draft: Draft): Promise<void> {
+  if (isPreviewMode) return;
   if (!draft.text && draft.attachments.length === 0 && !draft.settings) {
     await clearDraft(profileId, scope);
     return;
@@ -42,6 +45,7 @@ export async function saveDraft(profileId: string, scope: string, draft: Draft):
 }
 
 export async function clearDraft(profileId: string, scope: string): Promise<void> {
+  if (isPreviewMode) return;
   await runDatabaseWrite((database) => database.runAsync(
     "DELETE FROM drafts WHERE profile_id=? AND scope=?", profileId, scope));
 }

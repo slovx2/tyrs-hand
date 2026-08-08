@@ -74,7 +74,7 @@ func (s *ConversationService) HandleMessageEdit(ctx context.Context, guildID, th
 		}
 		return MessageEditIgnored, nil
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT message_id,display_name,username,body,
+	rows, err := tx.QueryContext(ctx, `SELECT message_id,participant_id,display_name,username,body,
 		received_at FROM discord_input_messages WHERE official_submission_id=$1
 		ORDER BY received_at,message_id`, submissionID.UUID)
 	if err != nil {
@@ -83,7 +83,7 @@ func (s *ConversationService) HandleMessageEdit(ctx context.Context, guildID, th
 	messages := make([]pendingDiscussionMessage, 0)
 	for rows.Next() {
 		var message pendingDiscussionMessage
-		if err = rows.Scan(&message.ID, &message.DisplayName, &message.Username,
+		if err = rows.Scan(&message.ID, &message.ParticipantID, &message.DisplayName, &message.Username,
 			&message.Body, &message.ReceivedAt); err != nil {
 			_ = rows.Close()
 			return MessageEditIgnored, err

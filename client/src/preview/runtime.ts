@@ -112,10 +112,24 @@ class PreviewSocket implements AppServerSocket {
         (!cwd || thread.cwd === cwd)).map((thread) => ({ ...thread, turns: [] }));
       this.emit({ id, result: { data, nextCursor: null } }); return;
     }
-    if (method === "thread/read" || method === "thread/resume") {
+    if (method === "thread/read") {
       const thread = requireThread(value, String(params.threadId));
-      this.emit({ id, result: { thread: structuredClone(thread) } });
-      if (method === "thread/resume") setTimeout(() => this.emitPending(thread.id), 0);
+      this.emit({ id, result: { thread: threadResult(thread, params.includeTurns === true) } });
+      return;
+    }
+    if (method === "thread/resume") {
+      const thread = requireThread(value, String(params.threadId));
+      const pageParams = params.initialTurnsPage as Record<string, unknown> | null | undefined;
+      this.emit({ id, result: {
+        thread: threadResult(thread, params.excludeTurns !== true),
+        initialTurnsPage: pageParams ? turnsPage(thread, pageParams) : null,
+      } });
+      setTimeout(() => this.emitPending(thread.id), 0);
+      return;
+    }
+    if (method === "thread/turns/list") {
+      const thread = requireThread(value, String(params.threadId));
+      this.emit({ id, result: turnsPage(thread, params) });
       return;
     }
     if (method === "thread/start") {
@@ -214,6 +228,33 @@ function requireThread(value: PreviewControlSeed, id: string): Thread {
 function requestThreadId(request: ServerRequest): string | null {
   const params = request.params as { threadId?: unknown };
   return typeof params.threadId === "string" ? params.threadId : null;
+}
+
+function threadResult(thread: Thread, includeTurns: boolean): Thread {
+  return structuredClone(includeTurns ? thread : { ...thread, turns: [] });
+}
+
+function turnsPage(thread: Thread, params: Record<string, unknown>): {
+  data: Turn[];
+  nextCursor: string | null;
+  backwardsCursor: string | null;
+} {
+  const direction = params.sortDirection === "asc" ? "asc" : "desc";
+  const limit = typeof params.limit === "number" && params.limit > 0
+    ? Math.floor(params.limit) : 20;
+  const cursor = typeof params.cursor === "string" ? params.cursor : null;
+  const match = cursor?.match(/^preview-turns:(asc|desc):(\d+)$/);
+  const offset = match?.[1] === direction ? Number(match[2]) : 0;
+  const ordered = direction === "desc" ? [...thread.turns].reverse() : [...thread.turns];
+  const data = ordered.slice(offset, offset + limit);
+  const nextOffset = offset + data.length;
+  return {
+    data: structuredClone(data),
+    nextCursor: nextOffset < ordered.length
+      ? `preview-turns:${direction}:${nextOffset}` : null,
+    backwardsCursor: data.length > 0
+      ? `preview-turns:${direction === "desc" ? "asc" : "desc"}:0` : null,
+  };
 }
 
 function newThread(cwd: string): Thread {

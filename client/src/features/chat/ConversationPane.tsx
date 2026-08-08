@@ -2,8 +2,10 @@ import type { Model } from "@codex-app-server/v2/Model";
 import type { ServerRequest } from "@codex-app-server/ServerRequest";
 import type { ThreadItem } from "@codex-app-server/v2/ThreadItem";
 import type { Turn } from "@codex-app-server/v2/Turn";
+import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, AppState, KeyboardAvoidingView, Platform, Pressable,
+  StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { LocalAttachment } from "@/app-server/attachments";
@@ -20,29 +22,48 @@ import { ChatComposer } from "./ChatComposer";
 import { OfficialThreadItem } from "./OfficialThreadItem";
 import { ParameterSheet } from "./ParameterSheet";
 import { ServerRequestCard } from "./ServerRequestCard";
+import { createActiveTurnReconciler } from "./activeTurnReconciler";
+import { anchorViewOffset, conversationScrollState, loadConversationPosition,
+  resolveConversationPosition, saveConversationPosition, visibleRowTop } from "./conversationPosition";
 
 type Row =
   | { kind: "item"; key: string; item: ThreadItem }
   | { kind: "error"; key: string; turn: Turn }
   | { kind: "request"; key: string; request: ServerRequest };
 
+const rowKey = (row: Row) => row.key;
+const rowType = (row: Row) => row.kind === "item" ? `item:${row.item.type}` : row.kind;
+
 const EMPTY_MODELS: Model[] = [];
 const EMPTY_REQUESTS: ServerRequest[] = [];
+const LIST_POSITIONING = {
+  startRenderingFromBottom: true,
+  autoscrollToBottomThreshold: 0.1,
+  animateAutoScrollToBottom: false,
+} as const;
+const OLDER_LOAD_SETTLE_MS = 120;
 
 export function ConversationPane({ sessionId }: { sessionId: string }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const keyboardVisible = useKeyboardVisible();
-  const list = useRef<FlatList<Row>>(null);
+  const list = useRef<FlashListRef<Row>>(null);
   const connection = useAppStore((state) => state.activeConnection);
   const record = useAppStore((state) => state.threads.find((item) => item.thread.id === sessionId));
   const modelsByTarget = useAppStore((state) => state.modelsByTarget);
   const requests = useAppStore((state) => state.pendingRequests[sessionId] ?? EMPTY_REQUESTS);
   const loadThread = useAppStore((state) => state.loadThread);
+  const refreshThreadTail = useAppStore((state) => state.refreshThreadTail);
+  const loadOlderThread = useAppStore((state) => state.loadOlderThread);
   const submitMessage = useAppStore((state) => state.submitMessage);
   const executePlan = useAppStore((state) => state.executePlan);
   const interruptThread = useAppStore((state) => state.interruptThread);
   const answerRequest = useAppStore((state) => state.answerRequest);
+  const profileId = connection?.profileId ?? null;
+  const workspaceId = record?.workspaceId ?? null;
+  const positionKey = profileId ? `${profileId}:${sessionId}` : null;
+  const savedPosition = useMemo(() => positionKey
+    ? loadConversationPosition(positionKey) : null, [positionKey]);
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<LocalAttachment[]>([]);
   const [preferences, setPreferences] = useState<TurnPreferences | null>(null);
@@ -52,22 +73,63 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const profileId = connection?.profileId ?? null;
-  const workspaceId = record?.workspaceId ?? null;
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [olderError, setOlderError] = useState<string | null>(null);
+  const [showScrollToLatest, setShowScrollToLatest] = useState(
+    savedPosition?.kind === "anchor");
+  const [positionRestored, setPositionRestored] = useState(false);
+  const rowsRef = useRef<Row[]>([]);
+  const pinnedToLatest = useRef(savedPosition?.kind !== "anchor");
+  const showScrollToLatestRef = useRef(savedPosition?.kind === "anchor");
+  const historyPagingReady = useRef(false);
+  const olderLoadRequested = useRef(false);
+  const momentumScrolling = useRef(false);
+  const olderLoadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeSessionId = useRef(sessionId);
+  const scrollOffset = useRef(0);
+  activeSessionId.current = sessionId;
   const models = profileId
     ? modelsByTarget[targetKey(profileId, workspaceId)] ?? EMPTY_MODELS
     : EMPTY_MODELS;
   const fallbackPreferences = useMemo(() => defaultTurnPreferences(models), [models]);
   const resolvedPreferences = preferences ?? fallbackPreferences;
   const draftScope = `thread:${sessionId}`;
+  const activeTurnId = [...(record?.thread.turns ?? [])].reverse()
+    .find((turn) => turn.status === "inProgress")?.id ?? null;
+  const setScrollToLatestVisible = useCallback((visible: boolean) => {
+    if (showScrollToLatestRef.current === visible) return;
+    showScrollToLatestRef.current = visible;
+    setShowScrollToLatest(visible);
+  }, []);
 
   useEffect(() => {
+    let canceled = false;
     setLoading(true);
     setError(null);
-    void loadThread(sessionId).catch((cause) => setError(
-      cause instanceof Error ? cause.message : "无法读取官方会话历史"))
-      .finally(() => setLoading(false));
+    void loadThread(sessionId).catch((cause) => {
+      if (!canceled) setError(cause instanceof Error ? cause.message : "无法读取官方会话历史");
+    }).finally(() => { if (!canceled) setLoading(false); });
+    return () => { canceled = true; };
   }, [loadThread, sessionId]);
+
+  useEffect(() => {
+    const position = positionKey ? loadConversationPosition(positionKey) : null;
+    pinnedToLatest.current = position?.kind !== "anchor";
+    historyPagingReady.current = false;
+    olderLoadRequested.current = false;
+    momentumScrolling.current = false;
+    if (olderLoadTimer.current) clearTimeout(olderLoadTimer.current);
+    olderLoadTimer.current = null;
+    scrollOffset.current = 0;
+    setScrollToLatestVisible(position?.kind === "anchor");
+    setPositionRestored(false);
+    setLoadingOlder(false);
+    setOlderError(null);
+  }, [positionKey, setScrollToLatestVisible]);
+
+  useEffect(() => () => {
+    if (olderLoadTimer.current) clearTimeout(olderLoadTimer.current);
+  }, []);
 
   useEffect(() => {
     if (!profileId) return;
@@ -95,6 +157,21 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     return () => clearTimeout(timer);
   }, [attachments, draftReady, draftScope, preferences, profileId, text]);
 
+  useEffect(() => {
+    if (!activeTurnId) return;
+    const reconciler = createActiveTurnReconciler(() => refreshThreadTail(sessionId));
+    const applyAppState = (state: string) => {
+      if (state === "active") reconciler.start();
+      else reconciler.stop();
+    };
+    const subscription = AppState.addEventListener("change", applyAppState);
+    applyAppState(AppState.currentState);
+    return () => {
+      subscription.remove();
+      reconciler.dispose();
+    };
+  }, [activeTurnId, refreshThreadTail, sessionId]);
+
   const rows = useMemo<Row[]>(() => {
     const result: Row[] = [];
     for (const turn of record?.thread.turns ?? []) {
@@ -110,6 +187,74 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     }
     return result;
   }, [record?.thread.turns, requests]);
+  rowsRef.current = rows;
+  const restorePosition = useMemo(() => resolveConversationPosition(savedPosition,
+    rows.map((row) => row.key)), [rows, savedPosition]);
+  const hasRestorableAnchor = restorePosition.kind === "anchor";
+  const hasMoreHistory = record?.history.kind === "loaded" &&
+    !record.history.hasLoadedOldest && record.history.olderCursor !== null;
+
+  const saveVisiblePosition = useCallback((offsetY?: number) => {
+    if (!positionKey) return;
+    if (pinnedToLatest.current) {
+      saveConversationPosition(positionKey, { kind: "latest" });
+      return;
+    }
+    const current = list.current;
+    if (!current) return;
+    const index = current.getFirstVisibleIndex();
+    const row = rowsRef.current[index];
+    const layout = current.getLayout(index);
+    if (!row || !layout) return;
+    const scrollOffset = offsetY ?? current.getAbsoluteLastScrollOffset();
+    saveConversationPosition(positionKey,
+      { kind: "anchor", rowKey: row.key,
+        topOffset: visibleRowTop(layout.y, current.getFirstItemOffset(), scrollOffset) });
+  }, [positionKey]);
+
+  const followLatest = useCallback((animated: boolean) => {
+    pinnedToLatest.current = true;
+    setScrollToLatestVisible(false);
+    if (positionKey) saveConversationPosition(positionKey, { kind: "latest" });
+    list.current?.scrollToEnd({ animated });
+  }, [positionKey, setScrollToLatestVisible]);
+
+  const loadOlder = useCallback(async () => {
+    olderLoadRequested.current = false;
+    if (olderLoadTimer.current) clearTimeout(olderLoadTimer.current);
+    olderLoadTimer.current = null;
+    if (!hasMoreHistory || loadingOlder) return;
+    historyPagingReady.current = false;
+    setLoadingOlder(true);
+    setOlderError(null);
+    try {
+      await loadOlderThread(sessionId);
+    } catch (cause) {
+      setOlderError(cause instanceof Error ? cause.message : "无法加载更早历史");
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [hasMoreHistory, loadOlderThread, loadingOlder, sessionId]);
+
+  const requestOlderLoad = useCallback(() => {
+    if (!historyPagingReady.current || !hasMoreHistory || loadingOlder) return;
+    olderLoadRequested.current = true;
+  }, [hasMoreHistory, loadingOlder]);
+
+  const flushOlderLoad = useCallback(() => {
+    if (!olderLoadRequested.current || momentumScrolling.current) return;
+    olderLoadRequested.current = false;
+    void loadOlder();
+  }, [loadOlder]);
+
+  const scheduleOlderLoad = useCallback(() => {
+    if (!olderLoadRequested.current) return;
+    if (olderLoadTimer.current) clearTimeout(olderLoadTimer.current);
+    olderLoadTimer.current = setTimeout(() => {
+      olderLoadTimer.current = null;
+      flushOlderLoad();
+    }, OLDER_LOAD_SETTLE_MS);
+  }, [flushOlderLoad]);
 
   const send = useCallback(async () => {
     if (!resolvedPreferences || (!text.trim() && attachments.length === 0)) return;
@@ -119,12 +264,29 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       if (profileId) await clearDraft(profileId, draftScope);
       setText("");
       setAttachments([]);
+      followLatest(false);
     } catch (cause) {
       Alert.alert("发送状态未确认", cause instanceof Error ? cause.message : "请刷新后重试");
     } finally {
       setSending(false);
     }
-  }, [attachments, draftScope, profileId, resolvedPreferences, sessionId, submitMessage, text]);
+  }, [attachments, draftScope, followLatest, profileId, resolvedPreferences, sessionId,
+    submitMessage, text]);
+
+  const renderRow = useCallback(({ item }: { item: Row }) => item.kind === "item"
+    ? <OfficialThreadItem item={item.item} />
+    : item.kind === "request"
+      ? <ServerRequestCard request={item.request} onAnswer={(result) => {
+        if (!answerRequest(sessionId, item.request.id, result)) {
+          Alert.alert("请求已经处理", "这个请求已由其他连接回答，正在刷新官方状态。");
+          void loadThread(sessionId);
+        }
+      }} />
+      : <View testID="turn:error" style={styles.error}>
+        <Text selectable style={{ color: theme.colors.danger }}>
+          {item.turn.error?.message ?? "本轮执行失败"}
+        </Text>
+      </View>, [answerRequest, loadThread, sessionId, theme.colors.danger]);
 
   if (!connection || !record) {
     return <EmptyState title="会话不可用" detail="它可能已被归档、移除，或属于其他连接。" />;
@@ -137,46 +299,109 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       action={<Button title="重试" onPress={() => void loadThread(sessionId)} />} />;
   }
 
-  const activeTurn = [...record.thread.turns].reverse().find((turn) => turn.status === "inProgress");
   const plan = latestCompletedPlan(record.thread);
   return <KeyboardAvoidingView {...keyboardAvoidance(Platform.OS, insets.top, keyboardVisible)}
     style={styles.container}>
-    <FlatList ref={list} testID="messages:list" data={rows} keyExtractor={(item) => item.key}
-      keyboardShouldPersistTaps="handled"
-      renderItem={({ item }) => item.kind === "item"
-        ? <OfficialThreadItem item={item.item} />
-        : item.kind === "request"
-          ? <ServerRequestCard request={item.request} onAnswer={(result) => {
-            if (!answerRequest(sessionId, item.request.id, result)) {
-              Alert.alert("请求已经处理", "这个请求已由其他连接回答，正在刷新官方状态。");
-              void loadThread(sessionId);
-            }
-          }} />
-          : <View testID="turn:error" style={styles.error}>
-            <Text selectable style={{ color: theme.colors.danger }}>
-            {item.turn.error?.message ?? "本轮执行失败"}
-          </Text></View>}
-      contentContainerStyle={styles.list}
-      onContentSizeChange={() => list.current?.scrollToEnd({ animated: false })}
-      ListFooterComponent={<>
-        {plan && <View style={styles.planAction}>
-          <Button testID="plan:execute" title="执行计划" loading={sending}
-            disabled={!resolvedPreferences || sending}
-            onPress={() => void (async () => {
-              if (!resolvedPreferences) return;
-              setSending(true);
-              try { await executePlan(sessionId, resolvedPreferences); }
-              catch (cause) { Alert.alert("无法执行计划",
-                cause instanceof Error ? cause.message : "请刷新后重试"); }
-              finally { setSending(false); }
-            })()} />
-        </View>}
-        {activeTurn && <Pressable testID="session:stop" style={styles.stop}
-          onPress={() => void interruptThread(sessionId).catch((cause) => Alert.alert("停止失败",
-            cause instanceof Error ? cause.message : "请重试"))}>
-          <Text style={{ color: theme.colors.danger }}>停止当前 Turn</Text>
-        </Pressable>}
-      </>} />
+    <View style={styles.messageArea}>
+      <FlashList key={sessionId} ref={list} testID="messages:list" data={rows}
+        style={[styles.messageList, { opacity: hasRestorableAnchor && !positionRestored ? 0 : 1 }]}
+        initialScrollIndex={restorePosition.kind === "anchor" ? restorePosition.index : undefined}
+        keyExtractor={rowKey}
+        getItemType={rowType}
+        keyboardShouldPersistTaps="handled"
+        renderItem={renderRow}
+        contentContainerStyle={styles.list}
+        maintainVisibleContentPosition={LIST_POSITIONING}
+        scrollEventThrottle={100}
+        onScroll={({ nativeEvent }) => {
+          const state = conversationScrollState(nativeEvent.contentSize.height,
+            nativeEvent.layoutMeasurement.height, nativeEvent.contentOffset.y);
+          scrollOffset.current = nativeEvent.contentOffset.y;
+          pinnedToLatest.current = state.pinnedToLatest;
+          setScrollToLatestVisible(state.showLatest);
+        }}
+        onScrollBeginDrag={() => {
+          momentumScrolling.current = false;
+          if (olderLoadTimer.current) clearTimeout(olderLoadTimer.current);
+          olderLoadTimer.current = null;
+          historyPagingReady.current = true;
+          if (scrollOffset.current <= 8) requestOlderLoad();
+        }}
+        onScrollEndDrag={() => {
+          saveVisiblePosition();
+          scheduleOlderLoad();
+        }}
+        onMomentumScrollBegin={() => {
+          momentumScrolling.current = true;
+          if (olderLoadTimer.current) clearTimeout(olderLoadTimer.current);
+          olderLoadTimer.current = null;
+        }}
+        onMomentumScrollEnd={() => {
+          momentumScrolling.current = false;
+          saveVisiblePosition();
+          flushOlderLoad();
+        }}
+        onStartReached={() => {
+          requestOlderLoad();
+        }}
+        onStartReachedThreshold={0.2}
+        onLoad={() => {
+          if (activeSessionId.current !== sessionId) return;
+          if (restorePosition.kind !== "anchor") {
+            pinnedToLatest.current = true;
+            setScrollToLatestVisible(false);
+            if (positionKey) saveConversationPosition(positionKey, { kind: "latest" });
+            setPositionRestored(true);
+            return;
+          }
+          const restore = list.current?.scrollToIndex({ index: restorePosition.index, animated: false,
+            viewPosition: 0, viewOffset: anchorViewOffset(restorePosition.topOffset) });
+          if (!restore) {
+            followLatest(false);
+            setPositionRestored(true);
+            return;
+          }
+          void restore.catch(() => followLatest(false)).finally(() => {
+            if (activeSessionId.current === sessionId) setPositionRestored(true);
+          });
+        }}
+        ListHeaderComponent={loadingOlder
+          ? <View style={styles.historyStatus}><ActivityIndicator size="small"
+            color={theme.colors.textMuted} /></View>
+          : olderError ? <Pressable testID="history:retry" style={styles.historyStatus}
+            onPress={() => void loadOlder()}>
+            <Text style={{ color: theme.colors.danger }}>加载更早消息失败，点按重试</Text>
+          </Pressable> : null}
+        ListFooterComponent={<>
+          {plan && <View style={styles.planAction}>
+            <Button testID="plan:execute" title="执行计划" loading={sending}
+              disabled={!resolvedPreferences || sending}
+              onPress={() => void (async () => {
+                if (!resolvedPreferences) return;
+                setSending(true);
+                try {
+                  await executePlan(sessionId, resolvedPreferences);
+                  followLatest(false);
+                } catch (cause) { Alert.alert("无法执行计划",
+                  cause instanceof Error ? cause.message : "请刷新后重试"); }
+                finally { setSending(false); }
+              })()} />
+          </View>}
+          {activeTurnId && <Pressable testID="session:stop" style={styles.stop}
+            onPress={() => void interruptThread(sessionId).catch((cause) => Alert.alert("停止失败",
+              cause instanceof Error ? cause.message : "请重试"))}>
+            <Text style={{ color: theme.colors.danger }}>停止当前 Turn</Text>
+          </Pressable>}
+        </>} />
+      {showScrollToLatest && <Pressable testID="chat:scroll-to-latest"
+        accessibilityRole="button" accessibilityLabel="回到最新消息"
+        onPress={() => followLatest(true)} style={({ pressed }) => [styles.scrollToLatest, {
+          backgroundColor: theme.colors.surface, borderColor: theme.colors.border,
+          opacity: pressed ? 0.72 : 1,
+        }, theme.shadow]}>
+        <Text style={[styles.scrollToLatestIcon, { color: theme.colors.text }]}>↓</Text>
+      </Pressable>}
+    </View>
     <ChatComposer value={text} onChange={setText} attachments={attachments}
       onAttachmentsChange={setAttachments} onParameters={() => {
         if (!resolvedPreferences) {
@@ -196,8 +421,16 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  messageArea: { flex: 1, minHeight: 0 },
+  messageList: { flex: 1 },
   list: { paddingVertical: 8 },
   error: { marginHorizontal: 16, paddingVertical: 10 },
+  historyStatus: { minHeight: 40, alignItems: "center", justifyContent: "center",
+    paddingHorizontal: 16 },
   planAction: { paddingHorizontal: 16, paddingTop: 8 },
   stop: { alignSelf: "center", minHeight: 44, justifyContent: "center", paddingHorizontal: 16 },
+  scrollToLatest: { position: "absolute", right: 16, bottom: 12, width: 42, height: 42,
+    borderRadius: 21, borderWidth: StyleSheet.hairlineWidth, alignItems: "center",
+    justifyContent: "center", elevation: 5 },
+  scrollToLatestIcon: { fontFamily: "Inter_500Medium", fontSize: 22, lineHeight: 26 },
 });

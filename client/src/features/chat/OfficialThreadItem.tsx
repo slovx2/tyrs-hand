@@ -1,9 +1,10 @@
 import type { ThreadItem } from "@codex-app-server/v2/ThreadItem";
-import { memo } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { memo, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Muted } from "@/components/ui";
 import { useTheme } from "@/theme/ThemeProvider";
+import { activityDetailPreview } from "./activityDetail";
 import { MarkdownContent } from "./MarkdownContent";
 
 export const OfficialThreadItem = memo(function OfficialThreadItem({ item }: { item: ThreadItem }) {
@@ -26,13 +27,14 @@ export const OfficialThreadItem = memo(function OfficialThreadItem({ item }: { i
   }
   if (item.type === "agentMessage") {
     return <View testID="message:role:agent" style={styles.agentRow}>
-      <MarkdownContent>{item.text}</MarkdownContent>
+      <MarkdownContent cacheKey={`agentMessage:${item.id}`}>{item.text}</MarkdownContent>
     </View>;
   }
   if (item.type === "plan") {
     return <View testID={`plan:${item.id}`} style={[styles.activity,
       { borderColor: theme.colors.border }]}>
-      <Muted>计划</Muted><MarkdownContent>{item.text}</MarkdownContent>
+      <Muted>计划</Muted>
+      <MarkdownContent cacheKey={`plan:${item.id}`}>{item.text}</MarkdownContent>
     </View>;
   }
   if (item.type === "reasoning") {
@@ -90,12 +92,25 @@ function Activity({ testID, title, status, detail }: {
 }) {
   const theme = useTheme();
   const running = status === "inProgress" || status === "running";
-  return <View testID={testID} style={[styles.activity, { borderColor: theme.colors.border }]}>
+  const preview = detail ? activityDetailPreview(detail) : null;
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const expanded = expandedId === testID;
+  return <View testID={testID}
+    style={[styles.activity, { borderColor: theme.colors.border }]}>
     <View style={styles.activityHeader}>
       <Text numberOfLines={2} style={[styles.activityTitle, { color: theme.colors.text }]}>{title}</Text>
       <Muted>{running ? "运行中" : status}</Muted>
     </View>
-    {detail ? <Text selectable style={[styles.output, { color: theme.colors.textMuted }]}>{detail}</Text> : null}
+    {preview ? <Text selectable numberOfLines={expanded ? undefined : 13}
+      style={[styles.output, expanded && styles.outputExpanded,
+        { color: theme.colors.textMuted }]}>
+      {expanded ? detail : preview.text}
+    </Text> : null}
+    {preview?.truncated ? <Pressable accessibilityRole="button"
+      testID={`${testID}:toggle-output`} hitSlop={8}
+      onPress={() => setExpandedId(expanded ? null : testID)}>
+      <Muted>{expanded ? "收起输出" : "展开完整输出"}</Muted>
+    </Pressable> : null}
   </View>;
 }
 
@@ -110,4 +125,5 @@ const styles = StyleSheet.create({
   activityHeader: { flexDirection: "row", gap: 10, justifyContent: "space-between", alignItems: "center" },
   activityTitle: { flex: 1, fontFamily: "Inter_500Medium", fontSize: 13, lineHeight: 18 },
   output: { fontFamily: "monospace", fontSize: 12, lineHeight: 17, maxHeight: 180 },
+  outputExpanded: { maxHeight: undefined },
 });

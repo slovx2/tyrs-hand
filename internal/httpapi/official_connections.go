@@ -230,8 +230,7 @@ func (s *Server) syncOfficialWorkspace(ctx context.Context, client *codex.Socket
 				Data       []officialapp.Thread `json:"data"`
 				NextCursor *string              `json:"nextCursor"`
 			}
-			params := map[string]any{"limit": 100, "archived": archived,
-				"sortKey": "updated_at", "sortDirection": "desc", "cursor": cursor}
+			params := officialThreadListParams(archived, cursor)
 			if err = client.Call(ctx, "thread/list", params, &page); err != nil {
 				return err
 			}

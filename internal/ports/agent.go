@@ -49,8 +49,8 @@ type LocalImageInput struct {
 }
 
 type AdditionalContextEntry struct {
-	Value string
-	Kind  string
+	Value string `json:"value"`
+	Kind  string `json:"kind"`
 }
 
 type SkillRef struct {

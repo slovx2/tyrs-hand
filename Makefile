@@ -16,7 +16,7 @@ generate:
 	$(PNPM) --dir client generate:api
 
 generate-check:
-	@before="$$(mktemp)"; after="$$(mktemp)"; \
+	@set -e; before="$$(mktemp)"; after="$$(mktemp)"; \
 	trap 'rm -f "$$before" "$$after"' EXIT; \
 	git diff --binary >"$$before"; \
 	$(MAKE) generate; \

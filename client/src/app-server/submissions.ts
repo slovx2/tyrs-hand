@@ -1,4 +1,5 @@
 import { getDatabase, runDatabaseWrite } from "@/db/database";
+import { isPreviewMode } from "@/preview/config";
 
 export type PendingSubmission = {
   profileId: string;
@@ -19,6 +20,7 @@ export interface SubmissionJournal {
 
 export const persistentSubmissionJournal: SubmissionJournal = {
   async prepare(input) {
+    if (isPreviewMode) return;
     const now = new Date().toISOString();
     await runDatabaseWrite((database) => database.runAsync(`INSERT INTO pending_submissions(
       profile_id,client_message_id,thread_id,project_id,payload,state,error,created_at,updated_at)
@@ -27,22 +29,26 @@ export const persistentSubmissionJournal: SubmissionJournal = {
     JSON.stringify(input.payload), now, now));
   },
   async setThread(profileId, clientMessageId, threadId) {
+    if (isPreviewMode) return;
     await runDatabaseWrite((database) => database.runAsync(`UPDATE pending_submissions
       SET thread_id=?,updated_at=? WHERE profile_id=? AND client_message_id=?`, threadId,
     new Date().toISOString(), profileId, clientMessageId));
   },
   async markUnknown(profileId, clientMessageId, error) {
+    if (isPreviewMode) return;
     await runDatabaseWrite((database) => database.runAsync(`UPDATE pending_submissions
       SET state='unknown',error=?,updated_at=? WHERE profile_id=? AND client_message_id=?`,
     error, new Date().toISOString(), profileId, clientMessageId));
   },
   async complete(profileId, clientMessageId) {
+    if (isPreviewMode) return;
     await runDatabaseWrite((database) => database.runAsync(`DELETE FROM pending_submissions
       WHERE profile_id=? AND client_message_id=?`, profileId, clientMessageId));
   },
 };
 
 export async function listPendingSubmissions(profileId: string): Promise<PendingSubmission[]> {
+  if (isPreviewMode) return [];
   const database = await getDatabase();
   const rows = await database.getAllAsync<{
     profile_id: string;

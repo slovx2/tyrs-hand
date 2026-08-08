@@ -42,6 +42,13 @@ type ComponentMediaPayload struct {
 	Spoiler     bool   `json:"spoiler,omitempty"`
 }
 
+type MessageFilePayload struct {
+	Filename    string `json:"filename"`
+	Description string `json:"description,omitempty"`
+	MediaType   string `json:"mediaType"`
+	Base64      string `json:"base64"`
+}
+
 type ComponentButtonPayload struct {
 	Label    string `json:"label"`
 	CustomID string `json:"customId,omitempty"`

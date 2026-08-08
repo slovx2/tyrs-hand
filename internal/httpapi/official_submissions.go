@@ -44,7 +44,8 @@ func (s *Server) processOfficialSubmission(ctx context.Context, client *codex.So
 	}
 	result, err := officialapp.Submit(ctx, client, officialapp.SubmitRequest{
 		ThreadID: threadID, ClientMessageID: item.ClientMessageID, Input: inputs,
-		Preferences: item.Preferences,
+		Preferences: item.Preferences, AdditionalContext: item.AdditionalContext,
+		DeveloperInstructions: item.DeveloperInstructions,
 		DismissOutstanding: func(dismissCtx context.Context, requestedThreadID string) error {
 			return s.dismissOfficialServerRequests(dismissCtx, workspaceID, requestedThreadID)
 		},
@@ -133,6 +134,9 @@ func (s *Server) ensureOfficialConversationThread(ctx context.Context,
 	if !found {
 		params := map[string]any{"cwd": cwd, "runtimeWorkspaceRoots": []string{cwd},
 			"threadSource": source}
+		if submission.DeveloperInstructions != "" {
+			params["developerInstructions"] = submission.DeveloperInstructions
+		}
 		if submission.Preferences.Model != "" {
 			params["model"] = submission.Preferences.Model
 		}
@@ -186,10 +190,8 @@ func findOfficialThreadBySource(ctx context.Context, client *codex.SocketClient,
 			Data       []officialapp.Thread `json:"data"`
 			NextCursor *string              `json:"nextCursor"`
 		}
-		err := client.Call(ctx, "thread/list", map[string]any{
-			"cursor": cursor, "limit": 100, "archived": false,
-			"sortKey": "updated_at", "sortDirection": "desc",
-		}, &page)
+		err := client.Call(ctx, "thread/list",
+			officialThreadListParams(false, cursor), &page)
 		if err != nil {
 			return officialapp.Thread{}, false, err
 		}

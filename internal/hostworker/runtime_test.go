@@ -1,6 +1,7 @@
 package hostworker
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/slovx2/tyrs-hand/internal/codex"
@@ -26,6 +27,23 @@ func TestReplaceEnvironmentInjectsManagedBrowserToken(t *testing.T) {
 	require.ElementsMatch(t, []string{
 		"PATH=/usr/bin", codex.BrowserMCPWorkerTokenEnvironment + "=derived",
 	}, environment)
+}
+
+func TestHostAppServerKeepsBrowserTokensOutOfModelShell(t *testing.T) {
+	command := newAppServerCommand(RuntimeOptions{
+		CodexBin: "codex", CodexHome: "/var/lib/codex", Home: "/home/worker",
+		WorkspaceRoot: "/workspace", BrowserWorkerToken: "worker-token",
+		BrowserDesktopToken: "desktop-token",
+	}, "/run/tyrs-hand/app-server.sock")
+
+	require.Contains(t, command.Env,
+		codex.BrowserMCPWorkerTokenEnvironment+"=worker-token")
+	require.Contains(t, command.Env,
+		codex.BrowserMCPDesktopTokenEnvironment+"=desktop-token")
+	arguments := strings.Join(command.Args, " ")
+	require.Contains(t, arguments,
+		`shell_environment_policy.exclude=["TYRS_BROWSER_MCP_WORKER_TOKEN","TYRS_BROWSER_MCP_DESKTOP_TOKEN"]`)
+	require.Contains(t, arguments, "allow_login_shell=false")
 }
 
 func TestOpenEphemeralClientRequiresRunningAppServer(t *testing.T) {

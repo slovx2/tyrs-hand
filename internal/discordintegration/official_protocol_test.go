@@ -1,6 +1,7 @@
 package discordintegration
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -119,9 +120,23 @@ func TestOfficialItemCardsAndDesktopPagination(t *testing.T) {
 	require.True(t, visible)
 	require.Empty(t, stale.Buttons, "历史 Plan Item 不应生成无效的禁用按钮")
 	require.NoError(t, validateOfficialCard(stale))
-	_, visible = officialItemCard(turn, officialapp.Item{Type: "userMessage", ID: "user"},
-		plan, uuid.Nil)
+	discordClientID := "discord:123"
+	_, visible = officialItemCard(turn, officialapp.Item{Type: "userMessage", ID: "user",
+		ClientID: &discordClientID}, plan, uuid.Nil)
 	require.False(t, visible)
+	externalClientID := "mobile-client-message"
+	external := officialapp.Item{Type: "userMessage", ID: "external-user",
+		ClientID: &externalClientID, Content: json.RawMessage(`[
+			{"type":"text","text":"从手机继续"},
+			{"type":"localImage","path":"/workspace/image.png"},
+			{"type":"mention","name":"README.md","path":"/workspace/README.md"}
+		]`)}
+	projections := officialItemProjections(turn, external, nil, uuid.Nil)
+	require.Len(t, projections, 1)
+	require.Contains(t, projections[0].Card.Header, "外部客户端")
+	require.Contains(t, projections[0].Card.Body, "从手机继续")
+	require.Contains(t, projections[0].Card.Body, "image.png")
+	require.Contains(t, projections[0].Card.Body, "README.md")
 	card, visible = officialItemCard(turn, officialapp.Item{Type: "reasoning", ID: "why",
 		Raw: json.RawMessage(`{"summary":["because"]}`)}, nil, uuid.Nil)
 	require.True(t, visible)
@@ -139,6 +154,119 @@ func TestOfficialItemCardsAndDesktopPagination(t *testing.T) {
 	cards = DesktopInputCards("Phone", strings.Repeat("a", desktopInputPageRunes+1))
 	require.Len(t, cards, 2)
 	require.Contains(t, cards[0].Header, "1/2")
+}
+
+func TestOfficialImageGenerationAndTurnErrorProjection(t *testing.T) {
+	image := officialapp.Item{Type: "imageGeneration", ID: "image-1",
+		Raw: json.RawMessage(`{"type":"imageGeneration","id":"image-1",
+			"status":"generating","revisedPrompt":"a diagram",
+			"result":"iVBORw0KGgo="}`)}
+	projection := officialImageGenerationProjection(image)
+	require.Len(t, projection.Files, 1)
+	require.Equal(t, "image/png", projection.Files[0].MediaType)
+	require.True(t, strings.HasSuffix(projection.Files[0].Filename, ".png"))
+	require.Equal(t, projection.Files[0].Filename, projection.Card.Media[0].Filename)
+	require.NoError(t, validateOfficialCard(projection.Card))
+	files, err := decodeMessageFiles(projection.Files)
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+
+	invalid := image
+	invalid.Raw = json.RawMessage(`{"status":"completed","result":"not-base64"}`)
+	invalidProjection := officialImageGenerationProjection(invalid)
+	require.Empty(t, invalidProjection.Files)
+	require.Contains(t, invalidProjection.Card.Header, "失败")
+
+	details := "network unavailable"
+	errorProjection := officialTurnErrorProjection("thread-1", officialapp.Turn{
+		ID: "turn-failed", Status: "failed", Error: &officialapp.TurnError{
+			Message: "request failed", CodexErrorInfo: json.RawMessage(`{"kind":"network"}`),
+			AdditionalDetails: &details,
+		},
+	})
+	require.NotNil(t, errorProjection.Card.Error)
+	require.Equal(t, "request failed", errorProjection.Card.Error.Message)
+	require.Contains(t, errorProjection.Card.Error.AdditionalDetails, "network")
+	require.NoError(t, validateOfficialCard(errorProjection.Card))
+}
+
+func TestOfficialProjectionValidatesGeneratedMediaAndExternalInputs(t *testing.T) {
+	media := []struct {
+		name      string
+		data      []byte
+		mediaType string
+		extension string
+	}{
+		{name: "jpeg", data: []byte{0xff, 0xd8, 0xff, 0x00},
+			mediaType: "image/jpeg", extension: ".jpg"},
+		{name: "gif87", data: []byte("GIF87a"),
+			mediaType: "image/gif", extension: ".gif"},
+		{name: "gif89", data: []byte("GIF89a"),
+			mediaType: "image/gif", extension: ".gif"},
+		{name: "webp", data: append([]byte("RIFF0000WEBP"), 0x00),
+			mediaType: "image/webp", extension: ".webp"},
+	}
+	for _, test := range media {
+		t.Run(test.name, func(t *testing.T) {
+			file, err := generatedImageFile(base64.StdEncoding.EncodeToString(test.data))
+			require.NoError(t, err)
+			require.Equal(t, test.mediaType, file.MediaType)
+			require.True(t, strings.HasSuffix(file.Filename, test.extension))
+		})
+	}
+	_, err := generatedImageFile(base64.StdEncoding.EncodeToString([]byte("plain")))
+	require.ErrorContains(t, err, "受支持")
+
+	png := MessageFilePayload{Filename: "image.png", MediaType: "image/png",
+		Base64: "iVBORw0KGgo="}
+	_, err = decodeMessageFiles([]MessageFilePayload{png, png})
+	require.ErrorContains(t, err, "重复")
+	invalidPath := png
+	invalidPath.Filename = "nested/image.png"
+	_, err = decodeMessageFiles([]MessageFilePayload{invalidPath})
+	require.ErrorContains(t, err, "文件名")
+	invalidBase64 := png
+	invalidBase64.Base64 = "%%"
+	_, err = decodeMessageFiles([]MessageFilePayload{invalidBase64})
+	require.ErrorContains(t, err, "Base64")
+	wrongType := png
+	wrongType.MediaType = "image/jpeg"
+	_, err = decodeMessageFiles([]MessageFilePayload{wrongType})
+	require.ErrorContains(t, err, "类型")
+	_, err = decodeMessageFiles(make([]MessageFilePayload, DefaultMaxAttachments+1))
+	require.ErrorContains(t, err, "不能超过")
+
+	clientID := "desktop:external"
+	inputs := officialapp.Item{Type: "userMessage", ID: "external-inputs", ClientID: &clientID,
+		Content: json.RawMessage(`[
+			{"type":"image","name":"remote.png"},
+			{"type":"audio","path":"/workspace/audio.wav"},
+			{"type":"localAudio","url":"https://example.invalid/audio"},
+			{"type":"skill","name":"review"}
+		]`)}
+	projection := officialUserMessageProjections(inputs)
+	require.Len(t, projection, 1)
+	require.Contains(t, projection[0].Card.Body, "remote.png")
+	require.Contains(t, projection[0].Card.Body, "audio.wav")
+	require.Contains(t, projection[0].Card.Body, "example.invalid")
+	require.Contains(t, projection[0].Card.Body, "review")
+
+	invalidInputs := inputs
+	invalidInputs.Content = json.RawMessage(`[{`)
+	require.Contains(t, officialUserMessageProjections(invalidInputs)[0].Card.Body, "无法解析")
+	longInputs := inputs
+	longInputs.Content = json.RawMessage(`[{"type":"text","text":"` +
+		strings.Repeat("x", desktopInputPageRunes+1) + `"}]`)
+	pages := officialUserMessageProjections(longInputs)
+	require.Len(t, pages, 2)
+	require.Contains(t, pages[0].Card.Header, "1/2")
+
+	emptyImage := officialImageGenerationProjection(officialapp.Item{Type: "imageGeneration",
+		ID: "empty", Raw: json.RawMessage(`{"status":"generating","result":""}`)})
+	require.Empty(t, emptyImage.Files)
+	malformedImage := officialImageGenerationProjection(officialapp.Item{Type: "imageGeneration",
+		ID: "malformed", Raw: json.RawMessage(`{`)})
+	require.Contains(t, malformedImage.Card.Header, "失败")
 }
 
 func validateOfficialCard(card ComponentCardPayload) error {

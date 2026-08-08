@@ -151,10 +151,8 @@ func officialThreadArchiveState(ctx context.Context, client *codex.SocketClient,
 				Data       []officialapp.Thread `json:"data"`
 				NextCursor *string              `json:"nextCursor"`
 			}
-			err := client.Call(ctx, "thread/list", map[string]any{
-				"archived": archived, "limit": 100, "cursor": cursor,
-				"sortKey": "updated_at", "sortDirection": "desc",
-			}, &page)
+			err := client.Call(ctx, "thread/list",
+				officialThreadListParams(archived, cursor), &page)
 			if err != nil {
 				return false, false, err
 			}

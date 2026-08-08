@@ -9,7 +9,9 @@ import type { ThreadListResponse } from "@codex-app-server/v2/ThreadListResponse
 import type { ThreadReadResponse } from "@codex-app-server/v2/ThreadReadResponse";
 import type { ThreadResumeResponse } from "@codex-app-server/v2/ThreadResumeResponse";
 import type { ThreadStartResponse } from "@codex-app-server/v2/ThreadStartResponse";
+import type { ThreadTurnsListResponse } from "@codex-app-server/v2/ThreadTurnsListResponse";
 import type { Turn } from "@codex-app-server/v2/Turn";
+import type { TurnItemsView } from "@codex-app-server/v2/TurnItemsView";
 import type { TurnStartParams } from "@codex-app-server/v2/TurnStartParams";
 import type { TurnStartResponse } from "@codex-app-server/v2/TurnStartResponse";
 import type { TurnSteerResponse } from "@codex-app-server/v2/TurnSteerResponse";
@@ -36,7 +38,16 @@ export type SubmitInput = {
 export type NewThreadSubmitInput = Omit<SubmitInput, "threadId">;
 
 export type SubmitResult = { threadId: string; turnId: string; deduplicated: boolean };
+export type OfficialTurnPage = {
+  turns: Turn[];
+  nextCursor: string | null;
+  backwardsCursor: string | null;
+};
+export type ResumedThreadPage = { thread: Thread; page: OfficialTurnPage };
 type EventListener = (event: ServerNotification | ServerRequest) => void;
+
+export const THREAD_PAGE_SIZE = 5;
+const RECOVERY_PAGE_SIZE = 20;
 
 export interface OfficialRpcClient {
   open(): Promise<unknown>;
@@ -83,6 +94,7 @@ export class OfficialAppServerClient {
     do {
       const page: ThreadListResponse = await this.rpc.request("thread/list", {
         cursor, limit: 100, sortKey: "updated_at", sortDirection: "desc",
+        modelProviders: [],
         archived: input.archived ?? false,
         ...(input.cwd ? { cwd: input.cwd } : {}),
       });
@@ -92,14 +104,29 @@ export class OfficialAppServerClient {
     return threads;
   }
 
-  async readThread(threadId: string): Promise<Thread> {
+  async readThreadMetadata(threadId: string): Promise<Thread> {
     const response = await this.rpc.request<ThreadReadResponse>("thread/read",
-      { threadId, includeTurns: true });
+      { threadId, includeTurns: false });
     return response.thread;
   }
 
-  async resumeThread(threadId: string): Promise<ThreadResumeResponse> {
-    return this.rpc.request("thread/resume", { threadId });
+  async resumeThreadPage(threadId: string, itemsView: TurnItemsView = "full",
+    limit = THREAD_PAGE_SIZE): Promise<ResumedThreadPage> {
+    const response = await this.rpc.request<ThreadResumeResponse>("thread/resume", {
+      threadId,
+      excludeTurns: true,
+      initialTurnsPage: { limit, sortDirection: "desc", itemsView },
+    });
+    const page = chronologicalPage(response.initialTurnsPage ?? emptyPage());
+    return { thread: { ...response.thread, turns: page.turns }, page };
+  }
+
+  async listTurnPage(threadId: string, cursor: string | null, limit = THREAD_PAGE_SIZE,
+    itemsView: TurnItemsView = "full"): Promise<OfficialTurnPage> {
+    const response = await this.rpc.request<ThreadTurnsListResponse>("thread/turns/list", {
+      threadId, cursor, limit, sortDirection: "desc", itemsView,
+    });
+    return chronologicalPage(response);
   }
 
   async startThread(cwd: string, model?: string): Promise<ThreadStartResponse> {
@@ -126,6 +153,18 @@ export class OfficialAppServerClient {
     return this.trackSubmission({ ...input, threadId: thread.id }, thread);
   }
 
+  recoverSubmission(input: SubmitInput): Promise<SubmitResult> {
+    const active = this.submissions.get(input.clientMessageId);
+    if (active) return active;
+    const submission = this.recoverOnce(input).finally(() => {
+      if (this.submissions.get(input.clientMessageId) === submission) {
+        this.submissions.delete(input.clientMessageId);
+      }
+    });
+    this.submissions.set(input.clientMessageId, submission);
+    return submission;
+  }
+
   private trackSubmission(input: SubmitInput, startedThread: Thread | null): Promise<SubmitResult> {
     const active = this.submissions.get(input.clientMessageId);
     if (active) return active;
@@ -136,6 +175,12 @@ export class OfficialAppServerClient {
     });
     this.submissions.set(input.clientMessageId, submission);
     return submission;
+  }
+
+  private async recoverOnce(input: SubmitInput): Promise<SubmitResult> {
+    const submitted = await this.findSubmittedTurn(input.threadId, input.clientMessageId);
+    if (submitted) return this.completeRecovered(input, input.threadId, submitted.id);
+    return this.submitOnce(input, null);
   }
 
   async interrupt(threadId: string, turnId: string): Promise<void> {
@@ -183,8 +228,7 @@ export class OfficialAppServerClient {
     try {
       let thread = startedThread;
       if (!thread) {
-        await this.resumeThread(input.threadId);
-        thread = await this.readThread(input.threadId);
+        thread = (await this.resumeThreadPage(input.threadId, "summary")).thread;
       }
       const duplicate = findClientMessage(thread, input.clientMessageId);
       if (duplicate) return this.completeRecovered(input, thread.id, duplicate.id);
@@ -197,7 +241,7 @@ export class OfficialAppServerClient {
           return result;
         } catch (error) {
           if (!isTurnStateMismatch(error) || attempt > 0) throw error;
-          thread = await this.readThread(input.threadId);
+          thread = await this.readRecentThreadState(input.threadId);
           const submitted = findClientMessage(thread, input.clientMessageId);
           if (submitted) return this.completeRecovered(input, thread.id, submitted.id);
         }
@@ -246,12 +290,46 @@ export class OfficialAppServerClient {
 
   private async findSubmittedTurn(threadId: string, clientMessageId: string): Promise<Turn | null> {
     try {
-      return findClientMessage(await this.readThread(threadId), clientMessageId);
+      return await this.scanSubmittedTurn(threadId, clientMessageId);
     } catch {
       await this.rpc.open();
-      await this.resumeThread(threadId);
-      return findClientMessage(await this.readThread(threadId), clientMessageId);
+      return this.scanSubmittedTurn(threadId, clientMessageId, true);
     }
+  }
+
+  private async readRecentThreadState(threadId: string): Promise<Thread> {
+    const [metadata, page] = await Promise.all([
+      this.readThreadMetadata(threadId),
+      this.listTurnPage(threadId, null, THREAD_PAGE_SIZE, "summary"),
+    ]);
+    return { ...metadata, turns: page.turns };
+  }
+
+  private async scanSubmittedTurn(threadId: string, clientMessageId: string,
+    resume = false): Promise<Turn | null> {
+    let thread: Thread;
+    let cursor: string | null;
+    if (resume) {
+      const resumed = await this.resumeThreadPage(threadId, "summary", RECOVERY_PAGE_SIZE);
+      thread = resumed.thread;
+      cursor = resumed.page.nextCursor;
+    } else {
+      const page = await this.listTurnPage(threadId, null, RECOVERY_PAGE_SIZE, "summary");
+      thread = { ...(await this.readThreadMetadata(threadId)), turns: page.turns };
+      cursor = page.nextCursor;
+    }
+    const recent = findClientMessage(thread, clientMessageId);
+    if (recent) return recent;
+    const seen = new Set<string>();
+    while (cursor) {
+      if (seen.has(cursor)) throw new Error("thread/turns/list 返回了重复游标");
+      seen.add(cursor);
+      const page = await this.listTurnPage(threadId, cursor, RECOVERY_PAGE_SIZE, "summary");
+      const submitted = page.turns.find((turn) => hasClientMessage(turn, clientMessageId));
+      if (submitted) return submitted;
+      cursor = page.nextCursor;
+    }
+    return null;
   }
 
   private handleNotification(notification: ServerNotification): void {
@@ -284,8 +362,24 @@ export function latestCompletedPlan(thread: Thread): { turnId: string; itemId: s
 }
 
 function findClientMessage(thread: Thread, clientMessageId: string): Turn | null {
-  return thread.turns.find((turn) => turn.items.some((item) =>
-    item.type === "userMessage" && item.clientId === clientMessageId)) ?? null;
+  return thread.turns.find((turn) => hasClientMessage(turn, clientMessageId)) ?? null;
+}
+
+function hasClientMessage(turn: Turn, clientMessageId: string): boolean {
+  return turn.items.some((item) =>
+    item.type === "userMessage" && item.clientId === clientMessageId);
+}
+
+function chronologicalPage(page: ThreadTurnsListResponse): OfficialTurnPage {
+  return {
+    turns: [...page.data].reverse(),
+    nextCursor: page.nextCursor,
+    backwardsCursor: page.backwardsCursor,
+  };
+}
+
+function emptyPage(): ThreadTurnsListResponse {
+  return { data: [], nextCursor: null, backwardsCursor: null };
 }
 
 function requestThreadId(request: ServerRequest): string | null {

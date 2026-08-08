@@ -9,23 +9,26 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/security"
 )
 
 const WakeupChannel = "tyrs-hand:official-app:wakeup"
 
 type EnqueueRequest struct {
-	WorkspaceID        uuid.UUID
-	ConversationID     uuid.UUID
-	PlanActionID       uuid.UUID
-	SourceType         string
-	SourceOrder        string
-	DiscordMessageID   string
-	ClientMessageID    string
-	Instruction        string
-	DisplayInstruction string
-	Input              []UserInput
-	Preferences        Preferences
+	WorkspaceID           uuid.UUID
+	ConversationID        uuid.UUID
+	PlanActionID          uuid.UUID
+	SourceType            string
+	SourceOrder           string
+	DiscordMessageID      string
+	ClientMessageID       string
+	Instruction           string
+	DisplayInstruction    string
+	Input                 []UserInput
+	Preferences           Preferences
+	AdditionalContext     map[string]ports.AdditionalContextEntry
+	DeveloperInstructions string
 }
 
 func EnqueueTx(ctx context.Context, tx *sql.Tx, request EnqueueRequest) (uuid.UUID,
@@ -47,17 +50,22 @@ func EnqueueTx(ctx context.Context, tx *sql.Tx, request EnqueueRequest) (uuid.UU
 	if err != nil {
 		return uuid.Nil, false, err
 	}
+	additionalContext, err := json.Marshal(request.AdditionalContext)
+	if err != nil {
+		return uuid.Nil, false, err
+	}
 	id := uuid.New()
 	result, err := tx.ExecContext(ctx, `INSERT INTO official_turn_submissions(
 		id,workspace_id,conversation_id,plan_action_id,source_type,source_order,
 		discord_message_id,client_user_message_id,instruction,display_instruction,
-		input,preferences) VALUES ($1,$2,$3,NULLIF($4::text,'')::uuid,$5,$6::numeric,
-		NULLIF($7,''),$8,$9,$10,$11,$12)
+		input,preferences,additional_context,developer_instructions)
+		VALUES ($1,$2,$3,NULLIF($4::text,'')::uuid,$5,$6::numeric,
+		NULLIF($7,''),$8,$9,$10,$11,$12,$13,$14)
 		ON CONFLICT(workspace_id,client_user_message_id) DO NOTHING`, id,
 		request.WorkspaceID, request.ConversationID, optionalUUID(request.PlanActionID),
 		request.SourceType, request.SourceOrder, request.DiscordMessageID,
 		request.ClientMessageID, request.Instruction, request.DisplayInstruction,
-		input, preferences)
+		input, preferences, additionalContext, request.DeveloperInstructions)
 	if err != nil {
 		return uuid.Nil, false, err
 	}
@@ -79,23 +87,25 @@ func optionalUUID(id uuid.UUID) string {
 }
 
 type Submission struct {
-	ID                 uuid.UUID
-	WorkspaceID        uuid.UUID
-	ConversationID     uuid.UUID
-	SourceType         string
-	SourceOrder        string
-	DiscordMessageID   string
-	ClientMessageID    string
-	Instruction        string
-	DisplayInstruction string
-	Input              []UserInput
-	Preferences        Preferences
-	Status             string
-	AttemptCount       int
-	ThreadID           string
-	TurnID             string
-	LeaseToken         string
-	LeaseExpiresAt     time.Time
+	ID                    uuid.UUID
+	WorkspaceID           uuid.UUID
+	ConversationID        uuid.UUID
+	SourceType            string
+	SourceOrder           string
+	DiscordMessageID      string
+	ClientMessageID       string
+	Instruction           string
+	DisplayInstruction    string
+	Input                 []UserInput
+	Preferences           Preferences
+	AdditionalContext     map[string]ports.AdditionalContextEntry
+	DeveloperInstructions string
+	Status                string
+	AttemptCount          int
+	ThreadID              string
+	TurnID                string
+	LeaseToken            string
+	LeaseExpiresAt        time.Time
 }
 
 func ClaimNext(ctx context.Context, db *sql.DB, workspaceID uuid.UUID,
@@ -117,12 +127,13 @@ func ClaimNext(ctx context.Context, db *sql.DB, workspaceID uuid.UUID,
 		return nil, err
 	}
 	var item Submission
-	var input, preferences json.RawMessage
+	var input, preferences, additionalContext json.RawMessage
 	err = tx.QueryRowContext(ctx, `SELECT submission.id,submission.workspace_id,
 		submission.conversation_id,submission.source_type,submission.source_order::text,
 		COALESCE(submission.discord_message_id,''),submission.client_user_message_id,
 		submission.instruction,submission.display_instruction,submission.input,
-		submission.preferences,submission.status,submission.attempt_count,
+		submission.preferences,submission.additional_context,
+		submission.developer_instructions,submission.status,submission.attempt_count,
 		COALESCE(submission.thread_id,''),COALESCE(submission.turn_id,'')
 		FROM official_turn_submissions submission
 		WHERE submission.workspace_id=$1 AND submission.status='queued'
@@ -144,7 +155,8 @@ func ClaimNext(ctx context.Context, db *sql.DB, workspaceID uuid.UUID,
 		FOR UPDATE SKIP LOCKED LIMIT 1`, workspaceID).Scan(&item.ID, &item.WorkspaceID,
 		&item.ConversationID, &item.SourceType, &item.SourceOrder, &item.DiscordMessageID,
 		&item.ClientMessageID, &item.Instruction, &item.DisplayInstruction, &input,
-		&preferences, &item.Status, &item.AttemptCount, &item.ThreadID, &item.TurnID)
+		&preferences, &additionalContext, &item.DeveloperInstructions, &item.Status,
+		&item.AttemptCount, &item.ThreadID, &item.TurnID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, tx.Commit()
 	}
@@ -155,6 +167,9 @@ func ClaimNext(ctx context.Context, db *sql.DB, workspaceID uuid.UUID,
 		return nil, err
 	}
 	if err = json.Unmarshal(preferences, &item.Preferences); err != nil {
+		return nil, err
+	}
+	if err = json.Unmarshal(additionalContext, &item.AdditionalContext); err != nil {
 		return nil, err
 	}
 	token, err := security.RandomToken(32)

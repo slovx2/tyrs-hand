@@ -15,18 +15,20 @@ import (
 const maxDiscussionMessages = 200
 
 type pendingDiscussionMessage struct {
-	ID          string
-	DisplayName string
-	Username    string
-	Body        string
-	ReceivedAt  time.Time
-	Sequence    int64
+	ID            string
+	ParticipantID uuid.UUID
+	DisplayName   string
+	Username      string
+	Body          string
+	ReceivedAt    time.Time
+	Sequence      int64
 }
 
 func (s *ConversationService) enqueuePendingMessages(ctx context.Context, tx *sql.Tx,
 	conversationID uuid.UUID, triggerMessageID string,
 ) error {
-	rows, err := tx.QueryContext(ctx, `SELECT message_id, display_name, username, body, received_at
+	rows, err := tx.QueryContext(ctx, `SELECT message_id,participant_id,display_name,
+		username,body,received_at
 		FROM discord_input_messages
 		WHERE conversation_id = $1 AND status = 'received' AND official_submission_id IS NULL
 		ORDER BY received_at DESC, message_id DESC LIMIT $2::integer`, conversationID,
@@ -37,7 +39,8 @@ func (s *ConversationService) enqueuePendingMessages(ctx context.Context, tx *sq
 	var newest []pendingDiscussionMessage
 	for rows.Next() {
 		var message pendingDiscussionMessage
-		if err := rows.Scan(&message.ID, &message.DisplayName, &message.Username,
+		if err := rows.Scan(&message.ID, &message.ParticipantID, &message.DisplayName,
+			&message.Username,
 			&message.Body, &message.ReceivedAt); err != nil {
 			_ = rows.Close()
 			return err
@@ -129,8 +132,8 @@ func discussionInstruction(messages []pendingDiscussionMessage) string {
 		if name == "" {
 			name = message.Username
 		}
-		_, _ = fmt.Fprintf(&result, "  <message id=\"%s\" author=\"%s\" timestamp=\"%s\">\n    %s\n  </message>\n",
-			html.EscapeString(message.ID), html.EscapeString(name),
+		_, _ = fmt.Fprintf(&result, "  <message id=\"%s\" participant_id=\"%s\" author=\"%s\" timestamp=\"%s\">\n    %s\n  </message>\n",
+			html.EscapeString(message.ID), message.ParticipantID.String(), html.EscapeString(name),
 			message.ReceivedAt.UTC().Format(time.RFC3339Nano), html.EscapeString(message.Body))
 	}
 	result.WriteString("</discord_discussion>")

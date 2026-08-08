@@ -1,5 +1,7 @@
 import type { ThreadListResponse } from "@codex-app-server/v2/ThreadListResponse";
 import type { ThreadReadResponse } from "@codex-app-server/v2/ThreadReadResponse";
+import type { ThreadResumeResponse } from "@codex-app-server/v2/ThreadResumeResponse";
+import type { ThreadTurnsListResponse } from "@codex-app-server/v2/ThreadTurnsListResponse";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { CodexJsonRpcClient } from "@/app-server/jsonRpc";
@@ -31,7 +33,7 @@ describe("官方协议预览模式", () => {
       archived: false,
     });
 
-    expect(list.data).toHaveLength(5);
+    expect(list.data).toHaveLength(6);
     expect(list.data.every((thread) => thread.turns.length === 0)).toBe(true);
 
     const expected = [
@@ -41,14 +43,29 @@ describe("官方协议预览模式", () => {
       [previewSessionIds.failed, "failed", "userMessage"],
     ] as const;
     for (const [threadId, status, itemType] of expected) {
-      const detail = await client.request<ThreadReadResponse>("thread/read", {
-        threadId,
-        includeTurns: true,
+      const detail = await client.request<ThreadResumeResponse>("thread/resume", {
+        threadId, excludeTurns: true,
+        initialTurnsPage: { limit: 5, sortDirection: "desc", itemsView: "full" },
       });
-      const latestTurn = detail.thread.turns.at(-1);
+      expect(detail.thread.turns).toEqual([]);
+      const latestTurn = detail.initialTurnsPage?.data[0];
       expect(latestTurn?.status).toBe(status);
       expect(latestTurn?.items.at(-1)?.type).toBe(itemType);
     }
+
+    const longTurns: ThreadTurnsListResponse["data"] = [];
+    let cursor: string | null = null;
+    do {
+      const page: ThreadTurnsListResponse = await client.request("thread/turns/list", {
+        threadId: previewSessionIds.long, cursor, limit: 5,
+        sortDirection: "desc", itemsView: "full",
+      });
+      longTurns.push(...page.data);
+      cursor = page.nextCursor;
+    } while (cursor);
+    expect(longTurns).toHaveLength(32);
+    expect(longTurns[0]?.items.some((item) => item.type === "agentMessage" &&
+      item.text.includes("LONG_CONVERSATION_LATEST"))).toBe(true);
 
     const archived = await client.request<ThreadListResponse>("thread/list", {
       cursor: null,
@@ -75,7 +92,7 @@ describe("官方协议预览模式", () => {
 
     const changed = await primary.request<ThreadReadResponse>("thread/read", {
       threadId: previewSessionIds.running,
-      includeTurns: true,
+      includeTurns: false,
     });
     expect(changed.thread.name).toBe("预览中修改后的标题");
 
@@ -93,7 +110,7 @@ describe("官方协议预览模式", () => {
       sortDirection: "desc",
       archived: false,
     });
-    expect(primaryList.data).toHaveLength(6);
+    expect(primaryList.data).toHaveLength(7);
     expect(secondaryList.data).toHaveLength(1);
     expect(secondaryList.data[0]?.name).toBe("另一连接中的独立会话");
   });

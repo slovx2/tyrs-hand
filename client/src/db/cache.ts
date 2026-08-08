@@ -1,10 +1,13 @@
 import type { Thread } from "@codex-app-server/v2/Thread";
 
+import { THREAD_PAGE_SIZE } from "@/app-server/officialClient";
 import type { MobileProject, ThreadRecord } from "@/app-server/types";
+import { isPreviewMode } from "@/preview/config";
 import type { ControlBootstrap } from "@/types/control";
 import { getDatabase, withDatabaseTransaction } from "./database";
 
 export async function loadCachedProjects(profileId: string): Promise<MobileProject[]> {
+  if (isPreviewMode) return [];
   const database = await getDatabase();
   const rows = await database.getAllAsync<{ payload: string }>(
     "SELECT payload FROM projects WHERE profile_id=? ORDER BY lower(name),id", profileId);
@@ -13,6 +16,7 @@ export async function loadCachedProjects(profileId: string): Promise<MobileProje
 
 export async function saveProjects(profileId: string, projects: MobileProject[],
   bootstrap: ControlBootstrap | null = null): Promise<void> {
+  if (isPreviewMode) return;
   const now = new Date().toISOString();
   await withDatabaseTransaction(async (database) => {
     if (bootstrap) {
@@ -29,6 +33,7 @@ export async function saveProjects(profileId: string, projects: MobileProject[],
 }
 
 export async function loadCachedThreads(profileId: string): Promise<ThreadRecord[]> {
+  if (isPreviewMode) return [];
   const database = await getDatabase();
   const rows = await database.getAllAsync<{ payload: string; archived: number }>(
     `SELECT payload,archived FROM threads WHERE profile_id=?
@@ -38,34 +43,40 @@ export async function loadCachedThreads(profileId: string): Promise<ThreadRecord
 
 export async function replaceCachedThreads(profileId: string,
   records: ThreadRecord[]): Promise<void> {
+  if (isPreviewMode) return;
   await withDatabaseTransaction(async (database) => {
-    const existingRows = await database.getAllAsync<{ id: string; payload: string }>(
-      "SELECT id,payload FROM threads WHERE profile_id=?", profileId);
-    const existing = new Map(existingRows.flatMap((row) => {
-      const parsed = parseThreadRecord(row.payload, false)[0];
-      return parsed ? [[row.id, parsed] as const] : [];
-    }));
     await database.runAsync("DELETE FROM threads WHERE profile_id=?", profileId);
     for (const record of records) {
-      const detailed = existing.get(record.thread.id);
-      const merged = detailed && detailed.thread.turns.length > 0 && record.thread.turns.length === 0
-        ? { ...record, thread: { ...record.thread, turns: detailed.thread.turns } }
-        : record;
-      await insertThread(database, profileId, merged);
+      await insertThread(database, profileId, record);
     }
   });
 }
 
 export async function saveThreadRecord(profileId: string, record: ThreadRecord): Promise<void> {
+  if (isPreviewMode) return;
   await withDatabaseTransaction(async (database) => insertThread(database, profileId, record));
 }
 
 async function insertThread(database: Awaited<ReturnType<typeof getDatabase>>, profileId: string,
   record: ThreadRecord): Promise<void> {
+  const cached = cacheableThreadRecord(record);
   await database.runAsync(`INSERT INTO threads(profile_id,id,archived,updated_at,payload)
     VALUES (?,?,?,?,?) ON CONFLICT(profile_id,id) DO UPDATE SET archived=excluded.archived,
-    updated_at=excluded.updated_at,payload=excluded.payload`, profileId, record.thread.id,
-  record.archived ? 1 : 0, record.thread.updatedAt, JSON.stringify(record));
+    updated_at=excluded.updated_at,payload=excluded.payload`, profileId, cached.thread.id,
+  cached.archived ? 1 : 0, cached.thread.updatedAt, JSON.stringify(cached));
+}
+
+export function cacheableThreadRecord(record: ThreadRecord): ThreadRecord {
+  if (record.history.kind !== "loaded") return record;
+  return {
+    ...record,
+    thread: { ...record.thread, turns: record.thread.turns.slice(-THREAD_PAGE_SIZE) },
+    history: {
+      ...record.history,
+      olderCursor: record.history.tailOlderCursor,
+      hasLoadedOldest: record.history.tailOlderCursor === null,
+    },
+  };
 }
 
 function parseProject(payload: string): MobileProject[] {
@@ -82,9 +93,14 @@ function parseThreadRecord(payload: string, archived: boolean): ThreadRecord[] {
   try {
     const value = JSON.parse(payload) as Partial<ThreadRecord>;
     const thread = value.thread as Thread | undefined;
-    return thread && typeof thread.id === "string" && Array.isArray(thread.turns)
+    const history = value.history;
+    const validHistory = history?.kind === "summary" || history?.kind === "loaded" &&
+      (typeof history.olderCursor === "string" || history.olderCursor === null) &&
+      (typeof history.tailOlderCursor === "string" || history.tailOlderCursor === null) &&
+      typeof history.hasLoadedOldest === "boolean";
+    return thread && typeof thread.id === "string" && Array.isArray(thread.turns) && validHistory
       ? [{ thread, archived, workspaceId: value.workspaceId ?? null,
-        projectId: value.projectId ?? null }]
+        projectId: value.projectId ?? null, history }]
       : [];
   } catch {
     return [];

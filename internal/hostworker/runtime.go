@@ -85,24 +85,7 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 	}
 	socketPath := filepath.Join(options.StateDir, "app-server.sock")
 	_ = os.Remove(socketPath)
-	command := exec.Command(options.CodexBin,
-		codex.HomeAppServerArguments("unix://"+socketPath)...)
-	command.Dir = options.WorkspaceRoot
-	environment := appServerEnvironment(os.Environ())
-	values := map[string]string{
-		"CODEX_HOME": options.CodexHome,
-		"HOME":       options.Home,
-	}
-	if options.SSHAuthSock != "" {
-		values["SSH_AUTH_SOCK"] = options.SSHAuthSock
-	}
-	if options.BrowserWorkerToken != "" {
-		values[codex.BrowserMCPWorkerTokenEnvironment] = options.BrowserWorkerToken
-	}
-	if options.BrowserDesktopToken != "" {
-		values[codex.BrowserMCPDesktopTokenEnvironment] = options.BrowserDesktopToken
-	}
-	command.Env = replaceEnvironment(environment, values)
+	command := newAppServerCommand(options, socketPath)
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
 	if err := command.Start(); err != nil {
@@ -128,6 +111,24 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 	}
 	runtime.client = client
 	return runtime, nil
+}
+
+func newAppServerCommand(options RuntimeOptions, socketPath string) *exec.Cmd {
+	command := exec.Command(options.CodexBin,
+		codex.HomeAppServerArguments("unix://"+socketPath)...)
+	command.Dir = options.WorkspaceRoot
+	values := map[string]string{"CODEX_HOME": options.CodexHome, "HOME": options.Home}
+	if options.SSHAuthSock != "" {
+		values["SSH_AUTH_SOCK"] = options.SSHAuthSock
+	}
+	if options.BrowserWorkerToken != "" {
+		values[codex.BrowserMCPWorkerTokenEnvironment] = options.BrowserWorkerToken
+	}
+	if options.BrowserDesktopToken != "" {
+		values[codex.BrowserMCPDesktopTokenEnvironment] = options.BrowserDesktopToken
+	}
+	command.Env = replaceEnvironment(appServerEnvironment(os.Environ()), values)
+	return command
 }
 
 func (r *Runtime) Client() *codex.SocketClient { return r.client }
