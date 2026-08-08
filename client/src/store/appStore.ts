@@ -255,7 +255,9 @@ async function projectsForConnection(connection: Connection): Promise<{
   bootstrap: Awaited<ReturnType<ControlApi["bootstrap"]>> | null;
 }> {
   if (connection.kind === "ssh") {
-    const root = connection.remoteProjectRoot.replace(/\/+$/, "") || "/";
+    const configuredRoot = connection.remoteProjectRoot.trim();
+    if (!configuredRoot) return { bootstrap: null, projects: [] };
+    const root = configuredRoot.replace(/\/+$/, "") || "/";
     const name = root.split("/").filter(Boolean).at(-1) ?? `${connection.user}@${connection.host}`;
     return { bootstrap: null, projects: [{ id: connection.profileId, workspaceId: null, name,
       relativePath: root, cwd: root, kind: "ssh", availabilityStatus: "available",

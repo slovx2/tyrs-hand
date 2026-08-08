@@ -145,6 +145,14 @@ export async function updateSSHHostFingerprint(profileId: string, fingerprint: s
   new Date().toISOString(), profileId));
 }
 
+export async function updateSSHRemoteProjectRoot(profileId: string, root: string): Promise<void> {
+  const normalized = root.trim().replace(/\/+$/, "") || "/";
+  if (!normalized.startsWith("/")) throw new Error("默认目录必须是绝对路径");
+  await runDatabaseWrite((database) => database.runAsync(`UPDATE connection_profiles
+    SET ssh_remote_project_root=?,updated_at=? WHERE profile_id=? AND kind='ssh'`, normalized,
+  new Date().toISOString(), profileId));
+}
+
 export async function removeConnection(profileId: string): Promise<void> {
   if (isPreviewMode && isPreviewServerId(profileId)) {
     const { removePreviewConnection } = await import("@/preview/runtime");

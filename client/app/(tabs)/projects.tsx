@@ -17,6 +17,10 @@ export default function ProjectsScreen() {
       detail="请先在连接页扫描管理后台中的设备二维码。" /></Screen>;
   }
 
+  const emptyDetail = connection.kind === "ssh" && !connection.remoteProjectRoot.trim()
+    ? "请先在连接页为这个 SSH profile 选择默认目录。"
+    : "当前连接中暂时没有可用项目。";
+
   const openProject = (id: string) => {
     selectProject(id);
     router.push({ pathname: "/project/[id]", params: { id } });
@@ -24,7 +28,7 @@ export default function ProjectsScreen() {
 
   return <Screen><ConnectionErrorBanner /><FlatList testID="projects:list" data={projects}
     keyExtractor={(item) => item.id} contentContainerStyle={styles.list}
-    ListEmptyComponent={<EmptyState title="没有项目" detail="当前连接中暂时没有可用项目。" />}
+    ListEmptyComponent={<EmptyState title="没有项目" detail={emptyDetail} />}
     renderItem={({ item, index }) => <Pressable testID={`project:row:${index}`}
       accessibilityRole="button" accessibilityLabel={`打开项目 ${item.name}`}
       onPress={() => openProject(item.id)}>
