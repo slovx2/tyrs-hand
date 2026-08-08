@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { saveSSHConnection, updateSSHRemoteProjectRoot } from "./connections";
+import { saveSSHConnection } from "./connections";
 
 const database = vi.hoisted(() => ({
   getFirstAsync: vi.fn(),
@@ -36,7 +36,6 @@ const input = {
   user: "developer",
   keyRef: "key-1",
   hostFingerprint: "SHA256:test",
-  remoteProjectRoot: "/workspace",
   privateKey: "private-key",
   passphrase: "secret",
 };
@@ -55,24 +54,8 @@ describe("SSH connection persistence", () => {
 
     const [statement, ...parameters] = database.runAsync.mock.calls[0] as [string, ...unknown[]];
     expect(statement.match(/\?/g)).toHaveLength(parameters.length);
-    expect(parameters).toHaveLength(11);
+    expect(parameters).toHaveLength(10);
     expect(parameters.slice(0, 2)).toEqual(["profile-1", "Worker"]);
-  });
-
-  it("allows saving SSH before a default directory is selected", async () => {
-    await saveSSHConnection({ ...input, remoteProjectRoot: "" });
-
-    const [, ...parameters] = database.runAsync.mock.calls[0] as [string, ...unknown[]];
-    expect(parameters[8]).toBe("");
-  });
-
-  it("stores a separately selected absolute default directory", async () => {
-    await updateSSHRemoteProjectRoot("profile-1", "/workspace/project/");
-
-    expect(database.runAsync).toHaveBeenCalledWith(expect.stringContaining(
-      "SET ssh_remote_project_root=?"), "/workspace/project", expect.any(String), "profile-1");
-    await expect(updateSSHRemoteProjectRoot("profile-1", "relative/path"))
-      .rejects.toThrow("默认目录必须是绝对路径");
   });
 
   it("removes device-only credentials when the database transaction fails", async () => {

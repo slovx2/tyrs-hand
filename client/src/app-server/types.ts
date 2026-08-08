@@ -38,7 +38,7 @@ export function threadTitle(thread: Thread): string {
 export function projectForThread(projects: MobileProject[], thread: Thread): MobileProject | null {
   const cwd = cleanPath(thread.cwd);
   return projects
-    .filter((project) => cwd === cleanPath(project.cwd) || cwd.startsWith(`${cleanPath(project.cwd)}/`))
+    .filter((project) => isWithinProject(cwd, cleanPath(project.cwd)))
     .sort((left, right) => right.cwd.length - left.cwd.length)[0] ?? null;
 }
 
@@ -49,4 +49,8 @@ export function targetKey(profileId: string, workspaceId: string | null): string
 function cleanPath(value: string): string {
   const normalized = value.replace(/\\/g, "/").replace(/\/+$/, "");
   return normalized || "/";
+}
+
+function isWithinProject(cwd: string, root: string): boolean {
+  return root === "/" ? cwd.startsWith("/") : cwd === root || cwd.startsWith(`${root}/`);
 }

@@ -10,7 +10,8 @@ import { ConnectionErrorBanner } from "@/components/ConnectionErrorBanner";
 import { Button, Card, EmptyState, Muted, Screen, StatusDot, Title } from "@/components/ui";
 import { SegmentedControl } from "@/components/SegmentedControl";
 import { removeConnection, renameConnection, saveSSHConnection,
-  updateSSHHostFingerprint, updateSSHRemoteProjectRoot, type SSHConnection } from "@/db/connections";
+  updateSSHHostFingerprint, type SSHConnection } from "@/db/connections";
+import { addSSHProject } from "@/db/sshProjects";
 import { connectPairingUri } from "@/features/connections/connectPairing";
 import { listSSHDirectory, probeSSHHost, probeSSHHostAddress,
   sshTransport } from "@/native/sshTransport";
@@ -94,7 +95,7 @@ export default function ConnectionsScreen() {
       setSSH((current) => ({ ...current, privateKey: generated.privateKey,
         publicKey: generated.publicKey, passphrase: "" }));
       Alert.alert("密钥已生成", "SSH 配置可以先保存。请将下方公钥加入远端 authorized_keys，" +
-        "随后在连接卡片点“选择”设置默认目录。");
+        "随后在连接卡片点“添加项目”。");
     } catch (error) {
       Alert.alert("无法生成密钥", error instanceof Error ? error.message : "原生 SSH 模块不可用");
     }
@@ -112,21 +113,20 @@ export default function ConnectionsScreen() {
     }
   };
   const openSSHBrowser = async (connection: SSHConnection) => {
-    await loadSSHDirectory(connection, connection.remoteProjectRoot.trim() || "/");
+    await loadSSHDirectory(connection, "/");
   };
   const chooseSSHDirectory = async () => {
     if (!directoryBrowser) return;
     const { connection, path } = directoryBrowser;
     setBrowsingSSH(true);
     try {
-      await updateSSHRemoteProjectRoot(connection.profileId, path);
+      await addSSHProject(connection.profileId, path);
       setDirectoryBrowser(null);
-      await reload();
       if (useAppStore.getState().activeConnection?.profileId === connection.profileId) {
-        await switchConnection(connection.profileId);
+        await useAppStore.getState().refresh();
       }
     } catch (error) {
-      Alert.alert("保存默认目录失败", error instanceof Error ? error.message : "请重试");
+      Alert.alert("添加项目失败", error instanceof Error ? error.message : "请重试");
     } finally {
       setBrowsingSSH(false);
     }
@@ -150,7 +150,7 @@ export default function ConnectionsScreen() {
             await saveSSHConnection({ kind: "ssh", profileId,
               name: ssh.name.trim() || `${ssh.user.trim()}@${ssh.host.trim()}`,
               host: ssh.host.trim(), port, user: ssh.user.trim(), keyRef: Crypto.randomUUID(),
-              hostFingerprint: fingerprint, remoteProjectRoot: "",
+              hostFingerprint: fingerprint,
               privateKey: ssh.privateKey, ...(ssh.passphrase ? { passphrase: ssh.passphrase } : {}) });
             setSSHVisible(false); await reload(); await switchConnection(profileId);
           } catch (error) {
@@ -196,20 +196,19 @@ export default function ConnectionsScreen() {
         testID={`connection:${encodeURIComponent(connection.profileId)}`}
         onPress={() => void switchConnection(connection.profileId)}><Card style={styles.connection}>
         <View style={styles.row}><StatusDot status={active?.profileId === connection.profileId
-          ? connectionError ? "danger" : connection.kind === "ssh" &&
-            !connection.remoteProjectRoot.trim() ? "warning" : "success" : "muted"} />
+          ? connectionError ? "danger" : "success" : "muted"} />
           <View testID={active?.profileId === connection.profileId ? "connection:active" : "connection:inactive"}
             style={styles.connectionCopy}><Title>{connection.name}</Title>
             <Muted numberOfLines={1}>{connection.kind === "control" ? connection.baseUrl
               : `${connection.user}@${connection.host}:${connection.port}`}</Muted>
             {connection.kind === "ssh" ? <View testID={`connection:${encodeURIComponent(
-              connection.profileId)}:directory`}><Muted numberOfLines={1}>
-              {connection.remoteProjectRoot.trim() || "未选择默认目录"}
-            </Muted></View> : null}</View>
+              connection.profileId)}:projects`}><Muted>可添加多个项目目录</Muted></View> : null}</View>
+        </View>
+        <View style={styles.connectionActions}>
           {connection.kind === "ssh" && <>
             <Pressable disabled={browsingSSH} testID={`connection:${encodeURIComponent(
-              connection.profileId)}:select-directory`} onPress={() => void openSSHBrowser(connection)}>
-              <Text style={{ color: theme.colors.accent, padding: 8 }}>选择</Text></Pressable>
+              connection.profileId)}:add-project`} onPress={() => void openSSHBrowser(connection)}>
+              <Text style={{ color: theme.colors.accent, padding: 8 }}>添加项目</Text></Pressable>
             <Pressable onPress={() => void replaceFingerprint(connection.profileId)}>
               <Text style={{ color: theme.colors.textMuted, padding: 8 }}>指纹</Text></Pressable>
           </>}
@@ -238,7 +237,7 @@ export default function ConnectionsScreen() {
       onRequestClose={() => !savingSSH && setSSHVisible(false)}>
       <ScrollView style={{ backgroundColor: theme.colors.app }} contentContainerStyle={styles.sshForm}>
         <Title>添加 SSH 连接</Title>
-        <Muted>先保存 SSH 配置；公钥部署完成后，再从连接卡片选择默认目录。</Muted>
+        <Muted>先保存 SSH 配置；公钥部署完成后，再从连接卡片添加项目。</Muted>
         <Field testID="connection:ssh:name" label="名称（可选）" value={ssh.name}
           onChange={(value) => setSSH((current) => ({ ...current, name: value }))} />
         <Field testID="connection:ssh:host" label="Host" value={ssh.host} autoCapitalize="none"
@@ -276,7 +275,7 @@ export default function ConnectionsScreen() {
       animationType="slide" presentationStyle="pageSheet"
       onRequestClose={() => !browsingSSH && setDirectoryBrowser(null)}>
       <View style={[styles.directoryPicker, { backgroundColor: theme.colors.app }]}>
-        <Title>选择默认目录</Title>
+        <Title>添加项目</Title>
         {directoryBrowser ? <>
           <Muted>{directoryBrowser.connection.user}@{directoryBrowser.connection.host}</Muted>
           <Card style={styles.directoryBrowser}>
@@ -300,7 +299,7 @@ export default function ConnectionsScreen() {
           <View style={styles.formActions}>
             <Button title="取消" variant="secondary" disabled={browsingSSH}
               onPress={() => setDirectoryBrowser(null)} />
-            <Button testID="connection:ssh:select-current-directory" title="选择当前目录"
+            <Button testID="connection:ssh:add-current-directory" title="添加当前目录"
               loading={browsingSSH} onPress={() => void chooseSSHDirectory()} />
           </View>
         </> : null}
@@ -344,8 +343,9 @@ const styles = StyleSheet.create({
   headerActions: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
   theme: { paddingHorizontal: 16, gap: 6 },
   list: { padding: 16, gap: 8 },
-  connection: { padding: 13 },
+  connection: { padding: 13, gap: 4 },
   connectionCopy: { flex: 1, minWidth: 0 },
+  connectionActions: { flexDirection: "row", justifyContent: "flex-end", flexWrap: "wrap", gap: 2 },
   row: { flexDirection: "row", alignItems: "center", gap: 10 },
   scanner: { flex: 1, justifyContent: "flex-end" },
   previewCamera: { alignItems: "center", justifyContent: "center", gap: 14 },

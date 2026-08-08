@@ -24,7 +24,6 @@ export type SSHConnection = ConnectionBase & {
   user: string;
   keyRef: string;
   hostFingerprint: string | null;
-  remoteProjectRoot: string;
 };
 
 export type Connection = ControlConnection | SSHConnection;
@@ -42,7 +41,6 @@ type ConnectionRow = {
   ssh_user: string | null;
   ssh_key_ref: string | null;
   ssh_host_fingerprint: string | null;
-  ssh_remote_project_root: string | null;
 };
 
 const controlTokenKey = (profileId: string) => `tyrs-hand.device-token.${profileId}`;
@@ -100,10 +98,10 @@ export async function saveSSHConnection(input: Omit<SSHConnection, "active"> & {
         "SELECT count(*) count FROM connection_profiles",
       );
       await database.runAsync(`INSERT INTO connection_profiles(profile_id,kind,name,active,
-        ssh_host,ssh_port,ssh_user,ssh_key_ref,ssh_host_fingerprint,ssh_remote_project_root,
-        created_at,updated_at) VALUES (?,'ssh',?,?,?,?,?,?,?,?,?,?)`, input.profileId,
+        ssh_host,ssh_port,ssh_user,ssh_key_ref,ssh_host_fingerprint,created_at,updated_at)
+        VALUES (?,'ssh',?,?,?,?,?,?,?,?,?)`, input.profileId,
       input.name, count?.count === 0 ? 1 : 0, input.host, input.port, input.user, input.keyRef,
-      input.hostFingerprint, input.remoteProjectRoot, now, now);
+      input.hostFingerprint, now, now);
     });
   } catch (error) {
     await SecureStore.deleteItemAsync(sshPrivateKeyKey(input.keyRef));
@@ -145,14 +143,6 @@ export async function updateSSHHostFingerprint(profileId: string, fingerprint: s
   new Date().toISOString(), profileId));
 }
 
-export async function updateSSHRemoteProjectRoot(profileId: string, root: string): Promise<void> {
-  const normalized = root.trim().replace(/\/+$/, "") || "/";
-  if (!normalized.startsWith("/")) throw new Error("默认目录必须是绝对路径");
-  await runDatabaseWrite((database) => database.runAsync(`UPDATE connection_profiles
-    SET ssh_remote_project_root=?,updated_at=? WHERE profile_id=? AND kind='ssh'`, normalized,
-  new Date().toISOString(), profileId));
-}
-
 export async function removeConnection(profileId: string): Promise<void> {
   if (isPreviewMode && isPreviewServerId(profileId)) {
     const { removePreviewConnection } = await import("@/preview/runtime");
@@ -187,11 +177,9 @@ function connectionFromRow(row: ConnectionRow): Connection {
     return { ...base, kind: "control", serverId: row.control_server_id,
       baseUrl: row.control_base_url, deviceId: row.control_device_id };
   }
-  if (row.kind === "ssh" && row.ssh_host && row.ssh_port && row.ssh_user && row.ssh_key_ref &&
-    row.ssh_remote_project_root !== null) {
+  if (row.kind === "ssh" && row.ssh_host && row.ssh_port && row.ssh_user && row.ssh_key_ref) {
     return { ...base, kind: "ssh", host: row.ssh_host, port: row.ssh_port, user: row.ssh_user,
-      keyRef: row.ssh_key_ref, hostFingerprint: row.ssh_host_fingerprint,
-      remoteProjectRoot: row.ssh_remote_project_root };
+      keyRef: row.ssh_key_ref, hostFingerprint: row.ssh_host_fingerprint };
   }
   throw new Error(`连接 ${row.profile_id} 的持久化数据不完整`);
 }

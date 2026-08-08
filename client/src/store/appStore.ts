@@ -11,6 +11,7 @@ import { projectForThread, targetKey, type MobileProject, type ThreadRecord } fr
 import { loadCachedProjects, loadCachedThreads, replaceCachedThreads,
   saveProjects, saveThreadRecord } from "@/db/cache";
 import { listConnections, setActiveConnection, type Connection } from "@/db/connections";
+import { listSSHProjects } from "@/db/sshProjects";
 import { loadThemeMode, saveLastTurnPreferences, saveThemeMode } from "@/db/settings";
 import type { ThemeMode } from "@/theme/tokens";
 
@@ -204,12 +205,26 @@ export const useAppStore = create<AppState>((set, get) => ({
 }));
 
 async function refreshProfile(connection: Connection, set: StoreSet, get: StoreGet): Promise<void> {
+  let projectCatalog: Awaited<ReturnType<typeof projectsForConnection>>;
   try {
-    const projects = await projectsForConnection(connection);
-    await saveProjects(connection.profileId, projects.projects, projects.bootstrap);
+    projectCatalog = await projectsForConnection(connection);
+    await saveProjects(connection.profileId, projectCatalog.projects, projectCatalog.bootstrap);
+    if (get().activeConnection?.profileId === connection.profileId) {
+      set({ projects: projectCatalog.projects,
+        selectedProjectId: projectCatalog.projects.some((item) =>
+          item.id === get().selectedProjectId) ? get().selectedProjectId :
+          projectCatalog.projects[0]?.id ?? null });
+    }
+  } catch (error) {
+    if (get().activeConnection?.profileId === connection.profileId) {
+      set({ error: error instanceof Error ? error.message : "刷新项目失败" });
+    }
+    return;
+  }
+  try {
     const records: ThreadRecord[] = [];
     const catalogs: Record<string, Model[]> = {};
-    for (const workspaceId of uniqueTargets(projects.projects)) {
+    for (const workspaceId of uniqueTargets(projectCatalog.projects)) {
       const client = bindClient(connection, workspaceId, set, get);
       await client.connect();
       const [active, archived, models] = await Promise.all([
@@ -218,7 +233,7 @@ async function refreshProfile(connection: Connection, set: StoreSet, get: StoreG
       catalogs[targetKey(connection.profileId, workspaceId)] = models;
       for (const [thread, isArchived] of [...active.map((item) => [item, false] as const),
         ...archived.map((item) => [item, true] as const)]) {
-        const project = projectForThread(projects.projects.filter((item) =>
+        const project = projectForThread(projectCatalog.projects.filter((item) =>
           item.workspaceId === workspaceId), thread);
         if (project) records.push({ thread, archived: isArchived, workspaceId,
           projectId: project.id });
@@ -231,9 +246,7 @@ async function refreshProfile(connection: Connection, set: StoreSet, get: StoreG
     const merged = preserveLoadedTurns(deduplicated, existing);
     await replaceCachedThreads(connection.profileId, merged);
     if (get().activeConnection?.profileId !== connection.profileId) return;
-    set({ projects: projects.projects, threads: merged, modelsByTarget: catalogs, error: null,
-      selectedProjectId: projects.projects.some((item) => item.id === get().selectedProjectId)
-        ? get().selectedProjectId : projects.projects[0]?.id ?? null });
+    set({ threads: merged, modelsByTarget: catalogs, error: null });
   } catch (error) {
     if (get().activeConnection?.profileId === connection.profileId) {
       set({ error: error instanceof Error ? error.message : "刷新失败" });
@@ -255,13 +268,12 @@ async function projectsForConnection(connection: Connection): Promise<{
   bootstrap: Awaited<ReturnType<ControlApi["bootstrap"]>> | null;
 }> {
   if (connection.kind === "ssh") {
-    const configuredRoot = connection.remoteProjectRoot.trim();
-    if (!configuredRoot) return { bootstrap: null, projects: [] };
-    const root = configuredRoot.replace(/\/+$/, "") || "/";
-    const name = root.split("/").filter(Boolean).at(-1) ?? `${connection.user}@${connection.host}`;
-    return { bootstrap: null, projects: [{ id: connection.profileId, workspaceId: null, name,
-      relativePath: root, cwd: root, kind: "ssh", availabilityStatus: "available",
-      branch: null, dirty: false }] };
+    const configured = await listSSHProjects(connection.profileId);
+    return { bootstrap: null, projects: configured.map((project) => ({ id: project.id,
+      workspaceId: null, name: project.remotePath.split("/").filter(Boolean).at(-1) ??
+        `${connection.user}@${connection.host}`, relativePath: project.remotePath,
+      cwd: project.remotePath, kind: "ssh", availabilityStatus: "available",
+      branch: null, dirty: false })) };
   }
   const bootstrap = await new ControlApi(connection).bootstrap();
   if (bootstrap.serverId !== connection.serverId) throw new Error("Control 与当前连接不匹配");
