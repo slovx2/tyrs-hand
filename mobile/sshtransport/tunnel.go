@@ -110,13 +110,14 @@ func (t *loopbackTunnel) serve() {
 			_ = connection.Close()
 			continue
 		}
+		header = appServerUpgradeHeader(header)
 		_ = t.listener.Close()
 		_ = connection.SetDeadline(time.Time{})
 		t.mu.Lock()
 		t.connection = connection
 		t.mu.Unlock()
 		if err = relayAppServerProxy(t.ctx, t.ssh, connection, header); err != nil {
-			writeLoopbackFailure(connection)
+			writeLoopbackFailure(connection, relayFailureCode(err))
 		}
 		_ = connection.Close()
 		return
@@ -191,16 +192,57 @@ func headerHasToken(value, token string) bool {
 	return false
 }
 
+// React Native Android 的 OkHttp 会固定请求 permessage-deflate，而 Codex 0.147.0
+// 的 Unix WebSocket 不接受扩展协商。只删除这个 HTTP 握手能力声明；101 之后的
+// WebSocket 帧和官方 JSON-RPC 字节仍然透明转发。
+func appServerUpgradeHeader(header []byte) []byte {
+	lines := bytes.Split(header, []byte("\r\n"))
+	filtered := make([][]byte, 0, len(lines))
+	for _, line := range lines {
+		name, _, found := bytes.Cut(line, []byte(":"))
+		if found && strings.EqualFold(strings.TrimSpace(string(name)),
+			"Sec-WebSocket-Extensions") {
+			continue
+		}
+		filtered = append(filtered, line)
+	}
+	return bytes.Join(filtered, []byte("\r\n"))
+}
+
 func relayAppServerProxy(ctx context.Context, client *ssh.Client, local net.Conn,
 	header []byte,
 ) error {
-	if err := relayProxyAttempt(ctx, client, local, header); err == nil {
+	firstErr := relayProxyAttempt(ctx, client, local, header)
+	if firstErr == nil {
 		return nil
 	}
 	if err := ensureRemoteDaemon(client); err != nil {
-		return err
+		return newRelayFailure("daemon-after-"+relayFailureCode(firstErr), err)
 	}
-	return relayProxyAttempt(ctx, client, local, header)
+	if err := relayProxyAttempt(ctx, client, local, header); err != nil {
+		return newRelayFailure("retry-"+relayFailureCode(err), err)
+	}
+	return nil
+}
+
+type relayFailure struct {
+	code  string
+	cause error
+}
+
+func (e *relayFailure) Error() string { return e.code + ": " + e.cause.Error() }
+func (e *relayFailure) Unwrap() error { return e.cause }
+
+func newRelayFailure(code string, cause error) error {
+	return &relayFailure{code: code, cause: cause}
+}
+
+func relayFailureCode(err error) string {
+	var failure *relayFailure
+	if errors.As(err, &failure) {
+		return failure.code
+	}
+	return "unknown"
 }
 
 type firstProxyRead struct {
@@ -213,27 +255,27 @@ func relayProxyAttempt(ctx context.Context, client *ssh.Client, local net.Conn,
 ) error {
 	session, err := client.NewSession()
 	if err != nil {
-		return err
+		return newRelayFailure("proxy-session", err)
 	}
 	stdin, err := session.StdinPipe()
 	if err != nil {
 		_ = session.Close()
-		return err
+		return newRelayFailure("proxy-stdin", err)
 	}
 	stdout, err := session.StdoutPipe()
 	if err != nil {
 		_ = session.Close()
-		return err
+		return newRelayFailure("proxy-stdout", err)
 	}
 	var stderr bytes.Buffer
 	session.Stderr = &stderr
 	if err = session.Start("codex app-server proxy"); err != nil {
 		_ = session.Close()
-		return err
+		return newRelayFailure("proxy-start", err)
 	}
 	if _, err = stdin.Write(header); err != nil {
 		_ = session.Close()
-		return err
+		return newRelayFailure("proxy-request", err)
 	}
 	first := make(chan firstProxyRead, 1)
 	go func() {
@@ -243,22 +285,23 @@ func relayProxyAttempt(ctx context.Context, client *ssh.Client, local net.Conn,
 	select {
 	case <-ctx.Done():
 		_ = session.Close()
-		return ctx.Err()
+		return newRelayFailure("proxy-cancelled", ctx.Err())
 	case <-time.After(15 * time.Second):
 		_ = session.Close()
-		return errors.New("远端 App Server proxy 握手超时")
+		return newRelayFailure("proxy-timeout", errors.New("远端 App Server proxy 握手超时"))
 	case result := <-first:
 		if result.err != nil {
 			_ = session.Close()
 			message := strings.TrimSpace(stderr.String())
 			if message == "" {
-				return fmt.Errorf("远端 App Server proxy 不可用: %w", result.err)
+				return newRelayFailure(proxyHandshakeFailureCode(result.err), result.err)
 			}
-			return fmt.Errorf("远端 App Server proxy 不可用: %w (%s)", result.err, message)
+			return newRelayFailure(proxyHandshakeFailureCode(result.err),
+				fmt.Errorf("远端 App Server proxy 不可用: %w (%s)", result.err, message))
 		}
 		if _, err = local.Write(result.data); err != nil {
 			_ = session.Close()
-			return err
+			return newRelayFailure("loopback-response", err)
 		}
 	}
 	copyDone := make(chan struct{}, 1)
@@ -273,7 +316,20 @@ func relayProxyAttempt(ctx context.Context, client *ssh.Client, local net.Conn,
 	case <-copyDone:
 	case <-time.After(time.Second):
 	}
-	return copyErr
+	if copyErr != nil && !errors.Is(copyErr, io.EOF) && !errors.Is(copyErr, net.ErrClosed) {
+		return newRelayFailure("proxy-stream", copyErr)
+	}
+	return nil
+}
+
+func proxyHandshakeFailureCode(err error) string {
+	if errors.Is(err, io.EOF) {
+		return "proxy-eof"
+	}
+	if strings.Contains(err.Error(), "拒绝 Upgrade") {
+		return "proxy-rejected"
+	}
+	return "proxy-invalid"
 }
 
 func readProxyUpgrade(reader io.Reader) ([]byte, error) {
@@ -305,7 +361,7 @@ func readProxyUpgrade(reader io.Reader) ([]byte, error) {
 	return header, nil
 }
 
-func writeLoopbackFailure(connection net.Conn) {
-	_, _ = io.WriteString(connection, "HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n"+
+func writeLoopbackFailure(connection net.Conn, code string) {
+	_, _ = io.WriteString(connection, "HTTP/1.1 502 Bad Gateway ("+code+")\r\nConnection: close\r\n"+
 		"Content-Length: 0\r\n\r\n")
 }

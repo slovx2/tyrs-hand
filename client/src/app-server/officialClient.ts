@@ -33,6 +33,8 @@ export type SubmitInput = {
   projectId?: string | null;
 };
 
+export type NewThreadSubmitInput = Omit<SubmitInput, "threadId">;
+
 export type SubmitResult = { threadId: string; turnId: string; deduplicated: boolean };
 type EventListener = (event: ServerNotification | ServerRequest) => void;
 
@@ -117,9 +119,17 @@ export class OfficialAppServerClient {
   }
 
   submit(input: SubmitInput): Promise<SubmitResult> {
+    return this.trackSubmission(input, null);
+  }
+
+  submitNewThread(thread: Thread, input: NewThreadSubmitInput): Promise<SubmitResult> {
+    return this.trackSubmission({ ...input, threadId: thread.id }, thread);
+  }
+
+  private trackSubmission(input: SubmitInput, startedThread: Thread | null): Promise<SubmitResult> {
     const active = this.submissions.get(input.clientMessageId);
     if (active) return active;
-    const submission = this.submitOnce(input).finally(() => {
+    const submission = this.submitOnce(input, startedThread).finally(() => {
       if (this.submissions.get(input.clientMessageId) === submission) {
         this.submissions.delete(input.clientMessageId);
       }
@@ -166,13 +176,16 @@ export class OfficialAppServerClient {
     }
   }
 
-  private async submitOnce(input: SubmitInput): Promise<SubmitResult> {
+  private async submitOnce(input: SubmitInput, startedThread: Thread | null): Promise<SubmitResult> {
     await this.journal.prepare({ profileId: this.profileId, clientMessageId: input.clientMessageId,
       threadId: input.threadId, projectId: input.projectId ?? null,
       payload: { input: input.input, preferences: input.preferences } });
     try {
-      await this.resumeThread(input.threadId);
-      let thread = await this.readThread(input.threadId);
+      let thread = startedThread;
+      if (!thread) {
+        await this.resumeThread(input.threadId);
+        thread = await this.readThread(input.threadId);
+      }
       const duplicate = findClientMessage(thread, input.clientMessageId);
       if (duplicate) return this.completeRecovered(input, thread.id, duplicate.id);
 

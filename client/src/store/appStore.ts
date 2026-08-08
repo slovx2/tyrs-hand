@@ -127,10 +127,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     const record: ThreadRecord = { thread: response.thread, archived: false,
       workspaceId: project.workspaceId, projectId: project.id };
     await saveAndSetThread(connection.profileId, record, set, get);
-    await client.submit({ threadId: response.thread.id, clientMessageId, input, preferences,
+    await client.submitNewThread(response.thread, { clientMessageId, input, preferences,
       projectId: project.id });
     await saveLastTurnPreferences(connection.profileId, preferences).catch(() => undefined);
-    await loadOfficialThread(response.thread.id, set, get);
+    // 首条 userMessage 物化前，官方 thread/read(includeTurns) 会拒绝；item 通知负责触发权威刷新。
     void get().refresh();
     return response.thread.id;
   },

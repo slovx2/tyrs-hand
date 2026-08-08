@@ -14,6 +14,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/creack/pty"
 	"github.com/pkg/sftp"
@@ -144,9 +146,9 @@ func (s *SSHServer) serveDesktop(channel ssh.Channel) error {
 }
 
 func (s *SSHServer) serveDesktopInput(channel ssh.Channel, input io.Reader) error {
-	// net/http 在 WebSocket Hijack 前依赖 ReadDeadline 中断后台读取；SSH Channel
-	// 不支持 deadline，因此先桥接到支持 deadline 的 net.Pipe。
-	serverConnection, proxyConnection := net.Pipe()
+	// SSH Channel 没有 net.Conn 所需的地址和 deadline，并且客户端关闭 stdin 时
+	// 必须只向 App Server 传播读 EOF，不能截断仍在返回的数据。
+	serverConnection, proxyConnection := newDesktopPipe()
 	type proxyResult struct {
 		source string
 		err    error
@@ -157,6 +159,11 @@ func (s *SSHServer) serveDesktopInput(channel ssh.Channel, input io.Reader) erro
 	}()
 	go func() {
 		_, err := io.Copy(proxyConnection, input)
+		closeErr := proxyConnection.CloseWrite()
+		if err == nil && closeErr != nil && !errors.Is(closeErr, io.ErrClosedPipe) &&
+			!errors.Is(closeErr, net.ErrClosed) {
+			err = closeErr
+		}
 		finished <- proxyResult{source: "input", err: err}
 	}()
 	go func() {
@@ -191,6 +198,62 @@ func (s *SSHServer) serveDesktopInput(channel ssh.Channel, input io.Reader) erro
 	}
 	return result.err
 }
+
+type desktopPipeConnection struct {
+	reader    net.Conn
+	writer    net.Conn
+	local     net.Addr
+	remote    net.Addr
+	closeOnce sync.Once
+}
+
+type desktopPipeAddress string
+
+func newDesktopPipe() (*desktopPipeConnection, *desktopPipeConnection) {
+	serverReader, proxyWriter := net.Pipe()
+	proxyReader, serverWriter := net.Pipe()
+	server := &desktopPipeConnection{reader: serverReader, writer: serverWriter,
+		local: desktopPipeAddress("worker-runtime"), remote: desktopPipeAddress("ssh-client")}
+	proxy := &desktopPipeConnection{reader: proxyReader, writer: proxyWriter,
+		local: desktopPipeAddress("ssh-client"), remote: desktopPipeAddress("worker-runtime")}
+	return server, proxy
+}
+
+func (c *desktopPipeConnection) Read(value []byte) (int, error) {
+	return c.reader.Read(value)
+}
+
+func (c *desktopPipeConnection) Write(value []byte) (int, error) {
+	return c.writer.Write(value)
+}
+
+func (c *desktopPipeConnection) CloseWrite() error { return c.writer.Close() }
+
+func (c *desktopPipeConnection) Close() error {
+	var result error
+	c.closeOnce.Do(func() {
+		result = errors.Join(c.reader.Close(), c.writer.Close())
+	})
+	return result
+}
+
+func (c *desktopPipeConnection) LocalAddr() net.Addr  { return c.local }
+func (c *desktopPipeConnection) RemoteAddr() net.Addr { return c.remote }
+
+func (c *desktopPipeConnection) SetDeadline(deadline time.Time) error {
+	return errors.Join(c.reader.SetReadDeadline(deadline), c.writer.SetWriteDeadline(deadline))
+}
+
+func (c *desktopPipeConnection) SetReadDeadline(deadline time.Time) error {
+	return c.reader.SetReadDeadline(deadline)
+}
+
+func (c *desktopPipeConnection) SetWriteDeadline(deadline time.Time) error {
+	return c.writer.SetWriteDeadline(deadline)
+}
+
+func (a desktopPipeAddress) Network() string { return "ssh-pipe" }
+func (a desktopPipeAddress) String() string  { return string(a) }
 
 func (s *SSHServer) runPTY(channel ssh.Channel, state *sshSessionState, process *exec.Cmd) {
 	terminal, err := pty.StartWithSize(process, &pty.Winsize{

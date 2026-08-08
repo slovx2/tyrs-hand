@@ -116,15 +116,10 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 		toolHandlers:        make(map[string]runtimeToolBinding),
 		interactiveHandlers: make(map[string]runtimeInteractiveBinding)}
 	go runtime.wait()
-	if err := waitSocket(ctx, socketPath, runtime.done, 15*time.Second); err != nil {
-		_ = command.Process.Kill()
-		<-runtime.done
-		serviceProxy.close()
-		return nil, err
-	}
-	client, err := codex.ConnectSocket(ctx, codex.SocketClientOptions{
-		SocketPath: socketPath, ServerRequestHandler: runtime.handleServerRequest,
-	})
+	client, err := connectRuntimeClient(ctx, runtime.done, 15*time.Second,
+		codex.SocketClientOptions{
+			SocketPath: socketPath, ServerRequestHandler: runtime.handleServerRequest,
+		})
 	if err != nil {
 		_ = command.Process.Kill()
 		<-runtime.done
@@ -363,25 +358,32 @@ func (r *Runtime) wait() {
 	close(r.done)
 }
 
-func waitSocket(ctx context.Context, path string, processDone <-chan struct{}, timeout time.Duration) error {
-	deadline := time.NewTimer(timeout)
-	defer deadline.Stop()
-	ticker := time.NewTicker(50 * time.Millisecond)
-	defer ticker.Stop()
+func connectRuntimeClient(ctx context.Context, processDone <-chan struct{}, timeout time.Duration,
+	options codex.SocketClientOptions,
+) (*codex.SocketClient, error) {
+	deadlineCtx, cancelDeadline := context.WithTimeout(ctx, timeout)
+	defer cancelDeadline()
+	var lastErr error
 	for {
-		connection, err := net.DialTimeout("unix", path, 100*time.Millisecond)
+		attemptCtx, cancelAttempt := context.WithTimeout(deadlineCtx, 2*time.Second)
+		client, err := codex.ConnectSocket(attemptCtx, options)
+		cancelAttempt()
 		if err == nil {
-			_ = connection.Close()
-			return nil
+			return client, nil
 		}
+		lastErr = err
+		retry := time.NewTimer(50 * time.Millisecond)
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			retry.Stop()
+			return nil, ctx.Err()
 		case <-processDone:
-			return errors.New("codex App Server 在 Socket 就绪前退出")
-		case <-deadline.C:
-			return errors.New("等待 Codex App Server Socket 超时")
-		case <-ticker.C:
+			retry.Stop()
+			return nil, errors.New("codex App Server 在 Socket 就绪前退出")
+		case <-deadlineCtx.Done():
+			retry.Stop()
+			return nil, fmt.Errorf("等待 Codex App Server Socket 超时: %w", lastErr)
+		case <-retry.C:
 		}
 	}
 }

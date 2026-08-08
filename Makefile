@@ -2,7 +2,7 @@ PNPM ?= pnpm
 LOCAL_IMAGE ?= tyrs-hand:local
 CODEX ?= codex
 
-.PHONY: dependencies generate generate-check check-legacy-architecture format format-check vet lint web-check client-install client-check client-export client-e2e-contract client-e2e-android client-e2e-ios test test-unit test-race test-integration test-protocol test-coverage web-install web-build build build-local image-local worker-binaries ci ci-local
+.PHONY: dependencies generate generate-check check-legacy-architecture format format-check vet lint web-check client-install client-check client-export client-e2e-contract client-e2e-android client-e2e-ios test test-unit test-race test-integration test-mobile-transport-integration test-protocol test-coverage web-install web-build build build-local image-local worker-binaries ci ci-local
 
 dependencies:
 	go mod download
@@ -31,11 +31,11 @@ check-legacy-architecture:
 	./tools/check-legacy-architecture.sh
 
 format:
-	find cmd internal ent tools -name '*.go' -print0 | xargs -0 gofmt -w
+	find cmd internal ent tools mobile -name '*.go' -print0 | xargs -0 gofmt -w
 	$(PNPM) --dir web format
 
 format-check:
-	test -z "$$(gofmt -l cmd internal ent tools)"
+	test -z "$$(gofmt -l cmd internal ent tools mobile)"
 	$(PNPM) --dir web format:check
 
 vet:
@@ -82,6 +82,10 @@ test-race:
 
 test-integration:
 	go test -p=1 -tags=integration ./internal/database ./internal/discordintegration ./internal/httpapi ./test/integration ./test/protocol
+	$(MAKE) test-mobile-transport-integration
+
+test-mobile-transport-integration:
+	TYRS_HAND_TEST_CODEX_BIN="$(CODEX)" go test -count=1 -timeout=30s -tags=integration ./mobile/sshtransport
 
 test-protocol:
 	go test -p=1 -tags=integration ./test/protocol

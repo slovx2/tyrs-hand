@@ -49,6 +49,13 @@ type CloseListener = (error: Error) => void;
 
 const SOCKET_OPEN = 1;
 
+function redactLoopbackPath(message: string): string {
+  return message.replace(
+    /((?:ws|http):\/\/(?:127\.0\.0\.1|localhost):\d+\/)[^\s'"),]+/gi,
+    "$1<redacted>",
+  );
+}
+
 export class CodexJsonRpcClient {
   private socket: AppServerSocket | null = null;
   private opening: Promise<InitializeResponse> | null = null;
@@ -171,15 +178,25 @@ export class CodexJsonRpcClient {
   private waitUntilOpen(socket: AppServerSocket): Promise<void> {
     return new Promise((resolve, reject) => {
       let settled = false;
+      let errorFallback: ReturnType<typeof setTimeout> | null = null;
       const finish = (operation: () => void) => {
         if (settled) return;
         settled = true;
+        if (errorFallback !== null) clearTimeout(errorFallback);
         operation();
       };
       socket.onmessage = (event) => this.handleMessage(event.data);
-      socket.onerror = () => finish(() => reject(new Error("Codex App Server WebSocket 连接失败")));
+      // React Native 会先发 error，再同步发出携带底层原因的 close。延迟一个
+      // event-loop tick，避免通用错误覆盖更有诊断价值的 close.reason。
+      socket.onerror = () => {
+        if (errorFallback !== null) return;
+        errorFallback = setTimeout(() => finish(() => reject(
+          new Error("Codex App Server WebSocket 连接失败"),
+        )), 0);
+      };
       socket.onclose = (event) => {
-        const error = new Error(event.reason || `Codex App Server WebSocket 已断开 (${event.code ?? 0})`);
+        const reason = redactLoopbackPath(event.reason ?? "");
+        const error = new Error(reason || `Codex App Server WebSocket 已断开 (${event.code ?? 0})`);
         if (!settled) finish(() => reject(error));
         this.fail(error);
       };

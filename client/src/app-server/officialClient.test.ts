@@ -55,6 +55,26 @@ const preferences = { model: "gpt-test", effort: "high" as const, serviceTier: n
   collaborationMode: "default" as const };
 
 describe("OfficialAppServerClient", () => {
+  it("新 Thread 使用 thread/start 返回的内存状态直接 turn/start", async () => {
+    const thread = officialThread([]);
+    const rpc = new FakeRpc((method) => {
+      if (method === "turn/start") {
+        return { turn: officialTurn("turn-first", "inProgress", []) };
+      }
+      throw new Error(`新 Thread 首次提交不应调用 ${method}`);
+    });
+    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+
+    const result = await client.submitNewThread(thread, { clientMessageId: "message-first",
+      input: [textInput("hello")], preferences });
+
+    expect(result).toMatchObject({ threadId: thread.id, turnId: "turn-first" });
+    expect(rpc.calls.map((call) => call.method)).toEqual(["turn/start"]);
+    expect(rpc.calls[0]?.params).toMatchObject({
+      threadId: thread.id, clientUserMessageId: "message-first",
+    });
+  });
+
   it("Plan 未回答时先清空 requestUserInput，再 steer 当前 Turn", async () => {
     const thread = officialThread([officialTurn("turn-plan", "inProgress", [])]);
     const rpc = new FakeRpc((method) => {

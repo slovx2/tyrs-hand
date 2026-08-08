@@ -78,6 +78,19 @@ func (c *testSignalConnection) Close() error {
 	return c.Conn.Close()
 }
 
+type drainingDesktopRuntime struct {
+	started chan struct{}
+}
+
+func (r drainingDesktopRuntime) ServeDesktop(connection net.Conn) error {
+	close(r.started)
+	_, err := io.Copy(io.Discard, connection)
+	if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) || errors.Is(err, io.ErrClosedPipe) {
+		return nil
+	}
+	return err
+}
+
 type testSSHConnection struct{ ssh.Channel }
 
 func (testSSHConnection) LocalAddr() net.Addr              { return testAddress("client") }
@@ -238,5 +251,52 @@ func TestSSHServerDesktopProxyCompletesWebSocketHandshakeWithoutEOF(t *testing.T
 		require.NoError(t, dialErr)
 	case <-time.After(time.Second):
 		t.Fatal("Desktop WebSocket 握手等待了客户端 EOF")
+	}
+}
+
+func TestSSHServerCloseTerminatesActiveDesktopProxy(t *testing.T) {
+	public, private, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	signer, err := ssh.NewSignerFromKey(private)
+	require.NoError(t, err)
+	publicKey, err := ssh.NewPublicKey(public)
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	started := make(chan struct{})
+	server, err := StartSSHServer(ctx, SSHOptions{
+		ListenAddr: "127.0.0.1:0", HostKeyFile: filepath.Join(t.TempDir(), "host_key"),
+		Home: t.TempDir(), CodexHome: t.TempDir(), Shell: "/bin/sh",
+		AuthorizedClients: []AuthorizedClient{{ID: "desktop", PublicKey: publicKey}},
+		Runtime:           drainingDesktopRuntime{started: started},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, server.Close()) })
+	client, err := ssh.Dial("tcp", server.Addr().String(), &ssh.ClientConfig{
+		User: "ignored", Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = client.Close() })
+	session, err := client.NewSession()
+	require.NoError(t, err)
+	stdin, err := session.StdinPipe()
+	require.NoError(t, err)
+	require.NoError(t, session.Start("codex app-server proxy"))
+	_, err = io.WriteString(stdin, "partial websocket handshake")
+	require.NoError(t, err)
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("Desktop proxy 未启动")
+	}
+
+	closed := make(chan error, 1)
+	go func() { closed <- server.Close() }()
+	select {
+	case closeErr := <-closed:
+		require.NoError(t, closeErr)
+	case <-time.After(time.Second):
+		t.Fatal("SSH Server 关闭时仍在等待活动 Desktop proxy")
 	}
 }

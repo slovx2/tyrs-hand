@@ -30,6 +30,12 @@ class FakeSocket implements AppServerSocket {
   receive(message: Record<string, unknown>): void {
     this.onmessage?.({ data: JSON.stringify(message) });
   }
+
+  fail(reason: string): void {
+    this.readyState = 3;
+    this.onerror?.();
+    this.onclose?.({ code: 1006, reason });
+  }
 }
 
 async function initialize(): Promise<{ client: CodexJsonRpcClient; socket: FakeSocket }> {
@@ -105,5 +111,18 @@ describe("CodexJsonRpcClient", () => {
     const pending = client.request("turn/start", { threadId: "thread-1", input: [] });
     socket.close(1006, "network lost");
     await expect(pending).rejects.toMatchObject({ delivery: "unknown" });
+  });
+
+  it("连接失败时保留 close 原因并脱敏 loopback 路径", async () => {
+    const socket = new FakeSocket();
+    const client = new CodexJsonRpcClient(() => socket, 1_000);
+    const opening = client.open();
+    await Promise.resolve();
+
+    socket.fail("failed ws://127.0.0.1:43210/random-secret: HTTP 502");
+
+    await expect(opening).rejects.toThrow(
+      "failed ws://127.0.0.1:43210/<redacted> HTTP 502",
+    );
   });
 });
