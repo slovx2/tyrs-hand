@@ -51,8 +51,6 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     id: "composer:send"
 - eraseText: 18
 - pressKey: BACK
-- assertVisible:
-    id: "session:stop"
 - extendedWaitUntil:
     visible: "最终回答开始后，处理过程应当已经自动收起。"
     timeout: 20000
@@ -61,9 +59,13 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - assertVisible:
     id: "turn:turn-running:activity-toggle"
 - assertNotVisible: "我正在读取官方 Thread 与 Turn 状态。"
+- assertNotVisible: "检查官方事件顺序"
 - tapOn:
     id: "turn:turn-running:activity-toggle"
 - assertVisible: "我正在读取官方 Thread 与 Turn 状态。"
+- assertNotVisible:
+    id: "reasoning:heading:reasoning-running"
+- assertNotVisible: "检查官方事件顺序"
 - tapOn:
     id: "tool-group:command-running-1:toggle"
 - assertVisible: "已运行 pnpm test -- --runInBand"
@@ -147,6 +149,7 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     waitToSettleTimeoutMs: 500
 - tapOn:
     id: "turn:turn-long-16:activity-toggle"
+- assertVisible: "调用了 1 个 MCP 工具、修改了 2 个文件、运行了 4 条命令"
 - assertVisible:
     id: "tool-group:command-long-16"
 - tapOn:

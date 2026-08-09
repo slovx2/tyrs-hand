@@ -21,6 +21,7 @@ import { OfficialTurn } from "./OfficialTurn";
 import { ParameterSheet } from "./ParameterSheet";
 import { ServerRequestCard } from "./ServerRequestCard";
 import { createActiveTurnReconciler } from "./activeTurnReconciler";
+import { ACTIVITY_TOGGLE_SCROLL_SETTLE_MS, activityToggleAllowed } from "./activityDisclosure";
 import { conversationRows, type ConversationRow } from "./conversationRows";
 import { anchorViewOffset, conversationScrollState, loadConversationPosition,
   resolveConversationPosition, saveConversationPosition, visibleRowTop } from "./conversationPosition";
@@ -81,6 +82,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const historyPagingReady = useRef(false);
   const olderLoadRequested = useRef(false);
   const momentumScrolling = useRef(false);
+  const activityToggleBlockedUntil = useRef(0);
   const olderLoadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeSessionId = useRef(sessionId);
   const scrollOffset = useRef(0);
@@ -98,6 +100,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     showScrollToLatestRef.current = visible;
     setShowScrollToLatest(visible);
   }, []);
+  const canToggleActivity = useCallback(() =>
+    activityToggleAllowed(activityToggleBlockedUntil.current), []);
 
   useEffect(() => {
     let canceled = false;
@@ -115,6 +119,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     historyPagingReady.current = false;
     olderLoadRequested.current = false;
     momentumScrolling.current = false;
+    activityToggleBlockedUntil.current = 0;
     if (olderLoadTimer.current) clearTimeout(olderLoadTimer.current);
     olderLoadTimer.current = null;
     scrollOffset.current = 0;
@@ -270,7 +275,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   }, [activeTurnId, interruptThread, sessionId, stopping]);
 
   const renderRow = useCallback(({ item }: { item: ConversationRow }) => item.kind === "turn"
-    ? <OfficialTurn profileId={profileId ?? "unavailable"} threadId={sessionId} turn={item.turn} />
+    ? <OfficialTurn profileId={profileId ?? "unavailable"} threadId={sessionId} turn={item.turn}
+      canToggleActivity={canToggleActivity} />
     : item.kind === "request"
       ? <ServerRequestCard request={item.request} onAnswer={(result) => {
         if (!answerRequest(sessionId, item.request.id, result)) {
@@ -278,7 +284,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
           void loadThread(sessionId);
         }
       }} />
-      : null, [answerRequest, loadThread, profileId, sessionId]);
+      : null, [answerRequest, canToggleActivity, loadThread, profileId, sessionId]);
 
   if (!connection || !record) {
     return <EmptyState title="会话不可用" detail="它可能已被归档、移除，或属于其他连接。" />;
@@ -317,22 +323,26 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         }}
         onScrollBeginDrag={() => {
           momentumScrolling.current = false;
+          activityToggleBlockedUntil.current = Number.POSITIVE_INFINITY;
           if (olderLoadTimer.current) clearTimeout(olderLoadTimer.current);
           olderLoadTimer.current = null;
           historyPagingReady.current = true;
           if (scrollOffset.current <= 8) requestOlderLoad();
         }}
         onScrollEndDrag={() => {
+          activityToggleBlockedUntil.current = Date.now() + ACTIVITY_TOGGLE_SCROLL_SETTLE_MS;
           saveVisiblePosition();
           scheduleOlderLoad();
         }}
         onMomentumScrollBegin={() => {
           momentumScrolling.current = true;
+          activityToggleBlockedUntil.current = Number.POSITIVE_INFINITY;
           if (olderLoadTimer.current) clearTimeout(olderLoadTimer.current);
           olderLoadTimer.current = null;
         }}
         onMomentumScrollEnd={() => {
           momentumScrolling.current = false;
+          activityToggleBlockedUntil.current = Date.now() + ACTIVITY_TOGGLE_SCROLL_SETTLE_MS;
           saveVisiblePosition();
           flushOlderLoad();
         }}

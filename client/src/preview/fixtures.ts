@@ -40,6 +40,8 @@ export function createPreviewSeed(): PreviewSeed {
   const running = thread(previewSessionIds.running, "/preview/workspaces/tyrs-hand",
     "运行中：完善移动端会话体验", [turn("turn-running", "inProgress", [
       user("user-running", "preview-running", "请检查移动端协议时序"),
+      { type: "reasoning", id: "reasoning-running",
+        summary: ["**检查官方事件顺序**"], content: [] },
       agent("agent-running", "我正在读取官方 Thread 与 Turn 状态。", "commentary"),
       command("command-running-1", "inProgress", "PREVIEW_TOOL_OUTPUT_MUST_NOT_RENDER"),
       command("command-running-2", "inProgress", "STREAMING_OUTPUT_MUST_NOT_RENDER"),
@@ -79,6 +81,21 @@ export function createPreviewSeed(): PreviewSeed {
         `LONG_TOOL_OUTPUT_MUST_NOT_RENDER:${number}`));
       if (number % 16 === 0) process.push({ type: "reasoning", id: `reasoning-long-${number}`,
         summary: [`已核对第 ${number} 轮的关键约束。`], content: [] });
+      if (number === 16) {
+        for (let step = 1; step <= 60; step += 1) {
+          process.push({ type: "reasoning", id: `reasoning-long-${number}-${step}`,
+            summary: [`**长任务中间步骤 ${step}**`], content: [] });
+          if (step <= 45) process.push(command(`command-long-${number}-${step}`, "completed",
+            `LONG_TOOL_OUTPUT_MUST_NOT_RENDER:${number}:${step}`));
+          if (step === 1) process.push(fileChange(`file-long-${number}`, [
+            "client/src/features/chat/OfficialTurn.tsx",
+            "client/src/features/chat/turnPresentation.ts",
+          ]));
+          if (step === 2) process.push(mcpToolCall(`mcp-long-${number}`));
+          if (step % 3 === 0) process.push(agent(`commentary-long-${number}-${step}`,
+            `已完成第 ${step} 个中间阶段，继续核对协议、缓存和滚动锚点。`, "commentary"));
+        }
+      }
       items.splice(1, 0, ...process);
     }
     return turn(`turn-long-${String(number).padStart(2, "0")}`, "completed", items);
@@ -173,4 +190,16 @@ function command(id: string, status: "inProgress" | "completed", output: string)
     processId: null, source: "agent", status, commandActions: [],
     aggregatedOutput: output, exitCode: status === "completed" ? 0 : null,
     durationMs: status === "completed" ? 1234 : null };
+}
+
+function fileChange(id: string, paths: string[]): Turn["items"][number] {
+  return { type: "fileChange", id, status: "completed", changes: paths.map((path) => ({
+    path, kind: { type: "update", move_path: null }, diff: "MOBILE_DIFF_MUST_NOT_RENDER",
+  })) };
+}
+
+function mcpToolCall(id: string): Turn["items"][number] {
+  return { type: "mcpToolCall", id, server: "filesystem", tool: "read_file",
+    status: "completed", arguments: null, appContext: null, pluginId: null, readOnlyHint: true,
+    result: null, error: null, durationMs: 250 };
 }

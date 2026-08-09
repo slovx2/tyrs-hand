@@ -2,8 +2,9 @@ import type { ThreadItem } from "@codex-app-server/v2/ThreadItem";
 import type { Turn } from "@codex-app-server/v2/Turn";
 import { describe, expect, it } from "vitest";
 
-import { createToolGroup, formatDuration, projectTurnPresentation, toolGroupTitle,
-  toolOperationLines, turnActivitySummary, type ToolGroupCategory,
+import { createToolGroup, formatDuration, mixedToolGroupTitle, projectTurnPresentation,
+  reasoningActivityHeading, toolGroupTitle, toolOperationLines, turnActivitySummary,
+  type ToolGroupCategory,
   type ToolItem } from "./turnPresentation";
 
 describe("官方 Turn 移动展示投影", () => {
@@ -29,7 +30,7 @@ describe("官方 Turn 移动展示投影", () => {
     expect(result.canCollapseActivity).toBe(false);
   });
 
-  it("reasoning、Plan 与最终回答都会切断工具组", () => {
+  it("reasoning 不切断工具组，Plan 与最终回答仍切断工具组", () => {
     const result = projectTurnPresentation(turn("inProgress", [
       command("command-1"),
       { type: "reasoning", id: "reasoning", summary: ["检查"], content: [] },
@@ -41,9 +42,74 @@ describe("官方 Turn 移动展示投影", () => {
     ]));
 
     expect(result.blocks.map((block) => `${block.kind}:${block.key}`)).toEqual([
-      "tools:command-1", "reasoning:reasoning", "tools:command-2", "plan:plan",
+      "tools:command-1", "plan:plan",
       "tools:command-3", "final:final", "tools:command-4",
     ]);
+    expect(result.blocks[0]).toMatchObject({ kind: "tools",
+      items: [{ id: "command-1" }, { id: "command-2" }] });
+  });
+
+  it("把官方 reasoning Markdown 标题投影为干净的活动标题", () => {
+    expect(reasoningActivityHeading([
+      "前一段摘要",
+      "**Reassessing query execution and skill usage**",
+    ])).toBe("Reassessing query execution and skill usage");
+    expect(reasoningActivityHeading(["### 检查协议顺序"])).toBe("检查协议顺序");
+    expect(reasoningActivityHeading(["检查普通摘要"])).toBe("检查普通摘要");
+    expect(reasoningActivityHeading(["  "])).toBeNull();
+
+    const completed = projectTurnPresentation(turn("completed", [
+      { type: "reasoning", id: "reasoning-markdown",
+        summary: ["**Planning evidence-backed rerun**"], content: [] },
+      agent("final", "完成", "final_answer"),
+    ]));
+    const running = projectTurnPresentation(turn("inProgress", [
+      command("command-before-reasoning"),
+      { type: "reasoning", id: "reasoning-markdown",
+        summary: ["**Planning evidence-backed rerun**"], content: [] },
+    ]));
+
+    expect(completed.blocks.map((block) => block.kind)).toEqual(["final"]);
+    expect(running.blocks.at(-1)).toMatchObject({ kind: "reasoning",
+      heading: "Planning evidence-backed rerun" });
+  });
+
+  it("长任务只保留当前 reasoning，并把其间工具聚合为稳定批次", () => {
+    const items: ThreadItem[] = [user("user", "执行")];
+    for (let index = 0; index < 60; index += 1) {
+      items.push({ type: "reasoning", id: `reasoning-${index}`,
+        summary: [`**步骤 ${index}**`], content: [] });
+      items.push(command(`command-${index}`));
+    }
+    items.push(agent("commentary", "阶段完成", "commentary"));
+    items.push({ type: "reasoning", id: "reasoning-current",
+      summary: ["**正在汇总**"], content: [] });
+
+    const result = projectTurnPresentation(turn("inProgress", items));
+
+    expect(result.blocks.map((block) => block.kind)).toEqual([
+      "user", "tools", "commentary", "reasoning",
+    ]);
+    const toolBlock = result.blocks[1];
+    expect(toolBlock?.kind).toBe("tools");
+    expect(toolBlock?.kind === "tools" ? toolBlock.items.map((item) => item.id) : [])
+      .toEqual(expect.arrayContaining(["command-0", "command-59"]));
+    expect(result.blocks.at(-1)).toMatchObject({ heading: "正在汇总" });
+  });
+
+  it("工具完成后 Turn 仍在运行时恢复最近 reasoning，工具运行中则优先显示工具", () => {
+    const reasoning = { type: "reasoning", id: "reasoning",
+      summary: ["**继续检查结果**"], content: [] } as ThreadItem;
+    const completedTool = projectTurnPresentation(turn("inProgress", [
+      reasoning, command("completed-tool", "completed"),
+    ]));
+    const runningTool = projectTurnPresentation(turn("inProgress", [
+      reasoning, command("running-tool", "inProgress"),
+    ]));
+
+    expect(completedTool.blocks.at(-1)).toMatchObject({ kind: "reasoning",
+      heading: "继续检查结果" });
+    expect(runningTool.blocks.map((block) => block.kind)).toEqual(["tools"]);
   });
 
   it("最终回答首段出现即允许折叠，不依赖 Turn 完成", () => {
@@ -124,8 +190,23 @@ describe("官方 Turn 移动展示投影", () => {
     expect(createToolGroup([image])).toMatchObject({ running: true, category: "image",
       title: "正在处理图片" });
     expect(createToolGroup([command("command") as ToolItem, image])).toMatchObject({
-      running: true, category: "mixed", title: "正在使用工具",
+      running: true, category: "mixed", title: "正在运行命令、正在处理图片",
     });
+  });
+
+  it("混合工具折叠头按官方方式汇总类别和数量", () => {
+    const file = { type: "fileChange", id: "file", status: "completed", changes: [
+      { path: "a.ts", kind: { type: "update", move_path: null }, diff: "" },
+      { path: "b.ts", kind: { type: "create" }, diff: "" },
+    ] } as ToolItem;
+    const mcp = { type: "mcpToolCall", id: "mcp", server: "filesystem", tool: "read_file",
+      status: "completed", arguments: null, appContext: null, pluginId: null,
+      readOnlyHint: true, result: null, error: null, durationMs: 2 } as ToolItem;
+
+    expect(mixedToolGroupTitle([file, mcp], false, false))
+      .toBe("调用了 1 个 MCP 工具、修改了 2 个文件");
+    expect(createToolGroup([file, mcp])).toMatchObject({ category: "mixed",
+      title: "调用了 1 个 MCP 工具、修改了 2 个文件" });
   });
 
   it("用活动 Turn 的尾部位置补足无 status 的网页搜索运行态", () => {

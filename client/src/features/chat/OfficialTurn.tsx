@@ -9,41 +9,82 @@ import { Muted } from "@/components/ui";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useTheme } from "@/theme/ThemeProvider";
 import { isToolGroupExpanded, isTurnActivityCollapsed,
-  toggleToolGroup, toggleTurnActivity } from "./activityDisclosure";
+  INITIAL_ACTIVITY_RENDER_COUNT, nextActivityRenderCount, toggleToolGroup,
+  toggleTurnActivity } from "./activityDisclosure";
 import { MarkdownContent } from "./MarkdownContent";
 import { ThinkingShimmer } from "./ThinkingShimmer";
 import { projectTurnPresentation, toolOperationLines, turnActivitySummary,
   type ToolGroup, type TurnBlock } from "./turnPresentation";
 
-type OfficialTurnProps = { profileId: string; threadId: string; turn: Turn };
+type OfficialTurnProps = {
+  profileId: string;
+  threadId: string;
+  turn: Turn;
+  canToggleActivity: () => boolean;
+};
 const turnPresentations = new WeakMap<Turn, ReturnType<typeof projectTurnPresentation>>();
 
 export const OfficialTurn = memo(function OfficialTurn({ profileId, threadId,
-  turn }: OfficialTurnProps) {
+  turn, canToggleActivity }: OfficialTurnProps) {
   const theme = useTheme();
   const presentation = useMemo(() => presentationForTurn(turn), [turn]);
   const [, redraw] = useState(0);
+  const [renderedActivityCount, setRenderedActivityCount] = useState(0);
   const nowMs = useElapsedClock(turn, presentation.canCollapseActivity);
   const memoryKey = `${profileId}:${threadId}:${turn.id}`;
   const collapsed = isTurnActivityCollapsed(memoryKey, presentation.canCollapseActivity);
+  const activityBlockCount = useMemo(() => presentation.blocks.filter(isActivityBlock).length,
+    [presentation.blocks]);
   let activityHeaderRendered = false;
+  let activityBlockIndex = 0;
+
+  useEffect(() => {
+    if (collapsed || !presentation.canCollapseActivity) {
+      setRenderedActivityCount(collapsed ? 0 : activityBlockCount);
+      return;
+    }
+    let count = Math.min(activityBlockCount, Math.max(INITIAL_ACTIVITY_RENDER_COUNT,
+      renderedActivityCount));
+    setRenderedActivityCount(count);
+    let frame: number | null = null;
+    const renderNextBatch = () => {
+      count = nextActivityRenderCount(count, activityBlockCount);
+      setRenderedActivityCount(count);
+      if (count < activityBlockCount) frame = requestAnimationFrame(renderNextBatch);
+    };
+    if (count < activityBlockCount) frame = requestAnimationFrame(renderNextBatch);
+    return () => { if (frame !== null) cancelAnimationFrame(frame); };
+    // 只在折叠状态或活动数量变化时启动一次分帧挂载；当前数量由闭包推进。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activityBlockCount, collapsed, presentation.canCollapseActivity]);
 
   return <View testID={`turn:${turn.id}`} style={styles.turn}>
     {presentation.blocks.map((block) => {
       const activity = isActivityBlock(block);
+      const activityIndex = activity ? activityBlockIndex++ : -1;
       let header: ReactNode = null;
       if (activity && !activityHeaderRendered && presentation.canCollapseActivity) {
         activityHeaderRendered = true;
         header = <ActivityHeader turnId={turn.id} collapsed={collapsed}
           summary={turnActivitySummary(turn, nowMs)}
           onPress={() => {
+            if (!canToggleActivity()) return;
+            if (collapsed) {
+              setRenderedActivityCount(Math.min(activityBlockCount,
+                INITIAL_ACTIVITY_RENDER_COUNT));
+            } else {
+              setRenderedActivityCount(0);
+            }
             toggleTurnActivity(memoryKey, presentation.canCollapseActivity);
             redraw((value) => value + 1);
           }} />;
       }
+      const deferred = activity && presentation.canCollapseActivity && !collapsed &&
+        activityIndex >= renderedActivityCount;
       return <Fragment key={block.key}>
         {header}
-        {activity && collapsed ? null : <TurnBlockView block={block} memoryKey={memoryKey}
+        {(activity && collapsed) || deferred ? null
+          : <TurnBlockView block={block} memoryKey={memoryKey}
           onDisclosureChange={() => redraw((value) => value + 1)} />}
       </Fragment>;
     })}
@@ -54,7 +95,7 @@ export const OfficialTurn = memo(function OfficialTurn({ profileId, threadId,
     </View> : null}
   </View>;
 }, (left, right) => left.profileId === right.profileId && left.threadId === right.threadId &&
-  left.turn === right.turn);
+  left.turn === right.turn && left.canToggleActivity === right.canToggleActivity);
 
 function presentationForTurn(turn: Turn): ReturnType<typeof projectTurnPresentation> {
   const cached = turnPresentations.get(turn);
@@ -87,6 +128,7 @@ function TurnBlockView({ block, memoryKey, onDisclosureChange }: {
   memoryKey: string;
   onDisclosureChange: () => void;
 }) {
+  const theme = useTheme();
   if (block.kind === "user") return <UserMessage item={block.item} />;
   if (block.kind === "commentary") return block.item.text.trim()
     ? <View testID="message:phase:commentary" style={styles.commentary}>
@@ -96,7 +138,11 @@ function TurnBlockView({ block, memoryKey, onDisclosureChange }: {
     </View> : null;
   if (block.kind === "reasoning") return <View testID={`item:reasoning:${block.item.id}`}
     style={styles.reasoning}>
-    <Muted selectable>{block.item.summary.join("\n")}</Muted>
+    <Ionicons name="sparkles-outline" size={15} color={theme.colors.textMuted} />
+    <Text selectable testID={`reasoning:heading:${block.item.id}`} numberOfLines={2}
+      style={[styles.reasoningText, { color: theme.colors.textMuted }]}>
+      {block.heading}
+    </Text>
   </View>;
   if (block.kind === "tools") return <ToolGroupView group={block}
     memoryKey={`${memoryKey}:${block.key}`} onDisclosureChange={onDisclosureChange} />;
@@ -231,8 +277,10 @@ const styles = StyleSheet.create({
   userText: { fontFamily: "Inter_400Regular", fontSize: 15, lineHeight: 22 },
   file: { fontFamily: "Inter_400Regular", fontSize: 13, marginTop: 5 },
   agentRow: { paddingHorizontal: 16, paddingBottom: 4, paddingTop: 8 },
-  commentary: { paddingHorizontal: 16, paddingVertical: 5 },
-  reasoning: { paddingHorizontal: 16, paddingVertical: 5 },
+  commentary: { opacity: 0.78, paddingHorizontal: 16, paddingVertical: 5 },
+  reasoning: { alignItems: "flex-start", flexDirection: "row", gap: 7, paddingHorizontal: 16,
+    paddingVertical: 5 },
+  reasoningText: { flex: 1, fontFamily: "Inter_500Medium", fontSize: 14, lineHeight: 20 },
   plan: { gap: 6, paddingHorizontal: 16, paddingBottom: 4, paddingTop: 8 },
   activitySummary: { borderBottomWidth: StyleSheet.hairlineWidth, marginHorizontal: 16,
     marginBottom: 7, marginTop: 7, paddingBottom: 9 },

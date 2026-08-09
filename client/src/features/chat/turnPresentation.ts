@@ -25,7 +25,7 @@ export type ToolGroup = {
 export type TurnBlock =
   | { kind: "user"; key: string; item: UserItem }
   | { kind: "commentary"; key: string; item: AgentItem }
-  | { kind: "reasoning"; key: string; item: ReasoningItem }
+  | { kind: "reasoning"; key: string; item: ReasoningItem; heading: string }
   | { kind: "final"; key: string; item: AgentItem }
   | { kind: "plan"; key: string; item: PlanItem }
   | ToolGroup;
@@ -42,6 +42,7 @@ export type ToolOperation = { key: string; text: string; running: boolean; faile
 export function projectTurnPresentation(turn: Turn): TurnPresentation {
   const blocks: TurnBlock[] = [];
   let pendingTools: ToolItem[] = [];
+  let trailingReasoning: TurnBlock & { kind: "reasoning" } | null = null;
   const unknownFinalId = turn.status === "completed"
     ? [...turn.items].reverse().find((item) =>
       item.type === "agentMessage" && item.phase === null)?.id ?? null
@@ -54,25 +55,36 @@ export function projectTurnPresentation(turn: Turn): TurnPresentation {
   };
 
   for (const item of turn.items) {
+    if (item.type === "reasoning") {
+      const heading = reasoningActivityHeading(item.summary);
+      trailingReasoning = heading
+        ? { kind: "reasoning", key: item.id, item, heading }
+        : trailingReasoning;
+      continue;
+    }
     if (isToolItem(item)) {
       pendingTools.push(item);
       continue;
     }
+    trailingReasoning = null;
     flushTools();
     if (item.type === "userMessage") {
       blocks.push({ kind: "user", key: item.id, item });
     } else if (item.type === "agentMessage") {
       blocks.push({ kind: item.phase === "final_answer" || item.id === unknownFinalId
         ? "final" : "commentary", key: item.id, item });
-    } else if (item.type === "reasoning") {
-      if (item.summary.some((part) => part.trim())) {
-        blocks.push({ kind: "reasoning", key: item.id, item });
-      }
     } else if (item.type === "plan") {
       blocks.push({ kind: "plan", key: item.id, item });
     }
   }
   flushTools(true);
+  // 官方只把最新 reasoning 当作当前思考状态；完成后的历史 reasoning 不逐条回放。
+  // reasoning 也不会切断可分组工具，因此长任务不会退化成大量单工具披露行。
+  const trailingBlock = blocks.at(-1);
+  const trailingToolIsRunning = trailingBlock?.kind === "tools" && trailingBlock.running;
+  if (turn.status === "inProgress" && trailingReasoning && !trailingToolIsRunning) {
+    blocks.push(trailingReasoning);
+  }
 
   const hasActivity = blocks.some((block) => block.kind === "tools" ||
     block.kind === "reasoning" || block.kind === "commentary" && block.item.text.trim() !== "");
@@ -83,6 +95,33 @@ export function projectTurnPresentation(turn: Turn): TurnPresentation {
     canCollapseActivity: hasActivity && hasFinalContent && turn.status !== "interrupted" };
 }
 
+/**
+ * 官方 reasoning summary 会用独占的 Markdown 粗体行表达活动标题。
+ * 移动端只展示这个标题，避免把 `**...**` 当作普通文本泄漏到活动流中。
+ */
+export function reasoningActivityHeading(summary: string[]): string | null {
+  const lines = summary.flatMap((part) => part.split(/\r?\n/))
+    .map((line) => line.trim()).filter(Boolean);
+  if (lines.length === 0) return null;
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const bold = lines[index]!.match(/^\*\*(.+?)\*\*$/);
+    if (bold?.[1]?.trim()) return cleanReasoningHeading(bold[1]);
+  }
+  const markdownHeading = lines[0]!.match(/^#{1,3}\s+(.+)$/);
+  return cleanReasoningHeading(markdownHeading?.[1] ?? lines.at(-1)!);
+}
+
+function cleanReasoningHeading(value: string): string | null {
+  const cleaned = value.trim()
+    .replace(/^\*\*(.+)\*\*$/, "$1")
+    .replace(/^__(.+)__$/, "$1")
+    .replace(/^`(.+)`$/, "$1")
+    .replace(/\[([^\]]+)\]\([^\s)]+\)/g, "$1")
+    .trim();
+  return cleaned || null;
+}
+
 export function createToolGroup(items: ToolItem[], inferStatelessRunning = false): ToolGroup {
   const category = toolGroupCategory(items);
   const explicitlyRunning = items.some(isToolRunning);
@@ -91,7 +130,30 @@ export function createToolGroup(items: ToolItem[], inferStatelessRunning = false
   const running = explicitlyRunning || inferredRunning;
   const failed = items.some(isToolFailed);
   return { kind: "tools", key: items[0]!.id, items: [...items], category, running,
-    inferredRunning, failed, title: toolGroupTitle(category, running, failed) };
+    inferredRunning, failed, title: category === "mixed"
+      ? mixedToolGroupTitle(items, running, failed)
+      : toolGroupTitle(category, running, failed) };
+}
+
+/**
+ * 官方完成态不会只显示笼统的 “Used tools”，而会在折叠头汇总工具类别和数量。
+ * 移动端不展示工具输出，因此这个摘要也是用户无需二次展开即可确认工具调用的入口。
+ */
+export function mixedToolGroupTitle(items: ToolItem[], running: boolean,
+  failed: boolean): string {
+  if (failed && !running) return "工具调用失败";
+  const counts = new Map<ToolGroupCategory, number>();
+  for (const item of items) {
+    const category = toolItemCategory(item);
+    const count = category === "file" && item.type === "fileChange"
+      ? Math.max(1, item.changes.length) : 1;
+    counts.set(category, (counts.get(category) ?? 0) + count);
+  }
+  const parts = TOOL_SUMMARY_ORDER.flatMap((category) => {
+    const count = counts.get(category);
+    return count === undefined ? [] : [toolCategorySummary(category, count, running)];
+  });
+  return parts.join("、") || toolGroupTitle("mixed", running, failed);
 }
 
 export function toolGroupTitle(category: ToolGroupCategory, running: boolean,
@@ -110,6 +172,45 @@ export function toolGroupTitle(category: ToolGroupCategory, running: boolean,
     mixed: ["正在使用工具", "使用了工具", "工具调用失败"],
   };
   return labels[category][failed && !running ? 2 : running ? 0 : 1];
+}
+
+const TOOL_SUMMARY_ORDER: ToolGroupCategory[] = [
+  "mcp", "file", "context", "command", "search", "image", "collaboration", "dynamic",
+  "wait", "review",
+];
+
+function toolCategorySummary(category: ToolGroupCategory, count: number,
+  running: boolean): string {
+  if (running) {
+    const labels: Record<ToolGroupCategory, string> = {
+      command: "正在运行命令",
+      file: "正在修改文件",
+      search: "正在搜索网页",
+      image: "正在处理图片",
+      collaboration: "正在协调协作任务",
+      mcp: "正在调用 MCP 工具",
+      dynamic: "正在调用动态工具",
+      wait: "正在等待",
+      context: "正在压缩上下文",
+      review: "正在审查代码",
+      mixed: "正在使用工具",
+    };
+    return labels[category];
+  }
+  const labels: Record<ToolGroupCategory, string> = {
+    command: `运行了 ${count} 条命令`,
+    file: `修改了 ${count} 个文件`,
+    search: `搜索了 ${count} 次网页`,
+    image: `处理了 ${count} 项图片`,
+    collaboration: `协调了 ${count} 项协作任务`,
+    mcp: `调用了 ${count} 个 MCP 工具`,
+    dynamic: `调用了 ${count} 个动态工具`,
+    wait: `等待了 ${count} 次`,
+    context: `压缩了 ${count} 次上下文`,
+    review: `进行了 ${count} 次代码审查`,
+    mixed: `使用了 ${count} 个工具`,
+  };
+  return labels[category];
 }
 
 export function toolOperationLines(item: ToolItem, inferStatelessRunning = false): ToolOperation[] {
