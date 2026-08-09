@@ -1,6 +1,6 @@
 import * as SQLite from "expo-sqlite";
 
-export const DATABASE_VERSION = 6;
+export const DATABASE_VERSION = 7;
 
 export function needsThreadHistoryCacheReset(currentVersion: number): boolean {
   return currentVersion >= 4 && currentVersion < DATABASE_VERSION;
@@ -242,7 +242,7 @@ async function migrateSSHProjects(database: SQLite.SQLiteDatabase): Promise<void
 
 async function migrateThreadHistoryCache(database: SQLite.SQLiteDatabase): Promise<void> {
   await database.withExclusiveTransactionAsync(async (transaction) => {
-    // Thread 历史可以从官方 App Server 重建；清空旧全量缓存，避免保留两套历史形状。
+    // Thread 历史可以从官方 App Server 重建；v7 清除仍可能包含工具输出的旧缓存。
     await transaction.runAsync("DELETE FROM threads");
     await transaction.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
   });

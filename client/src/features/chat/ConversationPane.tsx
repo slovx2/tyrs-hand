@@ -1,6 +1,5 @@
 import type { Model } from "@codex-app-server/v2/Model";
 import type { ServerRequest } from "@codex-app-server/ServerRequest";
-import type { ThreadItem } from "@codex-app-server/v2/ThreadItem";
 import type { Turn } from "@codex-app-server/v2/Turn";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -19,7 +18,7 @@ import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
 import { keyboardAvoidance } from "@/utils/keyboardAvoidance";
 import { ChatComposer } from "./ChatComposer";
-import { OfficialThreadItem } from "./OfficialThreadItem";
+import { OfficialTurn } from "./OfficialTurn";
 import { ParameterSheet } from "./ParameterSheet";
 import { ServerRequestCard } from "./ServerRequestCard";
 import { createActiveTurnReconciler } from "./activeTurnReconciler";
@@ -27,12 +26,11 @@ import { anchorViewOffset, conversationScrollState, loadConversationPosition,
   resolveConversationPosition, saveConversationPosition, visibleRowTop } from "./conversationPosition";
 
 type Row =
-  | { kind: "item"; key: string; item: ThreadItem }
-  | { kind: "error"; key: string; turn: Turn }
+  | { kind: "turn"; key: string; turn: Turn }
   | { kind: "request"; key: string; request: ServerRequest };
 
 const rowKey = (row: Row) => row.key;
-const rowType = (row: Row) => row.kind === "item" ? `item:${row.item.type}` : row.kind;
+const rowType = (row: Row) => row.kind;
 
 const EMPTY_MODELS: Model[] = [];
 const EMPTY_REQUESTS: ServerRequest[] = [];
@@ -175,12 +173,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const rows = useMemo<Row[]>(() => {
     const result: Row[] = [];
     for (const turn of record?.thread.turns ?? []) {
-      for (const item of turn.items) {
-        result.push({ kind: "item", key: `${turn.id}:${item.id}`, item });
-      }
-      if (turn.status === "failed" && turn.error) {
-        result.push({ kind: "error", key: `${turn.id}:error`, turn });
-      }
+      result.push({ kind: "turn", key: `turn:${turn.id}`, turn });
     }
     for (const request of requests) {
       result.push({ kind: "request", key: `request:${String(request.id)}`, request });
@@ -273,8 +266,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   }, [attachments, draftScope, followLatest, profileId, resolvedPreferences, sessionId,
     submitMessage, text]);
 
-  const renderRow = useCallback(({ item }: { item: Row }) => item.kind === "item"
-    ? <OfficialThreadItem item={item.item} />
+  const renderRow = useCallback(({ item }: { item: Row }) => item.kind === "turn"
+    ? <OfficialTurn profileId={profileId ?? "unavailable"} threadId={sessionId} turn={item.turn} />
     : item.kind === "request"
       ? <ServerRequestCard request={item.request} onAnswer={(result) => {
         if (!answerRequest(sessionId, item.request.id, result)) {
@@ -282,11 +275,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
           void loadThread(sessionId);
         }
       }} />
-      : <View testID="turn:error" style={styles.error}>
-        <Text selectable style={{ color: theme.colors.danger }}>
-          {item.turn.error?.message ?? "本轮执行失败"}
-        </Text>
-      </View>, [answerRequest, loadThread, sessionId, theme.colors.danger]);
+      : null, [answerRequest, loadThread, profileId, sessionId]);
 
   if (!connection || !record) {
     return <EmptyState title="会话不可用" detail="它可能已被归档、移除，或属于其他连接。" />;
@@ -424,7 +413,6 @@ const styles = StyleSheet.create({
   messageArea: { flex: 1, minHeight: 0 },
   messageList: { flex: 1 },
   list: { paddingVertical: 8 },
-  error: { marginHorizontal: 16, paddingVertical: 10 },
   historyStatus: { minHeight: 40, alignItems: "center", justifyContent: "center",
     paddingHorizontal: 16 },
   planAction: { paddingHorizontal: 16, paddingTop: 8 },

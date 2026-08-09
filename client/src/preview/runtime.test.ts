@@ -2,7 +2,7 @@ import type { ThreadListResponse } from "@codex-app-server/v2/ThreadListResponse
 import type { ThreadReadResponse } from "@codex-app-server/v2/ThreadReadResponse";
 import type { ThreadResumeResponse } from "@codex-app-server/v2/ThreadResumeResponse";
 import type { ThreadTurnsListResponse } from "@codex-app-server/v2/ThreadTurnsListResponse";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CodexJsonRpcClient } from "@/app-server/jsonRpc";
 import { primaryPreviewServerId, secondaryPreviewServerId } from "./config";
@@ -10,6 +10,7 @@ import { previewSessionIds } from "./fixtures";
 import {
   createPreviewAppServerSocket,
   listPreviewConnections,
+  previewActivityTimelineMs,
   resetPreviewState,
   setPreviewActiveConnection,
 } from "./runtime";
@@ -37,7 +38,7 @@ describe("官方协议预览模式", () => {
     expect(list.data.every((thread) => thread.turns.length === 0)).toBe(true);
 
     const expected = [
-      [previewSessionIds.running, "inProgress", "agentMessage"],
+      [previewSessionIds.running, "inProgress", "commandExecution"],
       [previewSessionIds.plan, "completed", "plan"],
       [previewSessionIds.interactive, "inProgress", "userMessage"],
       [previewSessionIds.failed, "failed", "userMessage"],
@@ -113,5 +114,31 @@ describe("官方协议预览模式", () => {
     expect(primaryList.data).toHaveLength(7);
     expect(secondaryList.data).toHaveLength(1);
     expect(secondaryList.data[0]?.name).toBe("另一连接中的独立会话");
+  });
+
+  it("按工具完成、最终回答首段、Turn 完成三个阶段驱动动态预览", async () => {
+    vi.useFakeTimers();
+    try {
+      const socket = createPreviewAppServerSocket(primaryPreviewServerId);
+      const messages: Record<string, unknown>[] = [];
+      socket.onmessage = (event) => messages.push(JSON.parse(String(event.data)) as Record<string, unknown>);
+      socket.send(JSON.stringify({ id: 1, method: "thread/resume", params: {
+        threadId: previewSessionIds.running, excludeTurns: true,
+        initialTurnsPage: { limit: 5, sortDirection: "desc", itemsView: "full" },
+      } }));
+      await vi.advanceTimersByTimeAsync(previewActivityTimelineMs.toolCompleted);
+      expect(messages.some((message) => message.method === "item/completed")).toBe(true);
+      await vi.advanceTimersByTimeAsync(previewActivityTimelineMs.finalStarted -
+        previewActivityTimelineMs.toolCompleted);
+      expect(messages.some((message) => message.method === "item/agentMessage/delta")).toBe(true);
+      await vi.advanceTimersByTimeAsync(previewActivityTimelineMs.turnCompleted -
+        previewActivityTimelineMs.finalStarted);
+      const completed = messages.find((message) => message.method === "turn/completed") as
+        { params?: { turn?: { status?: string } } } | undefined;
+      expect(completed?.params?.turn?.status).toBe("completed");
+      socket.close();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

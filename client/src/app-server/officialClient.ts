@@ -18,6 +18,7 @@ import type { TurnSteerResponse } from "@codex-app-server/v2/TurnSteerResponse";
 import type { UserInput } from "@codex-app-server/v2/UserInput";
 
 import { JsonRpcRequestError } from "./jsonRpc";
+import { projectThreadForMobile, projectTurnForMobile } from "./mobileProjection";
 import type { SubmissionJournal } from "./submissions";
 
 export type TurnPreferences = {
@@ -98,7 +99,7 @@ export class OfficialAppServerClient {
         archived: input.archived ?? false,
         ...(input.cwd ? { cwd: input.cwd } : {}),
       });
-      threads.push(...page.data);
+      threads.push(...page.data.map(projectThreadForMobile));
       cursor = page.nextCursor;
     } while (cursor);
     return threads;
@@ -107,7 +108,7 @@ export class OfficialAppServerClient {
   async readThreadMetadata(threadId: string): Promise<Thread> {
     const response = await this.rpc.request<ThreadReadResponse>("thread/read",
       { threadId, includeTurns: false });
-    return response.thread;
+    return projectThreadForMobile(response.thread);
   }
 
   async resumeThreadPage(threadId: string, itemsView: TurnItemsView = "full",
@@ -118,7 +119,7 @@ export class OfficialAppServerClient {
       initialTurnsPage: { limit, sortDirection: "desc", itemsView },
     });
     const page = chronologicalPage(response.initialTurnsPage ?? emptyPage());
-    return { thread: { ...response.thread, turns: page.turns }, page };
+    return { thread: { ...projectThreadForMobile(response.thread), turns: page.turns }, page };
   }
 
   async listTurnPage(threadId: string, cursor: string | null, limit = THREAD_PAGE_SIZE,
@@ -130,8 +131,9 @@ export class OfficialAppServerClient {
   }
 
   async startThread(cwd: string, model?: string): Promise<ThreadStartResponse> {
-    return this.rpc.request("thread/start", model ? { cwd, model,
+    const response = await this.rpc.request<ThreadStartResponse>("thread/start", model ? { cwd, model,
       runtimeWorkspaceRoots: [cwd] } : { cwd, runtimeWorkspaceRoots: [cwd] });
+    return { ...response, thread: projectThreadForMobile(response.thread) };
   }
 
   async listModels(): Promise<ModelListResponse["data"]> {
@@ -372,7 +374,7 @@ function hasClientMessage(turn: Turn, clientMessageId: string): boolean {
 
 function chronologicalPage(page: ThreadTurnsListResponse): OfficialTurnPage {
   return {
-    turns: [...page.data].reverse(),
+    turns: [...page.data].reverse().map(projectTurnForMobile),
     nextCursor: page.nextCursor,
     backwardsCursor: page.backwardsCursor,
   };

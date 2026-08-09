@@ -41,6 +41,8 @@ export function createPreviewSeed(): PreviewSeed {
     "运行中：完善移动端会话体验", [turn("turn-running", "inProgress", [
       user("user-running", "preview-running", "请检查移动端协议时序"),
       agent("agent-running", "我正在读取官方 Thread 与 Turn 状态。", "commentary"),
+      command("command-running-1", "inProgress", "PREVIEW_TOOL_OUTPUT_MUST_NOT_RENDER"),
+      command("command-running-2", "inProgress", "STREAMING_OUTPUT_MUST_NOT_RENDER"),
     ])], now);
   const planned = thread(previewSessionIds.plan, "/preview/workspaces/tyrs-hand",
     "计划已完成：优化消息恢复", [turn("turn-plan", "completed", [
@@ -70,7 +72,8 @@ export function createPreviewSeed(): PreviewSeed {
         : `## 第 ${number} 轮结果\n\n${"用于验证 Markdown 高度变化与稳定锚点。\n\n".repeat(3)}`,
       "final_answer"),
     ];
-    if (number === 16) items.splice(1, 0, command("command-long-16"));
+    if (number === 16) items.splice(1, 0, command("command-long-16", "completed",
+      "LONG_TOOL_OUTPUT_MUST_NOT_RENDER"));
     return turn(`turn-long-${String(number).padStart(2, "0")}`, "completed", items);
   });
   const long = thread(previewSessionIds.long, "/preview/workspaces/tyrs-hand",
@@ -156,11 +159,11 @@ function agent(id: string, text: string, phase: "commentary" | "final_answer"):
   return { type: "agentMessage", id, text, phase, memoryCitation: null };
 }
 
-function command(id: string): Turn["items"][number] {
+function command(id: string, status: "inProgress" | "completed", output: string):
+  Turn["items"][number] {
   return { type: "commandExecution", id, pluginId: null, scriptPath: null,
     command: "pnpm test -- --runInBand", cwd: "/preview/workspaces/tyrs-hand",
-    processId: null, source: "agent", status: "completed", commandActions: [],
-    aggregatedOutput: Array.from({ length: 24 }, (_, index) =>
-      `test-${String(index + 1).padStart(2, "0")} passed`).join("\n"),
-    exitCode: 0, durationMs: 1234 };
+    processId: null, source: "agent", status, commandActions: [],
+    aggregatedOutput: output, exitCode: status === "completed" ? 0 : null,
+    durationMs: status === "completed" ? 1234 : null };
 }

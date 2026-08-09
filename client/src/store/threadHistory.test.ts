@@ -46,6 +46,17 @@ describe("官方 Turn 分页合并", () => {
     expect(mergeTurnSequence([turn("turn-1"), turn("turn-2")],
       [latest, turn("turn-3")])).toEqual([turn("turn-1"), latest, turn("turn-3")]);
   });
+
+  it("内容未变化的官方 Turn 保留对象引用，避免无效重渲染", () => {
+    const existing = turn("turn-1", "completed", "same");
+    const incoming = turn("turn-1", "completed", "same");
+    const existingTurns = [existing];
+
+    const merged = mergeTailPage(existingTurns, [incoming]);
+
+    expect(merged.turns[0]).toBe(existing);
+    expect(merged.turns).toBe(existingTurns);
+  });
 });
 
 function page(turns: Turn[], nextCursor: string | null): OfficialTurnPage {

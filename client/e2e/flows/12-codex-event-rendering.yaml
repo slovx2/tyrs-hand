@@ -27,10 +27,20 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     timeout: 120000
 - scrollUntilVisible:
     element:
-      id: "item:commandExecution:.*"
+      id: "turn:.*:activity-toggle"
     direction: DOWN
-- assertVisible: "pnpm typecheck"
-- assertVisible: "update: client/src/features/chat/OfficialThreadItem.tsx"
-- assertVisible: "filesystem · read_file"
-- assertVisible: "网页搜索"
-- assertVisible: "协作任务 · spawnAgent"
+- tapOn:
+    id: "turn:.*:activity-toggle"
+- scrollUntilVisible:
+    element:
+      id: "tool-group:.*:toggle"
+    direction: DOWN
+- tapOn:
+    id: "tool-group:.*:toggle"
+- assertVisible: "已运行 pnpm typecheck"
+- assertVisible: "已修改 client/src/features/chat/OfficialTurn.tsx"
+- assertVisible: "已调用 filesystem · read_file"
+- assertVisible: "已搜索 Tyrs Hand mobile E2E"
+- assertVisible: "已启动协作任务"
+- assertNotVisible: "类型检查通过"
+- assertNotVisible: "@@ official item @@"

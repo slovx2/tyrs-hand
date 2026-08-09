@@ -843,7 +843,7 @@ func completionItems(prompt, turnID string) []map[string]any {
 				"status": "completed", "commandActions": []any{},
 				"aggregatedOutput": "类型检查通过", "exitCode": 0, "durationMs": 25},
 			map[string]any{"type": "fileChange", "id": uuid.NewString(), "status": "completed",
-				"changes": []any{map[string]any{"path": "client/src/features/chat/OfficialThreadItem.tsx",
+				"changes": []any{map[string]any{"path": "client/src/features/chat/OfficialTurn.tsx",
 					"kind": "update", "diff": "@@ official item @@"}}},
 			map[string]any{"type": "mcpToolCall", "id": uuid.NewString(), "server": "filesystem",
 				"tool": "read_file", "status": "completed", "arguments": map[string]any{},

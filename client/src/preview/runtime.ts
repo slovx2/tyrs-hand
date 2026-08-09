@@ -5,10 +5,17 @@ import type { UserInput } from "@codex-app-server/v2/UserInput";
 
 import type { AppServerSocket, SocketMessageEvent } from "@/app-server/jsonRpc";
 import type { Connection } from "@/db/connections";
-import { createPreviewSeed, type PreviewControlSeed } from "./fixtures";
+import { createPreviewSeed, previewSessionIds, type PreviewControlSeed } from "./fixtures";
 
 let state = createPreviewSeed();
 let idCounter = 1;
+let stateGeneration = 0;
+const activityTimelines = new Set<string>();
+export const previewActivityTimelineMs = {
+  toolCompleted: 8_000,
+  finalStarted: 14_000,
+  turnCompleted: 18_000,
+} as const;
 
 function control(serverId: string): PreviewControlSeed {
   const value = state.controls[serverId];
@@ -125,6 +132,7 @@ class PreviewSocket implements AppServerSocket {
         initialTurnsPage: pageParams ? turnsPage(thread, pageParams) : null,
       } });
       setTimeout(() => this.emitPending(thread.id), 0);
+      this.startActivityTimeline(thread.id);
       return;
     }
     if (method === "thread/turns/list") {
@@ -213,6 +221,48 @@ class PreviewSocket implements AppServerSocket {
     }, delay);
   }
 
+  private startActivityTimeline(threadId: string): void {
+    if (threadId !== previewSessionIds.running || activityTimelines.has(threadId)) return;
+    activityTimelines.add(threadId);
+    const generation = stateGeneration;
+    const apply = (delay: number, update: (thread: Thread, turn: Turn) => unknown) => {
+      setTimeout(() => {
+        if (generation !== stateGeneration) return;
+        const thread = requireThread(control(this.serverId), threadId);
+        const turn = thread.turns.find((item) => item.id === "turn-running");
+        if (!turn || turn.status !== "inProgress") return;
+        const notifications = update(thread, turn);
+        for (const notification of Array.isArray(notifications)
+          ? notifications : [notifications]) {
+          if (notification) this.emit(notification);
+        }
+      }, delay);
+    };
+    apply(previewActivityTimelineMs.toolCompleted, (_thread, turn) => {
+      const commands = turn.items.filter((item) => item.type === "commandExecution");
+      for (const command of commands) {
+        command.status = "completed";
+        command.exitCode = 0;
+        command.durationMs = previewActivityTimelineMs.toolCompleted;
+      }
+      return commands.map((command) => ({ method: "item/completed",
+        params: { threadId, turnId: turn.id, item: structuredClone(command) } }));
+    });
+    apply(previewActivityTimelineMs.finalStarted, (_thread, turn) => {
+      turn.items.push({ type: "agentMessage", id: "agent-running-final",
+        text: "最终回答开始后，处理过程应当已经自动收起。",
+        phase: "final_answer", memoryCitation: null });
+      return { method: "item/agentMessage/delta", params: { threadId, turnId: turn.id,
+        itemId: "agent-running-final", delta: "最终回答开始" } };
+    });
+    apply(previewActivityTimelineMs.turnCompleted, (thread, turn) => {
+      turn.status = "completed"; turn.completedAt = Math.floor(Date.now() / 1000);
+      turn.durationMs = previewActivityTimelineMs.turnCompleted;
+      thread.status = { type: "idle" }; thread.updatedAt = turn.completedAt;
+      return { method: "turn/completed", params: { threadId, turn: structuredClone(turn) } };
+    });
+  }
+
   private emit(message: unknown): void {
     if (this.readyState === 3) return;
     this.onmessage?.({ data: JSON.stringify(message) });
@@ -283,5 +333,5 @@ function userItem(params: Record<string, unknown>): Turn["items"][number] {
 }
 
 export function resetPreviewState(): void {
-  state = createPreviewSeed(); idCounter = 1;
+  stateGeneration += 1; activityTimelines.clear(); state = createPreviewSeed(); idCounter = 1;
 }

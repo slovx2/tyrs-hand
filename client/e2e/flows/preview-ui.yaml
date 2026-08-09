@@ -40,6 +40,23 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     id: "session:30000000-0000-4000-8000-000000000001"
 - assertVisible:
     id: "session:stop"
+- assertVisible: "正在运行命令"
+- assertVisible:
+    id: "tool-group:shimmer"
+- assertNotVisible: "PREVIEW_TOOL_OUTPUT_MUST_NOT_RENDER"
+- extendedWaitUntil:
+    visible: "最终回答开始后，处理过程应当已经自动收起。"
+    timeout: 20000
+- assertVisible:
+    id: "turn:turn-running:activity-toggle"
+- assertNotVisible: "我正在读取官方 Thread 与 Turn 状态。"
+- tapOn:
+    id: "turn:turn-running:activity-toggle"
+- assertVisible: "我正在读取官方 Thread 与 Turn 状态。"
+- tapOn:
+    id: "tool-group:command-running-1:toggle"
+- assertVisible: "已运行 pnpm test -- --runInBand"
+- assertNotVisible: "STREAMING_OUTPUT_MUST_NOT_RENDER"
 - tapOn:
     id: "session:back"
 
@@ -112,9 +129,19 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     text: "LONG_CONVERSATION_LATEST"
 - scrollUntilVisible:
     element:
-      id: "item:commandExecution:command-long-16"
+      text: "长会话第 16 轮"
     direction: UP
-    timeout: 20000
+    timeout: 40000
+    centerElement: true
+    waitToSettleTimeoutMs: 500
+- tapOn:
+    id: "turn:turn-long-16:activity-toggle"
+- assertVisible:
+    id: "tool-group:command-long-16"
+- tapOn:
+    id: "tool-group:command-long-16:toggle"
+- assertVisible: "已运行 pnpm test -- --runInBand"
+- assertNotVisible: "LONG_TOOL_OUTPUT_MUST_NOT_RENDER"
 - assertVisible:
     id: "chat:scroll-to-latest"
 - tapOn:
