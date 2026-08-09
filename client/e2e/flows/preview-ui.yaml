@@ -44,9 +44,20 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - assertVisible:
     id: "tool-group:shimmer"
 - assertNotVisible: "PREVIEW_TOOL_OUTPUT_MUST_NOT_RENDER"
+- tapOn:
+    id: "composer:input"
+- inputText: "STEER_BUTTON_STATE"
+- assertVisible:
+    id: "composer:send"
+- eraseText: 18
+- pressKey: BACK
+- assertVisible:
+    id: "session:stop"
 - extendedWaitUntil:
     visible: "最终回答开始后，处理过程应当已经自动收起。"
     timeout: 20000
+- assertVisible:
+    id: "composer:send"
 - assertVisible:
     id: "turn:turn-running:activity-toggle"
 - assertNotVisible: "我正在读取官方 Thread 与 Turn 状态。"

@@ -1,6 +1,5 @@
 import type { Model } from "@codex-app-server/v2/Model";
 import type { ServerRequest } from "@codex-app-server/ServerRequest";
-import type { Turn } from "@codex-app-server/v2/Turn";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, AppState, KeyboardAvoidingView, Platform, Pressable,
@@ -22,15 +21,12 @@ import { OfficialTurn } from "./OfficialTurn";
 import { ParameterSheet } from "./ParameterSheet";
 import { ServerRequestCard } from "./ServerRequestCard";
 import { createActiveTurnReconciler } from "./activeTurnReconciler";
+import { conversationRows, type ConversationRow } from "./conversationRows";
 import { anchorViewOffset, conversationScrollState, loadConversationPosition,
   resolveConversationPosition, saveConversationPosition, visibleRowTop } from "./conversationPosition";
 
-type Row =
-  | { kind: "turn"; key: string; turn: Turn }
-  | { kind: "request"; key: string; request: ServerRequest };
-
-const rowKey = (row: Row) => row.key;
-const rowType = (row: Row) => row.kind;
+const rowKey = (row: ConversationRow) => row.key;
+const rowType = (row: ConversationRow) => row.kind;
 
 const EMPTY_MODELS: Model[] = [];
 const EMPTY_REQUESTS: ServerRequest[] = [];
@@ -39,13 +35,15 @@ const LIST_POSITIONING = {
   autoscrollToBottomThreshold: 0.1,
   animateAutoScrollToBottom: false,
 } as const;
+const LIST_DRAW_DISTANCE = 180;
+const LIST_RECYCLE_POOL_SIZE = 12;
 const OLDER_LOAD_SETTLE_MS = 120;
 
 export function ConversationPane({ sessionId }: { sessionId: string }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const keyboardVisible = useKeyboardVisible();
-  const list = useRef<FlashListRef<Row>>(null);
+  const list = useRef<FlashListRef<ConversationRow>>(null);
   const connection = useAppStore((state) => state.activeConnection);
   const record = useAppStore((state) => state.threads.find((item) => item.thread.id === sessionId));
   const modelsByTarget = useAppStore((state) => state.modelsByTarget);
@@ -70,13 +68,14 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const [draftReady, setDraftReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [olderError, setOlderError] = useState<string | null>(null);
   const [showScrollToLatest, setShowScrollToLatest] = useState(
     savedPosition?.kind === "anchor");
   const [positionRestored, setPositionRestored] = useState(false);
-  const rowsRef = useRef<Row[]>([]);
+  const rowsRef = useRef<ConversationRow[]>([]);
   const pinnedToLatest = useRef(savedPosition?.kind !== "anchor");
   const showScrollToLatestRef = useRef(savedPosition?.kind === "anchor");
   const historyPagingReady = useRef(false);
@@ -170,16 +169,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     };
   }, [activeTurnId, refreshThreadTail, sessionId]);
 
-  const rows = useMemo<Row[]>(() => {
-    const result: Row[] = [];
-    for (const turn of record?.thread.turns ?? []) {
-      result.push({ kind: "turn", key: `turn:${turn.id}`, turn });
-    }
-    for (const request of requests) {
-      result.push({ kind: "request", key: `request:${String(request.id)}`, request });
-    }
-    return result;
-  }, [record?.thread.turns, requests]);
+  const rows = useMemo(() => conversationRows(record?.thread.turns ?? [], requests),
+    [record?.thread.turns, requests]);
   rowsRef.current = rows;
   const restorePosition = useMemo(() => resolveConversationPosition(savedPosition,
     rows.map((row) => row.key)), [rows, savedPosition]);
@@ -266,7 +257,19 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   }, [attachments, draftScope, followLatest, profileId, resolvedPreferences, sessionId,
     submitMessage, text]);
 
-  const renderRow = useCallback(({ item }: { item: Row }) => item.kind === "turn"
+  const stop = useCallback(async () => {
+    if (!activeTurnId || stopping) return;
+    setStopping(true);
+    try {
+      await interruptThread(sessionId);
+    } catch (cause) {
+      Alert.alert("停止失败", cause instanceof Error ? cause.message : "请重试");
+    } finally {
+      setStopping(false);
+    }
+  }, [activeTurnId, interruptThread, sessionId, stopping]);
+
+  const renderRow = useCallback(({ item }: { item: ConversationRow }) => item.kind === "turn"
     ? <OfficialTurn profileId={profileId ?? "unavailable"} threadId={sessionId} turn={item.turn} />
     : item.kind === "request"
       ? <ServerRequestCard request={item.request} onAnswer={(result) => {
@@ -294,6 +297,9 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     <View style={styles.messageArea}>
       <FlashList key={sessionId} ref={list} testID="messages:list" data={rows}
         style={[styles.messageList, { opacity: hasRestorableAnchor && !positionRestored ? 0 : 1 }]}
+        drawDistance={LIST_DRAW_DISTANCE}
+        maxItemsInRecyclePool={LIST_RECYCLE_POOL_SIZE}
+        removeClippedSubviews={Platform.OS === "android"}
         initialScrollIndex={restorePosition.kind === "anchor" ? restorePosition.index : undefined}
         keyExtractor={rowKey}
         getItemType={rowType}
@@ -376,11 +382,6 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
                 finally { setSending(false); }
               })()} />
           </View>}
-          {activeTurnId && <Pressable testID="session:stop" style={styles.stop}
-            onPress={() => void interruptThread(sessionId).catch((cause) => Alert.alert("停止失败",
-              cause instanceof Error ? cause.message : "请重试"))}>
-            <Text style={{ color: theme.colors.danger }}>停止当前 Turn</Text>
-          </Pressable>}
         </>} />
       {showScrollToLatest && <Pressable testID="chat:scroll-to-latest"
         accessibilityRole="button" accessibilityLabel="回到最新消息"
@@ -398,7 +399,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
           return;
         }
         setBeforeSheet(preferences); setPreferences(resolvedPreferences); setShowParameters(true);
-      }} onSend={() => void send()} sending={sending}
+      }} onSend={() => void send()} onStop={() => void stop()} active={activeTurnId !== null}
+      sending={sending} stopping={stopping}
       parameterLabel={resolvedPreferences
         ? `${resolvedPreferences.model} · ${resolvedPreferences.effort ?? "默认"} · ${resolvedPreferences.collaborationMode === "plan" ? "先做计划" : "直接执行"}`
         : "参数暂不可用"} />
@@ -416,7 +418,6 @@ const styles = StyleSheet.create({
   historyStatus: { minHeight: 40, alignItems: "center", justifyContent: "center",
     paddingHorizontal: 16 },
   planAction: { paddingHorizontal: 16, paddingTop: 8 },
-  stop: { alignSelf: "center", minHeight: 44, justifyContent: "center", paddingHorizontal: 16 },
   scrollToLatest: { position: "absolute", right: 16, bottom: 12, width: 42, height: 42,
     borderRadius: 21, borderWidth: StyleSheet.hairlineWidth, alignItems: "center",
     justifyContent: "center", elevation: 5 },

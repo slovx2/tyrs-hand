@@ -67,6 +67,9 @@ describe("官方协议预览模式", () => {
     expect(longTurns).toHaveLength(32);
     expect(longTurns[0]?.items.some((item) => item.type === "agentMessage" &&
       item.text.includes("LONG_CONVERSATION_LATEST"))).toBe(true);
+    expect(longTurns[0]?.items.some((item) => item.type === "agentMessage" &&
+      item.phase === "commentary")).toBe(true);
+    expect(longTurns[0]?.items.some((item) => item.type === "commandExecution")).toBe(true);
 
     const archived = await client.request<ThreadListResponse>("thread/list", {
       cursor: null,

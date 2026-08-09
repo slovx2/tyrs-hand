@@ -72,8 +72,15 @@ export function createPreviewSeed(): PreviewSeed {
         : `## 第 ${number} 轮结果\n\n${"用于验证 Markdown 高度变化与稳定锚点。\n\n".repeat(3)}`,
       "final_answer"),
     ];
-    if (number === 16) items.splice(1, 0, command("command-long-16", "completed",
-      "LONG_TOOL_OUTPUT_MUST_NOT_RENDER"));
+    if (number % 4 === 0) {
+      const process: Turn["items"] = [agent(`commentary-long-${number}`,
+        `正在检查第 ${number} 轮的上下文、文件状态与验证结果。`, "commentary")];
+      if (number % 8 === 0) process.push(command(`command-long-${number}`, "completed",
+        `LONG_TOOL_OUTPUT_MUST_NOT_RENDER:${number}`));
+      if (number % 16 === 0) process.push({ type: "reasoning", id: `reasoning-long-${number}`,
+        summary: [`已核对第 ${number} 轮的关键约束。`], content: [] });
+      items.splice(1, 0, ...process);
+    }
     return turn(`turn-long-${String(number).padStart(2, "0")}`, "completed", items);
   });
   const long = thread(previewSessionIds.long, "/preview/workspaces/tyrs-hand",

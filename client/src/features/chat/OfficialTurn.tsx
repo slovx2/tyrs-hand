@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { ThreadItem } from "@codex-app-server/v2/ThreadItem";
 import type { Turn } from "@codex-app-server/v2/Turn";
-import { memo, useEffect, useMemo, useRef, useState,
+import { Fragment, memo, useEffect, useMemo, useRef, useState,
   type ComponentProps, type ReactNode } from "react";
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -16,11 +16,12 @@ import { projectTurnPresentation, toolOperationLines, turnActivitySummary,
   type ToolGroup, type TurnBlock } from "./turnPresentation";
 
 type OfficialTurnProps = { profileId: string; threadId: string; turn: Turn };
+const turnPresentations = new WeakMap<Turn, ReturnType<typeof projectTurnPresentation>>();
 
 export const OfficialTurn = memo(function OfficialTurn({ profileId, threadId,
   turn }: OfficialTurnProps) {
   const theme = useTheme();
-  const presentation = useMemo(() => projectTurnPresentation(turn), [turn]);
+  const presentation = useMemo(() => presentationForTurn(turn), [turn]);
   const [, redraw] = useState(0);
   const nowMs = useElapsedClock(turn, presentation.canCollapseActivity);
   const memoryKey = `${profileId}:${threadId}:${turn.id}`;
@@ -40,11 +41,11 @@ export const OfficialTurn = memo(function OfficialTurn({ profileId, threadId,
             redraw((value) => value + 1);
           }} />;
       }
-      return <View key={block.key}>
+      return <Fragment key={block.key}>
         {header}
         {activity && collapsed ? null : <TurnBlockView block={block} memoryKey={memoryKey}
           onDisclosureChange={() => redraw((value) => value + 1)} />}
-      </View>;
+      </Fragment>;
     })}
     {turn.status === "failed" && turn.error ? <View testID="turn:error" style={styles.error}>
       <Text selectable style={[styles.errorText, { color: theme.colors.danger }]}>
@@ -54,6 +55,14 @@ export const OfficialTurn = memo(function OfficialTurn({ profileId, threadId,
   </View>;
 }, (left, right) => left.profileId === right.profileId && left.threadId === right.threadId &&
   left.turn === right.turn);
+
+function presentationForTurn(turn: Turn): ReturnType<typeof projectTurnPresentation> {
+  const cached = turnPresentations.get(turn);
+  if (cached) return cached;
+  const presentation = projectTurnPresentation(turn);
+  turnPresentations.set(turn, presentation);
+  return presentation;
+}
 
 function ActivityHeader({ turnId, collapsed, summary, onPress }: {
   turnId: string;
