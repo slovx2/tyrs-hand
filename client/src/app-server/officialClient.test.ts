@@ -134,6 +134,27 @@ describe("OfficialAppServerClient", () => {
       .rejects.toMatchObject({ delivery: "unknown", method: "thread/read" });
   });
 
+  it("提交恢复仅吞掉 thread/resume 明确缺少 rollout 的错误", async () => {
+    const missingRpc = new FakeRpc((method) => {
+      throw new JsonRpcRequestError("no rollout found for thread id thread-phantom",
+        method, "rejected", -32004);
+    });
+    const missingClient = new OfficialAppServerClient("profile-1", missingRpc,
+      new MemoryJournal());
+
+    await expect(missingClient.resumeThreadForSubmissionIfExists("thread-phantom"))
+      .resolves.toBeNull();
+
+    const networkRpc = new FakeRpc((method) => {
+      throw new JsonRpcRequestError("thread/resume 响应超时", method, "unknown");
+    });
+    const networkClient = new OfficialAppServerClient("profile-1", networkRpc,
+      new MemoryJournal());
+
+    await expect(networkClient.resumeThreadForSubmissionIfExists("thread-unknown"))
+      .rejects.toMatchObject({ delivery: "unknown", method: "thread/resume" });
+  });
+
   it("legacy resume 直接请求 full，并把倒序响应转成时间正序", async () => {
     const turns = Array.from({ length: 7 }, (_, index) =>
       officialTurn(`turn-${index + 1}`, "completed", [{ type: "agentMessage",

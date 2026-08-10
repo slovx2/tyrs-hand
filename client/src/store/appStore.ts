@@ -276,21 +276,21 @@ async function drainOutboxItems(connection: Connection, projects: MobileProject[
       const input = await materializeUserInput(connection, project, item.clientMessageId,
         item.payload.text, item.payload.attachments);
       let threadId = item.threadId;
-      let startedThread: ThreadRecord["thread"] | null = null;
+      let submissionThread: ThreadRecord["thread"] | null = null;
       if (item.kind === "create_task") {
         const source = mobileOutboxThreadSource(item);
-        let thread = threadId ? await client.readThreadMetadataIfExists(threadId) : null;
+        let thread = threadId ? await client.resumeThreadForSubmissionIfExists(threadId) : null;
         if (!thread) {
           const discovered = await client.findThreadBySource(source);
           // thread/list 可能先暴露尚无 rollout 的 Thread；它仍不能 resume。
           thread = discovered && discovered.id !== threadId
-            ? await client.readThreadMetadataIfExists(discovered.id) : null;
+            ? await client.resumeThreadForSubmissionIfExists(discovered.id) : null;
         }
         if (!thread) {
           thread = (await client.startThread(project.cwd, item.payload.preferences.model,
             source)).thread;
-          startedThread = thread;
         }
+        submissionThread = thread;
         threadId = thread.id;
         await setOutboxThread(item.profileId, item.clientMessageId, threadId);
         pendingCatalogThreads.add(threadKey(item.profileId, threadId));
@@ -299,7 +299,7 @@ async function drainOutboxItems(connection: Connection, projects: MobileProject[
       if (!threadId) throw new Error("发送队列缺少官方 Thread ID");
       const submission = { clientMessageId: item.clientMessageId, input,
         preferences: item.payload.preferences, projectId: project.id };
-      if (startedThread) await client.submitNewThread(startedThread, submission);
+      if (submissionThread) await client.submitNewThread(submissionThread, submission);
       else await client.submit({ ...submission, threadId });
       await completeOutbox(item.profileId, item.clientMessageId);
       result.completed.set(item.clientMessageId, threadId);

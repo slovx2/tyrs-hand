@@ -138,6 +138,15 @@ export class OfficialAppServerClient {
     }
   }
 
+  async resumeThreadForSubmissionIfExists(threadId: string): Promise<Thread | null> {
+    try {
+      return (await this.resumeThreadPage(threadId, "summary")).thread;
+    } catch (error) {
+      if (isUnmaterializedThread(error)) return null;
+      throw error;
+    }
+  }
+
   async resumeThreadPage(threadId: string, itemsView: TurnItemsView = "full",
     limit = THREAD_PAGE_SIZE, historyMode: ThreadHistoryMode = "legacy"): Promise<ResumedThreadPage> {
     const paginateItems = itemsView === "full" && historyMode === "paginated";
@@ -727,6 +736,6 @@ function isTurnStateMismatch(error: unknown): error is JsonRpcRequestError {
 
 function isUnmaterializedThread(error: unknown): error is JsonRpcRequestError {
   return error instanceof JsonRpcRequestError && error.delivery === "rejected" &&
-    error.method === "thread/read" &&
+    (error.method === "thread/read" || error.method === "thread/resume") &&
     error.message.toLowerCase().includes("no rollout found for thread id");
 }

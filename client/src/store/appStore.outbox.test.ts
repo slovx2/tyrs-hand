@@ -11,6 +11,7 @@ const { client } = vi.hoisted(() => ({
     connect: vi.fn(async () => undefined),
     subscribe: vi.fn(() => () => undefined),
     readThreadMetadataIfExists: vi.fn(),
+    resumeThreadForSubmissionIfExists: vi.fn(),
     findThreadBySource: vi.fn(),
     startThread: vi.fn(),
     submitNewThread: vi.fn(),
@@ -84,7 +85,7 @@ describe("移动端 Outbox 新 Thread", () => {
       payload: { text: "打开网页", attachments: [], preferences } });
     await setOutboxThread(profileId, messageId, "thread-phantom");
     await failOutbox(profileId, messageId, "previous crash");
-    client.readThreadMetadataIfExists.mockResolvedValue(null);
+    client.resumeThreadForSubmissionIfExists.mockResolvedValue(null);
     client.findThreadBySource.mockResolvedValue(thread("thread-phantom"));
     const replacement = thread("thread-replacement");
     client.startThread.mockResolvedValue({ thread: replacement });
@@ -107,7 +108,7 @@ describe("移动端 Outbox 新 Thread", () => {
       payload: { text: "打开网页", attachments: [], preferences } });
     await setOutboxThread(profileId, messageId, "thread-unknown");
     await failOutbox(profileId, messageId, "previous crash");
-    client.readThreadMetadataIfExists.mockRejectedValue(new Error("network lost"));
+    client.resumeThreadForSubmissionIfExists.mockRejectedValue(new Error("network lost"));
 
     await useAppStore.getState().retryOutbox(messageId);
 
