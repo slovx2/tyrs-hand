@@ -9,8 +9,7 @@ import { Muted } from "@/components/ui";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useTheme } from "@/theme/ThemeProvider";
 import { isToolGroupExpanded, isTurnActivityCollapsed,
-  INITIAL_ACTIVITY_RENDER_COUNT, nextActivityRenderCount, toggleToolGroup,
-  toggleTurnActivity } from "./activityDisclosure";
+  toggleToolGroup, toggleTurnActivity } from "./activityDisclosure";
 import { MarkdownContent } from "./MarkdownContent";
 import { ThinkingShimmer } from "./ThinkingShimmer";
 import { projectTurnPresentation, toolOperationLines, turnActivitySummary,
@@ -29,39 +28,14 @@ export const OfficialTurn = memo(function OfficialTurn({ profileId, threadId,
   const theme = useTheme();
   const presentation = useMemo(() => presentationForTurn(turn), [turn]);
   const [, redraw] = useState(0);
-  const [renderedActivityCount, setRenderedActivityCount] = useState(0);
   const nowMs = useElapsedClock(turn, presentation.canCollapseActivity);
   const memoryKey = `${profileId}:${threadId}:${turn.id}`;
   const collapsed = isTurnActivityCollapsed(memoryKey, presentation.canCollapseActivity);
-  const activityBlockCount = useMemo(() => presentation.blocks.filter(isActivityBlock).length,
-    [presentation.blocks]);
   let activityHeaderRendered = false;
-  let activityBlockIndex = 0;
-
-  useEffect(() => {
-    if (collapsed || !presentation.canCollapseActivity) {
-      setRenderedActivityCount(collapsed ? 0 : activityBlockCount);
-      return;
-    }
-    let count = Math.min(activityBlockCount, Math.max(INITIAL_ACTIVITY_RENDER_COUNT,
-      renderedActivityCount));
-    setRenderedActivityCount(count);
-    let frame: number | null = null;
-    const renderNextBatch = () => {
-      count = nextActivityRenderCount(count, activityBlockCount);
-      setRenderedActivityCount(count);
-      if (count < activityBlockCount) frame = requestAnimationFrame(renderNextBatch);
-    };
-    if (count < activityBlockCount) frame = requestAnimationFrame(renderNextBatch);
-    return () => { if (frame !== null) cancelAnimationFrame(frame); };
-    // 只在折叠状态或活动数量变化时启动一次分帧挂载；当前数量由闭包推进。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activityBlockCount, collapsed, presentation.canCollapseActivity]);
 
   return <View testID={`turn:${turn.id}`} style={styles.turn}>
     {presentation.blocks.map((block) => {
       const activity = isActivityBlock(block);
-      const activityIndex = activity ? activityBlockIndex++ : -1;
       let header: ReactNode = null;
       if (activity && !activityHeaderRendered && presentation.canCollapseActivity) {
         activityHeaderRendered = true;
@@ -69,25 +43,24 @@ export const OfficialTurn = memo(function OfficialTurn({ profileId, threadId,
           summary={turnActivitySummary(turn, nowMs)}
           onPress={() => {
             if (!canToggleActivity()) return;
-            if (collapsed) {
-              setRenderedActivityCount(Math.min(activityBlockCount,
-                INITIAL_ACTIVITY_RENDER_COUNT));
-            } else {
-              setRenderedActivityCount(0);
-            }
             toggleTurnActivity(memoryKey, presentation.canCollapseActivity);
             redraw((value) => value + 1);
           }} />;
       }
-      const deferred = activity && presentation.canCollapseActivity && !collapsed &&
-        activityIndex >= renderedActivityCount;
       return <Fragment key={block.key}>
         {header}
-        {(activity && collapsed) || deferred ? null
+        {activity && collapsed ? null
           : <TurnBlockView block={block} memoryKey={memoryKey}
           onDisclosureChange={() => redraw((value) => value + 1)} />}
       </Fragment>;
     })}
+    {presentation.showThinking
+      ? <View testID="turn:thinking" style={styles.thinking}>
+        <ThinkingShimmer active color={theme.colors.textMuted}
+          highlightColor={theme.colors.text} style={styles.thinkingText}>
+          正在思考
+        </ThinkingShimmer>
+      </View> : null}
     {turn.status === "failed" && turn.error ? <View testID="turn:error" style={styles.error}>
       <Text selectable style={[styles.errorText, { color: theme.colors.danger }]}>
         {turn.error.message || "本轮执行失败"}
@@ -278,6 +251,8 @@ const styles = StyleSheet.create({
   file: { fontFamily: "Inter_400Regular", fontSize: 13, marginTop: 5 },
   agentRow: { paddingHorizontal: 16, paddingBottom: 4, paddingTop: 8 },
   commentary: { opacity: 0.78, paddingHorizontal: 16, paddingVertical: 5 },
+  thinking: { paddingHorizontal: 16, paddingVertical: 8 },
+  thinkingText: { fontFamily: "Inter_400Regular", fontSize: 14, lineHeight: 20 },
   reasoning: { alignItems: "flex-start", flexDirection: "row", gap: 7, paddingHorizontal: 16,
     paddingVertical: 5 },
   reasoningText: { flex: 1, fontFamily: "Inter_500Medium", fontSize: 14, lineHeight: 20 },

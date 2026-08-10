@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import type { OfficialTurnPage } from "@/app-server/officialClient";
 import { mergeOlderPage, mergeTailPage,
-  mergeTurnSequence, mergeTurnSnapshot } from "./threadHistory";
+  mergeItemSnapshot, mergeTurnSequence, mergeTurnSnapshot } from "./threadHistory";
 
 describe("官方 Turn 分页合并", () => {
   it("按 Turn ID 去重，并用最新快照原位替换活动 Turn", () => {
@@ -85,6 +85,23 @@ describe("官方 Turn 分页合并", () => {
     expect(merged.items.find((item) => item.id === "tool-1")).toMatchObject({
       status: "completed",
     });
+  });
+
+  it("活动快照的短文本不能截断已揭示前缀，完成 Item 使用权威正文", () => {
+    const streamed = { type: "agentMessage", id: "answer", text: "已经揭示的流式文本",
+      phase: "final_answer", memoryCitation: null } as const;
+    const stale = { ...streamed, text: "已经揭示" };
+    const final = { ...streamed, text: "最终权威正文" };
+
+    expect(mergeItemSnapshot(streamed, stale, false)).toBe(streamed);
+    expect(mergeItemSnapshot(streamed, final, true)).toBe(final);
+  });
+
+  it("活动快照暂缺流式 Item 时保留已揭示内容", () => {
+    const previous = turn("turn-stream", "inProgress", "streamed");
+    const incoming = { ...turn("turn-stream", "inProgress", "stale"), items: [] };
+
+    expect(mergeTurnSnapshot(previous, incoming).items).toEqual(previous.items);
   });
 });
 

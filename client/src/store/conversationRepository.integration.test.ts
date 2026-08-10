@@ -47,6 +47,13 @@ vi.mock("@/db/settings", () => ({
   saveLastTurnPreferences: async () => undefined,
   saveThemeMode: async () => undefined,
 }));
+vi.mock("@/db/threadReads", () => ({
+  loadUnreadThreadIds: async () => [],
+  markThreadRead: async () => undefined,
+  markThreadUnread: async () => undefined,
+  reconcileThreadReads: async () => [],
+  removeThreadRead: async () => undefined,
+}));
 
 class FakeOfficialClient {
   resume!: (threadId: string) => Promise<ResumedThreadPage>;
@@ -72,6 +79,7 @@ class FakeOfficialClient {
   emit(method: string, threadId: string): void {
     this.listener?.({ method, params: { threadId } });
   }
+  emitEvent(event: { method: string; params: unknown }): void { this.listener?.(event); }
   emitName(threadId: string, threadName: string): void {
     this.listener?.({ method: "thread/name/updated", params: { threadId, threadName } });
   }
@@ -176,7 +184,7 @@ describe("会话分页 Repository", () => {
     });
   });
 
-  it("连续流式通知使用前沿节流，不会因持续 delta 永远推迟刷新", async () => {
+  it("未直接投影的进度通知使用前沿节流，不会因持续事件永远推迟刷新", async () => {
     vi.useFakeTimers();
     try {
       const profileId = "profile-stream";
@@ -190,11 +198,11 @@ describe("会话分页 Repository", () => {
       await useAppStore.getState().refreshThreadTail(threadId);
       client.pageCalls.length = 0;
 
-      client.emit("item/agentMessage/delta", threadId);
+      client.emit("item/mcpToolCall/progress", threadId);
       await vi.advanceTimersByTimeAsync(60);
-      client.emit("item/agentMessage/delta", threadId);
+      client.emit("item/mcpToolCall/progress", threadId);
       await vi.advanceTimersByTimeAsync(60);
-      client.emit("item/agentMessage/delta", threadId);
+      client.emit("item/mcpToolCall/progress", threadId);
       await Promise.resolve();
 
       expect(client.pageCalls).toEqual([null]);
@@ -242,6 +250,53 @@ describe("会话分页 Repository", () => {
     expect(harness.saved).toHaveLength(1);
     expect((harness.saved[0] as ThreadRecord).thread.name).toBe("Luna 生成标题");
   });
+
+  it("原生 delta 逐帧更新内存，不依赖尾页轮询", async () => {
+    vi.useFakeTimers();
+    try {
+      const profileId = "profile-native-stream";
+      const threadId = "thread-native-stream";
+      const client = new FakeOfficialClient();
+      const active = turn(1, "inProgress", "streaming");
+      active.items[0] = { type: "agentMessage", id: "answer", text: "", phase: "final_answer",
+        memoryCitation: null };
+      client.resume = async () => ({ thread: thread(threadId, [active]), page: page([active], null) });
+      client.listPage = async () => page([active], null);
+      client.metadata = async () => thread(threadId, []);
+      installState(profileId, loadedRecord(threadId, [active], null), client);
+      await useAppStore.getState().loadThread(threadId);
+      client.pageCalls.length = 0;
+
+      client.emitEvent({ method: "item/agentMessage/delta", params: { threadId,
+        turnId: active.id, itemId: "answer", delta: "流式回答" } });
+      await vi.advanceTimersByTimeAsync(16);
+
+      expect(currentRecord(threadId).thread.turns[0]?.items[0]).toMatchObject({ text: "流式回答" });
+      expect(client.pageCalls).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("后台 Turn 完成置为未读，进入会话后立即清除", async () => {
+    const profileId = "profile-unread";
+    const threadId = "thread-unread";
+    const client = new FakeOfficialClient();
+    const completed = turn(1, "completed", "done");
+    client.resume = async () => ({ thread: thread(threadId, [completed]),
+      page: page([completed], null) });
+    client.listPage = async () => page([completed], null);
+    client.metadata = async () => thread(threadId, []);
+    installState(profileId, loadedRecord(threadId, [turn(1, "inProgress")], null), client);
+    await useAppStore.getState().loadThread(threadId);
+
+    client.emitEvent({ method: "turn/completed", params: { threadId, turn: completed } });
+    await vi.waitFor(() => expect(useAppStore.getState().unreadThreadIds[threadId]).toBe(true));
+
+    useAppStore.getState().setThreadVisible(threadId, true);
+    expect(useAppStore.getState().unreadThreadIds[threadId]).toBeUndefined();
+    useAppStore.getState().setThreadVisible(threadId, false);
+  });
 });
 
 function installState(profileId: string, record: ThreadRecord,
@@ -250,7 +305,7 @@ function installState(profileId: string, record: ThreadRecord,
   const connection: Connection = { kind: "ssh", profileId, name: profileId, active: true,
     host: "worker", port: 2222, user: "codex", keyRef: "key", hostFingerprint: null };
   useAppStore.setState({ activeConnection: connection, connections: [connection], threads: [record],
-    projects: [], pendingRequests: {}, modelsByTarget: {}, error: null });
+    projects: [], pendingRequests: {}, modelsByTarget: {}, unreadThreadIds: {}, error: null });
 }
 
 function currentRecord(threadId: string): ThreadRecord {

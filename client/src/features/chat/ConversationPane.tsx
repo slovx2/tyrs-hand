@@ -53,6 +53,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const refreshThreadTail = useAppStore((state) => state.refreshThreadTail);
   const loadOlderThread = useAppStore((state) => state.loadOlderThread);
   const submitMessage = useAppStore((state) => state.submitMessage);
+  const setThreadVisible = useAppStore((state) => state.setThreadVisible);
   const retryOutbox = useAppStore((state) => state.retryOutbox);
   const discardOutbox = useAppStore((state) => state.discardOutbox);
   const outbox = useAppStore((state) => state.outbox);
@@ -127,6 +128,16 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     }).finally(() => { if (!canceled) setLoading(false); });
     return () => { canceled = true; };
   }, [loadThread, sessionId]);
+
+  useEffect(() => {
+    const applyVisibility = (state: string) => setThreadVisible(sessionId, state === "active");
+    applyVisibility(AppState.currentState);
+    const subscription = AppState.addEventListener("change", applyVisibility);
+    return () => {
+      subscription.remove();
+      setThreadVisible(sessionId, false);
+    };
+  }, [sessionId, setThreadVisible]);
 
   useEffect(() => {
     const position = positionKey ? loadConversationPosition(positionKey) : null;
@@ -299,15 +310,23 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
 
   const send = useCallback(async () => {
     if (!resolvedPreferences || (!text.trim() && attachments.length === 0)) return;
+    const message = text;
+    const files = attachments;
     setSending(true);
+    setText("");
+    setAttachments([]);
+    followLatest(false);
     try {
-      const sent = await submitMessage(sessionId, text, attachments, resolvedPreferences);
+      const sent = await submitMessage(sessionId, message, files, resolvedPreferences);
       if (profileId) await clearDraft(profileId, draftScope);
-      setText("");
-      setAttachments([]);
-      followLatest(false);
-      if (!sent) Alert.alert("已加入发送队列", "连接恢复后会自动发送这条消息。");
+      if (!sent) {
+        setText(message);
+        setAttachments(files);
+        Alert.alert("已加入发送队列", "连接恢复后会自动发送这条消息。");
+      }
     } catch (cause) {
+      setText(message);
+      setAttachments(files);
       Alert.alert("发送状态未确认", cause instanceof Error ? cause.message : "请刷新后重试");
     } finally {
       setSending(false);
