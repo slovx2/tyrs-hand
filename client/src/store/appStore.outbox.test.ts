@@ -85,6 +85,7 @@ describe("移动端 Outbox 新 Thread", () => {
     await setOutboxThread(profileId, messageId, "thread-phantom");
     await failOutbox(profileId, messageId, "previous crash");
     client.readThreadMetadataIfExists.mockResolvedValue(null);
+    client.findThreadBySource.mockResolvedValue(thread("thread-phantom"));
     const replacement = thread("thread-replacement");
     client.startThread.mockResolvedValue({ thread: replacement });
 

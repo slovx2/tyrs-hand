@@ -279,9 +279,13 @@ async function drainOutboxItems(connection: Connection, projects: MobileProject[
       let startedThread: ThreadRecord["thread"] | null = null;
       if (item.kind === "create_task") {
         const source = mobileOutboxThreadSource(item);
-        let thread = threadId ? await client.readThreadMetadataIfExists(threadId) :
-          await client.findThreadBySource(source);
-        if (!thread && threadId) thread = await client.findThreadBySource(source);
+        let thread = threadId ? await client.readThreadMetadataIfExists(threadId) : null;
+        if (!thread) {
+          const discovered = await client.findThreadBySource(source);
+          // thread/list 可能先暴露尚无 rollout 的 Thread；它仍不能 resume。
+          thread = discovered && discovered.id !== threadId
+            ? await client.readThreadMetadataIfExists(discovered.id) : null;
+        }
         if (!thread) {
           thread = (await client.startThread(project.cwd, item.payload.preferences.model,
             source)).thread;
