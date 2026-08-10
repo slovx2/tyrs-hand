@@ -21,52 +21,8 @@ import (
 )
 
 const (
-	ClientBearerScopes  = "clientBearer.Scopes"
 	SessionCookieScopes = "sessionCookie.Scopes"
 	WorkerBearerScopes  = "workerBearer.Scopes"
-)
-
-// Defines values for ClientBootstrapProtocolVersion.
-const (
-	N3 ClientBootstrapProtocolVersion = 3
-)
-
-// Defines values for ClientSessionCollaborationMode.
-const (
-	ClientSessionCollaborationModeDefault ClientSessionCollaborationMode = "default"
-	ClientSessionCollaborationModePlan    ClientSessionCollaborationMode = "plan"
-)
-
-// Defines values for ClientSessionHistoryCompleteness.
-const (
-	Complete ClientSessionHistoryCompleteness = "complete"
-	Partial  ClientSessionHistoryCompleteness = "partial"
-)
-
-// Defines values for ClientSessionLifecycleState.
-const (
-	ClientSessionLifecycleStateActive           ClientSessionLifecycleState = "active"
-	ClientSessionLifecycleStateArchivePending   ClientSessionLifecycleState = "archive_pending"
-	ClientSessionLifecycleStateArchived         ClientSessionLifecycleState = "archived"
-	ClientSessionLifecycleStateUnarchivePending ClientSessionLifecycleState = "unarchive_pending"
-)
-
-// Defines values for ClientSessionServiceTier.
-const (
-	ClientSessionServiceTierFast     ClientSessionServiceTier = "fast"
-	ClientSessionServiceTierStandard ClientSessionServiceTier = "standard"
-)
-
-// Defines values for ClientSessionSettingsCollaborationMode.
-const (
-	ClientSessionSettingsCollaborationModeDefault ClientSessionSettingsCollaborationMode = "default"
-	ClientSessionSettingsCollaborationModePlan    ClientSessionSettingsCollaborationMode = "plan"
-)
-
-// Defines values for ClientSessionSettingsServiceTier.
-const (
-	ClientSessionSettingsServiceTierFast     ClientSessionSettingsServiceTier = "fast"
-	ClientSessionSettingsServiceTierStandard ClientSessionSettingsServiceTier = "standard"
 )
 
 // Defines values for DiscordInitializationInputMode.
@@ -158,8 +114,8 @@ const (
 
 // Defines values for WorkspaceForumBindingStatus.
 const (
-	WorkspaceForumBindingStatusActive   WorkspaceForumBindingStatus = "active"
-	WorkspaceForumBindingStatusInactive WorkspaceForumBindingStatus = "inactive"
+	Active   WorkspaceForumBindingStatus = "active"
+	Inactive WorkspaceForumBindingStatus = "inactive"
 )
 
 // Defines values for WorkspaceForumCollaboratorAccessLevel.
@@ -186,33 +142,6 @@ const (
 	Restore WorkspaceProjectForumInputMode = "restore"
 )
 
-// Defines values for ClientPutPushTokenJSONBodyAppEnvironment.
-const (
-	Development ClientPutPushTokenJSONBodyAppEnvironment = "development"
-	Preview     ClientPutPushTokenJSONBodyAppEnvironment = "preview"
-	Production  ClientPutPushTokenJSONBodyAppEnvironment = "production"
-)
-
-// Defines values for ClientPutPushTokenJSONBodyPlatform.
-const (
-	Android ClientPutPushTokenJSONBodyPlatform = "android"
-	Ios     ClientPutPushTokenJSONBodyPlatform = "ios"
-)
-
-// Defines values for ClientListSessionsParamsLifecycle.
-const (
-	Active           ClientListSessionsParamsLifecycle = "active"
-	ArchivePending   ClientListSessionsParamsLifecycle = "archive_pending"
-	Archived         ClientListSessionsParamsLifecycle = "archived"
-	UnarchivePending ClientListSessionsParamsLifecycle = "unarchive_pending"
-)
-
-// Defines values for ClientCreateMessageJSONBodyBehavior.
-const (
-	StartWhenIdle ClientCreateMessageJSONBodyBehavior = "start_when_idle"
-	SteerIfActive ClientCreateMessageJSONBodyBehavior = "steer_if_active"
-)
-
 // Defines values for PutDiscordForumAccessJSONBodyAccessLevel.
 const (
 	PutDiscordForumAccessJSONBodyAccessLevelOperator PutDiscordForumAccessJSONBodyAccessLevel = "operator"
@@ -231,40 +160,6 @@ type Administrator struct {
 	ExpiresAt time.Time          `json:"expiresAt"`
 	Id        openapi_types.UUID `json:"id"`
 	Username  string             `json:"username"`
-}
-
-// ClientBootstrap defines model for ClientBootstrap.
-type ClientBootstrap struct {
-	AgentProfiles []struct {
-		Id   openapi_types.UUID `json:"id"`
-		Name string             `json:"name"`
-	} `json:"agentProfiles"`
-	Capabilities        map[string]bool                `json:"capabilities"`
-	CurrentCursor       int64                          `json:"currentCursor"`
-	LastStartedSettings *ClientSessionSettings         `json:"lastStartedSettings"`
-	ModelCatalogs       map[string]ClientModelCatalog  `json:"modelCatalogs"`
-	Projects            []ClientProject                `json:"projects"`
-	ProtocolVersion     ClientBootstrapProtocolVersion `json:"protocolVersion"`
-	ServerId            openapi_types.UUID             `json:"serverId"`
-	User                struct {
-		Id       openapi_types.UUID `json:"id"`
-		Username string             `json:"username"`
-	} `json:"user"`
-	Workspaces []map[string]interface{} `json:"workspaces"`
-}
-
-// ClientBootstrapProtocolVersion defines model for ClientBootstrap.ProtocolVersion.
-type ClientBootstrapProtocolVersion int
-
-// ClientCreateSession defines model for ClientCreateSession.
-type ClientCreateSession struct {
-	InitialMessage struct {
-		AttachmentIds *[]openapi_types.UUID `json:"attachmentIds,omitempty"`
-		LocalId       string                `json:"localId"`
-		Text          string                `json:"text"`
-	} `json:"initialMessage"`
-	ProjectId openapi_types.UUID    `json:"projectId"`
-	Settings  ClientSessionSettings `json:"settings"`
 }
 
 // ClientModel defines model for ClientModel.
@@ -289,76 +184,6 @@ type ClientModel struct {
 		ReasoningEffort string `json:"reasoningEffort"`
 	} `json:"supportedReasoningEfforts"`
 }
-
-// ClientModelCatalog defines model for ClientModelCatalog.
-type ClientModelCatalog struct {
-	Data       []ClientModel `json:"data"`
-	NextCursor *string       `json:"nextCursor"`
-}
-
-// ClientProject defines model for ClientProject.
-type ClientProject struct {
-	AvailabilityStatus string             `json:"availabilityStatus"`
-	Branch             *string            `json:"branch"`
-	Dirty              bool               `json:"dirty"`
-	Id                 openapi_types.UUID `json:"id"`
-	Kind               string             `json:"kind"`
-	Name               string             `json:"name"`
-	RelativePath       string             `json:"relativePath"`
-	WorkspaceId        openapi_types.UUID `json:"workspaceId"`
-}
-
-// ClientSession defines model for ClientSession.
-type ClientSession struct {
-	AgentProfileId       openapi_types.UUID               `json:"agentProfileId"`
-	CollaborationMode    ClientSessionCollaborationMode   `json:"collaborationMode"`
-	CreatedAt            time.Time                        `json:"createdAt"`
-	HasRunIssue          bool                             `json:"hasRunIssue"`
-	HistoryCompleteness  ClientSessionHistoryCompleteness `json:"historyCompleteness"`
-	Id                   openapi_types.UUID               `json:"id"`
-	IsRunning            bool                             `json:"isRunning"`
-	LastActivityAt       time.Time                        `json:"lastActivityAt"`
-	LastAgentMessageSeq  int64                            `json:"lastAgentMessageSeq"`
-	LastMessageSeq       int64                            `json:"lastMessageSeq"`
-	LifecycleState       ClientSessionLifecycleState      `json:"lifecycleState"`
-	Model                *string                          `json:"model"`
-	PendingInteractiveId *openapi_types.UUID              `json:"pendingInteractiveId"`
-	ProjectId            openapi_types.UUID               `json:"projectId"`
-	ReasoningEffort      *string                          `json:"reasoningEffort"`
-	ServiceTier          ClientSessionServiceTier         `json:"serviceTier"`
-	SettingsVersion      int64                            `json:"settingsVersion"`
-	Title                string                           `json:"title"`
-	UpdatedAt            time.Time                        `json:"updatedAt"`
-	WorkspaceId          openapi_types.UUID               `json:"workspaceId"`
-}
-
-// ClientSessionCollaborationMode defines model for ClientSession.CollaborationMode.
-type ClientSessionCollaborationMode string
-
-// ClientSessionHistoryCompleteness defines model for ClientSession.HistoryCompleteness.
-type ClientSessionHistoryCompleteness string
-
-// ClientSessionLifecycleState defines model for ClientSession.LifecycleState.
-type ClientSessionLifecycleState string
-
-// ClientSessionServiceTier defines model for ClientSession.ServiceTier.
-type ClientSessionServiceTier string
-
-// ClientSessionSettings defines model for ClientSessionSettings.
-type ClientSessionSettings struct {
-	AgentProfileId    openapi_types.UUID                     `json:"agentProfileId"`
-	CollaborationMode ClientSessionSettingsCollaborationMode `json:"collaborationMode"`
-	Model             *string                                `json:"model"`
-	ReasoningEffort   *string                                `json:"reasoningEffort"`
-	ServiceTier       ClientSessionSettingsServiceTier       `json:"serviceTier"`
-	SettingsVersion   int64                                  `json:"settingsVersion"`
-}
-
-// ClientSessionSettingsCollaborationMode defines model for ClientSessionSettings.CollaborationMode.
-type ClientSessionSettingsCollaborationMode string
-
-// ClientSessionSettingsServiceTier defines model for ClientSessionSettings.ServiceTier.
-type ClientSessionSettingsServiceTier string
 
 // DiscordConflict defines model for DiscordConflict.
 type DiscordConflict struct {
@@ -958,110 +783,6 @@ type LogoutParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
-// ClientClaimDevicePairingJSONBody defines parameters for ClientClaimDevicePairing.
-type ClientClaimDevicePairingJSONBody struct {
-	CredentialHash string             `json:"credentialHash"`
-	DeviceId       openapi_types.UUID `json:"deviceId"`
-	Name           string             `json:"name"`
-	PairingSecret  string             `json:"pairingSecret"`
-	Platform       string             `json:"platform"`
-}
-
-// ClientDevicePairingStatusParams defines parameters for ClientDevicePairingStatus.
-type ClientDevicePairingStatusParams struct {
-	Authorization string `json:"Authorization"`
-}
-
-// ClientDeletePushTokenParams defines parameters for ClientDeletePushToken.
-type ClientDeletePushTokenParams struct {
-	Token string `form:"token" json:"token"`
-}
-
-// ClientPutPushTokenJSONBody defines parameters for ClientPutPushToken.
-type ClientPutPushTokenJSONBody struct {
-	AppEnvironment ClientPutPushTokenJSONBodyAppEnvironment `json:"appEnvironment"`
-	Platform       ClientPutPushTokenJSONBodyPlatform       `json:"platform"`
-	Token          string                                   `json:"token"`
-}
-
-// ClientPutPushTokenJSONBodyAppEnvironment defines parameters for ClientPutPushToken.
-type ClientPutPushTokenJSONBodyAppEnvironment string
-
-// ClientPutPushTokenJSONBodyPlatform defines parameters for ClientPutPushToken.
-type ClientPutPushTokenJSONBodyPlatform string
-
-// ClientAnswerInteractiveJSONBody defines parameters for ClientAnswerInteractive.
-type ClientAnswerInteractiveJSONBody struct {
-	Answer map[string]interface{} `json:"answer"`
-}
-
-// ClientListRunSegmentActivitiesParams defines parameters for ClientListRunSegmentActivities.
-type ClientListRunSegmentActivitiesParams struct {
-	BeforeActivitySeq *int64 `form:"beforeActivitySeq,omitempty" json:"beforeActivitySeq,omitempty"`
-	AfterEventSeq     *int64 `form:"afterEventSeq,omitempty" json:"afterEventSeq,omitempty"`
-	Limit             *int   `form:"limit,omitempty" json:"limit,omitempty"`
-}
-
-// ClientListSessionsParams defines parameters for ClientListSessions.
-type ClientListSessionsParams struct {
-	Cursor    *string                            `form:"cursor,omitempty" json:"cursor,omitempty"`
-	Limit     *int                               `form:"limit,omitempty" json:"limit,omitempty"`
-	ProjectId *openapi_types.UUID                `form:"projectId,omitempty" json:"projectId,omitempty"`
-	Lifecycle *ClientListSessionsParamsLifecycle `form:"lifecycle,omitempty" json:"lifecycle,omitempty"`
-}
-
-// ClientListSessionsParamsLifecycle defines parameters for ClientListSessions.
-type ClientListSessionsParamsLifecycle string
-
-// ClientPatchSessionJSONBody defines parameters for ClientPatchSession.
-type ClientPatchSessionJSONBody map[string]interface{}
-
-// ClientListMessagesParams defines parameters for ClientListMessages.
-type ClientListMessagesParams struct {
-	BeforeSeq *int64 `form:"beforeSeq,omitempty" json:"beforeSeq,omitempty"`
-	AfterSeq  *int64 `form:"afterSeq,omitempty" json:"afterSeq,omitempty"`
-	Limit     *int   `form:"limit,omitempty" json:"limit,omitempty"`
-}
-
-// ClientCreateMessageJSONBody defines parameters for ClientCreateMessage.
-type ClientCreateMessageJSONBody struct {
-	AttachmentIds *[]openapi_types.UUID                `json:"attachmentIds,omitempty"`
-	Behavior      *ClientCreateMessageJSONBodyBehavior `json:"behavior,omitempty"`
-	LocalId       string                               `json:"localId"`
-	Text          string                               `json:"text"`
-}
-
-// ClientCreateMessageJSONBodyBehavior defines parameters for ClientCreateMessage.
-type ClientCreateMessageJSONBodyBehavior string
-
-// ClientGetSessionSnapshotParams defines parameters for ClientGetSessionSnapshot.
-type ClientGetSessionSnapshotParams struct {
-	TurnLimit *int `form:"turnLimit,omitempty" json:"turnLimit,omitempty"`
-}
-
-// ClientListTurnsParams defines parameters for ClientListTurns.
-type ClientListTurnsParams struct {
-	BeforeCursor *string `form:"beforeCursor,omitempty" json:"beforeCursor,omitempty"`
-	Limit        *int    `form:"limit,omitempty" json:"limit,omitempty"`
-}
-
-// ClientSyncParams defines parameters for ClientSync.
-type ClientSyncParams struct {
-	AfterCursor *int64 `form:"afterCursor,omitempty" json:"afterCursor,omitempty"`
-	Limit       *int   `form:"limit,omitempty" json:"limit,omitempty"`
-}
-
-// ClientUpdatesWebSocketParams defines parameters for ClientUpdatesWebSocket.
-type ClientUpdatesWebSocketParams struct {
-	Cursor *int64 `form:"cursor,omitempty" json:"cursor,omitempty"`
-}
-
-// ClientUploadMultipartBody defines parameters for ClientUpload.
-type ClientUploadMultipartBody struct {
-	File    openapi_types.File `json:"file"`
-	LocalId string             `json:"localId"`
-}
-
 // DeleteDiscordForumAccessParams defines parameters for DeleteDiscordForumAccess.
 type DeleteDiscordForumAccessParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
@@ -1378,30 +1099,6 @@ type CreateWorkspaceParams struct {
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
-// ClientLoginJSONRequestBody defines body for ClientLogin for application/json ContentType.
-type ClientLoginJSONRequestBody = LoginRequest
-
-// ClientClaimDevicePairingJSONRequestBody defines body for ClientClaimDevicePairing for application/json ContentType.
-type ClientClaimDevicePairingJSONRequestBody ClientClaimDevicePairingJSONBody
-
-// ClientPutPushTokenJSONRequestBody defines body for ClientPutPushToken for application/json ContentType.
-type ClientPutPushTokenJSONRequestBody ClientPutPushTokenJSONBody
-
-// ClientAnswerInteractiveJSONRequestBody defines body for ClientAnswerInteractive for application/json ContentType.
-type ClientAnswerInteractiveJSONRequestBody ClientAnswerInteractiveJSONBody
-
-// ClientCreateSessionJSONRequestBody defines body for ClientCreateSession for application/json ContentType.
-type ClientCreateSessionJSONRequestBody = ClientCreateSession
-
-// ClientPatchSessionJSONRequestBody defines body for ClientPatchSession for application/json ContentType.
-type ClientPatchSessionJSONRequestBody ClientPatchSessionJSONBody
-
-// ClientCreateMessageJSONRequestBody defines body for ClientCreateMessage for application/json ContentType.
-type ClientCreateMessageJSONRequestBody ClientCreateMessageJSONBody
-
-// ClientUploadMultipartRequestBody defines body for ClientUpload for multipart/form-data ContentType.
-type ClientUploadMultipartRequestBody ClientUploadMultipartBody
-
 // PutDiscordForumAccessJSONRequestBody defines body for PutDiscordForumAccess for application/json ContentType.
 type PutDiscordForumAccessJSONRequestBody PutDiscordForumAccessJSONBody
 
@@ -1602,84 +1299,6 @@ type ServerInterface interface {
 
 	// (GET /auth/me)
 	GetCurrentAdministrator(c *gin.Context)
-
-	// (GET /client/attachments/{id}/content)
-	ClientDownloadAttachment(c *gin.Context, id openapi_types.UUID)
-
-	// (POST /client/auth/login)
-	ClientLogin(c *gin.Context)
-
-	// (GET /client/bootstrap)
-	ClientBootstrap(c *gin.Context)
-
-	// (DELETE /client/device)
-	ClientDeleteDevice(c *gin.Context)
-
-	// (POST /client/device-pairings/{id}/claim)
-	ClientClaimDevicePairing(c *gin.Context, id openapi_types.UUID)
-
-	// (GET /client/device-pairings/{id}/status)
-	ClientDevicePairingStatus(c *gin.Context, id openapi_types.UUID, params ClientDevicePairingStatusParams)
-
-	// (DELETE /client/device/push-token)
-	ClientDeletePushToken(c *gin.Context, params ClientDeletePushTokenParams)
-
-	// (PUT /client/device/push-token)
-	ClientPutPushToken(c *gin.Context)
-
-	// (POST /client/interactive/{id}/answer)
-	ClientAnswerInteractive(c *gin.Context, id openapi_types.UUID)
-
-	// (GET /client/runs/{runId}/segments/{segmentId}/activities)
-	ClientListRunSegmentActivities(c *gin.Context, runId openapi_types.UUID, segmentId openapi_types.UUID, params ClientListRunSegmentActivitiesParams)
-
-	// (GET /client/sessions)
-	ClientListSessions(c *gin.Context, params ClientListSessionsParams)
-
-	// (POST /client/sessions)
-	ClientCreateSession(c *gin.Context)
-
-	// (GET /client/sessions/{id})
-	ClientGetSession(c *gin.Context, id openapi_types.UUID)
-
-	// (PATCH /client/sessions/{id})
-	ClientPatchSession(c *gin.Context, id openapi_types.UUID)
-
-	// (POST /client/sessions/{id}/archive)
-	ClientArchiveSession(c *gin.Context, id openapi_types.UUID)
-
-	// (GET /client/sessions/{id}/messages)
-	ClientListMessages(c *gin.Context, id openapi_types.UUID, params ClientListMessagesParams)
-
-	// (POST /client/sessions/{id}/messages)
-	ClientCreateMessage(c *gin.Context, id openapi_types.UUID)
-
-	// (POST /client/sessions/{id}/plans/{runId}/execute)
-	ClientExecutePlan(c *gin.Context, id openapi_types.UUID, runId openapi_types.UUID)
-
-	// (POST /client/sessions/{id}/restore)
-	ClientRestoreSession(c *gin.Context, id openapi_types.UUID)
-
-	// (GET /client/sessions/{id}/snapshot)
-	ClientGetSessionSnapshot(c *gin.Context, id openapi_types.UUID, params ClientGetSessionSnapshotParams)
-
-	// (POST /client/sessions/{id}/stop)
-	ClientStopSession(c *gin.Context, id openapi_types.UUID)
-
-	// (GET /client/sessions/{id}/turns)
-	ClientListTurns(c *gin.Context, id openapi_types.UUID, params ClientListTurnsParams)
-
-	// (GET /client/sessions/{id}/turns/{turnId})
-	ClientGetTurn(c *gin.Context, id openapi_types.UUID, turnId openapi_types.UUID)
-
-	// (GET /client/sync)
-	ClientSync(c *gin.Context, params ClientSyncParams)
-
-	// (GET /client/updates)
-	ClientUpdatesWebSocket(c *gin.Context, params ClientUpdatesWebSocketParams)
-
-	// (POST /client/uploads)
-	ClientUpload(c *gin.Context)
 
 	// (DELETE /discord/forums/{forumId}/access/{memberId})
 	DeleteDiscordForumAccess(c *gin.Context, forumId openapi_types.UUID, memberId string, params DeleteDiscordForumAccessParams)
@@ -2118,795 +1737,6 @@ func (siw *ServerInterfaceWrapper) GetCurrentAdministrator(c *gin.Context) {
 	}
 
 	siw.Handler.GetCurrentAdministrator(c)
-}
-
-// ClientDownloadAttachment operation middleware
-func (siw *ServerInterfaceWrapper) ClientDownloadAttachment(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientDownloadAttachment(c, id)
-}
-
-// ClientLogin operation middleware
-func (siw *ServerInterfaceWrapper) ClientLogin(c *gin.Context) {
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientLogin(c)
-}
-
-// ClientBootstrap operation middleware
-func (siw *ServerInterfaceWrapper) ClientBootstrap(c *gin.Context) {
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientBootstrap(c)
-}
-
-// ClientDeleteDevice operation middleware
-func (siw *ServerInterfaceWrapper) ClientDeleteDevice(c *gin.Context) {
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientDeleteDevice(c)
-}
-
-// ClientClaimDevicePairing operation middleware
-func (siw *ServerInterfaceWrapper) ClientClaimDevicePairing(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientClaimDevicePairing(c, id)
-}
-
-// ClientDevicePairingStatus operation middleware
-func (siw *ServerInterfaceWrapper) ClientDevicePairingStatus(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ClientDevicePairingStatusParams
-
-	headers := c.Request.Header
-
-	// ------------- Required header parameter "Authorization" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("Authorization")]; found {
-		var Authorization string
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandler(c, fmt.Errorf("Expected one value for Authorization, got %d", n), http.StatusBadRequest)
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "Authorization", valueList[0], &Authorization, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
-		if err != nil {
-			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter Authorization: %w", err), http.StatusBadRequest)
-			return
-		}
-
-		params.Authorization = Authorization
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Header parameter Authorization is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientDevicePairingStatus(c, id, params)
-}
-
-// ClientDeletePushToken operation middleware
-func (siw *ServerInterfaceWrapper) ClientDeletePushToken(c *gin.Context) {
-
-	var err error
-
-	c.Set(ClientBearerScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ClientDeletePushTokenParams
-
-	// ------------- Required query parameter "token" -------------
-
-	if paramValue := c.Query("token"); paramValue != "" {
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Query argument token is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	err = runtime.BindQueryParameter("form", true, true, "token", c.Request.URL.Query(), &params.Token)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter token: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientDeletePushToken(c, params)
-}
-
-// ClientPutPushToken operation middleware
-func (siw *ServerInterfaceWrapper) ClientPutPushToken(c *gin.Context) {
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientPutPushToken(c)
-}
-
-// ClientAnswerInteractive operation middleware
-func (siw *ServerInterfaceWrapper) ClientAnswerInteractive(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientAnswerInteractive(c, id)
-}
-
-// ClientListRunSegmentActivities operation middleware
-func (siw *ServerInterfaceWrapper) ClientListRunSegmentActivities(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "runId" -------------
-	var runId openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "runId", c.Param("runId"), &runId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter runId: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "segmentId" -------------
-	var segmentId openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "segmentId", c.Param("segmentId"), &segmentId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter segmentId: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ClientListRunSegmentActivitiesParams
-
-	// ------------- Optional query parameter "beforeActivitySeq" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "beforeActivitySeq", c.Request.URL.Query(), &params.BeforeActivitySeq)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter beforeActivitySeq: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "afterEventSeq" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "afterEventSeq", c.Request.URL.Query(), &params.AfterEventSeq)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter afterEventSeq: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientListRunSegmentActivities(c, runId, segmentId, params)
-}
-
-// ClientListSessions operation middleware
-func (siw *ServerInterfaceWrapper) ClientListSessions(c *gin.Context) {
-
-	var err error
-
-	c.Set(ClientBearerScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ClientListSessionsParams
-
-	// ------------- Optional query parameter "cursor" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "cursor", c.Request.URL.Query(), &params.Cursor)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter cursor: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "projectId" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "projectId", c.Request.URL.Query(), &params.ProjectId)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter projectId: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "lifecycle" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "lifecycle", c.Request.URL.Query(), &params.Lifecycle)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter lifecycle: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientListSessions(c, params)
-}
-
-// ClientCreateSession operation middleware
-func (siw *ServerInterfaceWrapper) ClientCreateSession(c *gin.Context) {
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientCreateSession(c)
-}
-
-// ClientGetSession operation middleware
-func (siw *ServerInterfaceWrapper) ClientGetSession(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientGetSession(c, id)
-}
-
-// ClientPatchSession operation middleware
-func (siw *ServerInterfaceWrapper) ClientPatchSession(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientPatchSession(c, id)
-}
-
-// ClientArchiveSession operation middleware
-func (siw *ServerInterfaceWrapper) ClientArchiveSession(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientArchiveSession(c, id)
-}
-
-// ClientListMessages operation middleware
-func (siw *ServerInterfaceWrapper) ClientListMessages(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ClientListMessagesParams
-
-	// ------------- Optional query parameter "beforeSeq" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "beforeSeq", c.Request.URL.Query(), &params.BeforeSeq)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter beforeSeq: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "afterSeq" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "afterSeq", c.Request.URL.Query(), &params.AfterSeq)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter afterSeq: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientListMessages(c, id, params)
-}
-
-// ClientCreateMessage operation middleware
-func (siw *ServerInterfaceWrapper) ClientCreateMessage(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientCreateMessage(c, id)
-}
-
-// ClientExecutePlan operation middleware
-func (siw *ServerInterfaceWrapper) ClientExecutePlan(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "runId" -------------
-	var runId openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "runId", c.Param("runId"), &runId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter runId: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientExecutePlan(c, id, runId)
-}
-
-// ClientRestoreSession operation middleware
-func (siw *ServerInterfaceWrapper) ClientRestoreSession(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientRestoreSession(c, id)
-}
-
-// ClientGetSessionSnapshot operation middleware
-func (siw *ServerInterfaceWrapper) ClientGetSessionSnapshot(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ClientGetSessionSnapshotParams
-
-	// ------------- Optional query parameter "turnLimit" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "turnLimit", c.Request.URL.Query(), &params.TurnLimit)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter turnLimit: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientGetSessionSnapshot(c, id, params)
-}
-
-// ClientStopSession operation middleware
-func (siw *ServerInterfaceWrapper) ClientStopSession(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientStopSession(c, id)
-}
-
-// ClientListTurns operation middleware
-func (siw *ServerInterfaceWrapper) ClientListTurns(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ClientListTurnsParams
-
-	// ------------- Optional query parameter "beforeCursor" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "beforeCursor", c.Request.URL.Query(), &params.BeforeCursor)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter beforeCursor: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientListTurns(c, id, params)
-}
-
-// ClientGetTurn operation middleware
-func (siw *ServerInterfaceWrapper) ClientGetTurn(c *gin.Context) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "turnId" -------------
-	var turnId openapi_types.UUID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "turnId", c.Param("turnId"), &turnId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter turnId: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientGetTurn(c, id, turnId)
-}
-
-// ClientSync operation middleware
-func (siw *ServerInterfaceWrapper) ClientSync(c *gin.Context) {
-
-	var err error
-
-	c.Set(ClientBearerScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ClientSyncParams
-
-	// ------------- Optional query parameter "afterCursor" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "afterCursor", c.Request.URL.Query(), &params.AfterCursor)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter afterCursor: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientSync(c, params)
-}
-
-// ClientUpdatesWebSocket operation middleware
-func (siw *ServerInterfaceWrapper) ClientUpdatesWebSocket(c *gin.Context) {
-
-	var err error
-
-	c.Set(ClientBearerScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ClientUpdatesWebSocketParams
-
-	// ------------- Optional query parameter "cursor" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "cursor", c.Request.URL.Query(), &params.Cursor)
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter cursor: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientUpdatesWebSocket(c, params)
-}
-
-// ClientUpload operation middleware
-func (siw *ServerInterfaceWrapper) ClientUpload(c *gin.Context) {
-
-	c.Set(ClientBearerScopes, []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ClientUpload(c)
 }
 
 // DeleteDiscordForumAccess operation middleware
@@ -6087,32 +4917,6 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/auth/login", wrapper.Login)
 	router.POST(options.BaseURL+"/auth/logout", wrapper.Logout)
 	router.GET(options.BaseURL+"/auth/me", wrapper.GetCurrentAdministrator)
-	router.GET(options.BaseURL+"/client/attachments/:id/content", wrapper.ClientDownloadAttachment)
-	router.POST(options.BaseURL+"/client/auth/login", wrapper.ClientLogin)
-	router.GET(options.BaseURL+"/client/bootstrap", wrapper.ClientBootstrap)
-	router.DELETE(options.BaseURL+"/client/device", wrapper.ClientDeleteDevice)
-	router.POST(options.BaseURL+"/client/device-pairings/:id/claim", wrapper.ClientClaimDevicePairing)
-	router.GET(options.BaseURL+"/client/device-pairings/:id/status", wrapper.ClientDevicePairingStatus)
-	router.DELETE(options.BaseURL+"/client/device/push-token", wrapper.ClientDeletePushToken)
-	router.PUT(options.BaseURL+"/client/device/push-token", wrapper.ClientPutPushToken)
-	router.POST(options.BaseURL+"/client/interactive/:id/answer", wrapper.ClientAnswerInteractive)
-	router.GET(options.BaseURL+"/client/runs/:runId/segments/:segmentId/activities", wrapper.ClientListRunSegmentActivities)
-	router.GET(options.BaseURL+"/client/sessions", wrapper.ClientListSessions)
-	router.POST(options.BaseURL+"/client/sessions", wrapper.ClientCreateSession)
-	router.GET(options.BaseURL+"/client/sessions/:id", wrapper.ClientGetSession)
-	router.PATCH(options.BaseURL+"/client/sessions/:id", wrapper.ClientPatchSession)
-	router.POST(options.BaseURL+"/client/sessions/:id/archive", wrapper.ClientArchiveSession)
-	router.GET(options.BaseURL+"/client/sessions/:id/messages", wrapper.ClientListMessages)
-	router.POST(options.BaseURL+"/client/sessions/:id/messages", wrapper.ClientCreateMessage)
-	router.POST(options.BaseURL+"/client/sessions/:id/plans/:runId/execute", wrapper.ClientExecutePlan)
-	router.POST(options.BaseURL+"/client/sessions/:id/restore", wrapper.ClientRestoreSession)
-	router.GET(options.BaseURL+"/client/sessions/:id/snapshot", wrapper.ClientGetSessionSnapshot)
-	router.POST(options.BaseURL+"/client/sessions/:id/stop", wrapper.ClientStopSession)
-	router.GET(options.BaseURL+"/client/sessions/:id/turns", wrapper.ClientListTurns)
-	router.GET(options.BaseURL+"/client/sessions/:id/turns/:turnId", wrapper.ClientGetTurn)
-	router.GET(options.BaseURL+"/client/sync", wrapper.ClientSync)
-	router.GET(options.BaseURL+"/client/updates", wrapper.ClientUpdatesWebSocket)
-	router.POST(options.BaseURL+"/client/uploads", wrapper.ClientUpload)
 	router.DELETE(options.BaseURL+"/discord/forums/:forumId/access/:memberId", wrapper.DeleteDiscordForumAccess)
 	router.PUT(options.BaseURL+"/discord/forums/:forumId/access/:memberId", wrapper.PutDiscordForumAccess)
 	router.POST(options.BaseURL+"/discord/github/bind", wrapper.StartDiscordGitHubBind)
@@ -6222,176 +5026,140 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/+x9a3cTR7boX9HSnU/3SCNDCPeEb44hwXMg8bLIyVk3i8sqSWWphlZ3p7ra4MNiLZPh",
-	"mWPzSAJJgISQkMBMJiZDMmAwhB8zasn+lL9wV1dVd1d3V7+k1sPAJ7C6nvtVe+/atfeJYl1r65oKVWIU",
-	"95wo6gCDNiQQ079mqvNvHdKOQtX+A6nFPcUWBA2Ii6WiCtqwuKf4X2W7TZk1KhUx/NBEGDaKewg2Yalo",
-	"1FuwDezeZEm32xsEI7VZPHmyVHxfw0chnoeGZuI6nN3rzqED0vJmQI3YcRc03AakuKdomrRlcJ6TJTre",
-	"LIFttiUMAYFvQxViVA/u+IMTxT9guFDcU/xfFQ8uFa9JxYPIycNsWdAgb2qNJXuouqYSqBL7v0DXFVQH",
-	"BGlq5c+GRgHoLRo0Gsj+BJQ5rOkQEwQNZ2t8A1rtz7BO2Ab8u6c/GLqmGpDuaOfUjkyTy3bIvhqV2b0O",
-	"PtjMDWjUMdLtkYp7itajB9b5G9bGkyL9tABMhUSN6C6xMoe1mgLbFOcENG0wF51ZjOLhk6XiAWSQ6SZU",
-	"yRzWFpDCtmXDhW5htlHcU1RCTUpZMWdiQ8PFk6XElgdQGxGOXx+cp5I362zM3tIwoGQ2EDmgNaMg5H5+",
-	"KaEzqxoEKAqFSQSE/E1eSij9SatFAId+eSlhMg91bQbUW1GiR/j+0sLHQETDKA5CbouXEkaHWhiCRgR4",
-	"nI8vJ2QwajYhnjcjj3Zfi5cSRrY27CqpYQB5n19a6BAMYQx02OeXDDonRRuEy2ZmV/2p+u47I7RJgkaJ",
-	"s/DoFeisxb9lM1D4uHshAUgxZEbK/FszhTd2vf5/CrxpwW1bGhFo/OthcxZ6N37dfP61tXppc23N+nTV",
-	"evIZRSrflz3LdKONVGQQDIiGqWUqTHaiWDfwgmuLB6zcUhEe1xGGxjTx2cQNQGCZoDYMG8Yl27BOtp9L",
-	"RdOAmJniMiPeI4MPmKXuNi8JKxbXdzgEs1JxRkFQJW9qGrG3r4c3D4LWIXJEpb9dyj1l2A9tKlsz/wFg",
-	"DJbsv+tABzWkIHfJUqJx56xpmgKBKozkDV03MYYq4bJJ3BBSye5dxVLRppS22S7umXK7I5XAJrRFWVEB",
-	"BqkSgAlsVCEhSGX2IlCUdxcihaLDYQwXVWgYSFPd7rbcU01FATUFum6IttaAygwgQOEWadSek+c7KAwl",
-	"hYmONfu/fuQnjzvHuskQpmONaHVN+U+IDcRYHqo2TD947bAMqgbEixDPpueavsmzX5aTkekxDR81dFAP",
-	"sE0GkRaEXGAJLljCEA1SMgdLgFd8axQQXQpwfZDe5HQeLV6Y548TtgQ3KiIIKAehYYAmlIggQkC91YYq",
-	"mW34YZmIzzY4zlW7HVNhOlS0OlAYWbXB8QNQbZJWcc/OqSnK5s7fOyTjEnicyvvYZgF0ObPx3oejWS0l",
-	"pRuChOlDrgSW580tjFwKIicayVSOSJDnkntVh7BxCHEHt4vDMGwDWOIq2zwEhqYitblvYUHDydB3O1Yh",
-	"XkR1aM9sd/LLUmk3QYmQrK+BDF0BS+/IxUSp2EKNhk9XEA4cJobCCoGqmzYAgXeIpYcPMvZ6Sm14yraD",
-	"Fwn9uICJO9mT4BGxp6wnvR/wac59w9R1zRZBAdIYZDM4I5UFthPsnnVTMuiI9OYfLw4EkXwjEkwCNzta",
-	"QRiKgICM6gATDxIsqvC4oG8lcGcAPnQd0ZtwVJCwUFoESGHn4FKVAGLKOa2GgVpvpRMaCJOlOJ5PlOZH",
-	"kZqJkWxIKICgRTgHSEvawD3dUx0oMtoTR3D51DcvX3hJBlMXgg58olEVqRyImkjKc7Gu2cjSmKfCpjtB",
-	"wXQdAKWirgCRJYX+VF1pZLHoWsCYN9VZwzChnAhayCAaXprR2roCCVShYYirqvPfmRfFPnClK0tJSshe",
-	"jM3y8rXYytt0naBFRJaybJL2s9HBlYEq/LBPEylhAEkntADrS3UF2pTlwyewN2IvF+B6Cy3CIzpUG/aC",
-	"3V+ooq4GP8vA6x6ViezOR5lVCcRsBXLaTB4ok8YnOZ0SZzD86o8DN4MAtQGwPc0CMIgUHo4aKNhpKXBF",
-	"EFHkAsvUG1kZK28RJmq5AdHirDxEbXLudcilJDn0RZjL5FEYtCG+ELnYL1/kjBhBkyFuF8WbiJFE0Sz6",
-	"M8YuotNzqkyh82y93btKY+egOHEZIOgQxeZJgjIK2IuMuoYbM5q6oCCZJhWjnABDqmMHtuTqFLR5zBpm",
-	"mSGK/hsQqaLQx6kNMWZaZ+hL00RKY7YRY+8kux44VUtEPlxQULNFkhRnvvE5t71NUNHaambpKpOWzsb5",
-	"+t0JxWVnESFS5M3a5q4Eg5q6gOxlRxln7YCgQGodwzZUCbB5YAFDoyXhwsA26SAxSz0I2zWZB7GmmT4F",
-	"XVCoGqzne4bjpMzsM2gi0jJrB7QmUjPTY3qfpYdc/4p9dwd+c5PtOgZccyI1B/DZAqoKlRnNVEXfhKAq",
-	"1LlcSe9bDgok2XUAJc7MTib7YM/YKQ4rbWQYSG3OQUz/x8Oi0o/dH62XigZYiDBBGKNmWkYk/XDh4IDa",
-	"G9yDpIhdKThKfgLhS48htRgNxLtEjEBHTSMx7FnX2m1TRWRpn2prAhFsDuM+xtEC0Y5C1SZZ1DSxfIBI",
-	"SDuTShYZHjgF8CJkbwiCOiAEYrW4p/j/Ppgqv3H4f/9BdsjVNBJxM1oqHsOIwHdVZcm9tfIhId0EaWEe",
-	"HO3f/pB43oVhHAc+99yVnFmRWE1Y/wJACmy8a5KadjylcdUEBB4DS/uiNRfWIMarZRsEb7NWWZQl17wQ",
-	"T/J3nYAQI+X6+SgZ9hzAmgBwkTn82w7OEwB18mZklLBPxZqi2CLYJXk/LcBwg2Se4Nfzs+It6BtTU4cT",
-	"ARGcTRxKtvy3Edlv1qjZuG9hAVID0T68IYYqv6P0byf64kBiU+VnNEnUtWQLJ2HDs6pBsFl3CTXEw040",
-	"ingNuHvnjl27kpbn9E1YQDpAC7Pv2PnvpQkzbpNd83EQcKNUl6KPcejQZZIWmETL6a20SPtVO6ZCHEHZ",
-	"6a5dI9AvNbvYbK6HXbh/9WCSQGIOWGmkW/iO3dH4UmnZ8XiL0FYVI58roSB8eOwlnyIGCroerdwE/FIh",
-	"38sO2WEFdL2qmE25yki3EKVPcsdZHUOS7hjQMVoEBP4HXErX/histTTtaPopgp4kChJvi74VBIePhXmU",
-	"ZhQN9DwBnUWprscrysILrP7Ch8KMLZuGGvnzLHQ0PJEODOOYhqPsCKLLlN0Tu0/+YbBoJsH+d1fA54vZ",
-	"g8GDDoYcLtnXNtKHQAYCWyUhA/aHiLgN+5xkBOMRB0ZlV97Lb3Eo8iNI2vPwtcFxJpxef+MNQVTtmprK",
-	"du3Cfki/wgBQ6VfvcoSvTwZJ76yIEsT1um3rR/u5eINDfMVutHbxXdwEquP7lV0oKJoK38NKcJ/F6Lig",
-	"N93bfTle+Vu1fcdtXnPixFIIsz5UCuwCLuNsQZEjX3fJD/iI+UJaiB9OAoxluK9W989g2IAqvbyW2EZx",
-	"djBSmxDrGDElHEPQ8E4u2W27ZhDXqxjRWkDIoKqgbtYUVOdHc+Likt3wiUMsxtwWJW03Jr7K24cf5KId",
-	"vejeR3pATvLx+1DPYj0j+D+WChz4B62ghCg/+7zSWxgYsB9NK27wRCXKgauoOcX5knyAykNP9zNdOk06",
-	"cWHvUWRvGwz633xsffV1769Pup8/7H7xm/X00uazte7qt727p7Y++f73pzd6f31i/fR57+8/dNYfbN6+",
-	"17vzpPP8q+7Kqd7Fn7s3L7BmxX7JIAHz+zUZvoGCgNxNV3cRkvZO3e3gXDMlCppYbNoCIFImppSpuueV",
-	"YMrL7tdff+31JLtLx9rxpT+ZbX3agU7iTtwuNpjTvhQYXFLHqKYs8gTizDHryRGhjGgEDHFA+98AifQT",
-	"og5xdaL8T5T0FL5te7qoW9ysdJtIhJnkobA+AtvBNwAsst/5M+zHyANlpaKpog9NyGeRSYwAbuSoYFtP",
-	"RgNhj/0i5Eq8LBYtyeny/wXl/54qv/HHI2Xp/YlfJIiu0tdfTxbyOUmCXPcjsm+mQyvoTUlmyDg8RhhL",
-	"Q9ly/uw5HoLIIuf7xfLI5EE/Al0mNGKILCd1k2oxAyiakJh6KueXj5p2+xG1Ux5pZ+qu20lsvTs9Seze",
-	"5ZvotSS+FyYtSX1oMTCQO890rC0i2wJDavM9jNK4MzCsa4sQL81ojawBLEQjepQLOeQG8tqWQssMriJy",
-	"31HeYhYANZNwm2445IPSeXz97UvhWWTrFDJiRLqxIkPUQJ1o+CBSvUAXvx+LYASazFpgF222imlj1fmd",
-	"2hpFW2tBKgHUWwMabSQPg+0j8hYoinYMNg5pmpI1RAqoTYg105j2LlLT9449RuAiVIljtSSI5AWkOEny",
-	"Mj2lRd4dcIpZ+jVlMdIwIks+pO+QO2w9J1za955HkZIVaYQR83/wx0UO1VGA0+DwGr1dNxRgtI7UtXYb",
-	"0Mc8bfug0VThFwU2QX3pCP8gpUY+138CxYRhy/yAPVXBurzaPX+ts75qrf/QvXaz+9U3veunrSvPOht3",
-	"rMurvz+9QVf2r+VTgRUUOusXC/41FHpXv+z99cm/lj8qJj/LE0AtCfx3LHiXDP2A8xOPTGawVBMZ3SUt",
-	"CDCpQUCGkDtCAQaJDhJqg+MzmsqfiDtZyeIVrzYkwHn2l4nvot2q4SwAEibRgmknHBJmstyLZZWTZPDJ",
-	"qHv8OMN4z4U0VUGqDXNtYYH/r4EMxxpDqq0QAYJq9BaEhY4fjlQZw5tK8QCWbVa0AcOIkr31d2O0XSRF",
-	"0+iMAlA7UgOzV+B7XaUo7rGZAOpjAJEURzKdgbdOXCVLaxNeJgHG0azpYaLnYhJmun40faoOnkHVVA9A",
-	"YECaxChKRfAiaiC9XLGJG2NTlz8Y4eIu5YlATCwPeA3dfDujlpyVhWF/WIQIfeckkElOYEEN2NY1AtX6",
-	"kjTUgSUz4ppxNuz6mco3jTto7KbZm4b0mw3GA4Z3e8w9FZKBFtoD7xy3ZP6MW3ZnzRj1fW4j9vU0kXH9",
-	"AENEsxwDXaQUImnDJ0Mmit3vcOK0UWKl7rvATHMRkeIEOxYDwHiudXuKtr/kAIjZ8CKPawza2UuKBhqZ",
-	"j3LDRlgw3CFdKJUTg5BkT/MJSk7UgbPUhD0a+Ysqqgym942IAE/yj/Ch41j7LYCU/PdUj3qTlkIut730",
-	"PEkaTUD41tljkXZkChlv2/sdlVgSJduvApqBS1Nrbf7mWVgywqXQh0bep4k6oEYdc30S8bKTK7XhHUYD",
-	"ySXhEJwU++d9usYCd9JkDrA7HOrzQBE6l8Spo1dere533EvR71S5KM8qXBJu+7NelrmDyn26NiSYjy+Z",
-	"HdyWJd/24u6wZFsKwSoQGNT3LfRAAQYp2osBQinMPV/ASFRUTizQhh5MEHv5n9dd3gCRntlvTGLgyRIc",
-	"HEJEgSkNzxR8JQx6yO4Vow77FhC2vSQSMMMDIzcuVDgnXtudnOHO7jYvSIBB8hb45Kh/ZGeB6dATUIsC",
-	"GhvGGp7hKo6w239PzueX3ynhLSLdjg5xigqlPIRt3c9kryUx2ALCbgqRcE7DqQGcifTkyx64nZVUDQaX",
-	"tM6PgSg0j9Qy3nqDaWZ8qAiTvIPekkzDiA1Wf9+Zpu8UpzTId29ixgLa7J0Y3629omodqNFe5syJY93N",
-	"xeeOpYPaU6vZcwn1Z4l7b7T2BhIneGAS9huLuLc0bEoCdmqI+qGrIQe1m+AKqSD4EEyWUEfDfQCcLmpG",
-	"GEN6AchzeQyUFqWPtJDutKUAlILbToa7b4uy5wnQMA7ARfYcU7yi1Ww5VeIJ8CM8/0BMI/7mkq11RsS7",
-	"20tJKeXaNB1JGievM6rQp+TbknyFsUDLI2rEE1n9x42EJEPKlI4uE7Gv9OqBp6KQorAW/SakAQ17nfNJ",
-	"SRdjMkFSDPXLnVKDD4JGtQUG4UeayRlCNYsgVROOheBtcwNhWCcaXmJ3SVLIJyazxLCtEeeJT/huPOYk",
-	"irtx86eyFNcfkdGSodcHNxexaSiX4jLCCZRJLgTyw6jwGLvnIBqWHxEyf5FEK0yXLolqa3UT26CxyZX7",
-	"Nlg1AQgwu/ao0f+95eyFLGGj3AJqo9yAi6gOy4QrPpTiKbOwru50LUL0oqcZzmjaUQTdcoV19qdbsNAe",
-	"/4g9/hHe3hsI6Mg2sV0tIHKNmg4+NGGZtSr7/O4JqzxJg0wWNGqkoTrkBiSiAyzQ9/XFg7OHvOXaf3gG",
-	"mgedwkGggiZN9lOYnpsVXuXsKU79cccfp6h+pkMV6Ki4p/ga/YkVW6RYqND4hrIuFG1owshsY26NxsoB",
-	"SaU/f8WXt2GogVB7RDUVhXoHjBST+atBBiea04zEmU6WihVgNhApO0UQ0u9SqNYX3qHwUT4naVUU5wmj",
-	"s1v/MN5Du/7KVMYdC74HxKmqVE7lPTe9TJVUXOl9uWE9u9p5en3z/ld9V9tx5EpxzweHvdo70yZpsbI7",
-	"LgI0LkOjMGB/Lw1YZdQHx13hqCbr0YOt5WXr3OCFOYMbZMKak3SISGeYH91fuWaIiPdPJKtQ+uxT68Jq",
-	"b+127/JZ68oXeYKDnSoVrwyEUTmBGicrwsakYGJZJvZqx1RFA41pt3uYKPIvfns4Ey60OoGkbBAMQduP",
-	"E3eeGlIBVaAkZXYDT+C+PN3ZeGidPWOtPc6DCYPH+geHTwp8yYBcmOMXYAGUpRCVbIDtLDAHKlJlrX3b",
-	"Pf+o9+P9zvqv3c8fMglqnftp8/6pnCVoLKZqYgWoGG7yKkUNUdgEp5KBjZbzKizuLFiX71sf37Oe/9g7",
-	"c3fM5M60WnZI0GzuUSKJft3LWqc6Zahw3Vz7zbpzznr0YPPc37qf3Nn6bHki9lvWAbJlkSOVFYDaSexO",
-	"r1kYAOZY75EJ5f7kS9Qd7n5gtOIfkezeJU1BYW99NpvLzHfRPyW956SgjHzRQRNqE3u+ZCvZP5awYi+d",
-	"gDNWKQiPw33VUh+h0O39dMH67YyrrPRur22u3RmluJVyjhecHKfOiEzjpTscNuuU+KAtCBpejpA9VE3T",
-	"sJeYJXoG4Z0iX31hYL0pZ7JgAra3ccVau977+GF3+dToaaKim0ar7EZApjlI5kyj5VwhyQjhQxNSzdHx",
-	"kvCm0ahKRorcErLOf7P15Z1xHEqlIneoyaA0ZxIRRPkcAUDX96mLCGtqm/f2yhcsQkXTHUsDw0VEfXM6",
-	"1hqhJyRy0ewmfdZoMT61gTUU8cAhItGWNDLWJ7MDG+hPZsvpoPvLPevsypiVE+TVwWDiFajGMf5GJ0Yz",
-	"maathCIa20ox8fbYf/A8H2PiD/HOkzudJ59YN77u/fRZftJ6AIrDpmpUTmBTnbUPc9jkrgr+P/tHwOqw",
-	"IJh0ytPK/6ZaZV2nvW6pJHwNLmgYOkVfWHUYCTFGJxWTDwsWCI9wzm1IhZb2Fodyw12cZB2RAS/j1RXm",
-	"TbVgnT/bXfundfZM7/rp7q8bthl6/uzW7X9an6x0/3nKenqp+91y99b3vY8ej+lMTJRblFhzUQz947o0",
-	"P5hYFJiL3+ikYZwqdCsMpGCWulMhN1r/GQbxRozpq8KaGQmhBfI6Vr7B8q+cNjAnBmoK+SpCSjI9SOpp",
-	"pK5/m6Kqsks9wkIOpzmQ6L0HEwFjYvg4l4uvCPNwPK2ymVKpDTsGIJcGbJisdXTaCDcTQwY6kdMFdYUI",
-	"E6YhDOviLeuny9b5G9bGE0Yk/1o+tfXDte5Xt7sPz3dP3e+sXywcMrE6ZgXGIX2qLycI2rchEWlpbEqg",
-	"A87ejbXuN+esSx91r/5sfbLCPKaFeVOd1KN3cJNBB4TFKkmNXvvj4NyeETmju4kOMmuIMro3fu1e+9m6",
-	"fLF3/XR+N9J5cVeFn6qJ5ihr5iFyDDeXO0d4G/bsk+7t7zbvP+r+4yPr0YPuxe+tS59PFN74K8Y0euhB",
-	"p2kGoy1fY20UdtrOybbTrEsr1uUr7Jgdq2o2igMhUf3zniTk5G9ygyoy58gT03KGI1trsAUWkRasSYPJ",
-	"kWMtqB5BDZ6LHkJ8BC0ciYmMV7S68+ot7D2Fx1NkPnNG4O37c4ztGCHJP3pgXbqytXyqe/5agaUdmSQJ",
-	"qitA8JPB47BuksRzcB9rNqcAdZTXXXl7Sw6Pky5s4BW6F+5u3l4pzLIJJ4kunNjlBEqYZ81eFo2oe+pb",
-	"687qJGtEhgp0o6WR1AZj1emQ7rrSxOqBkPrh7n7nVEkolDLRqkhnfXnz3K/d5bvMHNm8/0P3L2c66xe7",
-	"N5e7137efLbW/fvt8cUxjYKRommIaHoS41eJpr80XP/paufZzcnkd5sh05g/h2i7DLbPzDA88ZMtEror",
-	"F6y1le7VXzn3UwOld/305qmPrTt/tS6etS49eOmEASWwygmW3C6FH5J6TsdqY65e7az/TUTkC4ozuVrM",
-	"sxDmRgxLaj0B6VW7SSrJQt0gEsGSMZtFH2JnwuXOqc7jM9blle5P33ee/E9n46FNsbt2xC1BZ2T6b9n8",
-	"tIHqerK1rK93vzm3+fxc9+at35+uWM/PbN3e6K5cKMxoKsGaUtg6t9p7tjbmM1Cons8JMygDzvWe3O2s",
-	"Pym8D2tVrX4Ukt+f3miYGNQUWGAw7jx73vvsnnXmnvWP5QK7d/796YqCFv0NCthUnTALlt1YxgOsTJPh",
-	"ztb3bXc2VgiS7Q5mwfqB4S6qYD16wCAzdvQpGmAuqjgd8z3aLNY91jYVgnSAScUGXNlJSRflIVtACkz1",
-	"kCfOUxXpkKKjbweHVGf9487Tb9jTpHGRAk8kUWGvtSsn+HPrkxWWJKFywsmbcDIu8pY/3mBj0dfc07T7",
-	"KJ4aDhhg64Bnr5PfL5XO4OWVyFtxEPJUZApGlsb6zplkCEjJxUk+SFqRYHCmMFauIbv0tjRHyhIZjiWW",
-	"rNR4Wgi5AK4SgB0MsuLSb7I0DONHYCMxW1LTREojjeh2GpYCg44i2ta/KTNNsdxgfWWspIuEWl/u/v12",
-	"d/kue0ux9elv3YvfD5+4KnWgKDXAErnLzQeeXS8Fncm0J4MAAjNJqwjLgafEHeQJxlSYjxm0bTv0/OWc",
-	"X67Ewt5U41n7PfrdB/OJ4GtaEB63o8LGRsD2JWENeYrzzbvf9TauDInjkIoIAgp/9BWnU9M7Zz7IrK/X",
-	"mPAfZ6lK18ky9aTCxM7cVjK7dx4amonrUKpNn//Kuvs/1so16h7+ZOuLW6PBc0XHcEFBzVZM1o05p8nL",
-	"gvSpvFfiQlCa2uHGw87zte5nj7e+Pd39brm38Wn365sjwn5sTOjbMC3Gx51qIwfyiGXKAV8ixeOEGUzR",
-	"ly8HkOHg4SBvOiBwUgXY+6aUBNiHoMU7FLrnL+eRK0YOrITn1B7Juq+oh01GfKIYgGw+v7x5e2UoNMSK",
-	"TlS8JDNSqFTpZ1ZTIxkiBB4nbGBp8prEVDVViBchLlehSgp8TnEDzilo8C1wdRPoehxWmYI5rQ81RYk7",
-	"STROWZPCtK4XHIQKe+NqcOTT5TnTt5FJOzfdtWU4K+Wqauf5V9ZPg8sAF55+Qqm0gYoWeLrwRIo56DTO",
-	"1dIWlxBOed+nGV7yhk1jkTs7K2zevmetXmXvJDIBMNm4fpt2EsA44/RIdzUxqE38GlPBAzkdnn9m3fi6",
-	"wJlxc+233rO1QYKApeBCqkGAonj2UOpMhLO+npJshMEGsoyE9Km7CpTK4o4K0TTFoLiKscuAoszyPoc0",
-	"Tdmu70MGupSwN16wIVEYUI32O0wMeqQxKqe8XawUxauJ4Jn2Z17rJzXF8CqQIULhv8voA0NdK9dBvZUx",
-	"Geg81LUZ1k0yoe9r1LS06irqY163Y8TMwvfoFKQyd4TbeWkCj1VvcRnO1R2jcjw8esDeMA4sPINMYEBC",
-	"aB4kp/JUCqWddxmF2u5MFae404Ml35u5+FsuAQAT6lRxVjgpKqLfHnJpjuk6ZZo0Oday5mpik0ZmDJ/6",
-	"JNPRdPwxpkaT33ovIAUWOusXOxufWk8+Zcre5g9nezeuDQxEd+cxUCwL5bKNFIq33WdW7DIaqPqmlN1i",
-	"bZzp/nLPOvO9oz2+r+GjBfuYKvSuny7wPE8QF3zbzRHAiaahBHATaijK4T1WcZCGkn06jOsCjcKKd3rL",
-	"RUXfuClNWNKplAifw3ABYqjaB/3k4pul+o+VU4Fyy0MUT4GZZHcAG19srt0pCFWjnQ2+zzcSJzhCO5k0",
-	"eSEDwFjJxoMqpxpTr9A6OjGhLHajcGr2/IFFJ8qU2XpH3nNHlgJwkqt21i/yN2z/PN299uXwygIw1CR7",
-	"/enCh+/zF6eRur6J6XMMJ+/PaFUCxWMjVVVfXdXhblOcKUo/rVb3F1hOc+v855u37/3+dKWzvmqtnLEu",
-	"/9i7e2rrk++7569Zl77rbAwe3Fit7o/LhcRyE/nKzk6eEPStjy15LP6AQMXhGJdA7/rpzdP/6F69VPBw",
-	"nRMqJbTvamLxQboJaB7K+5iJDfp1+UKmGbDHBNsAXkPmNQaHscR/pOE1FqU7Al5zK4nHnTD7aaPhgsSe",
-	"I+5U6axvdG8+YafKqI4OWnx7Ig8Ne2XjOihYFfn4I6LgoWwYBFtBbac0uRyFs/S7QLqTikO6znFiMorn",
-	"bCF04fHWuUvW/afWme9HgNPUR72cLV8d8uFDfnIhNQlScWpEUtE9zIfEQUsGge009jBtmI9BLL+RT5F4",
-	"Lk3Rll82ehu3coqNC95AkhaG/H1o6mvqQ7yP5Iba+yS7GCcYNZsQl7GZtTznIdZz3oyozhn4nu1mXOg8",
-	"gUejsLqX6m78GKy1NO2ocy8RrdzMwzpEi5D5399nvSKkfLCKz3+V95u1chU1VUBMDMs7X9/d1yun8Lhs",
-	"NeW9UEGLLNorx1FpyGj2kLGJiHTaOdLn1zzfw8q1EUU5+aLjjmn4aNkNJE8t697X8FGWIbIkv5FxPspE",
-	"LLvUqSzuqNQUrZbwesEpEcpc/W8qWm2UOQYDYZD5lWQI8828qZYPQGDA8qHMRaDSjLpP1+qtdGuPzEA7",
-	"xsqpnScrm89vWOcf5pmnwF9vnOUpSGIfRohpcvuzhBUTQbgabiAVKLFDJ6cWGX3ajTYkwBkuoRa+03Kg",
-	"xBsjjHG1KaLAUm/kF+SaH0nL+/jFNy0nGvPGlI1L64kWh3kjTWcYU9V13wrYHPJU1/e3li90Njasj2/3",
-	"7t7qPflh+6G7AY2jRNPLWGNPBxIxP4ehDjDcy/rNa+6LgwApyPfuNEHQgfKfqu++U4xAZjz8/P23Odid",
-	"CussXUIi+zlpFUJYyGZFstEcC2h2r8yYHBCRMvfbja+7G9dtCy63zAnjwR7N9Z3IMfOwruEGR1WVpgcf",
-	"AZDpRIXBw3LGDmTmKSpzaGSUT8wv9Eo65QL6eKPOCSQT4F7l6VtyEUqvEDDYIeGywsQdES8zMhcAUpIQ",
-	"+RZAysQjUXbO3/nH5q/fswuEF+EgcvJwZzh+nEzJr9ilP3CnyYHjAp5nwnkF+nxAT+UTaoMmNCoEYH7o",
-	"J5/9s3aXQ6zDq7M/RySc4B6/zKcGxUgOuJA/ixmCH3IYNudvvQvnXpATCapYi8s3sI9+5y9WhumkYxON",
-	"1UvnLCHaTbd19Xn35i3+gKdgnfupu7o2omu5fhHcggCTGgSJp95+t+Ew0ezN0vfzoOd/2Xz0i/Xoweba",
-	"z9azq9uP5WjKD1b1rgJU4xjESaiZpq1mvX6vtJH+QZ7C8yBA+pXfoU+QY9Mtl+sWmkw0ediVKH2AOu32",
-	"GoqJOpLrSURgOyL9rAKBAdmde7oYO9qBXf3LxnM0J7GQyRtJpVH8lQm8CXzLc7dREtSz7XGHaj3+qPfT",
-	"BVaAjyWTcjW13vXTPOcCU+dsGI60sII4+TbWHz02r2vtNlAbRoXnGUvwJ9ptp4d0z5Tnza230r4VlivP",
-	"Oht3rEcPerfXNtfubHMcp/IXz5uq4zLeBgim68xkeUiwPG+qhW18DynimGY1T2Zh2oz7xraDD9leauGF",
-	"YEOWDzYFE7rJYCeaBdkqB2VAVobrhThK0/jk5k31LbvZhOPWXmMuovXFcLd5OG4iUvaexSdh+21EBsh6",
-	"8OriNT+8pfanzZuq6FJ7hbFxYUxw/iTHVzWRQYKutleoGxfqDLPWRqxseKrIuKrXfnvopN6CC9vYo+0h",
-	"jAWmJCGr6ryy3C6WA10stR1oma5tjaEUScbZLIc0TZmx272SgONDl/2boYM6LOtY+zOskzIrZJeAu/ed",
-	"bnOsV67XGEPmtq3bj3s31l4gVd/DYTbcbSekuYsubHvEGZAeyGWCiALLBBhHDfaUKdVLpirrfcjuPPxs",
-	"o+JsKR8ZFXifQvebc1vffrG93xzJcNVXZHMAbaOpfDYsp4uPKnLyb4vU4vq5u+evsceJ9i83vilguIiY",
-	"MnvpC2vlWmf9W+vpX14gqkobLPfCUlMe7jwfJfndetvVADKMVpnemzRNRg8JASbV6v4ZX/PhHxTBGWXn",
-	"w7NPrQurTnRb7/pp69yT3o9f0hxHW2dWeZGM16Q6G/3cvfk3xvjbD4P8RYWCFmB9qa5A3yOxGEzOQbWB",
-	"1CazEA84vaOSMb24Fksk/Jwg5H4e27nwfBXvlhc2UkS/BWD/KgJuKEjIrKGGWWI72IW9z25ZV55ZV+51",
-	"b97qfrraeXZzGwdJcIw6uUTKKe/hqWuaoe+gl4Zk+O8Uzvyle/Xn7uratr8Z53C3deWySTNhZjqW3wHt",
-	"l/dEFoHG43GT4/Om60c90G0TScPMCpaZcxtH+bjOwgQKdx1uxSFG2KqmooCaAtNH3PpMCO5w8pa6fbFR",
-	"4e53o2KoQDdaGsnsgnf6TUwew0jfu/X8x96Zu9v0wIjPfe+UBMq1SrSbIDFVyX2n/FOo1r4/Hp+NlaZA",
-	"tLX2vLO+4TIdT6gfVV0qJous+8xvMitLjSV3LFfCKXwaMuhzsHfWL3bWl7t/v91dvtv95Z51dqXAYRJZ",
-	"kIrTa8o06VHIebmypEdDsAJV+6hqRFb5qzrF4Pbxhi9QGnW/PBIgwRdU0zQFAjUkZJyWh/M6QNzk6MPF",
-	"NNYUJeFFmSjS9rkdtgH/5Ce7vG07oiicN7UPmcXushc0bLY5QhrIYGpiFDL2sgauTvSW3Xkb4GJnmMLp",
-	"0gtbZ1at+49tuXbqZu+ze9bjh9b5c93VbzvrT6xLf9u8v5EL/VNYxYOecXDcA/4XFPCsMuEwweyq/Ozu",
-	"jwI9jbwRtf4Jhvdw1LTQ5jNobZFIZ/n5baRf/GTri1vd89esi2etSw8K/PO4qKFygv47S925tqms0ZKh",
-	"RuVEG7ZrEM+mVexCUJsRhhtYIR+teubCb4T5rP2DcqQMYWQHrVkrF8TV9B0u7vPQJ0G9Dg3jAFyEClMv",
-	"zbaNbAxBQ1OVJTfJv4YFRTIiEbc41oRqnXIBkOxX4M2GfJdPZ4mq8eUZo1vLG5u/XSkIcXmDhS5HcXia",
-	"s3AiiFg7pkK8Fxl1DTfeMygTs2xSB6DaJK3inh2SDA7M7GBNEyWGj84l0wnD9Uf5o6qI4xGNWxvHevyQ",
-	"EVDBc1/lz2gEQ5i90gjrFVFpxPkYqjQS9E/yoK8ZTTuKYIyDEuiosrhDdFOecE4HWvHZPjn437yUivCL",
-	"VyFI+NGtbi/8xilH/EmAWOBXe4XieNX94RaeE1X4NKMgqBLh0+GT/z8AAP//O/sdKtxQAQA=",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

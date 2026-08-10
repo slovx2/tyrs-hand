@@ -1,6 +1,6 @@
 import * as SQLite from "expo-sqlite";
 
-export const DATABASE_VERSION = 9;
+export const DATABASE_VERSION = 10;
 
 export function needsThreadHistoryCacheReset(currentVersion: number): boolean {
   return currentVersion >= 4 && currentVersion < 7;
@@ -15,24 +15,16 @@ PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS connection_profiles (
   profile_id TEXT PRIMARY KEY,
-  kind TEXT NOT NULL CHECK(kind IN ('control','ssh')),
+  kind TEXT NOT NULL CHECK(kind='ssh'),
   name TEXT NOT NULL,
   active INTEGER NOT NULL DEFAULT 0,
-  control_server_id TEXT,
-  control_base_url TEXT,
-  control_device_id TEXT,
-  ssh_host TEXT,
-  ssh_port INTEGER,
-  ssh_user TEXT,
-  ssh_key_ref TEXT,
+  ssh_host TEXT NOT NULL,
+  ssh_port INTEGER NOT NULL,
+  ssh_user TEXT NOT NULL,
+  ssh_key_ref TEXT NOT NULL,
   ssh_host_fingerprint TEXT,
-  bootstrap_payload TEXT,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  CHECK((kind='control' AND control_server_id IS NOT NULL AND control_base_url IS NOT NULL
-    AND control_device_id IS NOT NULL AND ssh_host IS NULL)
-    OR (kind='ssh' AND ssh_host IS NOT NULL AND ssh_port IS NOT NULL AND ssh_user IS NOT NULL
-    AND ssh_key_ref IS NOT NULL AND control_server_id IS NULL))
+  updated_at TEXT NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS connection_profiles_one_active
   ON connection_profiles(active) WHERE active=1;
@@ -123,17 +115,6 @@ CREATE TABLE IF NOT EXISTS app_settings (
 );
 `;
 
-type LegacyConnection = {
-  server_id: string;
-  base_url: string;
-  name: string;
-  device_id: string;
-  active: number;
-  bootstrap_payload: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
 type LegacySSHProject = {
   profile_id: string;
   remote_path: string;
@@ -174,6 +155,7 @@ async function openDatabase(): Promise<SQLite.SQLiteDatabase> {
     if (current < 5) await migrateSSHProjects(database);
     if (needsThreadHistoryCacheReset(current)) await migrateThreadHistoryCache(database);
     if (current < 9) await migrateThreadReads(database);
+    if (current < 10) await migrateSSHOnly(database);
     if (current < DATABASE_VERSION) {
       await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
     }
@@ -182,15 +164,6 @@ async function openDatabase(): Promise<SQLite.SQLiteDatabase> {
 }
 
 async function migrateToOfficialProtocol(database: SQLite.SQLiteDatabase): Promise<void> {
-  let legacy: LegacyConnection[] = [];
-  try {
-    legacy = await database.getAllAsync<LegacyConnection>(
-      `SELECT server_id,base_url,name,device_id,active,bootstrap_payload,created_at,updated_at
-       FROM connections`,
-    );
-  } catch {
-    // 新安装没有旧表。
-  }
   await database.execAsync(`
     PRAGMA foreign_keys = OFF;
     DROP TABLE IF EXISTS run_activities;
@@ -208,13 +181,6 @@ async function migrateToOfficialProtocol(database: SQLite.SQLiteDatabase): Promi
     PRAGMA foreign_keys = ON;
   `);
   await database.execAsync(schema);
-  for (const row of legacy) {
-    await database.runAsync(`INSERT INTO connection_profiles(
-      profile_id,kind,name,active,control_server_id,control_base_url,control_device_id,
-      bootstrap_payload,created_at,updated_at) VALUES (?,'control',?,?,?,?,?,?,?,?)`,
-    row.server_id, row.name, row.active, row.server_id, row.base_url, row.device_id,
-    row.bootstrap_payload, row.created_at, row.updated_at);
-  }
   await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }
 
@@ -288,6 +254,51 @@ async function migrateThreadReads(database: SQLite.SQLiteDatabase): Promise<void
       SELECT profile_id,id,0,? FROM threads`, now);
     await transaction.execAsync("PRAGMA user_version = 9");
   });
+}
+
+async function migrateSSHOnly(database: SQLite.SQLiteDatabase): Promise<void> {
+  await database.execAsync("PRAGMA foreign_keys = OFF");
+  try {
+    await database.withExclusiveTransactionAsync(async (transaction) => {
+      // Control profile 属于已删除的旧移动 App 协议；其本地缓存不可用于官方 SSH profile。
+      for (const table of ["ssh_projects", "projects", "threads", "thread_reads", "drafts",
+        "pending_submissions", "outbox"]) {
+        await transaction.execAsync(`DELETE FROM ${table} WHERE profile_id IN (
+          SELECT profile_id FROM connection_profiles WHERE kind<>'ssh')`);
+      }
+      await transaction.execAsync(`
+        DROP INDEX IF EXISTS connection_profiles_one_active;
+        CREATE TABLE connection_profiles_v10 (
+          profile_id TEXT PRIMARY KEY,
+          kind TEXT NOT NULL CHECK(kind='ssh'),
+          name TEXT NOT NULL,
+          active INTEGER NOT NULL DEFAULT 0,
+          ssh_host TEXT NOT NULL,
+          ssh_port INTEGER NOT NULL,
+          ssh_user TEXT NOT NULL,
+          ssh_key_ref TEXT NOT NULL,
+          ssh_host_fingerprint TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        INSERT INTO connection_profiles_v10(profile_id,kind,name,active,ssh_host,ssh_port,
+          ssh_user,ssh_key_ref,ssh_host_fingerprint,created_at,updated_at)
+        SELECT profile_id,'ssh',name,active,ssh_host,ssh_port,ssh_user,ssh_key_ref,
+          ssh_host_fingerprint,created_at,updated_at
+        FROM connection_profiles WHERE kind='ssh';
+        UPDATE connection_profiles_v10 SET active=1
+        WHERE profile_id=(SELECT profile_id FROM connection_profiles_v10 ORDER BY name,profile_id LIMIT 1)
+          AND NOT EXISTS (SELECT 1 FROM connection_profiles_v10 WHERE active=1);
+        DROP TABLE connection_profiles;
+        ALTER TABLE connection_profiles_v10 RENAME TO connection_profiles;
+        CREATE UNIQUE INDEX connection_profiles_one_active
+          ON connection_profiles(active) WHERE active=1;
+        PRAGMA user_version = 10;
+      `);
+    });
+  } finally {
+    await database.execAsync("PRAGMA foreign_keys = ON");
+  }
 }
 
 export async function clearProfileCache(profileId: string): Promise<void> {

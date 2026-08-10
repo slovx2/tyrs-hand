@@ -5,7 +5,6 @@ package sshtransport
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net"
 	"net/http"
 	"os"
@@ -19,7 +18,6 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/hostworker"
-	"github.com/slovx2/tyrs-hand/internal/officialapp"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
@@ -49,8 +47,7 @@ supports_websockets = false
 	runtime, err := hostworker.StartRuntime(ctx, hostworker.RuntimeOptions{
 		CodexBin: fixedMobileCodex(t), CodexHome: filepath.Join(root, "codex-home"),
 		Home: filepath.Join(root, "home"), WorkspaceRoot: filepath.Join(root, "workspaces"),
-		StateDir: filepath.Join(root, "state"), Stdout: io.Discard, Stderr: io.Discard,
-		Logger: zap.NewNop(),
+		StateDir: filepath.Join(root, "state"), Logger: zap.NewNop(),
 	})
 	require.NoError(t, err)
 
@@ -114,7 +111,7 @@ supports_websockets = false
 	defer protocolCancel()
 
 	var started struct {
-		Thread officialapp.Thread `json:"thread"`
+		Thread mobileTestThread `json:"thread"`
 	}
 	require.NoError(t, client.Call(protocolCtx, "thread/start", map[string]any{
 		"cwd": filepath.Join(root, "workspaces"), "model": "mock-model",
@@ -132,23 +129,47 @@ supports_websockets = false
 	require.ErrorContains(t, err, "no rollout found for thread id")
 
 	var turn struct {
-		Turn officialapp.Turn `json:"turn"`
+		Turn struct {
+			ID string `json:"id"`
+		} `json:"turn"`
 	}
 	require.NoError(t, client.Call(protocolCtx, "turn/start", map[string]any{
 		"threadId": started.Thread.ID, "clientUserMessageId": "mobile-first-message",
-		"input": []officialapp.UserInput{officialapp.TextInput("reply only OK")},
+		"input": []map[string]any{{"type": "text", "text": "reply only OK",
+			"text_elements": []any{}}},
 		"model": "mock-model",
 	}, &turn))
 	require.NotEmpty(t, turn.Turn.ID)
 	waitForUserMessageItem(t, protocolCtx, events.Events(), "mobile-first-message")
 
 	var read struct {
-		Thread officialapp.Thread `json:"thread"`
+		Thread mobileTestThread `json:"thread"`
 	}
 	require.NoError(t, client.Call(protocolCtx, "thread/read", map[string]any{
 		"threadId": started.Thread.ID, "includeTurns": true,
 	}, &read))
-	require.NotNil(t, read.Thread.FindClientMessage("mobile-first-message"))
+	require.True(t, read.Thread.hasClientMessage("mobile-first-message"))
+}
+
+type mobileTestThread struct {
+	ID    string `json:"id"`
+	Turns []struct {
+		Items []struct {
+			Type     string  `json:"type"`
+			ClientID *string `json:"clientId"`
+		} `json:"items"`
+	} `json:"turns"`
+}
+
+func (thread mobileTestThread) hasClientMessage(clientID string) bool {
+	for _, turn := range thread.Turns {
+		for _, item := range turn.Items {
+			if item.Type == "userMessage" && item.ClientID != nil && *item.ClientID == clientID {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func waitForUserMessageItem(t *testing.T, ctx context.Context, events <-chan codex.Event,
@@ -163,7 +184,10 @@ func waitForUserMessageItem(t *testing.T, ctx context.Context, events <-chan cod
 				continue
 			}
 			var value struct {
-				Item officialapp.Item `json:"item"`
+				Item struct {
+					Type     string  `json:"type"`
+					ClientID *string `json:"clientId"`
+				} `json:"item"`
 			}
 			require.NoError(t, json.Unmarshal(event.Params, &value))
 			if value.Item.Type == "userMessage" && value.Item.ClientID != nil &&

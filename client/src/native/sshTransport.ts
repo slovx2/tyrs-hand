@@ -1,6 +1,7 @@
 import { requireNativeModule } from "expo-modules-core";
 
 import { getSSHCredentials, type SSHConnection } from "@/db/connections";
+import { isPreviewMode, isPreviewServerId } from "@/preview/config";
 import { normalizeNativeTransportError } from "./nativeError";
 
 export type SSHAppServerEndpoint = {
@@ -100,6 +101,9 @@ export async function uploadSSHAttachment(connection: SSHConnection, attachment:
   name: string;
   mimeType: string | null;
 }) {
+  if (isPreviewMode && isPreviewServerId(connection.profileId)) {
+    return { remotePath: `/preview/cache/${attachment.name}`, sha256: "preview" };
+  }
   const options = await connectionOptions(connection);
   return nativeCall(() => nativeModule().uploadAttachment({ ...options,
     localPath: attachment.uri.replace(/^file:\/\//, ""), filename: attachment.name,

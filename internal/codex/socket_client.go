@@ -23,6 +23,12 @@ type ServerRequest struct {
 
 type ServerRequestHandler func(context.Context, ServerRequest) (any, error)
 
+type MessageTransport interface {
+	ReadMessage() (messageType int, payload []byte, err error)
+	WriteMessage(messageType int, payload []byte) error
+	Close() error
+}
+
 type SocketClientOptions struct {
 	SocketPath           string
 	RequestTimeout       time.Duration
@@ -38,7 +44,7 @@ type ThreadFilter struct {
 
 type SocketClient struct {
 	options          SocketClientOptions
-	ws               *websocket.Conn
+	transport        MessageTransport
 	initializeResult json.RawMessage
 
 	writeMu sync.Mutex
@@ -72,19 +78,31 @@ func ConnectSocket(ctx context.Context, options SocketClientOptions) (*SocketCli
 	if options.EventBacklog <= 0 {
 		options.EventBacklog = 4096
 	}
-	dialer := websocket.Dialer{NetDialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		var unix net.Dialer
-		return unix.DialContext(ctx, "unix", options.SocketPath)
-	}}
-	ws, response, err := dialer.DialContext(ctx, "ws://localhost/", http.Header{})
-	if response != nil && response.Body != nil {
-		_ = response.Body.Close()
-	}
+	ws, err := DialSocketTransport(ctx, options.SocketPath)
 	if err != nil {
-		return nil, fmt.Errorf("连接 Codex App Server Unix Socket: %w", err)
+		return nil, err
 	}
-	client := &SocketClient{options: options, ws: ws, pending: make(map[string]chan rpcMessage),
-		subs: make(map[int64]*EventSubscription), done: make(chan struct{})}
+	return ConnectTransport(ctx, ws, options)
+}
+
+func ConnectTransport(ctx context.Context, transport MessageTransport,
+	options SocketClientOptions,
+) (*SocketClient, error) {
+	if transport == nil {
+		return nil, errors.New("连接 Codex App Server 缺少消息传输")
+	}
+	if options.RequestTimeout <= 0 {
+		options.RequestTimeout = 30 * time.Second
+	}
+	if options.ServerRequestTimeout <= 0 {
+		options.ServerRequestTimeout = 60 * time.Second
+	}
+	if options.EventBacklog <= 0 {
+		options.EventBacklog = 4096
+	}
+	client := &SocketClient{options: options, transport: transport,
+		pending: make(map[string]chan rpcMessage),
+		subs:    make(map[int64]*EventSubscription), done: make(chan struct{})}
 	go client.readLoop()
 	initCtx, cancel := context.WithTimeout(ctx, options.RequestTimeout)
 	defer cancel()
@@ -102,6 +120,21 @@ func ConnectSocket(ctx context.Context, options SocketClientOptions) (*SocketCli
 		return nil, err
 	}
 	return client, nil
+}
+
+func DialSocketTransport(ctx context.Context, socketPath string) (*websocket.Conn, error) {
+	dialer := websocket.Dialer{NetDialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		var unix net.Dialer
+		return unix.DialContext(ctx, "unix", socketPath)
+	}}
+	ws, response, err := dialer.DialContext(ctx, "ws://localhost/", http.Header{})
+	if response != nil && response.Body != nil {
+		_ = response.Body.Close()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("连接 Codex App Server Unix Socket: %w", err)
+	}
+	return ws, nil
 }
 
 func (c *SocketClient) InitializeResult() json.RawMessage {
@@ -175,7 +208,7 @@ func (s *EventSubscription) Close() {
 }
 
 func (c *SocketClient) Close() error {
-	_ = c.ws.Close()
+	_ = c.transport.Close()
 	<-c.done
 	err := c.failure()
 	if errors.Is(err, net.ErrClosed) || websocket.IsCloseError(err, websocket.CloseNormalClosure) {
@@ -195,12 +228,12 @@ func (c *SocketClient) write(value any) error {
 	}
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
-	return c.ws.WriteMessage(websocket.TextMessage, payload)
+	return c.transport.WriteMessage(websocket.TextMessage, payload)
 }
 
 func (c *SocketClient) readLoop() {
 	for {
-		_, payload, err := c.ws.ReadMessage()
+		_, payload, err := c.transport.ReadMessage()
 		if err != nil {
 			c.fail(err)
 			return
@@ -267,7 +300,7 @@ func (c *SocketClient) publish(event Event) {
 		case subscription.events <- event:
 		default:
 			c.err = fmt.Errorf("Codex Socket 订阅 backlog 超过 %d 条", cap(subscription.events))
-			_ = c.ws.Close()
+			_ = c.transport.Close()
 		}
 	}
 }
