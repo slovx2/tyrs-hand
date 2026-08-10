@@ -17,6 +17,8 @@ export function AppRuntime({ children }: { children: ReactNode }) {
   const theme = useTheme();
   const initialize = useAppStore((state) => state.initialize);
   const refresh = useAppStore((state) => state.refresh);
+  const retryOutbox = useAppStore((state) => state.retryOutbox);
+  const outboxCount = useAppStore((state) => state.outbox.length);
   const ready = useAppStore((state) => state.ready);
   const connection = useAppStore((state) => state.activeConnection);
   const started = useRef(false);
@@ -39,6 +41,13 @@ export function AppRuntime({ children }: { children: ReactNode }) {
     });
     return () => subscription.remove();
   }, [connection, refresh]);
+  useEffect(() => {
+    if (!connection || outboxCount === 0) return;
+    const timer = setInterval(() => {
+      void retryOutbox().catch(() => undefined);
+    }, 15_000);
+    return () => clearInterval(timer);
+  }, [connection, outboxCount, retryOutbox]);
   useEffect(() => {
     if (isPreviewMode) return;
     const openOrDefer = (target: NotificationTarget) => {

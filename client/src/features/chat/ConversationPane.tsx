@@ -53,6 +53,10 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const refreshThreadTail = useAppStore((state) => state.refreshThreadTail);
   const loadOlderThread = useAppStore((state) => state.loadOlderThread);
   const submitMessage = useAppStore((state) => state.submitMessage);
+  const retryOutbox = useAppStore((state) => state.retryOutbox);
+  const discardOutbox = useAppStore((state) => state.discardOutbox);
+  const queued = useAppStore((state) => state.outbox.filter((item) =>
+    item.kind === "submit_message" && item.threadId === sessionId));
   const executePlan = useAppStore((state) => state.executePlan);
   const interruptThread = useAppStore((state) => state.interruptThread);
   const answerRequest = useAppStore((state) => state.answerRequest);
@@ -296,11 +300,12 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     if (!resolvedPreferences || (!text.trim() && attachments.length === 0)) return;
     setSending(true);
     try {
-      await submitMessage(sessionId, text, attachments, resolvedPreferences);
+      const sent = await submitMessage(sessionId, text, attachments, resolvedPreferences);
       if (profileId) await clearDraft(profileId, draftScope);
       setText("");
       setAttachments([]);
       followLatest(false);
+      if (!sent) Alert.alert("已加入发送队列", "连接恢复后会自动发送这条消息。");
     } catch (cause) {
       Alert.alert("发送状态未确认", cause instanceof Error ? cause.message : "请刷新后重试");
     } finally {
@@ -470,6 +475,24 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         <Text style={[styles.scrollToLatestIcon, { color: theme.colors.text }]}>↓</Text>
       </Pressable>}
     </View>
+    {queued.length > 0 && <Pressable testID="chat:retry-outbox" style={[styles.outbox, {
+      backgroundColor: theme.colors.surfaceAlt }]} onPress={() => {
+        const failed = queued.find((item) => item.state === "failed");
+        if (!failed) { void retryOutbox(); return; }
+        Alert.alert("消息发送失败", failed.error ?? "连接恢复后可重试", [
+          { text: "取消", style: "cancel" },
+          { text: "丢弃", style: "destructive",
+            onPress: () => void discardOutbox(failed.clientMessageId) },
+          { text: "重试", onPress: () => void retryOutbox(failed.clientMessageId) },
+        ]);
+      }}>
+      <Text style={{ color: queued.some((item) => item.state === "failed")
+        ? theme.colors.danger : theme.colors.textMuted }}>
+        {queued.some((item) => item.state === "failed")
+          ? `${queued.length} 条消息等待处理，点按查看`
+          : `${queued.length} 条消息正在等待网络`}
+      </Text>
+    </Pressable>}
     <ChatComposer value={text} onChange={setText} attachments={attachments}
       onAttachmentsChange={setAttachments} onParameters={() => {
         if (!resolvedPreferences) {
@@ -496,6 +519,8 @@ const styles = StyleSheet.create({
   historyStatus: { minHeight: 40, alignItems: "center", justifyContent: "center",
     paddingHorizontal: 16 },
   planAction: { paddingHorizontal: 16, paddingTop: 8 },
+  outbox: { minHeight: 34, marginHorizontal: 12, marginBottom: 6, borderRadius: 8,
+    paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
   scrollToLatest: { position: "absolute", right: 16, bottom: 12, width: 42, height: 42,
     borderRadius: 21, borderWidth: StyleSheet.hairlineWidth, alignItems: "center",
     justifyContent: "center", elevation: 5 },

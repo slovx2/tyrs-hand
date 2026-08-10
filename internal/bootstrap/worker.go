@@ -103,6 +103,15 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		WorkspaceRoot: cfg.WorkerWorkspaceRoot, StateDir: cfg.WorkerDataRoot, Logger: logger,
 		SSHAuthSock: filepath.Join(cfg.SSHAgentDir, "current.sock"),
 	}
+	if cfg.BrowserMCPURL != "" {
+		encodedTool, marshalErr := json.Marshal(worker.BrowserToolSpec())
+		if marshalErr != nil {
+			cleanupFailure(nil)
+			return nil, nil, marshalErr
+		}
+		runtimeOptions.BrowserMCPURL = cfg.BrowserMCPURL
+		runtimeOptions.BrowserDynamicTool = encodedTool
+	}
 	if manifest != nil {
 		desktopController = worker.NewHostDesktopController(processor, *manifest)
 	}

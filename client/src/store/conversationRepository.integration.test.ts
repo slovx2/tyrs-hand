@@ -21,6 +21,16 @@ vi.mock("@/app-server/attachments", () => ({
 vi.mock("@/app-server/registry", () => ({
   officialClientFor: () => harness.client,
 }));
+vi.mock("@/app-server/outbox", () => ({
+  completeOutbox: async () => undefined,
+  discardOutboxItem: async () => undefined,
+  enqueueOutbox: async () => undefined,
+  failOutbox: async () => undefined,
+  listOutbox: async () => [],
+  markOutboxProcessing: async () => undefined,
+  retryOutboxItem: async () => undefined,
+  setOutboxThread: async () => undefined,
+}));
 vi.mock("@/db/cache", () => ({
   loadCachedProjects: async () => [],
   loadCachedThreads: async () => [],

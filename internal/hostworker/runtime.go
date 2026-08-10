@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,6 +30,8 @@ type RuntimeOptions struct {
 	BrowserWorkerToken   string
 	BrowserDesktopToken  string
 	BrowserServiceSocket string
+	BrowserMCPURL        string
+	BrowserDynamicTool   json.RawMessage
 	Logger               *zap.Logger
 }
 
@@ -48,6 +50,7 @@ type Runtime struct {
 	nextBinding         atomic.Uint64
 	toolHandlers        map[string]runtimeToolBinding
 	interactiveHandlers map[string]runtimeInteractiveBinding
+	managedToolHandler  codex.ToolHandler
 }
 
 type runtimeToolBinding struct {
@@ -197,6 +200,14 @@ func (r *Runtime) BindInteractive(threadID string, handler codex.ServerRequestHa
 	}
 }
 
+// SetManagedToolHandler 注册由宿主直接执行的原生协议工具。
+// 该处理器只用于隧道中由宿主管理并注入的工具，不改变普通客户端工具请求的归属。
+func (r *Runtime) SetManagedToolHandler(handler codex.ToolHandler) {
+	r.mu.Lock()
+	r.managedToolHandler = handler
+	r.mu.Unlock()
+}
+
 func (r *Runtime) handleServerRequest(ctx context.Context, request codex.ServerRequest) (any, error) {
 	var scope struct {
 		ThreadID string `json:"threadId"`
@@ -232,39 +243,39 @@ func (r *Runtime) ServeDesktop(connection net.Conn) error {
 	if r == nil {
 		return errors.New("worker App Server 不可用")
 	}
-	r.mu.Lock()
-	if r.closed || r.socketPath == "" {
-		r.mu.Unlock()
-		return errors.New("worker App Server 尚未启动")
+	if connection == nil {
+		return errors.New("worker Desktop 连接不可用")
 	}
-	socketPath := r.socketPath
-	r.mu.Unlock()
-	upstream, err := net.Dial("unix", socketPath)
-	if err != nil {
-		return fmt.Errorf("连接 Codex App Server Unix Socket: %w", err)
+	listener := newSingleConnectionListener(connection)
+	handlerResult := make(chan error, 1)
+	server := &http.Server{Handler: http.HandlerFunc(func(response http.ResponseWriter,
+		request *http.Request,
+	) {
+		upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+		tunnel, err := upgrader.Upgrade(response, request, nil)
+		if err == nil {
+			err = r.ServeAppServerTunnel(request.Context(), tunnel)
+		}
+		handlerResult <- err
+	})}
+	serveResult := make(chan error, 1)
+	go func() { serveResult <- server.Serve(listener) }()
+	var result error
+	select {
+	case result = <-handlerResult:
+	case result = <-serveResult:
 	}
-	defer func() { _ = upstream.Close() }()
-	results := make(chan error, 2)
-	go func() {
-		_, copyErr := io.Copy(upstream, connection)
-		results <- copyErr
-	}()
-	go func() {
-		_, copyErr := io.Copy(connection, upstream)
-		results <- copyErr
-	}()
-	first := <-results
-	_ = upstream.Close()
-	_ = connection.Close()
-	second := <-results
-	return errors.Join(normalizeBridgeError(first), normalizeBridgeError(second))
-}
-
-func normalizeBridgeError(err error) error {
-	if err == nil || errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
-		return nil
+	_ = server.Close()
+	_ = listener.Close()
+	select {
+	case serveErr := <-serveResult:
+		if result == nil && serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) &&
+			!errors.Is(serveErr, net.ErrClosed) {
+			result = serveErr
+		}
+	default:
 	}
-	return err
+	return result
 }
 
 func (r *Runtime) ServeAppServerTunnel(ctx context.Context,
@@ -296,21 +307,50 @@ func (r *Runtime) ServeAppServerTunnel(ctx context.Context,
 		}
 	}()
 	result := make(chan error, 2)
-	copyMessages := func(destination, source *websocket.Conn) {
+	var upstreamWrite sync.Mutex
+	copyClientMessages := func() {
 		for {
-			messageType, payload, readErr := source.ReadMessage()
+			messageType, payload, readErr := tunnel.ReadMessage()
 			if readErr != nil {
 				result <- readErr
 				return
 			}
-			if writeErr := destination.WriteMessage(messageType, payload); writeErr != nil {
+			if messageType == websocket.TextMessage {
+				payload = rewriteManagedThreadRequest(payload, r.options)
+			}
+			upstreamWrite.Lock()
+			writeErr := upstream.WriteMessage(messageType, payload)
+			upstreamWrite.Unlock()
+			if writeErr != nil {
 				result <- writeErr
 				return
 			}
 		}
 	}
-	go copyMessages(upstream, tunnel)
-	go copyMessages(tunnel, upstream)
+	copyServerMessages := func() {
+		for {
+			messageType, payload, readErr := upstream.ReadMessage()
+			if readErr != nil {
+				result <- readErr
+				return
+			}
+			if messageType == websocket.TextMessage {
+				r.mu.Lock()
+				handler := r.managedToolHandler
+				r.mu.Unlock()
+				if request, ok := managedBrowserToolRequest(payload); ok && handler != nil {
+					go answerManagedToolRequest(ctx, upstream, &upstreamWrite, request, handler)
+					continue
+				}
+			}
+			if writeErr := tunnel.WriteMessage(messageType, payload); writeErr != nil {
+				result <- writeErr
+				return
+			}
+		}
+	}
+	go copyClientMessages()
+	go copyServerMessages()
 	first := <-result
 	_ = upstream.Close()
 	_ = tunnel.Close()

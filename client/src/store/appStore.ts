@@ -8,6 +8,8 @@ import { materializeUserInput, type LocalAttachment } from "@/app-server/attachm
 import { latestCompletedPlan, textInput, THREAD_PAGE_SIZE,
   type TurnPreferences } from "@/app-server/officialClient";
 import { officialClientFor } from "@/app-server/registry";
+import { completeOutbox, discardOutboxItem, enqueueOutbox, failOutbox, listOutbox, markOutboxProcessing,
+  retryOutboxItem, setOutboxThread, type NativeOutboxItem } from "@/app-server/outbox";
 import { recoverPendingProfileSubmissions } from "@/app-server/submissionRecovery";
 import { projectForThread, targetKey, type MobileProject, type ThreadRecord } from "@/app-server/types";
 import { loadCachedProjects, loadCachedThreads, replaceCachedThreads,
@@ -31,6 +33,7 @@ type AppState = {
   threads: ThreadRecord[];
   modelsByTarget: Record<string, Model[]>;
   pendingRequests: Record<string, ServerRequest[]>;
+  outbox: NativeOutboxItem[];
   selectedProjectId: string | null;
   initialize: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -42,9 +45,11 @@ type AppState = {
   refreshThreadTail: (threadId: string) => Promise<void>;
   loadOlderThread: (threadId: string) => Promise<void>;
   startTask: (projectId: string, text: string, attachments: LocalAttachment[],
-    preferences: TurnPreferences, clientMessageId?: string) => Promise<string>;
+    preferences: TurnPreferences, clientMessageId?: string) => Promise<string | null>;
   submitMessage: (threadId: string, text: string, attachments: LocalAttachment[],
-    preferences: TurnPreferences, clientMessageId?: string) => Promise<void>;
+    preferences: TurnPreferences, clientMessageId?: string) => Promise<boolean>;
+  retryOutbox: (clientMessageId?: string) => Promise<void>;
+  discardOutbox: (clientMessageId: string) => Promise<void>;
   executePlan: (threadId: string, preferences: TurnPreferences) => Promise<void>;
   interruptThread: (threadId: string) => Promise<void>;
   answerRequest: (threadId: string, requestId: string | number, result: unknown) => boolean;
@@ -63,20 +68,22 @@ const threadTailQueue = new CoalescingKeyedQueue();
 const olderThreadPromises = new Map<string, Promise<void>>();
 const hydratedThreads = new Set<string>();
 const pendingCatalogThreads = new Set<string>();
+const outboxDrains = new Map<string, Promise<OutboxDrainResult>>();
 
 export const useAppStore = create<AppState>((set, get) => ({
   ready: false, refreshing: false, error: null, themeMode: "system", connections: [],
   activeConnection: null, projects: [], threads: [], modelsByTarget: {}, pendingRequests: {},
-  selectedProjectId: null,
+  outbox: [], selectedProjectId: null,
 
   initialize: async () => {
     const [connections, themeMode] = await Promise.all([listConnections(), loadThemeMode()]);
     const activeConnection = connections.find((item) => item.active) ?? connections[0] ?? null;
-    const [projects, threads] = activeConnection ? await Promise.all([
+    const [projects, threads, outbox] = activeConnection ? await Promise.all([
       loadCachedProjects(activeConnection.profileId), loadCachedThreads(activeConnection.profileId),
-    ]) : [[], []];
+      listOutbox(activeConnection.profileId),
+    ]) : [[], [], []];
     set({ ready: true, connections, activeConnection, projects, threads, themeMode,
-      selectedProjectId: projects[0]?.id ?? null });
+      outbox, selectedProjectId: projects[0]?.id ?? null });
     if (activeConnection) void get().refresh();
   },
 
@@ -101,11 +108,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     const current = get().activeConnection;
     if (!current || !connections.some((item) => item.profileId === current.profileId)) {
       const activeConnection = connections.find((item) => item.active) ?? connections[0] ?? null;
-      const [projects, threads] = activeConnection ? await Promise.all([
+      const [projects, threads, outbox] = activeConnection ? await Promise.all([
         loadCachedProjects(activeConnection.profileId), loadCachedThreads(activeConnection.profileId),
-      ]) : [[], []];
+        listOutbox(activeConnection.profileId),
+      ]) : [[], [], []];
       set({ connections, activeConnection, projects, threads, modelsByTarget: {},
-        pendingRequests: {}, selectedProjectId: projects[0]?.id ?? null });
+        pendingRequests: {}, outbox, selectedProjectId: projects[0]?.id ?? null });
       if (activeConnection) void get().refresh();
       return;
     }
@@ -117,11 +125,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     await setActiveConnection(profileId);
     const connections = await listConnections();
     const activeConnection = connections.find((item) => item.profileId === profileId) ?? null;
-    const [projects, threads] = activeConnection ? await Promise.all([
+    const [projects, threads, outbox] = activeConnection ? await Promise.all([
       loadCachedProjects(profileId), loadCachedThreads(profileId),
-    ]) : [[], []];
+      listOutbox(profileId),
+    ]) : [[], [], []];
     set({ connections, activeConnection, projects, threads, modelsByTarget: {}, pendingRequests: {},
-      selectedProjectId: projects[0]?.id ?? null, error: null });
+      outbox, selectedProjectId: projects[0]?.id ?? null, error: null });
     await get().refresh();
   },
 
@@ -133,28 +142,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   startTask: async (projectId, text, attachments, preferences, suppliedId) => {
     const connection = requireConnection(get());
-    const project = requireProject(get(), projectId);
-    const client = bindClient(connection, project.workspaceId, set, get);
-    await client.connect();
+    requireProject(get(), projectId);
     const clientMessageId = suppliedId ?? Crypto.randomUUID();
-    const input = await materializeUserInput(connection, project, clientMessageId, text, attachments);
-    const response = await client.startThread(project.cwd, preferences.model);
-    pendingCatalogThreads.add(threadKey(connection.profileId, response.thread.id));
-    const record: ThreadRecord = { thread: response.thread, archived: false,
-      workspaceId: project.workspaceId, projectId: project.id,
-      history: { kind: "loaded", olderCursor: null, tailOlderCursor: null,
-        hasLoadedOldest: true } };
-    await saveAndSetThread(connection.profileId, record, set, get);
-    await client.submitNewThread(response.thread, { clientMessageId, input, preferences,
-      projectId: project.id });
-    await saveLastTurnPreferences(connection.profileId, preferences).catch(() => undefined);
-    // 首条 userMessage 物化前，分页读取可能暂不可用；item 通知负责触发权威刷新。
-    void get().refresh();
-    if (!response.thread.name?.trim()) {
-      void generateAndSetThreadTitle({ threadId: response.thread.id, cwd: project.cwd, prompt: text,
-        serviceTier: preferences.serviceTier, client, get });
-    }
-    return response.thread.id;
+    await enqueueOutbox({ profileId: connection.profileId, clientMessageId,
+      kind: "create_task", projectId, threadId: null,
+      payload: { text, attachments, preferences } });
+    await syncOutboxState(connection.profileId, set, get);
+    const result = await drainProfileOutbox(connection, get().projects, set, get);
+    return result.completed.get(clientMessageId) ?? null;
   },
 
   submitMessage: async (threadId, text, attachments, preferences, suppliedId) => {
@@ -162,11 +157,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     const record = requireThread(get(), threadId);
     const project = requireProject(get(), record.projectId);
     const clientMessageId = suppliedId ?? Crypto.randomUUID();
-    const input = await materializeUserInput(connection, project, clientMessageId, text, attachments);
-    const client = bindClient(connection, record.workspaceId, set, get);
-    await client.connect();
-    await client.submit({ threadId, clientMessageId, input, preferences, projectId: project.id });
-    await queueThreadTailRefresh(threadId, set, get).catch(() => undefined);
+    await enqueueOutbox({ profileId: connection.profileId, clientMessageId,
+      kind: "submit_message", projectId: project.id, threadId,
+      payload: { text, attachments, preferences } });
+    await syncOutboxState(connection.profileId, set, get);
+    const result = await drainProfileOutbox(connection, get().projects, set, get);
+    return result.completed.has(clientMessageId);
+  },
+
+  retryOutbox: async (clientMessageId) => {
+    const connection = requireConnection(get());
+    await retryOutboxItem(connection.profileId, clientMessageId);
+    await syncOutboxState(connection.profileId, set, get);
+    await drainProfileOutbox(connection, get().projects, set, get);
+  },
+
+  discardOutbox: async (clientMessageId) => {
+    const connection = requireConnection(get());
+    await discardOutboxItem(connection.profileId, clientMessageId);
+    await syncOutboxState(connection.profileId, set, get);
   },
 
   executePlan: async (threadId, preferences) => {
@@ -225,6 +234,108 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 }));
 
+type OutboxDrainResult = {
+  completed: Map<string, string>;
+  errors: string[];
+};
+
+function drainProfileOutbox(connection: Connection, projects: MobileProject[],
+  set: StoreSet, get: StoreGet): Promise<OutboxDrainResult> {
+  const active = outboxDrains.get(connection.profileId);
+  if (active) {
+    return active.then(async (first) => {
+      const pending = (await listOutbox(connection.profileId)).some((item) => item.state === "pending");
+      if (!pending) return first;
+      const next = await drainProfileOutbox(connection, projects, set, get);
+      return { completed: new Map([...first.completed, ...next.completed]),
+        errors: [...first.errors, ...next.errors] };
+    });
+  }
+  const promise = drainOutboxItems(connection, projects, set, get).finally(() => {
+    if (outboxDrains.get(connection.profileId) === promise) {
+      outboxDrains.delete(connection.profileId);
+    }
+  });
+  outboxDrains.set(connection.profileId, promise);
+  return promise;
+}
+
+async function drainOutboxItems(connection: Connection, projects: MobileProject[],
+  set: StoreSet, get: StoreGet): Promise<OutboxDrainResult> {
+  const result: OutboxDrainResult = { completed: new Map(), errors: [] };
+  for (;;) {
+    const item = (await listOutbox(connection.profileId))[0];
+    if (!item || item.state !== "pending") break;
+    await markOutboxProcessing(item.profileId, item.clientMessageId);
+    await syncOutboxState(item.profileId, set, get);
+    try {
+      const project = projects.find((entry) => entry.id === item.projectId);
+      if (!project) throw new Error("发送队列对应的项目已不存在");
+      const client = bindClient(connection, project.workspaceId, set, get);
+      await client.connect();
+      const input = await materializeUserInput(connection, project, item.clientMessageId,
+        item.payload.text, item.payload.attachments);
+      let threadId = item.threadId;
+      if (item.kind === "create_task") {
+        const source = mobileOutboxThreadSource(item);
+        let thread = threadId ? await client.readThreadMetadata(threadId) :
+          await client.findThreadBySource(source);
+        if (!thread) {
+          thread = (await client.startThread(project.cwd, item.payload.preferences.model,
+            source)).thread;
+        }
+        threadId = thread.id;
+        await setOutboxThread(item.profileId, item.clientMessageId, threadId);
+        pendingCatalogThreads.add(threadKey(item.profileId, threadId));
+        await saveOutboxThread(item.profileId, project, thread, set, get);
+      }
+      if (!threadId) throw new Error("发送队列缺少官方 Thread ID");
+      await client.submit({ threadId, clientMessageId: item.clientMessageId, input,
+        preferences: item.payload.preferences, projectId: project.id });
+      await completeOutbox(item.profileId, item.clientMessageId);
+      result.completed.set(item.clientMessageId, threadId);
+      await saveLastTurnPreferences(item.profileId, item.payload.preferences).catch(() => undefined);
+      await queueThreadTailRefresh(threadId, set, get).catch(() => undefined);
+      if (item.kind === "create_task" && item.payload.text.trim()) {
+        const current = get().threads.find((record) => record.thread.id === threadId);
+        if (current && !current.thread.name?.trim()) {
+          void generateAndSetThreadTitle({ threadId, cwd: project.cwd, prompt: item.payload.text,
+            serviceTier: item.payload.preferences.serviceTier, client, get });
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "发送失败";
+      await failOutbox(item.profileId, item.clientMessageId, message);
+      result.errors.push(`${item.clientMessageId}: ${message}`);
+      break;
+    } finally {
+      await syncOutboxState(item.profileId, set, get);
+    }
+  }
+  return result;
+}
+
+function mobileOutboxThreadSource(item: NativeOutboxItem): string {
+  return `tyrs-hand-mobile:${item.profileId}:${item.clientMessageId}`;
+}
+
+async function saveOutboxThread(profileId: string, project: MobileProject,
+  thread: ThreadRecord["thread"], set: StoreSet, get: StoreGet): Promise<void> {
+  const current = get().threads.find((record) => record.thread.id === thread.id);
+  const record: ThreadRecord = current
+    ? { ...current, thread: { ...thread,
+      turns: thread.turns.length > 0 ? thread.turns : current.thread.turns } }
+    : { thread, archived: false, workspaceId: project.workspaceId, projectId: project.id,
+      history: { kind: "loaded", olderCursor: null, tailOlderCursor: null,
+        hasLoadedOldest: true } };
+  await saveAndSetThread(profileId, record, set, get);
+}
+
+async function syncOutboxState(profileId: string, set: StoreSet, get: StoreGet): Promise<void> {
+  const outbox = await listOutbox(profileId);
+  if (get().activeConnection?.profileId === profileId) set({ outbox });
+}
+
 async function refreshProfile(connection: Connection, set: StoreSet, get: StoreGet): Promise<void> {
   let projectCatalog: Awaited<ReturnType<typeof projectsForConnection>>;
   try {
@@ -243,6 +354,8 @@ async function refreshProfile(connection: Connection, set: StoreSet, get: StoreG
     return;
   }
   try {
+    await retryOutboxItem(connection.profileId);
+    const outbox = await drainProfileOutbox(connection, projectCatalog.projects, set, get);
     const recovery = await recoverPendingProfileSubmissions({
       profileId: connection.profileId,
       projects: projectCatalog.projects,
@@ -280,8 +393,8 @@ async function refreshProfile(connection: Connection, set: StoreSet, get: StoreG
     await replaceCachedThreads(connection.profileId, merged);
     if (get().activeConnection?.profileId !== connection.profileId) return;
     set({ threads: merged, modelsByTarget: catalogs,
-      error: recovery.errors.length > 0
-        ? `恢复未确认提交失败：${recovery.errors.join("；")}` : null });
+      error: [...outbox.errors, ...recovery.errors].length > 0
+        ? `恢复发送失败：${[...outbox.errors, ...recovery.errors].join("；")}` : null });
   } catch (error) {
     if (get().activeConnection?.profileId === connection.profileId) {
       set({ error: error instanceof Error ? error.message : "刷新失败" });

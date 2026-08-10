@@ -1,9 +1,9 @@
 import * as SQLite from "expo-sqlite";
 
-export const DATABASE_VERSION = 7;
+export const DATABASE_VERSION = 8;
 
 export function needsThreadHistoryCacheReset(currentVersion: number): boolean {
-  return currentVersion >= 4 && currentVersion < DATABASE_VERSION;
+  return currentVersion >= 4 && currentVersion < 7;
 }
 
 let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
@@ -90,6 +90,23 @@ CREATE TABLE IF NOT EXISTS pending_submissions (
   PRIMARY KEY(profile_id,client_message_id),
   FOREIGN KEY(profile_id) REFERENCES connection_profiles(profile_id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS outbox (
+  profile_id TEXT NOT NULL,
+  client_message_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK(kind IN ('create_task','submit_message')),
+  project_id TEXT NOT NULL,
+  thread_id TEXT,
+  payload TEXT NOT NULL,
+  state TEXT NOT NULL CHECK(state IN ('pending','processing','failed')),
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(profile_id,client_message_id),
+  FOREIGN KEY(profile_id) REFERENCES connection_profiles(profile_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS outbox_profile_created
+  ON outbox(profile_id,created_at);
 CREATE TABLE IF NOT EXISTS app_settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -146,6 +163,9 @@ async function openDatabase(): Promise<SQLite.SQLiteDatabase> {
     await database.execAsync(schema);
     if (current < 5) await migrateSSHProjects(database);
     if (needsThreadHistoryCacheReset(current)) await migrateThreadHistoryCache(database);
+    if (current < DATABASE_VERSION) {
+      await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
+    }
   }
   return database;
 }
@@ -253,5 +273,6 @@ export async function clearProfileCache(profileId: string): Promise<void> {
     await database.runAsync("DELETE FROM projects WHERE profile_id=?", profileId);
     await database.runAsync("DELETE FROM threads WHERE profile_id=?", profileId);
     await database.runAsync("DELETE FROM pending_submissions WHERE profile_id=?", profileId);
+    await database.runAsync("DELETE FROM outbox WHERE profile_id=?", profileId);
   });
 }

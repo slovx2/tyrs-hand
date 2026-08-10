@@ -36,6 +36,9 @@ func (p *Processor) UseHostRuntime(runtime *hostworker.Runtime, workspaceID uuid
 	p.hostRuntime = runtime
 	p.workspaceID = workspaceID
 	p.modelCatalog = append(json.RawMessage(nil), modelCatalog...)
+	if runtime != nil {
+		runtime.SetManagedToolHandler(p.handleManagedBrowserTool)
+	}
 }
 
 func (p *Processor) browserScope() string {

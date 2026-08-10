@@ -183,14 +183,24 @@ export class OfficialAppServerClient {
     return items;
   }
 
-  async startThread(cwd: string, model?: string): Promise<ThreadStartResponse> {
+  async startThread(cwd: string, model?: string, threadSource?: string): Promise<ThreadStartResponse> {
     const historyMode: ThreadHistoryMode = await this.supportsPaginatedHistory()
       ? "paginated" : "legacy";
     const params: ThreadStartParams = model
       ? { cwd, model, runtimeWorkspaceRoots: [cwd], historyMode }
       : { cwd, runtimeWorkspaceRoots: [cwd], historyMode };
+    if (threadSource) {
+      (params as ThreadStartParams & { threadSource: string }).threadSource = threadSource;
+    }
     const response = await this.rpc.request<ThreadStartResponse>("thread/start", params);
     return { ...response, thread: projectThreadForMobile(response.thread) };
+  }
+
+  async findThreadBySource(threadSource: string): Promise<Thread | null> {
+    for (const thread of await this.listThreads()) {
+      if (thread.threadSource === threadSource) return thread;
+    }
+    return null;
   }
 
   private supportsPaginatedHistory(): Promise<boolean> {

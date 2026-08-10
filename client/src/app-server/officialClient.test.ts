@@ -209,6 +209,27 @@ describe("OfficialAppServerClient", () => {
     ]);
   });
 
+  it("Outbox 创建 Thread 时携带稳定 source，并能据此恢复未知响应", async () => {
+    const source = "tyrs-hand-mobile:profile-1:message-1";
+    const rpc = new FakeRpc((method, params) => {
+      if (method === "thread/items/list") {
+        throw new JsonRpcRequestError("probe", method, "rejected", -32601);
+      }
+      if (method === "thread/start") {
+        expect(params).toMatchObject({ threadSource: source });
+        return { thread: { ...officialThread([]), threadSource: source } };
+      }
+      if (method === "thread/list") {
+        return { data: [{ ...officialThread([]), threadSource: source }], nextCursor: null };
+      }
+      throw new Error(`unexpected ${method}`);
+    });
+    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+
+    await client.startThread("/workspace", "gpt-test", source);
+    expect((await client.findThreadBySource(source))?.threadSource).toBe(source);
+  });
+
   it("新 Thread 使用 thread/start 返回的内存状态直接 turn/start", async () => {
     const thread = officialThread([]);
     const rpc = new FakeRpc((method) => {

@@ -47,6 +47,9 @@ func browserToolSpec() ports.DynamicToolSpec {
 	}
 }
 
+// BrowserToolSpec 返回供宿主原生 App Server 隧道注入的文件交换工具定义。
+func BrowserToolSpec() ports.DynamicToolSpec { return browserToolSpec() }
+
 func withBrowserTools(cfg config.Config, specs ...ports.DynamicToolSpec) []ports.DynamicToolSpec {
 	if cfg.BrowserMCPURL != "" {
 		specs = append(specs, browserToolSpec())
