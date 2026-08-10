@@ -66,9 +66,14 @@ func StartSSHServer(ctx context.Context, options SSHOptions) (*SSHServer, error)
 		clients[string(client.PublicKey.Marshal())] = client.ID
 	}
 	configuration := &ssh.ServerConfig{
-		PublicKeyCallback: func(_ ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+		PublicKeyCallback: func(metadata ssh.ConnMetadata,
+			key ssh.PublicKey,
+		) (*ssh.Permissions, error) {
 			clientID, ok := clients[string(key.Marshal())]
 			if !ok {
+				options.Logger.Warn("拒绝未授权 Worker SSH 公钥",
+					zap.String("fingerprint", ssh.FingerprintSHA256(key)),
+					zap.String("remote", metadata.RemoteAddr().String()))
 				return nil, errors.New("SSH 公钥未授权")
 			}
 			return &ssh.Permissions{Extensions: map[string]string{"client-id": clientID}}, nil

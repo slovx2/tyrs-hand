@@ -272,10 +272,40 @@ func (b *appServerTunnelBroker) finish(session *appServerTunnelSession) {
 	})
 }
 
+const (
+	appServerTunnelPingInterval = 5 * time.Second
+	appServerTunnelPongTimeout  = 15 * time.Second
+)
+
+type tunnelKeepaliveTransport interface {
+	SetReadDeadline(time.Time) error
+	SetPongHandler(func(string) error)
+	WriteControl(int, []byte, time.Time) error
+}
+
 func relayWebSocketMessages(left, right tunnelMessageTransport) {
-	result := make(chan struct{}, 2)
+	relayWebSocketMessagesWithKeepalive(left, right, appServerTunnelPingInterval,
+		appServerTunnelPongTimeout)
+}
+
+func relayWebSocketMessagesWithKeepalive(left, right tunnelMessageTransport,
+	pingInterval, pongTimeout time.Duration,
+) {
+	failure := make(chan struct{}, 3)
+	copyDone := make(chan struct{}, 2)
+	stopKeepalive := make(chan struct{})
+	keepalive, hasKeepalive := right.(tunnelKeepaliveTransport)
+	if hasKeepalive {
+		_ = keepalive.SetReadDeadline(time.Now().Add(pongTimeout))
+		keepalive.SetPongHandler(func(string) error {
+			return keepalive.SetReadDeadline(time.Now().Add(pongTimeout))
+		})
+	}
 	copyMessages := func(destination, source tunnelMessageTransport) {
-		defer func() { result <- struct{}{} }()
+		defer func() {
+			failure <- struct{}{}
+			copyDone <- struct{}{}
+		}()
 		for {
 			messageType, payload, err := source.ReadMessage()
 			if err != nil {
@@ -288,10 +318,30 @@ func relayWebSocketMessages(left, right tunnelMessageTransport) {
 	}
 	go copyMessages(right, left)
 	go copyMessages(left, right)
-	<-result
+	if hasKeepalive {
+		go func() {
+			ticker := time.NewTicker(pingInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-stopKeepalive:
+					return
+				case <-ticker.C:
+					if err := keepalive.WriteControl(websocket.PingMessage, nil,
+						time.Now().Add(pingInterval)); err != nil {
+						failure <- struct{}{}
+						return
+					}
+				}
+			}
+		}()
+	}
+	<-failure
+	close(stopKeepalive)
 	_ = left.Close()
 	_ = right.Close()
-	<-result
+	<-copyDone
+	<-copyDone
 }
 
 func (s *Server) clientCreateAppServerTunnel(c *gin.Context) {

@@ -87,6 +87,29 @@ func TestRelayWebSocketMessagesPreservesFramesAndOrder(t *testing.T) {
 	require.JSONEq(t, `{"method":"item/completed","params":{"item":{"id":"item-1"}}}`, string(payload))
 }
 
+func TestRelayWebSocketMessagesClosesWorkerThatStopsAnsweringPings(t *testing.T) {
+	leftClient, leftServer := websocketPair(t)
+	rightClient, rightServer := websocketPair(t)
+	finished := make(chan struct{})
+	go func() {
+		relayWebSocketMessagesWithKeepalive(leftServer, rightServer, 10*time.Millisecond,
+			40*time.Millisecond)
+		close(finished)
+	}()
+	t.Cleanup(func() {
+		_ = leftClient.Close()
+		_ = rightClient.Close()
+	})
+
+	// rightClient 模拟已失去事件循环、但 TCP 尚未及时断开的旧 Worker。
+	// 它不读取 Ping，因此服务端必须在 pong deadline 后主动回收隧道。
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("失活 Worker 隧道没有被 keepalive 回收")
+	}
+}
+
 func websocketPair(t *testing.T) (*websocket.Conn, *websocket.Conn) {
 	t.Helper()
 	accepted := make(chan *websocket.Conn, 1)
