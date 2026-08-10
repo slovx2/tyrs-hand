@@ -9,7 +9,15 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 25
+const Version = 26
+
+type AppServerTunnelSurface string
+
+const (
+	AppServerTunnelSurfaceControl AppServerTunnelSurface = "control"
+	AppServerTunnelSurfaceMobile  AppServerTunnelSurface = "mobile"
+	AppServerTunnelSurfaceDesktop AppServerTunnelSurface = "desktop"
+)
 
 // CodexTurnError 保留 Codex error 通知的结构化字段，供 Control 决定是否重试
 // 并在 Discord 失败过程卡中展示。
@@ -78,8 +86,9 @@ type ClaimResponse struct {
 }
 
 type AppServerTunnelClaim struct {
-	ID        uuid.UUID `json:"id"`
-	ExpiresAt time.Time `json:"expiresAt"`
+	ID        uuid.UUID              `json:"id"`
+	ExpiresAt time.Time              `json:"expiresAt"`
+	Surface   AppServerTunnelSurface `json:"surface"`
 }
 
 type AppServerTunnelClaimResponse struct {

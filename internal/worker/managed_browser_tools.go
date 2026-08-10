@@ -37,7 +37,7 @@ func (p *Processor) handleManagedBrowserTool(ctx context.Context,
 
 func managedBrowserWorkspace(root, cwd string) (string, error) {
 	if strings.TrimSpace(cwd) == "" {
-		return "", errors.New("Thread 没有工作目录")
+		return "", errors.New("thread 没有工作目录")
 	}
 	resolvedRoot, err := filepath.EvalSymlinks(filepath.Clean(root))
 	if err != nil {
@@ -48,7 +48,7 @@ func managedBrowserWorkspace(root, cwd string) (string, error) {
 		return "", err
 	}
 	if resolvedCWD != resolvedRoot && !pathInside(resolvedRoot, resolvedCWD) {
-		return "", errors.New("Thread 工作目录不属于宿主 Workspace")
+		return "", errors.New("thread 工作目录不属于宿主 Workspace")
 	}
 	return resolvedCWD, nil
 }

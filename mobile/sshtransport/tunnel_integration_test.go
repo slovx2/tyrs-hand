@@ -5,6 +5,7 @@ package sshtransport
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -48,7 +49,8 @@ supports_websockets = false
 	runtime, err := hostworker.StartRuntime(ctx, hostworker.RuntimeOptions{
 		CodexBin: fixedMobileCodex(t), CodexHome: filepath.Join(root, "codex-home"),
 		Home: filepath.Join(root, "home"), WorkspaceRoot: filepath.Join(root, "workspaces"),
-		StateDir: filepath.Join(root, "state"), Logger: zap.NewNop(),
+		StateDir: filepath.Join(root, "state"), Stdout: io.Discard, Stderr: io.Discard,
+		Logger: zap.NewNop(),
 	})
 	require.NoError(t, err)
 

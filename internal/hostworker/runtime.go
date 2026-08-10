@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -17,6 +18,8 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/slovx2/tyrs-hand/internal/codex"
+	"github.com/slovx2/tyrs-hand/internal/participantidentity"
+	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
 )
 
@@ -32,6 +35,9 @@ type RuntimeOptions struct {
 	BrowserServiceSocket string
 	BrowserMCPURL        string
 	BrowserDynamicTool   json.RawMessage
+	OwnerParticipant     *participantidentity.Participant
+	Stdout               io.Writer
+	Stderr               io.Writer
 	Logger               *zap.Logger
 }
 
@@ -89,8 +95,14 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 	socketPath := filepath.Join(options.StateDir, "app-server.sock")
 	_ = os.Remove(socketPath)
 	command := newAppServerCommand(options, socketPath)
-	command.Stdout = os.Stdout
-	command.Stderr = os.Stderr
+	command.Stdout = options.Stdout
+	if command.Stdout == nil {
+		command.Stdout = os.Stdout
+	}
+	command.Stderr = options.Stderr
+	if command.Stderr == nil {
+		command.Stderr = os.Stderr
+	}
 	if err := command.Start(); err != nil {
 		serviceProxy.close()
 		return nil, fmt.Errorf("启动宿主 Codex App Server: %w", err)
@@ -254,7 +266,8 @@ func (r *Runtime) ServeDesktop(connection net.Conn) error {
 		upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
 		tunnel, err := upgrader.Upgrade(response, request, nil)
 		if err == nil {
-			err = r.ServeAppServerTunnel(request.Context(), tunnel)
+			err = r.ServeAppServerTunnel(request.Context(), tunnel,
+				workerprotocol.AppServerTunnelSurfaceDesktop)
 		}
 		handlerResult <- err
 	})}
@@ -280,9 +293,15 @@ func (r *Runtime) ServeDesktop(connection net.Conn) error {
 
 func (r *Runtime) ServeAppServerTunnel(ctx context.Context,
 	tunnel *websocket.Conn,
+	surface workerprotocol.AppServerTunnelSurface,
 ) error {
 	if r == nil || tunnel == nil {
 		return errors.New("worker App Server 隧道不可用")
+	}
+	if surface != workerprotocol.AppServerTunnelSurfaceControl &&
+		surface != workerprotocol.AppServerTunnelSurfaceMobile &&
+		surface != workerprotocol.AppServerTunnelSurfaceDesktop {
+		return errors.New("worker App Server 隧道 surface 无效")
 	}
 	r.mu.Lock()
 	if r.closed || r.socketPath == "" {
@@ -316,7 +335,7 @@ func (r *Runtime) ServeAppServerTunnel(ctx context.Context,
 				return
 			}
 			if messageType == websocket.TextMessage {
-				payload = rewriteManagedThreadRequest(payload, r.options)
+				payload = rewriteManagedThreadRequest(payload, r.options, surface)
 			}
 			upstreamWrite.Lock()
 			writeErr := upstream.WriteMessage(messageType, payload)

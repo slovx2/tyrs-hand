@@ -161,6 +161,11 @@ func (s *Server) serveOfficialWorkspace(ctx context.Context, workspaceID,
 				return client.Err()
 			}
 			s.handleOfficialResolvedNotification(workspaceID, connectionID, event)
+			if metadataErr := s.handleOfficialMetadataNotification(ctx, workspaceID,
+				event); metadataErr != nil {
+				s.logOfficialWarning("同步官方 Thread 元数据失败", metadataErr,
+					zap.String("method", event.Method))
+			}
 			if threadID := officialEventThreadID(event.Params); threadID != "" {
 				dirtyMu.Lock()
 				dirty[threadID] = struct{}{}

@@ -8,6 +8,8 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/slovx2/tyrs-hand/internal/codex"
+	"github.com/slovx2/tyrs-hand/internal/participantidentity"
+	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
 const managedBrowserNamespace = "browser_files"
@@ -62,10 +64,9 @@ func (a managedTunnelAddress) String() string  { return string(a) }
 
 var _ net.Listener = (*singleConnectionListener)(nil)
 
-func rewriteManagedThreadRequest(payload []byte, options RuntimeOptions) []byte {
-	if options.BrowserMCPURL == "" {
-		return payload
-	}
+func rewriteManagedThreadRequest(payload []byte, options RuntimeOptions,
+	surface workerprotocol.AppServerTunnelSurface,
+) []byte {
 	var message struct {
 		ID     json.RawMessage `json:"id,omitempty"`
 		Method string          `json:"method"`
@@ -79,16 +80,49 @@ func rewriteManagedThreadRequest(payload []byte, options RuntimeOptions) []byte 
 	}
 	switch message.Method {
 	case "thread/start":
-		injectManagedBrowserConfig(message.Params, options)
-		injectManagedBrowserTool(message.Params, options.BrowserDynamicTool)
+		message.Params = rewriteManagedParams(message.Params,
+			participantidentity.AppendDeveloperInstructions)
+		if options.BrowserMCPURL != "" {
+			injectManagedBrowserConfig(message.Params, options)
+			injectManagedBrowserTool(message.Params, options.BrowserDynamicTool)
+		}
 	case "thread/fork", "thread/resume":
-		injectManagedBrowserConfig(message.Params, options)
+		message.Params = rewriteManagedParams(message.Params,
+			participantidentity.AppendDeveloperInstructions)
+		if options.BrowserMCPURL != "" {
+			injectManagedBrowserConfig(message.Params, options)
+		}
+	case "turn/start", "turn/steer":
+		if surface == workerprotocol.AppServerTunnelSurfaceControl {
+			return payload
+		}
+		participant := participantidentity.Participant{}
+		if options.OwnerParticipant != nil {
+			participant = *options.OwnerParticipant
+		}
+		message.Params = rewriteManagedParams(message.Params, func(params json.RawMessage) json.RawMessage {
+			return participantidentity.InjectTurnContext(params, participant)
+		})
 	default:
 		return payload
 	}
 	result, err := json.Marshal(message)
 	if err != nil {
 		return payload
+	}
+	return result
+}
+
+func rewriteManagedParams(params map[string]any,
+	rewrite func(json.RawMessage) json.RawMessage,
+) map[string]any {
+	encoded, err := json.Marshal(params)
+	if err != nil {
+		return params
+	}
+	var result map[string]any
+	if json.Unmarshal(rewrite(encoded), &result) != nil {
+		return params
 	}
 	return result
 }

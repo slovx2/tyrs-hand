@@ -6,20 +6,23 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
 )
 
 type appServerTunnelTarget interface {
-	ServeAppServerTunnel(context.Context, *websocket.Conn) error
+	ServeAppServerTunnel(context.Context, *websocket.Conn,
+		workerprotocol.AppServerTunnelSurface) error
 }
 
 func (p *Processor) ServeAppServerTunnel(ctx context.Context,
 	connection *websocket.Conn,
+	surface workerprotocol.AppServerTunnelSurface,
 ) error {
 	if p.hostRuntime == nil {
 		return errors.New("宿主 Codex Runtime 尚未启动")
 	}
-	return p.hostRuntime.ServeAppServerTunnel(ctx, connection)
+	return p.hostRuntime.ServeAppServerTunnel(ctx, connection, surface)
 }
 
 func (r *Runner) appServerTunnelLoop(ctx context.Context, target appServerTunnelTarget) {
@@ -46,7 +49,8 @@ func (r *Runner) appServerTunnelLoop(ctx context.Context, target appServerTunnel
 					zap.String("tunnel_id", claim.Tunnel.ID.String()), zap.Error(connectErr))
 				return
 			}
-			if serveErr := target.ServeAppServerTunnel(ctx, connection); serveErr != nil &&
+			if serveErr := target.ServeAppServerTunnel(ctx, connection,
+				claim.Tunnel.Surface); serveErr != nil &&
 				ctx.Err() == nil {
 				r.logger.Warn("App Server 隧道停止",
 					zap.String("tunnel_id", claim.Tunnel.ID.String()), zap.Error(serveErr))

@@ -10,6 +10,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcatalog"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/hostworker"
+	"github.com/slovx2/tyrs-hand/internal/participantidentity"
 	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
 	"github.com/slovx2/tyrs-hand/internal/worker"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
@@ -114,6 +115,12 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 	}
 	if manifest != nil {
 		desktopController = worker.NewHostDesktopController(processor, *manifest)
+		if manifest.OwnerParticipant != nil {
+			runtimeOptions.OwnerParticipant = &participantidentity.Participant{
+				ID:          manifest.OwnerParticipant.ParticipantID,
+				DisplayName: manifest.OwnerParticipant.DisplayName,
+			}
+		}
 	}
 	workspaceID := uuid.Nil
 	if manifest != nil {

@@ -95,11 +95,14 @@ func ProjectOfficialThread(ctx context.Context, db *sql.DB, workspaceID uuid.UUI
 		return err
 	}
 	predecessor := ""
+	projectionPrefix := "official:" + conversationID.String() + ":"
+	validProjectionKeys := make(map[string]struct{})
 	for turnIndex, turn := range thread.Turns {
 		for itemIndex, item := range turn.Items {
 			for _, content := range officialItemProjections(turn, item, latestPlan, planActionID) {
 				key := fmt.Sprintf("official:%s:%04d:%04d:%s", conversationID,
 					turnIndex, itemIndex, content.Suffix)
+				validProjectionKeys[key] = struct{}{}
 				if err = projectOfficialContent(ctx, tx, guildID, discordThreadID, key,
 					content, predecessor); err != nil {
 					return err
@@ -111,6 +114,7 @@ func ProjectOfficialThread(ctx context.Context, db *sql.DB, workspaceID uuid.UUI
 			content := officialTurnErrorProjection(thread.ID, turn)
 			key := fmt.Sprintf("official:%s:%04d:%04d:turn-error", conversationID,
 				turnIndex, len(turn.Items))
+			validProjectionKeys[key] = struct{}{}
 			if err = projectOfficialContent(ctx, tx, guildID, discordThreadID, key,
 				content, predecessor); err != nil {
 				return err
@@ -118,7 +122,58 @@ func ProjectOfficialThread(ctx context.Context, db *sql.DB, workspaceID uuid.UUI
 			predecessor = "projection:" + key
 		}
 	}
+	if err = deleteStaleOfficialProjections(ctx, tx, guildID, discordThreadID,
+		projectionPrefix, validProjectionKeys, predecessor); err != nil {
+		return err
+	}
 	return tx.Commit()
+}
+
+func deleteStaleOfficialProjections(ctx context.Context, tx *sql.Tx, guildID,
+	discordThreadID, prefix string, valid map[string]struct{}, predecessor string,
+) error {
+	rows, err := tx.QueryContext(ctx, `SELECT projection_key,COALESCE(message_id,'')
+		FROM discord_projections WHERE guild_id=$1 AND projection_key LIKE $2
+		ORDER BY projection_key FOR UPDATE`, guildID, prefix+"%")
+	if err != nil {
+		return err
+	}
+	type staleProjection struct {
+		key       string
+		messageID string
+	}
+	var stale []staleProjection
+	for rows.Next() {
+		var projection staleProjection
+		if err = rows.Scan(&projection.key, &projection.messageID); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		if _, exists := valid[projection.key]; !exists {
+			stale = append(stale, projection)
+		}
+	}
+	if err = rows.Close(); err != nil {
+		return err
+	}
+	for _, projection := range stale {
+		if projection.messageID != "" {
+			operationKey := "projection-orphan-delete:" + projection.key + ":" +
+				projection.messageID
+			if err = EnqueueTxAfter(ctx, tx, operationKey, "message.delete",
+				"channels/"+discordThreadID+"/messages/"+projection.messageID,
+				map[string]string{"channelId": discordThreadID,
+					"messageId": projection.messageID}, "", predecessor); err != nil {
+				return err
+			}
+			predecessor = operationKey
+		}
+		if _, err = tx.ExecContext(ctx, `DELETE FROM discord_projections
+			WHERE guild_id=$1 AND projection_key=$2`, guildID, projection.key); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func projectOfficialContent(ctx context.Context, tx *sql.Tx, guildID, discordThreadID,

@@ -72,14 +72,14 @@ test('协议 Worker 交互场景显式使用 Plan 模式', async () => {
     'Secret 场景必须切到次 Control，并在失败态场景前切回主 Control')
 })
 
-test('Mobile E2E fixture 只承载协议 25 官方 JSON-RPC', async () => {
+test('Mobile E2E fixture 只承载协议 26 官方 JSON-RPC', async () => {
   const [worker, runner, fixture, protocol] = await Promise.all([
     readFile(resolve(root, 'tools/mobile-e2e/protocol-worker/main.go'), 'utf8'),
     readFile(resolve(root, 'tools/mobile-e2e/mobile-runner.mjs'), 'utf8'),
     readFile(resolve(root, 'tools/mobile-e2e/fixture/main.go'), 'utf8'),
     readFile(resolve(root, 'internal/workerprotocol/types.go'), 'utf8'),
   ])
-  assert.match(protocol, /const Version = 25/)
+  assert.match(protocol, /const Version = 26/)
   assert.match(runner, /go', \['run', '\.\/tools\/mobile-e2e\/protocol-worker'/)
   for (const method of ['initialize', 'thread/list', 'thread/read', 'thread/resume',
     'thread/turns/list', 'thread/start', 'turn/start', 'turn/steer', 'turn/interrupt']) {

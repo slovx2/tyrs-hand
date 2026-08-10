@@ -10,13 +10,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/stretchr/testify/require"
 )
 
 func TestAppServerTunnelReservationsAreSingleUse(t *testing.T) {
 	broker := newAppServerTunnelBroker()
 	workerID := uuid.New()
-	ticket, issued, err := broker.issue(workerID)
+	ticket, issued, err := broker.issue(workerID, workerprotocol.AppServerTunnelSurfaceMobile)
 	require.NoError(t, err)
 	t.Cleanup(func() { broker.finish(issued) })
 
@@ -25,6 +26,7 @@ func TestAppServerTunnelReservationsAreSingleUse(t *testing.T) {
 	claimed, err := broker.claim(claimContext, workerID)
 	require.NoError(t, err)
 	require.Same(t, issued, claimed)
+	require.Equal(t, workerprotocol.AppServerTunnelSurfaceMobile, claimed.surface)
 
 	mobile, err := broker.mobile(ticket)
 	require.NoError(t, err)

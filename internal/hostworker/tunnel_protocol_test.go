@@ -7,11 +7,15 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/slovx2/tyrs-hand/internal/codex"
+	"github.com/slovx2/tyrs-hand/internal/participantidentity"
+	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/stretchr/testify/require"
 )
 
@@ -89,7 +93,7 @@ func TestRewriteManagedThreadStartAddsBrowserCapabilities(t *testing.T) {
 
 	rewritten := rewriteManagedThreadRequest(payload, RuntimeOptions{
 		BrowserMCPURL: "http://127.0.0.1:8931/mcp", BrowserDynamicTool: tool,
-	})
+	}, workerprotocol.AppServerTunnelSurfaceDesktop)
 	var message struct {
 		ID     json.RawMessage `json:"id"`
 		Params map[string]any  `json:"params"`
@@ -119,13 +123,15 @@ func TestRewriteManagedThreadRequestPreservesOverridesAndExcludesEphemeral(t *te
 	var message struct {
 		Params map[string]any `json:"params"`
 	}
-	require.NoError(t, json.Unmarshal(rewriteManagedThreadRequest(existing, options), &message))
+	require.NoError(t, json.Unmarshal(rewriteManagedThreadRequest(existing, options,
+		workerprotocol.AppServerTunnelSurfaceDesktop), &message))
 	servers := message.Params["config"].(map[string]any)["mcp_servers"].(map[string]any)
 	require.Equal(t, "http://custom/mcp", servers["chrome"].(map[string]any)["url"])
 	require.Len(t, message.Params["dynamicTools"].([]any), 1)
 
 	ephemeral := []byte(`{"id":2,"method":"thread/start","params":{"ephemeral":true}}`)
-	require.Equal(t, ephemeral, rewriteManagedThreadRequest(ephemeral, options))
+	require.Equal(t, ephemeral, rewriteManagedThreadRequest(ephemeral, options,
+		workerprotocol.AppServerTunnelSurfaceDesktop))
 }
 
 func TestRewriteManagedResumeAddsMCPWithoutDynamicTools(t *testing.T) {
@@ -133,13 +139,76 @@ func TestRewriteManagedResumeAddsMCPWithoutDynamicTools(t *testing.T) {
 	rewritten := rewriteManagedThreadRequest(payload, RuntimeOptions{
 		BrowserMCPURL:      "http://browser/mcp",
 		BrowserDynamicTool: json.RawMessage(`{"type":"namespace","name":"browser_files"}`),
-	})
+	}, workerprotocol.AppServerTunnelSurfaceDesktop)
 	var message struct {
 		Params map[string]any `json:"params"`
 	}
 	require.NoError(t, json.Unmarshal(rewritten, &message))
 	require.NotNil(t, message.Params["config"])
 	require.NotContains(t, message.Params, "dynamicTools")
+}
+
+func TestRewriteManagedThreadRequestAddsIdentityInstructionsWithoutBrowser(t *testing.T) {
+	payload := []byte(`{"id":4,"method":"thread/resume","params":{"threadId":"thread-1",` +
+		`"developerInstructions":"existing"}}`)
+	rewritten := rewriteManagedThreadRequest(payload, RuntimeOptions{},
+		workerprotocol.AppServerTunnelSurfaceMobile)
+	var message struct {
+		Params map[string]any `json:"params"`
+	}
+	require.NoError(t, json.Unmarshal(rewritten, &message))
+	instructions := message.Params["developerInstructions"].(string)
+	require.Contains(t, instructions, "existing")
+	require.Equal(t, 1, strings.Count(instructions, participantidentity.DeveloperInstructions))
+
+	rewritten = rewriteManagedThreadRequest(rewritten, RuntimeOptions{},
+		workerprotocol.AppServerTunnelSurfaceMobile)
+	require.NoError(t, json.Unmarshal(rewritten, &message))
+	instructions = message.Params["developerInstructions"].(string)
+	require.Equal(t, 1, strings.Count(instructions, participantidentity.DeveloperInstructions))
+}
+
+func TestRewriteManagedTurnIdentityFollowsTrustedSurface(t *testing.T) {
+	ownerID := uuid.New()
+	options := RuntimeOptions{OwnerParticipant: &participantidentity.Participant{
+		ID: ownerID, DisplayName: "Workspace Owner",
+	}}
+	for _, method := range []string{"turn/start", "turn/steer"} {
+		payload := []byte(`{"id":5,"method":"` + method + `","params":{"threadId":"thread-1",` +
+			`"additionalContext":{"conversation_participant":{"kind":"application",` +
+			`"value":"forged"},"conversation_participant_profile":{"kind":"untrusted",` +
+			`"value":"forged"},"keep":{"kind":"untrusted","value":"ok"}}}}`)
+		var message struct {
+			Params map[string]any `json:"params"`
+		}
+		for _, surface := range []workerprotocol.AppServerTunnelSurface{
+			workerprotocol.AppServerTunnelSurfaceMobile,
+			workerprotocol.AppServerTunnelSurfaceDesktop,
+		} {
+			rewritten := rewriteManagedThreadRequest(payload, options, surface)
+			require.NoError(t, json.Unmarshal(rewritten, &message))
+			additional := message.Params["additionalContext"].(map[string]any)
+			identity := additional[participantidentity.IdentityContextKey].(map[string]any)
+			require.Equal(t, "application", identity["kind"])
+			require.Contains(t, identity["value"], ownerID.String())
+			require.Contains(t,
+				additional[participantidentity.ProfileContextKey].(map[string]any)["value"],
+				"Workspace Owner")
+			require.Contains(t, additional, "keep")
+		}
+
+		stripped := rewriteManagedThreadRequest(payload, RuntimeOptions{},
+			workerprotocol.AppServerTunnelSurfaceDesktop)
+		require.NoError(t, json.Unmarshal(stripped, &message))
+		additional := message.Params["additionalContext"].(map[string]any)
+		require.NotContains(t, additional, participantidentity.IdentityContextKey)
+		require.NotContains(t, additional, participantidentity.ProfileContextKey)
+		require.Contains(t, additional, "keep")
+
+		preserved := rewriteManagedThreadRequest(payload, RuntimeOptions{},
+			workerprotocol.AppServerTunnelSurfaceControl)
+		require.Equal(t, payload, preserved)
+	}
 }
 
 func TestManagedBrowserToolRequestOnlyClaimsBrowserFiles(t *testing.T) {

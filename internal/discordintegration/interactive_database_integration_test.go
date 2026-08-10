@@ -545,3 +545,92 @@ func TestExecuteOfficialPlanUsesLatestCompletedItemAndIsIdempotent(t *testing.T)
 	require.Contains(t, buttonPayload, planExecuteButtonPrefix+componentActionID.String())
 	require.True(t, strings.Contains(instruction, latestPlan))
 }
+
+func TestOfficialMetadataAndSnapshotRemovalAreAuthoritative(t *testing.T) {
+	db := discordDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	_, err := db.ExecContext(ctx, `INSERT INTO discord_guilds(guild_id,name,enabled)
+		VALUES ($1,'official-metadata-test',true)`, testGuildID)
+	require.NoError(t, err)
+	seed := seedDiscordManagerData(t, db)
+	service := NewConversationService(db)
+	conversationID, err := service.BeginPost(ctx, IncomingMessage{
+		GuildID: testGuildID, ForumID: seed.workspaceForumChannelID,
+		ThreadID: "100000000000000851", MessageID: "100000000000000852",
+		DiscordUserID: "1001", DisplayName: "Alice", Username: "alice",
+		Title: "Before", Body: "metadata", ConfigurationConfirmed: true,
+	})
+	require.NoError(t, err)
+	const officialThreadID = "thread-official-metadata"
+	_, err = db.ExecContext(ctx, `INSERT INTO official_thread_bindings(
+		workspace_id,conversation_id,workspace_project_id,thread_id)
+		VALUES ($1,$2,$3,$4)`, seed.workspaceID, conversationID,
+		seed.workspaceProjectID, officialThreadID)
+	require.NoError(t, err)
+
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NoError(t, EnqueueOfficialThreadNameTx(ctx, tx, conversationID,
+		"  Desktop renamed  "))
+	require.NoError(t, tx.Commit())
+	var title, renameStatus, renameOperation string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT title,title_rename_status
+		FROM discord_conversations WHERE id=$1`, conversationID).
+		Scan(&title, &renameStatus))
+	require.Equal(t, "Desktop renamed", title)
+	require.Equal(t, "scheduled", renameStatus)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT operation_type FROM integration_outbox
+		WHERE operation_key=$1`, "conversation-title:"+conversationID.String()).
+		Scan(&renameOperation))
+	require.Equal(t, "thread.rename", renameOperation)
+
+	settings := OfficialThreadSettings{Model: "gpt-5.6", ReasoningEffort: "high",
+		ServiceTier: "fast", CollaborationMode: "plan"}
+	require.NoError(t, ApplyOfficialThreadSettings(ctx, db, seed.workspaceID,
+		officialThreadID, settings))
+	require.NoError(t, ApplyOfficialThreadSettings(ctx, db, seed.workspaceID,
+		officialThreadID, settings))
+	var model, effort, tier, mode string
+	var settingsRevision, modeRevision int64
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT model,reasoning_effort,service_tier,
+		collaboration_mode,settings_revision,collaboration_mode_revision
+		FROM discord_conversations WHERE id=$1`, conversationID).
+		Scan(&model, &effort, &tier, &mode, &settingsRevision, &modeRevision))
+	require.Equal(t, "gpt-5.6", model)
+	require.Equal(t, "high", effort)
+	require.Equal(t, "fast", tier)
+	require.Equal(t, "plan", mode)
+	require.EqualValues(t, 1, settingsRevision, "相同设置通知必须幂等")
+	require.EqualValues(t, 1, modeRevision)
+
+	first := officialapp.Item{Type: "agentMessage", ID: "answer-1", Text: "first"}
+	second := officialapp.Item{Type: "agentMessage", ID: "answer-2", Text: "second"}
+	require.NoError(t, ProjectOfficialThread(ctx, db, seed.workspaceID, officialapp.Thread{
+		ID: officialThreadID, Turns: []officialapp.Turn{{ID: "turn-1", Status: "completed",
+			Items: []officialapp.Item{first, second}}},
+	}))
+	_, err = db.ExecContext(ctx, `UPDATE discord_projections SET message_id=CASE
+		WHEN projection_key LIKE '%:answer-1' THEN 'discord-answer-1'
+		WHEN projection_key LIKE '%:answer-2' THEN 'discord-answer-2' END,
+		applied_version=desired_version WHERE projection_key LIKE $1`,
+		"official:"+conversationID.String()+":%")
+	require.NoError(t, err)
+	require.NoError(t, ProjectOfficialThread(ctx, db, seed.workspaceID, officialapp.Thread{
+		ID: officialThreadID, Turns: []officialapp.Turn{{ID: "turn-1", Status: "completed",
+			Items: []officialapp.Item{first}}},
+	}))
+	var projectionCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM discord_projections
+		WHERE projection_key LIKE $1`, "official:"+conversationID.String()+":%").
+		Scan(&projectionCount))
+	require.Equal(t, 1, projectionCount)
+	var deleteType, deletePredecessor string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT operation_type,
+		COALESCE(predecessor_operation_key,'') FROM integration_outbox
+		WHERE operation_key LIKE $1`,
+		"projection-orphan-delete:official:"+conversationID.String()+
+			":%:discord-answer-2").Scan(&deleteType, &deletePredecessor))
+	require.Equal(t, "message.delete", deleteType)
+	require.Contains(t, deletePredecessor, "projection:official:"+conversationID.String())
+}

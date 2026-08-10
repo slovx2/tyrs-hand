@@ -28,6 +28,7 @@ type appServerTunnelBroker struct {
 type appServerTunnelSession struct {
 	id             uuid.UUID
 	workerID       uuid.UUID
+	surface        workerprotocol.AppServerTunnelSurface
 	expiresAt      time.Time
 	ticket         string
 	claimed        bool
@@ -99,14 +100,20 @@ func newAppServerTunnelBroker() *appServerTunnelBroker {
 		tickets: make(map[string]uuid.UUID), pending: make(map[uuid.UUID]chan uuid.UUID)}
 }
 
-func (b *appServerTunnelBroker) issue(workerID uuid.UUID) (string,
+func (b *appServerTunnelBroker) issue(workerID uuid.UUID,
+	surface workerprotocol.AppServerTunnelSurface,
+) (string,
 	*appServerTunnelSession, error,
 ) {
+	if surface != workerprotocol.AppServerTunnelSurfaceControl &&
+		surface != workerprotocol.AppServerTunnelSurfaceMobile {
+		return "", nil, errors.New("app server 隧道 surface 无效")
+	}
 	ticket, err := security.RandomToken(32)
 	if err != nil {
 		return "", nil, err
 	}
-	session := &appServerTunnelSession{id: uuid.New(), workerID: workerID,
+	session := &appServerTunnelSession{id: uuid.New(), workerID: workerID, surface: surface,
 		expiresAt: time.Now().UTC().Add(appServerTunnelTTL), ticket: ticket,
 		done: make(chan struct{})}
 	b.mu.Lock()
@@ -133,7 +140,7 @@ func (b *appServerTunnelBroker) issue(workerID uuid.UUID) (string,
 func (b *appServerTunnelBroker) issueSystem(workerID uuid.UUID) (tunnelMessageTransport,
 	*appServerTunnelSession, error,
 ) {
-	ticket, session, err := b.issue(workerID)
+	ticket, session, err := b.issue(workerID, workerprotocol.AppServerTunnelSurfaceControl)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -303,7 +310,8 @@ func (s *Server) clientCreateAppServerTunnel(c *gin.Context) {
 		problem(c, http.StatusConflict, "Workspace 没有可用 Worker", err)
 		return
 	}
-	ticket, session, err := s.appServerTunnels.issue(workerID)
+	ticket, session, err := s.appServerTunnels.issue(workerID,
+		workerprotocol.AppServerTunnelSurfaceMobile)
 	if err != nil {
 		problem(c, http.StatusServiceUnavailable, "创建 App Server 隧道失败", err)
 		return
@@ -322,7 +330,8 @@ func (s *Server) workerClaimAppServerTunnel(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, workerprotocol.AppServerTunnelClaimResponse{
-		Tunnel: &workerprotocol.AppServerTunnelClaim{ID: session.id, ExpiresAt: session.expiresAt},
+		Tunnel: &workerprotocol.AppServerTunnelClaim{ID: session.id, ExpiresAt: session.expiresAt,
+			Surface: session.surface},
 	})
 }
 
