@@ -114,6 +114,26 @@ describe("OfficialAppServerClient", () => {
     expect(await client.listThreads()).toHaveLength(1);
   });
 
+  it("仅把明确缺少 rollout 的 thread/read 视为未物化 Thread", async () => {
+    const missingRpc = new FakeRpc((method) => {
+      throw new JsonRpcRequestError("No rollout found for thread id thread-phantom",
+        method, "rejected", -32004);
+    });
+    const missingClient = new OfficialAppServerClient("profile-1", missingRpc,
+      new MemoryJournal());
+
+    await expect(missingClient.readThreadMetadataIfExists("thread-phantom")).resolves.toBeNull();
+
+    const networkRpc = new FakeRpc((method) => {
+      throw new JsonRpcRequestError("thread/read 响应超时", method, "unknown");
+    });
+    const networkClient = new OfficialAppServerClient("profile-1", networkRpc,
+      new MemoryJournal());
+
+    await expect(networkClient.readThreadMetadataIfExists("thread-unknown"))
+      .rejects.toMatchObject({ delivery: "unknown", method: "thread/read" });
+  });
+
   it("legacy resume 直接请求 full，并把倒序响应转成时间正序", async () => {
     const turns = Array.from({ length: 7 }, (_, index) =>
       officialTurn(`turn-${index + 1}`, "completed", [{ type: "agentMessage",

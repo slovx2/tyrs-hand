@@ -276,13 +276,16 @@ async function drainOutboxItems(connection: Connection, projects: MobileProject[
       const input = await materializeUserInput(connection, project, item.clientMessageId,
         item.payload.text, item.payload.attachments);
       let threadId = item.threadId;
+      let startedThread: ThreadRecord["thread"] | null = null;
       if (item.kind === "create_task") {
         const source = mobileOutboxThreadSource(item);
-        let thread = threadId ? await client.readThreadMetadata(threadId) :
+        let thread = threadId ? await client.readThreadMetadataIfExists(threadId) :
           await client.findThreadBySource(source);
+        if (!thread && threadId) thread = await client.findThreadBySource(source);
         if (!thread) {
           thread = (await client.startThread(project.cwd, item.payload.preferences.model,
             source)).thread;
+          startedThread = thread;
         }
         threadId = thread.id;
         await setOutboxThread(item.profileId, item.clientMessageId, threadId);
@@ -290,8 +293,10 @@ async function drainOutboxItems(connection: Connection, projects: MobileProject[
         await saveOutboxThread(item.profileId, project, thread, set, get);
       }
       if (!threadId) throw new Error("发送队列缺少官方 Thread ID");
-      await client.submit({ threadId, clientMessageId: item.clientMessageId, input,
-        preferences: item.payload.preferences, projectId: project.id });
+      const submission = { clientMessageId: item.clientMessageId, input,
+        preferences: item.payload.preferences, projectId: project.id };
+      if (startedThread) await client.submitNewThread(startedThread, submission);
+      else await client.submit({ ...submission, threadId });
       await completeOutbox(item.profileId, item.clientMessageId);
       result.completed.set(item.clientMessageId, threadId);
       await saveLastTurnPreferences(item.profileId, item.payload.preferences).catch(() => undefined);
