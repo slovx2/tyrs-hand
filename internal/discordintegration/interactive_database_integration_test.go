@@ -585,6 +585,19 @@ func TestOfficialMetadataAndSnapshotRemovalAreAuthoritative(t *testing.T) {
 		Scan(&renameOperation))
 	require.Equal(t, "thread.rename", renameOperation)
 
+	snapshotName := "Snapshot renamed"
+	require.NoError(t, ProjectOfficialThread(ctx, db, seed.workspaceID, officialapp.Thread{
+		ID: officialThreadID, Name: &snapshotName,
+	}))
+	var snapshotPayloadName string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT conversation.title,
+		outbox.payload->>'threadName' FROM discord_conversations conversation
+		JOIN integration_outbox outbox ON outbox.operation_key=$2
+		WHERE conversation.id=$1`, conversationID,
+		"conversation-title:"+conversationID.String()).Scan(&title, &snapshotPayloadName))
+	require.Equal(t, snapshotName, title)
+	require.Equal(t, snapshotName, snapshotPayloadName)
+
 	settings := OfficialThreadSettings{Model: "gpt-5.6", ReasoningEffort: "high",
 		ServiceTier: "fast", CollaborationMode: "plan"}
 	require.NoError(t, ApplyOfficialThreadSettings(ctx, db, seed.workspaceID,

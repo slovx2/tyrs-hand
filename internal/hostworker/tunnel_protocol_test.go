@@ -211,6 +211,44 @@ func TestRewriteManagedTurnIdentityFollowsTrustedSurface(t *testing.T) {
 	}
 }
 
+type recordingTunnelWriter struct {
+	messages chan []byte
+}
+
+func (w *recordingTunnelWriter) WriteMessage(_ int, payload []byte) error {
+	w.messages <- append([]byte(nil), payload...)
+	return nil
+}
+
+func TestManagedMetadataNotificationsBroadcastAcrossTunnelOutputs(t *testing.T) {
+	runtime := &Runtime{}
+	origin := &recordingTunnelWriter{messages: make(chan []byte, 1)}
+	target := &recordingTunnelWriter{messages: make(chan []byte, 1)}
+	originID := runtime.registerTunnelOutput(origin)
+	targetID := runtime.registerTunnelOutput(target)
+	defer runtime.unregisterTunnelOutput(originID)
+	defer runtime.unregisterTunnelOutput(targetID)
+	payload := []byte(`{"method":"thread/name/updated","params":{` +
+		`"threadId":"thread-1","threadName":"Renamed"}}`)
+	require.True(t, managedMetadataNotification(payload))
+	runtime.broadcastTunnelMessage(originID, websocket.TextMessage, payload)
+	require.Equal(t, payload, <-target.messages)
+	select {
+	case <-origin.messages:
+		t.Fatal("元数据通知不应重复写回来源 Tunnel")
+	default:
+	}
+}
+
+func TestManagedMetadataNotificationRejectsResponsesAndTurnEvents(t *testing.T) {
+	require.False(t, managedMetadataNotification([]byte(
+		`{"id":1,"result":{"method":"thread/name/updated"}}`)))
+	require.False(t, managedMetadataNotification([]byte(
+		`{"method":"turn/completed","params":{"threadId":"thread-1"}}`)))
+	require.True(t, managedMetadataNotification([]byte(
+		`{"method":"thread/settings/updated","params":{"threadId":"thread-1"}}`)))
+}
+
 func TestManagedBrowserToolRequestOnlyClaimsBrowserFiles(t *testing.T) {
 	namespace := "browser_files"
 	payload, err := json.Marshal(map[string]any{

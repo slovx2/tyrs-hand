@@ -62,6 +62,69 @@ type managedTunnelAddress string
 func (a managedTunnelAddress) Network() string { return "tyrs-hand" }
 func (a managedTunnelAddress) String() string  { return string(a) }
 
+type tunnelMessageWriter interface {
+	WriteMessage(int, []byte) error
+}
+
+type serializedTunnelWriter struct {
+	connection *websocket.Conn
+	mu         sync.Mutex
+}
+
+func (w *serializedTunnelWriter) WriteMessage(messageType int, payload []byte) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.connection.WriteMessage(messageType, payload)
+}
+
+func (r *Runtime) registerTunnelOutput(output tunnelMessageWriter) uint64 {
+	id := r.nextBinding.Add(1)
+	r.mu.Lock()
+	if r.tunnelOutputs == nil {
+		r.tunnelOutputs = make(map[uint64]tunnelMessageWriter)
+	}
+	r.tunnelOutputs[id] = output
+	r.mu.Unlock()
+	return id
+}
+
+func (r *Runtime) unregisterTunnelOutput(id uint64) {
+	r.mu.Lock()
+	delete(r.tunnelOutputs, id)
+	r.mu.Unlock()
+}
+
+func (r *Runtime) broadcastTunnelMessage(originID uint64, messageType int, payload []byte) {
+	r.mu.Lock()
+	outputs := make([]tunnelMessageWriter, 0, len(r.tunnelOutputs))
+	for id, output := range r.tunnelOutputs {
+		if id != originID {
+			outputs = append(outputs, output)
+		}
+	}
+	r.mu.Unlock()
+	for _, output := range outputs {
+		_ = output.WriteMessage(messageType, payload)
+	}
+}
+
+func managedMetadataNotification(payload []byte) bool {
+	var message struct {
+		ID     json.RawMessage `json:"id"`
+		Method string          `json:"method"`
+	}
+	if json.Unmarshal(payload, &message) != nil || len(message.ID) > 0 {
+		return false
+	}
+	switch message.Method {
+	case "thread/name/updated", "thread/archived", "thread/unarchived",
+		"thread/settings/updated":
+		return true
+	default:
+		return false
+	}
+}
+
 var _ net.Listener = (*singleConnectionListener)(nil)
 
 func rewriteManagedThreadRequest(payload []byte, options RuntimeOptions,

@@ -57,6 +57,7 @@ type Runtime struct {
 	toolHandlers        map[string]runtimeToolBinding
 	interactiveHandlers map[string]runtimeInteractiveBinding
 	managedToolHandler  codex.ToolHandler
+	tunnelOutputs       map[uint64]tunnelMessageWriter
 }
 
 type runtimeToolBinding struct {
@@ -112,7 +113,8 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 		serviceProxy:        serviceProxy,
 		generation:          time.Now().UnixNano(),
 		toolHandlers:        make(map[string]runtimeToolBinding),
-		interactiveHandlers: make(map[string]runtimeInteractiveBinding)}
+		interactiveHandlers: make(map[string]runtimeInteractiveBinding),
+		tunnelOutputs:       make(map[uint64]tunnelMessageWriter)}
 	go runtime.wait()
 	client, err := connectRuntimeClient(ctx, runtime.done, 15*time.Second,
 		codex.SocketClientOptions{
@@ -315,6 +317,9 @@ func (r *Runtime) ServeAppServerTunnel(ctx context.Context,
 		return err
 	}
 	defer func() { _ = upstream.Close() }()
+	tunnelOutput := &serializedTunnelWriter{connection: tunnel}
+	tunnelID := r.registerTunnelOutput(tunnelOutput)
+	defer r.unregisterTunnelOutput(tunnelID)
 	bridgeDone := make(chan struct{})
 	defer close(bridgeDone)
 	go func() {
@@ -362,9 +367,12 @@ func (r *Runtime) ServeAppServerTunnel(ctx context.Context,
 					continue
 				}
 			}
-			if writeErr := tunnel.WriteMessage(messageType, payload); writeErr != nil {
+			if writeErr := tunnelOutput.WriteMessage(messageType, payload); writeErr != nil {
 				result <- writeErr
 				return
+			}
+			if messageType == websocket.TextMessage && managedMetadataNotification(payload) {
+				r.broadcastTunnelMessage(tunnelID, messageType, payload)
 			}
 		}
 	}

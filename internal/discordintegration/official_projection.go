@@ -45,17 +45,26 @@ func ProjectOfficialThread(ctx context.Context, db *sql.DB, workspaceID uuid.UUI
 		return err
 	}
 	var conversationID uuid.UUID
-	var guildID, discordThreadID string
+	var guildID, discordThreadID, currentTitle string
 	err = tx.QueryRowContext(ctx, `SELECT binding.conversation_id,
-		conversation.guild_id,conversation.thread_id FROM official_thread_bindings binding
+		conversation.guild_id,conversation.thread_id,conversation.title
+		FROM official_thread_bindings binding
 		JOIN discord_conversations conversation ON conversation.id=binding.conversation_id
 		WHERE binding.workspace_id=$1 AND binding.thread_id=$2`, workspaceID, thread.ID).
-		Scan(&conversationID, &guildID, &discordThreadID)
+		Scan(&conversationID, &guildID, &discordThreadID, &currentTitle)
 	if errors.Is(err, sql.ErrNoRows) {
 		return tx.Commit()
 	}
 	if err != nil {
 		return err
+	}
+	if thread.Name != nil {
+		name := normalizeConversationTitle(*thread.Name)
+		if name != "" && name != currentTitle {
+			if err = EnqueueOfficialThreadNameTx(ctx, tx, conversationID, name); err != nil {
+				return err
+			}
+		}
 	}
 	owner := "external"
 	lastTurnID, lastClientID := thread.LatestClientMessage()
