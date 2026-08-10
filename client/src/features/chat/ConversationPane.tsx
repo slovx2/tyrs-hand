@@ -17,6 +17,8 @@ import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
 import { keyboardAvoidance } from "@/utils/keyboardAvoidance";
 import { ChatComposer } from "./ChatComposer";
+import { createFollowState, latestTurnPhase, reduceFollowState,
+  shouldFollowLatest, type FollowEvent } from "./conversationFollow";
 import { OfficialTurn } from "./OfficialTurn";
 import { ParameterSheet } from "./ParameterSheet";
 import { ServerRequestCard } from "./ServerRequestCard";
@@ -33,8 +35,6 @@ const EMPTY_MODELS: Model[] = [];
 const EMPTY_REQUESTS: ServerRequest[] = [];
 const LIST_POSITIONING = {
   startRenderingFromBottom: true,
-  autoscrollToBottomThreshold: 0.1,
-  animateAutoScrollToBottom: false,
 } as const;
 const LIST_DRAW_DISTANCE = 180;
 const LIST_RECYCLE_POOL_SIZE = 12;
@@ -82,6 +82,11 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const historyPagingReady = useRef(false);
   const olderLoadRequested = useRef(false);
   const momentumScrolling = useRef(false);
+  const userDragging = useRef(false);
+  const interactionBlocked = useRef(false);
+  const interactionSettleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const followState = useRef(createFollowState());
+  const latestPhase = useRef<ReturnType<typeof latestTurnPhase>>("idle");
   const activityToggleBlockedUntil = useRef(0);
   const olderLoadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeSessionId = useRef(sessionId);
@@ -95,6 +100,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const draftScope = `thread:${sessionId}`;
   const activeTurnId = [...(record?.thread.turns ?? [])].reverse()
     .find((turn) => turn.status === "inProgress")?.id ?? null;
+  const activeTurn = [...(record?.thread.turns ?? [])].reverse()
+    .find((turn) => turn.status === "inProgress") ?? null;
   const setScrollToLatestVisible = useCallback((visible: boolean) => {
     if (showScrollToLatestRef.current === visible) return;
     showScrollToLatestRef.current = visible;
@@ -102,6 +109,9 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   }, []);
   const canToggleActivity = useCallback(() =>
     activityToggleAllowed(activityToggleBlockedUntil.current), []);
+  const dispatchFollow = useCallback((event: FollowEvent) => {
+    followState.current = reduceFollowState(followState.current, event);
+  }, []);
 
   useEffect(() => {
     let canceled = false;
@@ -119,7 +129,13 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     historyPagingReady.current = false;
     olderLoadRequested.current = false;
     momentumScrolling.current = false;
+    userDragging.current = false;
+    interactionBlocked.current = false;
+    followState.current = createFollowState();
+    latestPhase.current = "idle";
     activityToggleBlockedUntil.current = 0;
+    if (interactionSettleTimer.current) clearTimeout(interactionSettleTimer.current);
+    interactionSettleTimer.current = null;
     if (olderLoadTimer.current) clearTimeout(olderLoadTimer.current);
     olderLoadTimer.current = null;
     scrollOffset.current = 0;
@@ -131,6 +147,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
 
   useEffect(() => () => {
     if (olderLoadTimer.current) clearTimeout(olderLoadTimer.current);
+    if (interactionSettleTimer.current) clearTimeout(interactionSettleTimer.current);
   }, []);
 
   useEffect(() => {
@@ -183,6 +200,17 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const hasMoreHistory = record?.history.kind === "loaded" &&
     !record.history.hasLoadedOldest && record.history.olderCursor !== null;
 
+  useEffect(() => {
+    const nextPhase = latestTurnPhase(activeTurn);
+    const previousPhase = latestPhase.current;
+    latestPhase.current = nextPhase;
+    if (previousPhase !== nextPhase) dispatchFollow({ type: "latest_turn_phase_changed",
+      previousLatestTurnPhase: previousPhase, latestTurnPhase: nextPhase });
+    if (shouldFollowLatest(followState.current) && !interactionBlocked.current) {
+      list.current?.scrollToEnd({ animated: false });
+    }
+  }, [activeTurn, dispatchFollow, rows]);
+
   const saveVisiblePosition = useCallback((offsetY?: number) => {
     if (!positionKey) return;
     if (pinnedToLatest.current) {
@@ -202,11 +230,30 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   }, [positionKey]);
 
   const followLatest = useCallback((animated: boolean) => {
+    dispatchFollow({ type: "scroll_to_bottom", latestTurnPhase: latestPhase.current });
     pinnedToLatest.current = true;
     setScrollToLatestVisible(false);
     if (positionKey) saveConversationPosition(positionKey, { kind: "latest" });
     list.current?.scrollToEnd({ animated });
-  }, [positionKey, setScrollToLatestVisible]);
+  }, [dispatchFollow, positionKey, setScrollToLatestVisible]);
+
+  const finishUserInteraction = useCallback(() => {
+    interactionBlocked.current = false;
+    if (pinnedToLatest.current) {
+      dispatchFollow({ type: "user_reached_bottom", latestTurnPhase: latestPhase.current });
+    }
+    if (shouldFollowLatest(followState.current)) {
+      list.current?.scrollToEnd({ animated: false });
+    }
+  }, [dispatchFollow]);
+
+  const settleUserInteraction = useCallback(() => {
+    if (interactionSettleTimer.current) clearTimeout(interactionSettleTimer.current);
+    interactionSettleTimer.current = setTimeout(() => {
+      interactionSettleTimer.current = null;
+      if (!momentumScrolling.current && !userDragging.current) finishUserInteraction();
+    }, 120);
+  }, [finishUserInteraction]);
 
   const loadOlder = useCallback(async () => {
     olderLoadRequested.current = false;
@@ -318,11 +365,24 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
           const state = conversationScrollState(nativeEvent.contentSize.height,
             nativeEvent.layoutMeasurement.height, nativeEvent.contentOffset.y);
           scrollOffset.current = nativeEvent.contentOffset.y;
-          pinnedToLatest.current = state.pinnedToLatest;
+          pinnedToLatest.current = state.distanceFromBottom <= 24;
           setScrollToLatestVisible(state.showLatest);
+          if (userDragging.current || momentumScrolling.current) {
+            dispatchFollow({ type: "scroll_distance_changed",
+              distanceFromBottomPx: state.distanceFromBottom,
+              latestTurnPhase: latestPhase.current });
+            if (state.distanceFromBottom <= 24) {
+              dispatchFollow({ type: "user_reached_bottom",
+                latestTurnPhase: latestPhase.current });
+            }
+          }
         }}
         onScrollBeginDrag={() => {
           momentumScrolling.current = false;
+          userDragging.current = true;
+          interactionBlocked.current = true;
+          if (interactionSettleTimer.current) clearTimeout(interactionSettleTimer.current);
+          interactionSettleTimer.current = null;
           activityToggleBlockedUntil.current = Number.POSITIVE_INFINITY;
           if (olderLoadTimer.current) clearTimeout(olderLoadTimer.current);
           olderLoadTimer.current = null;
@@ -330,18 +390,24 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
           if (scrollOffset.current <= 8) requestOlderLoad();
         }}
         onScrollEndDrag={() => {
+          userDragging.current = false;
           activityToggleBlockedUntil.current = Date.now() + ACTIVITY_TOGGLE_SCROLL_SETTLE_MS;
           saveVisiblePosition();
           scheduleOlderLoad();
+          settleUserInteraction();
         }}
         onMomentumScrollBegin={() => {
           momentumScrolling.current = true;
+          interactionBlocked.current = true;
+          if (interactionSettleTimer.current) clearTimeout(interactionSettleTimer.current);
+          interactionSettleTimer.current = null;
           activityToggleBlockedUntil.current = Number.POSITIVE_INFINITY;
           if (olderLoadTimer.current) clearTimeout(olderLoadTimer.current);
           olderLoadTimer.current = null;
         }}
         onMomentumScrollEnd={() => {
           momentumScrolling.current = false;
+          finishUserInteraction();
           activityToggleBlockedUntil.current = Date.now() + ACTIVITY_TOGGLE_SCROLL_SETTLE_MS;
           saveVisiblePosition();
           flushOlderLoad();
@@ -356,6 +422,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
             pinnedToLatest.current = true;
             setScrollToLatestVisible(false);
             if (positionKey) saveConversationPosition(positionKey, { kind: "latest" });
+            if (activeTurnId) dispatchFollow({ type: "scroll_to_bottom",
+              latestTurnPhase: latestPhase.current });
             setPositionRestored(true);
             return;
           }

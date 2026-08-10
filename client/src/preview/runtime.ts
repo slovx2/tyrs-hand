@@ -115,7 +115,8 @@ class PreviewSocket implements AppServerSocket {
     if (method === "thread/list") {
       const archived = params.archived === true;
       const cwd = typeof params.cwd === "string" ? params.cwd : null;
-      const data = value.threads.filter((thread) => value.archivedThreadIds.includes(thread.id) === archived &&
+      const data = value.threads.filter((thread) => !thread.ephemeral &&
+        value.archivedThreadIds.includes(thread.id) === archived &&
         (!cwd || thread.cwd === cwd)).map((thread) => ({ ...thread, turns: [] }));
       this.emit({ id, result: { data, nextCursor: null } }); return;
     }
@@ -140,8 +141,35 @@ class PreviewSocket implements AppServerSocket {
       this.emit({ id, result: turnsPage(thread, params) });
       return;
     }
+    if (method === "thread/items/list") {
+      const thread = value.threads.find((item) => item.id === String(params.threadId));
+      if (!thread) {
+        this.emit({ id, error: { code: -32004, message: "预览会话不存在" } });
+        return;
+      }
+      const turnId = typeof params.turnId === "string" ? params.turnId : null;
+      const direction = params.sortDirection === "desc" ? "desc" : "asc";
+      const limit = typeof params.limit === "number" && params.limit > 0
+        ? Math.floor(params.limit) : 100;
+      const match = typeof params.cursor === "string"
+        ? params.cursor.match(/^preview-items:(asc|desc):(\d+)$/) : null;
+      const offset = match?.[1] === direction ? Number(match[2]) : 0;
+      const entries = thread.turns.flatMap((turn) => turnId && turn.id !== turnId ? []
+        : turn.items.map((item) => ({ turnId: turn.id, item })));
+      const ordered = direction === "desc" ? [...entries].reverse() : entries;
+      const data = ordered.slice(offset, offset + limit);
+      const nextOffset = offset + data.length;
+      this.emit({ id, result: { data: structuredClone(data),
+        nextCursor: nextOffset < ordered.length
+          ? `preview-items:${direction}:${nextOffset}` : null,
+        backwardsCursor: data.length > 0
+          ? `preview-items:${direction === "desc" ? "asc" : "desc"}:0` : null } });
+      return;
+    }
     if (method === "thread/start") {
-      const thread = newThread(String(params.cwd ?? "/preview"));
+      const historyMode = params.historyMode === "paginated" ? "paginated" : "legacy";
+      const thread = newThread(String(params.cwd ?? "/preview"), params.ephemeral === true,
+        historyMode);
       value.threads.unshift(thread);
       this.emit({ id, result: { thread: structuredClone(thread) } });
       this.emit({ method: "thread/started", params: { thread: { ...thread, turns: [] } } });
@@ -155,7 +183,10 @@ class PreviewSocket implements AppServerSocket {
       const turn = startTurn(thread, params);
       this.emit({ id, result: { turn: structuredClone(turn) } });
       this.emit({ method: "turn/started", params: { threadId: thread.id, turn: structuredClone(turn) } });
-      this.completeActiveTurn(thread.id, "预览任务已按官方协议完成。", 80);
+      const structuredTitle = params.outputSchema && typeof params.outputSchema === "object";
+      this.completeActiveTurn(thread.id, structuredTitle
+        ? JSON.stringify({ title: "生成预览任务标题", description: "预览任务自动标题" })
+        : "预览任务已按官方协议完成。", 80);
       return;
     }
     if (method === "turn/steer") {
@@ -194,7 +225,15 @@ class PreviewSocket implements AppServerSocket {
       const thread = requireThread(value, String(params.threadId));
       thread.name = String(params.name); thread.updatedAt = Math.floor(Date.now() / 1000);
       this.emit({ id, result: {} });
-      this.emit({ method: "thread/name/updated", params: { threadId: thread.id, name: thread.name } });
+      this.emit({ method: "thread/name/updated",
+        params: { threadId: thread.id, threadName: thread.name } });
+      return;
+    }
+    if (method === "thread/unsubscribe") {
+      const threadId = String(params.threadId);
+      const thread = value.threads.find((item) => item.id === threadId);
+      if (thread?.ephemeral) value.threads = value.threads.filter((item) => item.id !== threadId);
+      this.emit({ id, result: { status: "notLoaded" } });
       return;
     }
     this.emit({ id, error: { code: -32601, message: `预览方法未实现：${method}` } });
@@ -213,10 +252,14 @@ class PreviewSocket implements AppServerSocket {
       const thread = requireThread(control(this.serverId), threadId);
       const turn = [...thread.turns].reverse().find((item) => item.status === "inProgress");
       if (!turn) return;
-      turn.items.push({ type: "agentMessage", id: nextId(), text,
-        phase: "final_answer", memoryCitation: null });
+      const item: Turn["items"][number] = { type: "agentMessage", id: nextId(), text,
+        phase: "final_answer", memoryCitation: null };
+      turn.items.push(item);
       turn.status = "completed"; turn.completedAt = Math.floor(Date.now() / 1000);
       thread.status = { type: "idle" }; thread.updatedAt = turn.completedAt;
+      this.emit({ method: "item/completed", params: {
+        threadId, turnId: turn.id, item: structuredClone(item),
+      } });
       this.emit({ method: "turn/completed", params: { threadId, turn: structuredClone(turn) } });
     }, delay);
   }
@@ -307,12 +350,13 @@ function turnsPage(thread: Thread, params: Record<string, unknown>): {
   };
 }
 
-function newThread(cwd: string): Thread {
+function newThread(cwd: string, ephemeral = false,
+  historyMode: Thread["historyMode"] = "legacy"): Thread {
   const now = Math.floor(Date.now() / 1000);
   const id = nextId();
   return { id, extra: null, sessionId: id, forkedFromId: null, parentThreadId: null,
-    preview: "新的预览任务", ephemeral: false, section: null, sectionEnteredAt: null,
-    historyMode: "legacy", modelProvider: "openai", createdAt: now, updatedAt: now,
+    preview: "新的预览任务", ephemeral, section: null, sectionEnteredAt: null,
+    historyMode, modelProvider: "openai", createdAt: now, updatedAt: now,
     recencyAt: now, status: { type: "idle" }, path: null, cwd, cliVersion: "0.147.0",
     source: "appServer", canAcceptDirectInput: true, threadSource: null, agentNickname: null,
     agentRole: null, gitInfo: null, name: null, turns: [] };

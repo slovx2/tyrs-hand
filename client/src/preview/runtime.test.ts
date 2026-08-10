@@ -119,6 +119,43 @@ describe("官方协议预览模式", () => {
     expect(secondaryList.data[0]?.name).toBe("另一连接中的独立会话");
   });
 
+  it("Luna 临时线程不进入目录，并可通过 unsubscribe 清理", async () => {
+    const client = await previewClient(primaryPreviewServerId);
+    const started = await client.request<{ thread: { id: string } }>("thread/start", {
+      cwd: "/preview/workspaces/tyrs-hand", model: "gpt-5.6-luna", ephemeral: true,
+      permissions: ":read-only", runtimeWorkspaceRoots: [],
+    });
+    const list = await client.request<ThreadListResponse>("thread/list", {
+      cursor: null, limit: 100, sortKey: "updated_at", sortDirection: "desc", archived: false,
+    });
+    expect(list.data.some((thread) => thread.id === started.thread.id)).toBe(false);
+
+    await client.request("thread/unsubscribe", { threadId: started.thread.id });
+    await expect(client.request("thread/read", { threadId: started.thread.id,
+      includeTurns: false })).rejects.toThrow();
+  });
+
+  it("Luna 标题 Turn 在完成通知前发送结构化 Agent Item", async () => {
+    const client = await previewClient(primaryPreviewServerId);
+    const notifications: { method: string; params: unknown }[] = [];
+    client.onNotification((notification) => notifications.push(notification));
+    const started = await client.request<{ thread: { id: string } }>("thread/start", {
+      cwd: "/preview/workspaces/tyrs-hand", model: "gpt-5.6-luna", ephemeral: true,
+      permissions: ":read-only", runtimeWorkspaceRoots: [],
+    });
+    await client.request("turn/start", { threadId: started.thread.id, input: [],
+      outputSchema: { type: "object" } });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const completedItem = notifications.find((item) => item.method === "item/completed");
+    const completedTurn = notifications.find((item) => item.method === "turn/completed");
+    expect(completedItem).toBeDefined();
+    expect(completedTurn).toBeDefined();
+    expect(notifications.indexOf(completedItem!)).toBeLessThan(notifications.indexOf(completedTurn!));
+    expect(completedItem?.params).toMatchObject({ item: { type: "agentMessage",
+      text: JSON.stringify({ title: "生成预览任务标题", description: "预览任务自动标题" }) } });
+  });
+
   it("按工具完成、最终回答首段、Turn 完成三个阶段驱动动态预览", async () => {
     vi.useFakeTimers();
     try {

@@ -5,7 +5,7 @@ import type { Thread } from "@codex-app-server/v2/Thread";
 import { describe, expect, it } from "vitest";
 
 import { JsonRpcRequestError } from "./jsonRpc";
-import { latestCompletedPlan, OfficialAppServerClient, textInput,
+import { latestCompletedPlan, normalizeGeneratedTitle, OfficialAppServerClient, textInput,
   type OfficialRpcClient } from "./officialClient";
 import type { SubmissionJournal } from "./submissions";
 
@@ -56,6 +56,52 @@ const preferences = { model: "gpt-test", effort: "high" as const, serviceTier: n
   collaborationMode: "default" as const };
 
 describe("OfficialAppServerClient", () => {
+  it("使用受限 Luna 临时线程生成结构化标题并在结束后取消订阅", async () => {
+    let rpc!: FakeRpc;
+    rpc = new FakeRpc((method, params) => {
+      if (method === "thread/start") {
+        expect(params).toMatchObject({ model: "gpt-5.6-luna", ephemeral: true,
+          approvalPolicy: "never", permissions: ":read-only", runtimeWorkspaceRoots: [] });
+        return { thread: { ...officialThread([]), id: "title-thread", ephemeral: true } };
+      }
+      if (method === "turn/start") {
+        expect(params).toMatchObject({ threadId: "title-thread", serviceTier: "fast",
+          outputSchema: { required: ["title", "description"], properties: {
+            title: { maxLength: 36 }, description: { maxLength: 100 },
+          } } });
+        queueMicrotask(() => {
+          rpc.emitNotification({ method: "item/completed", params: { threadId: "title-thread",
+            turnId: "title-turn", item: { type: "agentMessage", id: "title-item",
+              text: JSON.stringify({ title: "修复移动端协议回归", description: "移动端协议和滚动" }),
+              phase: "final_answer", memoryCitation: null }, completedAtMs: 1 } });
+          rpc.emitNotification({ method: "turn/completed", params: { threadId: "title-thread",
+            turn: officialTurn("title-turn", "completed", []) } });
+        });
+        return { turn: officialTurn("title-turn", "inProgress", []) };
+      }
+      if (method === "thread/unsubscribe") return { status: "notLoaded" };
+      throw new Error(`unexpected ${method}`);
+    });
+    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+    const visible: string[] = [];
+    client.subscribe((event) => visible.push(event.method));
+
+    await expect(client.generateThreadTitle({ cwd: "/workspace", prompt: "修复移动端问题",
+      serviceTier: "fast" })).resolves.toEqual({ title: "修复移动端协议回归",
+      description: "移动端协议和滚动" });
+
+    expect(rpc.calls.map((call) => call.method)).toEqual([
+      "thread/start", "turn/start", "thread/unsubscribe",
+    ]);
+    expect(visible).toEqual([]);
+  });
+
+  it("标题规范化为单行、无尾部标点且最多 36 个字符", () => {
+    expect(normalizeGeneratedTitle("  `修复 移动端滚动。`  ")).toBe("修复 移动端滚动");
+    expect(Array.from(normalizeGeneratedTitle("一".repeat(50)) ?? "")).toHaveLength(36);
+    expect(normalizeGeneratedTitle("一".repeat(50))?.endsWith("…")).toBe(true);
+  });
+
   it("thread/list 显式传空 modelProviders 以列出所有 Provider", async () => {
     const rpc = new FakeRpc((method, params) => {
       if (method !== "thread/list") throw new Error(`unexpected ${method}`);
@@ -68,14 +114,18 @@ describe("OfficialAppServerClient", () => {
     expect(await client.listThreads()).toHaveLength(1);
   });
 
-  it("resume 首屏只请求最近 5 个 Turn，并把倒序响应转成时间正序", async () => {
+  it("legacy resume 直接请求 full，并把倒序响应转成时间正序", async () => {
     const turns = Array.from({ length: 7 }, (_, index) =>
-      officialTurn(`turn-${index + 1}`, "completed", []));
+      officialTurn(`turn-${index + 1}`, "completed", [{ type: "agentMessage",
+        id: `item-${index + 1}`, text: `answer-${index + 1}`,
+        phase: "final_answer", memoryCitation: null }]));
     const rpc = new FakeRpc((method, params) => {
-      if (method !== "thread/resume") throw new Error(`unexpected ${method}`);
-      expect(params).toEqual({ threadId: "thread-1", excludeTurns: true,
-        initialTurnsPage: { limit: 5, sortDirection: "desc", itemsView: "full" } });
-      return resumeResult(officialThread(turns), turns.slice(-5), "older-1");
+      if (method === "thread/resume") {
+        expect(params).toEqual({ threadId: "thread-1", excludeTurns: true,
+          initialTurnsPage: { limit: 5, sortDirection: "desc", itemsView: "full" } });
+        return resumeResult(officialThread(turns), turns.slice(-5), "older-1");
+      }
+      throw new Error(`unexpected ${method}`);
     });
     const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
 
@@ -84,17 +134,24 @@ describe("OfficialAppServerClient", () => {
     expect(resumed.thread.turns.map((turn) => turn.id)).toEqual([
       "turn-3", "turn-4", "turn-5", "turn-6", "turn-7",
     ]);
+    expect(resumed.thread.turns.map((turn) => turn.items[0]?.id)).toEqual([
+      "item-3", "item-4", "item-5", "item-6", "item-7",
+    ]);
     expect(resumed.page.nextCursor).toBe("older-1");
   });
 
-  it("旧页沿用官方游标并保持时间正序", async () => {
+  it("legacy 旧页沿用官方游标、直接请求 full 并保持时间正序", async () => {
+    const turns = [officialTurn("turn-1", "completed", [{ type: "agentMessage", id: "item-1",
+      text: "one", phase: "final_answer", memoryCitation: null }]),
+    officialTurn("turn-2", "completed", [{ type: "agentMessage", id: "item-2",
+      text: "two", phase: "final_answer", memoryCitation: null }])];
     const rpc = new FakeRpc((method, params) => {
-      if (method !== "thread/turns/list") throw new Error(`unexpected ${method}`);
-      expect(params).toEqual({ threadId: "thread-1", cursor: "older-1", limit: 5,
-        sortDirection: "desc", itemsView: "full" });
-      return turnPage([
-        officialTurn("turn-1", "completed", []), officialTurn("turn-2", "completed", []),
-      ], null);
+      if (method === "thread/turns/list") {
+        expect(params).toEqual({ threadId: "thread-1", cursor: "older-1", limit: 5,
+          sortDirection: "desc", itemsView: "full" });
+        return turnPage(turns, null);
+      }
+      throw new Error(`unexpected ${method}`);
     });
     const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
 
@@ -102,6 +159,54 @@ describe("OfficialAppServerClient", () => {
 
     expect(page.turns.map((turn) => turn.id)).toEqual(["turn-1", "turn-2"]);
     expect(page.nextCursor).toBeNull();
+  });
+
+  it("paginated 会话先读取 Turn 壳，再按 Turn 读取完整 Item", async () => {
+    const turns = [officialTurn("turn-1", "completed", [{ type: "agentMessage", id: "item-1",
+      text: "one", phase: "final_answer", memoryCitation: null }])];
+    const rpc = new FakeRpc((method, params) => {
+      if (method === "thread/turns/list") {
+        expect(params).toEqual({ threadId: "thread-1", cursor: null, limit: 5,
+          sortDirection: "desc", itemsView: "notLoaded" });
+        return turnPage(turns.map(withoutItems), null);
+      }
+      if (method === "thread/items/list") return itemsForTurn(turns, params);
+      throw new Error(`unexpected ${method}`);
+    });
+    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+
+    const page = await client.listTurnPage("thread-1", null, 5, "full", "paginated");
+
+    expect(page.turns[0]?.items.map((item) => item.id)).toEqual(["item-1"]);
+  });
+
+  it("新会话仅在 Item 分页探测成功时使用 paginated history", async () => {
+    const createClient = (probeCode: number, expectedMode: "legacy" | "paginated") => {
+      const rpc = new FakeRpc((method, params) => {
+        if (method === "thread/items/list") {
+          throw new JsonRpcRequestError("probe", method, "rejected", probeCode);
+        }
+        if (method === "thread/start") {
+          expect(params).toMatchObject({ cwd: "/workspace", model: "gpt-test",
+            runtimeWorkspaceRoots: ["/workspace"], historyMode: expectedMode });
+          return { thread: { ...officialThread([]), historyMode: expectedMode } };
+        }
+        throw new Error(`unexpected ${method}`);
+      });
+      return { client: new OfficialAppServerClient("profile-1", rpc, new MemoryJournal()), rpc };
+    };
+    const unsupported = createClient(-32601, "legacy");
+    const supported = createClient(-32004, "paginated");
+
+    await unsupported.client.startThread("/workspace", "gpt-test");
+    await supported.client.startThread("/workspace", "gpt-test");
+
+    expect(unsupported.rpc.calls.map((call) => call.method)).toEqual([
+      "thread/items/list", "thread/start",
+    ]);
+    expect(supported.rpc.calls.map((call) => call.method)).toEqual([
+      "thread/items/list", "thread/start",
+    ]);
   });
 
   it("新 Thread 使用 thread/start 返回的内存状态直接 turn/start", async () => {
@@ -391,4 +496,17 @@ function turnPage(turns: Thread["turns"], nextCursor: string | null = null) {
 function resumeResult(thread: Thread, turns = thread.turns,
   nextCursor: string | null = null) {
   return { thread: { ...thread, turns: [] }, initialTurnsPage: turnPage(turns, nextCursor) };
+}
+
+function withoutItems(turn: Thread["turns"][number]): Thread["turns"][number] {
+  return { ...turn, items: [], itemsView: "notLoaded" };
+}
+
+function itemsForTurn(turns: Thread["turns"], params: unknown) {
+  expect(params).toMatchObject({ threadId: "thread-1", cursor: null, limit: 100,
+    sortDirection: "asc" });
+  const turnId = (params as { turnId: string }).turnId;
+  const turn = turns.find((item) => item.id === turnId);
+  return { data: (turn?.items ?? []).map((item) => ({ turnId, item })),
+    nextCursor: null, backwardsCursor: null };
 }

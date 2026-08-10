@@ -63,6 +63,9 @@ class FakeOfficialClient {
   emit(method: string, threadId: string): void {
     this.listener?.({ method, params: { threadId } });
   }
+  emitName(threadId: string, threadName: string): void {
+    this.listener?.({ method: "thread/name/updated", params: { threadId, threadName } });
+  }
 }
 
 describe("会话分页 Repository", () => {
@@ -211,6 +214,24 @@ describe("会话分页 Repository", () => {
     expect(currentRecord(threadId).thread.turns.at(-1)).toMatchObject({
       id: "turn-5", status: "completed", items: [{ id: "item:final-answer" }],
     });
+  });
+
+  it("改名通知直接更新内存与 SQLite 缓存，不依赖目录刷新", async () => {
+    const profileId = "profile-title";
+    const threadId = "thread-title";
+    const client = new FakeOfficialClient();
+    client.resume = async () => ({ thread: thread(threadId, []), page: page([], null) });
+    client.listPage = async () => page([], null);
+    client.metadata = async () => thread(threadId, []);
+    installState(profileId, summaryRecord(threadId), client);
+    await useAppStore.getState().loadThread(threadId);
+    harness.saved = [];
+
+    client.emitName(threadId, "Luna 生成标题");
+    await vi.waitFor(() => expect(currentRecord(threadId).thread.name).toBe("Luna 生成标题"));
+
+    expect(harness.saved).toHaveLength(1);
+    expect((harness.saved[0] as ThreadRecord).thread.name).toBe("Luna 生成标题");
   });
 });
 

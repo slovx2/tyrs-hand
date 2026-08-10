@@ -1,4 +1,5 @@
 import type { Thread } from "@codex-app-server/v2/Thread";
+import type { ThreadItem } from "@codex-app-server/v2/ThreadItem";
 
 import type { OfficialTurnPage } from "@/app-server/officialClient";
 
@@ -43,9 +44,44 @@ export function mergeTurnSequence(...groups: Turns[]): Turns {
   for (const turn of groups.flat()) {
     if (!turns.has(turn.id)) order.push(turn.id);
     const previous = turns.get(turn.id);
-    turns.set(turn.id, previous && sameTurnSnapshot(previous, turn) ? previous : turn);
+    turns.set(turn.id, previous ? mergeTurnSnapshot(previous, turn) : turn);
   }
   return order.flatMap((id) => turns.get(id) ?? []);
+}
+
+/**
+ * 官方尾页在 Turn 刚结束时偶尔会短暂缺少已推送过的工具 Item。
+ * 同一 Turn 因此按 Item ID 单调合并；非工具内容仍以最新官方快照为准。
+ */
+export function mergeTurnSnapshot(previous: Turns[number], incoming: Turns[number]): Turns[number] {
+  if (sameTurnSnapshot(previous, incoming)) return previous;
+  const incomingById = new Map(incoming.items.map((item) => [item.id, item]));
+  const seen = new Set<string>();
+  const items: ThreadItem[] = [];
+  for (const item of previous.items) {
+    const updated = incomingById.get(item.id);
+    if (updated) {
+      items.push(sameItemSnapshot(item, updated) ? item : updated);
+      seen.add(item.id);
+    } else if (isToolItem(item)) {
+      items.push(item);
+      seen.add(item.id);
+    }
+  }
+  for (const item of incoming.items) {
+    if (!seen.has(item.id)) items.push(item);
+  }
+  const merged = { ...incoming, items };
+  return sameTurnSnapshot(previous, merged) ? previous : merged;
+}
+
+function isToolItem(item: ThreadItem): boolean {
+  return item.type !== "userMessage" && item.type !== "agentMessage" && item.type !== "plan" &&
+    item.type !== "reasoning" && item.type !== "hookPrompt";
+}
+
+function sameItemSnapshot(left: ThreadItem, right: ThreadItem): boolean {
+  return left === right || JSON.stringify(left) === JSON.stringify(right);
 }
 
 function sameTurnSnapshot(left: Turns[number], right: Turns[number]): boolean {

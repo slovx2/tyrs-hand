@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import type { OfficialTurnPage } from "@/app-server/officialClient";
 import { mergeOlderPage, mergeTailPage,
-  mergeTurnSequence } from "./threadHistory";
+  mergeTurnSequence, mergeTurnSnapshot } from "./threadHistory";
 
 describe("官方 Turn 分页合并", () => {
   it("按 Turn ID 去重，并用最新快照原位替换活动 Turn", () => {
@@ -57,6 +57,35 @@ describe("官方 Turn 分页合并", () => {
     expect(merged.turns[0]).toBe(existing);
     expect(merged.turns).toBe(existingTurns);
   });
+
+  it("完成快照暂缺工具 Item 时保留已观察到的调用并更新终态", () => {
+    const running = turn("turn-tool", "inProgress", "streaming");
+    running.items.splice(1, 0, command("tool-1", "inProgress"));
+    const completed = turn("turn-tool", "completed", "final");
+
+    const merged = mergeTurnSnapshot(running, completed);
+
+    expect(merged.status).toBe("completed");
+    expect(merged.items.map((item) => item.id)).toEqual([
+      "tool-1", "item:final",
+    ]);
+  });
+
+  it("同 ID 工具 Item 使用最新状态，新工具追加且不会重复", () => {
+    const previous = turn("turn-tools", "inProgress", "streaming");
+    previous.items.push(command("tool-1", "inProgress"));
+    const incoming = turn("turn-tools", "completed", "final");
+    incoming.items.unshift(command("tool-1", "completed"), command("tool-2", "completed"));
+
+    const merged = mergeTurnSnapshot(previous, incoming);
+
+    expect(merged.items.map((item) => item.id)).toEqual([
+      "tool-1", "tool-2", "item:final",
+    ]);
+    expect(merged.items.find((item) => item.id === "tool-1")).toMatchObject({
+      status: "completed",
+    });
+  });
 });
 
 function page(turns: Turn[], nextCursor: string | null): OfficialTurnPage {
@@ -67,4 +96,11 @@ function turn(id: string, status: Turn["status"] = "completed", marker = id): Tu
   return { id, status, items: [{ type: "agentMessage", id: `item:${marker}`,
     text: marker, phase: "final_answer", memoryCitation: null }], itemsView: "full",
   error: null, startedAt: 1, completedAt: status === "inProgress" ? null : 2, durationMs: null };
+}
+
+function command(id: string, status: "inProgress" | "completed"): Turn["items"][number] {
+  return { type: "commandExecution", id, command: "git status", cwd: "/workspace",
+    processId: null, source: "agent", status, commandActions: [], aggregatedOutput: null,
+    exitCode: status === "completed" ? 0 : null, durationMs: null, pluginId: null,
+    scriptPath: null };
 }

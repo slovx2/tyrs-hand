@@ -22,14 +22,19 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - inputText: "PREVIEW_DIRECT_NAVIGATION"
 - tapOn:
     id: "composer:send"
+- assertNotVisible: "会话不可用"
 - extendedWaitUntil:
     visible:
       id: "messages:list"
     timeout: 10000
 - assertVisible:
     text: "PREVIEW_DIRECT_NAVIGATION"
+- assertNotVisible: "会话不可用"
 - tapOn:
     id: "session:back"
+- extendedWaitUntil:
+    visible: "生成预览任务标题"
+    timeout: 10000
 
 # 官方运行中 Turn
 - scrollUntilVisible:
@@ -149,12 +154,24 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     waitToSettleTimeoutMs: 500
 - tapOn:
     id: "turn:turn-long-16:activity-toggle"
-- assertVisible: "调用了 1 个 MCP 工具、修改了 2 个文件、运行了 4 条命令"
-- assertVisible:
-    id: "tool-group:command-long-16"
+- scrollUntilVisible:
+    element:
+      text: "调用了 1 个 MCP 工具、修改了 2 个文件、运行了 4 条命令"
+    direction: DOWN
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "tool-group:command-long-16"
+    direction: DOWN
+    timeout: 10000
 - tapOn:
     id: "tool-group:command-long-16:toggle"
-- assertVisible: "已运行 pnpm test -- --runInBand"
+- scrollUntilVisible:
+    element:
+      text: "已运行 pnpm test -- --runInBand"
+    direction: DOWN
+    timeout: 10000
+    centerElement: true
 - assertNotVisible: "LONG_TOOL_OUTPUT_MUST_NOT_RENDER"
 - assertVisible:
     id: "chat:scroll-to-latest"

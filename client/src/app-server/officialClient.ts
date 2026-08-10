@@ -5,10 +5,13 @@ import type { ServerNotification } from "@codex-app-server/ServerNotification";
 import type { ServerRequest } from "@codex-app-server/ServerRequest";
 import type { ModelListResponse } from "@codex-app-server/v2/ModelListResponse";
 import type { Thread } from "@codex-app-server/v2/Thread";
+import type { ThreadHistoryMode } from "@codex-app-server/v2/ThreadHistoryMode";
+import type { ThreadItemsListResponse } from "@codex-app-server/v2/ThreadItemsListResponse";
 import type { ThreadListResponse } from "@codex-app-server/v2/ThreadListResponse";
 import type { ThreadReadResponse } from "@codex-app-server/v2/ThreadReadResponse";
 import type { ThreadResumeResponse } from "@codex-app-server/v2/ThreadResumeResponse";
 import type { ThreadStartResponse } from "@codex-app-server/v2/ThreadStartResponse";
+import type { ThreadStartParams } from "@codex-app-server/v2/ThreadStartParams";
 import type { ThreadTurnsListResponse } from "@codex-app-server/v2/ThreadTurnsListResponse";
 import type { Turn } from "@codex-app-server/v2/Turn";
 import type { TurnItemsView } from "@codex-app-server/v2/TurnItemsView";
@@ -18,7 +21,7 @@ import type { TurnSteerResponse } from "@codex-app-server/v2/TurnSteerResponse";
 import type { UserInput } from "@codex-app-server/v2/UserInput";
 
 import { JsonRpcRequestError } from "./jsonRpc";
-import { projectThreadForMobile, projectTurnForMobile } from "./mobileProjection";
+import { projectItemForMobile, projectThreadForMobile, projectTurnForMobile } from "./mobileProjection";
 import type { SubmissionJournal } from "./submissions";
 
 export type TurnPreferences = {
@@ -45,10 +48,17 @@ export type OfficialTurnPage = {
   backwardsCursor: string | null;
 };
 export type ResumedThreadPage = { thread: Thread; page: OfficialTurnPage };
+export type GeneratedThreadTitle = { title: string; description: string };
 type EventListener = (event: ServerNotification | ServerRequest) => void;
 
 export const THREAD_PAGE_SIZE = 5;
 const RECOVERY_PAGE_SIZE = 20;
+const THREAD_ITEM_PAGE_SIZE = 100;
+const PAGINATED_HISTORY_PROBE_THREAD_ID = "00000000-0000-7000-8000-000000000000";
+const TITLE_MODEL = "gpt-5.6-luna";
+const TITLE_TIMEOUT_MS = 30_000;
+const TITLE_PROMPT_MAX_CHARS = 2_000;
+const TITLE_MAX_CHARS = 36;
 
 export interface OfficialRpcClient {
   open(): Promise<unknown>;
@@ -67,6 +77,9 @@ export class OfficialAppServerClient {
   private readonly pendingServerRequests = new Map<string, ServerRequest>();
   private readonly listeners = new Set<EventListener>();
   private readonly submissions = new Map<string, Promise<SubmitResult>>();
+  private readonly internalThreadIds = new Set<string>();
+  private readonly internalNotificationListeners = new Set<(event: ServerNotification) => void>();
+  private paginatedHistorySupport: Promise<boolean> | null = null;
 
   constructor(
     readonly profileId: string,
@@ -75,6 +88,11 @@ export class OfficialAppServerClient {
   ) {
     rpc.onNotification((notification) => this.handleNotification(notification));
     rpc.onServerRequest((request) => {
+      const threadId = requestThreadId(request);
+      if (threadId && this.internalThreadIds.has(threadId)) {
+        rpc.respondError(request.id, -32000, "internal title thread does not accept requests");
+        return;
+      }
       this.pendingServerRequests.set(String(request.id), request);
       this.emit(request);
     });
@@ -112,28 +130,89 @@ export class OfficialAppServerClient {
   }
 
   async resumeThreadPage(threadId: string, itemsView: TurnItemsView = "full",
-    limit = THREAD_PAGE_SIZE): Promise<ResumedThreadPage> {
+    limit = THREAD_PAGE_SIZE, historyMode: ThreadHistoryMode = "legacy"): Promise<ResumedThreadPage> {
+    const paginateItems = itemsView === "full" && historyMode === "paginated";
     const response = await this.rpc.request<ThreadResumeResponse>("thread/resume", {
       threadId,
       excludeTurns: true,
-      initialTurnsPage: { limit, sortDirection: "desc", itemsView },
+      initialTurnsPage: { limit, sortDirection: "desc",
+        itemsView: paginateItems ? "notLoaded" : itemsView },
     });
-    const page = chronologicalPage(response.initialTurnsPage ?? emptyPage());
+    const shellPage = chronologicalPage(response.initialTurnsPage ?? emptyPage());
+    const page = paginateItems
+      ? { ...shellPage, turns: await this.hydrateTurnItems(threadId, shellPage.turns) }
+      : shellPage;
     return { thread: { ...projectThreadForMobile(response.thread), turns: page.turns }, page };
   }
 
   async listTurnPage(threadId: string, cursor: string | null, limit = THREAD_PAGE_SIZE,
-    itemsView: TurnItemsView = "full"): Promise<OfficialTurnPage> {
+    itemsView: TurnItemsView = "full",
+    historyMode: ThreadHistoryMode = "legacy"): Promise<OfficialTurnPage> {
+    const paginateItems = itemsView === "full" && historyMode === "paginated";
     const response = await this.rpc.request<ThreadTurnsListResponse>("thread/turns/list", {
-      threadId, cursor, limit, sortDirection: "desc", itemsView,
+      threadId, cursor, limit, sortDirection: "desc",
+      itemsView: paginateItems ? "notLoaded" : itemsView,
     });
-    return chronologicalPage(response);
+    const page = chronologicalPage(response);
+    return paginateItems
+      ? { ...page, turns: await this.hydrateTurnItems(threadId, page.turns) }
+      : page;
+  }
+
+  private async hydrateTurnItems(threadId: string, turns: Turn[]): Promise<Turn[]> {
+    return Promise.all(turns.map(async (turn) => ({
+      ...projectTurnForMobile(turn),
+      items: await this.listAllTurnItems(threadId, turn.id),
+      itemsView: "full" as const,
+    })));
+  }
+
+  private async listAllTurnItems(threadId: string, turnId: string): Promise<Turn["items"]> {
+    const items: Turn["items"] = [];
+    const seen = new Set<string>();
+    let cursor: string | null = null;
+    do {
+      if (cursor && seen.has(cursor)) throw new Error("thread/items/list 返回了重复游标");
+      if (cursor) seen.add(cursor);
+      const page: ThreadItemsListResponse = await this.rpc.request("thread/items/list", {
+        threadId, turnId, cursor, limit: THREAD_ITEM_PAGE_SIZE, sortDirection: "asc",
+      });
+      items.push(...page.data.map((entry) => projectItemForMobile(entry.item)));
+      cursor = page.nextCursor;
+    } while (cursor);
+    return items;
   }
 
   async startThread(cwd: string, model?: string): Promise<ThreadStartResponse> {
-    const response = await this.rpc.request<ThreadStartResponse>("thread/start", model ? { cwd, model,
-      runtimeWorkspaceRoots: [cwd] } : { cwd, runtimeWorkspaceRoots: [cwd] });
+    const historyMode: ThreadHistoryMode = await this.supportsPaginatedHistory()
+      ? "paginated" : "legacy";
+    const params: ThreadStartParams = model
+      ? { cwd, model, runtimeWorkspaceRoots: [cwd], historyMode }
+      : { cwd, runtimeWorkspaceRoots: [cwd], historyMode };
+    const response = await this.rpc.request<ThreadStartResponse>("thread/start", params);
     return { ...response, thread: projectThreadForMobile(response.thread) };
+  }
+
+  private supportsPaginatedHistory(): Promise<boolean> {
+    if (this.paginatedHistorySupport) return this.paginatedHistorySupport;
+    this.paginatedHistorySupport = this.probePaginatedHistorySupport();
+    return this.paginatedHistorySupport;
+  }
+
+  private async probePaginatedHistorySupport(): Promise<boolean> {
+    try {
+      await this.rpc.request<ThreadItemsListResponse>("thread/items/list", {
+        threadId: PAGINATED_HISTORY_PROBE_THREAD_ID,
+        cursor: null,
+        limit: 1,
+        sortDirection: "asc",
+      });
+      return true;
+    } catch (error) {
+      // 不存在的 Thread 返回业务错误，说明方法已实现；-32601 才表示 Store 不支持分页 Item。
+      return error instanceof JsonRpcRequestError && error.delivery === "rejected" &&
+        error.code !== -32601;
+    }
   }
 
   async listModels(): Promise<ModelListResponse["data"]> {
@@ -199,6 +278,38 @@ export class OfficialAppServerClient {
 
   async setThreadName(threadId: string, name: string): Promise<void> {
     await this.rpc.request("thread/name/set", { threadId, name });
+  }
+
+  async generateThreadTitle(input: { cwd: string; prompt: string;
+    serviceTier: string | null }): Promise<GeneratedThreadTitle | null> {
+    const prompt = input.prompt.trim();
+    if (!prompt) return null;
+    const params: ThreadStartParams = {
+      model: TITLE_MODEL,
+      modelProvider: null,
+      allowProviderModelFallback: true,
+      cwd: input.cwd,
+      runtimeWorkspaceRoots: [],
+      approvalPolicy: "never",
+      permissions: ":read-only",
+      config: titleThreadConfig(),
+      personality: null,
+      ephemeral: true,
+      threadSource: "system",
+      experimentalRawEvents: false,
+      dynamicTools: null,
+      serviceTier: input.serviceTier,
+    };
+    const response = await this.rpc.request<ThreadStartResponse>("thread/start", params);
+    const threadId = response.thread.id;
+    this.internalThreadIds.add(threadId);
+    try {
+      return await this.runTitleTurn(threadId,
+        titleGenerationPrompt(sliceCharacters(prompt, TITLE_PROMPT_MAX_CHARS)), input.serviceTier);
+    } finally {
+      await this.rpc.request("thread/unsubscribe", { threadId }).catch(() => undefined);
+      this.internalThreadIds.delete(threadId);
+    }
   }
 
   pendingRequests(threadId?: string): ServerRequest[] {
@@ -334,10 +445,87 @@ export class OfficialAppServerClient {
     return null;
   }
 
+  private runTitleTurn(threadId: string, prompt: string,
+    serviceTier: string | null): Promise<GeneratedThreadTitle | null> {
+    let turnId: string | null = null;
+    let output = "";
+    let settled = false;
+    return new Promise<GeneratedThreadTitle | null>((resolve, reject) => {
+      const finish = (result: GeneratedThreadTitle | null, error?: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        this.internalNotificationListeners.delete(onNotification);
+        if (error) reject(error); else resolve(result);
+      };
+      const onNotification = (notification: ServerNotification) => {
+        const event = notification as { method: string; params: unknown };
+        const params = event.params as { threadId?: unknown; turnId?: unknown;
+          delta?: unknown; item?: unknown; turn?: unknown };
+        if (params?.threadId !== threadId) return;
+        if (typeof params.turnId === "string" && turnId && params.turnId !== turnId) return;
+        if (event.method === "turn/started") {
+          const started = params.turn as { id?: unknown } | undefined;
+          if (typeof started?.id === "string") turnId = started.id;
+        } else if (event.method === "item/agentMessage/delta" &&
+          typeof params.delta === "string") {
+          output += params.delta;
+        } else if (event.method === "item/completed") {
+          const item = params.item as { type?: unknown; text?: unknown } | undefined;
+          if (item?.type === "agentMessage" && typeof item.text === "string") output = item.text;
+        } else if (event.method === "turn/completed") {
+          const turn = params.turn as { id?: unknown; status?: unknown; error?: {
+            message?: unknown } | null } | undefined;
+          if (typeof turn?.id !== "string" || turnId && turn.id !== turnId) return;
+          turnId = turn.id;
+          if (turn.status !== "completed") {
+            finish(null, new Error(`Luna 标题 Turn 终态为 ${String(turn.status)}`));
+            return;
+          }
+          try {
+            finish(parseGeneratedTitle(output));
+          } catch (error) {
+            finish(null, error instanceof Error ? error : new Error("Luna 标题输出无效"));
+          }
+        }
+      };
+      const timer = setTimeout(() => {
+        if (turnId) void this.rpc.request("turn/interrupt", { threadId, turnId })
+          .catch(() => undefined);
+        finish(null, new Error("等待 Luna 标题超时"));
+      }, TITLE_TIMEOUT_MS);
+      this.internalNotificationListeners.add(onNotification);
+      const params: TurnStartParams = {
+        threadId,
+        input: [textInput(prompt)],
+        cwd: null,
+        approvalPolicy: null,
+        permissions: ":read-only",
+        runtimeWorkspaceRoots: [],
+        model: null,
+        effort: null,
+        serviceTier,
+        summary: "auto",
+        personality: null,
+        outputSchema: titleOutputSchema(),
+        collaborationMode: null,
+      };
+      void this.rpc.request<TurnStartResponse>("turn/start", params).then((response) => {
+        turnId = response.turn.id;
+      }).catch((error) => finish(null,
+        error instanceof Error ? error : new Error("无法启动 Luna 标题 Turn")));
+    });
+  }
+
   private handleNotification(notification: ServerNotification): void {
     if (notification.method === "serverRequest/resolved") {
       this.pendingServerRequests.delete(String(notification.params.requestId));
     }
+    const ephemeralThreadId = ephemeralStartedThreadId(notification);
+    if (ephemeralThreadId) this.internalThreadIds.add(ephemeralThreadId);
+    for (const listener of this.internalNotificationListeners) listener(notification);
+    const threadId = notificationThreadId(notification);
+    if (ephemeralThreadId || threadId && this.internalThreadIds.has(threadId)) return;
     this.emit(notification);
   }
 
@@ -348,6 +536,114 @@ export class OfficialAppServerClient {
 
 export function textInput(text: string): UserInput {
   return { type: "text", text, text_elements: [] };
+}
+
+export function normalizeGeneratedTitle(value: string): string | null {
+  let title = value.split(/\r?\n/, 1)[0]?.trim() ?? "";
+  title = title.replace(/^title[:\s]+/i, "")
+    .replace(/^[`"'“”‘’]+|[`"'“”‘’]+$/g, "")
+    .replace(/\s+/g, " ").replace(/[.?!。？！]+$/, "").trim();
+  if (!title) return null;
+  const characters = Array.from(title);
+  return characters.length <= TITLE_MAX_CHARS
+    ? title : `${characters.slice(0, TITLE_MAX_CHARS - 1).join("").trimEnd()}…`;
+}
+
+function parseGeneratedTitle(raw: string): GeneratedThreadTitle | null {
+  if (!raw.trim()) throw new Error("Luna 标题 Turn 没有最终输出");
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    throw new Error("Luna 标题不符合结构化输出");
+  }
+  if (!value || typeof value !== "object") throw new Error("Luna 标题不符合结构化输出");
+  const result = value as { title?: unknown; description?: unknown };
+  const title = typeof result.title === "string" ? normalizeGeneratedTitle(result.title) : null;
+  if (!title || typeof result.description !== "string" || !result.description.trim()) {
+    throw new Error("Luna 标题不符合结构化输出");
+  }
+  return { title, description: sliceCharacters(result.description.replace(/\s+/g, " ").trim(), 100) };
+}
+
+function titleOutputSchema(): NonNullable<TurnStartParams["outputSchema"]> {
+  return { type: "object", additionalProperties: false, required: ["title", "description"],
+    properties: {
+      title: { type: "string", minLength: 1, maxLength: TITLE_MAX_CHARS },
+      description: { type: "string", minLength: 1, maxLength: 100 },
+    } };
+}
+
+function titleThreadConfig(): NonNullable<ThreadStartParams["config"]> {
+  return {
+    model_reasoning_effort: "low",
+    "features.enable_fanout": false,
+    "features.hooks": false,
+    "features.multi_agent": false,
+    "features.multi_agent_v2": false,
+    "features.plugins": false,
+    "features.tool_suggest": false,
+    "features.apps": false,
+    apps: { _default: { enabled: false, destructive_enabled: false, open_world_enabled: false } },
+    web_search: "disabled",
+  };
+}
+
+function titleGenerationPrompt(prompt: string): string {
+  return [
+    "You are a helpful assistant. You will be presented with a user prompt, and your job is to provide a short title for a task that will be created from that prompt.",
+    "The tasks typically have to do with coding-related tasks, for example requests for bug fixes or questions about a codebase. The title you generate will be shown in the UI to represent the prompt.",
+    "Generate a concise UI title (up to 36 characters) for this task.",
+    "Fill the structured title field with plain text.",
+    "Fill the structured description field with a compact, search-oriented summary (up to 100 characters). Include concrete project names, code areas, artifacts, people, or recurring responsibility terms when relevant so the thread is easy to retrieve by keyword.",
+    "Do not include quotes, markdown, formatting characters, or trailing punctuation in either value.",
+    "If the task includes a ticket reference (e.g. ABC-123), include it verbatim.",
+    "",
+    "Generate a clear, informative task title based solely on the prompt provided. Follow the rules below to ensure consistency, readability, and usefulness.",
+    "",
+    "How to write a good title:",
+    "Generate a single-line title that captures the question or core change requested. The title should be easy to scan and useful in changelogs or review queues.",
+    "- Use an imperative verb first: \"Add\", \"Fix\", \"Update\", \"Refactor\", \"Remove\", \"Locate\", \"Find\", etc.",
+    "- Keep it under 36 characters and under 5 words where possible.",
+    "If the user's prompt is already a short clear title, reuse it verbatim.",
+    "- Capitalize only the first word (unless locale requires otherwise).",
+    "- Write the title in the user's locale.",
+    "- Do not use punctuation at the end.",
+    "- Output the title as plain text with no surrounding quotes or backticks.",
+    "- Use precise, non-redundant language.",
+    "- Translate fixed phrases into the user's locale, but leave code terms in English unless a widely adopted translation exists.",
+    "- If the user provides a title explicitly, reuse it (translated if needed) and skip generation logic.",
+    "- Make it clear when the user is requesting changes versus asking a question.",
+    "- Do NOT respond to the user, answer questions, or attempt to solve the problem; just write a title that can represent the user's query.",
+    "",
+    "Examples:",
+    "- User: \"Can we add dark-mode support to the settings page?\" -> Add dark-mode support",
+    "- User: \"Fehlerbehebung: Beim Anmelden erscheint 500.\" (de-DE) -> Login-Fehler 500 beheben",
+    "- User: \"Refactoriser le composant sidebar pour réduire le code dupliqué.\" (fr-FR) -> Refactoriser composant sidebar",
+    "- User: \"How do I fix our login bug?\" -> Troubleshoot login bug",
+    "- User: \"Where in the codebase is foo_bar created\" -> Locate foo_bar",
+    "- User: \"what's 2+2\" -> Calculate 2+2",
+    "",
+    "User prompt:",
+    prompt,
+  ].join("\n");
+}
+
+function sliceCharacters(value: string, limit: number): string {
+  return Array.from(value).slice(0, limit).join("");
+}
+
+function notificationThreadId(notification: ServerNotification): string | null {
+  const params = notification.params as { threadId?: unknown; thread?: { id?: unknown } };
+  if (typeof params?.threadId === "string") return params.threadId;
+  return typeof params?.thread?.id === "string" ? params.thread.id : null;
+}
+
+function ephemeralStartedThreadId(notification: ServerNotification): string | null {
+  if (notification.method !== "thread/started") return null;
+  const params = notification.params as { thread?: { id?: unknown; ephemeral?: unknown } };
+  return params.thread?.ephemeral === true && typeof params.thread.id === "string"
+    ? params.thread.id : null;
 }
 
 export function latestActiveTurn(thread: Thread): Turn | null {
