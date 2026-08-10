@@ -187,11 +187,15 @@ func (s *Server) applyOfficialLifecycle(ctx context.Context, workspaceID,
 	if count, _ := result.RowsAffected(); count != 1 {
 		return sql.ErrNoRows
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE discord_conversations SET lifecycle_state=$2,
-		lifecycle_revision=lifecycle_revision+CASE WHEN lifecycle_state<>$2 THEN 1 ELSE 0 END,
-		updated_at=now() WHERE id=$1`, conversationID, state)
+	result, err = tx.ExecContext(ctx, `UPDATE discord_conversations SET lifecycle_state=$2,
+		lifecycle_revision=lifecycle_revision+1,updated_at=now()
+		WHERE id=$1 AND lifecycle_state<>$2`, conversationID, state)
 	if err == nil {
-		err = discordintegration.EnqueueConversationLifecycleTx(ctx, tx, conversationID)
+		if changed, changedErr := result.RowsAffected(); changedErr != nil {
+			err = changedErr
+		} else if changed == 1 {
+			err = discordintegration.EnqueueConversationLifecycleTx(ctx, tx, conversationID)
+		}
 	}
 	if err != nil {
 		return err

@@ -50,12 +50,16 @@ func (s *Server) bindDiscoveredOfficialThread(ctx context.Context, workspaceID u
 		if err != nil {
 			return false, err
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE discord_conversations SET
-			lifecycle_state=$2,
-			lifecycle_revision=lifecycle_revision+CASE WHEN lifecycle_state<>$2 THEN 1 ELSE 0 END,
-			updated_at=now() WHERE id=$1`, conversationID, lifecycle)
+		result, updateErr := tx.ExecContext(ctx, `UPDATE discord_conversations SET
+			lifecycle_state=$2,lifecycle_revision=lifecycle_revision+1,updated_at=now()
+			WHERE id=$1 AND lifecycle_state<>$2`, conversationID, lifecycle)
+		err = updateErr
 		if err == nil {
-			err = discordintegration.EnqueueConversationLifecycleTx(ctx, tx, conversationID)
+			if changed, changedErr := result.RowsAffected(); changedErr != nil {
+				err = changedErr
+			} else if changed == 1 {
+				err = discordintegration.EnqueueConversationLifecycleTx(ctx, tx, conversationID)
+			}
 		}
 		if err != nil {
 			return false, err
@@ -67,19 +71,26 @@ func (s *Server) bindDiscoveredOfficialThread(ctx context.Context, workspaceID u
 		return false, err
 	}
 	var bindingID uuid.UUID
+	var boundConversationID uuid.NullUUID
 	err = s.db.QueryRowContext(ctx, `INSERT INTO official_thread_bindings(
 		workspace_id,workspace_project_id,thread_id,lifecycle_state)
 		VALUES($1,$2,$3,$4)
 		ON CONFLICT(workspace_id,thread_id) DO UPDATE SET
 			workspace_project_id=COALESCE(official_thread_bindings.workspace_project_id,
 				EXCLUDED.workspace_project_id),lifecycle_state=EXCLUDED.lifecycle_state,
-			updated_at=now() RETURNING id`, workspaceID, projectID, thread.ID, lifecycle).
-		Scan(&bindingID)
+			updated_at=now() RETURNING id,conversation_id`, workspaceID, projectID,
+		thread.ID, lifecycle).Scan(&bindingID, &boundConversationID)
 	if err != nil {
 		return false, err
 	}
 	if err = s.ensureOfficialThreadDiscordPost(ctx, bindingID, thread); err != nil {
 		return false, err
+	}
+	if boundConversationID.Valid {
+		if err = s.applyOfficialLifecycle(ctx, workspaceID, boundConversationID.UUID,
+			thread.ID, lifecycle); err != nil {
+			return false, err
+		}
 	}
 	return true, nil
 }
