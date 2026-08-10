@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
@@ -107,15 +108,30 @@ func (s *Server) applyOfficialThreadName(ctx context.Context, workspaceID uuid.U
 func (s *Server) applyOfficialThreadSettings(ctx context.Context, workspaceID uuid.UUID,
 	threadID string, settings officialThreadSettings,
 ) error {
-	effort, tier := "", ""
+	effort := ""
 	if settings.Effort != nil {
 		effort = *settings.Effort
 	}
-	if settings.ServiceTier != nil {
-		tier = *settings.ServiceTier
+	tier, err := officialServiceTierForConversation(settings.ServiceTier)
+	if err != nil {
+		return err
 	}
 	return discordintegration.ApplyOfficialThreadSettings(ctx, s.db, workspaceID, threadID,
 		discordintegration.OfficialThreadSettings{Model: settings.Model,
 			ReasoningEffort: effort, ServiceTier: tier,
 			CollaborationMode: settings.CollaborationMode.Mode})
+}
+
+func officialServiceTierForConversation(value *string) (string, error) {
+	if value == nil || *value == "" {
+		return "", nil
+	}
+	switch *value {
+	case "default", "standard":
+		return "standard", nil
+	case "priority", "fast":
+		return "fast", nil
+	default:
+		return "", fmt.Errorf("官方 Thread service tier 不受支持: %s", *value)
+	}
 }
