@@ -61,7 +61,7 @@ A Worker belongs to one real OS user and may bind to at most one Workspace. A Wo
 - A Worker starts exactly one Codex App Server for its lifetime. Desktop connections are Hub sessions, so disconnecting one client never restarts or stops the upstream. Restart the Worker to apply machine Codex configuration changes.
 - Control assigns outbound SSH credentials and hosts to Workers. GitHub tokens never enter the Codex environment or Git remotes.
 
-The minimum Codex CLI version is `0.145.0`. Worker startup and `doctor` reject older versions.
+The Codex CLI version is fixed at `0.147.0`. Worker startup and `doctor` reject other versions.
 
 ## Codex configuration boundary
 
@@ -85,7 +85,7 @@ Desktop, Discord, and Mobile do not consume these defaults. Explicit session or 
 
 See the [minimal installation guide](docs/deployment/minimal-installation.md) for complete production steps.
 
-Control requires Docker Engine, Docker Compose, PostgreSQL, Redis, and an HTTPS endpoint. Source development additionally requires Go `1.26.5`, Node.js `24.14.0`, pnpm `11.14.0`, and Codex `>= 0.145.0`.
+Control requires Docker Engine, Docker Compose, PostgreSQL, Redis, and an HTTPS endpoint. Source development additionally requires Go `1.26.5`, Node.js `24.14.0`, pnpm `11.14.0`, and Codex `0.147.0`.
 
 ```bash
 cp .env.example .env

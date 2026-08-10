@@ -340,6 +340,29 @@ func (s *SQLoutbox) Apply(ctx context.Context, item OutboxItem) error {
 			if err != nil {
 				return err
 			}
+			if value.MessageID != "" && (item.OperationType == "message.create" ||
+				item.OperationType == "forum.post.create") {
+				var delivered struct {
+					ChannelID string `json:"channelId"`
+				}
+				_ = json.Unmarshal(item.Payload, &delivered)
+				if value.ThreadID != "" {
+					delivered.ChannelID = value.ThreadID
+				}
+				if delivered.ChannelID == "" {
+					return errors.New("待更新 Projection 的 Discord 创建结果缺少频道 ID")
+				}
+				_, err = tx.ExecContext(ctx, `UPDATE integration_outbox SET
+					operation_type='message.update',nonce=NULL,
+					route_key='channels/'||$2::text||'/messages',
+					payload=payload||jsonb_build_object(
+						'channelId',$2::text,'messageId',$3::text),
+					updated_at=now() WHERE id=$1 AND status='pending'`, item.ID,
+					delivered.ChannelID, value.MessageID)
+				if err != nil {
+					return err
+				}
+			}
 			if value.MessageID != "" {
 				var guildID string
 				if err = tx.QueryRowContext(ctx, `SELECT guild_id FROM discord_projections
@@ -602,7 +625,7 @@ func (s *SQLoutbox) Apply(ctx context.Context, item OutboxItem) error {
 		if value.MessageID != "" && previous.ChannelID != "" && previous.MessageID != "" &&
 			value.MessageID != previous.MessageID {
 			if !messageReplacementReferenceSupported(item.OperationKey) {
-				return fmt.Errorf("Discord 替代消息缺少本地引用回写: %s", item.OperationKey)
+				return fmt.Errorf("discord 替代消息缺少本地引用回写: %s", item.OperationKey)
 			}
 			_, err = tx.ExecContext(ctx, `UPDATE integration_outbox SET
 				operation_type='message.update', nonce=NULL,

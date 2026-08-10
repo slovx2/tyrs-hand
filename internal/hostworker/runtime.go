@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -29,6 +30,8 @@ type RuntimeOptions struct {
 	BrowserWorkerToken   string
 	BrowserDesktopToken  string
 	BrowserServiceSocket string
+	CodexStdout          io.Writer
+	CodexStderr          io.Writer
 	Controller           appserverhub.Controller
 	Logger               *zap.Logger
 }
@@ -103,8 +106,14 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 		values[codex.BrowserMCPDesktopTokenEnvironment] = options.BrowserDesktopToken
 	}
 	command.Env = replaceEnvironment(environment, values)
-	command.Stdout = os.Stdout
-	command.Stderr = os.Stderr
+	command.Stdout = options.CodexStdout
+	if command.Stdout == nil {
+		command.Stdout = os.Stdout
+	}
+	command.Stderr = options.CodexStderr
+	if command.Stderr == nil {
+		command.Stderr = os.Stderr
+	}
 	if err := command.Start(); err != nil {
 		serviceProxy.close()
 		return nil, fmt.Errorf("启动宿主 Codex App Server: %w", err)

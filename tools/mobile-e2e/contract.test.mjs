@@ -28,7 +28,7 @@ test('Maestro 与运行时依赖全部固定', async () => {
   assert.match(control, /redis:8\.4\.0-bookworm@sha256:[0-9a-f]{64}/)
   const dependencies = JSON.parse(await readFile(
     resolve(root, 'deploy/worker/dependencies.json'), 'utf8'))
-  assert.equal(dependencies.codexMinimumVersion, '0.145.0')
+  assert.equal(dependencies.codexMinimumVersion, '0.147.0')
 })
 
 test('所有 Flow 只用稳定 ID 操作生产 UI', async () => {
