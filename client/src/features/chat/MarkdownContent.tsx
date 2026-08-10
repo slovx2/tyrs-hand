@@ -1,20 +1,87 @@
-import { memo, useMemo } from "react";
-import { Platform, StyleSheet, Text } from "react-native";
-import Markdown, { type RenderFunction, type RenderRules } from "react-native-markdown-display";
+import { Fragment, memo, type ReactNode, useMemo } from "react";
+import { Platform, StyleSheet, Text, View } from "react-native";
+import Markdown, { type ASTNode, MarkdownIt, parser, type RenderFunction,
+  type RenderRules } from "react-native-markdown-display";
 
 import { useTheme } from "@/theme/ThemeProvider";
 import { CachedMessageImage } from "@/features/images/CachedMessageImage";
 
 type MarkdownContentProps = {
   children: string;
+  cacheKey: string;
   compact?: boolean;
   imageTestPrefix?: string;
 };
 
 const monoFont = Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" });
+const markdownIt = new MarkdownIt({ typographer: true });
+const MAX_AST_CACHE_ENTRIES = 48;
+const MAX_AST_CACHE_SOURCE_CHARACTERS = 160_000;
+const MAX_AST_ENTRY_SOURCE_CHARACTERS = 32_000;
 
-const selectableTextGroup: RenderFunction = (node, children, _parents, styles) =>
-  <Text key={node.key} selectable style={styles.textgroup}>{children}</Text>;
+type MarkdownAstCacheEntry = {
+  source: string;
+  ast: ASTNode[];
+};
+
+const markdownAstCache = new Map<string, MarkdownAstCacheEntry>();
+let markdownAstCacheSourceCharacters = 0;
+
+const identityRenderer = ((nodes: ASTNode[]) => nodes) as unknown as Parameters<typeof parser>[1];
+
+function parseMarkdownAst(source: string): ASTNode[] {
+  return parser(source, identityRenderer, markdownIt) as ASTNode[];
+}
+
+function cachedMarkdownAst(cacheKey: string, source: string): ASTNode[] {
+  const cached = markdownAstCache.get(cacheKey);
+  if (cached?.source === source) {
+    markdownAstCache.delete(cacheKey);
+    markdownAstCache.set(cacheKey, cached);
+    return cached.ast;
+  }
+  if (cached) {
+    markdownAstCache.delete(cacheKey);
+    markdownAstCacheSourceCharacters -= cached.source.length;
+  }
+
+  const ast = parseMarkdownAst(source);
+  if (source.length > MAX_AST_ENTRY_SOURCE_CHARACTERS) return ast;
+
+  markdownAstCache.set(cacheKey, { source, ast });
+  markdownAstCacheSourceCharacters += source.length;
+  while (markdownAstCache.size > MAX_AST_CACHE_ENTRIES ||
+    markdownAstCacheSourceCharacters > MAX_AST_CACHE_SOURCE_CHARACTERS) {
+    const oldestKey = markdownAstCache.keys().next().value as string | undefined;
+    if (oldestKey === undefined) break;
+    const oldest = markdownAstCache.get(oldestKey);
+    markdownAstCache.delete(oldestKey);
+    markdownAstCacheSourceCharacters -= oldest?.source.length ?? 0;
+  }
+  return ast;
+}
+
+const textBlockStyle: Record<string, string> = {
+  paragraph: "paragraphBlockText",
+  heading1: "heading1BlockText",
+  heading2: "heading2BlockText",
+  heading3: "heading3BlockText",
+  heading4: "heading4BlockText",
+  heading5: "heading5BlockText",
+  heading6: "heading6BlockText",
+};
+
+const selectableTextGroup: RenderFunction = (node, children, parents, styles) => {
+  const parent = parents[0];
+  const blockStyle = parent && !containsVisualNode(parent)
+    ? styles[textBlockStyle[parent.type] ?? ""] : undefined;
+  return <Text key={node.key} selectable style={[styles.textgroup, blockStyle]}>{children}</Text>;
+};
+
+const lightweightTextBlock: RenderFunction = (node, children, _parents, styles) =>
+  containsVisualNode(node)
+    ? <View key={node.key} style={styles[`_VIEW_SAFE_${node.type}`]}>{children}</View>
+    : <Fragment key={node.key}>{children}</Fragment>;
 
 const selectableCode: RenderFunction = (node, _children, _parents, styles, inheritedStyles = {}) => {
   const content = node.content.endsWith("\n") ? node.content.slice(0, -1) : node.content;
@@ -23,13 +90,26 @@ const selectableCode: RenderFunction = (node, _children, _parents, styles, inher
 
 const selectableRules: RenderRules = {
   textgroup: selectableTextGroup,
+  paragraph: lightweightTextBlock,
+  heading1: lightweightTextBlock,
+  heading2: lightweightTextBlock,
+  heading3: lightweightTextBlock,
+  heading4: lightweightTextBlock,
+  heading5: lightweightTextBlock,
+  heading6: lightweightTextBlock,
   code_block: selectableCode,
   fence: selectableCode,
 };
 
-export const MarkdownContent = memo(function MarkdownContent({ children, compact = false,
+function containsVisualNode(node: ASTNode): boolean {
+  return node.type === "image" || node.type === "blocklink" ||
+    node.children.some(containsVisualNode);
+}
+
+export const MarkdownContent = memo(function MarkdownContent({ children, cacheKey, compact = false,
   imageTestPrefix = "markdown:image" }: MarkdownContentProps) {
   const theme = useTheme();
+  const ast = useMemo(() => cachedMarkdownAst(cacheKey, children), [cacheKey, children]);
   const blockGap = compact ? 5 : 8;
   const markdownStyle = useMemo(() => StyleSheet.create({
     body: { width: "100%" },
@@ -38,24 +118,34 @@ export const MarkdownContent = memo(function MarkdownContent({ children, compact
     paragraph: { width: "100%", flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start",
       marginTop: 0, marginBottom: blockGap, color: theme.colors.text, fontFamily: "Inter_400Regular",
       fontSize: 15, lineHeight: 24 },
+    paragraphBlockText: { width: "100%", marginTop: 0, marginBottom: blockGap },
     heading1: { width: "100%", flexDirection: "row", flexWrap: "wrap", marginTop: compact ? 8 : 12,
       marginBottom: blockGap, color: theme.colors.text, fontFamily: "Inter_600SemiBold", fontSize: 24,
       lineHeight: 32 },
+    heading1BlockText: { width: "100%", marginTop: compact ? 8 : 12,
+      marginBottom: blockGap },
     heading2: { width: "100%", flexDirection: "row", flexWrap: "wrap", marginTop: compact ? 7 : 10,
       marginBottom: blockGap, color: theme.colors.text, fontFamily: "Inter_600SemiBold", fontSize: 21,
       lineHeight: 29 },
+    heading2BlockText: { width: "100%", marginTop: compact ? 7 : 10,
+      marginBottom: blockGap },
     heading3: { width: "100%", flexDirection: "row", flexWrap: "wrap", marginTop: compact ? 6 : 8,
       marginBottom: blockGap, color: theme.colors.text, fontFamily: "Inter_600SemiBold", fontSize: 18,
       lineHeight: 26 },
+    heading3BlockText: { width: "100%", marginTop: compact ? 6 : 8,
+      marginBottom: blockGap },
     heading4: { width: "100%", flexDirection: "row", flexWrap: "wrap", marginTop: 6,
       marginBottom: blockGap, color: theme.colors.text, fontFamily: "Inter_600SemiBold", fontSize: 16,
       lineHeight: 24 },
+    heading4BlockText: { width: "100%", marginTop: 6, marginBottom: blockGap },
     heading5: { width: "100%", flexDirection: "row", flexWrap: "wrap", marginTop: 4,
       marginBottom: blockGap, color: theme.colors.text, fontFamily: "Inter_600SemiBold", fontSize: 15,
       lineHeight: 23 },
+    heading5BlockText: { width: "100%", marginTop: 4, marginBottom: blockGap },
     heading6: { width: "100%", flexDirection: "row", flexWrap: "wrap", marginTop: 4,
       marginBottom: blockGap, color: theme.colors.textMuted, fontFamily: "Inter_600SemiBold", fontSize: 14,
       lineHeight: 22 },
+    heading6BlockText: { width: "100%", marginTop: 4, marginBottom: blockGap },
     strong: { color: theme.colors.text, fontFamily: "Inter_600SemiBold", fontWeight: "600" },
     em: { color: theme.colors.text, fontStyle: "italic" },
     s: { color: theme.colors.textMuted, textDecorationLine: "line-through" },
@@ -110,5 +200,7 @@ export const MarkdownContent = memo(function MarkdownContent({ children, compact
         testID={`${imageTestPrefix}:${node.key}`} />;
     },
   }), [imageTestPrefix]);
-  return <Markdown mergeStyle={false} rules={rules} style={markdownStyle}>{children}</Markdown>;
+  return <Markdown markdownit={markdownIt} mergeStyle={false} rules={rules} style={markdownStyle}>
+    {ast as unknown as ReactNode}
+  </Markdown>;
 });

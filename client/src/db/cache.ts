@@ -1,98 +1,102 @@
-import { bootstrapSchema, sessionSchema, type Bootstrap, type Session } from "@/types/protocol";
-import { isPreviewMode, isPreviewServerId } from "@/preview/config";
-import { getDatabase, runDatabaseWrite, withDatabaseTransaction } from "./database";
+import type { Thread } from "@codex-app-server/v2/Thread";
 
-export async function loadCachedBootstrap(serverId: string): Promise<Bootstrap | null> {
-  if (isPreviewMode && isPreviewServerId(serverId)) {
-    const { previewBootstrap } = await import("@/preview/runtime");
-    return previewBootstrap(serverId);
-  }
-  const database = await getDatabase();
-  const row = await database.getFirstAsync<{ bootstrap_payload: string | null }>(
-    "SELECT bootstrap_payload FROM connections WHERE server_id=?", serverId);
-  if (!row?.bootstrap_payload) return null;
-  const parsed = bootstrapSchema.safeParse(JSON.parse(row.bootstrap_payload));
-  return parsed.success ? parsed.data : null;
-}
+import { THREAD_PAGE_SIZE } from "@/app-server/officialClient";
+import type { MobileProject, ThreadRecord } from "@/app-server/types";
+import { isPreviewMode } from "@/preview/config";
+import { getDatabase, withDatabaseTransaction } from "./database";
 
-export async function saveBootstrap(serverId: string, bootstrap: Bootstrap): Promise<void> {
-  if (isPreviewMode && isPreviewServerId(serverId)) return;
-  const now = new Date().toISOString();
-  await withDatabaseTransaction(async (database) => {
-    await database.runAsync("UPDATE connections SET bootstrap_payload=?,updated_at=? WHERE server_id=?",
-      JSON.stringify(bootstrap), now, serverId);
-    for (const project of bootstrap.projects) {
-      await database.runAsync(`INSERT INTO projects(server_id,id,workspace_id,name,relative_path,payload,updated_at)
-        VALUES (?,?,?,?,?,?,?) ON CONFLICT(server_id,id) DO UPDATE SET workspace_id=excluded.workspace_id,
-        name=excluded.name,relative_path=excluded.relative_path,payload=excluded.payload,updated_at=excluded.updated_at`,
-      serverId, project.id, project.workspaceId, project.name, project.relativePath,
-      JSON.stringify(project), now);
-    }
-  });
-}
-
-export async function loadCachedSessions(serverId: string): Promise<Session[]> {
-  if (isPreviewMode && isPreviewServerId(serverId)) {
-    const { previewSessions } = await import("@/preview/runtime");
-    return previewSessions(serverId);
-  }
+export async function loadCachedProjects(profileId: string): Promise<MobileProject[]> {
+  if (isPreviewMode) return [];
   const database = await getDatabase();
   const rows = await database.getAllAsync<{ payload: string }>(
-    "SELECT payload FROM sessions WHERE server_id=? ORDER BY last_activity_at DESC", serverId);
-  return rows.flatMap((row) => {
-    const parsed = sessionSchema.safeParse(JSON.parse(row.payload));
-    return parsed.success ? [parsed.data] : [];
-  });
+    "SELECT payload FROM projects WHERE profile_id=? ORDER BY lower(name),id", profileId);
+  return rows.flatMap((row) => parseProject(row.payload));
 }
 
-export async function saveSessions(serverId: string, sessions: Session[]): Promise<void> {
-  if (isPreviewMode && isPreviewServerId(serverId)) return;
+export async function saveProjects(profileId: string, projects: MobileProject[]): Promise<void> {
+  if (isPreviewMode) return;
+  const now = new Date().toISOString();
   await withDatabaseTransaction(async (database) => {
-    const connection = await database.getFirstAsync<{ session_reads_initialized: number }>(
-      "SELECT session_reads_initialized FROM connections WHERE server_id=?", serverId);
-    const initializeBaseline = connection?.session_reads_initialized !== 1;
-    const now = new Date().toISOString();
-    for (const session of sessions) {
-      await database.runAsync(`INSERT INTO sessions(server_id,id,project_id,title,lifecycle_state,
-        last_message_seq,last_activity_at,payload) VALUES (?,?,?,?,?,?,?,?)
-        ON CONFLICT(server_id,id) DO UPDATE SET project_id=excluded.project_id,title=excluded.title,
-        lifecycle_state=excluded.lifecycle_state,last_message_seq=excluded.last_message_seq,
-        last_activity_at=excluded.last_activity_at,payload=excluded.payload`, serverId,
-      session.id, session.projectId, session.title, session.lifecycleState,
-      session.lastMessageSeq, session.lastActivityAt, JSON.stringify(session));
-      if (initializeBaseline) {
-        await database.runAsync(`INSERT INTO session_reads(server_id,session_id,last_read_agent_seq,
-          last_read_interactive_id,initialized,updated_at) VALUES (?,?,?,?,1,?)
-          ON CONFLICT(server_id,session_id) DO UPDATE SET
-          last_read_agent_seq=excluded.last_read_agent_seq,
-          last_read_interactive_id=excluded.last_read_interactive_id,
-          initialized=1,updated_at=excluded.updated_at`, serverId, session.id,
-        session.lastAgentMessageSeq, session.pendingInteractiveId, now);
-      } else {
-        await database.runAsync(`UPDATE session_reads SET last_read_agent_seq=?,
-          last_read_interactive_id=?,initialized=1,updated_at=?
-          WHERE server_id=? AND session_id=? AND initialized=0`, session.lastAgentMessageSeq,
-        session.pendingInteractiveId, now, serverId, session.id);
-      }
-    }
-    if (initializeBaseline) {
-      await database.runAsync("UPDATE connections SET session_reads_initialized=1 WHERE server_id=?", serverId);
+    await database.runAsync("DELETE FROM projects WHERE profile_id=?", profileId);
+    for (const project of projects) {
+      await database.runAsync(`INSERT INTO projects(profile_id,id,workspace_id,name,relative_path,
+        payload,updated_at) VALUES (?,?,?,?,?,?,?)`, profileId, project.id,
+      project.workspaceId ?? "ssh", project.name, project.relativePath, JSON.stringify(project), now);
     }
   });
 }
 
-export async function getSyncCursor(serverId: string): Promise<number> {
-  if (isPreviewMode && isPreviewServerId(serverId)) return 0;
+export async function loadCachedThreads(profileId: string): Promise<ThreadRecord[]> {
+  if (isPreviewMode) return [];
   const database = await getDatabase();
-  const row = await database.getFirstAsync<{ cursor: number }>(
-    "SELECT cursor FROM sync_state WHERE server_id=?", serverId);
-  return row?.cursor ?? 0;
+  const rows = await database.getAllAsync<{ payload: string; archived: number }>(
+    `SELECT payload,archived FROM threads WHERE profile_id=?
+      ORDER BY updated_at DESC,id`, profileId);
+  return rows.flatMap((row) => parseThreadRecord(row.payload, row.archived === 1));
 }
 
-export async function setSyncCursor(serverId: string, cursor: number): Promise<void> {
-  if (isPreviewMode && isPreviewServerId(serverId)) return;
-  await runDatabaseWrite((database) => database.runAsync(
-    `INSERT INTO sync_state(server_id,cursor,last_synced_at) VALUES (?,?,?)
-    ON CONFLICT(server_id) DO UPDATE SET cursor=excluded.cursor,last_synced_at=excluded.last_synced_at`,
-    serverId, cursor, new Date().toISOString()));
+export async function replaceCachedThreads(profileId: string,
+  records: ThreadRecord[]): Promise<void> {
+  if (isPreviewMode) return;
+  await withDatabaseTransaction(async (database) => {
+    await database.runAsync("DELETE FROM threads WHERE profile_id=?", profileId);
+    for (const record of records) {
+      await insertThread(database, profileId, record);
+    }
+  });
+}
+
+export async function saveThreadRecord(profileId: string, record: ThreadRecord): Promise<void> {
+  if (isPreviewMode) return;
+  await withDatabaseTransaction(async (database) => insertThread(database, profileId, record));
+}
+
+async function insertThread(database: Awaited<ReturnType<typeof getDatabase>>, profileId: string,
+  record: ThreadRecord): Promise<void> {
+  const cached = cacheableThreadRecord(record);
+  await database.runAsync(`INSERT INTO threads(profile_id,id,archived,updated_at,payload)
+    VALUES (?,?,?,?,?) ON CONFLICT(profile_id,id) DO UPDATE SET archived=excluded.archived,
+    updated_at=excluded.updated_at,payload=excluded.payload`, profileId, cached.thread.id,
+  cached.archived ? 1 : 0, cached.thread.updatedAt, JSON.stringify(cached));
+}
+
+export function cacheableThreadRecord(record: ThreadRecord): ThreadRecord {
+  if (record.history.kind !== "loaded") return record;
+  return {
+    ...record,
+    thread: { ...record.thread, turns: record.thread.turns.slice(-THREAD_PAGE_SIZE) },
+    history: {
+      ...record.history,
+      olderCursor: record.history.tailOlderCursor,
+      hasLoadedOldest: record.history.tailOlderCursor === null,
+    },
+  };
+}
+
+function parseProject(payload: string): MobileProject[] {
+  try {
+    const value = JSON.parse(payload) as Partial<MobileProject>;
+    return typeof value.id === "string" && typeof value.name === "string" &&
+      typeof value.cwd === "string" ? [value as MobileProject] : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseThreadRecord(payload: string, archived: boolean): ThreadRecord[] {
+  try {
+    const value = JSON.parse(payload) as Partial<ThreadRecord>;
+    const thread = value.thread as Thread | undefined;
+    const history = value.history;
+    const validHistory = history?.kind === "summary" || history?.kind === "loaded" &&
+      (typeof history.olderCursor === "string" || history.olderCursor === null) &&
+      (typeof history.tailOlderCursor === "string" || history.tailOlderCursor === null) &&
+      typeof history.hasLoadedOldest === "boolean";
+    return thread && typeof thread.id === "string" && Array.isArray(thread.turns) && validHistory
+      ? [{ thread, archived, workspaceId: value.workspaceId ?? null,
+        projectId: value.projectId ?? null, history }]
+      : [];
+  } catch {
+    return [];
+  }
 }

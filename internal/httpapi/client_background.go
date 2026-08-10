@@ -29,28 +29,16 @@ type clientNotification struct {
 	AttemptCount    int
 }
 
-// RunBackground 投递移动端通知并清理协议保留期数据；生命周期与 HTTP Server 一致。
+// RunBackground 仅保留服务端 Run 租约恢复；移动 App 已改为直连官方协议，
+// 不再投递旧 App 推送或维护旧客户端协议保留期。
 func (s *Server) RunBackground(ctx context.Context) error {
-	pushTicker := time.NewTicker(2 * time.Second)
-	cleanupTicker := time.NewTicker(time.Hour)
 	recoveryTicker := time.NewTicker(runRecoveryInterval)
-	defer pushTicker.Stop()
-	defer cleanupTicker.Stop()
 	defer recoveryTicker.Stop()
 	s.requeueExpiredRuns(ctx)
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-pushTicker.C:
-			for range 20 {
-				worked, err := s.dispatchClientNotification(ctx)
-				if err != nil || !worked {
-					break
-				}
-			}
-		case <-cleanupTicker.C:
-			s.cleanupClientProtocol(ctx)
 		case <-recoveryTicker.C:
 			s.requeueExpiredRuns(ctx)
 		}

@@ -1,269 +1,297 @@
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import { createServer, type Server } from "node:http";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ServerRequest } from "@codex-app-server/ServerRequest";
+import type { Thread } from "@codex-app-server/v2/Thread";
+import type { Turn } from "@codex-app-server/v2/Turn";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ConversationSnapshotResponse } from "@/types/protocol";
+import type { OfficialTurnPage, ResumedThreadPage } from "@/app-server/officialClient";
+import type { ThreadRecord } from "@/app-server/types";
+import type { Connection } from "@/db/connections";
+import { useAppStore } from "./appStore";
 
-type AsyncDatabase = {
-  execAsync: (sql: string) => Promise<void>;
-  runAsync: (sql: string, ...parameters: unknown[]) => Promise<unknown>;
-  getFirstAsync: <T>(sql: string, ...parameters: unknown[]) => Promise<T | null>;
-  getAllAsync: <T>(sql: string, ...parameters: unknown[]) => Promise<T[]>;
-  withExclusiveTransactionAsync: (operation: (database: AsyncDatabase) => Promise<void>) => Promise<void>;
-};
-
-const testState = vi.hoisted(() => ({ database: null as AsyncDatabase | null, failSql: "" }));
-
-vi.mock("expo-sqlite", () => ({
-  openDatabaseAsync: vi.fn(async () => {
-    if (!testState.database) throw new Error("测试数据库尚未初始化");
-    return testState.database;
-  }),
+const harness = vi.hoisted(() => ({
+  client: null as unknown,
+  saved: [] as unknown[],
 }));
 
-vi.mock("@/db/connections", () => ({ getToken: vi.fn(async () => "integration-token") }));
+vi.mock("expo-crypto", () => ({ randomUUID: () => "message-id" }));
+vi.mock("@/app-server/attachments", () => ({
+  materializeUserInput: async () => [],
+}));
+vi.mock("@/app-server/registry", () => ({
+  officialClientFor: () => harness.client,
+}));
+vi.mock("@/app-server/outbox", () => ({
+  completeOutbox: async () => undefined,
+  discardOutboxItem: async () => undefined,
+  enqueueOutbox: async () => undefined,
+  failOutbox: async () => undefined,
+  listOutbox: async () => [],
+  markOutboxProcessing: async () => undefined,
+  retryOutboxItem: async () => undefined,
+  setOutboxThread: async () => undefined,
+}));
+vi.mock("@/db/cache", () => ({
+  loadCachedProjects: async () => [],
+  loadCachedThreads: async () => [],
+  replaceCachedThreads: async () => undefined,
+  saveProjects: async () => undefined,
+  saveThreadRecord: async (_profileId: string, record: unknown) => { harness.saved.push(record); },
+}));
+vi.mock("@/db/connections", () => ({
+  listConnections: async () => [],
+  setActiveConnection: async () => undefined,
+}));
+vi.mock("@/db/sshProjects", () => ({ listSSHProjects: async () => [] }));
+vi.mock("@/db/settings", () => ({
+  loadThemeMode: async () => "system",
+  saveLastTurnPreferences: async () => undefined,
+  saveThemeMode: async () => undefined,
+}));
 
-const serverId = "10000000-0000-4000-8000-000000000001";
-const sessionId = "20000000-0000-4000-8000-000000000001";
-const projectId = "30000000-0000-4000-8000-000000000001";
-const workspaceId = "40000000-0000-4000-8000-000000000001";
-const profileId = "50000000-0000-4000-8000-000000000001";
-let nativeDatabase: DatabaseSync;
+class FakeOfficialClient {
+  resume!: (threadId: string) => Promise<ResumedThreadPage>;
+  listPage!: (threadId: string, cursor: string | null) => Promise<OfficialTurnPage>;
+  metadata!: (threadId: string) => Promise<Thread>;
+  readonly pageCalls: (string | null)[] = [];
+  private listener: ((event: { method: string; params: unknown }) => void) | null = null;
 
-function createAsyncDatabase(database: DatabaseSync): AsyncDatabase {
-  const adapter: AsyncDatabase = {
-    execAsync: async (sql) => { database.exec(sql); },
-    runAsync: async (sql, ...parameters) => {
-      if (testState.failSql && sql.includes(testState.failSql)) throw new Error("injected sqlite failure");
-      return database.prepare(sql).run(...parameters as SQLInputValue[]);
-    },
-    getFirstAsync: async <T>(sql: string, ...parameters: unknown[]) =>
-      (database.prepare(sql).get(...parameters as SQLInputValue[]) as T | undefined) ?? null,
-    getAllAsync: async <T>(sql: string, ...parameters: unknown[]) =>
-      database.prepare(sql).all(...parameters as SQLInputValue[]) as T[],
-    withExclusiveTransactionAsync: async (operation) => {
-      database.exec("BEGIN IMMEDIATE");
-      try {
-        await operation(adapter);
-        database.exec("COMMIT");
-      } catch (error) {
-        database.exec("ROLLBACK");
-        throw error;
-      }
-    },
-  };
-  return adapter;
+  async connect(): Promise<void> {}
+  async resumeThreadPage(threadId: string): Promise<ResumedThreadPage> {
+    return this.resume(threadId);
+  }
+  async listTurnPage(threadId: string, cursor: string | null): Promise<OfficialTurnPage> {
+    this.pageCalls.push(cursor);
+    return this.listPage(threadId, cursor);
+  }
+  async readThreadMetadata(threadId: string): Promise<Thread> { return this.metadata(threadId); }
+  subscribe(listener: (event: { method: string; params: unknown }) => void): () => void {
+    this.listener = listener;
+    return () => { this.listener = null; };
+  }
+  pendingRequests(): ServerRequest[] { return []; }
+  emit(method: string, threadId: string): void {
+    this.listener?.({ method, params: { threadId } });
+  }
+  emitName(threadId: string, threadName: string): void {
+    this.listener?.({ method: "thread/name/updated", params: { threadId, threadName } });
+  }
 }
 
-function snapshot(cursor = 10, title = "缓存会话"): ConversationSnapshotResponse {
-  return {
-    session: { id: sessionId, workspaceId, projectId, agentProfileId: profileId, title,
-      lifecycleState: "active", historyCompleteness: "complete", model: null,
-      reasoningEffort: null, serviceTier: "standard", collaborationMode: "default",
-      settingsVersion: 1, lastMessageSeq: 1, isRunning: false, hasRunIssue: false,
-      lastAgentMessageSeq: 1, pendingInteractiveId: null, lastActivityAt: "2026-08-05T00:00:00Z",
-      createdAt: "2026-08-05T00:00:00Z", updatedAt: "2026-08-05T00:00:00Z" },
-    settings: { agentProfileId: profileId, model: null, reasoningEffort: null,
-      serviceTier: "standard", collaborationMode: "default", settingsVersion: 1 },
-    currentRun: null,
-    turns: { items: [{ kind: "message", id: "60000000-0000-4000-8000-000000000001",
-      anchorSeq: 1, messages: [{ id: "60000000-0000-4000-8000-000000000001", sessionId,
-        seq: 1, localId: "message-1", participantId: null, role: "agent",
-        content: { type: "text", text: "缓存内容" }, attachments: [],
-        createdAt: "2026-08-05T00:00:00Z", updatedAt: "2026-08-05T00:00:00Z" }], runs: [] }],
-      hasMoreBefore: false, nextCursor: "" },
-    snapshotCursor: cursor,
-  };
-}
+describe("会话分页 Repository", () => {
+  beforeEach(() => { harness.saved = []; });
 
-async function insertConnection(): Promise<void> {
-  await testState.database!.runAsync(`INSERT INTO connections(server_id,base_url,name,device_id,active,
-    created_at,updated_at) VALUES (?,?,?,?,1,?,?)`, serverId, "http://127.0.0.1", "测试", "device",
-  "2026-08-05T00:00:00Z", "2026-08-05T00:00:00Z");
-}
-
-beforeAll(async () => {
-  nativeDatabase = new DatabaseSync(":memory:");
-  testState.database = createAsyncDatabase(nativeDatabase);
-  const { getDatabase } = await import("@/db/database");
-  await getDatabase();
-});
-
-beforeEach(async () => {
-  testState.failSql = "";
-  nativeDatabase.exec(`DELETE FROM connections;`);
-  await insertConnection();
-  const { useConversationStore } = await import("./conversationStore");
-  useConversationStore.setState({ entries: {} });
-});
-
-afterAll(() => nativeDatabase.close());
-
-describe("conversation cache integration", () => {
-  it("事务写入并读回完整快照", async () => {
-    const { loadConversationWindow, saveConversationSnapshot } = await import("@/db/conversationCache");
-    await saveConversationSnapshot(serverId, snapshot());
-    const cached = await loadConversationWindow(serverId, sessionId);
-    expect(cached?.settings.settingsVersion).toBe(1);
-    expect(cached?.turns.items.map((turn) => turn.anchorSeq)).toEqual([1]);
-    expect(cached?.snapshotCursor).toBe(10);
-  });
-
-  it("按会话 LRU 淘汰且保护当前会话", async () => {
-    const { enforceConversationCacheBudget, saveConversationSnapshot } =
-      await import("@/db/conversationCache");
-    await saveConversationSnapshot(serverId, snapshot());
-    const second = snapshot(11, "第二个会话");
-    second.session.id = "20000000-0000-4000-8000-000000000002";
-    second.turns.items = [];
-    await saveConversationSnapshot(serverId, second);
-    const evicted = await enforceConversationCacheBudget(serverId, second.session.id, 1);
-    expect(evicted).toEqual([sessionId]);
-  });
-
-  it("分页写入保持顺序和覆盖边界", async () => {
-    const { loadCachedTurnsBefore, loadConversationWindow, saveConversationSnapshot,
-      saveConversationTurnPage } = await import("@/db/conversationCache");
-    const latest = snapshot();
-    latest.turns.items[0]!.anchorSeq = 3;
-    latest.turns.hasMoreBefore = true;
-    latest.turns.nextCursor = btoa("3");
-    await saveConversationSnapshot(serverId, latest);
-    const older = [1, 2].map((anchorSeq) => ({ ...latest.turns.items[0]!,
-      id: `60000000-0000-4000-8000-${String(anchorSeq).padStart(12, "0")}`, anchorSeq }));
-    await saveConversationTurnPage(serverId, sessionId, older, "", false);
-    expect((await loadCachedTurnsBefore(serverId, sessionId, 3)).map((turn) => turn.anchorSeq))
-      .toEqual([1, 2]);
-    expect((await loadConversationWindow(serverId, sessionId))?.turnsComplete).toBe(true);
-  });
-
-  it("steer 重归属时原子移除临时孤立轮次", async () => {
-    const { loadConversationWindow, saveConversationSnapshot, saveConversationTurn } =
-      await import("@/db/conversationCache");
-    const current = snapshot();
-    await saveConversationSnapshot(serverId, current);
-    const orphanId = "60000000-0000-4000-8000-000000000002";
-    const orphan = { ...current.turns.items[0]!, id: orphanId, anchorSeq: 2 };
-    await saveConversationTurn(serverId, sessionId, orphan);
-    await saveConversationTurn(serverId, sessionId, current.turns.items[0]!, orphanId);
-    expect((await loadConversationWindow(serverId, sessionId))?.turns.items.map((turn) => turn.id))
-      .toEqual([current.turns.items[0]!.id]);
-  });
-
-  it("activities 按 segment 持久化并记录完整状态", async () => {
-    const { isSegmentCacheComplete, loadCachedSegmentActivities, saveConversationSnapshot,
-      saveSegmentActivityPage } = await import("@/db/conversationCache");
-    await saveConversationSnapshot(serverId, snapshot());
-    const segmentId = "70000000-0000-4000-8000-000000000001";
-    await saveSegmentActivityPage(serverId, sessionId, "71000000-0000-4000-8000-000000000001",
-      segmentId, { activities: [{ id: "72000000-0000-4000-8000-000000000001", itemId: "item",
-        kind: "commentary", firstEventSequence: 1, lastEventSequence: 2, status: "completed",
-        payload: { text: "过程" }, occurredAt: "2026-08-05T00:00:00Z" }], hasMoreBefore: false,
-        persistedThroughEventSeq: 2, finalAnswerDraft: null }, true);
-    expect((await loadCachedSegmentActivities(serverId, segmentId))).toHaveLength(1);
-    expect(await isSegmentCacheComplete(serverId, segmentId)).toBe(true);
-  });
-
-  it("事务中途失败不会留下半份快照", async () => {
-    const { loadConversationWindow, saveConversationSnapshot } = await import("@/db/conversationCache");
-    testState.failSql = "INSERT INTO conversation_turns";
-    await expect(saveConversationSnapshot(serverId, snapshot())).rejects.toThrow("injected sqlite failure");
-    testState.failSql = "";
-    expect(await loadConversationWindow(serverId, sessionId)).toBeNull();
-  });
-});
-
-async function startSnapshotServer(response: ConversationSnapshotResponse,
-  delayMs = 0): Promise<{ server: Server; baseUrl: string; requests: string[] }> {
-  const requests: string[] = [];
-  const server = createServer((request, result) => {
-    requests.push(request.url ?? "");
-    const send = () => {
-      result.statusCode = 200;
-      result.setHeader("Content-Type", "application/json");
-      if (request.url?.includes("/snapshot")) result.end(JSON.stringify(response));
-      else if (request.url?.includes("/turns?")) {
-        result.end(JSON.stringify({ items: [], hasMoreBefore: false, nextCursor: "" }));
-      } else result.end(JSON.stringify({ activities: [], hasMoreBefore: false, hasMoreAfter: false,
-        persistedThroughEventSeq: 0, finalAnswerDraft: null }));
+  it("首次只落最近 5 个 Turn，旧页按游标前插并保持时间顺序", async () => {
+    const profileId = "profile-first";
+    const threadId = "thread-first";
+    const client = new FakeOfficialClient();
+    client.resume = async () => ({ thread: thread(threadId, turns(6, 10)),
+      page: page(turns(6, 10), "older-1") });
+    client.listPage = async (_id, cursor) => {
+      expect(cursor).toBe("older-1");
+      return page(turns(1, 5), null);
     };
-    if (delayMs > 0) setTimeout(send, delayMs); else send();
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const address = server.address();
-  if (!address || typeof address === "string") throw new Error("测试 HTTP server 启动失败");
-  return { server, baseUrl: `http://127.0.0.1:${address.port}`, requests };
-}
+    client.metadata = async () => thread(threadId, []);
+    installState(profileId, summaryRecord(threadId), client);
 
-describe("conversation repository integration", () => {
-  it("通过真实 HTTP 拉取、校验并持久化快照", async () => {
-    const remote = await startSnapshotServer(snapshot());
+    await useAppStore.getState().loadThread(threadId);
+    expect(currentRecord(threadId).thread.turns.map((item) => item.id)).toEqual(
+      ["turn-6", "turn-7", "turn-8", "turn-9", "turn-10"]);
+
+    await useAppStore.getState().loadOlderThread(threadId);
+    expect(currentRecord(threadId).thread.turns.map((item) => item.id)).toEqual(
+      turns(1, 10).map((item) => item.id));
+    expect(currentRecord(threadId).history).toMatchObject({
+      olderCursor: null, hasLoadedOldest: true,
+    });
+  });
+
+  it("旧页与尾部刷新并发时都保留，过期响应不能回滚新尾部", async () => {
+    const profileId = "profile-concurrent";
+    const threadId = "thread-concurrent";
+    const client = new FakeOfficialClient();
+    const older = deferred<OfficialTurnPage>();
+    client.resume = async () => ({ thread: thread(threadId, turns(6, 10)),
+      page: page(turns(6, 10), "older-1") });
+    client.listPage = async (_id, cursor) => cursor === "older-1"
+      ? older.promise : page(turns(8, 12), "tail-older");
+    client.metadata = async () => thread(threadId, []);
+    installState(profileId, loadedRecord(threadId, turns(6, 10), "older-1"), client);
+
+    const olderRequest = useAppStore.getState().loadOlderThread(threadId);
+    await Promise.resolve();
+    await useAppStore.getState().refreshThreadTail(threadId);
+    older.resolve(page(turns(1, 5), null));
+    await olderRequest;
+
+    expect(currentRecord(threadId).thread.turns.map((item) => item.id))
+      .toEqual(turns(1, 12).map((item) => item.id));
+  });
+
+  it("尾部刷新执行期间的重复失效信号只触发一次串行追赶", async () => {
+    const profileId = "profile-coalesce";
+    const threadId = "thread-coalesce";
+    const client = new FakeOfficialClient();
+    const firstPage = deferred<OfficialTurnPage>();
+    let tailCalls = 0;
+    client.resume = async () => ({ thread: thread(threadId, turns(1, 5)),
+      page: page(turns(1, 5), null) });
+    client.listPage = async () => ++tailCalls === 1
+      ? firstPage.promise : page([turn(5, "completed", "updated"), turn(6)], null);
+    client.metadata = async () => thread(threadId, []);
+    installState(profileId, loadedRecord(threadId, turns(1, 5), null), client);
+
+    const first = useAppStore.getState().refreshThreadTail(threadId);
+    await Promise.resolve();
+    const second = useAppStore.getState().refreshThreadTail(threadId);
+    const third = useAppStore.getState().refreshThreadTail(threadId);
+    firstPage.resolve(page(turns(1, 5), null));
+    await Promise.all([first, second, third]);
+
+    expect(tailCalls).toBe(2);
+    expect(currentRecord(threadId).thread.turns.at(-1)?.id).toBe("turn-6");
+    expect(currentRecord(threadId).thread.turns.find((item) => item.id === "turn-5")
+      ?.items[0]?.id).toBe("item:updated");
+  });
+
+  it("最新页无重叠时不扫描旧页，重置到新的官方分页边界", async () => {
+    const profileId = "profile-gap";
+    const threadId = "thread-gap";
+    const client = new FakeOfficialClient();
+    client.resume = async () => ({ thread: thread(threadId, turns(8, 12)),
+      page: page(turns(8, 12), "new-older") });
+    client.listPage = async (_id, cursor) => {
+      expect(cursor).toBeNull();
+      return page(turns(8, 12), "new-older");
+    };
+    client.metadata = async () => thread(threadId, []);
+    installState(profileId, loadedRecord(threadId, turns(1, 2), "old-older"), client);
+
+    await useAppStore.getState().refreshThreadTail(threadId);
+
+    expect(client.pageCalls).toEqual([null]);
+    expect(currentRecord(threadId).thread.turns.map((item) => item.id))
+      .toEqual(turns(8, 12).map((item) => item.id));
+    expect(currentRecord(threadId).history).toMatchObject({
+      olderCursor: "new-older", tailOlderCursor: "new-older", hasLoadedOldest: false,
+    });
+  });
+
+  it("连续流式通知使用前沿节流，不会因持续 delta 永远推迟刷新", async () => {
+    vi.useFakeTimers();
     try {
-      const { useConversationStore } = await import("./conversationStore");
-      const connection = { serverId, baseUrl: remote.baseUrl, name: "集成", deviceId: "device", active: true };
-      await useConversationStore.getState().open(connection, sessionId);
-      const entry = useConversationStore.getState().entries[`${serverId}:${sessionId}`];
-      expect(entry?.status).toBe("ready");
-      expect(entry?.view?.turns).toHaveLength(1);
-      expect(remote.requests.filter((url) => url.includes("/snapshot"))).toHaveLength(1);
-      const { loadConversationWindow } = await import("@/db/conversationCache");
-      expect((await loadConversationWindow(serverId, sessionId))?.session.title).toBe("缓存会话");
+      const profileId = "profile-stream";
+      const threadId = "thread-stream";
+      const client = new FakeOfficialClient();
+      client.resume = async () => ({ thread: thread(threadId, turns(1, 5)),
+        page: page(turns(1, 5), null) });
+      client.listPage = async () => page(turns(1, 5), null);
+      client.metadata = async () => thread(threadId, []);
+      installState(profileId, loadedRecord(threadId, turns(1, 5), null), client);
+      await useAppStore.getState().refreshThreadTail(threadId);
+      client.pageCalls.length = 0;
+
+      client.emit("item/agentMessage/delta", threadId);
+      await vi.advanceTimersByTimeAsync(60);
+      client.emit("item/agentMessage/delta", threadId);
+      await vi.advanceTimersByTimeAsync(60);
+      client.emit("item/agentMessage/delta", threadId);
+      await Promise.resolve();
+
+      expect(client.pageCalls).toEqual([null]);
     } finally {
-      remote.server.close();
+      vi.useRealTimers();
     }
   });
 
-  it("弱网刷新相同 snapshotCursor 时保持 view 引用，断网时继续返回缓存", async () => {
-    const { saveConversationSnapshot } = await import("@/db/conversationCache");
-    await saveConversationSnapshot(serverId, snapshot());
-    const remote = await startSnapshotServer(snapshot(10, "同游标网络副本"), 30);
-    const { useConversationStore } = await import("./conversationStore");
-    const connection = { serverId, baseUrl: remote.baseUrl, name: "集成", deviceId: "device", active: true };
-    const opening = useConversationStore.getState().open(connection, sessionId);
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    const cachedView = useConversationStore.getState().entries[`${serverId}:${sessionId}`]?.view;
-    await opening;
-    expect(useConversationStore.getState().entries[`${serverId}:${sessionId}`]?.view).toBe(cachedView);
-    expect(cachedView?.session.title).toBe("缓存会话");
-    await new Promise<void>((resolve) => remote.server.close(() => resolve()));
-    useConversationStore.setState({ entries: {} });
-    await useConversationStore.getState().open(connection, sessionId);
-    const offline = useConversationStore.getState().entries[`${serverId}:${sessionId}`];
-    expect(offline?.status).toBe("offline");
-    expect(offline?.view?.turns).toHaveLength(1);
+  it("完成通知丢失时，最新页权威对账会结束活动 Turn", async () => {
+    const profileId = "profile-missed-completion";
+    const threadId = "thread-missed-completion";
+    const client = new FakeOfficialClient();
+    client.resume = async () => ({ thread: thread(threadId, turns(1, 5)),
+      page: page(turns(1, 5), null) });
+    client.listPage = async () => page([
+      ...turns(1, 4), turn(5, "completed", "final-answer"),
+    ], null);
+    client.metadata = async () => ({ ...thread(threadId, []), status: { type: "idle" } });
+    installState(profileId,
+      loadedRecord(threadId, [...turns(1, 4), turn(5, "inProgress", "streaming")], null),
+      client);
+
+    expect(currentRecord(threadId).thread.turns.at(-1)?.status).toBe("inProgress");
+    await useAppStore.getState().refreshThreadTail(threadId);
+
+    expect(currentRecord(threadId).thread.turns.at(-1)).toMatchObject({
+      id: "turn-5", status: "completed", items: [{ id: "item:final-answer" }],
+    });
   });
 
-  it("网络 snapshotCursor 前进时替换缓存 view", async () => {
-    const { saveConversationSnapshot } = await import("@/db/conversationCache");
-    await saveConversationSnapshot(serverId, snapshot());
-    const remote = await startSnapshotServer(snapshot(11, "网络新快照"), 30);
-    try {
-      const { useConversationStore } = await import("./conversationStore");
-      const connection = { serverId, baseUrl: remote.baseUrl, name: "集成", deviceId: "device", active: true };
-      const opening = useConversationStore.getState().open(connection, sessionId);
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      const cachedView = useConversationStore.getState().entries[`${serverId}:${sessionId}`]?.view;
-      await opening;
-      const networkView = useConversationStore.getState().entries[`${serverId}:${sessionId}`]?.view;
-      expect(networkView).not.toBe(cachedView);
-      expect(networkView?.snapshotCursor).toBe(11);
-      expect(networkView?.session.title).toBe("网络新快照");
-    } finally {
-      remote.server.close();
-    }
-  });
+  it("改名通知直接更新内存与 SQLite 缓存，不依赖目录刷新", async () => {
+    const profileId = "profile-title";
+    const threadId = "thread-title";
+    const client = new FakeOfficialClient();
+    client.resume = async () => ({ thread: thread(threadId, []), page: page([], null) });
+    client.listPage = async () => page([], null);
+    client.metadata = async () => thread(threadId, []);
+    installState(profileId, summaryRecord(threadId), client);
+    await useAppStore.getState().loadThread(threadId);
+    harness.saved = [];
 
-  it("拒绝旧 snapshotCursor 覆盖已处理的 durable 更新", async () => {
-    const remote = await startSnapshotServer(snapshot(10), 20);
-    try {
-      const { useConversationStore } = await import("./conversationStore");
-      const connection = { serverId, baseUrl: remote.baseUrl, name: "集成", deviceId: "device", active: true };
-      const opening = useConversationStore.getState().open(connection, sessionId);
-      useConversationStore.getState().noteCursor(connection, sessionId, 11);
-      await opening;
-      expect(useConversationStore.getState().entries[`${serverId}:${sessionId}`]?.view).toBeNull();
-    } finally {
-      remote.server.close();
-    }
+    client.emitName(threadId, "Luna 生成标题");
+    await vi.waitFor(() => expect(currentRecord(threadId).thread.name).toBe("Luna 生成标题"));
+
+    expect(harness.saved).toHaveLength(1);
+    expect((harness.saved[0] as ThreadRecord).thread.name).toBe("Luna 生成标题");
   });
 });
+
+function installState(profileId: string, record: ThreadRecord,
+  client: FakeOfficialClient): void {
+  harness.client = client;
+  const connection: Connection = { kind: "ssh", profileId, name: profileId, active: true,
+    host: "worker", port: 2222, user: "codex", keyRef: "key", hostFingerprint: null };
+  useAppStore.setState({ activeConnection: connection, connections: [connection], threads: [record],
+    projects: [], pendingRequests: {}, modelsByTarget: {}, error: null });
+}
+
+function currentRecord(threadId: string): ThreadRecord {
+  return useAppStore.getState().threads.find((record) => record.thread.id === threadId)!;
+}
+
+function summaryRecord(threadId: string): ThreadRecord {
+  return { thread: thread(threadId, []), archived: false, workspaceId: null,
+    projectId: null, history: { kind: "summary" } };
+}
+
+function loadedRecord(threadId: string, value: Turn[], olderCursor: string | null): ThreadRecord {
+  return { ...summaryRecord(threadId), thread: thread(threadId, value),
+    history: { kind: "loaded", olderCursor, tailOlderCursor: olderCursor,
+      hasLoadedOldest: olderCursor === null } };
+}
+
+function page(value: Turn[], nextCursor: string | null): OfficialTurnPage {
+  return { turns: value, nextCursor, backwardsCursor: null };
+}
+
+function turns(first: number, last: number): Turn[] {
+  return Array.from({ length: last - first + 1 }, (_, index) => turn(first + index));
+}
+
+function turn(index: number, status: Turn["status"] = "completed", marker = String(index)): Turn {
+  return { id: `turn-${index}`, status, items: [{ type: "agentMessage", id: `item:${marker}`,
+    text: marker, phase: "final_answer", memoryCitation: null }], itemsView: "full", error: null,
+  startedAt: index, completedAt: status === "inProgress" ? null : index, durationMs: null };
+}
+
+function thread(id: string, value: Turn[]): Thread {
+  return { id, sessionId: id, forkedFromId: null, parentThreadId: null, preview: id,
+    ephemeral: false, section: null, sectionEnteredAt: null, modelProvider: "openai", createdAt: 1,
+    updatedAt: 2, recencyAt: 2, status: { type: "idle" }, path: null, cwd: "/workspace",
+    cliVersion: "0.147.0", source: "appServer", threadSource: null, agentNickname: null,
+    agentRole: null, gitInfo: null, name: null, turns: value, extra: null, historyMode: "legacy",
+    canAcceptDirectInput: true };
+}
+
+function deferred<Value>(): { promise: Promise<Value>; resolve: (value: Value) => void } {
+  let resolve!: (value: Value) => void;
+  return { promise: new Promise<Value>((done) => { resolve = done; }), resolve };
+}

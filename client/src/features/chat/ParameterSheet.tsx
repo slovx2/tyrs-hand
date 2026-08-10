@@ -1,10 +1,11 @@
+import type { Model } from "@codex-app-server/v2/Model";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { Button, Muted, Title } from "@/components/ui";
+import type { TurnPreferences } from "@/app-server/officialClient";
 import { SegmentedControl } from "@/components/SegmentedControl";
+import { Button, Muted, Title } from "@/components/ui";
 import { useTheme } from "@/theme/ThemeProvider";
-import type { Bootstrap, SessionSettings } from "@/types/protocol";
 
 function Choice({ label, selected, onPress, testID }: {
   label: string;
@@ -13,94 +14,95 @@ function Choice({ label, selected, onPress, testID }: {
   testID: string;
 }) {
   const theme = useTheme();
-  return <Pressable testID={testID} onPress={onPress} style={[styles.choice, { borderColor: theme.colors.border,
-    backgroundColor: selected ? theme.colors.surfaceAlt : theme.colors.surface }]}>
+  return <Pressable testID={testID} onPress={onPress}
+    accessibilityRole="button" accessibilityState={{ selected }} style={[styles.choice,
+    { borderColor: theme.colors.border,
+      backgroundColor: selected ? theme.colors.surfaceAlt : theme.colors.surface }]}>
     <Text style={[styles.choiceText, { color: theme.colors.text }]}>{label}</Text>
-    {selected && <View testID={`${testID}:selected`} />}
+    {selected && <View pointerEvents="none" testID={`${testID}:selected`}
+      style={styles.selectedMarker} />}
     {selected && <Text style={{ color: theme.colors.accent }}>✓</Text>}
   </Pressable>;
 }
 
-export function ParameterSheet({ visible, bootstrap, workspaceId, value, currentRunLabel,
-  onChange, onClose, onCancel }: {
+export function ParameterSheet({ visible, models, value, onChange, onClose, onCancel }: {
   visible: boolean;
-  bootstrap: Bootstrap;
-  workspaceId: string;
-  value: SessionSettings;
-  currentRunLabel?: string;
-  onChange: (value: SessionSettings) => void;
+  models: Model[];
+  value: TurnPreferences;
+  onChange: (value: TurnPreferences) => void;
   onClose: () => void;
   onCancel?: () => void;
 }) {
   const theme = useTheme();
-  const models = (bootstrap.modelCatalogs[workspaceId]?.data ?? []).filter((item) => !item.hidden);
-  const model = models.find((item) => item.id === value.model) ?? models[0];
-  const supportsFast = model?.serviceTiers.some((tier) => tier.id === "priority" || tier.id === "fast") ||
-    model?.additionalSpeedTiers.includes("fast");
+  const visibleModels = models.filter((item) => !item.hidden);
+  const model = visibleModels.find((item) => item.id === value.model) ?? visibleModels[0];
   return <Modal testID="parameters:sheet" visible={visible} animationType="slide"
     presentationStyle="pageSheet" onRequestClose={onCancel ?? onClose}>
     <SafeAreaView style={[styles.sheet, { backgroundColor: theme.colors.app }]}> 
       <View style={styles.header}>
-        <View><Title>会话参数</Title><Muted>{currentRunLabel ?? "发送成功后记为下次默认值"}</Muted></View>
+        <View><Title>会话参数</Title><Muted>参数由当前 Codex App Server 提供</Muted></View>
         <View style={styles.headerActions}>
-          <Button testID="parameters:cancel" title="取消" variant="secondary" onPress={onCancel ?? onClose} />
+          <Button testID="parameters:cancel" title="取消" variant="secondary"
+            onPress={onCancel ?? onClose} />
           <Button testID="parameters:done" title="完成" onPress={onClose} />
         </View>
       </View>
       <ScrollView contentContainerStyle={styles.content}>
-        <Title>智能体</Title>
-        {bootstrap.agentProfiles.map((profile) => <Choice key={profile.id} label={profile.name}
-          testID={`parameters:profile:${encodeURIComponent(profile.id)}`}
-          selected={profile.id === value.agentProfileId}
-          onPress={() => onChange({ ...value, agentProfileId: profile.id })} />)}
         <Title>模型</Title>
-        {models.map((option) => <Choice key={option.id} label={option.displayName}
+        {visibleModels.map((option) => <Choice key={option.id} label={option.displayName}
           testID={`parameters:model:${encodeURIComponent(option.id)}`}
-          selected={option.id === value.model} onPress={() => onChange({ ...value, model: option.id,
-            reasoningEffort: option.defaultReasoningEffort,
-            serviceTier: value.serviceTier === "fast" && !modelSupportsFast(option) ? "standard" : value.serviceTier })} />)}
+          selected={option.id === value.model} onPress={() => onChange({ ...value,
+            model: option.id, effort: option.defaultReasoningEffort,
+            serviceTier: option.defaultServiceTier })} />)}
         {model && <>
           <Title>推理等级</Title>
-          <View style={styles.wrap}>{model.supportedReasoningEfforts.map((effort) =>
-            <Pressable key={effort.reasoningEffort} testID={`parameters:reasoning:${effort.reasoningEffort}`}
-              onPress={() => onChange({ ...value, reasoningEffort: effort.reasoningEffort })}
+          <View style={styles.wrap}>{model.supportedReasoningEfforts.map((option) => {
+            const selected = value.effort === option.reasoningEffort;
+            const testID = `parameters:reasoning:${option.reasoningEffort}`;
+            return <Pressable key={option.reasoningEffort} testID={testID}
+              accessibilityRole="button" accessibilityState={{ selected }}
+              onPress={() => onChange({ ...value, effort: option.reasoningEffort })}
               style={[styles.chip, { borderColor: theme.colors.border,
-                backgroundColor: value.reasoningEffort === effort.reasoningEffort ? theme.colors.accent : theme.colors.surface }]}>
-              <Text style={{ color: value.reasoningEffort === effort.reasoningEffort ? theme.colors.accentForeground : theme.colors.text,
-                fontFamily: "Inter_500Medium" }}>{effort.reasoningEffort}</Text>
-              {value.reasoningEffort === effort.reasoningEffort && <View pointerEvents="none"
-                testID={`parameters:reasoning:${effort.reasoningEffort}:selected`} style={styles.selectedMarker} />}
-            </Pressable>)}</View>
+                backgroundColor: selected ? theme.colors.accent : theme.colors.surface }]}>
+              <Text style={{ color: selected ? theme.colors.accentForeground : theme.colors.text,
+                fontFamily: "Inter_500Medium" }}>{option.reasoningEffort}</Text>
+              {selected && <View pointerEvents="none" testID={`${testID}:selected`}
+                style={styles.selectedMarker} />}
+            </Pressable>;
+          })}</View>
+          {model.serviceTiers.length > 0 && <>
+            <Title>服务等级</Title>
+            <Choice label="使用服务器默认值" testID="parameters:tier:default"
+              selected={value.serviceTier === null}
+              onPress={() => onChange({ ...value, serviceTier: null })} />
+            {model.serviceTiers.map((tier) => <Choice key={tier.id} label={tier.name}
+              testID={`parameters:tier:${encodeURIComponent(tier.id)}`}
+              selected={value.serviceTier === tier.id}
+              onPress={() => onChange({ ...value, serviceTier: tier.id })} />)}
+          </>}
         </>}
-        <Title>速度</Title>
-        <SegmentedControl testIDPrefix="parameters:tier" value={value.serviceTier}
-          options={supportsFast ? [{ value: "standard", label: "标准" },
-            { value: "fast", label: "快速" }] as const :
-            [{ value: "standard", label: "标准" }] as const}
-          onChange={(serviceTier) => onChange({ ...value, serviceTier })} />
         <Title>模式</Title>
-        <SegmentedControl testIDPrefix="parameters:mode" value={value.collaborationMode} options={[
-          { value: "default", label: "直接执行" }, { value: "plan", label: "先做计划" },
-        ] as const} onChange={(collaborationMode) => onChange({ ...value, collaborationMode })} />
+        <SegmentedControl testIDPrefix="parameters:mode" value={value.collaborationMode}
+          options={[{ value: "default", label: "直接执行" },
+            { value: "plan", label: "先做计划" }] as const}
+          onChange={(collaborationMode) => onChange({ ...value, collaborationMode })} />
       </ScrollView>
     </SafeAreaView>
   </Modal>;
 }
 
-function modelSupportsFast(model: Bootstrap["modelCatalogs"][string]["data"][number]) {
-  return model.serviceTiers.some((tier) => tier.id === "priority" || tier.id === "fast") ||
-    model.additionalSpeedTiers.includes("fast");
-}
-
 const styles = StyleSheet.create({
   sheet: { flex: 1 },
-  header: { padding: 16, paddingTop: 24, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  header: { padding: 16, paddingTop: 24, flexDirection: "row", justifyContent: "space-between",
+    alignItems: "center", gap: 12 },
   headerActions: { flexDirection: "row", gap: 8 },
   content: { padding: 16, paddingBottom: 48, gap: 10 },
   choice: { minHeight: 46, borderWidth: StyleSheet.hairlineWidth, borderRadius: 8,
-    paddingHorizontal: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    paddingHorizontal: 14, flexDirection: "row", alignItems: "center",
+    justifyContent: "space-between" },
   choiceText: { fontFamily: "Inter_500Medium", fontSize: 14 },
-  wrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 999, paddingHorizontal: 13, paddingVertical: 8 },
   selectedMarker: StyleSheet.absoluteFillObject,
+  wrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 999,
+    paddingHorizontal: 13, paddingVertical: 8 },
 });

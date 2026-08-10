@@ -16,7 +16,6 @@ import {
   Server,
   ShieldCheck,
   SlidersHorizontal,
-  Smartphone,
   Workflow,
   type LucideIcon,
 } from 'lucide-react'
@@ -41,7 +40,6 @@ import { SettingsPage } from './pages/SettingsPage'
 import { GitHubAgentSettingsPage } from './pages/GitHubAgentSettingsPage'
 import { WorkersPage } from './pages/WorkersPage'
 import { SSHPage } from './pages/SSHPage'
-import { DevicesPage } from './pages/DevicesPage'
 import { useUI } from './state'
 
 interface SetupStatus {
@@ -68,10 +66,6 @@ const navigation: NavigationGroup[] = [
   {
     label: 'Compute',
     items: [{ to: '/workers', label: 'Worker 与 Workspace', icon: Server }],
-  },
-  {
-    label: 'Clients',
-    items: [{ to: '/devices', label: '设备与配对', icon: Smartphone }],
   },
   {
     label: 'Integrations',
@@ -180,7 +174,6 @@ export function App() {
           element={<ResourcePage resource="jobs" title="任务与尝试" />}
         />
         <Route path="workers" element={<WorkersPage />} />
-        <Route path="devices" element={<DevicesPage />} />
         <Route path="ssh" element={<SSHPage />} />
         <Route
           path="worktrees"

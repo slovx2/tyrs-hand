@@ -7,6 +7,8 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - tapOn:
     id: "project:row:0"
 - tapOn:
+    id: "project:new-task:add"
+- tapOn:
     id: "composer:attachments"
 - tapOn:
     id: "composer:attachment:camera"
@@ -18,4 +20,3 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     visible:
       id: "composer:attachment:0"
     timeout: 30000
-

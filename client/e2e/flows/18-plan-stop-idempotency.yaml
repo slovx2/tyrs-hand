@@ -19,6 +19,8 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - tapOn:
     id: "project:row:0"
 - tapOn:
+    id: "project:new-task:add"
+- tapOn:
     id: "composer:parameters"
 - tapOn:
     id: "parameters:mode:plan"

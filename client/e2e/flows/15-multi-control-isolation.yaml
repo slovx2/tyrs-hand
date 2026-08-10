@@ -1,12 +1,6 @@
 appId: ${TYRS_HAND_E2E_APP_ID}
 ---
-- runFlow:
-    when:
-      visible:
-        id: "project:back"
-    commands:
-      - tapOn:
-          id: "project:back"
+- runFlow: _shared/go-root.yaml
 - tapOn:
     id: "tab:projects"
 - assertVisible: "beta-control"
@@ -21,4 +15,3 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - assertVisible: "alpha-primary"
 - assertVisible: "zeta-secondary"
 - assertNotVisible: "beta-control"
-

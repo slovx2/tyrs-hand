@@ -3,22 +3,28 @@ import * as ImagePicker from "expo-image-picker";
 import { useState } from "react";
 import { Alert, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import type { LocalAttachment } from "@/sync/outbox";
+import type { LocalAttachment } from "@/app-server/attachments";
 import { useTheme } from "@/theme/ThemeProvider";
+import { composerPrimaryAction } from "./composerAction";
 
 export function ChatComposer({ value, onChange, attachments, onAttachmentsChange, onParameters,
-  onSend, sending, parameterLabel }: {
+  onSend, onStop, active = false, sending, stopping = false, parameterLabel }: {
   value: string;
   onChange: (value: string) => void;
   attachments: LocalAttachment[];
   onAttachmentsChange: (attachments: LocalAttachment[]) => void;
   onParameters: () => void;
   onSend: () => void;
+  onStop?: (() => void) | undefined;
+  active?: boolean | undefined;
   sending: boolean;
+  stopping?: boolean | undefined;
   parameterLabel: string;
 }) {
   const theme = useTheme();
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
+  const hasContent = value.trim() !== "" || attachments.length > 0;
+  const primaryAction = composerPrimaryAction(active, hasContent, sending || stopping);
   const add = (items: LocalAttachment[]) => {
     if (attachments.length + items.length > 10) {
       Alert.alert("附件过多", "每条消息最多 10 个附件");
@@ -64,11 +70,19 @@ export function ChatComposer({ value, onChange, attachments, onAttachmentsChange
         <Pressable testID="composer:parameters" onPress={onParameters} style={[styles.parameter, { backgroundColor: theme.colors.surfaceAlt }]}> 
           <Text numberOfLines={1} style={{ color: theme.colors.textMuted, fontSize: 12 }}>{parameterLabel}</Text>
         </Pressable>
-        <Pressable testID="composer:send" accessibilityLabel="发送" disabled={sending || value.trim() === ""}
-          onPress={() => { Keyboard.dismiss(); onSend(); }}
-          style={[styles.send, { backgroundColor: theme.colors.accent,
-            opacity: sending || value.trim() === "" ? 0.4 : 1 }]}>
-          <Text style={{ color: theme.colors.accentForeground, fontSize: 18 }}>↑</Text>
+        <Pressable testID={primaryAction.kind === "stop" ? "session:stop" : "composer:send"}
+          accessibilityLabel={primaryAction.kind === "stop" ? "停止当前 Turn" : "发送"}
+          accessibilityState={{ disabled: primaryAction.disabled }} disabled={primaryAction.disabled}
+          onPress={() => {
+            Keyboard.dismiss();
+            if (primaryAction.kind === "stop") onStop?.(); else onSend();
+          }}
+          style={[styles.send, { backgroundColor: primaryAction.kind === "stop"
+            ? theme.colors.text : theme.colors.accent,
+          opacity: primaryAction.disabled ? 0.4 : 1 }]}>
+          {primaryAction.kind === "stop"
+            ? <View style={[styles.stopGlyph, { backgroundColor: theme.colors.surface }]} />
+            : <Text style={{ color: theme.colors.accentForeground, fontSize: 18 }}>↑</Text>}
         </Pressable>
       </View>
     </View>
@@ -85,6 +99,7 @@ const styles = StyleSheet.create({
   iconButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   parameter: { flex: 1, height: 34, borderRadius: 8, paddingHorizontal: 10, justifyContent: "center" },
   send: { width: 36, height: 36, borderRadius: 999, alignItems: "center", justifyContent: "center" },
+  stopGlyph: { width: 11, height: 11, borderRadius: 2 },
   attachments: { flexDirection: "row", flexWrap: "wrap", gap: 6, paddingHorizontal: 12 },
   attachment: { borderRadius: 6, paddingHorizontal: 9, paddingVertical: 6 },
   menu: { marginHorizontal: 12, marginBottom: 4, borderWidth: StyleSheet.hairlineWidth,

@@ -6,11 +6,15 @@ import { ConversationPane } from "@/features/chat/ConversationPane";
 import { SessionActionsMenu } from "@/features/chat/SessionActionsMenu";
 import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
+import { threadTitle } from "@/app-server/types";
 
 export default function SessionDetailScreen() {
   const theme = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const title = useAppStore((state) => state.sessions.find((item) => item.id === id)?.title ?? "会话");
+  const title = useAppStore((state) => {
+    const record = state.threads.find((item) => item.thread.id === id);
+    return record ? threadTitle(record.thread) : "会话";
+  });
   return <Screen>
     <Stack.Screen options={{ title, headerBackTitle: "会话", gestureEnabled: true,
       fullScreenGestureEnabled: true, headerLeft: () => <Pressable testID="session:back"

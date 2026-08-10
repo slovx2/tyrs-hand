@@ -1,16 +1,12 @@
 appId: ${TYRS_HAND_E2E_APP_ID}
 ---
-- runFlow:
-    when:
-      visible:
-        id: "project:back"
-    commands:
-      - tapOn:
-          id: "project:back"
+- runFlow: _shared/go-root.yaml
 - tapOn:
     id: "tab:projects"
 - tapOn:
     id: "project:row:0"
+- tapOn:
+    id: "project:new-task:add"
 - tapOn:
     id: "composer:attachments"
 - tapOn:
@@ -72,10 +68,8 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     id: "composer:send"
 - extendedWaitUntil:
     visible:
-      id: "session:row:0"
+      id: "messages:list"
     timeout: 30000
-- tapOn:
-    id: "session:row:0"
 - extendedWaitUntil:
     visible:
       id: "message:role:agent"

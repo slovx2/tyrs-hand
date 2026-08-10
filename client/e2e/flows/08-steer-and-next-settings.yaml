@@ -23,8 +23,6 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     id: "parameters:reasoning:ultra"
 - tapOn:
     id: "parameters:done"
-- assertVisible:
-    id: "run:actual-settings"
 - tapOn:
     id: "composer:input"
 - inputText: "E2E_STEER append while busy"

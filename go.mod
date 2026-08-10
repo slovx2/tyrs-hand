@@ -32,6 +32,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.40.0
 	go.uber.org/zap v1.24.0
 	golang.org/x/crypto v0.54.0
+	golang.org/x/mobile v0.0.0-20260803200217-62cee1672c8e
 	golang.org/x/mod v0.38.0
 	golang.org/x/oauth2 v0.35.0
 )

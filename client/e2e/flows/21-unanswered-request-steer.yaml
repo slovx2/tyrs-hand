@@ -1,0 +1,48 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- runFlow:
+    when:
+      visible:
+        id: "session:back"
+    commands:
+      - tapOn:
+          id: "session:back"
+- runFlow:
+    when:
+      visible:
+        id: "project:back"
+    commands:
+      - tapOn:
+          id: "project:back"
+- tapOn:
+    id: "tab:projects"
+- tapOn:
+    id: "project:row:0"
+- tapOn:
+    id: "project:new-task:add"
+- tapOn:
+    id: "composer:parameters"
+- tapOn:
+    id: "parameters:mode:plan"
+- tapOn:
+    id: "parameters:done"
+- runFlow:
+    file: _shared/create-task.yaml
+    env:
+      TASK_TEXT: "E2E_ASK_STEER leave request unanswered"
+- extendedWaitUntil:
+    visible:
+      id: "interactive:option:0"
+    timeout: 120000
+- tapOn:
+    id: "composer:input"
+- inputText: "E2E_STEER_AFTER_REQUEST"
+- tapOn:
+    id: "composer:send"
+- extendedWaitUntil:
+    notVisible:
+      id: "interactive:.*:submit"
+    timeout: 60000
+- extendedWaitUntil:
+    visible: ".*官方 App Server fixture 已完成.*"
+    timeout: 120000

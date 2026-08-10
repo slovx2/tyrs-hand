@@ -6,7 +6,7 @@ appId: ${TYRS_HAND_E2E_APP_ID}
       TASK_TEXT: "E2E_FAIL_429 recover in same session"
 - extendedWaitUntil:
     visible:
-      id: "run:error"
+      id: "turn:error"
     timeout: 120000
 - tapOn:
     id: "composer:input"
@@ -21,8 +21,9 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     id: "composer:send"
 - extendedWaitUntil:
     visible:
-      id: "message:intent-result.*"
+      id: "message:role:agent"
     timeout: 120000
-- assertVisible: ".*协议级 Worker 已完成.*"
-- assertNotVisible:
-    id: "run:error"
+- assertVisible: ".*官方 App Server fixture 已完成.*"
+- assertVisible: "deterministic rate limit"
+- assertVisible:
+    id: "turn:error"

@@ -8,10 +8,11 @@ expected_app_id="com.tyrshand.app"
 app_env="production"
 preview_mode="false"
 build_cache_key="production"
+install_label="正式"
 device=""
 
 usage() {
-  echo "用法：$0 [--device <adb-serial>] [--dev]" >&2
+  echo "用法：$0 [--device <adb-serial>] [--dev | --dev-real]" >&2
 }
 
 while [[ $# -gt 0 ]]; do
@@ -29,6 +30,15 @@ while [[ $# -gt 0 ]]; do
       app_env="development"
       preview_mode="true"
       build_cache_key="preview"
+      install_label="预览数据"
+      shift
+      ;;
+    --dev-real)
+      expected_app_id="com.tyrshand.app.dev"
+      app_env="development"
+      preview_mode="false"
+      build_cache_key="development-real"
+      install_label="真实服务 E2E"
       shift
       ;;
     -h | --help)
@@ -142,9 +152,5 @@ fi
 "${adb_bin}" "${adb_args[@]}" install -r "${apk}"
 "${adb_bin}" "${adb_args[@]}" shell pm path "${expected_app_id}" >/dev/null
 
-if [[ "${preview_mode}" == "true" ]]; then
-  echo "已安装 ${expected_app_id}：Release、可调试、内置 JavaScript 与预览数据"
-else
-  echo "已安装 ${expected_app_id}：Release、可调试、内置 JavaScript"
-fi
+echo "已安装 ${expected_app_id}：Release、可调试、内置 JavaScript（${install_label}）"
 echo "APK：${apk}"

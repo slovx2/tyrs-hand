@@ -6,7 +6,7 @@ appId: ${TYRS_HAND_E2E_APP_ID}
       TASK_TEXT: "E2E_RESTART recover active run after process restart"
 - extendedWaitUntil:
     visible:
-      id: "run:live"
+      id: "session:stop"
     timeout: 60000
 - stopApp
 - launchApp:
@@ -25,9 +25,10 @@ appId: ${TYRS_HAND_E2E_APP_ID}
       id: "session:more"
     timeout: 60000
 - extendedWaitUntil:
-    visible: "协议级 Worker 已完成。"
+    visible: "官方 App Server fixture 已完成。"
     timeout: 120000
 - tapOn:
     id: "session:more"
 - assertNotVisible:
     id: "session:stop"
+- pressKey: BACK

@@ -1,5 +1,11 @@
 import * as SQLite from "expo-sqlite";
 
+export const DATABASE_VERSION = 8;
+
+export function needsThreadHistoryCacheReset(currentVersion: number): boolean {
+  return currentVersion >= 4 && currentVersion < 7;
+}
+
 let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
 let writeQueue: Promise<void> = Promise.resolve();
 
@@ -7,166 +13,123 @@ const schema = `
 PRAGMA auto_vacuum = INCREMENTAL;
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
-CREATE TABLE IF NOT EXISTS connections (
-  server_id TEXT PRIMARY KEY,
-  base_url TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS connection_profiles (
+  profile_id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK(kind IN ('control','ssh')),
   name TEXT NOT NULL,
-  device_id TEXT NOT NULL,
   active INTEGER NOT NULL DEFAULT 0,
-  session_reads_initialized INTEGER NOT NULL DEFAULT 0,
+  control_server_id TEXT,
+  control_base_url TEXT,
+  control_device_id TEXT,
+  ssh_host TEXT,
+  ssh_port INTEGER,
+  ssh_user TEXT,
+  ssh_key_ref TEXT,
+  ssh_host_fingerprint TEXT,
   bootstrap_payload TEXT,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  CHECK((kind='control' AND control_server_id IS NOT NULL AND control_base_url IS NOT NULL
+    AND control_device_id IS NOT NULL AND ssh_host IS NULL)
+    OR (kind='ssh' AND ssh_host IS NOT NULL AND ssh_port IS NOT NULL AND ssh_user IS NOT NULL
+    AND ssh_key_ref IS NOT NULL AND control_server_id IS NULL))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS connection_profiles_one_active
+  ON connection_profiles(active) WHERE active=1;
+CREATE TABLE IF NOT EXISTS ssh_projects (
+  profile_id TEXT NOT NULL,
+  id TEXT NOT NULL,
+  remote_path TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(profile_id,id),
+  UNIQUE(profile_id,remote_path),
+  FOREIGN KEY(profile_id) REFERENCES connection_profiles(profile_id) ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS projects (
-  server_id TEXT NOT NULL,
+  profile_id TEXT NOT NULL,
   id TEXT NOT NULL,
   workspace_id TEXT NOT NULL,
   name TEXT NOT NULL,
   relative_path TEXT NOT NULL,
   payload TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  PRIMARY KEY(server_id,id),
-  FOREIGN KEY(server_id) REFERENCES connections(server_id) ON DELETE CASCADE
+  PRIMARY KEY(profile_id,id),
+  FOREIGN KEY(profile_id) REFERENCES connection_profiles(profile_id) ON DELETE CASCADE
 );
-CREATE TABLE IF NOT EXISTS sessions (
-  server_id TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS threads (
+  profile_id TEXT NOT NULL,
   id TEXT NOT NULL,
-  project_id TEXT NOT NULL,
-  title TEXT NOT NULL,
-  lifecycle_state TEXT NOT NULL,
-  last_message_seq INTEGER NOT NULL,
-  last_activity_at TEXT NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL,
   payload TEXT NOT NULL,
-  PRIMARY KEY(server_id,id),
-  FOREIGN KEY(server_id) REFERENCES connections(server_id) ON DELETE CASCADE
+  PRIMARY KEY(profile_id,id),
+  FOREIGN KEY(profile_id) REFERENCES connection_profiles(profile_id) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS sessions_activity ON sessions(server_id,lifecycle_state,last_activity_at DESC);
-CREATE TABLE IF NOT EXISTS session_reads (
-  server_id TEXT NOT NULL,
-  session_id TEXT NOT NULL,
-  last_read_agent_seq INTEGER NOT NULL DEFAULT 0,
-  last_read_interactive_id TEXT,
-  initialized INTEGER NOT NULL DEFAULT 1,
-  updated_at TEXT NOT NULL,
-  PRIMARY KEY(server_id,session_id),
-  FOREIGN KEY(server_id) REFERENCES connections(server_id) ON DELETE CASCADE
-);
-CREATE TABLE IF NOT EXISTS conversation_snapshots (
-  server_id TEXT NOT NULL,
-  session_id TEXT NOT NULL,
-  session_payload TEXT NOT NULL,
-  settings_payload TEXT NOT NULL,
-  current_run_payload TEXT,
-  snapshot_cursor INTEGER NOT NULL,
-  next_cursor TEXT NOT NULL,
-  has_more_before INTEGER NOT NULL,
-  turns_complete INTEGER NOT NULL DEFAULT 0,
-  hydration_state TEXT NOT NULL DEFAULT 'pending',
-  byte_size INTEGER NOT NULL,
-  last_accessed_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  PRIMARY KEY(server_id,session_id),
-  FOREIGN KEY(server_id) REFERENCES connections(server_id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS conversation_snapshots_lru
-  ON conversation_snapshots(server_id,last_accessed_at);
-CREATE TABLE IF NOT EXISTS conversation_turns (
-  server_id TEXT NOT NULL,
-  session_id TEXT NOT NULL,
-  id TEXT NOT NULL,
-  kind TEXT NOT NULL,
-  anchor_seq INTEGER NOT NULL,
-  payload TEXT NOT NULL,
-  byte_size INTEGER NOT NULL,
-  updated_at TEXT NOT NULL,
-  PRIMARY KEY(server_id,session_id,id),
-  FOREIGN KEY(server_id,session_id) REFERENCES conversation_snapshots(server_id,session_id)
-    ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS conversation_turns_window
-  ON conversation_turns(server_id,session_id,anchor_seq DESC);
-CREATE TABLE IF NOT EXISTS segment_cache_state (
-  server_id TEXT NOT NULL,
-  session_id TEXT NOT NULL,
-  run_id TEXT NOT NULL,
-  segment_id TEXT NOT NULL,
-  persisted_through_event_seq INTEGER NOT NULL DEFAULT 0,
-  has_more_before INTEGER NOT NULL DEFAULT 0,
-  complete INTEGER NOT NULL DEFAULT 0,
-  final_draft TEXT NOT NULL DEFAULT '',
-  byte_size INTEGER NOT NULL DEFAULT 0,
-  updated_at TEXT NOT NULL,
-  PRIMARY KEY(server_id,segment_id),
-  FOREIGN KEY(server_id,session_id) REFERENCES conversation_snapshots(server_id,session_id)
-    ON DELETE CASCADE
-);
-CREATE TABLE IF NOT EXISTS run_activities (
-  server_id TEXT NOT NULL,
-  session_id TEXT NOT NULL,
-  id TEXT NOT NULL,
-  segment_id TEXT NOT NULL,
-  first_event_sequence INTEGER NOT NULL,
-  last_event_sequence INTEGER NOT NULL,
-  payload TEXT NOT NULL,
-  byte_size INTEGER NOT NULL,
-  updated_at TEXT NOT NULL,
-  PRIMARY KEY(server_id,id),
-  FOREIGN KEY(server_id,segment_id) REFERENCES segment_cache_state(server_id,segment_id)
-    ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS run_activities_window
-  ON run_activities(server_id,segment_id,first_event_sequence);
+CREATE INDEX IF NOT EXISTS threads_recency ON threads(profile_id,archived,updated_at DESC);
 CREATE TABLE IF NOT EXISTS drafts (
-  server_id TEXT NOT NULL,
+  profile_id TEXT NOT NULL,
   scope TEXT NOT NULL,
   text TEXT NOT NULL,
   settings TEXT,
   attachment_ids TEXT NOT NULL DEFAULT '[]',
   updated_at TEXT NOT NULL,
-  PRIMARY KEY(server_id,scope)
+  PRIMARY KEY(profile_id,scope),
+  FOREIGN KEY(profile_id) REFERENCES connection_profiles(profile_id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS pending_submissions (
+  profile_id TEXT NOT NULL,
+  client_message_id TEXT NOT NULL,
+  thread_id TEXT,
+  project_id TEXT,
+  payload TEXT NOT NULL,
+  state TEXT NOT NULL CHECK(state IN ('prepared','unknown')),
+  error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(profile_id,client_message_id),
+  FOREIGN KEY(profile_id) REFERENCES connection_profiles(profile_id) ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS outbox (
-  server_id TEXT NOT NULL,
-  local_id TEXT NOT NULL,
-  kind TEXT NOT NULL,
-  session_id TEXT,
-  project_id TEXT,
-  status TEXT NOT NULL CHECK(status IN ('pending','uploading','sending','failed')),
+  profile_id TEXT NOT NULL,
+  client_message_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK(kind IN ('create_task','submit_message')),
+  project_id TEXT NOT NULL,
+  thread_id TEXT,
   payload TEXT NOT NULL,
+  state TEXT NOT NULL CHECK(state IN ('pending','processing','failed')),
   attempt_count INTEGER NOT NULL DEFAULT 0,
   error TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  PRIMARY KEY(server_id,local_id)
+  PRIMARY KEY(profile_id,client_message_id),
+  FOREIGN KEY(profile_id) REFERENCES connection_profiles(profile_id) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS outbox_dispatch ON outbox(server_id,status,created_at);
-CREATE TABLE IF NOT EXISTS sync_state (
-  server_id TEXT PRIMARY KEY,
-  cursor INTEGER NOT NULL DEFAULT 0,
-  last_synced_at TEXT,
-  FOREIGN KEY(server_id) REFERENCES connections(server_id) ON DELETE CASCADE
-);
+CREATE INDEX IF NOT EXISTS outbox_profile_created
+  ON outbox(profile_id,created_at);
 CREATE TABLE IF NOT EXISTS app_settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS image_cache_entries (
-  server_id TEXT NOT NULL,
-  cache_key TEXT NOT NULL,
-  uri TEXT NOT NULL,
-  media_type TEXT NOT NULL,
-  size_bytes INTEGER NOT NULL,
-  sha256 TEXT NOT NULL,
-  expires_at TEXT,
-  last_accessed_at TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  PRIMARY KEY(server_id,cache_key),
-  FOREIGN KEY(server_id) REFERENCES connections(server_id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS image_cache_lru
-  ON image_cache_entries(server_id,last_accessed_at);
 `;
+
+type LegacyConnection = {
+  server_id: string;
+  base_url: string;
+  name: string;
+  device_id: string;
+  active: number;
+  bootstrap_payload: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type LegacySSHProject = {
+  profile_id: string;
+  remote_path: string;
+  created_at: string;
+  updated_at: string;
+};
 
 export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
   databasePromise ??= openDatabase();
@@ -191,15 +154,125 @@ export async function withDatabaseTransaction(
 
 async function openDatabase(): Promise<SQLite.SQLiteDatabase> {
   const database = await SQLite.openDatabaseAsync("tyrs-hand.db");
-  await database.execAsync(schema);
+  const version = await database.getFirstAsync<{ user_version: number }>("PRAGMA user_version");
+  const current = version?.user_version ?? 0;
+  if (current > DATABASE_VERSION) throw new Error("本地数据库版本高于当前客户端");
+  if (current < 4) {
+    await migrateToOfficialProtocol(database);
+  } else {
+    await database.execAsync(schema);
+    if (current < 5) await migrateSSHProjects(database);
+    if (needsThreadHistoryCacheReset(current)) await migrateThreadHistoryCache(database);
+    if (current < DATABASE_VERSION) {
+      await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
+    }
+  }
   return database;
 }
 
-export async function clearServerSnapshot(serverId: string): Promise<void> {
+async function migrateToOfficialProtocol(database: SQLite.SQLiteDatabase): Promise<void> {
+  let legacy: LegacyConnection[] = [];
+  try {
+    legacy = await database.getAllAsync<LegacyConnection>(
+      `SELECT server_id,base_url,name,device_id,active,bootstrap_payload,created_at,updated_at
+       FROM connections`,
+    );
+  } catch {
+    // 新安装没有旧表。
+  }
+  await database.execAsync(`
+    PRAGMA foreign_keys = OFF;
+    DROP TABLE IF EXISTS run_activities;
+    DROP TABLE IF EXISTS segment_cache_state;
+    DROP TABLE IF EXISTS conversation_turns;
+    DROP TABLE IF EXISTS conversation_snapshots;
+    DROP TABLE IF EXISTS session_reads;
+    DROP TABLE IF EXISTS sessions;
+    DROP TABLE IF EXISTS outbox;
+    DROP TABLE IF EXISTS sync_state;
+    DROP TABLE IF EXISTS image_cache_entries;
+    DROP TABLE IF EXISTS projects;
+    DROP TABLE IF EXISTS drafts;
+    DROP TABLE IF EXISTS connections;
+    PRAGMA foreign_keys = ON;
+  `);
+  await database.execAsync(schema);
+  for (const row of legacy) {
+    await database.runAsync(`INSERT INTO connection_profiles(
+      profile_id,kind,name,active,control_server_id,control_base_url,control_device_id,
+      bootstrap_payload,created_at,updated_at) VALUES (?,'control',?,?,?,?,?,?,?,?)`,
+    row.server_id, row.name, row.active, row.server_id, row.base_url, row.device_id,
+    row.bootstrap_payload, row.created_at, row.updated_at);
+  }
+  await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
+}
+
+async function migrateSSHProjects(database: SQLite.SQLiteDatabase): Promise<void> {
+  const roots = await database.getAllAsync<LegacySSHProject>(`SELECT profile_id,
+    ssh_remote_project_root AS remote_path,created_at,updated_at FROM connection_profiles
+    WHERE kind='ssh' AND trim(ssh_remote_project_root)<>''`);
+  await database.execAsync("PRAGMA foreign_keys = OFF");
+  try {
+    await database.withExclusiveTransactionAsync(async (transaction) => {
+      for (const root of roots) {
+        const normalized = root.remote_path.trim().replace(/\/+$/, "") || "/";
+        await transaction.runAsync(`INSERT OR IGNORE INTO ssh_projects(
+          profile_id,id,remote_path,created_at,updated_at) VALUES (?,?,?,?,?)`,
+        root.profile_id, root.profile_id, normalized, root.created_at, root.updated_at);
+      }
+      await transaction.execAsync(`
+        CREATE TABLE connection_profiles_v5 (
+          profile_id TEXT PRIMARY KEY,
+          kind TEXT NOT NULL CHECK(kind IN ('control','ssh')),
+          name TEXT NOT NULL,
+          active INTEGER NOT NULL DEFAULT 0,
+          control_server_id TEXT,
+          control_base_url TEXT,
+          control_device_id TEXT,
+          ssh_host TEXT,
+          ssh_port INTEGER,
+          ssh_user TEXT,
+          ssh_key_ref TEXT,
+          ssh_host_fingerprint TEXT,
+          bootstrap_payload TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          CHECK((kind='control' AND control_server_id IS NOT NULL AND control_base_url IS NOT NULL
+            AND control_device_id IS NOT NULL AND ssh_host IS NULL)
+            OR (kind='ssh' AND ssh_host IS NOT NULL AND ssh_port IS NOT NULL
+            AND ssh_user IS NOT NULL AND ssh_key_ref IS NOT NULL AND control_server_id IS NULL))
+        );
+        INSERT INTO connection_profiles_v5(profile_id,kind,name,active,control_server_id,
+          control_base_url,control_device_id,ssh_host,ssh_port,ssh_user,ssh_key_ref,
+          ssh_host_fingerprint,bootstrap_payload,created_at,updated_at)
+        SELECT profile_id,kind,name,active,control_server_id,control_base_url,control_device_id,
+          ssh_host,ssh_port,ssh_user,ssh_key_ref,ssh_host_fingerprint,bootstrap_payload,
+          created_at,updated_at FROM connection_profiles;
+        DROP TABLE connection_profiles;
+        ALTER TABLE connection_profiles_v5 RENAME TO connection_profiles;
+        CREATE UNIQUE INDEX connection_profiles_one_active
+          ON connection_profiles(active) WHERE active=1;
+        PRAGMA user_version = 5;
+      `);
+    });
+  } finally {
+    await database.execAsync("PRAGMA foreign_keys = ON");
+  }
+}
+
+async function migrateThreadHistoryCache(database: SQLite.SQLiteDatabase): Promise<void> {
+  await database.withExclusiveTransactionAsync(async (transaction) => {
+    // Thread 历史可以从官方 App Server 重建；v7 清除仍可能包含工具输出的旧缓存。
+    await transaction.runAsync("DELETE FROM threads");
+    await transaction.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
+  });
+}
+
+export async function clearProfileCache(profileId: string): Promise<void> {
   await withDatabaseTransaction(async (database) => {
-    for (const table of ["projects", "sessions", "conversation_snapshots"]) {
-      await database.runAsync(`DELETE FROM ${table} WHERE server_id=?`, serverId);
-    }
-    await database.runAsync("UPDATE sync_state SET cursor=0,last_synced_at=NULL WHERE server_id=?", serverId);
+    await database.runAsync("DELETE FROM projects WHERE profile_id=?", profileId);
+    await database.runAsync("DELETE FROM threads WHERE profile_id=?", profileId);
+    await database.runAsync("DELETE FROM pending_submissions WHERE profile_id=?", profileId);
+    await database.runAsync("DELETE FROM outbox WHERE profile_id=?", profileId);
   });
 }

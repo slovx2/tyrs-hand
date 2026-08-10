@@ -4,8 +4,6 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     clearState: true
 - assertVisible:
     id: "projects:list"
-- assertVisible:
-    text: "Tyrs Hand 移动客户端"
 - tapOn:
     id: "project:row:0"
 - assertVisible:
@@ -17,187 +15,180 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - tapOn:
     id: "composer:parameters"
 - assertVisible:
-    id: "parameters:model:gpt-5.6-luna"
+    id: "parameters:model:gpt-5.6-sol"
 - pressKey: BACK
 - tapOn:
     id: "composer:input"
 - inputText: "PREVIEW_DIRECT_NAVIGATION"
 - tapOn:
     id: "composer:send"
+- assertNotVisible: "会话不可用"
 - extendedWaitUntil:
     visible:
       id: "messages:list"
     timeout: 10000
 - assertVisible:
     text: "PREVIEW_DIRECT_NAVIGATION"
-- pressKey: BACK
+- assertNotVisible: "会话不可用"
 - tapOn:
-    id: "tab:sessions"
-- assertVisible:
-    id: "session:row:0"
+    id: "session:back"
+- extendedWaitUntil:
+    visible: "生成预览任务标题"
+    timeout: 10000
 
-# 运行中、实时事件与失败 Outbox
+# 官方运行中 Turn
+- scrollUntilVisible:
+    element:
+      id: "session:30000000-0000-4000-8000-000000000001"
+    direction: DOWN
 - tapOn:
-    id: "session:row:0"
-- tapOn:
-    id: "session:more"
+    id: "session:30000000-0000-4000-8000-000000000001"
 - assertVisible:
     id: "session:stop"
-- pressKey: BACK
-- scrollUntilVisible:
-    element:
-      id: "run:.*:progress"
-    direction: DOWN
+- assertVisible: "正在运行命令"
 - assertVisible:
-    id: "run:live"
+    id: "tool-group:shimmer"
+- assertNotVisible: "PREVIEW_TOOL_OUTPUT_MUST_NOT_RENDER"
+- tapOn:
+    id: "composer:input"
+- inputText: "STEER_BUTTON_STATE"
 - assertVisible:
-    id: "outbox:preview-message-failed:failed"
+    id: "composer:send"
+- eraseText: 18
 - pressKey: BACK
+- extendedWaitUntil:
+    visible: "最终回答开始后，处理过程应当已经自动收起。"
+    timeout: 20000
+- assertVisible:
+    id: "composer:send"
+- assertVisible:
+    id: "turn:turn-running:activity-toggle"
+- assertNotVisible: "我正在读取官方 Thread 与 Turn 状态。"
+- assertNotVisible: "检查官方事件顺序"
+- tapOn:
+    id: "turn:turn-running:activity-toggle"
+- assertVisible: "我正在读取官方 Thread 与 Turn 状态。"
+- assertNotVisible:
+    id: "reasoning:heading:reasoning-running"
+- assertNotVisible: "检查官方事件顺序"
+- tapOn:
+    id: "tool-group:command-running-1:toggle"
+- assertVisible: "已运行 pnpm test -- --runInBand"
+- assertNotVisible: "STREAMING_OUTPUT_MUST_NOT_RENDER"
+- tapOn:
+    id: "session:back"
 
-# 已完成计划
-- tapOn:
-    id: "session:row:1"
-- assertVisible:
-    id: "run:activity:toggle"
-- tapOn:
-    id: "run:activity:toggle"
+# 最新完成 Turn 中的 Plan Item
 - scrollUntilVisible:
     element:
-      id: "run:operations:1:toggle"
+      id: "session:30000000-0000-4000-8000-000000000002"
     direction: DOWN
 - tapOn:
-    id: "run:operations:1:toggle"
-- assertVisible:
-    text: ".*已运行命令.*"
-- tapOn:
-    id: "run:activity:toggle"
+    id: "session:30000000-0000-4000-8000-000000000002"
 - scrollUntilVisible:
     element:
       id: "plan:execute"
     direction: DOWN
 - assertVisible:
     id: "plan:execute"
-- pressKey: BACK
+- tapOn:
+    id: "session:back"
 
-# 普通交互问答
+# 官方 Server Request
 - scrollUntilVisible:
     element:
-      id: "session:row:2"
+      id: "session:30000000-0000-4000-8000-000000000003"
     direction: DOWN
 - tapOn:
-    id: "session:row:2"
+    id: "session:30000000-0000-4000-8000-000000000003"
 - scrollUntilVisible:
     element:
       id: "interactive:option:0"
     direction: DOWN
 - assertVisible:
-    id: "interactive:option:0"
-- scrollUntilVisible:
-    element:
-      id: "interactive:input:scope"
-    direction: DOWN
-- pressKey: BACK
+    id: "interactive:input:scope"
+- tapOn:
+    id: "session:back"
 
-# 敏感信息问题
+# 官方失败 Turn
 - scrollUntilVisible:
     element:
-      id: "session:row:3"
+      id: "session:30000000-0000-4000-8000-000000000005"
     direction: DOWN
 - tapOn:
-    id: "session:row:3"
-- scrollUntilVisible:
-    element:
-      id: "interactive:.*:secret"
-    direction: DOWN
+    id: "session:30000000-0000-4000-8000-000000000005"
 - assertVisible:
-    text: ".*请在 Codex 桌面端完成.*"
-- pressKey: BACK
+    id: "turn:error"
+- tapOn:
+    id: "session:back"
 
-# 失败任务
+# 官方 Agent Item 与 Markdown
 - scrollUntilVisible:
     element:
-      id: "session:row:4"
+      id: "session:30000000-0000-4000-8000-000000000009"
     direction: DOWN
 - tapOn:
-    id: "session:row:4"
-- tapOn:
-    id: "run:activity:toggle"
-- scrollUntilVisible:
-    element:
-      id: "run:error"
-    direction: DOWN
+    id: "session:30000000-0000-4000-8000-000000000009"
 - assertVisible:
-    id: "run:error"
-- pressKey: BACK
+    id: "message:role:agent"
+- assertVisible:
+    text: ".*唯一顺序来源.*"
+- tapOn:
+    id: "session:back"
 
-# Markdown 与附件
+# 32 个 Turn 的官方分页：首屏在最新，上翻按页加载，回到最新不依赖全量读取
 - scrollUntilVisible:
     element:
-      id: "session:row:5"
+      id: "session:30000000-0000-4000-8000-000000000010"
     direction: DOWN
 - tapOn:
-    id: "session:row:5"
+    id: "session:30000000-0000-4000-8000-000000000010"
 - assertVisible:
-    id: "message:image:user:60000000-0000-4000-8000-000000000001"
+    text: "LONG_CONVERSATION_LATEST"
 - scrollUntilVisible:
     element:
-      id: "message:image:agent:60000000-0000-4000-8000-000000000003"
+      text: "长会话第 16 轮"
+    direction: UP
+    timeout: 40000
+    centerElement: true
+    waitToSettleTimeoutMs: 500
+- tapOn:
+    id: "turn:turn-long-16:activity-toggle"
+- scrollUntilVisible:
+    element:
+      text: "调用了 1 个 MCP 工具、修改了 2 个文件、运行了 4 条命令"
     direction: DOWN
-- assertVisible:
-    id: "message:image:agent:markdown:.*"
-- assertVisible:
-    text: "文件 · acceptance-report.md"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "tool-group:command-long-16"
+    direction: DOWN
+    timeout: 10000
 - tapOn:
-    id: "message:image:agent:60000000-0000-4000-8000-000000000003"
+    id: "tool-group:command-long-16:toggle"
+- scrollUntilVisible:
+    element:
+      text: "已运行 pnpm test -- --runInBand"
+    direction: DOWN
+    timeout: 10000
+    centerElement: true
+- assertNotVisible: "LONG_TOOL_OUTPUT_MUST_NOT_RENDER"
 - assertVisible:
-    id: "image:viewer"
+    id: "chat:scroll-to-latest"
 - tapOn:
-    id: "image:viewer:close"
-- assertNotVisible:
-    id: "image:viewer"
-- pressKey: BACK
+    id: "chat:scroll-to-latest"
+- assertVisible:
+    text: "LONG_CONVERSATION_LATEST"
+- tapOn:
+    id: "session:back"
 
-# Markdown 完整排版与中间过程卡片
-- scrollUntilVisible:
-    element:
-      id: "session:row:6"
-    direction: DOWN
-- tapOn:
-    id: "session:row:6"
-- assertVisible:
-    text: "Markdown 排版验收"
-- assertVisible:
-    text: ".*粗体.*斜体.*"
-- scrollUntilVisible:
-    element:
-      text: "表格"
-    direction: DOWN
-- assertVisible:
-    text: "completed"
-- scrollUntilVisible:
-    element:
-      id: "run:activity:toggle"
-    direction: DOWN
-- tapOn:
-    id: "run:activity:toggle"
-- assertVisible:
-    text: "已完成"
-- assertVisible:
-    text: ".*Markdown 容器宽度.*"
-- pressKey: BACK
-
-# 归档列表与恢复入口
+# 归档与独立连接
 - tapOn:
     id: "sessions:filter:archived"
 - assertVisible:
     id: "session:row:0"
 - tapOn:
-    id: "session:row:0"
-- assertVisible:
-    id: "session:restore"
-- pressKey: BACK
-
-# 多连接、主题、重命名和扫码弹层
+    id: "project:back"
 - tapOn:
     id: "tab:connections"
 - assertVisible:

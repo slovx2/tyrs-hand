@@ -20,7 +20,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ios: {
     supportsTablet: true,
     bundleIdentifier: `com.tyrshand.app${suffix}`,
-    infoPlist: { UIBackgroundModes: ["remote-notification"] },
+    infoPlist: {
+      NSAppTransportSecurity: { NSAllowsLocalNetworking: true },
+      NSLocalNetworkUsageDescription: "用于连接本机一次性 SSH App Server 适配器",
+    },
   },
   android: {
     package: `com.tyrshand.app${suffix}`,
@@ -32,12 +35,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   plugins: [
     "expo-router",
-    ["expo-build-properties", { android: { usesCleartextTraffic: environment !== "production" } }],
+    ["expo-build-properties", { android: { usesCleartextTraffic: false } }],
     "expo-secure-store",
     "expo-sqlite",
-    ["expo-camera", { cameraPermission: "允许 Tyrs Hand 扫描设备二维码和拍摄附件" }],
+    ["expo-camera", { cameraPermission: "允许 Tyrs Hand 拍摄会话附件" }],
     ["expo-image-picker", { photosPermission: "允许 Tyrs Hand 选择会话附件" }],
-    ["expo-notifications", { defaultChannel: "任务状态" }],
   ],
   experiments: { typedRoutes: true },
   extra: { appEnvironment: environment, previewMode: environment === "preview" },

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "codexMinimumVersion": "0.145.0",
+  "codexMinimumVersion": "0.147.0",
   "requiredCommands": {
     "git": "2.39.0",
     "ssh": "9.2.0",

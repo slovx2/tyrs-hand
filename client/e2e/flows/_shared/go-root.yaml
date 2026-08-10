@@ -2,6 +2,23 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 ---
 - runFlow:
     when:
+      platform: Android
+      visible:
+        id: "project:new-task"
+    commands:
+      - pressKey: BACK
+- runFlow:
+    when:
+      platform: iOS
+      visible:
+        id: "project:new-task"
+    commands:
+      - swipe:
+          start: 2%, 50%
+          end: 90%, 50%
+          duration: 500
+- runFlow:
+    when:
       visible:
         id: "session:back"
     commands:
