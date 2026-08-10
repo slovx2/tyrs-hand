@@ -30,7 +30,7 @@ describe("官方 Turn 移动展示投影", () => {
     expect(result.canCollapseActivity).toBe(false);
   });
 
-  it("reasoning 不切断工具组，Plan 与最终回答仍切断工具组", () => {
+  it("reasoning、Plan 与最终回答都会切断连续工具组", () => {
     const result = projectTurnPresentation(turn("inProgress", [
       command("command-1"),
       { type: "reasoning", id: "reasoning", summary: ["检查"], content: [] },
@@ -42,11 +42,11 @@ describe("官方 Turn 移动展示投影", () => {
     ]));
 
     expect(result.blocks.map((block) => `${block.kind}:${block.key}`)).toEqual([
-      "tools:command-1", "plan:plan",
+      "tools:command-1", "tools:command-2", "plan:plan",
       "tools:command-3", "final:final", "tools:command-4",
     ]);
     expect(result.blocks[0]).toMatchObject({ kind: "tools",
-      items: [{ id: "command-1" }, { id: "command-2" }] });
+      items: [{ id: "command-1" }] });
   });
 
   it("把官方 reasoning Markdown 标题投影为干净的活动标题", () => {
@@ -74,7 +74,7 @@ describe("官方 Turn 移动展示投影", () => {
       heading: "Planning evidence-backed rerun" });
   });
 
-  it("长任务只保留当前 reasoning，并把其间工具聚合为稳定批次", () => {
+  it("长任务只保留当前 reasoning 标题，但保留 reasoning 分隔的全部工具批次", () => {
     const items: ThreadItem[] = [user("user", "执行")];
     for (let index = 0; index < 60; index += 1) {
       items.push({ type: "reasoning", id: `reasoning-${index}`,
@@ -87,13 +87,12 @@ describe("官方 Turn 移动展示投影", () => {
 
     const result = projectTurnPresentation(turn("inProgress", items));
 
-    expect(result.blocks.map((block) => block.kind)).toEqual([
-      "user", "tools", "commentary", "reasoning",
+    const toolBlocks = result.blocks.filter((block) => block.kind === "tools");
+    expect(toolBlocks).toHaveLength(60);
+    expect(toolBlocks.map((block) => block.items[0]?.id)).toEqual([
+      ...Array.from({ length: 60 }, (_, index) => `command-${index}`),
     ]);
-    const toolBlock = result.blocks[1];
-    expect(toolBlock?.kind).toBe("tools");
-    expect(toolBlock?.kind === "tools" ? toolBlock.items.map((item) => item.id) : [])
-      .toEqual(expect.arrayContaining(["command-0", "command-59"]));
+    expect(result.blocks.at(-2)).toMatchObject({ kind: "commentary" });
     expect(result.blocks.at(-1)).toMatchObject({ heading: "正在汇总" });
   });
 
@@ -120,6 +119,17 @@ describe("官方 Turn 移动展示投影", () => {
 
     expect(result.hasFinalContent).toBe(true);
     expect(result.canCollapseActivity).toBe(true);
+  });
+
+  it("空活动 Turn 显示正在思考，第一条过程或回答到达后让位", () => {
+    expect(projectTurnPresentation(turn("inProgress", [user("user", "执行")])).showThinking)
+      .toBe(true);
+    expect(projectTurnPresentation(turn("inProgress", [user("user", "执行"),
+      agent("commentary", "开始检查", "commentary")])).showThinking).toBe(false);
+    expect(projectTurnPresentation(turn("inProgress", [user("user", "执行"),
+      agent("final", "结果", "final_answer")])).showThinking).toBe(false);
+    expect(projectTurnPresentation(turn("completed", [user("user", "执行")])).showThinking)
+      .toBe(false);
   });
 
   it("完成 Turn 的最后一个未知 phase 才回退为最终回答", () => {

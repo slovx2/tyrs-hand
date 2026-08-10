@@ -5,14 +5,6 @@ export type ToolDisclosureMemory = {
 
 const MAX_DISCLOSURES = 512;
 export const ACTIVITY_TOGGLE_SCROLL_SETTLE_MS = 180;
-export const INITIAL_ACTIVITY_RENDER_COUNT = 6;
-export const ACTIVITY_RENDER_BATCH_SIZE = 4;
-
-export function nextActivityRenderCount(current: number, total: number): number {
-  if (total <= 0) return 0;
-  return Math.min(total, Math.max(INITIAL_ACTIVITY_RENDER_COUNT,
-    current + ACTIVITY_RENDER_BATCH_SIZE));
-}
 const turnExpanded = new Map<string, boolean>();
 const toolDisclosures = new Map<string, ToolDisclosureMemory>();
 

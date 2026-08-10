@@ -1,6 +1,6 @@
 import * as SQLite from "expo-sqlite";
 
-export const DATABASE_VERSION = 8;
+export const DATABASE_VERSION = 9;
 
 export function needsThreadHistoryCacheReset(currentVersion: number): boolean {
   return currentVersion >= 4 && currentVersion < 7;
@@ -67,6 +67,16 @@ CREATE TABLE IF NOT EXISTS threads (
   FOREIGN KEY(profile_id) REFERENCES connection_profiles(profile_id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS threads_recency ON threads(profile_id,archived,updated_at DESC);
+CREATE TABLE IF NOT EXISTS thread_reads (
+  profile_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  has_unread INTEGER NOT NULL DEFAULT 0 CHECK(has_unread IN (0,1)),
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(profile_id,thread_id),
+  FOREIGN KEY(profile_id) REFERENCES connection_profiles(profile_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS thread_reads_unread
+  ON thread_reads(profile_id,has_unread,updated_at DESC);
 CREATE TABLE IF NOT EXISTS drafts (
   profile_id TEXT NOT NULL,
   scope TEXT NOT NULL,
@@ -163,6 +173,7 @@ async function openDatabase(): Promise<SQLite.SQLiteDatabase> {
     await database.execAsync(schema);
     if (current < 5) await migrateSSHProjects(database);
     if (needsThreadHistoryCacheReset(current)) await migrateThreadHistoryCache(database);
+    if (current < 9) await migrateThreadReads(database);
     if (current < DATABASE_VERSION) {
       await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
     }
@@ -268,10 +279,22 @@ async function migrateThreadHistoryCache(database: SQLite.SQLiteDatabase): Promi
   });
 }
 
+async function migrateThreadReads(database: SQLite.SQLiteDatabase): Promise<void> {
+  const now = new Date().toISOString();
+  await database.withExclusiveTransactionAsync(async (transaction) => {
+    // 升级时已有历史全部视为已读，避免安装新版本后目录一次性出现大量红点。
+    await transaction.runAsync(`INSERT OR IGNORE INTO thread_reads(
+      profile_id,thread_id,has_unread,updated_at)
+      SELECT profile_id,id,0,? FROM threads`, now);
+    await transaction.execAsync("PRAGMA user_version = 9");
+  });
+}
+
 export async function clearProfileCache(profileId: string): Promise<void> {
   await withDatabaseTransaction(async (database) => {
     await database.runAsync("DELETE FROM projects WHERE profile_id=?", profileId);
     await database.runAsync("DELETE FROM threads WHERE profile_id=?", profileId);
+    await database.runAsync("DELETE FROM thread_reads WHERE profile_id=?", profileId);
     await database.runAsync("DELETE FROM pending_submissions WHERE profile_id=?", profileId);
     await database.runAsync("DELETE FROM outbox WHERE profile_id=?", profileId);
   });

@@ -35,6 +35,7 @@ export type TurnPresentation = {
   hasActivity: boolean;
   hasFinalContent: boolean;
   canCollapseActivity: boolean;
+  showThinking: boolean;
 };
 
 export type ToolOperation = { key: string; text: string; running: boolean; failed: boolean };
@@ -56,6 +57,9 @@ export function projectTurnPresentation(turn: Turn): TurnPresentation {
 
   for (const item of turn.items) {
     if (item.type === "reasoning") {
+      // reasoning 是一个新的活动阶段边界；它本身只投影最新标题，但不能把前后工具
+      // 合并成一个巨型工具组，否则移动端会只看到第一段过程。
+      flushTools();
       const heading = reasoningActivityHeading(item.summary);
       trailingReasoning = heading
         ? { kind: "reasoning", key: item.id, item, heading }
@@ -79,7 +83,7 @@ export function projectTurnPresentation(turn: Turn): TurnPresentation {
   }
   flushTools(true);
   // 官方只把最新 reasoning 当作当前思考状态；完成后的历史 reasoning 不逐条回放。
-  // reasoning 也不会切断可分组工具，因此长任务不会退化成大量单工具披露行。
+  // 完成后的历史 reasoning 不逐条回放，只在活动 Turn 尾部保留当前标题。
   const trailingBlock = blocks.at(-1);
   const trailingToolIsRunning = trailingBlock?.kind === "tools" && trailingBlock.running;
   if (turn.status === "inProgress" && trailingReasoning && !trailingToolIsRunning) {
@@ -92,6 +96,7 @@ export function projectTurnPresentation(turn: Turn): TurnPresentation {
     block.kind === "plan" && block.item.text.trim() !== "" ||
     block.kind === "final" && block.item.text.trim() !== "");
   return { blocks, hasActivity, hasFinalContent,
+    showThinking: turn.status === "inProgress" && !hasActivity && !hasFinalContent,
     canCollapseActivity: hasActivity && hasFinalContent && turn.status !== "interrupted" };
 }
 

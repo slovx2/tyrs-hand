@@ -51,7 +51,7 @@ export function mergeTurnSequence(...groups: Turns[]): Turns {
 
 /**
  * 官方尾页在 Turn 刚结束时偶尔会短暂缺少已推送过的工具 Item。
- * 同一 Turn 因此按 Item ID 单调合并；非工具内容仍以最新官方快照为准。
+ * 同一活动 Turn 因此按 Item ID 单调合并；完成态正文仍以最新官方快照为准。
  */
 export function mergeTurnSnapshot(previous: Turns[number], incoming: Turns[number]): Turns[number] {
   if (sameTurnSnapshot(previous, incoming)) return previous;
@@ -61,9 +61,9 @@ export function mergeTurnSnapshot(previous: Turns[number], incoming: Turns[numbe
   for (const item of previous.items) {
     const updated = incomingById.get(item.id);
     if (updated) {
-      items.push(sameItemSnapshot(item, updated) ? item : updated);
+      items.push(mergeItemSnapshot(item, updated, incoming.status !== "inProgress"));
       seen.add(item.id);
-    } else if (isToolItem(item)) {
+    } else if (incoming.status === "inProgress" || isToolItem(item)) {
       items.push(item);
       seen.add(item.id);
     }
@@ -73,6 +73,42 @@ export function mergeTurnSnapshot(previous: Turns[number], incoming: Turns[numbe
   }
   const merged = { ...incoming, items };
   return sameTurnSnapshot(previous, merged) ? previous : merged;
+}
+
+export function mergeItemSnapshot(previous: ThreadItem, incoming: ThreadItem,
+  completed: boolean): ThreadItem {
+  if (sameItemSnapshot(previous, incoming)) return previous;
+  if (completed || previous.type !== incoming.type) return incoming;
+  if (previous.type === "agentMessage" && incoming.type === "agentMessage") {
+    const text = growingText(previous.text, incoming.text);
+    return text === previous.text && previous.phase === incoming.phase ? previous
+      : { ...incoming, text };
+  }
+  if (previous.type === "plan" && incoming.type === "plan") {
+    const text = growingText(previous.text, incoming.text);
+    return text === previous.text ? previous : { ...incoming, text };
+  }
+  if (previous.type === "reasoning" && incoming.type === "reasoning") {
+    const summary = mergeGrowingParts(previous.summary, incoming.summary);
+    const content = mergeGrowingParts(previous.content, incoming.content);
+    return summary === previous.summary && content === previous.content ? previous
+      : { ...incoming, summary, content };
+  }
+  return incoming;
+}
+
+function growingText(previous: string, incoming: string): string {
+  if (incoming.startsWith(previous)) return incoming;
+  if (previous.startsWith(incoming)) return previous;
+  return incoming.length >= previous.length ? incoming : previous;
+}
+
+function mergeGrowingParts(previous: string[], incoming: string[]): string[] {
+  const length = Math.max(previous.length, incoming.length);
+  const result = Array.from({ length }, (_, index) =>
+    growingText(previous[index] ?? "", incoming[index] ?? ""));
+  return result.length === previous.length && result.every((part, index) =>
+    part === previous[index]) ? previous : result;
 }
 
 function isToolItem(item: ThreadItem): boolean {

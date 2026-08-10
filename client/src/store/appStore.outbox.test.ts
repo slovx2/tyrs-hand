@@ -116,6 +116,31 @@ describe("移动端 Outbox 新 Thread", () => {
     expect(client.startThread).not.toHaveBeenCalled();
     expect(client.submitNewThread).not.toHaveBeenCalled();
   });
+
+  it("现有 Thread 提交等待网络期间立即插入乐观用户消息和活动 Turn", async () => {
+    const profileId = "outbox-optimistic";
+    const threadId = "thread-existing";
+    activate(profileId);
+    useAppStore.setState({ threads: [{ thread: thread(threadId), archived: false,
+      workspaceId: null, projectId: project.id,
+      history: { kind: "loaded", olderCursor: null, tailOlderCursor: null,
+        hasLoadedOldest: true } }] });
+    const pending = deferred<{ threadId: string; turnId: string; deduplicated: boolean }>();
+    client.submit.mockReturnValueOnce(pending.promise);
+
+    const submission = useAppStore.getState().submitMessage(threadId, "立即显示", [], preferences,
+      "optimistic-message");
+    await vi.waitFor(() => expect(useAppStore.getState().threads[0]?.thread.turns[0]?.id)
+      .toBe("provisional:optimistic-message"));
+
+    expect(useAppStore.getState().threads[0]?.thread.turns[0]?.items[0]).toMatchObject({
+      type: "userMessage", clientId: "optimistic-message",
+    });
+    expect(useAppStore.getState().threads[0]?.thread.status.type).toBe("active");
+
+    pending.resolve({ threadId, turnId: "turn-1", deduplicated: false });
+    await expect(submission).resolves.toBe(true);
+  });
 });
 
 function activate(profileId: string): void {
@@ -123,7 +148,13 @@ function activate(profileId: string): void {
     host: "worker", port: 22, user: "tester", keyRef: "key", hostFingerprint: null };
   useAppStore.setState({ ready: true, refreshing: false, error: null,
     activeConnection: connection, connections: [connection], projects: [project], threads: [],
-    outbox: [], selectedProjectId: project.id, modelsByTarget: {}, pendingRequests: {} });
+    outbox: [], unreadThreadIds: {}, selectedProjectId: project.id,
+    modelsByTarget: {}, pendingRequests: {} });
+}
+
+function deferred<Value>(): { promise: Promise<Value>; resolve: (value: Value) => void } {
+  let resolve!: (value: Value) => void;
+  return { promise: new Promise<Value>((done) => { resolve = done; }), resolve };
 }
 
 function thread(id: string): Thread {

@@ -1,5 +1,8 @@
 import type { Model } from "@codex-app-server/v2/Model";
+import type { ServerNotification } from "@codex-app-server/ServerNotification";
 import type { ServerRequest } from "@codex-app-server/ServerRequest";
+import type { ThreadItem } from "@codex-app-server/v2/ThreadItem";
+import type { Turn } from "@codex-app-server/v2/Turn";
 import * as Crypto from "expo-crypto";
 import { create } from "zustand";
 
@@ -17,10 +20,14 @@ import { loadCachedProjects, loadCachedThreads, replaceCachedThreads,
 import { listConnections, setActiveConnection, type Connection } from "@/db/connections";
 import { listSSHProjects } from "@/db/sshProjects";
 import { loadThemeMode, saveLastTurnPreferences, saveThemeMode } from "@/db/settings";
+import { loadUnreadThreadIds, markThreadRead, markThreadUnread, reconcileThreadReads,
+  removeThreadRead } from "@/db/threadReads";
 import type { ThemeMode } from "@/theme/tokens";
 import { CoalescingKeyedQueue } from "./coalescingQueue";
 import { mergeThreadCatalog } from "./threadCatalog";
 import { mergeOlderPage, mergeTailPage } from "./threadHistory";
+import { isDirectThreadNotification, reduceThreadNotification } from "./threadNotificationReducer";
+import { StreamingTextQueue, type StreamingDelta } from "./streamingTextQueue";
 
 type AppState = {
   ready: boolean;
@@ -34,12 +41,14 @@ type AppState = {
   modelsByTarget: Record<string, Model[]>;
   pendingRequests: Record<string, ServerRequest[]>;
   outbox: NativeOutboxItem[];
+  unreadThreadIds: Record<string, true>;
   selectedProjectId: string | null;
   initialize: () => Promise<void>;
   refresh: () => Promise<void>;
   reloadConnections: () => Promise<void>;
   switchConnection: (profileId: string) => Promise<void>;
   setSelectedProject: (projectId: string | null) => void;
+  setThreadVisible: (threadId: string, visible: boolean) => void;
   setThemeMode: (mode: ThemeMode) => void;
   loadThread: (threadId: string) => Promise<void>;
   refreshThreadTail: (threadId: string) => Promise<void>;
@@ -63,6 +72,9 @@ type StoreGet = () => AppState;
 const refreshPromises = new Map<string, Promise<void>>();
 const subscribedClients = new WeakSet<object>();
 const threadRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const threadCacheTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const notificationChains = new Map<string, Promise<void>>();
+const visibleThreads = new Set<string>();
 const threadLoadPromises = new Map<string, Promise<void>>();
 const threadTailQueue = new CoalescingKeyedQueue();
 const olderThreadPromises = new Map<string, Promise<void>>();
@@ -73,17 +85,18 @@ const outboxDrains = new Map<string, Promise<OutboxDrainResult>>();
 export const useAppStore = create<AppState>((set, get) => ({
   ready: false, refreshing: false, error: null, themeMode: "system", connections: [],
   activeConnection: null, projects: [], threads: [], modelsByTarget: {}, pendingRequests: {},
-  outbox: [], selectedProjectId: null,
+  outbox: [], unreadThreadIds: {}, selectedProjectId: null,
 
   initialize: async () => {
     const [connections, themeMode] = await Promise.all([listConnections(), loadThemeMode()]);
     const activeConnection = connections.find((item) => item.active) ?? connections[0] ?? null;
-    const [projects, threads, outbox] = activeConnection ? await Promise.all([
+    const [projects, threads, outbox, unreadThreadIds] = activeConnection ? await Promise.all([
       loadCachedProjects(activeConnection.profileId), loadCachedThreads(activeConnection.profileId),
-      listOutbox(activeConnection.profileId),
-    ]) : [[], [], []];
+      listOutbox(activeConnection.profileId), loadUnreadThreadIds(activeConnection.profileId),
+    ]) : [[], [], [], []];
     set({ ready: true, connections, activeConnection, projects, threads, themeMode,
-      outbox, selectedProjectId: projects[0]?.id ?? null });
+      outbox, unreadThreadIds: unreadRecord(unreadThreadIds),
+      selectedProjectId: projects[0]?.id ?? null });
     if (activeConnection) void get().refresh();
   },
 
@@ -108,12 +121,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     const current = get().activeConnection;
     if (!current || !connections.some((item) => item.profileId === current.profileId)) {
       const activeConnection = connections.find((item) => item.active) ?? connections[0] ?? null;
-      const [projects, threads, outbox] = activeConnection ? await Promise.all([
+      const [projects, threads, outbox, unreadThreadIds] = activeConnection ? await Promise.all([
         loadCachedProjects(activeConnection.profileId), loadCachedThreads(activeConnection.profileId),
-        listOutbox(activeConnection.profileId),
-      ]) : [[], [], []];
+        listOutbox(activeConnection.profileId), loadUnreadThreadIds(activeConnection.profileId),
+      ]) : [[], [], [], []];
       set({ connections, activeConnection, projects, threads, modelsByTarget: {},
-        pendingRequests: {}, outbox, selectedProjectId: projects[0]?.id ?? null });
+        pendingRequests: {}, outbox, unreadThreadIds: unreadRecord(unreadThreadIds),
+        selectedProjectId: projects[0]?.id ?? null });
       if (activeConnection) void get().refresh();
       return;
     }
@@ -125,16 +139,30 @@ export const useAppStore = create<AppState>((set, get) => ({
     await setActiveConnection(profileId);
     const connections = await listConnections();
     const activeConnection = connections.find((item) => item.profileId === profileId) ?? null;
-    const [projects, threads, outbox] = activeConnection ? await Promise.all([
+    visibleThreads.clear();
+    const [projects, threads, outbox, unreadThreadIds] = activeConnection ? await Promise.all([
       loadCachedProjects(profileId), loadCachedThreads(profileId),
-      listOutbox(profileId),
-    ]) : [[], [], []];
+      listOutbox(profileId), loadUnreadThreadIds(profileId),
+    ]) : [[], [], [], []];
     set({ connections, activeConnection, projects, threads, modelsByTarget: {}, pendingRequests: {},
-      outbox, selectedProjectId: projects[0]?.id ?? null, error: null });
+      outbox, unreadThreadIds: unreadRecord(unreadThreadIds),
+      selectedProjectId: projects[0]?.id ?? null, error: null });
     await get().refresh();
   },
 
   setSelectedProject: (selectedProjectId) => set({ selectedProjectId }),
+  setThreadVisible: (threadId, visible) => {
+    const connection = get().activeConnection;
+    if (!connection) return;
+    const key = threadKey(connection.profileId, threadId);
+    if (visible) {
+      visibleThreads.add(key);
+      set((state) => ({ unreadThreadIds: withoutUnread(state.unreadThreadIds, threadId) }));
+      void markThreadRead(connection.profileId, threadId).catch(() => undefined);
+    } else {
+      visibleThreads.delete(key);
+    }
+  },
   setThemeMode: (themeMode) => { set({ themeMode }); void saveThemeMode(themeMode); },
   loadThread: async (threadId) => loadOfficialThread(threadId, set, get),
   refreshThreadTail: async (threadId) => queueThreadTailRefresh(threadId, set, get),
@@ -157,12 +185,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     const record = requireThread(get(), threadId);
     const project = requireProject(get(), record.projectId);
     const clientMessageId = suppliedId ?? Crypto.randomUUID();
-    await enqueueOutbox({ profileId: connection.profileId, clientMessageId,
-      kind: "submit_message", projectId: project.id, threadId,
-      payload: { text, attachments, preferences } });
-    await syncOutboxState(connection.profileId, set, get);
-    const result = await drainProfileOutbox(connection, get().projects, set, get);
-    return result.completed.has(clientMessageId);
+    insertOptimisticTurn(connection.profileId, record, clientMessageId, text, attachments, set, get);
+    try {
+      await enqueueOutbox({ profileId: connection.profileId, clientMessageId,
+        kind: "submit_message", projectId: project.id, threadId,
+        payload: { text, attachments, preferences } });
+      await syncOutboxState(connection.profileId, set, get);
+      const result = await drainProfileOutbox(connection, get().projects, set, get);
+      const sent = result.completed.has(clientMessageId);
+      if (!sent) removeOptimisticTurn(connection.profileId, threadId, clientMessageId, set, get);
+      return sent;
+    } catch (error) {
+      removeOptimisticTurn(connection.profileId, threadId, clientMessageId, set, get);
+      throw error;
+    }
   },
 
   retryOutbox: async (clientMessageId) => {
@@ -220,7 +256,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     await client.connect();
     if (archived) await client.archive(threadId); else await client.unarchive(threadId);
     set((state) => ({ threads: state.threads.map((item) => item.thread.id === threadId
-      ? { ...item, archived } : item) }));
+      ? { ...item, archived } : item),
+    unreadThreadIds: archived ? withoutUnread(state.unreadThreadIds, threadId)
+      : state.unreadThreadIds }));
+    if (archived) void removeThreadRead(connection.profileId, threadId).catch(() => undefined);
     void get().refresh();
   },
 
@@ -399,9 +438,13 @@ async function refreshProfile(connection: Connection, set: StoreSet, get: StoreG
       pendingCatalogThreads.has(threadKey(connection.profileId, record.thread.id))
         ? [record.thread.id] : []));
     const merged = mergeThreadCatalog(deduplicated, existing, pendingIds);
+    const unreadThreadIds = await reconcileThreadReads(connection.profileId,
+      merged.filter((record) => !record.archived).map((record) => record.thread.id));
     await replaceCachedThreads(connection.profileId, merged);
     if (get().activeConnection?.profileId !== connection.profileId) return;
     set({ threads: merged, modelsByTarget: catalogs,
+      unreadThreadIds: unreadRecord(unreadThreadIds.filter((threadId) =>
+        !visibleThreads.has(threadKey(connection.profileId, threadId)))),
       error: [...outbox.errors, ...recovery.errors].length > 0
         ? `恢复发送失败：${[...outbox.errors, ...recovery.errors].join("；")}` : null });
   } catch (error) {
@@ -459,6 +502,8 @@ function bindClient(connection: Connection, workspaceId: string | null,
   const client = officialClientFor(connection, workspaceId);
   if (!subscribedClients.has(client)) {
     subscribedClients.add(client);
+    const streaming = new StreamingTextQueue((delta) =>
+      applyStreamingDelta(connection.profileId, delta, set, get));
     client.subscribe((event) => {
       const threadId = eventThreadId(event);
       if (threadId) syncPendingRequests(client, threadId, set);
@@ -468,18 +513,117 @@ function bindClient(connection: Connection, workspaceId: string | null,
         if (threadId && name !== null) {
           void applyObservedThreadName(connection.profileId, threadId, name, set, get);
         }
+      } else if (threadId && isDirectThreadNotification(event)) {
+        const delta = notificationStreamingDelta(event);
+        if (delta) streaming.enqueue(delta);
+        else enqueueThreadNotification(connection.profileId, threadId, event, streaming, set, get);
+        if (event.method === "turn/started" || event.method === "turn/completed") {
+          observeUnread(connection.profileId, threadId, set, get);
+        }
+      } else if (threadId && event.method !== "serverRequest/resolved" &&
+        isServerRequestMethod(event.method)) {
+        observeUnread(connection.profileId, threadId, set, get);
       } else if (threadId && (event.method.startsWith("item/") || event.method.startsWith("turn/") ||
         event.method === "serverRequest/resolved")) {
         scheduleThreadRefresh(connection.profileId, threadId, get);
-        if (event.method === "turn/completed") {
-          scheduleFinalThreadRefresh(connection.profileId, threadId, get);
-        }
       } else {
         scheduleProfileRefresh(connection.profileId, get);
       }
     });
   }
   return client;
+}
+
+function enqueueThreadNotification(profileId: string, threadId: string,
+  event: ServerNotification, streaming: StreamingTextQueue, set: StoreSet, get: StoreGet): void {
+  const key = threadKey(profileId, threadId);
+  const previous = notificationChains.get(key) ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(async () => {
+    if (event.method === "item/completed") {
+      await streaming.flushItem(threadId, event.params.turnId, event.params.item.id);
+      streaming.discardItem(threadId, event.params.turnId, event.params.item.id);
+    } else if (event.method === "turn/completed") {
+      await streaming.flushTurn(threadId, event.params.turn.id);
+      streaming.discardTurn(threadId, event.params.turn.id);
+    }
+    applyThreadNotification(profileId, threadId, event, set, get);
+    if (event.method === "turn/completed") scheduleFinalThreadRefresh(profileId, threadId, get);
+  }).finally(() => {
+    if (notificationChains.get(key) === next) notificationChains.delete(key);
+  });
+  notificationChains.set(key, next);
+}
+
+function applyThreadNotification(profileId: string, threadId: string,
+  event: ServerNotification, set: StoreSet, get: StoreGet): void {
+  if (get().activeConnection?.profileId !== profileId) return;
+  const current = get().threads.find((record) => record.thread.id === threadId);
+  if (!current) {
+    scheduleProfileRefresh(profileId, get);
+    return;
+  }
+  const reduced = reduceThreadNotification(current, event);
+  if (reduced.changed) {
+    setThreadRecord(profileId, reduced.record, set, get);
+    if (reduced.terminal) flushThreadCache(profileId, threadId, get);
+    else scheduleThreadCache(profileId, threadId, get);
+  }
+  if (reduced.needsRefresh) scheduleThreadRefresh(profileId, threadId, get);
+}
+
+function applyStreamingDelta(profileId: string, delta: StreamingDelta,
+  set: StoreSet, get: StoreGet): void {
+  const event = streamingDeltaNotification(delta);
+  applyThreadNotification(profileId, delta.threadId, event, set, get);
+}
+
+function notificationStreamingDelta(event: ServerNotification): StreamingDelta | null {
+  switch (event.method) {
+  case "item/agentMessage/delta": return { threadId: event.params.threadId,
+    turnId: event.params.turnId, itemId: event.params.itemId, target: "agent", index: 0,
+    delta: event.params.delta };
+  case "item/plan/delta": return { threadId: event.params.threadId,
+    turnId: event.params.turnId, itemId: event.params.itemId, target: "plan", index: 0,
+    delta: event.params.delta };
+  case "item/reasoning/summaryTextDelta": return { threadId: event.params.threadId,
+    turnId: event.params.turnId, itemId: event.params.itemId, target: "reasoningSummary",
+    index: event.params.summaryIndex, delta: event.params.delta };
+  case "item/reasoning/textDelta": return { threadId: event.params.threadId,
+    turnId: event.params.turnId, itemId: event.params.itemId, target: "reasoningContent",
+    index: event.params.contentIndex, delta: event.params.delta };
+  default: return null;
+  }
+}
+
+function streamingDeltaNotification(delta: StreamingDelta): ServerNotification {
+  const base = { threadId: delta.threadId, turnId: delta.turnId, itemId: delta.itemId,
+    delta: delta.delta };
+  switch (delta.target) {
+  case "agent": return { method: "item/agentMessage/delta", params: base };
+  case "plan": return { method: "item/plan/delta", params: base };
+  case "reasoningSummary": return { method: "item/reasoning/summaryTextDelta",
+    params: { ...base, summaryIndex: delta.index } };
+  case "reasoningContent": return { method: "item/reasoning/textDelta",
+    params: { ...base, contentIndex: delta.index } };
+  }
+}
+
+function observeUnread(profileId: string, threadId: string, set: StoreSet, get: StoreGet): void {
+  if (visibleThreads.has(threadKey(profileId, threadId))) {
+    if (get().unreadThreadIds[threadId]) {
+      set((state) => ({ unreadThreadIds: withoutUnread(state.unreadThreadIds, threadId) }));
+    }
+    void markThreadRead(profileId, threadId).catch(() => undefined);
+    return;
+  }
+  set((state) => state.unreadThreadIds[threadId] ? {}
+    : { unreadThreadIds: { ...state.unreadThreadIds, [threadId]: true } });
+  void markThreadUnread(profileId, threadId).catch(() => undefined);
+}
+
+function isServerRequestMethod(method: string): boolean {
+  return method.endsWith("/requestApproval") || method === "item/tool/requestUserInput" ||
+    method === "mcpServer/elicitation/request";
 }
 
 function eventThreadName(event: { params: unknown }): string | null {
@@ -519,6 +663,27 @@ function scheduleThreadRefresh(profileId: string, threadId: string, get: StoreGe
       void get().refreshThreadTail(threadId).catch(() => undefined);
     }
   }, 120));
+}
+
+function scheduleThreadCache(profileId: string, threadId: string, get: StoreGet): void {
+  const key = `${profileId}:${threadId}:cache`;
+  if (threadCacheTimers.has(key)) return;
+  threadCacheTimers.set(key, setTimeout(() => {
+    threadCacheTimers.delete(key);
+    if (get().activeConnection?.profileId !== profileId) return;
+    const record = get().threads.find((item) => item.thread.id === threadId);
+    if (record) void saveThreadRecord(profileId, record).catch(() => undefined);
+  }, 250));
+}
+
+function flushThreadCache(profileId: string, threadId: string, get: StoreGet): void {
+  const key = `${profileId}:${threadId}:cache`;
+  const timer = threadCacheTimers.get(key);
+  if (timer) clearTimeout(timer);
+  threadCacheTimers.delete(key);
+  if (get().activeConnection?.profileId !== profileId) return;
+  const record = get().threads.find((item) => item.thread.id === threadId);
+  if (record) void saveThreadRecord(profileId, record).catch(() => undefined);
 }
 
 function scheduleFinalThreadRefresh(profileId: string, threadId: string, get: StoreGet): void {
@@ -674,6 +839,55 @@ async function saveAndSetThread(profileId: string, record: ThreadRecord, set: St
 
 function threadKey(profileId: string, threadId: string): string {
   return `${profileId}:${threadId}`;
+}
+
+function insertOptimisticTurn(profileId: string, record: ThreadRecord, clientMessageId: string,
+  text: string, attachments: LocalAttachment[], set: StoreSet, get: StoreGet): void {
+  const content: Extract<ThreadItem, { type: "userMessage" }>["content"] = [];
+  if (text.trim()) content.push(textInput(text.trim()));
+  content.push(...attachments.map((attachment) => ({ type: "mention" as const,
+    name: attachment.name, path: attachment.uri })));
+  const nowSeconds = Date.now() / 1000;
+  const turn: Turn = {
+    id: `provisional:${clientMessageId}`,
+    items: [{ type: "userMessage", id: `provisional-user:${clientMessageId}`,
+      clientId: clientMessageId, content }],
+    itemsView: "full",
+    status: "inProgress",
+    error: null,
+    startedAt: nowSeconds,
+    completedAt: null,
+    durationMs: null,
+  };
+  const next: ThreadRecord = { ...record, thread: { ...record.thread,
+    status: { type: "active", activeFlags: [] },
+    recencyAt: nowSeconds, updatedAt: nowSeconds,
+    turns: [...record.thread.turns, turn] } };
+  setThreadRecord(profileId, next, set, get);
+}
+
+function removeOptimisticTurn(profileId: string, threadId: string, clientMessageId: string,
+  set: StoreSet, get: StoreGet): void {
+  if (get().activeConnection?.profileId !== profileId) return;
+  const current = get().threads.find((record) => record.thread.id === threadId);
+  if (!current) return;
+  const provisionalId = `provisional:${clientMessageId}`;
+  const turns = current.thread.turns.filter((turn) => turn.id !== provisionalId);
+  if (turns.length === current.thread.turns.length) return;
+  const active = turns.some((turn) => turn.status === "inProgress");
+  setThreadRecord(profileId, { ...current, thread: { ...current.thread, turns,
+    status: active ? current.thread.status : { type: "idle" } } }, set, get);
+}
+
+function unreadRecord(threadIds: readonly string[]): Record<string, true> {
+  return Object.fromEntries(threadIds.map((threadId) => [threadId, true])) as Record<string, true>;
+}
+
+function withoutUnread(current: Record<string, true>, threadId: string): Record<string, true> {
+  if (!current[threadId]) return current;
+  const next = { ...current };
+  delete next[threadId];
+  return next;
 }
 
 function requireConnection(state: AppState): Connection {
