@@ -55,8 +55,9 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const submitMessage = useAppStore((state) => state.submitMessage);
   const retryOutbox = useAppStore((state) => state.retryOutbox);
   const discardOutbox = useAppStore((state) => state.discardOutbox);
-  const queued = useAppStore((state) => state.outbox.filter((item) =>
-    item.kind === "submit_message" && item.threadId === sessionId));
+  const outbox = useAppStore((state) => state.outbox);
+  const queued = useMemo(() => outbox.filter((item) =>
+    item.kind === "submit_message" && item.threadId === sessionId), [outbox, sessionId]);
   const executePlan = useAppStore((state) => state.executePlan);
   const interruptThread = useAppStore((state) => state.interruptThread);
   const answerRequest = useAppStore((state) => state.answerRequest);

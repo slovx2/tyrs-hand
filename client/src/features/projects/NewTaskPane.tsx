@@ -32,8 +32,9 @@ export function NewTaskPane({ project, expanded = false, onSubmitted }: {
   const startTask = useAppStore((state) => state.startTask);
   const retryOutbox = useAppStore((state) => state.retryOutbox);
   const discardOutbox = useAppStore((state) => state.discardOutbox);
-  const queued = useAppStore((state) => state.outbox.filter((item) =>
-    item.kind === "create_task" && item.projectId === project.id));
+  const outbox = useAppStore((state) => state.outbox);
+  const queued = useMemo(() => outbox.filter((item) =>
+    item.kind === "create_task" && item.projectId === project.id), [outbox, project.id]);
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<LocalAttachment[]>([]);
   const [showParameters, setShowParameters] = useState(false);
