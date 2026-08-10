@@ -64,17 +64,72 @@ func (a managedTunnelAddress) String() string  { return string(a) }
 
 type tunnelMessageWriter interface {
 	WriteMessage(int, []byte) error
+	EnqueueMessage(int, []byte) bool
+}
+
+type queuedTunnelMessage struct {
+	messageType int
+	payload     []byte
+}
+
+type tunnelMessageConnection interface {
+	WriteMessage(int, []byte) error
+	Close() error
 }
 
 type serializedTunnelWriter struct {
-	connection *websocket.Conn
+	connection tunnelMessageConnection
 	mu         sync.Mutex
+	queue      chan queuedTunnelMessage
+	done       chan struct{}
+	closeOnce  sync.Once
+}
+
+func newSerializedTunnelWriter(connection tunnelMessageConnection) *serializedTunnelWriter {
+	writer := &serializedTunnelWriter{connection: connection,
+		queue: make(chan queuedTunnelMessage, 64), done: make(chan struct{})}
+	go writer.run()
+	return writer
 }
 
 func (w *serializedTunnelWriter) WriteMessage(messageType int, payload []byte) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.connection.WriteMessage(messageType, payload)
+}
+
+func (w *serializedTunnelWriter) EnqueueMessage(messageType int, payload []byte) bool {
+	message := queuedTunnelMessage{messageType: messageType,
+		payload: append([]byte(nil), payload...)}
+	select {
+	case <-w.done:
+		return false
+	case w.queue <- message:
+		return true
+	default:
+		return false
+	}
+}
+
+func (w *serializedTunnelWriter) Close() {
+	w.closeOnce.Do(func() {
+		close(w.done)
+		_ = w.connection.Close()
+	})
+}
+
+func (w *serializedTunnelWriter) run() {
+	for {
+		select {
+		case <-w.done:
+			return
+		case message := <-w.queue:
+			if err := w.WriteMessage(message.messageType, message.payload); err != nil {
+				_ = w.connection.Close()
+				return
+			}
+		}
+	}
 }
 
 func (r *Runtime) registerTunnelOutput(output tunnelMessageWriter) uint64 {
@@ -104,7 +159,7 @@ func (r *Runtime) broadcastTunnelMessage(originID uint64, messageType int, paylo
 	}
 	r.mu.Unlock()
 	for _, output := range outputs {
-		_ = output.WriteMessage(messageType, payload)
+		output.EnqueueMessage(messageType, payload)
 	}
 }
 

@@ -317,9 +317,12 @@ func (r *Runtime) ServeAppServerTunnel(ctx context.Context,
 		return err
 	}
 	defer func() { _ = upstream.Close() }()
-	tunnelOutput := &serializedTunnelWriter{connection: tunnel}
+	tunnelOutput := newSerializedTunnelWriter(tunnel)
 	tunnelID := r.registerTunnelOutput(tunnelOutput)
-	defer r.unregisterTunnelOutput(tunnelID)
+	defer func() {
+		r.unregisterTunnelOutput(tunnelID)
+		tunnelOutput.Close()
+	}()
 	bridgeDone := make(chan struct{})
 	defer close(bridgeDone)
 	go func() {

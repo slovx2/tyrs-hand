@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -218,6 +219,45 @@ type recordingTunnelWriter struct {
 func (w *recordingTunnelWriter) WriteMessage(_ int, payload []byte) error {
 	w.messages <- append([]byte(nil), payload...)
 	return nil
+}
+
+func (w *recordingTunnelWriter) EnqueueMessage(messageType int, payload []byte) bool {
+	return w.WriteMessage(messageType, payload) == nil
+}
+
+type blockingTunnelConnection struct {
+	started chan struct{}
+	release chan struct{}
+	writes  chan []byte
+	once    sync.Once
+}
+
+func (c *blockingTunnelConnection) WriteMessage(_ int, payload []byte) error {
+	c.once.Do(func() { close(c.started) })
+	<-c.release
+	c.writes <- append([]byte(nil), payload...)
+	return nil
+}
+
+func (c *blockingTunnelConnection) Close() error { return nil }
+
+func TestSerializedTunnelWriterQueuesWithoutBlockingOtherBroadcasts(t *testing.T) {
+	connection := &blockingTunnelConnection{started: make(chan struct{}),
+		release: make(chan struct{}), writes: make(chan []byte, 2)}
+	writer := newSerializedTunnelWriter(connection)
+	defer writer.Close()
+	require.True(t, writer.EnqueueMessage(websocket.TextMessage, []byte("first")))
+	select {
+	case <-connection.started:
+	case <-time.After(time.Second):
+		t.Fatal("首条广播未开始写入")
+	}
+	started := time.Now()
+	require.True(t, writer.EnqueueMessage(websocket.TextMessage, []byte("second")))
+	require.Less(t, time.Since(started), 100*time.Millisecond)
+	close(connection.release)
+	require.Equal(t, []byte("first"), <-connection.writes)
+	require.Equal(t, []byte("second"), <-connection.writes)
 }
 
 func TestManagedMetadataNotificationsBroadcastAcrossTunnelOutputs(t *testing.T) {
