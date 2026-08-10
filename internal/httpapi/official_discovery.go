@@ -154,11 +154,7 @@ func (s *Server) ensureOfficialThreadDiscordPost(ctx context.Context, bindingID 
 		title = "Codex Desktop"
 	}
 	title = normalizeDesktopTitle(title)
-	preview := strings.TrimSpace(thread.Preview)
-	if preview == "" {
-		preview = "已从 Codex Desktop 连接这个官方 Thread。"
-	}
-	card := discordintegration.DesktopInputCards("Desktop", preview)[0]
+	card := officialThreadStarterCard()
 	key := "official-thread-post:" + bindingID.String()
 	if err = discordintegration.EnqueueTx(ctx, tx, key, "forum.post.create",
 		"channels/"+forumDiscordID+"/threads", map[string]any{
@@ -167,4 +163,9 @@ func (s *Server) ensureOfficialThreadDiscordPost(ctx context.Context, bindingID 
 		return err
 	}
 	return tx.Commit()
+}
+
+func officialThreadStarterCard() discordintegration.ComponentCardPayload {
+	return discordintegration.DesktopInputCards("Desktop",
+		"已从 Codex Desktop 连接这个官方 Thread。")[0]
 }
