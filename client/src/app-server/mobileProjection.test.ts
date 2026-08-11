@@ -42,7 +42,7 @@ describe("移动端官方 Item 投影", () => {
     expect(projected.items[4]).toMatchObject({ prompt: null, agentsStates: {} });
     expect(projected.items[5]).toMatchObject({ query: "official app", results: null });
     expect(projected.items[6]).toMatchObject({ revisedPrompt: null, result: "" });
-    expect(projected.items[6]).not.toHaveProperty("savedPath");
+    expect(projected.items[6]).toMatchObject({ savedPath: "/tmp/image.png" });
     expect(projected.items[7]).toBe(items[7]);
     expect((items[0] as Extract<ThreadItem, { type: "commandExecution" }>).aggregatedOutput)
       .toBe("large output");

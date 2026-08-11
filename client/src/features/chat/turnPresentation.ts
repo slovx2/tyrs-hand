@@ -5,6 +5,7 @@ type UserItem = Extract<ThreadItem, { type: "userMessage" }>;
 type AgentItem = Extract<ThreadItem, { type: "agentMessage" }>;
 type PlanItem = Extract<ThreadItem, { type: "plan" }>;
 type ReasoningItem = Extract<ThreadItem, { type: "reasoning" }>;
+type GeneratedImageItem = Extract<ThreadItem, { type: "imageGeneration" }>;
 export type ToolItem = Exclude<ThreadItem,
   UserItem | AgentItem | PlanItem | ReasoningItem | Extract<ThreadItem, { type: "hookPrompt" }>>;
 
@@ -27,6 +28,7 @@ export type TurnBlock =
   | { kind: "commentary"; key: string; item: AgentItem }
   | { kind: "final"; key: string; item: AgentItem }
   | { kind: "plan"; key: string; item: PlanItem }
+  | { kind: "generatedImage"; key: string; item: GeneratedImageItem }
   | ToolGroup;
 
 export type TurnPresentation = {
@@ -53,6 +55,11 @@ export function projectTurnPresentation(turn: Turn): TurnPresentation {
     if (pendingTools.length === 0) return;
     blocks.push(createToolGroup(pendingTools, trailing && turn.status === "inProgress",
       trailing ? currentReasoningHeading : null));
+    for (const item of pendingTools) {
+      if (item.type === "imageGeneration" && item.savedPath) {
+        blocks.push({ kind: "generatedImage", key: `${item.id}:result`, item });
+      }
+    }
     pendingTools = [];
   };
 
@@ -130,11 +137,20 @@ export function createToolGroup(items: ToolItem[], inferStatelessRunning = false
     items.some((item) => item.type === "webSearch");
   const running = explicitlyRunning || inferredRunning || liveHeading !== null;
   const failed = items.some(isToolFailed);
+  const currentCommandTitle = runningCommandTitle(items);
   return { kind: "tools", key: items[0]!.id, items: [...items], category, running,
-    inferredRunning, failed, title: !explicitlyRunning && !inferredRunning && liveHeading
+    inferredRunning, failed, title: currentCommandTitle ??
+      (!explicitlyRunning && !inferredRunning && liveHeading
       ? liveHeading : category === "mixed"
       ? mixedToolGroupTitle(items, running, failed)
-      : toolGroupTitle(category, running, failed) };
+      : toolGroupTitle(category, running, failed)) };
+}
+
+function runningCommandTitle(items: ToolItem[]): string | null {
+  const current = [...items].reverse().find((item) =>
+    item.type === "commandExecution" && isToolRunning(item));
+  if (!current || current.type !== "commandExecution") return null;
+  return toolOperationLines(current)[0]?.text ?? null;
 }
 
 /**

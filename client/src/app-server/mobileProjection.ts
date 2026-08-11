@@ -29,10 +29,8 @@ export function projectItemForMobile(item: ThreadItem): ThreadItem {
     return { ...item, prompt: null, agentsStates: {} };
   case "webSearch":
     return { ...item, results: null };
-  case "imageGeneration": {
-    const { savedPath: _savedPath, ...rest } = item;
-    return { ...rest, revisedPrompt: null, result: "" };
-  }
+  case "imageGeneration":
+    return { ...item, revisedPrompt: null, result: "" };
   default:
     return item;
   }

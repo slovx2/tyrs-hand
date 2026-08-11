@@ -26,6 +26,11 @@ type uploadedAttachment struct {
 	SHA256     string `json:"sha256"`
 }
 
+type downloadedFile struct {
+	LocalPath string `json:"localPath"`
+	Size      int64  `json:"size"`
+}
+
 func ListDirectory(host string, port int, user, privateKey, passphrase,
 	expectedHostFingerprint, remotePath string,
 ) (string, error) {
@@ -137,6 +142,74 @@ func UploadAttachment(host string, port int, user, privateKey, passphrase,
 		return "", err
 	}
 	return marshalJSON(uploadedAttachment{RemotePath: remotePath, SHA256: digest})
+}
+
+// DownloadFile 把 App Server 所在主机上的图片安全地落入客户端缓存。
+// 本地目标由客户端限定在 app cache；这里仍要求绝对路径并限制文件大小，
+// 避免历史消息中的异常路径造成无界下载或不完整文件被图片组件读取。
+func DownloadFile(host string, port int, user, privateKey, passphrase,
+	expectedHostFingerprint, remotePath, localPath string,
+) (string, error) {
+	remotePath = path.Clean(strings.TrimSpace(remotePath))
+	localPath = strings.TrimSpace(localPath)
+	if !path.IsAbs(remotePath) || !path.IsAbs(localPath) {
+		return "", errors.New("SFTP 下载路径必须是绝对路径")
+	}
+	if info, err := os.Stat(localPath); err == nil && info.Mode().IsRegular() &&
+		info.Size() > 0 && info.Size() <= 25<<20 {
+		return marshalJSON(downloadedFile{LocalPath: localPath, Size: info.Size()})
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	client, err := connectSSH(ctx, sshOptions{host: host, port: port, user: user,
+		privateKey: privateKey, passphrase: passphrase,
+		expectedHostFingerprint: expectedHostFingerprint})
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = client.Close() }()
+	filesystem, err := sftp.NewClient(client)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = filesystem.Close() }()
+	info, err := filesystem.Stat(remotePath)
+	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > 25<<20 {
+		return "", errors.New("远端图片不存在、不是普通文件或超过 25 MiB")
+	}
+	if err = os.MkdirAll(path.Dir(localPath), 0o700); err != nil {
+		return "", err
+	}
+	token, err := randomLoopbackToken()
+	if err != nil {
+		return "", err
+	}
+	temporaryPath := localPath + "." + token + ".tmp"
+	source, err := filesystem.Open(remotePath)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = source.Close() }()
+	destination, err := os.OpenFile(temporaryPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		_ = destination.Close()
+		_ = os.Remove(temporaryPath)
+	}()
+	written, copyErr := io.Copy(destination, io.LimitReader(source, (25<<20)+1))
+	if copyErr != nil || written != info.Size() {
+		return "", errors.New("SFTP 图片下载不完整")
+	}
+	if err = destination.Close(); err != nil {
+		return "", err
+	}
+	if err = os.Rename(temporaryPath, localPath); err != nil {
+		return "", err
+	}
+	return marshalJSON(downloadedFile{LocalPath: localPath, Size: written})
 }
 
 func localFileDigest(localPath string) (string, int64, error) {

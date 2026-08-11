@@ -24,7 +24,7 @@ describe("官方 Turn 移动展示投影", () => {
       "user:user-1", "commentary:commentary-1", "tools:command-1",
       "user:user-steer", "tools:command-3",
     ]);
-    expect(result.blocks[2]).toMatchObject({ running: true, title: "正在运行命令",
+    expect(result.blocks[2]).toMatchObject({ running: true, title: "正在运行 echo command-2",
       items: [{ id: "command-1" }, { id: "command-2" }] });
     expect(result.hasFinalContent).toBe(false);
     expect(result.canCollapseActivity).toBe(false);
@@ -112,7 +112,7 @@ describe("官方 Turn 移动展示投影", () => {
       title: "继续检查结果" });
     expect(completedTool.showThinking).toBe(false);
     expect(runningTool.blocks.map((block) => block.kind)).toEqual(["tools"]);
-    expect(runningTool.blocks[0]).toMatchObject({ title: "正在运行命令" });
+    expect(runningTool.blocks[0]).toMatchObject({ title: "正在运行 echo running-tool" });
   });
 
   it("最终回答首段出现即允许折叠，不依赖 Turn 完成", () => {
@@ -206,6 +206,18 @@ describe("官方 Turn 移动展示投影", () => {
     expect(createToolGroup([command("command") as ToolItem, image])).toMatchObject({
       running: true, category: "mixed", title: "正在运行命令、正在处理图片",
     });
+  });
+
+  it("保留生成图片的工具记录并把 savedPath 投影为独立可见结果", () => {
+    const image = { type: "imageGeneration", id: "image", status: "completed",
+      revisedPrompt: null, result: "", savedPath: "/remote/generated/image.png" } as ToolItem;
+    const result = projectTurnPresentation(turn("completed", [command("command"), image]));
+
+    expect(result.blocks).toMatchObject([
+      { kind: "tools", items: [{ id: "command" }, { id: "image" }] },
+      { kind: "generatedImage", key: "image:result",
+        item: { savedPath: "/remote/generated/image.png" } },
+    ]);
   });
 
   it("混合工具折叠头按官方方式汇总类别和数量", () => {

@@ -54,9 +54,9 @@ export function isDirectThreadNotification(event: { method: string }): event is 
 
 function updateTurn(record: ThreadRecord, incoming: Turn, active: boolean,
   terminal: boolean): ThreadNotificationResult {
-  const clientIds = incoming.items.flatMap((item) => item.type === "userMessage" && item.clientId
-    ? [item.clientId] : []);
-  let turns = record.thread.turns.filter((turn) => !isMatchingProvisional(turn, clientIds));
+  const incomingUsers = incoming.items.filter((item) => item.type === "userMessage");
+  let turns = record.thread.turns.filter((turn) =>
+    !isMatchingProvisional(turn, incomingUsers));
   const index = turns.findIndex((turn) => turn.id === incoming.id);
   if (index >= 0) {
     // turn/completed 通知在服务端完成瞬间可能只带最终回答。尾页稍后才是权威历史，
@@ -120,9 +120,15 @@ function updateExistingItem(record: ThreadRecord, turnId: string, itemId: string
   return result(record, { ...record.thread, turns }, false, false);
 }
 
-function isMatchingProvisional(turn: Turn, clientIds: string[]): boolean {
+function isMatchingProvisional(turn: Turn,
+  incomingUsers: Extract<ThreadItem, { type: "userMessage" }>[]): boolean {
   return turn.id.startsWith("provisional:") && turn.items.some((item) =>
-    item.type === "userMessage" && item.clientId !== null && clientIds.includes(item.clientId));
+    item.type === "userMessage" && incomingUsers.some((incoming) => {
+      if (item.clientId !== null && incoming.clientId !== null) {
+        return item.clientId === incoming.clientId;
+      }
+      return JSON.stringify(item.content) === JSON.stringify(incoming.content);
+    }));
 }
 
 function replaceAt<Value>(values: Value[], index: number, value: Value): Value[] {

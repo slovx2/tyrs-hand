@@ -1,12 +1,7 @@
-export type ToolDisclosureMemory = {
-  runningCollapsed: boolean;
-  completedExpanded: boolean;
-};
-
 const MAX_DISCLOSURES = 512;
 export const ACTIVITY_TOGGLE_SCROLL_SETTLE_MS = 180;
 const turnExpanded = new Map<string, boolean>();
-const toolDisclosures = new Map<string, ToolDisclosureMemory>();
+const toolExpanded = new Map<string, boolean>();
 
 export function isTurnActivityCollapsed(key: string, canCollapse: boolean): boolean {
   if (!canCollapse) return false;
@@ -23,37 +18,22 @@ export function activityToggleAllowed(blockedUntilMs: number, nowMs = Date.now()
   return nowMs >= blockedUntilMs;
 }
 
-export function isToolGroupExpanded(key: string, running: boolean): boolean {
-  return toolDisclosureExpanded(toolDisclosures.get(key), running);
+export function isToolGroupExpanded(key: string): boolean {
+  return toolExpanded.get(key) ?? false;
 }
 
-export function toggleToolGroup(key: string, running: boolean): boolean {
-  const memory = toolDisclosures.get(key) ?? emptyToolDisclosure();
-  const expanded = toolDisclosureExpanded(memory, running);
-  const next = running
-    ? { ...memory, runningCollapsed: expanded }
-    : { ...memory, completedExpanded: !expanded };
-  remember(toolDisclosures, key, next);
-  return toolDisclosureExpanded(next, running);
+export function toggleToolGroup(key: string): boolean {
+  const expanded = !isToolGroupExpanded(key);
+  remember(toolExpanded, key, expanded);
+  return expanded;
 }
 
-export function toolDisclosureExpanded(memory: ToolDisclosureMemory | undefined,
-  running: boolean): boolean {
-  const value = memory ?? emptyToolDisclosure();
-  return running ? !value.runningCollapsed : value.completedExpanded;
+export function toolDisclosureExpanded(expanded: boolean | undefined): boolean {
+  return expanded ?? false;
 }
 
-export function toggleToolDisclosure(memory: ToolDisclosureMemory | undefined,
-  running: boolean): ToolDisclosureMemory {
-  const value = memory ?? emptyToolDisclosure();
-  const expanded = toolDisclosureExpanded(value, running);
-  return running
-    ? { ...value, runningCollapsed: expanded }
-    : { ...value, completedExpanded: !expanded };
-}
-
-function emptyToolDisclosure(): ToolDisclosureMemory {
-  return { runningCollapsed: false, completedExpanded: false };
+export function toggleToolDisclosure(expanded: boolean | undefined): boolean {
+  return !toolDisclosureExpanded(expanded);
 }
 
 function remember<Value>(store: Map<string, Value>, key: string, value: Value): void {

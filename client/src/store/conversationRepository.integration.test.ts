@@ -113,6 +113,40 @@ describe("会话分页 Repository", () => {
     });
   });
 
+  it("冷启动首次进入 legacy 会话时保留 SQLite 中已有的工具 Item", async () => {
+    const profileId = "profile-cold-cache-tools";
+    const threadId = "thread-cold-cache-tools";
+    const client = new FakeOfficialClient();
+    const cached = turn(1, "completed", "answer");
+    cached.items = [
+      { type: "userMessage", id: "native-user", clientId: null,
+        content: [{ type: "text", text: "执行检查", text_elements: [] }] },
+      { type: "commandExecution", id: "native-command", command: "git status",
+        cwd: "/workspace", processId: null, source: "agent", status: "completed",
+        commandActions: [], aggregatedOutput: null, exitCode: 0, durationMs: null,
+        pluginId: null, scriptPath: null },
+      { type: "agentMessage", id: "native-answer", text: "answer",
+        phase: "final_answer", memoryCitation: null },
+    ];
+    const resumed = turn(1, "completed", "unused");
+    resumed.items = [
+      { type: "userMessage", id: "item-0", clientId: null,
+        content: [{ type: "text", text: "执行检查", text_elements: [] }] },
+      { type: "agentMessage", id: "item-1", text: "answer",
+        phase: "final_answer", memoryCitation: null },
+    ];
+    client.resume = async () => ({ thread: thread(threadId, [resumed]),
+      page: page([resumed], null) });
+    client.listPage = async () => page([resumed], null);
+    client.metadata = async () => thread(threadId, []);
+    installState(profileId, loadedRecord(threadId, [cached], null), client);
+
+    await useAppStore.getState().loadThread(threadId);
+
+    expect(currentRecord(threadId).thread.turns[0]?.items.map((item) => item.id))
+      .toEqual(["native-user", "native-command", "native-answer"]);
+  });
+
   it("旧页与尾部刷新并发时都保留，过期响应不能回滚新尾部", async () => {
     const profileId = "profile-concurrent";
     const threadId = "thread-concurrent";

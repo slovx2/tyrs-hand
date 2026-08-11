@@ -48,6 +48,15 @@ public final class TyrsSSHTransportModule: Module {
         string(options, "filename"), optionalString(options, "mimeType")
       ))
     }
+
+    AsyncFunction("downloadFile") { (options: [String: Any]) -> [String: Any] in
+      try parseObject(SshtransportDownloadFile(
+        string(options, "host"), int64(options, "port"), string(options, "user"),
+        string(options, "privateKey"), optionalString(options, "passphrase"),
+        optionalString(options, "expectedHostFingerprint"), string(options, "remotePath"),
+        string(options, "localPath")
+      ))
+    }
   }
 }
 

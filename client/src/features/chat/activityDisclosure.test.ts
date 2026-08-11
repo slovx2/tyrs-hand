@@ -5,19 +5,17 @@ import { ACTIVITY_TOGGLE_SCROLL_SETTLE_MS, activityToggleAllowed,
   toolDisclosureExpanded } from "./activityDisclosure";
 
 describe("官方活动披露状态", () => {
-  it("工具运行时默认展开，结束后使用独立状态自动收起", () => {
-    const initial = undefined;
-    expect(toolDisclosureExpanded(initial, true)).toBe(true);
-
-    const collapsedWhileRunning = toggleToolDisclosure(initial, true);
-    expect(toolDisclosureExpanded(collapsedWhileRunning, true)).toBe(false);
-    expect(toolDisclosureExpanded(collapsedWhileRunning, false)).toBe(false);
+  it("工具组默认收起，运行和完成状态都不会自动改变披露状态", () => {
+    expect(toolDisclosureExpanded(undefined)).toBe(false);
+    expect(toolDisclosureExpanded(false)).toBe(false);
+    expect(toolDisclosureExpanded(false)).toBe(false);
   });
 
-  it("完成后用户可以再次展开，且不改变运行时状态", () => {
-    const completedExpanded = toggleToolDisclosure(undefined, false);
-    expect(toolDisclosureExpanded(completedExpanded, false)).toBe(true);
-    expect(toolDisclosureExpanded(completedExpanded, true)).toBe(true);
+  it("只由用户切换工具组，后续状态刷新继续保持选择", () => {
+    const expanded = toggleToolDisclosure(undefined);
+    expect(toolDisclosureExpanded(expanded)).toBe(true);
+    expect(toolDisclosureExpanded(expanded)).toBe(true);
+    expect(toolDisclosureExpanded(toggleToolDisclosure(expanded))).toBe(false);
   });
 
   it("Turn 手动展开状态在尾部刷新和列表回收后仍按稳定 key 保持", () => {

@@ -6,12 +6,15 @@ import { Fragment, memo, useEffect, useMemo, useRef, useState,
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Muted } from "@/components/ui";
+import { CachedMessageImage } from "@/features/images/CachedMessageImage";
+import { RemoteMessageImage } from "@/features/images/RemoteMessageImage";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useTheme } from "@/theme/ThemeProvider";
 import { isToolGroupExpanded, isTurnActivityCollapsed,
   toggleToolGroup, toggleTurnActivity } from "./activityDisclosure";
 import { MarkdownContent } from "./MarkdownContent";
 import { ThinkingShimmer } from "./ThinkingShimmer";
+import { projectUserMessage, type UserAttachment } from "./userMessagePresentation";
 import { projectTurnPresentation, toolOperationLines, turnActivitySummary,
   type ToolGroup, type TurnBlock } from "./turnPresentation";
 
@@ -50,7 +53,7 @@ export const OfficialTurn = memo(function OfficialTurn({ profileId, threadId,
       return <Fragment key={block.key}>
         {header}
         {activity && collapsed ? null
-          : <TurnBlockView block={block} memoryKey={memoryKey}
+          : <TurnBlockView block={block} memoryKey={memoryKey} profileId={profileId}
           onDisclosureChange={() => redraw((value) => value + 1)} />}
       </Fragment>;
     })}
@@ -96,12 +99,13 @@ function ActivityHeader({ turnId, collapsed, summary, onPress }: {
   </View>;
 }
 
-function TurnBlockView({ block, memoryKey, onDisclosureChange }: {
+function TurnBlockView({ block, memoryKey, profileId, onDisclosureChange }: {
   block: TurnBlock;
   memoryKey: string;
+  profileId: string;
   onDisclosureChange: () => void;
 }) {
-  if (block.kind === "user") return <UserMessage item={block.item} />;
+  if (block.kind === "user") return <UserMessage item={block.item} profileId={profileId} />;
   if (block.kind === "commentary") return block.item.text.trim()
     ? <View testID="message:phase:commentary" style={styles.commentary}>
       <MarkdownContent compact cacheKey={`commentary:${block.item.id}`}>
@@ -114,28 +118,55 @@ function TurnBlockView({ block, memoryKey, onDisclosureChange }: {
     <Muted>计划</Muted>
     <MarkdownContent cacheKey={`plan:${block.item.id}`}>{block.item.text}</MarkdownContent>
   </View>;
+  if (block.kind === "generatedImage") return <View style={styles.generatedImage}>
+    <RemoteMessageImage profileId={profileId} remotePath={block.item.savedPath!}
+      filename={imageFilename(block.item.savedPath!)}
+      testID={`generated-image:${block.item.id}`} />
+  </View>;
   return block.item.text.trim() ? <View testID="message:role:agent" style={styles.agentRow}>
     <MarkdownContent cacheKey={`agentMessage:${block.item.id}`}>{block.item.text}</MarkdownContent>
   </View> : null;
 }
 
-function UserMessage({ item }: { item: Extract<ThreadItem, { type: "userMessage" }> }) {
+function UserMessage({ item, profileId }: {
+  item: Extract<ThreadItem, { type: "userMessage" }>;
+  profileId: string;
+}) {
   const theme = useTheme();
-  const text = item.content.filter((input) => input.type === "text")
-    .map((input) => input.type === "text" ? input.text : "").join("\n");
-  const files = item.content.filter((input) =>
-    input.type === "localImage" || input.type === "mention");
+  const presentation = useMemo(() => projectUserMessage(item), [item]);
   return <View testID="message:role:user" style={styles.userRow}>
     <View testID={`message:${encodeURIComponent(item.clientId ?? item.id)}`}
       style={[styles.userBubble, { backgroundColor: theme.colors.surfaceAlt }]}>
-      {text ? <Text selectable style={[styles.userText, { color: theme.colors.text }]}>{text}</Text>
+      {presentation.text ? <Text selectable style={[styles.userText, { color: theme.colors.text }]}>
+        {presentation.text}
+      </Text>
         : null}
-      {files.map((input, index) => <Text key={`${input.type}:${index}`} numberOfLines={1}
-        style={[styles.file, { color: theme.colors.textMuted }]}>
-        {input.type === "mention" ? input.name : input.path.split("/").at(-1)}
-      </Text>)}
+      {presentation.attachments.map((attachment) => <UserAttachmentView key={attachment.key}
+        attachment={attachment} profileId={profileId} />)}
     </View>
   </View>;
+}
+
+function UserAttachmentView({ attachment, profileId }: {
+  attachment: UserAttachment;
+  profileId: string;
+}) {
+  const theme = useTheme();
+  if (attachment.kind === "image" && attachment.remotePath) {
+    return <RemoteMessageImage profileId={profileId} remotePath={attachment.remotePath}
+      filename={attachment.name} testID={`user-image:${attachment.key}`} />;
+  }
+  if (attachment.kind === "image" && attachment.uri) {
+    return <CachedMessageImage uri={attachment.uri} filename={attachment.name}
+      testID={`user-image:${attachment.key}`} />;
+  }
+  return <Text numberOfLines={1} style={[styles.file, { color: theme.colors.textMuted }]}>
+    {attachment.name}
+  </Text>;
+}
+
+function imageFilename(path: string): string {
+  return path.split("/").at(-1) || "生成的图片";
 }
 
 function ToolGroupView({ group, memoryKey, onDisclosureChange }: {
@@ -144,7 +175,7 @@ function ToolGroupView({ group, memoryKey, onDisclosureChange }: {
   onDisclosureChange: () => void;
 }) {
   const theme = useTheme();
-  const expanded = isToolGroupExpanded(memoryKey, group.running);
+  const expanded = isToolGroupExpanded(memoryKey);
   const icon = toolIcon(group.category);
   const operations = useMemo(() => group.items.flatMap((item) =>
     toolOperationLines(item, group.inferredRunning).map((operation) => ({ item, operation }))),
@@ -153,7 +184,7 @@ function ToolGroupView({ group, memoryKey, onDisclosureChange }: {
     <Pressable accessibilityRole="button" accessibilityState={{ expanded }}
       accessibilityLabel={`${group.title}，${expanded ? "收起" : "展开"}操作`}
       testID={`tool-group:${group.key}:toggle`} hitSlop={8} style={styles.toolHeader}
-      onPress={() => { toggleToolGroup(memoryKey, group.running); onDisclosureChange(); }}>
+      onPress={() => { toggleToolGroup(memoryKey); onDisclosureChange(); }}>
       <Ionicons name={icon} size={17}
         color={group.failed && !group.running ? theme.colors.danger : theme.colors.textMuted} />
       <View style={styles.toolTitle}>
@@ -245,6 +276,7 @@ const styles = StyleSheet.create({
   thinking: { paddingHorizontal: 16, paddingVertical: 8 },
   thinkingText: { fontFamily: "Inter_400Regular", fontSize: 14, lineHeight: 20 },
   plan: { gap: 6, paddingHorizontal: 16, paddingBottom: 4, paddingTop: 8 },
+  generatedImage: { paddingHorizontal: 16, paddingVertical: 5 },
   activitySummary: { borderBottomWidth: StyleSheet.hairlineWidth, marginHorizontal: 16,
     marginBottom: 7, marginTop: 7, paddingBottom: 9 },
   activitySummaryButton: { alignItems: "center", alignSelf: "flex-start", flexDirection: "row",

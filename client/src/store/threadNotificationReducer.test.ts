@@ -19,6 +19,16 @@ describe("原生 Thread 通知 reducer", () => {
     expect(result.record.thread.status.type).toBe("active");
   });
 
+  it("legacy turn/started 缺少 clientId 时按完整输入替换乐观 Turn", () => {
+    const provisional = turn("provisional:message", "inProgress", [user("p", "message")]);
+    const official = turn("official", "inProgress", [user("u", null)]);
+
+    const result = reduceThreadNotification(record([provisional]),
+      { method: "turn/started", params: { threadId: "thread", turn: official } });
+
+    expect(result.record.thread.turns.map((value) => value.id)).toEqual(["official"]);
+  });
+
   it("item 生命周期按 ID 稳定 upsert，并用完成 Item 更新工具状态", () => {
     const initial = record([turn("turn", "inProgress", [])]);
     const started = reduceThreadNotification(initial, itemEvent("item/started",
@@ -102,7 +112,7 @@ function turn(id: string, status: Turn["status"], items: ThreadItem[]): Turn {
     completedAt: status === "inProgress" ? null : 2, durationMs: null };
 }
 
-function user(id: string, clientId: string): ThreadItem {
+function user(id: string, clientId: string | null): ThreadItem {
   return { type: "userMessage", id, clientId,
     content: [{ type: "text", text: "消息", text_elements: [] }] };
 }

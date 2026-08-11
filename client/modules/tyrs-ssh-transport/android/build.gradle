@@ -19,7 +19,8 @@ tasks.register('buildGoMobile', Exec) {
   outputs.files goMobileAAR, goMobileClasses
   outputs.dir file("${goMobileDirectory}/jni")
   environment 'TYRS_GO_MOBILE_AAR', goMobileAAR.absolutePath
-  commandLine 'bash', '-lc', '''
+  // 登录 shell 会覆盖调用方锁定的 Go toolchain PATH，导致 Gradle 误用系统旧版 Go。
+  commandLine 'bash', '-c', '''
     set -euo pipefail
     go run golang.org/x/mobile/cmd/gomobile@v0.0.0-20260803200217-62cee1672c8e init
     export PATH="$(go env GOPATH)/bin:$PATH"

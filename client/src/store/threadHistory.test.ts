@@ -142,6 +142,18 @@ describe("官方 Turn 分页合并", () => {
     expect(merged.items[2]).toMatchObject({ status: "completed" });
   });
 
+  it("legacy 首条 User Item 缺少 clientId 时按完整输入去重", () => {
+    const previous = turn("turn-legacy-user", "completed", "unused");
+    previous.items = [user("native-user", null, "首条消息"),
+      agent("answer", "回答", "final_answer")];
+    const incoming = turn("turn-legacy-user", "completed", "unused");
+    incoming.items = [user("item-0", null, "首条消息"),
+      agent("item-1", "回答", "final_answer")];
+
+    expect(mergeTurnSnapshot(previous, incoming).items.map((item) => item.id))
+      .toEqual(["native-user", "answer"]);
+  });
+
   it("重复执行相同命令时仍按出现顺序保留两次调用", () => {
     const previous = turn("turn-repeat", "inProgress", "unused");
     previous.items = [command("native-command-1", "completed")];
@@ -171,7 +183,7 @@ function command(id: string, status: "inProgress" | "completed"): Turn["items"][
     scriptPath: null };
 }
 
-function user(id: string, clientId: string, text: string): Turn["items"][number] {
+function user(id: string, clientId: string | null, text: string): Turn["items"][number] {
   return { type: "userMessage", id, clientId,
     content: [{ type: "text", text, text_elements: [] }] };
 }

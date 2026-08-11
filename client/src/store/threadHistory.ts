@@ -117,8 +117,13 @@ function semanticallySameItem(left: ThreadItem, right: ThreadItem): boolean {
   if (left.type !== right.type) return false;
   switch (left.type) {
   case "userMessage":
-    return right.type === "userMessage" && left.clientId !== null &&
-      left.clientId === right.clientId;
+    if (right.type !== "userMessage") return false;
+    if (left.clientId !== null && right.clientId !== null) {
+      return left.clientId === right.clientId;
+    }
+    // Desktop/legacy 恢复的首条 User Item 可能没有 clientId，且每次尾页读取都会
+    // 重新生成 item-N。此时只按完整结构化输入一对一匹配，避免同一首条消息重复追加。
+    return JSON.stringify(left.content) === JSON.stringify(right.content);
   case "agentMessage":
     return right.type === "agentMessage" && left.phase === right.phase &&
       growingEquivalent(left.text, right.text);

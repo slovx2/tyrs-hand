@@ -77,7 +77,6 @@ const visibleThreads = new Set<string>();
 const threadLoadPromises = new Map<string, Promise<void>>();
 const threadTailQueue = new CoalescingKeyedQueue();
 const olderThreadPromises = new Map<string, Promise<void>>();
-const hydratedThreads = new Set<string>();
 const pendingCatalogThreads = new Set<string>();
 const outboxDrains = new Map<string, Promise<OutboxDrainResult>>();
 
@@ -711,12 +710,15 @@ async function loadOfficialThread(threadId: string, set: StoreSet, get: StoreGet
       record.thread.historyMode);
     if (get().activeConnection?.profileId !== connection.profileId) return;
     const current = requireThread(get(), threadId);
-    const wasHydrated = hydratedThreads.has(key) && current.history.kind === "loaded";
-    const merged = wasHydrated
+    // SQLite 中已加载的历史同样可能包含本进程启动前收到的原生工具 Item。
+    // 首次进入详情也必须与 resume 的 legacy 短快照合并，否则冷启动后会把
+    // 本地完整活动时间线覆盖掉。
+    const hadLoadedHistory = current.history.kind === "loaded";
+    const merged = hadLoadedHistory
       ? mergeTailPage(current.thread.turns, resumed.page.turns)
       : { turns: resumed.page.turns, overlapped: false };
     const latest = requireThread(get(), threadId);
-    const preserve = wasHydrated && merged.overlapped && latest.history.kind === "loaded";
+    const preserve = hadLoadedHistory && merged.overlapped && latest.history.kind === "loaded";
     const turns = merged.turns;
     const history = preserve && latest.history.kind === "loaded"
       ? { ...latest.history, tailOlderCursor: resumed.page.nextCursor }
@@ -725,7 +727,6 @@ async function loadOfficialThread(threadId: string, set: StoreSet, get: StoreGet
         tailOlderCursor: resumed.page.nextCursor,
         hasLoadedOldest: resumed.page.nextCursor === null };
     const next: ThreadRecord = { ...latest, thread: { ...resumed.thread, turns }, history };
-    hydratedThreads.add(key);
     await setAndCacheThread(connection.profileId, next, set, get);
     syncPendingRequests(client, threadId, set);
   })().finally(() => {
@@ -769,7 +770,6 @@ async function refreshOfficialThreadTail(connection: Connection, threadId: strin
       olderCursor: page.nextCursor,
       tailOlderCursor: page.nextCursor,
       hasLoadedOldest: page.nextCursor === null };
-  hydratedThreads.add(threadKey(connection.profileId, threadId));
   await setAndCacheThread(connection.profileId,
     { ...current, thread: { ...metadata, turns }, history }, set, get);
   syncPendingRequests(client, threadId, set);

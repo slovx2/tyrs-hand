@@ -52,6 +52,15 @@ class TyrsSSHTransportModule : Module() {
         options.string("filename"), options.optionalString("mimeType"),
       ))
     }
+
+    AsyncFunction("downloadFile") { options: Map<String, Any?> ->
+      parseObject(Sshtransport.downloadFile(
+        options.string("host"), options.long("port"), options.string("user"),
+        options.string("privateKey"), options.optionalString("passphrase"),
+        options.optionalString("expectedHostFingerprint"), options.string("remotePath"),
+        options.string("localPath"),
+      ))
+    }
   }
 }
 

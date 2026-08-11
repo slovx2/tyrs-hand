@@ -27,7 +27,7 @@ import { ServerRequestCard } from "./ServerRequestCard";
 import { createActiveTurnReconciler } from "./activeTurnReconciler";
 import { ACTIVITY_TOGGLE_SCROLL_SETTLE_MS, activityToggleAllowed } from "./activityDisclosure";
 import { conversationRows, type ConversationRow } from "./conversationRows";
-import { anchorViewOffset, conversationScrollState, loadConversationPosition,
+import { anchorViewOffset, conversationScrollState,
   resolveConversationPosition, saveConversationPosition, visibleRowTop } from "./conversationPosition";
 
 const rowKey = (row: ConversationRow) => row.key;
@@ -67,8 +67,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const profileId = connection?.profileId ?? null;
   const workspaceId = record?.workspaceId ?? null;
   const positionKey = profileId ? `${profileId}:${sessionId}` : null;
-  const savedPosition = useMemo(() => positionKey
-    ? loadConversationPosition(positionKey) : null, [positionKey]);
+  // 官方从会话列表进入详情时总是落到最新消息；阅读锚点只在当前详情实例内
+  // 由 FlashList 维护，不跨离开/重进会话恢复。
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<LocalAttachment[]>([]);
   const [preferences, setPreferences] = useState<TurnPreferences | null>(null);
@@ -81,12 +81,11 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [olderError, setOlderError] = useState<string | null>(null);
-  const [showScrollToLatest, setShowScrollToLatest] = useState(
-    savedPosition?.kind === "anchor");
+  const [showScrollToLatest, setShowScrollToLatest] = useState(false);
   const [positionRestored, setPositionRestored] = useState(false);
   const rowsRef = useRef<ConversationRow[]>([]);
-  const pinnedToLatest = useRef(savedPosition?.kind !== "anchor");
-  const showScrollToLatestRef = useRef(savedPosition?.kind === "anchor");
+  const pinnedToLatest = useRef(true);
+  const showScrollToLatestRef = useRef(false);
   const historyPagingReady = useRef(false);
   const olderLoadRequested = useRef(false);
   const momentumScrolling = useRef(false);
@@ -143,8 +142,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   }, [sessionId, setThreadVisible]);
 
   useEffect(() => {
-    const position = positionKey ? loadConversationPosition(positionKey) : null;
-    pinnedToLatest.current = position?.kind !== "anchor";
+    pinnedToLatest.current = true;
     historyPagingReady.current = false;
     olderLoadRequested.current = false;
     momentumScrolling.current = false;
@@ -159,7 +157,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     olderLoadTimer.current = null;
     scrollOffset.current = 0;
     userScrollGesture.current = null;
-    setScrollToLatestVisible(position?.kind === "anchor");
+    setScrollToLatestVisible(false);
     setPositionRestored(false);
     setLoadingOlder(false);
     setOlderError(null);
@@ -214,8 +212,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const rows = useMemo(() => conversationRows(record?.thread.turns ?? [], requests),
     [record?.thread.turns, requests]);
   rowsRef.current = rows;
-  const restorePosition = useMemo(() => resolveConversationPosition(savedPosition,
-    rows.map((row) => row.key)), [rows, savedPosition]);
+  const restorePosition = useMemo(() => resolveConversationPosition(null,
+    rows.map((row) => row.key)), [rows]);
   const hasRestorableAnchor = restorePosition.kind === "anchor";
   const hasMoreHistory = record?.history.kind === "loaded" &&
     !record.history.hasLoadedOldest && record.history.olderCursor !== null;
@@ -391,6 +389,13 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         contentContainerStyle={styles.list}
         maintainVisibleContentPosition={LIST_POSITIONING}
         scrollEventThrottle={100}
+        onContentSizeChange={() => {
+          // 数据更新和披露展开会先触发 React 更新，随后 FlashList 才完成真实高度测量。
+          // 跟随态在这个布局时点补滚到底，避免多行命令的最后一行卡在 composer 上沿。
+          if (!positionRestored || interactionBlocked.current ||
+            !shouldFollowLatest(followState.current)) return;
+          list.current?.scrollToEnd({ animated: false });
+        }}
         onScroll={({ nativeEvent }) => {
           const state = conversationScrollState(nativeEvent.contentSize.height,
             nativeEvent.layoutMeasurement.height, nativeEvent.contentOffset.y);
@@ -457,12 +462,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         onLoad={() => {
           if (activeSessionId.current !== sessionId) return;
           if (restorePosition.kind !== "anchor") {
-            pinnedToLatest.current = true;
-            setScrollToLatestVisible(false);
-            if (positionKey) saveConversationPosition(positionKey, { kind: "latest" });
-            if (activeTurnId) dispatchFollow({ type: "scroll_to_bottom",
-              latestTurnPhase: latestPhase.current });
             setPositionRestored(true);
+            followLatest(false);
             return;
           }
           const restore = list.current?.scrollToIndex({ index: restorePosition.index, animated: false,

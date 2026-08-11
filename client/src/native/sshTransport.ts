@@ -35,6 +35,10 @@ type NativeSSHTransport = {
     remotePath: string;
     sha256: string;
   }>;
+  downloadFile(options: Record<string, unknown>): Promise<{
+    localPath: string;
+    size: number;
+  }>;
 };
 
 function nativeModule(): NativeSSHTransport {
@@ -108,6 +112,13 @@ export async function uploadSSHAttachment(connection: SSHConnection, attachment:
   return nativeCall(() => nativeModule().uploadAttachment({ ...options,
     localPath: attachment.uri.replace(/^file:\/\//, ""), filename: attachment.name,
     mimeType: attachment.mimeType }));
+}
+
+export async function downloadSSHFile(connection: SSHConnection, remotePath: string,
+  localPath: string) {
+  const options = await connectionOptions(connection);
+  return nativeCall(() => nativeModule().downloadFile({ ...options, remotePath,
+    localPath: localPath.replace(/^file:\/\//, "") }));
 }
 
 export const sshTransport = {
