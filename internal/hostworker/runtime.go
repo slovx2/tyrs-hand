@@ -345,8 +345,8 @@ func appServerEnvironment(base []string) []string {
 			continue
 		}
 		switch name {
-		case "OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_ORG_ID", "OPENAI_PROJECT_ID",
-			"CODEX_API_KEY", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+		case "OPENAI_ORG_ID", "OPENAI_PROJECT_ID", "CODEX_API_KEY",
+			"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
 			"http_proxy", "https_proxy", "all_proxy", "no_proxy",
 			codex.BrowserMCPWorkerTokenEnvironment,
 			codex.BrowserMCPDesktopTokenEnvironment:
