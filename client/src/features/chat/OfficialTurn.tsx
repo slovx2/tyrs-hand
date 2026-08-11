@@ -58,7 +58,7 @@ export const OfficialTurn = memo(function OfficialTurn({ profileId, threadId,
       ? <View testID="turn:thinking" style={styles.thinking}>
         <ThinkingShimmer active color={theme.colors.textMuted}
           highlightColor={theme.colors.text} style={styles.thinkingText}>
-          正在思考
+          {presentation.thinkingLabel ?? "正在思考"}
         </ThinkingShimmer>
       </View> : null}
     {turn.status === "failed" && turn.error ? <View testID="turn:error" style={styles.error}>
@@ -101,7 +101,6 @@ function TurnBlockView({ block, memoryKey, onDisclosureChange }: {
   memoryKey: string;
   onDisclosureChange: () => void;
 }) {
-  const theme = useTheme();
   if (block.kind === "user") return <UserMessage item={block.item} />;
   if (block.kind === "commentary") return block.item.text.trim()
     ? <View testID="message:phase:commentary" style={styles.commentary}>
@@ -109,14 +108,6 @@ function TurnBlockView({ block, memoryKey, onDisclosureChange }: {
         {block.item.text}
       </MarkdownContent>
     </View> : null;
-  if (block.kind === "reasoning") return <View testID={`item:reasoning:${block.item.id}`}
-    style={styles.reasoning}>
-    <Ionicons name="sparkles-outline" size={15} color={theme.colors.textMuted} />
-    <Text selectable testID={`reasoning:heading:${block.item.id}`} numberOfLines={2}
-      style={[styles.reasoningText, { color: theme.colors.textMuted }]}>
-      {block.heading}
-    </Text>
-  </View>;
   if (block.kind === "tools") return <ToolGroupView group={block}
     memoryKey={`${memoryKey}:${block.key}`} onDisclosureChange={onDisclosureChange} />;
   if (block.kind === "plan") return <View testID={`plan:${block.item.id}`} style={styles.plan}>
@@ -223,7 +214,7 @@ function DisclosureChevron({ expanded, color }: { expanded: boolean; color: stri
 }
 
 function isActivityBlock(block: TurnBlock): boolean {
-  return block.kind === "commentary" || block.kind === "reasoning" || block.kind === "tools";
+  return block.kind === "commentary" || block.kind === "tools";
 }
 
 function toolIcon(category: ToolGroup["category"]): ComponentProps<typeof Ionicons>["name"] {
@@ -253,9 +244,6 @@ const styles = StyleSheet.create({
   commentary: { opacity: 0.78, paddingHorizontal: 16, paddingVertical: 5 },
   thinking: { paddingHorizontal: 16, paddingVertical: 8 },
   thinkingText: { fontFamily: "Inter_400Regular", fontSize: 14, lineHeight: 20 },
-  reasoning: { alignItems: "flex-start", flexDirection: "row", gap: 7, paddingHorizontal: 16,
-    paddingVertical: 5 },
-  reasoningText: { flex: 1, fontFamily: "Inter_500Medium", fontSize: 14, lineHeight: 20 },
   plan: { gap: 6, paddingHorizontal: 16, paddingBottom: 4, paddingTop: 8 },
   activitySummary: { borderBottomWidth: StyleSheet.hairlineWidth, marginHorizontal: 16,
     marginBottom: 7, marginTop: 7, paddingBottom: 9 },

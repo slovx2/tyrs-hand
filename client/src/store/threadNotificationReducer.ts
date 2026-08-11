@@ -59,7 +59,10 @@ function updateTurn(record: ThreadRecord, incoming: Turn, active: boolean,
   let turns = record.thread.turns.filter((turn) => !isMatchingProvisional(turn, clientIds));
   const index = turns.findIndex((turn) => turn.id === incoming.id);
   if (index >= 0) {
-    const merged = mergeTurnSnapshot(turns[index]!, incoming);
+    // turn/completed 通知在服务端完成瞬间可能只带最终回答。尾页稍后才是权威历史，
+    // 因此通知阶段保留已观察到的 commentary、reasoning 和工具，避免整段过程闪退。
+    const merged = mergeTurnSnapshot(turns[index]!, incoming,
+      { preserveMissingItems: terminal });
     if (merged !== turns[index]) turns = replaceAt(turns, index, merged);
   } else {
     turns = [...turns, incoming];

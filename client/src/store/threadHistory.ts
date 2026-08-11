@@ -17,11 +17,20 @@ export type MergedOlderPage = {
   hasLoadedOldest: boolean;
 };
 
+export type MergeTurnSnapshotOptions = {
+  preserveMissingItems?: boolean;
+};
+
 export function mergeTailPage(existing: Turns, incoming: Turns): MergedTailPage {
   const incomingIds = new Set(incoming.map((turn) => turn.id));
   const overlap = existing.findIndex((turn) => incomingIds.has(turn.id));
   if (overlap < 0) return { turns: incoming, overlapped: false };
-  const merged = mergeTurnSequence(existing.slice(0, overlap + 1), incoming);
+  // 最新页可能从很早的 Turn 开始重叠。只保留首个重叠点之前的历史前缀，
+  // 但所有仍出现在权威页中的既有 Turn 都要参与快照合并；否则页首先匹配时，
+  // 尾部活动 Turn 已观察到的原生工具会被 legacy 短快照直接覆盖。
+  const overlappingExisting = existing.slice(overlap)
+    .filter((turn) => incomingIds.has(turn.id));
+  const merged = mergeTurnSequence(existing.slice(0, overlap), overlappingExisting, incoming);
   return { turns: sameTurnSequence(existing, merged) ? existing : merged, overlapped: true };
 }
 
@@ -53,17 +62,22 @@ export function mergeTurnSequence(...groups: Turns[]): Turns {
  * 官方尾页在 Turn 刚结束时偶尔会短暂缺少已推送过的工具 Item。
  * 同一活动 Turn 因此按 Item ID 单调合并；完成态正文仍以最新官方快照为准。
  */
-export function mergeTurnSnapshot(previous: Turns[number], incoming: Turns[number]): Turns[number] {
+export function mergeTurnSnapshot(previous: Turns[number], incoming: Turns[number],
+  options: MergeTurnSnapshotOptions = {}): Turns[number] {
   if (sameTurnSnapshot(previous, incoming)) return previous;
   const incomingById = new Map(incoming.items.map((item) => [item.id, item]));
+  const aliasedIncomingByPreviousId = semanticItemAliases(previous.items, incoming.items);
   const seen = new Set<string>();
   const items: ThreadItem[] = [];
   for (const item of previous.items) {
-    const updated = incomingById.get(item.id);
+    const aliased = aliasedIncomingByPreviousId.get(item.id);
+    const updated = incomingById.get(item.id) ?? aliased;
     if (updated) {
-      items.push(mergeItemSnapshot(item, updated, incoming.status !== "inProgress"));
-      seen.add(item.id);
-    } else if (incoming.status === "inProgress" || isToolItem(item)) {
+      items.push(mergeItemSnapshot(item, updated.id === item.id ? updated
+        : withItemId(updated, item.id), incoming.status !== "inProgress"));
+      seen.add(updated.id);
+    } else if (options.preserveMissingItems || incoming.status === "inProgress" ||
+      isToolItem(item)) {
       items.push(item);
       seen.add(item.id);
     }
@@ -73,6 +87,80 @@ export function mergeTurnSnapshot(previous: Turns[number], incoming: Turns[numbe
   }
   const merged = { ...incoming, items };
   return sameTurnSnapshot(previous, merged) ? previous : merged;
+}
+
+/**
+ * legacy 尾页会为当前 Turn 重新生成 `item-N`，而原生通知携带真实 Item ID。
+ * 两条链路同时到达时按内容和顺序一对一建立别名，避免把同一条用户消息、commentary
+ * 或工具调用重复追加。匹配只在类型和稳定语义都一致时发生。
+ */
+function semanticItemAliases(previous: ThreadItem[], incoming: ThreadItem[]):
+  Map<string, ThreadItem> {
+  const exactPreviousIds = new Set(previous.map((item) => item.id));
+  const consumedPreviousIds = new Set<string>();
+  const aliases = new Map<string, ThreadItem>();
+  for (const candidate of incoming) {
+    if (exactPreviousIds.has(candidate.id)) {
+      consumedPreviousIds.add(candidate.id);
+      continue;
+    }
+    const matched = previous.find((item) => !consumedPreviousIds.has(item.id) &&
+      semanticallySameItem(item, candidate));
+    if (!matched) continue;
+    consumedPreviousIds.add(matched.id);
+    aliases.set(matched.id, candidate);
+  }
+  return aliases;
+}
+
+function semanticallySameItem(left: ThreadItem, right: ThreadItem): boolean {
+  if (left.type !== right.type) return false;
+  switch (left.type) {
+  case "userMessage":
+    return right.type === "userMessage" && left.clientId !== null &&
+      left.clientId === right.clientId;
+  case "agentMessage":
+    return right.type === "agentMessage" && left.phase === right.phase &&
+      growingEquivalent(left.text, right.text);
+  case "plan":
+    return right.type === "plan" && growingEquivalent(left.text, right.text);
+  case "reasoning":
+    return right.type === "reasoning" && growingPartsEquivalent(left.summary, right.summary) &&
+      growingPartsEquivalent(left.content, right.content);
+  case "commandExecution":
+    return right.type === "commandExecution" && left.command === right.command &&
+      left.cwd === right.cwd && left.source === right.source;
+  case "fileChange":
+    return right.type === "fileChange" && JSON.stringify(left.changes.map((change) =>
+      [change.path, change.kind])) === JSON.stringify(right.changes.map((change) =>
+      [change.path, change.kind]));
+  case "mcpToolCall":
+    return right.type === "mcpToolCall" && left.server === right.server &&
+      left.tool === right.tool;
+  case "dynamicToolCall":
+    return right.type === "dynamicToolCall" && left.namespace === right.namespace &&
+      left.tool === right.tool;
+  case "webSearch":
+    return right.type === "webSearch" && left.query === right.query &&
+      JSON.stringify(left.action) === JSON.stringify(right.action);
+  default:
+    return false;
+  }
+}
+
+function growingEquivalent(left: string, right: string): boolean {
+  return left.length > 0 && right.length > 0 &&
+    (left.startsWith(right) || right.startsWith(left));
+}
+
+function growingPartsEquivalent(left: string[], right: string[]): boolean {
+  const leftText = left.join("\n").trim();
+  const rightText = right.join("\n").trim();
+  return growingEquivalent(leftText, rightText);
+}
+
+function withItemId(item: ThreadItem, id: string): ThreadItem {
+  return { ...item, id } as ThreadItem;
 }
 
 export function mergeItemSnapshot(previous: ThreadItem, incoming: ThreadItem,

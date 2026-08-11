@@ -71,6 +71,21 @@ describe("官方 Turn 分页合并", () => {
     ]);
   });
 
+  it("尾页从早期 Turn 重叠时仍合并最新 Turn 的原生工具", () => {
+    const running = turn("turn-3", "inProgress", "streaming");
+    running.items.splice(1, 0, command("native-tool", "completed"));
+    const incoming = turn("turn-3", "completed", "final");
+
+    const merged = mergeTailPage(
+      [turn("turn-1"), turn("turn-2"), running],
+      [turn("turn-1"), turn("turn-2"), incoming],
+    );
+
+    expect(merged.turns.at(-1)).toMatchObject({ status: "completed" });
+    expect(merged.turns.at(-1)?.items.map((item) => item.id))
+      .toEqual(["native-tool", "item:final"]);
+  });
+
   it("同 ID 工具 Item 使用最新状态，新工具追加且不会重复", () => {
     const previous = turn("turn-tools", "inProgress", "streaming");
     previous.items.push(command("tool-1", "inProgress"));
@@ -103,6 +118,40 @@ describe("官方 Turn 分页合并", () => {
 
     expect(mergeTurnSnapshot(previous, incoming).items).toEqual(previous.items);
   });
+
+  it("legacy 尾页的合成 ID 与原生 Item 按语义一对一合并", () => {
+    const previous = turn("turn-legacy", "inProgress", "unused");
+    previous.items = [
+      user("native-user", "message-id", "执行检查"),
+      agent("native-commentary", "开始检查", "commentary"),
+      command("native-tool", "inProgress"),
+    ];
+    const incoming = turn("turn-legacy", "inProgress", "unused");
+    incoming.items = [
+      user("item-1", "message-id", "执行检查"),
+      agent("item-2", "开始检查并继续", "commentary"),
+      { ...command("item-3", "completed"), id: "item-3" },
+    ];
+
+    const merged = mergeTurnSnapshot(previous, incoming);
+
+    expect(merged.items.map((item) => item.id)).toEqual([
+      "native-user", "native-commentary", "native-tool",
+    ]);
+    expect(merged.items[1]).toMatchObject({ text: "开始检查并继续" });
+    expect(merged.items[2]).toMatchObject({ status: "completed" });
+  });
+
+  it("重复执行相同命令时仍按出现顺序保留两次调用", () => {
+    const previous = turn("turn-repeat", "inProgress", "unused");
+    previous.items = [command("native-command-1", "completed")];
+    const incoming = turn("turn-repeat", "inProgress", "unused");
+    incoming.items = [command("item-1", "completed"), command("item-2", "inProgress")];
+
+    const merged = mergeTurnSnapshot(previous, incoming);
+
+    expect(merged.items.map((item) => item.id)).toEqual(["native-command-1", "item-2"]);
+  });
 });
 
 function page(turns: Turn[], nextCursor: string | null): OfficialTurnPage {
@@ -120,4 +169,14 @@ function command(id: string, status: "inProgress" | "completed"): Turn["items"][
     processId: null, source: "agent", status, commandActions: [], aggregatedOutput: null,
     exitCode: status === "completed" ? 0 : null, durationMs: null, pluginId: null,
     scriptPath: null };
+}
+
+function user(id: string, clientId: string, text: string): Turn["items"][number] {
+  return { type: "userMessage", id, clientId,
+    content: [{ type: "text", text, text_elements: [] }] };
+}
+
+function agent(id: string, text: string, phase: "commentary" | "final_answer"):
+  Turn["items"][number] {
+  return { type: "agentMessage", id, text, phase, memoryCitation: null };
 }

@@ -19,6 +19,8 @@ import { keyboardAvoidance } from "@/utils/keyboardAvoidance";
 import { ChatComposer } from "./ChatComposer";
 import { createFollowState, latestTurnPhase, reduceFollowState,
   shouldFollowLatest, type FollowEvent } from "./conversationFollow";
+import { beginUserScroll, updateUserScroll, type UserScrollGesture }
+  from "./conversationUserScroll";
 import { OfficialTurn } from "./OfficialTurn";
 import { ParameterSheet } from "./ParameterSheet";
 import { ServerRequestCard } from "./ServerRequestCard";
@@ -97,6 +99,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const olderLoadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeSessionId = useRef(sessionId);
   const scrollOffset = useRef(0);
+  const userScrollGesture = useRef<UserScrollGesture | null>(null);
   activeSessionId.current = sessionId;
   const models = profileId
     ? modelsByTarget[targetKey(profileId, workspaceId)] ?? EMPTY_MODELS
@@ -155,6 +158,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     if (olderLoadTimer.current) clearTimeout(olderLoadTimer.current);
     olderLoadTimer.current = null;
     scrollOffset.current = 0;
+    userScrollGesture.current = null;
     setScrollToLatestVisible(position?.kind === "anchor");
     setPositionRestored(false);
     setLoadingOlder(false);
@@ -261,6 +265,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     if (shouldFollowLatest(followState.current)) {
       list.current?.scrollToEnd({ animated: false });
     }
+    userScrollGesture.current = null;
   }, [dispatchFollow]);
 
   const settleUserInteraction = useCallback(() => {
@@ -390,22 +395,30 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
           const state = conversationScrollState(nativeEvent.contentSize.height,
             nativeEvent.layoutMeasurement.height, nativeEvent.contentOffset.y);
           scrollOffset.current = nativeEvent.contentOffset.y;
-          pinnedToLatest.current = state.distanceFromBottom <= 24;
           setScrollToLatestVisible(state.showLatest);
           if (userDragging.current || momentumScrolling.current) {
-            dispatchFollow({ type: "scroll_distance_changed",
-              distanceFromBottomPx: state.distanceFromBottom,
-              latestTurnPhase: latestPhase.current });
-            if (state.distanceFromBottom <= 24) {
+            const gesture = userScrollGesture.current ??
+              beginUserScroll(nativeEvent.contentOffset.y);
+            const update = updateUserScroll(gesture, nativeEvent.contentOffset.y,
+              state.distanceFromBottom);
+            userScrollGesture.current = update.gesture;
+            if (update.intent === "away") {
+              pinnedToLatest.current = false;
+              dispatchFollow({ type: "scroll_distance_changed",
+                distanceFromBottomPx: state.distanceFromBottom,
+                latestTurnPhase: latestPhase.current });
+            } else if (update.intent === "bottom") {
+              pinnedToLatest.current = true;
               dispatchFollow({ type: "user_reached_bottom",
                 latestTurnPhase: latestPhase.current });
             }
           }
         }}
-        onScrollBeginDrag={() => {
+        onScrollBeginDrag={({ nativeEvent }) => {
           momentumScrolling.current = false;
           userDragging.current = true;
           interactionBlocked.current = true;
+          userScrollGesture.current = beginUserScroll(nativeEvent.contentOffset.y);
           if (interactionSettleTimer.current) clearTimeout(interactionSettleTimer.current);
           interactionSettleTimer.current = null;
           activityToggleBlockedUntil.current = Number.POSITIVE_INFINITY;

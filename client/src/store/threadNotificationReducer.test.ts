@@ -69,6 +69,19 @@ describe("原生 Thread 通知 reducer", () => {
       .toEqual(["tool", "answer"]);
     expect(result.record.thread.turns[0]?.items[1]).toMatchObject({ text: "最终回答" });
   });
+
+  it("turn/completed 的短快照不会让既有用户消息和 commentary 短暂消失", () => {
+    const running = turn("turn", "inProgress", [user("user", "message"),
+      agent("commentary", "处理中", "commentary"),
+      command("tool", "completed")]);
+    const completed = turn("turn", "completed", [agent("answer", "最终回答")]);
+
+    const result = reduceThreadNotification(record([running]),
+      { method: "turn/completed", params: { threadId: "thread", turn: completed } });
+
+    expect(result.record.thread.turns[0]?.items.map((item) => item.id))
+      .toEqual(["user", "commentary", "tool", "answer"]);
+  });
 });
 
 function record(turns: Turn[]): ThreadRecord {
@@ -94,8 +107,10 @@ function user(id: string, clientId: string): ThreadItem {
     content: [{ type: "text", text: "消息", text_elements: [] }] };
 }
 
-function agent(id: string, text: string): ThreadItem {
-  return { type: "agentMessage", id, text, phase: "final_answer", memoryCitation: null };
+function agent(id: string, text: string,
+  phase: "commentary" | "final_answer" = "final_answer"):
+  Extract<ThreadItem, { type: "agentMessage" }> {
+  return { type: "agentMessage", id, text, phase, memoryCitation: null };
 }
 
 function command(id: string, status: "inProgress" | "completed"): ThreadItem {

@@ -30,7 +30,7 @@ describe("官方 Turn 移动展示投影", () => {
     expect(result.canCollapseActivity).toBe(false);
   });
 
-  it("reasoning、Plan 与最终回答都会切断连续工具组", () => {
+  it("reasoning 不切断工具，Plan 与最终回答才切断连续工具组", () => {
     const result = projectTurnPresentation(turn("inProgress", [
       command("command-1"),
       { type: "reasoning", id: "reasoning", summary: ["检查"], content: [] },
@@ -42,11 +42,11 @@ describe("官方 Turn 移动展示投影", () => {
     ]));
 
     expect(result.blocks.map((block) => `${block.kind}:${block.key}`)).toEqual([
-      "tools:command-1", "tools:command-2", "plan:plan",
+      "tools:command-1", "plan:plan",
       "tools:command-3", "final:final", "tools:command-4",
     ]);
     expect(result.blocks[0]).toMatchObject({ kind: "tools",
-      items: [{ id: "command-1" }] });
+      items: [{ id: "command-1" }, { id: "command-2" }] });
   });
 
   it("把官方 reasoning Markdown 标题投影为干净的活动标题", () => {
@@ -70,11 +70,12 @@ describe("官方 Turn 移动展示投影", () => {
     ]));
 
     expect(completed.blocks.map((block) => block.kind)).toEqual(["final"]);
-    expect(running.blocks.at(-1)).toMatchObject({ kind: "reasoning",
-      heading: "Planning evidence-backed rerun" });
+    expect(running.blocks).toHaveLength(1);
+    expect(running.blocks.at(-1)).toMatchObject({ kind: "tools", running: true,
+      title: "Planning evidence-backed rerun" });
   });
 
-  it("长任务只保留当前 reasoning 标题，但保留 reasoning 分隔的全部工具批次", () => {
+  it("长任务在 commentary 边界内合并全部工具，并只使用最新 reasoning 标题", () => {
     const items: ThreadItem[] = [user("user", "执行")];
     for (let index = 0; index < 60; index += 1) {
       items.push({ type: "reasoning", id: `reasoning-${index}`,
@@ -88,12 +89,13 @@ describe("官方 Turn 移动展示投影", () => {
     const result = projectTurnPresentation(turn("inProgress", items));
 
     const toolBlocks = result.blocks.filter((block) => block.kind === "tools");
-    expect(toolBlocks).toHaveLength(60);
-    expect(toolBlocks.map((block) => block.items[0]?.id)).toEqual([
+    expect(toolBlocks).toHaveLength(1);
+    expect(toolBlocks[0]?.items.map((item) => item.id)).toEqual([
       ...Array.from({ length: 60 }, (_, index) => `command-${index}`),
     ]);
-    expect(result.blocks.at(-2)).toMatchObject({ kind: "commentary" });
-    expect(result.blocks.at(-1)).toMatchObject({ heading: "正在汇总" });
+    expect(result.blocks.at(-1)).toMatchObject({ kind: "commentary" });
+    expect(result.showThinking).toBe(true);
+    expect(result.thinkingLabel).toBe("正在汇总");
   });
 
   it("工具完成后 Turn 仍在运行时恢复最近 reasoning，工具运行中则优先显示工具", () => {
@@ -106,9 +108,11 @@ describe("官方 Turn 移动展示投影", () => {
       reasoning, command("running-tool", "inProgress"),
     ]));
 
-    expect(completedTool.blocks.at(-1)).toMatchObject({ kind: "reasoning",
-      heading: "继续检查结果" });
+    expect(completedTool.blocks.at(-1)).toMatchObject({ kind: "tools", running: true,
+      title: "继续检查结果" });
+    expect(completedTool.showThinking).toBe(false);
     expect(runningTool.blocks.map((block) => block.kind)).toEqual(["tools"]);
+    expect(runningTool.blocks[0]).toMatchObject({ title: "正在运行命令" });
   });
 
   it("最终回答首段出现即允许折叠，不依赖 Turn 完成", () => {
@@ -125,7 +129,7 @@ describe("官方 Turn 移动展示投影", () => {
     expect(projectTurnPresentation(turn("inProgress", [user("user", "执行")])).showThinking)
       .toBe(true);
     expect(projectTurnPresentation(turn("inProgress", [user("user", "执行"),
-      agent("commentary", "开始检查", "commentary")])).showThinking).toBe(false);
+      agent("commentary", "开始检查", "commentary")])).showThinking).toBe(true);
     expect(projectTurnPresentation(turn("inProgress", [user("user", "执行"),
       agent("final", "结果", "final_answer")])).showThinking).toBe(false);
     expect(projectTurnPresentation(turn("completed", [user("user", "执行")])).showThinking)

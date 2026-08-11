@@ -25,7 +25,6 @@ export type ToolGroup = {
 export type TurnBlock =
   | { kind: "user"; key: string; item: UserItem }
   | { kind: "commentary"; key: string; item: AgentItem }
-  | { kind: "reasoning"; key: string; item: ReasoningItem; heading: string }
   | { kind: "final"; key: string; item: AgentItem }
   | { kind: "plan"; key: string; item: PlanItem }
   | ToolGroup;
@@ -36,6 +35,7 @@ export type TurnPresentation = {
   hasFinalContent: boolean;
   canCollapseActivity: boolean;
   showThinking: boolean;
+  thinkingLabel: string | null;
 };
 
 export type ToolOperation = { key: string; text: string; running: boolean; failed: boolean };
@@ -43,7 +43,7 @@ export type ToolOperation = { key: string; text: string; running: boolean; faile
 export function projectTurnPresentation(turn: Turn): TurnPresentation {
   const blocks: TurnBlock[] = [];
   let pendingTools: ToolItem[] = [];
-  let trailingReasoning: TurnBlock & { kind: "reasoning" } | null = null;
+  let currentReasoningHeading: string | null = null;
   const unknownFinalId = turn.status === "completed"
     ? [...turn.items].reverse().find((item) =>
       item.type === "agentMessage" && item.phase === null)?.id ?? null
@@ -51,27 +51,25 @@ export function projectTurnPresentation(turn: Turn): TurnPresentation {
 
   const flushTools = (trailing = false) => {
     if (pendingTools.length === 0) return;
-    blocks.push(createToolGroup(pendingTools, trailing && turn.status === "inProgress"));
+    blocks.push(createToolGroup(pendingTools, trailing && turn.status === "inProgress",
+      trailing ? currentReasoningHeading : null));
     pendingTools = [];
   };
 
   for (const item of turn.items) {
     if (item.type === "reasoning") {
-      // reasoning 是一个新的活动阶段边界；它本身只投影最新标题，但不能把前后工具
-      // 合并成一个巨型工具组，否则移动端会只看到第一段过程。
-      flushTools();
+      // 官方把 reasoning 当作当前活动位置的 fallback 文案，而不是独立时间线节点。
+      // 它不会切断相邻工具，后续 summary 只替换同一个活动标题。
       const heading = reasoningActivityHeading(item.summary);
-      trailingReasoning = heading
-        ? { kind: "reasoning", key: item.id, item, heading }
-        : trailingReasoning;
+      if (heading) currentReasoningHeading = heading;
       continue;
     }
     if (isToolItem(item)) {
       pendingTools.push(item);
       continue;
     }
-    trailingReasoning = null;
     flushTools();
+    currentReasoningHeading = null;
     if (item.type === "userMessage") {
       blocks.push({ kind: "user", key: item.id, item });
     } else if (item.type === "agentMessage") {
@@ -82,21 +80,18 @@ export function projectTurnPresentation(turn: Turn): TurnPresentation {
     }
   }
   flushTools(true);
-  // 官方只把最新 reasoning 当作当前思考状态；完成后的历史 reasoning 不逐条回放。
-  // 完成后的历史 reasoning 不逐条回放，只在活动 Turn 尾部保留当前标题。
-  const trailingBlock = blocks.at(-1);
-  const trailingToolIsRunning = trailingBlock?.kind === "tools" && trailingBlock.running;
-  if (turn.status === "inProgress" && trailingReasoning && !trailingToolIsRunning) {
-    blocks.push(trailingReasoning);
-  }
 
   const hasActivity = blocks.some((block) => block.kind === "tools" ||
-    block.kind === "reasoning" || block.kind === "commentary" && block.item.text.trim() !== "");
+    block.kind === "commentary" && block.item.text.trim() !== "");
   const hasFinalContent = blocks.some((block) =>
     block.kind === "plan" && block.item.text.trim() !== "" ||
     block.kind === "final" && block.item.text.trim() !== "");
+  const trailingBlock = blocks.at(-1);
+  const activityAlreadyShowsThinking = trailingBlock?.kind === "tools" && trailingBlock.running;
+  const showThinking = turn.status === "inProgress" && !hasFinalContent &&
+    !activityAlreadyShowsThinking;
   return { blocks, hasActivity, hasFinalContent,
-    showThinking: turn.status === "inProgress" && !hasActivity && !hasFinalContent,
+    showThinking, thinkingLabel: showThinking ? currentReasoningHeading : null,
     canCollapseActivity: hasActivity && hasFinalContent && turn.status !== "interrupted" };
 }
 
@@ -127,15 +122,17 @@ function cleanReasoningHeading(value: string): string | null {
   return cleaned || null;
 }
 
-export function createToolGroup(items: ToolItem[], inferStatelessRunning = false): ToolGroup {
+export function createToolGroup(items: ToolItem[], inferStatelessRunning = false,
+  liveHeading: string | null = null): ToolGroup {
   const category = toolGroupCategory(items);
   const explicitlyRunning = items.some(isToolRunning);
   const inferredRunning = !explicitlyRunning && inferStatelessRunning &&
     items.some((item) => item.type === "webSearch");
-  const running = explicitlyRunning || inferredRunning;
+  const running = explicitlyRunning || inferredRunning || liveHeading !== null;
   const failed = items.some(isToolFailed);
   return { kind: "tools", key: items[0]!.id, items: [...items], category, running,
-    inferredRunning, failed, title: category === "mixed"
+    inferredRunning, failed, title: !explicitlyRunning && !inferredRunning && liveHeading
+      ? liveHeading : category === "mixed"
       ? mixedToolGroupTitle(items, running, failed)
       : toolGroupTitle(category, running, failed) };
 }
