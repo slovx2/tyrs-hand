@@ -255,6 +255,7 @@ type DesktopImage struct {
 	SHA256     string `json:"sha256,omitempty"`
 	Error      string `json:"error,omitempty"`
 	SourcePath string `json:"-"`
+	Temporary  bool   `json:"-"`
 }
 
 type DesktopImageTarget struct {

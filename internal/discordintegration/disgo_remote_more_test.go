@@ -3,11 +3,14 @@ package discordintegration
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -16,6 +19,94 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
+
+func TestDisgoRemoteSendsConversationImageAndReusesMessage(t *testing.T) {
+	root := t.TempDir()
+	content := bytes.Repeat([]byte("960x540-landscape-image"), 4096)
+	digest := fmt.Sprintf("%x", sha256.Sum256(content))
+	storageKey := filepath.ToSlash(filepath.Join("agent", "test-image"))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "agent"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(root, filepath.FromSlash(storageKey)),
+		content, 0o600))
+	filename := "01-01234567-" + digest[:12] + ".png"
+	postCount, uploadCount, updateCount := 0, 0, 0
+	delivered := false
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter,
+		request *http.Request,
+	) {
+		response.Header().Set("Content-Type", "application/json")
+		switch request.Method + " " + request.URL.Path {
+		case "POST /channels/20/messages":
+			postCount++
+			var payload map[string]any
+			require.NoError(t, json.NewDecoder(request.Body).Decode(&payload))
+			require.NotContains(t, fmt.Sprint(payload["components"]), "attachment://")
+			_, _ = response.Write([]byte(`{"id":"21","channel_id":"20"}`))
+		case "GET /channels/20/messages/21":
+			attachments := `[]`
+			if delivered {
+				attachments = `[{"id":"31","filename":"` + filename + `",` +
+					`"url":"https://cdn.discordapp.com/attachments/20/31/` + filename + `"}]`
+			}
+			_, _ = response.Write([]byte(`{"id":"21","channel_id":"20","attachments":` +
+				attachments + `}`))
+		case "PATCH /channels/20/messages/21":
+			if strings.HasPrefix(request.Header.Get("Content-Type"), "application/json") {
+				updateCount++
+				_, _ = response.Write([]byte(`{"id":"21","channel_id":"20"}`))
+				return
+			}
+			uploadCount++
+			reader, err := request.MultipartReader()
+			require.NoError(t, err)
+			var uploaded []byte
+			for {
+				part, partErr := reader.NextPart()
+				if partErr == io.EOF {
+					break
+				}
+				require.NoError(t, partErr)
+				body, readErr := io.ReadAll(part)
+				require.NoError(t, readErr)
+				if part.FormName() != "payload_json" {
+					uploaded = body
+				}
+			}
+			require.Equal(t, content, uploaded)
+			delivered = true
+			_, _ = response.Write([]byte(`{"id":"21","channel_id":"20","attachments":[` +
+				`{"id":"31","filename":"` + filename + `"}]}`))
+		default:
+			http.NotFound(response, request)
+		}
+	}))
+	t.Cleanup(server.Close)
+	remote := NewDisgoRemote("token", server.URL, server.Client())
+	remote.ConfigureAttachmentStore(root)
+	t.Cleanup(func() { remote.Close(context.Background()) })
+	image := conversationImagePayload{AttachmentID: uuid.NewString(), Filename: filename,
+		Description: "960x540 landscape", MediaType: "image/png", SizeBytes: int64(len(content)),
+		SHA256: digest, StorageKey: storageKey}
+	card := ComponentCardPayload{AccentColor: cardColorBlurple, Header: "Codex · 图片",
+		Media: []ComponentMediaPayload{{Filename: filename, Description: image.Description}}}
+	payload := rawJSON(map[string]any{"channelId": "20", "images": []conversationImagePayload{image},
+		"card": card})
+
+	result, err := remote.Send(context.Background(), OutboxItem{OperationType: "message.images",
+		Payload: payload, Nonce: "conversation-image-test"})
+	require.NoError(t, err)
+	require.JSONEq(t, `{"messageId":"21"}`, string(result))
+
+	retryPayload := rawJSON(map[string]any{"channelId": "20", "messageId": "21",
+		"images": []conversationImagePayload{image}, "card": card})
+	result, err = remote.Send(context.Background(), OutboxItem{OperationType: "message.images",
+		Payload: retryPayload})
+	require.NoError(t, err)
+	require.JSONEq(t, `{"messageId":"21"}`, string(result))
+	require.Equal(t, 1, postCount)
+	require.Equal(t, 1, uploadCount)
+	require.Equal(t, 2, updateCount)
+}
 
 func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 	var mu sync.Mutex
@@ -329,10 +420,11 @@ func TestDisgoRemoteStreamsDesktopImageAndReconcilesByFilename(t *testing.T) {
 	require.Equal(t, []byte("image-content"), uploaded)
 	require.Equal(t, 2, patches)
 	attachments := uploadPayload["attachments"].([]any)
-	require.Len(t, attachments, 1)
-	require.Equal(t, float64(0), attachments[0].(map[string]any)["id"])
-	require.NotContains(t, attachments[0].(map[string]any), "filename")
-	require.Equal(t, "shot.png", attachments[0].(map[string]any)["description"])
+	require.Len(t, attachments, 2)
+	require.Equal(t, "30", attachments[0].(map[string]any)["id"])
+	require.Equal(t, float64(0), attachments[1].(map[string]any)["id"])
+	require.NotContains(t, attachments[1].(map[string]any), "filename")
+	require.Equal(t, "shot.png", attachments[1].(map[string]any)["description"])
 	require.Equal(t, float64(discord.MessageFlagIsComponentsV2), uploadPayload["flags"])
 	require.Equal(t, []string{existingURL, "attachment://" + filename},
 		desktopImageMediaURLs(t, uploadPayload))

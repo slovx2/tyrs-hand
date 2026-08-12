@@ -251,7 +251,8 @@ func (s *SQLoutbox) replayDesktopProjection(ctx context.Context, requestID uuid.
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT i.id, r.id, r.status,
 		COALESCE(i.result->>'finalAnswer',''), COALESCE(i.result->>'finalOutputType',''),
-		COALESCE(i.projection_anchor,'desktop-' || i.id::text)
+		COALESCE(i.projection_anchor,'desktop-' || i.id::text),
+		COALESCE(i.result->'attachmentIds','[]'::jsonb)
 		FROM codex_turn_intents i
 		JOIN codex_turn_runs r ON r.primary_intent_id = i.id
 		WHERE i.control_id = $1 AND i.input_surface = 'desktop'
@@ -261,18 +262,19 @@ func (s *SQLoutbox) replayDesktopProjection(ctx context.Context, requestID uuid.
 	}
 	defer func() { _ = rows.Close() }()
 	type projection struct {
-		intentID   uuid.UUID
-		runID      uuid.UUID
-		status     string
-		answer     string
-		outputType string
-		anchor     string
+		intentID    uuid.UUID
+		runID       uuid.UUID
+		status      string
+		answer      string
+		outputType  string
+		anchor      string
+		attachments json.RawMessage
 	}
 	var projections []projection
 	for rows.Next() {
 		var item projection
 		if err := rows.Scan(&item.intentID, &item.runID, &item.status, &item.answer, &item.outputType,
-			&item.anchor); err != nil {
+			&item.anchor, &item.attachments); err != nil {
 			return err
 		}
 		projections = append(projections, item)
@@ -292,6 +294,14 @@ func (s *SQLoutbox) replayDesktopProjection(ctx context.Context, requestID uuid.
 					anchor, item.runID, item.answer, item.outputType); err != nil {
 					return err
 				}
+			}
+			var attachmentIDs []uuid.UUID
+			if err := json.Unmarshal(item.attachments, &attachmentIDs); err != nil {
+				return err
+			}
+			if err := ProjectConversationImages(ctx, s.db, threadID, conversationID,
+				anchor, item.runID, attachmentIDs); err != nil {
+				return err
 			}
 			continue
 		}

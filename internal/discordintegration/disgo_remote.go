@@ -4,15 +4,18 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
 	"net/url"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -26,10 +29,20 @@ import (
 )
 
 type DisgoRemote struct {
-	rest       disgorest.Rest
-	httpClient *http.Client
-	token      string
-	apiBaseURL string
+	rest           disgorest.Rest
+	httpClient     *http.Client
+	token          string
+	apiBaseURL     string
+	attachmentRoot string
+}
+
+type discordImageHTTPError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *discordImageHTTPError) Error() string {
+	return fmt.Sprintf("discord 图片上传 HTTP %d: %s", e.StatusCode, e.Body)
 }
 
 func NewDisgoRemote(token, apiURL string, httpClient *http.Client) *DisgoRemote {
@@ -52,6 +65,10 @@ func NewDisgoRemote(token, apiURL string, httpClient *http.Client) *DisgoRemote 
 	return &DisgoRemote{rest: disgorest.New(client,
 		disgorest.WithDefaultAllowedMentions(discord.AllowedMentions{})),
 		httpClient: httpClient, token: token, apiBaseURL: baseURL}
+}
+
+func (r *DisgoRemote) ConfigureAttachmentStore(root string) {
+	r.attachmentRoot = filepath.Clean(strings.TrimSpace(root))
 }
 
 func (r *DisgoRemote) Guild(ctx context.Context, guildID string) (RemoteGuild, error) {
@@ -409,23 +426,24 @@ func discordMessageCreate(content string, card *ComponentCardPayload, nonce stri
 func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessage, error) {
 	item.Nonce = discordNonce(item.Nonce)
 	var payload struct {
-		ChannelID        string                `json:"channelId"`
-		MessageID        string                `json:"messageId"`
-		UserID           string                `json:"userId"`
-		Content          string                `json:"content"`
-		InteractionID    string                `json:"interactionId"`
-		InteractionToken string                `json:"interactionToken"`
-		Ephemeral        bool                  `json:"ephemeral"`
-		Permissions      []PermissionSpec      `json:"permissions"`
-		ThreadName       string                `json:"threadName"`
-		TagIDs           []string              `json:"tagIds"`
-		TagName          string                `json:"tagName"`
-		Enabled          bool                  `json:"enabled"`
-		Archived         bool                  `json:"archived"`
-		Locked           bool                  `json:"locked"`
-		ConversationID   string                `json:"conversationId"`
-		MentionUserIDs   []string              `json:"mentionUserIds"`
-		Card             *ComponentCardPayload `json:"card"`
+		ChannelID        string                     `json:"channelId"`
+		MessageID        string                     `json:"messageId"`
+		UserID           string                     `json:"userId"`
+		Content          string                     `json:"content"`
+		InteractionID    string                     `json:"interactionId"`
+		InteractionToken string                     `json:"interactionToken"`
+		Ephemeral        bool                       `json:"ephemeral"`
+		Permissions      []PermissionSpec           `json:"permissions"`
+		ThreadName       string                     `json:"threadName"`
+		TagIDs           []string                   `json:"tagIds"`
+		TagName          string                     `json:"tagName"`
+		Enabled          bool                       `json:"enabled"`
+		Archived         bool                       `json:"archived"`
+		Locked           bool                       `json:"locked"`
+		ConversationID   string                     `json:"conversationId"`
+		MentionUserIDs   []string                   `json:"mentionUserIds"`
+		Card             *ComponentCardPayload      `json:"card"`
+		Images           []conversationImagePayload `json:"images"`
 	}
 	if err := json.Unmarshal(item.Payload, &payload); err != nil {
 		return nil, err
@@ -457,6 +475,9 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 			return nil, err
 		}
 		return json.Marshal(map[string]string{"messageId": message.ID.String()})
+	case "message.images":
+		return r.sendConversationImages(ctx, item, payload.ChannelID, payload.MessageID,
+			payload.Card, payload.Images)
 	case "message.update":
 		channel, message, err := twoSnowflakes(payload.ChannelID, payload.MessageID)
 		if err != nil {
@@ -757,6 +778,128 @@ func (r *DisgoRemote) UploadDesktopImage(ctx context.Context, channelID, message
 	return "", errors.New("discord 图片上传响应缺少附件")
 }
 
+func (r *DisgoRemote) sendConversationImages(ctx context.Context, item OutboxItem,
+	channelID, messageID string, card *ComponentCardPayload,
+	images []conversationImagePayload,
+) (json.RawMessage, error) {
+	if card == nil || len(images) == 0 || len(images) > conversationImageLimit {
+		return nil, errors.New("Discord 回复图片 payload 无效")
+	}
+	channel, err := snowflake.Parse(channelID)
+	if err != nil {
+		return nil, err
+	}
+	if messageID == "" {
+		containerCard := *card
+		containerCard.Media = nil
+		create, createErr := discordMessageCreate("", &containerCard, item.Nonce,
+			&discord.AllowedMentions{})
+		if createErr != nil {
+			return nil, createErr
+		}
+		message, createErr := r.rest.CreateMessage(channel, create, disgorest.WithCtx(ctx))
+		if createErr != nil {
+			return nil, createErr
+		}
+		messageID = message.ID.String()
+	}
+	for index, image := range images {
+		source, openErr := r.openConversationImage(image)
+		if openErr != nil {
+			return nil, openErr
+		}
+		progressCard := *card
+		progressCard.Media = append([]ComponentMediaPayload(nil), card.Media[:index+1]...)
+		_, uploadErr := r.UploadDesktopImage(ctx, channelID, messageID, progressCard,
+			image.Filename, image.Description, source)
+		closeErr := source.Close()
+		if uploadErr != nil {
+			return nil, uploadErr
+		}
+		if closeErr != nil {
+			return nil, closeErr
+		}
+	}
+	return json.Marshal(map[string]string{"messageId": messageID})
+}
+
+type verifiedConversationImageReader struct {
+	file      *os.File
+	size      int64
+	remaining int64
+	digest    hash.Hash
+	expected  string
+	finalized bool
+}
+
+func (r *verifiedConversationImageReader) Size() int64 { return r.size }
+
+func (r *verifiedConversationImageReader) Read(buffer []byte) (int, error) {
+	if r.remaining <= 0 {
+		return 0, io.EOF
+	}
+	if int64(len(buffer)) > r.remaining {
+		buffer = buffer[:r.remaining]
+	}
+	n, err := r.file.Read(buffer)
+	if n > 0 {
+		r.remaining -= int64(n)
+		_, _ = r.digest.Write(buffer[:n])
+	}
+	return n, err
+}
+
+func (r *verifiedConversationImageReader) Finalize() error {
+	if r.finalized {
+		return nil
+	}
+	r.finalized = true
+	if r.remaining != 0 || hex.EncodeToString(r.digest.Sum(nil)) != r.expected {
+		return errors.New("Discord 回复图片大小或 SHA-256 校验失败")
+	}
+	return nil
+}
+
+func (r *verifiedConversationImageReader) Close() error { return r.file.Close() }
+
+func (r *DisgoRemote) openConversationImage(image conversationImagePayload) (
+	*verifiedConversationImageReader, error,
+) {
+	if !validConversationImage(image) || strings.TrimSpace(r.attachmentRoot) == "" {
+		return nil, errors.New("Discord 回复图片存储配置或元数据无效")
+	}
+	root, err := filepath.Abs(r.attachmentRoot)
+	if err != nil {
+		return nil, err
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return nil, err
+	}
+	target, err := filepath.Abs(filepath.Join(root, filepath.FromSlash(image.StorageKey)))
+	if err != nil {
+		return nil, err
+	}
+	resolvedTarget, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		return nil, errors.New("Discord 回复图片文件不存在")
+	}
+	relative, err := filepath.Rel(resolvedRoot, resolvedTarget)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return nil, errors.New("Discord 回复图片 storage key 越界")
+	}
+	info, err := os.Lstat(resolvedTarget)
+	if err != nil || !info.Mode().IsRegular() || info.Size() != image.SizeBytes {
+		return nil, errors.New("Discord 回复图片文件不存在或大小不符")
+	}
+	file, err := os.Open(resolvedTarget)
+	if err != nil {
+		return nil, err
+	}
+	return &verifiedConversationImageReader{file: file, size: image.SizeBytes,
+		remaining: image.SizeBytes, digest: sha256.New(), expected: image.SHA256}, nil
+}
+
 type desktopImageAttachmentPayload struct {
 	ID          any    `json:"id"`
 	Filename    string `json:"filename,omitempty"`
@@ -787,8 +930,17 @@ func (r *DisgoRemote) patchDesktopImage(ctx context.Context, channelID, messageI
 	filename, description string, source io.Reader,
 ) (string, error) {
 	attachments := make([]desktopImageAttachmentPayload, 0, len(current.Attachments)+1)
+	attached := make(map[string]bool)
 	for _, attachment := range current.Attachments {
 		attachments = append(attachments, desktopImageAttachmentPayload{ID: attachment.ID})
+		attached[attachment.ID.String()] = true
+	}
+	for _, reference := range componentMediaReferences(current) {
+		if reference.AttachmentID != "" && !attached[reference.AttachmentID] {
+			attachments = append(attachments,
+				desktopImageAttachmentPayload{ID: reference.AttachmentID})
+			attached[reference.AttachmentID] = true
+		}
 	}
 	// 新文件的名称由 multipart 文件 part 提供；payload 只声明新附件序号和描述。
 	// Discord multipart 新附件沿用 DisGo 的整数索引格式。
@@ -838,7 +990,8 @@ func (r *DisgoRemote) patchDesktopImage(ctx context.Context, channelID, messageI
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(response.Body, 32<<10))
-		return "", fmt.Errorf("discord 图片上传 HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
+		return "", &discordImageHTTPError{StatusCode: response.StatusCode,
+			Body: strings.TrimSpace(string(body))}
 	}
 	responseBody, readErr := io.ReadAll(io.LimitReader(response.Body, 32<<10))
 	if readErr != nil {

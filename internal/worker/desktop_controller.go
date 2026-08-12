@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -637,6 +638,12 @@ func (c *desktopController) observeDesktopTurn(call appserverhub.Call,
 	requestKey := desktopRequestKey(call.Method, call.Params, result)
 	images, imageNotice, imageErr := desktopImagesFromTurn(ctx, call.Params,
 		c.openDesktopImage)
+	imagesHandedOff := false
+	defer func() {
+		if !imagesHandedOff {
+			cleanupTemporaryDesktopImages(images, c.processor.logger)
+		}
+	}()
 	if imageErr != nil {
 		c.processor.logger.Warn("读取 Desktop 图片失败，继续投影文本",
 			zap.String("request_key", requestKey), zap.Error(imageErr))
@@ -669,6 +676,7 @@ func (c *desktopController) observeDesktopTurn(call appserverhub.Call,
 	if len(images) > 0 {
 		taskCopy := task
 		imagesCopy := append([]workerprotocol.DesktopImage(nil), images...)
+		imagesHandedOff = true
 		go c.syncDesktopImages(&taskCopy, imagesCopy)
 	}
 	reporter := newDesktopEventReporter(ctx, c.processor, &task)
@@ -718,6 +726,7 @@ func desktopImagesFromTurn(ctx context.Context, params json.RawMessage,
 		Input []struct {
 			Type string `json:"type"`
 			Path string `json:"path"`
+			URL  string `json:"url"`
 		} `json:"input"`
 	}
 	if err := json.Unmarshal(params, &value); err != nil {
@@ -727,7 +736,24 @@ func desktopImagesFromTurn(ctx context.Context, params json.RawMessage,
 	seen := make(map[string]struct{})
 	total := int64(0)
 	skipped := 0
-	for _, item := range value.Input {
+	for ordinal, item := range value.Input {
+		if item.Type == "image" {
+			if len(images) >= workerprotocol.DesktopImageCountLimit {
+				skipped++
+				continue
+			}
+			image := desktopImageFromDataURL(item.URL, ordinal)
+			if image.Error == "" && total+image.Size > workerprotocol.DesktopImageTotalLimit {
+				_ = os.Remove(image.SourcePath)
+				image.SourcePath, image.Temporary = "", false
+				image.Error = "图片合计大小超过限制"
+			}
+			images = append(images, image)
+			if image.Error == "" {
+				total += image.Size
+			}
+			continue
+		}
 		path := filepath.Clean(strings.TrimSpace(item.Path))
 		if item.Type != "localImage" || path == "." {
 			continue
@@ -784,6 +810,76 @@ func desktopImagesFromTurn(ctx context.Context, params json.RawMessage,
 	return images, notice, nil
 }
 
+func desktopImageFromDataURL(raw string, ordinal int) workerprotocol.DesktopImage {
+	image := workerprotocol.DesktopImage{Filename: fmt.Sprintf("desktop-image-%02d", ordinal+1)}
+	header, encoded, ok := strings.Cut(strings.TrimSpace(raw), ",")
+	if !ok || !strings.HasPrefix(header, "data:image/") ||
+		!strings.HasSuffix(header, ";base64") || strings.Count(header, ";") != 1 {
+		image.Error = "图片 data URL 格式无效"
+		return image
+	}
+	mediaType := strings.TrimSuffix(strings.TrimPrefix(header, "data:"), ";base64")
+	extension := desktopImageExtension(mediaType)
+	if extension == "" {
+		image.Error = "图片类型不受支持"
+		return image
+	}
+	image.Filename += extension
+	maxEncoded := base64.StdEncoding.EncodedLen(workerprotocol.DesktopImageFileLimit + 1)
+	if len(encoded) == 0 || len(encoded) > maxEncoded {
+		image.Error = "图片为空或超过大小限制"
+		return image
+	}
+	content, err := base64.StdEncoding.Strict().DecodeString(encoded)
+	if err != nil || len(content) == 0 || int64(len(content)) > workerprotocol.DesktopImageFileLimit {
+		image.Error = "图片 base64 无效或超过大小限制"
+		return image
+	}
+	if detected := http.DetectContentType(content[:min(len(content), 512)]); detected != mediaType {
+		image.Error = "声明类型与图片内容不匹配"
+		return image
+	}
+	file, err := os.CreateTemp("", "tyrs-hand-desktop-image-*"+extension)
+	if err != nil {
+		image.Error = "创建图片临时文件失败"
+		return image
+	}
+	path := file.Name()
+	if chmodErr := file.Chmod(0o600); chmodErr != nil {
+		err = chmodErr
+	} else if _, writeErr := file.Write(content); writeErr != nil {
+		err = writeErr
+	}
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		_ = os.Remove(path)
+		image.Error = "写入图片临时文件失败"
+		return image
+	}
+	digest := sha256.Sum256(content)
+	image.MediaType, image.Size = mediaType, int64(len(content))
+	image.SHA256, image.SourcePath = fmt.Sprintf("%x", digest[:]), path
+	image.Temporary = true
+	return image
+}
+
+func desktopImageExtension(mediaType string) string {
+	switch mediaType {
+	case "image/png":
+		return ".png"
+	case "image/jpeg":
+		return ".jpg"
+	case "image/gif":
+		return ".gif"
+	case "image/webp":
+		return ".webp"
+	default:
+		return ""
+	}
+}
+
 func openLocalDesktopImage(_ context.Context, source string) (io.ReadCloser, int64, error) {
 	path := filepath.Clean(strings.TrimSpace(source))
 	info, err := os.Lstat(path)
@@ -822,6 +918,7 @@ func desktopImageTypeMatches(filename, mediaType string) bool {
 func (c *desktopController) syncDesktopImages(task *workerprotocol.Task,
 	images []workerprotocol.DesktopImage,
 ) {
+	defer cleanupTemporaryDesktopImages(images, c.processor.logger)
 	ctx, cancel := context.WithTimeout(c.processor.workspaces.ctx, 2*time.Minute)
 	defer cancel()
 	waitDeadline := time.NewTimer(time.Minute)
@@ -893,6 +990,17 @@ func (c *desktopController) syncDesktopImages(task *workerprotocol.Task,
 		requestCtx, requestCancel := context.WithTimeout(ctx, c.controlTimeout())
 		_ = c.processor.client.FailDesktopImage(requestCtx, task.Claimed.ID, ordinal, uploadErr)
 		requestCancel()
+	}
+}
+
+func cleanupTemporaryDesktopImages(images []workerprotocol.DesktopImage, logger *zap.Logger) {
+	for _, image := range images {
+		if image.Temporary && image.SourcePath != "" {
+			if err := os.Remove(image.SourcePath); err != nil && !errors.Is(err, os.ErrNotExist) {
+				logger.Warn("清理 Desktop 图片临时文件失败",
+					zap.String("path", image.SourcePath), zap.Error(err))
+			}
+		}
 	}
 }
 

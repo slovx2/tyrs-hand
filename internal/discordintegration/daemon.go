@@ -41,7 +41,11 @@ func NewDaemon(manager *Manager, conversations *ConversationService, bindings *B
 		outboxInterval: 250 * time.Millisecond, operationInterval: 2 * time.Second,
 		projectionInterval: time.Minute, permissionInterval: 5 * time.Minute}
 	conversations.redis = redisClient
-	d.newRemote = func(token, apiURL string) Remote { return NewDisgoRemote(token, apiURL, nil) }
+	d.newRemote = func(token, apiURL string) Remote {
+		remote := NewDisgoRemote(token, apiURL, nil)
+		remote.ConfigureAttachmentStore(conversations.attachmentRoot)
+		return remote
+	}
 	d.newGateway = func(settings Settings, token string) GatewayConnector {
 		return NewDisgoConnector(manager, conversations, bindings, settings.GuildID, token, logger)
 	}

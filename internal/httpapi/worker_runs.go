@@ -566,9 +566,15 @@ func (s *Server) projectRemoteDiscordComplete(ctx context.Context,
 		discordintegration.ConversationCompleted, "本轮处理完成。"); err != nil {
 		return err
 	}
-	if err := discordintegration.ProjectConversationReply(ctx, s.db, threadID,
-		claimed.DiscordConversationID, anchor, claimed.RunID, result.FinalAnswer,
-		result.FinalOutputType); err != nil {
+	if result.FinalAnswer != "" || len(result.AttachmentIDs) == 0 {
+		if err := discordintegration.ProjectConversationReply(ctx, s.db, threadID,
+			claimed.DiscordConversationID, anchor, claimed.RunID, result.FinalAnswer,
+			result.FinalOutputType); err != nil {
+			return err
+		}
+	}
+	if err := discordintegration.ProjectConversationImages(ctx, s.db, threadID,
+		claimed.DiscordConversationID, anchor, claimed.RunID, result.AttachmentIDs); err != nil {
 		return err
 	}
 	_, err = s.db.ExecContext(ctx, `UPDATE discord_input_messages SET status = 'processed',

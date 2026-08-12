@@ -310,7 +310,8 @@ func (s *SQLoutbox) Apply(ctx context.Context, item OutboxItem) error {
 		_ = json.Unmarshal(response, &value)
 		if !projectionExists {
 			if value.MessageID != "" && (item.OperationType == "message.create" ||
-				item.OperationType == "forum.post.create") {
+				item.OperationType == "forum.post.create" ||
+				item.OperationType == "message.images") {
 				var delivered struct {
 					ChannelID string `json:"channelId"`
 				}
@@ -341,7 +342,8 @@ func (s *SQLoutbox) Apply(ctx context.Context, item OutboxItem) error {
 				return err
 			}
 			if value.MessageID != "" && (item.OperationType == "message.create" ||
-				item.OperationType == "forum.post.create") {
+				item.OperationType == "forum.post.create" ||
+				item.OperationType == "message.images") {
 				var delivered struct {
 					ChannelID string `json:"channelId"`
 				}
@@ -353,12 +355,13 @@ func (s *SQLoutbox) Apply(ctx context.Context, item OutboxItem) error {
 					return errors.New("待更新 Projection 的 Discord 创建结果缺少频道 ID")
 				}
 				_, err = tx.ExecContext(ctx, `UPDATE integration_outbox SET
-					operation_type='message.update',nonce=NULL,
+					operation_type=CASE WHEN $4='message.images' THEN $4 ELSE 'message.update' END,
+					nonce=NULL,
 					route_key='channels/'||$2::text||'/messages',
 					payload=payload||jsonb_build_object(
 						'channelId',$2::text,'messageId',$3::text),
 					updated_at=now() WHERE id=$1 AND status='pending'`, item.ID,
-					delivered.ChannelID, value.MessageID)
+					delivered.ChannelID, value.MessageID, item.OperationType)
 				if err != nil {
 					return err
 				}
@@ -832,6 +835,14 @@ func (d *Dispatcher) apply(ctx context.Context, item OutboxItem) error {
 }
 
 func classifyRemoteError(err error) (bool, time.Duration, error) {
+	var imageErr *discordImageHTTPError
+	if errors.As(err, &imageErr) {
+		if imageErr.StatusCode == http.StatusRequestTimeout ||
+			imageErr.StatusCode == http.StatusTooManyRequests || imageErr.StatusCode >= 500 {
+			return true, 0, err
+		}
+		return false, 0, err
+	}
 	var restErr *disgorest.Error
 	if errors.As(err, &restErr) && restErr.Response != nil {
 		status := restErr.Response.StatusCode
