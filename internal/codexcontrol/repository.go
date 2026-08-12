@@ -853,7 +853,7 @@ func (r *Repository) finishWithCodexError(ctx context.Context, claimed *ClaimedC
 	}
 	if err == nil {
 		controlStatus := "idle"
-		if status == IntentFailed {
+		if status == IntentFailed && claimed.SourceType == SourceGitHub {
 			controlStatus = "error"
 		}
 		_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET status = $2,

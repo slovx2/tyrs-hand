@@ -657,6 +657,10 @@ func (c *desktopController) observeDesktopTurn(call appserverhub.Call,
 		}
 		c.processor.logger.Warn("异步登记 Desktop Turn 失败，Desktop Turn 继续运行",
 			zap.String("turn_id", turnID), zap.Error(err))
+		if !retryableControlError(err) {
+			state.toolReady <- desktopToolRuntime{err: err}
+			return
+		}
 		if !waitContext(ctx, 500*time.Millisecond) {
 			state.toolReady <- desktopToolRuntime{err: ctx.Err()}
 			return
