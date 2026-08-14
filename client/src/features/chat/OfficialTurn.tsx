@@ -23,11 +23,12 @@ type OfficialTurnProps = {
   threadId: string;
   turn: Turn;
   canToggleActivity: () => boolean;
+  onDisclosureChange?: () => void;
 };
 const turnPresentations = new WeakMap<Turn, ReturnType<typeof projectTurnPresentation>>();
 
 export const OfficialTurn = memo(function OfficialTurn({ profileId, threadId,
-  turn, canToggleActivity }: OfficialTurnProps) {
+  turn, canToggleActivity, onDisclosureChange }: OfficialTurnProps) {
   const theme = useTheme();
   const presentation = useMemo(() => presentationForTurn(turn), [turn]);
   const [, redraw] = useState(0);
@@ -46,6 +47,7 @@ export const OfficialTurn = memo(function OfficialTurn({ profileId, threadId,
           summary={turnActivitySummary(turn, nowMs)}
           onPress={() => {
             if (!canToggleActivity()) return;
+            onDisclosureChange?.();
             toggleTurnActivity(memoryKey, presentation.canCollapseActivity);
             redraw((value) => value + 1);
           }} />;
@@ -54,7 +56,10 @@ export const OfficialTurn = memo(function OfficialTurn({ profileId, threadId,
         {header}
         {activity && collapsed ? null
           : <TurnBlockView block={block} memoryKey={memoryKey} profileId={profileId}
-          onDisclosureChange={() => redraw((value) => value + 1)} />}
+          onDisclosureChange={() => {
+            onDisclosureChange?.();
+            redraw((value) => value + 1);
+          }} />}
       </Fragment>;
     })}
     {presentation.showThinking
@@ -71,7 +76,8 @@ export const OfficialTurn = memo(function OfficialTurn({ profileId, threadId,
     </View> : null}
   </View>;
 }, (left, right) => left.profileId === right.profileId && left.threadId === right.threadId &&
-  left.turn === right.turn && left.canToggleActivity === right.canToggleActivity);
+  left.turn === right.turn && left.canToggleActivity === right.canToggleActivity &&
+  left.onDisclosureChange === right.onDisclosureChange);
 
 function presentationForTurn(turn: Turn): ReturnType<typeof projectTurnPresentation> {
   const cached = turnPresentations.get(turn);

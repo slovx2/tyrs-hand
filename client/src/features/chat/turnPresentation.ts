@@ -111,6 +111,13 @@ export function reasoningActivityHeading(summary: string[]): string | null {
     .map((line) => line.trim()).filter(Boolean);
   if (lines.length === 0) return null;
 
+  // 官方 reasoning summary 会逐段推送。粗体标题在收尾的 `**` 到达前不
+  // 是稳定标题，不能把中间态投影到工具组标题，否则每个 delta 都会触发
+  // 一次标题长度和列表高度变化。
+  if (lines.some((line) => line.startsWith("**") && !/^\*\*(.+?)\*\*$/.test(line))) {
+    return null;
+  }
+
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     const bold = lines[index]!.match(/^\*\*(.+?)\*\*$/);
     if (bold?.[1]?.trim()) return cleanReasoningHeading(bold[1]);

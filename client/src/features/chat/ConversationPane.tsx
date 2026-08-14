@@ -92,6 +92,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const userDragging = useRef(false);
   const interactionBlocked = useRef(false);
   const interactionSettleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const disclosureSettleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const followState = useRef(createFollowState());
   const latestPhase = useRef<ReturnType<typeof latestTurnPhase>>("idle");
   const activityToggleBlockedUntil = useRef(0);
@@ -166,6 +167,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   useEffect(() => () => {
     if (olderLoadTimer.current) clearTimeout(olderLoadTimer.current);
     if (interactionSettleTimer.current) clearTimeout(interactionSettleTimer.current);
+    if (disclosureSettleTimer.current) clearTimeout(disclosureSettleTimer.current);
   }, []);
 
   useEffect(() => {
@@ -218,6 +220,16 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const hasMoreHistory = record?.history.kind === "loaded" &&
     !record.history.hasLoadedOldest && record.history.olderCursor !== null;
 
+  const scheduleFollowLatest = useCallback((animated = false, force = false) => {
+    const follow = () => {
+      if ((!force && !positionRestored) || (!force && interactionBlocked.current) ||
+        (!force && !shouldFollowLatest(followState.current))) return;
+      list.current?.scrollToEnd({ animated });
+    };
+    list.current?.scrollToEnd({ animated });
+    requestAnimationFrame(() => requestAnimationFrame(follow));
+  }, [positionRestored]);
+
   useEffect(() => {
     const nextPhase = latestTurnPhase(activeTurn);
     const previousPhase = latestPhase.current;
@@ -225,9 +237,9 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     if (previousPhase !== nextPhase) dispatchFollow({ type: "latest_turn_phase_changed",
       previousLatestTurnPhase: previousPhase, latestTurnPhase: nextPhase });
     if (shouldFollowLatest(followState.current) && !interactionBlocked.current) {
-      list.current?.scrollToEnd({ animated: false });
+      scheduleFollowLatest();
     }
-  }, [activeTurn, dispatchFollow, rows]);
+  }, [activeTurn, dispatchFollow, rows, scheduleFollowLatest]);
 
   const saveVisiblePosition = useCallback((offsetY?: number) => {
     if (!positionKey) return;
@@ -250,10 +262,23 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const followLatest = useCallback((animated: boolean) => {
     dispatchFollow({ type: "scroll_to_bottom", latestTurnPhase: latestPhase.current });
     pinnedToLatest.current = true;
+    interactionBlocked.current = false;
+    userDragging.current = false;
+    momentumScrolling.current = false;
     setScrollToLatestVisible(false);
     if (positionKey) saveConversationPosition(positionKey, { kind: "latest" });
-    list.current?.scrollToEnd({ animated });
-  }, [dispatchFollow, positionKey, setScrollToLatestVisible]);
+    scheduleFollowLatest(animated, true);
+  }, [dispatchFollow, positionKey, scheduleFollowLatest, setScrollToLatestVisible]);
+
+  const handleDisclosureChange = useCallback(() => {
+    interactionBlocked.current = true;
+    if (disclosureSettleTimer.current) clearTimeout(disclosureSettleTimer.current);
+    disclosureSettleTimer.current = setTimeout(() => {
+      disclosureSettleTimer.current = null;
+      interactionBlocked.current = false;
+      if (shouldFollowLatest(followState.current)) scheduleFollowLatest();
+    }, ACTIVITY_TOGGLE_SCROLL_SETTLE_MS);
+  }, [scheduleFollowLatest]);
 
   const finishUserInteraction = useCallback(() => {
     interactionBlocked.current = false;
@@ -322,6 +347,9 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     try {
       const sent = await submitMessage(sessionId, message, files, resolvedPreferences);
       if (profileId) await clearDraft(profileId, draftScope);
+      // submitMessage 会先插入乐观 Turn，再等待 App Server 回执。发送前的
+      // scrollToEnd 可能早于这个新 Row 的 native layout，回执后再补一次。
+      followLatest(false);
       if (!sent) {
         setText(message);
         setAttachments(files);
@@ -351,7 +379,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
 
   const renderRow = useCallback(({ item }: { item: ConversationRow }) => item.kind === "turn"
     ? <OfficialTurn profileId={profileId ?? "unavailable"} threadId={sessionId} turn={item.turn}
-      canToggleActivity={canToggleActivity} />
+      canToggleActivity={canToggleActivity} onDisclosureChange={handleDisclosureChange} />
     : item.kind === "request"
       ? <ServerRequestCard request={item.request} onAnswer={(result) => {
         if (!answerRequest(sessionId, item.request.id, result)) {
@@ -359,7 +387,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
           void loadThread(sessionId);
         }
       }} />
-      : null, [answerRequest, canToggleActivity, loadThread, profileId, sessionId]);
+      : null, [answerRequest, canToggleActivity, handleDisclosureChange, loadThread, profileId,
+        sessionId]);
 
   if (!connection || !record) {
     return <EmptyState title="会话不可用" detail="它可能已被归档、移除，或属于其他连接。" />;
@@ -392,9 +421,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         onContentSizeChange={() => {
           // 数据更新和披露展开会先触发 React 更新，随后 FlashList 才完成真实高度测量。
           // 跟随态在这个布局时点补滚到底，避免多行命令的最后一行卡在 composer 上沿。
-          if (!positionRestored || interactionBlocked.current ||
-            !shouldFollowLatest(followState.current)) return;
-          list.current?.scrollToEnd({ animated: false });
+          if (!positionRestored || interactionBlocked.current || !pinnedToLatest.current) return;
+          scheduleFollowLatest(false, true);
         }}
         onScroll={({ nativeEvent }) => {
           const state = conversationScrollState(nativeEvent.contentSize.height,
