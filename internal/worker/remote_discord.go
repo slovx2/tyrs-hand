@@ -52,7 +52,8 @@ func (p *Processor) processRemoteDiscord(ctx context.Context, task *workerprotoc
 	client := p.hostRuntime.Client()
 	codexRuntime := codex.NewRuntime(client)
 	settings := task.Snapshot.Runtime
-	developerInstructions := strings.TrimSpace(discordintegration.MultiplayerDeveloperInstructions)
+	developerInstructions := workspaceDeveloperInstructions(task,
+		strings.TrimSpace(discordintegration.MultiplayerDeveloperInstructions))
 	options := workerThreadOptions(ports.ThreadOptions{
 		CWD: runtime.Workspace, Model: settings.Model,
 		ReasoningEffort: settings.ReasoningEffort,
@@ -157,9 +158,9 @@ func resolveHostWorkspaceRuntime(workspaceRoot, codexHome string,
 
 func workspaceGitTools(spec *workerprotocol.WorkspaceProjectContext) []ports.DynamicToolSpec {
 	if spec.WorkspaceKind != "git" {
-		return nil
+		return []ports.DynamicToolSpec{automationSpec()}
 	}
-	return []ports.DynamicToolSpec{localGitSpec(spec.CloneURL != "")}
+	return []ports.DynamicToolSpec{localGitSpec(spec.CloneURL != ""), automationSpec()}
 }
 
 func remoteDiscordEventReporter(report func(string, json.RawMessage)) func(string, json.RawMessage) {

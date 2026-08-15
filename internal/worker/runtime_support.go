@@ -24,12 +24,27 @@ const (
 	turnCleanupTimeout        = 5 * time.Second
 	workerCodexSandbox        = "danger-full-access"
 	workerCodexApprovalPolicy = "never"
+	scheduledTaskActorLogin   = "tyrs-hand-scheduler"
 )
+
+const scheduledTaskDeveloperInstruction = "这是无人值守定时任务。尽量根据现有上下文推断，" +
+	"避免请求额外输入；确实无法继续时可使用正常交互机制。"
 
 func workerThreadOptions(options ports.ThreadOptions) ports.ThreadOptions {
 	options.Sandbox = workerCodexSandbox
 	options.ApprovalPolicy = workerCodexApprovalPolicy
 	return options
+}
+
+func workspaceDeveloperInstructions(task *workerprotocol.Task, current string) string {
+	current = strings.TrimSpace(current)
+	if task == nil || task.Claimed.ActorLogin != scheduledTaskActorLogin {
+		return current
+	}
+	if current == "" {
+		return scheduledTaskDeveloperInstruction
+	}
+	return current + "\n\n" + scheduledTaskDeveloperInstruction
 }
 
 func needsCleanupInterrupt(err error) bool {
@@ -92,6 +107,37 @@ func githubReplySpec() ports.DynamicToolSpec {
 		Tools: []ports.DynamicToolSpec{{Type: "function", Name: "reply_to_github",
 			Description: "Post the one final user-facing reply to the current authorized GitHub issue or pull request.",
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"body":{"type":"string","minLength":1,"maxLength":60000}},"required":["body"],"additionalProperties":false}`)}}}
+}
+
+func automationSpec() ports.DynamicToolSpec {
+	return ports.DynamicToolSpec{Type: "namespace", Name: "tyrs_hand",
+		Description: "Manage scheduled tasks scoped to the current Tyrs Hand workspace.",
+		Tools: []ports.DynamicToolSpec{{Type: "function", Name: "automation_update",
+			Description: "Create, update, list, delete, or immediately run a scheduled task. " +
+				"Standalone tasks target the current project; heartbeat tasks target the current session. " +
+				"Schedules are RFC 5545 recurrence sets with DTSTART and optional RRULE/RDATE/EXDATE.",
+			InputSchema: json.RawMessage(`{
+				"type":"object",
+				"properties":{
+					"action":{"type":"string","enum":["create","update","list","delete","run_now"]},
+					"task_id":{"type":"string","format":"uuid"},
+					"kind":{"type":"string","enum":["standalone","heartbeat"]},
+					"name":{"type":"string","minLength":1,"maxLength":120},
+					"prompt":{"type":"string","minLength":1,"maxLength":100000},
+					"schedule":{"type":"string","minLength":1,"maxLength":65536},
+					"timezone":{"type":"string","minLength":1,"maxLength":128},
+					"status":{"type":"string","enum":["active","paused"]},
+					"settings":{"type":"object","additionalProperties":false,"properties":{
+						"agent_profile_id":{"type":"string","format":"uuid"},
+						"model":{"type":"string","maxLength":128},
+						"reasoning_effort":{"type":"string","maxLength":64},
+						"service_tier":{"type":"string","enum":["standard","fast"]}
+					}},
+					"include_deleted":{"type":"boolean"}
+				},
+				"required":["action"],
+				"additionalProperties":false
+			}`)}}}
 }
 
 func applyBrowserMCPConfig(runtimeConfig map[string]any, cfg config.Config,

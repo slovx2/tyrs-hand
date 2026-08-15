@@ -83,6 +83,7 @@ type EnqueueRequest struct {
 	InputSurface          string
 	WorkItemID            uuid.UUID
 	DiscordConversationID uuid.UUID
+	SkipDiscordBinding    bool
 	SessionID             uuid.UUID
 	DiscordMessageID      string
 	RepositoryID          uuid.UUID

@@ -87,7 +87,7 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 			return uuid.Nil, false, err
 		}
 		request.SessionID = sessionID
-		if request.DiscordConversationID == uuid.Nil {
+		if request.DiscordConversationID == uuid.Nil && !request.SkipDiscordBinding {
 			_ = tx.QueryRowContext(ctx, `SELECT id FROM discord_conversations
 				WHERE session_id=$1`, sessionID).Scan(&request.DiscordConversationID)
 		}
@@ -108,8 +108,8 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, request EnqueueReq
 			ON CONFLICT(session_id) WHERE session_id IS NOT NULL DO UPDATE SET
 				discord_conversation_id=COALESCE(codex_thread_controls.discord_conversation_id,
 					EXCLUDED.discord_conversation_id),
-				worker_id=COALESCE(codex_thread_controls.worker_id,
-					EXCLUDED.worker_id), updated_at=now()
+				worker_id=EXCLUDED.worker_id,workspace_id=EXCLUDED.workspace_id,
+				updated_at=now()
 			RETURNING id`, sessionID, nilUUID(request.DiscordConversationID), request.ProjectID,
 			request.AgentProfileID, workerID.String, workspaceID.String).
 			Scan(&controlID)
@@ -754,6 +754,11 @@ func (r *Repository) Reconcile(ctx context.Context, claimed *ClaimedControl, cod
 			WHERE control_id = $1 AND id <> $2 AND status = 'running'
 			  AND resolved_action = 'steer' AND confirmed_codex_turn_id = $5`,
 			claimed.ControlID, claimed.ID, code, message, claimed.ConfirmedTurnID)
+	}
+	if err == nil && terminal && claimed.SourceType == SourceWorkspace &&
+		claimed.SessionID != uuid.Nil {
+		err = r.appendSessionTerminalTx(ctx, tx, claimed, IntentFailed, code, message,
+			TurnResult{})
 	}
 	if err == nil {
 		_, err = tx.ExecContext(ctx, `UPDATE codex_turn_runs SET status = 'failed', active_slot = NULL,

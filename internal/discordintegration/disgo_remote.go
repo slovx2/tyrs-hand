@@ -783,7 +783,7 @@ func (r *DisgoRemote) sendConversationImages(ctx context.Context, item OutboxIte
 	images []conversationImagePayload,
 ) (json.RawMessage, error) {
 	if card == nil || len(images) == 0 || len(images) > conversationImageLimit {
-		return nil, errors.New("Discord 回复图片 payload 无效")
+		return nil, errors.New("discord 回复图片 payload 无效")
 	}
 	channel, err := snowflake.Parse(channelID)
 	if err != nil {
@@ -855,7 +855,7 @@ func (r *verifiedConversationImageReader) Finalize() error {
 	}
 	r.finalized = true
 	if r.remaining != 0 || hex.EncodeToString(r.digest.Sum(nil)) != r.expected {
-		return errors.New("Discord 回复图片大小或 SHA-256 校验失败")
+		return errors.New("discord 回复图片大小或 SHA-256 校验失败")
 	}
 	return nil
 }
@@ -866,7 +866,7 @@ func (r *DisgoRemote) openConversationImage(image conversationImagePayload) (
 	*verifiedConversationImageReader, error,
 ) {
 	if !validConversationImage(image) || strings.TrimSpace(r.attachmentRoot) == "" {
-		return nil, errors.New("Discord 回复图片存储配置或元数据无效")
+		return nil, errors.New("discord 回复图片存储配置或元数据无效")
 	}
 	root, err := filepath.Abs(r.attachmentRoot)
 	if err != nil {
@@ -882,15 +882,15 @@ func (r *DisgoRemote) openConversationImage(image conversationImagePayload) (
 	}
 	resolvedTarget, err := filepath.EvalSymlinks(target)
 	if err != nil {
-		return nil, errors.New("Discord 回复图片文件不存在")
+		return nil, errors.New("discord 回复图片文件不存在")
 	}
 	relative, err := filepath.Rel(resolvedRoot, resolvedTarget)
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return nil, errors.New("Discord 回复图片 storage key 越界")
+		return nil, errors.New("discord 回复图片 storage key 越界")
 	}
 	info, err := os.Lstat(resolvedTarget)
 	if err != nil || !info.Mode().IsRegular() || info.Size() != image.SizeBytes {
-		return nil, errors.New("Discord 回复图片文件不存在或大小不符")
+		return nil, errors.New("discord 回复图片文件不存在或大小不符")
 	}
 	file, err := os.Open(resolvedTarget)
 	if err != nil {

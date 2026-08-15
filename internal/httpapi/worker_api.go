@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/scheduledtasks"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/slovx2/tyrs-hand/internal/workerregistry"
 )
@@ -234,6 +235,15 @@ func (s *Server) workerClaim(c *gin.Context) {
 			case <-time.After(time.Second):
 			}
 			continue
+		}
+		if request.Role == "discord" || request.Role == "all" {
+			_, err := scheduledtasks.NewService(s.db, s.cfg.LeaseDuration,
+				s.cfg.CodexMaxSteersPerTurn, s.cfg.CodexReconcileMaxAttempts).
+				MaterializeDueWorker(c.Request.Context(), worker.ID)
+			if err != nil {
+				problem(c, http.StatusInternalServerError, "物化定时任务失败", err)
+				return
+			}
 		}
 		claimed, err := repository.ClaimWorker(c.Request.Context(), worker.ID.String(), source, worker.ID)
 		if err != nil {

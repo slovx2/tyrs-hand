@@ -7,6 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/scheduledtasks"
 	"github.com/slovx2/tyrs-hand/internal/security"
 	toolservice "github.com/slovx2/tyrs-hand/internal/tools"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
@@ -37,8 +39,9 @@ func (s *Server) workerToolCall(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if _, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID,
-		request.RunLeaseRequest); err != nil {
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID,
+		request.RunLeaseRequest)
+	if err != nil {
 		remoteRunError(c, "校验 Dynamic Tool Run 失败", err)
 		return
 	}
@@ -46,14 +49,33 @@ func (s *Server) workerToolCall(c *gin.Context) {
 		problem(c, http.StatusForbidden, "校验 Dynamic Tool Capability 失败", err)
 		return
 	}
+	namespace := ""
+	if request.Request.Namespace != nil {
+		namespace = *request.Request.Namespace
+	}
+	if namespace == "tyrs_hand" && request.Request.Tool == "automation_update" {
+		if claimed.SourceType != codexcontrol.SourceWorkspace || claimed.SessionID == uuid.Nil {
+			problem(c, http.StatusForbidden, "定时任务工具只允许 Workspace Session 使用", nil)
+			return
+		}
+		result, callErr := scheduledtasks.NewService(s.db, s.cfg.LeaseDuration,
+			s.cfg.CodexMaxSteersPerTurn, s.cfg.CodexReconcileMaxAttempts).Call(
+			c.Request.Context(), scheduledtasks.ToolContext{RunID: runID,
+				IntentID: claimed.ID, SessionID: claimed.SessionID, ProjectID: claimed.ProjectID,
+				AgentProfileID: claimed.AgentProfileID, ExternalThread: claimed.ExternalThreadID,
+				ThreadID: request.Request.ThreadID, TurnID: request.Request.TurnID,
+				CallID: request.Request.CallID}, request.Request.Arguments)
+		if callErr != nil {
+			problem(c, http.StatusForbidden, "定时任务工具调用失败", callErr)
+			return
+		}
+		c.JSON(http.StatusOK, result)
+		return
+	}
 	_, app, _, configured := s.github.Current()
 	if !configured {
 		problem(c, http.StatusServiceUnavailable, "GitHub App 尚未配置", nil)
 		return
-	}
-	namespace := ""
-	if request.Request.Namespace != nil {
-		namespace = *request.Request.Namespace
 	}
 	result, err := toolservice.NewService(s.db, app, s.catalog).Call(c.Request.Context(),
 		toolservice.CallRequest{Capability: request.Capability,

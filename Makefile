@@ -81,7 +81,7 @@ test-race:
 	go test -race ./internal/...
 
 test-integration:
-	go test -p=1 -tags=integration ./internal/database ./internal/discordintegration ./internal/httpapi ./test/integration ./test/protocol
+	go test -p=1 -tags=integration ./internal/database ./internal/discordintegration ./internal/httpapi ./internal/scheduledtasks ./test/integration ./test/protocol
 	$(MAKE) test-mobile-transport-integration
 
 test-mobile-transport-integration:

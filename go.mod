@@ -29,6 +29,7 @@ require (
 	github.com/shurcooL/githubv4 v0.0.0-20240727222349-48295856cce7
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
+	github.com/teambition/rrule-go v1.8.2
 	github.com/testcontainers/testcontainers-go v0.40.0
 	go.uber.org/zap v1.24.0
 	golang.org/x/crypto v0.54.0

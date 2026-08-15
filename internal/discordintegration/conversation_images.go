@@ -31,7 +31,7 @@ func ProjectConversationImages(ctx context.Context, db *sql.DB, threadID string,
 		return nil
 	}
 	if len(attachmentIDs) > conversationImageLimit {
-		return errors.New("Discord 回复图片不能超过 10 张")
+		return errors.New("discord 回复图片不能超过 10 张")
 	}
 	var guildID string
 	var sessionID uuid.UUID
@@ -45,7 +45,7 @@ func ProjectConversationImages(ctx context.Context, db *sql.DB, threadID string,
 	seen := make(map[uuid.UUID]bool, len(attachmentIDs))
 	for ordinal, attachmentID := range attachmentIDs {
 		if attachmentID == uuid.Nil || seen[attachmentID] {
-			return errors.New("Discord 回复图片引用无效或重复")
+			return errors.New("discord 回复图片引用无效或重复")
 		}
 		seen[attachmentID] = true
 		var image conversationImagePayload
@@ -61,10 +61,10 @@ func ProjectConversationImages(ctx context.Context, db *sql.DB, threadID string,
 		}
 		if attachmentSessionID != sessionID ||
 			!strings.HasPrefix(sourceKey, runID.String()+":") {
-			return errors.New("Discord 回复图片不属于当前 Run")
+			return errors.New("discord 回复图片不属于当前 Run")
 		}
 		if !validConversationImage(image) {
-			return errors.New("Discord 回复图片元数据无效")
+			return errors.New("discord 回复图片元数据无效")
 		}
 		image.AttachmentID = attachmentID.String()
 		image.Filename = conversationImageFilename(ordinal, attachmentID, image.SHA256,

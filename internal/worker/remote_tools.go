@@ -65,6 +65,12 @@ func (p *Processor) handleRemoteHostDiscordTool(ctx context.Context,
 			runtime.Workspace, request)
 	case "git":
 		result, err = p.executeRemoteHostGit(ctx, runtime, request)
+	case "tyrs_hand":
+		if request.Tool != "automation_update" {
+			err = errors.New("未知 Tyrs Hand workspace 工具")
+			break
+		}
+		result, err = p.client.CallTool(ctx, task, request)
 	default:
 		err = errors.New("未知 dynamic tool namespace")
 	}
