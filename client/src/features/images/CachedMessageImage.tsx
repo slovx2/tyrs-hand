@@ -1,10 +1,11 @@
-import { useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image } from "expo-image";
+import { memo, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { useTheme } from "@/theme/ThemeProvider";
 import { ZoomableImageViewer } from "./ZoomableImageViewer";
 
-export function CachedMessageImage({ uri, filename, testID }: {
+export const CachedMessageImage = memo(function CachedMessageImage({ uri, filename, testID }: {
   uri: string;
   filename: string;
   testID?: string;
@@ -21,14 +22,15 @@ export function CachedMessageImage({ uri, filename, testID }: {
   return <>
     <Pressable accessibilityRole="imagebutton" accessibilityLabel={`查看图片 ${filename}`}
       onPress={() => setVisible(true)} style={styles.pressable}>
-      <Image testID={testID} source={{ uri }} resizeMode="contain"
+      <Image testID={testID} source={uri} contentFit="contain" cachePolicy="memory-disk"
+        recyclingKey={uri}
         onError={() => setFailed(true)}
         style={[styles.image, { backgroundColor: theme.colors.surfaceAlt }]} />
     </Pressable>
-    <ZoomableImageViewer key={uri} uri={uri} visible={visible}
-      onRequestClose={() => setVisible(false)} />
+    {visible ? <ZoomableImageViewer key={uri} uri={uri} visible
+      onRequestClose={() => setVisible(false)} /> : null}
   </>;
-}
+});
 
 const styles = StyleSheet.create({
   pressable: { width: "100%" },

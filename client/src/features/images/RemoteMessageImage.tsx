@@ -1,7 +1,7 @@
 import * as Crypto from "expo-crypto";
 import { Directory, File, Paths } from "expo-file-system";
 import { requireNativeModule } from "expo-modules-core";
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Platform } from "react-native";
 
 import { listConnections } from "@/db/connections";
@@ -10,7 +10,8 @@ import { CachedMessageImage } from "./CachedMessageImage";
 
 const downloads = new Map<string, Promise<string>>();
 
-export function RemoteMessageImage({ profileId, remotePath, filename, testID }: {
+export const RemoteMessageImage = memo(function RemoteMessageImage({ profileId, remotePath,
+  filename, testID }: {
   profileId: string;
   remotePath: string;
   filename: string;
@@ -26,7 +27,7 @@ export function RemoteMessageImage({ profileId, remotePath, filename, testID }: 
   }, [filename, profileId, remotePath]);
   return <CachedMessageImage uri={uri ?? ""} filename={filename}
     {...(testID ? { testID } : {})} />;
-}
+});
 
 async function resolveRemoteImage(profileId: string, remotePath: string,
   filename: string): Promise<string> {
