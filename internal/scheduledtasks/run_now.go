@@ -77,6 +77,11 @@ func (s *Service) materializeTaskTx(ctx context.Context, tx *sql.Tx, task Task,
 	if !inserted {
 		return Run{}, errors.New("定时任务 Intent 幂等键冲突")
 	}
+	if task.Kind == KindStandalone {
+		if err = projectStandaloneSessionTitleTx(ctx, tx, sessionID); err != nil {
+			return Run{}, err
+		}
+	}
 	snapshot, _ := json.Marshal(map[string]any{"task": task, "runtime": runtimeSnapshot})
 	return scanRun(tx.QueryRowContext(ctx, `INSERT INTO scheduled_task_runs(
 		id,scheduled_task_id,schedule_revision,trigger,trigger_key,scheduled_for,
@@ -84,6 +89,28 @@ func (s *Service) materializeTaskTx(ctx context.Context, tx *sql.Tx, task Task,
 		VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9)
 		RETURNING `+runColumns, runID, task.ID, task.ScheduleRevision, trigger, triggerKey,
 		scheduledFor, intentID, sessionID, snapshot))
+}
+
+func projectStandaloneSessionTitleTx(ctx context.Context, tx *sql.Tx, sessionID uuid.UUID) error {
+	result, err := tx.ExecContext(ctx, `UPDATE codex_thread_controls control SET
+		desired_thread_name=session.title,desired_thread_name_source='fallback',
+		desired_thread_name_revision=control.desired_thread_name_revision+1,
+		thread_name_last_error=NULL,updated_at=now()
+		FROM workspace_sessions session
+		WHERE control.session_id=session.id AND session.id=$1
+		  AND session.title_source='manual' AND session.title<>''
+		  AND control.desired_thread_name IS NULL`, sessionID)
+	if err != nil {
+		return fmt.Errorf("投影定时任务 Session 标题: %w", err)
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("确认定时任务 Session 标题投影: %w", err)
+	}
+	if updated != 1 {
+		return errors.New("定时任务 Session 标题没有进入 Codex 投影队列")
+	}
+	return nil
 }
 
 type runtimeSettingsSnapshot struct {

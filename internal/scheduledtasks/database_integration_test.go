@@ -183,6 +183,15 @@ func TestScheduledTasksDatabaseIntegration(t *testing.T) {
 		require.Contains(t, title, "定时任务 · 一次巡检")
 		require.Equal(t, "manual", titleSource)
 		require.Equal(t, model, sessionModel.String)
+		var desiredTitle, desiredTitleSource string
+		var desiredTitleRevision int64
+		require.NoError(t, db.QueryRowContext(ctx, `SELECT desired_thread_name,
+			desired_thread_name_source,desired_thread_name_revision
+			FROM codex_thread_controls WHERE session_id=$1`, *run.SessionID).
+			Scan(&desiredTitle, &desiredTitleSource, &desiredTitleRevision))
+		require.Equal(t, title, desiredTitle)
+		require.Equal(t, "fallback", desiredTitleSource)
+		require.Equal(t, int64(1), desiredTitleRevision)
 
 		var instruction, messageContent string
 		require.NoError(t, db.QueryRowContext(ctx, `SELECT instruction

@@ -18,6 +18,7 @@ go test -p=1 -tags=integration \
   ./internal/githubtools \
 	./internal/httpapi \
   ./internal/orchestrator \
+  ./internal/scheduledtasks \
   ./internal/security \
   ./internal/settings \
   ./internal/tools \
