@@ -63,8 +63,8 @@ fi
 export PATH="${pnpm_dir}/bin:${codex_dir}/bin:${PATH}"
 
 go_root="$(go env GOROOT)"
-if [[ "$(${go_root}/bin/go env GOVERSION)" != "go1.26.5" ]]; then
-  echo "本地工具链需要 Go 1.26.5。" >&2
+if [[ "$(${go_root}/bin/go env GOVERSION)" != "go1.26.6" ]]; then
+  echo "本地工具链需要 Go 1.26.6。" >&2
   exit 1
 fi
 export PATH="${go_root}/bin:${PATH}"

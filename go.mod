@@ -1,6 +1,6 @@
 module github.com/slovx2/tyrs-hand
 
-go 1.26.5
+go 1.26.6
 
 require (
 	entgo.io/ent v0.14.5

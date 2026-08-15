@@ -12,8 +12,8 @@ for command_name in docker go node pnpm codex openssl curl; do
   fi
 done
 
-if [[ "$(go env GOVERSION)" != "go1.26.5" ]]; then
-  echo "本地 CI 需要 Go 1.26.5，当前为 $(go env GOVERSION)。" >&2
+if [[ "$(go env GOVERSION)" != "go1.26.6" ]]; then
+  echo "本地 CI 需要 Go 1.26.6，当前为 $(go env GOVERSION)。" >&2
   exit 1
 fi
 if [[ "$(pnpm --version)" != "11.14.0" ]]; then

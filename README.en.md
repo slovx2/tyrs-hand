@@ -85,7 +85,7 @@ Desktop, Discord, and Mobile do not consume these defaults. Explicit session or 
 
 See the [minimal installation guide](docs/deployment/minimal-installation.md) for complete production steps.
 
-Control requires Docker Engine, Docker Compose, PostgreSQL, Redis, and an HTTPS endpoint. Source development additionally requires Go `1.26.5`, Node.js `24.14.0`, pnpm `11.14.0`, and Codex `0.147.0`.
+Control requires Docker Engine, Docker Compose, PostgreSQL, Redis, and an HTTPS endpoint. Source development additionally requires Go `1.26.6`, Node.js `24.14.0`, pnpm `11.14.0`, and Codex `0.147.0`.
 
 ```bash
 cp .env.example .env

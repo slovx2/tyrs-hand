@@ -91,7 +91,7 @@ Desktop、Discord 和 Mobile 不读取这些默认值；显式会话或 Turn 选
 - PostgreSQL、Redis（示例 Compose 已提供）
 - HTTPS 域名与反向代理
 
-本地源码开发另外需要 Go `1.26.5`、Node.js `24.14.0`、pnpm `11.14.0` 和 Codex `0.147.0`。
+本地源码开发另外需要 Go `1.26.6`、Node.js `24.14.0`、pnpm `11.14.0` 和 Codex `0.147.0`。
 
 ```bash
 cp .env.example .env

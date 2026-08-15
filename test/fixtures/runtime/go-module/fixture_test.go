@@ -6,7 +6,7 @@ import (
 )
 
 func TestReady(t *testing.T) {
-	if !Ready() || runtime.Version() != "go1.26.5" {
+	if !Ready() || runtime.Version() != "go1.26.6" {
 		t.Fatalf("unexpected runtime: %s", runtime.Version())
 	}
 }

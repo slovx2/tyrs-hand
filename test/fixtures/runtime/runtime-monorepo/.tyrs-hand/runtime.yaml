@@ -4,7 +4,7 @@ runtimes:
   python: "3.13.14"
   node: "24.14.0"
   pnpm: "11.14.0"
-  go: "1.26.5"
+  go: "1.26.6"
   rust:
     version: "1.97.1"
     profile: "minimal"
