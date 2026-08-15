@@ -14,6 +14,9 @@ export function createSocketFactory(target: AppServerTarget): SocketFactory {
       return createPreviewAppServerSocket(target.connection.profileId);
     };
   }
+  if (target.connection.kind !== "ssh") {
+    throw new Error("当前机器尚未配置 SSH，不能连接 Codex App Server");
+  }
   return sshSocketFactory(target.connection);
 }
 

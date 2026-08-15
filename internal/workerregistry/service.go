@@ -3,6 +3,7 @@ package workerregistry
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"github.com/slovx2/tyrs-hand/internal/security"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
@@ -22,23 +24,27 @@ const (
 )
 
 var (
-	ErrUnauthorized = errors.New("Worker凭据无效")
-	ErrDisabled     = errors.New("Worker已经禁用")
-	ErrIncompatible = errors.New("Worker协议版本不兼容")
+	ErrUnauthorized               = errors.New("Worker凭据无效")
+	ErrDisabled                   = errors.New("Worker已经禁用")
+	ErrIncompatible               = errors.New("Worker协议版本不兼容")
+	ErrInvalidHostKeyFingerprint  = errors.New("Worker SSH Host Key 指纹无效")
+	ErrHostKeyFingerprintChanged  = errors.New("Worker SSH Host Key 指纹发生变化")
+	ErrHostKeyFingerprintConflict = errors.New("Worker SSH Host Key 指纹已属于另一台 Worker")
 )
 
 type Worker struct {
-	ID                uuid.UUID       `json:"id"`
-	Name              string          `json:"name"`
-	Roles             []string        `json:"roles"`
-	Enabled           bool            `json:"enabled"`
-	MaxConcurrentJobs int             `json:"maxConcurrentJobs"`
-	ProtocolVersion   int             `json:"protocolVersion"`
-	WorkerVersion     string          `json:"workerVersion,omitempty"`
-	Status            string          `json:"status"`
-	HeartbeatAt       *time.Time      `json:"heartbeatAt,omitempty"`
-	LastError         string          `json:"lastError,omitempty"`
-	Metadata          json.RawMessage `json:"metadata"`
+	ID                    uuid.UUID       `json:"id"`
+	Name                  string          `json:"name"`
+	Roles                 []string        `json:"roles"`
+	Enabled               bool            `json:"enabled"`
+	MaxConcurrentJobs     int             `json:"maxConcurrentJobs"`
+	ProtocolVersion       int             `json:"protocolVersion"`
+	WorkerVersion         string          `json:"workerVersion,omitempty"`
+	Status                string          `json:"status"`
+	HeartbeatAt           *time.Time      `json:"heartbeatAt,omitempty"`
+	LastError             string          `json:"lastError,omitempty"`
+	SSHHostKeyFingerprint string          `json:"sshHostKeyFingerprint,omitempty"`
+	Metadata              json.RawMessage `json:"metadata"`
 }
 
 type Defaults struct {
@@ -166,7 +172,8 @@ func (s *Service) Enroll(ctx context.Context, token string) (Worker, string, err
 }
 
 const workerSelect = `SELECT id, name, roles, enabled, max_concurrent_jobs, protocol_version,
-	COALESCE(worker_version,''), status, heartbeat_at, COALESCE(last_error,''), metadata
+	COALESCE(worker_version,''), status, heartbeat_at, COALESCE(last_error,''),
+	COALESCE(ssh_host_key_fingerprint,''), metadata
 	FROM workers`
 
 type scanner interface{ Scan(...any) error }
@@ -177,7 +184,7 @@ func scanWorker(row scanner) (Worker, error) {
 	var heartbeat sql.NullTime
 	err := row.Scan(&worker.ID, &worker.Name, &roles, &worker.Enabled, &worker.MaxConcurrentJobs,
 		&worker.ProtocolVersion, &worker.WorkerVersion, &worker.Status, &heartbeat, &worker.LastError,
-		&worker.Metadata)
+		&worker.SSHHostKeyFingerprint, &worker.Metadata)
 	if err != nil {
 		return Worker{}, err
 	}
@@ -212,8 +219,12 @@ func (s *Service) Authenticate(ctx context.Context, credential string) (Worker, 
 }
 
 func (s *Service) Heartbeat(ctx context.Context, id uuid.UUID, version string,
-	protocolVersion int, metadata json.RawMessage,
+	protocolVersion int, sshHostKeyFingerprint string, metadata json.RawMessage,
 ) error {
+	sshHostKeyFingerprint = strings.TrimSpace(sshHostKeyFingerprint)
+	if !validSSHHostKeyFingerprint(sshHostKeyFingerprint) {
+		return ErrInvalidHostKeyFingerprint
+	}
 	if len(metadata) == 0 {
 		metadata = json.RawMessage(`{}`)
 	}
@@ -223,11 +234,45 @@ func (s *Service) Heartbeat(ctx context.Context, id uuid.UUID, version string,
 		lastError = fmt.Sprintf("Worker 协议版本 %d，Control 要求 %d", protocolVersion,
 			ProtocolVersion)
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE workers SET worker_version = $2,
+	result, err := s.db.ExecContext(ctx, `UPDATE workers SET worker_version = $2,
 		metadata = $3, status = $4, heartbeat_at = now(), last_error = NULLIF($5,''),
-		updated_at = now() WHERE id = $1 AND enabled`, id, strings.TrimSpace(version), metadata,
-		status, lastError)
-	return err
+		ssh_host_key_fingerprint = COALESCE(ssh_host_key_fingerprint,$6), updated_at = now()
+		WHERE id = $1 AND enabled
+			AND (ssh_host_key_fingerprint IS NULL OR ssh_host_key_fingerprint=$6)`,
+		id, strings.TrimSpace(version), metadata, status, lastError, sshHostKeyFingerprint)
+	if err != nil {
+		var databaseError *pq.Error
+		if errors.As(err, &databaseError) && databaseError.Code == "23505" &&
+			databaseError.Constraint == "workers_ssh_host_key_fingerprint_unique" {
+			return ErrHostKeyFingerprintConflict
+		}
+		return err
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if updated == 1 {
+		return nil
+	}
+	var current sql.NullString
+	if err := s.db.QueryRowContext(ctx, `SELECT ssh_host_key_fingerprint FROM workers
+		WHERE id=$1`, id).Scan(&current); err != nil {
+		return err
+	}
+	if current.Valid && current.String != sshHostKeyFingerprint {
+		return ErrHostKeyFingerprintChanged
+	}
+	return ErrDisabled
+}
+
+func validSSHHostKeyFingerprint(value string) bool {
+	const prefix = "SHA256:"
+	if !strings.HasPrefix(value, prefix) || len(value) != len(prefix)+43 {
+		return false
+	}
+	decoded, err := base64.RawStdEncoding.DecodeString(strings.TrimPrefix(value, prefix))
+	return err == nil && len(decoded) == 32
 }
 
 func (s *Service) List(ctx context.Context) ([]Worker, error) {

@@ -129,7 +129,8 @@ func TestDesktopContinuesWorkspaceSessionWithoutDiscordForum(t *testing.T) {
 	require.NoError(t, err)
 	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
 	require.NoError(t, client.Heartbeat(ctx, workerprotocol.HeartbeatRequest{
-		WorkerVersion: "test", ProtocolVersion: workerprotocol.Version}))
+		WorkerVersion: "test", ProtocolVersion: workerprotocol.Version,
+		SSHHostKeyFingerprint: testWorkerFingerprint(worker.ID)}))
 	repositoryID, _, profileID := seedWorkerGitHubQueue(t, db, 8803)
 	workspaceID, forumID := seedWorkerWorkspace(t, db, repositoryID, worker.ID)
 	projectID := workspaceProjectIDForForum(t, db, forumID)

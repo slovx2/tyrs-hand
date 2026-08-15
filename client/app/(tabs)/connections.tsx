@@ -1,17 +1,21 @@
 import { File } from "expo-file-system";
+import { CameraView, useCameraPermissions } from "expo-camera";
 import * as DocumentPicker from "expo-document-picker";
 import * as Crypto from "expo-crypto";
 import { useState } from "react";
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ConnectionErrorBanner } from "@/components/ConnectionErrorBanner";
+import { revokeScheduledTaskMachine } from "@/api/automations";
 import { Button, Card, EmptyState, Muted, Screen, StatusDot, Title } from "@/components/ui";
 import { SegmentedControl } from "@/components/SegmentedControl";
 import { removeConnection, renameConnection, saveSSHConnection,
   updateSSHHostFingerprint, type SSHConnection } from "@/db/connections";
 import { addSSHProject } from "@/db/sshProjects";
+import { connectPairingUri } from "@/features/connections/connectPairing";
 import { listSSHDirectory, probeSSHHost, probeSSHHostAddress,
   sshTransport } from "@/native/sshTransport";
+import { isPreviewMode } from "@/preview/config";
 import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
 import type { ThemeMode } from "@/theme/tokens";
@@ -25,6 +29,9 @@ export default function ConnectionsScreen() {
   const reload = useAppStore((state) => state.reloadConnections);
   const mode = useAppStore((state) => state.themeMode);
   const setMode = useAppStore((state) => state.setThemeMode);
+  const [permission, requestPermission] = useCameraPermissions();
+  const [scanning, setScanning] = useState(false);
+  const [claiming, setClaiming] = useState(false);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [sshVisible, setSSHVisible] = useState(false);
@@ -38,15 +45,47 @@ export default function ConnectionsScreen() {
   const [ssh, setSSH] = useState({ name: "", host: "", port: "2222", user: "",
     privateKey: "", passphrase: "", publicKey: "" });
 
-  const revoke = (profileId: string) => Alert.alert("清除连接？",
-    "将移除这个 profile 及其独立本地缓存。", [
+  const revoke = (profileId: string) => Alert.alert("清除机器？",
+    "将移除这台机器的 SSH 配置、定时任务授权和独立本地缓存。", [
       { text: "取消", style: "cancel" },
       { text: "清除", style: "destructive", onPress: () => void (async () => {
+        const connection = connections.find((item) => item.profileId === profileId);
+        if (connection) {
+          await Promise.all(connection.controls.map((link) =>
+            revokeScheduledTaskMachine(link).catch(() => undefined)));
+        }
         await removeConnection(profileId); await reload();
         const remaining = useAppStore.getState().connections[0];
         if (remaining) await switchConnection(remaining.profileId);
       })() },
     ]);
+
+  const scanned = async (value: string) => {
+    if (claiming) return;
+    setClaiming(true);
+    try {
+      Alert.alert("等待管理员确认", "扫码仅申请查看这台机器的定时任务，请回到管理后台确认设备。");
+      const profileId = await connectPairingUri(value);
+      await reload();
+      await switchConnection(profileId);
+      setScanning(false);
+    } catch (error) {
+      Alert.alert("授权失败", error instanceof Error ? error.message : "无法读取二维码");
+    } finally {
+      setClaiming(false);
+    }
+  };
+  const openScanner = async () => {
+    if (isPreviewMode) { setScanning(true); return; }
+    if (!permission?.granted) {
+      const next = await requestPermission();
+      if (!next.granted) {
+        Alert.alert("需要相机权限", "请在系统设置中允许相机权限。");
+        return;
+      }
+    }
+    setScanning(true);
+  };
 
   const inspectKey = async (privateKey = ssh.privateKey) => {
     const result = await sshTransport.inspectPrivateKey(privateKey, ssh.passphrase || null);
@@ -117,12 +156,12 @@ export default function ConnectionsScreen() {
         { text: "确认并保存", onPress: () => void (async () => {
           try {
             const profileId = Crypto.randomUUID();
-            await saveSSHConnection({ kind: "ssh", profileId,
+            const savedProfileId = await saveSSHConnection({ kind: "ssh", profileId,
               name: ssh.name.trim() || `${ssh.user.trim()}@${ssh.host.trim()}`,
               host: ssh.host.trim(), port, user: ssh.user.trim(), keyRef: Crypto.randomUUID(),
               hostFingerprint: fingerprint,
               privateKey: ssh.privateKey, ...(ssh.passphrase ? { passphrase: ssh.passphrase } : {}) });
-            setSSHVisible(false); await reload(); await switchConnection(profileId);
+            setSSHVisible(false); await reload(); await switchConnection(savedProfileId);
           } catch (error) {
             Alert.alert("保存失败", error instanceof Error ? error.message : "请重试");
           } finally { setSavingSSH(false); }
@@ -149,8 +188,10 @@ export default function ConnectionsScreen() {
 
   return <Screen><ScrollView contentContainerStyle={styles.screen}>
     <View style={styles.header}><View style={styles.headerCopy}><Title>设备连接</Title>
-      <Muted>通过 SSH 直连 Codex App Server。</Muted></View>
+      <Muted>SSH 用于项目与会话；扫码只用于查看当前机器的定时任务。</Muted></View>
       <View style={styles.headerActions}>
+        <Button testID="connection:add-pairing" title="扫码关联" variant="secondary"
+          onPress={() => void openScanner()} />
         <Button testID="connection:add-ssh" title="添加 SSH"
           onPress={() => setSSHVisible(true)} />
       </View></View>
@@ -160,7 +201,7 @@ export default function ConnectionsScreen() {
       onChange={(value: ThemeMode) => setMode(value)} /></View>
     <ConnectionErrorBanner />
     <View style={styles.list}>{connections.length === 0
-      ? <EmptyState title="还没有连接" detail="添加 SSH 主机并连接远端 Codex App Server。" />
+      ? <EmptyState title="还没有机器" detail="可先添加 SSH，也可先扫码获得定时任务只读权限。" />
       : connections.map((connection) => <Pressable key={connection.profileId}
         testID={`connection:${encodeURIComponent(connection.profileId)}`}
         onPress={() => void switchConnection(connection.profileId)}><Card style={styles.connection}>
@@ -168,18 +209,26 @@ export default function ConnectionsScreen() {
           ? connectionError ? "danger" : "success" : "muted"} />
           <View testID={active?.profileId === connection.profileId ? "connection:active" : "connection:inactive"}
             style={styles.connectionCopy}><Title>{connection.name}</Title>
-            <Muted numberOfLines={1}>{connection.user}@{connection.host}:{connection.port}</Muted>
-            <View testID={`connection:${encodeURIComponent(
-              connection.profileId)}:projects`}><Muted>可添加多个项目目录</Muted></View></View>
+            <Muted numberOfLines={1}>{connection.kind === "ssh"
+              ? `${connection.user}@${connection.host}:${connection.port}`
+              : "尚未配置 SSH"}</Muted>
+            <View style={styles.capabilities}>
+              {connection.kind === "ssh" ? <Text style={[styles.capability,
+                { color: theme.colors.text }]}>SSH</Text> : null}
+              {connection.controls.length > 0 ? <Text style={[styles.capability,
+                { color: theme.colors.text }]}>定时任务</Text> : null}
+            </View>
+            {connection.kind === "ssh" ? <View testID={`connection:${encodeURIComponent(
+              connection.profileId)}:projects`}><Muted>可添加多个项目目录</Muted></View> : null}</View>
         </View>
         <View style={styles.connectionActions}>
-          <>
+          {connection.kind === "ssh" ? <>
             <Pressable disabled={browsingSSH} testID={`connection:${encodeURIComponent(
               connection.profileId)}:add-project`} onPress={() => void openSSHBrowser(connection)}>
               <Text style={{ color: theme.colors.accent, padding: 8 }}>添加项目</Text></Pressable>
             <Pressable onPress={() => void replaceFingerprint(connection.profileId)}>
               <Text style={{ color: theme.colors.textMuted, padding: 8 }}>指纹</Text></Pressable>
-          </>
+          </> : null}
           <Pressable testID={`connection:${encodeURIComponent(connection.profileId)}:rename`}
             onPress={() => { setRenameId(connection.profileId); setName(connection.name); }}>
             <Text style={{ color: theme.colors.textMuted, padding: 8 }}>改名</Text></Pressable>
@@ -188,6 +237,22 @@ export default function ConnectionsScreen() {
             <Text style={{ color: theme.colors.danger, padding: 8 }}>清除</Text></Pressable>
         </View></Card></Pressable>)}</View>
   </ScrollView>
+    <Modal testID="connection:scanner" visible={scanning} animationType="slide"
+      onRequestClose={() => !claiming && setScanning(false)}>
+      <View style={styles.scanner}>{isPreviewMode ? <View style={[StyleSheet.absoluteFill,
+        styles.previewCamera, { backgroundColor: theme.colors.surfaceAlt }]}>
+        <View style={[styles.previewQr, { borderColor: theme.colors.textMuted }]} />
+        <Muted>预览模式相机画面</Muted></View> : <CameraView style={StyleSheet.absoluteFill}
+        barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+        onBarcodeScanned={({ data }) => void scanned(data)} />}
+        <View style={[styles.scannerOverlay, { backgroundColor: theme.colors.surface }]}>
+          <Title>扫描定时任务授权二维码</Title>
+          <Muted>二维码不会连接 App Server，也不会同步聊天、附件或 Push。</Muted>
+          <Button title={claiming ? "等待管理员确认…" : "取消"} disabled={claiming}
+            onPress={() => setScanning(false)} />
+        </View>
+      </View>
+    </Modal>
     <Modal visible={sshVisible} animationType="slide" presentationStyle="pageSheet"
       onRequestClose={() => !savingSSH && setSSHVisible(false)}>
       <ScrollView style={{ backgroundColor: theme.colors.app }} contentContainerStyle={styles.sshForm}>
@@ -300,6 +365,9 @@ const styles = StyleSheet.create({
   list: { padding: 16, gap: 8 },
   connection: { padding: 13, gap: 4 },
   connectionCopy: { flex: 1, minWidth: 0 },
+  capabilities: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 },
+  capability: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 999,
+    paddingHorizontal: 8, paddingVertical: 2, fontSize: 11 },
   connectionActions: { flexDirection: "row", justifyContent: "flex-end", flexWrap: "wrap", gap: 2 },
   row: { flexDirection: "row", alignItems: "center", gap: 10 },
   sshForm: { padding: 20, gap: 13 },
@@ -317,6 +385,10 @@ const styles = StyleSheet.create({
   renameCard: { gap: 12 },
   input: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, minHeight: 44,
     paddingHorizontal: 12, fontFamily: "Inter_400Regular" },
+  scanner: { flex: 1, justifyContent: "flex-end" },
+  previewCamera: { alignItems: "center", justifyContent: "center", gap: 14 },
+  previewQr: { width: 160, height: 160, borderWidth: 8, borderRadius: 12 },
+  scannerOverlay: { margin: 20, padding: 18, borderRadius: 16, gap: 8 },
 });
 
 function parentRemotePath(value: string): string {

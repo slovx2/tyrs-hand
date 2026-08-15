@@ -68,6 +68,7 @@ async function downloadAndCache(profileId: string, remotePath: string,
   if (target.exists && (target.size ?? 0) > 0) return imageURI(target.uri);
   const connection = (await listConnections()).find((item) => item.profileId === profileId);
   if (!connection) throw new Error("图片所属连接不存在");
+  if (connection.kind !== "ssh") throw new Error("图片所属机器尚未配置 SSH");
   await downloadSSHFile(connection, remotePath, target.uri);
   if (!target.exists || (target.size ?? 0) <= 0) throw new Error("图片缓存不完整");
   return imageURI(target.uri);

@@ -163,6 +163,7 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		cleanupFailure(runtime)
 		return nil, nil, err
 	}
+	runner.SetSSHHostKeyFingerprint(sshServer.HostKeyFingerprint())
 	app := &WorkerApp{Runner: runner, Runtime: runtime, SSH: sshServer, Logger: logger}
 	return app, func() {
 		_ = sshServer.Close()

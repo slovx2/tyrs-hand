@@ -64,8 +64,20 @@ export class AdminClient {
       body: { name, roles: ['discord'], maxConcurrentJobs: 2 } })
   }
 
-  createPairing() {
-    return this.request('/client-device-pairings', { method: 'POST', csrf: true, body: {} })
+  createPairing(workerId) {
+    return this.request('/client-device-pairings', { method: 'POST', csrf: true,
+      body: { workerId } })
+  }
+
+  async waitForWorkerFingerprint(workerId, fingerprint, timeoutMs = 30_000) {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      const workers = await this.request('/workers')
+      const worker = workers.items.find((item) => item.id === workerId)
+      if (worker?.sshHostKeyFingerprint === fingerprint) return worker
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+    throw new Error(`等待 Worker ${workerId} 上报 SSH Host Key 超时`)
   }
 
   async approveWhenClaimed(pairingId, timeoutMs = 90_000) {

@@ -21,8 +21,54 @@ import (
 )
 
 const (
+	ClientBearerScopes  = "clientBearer.Scopes"
 	SessionCookieScopes = "sessionCookie.Scopes"
 	WorkerBearerScopes  = "workerBearer.Scopes"
+)
+
+// Defines values for ClientPairingStatus.
+const (
+	Approved            ClientPairingStatus = "approved"
+	Expired             ClientPairingStatus = "expired"
+	Rejected            ClientPairingStatus = "rejected"
+	WaitingConfirmation ClientPairingStatus = "waiting_confirmation"
+	WaitingScan         ClientPairingStatus = "waiting_scan"
+)
+
+// Defines values for ClientScheduledTaskKind.
+const (
+	Heartbeat  ClientScheduledTaskKind = "heartbeat"
+	Standalone ClientScheduledTaskKind = "standalone"
+)
+
+// Defines values for ClientScheduledTaskScheduleKind.
+const (
+	Interval  ClientScheduledTaskScheduleKind = "interval"
+	WallClock ClientScheduledTaskScheduleKind = "wall_clock"
+)
+
+// Defines values for ClientScheduledTaskStatus.
+const (
+	ClientScheduledTaskStatusActive    ClientScheduledTaskStatus = "active"
+	ClientScheduledTaskStatusCompleted ClientScheduledTaskStatus = "completed"
+	ClientScheduledTaskStatusDeleted   ClientScheduledTaskStatus = "deleted"
+	ClientScheduledTaskStatusPaused    ClientScheduledTaskStatus = "paused"
+)
+
+// Defines values for ClientScheduledTaskRunStatus.
+const (
+	Canceled       ClientScheduledTaskRunStatus = "canceled"
+	Failed         ClientScheduledTaskRunStatus = "failed"
+	Queued         ClientScheduledTaskRunStatus = "queued"
+	Running        ClientScheduledTaskRunStatus = "running"
+	Succeeded      ClientScheduledTaskRunStatus = "succeeded"
+	WaitingForUser ClientScheduledTaskRunStatus = "waiting_for_user"
+)
+
+// Defines values for ClientScheduledTaskRunTrigger.
+const (
+	RunNow    ClientScheduledTaskRunTrigger = "run_now"
+	Scheduled ClientScheduledTaskRunTrigger = "scheduled"
 )
 
 // Defines values for DiscordInitializationInputMode.
@@ -114,8 +160,8 @@ const (
 
 // Defines values for WorkspaceForumBindingStatus.
 const (
-	Active   WorkspaceForumBindingStatus = "active"
-	Inactive WorkspaceForumBindingStatus = "inactive"
+	WorkspaceForumBindingStatusActive   WorkspaceForumBindingStatus = "active"
+	WorkspaceForumBindingStatusInactive WorkspaceForumBindingStatus = "inactive"
 )
 
 // Defines values for WorkspaceForumCollaboratorAccessLevel.
@@ -142,6 +188,14 @@ const (
 	Restore WorkspaceProjectForumInputMode = "restore"
 )
 
+// Defines values for ListClientMachineScheduledTasksParamsStatus.
+const (
+	Active    ListClientMachineScheduledTasksParamsStatus = "active"
+	Completed ListClientMachineScheduledTasksParamsStatus = "completed"
+	Deleted   ListClientMachineScheduledTasksParamsStatus = "deleted"
+	Paused    ListClientMachineScheduledTasksParamsStatus = "paused"
+)
+
 // Defines values for PutDiscordForumAccessJSONBodyAccessLevel.
 const (
 	PutDiscordForumAccessJSONBodyAccessLevelOperator PutDiscordForumAccessJSONBodyAccessLevel = "operator"
@@ -160,6 +214,38 @@ type Administrator struct {
 	ExpiresAt time.Time          `json:"expiresAt"`
 	Id        openapi_types.UUID `json:"id"`
 	Username  string             `json:"username"`
+}
+
+// ClientDevice defines model for ClientDevice.
+type ClientDevice struct {
+	ApprovedAt time.Time          `json:"approvedAt"`
+	CreatedAt  time.Time          `json:"createdAt"`
+	Id         openapi_types.UUID `json:"id"`
+	LastSeenAt *time.Time         `json:"lastSeenAt,omitempty"`
+	Machines   []ClientMachine    `json:"machines"`
+	Name       string             `json:"name"`
+	Platform   string             `json:"platform"`
+}
+
+// ClientDeviceList defines model for ClientDeviceList.
+type ClientDeviceList struct {
+	Items []ClientDevice `json:"items"`
+}
+
+// ClientMachine defines model for ClientMachine.
+type ClientMachine struct {
+	ApprovedAt            time.Time           `json:"approvedAt"`
+	HeartbeatAt           *time.Time          `json:"heartbeatAt,omitempty"`
+	Name                  string              `json:"name"`
+	SshHostKeyFingerprint string              `json:"sshHostKeyFingerprint"`
+	Status                string              `json:"status"`
+	WorkerId              openapi_types.UUID  `json:"workerId"`
+	WorkspaceId           *openapi_types.UUID `json:"workspaceId,omitempty"`
+}
+
+// ClientMachineList defines model for ClientMachineList.
+type ClientMachineList struct {
+	Items []ClientMachine `json:"items"`
 }
 
 // ClientModel defines model for ClientModel.
@@ -183,6 +269,116 @@ type ClientModel struct {
 		Description     string `json:"description"`
 		ReasoningEffort string `json:"reasoningEffort"`
 	} `json:"supportedReasoningEfforts"`
+}
+
+// ClientPairing defines model for ClientPairing.
+type ClientPairing struct {
+	CreatedAt             time.Time           `json:"createdAt"`
+	DeviceId              *openapi_types.UUID `json:"deviceId,omitempty"`
+	DeviceName            *string             `json:"deviceName,omitempty"`
+	ExpiresAt             time.Time           `json:"expiresAt"`
+	Id                    openapi_types.UUID  `json:"id"`
+	PairingUri            *string             `json:"pairingUri,omitempty"`
+	Platform              *string             `json:"platform,omitempty"`
+	QrDataUrl             *string             `json:"qrDataUrl,omitempty"`
+	SshHostKeyFingerprint string              `json:"sshHostKeyFingerprint"`
+	Status                ClientPairingStatus `json:"status"`
+	WorkerId              openapi_types.UUID  `json:"workerId"`
+	WorkerName            string              `json:"workerName"`
+}
+
+// ClientPairingStatus defines model for ClientPairing.Status.
+type ClientPairingStatus string
+
+// ClientPairingClaimInput defines model for ClientPairingClaimInput.
+type ClientPairingClaimInput struct {
+	CredentialHash string             `json:"credentialHash"`
+	DeviceId       openapi_types.UUID `json:"deviceId"`
+	Name           string             `json:"name"`
+	PairingSecret  string             `json:"pairingSecret"`
+	Platform       string             `json:"platform"`
+}
+
+// ClientPairingCreateInput defines model for ClientPairingCreateInput.
+type ClientPairingCreateInput struct {
+	WorkerId openapi_types.UUID `json:"workerId"`
+}
+
+// ClientScheduledTask defines model for ClientScheduledTask.
+type ClientScheduledTask struct {
+	BlockedUntil       *time.Time                      `json:"blockedUntil,omitempty"`
+	CreatedAt          time.Time                       `json:"createdAt"`
+	Id                 openapi_types.UUID              `json:"id"`
+	IntervalSeconds    *int64                          `json:"intervalSeconds,omitempty"`
+	Kind               ClientScheduledTaskKind         `json:"kind"`
+	LastErrorCode      *string                         `json:"lastErrorCode,omitempty"`
+	LastErrorMessage   *string                         `json:"lastErrorMessage,omitempty"`
+	LastRunAt          *time.Time                      `json:"lastRunAt,omitempty"`
+	Name               string                          `json:"name"`
+	NextRunAt          *time.Time                      `json:"nextRunAt,omitempty"`
+	Project            map[string]interface{}          `json:"project"`
+	Prompt             string                          `json:"prompt"`
+	Schedule           string                          `json:"schedule"`
+	ScheduleKind       ClientScheduledTaskScheduleKind `json:"scheduleKind"`
+	ScheduleRevision   int64                           `json:"scheduleRevision"`
+	StandaloneSettings *map[string]interface{}         `json:"standaloneSettings,omitempty"`
+	Status             ClientScheduledTaskStatus       `json:"status"`
+	TargetSession      *ClientScheduledTaskSession     `json:"targetSession,omitempty"`
+	Timezone           string                          `json:"timezone"`
+	UpdatedAt          time.Time                       `json:"updatedAt"`
+	WorkspaceId        openapi_types.UUID              `json:"workspaceId"`
+}
+
+// ClientScheduledTaskKind defines model for ClientScheduledTask.Kind.
+type ClientScheduledTaskKind string
+
+// ClientScheduledTaskScheduleKind defines model for ClientScheduledTask.ScheduleKind.
+type ClientScheduledTaskScheduleKind string
+
+// ClientScheduledTaskStatus defines model for ClientScheduledTask.Status.
+type ClientScheduledTaskStatus string
+
+// ClientScheduledTaskList defines model for ClientScheduledTaskList.
+type ClientScheduledTaskList struct {
+	Items      []ClientScheduledTask `json:"items"`
+	NextCursor *string               `json:"nextCursor,omitempty"`
+}
+
+// ClientScheduledTaskRun defines model for ClientScheduledTaskRun.
+type ClientScheduledTaskRun struct {
+	CoalescedThrough *time.Time                    `json:"coalescedThrough,omitempty"`
+	CreatedAt        time.Time                     `json:"createdAt"`
+	ErrorCode        *string                       `json:"errorCode,omitempty"`
+	ErrorMessage     *string                       `json:"errorMessage,omitempty"`
+	FinishedAt       *time.Time                    `json:"finishedAt,omitempty"`
+	Id               openapi_types.UUID            `json:"id"`
+	ScheduleRevision int64                         `json:"scheduleRevision"`
+	ScheduledFor     time.Time                     `json:"scheduledFor"`
+	Session          *ClientScheduledTaskSession   `json:"session,omitempty"`
+	StartedAt        *time.Time                    `json:"startedAt,omitempty"`
+	Status           ClientScheduledTaskRunStatus  `json:"status"`
+	Trigger          ClientScheduledTaskRunTrigger `json:"trigger"`
+	TriggerKey       string                        `json:"triggerKey"`
+	UpdatedAt        time.Time                     `json:"updatedAt"`
+}
+
+// ClientScheduledTaskRunStatus defines model for ClientScheduledTaskRun.Status.
+type ClientScheduledTaskRunStatus string
+
+// ClientScheduledTaskRunTrigger defines model for ClientScheduledTaskRun.Trigger.
+type ClientScheduledTaskRunTrigger string
+
+// ClientScheduledTaskRunList defines model for ClientScheduledTaskRunList.
+type ClientScheduledTaskRunList struct {
+	Items      []ClientScheduledTaskRun `json:"items"`
+	NextCursor *string                  `json:"nextCursor,omitempty"`
+}
+
+// ClientScheduledTaskSession defines model for ClientScheduledTaskSession.
+type ClientScheduledTaskSession struct {
+	ExternalThreadId *string            `json:"externalThreadId,omitempty"`
+	Id               openapi_types.UUID `json:"id"`
+	Title            string             `json:"title"`
 }
 
 // DiscordConflict defines model for DiscordConflict.
@@ -511,17 +707,18 @@ type TriggerRuleInputTriggerKind string
 
 // Worker defines model for Worker.
 type Worker struct {
-	Enabled           bool                   `json:"enabled"`
-	HeartbeatAt       *time.Time             `json:"heartbeatAt,omitempty"`
-	Id                openapi_types.UUID     `json:"id"`
-	LastError         *string                `json:"lastError,omitempty"`
-	MaxConcurrentJobs int                    `json:"maxConcurrentJobs"`
-	Metadata          map[string]interface{} `json:"metadata"`
-	Name              string                 `json:"name"`
-	ProtocolVersion   int                    `json:"protocolVersion"`
-	Roles             []WorkerRoles          `json:"roles"`
-	Status            WorkerStatus           `json:"status"`
-	WorkerVersion     *string                `json:"workerVersion,omitempty"`
+	Enabled               bool                   `json:"enabled"`
+	HeartbeatAt           *time.Time             `json:"heartbeatAt,omitempty"`
+	Id                    openapi_types.UUID     `json:"id"`
+	LastError             *string                `json:"lastError,omitempty"`
+	MaxConcurrentJobs     int                    `json:"maxConcurrentJobs"`
+	Metadata              map[string]interface{} `json:"metadata"`
+	Name                  string                 `json:"name"`
+	ProtocolVersion       int                    `json:"protocolVersion"`
+	Roles                 []WorkerRoles          `json:"roles"`
+	SshHostKeyFingerprint *string                `json:"sshHostKeyFingerprint,omitempty"`
+	Status                WorkerStatus           `json:"status"`
+	WorkerVersion         *string                `json:"workerVersion,omitempty"`
 }
 
 // WorkerRoles defines model for Worker.Roles.
@@ -617,9 +814,10 @@ type WorkerFailRequest struct {
 
 // WorkerHeartbeat defines model for WorkerHeartbeat.
 type WorkerHeartbeat struct {
-	Metadata        *map[string]interface{} `json:"metadata,omitempty"`
-	ProtocolVersion int                     `json:"protocolVersion"`
-	WorkerVersion   string                  `json:"workerVersion"`
+	Metadata              *map[string]interface{} `json:"metadata,omitempty"`
+	ProtocolVersion       int                     `json:"protocolVersion"`
+	SshHostKeyFingerprint string                  `json:"sshHostKeyFingerprint"`
+	WorkerVersion         string                  `json:"workerVersion"`
 }
 
 // WorkerInput defines model for WorkerInput.
@@ -769,6 +967,12 @@ type WorkspaceProjectForumInputMode string
 // CSRFToken defines model for CSRFToken.
 type CSRFToken = string
 
+// Cursor defines model for Cursor.
+type Cursor = string
+
+// Limit defines model for Limit.
+type Limit = int
+
 // WorkerResourceID defines model for WorkerResourceID.
 type WorkerResourceID = openapi_types.UUID
 
@@ -781,6 +985,47 @@ type WorkerJSON map[string]interface{}
 // LogoutParams defines parameters for Logout.
 type LogoutParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// CreateClientDevicePairingParams defines parameters for CreateClientDevicePairing.
+type CreateClientDevicePairingParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// ApproveClientDevicePairingParams defines parameters for ApproveClientDevicePairing.
+type ApproveClientDevicePairingParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// RejectClientDevicePairingParams defines parameters for RejectClientDevicePairing.
+type RejectClientDevicePairingParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// DeleteClientDeviceParams defines parameters for DeleteClientDevice.
+type DeleteClientDeviceParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// GetClaimedClientDevicePairingParams defines parameters for GetClaimedClientDevicePairing.
+type GetClaimedClientDevicePairingParams struct {
+	Authorization string `json:"Authorization"`
+}
+
+// ListClientMachineScheduledTasksParams defines parameters for ListClientMachineScheduledTasks.
+type ListClientMachineScheduledTasksParams struct {
+	Status *ListClientMachineScheduledTasksParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+	Cursor *Cursor                                      `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit                                       `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListClientMachineScheduledTasksParamsStatus defines parameters for ListClientMachineScheduledTasks.
+type ListClientMachineScheduledTasksParamsStatus string
+
+// ListClientMachineScheduledTaskRunsParams defines parameters for ListClientMachineScheduledTaskRuns.
+type ListClientMachineScheduledTaskRunsParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // DeleteDiscordForumAccessParams defines parameters for DeleteDiscordForumAccess.
@@ -1099,6 +1344,12 @@ type CreateWorkspaceParams struct {
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
+// CreateClientDevicePairingJSONRequestBody defines body for CreateClientDevicePairing for application/json ContentType.
+type CreateClientDevicePairingJSONRequestBody = ClientPairingCreateInput
+
+// ClaimClientDevicePairingJSONRequestBody defines body for ClaimClientDevicePairing for application/json ContentType.
+type ClaimClientDevicePairingJSONRequestBody = ClientPairingClaimInput
+
 // PutDiscordForumAccessJSONRequestBody defines body for PutDiscordForumAccess for application/json ContentType.
 type PutDiscordForumAccessJSONRequestBody PutDiscordForumAccessJSONBody
 
@@ -1299,6 +1550,45 @@ type ServerInterface interface {
 
 	// (GET /auth/me)
 	GetCurrentAdministrator(c *gin.Context)
+
+	// (POST /client-device-pairings)
+	CreateClientDevicePairing(c *gin.Context, params CreateClientDevicePairingParams)
+
+	// (GET /client-device-pairings/{id})
+	GetClientDevicePairing(c *gin.Context, id openapi_types.UUID)
+
+	// (POST /client-device-pairings/{id}/approve)
+	ApproveClientDevicePairing(c *gin.Context, id openapi_types.UUID, params ApproveClientDevicePairingParams)
+
+	// (POST /client-device-pairings/{id}/reject)
+	RejectClientDevicePairing(c *gin.Context, id openapi_types.UUID, params RejectClientDevicePairingParams)
+
+	// (GET /client-devices)
+	ListClientDevices(c *gin.Context)
+
+	// (DELETE /client-devices/{id})
+	DeleteClientDevice(c *gin.Context, id openapi_types.UUID, params DeleteClientDeviceParams)
+
+	// (POST /client/device-pairings/{id}/claim)
+	ClaimClientDevicePairing(c *gin.Context, id openapi_types.UUID)
+
+	// (GET /client/device-pairings/{id}/status)
+	GetClaimedClientDevicePairing(c *gin.Context, id openapi_types.UUID, params GetClaimedClientDevicePairingParams)
+
+	// (GET /client/machines)
+	ListClientMachines(c *gin.Context)
+
+	// (DELETE /client/machines/{workerId})
+	DeleteClientMachine(c *gin.Context, workerId openapi_types.UUID)
+
+	// (GET /client/machines/{workerId}/scheduled-tasks)
+	ListClientMachineScheduledTasks(c *gin.Context, workerId openapi_types.UUID, params ListClientMachineScheduledTasksParams)
+
+	// (GET /client/machines/{workerId}/scheduled-tasks/{taskId})
+	GetClientMachineScheduledTask(c *gin.Context, workerId openapi_types.UUID, taskId openapi_types.UUID)
+
+	// (GET /client/machines/{workerId}/scheduled-tasks/{taskId}/runs)
+	ListClientMachineScheduledTaskRuns(c *gin.Context, workerId openapi_types.UUID, taskId openapi_types.UUID, params ListClientMachineScheduledTaskRunsParams)
 
 	// (DELETE /discord/forums/{forumId}/access/{memberId})
 	DeleteDiscordForumAccess(c *gin.Context, forumId openapi_types.UUID, memberId string, params DeleteDiscordForumAccessParams)
@@ -1737,6 +2027,508 @@ func (siw *ServerInterfaceWrapper) GetCurrentAdministrator(c *gin.Context) {
 	}
 
 	siw.Handler.GetCurrentAdministrator(c)
+}
+
+// CreateClientDevicePairing operation middleware
+func (siw *ServerInterfaceWrapper) CreateClientDevicePairing(c *gin.Context) {
+
+	var err error
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateClientDevicePairingParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateClientDevicePairing(c, params)
+}
+
+// GetClientDevicePairing operation middleware
+func (siw *ServerInterfaceWrapper) GetClientDevicePairing(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetClientDevicePairing(c, id)
+}
+
+// ApproveClientDevicePairing operation middleware
+func (siw *ServerInterfaceWrapper) ApproveClientDevicePairing(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ApproveClientDevicePairingParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ApproveClientDevicePairing(c, id, params)
+}
+
+// RejectClientDevicePairing operation middleware
+func (siw *ServerInterfaceWrapper) RejectClientDevicePairing(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RejectClientDevicePairingParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.RejectClientDevicePairing(c, id, params)
+}
+
+// ListClientDevices operation middleware
+func (siw *ServerInterfaceWrapper) ListClientDevices(c *gin.Context) {
+
+	c.Set(SessionCookieScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListClientDevices(c)
+}
+
+// DeleteClientDevice operation middleware
+func (siw *ServerInterfaceWrapper) DeleteClientDevice(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(SessionCookieScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteClientDeviceParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken CSRFToken
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for X-CSRF-Token, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter X-CSRF-Token: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter X-CSRF-Token is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteClientDevice(c, id, params)
+}
+
+// ClaimClientDevicePairing operation middleware
+func (siw *ServerInterfaceWrapper) ClaimClientDevicePairing(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ClaimClientDevicePairing(c, id)
+}
+
+// GetClaimedClientDevicePairing operation middleware
+func (siw *ServerInterfaceWrapper) GetClaimedClientDevicePairing(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetClaimedClientDevicePairingParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "Authorization" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Authorization")]; found {
+		var Authorization string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for Authorization, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Authorization", valueList[0], &Authorization, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter Authorization: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.Authorization = Authorization
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter Authorization is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetClaimedClientDevicePairing(c, id, params)
+}
+
+// ListClientMachines operation middleware
+func (siw *ServerInterfaceWrapper) ListClientMachines(c *gin.Context) {
+
+	c.Set(ClientBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListClientMachines(c)
+}
+
+// DeleteClientMachine operation middleware
+func (siw *ServerInterfaceWrapper) DeleteClientMachine(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "workerId" -------------
+	var workerId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workerId", c.Param("workerId"), &workerId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter workerId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ClientBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteClientMachine(c, workerId)
+}
+
+// ListClientMachineScheduledTasks operation middleware
+func (siw *ServerInterfaceWrapper) ListClientMachineScheduledTasks(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "workerId" -------------
+	var workerId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workerId", c.Param("workerId"), &workerId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter workerId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ClientBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListClientMachineScheduledTasksParams
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "status", c.Request.URL.Query(), &params.Status)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter status: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "cursor", c.Request.URL.Query(), &params.Cursor)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter cursor: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListClientMachineScheduledTasks(c, workerId, params)
+}
+
+// GetClientMachineScheduledTask operation middleware
+func (siw *ServerInterfaceWrapper) GetClientMachineScheduledTask(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "workerId" -------------
+	var workerId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workerId", c.Param("workerId"), &workerId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter workerId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "taskId" -------------
+	var taskId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskId", c.Param("taskId"), &taskId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter taskId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ClientBearerScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetClientMachineScheduledTask(c, workerId, taskId)
+}
+
+// ListClientMachineScheduledTaskRuns operation middleware
+func (siw *ServerInterfaceWrapper) ListClientMachineScheduledTaskRuns(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "workerId" -------------
+	var workerId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workerId", c.Param("workerId"), &workerId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter workerId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "taskId" -------------
+	var taskId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskId", c.Param("taskId"), &taskId, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter taskId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(ClientBearerScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListClientMachineScheduledTaskRunsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "cursor", c.Request.URL.Query(), &params.Cursor)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter cursor: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", c.Request.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListClientMachineScheduledTaskRuns(c, workerId, taskId, params)
 }
 
 // DeleteDiscordForumAccess operation middleware
@@ -4917,6 +5709,19 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/auth/login", wrapper.Login)
 	router.POST(options.BaseURL+"/auth/logout", wrapper.Logout)
 	router.GET(options.BaseURL+"/auth/me", wrapper.GetCurrentAdministrator)
+	router.POST(options.BaseURL+"/client-device-pairings", wrapper.CreateClientDevicePairing)
+	router.GET(options.BaseURL+"/client-device-pairings/:id", wrapper.GetClientDevicePairing)
+	router.POST(options.BaseURL+"/client-device-pairings/:id/approve", wrapper.ApproveClientDevicePairing)
+	router.POST(options.BaseURL+"/client-device-pairings/:id/reject", wrapper.RejectClientDevicePairing)
+	router.GET(options.BaseURL+"/client-devices", wrapper.ListClientDevices)
+	router.DELETE(options.BaseURL+"/client-devices/:id", wrapper.DeleteClientDevice)
+	router.POST(options.BaseURL+"/client/device-pairings/:id/claim", wrapper.ClaimClientDevicePairing)
+	router.GET(options.BaseURL+"/client/device-pairings/:id/status", wrapper.GetClaimedClientDevicePairing)
+	router.GET(options.BaseURL+"/client/machines", wrapper.ListClientMachines)
+	router.DELETE(options.BaseURL+"/client/machines/:workerId", wrapper.DeleteClientMachine)
+	router.GET(options.BaseURL+"/client/machines/:workerId/scheduled-tasks", wrapper.ListClientMachineScheduledTasks)
+	router.GET(options.BaseURL+"/client/machines/:workerId/scheduled-tasks/:taskId", wrapper.GetClientMachineScheduledTask)
+	router.GET(options.BaseURL+"/client/machines/:workerId/scheduled-tasks/:taskId/runs", wrapper.ListClientMachineScheduledTaskRuns)
 	router.DELETE(options.BaseURL+"/discord/forums/:forumId/access/:memberId", wrapper.DeleteDiscordForumAccess)
 	router.PUT(options.BaseURL+"/discord/forums/:forumId/access/:memberId", wrapper.PutDiscordForumAccess)
 	router.POST(options.BaseURL+"/discord/github/bind", wrapper.StartDiscordGitHubBind)
@@ -5026,140 +5831,162 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

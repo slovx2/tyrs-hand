@@ -1,6 +1,6 @@
 import * as SQLite from "expo-sqlite";
 
-export const DATABASE_VERSION = 10;
+export const DATABASE_VERSION = 11;
 
 export function needsThreadHistoryCacheReset(currentVersion: number): boolean {
   return currentVersion >= 4 && currentVersion < 7;
@@ -15,16 +15,20 @@ PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS connection_profiles (
   profile_id TEXT PRIMARY KEY,
-  kind TEXT NOT NULL CHECK(kind='ssh'),
+  kind TEXT NOT NULL CHECK(kind='machine'),
   name TEXT NOT NULL,
   active INTEGER NOT NULL DEFAULT 0,
-  ssh_host TEXT NOT NULL,
-  ssh_port INTEGER NOT NULL,
-  ssh_user TEXT NOT NULL,
-  ssh_key_ref TEXT NOT NULL,
+  machine_fingerprint TEXT NOT NULL,
+  ssh_host TEXT,
+  ssh_port INTEGER,
+  ssh_user TEXT,
+  ssh_key_ref TEXT,
   ssh_host_fingerprint TEXT,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  CHECK((ssh_host IS NULL AND ssh_port IS NULL AND ssh_user IS NULL AND ssh_key_ref IS NULL)
+    OR (ssh_host IS NOT NULL AND ssh_port IS NOT NULL AND ssh_user IS NOT NULL
+      AND ssh_key_ref IS NOT NULL))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS connection_profiles_one_active
   ON connection_profiles(active) WHERE active=1;
@@ -115,6 +119,24 @@ CREATE TABLE IF NOT EXISTS app_settings (
 );
 `;
 
+const machineSchema = `
+CREATE UNIQUE INDEX IF NOT EXISTS connection_profiles_machine_fingerprint
+  ON connection_profiles(machine_fingerprint);
+CREATE TABLE IF NOT EXISTS control_machine_links (
+  profile_id TEXT NOT NULL,
+  server_id TEXT NOT NULL,
+  base_url TEXT NOT NULL,
+  worker_id TEXT NOT NULL,
+  worker_name TEXT NOT NULL,
+  device_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(server_id,worker_id),
+  UNIQUE(profile_id,server_id),
+  FOREIGN KEY(profile_id) REFERENCES connection_profiles(profile_id) ON DELETE CASCADE
+);
+`;
+
 type LegacySSHProject = {
   profile_id: string;
   remote_path: string;
@@ -156,6 +178,8 @@ async function openDatabase(): Promise<SQLite.SQLiteDatabase> {
     if (needsThreadHistoryCacheReset(current)) await migrateThreadHistoryCache(database);
     if (current < 9) await migrateThreadReads(database);
     if (current < 10) await migrateSSHOnly(database);
+    if (current < 11) await migrateMachineProfiles(database);
+    await database.execAsync(machineSchema);
     if (current < DATABASE_VERSION) {
       await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
     }
@@ -181,6 +205,7 @@ async function migrateToOfficialProtocol(database: SQLite.SQLiteDatabase): Promi
     PRAGMA foreign_keys = ON;
   `);
   await database.execAsync(schema);
+  await database.execAsync(machineSchema);
   await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }
 
@@ -295,6 +320,64 @@ async function migrateSSHOnly(database: SQLite.SQLiteDatabase): Promise<void> {
           ON connection_profiles(active) WHERE active=1;
         PRAGMA user_version = 10;
       `);
+    });
+  } finally {
+    await database.execAsync("PRAGMA foreign_keys = ON");
+  }
+}
+
+export const MACHINE_PROFILE_MIGRATION_SQL = `
+  DROP INDEX IF EXISTS connection_profiles_one_active;
+  CREATE TABLE connection_profiles_v11 (
+    profile_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK(kind='machine'),
+    name TEXT NOT NULL,
+    active INTEGER NOT NULL DEFAULT 0,
+    machine_fingerprint TEXT NOT NULL,
+    ssh_host TEXT,
+    ssh_port INTEGER,
+    ssh_user TEXT,
+    ssh_key_ref TEXT,
+    ssh_host_fingerprint TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    CHECK((ssh_host IS NULL AND ssh_port IS NULL AND ssh_user IS NULL AND ssh_key_ref IS NULL)
+      OR (ssh_host IS NOT NULL AND ssh_port IS NOT NULL AND ssh_user IS NOT NULL
+        AND ssh_key_ref IS NOT NULL))
+  );
+  INSERT INTO connection_profiles_v11(profile_id,kind,name,active,machine_fingerprint,
+    ssh_host,ssh_port,ssh_user,ssh_key_ref,ssh_host_fingerprint,created_at,updated_at)
+  SELECT profile_id,'machine',name,active,
+    COALESCE(NULLIF(ssh_host_fingerprint,''),'unverified:' || profile_id),
+    ssh_host,ssh_port,ssh_user,ssh_key_ref,ssh_host_fingerprint,created_at,updated_at
+  FROM connection_profiles;
+  DROP TABLE connection_profiles;
+  ALTER TABLE connection_profiles_v11 RENAME TO connection_profiles;
+  CREATE UNIQUE INDEX connection_profiles_one_active
+    ON connection_profiles(active) WHERE active=1;
+  CREATE UNIQUE INDEX connection_profiles_machine_fingerprint
+    ON connection_profiles(machine_fingerprint);
+  CREATE TABLE control_machine_links (
+    profile_id TEXT NOT NULL,
+    server_id TEXT NOT NULL,
+    base_url TEXT NOT NULL,
+    worker_id TEXT NOT NULL,
+    worker_name TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(server_id,worker_id),
+    UNIQUE(profile_id,server_id),
+    FOREIGN KEY(profile_id) REFERENCES connection_profiles(profile_id) ON DELETE CASCADE
+  );
+  PRAGMA user_version = 11;
+`;
+
+async function migrateMachineProfiles(database: SQLite.SQLiteDatabase): Promise<void> {
+  await database.execAsync("PRAGMA foreign_keys = OFF");
+  try {
+    await database.withExclusiveTransactionAsync(async (transaction) => {
+      await transaction.execAsync(MACHINE_PROFILE_MIGRATION_SQL);
     });
   } finally {
     await database.execAsync("PRAGMA foreign_keys = ON");

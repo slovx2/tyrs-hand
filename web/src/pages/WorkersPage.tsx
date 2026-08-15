@@ -15,6 +15,7 @@ export interface Worker {
   status: string
   heartbeatAt?: string
   lastError?: string
+  sshHostKeyFingerprint?: string
   metadata?: {
     ssh?: {
       status?: string
@@ -241,6 +242,11 @@ export function WorkersPage() {
                 <p className="muted mt-1 text-xs">
                   最近心跳：{worker.heartbeatAt ?? '尚未连接'}
                 </p>
+                {worker.sshHostKeyFingerprint && (
+                  <p className="muted mt-1 break-all text-xs">
+                    机器指纹：{worker.sshHostKeyFingerprint}
+                  </p>
+                )}
                 {worker.lastError && (
                   <p className="error-text mt-2">{worker.lastError}</p>
                 )}

@@ -651,6 +651,214 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/client-devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listClientDevices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/client-devices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deleteClientDevice"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/client-device-pairings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createClientDevicePairing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/client-device-pairings/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getClientDevicePairing"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/client-device-pairings/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["approveClientDevicePairing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/client-device-pairings/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["rejectClientDevicePairing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/client/device-pairings/{id}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["claimClientDevicePairing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/client/device-pairings/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getClaimedClientDevicePairing"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/client/machines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listClientMachines"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/client/machines/{workerId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deleteClientMachine"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/client/machines/{workerId}/scheduled-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listClientMachineScheduledTasks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/client/machines/{workerId}/scheduled-tasks/{taskId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getClientMachineScheduledTask"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/client/machines/{workerId}/scheduled-tasks/{taskId}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listClientMachineScheduledTaskRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ssh/credentials": {
         parameters: {
             query?: never;
@@ -1554,6 +1762,7 @@ export interface components {
             /** Format: date-time */
             heartbeatAt?: string;
             lastError?: string;
+            sshHostKeyFingerprint?: string;
             metadata: {
                 [key: string]: unknown;
             };
@@ -1576,6 +1785,149 @@ export interface components {
             githubWorkerId?: string | null;
             /** Format: uuid */
             discordWorkerId?: string | null;
+        };
+        ClientMachine: {
+            /** Format: uuid */
+            workerId: string;
+            name: string;
+            sshHostKeyFingerprint: string;
+            status: string;
+            /** Format: date-time */
+            heartbeatAt?: string;
+            /** Format: uuid */
+            workspaceId?: string;
+            /** Format: date-time */
+            approvedAt: string;
+        };
+        ClientMachineList: {
+            items: components["schemas"]["ClientMachine"][];
+        };
+        ClientDevice: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            platform: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            approvedAt: string;
+            /** Format: date-time */
+            lastSeenAt?: string;
+            machines: components["schemas"]["ClientMachine"][];
+        };
+        ClientDeviceList: {
+            items: components["schemas"]["ClientDevice"][];
+        };
+        ClientPairingCreateInput: {
+            /** Format: uuid */
+            workerId: string;
+        };
+        ClientPairingClaimInput: {
+            pairingSecret: string;
+            /** Format: uuid */
+            deviceId: string;
+            name: string;
+            platform: string;
+            credentialHash: string;
+        };
+        ClientPairing: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            status: "waiting_scan" | "waiting_confirmation" | "approved" | "rejected" | "expired";
+            /** Format: uuid */
+            deviceId?: string;
+            deviceName?: string;
+            platform?: string;
+            /** Format: uuid */
+            workerId: string;
+            workerName: string;
+            sshHostKeyFingerprint: string;
+            pairingUri?: string;
+            qrDataUrl?: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        ClientScheduledTaskSession: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            externalThreadId?: string;
+        };
+        ClientScheduledTask: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            workspaceId: string;
+            /** @enum {string} */
+            kind: "standalone" | "heartbeat";
+            name: string;
+            prompt: string;
+            /** @enum {string} */
+            status: "active" | "paused" | "completed" | "deleted";
+            schedule: string;
+            timezone: string;
+            /** @enum {string} */
+            scheduleKind: "interval" | "wall_clock";
+            /** Format: int64 */
+            intervalSeconds?: number;
+            /** Format: date-time */
+            nextRunAt?: string;
+            /** Format: date-time */
+            blockedUntil?: string;
+            /** Format: date-time */
+            lastRunAt?: string;
+            /** Format: int64 */
+            scheduleRevision: number;
+            lastErrorCode?: string;
+            lastErrorMessage?: string;
+            project: {
+                [key: string]: unknown;
+            };
+            targetSession?: components["schemas"]["ClientScheduledTaskSession"];
+            standaloneSettings?: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        ClientScheduledTaskList: {
+            items: components["schemas"]["ClientScheduledTask"][];
+            nextCursor?: string;
+        };
+        ClientScheduledTaskRun: {
+            /** Format: uuid */
+            id: string;
+            /** Format: int64 */
+            scheduleRevision: number;
+            /** @enum {string} */
+            trigger: "scheduled" | "run_now";
+            triggerKey: string;
+            /** Format: date-time */
+            scheduledFor: string;
+            /** Format: date-time */
+            coalescedThrough?: string;
+            /** @enum {string} */
+            status: "queued" | "running" | "waiting_for_user" | "succeeded" | "failed" | "canceled";
+            errorCode?: string;
+            errorMessage?: string;
+            /** Format: date-time */
+            startedAt?: string;
+            /** Format: date-time */
+            finishedAt?: string;
+            session?: components["schemas"]["ClientScheduledTaskSession"];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        ClientScheduledTaskRunList: {
+            items: components["schemas"]["ClientScheduledTaskRun"][];
+            nextCursor?: string;
         };
         SSHCredential: {
             /** Format: uuid */
@@ -1687,6 +2039,7 @@ export interface components {
         WorkerHeartbeat: {
             workerVersion: string;
             protocolVersion: number;
+            sshHostKeyFingerprint: string;
             metadata?: {
                 [key: string]: unknown;
             };
@@ -3375,6 +3728,323 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listClientDevices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已授权的移动设备及机器 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientDeviceList"];
+                };
+            };
+        };
+    };
+    deleteClientDevice: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 设备及其全部机器授权已撤销 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    createClientDevicePairing: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClientPairingCreateInput"];
+            };
+        };
+        responses: {
+            /** @description 单台 Worker 的定时任务只读授权二维码 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientPairing"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getClientDevicePairing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 授权状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientPairing"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    approveClientDevicePairing: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已确认设备 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    rejectClientDevicePairing: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已拒绝 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    claimClientDevicePairing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClientPairingClaimInput"];
+            };
+        };
+        responses: {
+            /** @description 等待管理员确认 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        claimToken: string;
+                        /** @enum {string} */
+                        status: "waiting_confirmation";
+                    };
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getClaimedClientDevicePairing: {
+        parameters: {
+            query?: never;
+            header: {
+                Authorization: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 配对状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listClientMachines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前设备获准查看的机器 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientMachineList"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    deleteClientMachine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 单台机器授权已撤销 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listClientMachineScheduledTasks: {
+        parameters: {
+            query?: {
+                status?: "active" | "paused" | "completed" | "deleted";
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                workerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前 Worker Workspace 的定时任务 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientScheduledTaskList"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getClientMachineScheduledTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workerId: string;
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 定时任务完整详情 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientScheduledTask"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listClientMachineScheduledTaskRuns: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                workerId: string;
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 定时任务运行记录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientScheduledTaskRunList"];
+                };
             };
             default: components["responses"]["Problem"];
         };

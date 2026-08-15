@@ -108,6 +108,7 @@ func TestSSHServerSupportsShellProxyAndRejectsForwarding(t *testing.T) {
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, server.Close()) })
+	require.Regexp(t, `^SHA256:[A-Za-z0-9+/]{43}$`, server.HostKeyFingerprint())
 	client, err := ssh.Dial("tcp", server.Addr().String(), &ssh.ClientConfig{
 		User: "ignored", Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),

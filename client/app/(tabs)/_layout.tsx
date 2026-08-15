@@ -19,6 +19,8 @@ export default function TabLayout() {
       tabBarIcon: ({ color }) => icon("⌘", color) }} />
     <Tabs.Screen name="sessions" options={{ title: "会话", tabBarButtonTestID: "tab:sessions",
       tabBarIcon: ({ color }) => icon("◫", color) }} />
+    <Tabs.Screen name="automations" options={{ title: "定时任务", tabBarButtonTestID: "tab:automations",
+      tabBarIcon: ({ color }) => icon("◷", color) }} />
     <Tabs.Screen name="connections" options={{ title: "连接", tabBarButtonTestID: "tab:connections",
       tabBarIcon: ({ color }) => icon("◎", color) }} />
   </Tabs>;

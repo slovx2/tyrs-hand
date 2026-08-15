@@ -175,8 +175,14 @@ func (s *Server) workerHeartbeat(c *gin.Context) {
 	}
 	worker := currentWorker(c)
 	if err := s.workers.Heartbeat(c.Request.Context(), worker.ID, request.WorkerVersion,
-		request.ProtocolVersion, request.Metadata); err != nil {
-		problem(c, http.StatusInternalServerError, "更新节点心跳失败", err)
+		request.ProtocolVersion, request.SSHHostKeyFingerprint, request.Metadata); err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, workerregistry.ErrInvalidHostKeyFingerprint) ||
+			errors.Is(err, workerregistry.ErrHostKeyFingerprintChanged) ||
+			errors.Is(err, workerregistry.ErrHostKeyFingerprintConflict) {
+			status = http.StatusConflict
+		}
+		problem(c, status, "更新节点心跳失败", err)
 		return
 	}
 	c.Status(http.StatusNoContent)

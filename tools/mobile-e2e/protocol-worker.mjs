@@ -1,6 +1,8 @@
 const baseURL = String(process.env.TYRS_HAND_E2E_CONTROL_URL ?? '').replace(/\/$/, '')
 const enrollmentToken = process.env.TYRS_HAND_E2E_ENROLLMENT_TOKEN ?? ''
 const workerID = process.env.TYRS_HAND_E2E_WORKER_ID ?? 'mobile-e2e-protocol-worker'
+const sshHostKeyFingerprint = process.env.TYRS_HAND_E2E_SSH_HOST_KEY_FINGERPRINT
+  ?? 'SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
 if (!baseURL || !enrollmentToken) throw new Error('协议 Worker 缺少 Control URL 或 Enrollment Token')
 
 const modelCatalog = { data: [{
@@ -41,7 +43,7 @@ async function call(path, { method = 'POST', body, authenticated = true } = {}) 
 async function publishWorkerHeartbeat(force = false) {
   if (!force && Date.now() - lastWorkerHeartbeatAt < 20_000) return
   await call('/worker/v1/heartbeat', { body: { workerVersion: 'mobile-e2e-protocol',
-    protocolVersion: 23, metadata: { lane: 'mobile-protocol',
+    protocolVersion: 28, sshHostKeyFingerprint, metadata: { lane: 'mobile-protocol',
       modelCatalogs: { [workspaceID]: modelCatalog } } } })
   lastWorkerHeartbeatAt = Date.now()
 }

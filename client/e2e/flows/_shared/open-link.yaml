@@ -16,5 +16,5 @@ appId: ${TYRS_HAND_E2E_APP_ID}
       - tapOn: "Open"
 - extendedWaitUntil:
     visible:
-      id: "connection:active"
+      id: "automations:list"
     timeout: 90000

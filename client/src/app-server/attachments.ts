@@ -13,6 +13,7 @@ export type LocalAttachment = {
 
 export async function materializeUserInput(connection: Connection, project: MobileProject,
   clientMessageId: string, text: string, attachments: LocalAttachment[]): Promise<UserInput[]> {
+  if (connection.kind !== "ssh") throw new Error("当前机器尚未配置 SSH");
   const result: UserInput[] = text.trim()
     ? [{ type: "text", text: text.trim(), text_elements: [] }]
     : [];

@@ -8,6 +8,8 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     visible:
       id: "tab:connections"
     timeout: 30000
+
+# 两个 Control 使用同一 SSH Host Key 指纹，扫码后应合并成一张机器卡。
 - runFlow:
     file: _shared/open-link.yaml
     env:
@@ -16,15 +18,54 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     file: _shared/open-link.yaml
     env:
       PAIRING_URI: ${TYRS_HAND_E2E_SECOND_PAIRING_URI}
+- tapOn:
+    id: "tab:connections"
 - assertVisible:
     id: "connection:active"
-- assertVisible:
+- assertNotVisible:
     id: "connection:inactive"
+- assertVisible: "定时任务"
+- assertVisible: "尚未配置 SSH"
+
+# 主 Control 的任务列表、完整详情与运行记录。
 - tapOn:
-    id: "connection:inactive"
+    id: "tab:automations"
 - tapOn:
-    id: "tab:projects"
+    id: "automation:control:${TYRS_HAND_E2E_PRIMARY_SERVER_ID}"
 - extendedWaitUntil:
     visible:
-      id: "project:row:0"
-    timeout: 60000
+      id: "automation:${TYRS_HAND_E2E_PRIMARY_TASK_ID}"
+    timeout: 30000
+- tapOn:
+    id: "automation:${TYRS_HAND_E2E_PRIMARY_TASK_ID}"
+- assertVisible: "Primary 每日检查"
+- assertVisible: "E2E_AUTOMATION_PROMPT_PRIMARY 检查工作区状态"
+- assertVisible:
+    id: "automation:schedule"
+- scrollUntilVisible:
+    element:
+      text: "运行成功"
+    direction: DOWN
+    timeout: 10000
+- assertVisible: "已合并至.*"
+- scrollUntilVisible:
+    element:
+      text: "运行失败"
+    direction: DOWN
+    timeout: 10000
+- assertVisible: "E2E 可见失败记录"
+- pressKey: BACK
+
+# 同一机器上的第二个 Control 可切换查看，状态筛选仍是只读。
+- tapOn:
+    id: "automation:control:${TYRS_HAND_E2E_SECONDARY_SERVER_ID}"
+- extendedWaitUntil:
+    visible:
+      id: "automation:${TYRS_HAND_E2E_SECONDARY_TASK_ID}"
+    timeout: 30000
+- tapOn:
+    id: "automation:status:paused"
+- extendedWaitUntil:
+    visible: "Secondary Heartbeat"
+    timeout: 30000
+- assertVisible: "当前会话 Heartbeat.*"

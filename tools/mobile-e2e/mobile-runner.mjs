@@ -17,19 +17,7 @@ const lane = argumentsMap.get('--lane') ?? 'protocol'
 if (lane !== 'protocol') throw new Error('Mobile E2E 仅支持宿主架构的 protocol lane')
 const appID = argumentsMap.get('--app-id') ?? 'com.tyrshand.app.dev'
 const flow = resolve(repoRoot, argumentsMap.get('--flow') ?? 'client/e2e/flows/suite.yaml')
-const customFlow = argumentsMap.has('--flow')
-const postFlow = argumentsMap.has('--post-flow')
-  ? resolve(repoRoot, argumentsMap.get('--post-flow')) : null
-const postFixture = argumentsMap.get('--post-fixture') ?? ''
-const allowedPostFixtures = new Set([
-  'seed-history', 'seed-forward-history', 'force-cursor-reset', 'notification-target',
-])
-if ((postFlow === null) !== (postFixture === '')) {
-  throw new Error('--post-flow 与 --post-fixture 必须同时提供')
-}
-if (postFixture && !allowedPostFixtures.has(postFixture)) {
-  throw new Error(`--post-fixture 不支持 ${postFixture}`)
-}
+const machineFingerprint = 'SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
 const deviceID = resolveDeviceID()
 const stamp = new Date().toISOString().replaceAll(':', '').replaceAll('.', '')
 const runDir = resolve(repoRoot, '.local/e2e/evidence', `${stamp}-mobile-${platform}-${lane}`)
@@ -77,6 +65,7 @@ async function startProtocolWorker(control, enrollmentToken, label) {
       TYRS_HAND_E2E_CONTROL_URL: control.baseURL,
       TYRS_HAND_E2E_ENROLLMENT_TOKEN: enrollmentToken,
       TYRS_HAND_E2E_WORKER_ID: label,
+      TYRS_HAND_E2E_SSH_HOST_KEY_FINGERPRINT: machineFingerprint,
     },
   })
   processes.push(managed)
@@ -86,6 +75,15 @@ async function startProtocolWorker(control, enrollmentToken, label) {
 async function seed(control, worker, projectName) {
   const raw = output('go', ['run', './tools/mobile-e2e/fixture', 'seed',
     '--worker-id', worker.worker.id, '--project-name', projectName], {
+    cwd: repoRoot, env: { ...process.env, TYRS_HAND_DATABASE_URL: control.databaseURL },
+  })
+  return JSON.parse(raw)
+}
+
+async function seedAutomations(control, fixture, prefix) {
+  const raw = output('go', ['run', './tools/mobile-e2e/fixture', 'seed-automations',
+    '--workspace-id', fixture.workspaceId, '--project-id', fixture.projectId,
+    '--prefix', prefix], {
     cwd: repoRoot, env: { ...process.env, TYRS_HAND_DATABASE_URL: control.databaseURL },
   })
   return JSON.parse(raw)
@@ -110,24 +108,6 @@ function isolateAndroidAppLinks() {
       try { run('adb', ['-s', deviceID, 'shell', 'pm', 'enable', packageName]) } catch { /* 恢复测试前状态 */ }
     }
   } })
-}
-
-async function installMediaFixture() {
-  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
-  const imagePath = `${runDir}/tyrs-hand-e2e.png`
-  await writeFile(imagePath, png)
-  if (platform === 'android') {
-    run('adb', ['-s', deviceID, 'shell', 'mkdir', '-p', '/sdcard/Pictures', '/sdcard/Download'])
-    run('adb', ['-s', deviceID, 'push', imagePath, '/sdcard/Pictures/tyrs-hand-e2e.png'])
-    run('adb', ['-s', deviceID, 'push', resolve(repoRoot, 'client/e2e/fixtures/tyrs-hand-e2e.txt'),
-      '/sdcard/Download/tyrs-hand-e2e.txt'])
-    run('adb', ['-s', deviceID, 'shell', 'dd', 'if=/dev/zero',
-      'of=/sdcard/Download/tyrs-hand-too-large.bin', 'bs=1048576', 'count=26'])
-    run('adb', ['-s', deviceID, 'shell', 'am', 'broadcast', '-a', 'android.intent.action.MEDIA_SCANNER_SCAN_FILE',
-      '-d', 'file:///sdcard/Pictures/tyrs-hand-e2e.png'])
-  } else {
-    run('xcrun', ['simctl', 'addmedia', deviceID, imagePath])
-  }
 }
 
 async function redactEvidenceSecrets(directory, secrets) {
@@ -180,122 +160,44 @@ async function main() {
   controls.push(primary)
   const primaryWorker = await primary.admin.createWorker(`mobile-e2e-${lane}`)
   const primaryFixture = await seed(primary, primaryWorker, 'alpha-primary')
-  output('go', ['run', './tools/mobile-e2e/fixture', 'seed-project-matrix',
-    '--workspace-id', primaryFixture.workspaceId, '--primary-name', 'alpha-primary',
-    '--secondary-name', 'zeta-secondary'], { cwd: repoRoot,
-    env: { ...process.env, TYRS_HAND_DATABASE_URL: primary.databaseURL } })
+  const primaryAutomations = await seedAutomations(primary, primaryFixture, 'Primary')
   await startProtocolWorker(primary, primaryWorker.enrollmentToken, 'primary-protocol-worker')
+  await primary.admin.waitForWorkerFingerprint(primaryWorker.worker.id, machineFingerprint)
 
   const secondary = await new ControlHarness({ repoRoot, runDir: `${runDir}/secondary`, label: 'secondary' }).start()
   controls.push(secondary)
   const secondaryWorker = await secondary.admin.createWorker('mobile-e2e-secondary')
-  await seed(secondary, secondaryWorker, 'beta-control')
+  const secondaryFixture = await seed(secondary, secondaryWorker, 'beta-control')
+  const secondaryAutomations = await seedAutomations(secondary, secondaryFixture, 'Secondary')
   await startProtocolWorker(secondary, secondaryWorker.enrollmentToken, 'secondary-protocol-worker')
+  await secondary.admin.waitForWorkerFingerprint(secondaryWorker.worker.id, machineFingerprint)
 
-  const firstPairing = await primary.admin.createPairing()
-  const secondPairing = await secondary.admin.createPairing()
+  const firstPairing = await primary.admin.createPairing(primaryWorker.worker.id)
+  const secondPairing = await secondary.admin.createPairing(secondaryWorker.worker.id)
   if (platform === 'android') {
     run('adb', ['-s', deviceID, 'reverse', `tcp:${primary.port}`, `tcp:${primary.port}`])
     run('adb', ['-s', deviceID, 'reverse', `tcp:${secondary.port}`, `tcp:${secondary.port}`])
   }
   await assertInstalled()
   isolateAndroidAppLinks()
-  await installMediaFixture()
   const approvals = [primary.admin.approveWhenClaimed(firstPairing.id),
     secondary.admin.approveWhenClaimed(secondPairing.id)]
   const maestroEnvironment = { TYRS_HAND_E2E_PLATFORM: platform,
     TYRS_HAND_E2E_APP_ID: appID, TYRS_HAND_E2E_PAIRING_URI: firstPairing.pairingUri,
-    TYRS_HAND_E2E_SECOND_PAIRING_URI: secondPairing.pairingUri }
+    TYRS_HAND_E2E_SECOND_PAIRING_URI: secondPairing.pairingUri,
+    TYRS_HAND_E2E_PRIMARY_SERVER_ID: firstPairing.serverId,
+    TYRS_HAND_E2E_SECONDARY_SERVER_ID: secondPairing.serverId,
+    TYRS_HAND_E2E_PRIMARY_TASK_ID: primaryAutomations.activeTaskId,
+    TYRS_HAND_E2E_SECONDARY_TASK_ID: secondaryAutomations.activeTaskId }
   await Promise.all([runMaestro(maestroEnvironment), ...approvals])
 
-  if (customFlow) {
-    if (postFlow) {
-      const fixtureResult = output('go', ['run', './tools/mobile-e2e/fixture', postFixture], { cwd: repoRoot,
-        env: { ...process.env, TYRS_HAND_DATABASE_URL: primary.databaseURL } })
-      let postEnvironment = maestroEnvironment
-      if (postFixture === 'notification-target') {
-        const target = JSON.parse(fixtureResult)
-        postEnvironment = { ...maestroEnvironment, TYRS_HAND_E2E_NOTIFICATION_URI:
-          `tyrshand://notification?serverId=${target.serverId}&sessionId=${target.sessionId}` }
-      }
-      await runMaestro(postEnvironment, 'custom-post', postFlow)
-    }
-    const snapshots = controls.map((control) => JSON.parse(output('go', [
-      'run', './tools/mobile-e2e/fixture', 'snapshot'], { cwd: repoRoot,
-      env: { ...process.env, TYRS_HAND_DATABASE_URL: control.databaseURL } })))
-    await primary.writeManifest({ lane, appID, codexVersion: null,
-      controls: snapshots, flow })
-    failed = false
-    return
-  }
-
-  output('go', ['run', './tools/mobile-e2e/fixture', 'assert-preference',
-    '--mode', 'plan', '--tier', 'fast', '--effort', 'max'], { cwd: repoRoot,
-    env: { ...process.env, TYRS_HAND_DATABASE_URL: secondary.databaseURL } })
-  output('go', ['run', './tools/mobile-e2e/fixture', 'assert-session-project',
-    '--text', 'E2E_PROJECT_DRAFT retained across navigation', '--project-name', 'zeta-secondary'], {
-    cwd: repoRoot, env: { ...process.env, TYRS_HAND_DATABASE_URL: primary.databaseURL } })
-  output('go', ['run', './tools/mobile-e2e/fixture', 'assert-intent-once',
-    '--session-text', 'E2E_PLAN_IDEMPOTENT prepare one plan intent',
-    '--instruction', 'Implement the plan.'], { cwd: repoRoot,
-    env: { ...process.env, TYRS_HAND_DATABASE_URL: secondary.databaseURL } })
-  output('go', ['run', './tools/mobile-e2e/fixture', 'assert-intent-once',
-    '--session-text', 'E2E_BLOCK_IDEMPOTENT accept one stop intent', '--operation', 'interrupt'], {
-    cwd: repoRoot, env: { ...process.env, TYRS_HAND_DATABASE_URL: secondary.databaseURL } })
-
-  await runMaestro(maestroEnvironment, 'select-primary',
-    resolve(repoRoot, 'client/e2e/flows/select-primary-control.yaml'))
-
-  await primary.stopServer()
-  await runMaestro(maestroEnvironment, 'offline-send',
-    resolve(repoRoot, 'client/e2e/flows/offline-send.yaml'))
-  await primary.startServer()
-  await runMaestro(maestroEnvironment, 'offline-recover',
-    resolve(repoRoot, 'client/e2e/flows/offline-recover.yaml'))
-  output('go', ['run', './tools/mobile-e2e/fixture', 'assert-message-once',
-    '--text', 'E2E_OFFLINE_IDEMPOTENT'], { cwd: repoRoot,
-    env: { ...process.env, TYRS_HAND_DATABASE_URL: primary.databaseURL } })
-  if (platform === 'android') {
-    await primary.stopServer()
-    await runMaestro(maestroEnvironment, 'offline-attachment-send',
-      resolve(repoRoot, 'client/e2e/flows/offline-attachment-send.yaml'))
-    await primary.startServer()
-    await runMaestro(maestroEnvironment, 'offline-attachment-recover',
-      resolve(repoRoot, 'client/e2e/flows/offline-attachment-recover.yaml'))
-    output('go', ['run', './tools/mobile-e2e/fixture', 'assert-message-once',
-      '--text', 'E2E_OFFLINE_ATTACHMENT_IDEMPOTENT'], { cwd: repoRoot,
-      env: { ...process.env, TYRS_HAND_DATABASE_URL: primary.databaseURL } })
-    output('go', ['run', './tools/mobile-e2e/fixture', 'assert-attachment-once',
-      '--text', 'E2E_OFFLINE_ATTACHMENT_IDEMPOTENT'], { cwd: repoRoot,
-      env: { ...process.env, TYRS_HAND_DATABASE_URL: primary.databaseURL } })
-  }
-  output('go', ['run', './tools/mobile-e2e/fixture', 'seed-history'], { cwd: repoRoot,
-    env: { ...process.env, TYRS_HAND_DATABASE_URL: primary.databaseURL } })
-  await runMaestro(maestroEnvironment, 'history-pagination',
-    resolve(repoRoot, 'client/e2e/flows/history-pagination.yaml'))
-  output('go', ['run', './tools/mobile-e2e/fixture', 'seed-forward-history'], { cwd: repoRoot,
-    env: { ...process.env, TYRS_HAND_DATABASE_URL: primary.databaseURL } })
-  await runMaestro(maestroEnvironment, 'forward-pagination',
-    resolve(repoRoot, 'client/e2e/flows/forward-pagination.yaml'))
-  output('go', ['run', './tools/mobile-e2e/fixture', 'force-cursor-reset'], { cwd: repoRoot,
-    env: { ...process.env, TYRS_HAND_DATABASE_URL: primary.databaseURL } })
-  await runMaestro(maestroEnvironment, 'cursor-reset',
-    resolve(repoRoot, 'client/e2e/flows/cursor-reset-recover.yaml'))
-  const notificationTarget = JSON.parse(output('go', ['run', './tools/mobile-e2e/fixture',
-    'notification-target'], { cwd: repoRoot,
-    env: { ...process.env, TYRS_HAND_DATABASE_URL: primary.databaseURL } }))
-  await runMaestro({ ...maestroEnvironment, TYRS_HAND_E2E_NOTIFICATION_URI:
-    `tyrshand://notification?serverId=${notificationTarget.serverId}&sessionId=${notificationTarget.sessionId}` },
-  'notification-deep-link', resolve(repoRoot, 'client/e2e/flows/notification-deep-link.yaml'))
-  if (platform === 'android') {
-    await runMaestro(maestroEnvironment, 'attachment-boundaries',
-      resolve(repoRoot, 'client/e2e/flows/20-attachment-boundaries.yaml'))
-  }
   const snapshots = controls.map((control) => JSON.parse(output('go', [
     'run', './tools/mobile-e2e/fixture', 'snapshot'], { cwd: repoRoot,
     env: { ...process.env, TYRS_HAND_DATABASE_URL: control.databaseURL } })))
   await primary.writeManifest({ lane, appID, codexVersion: null,
-    controls: snapshots })
+    controls: snapshots, flow, machineFingerprint,
+    primaryTaskId: primaryAutomations.activeTaskId,
+    secondaryTaskId: secondaryAutomations.activeTaskId })
   failed = false
 }
 

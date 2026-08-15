@@ -31,6 +31,7 @@ func TestWorkerClaimMaterializesScheduledTasksByRoleAndCapacity(t *testing.T) {
 	client.SetCredential(enrolled.Credential)
 	require.NoError(t, client.Heartbeat(ctx, workerprotocol.HeartbeatRequest{
 		WorkerVersion: "integration", ProtocolVersion: workerprotocol.Version,
+		SSHHostKeyFingerprint: testWorkerFingerprint(worker.ID),
 	}))
 	fixture := seedScheduledClaimWorkspace(t, db, worker.ID)
 	service := scheduledtasks.NewService(db, 2*time.Second, 5, 3)

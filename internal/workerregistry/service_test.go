@@ -23,7 +23,7 @@ func TestListReturnsEmptyArrayWhenNoWorkersExist(t *testing.T) {
 	mock.ExpectQuery("SELECT id, name, roles, enabled, max_concurrent_jobs").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "roles", "enabled",
 			"max_concurrent_jobs", "protocol_version", "worker_version", "status",
-			"heartbeat_at", "last_error", "metadata"}))
+			"heartbeat_at", "last_error", "ssh_host_key_fingerprint", "metadata"}))
 
 	workers, err := NewService(db).List(context.Background())
 	require.NoError(t, err)
@@ -47,8 +47,9 @@ func TestEnrollmentTokenCanOnlyBeConsumedOnce(t *testing.T) {
 	mock.ExpectQuery("SELECT id, name, roles, enabled, max_concurrent_jobs").WithArgs(workerID).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "roles", "enabled",
 			"max_concurrent_jobs", "protocol_version", "worker_version", "status",
-			"heartbeat_at", "last_error", "metadata"}).AddRow(workerID, "home", []byte(`["github"]`),
-			true, 2, 1, "", "offline", nil, "", []byte(`{}`)))
+			"heartbeat_at", "last_error", "ssh_host_key_fingerprint", "metadata"}).
+			AddRow(workerID, "home", []byte(`["github"]`), true, 2, 1, "", "offline",
+				nil, "", "", []byte(`{}`)))
 	mock.ExpectCommit()
 	worker, credential, err := NewService(db).Enroll(context.Background(), "one-time-token")
 	require.NoError(t, err)
@@ -64,6 +65,16 @@ func TestEnrollmentTokenCanOnlyBeConsumedOnce(t *testing.T) {
 	mock.ExpectClose()
 	require.NoError(t, db.Close())
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestValidateSSHHostKeyFingerprint(t *testing.T) {
+	require.True(t, validSSHHostKeyFingerprint(
+		"SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"))
+	for _, value := range []string{"", "SHA256:short",
+		"MD5:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+		"SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="} {
+		require.False(t, validSSHHostKeyFingerprint(value), value)
+	}
 }
 
 func TestDisabledNodeCannotRotateCredential(t *testing.T) {

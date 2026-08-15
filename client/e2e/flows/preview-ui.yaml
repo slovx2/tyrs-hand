@@ -204,7 +204,7 @@ appId: ${TYRS_HAND_E2E_APP_ID}
     id: "connection:rename:input"
 - pressKey: BACK
 - tapOn:
-    id: "connection:add"
+    id: "connection:add-pairing"
 - assertVisible:
     id: "connection:scanner"
 - assertVisible:

@@ -27,13 +27,18 @@ type heartbeatMetadataProvider interface {
 }
 
 type Runner struct {
-	cfg       config.Config
-	client    *workerprotocol.Client
-	processor taskProcessor
-	logger    *zap.Logger
-	journals  *journalStore
-	ssh       *sshAgentManager
-	browser   *browserHealthMonitor
+	cfg                   config.Config
+	client                *workerprotocol.Client
+	processor             taskProcessor
+	logger                *zap.Logger
+	journals              *journalStore
+	ssh                   *sshAgentManager
+	browser               *browserHealthMonitor
+	sshHostKeyFingerprint string
+}
+
+func (r *Runner) SetSSHHostKeyFingerprint(fingerprint string) {
+	r.sshHostKeyFingerprint = fingerprint
 }
 
 func NewRunner(cfg config.Config, client *workerprotocol.Client, processor taskProcessor,
@@ -196,7 +201,7 @@ func (r *Runner) sendHeartbeat(ctx context.Context) error {
 	metadata, _ := json.Marshal(values)
 	return r.client.Heartbeat(ctx, workerprotocol.HeartbeatRequest{
 		WorkerVersion: workerVersion, ProtocolVersion: r.cfg.WorkerProtocolVersion,
-		Metadata: metadata,
+		SSHHostKeyFingerprint: r.sshHostKeyFingerprint, Metadata: metadata,
 	})
 }
 

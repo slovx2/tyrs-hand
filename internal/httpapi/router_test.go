@@ -15,9 +15,22 @@ func TestWebhookRouterSeparation(t *testing.T) {
 	require.Contains(t, combined, "POST /webhooks/github")
 	require.Contains(t, combined, "GET /api/v1/setup/status")
 	require.Contains(t, combined, "GET /api/v1/ssh/credentials")
-	for route := range combined {
-		require.NotContains(t, route, "/api/v1/client/",
-			"旧移动 App HTTP 协议不应继续暴露")
+	require.Contains(t, combined, "GET /api/v1/client/machines")
+	require.Contains(t, combined,
+		"GET /api/v1/client/machines/:workerId/scheduled-tasks")
+	require.Contains(t, combined,
+		"GET /api/v1/client/machines/:workerId/scheduled-tasks/:taskId/runs")
+	require.Contains(t, combined, "POST /api/v1/client/device-pairings/:id/claim")
+	for _, legacy := range []string{
+		"GET /api/v1/client/bootstrap",
+		"GET /api/v1/client/sessions",
+		"GET /api/v1/client/updates",
+		"POST /api/v1/client/messages",
+		"POST /api/v1/client/sessions",
+		"POST /api/v1/client/push-token",
+	} {
+		require.NotContains(t, combined, legacy,
+			"扫码只允许查看定时任务，不应恢复旧移动 App 协议")
 	}
 	require.Contains(t, combined, "PUT /api/v1/ssh/credentials/:id")
 	require.Contains(t, combined, "GET /api/v1/ssh/hosts")

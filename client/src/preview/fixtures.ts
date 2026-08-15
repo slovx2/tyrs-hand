@@ -168,7 +168,8 @@ export function createPreviewSeed(): PreviewSeed {
 
 function controlConnection(serverId: string, name: string, active: boolean): Connection {
   return { kind: "ssh", profileId: serverId, host: "preview.local", port: 2222,
-    user: "preview", keyRef: `preview-${serverId}`, hostFingerprint: "preview", name, active };
+    user: "preview", keyRef: `preview-${serverId}`, hostFingerprint: "preview", name, active,
+    machineFingerprint: `preview:${serverId}`, controls: [] };
 }
 
 function project(workspaceId: string, projectId: string, name: string,

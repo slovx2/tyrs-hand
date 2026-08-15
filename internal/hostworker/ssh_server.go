@@ -36,9 +36,10 @@ type DesktopServer interface {
 }
 
 type SSHServer struct {
-	options  SSHOptions
-	listener net.Listener
-	config   *ssh.ServerConfig
+	options            SSHOptions
+	listener           net.Listener
+	config             *ssh.ServerConfig
+	hostKeyFingerprint string
 
 	mu          sync.Mutex
 	connections map[*ssh.ServerConn]struct{}
@@ -84,13 +85,16 @@ func StartSSHServer(ctx context.Context, options SSHOptions) (*SSHServer, error)
 		return nil, fmt.Errorf("监听 Worker SSH: %w", err)
 	}
 	server := &SSHServer{options: options, listener: listener, config: configuration,
-		connections: make(map[*ssh.ServerConn]struct{})}
+		hostKeyFingerprint: ssh.FingerprintSHA256(signer.PublicKey()),
+		connections:        make(map[*ssh.ServerConn]struct{})}
 	server.wg.Add(1)
 	go server.serve(ctx)
 	return server, nil
 }
 
 func (s *SSHServer) Addr() net.Addr { return s.listener.Addr() }
+
+func (s *SSHServer) HostKeyFingerprint() string { return s.hostKeyFingerprint }
 
 func (s *SSHServer) Close() error {
 	s.mu.Lock()

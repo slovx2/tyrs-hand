@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,9 +20,15 @@ type seededFixture struct {
 	ProjectID   uuid.UUID `json:"projectId"`
 }
 
+type seededAutomations struct {
+	ActiveTaskID    uuid.UUID `json:"activeTaskId"`
+	HeartbeatTaskID uuid.UUID `json:"heartbeatTaskId"`
+	SessionID       uuid.UUID `json:"sessionId"`
+}
+
 func main() {
 	if len(os.Args) < 2 {
-		log.Fatal("用法：fixture seed|seed-project-matrix|wait-ready|snapshot|notification-target|assert-message-once|assert-session-project|assert-attachment-once|assert-preference|assert-intent-once|seed-history|seed-forward-history|force-cursor-reset")
+		log.Fatal("用法：fixture seed|seed-automations|seed-project-matrix|wait-ready|snapshot|notification-target|assert-message-once|assert-session-project|assert-attachment-once|assert-preference|assert-intent-once|seed-history|seed-forward-history|force-cursor-reset")
 	}
 	databaseURL := os.Getenv("TYRS_HAND_DATABASE_URL")
 	if databaseURL == "" {
@@ -39,6 +46,8 @@ func main() {
 		seed(ctx, db, os.Args[2:])
 	case "seed-project-matrix":
 		seedProjectMatrix(ctx, db, os.Args[2:])
+	case "seed-automations":
+		seedAutomationFixtures(ctx, db, os.Args[2:])
 	case "wait-ready":
 		waitReady(ctx, db, os.Args[2:])
 	case "snapshot":
@@ -64,6 +73,99 @@ func main() {
 	default:
 		log.Fatalf("未知命令 %q", os.Args[1])
 	}
+}
+
+func seedAutomationFixtures(ctx context.Context, db *sql.DB, arguments []string) {
+	flags := flag.NewFlagSet("seed-automations", flag.ExitOnError)
+	workspaceText := flags.String("workspace-id", "", "Workspace UUID")
+	projectText := flags.String("project-id", "", "Project UUID")
+	prefix := flags.String("prefix", "Primary", "任务名称前缀")
+	_ = flags.Parse(arguments)
+	workspaceID, err := uuid.Parse(*workspaceText)
+	if err != nil {
+		log.Fatal("seed-automations 需要 --workspace-id")
+	}
+	projectID, err := uuid.Parse(*projectText)
+	if err != nil {
+		log.Fatal("seed-automations 需要 --project-id")
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var profileID uuid.UUID
+	if err = tx.QueryRowContext(ctx, `SELECT id FROM agent_profiles
+		ORDER BY created_at,id LIMIT 1`).Scan(&profileID); err != nil {
+		log.Fatal(err)
+	}
+	result := seededAutomations{}
+	if err = tx.QueryRowContext(ctx, `INSERT INTO workspace_sessions(
+		workspace_id,workspace_project_id,agent_profile_id,title,title_source,model,
+		reasoning_effort,service_tier) VALUES ($1,$2,$3,$4,'manual','gpt-5.6-sol','high','fast')
+		RETURNING id`, workspaceID, projectID, profileID, *prefix+" Heartbeat 会话").Scan(&result.SessionID); err != nil {
+		log.Fatal(err)
+	}
+	var controlID uuid.UUID
+	if err = tx.QueryRowContext(ctx, `INSERT INTO codex_thread_controls(
+		source_type,session_id,workspace_project_id,agent_profile_id,workspace_id,
+		external_thread_id,status) VALUES ('workspace_session',$1,$2,$3,$4,$5,'idle')
+		RETURNING id`, result.SessionID, projectID, profileID, workspaceID,
+		"mobile-e2e-thread-"+strings.ToLower(*prefix)).Scan(&controlID); err != nil {
+		log.Fatal(err)
+	}
+	var intentID uuid.UUID
+	if err = tx.QueryRowContext(ctx, `INSERT INTO codex_turn_intents(
+		control_id,sequence_no,source_type,agent_profile_id,idempotency_key,status,
+		workspace_project_id,session_id,finished_at) VALUES
+		($1,1,'workspace_session',$2,$3,'completed',$4,$5,now()-interval '30 minutes')
+		RETURNING id`, controlID, profileID, "mobile-automation-"+uuid.NewString(), projectID,
+		result.SessionID).Scan(&intentID); err != nil {
+		log.Fatal(err)
+	}
+	if err = tx.QueryRowContext(ctx, `INSERT INTO scheduled_tasks(
+		workspace_id,workspace_project_id,kind,name,prompt,status,schedule_text,timezone,
+		schedule_kind,next_run_at,last_run_at,agent_profile_id,model,reasoning_effort,service_tier)
+		VALUES ($1,$2,'standalone',$3,$4,'active',
+		'DTSTART;TZID=Asia/Shanghai:20260815T090000\nRRULE:FREQ=DAILY',
+		'Asia/Shanghai','wall_clock',now()+interval '1 day',now()-interval '1 hour',
+		$5,'gpt-5.6-sol','high','fast') RETURNING id`, workspaceID, projectID,
+		*prefix+" 每日检查", "E2E_AUTOMATION_PROMPT_"+strings.ToUpper(*prefix)+
+			" 检查工作区状态", profileID).Scan(&result.ActiveTaskID); err != nil {
+		log.Fatal(err)
+	}
+	if err = tx.QueryRowContext(ctx, `INSERT INTO scheduled_tasks(
+		workspace_id,workspace_project_id,target_session_id,kind,name,prompt,status,
+		schedule_text,timezone,schedule_kind,interval_seconds)
+		VALUES ($1,$2,$3,'heartbeat',$4,$5,'paused',
+		'DTSTART:20260815T010000Z\nRRULE:FREQ=MINUTELY;INTERVAL=15','UTC','interval',900)
+		RETURNING id`, workspaceID, projectID, result.SessionID, *prefix+" Heartbeat",
+		"E2E_HEARTBEAT_PROMPT_"+strings.ToUpper(*prefix)).Scan(&result.HeartbeatTaskID); err != nil {
+		log.Fatal(err)
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO scheduled_task_runs(
+		scheduled_task_id,schedule_revision,trigger,trigger_key,scheduled_for,
+		coalesced_through,status,intent_id,session_id,task_snapshot,started_at,finished_at,
+		created_at,updated_at) VALUES
+		($1,1,'scheduled','e2e-success',now()-interval '1 hour',now()-interval '55 minutes',
+		'succeeded',$2,$3,'{}',now()-interval '1 hour',now()-interval '58 minutes',
+		now()-interval '1 hour',now()-interval '58 minutes'),
+		($1,1,'scheduled','e2e-failure',now()-interval '1 day',NULL,'failed',NULL,NULL,'{}',
+		now()-interval '1 day',now()-interval '23 hours 58 minutes',now()-interval '1 day',
+		now()-interval '23 hours 58 minutes')`, result.ActiveTaskID, intentID, result.SessionID)
+	if err != nil {
+		log.Fatal(err)
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE scheduled_task_runs SET error_code='e2e_failure',
+		error_message='E2E 可见失败记录' WHERE scheduled_task_id=$1 AND trigger_key='e2e-failure'`,
+		result.ActiveTaskID)
+	if err == nil {
+		err = tx.Commit()
+	}
+	if err != nil {
+		log.Fatal(err)
+	}
+	writeJSON(result)
 }
 
 func seed(ctx context.Context, db *sql.DB, arguments []string) {
@@ -169,14 +271,16 @@ func waitReady(ctx context.Context, db *sql.DB, arguments []string) {
 func snapshot(ctx context.Context, db *sql.DB) {
 	result := map[string]int64{}
 	queries := map[string]string{
-		"sessions":      `SELECT count(*) FROM workspace_sessions`,
-		"messages":      `SELECT count(*) FROM session_messages`,
-		"runs":          `SELECT count(*) FROM codex_turn_runs`,
-		"completedRuns": `SELECT count(*) FROM codex_turn_runs WHERE status='completed'`,
-		"failedRuns":    `SELECT count(*) FROM codex_turn_runs WHERE status='failed'`,
-		"canceledRuns":  `SELECT count(*) FROM codex_turn_runs WHERE status='canceled'`,
-		"interactives":  `SELECT count(*) FROM codex_interactive_requests`,
-		"attachments":   `SELECT count(*) FROM session_attachments WHERE status='attached'`,
+		"sessions":       `SELECT count(*) FROM workspace_sessions`,
+		"messages":       `SELECT count(*) FROM session_messages`,
+		"runs":           `SELECT count(*) FROM codex_turn_runs`,
+		"completedRuns":  `SELECT count(*) FROM codex_turn_runs WHERE status='completed'`,
+		"failedRuns":     `SELECT count(*) FROM codex_turn_runs WHERE status='failed'`,
+		"canceledRuns":   `SELECT count(*) FROM codex_turn_runs WHERE status='canceled'`,
+		"interactives":   `SELECT count(*) FROM codex_interactive_requests`,
+		"attachments":    `SELECT count(*) FROM session_attachments WHERE status='attached'`,
+		"scheduledTasks": `SELECT count(*) FROM scheduled_tasks`,
+		"scheduledRuns":  `SELECT count(*) FROM scheduled_task_runs`,
 	}
 	for name, query := range queries {
 		var count int64

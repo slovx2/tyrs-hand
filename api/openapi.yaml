@@ -578,6 +578,134 @@ paths:
       parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerDefaults" } } } }
       responses: { "204": { description: 已保存 }, default: { $ref: "#/components/responses/Problem" } }
+  /client-devices:
+    get:
+      operationId: listClientDevices
+      tags: [Client Protocol]
+      responses:
+        "200":
+          description: 已授权的移动设备及机器
+          content: { application/json: { schema: { $ref: "#/components/schemas/ClientDeviceList" } } }
+  /client-devices/{id}:
+    delete:
+      operationId: deleteClientDevice
+      tags: [Client Protocol]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/CSRFToken" }
+      responses: { "204": { description: 设备及其全部机器授权已撤销 }, default: { $ref: "#/components/responses/Problem" } }
+  /client-device-pairings:
+    post:
+      operationId: createClientDevicePairing
+      tags: [Client Protocol]
+      parameters: [{ $ref: "#/components/parameters/CSRFToken" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ClientPairingCreateInput" } } }
+      responses:
+        "201":
+          description: 单台 Worker 的定时任务只读授权二维码
+          content: { application/json: { schema: { $ref: "#/components/schemas/ClientPairing" } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /client-device-pairings/{id}:
+    get:
+      operationId: getClientDevicePairing
+      tags: [Client Protocol]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: 授权状态, content: { application/json: { schema: { $ref: "#/components/schemas/ClientPairing" } } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /client-device-pairings/{id}/approve:
+    post:
+      operationId: approveClientDevicePairing
+      tags: [Client Protocol]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/CSRFToken" }
+      responses: { "200": { description: 已确认设备 }, default: { $ref: "#/components/responses/Problem" } }
+  /client-device-pairings/{id}/reject:
+    post:
+      operationId: rejectClientDevicePairing
+      tags: [Client Protocol]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/CSRFToken" }
+      responses: { "204": { description: 已拒绝 }, default: { $ref: "#/components/responses/Problem" } }
+  /client/device-pairings/{id}/claim:
+    post:
+      operationId: claimClientDevicePairing
+      tags: [Client Protocol]
+      security: []
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ClientPairingClaimInput" } } }
+      responses:
+        "200": { description: 等待管理员确认, content: { application/json: { schema: { type: object, required: [claimToken, status], properties: { claimToken: { type: string }, status: { type: string, enum: [waiting_confirmation] } } } } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /client/device-pairings/{id}/status:
+    get:
+      operationId: getClaimedClientDevicePairing
+      tags: [Client Protocol]
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: Authorization, in: header, required: true, schema: { type: string } }
+      responses:
+        "200": { description: 配对状态, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /client/machines:
+    get:
+      operationId: listClientMachines
+      tags: [Client Protocol]
+      security: [{ clientBearer: [] }]
+      responses:
+        "200": { description: 当前设备获准查看的机器, content: { application/json: { schema: { $ref: "#/components/schemas/ClientMachineList" } } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /client/machines/{workerId}:
+    delete:
+      operationId: deleteClientMachine
+      tags: [Client Protocol]
+      security: [{ clientBearer: [] }]
+      parameters: [{ name: workerId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { "204": { description: 单台机器授权已撤销 }, default: { $ref: "#/components/responses/Problem" } }
+  /client/machines/{workerId}/scheduled-tasks:
+    get:
+      operationId: listClientMachineScheduledTasks
+      tags: [Client Protocol]
+      security: [{ clientBearer: [] }]
+      parameters:
+        - { name: workerId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: status, in: query, required: false, schema: { type: string, enum: [active, paused, completed, deleted] } }
+        - { $ref: "#/components/parameters/Cursor" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200": { description: 当前 Worker Workspace 的定时任务, content: { application/json: { schema: { $ref: "#/components/schemas/ClientScheduledTaskList" } } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /client/machines/{workerId}/scheduled-tasks/{taskId}:
+    get:
+      operationId: getClientMachineScheduledTask
+      tags: [Client Protocol]
+      security: [{ clientBearer: [] }]
+      parameters:
+        - { name: workerId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: taskId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: 定时任务完整详情, content: { application/json: { schema: { $ref: "#/components/schemas/ClientScheduledTask" } } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /client/machines/{workerId}/scheduled-tasks/{taskId}/runs:
+    get:
+      operationId: listClientMachineScheduledTaskRuns
+      tags: [Client Protocol]
+      security: [{ clientBearer: [] }]
+      parameters:
+        - { name: workerId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: taskId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/Cursor" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200": { description: 定时任务运行记录, content: { application/json: { schema: { $ref: "#/components/schemas/ClientScheduledTaskRunList" } } } }
+        default: { $ref: "#/components/responses/Problem" }
   /ssh/credentials:
     get:
       operationId: listSSHCredentials
@@ -1144,6 +1272,10 @@ components:
       type: http
       scheme: bearer
       bearerFormat: opaque-worker-credential
+    clientBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: tdv1-device-credential
   parameters:
     CSRFToken:
       name: X-CSRF-Token
@@ -1300,6 +1432,7 @@ components:
         status: { type: string, enum: [pending, online, offline, disabled, incompatible, error] }
         heartbeatAt: { type: string, format: date-time }
         lastError: { type: string }
+        sshHostKeyFingerprint: { type: string, pattern: '^SHA256:[A-Za-z0-9+/]{43}$' }
         metadata: { type: object, additionalProperties: true }
     WorkerInput:
       type: object
@@ -1325,6 +1458,128 @@ components:
       properties:
         githubWorkerId: { type: string, format: uuid, nullable: true }
         discordWorkerId: { type: string, format: uuid, nullable: true }
+    ClientMachine:
+      type: object
+      required: [workerId, name, sshHostKeyFingerprint, status, approvedAt]
+      properties:
+        workerId: { type: string, format: uuid }
+        name: { type: string }
+        sshHostKeyFingerprint: { type: string, pattern: '^SHA256:[A-Za-z0-9+/]{43}$' }
+        status: { type: string }
+        heartbeatAt: { type: string, format: date-time }
+        workspaceId: { type: string, format: uuid }
+        approvedAt: { type: string, format: date-time }
+    ClientMachineList:
+      type: object
+      required: [items]
+      properties: { items: { type: array, items: { $ref: "#/components/schemas/ClientMachine" } } }
+    ClientDevice:
+      type: object
+      required: [id, name, platform, createdAt, approvedAt, machines]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        platform: { type: string }
+        createdAt: { type: string, format: date-time }
+        approvedAt: { type: string, format: date-time }
+        lastSeenAt: { type: string, format: date-time }
+        machines: { type: array, items: { $ref: "#/components/schemas/ClientMachine" } }
+    ClientDeviceList:
+      type: object
+      required: [items]
+      properties: { items: { type: array, items: { $ref: "#/components/schemas/ClientDevice" } } }
+    ClientPairingCreateInput:
+      type: object
+      required: [workerId]
+      properties: { workerId: { type: string, format: uuid } }
+    ClientPairingClaimInput:
+      type: object
+      required: [pairingSecret, deviceId, name, platform, credentialHash]
+      properties:
+        pairingSecret: { type: string }
+        deviceId: { type: string, format: uuid }
+        name: { type: string, maxLength: 120 }
+        platform: { type: string, maxLength: 40 }
+        credentialHash: { type: string, minLength: 64, maxLength: 64 }
+    ClientPairing:
+      type: object
+      required: [id, status, workerId, workerName, sshHostKeyFingerprint, expiresAt, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [waiting_scan, waiting_confirmation, approved, rejected, expired] }
+        deviceId: { type: string, format: uuid }
+        deviceName: { type: string }
+        platform: { type: string }
+        workerId: { type: string, format: uuid }
+        workerName: { type: string }
+        sshHostKeyFingerprint: { type: string, pattern: '^SHA256:[A-Za-z0-9+/]{43}$' }
+        pairingUri: { type: string }
+        qrDataUrl: { type: string }
+        expiresAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+    ClientScheduledTaskSession:
+      type: object
+      required: [id, title]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        externalThreadId: { type: string }
+    ClientScheduledTask:
+      type: object
+      required: [id, workspaceId, kind, name, prompt, status, schedule, timezone,
+        scheduleKind, scheduleRevision, project, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        workspaceId: { type: string, format: uuid }
+        kind: { type: string, enum: [standalone, heartbeat] }
+        name: { type: string }
+        prompt: { type: string }
+        status: { type: string, enum: [active, paused, completed, deleted] }
+        schedule: { type: string }
+        timezone: { type: string }
+        scheduleKind: { type: string, enum: [interval, wall_clock] }
+        intervalSeconds: { type: integer, format: int64 }
+        nextRunAt: { type: string, format: date-time }
+        blockedUntil: { type: string, format: date-time }
+        lastRunAt: { type: string, format: date-time }
+        scheduleRevision: { type: integer, format: int64 }
+        lastErrorCode: { type: string }
+        lastErrorMessage: { type: string }
+        project: { type: object, additionalProperties: true }
+        targetSession: { $ref: "#/components/schemas/ClientScheduledTaskSession" }
+        standaloneSettings: { type: object, additionalProperties: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ClientScheduledTaskList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/ClientScheduledTask" } }
+        nextCursor: { type: string }
+    ClientScheduledTaskRun:
+      type: object
+      required: [id, scheduleRevision, trigger, triggerKey, scheduledFor, status, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        scheduleRevision: { type: integer, format: int64 }
+        trigger: { type: string, enum: [scheduled, run_now] }
+        triggerKey: { type: string }
+        scheduledFor: { type: string, format: date-time }
+        coalescedThrough: { type: string, format: date-time }
+        status: { type: string, enum: [queued, running, waiting_for_user, succeeded, failed, canceled] }
+        errorCode: { type: string }
+        errorMessage: { type: string }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+        session: { $ref: "#/components/schemas/ClientScheduledTaskSession" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ClientScheduledTaskRunList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/ClientScheduledTaskRun" } }
+        nextCursor: { type: string }
     SSHCredential:
       type: object
       required: [id, name, publicKey, fingerprint, enabled, version, hostCount, updatedAt]
@@ -1454,10 +1709,11 @@ components:
         protocolVersion: { type: integer }
     WorkerHeartbeat:
       type: object
-      required: [workerVersion, protocolVersion]
+      required: [workerVersion, protocolVersion, sshHostKeyFingerprint]
       properties:
         workerVersion: { type: string }
         protocolVersion: { type: integer }
+        sshHostKeyFingerprint: { type: string, pattern: '^SHA256:[A-Za-z0-9+/]{43}$' }
         metadata: { type: object, additionalProperties: true }
     WorkerClaimRequest:
       type: object

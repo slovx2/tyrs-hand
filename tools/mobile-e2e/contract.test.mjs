@@ -71,3 +71,22 @@ test('协议 Worker 交互场景显式使用 Plan 模式', async () => {
   assert.equal([...secretFlow.matchAll(/id: "connection:inactive"/g)].length, 2,
     'Secret 场景必须切到次 Control，并在失败态场景前切回主 Control')
 })
+
+test('默认移动端 E2E 只覆盖扫码后的定时任务只读协议', async () => {
+  const runner = await readFile(resolve(root, 'tools/mobile-e2e/mobile-runner.mjs'), 'utf8')
+  const worker = await readFile(resolve(root, 'tools/mobile-e2e/protocol-worker.mjs'), 'utf8')
+  const suite = await readFile(resolve(root, 'client/e2e/flows/suite.yaml'), 'utf8')
+  const flow = await readFile(resolve(root, 'client/e2e/flows/01-pair-controls.yaml'), 'utf8')
+
+  assert.match(worker, /protocolVersion:\s*28/)
+  assert.match(worker, /sshHostKeyFingerprint/)
+  assert.match(runner, /createPairing\(primaryWorker\.worker\.id\)/)
+  assert.match(runner, /seed-automations/)
+  assert.equal((suite.match(/runFlow:/g) ?? []).length, 1)
+  assert.match(suite, /01-pair-controls\.yaml/)
+  assert.doesNotMatch(suite, /02-parameters|attachments|interactive/)
+  assert.match(flow, /tab:automations/)
+  assert.match(flow, /automation:\$\{TYRS_HAND_E2E_PRIMARY_TASK_ID\}/)
+  assert.match(flow, /automation:status:paused/)
+  assert.doesNotMatch(runner, /offline-send|notification-deep-link|client\/bootstrap/)
+})

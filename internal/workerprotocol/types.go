@@ -9,7 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 27
+const Version = 28
 
 // CodexTurnError 保留 Codex error 通知的结构化字段，供 Control 决定是否重试
 // 并在 Discord 失败过程卡中展示。
@@ -40,9 +40,10 @@ type EnrollResponse struct {
 }
 
 type HeartbeatRequest struct {
-	WorkerVersion   string          `json:"workerVersion"`
-	ProtocolVersion int             `json:"protocolVersion"`
-	Metadata        json.RawMessage `json:"metadata,omitempty"`
+	WorkerVersion         string          `json:"workerVersion"`
+	ProtocolVersion       int             `json:"protocolVersion"`
+	SSHHostKeyFingerprint string          `json:"sshHostKeyFingerprint"`
+	Metadata              json.RawMessage `json:"metadata,omitempty"`
 }
 
 type SSHCredential struct {

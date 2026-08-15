@@ -16,12 +16,12 @@ export default function ProjectsScreen() {
 
   if (!connection) {
     return <Screen><EmptyState title="还没有可用的连接"
-      detail="请先在连接页扫描管理后台中的设备二维码。" /></Screen>;
+      detail="项目需要先在连接页添加 SSH；扫码授权只用于查看定时任务。" /></Screen>;
   }
 
   const emptyDetail = connection.kind === "ssh"
     ? "请先在连接页为这个 SSH profile 添加项目。"
-    : "当前连接中暂时没有可用项目。";
+    : "当前机器尚未配置 SSH；扫码授权只用于查看定时任务。";
 
   const openProject = (id: string) => {
     selectProject(id);

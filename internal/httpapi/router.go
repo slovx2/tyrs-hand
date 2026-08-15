@@ -97,6 +97,8 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	api.GET("/setup/status", s.setupStatus)
 	api.POST("/setup/admin", s.setupAdmin)
 	api.POST("/auth/login", s.login)
+	api.POST("/client/device-pairings/:id/claim", s.claimClientDevicePairing)
+	api.GET("/client/device-pairings/:id/status", s.clientDevicePairingStatus)
 	api.GET("/github/app/manifest/callback", s.githubManifestCallback)
 	api.GET("/discord/github/bind/callback", s.discordGitHubBindCallback)
 	authenticated := api.Group("")
@@ -120,6 +122,14 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	authenticated.POST("/workers/:id/enrollments", s.requireCSRF(), s.createWorkerEnrollment)
 	authenticated.PUT("/workers/:id/enabled", s.requireCSRF(), s.setWorkerEnabled)
 	authenticated.DELETE("/workers/:id", s.requireCSRF(), s.deleteWorker)
+	authenticated.GET("/client-devices", s.listClientDevices)
+	authenticated.DELETE("/client-devices/:id", s.requireCSRF(), s.deleteClientDevice)
+	authenticated.POST("/client-device-pairings", s.requireCSRF(), s.createClientDevicePairing)
+	authenticated.GET("/client-device-pairings/:id", s.getClientDevicePairing)
+	authenticated.POST("/client-device-pairings/:id/approve", s.requireCSRF(),
+		s.approveClientDevicePairing)
+	authenticated.POST("/client-device-pairings/:id/reject", s.requireCSRF(),
+		s.rejectClientDevicePairing)
 	authenticated.GET("/ssh/credentials", s.listSSHCredentials)
 	authenticated.POST("/ssh/credentials", s.requireCSRF(), s.createSSHCredential)
 	authenticated.PUT("/ssh/credentials/:id", s.requireCSRF(), s.updateSSHCredential)
@@ -163,6 +173,15 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	authenticated.POST("/discord/github/unbind", s.requireCSRF(), s.unbindDiscordGitHub)
 	authenticated.GET("/system/status", s.systemStatus)
 	authenticated.GET("/events/stream", s.eventsStream)
+
+	client := api.Group("/client")
+	client.Use(s.requireClientBearer())
+	client.GET("/machines", s.listClientMachines)
+	client.DELETE("/machines/:workerId", s.deleteClientMachine)
+	client.GET("/machines/:workerId/scheduled-tasks", s.listClientMachineScheduledTasks)
+	client.GET("/machines/:workerId/scheduled-tasks/:taskId", s.getClientMachineScheduledTask)
+	client.GET("/machines/:workerId/scheduled-tasks/:taskId/runs",
+		s.listClientMachineScheduledTaskRuns)
 
 	router.NoRoute(s.serveSPA)
 	return router

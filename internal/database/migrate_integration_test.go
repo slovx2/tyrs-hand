@@ -23,6 +23,7 @@ func TestFreshHostWorkerBaseline(t *testing.T) {
 	for _, table := range []string{
 		"workers", "worker_enrollments", "worker_workspaces", "workspace_projects",
 		"workspace_sessions", "ssh_host_workers", "github_agent_repository_overrides",
+		"client_device_workers",
 	} {
 		var exists bool
 		require.NoError(t, db.QueryRowContext(ctx, `SELECT EXISTS(
@@ -68,7 +69,7 @@ func TestWorkerProtocolUpgradeMigrations(t *testing.T) {
 	var protocolVersion int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT protocol_version FROM workers
 		WHERE name='protocol-upgrade-worker'`).Scan(&protocolVersion))
-	require.Equal(t, 27, protocolVersion)
+	require.Equal(t, 28, protocolVersion)
 }
 
 func migrationTestDatabase(t *testing.T) *sql.DB {

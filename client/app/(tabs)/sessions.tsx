@@ -31,6 +31,10 @@ export default function SessionsScreen() {
       headerRight: () => <SessionActionsMenu sessionId={selectedId} />,
     } : {}),
   }} />;
+  if (connection?.kind === "control") {
+    return <Screen>{navigation}<EmptyState title="尚未配置 SSH"
+      detail="扫码授权只用于查看定时任务；项目和会话需要先在连接页添加 SSH。" /></Screen>;
+  }
   const list = <View style={[styles.master, tablet && { borderRightColor: theme.colors.border }]}>
     <ConnectionErrorBanner />
     <SessionListPane sessions={sessions} selectedId={selectedId} onSelect={select}

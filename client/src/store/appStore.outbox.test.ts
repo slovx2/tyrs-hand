@@ -145,7 +145,8 @@ describe("移动端 Outbox 新 Thread", () => {
 
 function activate(profileId: string): void {
   const connection: Connection = { profileId, kind: "ssh", name: "worker", active: true,
-    host: "worker", port: 22, user: "tester", keyRef: "key", hostFingerprint: null };
+    machineFingerprint: `test:${profileId}`, controls: [], host: "worker", port: 22,
+    user: "tester", keyRef: "key", hostFingerprint: null };
   useAppStore.setState({ ready: true, refreshing: false, error: null,
     activeConnection: connection, connections: [connection], projects: [project], threads: [],
     outbox: [], unreadThreadIds: {}, selectedProjectId: project.id,

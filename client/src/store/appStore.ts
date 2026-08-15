@@ -16,7 +16,8 @@ import { recoverPendingProfileSubmissions } from "@/app-server/submissionRecover
 import { projectForThread, targetKey, type MobileProject, type ThreadRecord } from "@/app-server/types";
 import { loadCachedProjects, loadCachedThreads, replaceCachedThreads,
   saveProjects, saveThreadRecord } from "@/db/cache";
-import { listConnections, setActiveConnection, type Connection } from "@/db/connections";
+import { listConnections, setActiveConnection, type Connection,
+  type SSHConnection } from "@/db/connections";
 import { listSSHProjects } from "@/db/sshProjects";
 import { loadThemeMode, saveLastTurnPreferences, saveThemeMode } from "@/db/settings";
 import { loadUnreadThreadIds, markThreadRead, markThreadUnread, reconcileThreadReads,
@@ -383,6 +384,13 @@ async function syncOutboxState(profileId: string, set: StoreSet, get: StoreGet):
 }
 
 async function refreshProfile(connection: Connection, set: StoreSet, get: StoreGet): Promise<void> {
+  if (connection.kind !== "ssh") {
+    if (get().activeConnection?.profileId === connection.profileId) {
+      set({ projects: [], threads: [], modelsByTarget: {}, pendingRequests: {}, error: null,
+        selectedProjectId: null });
+    }
+    return;
+  }
   let projectCatalog: Awaited<ReturnType<typeof projectsForConnection>>;
   try {
     projectCatalog = await projectsForConnection(connection);
@@ -455,6 +463,9 @@ async function refreshProfile(connection: Connection, set: StoreSet, get: StoreG
 async function projectsForConnection(connection: Connection): Promise<{
   projects: MobileProject[];
 }> {
+  if (connection.kind !== "ssh") {
+    throw new Error("当前机器尚未配置 SSH");
+  }
   const configured = await listSSHProjects(connection.profileId);
   return { projects: configured.map((project) => ({ id: project.id,
     workspaceId: null, name: project.remotePath.split("/").filter(Boolean).at(-1) ??
@@ -882,8 +893,9 @@ function withoutUnread(current: Record<string, true>, threadId: string): Record<
   return next;
 }
 
-function requireConnection(state: AppState): Connection {
+function requireConnection(state: AppState): SSHConnection {
   if (!state.activeConnection) throw new Error("当前没有可用连接");
+  if (state.activeConnection.kind !== "ssh") throw new Error("当前机器尚未配置 SSH");
   return state.activeConnection;
 }
 
