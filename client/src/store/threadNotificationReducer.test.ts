@@ -70,14 +70,18 @@ describe("原生 Thread 通知 reducer", () => {
     const running = turn("turn", "inProgress", [command("tool", "inProgress"),
       agent("answer", "流式")]);
     const completed = turn("turn", "completed", [agent("answer", "最终回答")]);
+    const initial = record([running]);
+    initial.thread.status = { type: "active", activeFlags: [] };
 
-    const result = reduceThreadNotification(record([running]),
+    const result = reduceThreadNotification(initial,
       { method: "turn/completed", params: { threadId: "thread", turn: completed } });
 
     expect(result.record.thread.turns[0]).toMatchObject({ status: "completed" });
     expect(result.record.thread.turns[0]?.items.map((item) => item.id))
       .toEqual(["tool", "answer"]);
+    expect(result.record.thread.turns[0]?.items[0]).toMatchObject({ status: "completed" });
     expect(result.record.thread.turns[0]?.items[1]).toMatchObject({ text: "最终回答" });
+    expect(result.record.thread.status).toEqual({ type: "idle" });
   });
 
   it("turn/completed 的短快照不会让既有用户消息和 commentary 短暂消失", () => {

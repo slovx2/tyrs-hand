@@ -3,6 +3,7 @@ import type { Thread } from "@codex-app-server/v2/Thread";
 import { THREAD_PAGE_SIZE } from "@/app-server/officialClient";
 import type { MobileProject, ThreadRecord } from "@/app-server/types";
 import { isPreviewMode } from "@/preview/config";
+import { normalizeTerminalTurn } from "@/store/threadHistory";
 import { getDatabase, withDatabaseTransaction } from "./database";
 
 export async function loadCachedProjects(profileId: string): Promise<MobileProject[]> {
@@ -62,9 +63,10 @@ async function insertThread(database: Awaited<ReturnType<typeof getDatabase>>, p
 
 export function cacheableThreadRecord(record: ThreadRecord): ThreadRecord {
   if (record.history.kind !== "loaded") return record;
+  const turns = record.thread.turns.map(normalizeTerminalTurn);
   return {
     ...record,
-    thread: { ...record.thread, turns: record.thread.turns.slice(-THREAD_PAGE_SIZE) },
+    thread: { ...record.thread, turns: turns.slice(-THREAD_PAGE_SIZE) },
     history: {
       ...record.history,
       olderCursor: record.history.tailOlderCursor,
@@ -92,8 +94,11 @@ function parseThreadRecord(payload: string, archived: boolean): ThreadRecord[] {
       (typeof history.olderCursor === "string" || history.olderCursor === null) &&
       (typeof history.tailOlderCursor === "string" || history.tailOlderCursor === null) &&
       typeof history.hasLoadedOldest === "boolean";
-    return thread && typeof thread.id === "string" && Array.isArray(thread.turns) && validHistory
-      ? [{ thread, archived, workspaceId: value.workspaceId ?? null,
+    const normalizedThread = thread && Array.isArray(thread.turns)
+      ? { ...thread, turns: thread.turns.map(normalizeTerminalTurn) } : thread;
+    return normalizedThread && typeof normalizedThread.id === "string" &&
+      Array.isArray(normalizedThread.turns) && validHistory
+      ? [{ thread: normalizedThread, archived, workspaceId: value.workspaceId ?? null,
         projectId: value.projectId ?? null, history }]
       : [];
   } catch {

@@ -32,6 +32,15 @@ describe("Thread 最近页缓存", () => {
       olderCursor: null, hasLoadedOldest: true,
     });
   });
+
+  it("缓存终态 Turn 时收敛缺失快照遗留的运行中工具", () => {
+    const record = loadedRecord([turn(1)]);
+    record.thread.turns[0]!.items = [command("tool-1")];
+
+    const cached = cacheableThreadRecord(record);
+
+    expect(cached.thread.turns[0]?.items[0]).toMatchObject({ status: "completed" });
+  });
 });
 
 function loadedRecord(turns: Turn[]): ThreadRecord {
@@ -53,4 +62,10 @@ function thread(turns: Turn[]): Thread {
 function turn(index: number): Turn {
   return { id: `turn-${index}`, status: "completed", items: [], itemsView: "full",
     error: null, startedAt: index, completedAt: index, durationMs: null };
+}
+
+function command(id: string): Turn["items"][number] {
+  return { type: "commandExecution", id, command: "pwd", cwd: "/workspace",
+    processId: null, source: "agent", status: "inProgress", commandActions: [],
+    aggregatedOutput: null, exitCode: null, durationMs: null, pluginId: null, scriptPath: null };
 }

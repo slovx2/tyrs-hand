@@ -114,7 +114,7 @@ function TurnBlockView({ block, memoryKey, profileId, onDisclosureChange }: {
   if (block.kind === "user") return <UserMessage item={block.item} profileId={profileId} />;
   if (block.kind === "commentary") return block.item.text.trim()
     ? <View testID="message:phase:commentary" style={styles.commentary}>
-      <MarkdownContent compact cacheKey={`commentary:${block.item.id}`}>
+      <MarkdownContent compact profileId={profileId} cacheKey={`commentary:${block.item.id}`}>
         {block.item.text}
       </MarkdownContent>
     </View> : null;
@@ -122,7 +122,9 @@ function TurnBlockView({ block, memoryKey, profileId, onDisclosureChange }: {
     memoryKey={`${memoryKey}:${block.key}`} onDisclosureChange={onDisclosureChange} />;
   if (block.kind === "plan") return <View testID={`plan:${block.item.id}`} style={styles.plan}>
     <Muted>计划</Muted>
-    <MarkdownContent cacheKey={`plan:${block.item.id}`}>{block.item.text}</MarkdownContent>
+    <MarkdownContent profileId={profileId} cacheKey={`plan:${block.item.id}`}>
+      {block.item.text}
+    </MarkdownContent>
   </View>;
   if (block.kind === "generatedImage") return <View style={styles.generatedImage}>
     <RemoteMessageImage profileId={profileId} remotePath={block.item.savedPath!}
@@ -130,7 +132,9 @@ function TurnBlockView({ block, memoryKey, profileId, onDisclosureChange }: {
       testID={`generated-image:${block.item.id}`} />
   </View>;
   return block.item.text.trim() ? <View testID="message:role:agent" style={styles.agentRow}>
-    <MarkdownContent cacheKey={`agentMessage:${block.item.id}`}>{block.item.text}</MarkdownContent>
+    <MarkdownContent profileId={profileId} cacheKey={`agentMessage:${block.item.id}`}>
+      {block.item.text}
+    </MarkdownContent>
   </View> : null;
 }
 

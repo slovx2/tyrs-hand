@@ -63,7 +63,32 @@ export function createPreviewSeed(): PreviewSeed {
   const markdown = thread(previewSessionIds.markdown, "/preview/workspaces/tyrs-hand",
     "Markdown 与工具状态", [turn("turn-markdown", "completed", [
       user("user-markdown", "preview-markdown", "展示完整的官方 Item"),
-      agent("agent-markdown", "## 验证结果\n\n官方 `Thread -> Turn -> Item` 已成为唯一顺序来源。\n\n- 列表稳定\n- 计划可执行", "final_answer"),
+      agent("agent-markdown", [
+        "## 正文渲染预览",
+        "",
+        "官方 `Thread -> Turn -> Item` 已成为唯一顺序来源。",
+        "",
+        "文件引用：查看【src/features/chat/OfficialTurn.tsx†L115-L133】和【F:README.md†L5】。",
+        "",
+        "- [x] 文件引用转换为正文 Chip",
+        "- [ ] 右侧来源小框暂不接入",
+        "",
+        "<strong>基础 HTML 粗体</strong>、<u>下划线</u>、<kbd>Ctrl</kbd>。",
+        "",
+        ':::task-stub{title="继续对齐官方渲染"}',
+        "检查移动端正文特殊元素",
+        ":::",
+        "",
+        ':::writing{variant="email" id="12345"}',
+        "主题：渲染能力对齐",
+        "正文中的写作块会显示为独立卡片。",
+        ":::",
+        "",
+        '::artifact-template{artifact_kind="document" display_name="移动端渲染规范"}',
+        "",
+        '::git-commit{cwd="/preview/workspaces/tyrs-hand"}',
+        '::code-comment{path="client/src/features/chat/MarkdownContent.tsx"}',
+      ].join("\n"), "final_answer"),
     ])], now - 40);
   const longTurns = Array.from({ length: 32 }, (_, index) => {
     const number = index + 1;

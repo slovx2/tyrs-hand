@@ -5,16 +5,20 @@ import Markdown, { type ASTNode, MarkdownIt, parser, type RenderFunction,
 
 import { useTheme } from "@/theme/ThemeProvider";
 import { CachedMessageImage } from "@/features/images/CachedMessageImage";
+import { RemoteMessageImage } from "@/features/images/RemoteMessageImage";
+import { lookupMarkdownPlaceholder, prepareMarkdown, type MarkdownPlaceholder } from "./responseDirectives";
 
 type MarkdownContentProps = {
   children: string;
   cacheKey: string;
+  profileId: string;
   compact?: boolean;
   imageTestPrefix?: string;
+  onFileCitationPress?: (path: string, lineStart: number, lineEnd?: number) => void;
 };
 
 const monoFont = Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" });
-const markdownIt = new MarkdownIt({ typographer: true });
+const markdownIt = new MarkdownIt({ breaks: true, typographer: true });
 const MAX_AST_CACHE_ENTRIES = 48;
 const MAX_AST_CACHE_SOURCE_CHARACTERS = 160_000;
 const MAX_AST_ENTRY_SOURCE_CHARACTERS = 32_000;
@@ -106,10 +110,78 @@ function containsVisualNode(node: ASTNode): boolean {
     node.children.some(containsVisualNode);
 }
 
-export const MarkdownContent = memo(function MarkdownContent({ children, cacheKey, compact = false,
-  imageTestPrefix = "markdown:image" }: MarkdownContentProps) {
+function soleText(node: ASTNode): string | null {
+  if (node.type === "text") return node.content;
+  if (node.children.length !== 1) return null;
+  return soleText(node.children[0]!);
+}
+
+const placeholderPattern = /\uE000codex-[^\uE001]+\uE001/g;
+
+function fileLabel(path: string, lineStart: number, lineEnd?: number): string {
+  const name = path.split(/[\\/]/).at(-1) || path;
+  const location = lineEnd === undefined ? `L${lineStart}` : `L${lineStart}-L${lineEnd}`;
+  return `${name} · ${location}`;
+}
+
+function MarkdownDirectiveCard({ directive, styles }: {
+  directive: Extract<MarkdownPlaceholder, { kind: "task-stub" | "writing" | "artifact-template" }>;
+  styles: Record<string, any>;
+}) {
+  if (directive.kind === "task-stub") {
+    return <View style={styles.codexCard}>
+      <Text style={styles.codexCardLabel}>建议任务</Text>
+      <Text style={styles.codexCardTitle}>{directive.title}</Text>
+      {directive.prompt ? <Text selectable style={styles.codexCardBody}>{directive.prompt}</Text> : null}
+    </View>;
+  }
+  if (directive.kind === "artifact-template") {
+    return <View style={styles.codexCard}>
+      <Text style={styles.codexCardLabel}>产物模板 · {directive.artifactKind}</Text>
+      <Text style={styles.codexCardTitle}>{directive.displayName}</Text>
+    </View>;
+  }
+  return <View style={styles.codexCard}>
+    <Text style={styles.codexCardLabel}>写作内容 · {directive.variant}</Text>
+    <Text selectable style={styles.codexCardBody}>{directive.content}</Text>
+  </View>;
+}
+
+function renderMarkdownText(node: ASTNode, _children: ReactNode[], _parents: ASTNode[], styles: any,
+  inheritedStyles: Record<string, any> = {}, onFileCitationPress?: MarkdownContentProps["onFileCitationPress"]) {
+  const parts = node.content.split(placeholderPattern);
+  const matches = node.content.match(placeholderPattern) ?? [];
+  if (matches.length === 0) {
+    return <Text key={node.key} style={[inheritedStyles, styles.text]}>{node.content}</Text>;
+  }
+  const children: ReactNode[] = [];
+  let matchIndex = 0;
+  parts.forEach((part, index) => {
+    if (part) children.push(<Text key={`${node.key}:text:${index}`}>{part}</Text>);
+    const token = matches[matchIndex++];
+    if (!token) return;
+    const directive = lookupMarkdownPlaceholder(token);
+    if (directive?.kind === "file-citation") {
+      children.push(<Text key={`${node.key}:citation:${index}`} accessibilityRole="link"
+        onPress={onFileCitationPress ? () => onFileCitationPress(directive.path, directive.lineStart,
+          directive.lineEnd) : undefined} style={styles.fileCitation}>
+        {fileLabel(directive.path, directive.lineStart, directive.lineEnd)}
+      </Text>);
+    } else if (directive?.kind === "html-inline" &&
+      (directive.variant === "u" || directive.variant === "sub" || directive.variant === "sup")) {
+      const style = directive.variant === "u" ? styles.htmlUnderline :
+        directive.variant === "sub" ? styles.htmlSub : styles.htmlSup;
+      children.push(<Text key={`${node.key}:html:${index}`} style={style}>{directive.content}</Text>);
+    }
+  });
+  return <Text key={node.key} style={[inheritedStyles, styles.text]}>{children}</Text>;
+}
+
+export const MarkdownContent = memo(function MarkdownContent({ children, cacheKey, profileId,
+  compact = false, imageTestPrefix = "markdown:image", onFileCitationPress }: MarkdownContentProps) {
   const theme = useTheme();
-  const ast = useMemo(() => cachedMarkdownAst(cacheKey, children), [cacheKey, children]);
+  const prepared = useMemo(() => prepareMarkdown(children), [children]);
+  const ast = useMemo(() => cachedMarkdownAst(cacheKey, prepared.source), [cacheKey, prepared.source]);
   const blockGap = compact ? 5 : 8;
   const markdownStyle = useMemo(() => StyleSheet.create({
     body: { width: "100%" },
@@ -190,16 +262,44 @@ export const MarkdownContent = memo(function MarkdownContent({ children, cacheKe
     pre: {},
     inline: {},
     span: {},
+    fileCitation: { color: theme.colors.accent, backgroundColor: theme.colors.surfaceAlt,
+      borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1, fontSize: 13 },
+    codexCard: { width: "100%", marginTop: 2, marginBottom: blockGap, paddingHorizontal: 12,
+      paddingVertical: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border,
+      borderRadius: 10, backgroundColor: theme.colors.surfaceAlt },
+    codexCardLabel: { color: theme.colors.textMuted, fontFamily: "Inter_400Regular", fontSize: 12,
+      lineHeight: 18, marginBottom: 2 },
+    codexCardTitle: { color: theme.colors.text, fontFamily: "Inter_600SemiBold", fontSize: 15,
+      lineHeight: 22 },
+    codexCardBody: { color: theme.colors.text, fontFamily: "Inter_400Regular", fontSize: 14,
+      lineHeight: 21, marginTop: 5 },
+    htmlUnderline: { color: theme.colors.text, textDecorationLine: "underline" },
+    htmlSub: { color: theme.colors.text, fontSize: 11, lineHeight: 16 },
+    htmlSup: { color: theme.colors.text, fontSize: 11, lineHeight: 16 },
   }), [blockGap, compact, theme]);
   const rules = useMemo<RenderRules>(() => ({
     ...selectableRules,
+    text: (node, _children, parents, styles, inheritedStyles = {}) =>
+      renderMarkdownText(node, [], parents, styles, inheritedStyles, onFileCitationPress),
+    paragraph: (node, children, _parents, styles) => {
+      const token = soleText(node)?.trim();
+      const directive = token ? lookupMarkdownPlaceholder(token) : null;
+      if (directive && directive.kind !== "file-citation" && directive.kind !== "html-inline") {
+        return <MarkdownDirectiveCard key={node.key} directive={directive} styles={styles} />;
+      }
+      return lightweightTextBlock(node, children, _parents, styles);
+    },
     image: (node) => {
       const source = String(node.attributes.src ?? "");
       const filename = String(node.attributes.alt || source.split("/").at(-1) || "图片");
+      if (source.startsWith("/")) {
+        return <RemoteMessageImage key={node.key} profileId={profileId} remotePath={source}
+          filename={filename} testID={`${imageTestPrefix}:${node.key}`} />;
+      }
       return <CachedMessageImage key={node.key} uri={source} filename={filename}
         testID={`${imageTestPrefix}:${node.key}`} />;
     },
-  }), [imageTestPrefix]);
+  }), [imageTestPrefix, onFileCitationPress, profileId]);
   return <Markdown markdownit={markdownIt} mergeStyle={false} rules={rules} style={markdownStyle}>
     {ast as unknown as ReactNode}
   </Markdown>;

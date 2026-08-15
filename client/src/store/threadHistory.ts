@@ -78,7 +78,10 @@ export function mergeTurnSnapshot(previous: Turns[number], incoming: Turns[numbe
       seen.add(updated.id);
     } else if (options.preserveMissingItems || incoming.status === "inProgress" ||
       isToolItem(item)) {
-      items.push(item);
+      // Turn 已经进入终态时，旧快照里仍是 inProgress/generating 的工具不可能继续运行。
+      // 保留调用本身用于还原时间线，但必须先收敛 Item 状态，否则会把错误的运行态写入缓存，
+      // 下次启动仍显示 shimmer。
+      items.push(incoming.status === "inProgress" ? item : completeMissingTool(item));
       seen.add(item.id);
     }
   }
@@ -87,6 +90,17 @@ export function mergeTurnSnapshot(previous: Turns[number], incoming: Turns[numbe
   }
   const merged = { ...incoming, items };
   return sameTurnSnapshot(previous, merged) ? previous : merged;
+}
+
+export function normalizeTerminalTurn(turn: Turns[number]): Turns[number] {
+  if (turn.status === "inProgress") return turn;
+  let changed = false;
+  const items = turn.items.map((item) => {
+    const next = completeMissingTool(item);
+    changed ||= next !== item;
+    return next;
+  });
+  return changed ? { ...turn, items } : turn;
 }
 
 /**
@@ -207,6 +221,12 @@ function mergeGrowingParts(previous: string[], incoming: string[]): string[] {
 function isToolItem(item: ThreadItem): boolean {
   return item.type !== "userMessage" && item.type !== "agentMessage" && item.type !== "plan" &&
     item.type !== "reasoning" && item.type !== "hookPrompt";
+}
+
+function completeMissingTool(item: ThreadItem): ThreadItem {
+  if (!isToolItem(item) || !("status" in item) ||
+    (item.status !== "inProgress" && item.status !== "generating")) return item;
+  return { ...item, status: "completed" };
 }
 
 function sameItemSnapshot(left: ThreadItem, right: ThreadItem): boolean {

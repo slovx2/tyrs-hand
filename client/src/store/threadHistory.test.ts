@@ -69,6 +69,7 @@ describe("官方 Turn 分页合并", () => {
     expect(merged.items.map((item) => item.id)).toEqual([
       "tool-1", "item:final",
     ]);
+    expect(merged.items[0]).toMatchObject({ status: "completed" });
   });
 
   it("尾页从早期 Turn 重叠时仍合并最新 Turn 的原生工具", () => {

@@ -1,3 +1,3 @@
 /// <reference types="expo/types" />
 
-// Expo Router 在生成 typed routes 时维护其余声明。
+// NOTE: This file should not be edited and should be in your git ignore

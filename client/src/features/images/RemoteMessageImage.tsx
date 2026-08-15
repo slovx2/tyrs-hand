@@ -1,6 +1,8 @@
 import * as Crypto from "expo-crypto";
 import { Directory, File, Paths } from "expo-file-system";
+import { requireNativeModule } from "expo-modules-core";
 import { useEffect, useState } from "react";
+import { Platform } from "react-native";
 
 import { listConnections } from "@/db/connections";
 import { downloadSSHFile } from "@/native/sshTransport";
@@ -50,12 +52,18 @@ async function downloadAndCache(profileId: string, remotePath: string,
   const directory = new Directory(Paths.cache, "message-images");
   directory.create({ idempotent: true, intermediates: true });
   const target = new File(directory, `${digest}${extension}`);
-  if (target.exists && (target.size ?? 0) > 0) return target.uri;
+  if (target.exists && (target.size ?? 0) > 0) return imageURI(target.uri);
   const connection = (await listConnections()).find((item) => item.profileId === profileId);
   if (!connection) throw new Error("图片所属连接不存在");
   await downloadSSHFile(connection, remotePath, target.uri);
   if (!target.exists || (target.size ?? 0) <= 0) throw new Error("图片缓存不完整");
-  return target.uri;
+  return imageURI(target.uri);
+}
+
+async function imageURI(fileURI: string): Promise<string> {
+  if (Platform.OS !== "android") return fileURI;
+  return requireNativeModule<{ getContentUriAsync(uri: string): Promise<string> }>(
+    "ExponentFileSystem").getContentUriAsync(fileURI);
 }
 
 function imageExtension(value: string): string | null {

@@ -6,9 +6,19 @@
     "exactOptionalPropertyTypes": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "@codex-app-server/*": ["../protocol/codex-app-server/0.147.0/typescript/*"]
+      "@/*": [
+        "src/*"
+      ],
+      "@codex-app-server/*": [
+        "../protocol/codex-app-server/0.147.0/typescript/*"
+      ]
     }
   },
-  "include": ["app", "src", "expo-env.d.ts", "app.config.ts"]
+  "include": [
+    "app",
+    "src",
+    "expo-env.d.ts",
+    "app.config.ts",
+    ".expo/types/**/*.ts"
+  ]
 }

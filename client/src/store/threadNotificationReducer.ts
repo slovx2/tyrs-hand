@@ -67,7 +67,10 @@ function updateTurn(record: ThreadRecord, incoming: Turn, active: boolean,
   } else {
     turns = [...turns, incoming];
   }
-  const status = active ? { type: "active" as const, activeFlags: [] } : record.thread.status;
+  const hasActiveTurn = turns.some((turn) => turn.status === "inProgress");
+  const status = active || hasActiveTurn
+    ? { type: "active" as const, activeFlags: [] }
+    : terminal ? { type: "idle" as const } : record.thread.status;
   const thread = turns === record.thread.turns && status === record.thread.status
     ? record.thread : { ...record.thread, status, turns };
   return result(record, thread, false, terminal);
