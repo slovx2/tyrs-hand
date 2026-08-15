@@ -1,12 +1,13 @@
 import * as Crypto from "expo-crypto";
 import { Directory, File, Paths } from "expo-file-system";
 import { requireNativeModule } from "expo-modules-core";
-import { memo, useEffect, useState } from "react";
+import { memo, useContext, useEffect, useState } from "react";
 import { Platform } from "react-native";
 
 import { listConnections } from "@/db/connections";
 import { downloadSSHFile } from "@/native/sshTransport";
 import { CachedMessageImage } from "./CachedMessageImage";
+import { ImageLoadGateContext } from "./ImageLoadGate";
 
 const downloads = new Map<string, Promise<string>>();
 
@@ -17,14 +18,25 @@ export const RemoteMessageImage = memo(function RemoteMessageImage({ profileId, 
   filename: string;
   testID?: string;
 }) {
+  const loadGate = useContext(ImageLoadGateContext);
   const [uri, setUri] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
-    void resolveRemoteImage(profileId, remotePath, filename)
-      .then((value) => { if (active) setUri(value); })
-      .catch(() => { if (active) setUri(""); });
-    return () => { active = false; };
-  }, [filename, profileId, remotePath]);
+    let started = false;
+    const resolve = () => {
+      if (!active || started) return;
+      started = true;
+      void resolveRemoteImage(profileId, remotePath, filename)
+        .then((value) => { if (active) setUri(value); })
+        .catch(() => { if (active) setUri(""); });
+    };
+    const cancelWait = loadGate?.runWhenReady(resolve) ?? (() => undefined);
+    if (!loadGate) resolve();
+    return () => {
+      active = false;
+      cancelWait();
+    };
+  }, [filename, loadGate, profileId, remotePath]);
   return <CachedMessageImage uri={uri ?? ""} filename={filename}
     {...(testID ? { testID } : {})} />;
 });

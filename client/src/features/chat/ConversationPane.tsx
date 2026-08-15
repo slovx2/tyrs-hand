@@ -12,6 +12,7 @@ import { defaultTurnPreferences } from "@/app-server/preferences";
 import { targetKey } from "@/app-server/types";
 import { Button, EmptyState } from "@/components/ui";
 import { clearDraft, loadDraft, saveDraft } from "@/db/drafts";
+import { createImageLoadGate, ImageLoadGateContext } from "@/features/images/ImageLoadGate";
 import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
 import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
@@ -41,11 +42,13 @@ const LIST_POSITIONING = {
 const LIST_DRAW_DISTANCE = 180;
 const LIST_RECYCLE_POOL_SIZE = 12;
 const OLDER_LOAD_SETTLE_MS = 120;
+const INITIAL_IMAGE_LOAD_DELAY_MS = 300;
 
 export function ConversationPane({ sessionId }: { sessionId: string }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const keyboardVisible = useKeyboardVisible();
+  const imageLoadGate = useMemo(() => createImageLoadGate(true), []);
   const list = useRef<FlashListRef<ConversationRow>>(null);
   const connection = useAppStore((state) => state.activeConnection);
   const record = useAppStore((state) => state.threads.find((item) => item.thread.id === sessionId));
@@ -158,11 +161,22 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     olderLoadTimer.current = null;
     scrollOffset.current = 0;
     userScrollGesture.current = null;
+    imageLoadGate.setBlocked(true);
     setScrollToLatestVisible(false);
     setPositionRestored(false);
     setLoadingOlder(false);
     setOlderError(null);
-  }, [positionKey, setScrollToLatestVisible]);
+    let imageLoadTimer: ReturnType<typeof setTimeout>;
+    const releaseImagesWhenIdle = () => {
+      if (interactionBlocked.current) {
+        imageLoadTimer = setTimeout(releaseImagesWhenIdle, OLDER_LOAD_SETTLE_MS);
+        return;
+      }
+      imageLoadGate.setBlocked(false);
+    };
+    imageLoadTimer = setTimeout(releaseImagesWhenIdle, INITIAL_IMAGE_LOAD_DELAY_MS);
+    return () => clearTimeout(imageLoadTimer);
+  }, [imageLoadGate, positionKey, setScrollToLatestVisible]);
 
   useEffect(() => () => {
     if (olderLoadTimer.current) clearTimeout(olderLoadTimer.current);
@@ -282,6 +296,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
 
   const finishUserInteraction = useCallback(() => {
     interactionBlocked.current = false;
+    imageLoadGate.setBlocked(false);
     if (pinnedToLatest.current) {
       dispatchFollow({ type: "user_reached_bottom", latestTurnPhase: latestPhase.current });
     }
@@ -289,7 +304,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       list.current?.scrollToEnd({ animated: false });
     }
     userScrollGesture.current = null;
-  }, [dispatchFollow]);
+  }, [dispatchFollow, imageLoadGate]);
 
   const settleUserInteraction = useCallback(() => {
     if (interactionSettleTimer.current) clearTimeout(interactionSettleTimer.current);
@@ -402,7 +417,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   }
 
   const plan = latestCompletedPlan(record.thread);
-  return <KeyboardAvoidingView {...keyboardAvoidance(Platform.OS, insets.top, keyboardVisible)}
+  return <ImageLoadGateContext.Provider value={imageLoadGate}>
+    <KeyboardAvoidingView {...keyboardAvoidance(Platform.OS, insets.top, keyboardVisible)}
     style={styles.container}>
     <View style={styles.messageArea}>
       <FlashList key={sessionId} ref={list} testID="messages:list" data={rows}
@@ -448,6 +464,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
           }
         }}
         onScrollBeginDrag={({ nativeEvent }) => {
+          imageLoadGate.setBlocked(true);
           momentumScrolling.current = false;
           userDragging.current = true;
           interactionBlocked.current = true;
@@ -468,6 +485,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
           settleUserInteraction();
         }}
         onMomentumScrollBegin={() => {
+          imageLoadGate.setBlocked(true);
           momentumScrolling.current = true;
           interactionBlocked.current = true;
           if (interactionSettleTimer.current) clearTimeout(interactionSettleTimer.current);
@@ -570,7 +588,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     {resolvedPreferences && <ParameterSheet visible={showParameters} models={models}
       value={resolvedPreferences} onChange={setPreferences} onClose={() => setShowParameters(false)}
       onCancel={() => { setPreferences(beforeSheet); setShowParameters(false); }} />}
-  </KeyboardAvoidingView>;
+    </KeyboardAvoidingView>
+  </ImageLoadGateContext.Provider>;
 }
 
 const styles = StyleSheet.create({

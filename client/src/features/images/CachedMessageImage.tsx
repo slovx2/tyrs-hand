@@ -13,6 +13,7 @@ export const CachedMessageImage = memo(function CachedMessageImage({ uri, filena
   const theme = useTheme();
   const [failed, setFailed] = useState(false);
   const [visible, setVisible] = useState(false);
+  const networkSource = uri.startsWith("https://") || uri.startsWith("http://");
   if (failed || (!uri.startsWith("https://") && !uri.startsWith("http://") &&
     !uri.startsWith("file://") && !uri.startsWith("content://") && !uri.startsWith("data:"))) {
     return <View testID={testID} style={[styles.fallback, { borderColor: theme.colors.border }]}>
@@ -22,8 +23,9 @@ export const CachedMessageImage = memo(function CachedMessageImage({ uri, filena
   return <>
     <Pressable accessibilityRole="imagebutton" accessibilityLabel={`查看图片 ${filename}`}
       onPress={() => setVisible(true)} style={styles.pressable}>
-      <Image testID={testID} source={uri} contentFit="contain" cachePolicy="memory-disk"
-        recyclingKey={uri}
+      <Image testID={testID} source={uri} contentFit="contain"
+        cachePolicy={networkSource ? "memory-disk" : "memory"}
+        priority="low" recyclingKey={uri}
         onError={() => setFailed(true)}
         style={[styles.image, { backgroundColor: theme.colors.surfaceAlt }]} />
     </Pressable>
@@ -35,6 +37,6 @@ export const CachedMessageImage = memo(function CachedMessageImage({ uri, filena
 const styles = StyleSheet.create({
   pressable: { width: "100%" },
   image: { width: "100%", height: 220, borderRadius: 8, marginVertical: 6 },
-  fallback: { width: "100%", minHeight: 44, borderWidth: StyleSheet.hairlineWidth,
+  fallback: { width: "100%", height: 220, borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 8, marginVertical: 6, paddingHorizontal: 10, justifyContent: "center" },
 });
