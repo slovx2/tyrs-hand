@@ -10,6 +10,7 @@ const { client } = vi.hoisted(() => ({
   client: {
     connect: vi.fn(async () => undefined),
     subscribe: vi.fn(() => () => undefined),
+    onClose: vi.fn<(listener: (error: Error) => void) => () => void>(),
     readThreadMetadataIfExists: vi.fn(),
     resumeThreadForSubmissionIfExists: vi.fn(),
     findThreadBySource: vi.fn(),
@@ -47,10 +48,42 @@ const project: MobileProject = { id: "project-1", workspaceId: null, name: "work
   availabilityStatus: "available", branch: null, dirty: false };
 
 describe("移动端 Outbox 新 Thread", () => {
+  it("SSH 直连断开时只清理本地交互请求，不改 Thread 状态", async () => {
+    const profileId = "ssh-close";
+    let closeListener: ((error: Error) => void) | null = null;
+    client.onClose.mockImplementation((listener: (error: Error) => void) => {
+      closeListener = listener;
+      return () => undefined;
+    });
+    activate(profileId, [{ serverId: "control-1", baseUrl: "https://control.example",
+      workerId: "worker-1", workerName: "worker", deviceId: "device-1" }]);
+    const started = thread("thread-close");
+    client.startThread.mockResolvedValue({ thread: started });
+    client.submitNewThread.mockResolvedValue({ threadId: started.id, turnId: "turn-1",
+      deduplicated: false });
+
+    await expect(useAppStore.getState().startTask(project.id, "触发交互", [], preferences,
+      "message-close")).resolves.toBe(started.id);
+    expect(closeListener).toEqual(expect.any(Function));
+    useAppStore.setState({ threads: [{ thread: started, archived: false, workspaceId: null,
+      projectId: project.id, history: { kind: "loaded", olderCursor: null,
+        tailOlderCursor: null, hasLoadedOldest: true } }],
+    pendingRequests: { [started.id]: [{ id: "request-1", method: "item/tool/requestUserInput",
+      params: { threadId: started.id, turnId: "turn-1", itemId: "item-1", questions: [],
+        isBlocking: true, autoResolutionMs: null } }] } });
+
+    (closeListener as unknown as (error: Error) => void)(new Error("network lost"));
+
+    expect(useAppStore.getState().pendingRequests).toEqual({});
+    expect(useAppStore.getState().threads[0]?.thread.id).toBe(started.id);
+    expect(useAppStore.getState().error).toBe("SSH App Server 连接已断开，请重试");
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     client.connect.mockResolvedValue(undefined);
     client.subscribe.mockReturnValue(() => undefined);
+    client.onClose.mockReturnValue(() => undefined);
     client.findThreadBySource.mockResolvedValue(null);
     client.submitNewThread.mockResolvedValue({ threadId: "thread-new", turnId: "turn-1",
       deduplicated: false });
@@ -143,9 +176,9 @@ describe("移动端 Outbox 新 Thread", () => {
   });
 });
 
-function activate(profileId: string): void {
+function activate(profileId: string, controls: Connection["controls"] = []): void {
   const connection: Connection = { profileId, kind: "ssh", name: "worker", active: true,
-    machineFingerprint: `test:${profileId}`, controls: [], host: "worker", port: 22,
+    machineFingerprint: `test:${profileId}`, controls, host: "worker", port: 22,
     user: "tester", keyRef: "key", hostFingerprint: null };
   useAppStore.setState({ ready: true, refreshing: false, error: null,
     activeConnection: connection, connections: [connection], projects: [project], threads: [],

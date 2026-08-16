@@ -71,6 +71,7 @@ class FakeOfficialClient {
     return this.listPage(threadId, cursor);
   }
   async readThreadMetadata(threadId: string): Promise<Thread> { return this.metadata(threadId); }
+  onClose(): () => void { return () => undefined; }
   subscribe(listener: (event: { method: string; params: unknown }) => void): () => void {
     this.listener = listener;
     return () => { this.listener = null; };

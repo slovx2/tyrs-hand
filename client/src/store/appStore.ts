@@ -504,6 +504,12 @@ function bindClient(connection: Connection, workspaceId: string | null,
   const client = officialClientFor(connection, workspaceId);
   if (!subscribedClients.has(client)) {
     subscribedClients.add(client);
+    if (connection.kind === "ssh" && workspaceId === null) {
+      client.onClose(() => {
+        if (get().activeConnection?.profileId !== connection.profileId) return;
+        set({ pendingRequests: {}, error: "SSH App Server 连接已断开，请重试" });
+      });
+    }
     const streaming = new StreamingTextQueue((delta) =>
       applyStreamingDelta(connection.profileId, delta, set, get));
     client.subscribe((event) => {

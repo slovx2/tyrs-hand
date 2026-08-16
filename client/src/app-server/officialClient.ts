@@ -67,6 +67,7 @@ export interface OfficialRpcClient {
   respondError(id: RequestId, code: number, message: string, data?: unknown): void;
   onNotification(listener: (notification: ServerNotification) => void): () => void;
   onServerRequest(listener: (request: ServerRequest) => void): () => void;
+  onClose(listener: (error: Error) => void): () => void;
 }
 
 export class SubmissionConfirmationError extends Error {
@@ -96,10 +97,17 @@ export class OfficialAppServerClient {
       this.pendingServerRequests.set(String(request.id), request);
       this.emit(request);
     });
+    rpc.onClose(() => {
+      this.pendingServerRequests.clear();
+    });
   }
 
   connect() {
     return this.rpc.open();
+  }
+
+  onClose(listener: (error: Error) => void): () => void {
+    return this.rpc.onClose(listener);
   }
 
   subscribe(listener: EventListener): () => void {

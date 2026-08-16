@@ -15,6 +15,7 @@ class FakeRpc implements OfficialRpcClient {
   readonly timeline: string[] = [];
   notificationListener: ((notification: ServerNotification) => void) | null = null;
   requestListener: ((request: ServerRequest) => void) | null = null;
+  closeListeners = new Set<(error: Error) => void>();
   opens = 0;
 
   constructor(readonly handler: (method: string, params: unknown) => unknown | Promise<unknown>) {}
@@ -38,8 +39,15 @@ class FakeRpc implements OfficialRpcClient {
     this.requestListener = listener;
     return () => { this.requestListener = null; };
   }
+  onClose(listener: (error: Error) => void): () => void {
+    this.closeListeners.add(listener);
+    return () => { this.closeListeners.delete(listener); };
+  }
   emitRequest(request: ServerRequest): void { this.requestListener?.(request); }
   emitNotification(notification: ServerNotification): void { this.notificationListener?.(notification); }
+  emitClose(error = new Error("network lost")): void {
+    for (const listener of this.closeListeners) listener(error);
+  }
 }
 
 class MemoryJournal implements SubmissionJournal {
@@ -56,6 +64,30 @@ const preferences = { model: "gpt-test", effort: "high" as const, serviceTier: n
   collaborationMode: "default" as const };
 
 describe("OfficialAppServerClient", () => {
+  it("App Server 断线时清理旧交互请求，并允许新连接重新登记请求", () => {
+    const rpc = new FakeRpc(() => undefined);
+    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+    const closeErrors: string[] = [];
+    client.onClose((error) => closeErrors.push(error.message));
+    const request = (id: string): ServerRequest => ({ id,
+      method: "item/tool/requestUserInput", params: {
+        threadId: "thread-1", turnId: "turn-1", itemId: `item-${id}`,
+        questions: [], isBlocking: true, autoResolutionMs: null,
+      } });
+
+    rpc.emitRequest(request("old"));
+    expect(client.pendingRequests("thread-1")).toHaveLength(1);
+
+    rpc.emitClose(new Error("SSH App Server 连接已断开"));
+
+    expect(client.pendingRequests("thread-1")).toEqual([]);
+    expect(client.answerRequest("old", { answers: {} })).toBe(false);
+    expect(closeErrors).toEqual(["SSH App Server 连接已断开"]);
+
+    rpc.emitRequest(request("new"));
+    expect(client.pendingRequests("thread-1").map((item) => String(item.id))).toEqual(["new"]);
+  });
+
   it("使用受限 Luna 临时线程生成结构化标题并在结束后取消订阅", async () => {
     let rpc!: FakeRpc;
     rpc = new FakeRpc((method, params) => {
