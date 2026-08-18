@@ -108,7 +108,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     ? modelsByTarget[targetKey(profileId, workspaceId)] ?? EMPTY_MODELS
     : EMPTY_MODELS;
   const fallbackPreferences = useMemo(() => defaultTurnPreferences(models), [models]);
-  const resolvedPreferences = preferences ?? fallbackPreferences;
+  const resolvedPreferences = preferences ?? record?.preferences ?? fallbackPreferences;
   const draftScope = `thread:${sessionId}`;
   const activeTurnId = [...(record?.thread.turns ?? [])].reverse()
     .find((turn) => turn.status === "inProgress")?.id ?? null;

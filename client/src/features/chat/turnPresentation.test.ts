@@ -216,7 +216,26 @@ describe("官方 Turn 移动展示投影", () => {
     expect(result.blocks).toMatchObject([
       { kind: "tools", items: [{ id: "command" }, { id: "image" }] },
       { kind: "generatedImage", key: "image:result",
-        item: { savedPath: "/remote/generated/image.png" } },
+        image: { id: "image", source: "/remote/generated/image.png" } },
+    ]);
+  });
+
+  it("把 generate_image 的内联图片投影为独立可见结果", () => {
+    const image = { type: "dynamicToolCall", id: "dynamic-image", namespace: null,
+      tool: "generate_image", arguments: null, status: "completed", success: true,
+      durationMs: 10, contentItems: [
+        { type: "inputImage", imageUrl: "data:image/png;base64,AAAA" },
+      ] } as ToolItem;
+    const answer = { type: "agentMessage", id: "answer", phase: "final_answer",
+      text: "已生成。\n\n![生成的图片](/worker/private/image.png)",
+      memoryCitation: null } as ThreadItem;
+    const result = projectTurnPresentation(turn("completed", [image, answer]));
+
+    expect(result.blocks).toMatchObject([
+      { kind: "tools", category: "image", items: [{ id: "dynamic-image" }] },
+      { kind: "generatedImage", image: {
+        id: "dynamic-image", source: "data:image/png;base64,AAAA" } },
+      { kind: "final", item: { text: "已生成。" } },
     ]);
   });
 

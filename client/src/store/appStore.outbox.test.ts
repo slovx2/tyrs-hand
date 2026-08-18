@@ -107,6 +107,8 @@ describe("移动端 Outbox 新 Thread", () => {
       clientMessageId: "message-first",
     }));
     expect(client.submit).not.toHaveBeenCalled();
+    expect(useAppStore.getState().threads.find((record) => record.thread.id === started.id)
+      ?.preferences).toEqual(preferences);
   });
 
   it("已持久化但未物化的 phantom Thread 按稳定 source 重建", async () => {

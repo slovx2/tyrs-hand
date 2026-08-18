@@ -332,7 +332,7 @@ async function drainOutboxItems(connection: Connection, projects: MobileProject[
         threadId = thread.id;
         await setOutboxThread(item.profileId, item.clientMessageId, threadId);
         pendingCatalogThreads.add(threadKey(item.profileId, threadId));
-        await saveOutboxThread(item.profileId, project, thread, set, get);
+        await saveOutboxThread(item.profileId, project, thread, item.payload.preferences, set, get);
       }
       if (!threadId) throw new Error("发送队列缺少官方 Thread ID");
       const submission = { clientMessageId: item.clientMessageId, input,
@@ -367,7 +367,8 @@ function mobileOutboxThreadSource(item: NativeOutboxItem): string {
 }
 
 async function saveOutboxThread(profileId: string, project: MobileProject,
-  thread: ThreadRecord["thread"], set: StoreSet, get: StoreGet): Promise<void> {
+  thread: ThreadRecord["thread"], preferences: TurnPreferences,
+  set: StoreSet, get: StoreGet): Promise<void> {
   const current = get().threads.find((record) => record.thread.id === thread.id);
   const record: ThreadRecord = current
     ? { ...current, thread: { ...thread,
@@ -375,7 +376,7 @@ async function saveOutboxThread(profileId: string, project: MobileProject,
     : { thread, archived: false, workspaceId: project.workspaceId, projectId: project.id,
       history: { kind: "loaded", olderCursor: null, tailOlderCursor: null,
         hasLoadedOldest: true } };
-  await saveAndSetThread(profileId, record, set, get);
+  await saveAndSetThread(profileId, { ...record, preferences }, set, get);
 }
 
 async function syncOutboxState(profileId: string, set: StoreSet, get: StoreGet): Promise<void> {
@@ -743,7 +744,11 @@ async function loadOfficialThread(threadId: string, set: StoreSet, get: StoreGet
         olderCursor: resumed.page.nextCursor,
         tailOlderCursor: resumed.page.nextCursor,
         hasLoadedOldest: resumed.page.nextCursor === null };
-    const next: ThreadRecord = { ...latest, thread: { ...resumed.thread, turns }, history };
+    const nextPreferences = resumed.preferences ? { ...resumed.preferences,
+      collaborationMode: latest.preferences?.collaborationMode ?? "default" as const }
+      : latest.preferences;
+    const next: ThreadRecord = { ...latest, thread: { ...resumed.thread, turns }, history,
+      preferences: nextPreferences };
     await setAndCacheThread(connection.profileId, next, set, get);
     syncPendingRequests(client, threadId, set);
   })().finally(() => {

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -50,7 +51,9 @@ func TestGenerateImageUsesThreadProviderAndPersistsPrivatePNG(t *testing.T) {
 	image, err := base64.StdEncoding.DecodeString(agentImageTestPNG)
 	require.NoError(t, err)
 	var requestBody map[string]any
+	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		requests.Add(1)
 		require.Equal(t, "/v1/images/generations", request.URL.Path)
 		require.Equal(t, "tenant-a", request.URL.Query().Get("tenant"))
 		require.Equal(t, "Bearer provider-secret", request.Header.Get("Authorization"))
@@ -89,6 +92,7 @@ func TestGenerateImageUsesThreadProviderAndPersistsPrivatePNG(t *testing.T) {
 
 	require.True(t, result.Success)
 	require.Len(t, result.ContentItems, 2)
+	require.Contains(t, result.ContentItems[0].Text, "![生成的图片]")
 	require.Equal(t, "inputImage", result.ContentItems[1].Type)
 	require.Equal(t, "data:image/png;base64,"+agentImageTestPNG,
 		result.ContentItems[1].ImageURL)
@@ -114,6 +118,13 @@ func TestGenerateImageUsesThreadProviderAndPersistsPrivatePNG(t *testing.T) {
 		require.NoError(t, statErr)
 		require.Equal(t, os.FileMode(0o700), info.Mode().Perm())
 	}
+
+	duplicate := processor.executeImageGenerationTool(context.Background(), t.TempDir(),
+		codex.ToolCallRequest{ThreadID: "thread-1", TurnID: "turn-1", CallID: "call-2",
+			Tool: "generate_image", Arguments: json.RawMessage(`{"prompt":"再生成一次"}`)})
+	require.False(t, duplicate.Success)
+	require.Contains(t, duplicate.ContentItems[0].Text, "本轮已经成功")
+	require.EqualValues(t, 1, requests.Load())
 }
 
 func TestGenerateImageRejectsInvalidConfigurationAndArguments(t *testing.T) {
@@ -247,7 +258,8 @@ func TestGeneratedImageRecoveryScanCleanupAndRetention(t *testing.T) {
 	now := time.Date(2026, time.August, 18, 12, 0, 0, 0, time.UTC)
 	processor := &Processor{imageRoot: filepath.Join(t.TempDir(), "generated-images"),
 		imageNow: func() time.Time { return now }, logger: zap.NewNop()}
-	require.NoError(t, processor.writeGeneratedImage("thread", "turn", "call", image))
+	_, err = processor.writeGeneratedImage("thread", "turn", "call", image)
+	require.NoError(t, err)
 
 	candidates, err := processor.generatedImageCandidates("thread", "turn")
 	require.NoError(t, err)
@@ -258,7 +270,8 @@ func TestGeneratedImageRecoveryScanCleanupAndRetention(t *testing.T) {
 	processor.cleanupGeneratedImageTurn("thread", "turn")
 	require.NoFileExists(t, candidates[0].path)
 
-	require.NoError(t, processor.writeGeneratedImage("old-thread", "old-turn", "old-call", image))
+	_, err = processor.writeGeneratedImage("old-thread", "old-turn", "old-call", image)
+	require.NoError(t, err)
 	oldDirectory, err := processor.generatedImageTurnDirectory("old-thread", "old-turn")
 	require.NoError(t, err)
 	oldTime := now.Add(-generatedImageRetention - time.Hour)

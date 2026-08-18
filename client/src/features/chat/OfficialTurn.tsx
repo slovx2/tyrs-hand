@@ -127,9 +127,12 @@ function TurnBlockView({ block, memoryKey, profileId, onDisclosureChange }: {
     </MarkdownContent>
   </View>;
   if (block.kind === "generatedImage") return <View style={styles.generatedImage}>
-    <RemoteMessageImage profileId={profileId} remotePath={block.item.savedPath!}
-      filename={imageFilename(block.item.savedPath!)}
-      testID={`generated-image:${block.item.id}`} />
+    {block.image.source.startsWith("/")
+      ? <RemoteMessageImage profileId={profileId} remotePath={block.image.source}
+        filename={imageFilename(block.image.source)}
+        testID={`generated-image:${block.image.id}`} />
+      : <CachedMessageImage uri={block.image.source} filename="生成的图片"
+        testID={`generated-image:${block.image.id}`} />}
   </View>;
   return block.item.text.trim() ? <View testID="message:role:agent" style={styles.agentRow}>
     <MarkdownContent profileId={profileId} cacheKey={`agentMessage:${block.item.id}`}>

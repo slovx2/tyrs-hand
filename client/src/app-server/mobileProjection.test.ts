@@ -47,6 +47,21 @@ describe("移动端官方 Item 投影", () => {
     expect((items[0] as Extract<ThreadItem, { type: "commandExecution" }>).aggregatedOutput)
       .toBe("large output");
   });
+
+  it("只为 generate_image 保留可展示的内联图片，不保留提示词和文本输出", () => {
+    const item = { type: "dynamicToolCall", id: "generated", namespace: null,
+      tool: "generate_image", arguments: { prompt: "private prompt" }, status: "completed",
+      contentItems: [
+        { type: "inputText", text: "/private/generated.png" },
+        { type: "inputImage", imageUrl: "data:image/png;base64,AAAA" },
+      ], success: true, durationMs: 6 } as ThreadItem;
+
+    expect(projectTurnForMobile({ id: "turn", status: "completed", items: [item],
+      itemsView: "full", error: null, startedAt: 1, completedAt: 2, durationMs: 1000 })
+      .items[0]).toMatchObject({ arguments: null, contentItems: [
+        { type: "inputImage", imageUrl: "data:image/png;base64,AAAA" },
+      ] });
+  });
 });
 
 function command(): ThreadItem {

@@ -13,6 +13,8 @@ describe("官方会话目录合并", () => {
 
   it("服务端收录后使用官方元数据并保留已加载历史", () => {
     const loaded = record("pending", 1, "loaded");
+    loaded.preferences = { model: "gpt-5.6-terra", effort: "high", serviceTier: "priority",
+      collaborationMode: "default" };
     const summary = record("pending", 4, "summary");
     summary.thread.name = "Luna 标题";
     const merged = mergeThreadCatalog([summary], [loaded], new Set(["pending"]));
@@ -20,6 +22,7 @@ describe("官方会话目录合并", () => {
     expect(merged[0]?.thread.name).toBe("Luna 标题");
     expect(merged[0]?.thread.turns).toBe(loaded.thread.turns);
     expect(merged[0]?.history.kind).toBe("loaded");
+    expect(merged[0]?.preferences?.model).toBe("gpt-5.6-terra");
   });
 });
 

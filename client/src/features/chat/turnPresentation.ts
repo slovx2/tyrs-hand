@@ -5,7 +5,7 @@ type UserItem = Extract<ThreadItem, { type: "userMessage" }>;
 type AgentItem = Extract<ThreadItem, { type: "agentMessage" }>;
 type PlanItem = Extract<ThreadItem, { type: "plan" }>;
 type ReasoningItem = Extract<ThreadItem, { type: "reasoning" }>;
-type GeneratedImageItem = Extract<ThreadItem, { type: "imageGeneration" }>;
+export type GeneratedImageResult = { id: string; source: string };
 export type ToolItem = Exclude<ThreadItem,
   UserItem | AgentItem | PlanItem | ReasoningItem | Extract<ThreadItem, { type: "hookPrompt" }>>;
 
@@ -28,7 +28,7 @@ export type TurnBlock =
   | { kind: "commentary"; key: string; item: AgentItem }
   | { kind: "final"; key: string; item: AgentItem }
   | { kind: "plan"; key: string; item: PlanItem }
-  | { kind: "generatedImage"; key: string; item: GeneratedImageItem }
+  | { kind: "generatedImage"; key: string; image: GeneratedImageResult }
   | ToolGroup;
 
 export type TurnPresentation = {
@@ -46,6 +46,8 @@ export function projectTurnPresentation(turn: Turn): TurnPresentation {
   const blocks: TurnBlock[] = [];
   let pendingTools: ToolItem[] = [];
   let currentReasoningHeading: string | null = null;
+  const hasDynamicGeneratedImage = turn.items.some((item) =>
+    item.type === "dynamicToolCall" && generatedImageResult(item) !== null);
   const unknownFinalId = turn.status === "completed"
     ? [...turn.items].reverse().find((item) =>
       item.type === "agentMessage" && item.phase === null)?.id ?? null
@@ -56,9 +58,8 @@ export function projectTurnPresentation(turn: Turn): TurnPresentation {
     blocks.push(createToolGroup(pendingTools, trailing && turn.status === "inProgress",
       trailing ? currentReasoningHeading : null));
     for (const item of pendingTools) {
-      if (item.type === "imageGeneration" && item.savedPath) {
-        blocks.push({ kind: "generatedImage", key: `${item.id}:result`, item });
-      }
+      const image = generatedImageResult(item);
+      if (image) blocks.push({ kind: "generatedImage", key: `${item.id}:result`, image });
     }
     pendingTools = [];
   };
@@ -80,8 +81,10 @@ export function projectTurnPresentation(turn: Turn): TurnPresentation {
     if (item.type === "userMessage") {
       blocks.push({ kind: "user", key: item.id, item });
     } else if (item.type === "agentMessage") {
+      const visibleItem = hasDynamicGeneratedImage
+        ? { ...item, text: stripLocalMarkdownImages(item.text) } : item;
       blocks.push({ kind: item.phase === "final_answer" || item.id === unknownFinalId
-        ? "final" : "commentary", key: item.id, item });
+        ? "final" : "commentary", key: item.id, item: visibleItem });
     } else if (item.type === "plan") {
       blocks.push({ kind: "plan", key: item.id, item });
     }
@@ -332,12 +335,27 @@ function toolItemCategory(item: ToolItem): ToolGroupCategory {
   case "collabAgentToolCall":
   case "subAgentActivity": return "collaboration";
   case "mcpToolCall": return "mcp";
-  case "dynamicToolCall": return "dynamic";
+  case "dynamicToolCall": return item.tool === "generate_image" ? "image" : "dynamic";
   case "sleep": return "wait";
   case "contextCompaction": return "context";
   case "enteredReviewMode":
   case "exitedReviewMode": return "review";
   }
+}
+
+function generatedImageResult(item: ToolItem): GeneratedImageResult | null {
+  if (item.type === "imageGeneration" && item.savedPath) {
+    return { id: item.id, source: item.savedPath };
+  }
+  if (item.type !== "dynamicToolCall" || item.tool !== "generate_image" ||
+    item.success !== true) return null;
+  const image = item.contentItems?.find((content) => content.type === "inputImage");
+  return image?.type === "inputImage" && image.imageUrl
+    ? { id: item.id, source: image.imageUrl } : null;
+}
+
+function stripLocalMarkdownImages(value: string): string {
+  return value.replace(/!\[[^\]]*\]\((?:file:\/\/)?\/[^\n)]+\)/g, "").trim();
 }
 
 function webSearchOperation(item: Extract<ToolItem, { type: "webSearch" }>, running: boolean): string {

@@ -124,7 +124,7 @@ func TestRetryableControlErrorRejectsPermanentHTTPFailure(t *testing.T) {
 	}))
 }
 
-func TestAttachAgentImagesDeduplicatesGeneratedImageAndCleansAfterUpload(t *testing.T) {
+func TestAttachAgentImagesDeduplicatesGeneratedImageAndKeepsDisplayPath(t *testing.T) {
 	var requests atomic.Int32
 	attachmentID := uuid.New()
 	runID := uuid.New()
@@ -144,7 +144,8 @@ func TestAttachAgentImagesDeduplicatesGeneratedImageAndCleansAfterUpload(t *test
 		client:    workerprotocol.NewClient(server.URL, "worker-token", time.Second),
 		imageRoot: filepath.Join(t.TempDir(), "generated-images"),
 	}
-	require.NoError(t, processor.writeGeneratedImage("thread-1", "turn-1", "call-1", image))
+	_, err = processor.writeGeneratedImage("thread-1", "turn-1", "call-1", image)
+	require.NoError(t, err)
 	directory, err := processor.generatedImageTurnDirectory("thread-1", "turn-1")
 	require.NoError(t, err)
 	generatedPath := filepath.Join(directory, generatedImageScope("call-1")+".png")
@@ -163,6 +164,5 @@ func TestAttachAgentImagesDeduplicatesGeneratedImageAndCleansAfterUpload(t *test
 	require.Equal(t, "done", result.FinalAnswer)
 	require.Equal(t, []uuid.UUID{attachmentID}, result.AttachmentIDs)
 	require.EqualValues(t, 1, requests.Load())
-	_, err = os.Stat(generatedPath)
-	require.ErrorIs(t, err, os.ErrNotExist)
+	require.FileExists(t, generatedPath)
 }

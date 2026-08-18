@@ -23,8 +23,13 @@ export function projectItemForMobile(item: ThreadItem): ThreadItem {
     return { ...item, changes: item.changes.map((change) => ({ ...change, diff: "" })) };
   case "mcpToolCall":
     return { ...item, arguments: null, result: null, error: null };
-  case "dynamicToolCall":
-    return { ...item, arguments: null, contentItems: null };
+  case "dynamicToolCall": {
+    const generatedImages = item.tool === "generate_image"
+      ? item.contentItems?.filter((content) => content.type === "inputImage") ?? null
+      : null;
+    return { ...item, arguments: null,
+      contentItems: generatedImages && generatedImages.length > 0 ? generatedImages : null };
+  }
   case "collabAgentToolCall":
     return { ...item, prompt: null, agentsStates: {} };
   case "webSearch":

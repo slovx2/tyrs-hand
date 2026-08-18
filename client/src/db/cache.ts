@@ -1,7 +1,7 @@
 import type { Thread } from "@codex-app-server/v2/Thread";
 
 import { THREAD_PAGE_SIZE } from "@/app-server/officialClient";
-import type { MobileProject, ThreadRecord } from "@/app-server/types";
+import type { MobileProject, ThreadPreferences, ThreadRecord } from "@/app-server/types";
 import { isPreviewMode } from "@/preview/config";
 import { normalizeTerminalTurn } from "@/store/threadHistory";
 import { getDatabase, withDatabaseTransaction } from "./database";
@@ -99,9 +99,22 @@ function parseThreadRecord(payload: string, archived: boolean): ThreadRecord[] {
     return normalizedThread && typeof normalizedThread.id === "string" &&
       Array.isArray(normalizedThread.turns) && validHistory
       ? [{ thread: normalizedThread, archived, workspaceId: value.workspaceId ?? null,
-        projectId: value.projectId ?? null, history }]
+        projectId: value.projectId ?? null, preferences: parseThreadPreferences(value.preferences),
+        history }]
       : [];
   } catch {
     return [];
   }
+}
+
+function parseThreadPreferences(value: unknown): ThreadPreferences | null {
+  if (!value || typeof value !== "object") return null;
+  const preferences = value as Partial<ThreadPreferences>;
+  if (typeof preferences.model !== "string" ||
+    (preferences.effort !== null && typeof preferences.effort !== "string") ||
+    (preferences.serviceTier !== null && typeof preferences.serviceTier !== "string") ||
+    (preferences.collaborationMode !== "default" && preferences.collaborationMode !== "plan")) {
+    return null;
+  }
+  return preferences as ThreadPreferences;
 }

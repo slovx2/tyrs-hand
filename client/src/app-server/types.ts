@@ -1,4 +1,6 @@
 import type { ServerRequest } from "@codex-app-server/ServerRequest";
+import type { ModeKind } from "@codex-app-server/ModeKind";
+import type { ReasoningEffort } from "@codex-app-server/ReasoningEffort";
 import type { Model } from "@codex-app-server/v2/Model";
 import type { Thread } from "@codex-app-server/v2/Thread";
 
@@ -19,7 +21,15 @@ export type ThreadRecord = {
   archived: boolean;
   workspaceId: string | null;
   projectId: string | null;
+  preferences?: ThreadPreferences | null | undefined;
   history: ThreadHistoryState;
+};
+
+export type ThreadPreferences = {
+  model: string;
+  effort: ReasoningEffort | null;
+  serviceTier: string | null;
+  collaborationMode: ModeKind;
 };
 
 export type ThreadHistoryState =

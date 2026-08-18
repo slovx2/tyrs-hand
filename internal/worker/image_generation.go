@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -30,6 +31,15 @@ const (
 	generatedImageFileLimit     = 10 << 20
 	generatedImageRetention     = 7 * 24 * time.Hour
 	imageResponseBodyLimit      = 16 << 20
+	imageGenerationLockFile     = ".generating"
+)
+
+type imageGenerationReservationState int
+
+const (
+	imageGenerationReserved imageGenerationReservationState = iota
+	imageGenerationInProgress
+	imageGenerationAlreadySucceeded
 )
 
 type imageGenerationArguments struct {
@@ -48,7 +58,7 @@ type imageGenerationResponse struct {
 func imageGenerationSpec() ports.DynamicToolSpec {
 	return ports.DynamicToolSpec{
 		Type: "function", Name: "generate_image",
-		Description: "Generate one PNG image from a text prompt and attach it to the current response.",
+		Description: "Generate at most one PNG image in the current turn and attach it to the response. After a successful call, show that image in the final answer and do not call this tool again in the same turn.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"prompt":{"type":"string","minLength":1,"maxLength":32000},"model":{"type":"string","minLength":1,"maxLength":256,"default":"gpt-image-2.5"},"size":{"type":"string","enum":["1024x1024","1024x1536","1536x1024"],"default":"1024x1024"},"quality":{"type":"string","enum":["auto","low","medium","high"],"default":"auto"}},"required":["prompt"],"additionalProperties":false}`),
 	}
 }
@@ -67,6 +77,17 @@ func (p *Processor) executeImageGenerationTool(ctx context.Context, workspace st
 	if request.ThreadID == "" || request.TurnID == "" || request.CallID == "" {
 		return imageGenerationFailure("图片生成调用缺少必要的会话信息。")
 	}
+	release, state, err := p.reserveImageGeneration(request.ThreadID, request.TurnID)
+	if err != nil {
+		return imageGenerationFailure("图片生成服务当前不可用。")
+	}
+	if state == imageGenerationAlreadySucceeded {
+		return imageGenerationFailure("本轮已经成功生成一张图片，请直接向用户展示并回复，不要再次调用 generate_image。")
+	}
+	if state == imageGenerationInProgress {
+		return imageGenerationFailure("本轮已有图片生成请求正在执行，请等待该结果并直接回复，不要重复调用 generate_image。")
+	}
+	defer release()
 	if p.hostRuntime == nil && p.imageRuntime == nil {
 		return imageGenerationFailure("图片生成服务当前不可用。")
 	}
@@ -164,12 +185,13 @@ func (p *Processor) executeImageGenerationTool(ctx context.Context, workspace st
 	if err != nil {
 		return imageGenerationFailure("图片服务返回了无效或过大的图片。")
 	}
-	if err := p.writeGeneratedImage(request.ThreadID, request.TurnID, request.CallID, image); err != nil {
+	path, err := p.writeGeneratedImage(request.ThreadID, request.TurnID, request.CallID, image)
+	if err != nil {
 		return imageGenerationFailure("生成的图片无法保存，请稍后重试。")
 	}
 	encoded := base64.StdEncoding.EncodeToString(image)
 	return codex.ToolCallResult{Success: true, ContentItems: []codex.ToolContentItem{
-		{Type: "inputText", Text: "图片已生成，并会作为本轮附件保存。"},
+		{Type: "inputText", Text: fmt.Sprintf("图片已生成并保存到 %s。请立即在最终答复中使用 Markdown `![生成的图片](%s)` 展示它；本轮不要再次调用 generate_image。", path, path)},
 		{Type: "inputImage", ImageURL: "data:image/png;base64," + encoded},
 	}}
 }
@@ -309,51 +331,98 @@ func (p *Processor) generatedImageTurnDirectory(threadID, turnID string) (string
 	return filepath.Join(root, generatedImageScope(threadID), generatedImageScope(turnID)), nil
 }
 
-func (p *Processor) writeGeneratedImage(threadID, turnID, callID string, image []byte) error {
-	if err := p.cleanupStaleGeneratedImages(p.currentImageTime()); err != nil && p.logger != nil {
-		p.logger.Warn("清理过期生成图片失败", zap.Error(err))
+func (p *Processor) reserveImageGeneration(threadID, turnID string) (func(),
+	imageGenerationReservationState, error,
+) {
+	directory, err := p.prepareGeneratedImageDirectory(threadID, turnID)
+	if err != nil {
+		return func() {}, imageGenerationReserved, err
 	}
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return func() {}, imageGenerationReserved, err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".png" {
+			return func() {}, imageGenerationAlreadySucceeded, nil
+		}
+	}
+	lockPath := filepath.Join(directory, imageGenerationLockFile)
+	lock, err := os.OpenFile(lockPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if errors.Is(err, os.ErrExist) {
+		return func() {}, imageGenerationInProgress, nil
+	}
+	if err != nil {
+		return func() {}, imageGenerationReserved, err
+	}
+	if err := lock.Close(); err != nil {
+		_ = os.Remove(lockPath)
+		return func() {}, imageGenerationReserved, err
+	}
+	return func() { _ = os.Remove(lockPath) }, imageGenerationReserved, nil
+}
+
+func (p *Processor) prepareGeneratedImageDirectory(threadID, turnID string) (string, error) {
 	directory, err := p.generatedImageTurnDirectory(threadID, turnID)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if err := os.MkdirAll(directory, 0o700); err != nil {
-		return err
+		return "", err
 	}
-	root, _ := p.generatedImageRoot()
+	root, err := p.generatedImageRoot()
+	if err != nil {
+		return "", err
+	}
 	for current := directory; pathInside(root, current); current = filepath.Dir(current) {
 		if err := os.Chmod(current, 0o700); err != nil {
-			return err
+			return "", err
 		}
 		if current == root {
 			break
 		}
 	}
+	return directory, nil
+}
+
+func (p *Processor) writeGeneratedImage(threadID, turnID, callID string,
+	image []byte,
+) (string, error) {
+	if err := p.cleanupStaleGeneratedImages(p.currentImageTime()); err != nil && p.logger != nil {
+		p.logger.Warn("清理过期生成图片失败", zap.Error(err))
+	}
+	directory, err := p.prepareGeneratedImageDirectory(threadID, turnID)
+	if err != nil {
+		return "", err
+	}
 	path := filepath.Join(directory, generatedImageScope(callID)+".png")
 	file, err := os.CreateTemp(directory, "."+generatedImageScope(callID)+"-*.tmp")
 	if err != nil {
-		return err
+		return "", err
 	}
 	temporary := file.Name()
 	_, writeErr := file.Write(image)
 	closeErr := file.Close()
 	if writeErr != nil {
 		_ = os.Remove(temporary)
-		return writeErr
+		return "", writeErr
 	}
 	if closeErr != nil {
 		_ = os.Remove(temporary)
-		return closeErr
+		return "", closeErr
 	}
 	if err := os.Chmod(temporary, 0o600); err != nil {
 		_ = os.Remove(temporary)
-		return err
+		return "", err
 	}
 	if err := os.Rename(temporary, path); err != nil {
 		_ = os.Remove(temporary)
-		return err
+		return "", err
 	}
-	return os.Chmod(path, 0o600)
+	if err := os.Chmod(path, 0o600); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 func (p *Processor) cleanupStaleGeneratedImages(now time.Time) error {

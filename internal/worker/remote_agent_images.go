@@ -103,9 +103,6 @@ func (p *Processor) attachAgentImages(ctx context.Context, task *workerprotocol.
 	if result.FinalAnswer == "" && len(result.AttachmentIDs) == 0 {
 		return result, errors.New("codex turn 已完成但没有最终回复或图片")
 	}
-	if len(generatedCandidates) > 0 {
-		p.cleanupGeneratedImageTurn(threadID, result.TurnID)
-	}
 	return result, nil
 }
 

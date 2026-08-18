@@ -1,5 +1,3 @@
-import type { ModeKind } from "@codex-app-server/ModeKind";
-import type { ReasoningEffort } from "@codex-app-server/ReasoningEffort";
 import type { RequestId } from "@codex-app-server/RequestId";
 import type { ServerNotification } from "@codex-app-server/ServerNotification";
 import type { ServerRequest } from "@codex-app-server/ServerRequest";
@@ -23,13 +21,9 @@ import type { UserInput } from "@codex-app-server/v2/UserInput";
 import { JsonRpcRequestError } from "./jsonRpc";
 import { projectItemForMobile, projectThreadForMobile, projectTurnForMobile } from "./mobileProjection";
 import type { SubmissionJournal } from "./submissions";
+import type { ThreadPreferences } from "./types";
 
-export type TurnPreferences = {
-  model: string;
-  effort: ReasoningEffort | null;
-  serviceTier: string | null;
-  collaborationMode: ModeKind;
-};
+export type TurnPreferences = ThreadPreferences;
 
 export type SubmitInput = {
   threadId: string;
@@ -47,7 +41,11 @@ export type OfficialTurnPage = {
   nextCursor: string | null;
   backwardsCursor: string | null;
 };
-export type ResumedThreadPage = { thread: Thread; page: OfficialTurnPage };
+export type ResumedThreadPage = {
+  thread: Thread;
+  page: OfficialTurnPage;
+  preferences?: Omit<ThreadPreferences, "collaborationMode">;
+};
 export type GeneratedThreadTitle = { title: string; description: string };
 type EventListener = (event: ServerNotification | ServerRequest) => void;
 
@@ -168,7 +166,12 @@ export class OfficialAppServerClient {
     const page = paginateItems
       ? { ...shellPage, turns: await this.hydrateTurnItems(threadId, shellPage.turns) }
       : shellPage;
-    return { thread: { ...projectThreadForMobile(response.thread), turns: page.turns }, page };
+    return {
+      thread: { ...projectThreadForMobile(response.thread), turns: page.turns },
+      page,
+      preferences: { model: response.model, effort: response.reasoningEffort,
+        serviceTier: response.serviceTier },
+    };
   }
 
   async listTurnPage(threadId: string, cursor: string | null, limit = THREAD_PAGE_SIZE,
