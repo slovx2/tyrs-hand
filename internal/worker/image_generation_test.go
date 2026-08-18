@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -84,14 +85,14 @@ func TestGenerateImageUsesThreadProviderAndPersistsPrivatePNG(t *testing.T) {
 	result := processor.executeImageGenerationTool(context.Background(), t.TempDir(),
 		codex.ToolCallRequest{ThreadID: "thread-1", TurnID: "turn-1", CallID: "call-1",
 			Tool: "generate_image", Arguments: json.RawMessage(
-				`{"prompt":"一只猫","size":"1024x1536","quality":"high"}`)})
+				`{"prompt":"一只猫","model":"provider-image-preview","size":"1024x1536","quality":"high"}`)})
 
 	require.True(t, result.Success)
 	require.Len(t, result.ContentItems, 2)
 	require.Equal(t, "inputImage", result.ContentItems[1].Type)
 	require.Equal(t, "data:image/png;base64,"+agentImageTestPNG,
 		result.ContentItems[1].ImageURL)
-	require.Equal(t, "gpt-image-2", requestBody["model"])
+	require.Equal(t, "provider-image-preview", requestBody["model"])
 	require.Equal(t, "1024x1536", requestBody["size"])
 	require.Equal(t, "high", requestBody["quality"])
 	require.Equal(t, float64(1), requestBody["n"])
@@ -125,6 +126,9 @@ func TestGenerateImageRejectsInvalidConfigurationAndArguments(t *testing.T) {
 	}{
 		{name: "invalid arguments", providerID: "provider", arguments: `{"prompt":"","extra":1}`,
 			contains: "参数无效"},
+		{name: "invalid model", providerID: "provider",
+			arguments: `{"prompt":"cat","model":"` + strings.Repeat("m", imageGenerationModelLimit+1) + `"}`,
+			contains:  "参数无效"},
 		{name: "missing provider", providerID: "missing", arguments: `{"prompt":"cat"}`,
 			contains: "不支持图片生成"},
 		{name: "missing env", providerID: "provider", arguments: `{"prompt":"cat"}`,
@@ -146,6 +150,17 @@ func TestGenerateImageRejectsInvalidConfigurationAndArguments(t *testing.T) {
 			require.Contains(t, result.ContentItems[0].Text, test.contains)
 		})
 	}
+}
+
+func TestGenerateImageAllowsProviderModelOverride(t *testing.T) {
+	arguments, err := parseImageGenerationArguments(json.RawMessage(
+		`{"prompt":"cat","model":" provider-image-preview "}`))
+	require.NoError(t, err)
+	require.Equal(t, "provider-image-preview", arguments.Model)
+
+	arguments, err = parseImageGenerationArguments(json.RawMessage(`{"prompt":"cat"}`))
+	require.NoError(t, err)
+	require.Equal(t, defaultImageGenerationModel, arguments.Model)
 }
 
 func TestGenerateImageReturnsSanitizedUpstreamFailures(t *testing.T) {
@@ -270,6 +285,11 @@ func TestImageGenerationSpecMatchesPublicContract(t *testing.T) {
 				MinLength int `json:"minLength"`
 				MaxLength int `json:"maxLength"`
 			} `json:"prompt"`
+			Model struct {
+				MinLength int    `json:"minLength"`
+				MaxLength int    `json:"maxLength"`
+				Default   string `json:"default"`
+			} `json:"model"`
 			Size struct {
 				Enum    []string `json:"enum"`
 				Default string   `json:"default"`
@@ -285,6 +305,9 @@ func TestImageGenerationSpecMatchesPublicContract(t *testing.T) {
 	require.False(t, schema.AdditionalProperties)
 	require.Equal(t, 1, schema.Properties.Prompt.MinLength)
 	require.Equal(t, 32000, schema.Properties.Prompt.MaxLength)
+	require.Equal(t, 1, schema.Properties.Model.MinLength)
+	require.Equal(t, imageGenerationModelLimit, schema.Properties.Model.MaxLength)
+	require.Equal(t, defaultImageGenerationModel, schema.Properties.Model.Default)
 	require.Equal(t, "1024x1024", schema.Properties.Size.Default)
 	require.Equal(t, []string{"auto", "low", "medium", "high"}, schema.Properties.Quality.Enum)
 }

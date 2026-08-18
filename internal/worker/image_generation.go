@@ -23,15 +23,18 @@ import (
 )
 
 const (
-	generatedImagesDirectory = "generated-images"
-	imageGenerationTimeout   = 180 * time.Second
-	generatedImageFileLimit  = 10 << 20
-	generatedImageRetention  = 7 * 24 * time.Hour
-	imageResponseBodyLimit   = 16 << 20
+	generatedImagesDirectory    = "generated-images"
+	defaultImageGenerationModel = "gpt-image-2.5"
+	imageGenerationModelLimit   = 256
+	imageGenerationTimeout      = 180 * time.Second
+	generatedImageFileLimit     = 10 << 20
+	generatedImageRetention     = 7 * 24 * time.Hour
+	imageResponseBodyLimit      = 16 << 20
 )
 
 type imageGenerationArguments struct {
 	Prompt  string `json:"prompt"`
+	Model   string `json:"model"`
 	Size    string `json:"size"`
 	Quality string `json:"quality"`
 }
@@ -46,7 +49,7 @@ func imageGenerationSpec() ports.DynamicToolSpec {
 	return ports.DynamicToolSpec{
 		Type: "function", Name: "generate_image",
 		Description: "Generate one PNG image from a text prompt and attach it to the current response.",
-		InputSchema: json.RawMessage(`{"type":"object","properties":{"prompt":{"type":"string","minLength":1,"maxLength":32000},"size":{"type":"string","enum":["1024x1024","1024x1536","1536x1024"],"default":"1024x1024"},"quality":{"type":"string","enum":["auto","low","medium","high"],"default":"auto"}},"required":["prompt"],"additionalProperties":false}`),
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"prompt":{"type":"string","minLength":1,"maxLength":32000},"model":{"type":"string","minLength":1,"maxLength":256,"default":"gpt-image-2.5"},"size":{"type":"string","enum":["1024x1024","1024x1536","1536x1024"],"default":"1024x1024"},"quality":{"type":"string","enum":["auto","low","medium","high"],"default":"auto"}},"required":["prompt"],"additionalProperties":false}`),
 	}
 }
 
@@ -98,7 +101,7 @@ func (p *Processor) executeImageGenerationTool(ctx context.Context, workspace st
 	}
 
 	payload, _ := json.Marshal(map[string]any{
-		"model": "gpt-image-2", "prompt": arguments.Prompt,
+		"model": arguments.Model, "prompt": arguments.Prompt,
 		"size": arguments.Size, "quality": arguments.Quality,
 		"n": 1, "output_format": "png",
 	})
@@ -181,6 +184,13 @@ func parseImageGenerationArguments(raw json.RawMessage) (imageGenerationArgument
 	if decoder.Decode(&struct{}{}) != io.EOF || value.Prompt == "" ||
 		utf8.RuneCountInString(value.Prompt) > 32000 {
 		return value, errors.New("图片参数不合法")
+	}
+	value.Model = strings.TrimSpace(value.Model)
+	if value.Model == "" {
+		value.Model = defaultImageGenerationModel
+	}
+	if utf8.RuneCountInString(value.Model) > imageGenerationModelLimit {
+		return value, errors.New("图片模型名称不合法")
 	}
 	if value.Size == "" {
 		value.Size = "1024x1024"
