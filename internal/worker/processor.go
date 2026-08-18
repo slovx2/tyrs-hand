@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codex"
@@ -30,6 +33,11 @@ type Processor struct {
 	hostRuntime  *hostworker.Runtime
 	workspaceID  uuid.UUID
 	modelCatalog json.RawMessage
+	imageHTTP    *http.Client
+	imageRuntime *codex.Runtime
+	imageRoot    string
+	imageNow     func() time.Time
+	imageTimeout time.Duration
 }
 
 func (p *Processor) UseHostRuntime(runtime *hostworker.Runtime, workspaceID uuid.UUID,
@@ -38,6 +46,12 @@ func (p *Processor) UseHostRuntime(runtime *hostworker.Runtime, workspaceID uuid
 	p.hostRuntime = runtime
 	p.workspaceID = workspaceID
 	p.modelCatalog = append(json.RawMessage(nil), modelCatalog...)
+	if runtime != nil {
+		p.imageRoot = filepath.Join(runtime.StateDir(), generatedImagesDirectory)
+		if err := p.cleanupStaleGeneratedImages(p.currentImageTime()); err != nil && p.logger != nil {
+			p.logger.Warn("清理过期生成图片失败", zap.Error(err))
+		}
+	}
 }
 
 func (p *Processor) browserScope() string {
@@ -166,7 +180,7 @@ func (p *Processor) processRemoteGitHub(ctx context.Context, task *workerprotoco
 		ReasoningEffort: settings.ReasoningEffort,
 		ServiceTier:     codexsettings.RuntimeServiceTier(settings.ServiceTier),
 		NetworkEnabled:  settings.NetworkEnabled,
-		DynamicTools:    withBrowserTools(p.cfg, githubSpec, localGitSpec(true), githubReplySpec()),
+		DynamicTools:    githubWorkItemTools(p.cfg, githubSpec),
 		RuntimeConfig:   runtimeConfig,
 		DeveloperInstructions: browserDeveloperInstructions(p.cfg,
 			instructions+"\n\nFollow repository AGENTS.md and the explicitly attached skills. Use only the authorized GitHub work item and current worktree. Use git.commit for commits and git.publish_branch for pushes. After all business actions, call tyrs_hand.reply_to_github exactly once with the user-facing result, then provide a natural final answer."),

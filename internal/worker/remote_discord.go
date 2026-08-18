@@ -158,9 +158,9 @@ func resolveHostWorkspaceRuntime(workspaceRoot, codexHome string,
 
 func workspaceGitTools(spec *workerprotocol.WorkspaceProjectContext) []ports.DynamicToolSpec {
 	if spec.WorkspaceKind != "git" {
-		return []ports.DynamicToolSpec{automationSpec()}
+		return withImageGenerationTool(automationSpec())
 	}
-	return []ports.DynamicToolSpec{localGitSpec(spec.CloneURL != ""), automationSpec()}
+	return withImageGenerationTool(localGitSpec(spec.CloneURL != ""), automationSpec())
 }
 
 func remoteDiscordEventReporter(report func(string, json.RawMessage)) func(string, json.RawMessage) {

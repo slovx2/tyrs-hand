@@ -109,6 +109,10 @@ func githubReplySpec() ports.DynamicToolSpec {
 			InputSchema: json.RawMessage(`{"type":"object","properties":{"body":{"type":"string","minLength":1,"maxLength":60000}},"required":["body"],"additionalProperties":false}`)}}}
 }
 
+func githubWorkItemTools(cfg config.Config, githubSpec ports.DynamicToolSpec) []ports.DynamicToolSpec {
+	return withBrowserTools(cfg, githubSpec, localGitSpec(true), githubReplySpec())
+}
+
 func automationSpec() ports.DynamicToolSpec {
 	return ports.DynamicToolSpec{Type: "namespace", Name: "tyrs_hand",
 		Description: "Manage scheduled tasks scoped to the current Tyrs Hand workspace.",

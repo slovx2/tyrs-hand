@@ -60,6 +60,12 @@ func (p *Processor) handleRemoteHostDiscordTool(ctx context.Context,
 	var result codex.ToolCallResult
 	var err error
 	switch namespace {
+	case "":
+		if request.Tool != "generate_image" {
+			err = errors.New("未知顶层 workspace 工具")
+			break
+		}
+		result = p.executeImageGenerationTool(ctx, runtime.Workspace, request)
 	case browserToolNamespace:
 		result, err = executeBrowserTool(ctx, p.cfg, task.Claimed.ID.String(),
 			runtime.Workspace, request)

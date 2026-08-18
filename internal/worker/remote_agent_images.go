@@ -19,6 +19,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
+	"go.uber.org/zap"
 )
 
 const (
@@ -61,6 +62,11 @@ func (p *Processor) attachAgentImages(ctx context.Context, task *workerprotocol.
 		candidates = append(candidates, agentImageCandidate{itemID: item.ID,
 			path: item.SavedPath})
 	}
+	generatedCandidates, err := p.generatedImageCandidates(threadID, result.TurnID)
+	if err != nil {
+		return result, fmt.Errorf("扫描动态工具生成图片: %w", err)
+	}
+	candidates = append(candidates, generatedCandidates...)
 	cleaned, markdownCandidates := localMarkdownImages(result.FinalAnswer, workspace)
 	result.FinalAnswer = strings.TrimSpace(cleaned)
 	candidates = append(candidates, markdownCandidates...)
@@ -97,7 +103,53 @@ func (p *Processor) attachAgentImages(ctx context.Context, task *workerprotocol.
 	if result.FinalAnswer == "" && len(result.AttachmentIDs) == 0 {
 		return result, errors.New("codex turn 已完成但没有最终回复或图片")
 	}
+	if len(generatedCandidates) > 0 {
+		p.cleanupGeneratedImageTurn(threadID, result.TurnID)
+	}
 	return result, nil
+}
+
+func (p *Processor) generatedImageCandidates(threadID, turnID string) ([]agentImageCandidate, error) {
+	if p.hostRuntime == nil && strings.TrimSpace(p.imageRoot) == "" {
+		return nil, nil
+	}
+	directory, err := p.generatedImageTurnDirectory(threadID, turnID)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(directory)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	result := make([]agentImageCandidate, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".png" {
+			continue
+		}
+		name := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+		result = append(result, agentImageCandidate{
+			itemID: "generate-image-" + name,
+			path:   filepath.Join(directory, entry.Name()),
+		})
+	}
+	return result, nil
+}
+
+func (p *Processor) cleanupGeneratedImageTurn(threadID, turnID string) {
+	directory, err := p.generatedImageTurnDirectory(threadID, turnID)
+	if err != nil {
+		return
+	}
+	if err := os.RemoveAll(directory); err != nil && p.logger != nil {
+		p.logger.Warn("删除已投影生成图片失败", zap.Error(err))
+	}
+	threadDirectory := filepath.Dir(directory)
+	if entries, readErr := os.ReadDir(threadDirectory); readErr == nil && len(entries) == 0 {
+		_ = os.Remove(threadDirectory)
+	}
 }
 
 func (p *Processor) uploadAgentAttachment(ctx context.Context, task *workerprotocol.Task,

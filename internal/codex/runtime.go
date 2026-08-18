@@ -84,9 +84,26 @@ func (r *Runtime) StartTurn(ctx context.Context, threadID string, input ports.Tu
 }
 
 type ThreadSnapshot struct {
-	ID     string          `json:"id"`
-	Status json.RawMessage `json:"status"`
-	Turns  []TurnSnapshot  `json:"turns"`
+	ID            string          `json:"id"`
+	CWD           string          `json:"cwd"`
+	ModelProvider string          `json:"modelProvider"`
+	Status        json.RawMessage `json:"status"`
+	Turns         []TurnSnapshot  `json:"turns"`
+}
+
+// ModelProvider 是 config/read 返回的已合并 Provider 配置子集。
+// Worker 只使用声明式的 URL、环境变量和静态请求参数，不解析 config.toml。
+type ModelProvider struct {
+	BaseURL        string            `json:"base_url"`
+	EnvKey         string            `json:"env_key"`
+	HTTPHeaders    map[string]string `json:"http_headers"`
+	EnvHTTPHeaders map[string]string `json:"env_http_headers"`
+	QueryParams    map[string]string `json:"query_params"`
+}
+
+type RuntimeConfig struct {
+	ModelProvider  string                   `json:"model_provider"`
+	ModelProviders map[string]ModelProvider `json:"model_providers"`
 }
 
 type TurnSnapshot struct {
@@ -136,6 +153,19 @@ func (r *Runtime) ReadThread(ctx context.Context, threadID string) (ThreadSnapsh
 		return ThreadSnapshot{}, errors.New("调用 Codex thread/read 未返回 Thread")
 	}
 	return result.Thread, nil
+}
+
+// ReadRuntimeConfig 通过 Codex 读取指定工作目录实际生效的合并配置。
+func (r *Runtime) ReadRuntimeConfig(ctx context.Context, cwd string) (RuntimeConfig, error) {
+	var result struct {
+		Config RuntimeConfig `json:"config"`
+	}
+	if err := r.client.Call(ctx, "config/read", map[string]any{
+		"cwd": absolute(cwd), "includeLayers": false,
+	}, &result); err != nil {
+		return RuntimeConfig{}, err
+	}
+	return result.Config, nil
 }
 
 // RollbackThread 删除线程末尾的指定数量 turn。调用方仍需通过 thread/read 对账未知响应。

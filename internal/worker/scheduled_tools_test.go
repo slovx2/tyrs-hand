@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/slovx2/tyrs-hand/internal/appserverhub"
+	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/stretchr/testify/require"
@@ -13,8 +15,9 @@ func TestAutomationSpecIsInjectedForWorkspaceProjects(t *testing.T) {
 	directory := workspaceGitTools(&workerprotocol.WorkspaceProjectContext{
 		WorkspaceKind: "directory",
 	})
-	require.Len(t, directory, 1)
+	require.Len(t, directory, 2)
 	require.True(t, hasDynamicTool(directory, "tyrs_hand", "automation_update"))
+	require.True(t, hasDynamicTool(directory, "", "generate_image"))
 	require.False(t, hasDynamicTool(directory, "git", "status"))
 
 	git := workspaceGitTools(&workerprotocol.WorkspaceProjectContext{
@@ -22,6 +25,7 @@ func TestAutomationSpecIsInjectedForWorkspaceProjects(t *testing.T) {
 	})
 	require.True(t, hasDynamicTool(git, "tyrs_hand", "automation_update"))
 	require.True(t, hasDynamicTool(git, "git", "status"))
+	require.True(t, hasDynamicTool(git, "", "generate_image"))
 }
 
 func TestDesktopNewThreadReceivesAutomationSpec(t *testing.T) {
@@ -46,6 +50,26 @@ func TestDesktopNewThreadReceivesAutomationSpec(t *testing.T) {
 		}
 	}
 	require.True(t, found)
+	require.Contains(t, string(params), `"name":"generate_image"`)
+}
+
+func TestDesktopResumeDoesNotInjectNewDynamicTools(t *testing.T) {
+	controller := &desktopController{processor: &Processor{}, workspace: &workspaceCodex{}}
+	params := controller.configureDesktopThreadRuntime(appserverhub.Call{
+		Role: appserverhub.RoleDesktop, Method: "thread/resume",
+	}, json.RawMessage(`{"threadId":"thread-1","cwd":"/tmp/project"}`))
+	var value struct {
+		DynamicTools []json.RawMessage `json:"dynamicTools"`
+	}
+	require.NoError(t, json.Unmarshal(params, &value))
+	require.Empty(t, value.DynamicTools)
+}
+
+func TestGitHubWorkItemDoesNotReceiveImageGenerationTool(t *testing.T) {
+	specs := githubWorkItemTools(config.Config{}, ports.DynamicToolSpec{
+		Type: "namespace", Name: "github",
+	})
+	require.False(t, hasDynamicTool(specs, "", "generate_image"))
 }
 
 func TestAutomationSpecRequiresOnlyActionAtSchemaBoundary(t *testing.T) {
@@ -82,6 +106,9 @@ func TestScheduledRunAddsUnattendedDeveloperInstruction(t *testing.T) {
 
 func hasDynamicTool(specs []ports.DynamicToolSpec, namespace, name string) bool {
 	for _, spec := range specs {
+		if namespace == "" && spec.Type == "function" && spec.Name == name {
+			return true
+		}
 		if spec.Name != namespace {
 			continue
 		}

@@ -489,7 +489,8 @@ func (c *desktopController) injectDesktopRuntime(params json.RawMessage,
 	if options.includeDynamicTools {
 		cwd, _ := value["cwd"].(string)
 		allowPublish := c.desktopWorkspaceAllowsPublish(cwd)
-		specs := withBrowserTools(c.processor.cfg, localGitSpec(allowPublish), automationSpec())
+		specs := withBrowserTools(c.processor.cfg,
+			withImageGenerationTool(localGitSpec(allowPublish), automationSpec())...)
 		current, _ := value["dynamicTools"].([]any)
 		for _, spec := range specs {
 			encoded, _ := json.Marshal(spec)

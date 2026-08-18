@@ -34,6 +34,18 @@ type eventRuntimeClient struct {
 
 func (c *eventRuntimeClient) Events() <-chan Event { return c.events }
 
+type configRuntimeClient struct {
+	payload map[string]any
+}
+
+func (c *configRuntimeClient) Call(_ context.Context, method string, payload, result any) error {
+	c.payload = payload.(map[string]any)
+	if method != "config/read" {
+		return nil
+	}
+	return json.Unmarshal([]byte(`{"config":{"model_provider":"default-provider","model_providers":{"thread-provider":{"base_url":"https://api.example.com/v1","env_key":"PROVIDER_KEY","http_headers":{"X-Static":"one"},"env_http_headers":{"X-Env":"HEADER_KEY"},"query_params":{"tenant":"a"}}}}}`), result)
+}
+
 func TestStartTurnCarriesCollaborationMode(t *testing.T) {
 	for _, mode := range []string{"default", "plan"} {
 		t.Run(mode, func(t *testing.T) {
@@ -73,6 +85,30 @@ func TestRollbackThreadUsesSingleLatestTurn(t *testing.T) {
 	require.Equal(t, 1, client.payload["numTurns"])
 	require.ErrorContains(t, NewRuntime(client).RollbackThread(context.Background(), "thread-1", 2),
 		"只允许 rollback 最新一个 turn")
+}
+
+func TestResumeThreadDoesNotMigrateDynamicTools(t *testing.T) {
+	client := &recordingRuntimeClient{}
+	err := NewRuntime(client).ResumeThread(context.Background(), "thread-1", ports.ThreadOptions{
+		CWD: t.TempDir(), DynamicTools: []ports.DynamicToolSpec{{Type: "function", Name: "new-tool"}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "thread/resume", client.method)
+	require.NotContains(t, client.payload, "dynamicTools")
+}
+
+func TestReadRuntimeConfigReturnsMergedProviderFields(t *testing.T) {
+	client := &configRuntimeClient{}
+	config, err := NewRuntime(client).ReadRuntimeConfig(context.Background(), t.TempDir())
+	require.NoError(t, err)
+	require.Equal(t, false, client.payload["includeLayers"])
+	require.Equal(t, "default-provider", config.ModelProvider)
+	provider := config.ModelProviders["thread-provider"]
+	require.Equal(t, "https://api.example.com/v1", provider.BaseURL)
+	require.Equal(t, "PROVIDER_KEY", provider.EnvKey)
+	require.Equal(t, "one", provider.HTTPHeaders["X-Static"])
+	require.Equal(t, "HEADER_KEY", provider.EnvHTTPHeaders["X-Env"])
+	require.Equal(t, "a", provider.QueryParams["tenant"])
 }
 
 func TestThreadPayloadAndSkillInput(t *testing.T) {
