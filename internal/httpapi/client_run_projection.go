@@ -292,8 +292,9 @@ func (s *Server) ensureRunProjection(ctx context.Context, runID uuid.UUID) error
 		return err
 	}
 	var watermark int64
-	if err = tx.QueryRowContext(ctx, `SELECT client_projection_sequence
-		FROM codex_turn_runs WHERE id=$1 FOR UPDATE`, runID).Scan(&watermark); err != nil {
+	var runStatus string
+	if err = tx.QueryRowContext(ctx, `SELECT client_projection_sequence,status
+		FROM codex_turn_runs WHERE id=$1 FOR UPDATE`, runID).Scan(&watermark, &runStatus); err != nil {
 		return err
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT run_event_sequence,event_type,payload,occurred_at
@@ -327,7 +328,22 @@ func (s *Server) ensureRunProjection(ctx context.Context, runID uuid.UUID) error
 			return err
 		}
 	}
+	if err = convergeTerminalRunOperationsTx(ctx, tx, runID, runStatus); err != nil {
+		return err
+	}
 	return tx.Commit()
+}
+
+func convergeTerminalRunOperationsTx(ctx context.Context, tx *sql.Tx, runID uuid.UUID,
+	runStatus string,
+) error {
+	if runStatus != "completed" && runStatus != "failed" && runStatus != "canceled" {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, `UPDATE run_process_activities
+		SET status='failed',updated_at=now()
+		WHERE run_id=$1 AND kind='operation' AND status='running'`, runID)
+	return err
 }
 
 func createInteractiveSegmentTx(ctx context.Context, tx *sql.Tx, requestID uuid.UUID) error {
