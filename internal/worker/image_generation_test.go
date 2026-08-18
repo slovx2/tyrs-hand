@@ -92,10 +92,12 @@ func TestGenerateImageUsesThreadProviderAndPersistsPrivatePNG(t *testing.T) {
 
 	require.True(t, result.Success)
 	require.Len(t, result.ContentItems, 2)
-	require.Contains(t, result.ContentItems[0].Text, "![生成的图片]")
-	require.Equal(t, "inputImage", result.ContentItems[1].Type)
+	require.Equal(t, "inputImage", result.ContentItems[0].Type)
 	require.Equal(t, "data:image/png;base64,"+agentImageTestPNG,
-		result.ContentItems[1].ImageURL)
+		result.ContentItems[0].ImageURL)
+	require.Equal(t, "inputText", result.ContentItems[1].Type)
+	require.Contains(t, result.ContentItems[1].Text, "SUCCESS")
+	require.Contains(t, result.ContentItems[1].Text, "![生成的图片]")
 	require.Equal(t, "provider-image-preview", requestBody["model"])
 	require.Equal(t, "1024x1536", requestBody["size"])
 	require.Equal(t, "high", requestBody["quality"])

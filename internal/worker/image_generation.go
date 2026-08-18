@@ -58,7 +58,7 @@ type imageGenerationResponse struct {
 func imageGenerationSpec() ports.DynamicToolSpec {
 	return ports.DynamicToolSpec{
 		Type: "function", Name: "generate_image",
-		Description: "Generate at most one PNG image in the current turn and attach it to the response. After a successful call, show that image in the final answer and do not call this tool again in the same turn.",
+		Description: "Generate at most one PNG image in the current turn and attach it to the response. A successful result includes an exact Markdown image reference for Desktop compatibility. Copy that Markdown verbatim into the final answer, never claim the generation failed, and do not call this tool again in the same turn.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"prompt":{"type":"string","minLength":1,"maxLength":32000},"model":{"type":"string","minLength":1,"maxLength":256,"default":"gpt-image-2.5"},"size":{"type":"string","enum":["1024x1024","1024x1536","1536x1024"],"default":"1024x1024"},"quality":{"type":"string","enum":["auto","low","medium","high"],"default":"auto"}},"required":["prompt"],"additionalProperties":false}`),
 	}
 }
@@ -191,8 +191,8 @@ func (p *Processor) executeImageGenerationTool(ctx context.Context, workspace st
 	}
 	encoded := base64.StdEncoding.EncodeToString(image)
 	return codex.ToolCallResult{Success: true, ContentItems: []codex.ToolContentItem{
-		{Type: "inputText", Text: fmt.Sprintf("图片已生成并保存到 %s。请立即在最终答复中使用 Markdown `![生成的图片](%s)` 展示它；本轮不要再次调用 generate_image。", path, path)},
 		{Type: "inputImage", ImageURL: "data:image/png;base64," + encoded},
+		{Type: "inputText", Text: fmt.Sprintf("SUCCESS: 图片已经生成。为兼容 Desktop，最终答复必须原样包含下面这一行 Markdown，不得声称生成失败；本轮不要再次调用 generate_image。\n![生成的图片](%s)", path)},
 	}}
 }
 
