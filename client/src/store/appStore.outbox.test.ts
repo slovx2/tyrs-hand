@@ -176,6 +176,35 @@ describe("移动端 Outbox 新 Thread", () => {
     pending.resolve({ threadId, turnId: "turn-1", deduplicated: false });
     await expect(submission).resolves.toBe(true);
   });
+
+  it("执行计划立即插入乐观 Turn 并向 App Server 保留完整计划", async () => {
+    const profileId = "execute-plan-optimistic";
+    const threadId = "thread-plan";
+    activate(profileId);
+    const planned = thread(threadId);
+    planned.turns = [{ id: "turn-plan", status: "completed", error: null, startedAt: 1,
+      completedAt: 2, durationMs: 1, itemsView: "full",
+      items: [{ type: "plan", id: "plan-item", text: "# 计划\n- 修改代码" }] }];
+    useAppStore.setState({ threads: [{ thread: planned, archived: false, workspaceId: null,
+      projectId: project.id, history: { kind: "loaded", olderCursor: null,
+        tailOlderCursor: null, hasLoadedOldest: true } }] });
+    const pending = deferred<{ threadId: string; turnId: string; deduplicated: boolean }>();
+    client.submit.mockReturnValueOnce(pending.promise);
+
+    const submission = useAppStore.getState().executePlan(threadId, preferences);
+    const optimistic = useAppStore.getState().threads[0]?.thread.turns.at(-1);
+    expect(optimistic).toMatchObject({ id: "provisional:plan:thread-plan:plan-item",
+      status: "inProgress", items: [{ type: "userMessage",
+        clientId: "plan:thread-plan:plan-item" }] });
+    await vi.waitFor(() => expect(client.submit).toHaveBeenCalledWith(expect.objectContaining({
+      clientMessageId: "plan:thread-plan:plan-item",
+      input: [{ type: "text", text: "PLEASE IMPLEMENT THIS PLAN:\n# 计划\n- 修改代码",
+        text_elements: [] }],
+    })));
+
+    pending.resolve({ threadId, turnId: "turn-implementation", deduplicated: false });
+    await expect(submission).resolves.toBeUndefined();
+  });
 });
 
 function activate(profileId: string, controls: Connection["controls"] = []): void {

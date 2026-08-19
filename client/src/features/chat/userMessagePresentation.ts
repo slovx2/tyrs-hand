@@ -14,6 +14,7 @@ export type UserMessagePresentation = { text: string; attachments: UserAttachmen
 
 const legacyHeader = "# Files mentioned by the user:\n\n";
 const legacyRequestMarker = "\n\n## My request:\n";
+const implementPlanPrefix = "PLEASE IMPLEMENT THIS PLAN:\n";
 const imagePattern = /\.(?:avif|gif|heic|heif|jpe?g|png|webp)$/i;
 
 export function projectUserMessage(item: UserMessage): UserMessagePresentation {
@@ -23,6 +24,10 @@ export function projectUserMessage(item: UserMessage): UserMessagePresentation {
   let hasStructuredImage = false;
   for (const [index, input] of item.content.entries()) {
     if (input.type === "text") {
+      if (item.clientId?.startsWith("plan:") && input.text.startsWith(implementPlanPrefix)) {
+        textParts.push("是的，执行计划");
+        continue;
+      }
       const legacy = parseLegacyAttachmentMessage(input.text);
       if (legacy) {
         if (legacy.text) textParts.push(legacy.text);

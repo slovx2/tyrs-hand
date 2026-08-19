@@ -5,8 +5,8 @@ import type { Thread } from "@codex-app-server/v2/Thread";
 import { describe, expect, it } from "vitest";
 
 import { JsonRpcRequestError } from "./jsonRpc";
-import { latestCompletedPlan, normalizeGeneratedTitle, OfficialAppServerClient, textInput,
-  type OfficialRpcClient } from "./officialClient";
+import { latestCompletedPlan, latestExecutablePlan, normalizeGeneratedTitle,
+  OfficialAppServerClient, textInput, type OfficialRpcClient } from "./officialClient";
 import type { SubmissionJournal } from "./submissions";
 
 class FakeRpc implements OfficialRpcClient {
@@ -562,6 +562,14 @@ describe("OfficialAppServerClient", () => {
         phase: "final_answer", memoryCitation: null }, { type: "plan", id: "plan-new", text: "new" }]),
     ]);
     expect(latestCompletedPlan(thread)).toEqual({ turnId: "turn-new", itemId: "plan-new", text: "new" });
+    expect(latestExecutablePlan(thread)).toEqual({ turnId: "turn-new", itemId: "plan-new",
+      text: "new" });
+
+    const continued = officialThread([...thread.turns,
+      officialTurn("turn-implementation", "inProgress", [])]);
+    expect(latestCompletedPlan(continued)).toEqual({ turnId: "turn-new", itemId: "plan-new",
+      text: "new" });
+    expect(latestExecutablePlan(continued)).toBeNull();
   });
 });
 

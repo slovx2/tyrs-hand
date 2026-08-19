@@ -7,7 +7,7 @@ import { ActivityIndicator, Alert, AppState, KeyboardAvoidingView, Platform, Pre
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { LocalAttachment } from "@/app-server/attachments";
-import { latestCompletedPlan, type TurnPreferences } from "@/app-server/officialClient";
+import { latestExecutablePlan, type TurnPreferences } from "@/app-server/officialClient";
 import { defaultTurnPreferences } from "@/app-server/preferences";
 import { targetKey } from "@/app-server/types";
 import { Button, EmptyState } from "@/components/ui";
@@ -416,7 +416,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       action={<Button title="重试" onPress={() => void loadThread(sessionId)} />} />;
   }
 
-  const plan = latestCompletedPlan(record.thread);
+  const plan = latestExecutablePlan(record.thread);
   return <ImageLoadGateContext.Provider value={imageLoadGate}>
     <KeyboardAvoidingView {...keyboardAvoidance(Platform.OS, insets.top, keyboardVisible)}
     style={styles.container}>

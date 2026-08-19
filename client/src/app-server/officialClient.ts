@@ -698,6 +698,17 @@ export function latestCompletedPlan(thread: Thread): { turnId: string; itemId: s
   return null;
 }
 
+export function latestExecutablePlan(thread: Thread): {
+  turnId: string;
+  itemId: string;
+  text: string;
+} | null {
+  const turn = thread.turns.at(-1);
+  if (!turn || turn.status !== "completed") return null;
+  const plan = [...turn.items].reverse().find((item) => item.type === "plan");
+  return plan?.type === "plan" ? { turnId: turn.id, itemId: plan.id, text: plan.text } : null;
+}
+
 function findClientMessage(thread: Thread, clientMessageId: string): Turn | null {
   return thread.turns.find((turn) => hasClientMessage(turn, clientMessageId)) ?? null;
 }

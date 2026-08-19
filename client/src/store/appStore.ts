@@ -7,7 +7,7 @@ import * as Crypto from "expo-crypto";
 import { create } from "zustand";
 
 import { materializeUserInput, type LocalAttachment } from "@/app-server/attachments";
-import { latestCompletedPlan, textInput, THREAD_PAGE_SIZE,
+import { latestExecutablePlan, textInput, THREAD_PAGE_SIZE,
   type TurnPreferences } from "@/app-server/officialClient";
 import { officialClientFor } from "@/app-server/registry";
 import { completeOutbox, discardOutboxItem, enqueueOutbox, failOutbox, listOutbox, markOutboxProcessing,
@@ -215,16 +215,23 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   executePlan: async (threadId, preferences) => {
     const record = requireThread(get(), threadId);
-    const plan = latestCompletedPlan(record.thread);
+    const plan = latestExecutablePlan(record.thread);
     if (!plan) throw new Error("最新完成的 Turn 没有可执行计划");
     const clientId = `plan:${threadId}:${plan.itemId}`;
+    const internalMessage = `PLEASE IMPLEMENT THIS PLAN:\n${plan.text}`;
     const connection = requireConnection(get());
     const client = bindClient(connection, record.workspaceId, set, get);
-    await client.connect();
-    await client.submit({ threadId, clientMessageId: clientId,
-      input: [textInput(`PLEASE IMPLEMENT THIS PLAN:\n${plan.text}`)],
-      preferences: { ...preferences, collaborationMode: "default" }, projectId: record.projectId });
-    await queueThreadTailRefresh(threadId, set, get).catch(() => undefined);
+    insertOptimisticTurn(connection.profileId, record, clientId, internalMessage, [], set, get);
+    try {
+      await client.connect();
+      await client.submit({ threadId, clientMessageId: clientId,
+        input: [textInput(internalMessage)],
+        preferences: { ...preferences, collaborationMode: "default" }, projectId: record.projectId });
+      await queueThreadTailRefresh(threadId, set, get).catch(() => undefined);
+    } catch (error) {
+      removeOptimisticTurn(connection.profileId, threadId, clientId, set, get);
+      throw error;
+    }
   },
 
   interruptThread: async (threadId) => {

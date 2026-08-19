@@ -70,4 +70,21 @@ describe("用户消息图片投影", () => {
     expect(result.attachments).toEqual([expect.objectContaining({ name: "图片", kind: "image",
       uri: "data:image/png;base64,iVBORw0KGgo=" })]);
   });
+
+  it("执行计划的内部长消息只显示官方短文案", () => {
+    const item = { type: "userMessage", id: "user-plan", clientId: "plan:thread:plan-item",
+      content: [{ type: "text", text: "PLEASE IMPLEMENT THIS PLAN:\n# 很长的计划\n- 第一步",
+        text_elements: [] }] } as ThreadItem;
+
+    expect(projectUserMessage(item as Extract<ThreadItem, { type: "userMessage" }>))
+      .toMatchObject({ text: "是的，执行计划", attachments: [] });
+  });
+
+  it("普通用户手动输入相同前缀时保留原文", () => {
+    const text = "PLEASE IMPLEMENT THIS PLAN:\n不要折叠";
+    const item = { type: "userMessage", id: "user", clientId: "ordinary-message",
+      content: [{ type: "text", text, text_elements: [] }] } as ThreadItem;
+
+    expect(projectUserMessage(item as Extract<ThreadItem, { type: "userMessage" }>).text).toBe(text);
+  });
 });
