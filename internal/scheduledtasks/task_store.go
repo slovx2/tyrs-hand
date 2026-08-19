@@ -92,6 +92,9 @@ func validateSettings(settings SettingsInput) error {
 }
 
 func (s *Service) Create(ctx context.Context, tool ToolContext, args ToolArguments) (Task, error) {
+	if args.Kind == "" {
+		args.Kind = KindHeartbeat
+	}
 	if args.Kind != KindStandalone && args.Kind != KindHeartbeat {
 		return Task{}, errors.New("kind 必须是 standalone 或 heartbeat")
 	}

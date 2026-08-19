@@ -144,6 +144,23 @@ func TestScheduledTasksDatabaseIntegration(t *testing.T) {
 		require.NotEqual(t, first.ID, second.ID)
 	})
 
+	t.Run("create 未指定 kind 时默认 heartbeat", func(t *testing.T) {
+		fixture := seedScheduledFixture(t, db, "heartbeat-default")
+		service := NewService(db, time.Minute, 5, 3)
+		service.now = func() time.Time {
+			return time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+		}
+		name, prompt := "默认跟进", "继续当前会话中的工作"
+		raw := "DTSTART:20300102T000000Z\nRRULE:FREQ=DAILY"
+		task, err := service.Create(ctx, fixture.tool("heartbeat-default-create"), ToolArguments{
+			Action: "create", Name: &name, Prompt: &prompt, Schedule: &raw,
+		})
+		require.NoError(t, err)
+		require.Equal(t, KindHeartbeat, task.Kind)
+		require.NotNil(t, task.TargetSessionID)
+		require.Equal(t, fixture.session, *task.TargetSessionID)
+	})
+
 	t.Run("standalone 物化与 Intent 生命周期", func(t *testing.T) {
 		fixture := seedScheduledFixture(t, db, "standalone")
 		service := NewService(db, 2*time.Second, 5, 3)

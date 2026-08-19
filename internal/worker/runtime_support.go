@@ -118,6 +118,8 @@ func automationSpec() ports.DynamicToolSpec {
 		Description: "Manage scheduled tasks scoped to the current Tyrs Hand workspace.",
 		Tools: []ports.DynamicToolSpec{{Type: "function", Name: "automation_update",
 			Description: "Create, update, list, delete, or immediately run a scheduled task. " +
+				"Create heartbeat tasks by default so execution continues in the current session. " +
+				"Choose standalone only when the user explicitly asks for an independent/new session or project-level task. " +
 				"Standalone tasks target the current project; heartbeat tasks target the current session. " +
 				"Schedules are RFC 5545 recurrence sets with DTSTART and optional RRULE/RDATE/EXDATE.",
 			InputSchema: json.RawMessage(`{
@@ -125,7 +127,7 @@ func automationSpec() ports.DynamicToolSpec {
 				"properties":{
 					"action":{"type":"string","enum":["create","update","list","delete","run_now"]},
 					"task_id":{"type":"string","format":"uuid"},
-					"kind":{"type":"string","enum":["standalone","heartbeat"]},
+					"kind":{"type":"string","enum":["standalone","heartbeat"],"default":"heartbeat","description":"Defaults to heartbeat. Use standalone only when the user explicitly requests an independent/new session or project-level task."},
 					"name":{"type":"string","minLength":1,"maxLength":120},
 					"prompt":{"type":"string","minLength":1,"maxLength":100000},
 					"schedule":{"type":"string","minLength":1,"maxLength":65536},

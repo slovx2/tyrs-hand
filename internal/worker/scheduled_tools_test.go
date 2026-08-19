@@ -89,6 +89,14 @@ func TestAutomationSpecRequiresOnlyActionAtSchemaBoundary(t *testing.T) {
 		"timezone", "status", "settings", "include_deleted"} {
 		require.Contains(t, schema.Properties, property)
 	}
+	var kind struct {
+		Default     string `json:"default"`
+		Description string `json:"description"`
+	}
+	require.NoError(t, json.Unmarshal(schema.Properties["kind"], &kind))
+	require.Equal(t, "heartbeat", kind.Default)
+	require.Contains(t, kind.Description, "Defaults to heartbeat")
+	require.Contains(t, spec.Tools[0].Description, "Create heartbeat tasks by default")
 }
 
 func TestScheduledRunAddsUnattendedDeveloperInstruction(t *testing.T) {
