@@ -10,7 +10,7 @@ import { CachedMessageImage } from "@/features/images/CachedMessageImage";
 import { RemoteMessageImage } from "@/features/images/RemoteMessageImage";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useRenderScheduler } from "@/render/renderScheduler";
-import { renderInputFromTurn, renderTurnInBackground } from "@/render/conversationRenderRuntime";
+import { renderInputFromTurn, renderTurnInBackground } from "@/render/conversationRender";
 import { useTheme } from "@/theme/ThemeProvider";
 import { isToolGroupExpanded, isTurnActivityCollapsed,
   toggleToolGroup, toggleTurnActivity } from "./activityDisclosure";

@@ -1,5 +1,3 @@
-import { createWorkletRuntime, runOnRuntime, scheduleOnRN } from "react-native-worklets";
-
 export type RenderInputItem = {
   id: string;
   type: string;
@@ -38,16 +36,11 @@ export type TurnRenderModel = {
   thinkingLabel: string | null;
 };
 
-type Complete = (requestId: number, generation: number,
-  result: TurnRenderModel | null, error: string | null) => void;
-
-const runtime = createWorkletRuntime({ name: "conversation-render", useDefaultQueue: true });
 const pending = new Map<number, { generation: number; resolve: (result: TurnRenderModel) => void;
   reject: (error: Error) => void }>();
 let nextRequestId = 0;
 
 function projectTurn(input: RenderInput): TurnRenderModel {
-  "worklet";
   const blocks: RenderModelBlock[] = [];
   let tools: RenderInputItem[] = [];
   let heading: string | null = null;
@@ -151,7 +144,7 @@ function stripImages(value: string): string {
   return value.replace(/!\[[^\]]*\]\((?:file:\/\/)?\/[^\n)]*\)/g, "").trim();
 }
 
-function onComplete(requestId: number, generation: number,
+function completeRender(requestId: number, generation: number,
   result: TurnRenderModel | null, error: string | null): void {
   const task = pending.get(requestId);
   if (!task) return;
@@ -164,22 +157,22 @@ function onComplete(requestId: number, generation: number,
   else task.resolve(result);
 }
 
-const schedule = runOnRuntime(runtime, (requestId: number, generation: number,
-  input: RenderInput, complete: Complete) => {
-  "worklet";
-  try {
-    scheduleOnRN(complete, requestId, generation, projectTurn(input), null);
-  } catch (error) {
-    scheduleOnRN(complete, requestId, generation, null,
-      error instanceof Error ? error.message : "后台渲染失败");
-  }
-});
-
 export function renderTurnInBackground(input: RenderInput, generation = 0): Promise<TurnRenderModel> {
   const requestId = ++nextRequestId;
   return new Promise<TurnRenderModel>((resolve, reject) => {
     pending.set(requestId, { generation, resolve, reject });
-    schedule(requestId, generation, input, onComplete);
+    // 纯 TS 方案不创建额外 Native Runtime；让出当前事件循环后再计算，
+    // 调用方会在导航交互完成后触发，避免与首帧和转场争抢 JS 时间片。
+    setTimeout(() => {
+      const task = pending.get(requestId);
+      if (!task) return;
+      try {
+        completeRender(requestId, generation, projectTurn(input), null);
+      } catch (error) {
+        completeRender(requestId, generation, null,
+          error instanceof Error ? error.message : "后台渲染失败");
+      }
+    }, 0);
   });
 }
 
