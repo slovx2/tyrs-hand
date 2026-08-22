@@ -10,23 +10,26 @@ import { CachedMessageImage } from "./CachedMessageImage";
 import { ImageLoadGateContext } from "./ImageLoadGate";
 
 const downloads = new Map<string, Promise<string>>();
+const MESSAGE_IMAGE_CACHE_DIRECTORY = "message-images-v2";
 
 export const RemoteMessageImage = memo(function RemoteMessageImage({ profileId, remotePath,
-  filename, testID }: {
+  filename, cacheKey, testID }: {
   profileId: string;
   remotePath: string;
   filename: string;
+  cacheKey: string;
   testID?: string;
 }) {
   const loadGate = useContext(ImageLoadGateContext);
   const [uri, setUri] = useState<string | null>(null);
   useEffect(() => {
+    setUri(null);
     let active = true;
     let started = false;
     const resolve = () => {
       if (!active || started) return;
       started = true;
-      void resolveRemoteImage(profileId, remotePath, filename)
+      void resolveRemoteImage(profileId, remotePath, filename, cacheKey)
         .then((value) => { if (active) setUri(value); })
         .catch(() => { if (active) setUri(""); });
     };
@@ -36,18 +39,20 @@ export const RemoteMessageImage = memo(function RemoteMessageImage({ profileId, 
       active = false;
       cancelWait();
     };
-  }, [filename, loadGate, profileId, remotePath]);
-  return <CachedMessageImage uri={uri ?? ""} filename={filename}
+  }, [cacheKey, filename, loadGate, profileId, remotePath]);
+  return <CachedMessageImage uri={uri ?? ""} filename={filename} cacheKey={cacheKey}
     {...(testID ? { testID } : {})} />;
 });
 
 async function resolveRemoteImage(profileId: string, remotePath: string,
-  filename: string): Promise<string> {
+  filename: string, cacheKey: string): Promise<string> {
   if (!remotePath.startsWith("/")) throw new Error("远端图片路径必须是绝对路径");
-  const key = `${profileId}\0${remotePath}`;
+  // 远端路径可能在不同会话中被复用（例如 /tmp/image.png）。
+  // 必须把消息/条目身份纳入键，不能把另一会话的内容当成当前图片。
+  const key = `${profileId}\0${cacheKey}\0${remotePath}`;
   const existing = downloads.get(key);
   if (existing) return existing;
-  const pending = downloadAndCache(profileId, remotePath, filename);
+  const pending = downloadAndCache(profileId, remotePath, filename, cacheKey);
   downloads.set(key, pending);
   try {
     return await pending;
@@ -58,11 +63,11 @@ async function resolveRemoteImage(profileId: string, remotePath: string,
 }
 
 async function downloadAndCache(profileId: string, remotePath: string,
-  filename: string): Promise<string> {
+  filename: string, cacheKey: string): Promise<string> {
   const digest = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256,
-    `${profileId}\0${remotePath}`);
+    `${profileId}\0${cacheKey}\0${remotePath}`);
   const extension = imageExtension(filename) ?? imageExtension(remotePath) ?? ".img";
-  const directory = new Directory(Paths.cache, "message-images");
+  const directory = new Directory(Paths.cache, MESSAGE_IMAGE_CACHE_DIRECTORY);
   directory.create({ idempotent: true, intermediates: true });
   const target = new File(directory, `${digest}${extension}`);
   if (target.exists && (target.size ?? 0) > 0) return imageURI(target.uri);

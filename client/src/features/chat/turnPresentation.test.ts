@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { createToolGroup, formatDuration, mixedToolGroupTitle, projectTurnPresentation,
   reasoningActivityHeading, toolGroupTitle, toolOperationLines, turnActivitySummary,
-  type ToolGroupCategory,
+  isToolFailed, type ToolGroupCategory,
   type ToolItem } from "./turnPresentation";
 
 describe("官方 Turn 移动展示投影", () => {
@@ -177,25 +177,38 @@ describe("官方 Turn 移动展示投影", () => {
     expect(result.canCollapseActivity).toBe(false);
   });
 
-  it("为每类官方工具提供运行、完成和失败标题", () => {
-    const titles: [ToolGroupCategory, string, string, string][] = [
-      ["command", "正在运行命令", "运行了命令", "运行命令失败"],
-      ["file", "正在修改文件", "修改了文件", "修改文件失败"],
-      ["search", "正在搜索网页", "搜索了网页", "搜索网页失败"],
-      ["image", "正在处理图片", "处理了图片", "图片操作失败"],
-      ["collaboration", "正在协调协作任务", "协调了协作任务", "协作任务失败"],
-      ["mcp", "正在调用 MCP 工具", "调用了 MCP 工具", "MCP 工具调用失败"],
-      ["dynamic", "正在调用动态工具", "调用了动态工具", "动态工具调用失败"],
-      ["wait", "正在等待", "完成了等待", "等待失败"],
-      ["context", "正在压缩会话上下文", "压缩了会话上下文", "压缩上下文失败"],
-      ["review", "正在进行代码审查", "完成了代码审查", "代码审查操作失败"],
-      ["mixed", "正在使用工具", "使用了工具", "工具调用失败"],
+  it("为每类官方工具提供运行和完成标题", () => {
+    const titles: [ToolGroupCategory, string, string][] = [
+      ["command", "正在运行命令", "运行了命令"],
+      ["file", "正在修改文件", "修改了文件"],
+      ["search", "正在搜索网页", "搜索了网页"],
+      ["image", "正在处理图片", "处理了图片"],
+      ["collaboration", "正在协调协作任务", "协调了协作任务"],
+      ["mcp", "正在调用 MCP 工具", "调用了 MCP 工具"],
+      ["dynamic", "正在调用动态工具", "调用了动态工具"],
+      ["wait", "正在等待", "完成了等待"],
+      ["context", "正在压缩会话上下文", "压缩了会话上下文"],
+      ["review", "正在进行代码审查", "完成了代码审查"],
+      ["mixed", "正在使用工具", "使用了工具"],
     ];
-    for (const [category, running, completed, failed] of titles) {
-      expect(toolGroupTitle(category, true, false)).toBe(running);
-      expect(toolGroupTitle(category, false, false)).toBe(completed);
-      expect(toolGroupTitle(category, false, true)).toBe(failed);
+    for (const [category, running, completed] of titles) {
+      expect(toolGroupTitle(category, true)).toBe(running);
+      expect(toolGroupTitle(category, false)).toBe(completed);
     }
+  });
+
+  it("批次中部分或全部失败时仍保留正常批次标题", () => {
+    const partial = createToolGroup([
+      command("done", "completed"), command("failed", "failed"),
+    ]);
+    const allFailed = createToolGroup([
+      command("failed-1", "failed"), command("failed-2", "failed"),
+    ]);
+
+    expect(partial).toMatchObject({ title: "运行了命令" });
+    expect(allFailed).toMatchObject({ title: "运行了命令" });
+    expect(partial.items.map(isToolFailed)).toEqual([false, true]);
+    expect(allFailed.items.map(isToolFailed)).toEqual([true, true]);
   });
 
   it("识别官方 imageGeneration generating 状态并让不同工具形成混合批次", () => {
@@ -248,7 +261,7 @@ describe("官方 Turn 移动展示投影", () => {
       status: "completed", arguments: null, appContext: null, pluginId: null,
       readOnlyHint: true, result: null, error: null, durationMs: 2 } as ToolItem;
 
-    expect(mixedToolGroupTitle([file, mcp], false, false))
+    expect(mixedToolGroupTitle([file, mcp], false))
       .toBe("调用了 1 个 MCP 工具、修改了 2 个文件");
     expect(createToolGroup([file, mcp])).toMatchObject({ category: "mixed",
       title: "调用了 1 个 MCP 工具、修改了 2 个文件" });
@@ -338,7 +351,7 @@ function agent(id: string, text: string, phase: "commentary" | "final_answer" | 
 }
 
 function command(id: string, status: "inProgress" | "completed" | "failed" = "completed"):
-  ThreadItem {
+  ToolItem {
   return { type: "commandExecution", id, pluginId: null, scriptPath: null,
     command: `echo ${id}`, cwd: "/workspace", processId: null, source: "agent", status,
     commandActions: [], aggregatedOutput: null, exitCode: status === "completed" ? 0 : null,

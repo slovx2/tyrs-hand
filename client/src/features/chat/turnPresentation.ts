@@ -19,7 +19,6 @@ export type ToolGroup = {
   category: ToolGroupCategory;
   running: boolean;
   inferredRunning: boolean;
-  failed: boolean;
   title: string;
 };
 
@@ -146,14 +145,13 @@ export function createToolGroup(items: ToolItem[], inferStatelessRunning = false
   const inferredRunning = !explicitlyRunning && inferStatelessRunning &&
     items.some((item) => item.type === "webSearch");
   const running = explicitlyRunning || inferredRunning || liveHeading !== null;
-  const failed = items.some(isToolFailed);
   const currentCommandTitle = runningCommandTitle(items);
   return { kind: "tools", key: items[0]!.id, items: [...items], category, running,
-    inferredRunning, failed, title: currentCommandTitle ??
+    inferredRunning, title: currentCommandTitle ??
       (!explicitlyRunning && !inferredRunning && liveHeading
       ? liveHeading : category === "mixed"
-      ? mixedToolGroupTitle(items, running, failed)
-      : toolGroupTitle(category, running, failed)) };
+      ? mixedToolGroupTitle(items, running)
+      : toolGroupTitle(category, running)) };
 }
 
 function runningCommandTitle(items: ToolItem[]): string | null {
@@ -167,9 +165,7 @@ function runningCommandTitle(items: ToolItem[]): string | null {
  * 官方完成态不会只显示笼统的 “Used tools”，而会在折叠头汇总工具类别和数量。
  * 移动端不展示工具输出，因此这个摘要也是用户无需二次展开即可确认工具调用的入口。
  */
-export function mixedToolGroupTitle(items: ToolItem[], running: boolean,
-  failed: boolean): string {
-  if (failed && !running) return "工具调用失败";
+export function mixedToolGroupTitle(items: ToolItem[], running: boolean): string {
   const counts = new Map<ToolGroupCategory, number>();
   for (const item of items) {
     const category = toolItemCategory(item);
@@ -181,25 +177,24 @@ export function mixedToolGroupTitle(items: ToolItem[], running: boolean,
     const count = counts.get(category);
     return count === undefined ? [] : [toolCategorySummary(category, count, running)];
   });
-  return parts.join("、") || toolGroupTitle("mixed", running, failed);
+  return parts.join("、") || toolGroupTitle("mixed", running);
 }
 
-export function toolGroupTitle(category: ToolGroupCategory, running: boolean,
-  failed: boolean): string {
-  const labels: Record<ToolGroupCategory, [string, string, string]> = {
-    command: ["正在运行命令", "运行了命令", "运行命令失败"],
-    file: ["正在修改文件", "修改了文件", "修改文件失败"],
-    search: ["正在搜索网页", "搜索了网页", "搜索网页失败"],
-    image: ["正在处理图片", "处理了图片", "图片操作失败"],
-    collaboration: ["正在协调协作任务", "协调了协作任务", "协作任务失败"],
-    mcp: ["正在调用 MCP 工具", "调用了 MCP 工具", "MCP 工具调用失败"],
-    dynamic: ["正在调用动态工具", "调用了动态工具", "动态工具调用失败"],
-    wait: ["正在等待", "完成了等待", "等待失败"],
-    context: ["正在压缩会话上下文", "压缩了会话上下文", "压缩上下文失败"],
-    review: ["正在进行代码审查", "完成了代码审查", "代码审查操作失败"],
-    mixed: ["正在使用工具", "使用了工具", "工具调用失败"],
+export function toolGroupTitle(category: ToolGroupCategory, running: boolean): string {
+  const labels: Record<ToolGroupCategory, [string, string]> = {
+    command: ["正在运行命令", "运行了命令"],
+    file: ["正在修改文件", "修改了文件"],
+    search: ["正在搜索网页", "搜索了网页"],
+    image: ["正在处理图片", "处理了图片"],
+    collaboration: ["正在协调协作任务", "协调了协作任务"],
+    mcp: ["正在调用 MCP 工具", "调用了 MCP 工具"],
+    dynamic: ["正在调用动态工具", "调用了动态工具"],
+    wait: ["正在等待", "完成了等待"],
+    context: ["正在压缩会话上下文", "压缩了会话上下文"],
+    review: ["正在进行代码审查", "完成了代码审查"],
+    mixed: ["正在使用工具", "使用了工具"],
   };
-  return labels[category][failed && !running ? 2 : running ? 0 : 1];
+  return labels[category][running ? 0 : 1];
 }
 
 const TOOL_SUMMARY_ORDER: ToolGroupCategory[] = [

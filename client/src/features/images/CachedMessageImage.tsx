@@ -1,18 +1,23 @@
 import { Image } from "expo-image";
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { useTheme } from "@/theme/ThemeProvider";
 import { ZoomableImageViewer } from "./ZoomableImageViewer";
 
-export const CachedMessageImage = memo(function CachedMessageImage({ uri, filename, testID }: {
+export const CachedMessageImage = memo(function CachedMessageImage({ uri, filename, cacheKey, testID }: {
   uri: string;
   filename: string;
+  cacheKey: string;
   testID?: string;
 }) {
   const theme = useTheme();
   const [failed, setFailed] = useState(false);
   const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    setFailed(false);
+    setVisible(false);
+  }, [cacheKey, uri]);
   const networkSource = uri.startsWith("https://") || uri.startsWith("http://");
   if (failed || (!uri.startsWith("https://") && !uri.startsWith("http://") &&
     !uri.startsWith("file://") && !uri.startsWith("content://") && !uri.startsWith("data:"))) {
@@ -25,7 +30,7 @@ export const CachedMessageImage = memo(function CachedMessageImage({ uri, filena
       onPress={() => setVisible(true)} style={styles.pressable}>
       <Image testID={testID} source={uri} contentFit="contain"
         cachePolicy={networkSource ? "memory-disk" : "memory"}
-        priority="low" recyclingKey={uri}
+        priority="low" recyclingKey={`${cacheKey}\0${uri}`}
         onError={() => setFailed(true)}
         style={[styles.image, { backgroundColor: theme.colors.surfaceAlt }]} />
     </Pressable>

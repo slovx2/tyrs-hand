@@ -56,6 +56,7 @@ export const OfficialTurn = memo(function OfficialTurn({ profileId, threadId,
         {header}
         {activity && collapsed ? null
           : <TurnBlockView block={block} memoryKey={memoryKey} profileId={profileId}
+          threadId={threadId} turnId={turn.id}
           onDisclosureChange={() => {
             onDisclosureChange?.();
             redraw((value) => value + 1);
@@ -105,10 +106,12 @@ function ActivityHeader({ turnId, collapsed, summary, onPress }: {
   </View>;
 }
 
-function TurnBlockView({ block, memoryKey, profileId, onDisclosureChange }: {
+function TurnBlockView({ block, memoryKey, profileId, threadId, turnId, onDisclosureChange }: {
   block: TurnBlock;
   memoryKey: string;
   profileId: string;
+  threadId: string;
+  turnId: string;
   onDisclosureChange: () => void;
 }) {
   if (block.kind === "user") return <UserMessage item={block.item} profileId={profileId} />;
@@ -130,8 +133,10 @@ function TurnBlockView({ block, memoryKey, profileId, onDisclosureChange }: {
     {block.image.source.startsWith("/")
       ? <RemoteMessageImage profileId={profileId} remotePath={block.image.source}
         filename={imageFilename(block.image.source)}
+        cacheKey={`turn:${threadId}:${turnId}:${block.image.id}`}
         testID={`generated-image:${block.image.id}`} />
       : <CachedMessageImage uri={block.image.source} filename="生成的图片"
+        cacheKey={`turn:${threadId}:${turnId}:${block.image.id}`}
         testID={`generated-image:${block.image.id}`} />}
   </View>;
   return block.item.text.trim() ? <View testID="message:role:agent" style={styles.agentRow}>
@@ -167,10 +172,12 @@ function UserAttachmentView({ attachment, profileId }: {
   const theme = useTheme();
   if (attachment.kind === "image" && attachment.remotePath) {
     return <RemoteMessageImage profileId={profileId} remotePath={attachment.remotePath}
-      filename={attachment.name} testID={`user-image:${attachment.key}`} />;
+      filename={attachment.name} cacheKey={`attachment:${attachment.key}`}
+      testID={`user-image:${attachment.key}`} />;
   }
   if (attachment.kind === "image" && attachment.uri) {
     return <CachedMessageImage uri={attachment.uri} filename={attachment.name}
+      cacheKey={`attachment:${attachment.key}`}
       testID={`user-image:${attachment.key}`} />;
   }
   return <Text numberOfLines={1} style={[styles.file, { color: theme.colors.textMuted }]}>
@@ -199,7 +206,7 @@ function ToolGroupView({ group, memoryKey, onDisclosureChange }: {
       testID={`tool-group:${group.key}:toggle`} hitSlop={8} style={styles.toolHeader}
       onPress={() => { toggleToolGroup(memoryKey); onDisclosureChange(); }}>
       <Ionicons name={icon} size={17}
-        color={group.failed && !group.running ? theme.colors.danger : theme.colors.textMuted} />
+        color={theme.colors.textMuted} />
       <View style={styles.toolTitle}>
         <ThinkingShimmer active={group.running} color={theme.colors.textMuted}
           highlightColor={theme.colors.text} style={styles.toolTitleText}

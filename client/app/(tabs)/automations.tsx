@@ -16,7 +16,7 @@ export default function AutomationsScreen() {
   const controls = connection?.controls ?? [];
   const [serverId, setServerId] = useState<string>();
   const link = controls.find((item) => item.serverId === serverId) ?? controls[0];
-  const [status, setStatus] = useState<StatusFilter>("all");
+  const [status, setStatus] = useState<StatusFilter>("active");
   const [items, setItems] = useState<ScheduledTask[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,8 +58,8 @@ export default function AutomationsScreen() {
       onChange={setServerId} />
   </View> : null}
   <View style={styles.filters}><SegmentedControl testIDPrefix="automation:status" value={status}
-    options={[{ value: "all", label: "全部" }, { value: "active", label: "运行中" },
-      { value: "paused", label: "已暂停" }, { value: "completed", label: "已完成" }] as const}
+    options={[{ value: "active", label: "进行中" }, { value: "paused", label: "已暂停" },
+      { value: "completed", label: "已完成" }, { value: "all", label: "全部" }] as const}
     onChange={(value: StatusFilter) => setStatus(value)} /></View>
   {error ? <View style={[styles.error, { backgroundColor: theme.colors.surface }]}>
     <Text style={{ color: theme.colors.danger }}>{error}</Text>

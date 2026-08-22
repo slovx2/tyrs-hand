@@ -294,12 +294,14 @@ export const MarkdownContent = memo(function MarkdownContent({ children, cacheKe
       const filename = String(node.attributes.alt || source.split("/").at(-1) || "图片");
       if (source.startsWith("/")) {
         return <RemoteMessageImage key={node.key} profileId={profileId} remotePath={source}
-          filename={filename} testID={`${imageTestPrefix}:${node.key}`} />;
+          filename={filename} cacheKey={`markdown:${cacheKey}:${node.key}`}
+          testID={`${imageTestPrefix}:${node.key}`} />;
       }
       return <CachedMessageImage key={node.key} uri={source} filename={filename}
+        cacheKey={`markdown:${cacheKey}:${node.key}`}
         testID={`${imageTestPrefix}:${node.key}`} />;
     },
-  }), [imageTestPrefix, onFileCitationPress, profileId]);
+  }), [cacheKey, imageTestPrefix, onFileCitationPress, profileId]);
   return <Markdown markdownit={markdownIt} mergeStyle={false} rules={rules} style={markdownStyle}>
     {ast as unknown as ReactNode}
   </Markdown>;
