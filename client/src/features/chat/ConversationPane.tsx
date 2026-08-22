@@ -37,6 +37,7 @@ const rowType = (row: ConversationRow) => row.kind;
 
 const EMPTY_MODELS: Model[] = [];
 const EMPTY_REQUESTS: ServerRequest[] = [];
+const EMPTY_ROWS: ConversationRow[] = [];
 const LIST_POSITIONING = {
   startRenderingFromBottom: true,
 } as const;
@@ -64,7 +65,6 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const retryOutbox = useAppStore((state) => state.retryOutbox);
   const discardOutbox = useAppStore((state) => state.discardOutbox);
   const outbox = useAppStore((state) => state.outbox);
-  const loadState = useAppStore((state) => state.conversationLoads[sessionId]);
   const queued = useMemo(() => outbox.filter((item) =>
     item.kind === "submit_message" && item.threadId === sessionId), [outbox, sessionId]);
   const executePlan = useAppStore((state) => state.executePlan);
@@ -127,6 +127,18 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const dispatchFollow = useCallback((event: FollowEvent) => {
     followState.current = reduceFollowState(followState.current, event);
   }, []);
+
+  const reloadThread = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await loadThread(sessionId);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "无法读取官方会话历史");
+    } finally {
+      setLoading(false);
+    }
+  }, [loadThread, sessionId]);
 
   useEffect(() => {
     let canceled = false;
@@ -230,6 +242,9 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
 
   const rows = useMemo(() => conversationRows(record?.thread.turns ?? [], requests),
     [record?.thread.turns, requests]);
+  // 详情入口期间不显示 SQLite 中的旧历史；等最新一轮完成 hydrate 后再一次性
+  // 交给 FlashList，避免旧内容先出现、随后被服务端尾页替换造成大幅跳动。
+  const visibleRows = loading ? EMPTY_ROWS : rows;
   rowsRef.current = rows;
   const restorePosition = useMemo(() => resolveConversationPosition(null,
     rows.map((row) => row.key)), [rows]);
@@ -401,10 +416,10 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       ? <ServerRequestCard request={item.request} onAnswer={(result) => {
         if (!answerRequest(sessionId, item.request.id, result)) {
           Alert.alert("请求已经处理", "这个请求已由其他连接回答，正在刷新官方状态。");
-          void loadThread(sessionId);
+          void reloadThread();
         }
       }} />
-      : null, [answerRequest, canToggleActivity, handleDisclosureChange, loadThread, profileId,
+      : null, [answerRequest, canToggleActivity, handleDisclosureChange, profileId, reloadThread,
         sessionId]);
 
   if (!connection || !record) {
@@ -412,7 +427,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   }
   if (error && record.thread.turns.length === 0) {
     return <EmptyState title="无法加载会话" detail={error}
-      action={<Button title="重试" onPress={() => void loadThread(sessionId)} />} />;
+      action={<Button title="重试" onPress={() => void reloadThread()} />} />;
   }
 
   const plan = latestExecutablePlan(record.thread);
@@ -420,7 +435,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     <KeyboardAvoidingView {...keyboardAvoidance(Platform.OS, insets.top, keyboardVisible)}
     style={styles.container}>
     <View style={styles.messageArea}>
-      <FlashList key={sessionId} ref={list} testID="messages:list" data={rows}
+      <FlashList key={sessionId} ref={list} testID="messages:list" data={visibleRows}
         style={[styles.messageList, { opacity: hasRestorableAnchor && !positionRestored ? 0 : 1 }]}
         drawDistance={LIST_DRAW_DISTANCE}
         maxItemsInRecyclePool={LIST_RECYCLE_POOL_SIZE}
@@ -430,12 +445,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         getItemType={rowType}
         keyboardShouldPersistTaps="handled"
         renderItem={renderRow}
-        ListEmptyComponent={loading || loadState?.phase === "shell" ||
-          loadState?.phase === "loadingLatest"
-          ? <View testID="messages:skeleton" style={styles.listSkeleton}>
-            <View style={[styles.skeletonLine, { backgroundColor: theme.colors.surfaceAlt }]} />
-            <View style={[styles.skeletonLineShort, { backgroundColor: theme.colors.surfaceAlt }]} />
-          </View> : null}
+        ListEmptyComponent={loading ? <ConversationLoadingSkeleton /> : null}
         contentContainerStyle={styles.list}
         maintainVisibleContentPosition={LIST_POSITIONING}
         scrollEventThrottle={100}
@@ -597,14 +607,37 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   </ImageLoadGateContext.Provider>;
 }
 
+function ConversationLoadingSkeleton() {
+  const theme = useTheme();
+  return <View testID="messages:skeleton" style={styles.listSkeleton}>
+    <ActivityIndicator color={theme.colors.textMuted} />
+    <View style={[styles.skeletonCard, { backgroundColor: theme.colors.surfaceAlt }]}>
+      <View style={styles.skeletonLine} />
+      <View style={styles.skeletonLineShort} />
+      <View style={styles.skeletonLineLong} />
+    </View>
+    <View style={[styles.skeletonCard, styles.skeletonCardRight,
+      { backgroundColor: theme.colors.surfaceAlt }]}>
+      <View style={styles.skeletonLineLong} />
+      <View style={styles.skeletonLine} />
+    </View>
+  </View>;
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
   messageArea: { flex: 1, minHeight: 0 },
   messageList: { flex: 1 },
   list: { paddingVertical: 8 },
-  listSkeleton: { gap: 10, paddingHorizontal: 16, paddingVertical: 24 },
-  skeletonLine: { borderRadius: 5, height: 16, opacity: 0.8, width: "78%" },
-  skeletonLineShort: { borderRadius: 5, height: 16, opacity: 0.65, width: "48%" },
+  listSkeleton: { gap: 14, paddingHorizontal: 16, paddingVertical: 32 },
+  skeletonCard: { gap: 10, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 14 },
+  skeletonCardRight: { alignSelf: "flex-end", width: "78%" },
+  skeletonLine: { backgroundColor: "rgba(128, 128, 128, 0.25)", borderRadius: 5,
+    height: 16, opacity: 0.8, width: "78%" },
+  skeletonLineShort: { backgroundColor: "rgba(128, 128, 128, 0.25)", borderRadius: 5,
+    height: 16, opacity: 0.65, width: "48%" },
+  skeletonLineLong: { backgroundColor: "rgba(128, 128, 128, 0.25)", borderRadius: 5,
+    height: 16, opacity: 0.72, width: "94%" },
   historyStatus: { minHeight: 40, alignItems: "center", justifyContent: "center",
     paddingHorizontal: 16 },
   planAction: { paddingHorizontal: 16, paddingTop: 8 },

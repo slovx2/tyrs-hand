@@ -298,6 +298,9 @@ export const MarkdownContent = memo(function MarkdownContent({ children, cacheKe
     htmlUnderline: { color: theme.colors.text, textDecorationLine: "underline" },
     htmlSub: { color: theme.colors.text, fontSize: 11, lineHeight: 16 },
     htmlSup: { color: theme.colors.text, fontSize: 11, lineHeight: 16 },
+    loading: { width: "100%", paddingVertical: 2 },
+    loadingLine: { height: 16, marginBottom: blockGap, borderRadius: 5,
+      backgroundColor: theme.colors.surfaceAlt },
   }), [blockGap, compact, theme]);
   const rules = useMemo<RenderRules>(() => ({
     ...selectableRules,
@@ -325,11 +328,13 @@ export const MarkdownContent = memo(function MarkdownContent({ children, cacheKe
     },
   }), [cacheKey, imageTestPrefix, onFileCitationPress, profileId]);
   if (!ast) {
-    const preview = prepared.source.length > 4_000
-      ? `${prepared.source.slice(0, 4_000)}…` : prepared.source;
-    return <Text selectable style={[markdownStyle.text, compact && { opacity: 0.78 }]}>
-      {preview}
-    </Text>;
+    const lineCount = Math.min(10, Math.max(2, Math.ceil(prepared.source.length / 85)));
+    return <View testID="markdown:loading" accessibilityLabel="正在加载内容"
+      style={[markdownStyle.loading, compact && { opacity: 0.78 }]}>
+      {Array.from({ length: lineCount }, (_, index) => <View key={index}
+        style={[markdownStyle.loadingLine, { width: index === lineCount - 1 ? "58%" :
+          index % 3 === 0 ? "92%" : "100%" }]} />)}
+    </View>;
   }
   return <Markdown markdownit={markdownIt} mergeStyle={false} rules={rules} style={markdownStyle}>
     {ast as unknown as ReactNode}

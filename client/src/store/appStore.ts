@@ -7,7 +7,7 @@ import * as Crypto from "expo-crypto";
 import { create } from "zustand";
 
 import { materializeUserInput, type LocalAttachment } from "@/app-server/attachments";
-import { latestExecutablePlan, textInput, THREAD_PAGE_SIZE,
+import { latestExecutablePlan, textInput, THREAD_INITIAL_PAGE_SIZE, THREAD_PAGE_SIZE,
   type TurnPreferences } from "@/app-server/officialClient";
 import { officialClientFor } from "@/app-server/registry";
 import { completeOutbox, discardOutboxItem, enqueueOutbox, failOutbox, listOutbox, markOutboxProcessing,
@@ -736,7 +736,7 @@ async function loadOfficialThread(threadId: string, set: StoreSet, get: StoreGet
     await client.connect();
     const supportsShell = typeof client.loadThreadShell === "function";
     const resumed = supportsShell
-      ? await client.loadThreadShell(threadId, THREAD_PAGE_SIZE)
+      ? await client.loadThreadShell(threadId, THREAD_INITIAL_PAGE_SIZE)
       : await client.resumeThreadPage(threadId, "full", THREAD_PAGE_SIZE,
         record.thread.historyMode);
     if (get().activeConnection?.profileId !== connection.profileId) return;
@@ -745,11 +745,18 @@ async function loadOfficialThread(threadId: string, set: StoreSet, get: StoreGet
     // 首次进入详情也必须与 resume 的 legacy 短快照合并，否则冷启动后会把
     // 本地完整活动时间线覆盖掉。
     const hadLoadedHistory = current.history.kind === "loaded";
-    const merged = hadLoadedHistory
-      ? mergeTailPage(current.thread.turns, resumed.page.turns)
-      : { turns: resumed.page.turns, overlapped: false };
+    // 壳接口的入口不需要扫描本地完整历史；只有没有壳接口的旧链路才做尾页合并。
+    const merged = supportsShell
+      ? { turns: resumed.page.turns, overlapped: false }
+      : hadLoadedHistory
+        ? mergeTailPage(current.thread.turns, resumed.page.turns)
+        : { turns: resumed.page.turns, overlapped: false };
     const latest = requireThread(get(), threadId);
-    const preserve = hadLoadedHistory && merged.overlapped && latest.history.kind === "loaded";
+    const preserve = !supportsShell && hadLoadedHistory && merged.overlapped &&
+      latest.history.kind === "loaded";
+    // 壳接口的结果只包含最新一轮。即使 SQLite 里缓存了完整历史，入口也不把
+    // 那些旧 Turn 重新挂回列表，避免进入详情时从头布局和渲染整段会话。
+    // 没有壳接口的旧链路仍使用完整页，保证其分页游标和 Item 语义不变。
     const turns = merged.turns;
     const history = preserve && latest.history.kind === "loaded"
       ? { ...latest.history, tailOlderCursor: resumed.page.nextCursor }
@@ -764,7 +771,7 @@ async function loadOfficialThread(threadId: string, set: StoreSet, get: StoreGet
       preferences: nextPreferences };
     setThreadRecord(connection.profileId, next, set, get);
     syncPendingRequests(client, threadId, set);
-    if (!supportsShell || record.thread.historyMode !== "paginated") {
+    if (!supportsShell) {
       await saveThreadRecord(connection.profileId, next);
       setConversationLoad(threadId, { generation, phase: "ready",
         hydratedTurnIds: turns.map((turn) => turn.id), error: null }, set);
@@ -837,7 +844,7 @@ async function refreshOfficialThreadTail(connection: Connection, threadId: strin
   await client.connect();
   const [metadata, page] = await Promise.all([
     client.readThreadMetadata(threadId),
-    client.listTurnPage(threadId, null, THREAD_PAGE_SIZE, "full", record.thread.historyMode),
+    client.listTurnPage(threadId, null, THREAD_INITIAL_PAGE_SIZE, "full", record.thread.historyMode),
   ]);
   if (get().activeConnection?.profileId !== connection.profileId) return;
   const before = requireThread(get(), threadId);

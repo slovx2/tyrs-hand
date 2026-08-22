@@ -51,6 +51,8 @@ export type GeneratedThreadTitle = { title: string; description: string };
 type EventListener = (event: ServerNotification | ServerRequest) => void;
 
 export const THREAD_PAGE_SIZE = 5;
+/** 详情入口只取最新一轮，其余历史由用户向上滚动触发分页。 */
+export const THREAD_INITIAL_PAGE_SIZE = 1;
 const RECOVERY_PAGE_SIZE = 20;
 const THREAD_ITEM_PAGE_SIZE = 100;
 const PAGINATED_HISTORY_PROBE_THREAD_ID = "00000000-0000-7000-8000-000000000000";
@@ -179,7 +181,7 @@ export class OfficialAppServerClient {
    * 只读取会话壳，不拉取完整 Item。详情页可以先用这个结果完成首帧，
    * 再按 Turn 逐个 hydrate，避免一次 Promise.all 把 JS 线程打满。
    */
-  async loadThreadShell(threadId: string, limit = THREAD_PAGE_SIZE): Promise<ConversationShell> {
+  async loadThreadShell(threadId: string, limit = THREAD_INITIAL_PAGE_SIZE): Promise<ConversationShell> {
     return this.resumeThreadPage(threadId, "summary", limit);
   }
 
