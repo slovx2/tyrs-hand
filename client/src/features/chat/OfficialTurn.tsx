@@ -9,6 +9,8 @@ import { Muted } from "@/components/ui";
 import { CachedMessageImage } from "@/features/images/CachedMessageImage";
 import { RemoteMessageImage } from "@/features/images/RemoteMessageImage";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
+import { useRenderScheduler } from "@/render/renderScheduler";
+import { renderInputFromTurn, renderTurnInBackground } from "@/render/conversationRenderRuntime";
 import { useTheme } from "@/theme/ThemeProvider";
 import { isToolGroupExpanded, isTurnActivityCollapsed,
   toggleToolGroup, toggleTurnActivity } from "./activityDisclosure";
@@ -30,12 +32,45 @@ const turnPresentations = new WeakMap<Turn, ReturnType<typeof projectTurnPresent
 export const OfficialTurn = memo(function OfficialTurn({ profileId, threadId,
   turn, canToggleActivity, onDisclosureChange }: OfficialTurnProps) {
   const theme = useTheme();
-  const presentation = useMemo(() => presentationForTurn(turn), [turn]);
+  const scheduler = useRenderScheduler();
+  const heavy = isHeavyTurn(turn);
+  const [backgroundReady, setBackgroundReady] = useState(!heavy);
+  const renderGeneration = useRef(0);
+  useEffect(() => {
+    const generation = renderGeneration.current + 1;
+    renderGeneration.current = generation;
+    if (!heavy) {
+      setBackgroundReady(true);
+      return;
+    }
+    setBackgroundReady(false);
+    let cancelled = false;
+    const cancelAfterInteractions = scheduler.afterInteractions(() => {
+      void renderTurnInBackground(renderInputFromTurn(turn), generation)
+        .catch(() => undefined)
+        .then(() => {
+          if (cancelled || renderGeneration.current !== generation) return;
+          scheduler.schedule(() => {
+            if (!cancelled && renderGeneration.current === generation) setBackgroundReady(true);
+          }, "background");
+        });
+    });
+    return () => {
+      cancelled = true;
+      cancelAfterInteractions();
+    };
+  }, [heavy, scheduler, turn]);
+  const presentation = useMemo(() => backgroundReady ? presentationForTurn(turn) : null,
+    [backgroundReady, turn]);
   const [, redraw] = useState(0);
-  const nowMs = useElapsedClock(turn, presentation.canCollapseActivity);
+  const nowMs = useElapsedClock(turn, presentation?.canCollapseActivity ?? false);
   const memoryKey = `${profileId}:${threadId}:${turn.id}`;
-  const collapsed = isTurnActivityCollapsed(memoryKey, presentation.canCollapseActivity);
+  const collapsed = isTurnActivityCollapsed(memoryKey, presentation?.canCollapseActivity ?? false);
   let activityHeaderRendered = false;
+
+  if (!presentation) {
+    return <TurnSkeleton turnId={turn.id} />;
+  }
 
   return <View testID={`turn:${turn.id}`} style={styles.turn}>
     {presentation.blocks.map((block) => {
@@ -88,6 +123,24 @@ function presentationForTurn(turn: Turn): ReturnType<typeof projectTurnPresentat
   return presentation;
 }
 
+function isHeavyTurn(turn: Turn): boolean {
+  if (turn.items.length > 18) return true;
+  let characters = 0;
+  for (const item of turn.items) {
+    if ("text" in item && typeof item.text === "string") characters += item.text.length;
+    if (characters > 12_000) return true;
+  }
+  return false;
+}
+
+function TurnSkeleton({ turnId }: { turnId: string }) {
+  const theme = useTheme();
+  return <View testID={`turn:${turnId}:skeleton`} style={styles.skeleton}>
+    <View style={[styles.skeletonLine, { backgroundColor: theme.colors.surfaceAlt }]} />
+    <View style={[styles.skeletonLineShort, { backgroundColor: theme.colors.surfaceAlt }]} />
+  </View>;
+}
+
 function ActivityHeader({ turnId, collapsed, summary, onPress }: {
   turnId: string;
   collapsed: boolean;
@@ -117,7 +170,7 @@ function TurnBlockView({ block, memoryKey, profileId, threadId, turnId, onDisclo
   if (block.kind === "user") return <UserMessage item={block.item} profileId={profileId} />;
   if (block.kind === "commentary") return block.item.text.trim()
     ? <View testID="message:phase:commentary" style={styles.commentary}>
-      <MarkdownContent compact profileId={profileId} cacheKey={`commentary:${block.item.id}`}>
+      <MarkdownContent compact defer profileId={profileId} cacheKey={`commentary:${block.item.id}`}>
         {block.item.text}
       </MarkdownContent>
     </View> : null;
@@ -125,7 +178,7 @@ function TurnBlockView({ block, memoryKey, profileId, threadId, turnId, onDisclo
     memoryKey={`${memoryKey}:${block.key}`} onDisclosureChange={onDisclosureChange} />;
   if (block.kind === "plan") return <View testID={`plan:${block.item.id}`} style={styles.plan}>
     <Muted>计划</Muted>
-    <MarkdownContent profileId={profileId} cacheKey={`plan:${block.item.id}`}>
+    <MarkdownContent defer profileId={profileId} cacheKey={`plan:${block.item.id}`}>
       {block.item.text}
     </MarkdownContent>
   </View>;
@@ -140,7 +193,7 @@ function TurnBlockView({ block, memoryKey, profileId, threadId, turnId, onDisclo
         testID={`generated-image:${block.image.id}`} />}
   </View>;
   return block.item.text.trim() ? <View testID="message:role:agent" style={styles.agentRow}>
-    <MarkdownContent profileId={profileId} cacheKey={`agentMessage:${block.item.id}`}>
+    <MarkdownContent defer profileId={profileId} cacheKey={`agentMessage:${block.item.id}`}>
       {block.item.text}
     </MarkdownContent>
   </View> : null;
@@ -286,6 +339,9 @@ function toolIcon(category: ToolGroup["category"]): ComponentProps<typeof Ionico
 
 const styles = StyleSheet.create({
   turn: { paddingBottom: 12 },
+  skeleton: { gap: 8, paddingHorizontal: 16, paddingVertical: 14 },
+  skeletonLine: { borderRadius: 5, height: 14, opacity: 0.8, width: "82%" },
+  skeletonLineShort: { borderRadius: 5, height: 14, opacity: 0.65, width: "55%" },
   userRow: { flexDirection: "row", justifyContent: "flex-end", paddingHorizontal: 12,
     paddingBottom: 8, paddingTop: 5 },
   userBubble: { maxWidth: "88%", borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },

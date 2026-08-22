@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useDeferredValue, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { threadTitle, type ThreadRecord } from "@/app-server/types";
@@ -25,18 +25,19 @@ export function SessionListPane({ sessions, selectedId, onSelect, emptyDetail,
   const list = useRef<FlatList<ThreadRecord>>(null);
   const filtered = useMemo(() => sessions.filter((record) =>
     filter === "archived" ? record.archived : !record.archived), [filter, sessions]);
+  const deferredFiltered = useDeferredValue(filtered);
 
   return <View style={styles.container}>
     <View style={styles.filter}><SegmentedControl testIDPrefix={`${testIDPrefix}s:filter`}
       value={filter} options={[{ value: "active", label: "进行中" },
         { value: "archived", label: "已归档" }] as const} onChange={setFilter} /></View>
-    <FlatList ref={list} testID={`${testIDPrefix}s:list`} data={filtered}
+    <FlatList ref={list} testID={`${testIDPrefix}s:list`} data={deferredFiltered}
       keyExtractor={(item) => item.thread.id}
       onLayout={() => list.current?.scrollToOffset({
         offset: loadListOffset(`${positionKey}:${filter}`), animated: false })}
       onScroll={(event) => saveListOffset(`${positionKey}:${filter}`,
         event.nativeEvent.contentOffset.y)} scrollEventThrottle={100}
-      contentContainerStyle={[styles.list, filtered.length === 0 && styles.emptyList]}
+      contentContainerStyle={[styles.list, deferredFiltered.length === 0 && styles.emptyList]}
       ListEmptyComponent={<EmptyState title="没有会话"
         detail={emptyDetail ?? "从项目页进入对应项目后创建第一个任务。"} />}
       renderItem={({ item, index }) => {

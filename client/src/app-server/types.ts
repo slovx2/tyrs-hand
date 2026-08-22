@@ -41,6 +41,16 @@ export type ThreadHistoryState =
     hasLoadedOldest: boolean;
   };
 
+export type ConversationLoadPhase = "shell" | "loadingLatest" | "loadingHistory" |
+  "ready" | "error";
+
+export type ConversationLoadState = {
+  generation: number;
+  phase: ConversationLoadPhase;
+  hydratedTurnIds: string[];
+  error: string | null;
+};
+
 export type TargetCatalog = {
   workspaceId: string | null;
   models: Model[];

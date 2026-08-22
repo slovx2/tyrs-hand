@@ -13,7 +13,7 @@ import { officialClientFor } from "@/app-server/registry";
 import { completeOutbox, discardOutboxItem, enqueueOutbox, failOutbox, listOutbox, markOutboxProcessing,
   retryOutboxItem, setOutboxThread, type NativeOutboxItem } from "@/app-server/outbox";
 import { recoverPendingProfileSubmissions } from "@/app-server/submissionRecovery";
-import { projectForThread, targetKey, type MobileProject, type ThreadRecord } from "@/app-server/types";
+import { projectForThread, targetKey, type ConversationLoadState, type MobileProject, type ThreadRecord } from "@/app-server/types";
 import { loadCachedProjects, loadCachedThreads, replaceCachedThreads,
   saveProjects, saveThreadRecord } from "@/db/cache";
 import { listConnections, setActiveConnection, type Connection,
@@ -38,6 +38,7 @@ type AppState = {
   activeConnection: Connection | null;
   projects: MobileProject[];
   threads: ThreadRecord[];
+  conversationLoads: Record<string, ConversationLoadState>;
   modelsByTarget: Record<string, Model[]>;
   pendingRequests: Record<string, ServerRequest[]>;
   outbox: NativeOutboxItem[];
@@ -83,7 +84,7 @@ const outboxDrains = new Map<string, Promise<OutboxDrainResult>>();
 
 export const useAppStore = create<AppState>((set, get) => ({
   ready: false, refreshing: false, error: null, themeMode: "system", connections: [],
-  activeConnection: null, projects: [], threads: [], modelsByTarget: {}, pendingRequests: {},
+  activeConnection: null, projects: [], threads: [], conversationLoads: {}, modelsByTarget: {}, pendingRequests: {},
   outbox: [], unreadThreadIds: {}, selectedProjectId: null,
 
   initialize: async () => {
@@ -93,7 +94,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       loadCachedProjects(activeConnection.profileId), loadCachedThreads(activeConnection.profileId),
       listOutbox(activeConnection.profileId), loadUnreadThreadIds(activeConnection.profileId),
     ]) : [[], [], [], []];
-    set({ ready: true, connections, activeConnection, projects, threads, themeMode,
+    set({ ready: true, connections, activeConnection, projects, threads, conversationLoads: {}, themeMode,
       outbox, unreadThreadIds: unreadRecord(unreadThreadIds),
       selectedProjectId: projects[0]?.id ?? null });
     if (activeConnection) void get().refresh();
@@ -124,7 +125,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         loadCachedProjects(activeConnection.profileId), loadCachedThreads(activeConnection.profileId),
         listOutbox(activeConnection.profileId), loadUnreadThreadIds(activeConnection.profileId),
       ]) : [[], [], [], []];
-      set({ connections, activeConnection, projects, threads, modelsByTarget: {},
+      set({ connections, activeConnection, projects, threads, conversationLoads: {}, modelsByTarget: {},
         pendingRequests: {}, outbox, unreadThreadIds: unreadRecord(unreadThreadIds),
         selectedProjectId: projects[0]?.id ?? null });
       if (activeConnection) void get().refresh();
@@ -143,7 +144,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       loadCachedProjects(profileId), loadCachedThreads(profileId),
       listOutbox(profileId), loadUnreadThreadIds(profileId),
     ]) : [[], [], [], []];
-    set({ connections, activeConnection, projects, threads, modelsByTarget: {}, pendingRequests: {},
+    set({ connections, activeConnection, projects, threads, conversationLoads: {}, modelsByTarget: {}, pendingRequests: {},
       outbox, unreadThreadIds: unreadRecord(unreadThreadIds),
       selectedProjectId: projects[0]?.id ?? null, error: null });
     await get().refresh();
@@ -727,12 +728,17 @@ async function loadOfficialThread(threadId: string, set: StoreSet, get: StoreGet
   const key = threadKey(connection.profileId, threadId);
   const active = threadLoadPromises.get(key);
   if (active) return active;
+  const generation = (get().conversationLoads[threadId]?.generation ?? 0) + 1;
+  setConversationLoad(threadId, { generation, phase: "shell", hydratedTurnIds: [], error: null }, set);
   const promise = (async () => {
     const record = requireThread(get(), threadId);
     const client = bindClient(connection, record.workspaceId, set, get);
     await client.connect();
-    const resumed = await client.resumeThreadPage(threadId, "full", THREAD_PAGE_SIZE,
-      record.thread.historyMode);
+    const supportsShell = typeof client.loadThreadShell === "function";
+    const resumed = supportsShell
+      ? await client.loadThreadShell(threadId, THREAD_PAGE_SIZE)
+      : await client.resumeThreadPage(threadId, "full", THREAD_PAGE_SIZE,
+        record.thread.historyMode);
     if (get().activeConnection?.profileId !== connection.profileId) return;
     const current = requireThread(get(), threadId);
     // SQLite 中已加载的历史同样可能包含本进程启动前收到的原生工具 Item。
@@ -756,13 +762,61 @@ async function loadOfficialThread(threadId: string, set: StoreSet, get: StoreGet
       : latest.preferences;
     const next: ThreadRecord = { ...latest, thread: { ...resumed.thread, turns }, history,
       preferences: nextPreferences };
-    await setAndCacheThread(connection.profileId, next, set, get);
+    setThreadRecord(connection.profileId, next, set, get);
     syncPendingRequests(client, threadId, set);
+    if (!supportsShell || record.thread.historyMode !== "paginated") {
+      await saveThreadRecord(connection.profileId, next);
+      setConversationLoad(threadId, { generation, phase: "ready",
+        hydratedTurnIds: turns.map((turn) => turn.id), error: null }, set);
+      return;
+    }
+
+    setConversationLoad(threadId, { generation, phase: "loadingLatest",
+      hydratedTurnIds: [], error: null }, set);
+    const hydratedTurnIds: string[] = [];
+    for (const turn of [...turns].reverse()) {
+      if (!isConversationLoadCurrent(threadId, generation, get)) return;
+      try {
+        const hydrated = await client.hydrateTurnItems(threadId, turn);
+        if (!isConversationLoadCurrent(threadId, generation, get)) return;
+        const latestRecord = requireThread(get(), threadId);
+        const nextTurns = latestRecord.thread.turns.map((item) => item.id === hydrated.id
+          ? hydrated : item);
+        const updated: ThreadRecord = { ...latestRecord,
+          thread: { ...latestRecord.thread, turns: nextTurns } };
+        setThreadRecord(connection.profileId, updated, set, get);
+        hydratedTurnIds.push(hydrated.id);
+        setConversationLoad(threadId, { generation, phase: "loadingHistory",
+          hydratedTurnIds: [...hydratedTurnIds], error: null }, set);
+        await Promise.resolve();
+      } catch (cause) {
+        if (!isConversationLoadCurrent(threadId, generation, get)) return;
+        setConversationLoad(threadId, { generation, phase: "error",
+          hydratedTurnIds: [...hydratedTurnIds],
+          error: cause instanceof Error ? cause.message : "无法读取会话内容" }, set);
+        return;
+      }
+    }
+    if (isConversationLoadCurrent(threadId, generation, get)) {
+      const finalRecord = requireThread(get(), threadId);
+      await saveThreadRecord(connection.profileId, finalRecord);
+      setConversationLoad(threadId, { generation, phase: "ready",
+        hydratedTurnIds, error: null }, set);
+    }
   })().finally(() => {
     if (threadLoadPromises.get(key) === promise) threadLoadPromises.delete(key);
   });
   threadLoadPromises.set(key, promise);
   return promise;
+}
+
+function setConversationLoad(threadId: string, value: ConversationLoadState,
+  set: StoreSet): void {
+  set((state) => ({ conversationLoads: { ...state.conversationLoads, [threadId]: value } }));
+}
+
+function isConversationLoadCurrent(threadId: string, generation: number, get: StoreGet): boolean {
+  return get().conversationLoads[threadId]?.generation === generation;
 }
 
 function queueThreadTailRefresh(threadId: string, set: StoreSet, get: StoreGet): Promise<void> {

@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useState } from "react";
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 
 import { listScheduledTasks, type ScheduledTask } from "@/api/automations";
@@ -20,6 +20,7 @@ export default function AutomationsScreen() {
   const [items, setItems] = useState<ScheduledTask[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const deferredItems = useDeferredValue(items);
   useEffect(() => {
     if (link && serverId !== link.serverId) setServerId(link.serverId);
   }, [link, serverId]);
@@ -66,7 +67,7 @@ export default function AutomationsScreen() {
     <Pressable accessibilityRole="button" onPress={() => void refresh()}>
       <Text style={{ color: theme.colors.accent }}>重试</Text>
     </Pressable></View> : null}
-  <FlatList testID="automations:list" data={items} keyExtractor={(item) => item.id}
+  <FlatList testID="automations:list" data={deferredItems} keyExtractor={(item) => item.id}
     refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void refresh()} />}
     contentContainerStyle={styles.list} ListEmptyComponent={!loading && !error
       ? <EmptyState title="没有定时任务" detail="当前筛选条件下没有可查看的任务。" /> : null}

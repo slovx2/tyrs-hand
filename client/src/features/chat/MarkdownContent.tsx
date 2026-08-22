@@ -1,9 +1,10 @@
-import { Fragment, memo, type ReactNode, useMemo } from "react";
+import { Fragment, memo, type ReactNode, useEffect, useMemo, useState } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import Markdown, { type ASTNode, MarkdownIt, parser, type RenderFunction,
   type RenderRules } from "react-native-markdown-display";
 
 import { useTheme } from "@/theme/ThemeProvider";
+import { useRenderScheduler } from "@/render/renderScheduler";
 import { CachedMessageImage } from "@/features/images/CachedMessageImage";
 import { RemoteMessageImage } from "@/features/images/RemoteMessageImage";
 import { lookupMarkdownPlaceholder, prepareMarkdown, type MarkdownPlaceholder } from "./responseDirectives";
@@ -13,6 +14,7 @@ type MarkdownContentProps = {
   cacheKey: string;
   profileId: string;
   compact?: boolean;
+  defer?: boolean;
   imageTestPrefix?: string;
   onFileCitationPress?: (path: string, lineStart: number, lineEnd?: number) => void;
 };
@@ -178,10 +180,30 @@ function renderMarkdownText(node: ASTNode, _children: ReactNode[], _parents: AST
 }
 
 export const MarkdownContent = memo(function MarkdownContent({ children, cacheKey, profileId,
-  compact = false, imageTestPrefix = "markdown:image", onFileCitationPress }: MarkdownContentProps) {
+  compact = false, defer = false, imageTestPrefix = "markdown:image", onFileCitationPress }: MarkdownContentProps) {
   const theme = useTheme();
+  const scheduler = useRenderScheduler();
   const prepared = useMemo(() => prepareMarkdown(children), [children]);
-  const ast = useMemo(() => cachedMarkdownAst(cacheKey, prepared.source), [cacheKey, prepared.source]);
+  const [ast, setAst] = useState<ASTNode[] | null>(() => defer ? null :
+    cachedMarkdownAst(cacheKey, prepared.source));
+  useEffect(() => {
+    if (!defer) {
+      setAst(cachedMarkdownAst(cacheKey, prepared.source));
+      return;
+    }
+    let cancelled = false;
+    setAst(null);
+    const cancel = scheduler.afterInteractions(() => {
+      scheduler.schedule(() => {
+        if (cancelled) return;
+        setAst(cachedMarkdownAst(cacheKey, prepared.source));
+      }, "background");
+    });
+    return () => {
+      cancelled = true;
+      cancel();
+    };
+  }, [cacheKey, defer, prepared.source, scheduler]);
   const blockGap = compact ? 5 : 8;
   const markdownStyle = useMemo(() => StyleSheet.create({
     body: { width: "100%" },
@@ -302,6 +324,13 @@ export const MarkdownContent = memo(function MarkdownContent({ children, cacheKe
         testID={`${imageTestPrefix}:${node.key}`} />;
     },
   }), [cacheKey, imageTestPrefix, onFileCitationPress, profileId]);
+  if (!ast) {
+    const preview = prepared.source.length > 4_000
+      ? `${prepared.source.slice(0, 4_000)}…` : prepared.source;
+    return <Text selectable style={[markdownStyle.text, compact && { opacity: 0.78 }]}>
+      {preview}
+    </Text>;
+  }
   return <Markdown markdownit={markdownIt} mergeStyle={false} rules={rules} style={markdownStyle}>
     {ast as unknown as ReactNode}
   </Markdown>;

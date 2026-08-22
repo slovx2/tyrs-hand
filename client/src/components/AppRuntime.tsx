@@ -6,6 +6,7 @@ import { closeOfficialProfile } from "@/app-server/registry";
 import { sshTransport } from "@/native/sshTransport";
 import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
+import { RenderSchedulerProvider } from "@/render/renderScheduler";
 
 export function AppRuntime({ children }: { children: ReactNode }) {
   const theme = useTheme();
@@ -39,5 +40,5 @@ export function AppRuntime({ children }: { children: ReactNode }) {
     }, 15_000);
     return () => clearInterval(timer);
   }, [connection, outboxCount, retryOutbox]);
-  return <><StatusBar style={theme.dark ? "light" : "dark"} />{children}</>;
+  return <RenderSchedulerProvider><StatusBar style={theme.dark ? "light" : "dark"} />{children}</RenderSchedulerProvider>;
 }

@@ -14,6 +14,7 @@ import { Button, EmptyState } from "@/components/ui";
 import { clearDraft, loadDraft, saveDraft } from "@/db/drafts";
 import { createImageLoadGate, ImageLoadGateContext } from "@/features/images/ImageLoadGate";
 import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
+import { useRenderScheduler } from "@/render/renderScheduler";
 import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
 import { keyboardAvoidance } from "@/utils/keyboardAvoidance";
@@ -46,6 +47,7 @@ const INITIAL_IMAGE_LOAD_DELAY_MS = 300;
 
 export function ConversationPane({ sessionId }: { sessionId: string }) {
   const theme = useTheme();
+  const renderScheduler = useRenderScheduler();
   const insets = useSafeAreaInsets();
   const keyboardVisible = useKeyboardVisible();
   const imageLoadGate = useMemo(() => createImageLoadGate(true), []);
@@ -62,6 +64,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const retryOutbox = useAppStore((state) => state.retryOutbox);
   const discardOutbox = useAppStore((state) => state.discardOutbox);
   const outbox = useAppStore((state) => state.outbox);
+  const loadState = useAppStore((state) => state.conversationLoads[sessionId]);
   const queued = useMemo(() => outbox.filter((item) =>
     item.kind === "submit_message" && item.threadId === sessionId), [outbox, sessionId]);
   const executePlan = useAppStore((state) => state.executePlan);
@@ -240,9 +243,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         (!force && !shouldFollowLatest(followState.current))) return;
       list.current?.scrollToEnd({ animated });
     };
-    list.current?.scrollToEnd({ animated });
-    requestAnimationFrame(() => requestAnimationFrame(follow));
-  }, [positionRestored]);
+    renderScheduler.schedule(follow, "user");
+  }, [positionRestored, renderScheduler]);
 
   useEffect(() => {
     const nextPhase = latestTurnPhase(activeTurn);
@@ -408,9 +410,6 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   if (!connection || !record) {
     return <EmptyState title="会话不可用" detail="它可能已被归档、移除，或属于其他连接。" />;
   }
-  if (loading && record.thread.turns.length === 0) {
-    return <EmptyState title="正在读取会话" detail="正在从 Codex App Server 加载官方历史。" />;
-  }
   if (error && record.thread.turns.length === 0) {
     return <EmptyState title="无法加载会话" detail={error}
       action={<Button title="重试" onPress={() => void loadThread(sessionId)} />} />;
@@ -431,6 +430,12 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         getItemType={rowType}
         keyboardShouldPersistTaps="handled"
         renderItem={renderRow}
+        ListEmptyComponent={loading || loadState?.phase === "shell" ||
+          loadState?.phase === "loadingLatest"
+          ? <View testID="messages:skeleton" style={styles.listSkeleton}>
+            <View style={[styles.skeletonLine, { backgroundColor: theme.colors.surfaceAlt }]} />
+            <View style={[styles.skeletonLineShort, { backgroundColor: theme.colors.surfaceAlt }]} />
+          </View> : null}
         contentContainerStyle={styles.list}
         maintainVisibleContentPosition={LIST_POSITIONING}
         scrollEventThrottle={100}
@@ -597,6 +602,9 @@ const styles = StyleSheet.create({
   messageArea: { flex: 1, minHeight: 0 },
   messageList: { flex: 1 },
   list: { paddingVertical: 8 },
+  listSkeleton: { gap: 10, paddingHorizontal: 16, paddingVertical: 24 },
+  skeletonLine: { borderRadius: 5, height: 16, opacity: 0.8, width: "78%" },
+  skeletonLineShort: { borderRadius: 5, height: 16, opacity: 0.65, width: "48%" },
   historyStatus: { minHeight: 40, alignItems: "center", justifyContent: "center",
     paddingHorizontal: 16 },
   planAction: { paddingHorizontal: 16, paddingTop: 8 },

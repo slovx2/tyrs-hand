@@ -46,6 +46,7 @@ export type ResumedThreadPage = {
   page: OfficialTurnPage;
   preferences?: Omit<ThreadPreferences, "collaborationMode">;
 };
+export type ConversationShell = ResumedThreadPage;
 export type GeneratedThreadTitle = { title: string; description: string };
 type EventListener = (event: ServerNotification | ServerRequest) => void;
 
@@ -164,7 +165,7 @@ export class OfficialAppServerClient {
     });
     const shellPage = chronologicalPage(response.initialTurnsPage ?? emptyPage());
     const page = paginateItems
-      ? { ...shellPage, turns: await this.hydrateTurnItems(threadId, shellPage.turns) }
+      ? { ...shellPage, turns: await this.hydrateTurnItemsPage(threadId, shellPage.turns) }
       : shellPage;
     return {
       thread: { ...projectThreadForMobile(response.thread), turns: page.turns },
@@ -172,6 +173,20 @@ export class OfficialAppServerClient {
       preferences: { model: response.model, effort: response.reasoningEffort,
         serviceTier: response.serviceTier },
     };
+  }
+
+  /**
+   * 只读取会话壳，不拉取完整 Item。详情页可以先用这个结果完成首帧，
+   * 再按 Turn 逐个 hydrate，避免一次 Promise.all 把 JS 线程打满。
+   */
+  async loadThreadShell(threadId: string, limit = THREAD_PAGE_SIZE): Promise<ConversationShell> {
+    return this.resumeThreadPage(threadId, "summary", limit);
+  }
+
+  /** 按单个 Turn 读取完整 Item，供渐进渲染队列使用。 */
+  async hydrateTurnItems(threadId: string, turn: Turn): Promise<Turn> {
+    return { ...projectTurnForMobile(turn),
+      items: await this.listAllTurnItems(threadId, turn.id), itemsView: "full" as const };
   }
 
   async listTurnPage(threadId: string, cursor: string | null, limit = THREAD_PAGE_SIZE,
@@ -184,11 +199,11 @@ export class OfficialAppServerClient {
     });
     const page = chronologicalPage(response);
     return paginateItems
-      ? { ...page, turns: await this.hydrateTurnItems(threadId, page.turns) }
+      ? { ...page, turns: await this.hydrateTurnItemsPage(threadId, page.turns) }
       : page;
   }
 
-  private async hydrateTurnItems(threadId: string, turns: Turn[]): Promise<Turn[]> {
+  private async hydrateTurnItemsPage(threadId: string, turns: Turn[]): Promise<Turn[]> {
     return Promise.all(turns.map(async (turn) => ({
       ...projectTurnForMobile(turn),
       items: await this.listAllTurnItems(threadId, turn.id),
