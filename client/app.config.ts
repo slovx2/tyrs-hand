@@ -42,5 +42,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ["expo-image-picker", { photosPermission: "允许 Tyrs Hand 选择会话附件" }],
   ],
   experiments: { typedRoutes: true },
-  extra: { appEnvironment: environment, previewMode: environment === "preview" },
+  extra: {
+    eas: { projectId: "b9f3ad15-824e-483c-b6aa-44de731c5110" },
+    appEnvironment: environment,
+    previewMode: environment === "preview",
+  },
 });

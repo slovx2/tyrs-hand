@@ -2,7 +2,7 @@ PNPM ?= pnpm
 LOCAL_IMAGE ?= tyrs-hand:local
 CODEX ?= codex
 
-.PHONY: dependencies generate generate-check check-legacy-architecture format format-check vet lint web-check client-install client-check client-export client-e2e-contract client-e2e-android client-e2e-ios test test-unit test-race test-integration test-mobile-transport-integration test-protocol test-coverage web-install web-build build build-local image-local worker-binaries ci ci-local
+.PHONY: dependencies generate generate-check check-legacy-architecture format format-check vet lint web-check client-install client-check client-export client-export-android client-export-ios client-e2e-contract client-e2e-android client-e2e-ios test test-unit test-race test-integration test-mobile-transport-integration test-protocol test-coverage web-install web-build build build-local image-local worker-binaries ci ci-local
 
 dependencies:
 	go mod download
@@ -57,9 +57,13 @@ client-check:
 	$(PNPM) --dir client lint
 	$(PNPM) --dir client test
 
-client-export:
-	$(PNPM) --dir client export:ios
+client-export: client-export-android
+
+client-export-android:
 	$(PNPM) --dir client export:android
+
+client-export-ios:
+	$(PNPM) --dir client export:ios
 
 client-e2e-contract:
 	$(PNPM) --dir client e2e:contract

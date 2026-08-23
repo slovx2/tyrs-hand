@@ -16,8 +16,8 @@ on:
         description: 要运行的平台
         required: true
         type: choice
-        default: both
-        options: [both, android, ios]
+        default: android
+        options: [android, ios, both]
 
 permissions:
   contents: read
@@ -79,7 +79,7 @@ jobs:
           retention-days: 14
 
   iphone:
-    if: github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.platform == 'both' || inputs.platform == 'ios')
+    if: github.event_name == 'workflow_dispatch' && (inputs.platform == 'both' || inputs.platform == 'ios')
     runs-on: macos-15
     timeout-minutes: 120
     env:
