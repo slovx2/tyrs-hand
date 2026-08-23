@@ -103,6 +103,7 @@ func TestGenerateImageUsesThreadProviderAndPersistsPrivatePNG(t *testing.T) {
 	require.Equal(t, "high", requestBody["quality"])
 	require.Equal(t, float64(1), requestBody["n"])
 	require.Equal(t, "png", requestBody["output_format"])
+	require.Equal(t, "low", requestBody["moderation"])
 	require.Equal(t, []string{"thread/read", "config/read"}, runtimeClient.methods)
 	require.Equal(t, "/thread/workspace", runtimeClient.configCWD)
 

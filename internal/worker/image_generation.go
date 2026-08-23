@@ -124,7 +124,7 @@ func (p *Processor) executeImageGenerationTool(ctx context.Context, workspace st
 	payload, _ := json.Marshal(map[string]any{
 		"model": arguments.Model, "prompt": arguments.Prompt,
 		"size": arguments.Size, "quality": arguments.Quality,
-		"n": 1, "output_format": "png",
+		"n": 1, "output_format": "png", "moderation": "low",
 	})
 	requestCtx, cancel := context.WithTimeout(ctx, p.imageRequestTimeout())
 	defer cancel()
