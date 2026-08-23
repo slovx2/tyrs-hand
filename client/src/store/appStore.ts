@@ -25,7 +25,7 @@ import { loadUnreadThreadIds, markThreadRead, markThreadUnread, reconcileThreadR
 import type { ThemeMode } from "@/theme/tokens";
 import { CoalescingKeyedQueue } from "./coalescingQueue";
 import { mergeThreadCatalog } from "./threadCatalog";
-import { mergeOlderPage, mergeTailPage } from "./threadHistory";
+import { mergeOlderPage, mergeTailPage, mergeTurnSequence } from "./threadHistory";
 import { isDirectThreadNotification, reduceThreadNotification } from "./threadNotificationReducer";
 import { StreamingTextQueue, type StreamingDelta } from "./streamingTextQueue";
 
@@ -747,7 +747,7 @@ async function loadOfficialThread(threadId: string, set: StoreSet, get: StoreGet
     const hadLoadedHistory = current.history.kind === "loaded";
     // 壳接口的入口不需要扫描本地完整历史；只有没有壳接口的旧链路才做尾页合并。
     const merged = supportsShell
-      ? { turns: resumed.page.turns, overlapped: false }
+      ? { turns: mergeShellTurns(current.thread.turns, resumed.page.turns), overlapped: false }
       : hadLoadedHistory
         ? mergeTailPage(current.thread.turns, resumed.page.turns)
         : { turns: resumed.page.turns, overlapped: false };
@@ -817,6 +817,20 @@ async function loadOfficialThread(threadId: string, set: StoreSet, get: StoreGet
   return promise;
 }
 
+/**
+ * Shell 首屏只返回最新页，但不能覆盖发送过程中本地已经展示的活动 Turn。
+ * 已完成的旧历史仍按“末页优先”策略裁剪；临时/进行中的 Turn 则追加到尾部，
+ * 防止重进或后台 reload 时用户消息和流式回复闪退。
+ */
+function mergeShellTurns(existing: ThreadRecord["thread"]["turns"], incoming: ThreadRecord["thread"]["turns"]): ThreadRecord["thread"]["turns"] {
+  const incomingIds = new Set(incoming.map((turn) => turn.id));
+  const incomingById = new Map(incoming.map((turn) => [turn.id, turn]));
+  const live = existing.filter((turn) =>
+    turn.id.startsWith("provisional:") || (turn.status === "inProgress" &&
+      (!incomingIds.has(turn.id) || (incomingById.get(turn.id)?.items.length ?? 0) === 0)));
+  return live.length > 0 ? mergeTurnSequence(incoming, live) : incoming;
+}
+
 function setConversationLoad(threadId: string, value: ConversationLoadState,
   set: StoreSet): void {
   set((state) => ({ conversationLoads: { ...state.conversationLoads, [threadId]: value } }));
@@ -852,7 +866,11 @@ async function refreshOfficialThreadTail(connection: Connection, threadId: strin
     ? mergeTailPage(before.thread.turns, page.turns)
     : { turns: page.turns, overlapped: false };
   const current = requireThread(get(), threadId);
-  const preserve = current.history.kind === "loaded" && merged.overlapped;
+  // 尾页可能在新 Turn 刚创建的窗口内暂时不包含本地已观察到的 Turn。只要当前
+  // 已有加载内容，就保留原历史游标；否则一次 refresh 会把列表和分页状态重置，
+  // 造成旧记录消失后再回填。
+  const preserve = current.history.kind === "loaded" &&
+    (merged.overlapped || current.thread.turns.length > 0);
   const turns = merged.turns;
   const history = preserve && current.history.kind === "loaded"
     ? { ...current.history, tailOlderCursor: page.nextCursor }

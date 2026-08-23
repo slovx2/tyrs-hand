@@ -242,9 +242,9 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
 
   const rows = useMemo(() => conversationRows(record?.thread.turns ?? [], requests),
     [record?.thread.turns, requests]);
-  // 详情入口期间不显示 SQLite 中的旧历史；等最新一轮完成 hydrate 后再一次性
-  // 交给 FlashList，避免旧内容先出现、随后被服务端尾页替换造成大幅跳动。
-  const visibleRows = loading ? EMPTY_ROWS : rows;
+  // 后台加载不能清空已经展示的列表。首次进入且尚无任何缓存时才显示骨架；
+  // 刷新、发送和流式期间始终保留当前 rows，避免 FlashList 重建后出现整页闪退。
+  const visibleRows = loading && rows.length === 0 ? EMPTY_ROWS : rows;
   rowsRef.current = rows;
   const restorePosition = useMemo(() => resolveConversationPosition(null,
     rows.map((row) => row.key)), [rows]);

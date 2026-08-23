@@ -19,13 +19,14 @@ describe("官方 Turn 分页合并", () => {
     expect(merged.overlapped).toBe(true);
   });
 
-  it("最新页没有重叠时丢弃有缺口的旧片段，由新游标重新分页", () => {
+  it("最新页暂时没有重叠时保留现有列表，避免尾页竞态清空 UI", () => {
     const merged = mergeTailPage(
       [turn("turn-1"), turn("turn-2")],
       [turn("turn-8"), turn("turn-9")],
     );
     expect(merged).toEqual({
-      turns: [turn("turn-8"), turn("turn-9")], overlapped: false,
+      turns: [turn("turn-1"), turn("turn-2"), turn("turn-8"), turn("turn-9")],
+      overlapped: false,
     });
   });
 

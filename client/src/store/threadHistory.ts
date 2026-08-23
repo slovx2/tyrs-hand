@@ -25,7 +25,13 @@ export function mergeTailPage(existing: Turns, incoming: Turns): MergedTailPage 
   const incomingIds = new Set(incoming.map((turn) => turn.id));
   const overlap = existing.findIndex((turn) => incomingIds.has(turn.id));
   if (overlap < 0) {
-    return { turns: preserveProvisionalTurns(existing, incoming, incoming), overlapped: false };
+    // 尾页读取与通知可能交错，短暂窗口内服务端页不一定包含本地已经观察到的
+    // Turn。不能把现有列表当成“有缺口的旧片段”直接丢弃，否则发送消息时会出现
+    // 整页清空，随后历史回填并与流式 Turn 混排。保留现有顺序，再追加权威尾页。
+    const merged = mergeTurnSequence(existing, incoming);
+    const withProvisional = preserveProvisionalTurns(existing, incoming, merged);
+    return { turns: sameTurnSequence(existing, withProvisional) ? existing : withProvisional,
+      overlapped: false };
   }
   // 最新页可能从很早的 Turn 开始重叠。只保留首个重叠点之前的历史前缀，
   // 但所有仍出现在权威页中的既有 Turn 都要参与快照合并；否则页首先匹配时，
