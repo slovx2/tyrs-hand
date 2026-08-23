@@ -450,10 +450,11 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         maintainVisibleContentPosition={LIST_POSITIONING}
         scrollEventThrottle={100}
         onContentSizeChange={() => {
-          // 数据更新和披露展开会先触发 React 更新，随后 FlashList 才完成真实高度测量。
-          // 跟随态在这个布局时点补滚到底，避免多行命令的最后一行卡在 composer 上沿。
+          // FlashList 在 hydrate、Markdown 延迟解析和流式更新时都会触发这个回调。
+          // 只有当前跟随态允许自动跟随时才滚动；不能用 force 绕过 follow 状态，
+          // 否则详情重进时每次高度测量都会把列表从顶部拉到底部，形成持续跳变。
           if (!positionRestored || interactionBlocked.current || !pinnedToLatest.current) return;
-          scheduleFollowLatest(false, true);
+          scheduleFollowLatest(false);
         }}
         onScroll={({ nativeEvent }) => {
           const state = conversationScrollState(nativeEvent.contentSize.height,

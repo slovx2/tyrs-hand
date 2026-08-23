@@ -24,14 +24,30 @@ export type MergeTurnSnapshotOptions = {
 export function mergeTailPage(existing: Turns, incoming: Turns): MergedTailPage {
   const incomingIds = new Set(incoming.map((turn) => turn.id));
   const overlap = existing.findIndex((turn) => incomingIds.has(turn.id));
-  if (overlap < 0) return { turns: incoming, overlapped: false };
+  if (overlap < 0) {
+    return { turns: preserveProvisionalTurns(existing, incoming, incoming), overlapped: false };
+  }
   // 最新页可能从很早的 Turn 开始重叠。只保留首个重叠点之前的历史前缀，
   // 但所有仍出现在权威页中的既有 Turn 都要参与快照合并；否则页首先匹配时，
   // 尾部活动 Turn 已观察到的原生工具会被 legacy 短快照直接覆盖。
   const overlappingExisting = existing.slice(overlap)
     .filter((turn) => incomingIds.has(turn.id));
   const merged = mergeTurnSequence(existing.slice(0, overlap), overlappingExisting, incoming);
-  return { turns: sameTurnSequence(existing, merged) ? existing : merged, overlapped: true };
+  // 发送中的乐观 Turn 没有官方 ID，尾页在 turn/started 或 turn/steer
+  // 通知到达前可能暂时还看不到它。不要因为一次权威尾页读取就把用户刚发的
+  // 消息从列表中删掉；等同一 clientMessageId 出现在官方 Turn 后再自然收敛。
+  const withProvisional = preserveProvisionalTurns(existing, incoming, merged);
+  return { turns: sameTurnSequence(existing, withProvisional) ? existing : withProvisional,
+    overlapped: true };
+}
+
+function preserveProvisionalTurns(existing: Turns, incoming: Turns, merged: Turns): Turns {
+  const provisional = existing.filter((turn) => turn.id.startsWith("provisional:") &&
+    !incoming.some((candidate) => candidate.items.some((item) =>
+      item.type === "userMessage" && turn.items.some((previous) =>
+        previous.type === "userMessage" && previous.clientId !== null &&
+        previous.clientId === item.clientId))));
+  return provisional.length > 0 ? mergeTurnSequence(merged, provisional) : merged;
 }
 
 export function mergeOlderPage(existing: Turns, currentCursor: string | null,

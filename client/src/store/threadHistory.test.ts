@@ -29,6 +29,18 @@ describe("官方 Turn 分页合并", () => {
     });
   });
 
+  it("权威尾页暂缺官方 Turn 时保留乐观消息，确认后再收敛", () => {
+    const provisional = turn("provisional:message-1", "inProgress", "乐观消息");
+    provisional.items = [user("provisional-user", "message-1", "正在发送")];
+    const first = mergeTailPage([turn("turn-old"), provisional], [turn("turn-old")]);
+    expect(first.turns.map((item) => item.id)).toEqual(["turn-old", "provisional:message-1"]);
+
+    const confirmed = turn("turn-new", "inProgress", "服务端消息");
+    confirmed.items = [user("server-user", "message-1", "正在发送")];
+    const second = mergeTailPage(first.turns, [turn("turn-old"), confirmed]);
+    expect(second.turns.map((item) => item.id)).toEqual(["turn-old", "turn-new"]);
+  });
+
   it("旧页重复 Turn 去重，过期游标响应不得覆盖新状态", () => {
     const current = [turn("turn-3"), turn("turn-4")];
     const merged = mergeOlderPage(current, "cursor-old", "cursor-old",

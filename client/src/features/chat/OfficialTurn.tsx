@@ -34,16 +34,24 @@ export const OfficialTurn = memo(function OfficialTurn({ profileId, threadId,
   const theme = useTheme();
   const scheduler = useRenderScheduler();
   const heavy = isHeavyTurn(turn);
-  const [backgroundReady, setBackgroundReady] = useState(!heavy);
+  const [presentation, setPresentation] = useState<ReturnType<typeof projectTurnPresentation> | null>(
+    () => heavy ? null : presentationForTurn(turn));
+  const presentationRef = useRef(presentation);
+  presentationRef.current = presentation;
   const renderGeneration = useRef(0);
   useEffect(() => {
     const generation = renderGeneration.current + 1;
     renderGeneration.current = generation;
     if (!heavy) {
-      setBackgroundReady(true);
+      // 轻量 Turn 直接更新投影；不经过 skeleton，避免流式文本在每个 delta
+      // 到达时先消失一帧再出现。
+      setPresentation(presentationForTurn(turn));
       return;
     }
-    setBackgroundReady(false);
+    // 已经展示过的重型 Turn 保留上一版投影，后台计算期间继续显示旧内容。
+    // 旧实现会在每个流式 delta 上 setBackgroundReady(false)，导致整行闪退到
+    // skeleton；这里只有首次进入且没有可用投影时才显示 skeleton。
+    if (presentationRef.current === null) setPresentation(null);
     let cancelled = false;
     const cancelAfterInteractions = scheduler.afterInteractions(() => {
       void renderTurnInBackground(renderInputFromTurn(turn), generation)
@@ -51,7 +59,9 @@ export const OfficialTurn = memo(function OfficialTurn({ profileId, threadId,
         .then(() => {
           if (cancelled || renderGeneration.current !== generation) return;
           scheduler.schedule(() => {
-            if (!cancelled && renderGeneration.current === generation) setBackgroundReady(true);
+            if (!cancelled && renderGeneration.current === generation) {
+              setPresentation(presentationForTurn(turn));
+            }
           }, "background");
         });
     });
@@ -60,8 +70,6 @@ export const OfficialTurn = memo(function OfficialTurn({ profileId, threadId,
       cancelAfterInteractions();
     };
   }, [heavy, scheduler, turn]);
-  const presentation = useMemo(() => backgroundReady ? presentationForTurn(turn) : null,
-    [backgroundReady, turn]);
   const [, redraw] = useState(0);
   const nowMs = useElapsedClock(turn, presentation?.canCollapseActivity ?? false);
   const memoryKey = `${profileId}:${threadId}:${turn.id}`;
