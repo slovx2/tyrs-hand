@@ -21,7 +21,7 @@ import type { UserInput } from "@codex-app-server/v2/UserInput";
 import { JsonRpcRequestError } from "./jsonRpc";
 import { projectItemForMobile, projectThreadForMobile, projectTurnForMobile } from "./mobileProjection";
 import type { SubmissionJournal } from "./submissions";
-import type { ThreadPreferences } from "./types";
+import type { MobileThread, ThreadPreferences } from "./types";
 
 export type TurnPreferences = ThreadPreferences;
 
@@ -46,13 +46,10 @@ export type ResumedThreadPage = {
   page: OfficialTurnPage;
   preferences?: Omit<ThreadPreferences, "collaborationMode">;
 };
-export type ConversationShell = ResumedThreadPage;
 export type GeneratedThreadTitle = { title: string; description: string };
 type EventListener = (event: ServerNotification | ServerRequest) => void;
 
 export const THREAD_PAGE_SIZE = 5;
-/** 详情入口只取最新一轮，其余历史由用户向上滚动触发分页。 */
-export const THREAD_INITIAL_PAGE_SIZE = 1;
 const RECOVERY_PAGE_SIZE = 20;
 const THREAD_ITEM_PAGE_SIZE = 100;
 const PAGINATED_HISTORY_PROBE_THREAD_ID = "00000000-0000-7000-8000-000000000000";
@@ -132,6 +129,18 @@ export class OfficialAppServerClient {
     return threads;
   }
 
+  async listRecentThreads(limit = 100): Promise<Thread[]> {
+    const page: ThreadListResponse = await this.rpc.request("thread/list", {
+      cursor: null,
+      limit,
+      sortKey: "updated_at",
+      sortDirection: "desc",
+      modelProviders: [],
+      archived: false,
+    });
+    return page.data.map(projectThreadForMobile);
+  }
+
   async readThreadMetadata(threadId: string): Promise<Thread> {
     const response = await this.rpc.request<ThreadReadResponse>("thread/read",
       { threadId, includeTurns: false });
@@ -167,7 +176,7 @@ export class OfficialAppServerClient {
     });
     const shellPage = chronologicalPage(response.initialTurnsPage ?? emptyPage());
     const page = paginateItems
-      ? { ...shellPage, turns: await this.hydrateTurnItemsPage(threadId, shellPage.turns) }
+      ? { ...shellPage, turns: await this.hydrateTurnItems(threadId, shellPage.turns) }
       : shellPage;
     return {
       thread: { ...projectThreadForMobile(response.thread), turns: page.turns },
@@ -175,20 +184,6 @@ export class OfficialAppServerClient {
       preferences: { model: response.model, effort: response.reasoningEffort,
         serviceTier: response.serviceTier },
     };
-  }
-
-  /**
-   * 只读取会话壳，不拉取完整 Item。详情页可以先用这个结果完成首帧，
-   * 再按 Turn 逐个 hydrate，避免一次 Promise.all 把 JS 线程打满。
-   */
-  async loadThreadShell(threadId: string, limit = THREAD_INITIAL_PAGE_SIZE): Promise<ConversationShell> {
-    return this.resumeThreadPage(threadId, "summary", limit);
-  }
-
-  /** 按单个 Turn 读取完整 Item，供渐进渲染队列使用。 */
-  async hydrateTurnItems(threadId: string, turn: Turn): Promise<Turn> {
-    return { ...projectTurnForMobile(turn),
-      items: await this.listAllTurnItems(threadId, turn.id), itemsView: "full" as const };
   }
 
   async listTurnPage(threadId: string, cursor: string | null, limit = THREAD_PAGE_SIZE,
@@ -201,11 +196,11 @@ export class OfficialAppServerClient {
     });
     const page = chronologicalPage(response);
     return paginateItems
-      ? { ...page, turns: await this.hydrateTurnItemsPage(threadId, page.turns) }
+      ? { ...page, turns: await this.hydrateTurnItems(threadId, page.turns) }
       : page;
   }
 
-  private async hydrateTurnItemsPage(threadId: string, turns: Turn[]): Promise<Turn[]> {
+  private async hydrateTurnItems(threadId: string, turns: Turn[]): Promise<Turn[]> {
     return Promise.all(turns.map(async (turn) => ({
       ...projectTurnForMobile(turn),
       items: await this.listAllTurnItems(threadId, turn.id),
@@ -715,7 +710,7 @@ export function latestCompletedPlan(thread: Thread): { turnId: string; itemId: s
   return null;
 }
 
-export function latestExecutablePlan(thread: Thread): {
+export function latestExecutablePlan(thread: MobileThread): {
   turnId: string;
   itemId: string;
   text: string;

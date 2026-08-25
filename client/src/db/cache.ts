@@ -1,7 +1,6 @@
-import type { Thread } from "@codex-app-server/v2/Thread";
-
 import { THREAD_PAGE_SIZE } from "@/app-server/officialClient";
-import type { MobileProject, ThreadPreferences, ThreadRecord } from "@/app-server/types";
+import type { MobileProject, MobileThread, ThreadPreferences,
+  ThreadRecord } from "@/app-server/types";
 import { isPreviewMode } from "@/preview/config";
 import { normalizeTerminalTurn } from "@/store/threadHistory";
 import { getDatabase, withDatabaseTransaction } from "./database";
@@ -88,7 +87,7 @@ function parseProject(payload: string): MobileProject[] {
 function parseThreadRecord(payload: string, archived: boolean): ThreadRecord[] {
   try {
     const value = JSON.parse(payload) as Partial<ThreadRecord>;
-    const thread = value.thread as Thread | undefined;
+    const thread = value.thread as MobileThread | undefined;
     const history = value.history;
     const validHistory = history?.kind === "summary" || history?.kind === "loaded" &&
       (typeof history.olderCursor === "string" || history.olderCursor === null) &&

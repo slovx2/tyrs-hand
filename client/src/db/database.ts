@@ -1,6 +1,6 @@
 import * as SQLite from "expo-sqlite";
 
-export const DATABASE_VERSION = 11;
+export const DATABASE_VERSION = 12;
 
 export function needsThreadHistoryCacheReset(currentVersion: number): boolean {
   return currentVersion >= 4 && currentVersion < 7;
@@ -113,6 +113,19 @@ CREATE TABLE IF NOT EXISTS outbox (
 );
 CREATE INDEX IF NOT EXISTS outbox_profile_created
   ON outbox(profile_id,created_at);
+CREATE TABLE IF NOT EXISTS pending_message_previews (
+  profile_id TEXT NOT NULL,
+  client_message_id TEXT NOT NULL,
+  thread_id TEXT,
+  project_id TEXT NOT NULL,
+  text TEXT NOT NULL,
+  attachments TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(profile_id,client_message_id),
+  FOREIGN KEY(profile_id) REFERENCES connection_profiles(profile_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS pending_message_previews_profile_created
+  ON pending_message_previews(profile_id,created_at);
 CREATE TABLE IF NOT EXISTS app_settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -179,12 +192,31 @@ async function openDatabase(): Promise<SQLite.SQLiteDatabase> {
     if (current < 9) await migrateThreadReads(database);
     if (current < 10) await migrateSSHOnly(database);
     if (current < 11) await migrateMachineProfiles(database);
+    if (current < 12) await migratePendingMessagePreviews(database);
     await database.execAsync(machineSchema);
     if (current < DATABASE_VERSION) {
       await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
     }
   }
   return database;
+}
+
+async function migratePendingMessagePreviews(database: SQLite.SQLiteDatabase): Promise<void> {
+  await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS pending_message_previews (
+      profile_id TEXT NOT NULL,
+      client_message_id TEXT NOT NULL,
+      thread_id TEXT,
+      project_id TEXT NOT NULL,
+      text TEXT NOT NULL,
+      attachments TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(profile_id,client_message_id),
+      FOREIGN KEY(profile_id) REFERENCES connection_profiles(profile_id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS pending_message_previews_profile_created
+      ON pending_message_previews(profile_id,created_at);
+  `);
 }
 
 async function migrateToOfficialProtocol(database: SQLite.SQLiteDatabase): Promise<void> {

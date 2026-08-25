@@ -58,7 +58,11 @@ export function projectUserMessage(item: UserMessage): UserMessagePresentation {
   }
   attachments.push(...legacyAttachments.filter((value) =>
     value.kind !== "image" || !hasStructuredImage));
-  return { text: textParts.join("\n"), attachments };
+  return { text: stripTrailingLineBreaks(textParts.join("\n")), attachments };
+}
+
+export function stripTrailingLineBreaks(value: string): string {
+  return value.replace(/(?:\r\n|\n)+$/g, "");
 }
 
 export function parseLegacyAttachmentMessage(text: string): UserMessagePresentation | null {

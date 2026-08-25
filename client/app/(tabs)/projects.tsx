@@ -1,5 +1,4 @@
 import { router } from "expo-router";
-import { useDeferredValue } from "react";
 import { Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Card, EmptyState, Muted, Screen, StatusDot, Title } from "@/components/ui";
@@ -14,7 +13,6 @@ export default function ProjectsScreen() {
   const projects = useAppStore((state) => state.projects);
   const selectProject = useAppStore((state) => state.setSelectedProject);
   const refresh = useAppStore((state) => state.refresh);
-  const deferredProjects = useDeferredValue(projects);
 
   if (!connection) {
     return <Screen><EmptyState title="还没有可用的连接"
@@ -45,7 +43,7 @@ export default function ProjectsScreen() {
     ]);
   };
 
-  return <Screen><ConnectionErrorBanner /><FlatList testID="projects:list" data={deferredProjects}
+  return <Screen><ConnectionErrorBanner /><FlatList testID="projects:list" data={projects}
     keyExtractor={(item) => item.id} contentContainerStyle={styles.list}
     ListEmptyComponent={<EmptyState title="没有项目" detail={emptyDetail} />}
     renderItem={({ item, index }) => <Card style={styles.project}

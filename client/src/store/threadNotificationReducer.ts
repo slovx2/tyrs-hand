@@ -3,7 +3,7 @@ import type { ThreadItem } from "@codex-app-server/v2/ThreadItem";
 import type { Turn } from "@codex-app-server/v2/Turn";
 
 import { projectItemForMobile, projectTurnForMobile } from "@/app-server/mobileProjection";
-import type { ThreadRecord } from "@/app-server/types";
+import type { MobileThreadItem, MobileTurn, ThreadRecord } from "@/app-server/types";
 import { mergeItemSnapshot, mergeTurnSnapshot } from "./threadHistory";
 
 export type ThreadNotificationResult = {
@@ -110,7 +110,8 @@ function updateReasoningPart(record: ThreadRecord, turnId: string, itemId: strin
 }
 
 function updateExistingItem(record: ThreadRecord, turnId: string, itemId: string,
-  update: (item: ThreadItem, turn: Turn) => ThreadItem): ThreadNotificationResult {
+  update: (item: MobileThreadItem, turn: MobileTurn) => MobileThreadItem):
+  ThreadNotificationResult {
   const turnIndex = record.thread.turns.findIndex((turn) => turn.id === turnId);
   if (turnIndex < 0) return unchanged(record, true);
   const turn = record.thread.turns[turnIndex]!;
@@ -123,7 +124,7 @@ function updateExistingItem(record: ThreadRecord, turnId: string, itemId: string
   return result(record, { ...record.thread, turns }, false, false);
 }
 
-function isMatchingProvisional(turn: Turn,
+function isMatchingProvisional(turn: MobileTurn,
   incomingUsers: Extract<ThreadItem, { type: "userMessage" }>[]): boolean {
   return turn.id.startsWith("provisional:") && turn.items.some((item) =>
     item.type === "userMessage" && incomingUsers.some((incoming) => {

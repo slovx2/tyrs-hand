@@ -10,12 +10,10 @@ export type StreamingDelta = {
 type Buffer = Omit<StreamingDelta, "delta"> & { characters: string[] };
 type FlushWaiter = {
   matches: (buffer: Buffer) => boolean;
-  framesLeft: number;
   resolve: () => void;
 };
 
 export const STREAM_CHARACTERS_PER_FRAME = 24;
-export const STREAM_COMPLETION_FLUSH_FRAMES = 8;
 
 export class StreamingTextQueue {
   private readonly buffers = new Map<string, Buffer>();
@@ -55,7 +53,7 @@ export class StreamingTextQueue {
   private flush(matches: (buffer: Buffer) => boolean): Promise<void> {
     if (![...this.buffers.values()].some(matches)) return Promise.resolve();
     return new Promise<void>((resolve) => {
-      this.waiters.add({ matches, framesLeft: STREAM_COMPLETION_FLUSH_FRAMES, resolve });
+      this.waiters.add({ matches, resolve });
       this.ensureFrame();
     });
   }
@@ -80,7 +78,6 @@ export class StreamingTextQueue {
       if (characters.length > 0) this.apply({ ...buffer, delta: characters.join("") });
       if (buffer.characters.length === 0) this.buffers.delete(key);
     }
-    for (const waiter of this.waiters) waiter.framesLeft -= 1;
     this.settleWaiters();
     if (this.buffers.size > 0) this.ensureFrame();
   }
@@ -88,12 +85,7 @@ export class StreamingTextQueue {
   private settleWaiters(): void {
     for (const waiter of [...this.waiters]) {
       const pending = [...this.buffers.values()].some(waiter.matches);
-      if (pending && waiter.framesLeft > 0) continue;
-      if (pending) {
-        for (const [key, buffer] of this.buffers) {
-          if (waiter.matches(buffer)) this.buffers.delete(key);
-        }
-      }
+      if (pending) continue;
       this.waiters.delete(waiter);
       waiter.resolve();
     }

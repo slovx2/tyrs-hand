@@ -54,6 +54,11 @@ vi.mock("@/db/threadReads", () => ({
   reconcileThreadReads: async () => [],
   removeThreadRead: async () => undefined,
 }));
+vi.mock("@/db/pendingMessages", () => ({
+  listPendingMessagePreviews: async () => [],
+  savePendingMessagePreview: async () => undefined,
+  removePendingMessagePreview: async () => undefined,
+}));
 
 class FakeOfficialClient {
   resume!: (threadId: string) => Promise<ResumedThreadPage>;
@@ -196,7 +201,7 @@ describe("会话分页 Repository", () => {
       ?.items[0]?.id).toBe("item:updated");
   });
 
-  it("最新页无重叠时保留已展示旧页，并更新尾页边界", async () => {
+  it("最新页无重叠时不扫描旧页，重置到新的官方分页边界", async () => {
     const profileId = "profile-gap";
     const threadId = "thread-gap";
     const client = new FakeOfficialClient();
@@ -213,9 +218,9 @@ describe("会话分页 Repository", () => {
 
     expect(client.pageCalls).toEqual([null]);
     expect(currentRecord(threadId).thread.turns.map((item) => item.id))
-      .toEqual([...turns(1, 2), ...turns(8, 12)].map((item) => item.id));
+      .toEqual(turns(8, 12).map((item) => item.id));
     expect(currentRecord(threadId).history).toMatchObject({
-      olderCursor: "old-older", tailOlderCursor: "new-older", hasLoadedOldest: false,
+      olderCursor: "new-older", tailOlderCursor: "new-older", hasLoadedOldest: false,
     });
   });
 

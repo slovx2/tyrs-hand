@@ -2,6 +2,7 @@ import type { ThreadItem } from "@codex-app-server/v2/ThreadItem";
 import type { Turn } from "@codex-app-server/v2/Turn";
 import { describe, expect, it } from "vitest";
 
+import type { MobileTurn, UserInputResponseItem } from "@/app-server/types";
 import { createToolGroup, formatDuration, mixedToolGroupTitle, projectTurnPresentation,
   reasoningActivityHeading, toolGroupTitle, toolOperationLines, turnActivitySummary,
   isToolFailed, type ToolGroupCategory,
@@ -113,6 +114,38 @@ describe("官方 Turn 移动展示投影", () => {
     expect(completedTool.showThinking).toBe(false);
     expect(runningTool.blocks.map((block) => block.kind)).toEqual(["tools"]);
     expect(runningTool.blocks[0]).toMatchObject({ title: "正在运行 echo running-tool" });
+  });
+
+  it.each(["completed", "failed", "interrupted"] as const)(
+    "%s Turn 的尾部 reasoning 不会让完成工具继续 shimmer", (status) => {
+      const result = projectTurnPresentation(turn(status, [
+        { type: "reasoning", id: "reasoning-terminal",
+          summary: ["**仍在检查状态**"], content: [] },
+        command("terminal-tool", "completed"),
+      ]));
+
+      expect(result.blocks.at(-1)).toMatchObject({ kind: "tools", running: false,
+        title: "运行了命令" });
+      expect(result.showThinking).toBe(false);
+    });
+
+  it("把本地 userInputResponse 保留为独立时间线块", () => {
+    const response: UserInputResponseItem = {
+      type: "userInputResponse",
+      id: "user-input-response-request-1",
+      requestId: "request-1",
+      turnId: "turn",
+      questions: [{ id: "choice", header: "方式", question: "选择哪一种？", options: [] }],
+      answers: { choice: ["继续"] },
+      completed: true,
+    };
+    const value = turn("inProgress", [user("user", "执行")]) as MobileTurn;
+    value.items.push(response);
+
+    expect(projectTurnPresentation(value).blocks).toMatchObject([
+      { kind: "user", key: "user" },
+      { kind: "userInputResponse", key: response.id, item: response },
+    ]);
   });
 
   it("最终回答首段出现即允许折叠，不依赖 Turn 完成", () => {

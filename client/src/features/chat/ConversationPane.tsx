@@ -14,11 +14,11 @@ import { Button, EmptyState } from "@/components/ui";
 import { clearDraft, loadDraft, saveDraft } from "@/db/drafts";
 import { createImageLoadGate, ImageLoadGateContext } from "@/features/images/ImageLoadGate";
 import { useKeyboardVisible } from "@/hooks/useKeyboardVisible";
-import { useRenderScheduler } from "@/render/renderScheduler";
 import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
 import { keyboardAvoidance } from "@/utils/keyboardAvoidance";
 import { ChatComposer } from "./ChatComposer";
+import { PendingMessagePreviews } from "./PendingMessagePreviews";
 import { createFollowState, latestTurnPhase, reduceFollowState,
   shouldFollowLatest, type FollowEvent } from "./conversationFollow";
 import { beginUserScroll, updateUserScroll, type UserScrollGesture }
@@ -26,7 +26,6 @@ import { beginUserScroll, updateUserScroll, type UserScrollGesture }
 import { OfficialTurn } from "./OfficialTurn";
 import { ParameterSheet } from "./ParameterSheet";
 import { ServerRequestCard } from "./ServerRequestCard";
-import { createActiveTurnReconciler } from "./activeTurnReconciler";
 import { ACTIVITY_TOGGLE_SCROLL_SETTLE_MS, activityToggleAllowed } from "./activityDisclosure";
 import { conversationRows, type ConversationRow } from "./conversationRows";
 import { anchorViewOffset, conversationScrollState,
@@ -37,7 +36,6 @@ const rowType = (row: ConversationRow) => row.kind;
 
 const EMPTY_MODELS: Model[] = [];
 const EMPTY_REQUESTS: ServerRequest[] = [];
-const EMPTY_ROWS: ConversationRow[] = [];
 const LIST_POSITIONING = {
   startRenderingFromBottom: true,
 } as const;
@@ -48,7 +46,6 @@ const INITIAL_IMAGE_LOAD_DELAY_MS = 300;
 
 export function ConversationPane({ sessionId }: { sessionId: string }) {
   const theme = useTheme();
-  const renderScheduler = useRenderScheduler();
   const insets = useSafeAreaInsets();
   const keyboardVisible = useKeyboardVisible();
   const imageLoadGate = useMemo(() => createImageLoadGate(true), []);
@@ -58,15 +55,11 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   const modelsByTarget = useAppStore((state) => state.modelsByTarget);
   const requests = useAppStore((state) => state.pendingRequests[sessionId] ?? EMPTY_REQUESTS);
   const loadThread = useAppStore((state) => state.loadThread);
-  const refreshThreadTail = useAppStore((state) => state.refreshThreadTail);
   const loadOlderThread = useAppStore((state) => state.loadOlderThread);
   const submitMessage = useAppStore((state) => state.submitMessage);
   const setThreadVisible = useAppStore((state) => state.setThreadVisible);
-  const retryOutbox = useAppStore((state) => state.retryOutbox);
-  const discardOutbox = useAppStore((state) => state.discardOutbox);
-  const outbox = useAppStore((state) => state.outbox);
-  const queued = useMemo(() => outbox.filter((item) =>
-    item.kind === "submit_message" && item.threadId === sessionId), [outbox, sessionId]);
+  const pendingMessages = useAppStore((state) => state.pendingMessages);
+  const confirmPendingMessage = useAppStore((state) => state.confirmPendingMessage);
   const executePlan = useAppStore((state) => state.executePlan);
   const interruptThread = useAppStore((state) => state.interruptThread);
   const answerRequest = useAppStore((state) => state.answerRequest);
@@ -128,18 +121,6 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     followState.current = reduceFollowState(followState.current, event);
   }, []);
 
-  const reloadThread = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      await loadThread(sessionId);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "无法读取官方会话历史");
-    } finally {
-      setLoading(false);
-    }
-  }, [loadThread, sessionId]);
-
   useEffect(() => {
     let canceled = false;
     setLoading(true);
@@ -148,6 +129,25 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       if (!canceled) setError(cause instanceof Error ? cause.message : "无法读取官方会话历史");
     }).finally(() => { if (!canceled) setLoading(false); });
     return () => { canceled = true; };
+  }, [loadThread, sessionId]);
+
+  useEffect(() => {
+    if (!record) return;
+    const confirmed = new Set(record.thread.turns.flatMap((turn) => turn.items.flatMap((item) =>
+      item.type === "userMessage" && item.clientId ? [item.clientId] : [])));
+    for (const pending of pendingMessages) {
+      if (pending.threadId === sessionId && confirmed.has(pending.clientMessageId)) {
+        void confirmPendingMessage(pending.clientMessageId);
+      }
+    }
+  }, [confirmPendingMessage, pendingMessages, record, sessionId]);
+
+  const retryLoad = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    void loadThread(sessionId).catch((cause) => {
+      setError(cause instanceof Error ? cause.message : "无法读取官方会话历史");
+    }).finally(() => setLoading(false));
   }, [loadThread, sessionId]);
 
   useEffect(() => {
@@ -225,26 +225,8 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     return () => clearTimeout(timer);
   }, [attachments, draftReady, draftScope, preferences, profileId, text]);
 
-  useEffect(() => {
-    if (!activeTurnId) return;
-    const reconciler = createActiveTurnReconciler(() => refreshThreadTail(sessionId));
-    const applyAppState = (state: string) => {
-      if (state === "active") reconciler.start();
-      else reconciler.stop();
-    };
-    const subscription = AppState.addEventListener("change", applyAppState);
-    applyAppState(AppState.currentState);
-    return () => {
-      subscription.remove();
-      reconciler.dispose();
-    };
-  }, [activeTurnId, refreshThreadTail, sessionId]);
-
   const rows = useMemo(() => conversationRows(record?.thread.turns ?? [], requests),
     [record?.thread.turns, requests]);
-  // 后台加载不能清空已经展示的列表。首次进入且尚无任何缓存时才显示骨架；
-  // 刷新、发送和流式期间始终保留当前 rows，避免 FlashList 重建后出现整页闪退。
-  const visibleRows = loading && rows.length === 0 ? EMPTY_ROWS : rows;
   rowsRef.current = rows;
   const restorePosition = useMemo(() => resolveConversationPosition(null,
     rows.map((row) => row.key)), [rows]);
@@ -258,8 +240,9 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         (!force && !shouldFollowLatest(followState.current))) return;
       list.current?.scrollToEnd({ animated });
     };
-    renderScheduler.schedule(follow, "user");
-  }, [positionRestored, renderScheduler]);
+    list.current?.scrollToEnd({ animated });
+    requestAnimationFrame(() => requestAnimationFrame(follow));
+  }, [positionRestored]);
 
   useEffect(() => {
     const nextPhase = latestTurnPhase(activeTurn);
@@ -373,24 +356,17 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     const message = text;
     const files = attachments;
     setSending(true);
-    setText("");
-    setAttachments([]);
-    followLatest(false);
     try {
       const sent = await submitMessage(sessionId, message, files, resolvedPreferences);
       if (profileId) await clearDraft(profileId, draftScope);
-      // submitMessage 会先插入乐观 Turn，再等待 App Server 回执。发送前的
-      // scrollToEnd 可能早于这个新 Row 的 native layout，回执后再补一次。
+      setText("");
+      setAttachments([]);
       followLatest(false);
-      if (!sent) {
-        setText(message);
-        setAttachments(files);
-        Alert.alert("已加入发送队列", "连接恢复后会自动发送这条消息。");
-      }
+      if (!sent) throw new Error("服务器未确认发送");
     } catch (cause) {
       setText(message);
       setAttachments(files);
-      Alert.alert("发送状态未确认", cause instanceof Error ? cause.message : "请刷新后重试");
+      Alert.alert("发送失败", cause instanceof Error ? cause.message : "请检查连接后重试");
     } finally {
       setSending(false);
     }
@@ -416,18 +392,18 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       ? <ServerRequestCard request={item.request} onAnswer={(result) => {
         if (!answerRequest(sessionId, item.request.id, result)) {
           Alert.alert("请求已经处理", "这个请求已由其他连接回答，正在刷新官方状态。");
-          void reloadThread();
+          void loadThread(sessionId);
         }
       }} />
-      : null, [answerRequest, canToggleActivity, handleDisclosureChange, profileId, reloadThread,
+      : null, [answerRequest, canToggleActivity, handleDisclosureChange, loadThread, profileId,
         sessionId]);
 
   if (!connection || !record) {
     return <EmptyState title="会话不可用" detail="它可能已被归档、移除，或属于其他连接。" />;
   }
-  if (error && record.thread.turns.length === 0) {
+  if (!loading && error && record.thread.turns.length === 0) {
     return <EmptyState title="无法加载会话" detail={error}
-      action={<Button title="重试" onPress={() => void reloadThread()} />} />;
+      action={<Button title="重试" onPress={retryLoad} />} />;
   }
 
   const plan = latestExecutablePlan(record.thread);
@@ -435,26 +411,23 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     <KeyboardAvoidingView {...keyboardAvoidance(Platform.OS, insets.top, keyboardVisible)}
     style={styles.container}>
     <View style={styles.messageArea}>
-      <FlashList key={sessionId} ref={list} testID="messages:list" data={visibleRows}
+      <FlashList key={sessionId} ref={list} testID="messages:list" data={rows}
         style={[styles.messageList, { opacity: hasRestorableAnchor && !positionRestored ? 0 : 1 }]}
         drawDistance={LIST_DRAW_DISTANCE}
         maxItemsInRecyclePool={LIST_RECYCLE_POOL_SIZE}
-        removeClippedSubviews={Platform.OS === "android"}
         initialScrollIndex={restorePosition.kind === "anchor" ? restorePosition.index : undefined}
         keyExtractor={rowKey}
         getItemType={rowType}
         keyboardShouldPersistTaps="handled"
         renderItem={renderRow}
-        ListEmptyComponent={loading ? <ConversationLoadingSkeleton /> : null}
         contentContainerStyle={styles.list}
         maintainVisibleContentPosition={LIST_POSITIONING}
         scrollEventThrottle={100}
         onContentSizeChange={() => {
-          // FlashList 在 hydrate、Markdown 延迟解析和流式更新时都会触发这个回调。
-          // 只有当前跟随态允许自动跟随时才滚动；不能用 force 绕过 follow 状态，
-          // 否则详情重进时每次高度测量都会把列表从顶部拉到底部，形成持续跳变。
+          // 数据更新和披露展开会先触发 React 更新，随后 FlashList 才完成真实高度测量。
+          // 跟随态在这个布局时点补滚到底，避免多行命令的最后一行卡在 composer 上沿。
           if (!positionRestored || interactionBlocked.current || !pinnedToLatest.current) return;
-          scheduleFollowLatest(false);
+          scheduleFollowLatest(false, true);
         }}
         onScroll={({ nativeEvent }) => {
           const state = conversationScrollState(nativeEvent.contentSize.height,
@@ -562,6 +535,16 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
               })()} />
           </View>}
         </>} />
+      {loading ? <View pointerEvents="none" testID="messages:syncing"
+        style={[styles.syncStatus, { backgroundColor: theme.colors.surface,
+          borderColor: theme.colors.border }]}>
+        <ActivityIndicator size="small" color={theme.colors.textMuted} />
+        <Text style={[styles.syncStatusText, { color: theme.colors.textMuted }]}>正在同步</Text>
+      </View> : error ? <Pressable testID="messages:sync-retry" onPress={retryLoad}
+        style={[styles.syncStatus, { backgroundColor: theme.colors.surface,
+          borderColor: theme.colors.border }]}>
+        <Text style={[styles.syncStatusText, { color: theme.colors.danger }]}>同步失败，点按重试</Text>
+      </Pressable> : null}
       {showScrollToLatest && <Pressable testID="chat:scroll-to-latest"
         accessibilityRole="button" accessibilityLabel="回到最新消息"
         onPress={() => followLatest(true)} style={({ pressed }) => [styles.scrollToLatest, {
@@ -571,24 +554,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
         <Text style={[styles.scrollToLatestIcon, { color: theme.colors.text }]}>↓</Text>
       </Pressable>}
     </View>
-    {queued.length > 0 && <Pressable testID="chat:retry-outbox" style={[styles.outbox, {
-      backgroundColor: theme.colors.surfaceAlt }]} onPress={() => {
-        const failed = queued.find((item) => item.state === "failed");
-        if (!failed) { void retryOutbox(); return; }
-        Alert.alert("消息发送失败", failed.error ?? "连接恢复后可重试", [
-          { text: "取消", style: "cancel" },
-          { text: "丢弃", style: "destructive",
-            onPress: () => void discardOutbox(failed.clientMessageId) },
-          { text: "重试", onPress: () => void retryOutbox(failed.clientMessageId) },
-        ]);
-      }}>
-      <Text style={{ color: queued.some((item) => item.state === "failed")
-        ? theme.colors.danger : theme.colors.textMuted }}>
-        {queued.some((item) => item.state === "failed")
-          ? `${queued.length} 条消息等待处理，点按查看`
-          : `${queued.length} 条消息正在等待网络`}
-      </Text>
-    </Pressable>}
+    <PendingMessagePreviews items={pendingMessages.filter((item) => item.threadId === sessionId)} />
     <ChatComposer value={text} onChange={setText} attachments={attachments}
       onAttachmentsChange={setAttachments} onParameters={() => {
         if (!resolvedPreferences) {
@@ -600,7 +566,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       sending={sending} stopping={stopping}
       parameterLabel={resolvedPreferences
         ? `${resolvedPreferences.model} · ${resolvedPreferences.effort ?? "默认"} · ${resolvedPreferences.collaborationMode === "plan" ? "先做计划" : "直接执行"}`
-        : "参数暂不可用"} />
+        : "参数暂不可用"} disabled={sending} />
     {resolvedPreferences && <ParameterSheet visible={showParameters} models={models}
       value={resolvedPreferences} onChange={setPreferences} onClose={() => setShowParameters(false)}
       onCancel={() => { setPreferences(beforeSheet); setShowParameters(false); }} />}
@@ -608,40 +574,18 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
   </ImageLoadGateContext.Provider>;
 }
 
-function ConversationLoadingSkeleton() {
-  const theme = useTheme();
-  return <View testID="messages:skeleton" style={styles.listSkeleton}>
-    <ActivityIndicator color={theme.colors.textMuted} />
-    <View style={[styles.skeletonCard, { backgroundColor: theme.colors.surfaceAlt }]}>
-      <View style={styles.skeletonLine} />
-      <View style={styles.skeletonLineShort} />
-      <View style={styles.skeletonLineLong} />
-    </View>
-    <View style={[styles.skeletonCard, styles.skeletonCardRight,
-      { backgroundColor: theme.colors.surfaceAlt }]}>
-      <View style={styles.skeletonLineLong} />
-      <View style={styles.skeletonLine} />
-    </View>
-  </View>;
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
   messageArea: { flex: 1, minHeight: 0 },
   messageList: { flex: 1 },
   list: { paddingVertical: 8 },
-  listSkeleton: { gap: 14, paddingHorizontal: 16, paddingVertical: 32 },
-  skeletonCard: { gap: 10, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 14 },
-  skeletonCardRight: { alignSelf: "flex-end", width: "78%" },
-  skeletonLine: { backgroundColor: "rgba(128, 128, 128, 0.25)", borderRadius: 5,
-    height: 16, opacity: 0.8, width: "78%" },
-  skeletonLineShort: { backgroundColor: "rgba(128, 128, 128, 0.25)", borderRadius: 5,
-    height: 16, opacity: 0.65, width: "48%" },
-  skeletonLineLong: { backgroundColor: "rgba(128, 128, 128, 0.25)", borderRadius: 5,
-    height: 16, opacity: 0.72, width: "94%" },
   historyStatus: { minHeight: 40, alignItems: "center", justifyContent: "center",
     paddingHorizontal: 16 },
   planAction: { paddingHorizontal: 16, paddingTop: 8 },
+  syncStatus: { position: "absolute", top: 8, alignSelf: "center", zIndex: 2,
+    minHeight: 30, borderWidth: StyleSheet.hairlineWidth, borderRadius: 15,
+    flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 11 },
+  syncStatusText: { fontFamily: "Inter_400Regular", fontSize: 12, lineHeight: 18 },
   outbox: { minHeight: 34, marginHorizontal: 12, marginBottom: 6, borderRadius: 8,
     paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
   scrollToLatest: { position: "absolute", right: 16, bottom: 12, width: 42, height: 42,

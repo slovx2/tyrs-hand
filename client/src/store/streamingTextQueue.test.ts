@@ -35,7 +35,7 @@ describe("官方文本逐帧揭示队列", () => {
       .toBe("b".repeat(30));
   });
 
-  it("超过八帧的尾部缓冲在权威完成快照前停止继续追加", async () => {
+  it("完成事件会等待 1000 字符全部排空", async () => {
     const applied: StreamingDelta[] = [];
     const frames: (() => void)[] = [];
     const queue = new StreamingTextQueue((value) => applied.push(value),
@@ -43,11 +43,10 @@ describe("官方文本逐帧揭示队列", () => {
     queue.enqueue(delta("long", "x".repeat(1_000)));
     const flushed = queue.flushTurn("thread", "turn");
 
-    for (let index = 0; index < 8; index += 1) frames.shift()?.();
+    while (frames.length > 0) frames.shift()?.();
     await flushed;
 
-    expect(applied).toHaveLength(8);
-    expect(applied.map((item) => item.delta).join("")).toHaveLength(8 * 24);
+    expect(applied.map((item) => item.delta).join("")).toHaveLength(1_000);
   });
 });
 

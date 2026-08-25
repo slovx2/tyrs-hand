@@ -6,9 +6,9 @@ import { DATABASE_VERSION, MACHINE_PROFILE_MIGRATION_SQL,
 
 vi.mock("expo-sqlite", () => ({}));
 
-describe("数据库 v11 机器身份迁移", () => {
+describe("数据库 v12 机器身份迁移", () => {
   it("只让可升级的官方协议缓存执行一次失效", () => {
-    expect(DATABASE_VERSION).toBe(11);
+    expect(DATABASE_VERSION).toBe(12);
     expect(needsThreadHistoryCacheReset(3)).toBe(false);
     expect(needsThreadHistoryCacheReset(4)).toBe(true);
     expect(needsThreadHistoryCacheReset(5)).toBe(true);

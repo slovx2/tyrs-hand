@@ -1,14 +1,14 @@
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { useState } from "react";
-import { Alert, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import type { LocalAttachment } from "@/app-server/attachments";
 import { useTheme } from "@/theme/ThemeProvider";
 import { composerPrimaryAction } from "./composerAction";
 
 export function ChatComposer({ value, onChange, attachments, onAttachmentsChange, onParameters,
-  onSend, onStop, active = false, sending, stopping = false, parameterLabel }: {
+  onSend, onStop, active = false, disabled = false, sending, stopping = false, parameterLabel }: {
   value: string;
   onChange: (value: string) => void;
   attachments: LocalAttachment[];
@@ -17,6 +17,7 @@ export function ChatComposer({ value, onChange, attachments, onAttachmentsChange
   onSend: () => void;
   onStop?: (() => void) | undefined;
   active?: boolean | undefined;
+  disabled?: boolean | undefined;
   sending: boolean;
   stopping?: boolean | undefined;
   parameterLabel: string;
@@ -25,6 +26,7 @@ export function ChatComposer({ value, onChange, attachments, onAttachmentsChange
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   const hasContent = value.trim() !== "" || attachments.length > 0;
   const primaryAction = composerPrimaryAction(active, hasContent, sending || stopping);
+  const editingDisabled = disabled || sending || stopping;
   const add = (items: LocalAttachment[]) => {
     if (attachments.length + items.length > 10) {
       Alert.alert("附件过多", "每条消息最多 10 个附件");
@@ -50,7 +52,7 @@ export function ChatComposer({ value, onChange, attachments, onAttachmentsChange
   };
   return <View>
     {attachments.length > 0 && <View testID="composer:attachment-list" style={styles.attachments}>{attachments.map((item, index) =>
-      <Pressable key={`${item.uri}-${index}`} testID={`composer:attachment:${index}`}
+      <Pressable key={`${item.uri}-${index}`} testID={`composer:attachment:${index}`} disabled={editingDisabled}
         onPress={() => onAttachmentsChange(attachments.filter((_, i) => i !== index))}
         style={[styles.attachment, { backgroundColor: theme.colors.surfaceAlt }]}>
         <Text numberOfLines={1} style={{ color: theme.colors.text, maxWidth: 160 }}>{item.name} ×</Text>
@@ -62,12 +64,12 @@ export function ChatComposer({ value, onChange, attachments, onAttachmentsChange
       <Pressable testID="composer:attachment:document" onPress={() => void document()}><Text style={[styles.menuText, { color: theme.colors.text }]}>选择文件</Text></Pressable>
     </View>}
     <View style={[styles.container, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-      <TextInput testID="composer:input" value={value} onChangeText={onChange} multiline placeholder="描述你想完成的任务…"
+      <TextInput testID="composer:input" value={value} onChangeText={onChange} editable={!editingDisabled} multiline placeholder="描述你想完成的任务…"
         placeholderTextColor={theme.colors.textMuted} style={[styles.input, { color: theme.colors.text }]} />
       <View style={styles.actions}>
-        <Pressable testID="composer:attachments" accessibilityLabel="添加附件" onPress={() => setShowAttachmentMenu((open) => !open)}
+        <Pressable testID="composer:attachments" accessibilityLabel="添加附件" disabled={editingDisabled} onPress={() => setShowAttachmentMenu((open) => !open)}
           style={styles.iconButton}><Text style={{ color: theme.colors.text, fontSize: 21 }}>＋</Text></Pressable>
-        <Pressable testID="composer:parameters" onPress={onParameters} style={[styles.parameter, { backgroundColor: theme.colors.surfaceAlt }]}> 
+        <Pressable testID="composer:parameters" disabled={editingDisabled} onPress={onParameters} style={[styles.parameter, { backgroundColor: theme.colors.surfaceAlt }]}>
           <Text numberOfLines={1} style={{ color: theme.colors.textMuted, fontSize: 12 }}>{parameterLabel}</Text>
         </Pressable>
         <Pressable testID={primaryAction.kind === "stop" ? "session:stop" : "composer:send"}
@@ -80,7 +82,7 @@ export function ChatComposer({ value, onChange, attachments, onAttachmentsChange
           style={[styles.send, { backgroundColor: primaryAction.kind === "stop"
             ? theme.colors.text : theme.colors.accent,
           opacity: primaryAction.disabled ? 0.4 : 1 }]}>
-          {primaryAction.kind === "stop"
+          {sending ? <ActivityIndicator color={theme.colors.accentForeground} /> : primaryAction.kind === "stop"
             ? <View style={[styles.stopGlyph, { backgroundColor: theme.colors.surface }]} />
             : <Text style={{ color: theme.colors.accentForeground, fontSize: 18 }}>↑</Text>}
         </Pressable>

@@ -1,9 +1,7 @@
-import type { Thread } from "@codex-app-server/v2/Thread";
-import type { ThreadItem } from "@codex-app-server/v2/ThreadItem";
-
 import type { OfficialTurnPage } from "@/app-server/officialClient";
+import type { MobileThread, MobileThreadItem } from "@/app-server/types";
 
-type Turns = Thread["turns"];
+type Turns = MobileThread["turns"];
 const turnSnapshotKeys = new WeakMap<Turns[number], string>();
 
 export type MergedTailPage = {
@@ -24,36 +22,14 @@ export type MergeTurnSnapshotOptions = {
 export function mergeTailPage(existing: Turns, incoming: Turns): MergedTailPage {
   const incomingIds = new Set(incoming.map((turn) => turn.id));
   const overlap = existing.findIndex((turn) => incomingIds.has(turn.id));
-  if (overlap < 0) {
-    // 尾页读取与通知可能交错，短暂窗口内服务端页不一定包含本地已经观察到的
-    // Turn。不能把现有列表当成“有缺口的旧片段”直接丢弃，否则发送消息时会出现
-    // 整页清空，随后历史回填并与流式 Turn 混排。保留现有顺序，再追加权威尾页。
-    const merged = mergeTurnSequence(existing, incoming);
-    const withProvisional = preserveProvisionalTurns(existing, incoming, merged);
-    return { turns: sameTurnSequence(existing, withProvisional) ? existing : withProvisional,
-      overlapped: false };
-  }
+  if (overlap < 0) return { turns: incoming, overlapped: false };
   // 最新页可能从很早的 Turn 开始重叠。只保留首个重叠点之前的历史前缀，
   // 但所有仍出现在权威页中的既有 Turn 都要参与快照合并；否则页首先匹配时，
   // 尾部活动 Turn 已观察到的原生工具会被 legacy 短快照直接覆盖。
   const overlappingExisting = existing.slice(overlap)
     .filter((turn) => incomingIds.has(turn.id));
   const merged = mergeTurnSequence(existing.slice(0, overlap), overlappingExisting, incoming);
-  // 发送中的乐观 Turn 没有官方 ID，尾页在 turn/started 或 turn/steer
-  // 通知到达前可能暂时还看不到它。不要因为一次权威尾页读取就把用户刚发的
-  // 消息从列表中删掉；等同一 clientMessageId 出现在官方 Turn 后再自然收敛。
-  const withProvisional = preserveProvisionalTurns(existing, incoming, merged);
-  return { turns: sameTurnSequence(existing, withProvisional) ? existing : withProvisional,
-    overlapped: true };
-}
-
-function preserveProvisionalTurns(existing: Turns, incoming: Turns, merged: Turns): Turns {
-  const provisional = existing.filter((turn) => turn.id.startsWith("provisional:") &&
-    !incoming.some((candidate) => candidate.items.some((item) =>
-      item.type === "userMessage" && turn.items.some((previous) =>
-        previous.type === "userMessage" && previous.clientId !== null &&
-        previous.clientId === item.clientId))));
-  return provisional.length > 0 ? mergeTurnSequence(merged, provisional) : merged;
+  return { turns: sameTurnSequence(existing, merged) ? existing : merged, overlapped: true };
 }
 
 export function mergeOlderPage(existing: Turns, currentCursor: string | null,
@@ -90,7 +66,7 @@ export function mergeTurnSnapshot(previous: Turns[number], incoming: Turns[numbe
   const incomingById = new Map(incoming.items.map((item) => [item.id, item]));
   const aliasedIncomingByPreviousId = semanticItemAliases(previous.items, incoming.items);
   const seen = new Set<string>();
-  const items: ThreadItem[] = [];
+  const items: MobileThreadItem[] = [];
   for (const item of previous.items) {
     const aliased = aliasedIncomingByPreviousId.get(item.id);
     const updated = incomingById.get(item.id) ?? aliased;
@@ -99,7 +75,7 @@ export function mergeTurnSnapshot(previous: Turns[number], incoming: Turns[numbe
         : withItemId(updated, item.id), incoming.status !== "inProgress"));
       seen.add(updated.id);
     } else if (options.preserveMissingItems || incoming.status === "inProgress" ||
-      isToolItem(item)) {
+      isToolItem(item) || item.type === "userInputResponse") {
       // Turn 已经进入终态时，旧快照里仍是 inProgress/generating 的工具不可能继续运行。
       // 保留调用本身用于还原时间线，但必须先收敛 Item 状态，否则会把错误的运行态写入缓存，
       // 下次启动仍显示 shimmer。
@@ -130,11 +106,11 @@ export function normalizeTerminalTurn(turn: Turns[number]): Turns[number] {
  * 两条链路同时到达时按内容和顺序一对一建立别名，避免把同一条用户消息、commentary
  * 或工具调用重复追加。匹配只在类型和稳定语义都一致时发生。
  */
-function semanticItemAliases(previous: ThreadItem[], incoming: ThreadItem[]):
-  Map<string, ThreadItem> {
+function semanticItemAliases(previous: MobileThreadItem[], incoming: MobileThreadItem[]):
+  Map<string, MobileThreadItem> {
   const exactPreviousIds = new Set(previous.map((item) => item.id));
   const consumedPreviousIds = new Set<string>();
-  const aliases = new Map<string, ThreadItem>();
+  const aliases = new Map<string, MobileThreadItem>();
   for (const candidate of incoming) {
     if (exactPreviousIds.has(candidate.id)) {
       consumedPreviousIds.add(candidate.id);
@@ -149,7 +125,7 @@ function semanticItemAliases(previous: ThreadItem[], incoming: ThreadItem[]):
   return aliases;
 }
 
-function semanticallySameItem(left: ThreadItem, right: ThreadItem): boolean {
+function semanticallySameItem(left: MobileThreadItem, right: MobileThreadItem): boolean {
   if (left.type !== right.type) return false;
   switch (left.type) {
   case "userMessage":
@@ -200,12 +176,12 @@ function growingPartsEquivalent(left: string[], right: string[]): boolean {
   return growingEquivalent(leftText, rightText);
 }
 
-function withItemId(item: ThreadItem, id: string): ThreadItem {
-  return { ...item, id } as ThreadItem;
+function withItemId(item: MobileThreadItem, id: string): MobileThreadItem {
+  return { ...item, id } as MobileThreadItem;
 }
 
-export function mergeItemSnapshot(previous: ThreadItem, incoming: ThreadItem,
-  completed: boolean): ThreadItem {
+export function mergeItemSnapshot(previous: MobileThreadItem, incoming: MobileThreadItem,
+  completed: boolean): MobileThreadItem {
   if (sameItemSnapshot(previous, incoming)) return previous;
   if (completed || previous.type !== incoming.type) return incoming;
   if (previous.type === "agentMessage" && incoming.type === "agentMessage") {
@@ -240,18 +216,19 @@ function mergeGrowingParts(previous: string[], incoming: string[]): string[] {
     part === previous[index]) ? previous : result;
 }
 
-function isToolItem(item: ThreadItem): boolean {
+function isToolItem(item: MobileThreadItem): boolean {
   return item.type !== "userMessage" && item.type !== "agentMessage" && item.type !== "plan" &&
-    item.type !== "reasoning" && item.type !== "hookPrompt";
+    item.type !== "reasoning" && item.type !== "hookPrompt" &&
+    item.type !== "userInputResponse";
 }
 
-function completeMissingTool(item: ThreadItem): ThreadItem {
+function completeMissingTool(item: MobileThreadItem): MobileThreadItem {
   if (!isToolItem(item) || !("status" in item) ||
     (item.status !== "inProgress" && item.status !== "generating")) return item;
   return { ...item, status: "completed" };
 }
 
-function sameItemSnapshot(left: ThreadItem, right: ThreadItem): boolean {
+function sameItemSnapshot(left: MobileThreadItem, right: MobileThreadItem): boolean {
   return left === right || JSON.stringify(left) === JSON.stringify(right);
 }
 

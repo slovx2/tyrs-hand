@@ -2,6 +2,7 @@ import type { Turn } from "@codex-app-server/v2/Turn";
 import { describe, expect, it } from "vitest";
 
 import type { OfficialTurnPage } from "@/app-server/officialClient";
+import type { MobileTurn, UserInputResponseItem } from "@/app-server/types";
 import { mergeOlderPage, mergeTailPage,
   mergeItemSnapshot, mergeTurnSequence, mergeTurnSnapshot } from "./threadHistory";
 
@@ -19,27 +20,14 @@ describe("官方 Turn 分页合并", () => {
     expect(merged.overlapped).toBe(true);
   });
 
-  it("最新页暂时没有重叠时保留现有列表，避免尾页竞态清空 UI", () => {
+  it("最新页没有重叠时丢弃有缺口的旧片段，由新游标重新分页", () => {
     const merged = mergeTailPage(
       [turn("turn-1"), turn("turn-2")],
       [turn("turn-8"), turn("turn-9")],
     );
     expect(merged).toEqual({
-      turns: [turn("turn-1"), turn("turn-2"), turn("turn-8"), turn("turn-9")],
-      overlapped: false,
+      turns: [turn("turn-8"), turn("turn-9")], overlapped: false,
     });
-  });
-
-  it("权威尾页暂缺官方 Turn 时保留乐观消息，确认后再收敛", () => {
-    const provisional = turn("provisional:message-1", "inProgress", "乐观消息");
-    provisional.items = [user("provisional-user", "message-1", "正在发送")];
-    const first = mergeTailPage([turn("turn-old"), provisional], [turn("turn-old")]);
-    expect(first.turns.map((item) => item.id)).toEqual(["turn-old", "provisional:message-1"]);
-
-    const confirmed = turn("turn-new", "inProgress", "服务端消息");
-    confirmed.items = [user("server-user", "message-1", "正在发送")];
-    const second = mergeTailPage(first.turns, [turn("turn-old"), confirmed]);
-    expect(second.turns.map((item) => item.id)).toEqual(["turn-old", "turn-new"]);
   });
 
   it("旧页重复 Turn 去重，过期游标响应不得覆盖新状态", () => {
@@ -131,6 +119,28 @@ describe("官方 Turn 分页合并", () => {
     const incoming = { ...turn("turn-stream", "inProgress", "stale"), items: [] };
 
     expect(mergeTurnSnapshot(previous, incoming).items).toEqual(previous.items);
+  });
+
+  it("权威尾页不会删除本地回答，并把后续服务端 Item 排在回答之后", () => {
+    const previous = turn("turn-question", "inProgress", "before") as MobileTurn;
+    const response: UserInputResponseItem = {
+      type: "userInputResponse",
+      id: "user-input-response-request-1",
+      requestId: "request-1",
+      turnId: previous.id,
+      questions: [{ id: "choice", header: "方式", question: "继续吗？", options: [] }],
+      answers: { choice: ["继续"] },
+      completed: true,
+    };
+    previous.items.push(response);
+    const incoming = turn("turn-question", "completed", "after");
+
+    const merged = mergeTurnSnapshot(previous, incoming);
+
+    expect(merged.items.map((item) => item.id)).toEqual([
+      response.id, "item:after",
+    ]);
+    expect(merged.items[0]).toEqual(response);
   });
 
   it("legacy 尾页的合成 ID 与原生 Item 按语义一对一合并", () => {

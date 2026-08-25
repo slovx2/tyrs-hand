@@ -146,6 +146,19 @@ describe("OfficialAppServerClient", () => {
     expect(await client.listThreads()).toHaveLength(1);
   });
 
+  it("轻量近期目录只读取 thread/list 第一页", async () => {
+    const rpc = new FakeRpc((method, params) => {
+      if (method !== "thread/list") throw new Error(`unexpected ${method}`);
+      expect(params).toMatchObject({ cursor: null, limit: 100, modelProviders: [],
+        archived: false, sortKey: "updated_at", sortDirection: "desc" });
+      return { data: [officialThread([])], nextCursor: "more" };
+    });
+    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+
+    expect(await client.listRecentThreads()).toHaveLength(1);
+    expect(rpc.calls).toHaveLength(1);
+  });
+
   it("仅把明确缺少 rollout 的 thread/read 视为未物化 Thread", async () => {
     const missingRpc = new FakeRpc((method) => {
       throw new JsonRpcRequestError("No rollout found for thread id thread-phantom",

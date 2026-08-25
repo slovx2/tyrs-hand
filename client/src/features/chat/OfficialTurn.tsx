@@ -1,16 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { ThreadItem } from "@codex-app-server/v2/ThreadItem";
-import type { Turn } from "@codex-app-server/v2/Turn";
 import { Fragment, memo, useEffect, useMemo, useRef, useState,
   type ComponentProps, type ReactNode } from "react";
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Muted } from "@/components/ui";
+import type { MobileTurn, UserInputResponseItem } from "@/app-server/types";
 import { CachedMessageImage } from "@/features/images/CachedMessageImage";
 import { RemoteMessageImage } from "@/features/images/RemoteMessageImage";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
-import { useRenderScheduler } from "@/render/renderScheduler";
-import { renderInputFromTurn, renderTurnInBackground } from "@/render/conversationRender";
 import { useTheme } from "@/theme/ThemeProvider";
 import { isToolGroupExpanded, isTurnActivityCollapsed,
   toggleToolGroup, toggleTurnActivity } from "./activityDisclosure";
@@ -23,62 +21,21 @@ import { projectTurnPresentation, toolOperationLines, turnActivitySummary,
 type OfficialTurnProps = {
   profileId: string;
   threadId: string;
-  turn: Turn;
+  turn: MobileTurn;
   canToggleActivity: () => boolean;
   onDisclosureChange?: () => void;
 };
-const turnPresentations = new WeakMap<Turn, ReturnType<typeof projectTurnPresentation>>();
+const turnPresentations = new WeakMap<MobileTurn, ReturnType<typeof projectTurnPresentation>>();
 
 export const OfficialTurn = memo(function OfficialTurn({ profileId, threadId,
   turn, canToggleActivity, onDisclosureChange }: OfficialTurnProps) {
   const theme = useTheme();
-  const scheduler = useRenderScheduler();
-  const heavy = isHeavyTurn(turn);
-  const [presentation, setPresentation] = useState<ReturnType<typeof projectTurnPresentation> | null>(
-    () => heavy ? null : presentationForTurn(turn));
-  const presentationRef = useRef(presentation);
-  presentationRef.current = presentation;
-  const renderGeneration = useRef(0);
-  useEffect(() => {
-    const generation = renderGeneration.current + 1;
-    renderGeneration.current = generation;
-    if (!heavy) {
-      // 轻量 Turn 直接更新投影；不经过 skeleton，避免流式文本在每个 delta
-      // 到达时先消失一帧再出现。
-      setPresentation(presentationForTurn(turn));
-      return;
-    }
-    // 已经展示过的重型 Turn 保留上一版投影，后台计算期间继续显示旧内容。
-    // 旧实现会在每个流式 delta 上 setBackgroundReady(false)，导致整行闪退到
-    // skeleton；这里只有首次进入且没有可用投影时才显示 skeleton。
-    if (presentationRef.current === null) setPresentation(null);
-    let cancelled = false;
-    const cancelAfterInteractions = scheduler.afterInteractions(() => {
-      void renderTurnInBackground(renderInputFromTurn(turn), generation)
-        .catch(() => undefined)
-        .then(() => {
-          if (cancelled || renderGeneration.current !== generation) return;
-          scheduler.schedule(() => {
-            if (!cancelled && renderGeneration.current === generation) {
-              setPresentation(presentationForTurn(turn));
-            }
-          }, "background");
-        });
-    });
-    return () => {
-      cancelled = true;
-      cancelAfterInteractions();
-    };
-  }, [heavy, scheduler, turn]);
+  const presentation = useMemo(() => presentationForTurn(turn), [turn]);
   const [, redraw] = useState(0);
-  const nowMs = useElapsedClock(turn, presentation?.canCollapseActivity ?? false);
+  const nowMs = useElapsedClock(turn, presentation.canCollapseActivity);
   const memoryKey = `${profileId}:${threadId}:${turn.id}`;
-  const collapsed = isTurnActivityCollapsed(memoryKey, presentation?.canCollapseActivity ?? false);
+  const collapsed = isTurnActivityCollapsed(memoryKey, presentation.canCollapseActivity);
   let activityHeaderRendered = false;
-
-  if (!presentation) {
-    return <TurnSkeleton turnId={turn.id} />;
-  }
 
   return <View testID={`turn:${turn.id}`} style={styles.turn}>
     {presentation.blocks.map((block) => {
@@ -123,30 +80,12 @@ export const OfficialTurn = memo(function OfficialTurn({ profileId, threadId,
   left.turn === right.turn && left.canToggleActivity === right.canToggleActivity &&
   left.onDisclosureChange === right.onDisclosureChange);
 
-function presentationForTurn(turn: Turn): ReturnType<typeof projectTurnPresentation> {
+function presentationForTurn(turn: MobileTurn): ReturnType<typeof projectTurnPresentation> {
   const cached = turnPresentations.get(turn);
   if (cached) return cached;
   const presentation = projectTurnPresentation(turn);
   turnPresentations.set(turn, presentation);
   return presentation;
-}
-
-function isHeavyTurn(turn: Turn): boolean {
-  if (turn.items.length > 18) return true;
-  let characters = 0;
-  for (const item of turn.items) {
-    if ("text" in item && typeof item.text === "string") characters += item.text.length;
-    if (characters > 12_000) return true;
-  }
-  return false;
-}
-
-function TurnSkeleton({ turnId }: { turnId: string }) {
-  const theme = useTheme();
-  return <View testID={`turn:${turnId}:skeleton`} style={styles.skeleton}>
-    <View style={[styles.skeletonLine, { backgroundColor: theme.colors.surfaceAlt }]} />
-    <View style={[styles.skeletonLineShort, { backgroundColor: theme.colors.surfaceAlt }]} />
-  </View>;
 }
 
 function ActivityHeader({ turnId, collapsed, summary, onPress }: {
@@ -178,7 +117,7 @@ function TurnBlockView({ block, memoryKey, profileId, threadId, turnId, onDisclo
   if (block.kind === "user") return <UserMessage item={block.item} profileId={profileId} />;
   if (block.kind === "commentary") return block.item.text.trim()
     ? <View testID="message:phase:commentary" style={styles.commentary}>
-      <MarkdownContent compact defer profileId={profileId} cacheKey={`commentary:${block.item.id}`}>
+      <MarkdownContent compact profileId={profileId} cacheKey={`commentary:${block.item.id}`}>
         {block.item.text}
       </MarkdownContent>
     </View> : null;
@@ -186,10 +125,12 @@ function TurnBlockView({ block, memoryKey, profileId, threadId, turnId, onDisclo
     memoryKey={`${memoryKey}:${block.key}`} onDisclosureChange={onDisclosureChange} />;
   if (block.kind === "plan") return <View testID={`plan:${block.item.id}`} style={styles.plan}>
     <Muted>计划</Muted>
-    <MarkdownContent defer profileId={profileId} cacheKey={`plan:${block.item.id}`}>
+    <MarkdownContent profileId={profileId} cacheKey={`plan:${block.item.id}`}>
       {block.item.text}
     </MarkdownContent>
   </View>;
+  if (block.kind === "userInputResponse") return <UserInputResponse item={block.item}
+    onDisclosureChange={onDisclosureChange} />;
   if (block.kind === "generatedImage") return <View style={styles.generatedImage}>
     {block.image.source.startsWith("/")
       ? <RemoteMessageImage profileId={profileId} remotePath={block.image.source}
@@ -201,10 +142,44 @@ function TurnBlockView({ block, memoryKey, profileId, threadId, turnId, onDisclo
         testID={`generated-image:${block.image.id}`} />}
   </View>;
   return block.item.text.trim() ? <View testID="message:role:agent" style={styles.agentRow}>
-    <MarkdownContent defer profileId={profileId} cacheKey={`agentMessage:${block.item.id}`}>
+    <MarkdownContent profileId={profileId} cacheKey={`agentMessage:${block.item.id}`}>
       {block.item.text}
     </MarkdownContent>
   </View> : null;
+}
+
+function UserInputResponse({ item, onDisclosureChange }: {
+  item: UserInputResponseItem;
+  onDisclosureChange: () => void;
+}) {
+  const theme = useTheme();
+  const [expanded, setExpanded] = useState(false);
+  const count = item.questions.length;
+  return <View testID={`user-input-response:${item.requestId}`} style={styles.userInputResponse}>
+    <Pressable accessibilityRole="button" accessibilityState={{ expanded }}
+      accessibilityLabel={`询问了 ${count} 个问题，${expanded ? "收起" : "展开"}回答`}
+      testID={`user-input-response:${item.requestId}:toggle`} hitSlop={8}
+      style={styles.userInputResponseHeader} onPress={() => {
+        setExpanded((value) => !value);
+        onDisclosureChange();
+      }}>
+      <Ionicons name="help-circle-outline" size={17} color={theme.colors.textMuted} />
+      <Text style={[styles.userInputResponseTitle, { color: theme.colors.textMuted }]}>询问了 {count} 个问题</Text>
+      <DisclosureChevron expanded={expanded} color={theme.colors.textMuted} />
+    </Pressable>
+    {expanded ? <View style={[styles.userInputResponseDetails,
+      { borderLeftColor: theme.colors.border }]}>
+      {item.questions.map((question) => {
+        const answer = item.answers[question.id]?.join("，") || "未提供回答";
+        return <View key={question.id} style={styles.userInputResponseQuestion}>
+          <Text selectable style={[styles.userInputResponseQuestionText,
+            { color: theme.colors.text }]}>{question.question}</Text>
+          <Text selectable style={[styles.userInputResponseAnswer,
+            { color: theme.colors.textMuted }]}>{answer}</Text>
+        </View>;
+      })}
+    </View> : null}
+  </View>;
 }
 
 function UserMessage({ item, profileId }: {
@@ -294,7 +269,7 @@ function ToolGroupView({ group, memoryKey, onDisclosureChange }: {
   </View>;
 }
 
-function useElapsedClock(turn: Turn, enabled: boolean): number {
+function useElapsedClock(turn: MobileTurn, enabled: boolean): number {
   const [nowMs, setNowMs] = useState(Date.now());
   useEffect(() => {
     if (!enabled || turn.durationMs !== null || turn.completedAt !== null || turn.startedAt === null) {
@@ -347,15 +322,12 @@ function toolIcon(category: ToolGroup["category"]): ComponentProps<typeof Ionico
 
 const styles = StyleSheet.create({
   turn: { paddingBottom: 12 },
-  skeleton: { gap: 8, paddingHorizontal: 16, paddingVertical: 14 },
-  skeletonLine: { borderRadius: 5, height: 14, opacity: 0.8, width: "82%" },
-  skeletonLineShort: { borderRadius: 5, height: 14, opacity: 0.65, width: "55%" },
   userRow: { flexDirection: "row", justifyContent: "flex-end", paddingHorizontal: 12,
     paddingBottom: 8, paddingTop: 5 },
   userBubble: { maxWidth: "88%", borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
   userText: { fontFamily: "Inter_400Regular", fontSize: 15, lineHeight: 22 },
   file: { fontFamily: "Inter_400Regular", fontSize: 13, marginTop: 5 },
-  agentRow: { paddingHorizontal: 16, paddingBottom: 4, paddingTop: 8 },
+  agentRow: { paddingHorizontal: 16, paddingBottom: 10, paddingTop: 8 },
   commentary: { opacity: 0.78, paddingHorizontal: 16, paddingVertical: 5 },
   thinking: { paddingHorizontal: 16, paddingVertical: 8 },
   thinkingText: { fontFamily: "Inter_400Regular", fontSize: 14, lineHeight: 20 },
@@ -374,6 +346,15 @@ const styles = StyleSheet.create({
     paddingBottom: 4, paddingLeft: 16, paddingTop: 5 },
   toolOperation: { alignItems: "flex-start", flexDirection: "row", gap: 7 },
   toolOperationText: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 13, lineHeight: 19 },
+  userInputResponse: { marginHorizontal: 16, paddingVertical: 4 },
+  userInputResponseHeader: { alignItems: "center", alignSelf: "flex-start", flexDirection: "row",
+    gap: 8, minHeight: 30 },
+  userInputResponseTitle: { fontFamily: "Inter_400Regular", fontSize: 14, lineHeight: 20 },
+  userInputResponseDetails: { borderLeftWidth: StyleSheet.hairlineWidth, gap: 12, marginLeft: 8,
+    paddingBottom: 5, paddingLeft: 16, paddingTop: 7 },
+  userInputResponseQuestion: { gap: 3 },
+  userInputResponseQuestionText: { fontFamily: "Inter_500Medium", fontSize: 14, lineHeight: 20 },
+  userInputResponseAnswer: { fontFamily: "Inter_400Regular", fontSize: 13, lineHeight: 19 },
   error: { marginHorizontal: 16, paddingVertical: 8 },
   errorText: { fontFamily: "Inter_400Regular", fontSize: 14, lineHeight: 20 },
 });

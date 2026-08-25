@@ -2,7 +2,7 @@ import type { Thread } from "@codex-app-server/v2/Thread";
 import type { Turn } from "@codex-app-server/v2/Turn";
 import { describe, expect, it, vi } from "vitest";
 
-import type { ThreadRecord } from "@/app-server/types";
+import type { ThreadRecord, UserInputResponseItem } from "@/app-server/types";
 import { cacheableThreadRecord } from "./cache";
 
 vi.mock("./database", () => ({
@@ -40,6 +40,17 @@ describe("Thread 最近页缓存", () => {
     const cached = cacheableThreadRecord(record);
 
     expect(cached.thread.turns[0]?.items[0]).toMatchObject({ status: "completed" });
+  });
+
+  it("最近页缓存保留本地回答回显 Item", () => {
+    const record = loadedRecord([turn(1)]);
+    const response: UserInputResponseItem = {
+      type: "userInputResponse", id: "user-input-response-request-1", requestId: "request-1",
+      turnId: "turn-1", questions: [], answers: {}, completed: true,
+    };
+    record.thread.turns[0]!.items.push(response);
+
+    expect(cacheableThreadRecord(record).thread.turns[0]?.items).toContainEqual(response);
   });
 });
 

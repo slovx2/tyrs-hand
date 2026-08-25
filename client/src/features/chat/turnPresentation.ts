@@ -1,5 +1,7 @@
 import type { ThreadItem } from "@codex-app-server/v2/ThreadItem";
-import type { Turn } from "@codex-app-server/v2/Turn";
+
+import type { MobileThreadItem, MobileTurn,
+  UserInputResponseItem } from "@/app-server/types";
 
 type UserItem = Extract<ThreadItem, { type: "userMessage" }>;
 type AgentItem = Extract<ThreadItem, { type: "agentMessage" }>;
@@ -27,6 +29,7 @@ export type TurnBlock =
   | { kind: "commentary"; key: string; item: AgentItem }
   | { kind: "final"; key: string; item: AgentItem }
   | { kind: "plan"; key: string; item: PlanItem }
+  | { kind: "userInputResponse"; key: string; item: UserInputResponseItem }
   | { kind: "generatedImage"; key: string; image: GeneratedImageResult }
   | ToolGroup;
 
@@ -41,7 +44,7 @@ export type TurnPresentation = {
 
 export type ToolOperation = { key: string; text: string; running: boolean; failed: boolean };
 
-export function projectTurnPresentation(turn: Turn): TurnPresentation {
+export function projectTurnPresentation(turn: MobileTurn): TurnPresentation {
   const blocks: TurnBlock[] = [];
   let pendingTools: ToolItem[] = [];
   let currentReasoningHeading: string | null = null;
@@ -86,6 +89,8 @@ export function projectTurnPresentation(turn: Turn): TurnPresentation {
         ? "final" : "commentary", key: item.id, item: visibleItem });
     } else if (item.type === "plan") {
       blocks.push({ kind: "plan", key: item.id, item });
+    } else if (item.type === "userInputResponse") {
+      blocks.push({ kind: "userInputResponse", key: item.id, item });
     }
   }
   flushTools(true);
@@ -144,12 +149,13 @@ export function createToolGroup(items: ToolItem[], inferStatelessRunning = false
   const explicitlyRunning = items.some(isToolRunning);
   const inferredRunning = !explicitlyRunning && inferStatelessRunning &&
     items.some((item) => item.type === "webSearch");
-  const running = explicitlyRunning || inferredRunning || liveHeading !== null;
+  const activeHeading = inferStatelessRunning ? liveHeading : null;
+  const running = explicitlyRunning || inferredRunning || activeHeading !== null;
   const currentCommandTitle = runningCommandTitle(items);
   return { kind: "tools", key: items[0]!.id, items: [...items], category, running,
     inferredRunning, title: currentCommandTitle ??
-      (!explicitlyRunning && !inferredRunning && liveHeading
-      ? liveHeading : category === "mixed"
+      (!explicitlyRunning && !inferredRunning && activeHeading
+      ? activeHeading : category === "mixed"
       ? mixedToolGroupTitle(items, running)
       : toolGroupTitle(category, running)) };
 }
@@ -277,14 +283,14 @@ export function toolOperationLines(item: ToolItem, inferStatelessRunning = false
   }
 }
 
-export function turnWorkedDurationMs(turn: Turn, nowMs = Date.now()): number | null {
+export function turnWorkedDurationMs(turn: MobileTurn, nowMs = Date.now()): number | null {
   if (turn.durationMs !== null) return Math.max(0, turn.durationMs);
   if (turn.startedAt === null) return null;
   const endMs = turn.completedAt === null ? nowMs : turn.completedAt * 1000;
   return Math.max(0, endMs - turn.startedAt * 1000);
 }
 
-export function turnActivitySummary(turn: Turn, nowMs = Date.now()): string {
+export function turnActivitySummary(turn: MobileTurn, nowMs = Date.now()): string {
   const duration = turnWorkedDurationMs(turn, nowMs);
   return duration === null ? "处理过程" : `耗时 ${formatDuration(duration)}`;
 }
@@ -310,9 +316,10 @@ export function isToolFailed(item: ToolItem): boolean {
   return "status" in item && (item.status === "failed" || item.status === "declined");
 }
 
-function isToolItem(item: ThreadItem): item is ToolItem {
+function isToolItem(item: MobileThreadItem): item is ToolItem {
   return item.type !== "userMessage" && item.type !== "agentMessage" && item.type !== "plan" &&
-    item.type !== "reasoning" && item.type !== "hookPrompt";
+    item.type !== "reasoning" && item.type !== "hookPrompt" &&
+    item.type !== "userInputResponse";
 }
 
 function toolGroupCategory(items: ToolItem[]): ToolGroupCategory {

@@ -19,7 +19,9 @@ const { client } = vi.hoisted(() => ({
     submit: vi.fn(),
     readThreadMetadata: vi.fn(),
     listTurnPage: vi.fn(),
+    listRecentThreads: vi.fn(async (): Promise<Thread[]> => []),
     pendingRequests: vi.fn(() => []),
+    answerRequest: vi.fn(() => true),
     generateThreadTitle: vi.fn(async () => null),
   },
 }));
@@ -91,6 +93,8 @@ describe("移动端 Outbox 新 Thread", () => {
       deduplicated: false });
     client.readThreadMetadata.mockImplementation(async (threadId: string) => thread(threadId));
     client.listTurnPage.mockResolvedValue({ turns: [], nextCursor: null, backwardsCursor: null });
+    client.listRecentThreads.mockResolvedValue([]);
+    client.answerRequest.mockReturnValue(true);
     client.generateThreadTitle.mockResolvedValue(null);
   });
 
@@ -152,7 +156,7 @@ describe("移动端 Outbox 新 Thread", () => {
     expect(client.submitNewThread).not.toHaveBeenCalled();
   });
 
-  it("现有 Thread 提交等待网络期间立即插入乐观用户消息和活动 Turn", async () => {
+  it("现有 Thread 提交等待网络期间不插入乐观 Turn，成功后创建预显示贴片", async () => {
     const profileId = "outbox-optimistic";
     const threadId = "thread-existing";
     activate(profileId);
@@ -165,19 +169,17 @@ describe("移动端 Outbox 新 Thread", () => {
 
     const submission = useAppStore.getState().submitMessage(threadId, "立即显示", [], preferences,
       "optimistic-message");
-    await vi.waitFor(() => expect(useAppStore.getState().threads[0]?.thread.turns[0]?.id)
-      .toBe("provisional:optimistic-message"));
-
-    expect(useAppStore.getState().threads[0]?.thread.turns[0]?.items[0]).toMatchObject({
-      type: "userMessage", clientId: "optimistic-message",
-    });
-    expect(useAppStore.getState().threads[0]?.thread.status.type).toBe("active");
+    expect(useAppStore.getState().threads[0]?.thread.turns).toHaveLength(0);
+    expect(useAppStore.getState().pendingMessages).toHaveLength(0);
 
     pending.resolve({ threadId, turnId: "turn-1", deduplicated: false });
     await expect(submission).resolves.toBe(true);
+    expect(useAppStore.getState().pendingMessages[0]).toMatchObject({
+      clientMessageId: "optimistic-message", threadId, text: "立即显示",
+    });
   });
 
-  it("执行计划立即插入乐观 Turn 并向 App Server 保留完整计划", async () => {
+  it("执行计划不插入乐观 Turn 但向 App Server 保留完整计划", async () => {
     const profileId = "execute-plan-optimistic";
     const threadId = "thread-plan";
     activate(profileId);
@@ -192,10 +194,7 @@ describe("移动端 Outbox 新 Thread", () => {
     client.submit.mockReturnValueOnce(pending.promise);
 
     const submission = useAppStore.getState().executePlan(threadId, preferences);
-    const optimistic = useAppStore.getState().threads[0]?.thread.turns.at(-1);
-    expect(optimistic).toMatchObject({ id: "provisional:plan:thread-plan:plan-item",
-      status: "inProgress", items: [{ type: "userMessage",
-        clientId: "plan:thread-plan:plan-item" }] });
+    expect(useAppStore.getState().threads[0]?.thread.turns).toHaveLength(1);
     await vi.waitFor(() => expect(client.submit).toHaveBeenCalledWith(expect.objectContaining({
       clientMessageId: "plan:thread-plan:plan-item",
       input: [{ type: "text", text: "PLEASE IMPLEMENT THIS PLAN:\n# 计划\n- 修改代码",
@@ -205,6 +204,77 @@ describe("移动端 Outbox 新 Thread", () => {
     pending.resolve({ threadId, turnId: "turn-implementation", deduplicated: false });
     await expect(submission).resolves.toBeUndefined();
   });
+
+  it("回答 requestUserInput 后立即插入可持久化的本地回显 Item", () => {
+    const profileId = "answer-user-input";
+    const threadId = "thread-question";
+    activate(profileId);
+    const current = thread(threadId);
+    current.status = { type: "active", activeFlags: [] };
+    current.turns = [{ id: "turn-question", status: "inProgress", error: null,
+      startedAt: 1, completedAt: null, durationMs: null, itemsView: "full",
+      items: [{ type: "userMessage", id: "user-question", clientId: "message-question",
+        content: [{ type: "text", text: "执行", text_elements: [] }] }] }];
+    const request = { id: "request-1", method: "item/tool/requestUserInput" as const,
+      params: { threadId, turnId: "turn-question", itemId: "question-item",
+        questions: [{ id: "choice", header: "方式", question: "继续吗？", isOther: false,
+          isSecret: false, options: [{ label: "继续", description: "继续执行" }] }],
+        isBlocking: true, autoResolutionMs: null } };
+    useAppStore.setState({ threads: [{ thread: current, archived: false, workspaceId: null,
+      projectId: project.id, history: { kind: "loaded", olderCursor: null,
+        tailOlderCursor: null, hasLoadedOldest: true } }],
+    pendingRequests: { [threadId]: [request] } });
+
+    expect(useAppStore.getState().answerRequest(threadId, request.id,
+      { answers: { choice: { answers: ["继续"] } } })).toBe(true);
+
+    expect(current.turns[0]?.items).toHaveLength(1);
+    expect(useAppStore.getState().threads[0]?.thread.turns[0]?.items.at(-1)).toEqual({
+      type: "userInputResponse",
+      id: "user-input-response-request-1",
+      requestId: "request-1",
+      turnId: "turn-question",
+      questions: [{ id: "choice", header: "方式", question: "继续吗？",
+        options: [{ label: "继续", description: "继续执行" }] }],
+      answers: { choice: ["继续"] },
+      completed: true,
+    });
+    expect(useAppStore.getState().pendingRequests[threadId]).toEqual([]);
+  });
+
+  it("应用级同步会在详情页之外刷新所有活动 Thread", async () => {
+    const profileId = "foreground-active-sync";
+    const threadId = "thread-active";
+    activate(profileId);
+    const active = thread(threadId);
+    active.status = { type: "active", activeFlags: [] };
+    useAppStore.setState({ threads: [{ thread: active, archived: false, workspaceId: null,
+      projectId: project.id, history: { kind: "loaded", olderCursor: null,
+        tailOlderCursor: null, hasLoadedOldest: true } }] });
+
+    await useAppStore.getState().refreshActiveThreads();
+
+    expect(client.readThreadMetadata).toHaveBeenCalledWith(threadId);
+    expect(client.listTurnPage).toHaveBeenCalledWith(threadId, null, 5, "full", "legacy");
+  });
+
+  it("轻量近期目录会发现新活动 Thread 并立即读取尾页", async () => {
+    const profileId = "foreground-recent-sync";
+    activate(profileId);
+    const discovered = thread("thread-discovered");
+    discovered.status = { type: "active", activeFlags: [] };
+    discovered.updatedAt = 10;
+    discovered.recencyAt = 10;
+    client.listRecentThreads.mockResolvedValueOnce([discovered]);
+    client.readThreadMetadata.mockResolvedValueOnce(discovered);
+
+    await useAppStore.getState().refreshRecentThreads();
+
+    expect(client.listRecentThreads).toHaveBeenCalledWith();
+    expect(client.readThreadMetadata).toHaveBeenCalledWith(discovered.id);
+    expect(useAppStore.getState().threads.some((record) =>
+      record.thread.id === discovered.id)).toBe(true);
+  });
 });
 
 function activate(profileId: string, controls: Connection["controls"] = []): void {
@@ -213,7 +283,7 @@ function activate(profileId: string, controls: Connection["controls"] = []): voi
     user: "tester", keyRef: "key", hostFingerprint: null };
   useAppStore.setState({ ready: true, refreshing: false, error: null,
     activeConnection: connection, connections: [connection], projects: [project], threads: [],
-    outbox: [], unreadThreadIds: {}, selectedProjectId: project.id,
+    outbox: [], pendingMessages: [], unreadThreadIds: {}, selectedProjectId: project.id,
     modelsByTarget: {}, pendingRequests: {} });
 }
 

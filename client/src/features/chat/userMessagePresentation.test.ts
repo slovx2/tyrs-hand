@@ -87,4 +87,12 @@ describe("用户消息图片投影", () => {
 
     expect(projectUserMessage(item as Extract<ThreadItem, { type: "userMessage" }>).text).toBe(text);
   });
+
+  it("只去除正文末尾换行，不改变内部换行", () => {
+    const item = { type: "userMessage", id: "user", clientId: "ordinary-message",
+      content: [{ type: "text", text: "第一行\n\n第二行\r\n\n", text_elements: [] }] } as ThreadItem;
+
+    expect(projectUserMessage(item as Extract<ThreadItem, { type: "userMessage" }>).text)
+      .toBe("第一行\n\n第二行");
+  });
 });

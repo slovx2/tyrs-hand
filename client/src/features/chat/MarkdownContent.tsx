@@ -1,10 +1,9 @@
-import { Fragment, memo, type ReactNode, useEffect, useMemo, useState } from "react";
+import { Fragment, memo, type ReactNode, useMemo } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import Markdown, { type ASTNode, MarkdownIt, parser, type RenderFunction,
   type RenderRules } from "react-native-markdown-display";
 
 import { useTheme } from "@/theme/ThemeProvider";
-import { useRenderScheduler } from "@/render/renderScheduler";
 import { CachedMessageImage } from "@/features/images/CachedMessageImage";
 import { RemoteMessageImage } from "@/features/images/RemoteMessageImage";
 import { lookupMarkdownPlaceholder, prepareMarkdown, type MarkdownPlaceholder } from "./responseDirectives";
@@ -14,7 +13,6 @@ type MarkdownContentProps = {
   cacheKey: string;
   profileId: string;
   compact?: boolean;
-  defer?: boolean;
   imageTestPrefix?: string;
   onFileCitationPress?: (path: string, lineStart: number, lineEnd?: number) => void;
 };
@@ -91,7 +89,9 @@ const lightweightTextBlock: RenderFunction = (node, children, _parents, styles) 
 
 const selectableCode: RenderFunction = (node, _children, _parents, styles, inheritedStyles = {}) => {
   const content = node.content.endsWith("\n") ? node.content.slice(0, -1) : node.content;
-  return <Text key={node.key} selectable style={[inheritedStyles, styles[node.type]]}>{content}</Text>;
+  return <View key={node.key} style={styles[node.type]}>
+    <Text selectable style={[inheritedStyles, styles.codeBlockText]}>{content}</Text>
+  </View>;
 };
 
 const selectableRules: RenderRules = {
@@ -180,35 +180,17 @@ function renderMarkdownText(node: ASTNode, _children: ReactNode[], _parents: AST
 }
 
 export const MarkdownContent = memo(function MarkdownContent({ children, cacheKey, profileId,
-  compact = false, defer = false, imageTestPrefix = "markdown:image", onFileCitationPress }: MarkdownContentProps) {
+  compact = false, imageTestPrefix = "markdown:image", onFileCitationPress }: MarkdownContentProps) {
   const theme = useTheme();
-  const scheduler = useRenderScheduler();
   const prepared = useMemo(() => prepareMarkdown(children), [children]);
-  const [ast, setAst] = useState<ASTNode[] | null>(() => defer ? null :
-    cachedMarkdownAst(cacheKey, prepared.source));
-  useEffect(() => {
-    if (!defer) {
-      setAst(cachedMarkdownAst(cacheKey, prepared.source));
-      return;
-    }
-    let cancelled = false;
-    setAst(null);
-    const cancel = scheduler.afterInteractions(() => {
-      scheduler.schedule(() => {
-        if (cancelled) return;
-        setAst(cachedMarkdownAst(cacheKey, prepared.source));
-      }, "background");
-    });
-    return () => {
-      cancelled = true;
-      cancel();
-    };
-  }, [cacheKey, defer, prepared.source, scheduler]);
+  const ast = useMemo(() => cachedMarkdownAst(cacheKey, prepared.source), [cacheKey, prepared.source]);
   const blockGap = compact ? 5 : 8;
   const markdownStyle = useMemo(() => StyleSheet.create({
     body: { width: "100%" },
-    text: { color: theme.colors.text, fontFamily: "Inter_400Regular", fontSize: 15, lineHeight: 24 },
-    textgroup: { color: theme.colors.text, fontFamily: "Inter_400Regular", fontSize: 15, lineHeight: 24 },
+    text: { color: theme.colors.text, fontFamily: "Inter_400Regular", fontSize: 15, lineHeight: 24,
+      includeFontPadding: false },
+    textgroup: { color: theme.colors.text, fontFamily: "Inter_400Regular", fontSize: 15, lineHeight: 24,
+      includeFontPadding: false },
     paragraph: { width: "100%", flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start",
       marginTop: 0, marginBottom: blockGap, color: theme.colors.text, fontFamily: "Inter_400Regular",
       fontSize: 15, lineHeight: 24 },
@@ -259,15 +241,15 @@ export const MarkdownContent = memo(function MarkdownContent({ children, cacheKe
       fontFamily: "Inter_400Regular", fontSize: 15, lineHeight: 24, textAlign: "right" },
     ordered_list_content: { flex: 1, minWidth: 0 },
     code_inline: { color: theme.colors.text, backgroundColor: theme.colors.surfaceAlt, fontFamily: monoFont,
-      fontSize: 14, lineHeight: 21, borderWidth: 0, borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 },
-    code_block: { width: "100%", color: theme.colors.text, backgroundColor: theme.colors.surfaceAlt,
+      fontSize: 14, lineHeight: 21, borderWidth: 0, borderRadius: 4, paddingHorizontal: 4 },
+    code_block: { width: "100%", backgroundColor: theme.colors.surfaceAlt,
       borderColor: theme.colors.border, borderWidth: StyleSheet.hairlineWidth, borderRadius: 8,
-      paddingHorizontal: 12, paddingVertical: 10, marginTop: 1, marginBottom: blockGap, fontFamily: monoFont,
-      fontSize: 13, lineHeight: 20 },
-    fence: { width: "100%", color: theme.colors.text, backgroundColor: theme.colors.surfaceAlt,
+      paddingHorizontal: 12, paddingVertical: 10, marginTop: 1, marginBottom: blockGap },
+    fence: { width: "100%", backgroundColor: theme.colors.surfaceAlt,
       borderColor: theme.colors.border, borderWidth: StyleSheet.hairlineWidth, borderRadius: 8,
-      paddingHorizontal: 12, paddingVertical: 10, marginTop: 1, marginBottom: blockGap, fontFamily: monoFont,
-      fontSize: 13, lineHeight: 20 },
+      paddingHorizontal: 12, paddingVertical: 10, marginTop: 1, marginBottom: blockGap },
+    codeBlockText: { color: theme.colors.text, fontFamily: monoFont, fontSize: 13, lineHeight: 20,
+      includeFontPadding: false },
     hr: { width: "100%", height: StyleSheet.hairlineWidth, marginVertical: compact ? 7 : 10,
       backgroundColor: theme.colors.border },
     table: { width: "100%", marginTop: 1, marginBottom: blockGap, borderWidth: StyleSheet.hairlineWidth,
@@ -298,9 +280,6 @@ export const MarkdownContent = memo(function MarkdownContent({ children, cacheKe
     htmlUnderline: { color: theme.colors.text, textDecorationLine: "underline" },
     htmlSub: { color: theme.colors.text, fontSize: 11, lineHeight: 16 },
     htmlSup: { color: theme.colors.text, fontSize: 11, lineHeight: 16 },
-    loading: { width: "100%", paddingVertical: 2 },
-    loadingLine: { height: 16, marginBottom: blockGap, borderRadius: 5,
-      backgroundColor: theme.colors.surfaceAlt },
   }), [blockGap, compact, theme]);
   const rules = useMemo<RenderRules>(() => ({
     ...selectableRules,
@@ -327,15 +306,6 @@ export const MarkdownContent = memo(function MarkdownContent({ children, cacheKe
         testID={`${imageTestPrefix}:${node.key}`} />;
     },
   }), [cacheKey, imageTestPrefix, onFileCitationPress, profileId]);
-  if (!ast) {
-    const lineCount = Math.min(10, Math.max(2, Math.ceil(prepared.source.length / 85)));
-    return <View testID="markdown:loading" accessibilityLabel="正在加载内容"
-      style={[markdownStyle.loading, compact && { opacity: 0.78 }]}>
-      {Array.from({ length: lineCount }, (_, index) => <View key={index}
-        style={[markdownStyle.loadingLine, { width: index === lineCount - 1 ? "58%" :
-          index % 3 === 0 ? "92%" : "100%" }]} />)}
-    </View>;
-  }
   return <Markdown markdownit={markdownIt} mergeStyle={false} rules={rules} style={markdownStyle}>
     {ast as unknown as ReactNode}
   </Markdown>;

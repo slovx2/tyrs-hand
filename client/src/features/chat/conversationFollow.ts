@@ -1,4 +1,4 @@
-import type { Turn } from "@codex-app-server/v2/Turn";
+import type { MobileTurn } from "@/app-server/types";
 
 export type FollowMode = "static" | "prework_watch" | "prework_follow" | "user_follow";
 export type LatestTurnPhase = "idle" | "prework" | "final_answer";
@@ -58,7 +58,7 @@ export function shouldFollowLatest(state: FollowState): boolean {
   return state.followMode === "prework_follow" || state.followMode === "user_follow";
 }
 
-export function latestTurnPhase(turn: Turn | null): LatestTurnPhase {
+export function latestTurnPhase(turn: MobileTurn | null): LatestTurnPhase {
   if (!turn || turn.status !== "inProgress") return "idle";
   let hasPrework = false;
   for (const item of turn.items) {

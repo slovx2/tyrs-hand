@@ -3,6 +3,27 @@ import type { ModeKind } from "@codex-app-server/ModeKind";
 import type { ReasoningEffort } from "@codex-app-server/ReasoningEffort";
 import type { Model } from "@codex-app-server/v2/Model";
 import type { Thread } from "@codex-app-server/v2/Thread";
+import type { ThreadItem } from "@codex-app-server/v2/ThreadItem";
+import type { Turn } from "@codex-app-server/v2/Turn";
+
+export type UserInputResponseItem = {
+  type: "userInputResponse";
+  id: string;
+  requestId: string;
+  turnId: string;
+  questions: {
+    id: string;
+    header: string;
+    question: string;
+    options: { label: string; description: string }[];
+  }[];
+  answers: Record<string, string[]>;
+  completed: true;
+};
+
+export type MobileThreadItem = ThreadItem | UserInputResponseItem;
+export type MobileTurn = Omit<Turn, "items"> & { items: MobileThreadItem[] };
+export type MobileThread = Omit<Thread, "turns"> & { turns: MobileTurn[] };
 
 export type MobileProject = {
   id: string;
@@ -17,7 +38,7 @@ export type MobileProject = {
 };
 
 export type ThreadRecord = {
-  thread: Thread;
+  thread: MobileThread;
   archived: boolean;
   workspaceId: string | null;
   projectId: string | null;
@@ -41,16 +62,6 @@ export type ThreadHistoryState =
     hasLoadedOldest: boolean;
   };
 
-export type ConversationLoadPhase = "shell" | "loadingLatest" | "loadingHistory" |
-  "ready" | "error";
-
-export type ConversationLoadState = {
-  generation: number;
-  phase: ConversationLoadPhase;
-  hydratedTurnIds: string[];
-  error: string | null;
-};
-
 export type TargetCatalog = {
   workspaceId: string | null;
   models: Model[];
@@ -61,11 +72,11 @@ export type PendingRequestRecord = {
   request: ServerRequest;
 };
 
-export function threadTitle(thread: Thread): string {
+export function threadTitle(thread: MobileThread): string {
   return thread.name?.trim() || thread.preview.trim() || "新的开发任务";
 }
 
-export function projectForThread(projects: MobileProject[], thread: Thread): MobileProject | null {
+export function projectForThread(projects: MobileProject[], thread: MobileThread): MobileProject | null {
   const cwd = cleanPath(thread.cwd);
   return projects
     .filter((project) => isWithinProject(cwd, cleanPath(project.cwd)))
