@@ -101,7 +101,7 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 	var credential string
 	if err == nil {
 		credential = strings.TrimSpace(string(credentialBytes))
-		configService = workerconfig.NewServiceWithStateDirAndEnv(cfg.WorkerCodexHome, cfg.CodexBin, cfg.WorkerDataRoot, cfg.WorkerEnvFile)
+		configService = workerconfig.NewServiceWithStateDirAndEnv(cfg.WorkerCodexHome, cfg.CodexBin, cfg.WorkerDataRoot, cfg.WorkerGlobalEnvFile)
 	}
 	manifest, err := client.Workspace(ctx)
 	if err != nil {
@@ -112,7 +112,7 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 	runtimeOptions := hostworker.RuntimeOptions{
 		CodexBin: cfg.CodexBin, CodexHome: cfg.WorkerCodexHome, Home: cfg.WorkerHome,
 		WorkspaceRoot: cfg.WorkerWorkspaceRoot, StateDir: cfg.WorkerDataRoot, Logger: logger,
-		EnvFile:     cfg.WorkerEnvFile,
+		EnvFile:     cfg.WorkerGlobalEnvFile,
 		SSHAuthSock: filepath.Join(cfg.SSHAgentDir, "current.sock"),
 	}
 	if manifest != nil {

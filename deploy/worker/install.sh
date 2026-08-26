@@ -167,6 +167,7 @@ case "${worker_codex_bin}" in /*) ;; *) echo "未找到用户系统 Codex，请�
 worker_workspace=${worker_home}/tyrs-hand/workspaces
 worker_listen=${TYRS_HAND_WORKER_SSH_LISTEN_ADDR:-:2222}
 worker_env_file=/etc/tyrs-hand/worker.env
+worker_global_env_file=/etc/environment
 existing_browser_mcp_url=
 existing_browser_token_file=
 existing_browser_services_root=
@@ -279,15 +280,28 @@ fi
 chown root:"${worker_group}" "${worker_env_file}"
 chmod 0660 "${worker_env_file}"
 
+# Provider 变量同时落到机器级环境文件，供登录会话及其他程序继承。
+if [ ! -e "${worker_global_env_file}" ]; then
+  : > "${worker_global_env_file}"
+fi
+if [ -n "${existing_model_api_key}" ] && ! grep -q '^TYRS_HAND_MODEL_API_KEY=' "${worker_global_env_file}"; then
+  printf "TYRS_HAND_MODEL_API_KEY='%s'\n" "${existing_model_api_key}" >> "${worker_global_env_file}"
+fi
+if [ -n "${existing_model_base_url}" ] && ! grep -q '^TYRS_HAND_MODEL_BASE_URL=' "${worker_global_env_file}"; then
+  printf "TYRS_HAND_MODEL_BASE_URL='%s'\n" "${existing_model_base_url}" >> "${worker_global_env_file}"
+fi
+chown root:"${worker_group}" "${worker_global_env_file}"
+chmod 0664 "${worker_global_env_file}"
+
 if [ "${os}" = linux ]; then
   # 让 Worker 的 Provider 环境变量也进入宿主机登录 Shell；服务本身仍通过 EnvironmentFile 加载。
   install -d -m 0755 /etc/profile.d
   profile_file=/etc/profile.d/tyrs-hand-worker.sh
   {
     printf '%s\n' '# Load Tyrs Hand Worker environment for interactive login shells.'
-    printf '%s\n' 'if [ -r /etc/tyrs-hand/worker.env ]; then'
+    printf '%s\n' 'if [ -r /etc/environment ]; then'
     printf '%s\n' '  set -a'
-    printf '%s\n' '  . /etc/tyrs-hand/worker.env'
+    printf '%s\n' '  . /etc/environment'
     printf '%s\n' '  set +a'
     printf '%s\n' 'fi'
   } > "${profile_file}"

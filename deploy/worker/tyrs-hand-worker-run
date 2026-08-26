@@ -2,6 +2,7 @@
 set -eu
 set -a
 [ ! -f /etc/tyrs-hand/codex.env ] || . /etc/tyrs-hand/codex.env
+[ ! -f /etc/environment ] || . /etc/environment
 . /etc/tyrs-hand/worker.env
 set +a
 exec /usr/local/bin/tyrs-hand-worker "$@"

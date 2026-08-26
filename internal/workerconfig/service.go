@@ -271,7 +271,21 @@ func (s *Service) updateGlobalEnv(baseURL, apiKey string, clear bool) error {
 	if !foundBaseURL {
 		result = append(result, modelBaseURLEnv+"="+baseURL)
 	}
-	return atomicWrite(path, []byte(strings.Join(result, "\n")+"\n"), 0o600)
+	return writeGlobalEnv(path, []byte(strings.Join(result, "\n")+"\n"))
+}
+
+// writeGlobalEnv 更新 /etc/environment 一类的机器级环境文件。该文件由安装器
+// 预先创建并授予 Worker 用户写权限，以便非 root Worker 也能保存 Provider。
+func writeGlobalEnv(path string, data []byte) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o664)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	if _, err := file.Write(data); err != nil {
+		return err
+	}
+	return file.Sync()
 }
 
 func cutEnvLine(line string) (string, string, bool) {
