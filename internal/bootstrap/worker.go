@@ -101,7 +101,7 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 	var credential string
 	if err == nil {
 		credential = strings.TrimSpace(string(credentialBytes))
-		configService = workerconfig.NewService(cfg.WorkerCodexHome, cfg.CodexBin)
+		configService = workerconfig.NewServiceWithStateDir(cfg.WorkerCodexHome, cfg.CodexBin, cfg.WorkerDataRoot)
 	}
 	manifest, err := client.Workspace(ctx)
 	if err != nil {

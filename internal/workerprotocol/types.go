@@ -24,10 +24,13 @@ type ConfigRPCResponse struct {
 }
 
 type WorkerConfig struct {
-	Revision       string         `json:"revision"`
-	ModelProvider  string         `json:"modelProvider"`
-	ModelProviders map[string]any `json:"modelProviders,omitempty"`
-	Agents         string         `json:"agents"`
+	Revision         string         `json:"revision"`
+	ModelProvider    string         `json:"-"`
+	ModelProviders   map[string]any `json:"-"`
+	BaseURL          string         `json:"baseUrl"`
+	EnvKey           string         `json:"envKey"`
+	APIKeyConfigured bool           `json:"apiKeyConfigured"`
+	Agents           string         `json:"agents"`
 }
 
 type OAuthDevice struct {

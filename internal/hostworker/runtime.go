@@ -97,6 +97,13 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 		"CODEX_HOME": options.CodexHome,
 		"HOME":       options.Home,
 	}
+	if secretValues, err := loadSecretEnv(filepath.Join(options.StateDir, ".env")); err != nil {
+		return nil, fmt.Errorf("读取 Worker Provider 密钥: %w", err)
+	} else {
+		for name, value := range secretValues {
+			values[name] = value
+		}
+	}
 	if options.SSHAuthSock != "" {
 		values["SSH_AUTH_SOCK"] = options.SSHAuthSock
 	}
@@ -376,4 +383,28 @@ func cutEnvironment(value string) (string, string, bool) {
 		}
 	}
 	return "", "", false
+}
+
+func loadSecretEnv(path string) (map[string]string, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return map[string]string{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	result := map[string]string{}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
+		name, value, ok := cutEnvironment(line)
+		if !ok || name != "TYRS_HAND_MODEL_API_KEY" {
+			continue
+		}
+		result[name] = value
+	}
+	return result, nil
 }

@@ -64,14 +64,15 @@ func handleRequest(service *Service, method string, params json.RawMessage) (any
 		return service.UpdateAgents(input.Revision, input.Content)
 	case "config.provider.write":
 		var input struct {
-			Revision       string                    `json:"revision"`
-			ModelProvider  string                    `json:"modelProvider"`
-			ModelProviders map[string]map[string]any `json:"modelProviders"`
+			Revision    string `json:"revision"`
+			BaseURL     string `json:"baseUrl"`
+			APIKey      string `json:"apiKey"`
+			ClearAPIKey bool   `json:"clearApiKey"`
 		}
 		if err := json.Unmarshal(params, &input); err != nil {
 			return nil, err
 		}
-		return service.UpdateProvider(input.Revision, input.ModelProvider, input.ModelProviders)
+		return service.UpdateProvider(input.Revision, input.BaseURL, input.APIKey, input.ClearAPIKey)
 	case "oauth.devices.start":
 		return service.StartOAuth()
 	case "oauth.devices.status":

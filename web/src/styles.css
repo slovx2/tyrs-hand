@@ -591,6 +591,105 @@ h2 {
   opacity: 0.45;
 }
 
+.worker-card {
+  overflow: hidden;
+}
+
+.worker-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.worker-actions,
+.worker-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.worker-badges {
+  margin-top: 1rem;
+}
+
+.worker-tabs {
+  display: flex;
+  gap: 0.15rem;
+  margin-top: 1.15rem;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+}
+
+.worker-tabs button {
+  flex: 0 0 auto;
+  border-bottom: 2px solid transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  padding: 0.65rem 0.8rem;
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.worker-tabs button:hover,
+.worker-tabs button.is-active {
+  color: var(--ink);
+}
+
+.worker-tabs button.is-active {
+  border-bottom-color: var(--accent);
+}
+
+.worker-tab-panel {
+  min-height: 7rem;
+  padding-top: 1.15rem;
+}
+
+.required-mark {
+  color: #b42318;
+  font-weight: 800;
+}
+
+.input-with-action {
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+
+.input-with-action .field {
+  min-width: 0;
+  flex: 1;
+}
+
+.button-ghost {
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  color: var(--ink-muted);
+  background: transparent;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.76rem;
+  font-weight: 650;
+}
+
+.button-ghost:hover {
+  color: var(--ink);
+  background: var(--surface-muted);
+}
+
+@media (max-width: 640px) {
+  .worker-card-header {
+    flex-direction: column;
+  }
+
+  .worker-actions {
+    width: 100%;
+  }
+
+  .worker-actions button {
+    flex: 1 1 auto;
+  }
+}
+
 .devices-page-header {
   display: flex;
   align-items: flex-start;

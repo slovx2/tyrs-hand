@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -135,11 +136,23 @@ func (s *Server) workerConfig(c *gin.Context, method string, params any) {
 		status := http.StatusBadGateway
 		if err.Error() == "配置版本冲突" {
 			status = http.StatusConflict
+		} else if method == "config.provider.write" && isProviderValidationError(err) {
+			status = http.StatusBadRequest
 		}
 		problem(c, status, fmt.Sprintf("Worker 配置操作失败: %s", method), err)
 		return
 	}
 	c.JSON(http.StatusOK, result)
+}
+
+func isProviderValidationError(err error) bool {
+	message := err.Error()
+	for _, marker := range []string{"Base URL", "API Key", "Model Provider", "配置长度"} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) getWorkerConfig(c *gin.Context) { s.workerConfig(c, "config.read", nil) }
@@ -158,9 +171,10 @@ func (s *Server) updateWorkerAgents(c *gin.Context) {
 
 func (s *Server) updateWorkerProvider(c *gin.Context) {
 	var request struct {
-		Revision       string                    `json:"revision"`
-		ModelProvider  string                    `json:"modelProvider"`
-		ModelProviders map[string]map[string]any `json:"modelProviders"`
+		Revision    string `json:"revision"`
+		BaseURL     string `json:"baseUrl"`
+		APIKey      string `json:"apiKey"`
+		ClearAPIKey bool   `json:"clearApiKey"`
 	}
 	if err := c.ShouldBindJSON(&request); err != nil {
 		badRequest(c, err)

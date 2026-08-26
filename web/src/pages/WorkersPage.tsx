@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import { api } from '../api/client'
 import { useUI } from '../state'
 import { WorkspaceManagement } from './WorkspacesPage'
@@ -176,18 +177,20 @@ export function WorkersPage() {
           <h2 className="text-xl font-semibold">注册新 Worker</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <label>
-              <span className="label">名称</span>
+              <span className="label">名称 <span className="required-mark">*</span></span>
               <input
                 className="field mt-1"
+                aria-label="名称"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 required
               />
             </label>
             <label>
-              <span className="label">并发上限</span>
+              <span className="label">并发上限 <span className="required-mark">*</span></span>
               <input
                 className="field mt-1"
+                aria-label="并发上限"
                 type="number"
                 min={1}
                 value={capacity}
@@ -202,63 +205,69 @@ export function WorkersPage() {
         </form>
       )}
 
-      <div className="mt-6 grid gap-4">
+      <div className="mt-6 grid gap-5">
         {workerItems.map((worker) => (
-          <article className="panel" key={worker.id}>
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold">{worker.name}</h2>
-                <p className="muted mt-1 text-sm">
-                  {worker.roles.includes('discord') ? 'Discord' : '无可用角色'}{' '}
-                  · 并发 {worker.maxConcurrentJobs} · {worker.status}
-                  {worker.workerVersion
-                    ? ` · Worker ${worker.workerVersion}`
-                    : ''}
-                </p>
-                <p className="muted mt-1 text-xs">
-                  最近心跳：{worker.heartbeatAt ?? '尚未连接'}
-                </p>
-                {worker.sshHostKeyFingerprint && (
-                  <p className="muted mt-1 break-all text-xs">
-                    机器指纹：{worker.sshHostKeyFingerprint}
-                  </p>
-                )}
-                {worker.lastError && (
-                  <p className="error-text mt-2">{worker.lastError}</p>
-                )}
-                <CapabilityStatus worker={worker} />
-              </div>
-              {isAdmin && (
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    className="button-secondary"
-                    onClick={() => action.mutate({ worker, type: 'enroll' })}
-                  >
-                    轮换凭据
-                  </button>
-                  <button
-                    className="button-secondary"
-                    onClick={() => action.mutate({ worker, type: 'toggle' })}
-                  >
-                    {worker.enabled ? '停用' : '启用'}
-                  </button>
-                  <button
-                    className="button-secondary"
-                    onClick={() => action.mutate({ worker, type: 'delete' })}
-                  >
-                    删除
-                  </button>
-                </div>
-              )}
-            </div>
-            {isAdmin && <WorkerUsersPanel worker={worker} />}
-            <WorkerConfigPanel worker={worker} />
-          </article>
+          <WorkerCard key={worker.id} worker={worker} isAdmin={isAdmin} action={action} />
         ))}
       </div>
       <WorkspaceManagement workers={workerItems} />
     </section>
   )
+}
+
+function WorkerCard({ worker, isAdmin, action }: { worker: Worker; isAdmin: boolean; action: { mutate: (variables: { worker: Worker; type: string }) => void } }) {
+  const [tab, setTab] = useState<'overview' | 'codex' | 'workspace' | 'users'>('overview')
+  return (
+    <article className="panel worker-card">
+      <div className="worker-card-header">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-semibold">{worker.name}</h2>
+            <StatusBadge tone={worker.enabled ? 'success' : 'muted'}>{worker.enabled ? '启用' : '停用'}</StatusBadge>
+            <StatusBadge tone={worker.status === 'online' ? 'success' : 'muted'}>{worker.status}</StatusBadge>
+          </div>
+          <p className="muted mt-1 text-sm">{worker.roles.includes('discord') ? 'Discord' : '无可用角色'} · 并发 {worker.maxConcurrentJobs}</p>
+        </div>
+        {isAdmin && (
+          <div className="worker-actions">
+            <button className="button-secondary" onClick={() => action.mutate({ worker, type: 'enroll' })}>轮换凭据</button>
+            <button className="button-danger" onClick={() => confirmAction(`${worker.enabled ? '停用' : '启用'} Worker？`) && action.mutate({ worker, type: 'toggle' })}>{worker.enabled ? '停用' : '启用'}</button>
+            <button className="button-danger" onClick={() => confirmAction('删除后无法恢复，确定删除此 Worker？') && action.mutate({ worker, type: 'delete' })}>删除</button>
+          </div>
+        )}
+      </div>
+      <div className="worker-badges">
+        <StatusBadge tone={worker.heartbeatAt ? 'success' : 'muted'}>心跳 {worker.heartbeatAt ? '正常' : '暂无'}</StatusBadge>
+        <StatusBadge tone={worker.metadata?.ssh?.status === 'online' ? 'success' : 'muted'}>SSH {worker.metadata?.ssh?.status ?? '未知'}</StatusBadge>
+        <StatusBadge tone={worker.metadata?.host?.appServer === 'online' ? 'success' : 'muted'}>Codex {worker.metadata?.host?.appServer ?? '未知'}</StatusBadge>
+        <StatusBadge tone={worker.metadata?.browser?.status === 'online' ? 'success' : 'muted'}>Chrome {worker.metadata?.browser?.status ?? '未知'}</StatusBadge>
+      </div>
+      <nav className="worker-tabs" aria-label={`${worker.name} 设置`}>
+        {((isAdmin ? [['overview', '概览'], ['codex', 'Codex 配置'], ['workspace', 'Workspace'], ['users', '用户分配']] : [['overview', '概览'], ['codex', 'Codex 配置'], ['workspace', 'Workspace']]) as [typeof tab, string][]).map(([id, label]) => (
+          <button key={id} className={tab === id ? 'is-active' : ''} onClick={() => setTab(id)}>{label}</button>
+        ))}
+      </nav>
+      <div className="worker-tab-panel">
+        {tab === 'overview' && <><p className="muted text-sm">最近心跳：{worker.heartbeatAt ?? '尚未连接'}</p>{worker.workerVersion && <p className="muted text-sm">Worker 版本：{worker.workerVersion}</p>}{worker.lastError && <p className="error-text mt-2">{worker.lastError}</p>}<CapabilityStatus worker={worker} /></>}
+        {tab === 'codex' && <WorkerConfigPanel worker={worker} />}
+        {tab === 'workspace' && <div className="muted text-sm">Workspace、项目与 Forum 管理位于本页下方，可按 Worker 过滤操作。</div>}
+        {tab === 'users' && isAdmin && <WorkerUsersPanel worker={worker} />}
+      </div>
+    </article>
+  )
+}
+
+function StatusBadge({ children, tone = 'muted' }: { children: ReactNode; tone?: 'success' | 'muted' }) {
+  return <span className={`status-badge ${tone === 'success' ? 'is-success' : ''}`}>{children}</span>
+}
+
+function confirmAction(message: string): boolean {
+  try {
+    if (typeof window.confirm !== 'function') return true
+    return window.confirm(message) !== false
+  } catch {
+    return true
+  }
 }
 
 function CapabilityStatus({ worker }: { worker: Worker }) {
@@ -338,15 +347,18 @@ function WorkerConfigPanel({ worker }: { worker: Worker }) {
   const showToast = useUI((state) => state.showToast)
   const [agents, setAgents] = useState('')
   const [revision, setRevision] = useState('')
-  const [provider, setProvider] = useState('')
+  const [baseUrl, setBaseUrl] = useState('')
+  const [apiKey, setApiKey] = useState('')
+  const [showKey, setShowKey] = useState(false)
   const config = useQuery({
     queryKey: ['worker-config', worker.id],
     queryFn: () =>
       api<{
         revision: string
         agents: string
-        modelProvider: string
-        modelProviders?: Record<string, Record<string, unknown>>
+        baseUrl: string
+        envKey: string
+        apiKeyConfigured: boolean
       }>(`/workers/${worker.id}/config`),
   })
   const oauth = useQuery({
@@ -371,6 +383,7 @@ function WorkerConfigPanel({ worker }: { worker: Worker }) {
       setRevision(result.revision)
       showToast('success', 'AGENTS.md 已保存')
     },
+    onError: (error: Error) => showToast('error', error.message.includes('冲突') ? '配置已变化，请重新读取' : error.message),
   })
   const startOAuth = useMutation({
     mutationFn: () =>
@@ -381,16 +394,20 @@ function WorkerConfigPanel({ worker }: { worker: Worker }) {
     mutationFn: () =>
       api<{ revision: string }>(`/workers/${worker.id}/config/provider`, {
         method: 'PUT',
-        body: JSON.stringify({
-          revision,
-          modelProvider: provider,
-          modelProviders: config.data?.modelProviders ?? {},
-        }),
+        body: JSON.stringify({ revision, baseUrl, apiKey }),
       }),
     onSuccess: (result) => {
       setRevision(result.revision)
+      setApiKey('')
+      void config.refetch()
       showToast('success', 'Model Provider 已保存')
     },
+    onError: (error: Error) => showToast('error', error.message.includes('冲突') ? '配置已变化，请重新读取' : error.message),
+  })
+  const clearAPIKey = useMutation<{ revision: string }, Error, void>({
+    mutationFn: () => api<{ revision: string }>(`/workers/${worker.id}/config/provider`, { method: 'PUT', body: JSON.stringify({ revision, baseUrl, clearApiKey: true }) }),
+    onSuccess: (result: { revision: string }) => { setRevision(result.revision); void config.refetch(); showToast('success', 'API Key 已清除') },
+    onError: (error: Error) => showToast('error', error.message.includes('冲突') ? '配置已变化，请重新读取' : error.message),
   })
   const restart = useMutation({
     mutationFn: () =>
@@ -401,22 +418,23 @@ function WorkerConfigPanel({ worker }: { worker: Worker }) {
     if (config.data) {
       setRevision(config.data.revision)
       setAgents(config.data.agents)
-      setProvider(config.data.modelProvider)
+      setBaseUrl(config.data.baseUrl ?? '')
+      setApiKey('')
     }
   }, [config.data])
   return (
-    <div className="mt-5 grid gap-3 border-t pt-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="font-semibold">Codex 配置</h3>
-        <label className="flex items-center gap-2 text-sm">
-          <span className="label">Model Provider</span>
-          <input
-            className="field"
-            value={provider}
-            onChange={(event) => setProvider(event.target.value)}
-            placeholder="provider-id"
-          />
-        </label>
+    <div className="grid gap-5">
+      <div>
+        <h3 className="font-semibold">Model Provider</h3>
+        <p className="muted mt-1 text-sm">模型请求只使用此处配置的非 ChatGPT Provider。配置内容只保存到 Worker，Control 不保存、不回显。</p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label><span className="label">Base URL <span className="required-mark">*</span></span><input className="field mt-1" type="url" required value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://api.example.com/v1" /></label>
+        <label><span className="label">API Key <span className="required-mark">*</span></span><div className="input-with-action mt-1"><input className="field" type={showKey ? 'text' : 'password'} value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={config.data?.apiKeyConfigured ? '留空保持原值' : '首次配置必填'} /><button type="button" className="button-ghost" onClick={() => setShowKey((value) => !value)}>{showKey ? '隐藏' : '显示'}</button></div>{config.data?.apiKeyConfigured && <span className="muted mt-1 block text-xs">当前状态：********（{config.data.envKey}）</span>}</label>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button className="button" onClick={() => saveProvider.mutate()} disabled={saveProvider.isPending || !config.data || !baseUrl || (!config.data.apiKeyConfigured && !apiKey)}>保存 Provider</button>
+        {config.data?.apiKeyConfigured && <button className="button-danger" onClick={() => confirmAction('清除后模型请求将无法认证，确定继续？') && clearAPIKey.mutate()} disabled={clearAPIKey.isPending}>清除 API Key</button>}
       </div>
       <label>
         <span className="label">AGENTS.md（Worker 真相源）</span>
@@ -436,16 +454,9 @@ function WorkerConfigPanel({ worker }: { worker: Worker }) {
           保存 AGENTS.md
         </button>
         <button
-          className="button-secondary"
-          onClick={() => saveProvider.mutate()}
-          disabled={saveProvider.isPending || !config.data || !provider}
-        >
-          保存 Provider
-        </button>
-        <button
-          className="button-secondary"
+          className="button-danger"
           onClick={() =>
-            window.confirm('重启会影响当前 Codex 会话，继续吗？') &&
+            confirmAction('重启会影响当前 Codex 会话，继续吗？') &&
             restart.mutate()
           }
           disabled={restart.isPending}
