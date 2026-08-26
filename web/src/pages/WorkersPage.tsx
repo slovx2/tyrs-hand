@@ -146,55 +146,61 @@ export function WorkersPage() {
         </div>
       )}
 
-      {isAdmin && <div className="panel mt-8">
-        <h2 className="text-xl font-semibold">默认 Placement</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-1">
-          <WorkerSelect
-            label="Discord 默认 Worker"
-            role="discord"
-            workers={workerItems}
-            value={defaults.data?.discordWorkerId ?? ''}
-            onChange={(value) =>
-              saveDefaults.mutate({
-                discordWorkerId: value || null,
-              })
-            }
-          />
+      {isAdmin && (
+        <div className="panel mt-8">
+          <h2 className="text-xl font-semibold">默认 Placement</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-1">
+            <WorkerSelect
+              label="Discord 默认 Worker"
+              role="discord"
+              workers={workerItems}
+              value={defaults.data?.discordWorkerId ?? ''}
+              onChange={(value) =>
+                saveDefaults.mutate({
+                  discordWorkerId: value || null,
+                })
+              }
+            />
+          </div>
         </div>
-      </div>}
+      )}
 
-      {isAdmin && <form
-        className="panel mt-6"
-        onSubmit={(event) => {
-          event.preventDefault()
-          create.mutate()
-        }}
-      >
-        <h2 className="text-xl font-semibold">注册新 Worker</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label>
-            <span className="label">名称</span>
-            <input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              required
-            />
-          </label>
-          <label>
-            <span className="label">并发上限</span>
-            <input
-              type="number"
-              min={1}
-              value={capacity}
-              onChange={(event) => setCapacity(Number(event.target.value))}
-            />
-          </label>
-          <p className="muted pt-7 text-sm">角色：Discord</p>
-        </div>
-        <button className="button mt-5" disabled={create.isPending}>
-          创建并生成 Token
-        </button>
-      </form>}
+      {isAdmin && (
+        <form
+          className="panel mt-6"
+          onSubmit={(event) => {
+            event.preventDefault()
+            create.mutate()
+          }}
+        >
+          <h2 className="text-xl font-semibold">注册新 Worker</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <label>
+              <span className="label">名称</span>
+              <input
+                className="field mt-1"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                required
+              />
+            </label>
+            <label>
+              <span className="label">并发上限</span>
+              <input
+                className="field mt-1"
+                type="number"
+                min={1}
+                value={capacity}
+                onChange={(event) => setCapacity(Number(event.target.value))}
+              />
+            </label>
+            <p className="muted pt-7 text-sm">角色：Discord</p>
+          </div>
+          <button className="button mt-5" disabled={create.isPending}>
+            创建并生成 Token
+          </button>
+        </form>
+      )}
 
       <div className="mt-6 grid gap-4">
         {workerItems.map((worker) => (
@@ -222,26 +228,28 @@ export function WorkersPage() {
                 )}
                 <CapabilityStatus worker={worker} />
               </div>
-              {isAdmin && <div className="flex flex-wrap gap-2">
-                <button
-                  className="button-secondary"
-                  onClick={() => action.mutate({ worker, type: 'enroll' })}
-                >
-                  轮换凭据
-                </button>
-                <button
-                  className="button-secondary"
-                  onClick={() => action.mutate({ worker, type: 'toggle' })}
-                >
-                  {worker.enabled ? '停用' : '启用'}
-                </button>
-                <button
-                  className="button-secondary"
-                  onClick={() => action.mutate({ worker, type: 'delete' })}
-                >
-                  删除
-                </button>
-              </div>}
+              {isAdmin && (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="button-secondary"
+                    onClick={() => action.mutate({ worker, type: 'enroll' })}
+                  >
+                    轮换凭据
+                  </button>
+                  <button
+                    className="button-secondary"
+                    onClick={() => action.mutate({ worker, type: 'toggle' })}
+                  >
+                    {worker.enabled ? '停用' : '启用'}
+                  </button>
+                  <button
+                    className="button-secondary"
+                    onClick={() => action.mutate({ worker, type: 'delete' })}
+                  >
+                    删除
+                  </button>
+                </div>
+              )}
             </div>
             {isAdmin && <WorkerUsersPanel worker={worker} />}
             <WorkerConfigPanel worker={worker} />
@@ -308,7 +316,11 @@ function WorkerSelect({
   return (
     <label>
       <span className="label">{label}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)}>
+      <select
+        className="field mt-1"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
         <option value="">未设置</option>
         {workers
           .filter((worker) => worker.enabled && worker.roles.includes(role))
@@ -330,35 +342,50 @@ function WorkerConfigPanel({ worker }: { worker: Worker }) {
   const config = useQuery({
     queryKey: ['worker-config', worker.id],
     queryFn: () =>
-      api<{ revision: string; agents: string; modelProvider: string; modelProviders?: Record<string, Record<string, unknown>> }>(
-        `/workers/${worker.id}/config`,
-      ),
+      api<{
+        revision: string
+        agents: string
+        modelProvider: string
+        modelProviders?: Record<string, Record<string, unknown>>
+      }>(`/workers/${worker.id}/config`),
   })
   const oauth = useQuery({
     queryKey: ['worker-oauth', worker.id],
-    queryFn: () => api<{ status: string; userCode?: string; verificationUrl?: string }>(`/workers/${worker.id}/codex/oauth/devices`),
-    refetchInterval: (query) => (query.state.data?.status === 'pending' ? 2000 : false),
+    queryFn: () =>
+      api<{ status: string; userCode?: string; verificationUrl?: string }>(
+        `/workers/${worker.id}/codex/oauth/devices`,
+      ),
+    refetchInterval: (query) =>
+      query.state.data?.status === 'pending' ? 2000 : false,
   })
   const save = useMutation({
     mutationFn: () =>
-      api<{ revision: string; agents: string }>(`/workers/${worker.id}/config/agents`, {
-        method: 'PUT',
-        body: JSON.stringify({ revision, content: agents }),
-      }),
+      api<{ revision: string; agents: string }>(
+        `/workers/${worker.id}/config/agents`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ revision, content: agents }),
+        },
+      ),
     onSuccess: (result) => {
       setRevision(result.revision)
       showToast('success', 'AGENTS.md 已保存')
     },
   })
   const startOAuth = useMutation({
-    mutationFn: () => api(`/workers/${worker.id}/codex/oauth/devices`, { method: 'POST' }),
+    mutationFn: () =>
+      api(`/workers/${worker.id}/codex/oauth/devices`, { method: 'POST' }),
     onSuccess: () => oauth.refetch(),
   })
   const saveProvider = useMutation({
     mutationFn: () =>
       api<{ revision: string }>(`/workers/${worker.id}/config/provider`, {
         method: 'PUT',
-        body: JSON.stringify({ revision, modelProvider: provider, modelProviders: config.data?.modelProviders ?? {} }),
+        body: JSON.stringify({
+          revision,
+          modelProvider: provider,
+          modelProviders: config.data?.modelProviders ?? {},
+        }),
       }),
     onSuccess: (result) => {
       setRevision(result.revision)
@@ -366,7 +393,8 @@ function WorkerConfigPanel({ worker }: { worker: Worker }) {
     },
   })
   const restart = useMutation({
-    mutationFn: () => api(`/workers/${worker.id}/codex/restart`, { method: 'POST' }),
+    mutationFn: () =>
+      api(`/workers/${worker.id}/codex/restart`, { method: 'POST' }),
     onSuccess: () => showToast('success', '已请求重启 Codex'),
   })
   useEffect(() => {
@@ -380,32 +408,72 @@ function WorkerConfigPanel({ worker }: { worker: Worker }) {
     <div className="mt-5 grid gap-3 border-t pt-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-semibold">Codex 配置</h3>
-        <label className="flex items-center gap-2 text-sm"><span className="label">Model Provider</span><input value={provider} onChange={(event) => setProvider(event.target.value)} placeholder="provider-id" /></label>
+        <label className="flex items-center gap-2 text-sm">
+          <span className="label">Model Provider</span>
+          <input
+            className="field"
+            value={provider}
+            onChange={(event) => setProvider(event.target.value)}
+            placeholder="provider-id"
+          />
+        </label>
       </div>
       <label>
         <span className="label">AGENTS.md（Worker 真相源）</span>
-        <textarea value={agents} onChange={(event) => setAgents(event.target.value)} rows={5} />
+        <textarea
+          className="field mt-1 min-h-40 font-mono text-xs leading-5"
+          value={agents}
+          onChange={(event) => setAgents(event.target.value)}
+          rows={5}
+        />
       </label>
       <div className="flex flex-wrap gap-2">
-        <button className="button-secondary" onClick={() => save.mutate()} disabled={save.isPending || !config.data}>
+        <button
+          className="button-secondary"
+          onClick={() => save.mutate()}
+          disabled={save.isPending || !config.data}
+        >
           保存 AGENTS.md
         </button>
-        <button className="button-secondary" onClick={() => saveProvider.mutate()} disabled={saveProvider.isPending || !config.data || !provider}>
+        <button
+          className="button-secondary"
+          onClick={() => saveProvider.mutate()}
+          disabled={saveProvider.isPending || !config.data || !provider}
+        >
           保存 Provider
         </button>
-        <button className="button-secondary" onClick={() => window.confirm('重启会影响当前 Codex 会话，继续吗？') && restart.mutate()} disabled={restart.isPending}>
+        <button
+          className="button-secondary"
+          onClick={() =>
+            window.confirm('重启会影响当前 Codex 会话，继续吗？') &&
+            restart.mutate()
+          }
+          disabled={restart.isPending}
+        >
           重启 Codex
         </button>
-        <button className="button-secondary" onClick={() => startOAuth.mutate()} disabled={startOAuth.isPending}>
+        <button
+          className="button-secondary"
+          onClick={() => startOAuth.mutate()}
+          disabled={startOAuth.isPending}
+        >
           登录 ChatGPT 账号
         </button>
       </div>
       {oauth.data?.status === 'pending' && oauth.data.userCode && (
         <div className="danger-note">
-          请打开 <a href={oauth.data.verificationUrl} target="_blank" rel="noreferrer">{oauth.data.verificationUrl}</a>，输入设备码 <code>{oauth.data.userCode}</code>。
+          请打开{' '}
+          <a href={oauth.data.verificationUrl} target="_blank" rel="noreferrer">
+            {oauth.data.verificationUrl}
+          </a>
+          ，输入设备码 <code>{oauth.data.userCode}</code>。
         </div>
       )}
-      {oauth.data?.status === 'authenticated' && <p className="muted text-sm">ChatGPT OAuth 已登录；模型请求仍使用上方 Provider。</p>}
+      {oauth.data?.status === 'authenticated' && (
+        <p className="muted text-sm">
+          ChatGPT OAuth 已登录；模型请求仍使用上方 Provider。
+        </p>
+      )}
     </div>
   )
 }
@@ -417,23 +485,44 @@ function WorkerUsersPanel({ worker }: { worker: Worker }) {
   })
   const assigned = useQuery({
     queryKey: ['worker-users', worker.id],
-    queryFn: () => api<{ items: { id: string; username: string }[] }>(`/workers/${worker.id}/users`),
+    queryFn: () =>
+      api<{ items: { id: string; username: string }[] }>(
+        `/workers/${worker.id}/users`,
+      ),
   })
   const queryClient = useQueryClient()
   const update = useMutation({
     mutationFn: ({ userId, remove }: { userId: string; remove: boolean }) =>
-      api<void>(`/workers/${worker.id}/users/${userId}`, { method: remove ? 'DELETE' : 'PUT' }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['worker-users', worker.id] }),
+      api<void>(`/workers/${worker.id}/users/${userId}`, {
+        method: remove ? 'DELETE' : 'PUT',
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['worker-users', worker.id] }),
   })
-  const assignedIDs = new Set((assigned.data?.items ?? []).map((user) => user.id))
+  const assignedIDs = new Set(
+    (assigned.data?.items ?? []).map((user) => user.id),
+  )
   return (
     <div className="mt-4 border-t pt-4">
       <h3 className="font-semibold">用户分配</h3>
       <div className="mt-2 flex flex-wrap gap-2">
-        {(users.data?.items ?? []).filter((user) => user.username).map((user) => {
-          const isAssigned = assignedIDs.has(user.id)
-          return <button key={user.id} className="button-secondary" onClick={() => update.mutate({ userId: user.id, remove: isAssigned })} disabled={update.isPending}>{isAssigned ? `移除 ${user.username}` : `分配 ${user.username}`}</button>
-        })}
+        {(users.data?.items ?? [])
+          .filter((user) => user.username)
+          .map((user) => {
+            const isAssigned = assignedIDs.has(user.id)
+            return (
+              <button
+                key={user.id}
+                className="button-secondary"
+                onClick={() =>
+                  update.mutate({ userId: user.id, remove: isAssigned })
+                }
+                disabled={update.isPending}
+              >
+                {isAssigned ? `移除 ${user.username}` : `分配 ${user.username}`}
+              </button>
+            )
+          })}
       </div>
     </div>
   )

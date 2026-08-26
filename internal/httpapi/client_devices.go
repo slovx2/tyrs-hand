@@ -58,7 +58,8 @@ type claimClientDeviceRequest struct {
 }
 
 func (s *Server) listClientDevices(c *gin.Context) {
-	administratorID := c.MustGet("session").(auth.Session).AdministratorID
+	session := c.MustGet("session").(auth.Session)
+	administratorID := session.AdministratorID
 	rows, err := s.db.QueryContext(c.Request.Context(), `
 		SELECT id,name,platform,created_at,approved_at,last_seen_at
 		FROM client_devices WHERE administrator_id=$1 ORDER BY created_at DESC`, administratorID)
@@ -92,7 +93,12 @@ func (s *Server) listClientDevices(c *gin.Context) {
 		JOIN workers worker ON worker.id=binding.worker_id
 		LEFT JOIN worker_workspaces workspace ON workspace.worker_id=worker.id
 		WHERE device.administrator_id=$1
-		ORDER BY worker.name`, administratorID)
+			AND ($2::boolean OR EXISTS (
+				SELECT 1 FROM worker_administrators access_user
+				WHERE access_user.worker_id=worker.id
+					AND access_user.administrator_id=$1
+			))
+		ORDER BY worker.name`, administratorID, session.Role == "admin")
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取设备机器列表失败", err)
 		return
@@ -202,6 +208,9 @@ func (s *Server) getClientDevicePairing(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "读取设备绑定失败", err)
 		return
 	}
+	if !s.requireWorkerAccess(c, pairing.WorkerID) {
+		return
+	}
 	c.JSON(http.StatusOK, pairing)
 }
 
@@ -287,10 +296,23 @@ func (s *Server) clientDevicePairingStatus(c *gin.Context) {
 }
 
 func (s *Server) approveClientDevicePairing(c *gin.Context) {
-	administratorID := c.MustGet("session").(auth.Session).AdministratorID
+	session := c.MustGet("session").(auth.Session)
+	administratorID := session.AdministratorID
 	pairingID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		badRequest(c, err)
+		return
+	}
+	pairing, err := s.loadAdministratorPairing(c, pairingID)
+	if errors.Is(err, sql.ErrNoRows) {
+		problem(c, http.StatusNotFound, "设备绑定不存在", err)
+		return
+	}
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取设备绑定失败", err)
+		return
+	}
+	if !s.requireWorkerAccess(c, pairing.WorkerID) {
 		return
 	}
 	tx, err := s.db.BeginTx(c.Request.Context(), nil)
@@ -305,8 +327,13 @@ func (s *Server) approveClientDevicePairing(c *gin.Context) {
 	err = tx.QueryRowContext(c.Request.Context(), `
 		UPDATE client_device_pairings SET status='approved',confirmed_at=now(),updated_at=now()
 		WHERE id=$1 AND administrator_id=$2 AND status='waiting_confirmation' AND expires_at>now()
+			AND ($3::boolean OR EXISTS (
+				SELECT 1 FROM worker_administrators access_user
+				WHERE access_user.worker_id=client_device_pairings.worker_id
+					AND access_user.administrator_id=$2
+			))
 		RETURNING device_id,device_name,platform,worker_id,ssh_host_key_fingerprint,now(),now()`,
-		pairingID, administratorID).Scan(&device.ID, &device.Name, &device.Platform, &workerID,
+		pairingID, administratorID, session.Role == "admin").Scan(&device.ID, &device.Name, &device.Platform, &workerID,
 		&fingerprint, &device.CreatedAt, &device.ApprovedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusConflict, "设备绑定已失效或当前不可确认", err)
@@ -350,16 +377,33 @@ func (s *Server) approveClientDevicePairing(c *gin.Context) {
 }
 
 func (s *Server) rejectClientDevicePairing(c *gin.Context) {
-	administratorID := c.MustGet("session").(auth.Session).AdministratorID
+	session := c.MustGet("session").(auth.Session)
+	administratorID := session.AdministratorID
 	pairingID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		badRequest(c, err)
 		return
 	}
+	pairing, err := s.loadAdministratorPairing(c, pairingID)
+	if errors.Is(err, sql.ErrNoRows) {
+		problem(c, http.StatusNotFound, "设备绑定不存在", err)
+		return
+	}
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取设备绑定失败", err)
+		return
+	}
+	if !s.requireWorkerAccess(c, pairing.WorkerID) {
+		return
+	}
 	result, err := s.db.ExecContext(c.Request.Context(), `
 		UPDATE client_device_pairings SET status='rejected',updated_at=now()
-		WHERE id=$1 AND administrator_id=$2 AND status IN ('waiting_scan','waiting_confirmation')`,
-		pairingID, administratorID)
+		WHERE id=$1 AND administrator_id=$2 AND status IN ('waiting_scan','waiting_confirmation')
+			AND ($3::boolean OR EXISTS (
+				SELECT 1 FROM worker_administrators access_user
+				WHERE access_user.worker_id=client_device_pairings.worker_id
+					AND access_user.administrator_id=$2
+			))`, pairingID, administratorID, session.Role == "admin")
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "拒绝设备绑定失败", err)
 		return

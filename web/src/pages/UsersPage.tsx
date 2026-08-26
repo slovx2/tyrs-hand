@@ -63,7 +63,7 @@ export function UsersPage() {
       >
         <label>
           <span className="label">用户名</span>
-          <input value={username} onChange={(event) => setUsername(event.target.value)} required />
+          <input className="field mt-1" value={username} onChange={(event) => setUsername(event.target.value)} required />
         </label>
         <button className="button" disabled={create.isPending}>
           创建邀请

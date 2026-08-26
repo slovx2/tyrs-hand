@@ -128,6 +128,7 @@ export function DevicesPage() {
           <label>
             <span className="label">目标 Worker</span>
             <select
+              className="field mt-1 device-worker-select"
               value={selectedWorkerId}
               onChange={(event) => setWorkerId(event.target.value)}
             >

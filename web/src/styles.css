@@ -618,6 +618,10 @@ h2 {
   box-shadow: 0 0.5rem 1.3rem -0.8rem rgb(20 18 11 / 65%);
 }
 
+.device-worker-select {
+  min-width: 10rem;
+}
+
 .device-add-button svg {
   color: var(--gold);
 }
