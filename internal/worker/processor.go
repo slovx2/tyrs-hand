@@ -195,8 +195,7 @@ func (p *Processor) processRemoteGitHub(ctx context.Context, task *workerprotoco
 	unbind := p.hostRuntime.BindTool(threadID, func(toolCtx context.Context,
 		request codex.ToolCallRequest,
 	) (codex.ToolCallResult, error) {
-		return p.handleRemoteGitHubTool(toolCtx, task, codexHome, workspace, branch, request,
-			report)
+		return p.handleRemoteGitHubTool(toolCtx, task, codexHome, workspace, branch, request)
 	})
 	defer unbind()
 	subscription := client.Subscribe(codex.ThreadFilter{ThreadID: threadID})
@@ -255,11 +254,4 @@ func remoteGitHubAdditionalContext(job *workerprotocol.GitHubSnapshot,
 func remoteEventPayload(value any) json.RawMessage {
 	data, _ := json.Marshal(value)
 	return data
-}
-
-func trimError(value error) string {
-	if value == nil {
-		return ""
-	}
-	return strings.TrimSpace(value.Error())
 }

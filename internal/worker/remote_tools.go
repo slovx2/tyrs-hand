@@ -15,43 +15,27 @@ import (
 
 func (p *Processor) handleRemoteGitHubTool(ctx context.Context,
 	task *workerprotocol.Task, _ string, workspace ports.Workspace, branch string,
-	request codex.ToolCallRequest, report func(string, json.RawMessage),
+	request codex.ToolCallRequest,
 ) (codex.ToolCallResult, error) {
 	namespace := ""
 	if request.Namespace != nil {
 		namespace = *request.Namespace
 	}
 	if namespace == "github" || namespace == "tyrs_hand" {
-		result, err := p.client.CallTool(ctx, task, request)
-		report("dynamic_tool.finished", remoteEventPayload(map[string]any{
-			"namespace": namespace, "tool": request.Tool, "callId": request.CallID,
-			"success": err == nil && result.Success, "error": trimError(err),
-		}))
-		return result, err
+		return p.client.CallTool(ctx, task, request)
 	}
 	if namespace == browserToolNamespace {
-		result, err := executeBrowserTool(ctx, p.cfg, task.Claimed.ID.String(),
+		return executeBrowserTool(ctx, p.cfg, task.Claimed.ID.String(),
 			workspace.WorktreePath, request)
-		report("local_tool.finished", remoteEventPayload(map[string]any{
-			"namespace": namespace, "tool": request.Tool, "callId": request.CallID,
-			"success": err == nil && result.Success, "error": trimError(err),
-		}))
-		return result, err
 	}
 	if namespace != "git" {
 		return codex.ToolCallResult{}, errors.New("未知 dynamic tool namespace")
 	}
-	result, err := p.executeRemoteGitTool(ctx, task, workspace, branch, request)
-	report("local_tool.finished", remoteEventPayload(map[string]any{
-		"namespace": namespace, "tool": request.Tool, "callId": request.CallID,
-		"success": err == nil && result.Success, "error": trimError(err),
-	}))
-	return result, err
+	return p.executeRemoteGitTool(ctx, task, workspace, branch, request)
 }
 
 func (p *Processor) handleRemoteHostDiscordTool(ctx context.Context,
 	task *workerprotocol.Task, runtime hostWorkspaceRuntime, request codex.ToolCallRequest,
-	report func(string, json.RawMessage),
 ) (codex.ToolCallResult, error) {
 	namespace := ""
 	if request.Namespace != nil {
@@ -80,9 +64,6 @@ func (p *Processor) handleRemoteHostDiscordTool(ctx context.Context,
 	default:
 		err = errors.New("未知 dynamic tool namespace")
 	}
-	report("discord.tool", remoteEventPayload(map[string]any{"namespace": namespace,
-		"tool": request.Tool, "callId": request.CallID,
-		"success": err == nil && result.Success, "error": trimError(err)}))
 	return result, err
 }
 

@@ -128,7 +128,7 @@ func (c *desktopController) PrepareCall(ctx context.Context,
 					return codex.ToolCallResult{}, runtime.err
 				}
 				return c.processor.handleRemoteHostDiscordTool(ctx, runtime.task,
-					runtime.runtime, request, runtime.report)
+					runtime.runtime, request)
 			case <-ctx.Done():
 				return codex.ToolCallResult{}, ctx.Err()
 			case <-time.After(10 * time.Second):

@@ -74,7 +74,7 @@ func (p *Processor) processRemoteDiscord(ctx context.Context, task *workerprotoc
 	unbind := p.hostRuntime.BindTool(threadID, func(toolCtx context.Context,
 		request codex.ToolCallRequest,
 	) (codex.ToolCallResult, error) {
-		return p.handleRemoteHostDiscordTool(toolCtx, task, runtime, request, report)
+		return p.handleRemoteHostDiscordTool(toolCtx, task, runtime, request)
 	})
 	defer unbind()
 	interactive := make(chan bool, 1)
