@@ -27,8 +27,7 @@ func (s *Server) setupStatus(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "读取 Setup 状态失败", err)
 		return
 	}
-	_, _, _, githubConfigured := s.github.Current()
-	c.JSON(http.StatusOK, gin.H{"setupRequired": required, "githubConfigured": githubConfigured})
+	c.JSON(http.StatusOK, gin.H{"setupRequired": required})
 }
 
 func (s *Server) setupAdmin(c *gin.Context) {

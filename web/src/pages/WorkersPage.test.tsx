@@ -45,8 +45,10 @@ describe('WorkersPage', () => {
         }),
       ),
       http.get('/api/v1/settings/workers', () =>
-        HttpResponse.json({ githubWorkerId: null, discordWorkerId: null }),
+        HttpResponse.json({ discordWorkerId: null }),
       ),
+      http.get('/api/v1/workspaces', () => HttpResponse.json({ items: [] })),
+      http.get('/api/v1/discord/members', () => HttpResponse.json([])),
       http.post('/api/v1/workers', async ({ request }) => {
         create(await request.json())
         return HttpResponse.json(
@@ -73,12 +75,11 @@ describe('WorkersPage', () => {
       await screen.findByRole('heading', { name: 'song-ubuntu' }),
     ).toBeInTheDocument()
     await user.selectOptions(
-      screen.getByLabelText('GitHub 默认 Worker'),
+      screen.getByLabelText('Discord 默认 Worker'),
       '11111111-1111-1111-1111-111111111111',
     )
     expect(saveDefaults).toHaveBeenCalledWith({
-      githubWorkerId: '11111111-1111-1111-1111-111111111111',
-      discordWorkerId: null,
+      discordWorkerId: '11111111-1111-1111-1111-111111111111',
     })
 
     await user.type(screen.getByLabelText('名称'), 'home-2')
@@ -87,7 +88,7 @@ describe('WorkersPage', () => {
     await user.click(screen.getByRole('button', { name: '创建并生成 Token' }))
     expect(create).toHaveBeenCalledWith({
       name: 'home-2',
-      roles: ['github', 'discord'],
+      roles: ['discord'],
       maxConcurrentJobs: 4,
     })
     expect(

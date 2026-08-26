@@ -47,7 +47,6 @@ export interface Worker {
 }
 
 interface Defaults {
-  githubWorkerId?: string | null
   discordWorkerId?: string | null
 }
 
@@ -55,8 +54,6 @@ export function WorkersPage() {
   const queryClient = useQueryClient()
   const showToast = useUI((state) => state.showToast)
   const [name, setName] = useState('')
-  const [githubRole, setGitHubRole] = useState(true)
-  const [discordRole, setDiscordRole] = useState(true)
   const [capacity, setCapacity] = useState(6)
   const [token, setToken] = useState('')
   const workers = useQuery({
@@ -79,9 +76,7 @@ export function WorkersPage() {
         method: 'POST',
         body: JSON.stringify({
           name,
-          roles: [githubRole && 'github', discordRole && 'discord'].filter(
-            Boolean,
-          ),
+          roles: ['discord'],
           maxConcurrentJobs: capacity,
         }),
       }),
@@ -147,19 +142,7 @@ export function WorkersPage() {
 
       <div className="panel mt-8">
         <h2 className="text-xl font-semibold">默认 Placement</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <WorkerSelect
-            label="GitHub 默认 Worker"
-            role="github"
-            workers={workerItems}
-            value={defaults.data?.githubWorkerId ?? ''}
-            onChange={(value) =>
-              saveDefaults.mutate({
-                githubWorkerId: value || null,
-                discordWorkerId: defaults.data?.discordWorkerId ?? null,
-              })
-            }
-          />
+        <div className="mt-4 grid gap-4 sm:grid-cols-1">
           <WorkerSelect
             label="Discord 默认 Worker"
             role="discord"
@@ -167,7 +150,6 @@ export function WorkersPage() {
             value={defaults.data?.discordWorkerId ?? ''}
             onChange={(value) =>
               saveDefaults.mutate({
-                githubWorkerId: defaults.data?.githubWorkerId ?? null,
                 discordWorkerId: value || null,
               })
             }
@@ -183,7 +165,7 @@ export function WorkersPage() {
         }}
       >
         <h2 className="text-xl font-semibold">注册新 Worker</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-4">
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label>
             <span className="label">名称</span>
             <input
@@ -201,27 +183,9 @@ export function WorkersPage() {
               onChange={(event) => setCapacity(Number(event.target.value))}
             />
           </label>
-          <label className="flex items-center gap-2 pt-7">
-            <input
-              type="checkbox"
-              checked={githubRole}
-              onChange={(e) => setGitHubRole(e.target.checked)}
-            />
-            GitHub
-          </label>
-          <label className="flex items-center gap-2 pt-7">
-            <input
-              type="checkbox"
-              checked={discordRole}
-              onChange={(e) => setDiscordRole(e.target.checked)}
-            />
-            Discord
-          </label>
+          <p className="muted pt-7 text-sm">角色：Discord</p>
         </div>
-        <button
-          className="button mt-5"
-          disabled={create.isPending || (!githubRole && !discordRole)}
-        >
+        <button className="button mt-5" disabled={create.isPending}>
           创建并生成 Token
         </button>
       </form>
@@ -233,8 +197,8 @@ export function WorkersPage() {
               <div>
                 <h2 className="text-lg font-semibold">{worker.name}</h2>
                 <p className="muted mt-1 text-sm">
-                  {worker.roles.join(' + ')} · 并发 {worker.maxConcurrentJobs} ·{' '}
-                  {worker.status}
+                  {worker.roles.includes('discord') ? 'Discord' : '无可用角色'}{' '}
+                  · 并发 {worker.maxConcurrentJobs} · {worker.status}
                   {worker.workerVersion
                     ? ` · Worker ${worker.workerVersion}`
                     : ''}

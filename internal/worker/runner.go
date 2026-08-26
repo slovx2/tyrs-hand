@@ -159,21 +159,20 @@ func (r *Runner) Authenticate(ctx context.Context) error {
 
 func (r *Runner) roles() []string {
 	if r.cfg.WorkerRole == "all" {
-		return []string{"github", "discord"}
+		return []string{"discord"}
 	}
 	return []string{r.cfg.WorkerRole}
 }
 
 func (r *Runner) claimRole() string {
 	if r.cfg.WorkerRole == "all" {
-		return "all"
+		return "discord"
 	}
 	return r.cfg.WorkerRole
 }
 
 func (r *Runner) roleAllowed(source string) bool {
-	return r.cfg.WorkerRole == "all" ||
-		(r.cfg.WorkerRole == "github" && source == "github_work_item") ||
+	return (r.cfg.WorkerRole == "all" && source == "workspace_session") ||
 		(r.cfg.WorkerRole == "discord" && source == "workspace_session")
 }
 

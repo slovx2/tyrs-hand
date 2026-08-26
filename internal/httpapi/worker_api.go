@@ -75,7 +75,6 @@ func (s *Server) registerWorkerOperationRoutes(group *gin.RouterGroup) {
 	group.POST("/runs/:id/workspace-project-state", s.workerWorkspaceProjectState)
 	group.POST("/runs/:id/workspace-state", s.workerWorkspaceState)
 	group.POST("/runs/:id/tools/call", s.workerToolCall)
-	group.POST("/runs/:id/git-credential", s.workerGitCredential)
 }
 
 func (s *Server) workerBlob(c *gin.Context) {
@@ -199,20 +198,22 @@ func (s *Server) workerClaim(c *gin.Context) {
 		problem(c, http.StatusConflict, "Worker 协议版本不兼容，禁止领取任务", nil)
 		return
 	}
+	if request.Role == "github" {
+		problem(c, http.StatusGone, "GitHub 功能已停用", nil)
+		return
+	}
 	if !workerregistry.HasRole(worker, request.Role) {
 		problem(c, http.StatusForbidden, "节点未授权该 Worker 角色", nil)
 		return
 	}
 	source := ""
 	switch request.Role {
-	case "github":
-		source = codexcontrol.SourceGitHub
 	case "discord":
 		source = codexcontrol.SourceWorkspace
 	case "all":
-		source = ""
+		source = codexcontrol.SourceWorkspace
 	default:
-		badRequest(c, errors.New("role 必须是 all、github 或 discord"))
+		badRequest(c, errors.New("role 必须是 all 或 discord"))
 		return
 	}
 	deadline := time.Now()

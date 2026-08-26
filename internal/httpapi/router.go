@@ -72,26 +72,21 @@ func (s *Server) baseRouter() *gin.Engine {
 }
 
 func (s *Server) Router() http.Handler {
-	return s.adminRouter(true)
+	return s.adminRouter()
 }
 
 func (s *Server) AdminRouter() http.Handler {
-	return s.adminRouter(false)
+	return s.adminRouter()
 }
 
-func (s *Server) adminRouter(includeWebhook bool) http.Handler {
+func (s *Server) adminRouter() http.Handler {
 	router := s.baseRouter()
 	router.GET("/metrics", func(c *gin.Context) {
 		s.refreshOperationalMetrics(c.Request.Context())
 		gin.WrapH(promhttp.Handler())(c)
 	})
-	router.POST("/internal/v1/tools/call", s.internalToolCall)
-	router.POST("/internal/v1/tools/failure", s.internalToolFailure)
-	router.POST("/internal/v1/git/credential", s.internalGitCredential)
 	s.registerWorkerRoutes(router)
-	if includeWebhook {
-		router.POST("/webhooks/github", s.githubWebhook)
-	}
+	// GitHub Webhook 已停用。
 
 	api := router.Group("/api/v1")
 	api.GET("/setup/status", s.setupStatus)
@@ -99,22 +94,12 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	api.POST("/auth/login", s.login)
 	api.POST("/client/device-pairings/:id/claim", s.claimClientDevicePairing)
 	api.GET("/client/device-pairings/:id/status", s.clientDevicePairingStatus)
-	api.GET("/github/app/manifest/callback", s.githubManifestCallback)
-	api.GET("/discord/github/bind/callback", s.discordGitHubBindCallback)
 	authenticated := api.Group("")
 	authenticated.Use(s.requireSession())
 	authenticated.GET("/auth/me", s.me)
 	authenticated.POST("/auth/logout", s.requireCSRF(), s.logout)
-	authenticated.GET("/github/app", s.getGitHubApp)
-	authenticated.PUT("/github/app", s.requireCSRF(), s.putGitHubApp)
-	authenticated.GET("/github/app/manifest", s.githubManifest)
-	authenticated.GET("/repositories", s.listRepositories)
-	authenticated.GET("/installations", s.listInstallations)
-	authenticated.POST("/repositories", s.requireCSRF(), s.createRepository)
 	authenticated.GET("/agent-profiles", s.listAgentProfiles)
 	authenticated.POST("/agent-profiles", s.requireCSRF(), s.createAgentProfile)
-	authenticated.GET("/trigger-rules", s.listTriggerRules)
-	authenticated.POST("/trigger-rules", s.requireCSRF(), s.createTriggerRule)
 	authenticated.GET("/work-items", s.listWorkItems)
 	authenticated.GET("/jobs", s.listJobs)
 	authenticated.GET("/workers", s.listWorkers)
@@ -147,10 +132,6 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 	authenticated.GET("/worktrees", s.listWorktrees)
 	authenticated.GET("/repo-caches", s.listRepoCaches)
 	authenticated.GET("/audit-logs", s.listAuditLogs)
-	authenticated.GET("/settings/github-agent-instructions", s.getGitHubAgentInstructions)
-	authenticated.PUT("/settings/github-agent-instructions", s.requireCSRF(), s.putGitHubAgentInstructions)
-	authenticated.GET("/settings/github-agent", s.listGitHubAgentSettings)
-	authenticated.PUT("/settings/github-agent/repositories/:id", s.requireCSRF(), s.putRepositoryGitHubAgentSettings)
 	authenticated.GET("/settings/discord", s.getDiscordSettings)
 	authenticated.PUT("/settings/discord", s.requireCSRF(), s.putDiscordSettings)
 	authenticated.GET("/discord/status", s.discordStatus)
@@ -169,8 +150,6 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 		s.requireCSRF(), s.deleteWorkspaceProjectForumCollaborator)
 	authenticated.PUT("/discord/forums/:forumId/access/:memberId", s.requireCSRF(), s.putDiscordForumAccess)
 	authenticated.DELETE("/discord/forums/:forumId/access/:memberId", s.requireCSRF(), s.deleteDiscordForumAccess)
-	authenticated.POST("/discord/github/bind", s.requireCSRF(), s.startDiscordGitHubBind)
-	authenticated.POST("/discord/github/unbind", s.requireCSRF(), s.unbindDiscordGitHub)
 	authenticated.GET("/system/status", s.systemStatus)
 	authenticated.GET("/events/stream", s.eventsStream)
 
@@ -189,7 +168,6 @@ func (s *Server) adminRouter(includeWebhook bool) http.Handler {
 
 func (s *Server) WebhookRouter() http.Handler {
 	router := s.baseRouter()
-	router.POST("/webhooks/github", s.githubWebhook)
 	return router
 }
 
@@ -223,8 +201,6 @@ func rateLimitPolicy(path string) (string, int64) {
 		return "auth-login", 10
 	case "/api/v1/setup/admin":
 		return "setup-admin", 10
-	case "/webhooks/github":
-		return "github-webhook", 300
 	default:
 		return "default", 600
 	}
@@ -280,6 +256,13 @@ func (s *Server) accessLog() gin.HandlerFunc {
 }
 
 func (s *Server) serveSPA(c *gin.Context) {
+	if strings.HasPrefix(c.Request.URL.Path, "/api/") ||
+		strings.HasPrefix(c.Request.URL.Path, "/internal/") ||
+		strings.HasPrefix(c.Request.URL.Path, "/worker/") ||
+		strings.HasPrefix(c.Request.URL.Path, "/webhooks/") {
+		c.Status(http.StatusNotFound)
+		return
+	}
 	if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead {
 		c.Status(http.StatusNotFound)
 		return

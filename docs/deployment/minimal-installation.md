@@ -22,9 +22,9 @@ docker compose -f compose.yaml -f compose.production.yaml --profile tools run --
 docker compose -f compose.yaml -f compose.production.yaml up -d server discord
 ```
 
-反向代理必须转发管理 API、GitHub Webhook 和全部 `/worker/v1/*` 路径。Worker API 是直接 REST 接口，包含注册、心跳、领取、Workspace、Desktop、Thread、Turn、Run、Blob、Tool、Git 与 SSH 操作；完整路径见 `api/openapi.yaml`。
+反向代理必须转发管理 API 和全部 `/worker/v1/*` 路径。Worker API 是直接 REST 接口，包含注册、心跳、领取、Workspace、Desktop、Thread、Turn、Run、Blob、Tool、Git 与 SSH 操作；完整路径见 `api/openapi.yaml`。
 
-Control 管理 GitHub App、Discord、Worker、Workspace、任务参数和出站 SSH。Codex Provider、API Key、ChatGPT 登录态、Base URL、代理与模型目录不属于 Control 配置。
+Control 管理 Discord、Worker、Workspace、任务参数和出站 SSH。Codex Provider、API Key、ChatGPT 登录态、Base URL、代理与模型目录不属于 Control 配置。
 
 ### 配置备份
 

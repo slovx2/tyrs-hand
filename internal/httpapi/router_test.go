@@ -12,7 +12,7 @@ func TestWebhookRouterSeparation(t *testing.T) {
 	server := &Server{}
 
 	combined := routeSet(server.Router())
-	require.Contains(t, combined, "POST /webhooks/github")
+	require.NotContains(t, combined, "POST /webhooks/github")
 	require.Contains(t, combined, "GET /api/v1/setup/status")
 	require.Contains(t, combined, "GET /api/v1/ssh/credentials")
 	require.Contains(t, combined, "GET /api/v1/client/machines")
@@ -35,18 +35,18 @@ func TestWebhookRouterSeparation(t *testing.T) {
 	require.Contains(t, combined, "PUT /api/v1/ssh/credentials/:id")
 	require.Contains(t, combined, "GET /api/v1/ssh/hosts")
 	require.Contains(t, combined, "POST /api/v1/ssh/hosts/import")
-	require.Contains(t, combined, "PUT /api/v1/settings/github-agent-instructions")
+	require.NotContains(t, combined, "PUT /api/v1/settings/github-agent-instructions")
 	require.Contains(t, combined, "POST /worker/v1/heartbeat")
 
 	admin := routeSet(server.AdminRouter())
 	require.NotContains(t, admin, "POST /webhooks/github")
 	require.Contains(t, admin, "GET /api/v1/setup/status")
-	require.Contains(t, admin, "POST /internal/v1/tools/call")
+	require.NotContains(t, admin, "POST /internal/v1/tools/call")
 	require.Contains(t, admin, "DELETE /api/v1/ssh/hosts/:id")
-	require.Contains(t, admin, "GET /api/v1/settings/github-agent-instructions")
+	require.NotContains(t, admin, "GET /api/v1/settings/github-agent-instructions")
 
 	webhook := routeSet(server.WebhookRouter())
-	require.Contains(t, webhook, "POST /webhooks/github")
+	require.NotContains(t, webhook, "POST /webhooks/github")
 	require.Contains(t, webhook, "GET /healthz")
 	require.NotContains(t, webhook, "GET /api/v1/setup/status")
 	require.NotContains(t, webhook, "POST /internal/v1/tools/call")
@@ -60,7 +60,6 @@ func TestRateLimitPoliciesUseIndependentBuckets(t *testing.T) {
 	}{
 		{path: "/api/v1/auth/login", bucket: "auth-login", limit: 10},
 		{path: "/api/v1/setup/admin", bucket: "setup-admin", limit: 10},
-		{path: "/webhooks/github", bucket: "github-webhook", limit: 300},
 		{path: "/worker/v1/heartbeat", bucket: "worker-api", limit: 10000},
 		{path: "/worker/v1/claims", bucket: "worker-api", limit: 10000},
 		{path: "/api/v1/setup/status", bucket: "default", limit: 600},

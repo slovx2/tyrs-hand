@@ -1,23 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Activity,
-  AppWindow,
   Bot,
-  BriefcaseBusiness,
-  ClipboardList,
-  FileText,
-  FolderGit2,
-  GitBranch,
-  GitFork,
-  KeyRound,
   MessageCircle,
-  MessagesSquare,
-  ScrollText,
   Server,
   ShieldCheck,
-  SlidersHorizontal,
   Smartphone,
-  Workflow,
   type LucideIcon,
 } from 'lucide-react'
 import { useEffect } from 'react'
@@ -32,21 +20,16 @@ import {
 } from 'react-router'
 import { api } from './api/client'
 import { t } from './i18n'
-import { GitHubPage } from './pages/GitHubPage'
 import { DiscordPage } from './pages/DiscordPage'
 import { LoginPage } from './pages/LoginPage'
 import { ResourcePage } from './pages/ResourcePage'
 import { SetupPage } from './pages/SetupPage'
-import { SettingsPage } from './pages/SettingsPage'
-import { GitHubAgentSettingsPage } from './pages/GitHubAgentSettingsPage'
 import { WorkersPage } from './pages/WorkersPage'
-import { SSHPage } from './pages/SSHPage'
 import { DevicesPage } from './pages/DevicesPage'
 import { useUI } from './state'
 
 interface SetupStatus {
   setupRequired: boolean
-  githubConfigured: boolean
 }
 
 interface NavigationItem {
@@ -76,36 +59,8 @@ const navigation: NavigationGroup[] = [
   {
     label: 'Integrations',
     items: [
-      { to: '/settings/github', label: 'GitHub App', icon: GitFork },
-      { to: '/installations', label: 'Installations', icon: AppWindow },
-      { to: '/repositories', label: '仓库', icon: FolderGit2 },
-      { to: '/trigger-rules', label: '触发规则', icon: Workflow },
       { to: '/agent-profiles', label: 'Agent Profiles', icon: Bot },
-      {
-        to: '/settings/github-agent',
-        label: 'GitHub Agent 参数',
-        icon: SlidersHorizontal,
-      },
-      {
-        to: '/settings/github-agent-instructions',
-        label: 'GitHub Agent 指令',
-        icon: FileText,
-      },
       { to: '/settings/discord', label: 'Discord', icon: MessageCircle },
-    ],
-  },
-  {
-    label: 'Access',
-    items: [{ to: '/ssh', label: '出站 SSH', icon: KeyRound }],
-  },
-  {
-    label: 'Operations',
-    items: [
-      { to: '/work-items', label: 'Work Items', icon: ClipboardList },
-      { to: '/threads', label: 'Thread / Turn', icon: MessagesSquare },
-      { to: '/jobs', label: 'Jobs', icon: BriefcaseBusiness },
-      { to: '/worktrees', label: '缓存 / Worktree', icon: GitBranch },
-      { to: '/audit-logs', label: '审计日志', icon: ScrollText },
     ],
   },
 ]
@@ -139,69 +94,14 @@ export function App() {
       >
         <Route index element={<Dashboard />} />
         <Route
-          path="repositories"
-          element={<ResourcePage resource="repositories" title="仓库" />}
-        />
-        <Route
-          path="installations"
-          element={
-            <ResourcePage
-              resource="installations"
-              title="GitHub Installation"
-            />
-          }
-        />
-        <Route
-          path="trigger-rules"
-          element={
-            <ResourcePage
-              resource="trigger-rules"
-              title="触发规则"
-              description="默认使用评论第一行 /tyrs-hand 命令和 tyrs-hand Label；全文 mention 仅作为默认关闭的兼容类型。"
-            />
-          }
-        />
-        <Route
           path="agent-profiles"
           element={
             <ResourcePage resource="agent-profiles" title="Agent 配置" />
           }
         />
-        <Route
-          path="work-items"
-          element={<ResourcePage resource="work-items" title="工作项" />}
-        />
-        <Route
-          path="threads"
-          element={<ResourcePage resource="threads" title="Thread / Turn" />}
-        />
-        <Route
-          path="jobs"
-          element={<ResourcePage resource="jobs" title="任务与尝试" />}
-        />
         <Route path="workers" element={<WorkersPage />} />
         <Route path="devices" element={<DevicesPage />} />
-        <Route path="ssh" element={<SSHPage />} />
-        <Route
-          path="worktrees"
-          element={
-            <ResourcePage resource="worktrees" title="缓存与 Worktree" />
-          }
-        />
-        <Route
-          path="audit-logs"
-          element={<ResourcePage resource="audit-logs" title="审计日志" />}
-        />
-        <Route path="settings/github" element={<GitHubPage />} />
         <Route path="settings/discord" element={<DiscordPage />} />
-        <Route
-          path="settings/github-agent"
-          element={<GitHubAgentSettingsPage />}
-        />
-        <Route
-          path="settings/github-agent-instructions"
-          element={<SettingsPage />}
-        />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
@@ -298,7 +198,7 @@ function AuthenticatedLayout() {
 }
 
 function Dashboard() {
-  const resources = ['work-items', 'jobs', 'workers'] as const
+  const resources = ['workers'] as const
   const queries = resources.map((resource) =>
     // hooks 数量固定，资源列表不会在运行时变化。
     // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -310,8 +210,8 @@ function Dashboard() {
   return (
     <section>
       <h1 className="text-3xl font-bold">控制面概览</h1>
-      <p className="muted mt-2">GitHub 事件、任务租约和 Codex 运行状态。</p>
-      <div className="mt-8 grid gap-4 sm:grid-cols-3">
+      <p className="muted mt-2">Worker 与 Discord 工作区运行状态。</p>
+      <div className="mt-8 grid gap-4 sm:grid-cols-1">
         {resources.map((resource, index) => (
           <div className="panel" key={resource}>
             <div className="muted text-xs font-medium tracking-[0.14em] uppercase">
@@ -324,8 +224,8 @@ function Dashboard() {
         ))}
       </div>
       <div className="danger-note mt-6">
-        Agent 默认拥有工作区写权限和公网访问能力。平台密钥、GitHub Token
-        与数据库凭据不会注入 Agent 环境。
+        Agent 默认拥有工作区写权限和公网访问能力。平台密钥与数据库凭据不会注入
+        Agent 环境。
       </div>
     </section>
   )

@@ -31,6 +31,12 @@ func (s *Server) createWorker(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
+	for _, role := range request.Roles {
+		if role == "github" {
+			problem(c, http.StatusGone, "GitHub 功能已停用", nil)
+			return
+		}
+	}
 	worker, token, err := s.workers.Create(c.Request.Context(), request.Name, request.Roles,
 		request.MaxConcurrentJobs)
 	if err != nil {
