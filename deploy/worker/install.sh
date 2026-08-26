@@ -279,6 +279,21 @@ fi
 chown root:"${worker_group}" "${worker_env_file}"
 chmod 0660 "${worker_env_file}"
 
+if [ "${os}" = linux ]; then
+  # 让 Worker 的 Provider 环境变量也进入宿主机登录 Shell；服务本身仍通过 EnvironmentFile 加载。
+  install -d -m 0755 /etc/profile.d
+  profile_file=/etc/profile.d/tyrs-hand-worker.sh
+  {
+    printf '%s\n' '# Load Tyrs Hand Worker environment for interactive login shells.'
+    printf '%s\n' 'if [ -r /etc/tyrs-hand/worker.env ]; then'
+    printf '%s\n' '  set -a'
+    printf '%s\n' '  . /etc/tyrs-hand/worker.env'
+    printf '%s\n' '  set +a'
+    printf '%s\n' 'fi'
+  } > "${profile_file}"
+  chmod 0644 "${profile_file}"
+fi
+
 install -d -m 0755 /usr/local/libexec
 install -m 0755 "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/tyrs-hand-worker-run" \
   /usr/local/libexec/tyrs-hand-worker-run

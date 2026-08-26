@@ -115,7 +115,7 @@ TYRS_HAND_BROWSER_SERVICES_ROOT=/opt/tyrs-hand/browser-services
 
 Provider、API Key、ChatGPT Auth、Base URL 与 Proxy 的真相源仍是机器用户自己的 Codex Home。Control 只通过认证 Worker WebSocket 读取和更新 Provider 非敏感字段及 `AGENTS.md`，不会保存配置正文或任何 `auth.json` token；Control 发起的 Codex OAuth device code 登录也由 Worker 写入自身 `auth.json`。
 
-若机器 Codex Home 的 Provider 通过环境变量引用 API Key，可由宿主管理员将对应变量写入可选的 `/etc/tyrs-hand/codex.env`。Linux systemd Worker 和 `tyrs-hand-worker-run` 会加载该文件，但安装器不会创建、改写或备份它；文件应由 `root:<worker-group>` 持有并设置为 `0640`。这些变量仍属于机器 Codex 配置，不进入 Control、Worker 协议或任务快照。
+Provider 的 `base_url` 与 API Key 由 Control 通过认证 Worker 通道写入 `/etc/tyrs-hand/worker.env`，其中 API Key 只使用环境变量 `TYRS_HAND_MODEL_API_KEY`，不会写入 `config.toml`。Linux systemd Worker 和 `tyrs-hand-worker-run` 会加载该文件；安装器还会创建 `/etc/profile.d/tyrs-hand-worker.sh`，让 Worker 宿主用户的新登录 Shell 继承这些机器级环境变量。文件由 `root:<worker-group>` 持有并设置为 `0660`，不进入 Control、Worker 协议或任务快照。
 
 Worker 启动时读取一次机器 Codex Home 和 `codex.env`，并为整个 Worker 生命周期启动唯一 Codex App Server。Control 配置变更不会自动重启，需使用控制台的“重启 Codex”按钮；ChatGPT OAuth 登录态不会改变显式配置的 Model Provider。
 
