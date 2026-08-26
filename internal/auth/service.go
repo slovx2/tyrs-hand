@@ -19,6 +19,7 @@ var (
 	ErrInvalidSetupToken  = errors.New("提供的 Setup Token 无效")
 	ErrInvalidCredentials = errors.New("用户名、密码或 TOTP 无效")
 	ErrSessionInvalid     = errors.New("登录会话无效")
+	ErrInvitationInvalid  = errors.New("用户邀请无效或已过期")
 )
 
 const administratorSessionLifetime = 90 * 24 * time.Hour
@@ -44,6 +45,15 @@ type Session struct {
 	Token           string
 	CSRFToken       string
 	ExpiresAt       time.Time
+	Role            string
+	Enabled         bool
+}
+
+type Invitation struct {
+	ID        uuid.UUID `json:"id"`
+	Username  string    `json:"username"`
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expiresAt"`
 }
 
 func NewService(db *sql.DB, box *security.SecretBox, setupToken, publicURL string) *Service {
@@ -117,7 +127,7 @@ func (s *Service) Login(ctx context.Context, username, password, code string) (S
 	var id uuid.UUID
 	var storedUsername, passwordHash string
 	var encrypted []byte
-	err := s.db.QueryRowContext(ctx, `SELECT id, username, password_hash, totp_secret_ciphertext FROM administrators WHERE username = $1`, username).
+	err := s.db.QueryRowContext(ctx, `SELECT id, username, password_hash, totp_secret_ciphertext FROM administrators WHERE username = $1 AND enabled = true`, username).
 		Scan(&id, &storedUsername, &passwordHash, &encrypted)
 	if errors.Is(err, sql.ErrNoRows) || err == nil && !security.VerifyPassword(passwordHash, password) {
 		return Session{}, ErrInvalidCredentials
@@ -152,7 +162,11 @@ func (s *Service) Login(ctx context.Context, username, password, code string) (S
 	if err != nil {
 		return Session{}, err
 	}
-	return Session{AdministratorID: id, Username: storedUsername, Token: token, CSRFToken: csrf, ExpiresAt: expiresAt}, nil
+	role, err := s.Role(ctx, id)
+	if err != nil {
+		return Session{}, err
+	}
+	return Session{AdministratorID: id, Username: storedUsername, Token: token, CSRFToken: csrf, ExpiresAt: expiresAt, Role: role, Enabled: true}, nil
 }
 
 func (s *Service) Authenticate(ctx context.Context, token string) (Session, error) {
@@ -179,7 +193,83 @@ func (s *Service) Authenticate(ctx context.Context, token string) (Session, erro
 		return Session{}, err
 	}
 	session.Token = token
+	session.Enabled = true
 	return session, nil
+}
+
+func (s *Service) Role(ctx context.Context, id uuid.UUID) (string, error) {
+	var role string
+	err := s.db.QueryRowContext(ctx, `SELECT role FROM administrators WHERE id=$1 AND enabled=true`, id).Scan(&role)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrSessionInvalid
+	}
+	return role, err
+}
+
+func (s *Service) CreateInvitation(ctx context.Context, administratorID uuid.UUID, username string, lifetime time.Duration) (Invitation, error) {
+	if lifetime <= 0 || lifetime > 7*24*time.Hour {
+		lifetime = 72 * time.Hour
+	}
+	token, err := security.RandomToken(32)
+	if err != nil {
+		return Invitation{}, err
+	}
+	expires := time.Now().UTC().Add(lifetime)
+	var invitation Invitation
+	invitation.Token, invitation.Username, invitation.ExpiresAt = token, username, expires
+	err = s.db.QueryRowContext(ctx, `INSERT INTO administrator_invitations(token_hash,username,expires_at,created_by) VALUES($1,$2,$3,$4) RETURNING id`, security.Digest(token), username, expires, administratorID).Scan(&invitation.ID)
+	return invitation, err
+}
+
+func (s *Service) AcceptInvitation(ctx context.Context, token, password, totpCode string) (SetupResult, error) {
+	if token == "" {
+		return SetupResult{}, ErrInvitationInvalid
+	}
+	var invitationID uuid.UUID
+	var username string
+	err := s.db.QueryRowContext(ctx, `SELECT id, username FROM administrator_invitations WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at > now()`, security.Digest(token)).Scan(&invitationID, &username)
+	if errors.Is(err, sql.ErrNoRows) {
+		return SetupResult{}, ErrInvitationInvalid
+	}
+	if err != nil {
+		return SetupResult{}, err
+	}
+	passwordHash, err := security.HashPassword(password)
+	if err != nil {
+		return SetupResult{}, err
+	}
+	key, err := totp.Generate(totp.GenerateOpts{Issuer: "tyrs-hand", AccountName: username})
+	if err != nil {
+		return SetupResult{}, err
+	}
+	nonce, ciphertext, err := s.box.Encrypt([]byte(key.Secret()), "administrator.totp")
+	if err != nil {
+		return SetupResult{}, err
+	}
+	recoveryCodes, recoveryHashes, err := generateRecoveryCodes(10)
+	if err != nil {
+		return SetupResult{}, err
+	}
+	hashesJSON, err := json.Marshal(recoveryHashes)
+	if err != nil {
+		return SetupResult{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return SetupResult{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var userID uuid.UUID
+	if err := tx.QueryRowContext(ctx, `INSERT INTO administrators(username,password_hash,totp_secret_ciphertext,recovery_codes_hash,role,enabled) VALUES($1,$2,$3,$4,'user',true) RETURNING id`, username, passwordHash, append(nonce, ciphertext...), hashesJSON).Scan(&userID); err != nil {
+		return SetupResult{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE administrator_invitations SET consumed_at=now() WHERE id=$1 AND consumed_at IS NULL`, invitationID); err != nil {
+		return SetupResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return SetupResult{}, err
+	}
+	return SetupResult{TOTPSecret: key.Secret(), ProvisioningURI: key.URL(), RecoveryCodes: recoveryCodes}, nil
 }
 
 func (s *Service) restoreCSRF(ctx context.Context, tokenHash string, encrypted []byte) (string, error) {

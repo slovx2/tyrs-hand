@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/slovx2/tyrs-hand/internal/appserverhub"
@@ -160,6 +161,17 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 }
 
 func (r *Runtime) Client() *appserverhub.Client { return r.client }
+
+// Reload 请求宿主 Codex App Server 重新读取配置。Codex 当前通过 SIGHUP
+// 处理配置刷新；若未来版本提供显式协议，可在此处替换为协议调用。
+func (r *Runtime) Reload() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed || r.command == nil || r.command.Process == nil {
+		return errors.New("宿主 Codex App Server 不可用")
+	}
+	return r.command.Process.Signal(syscall.SIGHUP)
+}
 
 // OpenEphemeralClient 为 Worker 内部临时任务创建独立的 Desktop 事件域。
 // 调用方只能用它创建 ephemeral Thread，并在任务结束后关闭 Client。

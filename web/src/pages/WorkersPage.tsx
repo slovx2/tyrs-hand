@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import { useUI } from '../state'
 import { WorkspaceManagement } from './WorkspacesPage'
@@ -56,6 +56,12 @@ export function WorkersPage() {
   const [name, setName] = useState('')
   const [capacity, setCapacity] = useState(6)
   const [token, setToken] = useState('')
+  const me = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<{ role: 'admin' | 'user' }>('/auth/me'),
+    retry: false,
+  })
+  const isAdmin = me.data?.role !== 'user'
   const workers = useQuery({
     queryKey: ['workers'],
     queryFn: () => api<{ items: Worker[] }>('/workers'),
@@ -140,7 +146,7 @@ export function WorkersPage() {
         </div>
       )}
 
-      <div className="panel mt-8">
+      {isAdmin && <div className="panel mt-8">
         <h2 className="text-xl font-semibold">默认 Placement</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-1">
           <WorkerSelect
@@ -155,9 +161,9 @@ export function WorkersPage() {
             }
           />
         </div>
-      </div>
+      </div>}
 
-      <form
+      {isAdmin && <form
         className="panel mt-6"
         onSubmit={(event) => {
           event.preventDefault()
@@ -188,7 +194,7 @@ export function WorkersPage() {
         <button className="button mt-5" disabled={create.isPending}>
           创建并生成 Token
         </button>
-      </form>
+      </form>}
 
       <div className="mt-6 grid gap-4">
         {workerItems.map((worker) => (
@@ -216,7 +222,7 @@ export function WorkersPage() {
                 )}
                 <CapabilityStatus worker={worker} />
               </div>
-              <div className="flex flex-wrap gap-2">
+              {isAdmin && <div className="flex flex-wrap gap-2">
                 <button
                   className="button-secondary"
                   onClick={() => action.mutate({ worker, type: 'enroll' })}
@@ -235,8 +241,10 @@ export function WorkersPage() {
                 >
                   删除
                 </button>
-              </div>
+              </div>}
             </div>
+            {isAdmin && <WorkerUsersPanel worker={worker} />}
+            <WorkerConfigPanel worker={worker} />
           </article>
         ))}
       </div>
@@ -311,5 +319,122 @@ function WorkerSelect({
           ))}
       </select>
     </label>
+  )
+}
+
+function WorkerConfigPanel({ worker }: { worker: Worker }) {
+  const showToast = useUI((state) => state.showToast)
+  const [agents, setAgents] = useState('')
+  const [revision, setRevision] = useState('')
+  const [provider, setProvider] = useState('')
+  const config = useQuery({
+    queryKey: ['worker-config', worker.id],
+    queryFn: () =>
+      api<{ revision: string; agents: string; modelProvider: string; modelProviders?: Record<string, Record<string, unknown>> }>(
+        `/workers/${worker.id}/config`,
+      ),
+  })
+  const oauth = useQuery({
+    queryKey: ['worker-oauth', worker.id],
+    queryFn: () => api<{ status: string; userCode?: string; verificationUrl?: string }>(`/workers/${worker.id}/codex/oauth/devices`),
+    refetchInterval: (query) => (query.state.data?.status === 'pending' ? 2000 : false),
+  })
+  const save = useMutation({
+    mutationFn: () =>
+      api<{ revision: string; agents: string }>(`/workers/${worker.id}/config/agents`, {
+        method: 'PUT',
+        body: JSON.stringify({ revision, content: agents }),
+      }),
+    onSuccess: (result) => {
+      setRevision(result.revision)
+      showToast('success', 'AGENTS.md 已保存')
+    },
+  })
+  const startOAuth = useMutation({
+    mutationFn: () => api(`/workers/${worker.id}/codex/oauth/devices`, { method: 'POST' }),
+    onSuccess: () => oauth.refetch(),
+  })
+  const saveProvider = useMutation({
+    mutationFn: () =>
+      api<{ revision: string }>(`/workers/${worker.id}/config/provider`, {
+        method: 'PUT',
+        body: JSON.stringify({ revision, modelProvider: provider, modelProviders: config.data?.modelProviders ?? {} }),
+      }),
+    onSuccess: (result) => {
+      setRevision(result.revision)
+      showToast('success', 'Model Provider 已保存')
+    },
+  })
+  const restart = useMutation({
+    mutationFn: () => api(`/workers/${worker.id}/codex/restart`, { method: 'POST' }),
+    onSuccess: () => showToast('success', '已请求重启 Codex'),
+  })
+  useEffect(() => {
+    if (config.data) {
+      setRevision(config.data.revision)
+      setAgents(config.data.agents)
+      setProvider(config.data.modelProvider)
+    }
+  }, [config.data])
+  return (
+    <div className="mt-5 grid gap-3 border-t pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="font-semibold">Codex 配置</h3>
+        <label className="flex items-center gap-2 text-sm"><span className="label">Model Provider</span><input value={provider} onChange={(event) => setProvider(event.target.value)} placeholder="provider-id" /></label>
+      </div>
+      <label>
+        <span className="label">AGENTS.md（Worker 真相源）</span>
+        <textarea value={agents} onChange={(event) => setAgents(event.target.value)} rows={5} />
+      </label>
+      <div className="flex flex-wrap gap-2">
+        <button className="button-secondary" onClick={() => save.mutate()} disabled={save.isPending || !config.data}>
+          保存 AGENTS.md
+        </button>
+        <button className="button-secondary" onClick={() => saveProvider.mutate()} disabled={saveProvider.isPending || !config.data || !provider}>
+          保存 Provider
+        </button>
+        <button className="button-secondary" onClick={() => window.confirm('重启会影响当前 Codex 会话，继续吗？') && restart.mutate()} disabled={restart.isPending}>
+          重启 Codex
+        </button>
+        <button className="button-secondary" onClick={() => startOAuth.mutate()} disabled={startOAuth.isPending}>
+          登录 ChatGPT 账号
+        </button>
+      </div>
+      {oauth.data?.status === 'pending' && oauth.data.userCode && (
+        <div className="danger-note">
+          请打开 <a href={oauth.data.verificationUrl} target="_blank" rel="noreferrer">{oauth.data.verificationUrl}</a>，输入设备码 <code>{oauth.data.userCode}</code>。
+        </div>
+      )}
+      {oauth.data?.status === 'authenticated' && <p className="muted text-sm">ChatGPT OAuth 已登录；模型请求仍使用上方 Provider。</p>}
+    </div>
+  )
+}
+
+function WorkerUsersPanel({ worker }: { worker: Worker }) {
+  const users = useQuery({
+    queryKey: ['users'],
+    queryFn: () => api<{ items: { id: string; username: string }[] }>('/users'),
+  })
+  const assigned = useQuery({
+    queryKey: ['worker-users', worker.id],
+    queryFn: () => api<{ items: { id: string; username: string }[] }>(`/workers/${worker.id}/users`),
+  })
+  const queryClient = useQueryClient()
+  const update = useMutation({
+    mutationFn: ({ userId, remove }: { userId: string; remove: boolean }) =>
+      api<void>(`/workers/${worker.id}/users/${userId}`, { method: remove ? 'DELETE' : 'PUT' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['worker-users', worker.id] }),
+  })
+  const assignedIDs = new Set((assigned.data?.items ?? []).map((user) => user.id))
+  return (
+    <div className="mt-4 border-t pt-4">
+      <h3 className="font-semibold">用户分配</h3>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {(users.data?.items ?? []).filter((user) => user.username).map((user) => {
+          const isAssigned = assignedIDs.has(user.id)
+          return <button key={user.id} className="button-secondary" onClick={() => update.mutate({ userId: user.id, remove: isAssigned })} disabled={update.isPending}>{isAssigned ? `移除 ${user.username}` : `分配 ${user.username}`}</button>
+        })}
+      </div>
+    </div>
   )
 }

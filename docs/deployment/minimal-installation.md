@@ -113,13 +113,13 @@ TYRS_HAND_BROWSER_FILES_ROOT=/home/worker/.local/share/tyrs-hand/browser/files
 TYRS_HAND_BROWSER_SERVICES_ROOT=/opt/tyrs-hand/browser-services
 ```
 
-Provider、API Key、ChatGPT Auth、Base URL 与 Proxy 只配置在机器用户自己的 Codex Home 中。Control 不写入 `config.toml`、`auth.json` 或 `AGENTS.md`。
+Provider、API Key、ChatGPT Auth、Base URL 与 Proxy 的真相源仍是机器用户自己的 Codex Home。Control 只通过认证 Worker WebSocket 读取和更新 Provider 非敏感字段及 `AGENTS.md`，不会保存配置正文或任何 `auth.json` token；Control 发起的 Codex OAuth device code 登录也由 Worker 写入自身 `auth.json`。
 
 若机器 Codex Home 的 Provider 通过环境变量引用 API Key，可由宿主管理员将对应变量写入可选的 `/etc/tyrs-hand/codex.env`。Linux systemd Worker 和 `tyrs-hand-worker-run` 会加载该文件，但安装器不会创建、改写或备份它；文件应由 `root:<worker-group>` 持有并设置为 `0640`。这些变量仍属于机器 Codex 配置，不进入 Control、Worker 协议或任务快照。
 
-Worker 启动时读取一次机器 Codex Home 和 `codex.env`，并为整个 Worker 生命周期启动唯一 Codex App Server。配置变更不热加载；修改后应手动重启 Worker，所有 Desktop 客户端随后重新连接同一个新实例。
+Worker 启动时读取一次机器 Codex Home 和 `codex.env`，并为整个 Worker 生命周期启动唯一 Codex App Server。Control 配置变更不会自动重启，需使用控制台的“重启 Codex”按钮；ChatGPT OAuth 登录态不会改变显式配置的 Model Provider。
 
-Control 的 GitHub Agent Profile、仓库覆盖和全局 GitHub Agent instructions 只作用于 GitHub Work Item；Desktop、Discord 与 Mobile 的未指定参数由机器 Codex Home 决定。
+GitHub Webhook、GitHub Work Item 和 GitHub Agent 功能已停用；Desktop、Discord 与 Mobile 的未指定参数由机器 Codex Home 决定。
 
 ## 6. SSH 与多客户端
 

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"database/sql"
 	"errors"
 	"net/http"
 
@@ -15,6 +16,24 @@ func (s *Server) listWorkspaces(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "读取 Workspace 失败", err)
 		return
 	}
+	session := c.MustGet("session").(auth.Session)
+	if session.Role != "admin" {
+		filtered := workspaces[:0]
+		for _, workspace := range workspaces {
+			if workspace.WorkerID == nil {
+				continue
+			}
+			allowed, accessErr := s.workerAllowed(c.Request.Context(), session, *workspace.WorkerID)
+			if accessErr != nil {
+				problem(c, http.StatusInternalServerError, "检查 Workspace 权限失败", accessErr)
+				return
+			}
+			if allowed {
+				filtered = append(filtered, workspace)
+			}
+		}
+		workspaces = filtered
+	}
 	c.JSON(http.StatusOK, gin.H{"items": workspaces})
 }
 
@@ -25,6 +44,9 @@ func (s *Server) createWorkspace(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		badRequest(c, err)
+		return
+	}
+	if !s.requireWorkerAccess(c, input.WorkerID) {
 		return
 	}
 	workspaceID, err := s.discord.CreateWorkspace(c, input.OwnerDiscordUserID, input.WorkerID)
@@ -50,6 +72,9 @@ func (s *Server) createWorkspaceProjectForum(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		badRequest(c, err)
+		return
+	}
+	if !s.requireProjectWorkerAccess(c, projectID) {
 		return
 	}
 	switch input.Mode {
@@ -103,6 +128,9 @@ func (s *Server) setWorkspaceForumEnabled(c *gin.Context, enabled bool) {
 	if !ok {
 		return
 	}
+	if !s.requireForumWorkerAccess(c, forumID) {
+		return
+	}
 	var err error
 	if enabled {
 		err = s.discord.EnableWorkspaceForum(c, forumID)
@@ -126,6 +154,9 @@ func (s *Server) putWorkspaceProjectForumCollaborator(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if !s.requireProjectWorkerAccess(c, projectID) {
+		return
+	}
 	var input struct {
 		AccessLevel string `json:"accessLevel" binding:"required"`
 	}
@@ -147,12 +178,43 @@ func (s *Server) deleteWorkspaceProjectForumCollaborator(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if !s.requireProjectWorkerAccess(c, projectID) {
+		return
+	}
 	if err := s.discord.DeleteWorkspaceProjectForumAccess(
 		c, projectID, forumID, c.Param("memberId")); err != nil {
 		badRequest(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func (s *Server) requireProjectWorkerAccess(c *gin.Context, projectID uuid.UUID) bool {
+	var workerID uuid.UUID
+	err := s.db.QueryRowContext(c.Request.Context(), `SELECT worker_id FROM workspace_projects p JOIN worker_workspaces w ON w.id=p.workspace_id WHERE p.id=$1`, projectID).Scan(&workerID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			problem(c, http.StatusNotFound, "项目不存在", err)
+		} else {
+			problem(c, http.StatusInternalServerError, "读取项目 Worker 失败", err)
+		}
+		return false
+	}
+	return s.requireWorkerAccess(c, workerID)
+}
+
+func (s *Server) requireForumWorkerAccess(c *gin.Context, forumID uuid.UUID) bool {
+	var workerID uuid.UUID
+	err := s.db.QueryRowContext(c.Request.Context(), `SELECT w.worker_id FROM discord_forums f JOIN worker_workspaces w ON w.id=f.workspace_id WHERE f.id=$1`, forumID).Scan(&workerID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			problem(c, http.StatusNotFound, "Forum 不存在", err)
+		} else {
+			problem(c, http.StatusInternalServerError, "读取 Forum Worker 失败", err)
+		}
+		return false
+	}
+	return s.requireWorkerAccess(c, workerID)
 }
 
 func parseProjectForumParams(c *gin.Context) (uuid.UUID, uuid.UUID, bool) {

@@ -28,6 +28,7 @@ func (s *Server) registerWorkerRoutes(router *gin.Engine) {
 	group.POST("/enroll", s.enrollWorker)
 	authorized := group.Group("")
 	authorized.Use(s.requireWorker())
+	authorized.GET("/config/ws", s.workerConfigWS)
 	authorized.GET("/blobs/:id", s.workerBlob)
 	authorized.POST("/blobs/:id", s.workerBlob)
 	s.registerWorkerOperationRoutes(authorized)

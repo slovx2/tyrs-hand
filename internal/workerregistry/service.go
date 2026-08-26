@@ -62,7 +62,7 @@ func normalizeRoles(roles []string) ([]string, error) {
 	result := make([]string, 0, len(roles))
 	for _, role := range roles {
 		role = strings.TrimSpace(role)
-		if role != "github" && role != "discord" {
+		if role != "discord" {
 			return nil, fmt.Errorf("不支持的Worker角色 %q", role)
 		}
 		if !slices.Contains(result, role) {

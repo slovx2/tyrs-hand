@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/auth"
 	"github.com/slovx2/tyrs-hand/internal/workerregistry"
 )
 
@@ -22,10 +23,29 @@ func (s *Server) listWorkers(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "读取Worker失败", err)
 		return
 	}
+	session := c.MustGet("session").(auth.Session)
+	if session.Role != "admin" {
+		filtered := workers[:0]
+		for _, worker := range workers {
+			allowed, accessErr := s.workerAllowed(c.Request.Context(), session, worker.ID)
+			if accessErr != nil {
+				problem(c, http.StatusInternalServerError, "检查 Worker 权限失败", accessErr)
+				return
+			}
+			if allowed {
+				filtered = append(filtered, worker)
+			}
+		}
+		workers = filtered
+	}
 	c.JSON(http.StatusOK, gin.H{"items": workers})
 }
 
 func (s *Server) createWorker(c *gin.Context) {
+	if c.MustGet("session").(auth.Session).Role != "admin" {
+		problem(c, http.StatusForbidden, "需要管理员权限", nil)
+		return
+	}
 	var request createWorkerRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		badRequest(c, err)
@@ -51,6 +71,10 @@ func (s *Server) createWorker(c *gin.Context) {
 }
 
 func (s *Server) createWorkerEnrollment(c *gin.Context) {
+	if c.MustGet("session").(auth.Session).Role != "admin" {
+		problem(c, http.StatusForbidden, "需要管理员权限", nil)
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		badRequest(c, err)
@@ -67,6 +91,10 @@ func (s *Server) createWorkerEnrollment(c *gin.Context) {
 }
 
 func (s *Server) setWorkerEnabled(c *gin.Context) {
+	if c.MustGet("session").(auth.Session).Role != "admin" {
+		problem(c, http.StatusForbidden, "需要管理员权限", nil)
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		badRequest(c, err)
@@ -94,6 +122,10 @@ func (s *Server) setWorkerEnabled(c *gin.Context) {
 }
 
 func (s *Server) deleteWorker(c *gin.Context) {
+	if c.MustGet("session").(auth.Session).Role != "admin" {
+		problem(c, http.StatusForbidden, "需要管理员权限", nil)
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		badRequest(c, err)
@@ -120,6 +152,10 @@ func (s *Server) putWorkerSettings(c *gin.Context) {
 	var request workerregistry.Defaults
 	if err := c.ShouldBindJSON(&request); err != nil {
 		badRequest(c, err)
+		return
+	}
+	if request.GitHubWorkerID != nil {
+		problem(c, http.StatusGone, "GitHub 功能已停用", nil)
 		return
 	}
 	if err := s.workers.SetDefaults(c.Request.Context(), request); err != nil {

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -45,6 +46,8 @@ type Server struct {
 	logger             *zap.Logger
 	assets             fs.FS
 	clientUpdateHub    *clientUpdateHub
+	configMu           sync.RWMutex
+	configConns        map[uuid.UUID]*configConnection
 }
 
 func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authService *auth.Service, githubManager *ghadapter.Manager, catalog *githubtools.Catalog, settingsService *platformsettings.Service, discordManager *discordintegration.Manager, bindingService *discordintegration.BindingService, secretStore *secrets.Store, logger *zap.Logger) (*Server, error) {
@@ -56,6 +59,7 @@ func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authSer
 		catalog: catalog, settings: settingsService, discord: discordManager, bindings: bindingService,
 		workers: workerregistry.NewService(db), ssh: sshconfig.NewService(db, secretStore),
 		secrets: secretStore, logger: logger, assets: assets,
+		configConns:     make(map[uuid.UUID]*configConnection),
 		clientUpdateHub: newClientUpdateHub()}, nil
 }
 
@@ -92,17 +96,33 @@ func (s *Server) adminRouter() http.Handler {
 	api.GET("/setup/status", s.setupStatus)
 	api.POST("/setup/admin", s.setupAdmin)
 	api.POST("/auth/login", s.login)
+	api.POST("/auth/invitations/accept", s.acceptInvitation)
 	api.POST("/client/device-pairings/:id/claim", s.claimClientDevicePairing)
 	api.GET("/client/device-pairings/:id/status", s.clientDevicePairingStatus)
 	authenticated := api.Group("")
 	authenticated.Use(s.requireSession())
 	authenticated.GET("/auth/me", s.me)
 	authenticated.POST("/auth/logout", s.requireCSRF(), s.logout)
+	admin := authenticated.Group("")
+	admin.Use(s.requireAdmin())
+	admin.POST("/auth/invitations", s.requireCSRF(), s.createInvitation)
+	admin.GET("/users", s.listUsers)
+	admin.PUT("/users/:id/enabled", s.requireCSRF(), s.setUserEnabled)
+	admin.GET("/workers/:id/users", s.listWorkerUsers)
+	admin.PUT("/workers/:id/users/:userId", s.requireCSRF(), s.assignWorkerUser)
+	admin.DELETE("/workers/:id/users/:userId", s.requireCSRF(), s.removeWorkerUser)
 	authenticated.GET("/agent-profiles", s.listAgentProfiles)
 	authenticated.POST("/agent-profiles", s.requireCSRF(), s.createAgentProfile)
 	authenticated.GET("/work-items", s.listWorkItems)
 	authenticated.GET("/jobs", s.listJobs)
 	authenticated.GET("/workers", s.listWorkers)
+	authenticated.GET("/workers/:id/config", s.getWorkerConfig)
+	authenticated.PUT("/workers/:id/config/agents", s.requireCSRF(), s.updateWorkerAgents)
+	authenticated.PUT("/workers/:id/config/provider", s.requireCSRF(), s.updateWorkerProvider)
+	authenticated.POST("/workers/:id/codex/oauth/devices", s.requireCSRF(), s.workerOAuthStart)
+	authenticated.GET("/workers/:id/codex/oauth/devices", s.workerOAuthStatus)
+	authenticated.DELETE("/workers/:id/codex/oauth", s.requireCSRF(), s.workerOAuthLogout)
+	authenticated.POST("/workers/:id/codex/restart", s.requireCSRF(), s.workerCodexRestart)
 	authenticated.POST("/workers", s.requireCSRF(), s.createWorker)
 	authenticated.POST("/workers/:id/enrollments", s.requireCSRF(), s.createWorkerEnrollment)
 	authenticated.PUT("/workers/:id/enabled", s.requireCSRF(), s.setWorkerEnabled)

@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcatalog"
@@ -12,6 +15,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/hostworker"
 	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
 	"github.com/slovx2/tyrs-hand/internal/worker"
+	"github.com/slovx2/tyrs-hand/internal/workerconfig"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
 )
@@ -92,6 +96,13 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		cleanupFailure(nil)
 		return nil, nil, fmt.Errorf("认证宿主 Worker: %w", err)
 	}
+	credentialBytes, err := os.ReadFile(cfg.WorkerCredentialFile)
+	var configService *workerconfig.Service
+	var credential string
+	if err == nil {
+		credential = strings.TrimSpace(string(credentialBytes))
+		configService = workerconfig.NewService(cfg.WorkerCodexHome, cfg.CodexBin)
+	}
 	manifest, err := client.Workspace(ctx)
 	if err != nil {
 		cleanupFailure(nil)
@@ -126,6 +137,10 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 	if err != nil {
 		cleanupFailure(nil)
 		return nil, nil, err
+	}
+	if configService != nil {
+		configService.SetRestart(runtime.Reload)
+		go runConfigChannel(ctx, cfg.WorkerControlURL, credential, configService, logger)
 	}
 	if desktopController != nil {
 		if err := desktopController.AttachRuntime(ctx, runtime); err != nil {
@@ -171,4 +186,17 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		_ = dataLock.Close()
 		cleanupLogger()
 	}, nil
+}
+
+func runConfigChannel(ctx context.Context, controlURL, credential string, service *workerconfig.Service, logger *zap.Logger) {
+	for ctx.Err() == nil {
+		if err := workerconfig.RunControlChannel(ctx, controlURL, credential, service); err != nil && ctx.Err() == nil {
+			logger.Warn("Worker 配置 WebSocket 断开", zap.Error(err))
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(3 * time.Second):
+		}
+	}
 }

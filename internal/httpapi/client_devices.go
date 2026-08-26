@@ -129,6 +129,9 @@ func (s *Server) createClientDevicePairing(c *gin.Context) {
 		badRequest(c, errors.New("必须选择 Worker"))
 		return
 	}
+	if !s.requireWorkerAccess(c, request.WorkerID) {
+		return
+	}
 	var workerName, fingerprint string
 	err := s.db.QueryRowContext(c.Request.Context(), `SELECT name,
 		COALESCE(ssh_host_key_fingerprint,'') FROM workers WHERE id=$1 AND enabled`,

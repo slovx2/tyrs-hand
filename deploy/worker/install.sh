@@ -135,10 +135,17 @@ esac
 install -d -o "${worker_user}" -g "$(id -gn "${worker_user}")" -m 0700 \
   "${state_root}/ssh" "${state_root}/control-state" "${worker_home}/tyrs-hand/workspaces"
 worker_keys=${state_root}/ssh/authorized_keys
-if [ ! -e "${worker_keys}" ] || [ ! "${TYRS_HAND_WORKER_PUBLIC_KEYS_FILE}" -ef "${worker_keys}" ]; then
-  install -o "${worker_user}" -g "$(id -gn "${worker_user}")" -m 0600 \
-    "${TYRS_HAND_WORKER_PUBLIC_KEYS_FILE}" "${worker_keys}"
+# 合并 Control 提供的公钥与 Worker 本地已有公钥，按 key identity 去重，避免升级时覆盖 Desktop 公钥。
+merged_worker_keys=$(mktemp)
+trap 'rm -f "${merged_worker_keys}"' EXIT
+if [ -f "${worker_keys}" ]; then
+  cat "${worker_keys}" > "${merged_worker_keys}"
 fi
+cat "${TYRS_HAND_WORKER_PUBLIC_KEYS_FILE}" >> "${merged_worker_keys}"
+awk 'NF >= 2 && $1 !~ /^#/ { identity=$1 FS $2; if (!seen[identity]++) print; next } NF == 0 || $1 ~ /^#/ { print }' \
+  "${merged_worker_keys}" > "${merged_worker_keys}.dedup"
+install -o "${worker_user}" -g "$(id -gn "${worker_user}")" -m 0600 \
+  "${merged_worker_keys}.dedup" "${worker_keys}"
 credential_file=${state_root}/control-state/worker-credential
 if [ -n "${credential_source}" ] &&
   { [ ! -e "${credential_file}" ] || [ ! "${credential_source}" -ef "${credential_file}" ]; }; then

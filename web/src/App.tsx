@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Activity,
-  Bot,
   MessageCircle,
   Server,
   ShieldCheck,
@@ -22,10 +21,11 @@ import { api } from './api/client'
 import { t } from './i18n'
 import { DiscordPage } from './pages/DiscordPage'
 import { LoginPage } from './pages/LoginPage'
-import { ResourcePage } from './pages/ResourcePage'
 import { SetupPage } from './pages/SetupPage'
 import { WorkersPage } from './pages/WorkersPage'
 import { DevicesPage } from './pages/DevicesPage'
+import { UsersPage } from './pages/UsersPage'
+import { InvitePage } from './pages/InvitePage'
 import { useUI } from './state'
 
 interface SetupStatus {
@@ -58,10 +58,7 @@ const navigation: NavigationGroup[] = [
   },
   {
     label: 'Integrations',
-    items: [
-      { to: '/agent-profiles', label: 'Agent Profiles', icon: Bot },
-      { to: '/settings/discord', label: 'Discord', icon: MessageCircle },
-    ],
+    items: [{ to: '/settings/discord', label: 'Discord', icon: MessageCircle }],
   },
 ]
 
@@ -83,6 +80,7 @@ export function App() {
     <Routes>
       <Route path="/setup" element={<SetupPage />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/invite" element={<InvitePage />} />
       <Route
         element={
           setup.data?.setupRequired ? (
@@ -93,15 +91,10 @@ export function App() {
         }
       >
         <Route index element={<Dashboard />} />
-        <Route
-          path="agent-profiles"
-          element={
-            <ResourcePage resource="agent-profiles" title="Agent 配置" />
-          }
-        />
         <Route path="workers" element={<WorkersPage />} />
         <Route path="devices" element={<DevicesPage />} />
         <Route path="settings/discord" element={<DiscordPage />} />
+        <Route path="users" element={<UsersPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
@@ -123,7 +116,9 @@ function AuthenticatedLayout() {
     queryKey: ['me'],
     queryFn: async () => {
       const session = await api<{
+        id: string
         username: string
+        role: 'admin' | 'user'
         csrfToken: string
         expiresAt: string
       }>('/auth/me')
@@ -143,7 +138,13 @@ function AuthenticatedLayout() {
           <span>tyrs-hand</span>
         </Link>
         <nav className="app-navigation" aria-label="主导航">
-          {navigation.map((group) => (
+          {navigation
+            .concat(
+              me.data?.role === 'admin'
+                ? [{ label: 'Admin', items: [{ to: '/users', label: '用户管理', icon: ShieldCheck }] }]
+                : [],
+            )
+            .map((group) => (
             <div className="nav-group" key={group.label}>
               <div className="nav-group-label">{group.label}</div>
               <div className="nav-group-items">
@@ -171,7 +172,7 @@ function AuthenticatedLayout() {
           </div>
           <div className="sidebar-account-copy">
             <strong>{me.data?.username}</strong>
-            <span>系统管理员</span>
+            <span>{me.data?.role === 'admin' ? '系统管理员' : '普通用户'}</span>
           </div>
           <LogoutButton onLogout={() => setCSRFToken(undefined)} />
         </div>

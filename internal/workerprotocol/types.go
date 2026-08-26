@@ -9,7 +9,34 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 28
+const Version = 29
+
+type ConfigRPCRequest struct {
+	ID     string          `json:"id"`
+	Method string          `json:"method"`
+	Params json.RawMessage `json:"params,omitempty"`
+}
+
+type ConfigRPCResponse struct {
+	ID     string `json:"id"`
+	Result any    `json:"result,omitempty"`
+	Error  string `json:"error,omitempty"`
+}
+
+type WorkerConfig struct {
+	Revision       string         `json:"revision"`
+	ModelProvider  string         `json:"modelProvider"`
+	ModelProviders map[string]any `json:"modelProviders,omitempty"`
+	Agents         string         `json:"agents"`
+}
+
+type OAuthDevice struct {
+	VerificationURL string    `json:"verificationUrl"`
+	UserCode        string    `json:"userCode"`
+	ExpiresAt       time.Time `json:"expiresAt"`
+	Status          string    `json:"status"`
+	Account         string    `json:"account,omitempty"`
+}
 
 // CodexTurnError 保留 Codex error 通知的结构化字段，供 Control 决定是否重试
 // 并在 Discord 失败过程卡中展示。

@@ -123,12 +123,19 @@ func (s *Server) clientBootstrap(c *gin.Context) {
 		Name string    `json:"name"`
 	}
 	workspaces := make([]option, 0)
-	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT workspace.id,
+	workspaceQuery := `SELECT workspace.id,
 		COALESCE(NULLIF(member.display_name,''), member.username)
 		FROM worker_workspaces workspace
 		JOIN discord_members member ON member.guild_id=workspace.guild_id
-			AND member.discord_user_id=workspace.owner_discord_user_id
-		ORDER BY lower(COALESCE(NULLIF(member.display_name,''), member.username)), workspace.id`)
+			AND member.discord_user_id=workspace.owner_discord_user_id`
+	workspaceArgs := []any{}
+	if session.Role != "admin" {
+		workspaceQuery += ` JOIN worker_administrators access_user ON access_user.worker_id=workspace.worker_id
+			AND access_user.administrator_id=$1`
+		workspaceArgs = append(workspaceArgs, session.AdministratorID)
+	}
+	workspaceQuery += ` ORDER BY lower(COALESCE(NULLIF(member.display_name,''), member.username)), workspace.id`
+	rows, err := s.db.QueryContext(c.Request.Context(), workspaceQuery, workspaceArgs...)
 	if err == nil {
 		defer func() { _ = rows.Close() }()
 		for rows.Next() {
@@ -151,9 +158,18 @@ func (s *Server) clientBootstrap(c *gin.Context) {
 	}, 0)
 	if err == nil {
 		var projectRows *sql.Rows
-		projectRows, err = s.db.QueryContext(c.Request.Context(), `SELECT id,workspace_id,name,
+		projectQuery := `SELECT project.id,project.workspace_id,project.name,
 			relative_path,project_kind,availability_status,branch,dirty
-			FROM workspace_projects ORDER BY lower(name),id`)
+			FROM workspace_projects project`
+		projectArgs := []any{}
+		if session.Role != "admin" {
+			projectQuery += ` JOIN worker_workspaces access_workspace ON access_workspace.id=project.workspace_id
+			JOIN worker_administrators access_user ON access_user.worker_id=access_workspace.worker_id
+			AND access_user.administrator_id=$1`
+			projectArgs = append(projectArgs, session.AdministratorID)
+		}
+		projectQuery += ` ORDER BY lower(project.name),project.id`
+		projectRows, err = s.db.QueryContext(c.Request.Context(), projectQuery, projectArgs...)
 		if err == nil {
 			defer func() { _ = projectRows.Close() }()
 			for projectRows.Next() {
@@ -277,6 +293,7 @@ func encodeSessionCursor(value sessionCursor) string {
 }
 
 func (s *Server) clientListSessions(c *gin.Context) {
+	currentUser := c.MustGet("session").(auth.Session)
 	limit := 50
 	if value, err := strconv.Atoi(c.Query("limit")); err == nil && value > 0 && value <= 100 {
 		limit = value
@@ -301,13 +318,21 @@ func (s *Server) clientListSessions(c *gin.Context) {
 		badRequest(c, errors.New("lifecycle 无效"))
 		return
 	}
-	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT `+clientSessionSummaryColumns+`
+	query := `SELECT ` + clientSessionSummaryColumns + `
 		FROM workspace_sessions session
 		WHERE ($1::timestamptz IS NULL OR (session.last_activity_at,session.id) < ($1,$2))
 		  AND ($4::uuid IS NULL OR session.workspace_project_id=$4)
-		  AND ($5='' OR session.lifecycle_state=$5)
-		ORDER BY session.last_activity_at DESC,session.id DESC LIMIT $3`, clientCursorTime(cursor.Activity),
-		clientCursorUUID(cursor.ID), limit+1, projectID, lifecycle)
+		  AND ($5='' OR session.lifecycle_state=$5)`
+	args := []any{clientCursorTime(cursor.Activity), clientCursorUUID(cursor.ID), limit + 1, projectID, lifecycle}
+	if currentUser.Role != "admin" {
+		query += ` AND EXISTS (SELECT 1 FROM workspace_projects access_project
+			JOIN worker_workspaces access_workspace ON access_workspace.id=access_project.workspace_id
+			JOIN worker_administrators access_user ON access_user.worker_id=access_workspace.worker_id
+			WHERE access_project.id=session.workspace_project_id AND access_user.administrator_id=$6)`
+		args = append(args, currentUser.AdministratorID)
+	}
+	query += ` ORDER BY session.last_activity_at DESC,session.id DESC LIMIT $3`
+	rows, err := s.db.QueryContext(c.Request.Context(), query, args...)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取 Session 失败", err)
 		return
@@ -403,8 +428,8 @@ func (s *Server) clientCreateSession(c *gin.Context) {
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-	var workspaceID uuid.UUID
-	err = tx.QueryRowContext(c.Request.Context(), `SELECT project.workspace_id
+	var workspaceID, workerID uuid.UUID
+	err = tx.QueryRowContext(c.Request.Context(), `SELECT project.workspace_id, workspace.worker_id
 		FROM workspace_projects project
 		JOIN worker_workspaces workspace ON workspace.id=project.workspace_id
 		WHERE project.id=$1 AND project.availability_status='available'
@@ -416,6 +441,9 @@ func (s *Server) clientCreateSession(c *gin.Context) {
 	}
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取项目失败", err)
+		return
+	}
+	if !s.requireWorkerAccess(c, workerID) {
 		return
 	}
 	row := tx.QueryRowContext(c.Request.Context(), `INSERT INTO workspace_sessions(
