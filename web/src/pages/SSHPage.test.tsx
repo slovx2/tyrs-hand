@@ -49,7 +49,7 @@ describe('SSHPage', () => {
           items: [
             {
               id: '22222222-2222-2222-2222-222222222222',
-              name: 'song-ubuntu',
+              name: 'worker-primary',
               roles: ['github', 'discord'],
               enabled: true,
               maxConcurrentJobs: 6,
@@ -96,7 +96,7 @@ describe('SSHPage', () => {
       screen.getByLabelText('使用凭证'),
       '11111111-1111-1111-1111-111111111111',
     )
-    await user.click(screen.getByLabelText('song-ubuntu'))
+    await user.click(screen.getByLabelText('worker-primary'))
     await user.click(screen.getByRole('button', { name: '保存主机' }))
     expect(createHost).toHaveBeenCalledWith({
       alias: 'production-host',
@@ -137,7 +137,7 @@ describe('SSHPage', () => {
           items: [
             {
               id: nodeID,
-              name: 'song-ubuntu',
+              name: 'worker-primary',
               enabled: true,
               status: 'online',
             },
@@ -182,7 +182,7 @@ Host production
         )
       }),
     ).toBeInTheDocument()
-    await user.click(screen.getByLabelText('批量导入到 song-ubuntu'))
+    await user.click(screen.getByLabelText('批量导入到 worker-primary'))
     await user.click(screen.getByRole('button', { name: '导入 2 台主机' }))
 
     expect(importHosts).toHaveBeenCalledWith({
@@ -281,7 +281,7 @@ Host production
       http.get('/api/v1/workers', () =>
         HttpResponse.json({
           items: [
-            { id: firstNodeID, name: 'song-ubuntu', enabled: true },
+            { id: firstNodeID, name: 'worker-primary', enabled: true },
             { id: secondNodeID, name: 'backup-node', enabled: true },
           ],
         }),
@@ -350,7 +350,7 @@ Host production
     expect(screen.getByLabelText('backup-node')).toBeDisabled()
     await user.selectOptions(screen.getByLabelText('ProxyJump（可选）'), '')
     expect(screen.getByLabelText('backup-node')).toBeEnabled()
-    await user.click(screen.getByLabelText('song-ubuntu'))
+    await user.click(screen.getByLabelText('worker-primary'))
     await user.click(screen.getByLabelText('backup-node'))
     await user.click(screen.getByLabelText('启用主机'))
     await user.click(screen.getByRole('button', { name: '保存主机' }))

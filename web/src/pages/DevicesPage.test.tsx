@@ -32,7 +32,7 @@ describe('DevicesPage', () => {
           items: [
             {
               id: '11111111-1111-1111-1111-111111111111',
-              name: 'song-ubuntu',
+              name: 'worker-primary',
               roles: ['discord'],
               enabled: true,
               maxConcurrentJobs: 4,
@@ -54,7 +54,7 @@ describe('DevicesPage', () => {
             id: '22222222-2222-2222-2222-222222222222',
             status: 'waiting_scan',
             workerId: '11111111-1111-1111-1111-111111111111',
-            workerName: 'song-ubuntu',
+            workerName: 'worker-primary',
             sshHostKeyFingerprint:
               'SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
             expiresAt: '2026-08-15T02:00:00Z',
@@ -70,7 +70,7 @@ describe('DevicesPage', () => {
           deviceName: 'Pixel E2E',
           platform: 'android',
           workerId: '11111111-1111-1111-1111-111111111111',
-          workerName: 'song-ubuntu',
+          workerName: 'worker-primary',
           sshHostKeyFingerprint:
             'SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
           expiresAt: '2026-08-15T02:00:00Z',
@@ -118,7 +118,7 @@ describe('DevicesPage', () => {
               machines: [
                 {
                   workerId: '11111111-1111-1111-1111-111111111111',
-                  name: 'song-ubuntu',
+                  name: 'worker-primary',
                   sshHostKeyFingerprint:
                     'SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
                   status: 'online',
@@ -134,7 +134,7 @@ describe('DevicesPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'iPhone' }),
     ).toBeInTheDocument()
-    expect(screen.getByText('song-ubuntu')).toBeInTheDocument()
+    expect(screen.getByText('worker-primary')).toBeInTheDocument()
     expect(screen.getByText('ios · 1 台机器')).toBeInTheDocument()
   })
 })

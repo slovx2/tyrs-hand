@@ -8,13 +8,13 @@ import (
 )
 
 func TestHostWorkspacePathUsesConfiguredWorkspaceRoot(t *testing.T) {
-	workspace, err := hostWorkspacePath("/home/songsiyu/tyrs-hand/workspaces",
+	workspace, err := hostWorkspacePath("/home/worker/tyrs-hand/workspaces",
 		"workspaces/tyrs-hand")
 	require.NoError(t, err)
-	require.Equal(t, "/home/songsiyu/tyrs-hand/workspaces/tyrs-hand", workspace)
+	require.Equal(t, "/home/worker/tyrs-hand/workspaces/tyrs-hand", workspace)
 
 	for _, relative := range []string{"tyrs-hand", "workspaces/../secret", "workspaces/nested/project"} {
-		_, err := hostWorkspacePath("/home/songsiyu/tyrs-hand/workspaces", relative)
+		_, err := hostWorkspacePath("/home/worker/tyrs-hand/workspaces", relative)
 		require.Error(t, err, relative)
 	}
 }

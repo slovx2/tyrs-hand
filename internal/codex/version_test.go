@@ -15,8 +15,8 @@ func TestValidateVersion(t *testing.T) {
 	require.NoError(t, os.WriteFile(valid, []byte("#!/bin/sh\nprintf 'codex-cli 0.147.0\\n'\n"), 0o700))
 	require.NoError(t, ValidateVersion(context.Background(), valid))
 	newer := filepath.Join(dir, "newer-codex")
-	require.NoError(t, os.WriteFile(newer, []byte("#!/bin/sh\nprintf 'codex-cli 1.0.0\\n'\n"), 0o700))
-	require.Error(t, ValidateVersion(context.Background(), newer))
+	require.NoError(t, os.WriteFile(newer, []byte("#!/bin/sh\nprintf 'codex-cli 0.149.1\\n'\n"), 0o700))
+	require.NoError(t, ValidateVersion(context.Background(), newer))
 	old := filepath.Join(dir, "old-codex")
 	require.NoError(t, os.WriteFile(old, []byte("#!/bin/sh\nprintf 'codex-cli 0.146.9\\n'\n"), 0o700))
 	require.Error(t, ValidateVersion(context.Background(), old))
@@ -28,4 +28,13 @@ func TestValidateVersion(t *testing.T) {
 	require.NoError(t, os.WriteFile(invalid, []byte("#!/bin/sh\nprintf 'unknown\\n'\n"), 0o700))
 	require.Error(t, ValidateVersion(context.Background(), invalid))
 	require.Error(t, ValidateVersion(context.Background(), filepath.Join(dir, "missing")))
+}
+
+func TestIsVersionAtLeast(t *testing.T) {
+	require.True(t, IsVersionAtLeast("0.147.0", "0.147.0"))
+	require.True(t, IsVersionAtLeast("0.149.1", "0.147.0"))
+	require.True(t, IsVersionAtLeast("1.0.0", "0.147.0"))
+	require.False(t, IsVersionAtLeast("0.146.9", "0.147.0"))
+	require.False(t, IsVersionAtLeast("0.147.0-beta.1", "0.147.0"))
+	require.False(t, IsVersionAtLeast("unknown", "0.147.0"))
 }

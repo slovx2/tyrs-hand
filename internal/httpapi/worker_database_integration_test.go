@@ -601,7 +601,7 @@ func TestWorkerAPIDesktopThreadWithoutDiscordForum(t *testing.T) {
 				Name: "MAO-CRM", RelativePath: "workspaces/MAO-CRM", ProjectKind: "git",
 			}}}))
 
-	workspaceRoot := "/home/songsiyu/tyrs-hand/workspaces"
+	workspaceRoot := "/home/worker/tyrs-hand/workspaces"
 	state, err := client.PrepareDesktopThread(ctx, workerprotocol.DesktopThreadPrepareRequest{
 		WorkspaceID: workspaceID, WorkspaceRoot: workspaceRoot, Operation: "start",
 		RequestKey: strings.Repeat("1", 64), Params: json.RawMessage(

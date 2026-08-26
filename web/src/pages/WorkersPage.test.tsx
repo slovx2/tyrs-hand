@@ -32,7 +32,7 @@ describe('WorkersPage', () => {
           items: [
             {
               id: '11111111-1111-1111-1111-111111111111',
-              name: 'song-ubuntu',
+              name: 'worker-primary',
               roles: ['github', 'discord'],
               enabled: true,
               maxConcurrentJobs: 6,
@@ -72,7 +72,7 @@ describe('WorkersPage', () => {
     renderPage()
     const user = userEvent.setup()
     expect(
-      await screen.findByRole('heading', { name: 'song-ubuntu' }),
+      await screen.findByRole('heading', { name: 'worker-primary' }),
     ).toBeInTheDocument()
     await user.selectOptions(
       screen.getByLabelText('Discord 默认 Worker'),
@@ -106,7 +106,7 @@ describe('WorkersPage', () => {
           items: [
             {
               id: '11111111-1111-1111-1111-111111111111',
-              name: 'song-ubuntu',
+              name: 'worker-primary',
               roles: ['github', 'discord'],
               enabled: true,
               maxConcurrentJobs: 6,
@@ -132,7 +132,7 @@ describe('WorkersPage', () => {
 
     renderPage()
     const user = userEvent.setup()
-    await screen.findByRole('heading', { name: 'song-ubuntu' })
+    await screen.findByRole('heading', { name: 'worker-primary' })
     await user.click(screen.getByRole('button', { name: '轮换凭据' }))
     expect(await screen.findByText('rotated-token')).toBeInTheDocument()
     expect(rotate).toHaveBeenCalledWith('11111111-1111-1111-1111-111111111111')

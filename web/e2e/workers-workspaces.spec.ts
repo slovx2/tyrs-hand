@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 const worker = {
   id: '11111111-1111-1111-1111-111111111111',
-  name: 'song-ubuntu',
+  name: 'worker-primary',
   roles: ['github', 'discord'],
   enabled: true,
   maxConcurrentJobs: 6,
@@ -10,7 +10,7 @@ const worker = {
   workerVersion: 'deploy-1.1',
   status: 'online',
   metadata: {
-    host: { home: '/home/song', codexHome: '/home/song/.codex' },
+    host: { home: '/home/worker', codexHome: '/home/worker/.codex' },
     browser: { status: 'ready', tabCount: 1 },
   },
 }
@@ -84,8 +84,8 @@ test('Workers 页面同时展示宿主状态与 Workspace 项目', async ({ page
   await expect(
     page.getByRole('heading', { name: 'Worker', exact: true }),
   ).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'song-ubuntu' })).toBeVisible()
-  await expect(page.getByText('/home/song/.codex')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'worker-primary' })).toBeVisible()
+  await expect(page.getByText('/home/worker/.codex')).toBeVisible()
   await expect(page.getByText('workspaces/atlas')).toBeVisible()
   await expect(page.getByText(/Chrome：ready/)).toBeVisible()
 })

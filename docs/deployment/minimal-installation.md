@@ -39,7 +39,7 @@ Control 管理 Discord、Worker、Workspace、任务参数和出站 SSH。Codex 
 
 宿主必须安装满足 `deploy/worker/dependencies.json` 的工具：
 
-- Codex CLI `0.147.0`
+- Codex CLI `>= 0.147.0`
 - Git `>= 2.39.0`
 - OpenSSH Client（`ssh`、`scp`、`ssh-agent`）`>= 9.2.0`
 - `curl`、`tar`、`sudo` 与可执行的用户 Shell
