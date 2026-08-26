@@ -15,7 +15,7 @@ export function UsersPage() {
   const queryClient = useQueryClient()
   const showToast = useUI((state) => state.showToast)
   const [username, setUsername] = useState('')
-  const [invite, setInvite] = useState('')
+  const [invite, setInvite] = useState<{ token: string; url: string; expiresAt: string }>()
   const users = useQuery({
     queryKey: ['users'],
     queryFn: () => api<{ items: User[] }>('/users'),
@@ -25,9 +25,12 @@ export function UsersPage() {
       api<{ token: string; expiresAt: string }>('/auth/invitations', {
         method: 'POST',
         body: JSON.stringify({ username }),
-      }),
+    }),
     onSuccess: async (result) => {
-      setInvite(result.token)
+      setInvite({
+        ...result,
+        url: `${window.location.origin}/invite?token=${encodeURIComponent(result.token)}`,
+      })
       setUsername('')
       await queryClient.invalidateQueries({ queryKey: ['users'] })
       showToast('success', '邀请已创建，请安全发送给同事')
@@ -47,9 +50,30 @@ export function UsersPage() {
       <p className="muted mt-2">邀请同事使用 Control，并管理账号启用状态。</p>
       {invite && (
         <div className="danger-note mt-6">
-          <div className="font-medium">一次性邀请 Token</div>
-          <code className="mt-2 block break-all select-all">{invite}</code>
-          <button className="button-secondary mt-3" onClick={() => setInvite('')}>
+          <div className="font-medium">邀请链接（发送给同事）</div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <code className="min-w-0 flex-1 break-all select-all">{invite.url}</code>
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(invite.url)
+                  showToast('success', '邀请链接已复制')
+                } catch {
+                  showToast('error', '复制失败，请手动复制邀请链接')
+                }
+              }}
+            >
+              复制链接
+            </button>
+          </div>
+          <p className="muted mt-2 text-sm">有效期至：{new Date(invite.expiresAt).toLocaleString()}</p>
+          <details className="mt-3 text-sm">
+            <summary className="cursor-pointer">查看 Token（手工填写时使用）</summary>
+            <code className="mt-2 block break-all select-all">{invite.token}</code>
+          </details>
+          <button type="button" className="button-secondary mt-3" onClick={() => setInvite(undefined)}>
             我已保存
           </button>
         </div>
