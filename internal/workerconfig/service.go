@@ -25,6 +25,7 @@ type Service struct {
 	home     string
 	codexBin string
 	stateDir string
+	envFile  string
 	restart  func() error
 	mu       sync.Mutex
 	oauth    *oauthProcess
@@ -43,13 +44,17 @@ func NewService(home, codexBin string) *Service {
 }
 
 func NewServiceWithStateDir(home, codexBin, stateDir string) *Service {
+	return NewServiceWithStateDirAndEnv(home, codexBin, stateDir, "")
+}
+
+func NewServiceWithStateDirAndEnv(home, codexBin, stateDir, envFile string) *Service {
 	if strings.TrimSpace(codexBin) == "" {
 		codexBin = "codex"
 	}
 	if strings.TrimSpace(stateDir) == "" {
 		stateDir = filepath.Dir(filepath.Clean(home))
 	}
-	return &Service{home: filepath.Clean(home), codexBin: codexBin, stateDir: filepath.Clean(stateDir)}
+	return &Service{home: filepath.Clean(home), codexBin: codexBin, stateDir: filepath.Clean(stateDir), envFile: filepath.Clean(envFile)}
 }
 
 func (s *Service) SetRestart(fn func() error) { s.restart = fn }
@@ -108,7 +113,7 @@ func (s *Service) Read() (workerprotocol.WorkerConfig, error) {
 	}
 	apiKeyConfigured := false
 	apiKeyDigest := ""
-	if envData, readErr := os.ReadFile(s.secretEnvPath()); readErr == nil {
+	if envData, readErr := os.ReadFile(s.globalEnvPath()); readErr == nil {
 		for _, line := range strings.Split(string(envData), "\n") {
 			name, value, ok := cutEnvLine(line)
 			if ok && name == modelAPIKeyEnv && strings.TrimSpace(value) != "" {
@@ -127,8 +132,14 @@ func (s *Service) Read() (workerprotocol.WorkerConfig, error) {
 }
 
 const modelAPIKeyEnv = "TYRS_HAND_MODEL_API_KEY"
+const modelBaseURLEnv = "TYRS_HAND_MODEL_BASE_URL"
 
-func (s *Service) secretEnvPath() string { return filepath.Join(s.stateDir, ".env") }
+func (s *Service) globalEnvPath() string {
+	if s.envFile != "" {
+		return s.envFile
+	}
+	return filepath.Join(s.stateDir, ".env")
+}
 
 func isChatGPTProvider(value string) bool {
 	value = strings.ToLower(strings.TrimSpace(value))
@@ -169,7 +180,7 @@ func (s *Service) UpdateProvider(expected, baseURL, apiKey string, clearAPIKey b
 	if len(baseURL) > 2048 || len(apiKey) > 4096 {
 		return workerprotocol.WorkerConfig{}, errors.New("Provider 配置长度超限")
 	}
-	if strings.ContainsAny(apiKey, "\r\n") {
+	if strings.ContainsAny(apiKey, "\r\n'") {
 		return workerprotocol.WorkerConfig{}, errors.New("API Key 包含非法换行符")
 	}
 	if isChatGPTProvider(baseURL) {
@@ -216,16 +227,14 @@ func (s *Service) UpdateProvider(expected, baseURL, apiKey string, clearAPIKey b
 	if err := atomicWrite(path, encoded, 0o600); err != nil {
 		return workerprotocol.WorkerConfig{}, err
 	}
-	if clearAPIKey || strings.TrimSpace(apiKey) != "" {
-		if err := s.updateDotEnv(apiKey, clearAPIKey); err != nil {
-			return workerprotocol.WorkerConfig{}, err
-		}
+	if err := s.updateGlobalEnv(baseURL, apiKey, clearAPIKey); err != nil {
+		return workerprotocol.WorkerConfig{}, err
 	}
 	return s.Read()
 }
 
-func (s *Service) updateDotEnv(apiKey string, clear bool) error {
-	path := s.secretEnvPath()
+func (s *Service) updateGlobalEnv(baseURL, apiKey string, clear bool) error {
+	path := s.globalEnvPath()
 	data, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
@@ -234,21 +243,33 @@ func (s *Service) updateDotEnv(apiKey string, clear bool) error {
 	if len(lines) == 1 && lines[0] == "" {
 		lines = nil
 	}
-	found := false
+	foundAPIKey, foundBaseURL := false, false
 	result := make([]string, 0, len(lines)+1)
 	for _, line := range lines {
-		name, _, ok := cutEnvLine(line)
-		if ok && name == modelAPIKeyEnv {
-			found = true
-			if !clear && apiKey != "" {
+		name, value, ok := cutEnvLine(line)
+		if ok && (name == modelAPIKeyEnv || name == modelBaseURLEnv) {
+			if name == modelAPIKeyEnv && !clear && apiKey != "" {
+				foundAPIKey = true
 				result = append(result, modelAPIKeyEnv+"="+apiKey)
+			} else if name == modelAPIKeyEnv && !clear {
+				foundAPIKey = true
+				result = append(result, modelAPIKeyEnv+"="+value)
+			} else if name == modelAPIKeyEnv {
+				foundAPIKey = true
+			}
+			if name == modelBaseURLEnv {
+				foundBaseURL = true
+				result = append(result, modelBaseURLEnv+"="+baseURL)
 			}
 			continue
 		}
 		result = append(result, line)
 	}
-	if !clear && apiKey != "" && !found {
+	if !clear && apiKey != "" && !foundAPIKey {
 		result = append(result, modelAPIKeyEnv+"="+apiKey)
+	}
+	if !foundBaseURL {
+		result = append(result, modelBaseURLEnv+"="+baseURL)
 	}
 	return atomicWrite(path, []byte(strings.Join(result, "\n")+"\n"), 0o600)
 }
@@ -261,10 +282,17 @@ func cutEnvLine(line string) (string, string, bool) {
 	line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
 	for index := range line {
 		if line[index] == '=' {
-			return line[:index], line[index+1:], true
+			return line[:index], unquoteEnvValue(strings.TrimSpace(line[index+1:])), true
 		}
 	}
 	return "", "", false
+}
+
+func unquoteEnvValue(value string) string {
+	if len(value) >= 2 && ((value[0] == '\'' && value[len(value)-1] == '\'') || (value[0] == '"' && value[len(value)-1] == '"')) {
+		return value[1 : len(value)-1]
+	}
+	return value
 }
 
 func (s *Service) StartOAuth() (workerprotocol.OAuthDevice, error) {

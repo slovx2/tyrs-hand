@@ -27,6 +27,7 @@ type RuntimeOptions struct {
 	Home                 string
 	WorkspaceRoot        string
 	StateDir             string
+	EnvFile              string
 	SSHAuthSock          string
 	BrowserWorkerToken   string
 	BrowserDesktopToken  string
@@ -97,7 +98,11 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 		"CODEX_HOME": options.CodexHome,
 		"HOME":       options.Home,
 	}
-	if secretValues, err := loadSecretEnv(filepath.Join(options.StateDir, ".env")); err != nil {
+	envFile := options.EnvFile
+	if envFile == "" {
+		envFile = filepath.Join(options.StateDir, ".env")
+	}
+	if secretValues, err := loadWorkerGlobalEnv(envFile); err != nil {
 		return nil, fmt.Errorf("读取 Worker Provider 密钥: %w", err)
 	} else {
 		for name, value := range secretValues {
@@ -385,7 +390,7 @@ func cutEnvironment(value string) (string, string, bool) {
 	return "", "", false
 }
 
-func loadSecretEnv(path string) (map[string]string, error) {
+func loadWorkerGlobalEnv(path string) (map[string]string, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return map[string]string{}, nil
@@ -401,8 +406,11 @@ func loadSecretEnv(path string) (map[string]string, error) {
 		}
 		line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
 		name, value, ok := cutEnvironment(line)
-		if !ok || name != "TYRS_HAND_MODEL_API_KEY" {
+		if !ok || (name != "TYRS_HAND_MODEL_API_KEY" && name != "TYRS_HAND_MODEL_BASE_URL") {
 			continue
+		}
+		if len(value) >= 2 && ((value[0] == '\'' && value[len(value)-1] == '\'') || (value[0] == '"' && value[len(value)-1] == '"')) {
+			value = value[1 : len(value)-1]
 		}
 		result[name] = value
 	}

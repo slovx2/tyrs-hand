@@ -170,6 +170,8 @@ worker_env_file=/etc/tyrs-hand/worker.env
 existing_browser_mcp_url=
 existing_browser_token_file=
 existing_browser_services_root=
+existing_model_api_key=
+existing_model_base_url=
 if [ -r "${worker_env_file}" ]; then
   existing_browser_mcp_url=$(awk -F= '$1 == "TYRS_HAND_BROWSER_MCP_URL" {
     value = substr($0, index($0, "=") + 1)
@@ -189,6 +191,8 @@ if [ -r "${worker_env_file}" ]; then
     print value
     exit
   }' "${worker_env_file}")
+  existing_model_api_key=$(awk -F= '$1 == "TYRS_HAND_MODEL_API_KEY" { value=substr($0,index($0,"=")+1); gsub(/^\047|\047$/, "", value); print value; exit }' "${worker_env_file}")
+  existing_model_base_url=$(awk -F= '$1 == "TYRS_HAND_MODEL_BASE_URL" { value=substr($0,index($0,"=")+1); gsub(/^\047|\047$/, "", value); print value; exit }' "${worker_env_file}")
 fi
 if [ "${TYRS_HAND_BROWSER_MCP_URL+x}" = x ]; then
   worker_browser_mcp_url=${TYRS_HAND_BROWSER_MCP_URL}
@@ -265,9 +269,15 @@ fi
     printf "TYRS_HAND_BROWSER_MCP_TOKEN_FILE='%s'\n" "${worker_browser_token_file}"
   fi
   printf "PATH='%s'\n" "${worker_path}"
+  if [ -n "${existing_model_api_key}" ]; then
+    printf "TYRS_HAND_MODEL_API_KEY='%s'\n" "${existing_model_api_key}"
+  fi
+  if [ -n "${existing_model_base_url}" ]; then
+    printf "TYRS_HAND_MODEL_BASE_URL='%s'\n" "${existing_model_base_url}"
+  fi
 } > "${worker_env_file}"
 chown root:"${worker_group}" "${worker_env_file}"
-chmod 0640 "${worker_env_file}"
+chmod 0660 "${worker_env_file}"
 
 install -d -m 0755 /usr/local/libexec
 install -m 0755 "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/tyrs-hand-worker-run" \

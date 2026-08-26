@@ -36,6 +36,7 @@ type Config struct {
 	AttachmentRoot                 string
 	CodexBin                       string
 	WorkerDataRoot                 string
+	WorkerEnvFile                  string
 	RepoCacheMaxBytes              int64
 	WorkerID                       string
 	WorkerRole                     string
@@ -107,6 +108,7 @@ func load(workerProcess bool) (Config, error) {
 		AttachmentRoot:                 filepath.Clean(v.GetString("attachment_root")),
 		CodexBin:                       v.GetString("codex_bin"),
 		WorkerDataRoot:                 filepath.Clean(v.GetString("worker_data_root")),
+		WorkerEnvFile:                  filepath.Clean(v.GetString("worker_env_file")),
 		RepoCacheMaxBytes:              v.GetInt64("repo_cache_max_bytes"),
 		WorkerID:                       v.GetString("worker_id"),
 		WorkerRole:                     strings.TrimSpace(v.GetString("worker_role")),
@@ -287,6 +289,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("redis_url", "redis://localhost:6379/0")
 	v.SetDefault("cookie_secure", false)
 	v.SetDefault("worker_data_root", stateRoot)
+	v.SetDefault("worker_env_file", "/etc/tyrs-hand/worker.env")
 	v.SetDefault("repo_cache_root", filepath.Join(stateRoot, "repo-cache"))
 	v.SetDefault("worktree_root", filepath.Join(stateRoot, "worktrees", "github"))
 	v.SetDefault("attachment_root", ".local/control/attachments")
