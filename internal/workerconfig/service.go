@@ -1,0 +1,288 @@
+package workerconfig
+
+import (
+	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/pelletier/go-toml/v2"
+	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
+)
+
+var deviceCodePattern = regexp.MustCompile(`(?m)\b([A-Z0-9]{4}-[A-Z0-9]{4})\b`)
+
+type Service struct {
+	home     string
+	codexBin string
+	restart  func() error
+	mu       sync.Mutex
+	oauth    *oauthProcess
+}
+
+type oauthProcess struct {
+	cmd       *exec.Cmd
+	done      chan error
+	device    workerprotocol.OAuthDevice
+	startedAt time.Time
+	finished  bool
+}
+
+func NewService(home, codexBin string) *Service {
+	if strings.TrimSpace(codexBin) == "" {
+		codexBin = "codex"
+	}
+	return &Service{home: filepath.Clean(home), codexBin: codexBin}
+}
+
+func (s *Service) SetRestart(fn func() error) { s.restart = fn }
+
+func (s *Service) Restart() error {
+	if s.restart == nil {
+		return errors.New("Worker 尚未绑定 Codex 重启处理器")
+	}
+	return s.restart()
+}
+
+func (s *Service) Read() (workerprotocol.WorkerConfig, error) {
+	configPath := filepath.Join(s.home, "config.toml")
+	data, err := os.ReadFile(configPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return workerprotocol.WorkerConfig{}, err
+	}
+	var parsed map[string]any
+	if len(data) > 0 {
+		if err := toml.Unmarshal(data, &parsed); err != nil {
+			return workerprotocol.WorkerConfig{}, fmt.Errorf("读取 Codex config.toml: %w", err)
+		}
+	}
+	provider, _ := parsed["model_provider"].(string)
+	if isChatGPTProvider(provider) {
+		return workerprotocol.WorkerConfig{}, errors.New("Model Provider 不得使用 ChatGPT OAuth")
+	}
+	providers := map[string]any{}
+	if value, ok := parsed["model_providers"].(map[string]any); ok {
+		for id, raw := range value {
+			if item, ok := raw.(map[string]any); ok {
+				copy := map[string]any{}
+				for _, key := range []string{"name", "base_url", "wire_api", "env_key", "env_http_headers", "query_params", "requires_openai_auth"} {
+					if value, exists := item[key]; exists {
+						copy[key] = value
+					}
+				}
+				if baseURL, ok := copy["base_url"].(string); ok && isChatGPTProvider(baseURL) {
+					return workerprotocol.WorkerConfig{}, errors.New("Model Provider 不得使用 ChatGPT OAuth")
+				}
+				providers[id] = copy
+			}
+		}
+	}
+	agents, err := os.ReadFile(filepath.Join(s.home, "AGENTS.md"))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return workerprotocol.WorkerConfig{}, err
+	}
+	return workerprotocol.WorkerConfig{Revision: revision(data, agents), ModelProvider: provider, ModelProviders: providers, Agents: string(agents)}, nil
+}
+
+func isChatGPTProvider(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	return strings.Contains(value, "chatgpt.com") || strings.Contains(value, "chatgpt")
+}
+
+func (s *Service) UpdateAgents(expected, content string) (workerprotocol.WorkerConfig, error) {
+	current, err := s.Read()
+	if err != nil {
+		return workerprotocol.WorkerConfig{}, err
+	}
+	if expected != "" && expected != current.Revision {
+		return workerprotocol.WorkerConfig{}, fmt.Errorf("配置版本冲突")
+	}
+	path := filepath.Join(s.home, "AGENTS.md")
+	if err := atomicWrite(path, []byte(content), 0o600); err != nil {
+		return workerprotocol.WorkerConfig{}, err
+	}
+	return s.Read()
+}
+
+func (s *Service) UpdateProvider(expected, provider string, providers map[string]map[string]any) (workerprotocol.WorkerConfig, error) {
+	current, err := s.Read()
+	if err != nil {
+		return workerprotocol.WorkerConfig{}, err
+	}
+	if expected != "" && expected != current.Revision {
+		return workerprotocol.WorkerConfig{}, errors.New("配置版本冲突")
+	}
+	if isChatGPTProvider(provider) {
+		return workerprotocol.WorkerConfig{}, errors.New("Model Provider 不得使用 ChatGPT OAuth")
+	}
+	path := filepath.Join(s.home, "config.toml")
+	data, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return workerprotocol.WorkerConfig{}, err
+	}
+	parsed := map[string]any{}
+	if len(data) > 0 {
+		if err := toml.Unmarshal(data, &parsed); err != nil {
+			return workerprotocol.WorkerConfig{}, err
+		}
+	}
+	parsed["model_provider"] = provider
+	clean := map[string]any{}
+	for id, item := range providers {
+		if isChatGPTProvider(id) {
+			return workerprotocol.WorkerConfig{}, errors.New("Model Provider 不得使用 ChatGPT OAuth")
+		}
+		filtered := map[string]any{}
+		for _, key := range []string{"name", "base_url", "wire_api", "env_key", "env_http_headers", "query_params", "requires_openai_auth"} {
+			if value, ok := item[key]; ok {
+				if key == "base_url" {
+					if baseURL, ok := value.(string); ok && isChatGPTProvider(baseURL) {
+						return workerprotocol.WorkerConfig{}, errors.New("Model Provider 不得使用 ChatGPT OAuth")
+					}
+				}
+				filtered[key] = value
+			}
+		}
+		clean[id] = filtered
+	}
+	parsed["model_providers"] = clean
+	encoded, err := toml.Marshal(parsed)
+	if err != nil {
+		return workerprotocol.WorkerConfig{}, err
+	}
+	if err := atomicWrite(path, encoded, 0o600); err != nil {
+		return workerprotocol.WorkerConfig{}, err
+	}
+	return s.Read()
+}
+
+func (s *Service) StartOAuth() (workerprotocol.OAuthDevice, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.oauth != nil && s.oauth.device.Status == "pending" {
+		return s.oauth.device, nil
+	}
+	cmd := exec.Command(s.codexBin, "login", "--device-auth")
+	cmd.Dir = s.home
+	cmd.Env = append(os.Environ(), "HOME="+filepath.Dir(s.home), "CODEX_HOME="+s.home)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return workerprotocol.OAuthDevice{}, err
+	}
+	cmd.Stderr = cmd.Stdout
+	if err := cmd.Start(); err != nil {
+		return workerprotocol.OAuthDevice{}, err
+	}
+	lines := make(chan string, 32)
+	done := make(chan error, 1)
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			lines <- scanner.Text()
+		}
+		close(lines)
+	}()
+	go func() { done <- cmd.Wait() }()
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	device := workerprotocol.OAuthDevice{VerificationURL: "https://auth.openai.com/codex/device", ExpiresAt: time.Now().UTC().Add(15 * time.Minute), Status: "pending"}
+	for {
+		select {
+		case line, ok := <-lines:
+			if !ok {
+				return workerprotocol.OAuthDevice{}, errors.New("Codex OAuth 未返回设备码")
+			}
+			if match := deviceCodePattern.FindStringSubmatch(strings.ToUpper(line)); len(match) == 2 {
+				device.UserCode = match[1]
+				s.oauth = &oauthProcess{cmd: cmd, done: done, device: device, startedAt: time.Now().UTC()}
+				return device, nil
+			}
+		case err := <-done:
+			return workerprotocol.OAuthDevice{}, fmt.Errorf("Codex OAuth 进程退出: %w", err)
+		case <-deadline.C:
+			_ = cmd.Process.Kill()
+			return workerprotocol.OAuthDevice{}, errors.New("等待 Codex OAuth 设备码超时")
+		}
+	}
+}
+
+func (s *Service) OAuthStatus() workerprotocol.OAuthDevice {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.oauth == nil {
+		if _, err := os.Stat(filepath.Join(s.home, "auth.json")); err == nil {
+			return workerprotocol.OAuthDevice{Status: "authenticated"}
+		}
+		return workerprotocol.OAuthDevice{Status: "logged_out"}
+	}
+	if !s.oauth.finished {
+		select {
+		case <-s.oauth.done:
+			s.oauth.finished = true
+			if _, err := os.Stat(filepath.Join(s.home, "auth.json")); err == nil {
+				s.oauth.device.Status = "authenticated"
+			} else {
+				s.oauth.device.Status = "failed"
+			}
+		default:
+		}
+	}
+	return s.oauth.device
+}
+
+func (s *Service) Logout() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cmd := exec.Command(s.codexBin, "logout")
+	cmd.Dir = s.home
+	cmd.Env = append(os.Environ(), "HOME="+filepath.Dir(s.home), "CODEX_HOME="+s.home)
+	err := cmd.Run()
+	if err == nil {
+		s.oauth = nil
+	}
+	return err
+}
+
+func revision(config, agents []byte) string {
+	hash := sha256.New()
+	_, _ = hash.Write(config)
+	_, _ = hash.Write([]byte{0})
+	_, _ = hash.Write(agents)
+	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func atomicWrite(path string, data []byte, mode os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".tyrs-hand-config-")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+	if err := tmp.Chmod(mode); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
+}
