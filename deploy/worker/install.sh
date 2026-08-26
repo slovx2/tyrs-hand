@@ -225,7 +225,7 @@ for pair in \
   validate_env_value "${pair%%:*}" "${pair#*:}"
 done
 
-install -d -o root -g "${worker_group}" -m 0750 /etc/tyrs-hand
+install -d -o root -g "${worker_group}" -m 0770 /etc/tyrs-hand
 if [ -n "${worker_browser_mcp_url}" ]; then
   install -d -o "${worker_user}" -g "${worker_group}" -m 0770 \
     "${worker_browser_services_root}"
@@ -308,7 +308,7 @@ if [ -s "${credential_file}" ]; then
   next_env=$(mktemp /etc/tyrs-hand/worker.env.XXXXXX)
   sed '/^TYRS_HAND_WORKER_ENROLLMENT_TOKEN=/d' /etc/tyrs-hand/worker.env > "${next_env}"
   chown root:"${worker_group}" "${next_env}"
-  chmod 0640 "${next_env}"
+  chmod 0660 "${next_env}"
   mv "${next_env}" /etc/tyrs-hand/worker.env
   echo "Worker 已安装并注册；一次性 Enrollment Token 已从配置删除。"
 else
