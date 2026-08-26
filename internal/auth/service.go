@@ -20,6 +20,7 @@ var (
 	ErrInvalidCredentials = errors.New("用户名、密码或 TOTP 无效")
 	ErrSessionInvalid     = errors.New("登录会话无效")
 	ErrInvitationInvalid  = errors.New("用户邀请无效或已过期")
+	ErrInvitationNotFound = errors.New("用户邀请不存在或已失效")
 )
 
 const administratorSessionLifetime = 90 * 24 * time.Hour
@@ -54,6 +55,17 @@ type Invitation struct {
 	Username  string    `json:"username"`
 	Token     string    `json:"token"`
 	ExpiresAt time.Time `json:"expiresAt"`
+}
+
+// InvitationSummary 只包含邀请管理所需的非敏感元数据，不包含 token 或 token hash。
+type InvitationSummary struct {
+	ID         uuid.UUID  `json:"id"`
+	Username   string     `json:"username"`
+	ExpiresAt  time.Time  `json:"expiresAt"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	ConsumedAt *time.Time `json:"consumedAt,omitempty"`
+	RevokedAt  *time.Time `json:"revokedAt,omitempty"`
+	Status     string     `json:"status"`
 }
 
 func NewService(db *sql.DB, box *security.SecretBox, setupToken, publicURL string) *Service {
@@ -227,7 +239,7 @@ func (s *Service) AcceptInvitation(ctx context.Context, token, password, totpCod
 	}
 	var invitationID uuid.UUID
 	var username string
-	err := s.db.QueryRowContext(ctx, `SELECT id, username FROM administrator_invitations WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at > now()`, security.Digest(token)).Scan(&invitationID, &username)
+	err := s.db.QueryRowContext(ctx, `SELECT id, username FROM administrator_invitations WHERE token_hash=$1 AND consumed_at IS NULL AND revoked_at IS NULL AND expires_at > now()`, security.Digest(token)).Scan(&invitationID, &username)
 	if errors.Is(err, sql.ErrNoRows) {
 		return SetupResult{}, ErrInvitationInvalid
 	}
@@ -263,13 +275,71 @@ func (s *Service) AcceptInvitation(ctx context.Context, token, password, totpCod
 	if err := tx.QueryRowContext(ctx, `INSERT INTO administrators(username,password_hash,totp_secret_ciphertext,recovery_codes_hash,role,enabled) VALUES($1,$2,$3,$4,'user',true) RETURNING id`, username, passwordHash, append(nonce, ciphertext...), hashesJSON).Scan(&userID); err != nil {
 		return SetupResult{}, err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE administrator_invitations SET consumed_at=now() WHERE id=$1 AND consumed_at IS NULL`, invitationID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE administrator_invitations SET consumed_at=now() WHERE id=$1 AND consumed_at IS NULL AND revoked_at IS NULL`, invitationID); err != nil {
 		return SetupResult{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return SetupResult{}, err
 	}
 	return SetupResult{TOTPSecret: key.Secret(), ProvisioningURI: key.URL(), RecoveryCodes: recoveryCodes}, nil
+}
+
+// ListInvitations 返回管理员界面所需的邀请元数据，不返回任何秘密值。
+func (s *Service) ListInvitations(ctx context.Context) ([]InvitationSummary, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, username, expires_at, created_at, consumed_at, revoked_at,
+			CASE
+				WHEN consumed_at IS NOT NULL THEN 'accepted'
+				WHEN revoked_at IS NOT NULL THEN 'revoked'
+				WHEN expires_at <= now() THEN 'expired'
+				ELSE 'pending'
+			END AS status
+		FROM administrator_invitations
+		ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]InvitationSummary, 0)
+	for rows.Next() {
+		var item InvitationSummary
+		var consumedAt, revokedAt sql.NullTime
+		if err := rows.Scan(&item.ID, &item.Username, &item.ExpiresAt, &item.CreatedAt, &consumedAt, &revokedAt, &item.Status); err != nil {
+			return nil, err
+		}
+		if consumedAt.Valid {
+			value := consumedAt.Time
+			item.ConsumedAt = &value
+		}
+		if revokedAt.Valid {
+			value := revokedAt.Time
+			item.RevokedAt = &value
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+// RevokeInvitation 撤销尚未使用的邀请，且不会暴露 token 内容。
+func (s *Service) RevokeInvitation(ctx context.Context, id uuid.UUID) error {
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE administrator_invitations
+		SET revoked_at = now()
+		WHERE id = $1 AND consumed_at IS NULL AND revoked_at IS NULL`, id)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return ErrInvitationNotFound
+	}
+	return nil
 }
 
 func (s *Service) restoreCSRF(ctx context.Context, tokenHash string, encrypted []byte) (string, error) {

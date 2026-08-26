@@ -106,6 +106,8 @@ func (s *Server) adminRouter() http.Handler {
 	admin := authenticated.Group("")
 	admin.Use(s.requireAdmin())
 	admin.POST("/auth/invitations", s.requireCSRF(), s.createInvitation)
+	admin.GET("/auth/invitations", s.listInvitations)
+	admin.DELETE("/auth/invitations/:id", s.requireCSRF(), s.revokeInvitation)
 	admin.GET("/users", s.listUsers)
 	admin.PUT("/users/:id/enabled", s.requireCSRF(), s.setUserEnabled)
 	admin.GET("/workers/:id/users", s.listWorkerUsers)

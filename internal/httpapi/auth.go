@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/auth"
 )
 
@@ -94,6 +95,32 @@ func (s *Server) createInvitation(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, invitation)
+}
+
+func (s *Server) listInvitations(c *gin.Context) {
+	items, err := s.auth.ListInvitations(c.Request.Context())
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取邀请失败", err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+func (s *Server) revokeInvitation(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		badRequest(c, err)
+		return
+	}
+	if err := s.auth.RevokeInvitation(c.Request.Context(), id); err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, auth.ErrInvitationNotFound) {
+			status = http.StatusNotFound
+		}
+		problem(c, status, "撤销邀请失败", err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 func (s *Server) acceptInvitation(c *gin.Context) {

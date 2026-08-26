@@ -11,6 +11,21 @@ interface User {
   createdAt: string
 }
 
+interface Invitation {
+  id: string
+  username: string
+  expiresAt: string
+  createdAt: string
+  status: 'pending' | 'expired' | 'revoked' | 'accepted'
+}
+
+const invitationStatus: Record<Invitation['status'], string> = {
+  pending: '待接受',
+  expired: '已过期',
+  revoked: '已撤销',
+  accepted: '已接受',
+}
+
 export function UsersPage() {
   const queryClient = useQueryClient()
   const showToast = useUI((state) => state.showToast)
@@ -19,6 +34,10 @@ export function UsersPage() {
   const users = useQuery({
     queryKey: ['users'],
     queryFn: () => api<{ items: User[] }>('/users'),
+  })
+  const invitations = useQuery({
+    queryKey: ['invitations'],
+    queryFn: () => api<{ items: Invitation[] }>('/auth/invitations'),
   })
   const create = useMutation({
     mutationFn: () =>
@@ -33,7 +52,16 @@ export function UsersPage() {
       })
       setUsername('')
       await queryClient.invalidateQueries({ queryKey: ['users'] })
+      await queryClient.invalidateQueries({ queryKey: ['invitations'] })
       showToast('success', '邀请已创建，请安全发送给同事')
+    },
+  })
+  const revoke = useMutation({
+    mutationFn: (invitation: Invitation) =>
+      api<void>(`/auth/invitations/${invitation.id}`, { method: 'DELETE' }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['invitations'] })
+      showToast('success', '邀请已撤销')
     },
   })
   const toggle = useMutation({
@@ -93,6 +121,52 @@ export function UsersPage() {
           创建邀请
         </button>
       </form>
+      <section className="mt-6">
+        <div className="mb-3 flex items-baseline justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold">待接受的邀请</h2>
+            <p className="muted mt-1 text-sm">邀请被接受前会显示在这里；待接受邀请可以撤销。</p>
+          </div>
+        </div>
+        <div className="grid gap-3">
+          {(invitations.data?.items ?? []).filter((invitation) => invitation.status !== 'accepted').map((invitation) => {
+            const canRevoke = invitation.status === 'pending'
+            return (
+              <article className="panel flex flex-wrap items-center justify-between gap-3" key={invitation.id}>
+                <div>
+                  <strong>{invitation.username}</strong>
+                  <p className="muted text-sm">
+                    创建于 {new Date(invitation.createdAt).toLocaleString()} ·
+                    {' '}有效期至 {new Date(invitation.expiresAt).toLocaleString()}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`status-badge ${canRevoke ? 'is-success' : 'is-danger'}`}>
+                    {invitationStatus[invitation.status]}
+                  </span>
+                  {canRevoke && (
+                    <button
+                      type="button"
+                      className="button-danger"
+                      disabled={revoke.isPending}
+                      onClick={() => {
+                        if (window.confirm(`确定撤销发送给“${invitation.username}”的邀请吗？撤销后链接将立即失效。`)) {
+                          revoke.mutate(invitation)
+                        }
+                      }}
+                    >
+                      撤销邀请
+                    </button>
+                  )}
+                </div>
+              </article>
+            )
+          })}
+          {invitations.isSuccess && (invitations.data?.items ?? []).every((invitation) => invitation.status === 'accepted') && (
+            <p className="muted panel">当前没有待接受的邀请。</p>
+          )}
+        </div>
+      </section>
       <div className="mt-6 grid gap-3">
         {(users.data?.items ?? []).map((user) => (
           <article className="panel flex flex-wrap items-center justify-between gap-3" key={user.id}>
