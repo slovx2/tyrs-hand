@@ -70,7 +70,7 @@ func (p *Processor) HeartbeatMetadata() map[string]any {
 	if runtime != nil {
 		metadata["host"] = map[string]any{
 			"home": runtime.Home(), "codexHome": runtime.CodexHome(),
-			"workspaceRoot": runtime.WorkspaceRoot(), "appServer": "running",
+			"workspaceRoot": runtime.WorkspaceRoot(), "appServer": runtime.Status(),
 		}
 	}
 	if workspaceID != uuid.Nil && len(modelCatalog) > 0 {
@@ -169,6 +169,9 @@ func (p *Processor) processRemoteGitHub(ctx context.Context, task *workerprotoco
 	codexHome := p.hostRuntime.CodexHome()
 	runtimeConfig := prepareCodexRuntime(p.cfg.WorkerDataRoot, p.cfg, claimed.ID.String())
 	client := p.hostRuntime.Client()
+	if client == nil {
+		return codexcontrol.TurnResult{}, errors.New("宿主 Codex Runtime 正在恢复")
+	}
 	runtime := codex.NewRuntime(client)
 	settings := task.Snapshot.Runtime
 	instructions := ""

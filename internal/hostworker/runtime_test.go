@@ -1,10 +1,15 @@
 package hostworker
 
 import (
+	"context"
+	"errors"
 	"testing"
+	"time"
 
+	"github.com/slovx2/tyrs-hand/internal/appserverhub"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 func TestAppServerEnvironmentKeepsOpenAIProviderForAgentTools(t *testing.T) {
@@ -38,4 +43,50 @@ func TestOpenEphemeralClientRequiresRunningHub(t *testing.T) {
 	client, err = (&Runtime{}).OpenEphemeralClient()
 	require.Nil(t, client)
 	require.ErrorContains(t, err, "AppServerHub 尚未启动")
+}
+
+func TestRuntimeClientUnavailableWhileRestarting(t *testing.T) {
+	runtime := &Runtime{status: "restarting", generation: 12,
+		current: &runtimeGeneration{client: &appserverhub.Client{}}}
+	client, generation := runtime.ClientSnapshot()
+	require.Nil(t, client)
+	require.EqualValues(t, 12, generation)
+	require.Nil(t, runtime.Client())
+}
+
+func TestRuntimeRestartsAppServerWithoutStoppingManager(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	first := &runtimeGeneration{done: make(chan struct{})}
+	second := &runtimeGeneration{done: make(chan struct{})}
+	started := make(chan struct{}, 1)
+	runtime := &Runtime{ctx: ctx, cancel: cancel, current: first, generation: 1,
+		status: "running", done: make(chan struct{}), generationChanged: make(chan int64, 1),
+		options: RuntimeOptions{Logger: zap.NewNop()}}
+	runtime.start = func() (*runtimeGeneration, error) {
+		started <- struct{}{}
+		return second, nil
+	}
+	go runtime.supervise(first)
+
+	first.waitErr = errors.New("app-server stopped")
+	close(first.done)
+	select {
+	case <-runtime.Done():
+		t.Fatal("App Server 退出不应停止 Runtime Manager")
+	case <-started:
+	}
+	require.Eventually(t, func() bool {
+		return runtime.Status() == "running" && runtime.Generation() > 1
+	}, time.Second, 10*time.Millisecond)
+	require.ErrorContains(t, runtime.Err(), "app-server stopped")
+
+	cancel()
+	require.Eventually(t, func() bool {
+		select {
+		case <-runtime.Done():
+			return true
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
 }

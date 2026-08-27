@@ -47,20 +47,66 @@ func (c *HostDesktopController) AttachRuntime(ctx context.Context,
 		return errors.New("宿主 Desktop Controller 已绑定 Runtime")
 	}
 	workspace.hostRuntime = runtime
-	workspace.client = runtime.Client()
-	workspace.generation = runtime.Generation()
 	workspace.mu.Unlock()
+	if !c.bindRuntimeGeneration(ctx) {
+		return errors.New("宿主 Codex Runtime 尚未就绪")
+	}
 
 	registry := c.processor.workspaces
 	registry.mu.Lock()
 	registry.entries[workspace.runtime.WorkspaceID] = workspace
 	registry.mu.Unlock()
-	workspace.metadataEvents = workspace.client.Subscribe(codex.ThreadFilter{})
-	go workspace.observeMetadata(ctx)
-	go workspace.reconcileThreadLifecycles(ctx)
+	go c.monitorRuntimeGenerations(ctx)
 	go c.reconcileControlState(ctx)
 	go c.runSessionTitleLoop(ctx)
 	return nil
+}
+
+func (c *HostDesktopController) bindRuntimeGeneration(ctx context.Context) bool {
+	workspace := c.workspace
+	runtime := workspace.hostRuntime
+	client, generation := runtime.ClientSnapshot()
+	if client == nil || generation == 0 {
+		return false
+	}
+	workspace.mu.Lock()
+	if workspace.client == client && workspace.generation == generation {
+		workspace.mu.Unlock()
+		return true
+	}
+	previous := workspace.metadataEvents
+	subscription := client.Subscribe(codex.ThreadFilter{})
+	workspace.client = client
+	workspace.generation = generation
+	workspace.metadataEvents = subscription
+	workspace.mu.Unlock()
+	if previous != nil {
+		previous.Close()
+	}
+	go workspace.observeMetadata(ctx, subscription)
+	go workspace.reconcileThreadLifecycles(ctx, client)
+	return true
+}
+
+func (c *HostDesktopController) monitorRuntimeGenerations(ctx context.Context) {
+	changes := c.workspace.hostRuntime.GenerationChanges()
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			c.bindRuntimeGeneration(ctx)
+		case _, ok := <-changes:
+			if !ok {
+				return
+			}
+			if !c.bindRuntimeGeneration(ctx) && ctx.Err() == nil {
+				c.processor.logger.Warn("Codex App Server 恢复后重新绑定 Desktop Controller 失败")
+			}
+		}
+	}
 }
 
 func (c *HostDesktopController) reconcileControlState(ctx context.Context) {

@@ -48,9 +48,9 @@ func superviseWorker(ctx context.Context, run func(context.Context) error,
 			return ctx.Err()
 		}
 		if err := runtimeErr(); err != nil {
-			return fmt.Errorf("宿主 Codex App Server 异常退出: %w", err)
+			return fmt.Errorf("宿主 Runtime Manager 异常退出: %w", err)
 		}
-		return fmt.Errorf("宿主 Codex App Server 异常退出")
+		return fmt.Errorf("宿主 Runtime Manager 异常退出")
 	case <-ctx.Done():
 		cancel()
 		<-runnerDone

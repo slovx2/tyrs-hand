@@ -24,7 +24,7 @@ func TestInitializeWorkerAcquiresDataLockBeforeRuntime(t *testing.T) {
 	require.Nil(t, cleanup)
 }
 
-func TestSuperviseWorkerStopsWhenAppServerExits(t *testing.T) {
+func TestSuperviseWorkerStopsWhenRuntimeManagerExits(t *testing.T) {
 	runtimeDone := make(chan struct{})
 	runtimeCause := errors.New("app-server stopped")
 	runnerStopped := make(chan struct{})

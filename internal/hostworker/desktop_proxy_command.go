@@ -10,6 +10,10 @@ import (
 var (
 	directDesktopProxyCommand = regexp.MustCompile(
 		`^(exec[[:space:]]+)?codex[[:space:]]+app-server[[:space:]]+proxy[[:space:]]*$`)
+	directDesktopAppServerCommand = regexp.MustCompile(
+		`^(exec[[:space:]]+)?((node[[:space:]]+)?[^[:space:]]*codex)` +
+			`([[:space:]]+-c[[:space:]]+[^[:space:]]+)*[[:space:]]+app-server` +
+			`[[:space:]]+--listen[[:space:]]+unix://[[:space:]]*$`)
 	wrappedDesktopProxyCommand = regexp.MustCompile(
 		`^printf[[:space:]]+'%b'[[:space:]]+'((\\[0-7]{3})+)'[[:space:]]*;` +
 			`[[:space:]]*PATH="\$\{CODEX_INSTALL_DIR:-\$HOME/\.local/bin\}:\$PATH"[[:space:]]*;` +
@@ -17,12 +21,17 @@ var (
 			`(exec[[:space:]]+)?codex[[:space:]]+app-server[[:space:]]+proxy[[:space:]]*$`)
 	anyDesktopProxyCommand = regexp.MustCompile(
 		`codex[[:space:]]+app-server[[:space:]]+proxy([[:space:]]|$)`)
+	anyDesktopAppServerCommand = regexp.MustCompile(
+		`codex([^[:space:]]*[[:space:]]+)+app-server[[:space:]]+--listen[[:space:]]+unix://`)
 	remoteDesktopHandshake = regexp.MustCompile(`((\\[0-7]{3}){8})`)
 )
 
 func parseDesktopProxyCommand(command string) ([]byte, bool, error) {
 	trimmed := strings.TrimSpace(command)
 	if directDesktopProxyCommand.MatchString(trimmed) {
+		return nil, true, nil
+	}
+	if directDesktopAppServerCommand.MatchString(trimmed) {
 		return nil, true, nil
 	}
 	matches := wrappedDesktopProxyCommand.FindStringSubmatch(trimmed)
@@ -38,6 +47,9 @@ func parseDesktopProxyCommand(command string) ([]byte, bool, error) {
 	}
 	if anyDesktopProxyCommand.MatchString(trimmed) {
 		return nil, true, errors.New("codex Desktop SSH 命令格式不受支持")
+	}
+	if anyDesktopAppServerCommand.MatchString(trimmed) {
+		return nil, true, errors.New("codex Desktop SSH App Server 命令格式不受支持")
 	}
 	return nil, false, nil
 }

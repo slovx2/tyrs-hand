@@ -114,8 +114,12 @@ func (c *desktopController) PrepareCall(ctx context.Context,
 		if threadID == "" {
 			return plan, nil
 		}
+		client := c.workspace.currentClient()
+		if client == nil {
+			return plan, errors.New("宿主 Codex Runtime 正在恢复")
+		}
 		state := &desktopCallState{
-			subscription: c.workspace.client.Subscribe(codex.ThreadFilter{ThreadID: threadID}),
+			subscription: client.Subscribe(codex.ThreadFilter{ThreadID: threadID}),
 			toolReady:    make(chan desktopToolRuntime, 1),
 			interactive:  make(chan bool, 1),
 		}
@@ -217,12 +221,14 @@ func (c *desktopController) CompleteCall(_ context.Context, call appserverhub.Ca
 	if rollback, ok := plan.State.(*desktopRollbackCallState); ok {
 		var requestErr *codex.RequestError
 		if cause != nil && errors.As(cause, &requestErr) && requestErr.State == codex.RequestUnknown {
-			runtime := codex.NewRuntime(c.workspace.client)
-			if snapshot, err := runtime.ReadThread(c.processor.workspaces.ctx,
-				rollback.request.ThreadID); err == nil {
-				if _, exists := snapshot.TurnByID(rollback.request.TargetTurnID); !exists {
-					cause = nil
-					result = json.RawMessage(`{}`)
+			if client := c.workspace.currentClient(); client != nil {
+				runtime := codex.NewRuntime(client)
+				if snapshot, err := runtime.ReadThread(c.processor.workspaces.ctx,
+					rollback.request.ThreadID); err == nil {
+					if _, exists := snapshot.TurnByID(rollback.request.TargetTurnID); !exists {
+						cause = nil
+						result = json.RawMessage(`{}`)
+					}
 				}
 			}
 		}
@@ -706,7 +712,14 @@ func (c *desktopController) observeDesktopTurn(call appserverhub.Call,
 	commands := make(chan workerprotocol.RunCommand, 16)
 	heartbeatCtx, cancelHeartbeat := context.WithCancel(ctx)
 	go c.desktopTurnHeartbeat(heartbeatCtx, &task, commands)
-	runtime := codex.NewRuntime(c.workspace.client)
+	client := c.workspace.currentClient()
+	if client == nil {
+		cancelHeartbeat()
+		c.finishDesktopTurn(ctx, &task, reporter, codexcontrol.TurnResult{},
+			errors.New("宿主 Codex Runtime 正在恢复"))
+		return
+	}
+	runtime := codex.NewRuntime(client)
 	resultValue, err := c.processor.waitRemoteTurn(ctx, runtime, state.subscription.Events(),
 		&task, threadID, turnID, commands,
 		c.processor.hostDiscordCommandHandler(&task, toolRuntime, []ports.SkillRef{}, reporter.Report),

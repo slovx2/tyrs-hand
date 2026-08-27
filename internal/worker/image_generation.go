@@ -93,7 +93,11 @@ func (p *Processor) executeImageGenerationTool(ctx context.Context, workspace st
 	}
 	runtime := p.imageRuntime
 	if runtime == nil {
-		runtime = codex.NewRuntime(p.hostRuntime.Client())
+		client := p.hostRuntime.Client()
+		if client == nil {
+			return imageGenerationFailure("图片生成服务正在恢复。")
+		}
+		runtime = codex.NewRuntime(client)
 	}
 	thread, err := runtime.ReadThread(ctx, request.ThreadID)
 	if err != nil || strings.TrimSpace(thread.ModelProvider) == "" {

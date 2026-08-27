@@ -41,6 +41,12 @@ type workspaceRuntime struct {
 	WorkspaceID uuid.UUID
 }
 
+func (e *workspaceCodex) currentClient() *appserverhub.Client {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.client
+}
+
 func newWorkspaceCodexRegistry(ctx context.Context, processor *Processor) *workspaceCodexRegistry {
 	registry := &workspaceCodexRegistry{ctx: ctx, processor: processor,
 		entries: make(map[uuid.UUID]*workspaceCodex)}
@@ -66,10 +72,12 @@ func (r *workspaceCodexRegistry) get(workspaceID uuid.UUID) *workspaceCodex {
 	return r.entries[workspaceID]
 }
 
-func (e *workspaceCodex) observeMetadata(ctx context.Context) {
+func (e *workspaceCodex) observeMetadata(ctx context.Context,
+	subscription *appserverhub.Subscription,
+) {
 	for {
 		select {
-		case event, ok := <-e.metadataEvents.Events():
+		case event, ok := <-subscription.Events():
 			if !ok {
 				return
 			}
@@ -170,7 +178,9 @@ func (e *workspaceCodex) recordThreadMetadata(ctx context.Context,
 	}
 }
 
-func (e *workspaceCodex) reconcileThreadLifecycles(ctx context.Context) {
+func (e *workspaceCodex) reconcileThreadLifecycles(ctx context.Context,
+	client *appserverhub.Client,
+) {
 	for _, archived := range []bool{false, true} {
 		var cursor *string
 		for ctx.Err() == nil {
@@ -182,7 +192,7 @@ func (e *workspaceCodex) reconcileThreadLifecycles(ctx context.Context) {
 			}
 			params := threadLifecycleListParams(archived, cursor)
 			requestCtx, cancel := context.WithTimeout(ctx, e.processor.cfg.ControlTimeout)
-			err := e.client.Call(requestCtx, "thread/list", params, &result)
+			err := client.Call(requestCtx, "thread/list", params, &result)
 			cancel()
 			if err != nil {
 				e.processor.logger.Warn("对账 Codex Thread lifecycle 失败",
