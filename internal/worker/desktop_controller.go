@@ -20,6 +20,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/appserverhub"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
+	"github.com/slovx2/tyrs-hand/internal/hostworker"
 	"github.com/slovx2/tyrs-hand/internal/participantidentity"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
@@ -548,8 +549,13 @@ func hostWorkspacePath(root, relative string) (string, error) {
 	root = filepath.Clean(strings.TrimSpace(root))
 	relative = filepath.Clean(filepath.FromSlash(strings.TrimSpace(relative)))
 	parts := strings.Split(filepath.ToSlash(relative), "/")
-	if !filepath.IsAbs(root) || len(parts) != 2 || parts[0] != "workspaces" ||
-		parts[1] == "" || parts[1] == "." || parts[1] == ".." {
+	if !filepath.IsAbs(root) || (len(parts) != 1 && len(parts) != 2) || parts[0] != "workspaces" {
+		return "", errors.New("宿主 Workspace 相对路径无效")
+	}
+	if len(parts) == 1 {
+		return root, nil
+	}
+	if parts[1] == "" || parts[1] == "." || parts[1] == ".." {
 		return "", errors.New("宿主 Workspace 相对路径无效")
 	}
 	return filepath.Join(root, parts[1]), nil
@@ -681,7 +687,7 @@ func (c *desktopController) observeDesktopTurn(call appserverhub.Call,
 		go c.syncDesktopImages(&taskCopy, imagesCopy)
 	}
 	reporter := newDesktopEventReporter(ctx, c.processor, &task)
-	toolRuntime, runtimeErr := desktopRuntimeForTask(c.workspace.hostRuntime.WorkspaceRoot(),
+	toolRuntime, runtimeErr := desktopRuntimeForTask(c.workspace.hostRuntime.WorkspaceRoot(), c.workspace.hostRuntime.CodexHome(),
 		c.workspace.runtime.WorkspaceID, &task)
 	state.toolReady <- desktopToolRuntime{
 		task: &task, runtime: toolRuntime, report: reporter.Report, err: runtimeErr,
@@ -1029,7 +1035,7 @@ func (c *desktopController) observeDesktopSteer(call appserverhub.Call,
 	}
 }
 
-func desktopRuntimeForTask(workspaceRoot string, workspaceID uuid.UUID,
+func desktopRuntimeForTask(workspaceRoot, codexHome string, workspaceID uuid.UUID,
 	task *workerprotocol.Task,
 ) (hostWorkspaceRuntime, error) {
 	if task == nil || task.Snapshot.Session == nil ||
@@ -1039,6 +1045,24 @@ func desktopRuntimeForTask(workspaceRoot string, workspaceID uuid.UUID,
 	projectContext := task.Snapshot.Session.Project
 	if projectContext.WorkspaceID == uuid.Nil || projectContext.WorkspaceID != workspaceID {
 		return hostWorkspaceRuntime{}, errors.New("desktop turn Workspace 快照与 Worker 绑定不一致")
+	}
+	if projectContext.HostPath != "" {
+		candidate := filepath.Clean(projectContext.HostPath)
+		if !filepath.IsAbs(candidate) {
+			return hostWorkspaceRuntime{}, errors.New("desktop 项目路径必须是绝对路径")
+		}
+		resolved, err := filepath.EvalSymlinks(candidate)
+		if err != nil {
+			return hostWorkspaceRuntime{}, errors.New("desktop 项目目录不存在")
+		}
+		if projectContext.ProjectSource == "codex_registered" && !hostworker.CodexProjectRegistered(codexHome, resolved) {
+			return hostWorkspaceRuntime{}, errors.New("desktop 项目未注册到 Codex")
+		}
+		info, err := os.Stat(resolved)
+		if err != nil || !info.IsDir() {
+			return hostWorkspaceRuntime{}, errors.New("desktop 项目不是目录")
+		}
+		return hostWorkspaceRuntime{Workspace: resolved, ProjectKind: projectContext.WorkspaceKind, RemoteURL: projectContext.CloneURL}, nil
 	}
 	workspace, err := hostWorkspacePath(workspaceRoot, projectContext.WorkspaceRelative)
 	if err != nil {

@@ -2338,6 +2338,9 @@ export interface components {
             id: string;
             name: string;
             relativePath: string;
+            /** @enum {string} */
+            projectSource: "workspace_root" | "workspace_child" | "codex_registered";
+            hostPath?: string;
             desiredRelativePath?: string;
             /** @enum {string} */
             projectKind: "directory" | "git";

@@ -13,6 +13,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/slovx2/tyrs-hand/internal/codexsettings"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
+	"github.com/slovx2/tyrs-hand/internal/hostworker"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"go.uber.org/zap"
@@ -130,6 +131,39 @@ func (p *Processor) processRemoteDiscord(ctx context.Context, task *workerprotoc
 func resolveHostWorkspaceRuntime(workspaceRoot, codexHome string,
 	spec *workerprotocol.WorkspaceProjectContext,
 ) (hostWorkspaceRuntime, error) {
+	if spec == nil {
+		return hostWorkspaceRuntime{}, errors.New("宿主工作区项目不能为空")
+	}
+	if spec.HostPath != "" {
+		candidate := filepath.Clean(spec.HostPath)
+		if !filepath.IsAbs(candidate) {
+			return hostWorkspaceRuntime{}, errors.New("宿主项目路径必须是绝对路径")
+		}
+		root, err := filepath.EvalSymlinks(workspaceRoot)
+		if err != nil {
+			return hostWorkspaceRuntime{}, fmt.Errorf("读取宿主工作区根目录: %w", err)
+		}
+		resolved, err := filepath.EvalSymlinks(candidate)
+		if err != nil {
+			return hostWorkspaceRuntime{}, errors.New("宿主项目目录不存在")
+		}
+		if spec.ProjectSource == "codex_registered" {
+			if !hostworker.CodexProjectRegistered(codexHome, resolved) {
+				return hostWorkspaceRuntime{}, errors.New("宿主项目未注册到 Codex")
+			}
+		} else {
+			relative, relErr := filepath.Rel(root, resolved)
+			if relErr != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(os.PathSeparator)) {
+				return hostWorkspaceRuntime{}, errors.New("宿主工作区不能逃逸固定工作区根目录")
+			}
+		}
+		info, statErr := os.Stat(resolved)
+		if statErr != nil || !info.IsDir() {
+			return hostWorkspaceRuntime{}, errors.New("宿主项目不是目录")
+		}
+		return hostWorkspaceRuntime{Workspace: resolved, CodexHome: codexHome,
+			ProjectKind: spec.WorkspaceKind, RemoteURL: spec.CloneURL}, nil
+	}
 	clean := filepath.Clean(filepath.FromSlash(strings.TrimSpace(spec.WorkspaceRelative)))
 	parts := strings.Split(filepath.ToSlash(clean), "/")
 	if len(parts) != 2 || parts[0] != "workspaces" || parts[1] == "" || parts[1] == "." ||

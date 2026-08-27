@@ -31,6 +31,8 @@ type WorkspaceProject struct {
 	ID                  uuid.UUID        `json:"id"`
 	Name                string           `json:"name"`
 	RelativePath        string           `json:"relativePath"`
+	ProjectSource       string           `json:"projectSource"`
+	HostPath            string           `json:"hostPath,omitempty"`
 	DesiredRelativePath string           `json:"desiredRelativePath,omitempty"`
 	ProjectKind         string           `json:"projectKind"`
 	AvailabilityStatus  string           `json:"availabilityStatus"`
@@ -95,6 +97,7 @@ func (m *Manager) workspaceProjects(ctx context.Context,
 ) ([]WorkspaceProject, error) {
 	rows, err := m.db.QueryContext(ctx, `SELECT project.id, project.name,
 		project.relative_path, COALESCE(project.desired_relative_path,''),
+		COALESCE(project.project_source,'workspace_child'), COALESCE(project.host_path,''),
 		project.project_kind, project.availability_status, COALESCE(project.branch,''),
 		COALESCE(project.head_sha,''), project.dirty, COALESCE(project.remote_url,''),
 		project.last_seen_at, COALESCE(project.scan_error,''),
@@ -118,7 +121,8 @@ func (m *Manager) workspaceProjects(ctx context.Context,
 		var forumID sql.NullString
 		var forum WorkspaceForum
 		if err := rows.Scan(&project.ID, &project.Name, &project.RelativePath,
-			&project.DesiredRelativePath, &project.ProjectKind, &project.AvailabilityStatus,
+			&project.DesiredRelativePath, &project.ProjectSource, &project.HostPath,
+			&project.ProjectKind, &project.AvailabilityStatus,
 			&project.Branch, &project.HeadSHA, &project.Dirty, &project.RemoteURL,
 			&project.LastSeenAt, &project.ScanError, &forumID, &forum.Name,
 			&forum.DiscordID, &forum.BindingStatus); err != nil {

@@ -151,6 +151,8 @@ func (s *Server) clientBootstrap(c *gin.Context) {
 		WorkspaceID        uuid.UUID `json:"workspaceId"`
 		Name               string    `json:"name"`
 		RelativePath       string    `json:"relativePath"`
+		ProjectSource      string    `json:"projectSource"`
+		HostPath           string    `json:"hostPath,omitempty"`
 		Kind               string    `json:"kind"`
 		AvailabilityStatus string    `json:"availabilityStatus"`
 		Branch             *string   `json:"branch"`
@@ -159,7 +161,7 @@ func (s *Server) clientBootstrap(c *gin.Context) {
 	if err == nil {
 		var projectRows *sql.Rows
 		projectQuery := `SELECT project.id,project.workspace_id,project.name,
-			relative_path,project_kind,availability_status,branch,dirty
+			relative_path,COALESCE(project_source,'workspace_child'),host_path,project_kind,availability_status,branch,dirty
 			FROM workspace_projects project`
 		projectArgs := []any{}
 		if session.Role != "admin" {
@@ -178,18 +180,24 @@ func (s *Server) clientBootstrap(c *gin.Context) {
 					WorkspaceID        uuid.UUID `json:"workspaceId"`
 					Name               string    `json:"name"`
 					RelativePath       string    `json:"relativePath"`
+					ProjectSource      string    `json:"projectSource"`
+					HostPath           string    `json:"hostPath,omitempty"`
 					Kind               string    `json:"kind"`
 					AvailabilityStatus string    `json:"availabilityStatus"`
 					Branch             *string   `json:"branch"`
 					Dirty              bool      `json:"dirty"`
 				}
 				var branch sql.NullString
+				var hostPath sql.NullString
 				if err = projectRows.Scan(&item.ID, &item.WorkspaceID, &item.Name,
-					&item.RelativePath, &item.Kind, &item.AvailabilityStatus, &branch,
+					&item.RelativePath, &item.ProjectSource, &hostPath, &item.Kind, &item.AvailabilityStatus, &branch,
 					&item.Dirty); err != nil {
 					break
 				}
 				item.Branch = nullableString(branch)
+				if hostPath.Valid {
+					item.HostPath = hostPath.String
+				}
 				projects = append(projects, item)
 			}
 		}

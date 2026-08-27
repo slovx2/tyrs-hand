@@ -379,12 +379,13 @@ func (s *Server) queueFirstDesktopInput(ctx context.Context, tx *sql.Tx, control
 ) (bool, error) {
 	var requestID uuid.UUID
 	var status, desiredName, desiredSource string
+	var projectSource, hostPath string
 	var firstProjectionKey, firstInputText, firstTitle, firstActorID, firstActorName string
 	var target desktopThreadTarget
 	var forumID sql.NullString
 	err := tx.QueryRowContext(ctx, `SELECT r.id, r.status, f.id::text,
 		COALESCE(resource.discord_id,''),
-		project.name, project.relative_path,
+		project.name, project.relative_path, COALESCE(project.project_source,'workspace_child'), COALESCE(project.host_path,''),
 		COALESCE(workspace.owner_discord_user_id, ''),
 		COALESCE(NULLIF(member.display_name, ''), member.username, ''),
 		COALESCE(control.desired_thread_name,''), COALESCE(control.desired_thread_name_source,''),
@@ -401,10 +402,15 @@ func (s *Server) queueFirstDesktopInput(ctx context.Context, tx *sql.Tx, control
 			AND member.discord_user_id = workspace.owner_discord_user_id
 		WHERE r.control_id = $1 FOR UPDATE OF r`, controlID).Scan(&requestID, &status,
 		&forumID, &target.forumDiscord, &target.repository, &target.workspacePath,
+		&projectSource, &hostPath,
 		&target.actorID, &target.actorName, &desiredName, &desiredSource, &firstProjectionKey,
 		&firstInputText, &firstTitle, &firstActorID, &firstActorName)
 	if err != nil {
 		return false, err
+	}
+	_ = projectSource
+	if hostPath != "" {
+		target.workspacePath = hostPath
 	}
 	target.forumID = parseOptionalUUID(forumID)
 	if status == "post_pending" || status == "completed" {

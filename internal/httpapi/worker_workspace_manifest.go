@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -49,8 +50,18 @@ func (s *Server) workerWorkspaceProjectSnapshot(c *gin.Context) {
 		project := &request.Projects[index]
 		cleanPath := path.Clean(strings.TrimSpace(project.RelativePath))
 		name := strings.TrimSpace(project.Name)
-		if cleanPath != path.Join("workspaces", name) || name == "" ||
+		if project.ProjectSource == "" {
+			project.ProjectSource = "workspace_child"
+			project.Available = true
+		}
+		validSource := project.ProjectSource == "workspace_root" || project.ProjectSource == "workspace_child" || project.ProjectSource == "codex_registered"
+		validPath := (project.ProjectSource == "workspace_root" && cleanPath == "workspaces" && name == "Workspace") ||
+			(project.ProjectSource == "workspace_child" && cleanPath == path.Join("workspaces", name)) ||
+			(project.ProjectSource == "codex_registered" && strings.HasPrefix(cleanPath, "codex/") && len(strings.TrimPrefix(cleanPath, "codex/")) == 64)
+		if !validSource || !validPath || name == "" ||
 			strings.HasPrefix(name, ".") || strings.Contains(name, "/") ||
+			(project.HostPath != "" && !filepath.IsAbs(project.HostPath)) ||
+			(project.ProjectSource == "codex_registered" && project.HostPath == "") ||
 			(project.ProjectKind != "directory" && project.ProjectKind != "git") ||
 			(project.ProjectKind == "directory" &&
 				(project.Branch != "" || project.HeadSHA != "" || project.RemoteURL != "")) {
@@ -82,17 +93,19 @@ func (s *Server) workerWorkspaceProjectSnapshot(c *gin.Context) {
 	for _, project := range request.Projects {
 		if _, err := tx.ExecContext(c.Request.Context(), `INSERT INTO workspace_projects
 			(workspace_id,relative_path,name,project_kind,branch,head_sha,dirty,
-				remote_url,availability_status,last_seen_at)
+				remote_url,availability_status,project_source,host_path,scan_error,last_seen_at)
 			VALUES ($1,$2,$3,$4,NULLIF($5,''),NULLIF($6,''),$7,NULLIF($8,''),
-				'available',now())
+				CASE WHEN $9 THEN 'available' ELSE 'missing' END,$10,NULLIF($11,''),NULLIF($12,''),now())
 			ON CONFLICT(workspace_id,relative_path) DO UPDATE SET
 				name=EXCLUDED.name, project_kind=EXCLUDED.project_kind,
 				branch=EXCLUDED.branch, head_sha=EXCLUDED.head_sha,
 				dirty=EXCLUDED.dirty, remote_url=EXCLUDED.remote_url,
-				availability_status='available', scan_error=NULL, last_seen_at=now(),
+				availability_status=EXCLUDED.availability_status, project_source=EXCLUDED.project_source,
+				host_path=EXCLUDED.host_path, scan_error=EXCLUDED.scan_error, last_seen_at=now(),
 				updated_at=now()`,
 			workspaceID, project.RelativePath, project.Name, project.ProjectKind,
-			project.Branch, project.HeadSHA, project.Dirty, project.RemoteURL); err != nil {
+			project.Branch, project.HeadSHA, project.Dirty, project.RemoteURL, project.Available,
+			project.ProjectSource, project.HostPath, project.ScanError); err != nil {
 			problem(c, http.StatusInternalServerError, "写入开发项目快照失败", err)
 			return
 		}

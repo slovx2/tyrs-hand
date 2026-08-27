@@ -1248,6 +1248,13 @@ h2 {
   white-space: nowrap;
 }
 
+.project-source {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+}
+
 .project-git-status > span:not(.project-remote) {
   display: inline-flex;
   max-width: 100%;

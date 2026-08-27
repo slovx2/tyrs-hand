@@ -9,7 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 29
+const Version = 30
 
 type ConfigRPCRequest struct {
 	ID     string          `json:"id"`
@@ -141,13 +141,17 @@ type WorkspaceManifest struct {
 }
 
 type WorkspaceProjectSnapshot struct {
-	Name         string `json:"name"`
-	RelativePath string `json:"relativePath"`
-	ProjectKind  string `json:"projectKind"`
-	Branch       string `json:"branch,omitempty"`
-	HeadSHA      string `json:"headSha,omitempty"`
-	Dirty        bool   `json:"dirty"`
-	RemoteURL    string `json:"remoteUrl,omitempty"`
+	Name          string `json:"name"`
+	RelativePath  string `json:"relativePath"`
+	ProjectSource string `json:"projectSource"`
+	HostPath      string `json:"hostPath,omitempty"`
+	Available     bool   `json:"available"`
+	ScanError     string `json:"scanError,omitempty"`
+	ProjectKind   string `json:"projectKind"`
+	Branch        string `json:"branch,omitempty"`
+	HeadSHA       string `json:"headSha,omitempty"`
+	Dirty         bool   `json:"dirty"`
+	RemoteURL     string `json:"remoteUrl,omitempty"`
 }
 
 type WorkspaceProjectSnapshotRequest struct {
@@ -472,6 +476,8 @@ type WorkspaceProjectContext struct {
 	WorkspaceRelative string    `json:"workspaceRelative"`
 	WorkspaceBranch   string    `json:"workspaceBranch"`
 	WorkspaceKind     string    `json:"workspaceKind"`
+	ProjectSource     string    `json:"projectSource,omitempty"`
+	HostPath          string    `json:"hostPath,omitempty"`
 	ProjectID         uuid.UUID `json:"projectId,omitempty"`
 	Repository        string    `json:"repository"`
 	CloneURL          string    `json:"cloneUrl"`

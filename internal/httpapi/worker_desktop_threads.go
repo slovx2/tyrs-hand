@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -104,6 +105,7 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 	}
 	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT project.id,
 		f.id::text, COALESCE(r.discord_id,''), project.name, project.relative_path,
+		COALESCE(project.project_source,'workspace_child'), COALESCE(project.host_path,''),
 		COALESCE(e.owner_discord_user_id, ''),
 		COALESCE(NULLIF(m.display_name, ''), m.username, '')
 		FROM worker_workspaces e
@@ -124,13 +126,13 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 	for rows.Next() {
 		var target desktopThreadTarget
 		var forumID sql.NullString
-		var relative string
+		var relative, source, hostPath string
 		if err := rows.Scan(&target.projectID, &forumID, &target.forumDiscord,
-			&target.repository, &relative, &target.actorID, &target.actorName); err != nil {
+			&target.repository, &relative, &source, &hostPath, &target.actorID, &target.actorName); err != nil {
 			return nil, desktopThreadTarget{}, err
 		}
 		target.forumID = parseOptionalUUID(forumID)
-		target.workspacePath, err = desktopWorkspacePath(workspaceRoot, relative)
+		target.workspacePath, err = desktopWorkspacePath(workspaceRoot, relative, source, hostPath)
 		if err != nil {
 			return nil, desktopThreadTarget{}, err
 		}
@@ -188,9 +190,25 @@ func (s *Server) desktopThreadTarget(c *gin.Context,
 	return normalized, target, err
 }
 
-func desktopWorkspacePath(root, relative string) (string, error) {
+func desktopWorkspacePath(root, relative string, extras ...string) (string, error) {
+	source, hostPath := "workspace_child", ""
+	if len(extras) > 0 {
+		source = extras[0]
+	}
+	if len(extras) > 1 {
+		hostPath = extras[1]
+	}
+	if hostPath != "" {
+		if !filepath.IsAbs(hostPath) {
+			return "", errors.New("workspace 项目主机路径必须是绝对路径")
+		}
+		return filepath.Clean(hostPath), nil
+	}
 	clean := path.Clean(strings.TrimSpace(relative))
 	parts := strings.Split(clean, "/")
+	if source == "workspace_root" && clean == "workspaces" {
+		return filepath.Clean(root), nil
+	}
 	if len(parts) != 2 || parts[0] != "workspaces" || parts[1] == "" ||
 		parts[1] == "." || parts[1] == ".." {
 		return "", errors.New("workspace 项目路径必须是 workspaces/<name>")

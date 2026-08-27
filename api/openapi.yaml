@@ -2040,11 +2040,13 @@ components:
           items: { $ref: "#/components/schemas/WorkspaceForumCollaborator" }
     WorkspaceProject:
       type: object
-      required: [id, name, relativePath, projectKind, availabilityStatus, dirty, lastSeenAt, forums]
+      required: [id, name, relativePath, projectSource, projectKind, availabilityStatus, dirty, lastSeenAt, forums]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         relativePath: { type: string }
+        projectSource: { type: string, enum: [workspace_root, workspace_child, codex_registered] }
+        hostPath: { type: string }
         desiredRelativePath: { type: string }
         projectKind: { type: string, enum: [directory, git] }
         availabilityStatus: { type: string, enum: [available, missing] }

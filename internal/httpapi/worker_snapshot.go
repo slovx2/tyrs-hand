@@ -122,7 +122,7 @@ func (s *Server) loadWorkspaceWorkerSnapshot(ctx context.Context,
 	var forumID, conversationID sql.NullString
 	projectContext := result.Project
 	err := s.db.QueryRowContext(ctx, `SELECT environment.id, forum.id::text,
-		conversation.id::text, project.relative_path, COALESCE(project.branch,''),
+		conversation.id::text, project.relative_path, COALESCE(project.project_source,'workspace_child'), COALESCE(project.host_path,''), COALESCE(project.branch,''),
 		project.project_kind, project.id, project.name, COALESCE(project.remote_url,''),
 		COALESCE(project.branch,'')
 		FROM workspace_sessions session
@@ -133,7 +133,7 @@ func (s *Server) loadWorkspaceWorkerSnapshot(ctx context.Context,
 		LEFT JOIN discord_forums forum ON forum.id=conversation.forum_id
 		WHERE session.id=$1 AND project.availability_status='available'`, claimed.SessionID).Scan(
 		&projectContext.WorkspaceID, &forumID, &conversationID,
-		&projectContext.WorkspaceRelative,
+		&projectContext.WorkspaceRelative, &projectContext.ProjectSource, &projectContext.HostPath,
 		&projectContext.WorkspaceBranch, &projectContext.WorkspaceKind, &projectContext.ProjectID,
 		&projectContext.Repository, &projectContext.CloneURL, &projectContext.DefaultRef)
 	if err != nil {
@@ -222,7 +222,7 @@ func (s *Server) loadDiscordWorkerSnapshot(ctx context.Context,
 	var projectID sql.NullString
 	projectContext.ConversationID = claimed.DiscordConversationID
 	err = s.db.QueryRowContext(ctx, `SELECT e.id, f.id, project.relative_path,
-		COALESCE(project.branch,''), project.project_kind,
+		COALESCE(project.project_source,'workspace_child'), COALESCE(project.host_path,''), COALESCE(project.branch,''), project.project_kind,
 		project.id::text, project.name, COALESCE(project.remote_url,''), ''
 		FROM discord_forums f
 		JOIN worker_workspaces e ON e.id = f.workspace_id
@@ -230,7 +230,7 @@ func (s *Server) loadDiscordWorkerSnapshot(ctx context.Context,
 		WHERE f.id = $1 AND f.binding_status = 'active'
 			AND project.availability_status = 'available'`, result.ForumID).
 		Scan(&projectContext.WorkspaceID, &projectContext.ForumID,
-			&projectContext.WorkspaceRelative,
+			&projectContext.WorkspaceRelative, &projectContext.ProjectSource, &projectContext.HostPath,
 			&projectContext.WorkspaceBranch, &projectContext.WorkspaceKind, &projectID,
 			&projectContext.Repository, &projectContext.CloneURL,
 			&projectContext.DefaultRef)
@@ -291,7 +291,7 @@ func (s *Server) loadDesktopDiscordWorkerSnapshot(ctx context.Context,
 	var projectID sql.NullString
 	projectContext.ConversationID, _ = uuid.Parse(conversationID)
 	err = s.db.QueryRowContext(ctx, `SELECT e.id, f.id, project.relative_path,
-		COALESCE(project.branch,''), project.project_kind,
+		COALESCE(project.project_source,'workspace_child'), COALESCE(project.host_path,''), COALESCE(project.branch,''), project.project_kind,
 		project.id::text, project.name, COALESCE(project.remote_url,''), ''
 		FROM discord_forums f
 		JOIN worker_workspaces e ON e.id = f.workspace_id
@@ -299,7 +299,7 @@ func (s *Server) loadDesktopDiscordWorkerSnapshot(ctx context.Context,
 		WHERE f.id = $1 AND f.binding_status = 'active'
 			AND project.availability_status = 'available'`, result.ForumID).
 		Scan(&projectContext.WorkspaceID, &projectContext.ForumID,
-			&projectContext.WorkspaceRelative,
+			&projectContext.WorkspaceRelative, &projectContext.ProjectSource, &projectContext.HostPath,
 			&projectContext.WorkspaceBranch, &projectContext.WorkspaceKind, &projectID,
 			&projectContext.Repository, &projectContext.CloneURL,
 			&projectContext.DefaultRef)

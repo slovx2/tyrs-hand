@@ -38,7 +38,16 @@ export function WorkspaceProjectRow({
             </strong>
           </div>
           <span className="project-path" title={project.relativePath}>
-            {project.relativePath}
+            {project.projectSource === 'codex_registered' && project.hostPath
+              ? project.hostPath
+              : project.relativePath}
+          </span>
+          <span className="project-source">
+            {project.projectSource === 'workspace_root'
+              ? 'Workspace 根目录'
+              : project.projectSource === 'codex_registered'
+                ? 'Codex 已注册'
+                : 'Workspace 子目录'}
           </span>
         </div>
         <div data-label="类型">
@@ -81,7 +90,7 @@ export function WorkspaceProjectRow({
             title={activeForum?.name}
           >
             <MessageSquare aria-hidden size={14} />
-            {activeForum ? activeForum.name : '未配对'}
+            {missing ? '项目不可用' : activeForum ? activeForum.name : '未配对'}
           </span>
         </div>
         <div className="project-actions">
@@ -91,6 +100,7 @@ export function WorkspaceProjectRow({
             title="管理 Forum 配对"
             aria-label={`${project.name} 管理 Forum 配对`}
             aria-expanded={expanded}
+            disabled={missing && project.projectSource === 'codex_registered'}
             onClick={() => setExpanded((value) => !value)}
           >
             <ChevronDown
