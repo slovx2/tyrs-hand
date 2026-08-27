@@ -5,13 +5,19 @@ import type { Workspace, DiscordMember } from './workspaceTypes'
 export function WorkspaceSection({
   workspace,
   members,
+  showCodexProjects,
 }: {
   workspace: Workspace
   members: DiscordMember[]
+  showCodexProjects: boolean
 }) {
   const scanTime = workspace.projectsScannedAt
     ? new Date(workspace.projectsScannedAt).toLocaleString('zh-CN')
     : '尚未扫描'
+  const projects = workspace.projects.filter(
+    (project) =>
+      showCodexProjects || project.projectSource !== 'codex_registered',
+  )
 
   return (
     <article className="workspace-card">
@@ -48,7 +54,7 @@ export function WorkspaceSection({
           <span>Forum</span>
           <span />
         </div>
-        {workspace.projects.map((project) => (
+        {projects.map((project) => (
           <WorkspaceProjectRow
             key={project.id}
             project={project}
@@ -56,11 +62,13 @@ export function WorkspaceSection({
             members={members}
           />
         ))}
-        {workspace.projects.length === 0 && (
+        {projects.length === 0 && (
           <div className="project-empty">
             <p className="font-semibold">未发现项目</p>
             <p className="muted mt-1 text-sm">
-              在 Worker 配置的 Workspace 根目录中创建一级目录后会自动出现。
+              {showCodexProjects
+                ? '在 Worker 配置的 Workspace 根目录中创建一级目录后会自动出现。'
+                : '当前仅显示 Workspace 项目；打开“显示 Codex 项目”可查看已注册项目。'}
             </p>
           </div>
         )}

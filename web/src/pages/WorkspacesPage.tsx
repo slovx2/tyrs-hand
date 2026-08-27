@@ -11,6 +11,7 @@ export function WorkspaceManagement({ workers }: { workers: Worker[] }) {
   const queryClient = useQueryClient()
   const showToast = useUI((state) => state.showToast)
   const [createOpen, setCreateOpen] = useState(false)
+  const [showCodexProjects, setShowCodexProjects] = useState(false)
   const workspaces = useQuery({
     queryKey: ['workspaces'],
     queryFn: () => api<WorkspaceList>('/workspaces'),
@@ -62,6 +63,14 @@ export function WorkspaceManagement({ workers }: { workers: Worker[] }) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <label className="button-secondary inline-flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={showCodexProjects}
+              onChange={(event) => setShowCodexProjects(event.target.checked)}
+            />
+            显示 Codex 项目
+          </label>
           <button
             type="button"
             className="button-secondary icon-label-button"
@@ -94,10 +103,15 @@ export function WorkspaceManagement({ workers }: { workers: Worker[] }) {
           value={abnormalCount}
           warning={abnormalCount > 0}
         />
-        <SummaryMetric
-          label="项目"
-          value={items.reduce(
-            (total, environment) => total + environment.projects.length,
+          <SummaryMetric
+            label="项目"
+            value={items.reduce(
+            (total, environment) =>
+              total +
+              environment.projects.filter(
+                (project) =>
+                  showCodexProjects || project.projectSource !== 'codex_registered',
+              ).length,
             0,
           )}
         />
@@ -114,6 +128,7 @@ export function WorkspaceManagement({ workers }: { workers: Worker[] }) {
             key={workspace.id}
             workspace={workspace}
             members={members.data ?? []}
+            showCodexProjects={showCodexProjects}
           />
         ))}
         {!workspaces.isLoading && items.length === 0 && (
