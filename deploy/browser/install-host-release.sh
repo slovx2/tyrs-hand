@@ -22,6 +22,11 @@ fi
 release_dir="/opt/tyrs-hand/browser/releases/$release"
 desktop_uid=$(id -u "$desktop_user")
 desktop_gid=$(id -g "$desktop_user")
+desktop_home=$(getent passwd "$desktop_user" | cut -d: -f6)
+if [[ -z $desktop_home || ! -d $desktop_home ]]; then
+  echo "无法确定桌面用户 Home: $desktop_user" >&2
+  exit 1
+fi
 
 "$script_dir/prepare-host.sh" "$desktop_user"
 download_dir=$(mktemp -d "/opt/tyrs-hand/browser/releases/.${release}.XXXXXX")
@@ -67,7 +72,7 @@ $node_bin "$script_dir/generate-policy.mjs" "$lock_path" \
   /etc/opt/chrome/policies/managed/tyrs-browser.json
 chmod 0644 /etc/opt/chrome/policies/managed/tyrs-browser.json
 
-user_service_dir="/home/$desktop_user/.config/systemd/user"
+user_service_dir="$desktop_home/.config/systemd/user"
 install -d -o "$desktop_uid" -g "$desktop_gid" -m 0755 "$user_service_dir"
 install -o "$desktop_uid" -g "$desktop_gid" -m 0644 \
   "$script_dir/tyrs-browser-bridge.service" "$user_service_dir/tyrs-browser-bridge.service"
