@@ -28,12 +28,10 @@ type WorkerApp struct {
 }
 
 func (a *WorkerApp) Run(ctx context.Context) error {
-	return superviseWorker(ctx, a.Runner.Run, a.Runtime.Done, a.Runtime.Err)
+	return superviseWorker(ctx, a.Runner.Run)
 }
 
-func superviseWorker(ctx context.Context, run func(context.Context) error,
-	runtimeDone func() <-chan struct{}, runtimeErr func() error,
-) error {
+func superviseWorker(ctx context.Context, run func(context.Context) error) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	runnerDone := make(chan error, 1)
@@ -41,16 +39,6 @@ func superviseWorker(ctx context.Context, run func(context.Context) error,
 	select {
 	case err := <-runnerDone:
 		return err
-	case <-runtimeDone():
-		cancel()
-		<-runnerDone
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if err := runtimeErr(); err != nil {
-			return fmt.Errorf("宿主 Runtime Manager 异常退出: %w", err)
-		}
-		return fmt.Errorf("宿主 Runtime Manager 异常退出")
 	case <-ctx.Done():
 		cancel()
 		<-runnerDone

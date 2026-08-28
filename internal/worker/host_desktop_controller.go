@@ -48,34 +48,30 @@ func (c *HostDesktopController) AttachRuntime(ctx context.Context,
 	}
 	workspace.hostRuntime = runtime
 	workspace.mu.Unlock()
-	if !c.bindRuntimeGeneration(ctx) {
-		return errors.New("宿主 Codex Runtime 尚未就绪")
+	if err := c.RebindRuntime(ctx, runtime.Client(), runtime.Generation()); err != nil {
+		return err
 	}
 
 	registry := c.processor.workspaces
 	registry.mu.Lock()
 	registry.entries[workspace.runtime.WorkspaceID] = workspace
 	registry.mu.Unlock()
-	go c.monitorRuntimeGenerations(ctx)
 	go c.reconcileControlState(ctx)
 	go c.runSessionTitleLoop(ctx)
 	return nil
 }
 
-func (c *HostDesktopController) bindRuntimeGeneration(ctx context.Context) bool {
-	workspace := c.workspace
-	runtime := workspace.hostRuntime
-	client, generation := runtime.ClientSnapshot()
-	if client == nil || generation == 0 {
-		return false
+// RebindRuntime 仅由 Desktop 转接失败后的按需恢复调用。
+func (c *HostDesktopController) RebindRuntime(_ context.Context,
+	client *appserverhub.Client, generation int64,
+) error {
+	if c == nil || c.workspace == nil || client == nil || generation == 0 {
+		return errors.New("宿主 Codex Runtime Client 不可用")
 	}
-	workspace.mu.Lock()
-	if workspace.client == client && workspace.generation == generation {
-		workspace.mu.Unlock()
-		return true
-	}
-	previous := workspace.metadataEvents
 	subscription := client.Subscribe(codex.ThreadFilter{})
+	workspace := c.workspace
+	workspace.mu.Lock()
+	previous := workspace.metadataEvents
 	workspace.client = client
 	workspace.generation = generation
 	workspace.metadataEvents = subscription
@@ -83,30 +79,10 @@ func (c *HostDesktopController) bindRuntimeGeneration(ctx context.Context) bool 
 	if previous != nil {
 		previous.Close()
 	}
-	go workspace.observeMetadata(ctx, subscription)
-	go workspace.reconcileThreadLifecycles(ctx, client)
-	return true
-}
-
-func (c *HostDesktopController) monitorRuntimeGenerations(ctx context.Context) {
-	changes := c.workspace.hostRuntime.GenerationChanges()
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			c.bindRuntimeGeneration(ctx)
-		case _, ok := <-changes:
-			if !ok {
-				return
-			}
-			if !c.bindRuntimeGeneration(ctx) && ctx.Err() == nil {
-				c.processor.logger.Warn("Codex App Server 恢复后重新绑定 Desktop Controller 失败")
-			}
-		}
-	}
+	lifetime := c.processor.workspaces.ctx
+	go workspace.observeMetadata(lifetime, subscription)
+	go workspace.reconcileThreadLifecycles(lifetime, client)
+	return nil
 }
 
 func (c *HostDesktopController) reconcileControlState(ctx context.Context) {
@@ -170,3 +146,4 @@ func (c *HostDesktopController) syncHostEnvironment(ctx context.Context) error {
 var _ appserverhub.Controller = (*HostDesktopController)(nil)
 var _ appserverhub.ArchiveGate = (*HostDesktopController)(nil)
 var _ appserverhub.EphemeralThreadConfigurator = (*HostDesktopController)(nil)
+var _ hostworker.RuntimeRebinder = (*HostDesktopController)(nil)

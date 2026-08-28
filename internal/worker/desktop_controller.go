@@ -151,7 +151,7 @@ func (c *desktopController) PrepareCall(ctx context.Context,
 						return nil, runtime.err
 					}
 					return c.processor.handleRemoteInteractive(ctx, runtime.task,
-						c.workspace.generation, request)
+						c.workspace.currentGeneration(), request)
 				case <-ctx.Done():
 					return nil, ctx.Err()
 				case <-time.After(10 * time.Second):
@@ -714,7 +714,6 @@ func (c *desktopController) observeDesktopTurn(call appserverhub.Call,
 	go c.desktopTurnHeartbeat(heartbeatCtx, &task, commands)
 	client := c.workspace.currentClient()
 	if client == nil {
-		cancelHeartbeat()
 		c.finishDesktopTurn(ctx, &task, reporter, codexcontrol.TurnResult{},
 			errors.New("宿主 Codex Runtime 正在恢复"))
 		return

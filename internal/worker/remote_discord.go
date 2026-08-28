@@ -51,9 +51,6 @@ func (p *Processor) processRemoteDiscord(ctx context.Context, task *workerprotoc
 	}
 	runtimeConfig := prepareCodexRuntime("", p.cfg, task.Claimed.ID.String())
 	client := p.hostRuntime.Client()
-	if client == nil {
-		return workerprotocol.CompleteRequest{}, errors.New("宿主 Codex Runtime 正在恢复")
-	}
 	codexRuntime := codex.NewRuntime(client)
 	settings := task.Snapshot.Runtime
 	developerInstructions := workspaceDeveloperInstructions(task,

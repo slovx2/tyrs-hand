@@ -47,6 +47,12 @@ func (e *workspaceCodex) currentClient() *appserverhub.Client {
 	return e.client
 }
 
+func (e *workspaceCodex) currentGeneration() int64 {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.generation
+}
+
 func newWorkspaceCodexRegistry(ctx context.Context, processor *Processor) *workspaceCodexRegistry {
 	registry := &workspaceCodexRegistry{ctx: ctx, processor: processor,
 		entries: make(map[uuid.UUID]*workspaceCodex)}
@@ -162,7 +168,7 @@ func (e *workspaceCodex) recordThreadMetadata(ctx context.Context,
 		requestCtx, cancel := context.WithTimeout(ctx, e.processor.cfg.ControlTimeout)
 		err := e.processor.client.RecordThreadMetadata(requestCtx,
 			workerprotocol.ThreadMetadataRequest{
-				WorkspaceID: e.runtime.WorkspaceID, Generation: e.generation,
+				WorkspaceID: e.runtime.WorkspaceID, Generation: e.currentGeneration(),
 				Events: []workerprotocol.ThreadMetadataEvent{event},
 			})
 		cancel()

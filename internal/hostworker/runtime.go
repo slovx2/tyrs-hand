@@ -41,29 +41,29 @@ type RuntimeOptions struct {
 type Runtime struct {
 	options      RuntimeOptions
 	serviceProxy *serviceProxy
-	ctx          context.Context
-	cancel       context.CancelFunc
-	start        func() (*runtimeGeneration, error)
+	restartMu    sync.Mutex
+	start        func(context.Context) (*appServerGeneration, error)
 
 	mu                  sync.Mutex
 	closed              bool
-	current             *runtimeGeneration
-	generation          int64
-	status              string
-	done                chan struct{}
-	waitErr             error
-	generationChanged   chan int64
+	current             *appServerGeneration
 	nextBinding         atomic.Uint64
 	toolHandlers        map[string]runtimeToolBinding
 	interactiveHandlers map[string]runtimeInteractiveBinding
 }
 
-type runtimeGeneration struct {
-	command *exec.Cmd
-	hub     *appserverhub.Hub
-	client  *appserverhub.Client
-	done    chan struct{}
-	waitErr error
+type appServerGeneration struct {
+	command    *exec.Cmd
+	hub        *appserverhub.Hub
+	client     *appserverhub.Client
+	done       chan struct{}
+	waitErr    error
+	generation int64
+}
+
+// RuntimeRebinder 只在失败后的按需恢复成功时更新 Worker 内部 Client。
+type RuntimeRebinder interface {
+	RebindRuntime(context.Context, *appserverhub.Client, int64) error
 }
 
 type runtimeToolBinding struct {
@@ -99,78 +99,81 @@ func StartRuntime(ctx context.Context, options RuntimeOptions) (*Runtime, error)
 	if err != nil {
 		return nil, fmt.Errorf("启动浏览器服务代理: %w", err)
 	}
-	runtimeCtx, runtimeCancel := context.WithCancel(ctx)
-	runtime := &Runtime{options: options, serviceProxy: serviceProxy, ctx: runtimeCtx,
-		cancel: runtimeCancel, done: make(chan struct{}), status: "starting",
-		generationChanged:   make(chan int64, 1),
+	runtime := &Runtime{options: options, serviceProxy: serviceProxy,
 		toolHandlers:        make(map[string]runtimeToolBinding),
 		interactiveHandlers: make(map[string]runtimeInteractiveBinding)}
-	runtime.start = runtime.launchGeneration
-	generation, err := runtime.start()
+	runtime.start = runtime.startGeneration
+	generation, err := runtime.start(ctx)
 	if err != nil {
-		runtimeCancel()
 		serviceProxy.close()
 		return nil, err
 	}
-	runtime.activate(generation)
-	go runtime.supervise(generation)
+	runtime.current = generation
 	return runtime, nil
 }
 
-func (r *Runtime) launchGeneration() (*runtimeGeneration, error) {
-	socketPath := filepath.Join(r.options.StateDir, "app-server.sock")
+func (r *Runtime) startGeneration(ctx context.Context) (*appServerGeneration, error) {
+	options := r.options
+	socketPath := filepath.Join(options.StateDir, "app-server.sock")
 	_ = os.Remove(socketPath)
-	command := exec.Command(r.options.CodexBin,
+	command := exec.Command(options.CodexBin,
 		codex.HomeAppServerArguments("unix://"+socketPath)...)
-	command.Dir = r.options.WorkspaceRoot
-	values := map[string]string{"CODEX_HOME": r.options.CodexHome, "HOME": r.options.Home}
-	envFile := r.options.EnvFile
+	command.Dir = options.WorkspaceRoot
+	environment := appServerEnvironment(os.Environ())
+	values := map[string]string{
+		"CODEX_HOME": options.CodexHome,
+		"HOME":       options.Home,
+	}
+	envFile := options.EnvFile
 	if envFile == "" {
-		envFile = filepath.Join(r.options.StateDir, ".env")
+		envFile = filepath.Join(options.StateDir, ".env")
 	}
-	secretValues, err := loadWorkerGlobalEnv(envFile)
-	if err != nil {
+	if secretValues, err := loadWorkerGlobalEnv(envFile); err != nil {
 		return nil, fmt.Errorf("读取 Worker Provider 密钥: %w", err)
+	} else {
+		for name, value := range secretValues {
+			values[name] = value
+		}
 	}
-	for name, value := range secretValues {
-		values[name] = value
+	if options.SSHAuthSock != "" {
+		values["SSH_AUTH_SOCK"] = options.SSHAuthSock
 	}
-	if r.options.SSHAuthSock != "" {
-		values["SSH_AUTH_SOCK"] = r.options.SSHAuthSock
+	if options.BrowserWorkerToken != "" {
+		values[codex.BrowserMCPWorkerTokenEnvironment] = options.BrowserWorkerToken
 	}
-	if r.options.BrowserWorkerToken != "" {
-		values[codex.BrowserMCPWorkerTokenEnvironment] = r.options.BrowserWorkerToken
+	if options.BrowserDesktopToken != "" {
+		values[codex.BrowserMCPDesktopTokenEnvironment] = options.BrowserDesktopToken
 	}
-	if r.options.BrowserDesktopToken != "" {
-		values[codex.BrowserMCPDesktopTokenEnvironment] = r.options.BrowserDesktopToken
-	}
-	command.Env = replaceEnvironment(appServerEnvironment(os.Environ()), values)
-	command.Stdout, command.Stderr = r.options.CodexStdout, r.options.CodexStderr
+	command.Env = replaceEnvironment(environment, values)
+	command.Stdout = options.CodexStdout
 	if command.Stdout == nil {
 		command.Stdout = os.Stdout
 	}
+	command.Stderr = options.CodexStderr
 	if command.Stderr == nil {
 		command.Stderr = os.Stderr
 	}
 	if err := command.Start(); err != nil {
 		return nil, fmt.Errorf("启动宿主 Codex App Server: %w", err)
 	}
-	generation := &runtimeGeneration{command: command, done: make(chan struct{})}
+	generation := &appServerGeneration{command: command, done: make(chan struct{}),
+		generation: time.Now().UnixNano()}
 	go func() {
 		generation.waitErr = command.Wait()
 		close(generation.done)
 	}()
-	if err := waitSocket(r.ctx, socketPath, generation.done, 15*time.Second); err != nil {
+	if err := waitSocket(ctx, socketPath, generation.done, 15*time.Second); err != nil {
 		_ = command.Process.Kill()
 		<-generation.done
 		return nil, err
 	}
-	controller := r.options.Controller
+	controller := options.Controller
 	if controller == nil {
 		controller = appserverhub.PassThroughController{}
 	}
-	hub, err := appserverhub.Start(r.ctx, appserverhub.Options{
-		UpstreamSocketPath: socketPath, Controller: controller,
+	hub, err := appserverhub.Start(ctx, appserverhub.Options{
+		UpstreamSocketPath: socketPath,
+		Controller:         controller,
 	})
 	if err != nil {
 		_ = command.Process.Kill()
@@ -192,116 +195,12 @@ func (r *Runtime) launchGeneration() (*runtimeGeneration, error) {
 }
 
 func (r *Runtime) Client() *appserverhub.Client {
-	client, _ := r.ClientSnapshot()
-	return client
-}
-
-// ClientSnapshot 在同一把锁下返回当前可用的 Client 和世代，避免
-// App Server 恢复切换时将旧 Client 误绑定到新世代。
-func (r *Runtime) ClientSnapshot() (*appserverhub.Client, int64) {
-	if r == nil {
-		return nil, 0
-	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.closed || r.status != "running" || r.current == nil {
-		return nil, r.generation
+	if r.closed || r.current == nil || generationStopped(r.current) {
+		return nil
 	}
-	return r.current.client, r.generation
-}
-
-func (r *Runtime) activate(generation *runtimeGeneration) {
-	r.mu.Lock()
-	next := time.Now().UnixNano()
-	if next <= r.generation {
-		next = r.generation + 1
-	}
-	r.current, r.generation, r.status = generation, next, "running"
-	r.mu.Unlock()
-	select {
-	case r.generationChanged <- next:
-	default:
-	}
-}
-
-func (r *Runtime) supervise(generation *runtimeGeneration) {
-	defer func() {
-		if r.serviceProxy != nil {
-			r.serviceProxy.close()
-		}
-		r.mu.Lock()
-		r.closed, r.status = true, "stopped"
-		r.mu.Unlock()
-		close(r.done)
-	}()
-	backoff := time.Second
-	for {
-		select {
-		case <-r.ctx.Done():
-			r.stopGeneration(generation, true)
-			return
-		case <-generation.done:
-			r.stopGeneration(generation, false)
-			r.mu.Lock()
-			r.waitErr, r.status = generation.waitErr, "restarting"
-			r.mu.Unlock()
-			r.options.Logger.Error("宿主 Codex App Server 退出，Worker 保持运行并准备重启",
-				zap.Error(generation.waitErr))
-		}
-
-		for {
-			timer := time.NewTimer(backoff)
-			select {
-			case <-r.ctx.Done():
-				timer.Stop()
-				return
-			case <-timer.C:
-			}
-			next, err := r.start()
-			if err == nil {
-				r.activate(next)
-				r.options.Logger.Info("宿主 Codex App Server 已恢复")
-				generation, backoff = next, time.Second
-				break
-			}
-			r.mu.Lock()
-			r.waitErr = err
-			r.mu.Unlock()
-			r.options.Logger.Warn("重启宿主 Codex App Server 失败", zap.Error(err),
-				zap.Duration("retry_after", backoff))
-			backoff *= 2
-			if backoff > 30*time.Second {
-				backoff = 30 * time.Second
-			}
-		}
-	}
-}
-
-func (r *Runtime) stopGeneration(generation *runtimeGeneration, terminate bool) {
-	if generation == nil {
-		return
-	}
-	if generation.client != nil {
-		_ = generation.client.Close()
-	}
-	if generation.hub != nil {
-		_ = generation.hub.Close()
-	}
-	if !terminate || generation.command == nil || generation.command.Process == nil {
-		return
-	}
-	select {
-	case <-generation.done:
-		return
-	default:
-	}
-	_ = generation.command.Process.Signal(os.Interrupt)
-	select {
-	case <-generation.done:
-	case <-time.After(5 * time.Second):
-		_ = generation.command.Process.Kill()
-		<-generation.done
-	}
+	return r.current.client
 }
 
 // Reload 请求宿主 Codex App Server 重新读取配置。Codex 当前通过 SIGHUP
@@ -310,7 +209,7 @@ func (r *Runtime) Reload() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.closed || r.current == nil || r.current.command == nil ||
-		r.current.command.Process == nil || r.status != "running" {
+		r.current.command.Process == nil || generationStopped(r.current) {
 		return errors.New("宿主 Codex App Server 不可用")
 	}
 	return r.current.command.Process.Signal(syscall.SIGHUP)
@@ -323,7 +222,7 @@ func (r *Runtime) OpenEphemeralClient() (*appserverhub.Client, error) {
 		return nil, errors.New("宿主 Worker Runtime 不可用")
 	}
 	r.mu.Lock()
-	if r.closed || r.current == nil || r.current.hub == nil || r.status != "running" {
+	if r.closed || r.current == nil || r.current.hub == nil || generationStopped(r.current) {
 		r.mu.Unlock()
 		return nil, errors.New("worker AppServerHub 尚未启动")
 	}
@@ -343,29 +242,25 @@ func (r *Runtime) StateDir() string { return r.options.StateDir }
 func (r *Runtime) Generation() int64 {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.generation
+	if r.current == nil {
+		return 0
+	}
+	return r.current.generation
 }
 
-func (r *Runtime) Status() string {
-	if r == nil {
-		return "unavailable"
-	}
+func (r *Runtime) Done() <-chan struct{} {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.status == "" {
-		return "unavailable"
-	}
-	return r.status
+	return r.current.done
 }
-
-func (r *Runtime) GenerationChanges() <-chan int64 { return r.generationChanged }
-
-func (r *Runtime) Done() <-chan struct{} { return r.done }
 
 func (r *Runtime) Err() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.waitErr
+	if r.current == nil {
+		return nil
+	}
+	return r.current.waitErr
 }
 
 func (r *Runtime) BindTool(threadID string, handler codex.ToolHandler) func() {
@@ -429,32 +324,116 @@ func (r *Runtime) handleServerRequest(ctx context.Context, request codex.ServerR
 
 func (r *Runtime) ServeDesktop(connection net.Conn) error {
 	r.mu.Lock()
-	if r.current == nil || r.current.hub == nil || r.status != "running" {
+	if r.closed || r.current == nil || r.current.hub == nil {
 		r.mu.Unlock()
 		return errors.New("worker AppServerHub 尚未启动")
 	}
-	hub := r.current.hub
+	generation := r.current
 	r.mu.Unlock()
-	return hub.ServeConn(connection)
+	err := generation.hub.ServeConn(connection)
+	if !generationStopped(generation) {
+		return err
+	}
+	recoverCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	recoverErr := r.recoverAfterDesktopFailure(recoverCtx, generation)
+	cancel()
+	if recoverErr != nil {
+		return errors.Join(err, recoverErr)
+	}
+	// 当前 SSH WebSocket 已被旧 Hub 关闭，不能在同一字节流上重放握手。
+	// 返回错误让 Desktop 建立下一条 SSH 连接；新的 App Server 已经就绪。
+	return errors.Join(err, errors.New("Codex App Server 已恢复，请重新连接"))
 }
 
-func (r *Runtime) Close() error {
-	if r == nil {
+func (r *Runtime) recoverAfterDesktopFailure(ctx context.Context,
+	failed *appServerGeneration,
+) error {
+	r.restartMu.Lock()
+	defer r.restartMu.Unlock()
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		return errors.New("宿主 Worker Runtime 已关闭")
+	}
+	if r.current != failed || !generationStopped(failed) {
+		r.mu.Unlock()
 		return nil
+	}
+	r.mu.Unlock()
+	r.options.Logger.Warn("Desktop 转接发现 Codex App Server 已退出，开始按需恢复",
+		zap.Error(failed.waitErr))
+	stopAppServerGeneration(failed)
+	next, err := r.start(ctx)
+	if err != nil {
+		return fmt.Errorf("按需恢复 Codex App Server: %w", err)
+	}
+	if rebinder, ok := r.options.Controller.(RuntimeRebinder); ok {
+		if err := rebinder.RebindRuntime(ctx, next.client, next.generation); err != nil {
+			stopAppServerGeneration(next)
+			return fmt.Errorf("重新绑定 Worker Codex Client: %w", err)
+		}
 	}
 	r.mu.Lock()
 	if r.closed {
 		r.mu.Unlock()
-		<-r.done
+		stopAppServerGeneration(next)
+		return errors.New("宿主 Worker Runtime 已关闭")
+	}
+	r.current = next
+	r.mu.Unlock()
+	r.options.Logger.Info("Desktop 触发的 Codex App Server 按需恢复完成")
+	return nil
+}
+
+func (r *Runtime) Close() error {
+	r.restartMu.Lock()
+	defer r.restartMu.Unlock()
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
 		return nil
 	}
-	cancel := r.cancel
+	r.closed = true
+	generation := r.current
 	r.mu.Unlock()
-	if cancel != nil {
-		cancel()
-	}
-	<-r.done
+	stopAppServerGeneration(generation)
+	r.serviceProxy.close()
 	return nil
+}
+
+func generationStopped(generation *appServerGeneration) bool {
+	if generation == nil || generation.done == nil {
+		return true
+	}
+	select {
+	case <-generation.done:
+		return true
+	default:
+		return false
+	}
+}
+
+func stopAppServerGeneration(generation *appServerGeneration) {
+	if generation == nil {
+		return
+	}
+	if generation.client != nil {
+		_ = generation.client.Close()
+	}
+	if generation.hub != nil {
+		_ = generation.hub.Close()
+	}
+	if generation.command == nil || generation.command.Process == nil ||
+		generationStopped(generation) {
+		return
+	}
+	_ = generation.command.Process.Signal(os.Interrupt)
+	select {
+	case <-generation.done:
+	case <-time.After(5 * time.Second):
+		_ = generation.command.Process.Kill()
+		<-generation.done
+	}
 }
 
 func waitSocket(ctx context.Context, path string, processDone <-chan struct{}, timeout time.Duration) error {

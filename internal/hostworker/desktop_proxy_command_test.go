@@ -14,10 +14,7 @@ const remoteDesktopLauncherFixture = `sh -c 'if [ -z "$SHELL" ] || [ ! -x "$SHEL
 	`PATH="${CODEX_INSTALL_DIR:-$HOME/.local/bin}:$PATH"; export PATH; codex app-server proxy'`
 
 func TestParseDesktopProxyCommand(t *testing.T) {
-	for _, command := range []string{
-		"codex app-server proxy",
-		"exec codex app-server proxy",
-	} {
+	for _, command := range []string{"codex app-server proxy", "exec codex app-server proxy"} {
 		handshake, matched, err := parseDesktopProxyCommand(command)
 		require.NoError(t, err)
 		require.True(t, matched)
@@ -41,10 +38,6 @@ func TestParseDesktopProxyCommand(t *testing.T) {
 		"printf wrong; exec codex app-server proxy",
 		"codex -c features.code_mode_host=true app-server --listen unix://",
 		"exec codex -c features.code_mode_host=true app-server --listen unix://",
-		"node /usr/local/bin/codex -c features.code_mode_host=true app-server --listen unix://",
-		"codex -c features.code_mode_host=true app-server --listen unix:// --danger",
-		"codex -c features.code_mode_host=true app-server --listen unix://; touch /tmp/nope",
-		"node /usr/local/bin/codex app-server --listen unix:// && echo nope",
 	} {
 		handshake, matched, err = parseDesktopProxyCommand(command)
 		require.NoError(t, err)

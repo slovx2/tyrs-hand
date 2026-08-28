@@ -34,9 +34,8 @@ func parseDesktopProxyCommand(command string) ([]byte, bool, error) {
 		}
 		return decodeDesktopHandshake(matches[1])
 	}
-	// SSH 登录方本来就可以执行普通 shell 命令。这里只识别需要转接到
-	// Worker AppServerHub 的已知代理命令；其他命令继续交给登录 shell。
-	// App Server 的异常退出由 Runtime Supervisor 自愈，不在这里拦截生命周期命令。
+	// 只识别需要接入 Worker Hub 的官方 Desktop proxy 命令。
+	// 其他命令继续交给登录 shell，不在 SSH 层维护 Codex 命令白名单。
 	return nil, false, nil
 }
 

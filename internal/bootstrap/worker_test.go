@@ -24,32 +24,28 @@ func TestInitializeWorkerAcquiresDataLockBeforeRuntime(t *testing.T) {
 	require.Nil(t, cleanup)
 }
 
-func TestSuperviseWorkerStopsWhenRuntimeManagerExits(t *testing.T) {
-	runtimeDone := make(chan struct{})
-	runtimeCause := errors.New("app-server stopped")
+func TestSuperviseWorkerStopsOnContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
 	runnerStopped := make(chan struct{})
 	run := func(ctx context.Context) error {
 		<-ctx.Done()
 		close(runnerStopped)
 		return ctx.Err()
 	}
-	close(runtimeDone)
-	err := superviseWorker(context.Background(), run, func() <-chan struct{} {
-		return runtimeDone
-	}, func() error { return runtimeCause })
-	require.ErrorIs(t, err, runtimeCause)
+	cancel()
+	err := superviseWorker(ctx, run)
+	require.ErrorIs(t, err, context.Canceled)
 	select {
 	case <-runnerStopped:
 	default:
-		t.Fatal("App Server 退出后没有停止 Runner")
+		t.Fatal("Worker Context 取消后没有停止 Runner")
 	}
 }
 
 func TestSuperviseWorkerReturnsRunnerFailure(t *testing.T) {
 	runnerCause := errors.New("runner stopped")
-	runtimeDone := make(chan struct{})
 	err := superviseWorker(context.Background(), func(context.Context) error {
 		return runnerCause
-	}, func() <-chan struct{} { return runtimeDone }, func() error { return nil })
+	})
 	require.ErrorIs(t, err, runnerCause)
 }

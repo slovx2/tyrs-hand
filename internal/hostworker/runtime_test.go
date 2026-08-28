@@ -2,11 +2,9 @@ package hostworker
 
 import (
 	"context"
-	"errors"
+	"sync"
 	"testing"
-	"time"
 
-	"github.com/slovx2/tyrs-hand/internal/appserverhub"
 	"github.com/slovx2/tyrs-hand/internal/codex"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -45,48 +43,42 @@ func TestOpenEphemeralClientRequiresRunningHub(t *testing.T) {
 	require.ErrorContains(t, err, "AppServerHub 尚未启动")
 }
 
-func TestRuntimeClientUnavailableWhileRestarting(t *testing.T) {
-	runtime := &Runtime{status: "restarting", generation: 12,
-		current: &runtimeGeneration{client: &appserverhub.Client{}}}
-	client, generation := runtime.ClientSnapshot()
-	require.Nil(t, client)
-	require.EqualValues(t, 12, generation)
-	require.Nil(t, runtime.Client())
+func TestDesktopFailureRestartsStoppedAppServerOnlyOnce(t *testing.T) {
+	failed := &appServerGeneration{done: make(chan struct{}), waitErr: context.Canceled,
+		generation: 1}
+	close(failed.done)
+	next := &appServerGeneration{done: make(chan struct{}), generation: 2}
+	runtime := &Runtime{current: failed, options: RuntimeOptions{Logger: zap.NewNop()}}
+	started := 0
+	runtime.start = func(context.Context) (*appServerGeneration, error) {
+		started++
+		return next, nil
+	}
+
+	var wait sync.WaitGroup
+	errors := make(chan error, 2)
+	for range 2 {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			errors <- runtime.recoverAfterDesktopFailure(context.Background(), failed)
+		}()
+	}
+	wait.Wait()
+	close(errors)
+	for err := range errors {
+		require.NoError(t, err)
+	}
+	require.Equal(t, 1, started)
+	require.Equal(t, next, runtime.current)
 }
 
-func TestRuntimeRestartsAppServerWithoutStoppingManager(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	first := &runtimeGeneration{done: make(chan struct{})}
-	second := &runtimeGeneration{done: make(chan struct{})}
-	started := make(chan struct{}, 1)
-	runtime := &Runtime{ctx: ctx, cancel: cancel, current: first, generation: 1,
-		status: "running", done: make(chan struct{}), generationChanged: make(chan int64, 1),
-		options: RuntimeOptions{Logger: zap.NewNop()}}
-	runtime.start = func() (*runtimeGeneration, error) {
-		started <- struct{}{}
-		return second, nil
+func TestDesktopDisconnectDoesNotProbeOrRestartRunningAppServer(t *testing.T) {
+	running := &appServerGeneration{done: make(chan struct{}), generation: 1}
+	runtime := &Runtime{current: running, options: RuntimeOptions{Logger: zap.NewNop()}}
+	runtime.start = func(context.Context) (*appServerGeneration, error) {
+		t.Fatal("运行中的 App Server 不应被探测或重启")
+		return nil, nil
 	}
-	go runtime.supervise(first)
-
-	first.waitErr = errors.New("app-server stopped")
-	close(first.done)
-	select {
-	case <-runtime.Done():
-		t.Fatal("App Server 退出不应停止 Runtime Manager")
-	case <-started:
-	}
-	require.Eventually(t, func() bool {
-		return runtime.Status() == "running" && runtime.Generation() > 1
-	}, time.Second, 10*time.Millisecond)
-	require.ErrorContains(t, runtime.Err(), "app-server stopped")
-
-	cancel()
-	require.Eventually(t, func() bool {
-		select {
-		case <-runtime.Done():
-			return true
-		default:
-			return false
-		}
-	}, time.Second, 10*time.Millisecond)
+	require.NoError(t, runtime.recoverAfterDesktopFailure(context.Background(), running))
 }
