@@ -82,3 +82,12 @@ func TestDesktopDisconnectDoesNotProbeOrRestartRunningAppServer(t *testing.T) {
 	}
 	require.NoError(t, runtime.recoverAfterDesktopFailure(context.Background(), running))
 }
+
+func TestAppServerGenerationOutlivesRecoveryStartupContext(t *testing.T) {
+	startup, cancel := context.WithCancel(context.Background())
+	lifetime := appServerGenerationContext(startup)
+	cancel()
+
+	require.ErrorIs(t, startup.Err(), context.Canceled)
+	require.NoError(t, lifetime.Err())
+}

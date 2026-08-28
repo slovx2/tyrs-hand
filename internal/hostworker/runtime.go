@@ -171,7 +171,9 @@ func (r *Runtime) startGeneration(ctx context.Context) (*appServerGeneration, er
 	if controller == nil {
 		controller = appserverhub.PassThroughController{}
 	}
-	hub, err := appserverhub.Start(ctx, appserverhub.Options{
+	// ctx 只约束本轮启动；恢复路径会在启动完成后取消超时 context。
+	// Hub 的生命周期由 appServerGeneration 显式关闭，不能继承启动 context。
+	hub, err := appserverhub.Start(appServerGenerationContext(ctx), appserverhub.Options{
 		UpstreamSocketPath: socketPath,
 		Controller:         controller,
 	})
@@ -192,6 +194,10 @@ func (r *Runtime) startGeneration(ctx context.Context) (*appServerGeneration, er
 	}
 	generation.client = client
 	return generation, nil
+}
+
+func appServerGenerationContext(startup context.Context) context.Context {
+	return context.WithoutCancel(startup)
 }
 
 func (r *Runtime) Client() *appserverhub.Client {
