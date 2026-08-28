@@ -17,9 +17,6 @@ func TestParseDesktopProxyCommand(t *testing.T) {
 	for _, command := range []string{
 		"codex app-server proxy",
 		"exec codex app-server proxy",
-		"codex -c features.code_mode_host=true app-server --listen unix://",
-		"exec codex -c features.code_mode_host=true app-server --listen unix://",
-		"node /usr/local/bin/codex -c features.code_mode_host=true app-server --listen unix://",
 	} {
 		handshake, matched, err := parseDesktopProxyCommand(command)
 		require.NoError(t, err)
@@ -42,13 +39,16 @@ func TestParseDesktopProxyCommand(t *testing.T) {
 	for _, command := range []string{
 		"printf wrong; codex app-server proxy",
 		"printf wrong; exec codex app-server proxy",
+		"codex -c features.code_mode_host=true app-server --listen unix://",
+		"exec codex -c features.code_mode_host=true app-server --listen unix://",
+		"node /usr/local/bin/codex -c features.code_mode_host=true app-server --listen unix://",
 		"codex -c features.code_mode_host=true app-server --listen unix:// --danger",
 		"codex -c features.code_mode_host=true app-server --listen unix://; touch /tmp/nope",
 		"node /usr/local/bin/codex app-server --listen unix:// && echo nope",
 	} {
 		handshake, matched, err = parseDesktopProxyCommand(command)
-		require.ErrorContains(t, err, "格式不受支持")
-		require.True(t, matched)
+		require.NoError(t, err)
+		require.False(t, matched)
 		require.Empty(t, handshake)
 	}
 
