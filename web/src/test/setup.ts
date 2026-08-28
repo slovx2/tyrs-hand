@@ -36,3 +36,4 @@ class EventSourceStub extends EventTarget {
 }
 
 vi.stubGlobal('EventSource', EventSourceStub)
+vi.stubGlobal('confirm', () => true)

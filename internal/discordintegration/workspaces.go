@@ -92,6 +92,44 @@ func (m *Manager) Workspaces(ctx context.Context) ([]Workspace, error) {
 	return result, nil
 }
 
+func (m *Manager) WorkspaceForWorker(ctx context.Context,
+	workerID uuid.UUID,
+) (*Workspace, error) {
+	var workspace Workspace
+	var persistedWorkerID sql.NullString
+	var projectsScannedAt sql.NullTime
+	err := m.db.QueryRowContext(ctx, `SELECT e.id, e.owner_discord_user_id,
+		COALESCE(NULLIF(dm.display_name, ''), dm.username), e.worker_id::text,
+		e.projects_scanned_at, COALESCE(e.project_scan_error,'')
+		FROM worker_workspaces e
+		JOIN discord_members dm ON dm.guild_id = e.guild_id
+			AND dm.discord_user_id = e.owner_discord_user_id
+		WHERE e.worker_id=$1`, workerID).Scan(&workspace.ID, &workspace.OwnerUserID,
+		&workspace.OwnerName, &persistedWorkerID, &projectsScannedAt,
+		&workspace.ProjectScanError)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if persistedWorkerID.Valid {
+		id, parseErr := uuid.Parse(persistedWorkerID.String)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		workspace.WorkerID = &id
+	}
+	if projectsScannedAt.Valid {
+		workspace.ProjectsScannedAt = &projectsScannedAt.Time
+	}
+	workspace.Projects, err = m.workspaceProjects(ctx, workspace.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &workspace, nil
+}
+
 func (m *Manager) workspaceProjects(ctx context.Context,
 	workspaceID uuid.UUID,
 ) ([]WorkspaceProject, error) {

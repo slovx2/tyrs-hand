@@ -118,6 +118,8 @@ func (s *Server) adminRouter() http.Handler {
 	authenticated.GET("/work-items", s.listWorkItems)
 	authenticated.GET("/jobs", s.listJobs)
 	authenticated.GET("/workers", s.listWorkers)
+	authenticated.GET("/workers/:id", s.getWorker)
+	authenticated.GET("/workers/:id/workspace", s.getWorkerWorkspace)
 	authenticated.GET("/workers/:id/config", s.getWorkerConfig)
 	authenticated.PUT("/workers/:id/config/agents", s.requireCSRF(), s.updateWorkerAgents)
 	authenticated.PUT("/workers/:id/config/provider", s.requireCSRF(), s.updateWorkerProvider)

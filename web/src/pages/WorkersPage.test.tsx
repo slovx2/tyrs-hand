@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ToastViewport } from '../components/ToastViewport'
 import { server } from '../test/server'
 import { WorkersPage } from './WorkersPage'
+import { MemoryRouter } from 'react-router'
 
 afterEach(cleanup)
 
@@ -16,17 +17,55 @@ function renderPage() {
         new QueryClient({ defaultOptions: { queries: { retry: false } } })
       }
     >
-      <WorkersPage />
-      <ToastViewport />
+      <MemoryRouter>
+        <WorkersPage />
+        <ToastViewport />
+      </MemoryRouter>
     </QueryClientProvider>,
   )
 }
 
 describe('WorkersPage', () => {
+  it('一级页展示全部有权限 Worker，且不读取详情、配置或 Workspace', async () => {
+    const unexpected = vi.fn()
+    const items = ['worker-a', 'worker-b', 'worker-c'].map((name, index) => ({
+      id: `11111111-1111-1111-1111-11111111111${index}`,
+      name,
+      roles: ['discord'],
+      enabled: true,
+      maxConcurrentJobs: 2,
+      protocolVersion: 23,
+      status: 'online',
+    }))
+    server.use(
+      http.get('/api/v1/auth/me', () => HttpResponse.json({ role: 'user' })),
+      http.get('/api/v1/workers', () => HttpResponse.json({ items })),
+      http.get('/api/v1/workers/:id/config', () => {
+        unexpected()
+        return HttpResponse.json({})
+      }),
+      http.get('/api/v1/workers/:id/workspace', () => {
+        unexpected()
+        return HttpResponse.json({ workspace: null })
+      }),
+    )
+
+    renderPage()
+    expect(await screen.findByText('worker-a')).toBeInTheDocument()
+    expect(screen.getByText('worker-b')).toBeInTheDocument()
+    expect(screen.getByText('worker-c')).toBeInTheDocument()
+    expect(screen.queryByText('Model Provider')).not.toBeInTheDocument()
+    expect(screen.queryByText('AGENTS.md')).not.toBeInTheDocument()
+    expect(screen.queryByText('Workspace')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /更多操作/ })).toBeNull()
+    expect(unexpected).not.toHaveBeenCalled()
+  })
+
   it('创建节点、展示单次 Token 并冻结默认 Placement 配置', async () => {
     const create = vi.fn()
     const saveDefaults = vi.fn()
     server.use(
+      http.get('/api/v1/auth/me', () => HttpResponse.json({ role: 'admin' })),
       http.get('/api/v1/workers', () =>
         HttpResponse.json({
           items: [
@@ -47,8 +86,6 @@ describe('WorkersPage', () => {
       http.get('/api/v1/settings/workers', () =>
         HttpResponse.json({ discordWorkerId: null }),
       ),
-      http.get('/api/v1/workspaces', () => HttpResponse.json({ items: [] })),
-      http.get('/api/v1/discord/members', () => HttpResponse.json([])),
       http.post('/api/v1/workers', async ({ request }) => {
         create(await request.json())
         return HttpResponse.json(
@@ -82,6 +119,7 @@ describe('WorkersPage', () => {
       discordWorkerId: '11111111-1111-1111-1111-111111111111',
     })
 
+    await user.click(screen.getByRole('button', { name: '新增 Worker' }))
     await user.type(screen.getByLabelText('名称'), 'home-2')
     await user.clear(screen.getByLabelText('并发上限'))
     await user.type(screen.getByLabelText('并发上限'), '4')
@@ -101,6 +139,7 @@ describe('WorkersPage', () => {
     const rotate = vi.fn()
     const disable = vi.fn()
     server.use(
+      http.get('/api/v1/auth/me', () => HttpResponse.json({ role: 'admin' })),
       http.get('/api/v1/workers', () =>
         HttpResponse.json({
           items: [
@@ -136,6 +175,7 @@ describe('WorkersPage', () => {
     await user.click(screen.getByRole('button', { name: '轮换凭据' }))
     expect(await screen.findByText('rotated-token')).toBeInTheDocument()
     expect(rotate).toHaveBeenCalledWith('11111111-1111-1111-1111-111111111111')
+    await user.click(screen.getByRole('button', { name: '我已保存' }))
     await user.click(screen.getByRole('button', { name: '停用' }))
     expect(disable).toHaveBeenCalledWith(
       '11111111-1111-1111-1111-111111111111',

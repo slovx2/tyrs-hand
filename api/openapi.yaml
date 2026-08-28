@@ -551,6 +551,14 @@ paths:
       responses:
         "201": { description: 一次性注册 Token, content: { application/json: { schema: { $ref: "#/components/schemas/EnrollmentToken" } } } }
   /workers/{id}:
+    get:
+      operationId: getWorker
+      tags: [Workers]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: 单个宿主 Worker, content: { application/json: { schema: { $ref: "#/components/schemas/Worker" } } } }
+        default: { $ref: "#/components/responses/Problem" }
     delete:
       operationId: deleteWorker
       tags: [Workers]
@@ -558,6 +566,26 @@ paths:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
         - { $ref: "#/components/parameters/CSRFToken" }
       responses: { "204": { description: 已删除 }, default: { $ref: "#/components/responses/Problem" } }
+  /workers/{id}/workspace:
+    get:
+      operationId: getWorkerWorkspace
+      tags: [Workers, Workspaces]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Worker 当前绑定的 Workspace；未绑定时为 null
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [workspace]
+                properties:
+                  workspace:
+                    allOf:
+                      - { $ref: "#/components/schemas/Workspace" }
+                    nullable: true
+        default: { $ref: "#/components/responses/Problem" }
   /workers/{id}/enabled:
     put:
       operationId: setWorkerEnabled
@@ -2011,7 +2039,7 @@ components:
         updatedAt: { type: string, format: date-time }
     DiscordMember:
       type: object
-      required: [guildId, discordUserId, username, displayName, bound]
+      required: [guildId, discordUserId, username, displayName, bound, workspaceOwner]
       properties:
         guildId: { type: string }
         discordUserId: { type: string }
@@ -2019,6 +2047,7 @@ components:
         displayName: { type: string }
         bound: { type: boolean }
         githubLogin: { type: string }
+        workspaceOwner: { type: boolean }
     WorkspaceForumCollaborator:
       type: object
       required: [forumId, memberId, accessLevel, administratorBypass]

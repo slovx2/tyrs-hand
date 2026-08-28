@@ -10,10 +10,12 @@ import { WorkspaceProjectForums } from './WorkspaceProjectForums'
 import type { WorkspaceProject, DiscordMember } from './workspaceTypes'
 
 export function WorkspaceProjectRow({
+  workerId,
   project,
   ownerDiscordUserId,
   members,
 }: {
+  workerId: string
   project: WorkspaceProject
   ownerDiscordUserId: string
   members: DiscordMember[]
@@ -116,6 +118,7 @@ export function WorkspaceProjectRow({
       )}
       {expanded && (
         <WorkspaceProjectForums
+          workerId={workerId}
           project={project}
           ownerDiscordUserId={ownerDiscordUserId}
           members={members}

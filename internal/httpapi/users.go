@@ -91,7 +91,7 @@ func (s *Server) listWorkerUsers(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
-	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT a.id,a.username,a.role,a.enabled FROM administrators a JOIN worker_administrators wa ON wa.administrator_id=a.id WHERE wa.worker_id=$1 ORDER BY a.username`, workerID)
+	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT a.id,a.username,a.role,a.enabled FROM administrators a JOIN worker_administrators wa ON wa.administrator_id=a.id WHERE wa.worker_id=$1 AND a.role='user' ORDER BY a.username`, workerID)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取 Worker 用户失败", err)
 		return
@@ -122,8 +122,20 @@ func (s *Server) assignWorkerUser(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
-	if _, err := s.db.ExecContext(c.Request.Context(), `INSERT INTO worker_administrators(worker_id,administrator_id) SELECT $1,id FROM administrators WHERE id=$2 ON CONFLICT DO NOTHING`, workerID, userID); err != nil {
+	result, err := s.db.ExecContext(c.Request.Context(), `INSERT INTO worker_administrators(worker_id,administrator_id)
+		SELECT $1,id FROM administrators WHERE id=$2 AND role='user'
+		ON CONFLICT (worker_id,administrator_id) DO UPDATE SET worker_id=EXCLUDED.worker_id`, workerID, userID)
+	if err != nil {
 		problem(c, http.StatusInternalServerError, "分配 Worker 用户失败", err)
+		return
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取 Worker 用户分配结果失败", err)
+		return
+	}
+	if count == 0 {
+		problem(c, http.StatusNotFound, "普通用户不存在", nil)
 		return
 	}
 	c.Status(http.StatusNoContent)

@@ -610,10 +610,26 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["getWorker"];
         put?: never;
         post?: never;
         delete: operations["deleteWorker"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workers/{id}/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getWorkerWorkspace"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2315,6 +2331,7 @@ export interface components {
             displayName: string;
             bound: boolean;
             githubLogin?: string;
+            workspaceOwner: boolean;
         };
         WorkspaceForumCollaborator: {
             /** Format: uuid */
@@ -3638,6 +3655,29 @@ export interface operations {
             };
         };
     };
+    getWorker: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 单个宿主 Worker */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Worker"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
     deleteWorker: {
         parameters: {
             query?: never;
@@ -3657,6 +3697,31 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getWorkerWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Worker 当前绑定的 Workspace；未绑定时为 null */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        workspace: components["schemas"]["Workspace"] | null;
+                    };
+                };
             };
             default: components["responses"]["Problem"];
         };

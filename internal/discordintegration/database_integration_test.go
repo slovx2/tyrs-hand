@@ -989,7 +989,7 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 	require.Contains(t, members, Member{
 		GuildID: testGuildID, DiscordUserID: "1001",
 		Username: "owner-current", DisplayName: "Owner Current",
-		Bound: true, GitHubLogin: "alice",
+		Bound: true, GitHubLogin: "alice", WorkspaceOwner: true,
 	})
 	var botActive bool
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT active FROM discord_members
@@ -1021,6 +1021,14 @@ func TestDiscordManagerForumsAndProjections(t *testing.T) {
 	require.Len(t, environments[0].Projects[0].Forums, 1)
 	require.NotNil(t, environments[0].WorkerID)
 	require.Equal(t, seed.workerID, *environments[0].WorkerID)
+	workerWorkspace, err := manager.WorkspaceForWorker(ctx, seed.workerID)
+	require.NoError(t, err)
+	require.NotNil(t, workerWorkspace)
+	require.Equal(t, environments[0].ID, workerWorkspace.ID)
+	require.Len(t, workerWorkspace.Projects, 1)
+	unboundWorkspace, err := manager.WorkspaceForWorker(ctx, uuid.New())
+	require.NoError(t, err)
+	require.Nil(t, unboundWorkspace)
 	require.Error(t, manager.SetForumAccess(ctx, seed.workspaceForumID, "1002", "admin", seed.administratorID))
 	require.NoError(t, manager.SetForumAccess(ctx, seed.workspaceForumID, "1002", AccessReadOnly, seed.administratorID))
 	require.NoError(t, manager.SetForumAccess(ctx, seed.workspaceForumID, "1003", AccessOperator, seed.administratorID))

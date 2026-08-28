@@ -37,6 +37,31 @@ func (s *Server) listWorkspaces(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": workspaces})
 }
 
+func (s *Server) getWorkerWorkspace(c *gin.Context) {
+	workerID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		badRequest(c, err)
+		return
+	}
+	if _, err := s.workers.Get(c.Request.Context(), workerID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			problem(c, http.StatusNotFound, "Worker 不存在", err)
+			return
+		}
+		problem(c, http.StatusInternalServerError, "读取 Worker 失败", err)
+		return
+	}
+	if !s.requireWorkerAccess(c, workerID) {
+		return
+	}
+	workspace, err := s.discord.WorkspaceForWorker(c.Request.Context(), workerID)
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取 Worker Workspace 失败", err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"workspace": workspace})
+}
+
 func (s *Server) createWorkspace(c *gin.Context) {
 	var input struct {
 		OwnerDiscordUserID string    `json:"ownerDiscordUserId" binding:"required"`

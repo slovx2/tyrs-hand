@@ -41,6 +41,27 @@ func (s *Server) listWorkers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": workers})
 }
 
+func (s *Server) getWorker(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		badRequest(c, err)
+		return
+	}
+	worker, err := s.workers.Get(c.Request.Context(), id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			problem(c, http.StatusNotFound, "Worker 不存在", err)
+			return
+		}
+		problem(c, http.StatusInternalServerError, "读取 Worker 失败", err)
+		return
+	}
+	if !s.requireWorkerAccess(c, id) {
+		return
+	}
+	c.JSON(http.StatusOK, worker)
+}
+
 func (s *Server) createWorker(c *gin.Context) {
 	if c.MustGet("session").(auth.Session).Role != "admin" {
 		problem(c, http.StatusForbidden, "需要管理员权限", nil)

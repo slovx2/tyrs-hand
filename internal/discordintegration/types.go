@@ -138,12 +138,13 @@ type Operation struct {
 }
 
 type Member struct {
-	GuildID       string `json:"guildId"`
-	DiscordUserID string `json:"discordUserId"`
-	Username      string `json:"username"`
-	DisplayName   string `json:"displayName"`
-	Bound         bool   `json:"bound"`
-	GitHubLogin   string `json:"githubLogin,omitempty"`
+	GuildID        string `json:"guildId"`
+	DiscordUserID  string `json:"discordUserId"`
+	Username       string `json:"username"`
+	DisplayName    string `json:"displayName"`
+	Bound          bool   `json:"bound"`
+	GitHubLogin    string `json:"githubLogin,omitempty"`
+	WorkspaceOwner bool   `json:"workspaceOwner"`
 }
 
 type ForumAccess struct {

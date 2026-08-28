@@ -35,6 +35,28 @@ func TestListReturnsEmptyArrayWhenNoWorkersExist(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestGetReturnsWorkerByID(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	workerID := uuid.New()
+	mock.ExpectQuery("SELECT id, name, roles, enabled, max_concurrent_jobs").
+		WithArgs(workerID).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "roles", "enabled",
+			"max_concurrent_jobs", "protocol_version", "worker_version", "status",
+			"heartbeat_at", "last_error", "ssh_host_key_fingerprint", "metadata"}).
+			AddRow(workerID, "home", []byte(`["discord"]`), true, 2, 30,
+				"deploy-1.1", "online", nil, "", "", []byte(`{}`)))
+
+	worker, err := NewService(db).Get(context.Background(), workerID)
+	require.NoError(t, err)
+	require.Equal(t, workerID, worker.ID)
+	require.Equal(t, []string{"discord"}, worker.Roles)
+
+	mock.ExpectClose()
+	require.NoError(t, db.Close())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestEnrollmentTokenCanOnlyBeConsumedOnce(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)

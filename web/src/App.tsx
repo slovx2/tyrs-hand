@@ -23,6 +23,13 @@ import { DiscordPage } from './pages/DiscordPage'
 import { LoginPage } from './pages/LoginPage'
 import { SetupPage } from './pages/SetupPage'
 import { WorkersPage } from './pages/WorkersPage'
+import {
+  WorkerDetailPage,
+  WorkerOverviewPage,
+  WorkerUsersPage,
+} from './pages/WorkerDetailPage'
+import { WorkerConfigRoute } from './pages/WorkerConfigPage'
+import { WorkerWorkspacePage } from './pages/WorkspacesPage'
 import { DevicesPage } from './pages/DevicesPage'
 import { UsersPage } from './pages/UsersPage'
 import { InvitePage } from './pages/InvitePage'
@@ -92,6 +99,13 @@ export function App() {
       >
         <Route index element={<Dashboard />} />
         <Route path="workers" element={<WorkersPage />} />
+        <Route path="workers/:workerId" element={<WorkerDetailPage />}>
+          <Route index element={<Navigate to="overview" replace />} />
+          <Route path="overview" element={<WorkerOverviewPage />} />
+          <Route path="codex" element={<WorkerConfigRoute />} />
+          <Route path="workspace" element={<WorkerWorkspacePage />} />
+          <Route path="users" element={<WorkerUsersPage />} />
+        </Route>
         <Route path="devices" element={<DevicesPage />} />
         <Route path="settings/discord" element={<DiscordPage />} />
         <Route path="users" element={<UsersPage />} />
@@ -141,30 +155,41 @@ function AuthenticatedLayout() {
           {navigation
             .concat(
               me.data?.role === 'admin'
-                ? [{ label: 'Admin', items: [{ to: '/users', label: '用户管理', icon: ShieldCheck }] }]
+                ? [
+                    {
+                      label: 'Admin',
+                      items: [
+                        { to: '/users', label: '用户管理', icon: ShieldCheck },
+                      ],
+                    },
+                  ]
                 : [],
             )
             .map((group) => (
-            <div className="nav-group" key={group.label}>
-              <div className="nav-group-label">{group.label}</div>
-              <div className="nav-group-items">
-                {group.items.map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    end={item.to === '/'}
-                    aria-label={item.label}
-                    className={({ isActive }) =>
-                      `nav-item ${isActive ? 'nav-item-active' : ''}`
-                    }
-                  >
-                    <item.icon size={16} strokeWidth={1.8} aria-hidden="true" />
-                    <span>{item.label}</span>
-                  </NavLink>
-                ))}
+              <div className="nav-group" key={group.label}>
+                <div className="nav-group-label">{group.label}</div>
+                <div className="nav-group-items">
+                  {group.items.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      end={item.to === '/'}
+                      aria-label={item.label}
+                      className={({ isActive }) =>
+                        `nav-item ${isActive ? 'nav-item-active' : ''}`
+                      }
+                    >
+                      <item.icon
+                        size={16}
+                        strokeWidth={1.8}
+                        aria-hidden="true"
+                      />
+                      <span>{item.label}</span>
+                    </NavLink>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
         </nav>
         <div className="sidebar-account">
           <div className="sidebar-account-icon" aria-hidden="true">

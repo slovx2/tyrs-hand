@@ -3,10 +3,12 @@ import { WorkspaceProjectRow } from './WorkspaceProjectRow'
 import type { Workspace, DiscordMember } from './workspaceTypes'
 
 export function WorkspaceSection({
+  workerId,
   workspace,
   members,
   showCodexProjects,
 }: {
+  workerId: string
   workspace: Workspace
   members: DiscordMember[]
   showCodexProjects: boolean
@@ -57,6 +59,7 @@ export function WorkspaceSection({
         {projects.map((project) => (
           <WorkspaceProjectRow
             key={project.id}
+            workerId={workerId}
             project={project}
             ownerDiscordUserId={workspace.ownerDiscordUserId}
             members={members}

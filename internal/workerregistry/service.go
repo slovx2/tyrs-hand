@@ -197,6 +197,10 @@ func scanWorker(row scanner) (Worker, error) {
 	return worker, nil
 }
 
+func (s *Service) Get(ctx context.Context, id uuid.UUID) (Worker, error) {
+	return scanWorker(s.db.QueryRowContext(ctx, workerSelect+" WHERE id = $1", id))
+}
+
 func (s *Service) Authenticate(ctx context.Context, credential string) (Worker, error) {
 	if credential == "" {
 		return Worker{}, ErrUnauthorized

@@ -16,10 +16,12 @@ import type {
 } from './workspaceTypes'
 
 export function WorkspaceProjectForums({
+  workerId,
   project,
   ownerDiscordUserId,
   members,
 }: {
+  workerId: string
   project: WorkspaceProject
   ownerDiscordUserId: string
   members: DiscordMember[]
@@ -35,7 +37,9 @@ export function WorkspaceProjectForums({
   )
   const missing = project.availabilityStatus === 'missing'
   const refresh = () =>
-    queryClient.invalidateQueries({ queryKey: ['workspace-cards'] })
+    queryClient.invalidateQueries({
+      queryKey: ['worker-workspace', workerId],
+    })
   const pair = useMutation({
     mutationFn: (input: { mode: 'new' | 'restore'; forumId?: string }) =>
       api<void>(`/workspace-projects/${project.id}/forums`, {
@@ -89,6 +93,7 @@ export function WorkspaceProjectForums({
             </button>
           </div>
           <ForumCollaborators
+            workerId={workerId}
             projectId={project.id}
             forum={activeForum}
             ownerDiscordUserId={ownerDiscordUserId}
@@ -154,11 +159,13 @@ export function WorkspaceProjectForums({
 }
 
 function ForumCollaborators({
+  workerId,
   projectId,
   forum,
   ownerDiscordUserId,
   members,
 }: {
+  workerId: string
   projectId: string
   forum: WorkspaceForum
   ownerDiscordUserId: string
@@ -171,7 +178,9 @@ function ForumCollaborators({
     'readonly',
   )
   const refresh = () =>
-    queryClient.invalidateQueries({ queryKey: ['workspace-cards'] })
+    queryClient.invalidateQueries({
+      queryKey: ['worker-workspace', workerId],
+    })
   const save = useMutation({
     mutationFn: () =>
       api<void>(
