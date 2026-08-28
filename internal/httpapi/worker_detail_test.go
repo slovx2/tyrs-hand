@@ -86,6 +86,71 @@ func TestGetWorkerWorkspaceReturnsNullForUnboundAssignedWorker(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestScanWorkerWorkspaceChecksAccessBindingAndConnection(t *testing.T) {
+	tests := []struct {
+		name       string
+		role       string
+		assigned   bool
+		bound      bool
+		wantStatus int
+	}{
+		{name: "未分配普通用户", role: "user", wantStatus: http.StatusForbidden},
+		{name: "尚未绑定", role: "admin", assigned: true, wantStatus: http.StatusConflict},
+		{name: "Worker 离线", role: "admin", assigned: true, bound: true, wantStatus: http.StatusBadGateway},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = db.Close() })
+			workerID, userID := uuid.New(), uuid.New()
+			mock.ExpectQuery("SELECT id, name, roles, enabled, max_concurrent_jobs").
+				WithArgs(workerID).
+				WillReturnRows(workerRows().AddRow(workerID, "worker-a",
+					[]byte(`["discord"]`), true, 2, workerregistry.ProtocolVersion,
+					"test", "online", nil, "", "", []byte(`{}`)))
+			if test.role != "admin" {
+				mock.ExpectQuery("SELECT EXISTS").WithArgs(workerID, userID).
+					WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(test.assigned))
+			}
+			if test.assigned {
+				workspaceQuery := mock.ExpectQuery("SELECT e.id, e.owner_discord_user_id").
+					WithArgs(workerID)
+				rows := sqlmock.NewRows([]string{"id", "owner_discord_user_id",
+					"owner_name", "worker_id", "projects_scanned_at", "project_scan_error"})
+				if test.bound {
+					rows.AddRow(uuid.New(), "owner", "Owner", workerID.String(), nil, "")
+				}
+				workspaceQuery.WillReturnRows(rows)
+				if test.bound {
+					mock.ExpectQuery("SELECT project.id, project.name").
+						WillReturnRows(sqlmock.NewRows([]string{"id", "name", "relative_path",
+							"desired_relative_path", "project_source", "host_path", "project_kind",
+							"availability_status", "branch", "head_sha", "dirty", "remote_url",
+							"last_seen_at", "scan_error", "forum_id", "forum_name", "discord_id",
+							"binding_status"}))
+				}
+			}
+
+			server := &Server{db: db, workers: workerregistry.NewService(db),
+				discord:        discordintegration.NewManager(db, nil),
+				workerRPCConns: make(map[uuid.UUID]*workerRPCConnection)}
+			gin.SetMode(gin.TestMode)
+			router := gin.New()
+			router.POST("/workers/:id/workspace/scan", func(c *gin.Context) {
+				c.Set("session", auth.Session{AdministratorID: userID, Role: test.role})
+				server.scanWorkerWorkspace(c)
+			})
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodPost,
+				"/workers/"+workerID.String()+"/workspace/scan", nil)
+			router.ServeHTTP(recorder, request)
+			require.Equal(t, test.wantStatus, recorder.Code)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
 func TestAssignWorkerUserOnlyAcceptsOrdinaryUser(t *testing.T) {
 	tests := []struct {
 		name       string

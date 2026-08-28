@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link2, RefreshCw } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
 import { useUI } from '../state'
 import { useWorkerDetail } from './workerDetailContext'
@@ -21,11 +21,21 @@ export function WorkerWorkspacePage() {
     queryKey: ['worker-workspace', worker.id],
     queryFn: () =>
       api<WorkerWorkspaceResponse>(`/workers/${worker.id}/workspace`),
-    refetchInterval: 5_000,
   })
   const members = useQuery({
     queryKey: ['discord-members'],
     queryFn: () => api<DiscordMember[]>('/discord/members'),
+  })
+  const scannedWorkspace = useRef<string | null>(null)
+  const scan = useMutation({
+    mutationFn: () =>
+      api<WorkerWorkspaceResponse>(`/workers/${worker.id}/workspace/scan`, {
+        method: 'POST',
+      }),
+    onSuccess: (result) => {
+      if (result.workspace) scannedWorkspace.current = result.workspace.id
+      queryClient.setQueryData(['worker-workspace', worker.id], result)
+    },
   })
   const create = useMutation({
     mutationFn: () =>
@@ -33,11 +43,15 @@ export function WorkerWorkspacePage() {
         method: 'POST',
         body: JSON.stringify({ ownerDiscordUserId, workerId: worker.id }),
       }),
-    onSuccess: async () => {
+    onSuccess: async (created) => {
       setOwnerDiscordUserId('')
-      await queryClient.invalidateQueries({
-        queryKey: ['worker-workspace', worker.id],
-      })
+      scannedWorkspace.current = created.id
+      const result = await scan.mutateAsync().catch(() => null)
+      if (!result) {
+        await queryClient.invalidateQueries({
+          queryKey: ['worker-workspace', worker.id],
+        })
+      }
       await queryClient.invalidateQueries({ queryKey: ['discord-members'] })
       showToast('success', 'Workspace 已绑定')
     },
@@ -45,11 +59,39 @@ export function WorkerWorkspacePage() {
   const eligibleMembers = (members.data ?? []).filter(
     (member) => !member.workspaceOwner,
   )
+  const scanWorkspace = scan.mutate
+
+  useEffect(() => {
+    const workspaceId = workspace.data?.workspace?.id
+    if (!workspaceId || scannedWorkspace.current === workspaceId) return
+    scannedWorkspace.current = workspaceId
+    scanWorkspace()
+  }, [scanWorkspace, workspace.data?.workspace?.id])
 
   const refresh = async () => {
-    const result = await Promise.all([workspace.refetch(), members.refetch()])
-    if (result.some((item) => item.error)) {
+    const workspaceRefresh = workspace.data?.workspace
+      ? scan.mutateAsync()
+      : workspace.refetch().then((result) => {
+          if (result.error) throw result.error
+          return result
+        })
+    const membersRefresh = members.refetch().then((result) => {
+      if (result.error) throw result.error
+      return result
+    })
+    const results = await Promise.allSettled([workspaceRefresh, membersRefresh])
+    if (results.some((item) => item.status === 'rejected')) {
       showToast('error', '刷新 Workspace 失败')
+      return
+    }
+    const scanned = results[0]
+    if (
+      workspace.data?.workspace &&
+      scanned.status === 'fulfilled' &&
+      'workspace' in scanned.value &&
+      scanned.value.workspace?.projectScanError
+    ) {
+      showToast('error', 'Worker 项目扫描失败')
       return
     }
     showToast('success', 'Workspace 已刷新')
@@ -89,13 +131,15 @@ export function WorkerWorkspacePage() {
             <button
               type="button"
               className="button-secondary icon-label-button"
-              disabled={workspace.isFetching || members.isFetching}
+              disabled={
+                workspace.isFetching || scan.isPending || members.isFetching
+              }
               onClick={() => void refresh()}
             >
               <RefreshCw
                 aria-hidden
                 size={16}
-                className={workspace.isFetching ? 'spin' : ''}
+                className={workspace.isFetching || scan.isPending ? 'spin' : ''}
               />
               刷新
             </button>
@@ -106,12 +150,19 @@ export function WorkerWorkspacePage() {
       {workspace.isLoading ? (
         <section className="panel muted">正在读取 Workspace…</section>
       ) : workspace.data?.workspace ? (
-        <WorkspaceSection
-          workerId={worker.id}
-          workspace={workspace.data.workspace}
-          members={members.data ?? []}
-          showCodexProjects={showCodexProjects}
-        />
+        <>
+          {scan.isError && (
+            <div role="alert" className="workspace-alert">
+              实时扫描失败：{scan.error.message}。当前继续显示上次扫描结果。
+            </div>
+          )}
+          <WorkspaceSection
+            workerId={worker.id}
+            workspace={workspace.data.workspace}
+            members={members.data ?? []}
+            showCodexProjects={showCodexProjects}
+          />
+        </>
       ) : (
         <section className="panel workspace-unbound">
           <div>

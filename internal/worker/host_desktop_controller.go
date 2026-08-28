@@ -129,18 +129,7 @@ func (c *HostDesktopController) syncHostEnvironment(ctx context.Context) error {
 	if manifest.WorkspaceID != currentID {
 		return errors.New("worker Workspace 绑定已变化，请重启宿主 Worker")
 	}
-	projects, scanErr := hostworker.ScanProjects(ctx, c.processor.cfg.WorkerWorkspaceRoot, c.processor.hostRuntime.CodexHome())
-	request := workerprotocol.WorkspaceProjectSnapshotRequest{
-		WorkspaceID: currentID, Projects: projects,
-	}
-	if scanErr != nil {
-		request.Error = scanErr.Error()
-		request.Projects = nil
-	}
-	if err := c.processor.client.WorkspaceProjectSnapshot(ctx, request); err != nil {
-		return err
-	}
-	return scanErr
+	return nil
 }
 
 var _ appserverhub.Controller = (*HostDesktopController)(nil)

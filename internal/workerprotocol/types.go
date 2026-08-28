@@ -9,15 +9,15 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 30
+const Version = 31
 
-type ConfigRPCRequest struct {
+type WorkerRPCRequest struct {
 	ID     string          `json:"id"`
 	Method string          `json:"method"`
 	Params json.RawMessage `json:"params,omitempty"`
 }
 
-type ConfigRPCResponse struct {
+type WorkerRPCResponse struct {
 	ID     string `json:"id"`
 	Result any    `json:"result,omitempty"`
 	Error  string `json:"error,omitempty"`
@@ -154,10 +154,9 @@ type WorkspaceProjectSnapshot struct {
 	RemoteURL     string `json:"remoteUrl,omitempty"`
 }
 
-type WorkspaceProjectSnapshotRequest struct {
-	WorkspaceID uuid.UUID                  `json:"workspaceId"`
-	Projects    []WorkspaceProjectSnapshot `json:"projects"`
-	Error       string                     `json:"error,omitempty"`
+type WorkspaceProjectScanResult struct {
+	Projects  []WorkspaceProjectSnapshot `json:"projects"`
+	ScanError string                     `json:"scanError,omitempty"`
 }
 
 type ParticipantIdentity struct {

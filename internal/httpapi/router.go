@@ -46,8 +46,8 @@ type Server struct {
 	logger             *zap.Logger
 	assets             fs.FS
 	clientUpdateHub    *clientUpdateHub
-	configMu           sync.RWMutex
-	configConns        map[uuid.UUID]*configConnection
+	workerRPCMu        sync.RWMutex
+	workerRPCConns     map[uuid.UUID]*workerRPCConnection
 }
 
 func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authService *auth.Service, githubManager *ghadapter.Manager, catalog *githubtools.Catalog, settingsService *platformsettings.Service, discordManager *discordintegration.Manager, bindingService *discordintegration.BindingService, secretStore *secrets.Store, logger *zap.Logger) (*Server, error) {
@@ -59,7 +59,7 @@ func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authSer
 		catalog: catalog, settings: settingsService, discord: discordManager, bindings: bindingService,
 		workers: workerregistry.NewService(db), ssh: sshconfig.NewService(db, secretStore),
 		secrets: secretStore, logger: logger, assets: assets,
-		configConns:     make(map[uuid.UUID]*configConnection),
+		workerRPCConns:  make(map[uuid.UUID]*workerRPCConnection),
 		clientUpdateHub: newClientUpdateHub()}, nil
 }
 
@@ -120,6 +120,7 @@ func (s *Server) adminRouter() http.Handler {
 	authenticated.GET("/workers", s.listWorkers)
 	authenticated.GET("/workers/:id", s.getWorker)
 	authenticated.GET("/workers/:id/workspace", s.getWorkerWorkspace)
+	authenticated.POST("/workers/:id/workspace/scan", s.requireCSRF(), s.scanWorkerWorkspace)
 	authenticated.GET("/workers/:id/config", s.getWorkerConfig)
 	authenticated.PUT("/workers/:id/config/agents", s.requireCSRF(), s.updateWorkerAgents)
 	authenticated.PUT("/workers/:id/config/provider", s.requireCSRF(), s.updateWorkerProvider)

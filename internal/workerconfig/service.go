@@ -22,13 +22,14 @@ import (
 var deviceCodePattern = regexp.MustCompile(`(?m)\b([A-Z0-9]{4}-[A-Z0-9]{4})\b`)
 
 type Service struct {
-	home     string
-	codexBin string
-	stateDir string
-	envFile  string
-	restart  func() error
-	mu       sync.Mutex
-	oauth    *oauthProcess
+	home          string
+	codexBin      string
+	stateDir      string
+	envFile       string
+	workspaceRoot string
+	restart       func() error
+	mu            sync.Mutex
+	oauth         *oauthProcess
 }
 
 type oauthProcess struct {
@@ -58,6 +59,10 @@ func NewServiceWithStateDirAndEnv(home, codexBin, stateDir, envFile string) *Ser
 }
 
 func (s *Service) SetRestart(fn func() error) { s.restart = fn }
+
+func (s *Service) SetWorkspaceRoot(root string) {
+	s.workspaceRoot = filepath.Clean(root)
+}
 
 func (s *Service) Restart() error {
 	if s.restart == nil {

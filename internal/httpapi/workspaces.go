@@ -2,12 +2,15 @@ package httpapi
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/auth"
+	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
 func (s *Server) listWorkspaces(c *gin.Context) {
@@ -57,6 +60,66 @@ func (s *Server) getWorkerWorkspace(c *gin.Context) {
 	workspace, err := s.discord.WorkspaceForWorker(c.Request.Context(), workerID)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取 Worker Workspace 失败", err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"workspace": workspace})
+}
+
+func (s *Server) scanWorkerWorkspace(c *gin.Context) {
+	workerID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		badRequest(c, err)
+		return
+	}
+	if _, err := s.workers.Get(c.Request.Context(), workerID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			problem(c, http.StatusNotFound, "Worker 不存在", err)
+			return
+		}
+		problem(c, http.StatusInternalServerError, "读取 Worker 失败", err)
+		return
+	}
+	if !s.requireWorkerAccess(c, workerID) {
+		return
+	}
+	workspace, err := s.discord.WorkspaceForWorker(c.Request.Context(), workerID)
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取 Worker Workspace 失败", err)
+		return
+	}
+	if workspace == nil {
+		problem(c, http.StatusConflict, "Worker 尚未绑定 Workspace",
+			errors.New("worker workspace 不存在"))
+		return
+	}
+	raw, err := s.callWorkerRPC(c.Request.Context(), workerID,
+		"workspace.projects.scan", nil, 65*time.Second)
+	if err != nil {
+		problem(c, http.StatusBadGateway, "实时扫描 Worker 项目失败", err)
+		return
+	}
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		problem(c, http.StatusBadGateway, "Worker 项目扫描响应无效", err)
+		return
+	}
+	var scan workerprotocol.WorkspaceProjectScanResult
+	if err := json.Unmarshal(encoded, &scan); err != nil {
+		problem(c, http.StatusBadGateway, "Worker 项目扫描响应无效", err)
+		return
+	}
+	if err := s.saveWorkspaceProjectScan(c.Request.Context(), workerID,
+		workspace.ID, scan); err != nil {
+		if errors.Is(err, errInvalidWorkspaceProjectScan) {
+			problem(c, http.StatusBadGateway, "Worker 项目扫描响应无效", err)
+			return
+		}
+		problem(c, http.StatusInternalServerError, "保存 Worker 项目扫描结果失败", err)
+		return
+	}
+	workspace, err = s.discord.WorkspaceForWorker(c.Request.Context(), workerID)
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取刷新后的 Worker Workspace 失败", err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"workspace": workspace})

@@ -16,35 +16,35 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
-type configConnection struct {
+type workerRPCConnection struct {
 	workerID uuid.UUID
 	conn     *websocket.Conn
 	writeMu  sync.Mutex
 	mu       sync.Mutex
-	pending  map[string]chan workerprotocol.ConfigRPCResponse
+	pending  map[string]chan workerprotocol.WorkerRPCResponse
 }
 
-func (s *Server) workerConfigWS(c *gin.Context) {
+func (s *Server) workerRPCWS(c *gin.Context) {
 	worker := currentWorker(c)
 	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		return
 	}
-	state := &configConnection{workerID: worker.ID, conn: conn, pending: make(map[string]chan workerprotocol.ConfigRPCResponse)}
-	s.configMu.Lock()
-	if old := s.configConns[worker.ID]; old != nil {
+	state := &workerRPCConnection{workerID: worker.ID, conn: conn, pending: make(map[string]chan workerprotocol.WorkerRPCResponse)}
+	s.workerRPCMu.Lock()
+	if old := s.workerRPCConns[worker.ID]; old != nil {
 		_ = old.conn.Close()
 	}
-	s.configConns[worker.ID] = state
-	s.configMu.Unlock()
+	s.workerRPCConns[worker.ID] = state
+	s.workerRPCMu.Unlock()
 	defer func() {
 		_ = conn.Close()
-		s.configMu.Lock()
-		if s.configConns[worker.ID] == state {
-			delete(s.configConns, worker.ID)
+		s.workerRPCMu.Lock()
+		if s.workerRPCConns[worker.ID] == state {
+			delete(s.workerRPCConns, worker.ID)
 		}
-		s.configMu.Unlock()
+		s.workerRPCMu.Unlock()
 		state.mu.Lock()
 		for id, wait := range state.pending {
 			close(wait)
@@ -57,7 +57,7 @@ func (s *Server) workerConfigWS(c *gin.Context) {
 		if readErr != nil {
 			return
 		}
-		var response workerprotocol.ConfigRPCResponse
+		var response workerprotocol.WorkerRPCResponse
 		if json.Unmarshal(payload, &response) != nil || response.ID == "" {
 			continue
 		}
@@ -74,20 +74,22 @@ func (s *Server) workerConfigWS(c *gin.Context) {
 	}
 }
 
-func (s *Server) callWorkerConfig(ctx context.Context, workerID uuid.UUID, method string, params any) (any, error) {
-	s.configMu.RLock()
-	state := s.configConns[workerID]
-	s.configMu.RUnlock()
+func (s *Server) callWorkerRPC(ctx context.Context, workerID uuid.UUID, method string,
+	params any, timeout time.Duration,
+) (any, error) {
+	s.workerRPCMu.RLock()
+	state := s.workerRPCConns[workerID]
+	s.workerRPCMu.RUnlock()
 	if state == nil {
-		return nil, errors.New("Worker 配置通道未连接")
+		return nil, errors.New("Worker RPC 通道未连接")
 	}
 	id := uuid.NewString()
-	wait := make(chan workerprotocol.ConfigRPCResponse, 1)
+	wait := make(chan workerprotocol.WorkerRPCResponse, 1)
 	state.mu.Lock()
 	state.pending[id] = wait
 	state.mu.Unlock()
 	requestParams, _ := json.Marshal(params)
-	request := workerprotocol.ConfigRPCRequest{ID: id, Method: method, Params: requestParams}
+	request := workerprotocol.WorkerRPCRequest{ID: id, Method: method, Params: requestParams}
 	payload, _ := json.Marshal(request)
 	state.writeMu.Lock()
 	writeErr := state.conn.WriteMessage(websocket.TextMessage, payload)
@@ -98,12 +100,15 @@ func (s *Server) callWorkerConfig(ctx context.Context, workerID uuid.UUID, metho
 		state.mu.Unlock()
 		return nil, writeErr
 	}
-	timer := time.NewTimer(30 * time.Second)
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	select {
 	case response, ok := <-wait:
 		if !ok {
-			return nil, errors.New("Worker 配置通道已断开")
+			return nil, errors.New("Worker RPC 通道已断开")
 		}
 		if response.Error != "" {
 			return nil, errors.New(response.Error)
@@ -118,8 +123,14 @@ func (s *Server) callWorkerConfig(ctx context.Context, workerID uuid.UUID, metho
 		state.mu.Lock()
 		delete(state.pending, id)
 		state.mu.Unlock()
-		return nil, errors.New("Worker 配置请求超时")
+		return nil, errors.New("Worker RPC 请求超时")
 	}
+}
+
+func (s *Server) callWorkerConfig(ctx context.Context, workerID uuid.UUID,
+	method string, params any,
+) (any, error) {
+	return s.callWorkerRPC(ctx, workerID, method, params, 30*time.Second)
 }
 
 func (s *Server) workerConfig(c *gin.Context, method string, params any) {

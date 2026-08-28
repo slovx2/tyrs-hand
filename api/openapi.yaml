@@ -586,6 +586,24 @@ paths:
                       - { $ref: "#/components/schemas/Workspace" }
                     nullable: true
         default: { $ref: "#/components/responses/Problem" }
+  /workers/{id}/workspace/scan:
+    post:
+      operationId: scanWorkerWorkspace
+      tags: [Workers, Workspaces]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/CSRFToken" }
+      responses:
+        "200":
+          description: Worker 实时扫描后的 Workspace
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [workspace]
+                properties:
+                  workspace: { $ref: "#/components/schemas/Workspace" }
+        default: { $ref: "#/components/responses/Problem" }
   /workers/{id}/enabled:
     put:
       operationId: setWorkerEnabled
@@ -923,15 +941,6 @@ paths:
       responses:
         "200": { description: 当前 Worker 可选 Workspace, content: { application/json: { schema: { type: object, nullable: true, additionalProperties: true } } } }
         default: { $ref: "#/components/responses/Problem" }
-  /worker/v1/workspace/projects/snapshot:
-    servers: [{ url: / }]
-    post:
-      operationId: workerWorkspaceProjectSnapshot
-      tags: [Worker Protocol]
-      servers: [{ url: / }]
-      security: [{ workerBearer: [] }]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
-      responses: { "204": { description: 项目快照已保存 }, default: { $ref: "#/components/responses/Problem" } }
   /worker/v1/blobs/{id}:
     servers: [{ url: / }]
     get:

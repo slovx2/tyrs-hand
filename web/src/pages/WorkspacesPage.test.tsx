@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -113,6 +119,13 @@ function membersHandler() {
   )
 }
 
+function scanHandler(onScan?: () => void) {
+  return http.post(`/api/v1/workers/${worker.id}/workspace/scan`, () => {
+    onScan?.()
+    return HttpResponse.json({ workspace })
+  })
+}
+
 function renderPage() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -133,16 +146,23 @@ function renderPage() {
 
 describe('WorkerWorkspacePage', () => {
   it('只展示当前 Worker 的 Workspace，Codex 项目默认隐藏', async () => {
+    const scan = vi.fn()
     server.use(
       http.get(`/api/v1/workers/${worker.id}/workspace`, () =>
         HttpResponse.json({ workspace }),
       ),
       membersHandler(),
+      scanHandler(scan),
     )
     renderPage()
     const user = userEvent.setup()
 
     expect(await screen.findByText('workspaces/atlas')).toBeInTheDocument()
+    await waitFor(() => expect(scan).toHaveBeenCalledTimes(1))
+    expect(screen.getByText('Worker 实时扫描')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '刷新' }))
+    await waitFor(() => expect(scan).toHaveBeenCalledTimes(2))
+    expect(await screen.findByText('Workspace 已刷新')).toBeInTheDocument()
     expect(screen.queryByText('/srv/outside')).not.toBeInTheDocument()
     await user.click(screen.getByLabelText('显示 Codex 项目'))
     expect(screen.getByText('/srv/outside')).toBeInTheDocument()
@@ -150,6 +170,7 @@ describe('WorkerWorkspacePage', () => {
 
   it('未绑定时只列出尚未拥有 Workspace 的成员，并固定绑定当前 Worker', async () => {
     const create = vi.fn()
+    const scan = vi.fn()
     server.use(
       http.get(`/api/v1/workers/${worker.id}/workspace`, () =>
         HttpResponse.json({ workspace: null }),
@@ -159,6 +180,7 @@ describe('WorkerWorkspacePage', () => {
         create(await request.json())
         return HttpResponse.json({ id: 'new-workspace' }, { status: 201 })
       }),
+      scanHandler(scan),
     )
     renderPage()
     const user = userEvent.setup()
@@ -172,6 +194,8 @@ describe('WorkerWorkspacePage', () => {
       ownerDiscordUserId: '30',
       workerId: worker.id,
     })
+    await waitFor(() => expect(scan).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText('workspaces/atlas')).toBeInTheDocument()
   })
 
   it('Forum 操作只失效当前 Worker Workspace 查询', async () => {
@@ -183,6 +207,7 @@ describe('WorkerWorkspacePage', () => {
         return HttpResponse.json({ workspace })
       }),
       membersHandler(),
+      scanHandler(),
       http.post('/api/v1/workspace-forums/:id/disable', ({ params }) => {
         disable(params.id)
         return new HttpResponse(null, { status: 202 })
@@ -209,6 +234,7 @@ describe('WorkerWorkspacePage', () => {
         HttpResponse.json({ workspace }),
       ),
       membersHandler(),
+      scanHandler(),
       http.post(
         '/api/v1/workspace-projects/:id/forums',
         async ({ params, request }) => {
@@ -260,5 +286,34 @@ describe('WorkerWorkspacePage', () => {
     await user.click(screen.getByRole('button', { name: '移除 Alice' }))
     expect(grant).toHaveBeenCalledWith('30', { accessLevel: 'operator' })
     expect(remove).toHaveBeenCalledWith('40')
+  })
+
+  it('手动刷新再次扫描，实时失败时保留已有项目', async () => {
+    let scans = 0
+    server.use(
+      http.get(`/api/v1/workers/${worker.id}/workspace`, () =>
+        HttpResponse.json({ workspace }),
+      ),
+      membersHandler(),
+      http.post(`/api/v1/workers/${worker.id}/workspace/scan`, () => {
+        scans += 1
+        if (scans === 1) return HttpResponse.json({ workspace })
+        return HttpResponse.json(
+          { title: '实时扫描 Worker 项目失败', status: 502 },
+          { status: 502 },
+        )
+      }),
+    )
+    renderPage()
+    const user = userEvent.setup()
+
+    expect(await screen.findByText('workspaces/atlas')).toBeInTheDocument()
+    await waitFor(() => expect(scans).toBe(1))
+    await user.click(screen.getByRole('button', { name: '刷新' }))
+    expect(
+      await screen.findByText(/当前继续显示上次扫描结果/),
+    ).toBeInTheDocument()
+    expect(screen.getByText('workspaces/atlas')).toBeInTheDocument()
+    expect(scans).toBe(2)
   })
 })

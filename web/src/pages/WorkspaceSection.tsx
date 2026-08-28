@@ -38,6 +38,10 @@ export function WorkspaceSection({
               <dt>项目扫描</dt>
               <dd>{scanTime}</dd>
             </div>
+            <div>
+              <dt>数据来源</dt>
+              <dd>Worker 实时扫描</dd>
+            </div>
           </dl>
         </div>
       </header>

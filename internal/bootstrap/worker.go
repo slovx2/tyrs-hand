@@ -128,8 +128,9 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		return nil, nil, err
 	}
 	if configService != nil {
+		configService.SetWorkspaceRoot(cfg.WorkerWorkspaceRoot)
 		configService.SetRestart(runtime.Restart)
-		go runConfigChannel(ctx, cfg.WorkerControlURL, credential, configService, logger)
+		go runWorkerRPCChannel(ctx, cfg.WorkerControlURL, credential, configService, logger)
 	}
 	if desktopController != nil {
 		if err := desktopController.AttachRuntime(ctx, runtime); err != nil {
@@ -177,10 +178,12 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 	}, nil
 }
 
-func runConfigChannel(ctx context.Context, controlURL, credential string, service *workerconfig.Service, logger *zap.Logger) {
+func runWorkerRPCChannel(ctx context.Context, controlURL, credential string,
+	service *workerconfig.Service, logger *zap.Logger,
+) {
 	for ctx.Err() == nil {
-		if err := workerconfig.RunControlChannel(ctx, controlURL, credential, service); err != nil && ctx.Err() == nil {
-			logger.Warn("Worker 配置 WebSocket 断开", zap.Error(err))
+		if err := workerconfig.RunRPCChannel(ctx, controlURL, credential, service); err != nil && ctx.Err() == nil {
+			logger.Warn("Worker RPC WebSocket 断开", zap.Error(err))
 		}
 		select {
 		case <-ctx.Done():

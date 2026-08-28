@@ -110,13 +110,6 @@ func (c *Client) Workspace(ctx context.Context) (*WorkspaceManifest, error) {
 	return result.Workspace, err
 }
 
-func (c *Client) WorkspaceProjectSnapshot(ctx context.Context,
-	request WorkspaceProjectSnapshotRequest,
-) error {
-	return c.call(ctx, http.MethodPost, "/worker/v1/workspace/projects/snapshot",
-		request, nil, true)
-}
-
 func (c *Client) PrepareDesktopThread(ctx context.Context,
 	request DesktopThreadPrepareRequest,
 ) (DesktopThreadState, error) {

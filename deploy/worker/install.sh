@@ -252,7 +252,7 @@ fi
   if [ -n "${enrollment_token}" ]; then
     printf "TYRS_HAND_WORKER_ENROLLMENT_TOKEN='%s'\n" "${enrollment_token}"
   fi
-  printf "TYRS_HAND_WORKER_PROTOCOL_VERSION='30'\n"
+  printf "TYRS_HAND_WORKER_PROTOCOL_VERSION='31'\n"
   printf "TYRS_HAND_CODEX_BIN='%s'\n" "${worker_codex_bin}"
   printf "TYRS_HAND_WORKER_HOME='%s'\n" "${worker_home}"
   printf "TYRS_HAND_WORKER_CODEX_HOME='%s'\n" "${worker_codex_home}"

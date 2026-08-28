@@ -635,6 +635,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workers/{id}/workspace/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["scanWorkerWorkspace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/workers/{id}/enabled": {
         parameters: {
             query?: never;
@@ -1077,22 +1093,6 @@ export interface paths {
         get: operations["workerWorkspace"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/worker/v1/workspace/projects/snapshot": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["workerWorkspaceProjectSnapshot"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3726,6 +3726,33 @@ export interface operations {
             default: components["responses"]["Problem"];
         };
     };
+    scanWorkerWorkspace: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CSRFToken"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Worker 实时扫描后的 Workspace */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        workspace: components["schemas"]["Workspace"];
+                    };
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
     setWorkerEnabled: {
         parameters: {
             query?: never;
@@ -4535,31 +4562,6 @@ export interface operations {
                         [key: string]: unknown;
                     } | null;
                 };
-            };
-            default: components["responses"]["Problem"];
-        };
-    };
-    workerWorkspaceProjectSnapshot: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
-            };
-        };
-        responses: {
-            /** @description 项目快照已保存 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             default: components["responses"]["Problem"];
         };

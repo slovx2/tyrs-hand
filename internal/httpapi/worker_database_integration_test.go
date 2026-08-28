@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -24,6 +25,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/auth"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/database"
@@ -33,6 +35,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/security"
 	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
 	"github.com/slovx2/tyrs-hand/internal/sshconfig"
+	"github.com/slovx2/tyrs-hand/internal/workerconfig"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 	"github.com/slovx2/tyrs-hand/internal/workerregistry"
 	"github.com/stretchr/testify/require"
@@ -595,11 +598,14 @@ func TestWorkerAPIDesktopThreadWithoutDiscordForum(t *testing.T) {
 	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
 	repositoryID, _, _ := seedWorkerGitHubQueue(t, db, 311)
 	workspaceID, _ := seedWorkerWorkspace(t, db, repositoryID, worker.ID)
-	require.NoError(t, client.WorkspaceProjectSnapshot(ctx,
-		workerprotocol.WorkspaceProjectSnapshotRequest{WorkspaceID: workspaceID,
+	require.NoError(t, server.saveWorkspaceProjectScan(ctx, worker.ID, workspaceID,
+		workerprotocol.WorkspaceProjectScanResult{
 			Projects: []workerprotocol.WorkspaceProjectSnapshot{{
-				Name: "MAO-CRM", RelativePath: "workspaces/MAO-CRM", ProjectKind: "git",
-			}}}))
+				Name: "MAO-CRM", RelativePath: "workspaces/MAO-CRM",
+				ProjectSource: "workspace_child", HostPath: "/home/worker/tyrs-hand/workspaces/MAO-CRM",
+				Available: true, ProjectKind: "git",
+			}},
+		}))
 
 	workspaceRoot := "/home/worker/tyrs-hand/workspaces"
 	state, err := client.PrepareDesktopThread(ctx, workerprotocol.DesktopThreadPrepareRequest{
@@ -1707,29 +1713,27 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	}))
 }
 
-func TestWorkerAPIWorkspaceProjectSnapshotSynchronizesMissingAndRecovery(t *testing.T) {
+func TestWorkspaceProjectScanSynchronizesMissingAndRecovery(t *testing.T) {
 	db := workerDatabase(t)
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))
-	server, endpoint := workerTestServer(t, db)
-	worker, enrollment, err := server.workers.Create(ctx, "project-snapshot", []string{"discord"}, 2)
+	server, _ := workerTestServer(t, db)
+	worker, _, err := server.workers.Create(ctx, "project-snapshot", []string{"discord"}, 2)
 	require.NoError(t, err)
-	_, credential, err := server.workers.Enroll(ctx, enrollment)
-	require.NoError(t, err)
-	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
 	repositoryID, _, _ := seedWorkerGitHubQueue(t, db, 302)
 	workspaceID, _ := seedWorkerWorkspace(t, db, repositoryID, worker.ID)
 
-	require.NoError(t, client.WorkspaceProjectSnapshot(ctx,
-		workerprotocol.WorkspaceProjectSnapshotRequest{
-			WorkspaceID: workspaceID,
+	require.NoError(t, server.saveWorkspaceProjectScan(ctx, worker.ID, workspaceID,
+		workerprotocol.WorkspaceProjectScanResult{
 			Projects: []workerprotocol.WorkspaceProjectSnapshot{
 				{
 					Name: "atlas", RelativePath: "workspaces/atlas", ProjectKind: "git",
+					ProjectSource: "workspace_child", HostPath: "/workspace/atlas", Available: true,
 					Branch: "main", HeadSHA: "atlas-head", Dirty: true,
 					RemoteURL: "https://example.invalid/team/atlas.git",
 				},
-				{Name: "notes", RelativePath: "workspaces/notes", ProjectKind: "directory"},
+				{Name: "notes", RelativePath: "workspaces/notes", ProjectKind: "directory",
+					ProjectSource: "workspace_child", HostPath: "/workspace/notes", Available: true},
 			},
 		}))
 	var atlasID, notesID uuid.UUID
@@ -1748,12 +1752,12 @@ func TestWorkerAPIWorkspaceProjectSnapshotSynchronizesMissingAndRecovery(t *test
 	require.Equal(t, 2, availableCount)
 	require.Equal(t, 1, missingCount, "首次完整快照必须把未出现的旧项目标为缺失")
 
-	require.NoError(t, client.WorkspaceProjectSnapshot(ctx,
-		workerprotocol.WorkspaceProjectSnapshotRequest{
-			WorkspaceID: workspaceID,
+	require.NoError(t, server.saveWorkspaceProjectScan(ctx, worker.ID, workspaceID,
+		workerprotocol.WorkspaceProjectScanResult{
 			Projects: []workerprotocol.WorkspaceProjectSnapshot{
 				{
 					Name: "atlas", RelativePath: "workspaces/atlas", ProjectKind: "git",
+					ProjectSource: "workspace_child", HostPath: "/workspace/atlas", Available: true,
 					Branch: "feature", HeadSHA: "atlas-next",
 				},
 			},
@@ -1769,9 +1773,9 @@ func TestWorkerAPIWorkspaceProjectSnapshotSynchronizesMissingAndRecovery(t *test
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT projects_scanned_at
 		FROM worker_workspaces WHERE id=$1`, workspaceID).Scan(&scannedAt))
 
-	require.NoError(t, client.WorkspaceProjectSnapshot(ctx,
-		workerprotocol.WorkspaceProjectSnapshotRequest{
-			WorkspaceID: workspaceID, Error: "container unavailable",
+	require.NoError(t, server.saveWorkspaceProjectScan(ctx, worker.ID, workspaceID,
+		workerprotocol.WorkspaceProjectScanResult{
+			ScanError: "container unavailable",
 		}))
 	var scannedAfterFailure time.Time
 	var scanError string
@@ -1785,18 +1789,18 @@ func TestWorkerAPIWorkspaceProjectSnapshotSynchronizesMissingAndRecovery(t *test
 	require.Equal(t, "available", notesStatus,
 		"扫描失败不得把未上报的项目批量标记为缺失")
 
-	require.NoError(t, client.WorkspaceProjectSnapshot(ctx,
-		workerprotocol.WorkspaceProjectSnapshotRequest{WorkspaceID: workspaceID}))
+	require.NoError(t, server.saveWorkspaceProjectScan(ctx, worker.ID, workspaceID,
+		workerprotocol.WorkspaceProjectScanResult{}))
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM workspace_projects
 		WHERE workspace_id=$1 AND availability_status='missing'`, workspaceID).
 		Scan(&missingCount))
 	require.Equal(t, 3, missingCount, "成功空快照必须将完整旧快照标记为缺失")
 
-	require.NoError(t, client.WorkspaceProjectSnapshot(ctx,
-		workerprotocol.WorkspaceProjectSnapshotRequest{
-			WorkspaceID: workspaceID,
+	require.NoError(t, server.saveWorkspaceProjectScan(ctx, worker.ID, workspaceID,
+		workerprotocol.WorkspaceProjectScanResult{
 			Projects: []workerprotocol.WorkspaceProjectSnapshot{
-				{Name: "atlas", RelativePath: "workspaces/atlas", ProjectKind: "git"},
+				{Name: "atlas", RelativePath: "workspaces/atlas", ProjectKind: "git",
+					ProjectSource: "workspace_child", HostPath: "/workspace/atlas", Available: true},
 			},
 		}))
 	var recoveredID uuid.UUID
@@ -1804,6 +1808,52 @@ func TestWorkerAPIWorkspaceProjectSnapshotSynchronizesMissingAndRecovery(t *test
 		WHERE workspace_id=$1 AND relative_path='workspaces/atlas'
 		  AND availability_status='available'`, workspaceID).Scan(&recoveredID))
 	require.Equal(t, atlasID, recoveredID, "同路径恢复必须复用原项目记录")
+}
+
+func TestWorkerRPCScansProjectsWithoutStartupWorkspace(t *testing.T) {
+	db := workerDatabase(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	require.NoError(t, database.Migrate(ctx, db))
+	server, endpoint := workerTestServer(t, db)
+	worker, enrollment, err := server.workers.Create(ctx, "rpc-project-scan",
+		[]string{"discord"}, 2)
+	require.NoError(t, err)
+	_, credential, err := server.workers.Enroll(ctx, enrollment)
+	require.NoError(t, err)
+	repositoryID, _, _ := seedWorkerGitHubQueue(t, db, 303)
+	workspaceID, _ := seedWorkerWorkspace(t, db, repositoryID, worker.ID)
+
+	root, codexHome := t.TempDir(), t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, "WakeQora"), 0o700))
+	service := workerconfig.NewService(codexHome, "codex")
+	service.SetWorkspaceRoot(root)
+	go func() { _ = workerconfig.RunRPCChannel(ctx, endpoint, credential, service) }()
+	require.Eventually(t, func() bool {
+		server.workerRPCMu.RLock()
+		defer server.workerRPCMu.RUnlock()
+		return server.workerRPCConns[worker.ID] != nil
+	}, 5*time.Second, 20*time.Millisecond)
+
+	server.discord = discordintegration.NewManager(db, nil)
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/workers/:id/workspace/scan", func(c *gin.Context) {
+		c.Set("session", auth.Session{AdministratorID: uuid.New(), Role: "admin"})
+		server.scanWorkerWorkspace(c)
+	})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost,
+		"/workers/"+worker.ID.String()+"/workspace/scan", nil)
+	router.ServeHTTP(recorder, request)
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+
+	var source, hostPath string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT project_source,host_path
+		FROM workspace_projects WHERE workspace_id=$1 AND name='WakeQora'`,
+		workspaceID).Scan(&source, &hostPath))
+	require.Equal(t, "workspace_child", source)
+	require.Equal(t, filepath.Join(root, "WakeQora"), hostPath)
 }
 
 func TestWorkerAPISSHConfigurationAndGitHubAgentInstructions(t *testing.T) {
@@ -2004,7 +2054,8 @@ func workerTestServer(t *testing.T, db *sql.DB) (*Server, string) {
 	server := &Server{cfg: config.Config{LeaseDuration: 2 * time.Second,
 		CodexMaxSteersPerTurn: 5, CodexReconcileMaxAttempts: 3}, db: db,
 		workers: workerregistry.NewService(db), settings: settings,
-		ssh: sshconfig.NewService(db, secretStore), secrets: secretStore}
+		ssh: sshconfig.NewService(db, secretStore), secrets: secretStore,
+		workerRPCConns: make(map[uuid.UUID]*workerRPCConnection)}
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(func(c *gin.Context) {

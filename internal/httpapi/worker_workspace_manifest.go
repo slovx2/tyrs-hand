@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"path"
 	"path/filepath"
@@ -15,83 +17,69 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
-func (s *Server) workerWorkspaceProjectSnapshot(c *gin.Context) {
-	var request workerprotocol.WorkspaceProjectSnapshotRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		badRequest(c, err)
-		return
+var errInvalidWorkspaceProjectScan = errors.New("开发项目快照无效")
+
+func (s *Server) saveWorkspaceProjectScan(ctx context.Context, workerID,
+	workspaceID uuid.UUID, scan workerprotocol.WorkspaceProjectScanResult,
+) error {
+	if workerID == uuid.Nil || workspaceID == uuid.Nil || len(scan.Projects) > 5000 ||
+		len(scan.ScanError) > 2000 {
+		return errInvalidWorkspaceProjectScan
 	}
-	workspaceID := request.WorkspaceID
-	if workspaceID == uuid.Nil || len(request.Projects) > 5000 ||
-		len(request.Error) > 2000 {
-		badRequest(c, errors.New("开发项目快照无效"))
-		return
-	}
-	if request.Error != "" {
-		result, err := s.db.ExecContext(c.Request.Context(),
+	if scan.ScanError != "" {
+		result, err := s.db.ExecContext(ctx,
 			`UPDATE worker_workspaces
 			SET project_scan_error=$3, updated_at=now()
 			WHERE id=$1 AND worker_id=$2`,
-			workspaceID, currentWorker(c).ID, request.Error)
+			workspaceID, workerID, scan.ScanError)
 		if err != nil {
-			problem(c, http.StatusInternalServerError, "保存开发项目扫描失败状态失败", err)
-			return
+			return fmt.Errorf("保存开发项目扫描失败状态: %w", err)
 		}
 		if changed, _ := result.RowsAffected(); changed != 1 {
-			problem(c, http.StatusNotFound, "Workspace不存在", sql.ErrNoRows)
-			return
+			return sql.ErrNoRows
 		}
-		c.Status(http.StatusNoContent)
-		return
+		return nil
 	}
-	seen := make(map[string]struct{}, len(request.Projects))
-	paths := make([]string, 0, len(request.Projects))
-	for index := range request.Projects {
-		project := &request.Projects[index]
+	projects := append([]workerprotocol.WorkspaceProjectSnapshot(nil), scan.Projects...)
+	seen := make(map[string]struct{}, len(projects))
+	paths := make([]string, 0, len(projects))
+	for index := range projects {
+		project := &projects[index]
 		cleanPath := path.Clean(strings.TrimSpace(project.RelativePath))
 		name := strings.TrimSpace(project.Name)
-		if project.ProjectSource == "" {
-			project.ProjectSource = "workspace_child"
-			project.Available = true
-		}
 		validSource := project.ProjectSource == "workspace_root" || project.ProjectSource == "workspace_child" || project.ProjectSource == "codex_registered"
 		validPath := (project.ProjectSource == "workspace_root" && cleanPath == "workspaces" && name == "Workspace") ||
 			(project.ProjectSource == "workspace_child" && cleanPath == path.Join("workspaces", name)) ||
 			(project.ProjectSource == "codex_registered" && strings.HasPrefix(cleanPath, "codex/") && len(strings.TrimPrefix(cleanPath, "codex/")) == 64)
 		if !validSource || !validPath || name == "" ||
 			strings.HasPrefix(name, ".") || strings.Contains(name, "/") ||
-			(project.HostPath != "" && !filepath.IsAbs(project.HostPath)) ||
-			(project.ProjectSource == "codex_registered" && project.HostPath == "") ||
+			!filepath.IsAbs(project.HostPath) ||
 			(project.ProjectKind != "directory" && project.ProjectKind != "git") ||
 			(project.ProjectKind == "directory" &&
 				(project.Branch != "" || project.HeadSHA != "" || project.RemoteURL != "")) {
-			badRequest(c, errors.New("开发项目快照条目无效"))
-			return
+			return fmt.Errorf("%w: 条目无效", errInvalidWorkspaceProjectScan)
 		}
 		if _, duplicate := seen[cleanPath]; duplicate {
-			badRequest(c, errors.New("开发项目快照包含重复路径"))
-			return
+			return fmt.Errorf("%w: 包含重复路径", errInvalidWorkspaceProjectScan)
 		}
 		project.Name, project.RelativePath = name, cleanPath
 		seen[cleanPath] = struct{}{}
 		paths = append(paths, cleanPath)
 	}
-	tx, err := s.db.BeginTx(c.Request.Context(), nil)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		problem(c, http.StatusInternalServerError, "保存开发项目快照失败", err)
-		return
+		return fmt.Errorf("保存开发项目快照: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	var owned bool
-	if err := tx.QueryRowContext(c.Request.Context(), `SELECT true
+	if err := tx.QueryRowContext(ctx, `SELECT true
 		FROM worker_workspaces
 		WHERE id=$1 AND worker_id=$2 FOR UPDATE`,
-		workspaceID, currentWorker(c).ID).Scan(&owned); err != nil {
-		problem(c, http.StatusNotFound, "Workspace不存在", err)
-		return
+		workspaceID, workerID).Scan(&owned); err != nil {
+		return err
 	}
-	for _, project := range request.Projects {
-		if _, err := tx.ExecContext(c.Request.Context(), `INSERT INTO workspace_projects
+	for _, project := range projects {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO workspace_projects
 			(workspace_id,relative_path,name,project_kind,branch,head_sha,dirty,
 				remote_url,availability_status,project_source,host_path,scan_error,last_seen_at)
 			VALUES ($1,$2,$3,$4,NULLIF($5,''),NULLIF($6,''),$7,NULLIF($8,''),
@@ -106,29 +94,25 @@ func (s *Server) workerWorkspaceProjectSnapshot(c *gin.Context) {
 			workspaceID, project.RelativePath, project.Name, project.ProjectKind,
 			project.Branch, project.HeadSHA, project.Dirty, project.RemoteURL, project.Available,
 			project.ProjectSource, project.HostPath, project.ScanError); err != nil {
-			problem(c, http.StatusInternalServerError, "写入开发项目快照失败", err)
-			return
+			return fmt.Errorf("写入开发项目快照: %w", err)
 		}
 	}
-	if _, err := tx.ExecContext(c.Request.Context(), `UPDATE workspace_projects
+	if _, err := tx.ExecContext(ctx, `UPDATE workspace_projects
 		SET availability_status='missing', updated_at=now()
 		WHERE workspace_id=$1 AND relative_path <> ALL($2::text[])`,
 		workspaceID, pq.Array(paths)); err != nil {
-		problem(c, http.StatusInternalServerError, "同步缺失开发项目失败", err)
-		return
+		return fmt.Errorf("同步缺失开发项目: %w", err)
 	}
-	if _, err := tx.ExecContext(c.Request.Context(),
+	if _, err := tx.ExecContext(ctx,
 		`UPDATE worker_workspaces
 		SET projects_scanned_at=now(), project_scan_error=NULL, updated_at=now()
 		WHERE id=$1`, workspaceID); err != nil {
-		problem(c, http.StatusInternalServerError, "更新开发项目扫描时间失败", err)
-		return
+		return fmt.Errorf("更新开发项目扫描时间: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		problem(c, http.StatusInternalServerError, "提交开发项目快照失败", err)
-		return
+		return fmt.Errorf("提交开发项目快照: %w", err)
 	}
-	c.Status(http.StatusNoContent)
+	return nil
 }
 
 func (s *Server) workerWorkspace(c *gin.Context) {

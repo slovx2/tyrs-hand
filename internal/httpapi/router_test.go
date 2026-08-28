@@ -17,6 +17,8 @@ func TestWebhookRouterSeparation(t *testing.T) {
 	require.Contains(t, combined, "GET /api/v1/ssh/credentials")
 	require.Contains(t, combined, "GET /api/v1/workers/:id")
 	require.Contains(t, combined, "GET /api/v1/workers/:id/workspace")
+	require.Contains(t, combined, "POST /api/v1/workers/:id/workspace/scan")
+	require.NotContains(t, combined, "POST /worker/v1/workspace/projects/snapshot")
 	require.Contains(t, combined, "GET /api/v1/client/machines")
 	require.Contains(t, combined,
 		"GET /api/v1/client/machines/:workerId/scheduled-tasks")
