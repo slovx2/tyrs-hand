@@ -13,7 +13,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/slovx2/tyrs-hand/internal/appserverhub"
@@ -61,7 +60,7 @@ type appServerGeneration struct {
 	generation int64
 }
 
-// RuntimeRebinder 只在失败后的按需恢复成功时更新 Worker 内部 Client。
+// RuntimeRebinder 在 App Server generation 更换后更新 Worker 内部 Client。
 type RuntimeRebinder interface {
 	RebindRuntime(context.Context, *appserverhub.Client, int64) error
 }
@@ -209,16 +208,47 @@ func (r *Runtime) Client() *appserverhub.Client {
 	return r.current.client
 }
 
-// Reload 请求宿主 Codex App Server 重新读取配置。Codex 当前通过 SIGHUP
-// 处理配置刷新；若未来版本提供显式协议，可在此处替换为协议调用。
-func (r *Runtime) Reload() error {
+// Restart 受控重启宿主 Codex App Server。
+//
+// Codex CLI 启动器会把 SIGHUP 转发为终止信号，因此不能把它当作配置热加载
+// 使用。这里完整关闭旧 generation，再启动新的 App Server 和 Hub，并重新绑定
+// Worker Controller。已有 Desktop 连接会随旧 Hub 关闭，客户端需要重新连接。
+func (r *Runtime) Restart() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	r.restartMu.Lock()
+	defer r.restartMu.Unlock()
+
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.closed || r.current == nil || r.current.command == nil ||
-		r.current.command.Process == nil || generationStopped(r.current) {
+	if r.closed || r.current == nil || generationStopped(r.current) {
+		r.mu.Unlock()
 		return errors.New("宿主 Codex App Server 不可用")
 	}
-	return r.current.command.Process.Signal(syscall.SIGHUP)
+	failed := r.current
+	r.mu.Unlock()
+
+	r.options.Logger.Info("开始受控重启 Codex App Server")
+	stopAppServerGeneration(failed)
+	next, err := r.start(ctx)
+	if err != nil {
+		return fmt.Errorf("重启 Codex App Server: %w", err)
+	}
+	if rebinder, ok := r.options.Controller.(RuntimeRebinder); ok {
+		if err := rebinder.RebindRuntime(ctx, next.client, next.generation); err != nil {
+			stopAppServerGeneration(next)
+			return fmt.Errorf("重新绑定 Worker Codex Client: %w", err)
+		}
+	}
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		stopAppServerGeneration(next)
+		return errors.New("宿主 Worker Runtime 已关闭")
+	}
+	r.current = next
+	r.mu.Unlock()
+	r.options.Logger.Info("受控重启 Codex App Server 完成")
+	return nil
 }
 
 // OpenEphemeralClient 为 Worker 内部临时任务创建独立的 Desktop 事件域。

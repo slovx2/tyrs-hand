@@ -83,6 +83,33 @@ func TestDesktopDisconnectDoesNotProbeOrRestartRunningAppServer(t *testing.T) {
 	require.NoError(t, runtime.recoverAfterDesktopFailure(context.Background(), running))
 }
 
+func TestRestartReplacesRunningAppServerGeneration(t *testing.T) {
+	current := &appServerGeneration{done: make(chan struct{}), generation: 1}
+	next := &appServerGeneration{done: make(chan struct{}), generation: 2}
+	runtime := &Runtime{current: current, options: RuntimeOptions{Logger: zap.NewNop()}}
+	started := 0
+	runtime.start = func(context.Context) (*appServerGeneration, error) {
+		started++
+		return next, nil
+	}
+
+	require.NoError(t, runtime.Restart())
+	require.Equal(t, 1, started)
+	require.Equal(t, next, runtime.current)
+}
+
+func TestRestartRejectsStoppedAppServer(t *testing.T) {
+	stopped := &appServerGeneration{done: make(chan struct{}), generation: 1}
+	close(stopped.done)
+	runtime := &Runtime{current: stopped, options: RuntimeOptions{Logger: zap.NewNop()}}
+	runtime.start = func(context.Context) (*appServerGeneration, error) {
+		t.Fatal("已停止的 App Server 不应进入受控重启")
+		return nil, nil
+	}
+
+	require.ErrorContains(t, runtime.Restart(), "App Server 不可用")
+}
+
 func TestAppServerGenerationOutlivesRecoveryStartupContext(t *testing.T) {
 	startup, cancel := context.WithCancel(context.Background())
 	lifetime := appServerGenerationContext(startup)

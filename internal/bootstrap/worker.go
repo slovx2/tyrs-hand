@@ -128,7 +128,7 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		return nil, nil, err
 	}
 	if configService != nil {
-		configService.SetRestart(runtime.Reload)
+		configService.SetRestart(runtime.Restart)
 		go runConfigChannel(ctx, cfg.WorkerControlURL, credential, configService, logger)
 	}
 	if desktopController != nil {
