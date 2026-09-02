@@ -471,7 +471,7 @@ func (c *DisgoConnector) createCodexPost(event *events.ModalSubmitInteractionCre
 	var threadID string
 	if err == nil {
 		post, createErr := event.Client().Rest.CreatePostInThreadChannel(forumSnowflake,
-			discord.ThreadChannelPostCreate{Name: "Codex 正在生成标题", AutoArchiveDuration: discord.AutoArchiveDuration1w,
+			discord.ThreadChannelPostCreate{Name: "Codex 正在生成标题", AutoArchiveDuration: discord.AutoArchiveDuration3d,
 				Message: discord.MessageCreate{Content: body}}, disgorest.WithCtx(ctx))
 		if createErr != nil {
 			err = createErr

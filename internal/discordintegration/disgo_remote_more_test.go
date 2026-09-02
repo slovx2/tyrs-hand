@@ -293,7 +293,7 @@ func TestDisgoRemoteGuildChannelsAndOperations(t *testing.T) {
 	require.Equal(t, float64(discord.ComponentTypeContainer), container["type"])
 	require.Equal(t, "Card", container["components"].([]any)[0].(map[string]any)["content"])
 	threadMessage := messageBodies[2]["message"].(map[string]any)
-	require.Equal(t, float64(discord.AutoArchiveDuration1w), messageBodies[2]["auto_archive_duration"])
+	require.Equal(t, float64(discord.AutoArchiveDuration3d), messageBodies[2]["auto_archive_duration"])
 	require.Equal(t, float64(discord.MessageFlagIsComponentsV2), threadMessage["flags"])
 	threadContainer := threadMessage["components"].([]any)[0].(map[string]any)
 	require.Equal(t, "Task", threadContainer["components"].([]any)[0].(map[string]any)["content"])

@@ -575,7 +575,7 @@ func (r *DisgoRemote) Send(ctx context.Context, item OutboxItem) (json.RawMessag
 			message.AllowedMentions = &discord.AllowedMentions{}
 		}
 		post, err := r.rest.CreatePostInThreadChannel(forum, discord.ThreadChannelPostCreate{
-			Name: payload.ThreadName, AutoArchiveDuration: discord.AutoArchiveDuration1w,
+			Name: payload.ThreadName, AutoArchiveDuration: discord.AutoArchiveDuration3d,
 			AppliedTags: tags, Message: message,
 		}, disgorest.WithCtx(ctx))
 		if err != nil {
