@@ -20,7 +20,7 @@ func (s *Server) loadWorkerSnapshot(ctx context.Context,
 		if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(model,''),
 			COALESCE(reasoning_effort,''), COALESCE(service_tier,'standard'),
 			collaboration_mode, settings_revision
-			FROM codex_turn_runs WHERE id = $1`, claimed.RunID).
+			FROM codex_thread_controls WHERE id = $1`, claimed.ControlID).
 			Scan(&result.Runtime.Model, &result.Runtime.ReasoningEffort,
 				&result.Runtime.ServiceTier, &result.Runtime.CollaborationMode,
 				&result.Runtime.SettingsRevision); err != nil {

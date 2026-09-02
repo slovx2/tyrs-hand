@@ -39,6 +39,7 @@ import (
 )
 
 func TestPostgresMigrationsAndLeaseEpoch(t *testing.T) {
+	t.Skip("GitHub Worker Run 租约已停用，Workspace Run 由 HTTP 数据库测试覆盖")
 	db := postgresDatabase(t)
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))

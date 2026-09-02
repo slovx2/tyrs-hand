@@ -37,6 +37,7 @@ func (s *Server) registerWorkerRoutes(router *gin.Engine) {
 func (s *Server) registerWorkerOperationRoutes(group *gin.RouterGroup) {
 	group.POST("/heartbeat", s.workerHeartbeat)
 	group.POST("/claims", s.workerClaim)
+	group.POST("/inputs/decide", s.workerDecideInput)
 	group.POST("/session-title-tasks/claim", s.workerClaimSessionTitle)
 	group.POST("/session-title-tasks/:id/complete", s.workerCompleteSessionTitle)
 	group.POST("/session-title-tasks/:id/fail", s.workerFailSessionTitle)
@@ -206,12 +207,9 @@ func (s *Server) workerClaim(c *gin.Context) {
 		problem(c, http.StatusForbidden, "节点未授权该 Worker 角色", nil)
 		return
 	}
-	source := ""
 	switch request.Role {
 	case "discord":
-		source = codexcontrol.SourceWorkspace
 	case "all":
-		source = codexcontrol.SourceWorkspace
 	default:
 		badRequest(c, errors.New("role 必须是 all 或 discord"))
 		return
@@ -223,26 +221,6 @@ func (s *Server) workerClaim(c *gin.Context) {
 	repository := codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration,
 		s.cfg.CodexMaxSteersPerTurn, s.cfg.CodexReconcileMaxAttempts)
 	for {
-		var active int
-		if err := s.db.QueryRowContext(c.Request.Context(), `SELECT count(*)
-			FROM codex_turn_runs
-			WHERE worker_id = $1 AND active_slot = 1`, worker.ID).
-			Scan(&active); err != nil {
-			problem(c, http.StatusInternalServerError, "读取节点运行槽位失败", err)
-			return
-		}
-		if active >= worker.MaxConcurrentJobs {
-			if !request.Wait || !time.Now().Before(deadline) {
-				c.JSON(http.StatusOK, workerprotocol.ClaimResponse{})
-				return
-			}
-			select {
-			case <-c.Request.Context().Done():
-				return
-			case <-time.After(time.Second):
-			}
-			continue
-		}
 		if request.Role == "discord" || request.Role == "all" {
 			_, err := scheduledtasks.NewService(s.db, s.cfg.LeaseDuration,
 				s.cfg.CodexMaxSteersPerTurn, s.cfg.CodexReconcileMaxAttempts).
@@ -252,7 +230,7 @@ func (s *Server) workerClaim(c *gin.Context) {
 				return
 			}
 		}
-		claimed, err := repository.ClaimWorker(c.Request.Context(), worker.ID.String(), source, worker.ID)
+		claimed, err := repository.PendingWorkerInput(c.Request.Context(), worker.ID)
 		if err != nil {
 			problem(c, http.StatusInternalServerError, "领取远程任务失败", err)
 			return
@@ -260,7 +238,6 @@ func (s *Server) workerClaim(c *gin.Context) {
 		if claimed != nil {
 			snapshot, err := s.loadWorkerSnapshot(c.Request.Context(), claimed)
 			if err != nil {
-				_ = repository.Reconcile(c.Request.Context(), claimed, "snapshot_error", err)
 				problem(c, http.StatusInternalServerError, "生成任务快照失败", err)
 				return
 			}
@@ -281,15 +258,51 @@ func (s *Server) workerClaim(c *gin.Context) {
 	}
 }
 
-func (s *Server) claimedRemoteRun(ctx context.Context, workerID, runID uuid.UUID,
-	lease workerprotocol.RunLeaseRequest,
+func (s *Server) workerDecideInput(c *gin.Context) {
+	var request workerprotocol.InputDecisionRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		badRequest(c, err)
+		return
+	}
+	var err error
+	if request.Action == "start" {
+		repository := codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration,
+			s.cfg.CodexMaxSteersPerTurn, s.cfg.CodexReconcileMaxAttempts)
+		err = repository.StartWorkerInput(c.Request.Context(), currentWorker(c).ID,
+			request.InputID, request.RunID)
+	} else if request.Action == "steer" || request.Action == "interrupt" {
+		var claimed *codexcontrol.ClaimedControl
+		claimed, err = s.claimedRemoteRun(c.Request.Context(), currentWorker(c).ID,
+			request.RunID)
+		if err == nil {
+			err = s.ackWorkerInput(c.Request.Context(), claimed, request.InputID,
+				request.Action, request.TurnID)
+		}
+	} else {
+		badRequest(c, errors.New("输入决议 action 必须是 start、steer 或 interrupt"))
+		return
+	}
+	if err != nil {
+		if errors.Is(err, errWorkerInputDecisionMismatch) {
+			badRequest(c, err)
+		} else {
+			remoteRunError(c, "确认 Worker 本地输入决议失败", err)
+		}
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (s *Server) claimedRemoteRun(ctx context.Context, workerID,
+	runID uuid.UUID,
 ) (*codexcontrol.ClaimedControl, error) {
 	var claimed codexcontrol.ClaimedControl
 	var source string
 	var conversationID, sessionID, workItemID, repositoryID, projectID sql.NullString
 	var targetIntentID sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT r.control_id, r.primary_intent_id, r.id,
-		r.lease_epoch, i.source_type, COALESCE(i.input_surface,''), i.operation,
+		COALESCE(r.lease_epoch,0),r.max_append_count,i.source_type,
+		COALESCE(i.input_surface,''),i.operation,
 		i.attempt_count, i.max_attempts,
 		i.discord_conversation_id::text, i.session_id::text, i.work_item_id::text, i.repository_id::text,
 		i.workspace_project_id::text,
@@ -302,7 +315,8 @@ func (s *Server) claimedRemoteRun(ctx context.Context, workerID, runID uuid.UUID
 		FROM codex_turn_runs r JOIN codex_turn_intents i ON i.id = r.primary_intent_id
 		JOIN codex_thread_controls c ON c.id = r.control_id
 		WHERE r.id = $1 AND r.worker_id = $2`, runID, workerID).Scan(
-		&claimed.ControlID, &claimed.ID, &claimed.RunID, &claimed.LeaseEpoch, &source,
+		&claimed.ControlID, &claimed.ID, &claimed.RunID, &claimed.LeaseEpoch,
+		&claimed.MaxSteers, &source,
 		&claimed.InputSurface, &claimed.Operation, &claimed.Attempt, &claimed.MaxAttempts,
 		&conversationID, &sessionID, &workItemID, &repositoryID, &projectID,
 		&claimed.DiscordMessageID, &claimed.AgentProfileID, &claimed.Sequence,
@@ -313,10 +327,7 @@ func (s *Server) claimedRemoteRun(ctx context.Context, workerID, runID uuid.UUID
 	if err != nil {
 		return nil, err
 	}
-	if claimed.LeaseEpoch != lease.LeaseEpoch {
-		return nil, codexcontrol.ErrLeaseLost
-	}
-	claimed.LeaseToken, claimed.SourceType = lease.LeaseToken, source
+	claimed.SourceType = source
 	if targetIntentID.Valid {
 		claimed.TargetIntentID, err = uuid.Parse(targetIntentID.String)
 	}
@@ -354,13 +365,11 @@ func remoteRunError(c *gin.Context, action string, err error) {
 	status := http.StatusInternalServerError
 	if errors.Is(err, sql.ErrNoRows) {
 		status = http.StatusNotFound
-	} else if errors.Is(err, codexcontrol.ErrLeaseLost) {
-		status = http.StatusConflict
 	}
 	problem(c, status, action, err)
 }
 
-func requireRunLease(c *gin.Context, target any) (uuid.UUID, workerregistry.Worker, bool) {
+func requireWorkerRun(c *gin.Context, target any) (uuid.UUID, workerregistry.Worker, bool) {
 	id, ok := parseRunID(c)
 	if !ok {
 		return uuid.Nil, workerregistry.Worker{}, false

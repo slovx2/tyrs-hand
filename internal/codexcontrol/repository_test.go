@@ -135,7 +135,7 @@ func TestEnqueueWorkspaceUsesSessionUniqueControl(t *testing.T) {
 	require.NoError(t, tx.Rollback())
 }
 
-func TestHeartbeatUpdatesControlAndRun(t *testing.T) {
+func TestHeartbeatOnlyRecordsWorkerObservation(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -147,9 +147,8 @@ func TestHeartbeatUpdatesControlAndRun(t *testing.T) {
 		Intent: Intent{ID: uuid.New(), ControlID: uuid.New()}, RunID: uuid.New(),
 		LeaseToken: "lease-token", LeaseEpoch: 3,
 	}
-	mock.ExpectExec(regexp.QuoteMeta("WITH updated_control AS (")).
-		WithArgs(claimed.ControlID, sqlmock.AnyArg(), claimed.LeaseEpoch,
-			"90.000000 seconds", claimed.ID, claimed.RunID).
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE codex_turn_runs SET heartbeat_at=now()")).
+		WithArgs(claimed.RunID, claimed.ControlID, claimed.ID).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectClose()
 
@@ -157,7 +156,7 @@ func TestHeartbeatUpdatesControlAndRun(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestHeartbeatRejectsStaleRun(t *testing.T) {
+func TestHeartbeatRejectsUnknownWorkerRun(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -169,9 +168,8 @@ func TestHeartbeatRejectsStaleRun(t *testing.T) {
 		Intent: Intent{ID: uuid.New(), ControlID: uuid.New()}, RunID: uuid.New(),
 		LeaseToken: "stale-token", LeaseEpoch: 4,
 	}
-	mock.ExpectExec(regexp.QuoteMeta("WITH updated_control AS (")).
-		WithArgs(claimed.ControlID, sqlmock.AnyArg(), claimed.LeaseEpoch,
-			"30.000000 seconds", claimed.ID, claimed.RunID).
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE codex_turn_runs SET heartbeat_at=now()")).
+		WithArgs(claimed.RunID, claimed.ControlID, claimed.ID).
 		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectClose()
 
@@ -194,8 +192,8 @@ func TestReconcileExhaustedIntentReturnsControlToIdle(t *testing.T) {
 		RunID: uuid.New(), LeaseToken: "lease-token", LeaseEpoch: 2,
 	}
 	mock.ExpectBegin()
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT EXISTS(SELECT 1 FROM codex_thread_controls")).
-		WithArgs(claimed.ControlID, sqlmock.AnyArg(), claimed.LeaseEpoch, claimed.ID).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT EXISTS(SELECT 1 FROM codex_turn_runs")).
+		WithArgs(claimed.RunID, claimed.ControlID, claimed.ID).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 	mock.ExpectExec("UPDATE codex_turn_intents SET status").
 		WithArgs(claimed.ID, "failed", "desktop_turn_error", "runtime failed").
@@ -235,8 +233,8 @@ func TestReconcileDesktopIntentReturnsControlToIdleImmediately(t *testing.T) {
 		RunID: uuid.New(), LeaseToken: "lease-token", LeaseEpoch: 2,
 	}
 	mock.ExpectBegin()
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT EXISTS(SELECT 1 FROM codex_thread_controls")).
-		WithArgs(claimed.ControlID, sqlmock.AnyArg(), claimed.LeaseEpoch, claimed.ID).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT EXISTS(SELECT 1 FROM codex_turn_runs")).
+		WithArgs(claimed.RunID, claimed.ControlID, claimed.ID).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 	mock.ExpectExec("UPDATE codex_turn_intents SET status").
 		WithArgs(claimed.ID, "failed", "desktop_turn_error", "runtime failed").
@@ -274,8 +272,8 @@ func TestCancelFinishesSteerIntents(t *testing.T) {
 		RunID: uuid.New(), LeaseToken: "lease-token", LeaseEpoch: 2,
 	}
 	mock.ExpectBegin()
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT EXISTS(SELECT 1 FROM codex_thread_controls")).
-		WithArgs(claimed.ControlID, sqlmock.AnyArg(), claimed.LeaseEpoch, claimed.ID).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT EXISTS(SELECT 1 FROM codex_turn_runs")).
+		WithArgs(claimed.RunID, claimed.ControlID, claimed.ID).
 		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 	mock.ExpectExec("UPDATE codex_turn_intents SET status = \\$2").
 		WithArgs(claimed.ID, IntentCanceled, nil, "user_interrupt", "stopped").
@@ -325,8 +323,8 @@ func TestNonRetryableCodexErrorFinishesImmediatelyAndPersistsDetails(t *testing.
 			encoded := encode(codexError)
 
 			mock.ExpectBegin()
-			mock.ExpectQuery(regexp.QuoteMeta("SELECT EXISTS(SELECT 1 FROM codex_thread_controls")).
-				WithArgs(claimed.ControlID, sqlmock.AnyArg(), claimed.LeaseEpoch, claimed.ID).
+			mock.ExpectQuery(regexp.QuoteMeta("SELECT EXISTS(SELECT 1 FROM codex_turn_runs")).
+				WithArgs(claimed.RunID, claimed.ControlID, claimed.ID).
 				WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 			mock.ExpectExec("UPDATE codex_turn_intents SET status = \\$2").
 				WithArgs(claimed.ID, IntentFailed, nil, "codex_non_retryable_error", "at capacity").
@@ -354,34 +352,16 @@ func TestNonRetryableCodexErrorFinishesImmediatelyAndPersistsDetails(t *testing.
 	}
 }
 
-func TestRequeueExpiredDesktopIntentReturnsControlToIdle(t *testing.T) {
+func TestRequeueExpiredDoesNotChangeWorkerRuns(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, db.Close())
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
-	controlID, intentID := uuid.New(), uuid.New()
-	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT control.id, control.active_intent_id").
-		WillReturnRows(sqlmock.NewRows([]string{
-			"control_id", "intent_id", "worker_id", "input_surface",
-		}).AddRow(controlID, intentID, nil, "desktop"))
-	mock.ExpectExec("UPDATE codex_turn_intents SET status = 'failed'").
-		WithArgs(intentID).
-		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec("UPDATE codex_turn_runs SET status = 'failed'").
-		WithArgs(controlID).
-		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec("UPDATE codex_interactive_requests request").
-		WithArgs(controlID).WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec("UPDATE codex_thread_controls SET status = 'idle'").
-		WithArgs(controlID).
-		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectCommit()
 	mock.ExpectClose()
 
 	requeued, err := NewRepository(db, time.Minute).RequeueExpired(context.Background())
 	require.NoError(t, err)
-	require.EqualValues(t, 1, requeued)
+	require.Zero(t, requeued)
 }

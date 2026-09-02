@@ -37,11 +37,6 @@ func (e *HTTPError) Error() string {
 	return fmt.Sprintf("control 返回 %s: %s", e.Status, e.Detail)
 }
 
-func IsLeaseLost(err error) bool {
-	var response *HTTPError
-	return errors.As(err, &response) && response.StatusCode == http.StatusConflict
-}
-
 func IsAlreadyFinished(err error) bool {
 	var response *HTTPError
 	return errors.As(err, &response) && response.StatusCode == http.StatusGone
@@ -282,10 +277,7 @@ func (c *Client) UploadAgentAttachment(ctx context.Context, task *Task, itemID s
 	multipartWriter := multipart.NewWriter(writer)
 	writeResult := make(chan error, 1)
 	go func() {
-		writeErr := writerField(multipartWriter, "leaseToken", task.Claimed.LeaseToken)
-		if writeErr == nil {
-			writeErr = writerField(multipartWriter, "leaseEpoch", fmt.Sprint(task.Claimed.LeaseEpoch))
-		}
+		var writeErr error
 		if writeErr == nil {
 			writeErr = writerField(multipartWriter, "itemId", itemID)
 		}
@@ -375,7 +367,7 @@ func (c *Client) RegisterInteractive(ctx context.Context, task *Task,
 ) (InteractiveState, error) {
 	var result InteractiveState
 	err := c.call(ctx, http.MethodPost, runPath(task, "/interactive"),
-		InteractiveRegisterRequest{RunLeaseRequest: lease(task), RequestID: requestID,
+		InteractiveRegisterRequest{RequestID: requestID,
 			Params: params, AppServerGeneration: generation}, &result, true)
 	return result, err
 }
@@ -405,18 +397,13 @@ func (c *Client) Claim(ctx context.Context, request ClaimRequest) (ClaimResponse
 	return response, nil
 }
 
-func lease(task *Task) RunLeaseRequest {
-	return RunLeaseRequest{LeaseToken: task.Claimed.LeaseToken,
-		LeaseEpoch: task.Claimed.LeaseEpoch}
-}
-
 func runPath(task *Task, suffix string) string {
 	return "/worker/v1/runs/" + task.Claimed.RunID.String() + suffix
 }
 
 func (c *Client) RunHeartbeat(ctx context.Context, task *Task) (RunHeartbeatResponse, error) {
 	var response RunHeartbeatResponse
-	err := c.call(ctx, http.MethodPost, runPath(task, "/heartbeat"), lease(task),
+	err := c.call(ctx, http.MethodPost, runPath(task, "/heartbeat"), struct{}{},
 		&response, true)
 	return response, err
 }
@@ -425,25 +412,30 @@ func (c *Client) AckCommand(ctx context.Context, task *Task, command RunCommand,
 	action, turnID string,
 ) error {
 	return c.call(ctx, http.MethodPost, runPath(task, "/commands/ack"), CommandAckRequest{
-		RunLeaseRequest: lease(task), CommandID: command.ID, Action: action, TurnID: turnID,
+		CommandID: command.ID, Action: action, TurnID: turnID,
+	}, nil, true)
+}
+
+func (c *Client) DecideInput(ctx context.Context, task *Task, action, turnID string) error {
+	return c.call(ctx, http.MethodPost, "/worker/v1/inputs/decide", InputDecisionRequest{
+		InputID: task.Claimed.ID, Action: action, RunID: task.Claimed.RunID, TurnID: turnID,
 	}, nil, true)
 }
 
 func (c *Client) Events(ctx context.Context, task *Task, events []EventInput) error {
 	return c.call(ctx, http.MethodPost, runPath(task, "/events"), EventsRequest{
-		RunLeaseRequest: lease(task), Events: events,
+		Events: events,
 	}, nil, true)
 }
 
 func (c *Client) Complete(ctx context.Context, task *Task, result codexcontrol.TurnResult) error {
 	return c.call(ctx, http.MethodPost, runPath(task, "/complete"), CompleteRequest{
-		RunLeaseRequest: lease(task), IdempotencyKey: task.Claimed.RunID.String() + ":complete",
-		Result: result,
+		IdempotencyKey: task.Claimed.RunID.String() + ":complete",
+		Result:         result,
 	}, nil, true)
 }
 
 func (c *Client) CompleteDomain(ctx context.Context, task *Task, result CompleteRequest) error {
-	result.RunLeaseRequest = lease(task)
 	if result.IdempotencyKey == "" {
 		result.IdempotencyKey = task.Claimed.RunID.String() + ":complete"
 	}
@@ -462,8 +454,8 @@ func (c *Client) FailWithCodexError(ctx context.Context, task *Task, code string
 		message = cause.Error()
 	}
 	return c.call(ctx, http.MethodPost, runPath(task, "/fail"), FailRequest{
-		RunLeaseRequest: lease(task), IdempotencyKey: task.Claimed.RunID.String() + ":fail",
-		Code: code, Message: message, CodexError: codexError,
+		IdempotencyKey: task.Claimed.RunID.String() + ":fail",
+		Code:           code, Message: message, CodexError: codexError,
 	}, nil, true)
 }
 
@@ -480,8 +472,6 @@ func (c *Client) DownloadAttachment(ctx context.Context, task *Task, attachmentI
 		return "", 0, errors.New("Worker尚未注册")
 	}
 	request.Header.Set("Authorization", "Bearer "+c.credential)
-	request.Header.Set("X-Run-Lease-Token", task.Claimed.LeaseToken)
-	request.Header.Set("X-Run-Lease-Epoch", fmt.Sprintf("%d", task.Claimed.LeaseEpoch))
 	response, err := c.http.Do(request)
 	if err != nil {
 		return "", 0, err
@@ -501,29 +491,27 @@ func (c *Client) DownloadAttachment(ctx context.Context, task *Task, attachmentI
 
 func (c *Client) SetThread(ctx context.Context, task *Task, threadID string) error {
 	return c.call(ctx, http.MethodPost, runPath(task, "/thread"), SetThreadRequest{
-		RunLeaseRequest: lease(task), ThreadID: threadID,
+		ThreadID: threadID,
 	}, nil, true)
 }
 
 func (c *Client) RecordSubmission(ctx context.Context, task *Task, id string) error {
 	return c.call(ctx, http.MethodPost, runPath(task, "/submission"), SubmissionRequest{
-		RunLeaseRequest: lease(task), SubmissionID: id,
+		SubmissionID: id,
 	}, nil, true)
 }
 
 func (c *Client) ConfirmTurn(ctx context.Context, task *Task, id string) error {
 	return c.call(ctx, http.MethodPost, runPath(task, "/confirm"), ConfirmTurnRequest{
-		RunLeaseRequest: lease(task), TurnID: id,
+		TurnID: id,
 	}, nil, true)
 }
 
 func (c *Client) WorkspaceProjectState(ctx context.Context, task *Task, state WorkspaceProjectState) error {
-	state.RunLeaseRequest = lease(task)
 	return c.call(ctx, http.MethodPost, runPath(task, "/workspace-project-state"), state, nil, true)
 }
 
 func (c *Client) WorkspaceState(ctx context.Context, task *Task, state WorkspaceState) error {
-	state.RunLeaseRequest = lease(task)
 	return c.call(ctx, http.MethodPost, runPath(task, "/workspace-state"), state, nil, true)
 }
 
@@ -532,7 +520,7 @@ func (c *Client) CallTool(ctx context.Context, task *Task,
 ) (codex.ToolCallResult, error) {
 	var result codex.ToolCallResult
 	err := c.call(ctx, http.MethodPost, runPath(task, "/tools/call"), ToolCallRequest{
-		RunLeaseRequest: lease(task), Capability: task.Claimed.Capability, Request: request,
+		Request: request,
 	}, &result, true)
 	return result, err
 }
@@ -544,7 +532,7 @@ func (c *Client) GitCredential(ctx context.Context, task *Task, purpose, threadI
 		Token string `json:"token"`
 	}
 	err := c.call(ctx, http.MethodPost, runPath(task, "/git-credential"), GitCredentialRequest{
-		RunLeaseRequest: lease(task), Capability: task.Claimed.Capability, Purpose: purpose,
+		Purpose:  purpose,
 		ThreadID: threadID, TurnID: turnID,
 	}, &response, true)
 	return response.Token, err

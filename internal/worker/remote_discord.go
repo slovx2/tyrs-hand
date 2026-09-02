@@ -110,8 +110,12 @@ func (p *Processor) processRemoteDiscord(ctx context.Context, task *workerprotoc
 		return workerprotocol.CompleteRequest{}, err
 	}
 	reportRuntimeSettingsApplied(report, task.Snapshot.Runtime, "turn/start")
-	if err := p.client.RecordSubmission(ctx, task, turnID); err != nil {
-		return workerprotocol.CompleteRequest{}, err
+	task.Claimed.SubmissionID = turnID
+	if p.coordinator != nil {
+		p.coordinator.setTurnID(task.Claimed.RunID, turnID)
+	}
+	if err := p.client.RecordSubmission(ctx, task, turnID); err != nil && p.logger != nil {
+		p.logger.Warn("补报 Codex Turn 启动失败，本地任务继续运行", zap.Error(err))
 	}
 	result, err := p.waitRemoteTurn(ctx, codexRuntime, subscription.Events(), task, threadID,
 		turnID, commands, commandHandler, codexReport, interactive)

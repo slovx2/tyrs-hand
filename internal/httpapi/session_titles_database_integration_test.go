@@ -146,7 +146,8 @@ func TestDesktopContinuesWorkspaceSessionWithoutDiscordForum(t *testing.T) {
 		sessionID, projectID, profileID, worker.ID, workspaceID).Scan(&controlID))
 
 	task, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
-		WorkspaceID: workspaceID, RequestKey: strings.Repeat("c", 64),
+		WorkspaceID: workspaceID, RunID: uuid.New(), IntentID: uuid.New(),
+		RequestKey: strings.Repeat("c", 64),
 		Params: json.RawMessage(`{"threadId":"mobile-thread-without-forum",` +
 			`"clientUserMessageId":"desktop-new-turn",` +
 			`"input":[{"type":"text","text":"desktop cross-device message"}]}`),

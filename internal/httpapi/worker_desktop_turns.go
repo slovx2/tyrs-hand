@@ -16,7 +16,6 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	"github.com/slovx2/tyrs-hand/internal/participantidentity"
-	"github.com/slovx2/tyrs-hand/internal/security"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
@@ -27,7 +26,8 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		return
 	}
 	threadID, instruction, err := desktopTurnInput(request.Params)
-	if err != nil || request.WorkspaceID == uuid.Nil ||
+	if err != nil || request.WorkspaceID == uuid.Nil || request.RunID == uuid.Nil ||
+		request.IntentID == uuid.Nil ||
 		!validDesktopRequestKey(request.RequestKey) {
 		badRequest(c, errors.New("desktop turn 参数无效"))
 		return
@@ -38,14 +38,18 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		return
 	}
 	projectionKey := desktopInputProjectionKey(request.Params, request.RequestKey)
-	leaseToken, err := security.RandomToken(32)
-	if err != nil {
-		problem(c, http.StatusInternalServerError, "创建 Desktop Turn Lease 失败", err)
+	worker := currentWorker(c)
+	if existing, existingErr := s.claimedRemoteRun(c.Request.Context(), worker.ID,
+		request.RunID); existingErr == nil {
+		snapshot, snapshotErr := s.loadWorkerSnapshot(c.Request.Context(), existing)
+		if snapshotErr != nil {
+			problem(c, http.StatusInternalServerError, "读取 Desktop Turn 快照失败", snapshotErr)
+			return
+		}
+		c.JSON(http.StatusOK, workerprotocol.Task{Claimed: *existing, Snapshot: snapshot})
 		return
-	}
-	capability, err := security.RandomToken(32)
-	if err != nil {
-		problem(c, http.StatusInternalServerError, "创建 Desktop Turn Capability 失败", err)
+	} else if !errors.Is(existingErr, sql.ErrNoRows) {
+		problem(c, http.StatusInternalServerError, "读取 Desktop Turn 登记状态失败", existingErr)
 		return
 	}
 	tx, err := s.db.BeginTx(c.Request.Context(), nil)
@@ -54,29 +58,16 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-	worker := currentWorker(c)
-	var active int
-	if err := tx.QueryRowContext(c.Request.Context(), `SELECT
-		(SELECT count(*) FROM codex_turn_runs WHERE worker_id = n.id AND active_slot = 1)
-		FROM workers n WHERE n.id = $1 FOR UPDATE`, worker.ID).Scan(&active); err != nil {
-		problem(c, http.StatusInternalServerError, "读取 Desktop Turn 调度槽位失败", err)
-		return
-	}
-	if active >= worker.MaxConcurrentJobs {
-		problem(c, http.StatusTooManyRequests, "当前Worker没有可用的 Turn 槽位", nil)
-		return
-	}
 	var claimed codexcontrol.ClaimedControl
 	var controlStatus, lifecycleState string
 	var allowedJSON, dangerousJSON []byte
 	var nextSequence int64
-	var oldLeaseEpoch int64
 	var actorGuildID, actorUserID, actorDisplayName string
 	var conversationID, projectID, desktopRequestID sql.NullString
 	err = tx.QueryRowContext(c.Request.Context(), `SELECT ct.id, ct.session_id, ct.discord_conversation_id,
 		ct.workspace_project_id::text, ct.agent_profile_id, ct.status, session.lifecycle_state,
 		ct.next_sequence_no, ct.collaboration_mode,
-		ct.lease_epoch, COALESCE(ct.external_thread_id,''), desktop_request.id::text,
+		COALESCE(ct.external_thread_id,''), desktop_request.id::text,
 		p.allowed_tools, '[]'::jsonb,
 		e.guild_id, COALESCE(e.owner_discord_user_id, ''),
 		COALESCE(NULLIF(m.display_name, ''), m.username, '')
@@ -97,7 +88,7 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		worker.ID).Scan(&claimed.ControlID, &claimed.SessionID, &conversationID,
 		&projectID, &claimed.AgentProfileID, &controlStatus, &lifecycleState,
 		&nextSequence, &claimed.CollaborationMode,
-		&oldLeaseEpoch, &claimed.ExternalThreadID, &desktopRequestID,
+		&claimed.ExternalThreadID, &desktopRequestID,
 		&allowedJSON, &dangerousJSON,
 		&actorGuildID, &actorUserID, &actorDisplayName)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -122,10 +113,6 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	}
 	claimed.DiscordConversationID = parseOptionalUUID(conversationID)
 	claimed.ProjectID = parseOptionalUUID(projectID)
-	if controlStatus != "idle" {
-		problem(c, http.StatusConflict, "该 Thread 已有活动 Turn", nil)
-		return
-	}
 	if explicitMode != "" {
 		err = tx.QueryRowContext(c.Request.Context(), `UPDATE workspace_sessions SET
 			collaboration_mode=$2,
@@ -144,7 +131,7 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 	}
 	_ = json.Unmarshal(allowedJSON, &claimed.AllowedTools)
 	_ = json.Unmarshal(dangerousJSON, &claimed.DangerousActions)
-	claimed.ID, claimed.RunID = uuid.New(), uuid.New()
+	claimed.ID, claimed.RunID = request.IntentID, request.RunID
 	claimed.Sequence, claimed.Operation, claimed.Behavior = nextSequence, "turn_input", "start_when_idle"
 	isReplacement := false
 	if reservationID, parseErr := uuid.Parse(projectionKey); parseErr == nil {
@@ -205,8 +192,7 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		projectionStatus = "pending"
 	}
 	claimed.Attempt, claimed.MaxAttempts = 1, max(1, s.cfg.CodexReconcileMaxAttempts)
-	claimed.LeaseToken, claimed.LeaseEpoch = leaseToken, oldLeaseEpoch+1
-	claimed.LeaseExpiresAt = time.Now().Add(s.cfg.LeaseDuration)
+	claimed.MaxSteers = max(1, s.cfg.CodexMaxSteersPerTurn)
 	idempotencyKey := "desktop-turn:" + request.WorkspaceID.String() + ":" + request.RequestKey
 	if isReplacement {
 		_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_turn_intents SET
@@ -265,23 +251,39 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 			return
 		}
 	}
-	_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_thread_controls SET
-		status = 'dispatching', active_intent_id = $2, lease_owner = $3, lease_token = $4,
-		lease_epoch = $5, lease_expires_at = now() + $6::interval, heartbeat_at = now(),
-		next_sequence_no = next_sequence_no + CASE WHEN $7 THEN 0 ELSE 1 END,
+	var displaced int64
+	if result, clearErr := tx.ExecContext(c.Request.Context(), `UPDATE codex_turn_runs SET
+		active_slot=NULL,status=CASE WHEN status IN ('starting','running','waiting_for_user')
+		THEN 'reconciling' ELSE status END WHERE control_id=$1 AND active_slot=1 AND id<>$2`,
+		claimed.ControlID, claimed.RunID); clearErr != nil {
+		err = clearErr
+	} else {
+		displaced, err = result.RowsAffected()
+	}
+	if err == nil && displaced > 0 {
+		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO audit_logs(
+			action,resource_type,resource_id,metadata) VALUES (
+			'worker.run.reconciled','codex_thread_control',$1,
+			jsonb_build_object('workerId',$2::text,'runId',$3::text,'previousStatus',$4))`,
+			claimed.ControlID.String(), worker.ID, claimed.RunID, controlStatus)
+	}
+	if err == nil {
+		_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_thread_controls SET
+		status = 'dispatching', active_intent_id = $2, lease_owner=NULL, lease_token=NULL,
+		lease_expires_at=NULL,heartbeat_at = now(),
+		next_sequence_no = next_sequence_no + CASE WHEN $3 THEN 0 ELSE 1 END,
 		updated_at = now() WHERE id = $1`,
-		claimed.ControlID, claimed.ID, worker.ID.String(), security.Digest(leaseToken),
-		claimed.LeaseEpoch, s.cfg.LeaseDuration.String(), isReplacement)
+			claimed.ControlID, claimed.ID, isReplacement)
+	}
 	if err == nil {
 		_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO codex_turn_runs
-			(id, control_id, primary_intent_id, attempt, lease_owner, lease_epoch, capability_hash,
+			(id, control_id, primary_intent_id, attempt,
 			 active_slot, max_append_count, worker_id, collaboration_mode,
 			 model, reasoning_effort, service_tier, settings_revision)
-			SELECT $1,$2,$3,1,$4,$5,$6,1,$7,$8,control.collaboration_mode,
+			SELECT $1,$2,$3,1,1,$4,$5,control.collaboration_mode,
 				control.model, control.reasoning_effort, control.service_tier, control.settings_revision
 			FROM codex_thread_controls control WHERE control.id = $2`, claimed.RunID, claimed.ControlID,
-			claimed.ID, worker.ID.String(), claimed.LeaseEpoch, security.Digest(capability),
-			max(1, s.cfg.CodexMaxSteersPerTurn), worker.ID)
+			claimed.ID, max(1, s.cfg.CodexMaxSteersPerTurn), worker.ID)
 	}
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "持久化 Desktop Turn 失败", err)
@@ -291,11 +293,8 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "提交 Desktop Turn 失败", err)
 		return
 	}
-	claimed.Capability = capability
 	snapshot, err := s.loadWorkerSnapshot(c.Request.Context(), &claimed)
 	if err != nil {
-		_ = codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration).Reconcile(
-			c.Request.Context(), &claimed, "snapshot_error", err)
 		problem(c, http.StatusInternalServerError, "生成 Desktop Turn 快照失败", err)
 		return
 	}

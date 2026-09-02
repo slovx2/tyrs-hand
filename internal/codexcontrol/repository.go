@@ -577,22 +577,9 @@ func parseUUIDs(intent *Intent, workItem, conversation, session, repository, pro
 }
 
 func (r *Repository) Heartbeat(ctx context.Context, claimed *ClaimedControl) error {
-	result, err := r.db.ExecContext(ctx, `WITH updated_control AS (
-		UPDATE codex_thread_controls
-		SET lease_expires_at = now() + $4::interval, heartbeat_at = now(),
-			status = CASE WHEN status = 'reconciling' THEN 'active' ELSE status END,
-			last_error_code = CASE WHEN status = 'reconciling' THEN NULL ELSE last_error_code END,
-			last_error_message = CASE WHEN status = 'reconciling' THEN NULL ELSE last_error_message END,
-			updated_at = now()
-		WHERE id = $1 AND lease_token = $2 AND lease_epoch = $3
-		  AND active_intent_id = $5 AND status IN ('dispatching','active','stopping','reconciling')
-		RETURNING id
-	)
-	UPDATE codex_turn_runs SET heartbeat_at = now()
-	WHERE id = $6 AND control_id = (SELECT id FROM updated_control)
-	  AND (active_slot = 1 OR status = 'waiting_for_user')`,
-		claimed.ControlID, security.Digest(claimed.LeaseToken), claimed.LeaseEpoch,
-		interval(r.leaseDuration), claimed.ID, claimed.RunID)
+	result, err := r.db.ExecContext(ctx, `UPDATE codex_turn_runs SET heartbeat_at=now()
+		WHERE id=$1 AND control_id=$2 AND primary_intent_id=$3`, claimed.RunID,
+		claimed.ControlID, claimed.ID)
 	if err != nil {
 		return err
 	}
@@ -604,8 +591,9 @@ func (r *Repository) SetThread(ctx context.Context, claimed *ClaimedControl, thr
 		external_thread_id = $4,
 		status = 'active', remote_status = 'idle', last_error_code = NULL,
 		last_error_message = NULL, updated_at = now()
-		WHERE id = $1 AND lease_token = $2 AND lease_epoch = $3`, claimed.ControlID,
-		security.Digest(claimed.LeaseToken), claimed.LeaseEpoch, threadID)
+		WHERE id = $1 AND EXISTS(SELECT 1 FROM codex_turn_runs run
+			WHERE run.id=$2 AND run.control_id=$1 AND run.primary_intent_id=$3)`,
+		claimed.ControlID, claimed.RunID, claimed.ID, threadID)
 	if err == nil {
 		err = requireOne(result)
 	}
@@ -1020,9 +1008,9 @@ func (r *Repository) ReplySatisfied(ctx context.Context, claimed *ClaimedControl
 
 func (r *Repository) fence(ctx context.Context, tx *sql.Tx, claimed *ClaimedControl) error {
 	var exists bool
-	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM codex_thread_controls
-		WHERE id = $1 AND lease_token = $2 AND lease_epoch = $3 AND active_intent_id = $4)`,
-		claimed.ControlID, security.Digest(claimed.LeaseToken), claimed.LeaseEpoch, claimed.ID).Scan(&exists)
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM codex_turn_runs
+		WHERE id=$1 AND control_id=$2 AND primary_intent_id=$3 AND worker_id IS NOT NULL)`,
+		claimed.RunID, claimed.ControlID, claimed.ID).Scan(&exists)
 	if err != nil {
 		return err
 	}
@@ -1033,113 +1021,7 @@ func (r *Repository) fence(ctx context.Context, tx *sql.Tx, claimed *ClaimedCont
 }
 
 func (r *Repository) RequeueExpired(ctx context.Context) (int64, error) {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	rows, err := tx.QueryContext(ctx, `SELECT control.id, control.active_intent_id,
-			control.worker_id::text, COALESCE(intent.input_surface, '')
-		FROM codex_thread_controls AS control
-		JOIN codex_turn_intents AS intent ON intent.id = control.active_intent_id
-		WHERE (lease_expires_at < now() OR EXISTS(
-			SELECT 1 FROM codex_turn_runs run WHERE run.control_id=control.id
-			AND run.active_slot=1 AND run.finished_at IS NOT NULL
-		)) AND active_intent_id IS NOT NULL
-		AND control.status <> 'reconciling' FOR UPDATE OF control SKIP LOCKED`)
-	if err != nil {
-		return 0, err
-	}
-	type expired struct {
-		controlID, intentID uuid.UUID
-		workerID            sql.NullString
-		inputSurface        string
-	}
-	var values []expired
-	for rows.Next() {
-		var value expired
-		if err := rows.Scan(&value.controlID, &value.intentID, &value.workerID,
-			&value.inputSurface); err != nil {
-			_ = rows.Close()
-			return 0, err
-		}
-		values = append(values, value)
-	}
-	if err := rows.Close(); err != nil {
-		return 0, err
-	}
-	for _, value := range values {
-		if value.inputSurface == "desktop" {
-			_, err = tx.ExecContext(ctx, `UPDATE codex_turn_intents SET status = 'failed',
-				last_error_code = 'lease_expired', last_error_message = 'desktop app-server lease expired',
-				available_at = now(), finished_at = now(), updated_at = now()
-				WHERE id = $1 AND status IN (
-					'dispatching','awaiting_confirmation','running','reconciling'
-				)`, value.intentID)
-			if err != nil {
-				return 0, err
-			}
-			_, err = tx.ExecContext(ctx, `UPDATE codex_turn_runs SET status = 'failed',
-				active_slot = NULL, error_code = COALESCE(error_code,'lease_expired'),
-				error_message = COALESCE(error_message,'desktop app-server lease expired'),
-				finished_at = COALESCE(finished_at,now())
-				WHERE control_id = $1 AND active_slot = 1`, value.controlID)
-			if err != nil {
-				return 0, err
-			}
-			_, err = tx.ExecContext(ctx, `UPDATE codex_interactive_requests request
-				SET status='interrupted',updated_at=now() FROM codex_turn_runs run
-				WHERE request.run_id=run.id AND run.control_id=$1
-				AND request.status='pending'`, value.controlID)
-			if err != nil {
-				return 0, err
-			}
-			_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET status = 'idle',
-				active_intent_id = NULL, remote_status = 'idle',
-				active_codex_turn_id = NULL, active_client_id = NULL,
-				lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
-				last_error_code = 'lease_expired',
-				last_error_message = 'desktop app-server lease expired',
-				next_wakeup_at = NULL, updated_at = now() WHERE id = $1`, value.controlID)
-			if err != nil {
-				return 0, err
-			}
-			continue
-		}
-		_, err = tx.ExecContext(ctx, `UPDATE codex_turn_intents SET status = 'reconciling',
-			last_error_code = 'lease_expired', last_error_message = 'worker lease expired',
-			available_at = now(), updated_at = now()
-			WHERE id = $1 AND status IN ('dispatching','awaiting_confirmation','running','reconciling')`, value.intentID)
-		if err != nil {
-			return 0, err
-		}
-		if value.workerID.Valid {
-			_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET status = 'reconciling',
-				last_error_code = 'lease_expired', last_error_message = 'worker lease expired',
-				next_wakeup_at = now(), updated_at = now() WHERE id = $1`, value.controlID)
-			if err != nil {
-				return 0, err
-			}
-			continue
-		}
-		_, err = tx.ExecContext(ctx, `UPDATE codex_turn_runs SET status = 'failed', active_slot = NULL,
-			error_code = 'lease_expired', error_message = 'worker lease expired', finished_at = now()
-			WHERE control_id = $1 AND active_slot = 1`, value.controlID)
-		if err != nil {
-			return 0, err
-		}
-		_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET status = 'reconciling',
-			active_intent_id = NULL, lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
-			last_error_code = 'lease_expired', last_error_message = 'worker lease expired',
-			next_wakeup_at = now(), updated_at = now() WHERE id = $1`, value.controlID)
-		if err != nil {
-			return 0, err
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		return 0, err
-	}
-	return int64(len(values)), nil
+	return 0, ctx.Err()
 }
 
 func requireOne(result sql.Result) error {

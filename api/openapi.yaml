@@ -884,7 +884,17 @@ paths:
       security: [{ workerBearer: [] }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerClaimRequest" } } } }
       responses:
-        "200": { description: 可选任务租约, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerClaimResponse" } } } }
+        "200": { description: 可选待同步输入, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerClaimResponse" } } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /worker/v1/inputs/decide:
+    servers: [{ url: / }]
+    post:
+      operationId: workerDecideInput
+      tags: [Worker Protocol]
+      security: [{ workerBearer: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/WorkerInputDecision" } } } }
+      responses:
+        "204": { description: Worker 本地输入决议已确认 }
         default: { $ref: "#/components/responses/Problem" }
   /worker/v1/session-title-tasks/claim:
     servers: [{ url: / }]
@@ -951,8 +961,6 @@ paths:
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: runId, in: query, required: true, schema: { type: string, format: uuid } }
-        - { name: X-Run-Lease-Token, in: header, required: true, schema: { type: string } }
-        - { name: X-Run-Lease-Epoch, in: header, required: true, schema: { type: integer, format: int64 } }
       responses: { "200": { description: 二进制附件, content: { application/octet-stream: { schema: { type: string, format: binary } } } }, default: { $ref: "#/components/responses/Problem" } }
     post:
       operationId: uploadWorkerBlob
@@ -1188,10 +1196,8 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [leaseToken, leaseEpoch, itemId, ordinal, file]
+              required: [itemId, ordinal, file]
               properties:
-                leaseToken: { type: string }
-                leaseEpoch: { type: integer, format: int64 }
                 itemId: { type: string }
                 ordinal: { type: integer, minimum: 0, maximum: 9 }
                 file: { type: string, format: binary }
@@ -1791,12 +1797,14 @@ components:
       properties:
         leaseToken: { type: string, writeOnly: true }
         errorCode: { type: string, minLength: 1, maxLength: 80 }
-    WorkerRunLease:
+    WorkerInputDecision:
       type: object
-      required: [leaseToken, leaseEpoch]
+      required: [inputId, action, runId]
       properties:
-        leaseToken: { type: string, writeOnly: true }
-        leaseEpoch: { type: integer, format: int64 }
+        inputId: { type: string, format: uuid }
+        action: { type: string, enum: [start, steer, interrupt] }
+        runId: { type: string, format: uuid }
+        turnId: { type: string }
     WorkerEvent:
       type: object
       required: [sequence, type, payload]
@@ -1805,38 +1813,30 @@ components:
         type: { type: string }
         payload: { type: object, additionalProperties: true }
     WorkerEventsRequest:
-      allOf:
-        - { $ref: "#/components/schemas/WorkerRunLease" }
-        - type: object
-          required: [events]
-          properties:
-            events: { type: array, items: { $ref: "#/components/schemas/WorkerEvent" } }
+      type: object
+      required: [events]
+      properties:
+        events: { type: array, items: { $ref: "#/components/schemas/WorkerEvent" } }
     WorkerCompleteRequest:
-      allOf:
-        - { $ref: "#/components/schemas/WorkerRunLease" }
-        - type: object
-          required: [idempotencyKey, result]
-          properties:
-            idempotencyKey: { type: string }
-            result: { type: object, additionalProperties: true }
+      type: object
+      required: [idempotencyKey, result]
+      properties:
+        idempotencyKey: { type: string }
+        result: { type: object, additionalProperties: true }
     WorkerFailRequest:
-      allOf:
-        - { $ref: "#/components/schemas/WorkerRunLease" }
-        - type: object
-          required: [idempotencyKey, code, message]
-          properties:
-            idempotencyKey: { type: string }
-            code: { type: string }
-            message: { type: string }
+      type: object
+      required: [idempotencyKey, code, message]
+      properties:
+        idempotencyKey: { type: string }
+        code: { type: string }
+        message: { type: string }
     WorkerCommandAck:
-      allOf:
-        - { $ref: "#/components/schemas/WorkerRunLease" }
-        - type: object
-          required: [commandId, action]
-          properties:
-            commandId: { type: string, format: uuid }
-            action: { type: string, enum: [steer, interrupt] }
-            turnId: { type: string }
+      type: object
+      required: [commandId, action]
+      properties:
+        commandId: { type: string, format: uuid }
+        action: { type: string, enum: [steer, interrupt] }
+        turnId: { type: string }
     ProblemDetails:
       type: object
       required: [type, title, status]

@@ -69,7 +69,7 @@ func TestWorkerProtocolUpgradeMigrations(t *testing.T) {
 	var protocolVersion int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT protocol_version FROM workers
 		WHERE name='protocol-upgrade-worker'`).Scan(&protocolVersion))
-	require.Equal(t, 31, protocolVersion)
+	require.Equal(t, 32, protocolVersion)
 }
 
 func migrationTestDatabase(t *testing.T) *sql.DB {

@@ -12,13 +12,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
-	"go.uber.org/zap"
 )
 
 const expoPushEndpoint = "https://exp.host/--/api/v2/push/send"
-
-const runRecoveryInterval = 5 * time.Second
 
 type clientNotification struct {
 	ID              uuid.UUID
@@ -29,28 +25,15 @@ type clientNotification struct {
 	AttemptCount    int
 }
 
-// RunBackground 仅保留服务端 Run 租约恢复；移动 App 已改为直连官方协议，
-// 不再投递旧 App 推送或维护旧客户端协议保留期。
+// RunBackground 不再回收 Codex Run。Worker 离线只影响连接状态，
+// 不能据此修改本地真实运行的任务状态。
 func (s *Server) RunBackground(ctx context.Context) error {
-	recoveryTicker := time.NewTicker(runRecoveryInterval)
-	defer recoveryTicker.Stop()
-	s.requeueExpiredRuns(ctx)
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-recoveryTicker.C:
-			s.requeueExpiredRuns(ctx)
-		}
-	}
+	<-ctx.Done()
+	return ctx.Err()
 }
 
 func (s *Server) requeueExpiredRuns(ctx context.Context) int64 {
-	count, err := codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration).RequeueExpired(ctx)
-	if err != nil && s.logger != nil {
-		s.logger.Warn("回收过期或状态不一致的 Run 失败", zap.Error(err))
-	}
-	return count
+	return 0
 }
 
 func (s *Server) dispatchClientNotification(ctx context.Context) (bool, error) {

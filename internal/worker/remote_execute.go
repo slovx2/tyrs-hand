@@ -13,22 +13,30 @@ import (
 
 const remoteEventFlushInterval = time.Second
 
-func (r *Runner) runJournal(ctx context.Context, journal *runJournal, slots chan struct{},
-	active *sync.WaitGroup,
+func (r *Runner) runJournal(ctx context.Context, journal *runJournal,
+	commands chan workerprotocol.RunCommand, slots chan struct{}, active *sync.WaitGroup,
 ) {
 	defer active.Done()
-	defer func() { <-slots }()
+	slotReleased := false
+	releaseSlot := func() {
+		if !slotReleased {
+			<-slots
+			slotReleased = true
+		}
+	}
+	defer releaseSlot()
 	task := &journal.Task
 	logger := r.logger.With(zap.String("run_id", task.Claimed.RunID.String()),
 		zap.String("intent_id", task.Claimed.ID.String()))
 	if journal.TerminalDelivered {
+		releaseSlot()
 		r.deliverTerminal(ctx, journal, logger)
 		return
 	}
 
-	commands := make(chan workerprotocol.RunCommand, 16)
-	if !r.restoreLease(ctx, task, commands, logger) {
-		return
+	defer r.coordinator.unregister(task.Claimed.RunID)
+	if task.Claimed.SubmissionID != "" || task.Claimed.ConfirmedTurnID != "" {
+		task.Claimed.Recovering = true
 	}
 	if err := r.journals.save(journal); err != nil {
 		logger.Error("持久化恢复后的 Run 状态失败", zap.Error(err))
@@ -38,6 +46,8 @@ func (r *Runner) runJournal(ctx context.Context, journal *runJournal, slots chan
 		r.flushEvents(ctx, journal, logger)
 	}
 	if journal.Result != nil || journal.Failure != "" {
+		r.coordinator.unregister(task.Claimed.RunID)
+		releaseSlot()
 		r.deliverTerminal(ctx, journal, logger)
 		return
 	}
@@ -47,19 +57,18 @@ func (r *Runner) runJournal(ctx context.Context, journal *runJournal, slots chan
 	heartbeatDone := make(chan struct{})
 	go func() {
 		defer close(heartbeatDone)
-		r.runLeaseHeartbeat(processCtx, task, commands, logger)
+		r.runStateSyncLoop(processCtx, journal, commands, logger)
 	}()
-	var journalMu sync.Mutex
 	var lastEventFlushAttempt time.Time
 	report := func(eventType string, payload json.RawMessage) {
-		journalMu.Lock()
+		journal.mu.Lock()
 		journal.PendingEvents = append(journal.PendingEvents, workerprotocol.EventInput{
 			Sequence: journal.NextSequence, Type: eventType, Payload: payload,
 		})
 		journal.NextSequence++
 		if err := r.journals.save(journal); err != nil {
 			logger.Error("持久化 Codex 事件失败", zap.Error(err))
-			journalMu.Unlock()
+			journal.mu.Unlock()
 			return
 		}
 		now := time.Now()
@@ -67,12 +76,12 @@ func (r *Runner) runJournal(ctx context.Context, journal *runJournal, slots chan
 			lastEventFlushAttempt = now
 			r.flushEventsLocked(processCtx, journal, logger)
 		}
-		journalMu.Unlock()
+		journal.mu.Unlock()
 	}
 	result, err := r.processor.Process(processCtx, task, commands, report)
 	cancel()
 	<-heartbeatDone
-	journalMu.Lock()
+	journal.mu.Lock()
 	if err == nil {
 		copyResult := result.Result
 		journal.Result = &copyResult
@@ -90,10 +99,12 @@ func (r *Runner) runJournal(ctx context.Context, journal *runJournal, slots chan
 	}
 	if saveErr := r.journals.save(journal); saveErr != nil {
 		logger.Error("持久化任务最终结果失败", zap.Error(saveErr))
-		journalMu.Unlock()
+		journal.mu.Unlock()
 		return
 	}
-	journalMu.Unlock()
+	journal.mu.Unlock()
+	r.coordinator.unregister(task.Claimed.RunID)
+	releaseSlot()
 	r.deliverTerminal(ctx, journal, logger)
 }
 
@@ -101,47 +112,58 @@ func shouldFlushRemoteEvents(lastAttempt, now time.Time) bool {
 	return lastAttempt.IsZero() || now.Sub(lastAttempt) >= remoteEventFlushInterval
 }
 
-func (r *Runner) restoreLease(ctx context.Context, task *workerprotocol.Task,
+func (r *Runner) syncRunState(ctx context.Context, journal *runJournal,
 	commands chan<- workerprotocol.RunCommand,
 	logger *zap.Logger,
-) bool {
-	for ctx.Err() == nil {
-		requestCtx, cancel := context.WithTimeout(ctx, r.cfg.ControlTimeout)
-		response, err := r.client.RunHeartbeat(requestCtx, task)
+) error {
+	journal.mu.Lock()
+	task := journal.Task
+	var desktopRequest *workerprotocol.DesktopTurnPrepareRequest
+	if journal.DesktopRequest != nil {
+		copyRequest := *journal.DesktopRequest
+		desktopRequest = &copyRequest
+	}
+	decisions := append([]appliedInputDecision(nil), journal.AppliedInputs...)
+	journal.mu.Unlock()
+	requestCtx, cancel := context.WithTimeout(ctx, r.cfg.ControlTimeout)
+	var err error
+	if desktopRequest != nil {
+		_, err = r.client.PrepareDesktopTurn(requestCtx, *desktopRequest)
+	} else {
+		err = r.client.DecideInput(requestCtx, &task, "start", task.Claimed.ConfirmedTurnID)
+	}
+	cancel()
+	if err != nil {
+		logger.Warn("补报 Worker 本地 Run 失败，本地任务继续运行", zap.Error(err))
+		return err
+	}
+	for _, decision := range decisions {
+		decisionTask := task
+		decisionTask.Claimed.ID = decision.InputID
+		requestCtx, cancel = context.WithTimeout(ctx, r.cfg.ControlTimeout)
+		err = r.client.DecideInput(requestCtx, &decisionTask, decision.Action, decision.TurnID)
 		cancel()
-		if err == nil {
-			applyRunRecovery(task, response.Recovery)
-			deliverCommands(commands, response.Commands)
-			return true
-		}
-		if workerprotocol.IsLeaseLost(err) {
-			logger.Error("Run Lease 已失效，需要管理员在 Control 侧对账", zap.Error(err))
-			return false
-		}
-		logger.Warn("恢复 Run Lease 失败，等待 Control 恢复", zap.Error(err))
-		if !waitContext(ctx, 3*time.Second) {
-			return false
+		if err != nil {
+			logger.Warn("补报 Worker 本地输入决议失败", zap.Error(err))
+			return err
 		}
 	}
-	return false
+	requestCtx, cancel = context.WithTimeout(ctx, r.cfg.ControlTimeout)
+	response, err := r.client.RunHeartbeat(requestCtx, &task)
+	cancel()
+	if err != nil {
+		logger.Warn("同步 Worker 本地 Run 状态失败", zap.Error(err))
+		return err
+	}
+	deliverCommands(commands, response.Commands)
+	return nil
 }
 
-func applyRunRecovery(task *workerprotocol.Task, recovery workerprotocol.RunRecoveryState) {
-	if task == nil {
-		return
-	}
-	task.Claimed.Recovering = recovery.Recovering
-	task.Claimed.SubmissionID = recovery.SubmissionID
-	task.Claimed.ConfirmedTurnID = recovery.ConfirmedTurnID
-	if recovery.ExternalThreadID != "" {
-		task.Claimed.ExternalThreadID = recovery.ExternalThreadID
-	}
-}
-
-func (r *Runner) runLeaseHeartbeat(ctx context.Context, task *workerprotocol.Task,
+func (r *Runner) runStateSyncLoop(ctx context.Context, journal *runJournal,
 	commands chan<- workerprotocol.RunCommand,
 	logger *zap.Logger,
 ) {
+	_ = r.syncRunState(ctx, journal, commands, logger)
 	ticker := time.NewTicker(r.cfg.HeartbeatInterval)
 	defer ticker.Stop()
 	for {
@@ -149,15 +171,7 @@ func (r *Runner) runLeaseHeartbeat(ctx context.Context, task *workerprotocol.Tas
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			requestCtx, cancel := context.WithTimeout(context.Background(), r.cfg.ControlTimeout)
-			response, err := r.client.RunHeartbeat(requestCtx, task)
-			cancel()
-			if err != nil {
-				// 网络中断不能终止本地 Codex；最终结果由 Journal 负责补交。
-				logger.Warn("Run 续租失败，本地任务继续运行", zap.Error(err))
-			} else {
-				deliverCommands(commands, response.Commands)
-			}
+			_ = r.syncRunState(context.Background(), journal, commands, logger)
 		}
 	}
 }
@@ -174,32 +188,41 @@ func deliverCommands(target chan<- workerprotocol.RunCommand,
 	}
 }
 
-func (r *Runner) flushEvents(ctx context.Context, journal *runJournal, logger *zap.Logger) {
+func (r *Runner) flushEvents(ctx context.Context, journal *runJournal, logger *zap.Logger) error {
+	journal.mu.Lock()
+	defer journal.mu.Unlock()
+	return r.flushEventsLocked(ctx, journal, logger)
+}
+
+func (r *Runner) flushEventsLocked(ctx context.Context, journal *runJournal,
+	logger *zap.Logger,
+) error {
 	if len(journal.PendingEvents) == 0 {
-		return
+		return nil
 	}
 	requestCtx, cancel := context.WithTimeout(ctx, r.cfg.ControlTimeout)
 	defer cancel()
 	if err := r.client.Events(requestCtx, &journal.Task, journal.PendingEvents); err != nil {
 		logger.Warn("上传 Codex 事件失败，已保留在 Journal", zap.Error(err))
-		return
+		return err
 	}
 	journal.PendingEvents = nil
 	if err := r.journals.save(journal); err != nil {
 		logger.Error("确认事件上传状态失败", zap.Error(err))
+		return err
 	}
-}
-
-func (r *Runner) flushEventsLocked(ctx context.Context, journal *runJournal,
-	logger *zap.Logger,
-) {
-	r.flushEvents(ctx, journal, logger)
+	return nil
 }
 
 func (r *Runner) deliverTerminal(ctx context.Context, journal *runJournal,
 	logger *zap.Logger,
 ) {
 	for ctx.Err() == nil {
+		if !journal.TerminalDelivered {
+			// Run 可能在 Control 全程离线期间已经结束；先幂等补登记，
+			// 再提交事件和终态，避免未登记的终态永久 404。
+			_ = r.syncRunState(ctx, journal, nil, logger)
+		}
 		r.flushEvents(ctx, journal, logger)
 		if !journal.TerminalDelivered {
 			requestCtx, cancel := context.WithTimeout(ctx, r.cfg.ControlTimeout)
@@ -217,9 +240,6 @@ func (r *Runner) deliverTerminal(ctx context.Context, journal *runJournal,
 				if saveErr := r.journals.save(journal); saveErr != nil {
 					logger.Error("持久化最终结果提交状态失败", zap.Error(saveErr))
 				}
-			} else if workerprotocol.IsLeaseLost(err) {
-				logger.Error("最终结果未被接受，Run Lease 已失效", zap.Error(err))
-				return
 			} else {
 				logger.Warn("提交最终结果失败，稍后重试", zap.Error(err))
 			}

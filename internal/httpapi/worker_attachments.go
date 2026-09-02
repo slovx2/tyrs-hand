@@ -1,17 +1,14 @@
 package httpapi
 
 import (
-	"errors"
 	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
 func (s *Server) workerDownloadAttachment(c *gin.Context) {
@@ -24,19 +21,8 @@ func (s *Server) workerDownloadAttachment(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
-	epoch, err := strconv.ParseInt(c.GetHeader("X-Run-Lease-Epoch"), 10, 64)
-	if err != nil {
-		badRequest(c, errors.New("附件请求缺少 Run Lease Epoch"))
-		return
-	}
-	lease := workerprotocol.RunLeaseRequest{LeaseToken: c.GetHeader("X-Run-Lease-Token"),
-		LeaseEpoch: epoch}
-	if lease.LeaseToken == "" {
-		badRequest(c, errors.New("附件请求缺少 Run Lease Token"))
-		return
-	}
 	worker := currentWorker(c)
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, lease)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
 	if err != nil {
 		remoteRunError(c, "校验附件下载权限失败", err)
 		return

@@ -429,7 +429,8 @@ func clientDeviceIntegrationServer(t *testing.T, db *sql.DB, authService *auth.S
 	router := gin.New()
 	administrator := router.Group("/api/v1")
 	administrator.Use(func(c *gin.Context) {
-		c.Set("session", auth.Session{AdministratorID: administratorID, Username: "device-admin"})
+		c.Set("session", auth.Session{AdministratorID: administratorID,
+			Username: "device-admin", Role: "admin", Enabled: true})
 		c.Next()
 	})
 	administrator.GET("/client-devices", server.listClientDevices)

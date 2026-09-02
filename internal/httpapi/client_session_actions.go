@@ -57,6 +57,12 @@ func (s *Server) clientStopSession(c *gin.Context) {
 		count = 1
 	}
 	if err == nil {
+		_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_thread_controls
+			SET status='stopping',updated_at=now() WHERE session_id=$1
+			AND active_intent_id IS NOT NULL
+			AND status IN ('dispatching','active','reconciling')`, sessionID)
+	}
+	if err == nil {
 		err = tx.Commit()
 	}
 	if err != nil {

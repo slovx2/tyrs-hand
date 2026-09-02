@@ -29,13 +29,15 @@ func TestAuthenticateRestoresStoredCSRF(t *testing.T) {
 	mock.ExpectQuery("UPDATE admin_sessions").
 		WithArgs(security.Digest(token)).
 		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "username", "expires_at", "csrf_token_ciphertext",
-		}).AddRow(administratorID, "admin", expiresAt, encrypted))
+			"id", "username", "expires_at", "csrf_token_ciphertext", "role", "enabled",
+		}).AddRow(administratorID, "admin", expiresAt, encrypted, "admin", true))
 
 	session, err := service.Authenticate(t.Context(), token)
 	require.NoError(t, err)
 	require.Equal(t, administratorID, session.AdministratorID)
 	require.Equal(t, "csrf-token", session.CSRFToken)
+	require.Equal(t, "admin", session.Role)
+	require.True(t, session.Enabled)
 }
 
 func TestAuthenticateIssuesCSRFForExistingSession(t *testing.T) {
@@ -54,8 +56,8 @@ func TestAuthenticateIssuesCSRFForExistingSession(t *testing.T) {
 	mock.ExpectQuery("UPDATE admin_sessions").
 		WithArgs(tokenHash).
 		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "username", "expires_at", "csrf_token_ciphertext",
-		}).AddRow(uuid.New(), "admin", time.Now().Add(time.Hour), nil))
+			"id", "username", "expires_at", "csrf_token_ciphertext", "role", "enabled",
+		}).AddRow(uuid.New(), "admin", time.Now().Add(time.Hour), nil, "admin", true))
 	mock.ExpectExec("UPDATE admin_sessions").
 		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), tokenHash).
 		WillReturnResult(sqlmock.NewResult(0, 1))

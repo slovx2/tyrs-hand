@@ -192,8 +192,11 @@ func (s *Service) Authenticate(ctx context.Context, token string) (Session, erro
 		UPDATE admin_sessions s SET last_seen_at = now()
 		FROM administrators a
 		WHERE s.administrator_id = a.id AND s.token_hash = $1 AND s.expires_at > now()
-		RETURNING a.id, a.username, s.expires_at, s.csrf_token_ciphertext`, tokenHash).
-		Scan(&session.AdministratorID, &session.Username, &session.ExpiresAt, &encryptedCSRF)
+		  AND a.enabled=true
+		RETURNING a.id, a.username, s.expires_at, s.csrf_token_ciphertext,
+			a.role,a.enabled`, tokenHash).
+		Scan(&session.AdministratorID, &session.Username, &session.ExpiresAt,
+			&encryptedCSRF, &session.Role, &session.Enabled)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Session{}, ErrSessionInvalid
 	}
@@ -205,7 +208,6 @@ func (s *Service) Authenticate(ctx context.Context, token string) (Session, erro
 		return Session{}, err
 	}
 	session.Token = token
-	session.Enabled = true
 	return session, nil
 }
 

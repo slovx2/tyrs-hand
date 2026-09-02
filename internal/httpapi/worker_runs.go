@@ -18,25 +18,21 @@ import (
 )
 
 func (s *Server) workerRunHeartbeat(c *gin.Context) {
-	var request workerprotocol.RunLeaseRequest
-	runID, worker, ok := requireRunLease(c, &request)
+	var request struct{}
+	runID, worker, ok := requireWorkerRun(c, &request)
 	if !ok {
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, request)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
 	if err == nil {
-		err = codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration).Heartbeat(c.Request.Context(), claimed)
+		err = codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration).Heartbeat(
+			c.Request.Context(), claimed)
 	}
 	if err != nil {
-		remoteRunError(c, "远程任务续租失败", err)
+		remoteRunError(c, "同步远程 Run 状态失败", err)
 		return
 	}
-	commands, err := s.pendingRunCommands(c.Request.Context(), claimed)
-	if err != nil {
-		problem(c, http.StatusInternalServerError, "读取远程 Run 指令失败", err)
-		return
-	}
-	c.JSON(http.StatusOK, workerprotocol.RunHeartbeatResponse{Commands: commands,
+	c.JSON(http.StatusOK, workerprotocol.RunHeartbeatResponse{
 		Recovery: workerprotocol.RunRecoveryState{Recovering: claimed.Recovering,
 			SubmissionID: claimed.SubmissionID, ConfirmedTurnID: claimed.ConfirmedTurnID,
 			ExternalThreadID: claimed.ExternalThreadID}})
@@ -88,12 +84,11 @@ func (s *Server) pendingRunCommands(ctx context.Context,
 
 func (s *Server) workerCommandAck(c *gin.Context) {
 	var request workerprotocol.CommandAckRequest
-	runID, worker, ok := requireRunLease(c, &request)
+	runID, worker, ok := requireWorkerRun(c, &request)
 	if !ok {
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID,
-		request.RunLeaseRequest)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
 	if err != nil {
 		remoteRunError(c, "校验远程 Run 指令确认失败", err)
 		return
@@ -102,104 +97,110 @@ func (s *Server) workerCommandAck(c *gin.Context) {
 		badRequest(c, errors.New("run 指令确认 action 无效"))
 		return
 	}
-	tx, err := s.db.BeginTx(c.Request.Context(), nil)
-	if err != nil {
-		problem(c, http.StatusInternalServerError, "确认远程 Run 指令失败", err)
+	if err := s.ackWorkerInput(c.Request.Context(), claimed, request.CommandID,
+		request.Action, request.TurnID); err != nil {
+		if errors.Is(err, errWorkerInputDecisionMismatch) {
+			badRequest(c, err)
+		} else {
+			remoteRunError(c, "确认远程 Run 指令失败", err)
+		}
 		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+var errWorkerInputDecisionMismatch = errors.New("run 指令确认与原操作不匹配")
+
+func (s *Server) ackWorkerInput(ctx context.Context, claimed *codexcontrol.ClaimedControl,
+	inputID uuid.UUID, action, turnID string,
+) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 	var operation, status, discordMessageID, inputSurface string
-	err = tx.QueryRowContext(c.Request.Context(), `SELECT operation, status,
+	err = tx.QueryRowContext(ctx, `SELECT operation, status,
 		COALESCE(discord_message_id,''), COALESCE(input_surface,'')
 		FROM codex_turn_intents WHERE id = $1 AND control_id = $2 FOR UPDATE`,
-		request.CommandID, claimed.ControlID).Scan(&operation, &status, &discordMessageID, &inputSurface)
+		inputID, claimed.ControlID).Scan(&operation, &status, &discordMessageID, &inputSurface)
 	if err != nil {
-		remoteRunError(c, "Run 指令不存在", err)
-		return
+		return err
 	}
-	if status == "completed" || (status == "running" && request.Action == "steer") {
-		c.Status(http.StatusNoContent)
-		return
+	if status == "completed" || status == "running" && action == "steer" {
+		return tx.Commit()
 	}
-	if operation != request.Action && (operation != "turn_input" || request.Action != "steer") &&
-		(operation != "replace_last_turn" || request.Action != "interrupt") {
-		badRequest(c, errors.New("run 指令确认与原操作不匹配"))
-		return
+	if operation != action && (operation != "turn_input" || action != "steer") &&
+		(operation != "replace_last_turn" || action != "interrupt") {
+		return errWorkerInputDecisionMismatch
 	}
-	if request.Action == "interrupt" {
+	if action == "interrupt" {
 		if operation != "replace_last_turn" {
-			_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_turn_intents SET
+			_, err = tx.ExecContext(ctx, `UPDATE codex_turn_intents SET
 				status = 'completed', resolved_action = 'interrupt', confirmed_codex_turn_id = $2,
-				finished_at = now(), updated_at = now() WHERE id = $1`, request.CommandID,
-				request.TurnID)
+				finished_at = now(), updated_at = now() WHERE id = $1`, inputID, turnID)
 		}
 	} else {
-		_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_turn_intents SET
+		_, err = tx.ExecContext(ctx, `UPDATE codex_turn_intents SET
 			status = 'running', resolved_action = 'steer', confirmed_codex_turn_id = $2,
-			confirmed_at = now(), updated_at = now() WHERE id = $1`, request.CommandID,
-			request.TurnID)
+			confirmed_at = now(), updated_at = now() WHERE id = $1`, inputID, turnID)
 		if err == nil {
-			_, err = tx.ExecContext(c.Request.Context(), `UPDATE codex_turn_runs SET
+			_, err = tx.ExecContext(ctx, `UPDATE codex_turn_runs SET
 				append_count = append_count + 1 WHERE id = $1 AND append_count < max_append_count`,
 				claimed.RunID)
 		}
 		if err == nil && claimed.SourceType == codexcontrol.SourceWorkspace &&
 			claimed.SessionID != uuid.Nil {
-			_, err = tx.ExecContext(c.Request.Context(), `UPDATE session_messages
+			_, err = tx.ExecContext(ctx, `UPDATE session_messages
 				SET conversation_turn_id=$2,updated_at=now() WHERE turn_intent_id=$1`,
-				request.CommandID, claimed.ID)
+				inputID, claimed.ID)
 		}
 		if err == nil && claimed.SourceType == codexcontrol.SourceWorkspace &&
 			claimed.SessionID != uuid.Nil {
 			payload, _ := json.Marshal(gin.H{"conversationTurnId": claimed.ID,
-				"runId": claimed.RunID, "steerIntentId": request.CommandID})
-			_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO client_updates(
+				"runId": claimed.RunID, "steerIntentId": inputID})
+			_, err = tx.ExecContext(ctx, `INSERT INTO client_updates(
 				session_id,update_type,entity_type,entity_id,payload)
 				VALUES ($1,'conversation.turn.updated','turn',$2,$3)`, claimed.SessionID,
 				claimed.ID.String(), payload)
 		}
 		if err == nil && claimed.SourceType == codexcontrol.SourceWorkspace &&
 			claimed.DiscordConversationID != uuid.Nil {
-			err = recordDiscordIntentContributors(c.Request.Context(), tx, claimed.RunID,
-				claimed.DiscordConversationID, request.CommandID, request.TurnID)
+			err = recordDiscordIntentContributors(ctx, tx, claimed.RunID,
+				claimed.DiscordConversationID, inputID, turnID)
 		}
 		if err == nil && claimed.SourceType == codexcontrol.SourceWorkspace &&
 			claimed.DiscordConversationID != uuid.Nil {
 			var guildID, threadID string
-			err = tx.QueryRowContext(c.Request.Context(), `SELECT guild_id, thread_id
+			err = tx.QueryRowContext(ctx, `SELECT guild_id, thread_id
 				FROM discord_conversations WHERE id=$1`, claimed.DiscordConversationID).
 				Scan(&guildID, &threadID)
 			if err == nil {
 				if discordMessageID == "" && inputSurface == "desktop" {
-					discordMessageID = "desktop-" + request.CommandID.String()
-					err = discordintegration.ProjectConversationThinkingTx(c.Request.Context(), tx,
+					discordMessageID = "desktop-" + inputID.String()
+					err = discordintegration.ProjectConversationThinkingTx(ctx, tx,
 						guildID, threadID, claimed.DiscordConversationID, discordMessageID)
 				}
 			}
 			if err == nil && discordMessageID != "" {
-				err = discordintegration.RegisterConversationStatusSteerTx(c.Request.Context(), tx,
+				err = discordintegration.RegisterConversationStatusSteerTx(ctx, tx,
 					claimed.RunID, claimed.DiscordConversationID, guildID, discordMessageID)
 			}
 		}
 	}
 	if err != nil {
-		problem(c, http.StatusInternalServerError, "确认远程 Run 指令失败", err)
-		return
+		return err
 	}
-	if err := tx.Commit(); err != nil {
-		problem(c, http.StatusInternalServerError, "提交远程 Run 指令确认失败", err)
-		return
-	}
-	c.Status(http.StatusNoContent)
+	return tx.Commit()
 }
 
 func (s *Server) workerRunEvents(c *gin.Context) {
 	var request workerprotocol.EventsRequest
-	runID, worker, ok := requireRunLease(c, &request)
+	runID, worker, ok := requireWorkerRun(c, &request)
 	if !ok {
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, request.RunLeaseRequest)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
 	if err != nil {
 		remoteRunError(c, "校验远程任务失败", err)
 		return
@@ -464,7 +465,7 @@ func recordDesktopUserMessageItem(ctx context.Context, tx *sql.Tx,
 
 func (s *Server) workerRunComplete(c *gin.Context) {
 	var request workerprotocol.CompleteRequest
-	runID, worker, ok := requireRunLease(c, &request)
+	runID, worker, ok := requireWorkerRun(c, &request)
 	if !ok {
 		return
 	}
@@ -480,7 +481,7 @@ func (s *Server) workerRunComplete(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, request.RunLeaseRequest)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
 	repository := codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration)
 	if err == nil {
 		var satisfied bool
@@ -612,7 +613,7 @@ func recordDiscordIntentContributors(ctx context.Context, tx *sql.Tx, runID,
 
 func (s *Server) workerRunFail(c *gin.Context) {
 	var request workerprotocol.FailRequest
-	runID, worker, ok := requireRunLease(c, &request)
+	runID, worker, ok := requireWorkerRun(c, &request)
 	if !ok {
 		return
 	}
@@ -632,7 +633,7 @@ func (s *Server) workerRunFail(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, request.RunLeaseRequest)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
 	if err == nil {
 		if request.Code == "codex_non_retryable_error" && request.CodexError == nil {
 			badRequest(c, errors.New("不可重试 Codex 错误缺少结构化详情"))
@@ -673,7 +674,7 @@ func (s *Server) workerRunFail(c *gin.Context) {
 			err = repository.FailWithCodexError(c.Request.Context(), claimed, request.Code,
 				emptyMessageError(request.Message), request.CodexError)
 		default:
-			err = repository.Reconcile(c.Request.Context(), claimed, request.Code,
+			err = repository.Fail(c.Request.Context(), claimed, request.Code,
 				emptyMessageError(request.Message))
 		}
 	}
@@ -707,37 +708,42 @@ func (s *Server) workerRunFail(c *gin.Context) {
 func (s *Server) remoteRunAlreadyFinished(ctx context.Context, runID, workerID uuid.UUID,
 	key, expectedStatus string,
 ) (bool, error) {
-	var status string
+	var status, errorCode string
 	var storedKey sql.NullString
-	err := s.db.QueryRowContext(ctx, `SELECT status, worker_terminal_key
-		FROM codex_turn_runs WHERE id = $1 AND worker_id = $2`, runID, workerID).
-		Scan(&status, &storedKey)
+	err := s.db.QueryRowContext(ctx, `SELECT status,worker_terminal_key,COALESCE(error_code,'')
+		FROM codex_turn_runs WHERE id=$1 AND worker_id=$2`, runID, workerID).
+		Scan(&status, &storedKey, &errorCode)
 	if err != nil {
 		return false, err
 	}
-	if storedKey.Valid && storedKey.String != key {
-		return false, errors.New("run 已使用不同幂等键结束")
-	}
 	if status == expectedStatus {
 		if !storedKey.Valid {
-			_, err = s.db.ExecContext(ctx, `UPDATE codex_turn_runs SET worker_terminal_key = $2
+			_, err = s.db.ExecContext(ctx, `UPDATE codex_turn_runs SET worker_terminal_key=$2
 				WHERE id = $1 AND worker_terminal_key IS NULL`, runID, key)
 		}
 		return err == nil, err
 	}
 	if status == "completed" || status == "failed" || status == "canceled" {
-		return false, errors.New("run 已进入不同终态")
+		if errorCode == "lease_expired" {
+			_, err = s.db.ExecContext(ctx, `UPDATE codex_turn_runs SET
+				worker_terminal_key=NULL WHERE id=$1 AND worker_id=$2`, runID, workerID)
+			return false, err
+		}
+		return true, nil
+	}
+	if storedKey.Valid && storedKey.String != key {
+		return false, errors.New("run 已使用不同幂等键结束")
 	}
 	return false, nil
 }
 
 func (s *Server) workerSetThread(c *gin.Context) {
 	var request workerprotocol.SetThreadRequest
-	runID, worker, ok := requireRunLease(c, &request)
+	runID, worker, ok := requireWorkerRun(c, &request)
 	if !ok {
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, request.RunLeaseRequest)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
 	if err == nil {
 		err = codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration).SetThread(c.Request.Context(),
 			claimed, request.ThreadID)
@@ -751,11 +757,11 @@ func (s *Server) workerSetThread(c *gin.Context) {
 
 func (s *Server) workerRecordSubmission(c *gin.Context) {
 	var request workerprotocol.SubmissionRequest
-	runID, worker, ok := requireRunLease(c, &request)
+	runID, worker, ok := requireWorkerRun(c, &request)
 	if !ok {
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, request.RunLeaseRequest)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
 	if err == nil {
 		err = codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration).RecordSubmission(
 			c.Request.Context(), claimed, request.SubmissionID)
@@ -790,11 +796,11 @@ func (s *Server) workerRecordSubmission(c *gin.Context) {
 
 func (s *Server) workerConfirmTurn(c *gin.Context) {
 	var request workerprotocol.ConfirmTurnRequest
-	runID, worker, ok := requireRunLease(c, &request)
+	runID, worker, ok := requireWorkerRun(c, &request)
 	if !ok {
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, request.RunLeaseRequest)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
 	if err == nil {
 		err = codexcontrol.NewRepository(s.db, s.cfg.LeaseDuration).ConfirmTurn(
 			c.Request.Context(), claimed, request.TurnID)

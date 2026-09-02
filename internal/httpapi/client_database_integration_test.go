@@ -126,7 +126,7 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 			"initialMessage": map[string]any{"localId": "atomic-session-1",
 				"text": "Created through client protocol", "attachmentIds": []string{}},
 		})
-	require.Equal(t, http.StatusCreated, createdSession.Code)
+	require.Equal(t, http.StatusCreated, createdSession.Code, createdSession.Body.String())
 	var createdSessionBody struct {
 		Session clientSession `json:"session"`
 	}
@@ -324,24 +324,27 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 	require.Equal(t, "pending", terminalInteractiveStatus)
 	require.Equal(t, "running", terminalRunStatus)
 	require.True(t, terminalActiveSlot.Valid)
+	_, err = db.ExecContext(ctx, `UPDATE codex_turn_runs SET finished_at=NULL WHERE id=$1`,
+		claimed.RunID)
+	require.NoError(t, err)
 	requeued := server.requeueExpiredRuns(ctx)
-	require.EqualValues(t, 1, requeued)
+	require.Zero(t, requeued)
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT q.status,r.status,r.active_slot
 		FROM codex_interactive_requests q JOIN codex_turn_runs r ON r.id=q.run_id
 		WHERE q.id=$1`, terminalInteractiveID).Scan(&terminalInteractiveStatus,
 		&terminalRunStatus, &terminalActiveSlot))
-	require.Equal(t, "interrupted", terminalInteractiveStatus)
-	require.Equal(t, "failed", terminalRunStatus)
-	require.False(t, terminalActiveSlot.Valid)
+	require.Equal(t, "pending", terminalInteractiveStatus)
+	require.Equal(t, "running", terminalRunStatus)
+	require.True(t, terminalActiveSlot.Valid)
 	completedSessions := clientJSONRequest(t, http.MethodGet,
 		endpoint+"/api/v1/client/sessions?limit=10", loginBody.AccessToken, nil)
 	require.Equal(t, http.StatusOK, completedSessions.Code)
 	require.NoError(t, json.Unmarshal(completedSessions.Body.Bytes(), &listedBody))
 	completedSession := requireClientSession(t, listedBody.Sessions, sessionID)
-	require.False(t, completedSession.IsRunning)
-	require.True(t, completedSession.HasRunIssue)
+	require.True(t, completedSession.IsRunning)
+	require.False(t, completedSession.HasRunIssue)
 	require.Greater(t, completedSession.LastAgentMessageSeq, int64(0))
-	require.Nil(t, completedSession.PendingInteractiveID)
+	require.NotNil(t, completedSession.PendingInteractiveID)
 	for _, status := range []string{"failed", "canceled"} {
 		_, err = db.ExecContext(ctx, `UPDATE codex_turn_runs SET status=$2 WHERE id=$1`,
 			claimed.RunID, status)
@@ -352,7 +355,17 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 		require.NoError(t, json.Unmarshal(issueSessions.Body.Bytes(), &listedBody))
 		require.True(t, requireClientSession(t, listedBody.Sessions, sessionID).HasRunIssue)
 	}
-	_, err = db.ExecContext(ctx, `UPDATE codex_turn_runs SET status='completed' WHERE id=$1`, claimed.RunID)
+	_, err = db.ExecContext(ctx, `UPDATE codex_interactive_requests SET status='interrupted',
+		resolved_at=now() WHERE id=$1`, terminalInteractiveID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE codex_turn_runs SET status='completed',
+		active_slot=NULL,finished_at=now() WHERE id=$1`, claimed.RunID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE codex_turn_intents SET status='completed',
+		finished_at=now() WHERE id=$1`, claimed.ID)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE codex_thread_controls SET status='idle',
+		active_intent_id=NULL WHERE id=$1`, claimed.ControlID)
 	require.NoError(t, err)
 	messages := clientJSONRequest(t, http.MethodGet, messageURL+"?beforeSeq=999", loginBody.AccessToken, nil)
 	require.Equal(t, http.StatusOK, messages.Code)

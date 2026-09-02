@@ -93,8 +93,18 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 	}
 	manifest, err := client.Workspace(ctx)
 	if err != nil {
-		cleanupFailure(nil)
-		return nil, nil, fmt.Errorf("读取宿主 Worker 逻辑环境: %w", err)
+		controlErr := err
+		manifest, err = worker.LoadCachedWorkspaceManifest(cfg.WorkerDataRoot)
+		if err != nil {
+			cleanupFailure(nil)
+			return nil, nil, fmt.Errorf("Control 不可用且没有本地 Workspace 快照: %w", err)
+		}
+		logger.Warn("Control 暂不可用，使用本地 Workspace 快照启动", zap.Error(controlErr))
+	} else if manifest != nil {
+		if cacheErr := worker.SaveWorkspaceManifest(cfg.WorkerDataRoot, manifest); cacheErr != nil {
+			cleanupFailure(nil)
+			return nil, nil, fmt.Errorf("保存宿主 Workspace 快照: %w", cacheErr)
+		}
 	}
 	var desktopController *worker.HostDesktopController
 	runtimeOptions := hostworker.RuntimeOptions{

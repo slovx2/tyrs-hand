@@ -16,7 +16,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
-	"github.com/slovx2/tyrs-hand/internal/security"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
 )
 
@@ -29,32 +28,14 @@ func (s *Server) workerUploadAgentAttachment(c *gin.Context) {
 	if !ok {
 		return
 	}
-	leaseEpoch, err := strconv.ParseInt(strings.TrimSpace(c.PostForm("leaseEpoch")), 10, 64)
-	if err != nil {
-		badRequest(c, errors.New("agent 附件缺少有效 leaseEpoch"))
-		return
-	}
-	lease := workerprotocol.RunLeaseRequest{LeaseToken: strings.TrimSpace(c.PostForm("leaseToken")),
-		LeaseEpoch: leaseEpoch}
 	worker := currentWorker(c)
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID, lease)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
 	if err != nil {
 		remoteRunError(c, "校验 agent 附件 Run 失败", err)
 		return
 	}
 	if claimed.SourceType != codexcontrol.SourceWorkspace || claimed.SessionID == uuid.Nil {
 		badRequest(c, errors.New("只有 Workspace Run 可以保存 agent 附件"))
-		return
-	}
-	var leased bool
-	err = s.db.QueryRowContext(c.Request.Context(), `SELECT EXISTS(
-		SELECT 1 FROM codex_turn_runs run JOIN codex_thread_controls control
-		ON control.id=run.control_id WHERE run.id=$1 AND run.worker_id=$2
-		AND run.lease_epoch=$3 AND control.lease_token=$4
-		AND control.active_intent_id=run.primary_intent_id)`, runID, worker.ID,
-		lease.LeaseEpoch, security.Digest(lease.LeaseToken)).Scan(&leased)
-	if err != nil || !leased {
-		remoteRunError(c, "agent 附件 Run Lease 已失效", codexcontrol.ErrLeaseLost)
 		return
 	}
 	itemID := strings.TrimSpace(c.PostForm("itemId"))

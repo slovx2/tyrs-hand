@@ -442,7 +442,7 @@ func (s *Server) clientCreateSession(c *gin.Context) {
 		JOIN worker_workspaces workspace ON workspace.id=project.workspace_id
 		WHERE project.id=$1 AND project.availability_status='available'
 		  FOR SHARE`, request.ProjectID).
-		Scan(&workspaceID)
+		Scan(&workspaceID, &workerID)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusUnprocessableEntity, "项目当前不可用", err)
 		return

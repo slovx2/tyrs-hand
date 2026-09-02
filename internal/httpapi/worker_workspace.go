@@ -11,12 +11,11 @@ import (
 
 func (s *Server) workerWorkspaceState(c *gin.Context) {
 	var request workerprotocol.WorkspaceState
-	runID, worker, ok := requireRunLease(c, &request)
+	runID, worker, ok := requireWorkerRun(c, &request)
 	if !ok {
 		return
 	}
-	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID,
-		request.RunLeaseRequest)
+	claimed, err := s.claimedRemoteRun(c.Request.Context(), worker.ID, runID)
 	if err != nil {
 		remoteRunError(c, "校验 Worktree 状态请求失败", err)
 		return

@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -36,6 +35,9 @@ type desktopCallState struct {
 	subscription *appserverhub.Subscription
 	toolReady    chan desktopToolRuntime
 	interactive  chan bool
+	task         *workerprotocol.Task
+	reporter     *desktopEventReporter
+	commands     chan workerprotocol.RunCommand
 	unbind       func()
 	unbindInput  func()
 }
@@ -45,7 +47,7 @@ type desktopLifecycleCallState struct {
 }
 
 type desktopThreadCallState struct {
-	request workerprotocol.DesktopThreadState
+	request workerprotocol.DesktopThreadPrepareRequest
 }
 
 type desktopRollbackCallState struct {
@@ -81,35 +83,13 @@ func (c *desktopController) PrepareCall(ctx context.Context,
 		}
 	case "thread/start":
 		if call.Role == appserverhub.RoleDesktop {
-			state, err := c.prepareDesktopThread(ctx, call)
-			if err != nil {
-				return plan, err
-			}
-			plan.State = &desktopThreadCallState{request: state}
+			plan.State = &desktopThreadCallState{request: c.desktopThreadRequest(call)}
 		}
 	case "thread/fork":
 		if call.Role == appserverhub.RoleDesktop {
-			state, err := c.prepareDesktopThread(ctx, call)
-			if err != nil {
-				return plan, err
-			}
-			plan.State = &desktopThreadCallState{request: state}
+			plan.State = &desktopThreadCallState{request: c.desktopThreadRequest(call)}
 		}
 	case "turn/start":
-		if c.processor != nil && c.processor.client != nil {
-			requestCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
-			preflight, err := c.processor.client.PreflightDesktopTurn(requestCtx,
-				workerprotocol.DesktopTurnPreflightRequest{
-					WorkspaceID: c.workspace.runtime.WorkspaceID, Params: plan.Params,
-				})
-			cancel()
-			if err != nil {
-				return plan, err
-			}
-			if len(preflight.Params) > 0 {
-				plan.Params = preflight.Params
-			}
-		}
 		threadID, _ := callScope(plan.Params)
 		if threadID == "" {
 			return plan, nil
@@ -122,7 +102,25 @@ func (c *desktopController) PrepareCall(ctx context.Context,
 			subscription: client.Subscribe(codex.ThreadFilter{ThreadID: threadID}),
 			toolReady:    make(chan desktopToolRuntime, 1),
 			interactive:  make(chan bool, 1),
+			commands:     make(chan workerprotocol.RunCommand, 16),
 		}
+		localTask, runtime, err := c.localDesktopTask(plan.Params)
+		if err != nil {
+			state.subscription.Close()
+			return plan, err
+		}
+		state.task = &localTask
+		state.reporter, err = newDesktopEventReporter(c.processor.workspaces.ctx,
+			c.processor, state.task)
+		if err != nil {
+			state.subscription.Close()
+			return plan, fmt.Errorf("持久化 Desktop Run Journal: %w", err)
+		}
+		if c.processor.coordinator != nil {
+			c.processor.coordinator.register(state.reporter.journal, state.commands)
+		}
+		state.toolReady <- desktopToolRuntime{task: state.task, runtime: runtime,
+			report: state.reporter.Report}
 		state.unbind = c.workspace.bindTool(threadID, func(ctx context.Context,
 			request codex.ToolCallRequest,
 		) (codex.ToolCallResult, error) {
@@ -268,7 +266,7 @@ func (c *desktopController) CompleteCall(_ context.Context, call appserverhub.Ca
 		return result, cause
 	}
 	if state, ok := plan.State.(*desktopThreadCallState); ok {
-		go c.completeDesktopThread(state.request, result)
+		go c.syncDesktopThread(state.request, result, nil)
 	}
 	switch call.Method {
 	case "thread/start", "thread/fork":
@@ -531,24 +529,21 @@ func (c *desktopController) desktopWorkspaceAllowsPublish(cwd string) bool {
 	return false
 }
 
-func (c *desktopController) prepareDesktopThread(ctx context.Context,
+func (c *desktopController) desktopThreadRequest(
 	call appserverhub.Call,
-) (workerprotocol.DesktopThreadState, error) {
+) workerprotocol.DesktopThreadPrepareRequest {
 	workspaceRoot := ""
 	if c.workspace.hostRuntime != nil {
 		workspaceRoot = c.workspace.hostRuntime.WorkspaceRoot()
 	}
-	requestCtx, cancel := context.WithTimeout(ctx, c.controlTimeout())
-	defer cancel()
-	return c.processor.client.PrepareDesktopThread(requestCtx,
-		workerprotocol.DesktopThreadPrepareRequest{
-			WorkspaceID:   c.workspace.runtime.WorkspaceID,
-			WorkspaceRoot: workspaceRoot,
-			Operation:     strings.TrimPrefix(call.Method, "thread/"),
-			RequestKey: desktopRequestKey(call.Method, call.Params,
-				json.RawMessage(uuid.NewString())),
-			Params: call.Params,
-		})
+	return workerprotocol.DesktopThreadPrepareRequest{
+		WorkspaceID:   c.workspace.runtime.WorkspaceID,
+		WorkspaceRoot: workspaceRoot,
+		Operation:     strings.TrimPrefix(call.Method, "thread/"),
+		RequestKey: desktopRequestKey(call.Method, call.Params,
+			json.RawMessage(uuid.NewString())),
+		Params: append(json.RawMessage(nil), call.Params...),
+	}
 }
 
 func hostWorkspacePath(root, relative string) (string, error) {
@@ -567,51 +562,35 @@ func hostWorkspacePath(root, relative string) (string, error) {
 	return filepath.Join(root, parts[1]), nil
 }
 
-func (c *desktopController) completeDesktopThread(
-	state workerprotocol.DesktopThreadState, result json.RawMessage,
+func (c *desktopController) syncDesktopThread(
+	request workerprotocol.DesktopThreadPrepareRequest, result json.RawMessage, cause error,
 ) {
-	if state.ID == uuid.Nil {
-		return
-	}
 	ctx := c.processor.workspaces.ctx
-	for attempt := 0; attempt < 8 && ctx.Err() == nil; attempt++ {
+	for ctx.Err() == nil {
 		requestCtx, cancel := context.WithTimeout(ctx, c.controlTimeout())
-		_, err := c.processor.client.CompleteDesktopThread(requestCtx, state.ID,
-			workerprotocol.DesktopThreadCompleteRequest{
-				WorkspaceID: c.workspace.runtime.WorkspaceID, Response: result,
-			})
+		state, err := c.processor.client.PrepareDesktopThread(requestCtx, request)
 		cancel()
 		if err == nil {
-			return
+			requestCtx, cancel = context.WithTimeout(ctx, c.controlTimeout())
+			if cause == nil {
+				_, err = c.processor.client.CompleteDesktopThread(requestCtx, state.ID,
+					workerprotocol.DesktopThreadCompleteRequest{
+						WorkspaceID: request.WorkspaceID, Response: result,
+					})
+			} else {
+				err = c.processor.client.FailDesktopThread(requestCtx, state.ID,
+					workerprotocol.DesktopThreadFailRequest{
+						WorkspaceID: request.WorkspaceID, Error: cause.Error(),
+					})
+			}
+			cancel()
+			if err == nil {
+				return
+			}
 		}
-		c.processor.logger.Warn("提交 Desktop Thread 绑定失败",
-			zap.String("request_id", state.ID.String()), zap.Error(err))
-		if !retryableControlError(err) || !waitContext(ctx, 500*time.Millisecond) {
-			return
-		}
-	}
-}
-
-func (c *desktopController) failDesktopThread(
-	state workerprotocol.DesktopThreadState, cause error,
-) {
-	if state.ID == uuid.Nil || cause == nil {
-		return
-	}
-	ctx := c.processor.workspaces.ctx
-	for attempt := 0; attempt < 8 && ctx.Err() == nil; attempt++ {
-		requestCtx, cancel := context.WithTimeout(ctx, c.controlTimeout())
-		err := c.processor.client.FailDesktopThread(requestCtx, state.ID,
-			workerprotocol.DesktopThreadFailRequest{
-				WorkspaceID: c.workspace.runtime.WorkspaceID, Error: cause.Error(),
-			})
-		cancel()
-		if err == nil {
-			return
-		}
-		c.processor.logger.Warn("提交 Desktop Thread 失败状态失败",
-			zap.String("request_id", state.ID.String()), zap.Error(err))
-		if !retryableControlError(err) || !waitContext(ctx, 500*time.Millisecond) {
+		c.processor.logger.Warn("补报 Desktop Thread 状态失败，本地操作已经执行",
+			zap.String("request_key", request.RequestKey), zap.Error(err))
+		if !retryableControlError(err) || !waitContext(ctx, 3*time.Second) {
 			return
 		}
 	}
@@ -635,6 +614,93 @@ func retryableControlError(err error) bool {
 		response.StatusCode >= http.StatusInternalServerError
 }
 
+func (c *desktopController) localDesktopTask(params json.RawMessage) (
+	workerprotocol.Task, hostWorkspaceRuntime, error,
+) {
+	var input struct {
+		ThreadID string `json:"threadId"`
+		Input    []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"input"`
+		CWD               string `json:"cwd"`
+		Model             string `json:"model"`
+		ReasoningEffort   string `json:"effort"`
+		ServiceTier       string `json:"serviceTier"`
+		CollaborationMode *struct {
+			Mode string `json:"mode"`
+		} `json:"collaborationMode"`
+	}
+	if err := json.Unmarshal(params, &input); err != nil {
+		return workerprotocol.Task{}, hostWorkspaceRuntime{}, err
+	}
+	if strings.TrimSpace(input.ThreadID) == "" {
+		return workerprotocol.Task{}, hostWorkspaceRuntime{}, errors.New("Desktop Turn 缺少 Thread ID")
+	}
+	parts := make([]string, 0, len(input.Input))
+	for _, item := range input.Input {
+		if item.Type == "text" && strings.TrimSpace(item.Text) != "" {
+			parts = append(parts, strings.TrimSpace(item.Text))
+		}
+	}
+	threadID, instruction := input.ThreadID, strings.Join(parts, "\n\n")
+	workspace := filepath.Clean(strings.TrimSpace(input.CWD))
+	if workspace == "." || workspace == "" {
+		workspace = c.workspace.hostRuntime.WorkspaceRoot()
+	}
+	if !filepath.IsAbs(workspace) {
+		return workerprotocol.Task{}, hostWorkspaceRuntime{},
+			errors.New("Desktop Turn 工作目录必须是绝对路径")
+	}
+	projectKind := "directory"
+	if info, statErr := os.Stat(filepath.Join(workspace, ".git")); statErr == nil && info.IsDir() {
+		projectKind = "git"
+	}
+	project := &workerprotocol.WorkspaceProjectContext{
+		WorkspaceID: c.workspace.runtime.WorkspaceID, HostPath: workspace,
+		ProjectSource: "desktop_local", WorkspaceKind: projectKind,
+	}
+	c.workspace.mu.Lock()
+	forums := append([]workerprotocol.WorkspaceForum(nil), c.workspace.manifest.Forums...)
+	c.workspace.mu.Unlock()
+	for _, forum := range forums {
+		path, pathErr := hostWorkspacePath(c.workspace.hostRuntime.WorkspaceRoot(),
+			forum.WorkspaceRelative)
+		if pathErr == nil && (workspace == path || strings.HasPrefix(workspace,
+			path+string(os.PathSeparator))) {
+			project.ForumID = forum.ForumID
+			if forum.ProjectID != nil {
+				project.ProjectID = *forum.ProjectID
+			}
+			project.WorkspaceRelative = forum.WorkspaceRelative
+			project.WorkspaceKind = forum.WorkspaceKind
+			break
+		}
+	}
+	mode := "default"
+	if input.CollaborationMode != nil && input.CollaborationMode.Mode != "" {
+		mode = input.CollaborationMode.Mode
+	}
+	intentID, runID := uuid.New(), uuid.New()
+	task := workerprotocol.Task{Claimed: codexcontrol.ClaimedControl{
+		Intent: codexcontrol.Intent{ID: intentID, SourceType: codexcontrol.SourceWorkspace,
+			InputSurface: "desktop", Operation: "turn_input", Behavior: "start_when_idle",
+			Instruction: instruction, Status: codexcontrol.IntentDispatching,
+			ActorLogin: "codex-desktop", ActorPermission: "owner", ReplyPolicy: "silent"},
+		RunID: runID, MaxSteers: max(1, c.processor.cfg.CodexMaxSteersPerTurn),
+		ExternalThreadID: threadID, CollaborationMode: mode,
+	}, Snapshot: workerprotocol.TaskSnapshot{
+		Session: &workerprotocol.SessionSnapshot{MessageID: intentID.String(),
+			Body: instruction, InputSurface: "desktop", Project: project},
+		Runtime: workerprotocol.RuntimeSnapshot{Model: input.Model,
+			ReasoningEffort: input.ReasoningEffort, ServiceTier: input.ServiceTier,
+			CollaborationMode: mode},
+	}}
+	runtime, err := desktopRuntimeForTask(c.workspace.hostRuntime.WorkspaceRoot(),
+		c.workspace.hostRuntime.CodexHome(), c.workspace.runtime.WorkspaceID, &task)
+	return task, runtime, err
+}
+
 func (c *desktopController) observeDesktopTurn(call appserverhub.Call,
 	result json.RawMessage, state *desktopCallState,
 ) {
@@ -644,7 +710,8 @@ func (c *desktopController) observeDesktopTurn(call appserverhub.Call,
 	threadID, _ := callScope(call.Params)
 	_, turnID := callScope(result)
 	if threadID == "" || turnID == "" {
-		state.toolReady <- desktopToolRuntime{err: errors.New("turn/start 响应缺少 Codex Turn ID")}
+		state.reporter.Finish(codexcontrol.TurnResult{},
+			errors.New("turn/start 响应缺少 Codex Turn ID"))
 		return
 	}
 	ctx := c.processor.workspaces.ctx
@@ -661,79 +728,93 @@ func (c *desktopController) observeDesktopTurn(call appserverhub.Call,
 		c.processor.logger.Warn("读取 Desktop 图片失败，继续投影文本",
 			zap.String("request_key", requestKey), zap.Error(imageErr))
 	}
-	var task workerprotocol.Task
-	for ctx.Err() == nil {
-		requestCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
-		var err error
-		task, err = c.processor.client.PrepareDesktopTurn(requestCtx,
-			workerprotocol.DesktopTurnPrepareRequest{
-				WorkspaceID: c.workspace.runtime.WorkspaceID,
-				RequestKey:  requestKey,
-				Params:      call.Params, Images: images, ImageError: imageNotice,
-			})
-		cancel()
-		if err == nil {
-			break
-		}
-		c.processor.logger.Warn("异步登记 Desktop Turn 失败，Desktop Turn 继续运行",
-			zap.String("turn_id", turnID), zap.Error(err))
-		if !retryableControlError(err) {
-			state.toolReady <- desktopToolRuntime{err: err}
-			return
-		}
-		if !waitContext(ctx, 500*time.Millisecond) {
-			state.toolReady <- desktopToolRuntime{err: ctx.Err()}
-			return
-		}
+	task := state.task
+	reporter := state.reporter
+	reporter.journal.mu.Lock()
+	reporter.journal.DesktopRequest = &workerprotocol.DesktopTurnPrepareRequest{
+		WorkspaceID: c.workspace.runtime.WorkspaceID, RunID: task.Claimed.RunID,
+		IntentID: task.Claimed.ID, TurnID: turnID, RequestKey: requestKey,
+		Params: append(json.RawMessage(nil), call.Params...), Images: images,
+		ImageError: imageNotice,
 	}
-	if len(images) > 0 {
-		taskCopy := task
-		imagesCopy := append([]workerprotocol.DesktopImage(nil), images...)
-		imagesHandedOff = true
-		go c.syncDesktopImages(&taskCopy, imagesCopy)
-	}
-	reporter := newDesktopEventReporter(ctx, c.processor, &task)
-	toolRuntime, runtimeErr := desktopRuntimeForTask(c.workspace.hostRuntime.WorkspaceRoot(), c.workspace.hostRuntime.CodexHome(),
-		c.workspace.runtime.WorkspaceID, &task)
-	state.toolReady <- desktopToolRuntime{
-		task: &task, runtime: toolRuntime, report: reporter.Report, err: runtimeErr,
-	}
+	reporter.saveLocked()
+	reporter.journal.mu.Unlock()
+	imagesHandedOff = true
+	go c.registerDesktopTurn(ctx, call.Params, requestKey, turnID, images,
+		imageNotice, state)
 	reporter.Report("discord.progress", remoteEventPayload(map[string]string{
 		"state": "running", "detail": "Codex Desktop 正在处理请求。",
 	}))
-	if err := c.processor.client.RecordSubmission(ctx, &task, turnID); err != nil {
-		c.finishDesktopTurn(ctx, &task, reporter, codexcontrol.TurnResult{}, err)
-		return
+	task.Claimed.SubmissionID = turnID
+	task.Claimed.ConfirmedTurnID = turnID
+	if c.processor.coordinator != nil {
+		c.processor.coordinator.setTurnID(task.Claimed.RunID, turnID)
 	}
-	if err := c.processor.client.ConfirmTurn(ctx, &task, turnID); err != nil {
-		c.finishDesktopTurn(ctx, &task, reporter, codexcontrol.TurnResult{}, err)
-		return
-	}
-	commands := make(chan workerprotocol.RunCommand, 16)
-	heartbeatCtx, cancelHeartbeat := context.WithCancel(ctx)
-	go c.desktopTurnHeartbeat(heartbeatCtx, &task, commands)
+	reporter.journal.mu.Lock()
+	reporter.journal.Task = *task
+	reporter.saveLocked()
+	reporter.journal.mu.Unlock()
 	client := c.workspace.currentClient()
 	if client == nil {
-		c.finishDesktopTurn(ctx, &task, reporter, codexcontrol.TurnResult{},
+		c.finishDesktopTurn(ctx, task, reporter, codexcontrol.TurnResult{},
 			errors.New("宿主 Codex Runtime 正在恢复"))
 		return
 	}
 	runtime := codex.NewRuntime(client)
+	toolRuntime, _ := desktopRuntimeForTask(c.workspace.hostRuntime.WorkspaceRoot(),
+		c.workspace.hostRuntime.CodexHome(), c.workspace.runtime.WorkspaceID, task)
 	resultValue, err := c.processor.waitRemoteTurn(ctx, runtime, state.subscription.Events(),
-		&task, threadID, turnID, commands,
-		c.processor.hostDiscordCommandHandler(&task, toolRuntime, []ports.SkillRef{}, reporter.Report),
+		task, threadID, turnID, state.commands,
+		c.processor.hostDiscordCommandHandler(task, toolRuntime, []ports.SkillRef{}, reporter.Report),
 		remoteDiscordEventReporter(reporter.Report), state.interactive)
 	if err == nil {
-		resultValue, err = c.processor.attachAgentImages(ctx, &task, runtime, threadID,
+		resultValue, err = c.processor.attachAgentImages(ctx, task, runtime, threadID,
 			toolRuntime.Workspace, resultValue)
 	}
-	cancelHeartbeat()
 	if err == nil {
 		reporter.Report("discord.progress", remoteEventPayload(map[string]string{
 			"state": "completed", "detail": "本轮处理完成。",
 		}))
 	}
-	c.finishDesktopTurn(ctx, &task, reporter, resultValue, err)
+	c.finishDesktopTurn(ctx, task, reporter, resultValue, err)
+}
+
+func (c *desktopController) registerDesktopTurn(ctx context.Context, params json.RawMessage,
+	requestKey, turnID string, images []workerprotocol.DesktopImage, imageNotice string,
+	state *desktopCallState,
+) {
+	for ctx.Err() == nil {
+		requestCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
+		_, err := c.processor.client.PrepareDesktopTurn(requestCtx,
+			workerprotocol.DesktopTurnPrepareRequest{
+				WorkspaceID: c.workspace.runtime.WorkspaceID,
+				RunID:       state.task.Claimed.RunID,
+				IntentID:    state.task.Claimed.ID,
+				TurnID:      turnID,
+				RequestKey:  requestKey,
+				Params:      params, Images: images, ImageError: imageNotice,
+			})
+		cancel()
+		if err == nil {
+			if len(images) > 0 {
+				c.syncDesktopImages(state.task,
+					append([]workerprotocol.DesktopImage(nil), images...))
+			}
+			state.reporter.Flush()
+			requestCtx, cancel = context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
+			_ = c.processor.client.RecordSubmission(requestCtx, state.task, turnID)
+			cancel()
+			requestCtx, cancel = context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
+			_ = c.processor.client.ConfirmTurn(requestCtx, state.task, turnID)
+			cancel()
+			return
+		}
+		c.processor.logger.Warn("补报 Desktop 本地 Run 失败，本地 Turn 继续运行",
+			zap.String("run_id", state.task.Claimed.RunID.String()), zap.Error(err))
+		if !waitContext(ctx, 3*time.Second) {
+			return
+		}
+	}
 }
 
 type desktopImageOpener func(context.Context, string) (io.ReadCloser, int64, error)
@@ -1113,12 +1194,17 @@ func (c *desktopController) desktopTurnHeartbeat(ctx context.Context,
 func (c *desktopController) cleanupDesktopCall(plan appserverhub.CallPlan, cause error) {
 	switch state := plan.State.(type) {
 	case *desktopCallState:
-		state.toolReady <- desktopToolRuntime{err: cause}
+		if state.task != nil && c.processor.coordinator != nil {
+			c.processor.coordinator.unregister(state.task.Claimed.RunID)
+		}
+		if state.task != nil && c.processor.journals != nil {
+			_ = c.processor.journals.remove(state.task.Claimed.RunID)
+		}
 		state.subscription.Close()
 		state.unbind()
 		state.unbindInput()
 	case *desktopThreadCallState:
-		go c.failDesktopThread(state.request, cause)
+		go c.syncDesktopThread(state.request, nil, cause)
 	}
 }
 
@@ -1195,34 +1281,35 @@ type desktopEventReporter struct {
 	ctx       context.Context
 	processor *Processor
 	task      *workerprotocol.Task
-	mu        sync.Mutex
 	journal   *runJournal
 }
 
 func newDesktopEventReporter(ctx context.Context, processor *Processor,
 	task *workerprotocol.Task,
-) *desktopEventReporter {
+) (*desktopEventReporter, error) {
 	journal := &runJournal{Task: *task, NextSequence: 1}
 	reporter := &desktopEventReporter{ctx: ctx, processor: processor, task: task,
 		journal: journal}
-	reporter.saveLocked()
-	return reporter
+	if err := reporter.saveLocked(); err != nil {
+		return nil, err
+	}
+	return reporter, nil
 }
 
 func (r *desktopEventReporter) Report(eventType string, payload json.RawMessage) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.journal.mu.Lock()
+	defer r.journal.mu.Unlock()
 	r.journal.PendingEvents = append(r.journal.PendingEvents, workerprotocol.EventInput{
 		Sequence: r.journal.NextSequence,
 		Type:     eventType, Payload: append(json.RawMessage(nil), payload...)})
 	r.journal.NextSequence++
-	r.saveLocked()
+	_ = r.saveLocked()
 	r.flushLocked()
 }
 
 func (r *desktopEventReporter) Flush() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.journal.mu.Lock()
+	defer r.journal.mu.Unlock()
 	r.flushLocked()
 }
 
@@ -1235,14 +1322,14 @@ func (r *desktopEventReporter) flushLocked() {
 	cancel()
 	if err == nil {
 		r.journal.PendingEvents = nil
-		r.saveLocked()
+		_ = r.saveLocked()
 	} else {
 		r.processor.logger.Warn("上传 Desktop Turn 事件失败，已保留在 Journal", zap.Error(err))
 	}
 }
 
 func (r *desktopEventReporter) Finish(result codexcontrol.TurnResult, cause error) {
-	r.mu.Lock()
+	r.journal.mu.Lock()
 	if cause == nil {
 		copyResult := result
 		r.journal.Result = &copyResult
@@ -1257,8 +1344,11 @@ func (r *desktopEventReporter) Finish(result codexcontrol.TurnResult, cause erro
 			r.journal.CodexError = codexErr
 		}
 	}
-	r.saveLocked()
-	r.mu.Unlock()
+	_ = r.saveLocked()
+	r.journal.mu.Unlock()
+	if r.processor.coordinator != nil {
+		r.processor.coordinator.unregister(r.task.Claimed.RunID)
+	}
 	for r.ctx.Err() == nil {
 		r.Flush()
 		requestCtx, cancel := context.WithTimeout(r.ctx, r.processor.cfg.ControlTimeout)
@@ -1276,10 +1366,6 @@ func (r *desktopEventReporter) Finish(result codexcontrol.TurnResult, cause erro
 			}
 			return
 		}
-		if workerprotocol.IsLeaseLost(err) {
-			r.processor.logger.Error("Desktop Run Lease 已失效，停止补交", zap.Error(err))
-			return
-		}
 		r.processor.logger.Warn("提交 Desktop Turn 终态失败，稍后重试", zap.Error(err))
 		if !waitContext(r.ctx, 3*time.Second) {
 			return
@@ -1287,13 +1373,15 @@ func (r *desktopEventReporter) Finish(result codexcontrol.TurnResult, cause erro
 	}
 }
 
-func (r *desktopEventReporter) saveLocked() {
+func (r *desktopEventReporter) saveLocked() error {
 	if r.processor.journals == nil {
-		return
+		return nil
 	}
 	if err := r.processor.journals.save(r.journal); err != nil {
 		r.processor.logger.Error("持久化 Desktop Run Journal 失败", zap.Error(err))
+		return err
 	}
+	return nil
 }
 
 var _ appserverhub.Controller = (*desktopController)(nil)

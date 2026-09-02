@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/google/uuid"
@@ -16,14 +17,23 @@ import (
 )
 
 type runJournal struct {
-	Task              workerprotocol.Task            `json:"task"`
-	NextSequence      int64                          `json:"nextSequence"`
-	PendingEvents     []workerprotocol.EventInput    `json:"pendingEvents,omitempty"`
-	Result            *codexcontrol.TurnResult       `json:"result,omitempty"`
-	FailureCode       string                         `json:"failureCode,omitempty"`
-	Failure           string                         `json:"failure,omitempty"`
-	CodexError        *workerprotocol.CodexTurnError `json:"codexError,omitempty"`
-	TerminalDelivered bool                           `json:"terminalDelivered,omitempty"`
+	mu                sync.Mutex                                `json:"-"`
+	Task              workerprotocol.Task                       `json:"task"`
+	DesktopRequest    *workerprotocol.DesktopTurnPrepareRequest `json:"desktopRequest,omitempty"`
+	NextSequence      int64                                     `json:"nextSequence"`
+	PendingEvents     []workerprotocol.EventInput               `json:"pendingEvents,omitempty"`
+	Result            *codexcontrol.TurnResult                  `json:"result,omitempty"`
+	FailureCode       string                                    `json:"failureCode,omitempty"`
+	Failure           string                                    `json:"failure,omitempty"`
+	CodexError        *workerprotocol.CodexTurnError            `json:"codexError,omitempty"`
+	AppliedInputs     []appliedInputDecision                    `json:"appliedInputs,omitempty"`
+	TerminalDelivered bool                                      `json:"terminalDelivered,omitempty"`
+}
+
+type appliedInputDecision struct {
+	InputID uuid.UUID `json:"inputId"`
+	Action  string    `json:"action"`
+	TurnID  string    `json:"turnId,omitempty"`
 }
 
 type journalStore struct {

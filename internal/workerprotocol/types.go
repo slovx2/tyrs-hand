@@ -9,7 +9,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 )
 
-const Version = 31
+const Version = 32
 
 type WorkerRPCRequest struct {
 	ID     string          `json:"id"`
@@ -276,6 +276,9 @@ type ThreadLifecycleCompleteRequest struct {
 
 type DesktopTurnPrepareRequest struct {
 	WorkspaceID uuid.UUID       `json:"workspaceId"`
+	RunID       uuid.UUID       `json:"runId"`
+	IntentID    uuid.UUID       `json:"intentId"`
+	TurnID      string          `json:"turnId,omitempty"`
 	RequestKey  string          `json:"requestKey"`
 	Params      json.RawMessage `json:"params"`
 	Images      []DesktopImage  `json:"images,omitempty"`
@@ -357,7 +360,6 @@ type DesktopSteerRecordRequest struct {
 }
 
 type InteractiveRegisterRequest struct {
-	RunLeaseRequest
 	RequestID           json.RawMessage `json:"requestId"`
 	Params              json.RawMessage `json:"params"`
 	AppServerGeneration int64           `json:"appServerGeneration"`
@@ -484,7 +486,6 @@ type WorkspaceProjectContext struct {
 }
 
 type WorkspaceProjectState struct {
-	RunLeaseRequest
 	WorkspaceID      uuid.UUID `json:"workspaceId"`
 	ProjectID        uuid.UUID `json:"projectId"`
 	WorkspaceHeadSHA string    `json:"workspaceHeadSha,omitempty"`
@@ -493,7 +494,6 @@ type WorkspaceProjectState struct {
 }
 
 type WorkspaceState struct {
-	RunLeaseRequest
 	CachePath    string `json:"cachePath"`
 	WorktreePath string `json:"worktreePath"`
 	Branch       string `json:"branch"`
@@ -511,11 +511,6 @@ type Attachment struct {
 	MediaType string    `json:"mediaType"`
 	Size      int64     `json:"size"`
 	SHA256    string    `json:"sha256"`
-}
-
-type RunLeaseRequest struct {
-	LeaseToken string `json:"leaseToken"`
-	LeaseEpoch int64  `json:"leaseEpoch"`
 }
 
 type RunCommand struct {
@@ -540,20 +535,24 @@ type RunRecoveryState struct {
 }
 
 type CommandAckRequest struct {
-	RunLeaseRequest
 	CommandID uuid.UUID `json:"commandId"`
 	Action    string    `json:"action"`
 	TurnID    string    `json:"turnId,omitempty"`
 }
 
+type InputDecisionRequest struct {
+	InputID uuid.UUID `json:"inputId"`
+	Action  string    `json:"action"`
+	RunID   uuid.UUID `json:"runId"`
+	TurnID  string    `json:"turnId,omitempty"`
+}
+
 type CompleteRequest struct {
-	RunLeaseRequest
 	IdempotencyKey string                  `json:"idempotencyKey"`
 	Result         codexcontrol.TurnResult `json:"result"`
 }
 
 type FailRequest struct {
-	RunLeaseRequest
 	IdempotencyKey string          `json:"idempotencyKey"`
 	Code           string          `json:"code"`
 	Message        string          `json:"message"`
@@ -567,35 +566,27 @@ type EventInput struct {
 }
 
 type EventsRequest struct {
-	RunLeaseRequest
 	Events []EventInput `json:"events"`
 }
 
 type SetThreadRequest struct {
-	RunLeaseRequest
 	ThreadID string `json:"threadId"`
 }
 
 type SubmissionRequest struct {
-	RunLeaseRequest
 	SubmissionID string `json:"submissionId"`
 }
 
 type ConfirmTurnRequest struct {
-	RunLeaseRequest
 	TurnID string `json:"turnId"`
 }
 
 type ToolCallRequest struct {
-	RunLeaseRequest
-	Capability string                `json:"capability"`
-	Request    codex.ToolCallRequest `json:"request"`
+	Request codex.ToolCallRequest `json:"request"`
 }
 
 type GitCredentialRequest struct {
-	RunLeaseRequest
-	Capability string `json:"capability"`
-	Purpose    string `json:"purpose"`
-	ThreadID   string `json:"threadId,omitempty"`
-	TurnID     string `json:"turnId,omitempty"`
+	Purpose  string `json:"purpose"`
+	ThreadID string `json:"threadId,omitempty"`
+	TurnID   string `json:"turnId,omitempty"`
 }

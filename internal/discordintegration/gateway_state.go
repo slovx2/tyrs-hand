@@ -146,6 +146,12 @@ func (s *ConversationService) Stop(ctx context.Context, guildID, threadID, reque
 	if err != nil {
 		return 0, err
 	}
+	_, err = tx.ExecContext(ctx, `UPDATE codex_thread_controls SET status='stopping',
+		updated_at=now() WHERE discord_conversation_id=$1 AND active_intent_id IS NOT NULL
+		AND status IN ('dispatching','active','reconciling')`, conversationID)
+	if err != nil {
+		return 0, err
+	}
 	if count == 0 && inserted {
 		count = 1
 	}

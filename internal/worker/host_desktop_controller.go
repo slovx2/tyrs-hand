@@ -129,7 +129,7 @@ func (c *HostDesktopController) syncHostEnvironment(ctx context.Context) error {
 	if manifest.WorkspaceID != currentID {
 		return errors.New("worker Workspace 绑定已变化，请重启宿主 Worker")
 	}
-	return nil
+	return SaveWorkspaceManifest(c.processor.cfg.WorkerDataRoot, manifest)
 }
 
 var _ appserverhub.Controller = (*HostDesktopController)(nil)

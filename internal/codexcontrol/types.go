@@ -69,10 +69,11 @@ type Intent struct {
 type ClaimedControl struct {
 	Intent
 	RunID             uuid.UUID
-	Capability        string
-	LeaseToken        string
-	LeaseEpoch        int64
-	LeaseExpiresAt    time.Time
+	MaxSteers         int
+	Capability        string    `json:"-"`
+	LeaseToken        string    `json:"-"`
+	LeaseEpoch        int64     `json:"-"`
+	LeaseExpiresAt    time.Time `json:"-"`
 	ExternalThreadID  string
 	Recovering        bool
 	CollaborationMode string

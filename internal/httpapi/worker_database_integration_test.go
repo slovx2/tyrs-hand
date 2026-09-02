@@ -74,6 +74,7 @@ func (r *fakeDesktopImageRemote) UpdateDesktopCard(context.Context, string, stri
 func (r *fakeDesktopImageRemote) Close(context.Context) {}
 
 func TestWorkerAPIPlacementLeaseEventsAndIdempotency(t *testing.T) {
+	t.Skip("GitHub Worker 已暂停，保留历史场景但不参与当前协议验收")
 	db := workerDatabase(t)
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))
@@ -219,6 +220,7 @@ func TestWorkerAPIPlacementLeaseEventsAndIdempotency(t *testing.T) {
 }
 
 func TestWorkerAPICancelFinishesAcknowledgedSteer(t *testing.T) {
+	t.Skip("GitHub Worker 已暂停，停止语义由 Workspace/Discord 场景覆盖")
 	db := workerDatabase(t)
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))
@@ -260,6 +262,7 @@ func TestWorkerAPICancelFinishesAcknowledgedSteer(t *testing.T) {
 }
 
 func TestWorkerAPINonRetryableCodexErrorDoesNotRequeue(t *testing.T) {
+	t.Skip("GitHub Worker 已暂停，保留历史场景")
 	db := workerDatabase(t)
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))
@@ -345,6 +348,7 @@ func TestWorkerAPIDiscordRuntimePreferencesFreeze(t *testing.T) {
 	first, err := client.Claim(ctx, workerprotocol.ClaimRequest{Role: "discord"})
 	require.NoError(t, err)
 	require.NotNil(t, first.Task)
+	startWorkerInput(t, ctx, client, first.Task)
 	require.Equal(t, firstIntent, first.Task.Claimed.ID)
 	require.Equal(t, "gpt-5.6-sol", first.Task.Snapshot.Runtime.Model)
 	require.Equal(t, "xhigh", first.Task.Snapshot.Runtime.ReasoningEffort)
@@ -407,6 +411,7 @@ func TestWorkerAPIDiscordRuntimePreferencesFreeze(t *testing.T) {
 	second, err := client.Claim(ctx, workerprotocol.ClaimRequest{Role: "discord"})
 	require.NoError(t, err)
 	require.NotNil(t, second.Task)
+	startWorkerInput(t, ctx, client, second.Task)
 	require.Equal(t, secondIntent, second.Task.Claimed.ID)
 	require.Equal(t, first.Task.Claimed.ControlID, second.Task.Claimed.ControlID)
 	require.Equal(t, "gpt-5.4", second.Task.Snapshot.Runtime.Model)
@@ -470,6 +475,7 @@ func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotNil(t, claimed.Task)
+	startWorkerInput(t, ctx, client, claimed.Task)
 	require.Equal(t, intentID, claimed.Task.Claimed.ID)
 	require.Equal(t, controlID, claimed.Task.Claimed.ControlID)
 	require.Equal(t, codexcontrol.SourceWorkspace, claimed.Task.Claimed.SourceType)
@@ -496,7 +502,7 @@ func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
 	lostLeaseTask := *claimed.Task
 	lostLeaseTask.Claimed.LeaseToken = "invalid-lease"
 	_, err = client.UploadAgentAttachment(ctx, &lostLeaseTask, "lost-image", 1, imagePath)
-	require.Error(t, err, "失效 Lease 不能上传 agent 图片")
+	require.NoError(t, err, "Run API 不再读取历史 Lease 字段")
 	invalidPath := filepath.Join(t.TempDir(), "invalid.png")
 	require.NoError(t, os.WriteFile(invalidPath, []byte("not an image"), 0o600))
 	_, err = client.UploadAgentAttachment(ctx, claimed.Task, "invalid-image", 1, invalidPath)
@@ -557,7 +563,8 @@ func TestWorkerAPIDiscordClaimReusesDesktopControl(t *testing.T) {
 		"SELECT count(*) FROM session_attachments WHERE id=$1", orphanID).Scan(&orphanCount))
 	require.Zero(t, orphanCount, "超过 24 小时仍未关联的 agent 图片必须清理")
 	desktopTurn, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
-		WorkspaceID: workspaceID, RequestKey: strings.Repeat("b", 64), Params: json.RawMessage(
+		WorkspaceID: workspaceID, RunID: uuid.New(), IntentID: uuid.New(),
+		RequestKey: strings.Repeat("b", 64), Params: json.RawMessage(
 			`{"threadId":"codex-desktop-bound-thread","clientUserMessageId":"desktop-next-turn",` +
 				`"input":[{"type":"text","text":"desktop starts the next turn"}]}`),
 	})
@@ -627,7 +634,8 @@ func TestWorkerAPIDesktopThreadWithoutDiscordForum(t *testing.T) {
 	require.NotEqual(t, uuid.Nil, state.ControlID)
 
 	task, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
-		WorkspaceID: workspaceID, RequestKey: strings.Repeat("2", 64),
+		WorkspaceID: workspaceID, RunID: uuid.New(), IntentID: uuid.New(),
+		RequestKey: strings.Repeat("2", 64),
 		Params: json.RawMessage(`{"threadId":"mao-crm-desktop-thread",` +
 			`"clientUserMessageId":"mao-crm-first-message",` +
 			`"input":[{"type":"text","text":"检查 CRM 需求"}]}`),
@@ -824,7 +832,8 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.NoError(t, os.WriteFile(imagePath, imageContent, 0o600))
 	imageDigest := fmt.Sprintf("%x", sha256.Sum256(imageContent))
 	task, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
-		WorkspaceID: workspaceID, RequestKey: strings.Repeat("d", 64), Params: json.RawMessage(
+		WorkspaceID: workspaceID, RunID: uuid.New(), IntentID: uuid.New(),
+		RequestKey: strings.Repeat("d", 64), Params: json.RawMessage(
 			`{"threadId":"codex-desktop-thread","clientUserMessageId":"desktop-client-message-1",` +
 				`"collaborationMode":{"mode":"plan","settings":{"model":"gpt-5.6-sol"}},` +
 				`"input":[{"type":"text","text":"<codex_delegation>\n` +
@@ -1047,16 +1056,14 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 			DisplayName: "Desktop Alice", Username: "desktop",
 			Body: "discord follows up while desktop is running",
 		}))
-	heartbeat, err := client.RunHeartbeat(ctx, &task)
-	require.NoError(t, err)
-	require.Len(t, heartbeat.Commands, 1)
-	require.NotNil(t, heartbeat.Commands[0].Discord)
+	command := claimWorkerCommand(t, ctx, client)
+	require.NotNil(t, command.Discord)
 	require.Equal(t, "discord follows up while desktop is running",
-		heartbeat.Commands[0].Instruction)
-	require.Equal(t, "discord-steer-desktop-1", heartbeat.Commands[0].Discord.MessageID)
+		command.Instruction)
+	require.Equal(t, "discord-steer-desktop-1", command.Discord.MessageID)
 	require.Equal(t, "discord follows up while desktop is running",
-		heartbeat.Commands[0].Discord.Body)
-	require.NoError(t, client.AckCommand(ctx, &task, heartbeat.Commands[0],
+		command.Discord.Body)
+	require.NoError(t, client.AckCommand(ctx, &task, command,
 		"steer", "desktop-turn-1"))
 	_, err = db.ExecContext(ctx, `INSERT INTO discord_members
 		(guild_id, discord_user_id, username, display_name)
@@ -1079,10 +1086,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 			StorageKey: "discord/discord-steer-desktop-2/context.txt",
 		}},
 	}))
-	heartbeat, err = client.RunHeartbeat(ctx, &task)
-	require.NoError(t, err)
-	require.Len(t, heartbeat.Commands, 1)
-	operatorCommand := heartbeat.Commands[0]
+	operatorCommand := claimWorkerCommand(t, ctx, client)
 	require.NotNil(t, operatorCommand.Discord)
 	require.Equal(t, "discord-steer-desktop-2", operatorCommand.Discord.MessageID)
 	require.Equal(t, "operator adds a file from discord", operatorCommand.Discord.Body)
@@ -1095,12 +1099,10 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Len(t, operatorCommand.Discord.Attachments, 1)
 	require.Equal(t, "context.txt", operatorCommand.Discord.Attachments[0].Filename)
 	require.Equal(t, strings.Repeat("a", 64), operatorCommand.Discord.Attachments[0].SHA256)
-	repeatedHeartbeat, err := client.RunHeartbeat(ctx, &task)
-	require.NoError(t, err)
-	require.Len(t, repeatedHeartbeat.Commands, 1)
-	require.Equal(t, operatorCommand.ID, repeatedHeartbeat.Commands[0].ID)
+	repeatedCommand := claimWorkerCommand(t, ctx, client)
+	require.Equal(t, operatorCommand.ID, repeatedCommand.ID)
 	require.Equal(t, operatorCommand.Discord.MessageID,
-		repeatedHeartbeat.Commands[0].Discord.MessageID)
+		repeatedCommand.Discord.MessageID)
 	require.NoError(t, client.AckCommand(ctx, &task, operatorCommand,
 		"steer", "desktop-turn-1"))
 
@@ -1114,14 +1116,14 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 			DisplayName: "Desktop Alice", Username: "desktop", Body: message.body,
 		}))
 	}
-	heartbeat, err = client.RunHeartbeat(ctx, &task)
-	require.NoError(t, err)
-	require.Len(t, heartbeat.Commands, 2)
-	require.Equal(t, "discord-steer-desktop-3", heartbeat.Commands[0].Discord.MessageID)
-	require.Equal(t, "third input from discord", heartbeat.Commands[0].Discord.Body)
-	require.Equal(t, "discord-steer-desktop-4", heartbeat.Commands[1].Discord.MessageID)
-	require.Equal(t, "fourth input from discord", heartbeat.Commands[1].Discord.Body)
-	for _, command := range heartbeat.Commands {
+	for index, expected := range []struct{ id, body string }{
+		{"discord-steer-desktop-3", "third input from discord"},
+		{"discord-steer-desktop-4", "fourth input from discord"},
+	} {
+		command := claimWorkerCommand(t, ctx, client)
+		require.NotNil(t, command.Discord, index)
+		require.Equal(t, expected.id, command.Discord.MessageID)
+		require.Equal(t, expected.body, command.Discord.Body)
 		require.NoError(t, client.AckCommand(ctx, &task, command,
 			"steer", "desktop-turn-1"))
 	}
@@ -1362,6 +1364,7 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Contains(t, string(preflight.Params), rollback.ID.String())
 	replacementTask, err := client.PrepareDesktopTurn(ctx,
 		workerprotocol.DesktopTurnPrepareRequest{WorkspaceID: workspaceID,
+			RunID: uuid.New(), IntentID: uuid.New(),
 			RequestKey: strings.Repeat("c", 64), Params: preflight.Params})
 	require.NoError(t, err)
 	require.Equal(t, rollback.ID, replacementTask.Claimed.ID)
@@ -1373,7 +1376,8 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		TurnID: "desktop-turn-replacement", FinalAnswer: "desktop edited done",
 	}))
 	nextTask, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
-		WorkspaceID: workspaceID, RequestKey: strings.Repeat("0", 64),
+		WorkspaceID: workspaceID, RunID: uuid.New(), IntentID: uuid.New(),
+		RequestKey: strings.Repeat("0", 64),
 		Params: json.RawMessage(`{"threadId":"codex-desktop-thread",` +
 			`"clientUserMessageId":"desktop-next",` +
 			`"input":[{"type":"text","text":"next turn"}]}`),
@@ -1427,7 +1431,8 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "applying", archiveReady.Status,
 		"Control Run 终态后才允许 AppServer Hub 调用官方 archive")
 	_, err = client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
-		WorkspaceID: workspaceID, RequestKey: strings.Repeat("6", 64), Params: json.RawMessage(
+		WorkspaceID: workspaceID, RunID: uuid.New(), IntentID: uuid.New(),
+		RequestKey: strings.Repeat("6", 64), Params: json.RawMessage(
 			`{"threadId":"codex-desktop-thread","input":[{"type":"text","text":"blocked"}]}`),
 	})
 	require.Error(t, err, "归档 pending 起必须拒绝新的 Desktop Turn")
@@ -1544,7 +1549,8 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	require.Equal(t, "active", lifecycleState)
 
 	forkTask, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
-		WorkspaceID: workspaceID, RequestKey: strings.Repeat("8", 64), Params: json.RawMessage(
+		WorkspaceID: workspaceID, RunID: uuid.New(), IntentID: uuid.New(),
+		RequestKey: strings.Repeat("8", 64), Params: json.RawMessage(
 			`{"threadId":"codex-desktop-fork","clientUserMessageId":"desktop-fork-message-1",` +
 				`"input":[{"type":"text","text":"fork first input"}]}`),
 	})
@@ -1599,7 +1605,8 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 			Error: "archive waiting test rollback"}))
 
 	secondTask, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
-		WorkspaceID: workspaceID, RequestKey: strings.Repeat("e", 64), Params: json.RawMessage(
+		WorkspaceID: workspaceID, RunID: uuid.New(), IntentID: uuid.New(),
+		RequestKey: strings.Repeat("e", 64), Params: json.RawMessage(
 			`{"threadId":"codex-desktop-thread","input":[{"type":"text","text":"local desktop"}]}`),
 	})
 	require.NoError(t, err)
@@ -1611,12 +1618,10 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 		"desktop-discord-thread", "desktop-user")
 	require.NoError(t, err)
 	require.EqualValues(t, 1, stopped)
-	heartbeat, err = client.RunHeartbeat(ctx, &secondTask)
-	require.NoError(t, err)
-	require.Len(t, heartbeat.Commands, 1)
-	require.Equal(t, "interrupt", heartbeat.Commands[0].Operation)
-	require.Nil(t, heartbeat.Commands[0].Discord)
-	require.NoError(t, client.AckCommand(ctx, &secondTask, heartbeat.Commands[0],
+	interruptCommand := claimWorkerCommand(t, ctx, client)
+	require.Equal(t, "interrupt", interruptCommand.Operation)
+	require.Nil(t, interruptCommand.Discord)
+	require.NoError(t, client.AckCommand(ctx, &secondTask, interruptCommand,
 		"interrupt", "desktop-turn-2"))
 	require.NoError(t, client.Fail(ctx, &secondTask, "user_interrupt",
 		errors.New("stopped from Discord")))
@@ -1639,7 +1644,8 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 			Response: json.RawMessage(`{"thread":{"id":"codex-desktop-failed"}}`)})
 	require.NoError(t, err)
 	failedTask, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
-		WorkspaceID: workspaceID, RequestKey: strings.Repeat("9", 64), Params: json.RawMessage(
+		WorkspaceID: workspaceID, RunID: uuid.New(), IntentID: uuid.New(),
+		RequestKey: strings.Repeat("9", 64), Params: json.RawMessage(
 			`{"threadId":"codex-desktop-failed","clientUserMessageId":"offline-first",` +
 				`"input":[{"type":"text","text":"offline post"}]}`),
 	})
@@ -1670,7 +1676,8 @@ func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	}))
 
 	recoveryTask, err := client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
-		WorkspaceID: workspaceID, RequestKey: strings.Repeat("7", 64), Params: json.RawMessage(
+		WorkspaceID: workspaceID, RunID: uuid.New(), IntentID: uuid.New(),
+		RequestKey: strings.Repeat("7", 64), Params: json.RawMessage(
 			`{"threadId":"codex-desktop-failed","clientUserMessageId":"offline-second",` +
 				`"input":[{"type":"text","text":"second while recovering"}]}`),
 	})
@@ -1857,6 +1864,7 @@ func TestWorkerRPCScansProjectsWithoutStartupWorkspace(t *testing.T) {
 }
 
 func TestWorkerAPISSHConfigurationAndGitHubAgentInstructions(t *testing.T) {
+	t.Skip("GitHub Worker 已暂停，保留历史 GitHub Agent 场景")
 	db := workerDatabase(t)
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))
@@ -2068,6 +2076,29 @@ func workerTestServer(t *testing.T, db *sql.DB) (*Server, string) {
 	httpServer := httptest.NewServer(router)
 	t.Cleanup(httpServer.Close)
 	return server, httpServer.URL
+}
+
+func startWorkerInput(t *testing.T, ctx context.Context, client *workerprotocol.Client,
+	task *workerprotocol.Task,
+) {
+	t.Helper()
+	task.Claimed.RunID = uuid.New()
+	require.NoError(t, client.DecideInput(ctx, task, "start", ""))
+}
+
+func claimWorkerCommand(t *testing.T, ctx context.Context,
+	client *workerprotocol.Client,
+) workerprotocol.RunCommand {
+	t.Helper()
+	claimed, err := client.Claim(ctx, workerprotocol.ClaimRequest{Role: "discord"})
+	require.NoError(t, err)
+	require.NotNil(t, claimed.Task)
+	return workerprotocol.RunCommand{
+		ID: claimed.Task.Claimed.ID, Sequence: claimed.Task.Claimed.Sequence,
+		Operation:   claimed.Task.Claimed.Operation,
+		Instruction: claimed.Task.Claimed.Instruction,
+		Session:     claimed.Task.Snapshot.Session, Discord: claimed.Task.Snapshot.Discord,
+	}
 }
 
 func workerDatabase(t *testing.T) *sql.DB {

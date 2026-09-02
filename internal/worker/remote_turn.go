@@ -14,6 +14,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/codexsettings"
 	"github.com/slovx2/tyrs-hand/internal/ports"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
+	"go.uber.org/zap"
 )
 
 var errRemoteInterrupt = errors.New("远程 Run 收到用户中断指令")
@@ -40,10 +41,11 @@ func (p *Processor) ensureRemoteThread(ctx context.Context, runtime *codex.Runti
 		}
 		reportRuntimeSettingsApplied(report, task.Snapshot.Runtime, "thread/start")
 	}
-	if err := p.client.SetThread(ctx, task, threadID); err != nil {
-		return "", err
-	}
 	claimed.ExternalThreadID = threadID
+	if err := p.client.SetThread(ctx, task, threadID); err != nil && p.logger != nil {
+		p.logger.Warn("补报 Worker 本地 Codex Thread 失败，本地任务继续运行",
+			zap.String("thread_id", threadID), zap.Error(err))
+	}
 	return threadID, nil
 }
 
@@ -83,8 +85,12 @@ func (p *Processor) reconcileRemoteTurn(ctx context.Context, runtime *codex.Runt
 		}
 		return codexcontrol.TurnResult{}, false, nil
 	}
-	if err := p.client.ConfirmTurn(ctx, task, turn.ID); err != nil {
-		return codexcontrol.TurnResult{}, false, err
+	claimed.ConfirmedTurnID = turn.ID
+	if p.coordinator != nil {
+		p.coordinator.setTurnID(claimed.RunID, turn.ID)
+	}
+	if err := p.client.ConfirmTurn(ctx, task, turn.ID); err != nil && p.logger != nil {
+		p.logger.Warn("补报恢复的 Codex Turn 失败，本地任务继续运行", zap.Error(err))
 	}
 	if turn.Status == "completed" {
 		answer, outputType := turn.FinalOutput()
@@ -140,8 +146,13 @@ func (p *Processor) waitRemoteTurn(ctx context.Context, runtime *codex.Runtime,
 			if event.Method == "turn/started" {
 				if actualID := eventTurnID(event.Params); actualID != "" {
 					turnID = actualID
-					if err := p.client.ConfirmTurn(ctx, task, actualID); err != nil {
-						return codexcontrol.TurnResult{}, err
+					task.Claimed.ConfirmedTurnID = actualID
+					if p.coordinator != nil {
+						p.coordinator.setTurnID(task.Claimed.RunID, actualID)
+					}
+					if err := p.client.ConfirmTurn(ctx, task, actualID); err != nil && p.logger != nil {
+						p.logger.Warn("补报 Codex Turn 确认失败，本地任务继续运行",
+							zap.Error(err))
 					}
 				}
 			}
@@ -197,18 +208,34 @@ func (p *Processor) waitRemoteTurn(ctx context.Context, runtime *codex.Runtime,
 			}
 			if command.Operation == "interrupt" || command.Operation == "replace_last_turn" {
 				if err := runtime.InterruptTurn(ctx, threadID, turnID); err != nil {
-					return codexcontrol.TurnResult{}, err
+					if p.coordinator != nil {
+						p.coordinator.reject(task.Claimed.RunID, command.ID)
+					}
+					if p.logger != nil {
+						p.logger.Warn("当前阶段不能执行中断，输入保留到下一轮", zap.Error(err))
+					}
+					continue
 				}
-				if err := p.client.AckCommand(ctx, task, command, "interrupt", turnID); err != nil {
-					return codexcontrol.TurnResult{}, err
+				if p.coordinator != nil {
+					p.coordinator.markApplied(task.Claimed.RunID, command.ID, "interrupt", turnID)
 				}
+				p.ackCommandEventually(task, command, "interrupt", turnID)
 				return codexcontrol.TurnResult{}, errRemoteInterrupt
 			}
 			if handleCommand == nil {
+				if p.coordinator != nil {
+					p.coordinator.reject(task.Claimed.RunID, command.ID)
+				}
 				continue
 			}
 			if err := handleCommand(ctx, runtime, threadID, turnID, command); err != nil {
-				return codexcontrol.TurnResult{}, err
+				if p.coordinator != nil {
+					p.coordinator.reject(task.Claimed.RunID, command.ID)
+				}
+				if p.logger != nil {
+					p.logger.Warn("当前阶段不能 steer，输入保留到下一轮", zap.Error(err))
+				}
+				continue
 			}
 			appliedCommands[command.ID] = true
 		case waiting, open := <-interactive:
@@ -233,6 +260,33 @@ func (p *Processor) waitRemoteTurn(ctx context.Context, runtime *codex.Runtime,
 			return codexcontrol.TurnResult{}, ctx.Err()
 		}
 	}
+}
+
+func (p *Processor) ackCommandEventually(task *workerprotocol.Task,
+	command workerprotocol.RunCommand, action, turnID string,
+) {
+	if p == nil || p.client == nil || task == nil {
+		return
+	}
+	copyTask := *task
+	copyTask.Claimed.ID = command.ID
+	go func() {
+		ctx := context.Background()
+		if p.workspaces != nil {
+			ctx = p.workspaces.ctx
+		}
+		for ctx.Err() == nil {
+			requestCtx, cancel := context.WithTimeout(ctx, p.cfg.ControlTimeout)
+			err := p.client.DecideInput(requestCtx, &copyTask, action, turnID)
+			cancel()
+			if err == nil || workerprotocol.IsAlreadyFinished(err) {
+				return
+			}
+			if !waitContext(ctx, 3*time.Second) {
+				return
+			}
+		}
+	}()
 }
 
 func (p *Processor) remoteFinalOutput(ctx context.Context, runtime *codex.Runtime,

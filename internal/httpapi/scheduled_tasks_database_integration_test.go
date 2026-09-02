@@ -17,13 +17,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestWorkerClaimMaterializesScheduledTasksByRoleAndCapacity(t *testing.T) {
+func TestWorkerClaimMaterializesScheduledTasksWithoutControlRunCapacity(t *testing.T) {
 	db := workerDatabase(t)
 	ctx := context.Background()
 	require.NoError(t, database.Migrate(ctx, db))
 	server, endpoint := workerTestServer(t, db)
 	worker, enrollment, err := server.workers.Create(ctx, "scheduled-claim-worker",
-		[]string{"github", "discord"}, 1)
+		[]string{"discord"}, 1)
 	require.NoError(t, err)
 	client := workerprotocol.NewClient(endpoint, "", 5*time.Second)
 	enrolled, err := client.Enroll(ctx, enrollment)
@@ -38,7 +38,7 @@ func TestWorkerClaimMaterializesScheduledTasksByRoleAndCapacity(t *testing.T) {
 
 	first := createHTTPDueScheduledTask(t, db, service, fixture, "first")
 	githubClaim, err := client.Claim(ctx, workerprotocol.ClaimRequest{Role: "github"})
-	require.NoError(t, err)
+	require.Error(t, err, "GitHub Worker 入口保持停用")
 	require.Nil(t, githubClaim.Task)
 	var runCount int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM scheduled_task_runs
@@ -48,6 +48,7 @@ func TestWorkerClaimMaterializesScheduledTasksByRoleAndCapacity(t *testing.T) {
 	workspaceClaim, err := client.Claim(ctx, workerprotocol.ClaimRequest{Role: "discord"})
 	require.NoError(t, err)
 	require.NotNil(t, workspaceClaim.Task)
+	startWorkerInput(t, ctx, client, workspaceClaim.Task)
 	require.Equal(t, "workspace_session", workspaceClaim.Task.Claimed.SourceType)
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM scheduled_task_runs
 		WHERE scheduled_task_id=$1`, first).Scan(&runCount))
@@ -56,10 +57,11 @@ func TestWorkerClaimMaterializesScheduledTasksByRoleAndCapacity(t *testing.T) {
 	second := createHTTPDueScheduledTask(t, db, service, fixture, "second")
 	fullClaim, err := client.Claim(ctx, workerprotocol.ClaimRequest{Role: "discord"})
 	require.NoError(t, err)
-	require.Nil(t, fullClaim.Task)
+	require.NotNil(t, fullClaim.Task,
+		"Control 只交付输入，本地执行槽位由 Worker 协调器决定")
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM scheduled_task_runs
 		WHERE scheduled_task_id=$1`, second).Scan(&runCount))
-	require.Zero(t, runCount)
+	require.Equal(t, 1, runCount)
 
 	_, err = db.ExecContext(ctx, `UPDATE codex_thread_controls
 		SET external_thread_id='scheduled-tool-thread' WHERE id=$1`,

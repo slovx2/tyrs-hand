@@ -189,9 +189,10 @@ func (p *Processor) hostDiscordCommandHandler(primary *workerprotocol.Task,
 		if err := runtime.SteerTurn(ctx, threadID, turnID, input); err != nil {
 			return err
 		}
-		if err := p.client.AckCommand(ctx, primary, command, "steer", turnID); err != nil {
-			return err
+		if p.coordinator != nil {
+			p.coordinator.markApplied(primary.Claimed.RunID, command.ID, "steer", turnID)
 		}
+		p.ackCommandEventually(primary, command, "steer", turnID)
 		return nil
 	}
 }

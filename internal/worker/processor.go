@@ -38,6 +38,7 @@ type Processor struct {
 	imageRoot    string
 	imageNow     func() time.Time
 	imageTimeout time.Duration
+	coordinator  *runCoordinator
 }
 
 func (p *Processor) UseHostRuntime(runtime *hostworker.Runtime, workspaceID uuid.UUID,
@@ -91,6 +92,7 @@ func NewProcessor(ctx context.Context, cfg config.Config, client *workerprotocol
 		logger: logger}
 	if journals, err := newJournalStore(cfg.WorkerDataRoot); err == nil {
 		processor.journals = journals
+		processor.coordinator = newRunCoordinator(journals)
 	} else {
 		logger.Error("初始化 Desktop Run Journal 失败", zap.Error(err))
 	}
@@ -219,8 +221,12 @@ func (p *Processor) processRemoteGitHub(ctx context.Context, task *workerprotoco
 		return codexcontrol.TurnResult{}, err
 	}
 	reportRuntimeSettingsApplied(report, task.Snapshot.Runtime, "turn/start")
-	if err := p.client.RecordSubmission(ctx, task, turnID); err != nil {
-		return codexcontrol.TurnResult{}, err
+	task.Claimed.SubmissionID = turnID
+	if p.coordinator != nil {
+		p.coordinator.setTurnID(task.Claimed.RunID, turnID)
+	}
+	if err := p.client.RecordSubmission(ctx, task, turnID); err != nil && p.logger != nil {
+		p.logger.Warn("补报 Codex Turn 启动失败，本地任务继续运行", zap.Error(err))
 	}
 	result, err := p.waitRemoteTurn(ctx, runtime, subscription.Events(), task, threadID, turnID,
 		commands, nil, report, nil)

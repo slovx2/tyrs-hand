@@ -164,11 +164,13 @@ func TestDeliverTerminalKeepsPendingEventsAfterCompletion(t *testing.T) {
 	slots <- struct{}{}
 	var active sync.WaitGroup
 	active.Add(1)
-	runner.runJournal(context.Background(), loaded[0], slots, &active)
+	runner.runJournal(context.Background(), loaded[0],
+		make(chan workerprotocol.RunCommand, 16), slots, &active)
 	active.Wait()
 	require.EqualValues(t, 1, acceptedEvents.Load())
 	require.EqualValues(t, 1, completed.Load(), "补发事件时不能重复提交终态")
-	require.Zero(t, heartbeats.Load(), "恢复已提交终态的 Journal 时不能再恢复 Lease")
+	require.EqualValues(t, 1, heartbeats.Load(),
+		"首次终态提交前只补报一次 Run，恢复已确认终态时不能重复同步")
 	_, err = os.Stat(store.path(journal.Task.Claimed.RunID))
 	require.ErrorIs(t, err, os.ErrNotExist)
 }
