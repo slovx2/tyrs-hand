@@ -138,7 +138,8 @@ function semanticallySameItem(left: MobileThreadItem, right: MobileThreadItem): 
     return JSON.stringify(left.content) === JSON.stringify(right.content);
   case "agentMessage":
     return right.type === "agentMessage" && left.phase === right.phase &&
-      growingEquivalent(left.text, right.text);
+      (left.text.length === 0 || right.text.length === 0 ||
+        growingEquivalent(left.text, right.text));
   case "plan":
     return right.type === "plan" && growingEquivalent(left.text, right.text);
   case "reasoning":

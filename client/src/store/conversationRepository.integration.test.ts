@@ -36,6 +36,7 @@ vi.mock("@/db/cache", () => ({
   replaceCachedThreads: async () => undefined,
   saveProjects: async () => undefined,
   saveThreadRecord: async (_profileId: string, record: unknown) => { harness.saved.push(record); },
+  saveThreadRecords: async (_profileId: string, records: unknown[]) => { harness.saved.push(...records); },
 }));
 vi.mock("@/db/connections", () => ({
   listConnections: async () => [],

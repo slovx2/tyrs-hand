@@ -166,6 +166,33 @@ describe("官方 Turn 分页合并", () => {
     expect(merged.items[2]).toMatchObject({ status: "completed" });
   });
 
+  it("legacy 空 commentary 仍按位置合并后续完整正文", () => {
+    const previous = turn("turn-legacy-empty-commentary", "inProgress", "unused");
+    previous.items = [
+      user("native-user", "message-id", "执行检查"),
+      agent("native-commentary-1", "开始检查", "commentary"),
+      command("native-tool-1", "completed"),
+      agent("native-commentary-2", "", "commentary"),
+      command("native-tool-2", "completed"),
+    ];
+    const incoming = turn("turn-legacy-empty-commentary", "inProgress", "unused");
+    incoming.items = [
+      user("item-1", "message-id", "执行检查"),
+      agent("item-2", "开始检查并继续", "commentary"),
+      command("item-3", "completed"),
+      agent("item-4", "检查完成", "commentary"),
+      command("item-5", "completed"),
+    ];
+
+    const merged = mergeTurnSnapshot(previous, incoming);
+
+    expect(merged.items.map((item) => item.id)).toEqual([
+      "native-user", "native-commentary-1", "native-tool-1",
+      "native-commentary-2", "native-tool-2",
+    ]);
+    expect(merged.items[3]).toMatchObject({ text: "检查完成" });
+  });
+
   it("legacy 首条 User Item 缺少 clientId 时按完整输入去重", () => {
     const previous = turn("turn-legacy-user", "completed", "unused");
     previous.items = [user("native-user", null, "首条消息"),

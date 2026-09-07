@@ -16,7 +16,7 @@ import { recoverPendingProfileSubmissions } from "@/app-server/submissionRecover
 import { projectForThread, targetKey, type MobileProject, type MobileTurn,
   type ThreadRecord, type UserInputResponseItem } from "@/app-server/types";
 import { loadCachedProjects, loadCachedThreads, replaceCachedThreads,
-  saveProjects, saveThreadRecord } from "@/db/cache";
+  saveProjects, saveThreadRecord, saveThreadRecords } from "@/db/cache";
 import { listConnections, setActiveConnection, type Connection,
   type SSHConnection } from "@/db/connections";
 import { listSSHProjects } from "@/db/sshProjects";
@@ -512,24 +512,31 @@ async function refreshProfile(connection: Connection, set: StoreSet, get: StoreG
     const deduplicated = [...new Map(records.map((record) => [record.thread.id, record])).values()]
       .sort((left, right) => (right.thread.recencyAt ?? right.thread.updatedAt) -
         (left.thread.recencyAt ?? left.thread.updatedAt));
-    const existing = get().activeConnection?.profileId === connection.profileId ? get().threads : [];
     const listedIds = new Set(deduplicated.map((record) => record.thread.id));
     for (const threadId of listedIds) {
       pendingCatalogThreads.delete(threadKey(connection.profileId, threadId));
     }
-    const pendingIds = new Set(existing.flatMap((record) =>
-      pendingCatalogThreads.has(threadKey(connection.profileId, record.thread.id))
-        ? [record.thread.id] : []));
-    const merged = mergeThreadCatalog(deduplicated, existing, pendingIds);
     const unreadThreadIds = await reconcileThreadReads(connection.profileId,
-      merged.filter((record) => !record.archived).map((record) => record.thread.id));
-    await replaceCachedThreads(connection.profileId, merged);
-    if (get().activeConnection?.profileId !== connection.profileId) return;
-    set({ threads: merged, modelsByTarget: catalogs,
-      unreadThreadIds: unreadRecord(unreadThreadIds.filter((threadId) =>
-        !visibleThreads.has(threadKey(connection.profileId, threadId)))),
-      error: recovery.errors.length > 0
-        ? `恢复发送失败：${recovery.errors.join("；")}` : null });
+      deduplicated.filter((record) => !record.archived).map((record) => record.thread.id));
+    let committedThreads: ThreadRecord[] | null = null;
+    set((state) => {
+      if (state.activeConnection?.profileId !== connection.profileId) return {};
+      // 刷新目录期间可能已经收到 item/started、delta 等实时通知；提交时必须
+      // 从当前 state 重新合并，不能使用 await 之前抓取的旧快照覆盖它们。
+      const existing = state.threads;
+      const pendingIds = new Set(existing.flatMap((record) =>
+        pendingCatalogThreads.has(threadKey(connection.profileId, record.thread.id))
+          ? [record.thread.id] : []));
+      const merged = mergeThreadCatalog(deduplicated, existing, pendingIds);
+      committedThreads = merged;
+      return { threads: merged, modelsByTarget: catalogs,
+        unreadThreadIds: unreadRecord(unreadThreadIds.filter((threadId) =>
+          !visibleThreads.has(threadKey(connection.profileId, threadId)))),
+        error: recovery.errors.length > 0
+          ? `恢复发送失败：${recovery.errors.join("；")}` : null };
+    });
+    if (!committedThreads) return;
+    await replaceCachedThreads(connection.profileId, committedThreads);
   } catch (error) {
     if (get().activeConnection?.profileId === connection.profileId) {
       set({ error: error instanceof Error ? error.message : "刷新失败" });
@@ -577,27 +584,32 @@ function syncRecentThreads(set: StoreSet, get: StoreGet): Promise<void> {
       }
     }
     if (get().activeConnection?.profileId !== connection.profileId) return;
-    const existing = get().threads;
-    const byId = new Map(existing.map((record) => [record.thread.id, record]));
-    const updated = [...new Map(records.map((record) => [record.thread.id, record])).values()]
-      .map((summary) => {
-        const loaded = byId.get(summary.thread.id);
-        if (!loaded) return summary;
-        return loaded.history.kind === "loaded"
-          ? { ...summary, preferences: loaded.preferences,
-            history: loaded.history,
-            thread: { ...summary.thread, turns: loaded.thread.turns } }
-          : { ...summary, preferences: loaded.preferences };
-      });
-    const updatedIds = new Set(updated.map((record) => record.thread.id));
-    const merged = [...updated, ...existing.filter((record) =>
-      !updatedIds.has(record.thread.id))].sort((left, right) =>
-      (right.thread.recencyAt ?? right.thread.updatedAt) -
-        (left.thread.recencyAt ?? left.thread.updatedAt));
-    set({ threads: merged });
-    await Promise.allSettled(updated.map((record) =>
-      saveThreadRecord(connection.profileId, record)));
-    await Promise.allSettled(updated.filter((record) =>
+    let committedUpdated: ThreadRecord[] = [];
+    set((state) => {
+      if (state.activeConnection?.profileId !== connection.profileId) return {};
+      // recent 列表请求期间同样可能收到实时通知，使用提交瞬间的最新线程状态。
+      const existing = state.threads;
+      const byId = new Map(existing.map((record) => [record.thread.id, record]));
+      const updated = [...new Map(records.map((record) => [record.thread.id, record])).values()]
+        .map((summary) => {
+          const loaded = byId.get(summary.thread.id);
+          if (!loaded) return summary;
+          return loaded.history.kind === "loaded"
+            ? { ...summary, preferences: loaded.preferences,
+              history: loaded.history,
+              thread: { ...summary.thread, turns: loaded.thread.turns } }
+            : { ...summary, preferences: loaded.preferences };
+        });
+      committedUpdated = updated;
+      const updatedIds = new Set(updated.map((record) => record.thread.id));
+      const merged = [...updated, ...existing.filter((record) =>
+        !updatedIds.has(record.thread.id))].sort((left, right) =>
+        (right.thread.recencyAt ?? right.thread.updatedAt) -
+          (left.thread.recencyAt ?? left.thread.updatedAt));
+      return { threads: merged };
+    });
+    await saveThreadRecords(connection.profileId, committedUpdated).catch(() => undefined);
+    await Promise.allSettled(committedUpdated.filter((record) =>
       record.thread.status.type === "active").map((record) =>
       queueThreadTailRefresh(record.thread.id, set, get)));
   })().finally(() => {

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { enqueueOutbox, failOutbox, setOutboxThread } from "@/app-server/outbox";
 import type { MobileProject } from "@/app-server/types";
 import type { Connection } from "@/db/connections";
+import { saveThreadRecord, saveThreadRecords } from "@/db/cache";
 import { useAppStore } from "./appStore";
 
 const { client } = vi.hoisted(() => ({
@@ -32,7 +33,8 @@ vi.mock("@/db/database", () => ({ getDatabase: vi.fn(), runDatabaseWrite: vi.fn(
   withDatabaseTransaction: vi.fn() }));
 vi.mock("@/db/cache", () => ({ loadCachedProjects: vi.fn(async () => []),
   loadCachedThreads: vi.fn(async () => []), replaceCachedThreads: vi.fn(async () => undefined),
-  saveProjects: vi.fn(async () => undefined), saveThreadRecord: vi.fn(async () => undefined) }));
+  saveProjects: vi.fn(async () => undefined), saveThreadRecord: vi.fn(async () => undefined),
+  saveThreadRecords: vi.fn(async () => undefined) }));
 vi.mock("@/db/connections", () => ({ listConnections: vi.fn(async () => []),
   setActiveConnection: vi.fn(async () => undefined) }));
 vi.mock("@/db/settings", () => ({ loadThemeMode: vi.fn(async () => "system"),
@@ -274,6 +276,19 @@ describe("移动端 Outbox 新 Thread", () => {
     expect(client.readThreadMetadata).toHaveBeenCalledWith(discovered.id);
     expect(useAppStore.getState().threads.some((record) =>
       record.thread.id === discovered.id)).toBe(true);
+  });
+
+  it("百条近期目录只提交一次批量缓存，不挤占一百个写队列位置", async () => {
+    activate("recent-catalog-batch");
+    const summaries = Array.from({ length: 100 }, (_, index) => thread(`recent-${index}`));
+    client.listRecentThreads.mockResolvedValueOnce(summaries);
+
+    await useAppStore.getState().refreshRecentThreads();
+
+    expect(saveThreadRecords).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(saveThreadRecords).mock.calls[0]?.[1]).toHaveLength(100);
+    expect(saveThreadRecord).not.toHaveBeenCalled();
+    expect(useAppStore.getState().threads).toHaveLength(100);
   });
 });
 

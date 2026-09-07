@@ -40,24 +40,33 @@ export async function replaceCachedThreads(profileId: string,
   if (isPreviewMode) return;
   await withDatabaseTransaction(async (database) => {
     await database.runAsync("DELETE FROM threads WHERE profile_id=?", profileId);
-    for (const record of records) {
-      await insertThread(database, profileId, record);
-    }
+    await insertThreads(database, profileId, records);
   });
 }
 
 export async function saveThreadRecord(profileId: string, record: ThreadRecord): Promise<void> {
-  if (isPreviewMode) return;
-  await withDatabaseTransaction(async (database) => insertThread(database, profileId, record));
+  await saveThreadRecords(profileId, [record]);
 }
 
-async function insertThread(database: Awaited<ReturnType<typeof getDatabase>>, profileId: string,
-  record: ThreadRecord): Promise<void> {
-  const cached = cacheableThreadRecord(record);
-  await database.runAsync(`INSERT INTO threads(profile_id,id,archived,updated_at,payload)
-    VALUES (?,?,?,?,?) ON CONFLICT(profile_id,id) DO UPDATE SET archived=excluded.archived,
-    updated_at=excluded.updated_at,payload=excluded.payload`, profileId, cached.thread.id,
-  cached.archived ? 1 : 0, cached.thread.updatedAt, JSON.stringify(cached));
+export async function saveThreadRecords(profileId: string, records: ThreadRecord[]): Promise<void> {
+  if (records.length === 0) return;
+  if (isPreviewMode) return;
+  await withDatabaseTransaction(async (database) => insertThreads(database, profileId, records));
+}
+
+async function insertThreads(database: Awaited<ReturnType<typeof getDatabase>>, profileId: string,
+  records: ThreadRecord[]): Promise<void> {
+  // 一次目录刷新只占一个写事务；每批最多 250 个绑定参数，避免逐条跨原生桥调用。
+  const batchSize = 50;
+  for (let offset = 0; offset < records.length; offset += batchSize) {
+    const batch = records.slice(offset, offset + batchSize).map(cacheableThreadRecord);
+    const values = batch.map(() => "(?,?,?,?,?)").join(",");
+    const params = batch.flatMap((cached) => [profileId, cached.thread.id,
+      cached.archived ? 1 : 0, cached.thread.updatedAt, JSON.stringify(cached)]);
+    await database.runAsync(`INSERT INTO threads(profile_id,id,archived,updated_at,payload)
+      VALUES ${values} ON CONFLICT(profile_id,id) DO UPDATE SET archived=excluded.archived,
+      updated_at=excluded.updated_at,payload=excluded.payload`, ...params);
+  }
 }
 
 export function cacheableThreadRecord(record: ThreadRecord): ThreadRecord {
