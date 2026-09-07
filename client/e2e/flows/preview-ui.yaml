@@ -3,15 +3,27 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - launchApp:
     clearState: true
 - assertVisible:
-    id: "projects:list"
-- tapOn:
-    id: "project:row:0"
+    id: "session:machine"
 - assertVisible:
-    id: "sessions:list"
+    id: "session:project"
+- tapOn:
+    id: "session:machine"
+- assertVisible:
+    id: "session:machine:option:10000000-0000-4000-8000-000000000001"
+- pressKey: BACK
+- tapOn:
+    id: "session:project"
+- assertVisible:
+    id: "session:project:option:20000000-0000-4000-8000-000000000003"
+- pressKey: BACK
+- assertVisible:
+    id: "session:row:0"
 - assertVisible:
     text: "运行中：完善移动端会话体验"
 - tapOn:
-    id: "project:new-task:add"
+    id: "session:new-task:add"
+- assertVisible: "新会话"
+- assertNotVisible: "新任务"
 - tapOn:
     id: "composer:parameters"
 - assertVisible:
@@ -184,11 +196,17 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 
 # 归档与独立连接
 - tapOn:
-    id: "sessions:filter:archived"
+    id: "session:more"
+- tapOn:
+    id: "sessions:view-archived"
 - assertVisible:
     id: "session:row:0"
 - tapOn:
-    id: "project:back"
+    id: "session:more"
+- assertVisible:
+    id: "sessions:exit-archived"
+- tapOn:
+    id: "sessions:exit-archived"
 - tapOn:
     id: "tab:connections"
 - assertVisible:

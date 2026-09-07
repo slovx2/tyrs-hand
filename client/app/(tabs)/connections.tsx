@@ -213,10 +213,14 @@ export default function ConnectionsScreen() {
               ? `${connection.user}@${connection.host}:${connection.port}`
               : "尚未配置 SSH"}</Muted>
             <View style={styles.capabilities}>
-              {connection.kind === "ssh" ? <Text style={[styles.capability,
-                { color: theme.colors.text }]}>SSH</Text> : null}
-              {connection.controls.length > 0 ? <Text style={[styles.capability,
-                { color: theme.colors.text }]}>定时任务</Text> : null}
+              {connection.kind === "ssh" ? <View testID={`connection:${encodeURIComponent(
+                connection.profileId)}:capability:ssh`} style={[styles.capability,
+                { borderColor: theme.colors.border }]}><Text style={[styles.capabilityText,
+                  { color: theme.colors.text }]}>SSH</Text></View> : null}
+              {connection.controls.length > 0 ? <View testID={`connection:${encodeURIComponent(
+                connection.profileId)}:capability:scheduled`} style={[styles.capability,
+                { borderColor: theme.colors.border }]}><Text style={[styles.capabilityText,
+                  { color: theme.colors.text }]}>定时任务</Text></View> : null}
             </View>
             {connection.kind === "ssh" ? <View testID={`connection:${encodeURIComponent(
               connection.profileId)}:projects`}><Muted>可添加多个项目目录</Muted></View> : null}</View>
@@ -365,9 +369,12 @@ const styles = StyleSheet.create({
   list: { padding: 16, gap: 8 },
   connection: { padding: 13, gap: 4 },
   connectionCopy: { flex: 1, minWidth: 0 },
-  capabilities: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 },
-  capability: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 999,
-    paddingHorizontal: 8, paddingVertical: 2, fontSize: 11 },
+  capabilities: { alignSelf: "flex-start", maxWidth: "100%", flexDirection: "row",
+    flexWrap: "wrap", gap: 5, marginTop: 4 },
+  capability: { maxWidth: "100%", flexShrink: 1, borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1 },
+  capabilityText: { maxWidth: "100%", flexShrink: 1, fontFamily: "Inter_500Medium",
+    fontSize: 11, lineHeight: 14 },
   connectionActions: { flexDirection: "row", justifyContent: "flex-end", flexWrap: "wrap", gap: 2 },
   row: { flexDirection: "row", alignItems: "center", gap: 10 },
   sshForm: { padding: 20, gap: 13 },

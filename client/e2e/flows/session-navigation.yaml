@@ -1,0 +1,31 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- launchApp:
+    clearState: true
+- assertVisible:
+    id: "session:machine"
+- assertVisible:
+    id: "session:project"
+- tapOn:
+    id: "session:machine"
+- assertVisible:
+    id: "session:machine:option:10000000-0000-4000-8000-000000000001"
+- pressKey: BACK
+- tapOn:
+    id: "session:project"
+- assertVisible:
+    id: "session:project:option:20000000-0000-4000-8000-000000000003"
+- pressKey: BACK
+- tapOn:
+    id: "session:new-task:add"
+- assertVisible:
+    text: "新会话"
+- assertVisible:
+    id: "composer:input"
+- pressKey: BACK
+- tapOn:
+    id: "tab:connections"
+- assertVisible:
+    id: "connection:10000000-0000-4000-8000-000000000001:capability:ssh"
+- assertVisible:
+    id: "connection:10000000-0000-4000-8000-000000000002:capability:ssh"

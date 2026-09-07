@@ -20,7 +20,8 @@ import { loadCachedProjects, loadCachedThreads, replaceCachedThreads,
 import { listConnections, setActiveConnection, type Connection,
   type SSHConnection } from "@/db/connections";
 import { listSSHProjects } from "@/db/sshProjects";
-import { loadThemeMode, saveLastTurnPreferences, saveThemeMode } from "@/db/settings";
+import { loadSelectedProjectId, loadThemeMode, saveLastTurnPreferences,
+  saveSelectedProjectId, saveThemeMode } from "@/db/settings";
 import { loadUnreadThreadIds, markThreadRead, markThreadUnread, reconcileThreadReads,
   removeThreadRead } from "@/db/threadReads";
 import { listPendingMessagePreviews, removePendingMessagePreview, savePendingMessagePreview,
@@ -89,6 +90,8 @@ const threadTailQueue = new CoalescingKeyedQueue();
 const olderThreadPromises = new Map<string, Promise<void>>();
 const pendingCatalogThreads = new Set<string>();
 const outboxDrains = new Map<string, Promise<OutboxDrainResult>>();
+// 连续切换机器时，仅允许最后一次切换提交状态，避免旧请求覆盖新选择。
+let connectionSwitchGeneration = 0;
 // Item snapshot 可能晚于 delta 到达；按完整流键保留每个目标/索引的顺序，
 // 避免不同 reasoning 分段或重复帧互相覆盖。
 const pendingStreamingDeltas = new Map<string, Map<string, StreamingDelta[]>>();
@@ -101,14 +104,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   initialize: async () => {
     const [connections, themeMode] = await Promise.all([listConnections(), loadThemeMode()]);
     const activeConnection = connections.find((item) => item.active) ?? connections[0] ?? null;
-    const [projects, threads, outbox, pendingMessages, unreadThreadIds] = activeConnection ? await Promise.all([
+    const [projects, threads, outbox, pendingMessages, unreadThreadIds, rememberedProjectId] = activeConnection ? await Promise.all([
       loadCachedProjects(activeConnection.profileId), loadCachedThreads(activeConnection.profileId),
       listOutbox(activeConnection.profileId), listPendingMessagePreviews(activeConnection.profileId),
-      loadUnreadThreadIds(activeConnection.profileId),
-    ]) : [[], [], [], [], []];
+      loadUnreadThreadIds(activeConnection.profileId), loadSelectedProjectId(activeConnection.profileId),
+    ]) : [[], [], [], [], [], null];
+    const selectedProjectId = chooseProjectId(projects, rememberedProjectId);
     set({ ready: true, connections, activeConnection, projects, threads, themeMode,
       outbox, pendingMessages, unreadThreadIds: unreadRecord(unreadThreadIds),
-      selectedProjectId: projects[0]?.id ?? null });
+      selectedProjectId });
+    if (activeConnection && !activeConnection.active) void setActiveConnection(activeConnection.profileId);
+    if (activeConnection && selectedProjectId !== rememberedProjectId) {
+      void saveSelectedProjectId(activeConnection.profileId, selectedProjectId);
+    }
     if (activeConnection) void get().refresh();
   },
 
@@ -136,14 +144,19 @@ export const useAppStore = create<AppState>((set, get) => ({
     const current = get().activeConnection;
     if (!current || !connections.some((item) => item.profileId === current.profileId)) {
       const activeConnection = connections.find((item) => item.active) ?? connections[0] ?? null;
-      const [projects, threads, outbox, pendingMessages, unreadThreadIds] = activeConnection ? await Promise.all([
+      const [projects, threads, outbox, pendingMessages, unreadThreadIds, rememberedProjectId] = activeConnection ? await Promise.all([
         loadCachedProjects(activeConnection.profileId), loadCachedThreads(activeConnection.profileId),
         listOutbox(activeConnection.profileId), listPendingMessagePreviews(activeConnection.profileId),
-        loadUnreadThreadIds(activeConnection.profileId),
-      ]) : [[], [], [], [], []];
+        loadUnreadThreadIds(activeConnection.profileId), loadSelectedProjectId(activeConnection.profileId),
+      ]) : [[], [], [], [], [], null];
+      const selectedProjectId = chooseProjectId(projects, rememberedProjectId);
       set({ connections, activeConnection, projects, threads, modelsByTarget: {},
         pendingRequests: {}, outbox, pendingMessages, unreadThreadIds: unreadRecord(unreadThreadIds),
-        selectedProjectId: projects[0]?.id ?? null });
+        selectedProjectId });
+      if (activeConnection && !activeConnection.active) void setActiveConnection(activeConnection.profileId);
+      if (activeConnection && selectedProjectId !== rememberedProjectId) {
+        void saveSelectedProjectId(activeConnection.profileId, selectedProjectId);
+      }
       if (activeConnection) void get().refresh();
       return;
     }
@@ -152,21 +165,35 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   switchConnection: async (profileId) => {
+    const generation = ++connectionSwitchGeneration;
     await setActiveConnection(profileId);
+    if (generation !== connectionSwitchGeneration) return;
     const connections = await listConnections();
+    if (generation !== connectionSwitchGeneration) return;
     const activeConnection = connections.find((item) => item.profileId === profileId) ?? null;
     visibleThreads.clear();
-    const [projects, threads, outbox, pendingMessages, unreadThreadIds] = activeConnection ? await Promise.all([
+    const [projects, threads, outbox, pendingMessages, unreadThreadIds, rememberedProjectId] = activeConnection ? await Promise.all([
       loadCachedProjects(profileId), loadCachedThreads(profileId),
       listOutbox(profileId), listPendingMessagePreviews(profileId), loadUnreadThreadIds(profileId),
-    ]) : [[], [], [], [], []];
+      loadSelectedProjectId(profileId),
+    ]) : [[], [], [], [], [], null];
+    if (generation !== connectionSwitchGeneration) return;
+    const selectedProjectId = chooseProjectId(projects, rememberedProjectId);
     set({ connections, activeConnection, projects, threads, modelsByTarget: {}, pendingRequests: {},
       outbox, pendingMessages, unreadThreadIds: unreadRecord(unreadThreadIds),
-      selectedProjectId: projects[0]?.id ?? null, error: null });
+      selectedProjectId, error: null });
+    if (activeConnection && selectedProjectId !== rememberedProjectId) {
+      void saveSelectedProjectId(profileId, selectedProjectId);
+    }
+    if (generation !== connectionSwitchGeneration) return;
     await get().refresh();
   },
 
-  setSelectedProject: (selectedProjectId) => set({ selectedProjectId }),
+  setSelectedProject: (selectedProjectId) => {
+    const connection = get().activeConnection;
+    set({ selectedProjectId });
+    if (connection) void saveSelectedProjectId(connection.profileId, selectedProjectId);
+  },
   setThreadVisible: (threadId, visible) => {
     const connection = get().activeConnection;
     if (!connection) return;
@@ -468,6 +495,7 @@ async function refreshProfile(connection: Connection, set: StoreSet, get: StoreG
       set({ projects: [], threads: [], modelsByTarget: {}, pendingRequests: {}, error: null,
         selectedProjectId: null });
     }
+    void saveSelectedProjectId(connection.profileId, null);
     return;
   }
   let projectCatalog: Awaited<ReturnType<typeof projectsForConnection>>;
@@ -475,10 +503,12 @@ async function refreshProfile(connection: Connection, set: StoreSet, get: StoreG
     projectCatalog = await projectsForConnection(connection);
     await saveProjects(connection.profileId, projectCatalog.projects);
     if (get().activeConnection?.profileId === connection.profileId) {
-      set({ projects: projectCatalog.projects,
-        selectedProjectId: projectCatalog.projects.some((item) =>
-          item.id === get().selectedProjectId) ? get().selectedProjectId :
-          projectCatalog.projects[0]?.id ?? null });
+      const previousProjectId = get().selectedProjectId;
+      const selectedProjectId = chooseProjectId(projectCatalog.projects, previousProjectId);
+      set({ projects: projectCatalog.projects, selectedProjectId });
+      if (selectedProjectId !== previousProjectId) {
+        void saveSelectedProjectId(connection.profileId, selectedProjectId);
+      }
     }
   } catch (error) {
     if (get().activeConnection?.profileId === connection.profileId) {
@@ -637,6 +667,10 @@ async function projectsForConnection(connection: Connection): Promise<{
 
 function uniqueTargets(projects: MobileProject[]): (string | null)[] {
   return [...new Set(projects.map((project) => project.workspaceId))];
+}
+
+function chooseProjectId(projects: MobileProject[], remembered: string | null): string | null {
+  return projects.find((project) => project.id === remembered)?.id ?? projects[0]?.id ?? null;
 }
 
 async function generateAndSetThreadTitle(input: {

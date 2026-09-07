@@ -1,7 +1,7 @@
 import type { Model } from "@codex-app-server/v2/Model";
 import type { TurnPreferences } from "@/app-server/officialClient";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, KeyboardAvoidingView, Platform, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { LocalAttachment } from "@/app-server/attachments";
@@ -20,9 +20,10 @@ import { keyboardAvoidance } from "@/utils/keyboardAvoidance";
 
 const EMPTY_MODELS: Model[] = [];
 
-export function NewTaskPane({ project, expanded = false, onSubmitted }: {
+export function NewTaskPane({ project, expanded = false, showHeading = true, onSubmitted }: {
   project: MobileProject;
   expanded?: boolean;
+  showHeading?: boolean;
   onSubmitted?: (threadId: string) => void;
 }) {
   const theme = useTheme();
@@ -94,8 +95,8 @@ export function NewTaskPane({ project, expanded = false, onSubmitted }: {
   return <KeyboardAvoidingView {...keyboardAvoidance(Platform.OS, insets.top, keyboardVisible)}
     testID="project:new-task" style={[styles.container, !expanded && styles.mobile,
       expanded && styles.expanded, { borderColor: theme.colors.border }]}>
-    <View style={styles.heading}><View style={styles.headingCopy}><Title>新任务</Title>
-      <Muted numberOfLines={1}>{project.name}</Muted></View></View>
+    {showHeading && <View style={styles.heading}><View style={styles.headingCopy}><Title>新任务</Title>
+      <Muted numberOfLines={1}>{project.name}</Muted></View></View>}
     <PendingMessagePreviews items={pendingMessages.filter((item) => item.projectId === project.id)} />
     {expanded && <View style={{ flex: 1 }} />}
     <ChatComposer value={text} onChange={setText} attachments={attachments}

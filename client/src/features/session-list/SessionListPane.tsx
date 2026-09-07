@@ -11,34 +11,38 @@ import { loadListOffset, saveListOffset } from "./listPosition";
 type Filter = "active" | "archived";
 
 export function SessionListPane({ sessions, selectedId, onSelect, emptyDetail,
-  testIDPrefix = "session", positionKey = testIDPrefix }: {
+  testIDPrefix = "session", positionKey = testIDPrefix, hideFilter = false,
+  archivedOnly = false }: {
   sessions: ThreadRecord[];
   selectedId?: string | null;
   onSelect: (id: string) => void;
   emptyDetail?: string;
   testIDPrefix?: string;
   positionKey?: string;
+  hideFilter?: boolean;
+  archivedOnly?: boolean;
 }) {
   const theme = useTheme();
   const unreadThreadIds = useAppStore((state) => state.unreadThreadIds);
   const [filter, setFilter] = useState<Filter>("active");
+  const effectiveFilter = hideFilter ? (archivedOnly ? "archived" : "active") : filter;
   const list = useRef<FlatList<ThreadRecord>>(null);
   const filtered = useMemo(() => sessions.filter((record) =>
-    filter === "archived" ? record.archived : !record.archived), [filter, sessions]);
+    effectiveFilter === "archived" ? record.archived : !record.archived), [effectiveFilter, sessions]);
 
   return <View style={styles.container}>
-    <View style={styles.filter}><SegmentedControl testIDPrefix={`${testIDPrefix}s:filter`}
+    {!hideFilter && <View style={styles.filter}><SegmentedControl testIDPrefix={`${testIDPrefix}s:filter`}
       value={filter} options={[{ value: "active", label: "进行中" },
-        { value: "archived", label: "已归档" }] as const} onChange={setFilter} /></View>
+        { value: "archived", label: "已归档" }] as const} onChange={setFilter} /></View>}
     <FlatList ref={list} testID={`${testIDPrefix}s:list`} data={filtered}
       keyExtractor={(item) => item.thread.id}
       onLayout={() => list.current?.scrollToOffset({
-        offset: loadListOffset(`${positionKey}:${filter}`), animated: false })}
-      onScroll={(event) => saveListOffset(`${positionKey}:${filter}`,
+        offset: loadListOffset(`${positionKey}:${effectiveFilter}`), animated: false })}
+      onScroll={(event) => saveListOffset(`${positionKey}:${effectiveFilter}`,
         event.nativeEvent.contentOffset.y)} scrollEventThrottle={100}
       contentContainerStyle={[styles.list, filtered.length === 0 && styles.emptyList]}
       ListEmptyComponent={<EmptyState title="没有会话"
-        detail={emptyDetail ?? "从项目页进入对应项目后创建第一个任务。"} />}
+        detail={emptyDetail ?? "从上方项目下拉选择项目，或创建第一个任务。"} />}
       renderItem={({ item, index }) => {
         const running = item.thread.status.type === "active";
         const unread = !running && unreadThreadIds[item.thread.id] === true;

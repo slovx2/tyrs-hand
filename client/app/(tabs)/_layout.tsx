@@ -15,13 +15,12 @@ export default function TabLayout() {
       ...(tablet ? { width: 88 } : {}) }, tabBarActiveTintColor: theme.colors.accent,
     tabBarInactiveTintColor: theme.colors.textMuted, headerStyle: { backgroundColor: theme.colors.surface },
     headerTintColor: theme.colors.text }}>
-    <Tabs.Screen name="projects" options={{ title: "项目", tabBarButtonTestID: "tab:projects",
-      tabBarIcon: ({ color }) => icon("⌘", color) }} />
     <Tabs.Screen name="sessions" options={{ title: "会话", tabBarButtonTestID: "tab:sessions",
       tabBarIcon: ({ color }) => icon("◫", color) }} />
     <Tabs.Screen name="automations" options={{ title: "定时任务", tabBarButtonTestID: "tab:automations",
       tabBarIcon: ({ color }) => icon("◷", color) }} />
     <Tabs.Screen name="connections" options={{ title: "连接", tabBarButtonTestID: "tab:connections",
       tabBarIcon: ({ color }) => icon("◎", color) }} />
+    <Tabs.Screen name="projects" options={{ href: null }} />
   </Tabs>;
 }

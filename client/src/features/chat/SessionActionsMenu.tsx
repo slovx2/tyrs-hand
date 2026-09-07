@@ -7,9 +7,12 @@ import { Button, Title } from "@/components/ui";
 import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
 
-export function SessionActionsMenu({ sessionId, onArchiveAccepted }: {
-  sessionId: string;
+export function SessionActionsMenu({ sessionId, onArchiveAccepted, archiveView = false,
+  onArchiveViewChange }: {
+  sessionId?: string | null;
   onArchiveAccepted?: () => void;
+  archiveView?: boolean;
+  onArchiveViewChange?: (value: boolean) => void;
 }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -21,8 +24,7 @@ export function SessionActionsMenu({ sessionId, onArchiveAccepted }: {
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState("");
   const [loading, setLoading] = useState(false);
-  if (!record) return null;
-  const running = record.thread.status.type === "active";
+  const running = record?.thread.status.type === "active";
 
   const run = async (operation: () => Promise<void>, errorTitle: string) => {
     setLoading(true);
@@ -43,30 +45,41 @@ export function SessionActionsMenu({ sessionId, onArchiveAccepted }: {
           style={StyleSheet.absoluteFill} onPress={() => setVisible(false)} />
         <View style={[styles.menu, { top: insets.top + 48, backgroundColor: theme.colors.surface,
           borderColor: theme.colors.border }, theme.shadow]}>
-          {running && <Pressable testID="session:stop" disabled={loading}
-            onPress={() => void run(() => interrupt(sessionId), "停止失败")} style={styles.menuItem}>
+          {record && running && <Pressable testID="session:stop" disabled={loading}
+            onPress={() => void run(() => interrupt(sessionId!), "停止失败")} style={styles.menuItem}>
             <Text style={[styles.menuText, { color: theme.colors.danger }]}>停止</Text>
           </Pressable>}
-          <Pressable testID="session:rename" disabled={loading} onPress={() => {
+          {record && <Pressable testID="session:rename" disabled={loading} onPress={() => {
             setVisible(false); setTitle(threadTitle(record.thread)); setRenaming(true);
           }} style={styles.menuItem}>
             <Text style={[styles.menuText, { color: theme.colors.text }]}>改名</Text>
-          </Pressable>
-          <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
-          <Pressable testID={record.archived ? "session:restore" : "session:archive"}
+          </Pressable>}
+          {record && <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />}
+          {record && <Pressable testID={record.archived ? "session:restore" : "session:archive"}
             disabled={loading} onPress={() => void run(async () => {
-              await setArchived(sessionId, !record.archived);
+              await setArchived(sessionId!, !record.archived);
               if (!record.archived) onArchiveAccepted?.();
             }, record.archived ? "恢复失败" : "归档失败")} style={styles.menuItem}>
             <Text style={[styles.menuText,
               { color: record.archived ? theme.colors.text : theme.colors.danger }]}>
               {record.archived ? "恢复" : "归档"}
             </Text>
-          </Pressable>
+          </Pressable>}
+          {onArchiveViewChange && <>
+            {record && <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />}
+            <Pressable testID={archiveView ? "sessions:exit-archived" : "sessions:view-archived"}
+              disabled={loading} onPress={() => {
+                onArchiveViewChange(!archiveView); setVisible(false);
+              }} style={styles.menuItem}>
+              <Text style={[styles.menuText, { color: theme.colors.text }]}>
+                {archiveView ? "退出查看已归档" : "已归档会话"}
+              </Text>
+            </Pressable>
+          </>}
         </View>
       </View>
     </Modal>
-    <Modal visible={renaming} transparent animationType="fade" onRequestClose={() => setRenaming(false)}>
+    {record && <Modal visible={renaming} transparent animationType="fade" onRequestClose={() => setRenaming(false)}>
       <View style={[styles.renameBackdrop, { backgroundColor: theme.colors.overlay }]}>
         <View style={[styles.renameDialog, { backgroundColor: theme.colors.surface,
           borderColor: theme.colors.border }]}>
@@ -79,12 +92,12 @@ export function SessionActionsMenu({ sessionId, onArchiveAccepted }: {
               onPress={() => setRenaming(false)} />
             <Button testID="session:rename:save" title="保存" loading={loading}
               disabled={!title.trim()} onPress={() => void run(async () => {
-                await rename(sessionId, title.trim()); setRenaming(false);
+                await rename(sessionId!, title.trim()); setRenaming(false);
               }, "改名失败")} />
           </View>
         </View>
       </View>
-    </Modal>
+    </Modal>}
   </>;
 }
 
