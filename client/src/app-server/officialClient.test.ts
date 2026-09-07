@@ -179,7 +179,7 @@ describe("OfficialAppServerClient", () => {
       .rejects.toMatchObject({ delivery: "unknown", method: "thread/read" });
   });
 
-  it("提交恢复仅吞掉 thread/resume 明确缺少 rollout 的错误", async () => {
+  it("提交恢复仅吞掉官方读取明确缺少 rollout 的错误", async () => {
     const missingRpc = new FakeRpc((method) => {
       throw new JsonRpcRequestError("no rollout found for thread id thread-phantom",
         method, "rejected", -32004);
@@ -197,7 +197,27 @@ describe("OfficialAppServerClient", () => {
       new MemoryJournal());
 
     await expect(networkClient.resumeThreadForSubmissionIfExists("thread-unknown"))
-      .rejects.toMatchObject({ delivery: "unknown", method: "thread/resume" });
+      .rejects.toMatchObject({ delivery: "unknown", method: "thread/read" });
+  });
+
+  it("新会话恢复请求完整 Item，保留初始消息 clientId", async () => {
+    const recovered = officialTurn("turn-initial", "inProgress", [{
+      type: "userMessage", id: "item-initial", clientId: "message-initial",
+      content: [textInput("hello")],
+    }]);
+    const rpc = new FakeRpc((method, params) => {
+      if (method === "thread/read") return { thread: officialThread([]) };
+      if (method !== "thread/resume") throw new Error(`unexpected ${method}`);
+      expect(params).toMatchObject({ initialTurnsPage: { itemsView: "full" } });
+      return resumeResult(officialThread([recovered]), [recovered]);
+    });
+    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+
+    const thread = await client.resumeThreadForSubmissionIfExists("thread-1");
+
+    expect(thread?.turns[0]?.items[0]).toMatchObject({
+      type: "userMessage", clientId: "message-initial",
+    });
   });
 
   it("legacy resume 直接请求 full，并把倒序响应转成时间正序", async () => {
@@ -414,7 +434,7 @@ describe("OfficialAppServerClient", () => {
     });
   });
 
-  it("模糊提交先按 userMessage.clientId 恢复，不重发", async () => {
+  it("模糊提交读取完整 Item 后按 userMessage.clientId 恢复，不重发", async () => {
     let recoveryPages = 0;
     const recovered = officialTurn("turn-recovered", "inProgress", [{
       type: "userMessage", id: "item-user", clientId: "message-3",
@@ -424,7 +444,7 @@ describe("OfficialAppServerClient", () => {
       if (method === "thread/resume") return resumeResult(officialThread([]));
       if (method === "thread/read") return { thread: officialThread([]) };
       if (method === "thread/turns/list") {
-        expect(params).toMatchObject({ limit: 20, itemsView: "summary", sortDirection: "desc" });
+        expect(params).toMatchObject({ limit: 20, itemsView: "full", sortDirection: "desc" });
         return recoveryPages++ === 0
           ? turnPage([officialTurn("turn-recent", "completed", [])], "older-recovery")
           : turnPage([recovered]);
@@ -446,7 +466,7 @@ describe("OfficialAppServerClient", () => {
     expect(journal.unknown).toBe(1);
   });
 
-  it("resume 阶段断线后重新连接，并用 20 条 summary 首屏恢复", async () => {
+  it("resume 阶段断线后重新连接，并用 20 条完整 Item 首屏恢复", async () => {
     let resumes = 0;
     let lists = 0;
     const recovered = officialTurn("turn-bootstrap-recovered", "inProgress", [{
@@ -454,6 +474,7 @@ describe("OfficialAppServerClient", () => {
       content: [textInput("hello")],
     }]);
     const rpc = new FakeRpc((method, params) => {
+      if (method === "thread/read") return { thread: officialThread([]) };
       if (method === "thread/resume" && resumes++ === 0) {
         throw new JsonRpcRequestError("network lost", "thread/resume", "unknown");
       }
@@ -462,7 +483,7 @@ describe("OfficialAppServerClient", () => {
       }
       if (method === "thread/resume") {
         expect(params).toMatchObject({ excludeTurns: true,
-          initialTurnsPage: { limit: 20, itemsView: "summary", sortDirection: "desc" } });
+          initialTurnsPage: { limit: 20, itemsView: "full", sortDirection: "desc" } });
         return resumeResult(officialThread([recovered]), [recovered]);
       }
       throw new Error(`提交恢复期间不应调用 ${method}`);
@@ -480,14 +501,14 @@ describe("OfficialAppServerClient", () => {
     expect(journal.unknown).toBe(1);
   });
 
-  it("冷启动恢复先扫描完整 summary 历史，已成功的提交不重发", async () => {
+  it("冷启动恢复扫描完整 Item，避免 summary 丢失 clientId 后重发", async () => {
     const recovered = officialTurn("turn-persisted", "completed", [{
       type: "userMessage", id: "user-persisted", clientId: "message-persisted",
       content: [textInput("already sent")],
     }]);
     const rpc = new FakeRpc((method, params) => {
       if (method === "thread/turns/list") {
-        expect(params).toMatchObject({ limit: 20, itemsView: "summary" });
+        expect(params).toMatchObject({ limit: 20, itemsView: "full" });
         return turnPage([recovered]);
       }
       if (method === "thread/read") return { thread: officialThread([]) };

@@ -158,7 +158,9 @@ export class OfficialAppServerClient {
 
   async resumeThreadForSubmissionIfExists(threadId: string): Promise<Thread | null> {
     try {
-      return (await this.resumeThreadPage(threadId, "summary")).thread;
+      const metadata = await this.readThreadMetadata(threadId);
+      return (await this.resumeThreadPage(threadId, "full", THREAD_PAGE_SIZE,
+        metadata.historyMode)).thread;
     } catch (error) {
       if (isUnmaterializedThread(error)) return null;
       throw error;
@@ -462,10 +464,9 @@ export class OfficialAppServerClient {
   }
 
   private async readRecentThreadState(threadId: string): Promise<Thread> {
-    const [metadata, page] = await Promise.all([
-      this.readThreadMetadata(threadId),
-      this.listTurnPage(threadId, null, THREAD_PAGE_SIZE, "summary"),
-    ]);
+    const metadata = await this.readThreadMetadata(threadId);
+    const page = await this.listTurnPage(threadId, null, THREAD_PAGE_SIZE, "full",
+      metadata.historyMode);
     return { ...metadata, turns: page.turns };
   }
 
@@ -474,12 +475,16 @@ export class OfficialAppServerClient {
     let thread: Thread;
     let cursor: string | null;
     if (resume) {
-      const resumed = await this.resumeThreadPage(threadId, "summary", RECOVERY_PAGE_SIZE);
+      const metadata = await this.readThreadMetadata(threadId);
+      const resumed = await this.resumeThreadPage(threadId, "full", RECOVERY_PAGE_SIZE,
+        metadata.historyMode);
       thread = resumed.thread;
       cursor = resumed.page.nextCursor;
     } else {
-      const page = await this.listTurnPage(threadId, null, RECOVERY_PAGE_SIZE, "summary");
-      thread = { ...(await this.readThreadMetadata(threadId)), turns: page.turns };
+      const metadata = await this.readThreadMetadata(threadId);
+      const page = await this.listTurnPage(threadId, null, RECOVERY_PAGE_SIZE, "full",
+        metadata.historyMode);
+      thread = { ...metadata, turns: page.turns };
       cursor = page.nextCursor;
     }
     const recent = findClientMessage(thread, clientMessageId);
@@ -488,7 +493,8 @@ export class OfficialAppServerClient {
     while (cursor) {
       if (seen.has(cursor)) throw new Error("thread/turns/list 返回了重复游标");
       seen.add(cursor);
-      const page = await this.listTurnPage(threadId, cursor, RECOVERY_PAGE_SIZE, "summary");
+      const page = await this.listTurnPage(threadId, cursor, RECOVERY_PAGE_SIZE, "full",
+        thread.historyMode);
       const submitted = page.turns.find((turn) => hasClientMessage(turn, clientMessageId));
       if (submitted) return submitted;
       cursor = page.nextCursor;
