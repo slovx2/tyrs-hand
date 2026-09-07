@@ -7,13 +7,11 @@ export type StreamingDelta = {
   delta: string;
 };
 
-type Buffer = Omit<StreamingDelta, "delta"> & { characters: string[] };
+type Buffer = Omit<StreamingDelta, "delta"> & { chunks: string[] };
 type FlushWaiter = {
   matches: (buffer: Buffer) => boolean;
   resolve: () => void;
 };
-
-export const STREAM_CHARACTERS_PER_FRAME = 24;
 
 export class StreamingTextQueue {
   private readonly buffers = new Map<string, Buffer>();
@@ -27,8 +25,8 @@ export class StreamingTextQueue {
     if (!delta.delta) return;
     const key = streamKey(delta);
     const current = this.buffers.get(key);
-    if (current) current.characters.push(...Array.from(delta.delta));
-    else this.buffers.set(key, { ...delta, characters: Array.from(delta.delta) });
+    if (current) current.chunks.push(delta.delta);
+    else this.buffers.set(key, { ...delta, chunks: [delta.delta] });
     this.ensureFrame();
   }
 
@@ -74,9 +72,9 @@ export class StreamingTextQueue {
   private onFrame(): void {
     this.framePending = false;
     for (const [key, buffer] of this.buffers) {
-      const characters = buffer.characters.splice(0, STREAM_CHARACTERS_PER_FRAME);
-      if (characters.length > 0) this.apply({ ...buffer, delta: characters.join("") });
-      if (buffer.characters.length === 0) this.buffers.delete(key);
+      this.buffers.delete(key);
+      const delta = buffer.chunks.join("");
+      if (delta) this.apply({ ...buffer, delta });
     }
     this.settleWaiters();
     if (this.buffers.size > 0) this.ensureFrame();

@@ -176,6 +176,10 @@ class PreviewSocket implements AppServerSocket {
       this.emit({ id, result: { turn: structuredClone(turn) } });
       this.emit({ method: "turn/started", params: { threadId: thread.id, turn: structuredClone(turn) } });
       const structuredTitle = params.outputSchema && typeof params.outputSchema === "object";
+      if (turnInputText(params).includes("E2E_STREAMING_MARKDOWN")) {
+        void this.streamMarkdownStressTurn(thread.id, turn.id);
+        return;
+      }
       this.completeActiveTurn(thread.id, structuredTitle
         ? JSON.stringify({ title: "生成预览任务标题", description: "预览任务自动标题" })
         : "预览任务已按官方协议完成。", 80);
@@ -254,6 +258,47 @@ class PreviewSocket implements AppServerSocket {
       } });
       this.emit({ method: "turn/completed", params: { threadId, turn: structuredClone(turn) } });
     }, delay);
+  }
+
+  private async streamMarkdownStressTurn(threadId: string, turnId: string): Promise<void> {
+    const generation = stateGeneration;
+    const thread = requireThread(control(this.serverId), threadId);
+    const turn = thread.turns.find((item) => item.id === turnId);
+    if (!turn) return;
+    const item: Turn["items"][number] = { type: "agentMessage", id: nextId(), text: "",
+      phase: "commentary", memoryCitation: null };
+    turn.items.push(item);
+    this.emit({ method: "item/started", params: {
+      threadId, turnId, item: structuredClone(item),
+    } });
+
+    const chunk = "\n\n## 流式段落\n\n- **粗体内容**\n- `inline-code`\n- 保持页面可滚动。";
+    for (let index = 0; index < 80; index += 1) {
+      if (generation !== stateGeneration || item.type !== "agentMessage") return;
+      item.text += chunk;
+      this.emit({ method: "item/agentMessage/delta", params: {
+        threadId, turnId, itemId: item.id, phase: "commentary", delta: chunk,
+      } });
+      await delay(20);
+    }
+    await delay(1_000);
+    if (generation !== stateGeneration || item.type !== "agentMessage") return;
+    this.emit({ method: "item/completed", params: {
+      threadId, turnId, item: structuredClone(item),
+    } });
+
+    const finalItem: Turn["items"][number] = { type: "agentMessage", id: nextId(),
+      text: "## 流式输出完成\n\n轻量文本已经切换为完整 Markdown。",
+      phase: "final_answer", memoryCitation: null };
+    turn.items.push(finalItem);
+    turn.status = "completed";
+    turn.completedAt = Math.floor(Date.now() / 1000);
+    thread.status = { type: "idle" };
+    thread.updatedAt = turn.completedAt;
+    this.emit({ method: "item/completed", params: {
+      threadId, turnId, item: structuredClone(finalItem),
+    } });
+    this.emit({ method: "turn/completed", params: { threadId, turn: structuredClone(turn) } });
   }
 
   private startActivityTimeline(threadId: string): void {
@@ -366,6 +411,18 @@ function userItem(params: Record<string, unknown>): Turn["items"][number] {
   return { type: "userMessage", id: nextId(),
     clientId: typeof params.clientUserMessageId === "string" ? params.clientUserMessageId : null,
     content: Array.isArray(params.input) ? params.input as UserInput[] : [] };
+}
+
+function turnInputText(params: Record<string, unknown>): string {
+  if (!Array.isArray(params.input)) return "";
+  return params.input.flatMap((item) => {
+    if (!item || typeof item !== "object" || !("type" in item) || !("text" in item)) return [];
+    return item.type === "text" && typeof item.text === "string" ? [item.text] : [];
+  }).join("\n");
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 export function resetPreviewState(): void {

@@ -15,7 +15,7 @@ import { isToolGroupExpanded, isTurnActivityCollapsed,
 import { MarkdownContent } from "./MarkdownContent";
 import { ThinkingShimmer } from "./ThinkingShimmer";
 import { projectUserMessage, type UserAttachment } from "./userMessagePresentation";
-import { projectTurnPresentation, toolOperationLines, turnActivitySummary,
+import { projectTurnPresentation, streamingTextItemId, toolOperationLines, turnActivitySummary,
   type ToolGroup, type TurnBlock } from "./turnPresentation";
 
 type OfficialTurnProps = {
@@ -34,6 +34,7 @@ export const OfficialTurn = memo(function OfficialTurn({ profileId, threadId,
   const [, redraw] = useState(0);
   const nowMs = useElapsedClock(turn, presentation.canCollapseActivity);
   const memoryKey = `${profileId}:${threadId}:${turn.id}`;
+  const liveItemId = streamingTextItemId(turn);
   const collapsed = isTurnActivityCollapsed(memoryKey, presentation.canCollapseActivity);
   let activityHeaderRendered = false;
 
@@ -56,7 +57,7 @@ export const OfficialTurn = memo(function OfficialTurn({ profileId, threadId,
         {header}
         {activity && collapsed ? null
           : <TurnBlockView block={block} memoryKey={memoryKey} profileId={profileId}
-          threadId={threadId} turnId={turn.id}
+          threadId={threadId} turnId={turn.id} live={block.key === liveItemId}
           onDisclosureChange={() => {
             onDisclosureChange?.();
             redraw((value) => value + 1);
@@ -106,28 +107,32 @@ function ActivityHeader({ turnId, collapsed, summary, onPress }: {
   </View>;
 }
 
-function TurnBlockView({ block, memoryKey, profileId, threadId, turnId, onDisclosureChange }: {
+function TurnBlockView({ block, memoryKey, profileId, threadId, turnId, live,
+  onDisclosureChange }: {
   block: TurnBlock;
   memoryKey: string;
   profileId: string;
   threadId: string;
   turnId: string;
+  live: boolean;
   onDisclosureChange: () => void;
 }) {
   if (block.kind === "user") return <UserMessage item={block.item} profileId={profileId} />;
   if (block.kind === "commentary") return block.item.text.trim()
     ? <View testID="message:phase:commentary" style={styles.commentary}>
-      <MarkdownContent compact profileId={profileId} cacheKey={`commentary:${block.item.id}`}>
-        {block.item.text}
-      </MarkdownContent>
+      {live ? <LiveTextContent compact>{block.item.text}</LiveTextContent>
+        : <MarkdownContent compact profileId={profileId} cacheKey={`commentary:${block.item.id}`}>
+          {block.item.text}
+        </MarkdownContent>}
     </View> : null;
   if (block.kind === "tools") return <ToolGroupView group={block}
     memoryKey={`${memoryKey}:${block.key}`} onDisclosureChange={onDisclosureChange} />;
   if (block.kind === "plan") return <View testID={`plan:${block.item.id}`} style={styles.plan}>
     <Muted>计划</Muted>
-    <MarkdownContent profileId={profileId} cacheKey={`plan:${block.item.id}`}>
-      {block.item.text}
-    </MarkdownContent>
+    {live ? <LiveTextContent>{block.item.text}</LiveTextContent>
+      : <MarkdownContent profileId={profileId} cacheKey={`plan:${block.item.id}`}>
+        {block.item.text}
+      </MarkdownContent>}
   </View>;
   if (block.kind === "userInputResponse") return <UserInputResponse item={block.item}
     onDisclosureChange={onDisclosureChange} />;
@@ -142,11 +147,23 @@ function TurnBlockView({ block, memoryKey, profileId, threadId, turnId, onDisclo
         testID={`generated-image:${block.image.id}`} />}
   </View>;
   return block.item.text.trim() ? <View testID="message:role:agent" style={styles.agentRow}>
-    <MarkdownContent profileId={profileId} cacheKey={`agentMessage:${block.item.id}`}>
-      {block.item.text}
-    </MarkdownContent>
+    {live ? <LiveTextContent>{block.item.text}</LiveTextContent>
+      : <MarkdownContent profileId={profileId} cacheKey={`agentMessage:${block.item.id}`}>
+        {block.item.text}
+      </MarkdownContent>}
   </View> : null;
 }
+
+const LiveTextContent = memo(function LiveTextContent({ children, compact = false }: {
+  children: string;
+  compact?: boolean;
+}) {
+  const theme = useTheme();
+  return <Text selectable testID="message:live-text"
+    style={[styles.liveText, compact && styles.liveTextCompact, { color: theme.colors.text }]}>
+    {children}
+  </Text>;
+});
 
 function UserInputResponse({ item, onDisclosureChange }: {
   item: UserInputResponseItem;
@@ -328,6 +345,9 @@ const styles = StyleSheet.create({
   userText: { fontFamily: "Inter_400Regular", fontSize: 15, lineHeight: 22 },
   file: { fontFamily: "Inter_400Regular", fontSize: 13, marginTop: 5 },
   agentRow: { paddingHorizontal: 16, paddingBottom: 10, paddingTop: 8 },
+  liveText: { fontFamily: "Inter_400Regular", fontSize: 15, lineHeight: 24,
+    includeFontPadding: false },
+  liveTextCompact: { lineHeight: 22 },
   commentary: { opacity: 0.78, paddingHorizontal: 16, paddingVertical: 5 },
   thinking: { paddingHorizontal: 16, paddingVertical: 8 },
   thinkingText: { fontFamily: "Inter_400Regular", fontSize: 14, lineHeight: 20 },

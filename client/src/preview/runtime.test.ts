@@ -156,6 +156,41 @@ describe("官方协议预览模式", () => {
       text: JSON.stringify({ title: "生成预览任务标题", description: "预览任务自动标题" }) } });
   });
 
+  it("用高频 Markdown delta 稳定复现移动端流式压力", async () => {
+    vi.useFakeTimers();
+    try {
+      const socket = createPreviewAppServerSocket(primaryPreviewServerId);
+      const messages: Record<string, unknown>[] = [];
+      socket.onmessage = (event) => messages.push(
+        JSON.parse(String(event.data)) as Record<string, unknown>);
+      socket.send(JSON.stringify({ id: 1, method: "thread/start", params: {
+        cwd: "/preview/workspaces/tyrs-hand",
+      } }));
+      const started = messages.find((message) => message.id === 1);
+      const threadId = (started?.result as { thread?: { id?: unknown } } | undefined)?.thread?.id;
+      expect(typeof threadId).toBe("string");
+      if (typeof threadId !== "string") throw new Error("预览 Thread 未创建");
+      socket.send(JSON.stringify({ id: 2, method: "turn/start", params: {
+        threadId, input: [{ type: "text", text: "E2E_STREAMING_MARKDOWN" }],
+      } }));
+
+      await vi.advanceTimersByTimeAsync(3_000);
+
+      expect(messages.filter((message) => message.method === "item/agentMessage/delta"))
+        .toHaveLength(80);
+      const completed = messages.find((message) => message.method === "turn/completed") as
+        { params?: { turn?: { status?: unknown } } } | undefined;
+      expect(completed?.params?.turn?.status).toBe("completed");
+      const completedItems = messages.filter((message) => message.method === "item/completed") as
+        { params?: { item?: { text?: unknown } } }[];
+      expect(completedItems.some((message) => typeof message.params?.item?.text === "string" &&
+        message.params.item.text.includes("流式输出完成"))).toBe(true);
+      socket.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("按工具完成、最终回答首段、Turn 完成三个阶段驱动动态预览", async () => {
     vi.useFakeTimers();
     try {

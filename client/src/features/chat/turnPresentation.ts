@@ -110,6 +110,19 @@ export function projectTurnPresentation(turn: MobileTurn): TurnPresentation {
 }
 
 /**
+ * 官方协议没有在 Item 上保留运行状态，因此把进行中 Turn 里最后一个文本 Item
+ * 视为流式目标。较早的文本块已经稳定，可以继续使用完整 Markdown 渲染。
+ */
+export function streamingTextItemId(turn: MobileTurn): string | null {
+  if (turn.status !== "inProgress") return null;
+  for (let index = turn.items.length - 1; index >= 0; index -= 1) {
+    const item = turn.items[index]!;
+    if (item.type === "agentMessage" || item.type === "plan") return item.id;
+  }
+  return null;
+}
+
+/**
  * 官方 reasoning summary 会用独占的 Markdown 粗体行表达活动标题。
  * 移动端只展示这个标题，避免把 `**...**` 当作普通文本泄漏到活动流中。
  */

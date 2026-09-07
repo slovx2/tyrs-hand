@@ -4,7 +4,8 @@ import { describe, expect, it } from "vitest";
 
 import type { MobileTurn, UserInputResponseItem } from "@/app-server/types";
 import { createToolGroup, formatDuration, mixedToolGroupTitle, projectTurnPresentation,
-  reasoningActivityHeading, toolGroupTitle, toolOperationLines, turnActivitySummary,
+  reasoningActivityHeading, streamingTextItemId, toolGroupTitle, toolOperationLines,
+  turnActivitySummary,
   isToolFailed, type ToolGroupCategory,
   type ToolItem } from "./turnPresentation";
 
@@ -366,6 +367,19 @@ describe("官方 Turn 移动展示投影", () => {
     expect(formatDuration(3_720_000)).toBe("1小时 2分钟");
     const value = turn("inProgress", [], { startedAt: 100 });
     expect(turnActivitySummary(value, 137_000)).toBe("耗时 37秒");
+  });
+
+  it("只把进行中 Turn 的最后一个文本 Item 作为轻量流式目标", () => {
+    const running = turn("inProgress", [
+      agent("commentary", "先检查", "commentary"),
+      command("command"),
+      { type: "plan", id: "plan", text: "1. 修改" },
+      { type: "reasoning", id: "reasoning", summary: ["继续"], content: [] },
+    ]);
+
+    expect(streamingTextItemId(running)).toBe("plan");
+    expect(streamingTextItemId(turn("completed", running.items))).toBeNull();
+    expect(streamingTextItemId(turn("inProgress", [command("only-tool")]))).toBeNull();
   });
 });
 

@@ -1,0 +1,32 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: "session:new-task:add"
+    timeout: 30000
+- tapOn:
+    id: "session:new-task:add"
+- extendedWaitUntil:
+    visible:
+      id: "composer:input"
+    timeout: 10000
+- tapOn:
+    id: "composer:input"
+- inputText: "E2E_STREAMING_MARKDOWN verify responsive live text"
+- tapOn:
+    id: "composer:send"
+- extendedWaitUntil:
+    visible:
+      id: "message:live-text"
+    timeout: 30000
+- swipe:
+    start: 50%, 70%
+    end: 50%, 30%
+    duration: 500
+- extendedWaitUntil:
+    notVisible:
+      id: "message:live-text"
+    timeout: 120000
+- assertVisible: "流式输出完成"
