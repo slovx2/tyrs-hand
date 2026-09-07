@@ -14,6 +14,7 @@ community-research/
 *.coverprofile
 
 # 前端
+/node_modules/
 /web/**/node_modules/
 /web/dist/
 /client/node_modules/
