@@ -1,11 +1,12 @@
-import { Fragment, memo, type ReactNode, useMemo } from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { Fragment, memo, type ReactNode, useCallback, useMemo, useState } from "react";
+import { type LayoutChangeEvent, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import Markdown, { type ASTNode, MarkdownIt, parser, type RenderFunction,
   type RenderRules } from "react-native-markdown-display";
 
 import { useTheme } from "@/theme/ThemeProvider";
 import { CachedMessageImage } from "@/features/images/CachedMessageImage";
 import { RemoteMessageImage } from "@/features/images/RemoteMessageImage";
+import { markdownTableColumnCount, markdownTableMetrics } from "./markdownTableLayout";
 import { lookupMarkdownPlaceholder, prepareMarkdown, type MarkdownPlaceholder } from "./responseDirectives";
 
 type MarkdownContentProps = {
@@ -182,9 +183,15 @@ function renderMarkdownText(node: ASTNode, _children: ReactNode[], _parents: AST
 export const MarkdownContent = memo(function MarkdownContent({ children, cacheKey, profileId,
   compact = false, imageTestPrefix = "markdown:image", onFileCitationPress }: MarkdownContentProps) {
   const theme = useTheme();
+  const [parentWidth, setParentWidth] = useState(0);
+  const handleLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextWidth = event.nativeEvent.layout.width;
+    setParentWidth((currentWidth) => Math.abs(currentWidth - nextWidth) < 1 ? currentWidth : nextWidth);
+  }, []);
   const prepared = useMemo(() => prepareMarkdown(children), [children]);
   const ast = useMemo(() => cachedMarkdownAst(cacheKey, prepared.source), [cacheKey, prepared.source]);
   const blockGap = compact ? 5 : 8;
+  const tableColumnWidth = markdownTableMetrics(parentWidth, 1).columnWidth;
   const markdownStyle = useMemo(() => StyleSheet.create({
     body: { width: "100%" },
     text: { color: theme.colors.text, fontFamily: "Inter_400Regular", fontSize: 15, lineHeight: 24,
@@ -252,14 +259,20 @@ export const MarkdownContent = memo(function MarkdownContent({ children, cacheKe
       includeFontPadding: false },
     hr: { width: "100%", height: StyleSheet.hairlineWidth, marginVertical: compact ? 7 : 10,
       backgroundColor: theme.colors.border },
-    table: { width: "100%", marginTop: 1, marginBottom: blockGap, borderWidth: StyleSheet.hairlineWidth,
-      borderColor: theme.colors.border, borderRadius: 6, overflow: "hidden" },
+    tableScroller: { width: "100%", marginTop: 1, marginBottom: blockGap },
+    tableScrollerContent: { alignItems: "flex-start" },
+    table: { borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border,
+      borderRadius: 6, overflow: "hidden" },
     thead: { backgroundColor: theme.colors.surfaceAlt },
     tbody: {},
-    th: { flex: 1, minWidth: 0, paddingHorizontal: 8, paddingVertical: 7 },
+    th: { flexGrow: 0, flexShrink: 0, flexBasis: tableColumnWidth || undefined,
+      width: tableColumnWidth || undefined, maxWidth: tableColumnWidth || undefined,
+      paddingHorizontal: 8, paddingVertical: 7 },
     tr: { width: "100%", flexDirection: "row", borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: theme.colors.border },
-    td: { flex: 1, minWidth: 0, paddingHorizontal: 8, paddingVertical: 7 },
+    td: { flexGrow: 0, flexShrink: 0, flexBasis: tableColumnWidth || undefined,
+      width: tableColumnWidth || undefined, maxWidth: tableColumnWidth || undefined,
+      paddingHorizontal: 8, paddingVertical: 7 },
     image: { width: "100%" },
     hardbreak: { width: "100%", height: 1 },
     softbreak: {},
@@ -280,7 +293,7 @@ export const MarkdownContent = memo(function MarkdownContent({ children, cacheKe
     htmlUnderline: { color: theme.colors.text, textDecorationLine: "underline" },
     htmlSub: { color: theme.colors.text, fontSize: 11, lineHeight: 16 },
     htmlSup: { color: theme.colors.text, fontSize: 11, lineHeight: 16 },
-  }), [blockGap, compact, theme]);
+  }), [blockGap, compact, tableColumnWidth, theme]);
   const rules = useMemo<RenderRules>(() => ({
     ...selectableRules,
     text: (node, _children, parents, styles, inheritedStyles = {}) =>
@@ -292,6 +305,17 @@ export const MarkdownContent = memo(function MarkdownContent({ children, cacheKe
         return <MarkdownDirectiveCard key={node.key} directive={directive} styles={styles} />;
       }
       return lightweightTextBlock(node, children, _parents, styles);
+    },
+    table: (node, children, _parents, styles) => {
+      const { tableWidth } = markdownTableMetrics(parentWidth, markdownTableColumnCount(node));
+      return <ScrollView key={node.key} horizontal nestedScrollEnabled directionalLockEnabled
+        showsHorizontalScrollIndicator testID="markdown:table-scroll"
+        style={styles._VIEW_SAFE_tableScroller}
+        contentContainerStyle={styles._VIEW_SAFE_tableScrollerContent}>
+        <View style={[styles._VIEW_SAFE_table, tableWidth > 0 ? { width: tableWidth } : null]}>
+          {children}
+        </View>
+      </ScrollView>;
     },
     image: (node) => {
       const source = String(node.attributes.src ?? "");
@@ -305,8 +329,12 @@ export const MarkdownContent = memo(function MarkdownContent({ children, cacheKe
         cacheKey={`markdown:${cacheKey}:${node.key}`}
         testID={`${imageTestPrefix}:${node.key}`} />;
     },
-  }), [cacheKey, imageTestPrefix, onFileCitationPress, profileId]);
-  return <Markdown markdownit={markdownIt} mergeStyle={false} rules={rules} style={markdownStyle}>
-    {ast as unknown as ReactNode}
-  </Markdown>;
+  }), [cacheKey, imageTestPrefix, onFileCitationPress, parentWidth, profileId]);
+  return <View onLayout={handleLayout} style={styles.markdownRoot}>
+    <Markdown markdownit={markdownIt} mergeStyle={false} rules={rules} style={markdownStyle}>
+      {ast as unknown as ReactNode}
+    </Markdown>
+  </View>;
 });
+
+const styles = StyleSheet.create({ markdownRoot: { width: "100%" } });

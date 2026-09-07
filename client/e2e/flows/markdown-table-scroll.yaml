@@ -1,0 +1,23 @@
+appId: ${TYRS_HAND_E2E_APP_ID}
+---
+- launchApp:
+    clearState: true
+- scrollUntilVisible:
+    element:
+      id: "session:30000000-0000-4000-8000-000000000009"
+    direction: DOWN
+- tapOn:
+    id: "session:30000000-0000-4000-8000-000000000009"
+- scrollUntilVisible:
+    element:
+      id: "markdown:table-scroll"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "表格首列"
+- takeScreenshot: markdown-table-before
+- swipe:
+    start: 90%, 37%
+    end: 10%, 37%
+    duration: 700
+- assertVisible: "横向尾列"
+- takeScreenshot: markdown-table-after
