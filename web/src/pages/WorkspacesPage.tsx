@@ -56,9 +56,7 @@ export function WorkerWorkspacePage() {
       showToast('success', 'Workspace 已绑定')
     },
   })
-  const eligibleMembers = (members.data ?? []).filter(
-    (member) => !member.workspaceOwner,
-  )
+  const eligibleMembers = members.data ?? []
   const scanWorkspace = scan.mutate
 
   useEffect(() => {
@@ -168,8 +166,8 @@ export function WorkerWorkspacePage() {
           <div>
             <h2 className="text-xl font-semibold">尚未绑定 Workspace</h2>
             <p className="muted mt-1 text-sm">
-              选择一位尚未拥有 Workspace 的活跃 Discord 成员，将其绑定到当前
-              Worker。
+              选择一位活跃 Discord 成员作为当前 Worker 的 Workspace
+              负责人。同一成员可以负责多个 Workspace。
             </p>
           </div>
           <div className="workspace-bind-form">

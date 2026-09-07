@@ -168,7 +168,7 @@ describe('WorkerWorkspacePage', () => {
     expect(screen.getByText('/srv/outside')).toBeInTheDocument()
   })
 
-  it('未绑定时只列出尚未拥有 Workspace 的成员，并固定绑定当前 Worker', async () => {
+  it('允许已有 Workspace 的成员继续绑定当前 Worker', async () => {
     const create = vi.fn()
     const scan = vi.fn()
     server.use(
@@ -187,11 +187,11 @@ describe('WorkerWorkspacePage', () => {
 
     expect(await screen.findByText('尚未绑定 Workspace')).toBeInTheDocument()
     const select = screen.getByLabelText('Workspace 负责人')
-    expect(within(select).queryByRole('option', { name: 'Bob' })).toBeNull()
-    await user.selectOptions(select, '30')
+    expect(within(select).getByRole('option', { name: 'Bob' })).toBeInTheDocument()
+    await user.selectOptions(select, '20')
     await user.click(screen.getByRole('button', { name: '绑定 Workspace' }))
     expect(create).toHaveBeenCalledWith({
-      ownerDiscordUserId: '30',
+      ownerDiscordUserId: '20',
       workerId: worker.id,
     })
     await waitFor(() => expect(scan).toHaveBeenCalledTimes(1))

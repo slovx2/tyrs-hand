@@ -204,15 +204,12 @@ func (m *Manager) CreateWorkspace(ctx context.Context, ownerID string,
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(
 		SELECT 1 FROM discord_members member
 		WHERE member.guild_id=$1 AND member.discord_user_id=$2 AND member.active
-		  AND NOT EXISTS (
-			SELECT 1 FROM worker_workspaces workspace
-			WHERE workspace.guild_id=member.guild_id
-			  AND workspace.owner_discord_user_id=member.discord_user_id))`,
+		  AND NOT member.is_bot)`,
 		settings.GuildID, ownerID).Scan(&eligible); err != nil {
 		return uuid.Nil, err
 	}
 	if !eligible {
-		return uuid.Nil, errors.New("成员不活跃或已经拥有 Workspace")
+		return uuid.Nil, errors.New("成员不存在、不活跃或为机器人")
 	}
 	workspaceID := uuid.New()
 	var workerEligible bool
