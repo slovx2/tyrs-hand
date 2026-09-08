@@ -178,7 +178,9 @@ macOS 使用 `deploy/browser/install-macos-agent.sh install <agent.tgz> <ssh-hos
 2. 打开 `chrome://extensions`，开启“开发者模式”。
 3. 点击“加载已解压的扩展程序”，选择上述本机固定目录（包含 `manifest.json` 的目录，不是 CRX 文件或压缩包）。
 4. 核对扩展 ID 与锁文件 `extensionId` 一致，版本与解包目录 `manifest.json` 一致。
-5. 打开 `http://127.0.0.1:8931/health`，确认 `status=ready`、`connected=true`、扩展 ID 和版本正确，再发起真实 Codex 浏览器工具调用。
+5. 在 Codex 中选择对应的 Worker 或 Desktop 浏览器，通过真实浏览器工具打开网页并读取标题、URL；随后打开 `http://127.0.0.1:8931/health`，确认 `status=ready`、`connected=true` 和扩展版本正确。
+
+浏览器代理的 `8932` 端口按需启动。首次浏览器工具调用前，或 Bridge 重启后尚未调用工具时，`connected=false` 和扩展暂时报告连接被拒绝不能单独证明安装失败；应以真实工具调用结果及调用后的 health 验收。
 
 无需手工填写 Token。Linux 的 `3rdparty.extensions` 托管配置只提供 Bridge 地址和扩展认证信息；macOS 沿用现有本地配置获取流程。安装器不再生成 `ExtensionInstallForcelist` 或 `ExtensionSettings` 强制安装规则，也不依赖本地 `update.xml` 自动安装/更新扩展。不要把策略文件或 Token 内容贴入日志或对话。
 
