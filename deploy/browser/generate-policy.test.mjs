@@ -20,17 +20,18 @@ async function fixture(t, { id = extensionId, token = "extension-token" } = {}) 
   return { lockPath, tokenPath, outputPath };
 }
 
-test("策略强制后续升级继续使用 localhost 更新源", async (t) => {
+test("策略仅提供扩展连接配置，不安装或更新扩展", async (t) => {
   const paths = await fixture(t);
   execFileSync(process.execPath, [scriptPath.pathname, paths.lockPath, paths.tokenPath, paths.outputPath]);
 
   const policy = JSON.parse(await readFile(paths.outputPath, "utf8"));
-  assert.deepEqual(policy.ExtensionSettings[extensionId], {
-    installation_mode: "force_installed",
-    update_url: "http://127.0.0.1:8931/extension/update.xml",
-    override_update_url: true,
+  assert.deepEqual(policy, {
+    "3rdparty": { extensions: { [extensionId]: { policy: {
+      proxyUrl: "ws://127.0.0.1:8932/extension",
+      statusUrl: "http://127.0.0.1:8931/extension-status",
+      extensionToken: "extension-token",
+    } } } },
   });
-  assert.equal(policy["3rdparty"].extensions[extensionId].policy.extensionToken, "extension-token");
 });
 
 test("非法扩展 ID 会拒绝生成策略", async (t) => {

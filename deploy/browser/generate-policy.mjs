@@ -9,15 +9,7 @@ const extensionToken = (await readFile(tokenPath, "utf8")).trim();
 if (!/^[a-p]{32}$/.test(lock.extensionId) || !extensionToken)
   throw new Error("release lock or extension token is invalid");
 
-const updateURL = "http://127.0.0.1:8931/extension/update.xml";
 const policy = {
-  ExtensionSettings: {
-    [lock.extensionId]: {
-      installation_mode: "force_installed",
-      update_url: updateURL,
-      override_update_url: true,
-    },
-  },
   "3rdparty": {
     extensions: {
       [lock.extensionId]: {

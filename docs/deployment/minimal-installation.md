@@ -158,6 +158,36 @@ Control 暂时不可达时保留最近确认的绑定；明确返回未绑定时
 
 ### Browser
 
+浏览器服务与扩展分开安装：Bridge/Browser Agent 安装后自动运行；Chrome 扩展在每台机器、每个默认 Profile 中首次手动加载一次。继续使用用户原有 Profile、登录态和标签页，不创建专用 Profile，不由安装器重启 Chrome。
+
+#### 下载并放置扩展
+
+Linux Worker 在已登录的图形桌面用户下运行 Bridge，需要 `/usr/local/bin/node`、`unzip` 以及该用户的 systemd user/D-Bus 会话。可通过 RDP 登录桌面后执行：
+
+```bash
+sudo bash deploy/browser/install-host-release.sh <桌面用户名> deploy/browser/browser-artifacts.lock.json
+```
+
+脚本按锁文件中的精确制品版本下载并校验 SHA-256，将 CRX 解包到 `/opt/tyrs-hand/browser/unpacked-extension`，校验扩展 ID 并保留 manifest 公钥。此目录不能删除或移动，也不能放在临时下载目录。脚本设置桌面用户归属，启动 Bridge；Chrome 尚未打开或未加载扩展时，服务启动不代表浏览器已经可用。没有用户 D-Bus 会话时应先登录图形桌面，脚本不能启动用户服务。
+
+macOS 使用 `deploy/browser/install-macos-agent.sh install <agent.tgz> <ssh-host> <ssh-port> <ssh-user> <identity-file> <known-hosts-file> <extension-id>`。安装包应来自 `browser-artifacts.lock.json` 对应架构的 Browser Agent 制品并核对 SHA-256；其扩展解包到 `$HOME/Library/Application Support/Tyrs Hand/browser-agent/unpacked-extension`。脚本同时启动 Browser Agent，沿用现有 SSH 配置要求。
+
+#### Chrome 首次手动安装
+
+1. 在浏览器实际所在机器打开 Chrome，选择用户日常使用的默认 Profile；Linux Worker 可通过 RDP 操作。
+2. 打开 `chrome://extensions`，开启“开发者模式”。
+3. 点击“加载已解压的扩展程序”，选择上述本机固定目录（包含 `manifest.json` 的目录，不是 CRX 文件或压缩包）。
+4. 核对扩展 ID 与锁文件 `extensionId` 一致，版本与解包目录 `manifest.json` 一致。
+5. 打开 `http://127.0.0.1:8931/health`，确认 `status=ready`、`connected=true`、扩展 ID 和版本正确，再发起真实 Codex 浏览器工具调用。
+
+无需手工填写 Token。Linux 的 `3rdparty.extensions` 托管配置只提供 Bridge 地址和扩展认证信息；macOS 沿用现有本地配置获取流程。安装器不再生成 `ExtensionInstallForcelist` 或 `ExtensionSettings` 强制安装规则，也不依赖本地 `update.xml` 自动安装/更新扩展。不要把策略文件或 Token 内容贴入日志或对话。
+
+#### 升级与已有安装迁移
+
+Worker、Bridge、Browser Agent、Chrome 重启不需要重复安装扩展。更新扩展文件后，在 `chrome://extensions` 点击该扩展的“重新加载”即可；未打包扩展不会通过 Chrome Web Store 自动更新。Profile 被删除或改用另一个 Profile 时，需要重新手动加载。扩展更新期间等待当前浏览器任务结束，再重新加载，避免打断操作。
+
+已有 Linux 策略安装迁移时，先备份 `/etc/opt/chrome/policies/managed/tyrs-browser.json` 与 `/opt/tyrs-hand/browser/browser.env`，各保留最近 4 份。新安装器覆盖 Tyrs 专属策略文件，只保留 `3rdparty` 配置；在 `chrome://policy` 点击重新加载政策。若其他策略文件仍包含 Tyrs 扩展的旧安装规则，仅移除本扩展条目，保留其他扩展策略。原策略安装条目可能自动卸载；若仍残留旧条目，确认强制安装规则已撤销，再在扩展页移除旧条目，按上面的固定目录手动加载一次。不要删除 Chrome Profile 或用户标签页。迁移后核对 ID、版本及真实工具调用，而非仅检查 Bridge 进程。
+
 Worker 任务直接访问宿主 Browser MCP 和宿主文件目录。Token 仅从 `TYRS_HAND_BROWSER_MCP_TOKEN_FILE` 读取，文件应为 Worker 用户所有且权限 `0600`。
 
 首次启用浏览器时，Worker 在数据目录生成 `browser-scope` UUID 文件（`0600`）。此身份独立于 Workspace 和负责人，统一用于 Token、Desktop Agent、服务代理及清理。保留该文件可在重启后维持作用域；各 Worker 必须使用独立数据目录。由旧版本升级后浏览器改用新作用域，需要重新建立浏览器会话，此后绑定变化不再改变作用域。

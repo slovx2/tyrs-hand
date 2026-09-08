@@ -39,7 +39,12 @@ try {
   const unpackedPath = join(temporary, "unpacked");
   await writeFile(zipPath, crx.subarray(zipOffset), { mode: 0o600 });
   await mkdir(unpackedPath);
-  execFileSync("/usr/bin/ditto", ["-x", "-k", zipPath, unpackedPath], { stdio: "inherit" });
+  if (process.platform === "darwin")
+    execFileSync("/usr/bin/ditto", ["-x", "-k", zipPath, unpackedPath], { stdio: "inherit" });
+  else if (process.platform === "linux")
+    execFileSync("unzip", ["-q", zipPath, "-d", unpackedPath], { stdio: "inherit" });
+  else
+    throw new Error(`unsupported extension installation platform: ${process.platform}`);
 
   const manifestPath = join(unpackedPath, "manifest.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));

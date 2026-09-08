@@ -2,7 +2,7 @@
 set -euo pipefail
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-desktop_user=${1:?请提供 Ubuntu 桌面用户名}
+desktop_user=${1:?请提供 Linux 桌面用户名（扩展需在该用户的 Chrome 默认 Profile 中手动加载）}
 lock_path=${2:-"$script_dir/browser-artifacts.lock.json"}
 if [[ $EUID -ne 0 ]]; then
   echo "请使用 root 运行宿主浏览器安装脚本" >&2
@@ -13,6 +13,20 @@ if [[ ! -x $node_bin ]]; then
   echo "宿主缺少 $node_bin" >&2
   exit 1
 fi
+command -v unzip >/dev/null || { echo "宿主缺少 unzip，请先安装" >&2; exit 1; }
+lock_path=$($node_bin -e 'process.stdout.write(require("node:path").resolve(process.argv[1]))' "$lock_path")
+
+# 配置变更保留最近四份备份，不输出配置内容。
+backup_config() {
+  local path=$1 backup_dir="$1-backups"
+  [[ -f $path ]] || return 0
+  install -d -m 0700 "$backup_dir"
+  cp -p "$path" "$backup_dir/$(date +%Y%m%dT%H%M%S)-$$"
+  while IFS= read -r old; do
+    rm -f "$backup_dir/$old"
+  done < <(ls -1t "$backup_dir" | tail -n +5)
+}
+
 release=$($node_bin -e 'const lock=require(process.argv[1]); process.stdout.write(lock.release)' "$lock_path")
 extension_id=$($node_bin -e 'const lock=require(process.argv[1]); process.stdout.write(lock.extensionId)' "$lock_path")
 if [[ ! $release =~ ^tyrs-v[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ ! $extension_id =~ ^[a-p]{32}$ ]]; then
@@ -44,10 +58,18 @@ trap - EXIT
 chown -R "$desktop_uid:$desktop_gid" "$release_dir"
 chmod -R go-w "$release_dir"
 
+# 固定目录保留 Chrome 的加载位置；解包工具校验公钥派生的 ID 后再替换文件。
+unpacked_extension_dir=/opt/tyrs-hand/browser/unpacked-extension
+"$node_bin" "$script_dir/prepare-unpacked-extension.mjs" \
+  "$release_dir/tyrs-browser-extension.crx" "$unpacked_extension_dir" "$extension_id"
+chown -R "$desktop_uid:$desktop_gid" "$unpacked_extension_dir"
+chmod -R go-w "$unpacked_extension_dir"
+
 temporary_link="/opt/tyrs-hand/browser/releases/.current-$release"
 ln -sfn "$release_dir" "$temporary_link"
 mv -Tf "$temporary_link" /opt/tyrs-hand/browser/releases/current
 
+backup_config /opt/tyrs-hand/browser/browser.env
 install -m 0644 /dev/null /opt/tyrs-hand/browser/browser.env
 cat > /opt/tyrs-hand/browser/browser.env <<EOF
 TYRS_BROWSER_MCP_HOST=0.0.0.0
@@ -67,6 +89,7 @@ EOF
 chown "$desktop_uid:$desktop_gid" /opt/tyrs-hand/browser/browser.env
 
 install -d -m 0755 /etc/opt/chrome/policies/managed
+backup_config /etc/opt/chrome/policies/managed/tyrs-browser.json
 $node_bin "$script_dir/generate-policy.mjs" "$lock_path" \
   /opt/tyrs-hand/browser/browser_extension_token \
   /etc/opt/chrome/policies/managed/tyrs-browser.json
@@ -90,3 +113,11 @@ runuser -u "$desktop_user" -- env XDG_RUNTIME_DIR="$runtime_dir" \
   DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" systemctl --user restart tyrs-browser-bridge.service
 runuser -u "$desktop_user" -- env XDG_RUNTIME_DIR="$runtime_dir" \
   DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus" systemctl --user --no-pager status tyrs-browser-bridge.service
+
+echo "Bridge 已启动；首次在 $desktop_user 的 Chrome 默认 Profile 中手动安装扩展："
+echo "1. 打开 chrome://extensions，开启开发者模式。"
+echo "2. 点击‘加载已解压的扩展程序’，选择：$unpacked_extension_dir"
+echo "3. 确认扩展 ID 为 $extension_id，版本以该目录 manifest.json 为准。"
+echo "4. 扩展升级后点击‘重新加载’；Worker、Bridge、Chrome 重启无需重复安装。"
+echo "5. 打开 http://127.0.0.1:8931/health，确认 status=ready、connected=true 和扩展版本。"
+echo "安装器不会重启 Chrome。若此前由策略安装，请按安装文档迁移后手动加载一次。"
