@@ -38,7 +38,8 @@ const workspace = {
   ],
 }
 
-async function mockAPI(page: Page) {
+async function mockAPI(page: Page, bound = true) {
+  let scans = 0
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request()
     const path = new URL(request.url()).pathname
@@ -51,8 +52,37 @@ async function mockAPI(page: Page) {
       return route.fulfill({
         json: {
           username: 'admin',
+          role: 'admin',
           csrfToken: 'test-csrf',
           expiresAt: '2030-01-01T00:00:00Z',
+        },
+      })
+    }
+    if (path === `/api/v1/workers/${worker.id}`) {
+      return route.fulfill({ json: worker })
+    }
+    if (path === `/api/v1/workers/${worker.id}/workspace`) {
+      return route.fulfill({ json: { workspace: bound ? workspace : null } })
+    }
+    if (path === `/api/v1/workers/${worker.id}/workspace/scan`) {
+      scans += 1
+      return route.fulfill({
+        json: {
+          workspace: bound ? workspace : null,
+          scan: {
+            projects: [
+              {
+                name: 'atlas',
+                relativePath: 'workspaces/atlas',
+                hostPath: '/srv/atlas',
+                projectSource: 'workspace_child',
+                projectKind: 'git',
+                branch: 'main',
+                dirty: true,
+                available: true,
+              },
+            ],
+          },
         },
       })
     }
@@ -75,27 +105,29 @@ async function mockAPI(page: Page) {
       json: { title: 'not mocked', status: 404 },
     })
   })
+  return () => scans
 }
 
-test('Workers 页面同时展示宿主状态与 Workspace 项目', async ({ page }) => {
+test('Worker 详情展示绑定后的正式项目', async ({ page }) => {
   await mockAPI(page)
-  await page.goto('/workers')
+  await page.goto(`/workers/${worker.id}/workspace`)
 
   await expect(
-    page.getByRole('heading', { name: 'Worker', exact: true }),
+    page.getByRole('heading', { name: 'worker-primary' }),
   ).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'worker-primary' })).toBeVisible()
-  await expect(page.getByText('/home/worker/.codex')).toBeVisible()
   await expect(page.getByText('workspaces/atlas')).toBeVisible()
-  await expect(page.getByText(/Chrome：ready/)).toBeVisible()
 })
 
-test('移动端 Worker 与 Workspace 不产生横向溢出', async ({ page }) => {
-  await mockAPI(page)
+test('未绑定 Worker 在移动端发现和刷新项目', async ({ page }) => {
+  const scans = await mockAPI(page, false)
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto('/workers')
+  await page.goto(`/workers/${worker.id}/workspace`)
 
-  await expect(page.getByText('workspaces/atlas')).toBeVisible()
+  await expect(page.getByText('/srv/atlas')).toBeVisible()
+  await expect(page.getByText('尚未绑定 Workspace')).toBeVisible()
+  await expect(page.getByRole('button', { name: '创建 Forum' })).toHaveCount(0)
+  await page.getByRole('button', { name: '刷新', exact: true }).click()
+  await expect.poll(scans).toBe(2)
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,

@@ -24,17 +24,19 @@ type workspaceCodexRegistry struct {
 }
 
 type workspaceCodex struct {
-	client      *appserverhub.Client
-	manifest    workerprotocol.WorkspaceManifest
-	runtime     workspaceRuntime
-	generation  int64
-	processor   *Processor
-	hostRuntime *hostworker.Runtime
+	controlValid    func() bool
+	metadataAllowed func(string) bool
+	client          *appserverhub.Client
+	manifest        workerprotocol.WorkspaceManifest
+	runtime         workspaceRuntime
+	generation      int64
+	processor       *Processor
+	hostRuntime     *hostworker.Runtime
 
 	mu               sync.Mutex
 	metadataEvents   *appserverhub.Subscription
-	metadataSequence atomic.Int64
-	settingsSequence atomic.Int64
+	metadataSequence *atomic.Int64
+	settingsSequence *atomic.Int64
 }
 
 type workspaceRuntime struct {
@@ -165,6 +167,10 @@ func (e *workspaceCodex) recordThreadMetadata(ctx context.Context,
 	event workerprotocol.ThreadMetadataEvent,
 ) {
 	for attempt := 0; attempt < 8 && ctx.Err() == nil; attempt++ {
+		if (e.controlValid != nil && !e.controlValid()) ||
+			(e.metadataAllowed != nil && !e.metadataAllowed(event.ThreadID)) {
+			return
+		}
 		requestCtx, cancel := context.WithTimeout(ctx, e.processor.cfg.ControlTimeout)
 		err := e.processor.client.RecordThreadMetadata(requestCtx,
 			workerprotocol.ThreadMetadataRequest{
@@ -182,52 +188,6 @@ func (e *workspaceCodex) recordThreadMetadata(ctx context.Context,
 			return
 		}
 	}
-}
-
-func (e *workspaceCodex) reconcileThreadLifecycles(ctx context.Context,
-	client *appserverhub.Client,
-) {
-	for _, archived := range []bool{false, true} {
-		var cursor *string
-		for ctx.Err() == nil {
-			var result struct {
-				Data []struct {
-					ID string `json:"id"`
-				} `json:"data"`
-				NextCursor *string `json:"nextCursor"`
-			}
-			params := threadLifecycleListParams(archived, cursor)
-			requestCtx, cancel := context.WithTimeout(ctx, e.processor.cfg.ControlTimeout)
-			err := client.Call(requestCtx, "thread/list", params, &result)
-			cancel()
-			if err != nil {
-				e.processor.logger.Warn("对账 Codex Thread lifecycle 失败",
-					zap.Bool("archived", archived), zap.Error(err))
-				return
-			}
-			state := "active"
-			if archived {
-				state = "archived"
-			}
-			for _, thread := range result.Data {
-				e.recordThreadLifecycle(ctx, thread.ID, state)
-			}
-			if result.NextCursor == nil || *result.NextCursor == "" {
-				break
-			}
-			cursor = result.NextCursor
-		}
-	}
-}
-
-func threadLifecycleListParams(archived bool, cursor *string) map[string]any {
-	params := map[string]any{
-		"archived": archived, "limit": 100, "modelProviders": []string{},
-	}
-	if cursor != nil && *cursor != "" {
-		params["cursor"] = *cursor
-	}
-	return params
 }
 
 func (e *workspaceCodex) bindTool(threadID string, handler codex.ToolHandler) func() {

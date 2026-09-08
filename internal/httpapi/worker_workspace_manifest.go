@@ -19,6 +19,41 @@ import (
 
 var errInvalidWorkspaceProjectScan = errors.New("开发项目快照无效")
 
+// normalizeWorkspaceProjectScan 对实时和持久化扫描使用相同的输入约束。
+func normalizeWorkspaceProjectScan(scan workerprotocol.WorkspaceProjectScanResult) ([]workerprotocol.WorkspaceProjectSnapshot, []string, error) {
+	if len(scan.Projects) > 5000 || len(scan.ScanError) > 2000 {
+		return nil, nil, errInvalidWorkspaceProjectScan
+	}
+	projects := make([]workerprotocol.WorkspaceProjectSnapshot, len(scan.Projects))
+	copy(projects, scan.Projects)
+	seen := make(map[string]struct{}, len(projects))
+	paths := make([]string, 0, len(projects))
+	for index := range projects {
+		project := &projects[index]
+		cleanPath := path.Clean(strings.TrimSpace(project.RelativePath))
+		name := strings.TrimSpace(project.Name)
+		validSource := project.ProjectSource == "workspace_root" || project.ProjectSource == "workspace_child" || project.ProjectSource == "codex_registered"
+		validPath := (project.ProjectSource == "workspace_root" && cleanPath == "workspaces" && name == "Workspace") ||
+			(project.ProjectSource == "workspace_child" && cleanPath == path.Join("workspaces", name)) ||
+			(project.ProjectSource == "codex_registered" && strings.HasPrefix(cleanPath, "codex/") && len(strings.TrimPrefix(cleanPath, "codex/")) == 64)
+		if !validSource || !validPath || name == "" ||
+			strings.HasPrefix(name, ".") || strings.Contains(name, "/") ||
+			!filepath.IsAbs(project.HostPath) ||
+			(project.ProjectKind != "directory" && project.ProjectKind != "git") ||
+			(project.ProjectKind == "directory" &&
+				(project.Branch != "" || project.HeadSHA != "" || project.RemoteURL != "")) {
+			return nil, nil, fmt.Errorf("%w: 条目无效", errInvalidWorkspaceProjectScan)
+		}
+		if _, duplicate := seen[cleanPath]; duplicate {
+			return nil, nil, fmt.Errorf("%w: 包含重复路径", errInvalidWorkspaceProjectScan)
+		}
+		project.Name, project.RelativePath = name, cleanPath
+		seen[cleanPath] = struct{}{}
+		paths = append(paths, cleanPath)
+	}
+	return projects, paths, nil
+}
+
 func (s *Server) saveWorkspaceProjectScan(ctx context.Context, workerID,
 	workspaceID uuid.UUID, scan workerprotocol.WorkspaceProjectScanResult,
 ) error {
@@ -40,31 +75,9 @@ func (s *Server) saveWorkspaceProjectScan(ctx context.Context, workerID,
 		}
 		return nil
 	}
-	projects := append([]workerprotocol.WorkspaceProjectSnapshot(nil), scan.Projects...)
-	seen := make(map[string]struct{}, len(projects))
-	paths := make([]string, 0, len(projects))
-	for index := range projects {
-		project := &projects[index]
-		cleanPath := path.Clean(strings.TrimSpace(project.RelativePath))
-		name := strings.TrimSpace(project.Name)
-		validSource := project.ProjectSource == "workspace_root" || project.ProjectSource == "workspace_child" || project.ProjectSource == "codex_registered"
-		validPath := (project.ProjectSource == "workspace_root" && cleanPath == "workspaces" && name == "Workspace") ||
-			(project.ProjectSource == "workspace_child" && cleanPath == path.Join("workspaces", name)) ||
-			(project.ProjectSource == "codex_registered" && strings.HasPrefix(cleanPath, "codex/") && len(strings.TrimPrefix(cleanPath, "codex/")) == 64)
-		if !validSource || !validPath || name == "" ||
-			strings.HasPrefix(name, ".") || strings.Contains(name, "/") ||
-			!filepath.IsAbs(project.HostPath) ||
-			(project.ProjectKind != "directory" && project.ProjectKind != "git") ||
-			(project.ProjectKind == "directory" &&
-				(project.Branch != "" || project.HeadSHA != "" || project.RemoteURL != "")) {
-			return fmt.Errorf("%w: 条目无效", errInvalidWorkspaceProjectScan)
-		}
-		if _, duplicate := seen[cleanPath]; duplicate {
-			return fmt.Errorf("%w: 包含重复路径", errInvalidWorkspaceProjectScan)
-		}
-		project.Name, project.RelativePath = name, cleanPath
-		seen[cleanPath] = struct{}{}
-		paths = append(paths, cleanPath)
+	projects, paths, err := normalizeWorkspaceProjectScan(scan)
+	if err != nil {
+		return err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

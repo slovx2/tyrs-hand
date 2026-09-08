@@ -24,6 +24,12 @@ const (
 
 func (c *HostDesktopController) runSessionTitleLoop(ctx context.Context) {
 	for ctx.Err() == nil {
+		if integration, _ := c.snapshot(); integration == nil {
+			if !waitContext(ctx, 2*time.Second) {
+				return
+			}
+			continue
+		}
 		claimCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
 		claim, err := c.processor.client.ClaimSessionTitle(claimCtx)
 		cancel()
@@ -68,9 +74,7 @@ func (c *HostDesktopController) runSessionTitleLoop(ctx context.Context) {
 func (c *HostDesktopController) generateSessionTitle(ctx context.Context,
 	task workerprotocol.SessionTitleTask,
 ) (string, error) {
-	c.workspace.mu.Lock()
-	runtime := c.workspace.hostRuntime
-	c.workspace.mu.Unlock()
+	_, runtime := c.snapshot()
 	if runtime == nil {
 		return "", errors.New("宿主 App Server 尚未连接")
 	}

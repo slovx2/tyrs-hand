@@ -158,12 +158,12 @@ func WorkspaceCatalogs(ctx context.Context, db *sql.DB,
 		ids = append(ids, workspaceID.String())
 	}
 	rows, err := db.QueryContext(ctx, `SELECT workspace.id,
-		worker.metadata->'modelCatalogs'->workspace.id::text
+		worker.metadata->'modelCatalog'
 		FROM worker_workspaces workspace
 		JOIN workers worker ON worker.id=workspace.worker_id
 		WHERE workspace.id = ANY($1::uuid[]) AND worker.enabled AND worker.status='online'
 			AND worker.heartbeat_at > now() - interval '2 minutes'
-			AND worker.metadata->'modelCatalogs'->workspace.id::text IS NOT NULL`, pq.Array(ids))
+			AND worker.metadata->'modelCatalog' IS NOT NULL`, pq.Array(ids))
 	if err != nil {
 		return nil, err
 	}
@@ -182,31 +182,22 @@ func WorkspaceCatalogs(ctx context.Context, db *sql.DB,
 }
 
 func OnlineCatalogs(ctx context.Context, db *sql.DB) (map[uuid.UUID]json.RawMessage, error) {
-	rows, err := db.QueryContext(ctx, `SELECT metadata->'modelCatalogs' FROM workers
+	rows, err := db.QueryContext(ctx, `SELECT id, metadata->'modelCatalog' FROM workers
 		WHERE enabled AND status='online' AND heartbeat_at > now() - interval '2 minutes'
-			AND metadata ? 'modelCatalogs'`)
+			AND metadata ? 'modelCatalog'`)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 	result := make(map[uuid.UUID]json.RawMessage)
 	for rows.Next() {
+		var workerID uuid.UUID
 		var raw []byte
-		if err := rows.Scan(&raw); err != nil {
+		if err := rows.Scan(&workerID, &raw); err != nil {
 			return nil, err
 		}
-		var catalogs map[string]json.RawMessage
-		if json.Unmarshal(raw, &catalogs) != nil {
-			continue
-		}
-		for key, catalog := range catalogs {
-			workspaceID, err := uuid.Parse(key)
-			if err != nil {
-				continue
-			}
-			if _, err := Parse(catalog); err == nil {
-				result[workspaceID] = append(json.RawMessage(nil), catalog...)
-			}
+		if _, err := Parse(raw); err == nil {
+			result[workerID] = append(json.RawMessage(nil), raw...)
 		}
 	}
 	return result, rows.Err()

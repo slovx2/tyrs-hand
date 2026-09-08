@@ -146,9 +146,23 @@ Worker 会识别 Codex Desktop 的握手包装命令并直接接入唯一 AppSer
 
 SSH 只接受 `session` channel，不支持本地、远程或动态端口转发。Agent 出站 SSH 是独立能力，由 Control 将 Credential 和 Host 下发给指定 Worker。
 
-## 7. Browser
+## 7. 宿主能力与 Workspace 绑定
+
+已注册 Worker 无需绑定 Control Workspace，即可运行 Codex Desktop 对话、浏览器 MCP、文件交换、本地服务代理、本地 Git、图片生成、项目发现及模型目录。保持原有 Worker、SSH 公钥和浏览器 Token 认证；项目扫描仍限定于配置的工作目录及 Codex 注册项目。
+
+Workspace 绑定负责身份、Forum 关联和 Control 同步。绑定同步始终运行，周期为心跳周期且最短 15 秒；绑定、解绑及负责人变化无需重启 Codex 或 Chrome。每个 turn 保留启动时的身份快照，新状态从下一 turn 生效。失效绑定不能发起新的 Control 自动任务或 Forum 发布。
+
+Control 暂时不可达时保留最近确认的绑定；明确返回未绑定时清除缓存。已注册 Worker 即使没有缓存也可启动宿主能力。仅同步绑定生效后开始的活动，不批量导入已有对话历史。恢复已有对话时走官方 resume 加载 MCP，不改写历史、不复制对话；协议不能更新的历史动态工具列表不会被补写。
+
+项目扫描响应同时包含 `workspace`（未绑定时为 `null`）和 `scan`。未绑定扫描不保存项目数据库记录；绑定后重新扫描建立正式关联。Worker 心跳以单份 `modelCatalog` 上报宿主模型目录，Control 按实际绑定生成客户端 Workspace 模型映射，未绑定在线 Worker 也参与全局目录。Control 与 Worker 应一起升级，不读取旧 metadata 格式，无新增数据库迁移。
+
+### Browser
 
 Worker 任务直接访问宿主 Browser MCP 和宿主文件目录。Token 仅从 `TYRS_HAND_BROWSER_MCP_TOKEN_FILE` 读取，文件应为 Worker 用户所有且权限 `0600`。
+
+首次启用浏览器时，Worker 在数据目录生成 `browser-scope` UUID 文件（`0600`）。此身份独立于 Workspace 和负责人，统一用于 Token、Desktop Agent、服务代理及清理。保留该文件可在重启后维持作用域；各 Worker 必须使用独立数据目录。由旧版本升级后浏览器改用新作用域，需要重新建立浏览器会话，此后绑定变化不再改变作用域。
+
+配置浏览器后即创建本地服务代理，无需等待绑定。
 
 Codex Desktop 的浏览器操作通过 `TYRS_HAND_BROWSER_AGENT_ADDRESS` 对应的 Browser Agent 通道完成。Worker Browser 与多个 Desktop Browser 客户端可并发运行；任一 Desktop 客户端断开不影响其他连接。
 
@@ -157,7 +171,7 @@ Codex Desktop 的浏览器操作通过 `TYRS_HAND_BROWSER_AGENT_ADDRESS` 对应�
 - 页面可见动作与工具返回值
 - Worker 心跳和 Browser metadata
 - Browser MCP/Agent 状态与文件交换
-- Task、Tool Call、Projection 和 Outbox 记录
+- 已绑定活动的 Task、Tool Call、Projection 和 Outbox 记录；未绑定活动不应产生 Control 上报队列
 - 并发链路断开后的隔离性
 
 ## 8. 升级与回滚

@@ -122,7 +122,7 @@ function membersHandler() {
 function scanHandler(onScan?: () => void) {
   return http.post(`/api/v1/workers/${worker.id}/workspace/scan`, () => {
     onScan?.()
-    return HttpResponse.json({ workspace })
+    return HttpResponse.json({ workspace, scan: { projects: [] } })
   })
 }
 
@@ -149,7 +149,7 @@ describe('WorkerWorkspacePage', () => {
     const scan = vi.fn()
     server.use(
       http.get(`/api/v1/workers/${worker.id}/workspace`, () =>
-        HttpResponse.json({ workspace }),
+        HttpResponse.json({ workspace, scan: { projects: [] } }),
       ),
       membersHandler(),
       scanHandler(scan),
@@ -171,6 +171,7 @@ describe('WorkerWorkspacePage', () => {
   it('允许已有 Workspace 的成员继续绑定当前 Worker', async () => {
     const create = vi.fn()
     const scan = vi.fn()
+    let bound = false
     server.use(
       http.get(`/api/v1/workers/${worker.id}/workspace`, () =>
         HttpResponse.json({ workspace: null }),
@@ -178,24 +179,84 @@ describe('WorkerWorkspacePage', () => {
       membersHandler(),
       http.post('/api/v1/workspaces', async ({ request }) => {
         create(await request.json())
+        bound = true
         return HttpResponse.json({ id: 'new-workspace' }, { status: 201 })
       }),
-      scanHandler(scan),
+      http.post(`/api/v1/workers/${worker.id}/workspace/scan`, () => {
+        scan()
+        return HttpResponse.json({
+          workspace: bound ? workspace : null,
+          scan: { projects: [] },
+        })
+      }),
     )
     renderPage()
     const user = userEvent.setup()
 
     expect(await screen.findByText('尚未绑定 Workspace')).toBeInTheDocument()
     const select = screen.getByLabelText('Workspace 负责人')
-    expect(within(select).getByRole('option', { name: 'Bob' })).toBeInTheDocument()
+    expect(
+      within(select).getByRole('option', { name: 'Bob' }),
+    ).toBeInTheDocument()
     await user.selectOptions(select, '20')
     await user.click(screen.getByRole('button', { name: '绑定 Workspace' }))
     expect(create).toHaveBeenCalledWith({
       ownerDiscordUserId: '20',
       workerId: worker.id,
     })
-    await waitFor(() => expect(scan).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(scan).toHaveBeenCalledTimes(2))
     expect(await screen.findByText('workspaces/atlas')).toBeInTheDocument()
+  })
+
+  it('未绑定时自动发现并刷新宿主项目，Forum 入口仍要求绑定', async () => {
+    const scan = vi.fn()
+    server.use(
+      http.get(`/api/v1/workers/${worker.id}/workspace`, () =>
+        HttpResponse.json({ workspace: null }),
+      ),
+      membersHandler(),
+      http.post(`/api/v1/workers/${worker.id}/workspace/scan`, () => {
+        scan()
+        return HttpResponse.json({
+          workspace: null,
+          scan: {
+            projects: [
+              {
+                name: 'local',
+                relativePath: 'workspaces/local',
+                hostPath: '/srv/local',
+                projectSource: 'workspace_child',
+                projectKind: 'git',
+                branch: 'main',
+                dirty: true,
+                available: true,
+              },
+              {
+                name: 'registered',
+                relativePath: 'codex/hash',
+                hostPath: '/srv/registered',
+                projectSource: 'codex_registered',
+                projectKind: 'directory',
+                dirty: false,
+                available: true,
+              },
+            ],
+          },
+        })
+      }),
+    )
+    renderPage()
+    const user = userEvent.setup()
+    expect(await screen.findByText('/srv/local')).toBeInTheDocument()
+    expect(screen.getByText('尚未绑定 Workspace')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: '创建 Forum' }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText('/srv/registered')).not.toBeInTheDocument()
+    await user.click(screen.getByLabelText('显示 Codex 项目'))
+    expect(screen.getByText('/srv/registered')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '刷新' }))
+    await waitFor(() => expect(scan).toHaveBeenCalledTimes(2))
   })
 
   it('Forum 操作只失效当前 Worker Workspace 查询', async () => {
@@ -204,7 +265,7 @@ describe('WorkerWorkspacePage', () => {
     server.use(
       http.get(`/api/v1/workers/${worker.id}/workspace`, () => {
         workspaceRequests += 1
-        return HttpResponse.json({ workspace })
+        return HttpResponse.json({ workspace, scan: { projects: [] } })
       }),
       membersHandler(),
       scanHandler(),
@@ -231,7 +292,7 @@ describe('WorkerWorkspacePage', () => {
     const remove = vi.fn()
     server.use(
       http.get(`/api/v1/workers/${worker.id}/workspace`, () =>
-        HttpResponse.json({ workspace }),
+        HttpResponse.json({ workspace, scan: { projects: [] } }),
       ),
       membersHandler(),
       scanHandler(),
@@ -292,12 +353,13 @@ describe('WorkerWorkspacePage', () => {
     let scans = 0
     server.use(
       http.get(`/api/v1/workers/${worker.id}/workspace`, () =>
-        HttpResponse.json({ workspace }),
+        HttpResponse.json({ workspace, scan: { projects: [] } }),
       ),
       membersHandler(),
       http.post(`/api/v1/workers/${worker.id}/workspace/scan`, () => {
         scans += 1
-        if (scans === 1) return HttpResponse.json({ workspace })
+        if (scans === 1)
+          return HttpResponse.json({ workspace, scan: { projects: [] } })
         return HttpResponse.json(
           { title: '实时扫描 Worker 项目失败', status: 502 },
           { status: 502 },

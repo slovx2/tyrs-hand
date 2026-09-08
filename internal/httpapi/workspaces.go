@@ -87,11 +87,6 @@ func (s *Server) scanWorkerWorkspace(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "读取 Worker Workspace 失败", err)
 		return
 	}
-	if workspace == nil {
-		problem(c, http.StatusConflict, "Worker 尚未绑定 Workspace",
-			errors.New("worker workspace 不存在"))
-		return
-	}
 	raw, err := s.callWorkerRPC(c.Request.Context(), workerID,
 		"workspace.projects.scan", nil, 65*time.Second)
 	if err != nil {
@@ -108,6 +103,16 @@ func (s *Server) scanWorkerWorkspace(c *gin.Context) {
 		problem(c, http.StatusBadGateway, "Worker 项目扫描响应无效", err)
 		return
 	}
+	projects, _, err := normalizeWorkspaceProjectScan(scan)
+	if err != nil {
+		problem(c, http.StatusBadGateway, "Worker 项目扫描响应无效", err)
+		return
+	}
+	scan.Projects = projects
+	if workspace == nil {
+		c.JSON(http.StatusOK, gin.H{"workspace": nil, "scan": scan})
+		return
+	}
 	if err := s.saveWorkspaceProjectScan(c.Request.Context(), workerID,
 		workspace.ID, scan); err != nil {
 		if errors.Is(err, errInvalidWorkspaceProjectScan) {
@@ -122,7 +127,7 @@ func (s *Server) scanWorkerWorkspace(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "读取刷新后的 Worker Workspace 失败", err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"workspace": workspace})
+	c.JSON(http.StatusOK, gin.H{"workspace": workspace, "scan": scan})
 }
 
 func (s *Server) createWorkspace(c *gin.Context) {

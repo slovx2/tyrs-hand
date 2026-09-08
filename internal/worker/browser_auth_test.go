@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDeriveBrowserAppServerTokensUsesWorkspaceScopeForEverySurface(t *testing.T) {
+func TestDeriveBrowserAppServerTokensUsesHostScopeForEverySurface(t *testing.T) {
 	tokenFile := filepath.Join(t.TempDir(), "browser-token")
 	require.NoError(t, os.WriteFile(tokenFile, []byte("secret\n"), 0o600))
 	workspaceID := uuid.MustParse("11111111-1111-4111-8111-111111111111")
@@ -28,15 +28,14 @@ func TestDeriveBrowserAppServerTokensUsesWorkspaceScopeForEverySurface(t *testin
 	require.Empty(t, tokens)
 }
 
-func TestDeriveBrowserAppServerTokensFallsBackToWorkerWithoutWorkspace(t *testing.T) {
+func TestDeriveBrowserAppServerTokensRejectsMissingHostScope(t *testing.T) {
 	tokenFile := filepath.Join(t.TempDir(), "browser-token")
 	require.NoError(t, os.WriteFile(tokenFile, []byte("secret\n"), 0o600))
 	tokens, err := DeriveBrowserAppServerTokens(config.Config{
 		BrowserMCPURL: "http://127.0.0.1:8931/mcp", BrowserMCPTokenFile: tokenFile,
 	}, uuid.Nil)
-	require.NoError(t, err)
-	require.Equal(t, "v1.worker.w3lxRQZQWESSFoA1cGQcumHLOF6yHToqOgUeybUSSiw", tokens.Worker)
-	require.Equal(t, tokens.Worker, tokens.Desktop)
+	require.ErrorContains(t, err, "宿主浏览器身份未配置")
+	require.Empty(t, tokens)
 }
 
 func TestDeriveBrowserTokenScopes(t *testing.T) {
@@ -52,9 +51,9 @@ func TestDeriveBrowserTokenScopes(t *testing.T) {
 	}())
 }
 
-func TestProcessorBrowserScopeUsesWorkspaceIdentity(t *testing.T) {
+func TestProcessorBrowserScopeUsesHostIdentity(t *testing.T) {
 	workspaceID := uuid.MustParse("11111111-1111-4111-8111-111111111111")
-	require.Equal(t, workspaceID.String(), (&Processor{workspaceID: workspaceID}).browserScope())
+	require.Equal(t, workspaceID.String(), (&Processor{browserScopeID: workspaceID}).browserScope())
 	require.Equal(t, "worker", (&Processor{}).browserScope())
 }
 

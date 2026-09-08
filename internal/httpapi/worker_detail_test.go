@@ -95,7 +95,7 @@ func TestScanWorkerWorkspaceChecksAccessBindingAndConnection(t *testing.T) {
 		wantStatus int
 	}{
 		{name: "未分配普通用户", role: "user", wantStatus: http.StatusForbidden},
-		{name: "尚未绑定", role: "admin", assigned: true, wantStatus: http.StatusConflict},
+		{name: "未绑定也尝试连接 Worker", role: "admin", assigned: true, wantStatus: http.StatusBadGateway},
 		{name: "Worker 离线", role: "admin", assigned: true, bound: true, wantStatus: http.StatusBadGateway},
 	}
 	for _, test := range tests {

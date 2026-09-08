@@ -17,7 +17,8 @@ func TestHeartbeatMetadataIncludesHostAndModelCatalog(t *testing.T) {
 
 	metadata := processor.HeartbeatMetadata()
 	require.Contains(t, metadata, "host")
-	catalogs, ok := metadata["modelCatalogs"].(map[string]json.RawMessage)
+	catalog, ok := metadata["modelCatalog"].(json.RawMessage)
 	require.True(t, ok)
-	require.JSONEq(t, `{"data":[{"id":"gpt-test"}]}`, string(catalogs[workspaceID.String()]))
+	require.NotContains(t, metadata, "modelCatalogs")
+	require.JSONEq(t, `{"data":[{"id":"gpt-test"}]}`, string(catalog))
 }

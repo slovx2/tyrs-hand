@@ -186,11 +186,16 @@ describe('WorkerDetailPage', () => {
         HttpResponse.json({ workspace: null }),
       ),
       http.get('/api/v1/discord/members', () => HttpResponse.json([])),
+      http.post(`/api/v1/workers/${workerId}/workspace/scan`, () =>
+        HttpResponse.json({ workspace: null, scan: { projects: [] } }),
+      ),
     )
     renderRoute(`/workers/${workerId}/workspace`)
 
     expect(await screen.findByText('尚未绑定 Workspace')).toBeInTheDocument()
-    expect(screen.getByText(/这里只管理 worker-primary/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/管理 worker-primary 的宿主项目/),
+    ).toBeInTheDocument()
   })
 
   it('普通用户不显示用户分配入口，直接访问时返回概览', async () => {

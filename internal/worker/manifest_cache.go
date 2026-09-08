@@ -32,7 +32,17 @@ func LoadCachedWorkspaceManifest(root string) (*workerprotocol.WorkspaceManifest
 
 // SaveWorkspaceManifest 原子保存 Workspace 镜像，供 Control 离线时启动使用。
 func SaveWorkspaceManifest(root string, manifest *workerprotocol.WorkspaceManifest) error {
-	if manifest == nil || manifest.WorkspaceID == uuid.Nil {
+	if manifest == nil {
+		err := os.Remove(workspaceManifestPath(root))
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		return syncDirectory(filepath.Dir(workspaceManifestPath(root)))
+	}
+	if manifest.WorkspaceID == uuid.Nil {
 		return errors.New("Workspace 快照无效")
 	}
 	path := workspaceManifestPath(root)
@@ -49,7 +59,8 @@ func SaveWorkspaceManifest(root string, manifest *workerprotocol.WorkspaceManife
 	}
 	name := temporary.Name()
 	defer func() { _ = os.Remove(name) }()
-	if err := temporary.Chmod(0o600); err == nil {
+	err = temporary.Chmod(0o600)
+	if err == nil {
 		_, err = temporary.Write(data)
 	}
 	if err == nil {

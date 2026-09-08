@@ -96,36 +96,38 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		controlErr := err
 		manifest, err = worker.LoadCachedWorkspaceManifest(cfg.WorkerDataRoot)
 		if err != nil {
-			cleanupFailure(nil)
-			return nil, nil, fmt.Errorf("Control 不可用且没有本地 Workspace 快照: %w", err)
+			manifest = nil
+			logger.Warn("Control 不可用且没有有效 Workspace 快照，启动宿主基础能力", zap.Error(err))
+		} else {
+			logger.Warn("Control 暂不可用，使用本地 Workspace 快照启动", zap.Error(controlErr))
 		}
-		logger.Warn("Control 暂不可用，使用本地 Workspace 快照启动", zap.Error(controlErr))
-	} else if manifest != nil {
+	} else {
 		if cacheErr := worker.SaveWorkspaceManifest(cfg.WorkerDataRoot, manifest); cacheErr != nil {
 			cleanupFailure(nil)
 			return nil, nil, fmt.Errorf("保存宿主 Workspace 快照: %w", cacheErr)
 		}
 	}
-	var desktopController *worker.HostDesktopController
+	desktopController := worker.NewHostDesktopController(processor, manifest)
 	runtimeOptions := hostworker.RuntimeOptions{
 		CodexBin: cfg.CodexBin, CodexHome: cfg.WorkerCodexHome, Home: cfg.WorkerHome,
 		WorkspaceRoot: cfg.WorkerWorkspaceRoot, StateDir: cfg.WorkerDataRoot, Logger: logger,
 		EnvFile:     cfg.WorkerGlobalEnvFile,
 		SSHAuthSock: filepath.Join(cfg.SSHAgentDir, "current.sock"),
 	}
-	if manifest != nil {
-		desktopController = worker.NewHostDesktopController(processor, *manifest)
-		runtimeOptions.Controller = desktopController
+	runtimeOptions.Controller = desktopController
+	scopeID := uuid.Nil
+	if cfg.BrowserMCPURL != "" {
+		scopeID, err = worker.LoadBrowserScope(cfg.WorkerDataRoot)
+		if err != nil {
+			cleanupFailure(nil)
+			return nil, nil, err
+		}
 	}
-	workspaceID := uuid.Nil
-	if manifest != nil {
-		workspaceID = manifest.WorkspaceID
-	}
-	if cfg.BrowserMCPURL != "" && workspaceID != uuid.Nil {
+	if cfg.BrowserMCPURL != "" && scopeID != uuid.Nil {
 		runtimeOptions.BrowserServiceSocket = filepath.Join(cfg.BrowserServicesRoot,
-			workspaceID.String(), "proxy.sock")
+			scopeID.String(), "proxy.sock")
 	}
-	browserTokens, err := worker.DeriveBrowserAppServerTokens(cfg, workspaceID)
+	browserTokens, err := worker.DeriveBrowserAppServerTokens(cfg, scopeID)
 	if err != nil {
 		cleanupFailure(nil)
 		return nil, nil, err
@@ -142,23 +144,18 @@ func InitializeWorker(ctx context.Context, cfg config.Config) (*WorkerApp, func(
 		configService.SetRestart(runtime.Restart)
 		go runWorkerRPCChannel(ctx, cfg.WorkerControlURL, credential, configService, logger)
 	}
-	if desktopController != nil {
-		if err := desktopController.AttachRuntime(ctx, runtime); err != nil {
-			cleanupFailure(runtime)
-			return nil, nil, err
-		}
-	}
 	var modelCatalog json.RawMessage
-	if manifest != nil {
-		catalogCtx, cancel := context.WithTimeout(ctx, cfg.ControlTimeout)
-		modelCatalog, err = codexcatalog.Fetch(catalogCtx, runtime.Client())
-		cancel()
-		if err != nil {
-			cleanupFailure(runtime)
-			return nil, nil, fmt.Errorf("读取宿主 Codex 模型目录: %w", err)
-		}
+	catalogCtx, cancel := context.WithTimeout(ctx, cfg.ControlTimeout)
+	modelCatalog, err = codexcatalog.Fetch(catalogCtx, runtime.Client())
+	cancel()
+	if err != nil {
+		logger.Warn("宿主模型目录暂不可用，将后台重试", zap.Error(err))
 	}
-	processor.UseHostRuntime(runtime, workspaceID, modelCatalog)
+	processor.UseHostRuntime(runtime, scopeID, modelCatalog)
+	if err := desktopController.AttachRuntime(ctx, runtime); err != nil {
+		cleanupFailure(runtime)
+		return nil, nil, err
+	}
 	clients, err := hostworker.LoadAuthorizedClients(cfg.WorkerAuthorizedKeysFile)
 	if err != nil {
 		cleanupFailure(runtime)

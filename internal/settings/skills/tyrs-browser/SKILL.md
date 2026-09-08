@@ -7,6 +7,10 @@ description: Use Playwright, the Tyrs Hand Worker browser, or the Desktop browse
 
 Choose between Playwright, the Worker browser, and the Desktop browser.
 
+Host browser tools, file exchange, local services, and local Git do not require a Control Workspace binding. Worker, SSH, and browser authentication still apply. Control automations and Forum publishing require an active Workspace binding.
+
+Binding, unbinding, and owner changes take effect on the next turn without restarting Codex or Chrome. Existing conversations reload MCP configuration through normal resume; do not rewrite their history or create replacement conversations to restore tools. Historical dynamic tool lists may remain unchanged when the Codex protocol cannot update them.
+
 ## Choose the browser
 
 Honor an explicit browser choice. When user identity or login state is required, prefer the Worker browser, then the Desktop browser. Otherwise, use Playwright or the Worker browser based on the task.

@@ -44,7 +44,7 @@ async function publishWorkerHeartbeat(force = false) {
   if (!force && Date.now() - lastWorkerHeartbeatAt < 20_000) return
   await call('/worker/v1/heartbeat', { body: { workerVersion: 'mobile-e2e-protocol',
     protocolVersion: 28, sshHostKeyFingerprint, metadata: { lane: 'mobile-protocol',
-      modelCatalogs: { [workspaceID]: modelCatalog } } } })
+      modelCatalog } } })
   lastWorkerHeartbeatAt = Date.now()
 }
 

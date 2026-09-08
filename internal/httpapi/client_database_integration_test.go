@@ -46,13 +46,13 @@ func TestClientProtocolLoginIdempotencyWebSocketInteractiveAndFinalAnswer(t *tes
 	repositoryID, _, profileID := seedWorkerGitHubQueue(t, db, 9901)
 	workspaceID, forumID := seedWorkerWorkspace(t, db, repositoryID, worker.ID)
 	projectID := workspaceProjectIDForForum(t, db, forumID)
-	nativeCatalog := `{"modelCatalogs":{"` + workspaceID.String() + `":{"data":[{` +
+	nativeCatalog := `{"modelCatalog":{"data":[{` +
 		`"id":"native-only-model","model":"native-only-model","displayName":"Native",` +
 		`"description":"from Codex","supportedReasoningEfforts":[{` +
 		`"reasoningEffort":"future","description":"future effort"}],` +
 		`"defaultReasoningEffort":"future","serviceTiers":[],` +
 		`"additionalSpeedTiers":[],"defaultServiceTier":null,"isDefault":true,` +
-		`"hidden":false}],"nextCursor":null}}}`
+		`"hidden":false}],"nextCursor":null}}`
 	_, err = db.ExecContext(ctx, `UPDATE workers SET status='online',
 		heartbeat_at=now(), metadata=$2::jsonb WHERE id=$1`, worker.ID, nativeCatalog)
 	require.NoError(t, err)

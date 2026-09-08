@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,29 +24,30 @@ import (
 )
 
 type Processor struct {
-	cfg          config.Config
-	client       *workerprotocol.Client
-	workspace    ports.WorkspaceManager
-	catalog      *githubtools.Catalog
-	workspaces   *workspaceCodexRegistry
-	journals     *journalStore
-	logger       *zap.Logger
-	hostRuntime  *hostworker.Runtime
-	workspaceID  uuid.UUID
-	modelCatalog json.RawMessage
-	imageHTTP    *http.Client
-	imageRuntime *codex.Runtime
-	imageRoot    string
-	imageNow     func() time.Time
-	imageTimeout time.Duration
-	coordinator  *runCoordinator
+	cfg            config.Config
+	client         *workerprotocol.Client
+	workspace      ports.WorkspaceManager
+	catalog        *githubtools.Catalog
+	workspaces     *workspaceCodexRegistry
+	journals       *journalStore
+	logger         *zap.Logger
+	hostRuntime    *hostworker.Runtime
+	browserScopeID uuid.UUID
+	metadataMu     sync.RWMutex
+	modelCatalog   json.RawMessage
+	imageHTTP      *http.Client
+	imageRuntime   *codex.Runtime
+	imageRoot      string
+	imageNow       func() time.Time
+	imageTimeout   time.Duration
+	coordinator    *runCoordinator
 }
 
-func (p *Processor) UseHostRuntime(runtime *hostworker.Runtime, workspaceID uuid.UUID,
+func (p *Processor) UseHostRuntime(runtime *hostworker.Runtime, scopeID uuid.UUID,
 	modelCatalog json.RawMessage,
 ) {
 	p.hostRuntime = runtime
-	p.workspaceID = workspaceID
+	p.browserScopeID = scopeID
 	p.modelCatalog = append(json.RawMessage(nil), modelCatalog...)
 	if runtime != nil {
 		p.imageRoot = filepath.Join(runtime.StateDir(), generatedImagesDirectory)
@@ -56,15 +58,16 @@ func (p *Processor) UseHostRuntime(runtime *hostworker.Runtime, workspaceID uuid
 }
 
 func (p *Processor) browserScope() string {
-	if p.workspaceID != uuid.Nil {
-		return p.workspaceID.String()
+	if p.browserScopeID != uuid.Nil {
+		return p.browserScopeID.String()
 	}
 	return "worker"
 }
 
 func (p *Processor) HeartbeatMetadata() map[string]any {
 	runtime := p.hostRuntime
-	workspaceID := p.workspaceID
+	p.metadataMu.RLock()
+	defer p.metadataMu.RUnlock()
 	modelCatalog := append(json.RawMessage(nil), p.modelCatalog...)
 
 	metadata := make(map[string]any, 2)
@@ -74,10 +77,8 @@ func (p *Processor) HeartbeatMetadata() map[string]any {
 			"workspaceRoot": runtime.WorkspaceRoot(), "appServer": "running",
 		}
 	}
-	if workspaceID != uuid.Nil && len(modelCatalog) > 0 {
-		metadata["modelCatalogs"] = map[string]json.RawMessage{
-			workspaceID.String(): modelCatalog,
-		}
+	if len(modelCatalog) > 0 {
+		metadata["modelCatalog"] = modelCatalog
 	}
 	if len(metadata) == 0 {
 		return nil
@@ -260,4 +261,10 @@ func remoteGitHubAdditionalContext(job *workerprotocol.GitHubSnapshot,
 func remoteEventPayload(value any) json.RawMessage {
 	data, _ := json.Marshal(value)
 	return data
+}
+
+func (p *Processor) SetModelCatalog(catalog json.RawMessage) {
+	p.metadataMu.Lock()
+	defer p.metadataMu.Unlock()
+	p.modelCatalog = append(json.RawMessage(nil), catalog...)
 }

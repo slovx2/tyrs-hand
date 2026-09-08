@@ -99,10 +99,26 @@ func (c *Client) SSHConfiguration(ctx context.Context, etag string) (SSHConfigur
 
 func (c *Client) Workspace(ctx context.Context) (*WorkspaceManifest, error) {
 	var result struct {
-		Workspace *WorkspaceManifest `json:"workspace"`
+		Workspace json.RawMessage `json:"workspace"`
 	}
 	err := c.call(ctx, http.MethodGet, "/worker/v1/workspace", nil, &result, true)
-	return result.Workspace, err
+	if err != nil {
+		return nil, err
+	}
+	if len(result.Workspace) == 0 {
+		return nil, errors.New("Control Workspace 响应缺少 workspace")
+	}
+	if string(result.Workspace) == "null" {
+		return nil, nil
+	}
+	var manifest WorkspaceManifest
+	if err := json.Unmarshal(result.Workspace, &manifest); err != nil {
+		return nil, err
+	}
+	if manifest.WorkspaceID == uuid.Nil {
+		return nil, errors.New("Control Workspace 响应缺少有效身份")
+	}
+	return &manifest, nil
 }
 
 func (c *Client) PrepareDesktopThread(ctx context.Context,

@@ -1019,6 +1019,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/worker/v1/inputs/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["workerDecideInput"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/worker/v1/session-title-tasks/claim": {
         parameters: {
             query?: never;
@@ -2098,10 +2114,14 @@ export interface components {
             leaseToken: string;
             errorCode: string;
         };
-        WorkerRunLease: {
-            leaseToken: string;
-            /** Format: int64 */
-            leaseEpoch: number;
+        WorkerInputDecision: {
+            /** Format: uuid */
+            inputId: string;
+            /** @enum {string} */
+            action: "start" | "steer" | "interrupt";
+            /** Format: uuid */
+            runId: string;
+            turnId?: string;
         };
         WorkerEvent: {
             /** Format: int64 */
@@ -2111,21 +2131,21 @@ export interface components {
                 [key: string]: unknown;
             };
         };
-        WorkerEventsRequest: components["schemas"]["WorkerRunLease"] & {
+        WorkerEventsRequest: {
             events: components["schemas"]["WorkerEvent"][];
         };
-        WorkerCompleteRequest: components["schemas"]["WorkerRunLease"] & {
+        WorkerCompleteRequest: {
             idempotencyKey: string;
             result: {
                 [key: string]: unknown;
             };
         };
-        WorkerFailRequest: components["schemas"]["WorkerRunLease"] & {
+        WorkerFailRequest: {
             idempotencyKey: string;
             code: string;
             message: string;
         };
-        WorkerCommandAck: components["schemas"]["WorkerRunLease"] & {
+        WorkerCommandAck: {
             /** Format: uuid */
             commandId: string;
             /** @enum {string} */
@@ -2349,6 +2369,25 @@ export interface components {
             /** @enum {string} */
             bindingStatus: "active" | "inactive";
             collaborators: components["schemas"]["WorkspaceForumCollaborator"][];
+        };
+        WorkspaceProjectScanResult: {
+            projects: components["schemas"]["WorkspaceProjectSnapshot"][];
+            scanError?: string;
+        };
+        WorkspaceProjectSnapshot: {
+            name: string;
+            relativePath: string;
+            /** @enum {string} */
+            projectSource: "workspace_root" | "workspace_child" | "codex_registered";
+            hostPath?: string;
+            available: boolean;
+            scanError?: string;
+            /** @enum {string} */
+            projectKind: "directory" | "git";
+            branch?: string;
+            headSha?: string;
+            dirty: boolean;
+            remoteUrl?: string;
         };
         WorkspaceProject: {
             /** Format: uuid */
@@ -3739,14 +3778,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Worker 实时扫描后的 Workspace */
+            /** @description Worker 实时项目扫描；未绑定时 workspace 为 null */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": {
-                        workspace: components["schemas"]["Workspace"];
+                        workspace: components["schemas"]["Workspace"] | null;
+                        scan: components["schemas"]["WorkspaceProjectScanResult"];
                     };
                 };
             };
@@ -4432,7 +4472,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 可选任务租约 */
+            /** @description 可选待同步输入 */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4440,6 +4480,29 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["WorkerClaimResponse"];
                 };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    workerDecideInput: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerInputDecision"];
+            };
+        };
+        responses: {
+            /** @description Worker 本地输入决议已确认 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Problem"];
         };
@@ -4571,10 +4634,7 @@ export interface operations {
             query: {
                 runId: string;
             };
-            header: {
-                "X-Run-Lease-Token": string;
-                "X-Run-Lease-Epoch": number;
-            };
+            header?: never;
             path: {
                 id: string;
             };
@@ -5044,9 +5104,6 @@ export interface operations {
         requestBody: {
             content: {
                 "multipart/form-data": {
-                    leaseToken: string;
-                    /** Format: int64 */
-                    leaseEpoch: number;
                     itemId: string;
                     ordinal: number;
                     /** Format: binary */

@@ -158,12 +158,17 @@ func (r *Hub) shutdown(_ error) {
 }
 
 func (r *Hub) addSession(role Role, send func(rpcMessage) error,
-	handler codex.ServerRequestHandler,
+	handler codex.ServerRequestHandler, client *Client,
 ) (*session, error) {
 	if role != RoleDesktop && role != RoleWorker {
 		return nil, errors.New("hub 下游角色无效")
 	}
 	s := newSession(r.nextID.Add(1), role, send, handler)
+	// 发布 Session 前完成双向绑定，避免上游通知读到半初始化的 Client。
+	s.client = client
+	if client != nil {
+		client.session = s
+	}
 	r.mu.Lock()
 	if r.closed {
 		r.mu.Unlock()

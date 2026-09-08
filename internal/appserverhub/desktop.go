@@ -65,7 +65,7 @@ func (r *Hub) serveDesktop(response http.ResponseWriter, request *http.Request) 
 	writer := &desktopWriter{ws: ws, queue: make(chan rpcMessage, r.options.EventBacklog),
 		done: make(chan struct{})}
 	go writer.run()
-	s, err := r.addSession(RoleDesktop, writer.write, nil)
+	s, err := r.addSession(RoleDesktop, writer.write, nil, nil)
 	if err != nil {
 		writer.close()
 		return

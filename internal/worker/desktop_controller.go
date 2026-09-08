@@ -27,8 +27,13 @@ import (
 )
 
 type desktopController struct {
-	processor *Processor
-	workspace *workspaceCodex
+	processor    *Processor
+	workspace    *workspaceCodex
+	controlValid func() bool
+}
+
+func (c *desktopController) controlEnabled() bool {
+	return c.workspace != nil && (c.controlValid == nil || c.controlValid())
 }
 
 type desktopCallState struct {
@@ -130,6 +135,10 @@ func (c *desktopController) PrepareCall(ctx context.Context,
 				if runtime.err != nil {
 					return codex.ToolCallResult{}, runtime.err
 				}
+				if !c.controlEnabled() && request.Namespace != nil &&
+					(*request.Namespace == "tyrs_hand" || request.Tool == "publish_branch") {
+					return codex.TextToolResult("Workspace 绑定已失效，Control 工具不可用", false), nil
+				}
 				return c.processor.handleRemoteHostDiscordTool(ctx, runtime.task,
 					runtime.runtime, request)
 			case <-ctx.Done():
@@ -147,6 +156,9 @@ func (c *desktopController) PrepareCall(ctx context.Context,
 					state.toolReady <- runtime
 					if runtime.err != nil {
 						return nil, runtime.err
+					}
+					if !c.controlEnabled() {
+						return nil, errors.New("当前 Workspace 绑定已失效，请在桌面端回答")
 					}
 					return c.processor.handleRemoteInteractive(ctx, runtime.task,
 						c.workspace.currentGeneration(), request)
@@ -513,6 +525,9 @@ func (c *desktopController) injectDesktopRuntime(params json.RawMessage,
 }
 
 func (c *desktopController) desktopWorkspaceAllowsPublish(cwd string) bool {
+	if !c.controlEnabled() {
+		return false
+	}
 	c.workspace.mu.Lock()
 	forums := append([]workerprotocol.WorkspaceForum(nil), c.workspace.manifest.Forums...)
 	hostRuntime := c.workspace.hostRuntime
@@ -566,7 +581,7 @@ func (c *desktopController) syncDesktopThread(
 	request workerprotocol.DesktopThreadPrepareRequest, result json.RawMessage, cause error,
 ) {
 	ctx := c.processor.workspaces.ctx
-	for ctx.Err() == nil {
+	for ctx.Err() == nil && c.controlEnabled() {
 		requestCtx, cancel := context.WithTimeout(ctx, c.controlTimeout())
 		state, err := c.processor.client.PrepareDesktopThread(requestCtx, request)
 		cancel()
@@ -783,7 +798,7 @@ func (c *desktopController) registerDesktopTurn(ctx context.Context, params json
 	requestKey, turnID string, images []workerprotocol.DesktopImage, imageNotice string,
 	state *desktopCallState,
 ) {
-	for ctx.Err() == nil {
+	for ctx.Err() == nil && c.controlEnabled() {
 		requestCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
 		_, err := c.processor.client.PrepareDesktopTurn(requestCtx,
 			workerprotocol.DesktopTurnPrepareRequest{
@@ -1113,7 +1128,7 @@ func (c *desktopController) observeDesktopSteer(call appserverhub.Call,
 		RequestKey:  desktopRequestKey(call.Method, call.Params, result),
 		Params:      call.Params,
 	}
-	for attempt := 0; attempt < 8 && ctx.Err() == nil; attempt++ {
+	for attempt := 0; attempt < 8 && ctx.Err() == nil && c.controlEnabled(); attempt++ {
 		requestCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
 		err := c.processor.client.RecordDesktopSteer(requestCtx, request)
 		cancel()

@@ -595,14 +595,18 @@ paths:
         - { $ref: "#/components/parameters/CSRFToken" }
       responses:
         "200":
-          description: Worker 实时扫描后的 Workspace
+          description: Worker 实时项目扫描；未绑定时 workspace 为 null
           content:
             application/json:
               schema:
                 type: object
-                required: [workspace]
+                required: [workspace, scan]
                 properties:
-                  workspace: { $ref: "#/components/schemas/Workspace" }
+                  workspace:
+                    allOf:
+                      - { $ref: "#/components/schemas/Workspace" }
+                    nullable: true
+                  scan: { $ref: "#/components/schemas/WorkspaceProjectScanResult" }
         default: { $ref: "#/components/responses/Problem" }
   /workers/{id}/enabled:
     put:
@@ -2076,6 +2080,29 @@ components:
         collaborators:
           type: array
           items: { $ref: "#/components/schemas/WorkspaceForumCollaborator" }
+    WorkspaceProjectScanResult:
+      type: object
+      required: [projects]
+      properties:
+        projects:
+          type: array
+          items: { $ref: "#/components/schemas/WorkspaceProjectSnapshot" }
+        scanError: { type: string }
+    WorkspaceProjectSnapshot:
+      type: object
+      required: [name, relativePath, projectSource, available, projectKind, dirty]
+      properties:
+        name: { type: string }
+        relativePath: { type: string }
+        projectSource: { type: string, enum: [workspace_root, workspace_child, codex_registered] }
+        hostPath: { type: string }
+        available: { type: boolean }
+        scanError: { type: string }
+        projectKind: { type: string, enum: [directory, git] }
+        branch: { type: string }
+        headSha: { type: string }
+        dirty: { type: boolean }
+        remoteUrl: { type: string }
     WorkspaceProject:
       type: object
       required: [id, name, relativePath, projectSource, projectKind, availabilityStatus, dirty, lastSeenAt, forums]

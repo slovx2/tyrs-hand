@@ -26,6 +26,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/auth"
+	"github.com/slovx2/tyrs-hand/internal/codexcatalog"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/database"
@@ -1828,8 +1829,15 @@ func TestWorkerRPCScansProjectsWithoutStartupWorkspace(t *testing.T) {
 	require.NoError(t, err)
 	_, credential, err := server.workers.Enroll(ctx, enrollment)
 	require.NoError(t, err)
-	repositoryID, _, _ := seedWorkerGitHubQueue(t, db, 303)
-	workspaceID, _ := seedWorkerWorkspace(t, db, repositoryID, worker.ID)
+
+	catalog := json.RawMessage(`{"data":[{"id":"host-native","model":"host-native"}]}`)
+	metadata, err := json.Marshal(map[string]any{"modelCatalog": catalog})
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `UPDATE workers SET status='online',heartbeat_at=now(),metadata=$2 WHERE id=$1`, worker.ID, metadata)
+	require.NoError(t, err)
+	catalogs, err := codexcatalog.OnlineCatalogs(ctx, db)
+	require.NoError(t, err)
+	require.JSONEq(t, string(catalog), string(catalogs[worker.ID]))
 
 	root, codexHome := t.TempDir(), t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(root, "WakeQora"), 0o700))
@@ -1853,6 +1861,30 @@ func TestWorkerRPCScansProjectsWithoutStartupWorkspace(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost,
 		"/workers/"+worker.ID.String()+"/workspace/scan", nil)
 	router.ServeHTTP(recorder, request)
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+
+	var unbound struct {
+		Workspace json.RawMessage                           `json:"workspace"`
+		Scan      workerprotocol.WorkspaceProjectScanResult `json:"scan"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &unbound))
+	require.JSONEq(t, `null`, string(unbound.Workspace))
+	require.Len(t, unbound.Scan.Projects, 2)
+	var count int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM worker_workspaces WHERE worker_id=$1`, worker.ID).Scan(&count))
+	require.Zero(t, count)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM workspace_projects`).Scan(&count))
+	require.Zero(t, count)
+	// 绑定后通过同一个 RPC 扫描，才建立正式项目记录。
+	repositoryID, _, _ := seedWorkerGitHubQueue(t, db, 303)
+	workspaceID, _ := seedWorkerWorkspace(t, db, repositoryID, worker.ID)
+	workspaceCatalogs, err := codexcatalog.WorkspaceCatalogs(ctx, db, []uuid.UUID{workspaceID})
+	require.NoError(t, err)
+	require.JSONEq(t, string(catalog), string(workspaceCatalogs[workspaceID]))
+
+	recorder = httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost,
+		"/workers/"+worker.ID.String()+"/workspace/scan", nil))
 	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
 
 	var source, hostPath string
