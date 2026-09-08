@@ -160,6 +160,18 @@ Control 暂时不可达时保留最近确认的绑定；明确返回未绑定时
 
 浏览器服务与扩展分开安装：Bridge/Browser Agent 安装后自动运行；Chrome 扩展在每台机器、每个默认 Profile 中首次手动加载一次。继续使用用户原有 Profile、登录态和标签页，不创建专用 Profile，不由安装器重启 Chrome。
 
+#### Desktop Browser 首次安装顺序
+
+首次安装一台 Worker 时，按以下顺序完成 Desktop Browser 配置：
+
+1. 先安装并启动 Worker，确认 Worker 使用正确的 Control URL、Worker ID 和长期 Credential。
+2. 等待 Worker 完成 Control 注册，并同步 SSH 配置。Desktop 使用的是 Worker 专用 SSH 入口（默认 `:2222`），不能使用宿主机运维 SSH 入口。
+3. 在图形桌面会话中安装 Bridge/Browser Agent。Linux 使用 `install-host-release.sh`，macOS 使用 `install-macos-agent.sh`。安装器会将 Browser Agent 和 Bridge 放到固定目录并启动服务。
+4. 在同一台机器的 Chrome 默认 Profile 中首次手动加载解压扩展。扩展目录和操作步骤见下文“Chrome 首次手动安装”。
+5. 在 Codex Desktop 中使用指向该 Worker `:2222` 端口的专用 SSH Host，创建或打开该 Worker 的 Desktop Thread，再选择 Desktop Browser。
+
+每台机器、每个 Chrome Profile 只需首次手动加载一次扩展。Worker、Bridge、Browser Agent 或 Chrome 重启后不需要重复安装；切换或删除 Chrome Profile 时，需要在新 Profile 中重新加载扩展。
+
 #### 下载并放置扩展
 
 Linux Worker 在已登录的图形桌面用户下运行 Bridge，需要 `/usr/local/bin/node`、`unzip` 以及该用户的 systemd user/D-Bus 会话。可通过 RDP 登录桌面后执行：
