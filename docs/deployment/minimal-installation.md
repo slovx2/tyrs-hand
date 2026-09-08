@@ -182,7 +182,7 @@ sudo bash deploy/browser/install-host-release.sh <桌面用户名> deploy/browse
 
 脚本按锁文件中的精确制品版本下载并校验 SHA-256，将 CRX 解包到 `/opt/tyrs-hand/browser/unpacked-extension`，校验扩展 ID 并保留 manifest 公钥。此目录不能删除或移动，也不能放在临时下载目录。脚本设置桌面用户归属，启动 Bridge；Chrome 尚未打开或未加载扩展时，服务启动不代表浏览器已经可用。没有用户 D-Bus 会话时应先登录图形桌面，脚本不能启动用户服务。
 
-macOS 使用 `deploy/browser/install-macos-agent.sh install <agent.tgz> <ssh-host> <ssh-port> <ssh-user> <identity-file> <known-hosts-file> <extension-id>`。安装包应来自 `browser-artifacts.lock.json` 对应架构的 Browser Agent 制品并核对 SHA-256；其扩展解包到 `$HOME/Library/Application Support/Tyrs Hand/browser-agent/unpacked-extension`。脚本同时启动 Browser Agent，沿用现有 SSH 配置要求。
+macOS 使用 `deploy/browser/install-macos-agent.sh install <agent.tgz> <ssh-host> <ssh-port> <ssh-user> <identity-file> <known-hosts-file> <extension-id>` 安装单个 Worker；多 Worker 使用 `deploy/browser/install-macos-agent.sh install <agent.tgz> <extension-id> --worker <id> <ssh-host> <ssh-port> <ssh-user> <identity-file> <known-hosts-file> [--worker ...]`。建议把 `<ssh-host>` 设置为本机 SSH 配置中的 `tyrs-ubuntu`、`tyrs-debain` 等 Host 别名。安装包应来自 `browser-artifacts.lock.json` 对应架构的 Browser Agent 制品并核对 SHA-256；其扩展解包到 `$HOME/Library/Application Support/Tyrs Hand/browser-agent/unpacked-extension`。脚本同时启动 Browser Agent，沿用现有 SSH 配置要求；已有旧版单 `ssh` 配置会在重写时迁移为 `workers` 数组。
 
 #### Chrome 首次手动安装
 

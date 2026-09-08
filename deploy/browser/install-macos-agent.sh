@@ -23,6 +23,7 @@ read_json_value() {
 usage() {
   echo "用法：" >&2
   echo "  $0 install <agent.tgz> <ssh-host> <ssh-port> <ssh-user> <identity-file> <known-hosts-file> <extension-id>" >&2
+  echo "  $0 install <agent.tgz> <extension-id> --worker <id> <ssh-host> <ssh-port> <ssh-user> <identity-file> <known-hosts-file> [--worker ...]" >&2
   echo "  $0 <status|rollback|uninstall>" >&2
   exit 2
 }
@@ -57,17 +58,38 @@ case "$operation" in
   *) usage ;;
 esac
 
-[[ $# == 8 ]] || usage
 bundle=$2
-ssh_host=$3
-ssh_port=$4
-ssh_user=$5
-identity_file=$6
-known_hosts_file=$7
-extension_id=$8
-[[ -f $bundle && -f $identity_file && -f $known_hosts_file ]] || { echo "安装文件或 SSH 文件不存在" >&2; exit 1; }
-[[ $ssh_port =~ ^[0-9]+$ && $extension_id =~ ^[a-p]{32}$ ]] || { echo "SSH 端口或扩展 ID 无效" >&2; exit 1; }
-(( ssh_port >= 1 && ssh_port <= 65535 )) || { echo "SSH 端口超出范围" >&2; exit 1; }
+worker_args=()
+if [[ $# == 8 ]]; then
+  extension_id=$8
+  worker_args=(default "$3" "$4" "$5" "$6" "$7")
+else
+  [[ $# -ge 9 ]] || usage
+  extension_id=$3
+  shift 3
+  while [[ $# -gt 0 ]]; do
+    [[ $1 == --worker && $# -ge 7 ]] || usage
+    worker_args+=("$2" "$3" "$4" "$5" "$6" "$7")
+    shift 7
+  done
+fi
+[[ -f $bundle ]] || { echo "Browser Agent 安装包不存在" >&2; exit 1; }
+[[ $extension_id =~ ^[a-p]{32}$ ]] || { echo "扩展 ID 无效" >&2; exit 1; }
+(( ${#worker_args[@]} >= 6 && ${#worker_args[@]} % 6 == 0 )) || { echo "至少需要一个 Worker" >&2; exit 1; }
+for ((index = 0; index < ${#worker_args[@]}; index += 6)); do
+  worker_id=${worker_args[index]}
+  ssh_host=${worker_args[index + 1]}
+  ssh_port=${worker_args[index + 2]}
+  ssh_user=${worker_args[index + 3]}
+  identity_file=${worker_args[index + 4]}
+  known_hosts_file=${worker_args[index + 5]}
+  [[ $worker_id =~ ^[A-Za-z0-9_.:-]+$ && $ssh_host =~ ^[A-Za-z0-9_.:-]+$ &&
+    $ssh_user =~ ^[A-Za-z0-9._-]+$ && $ssh_port =~ ^[0-9]+$ ]] || {
+    echo "Worker 或 SSH 参数无效: $worker_id" >&2; exit 1;
+  }
+  (( ssh_port >= 1 && ssh_port <= 65535 )) || { echo "SSH 端口超出范围" >&2; exit 1; }
+  [[ -f $identity_file && -f $known_hosts_file ]] || { echo "SSH 文件不存在: $worker_id" >&2; exit 1; }
+done
 
 mkdir -p "$agent_root/releases" "$log_root" "$HOME/Library/LaunchAgents"
 temporary=$(mktemp -d "$agent_root/releases/.install.XXXXXX")
@@ -91,14 +113,23 @@ instance_id=$(read_json_value "$config" instanceId || true)
 [[ -n $extension_token ]] || extension_token=$(/usr/bin/openssl rand -hex 32)
 [[ -n $instance_id ]] || instance_id=$(/usr/bin/uuidgen | tr '[:upper:]' '[:lower:]')
 "$destination/node" - "$config" "$extension_id" "$extension_token" \
-  "$agent_root/current/app/tyrs-browser-extension.crx" "$instance_id" "$ssh_host" "$ssh_port" \
-  "$ssh_user" "$identity_file" "$known_hosts_file" <<'NODE'
+  "$agent_root/current/app/tyrs-browser-extension.crx" "$instance_id" "${worker_args[@]}" <<'NODE'
 const fs = require('fs');
-const [file, extensionId, extensionToken, extensionCrxPath, instanceId,
-  host, port, user, identityFile, knownHostsFile] = process.argv.slice(2);
+const [file, extensionId, extensionToken, extensionCrxPath, instanceId, ...workerArgs] = process.argv.slice(2);
+if (!workerArgs.length || workerArgs.length % 6)
+  throw new Error('至少需要一个完整的 Worker SSH 配置');
+const ids = new Set();
+const workers = [];
+for (let index = 0; index < workerArgs.length; index += 6) {
+  const [id, host, port, user, identityFile, knownHostsFile] = workerArgs.slice(index, index + 6);
+  if (ids.has(id))
+    throw new Error(`Worker ID 重复: ${id}`);
+  ids.add(id);
+  workers.push({ id, ssh: { host, port: Number(port), user, identityFile, knownHostsFile } });
+}
 fs.writeFileSync(file, JSON.stringify({ extensionId, extensionToken,
   extensionCrxPath, instanceId, publicPort: 8931, proxyPort: 8932,
-  ssh: { host, port: Number(port), user, identityFile, knownHostsFile } }, null, 2) + '\n', { mode: 0o600 });
+  workers }, null, 2) + '\n', { mode: 0o600 });
 NODE
 chmod 0600 "$config"
 
