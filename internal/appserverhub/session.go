@@ -22,6 +22,9 @@ type session struct {
 	closed        bool
 	closeErr      error
 	client        *Client
+	clientName    string
+	identitySet   bool
+	desktopTools  bool
 }
 
 func newSession(id int64, role Role, send func(rpcMessage) error,

@@ -31,6 +31,7 @@ type MessageTransport interface {
 
 type SocketClientOptions struct {
 	SocketPath           string
+	ClientName           string
 	RequestTimeout       time.Duration
 	ServerRequestTimeout time.Duration
 	EventBacklog         int
@@ -107,8 +108,12 @@ func ConnectTransport(ctx context.Context, transport MessageTransport,
 	initCtx, cancel := context.WithTimeout(ctx, options.RequestTimeout)
 	defer cancel()
 	var result json.RawMessage
+	clientName := options.ClientName
+	if clientName == "" {
+		clientName = "tyrs-hand"
+	}
 	if err := client.Call(initCtx, "initialize", map[string]any{
-		"clientInfo":   map[string]string{"name": "tyrs-hand", "title": "Tyrs Hand", "version": "0.1.0"},
+		"clientInfo":   map[string]string{"name": clientName, "title": "Tyrs Hand", "version": "0.1.0"},
 		"capabilities": map[string]any{"experimentalApi": true},
 	}, &result); err != nil {
 		_ = client.Close()

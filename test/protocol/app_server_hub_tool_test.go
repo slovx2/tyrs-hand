@@ -109,7 +109,7 @@ supports_websockets = false
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = worker.Close() })
 	desktop, err := codex.ConnectSocket(context.Background(), codex.SocketClientOptions{
-		SocketPath: hubSocket, RequestTimeout: 30 * time.Second,
+		SocketPath: hubSocket, RequestTimeout: 30 * time.Second, ClientName: "Codex Desktop",
 		ServerRequestHandler: func(_ context.Context, request codex.ServerRequest) (any, error) {
 			desktopCalls.Add(1)
 			toolCalled <- request

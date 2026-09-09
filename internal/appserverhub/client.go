@@ -47,6 +47,9 @@ func (r *Hub) OpenClient(options ClientOptions) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	client.session.mu.Lock()
+	client.session.desktopTools = options.Role == RoleDesktop && options.DesktopTools && options.ServerRequestHandler != nil
+	client.session.mu.Unlock()
 	return client, nil
 }
 

@@ -30,6 +30,8 @@ type ClientOptions struct {
 	Role                 Role
 	EventBacklog         int
 	ServerRequestHandler codex.ServerRequestHandler
+	// DesktopTools 仅供具备动态工具执行器的进程内客户端显式声明。
+	DesktopTools bool
 }
 
 type Stats struct {

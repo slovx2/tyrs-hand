@@ -15,6 +15,9 @@ func (r *Hub) routeCall(ctx context.Context, source *session, method string,
 ) (json.RawMessage, error) {
 	class := classifyMethod(method)
 	if class == methodLocal {
+		if err := source.identifyClient(params); err != nil {
+			return nil, err
+		}
 		return r.upstream.InitializeResult(), nil
 	}
 	// 未知方法也透明交给固定版本的 app-server 判定，避免 Hub 升级滞后破坏 Desktop 新能力。
@@ -152,6 +155,7 @@ func (r *Hub) completeControlled(ctx context.Context, call Call, plan CallPlan,
 
 func (r *Hub) routeNotification(source *session, method string, params json.RawMessage) error {
 	if method == "initialized" {
+		source.initializeDesktopTools()
 		return nil
 	}
 	return r.upstream.Notify(method, params)

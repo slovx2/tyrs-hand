@@ -24,6 +24,7 @@ func toolTestSession(t *testing.T, hub *Hub, role Role, calls *atomic.Int32) *se
 		return codex.TextToolResult(string(role), true), nil
 	}, nil)
 	require.NoError(t, err)
+	source.desktopTools = role == RoleDesktop
 	return source
 }
 
@@ -85,8 +86,9 @@ func TestToolRoutingPreservesTurnOwnerAndReconnects(t *testing.T) {
 	require.NoError(t, err)
 	require.Same(t, first, owner)
 	hub.removeSession(first)
-	_, err = hub.desktopToolOwner(context.Background(), "thread", "one")
-	require.Error(t, err)
+	owner, err = hub.desktopToolOwner(context.Background(), "thread", "one")
+	require.NoError(t, err)
+	require.Same(t, second, owner)
 	hub.bindDesktopTools(second, "thread", resume)
 	owner, err = hub.desktopToolOwner(context.Background(), "thread", "one")
 	require.NoError(t, err)
@@ -96,25 +98,26 @@ func TestToolRoutingPreservesTurnOwnerAndReconnects(t *testing.T) {
 	owner, err = hub.desktopToolOwner(context.Background(), "thread", "two")
 	require.NoError(t, err)
 	require.Same(t, second, owner)
-	_, err = hub.desktopToolOwner(context.Background(), "thread", "one")
-	require.Error(t, err)
+	require.NotContains(t, hub.toolThreads["thread"].turns, "one")
 	hub.updateToolTurn(codex.Event{Method: "thread/archived", Params: toolTestJSON(map[string]string{"threadId": "thread"})})
 	require.Empty(t, hub.toolThreads)
 }
 
-func TestToolRoutingWorkerTurnCannotBorrowDesktop(t *testing.T) {
+func TestToolRoutingWorkerTurnUsesAvailableDesktop(t *testing.T) {
 	hub := toolTestHub()
 	var calls atomic.Int32
 	worker := toolTestSession(t, hub, RoleWorker, &calls)
 	desktop := toolTestSession(t, hub, RoleDesktop, &calls)
 	toolTestStart(hub, worker, "thread", "turn")
 	hub.bindDesktopTools(desktop, "thread", json.RawMessage(`{"thread":{"turns":[{"id":"turn","status":"inProgress"}]}}`))
-	_, err := hub.desktopToolOwner(context.Background(), "thread", "turn")
-	require.Error(t, err)
+	owner, err := hub.desktopToolOwner(context.Background(), "thread", "turn")
+	require.NoError(t, err)
+	require.Same(t, desktop, owner)
 	hub.removeSession(worker)
 	hub.bindDesktopTools(desktop, "thread", json.RawMessage(`{"thread":{"turns":[{"id":"turn","status":"inProgress"}]}}`))
-	_, err = hub.desktopToolOwner(context.Background(), "thread", "turn")
-	require.Error(t, err)
+	owner, err = hub.desktopToolOwner(context.Background(), "thread", "turn")
+	require.NoError(t, err)
+	require.Same(t, desktop, owner)
 }
 
 func TestToolRoutingWaitsForExactStartResponse(t *testing.T) {
@@ -162,8 +165,11 @@ func TestToolRoutingCleansFailedAndCompletedStarts(t *testing.T) {
 				hub.removeSession(desktop)
 			}
 			hub.finishToolTurnStart("thread", pending, json.RawMessage(`{"turn":{"id":"turn"}}`), startErr)
-			_, err := hub.desktopToolOwner(context.Background(), "thread", "turn")
-			require.Error(t, err)
+			select {
+			case <-pending.done:
+			default:
+				t.Fatal("启动等待未释放")
+			}
 			if action != "disconnect" {
 				require.Empty(t, hub.toolThreads)
 			}
@@ -206,14 +212,27 @@ func TestToolRoutingRestoresExistingAndEphemeralThreads(t *testing.T) {
 		_, err := hub.routeToolCall(context.Background(), toolTestRequest("codex_app", "read_thread", "turn"))
 		require.NoError(t, err)
 		require.Equal(t, int32(1), calls.Load())
-		_, err = hub.desktopToolOwner(context.Background(), "thread", "old")
-		require.Error(t, err)
+		require.NotContains(t, hub.toolThreads["thread"].turns, "old")
 		_, err = hub.routeToolCall(context.Background(), toolTestRequest("git", "status", "turn"))
 		require.Error(t, err)
 		hub.mu.Lock()
 		hub.unbindDesktopTools(desktop, "thread")
 		hub.mu.Unlock()
+		hub.removeSession(desktop)
 		_, err = hub.desktopToolOwner(context.Background(), "thread", "turn")
 		require.Error(t, err)
 	}
+}
+
+func TestMobileIdentityCannotExecuteDesktopTools(t *testing.T) {
+	hub := toolTestHub()
+	var workerCalls, mobileCalls atomic.Int32
+	toolTestSession(t, hub, RoleWorker, &workerCalls)
+	mobile := toolTestSession(t, hub, RoleDesktop, &mobileCalls)
+	require.NoError(t, mobile.identifyClient(json.RawMessage(`{"clientInfo":{"name":"tyrs_hand_mobile"}}`)))
+	mobile.initializeDesktopTools()
+	require.False(t, mobile.canExecuteDesktopTools())
+	hub.bindDesktopTools(mobile, "thread", json.RawMessage(`{"thread":{"turns":[{"id":"turn","status":"inProgress"}]}}`))
+	_, err := hub.desktopToolOwner(context.Background(), "thread", "turn")
+	require.Error(t, err)
 }

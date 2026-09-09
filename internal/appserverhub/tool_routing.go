@@ -90,13 +90,25 @@ func (r *Hub) desktopToolOwner(ctx context.Context, threadID, turnID string) (*s
 				}
 			}
 		}
-		available := found && owner.desktop && owner.source != nil && r.sessions[owner.source.id] == owner.source
+		available := found && owner.source.canExecuteDesktopTools() && r.sessions[owner.source.id] == owner.source
+		var fallback *session
+		if !available && wait == nil {
+			// 优先原始桌面，否则在同一 Hub 的可执行桌面中稳定选一个；无需订阅目标 Thread。
+			for _, candidate := range r.sessions {
+				if candidate.canExecuteDesktopTools() && (fallback == nil || candidate.id < fallback.id) {
+					fallback = candidate
+				}
+			}
+		}
 		r.mu.Unlock()
 		if available {
 			return owner.source, nil
 		}
 		if wait == nil {
-			return nil, fmt.Errorf("桌面动态工具没有可用的所属 Desktop 连接，请在桌面重新打开该任务后重试")
+			if fallback != nil {
+				return fallback, nil
+			}
+			return nil, fmt.Errorf("当前没有可执行动态工具的 Codex Desktop 连接，请连接桌面端后重试；移动端不具备此工具执行能力")
 		}
 		// 工具请求可能早于 turn/start 的响应；等待精确的 turnId 绑定，不猜测所属连接。
 		select {
@@ -110,7 +122,7 @@ func (r *Hub) desktopToolOwner(ctx context.Context, threadID, turnID string) (*s
 }
 
 func (r *Hub) bindDesktopTools(source *session, threadID string, result json.RawMessage) {
-	if source.role != RoleDesktop {
+	if !source.canExecuteDesktopTools() {
 		return
 	}
 	var response struct {

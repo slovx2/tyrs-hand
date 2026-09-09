@@ -26,7 +26,7 @@ func TestHubRoutesDesktopToolsToCallingDesktop(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = worker.Close() })
 	desktopCalls := make(chan codex.ServerRequest, 4)
-	desktop, err := hub.OpenClient(appserverhub.ClientOptions{Role: appserverhub.RoleDesktop,
+	desktop, err := hub.OpenClient(appserverhub.ClientOptions{Role: appserverhub.RoleDesktop, DesktopTools: true,
 		ServerRequestHandler: func(_ context.Context, request codex.ServerRequest) (any, error) {
 			desktopCalls <- request
 			return codex.TextToolResult("desktop-ok", true), nil
