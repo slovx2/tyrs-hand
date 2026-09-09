@@ -24,6 +24,7 @@ type Hub struct {
 
 	mu                sync.Mutex
 	sessions          map[int64]*session
+	toolThreads       map[string]*toolThreadState
 	ephemeralThreads  map[string]bool
 	archiveOperations map[string]*archiveOperation
 	nextID            atomic.Int64
@@ -49,6 +50,7 @@ func Start(ctx context.Context, options Options) (*Hub, error) {
 		options.EventBacklog = 4096
 	}
 	hub := &Hub{options: options, sessions: make(map[int64]*session),
+		toolThreads:       make(map[string]*toolThreadState),
 		ephemeralThreads:  make(map[string]bool),
 		archiveOperations: make(map[string]*archiveOperation), done: make(chan struct{})}
 	upstream, err := codex.ConnectSocket(ctx, codex.SocketClientOptions{
@@ -140,6 +142,7 @@ func (r *Hub) shutdown(_ error) {
 		sessions = append(sessions, item)
 	}
 	r.sessions = make(map[int64]*session)
+	r.toolThreads = make(map[string]*toolThreadState)
 	close(r.done)
 	r.mu.Unlock()
 	for _, item := range sessions {
@@ -197,6 +200,7 @@ func (r *Hub) removeSession(s *session) {
 	if r.sessions[s.id] == s {
 		delete(r.sessions, s.id)
 	}
+	r.unbindDesktopTools(s, "")
 	r.mu.Unlock()
 	s.close(errSessionClosed)
 	if s.role != RoleDesktop {

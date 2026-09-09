@@ -20,6 +20,22 @@ import (
 )
 
 func TestRealCodexHubDesktopAndWorkerDynamicToolRoundTrip(t *testing.T) {
+	for _, tc := range []struct {
+		namespace, name string
+		executor        appserverhub.Role
+	}{
+		{"github", "echo", appserverhub.RoleWorker},
+		{"codex_app", "list_threads", appserverhub.RoleDesktop},
+		{"codex_app", "read_thread", appserverhub.RoleDesktop},
+		{"codex_app", "read_thread_terminal", appserverhub.RoleDesktop},
+	} {
+		t.Run(tc.namespace+"/"+tc.name, func(t *testing.T) {
+			testRealCodexHubToolRoundTrip(t, tc.namespace, tc.name, tc.executor)
+		})
+	}
+}
+
+func testRealCodexHubToolRoundTrip(t *testing.T, namespace, tool string, executor appserverhub.Role) {
 	bin := fixedCodexBinary(t)
 	var responseNumber atomic.Int32
 	responses := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -30,8 +46,8 @@ func TestRealCodexHubDesktopAndWorkerDynamicToolRoundTrip(t *testing.T) {
 			_, _ = fmt.Fprint(response, sse(
 				map[string]any{"type": "response.created", "response": map[string]any{"id": "hub-resp-1"}},
 				map[string]any{"type": "response.output_item.done", "item": map[string]any{
-					"type": "function_call", "call_id": "hub-call-1", "namespace": "github",
-					"name": "echo", "arguments": `{"message":"hub"}`,
+					"type": "function_call", "call_id": "hub-call-1", "namespace": namespace,
+					"name": tool, "arguments": `{"message":"hub"}`,
 				}}, completedResponse("hub-resp-1")))
 			return
 		}
@@ -83,8 +99,10 @@ supports_websockets = false
 	t.Cleanup(func() { require.NoError(t, hub.Close()) })
 
 	toolCalled := make(chan codex.ServerRequest, 1)
+	var workerCalls, desktopCalls atomic.Int32
 	worker, err := hub.OpenClient(appserverhub.ClientOptions{Role: appserverhub.RoleWorker,
 		ServerRequestHandler: func(_ context.Context, request codex.ServerRequest) (any, error) {
+			workerCalls.Add(1)
 			toolCalled <- request
 			return codex.TextToolResult("hub-tool-ok", true), nil
 		}})
@@ -92,6 +110,11 @@ supports_websockets = false
 	t.Cleanup(func() { _ = worker.Close() })
 	desktop, err := codex.ConnectSocket(context.Background(), codex.SocketClientOptions{
 		SocketPath: hubSocket, RequestTimeout: 30 * time.Second,
+		ServerRequestHandler: func(_ context.Context, request codex.ServerRequest) (any, error) {
+			desktopCalls.Add(1)
+			toolCalled <- request
+			return codex.TextToolResult("hub-tool-ok", true), nil
+		},
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = desktop.Close() })
@@ -103,9 +126,9 @@ supports_websockets = false
 	}
 	require.NoError(t, desktop.Call(context.Background(), "thread/start", map[string]any{
 		"cwd": workspace, "model": "mock-model", "approvalPolicy": "never", "sandbox": "read-only",
-		"dynamicTools": []map[string]any{{"type": "namespace", "name": "github",
+		"dynamicTools": []map[string]any{{"type": "namespace", "name": namespace,
 			"description": "Hub tools", "tools": []map[string]any{{
-				"type": "function", "name": "echo", "description": "Echo",
+				"type": "function", "name": tool, "description": "Echo",
 				"inputSchema": map[string]any{"type": "object", "properties": map[string]any{
 					"message": map[string]string{"type": "string"}}, "required": []string{"message"},
 					"additionalProperties": false},
@@ -131,10 +154,12 @@ supports_websockets = false
 	case request := <-toolCalled:
 		require.Equal(t, "item/tool/call", request.Method)
 	case <-time.After(10 * time.Second):
-		t.Fatal("真实 Codex 的动态工具请求没有路由到 Worker")
+		t.Fatal("真实 Codex 的动态工具请求没有送达")
 	}
 	waitForHubTurnCompleted(t, desktopEvents.Events(), started.Thread.ID, turn.Turn.ID)
 	waitForHubTurnCompleted(t, workerEvents.Events(), started.Thread.ID, turn.Turn.ID)
+	require.Equal(t, int32(1), workerCalls.Load()+desktopCalls.Load())
+	require.Equal(t, executor == appserverhub.RoleWorker, workerCalls.Load() == 1)
 	require.Equal(t, int64(1), hub.Stats().UpstreamConnections)
 	require.Equal(t, int64(1), hub.Stats().UpstreamInitializations)
 }

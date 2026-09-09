@@ -107,7 +107,13 @@ func (r *Hub) routeCall(ctx context.Context, source *session, method string,
 			}
 		}
 		if !skipUpstream {
+			var toolTurn *pendingToolTurn
+			threadID, _ := threadScope(plan.Params)
+			if method == "turn/start" {
+				toolTurn = r.beginToolTurn(source, threadID)
+			}
 			upstreamErr = r.upstream.Call(ctx, method, plan.Params, &result)
+			r.finishToolTurnStart(threadID, toolTurn, result, upstreamErr)
 		}
 	}
 	if upstreamErr != nil {
@@ -126,6 +132,7 @@ func (r *Hub) routeCall(ctx context.Context, source *session, method string,
 			ephemeral = true
 		}
 		r.subscribeCreatedThread(source, threadID, ephemeral)
+		r.bindDesktopTools(source, threadID, result)
 	}
 	if controlled {
 		return r.completeControlled(ctx, call, plan, result, nil)
@@ -175,6 +182,9 @@ func (r *Hub) unsubscribe(ctx context.Context, source *session,
 	wasSubscribed := false
 	if source.role == RoleDesktop {
 		wasSubscribed = source.unsubscribe(threadID)
+		r.mu.Lock()
+		r.unbindDesktopTools(source, threadID)
+		r.mu.Unlock()
 	}
 	// 普通 Thread 始终由 Worker 隐式消费，任何 Desktop 都不能取消唯一的 upstream 订阅。
 	// 临时 Thread 不进入 Worker，最后一个 Desktop 离开时才通知 upstream。
@@ -211,6 +221,7 @@ func (r *Hub) anyDesktopSubscribed(threadID string) bool {
 
 func (r *Hub) forwardEvents() {
 	for event := range r.upstreamEvents.Events() {
+		r.updateToolTurn(event)
 		threadID, _ := threadScope(event.Params)
 		switch event.Method {
 		case "turn/started", "turn/completed", "thread/archived", "thread/unarchived":
@@ -464,11 +475,7 @@ func (r *Hub) handleServerRequest(ctx context.Context,
 	threadID, _ := threadScope(request.Params)
 	switch request.Method {
 	case "item/tool/call":
-		worker := r.workerForThread(threadID)
-		if worker == nil {
-			return nil, errors.New("当前 Thread 没有活动的 Worker 工具执行器")
-		}
-		return worker.invoke(ctx, request)
+		return r.routeToolCall(ctx, request)
 	case "item/tool/requestUserInput":
 		return r.firstInteractiveAnswer(ctx, request, threadID)
 	default:
