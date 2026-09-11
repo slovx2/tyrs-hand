@@ -133,15 +133,14 @@ func (s *Service) blockHeartbeatTx(ctx context.Context, tx *sql.Tx, task Task) (
 		return false, errors.New("heartbeat 缺少目标 Session")
 	}
 	var lifecycle string
-	var lastActivity time.Time
 	var busy bool
-	err := tx.QueryRowContext(ctx, `SELECT session.lifecycle_state,session.last_activity_at,
+	err := tx.QueryRowContext(ctx, `SELECT session.lifecycle_state,
 		EXISTS(SELECT 1 FROM codex_turn_intents intent
 			WHERE intent.session_id=session.id AND intent.status IN
 			('placement_pending','queued','dispatching','awaiting_confirmation','running',
 			 'waiting_for_user','reconciling','retry_wait'))
 		FROM workspace_sessions session WHERE session.id=$1 FOR UPDATE`, *task.TargetSessionID).
-		Scan(&lifecycle, &lastActivity, &busy)
+		Scan(&lifecycle, &busy)
 	if errors.Is(err, sql.ErrNoRows) || lifecycle == "archived" {
 		_, updateErr := tx.ExecContext(ctx, `UPDATE scheduled_tasks SET status='paused',
 			next_run_at=NULL,blocked_until=NULL,last_error_code='target_session_inactive',
@@ -157,22 +156,8 @@ func (s *Service) blockHeartbeatTx(ctx context.Context, tx *sql.Tx, task Task) (
 			last_error_message=NULL,updated_at=now() WHERE id=$1`, task.ID)
 		return true, updateErr
 	}
-	now := s.now().UTC()
-	if task.ScheduleKind == "interval" && task.IntervalSeconds != nil {
-		base := lastActivity
-		if task.LastRunAt != nil && task.LastRunAt.After(base) {
-			base = *task.LastRunAt
-		}
-		eligible := base.Add(time.Duration(*task.IntervalSeconds) * time.Second)
-		if eligible.After(now) {
-			_, err = tx.ExecContext(ctx, `UPDATE scheduled_tasks SET blocked_until=$2,
-				last_error_code=NULL,last_error_message=NULL,updated_at=now() WHERE id=$1`,
-				task.ID, eligible)
-			return true, err
-		}
-	}
 	if busy {
-		_, err = tx.ExecContext(ctx, `UPDATE scheduled_tasks SET
+		_, err := tx.ExecContext(ctx, `UPDATE scheduled_tasks SET
 			blocked_until=now()+interval '1 minute',updated_at=now() WHERE id=$1`, task.ID)
 		return true, err
 	}

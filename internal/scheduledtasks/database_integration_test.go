@@ -411,7 +411,7 @@ func TestScheduledTasksDatabaseIntegration(t *testing.T) {
 		require.Equal(t, "target_session_inactive", *archivedTask.LastErrorCode)
 	})
 
-	t.Run("interval cooldown", func(t *testing.T) {
+	t.Run("heartbeat 不因最近活动时间阻塞", func(t *testing.T) {
 		fixture := seedScheduledFixture(t, db, "cooldown")
 		service := NewService(db, time.Minute, 5, 3)
 		occurrence := time.Now().UTC().Add(-2 * time.Minute).Truncate(time.Second)
@@ -425,18 +425,50 @@ func TestScheduledTasksDatabaseIntegration(t *testing.T) {
 		_, err = db.ExecContext(ctx, `UPDATE workspace_sessions SET last_activity_at=now()
 			WHERE id=$1`, fixture.session)
 		require.NoError(t, err)
+		_, err = db.ExecContext(ctx, `UPDATE scheduled_tasks SET last_run_at=now()
+			WHERE id=$1`, task.ID)
+		require.NoError(t, err)
 		service.now = time.Now
 		materialized, err := service.MaterializeDueWorker(ctx, fixture.workerID)
 		require.NoError(t, err)
 		require.True(t, materialized)
 		task, err = service.taskForSession(ctx, task.ID, fixture.session, false)
 		require.NoError(t, err)
-		require.NotNil(t, task.BlockedUntil)
-		require.True(t, task.BlockedUntil.After(time.Now()))
+		require.Nil(t, task.BlockedUntil)
 		var runCount int
 		require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM scheduled_task_runs
 			WHERE scheduled_task_id=$1`, task.ID).Scan(&runCount))
-		require.Zero(t, runCount)
+		require.Equal(t, 1, runCount)
+
+		var heartbeatIntent uuid.UUID
+		require.NoError(t, db.QueryRowContext(ctx, `SELECT intent_id FROM scheduled_task_runs
+			WHERE scheduled_task_id=$1`, task.ID).Scan(&heartbeatIntent))
+		_, err = db.ExecContext(ctx, `UPDATE codex_turn_intents SET status='completed'
+			WHERE id=$1`, heartbeatIntent)
+		require.NoError(t, err)
+		tx, err = db.BeginTx(ctx, nil)
+		require.NoError(t, err)
+		userIntent, inserted, err := codexcontrol.NewRepository(db, time.Minute).Enqueue(ctx, tx,
+			codexcontrol.EnqueueRequest{SourceType: codexcontrol.SourceWorkspace,
+				SessionID: fixture.session, InputSurface: "client",
+				IdempotencyKey: "user-request-" + uuid.NewString(), Instruction: "user request",
+				Behavior: "start_when_idle", ReplyPolicy: "silent"})
+		require.NoError(t, err)
+		require.True(t, inserted)
+		require.NoError(t, tx.Commit())
+		_, err = db.ExecContext(ctx, `UPDATE codex_turn_intents SET status='running'
+			WHERE id=$1`, userIntent)
+		require.NoError(t, err)
+		_, err = db.ExecContext(ctx, `UPDATE scheduled_tasks SET status='active',
+			next_run_at=now()-interval '1 minute',blocked_until=NULL WHERE id=$1`, task.ID)
+		require.NoError(t, err)
+		materialized, err = service.MaterializeDueWorker(ctx, fixture.workerID)
+		require.NoError(t, err)
+		require.True(t, materialized)
+		task, err = service.taskForSession(ctx, task.ID, fixture.session, false)
+		require.NoError(t, err)
+		require.NotNil(t, task.BlockedUntil)
+		require.True(t, task.BlockedUntil.After(time.Now()))
 	})
 
 	t.Run("heartbeat Control 跟随 Workspace 当前 Worker", func(t *testing.T) {
