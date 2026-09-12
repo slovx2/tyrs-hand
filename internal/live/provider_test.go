@@ -23,7 +23,7 @@ func TestHTTPProviderCreateSession(t *testing.T) {
 		_, _ = w.Write([]byte(`{"session":{"id":"opaque-id"},"transport":{"type":"webrtc","sdp":"answer"}}`))
 	}))
 	defer server.Close()
-	result, err := NewProvider(server.URL, "secret").CreateSession(context.Background(), "offer", SessionConfig{
+	result, err := NewProvider(server.URL, "secret").CreateSession(context.Background(), "offer\r\n", SessionConfig{
 		Model: "gpt-live-1", Voice: "marin", Instructions: "be brief",
 		Input: []InputMessage{{Type: "message", Role: "user", Content: []InputContent{{Type: "input_text", Text: "hello"}}}},
 	})
@@ -31,6 +31,8 @@ func TestHTTPProviderCreateSession(t *testing.T) {
 	require.Equal(t, "opaque-id", result.ProviderSessionID)
 	require.Equal(t, "answer", result.AnswerSDP)
 	require.Equal(t, "gpt-live-1", requestBody["session"].(map[string]any)["model"])
+	transport := requestBody["transport"].(map[string]any)
+	require.Equal(t, "offer\r\n", transport["sdp"])
 	session := requestBody["session"].(map[string]any)
 	audio := session["audio"].(map[string]any)
 	output := audio["output"].(map[string]any)

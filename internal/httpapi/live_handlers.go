@@ -155,9 +155,8 @@ func (s *Server) createLiveSessionForConversation(c *gin.Context, recovering boo
 		badRequest(c, err)
 		return
 	}
-	request.OfferSDP = strings.TrimSpace(request.OfferSDP)
 	request.Platform = strings.TrimSpace(request.Platform)
-	if request.OfferSDP == "" || len(request.OfferSDP) > 4<<20 ||
+	if strings.TrimSpace(request.OfferSDP) == "" || len(request.OfferSDP) > 4<<20 ||
 		(request.Platform != "web" && request.Platform != "android") {
 		badRequest(c, errors.New("SDP offer 或客户端平台无效"))
 		return

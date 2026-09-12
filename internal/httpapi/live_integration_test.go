@@ -58,7 +58,7 @@ func newFakeLiveServer(t *testing.T) *fakeLiveServer {
 					SDP  string `json:"sdp"`
 				} `json:"transport"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Transport.Type != "webrtc" {
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil || request.Transport.Type != "webrtc" || !strings.HasSuffix(request.Transport.SDP, "\r\n") {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
@@ -233,7 +233,7 @@ func TestLiveControlWithFakeProvider(t *testing.T) {
 
 	created := clientJSONRequest(t, http.MethodPost, httpServer.URL+"/api/v1/client/live-conversations/"+
 		conversationBody.ID.String()+"/sessions", loginBody.AccessToken,
-		map[string]any{"offerSdp": "offer-sdp", "platform": "web"})
+		map[string]any{"offerSdp": "offer-sdp\r\n", "platform": "web"})
 	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
 	var createdBody liveSessionResponse
 	require.NoError(t, json.Unmarshal(created.Body.Bytes(), &createdBody))
@@ -267,7 +267,7 @@ func TestLiveControlWithFakeProvider(t *testing.T) {
 
 	recovered := clientJSONRequest(t, http.MethodPost, httpServer.URL+"/api/v1/client/live-conversations/"+
 		conversationBody.ID.String()+"/recover", loginBody.AccessToken,
-		map[string]any{"offerSdp": "recover-offer", "platform": "web"})
+		map[string]any{"offerSdp": "recover-offer\r\n", "platform": "web"})
 	require.Equal(t, http.StatusCreated, recovered.Code, recovered.Body.String())
 	var recoveredBody liveSessionResponse
 	require.NoError(t, json.Unmarshal(recovered.Body.Bytes(), &recoveredBody))
