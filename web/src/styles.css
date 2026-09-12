@@ -1857,6 +1857,19 @@ h2 {
   flex-wrap: wrap;
   gap: 0.6rem;
 }
+.live-recording {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 2.35rem;
+}
+.live-recording .muted {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .button {
   display: inline-flex;
   align-items: center;

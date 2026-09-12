@@ -1,6 +1,7 @@
 package live
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -16,6 +17,18 @@ import (
 
 var ErrNotConfigured = errors.New("Live API 未配置")
 var ErrSessionExpired = errors.New("Live session 已失效")
+var ErrSidebandBinary = errors.New("Live sideband 不允许二进制帧")
+var ErrSidebandInvalidJSON = errors.New("Live sideband 返回了无效 JSON")
+
+type SidebandBinaryError struct {
+	Size int
+}
+
+func (e *SidebandBinaryError) Error() string {
+	return fmt.Sprintf("%s（%d bytes）", ErrSidebandBinary, e.Size)
+}
+
+func (e *SidebandBinaryError) Unwrap() error { return ErrSidebandBinary }
 
 type SessionConfig struct {
 	Model        string         `json:"model"`
@@ -55,14 +68,19 @@ type HTTPProvider struct {
 }
 
 func NewProvider(baseURL, apiKey string) *HTTPProvider {
-	return &HTTPProvider{BaseURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"), APIKey: strings.TrimSpace(apiKey), HTTP: &http.Client{Timeout: 30 * time.Second}, Dialer: websocket.DefaultDialer}
+	return &HTTPProvider{
+		BaseURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"),
+		APIKey:  strings.TrimSpace(apiKey),
+		HTTP:    &http.Client{Timeout: 30 * time.Second},
+		Dialer:  websocket.DefaultDialer,
+	}
 }
 func (p *HTTPProvider) validate() error {
 	if p == nil || p.BaseURL == "" || p.APIKey == "" {
 		return ErrNotConfigured
 	}
 	u, err := url.ParseRequestURI(p.BaseURL)
-	if err != nil || u.Scheme == "" || u.Host == "" {
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
 		return errors.New("Live API Base URL 无效")
 	}
 	return nil
@@ -82,7 +100,7 @@ func (p *HTTPProvider) CreateSession(ctx context.Context, offer string, config S
 	if err != nil {
 		return SessionResult{}, fmt.Errorf("编码 Live session 请求: %w", err)
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, p.BaseURL+"/v1/live/sessions", strings.NewReader(string(payload)))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, p.BaseURL+"/v1/live/sessions", bytes.NewReader(payload))
 	if err != nil {
 		return SessionResult{}, err
 	}
@@ -142,13 +160,20 @@ func (p *HTTPProvider) AttachSideband(ctx context.Context, sessionID string) (Si
 	baseEscapedPath := strings.TrimRight(u.EscapedPath(), "/")
 	u.Path = basePath + "/v1/live/sessions/" + sessionID + "/attach"
 	u.RawPath = baseEscapedPath + "/v1/live/sessions/" + url.PathEscape(sessionID) + "/attach"
-	connection, response, err := p.Dialer.DialContext(ctx, u.String(), http.Header{"Authorization": []string{"Bearer " + p.APIKey}})
+	dialer := p.Dialer
+	if dialer == nil {
+		dialer = websocket.DefaultDialer
+	}
+	connection, response, err := dialer.DialContext(ctx, u.String(), http.Header{
+		"Authorization": []string{"Bearer " + p.APIKey},
+	})
 	if err != nil {
 		if response != nil && (response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusGone) {
 			return nil, fmt.Errorf("%w: HTTP %d", ErrSessionExpired, response.StatusCode)
 		}
 		return nil, fmt.Errorf("连接 Live sideband: %w", err)
 	}
+	connection.SetReadLimit(2 << 20)
 	return &websocketSideband{connection: connection}, nil
 }
 
@@ -158,7 +183,17 @@ func (s *websocketSideband) ReadJSON(ctx context.Context, value any) error {
 	if deadline, ok := ctx.Deadline(); ok {
 		_ = s.connection.SetReadDeadline(deadline)
 	}
-	return s.connection.ReadJSON(value)
+	messageType, payload, err := s.connection.ReadMessage()
+	if err != nil {
+		return err
+	}
+	if messageType != websocket.TextMessage {
+		return &SidebandBinaryError{Size: len(payload)}
+	}
+	if err := json.Unmarshal(payload, value); err != nil {
+		return fmt.Errorf("%w: %v", ErrSidebandInvalidJSON, err)
+	}
+	return nil
 }
 func (s *websocketSideband) WriteJSON(ctx context.Context, value any) error {
 	if deadline, ok := ctx.Deadline(); ok {

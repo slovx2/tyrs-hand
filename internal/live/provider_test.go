@@ -31,6 +31,10 @@ func TestHTTPProviderCreateSession(t *testing.T) {
 	require.Equal(t, "opaque-id", result.ProviderSessionID)
 	require.Equal(t, "answer", result.AnswerSDP)
 	require.Equal(t, "gpt-live-1", requestBody["session"].(map[string]any)["model"])
+	session := requestBody["session"].(map[string]any)
+	audio := session["audio"].(map[string]any)
+	output := audio["output"].(map[string]any)
+	require.Equal(t, "marin", output["voice"])
 	require.Equal(t, "webrtc", requestBody["transport"].(map[string]any)["type"])
 }
 
@@ -49,6 +53,7 @@ func TestHTTPProviderRejectsInvalidResponse(t *testing.T) {
 func TestHTTPProviderAttachSideband(t *testing.T) {
 	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodGet, r.Method)
 		require.Equal(t, "/v1/live/sessions/opaque%2Fid/attach", r.URL.EscapedPath())
 		require.Equal(t, "Bearer secret", r.Header.Get("Authorization"))
 		connection, err := upgrader.Upgrade(w, r, nil)
@@ -83,4 +88,56 @@ func TestHTTPProviderMarksMissingSidebandAsExpired(t *testing.T) {
 	_, err := provider.AttachSideband(context.Background(), "expired-session")
 
 	require.ErrorIs(t, err, ErrSessionExpired)
+}
+
+func TestWebsocketSidebandRejectsBinaryFrames(t *testing.T) {
+	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		connection, err := upgrader.Upgrade(w, r, nil)
+		require.NoError(t, err)
+		defer connection.Close()
+		require.NoError(t, connection.WriteMessage(websocket.BinaryMessage, []byte("audio")))
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	sideband, err := NewProvider(server.URL, "secret").AttachSideband(ctx, "opaque-id")
+	require.NoError(t, err)
+	defer sideband.Close()
+
+	var event map[string]any
+	require.ErrorIs(t, sideband.ReadJSON(ctx, &event), ErrSidebandBinary)
+}
+
+func TestHTTPProviderRejectsNonCreatedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"session":{"id":"id"},"transport":{"sdp":"answer"}}`))
+	}))
+	defer server.Close()
+
+	_, err := NewProvider(server.URL, "secret").CreateSession(context.Background(), "offer", SessionConfig{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "HTTP 200")
+}
+
+func TestWebsocketSidebandRejectsInvalidJSON(t *testing.T) {
+	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		connection, err := upgrader.Upgrade(w, r, nil)
+		require.NoError(t, err)
+		defer connection.Close()
+		require.NoError(t, connection.WriteMessage(websocket.TextMessage, []byte("not-json")))
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	sideband, err := NewProvider(server.URL, "secret").AttachSideband(ctx, "opaque-id")
+	require.NoError(t, err)
+	defer sideband.Close()
+
+	var event map[string]any
+	require.ErrorIs(t, sideband.ReadJSON(ctx, &event), ErrSidebandInvalidJSON)
 }

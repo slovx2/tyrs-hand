@@ -9,4 +9,12 @@ describe("Live transcript reducer", () => {
     state = reduceLiveTranscript(state, { type: "session.output_transcript.done", response_id: "r", text: "world" });
     expect(state.items).toEqual([{ role: "user", text: "hello" }, { role: "assistant", text: "world" }]);
   });
+
+  it("supports complete events and deduplicates event ids", () => {
+    let state = reduceLiveTranscript(initialLiveTranscriptState, { type: "input_transcript.added", eventId: "input-1", itemId: "item-1", transcript: "hello" });
+    state = reduceLiveTranscript(state, { type: "input_transcript.added", eventId: "input-1", itemId: "item-1", transcript: "hello" });
+    state = reduceLiveTranscript(state, { type: "output_transcript.delta", event_id: "output-1", responseId: "response-1", delta: "world" });
+    state = reduceLiveTranscript(state, { type: "output_transcript.completed", event_id: "output-2", responseId: "response-1" });
+    expect(state.items).toEqual([{ role: "user", text: "hello", eventId: "input-1" }, { role: "assistant", text: "world", eventId: "output-2" }]);
+  });
 });

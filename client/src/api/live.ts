@@ -14,7 +14,8 @@ export const liveSessionSchema = z.object({
   session: z.object({ status: z.string() }),
 });
 export type LiveSession = z.infer<typeof liveSessionSchema>;
-export type LiveMessage = { sequence: number; role: "developer" | "user" | "assistant"; text: string; createdAt: string };
+export type LiveMessage = { sequence: number; role: "developer" | "user" | "assistant"; text: string; sourceSessionId?: string; createdAt: string };
+export type LiveEvent = { id: number; direction: string; type: string; eventId?: string; payload: Record<string, unknown>; createdAt: string };
 
 async function controlRequest<T>(link: ControlMachineLink, path: string, init?: RequestInit, parse?: (value: unknown) => T): Promise<T> {
   const token = await getControlDeviceToken(link.serverId);
@@ -32,3 +33,4 @@ export function createLiveSession(link: ControlMachineLink, id: string, offerSdp
 export function recoverLiveSession(link: ControlMachineLink, id: string, offerSdp: string) { return controlRequest(link, `/live-conversations/${id}/recover`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ offerSdp, platform: "android" }) }, (value) => liveSessionSchema.parse(value)); }
 export function closeLiveSession(link: ControlMachineLink, id: string) { return controlRequest(link, `/live-sessions/${id}/close`, { method: "POST" }, (value) => z.object({ sessionId: z.string().uuid(), status: z.string() }).parse(value)); }
 export function listLiveMessages(link: ControlMachineLink, id: string) { return controlRequest<{ items: LiveMessage[] }>(link, `/live-conversations/${id}/messages?limit=100`); }
+export function listLiveEvents(link: ControlMachineLink, id: string) { return controlRequest<{ items: LiveEvent[] }>(link, `/live-conversations/${id}/events?limit=100`); }

@@ -22,6 +22,15 @@ export interface LiveMessage {
   sequence: number
   role: string
   text: string
+  sourceSessionId?: string
+  createdAt: string
+}
+export interface LiveEvent {
+  id: number
+  direction: string
+  type: string
+  eventId?: string
+  payload: Record<string, unknown>
   createdAt: string
 }
 
@@ -59,5 +68,10 @@ export function closeLiveSession(id: string) {
 export function listLiveMessages(id: string) {
   return api<ListResponse<LiveMessage>>(
     `/client/live-conversations/${id}/messages?limit=100`,
+  )
+}
+export function listLiveEvents(id: string) {
+  return api<ListResponse<LiveEvent>>(
+    `/client/live-conversations/${id}/events?limit=100`,
   )
 }
