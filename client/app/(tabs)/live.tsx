@@ -8,6 +8,11 @@ import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
 import { initialLiveTranscriptState, reduceLiveTranscript, visibleLiveTranscript, type LiveTranscriptState } from "@/features/live/transcriptReducer";
 
+const liveIceConfiguration = {
+  // STUN only discovers candidates; audio still uses the direct WebRTC path.
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+};
+
 type Transcript = { role: "user" | "assistant"; text: string };
 
 async function waitForIceGathering(connection: RTCPeerConnection): Promise<void> {
@@ -51,7 +56,7 @@ export default function LiveScreen() {
       const current = conversation ?? await createLiveConversation(link);
       const shouldRecover = recover || (Boolean(sessionId) && sessionStatus !== "closed" && sessionStatus !== "failed");
       setConversation(current); stopPeer();
-      const pc = new RTCPeerConnection(); peer.current = pc;
+      const pc = new RTCPeerConnection(liveIceConfiguration); peer.current = pc;
       const connectionState = pc as unknown as { connectionState?: string; onconnectionstatechange: (() => void) | null };
       connectionState.onconnectionstatechange = () => {
         if (connectionState.connectionState === "disconnected" || connectionState.connectionState === "failed") {
@@ -73,6 +78,7 @@ export default function LiveScreen() {
       const events = pc.createDataChannel("oai-events"); channel.current = events; const eventChannel = events as unknown as { onmessage: (event: { data: unknown }) => void; onopen: () => void }; eventChannel.onmessage = (event) => onEvent(String(event.data)); eventChannel.onopen = () => setStatus("数据通道已连接");
       const offer = await pc.createOffer(); await pc.setLocalDescription(offer); await waitForIceGathering(pc);
       if (!pc.localDescription?.sdp) throw new Error("无法生成 SDP offer");
+      if (!/^a=candidate:/m.test(pc.localDescription.sdp)) throw new Error("无法生成包含 ICE candidate 的 SDP offer");
       const result = shouldRecover ? await recoverLiveSession(link, current.id, pc.localDescription.sdp) : await createLiveSession(link, current.id, pc.localDescription.sdp);
       setSessionId(result.sessionId); setSessionStatus(result.session.status); await pc.setRemoteDescription({ type: "answer", sdp: result.transport.answerSdp }); setStatus("等待 Live session");
     } catch (reason) { stopPeer(); setStatus("连接失败"); setError(reason instanceof Error ? reason.message : "Live 连接失败"); }
