@@ -19,6 +19,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/discordintegration"
 	ghadapter "github.com/slovx2/tyrs-hand/internal/github"
 	"github.com/slovx2/tyrs-hand/internal/githubtools"
+	"github.com/slovx2/tyrs-hand/internal/live"
 	"github.com/slovx2/tyrs-hand/internal/secrets"
 	platformsettings "github.com/slovx2/tyrs-hand/internal/settings"
 	"github.com/slovx2/tyrs-hand/internal/sshconfig"
@@ -48,6 +49,7 @@ type Server struct {
 	clientUpdateHub    *clientUpdateHub
 	workerRPCMu        sync.RWMutex
 	workerRPCConns     map[uuid.UUID]*workerRPCConnection
+	liveManager        *liveManager
 }
 
 func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authService *auth.Service, githubManager *ghadapter.Manager, catalog *githubtools.Catalog, settingsService *platformsettings.Service, discordManager *discordintegration.Manager, bindingService *discordintegration.BindingService, secretStore *secrets.Store, logger *zap.Logger) (*Server, error) {
@@ -60,6 +62,7 @@ func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authSer
 		workers: workerregistry.NewService(db), ssh: sshconfig.NewService(db, secretStore),
 		secrets: secretStore, logger: logger, assets: assets,
 		workerRPCConns:  make(map[uuid.UUID]*workerRPCConnection),
+		liveManager:     newLiveManager(db, live.NewProvider(cfg.LiveBaseURL, cfg.LiveAPIKey), logger),
 		clientUpdateHub: newClientUpdateHub()}, nil
 }
 
@@ -186,6 +189,13 @@ func (s *Server) adminRouter() http.Handler {
 	client.GET("/machines/:workerId/scheduled-tasks/:taskId", s.getClientMachineScheduledTask)
 	client.GET("/machines/:workerId/scheduled-tasks/:taskId/runs",
 		s.listClientMachineScheduledTaskRuns)
+	client.POST("/live-conversations", s.createLiveConversation)
+	client.GET("/live-conversations/:id", s.getLiveConversation)
+	client.POST("/live-conversations/:id/sessions", s.createLiveSession)
+	client.POST("/live-conversations/:id/recover", s.recoverLiveSession)
+	client.POST("/live-sessions/:id/close", s.closeLiveSession)
+	client.GET("/live-conversations/:id/messages", s.listLiveMessages)
+	client.GET("/live-conversations/:id/events", s.listLiveEvents)
 
 	router.NoRoute(s.serveSPA)
 	return router

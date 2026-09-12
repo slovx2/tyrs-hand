@@ -5,6 +5,7 @@ import {
   Server,
   ShieldCheck,
   Smartphone,
+  Mic2,
   type LucideIcon,
 } from 'lucide-react'
 import { useEffect } from 'react'
@@ -31,6 +32,7 @@ import {
 import { WorkerConfigRoute } from './pages/WorkerConfigPage'
 import { WorkerWorkspacePage } from './pages/WorkspacesPage'
 import { DevicesPage } from './pages/DevicesPage'
+import { LivePage } from './pages/LivePage'
 import { UsersPage } from './pages/UsersPage'
 import { InvitePage } from './pages/InvitePage'
 import { useUI } from './state'
@@ -61,7 +63,10 @@ const navigation: NavigationGroup[] = [
   },
   {
     label: 'Clients',
-    items: [{ to: '/devices', label: '移动端定时任务', icon: Smartphone }],
+    items: [
+      { to: '/devices', label: '移动端定时任务', icon: Smartphone },
+      { to: '/live', label: 'Live 语音', icon: Mic2 },
+    ],
   },
   {
     label: 'Integrations',
@@ -106,7 +111,9 @@ export function App() {
           <Route path="workspace" element={<WorkerWorkspacePage />} />
           <Route path="users" element={<WorkerUsersPage />} />
         </Route>
+
         <Route path="devices" element={<DevicesPage />} />
+        <Route path="live" element={<LivePage />} />
         <Route path="settings/discord" element={<DiscordPage />} />
         <Route path="users" element={<UsersPage />} />
       </Route>

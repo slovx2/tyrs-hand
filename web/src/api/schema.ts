@@ -4,6 +4,118 @@
  */
 
 export interface paths {
+    "/client/live-conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createLiveConversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/client/live-conversations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getLiveConversation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/client/live-conversations/{id}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createLiveSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/client/live-conversations/{id}/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["recoverLiveSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/client/live-sessions/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["closeLiveSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/client/live-conversations/{id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listLiveMessages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/client/live-conversations/{id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listLiveEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/webhooks/github": {
         parameters: {
             query?: never;
@@ -2443,6 +2555,83 @@ export interface components {
             }[];
             nextCursor?: string;
         };
+        LiveConversationRequest: {
+            model?: string;
+            voice?: string;
+            instructions?: string;
+        };
+        LiveConversation: {
+            /** Format: uuid */
+            id: string;
+            model: string;
+            voice: string;
+            instructions: string;
+            status: string;
+            /** Format: uuid */
+            activeSessionId?: string;
+            /** Format: int64 */
+            contextRevision: number;
+            lastError?: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        LiveSessionRequest: {
+            offerSdp: string;
+            /** @enum {string} */
+            platform: "web" | "android";
+        };
+        LiveSessionResponse: {
+            /** Format: uuid */
+            conversationId: string;
+            /** Format: uuid */
+            sessionId: string;
+            transport: {
+                /** @enum {string} */
+                type: "webrtc";
+                answerSdp: string;
+            };
+            session: {
+                status: string;
+            };
+        };
+        LiveSessionStatus: {
+            /** Format: uuid */
+            sessionId: string;
+            status: string;
+        };
+        LiveMessage: {
+            /** Format: int64 */
+            sequence: number;
+            /** @enum {string} */
+            role: "developer" | "user" | "assistant";
+            text: string;
+            /** Format: uuid */
+            sourceSessionId?: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        LiveMessageList: {
+            items: components["schemas"]["LiveMessage"][];
+            nextCursor?: string;
+        };
+        LiveEvent: {
+            /** Format: int64 */
+            id: number;
+            direction: string;
+            type: string;
+            eventId?: string;
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            createdAt: string;
+        };
+        LiveEventList: {
+            items: components["schemas"]["LiveEvent"][];
+            nextCursor?: string;
+        };
     };
     responses: {
         /** @description RFC 9457 Problem Details */
@@ -2704,6 +2893,183 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    createLiveConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["LiveConversationRequest"];
+            };
+        };
+        responses: {
+            /** @description 已创建 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveConversation"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getLiveConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Live conversation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveConversation"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    createLiveSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiveSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Live session */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveSessionResponse"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    recoverLiveSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiveSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Recovered Live session */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveSessionResponse"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    closeLiveSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Closed Live session */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveSessionStatus"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listLiveMessages: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Live messages */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveMessageList"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listLiveEvents: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Live events */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveEventList"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
     receiveGitHubWebhook: {
         parameters: {
             query?: never;

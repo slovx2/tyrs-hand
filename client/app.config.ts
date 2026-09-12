@@ -26,6 +26,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     },
   },
   android: {
+    permissions: ["android.permission.RECORD_AUDIO"],
     package: `com.tyrshand.app${suffix}`,
     softwareKeyboardLayoutMode: "resize",
     adaptiveIcon: {

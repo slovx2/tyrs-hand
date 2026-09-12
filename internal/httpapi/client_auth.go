@@ -41,6 +41,22 @@ func (s *Server) requireClientBearer() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token, protocol := clientBearerCredentials(c.Request)
 		if token == "" {
+			// Web Live 页面沿用现有登录 Cookie；写请求仍必须通过 CSRF 校验。
+			if strings.HasPrefix(c.Request.URL.Path, "/api/v1/client/live-") {
+				cookie, cookieErr := c.Cookie(sessionCookie)
+				if cookieErr == nil && cookie != "" {
+					session, authErr := s.auth.Authenticate(c.Request.Context(), cookie)
+					if authErr == nil {
+						if c.Request.Method != http.MethodGet && !s.auth.ValidateCSRF(c.Request.Context(), cookie, c.GetHeader("X-CSRF-Token")) {
+							problem(c, http.StatusForbidden, "CSRF 校验失败", nil)
+							return
+						}
+						c.Set("session", session)
+						c.Next()
+						return
+					}
+				}
+			}
 			problem(c, http.StatusUnauthorized, "需要 Bearer Token", auth.ErrSessionInvalid)
 			return
 		}

@@ -18,7 +18,85 @@ tags:
   - name: SSH
   - name: Worker Protocol
   - name: Client Protocol
+  - name: Live
 paths:
+  /client/live-conversations:
+    post:
+      operationId: createLiveConversation
+      tags: [Client Protocol]
+      security: [{ clientBearer: [] }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LiveConversationRequest" }
+      responses:
+        "201": { description: 已创建, content: { application/json: { schema: { $ref: "#/components/schemas/LiveConversation" } } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /client/live-conversations/{id}:
+    get:
+      operationId: getLiveConversation
+      tags: [Client Protocol]
+      security: [{ clientBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      responses:
+        "200": { description: Live conversation, content: { application/json: { schema: { $ref: "#/components/schemas/LiveConversation" } } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /client/live-conversations/{id}/sessions:
+    post:
+      operationId: createLiveSession
+      tags: [Client Protocol]
+      security: [{ clientBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LiveSessionRequest" }
+      responses:
+        "201": { description: Live session, content: { application/json: { schema: { $ref: "#/components/schemas/LiveSessionResponse" } } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /client/live-conversations/{id}/recover:
+    post:
+      operationId: recoverLiveSession
+      tags: [Client Protocol]
+      security: [{ clientBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LiveSessionRequest" }
+      responses:
+        "201": { description: Recovered Live session, content: { application/json: { schema: { $ref: "#/components/schemas/LiveSessionResponse" } } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /client/live-sessions/{id}/close:
+    post:
+      operationId: closeLiveSession
+      tags: [Client Protocol]
+      security: [{ clientBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      responses:
+        "200": { description: Closed Live session, content: { application/json: { schema: { $ref: "#/components/schemas/LiveSessionStatus" } } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /client/live-conversations/{id}/messages:
+    get:
+      operationId: listLiveMessages
+      tags: [Client Protocol]
+      security: [{ clientBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }, { $ref: "#/components/parameters/Cursor" }, { $ref: "#/components/parameters/Limit" }]
+      responses:
+        "200": { description: Live messages, content: { application/json: { schema: { $ref: "#/components/schemas/LiveMessageList" } } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /client/live-conversations/{id}/events:
+    get:
+      operationId: listLiveEvents
+      tags: [Client Protocol]
+      security: [{ clientBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }, { $ref: "#/components/parameters/Cursor" }, { $ref: "#/components/parameters/Limit" }]
+      responses:
+        "200": { description: Live events, content: { application/json: { schema: { $ref: "#/components/schemas/LiveEventList" } } } }
+        default: { $ref: "#/components/responses/Problem" }
   /webhooks/github:
     post:
       operationId: receiveGitHubWebhook
@@ -2163,6 +2241,85 @@ components:
         items:
           type: array
           items: { type: object, additionalProperties: true }
+        nextCursor: { type: string }
+    LiveConversationRequest:
+      type: object
+      properties:
+        model: { type: string, maxLength: 128 }
+        voice: { type: string, maxLength: 64 }
+        instructions: { type: string, maxLength: 32768 }
+    LiveConversation:
+      type: object
+      required: [id, model, voice, instructions, status, contextRevision, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        model: { type: string }
+        voice: { type: string }
+        instructions: { type: string }
+        status: { type: string }
+        activeSessionId: { type: string, format: uuid }
+        contextRevision: { type: integer, format: int64 }
+        lastError: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    LiveSessionRequest:
+      type: object
+      required: [offerSdp, platform]
+      properties:
+        offerSdp: { type: string, minLength: 1 }
+        platform: { type: string, enum: [web, android] }
+    LiveSessionResponse:
+      type: object
+      required: [conversationId, sessionId, transport, session]
+      properties:
+        conversationId: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid }
+        transport:
+          type: object
+          required: [type, answerSdp]
+          properties:
+            type: { type: string, enum: [webrtc] }
+            answerSdp: { type: string }
+        session:
+          type: object
+          required: [status]
+          properties: { status: { type: string } }
+    LiveSessionStatus:
+      type: object
+      required: [sessionId, status]
+      properties:
+        sessionId: { type: string, format: uuid }
+        status: { type: string }
+    LiveMessage:
+      type: object
+      required: [sequence, role, text, createdAt]
+      properties:
+        sequence: { type: integer, format: int64 }
+        role: { type: string, enum: [developer, user, assistant] }
+        text: { type: string }
+        sourceSessionId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+    LiveMessageList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/LiveMessage" } }
+        nextCursor: { type: string }
+    LiveEvent:
+      type: object
+      required: [id, direction, type, payload, createdAt]
+      properties:
+        id: { type: integer, format: int64 }
+        direction: { type: string }
+        type: { type: string }
+        eventId: { type: string }
+        payload: { type: object, additionalProperties: true }
+        createdAt: { type: string, format: date-time }
+    LiveEventList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/LiveEvent" } }
         nextCursor: { type: string }
 security:
   - sessionCookie: []

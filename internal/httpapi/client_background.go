@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 const expoPushEndpoint = "https://exp.host/--/api/v2/push/send"
@@ -28,6 +29,13 @@ type clientNotification struct {
 // RunBackground 不再回收 Codex Run。Worker 离线只影响连接状态，
 // 不能据此修改本地真实运行的任务状态。
 func (s *Server) RunBackground(ctx context.Context) error {
+	if s.liveManager != nil {
+		go func() {
+			if err := s.liveManager.Start(ctx); err != nil && !errors.Is(err, context.Canceled) && s.logger != nil {
+				s.logger.Error("Live 后台管理器退出", zap.Error(err))
+			}
+		}()
+	}
 	<-ctx.Done()
 	return ctx.Err()
 }
