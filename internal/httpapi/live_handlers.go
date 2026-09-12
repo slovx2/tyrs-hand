@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	defaultLiveModel = "gpt-live-1"
-	defaultLiveVoice = "marin"
+	defaultLiveModel = "gpt-live-1-codex"
+	defaultLiveVoice = "cove"
 )
 
 type liveConversationRequest struct {
