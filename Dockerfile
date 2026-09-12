@@ -28,6 +28,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 FROM debian:bookworm-slim@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818 AS control
 RUN apt-get update && apt-get install --yes --no-install-recommends \
       ca-certificates=20230311+deb12u1 \
+      libpcre2-8-0=10.42-1+deb12u1 \
       tini=0.19.0-1+b3 && \
     rm -rf /var/lib/apt/lists/*
 RUN groupadd --gid 10001 tyrs-hand && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/tyrs-hand tyrs-hand
