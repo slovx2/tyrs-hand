@@ -119,6 +119,10 @@ export function LivePage() {
     },
     [],
   )
+  useEffect(() => {
+    if (!recordingUrl || !recording.current) return
+    recording.current.load()
+  }, [recordingUrl])
   const handleEvent = (event: Record<string, unknown>) => {
     const type = String(event.type ?? '')
     if (type === 'session.started') {
@@ -399,6 +403,7 @@ export function LivePage() {
         <audio
           ref={recording}
           src={recordingUrl}
+          preload="auto"
           controls
           className="mt-3 w-full"
         />
