@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
@@ -29,6 +30,8 @@ type runJournal struct {
 	AppliedInputs     []appliedInputDecision                    `json:"appliedInputs,omitempty"`
 	TerminalDelivered bool                                      `json:"terminalDelivered,omitempty"`
 	ControlAbandoned  bool                                      `json:"-"`
+	ControlRetryCount int                                       `json:"controlRetryCount,omitempty"`
+	ControlRetryStart time.Time                                 `json:"controlRetryStart,omitempty"`
 }
 
 type appliedInputDecision struct {
@@ -75,6 +78,55 @@ func controlHTTPStatus(err error) int {
 		return response.StatusCode
 	}
 	return 0
+}
+
+const (
+	controlReportMaxAttempts = 50
+	controlReportMaxAge      = 5 * time.Hour
+	controlReportBackoffCap  = 15 * time.Minute
+)
+
+func controlReportBackoff(attempt int) time.Duration {
+	if attempt < 1 {
+		attempt = 1
+	}
+	shift := attempt - 1
+	if shift > 18 {
+		shift = 18
+	}
+	wait := 3 * time.Second << shift
+	if wait > controlReportBackoffCap {
+		return controlReportBackoffCap
+	}
+	return wait
+}
+
+func (journal *runJournal) scheduleControlRetry(now time.Time) (time.Duration, int, bool) {
+	if journal == nil {
+		return 0, 0, true
+	}
+	journal.mu.Lock()
+	defer journal.mu.Unlock()
+	journal.ControlRetryCount++
+	if journal.ControlRetryStart.IsZero() {
+		journal.ControlRetryStart = now
+	}
+	attempts := journal.ControlRetryCount
+	if attempts >= controlReportMaxAttempts ||
+		now.Sub(journal.ControlRetryStart) >= controlReportMaxAge {
+		return 0, attempts, true
+	}
+	return controlReportBackoff(attempts), attempts, false
+}
+
+func (journal *runJournal) clearControlRetry() {
+	if journal == nil {
+		return
+	}
+	journal.mu.Lock()
+	journal.ControlRetryCount = 0
+	journal.ControlRetryStart = time.Time{}
+	journal.mu.Unlock()
 }
 
 func (s *journalStore) save(journal *runJournal) error {

@@ -250,30 +250,31 @@ func (r *Runner) deliverTerminal(ctx context.Context, journal *runJournal,
 			}
 		}
 		flushErr := r.flushEvents(ctx, journal, logger)
+		var completeErr error
 		if !journal.TerminalDelivered {
 			requestCtx, cancel := context.WithTimeout(ctx, r.cfg.ControlTimeout)
-			var err error
 			if journal.Result != nil {
-				err = r.client.Complete(requestCtx, &journal.Task, *journal.Result)
+				completeErr = r.client.Complete(requestCtx, &journal.Task, *journal.Result)
 			} else {
 				cause := errors.New(journal.Failure)
-				err = r.client.FailWithCodexError(requestCtx, &journal.Task,
+				completeErr = r.client.FailWithCodexError(requestCtx, &journal.Task,
 					journal.FailureCode, cause, journal.CodexError)
 			}
 			cancel()
-			if err == nil || workerprotocol.IsAlreadyFinished(err) {
+			if completeErr == nil || workerprotocol.IsAlreadyFinished(completeErr) {
 				journal.TerminalDelivered = true
+				journal.clearControlRetry()
 				if saveErr := r.journals.save(journal); saveErr != nil {
 					logger.Error("持久化最终结果提交状态失败", zap.Error(saveErr))
 				}
 			} else {
-				logger.Warn("提交最终结果失败，稍后重试", zap.Error(err))
-				if !retryableControlError(err) {
-					if controlHTTPStatus(err) == http.StatusNotFound &&
+				logger.Warn("提交最终结果失败，稍后重试", zap.Error(completeErr))
+				if !retryableControlError(completeErr) {
+					if controlHTTPStatus(completeErr) == http.StatusNotFound &&
 						journal.DesktopRequest != nil &&
 						(syncErr == nil || retryableControlError(syncErr)) &&
 						syncErr != nil {
-						if !waitContext(ctx, 3*time.Second) {
+						if !waitScheduledControlRetry(ctx, r.journals, journal, logger, syncErr) {
 							return
 						}
 						continue
@@ -293,7 +294,14 @@ func (r *Runner) deliverTerminal(ctx context.Context, journal *runJournal,
 			}
 			return
 		}
-		if !waitContext(ctx, 3*time.Second) {
+		fail := completeErr
+		if fail == nil {
+			fail = flushErr
+		}
+		if fail == nil {
+			fail = syncErr
+		}
+		if !waitScheduledControlRetry(ctx, r.journals, journal, logger, fail) {
 			return
 		}
 	}

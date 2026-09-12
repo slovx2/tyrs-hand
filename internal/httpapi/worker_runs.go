@@ -232,6 +232,7 @@ func (s *Server) workerRunEvents(c *gin.Context) {
 			return
 		}
 		externalEventID := fmt.Sprintf("worker:%d", event.Sequence)
+		payload := jsonbSafe(event.Payload)
 		var eventID int64
 		var occurredAt time.Time
 		err = tx.QueryRowContext(c.Request.Context(), `INSERT INTO agent_events
@@ -241,7 +242,7 @@ func (s *Server) workerRunEvents(c *gin.Context) {
 			WHERE run_id IS NOT NULL AND external_event_id IS NOT NULL DO NOTHING
 			RETURNING id,occurred_at`,
 			claimed.ControlID, claimed.ID, claimed.RunID, event.Type,
-			externalEventID, event.Payload, event.Sequence).Scan(&eventID, &occurredAt)
+			externalEventID, payload, event.Sequence).Scan(&eventID, &occurredAt)
 		if errors.Is(err, sql.ErrNoRows) {
 			err = tx.QueryRowContext(c.Request.Context(), `SELECT id,occurred_at FROM agent_events
 				WHERE run_id=$1 AND external_event_id=$2`, claimed.RunID, externalEventID).
@@ -252,12 +253,12 @@ func (s *Server) workerRunEvents(c *gin.Context) {
 			return
 		}
 		if err = discordintegration.ResolveConversationStatusBoundaryTx(c.Request.Context(), tx,
-			claimed.RunID, eventID, event.Type, event.Payload); err != nil {
+			claimed.RunID, eventID, event.Type, payload); err != nil {
 			problem(c, http.StatusInternalServerError, "解析过程卡分段边界失败", err)
 			return
 		}
 		if err = projectRunEventTx(c.Request.Context(), tx, claimed.RunID, runEventProjection{
-			Sequence: event.Sequence, Type: event.Type, Payload: event.Payload,
+			Sequence: event.Sequence, Type: event.Type, Payload: payload,
 			OccurredAt: occurredAt,
 		}); err != nil {
 			problem(c, http.StatusInternalServerError, "投影移动端过程动态失败", err)

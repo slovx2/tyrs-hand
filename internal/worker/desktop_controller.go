@@ -816,6 +816,9 @@ func (c *desktopController) registerDesktopTurn(ctx context.Context, params json
 		_, err := c.processor.client.PrepareDesktopTurn(requestCtx, request)
 		cancel()
 		if err == nil {
+			if state.reporter != nil {
+				state.reporter.journal.clearControlRetry()
+			}
 			if len(images) > 0 {
 				c.syncDesktopImages(state.task,
 					append([]workerprotocol.DesktopImage(nil), images...))
@@ -837,7 +840,8 @@ func (c *desktopController) registerDesktopTurn(ctx context.Context, params json
 			}
 			return
 		}
-		if !waitContext(ctx, 3*time.Second) {
+		if !waitScheduledControlRetry(ctx, c.processor.journals, state.reporter.journal,
+			c.processor.logger, err) {
 			return
 		}
 	}
@@ -1409,7 +1413,8 @@ func (r *desktopEventReporter) Finish(result codexcontrol.TurnResult, cause erro
 					continue
 				}
 				if retryableControlError(prepareErr) {
-					if !waitContext(r.ctx, 3*time.Second) {
+					if !waitScheduledControlRetry(r.ctx, r.processor.journals, r.journal,
+						r.processor.logger, prepareErr) {
 						return
 					}
 					continue
@@ -1418,7 +1423,8 @@ func (r *desktopEventReporter) Finish(result codexcontrol.TurnResult, cause erro
 			abandonRunJournal(r.processor.journals, r.journal)
 			return
 		}
-		if !waitContext(r.ctx, 3*time.Second) {
+		if !waitScheduledControlRetry(r.ctx, r.processor.journals, r.journal,
+			r.processor.logger, err) {
 			return
 		}
 	}

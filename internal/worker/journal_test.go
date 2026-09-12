@@ -327,3 +327,61 @@ func TestFinishDesktopTurnDropsJournalOnForbidden(t *testing.T) {
 	_, err = os.Stat(store.path(task.Claimed.RunID))
 	require.ErrorIs(t, err, os.ErrNotExist)
 }
+
+func TestControlReportBackoffGrowsAndCaps(t *testing.T) {
+	require.Equal(t, 3*time.Second, controlReportBackoff(1))
+	require.Equal(t, 6*time.Second, controlReportBackoff(2))
+	require.Equal(t, 12*time.Second, controlReportBackoff(3))
+	require.Equal(t, controlReportBackoffCap, controlReportBackoff(20))
+}
+
+func TestScheduleControlRetryAbandonsAfterMaxAttempts(t *testing.T) {
+	journal := &runJournal{}
+	journal.Task.Claimed.RunID = uuid.New()
+	now := time.Now()
+	for i := 1; i < controlReportMaxAttempts; i++ {
+		wait, attempts, stop := journal.scheduleControlRetry(now)
+		require.False(t, stop)
+		require.Equal(t, i, attempts)
+		require.Greater(t, wait, time.Duration(0))
+	}
+	_, attempts, stop := journal.scheduleControlRetry(now)
+	require.True(t, stop)
+	require.Equal(t, controlReportMaxAttempts, attempts)
+}
+
+func TestScheduleControlRetryAbandonsAfterMaxAge(t *testing.T) {
+	journal := &runJournal{ControlRetryCount: 1, ControlRetryStart: time.Now().Add(-5*time.Hour - time.Second)}
+	_, _, stop := journal.scheduleControlRetry(time.Now())
+	require.True(t, stop)
+}
+
+func TestDeliverTerminalAbandonsAfterRetryBudget(t *testing.T) {
+	var completes atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		unwrapWorkerTestRequest(t, request)
+		if strings.HasSuffix(request.URL.Path, "/complete") {
+			completes.Add(1)
+			http.Error(response, "bad gateway", http.StatusBadGateway)
+			return
+		}
+		response.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	store, err := newJournalStore(t.TempDir())
+	require.NoError(t, err)
+	runner := &Runner{cfg: config.Config{ControlTimeout: time.Second},
+		client: workerprotocol.NewClient(server.URL, "node-token", time.Second),
+		logger: zap.NewNop(), journals: store}
+	journal := &runJournal{Result: &codexcontrol.TurnResult{FinalAnswer: "done"},
+		ControlRetryCount: controlReportMaxAttempts - 1, ControlRetryStart: time.Now()}
+	journal.Task.Claimed.RunID = uuid.New()
+	journal.Task.Claimed.LeaseToken = "lease"
+	journal.Task.Claimed.LeaseEpoch = 1
+	require.NoError(t, store.save(journal))
+	runner.deliverTerminal(context.Background(), journal, zap.NewNop())
+	require.EqualValues(t, 1, completes.Load())
+	require.True(t, journal.ControlAbandoned)
+	_, err = os.Stat(store.path(journal.Task.Claimed.RunID))
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
