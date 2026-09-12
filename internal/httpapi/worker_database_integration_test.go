@@ -663,6 +663,41 @@ func TestWorkerAPIDesktopThreadWithoutDiscordForum(t *testing.T) {
 	require.Zero(t, discordPosts)
 }
 
+func TestWorkerAPIUnknownDesktopThreadReturnsNotFound(t *testing.T) {
+	db := workerDatabase(t)
+	ctx := context.Background()
+	require.NoError(t, database.Migrate(ctx, db))
+	server, endpoint := workerTestServer(t, db)
+	worker, enrollment, err := server.workers.Create(ctx, "unknown-desktop-thread",
+		[]string{"discord"}, 2)
+	require.NoError(t, err)
+	_, credential, err := server.workers.Enroll(ctx, enrollment)
+	require.NoError(t, err)
+	client := workerprotocol.NewClient(endpoint, credential, 5*time.Second)
+	repositoryID, _, _ := seedWorkerGitHubQueue(t, db, 312)
+	workspaceID, _ := seedWorkerWorkspace(t, db, repositoryID, worker.ID)
+
+	_, err = client.PrepareDesktopTurn(ctx, workerprotocol.DesktopTurnPrepareRequest{
+		WorkspaceID: workspaceID, RunID: uuid.New(), IntentID: uuid.New(),
+		RequestKey: strings.Repeat("c", 64),
+		Params: json.RawMessage(`{"threadId":"never-registered-local-thread",` +
+			`"input":[{"type":"text","text":"local only"}]}`),
+	})
+	require.Error(t, err)
+	var httpErr *workerprotocol.HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	require.Equal(t, http.StatusNotFound, httpErr.StatusCode)
+
+	err = client.RecordDesktopSteer(ctx, workerprotocol.DesktopSteerRecordRequest{
+		WorkspaceID: workspaceID, RequestKey: strings.Repeat("d", 64),
+		Params: json.RawMessage(`{"threadId":"never-registered-local-thread",` +
+			`"expectedTurnId":"turn-1","input":[{"type":"text","text":"steer"}]}`),
+	})
+	require.Error(t, err)
+	require.ErrorAs(t, err, &httpErr)
+	require.Equal(t, http.StatusNotFound, httpErr.StatusCode)
+}
+
 func TestWorkerAPIDesktopThreadEventuallyBindsDiscordPost(t *testing.T) {
 	db := workerDatabase(t)
 	ctx := context.Background()

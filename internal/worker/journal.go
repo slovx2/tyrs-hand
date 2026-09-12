@@ -28,6 +28,7 @@ type runJournal struct {
 	CodexError        *workerprotocol.CodexTurnError            `json:"codexError,omitempty"`
 	AppliedInputs     []appliedInputDecision                    `json:"appliedInputs,omitempty"`
 	TerminalDelivered bool                                      `json:"terminalDelivered,omitempty"`
+	ControlAbandoned  bool                                      `json:"-"`
 }
 
 type appliedInputDecision struct {
@@ -55,9 +56,33 @@ func (s *journalStore) path(runID uuid.UUID) string {
 	return filepath.Join(s.directory, runID.String()+".json")
 }
 
+func abandonRunJournal(store *journalStore, journal *runJournal) {
+	if journal == nil {
+		return
+	}
+	journal.mu.Lock()
+	journal.ControlAbandoned = true
+	runID := journal.Task.Claimed.RunID
+	journal.mu.Unlock()
+	if store != nil && runID != uuid.Nil {
+		_ = store.remove(runID)
+	}
+}
+
+func controlHTTPStatus(err error) int {
+	var response *workerprotocol.HTTPError
+	if errors.As(err, &response) {
+		return response.StatusCode
+	}
+	return 0
+}
+
 func (s *journalStore) save(journal *runJournal) error {
 	if journal == nil || journal.Task.Claimed.RunID == uuid.Nil {
 		return errors.New("run Journal 缺少任务或 Run ID")
+	}
+	if journal.ControlAbandoned {
+		return nil
 	}
 	data, err := json.Marshal(journal)
 	if err != nil {

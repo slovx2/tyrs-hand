@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -172,5 +173,157 @@ func TestDeliverTerminalKeepsPendingEventsAfterCompletion(t *testing.T) {
 	require.EqualValues(t, 1, heartbeats.Load(),
 		"首次终态提交前只补报一次 Run，恢复已确认终态时不能重复同步")
 	_, err = os.Stat(store.path(journal.Task.Claimed.RunID))
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestRegisterDesktopTurnDropsJournalOnNotFound(t *testing.T) {
+	var calls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		unwrapWorkerTestRequest(t, request)
+		calls.Add(1)
+		http.Error(response, "missing thread", http.StatusNotFound)
+	}))
+	defer server.Close()
+	store, err := newJournalStore(t.TempDir())
+	require.NoError(t, err)
+	processor := &Processor{cfg: config.Config{ControlTimeout: time.Second},
+		client: workerprotocol.NewClient(server.URL, "node-token", time.Second),
+		logger: zap.NewNop(), journals: store}
+	controller := &desktopController{processor: processor,
+		workspace: &workspaceCodex{runtime: workspaceRuntime{WorkspaceID: uuid.New()}}}
+	task := workerprotocol.Task{}
+	task.Claimed.RunID = uuid.New()
+	task.Claimed.ID = uuid.New()
+	reporter, err := newDesktopEventReporter(context.Background(), processor, &task)
+	require.NoError(t, err)
+	controller.registerDesktopTurn(context.Background(), json.RawMessage(`{"threadId":"local"}`),
+		strings.Repeat("a", 64), "turn-1", nil, "", &desktopCallState{task: &task, reporter: reporter})
+	require.EqualValues(t, 1, calls.Load())
+	require.True(t, reporter.journal.ControlAbandoned)
+	_, err = os.Stat(store.path(task.Claimed.RunID))
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestRegisterDesktopTurnRetriesBadGateway(t *testing.T) {
+	var calls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		unwrapWorkerTestRequest(t, request)
+		calls.Add(1)
+		http.Error(response, "bad gateway", http.StatusBadGateway)
+	}))
+	defer server.Close()
+	store, err := newJournalStore(t.TempDir())
+	require.NoError(t, err)
+	processor := &Processor{cfg: config.Config{ControlTimeout: time.Second},
+		client: workerprotocol.NewClient(server.URL, "node-token", time.Second),
+		logger: zap.NewNop(), journals: store}
+	controller := &desktopController{processor: processor,
+		workspace: &workspaceCodex{runtime: workspaceRuntime{WorkspaceID: uuid.New()}}}
+	task := workerprotocol.Task{}
+	task.Claimed.RunID = uuid.New()
+	task.Claimed.ID = uuid.New()
+	reporter, err := newDesktopEventReporter(context.Background(), processor, &task)
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 3500*time.Millisecond)
+	defer cancel()
+	controller.registerDesktopTurn(ctx, json.RawMessage(`{"threadId":"local"}`),
+		strings.Repeat("a", 64), "turn-1", nil, "", &desktopCallState{task: &task, reporter: reporter})
+	require.GreaterOrEqual(t, calls.Load(), int64(2))
+	require.False(t, reporter.journal.ControlAbandoned)
+	_, err = os.Stat(store.path(task.Claimed.RunID))
+	require.NoError(t, err)
+}
+
+func TestDeliverTerminalDropsUnboundDesktopJournal(t *testing.T) {
+	var prepares atomic.Int64
+	var completes atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		unwrapWorkerTestRequest(t, request)
+		if strings.Contains(request.URL.Path, "/complete") {
+			completes.Add(1)
+			http.Error(response, "missing run", http.StatusNotFound)
+			return
+		}
+		prepares.Add(1)
+		http.Error(response, "missing thread", http.StatusNotFound)
+	}))
+	defer server.Close()
+	store, err := newJournalStore(t.TempDir())
+	require.NoError(t, err)
+	runner := &Runner{cfg: config.Config{ControlTimeout: time.Second},
+		client: workerprotocol.NewClient(server.URL, "node-token", time.Second),
+		logger: zap.NewNop(), journals: store}
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	journal := &runJournal{Result: &codexcontrol.TurnResult{FinalAnswer: "done"},
+		DesktopRequest: &workerprotocol.DesktopTurnPrepareRequest{WorkspaceID: workspaceID,
+			RunID: runID, IntentID: uuid.New(), RequestKey: strings.Repeat("b", 64),
+			Params: json.RawMessage(`{"threadId":"local"}`)}}
+	journal.Task.Claimed.RunID = runID
+	journal.Task.Claimed.LeaseToken = "lease"
+	journal.Task.Claimed.LeaseEpoch = 1
+	require.NoError(t, store.save(journal))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	runner.deliverTerminal(ctx, journal, zap.NewNop())
+	require.EqualValues(t, 1, prepares.Load())
+	require.EqualValues(t, 0, completes.Load())
+	require.True(t, journal.ControlAbandoned)
+	_, err = os.Stat(store.path(runID))
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestDeliverTerminalRetriesBadGateway(t *testing.T) {
+	var completes atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		unwrapWorkerTestRequest(t, request)
+		if strings.HasSuffix(request.URL.Path, "/complete") {
+			completes.Add(1)
+			http.Error(response, "bad gateway", http.StatusBadGateway)
+			return
+		}
+		response.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	store, err := newJournalStore(t.TempDir())
+	require.NoError(t, err)
+	runner := &Runner{cfg: config.Config{ControlTimeout: time.Second},
+		client: workerprotocol.NewClient(server.URL, "node-token", time.Second),
+		logger: zap.NewNop(), journals: store}
+	journal := &runJournal{Result: &codexcontrol.TurnResult{FinalAnswer: "done"}}
+	journal.Task.Claimed.RunID = uuid.New()
+	journal.Task.Claimed.LeaseToken = "lease"
+	journal.Task.Claimed.LeaseEpoch = 1
+	require.NoError(t, store.save(journal))
+	ctx, cancel := context.WithTimeout(context.Background(), 3500*time.Millisecond)
+	defer cancel()
+	runner.deliverTerminal(ctx, journal, zap.NewNop())
+	require.GreaterOrEqual(t, completes.Load(), int64(2))
+	require.False(t, journal.ControlAbandoned)
+	_, err = os.Stat(store.path(journal.Task.Claimed.RunID))
+	require.NoError(t, err)
+}
+
+func TestFinishDesktopTurnDropsJournalOnForbidden(t *testing.T) {
+	var completes atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		unwrapWorkerTestRequest(t, request)
+		completes.Add(1)
+		http.Error(response, "forbidden", http.StatusForbidden)
+	}))
+	defer server.Close()
+	store, err := newJournalStore(t.TempDir())
+	require.NoError(t, err)
+	processor := &Processor{cfg: config.Config{ControlTimeout: time.Second},
+		client: workerprotocol.NewClient(server.URL, "node-token", time.Second),
+		logger: zap.NewNop(), journals: store}
+	task := workerprotocol.Task{}
+	task.Claimed.RunID = uuid.New()
+	reporter, err := newDesktopEventReporter(context.Background(), processor, &task)
+	require.NoError(t, err)
+	reporter.Finish(codexcontrol.TurnResult{FinalAnswer: "done"}, nil)
+	require.EqualValues(t, 1, completes.Load())
+	require.True(t, reporter.journal.ControlAbandoned)
+	_, err = os.Stat(store.path(task.Claimed.RunID))
 	require.ErrorIs(t, err, os.ErrNotExist)
 }

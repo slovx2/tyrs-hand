@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"sync"
 	"time"
 
@@ -163,7 +164,9 @@ func (r *Runner) runStateSyncLoop(ctx context.Context, journal *runJournal,
 	commands chan<- workerprotocol.RunCommand,
 	logger *zap.Logger,
 ) {
-	_ = r.syncRunState(ctx, journal, commands, logger)
+	if r.abandonIfPermanentDesktopSync(ctx, journal, commands, logger) {
+		return
+	}
 	ticker := time.NewTicker(r.cfg.HeartbeatInterval)
 	defer ticker.Stop()
 	for {
@@ -171,9 +174,23 @@ func (r *Runner) runStateSyncLoop(ctx context.Context, journal *runJournal,
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			_ = r.syncRunState(context.Background(), journal, commands, logger)
+			if r.abandonIfPermanentDesktopSync(context.Background(), journal, commands, logger) {
+				return
+			}
 		}
 	}
+}
+
+func (r *Runner) abandonIfPermanentDesktopSync(ctx context.Context, journal *runJournal,
+	commands chan<- workerprotocol.RunCommand, logger *zap.Logger,
+) bool {
+	err := r.syncRunState(ctx, journal, commands, logger)
+	if err == nil || journal.DesktopRequest == nil || retryableControlError(err) {
+		return false
+	}
+	logger.Warn("Desktop Run 补登记被 Control 永久拒绝，停止补报", zap.Error(err))
+	abandonRunJournal(r.journals, journal)
+	return true
 }
 
 func deliverCommands(target chan<- workerprotocol.RunCommand,
@@ -218,12 +235,21 @@ func (r *Runner) deliverTerminal(ctx context.Context, journal *runJournal,
 	logger *zap.Logger,
 ) {
 	for ctx.Err() == nil {
+		if journal.ControlAbandoned {
+			return
+		}
+		var syncErr error
 		if !journal.TerminalDelivered {
 			// Run 可能在 Control 全程离线期间已经结束；先幂等补登记，
 			// 再提交事件和终态，避免未登记的终态永久 404。
-			_ = r.syncRunState(ctx, journal, nil, logger)
+			syncErr = r.syncRunState(ctx, journal, nil, logger)
+			if journal.DesktopRequest != nil && syncErr != nil && !retryableControlError(syncErr) {
+				logger.Warn("Desktop Run 补登记被 Control 永久拒绝，停止补报", zap.Error(syncErr))
+				abandonRunJournal(r.journals, journal)
+				return
+			}
 		}
-		r.flushEvents(ctx, journal, logger)
+		flushErr := r.flushEvents(ctx, journal, logger)
 		if !journal.TerminalDelivered {
 			requestCtx, cancel := context.WithTimeout(ctx, r.cfg.ControlTimeout)
 			var err error
@@ -242,7 +268,24 @@ func (r *Runner) deliverTerminal(ctx context.Context, journal *runJournal,
 				}
 			} else {
 				logger.Warn("提交最终结果失败，稍后重试", zap.Error(err))
+				if !retryableControlError(err) {
+					if controlHTTPStatus(err) == http.StatusNotFound &&
+						journal.DesktopRequest != nil &&
+						(syncErr == nil || retryableControlError(syncErr)) &&
+						syncErr != nil {
+						if !waitContext(ctx, 3*time.Second) {
+							return
+						}
+						continue
+					}
+					abandonRunJournal(r.journals, journal)
+					return
+				}
 			}
+		}
+		if flushErr != nil && !retryableControlError(flushErr) && journal.TerminalDelivered {
+			abandonRunJournal(r.journals, journal)
+			return
 		}
 		if journal.TerminalDelivered && len(journal.PendingEvents) == 0 {
 			if removeErr := r.journals.remove(journal.Task.Claimed.RunID); removeErr != nil {

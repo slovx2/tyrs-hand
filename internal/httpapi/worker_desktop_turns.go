@@ -92,7 +92,7 @@ func (s *Server) workerPrepareDesktopTurn(c *gin.Context) {
 		&allowedJSON, &dangerousJSON,
 		&actorGuildID, &actorUserID, &actorDisplayName)
 	if errors.Is(err, sql.ErrNoRows) {
-		problem(c, http.StatusForbidden, "Desktop Turn 的 Thread 未绑定到当前环境", err)
+		problem(c, http.StatusNotFound, "Desktop Turn 的 Thread 不存在于当前环境", err)
 		return
 	}
 	if err != nil {

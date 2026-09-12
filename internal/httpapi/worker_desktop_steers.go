@@ -78,7 +78,7 @@ func (s *Server) workerRecordDesktopSteer(c *gin.Context) {
 		&controlStatus, &lifecycleState, &activeTurnID, &allowedJSON, &dangerousJSON, &guildID,
 		&conversationThreadID, &actorUserID, &actorDisplayName)
 	if errors.Is(err, sql.ErrNoRows) {
-		problem(c, http.StatusForbidden, "Desktop Steer 的 Thread 未绑定到当前环境", err)
+		problem(c, http.StatusNotFound, "Desktop Steer 的 Thread 不存在于当前环境", err)
 		return
 	}
 	if err != nil {

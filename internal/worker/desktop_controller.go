@@ -800,15 +800,20 @@ func (c *desktopController) registerDesktopTurn(ctx context.Context, params json
 ) {
 	for ctx.Err() == nil && c.controlEnabled() {
 		requestCtx, cancel := context.WithTimeout(ctx, c.processor.cfg.ControlTimeout)
-		_, err := c.processor.client.PrepareDesktopTurn(requestCtx,
-			workerprotocol.DesktopTurnPrepareRequest{
-				WorkspaceID: c.workspace.runtime.WorkspaceID,
-				RunID:       state.task.Claimed.RunID,
-				IntentID:    state.task.Claimed.ID,
-				TurnID:      turnID,
-				RequestKey:  requestKey,
-				Params:      params, Images: images, ImageError: imageNotice,
-			})
+		request := workerprotocol.DesktopTurnPrepareRequest{
+			WorkspaceID: c.workspace.runtime.WorkspaceID,
+			RunID:       state.task.Claimed.RunID,
+			IntentID:    state.task.Claimed.ID,
+			TurnID:      turnID,
+			RequestKey:  requestKey,
+			Params:      params, Images: images, ImageError: imageNotice,
+		}
+		if state.reporter != nil && state.reporter.journal != nil &&
+			state.reporter.journal.DesktopRequest == nil {
+			copyRequest := request
+			state.reporter.journal.DesktopRequest = &copyRequest
+		}
+		_, err := c.processor.client.PrepareDesktopTurn(requestCtx, request)
 		cancel()
 		if err == nil {
 			if len(images) > 0 {
@@ -826,6 +831,12 @@ func (c *desktopController) registerDesktopTurn(ctx context.Context, params json
 		}
 		c.processor.logger.Warn("补报 Desktop 本地 Run 失败，本地 Turn 继续运行",
 			zap.String("run_id", state.task.Claimed.RunID.String()), zap.Error(err))
+		if !retryableControlError(err) {
+			if state.reporter != nil {
+				abandonRunJournal(c.processor.journals, state.reporter.journal)
+			}
+			return
+		}
 		if !waitContext(ctx, 3*time.Second) {
 			return
 		}
@@ -1325,6 +1336,9 @@ func (r *desktopEventReporter) Report(eventType string, payload json.RawMessage)
 func (r *desktopEventReporter) Flush() {
 	r.journal.mu.Lock()
 	defer r.journal.mu.Unlock()
+	if r.journal.ControlAbandoned {
+		return
+	}
 	r.flushLocked()
 }
 
@@ -1365,6 +1379,9 @@ func (r *desktopEventReporter) Finish(result codexcontrol.TurnResult, cause erro
 		r.processor.coordinator.unregister(r.task.Claimed.RunID)
 	}
 	for r.ctx.Err() == nil {
+		if r.journal.ControlAbandoned {
+			return
+		}
 		r.Flush()
 		requestCtx, cancel := context.WithTimeout(r.ctx, r.processor.cfg.ControlTimeout)
 		var err error
@@ -1382,6 +1399,25 @@ func (r *desktopEventReporter) Finish(result codexcontrol.TurnResult, cause erro
 			return
 		}
 		r.processor.logger.Warn("提交 Desktop Turn 终态失败，稍后重试", zap.Error(err))
+		if !retryableControlError(err) {
+			if controlHTTPStatus(err) == http.StatusNotFound && r.journal.DesktopRequest != nil &&
+				r.processor.client != nil {
+				requestCtx, cancel = context.WithTimeout(r.ctx, r.processor.cfg.ControlTimeout)
+				_, prepareErr := r.processor.client.PrepareDesktopTurn(requestCtx, *r.journal.DesktopRequest)
+				cancel()
+				if prepareErr == nil {
+					continue
+				}
+				if retryableControlError(prepareErr) {
+					if !waitContext(r.ctx, 3*time.Second) {
+						return
+					}
+					continue
+				}
+			}
+			abandonRunJournal(r.processor.journals, r.journal)
+			return
+		}
 		if !waitContext(r.ctx, 3*time.Second) {
 			return
 		}
@@ -1389,7 +1425,7 @@ func (r *desktopEventReporter) Finish(result codexcontrol.TurnResult, cause erro
 }
 
 func (r *desktopEventReporter) saveLocked() error {
-	if r.processor.journals == nil {
+	if r.processor.journals == nil || r.journal.ControlAbandoned {
 		return nil
 	}
 	if err := r.processor.journals.save(r.journal); err != nil {
