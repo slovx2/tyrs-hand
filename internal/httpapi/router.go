@@ -62,7 +62,7 @@ func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authSer
 		workers: workerregistry.NewService(db), ssh: sshconfig.NewService(db, secretStore),
 		secrets: secretStore, logger: logger, assets: assets,
 		workerRPCConns:  make(map[uuid.UUID]*workerRPCConnection),
-		liveManager:     newLiveManager(db, live.NewProvider(cfg.LiveBaseURL, cfg.LiveAPIKey), logger),
+		liveManager:     newLiveManager(db, live.NewProvider(cfg.ModelBaseURL, cfg.ModelAPIKey), logger),
 		clientUpdateHub: newClientUpdateHub()}, nil
 }
 

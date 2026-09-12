@@ -73,10 +73,8 @@ type Config struct {
 	BrowserAgentAddress            string
 	BrowserFilesRoot               string
 	BrowserServicesRoot            string
-	LiveBaseURL                    string
-	LiveAPIKey                     string
-	LiveModel                      string
-	LiveVoice                      string
+	ModelBaseURL                   string
+	ModelAPIKey                    string
 }
 
 func Load() (Config, error) {
@@ -148,10 +146,8 @@ func load(workerProcess bool) (Config, error) {
 		BrowserAgentAddress:            strings.TrimSpace(v.GetString("browser_agent_address")),
 		BrowserFilesRoot:               filepath.Clean(v.GetString("browser_files_root")),
 		BrowserServicesRoot:            filepath.Clean(v.GetString("browser_services_root")),
-		LiveBaseURL:                    strings.TrimRight(strings.TrimSpace(v.GetString("live_base_url")), "/"),
-		LiveAPIKey:                     strings.TrimSpace(v.GetString("live_api_key")),
-		LiveModel:                      strings.TrimSpace(v.GetString("live_model")),
-		LiveVoice:                      strings.TrimSpace(v.GetString("live_voice")),
+		ModelBaseURL:                   strings.TrimRight(strings.TrimSpace(v.GetString("model_base_url")), "/"),
+		ModelAPIKey:                    strings.TrimSpace(v.GetString("model_api_key")),
 	}
 	var err error
 	cfg.WorkerAPIAllowlist, err = parseNetworkList(v.GetString("worker_api_ip_allowlist"))
@@ -327,8 +323,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("browser_agent_address", "127.0.0.1:8934")
 	v.SetDefault("browser_files_root", filepath.Join(stateRoot, "browser", "files"))
 	v.SetDefault("browser_services_root", filepath.Join(stateRoot, "browser", "services"))
-	v.SetDefault("live_model", "gpt-live-1")
-	v.SetDefault("live_voice", "marin")
 	v.SetDefault("worker_api_ip_allowlist", "")
 	v.SetDefault("worker_api_trusted_proxies", "127.0.0.1/32,::1/128")
 	v.SetDefault("lease_duration", "90s")

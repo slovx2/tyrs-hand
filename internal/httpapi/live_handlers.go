@@ -17,6 +17,11 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/live"
 )
 
+const (
+	defaultLiveModel = "gpt-live-1"
+	defaultLiveVoice = "marin"
+)
+
 type liveConversationRequest struct {
 	Model        string `json:"model"`
 	Voice        string `json:"voice"`
@@ -75,10 +80,10 @@ func (s *Server) createLiveConversation(c *gin.Context) {
 	request.Model = strings.TrimSpace(request.Model)
 	request.Voice = strings.TrimSpace(request.Voice)
 	if request.Model == "" {
-		request.Model = s.cfg.LiveModel
+		request.Model = defaultLiveModel
 	}
 	if request.Voice == "" {
-		request.Voice = s.cfg.LiveVoice
+		request.Voice = defaultLiveVoice
 	}
 	if request.Model == "" || len(request.Model) > 128 || len(request.Voice) > 64 || len(request.Instructions) > 32768 {
 		badRequest(c, errors.New("Live conversation 配置无效"))
