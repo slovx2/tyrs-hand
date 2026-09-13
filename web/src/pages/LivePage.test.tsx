@@ -96,11 +96,23 @@ describe('LivePage', () => {
             ],
           }),
       ),
+      http.patch(
+        `/api/v1/client/live-conversations/${conversationId}`,
+        async ({ request }) => {
+          const body = (await request.json()) as { voice: string }
+          return HttpResponse.json({ ...conversationJson(), voice: body.voice })
+        },
+      ),
     )
     const user = userEvent.setup()
     render(<LivePage />)
     expect(await screen.findByText('切到 staging')).toBeInTheDocument()
     expect(screen.getByText('已经切到 staging')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '音色：Cove' }))
+    await user.click(screen.getByRole('radio', { name: 'Ember：自信乐观' }))
+    expect(
+      await screen.findByRole('button', { name: '音色：Ember' }),
+    ).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '更多' }))
     await user.click(screen.getByRole('menuitem', { name: '重置会话' }))
     expect(screen.getByText('切到 staging')).toBeInTheDocument()
@@ -108,6 +120,7 @@ describe('LivePage', () => {
     await user.click(screen.getByRole('menuitem', { name: '清空字幕' }))
     expect(screen.queryByText('切到 staging')).not.toBeInTheDocument()
     expect(screen.getByText('连接后开始说话')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '音色：Ember' })).toBeInTheDocument()
     expect(window.localStorage.getItem('tyrs-hand.live.conversationId')).toBeNull()
   })
 

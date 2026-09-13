@@ -261,8 +261,6 @@ export default function LiveScreen() {
     voiceSaveRevision.current += 1;
     requestedVoice.current = undefined;
     setConversation(null);
-    setSelectedVoice(defaultLiveVoice);
-    selectedVoiceRef.current = defaultLiveVoice;
     setState(initialLiveTranscriptState);
     if (profileId) await saveLiveConversationId(profileId, null);
   };

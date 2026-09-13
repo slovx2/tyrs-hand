@@ -414,8 +414,6 @@ export function LivePage() {
     voiceSaveRevision.current += 1
     requestedVoice.current = undefined
     setConversation(null)
-    setSelectedVoice(defaultLiveVoice)
-    selectedVoiceRef.current = defaultLiveVoice
     setTranscript(initialLiveTranscriptState)
     writeStoredConversationId(null)
   }
