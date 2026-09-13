@@ -198,6 +198,8 @@ func (s *Server) adminRouter() http.Handler {
 	client.PATCH("/live-conversations/:id", s.updateLiveConversation)
 	client.POST("/live-conversations/:id/sessions", s.createLiveSession)
 	client.POST("/live-conversations/:id/recover", s.recoverLiveSession)
+	client.POST("/live-conversations/:id/reset-history", s.resetLiveConversationHistory)
+	client.POST("/live-conversations/:id/clear-messages", s.clearLiveConversationMessages)
 	client.POST("/live-sessions/:id/close", s.closeLiveSession)
 	client.GET("/live-conversations/:id/messages", s.listLiveMessages)
 	client.GET("/live-conversations/:id/events", s.listLiveEvents)

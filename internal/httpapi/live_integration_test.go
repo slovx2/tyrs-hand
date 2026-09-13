@@ -327,6 +327,8 @@ func liveIntegrationRouter(server *Server) http.Handler {
 	client.PATCH("/live-conversations/:id", server.updateLiveConversation)
 	client.POST("/live-conversations/:id/sessions", server.createLiveSession)
 	client.POST("/live-conversations/:id/recover", server.recoverLiveSession)
+	client.POST("/live-conversations/:id/reset-history", server.resetLiveConversationHistory)
+	client.POST("/live-conversations/:id/clear-messages", server.clearLiveConversationMessages)
 	client.POST("/live-sessions/:id/close", server.closeLiveSession)
 	client.GET("/live-conversations/:id/messages", server.listLiveMessages)
 	client.GET("/live-conversations/:id/events", server.listLiveEvents)

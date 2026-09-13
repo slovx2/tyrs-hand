@@ -227,6 +227,65 @@ func (s *Server) updateLiveConversation(c *gin.Context) {
 	c.JSON(http.StatusOK, item)
 }
 
+func (s *Server) resetLiveConversationHistory(c *gin.Context) {
+	s.mutateLiveConversationMemory(c, false)
+}
+
+func (s *Server) clearLiveConversationMessages(c *gin.Context) {
+	s.mutateLiveConversationMemory(c, true)
+}
+
+func (s *Server) mutateLiveConversationMemory(c *gin.Context, deleteMessages bool) {
+	id, ok := liveIDParam(c)
+	if !ok {
+		return
+	}
+	administratorID := c.MustGet("session").(auth.Session).AdministratorID
+	tx, err := s.db.BeginTx(c.Request.Context(), nil)
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "更新 Live conversation 失败", err)
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	if deleteMessages {
+		if _, err = tx.ExecContext(c.Request.Context(),
+			`DELETE FROM live_messages WHERE conversation_id=$1`, id); err != nil {
+			problem(c, http.StatusInternalServerError, "清空 Live 字幕失败", err)
+			return
+		}
+	}
+	result, err := tx.ExecContext(c.Request.Context(), `UPDATE live_conversations
+		SET history_after=now(), context_revision=context_revision+1, updated_at=now()
+		WHERE id=$1 AND administrator_id=$2`, id, administratorID)
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "更新 Live conversation 失败", err)
+		return
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "更新 Live conversation 失败", err)
+		return
+	}
+	if updated == 0 {
+		problem(c, http.StatusNotFound, "Live conversation 不存在", sql.ErrNoRows)
+		return
+	}
+	if err = tx.Commit(); err != nil {
+		problem(c, http.StatusInternalServerError, "更新 Live conversation 失败", err)
+		return
+	}
+	item, err := s.loadLiveConversation(c.Request.Context(), id, administratorID)
+	if errors.Is(err, sql.ErrNoRows) {
+		problem(c, http.StatusNotFound, "Live conversation 不存在", err)
+		return
+	}
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取 Live conversation 失败", err)
+		return
+	}
+	c.JSON(http.StatusOK, item)
+}
+
 func (s *Server) loadLiveConversation(ctx context.Context, id, administratorID uuid.UUID) (liveConversationResponse, error) {
 	var item liveConversationResponse
 	var active uuid.NullUUID
@@ -677,7 +736,9 @@ func buildLiveHistory(rows []liveHistoryRow) []live.InputMessage {
 
 func (s *Server) liveHistory(ctx context.Context, conversationID uuid.UUID) ([]live.InputMessage, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT role,text FROM live_messages
-		WHERE conversation_id=$1 ORDER BY sequence DESC LIMIT 128`, conversationID)
+		WHERE conversation_id=$1 AND created_at > COALESCE(
+			(SELECT history_after FROM live_conversations WHERE id=$1), '-infinity'::timestamptz)
+		ORDER BY sequence DESC LIMIT 128`, conversationID)
 	if err != nil {
 		return nil, err
 	}

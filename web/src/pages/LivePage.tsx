@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  clearLiveConversationMessages,
   closeLiveSession,
   createLiveConversation,
   createLiveSession,
@@ -8,6 +9,7 @@ import {
   listLiveWorkerProjects,
   listLiveWorkerSessions,
   recoverLiveSession,
+  resetLiveConversationHistory,
   updateLiveConversation,
   type LiveConversation,
   type LiveMessage,
@@ -407,15 +409,37 @@ export function LivePage() {
     closePeer()
   }
 
-  const resetSession = async () => { await disconnect() }
+  const resetSession = async () => {
+    const reconnect = Boolean(sessionId)
+    setError('')
+    await voiceSaveQueue.current
+    if (conversation) {
+      try {
+        await resetLiveConversationHistory(conversation.id)
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : '重置会话失败')
+        return
+      }
+    }
+    await disconnect()
+    if (reconnect) await connect()
+  }
 
   const clearCaptions = async () => {
+    const reconnect = Boolean(sessionId)
+    setError('')
+    await voiceSaveQueue.current
+    if (conversation) {
+      try {
+        await clearLiveConversationMessages(conversation.id)
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : '清空字幕失败')
+        return
+      }
+    }
     await disconnect()
-    voiceSaveRevision.current += 1
-    requestedVoice.current = undefined
-    setConversation(null)
     setTranscript(initialLiveTranscriptState)
-    writeStoredConversationId(null)
+    if (reconnect) await connect()
   }
 
   const visibleTranscript = visibleLiveTranscript(transcript)
@@ -472,7 +496,7 @@ export function LivePage() {
           />
           {voiceNeedsReset && (
             <span className="live-voice-pending" role="status">
-              已选择 {findLiveVoice(selectedVoice).name}，重置会话后生效
+              已选择 {findLiveVoice(selectedVoice).name}，重置会话或清空字幕后生效
             </span>
           )}
         </div>

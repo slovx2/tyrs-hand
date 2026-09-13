@@ -103,6 +103,14 @@ describe('LivePage', () => {
           return HttpResponse.json({ ...conversationJson(), voice: body.voice })
         },
       ),
+      http.post(
+        `/api/v1/client/live-conversations/${conversationId}/reset-history`,
+        () => HttpResponse.json(conversationJson()),
+      ),
+      http.post(
+        `/api/v1/client/live-conversations/${conversationId}/clear-messages`,
+        () => HttpResponse.json(conversationJson()),
+      ),
     )
     const user = userEvent.setup()
     render(<LivePage />)
@@ -115,13 +123,15 @@ describe('LivePage', () => {
     ).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '更多' }))
     await user.click(screen.getByRole('menuitem', { name: '重置会话' }))
-    expect(screen.getByText('切到 staging')).toBeInTheDocument()
+    expect(await screen.findByText('切到 staging')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '更多' }))
     await user.click(screen.getByRole('menuitem', { name: '清空字幕' }))
-    expect(screen.queryByText('切到 staging')).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText('切到 staging')).not.toBeInTheDocument()
+    })
     expect(screen.getByText('连接后开始说话')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '音色：Ember' })).toBeInTheDocument()
-    expect(window.localStorage.getItem('tyrs-hand.live.conversationId')).toBeNull()
+    expect(window.localStorage.getItem('tyrs-hand.live.conversationId')).toBe(conversationId)
   })
 
   it('acceptanceAudio 不展示控件', () => {

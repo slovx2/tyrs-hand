@@ -4,7 +4,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-nati
 import { RTCPeerConnection, mediaDevices, type MediaStream } from "react-native-webrtc";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { closeLiveSession, createLiveConversation, createLiveSession, getLiveConversation, listLiveMessages, listLiveWorkerProjects, listLiveWorkerSessions, recoverLiveSession, updateLiveConversation, type LiveConversation } from "@/api/live";
+import { clearLiveConversationMessages, closeLiveSession, createLiveConversation, createLiveSession, getLiveConversation, listLiveMessages, listLiveWorkerProjects, listLiveWorkerSessions, recoverLiveSession, resetLiveConversationHistory, updateLiveConversation, type LiveConversation } from "@/api/live";
 import { Dropdown } from "@/components/Dropdown";
 import { Screen } from "@/components/ui";
 import { LiveMark } from "@/features/live/LiveMark";
@@ -255,14 +255,28 @@ export default function LiveScreen() {
     stopPeer();
   };
 
-  const resetSession = async () => { await disconnect(); };
-  const clearCaptions = async () => {
+  const resetSession = async () => {
+    const reconnect = Boolean(sessionId);
+    setError(null);
+    await voiceSaveQueue.current;
+    if (link && conversation) {
+      try { await resetLiveConversationHistory(link, conversation.id); }
+      catch (reason) { setError(reason instanceof Error ? reason.message : "重置会话失败"); return; }
+    }
     await disconnect();
-    voiceSaveRevision.current += 1;
-    requestedVoice.current = undefined;
-    setConversation(null);
+    if (reconnect) await connect();
+  };
+  const clearCaptions = async () => {
+    const reconnect = Boolean(sessionId);
+    setError(null);
+    await voiceSaveQueue.current;
+    if (link && conversation) {
+      try { await clearLiveConversationMessages(link, conversation.id); }
+      catch (reason) { setError(reason instanceof Error ? reason.message : "清空字幕失败"); return; }
+    }
+    await disconnect();
     setState(initialLiveTranscriptState);
-    if (profileId) await saveLiveConversationId(profileId, null);
+    if (reconnect) await connect();
   };
   const leave = () => { if (router.canGoBack()) router.back(); else router.replace("/(tabs)/sessions"); };
   const visible = visibleLiveTranscript(state);
@@ -285,7 +299,7 @@ export default function LiveScreen() {
       <View style={styles.voiceField}>
         <LiveVoicePicker value={selectedVoice} onChange={handleVoiceChange} />
         {voiceNeedsReset ? <Text style={[styles.voicePending, { color: theme.colors.warning }]}>
-          已选择 {findLiveVoice(selectedVoice).name}，重置会话后生效
+          已选择 {findLiveVoice(selectedVoice).name}，重置会话或清空字幕后生效
         </Text> : null}
       </View>
       <Dropdown testID="live:worker" label="Worker" value={workerId || null}
