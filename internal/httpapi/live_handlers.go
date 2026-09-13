@@ -30,6 +30,9 @@ type liveConversationRequest struct {
 	Voice        string     `json:"voice"`
 	Instructions string     `json:"instructions"`
 }
+type liveConversationVoiceRequest struct {
+	Voice string `json:"voice"`
+}
 type liveSessionRequest struct {
 	OfferSDP string `json:"offerSdp"`
 	Platform string `json:"platform"`
@@ -169,6 +172,50 @@ func (s *Server) getLiveConversation(c *gin.Context) {
 		return
 	}
 	item, err := s.loadLiveConversation(c.Request.Context(), id, c.MustGet("session").(auth.Session).AdministratorID)
+	if errors.Is(err, sql.ErrNoRows) {
+		problem(c, http.StatusNotFound, "Live conversation 不存在", err)
+		return
+	}
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取 Live conversation 失败", err)
+		return
+	}
+	c.JSON(http.StatusOK, item)
+}
+
+func (s *Server) updateLiveConversation(c *gin.Context) {
+	id, ok := liveIDParam(c)
+	if !ok {
+		return
+	}
+	var request liveConversationVoiceRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		badRequest(c, err)
+		return
+	}
+	request.Voice = strings.TrimSpace(request.Voice)
+	if request.Voice == "" || len(request.Voice) > 64 {
+		badRequest(c, errors.New("Live voice 配置无效"))
+		return
+	}
+	administratorID := c.MustGet("session").(auth.Session).AdministratorID
+	result, err := s.db.ExecContext(c.Request.Context(), `UPDATE live_conversations
+		SET voice=$1,updated_at=now() WHERE id=$2 AND administrator_id=$3`,
+		request.Voice, id, administratorID)
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "更新 Live voice 失败", err)
+		return
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "更新 Live voice 失败", err)
+		return
+	}
+	if updated == 0 {
+		problem(c, http.StatusNotFound, "Live conversation 不存在", sql.ErrNoRows)
+		return
+	}
+	item, err := s.loadLiveConversation(c.Request.Context(), id, administratorID)
 	if errors.Is(err, sql.ErrNoRows) {
 		problem(c, http.StatusNotFound, "Live conversation 不存在", err)
 		return

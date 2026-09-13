@@ -1873,6 +1873,184 @@ h2 {
   gap: 0.75rem 1rem;
   margin-bottom: 0.75rem;
 }
+.live-voice-field {
+  display: grid;
+  min-width: 12rem;
+  gap: 0.3rem;
+}
+.live-voice-trigger {
+  display: flex;
+  min-width: 12rem;
+  min-height: 2rem;
+  cursor: pointer;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.65rem;
+  color: var(--ink);
+  background: var(--surface-raised);
+  padding: 0.35rem 0.6rem 0.35rem 0.75rem;
+  text-align: left;
+}
+.live-voice-trigger:hover {
+  border-color: var(--ink-muted);
+  background: var(--surface);
+}
+.live-picker-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.05rem;
+}
+.live-picker-copy > span {
+  color: var(--ink-muted);
+  font-size: 0.68rem;
+}
+.live-picker-copy strong {
+  overflow: hidden;
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.live-voice-pending {
+  color: var(--gold);
+  font-size: 0.7rem;
+}
+.live-voice-overlay {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(20 19 16 / 48%);
+  padding: 1rem;
+}
+.live-voice-dialog {
+  width: min(100%, 30rem);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--surface);
+  box-shadow: 0 24px 70px -28px rgb(0 0 0 / 65%);
+  padding: 1rem 1.15rem 1.2rem;
+}
+.live-voice-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.live-voice-dialog-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.live-dialog-close {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  cursor: pointer;
+  place-items: center;
+  border: 0;
+  border-radius: 0.45rem;
+  color: var(--ink-muted);
+  background: transparent;
+}
+.live-dialog-close:hover {
+  color: var(--ink);
+  background: var(--hover);
+}
+.live-voice-preview {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr) 2.5rem;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+.live-voice-preview-main {
+  display: grid;
+  min-width: 0;
+  justify-items: center;
+  gap: 0.35rem;
+  text-align: center;
+}
+.live-voice-preview-main strong {
+  margin-top: 0.25rem;
+  font-size: 1.1rem;
+}
+.live-voice-preview-main > span {
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+}
+.live-voice-preview-main small {
+  color: #b94b40;
+  font-size: 0.72rem;
+}
+.live-voice-orb {
+  display: grid;
+  width: 7.5rem;
+  height: 7.5rem;
+  cursor: pointer;
+  place-items: center;
+  border: 1px solid var(--gold);
+  border-radius: 50%;
+  color: var(--ink);
+  background: var(--surface-raised);
+  box-shadow:
+    0 0 0 0.7rem color-mix(in srgb, var(--gold) 8%, transparent),
+    inset 0 0 0 1.25rem color-mix(in srgb, var(--gold) 5%, transparent);
+  transition: box-shadow 150ms ease, transform 150ms ease;
+}
+.live-voice-orb:hover {
+  transform: scale(1.02);
+}
+.live-voice-orb.is-playing {
+  box-shadow:
+    0 0 0 0.7rem color-mix(in srgb, var(--gold) 16%, transparent),
+    0 0 0 1.35rem color-mix(in srgb, var(--gold) 7%, transparent),
+    inset 0 0 0 1.25rem color-mix(in srgb, var(--gold) 8%, transparent);
+}
+.live-voice-arrow {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  cursor: pointer;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  color: var(--ink-muted);
+  background: transparent;
+}
+.live-voice-arrow:hover {
+  border-color: var(--border);
+  color: var(--ink);
+  background: var(--hover);
+}
+.live-voice-dots {
+  display: flex;
+  justify-content: center;
+  gap: 0.6rem;
+  margin-top: 1.1rem;
+}
+.live-voice-dot {
+  width: 0.62rem;
+  height: 0.62rem;
+  cursor: pointer;
+  border: 0;
+  border-radius: 50%;
+  background: var(--border-strong);
+  padding: 0;
+}
+.live-voice-dot:hover,
+.live-voice-dot.is-selected {
+  background: var(--gold);
+}
+.live-voice-dot:focus-visible,
+.live-voice-arrow:focus-visible,
+.live-voice-orb:focus-visible,
+.live-voice-trigger:focus-visible,
+.live-dialog-close:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
 .live-pickers label {
   display: flex;
   flex-direction: column;

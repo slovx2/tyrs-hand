@@ -33,7 +33,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        patch: operations["updateLiveConversation"];
         trace?: never;
     };
     "/client/live-conversations/{id}/sessions": {
@@ -2598,6 +2598,9 @@ export interface components {
             voice?: string;
             instructions?: string;
         };
+        LiveConversationVoiceRequest: {
+            voice: string;
+        };
         LiveConversation: {
             /** Format: uuid */
             id: string;
@@ -2988,6 +2991,33 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Live conversation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveConversation"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    updateLiveConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["WorkerResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiveConversationVoiceRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated Live conversation */
             200: {
                 headers: {
                     [name: string]: unknown;

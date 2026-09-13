@@ -53,6 +53,12 @@ export function createLiveConversation(input: {
 export function getLiveConversation(id: string) {
   return api<LiveConversation>(`/client/live-conversations/${id}`)
 }
+export function updateLiveConversation(id: string, voice: string) {
+  return api<LiveConversation>(`/client/live-conversations/${id}`, {
+    method: 'PATCH',
+    ...jsonBody({ voice }),
+  })
+}
 export function createLiveSession(id: string, offerSdp: string) {
   return api<LiveSessionResponse>(`/client/live-conversations/${id}/sessions`, {
     method: 'POST',

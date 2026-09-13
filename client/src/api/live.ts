@@ -38,6 +38,11 @@ export function listLiveWorkerProjects(link: ControlMachineLink, workerId: strin
   return controlRequest<{ projects: Array<{ id: string; name: string }> }>(link, `/live-workers/${workerId}/projects`);
 }
 export function getLiveConversation(link: ControlMachineLink, id: string) { return controlRequest(link, `/live-conversations/${id}`, undefined, (value) => liveConversationSchema.parse(value)); }
+export function updateLiveConversation(link: ControlMachineLink, id: string, voice: string) {
+  return controlRequest(link, `/live-conversations/${id}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ voice }),
+  }, (value) => liveConversationSchema.parse(value));
+}
 export function createLiveSession(link: ControlMachineLink, id: string, offerSdp: string) { return controlRequest(link, `/live-conversations/${id}/sessions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ offerSdp, platform: "android" }) }, (value) => liveSessionSchema.parse(value)); }
 export function recoverLiveSession(link: ControlMachineLink, id: string, offerSdp: string) { return controlRequest(link, `/live-conversations/${id}/recover`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ offerSdp, platform: "android" }) }, (value) => liveSessionSchema.parse(value)); }
 export function closeLiveSession(link: ControlMachineLink, id: string) { return controlRequest(link, `/live-sessions/${id}/close`, { method: "POST" }, (value) => z.object({ sessionId: z.string().uuid(), status: z.string() }).parse(value)); }

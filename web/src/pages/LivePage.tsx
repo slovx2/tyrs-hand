@@ -8,16 +8,23 @@ import {
   listLiveWorkerProjects,
   listLiveWorkerSessions,
   recoverLiveSession,
+  updateLiveConversation,
   type LiveConversation,
   type LiveMessage,
 } from '../api/live'
 import { api } from '../api/client'
+import { LiveVoicePicker } from '../features/live/LiveVoicePicker'
 import {
   initialLiveTranscriptState,
   reduceLiveTranscript,
   visibleLiveTranscript,
   type LiveTranscriptState,
 } from '../features/live/transcriptReducer'
+import {
+  defaultLiveVoice,
+  findLiveVoice,
+  type LiveVoice,
+} from '../features/live/voices'
 import liveAcceptanceAudioUrl from '../assets/live-acceptance.wav?url'
 
 const liveConversationStorageKey = 'tyrs-hand.live.conversationId'
@@ -142,6 +149,9 @@ export function LivePage() {
   const [mode, setMode] = useState<'bind' | 'new'>('bind')
   const [bindSessionId, setBindSessionId] = useState('')
   const [projectId, setProjectId] = useState('')
+  const [selectedVoice, setSelectedVoice] =
+    useState<LiveVoice>(defaultLiveVoice)
+  const [activeSessionVoice, setActiveSessionVoice] = useState<string>()
   const [workers, setWorkers] = useState<Array<{ id: string; name: string }>>([])
   const [sessions, setSessions] = useState<Array<{ id: string; title: string }>>([])
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([])
@@ -151,7 +161,12 @@ export function LivePage() {
   const recording = useRef<HTMLAudioElement>(null)
   const stream = useRef<MediaStream | null>(null)
   const menu = useRef<HTMLDivElement>(null)
-  const resetPending = useRef(false)
+  const voiceSaveQueue = useRef(Promise.resolve())
+  const voiceSaveRevision = useRef(0)
+  const requestedVoice = useRef<
+    { conversationId: string; voice: LiveVoice } | undefined
+  >(undefined)
+  const selectedVoiceRef = useRef(selectedVoice)
   const acceptanceAudio = shouldUseAcceptanceAudio()
 
   const closePeer = () => {
@@ -210,6 +225,8 @@ export function LivePage() {
         if (current.workerId) setWorkerId(current.workerId)
         if (current.workspaceSessionId) setBindSessionId(current.workspaceSessionId)
         if (current.projectId) setProjectId(current.projectId)
+        setSelectedVoice(findLiveVoice(current.voice).slug)
+        selectedVoiceRef.current = findLiveVoice(current.voice).slug
         setTranscript(transcriptFromMessages(history.items))
       } catch {
         if (!cancelled) writeStoredConversationId(null)
@@ -228,6 +245,7 @@ export function LivePage() {
     if (type === 'session.closed') {
       setStatus('未连接')
       setSessionId(undefined)
+      setActiveSessionVoice(undefined)
     }
     setTranscript((current) => reduceLiveTranscript(current, event))
     if (type === 'error')
@@ -239,11 +257,39 @@ export function LivePage() {
       )
   }
 
+  const handleVoiceChange = (voice: LiveVoice) => {
+    setError('')
+    setSelectedVoice(voice)
+    selectedVoiceRef.current = voice
+    const hasPendingVoice =
+      conversation !== null &&
+      requestedVoice.current?.conversationId === conversation.id
+    if (!conversation || (conversation.voice === voice && !hasPendingVoice)) return
+    const revision = ++voiceSaveRevision.current
+    const conversationId = conversation.id
+    requestedVoice.current = { conversationId, voice }
+    voiceSaveQueue.current = voiceSaveQueue.current
+      .catch(() => undefined)
+      .then(async () => {
+        if (revision !== voiceSaveRevision.current) return
+        const updated = await updateLiveConversation(conversationId, voice)
+        if (revision !== voiceSaveRevision.current) return
+        requestedVoice.current = undefined
+        setConversation((current) =>
+          current?.id === updated.id ? updated : current,
+        )
+      })
+      .catch((reason: unknown) => {
+        if (revision !== voiceSaveRevision.current) return
+        setError(reason instanceof Error ? reason.message : '音色保存失败')
+      })
+  }
+
   const connect = async () => {
     setError('')
     setStatus('连接中')
     try {
-      const shouldRecover = Boolean(conversation) && !resetPending.current
+      const shouldRecover = Boolean(conversation)
       let current = conversation
       closePeer()
       const recordingElement = acceptanceAudio ? recording.current : null
@@ -252,14 +298,23 @@ export function LivePage() {
         if (!workerId) throw new Error('请先选择 Worker')
         if (mode === 'bind') {
           if (!bindSessionId) throw new Error('请选择要绑定的 Session')
-          current = await createLiveConversation({ workerId, sessionId: bindSessionId })
+          current = await createLiveConversation({
+            workerId,
+            sessionId: bindSessionId,
+            voice: selectedVoice,
+          })
         } else {
           if (!projectId) throw new Error('请选择项目以新开语音')
-          current = await createLiveConversation({ workerId, projectId })
+          current = await createLiveConversation({
+            workerId,
+            projectId,
+            voice: selectedVoice,
+          })
         }
         setConversation(current)
         writeStoredConversationId(current.id)
       }
+      await voiceSaveQueue.current
       const connection = new RTCPeerConnection(liveIceConfiguration)
       peer.current = connection
       connection.onconnectionstatechange = () => {
@@ -314,11 +369,12 @@ export function LivePage() {
       await waitForIceGathering(connection)
       const description = connection.localDescription?.sdp
       if (!description) throw new Error('无法生成 SDP offer')
+      const sessionVoice = selectedVoiceRef.current
       const result = shouldRecover
         ? await recoverLiveSession(current.id, description)
         : await createLiveSession(current.id, description)
-      resetPending.current = false
       setSessionId(result.sessionId)
+      setActiveSessionVoice(sessionVoice)
       await connection.setRemoteDescription({
         type: 'answer',
         sdp: result.transport.answerSdp,
@@ -347,18 +403,19 @@ export function LivePage() {
     }
     setSessionId(undefined)
     setStatus('未连接')
+    setActiveSessionVoice(undefined)
     closePeer()
   }
 
-  const resetSession = async () => {
-    await disconnect()
-    resetPending.current = true
-  }
+  const resetSession = async () => { await disconnect() }
 
   const clearCaptions = async () => {
     await disconnect()
-    resetPending.current = false
+    voiceSaveRevision.current += 1
+    requestedVoice.current = undefined
     setConversation(null)
+    setSelectedVoice(defaultLiveVoice)
+    selectedVoiceRef.current = defaultLiveVoice
     setTranscript(initialLiveTranscriptState)
     writeStoredConversationId(null)
   }
@@ -366,6 +423,8 @@ export function LivePage() {
   const visibleTranscript = visibleLiveTranscript(transcript)
   const connected = status === '已连接'
   const connecting = status === '连接中'
+  const voiceNeedsReset =
+    activeSessionVoice !== undefined && selectedVoice !== activeSessionVoice
   return (
     <section className="live-page">
       <div className="live-head">
@@ -408,6 +467,17 @@ export function LivePage() {
       </div>
       {error && <div className="danger-note">{error}</div>}
       <div className="live-pickers">
+        <div className="live-voice-field">
+          <LiveVoicePicker
+            value={selectedVoice}
+            onChange={handleVoiceChange}
+          />
+          {voiceNeedsReset && (
+            <span className="live-voice-pending" role="status">
+              已选择 {findLiveVoice(selectedVoice).name}，重置会话后生效
+            </span>
+          )}
+        </div>
         <label>
           Worker
           <select

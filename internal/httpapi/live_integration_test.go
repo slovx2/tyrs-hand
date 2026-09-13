@@ -243,6 +243,16 @@ func TestLiveControlWithFakeProvider(t *testing.T) {
 	var conversationBody liveConversationResponse
 	require.NoError(t, json.Unmarshal(conversation.Body.Bytes(), &conversationBody))
 
+	updatedConversation := clientJSONRequest(t, http.MethodPatch, httpServer.URL+"/api/v1/client/live-conversations/"+
+		conversationBody.ID.String(), loginBody.AccessToken, map[string]any{"voice": "ember"})
+	require.Equal(t, http.StatusOK, updatedConversation.Code, updatedConversation.Body.String())
+	var updatedConversationBody liveConversationResponse
+	require.NoError(t, json.Unmarshal(updatedConversation.Body.Bytes(), &updatedConversationBody))
+	require.Equal(t, "ember", updatedConversationBody.Voice)
+	invalidVoice := clientJSONRequest(t, http.MethodPatch, httpServer.URL+"/api/v1/client/live-conversations/"+
+		conversationBody.ID.String(), loginBody.AccessToken, map[string]any{"voice": " "})
+	require.Equal(t, http.StatusBadRequest, invalidVoice.Code, invalidVoice.Body.String())
+
 	created := clientJSONRequest(t, http.MethodPost, httpServer.URL+"/api/v1/client/live-conversations/"+
 		conversationBody.ID.String()+"/sessions", loginBody.AccessToken,
 		map[string]any{"offerSdp": "offer-sdp\r\n", "platform": "web"})
@@ -262,6 +272,7 @@ func TestLiveControlWithFakeProvider(t *testing.T) {
 		return db.QueryRowContext(ctx, `SELECT status FROM live_sessions WHERE id=$1`, createdBody.SessionID).Scan(&status) == nil && status == "active"
 	}, 5*time.Second, 20*time.Millisecond)
 	require.Equal(t, "gpt-live-test", call.session["model"])
+	require.Equal(t, "ember", call.session["audio"].(map[string]any)["output"].(map[string]any)["voice"])
 	require.NotContains(t, call.session, "apiKey")
 	call.writeJSON(map[string]any{"type": "input_transcript.delta", "id": "input-delta", "item_id": "item-1", "delta": "你好"})
 	call.writeJSON(map[string]any{"type": "input_transcript.delta", "id": "input-delta", "item_id": "item-1", "delta": "你好"})
@@ -293,6 +304,7 @@ func TestLiveControlWithFakeProvider(t *testing.T) {
 	require.NotEqual(t, createdBody.SessionID, recoveredBody.SessionID)
 	recoveredCall := fake.waitCall(t, 1)
 	recoveredCall.waitAttach(t, 1)
+	require.Equal(t, "ember", recoveredCall.session["audio"].(map[string]any)["output"].(map[string]any)["voice"])
 	input, ok := recoveredCall.session["input"].([]any)
 	require.True(t, ok)
 	require.Len(t, input, 2)
@@ -312,6 +324,7 @@ func liveIntegrationRouter(server *Server) http.Handler {
 	client.Use(server.requireClientBearer())
 	client.POST("/live-conversations", server.createLiveConversation)
 	client.GET("/live-conversations/:id", server.getLiveConversation)
+	client.PATCH("/live-conversations/:id", server.updateLiveConversation)
 	client.POST("/live-conversations/:id/sessions", server.createLiveSession)
 	client.POST("/live-conversations/:id/recover", server.recoverLiveSession)
 	client.POST("/live-sessions/:id/close", server.closeLiveSession)

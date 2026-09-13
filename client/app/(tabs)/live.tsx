@@ -4,11 +4,13 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-nati
 import { RTCPeerConnection, mediaDevices, type MediaStream } from "react-native-webrtc";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { closeLiveSession, createLiveConversation, createLiveSession, getLiveConversation, listLiveMessages, listLiveWorkerProjects, listLiveWorkerSessions, recoverLiveSession, type LiveConversation } from "@/api/live";
+import { closeLiveSession, createLiveConversation, createLiveSession, getLiveConversation, listLiveMessages, listLiveWorkerProjects, listLiveWorkerSessions, recoverLiveSession, updateLiveConversation, type LiveConversation } from "@/api/live";
 import { Dropdown } from "@/components/Dropdown";
 import { Screen } from "@/components/ui";
 import { LiveMark } from "@/features/live/LiveMark";
+import { LiveVoicePicker } from "@/features/live/LiveVoicePicker";
 import { initialLiveTranscriptState, reduceLiveTranscript, visibleLiveTranscript, type LiveTranscriptState } from "@/features/live/transcriptReducer";
+import { defaultLiveVoice, findLiveVoice, type LiveVoice } from "@/features/live/voices";
 import { loadLiveConversationId, saveLiveConversationId } from "@/db/settings";
 import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
@@ -41,7 +43,6 @@ export default function LiveScreen() {
   const peer = useRef<RTCPeerConnection | null>(null);
   const channel = useRef<ReturnType<RTCPeerConnection["createDataChannel"]> | null>(null);
   const stream = useRef<MediaStream | null>(null);
-  const resetPending = useRef(false);
   const [conversation, setConversation] = useState<LiveConversation | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [state, setState] = useState<LiveTranscriptState>(initialLiveTranscriptState);
@@ -52,8 +53,14 @@ export default function LiveScreen() {
   const [mode, setMode] = useState<"bind" | "new">("bind");
   const [bindSessionId, setBindSessionId] = useState("");
   const [projectId, setProjectId] = useState("");
+  const [selectedVoice, setSelectedVoice] = useState<LiveVoice>(defaultLiveVoice);
+  const [activeSessionVoice, setActiveSessionVoice] = useState<string>();
   const [sessions, setSessions] = useState<Array<{ id: string; title: string }>>([]);
   const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
+  const voiceSaveQueue = useRef(Promise.resolve());
+  const voiceSaveRevision = useRef(0);
+  const requestedVoice = useRef<{ conversationId: string; voice: LiveVoice } | undefined>(undefined);
+  const selectedVoiceRef = useRef(selectedVoice);
   const workers = connection?.controls ?? [];
   const link = workers.find((item) => item.workerId === workerId) ?? workers[0] ?? null;
   const profileId = connection?.profileId;
@@ -103,6 +110,8 @@ export default function LiveScreen() {
         if (current.workerId) setWorkerId(current.workerId);
         if (current.workspaceSessionId) setBindSessionId(current.workspaceSessionId);
         if (current.projectId) setProjectId(current.projectId);
+        setSelectedVoice(findLiveVoice(current.voice).slug);
+        selectedVoiceRef.current = findLiveVoice(current.voice).slug;
         setState({
           items: [...history.items].reverse().map((item) => ({
             role: item.role === "user" ? "user" : "assistant",
@@ -133,31 +142,61 @@ export default function LiveScreen() {
       const event = JSON.parse(raw) as { type?: string };
       if (event.type === "session.started") setStatus("已连接");
       if (event.type === "session.closed") {
-        setStatus("未连接"); setSessionId(null);
+        setStatus("未连接"); setSessionId(null); setActiveSessionVoice(undefined);
       }
       setState((current) => reduceLiveTranscript(current, event));
     } catch { /* Provider event may be ignored when it is not JSON. */ }
+  };
+
+  const handleVoiceChange = (voice: LiveVoice) => {
+    setError(null);
+    setSelectedVoice(voice);
+    selectedVoiceRef.current = voice;
+    const hasPendingVoice = conversation !== null &&
+      requestedVoice.current?.conversationId === conversation.id;
+    if (!conversation || (conversation.voice === voice && !hasPendingVoice)) return;
+    if (!link) {
+      setError("当前连接不可用，音色将在重新连接后尝试保存");
+      return;
+    }
+    const revision = ++voiceSaveRevision.current;
+    const conversationId = conversation.id;
+    requestedVoice.current = { conversationId, voice };
+    voiceSaveQueue.current = voiceSaveQueue.current
+      .catch(() => undefined)
+      .then(async () => {
+        if (revision !== voiceSaveRevision.current) return;
+        const updated = await updateLiveConversation(link!, conversationId, voice);
+        if (revision !== voiceSaveRevision.current) return;
+        requestedVoice.current = undefined;
+        setConversation((current) => current?.id === updated.id ? updated : current);
+      })
+      .catch((reason: unknown) => {
+        if (revision !== voiceSaveRevision.current) return;
+        setError(reason instanceof Error ? reason.message : "音色保存失败");
+      });
   };
 
   const connect = async () => {
     if (!link || !profileId) { setError("请先在连接页授权一个 Control"); return; }
     setError(null); setStatus("连接中");
     try {
-      const shouldRecover = Boolean(conversation) && !resetPending.current;
+      const shouldRecover = Boolean(conversation);
       let current = conversation;
       stopPeer();
       if (!current) {
         if (!workerId) throw new Error("请先选择 Worker");
         if (mode === "bind") {
           if (!bindSessionId) throw new Error("请选择要绑定的 Session");
-          current = await createLiveConversation(link, { workerId, sessionId: bindSessionId });
+          current = await createLiveConversation(link, { workerId, sessionId: bindSessionId, voice: selectedVoice });
         } else {
           if (!projectId) throw new Error("请选择项目以新开语音");
-          current = await createLiveConversation(link, { workerId, projectId });
+          current = await createLiveConversation(link, { workerId, projectId, voice: selectedVoice });
         }
         setConversation(current);
         await saveLiveConversationId(profileId, current.id);
       }
+      await voiceSaveQueue.current;
       const pc = new RTCPeerConnection(liveIceConfiguration);
       peer.current = pc;
       const connectionState = pc as unknown as { connectionState?: string; onconnectionstatechange: (() => void) | null };
@@ -190,11 +229,12 @@ export default function LiveScreen() {
       await pc.setLocalDescription(offer);
       await waitForIceGathering(pc);
       if (!pc.localDescription?.sdp) throw new Error("无法生成 SDP offer");
+      const sessionVoice = selectedVoiceRef.current;
       const result = shouldRecover
         ? await recoverLiveSession(link, current.id, pc.localDescription.sdp)
         : await createLiveSession(link, current.id, pc.localDescription.sdp);
-      resetPending.current = false;
       setSessionId(result.sessionId);
+      setActiveSessionVoice(sessionVoice);
       await pc.setRemoteDescription({ type: "answer", sdp: result.transport.answerSdp });
       setStatus("连接中");
     } catch (reason) {
@@ -211,14 +251,18 @@ export default function LiveScreen() {
     }
     setSessionId(null);
     setStatus("未连接");
+    setActiveSessionVoice(undefined);
     stopPeer();
   };
 
-  const resetSession = async () => { await disconnect(); resetPending.current = true; };
+  const resetSession = async () => { await disconnect(); };
   const clearCaptions = async () => {
     await disconnect();
-    resetPending.current = false;
+    voiceSaveRevision.current += 1;
+    requestedVoice.current = undefined;
     setConversation(null);
+    setSelectedVoice(defaultLiveVoice);
+    selectedVoiceRef.current = defaultLiveVoice;
     setState(initialLiveTranscriptState);
     if (profileId) await saveLiveConversationId(profileId, null);
   };
@@ -226,6 +270,7 @@ export default function LiveScreen() {
   const visible = visibleLiveTranscript(state);
   const connected = status === "已连接";
   const connecting = status === "连接中";
+  const voiceNeedsReset = activeSessionVoice !== undefined && selectedVoice !== activeSessionVoice;
   return <Screen style={styles.screen}>
     <View style={[styles.top, { paddingTop: insets.top + 4 }]}>
       <Pressable testID="live:exit" accessibilityRole="button" accessibilityLabel="退出" hitSlop={8}
@@ -239,6 +284,12 @@ export default function LiveScreen() {
     </View>
     {error ? <Text style={[styles.error, { color: theme.colors.danger }]}>{error}</Text> : null}
     <View style={styles.pickers}>
+      <View style={styles.voiceField}>
+        <LiveVoicePicker value={selectedVoice} onChange={handleVoiceChange} />
+        {voiceNeedsReset ? <Text style={[styles.voicePending, { color: theme.colors.warning }]}>
+          已选择 {findLiveVoice(selectedVoice).name}，重置会话后生效
+        </Text> : null}
+      </View>
       <Dropdown testID="live:worker" label="Worker" value={workerId || null}
         placeholder="选择 Worker" emptyLabel="没有可用 Worker"
         disabled={Boolean(conversation)}
@@ -311,6 +362,8 @@ const styles = StyleSheet.create({
   more: { fontFamily: "Inter_600SemiBold", fontSize: 22, letterSpacing: 1, textAlign: "right" },
   error: { paddingHorizontal: 20, marginBottom: 8 },
   pickers: { paddingHorizontal: 20, gap: 8, marginBottom: 8 },
+  voiceField: { gap: 4 },
+  voicePending: { fontSize: 12, paddingHorizontal: 4 },
   transcript: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, gap: 12 },
   line: { gap: 4 },
   dock: { alignItems: "center", gap: 10, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 18, paddingHorizontal: 24 },

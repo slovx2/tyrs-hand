@@ -195,6 +195,7 @@ func (s *Server) adminRouter() http.Handler {
 	client.GET("/live-workers/:workerId/sessions", s.listClientLiveWorkerSessions)
 	client.GET("/live-workers/:workerId/projects", s.listClientLiveWorkerProjects)
 	client.GET("/live-conversations/:id", s.getLiveConversation)
+	client.PATCH("/live-conversations/:id", s.updateLiveConversation)
 	client.POST("/live-conversations/:id/sessions", s.createLiveSession)
 	client.POST("/live-conversations/:id/recover", s.recoverLiveSession)
 	client.POST("/live-sessions/:id/close", s.closeLiveSession)

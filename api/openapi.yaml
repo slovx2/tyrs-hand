@@ -42,6 +42,19 @@ paths:
       responses:
         "200": { description: Live conversation, content: { application/json: { schema: { $ref: "#/components/schemas/LiveConversation" } } } }
         default: { $ref: "#/components/responses/Problem" }
+    patch:
+      operationId: updateLiveConversation
+      tags: [Client Protocol]
+      security: [{ clientBearer: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkerResourceID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LiveConversationVoiceRequest" }
+      responses:
+        "200": { description: Updated Live conversation, content: { application/json: { schema: { $ref: "#/components/schemas/LiveConversation" } } } }
+        default: { $ref: "#/components/responses/Problem" }
   /client/live-conversations/{id}/sessions:
     post:
       operationId: createLiveSession
@@ -2270,6 +2283,11 @@ components:
         model: { type: string, maxLength: 128 }
         voice: { type: string, maxLength: 64 }
         instructions: { type: string, maxLength: 32768 }
+    LiveConversationVoiceRequest:
+      type: object
+      required: [voice]
+      properties:
+        voice: { type: string, minLength: 1, maxLength: 64 }
     LiveConversation:
       type: object
       required: [id, workerId, projectId, workspaceSessionId, model, voice, instructions, status, contextRevision, createdAt, updatedAt]
