@@ -51,6 +51,10 @@ func (s *Server) requireClientBearer() gin.HandlerFunc {
 							problem(c, http.StatusForbidden, "CSRF 校验失败", nil)
 							return
 						}
+						session, ok := s.assignClientSessionRole(c, session)
+						if !ok {
+							return
+						}
 						c.Set("session", session)
 						c.Next()
 						return
@@ -78,12 +82,29 @@ func (s *Server) requireClientBearer() gin.HandlerFunc {
 			}
 			return
 		}
+		session, ok := s.assignClientSessionRole(c, session)
+		if !ok {
+			return
+		}
 		c.Set("session", session)
 		if protocol != "" {
 			c.Set(clientWebSocketProtocolContext, protocol)
 		}
 		c.Next()
 	}
+}
+
+func (s *Server) assignClientSessionRole(c *gin.Context, session auth.Session) (auth.Session, bool) {
+	if session.Role != "" {
+		return session, true
+	}
+	role, err := s.auth.Role(c.Request.Context(), session.AdministratorID)
+	if err != nil {
+		problem(c, http.StatusUnauthorized, "登录会话无效", err)
+		return session, false
+	}
+	session.Role = role
+	return session, true
 }
 
 func clientBearerCredentials(request *http.Request) (string, string) {

@@ -92,7 +92,11 @@ func (p *HTTPProvider) CreateSession(ctx context.Context, offer string, config S
 	if strings.TrimSpace(offer) == "" {
 		return SessionResult{}, errors.New("SDP offer 不能为空")
 	}
-	session := map[string]any{"model": config.Model, "instructions": config.Instructions, "audio": map[string]any{"output": map[string]string{"voice": config.Voice}}}
+	session := map[string]any{
+		"model": config.Model, "instructions": config.Instructions,
+		"delegation": map[string]any{"type": "client"},
+		"audio":      map[string]any{"output": map[string]string{"voice": config.Voice}},
+	}
 	if len(config.Input) > 0 {
 		session["input"] = config.Input
 	}

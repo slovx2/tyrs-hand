@@ -23,25 +23,31 @@ const (
 )
 
 type liveConversationRequest struct {
-	Model        string `json:"model"`
-	Voice        string `json:"voice"`
-	Instructions string `json:"instructions"`
+	WorkerID     uuid.UUID  `json:"workerId"`
+	SessionID    *uuid.UUID `json:"sessionId"`
+	ProjectID    *uuid.UUID `json:"projectId"`
+	Model        string     `json:"model"`
+	Voice        string     `json:"voice"`
+	Instructions string     `json:"instructions"`
 }
 type liveSessionRequest struct {
 	OfferSDP string `json:"offerSdp"`
 	Platform string `json:"platform"`
 }
 type liveConversationResponse struct {
-	ID              uuid.UUID  `json:"id"`
-	Model           string     `json:"model"`
-	Voice           string     `json:"voice"`
-	Instructions    string     `json:"instructions"`
-	Status          string     `json:"status"`
-	ActiveSessionID *uuid.UUID `json:"activeSessionId,omitempty"`
-	ContextRevision int64      `json:"contextRevision"`
-	LastError       string     `json:"lastError,omitempty"`
-	CreatedAt       time.Time  `json:"createdAt"`
-	UpdatedAt       time.Time  `json:"updatedAt"`
+	ID                 uuid.UUID  `json:"id"`
+	WorkerID           uuid.UUID  `json:"workerId"`
+	ProjectID          uuid.UUID  `json:"projectId"`
+	WorkspaceSessionID uuid.UUID  `json:"workspaceSessionId"`
+	Model              string     `json:"model"`
+	Voice              string     `json:"voice"`
+	Instructions       string     `json:"instructions"`
+	Status             string     `json:"status"`
+	ActiveSessionID    *uuid.UUID `json:"activeSessionId,omitempty"`
+	ContextRevision    int64      `json:"contextRevision"`
+	LastError          string     `json:"lastError,omitempty"`
+	CreatedAt          time.Time  `json:"createdAt"`
+	UpdatedAt          time.Time  `json:"updatedAt"`
 }
 type liveSessionResponse struct {
 	ConversationID uuid.UUID `json:"conversationId"`
@@ -89,16 +95,68 @@ func (s *Server) createLiveConversation(c *gin.Context) {
 		badRequest(c, errors.New("Live conversation 配置无效"))
 		return
 	}
+	if request.Instructions == "" {
+		request.Instructions = defaultLiveInstructions
+	}
+	if request.WorkerID == uuid.Nil {
+		badRequest(c, errors.New("必须选择 Worker"))
+		return
+	}
+	if !s.requireWorkerAccess(c, request.WorkerID) {
+		return
+	}
+	bindSession := request.SessionID != nil && *request.SessionID != uuid.Nil
+	newProject := request.ProjectID != nil && *request.ProjectID != uuid.Nil
+	if bindSession == newProject {
+		badRequest(c, errors.New("请绑定已有 Session 或选择项目以新开语音"))
+		return
+	}
+	tx, err := s.db.BeginTx(c.Request.Context(), nil)
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "创建 Live conversation 失败", err)
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
 	var item liveConversationResponse
 	item.ID = uuid.New()
+	item.WorkerID = request.WorkerID
 	item.Model = request.Model
 	item.Voice = request.Voice
 	item.Instructions = request.Instructions
 	item.Status = "active"
 	item.CreatedAt = time.Now().UTC()
 	item.UpdatedAt = item.CreatedAt
-	_, err := s.db.ExecContext(c.Request.Context(), `INSERT INTO live_conversations(id,administrator_id,model,voice,instructions,status,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$7)`, item.ID, administratorID, item.Model, item.Voice, item.Instructions, item.Status, item.CreatedAt)
+	if bindSession {
+		projectID, sessionWorker, bindErr := s.liveSessionBinding(c.Request.Context(), tx, *request.SessionID)
+		if bindErr != nil {
+			problem(c, http.StatusUnprocessableEntity, "无法绑定该 Session", bindErr)
+			return
+		}
+		if sessionWorker != request.WorkerID {
+			problem(c, http.StatusUnprocessableEntity, "Session 不属于所选 Worker", nil)
+			return
+		}
+		item.ProjectID = projectID
+		item.WorkspaceSessionID = *request.SessionID
+	} else {
+		sessionID, projectID, createErr := s.createLiveCoordinatorSession(c, tx, request.WorkerID, *request.ProjectID)
+		if createErr != nil {
+			problem(c, http.StatusUnprocessableEntity, "创建接线员 Session 失败", createErr)
+			return
+		}
+		item.ProjectID = projectID
+		item.WorkspaceSessionID = sessionID
+	}
+	_, err = tx.ExecContext(c.Request.Context(), `INSERT INTO live_conversations(
+		id,administrator_id,worker_id,project_id,workspace_session_id,model,voice,instructions,status,created_at,updated_at)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10)`, item.ID, administratorID, item.WorkerID,
+		item.ProjectID, item.WorkspaceSessionID, item.Model, item.Voice, item.Instructions,
+		item.Status, item.CreatedAt)
 	if err != nil {
+		problem(c, http.StatusInternalServerError, "创建 Live conversation 失败", err)
+		return
+	}
+	if err = tx.Commit(); err != nil {
 		problem(c, http.StatusInternalServerError, "创建 Live conversation 失败", err)
 		return
 	}
@@ -125,9 +183,15 @@ func (s *Server) getLiveConversation(c *gin.Context) {
 func (s *Server) loadLiveConversation(ctx context.Context, id, administratorID uuid.UUID) (liveConversationResponse, error) {
 	var item liveConversationResponse
 	var active uuid.NullUUID
-	err := s.db.QueryRowContext(ctx, `SELECT id,model,voice,instructions,status,active_session_id,context_revision,
+	err := s.db.QueryRowContext(ctx, `SELECT id,COALESCE(worker_id,'00000000-0000-0000-0000-000000000000'),
+		COALESCE(project_id,'00000000-0000-0000-0000-000000000000'),
+		COALESCE(workspace_session_id,'00000000-0000-0000-0000-000000000000'),
+		model,voice,instructions,status,active_session_id,context_revision,
 		COALESCE((SELECT last_error FROM live_sessions ls WHERE ls.conversation_id=lc.id AND ls.last_error IS NOT NULL ORDER BY ls.updated_at DESC LIMIT 1),''),created_at,updated_at
-		FROM live_conversations lc WHERE id=$1 AND administrator_id=$2`, id, administratorID).Scan(&item.ID, &item.Model, &item.Voice, &item.Instructions, &item.Status, &active, &item.ContextRevision, &item.LastError, &item.CreatedAt, &item.UpdatedAt)
+		FROM live_conversations lc WHERE id=$1 AND administrator_id=$2`, id, administratorID).Scan(
+		&item.ID, &item.WorkerID, &item.ProjectID, &item.WorkspaceSessionID,
+		&item.Model, &item.Voice, &item.Instructions, &item.Status, &active, &item.ContextRevision,
+		&item.LastError, &item.CreatedAt, &item.UpdatedAt)
 	if active.Valid {
 		value := active.UUID
 		item.ActiveSessionID = &value
@@ -583,4 +647,96 @@ func (s *Server) liveHistory(ctx context.Context, conversationID uuid.UUID) ([]l
 		return nil, err
 	}
 	return buildLiveHistory(historyRows), nil
+}
+
+func (s *Server) listClientLiveWorkerSessions(c *gin.Context) {
+	workerID, err := uuid.Parse(c.Param("workerId"))
+	if err != nil {
+		badRequest(c, err)
+		return
+	}
+	if !s.requireClientWorker(c, workerID) {
+		return
+	}
+	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT session.id, session.title
+		FROM workspace_sessions session
+		JOIN worker_workspaces workspace ON workspace.id=session.workspace_id
+		WHERE workspace.worker_id=$1 AND session.lifecycle_state='active'
+		ORDER BY session.last_activity_at DESC LIMIT 50`, workerID)
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取 Session 失败", err)
+		return
+	}
+	defer func() { _ = rows.Close() }()
+	items := make([]gin.H, 0)
+	for rows.Next() {
+		var id uuid.UUID
+		var title string
+		if err := rows.Scan(&id, &title); err != nil {
+			problem(c, http.StatusInternalServerError, "解析 Session 失败", err)
+			return
+		}
+		items = append(items, gin.H{"id": id, "title": title})
+	}
+	c.JSON(http.StatusOK, gin.H{"sessions": items})
+}
+
+func (s *Server) listClientLiveWorkerProjects(c *gin.Context) {
+	workerID, err := uuid.Parse(c.Param("workerId"))
+	if err != nil {
+		badRequest(c, err)
+		return
+	}
+	if !s.requireClientWorker(c, workerID) {
+		return
+	}
+	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT project.id, project.name
+		FROM workspace_projects project
+		JOIN worker_workspaces workspace ON workspace.id=project.workspace_id
+		WHERE workspace.worker_id=$1 AND project.availability_status='available'
+		ORDER BY project.name`, workerID)
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取项目失败", err)
+		return
+	}
+	defer func() { _ = rows.Close() }()
+	items := make([]gin.H, 0)
+	for rows.Next() {
+		var id uuid.UUID
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			problem(c, http.StatusInternalServerError, "解析项目失败", err)
+			return
+		}
+		items = append(items, gin.H{"id": id, "name": name})
+	}
+	c.JSON(http.StatusOK, gin.H{"projects": items})
+}
+
+func optionalClientDeviceID(c *gin.Context) (uuid.UUID, bool) {
+	value, exists := c.Get(clientDeviceContext)
+	if !exists {
+		return uuid.Nil, false
+	}
+	id, ok := value.(uuid.UUID)
+	return id, ok && id != uuid.Nil
+}
+
+func (s *Server) requireClientWorker(c *gin.Context, workerID uuid.UUID) bool {
+	deviceID, ok := optionalClientDeviceID(c)
+	if !ok {
+		return s.requireWorkerAccess(c, workerID)
+	}
+	var allowed bool
+	if err := s.db.QueryRowContext(c.Request.Context(), `SELECT EXISTS(
+		SELECT 1 FROM client_device_workers WHERE device_id=$1 AND worker_id=$2)`,
+		deviceID, workerID).Scan(&allowed); err != nil {
+		problem(c, http.StatusInternalServerError, "检查设备 Worker 失败", err)
+		return false
+	}
+	if !allowed {
+		problem(c, http.StatusForbidden, "设备未绑定该 Worker", nil)
+		return false
+	}
+	return true
 }

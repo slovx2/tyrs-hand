@@ -1,0 +1,65 @@
+package httpapi
+
+import (
+	"strings"
+	"testing"
+	"unicode/utf8"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestLiveDelegationEventTypes(t *testing.T) {
+	require.True(t, isLiveDelegationEvent("session.delegation.created"))
+	require.True(t, isLiveDelegationEvent("delegation.created"))
+	require.True(t, isLiveDelegationEvent("conversation.handoff.requested"))
+	require.False(t, isLiveDelegationEvent("session.input_transcript.done"))
+}
+
+func TestLiveDelegationID(t *testing.T) {
+	require.Equal(t, "handoff_abc", liveDelegationID(map[string]any{
+		"type": "conversation.handoff.requested", "handoff_id": "handoff_abc",
+	}))
+	require.Equal(t, "del_1", liveDelegationID(map[string]any{
+		"type":       "session.delegation.created",
+		"delegation": map[string]any{"id": "del_1", "target": "client"},
+	}))
+	require.Equal(t, "handoff_abc", liveDelegationID(map[string]any{
+		"type": "delegation.created",
+		"item": map[string]any{"id": "item_1", "handoff_id": "handoff_abc", "target": "client"},
+	}))
+}
+
+func TestStripLiveVoicePrefix(t *testing.T) {
+	channel, text := stripLiveVoicePrefix("[STATUS] 测试还在跑")
+	require.Equal(t, "[STATUS]", channel)
+	require.Equal(t, "测试还在跑", text)
+	channel, text = stripLiveVoicePrefix("[COMPLETE] 做完了")
+	require.Equal(t, "[COMPLETE]", channel)
+	require.Equal(t, "做完了", text)
+	channel, text = stripLiveVoicePrefix("普通回答")
+	require.Equal(t, "", channel)
+	require.Equal(t, "普通回答", text)
+}
+
+func TestIsLiveVoiceTool(t *testing.T) {
+	require.True(t, isLiveVoiceTool("list_sessions"))
+	require.True(t, isLiveVoiceTool("transfer_voice_call"))
+	require.False(t, isLiveVoiceTool("automation_update"))
+	require.False(t, isLiveVoiceTool("capture_screen_context"))
+}
+
+func TestTruncateLiveCommentary(t *testing.T) {
+	require.Equal(t, "短文本", truncateLiveCommentary("短文本"))
+	long := strings.Repeat("测", liveCommentaryLimit+8)
+	got := truncateLiveCommentary(long)
+	require.Equal(t, liveCommentaryLimit, utf8.RuneCountInString(got))
+}
+
+func TestForwardLiveVoiceTextIgnoresUnprefixed(t *testing.T) {
+	channel, text := stripLiveVoicePrefix("[ANALYSIS] 内部推理")
+	require.Equal(t, "[ANALYSIS]", channel)
+	require.Equal(t, "内部推理", text)
+	channel, text = stripLiveVoicePrefix("  [COMMENTARY] 还在跑  ")
+	require.Equal(t, "[COMMENTARY]", channel)
+	require.Equal(t, "还在跑", text)
+}

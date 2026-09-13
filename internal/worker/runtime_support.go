@@ -146,6 +146,36 @@ func automationSpec() ports.DynamicToolSpec {
 			}`)}}}
 }
 
+func isWorkerLiveVoiceTool(name string) bool {
+	switch name {
+	case "list_sessions", "create_session", "send_message", "read_session", "transfer_voice_call", "end_voice_call":
+		return true
+	default:
+		return false
+	}
+}
+
+const liveVoiceDeveloperInstruction = "Realtime voice is active for this existing Codex task. Preserve the task's original instructions, role, collaboration mode, permissions, memory policy, and ongoing work. Every ordinary spoken or frontend-context response must begin at byte zero with [STATUS] followed by one ASCII space for meaningful progress, or [COMPLETE] followed by one ASCII space for a final result, question, or blocker. [COMMENTARY] is also accepted as progress, and [ANALYSIS] remains silent context. Never speak or repeat a channel prefix. Use tyrs_hand.list_sessions to resolve which session the user means. Use tyrs_hand.create_session only on the current worker. Use tyrs_hand.send_message to follow up another session. Use tyrs_hand.transfer_voice_call only after you know the session id. Use tyrs_hand.end_voice_call only when the user clearly intends to end the voice call; a request to stop work, stop speaking, or pause is not sufficient."
+
+func voiceControlSpec() ports.DynamicToolSpec {
+	return ports.DynamicToolSpec{Type: "namespace", Name: "tyrs_hand",
+		Description: "Control Tyrs Hand workspace sessions from an active voice call on this worker.",
+		Tools: []ports.DynamicToolSpec{
+			{Type: "function", Name: "list_sessions", Description: "List sessions on the current worker only.",
+				InputSchema: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)},
+			{Type: "function", Name: "create_session", Description: "Create a session on the current worker.",
+				InputSchema: json.RawMessage(`{"type":"object","properties":{"title":{"type":"string"},"projectId":{"type":"string","format":"uuid"}},"additionalProperties":false}`)},
+			{Type: "function", Name: "send_message", Description: "Send a follow-up to a session on the current worker.",
+				InputSchema: json.RawMessage(`{"type":"object","properties":{"sessionId":{"type":"string","format":"uuid"},"text":{"type":"string","minLength":1}},"required":["sessionId","text"],"additionalProperties":false}`)},
+			{Type: "function", Name: "read_session", Description: "Read a session on the current worker.",
+				InputSchema: json.RawMessage(`{"type":"object","properties":{"sessionId":{"type":"string","format":"uuid"}},"required":["sessionId"],"additionalProperties":false}`)},
+			{Type: "function", Name: "transfer_voice_call", Description: "Move the voice call to another session on this worker.",
+				InputSchema: json.RawMessage(`{"type":"object","properties":{"sessionId":{"type":"string","format":"uuid"}},"required":["sessionId"],"additionalProperties":false}`)},
+			{Type: "function", Name: "end_voice_call", Description: "End the voice call only when the user clearly wants to hang up.",
+				InputSchema: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)},
+		}}
+}
+
 func applyBrowserMCPConfig(runtimeConfig map[string]any, cfg config.Config,
 	tokenEnvironment string, taskIDs ...string,
 ) {

@@ -7,7 +7,7 @@ import { Muted } from "./ui";
 export type DropdownOption = { value: string; label: string; detail?: string };
 
 export function Dropdown({ label, value, options, placeholder, emptyLabel = "无可用选项",
-  onChange, testID }: {
+  onChange, testID, disabled = false }: {
   label: string;
   value: string | null;
   options: readonly DropdownOption[];
@@ -15,6 +15,7 @@ export function Dropdown({ label, value, options, placeholder, emptyLabel = "无
   emptyLabel?: string;
   onChange: (value: string) => void;
   testID: string;
+  disabled?: boolean;
 }) {
   const theme = useTheme();
   const [selected] = options.filter((option) => option.value === value);
@@ -22,9 +23,10 @@ export function Dropdown({ label, value, options, placeholder, emptyLabel = "无
   const display = selected?.label ?? placeholder ?? emptyLabel;
   return <>
     <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={`${label}：${display}`}
-      onPress={() => setVisible(true)} style={({ pressed }) => [styles.trigger,
+      disabled={disabled}
+      onPress={() => { if (!disabled) setVisible(true); }} style={({ pressed }) => [styles.trigger,
         { backgroundColor: theme.colors.surface, borderColor: theme.colors.border,
-          opacity: pressed ? 0.78 : 1 }] }>
+          opacity: disabled ? 0.5 : pressed ? 0.78 : 1 }] }>
       <View style={styles.triggerCopy}><Muted>{label}</Muted>
         <Text numberOfLines={1} ellipsizeMode="tail"
           style={[styles.value, { color: selected ? theme.colors.text : theme.colors.textMuted }]}>

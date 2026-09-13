@@ -2,6 +2,9 @@ import { api, jsonBody, type ListResponse } from './client'
 
 export interface LiveConversation {
   id: string
+  workerId: string
+  projectId: string
+  workspaceSessionId: string
   model: string
   voice: string
   instructions: string
@@ -35,6 +38,9 @@ export interface LiveEvent {
 }
 
 export function createLiveConversation(input: {
+  workerId: string
+  sessionId?: string
+  projectId?: string
   model?: string
   voice?: string
   instructions?: string
@@ -73,5 +79,15 @@ export function listLiveMessages(id: string) {
 export function listLiveEvents(id: string) {
   return api<ListResponse<LiveEvent>>(
     `/client/live-conversations/${id}/events?limit=100`,
+  )
+}
+export function listLiveWorkerSessions(workerId: string) {
+  return api<{ sessions: Array<{ id: string; title: string }> }>(
+    `/client/live-workers/${workerId}/sessions`,
+  )
+}
+export function listLiveWorkerProjects(workerId: string) {
+  return api<{ projects: Array<{ id: string; name: string }> }>(
+    `/client/live-workers/${workerId}/projects`,
   )
 }

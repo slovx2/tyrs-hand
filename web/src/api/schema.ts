@@ -116,6 +116,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/client/live-workers/{workerId}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listClientLiveWorkerSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/client/live-workers/{workerId}/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listClientLiveWorkerProjects"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/webhooks/github": {
         parameters: {
             query?: never;
@@ -2556,6 +2588,12 @@ export interface components {
             nextCursor?: string;
         };
         LiveConversationRequest: {
+            /** Format: uuid */
+            workerId: string;
+            /** Format: uuid */
+            sessionId?: string;
+            /** Format: uuid */
+            projectId?: string;
             model?: string;
             voice?: string;
             instructions?: string;
@@ -2563,6 +2601,12 @@ export interface components {
         LiveConversation: {
             /** Format: uuid */
             id: string;
+            /** Format: uuid */
+            workerId: string;
+            /** Format: uuid */
+            projectId: string;
+            /** Format: uuid */
+            workspaceSessionId: string;
             model: string;
             voice: string;
             instructions: string;
@@ -2576,6 +2620,20 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        LiveWorkerSessionList: {
+            sessions: {
+                /** Format: uuid */
+                id: string;
+                title: string;
+            }[];
+        };
+        LiveWorkerProjectList: {
+            projects: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            }[];
         };
         LiveSessionRequest: {
             offerSdp: string;
@@ -3065,6 +3123,52 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LiveEventList"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listClientLiveWorkerSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Worker sessions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveWorkerSessionList"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listClientLiveWorkerProjects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Worker projects */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveWorkerProjectList"];
                 };
             };
             default: components["responses"]["Problem"];

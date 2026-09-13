@@ -326,17 +326,29 @@ func (s *Server) clientListSessions(c *gin.Context) {
 		badRequest(c, errors.New("lifecycle 无效"))
 		return
 	}
+	var workerID any
+	if raw := c.Query("workerId"); raw != "" {
+		parsed, parseErr := uuid.Parse(raw)
+		if parseErr != nil {
+			badRequest(c, parseErr)
+			return
+		}
+		workerID = parsed
+	}
 	query := `SELECT ` + clientSessionSummaryColumns + `
 		FROM workspace_sessions session
 		WHERE ($1::timestamptz IS NULL OR (session.last_activity_at,session.id) < ($1,$2))
 		  AND ($4::uuid IS NULL OR session.workspace_project_id=$4)
-		  AND ($5='' OR session.lifecycle_state=$5)`
-	args := []any{clientCursorTime(cursor.Activity), clientCursorUUID(cursor.ID), limit + 1, projectID, lifecycle}
+		  AND ($5='' OR session.lifecycle_state=$5)
+		  AND ($6::uuid IS NULL OR EXISTS (
+			SELECT 1 FROM worker_workspaces workspace
+			WHERE workspace.id=session.workspace_id AND workspace.worker_id=$6))`
+	args := []any{clientCursorTime(cursor.Activity), clientCursorUUID(cursor.ID), limit + 1, projectID, lifecycle, workerID}
 	if currentUser.Role != "admin" {
 		query += ` AND EXISTS (SELECT 1 FROM workspace_projects access_project
 			JOIN worker_workspaces access_workspace ON access_workspace.id=access_project.workspace_id
 			JOIN worker_administrators access_user ON access_user.worker_id=access_workspace.worker_id
-			WHERE access_project.id=session.workspace_project_id AND access_user.administrator_id=$6)`
+			WHERE access_project.id=session.workspace_project_id AND access_user.administrator_id=$7)`
 		args = append(args, currentUser.AdministratorID)
 	}
 	query += ` ORDER BY session.last_activity_at DESC,session.id DESC LIMIT $3`

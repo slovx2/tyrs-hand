@@ -205,6 +205,7 @@ func TestLiveControlWithFakeProvider(t *testing.T) {
 	fake := newFakeLiveServer(t)
 	manager := newLiveManager(db, live.NewProvider(fake.server.URL, "provider-secret"), zap.NewNop())
 	server := &Server{db: db, auth: authService, logger: zap.NewNop(), liveManager: manager}
+	manager.onDelegation = server.enqueueLiveDelegation
 	router := liveIntegrationRouter(server)
 	httpServer := httptest.NewServer(router)
 	t.Cleanup(httpServer.Close)
@@ -225,8 +226,19 @@ func TestLiveControlWithFakeProvider(t *testing.T) {
 	require.NoError(t, json.Unmarshal(login.Body.Bytes(), &loginBody))
 	require.NotEmpty(t, loginBody.AccessToken)
 
-	conversation := clientJSONRequest(t, http.MethodPost, httpServer.URL+"/api/v1/client/live-conversations",
+	var workerID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO workers(name, roles, max_concurrent_jobs)
+		VALUES ('live-voice-worker','["discord"]',1) RETURNING id`).Scan(&workerID))
+	fixture := seedScheduledClaimWorkspace(t, db, workerID)
+	missingWorker := clientJSONRequest(t, http.MethodPost, httpServer.URL+"/api/v1/client/live-conversations",
 		loginBody.AccessToken, map[string]any{"model": "gpt-live-test", "voice": "marin"})
+	require.Equal(t, http.StatusBadRequest, missingWorker.Code, missingWorker.Body.String())
+
+	conversation := clientJSONRequest(t, http.MethodPost, httpServer.URL+"/api/v1/client/live-conversations",
+		loginBody.AccessToken, map[string]any{
+			"model": "gpt-live-test", "voice": "marin",
+			"workerId": workerID, "sessionId": fixture.session,
+		})
 	require.Equal(t, http.StatusCreated, conversation.Code, conversation.Body.String())
 	var conversationBody liveConversationResponse
 	require.NoError(t, json.Unmarshal(conversation.Body.Bytes(), &conversationBody))

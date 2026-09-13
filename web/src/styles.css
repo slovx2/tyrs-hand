@@ -1867,6 +1867,23 @@ h2 {
   font-size: 1.85rem;
   letter-spacing: -0.03em;
 }
+.live-pickers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+.live-pickers label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.live-pickers select {
+  min-width: 10rem;
+  height: 2rem;
+}
 .live-more {
   position: relative;
 }

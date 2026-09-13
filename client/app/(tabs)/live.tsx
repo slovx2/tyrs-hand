@@ -4,7 +4,8 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-nati
 import { RTCPeerConnection, mediaDevices, type MediaStream } from "react-native-webrtc";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { closeLiveSession, createLiveConversation, createLiveSession, getLiveConversation, listLiveMessages, recoverLiveSession, type LiveConversation } from "@/api/live";
+import { closeLiveSession, createLiveConversation, createLiveSession, getLiveConversation, listLiveMessages, listLiveWorkerProjects, listLiveWorkerSessions, recoverLiveSession, type LiveConversation } from "@/api/live";
+import { Dropdown } from "@/components/Dropdown";
 import { Screen } from "@/components/ui";
 import { LiveMark } from "@/features/live/LiveMark";
 import { initialLiveTranscriptState, reduceLiveTranscript, visibleLiveTranscript, type LiveTranscriptState } from "@/features/live/transcriptReducer";
@@ -47,10 +48,47 @@ export default function LiveScreen() {
   const [status, setStatus] = useState("未连接");
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const link = connection?.controls[0] ?? null;
+  const [workerId, setWorkerId] = useState("");
+  const [mode, setMode] = useState<"bind" | "new">("bind");
+  const [bindSessionId, setBindSessionId] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [sessions, setSessions] = useState<Array<{ id: string; title: string }>>([]);
+  const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
+  const workers = connection?.controls ?? [];
+  const link = workers.find((item) => item.workerId === workerId) ?? workers[0] ?? null;
   const profileId = connection?.profileId;
 
   useEffect(() => () => stopPeer(), []);
+  useEffect(() => {
+    const only = connection?.controls.length === 1 ? connection.controls[0] : undefined;
+    if (workerId || !only) return;
+    setWorkerId(only.workerId);
+  }, [workerId, connection]);
+  useEffect(() => {
+    if (!link || !workerId) {
+      setSessions([]);
+      setProjects([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [sessionResult, projectResult] = await Promise.all([
+          listLiveWorkerSessions(link, workerId),
+          listLiveWorkerProjects(link, workerId),
+        ]);
+        if (cancelled) return;
+        setSessions(sessionResult.sessions ?? []);
+        setProjects(projectResult.projects ?? []);
+      } catch {
+        if (!cancelled) {
+          setSessions([]);
+          setProjects([]);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [link, workerId]);
   useEffect(() => {
     if (!link || !profileId) return;
     let cancelled = false;
@@ -62,6 +100,9 @@ export default function LiveScreen() {
         const history = await listLiveMessages(link, id);
         if (cancelled) return;
         setConversation(current);
+        if (current.workerId) setWorkerId(current.workerId);
+        if (current.workspaceSessionId) setBindSessionId(current.workspaceSessionId);
+        if (current.projectId) setProjectId(current.projectId);
         setState({
           items: [...history.items].reverse().map((item) => ({
             role: item.role === "user" ? "user" : "assistant",
@@ -106,7 +147,14 @@ export default function LiveScreen() {
       let current = conversation;
       stopPeer();
       if (!current) {
-        current = await createLiveConversation(link);
+        if (!workerId) throw new Error("请先选择 Worker");
+        if (mode === "bind") {
+          if (!bindSessionId) throw new Error("请选择要绑定的 Session");
+          current = await createLiveConversation(link, { workerId, sessionId: bindSessionId });
+        } else {
+          if (!projectId) throw new Error("请选择项目以新开语音");
+          current = await createLiveConversation(link, { workerId, projectId });
+        }
         setConversation(current);
         await saveLiveConversationId(profileId, current.id);
       }
@@ -190,6 +238,30 @@ export default function LiveScreen() {
       </Pressable>
     </View>
     {error ? <Text style={[styles.error, { color: theme.colors.danger }]}>{error}</Text> : null}
+    <View style={styles.pickers}>
+      <Dropdown testID="live:worker" label="Worker" value={workerId || null}
+        placeholder="选择 Worker" emptyLabel="没有可用 Worker"
+        disabled={Boolean(conversation)}
+        options={workers.map((item) => ({ value: item.workerId, label: item.workerName }))}
+        onChange={(value) => { setWorkerId(value); setBindSessionId(""); setProjectId(""); }} />
+      <Dropdown testID="live:mode" label="入口" value={mode}
+        disabled={Boolean(conversation)}
+        options={[{ value: "bind", label: "绑定已有 Session" }, { value: "new", label: "新开语音" }]}
+        onChange={(value) => setMode(value as "bind" | "new")} />
+      {mode === "bind" ? (
+        <Dropdown testID="live:session" label="Session" value={bindSessionId || null}
+          placeholder="选择 Session" emptyLabel="没有可绑定的 Session"
+          disabled={Boolean(conversation)}
+          options={sessions.map((item) => ({ value: item.id, label: item.title || item.id }))}
+          onChange={setBindSessionId} />
+      ) : (
+        <Dropdown testID="live:project" label="项目" value={projectId || null}
+          placeholder="选择项目" emptyLabel="没有可用项目"
+          disabled={Boolean(conversation)}
+          options={projects.map((item) => ({ value: item.id, label: item.name }))}
+          onChange={setProjectId} />
+      )}
+    </View>
     <ScrollView contentContainerStyle={styles.transcript} testID="live:transcript">
       {visible.length === 0
         ? <Text style={{ color: theme.colors.textMuted }}>连接后开始说话</Text>
@@ -208,7 +280,8 @@ export default function LiveScreen() {
         {connected ? "已连接 · 正在听" : connecting ? "连接中" : "未连接"}
       </Text>
       <Pressable testID={connected ? "live:disconnect" : "live:connect"} accessibilityRole="button"
-        disabled={connecting} onPress={() => void (connected ? disconnect() : connect())}
+        disabled={connecting || (!conversation && (!workerId || (mode === "bind" ? !bindSessionId : !projectId)))}
+        onPress={() => void (connected ? disconnect() : connect())}
         style={[styles.action, { backgroundColor: theme.colors.accent, opacity: connecting ? 0.5 : 1 }]}>
         <Text style={[styles.actionText, { color: theme.colors.accentForeground }]}>{connected ? "断开" : "连接"}</Text>
       </Pressable>
@@ -237,6 +310,7 @@ const styles = StyleSheet.create({
   exit: { fontFamily: "Inter_500Medium", fontSize: 16 },
   more: { fontFamily: "Inter_600SemiBold", fontSize: 22, letterSpacing: 1, textAlign: "right" },
   error: { paddingHorizontal: 20, marginBottom: 8 },
+  pickers: { paddingHorizontal: 20, gap: 8, marginBottom: 8 },
   transcript: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, gap: 12 },
   line: { gap: 4 },
   dock: { alignItems: "center", gap: 10, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 18, paddingHorizontal: 24 },

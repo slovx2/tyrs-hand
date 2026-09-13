@@ -16,6 +16,9 @@ afterEach(() => {
 function conversationJson() {
   return {
     id: conversationId,
+    workerId: '22222222-2222-2222-2222-222222222222',
+    projectId: '33333333-3333-3333-3333-333333333333',
+    workspaceSessionId: '44444444-4444-4444-4444-444444444444',
     model: 'gpt-live-1-codex',
     voice: 'cove',
     instructions: '',
@@ -36,7 +39,8 @@ describe('LivePage', () => {
     expect(screen.queryByText('使用验收录音')).not.toBeInTheDocument()
     expect(screen.queryByPlaceholderText('输入文本测试')).not.toBeInTheDocument()
     expect(screen.queryByText(/Conversation/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/Session/)).not.toBeInTheDocument()
+    expect(screen.getByText('Worker')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '选择 Worker' })).toBeInTheDocument()
   })
 
   it('打开菜单后可重置且字幕仍在，清空后字幕消失', async () => {

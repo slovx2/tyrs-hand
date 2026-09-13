@@ -5,10 +5,13 @@ import {
   createLiveSession,
   getLiveConversation,
   listLiveMessages,
+  listLiveWorkerProjects,
+  listLiveWorkerSessions,
   recoverLiveSession,
   type LiveConversation,
   type LiveMessage,
 } from '../api/live'
+import { api } from '../api/client'
 import {
   initialLiveTranscriptState,
   reduceLiveTranscript,
@@ -135,6 +138,13 @@ export function LivePage() {
   const [status, setStatus] = useState('未连接')
   const [error, setError] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
+  const [workerId, setWorkerId] = useState('')
+  const [mode, setMode] = useState<'bind' | 'new'>('bind')
+  const [bindSessionId, setBindSessionId] = useState('')
+  const [projectId, setProjectId] = useState('')
+  const [workers, setWorkers] = useState<Array<{ id: string; name: string }>>([])
+  const [sessions, setSessions] = useState<Array<{ id: string; title: string }>>([])
+  const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([])
   const peer = useRef<RTCPeerConnection | null>(null)
   const channel = useRef<RTCDataChannel | null>(null)
   const audio = useRef<HTMLAudioElement>(null)
@@ -170,6 +180,24 @@ export function LivePage() {
     return () => document.removeEventListener('pointerdown', onPointer)
   }, [menuOpen])
   useEffect(() => {
+    void api<{ items: Array<{ id: string; name: string }> }>('/workers')
+      .then((result) => setWorkers(result.items ?? []))
+      .catch(() => setWorkers([]))
+  }, [])
+  useEffect(() => {
+    if (!workerId) {
+      setSessions([])
+      setProjects([])
+      return
+    }
+    void listLiveWorkerSessions(workerId)
+      .then((result) => setSessions(result.sessions ?? []))
+      .catch(() => setSessions([]))
+    void listLiveWorkerProjects(workerId)
+      .then((result) => setProjects(result.projects ?? []))
+      .catch(() => setProjects([]))
+  }, [workerId])
+  useEffect(() => {
     const id = readStoredConversationId()
     if (!id) return
     let cancelled = false
@@ -179,6 +207,9 @@ export function LivePage() {
         const history = await listLiveMessages(id)
         if (cancelled) return
         setConversation(current)
+        if (current.workerId) setWorkerId(current.workerId)
+        if (current.workspaceSessionId) setBindSessionId(current.workspaceSessionId)
+        if (current.projectId) setProjectId(current.projectId)
         setTranscript(transcriptFromMessages(history.items))
       } catch {
         if (!cancelled) writeStoredConversationId(null)
@@ -218,7 +249,14 @@ export function LivePage() {
       const recordingElement = acceptanceAudio ? recording.current : null
       if (recordingElement) await primeAudioCapture(recordingElement)
       if (!current) {
-        current = await createLiveConversation({})
+        if (!workerId) throw new Error('请先选择 Worker')
+        if (mode === 'bind') {
+          if (!bindSessionId) throw new Error('请选择要绑定的 Session')
+          current = await createLiveConversation({ workerId, sessionId: bindSessionId })
+        } else {
+          if (!projectId) throw new Error('请选择项目以新开语音')
+          current = await createLiveConversation({ workerId, projectId })
+        }
         setConversation(current)
         writeStoredConversationId(current.id)
       }
@@ -369,6 +407,71 @@ export function LivePage() {
         </div>
       </div>
       {error && <div className="danger-note">{error}</div>}
+      <div className="live-pickers">
+        <label>
+          Worker
+          <select
+            value={workerId}
+            disabled={Boolean(conversation)}
+            onChange={(event) => {
+              setWorkerId(event.target.value)
+              setBindSessionId('')
+              setProjectId('')
+            }}
+          >
+            <option value="">选择 Worker</option>
+            {workers.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          入口
+          <select
+            value={mode}
+            disabled={Boolean(conversation)}
+            onChange={(event) => setMode(event.target.value as 'bind' | 'new')}
+          >
+            <option value="bind">绑定已有 Session</option>
+            <option value="new">新开语音</option>
+          </select>
+        </label>
+        {mode === 'bind' ? (
+          <label>
+            Session
+            <select
+              value={bindSessionId}
+              disabled={Boolean(conversation)}
+              onChange={(event) => setBindSessionId(event.target.value)}
+            >
+              <option value="">选择 Session</option>
+              {sessions.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.title || item.id}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <label>
+            项目
+            <select
+              value={projectId}
+              disabled={Boolean(conversation)}
+              onChange={(event) => setProjectId(event.target.value)}
+            >
+              <option value="">选择项目</option>
+              {projects.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
       <div className="live-transcript">
         {visibleTranscript.length === 0 ? (
           <span className="muted">连接后开始说话</span>
@@ -399,7 +502,7 @@ export function LivePage() {
             className="button"
             type="button"
             onClick={() => void connect()}
-            disabled={connecting}
+            disabled={connecting || (!conversation && (!workerId || (mode === 'bind' ? !bindSessionId : !projectId)))}
           >
             连接
           </button>

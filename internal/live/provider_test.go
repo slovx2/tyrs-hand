@@ -37,6 +37,7 @@ func TestHTTPProviderCreateSession(t *testing.T) {
 	audio := session["audio"].(map[string]any)
 	output := audio["output"].(map[string]any)
 	require.Equal(t, "marin", output["voice"])
+	require.Equal(t, "client", session["delegation"].(map[string]any)["type"])
 	require.Equal(t, "webrtc", requestBody["transport"].(map[string]any)["type"])
 	require.NotNil(t, session["input"])
 }

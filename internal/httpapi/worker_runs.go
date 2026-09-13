@@ -310,6 +310,9 @@ func (s *Server) workerRunEvents(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "提交远程事件失败", err)
 		return
 	}
+	if claimed.SourceType == codexcontrol.SourceWorkspace && claimed.SessionID != uuid.Nil {
+		s.forwardLiveVoiceText(c.Request.Context(), claimed.SessionID, request.Events)
+	}
 	if claimed.SourceType == codexcontrol.SourceWorkspace && claimed.SessionID != uuid.Nil &&
 		s.clientUpdateHub != nil {
 		for _, event := range request.Events {

@@ -25,6 +25,16 @@ func (s *Server) workerToolCall(c *gin.Context) {
 	if request.Request.Namespace != nil {
 		namespace = *request.Request.Namespace
 	}
+	if namespace == "tyrs_hand" && isLiveVoiceTool(request.Request.Tool) {
+		result, callErr := s.callLiveVoiceTool(c.Request.Context(), claimed,
+			request.Request.ThreadID, request.Request.Tool, request.Request.Arguments)
+		if callErr != nil {
+			problem(c, http.StatusForbidden, "语音工具调用失败", callErr)
+			return
+		}
+		c.JSON(http.StatusOK, result)
+		return
+	}
 	if namespace == "tyrs_hand" && request.Request.Tool == "automation_update" {
 		if claimed.SourceType != codexcontrol.SourceWorkspace || claimed.SessionID == uuid.Nil {
 			problem(c, http.StatusForbidden, "定时任务工具只允许 Workspace Session 使用", nil)

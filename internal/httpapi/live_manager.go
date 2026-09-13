@@ -31,14 +31,15 @@ type transcriptMutation struct {
 }
 
 type liveManager struct {
-	db          *sql.DB
-	provider    live.Provider
-	logger      *zap.Logger
-	mu          sync.Mutex
-	runtimes    map[uuid.UUID]*liveRuntime
-	transcripts map[string]string
-	rootCtx     context.Context
-	ready       chan struct{}
+	db           *sql.DB
+	provider     live.Provider
+	logger       *zap.Logger
+	onDelegation func(context.Context, uuid.UUID, map[string]any) error
+	mu           sync.Mutex
+	runtimes     map[uuid.UUID]*liveRuntime
+	transcripts  map[string]string
+	rootCtx      context.Context
+	ready        chan struct{}
 }
 
 func newLiveManager(db *sql.DB, provider live.Provider, logger *zap.Logger) *liveManager {
@@ -462,6 +463,38 @@ func eventDedupeKey(event map[string]any) string {
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
+func (m *liveManager) userTranscript(sessionID uuid.UUID) string {
+	prefix := sessionID.String() + ":user:"
+	m.mu.Lock()
+	pending := ""
+	for key, text := range m.transcripts {
+		if strings.HasPrefix(key, prefix) {
+			pending += text
+		}
+	}
+	m.mu.Unlock()
+	if strings.TrimSpace(pending) != "" {
+		return pending
+	}
+	var text string
+	_ = m.db.QueryRowContext(context.Background(), `SELECT text FROM live_messages
+		WHERE source_session_id=$1 AND role='user' ORDER BY sequence DESC LIMIT 1`, sessionID).Scan(&text)
+	return text
+}
+
+func (m *liveManager) writeSidebandJSON(ctx context.Context, sessionID uuid.UUID, payload map[string]any) error {
+	runtime, ok := m.runtime(sessionID)
+	if !ok || runtime == nil {
+		return errors.New("Live sideband 尚未连接")
+	}
+	runtime.writeMu.Lock()
+	defer runtime.writeMu.Unlock()
+	if runtime.sideband == nil {
+		return errors.New("Live sideband 尚未连接")
+	}
+	return runtime.sideband.WriteJSON(ctx, payload)
+}
+
 func (m *liveManager) persistEvent(ctx context.Context, sessionID uuid.UUID, direction string, event map[string]any) error {
 	typ := eventType(event)
 	if typ == "" {
@@ -505,6 +538,11 @@ func (m *liveManager) persistEvent(ctx context.Context, sessionID uuid.UUID, dir
 		return err
 	}
 	m.applyTranscriptMutation(mutation)
+	if isLiveDelegationEvent(typ) && m.onDelegation != nil {
+		if err := m.onDelegation(ctx, sessionID, event); err != nil && m.logger != nil {
+			m.logger.Warn("Live 委派入队失败")
+		}
+	}
 	return nil
 }
 

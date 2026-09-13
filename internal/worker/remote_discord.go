@@ -55,6 +55,11 @@ func (p *Processor) processRemoteDiscord(ctx context.Context, task *workerprotoc
 	settings := task.Snapshot.Runtime
 	developerInstructions := workspaceDeveloperInstructions(task,
 		strings.TrimSpace(discordintegration.MultiplayerDeveloperInstructions))
+	tools := withBrowserTools(p.cfg, workspaceGitTools(snapshot.Project)...)
+	if snapshot.VoiceBound {
+		developerInstructions = strings.TrimSpace(developerInstructions + "\n\n" + liveVoiceDeveloperInstruction)
+		tools = append(tools, voiceControlSpec())
+	}
 	options := workerThreadOptions(ports.ThreadOptions{
 		CWD: runtime.Workspace, Model: settings.Model,
 		ReasoningEffort: settings.ReasoningEffort,
@@ -63,7 +68,7 @@ func (p *Processor) processRemoteDiscord(ctx context.Context, task *workerprotoc
 		RuntimeConfig:   runtimeConfig,
 		DeveloperInstructions: browserDeveloperInstructions(p.cfg,
 			developerInstructions),
-		DynamicTools: withBrowserTools(p.cfg, workspaceGitTools(snapshot.Project)...),
+		DynamicTools: tools,
 	})
 	if err := codexRuntime.ValidateSkills(ctx, runtime.Workspace, skills); err != nil {
 		return workerprotocol.CompleteRequest{}, err

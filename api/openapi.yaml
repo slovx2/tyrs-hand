@@ -97,6 +97,24 @@ paths:
       responses:
         "200": { description: Live events, content: { application/json: { schema: { $ref: "#/components/schemas/LiveEventList" } } } }
         default: { $ref: "#/components/responses/Problem" }
+  /client/live-workers/{workerId}/sessions:
+    get:
+      operationId: listClientLiveWorkerSessions
+      tags: [Client Protocol]
+      security: [{ clientBearer: [] }]
+      parameters: [{ name: workerId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Worker sessions, content: { application/json: { schema: { $ref: "#/components/schemas/LiveWorkerSessionList" } } } }
+        default: { $ref: "#/components/responses/Problem" }
+  /client/live-workers/{workerId}/projects:
+    get:
+      operationId: listClientLiveWorkerProjects
+      tags: [Client Protocol]
+      security: [{ clientBearer: [] }]
+      parameters: [{ name: workerId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200": { description: Worker projects, content: { application/json: { schema: { $ref: "#/components/schemas/LiveWorkerProjectList" } } } }
+        default: { $ref: "#/components/responses/Problem" }
   /webhooks/github:
     post:
       operationId: receiveGitHubWebhook
@@ -2244,15 +2262,22 @@ components:
         nextCursor: { type: string }
     LiveConversationRequest:
       type: object
+      required: [workerId]
       properties:
+        workerId: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
         model: { type: string, maxLength: 128 }
         voice: { type: string, maxLength: 64 }
         instructions: { type: string, maxLength: 32768 }
     LiveConversation:
       type: object
-      required: [id, model, voice, instructions, status, contextRevision, createdAt, updatedAt]
+      required: [id, workerId, projectId, workspaceSessionId, model, voice, instructions, status, contextRevision, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
+        workerId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        workspaceSessionId: { type: string, format: uuid }
         model: { type: string }
         voice: { type: string }
         instructions: { type: string }
@@ -2262,6 +2287,30 @@ components:
         lastError: { type: string }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    LiveWorkerSessionList:
+      type: object
+      required: [sessions]
+      properties:
+        sessions:
+          type: array
+          items:
+            type: object
+            required: [id, title]
+            properties:
+              id: { type: string, format: uuid }
+              title: { type: string }
+    LiveWorkerProjectList:
+      type: object
+      required: [projects]
+      properties:
+        projects:
+          type: array
+          items:
+            type: object
+            required: [id, name]
+            properties:
+              id: { type: string, format: uuid }
+              name: { type: string }
     LiveSessionRequest:
       type: object
       required: [offerSdp, platform]

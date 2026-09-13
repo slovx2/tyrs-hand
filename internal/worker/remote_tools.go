@@ -56,7 +56,7 @@ func (p *Processor) handleRemoteHostDiscordTool(ctx context.Context,
 	case "git":
 		result, err = p.executeRemoteHostGit(ctx, runtime, request)
 	case "tyrs_hand":
-		if request.Tool != "automation_update" {
+		if request.Tool != "automation_update" && !isWorkerLiveVoiceTool(request.Tool) {
 			err = errors.New("未知 Tyrs Hand workspace 工具")
 			break
 		}

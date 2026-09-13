@@ -173,6 +173,13 @@ func (s *Server) loadWorkspaceWorkerSnapshot(ctx context.Context,
 	if err = rows.Err(); err != nil {
 		return nil, err
 	}
+	var voiceBound bool
+	if err = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM live_conversations
+		WHERE workspace_session_id=$1 AND active_session_id IS NOT NULL)`, claimed.SessionID).
+		Scan(&voiceBound); err != nil {
+		return nil, err
+	}
+	result.VoiceBound = voiceBound
 	return &result, nil
 }
 

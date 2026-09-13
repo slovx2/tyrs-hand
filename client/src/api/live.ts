@@ -3,7 +3,8 @@ import { z } from "zod";
 import { getControlDeviceToken, type ControlMachineLink } from "@/db/connections";
 
 export const liveConversationSchema = z.object({
-  id: z.string().uuid(), model: z.string(), voice: z.string(), instructions: z.string(),
+  id: z.string().uuid(), workerId: z.string().uuid(), projectId: z.string().uuid(),
+  workspaceSessionId: z.string().uuid(), model: z.string(), voice: z.string(), instructions: z.string(),
   status: z.string(), activeSessionId: z.string().uuid().optional(), contextRevision: z.number(),
   lastError: z.string().optional(), createdAt: z.string(), updatedAt: z.string(),
 });
@@ -27,7 +28,15 @@ async function controlRequest<T>(link: ControlMachineLink, path: string, init?: 
   const value = response.status === 204 ? undefined : await response.json();
   return parse ? parse(value) : value as T;
 }
-export function createLiveConversation(link: ControlMachineLink, input: { model?: string; voice?: string; instructions?: string } = {}) { return controlRequest(link, "/live-conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) }, (value) => liveConversationSchema.parse(value)); }
+export function createLiveConversation(link: ControlMachineLink, input: {
+  workerId: string; sessionId?: string; projectId?: string; model?: string; voice?: string; instructions?: string;
+}) { return controlRequest(link, "/live-conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) }, (value) => liveConversationSchema.parse(value)); }
+export function listLiveWorkerSessions(link: ControlMachineLink, workerId: string) {
+  return controlRequest<{ sessions: Array<{ id: string; title: string }> }>(link, `/live-workers/${workerId}/sessions`);
+}
+export function listLiveWorkerProjects(link: ControlMachineLink, workerId: string) {
+  return controlRequest<{ projects: Array<{ id: string; name: string }> }>(link, `/live-workers/${workerId}/projects`);
+}
 export function getLiveConversation(link: ControlMachineLink, id: string) { return controlRequest(link, `/live-conversations/${id}`, undefined, (value) => liveConversationSchema.parse(value)); }
 export function createLiveSession(link: ControlMachineLink, id: string, offerSdp: string) { return controlRequest(link, `/live-conversations/${id}/sessions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ offerSdp, platform: "android" }) }, (value) => liveSessionSchema.parse(value)); }
 export function recoverLiveSession(link: ControlMachineLink, id: string, offerSdp: string) { return controlRequest(link, `/live-conversations/${id}/recover`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ offerSdp, platform: "android" }) }, (value) => liveSessionSchema.parse(value)); }

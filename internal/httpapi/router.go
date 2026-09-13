@@ -57,13 +57,15 @@ func NewServer(cfg config.Config, db *sql.DB, redisClient *redis.Client, authSer
 	if err != nil {
 		return nil, err
 	}
-	return &Server{cfg: cfg, db: db, redis: redisClient, auth: authService, github: githubManager,
+	server := &Server{cfg: cfg, db: db, redis: redisClient, auth: authService, github: githubManager,
 		catalog: catalog, settings: settingsService, discord: discordManager, bindings: bindingService,
 		workers: workerregistry.NewService(db), ssh: sshconfig.NewService(db, secretStore),
 		secrets: secretStore, logger: logger, assets: assets,
 		workerRPCConns:  make(map[uuid.UUID]*workerRPCConnection),
 		liveManager:     newLiveManager(db, live.NewProvider(cfg.ModelBaseURL, cfg.ModelAPIKey), logger),
-		clientUpdateHub: newClientUpdateHub()}, nil
+		clientUpdateHub: newClientUpdateHub()}
+	server.liveManager.onDelegation = server.enqueueLiveDelegation
+	return server, nil
 }
 
 func (s *Server) baseRouter() *gin.Engine {
@@ -190,6 +192,8 @@ func (s *Server) adminRouter() http.Handler {
 	client.GET("/machines/:workerId/scheduled-tasks/:taskId/runs",
 		s.listClientMachineScheduledTaskRuns)
 	client.POST("/live-conversations", s.createLiveConversation)
+	client.GET("/live-workers/:workerId/sessions", s.listClientLiveWorkerSessions)
+	client.GET("/live-workers/:workerId/projects", s.listClientLiveWorkerProjects)
 	client.GET("/live-conversations/:id", s.getLiveConversation)
 	client.POST("/live-conversations/:id/sessions", s.createLiveSession)
 	client.POST("/live-conversations/:id/recover", s.recoverLiveSession)
