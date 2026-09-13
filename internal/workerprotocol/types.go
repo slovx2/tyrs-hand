@@ -465,8 +465,10 @@ type SessionSnapshot struct {
 	Body          string                   `json:"body"`
 	ParticipantID uuid.UUID                `json:"participantId,omitempty"`
 	DisplayName   string                   `json:"displayName,omitempty"`
-	InputSurface  string                   `json:"inputSurface"`
-	VoiceBound    bool                     `json:"voiceBound,omitempty"`
+	InputSurface      string                   `json:"inputSurface"`
+	VoiceBound        bool                     `json:"voiceBound,omitempty"`
+	VoiceCoordinator  bool                     `json:"voiceCoordinator,omitempty"`
+	VoiceEnded        bool                     `json:"voiceEnded,omitempty"`
 	Attachments   []Attachment             `json:"attachments,omitempty"`
 	Project       *WorkspaceProjectContext `json:"project"`
 }

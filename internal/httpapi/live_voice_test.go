@@ -79,3 +79,18 @@ func TestLiveVoiceWritebackPayload(t *testing.T) {
 	_, hasID := quiet["id"]
 	require.False(t, hasID)
 }
+
+func TestDefaultLiveInstructionsCopiesChatGPTPolicies(t *testing.T) {
+	require.Contains(t, defaultLiveInstructions, "You are Tyrs Hand's voice receptionist")
+	require.Contains(t, defaultLiveInstructions, "Pass execution work to the backend")
+	require.Contains(t, defaultLiveInstructions, "NEVER refuse requests")
+	require.Contains(t, defaultLiveInstructions, "Do not read out or recreate tables, diffs, plots, code blocks")
+	require.Contains(t, defaultLiveInstructions, "Do not invent Live event types")
+	require.Contains(t, defaultLiveInstructions, "stop speaking, or pause is not a request to hang up")
+	require.Contains(t, defaultLiveInstructions, "Do not mention anything about backend")
+	require.NotContains(t, defaultLiveInstructions, "capture_screen_context")
+	require.NotContains(t, defaultLiveInstructions, "{{ user_first_name }}")
+	require.NotContains(t, defaultLiveInstructions, "[USER]")
+	require.NotContains(t, defaultLiveInstructions, "[BACKEND]")
+	require.NotContains(t, defaultLiveInstructions, "delegation.created")
+}

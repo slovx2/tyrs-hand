@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
@@ -173,13 +174,19 @@ func (s *Server) loadWorkspaceWorkerSnapshot(ctx context.Context,
 	if err = rows.Err(); err != nil {
 		return nil, err
 	}
-	var voiceBound bool
-	if err = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM live_conversations
-		WHERE workspace_session_id=$1 AND active_session_id IS NOT NULL)`, claimed.SessionID).
-		Scan(&voiceBound); err != nil {
+	var voiceBound, voiceEnded bool
+	var title string
+	if err = s.db.QueryRowContext(ctx, `SELECT
+		EXISTS(SELECT 1 FROM live_conversations WHERE workspace_session_id=$1 AND active_session_id IS NOT NULL),
+		EXISTS(SELECT 1 FROM live_conversations WHERE active_session_id IS NULL AND
+			(workspace_session_id=$1 OR previous_workspace_session_id=$1)),
+		COALESCE((SELECT title FROM workspace_sessions WHERE id=$1),'')`, claimed.SessionID).
+		Scan(&voiceBound, &voiceEnded, &title); err != nil {
 		return nil, err
 	}
 	result.VoiceBound = voiceBound
+	result.VoiceCoordinator = voiceBound && strings.HasPrefix(title, "Live 语音")
+	result.VoiceEnded = voiceEnded && !voiceBound
 	return &result, nil
 }
 

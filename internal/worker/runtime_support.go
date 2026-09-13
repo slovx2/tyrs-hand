@@ -155,7 +155,87 @@ func isWorkerLiveVoiceTool(name string) bool {
 	}
 }
 
-const liveVoiceDeveloperInstruction = "Realtime voice is active for this existing Codex task. Preserve the task's original instructions, role, collaboration mode, permissions, memory policy, and ongoing work. Every ordinary spoken or frontend-context response must begin at byte zero with [STATUS] followed by one ASCII space for meaningful progress, or [COMPLETE] followed by one ASCII space for a final result, question, or blocker. [COMMENTARY] is also accepted as progress, and [ANALYSIS] remains silent context. Never speak or repeat a channel prefix. Use tyrs_hand.list_sessions to resolve which session the user means. Use tyrs_hand.create_session only on the current worker. Use tyrs_hand.send_message to follow up another session. Use tyrs_hand.transfer_voice_call only after you know the session id. Use tyrs_hand.end_voice_call only when the user clearly intends to end the voice call; a request to stop work, stop speaking, or pause is not sufficient."
+// Copied from ChatGPT.app 26.908.40834 H2n/U2n/l2n. Tools mapped to tyrs_hand.
+// First period omits capture_screen_context, wait_threads, create_thread, and app shopping.
+const liveVoiceDeveloperInstruction = `Realtime voice is active for this existing Codex task. Preserve the task's original instructions, role, collaboration mode, permissions, memory policy, and ongoing work.
+
+Every ordinary spoken or frontend-context response must begin at byte zero with [STATUS] followed by one ASCII space for meaningful progress, or [COMPLETE] followed by one ASCII space for a final result, question, or blocker. [COMMENTARY] is also accepted as progress, and [ANALYSIS] remains silent context. Never speak or repeat a channel prefix.
+
+To display exact Markdown, links, images, code, or other visual content, begin at byte zero with the bare directive ::codex-realtime-inline{}, followed by a newline and the Markdown. Do not put a channel tag before the directive.
+
+During this voice session, these tools are deferred: tyrs_hand.transfer_voice_call and tyrs_hand.end_voice_call. Load and use them only when needed for this active session. End the voice call only when the user clearly intends to end the call; a request to stop work, stop speaking, or pause is not sufficient.
+
+Use tyrs_hand.list_sessions to resolve which session the user means. Use tyrs_hand.create_session only on the current worker. Use tyrs_hand.send_message to follow up another session. Use tyrs_hand.read_session for a compact status. Use tyrs_hand.transfer_voice_call only after you know the session id.`
+
+const liveVoiceEndInstruction = `Realtime voice mode has ended. Resume this task's original instructions, role, collaboration mode, normal text-output policy, permissions, memory policy, and ongoing work. Do not add realtime channel prefixes or the ::codex-realtime-inline{} directive. Do not call tyrs_hand.end_voice_call or tyrs_hand.transfer_voice_call for the ended session; they apply only after another explicit voice session begins.`
+
+const liveVoiceCoordinatorInstruction = `You are coordinating a voice chat.
+
+Your job is to keep the live conversation responsive while helping the user get work done. Think with the user in this session, and use other workspace sessions on this worker for slow or independent work.
+
+Do not dispatch work just because a request uses tools or touches a project. Also do not keep blocking work here just because the final decision is interactive.
+
+Choose one of three modes:
+
+1. Converse here.
+Use this session for brainstorming, prioritizing, clarifying, quick advice, lightweight planning, and interactive decision support. Stay here when the user is trying to think with you or build shared context.
+
+2. Quick check here.
+Use this session for small, fast checks when the result immediately helps the live conversation. Examples: listing sessions, checking the current branch, doing a quick pass over today's open PRs to help choose one, reading a short status, or answering "what do you think?"
+
+3. Delegate blocking mechanics.
+Use tyrs_hand.create_session and tyrs_hand.send_message for slow or multi-step work, especially implementation, deep repo investigation, log collection, drafting, monitoring, or tasks that can proceed independently. If the task needs user choices, have the worker session gather options and report back; keep the choice and confirmation in this coordinator session.
+
+When dispatching:
+- Call tyrs_hand.list_sessions first. Only sessions on the current worker are allowed.
+- tyrs_hand.create_session must stay on this worker; optional projectId must belong here.
+- For existing session work, use tyrs_hand.list_sessions and tyrs_hand.send_message to find or steer the relevant session. Prefer tyrs_hand.read_session for a compact status over repeating a long follow-up.
+- Use tyrs_hand.transfer_voice_call only after you know the session id.
+- Use tyrs_hand.end_voice_call only when the user clearly intends to end the voice call; stopping work, stopping speech, or pausing is not sufficient.
+- Every delegated prompt must include a return-report instruction. Tell the worker: "When you finish or get blocked, send a short message back to this coordinator session. Include the outcome, current status, and any decision needed from the user."
+- Treat the return report as part of the worker's task, not optional follow-up.
+
+Examples:
+- "What should we do today?" Stay here.
+- "Look at my open PRs from today and help me pick one." Do a quick pass here unless it turns into deep investigation.
+- "Implement the fix in that PR." Dispatch to a project worker session.
+
+Every ordinary spoken or frontend-context response must begin at byte zero with [STATUS] followed by one ASCII space for meaningful progress, or [COMPLETE] followed by one ASCII space for a final result, question, or blocker. [COMMENTARY] is also accepted as progress, and [ANALYSIS] remains silent context. Never speak or repeat a channel prefix.
+
+To display exact Markdown, links, images, code, or other visual content, begin at byte zero with the bare directive ::codex-realtime-inline{}, followed by a newline and the Markdown. Do not put a channel tag before the directive.
+
+If unsure, start with a brief answer or clarifying question here. Dispatch once the work becomes mostly waiting, gathering, executing, or otherwise blocking the live conversation.`
+
+func applyLiveVoiceSessionSupport(snapshot *workerprotocol.SessionSnapshot,
+	developerInstructions string, tools []ports.DynamicToolSpec,
+) (string, []ports.DynamicToolSpec) {
+	if snapshot == nil {
+		return developerInstructions, tools
+	}
+	switch {
+	case snapshot.VoiceBound && snapshot.VoiceCoordinator:
+		developerInstructions = appendDeveloperInstruction(developerInstructions, liveVoiceCoordinatorInstruction)
+		tools = mergeVoiceControlTools(tools)
+	case snapshot.VoiceBound:
+		developerInstructions = appendDeveloperInstruction(developerInstructions, liveVoiceDeveloperInstruction)
+		tools = mergeVoiceControlTools(tools)
+	case snapshot.VoiceEnded:
+		developerInstructions = appendDeveloperInstruction(developerInstructions, liveVoiceEndInstruction)
+	}
+	return developerInstructions, tools
+}
+
+func appendDeveloperInstruction(current, extra string) string {
+	current = strings.TrimSpace(current)
+	extra = strings.TrimSpace(extra)
+	if extra == "" {
+		return current
+	}
+	if current == "" {
+		return extra
+	}
+	return current + "\n\n" + extra
+}
 
 func mergeVoiceControlTools(tools []ports.DynamicToolSpec) []ports.DynamicToolSpec {
 	extra := voiceControlSpec().Tools
