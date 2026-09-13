@@ -45,11 +45,9 @@ func TestLiveTranscriptHelpersReadNestedContent(t *testing.T) {
 	sessionID := uuid.New()
 	event := map[string]any{
 		"type": "output_transcript.added",
-		"response": map[string]any{
-			"id": "response-1",
-			"output": []any{map[string]any{
-				"content": []any{map[string]any{"text": "hello"}},
-			}},
+		"item": map[string]any{
+			"id":      "item-1",
+			"content": []any{map[string]any{"text": "hello"}},
 		},
 	}
 	require.Equal(t, "open", transcriptIdentity("output_transcript.added", event))
@@ -74,7 +72,7 @@ func TestLiveTranscriptAddedEventsShareOpenIdentity(t *testing.T) {
 
 func TestLiveTranscriptHelpersReadNestedDelta(t *testing.T) {
 	event := map[string]any{
-		"content": []any{map[string]any{"part": map[string]any{"delta": "hello "}}},
+		"item": map[string]any{"content": []any{map[string]any{"delta": "hello "}}},
 	}
 	require.Equal(t, "hello ", eventDelta(event))
 }

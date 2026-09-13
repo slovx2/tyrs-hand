@@ -30,6 +30,8 @@ export type LiveTranscriptEvent = Record<string, unknown> & {
   turn_id?: string
   turnId?: string
   role?: string
+  item?: unknown
+  response?: unknown
   turn?: unknown
 }
 
@@ -47,50 +49,55 @@ function nonEmptyString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined
 }
 
-function nestedField(value: unknown, field: string): string | undefined {
-  if (!value || typeof value !== 'object') return undefined
-  if (Array.isArray(value)) {
-    for (const child of value) {
-      const result = nestedField(child, field)
-      if (result !== undefined) return result
-    }
-    return undefined
-  }
-  const object = value as Record<string, unknown>
-  const direct = nonEmptyString(object[field])
-  if (direct !== undefined) return direct
-  for (const child of Object.values(object)) {
-    const result = nestedField(child, field)
-    if (result !== undefined) return result
+function objectRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  return value as Record<string, unknown>
+}
+
+function fieldFrom(
+  object: Record<string, unknown> | undefined,
+  fields: string[],
+): string | undefined {
+  if (!object) return undefined
+  for (const field of fields) {
+    const value = nonEmptyString(object[field])
+    if (value !== undefined) return value
   }
   return undefined
 }
 
-function nestedIdentity(value: unknown): string | undefined {
-  if (!value || typeof value !== 'object') return undefined
-  if (Array.isArray(value)) {
-    for (const child of value) {
-      const result = nestedIdentity(child)
-      if (result !== undefined) return result
-    }
-    return undefined
+function contentFields(
+  object: Record<string, unknown> | undefined,
+  fields: string[],
+): string | undefined {
+  if (!object || !Array.isArray(object.content)) return undefined
+  for (const child of object.content) {
+    const value = fieldFrom(objectRecord(child), fields)
+    if (value !== undefined) return value
   }
-  const object = value as Record<string, unknown>
-  for (const field of [
+  return undefined
+}
+
+function knownText(
+  event: LiveTranscriptEvent,
+  fields: string[],
+): string | undefined {
+  const top = fieldFrom(event, fields)
+  if (top) return top
+  const item = objectRecord(event.item)
+  const fromItem = fieldFrom(item, fields) ?? contentFields(item, fields)
+  if (fromItem) return fromItem
+  return fieldFrom(objectRecord(event.turn), fields)
+}
+
+function containerId(value: unknown): string | undefined {
+  return fieldFrom(objectRecord(value), [
     'item_id',
     'itemId',
     'response_id',
     'responseId',
     'id',
-  ]) {
-    const result = nonEmptyString(object[field])
-    if (result !== undefined) return result.trim()
-  }
-  for (const child of Object.values(object)) {
-    const result = nestedIdentity(child)
-    if (result !== undefined) return result
-  }
-  return undefined
+  ])
 }
 
 function transcriptKind(type: string): TranscriptKind | null {
@@ -101,11 +108,15 @@ function transcriptKind(type: string): TranscriptKind | null {
     !lower.includes('transcription')
   )
     return null
-  const role = lower.includes('input')
-    ? 'user'
-    : lower.includes('output')
-      ? 'assistant'
-      : null
+  const role =
+    lower.includes('input_transcript') ||
+    lower.includes('input_audio_transcription')
+      ? 'user'
+      : lower.includes('output_transcript') ||
+          lower.includes('output_audio_transcript') ||
+          lower.includes('output_text')
+        ? 'assistant'
+        : null
   if (!role) return null
   if (lower.endsWith('.delta')) return { role, phase: 'delta' }
   if (lower.endsWith('.added')) return { role, phase: 'added' }
@@ -163,8 +174,8 @@ function transcriptKey(
     event.itemId ??
     event.response_id ??
     event.responseId ??
-    nestedIdentity(event.item) ??
-    nestedIdentity(event.response)
+    containerId(event.item) ??
+    containerId(event.response)
   if (typeof identity === 'string' && identity.trim())
     return `${role}:${identity.trim()}`
   return `${role}:${type.toLowerCase().replace(/\.(delta|done|completed|added)$/, '')}`
@@ -277,7 +288,7 @@ export function reduceLiveTranscript(
     return { ...state, seenEventIds, partial }
   }
   if (isTurnType(lowerType, 'delta')) {
-    const delta = nestedField(event, 'delta')
+    const delta = knownText(event, ['delta'])
     if (delta === undefined) return { ...state, seenEventIds }
     const role = eventTurnRole(event)
     const turnId = eventTurnId(event)
@@ -318,10 +329,10 @@ export function reduceLiveTranscript(
     }
     const piece =
       kind.phase === 'delta'
-        ? nestedField(event, 'delta')
-        : (nestedField(event, 'delta') ??
-          nestedField(event, 'text') ??
-          nestedField(event, 'transcript'))
+        ? knownText(event, ['delta'])
+        : (knownText(event, ['delta']) ??
+          knownText(event, ['text']) ??
+          knownText(event, ['transcript']))
     if (piece === undefined) return { ...state, seenEventIds }
     return {
       ...state,
@@ -337,11 +348,7 @@ export function reduceLiveTranscript(
   }
   const partial = state.partial[key]
   const text =
-    nestedField(event, 'text') ??
-    nestedField(event, 'transcript') ??
-    nestedField(event, 'delta') ??
-    partial?.text ??
-    ''
+    knownText(event, ['text', 'transcript']) ?? partial?.text ?? ''
   const nextPartial = { ...state.partial }
   delete nextPartial[key]
   if (!text) return { ...state, seenEventIds, partial: nextPartial }

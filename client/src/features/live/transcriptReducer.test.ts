@@ -33,4 +33,28 @@ describe("Live transcript reducer", () => {
     expect(state.items).toEqual([{ role: "user", text: "这是泰尔斯·汉德实时语音验收,请重复这句话", eventId: "done-1" }]);
     expect(state.partial).toEqual({});
   });
+
+  it("ignores non-transcript output item events", () => {
+    const state = reduceLiveTranscript(initialLiveTranscriptState, {
+      type: "response.output_item.done",
+      event_id: "item-done",
+      text: "should not appear",
+    });
+    expect(state.items).toEqual([]);
+    expect(state.partial).toEqual({});
+  });
+
+  it("prefers complete done text over accumulated deltas", () => {
+    let state = reduceLiveTranscript(initialLiveTranscriptState, {
+      type: "session.output_transcript.delta",
+      item_id: "i",
+      delta: "hel",
+    });
+    state = reduceLiveTranscript(state, {
+      type: "session.output_transcript.done",
+      item_id: "i",
+      text: "hello world",
+    });
+    expect(state.items).toEqual([{ role: "assistant", text: "hello world" }]);
+  });
 });

@@ -28,7 +28,8 @@ describe('Live transcript nested events', () => {
     })
     state = reduceLiveTranscript(state, {
       type: 'output_transcript.delta',
-      response: { id: 'response-1', content: [{ delta: 'world' }] },
+      response: { id: 'response-1' },
+      delta: 'world',
     })
     state = reduceLiveTranscript(state, {
       type: 'turn.done',

@@ -248,8 +248,6 @@ export function LivePage() {
       await waitForIceGathering(connection)
       const description = connection.localDescription?.sdp
       if (!description) throw new Error('无法生成 SDP offer')
-      if (!/^a=candidate:/m.test(description))
-        throw new Error('无法生成包含 ICE candidate 的 SDP offer')
       const result = shouldRecover
         ? await recoverLiveSession(current.id, description)
         : await createLiveSession(current.id, description)
@@ -313,6 +311,7 @@ export function LivePage() {
         setSessionStatus('closed')
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : '关闭失败')
+        setSessionStatus('failed')
       }
     }
     closePeer()

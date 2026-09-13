@@ -239,9 +239,16 @@ func TestLiveControlWithFakeProvider(t *testing.T) {
 	require.NoError(t, json.Unmarshal(created.Body.Bytes(), &createdBody))
 	require.Equal(t, "v=0\\r\\nanswer\\r\\n", createdBody.Transport.AnswerSDP)
 	require.NotContains(t, created.Body.String(), "provider-secret")
+	var createdStatus string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM live_sessions WHERE id=$1`, createdBody.SessionID).Scan(&createdStatus))
+	require.NotEqual(t, "recovering", createdStatus)
 
 	call := fake.waitCall(t, 0)
 	call.waitAttach(t, 2) // 第一条连接由 Fake Server 主动断开，验证 manager 重连原 session。
+	require.Eventually(t, func() bool {
+		var status string
+		return db.QueryRowContext(ctx, `SELECT status FROM live_sessions WHERE id=$1`, createdBody.SessionID).Scan(&status) == nil && status == "active"
+	}, 5*time.Second, 20*time.Millisecond)
 	require.Equal(t, "gpt-live-test", call.session["model"])
 	require.NotContains(t, call.session, "apiKey")
 	call.writeJSON(map[string]any{"type": "input_transcript.delta", "id": "input-delta", "item_id": "item-1", "delta": "你好"})

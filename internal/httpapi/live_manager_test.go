@@ -7,6 +7,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/google/uuid"
+	"github.com/slovx2/tyrs-hand/internal/live"
 	"github.com/stretchr/testify/require"
 )
 
@@ -42,10 +43,16 @@ func TestLiveTranscriptReadsNestedProviderFields(t *testing.T) {
 	require.Equal(t, "hello", eventText(event))
 }
 
-func TestTranscriptCompletionPrefersAccumulatedDoneText(t *testing.T) {
-	event := map[string]any{"delta": "last fragment"}
-	require.Equal(t, "all fragments", transcriptCompletionText("done", "all fragments", event))
-	require.Equal(t, "last fragment", transcriptCompletionText("done", "", event))
+func TestTranscriptCompletionPrefersCompleteDoneText(t *testing.T) {
+	event := map[string]any{"text": "complete sentence", "delta": "last fragment"}
+	require.Equal(t, "complete sentence", transcriptCompletionText("done", "all fragments", event))
+	require.Equal(t, "all fragments", transcriptCompletionText("done", "all fragments", map[string]any{}))
+}
+
+func TestSkippableSidebandRead(t *testing.T) {
+	require.True(t, skippableSidebandRead(live.ErrSidebandBinary))
+	require.True(t, skippableSidebandRead(live.ErrSidebandInvalidJSON))
+	require.False(t, skippableSidebandRead(context.Canceled))
 }
 
 func TestLivePayloadSanitizesTopLevelProviderID(t *testing.T) {
@@ -195,7 +202,7 @@ func TestLiveManagerInsertsOneMessageOnPublicTranscriptDone(t *testing.T) {
 	expectPersistActiveEvent(mock, sessionID, "session.output_transcript.delta", "delta-1")
 	mock.ExpectCommit()
 	expectPersistActiveEvent(mock, sessionID, "session.output_transcript.done", "done-1")
-	expectAppendLiveMessage(mock, sessionID, conversationID, "assistant", "hello ", "transcript:"+liveTranscriptKey(sessionID, "assistant", "item-1"))
+	expectAppendLiveMessage(mock, sessionID, conversationID, "assistant", "ignored", "transcript:"+liveTranscriptKey(sessionID, "assistant", "item-1"))
 	mock.ExpectCommit()
 
 	manager := newLiveManager(db, nil, nil)

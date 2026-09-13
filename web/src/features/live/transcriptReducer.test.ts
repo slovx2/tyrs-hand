@@ -98,4 +98,28 @@ describe('Live transcript reducer', () => {
     ])
     expect(state.partial).toEqual({})
   })
+
+  it('ignores non-transcript output item events', () => {
+    const state = reduceLiveTranscript(initialLiveTranscriptState, {
+      type: 'response.output_item.done',
+      event_id: 'item-done',
+      text: 'should not appear',
+    })
+    expect(state.items).toEqual([])
+    expect(state.partial).toEqual({})
+  })
+
+  it('prefers complete done text over accumulated deltas', () => {
+    let state = reduceLiveTranscript(initialLiveTranscriptState, {
+      type: 'session.output_transcript.delta',
+      item_id: 'i',
+      delta: 'hel',
+    })
+    state = reduceLiveTranscript(state, {
+      type: 'session.output_transcript.done',
+      item_id: 'i',
+      text: 'hello world',
+    })
+    expect(state.items).toEqual([{ role: 'assistant', text: 'hello world' }])
+  })
 })

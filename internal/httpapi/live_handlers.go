@@ -15,7 +15,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/slovx2/tyrs-hand/internal/auth"
 	"github.com/slovx2/tyrs-hand/internal/live"
-	"go.uber.org/zap"
 )
 
 const (
@@ -190,10 +189,11 @@ func (s *Server) createLiveSessionForConversation(c *gin.Context, recovering boo
 	}
 
 	oldSessions := make([]liveRecoverySession, 0, 1)
-	const activeStatuses = `('creating','active','sideband_disconnected','recovering','closing','close_timeout')`
+	const occupyingStatuses = `('creating','active','sideband_disconnected','recovering')`
+	const recoverLookupStatuses = `('creating','active','sideband_disconnected','recovering','closing','close_timeout')`
 	if recovering {
 		rows, queryErr := tx.QueryContext(requestCtx, `SELECT id,remote_session_id,status FROM live_sessions
-			WHERE conversation_id=$1 AND status IN `+activeStatuses+` FOR UPDATE`, conversationID)
+			WHERE conversation_id=$1 AND status IN `+recoverLookupStatuses+` FOR UPDATE`, conversationID)
 		if queryErr != nil {
 			problem(c, http.StatusInternalServerError, "读取旧 Live session 失败", queryErr)
 			return
@@ -205,9 +205,9 @@ func (s *Server) createLiveSessionForConversation(c *gin.Context, recovering boo
 				problem(c, http.StatusInternalServerError, "读取旧 Live session 失败", queryErr)
 				return
 			}
-			if item.Status == "creating" || item.Status == "recovering" || item.Status == "closing" || item.Status == "close_timeout" {
+			if item.Status == "creating" || item.Status == "recovering" {
 				_ = rows.Close()
-				problem(c, http.StatusConflict, "该 conversation 已有 Live session 正在创建、恢复或关闭", nil)
+				problem(c, http.StatusConflict, "该 conversation 已有 Live session 正在创建或恢复", nil)
 				return
 			}
 			oldSessions = append(oldSessions, item)
@@ -217,14 +217,14 @@ func (s *Server) createLiveSessionForConversation(c *gin.Context, recovering boo
 			return
 		}
 		if _, err = tx.ExecContext(requestCtx, `UPDATE live_sessions SET status='replaced',updated_at=now()
-			WHERE conversation_id=$1 AND status IN ('creating','active','sideband_disconnected','recovering')`, conversationID); err != nil {
+			WHERE conversation_id=$1 AND status IN ('active','sideband_disconnected','closing','close_timeout')`, conversationID); err != nil {
 			problem(c, http.StatusInternalServerError, "标记旧 Live session 失败", err)
 			return
 		}
 	} else {
 		var exists bool
 		if err = tx.QueryRowContext(requestCtx, `SELECT EXISTS(SELECT 1 FROM live_sessions
-			WHERE conversation_id=$1 AND status IN `+activeStatuses+`)`, conversationID).Scan(&exists); err != nil {
+			WHERE conversation_id=$1 AND status IN `+occupyingStatuses+`)`, conversationID).Scan(&exists); err != nil {
 			problem(c, http.StatusInternalServerError, "检查 Live session 失败", err)
 			return
 		}
@@ -263,29 +263,17 @@ func (s *Server) createLiveSessionForConversation(c *gin.Context, recovering boo
 	})
 	serviceCtx := s.liveServiceContext(requestCtx)
 	if err != nil {
-		if recovering {
-			s.restoreLiveRecoveryOrLog(serviceCtx, conversationID, localID, oldSessions, err)
-		} else {
-			s.failLiveSession(serviceCtx, localID, err)
-		}
+		s.failLiveSession(serviceCtx, localID, err)
 		problem(c, http.StatusBadGateway, "Live Provider 创建 session 失败", err)
 		return
 	}
-	if _, err = s.db.ExecContext(serviceCtx, `UPDATE live_sessions SET remote_session_id=$2,status='recovering',updated_at=now() WHERE id=$1`, localID, result.ProviderSessionID); err != nil {
-		if recovering {
-			s.restoreLiveRecoveryOrLog(serviceCtx, conversationID, localID, oldSessions, err)
-		} else {
-			s.failLiveSession(serviceCtx, localID, err)
-		}
+	if _, err = s.db.ExecContext(serviceCtx, `UPDATE live_sessions SET remote_session_id=$2,updated_at=now() WHERE id=$1`, localID, result.ProviderSessionID); err != nil {
+		s.failLiveSession(serviceCtx, localID, err)
 		problem(c, http.StatusInternalServerError, "保存 Live session 失败", err)
 		return
 	}
 	if err = s.liveManager.attach(requestCtx, localID, result.ProviderSessionID); err != nil {
-		if recovering {
-			s.restoreLiveRecoveryOrLog(serviceCtx, conversationID, localID, oldSessions, err)
-		} else {
-			s.failLiveSession(serviceCtx, localID, err)
-		}
+		s.failLiveSession(serviceCtx, localID, err)
 		problem(c, http.StatusServiceUnavailable, "Live manager 尚未就绪", err)
 		return
 	}
@@ -293,7 +281,7 @@ func (s *Server) createLiveSessionForConversation(c *gin.Context, recovering boo
 	defer cancelSideband()
 	if err = s.liveManager.waitSideband(sidebandCtx, localID); err != nil {
 		if recovering {
-			s.restoreLiveRecoveryOrLog(serviceCtx, conversationID, localID, oldSessions, err)
+			s.failLiveSession(serviceCtx, localID, err)
 		} else {
 			_ = s.liveManager.updateSessionStatus(serviceCtx, localID, "sideband_disconnected", err.Error())
 		}
@@ -320,68 +308,6 @@ func (s *Server) failLiveSession(ctx context.Context, id uuid.UUID, cause error)
 	_, _ = s.db.ExecContext(ctx, `UPDATE live_sessions SET status='failed',last_error=$2,updated_at=now() WHERE id=$1 AND status NOT IN ('closed','expired','replaced')`, id, cause.Error())
 	_, _ = s.db.ExecContext(ctx, `UPDATE live_conversations SET active_session_id=NULL,status='active',updated_at=now() WHERE active_session_id=$1 AND EXISTS(SELECT 1 FROM live_sessions WHERE id=$1 AND status='failed')`, id)
 	s.liveManager.stopSession(id)
-}
-
-func (s *Server) restoreLiveRecoveryOrLog(ctx context.Context, conversationID, newID uuid.UUID, old []liveRecoverySession, cause error) {
-	if err := s.restoreLiveRecovery(ctx, conversationID, newID, old, cause); err != nil && s.logger != nil {
-		s.logger.Error("恢复 Live session 状态失败", zap.Error(err))
-	}
-}
-
-func (s *Server) restoreLiveRecovery(ctx context.Context, conversationID, newID uuid.UUID, old []liveRecoverySession, cause error) error {
-	defer s.liveManager.stopSession(newID)
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, `UPDATE live_sessions SET status='failed',last_error=$2,updated_at=now() WHERE id=$1`, newID, cause.Error()); err != nil {
-		return err
-	}
-	var activeID uuid.NullUUID
-	conversationStatus := "active"
-	restored := make([]liveRecoverySession, 0, len(old))
-	for _, item := range old {
-		status := item.Status
-		if status == "creating" && item.Remote == "" {
-			if _, err := tx.ExecContext(ctx, `UPDATE live_sessions SET status='failed',last_error=$2,updated_at=now() WHERE id=$1`, item.ID, "恢复失败且旧 session 尚未获得 provider ID"); err != nil {
-				return err
-			}
-			continue
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE live_sessions SET status=$2,last_error=NULL,updated_at=now() WHERE id=$1`, item.ID, status); err != nil {
-			return err
-		}
-		restored = append(restored, item)
-		if status == "sideband_disconnected" {
-			conversationStatus = status
-		} else if conversationStatus != "sideband_disconnected" {
-			conversationStatus = "active"
-		}
-		if !activeID.Valid {
-			activeID = uuid.NullUUID{UUID: item.ID, Valid: true}
-		}
-	}
-	if activeID.Valid {
-		if _, err := tx.ExecContext(ctx, `UPDATE live_conversations SET active_session_id=$1,status=$2,updated_at=now() WHERE id=$3`, activeID.UUID, conversationStatus, conversationID); err != nil {
-			return err
-		}
-	} else {
-		if _, err := tx.ExecContext(ctx, `UPDATE live_conversations SET active_session_id=NULL,status='active',updated_at=now() WHERE id=$1`, conversationID); err != nil {
-			return err
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	for _, item := range restored {
-		if item.Remote != "" {
-			if err := s.liveManager.attach(ctx, item.ID, item.Remote); err != nil && s.logger != nil {
-				s.logger.Warn("恢复 Live sideband 启动失败", zap.String("sessionId", item.ID.String()), zap.Error(err))
-			}
-		}
-	}
-	return nil
 }
 
 func (s *Server) waitLiveSideband(ctx context.Context, id uuid.UUID) error {
@@ -415,8 +341,7 @@ func (s *Server) closeLiveSession(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"sessionId": id, "status": status})
 		return
 	}
-	// A concurrent caller that observes closing only waits for the first
-	// close command. close_timeout is explicitly retryable.
+	// A concurrent caller that observes closing only waits for the first close command.
 	sendClose := status != "closing"
 	if sendClose {
 		if _, err = tx.ExecContext(requestCtx, `UPDATE live_sessions SET status='closing',last_error=NULL,updated_at=now() WHERE id=$1`, id); err != nil {
@@ -437,15 +362,13 @@ func (s *Server) closeLiveSession(c *gin.Context) {
 	defer cancel()
 	if sendClose {
 		if err = s.liveManager.waitSideband(closeCtx, id); err != nil {
-			serviceCtx := s.liveServiceContext(requestCtx)
-			_ = s.liveManager.updateSessionStatus(serviceCtx, id, "close_timeout", "等待 Live sideband 超时")
+			s.failLiveSession(s.liveServiceContext(requestCtx), id, errors.New("等待 Live sideband 超时"))
 			problem(c, http.StatusGatewayTimeout, "等待 Live sideband 超时", err)
 			return
 		}
 		if err = s.liveManager.sendClose(closeCtx, id); err != nil {
-			serviceCtx := s.liveServiceContext(requestCtx)
-			_ = s.liveManager.updateSessionStatus(serviceCtx, id, "close_timeout", err.Error())
-			problem(c, http.StatusConflict, "发送 Live close 失败", err)
+			s.failLiveSession(s.liveServiceContext(requestCtx), id, errors.New("发送 Live close 失败"))
+			problem(c, http.StatusGatewayTimeout, "发送 Live close 失败", err)
 			return
 		}
 	}
@@ -466,8 +389,7 @@ func (s *Server) closeLiveSession(c *gin.Context) {
 		}
 		select {
 		case <-closeCtx.Done():
-			serviceCtx := s.liveServiceContext(requestCtx)
-			_ = s.liveManager.updateSessionStatus(serviceCtx, id, "close_timeout", "等待 session.closed 超时")
+			s.failLiveSession(s.liveServiceContext(requestCtx), id, errors.New("等待 session.closed 超时"))
 			problem(c, http.StatusGatewayTimeout, "等待 Live session 关闭超时", closeCtx.Err())
 			return
 		case <-ticker.C:

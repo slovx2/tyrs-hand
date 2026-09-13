@@ -178,10 +178,6 @@ func (m *liveManager) run(ctx context.Context, sessionID uuid.UUID, remoteID str
 				_ = m.updateSessionStatus(ctx, sessionID, "expired", err.Error())
 				return
 			}
-			if errors.Is(err, live.ErrSidebandBinary) {
-				_ = m.updateSessionStatus(ctx, sessionID, "failed", err.Error())
-				return
-			}
 			_ = m.updateSessionStatus(ctx, sessionID, "sideband_disconnected", err.Error())
 			if !waitBackoff(ctx, backoff) {
 				return
@@ -198,27 +194,28 @@ func (m *liveManager) run(ctx context.Context, sessionID uuid.UUID, remoteID str
 		for {
 			var event map[string]any
 			if err := sideband.ReadJSON(ctx, &event); err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				if skippableSidebandRead(err) {
+					if errors.Is(err, live.ErrSidebandBinary) {
+						m.recordSidebandProtocolEvent(ctx, sessionID, map[string]any{
+							"type":      "sideband.binary",
+							"sizeBytes": sidebandBinarySize(err),
+						})
+					} else {
+						m.recordSidebandProtocolEvent(ctx, sessionID, map[string]any{
+							"type": "sideband.invalid_json",
+						})
+					}
+					continue
+				}
 				_ = sideband.Close()
 				runtime.mu.Lock()
 				if runtime.sideband == sideband {
 					runtime.sideband = nil
 				}
 				runtime.mu.Unlock()
-				if ctx.Err() != nil {
-					return
-				}
-				if errors.Is(err, live.ErrSidebandBinary) {
-					m.recordSidebandProtocolEvent(ctx, sessionID, map[string]any{
-						"type":      "sideband.binary",
-						"sizeBytes": sidebandBinarySize(err),
-					})
-					_ = m.updateSessionStatus(ctx, sessionID, "failed", err.Error())
-					return
-				}
-				if errors.Is(err, live.ErrSidebandInvalidJSON) {
-					_ = m.updateSessionStatus(ctx, sessionID, "failed", err.Error())
-					return
-				}
 				_ = m.updateSessionStatus(ctx, sessionID, "sideband_disconnected", err.Error())
 				break
 			}
@@ -256,6 +253,10 @@ func nextBackoff(current time.Duration) time.Duration {
 		return 30 * time.Second
 	}
 	return current
+}
+
+func skippableSidebandRead(err error) bool {
+	return errors.Is(err, live.ErrSidebandBinary) || errors.Is(err, live.ErrSidebandInvalidJSON)
 }
 
 func isTerminalLiveSessionStatus(status string) bool {
@@ -777,10 +778,10 @@ func (m *liveManager) restoreTranscripts(ctx context.Context, sessionID uuid.UUI
 }
 
 func transcriptCompletionText(phase, accumulated string, event map[string]any) string {
-	if phase == "done" && strings.TrimSpace(accumulated) != "" {
-		return accumulated
+	if text := eventCompleteText(event); text != "" {
+		return text
 	}
-	return eventText(event)
+	return accumulated
 }
 
 func transcriptFragmentText(phase string, event map[string]any) string {
@@ -790,7 +791,7 @@ func transcriptFragmentText(phase string, event map[string]any) string {
 	if text := eventDelta(event); text != "" {
 		return text
 	}
-	return eventText(event)
+	return eventCompleteText(event)
 }
 
 func turnEventPhase(typ string) (string, bool) {
@@ -831,30 +832,16 @@ func (m *liveManager) transcriptKeyForTurn(sessionID uuid.UUID, role, turnID str
 }
 
 func eventTurnID(event map[string]any) string {
-	for _, name := range []string{"turn_id", "turnId"} {
-		if value, ok := event[name].(string); ok && strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
+	if value := liveStringField(event, "turn_id", "turnId"); value != "" {
+		return value
 	}
-	if turn, ok := event["turn"].(map[string]any); ok {
-		if value, ok := turn["id"].(string); ok && strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
+	return liveStringField(liveObjectField(event, "turn"), "id")
 }
 
 func eventTurnRole(event map[string]any) string {
-	role := ""
-	if turn, ok := event["turn"].(map[string]any); ok {
-		if value, ok := turn["role"].(string); ok {
-			role = strings.TrimSpace(value)
-		}
-	}
+	role := liveStringField(liveObjectField(event, "turn"), "role")
 	if role == "" {
-		if value, ok := event["role"].(string); ok {
-			role = strings.TrimSpace(value)
-		}
+		role = liveStringField(event, "role")
 	}
 	switch role {
 	case "developer", "user", "assistant":
@@ -865,16 +852,7 @@ func eventTurnRole(event map[string]any) string {
 }
 
 func eventTurnTranscript(event map[string]any) string {
-	turn, ok := event["turn"].(map[string]any)
-	if !ok {
-		return ""
-	}
-	for _, key := range []string{"transcript", "text"} {
-		if value, ok := turn[key].(string); ok && strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
+	return liveStringField(liveObjectField(event, "turn"), "transcript", "text")
 }
 
 func transcriptEvent(typ string) (role, phase string, ok bool) {
@@ -939,64 +917,73 @@ func transcriptIdentity(typ string, event map[string]any) string {
 	if strings.HasSuffix(strings.ToLower(strings.TrimSpace(typ)), ".added") {
 		return "open"
 	}
-	for _, name := range []string{"item_id", "itemId", "response_id", "responseId"} {
-		if value, ok := event[name].(string); ok && strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
+	if value := liveStringField(event, "item_id", "itemId", "response_id", "responseId"); value != "" {
+		return value
 	}
-	for _, container := range []string{"item", "response"} {
-		if object, ok := event[container].(map[string]any); ok {
-			if value := nestedTranscriptIdentity(object); value != "" {
-				return value
-			}
-		}
+	if value := liveStringField(liveObjectField(event, "item"), "item_id", "itemId", "id"); value != "" {
+		return value
 	}
-	return ""
-}
-
-func nestedTranscriptIdentity(value any) string {
-	switch item := value.(type) {
-	case map[string]any:
-		for _, name := range []string{"item_id", "itemId", "response_id", "responseId", "id"} {
-			if candidate, ok := item[name].(string); ok && strings.TrimSpace(candidate) != "" {
-				return strings.TrimSpace(candidate)
-			}
-		}
-		for _, child := range item {
-			if candidate := nestedTranscriptIdentity(child); candidate != "" {
-				return candidate
-			}
-		}
-	case []any:
-		for _, child := range item {
-			if candidate := nestedTranscriptIdentity(child); candidate != "" {
-				return candidate
-			}
-		}
-	}
-	return ""
+	return liveStringField(liveObjectField(event, "response"), "response_id", "responseId", "id")
 }
 
 func eventDelta(event map[string]any) string {
-	return nestedTranscriptField(event, "delta")
+	return knownTranscriptText(event, "delta")
 }
 
-func nestedTranscriptField(value any, field string) string {
-	switch item := value.(type) {
-	case map[string]any:
-		if candidate, ok := item[field].(string); ok && strings.TrimSpace(candidate) != "" {
-			return candidate
+func eventCompleteText(event map[string]any) string {
+	return knownTranscriptText(event, "text", "transcript")
+}
+
+func knownTranscriptText(event map[string]any, fields ...string) string {
+	if value := liveStringField(event, fields...); value != "" {
+		return value
+	}
+	if item := liveObjectField(event, "item"); item != nil {
+		if value := liveStringField(item, fields...); value != "" {
+			return value
 		}
-		for _, child := range item {
-			if candidate := nestedTranscriptField(child, field); candidate != "" {
-				return candidate
-			}
+		if value := liveContentField(item, fields...); value != "" {
+			return value
 		}
-	case []any:
-		for _, child := range item {
-			if candidate := nestedTranscriptField(child, field); candidate != "" {
-				return candidate
-			}
+	}
+	return liveStringField(liveObjectField(event, "turn"), fields...)
+}
+
+func liveObjectField(event map[string]any, key string) map[string]any {
+	if event == nil {
+		return nil
+	}
+	value, _ := event[key].(map[string]any)
+	return value
+}
+
+func liveStringField(object map[string]any, keys ...string) string {
+	if object == nil {
+		return ""
+	}
+	for _, key := range keys {
+		if value, ok := object[key].(string); ok && strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func liveContentField(object map[string]any, fields ...string) string {
+	if object == nil {
+		return ""
+	}
+	content, ok := object["content"].([]any)
+	if !ok {
+		return ""
+	}
+	for _, raw := range content {
+		item, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if value := liveStringField(item, fields...); value != "" {
+			return value
 		}
 	}
 	return ""
@@ -1086,17 +1073,16 @@ func isSensitiveLivePayloadKey(key string) bool {
 }
 
 func eventText(event map[string]any) string {
-	for _, key := range []string{"text", "transcript", "delta", "message"} {
-		if value := nestedTranscriptField(event, key); value != "" {
-			return value
-		}
+	if value := eventCompleteText(event); value != "" {
+		return value
 	}
-	if object, ok := event["error"].(map[string]any); ok {
-		if value, ok := object["message"].(string); ok {
-			return value
-		}
+	if value := eventDelta(event); value != "" {
+		return value
 	}
-	return ""
+	if value := liveStringField(event, "message"); value != "" {
+		return value
+	}
+	return liveStringField(liveObjectField(event, "error"), "message")
 }
 
 func (m *liveManager) logWarn(message string, sessionID uuid.UUID, err error) {
