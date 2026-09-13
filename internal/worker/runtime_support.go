@@ -157,6 +157,20 @@ func isWorkerLiveVoiceTool(name string) bool {
 
 const liveVoiceDeveloperInstruction = "Realtime voice is active for this existing Codex task. Preserve the task's original instructions, role, collaboration mode, permissions, memory policy, and ongoing work. Every ordinary spoken or frontend-context response must begin at byte zero with [STATUS] followed by one ASCII space for meaningful progress, or [COMPLETE] followed by one ASCII space for a final result, question, or blocker. [COMMENTARY] is also accepted as progress, and [ANALYSIS] remains silent context. Never speak or repeat a channel prefix. Use tyrs_hand.list_sessions to resolve which session the user means. Use tyrs_hand.create_session only on the current worker. Use tyrs_hand.send_message to follow up another session. Use tyrs_hand.transfer_voice_call only after you know the session id. Use tyrs_hand.end_voice_call only when the user clearly intends to end the voice call; a request to stop work, stop speaking, or pause is not sufficient."
 
+func mergeVoiceControlTools(tools []ports.DynamicToolSpec) []ports.DynamicToolSpec {
+	extra := voiceControlSpec().Tools
+	for i, spec := range tools {
+		if spec.Type == "namespace" && spec.Name == "tyrs_hand" {
+			merged := make([]ports.DynamicToolSpec, 0, len(spec.Tools)+len(extra))
+			merged = append(merged, spec.Tools...)
+			merged = append(merged, extra...)
+			tools[i].Tools = merged
+			return tools
+		}
+	}
+	return append(tools, voiceControlSpec())
+}
+
 func voiceControlSpec() ports.DynamicToolSpec {
 	return ports.DynamicToolSpec{Type: "namespace", Name: "tyrs_hand",
 		Description: "Control Tyrs Hand workspace sessions from an active voice call on this worker.",

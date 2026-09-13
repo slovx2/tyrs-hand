@@ -58,7 +58,7 @@ func (p *Processor) processRemoteDiscord(ctx context.Context, task *workerprotoc
 	tools := withBrowserTools(p.cfg, workspaceGitTools(snapshot.Project)...)
 	if snapshot.VoiceBound {
 		developerInstructions = strings.TrimSpace(developerInstructions + "\n\n" + liveVoiceDeveloperInstruction)
-		tools = append(tools, voiceControlSpec())
+		tools = mergeVoiceControlTools(tools)
 	}
 	options := workerThreadOptions(ports.ThreadOptions{
 		CWD: runtime.Workspace, Model: settings.Model,

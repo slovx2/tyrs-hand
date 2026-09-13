@@ -540,7 +540,7 @@ func (m *liveManager) persistEvent(ctx context.Context, sessionID uuid.UUID, dir
 	m.applyTranscriptMutation(mutation)
 	if isLiveDelegationEvent(typ) && m.onDelegation != nil {
 		if err := m.onDelegation(ctx, sessionID, event); err != nil && m.logger != nil {
-			m.logger.Warn("Live 委派入队失败")
+			m.logger.Warn("Live 委派入队失败", zap.Error(err))
 		}
 	}
 	return nil
