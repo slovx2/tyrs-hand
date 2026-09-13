@@ -116,7 +116,7 @@ func (p *HTTPProvider) CreateSession(ctx context.Context, offer string, config S
 		return SessionResult{}, fmt.Errorf("读取 Live session 响应: %w", err)
 	}
 	if response.StatusCode != http.StatusCreated {
-		return SessionResult{}, fmt.Errorf("Live session 返回 HTTP %d", response.StatusCode)
+		return SessionResult{}, errors.New(summarizeLiveProviderError(response.StatusCode, body))
 	}
 	var result struct {
 		Session struct {
@@ -202,3 +202,59 @@ func (s *websocketSideband) WriteJSON(ctx context.Context, value any) error {
 	return s.connection.WriteJSON(value)
 }
 func (s *websocketSideband) Close() error { return s.connection.Close() }
+
+func summarizeLiveProviderError(status int, body []byte) string {
+	message := liveProviderErrorMessage(body)
+	if message == "" {
+		return fmt.Sprintf("Live session 返回 HTTP %d", status)
+	}
+	return fmt.Sprintf("Live session 返回 HTTP %d: %s", status, message)
+}
+
+func liveProviderErrorMessage(body []byte) string {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 {
+		return ""
+	}
+	var payload struct {
+		Error struct {
+			Message string `json:"message"`
+			Type    string `json:"type"`
+			Code    string `json:"code"`
+			Param   string `json:"param"`
+		} `json:"error"`
+		Detail  string `json:"detail"`
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(trimmed, &payload) != nil {
+		return ""
+	}
+	parts := make([]string, 0, 4)
+	for _, value := range []string{payload.Error.Type, payload.Error.Code, payload.Error.Param} {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			parts = append(parts, value)
+		}
+	}
+	text := strings.TrimSpace(payload.Error.Message)
+	if text == "" {
+		text = strings.TrimSpace(payload.Detail)
+	}
+	if text == "" {
+		text = strings.TrimSpace(payload.Message)
+	}
+	if text != "" {
+		parts = append(parts, text)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	summary := strings.Join(parts, ": ")
+	summary = strings.ReplaceAll(summary, "\n", " ")
+	summary = strings.ReplaceAll(summary, "\r", " ")
+	runes := []rune(summary)
+	if len(runes) > 300 {
+		return string(runes[:300])
+	}
+	return summary
+}

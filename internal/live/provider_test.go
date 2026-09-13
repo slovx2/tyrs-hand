@@ -124,6 +124,20 @@ func TestHTTPProviderRejectsNonCreatedResponse(t *testing.T) {
 	require.Contains(t, err.Error(), "HTTP 200")
 }
 
+func TestHTTPProviderIncludesSanitizedUpstreamErrorBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"type":"invalid_request_error","param":"session.input","message":"input messages must alternate"}}`))
+	}))
+	defer server.Close()
+
+	_, err := NewProvider(server.URL, "secret").CreateSession(context.Background(), "offer", SessionConfig{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "HTTP 400")
+	require.Contains(t, err.Error(), "session.input")
+	require.Contains(t, err.Error(), "input messages must alternate")
+}
+
 func TestWebsocketSidebandRejectsInvalidJSON(t *testing.T) {
 	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -15,7 +15,9 @@ import {
   visibleLiveTranscript,
   type LiveTranscriptState,
 } from '../features/live/transcriptReducer'
+import liveAcceptanceAudioUrl from '../assets/live-acceptance.wav?url'
 
+const liveAcceptanceAudioName = 'live-acceptance.wav'
 const liveIceConfiguration: RTCConfiguration = {
   // STUN only helps the peers discover candidates. Media remains a direct
   // WebRTC connection between this browser and the Live media endpoint.
@@ -44,6 +46,11 @@ async function waitForIceGathering(
 type CapturableAudioElement = HTMLAudioElement & {
   captureStream?: () => MediaStream
   mozCaptureStream?: () => MediaStream
+}
+
+function shouldUseAcceptanceAudio(): boolean {
+  const value = new URLSearchParams(window.location.search).get('acceptanceAudio')
+  return value === '1' || value === 'true'
 }
 
 function captureAudioElement(element: HTMLAudioElement): MediaStream {
@@ -108,6 +115,16 @@ export function LivePage() {
   const [recordingUrl, setRecordingUrl] = useState('')
   const [recordingName, setRecordingName] = useState('')
 
+  const loadAcceptanceAudio = () => {
+    if (recordingObjectUrl.current) {
+      URL.revokeObjectURL(recordingObjectUrl.current)
+      recordingObjectUrl.current = undefined
+    }
+    setRecordingUrl(liveAcceptanceAudioUrl)
+    setRecordingName(liveAcceptanceAudioName)
+    setError('')
+  }
+
   const closePeer = () => {
     channel.current?.close()
     channel.current = null
@@ -129,6 +146,15 @@ export function LivePage() {
     if (!recordingUrl || !recording.current) return
     recording.current.load()
   }, [recordingUrl])
+  useEffect(() => {
+    if (!shouldUseAcceptanceAudio()) return
+    if (recordingObjectUrl.current) {
+      URL.revokeObjectURL(recordingObjectUrl.current)
+      recordingObjectUrl.current = undefined
+    }
+    setRecordingUrl(liveAcceptanceAudioUrl)
+    setRecordingName(liveAcceptanceAudioName)
+  }, [])
   const handleEvent = (event: Record<string, unknown>) => {
     const type = String(event.type ?? '')
     if (type === 'session.started') {
@@ -360,6 +386,9 @@ export function LivePage() {
             onChange={selectRecording}
           />
         </label>
+        <button className="button" type="button" onClick={loadAcceptanceAudio}>
+          使用验收录音
+        </button>
         {recordingName && (
           <span className="muted" title="录音仅作为本地 WebRTC 音频轨道输入">
             {recordingName}
