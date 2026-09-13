@@ -63,3 +63,20 @@ func TestForwardLiveVoiceTextIgnoresUnprefixed(t *testing.T) {
 	require.Equal(t, "[COMMENTARY]", channel)
 	require.Equal(t, "还在跑", text)
 }
+
+func TestLiveVoiceWritebackPayload(t *testing.T) {
+	payload := liveVoiceWritebackPayload("测试还在跑", "[STATUS]", "handoff_1")
+	require.Equal(t, "session.context.append", payload["type"])
+	require.Equal(t, "speakable", payload["channel"])
+	require.Equal(t, "handoff_1", payload["id"])
+	content, ok := payload["content"].([]map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "input_text", content[0]["type"])
+	require.Equal(t, "测试还在跑", content[0]["text"])
+	quiet := liveVoiceWritebackPayload("内部推理", "[ANALYSIS]", "")
+	require.Equal(t, "session.context.append", quiet["type"])
+	_, hasChannel := quiet["channel"]
+	require.False(t, hasChannel)
+	_, hasID := quiet["id"]
+	require.False(t, hasID)
+}

@@ -14,6 +14,7 @@ import (
 	"github.com/slovx2/tyrs-hand/internal/auth"
 	"github.com/slovx2/tyrs-hand/internal/codexcontrol"
 	"github.com/slovx2/tyrs-hand/internal/workerprotocol"
+	"go.uber.org/zap"
 )
 
 const (
@@ -138,10 +139,6 @@ func (s *Server) appendLiveVoiceCommentary(ctx context.Context, workspaceSession
 	if text == "" {
 		return
 	}
-	eventType := "session.commentary.append"
-	if channel == "[ANALYSIS]" {
-		eventType = "session.thinking.append"
-	}
 	var liveSessionID uuid.UUID
 	var delegationID sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT lc.active_session_id, NULLIF(lc.last_delegation_id,'')
@@ -151,17 +148,24 @@ func (s *Server) appendLiveVoiceCommentary(ctx context.Context, workspaceSession
 	if err != nil {
 		return
 	}
-	payload := map[string]any{
-		"type": eventType, "event_id": uuid.NewString(), "content": text,
-	}
-	if delegationID.Valid {
-		payload["delegation_id"] = delegationID.String
-	} else {
-		payload["delegation_id"] = nil
-	}
+	payload := liveVoiceWritebackPayload(text, channel, delegationID.String)
 	if err := s.liveManager.writeSidebandJSON(ctx, liveSessionID, payload); err != nil && s.logger != nil {
-		s.logger.Warn("Live commentary 写入失败")
+		s.logger.Warn("Live commentary 写入失败", zap.Error(err))
 	}
+}
+
+func liveVoiceWritebackPayload(text, channel, delegationID string) map[string]any {
+	payload := map[string]any{
+		"type": "session.context.append", "event_id": uuid.NewString(),
+		"content": []map[string]any{{"type": "input_text", "text": text}},
+	}
+	if channel != "[ANALYSIS]" {
+		payload["channel"] = "speakable"
+	}
+	if id := strings.TrimSpace(delegationID); id != "" {
+		payload["id"] = id
+	}
+	return payload
 }
 
 func (s *Server) liveSessionBinding(ctx context.Context, tx *sql.Tx, sessionID uuid.UUID) (uuid.UUID, uuid.UUID, error) {
