@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/slovx2/tyrs-hand/internal/live"
 	"github.com/stretchr/testify/require"
 )
 
@@ -63,19 +62,4 @@ func TestLiveTranscriptHelpersReadNestedDelta(t *testing.T) {
 		"content": []any{map[string]any{"part": map[string]any{"delta": "hello "}}},
 	}
 	require.Equal(t, "hello ", eventDelta(event))
-}
-
-func TestLiveHistoryAppendEventUsesContextAppend(t *testing.T) {
-	sessionID := uuid.New()
-	event := liveHistoryAppendEvent(sessionID, 1, live.InputMessage{
-		Type: "message", Role: "assistant",
-		Content: []live.InputContent{{Type: "output_text", Text: "hi"}},
-	})
-	require.Equal(t, "session.context.append", event["type"])
-	require.Equal(t, "assistant", event["role"])
-	require.Equal(t, "speakable", event["channel"])
-	require.Equal(t, "recover-"+sessionID.String()+"-1", event["event_id"])
-	content := event["content"].([]map[string]string)
-	require.Equal(t, "output_text", content[0]["type"])
-	require.Equal(t, "hi", content[0]["text"])
 }

@@ -259,7 +259,7 @@ func (s *Server) createLiveSessionForConversation(c *gin.Context, recovering boo
 		s.liveManager.stopSession(old.ID)
 	}
 	result, err := s.liveManager.provider.CreateSession(requestCtx, request.OfferSDP, live.SessionConfig{
-		Model: model, Voice: voice, Instructions: instructions,
+		Model: model, Voice: voice, Instructions: instructions, Input: history,
 	})
 	serviceCtx := s.liveServiceContext(requestCtx)
 	if err != nil {
@@ -299,18 +299,6 @@ func (s *Server) createLiveSessionForConversation(c *gin.Context, recovering boo
 		}
 		problem(c, http.StatusBadGateway, "Live sideband 连接失败", err)
 		return
-	}
-	if recovering && len(history) > 0 {
-		if err = s.liveManager.waitEventType(sidebandCtx, localID, "session.started"); err != nil {
-			s.restoreLiveRecoveryOrLog(serviceCtx, conversationID, localID, oldSessions, err)
-			problem(c, http.StatusBadGateway, "Live session 未启动，无法注入历史", err)
-			return
-		}
-		if err = s.liveManager.injectHistory(sidebandCtx, localID, history); err != nil {
-			s.restoreLiveRecoveryOrLog(serviceCtx, conversationID, localID, oldSessions, err)
-			problem(c, http.StatusBadGateway, "注入 Live 历史失败", err)
-			return
-		}
 	}
 	response := liveSessionResponse{ConversationID: conversationID, SessionID: localID}
 	response.Transport.Type = "webrtc"

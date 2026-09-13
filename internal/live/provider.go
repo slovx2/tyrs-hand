@@ -93,7 +93,9 @@ func (p *HTTPProvider) CreateSession(ctx context.Context, offer string, config S
 		return SessionResult{}, errors.New("SDP offer 不能为空")
 	}
 	session := map[string]any{"model": config.Model, "instructions": config.Instructions, "audio": map[string]any{"output": map[string]string{"voice": config.Voice}}}
-	// Live create 拒绝未知字段 session.input；恢复历史改走 sideband session.context.append。
+	if len(config.Input) > 0 {
+		session["input"] = config.Input
+	}
 	payload, err := json.Marshal(map[string]any{"session": session, "transport": map[string]string{"type": "webrtc", "sdp": offer}})
 	if err != nil {
 		return SessionResult{}, fmt.Errorf("编码 Live session 请求: %w", err)

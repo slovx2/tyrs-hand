@@ -38,8 +38,7 @@ func TestHTTPProviderCreateSession(t *testing.T) {
 	output := audio["output"].(map[string]any)
 	require.Equal(t, "marin", output["voice"])
 	require.Equal(t, "webrtc", requestBody["transport"].(map[string]any)["type"])
-	_, hasInput := session["input"]
-	require.False(t, hasInput)
+	require.NotNil(t, session["input"])
 }
 
 func TestHTTPProviderRejectsInvalidResponse(t *testing.T) {
