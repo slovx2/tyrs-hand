@@ -52,9 +52,24 @@ func TestLiveTranscriptHelpersReadNestedContent(t *testing.T) {
 			}},
 		},
 	}
-	require.Equal(t, "response-1", transcriptIdentity(event))
+	require.Equal(t, "open", transcriptIdentity("output_transcript.added", event))
 	require.Equal(t, "hello", eventText(event))
-	require.Equal(t, sessionID.String()+":assistant:response-1", transcriptKey(sessionID, "assistant", "output_transcript.added", event))
+	require.Equal(t, sessionID.String()+":assistant:open", transcriptKey(sessionID, "assistant", "output_transcript.added", event))
+}
+
+func TestLiveTranscriptDoneKeepsItemIdentity(t *testing.T) {
+	sessionID := uuid.New()
+	event := map[string]any{"type": "output_transcript.done", "response_id": "response-1", "text": "hello"}
+	require.Equal(t, "response-1", transcriptIdentity("output_transcript.done", event))
+	require.Equal(t, sessionID.String()+":assistant:response-1", transcriptKey(sessionID, "assistant", "output_transcript.done", event))
+}
+
+func TestLiveTranscriptAddedEventsShareOpenIdentity(t *testing.T) {
+	sessionID := uuid.New()
+	first := map[string]any{"type": "input_transcript.added", "item": map[string]any{"id": "item-1", "text": "这是"}}
+	second := map[string]any{"type": "input_transcript.added", "item": map[string]any{"id": "item-2", "text": "泰"}}
+	require.Equal(t, sessionID.String()+":user:open", transcriptKey(sessionID, "user", "input_transcript.added", first))
+	require.Equal(t, transcriptKey(sessionID, "user", "input_transcript.added", first), transcriptKey(sessionID, "user", "input_transcript.added", second))
 }
 
 func TestLiveTranscriptHelpersReadNestedDelta(t *testing.T) {

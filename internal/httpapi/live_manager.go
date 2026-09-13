@@ -535,16 +535,13 @@ func (m *liveManager) projectEventTx(ctx context.Context, tx *sql.Tx, sessionID 
 	if role, phase, ok := transcriptEvent(typ); ok {
 		key := transcriptKey(sessionID, role, typ, event)
 		switch phase {
-		case "delta":
-			if text := eventDelta(event); text != "" {
+		case "delta", "added":
+			if text := transcriptFragmentText(phase, event); text != "" {
 				mutation.append[key] = text
 			}
-		case "added", "done":
+		case "done":
 			text := transcriptCompletionText(phase, m.transcriptValue(key), event)
 			if text != "" {
-				// Delta, added, done and turn.done for one item share this
-				// logical source key. The physical event id is already used by
-				// live_events for frame-level de-duplication.
 				if _, err := m.appendLiveMessageTx(ctx, tx, sessionID, role, text, "transcript:"+key); err != nil {
 					return mutation, err
 				}
@@ -553,9 +550,47 @@ func (m *liveManager) projectEventTx(ctx context.Context, tx *sql.Tx, sessionID 
 		}
 		return mutation, nil
 	}
-	if typ == "turn.done" {
-		if err := m.flushTranscriptsTx(ctx, tx, sessionID, &mutation); err != nil {
-			return mutation, err
+	if phase, ok := turnEventPhase(typ); ok {
+		return m.projectTurnEventTx(ctx, tx, sessionID, phase, event, mutation)
+	}
+	return mutation, nil
+}
+
+func (m *liveManager) projectTurnEventTx(ctx context.Context, tx *sql.Tx, sessionID uuid.UUID, phase string, event map[string]any, mutation transcriptMutation) (transcriptMutation, error) {
+	role := eventTurnRole(event)
+	turnID := eventTurnID(event)
+	key := m.transcriptKeyForTurn(sessionID, role, turnID)
+	switch phase {
+	case "created":
+		if text := eventTurnTranscript(event); text != "" && key != "" {
+			mutation.append[key] = text
+		}
+	case "delta":
+		if text := eventDelta(event); text != "" && key != "" {
+			mutation.append[key] = text
+		}
+	case "done":
+		text := eventTurnTranscript(event)
+		if text == "" && key != "" {
+			text = m.transcriptValue(key)
+		}
+		if text == "" && role != "" {
+			text = m.transcriptValue(liveTranscriptKey(sessionID, role, "open"))
+		}
+		if text != "" && role != "" {
+			source := "transcript:" + key
+			if turnID != "" {
+				source = "transcript:turn:" + turnID
+			}
+			if _, err := m.appendLiveMessageTx(ctx, tx, sessionID, role, text, source); err != nil {
+				return mutation, err
+			}
+		}
+		if key != "" {
+			mutation.clear = append(mutation.clear, key)
+		}
+		if role != "" {
+			mutation.clear = append(mutation.clear, liveTranscriptKey(sessionID, role, "open"))
 		}
 	}
 	return mutation, nil
@@ -593,13 +628,27 @@ func (m *liveManager) flushTranscriptsTx(ctx context.Context, tx *sql.Tx, sessio
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
+	openRoles := map[string]struct{}{}
+	for _, key := range keys {
+		parts := strings.SplitN(strings.TrimPrefix(key, prefix), ":", 2)
+		if len(parts) == 2 && parts[1] == "open" {
+			openRoles[parts[0]] = struct{}{}
+		}
+	}
 	for _, key := range keys {
 		text := pending[key]
 		parts := strings.SplitN(strings.TrimPrefix(key, prefix), ":", 2)
 		if len(parts) != 2 {
 			continue
 		}
-		if _, err := m.appendLiveMessageTx(ctx, tx, sessionID, parts[0], text, "transcript:"+key); err != nil {
+		role, identity := parts[0], parts[1]
+		if identity != "open" {
+			if _, ok := openRoles[role]; ok {
+				mutation.clear = append(mutation.clear, key)
+				continue
+			}
+		}
+		if _, err := m.appendLiveMessageTx(ctx, tx, sessionID, role, text, "transcript:"+key); err != nil {
 			return err
 		}
 		mutation.clear = append(mutation.clear, key)
@@ -672,20 +721,49 @@ func (m *liveManager) restoreTranscripts(ctx context.Context, sessionID uuid.UUI
 		if err := json.Unmarshal(raw, &event); err != nil {
 			return err
 		}
-		role, phase, ok := transcriptEvent(typ)
-		if ok {
+		if role, phase, ok := transcriptEvent(typ); ok {
 			key := transcriptKey(sessionID, role, typ, event)
-			if phase == "delta" {
+			if phase == "delta" || phase == "added" {
 				m.mu.Lock()
-				m.transcripts[key] += eventDelta(event)
+				m.transcripts[key] += transcriptFragmentText(phase, event)
 				m.mu.Unlock()
-			} else {
+			} else if phase == "done" {
 				m.mu.Lock()
 				delete(m.transcripts, key)
 				m.mu.Unlock()
 			}
+			continue
 		}
-		if typ == "turn.done" || typ == "session.closed" {
+		if phase, ok := turnEventPhase(typ); ok {
+			role := eventTurnRole(event)
+			turnID := eventTurnID(event)
+			key := m.transcriptKeyForTurn(sessionID, role, turnID)
+			switch phase {
+			case "created":
+				if text := eventTurnTranscript(event); text != "" && key != "" {
+					m.mu.Lock()
+					m.transcripts[key] += text
+					m.mu.Unlock()
+				}
+			case "delta":
+				if text := eventDelta(event); text != "" && key != "" {
+					m.mu.Lock()
+					m.transcripts[key] += text
+					m.mu.Unlock()
+				}
+			case "done":
+				m.mu.Lock()
+				if key != "" {
+					delete(m.transcripts, key)
+				}
+				if role != "" {
+					delete(m.transcripts, liveTranscriptKey(sessionID, role, "open"))
+				}
+				m.mu.Unlock()
+			}
+			continue
+		}
+		if typ == "session.closed" {
 			m.mu.Lock()
 			for key := range m.transcripts {
 				if strings.HasPrefix(key, sessionID.String()+":") {
@@ -703,6 +781,100 @@ func transcriptCompletionText(phase, accumulated string, event map[string]any) s
 		return accumulated
 	}
 	return eventText(event)
+}
+
+func transcriptFragmentText(phase string, event map[string]any) string {
+	if phase == "delta" {
+		return eventDelta(event)
+	}
+	if text := eventDelta(event); text != "" {
+		return text
+	}
+	return eventText(event)
+}
+
+func turnEventPhase(typ string) (string, bool) {
+	lower := strings.ToLower(strings.TrimSpace(typ))
+	switch {
+	case lower == "turn.created" || strings.HasSuffix(lower, ".turn.created"):
+		return "created", true
+	case lower == "turn.delta" || strings.HasSuffix(lower, ".turn.delta"):
+		return "delta", true
+	case lower == "turn.done" || strings.HasSuffix(lower, ".turn.done"):
+		return "done", true
+	default:
+		return "", false
+	}
+}
+
+func liveTranscriptKey(sessionID uuid.UUID, role, identity string) string {
+	return sessionID.String() + ":" + role + ":" + identity
+}
+
+func (m *liveManager) transcriptKeyForTurn(sessionID uuid.UUID, role, turnID string) string {
+	if turnID == "" {
+		return ""
+	}
+	if role != "" {
+		return liveTranscriptKey(sessionID, role, turnID)
+	}
+	suffix := ":" + turnID
+	prefix := sessionID.String() + ":"
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for key := range m.transcripts {
+		if strings.HasPrefix(key, prefix) && strings.HasSuffix(key, suffix) {
+			return key
+		}
+	}
+	return ""
+}
+
+func eventTurnID(event map[string]any) string {
+	for _, name := range []string{"turn_id", "turnId"} {
+		if value, ok := event[name].(string); ok && strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	if turn, ok := event["turn"].(map[string]any); ok {
+		if value, ok := turn["id"].(string); ok && strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func eventTurnRole(event map[string]any) string {
+	role := ""
+	if turn, ok := event["turn"].(map[string]any); ok {
+		if value, ok := turn["role"].(string); ok {
+			role = strings.TrimSpace(value)
+		}
+	}
+	if role == "" {
+		if value, ok := event["role"].(string); ok {
+			role = strings.TrimSpace(value)
+		}
+	}
+	switch role {
+	case "developer", "user", "assistant":
+		return role
+	default:
+		return ""
+	}
+}
+
+func eventTurnTranscript(event map[string]any) string {
+	turn, ok := event["turn"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	for _, key := range []string{"transcript", "text"} {
+		if value, ok := turn[key].(string); ok && strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func transcriptEvent(typ string) (role, phase string, ok bool) {
@@ -751,8 +923,7 @@ func transcriptKey(sessionID uuid.UUID, roleOrType string, args ...any) string {
 	if event == nil {
 		event = map[string]any{}
 	}
-	identity := ""
-	identity = transcriptIdentity(event)
+	identity := transcriptIdentity(typ, event)
 	if identity == "" {
 		base := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(strings.ToLower(typ), ".delta"), ".done"), ".completed")
 		base = strings.TrimSuffix(base, ".added")
@@ -761,13 +932,19 @@ func transcriptKey(sessionID uuid.UUID, roleOrType string, args ...any) string {
 	return sessionID.String() + ":" + role + ":" + identity
 }
 
-func transcriptIdentity(event map[string]any) string {
+func transcriptIdentity(typ string, event map[string]any) string {
+	if id := eventTurnID(event); id != "" {
+		return id
+	}
+	if strings.HasSuffix(strings.ToLower(strings.TrimSpace(typ)), ".added") {
+		return "open"
+	}
 	for _, name := range []string{"item_id", "itemId", "response_id", "responseId"} {
 		if value, ok := event[name].(string); ok && strings.TrimSpace(value) != "" {
 			return strings.TrimSpace(value)
 		}
 	}
-	for _, container := range []string{"item", "response", "turn"} {
+	for _, container := range []string{"item", "response"} {
 		if object, ok := event[container].(map[string]any); ok {
 			if value := nestedTranscriptIdentity(object); value != "" {
 				return value
