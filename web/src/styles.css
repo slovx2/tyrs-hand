@@ -1850,98 +1850,155 @@ h2 {
 }
 
 .live-page {
+  display: flex;
+  min-height: calc(100vh - 8rem);
   max-width: 980px;
+  flex-direction: column;
 }
-.live-toolbar {
+.live-head {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-}
-.live-recording {
-  display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 0.65rem;
-  min-height: 2.35rem;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
 }
-.live-recording .muted {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.live-head h1 {
+  margin: 0;
+  font-size: 1.85rem;
+  letter-spacing: -0.03em;
 }
-.button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.45rem;
-  min-height: 2.35rem;
-  border: 1px solid var(--border-strong);
-  border-radius: 0.45rem;
-  padding: 0.45rem 0.8rem;
+.live-more {
+  position: relative;
+}
+.live-more-button {
+  width: 2.2rem;
+  height: 2.2rem;
+  border: 0;
+  border-radius: 0.55rem;
   color: var(--ink);
-  background: var(--surface);
+  background: transparent;
+  font-size: 1.2rem;
+  letter-spacing: 0.08em;
   cursor: pointer;
 }
-.button:hover {
+.live-more-button:hover {
   background: var(--hover);
 }
-.button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-.button-primary {
-  color: var(--on-accent);
-  border-color: var(--accent);
-  background: var(--accent);
-}
-.status-pill {
+.live-menu {
+  position: absolute;
+  z-index: 30;
+  top: 2.4rem;
+  right: 0;
+  display: grid;
+  min-width: 10.5rem;
   border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0.35rem 0.65rem;
-  color: var(--ink-muted);
-  font-size: 0.8rem;
+  border-radius: 0.65rem;
+  background: var(--surface);
+  box-shadow: var(--panel-shadow);
+  padding: 0.35rem 0;
 }
-.live-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  color: var(--ink-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.72rem;
+.live-menu button {
+  min-height: 2.4rem;
+  border: 0;
+  color: var(--ink);
+  background: transparent;
+  padding: 0 0.9rem;
+  text-align: left;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+.live-menu button:hover {
+  background: var(--hover);
 }
 .live-transcript {
   display: grid;
-  gap: 0.75rem;
-  min-height: 260px;
-  margin-top: 1rem;
-  border-top: 1px solid var(--border);
-  padding-top: 1rem;
+  flex: 1;
+  align-content: start;
+  gap: 0.65rem;
+  min-height: 16rem;
+  padding: 0.15rem 0 1rem;
 }
 .live-line {
-  display: flex;
-  gap: 0.7rem;
-  line-height: 1.55;
+  display: grid;
+  gap: 0.25rem;
+  line-height: 1.5;
 }
 .live-line strong {
-  min-width: 3rem;
   color: var(--ink-muted);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
+  font-weight: 650;
 }
 .live-line-assistant strong {
   color: var(--gold);
 }
-.live-composer {
+.live-dock {
   display: flex;
-  gap: 0.5rem;
-  margin-top: 1rem;
+  align-items: center;
+  gap: 1rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1.05rem;
 }
-.live-composer input {
-  min-width: 0;
-  flex: 1;
-  border: 1px solid var(--border-strong);
-  border-radius: 0.45rem;
-  padding: 0.6rem 0.7rem;
-  color: var(--ink);
-  background: var(--surface);
+.live-mark {
+  width: 72px;
+  height: 72px;
+  flex: none;
+}
+.live-ring {
+  fill: none;
+  stroke-width: 1.4;
+  transform-origin: 60px 60px;
+}
+.live-ring-outer {
+  stroke: var(--gold);
+  opacity: 0.35;
+}
+.live-ring-mid {
+  stroke: var(--accent);
+  opacity: 0.22;
+}
+.live-ring-inner {
+  stroke: var(--gold);
+  opacity: 0.95;
+}
+.live-core {
+  fill: color-mix(in srgb, var(--gold) 18%, transparent);
+}
+.live-wave {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+.live-mark.is-connected .live-ring-outer,
+.live-mark.is-connected .live-ring-mid {
+  animation: live-pulse 2.4s ease-out infinite;
+}
+.live-mark.is-connected .live-ring-mid {
+  animation-delay: 0.35s;
+}
+@keyframes live-pulse {
+  0% { transform: scale(0.86); opacity: 0.9; }
+  70% { transform: scale(1.08); opacity: 0; }
+  100% { opacity: 0; }
+}
+.live-dock-copy {
+  display: grid;
+  gap: 0.15rem;
+}
+.live-dock-copy strong {
+  font-size: 0.92rem;
+}
+.live-dock-copy span {
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+}
+.live-dock .button {
+  margin-left: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-mark.is-connected .live-ring-outer,
+  .live-mark.is-connected .live-ring-mid {
+    animation: none;
+    opacity: 0.35;
+  }
 }

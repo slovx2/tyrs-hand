@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { loadSelectedProjectId, saveSelectedProjectId } from "./settings";
+import { loadLiveConversationId, loadSelectedProjectId, saveLiveConversationId, saveSelectedProjectId } from "./settings";
 
 const database = vi.hoisted(() => ({
   getDatabase: vi.fn(),
@@ -32,5 +32,30 @@ describe("会话项目选择持久化", () => {
       "selectedProject:machine-1", "project-2");
     expect(runAsync).toHaveBeenNthCalledWith(2, expect.stringContaining("ON CONFLICT"),
       "selectedProject:machine-1", "");
+  });
+});
+
+describe("Live conversation 持久化", () => {
+  it("读取已保存 conversation，空值回退为 null", async () => {
+    database.getDatabase.mockResolvedValue({
+      getFirstAsync: vi.fn().mockResolvedValueOnce({ value: " conv-1 " }),
+    });
+    await expect(loadLiveConversationId("machine-1")).resolves.toBe("conv-1");
+    database.getDatabase.mockResolvedValue({
+      getFirstAsync: vi.fn().mockResolvedValueOnce({ value: "" }),
+    });
+    await expect(loadLiveConversationId("machine-1")).resolves.toBeNull();
+  });
+
+  it("保存或清空当前机器的 Live conversation", async () => {
+    const runAsync = vi.fn();
+    database.runDatabaseWrite.mockImplementation((operation: (db: unknown) => unknown) =>
+      operation({ runAsync }));
+    await saveLiveConversationId("machine-1", "conv-2");
+    await saveLiveConversationId("machine-1", null);
+    expect(runAsync).toHaveBeenNthCalledWith(1, expect.stringContaining("ON CONFLICT"),
+      "liveConversation:machine-1", "conv-2");
+    expect(runAsync).toHaveBeenNthCalledWith(2, expect.stringContaining("ON CONFLICT"),
+      "liveConversation:machine-1", "");
   });
 });

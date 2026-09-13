@@ -9,7 +9,7 @@ const icon = (value: string, color: string) => <Text style={{ color, fontSize: 1
 export default function TabLayout() {
   const tablet = useTablet();
   const theme = useTheme();
-  return <Tabs screenOptions={{ headerShown: true, tabBarPosition: tablet ? "left" : "bottom",
+  return <Tabs backBehavior="history" screenOptions={{ headerShown: true, tabBarPosition: tablet ? "left" : "bottom",
     tabBarHideOnKeyboard: !tablet,
     tabBarStyle: { backgroundColor: theme.colors.rail, borderColor: theme.colors.border,
       ...(tablet ? { width: 88 } : {}) }, tabBarActiveTintColor: theme.colors.accent,
@@ -17,7 +17,8 @@ export default function TabLayout() {
     headerTintColor: theme.colors.text }}>
     <Tabs.Screen name="sessions" options={{ title: "会话", tabBarButtonTestID: "tab:sessions",
       tabBarIcon: ({ color }) => icon("◫", color) }} />
-    <Tabs.Screen name="live" options={{ title: "Live", tabBarButtonTestID: "tab:live", tabBarIcon: ({ color }) => icon("◉", color) }} />
+    <Tabs.Screen name="live" options={{ title: "Live", headerShown: false, tabBarStyle: { display: "none" },
+      tabBarButtonTestID: "tab:live", tabBarIcon: ({ color }) => icon("◉", color) }} />
     <Tabs.Screen name="automations" options={{ title: "定时任务", tabBarButtonTestID: "tab:automations",
       tabBarIcon: ({ color }) => icon("◷", color) }} />
     <Tabs.Screen name="connections" options={{ title: "连接", tabBarButtonTestID: "tab:connections",
