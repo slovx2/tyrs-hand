@@ -69,9 +69,10 @@ func (s *Server) liveVoiceCreateSession(ctx context.Context, claimed *codexcontr
 	var sessionID uuid.UUID
 	err = s.db.QueryRowContext(ctx, `INSERT INTO workspace_sessions(
 		workspace_id,workspace_project_id,agent_profile_id,created_by_administrator_id,title,
-		service_tier,collaboration_mode,settings_version,title_revision,title_source)
+		model,reasoning_effort,service_tier,collaboration_mode,settings_version,title_revision,title_source)
 		SELECT $1,$2,$3,(SELECT administrator_id FROM live_conversations WHERE id=$4),
-		$5,'standard','default',1,0,'fallback'
+		$5,profile.model,profile.reasoning_effort,'standard','default',1,0,'fallback'
+		FROM agent_profiles profile WHERE profile.id=$3
 		RETURNING id`, workspaceID, projectID, claimed.AgentProfileID, liveID, title).Scan(&sessionID)
 	if err != nil {
 		return codex.ToolCallResult{}, err

@@ -199,8 +199,9 @@ func (s *Server) createLiveCoordinatorSession(c *gin.Context, tx *sql.Tx, worker
 	var sessionID uuid.UUID
 	err = tx.QueryRowContext(c.Request.Context(), `INSERT INTO workspace_sessions(
 		workspace_id,workspace_project_id,agent_profile_id,created_by_administrator_id,title,
-		service_tier,collaboration_mode,settings_version,title_revision,title_source)
-		VALUES ($1,$2,$3,$4,'Live 语音','standard','default',1,0,'fallback')
+		model,reasoning_effort,service_tier,collaboration_mode,settings_version,title_revision,title_source)
+		SELECT $1,$2,$3,$4,'Live 语音',profile.model,profile.reasoning_effort,'standard','default',1,0,'fallback'
+		FROM agent_profiles profile WHERE profile.id=$3
 		RETURNING id`, workspaceID, projectID, profileID, administrator.AdministratorID).Scan(&sessionID)
 	return sessionID, projectID, err
 }
