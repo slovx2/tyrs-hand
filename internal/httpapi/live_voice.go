@@ -19,7 +19,7 @@ import (
 
 const (
 	defaultLiveInstructions = "你是 Tyrs Hand 的语音接线员。自然对话。用户要求写代码、查进度、改方向、新建或切换 session 时，把工作交给后端，不要自己改仓库，也不要编造事件类型。"
-	liveCommentaryLimit     = 500 * 4
+	liveCommentaryLimit     = 500
 )
 
 func liveDelegationID(event map[string]any) string {
