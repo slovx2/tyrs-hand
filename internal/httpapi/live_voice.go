@@ -162,9 +162,6 @@ func liveVoiceWritebackPayload(text, channel, delegationID string) map[string]an
 	if channel != "[ANALYSIS]" {
 		payload["channel"] = "speakable"
 	}
-	if id := strings.TrimSpace(delegationID); id != "" {
-		payload["id"] = id
-	}
 	return payload
 }
 

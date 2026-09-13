@@ -68,7 +68,6 @@ func TestLiveVoiceWritebackPayload(t *testing.T) {
 	payload := liveVoiceWritebackPayload("测试还在跑", "[STATUS]", "handoff_1")
 	require.Equal(t, "session.context.append", payload["type"])
 	require.Equal(t, "speakable", payload["channel"])
-	require.Equal(t, "handoff_1", payload["id"])
 	content, ok := payload["content"].([]map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "input_text", content[0]["type"])
