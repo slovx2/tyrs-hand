@@ -271,10 +271,10 @@ export function LivePage() {
     const eventId = `typed-live-${crypto.randomUUID()}`
     channel.current.send(
       JSON.stringify({
-        type: 'session.commentary.append',
+        type: 'session.context.append',
         event_id: eventId,
-        delegation_id: null,
-        content: value,
+          channel: 'speakable',
+        content: [{ type: 'input_text', text: value }],
       }),
     )
     setText('')

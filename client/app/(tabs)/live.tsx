@@ -87,7 +87,12 @@ export default function LiveScreen() {
     const value = text.trim();
     if (!value || channel.current?.readyState !== "open") return;
     const eventId = `typed-live-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    channel.current.send(JSON.stringify({ type: "session.commentary.append", event_id: eventId, delegation_id: null, content: value }));
+    channel.current.send(JSON.stringify({
+      type: "session.context.append",
+      event_id: eventId,
+      channel: "speakable",
+      content: [{ type: "input_text", text: value }],
+    }));
     setText("");
   };
   const close = async () => { if (!link || !sessionId) return; try { await closeLiveSession(link, sessionId); setStatus("已关闭"); setSessionStatus("closed"); stopPeer(); } catch (reason) { setError(reason instanceof Error ? reason.message : "关闭失败"); } };
