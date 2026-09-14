@@ -17,7 +17,7 @@ Default to the Worker browser. Honor an explicit request for Playwright.
 
 Use the `chrome` MCP for the Worker browser. Do not control the same page through Playwright and MCP simultaneously.
 
-The remaining MCP-specific instructions apply to the Worker browser. Call `browser_select` only to inspect availability; keep the selection on worker. A stale or closed tab does not invalidate the browser selection: list tabs again and obtain a fresh tab.
+The remaining MCP-specific instructions apply to the Worker browser. Call `browser_select` only to inspect availability; keep the selection on worker. A stale, closed, expired, or unresponsive tab does not invalidate the browser selection: open a new Agent tab and continue there.
 
 ## Work with tabs
 
@@ -25,7 +25,7 @@ Use `browser_tabs` as follows:
 
 - `list` returns `controlledTabs` and unclaimed `userTabs` separately.
 - Select or close a controlled Agent tab by its stable `tabId`; never reuse an old list position.
-- Claim a user tab only with the current short-lived `claimToken`. If it expires or the page changes, list again.
+- Claim a user tab only with the current short-lived `claimToken`. If it expires or the page changes, list again; if the tab is still unusable, open a new Agent tab.
 - Never close a user-origin tab or mark it deliverable/handoff.
 - Mark an Agent tab `deliverable` only when its page is part of the requested result.
 - Mark an Agent tab `handoff` only when the user must continue interacting with it; expect it to become visible.
@@ -34,6 +34,8 @@ Use `browser_tabs` as follows:
 Do not rely on a manual `finalize` call for correctness. Use it only when intentionally ending browser work early.
 
 If browser control is interrupted by user input, stop. List tabs again and explicitly claim the desired user tab before resuming.
+
+If a tool times out, a claim token or tab lease expires, or the current tab is unresponsive, stop retrying that tab. Open a new Agent tab with `browser_tabs` `new` and continue the task there. Do not reselect the browser.
 
 ## Observe before acting
 
@@ -58,7 +60,7 @@ Prefer `browser_wait_for` conditions over fixed delays:
 - URL or load state for navigation;
 - response state for a specific network completion.
 
-Use a delay only when the user explicitly asks for elapsed time or no observable condition exists. Keep timeouts narrow. After a timeout, follow the returned `recoveryAction`; a recoverable timeout does not justify reselecting the browser.
+Use a delay only when the user explicitly asks for elapsed time or no observable condition exists. Keep timeouts narrow. After a timeout, do not keep waiting on the same tab: open a new Agent tab and continue. A recoverable timeout does not justify reselecting the browser.
 
 ## Forms and sensitive data
 
