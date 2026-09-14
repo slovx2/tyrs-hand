@@ -24,6 +24,7 @@ class TyrsAudioRouteModule : Module() {
   private var previousCommunicationDevice: AudioDeviceInfo? = null
   private var automaticSelection = true
   private var manualDeviceId: Int? = null
+  private var lastDeviceFingerprint: String? = null
   private var monitoredAudioManager: AudioManager? = null
   private var audioFocusManager: AudioManager? = null
   private var audioFocusRequest: AudioFocusRequest? = null
@@ -93,13 +94,11 @@ class TyrsAudioRouteModule : Module() {
       try {
         val context = requireContext()
         val audioManager = context.getSystemService(AudioManager::class.java)
-        if (prepared && automaticSelection && audioManager != null) {
-          audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-          selectAutomatic(audioManager)
-        } else if (prepared && !automaticSelection && audioManager != null) {
-          val stillAvailable = availableCommunicationDevices(audioManager)
-            .any { it.id == manualDeviceId }
-          if (!stillAvailable) {
+        if (prepared && audioManager != null) {
+          val fingerprint = deviceFingerprint(availableCommunicationDevices(audioManager))
+          if (fingerprint != lastDeviceFingerprint) {
+            lastDeviceFingerprint = fingerprint
+            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
             automaticSelection = true
             selectAutomatic(audioManager)
           }
@@ -136,6 +135,7 @@ class TyrsAudioRouteModule : Module() {
     requestAudioFocus(audioManager)
     audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
     if (shouldSelectAutomatic) selectAutomatic(audioManager)
+    lastDeviceFingerprint = deviceFingerprint(availableCommunicationDevices(audioManager))
     return snapshot(context)
   }
 
@@ -158,25 +158,24 @@ class TyrsAudioRouteModule : Module() {
       manualDeviceId = selected.id
       selectDevice(audioManager, selected)
     }
+    lastDeviceFingerprint = deviceFingerprint(availableCommunicationDevices(audioManager))
     return snapshot(context)
   }
 
   private fun selectAutomatic(audioManager: AudioManager) {
+    automaticSelection = true
     manualDeviceId = null
     val devices = availableCommunicationDevices(audioManager)
     val preferred = devices.firstOrNull(::isWiredCommunicationDevice)
       ?: devices.firstOrNull(::isBluetoothCommunicationDevice)
+      ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
     if (preferred != null) {
       selectDevice(audioManager, preferred)
       return
     }
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-      audioManager.clearCommunicationDevice()
-      @Suppress("DEPRECATION")
-      audioManager.isSpeakerphoneOn = previousSpeakerphoneOn
-    } else {
-      @Suppress("DEPRECATION")
-      audioManager.isSpeakerphoneOn = previousSpeakerphoneOn
+    @Suppress("DEPRECATION")
+    audioManager.isSpeakerphoneOn = true
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
       @Suppress("DEPRECATION")
       audioManager.stopBluetoothSco()
       @Suppress("DEPRECATION")
@@ -247,6 +246,7 @@ class TyrsAudioRouteModule : Module() {
     prepared = false
     automaticSelection = true
     manualDeviceId = null
+    lastDeviceFingerprint = null
     previousCommunicationDevice = null
   }
 
@@ -292,15 +292,28 @@ class TyrsAudioRouteModule : Module() {
   }
 
   private fun availableCommunicationDevices(audioManager: AudioManager): List<AudioDeviceInfo> {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-      return try {
+    val devices = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      try {
         audioManager.availableCommunicationDevices.toList()
       } catch (_: SecurityException) {
         wiredDevices(audioManager)
       }
+    } else {
+      wiredAndBluetoothDevices(audioManager) + speakerDevices(audioManager)
     }
-    return wiredAndBluetoothDevices(audioManager)
+    return devices.filter { it.type != AudioDeviceInfo.TYPE_BUILTIN_EARPIECE }
   }
+
+  private fun deviceFingerprint(devices: List<AudioDeviceInfo>): String =
+    devices.map { it.id }.sorted().joinToString(",")
+
+  private fun speakerDevices(audioManager: AudioManager): List<AudioDeviceInfo> =
+    try {
+      audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+        .filter { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+    } catch (_: SecurityException) {
+      emptyList()
+    }
 
   private fun wiredDevices(audioManager: AudioManager): List<AudioDeviceInfo> =
     try {

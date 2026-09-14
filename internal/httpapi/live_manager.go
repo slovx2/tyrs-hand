@@ -466,20 +466,43 @@ func eventDedupeKey(event map[string]any) string {
 func (m *liveManager) userTranscript(sessionID uuid.UUID) string {
 	prefix := sessionID.String() + ":user:"
 	m.mu.Lock()
-	pending := ""
+	pending := make([]string, 0)
 	for key, text := range m.transcripts {
 		if strings.HasPrefix(key, prefix) {
-			pending += text
+			pending = append(pending, text)
 		}
 	}
 	m.mu.Unlock()
-	if strings.TrimSpace(pending) != "" {
-		return pending
+	if text := pickLiveUserTranscript(pending); text != "" {
+		return text
 	}
 	var text string
 	_ = m.db.QueryRowContext(context.Background(), `SELECT text FROM live_messages
 		WHERE source_session_id=$1 AND role='user' ORDER BY sequence DESC LIMIT 1`, sessionID).Scan(&text)
 	return text
+}
+
+func pickLiveUserTranscript(pending []string) string {
+	longest := ""
+	for _, text := range pending {
+		text = strings.TrimSpace(text)
+		if text == "" {
+			continue
+		}
+		if len(text) > len(longest) {
+			longest = text
+		}
+	}
+	if longest == "" {
+		return ""
+	}
+	for _, text := range pending {
+		text = strings.TrimSpace(text)
+		if text != "" && longest == text+text {
+			return text
+		}
+	}
+	return longest
 }
 
 func (m *liveManager) writeSidebandJSON(ctx context.Context, sessionID uuid.UUID, payload map[string]any) error {

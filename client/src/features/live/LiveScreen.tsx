@@ -11,6 +11,7 @@ import { Screen } from "@/components/ui";
 import { resolveMachineControlBinding } from "@/features/connections/machineControlBinding";
 import { LiveMark } from "@/features/live/LiveMark";
 import { LiveVoicePicker } from "@/features/live/LiveVoicePicker";
+import { selectableLiveAudioDevices } from "@/features/live/liveAudioDevices";
 import { resolveLiveProjectForSSHProject, type LiveProjectResolution } from "@/features/live/liveProjectMapping";
 import { initialLiveTranscriptState, reduceLiveTranscript, visibleLiveTranscript, type LiveTranscriptState } from "@/features/live/transcriptReducer";
 import { defaultLiveVoice, findLiveVoice, type LiveVoice } from "@/features/live/voices";
@@ -495,7 +496,10 @@ export function LiveScreen({ initialWake = false, onLeave }: {
     setError(null);
     await voiceSaveQueue.current;
     if (link && conversation) {
-      try { await resetLiveConversationHistory(link, conversation.id); }
+      try {
+        const updated = await resetLiveConversationHistory(link, conversation.id);
+        setConversation(updated);
+      }
       catch (reason) { setError(reason instanceof Error ? reason.message : "重置会话失败"); return; }
     }
     await disconnect();
@@ -506,7 +510,10 @@ export function LiveScreen({ initialWake = false, onLeave }: {
     setError(null);
     await voiceSaveQueue.current;
     if (link && conversation) {
-      try { await clearLiveConversationMessages(link, conversation.id); }
+      try {
+        const updated = await clearLiveConversationMessages(link, conversation.id);
+        setConversation(updated);
+      }
       catch (reason) { setError(reason instanceof Error ? reason.message : "清空字幕失败"); return; }
     }
     await disconnect();
@@ -518,12 +525,7 @@ export function LiveScreen({ initialWake = false, onLeave }: {
   const connected = status === "已连接";
   const connecting = status === "连接中";
   const voiceNeedsReset = activeSessionVoice !== undefined && selectedVoice !== activeSessionVoice;
-  const selectableAudioDevices = [
-    ...(activeAudioRoute?.availableDevices ?? []),
-    ...(activeAudioRoute?.activeDevice ? [activeAudioRoute.activeDevice] : []),
-  ].filter((device, index, devices) =>
-    devices.findIndex((candidate) => candidate.id === device.id) === index &&
-    device.kind !== "unknown");
+  const audioDevices = selectableLiveAudioDevices(activeAudioRoute);
   const selectAudioRoute = async (selection: LiveAudioSelection) => {
     setAudioRouteMenuOpen(false);
     try {
@@ -623,13 +625,12 @@ export function LiveScreen({ initialWake = false, onLeave }: {
               {audioRouteLabel(activeAudioRoute)}
             </Text>
           </Pressable>
-          {selectableAudioDevices.map((device) => (
+          {audioDevices.map((device) => (
             <Pressable key={device.id} testID={`live:audio-route-${device.id}`} style={styles.routeItem}
               onPress={() => void selectAudioRoute({ kind: device.kind, deviceId: device.id })}>
               <Text style={[styles.menuText, { color: theme.colors.text }]}>
                 {device.kind === "bluetooth" ? "蓝牙耳机"
-                  : device.kind === "wired" ? "有线耳机"
-                    : device.kind === "speaker" ? "扬声器" : "听筒"}
+                  : device.kind === "wired" ? "有线耳机" : "扬声器"}
               </Text>
               <Text style={[styles.menuSubtext, { color: theme.colors.textMuted }]}>{device.name}</Text>
             </Pressable>

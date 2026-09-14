@@ -76,3 +76,19 @@ func TestLiveTranscriptHelpersReadNestedDelta(t *testing.T) {
 	}
 	require.Equal(t, "hello ", eventDelta(event))
 }
+
+func TestPickLiveUserTranscriptDoesNotConcatenateDuplicates(t *testing.T) {
+	require.Equal(t, "现在几点了", pickLiveUserTranscript([]string{"现在几点了", "现在几点了"}))
+	require.Equal(t, "现在几点了", pickLiveUserTranscript([]string{"现在几点了现在几点了", "现在几点了"}))
+	require.Equal(t, "现在几点了", pickLiveUserTranscript([]string{"现在", "现在几点了"}))
+	require.Equal(t, "", pickLiveUserTranscript([]string{"", "  "}))
+}
+
+func TestLiveUserTranscriptUsesSinglePendingUtterance(t *testing.T) {
+	sessionID := uuid.New()
+	manager := &liveManager{transcripts: map[string]string{
+		sessionID.String() + ":user:item-1": "现在几点了",
+		sessionID.String() + ":user:open":   "现在几点了",
+	}}
+	require.Equal(t, "现在几点了", manager.userTranscript(sessionID))
+}

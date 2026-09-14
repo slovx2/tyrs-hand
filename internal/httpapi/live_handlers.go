@@ -248,6 +248,18 @@ func (s *Server) mutateLiveConversationMemory(c *gin.Context, deleteMessages boo
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
+	var workerID, projectID uuid.UUID
+	err = tx.QueryRowContext(c.Request.Context(), `SELECT worker_id, project_id
+		FROM live_conversations WHERE id=$1 AND administrator_id=$2 FOR UPDATE`,
+		id, administratorID).Scan(&workerID, &projectID)
+	if errors.Is(err, sql.ErrNoRows) {
+		problem(c, http.StatusNotFound, "Live conversation 不存在", err)
+		return
+	}
+	if err != nil {
+		problem(c, http.StatusInternalServerError, "读取 Live conversation 失败", err)
+		return
+	}
 	if deleteMessages {
 		if _, err = tx.ExecContext(c.Request.Context(),
 			`DELETE FROM live_messages WHERE conversation_id=$1`, id); err != nil {
@@ -255,9 +267,15 @@ func (s *Server) mutateLiveConversationMemory(c *gin.Context, deleteMessages boo
 			return
 		}
 	}
+	sessionID, _, err := s.createLiveCoordinatorSession(c, tx, workerID, projectID)
+	if err != nil {
+		problem(c, http.StatusUnprocessableEntity, "创建接线员 Session 失败", err)
+		return
+	}
 	result, err := tx.ExecContext(c.Request.Context(), `UPDATE live_conversations
-		SET history_after=now(), context_revision=context_revision+1, updated_at=now()
-		WHERE id=$1 AND administrator_id=$2`, id, administratorID)
+		SET previous_workspace_session_id=workspace_session_id, workspace_session_id=$3,
+			last_delegation_id='', history_after=now(), context_revision=context_revision+1, updated_at=now()
+		WHERE id=$1 AND administrator_id=$2`, id, administratorID, sessionID)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "更新 Live conversation 失败", err)
 		return
