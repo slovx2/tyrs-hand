@@ -122,6 +122,9 @@ importers:
       tyrs-ssh-transport:
         specifier: file:modules/tyrs-ssh-transport
         version: file:modules/tyrs-ssh-transport(expo-modules-core@3.0.29(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.10)(react@19.1.0)(supports-color@10.2.2))(react@19.1.0))(expo@54.0.32)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.10)(react@19.1.0)(supports-color@10.2.2))
+      tyrs-voice:
+        specifier: file:modules/tyrs-voice
+        version: file:modules/tyrs-voice(expo-modules-core@3.0.29(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.10)(react@19.1.0)(supports-color@10.2.2))(react@19.1.0))(expo@54.0.32)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.10)(react@19.1.0)(supports-color@10.2.2))
       zod:
         specifier: 4.4.3
         version: 4.4.3
@@ -4740,6 +4743,13 @@ packages:
 
   tyrs-ssh-transport@file:modules/tyrs-ssh-transport:
     resolution: {directory: modules/tyrs-ssh-transport, type: directory}
+    peerDependencies:
+      expo: 54.0.32
+      expo-modules-core: 3.0.29
+      react-native: 0.81.5
+
+  tyrs-voice@file:modules/tyrs-voice:
+    resolution: {directory: modules/tyrs-voice, type: directory}
     peerDependencies:
       expo: 54.0.32
       expo-modules-core: 3.0.29
@@ -10562,6 +10572,12 @@ snapshots:
   typescript@5.9.2: {}
 
   tyrs-ssh-transport@file:modules/tyrs-ssh-transport(expo-modules-core@3.0.29(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.10)(react@19.1.0)(supports-color@10.2.2))(react@19.1.0))(expo@54.0.32)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.10)(react@19.1.0)(supports-color@10.2.2)):
+    dependencies:
+      expo: 54.0.32(@babel/core@7.29.7)(@expo/metro-runtime@6.1.2)(expo-router@6.0.22)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.10)(react@19.1.0)(supports-color@10.2.2))(react@19.1.0)(supports-color@10.2.2)(typescript@5.9.2)
+      expo-modules-core: 3.0.29(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.10)(react@19.1.0)(supports-color@10.2.2))(react@19.1.0)
+      react-native: 0.81.5(@babel/core@7.29.7)(@types/react@19.1.10)(react@19.1.0)(supports-color@10.2.2)
+
+  tyrs-voice@file:modules/tyrs-voice(expo-modules-core@3.0.29(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.10)(react@19.1.0)(supports-color@10.2.2))(react@19.1.0))(expo@54.0.32)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.10)(react@19.1.0)(supports-color@10.2.2)):
     dependencies:
       expo: 54.0.32(@babel/core@7.29.7)(@expo/metro-runtime@6.1.2)(expo-router@6.0.22)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.10)(react@19.1.0)(supports-color@10.2.2))(react@19.1.0)(supports-color@10.2.2)(typescript@5.9.2)
       expo-modules-core: 3.0.29(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.10)(react@19.1.0)(supports-color@10.2.2))(react@19.1.0)

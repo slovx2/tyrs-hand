@@ -1,6 +1,7 @@
-import { router } from "expo-router";
+import * as Linking from "expo-linking";
+import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { RTCPeerConnection, mediaDevices, type MediaStream } from "react-native-webrtc";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -11,9 +12,12 @@ import { LiveMark } from "@/features/live/LiveMark";
 import { LiveVoicePicker } from "@/features/live/LiveVoicePicker";
 import { initialLiveTranscriptState, reduceLiveTranscript, visibleLiveTranscript, type LiveTranscriptState } from "@/features/live/transcriptReducer";
 import { defaultLiveVoice, findLiveVoice, type LiveVoice } from "@/features/live/voices";
-import { loadLiveConversationId, saveLiveConversationId } from "@/db/settings";
+import { loadLiveConnectionSoundsEnabled, loadLiveConversationId, saveLiveConversationId,
+  saveLiveConnectionSoundsEnabled } from "@/db/settings";
 import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
+import { playLiveConnectionSound } from "@/features/live/liveSounds";
+import { isLiveWakeParam, shouldPlaySessionStartedSound } from "@/features/live/liveWake";
 
 const liveIceConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -39,16 +43,22 @@ async function waitForIceGathering(connection: RTCPeerConnection): Promise<void>
 export default function LiveScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<Record<string, string | string[]>>();
+  const ready = useAppStore((state) => state.ready);
   const connection = useAppStore((state) => state.activeConnection);
   const peer = useRef<RTCPeerConnection | null>(null);
   const channel = useRef<ReturnType<RTCPeerConnection["createDataChannel"]> | null>(null);
   const stream = useRef<MediaStream | null>(null);
   const [conversation, setConversation] = useState<LiveConversation | null>(null);
+  const [conversationLoaded, setConversationLoaded] = useState(false);
+  const [conversationLoadError, setConversationLoadError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [state, setState] = useState<LiveTranscriptState>(initialLiveTranscriptState);
   const [status, setStatus] = useState("未连接");
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [soundsEnabled, setSoundsEnabled] = useState(true);
+  const [wakeRequestCount, setWakeRequestCount] = useState(0);
   const [workerId, setWorkerId] = useState("");
   const [mode, setMode] = useState<"bind" | "new">("bind");
   const [bindSessionId, setBindSessionId] = useState("");
@@ -61,10 +71,39 @@ export default function LiveScreen() {
   const voiceSaveRevision = useRef(0);
   const requestedVoice = useRef<{ conversationId: string; voice: LiveVoice } | undefined>(undefined);
   const selectedVoiceRef = useRef(selectedVoice);
+  const connectingRef = useRef(false);
+  const sessionIdRef = useRef<string | null>(null);
+  const sessionStartedSoundPlayed = useRef(false);
+  const consumedWakeRequestCount = useRef(0);
+  const loadedConversationProfile = useRef<string | undefined>(undefined);
+  const connectRef = useRef<() => Promise<void>>(async () => undefined);
+  const soundsEnabledRef = useRef(true);
   const workers = connection?.controls ?? [];
   const link = workers.find((item) => item.workerId === workerId) ?? workers[0] ?? null;
   const profileId = connection?.profileId;
 
+  useEffect(() => {
+    void loadLiveConnectionSoundsEnabled()
+      .then((value) => {
+        soundsEnabledRef.current = value;
+        setSoundsEnabled(value);
+      })
+      .catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    if (!isLiveWakeParam(params.wake)) return;
+    setWakeRequestCount((current) => current + 1);
+    router.setParams({ wake: undefined } as never);
+  }, [params.wake]);
+  useEffect(() => {
+    const subscription = Linking.addEventListener("url", ({ url }) => {
+      const parsed = Linking.parse(url);
+      if (parsed.path !== "live" ||
+        !isLiveWakeParam(parsed.queryParams?.wake as string | string[] | undefined)) return;
+      setWakeRequestCount((current) => current + 1);
+    });
+    return () => subscription.remove();
+  }, []);
   useEffect(() => () => stopPeer(), []);
   useEffect(() => {
     const only = connection?.controls.length === 1 ? connection.controls[0] : undefined;
@@ -97,12 +136,26 @@ export default function LiveScreen() {
     return () => { cancelled = true; };
   }, [link, workerId]);
   useEffect(() => {
-    if (!link || !profileId) return;
+    if (!ready) return;
+    setConversationLoaded(false);
+    setConversationLoadError(null);
+    if (!profileId) {
+      setConversationLoaded(true);
+      return;
+    }
+    if (!link) {
+      setConversationLoaded(true);
+      return;
+    }
+    if (loadedConversationProfile.current !== profileId) {
+      loadedConversationProfile.current = profileId;
+      setConversation(null);
+    }
     let cancelled = false;
     void (async () => {
-      const id = await loadLiveConversationId(profileId);
-      if (!id || cancelled) return;
       try {
+        const id = await loadLiveConversationId(profileId);
+        if (!id || cancelled) return;
         const current = await getLiveConversation(link, id);
         const history = await listLiveMessages(link, id);
         if (cancelled) return;
@@ -121,12 +174,17 @@ export default function LiveScreen() {
           seenEventIds: {},
           finalized: {},
         });
-      } catch {
-        if (!cancelled) await saveLiveConversationId(profileId, null);
+      } catch (reason: unknown) {
+        if (!cancelled) {
+          await saveLiveConversationId(profileId, null);
+          setConversationLoadError(reason instanceof Error ? reason.message : "无法读取已保存的 Live 配置");
+        }
+      } finally {
+        if (!cancelled) setConversationLoaded(true);
       }
     })();
     return () => { cancelled = true; };
-  }, [link, profileId]);
+  }, [link, profileId, ready]);
 
   const stopPeer = () => {
     channel.current?.close();
@@ -140,9 +198,19 @@ export default function LiveScreen() {
   const onEvent = (raw: string) => {
     try {
       const event = JSON.parse(raw) as { type?: string };
-      if (event.type === "session.started") setStatus("已连接");
+      if (event.type === "session.started") {
+        setStatus("已连接");
+        if (shouldPlaySessionStartedSound(event.type, sessionStartedSoundPlayed.current)) {
+          sessionStartedSoundPlayed.current = true;
+          void playLiveConnectionSound("connected", soundsEnabledRef.current);
+        }
+      }
       if (event.type === "session.closed") {
-        setStatus("未连接"); setSessionId(null); setActiveSessionVoice(undefined);
+        stopPeer();
+        setStatus("未连接");
+        sessionIdRef.current = null;
+        setSessionId(null);
+        setActiveSessionVoice(undefined);
       }
       setState((current) => reduceLiveTranscript(current, event));
     } catch { /* Provider event may be ignored when it is not JSON. */ }
@@ -178,8 +246,13 @@ export default function LiveScreen() {
   };
 
   const connect = async () => {
+    if (connectingRef.current || sessionIdRef.current || peer.current) return;
     if (!link || !profileId) { setError("请先在连接页授权一个 Control"); return; }
-    setError(null); setStatus("连接中");
+    connectingRef.current = true;
+    sessionStartedSoundPlayed.current = false;
+    void playLiveConnectionSound("connecting", soundsEnabledRef.current);
+    setError(null);
+    setStatus("连接中");
     try {
       const shouldRecover = Boolean(conversation);
       let current = conversation;
@@ -201,8 +274,18 @@ export default function LiveScreen() {
       peer.current = pc;
       const connectionState = pc as unknown as { connectionState?: string; onconnectionstatechange: (() => void) | null };
       connectionState.onconnectionstatechange = () => {
+        if (peer.current !== pc) return;
         if (connectionState.connectionState === "disconnected" || connectionState.connectionState === "failed") {
+          const failedSessionId = sessionIdRef.current;
+          stopPeer();
+          sessionIdRef.current = null;
+          setSessionId(null);
+          setActiveSessionVoice(undefined);
           setStatus("未连接");
+          setError("Live 连接已断开");
+          if (failedSessionId) {
+            void closeLiveSession(link, failedSessionId).catch(() => undefined);
+          }
         }
       };
       try {
@@ -210,11 +293,7 @@ export default function LiveScreen() {
         stream.current = local;
         local.getTracks().forEach((track) => pc.addTrack(track, local));
       } catch {
-        setError("未获得麦克风权限");
-      }
-      if (stream.current === null) {
-        try { pc.addTransceiver("audio", { direction: "recvonly" }); }
-        catch { /* 预览构建可能不暴露 transceiver。 */ }
+        throw new Error("未获得麦克风权限");
       }
       const remoteTrack = (event: { track?: { enabled?: boolean } }) => {
         if (event.track) event.track.enabled = true;
@@ -233,22 +312,63 @@ export default function LiveScreen() {
       const result = shouldRecover
         ? await recoverLiveSession(link, current.id, pc.localDescription.sdp)
         : await createLiveSession(link, current.id, pc.localDescription.sdp);
+      sessionIdRef.current = result.sessionId;
       setSessionId(result.sessionId);
       setActiveSessionVoice(sessionVoice);
       await pc.setRemoteDescription({ type: "answer", sdp: result.transport.answerSdp });
       setStatus("连接中");
     } catch (reason) {
+      const failedSessionId = sessionIdRef.current;
       stopPeer();
+      sessionIdRef.current = null;
+      setSessionId(null);
+      setActiveSessionVoice(undefined);
       setStatus("未连接");
       setError(reason instanceof Error ? reason.message : "Live 连接失败");
+      if (failedSessionId && link) {
+        void closeLiveSession(link, failedSessionId).catch(() => undefined);
+      }
+    } finally {
+      connectingRef.current = false;
     }
   };
 
+  connectRef.current = connect;
+  useEffect(() => {
+    if (!ready || !conversationLoaded ||
+      wakeRequestCount <= consumedWakeRequestCount.current) return;
+    consumedWakeRequestCount.current = wakeRequestCount;
+    if (!profileId) {
+      setError("请先在设置页连接一个 Control");
+      return;
+    }
+    if (!link) {
+      setError("当前连接不可用，请先在设置页连接 Control");
+      return;
+    }
+    if (!conversation) {
+      setError(conversationLoadError ?? "请先手动完成一次 Live 配置");
+      return;
+    }
+    void connectRef.current();
+  }, [conversation, conversationLoadError, conversationLoaded, link, profileId, ready, wakeRequestCount]);
+
+  const toggleSounds = (value: boolean) => {
+    soundsEnabledRef.current = value;
+    setSoundsEnabled(value);
+    void saveLiveConnectionSoundsEnabled(value).catch(() => {
+      setError("连接提示音设置保存失败");
+    });
+  };
+
   const disconnect = async () => {
-    if (link && sessionId) {
-      try { await closeLiveSession(link, sessionId); }
+    const activeSessionId = sessionIdRef.current ?? sessionId;
+    if (link && activeSessionId) {
+      try { await closeLiveSession(link, activeSessionId); }
       catch (reason) { setError(reason instanceof Error ? reason.message : "关闭失败"); }
     }
+    sessionIdRef.current = null;
+    sessionStartedSoundPlayed.current = false;
     setSessionId(null);
     setStatus("未连接");
     setActiveSessionVoice(undefined);
@@ -360,6 +480,12 @@ export default function LiveScreen() {
           <Pressable testID="live:clear" style={styles.menuItem} onPress={() => { setMenuOpen(false); void clearCaptions(); }}>
             <Text style={[styles.menuText, { color: theme.colors.text }]}>清空字幕</Text>
           </Pressable>
+          <View style={styles.menuSetting}>
+            <Text style={[styles.menuText, { color: theme.colors.text }]}>连接提示音</Text>
+            <Switch testID="live:connection-sounds" value={soundsEnabled}
+              onValueChange={toggleSounds} trackColor={{ false: theme.colors.border,
+                true: theme.colors.accent }} thumbColor={theme.colors.surface} />
+          </View>
         </View>
       </View>
     </Modal>
@@ -385,5 +511,7 @@ const styles = StyleSheet.create({
   modalRoot: { flex: 1 },
   menu: { position: "absolute", right: 10, width: 180, borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, paddingVertical: 6 },
   menuItem: { minHeight: 48, paddingHorizontal: 16, justifyContent: "center" },
+  menuSetting: { minHeight: 48, paddingHorizontal: 12, flexDirection: "row",
+    alignItems: "center", justifyContent: "space-between", gap: 8 },
   menuText: { fontFamily: "Inter_500Medium", fontSize: 16 },
 });

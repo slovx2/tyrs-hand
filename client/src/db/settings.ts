@@ -15,6 +15,20 @@ export async function saveThemeMode(value: ThemeMode): Promise<void> {
     ON CONFLICT(key) DO UPDATE SET value=excluded.value`, value));
 }
 
+export async function loadLiveConnectionSoundsEnabled(): Promise<boolean> {
+  const database = await getDatabase();
+  const row = await database.getFirstAsync<{ value: string }>(
+    "SELECT value FROM app_settings WHERE key=?", "liveConnectionSounds");
+  return row?.value !== "0";
+}
+
+export async function saveLiveConnectionSoundsEnabled(value: boolean): Promise<void> {
+  await runDatabaseWrite((database) => database.runAsync(
+    `INSERT INTO app_settings(key,value) VALUES (?,?)
+    ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+  "liveConnectionSounds", value ? "1" : "0"));
+}
+
 export async function loadLastTurnPreferences(profileId: string): Promise<TurnPreferences | null> {
   const database = await getDatabase();
   const row = await database.getFirstAsync<{ value: string }>(

@@ -2,8 +2,10 @@ import { File } from "expo-file-system";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as DocumentPicker from "expo-document-picker";
 import * as Crypto from "expo-crypto";
-import { useState } from "react";
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useCallback, useState } from "react";
+import { useFocusEffect } from "expo-router";
+import { Alert, AppState, Modal, PermissionsAndroid, Platform, Pressable,
+  ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ConnectionErrorBanner } from "@/components/ConnectionErrorBanner";
 import { revokeScheduledTaskMachine } from "@/api/automations";
@@ -15,6 +17,7 @@ import { addSSHProject } from "@/db/sshProjects";
 import { connectPairingUri } from "@/features/connections/connectPairing";
 import { listSSHDirectory, probeSSHHost, probeSSHHostAddress,
   sshTransport } from "@/native/sshTransport";
+import { isDefaultAssistant, openAssistantSettings } from "@/native/voiceWake";
 import { isPreviewMode } from "@/preview/config";
 import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
@@ -30,6 +33,8 @@ export default function ConnectionsScreen() {
   const mode = useAppStore((state) => state.themeMode);
   const setMode = useAppStore((state) => state.setThemeMode);
   const [permission, requestPermission] = useCameraPermissions();
+  const [assistantEnabled, setAssistantEnabled] = useState<boolean | null>(null);
+  const [microphoneGranted, setMicrophoneGranted] = useState(Platform.OS !== "android");
   const [scanning, setScanning] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [renameId, setRenameId] = useState<string | null>(null);
@@ -44,6 +49,45 @@ export default function ConnectionsScreen() {
   } | null>(null);
   const [ssh, setSSH] = useState({ name: "", host: "", port: "2222", user: "",
     privateKey: "", passphrase: "", publicKey: "" });
+
+  const refreshAssistant = useCallback(async () => {
+    if (Platform.OS !== "android") return;
+    const microphone = await PermissionsAndroid.check(
+      PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
+    setMicrophoneGranted(microphone);
+    try {
+      setAssistantEnabled(await isDefaultAssistant());
+    } catch {
+      setAssistantEnabled(false);
+    }
+  }, []);
+
+  useFocusEffect(useCallback(() => {
+    void refreshAssistant();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void refreshAssistant();
+    });
+    return () => subscription.remove();
+  }, [refreshAssistant]));
+
+  const enableAssistant = async () => {
+    if (Platform.OS !== "android") return;
+    let microphone = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
+    if (!microphone) {
+      const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
+      microphone = result === PermissionsAndroid.RESULTS.GRANTED;
+      setMicrophoneGranted(microphone);
+    }
+    if (!microphone) {
+      Alert.alert("需要麦克风权限", "系统 Assistant 需要麦克风权限才能响应语音唤醒。");
+      return;
+    }
+    try {
+      await openAssistantSettings();
+    } catch (error) {
+      Alert.alert("无法打开系统设置", error instanceof Error ? error.message : "请手动选择默认 Assistant");
+    }
+  };
 
   const revoke = (profileId: string) => Alert.alert("清除机器？",
     "将移除这台机器的 SSH 配置、定时任务授权和独立本地缓存。", [
@@ -187,7 +231,7 @@ export default function ConnectionsScreen() {
   };
 
   return <Screen><ScrollView contentContainerStyle={styles.screen}>
-    <View style={styles.header}><View style={styles.headerCopy}><Title>设备连接</Title>
+    <View style={styles.header}><View style={styles.headerCopy}><Title>设置</Title>
       <Muted>SSH 用于项目与会话；扫码只用于查看当前机器的定时任务。</Muted></View>
       <View style={styles.headerActions}>
         <Button testID="connection:add-pairing" title="扫码关联" variant="secondary"
@@ -199,6 +243,22 @@ export default function ConnectionsScreen() {
       options={[{ value: "system", label: "跟随系统" }, { value: "light", label: "浅色" },
         { value: "dark", label: "深色" }] as const}
       onChange={(value: ThemeMode) => setMode(value)} /></View>
+    {Platform.OS === "android" ? <Card testID="settings:assistant" style={styles.assistant}>
+      <View style={styles.assistantCopy}><Title>默认 Assistant</Title>
+        <Muted>系统唤醒或 Assistant 手势触发后，自动打开 Live 并连接最近一次目标。</Muted></View>
+      <View style={styles.assistantRow}>
+        <View style={styles.assistantStatus}>
+          <StatusDot status={!microphoneGranted ? "danger" : assistantEnabled ? "success" :
+            assistantEnabled === false ? "warning" : "muted"} />
+          <Text style={{ color: theme.colors.text }}>{!microphoneGranted ? "缺少麦克风权限" :
+            assistantEnabled ? "已启用" : assistantEnabled === false ? "未启用" : "检查中"}</Text>
+        </View>
+        <Button testID="settings:assistant:open" title={!microphoneGranted ? "授权并设置" :
+          assistantEnabled ? "打开系统设置" : "设置为默认 Assistant"}
+          variant={assistantEnabled ? "secondary" : "primary"}
+          onPress={() => void enableAssistant()} />
+      </View>
+    </Card> : null}
     <ConnectionErrorBanner />
     <View style={styles.list}>{connections.length === 0
       ? <EmptyState title="还没有机器" detail="可先添加 SSH，也可先扫码获得定时任务只读权限。" />
@@ -366,6 +426,11 @@ const styles = StyleSheet.create({
   headerCopy: { flex: 1, minWidth: 0 },
   headerActions: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
   theme: { paddingHorizontal: 16, gap: 6 },
+  assistant: { margin: 16, marginTop: 18, gap: 12 },
+  assistantCopy: { gap: 4 },
+  assistantRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    gap: 12, flexWrap: "wrap" },
+  assistantStatus: { flexDirection: "row", alignItems: "center", gap: 8 },
   list: { padding: 16, gap: 8 },
   connection: { padding: 13, gap: 4 },
   connectionCopy: { flex: 1, minWidth: 0 },
