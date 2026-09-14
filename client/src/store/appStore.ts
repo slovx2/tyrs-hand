@@ -49,7 +49,7 @@ type AppState = {
   unreadThreadIds: Record<string, true>;
   selectedProjectId: string | null;
   initialize: () => Promise<void>;
-  refresh: () => Promise<void>;
+  refresh: (options?: { silent?: boolean }) => Promise<void>;
   refreshActiveThreads: () => Promise<void>;
   refreshRecentThreads: () => Promise<void>;
   reloadConnections: () => Promise<void>;
@@ -120,7 +120,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (activeConnection) void get().refresh();
   },
 
-  refresh: () => {
+  refresh: (options = {}) => {
     const connection = get().activeConnection;
     if (!connection) return Promise.resolve();
     const active = refreshPromises.get(connection.profileId);
@@ -128,7 +128,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (get().activeConnection?.profileId === connection.profileId) {
       set({ refreshing: true, error: null });
     }
-    const promise: Promise<void> = refreshProfile(connection, set, get).finally(() => {
+    const promise: Promise<void> = refreshProfile(connection, set, get, options.silent === true).finally(() => {
       refreshPromises.delete(connection.profileId);
       if (get().activeConnection?.profileId === connection.profileId) set({ refreshing: false });
     });
@@ -489,7 +489,8 @@ async function syncOutboxState(profileId: string, set: StoreSet, get: StoreGet):
   if (get().activeConnection?.profileId === profileId) set({ outbox });
 }
 
-async function refreshProfile(connection: Connection, set: StoreSet, get: StoreGet): Promise<void> {
+async function refreshProfile(connection: Connection, set: StoreSet, get: StoreGet,
+  silent = false): Promise<void> {
   if (connection.kind !== "ssh") {
     if (get().activeConnection?.profileId === connection.profileId) {
       set({ projects: [], threads: [], modelsByTarget: {}, pendingRequests: {}, error: null,
@@ -511,7 +512,7 @@ async function refreshProfile(connection: Connection, set: StoreSet, get: StoreG
       }
     }
   } catch (error) {
-    if (get().activeConnection?.profileId === connection.profileId) {
+    if (!silent && get().activeConnection?.profileId === connection.profileId) {
       set({ error: error instanceof Error ? error.message : "刷新项目失败" });
     }
     return;
@@ -568,7 +569,7 @@ async function refreshProfile(connection: Connection, set: StoreSet, get: StoreG
     if (!committedThreads) return;
     await replaceCachedThreads(connection.profileId, committedThreads);
   } catch (error) {
-    if (get().activeConnection?.profileId === connection.profileId) {
+    if (!silent && get().activeConnection?.profileId === connection.profileId) {
       set({ error: error instanceof Error ? error.message : "刷新失败" });
     }
   }

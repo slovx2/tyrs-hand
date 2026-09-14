@@ -65,6 +65,7 @@ export class CodexJsonRpcClient {
   private readonly notifications = new Set<NotificationListener>();
   private readonly serverRequests = new Set<ServerRequestListener>();
   private readonly closeListeners = new Set<CloseListener>();
+  private readonly silentSockets = new WeakSet<object>();
 
   constructor(
     private readonly socketFactory: SocketFactory,
@@ -151,9 +152,11 @@ export class CodexJsonRpcClient {
     return () => this.closeListeners.delete(listener);
   }
 
-  close(): void {
-    this.socket?.close(1000, "client closed");
-    this.fail(new Error("Codex App Server 连接已关闭"));
+  close(silent = false): void {
+    const socket = this.socket;
+    if (silent && socket) this.silentSockets.add(socket);
+    socket?.close(1000, "client closed");
+    this.fail(new Error("Codex App Server 连接已关闭"), !silent);
   }
 
   private async openConnection(): Promise<InitializeResponse> {
@@ -198,7 +201,8 @@ export class CodexJsonRpcClient {
         const reason = redactLoopbackPath(event.reason ?? "");
         const error = new Error(reason || `Codex App Server WebSocket 已断开 (${event.code ?? 0})`);
         if (!settled) finish(() => reject(error));
-        this.fail(error);
+        const silent = this.silentSockets.delete(socket);
+        this.fail(error, !silent);
       };
       if (socket.readyState === SOCKET_OPEN) finish(resolve);
       else socket.onopen = () => finish(resolve);
@@ -249,7 +253,7 @@ export class CodexJsonRpcClient {
     socket.send(JSON.stringify(response));
   }
 
-  private fail(error: Error): void {
+  private fail(error: Error, notify = true): void {
     if (!this.socket && !this.initializeResponse) return;
     this.socket = null;
     this.initializeResponse = null;
@@ -258,6 +262,8 @@ export class CodexJsonRpcClient {
       request.reject(new JsonRpcRequestError(error.message, request.method, "unknown"));
     }
     this.pending.clear();
-    for (const listener of this.closeListeners) listener(error);
+    if (notify) {
+      for (const listener of this.closeListeners) listener(error);
+    }
   }
 }

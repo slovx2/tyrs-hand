@@ -44,18 +44,19 @@ export function AppRuntime({ children }: { children: ReactNode }) {
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active") {
         startForegroundSync();
-        void refresh();
+        // 外部系统设置返回时，SSH 重连失败不应覆盖当前页面并闪现无关错误。
+        void refresh({ silent: true });
         return;
       }
       stopForegroundSync();
-      closeOfficialProfile(connection.profileId);
+      closeOfficialProfile(connection.profileId, true);
       void sshTransport.close(connection.profileId).catch(() => undefined);
     });
     return () => {
       subscription.remove();
       stopForegroundSync();
       activeThreads.dispose();
-      closeOfficialProfile(connection.profileId);
+      closeOfficialProfile(connection.profileId, true);
       void sshTransport.close(connection.profileId).catch(() => undefined);
     };
   }, [connection, refresh, refreshActiveThreads, refreshRecentThreads]);

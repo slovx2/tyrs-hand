@@ -28,10 +28,10 @@ export function officialClientFor(connection: Connection,
   return client;
 }
 
-export function closeOfficialProfile(profileId: string): void {
+export function closeOfficialProfile(profileId: string, silent = false): void {
   for (const [key, entry] of entries) {
     if (!key.startsWith(`${profileId}:`)) continue;
-    entry.rpc.close();
+    entry.rpc.close(silent);
     entries.delete(key);
   }
 }

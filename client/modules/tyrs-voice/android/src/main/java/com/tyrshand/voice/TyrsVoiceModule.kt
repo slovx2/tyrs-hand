@@ -1,6 +1,7 @@
 package com.tyrshand.voice
 
 import android.app.role.RoleManager
+import android.app.Activity
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -19,6 +20,16 @@ class TyrsVoiceModule : Module() {
 
     AsyncFunction("openAssistantSettings") {
       openAssistantSettings(requireContext())
+    }
+
+    OnActivityResult { _, (requestCode, resultCode, _) ->
+      if (requestCode != ASSISTANT_SETTINGS_REQUEST_CODE ||
+        resultCode == Activity.RESULT_OK) return@OnActivityResult
+      // ColorOS can expose ROLE_ASSISTANT but reject it as non-requestable.
+      // Its voice input page remains the supported manual fallback.
+      appContext.currentActivity?.startActivity(
+        Intent(Settings.ACTION_VOICE_INPUT_SETTINGS),
+      )
     }
   }
 
@@ -45,7 +56,12 @@ class TyrsVoiceModule : Module() {
     } else {
       Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)
     }
-    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    context.startActivity(intent)
+    // RoleManager 的授权页从 calling package 识别申请方，必须由前台 Activity
+    // 以 startActivityForResult 启动；用 Context.startActivity 会让 ColorOS 看到空包名。
+    appContext.throwingActivity.startActivityForResult(intent, ASSISTANT_SETTINGS_REQUEST_CODE)
+  }
+
+  private companion object {
+    const val ASSISTANT_SETTINGS_REQUEST_CODE = 4101
   }
 }

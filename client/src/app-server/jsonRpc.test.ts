@@ -113,6 +113,18 @@ describe("CodexJsonRpcClient", () => {
     await expect(pending).rejects.toMatchObject({ delivery: "unknown" });
   });
 
+  it("主动静默关闭时不通知全局连接错误", async () => {
+    const { client, socket } = await initialize();
+    const closeErrors: string[] = [];
+    client.onClose((error) => closeErrors.push(error.message));
+
+    client.close(true);
+
+    expect(closeErrors).toEqual([]);
+    expect(client.isOpen()).toBe(false);
+    expect(socket.readyState).toBe(3);
+  });
+
   it("连接失败时保留 close 原因并脱敏 loopback 路径", async () => {
     const socket = new FakeSocket();
     const client = new CodexJsonRpcClient(() => socket, 1_000);
