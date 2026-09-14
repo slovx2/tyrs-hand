@@ -70,22 +70,6 @@ export async function saveSelectedProjectId(profileId: string,
   selectedProjectKey(profileId), projectId ?? ""));
 }
 
-export async function loadSelectedWorkerId(profileId: string): Promise<string | null> {
-  const database = await getDatabase();
-  const row = await database.getFirstAsync<{ value: string }>(
-    "SELECT value FROM app_settings WHERE key=?", selectedWorkerKey(profileId));
-  const value = row?.value?.trim();
-  return value || null;
-}
-
-export async function saveSelectedWorkerId(profileId: string,
-  workerId: string | null): Promise<void> {
-  await runDatabaseWrite((database) => database.runAsync(
-    `INSERT INTO app_settings(key,value) VALUES (?,?)
-    ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
-  selectedWorkerKey(profileId), workerId ?? ""));
-}
-
 function preferencesKey(profileId: string): string {
   return `lastTurnPreferences:${profileId}`;
 }
@@ -121,10 +105,6 @@ export async function saveLiveConversationId(profileId: string,
 
 function selectedProjectKey(profileId: string): string {
   return `selectedProject:${profileId}`;
-}
-
-function selectedWorkerKey(profileId: string): string {
-  return `selectedWorker:${profileId}`;
 }
 
 function liveConversationKey(profileId: string, workerId: string): string {

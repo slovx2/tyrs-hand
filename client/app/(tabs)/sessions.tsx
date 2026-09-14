@@ -12,6 +12,7 @@ import { EmptyState, Screen } from "@/components/ui";
 import { ConversationPane } from "@/features/chat/ConversationPane";
 import { SessionActionsMenu } from "@/features/chat/SessionActionsMenu";
 import { SessionListPane } from "@/features/session-list/SessionListPane";
+import { resolveMachineControlBinding } from "@/features/connections/machineControlBinding";
 import { resolveLiveProjectForSSHProject } from "@/features/live/liveProjectMapping";
 import { useTablet } from "@/hooks/useTablet";
 import { useAppStore } from "@/store/appStore";
@@ -26,10 +27,8 @@ export default function SessionsScreen() {
   const projects = useAppStore((state) => state.projects);
   const allSessions = useAppStore((state) => state.threads);
   const selectedProjectId = useAppStore((state) => state.selectedProjectId);
-  const selectedWorkerId = useAppStore((state) => state.selectedWorkerId);
   const switchConnection = useAppStore((state) => state.switchConnection);
   const setSelectedProject = useAppStore((state) => state.setSelectedProject);
-  const setSelectedWorker = useAppStore((state) => state.setSelectedWorker);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [liveProjectStatus, setLiveProjectStatus] = useState<
@@ -38,7 +37,7 @@ export default function SessionsScreen() {
   const [liveProjectMessage, setLiveProjectMessage] = useState("");
   const sshConnections = useMemo(() => connections.filter((item) => item.kind === "ssh"), [connections]);
   const selectedProject = projects.find((item) => item.id === selectedProjectId) ?? null;
-  const selectedWorker = connection?.controls.find((item) => item.workerId === selectedWorkerId) ?? null;
+  const machineBinding = useMemo(() => resolveMachineControlBinding(connection), [connection]);
   const sessions = useMemo(() => selectedProjectId
     ? allSessions.filter((item) => item.projectId === selectedProjectId) : [],
   [allSessions, selectedProjectId]);
@@ -58,20 +57,20 @@ export default function SessionsScreen() {
     void switchConnection(profileId);
   };
   const openLive = () => {
-    if (!selectedWorkerId || liveProjectStatus !== "matched") return;
+    if (!selectedProject || machineBinding.status !== "bound") return;
     router.push({ pathname: "/(tabs)/live" as never,
-      params: { workerId: selectedWorkerId } } as never);
+      params: { workerId: machineBinding.workerId } } as never);
   };
   useEffect(() => {
-    if (!selectedWorker || !selectedProject) {
+    if (machineBinding.status !== "bound" || !selectedProject) {
       setLiveProjectStatus("idle");
-      setLiveProjectMessage(!selectedWorker ? "请先选择 Worker" : "请先选择 Codex 项目");
+      setLiveProjectMessage(!selectedProject ? "请先选择 Codex 项目" : machineBinding.message ?? "");
       return;
     }
     let cancelled = false;
     setLiveProjectStatus("loading");
     setLiveProjectMessage("");
-    void listLiveWorkerProjects(selectedWorker, selectedWorker.workerId)
+    void listLiveWorkerProjects(machineBinding.link, machineBinding.workerId)
       .then(({ projects: controlProjects }) => {
         if (cancelled) return;
         const resolution = resolveLiveProjectForSSHProject(selectedProject, controlProjects);
@@ -82,9 +81,9 @@ export default function SessionsScreen() {
         if (cancelled) return;
         setLiveProjectStatus("unmatched");
         setLiveProjectMessage(reason instanceof Error ? reason.message : "无法读取 Control 项目");
-      });
+    });
     return () => { cancelled = true; };
-  }, [selectedProject, selectedWorker]);
+  }, [machineBinding, selectedProject]);
   const navigation = <Tabs.Screen options={{
     title: selectedId ? (() => {
       const record = allSessions.find((item) => item.thread.id === selectedId);
@@ -100,9 +99,6 @@ export default function SessionsScreen() {
       options={sshConnections.map((item) => ({ value: item.profileId, label: item.name,
         detail: `${item.user}@${item.host}:${item.port}` }))}
       emptyLabel="无机器" onChange={selectMachine} testID="session:machine" /></View>
-    <View style={styles.selectorItem}><Dropdown label="Worker" value={selectedWorkerId}
-      options={(connection?.controls ?? []).map((item) => ({ value: item.workerId, label: item.workerName }))}
-      emptyLabel="无可用 Worker" onChange={setSelectedWorker} testID="session:worker" /></View>
     <View style={styles.selectorItem}><Dropdown label="项目" value={selectedProjectId}
       options={projects.map((item) => ({ value: item.id, label: item.name, detail: item.relativePath }))}
       emptyLabel="无项目" onChange={(value) => { setSelectedId(null); setSelectedProject(value); }}
@@ -121,6 +117,7 @@ export default function SessionsScreen() {
       hideFilter archivedOnly={showArchived} />
       : <EmptyState title="无项目" detail="请在连接页为当前机器添加项目目录。" />}
   </View>;
+  const canOpenLive = Boolean(selectedProject && machineBinding.status === "bound");
   const actions = selectedProject ? <View style={[styles.actions,
     { bottom: Math.max(insets.bottom, 16) }]}>
     <Pressable testID="session:new-task:add" accessibilityRole="button"
@@ -130,15 +127,16 @@ export default function SessionsScreen() {
       <Ionicons name="add" size={30} color={theme.colors.accentForeground} />
     </Pressable>
     <Pressable testID="session:live:add" accessibilityRole="button" accessibilityLabel="Live"
-      accessibilityState={{ disabled: liveProjectStatus !== "matched" }}
-      disabled={liveProjectStatus !== "matched"} onPress={openLive}
+      accessibilityState={{ disabled: !canOpenLive }}
+      disabled={!canOpenLive} onPress={openLive}
       style={({ pressed }) => [styles.fab, { backgroundColor: theme.colors.accent,
-        opacity: liveProjectStatus === "matched" ? (pressed ? 0.78 : 1) : 0.4 }, theme.shadow]}>
+        opacity: canOpenLive ? (pressed ? 0.78 : 1) : 0.4 }, theme.shadow]}>
       <Ionicons name="mic-outline" size={27} color={theme.colors.accentForeground} />
     </Pressable>
   </View> : null;
-  const liveStatus = selectedProject && selectedWorker && liveProjectStatus !== "matched"
-    ? <Text style={[styles.liveStatus, { color: theme.colors.textMuted }]}>{liveProjectStatus === "loading"
+  const liveStatus = selectedProject && (machineBinding.status !== "bound" || liveProjectStatus !== "matched")
+    ? <Text style={[styles.liveStatus, { color: theme.colors.textMuted }]}>{machineBinding.status !== "bound"
+      ? machineBinding.message : liveProjectStatus === "loading"
       ? "正在检查 Control 项目…" : liveProjectMessage}</Text> : null;
 
   if (!tablet) return <Screen>{navigation}{selectors}{liveStatus}

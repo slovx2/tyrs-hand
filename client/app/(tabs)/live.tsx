@@ -1,6 +1,6 @@
 import * as Linking from "expo-linking";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Modal, PermissionsAndroid, Platform, Pressable, ScrollView, StyleSheet,
   Switch, Text, View } from "react-native";
 import { RTCPeerConnection, mediaDevices, type MediaStream } from "react-native-webrtc";
@@ -9,6 +9,7 @@ import audioRoute, { type LiveAudioRoute, type LiveAudioRouteKind } from "tyrs-a
 
 import { clearLiveConversationMessages, closeLiveSession, createLiveConversation, createLiveSession, getLiveConversation, listLiveMessages, listLiveWorkerProjects, recoverLiveSession, resetLiveConversationHistory, updateLiveConversation, type LiveConversation } from "@/api/live";
 import { Screen } from "@/components/ui";
+import { resolveMachineControlBinding } from "@/features/connections/machineControlBinding";
 import { LiveMark } from "@/features/live/LiveMark";
 import { LiveVoicePicker } from "@/features/live/LiveVoicePicker";
 import { resolveLiveProjectForSSHProject, type LiveProjectResolution } from "@/features/live/liveProjectMapping";
@@ -91,7 +92,6 @@ export default function LiveScreen() {
   const params = useLocalSearchParams<Record<string, string | string[]>>();
   const ready = useAppStore((state) => state.ready);
   const connection = useAppStore((state) => state.activeConnection);
-  const selectedWorkerId = useAppStore((state) => state.selectedWorkerId);
   const projects = useAppStore((state) => state.projects);
   const selectedProjectId = useAppStore((state) => state.selectedProjectId);
   const peer = useRef<RTCPeerConnection | null>(null);
@@ -125,9 +125,9 @@ export default function LiveScreen() {
   const loadedConversationTarget = useRef<string | undefined>(undefined);
   const connectRef = useRef<() => Promise<void>>(async () => undefined);
   const soundsEnabledRef = useRef(true);
-  const routeWorkerId = Array.isArray(params.workerId) ? params.workerId[0] : params.workerId;
-  const workerId = routeWorkerId ?? selectedWorkerId ?? "";
-  const link = connection?.controls.find((item) => item.workerId === workerId) ?? null;
+  const machineBinding = useMemo(() => resolveMachineControlBinding(connection), [connection]);
+  const workerId = machineBinding.workerId ?? "";
+  const link = machineBinding.link;
   const profileId = connection?.profileId;
   const selectedProject = projects.find((item) => item.id === selectedProjectId) ?? null;
 
@@ -181,8 +181,8 @@ export default function LiveScreen() {
   useEffect(() => {
     if (!link || !workerId || !selectedProject) {
       setControlProjectId(null);
-      setControlProjectError(!link ? "当前 Worker 不可用" : !selectedProject
-        ? "请先在会话页选择 Codex 项目" : null);
+      setControlProjectError(machineBinding.status !== "bound" ? machineBinding.message
+        : !selectedProject ? "请先在会话页选择 Codex 项目" : null);
       return;
     }
     let cancelled = false;
@@ -202,7 +202,7 @@ export default function LiveScreen() {
         setControlProjectError(reason instanceof Error ? reason.message : "无法读取 Control 项目");
       });
     return () => { cancelled = true; };
-  }, [link, selectedProject, workerId]);
+  }, [link, machineBinding, selectedProject, workerId]);
   useEffect(() => {
     if (!ready) return;
     setConversationLoaded(false);
@@ -340,7 +340,8 @@ export default function LiveScreen() {
       let current = conversation;
       stopPeer();
       if (!current) {
-        if (!workerId) throw new Error("请先在会话页选择 Worker");
+        if (!workerId) throw new Error(machineBinding.message ??
+          "当前机器尚未关联 Control Worker");
         if (!controlProjectId) {
           throw new Error(controlProjectError ?? "当前 SSH 项目尚未同步到 Control");
         }
@@ -447,7 +448,7 @@ export default function LiveScreen() {
       return;
     }
     if (!link) {
-      setError("当前 Worker 不可用，请返回会话页重新选择");
+      setError(machineBinding.message ?? "当前机器尚未关联 Control Worker，请返回设置页关联");
       return;
     }
     if (!selectedProject) {
@@ -455,7 +456,7 @@ export default function LiveScreen() {
       return;
     }
     void connectRef.current();
-  }, [conversationLoaded, controlProjectId, link, profileId, ready, selectedProject]);
+  }, [conversationLoaded, controlProjectId, link, machineBinding.message, profileId, ready, selectedProject]);
   useEffect(() => {
     if (wakeRequestCount <= consumedWakeRequestCount.current) return;
     consumedWakeRequestCount.current = wakeRequestCount;

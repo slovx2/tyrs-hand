@@ -45,10 +45,10 @@ vi.mock("@/db/connections", () => ({
 vi.mock("@/db/sshProjects", () => ({ listSSHProjects: async () => [] }));
 vi.mock("@/db/settings", () => ({
   loadThemeMode: async () => "system",
+  loadSelectedProjectId: async () => null,
+  saveSelectedProjectId: async () => undefined,
   saveLastTurnPreferences: async () => undefined,
   saveThemeMode: async () => undefined,
-  loadSelectedWorkerId: async () => null,
-  saveSelectedWorkerId: async () => undefined,
 }));
 vi.mock("@/db/threadReads", () => ({
   loadUnreadThreadIds: async () => [],

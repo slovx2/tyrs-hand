@@ -108,7 +108,7 @@ export default function ConnectionsScreen() {
     if (claiming) return;
     setClaiming(true);
     try {
-      Alert.alert("等待管理员确认", "扫码仅申请查看这台机器的定时任务，请回到管理后台确认设备。");
+      Alert.alert("等待管理员确认", "扫码会把当前机器关联到 Control Worker，并申请定时任务与 Live 权限，请回到管理后台确认设备。");
       const profileId = await connectPairingUri(value);
       await reload();
       await switchConnection(profileId);
@@ -232,7 +232,7 @@ export default function ConnectionsScreen() {
 
   return <Screen><ScrollView contentContainerStyle={styles.screen}>
     <View style={styles.header}><View style={styles.headerCopy}><Title>设置</Title>
-      <Muted>SSH 用于项目与会话；扫码只用于查看当前机器的定时任务。</Muted></View>
+      <Muted>SSH 用于项目与会话；扫码会把当前机器关联到 Control Worker，并授权定时任务与 Live。</Muted></View>
       <View style={styles.headerActions}>
         <Button testID="connection:add-pairing" title="扫码关联" variant="secondary"
           onPress={() => void openScanner()} />
@@ -261,7 +261,7 @@ export default function ConnectionsScreen() {
     </Card> : null}
     <ConnectionErrorBanner />
     <View style={styles.list}>{connections.length === 0
-      ? <EmptyState title="还没有机器" detail="可先添加 SSH，也可先扫码获得定时任务只读权限。" />
+      ? <EmptyState title="还没有机器" detail="可先添加 SSH，也可先扫码关联 Control Worker。" />
       : connections.map((connection) => <Pressable key={connection.profileId}
         testID={`connection:${encodeURIComponent(connection.profileId)}`}
         onPress={() => void switchConnection(connection.profileId)}><Card style={styles.connection}>
@@ -280,7 +280,7 @@ export default function ConnectionsScreen() {
               {connection.controls.length > 0 ? <View testID={`connection:${encodeURIComponent(
                 connection.profileId)}:capability:scheduled`} style={[styles.capability,
                 { borderColor: theme.colors.border }]}><Text style={[styles.capabilityText,
-                  { color: theme.colors.text }]}>定时任务</Text></View> : null}
+                  { color: theme.colors.text }]}>Control Worker</Text></View> : null}
             </View>
             {connection.kind === "ssh" ? <View testID={`connection:${encodeURIComponent(
               connection.profileId)}:projects`}><Muted>可添加多个项目目录</Muted></View> : null}</View>
@@ -310,8 +310,8 @@ export default function ConnectionsScreen() {
         barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
         onBarcodeScanned={({ data }) => void scanned(data)} />}
         <View style={[styles.scannerOverlay, { backgroundColor: theme.colors.surface }]}>
-          <Title>扫描定时任务授权二维码</Title>
-          <Muted>二维码不会连接 App Server，也不会同步聊天、附件或 Push。</Muted>
+          <Title>扫描 Control Worker 关联二维码</Title>
+          <Muted>二维码只关联当前机器，不会连接 App Server，也不会同步聊天、附件或 Push。</Muted>
           <Button title={claiming ? "等待管理员确认…" : "取消"} disabled={claiming}
             onPress={() => setScanning(false)} />
         </View>
