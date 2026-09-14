@@ -1,9 +1,11 @@
 import * as Linking from "expo-linking";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { Modal, PermissionsAndroid, Platform, Pressable, ScrollView, StyleSheet,
+  Switch, Text, View } from "react-native";
 import { RTCPeerConnection, mediaDevices, type MediaStream } from "react-native-webrtc";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import audioRoute, { type LiveAudioRoute, type LiveAudioRouteKind } from "tyrs-audio-route";
 
 import { clearLiveConversationMessages, closeLiveSession, createLiveConversation, createLiveSession, getLiveConversation, listLiveMessages, listLiveWorkerProjects, listLiveWorkerSessions, recoverLiveSession, resetLiveConversationHistory, updateLiveConversation, type LiveConversation } from "@/api/live";
 import { Dropdown } from "@/components/Dropdown";
@@ -24,6 +26,47 @@ const liveIceConfiguration = {
 };
 
 type Transcript = { role: "user" | "assistant"; text: string };
+type LiveAudioSelection = {
+  kind: "auto" | LiveAudioRouteKind;
+  deviceId?: number;
+};
+
+const bluetoothConnectPermission = "android.permission.BLUETOOTH_CONNECT";
+
+async function requestBluetoothConnectPermission(): Promise<void> {
+  if (Platform.OS !== "android" || Platform.Version < 31) return;
+  try {
+    if (await PermissionsAndroid.check(bluetoothConnectPermission)) return;
+    await PermissionsAndroid.request(bluetoothConnectPermission);
+  } catch {
+    // 没有蓝牙权限时仍允许 Live 使用手机或有线设备。
+  }
+}
+
+function audioRouteLabel(route: LiveAudioRoute | null): string {
+  if (!route) return "自动";
+  const name = route.activeDevice?.name;
+  const inputConfirmed = route.activeInputDevice?.kind === route.kind;
+  if (route.kind === "bluetooth") {
+    const suffix = inputConfirmed ? "输入/输出" : route.activeInputDevice ? "输出 · 手机麦克风" : "输入待确认";
+    return name ? `蓝牙耳机（${suffix}） · ${name}` : `蓝牙耳机（${suffix}）`;
+  }
+  if (route.kind === "wired") {
+    const suffix = inputConfirmed ? "输入/输出" : route.activeInputDevice ? "输出 · 手机麦克风" : "输入待确认";
+    return name ? `有线耳机（${suffix}） · ${name}` : `有线耳机（${suffix}）`;
+  }
+  if (route.kind === "speaker") return "手机扬声器 · 手机麦克风";
+  if (route.kind === "earpiece") return "手机听筒 · 手机麦克风";
+  return "系统默认";
+}
+
+function audioSelectionLabel(selection: LiveAudioSelection, route: LiveAudioRoute | null): string {
+  if (selection.kind === "auto") return `自动（${audioRouteLabel(route)}）`;
+  return selection.kind === "bluetooth" ? "蓝牙耳机"
+    : selection.kind === "wired" ? "有线耳机"
+      : selection.kind === "speaker" ? "扬声器"
+        : selection.kind === "earpiece" ? "听筒" : "自动";
+}
 
 async function waitForIceGathering(connection: RTCPeerConnection): Promise<void> {
   if (connection.iceGatheringState === "complete") return;
@@ -57,6 +100,9 @@ export default function LiveScreen() {
   const [status, setStatus] = useState("未连接");
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [audioRouteMenuOpen, setAudioRouteMenuOpen] = useState(false);
+  const [activeAudioRoute, setActiveAudioRoute] = useState<LiveAudioRoute | null>(null);
+  const [audioSelection, setAudioSelection] = useState<LiveAudioSelection>({ kind: "auto" });
   const [soundsEnabled, setSoundsEnabled] = useState(true);
   const [wakeRequestCount, setWakeRequestCount] = useState(0);
   const [workerId, setWorkerId] = useState("");
@@ -91,6 +137,27 @@ export default function LiveScreen() {
       .catch(() => undefined);
   }, []);
   useEffect(() => {
+    let cancelled = false;
+    const subscription = audioRoute.addLiveAudioRouteListener((route) => {
+      if (!cancelled) {
+        setActiveAudioRoute(route);
+        if (route.automatic) setAudioSelection({ kind: "auto" });
+      }
+    });
+    void audioRoute.getLiveAudioRoute()
+      .then((route) => {
+        if (!cancelled) {
+          setActiveAudioRoute(route);
+          if (route.automatic) setAudioSelection({ kind: "auto" });
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      subscription?.remove();
+    };
+  }, []);
+  useEffect(() => {
     if (!isLiveWakeParam(params.wake)) return;
     setWakeRequestCount((current) => current + 1);
     router.setParams({ wake: undefined } as never);
@@ -104,7 +171,10 @@ export default function LiveScreen() {
     });
     return () => subscription.remove();
   }, []);
-  useEffect(() => () => stopPeer(), []);
+  useEffect(() => () => {
+    stopPeer();
+    void audioRoute.restoreLiveAudioRoute().catch(() => undefined);
+  }, []);
   useEffect(() => {
     const only = connection?.controls.length === 1 ? connection.controls[0] : undefined;
     if (workerId || !only) return;
@@ -195,6 +265,12 @@ export default function LiveScreen() {
     peer.current = null;
   };
 
+  const restoreAudioRoute = async () => {
+    setAudioSelection({ kind: "auto" });
+    setActiveAudioRoute(null);
+    await audioRoute.restoreLiveAudioRoute().catch(() => undefined);
+  };
+
   const onEvent = (raw: string) => {
     try {
       const event = JSON.parse(raw) as { type?: string };
@@ -207,6 +283,7 @@ export default function LiveScreen() {
       }
       if (event.type === "session.closed") {
         stopPeer();
+        void restoreAudioRoute();
         setStatus("未连接");
         sessionIdRef.current = null;
         setSessionId(null);
@@ -250,7 +327,6 @@ export default function LiveScreen() {
     if (!link || !profileId) { setError("请先在连接页授权一个 Control"); return; }
     connectingRef.current = true;
     sessionStartedSoundPlayed.current = false;
-    void playLiveConnectionSound("connecting", soundsEnabledRef.current);
     setError(null);
     setStatus("连接中");
     try {
@@ -269,6 +345,18 @@ export default function LiveScreen() {
         setConversation(current);
         await saveLiveConversationId(profileId, current.id);
       }
+      await requestBluetoothConnectPermission();
+      let route: LiveAudioRoute | null = null;
+      try {
+        route = await audioRoute.prepareLiveAudioRoute();
+        if (audioSelection.kind !== "auto") {
+          route = await audioRoute.setLiveAudioRoute(audioSelection.kind, audioSelection.deviceId);
+        }
+        setActiveAudioRoute(route);
+      } catch {
+        // 路由选择失败时继续使用系统默认设备，不阻断 Live 建连。
+      }
+      void playLiveConnectionSound("connecting", soundsEnabledRef.current);
       await voiceSaveQueue.current;
       const pc = new RTCPeerConnection(liveIceConfiguration);
       peer.current = pc;
@@ -283,6 +371,7 @@ export default function LiveScreen() {
           setActiveSessionVoice(undefined);
           setStatus("未连接");
           setError("Live 连接已断开");
+          void restoreAudioRoute();
           if (failedSessionId) {
             void closeLiveSession(link, failedSessionId).catch(() => undefined);
           }
@@ -292,6 +381,15 @@ export default function LiveScreen() {
         const local = await mediaDevices.getUserMedia({ audio: true, video: false });
         stream.current = local;
         local.getTracks().forEach((track) => pc.addTrack(track, local));
+        void audioRoute.getLiveAudioRoute()
+          .then(setActiveAudioRoute)
+          .catch(() => undefined);
+        setTimeout(() => {
+          if (peer.current !== pc) return;
+          void audioRoute.getLiveAudioRoute()
+            .then(setActiveAudioRoute)
+            .catch(() => undefined);
+        }, 300);
       } catch {
         throw new Error("未获得麦克风权限");
       }
@@ -320,6 +418,7 @@ export default function LiveScreen() {
     } catch (reason) {
       const failedSessionId = sessionIdRef.current;
       stopPeer();
+      await restoreAudioRoute();
       sessionIdRef.current = null;
       setSessionId(null);
       setActiveSessionVoice(undefined);
@@ -373,6 +472,7 @@ export default function LiveScreen() {
     setStatus("未连接");
     setActiveSessionVoice(undefined);
     stopPeer();
+    await restoreAudioRoute();
   };
 
   const resetSession = async () => {
@@ -403,6 +503,23 @@ export default function LiveScreen() {
   const connected = status === "已连接";
   const connecting = status === "连接中";
   const voiceNeedsReset = activeSessionVoice !== undefined && selectedVoice !== activeSessionVoice;
+  const selectableAudioDevices = [
+    ...(activeAudioRoute?.availableDevices ?? []),
+    ...(activeAudioRoute?.activeDevice ? [activeAudioRoute.activeDevice] : []),
+  ].filter((device, index, devices) =>
+    devices.findIndex((candidate) => candidate.id === device.id) === index &&
+    device.kind !== "unknown");
+  const selectAudioRoute = async (selection: LiveAudioSelection) => {
+    setAudioRouteMenuOpen(false);
+    try {
+      const route = await audioRoute.setLiveAudioRoute(selection.kind, selection.deviceId);
+      setAudioSelection(selection);
+      setActiveAudioRoute(route);
+      setError(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "音频设备切换失败");
+    }
+  };
   return <Screen style={styles.screen}>
     <View style={[styles.top, { paddingTop: insets.top + 4 }]}>
       <Pressable testID="live:exit" accessibilityRole="button" accessibilityLabel="退出" hitSlop={8}
@@ -462,6 +579,9 @@ export default function LiveScreen() {
       <Text style={[styles.hint, { color: theme.colors.textMuted }]}>
         {connected ? "已连接 · 正在听" : connecting ? "连接中" : "未连接"}
       </Text>
+      <Text style={[styles.routeHint, { color: theme.colors.textMuted }]}>
+        音频输出 · {audioRouteLabel(activeAudioRoute)}
+      </Text>
       <Pressable testID={connected ? "live:disconnect" : "live:connect"} accessibilityRole="button"
         disabled={connecting || (!conversation && (!workerId || (mode === "bind" ? !bindSessionId : !projectId)))}
         onPress={() => void (connected ? disconnect() : connect())}
@@ -480,12 +600,48 @@ export default function LiveScreen() {
           <Pressable testID="live:clear" style={styles.menuItem} onPress={() => { setMenuOpen(false); void clearCaptions(); }}>
             <Text style={[styles.menuText, { color: theme.colors.text }]}>清空字幕</Text>
           </Pressable>
+          <Pressable testID="live:audio-route" style={styles.menuItem}
+            disabled={!connected && !connecting}
+            onPress={() => { setMenuOpen(false); setAudioRouteMenuOpen(true); }}>
+            <Text style={[styles.menuText, { color: theme.colors.text }]}>音频输出</Text>
+            <Text style={[styles.menuSubtext, { color: theme.colors.textMuted }]}>
+              {audioSelectionLabel(audioSelection, activeAudioRoute)}
+            </Text>
+          </Pressable>
           <View style={styles.menuSetting}>
             <Text style={[styles.menuText, { color: theme.colors.text }]}>连接提示音</Text>
             <Switch testID="live:connection-sounds" value={soundsEnabled}
               onValueChange={toggleSounds} trackColor={{ false: theme.colors.border,
                 true: theme.colors.accent }} thumbColor={theme.colors.surface} />
           </View>
+        </View>
+      </View>
+    </Modal>
+    <Modal visible={audioRouteMenuOpen} transparent animationType="fade"
+      onRequestClose={() => setAudioRouteMenuOpen(false)}>
+      <View style={styles.modalRoot}>
+        <Pressable accessibilityRole="button" accessibilityLabel="关闭音频输出选择"
+          style={StyleSheet.absoluteFill} onPress={() => setAudioRouteMenuOpen(false)} />
+        <View style={[styles.routeMenu, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, theme.shadow]}>
+          <Text style={[styles.routeTitle, { color: theme.colors.text }]}>音频输出</Text>
+          <Pressable testID="live:audio-route-auto" style={styles.routeItem}
+            onPress={() => void selectAudioRoute({ kind: "auto" })}>
+            <Text style={[styles.menuText, { color: theme.colors.text }]}>自动</Text>
+            <Text style={[styles.menuSubtext, { color: theme.colors.textMuted }]}>
+              {audioRouteLabel(activeAudioRoute)}
+            </Text>
+          </Pressable>
+          {selectableAudioDevices.map((device) => (
+            <Pressable key={device.id} testID={`live:audio-route-${device.id}`} style={styles.routeItem}
+              onPress={() => void selectAudioRoute({ kind: device.kind, deviceId: device.id })}>
+              <Text style={[styles.menuText, { color: theme.colors.text }]}>
+                {device.kind === "bluetooth" ? "蓝牙耳机"
+                  : device.kind === "wired" ? "有线耳机"
+                    : device.kind === "speaker" ? "扬声器" : "听筒"}
+              </Text>
+              <Text style={[styles.menuSubtext, { color: theme.colors.textMuted }]}>{device.name}</Text>
+            </Pressable>
+          ))}
         </View>
       </View>
     </Modal>
@@ -506,12 +662,17 @@ const styles = StyleSheet.create({
   line: { gap: 4 },
   dock: { alignItems: "center", gap: 10, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 18, paddingHorizontal: 24 },
   hint: { fontSize: 13 },
+  routeHint: { fontSize: 12, textAlign: "center" },
   action: { alignSelf: "stretch", minHeight: 48, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   actionText: { fontFamily: "Inter_600SemiBold", fontSize: 16 },
   modalRoot: { flex: 1 },
   menu: { position: "absolute", right: 10, width: 180, borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, paddingVertical: 6 },
   menuItem: { minHeight: 48, paddingHorizontal: 16, justifyContent: "center" },
+  menuSubtext: { fontSize: 12, marginTop: 2 },
   menuSetting: { minHeight: 48, paddingHorizontal: 12, flexDirection: "row",
     alignItems: "center", justifyContent: "space-between", gap: 8 },
   menuText: { fontFamily: "Inter_500Medium", fontSize: 16 },
+  routeMenu: { position: "absolute", left: 24, right: 24, top: "28%", borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, paddingVertical: 6 },
+  routeTitle: { fontFamily: "Inter_600SemiBold", fontSize: 17, paddingHorizontal: 16, paddingVertical: 12 },
+  routeItem: { minHeight: 54, paddingHorizontal: 16, justifyContent: "center" },
 });

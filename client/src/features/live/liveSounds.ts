@@ -1,4 +1,5 @@
 import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from "expo-av";
+import audioRoute from "tyrs-audio-route";
 
 import connectingSound from "../../../assets/live-sounds/live-connect-start.wav";
 import connectedSound from "../../../assets/live-sounds/live-connect-ready.wav";
@@ -17,7 +18,8 @@ const liveAudioMode = {
   staysActiveInBackground: false,
   interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
   shouldDuckAndroid: false,
-  playThroughEarpieceAndroid: false,
+  // Keep Expo AV in communication mode; the native route module selects BT or wired output.
+  playThroughEarpieceAndroid: true,
 };
 
 let soundQueue: Promise<void> = Promise.resolve();
@@ -29,6 +31,7 @@ export function playLiveConnectionSound(kind: LiveConnectionSound,
     let sound: Audio.Sound | null = null;
     try {
       await Audio.setAudioModeAsync(liveAudioMode);
+      await audioRoute.prepareLiveAudioRoute();
       sound = (await Audio.Sound.createAsync(sources[kind], { shouldPlay: true })).sound;
       await waitForSoundToFinish(sound);
     } catch {
