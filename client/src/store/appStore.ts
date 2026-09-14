@@ -20,8 +20,8 @@ import { loadCachedProjects, loadCachedThreads, replaceCachedThreads,
 import { listConnections, setActiveConnection, type Connection,
   type SSHConnection } from "@/db/connections";
 import { listSSHProjects } from "@/db/sshProjects";
-import { loadSelectedProjectId, loadThemeMode, saveLastTurnPreferences,
-  saveSelectedProjectId, saveThemeMode } from "@/db/settings";
+import { loadSelectedProjectId, loadSelectedWorkerId, loadThemeMode, saveLastTurnPreferences,
+  saveSelectedProjectId, saveSelectedWorkerId, saveThemeMode } from "@/db/settings";
 import { loadUnreadThreadIds, markThreadRead, markThreadUnread, reconcileThreadReads,
   removeThreadRead } from "@/db/threadReads";
 import { listPendingMessagePreviews, removePendingMessagePreview, savePendingMessagePreview,
@@ -48,6 +48,7 @@ type AppState = {
   pendingMessages: PendingMessagePreview[];
   unreadThreadIds: Record<string, true>;
   selectedProjectId: string | null;
+  selectedWorkerId: string | null;
   initialize: () => Promise<void>;
   refresh: () => Promise<void>;
   refreshActiveThreads: () => Promise<void>;
@@ -55,6 +56,7 @@ type AppState = {
   reloadConnections: () => Promise<void>;
   switchConnection: (profileId: string) => Promise<void>;
   setSelectedProject: (projectId: string | null) => void;
+  setSelectedWorker: (workerId: string | null) => void;
   setThreadVisible: (threadId: string, visible: boolean) => void;
   setThemeMode: (mode: ThemeMode) => void;
   loadThread: (threadId: string) => Promise<void>;
@@ -100,22 +102,29 @@ export const useAppStore = create<AppState>((set, get) => ({
   ready: false, refreshing: false, error: null, themeMode: "system", connections: [],
   activeConnection: null, projects: [], threads: [], modelsByTarget: {}, pendingRequests: {},
   outbox: [], pendingMessages: [], unreadThreadIds: {}, selectedProjectId: null,
+  selectedWorkerId: null,
 
   initialize: async () => {
     const [connections, themeMode] = await Promise.all([listConnections(), loadThemeMode()]);
     const activeConnection = connections.find((item) => item.active) ?? connections[0] ?? null;
-    const [projects, threads, outbox, pendingMessages, unreadThreadIds, rememberedProjectId] = activeConnection ? await Promise.all([
+    const [projects, threads, outbox, pendingMessages, unreadThreadIds, rememberedProjectId,
+      rememberedWorkerId] = activeConnection ? await Promise.all([
       loadCachedProjects(activeConnection.profileId), loadCachedThreads(activeConnection.profileId),
       listOutbox(activeConnection.profileId), listPendingMessagePreviews(activeConnection.profileId),
       loadUnreadThreadIds(activeConnection.profileId), loadSelectedProjectId(activeConnection.profileId),
-    ]) : [[], [], [], [], [], null];
+      loadSelectedWorkerId(activeConnection.profileId),
+    ]) : [[], [], [], [], [], null, null];
     const selectedProjectId = chooseProjectId(projects, rememberedProjectId);
+    const selectedWorkerId = chooseWorkerId(activeConnection, rememberedWorkerId);
     set({ ready: true, connections, activeConnection, projects, threads, themeMode,
       outbox, pendingMessages, unreadThreadIds: unreadRecord(unreadThreadIds),
-      selectedProjectId });
+      selectedProjectId, selectedWorkerId });
     if (activeConnection && !activeConnection.active) void setActiveConnection(activeConnection.profileId);
     if (activeConnection && selectedProjectId !== rememberedProjectId) {
       void saveSelectedProjectId(activeConnection.profileId, selectedProjectId);
+    }
+    if (activeConnection && selectedWorkerId !== rememberedWorkerId) {
+      void saveSelectedWorkerId(activeConnection.profileId, selectedWorkerId);
     }
     if (activeConnection) void get().refresh();
   },
@@ -144,24 +153,35 @@ export const useAppStore = create<AppState>((set, get) => ({
     const current = get().activeConnection;
     if (!current || !connections.some((item) => item.profileId === current.profileId)) {
       const activeConnection = connections.find((item) => item.active) ?? connections[0] ?? null;
-      const [projects, threads, outbox, pendingMessages, unreadThreadIds, rememberedProjectId] = activeConnection ? await Promise.all([
+      const [projects, threads, outbox, pendingMessages, unreadThreadIds, rememberedProjectId,
+        rememberedWorkerId] = activeConnection ? await Promise.all([
         loadCachedProjects(activeConnection.profileId), loadCachedThreads(activeConnection.profileId),
         listOutbox(activeConnection.profileId), listPendingMessagePreviews(activeConnection.profileId),
         loadUnreadThreadIds(activeConnection.profileId), loadSelectedProjectId(activeConnection.profileId),
-      ]) : [[], [], [], [], [], null];
+        loadSelectedWorkerId(activeConnection.profileId),
+      ]) : [[], [], [], [], [], null, null];
       const selectedProjectId = chooseProjectId(projects, rememberedProjectId);
+      const selectedWorkerId = chooseWorkerId(activeConnection, rememberedWorkerId);
       set({ connections, activeConnection, projects, threads, modelsByTarget: {},
         pendingRequests: {}, outbox, pendingMessages, unreadThreadIds: unreadRecord(unreadThreadIds),
-        selectedProjectId });
+        selectedProjectId, selectedWorkerId });
       if (activeConnection && !activeConnection.active) void setActiveConnection(activeConnection.profileId);
       if (activeConnection && selectedProjectId !== rememberedProjectId) {
         void saveSelectedProjectId(activeConnection.profileId, selectedProjectId);
       }
+      if (activeConnection && selectedWorkerId !== rememberedWorkerId) {
+        void saveSelectedWorkerId(activeConnection.profileId, selectedWorkerId);
+      }
       if (activeConnection) void get().refresh();
       return;
     }
-    set({ connections, activeConnection: connections.find((item) =>
-      item.profileId === current.profileId) ?? current });
+    const activeConnection = connections.find((item) => item.profileId === current.profileId) ?? current;
+    const previousWorkerId = get().selectedWorkerId;
+    const selectedWorkerId = chooseWorkerId(activeConnection, previousWorkerId);
+    set({ connections, activeConnection, selectedWorkerId });
+    if (selectedWorkerId !== previousWorkerId) {
+      void saveSelectedWorkerId(activeConnection.profileId, selectedWorkerId);
+    }
   },
 
   switchConnection: async (profileId) => {
@@ -172,18 +192,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (generation !== connectionSwitchGeneration) return;
     const activeConnection = connections.find((item) => item.profileId === profileId) ?? null;
     visibleThreads.clear();
-    const [projects, threads, outbox, pendingMessages, unreadThreadIds, rememberedProjectId] = activeConnection ? await Promise.all([
+    const [projects, threads, outbox, pendingMessages, unreadThreadIds, rememberedProjectId,
+      rememberedWorkerId] = activeConnection ? await Promise.all([
       loadCachedProjects(profileId), loadCachedThreads(profileId),
       listOutbox(profileId), listPendingMessagePreviews(profileId), loadUnreadThreadIds(profileId),
       loadSelectedProjectId(profileId),
-    ]) : [[], [], [], [], [], null];
+      loadSelectedWorkerId(profileId),
+    ]) : [[], [], [], [], [], null, null];
     if (generation !== connectionSwitchGeneration) return;
     const selectedProjectId = chooseProjectId(projects, rememberedProjectId);
+    const selectedWorkerId = chooseWorkerId(activeConnection, rememberedWorkerId);
     set({ connections, activeConnection, projects, threads, modelsByTarget: {}, pendingRequests: {},
       outbox, pendingMessages, unreadThreadIds: unreadRecord(unreadThreadIds),
-      selectedProjectId, error: null });
+      selectedProjectId, selectedWorkerId, error: null });
     if (activeConnection && selectedProjectId !== rememberedProjectId) {
       void saveSelectedProjectId(profileId, selectedProjectId);
+    }
+    if (activeConnection && selectedWorkerId !== rememberedWorkerId) {
+      void saveSelectedWorkerId(profileId, selectedWorkerId);
     }
     if (generation !== connectionSwitchGeneration) return;
     await get().refresh();
@@ -193,6 +219,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     const connection = get().activeConnection;
     set({ selectedProjectId });
     if (connection) void saveSelectedProjectId(connection.profileId, selectedProjectId);
+  },
+  setSelectedWorker: (selectedWorkerId) => {
+    const connection = get().activeConnection;
+    const normalized = chooseWorkerId(connection, selectedWorkerId);
+    set({ selectedWorkerId: normalized });
+    if (connection) void saveSelectedWorkerId(connection.profileId, normalized);
   },
   setThreadVisible: (threadId, visible) => {
     const connection = get().activeConnection;
@@ -671,6 +703,11 @@ function uniqueTargets(projects: MobileProject[]): (string | null)[] {
 
 function chooseProjectId(projects: MobileProject[], remembered: string | null): string | null {
   return projects.find((project) => project.id === remembered)?.id ?? projects[0]?.id ?? null;
+}
+
+function chooseWorkerId(connection: Connection | null, remembered: string | null): string | null {
+  return connection?.controls.find((worker) => worker.workerId === remembered)?.workerId ??
+    connection?.controls[0]?.workerId ?? null;
 }
 
 async function generateAndSetThreadTitle(input: {

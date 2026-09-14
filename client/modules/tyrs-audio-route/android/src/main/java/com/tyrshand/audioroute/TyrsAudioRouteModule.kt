@@ -1,8 +1,10 @@
 package com.tyrshand.audioroute
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
 import android.media.AudioDeviceCallback
+import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaRecorder
 import android.os.Build
@@ -20,6 +22,9 @@ class TyrsAudioRouteModule : Module() {
   private var automaticSelection = true
   private var manualDeviceId: Int? = null
   private var monitoredAudioManager: AudioManager? = null
+  private var audioFocusManager: AudioManager? = null
+  private var audioFocusRequest: AudioFocusRequest? = null
+  private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { }
   private val audioDeviceCallback = object : AudioDeviceCallback() {
     override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
       notifyRouteChanged()
@@ -121,6 +126,7 @@ class TyrsAudioRouteModule : Module() {
       prepared = true
     }
 
+    requestAudioFocus(audioManager)
     audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
     if (shouldSelectAutomatic) selectAutomatic(audioManager)
     return snapshot(context)
@@ -230,10 +236,52 @@ class TyrsAudioRouteModule : Module() {
     @Suppress("DEPRECATION")
     audioManager.isSpeakerphoneOn = previousSpeakerphoneOn
     audioManager.mode = previousMode
+    abandonAudioFocus(audioManager)
     prepared = false
     automaticSelection = true
     manualDeviceId = null
     previousCommunicationDevice = null
+  }
+
+  @Synchronized
+  private fun requestAudioFocus(audioManager: AudioManager) {
+    if (audioFocusManager === audioManager &&
+      (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || audioFocusRequest != null)) return
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      val attributes = AudioAttributes.Builder()
+        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+        .build()
+      val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+        .setAudioAttributes(attributes)
+        .setAcceptsDelayedFocusGain(false)
+        .setOnAudioFocusChangeListener(audioFocusChangeListener)
+        .build()
+      if (audioManager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+        audioFocusManager = audioManager
+        audioFocusRequest = request
+      }
+      return
+    }
+    @Suppress("DEPRECATION")
+    if (audioManager.requestAudioFocus(audioFocusChangeListener,
+        AudioManager.STREAM_VOICE_CALL, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT) ==
+      AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+      audioFocusManager = audioManager
+    }
+  }
+
+  @Synchronized
+  private fun abandonAudioFocus(audioManager: AudioManager) {
+    if (audioFocusManager !== audioManager) return
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+    } else {
+      @Suppress("DEPRECATION")
+      audioManager.abandonAudioFocus(audioFocusChangeListener)
+    }
+    audioFocusRequest = null
+    audioFocusManager = null
   }
 
   private fun availableCommunicationDevices(audioManager: AudioManager): List<AudioDeviceInfo> {
@@ -301,9 +349,9 @@ class TyrsAudioRouteModule : Module() {
     } catch (_: SecurityException) {
       return null
     }
-    return configurations.lastOrNull {
+    return configurations.firstOrNull {
       it.clientAudioSource == MediaRecorder.AudioSource.VOICE_COMMUNICATION
-    }?.audioDevice ?: configurations.lastOrNull()?.audioDevice
+    }?.audioDevice
   }
 
   private fun activeDevice(audioManager: AudioManager): AudioDeviceInfo? {

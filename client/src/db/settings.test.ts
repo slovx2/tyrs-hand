@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { loadLiveConnectionSoundsEnabled, loadLiveConversationId, loadSelectedProjectId,
-  saveLiveConnectionSoundsEnabled, saveLiveConversationId, saveSelectedProjectId } from "./settings";
+import { clearLegacyLiveConversationId, loadLegacyLiveConversationId, loadLiveConnectionSoundsEnabled, loadLiveConversationId,
+  loadSelectedProjectId, loadSelectedWorkerId, saveLiveConnectionSoundsEnabled,
+  saveLiveConversationId, saveSelectedProjectId, saveSelectedWorkerId } from "./settings";
 
 const database = vi.hoisted(() => ({
   getDatabase: vi.fn(),
@@ -36,28 +37,69 @@ describe("会话项目选择持久化", () => {
   });
 });
 
+describe("会话 Worker 选择持久化", () => {
+  it("读取已保存 Worker，空值回退为 null", async () => {
+    database.getDatabase.mockResolvedValue({
+      getFirstAsync: vi.fn().mockResolvedValueOnce({ value: " worker-2 " }),
+    });
+    await expect(loadSelectedWorkerId("machine-1")).resolves.toBe("worker-2");
+    database.getDatabase.mockResolvedValue({
+      getFirstAsync: vi.fn().mockResolvedValueOnce({ value: "" }),
+    });
+    await expect(loadSelectedWorkerId("machine-1")).resolves.toBeNull();
+  });
+
+  it("保存或清空当前机器的 Worker 选择", async () => {
+    const runAsync = vi.fn();
+    database.runDatabaseWrite.mockImplementation((operation: (db: unknown) => unknown) =>
+      operation({ runAsync }));
+    await saveSelectedWorkerId("machine-1", "worker-2");
+    await saveSelectedWorkerId("machine-1", null);
+    expect(runAsync).toHaveBeenNthCalledWith(1, expect.stringContaining("ON CONFLICT"),
+      "selectedWorker:machine-1", "worker-2");
+    expect(runAsync).toHaveBeenNthCalledWith(2, expect.stringContaining("ON CONFLICT"),
+      "selectedWorker:machine-1", "");
+  });
+});
+
 describe("Live conversation 持久化", () => {
   it("读取已保存 conversation，空值回退为 null", async () => {
     database.getDatabase.mockResolvedValue({
       getFirstAsync: vi.fn().mockResolvedValueOnce({ value: " conv-1 " }),
     });
-    await expect(loadLiveConversationId("machine-1")).resolves.toBe("conv-1");
+    await expect(loadLiveConversationId("machine-1", "worker-1")).resolves.toBe("conv-1");
     database.getDatabase.mockResolvedValue({
       getFirstAsync: vi.fn().mockResolvedValueOnce({ value: "" }),
     });
-    await expect(loadLiveConversationId("machine-1")).resolves.toBeNull();
+    await expect(loadLiveConversationId("machine-1", "worker-1")).resolves.toBeNull();
   });
 
-  it("保存或清空当前机器的 Live conversation", async () => {
+  it("读取旧版单机器 Live conversation 供迁移校验", async () => {
+    database.getDatabase.mockResolvedValue({
+      getFirstAsync: vi.fn().mockResolvedValueOnce({ value: " legacy-conv " }),
+    });
+    await expect(loadLegacyLiveConversationId("machine-1")).resolves.toBe("legacy-conv");
+  });
+
+  it("迁移后可以清理旧版单机器 Live conversation", async () => {
     const runAsync = vi.fn();
     database.runDatabaseWrite.mockImplementation((operation: (db: unknown) => unknown) =>
       operation({ runAsync }));
-    await saveLiveConversationId("machine-1", "conv-2");
-    await saveLiveConversationId("machine-1", null);
+    await clearLegacyLiveConversationId("machine-1");
+    expect(runAsync).toHaveBeenCalledWith("DELETE FROM app_settings WHERE key=?",
+      "liveConversation:machine-1");
+  });
+
+  it("按 Worker 保存或清空 Live conversation", async () => {
+    const runAsync = vi.fn();
+    database.runDatabaseWrite.mockImplementation((operation: (db: unknown) => unknown) =>
+      operation({ runAsync }));
+    await saveLiveConversationId("machine-1", "worker-1", "conv-2");
+    await saveLiveConversationId("machine-1", "worker-1", null);
     expect(runAsync).toHaveBeenNthCalledWith(1, expect.stringContaining("ON CONFLICT"),
-      "liveConversation:machine-1", "conv-2");
+      "liveConversation:machine-1:worker-1", "conv-2");
     expect(runAsync).toHaveBeenNthCalledWith(2, expect.stringContaining("ON CONFLICT"),
-      "liveConversation:machine-1", "");
+      "liveConversation:machine-1:worker-1", "");
   });
 });
 

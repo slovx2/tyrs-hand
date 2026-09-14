@@ -8,9 +8,10 @@ import { findLiveVoice, liveVoices, type LiveVoice } from "./voices";
 
 type PreviewStatus = "idle" | "playing" | "error";
 
-export function LiveVoicePicker({ value, onChange }: {
+export function LiveVoicePicker({ value, onChange, onOpen }: {
   value: LiveVoice;
   onChange: (value: LiveVoice) => void;
+  onOpen?: () => void;
 }) {
   const theme = useTheme();
   const [open, setOpen] = useState(false);
@@ -87,9 +88,9 @@ export function LiveVoicePicker({ value, onChange }: {
       : `播放 ${selected.name} 试听`;
 
   return <>
-    <Pressable testID="live:voice" accessibilityRole="button"
+      <Pressable testID="live:voice" accessibilityRole="button"
       accessibilityLabel={`音色：${selected.name}`} accessibilityState={{ expanded: open }}
-      onPress={() => setOpen(true)}
+      onPress={() => { onOpen?.(); setOpen(true); }}
       style={({ pressed }) => [styles.trigger, { backgroundColor: theme.colors.surface,
         borderColor: theme.colors.border, opacity: pressed ? 0.78 : 1 }]}>
       <View style={styles.triggerCopy}><Text style={[styles.label, { color: theme.colors.textMuted }]}>音色</Text>

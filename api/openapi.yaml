@@ -2325,10 +2325,13 @@ components:
           type: array
           items:
             type: object
-            required: [id, name]
+            required: [id, name, relativePath, hostPath, availabilityStatus]
             properties:
               id: { type: string, format: uuid }
               name: { type: string }
+              relativePath: { type: string }
+              hostPath: { type: string }
+              availabilityStatus: { type: string }
     LiveSessionRequest:
       type: object
       required: [offerSdp, platform]

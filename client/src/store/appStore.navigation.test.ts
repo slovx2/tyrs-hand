@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MobileProject } from "@/app-server/types";
 import { loadCachedProjects } from "@/db/cache";
 import { listConnections, type Connection } from "@/db/connections";
-import { loadSelectedProjectId, saveSelectedProjectId } from "@/db/settings";
+import { loadSelectedProjectId, loadSelectedWorkerId, saveSelectedProjectId,
+  saveSelectedWorkerId } from "@/db/settings";
 import { useAppStore } from "./appStore";
 
 vi.mock("expo-crypto", () => ({ randomUUID: vi.fn() }));
@@ -17,7 +18,9 @@ vi.mock("@/db/connections", () => ({ listConnections: vi.fn(async () => []),
   setActiveConnection: vi.fn(async () => undefined) }));
 vi.mock("@/db/settings", () => ({ loadThemeMode: vi.fn(async () => "system"),
   loadSelectedProjectId: vi.fn(async () => null),
-  saveSelectedProjectId: vi.fn(async () => undefined) }));
+  saveSelectedProjectId: vi.fn(async () => undefined),
+  loadSelectedWorkerId: vi.fn(async () => null),
+  saveSelectedWorkerId: vi.fn(async () => undefined) }));
 vi.mock("@/app-server/outbox", () => ({ listOutbox: vi.fn(async () => []) }));
 vi.mock("@/db/pendingMessages", () => ({ listPendingMessagePreviews: vi.fn(async () => []) }));
 vi.mock("@/db/threadReads", () => ({ loadUnreadThreadIds: vi.fn(async () => []) }));
@@ -76,6 +79,25 @@ describe("会话导航状态", () => {
     useAppStore.getState().setSelectedProject("project-b");
     expect(useAppStore.getState().selectedProjectId).toBe("project-b");
     expect(saveSelectedProjectId).toHaveBeenCalledWith("machine-b", "project-b");
+  });
+
+  it("恢复并保存当前机器的 Worker 选择", async () => {
+    const controls = [
+      { serverId: "server", baseUrl: "https://control.example", workerId: "worker-1",
+        workerName: "Worker 1", deviceId: "device" },
+      { serverId: "server", baseUrl: "https://control.example", workerId: "worker-2",
+        workerName: "Worker 2", deviceId: "device" },
+    ];
+    vi.mocked(listConnections).mockResolvedValue([{ ...connection("machine-a"), controls }]);
+    vi.mocked(loadCachedProjects).mockResolvedValue([project("project-a")]);
+    vi.mocked(loadSelectedWorkerId).mockResolvedValue("worker-2");
+
+    await useAppStore.getState().initialize();
+
+    expect(useAppStore.getState().selectedWorkerId).toBe("worker-2");
+    expect(loadSelectedWorkerId).toHaveBeenCalledWith("machine-a");
+    useAppStore.getState().setSelectedWorker("worker-1");
+    expect(saveSelectedWorkerId).toHaveBeenCalledWith("machine-a", "worker-1");
   });
 });
 

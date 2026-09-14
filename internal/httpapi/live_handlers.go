@@ -798,11 +798,12 @@ func (s *Server) listClientLiveWorkerProjects(c *gin.Context) {
 	if !s.requireClientWorker(c, workerID) {
 		return
 	}
-	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT project.id, project.name
+	rows, err := s.db.QueryContext(c.Request.Context(), `SELECT project.id, project.name,
+		project.relative_path, COALESCE(project.host_path,''), project.availability_status
 		FROM workspace_projects project
 		JOIN worker_workspaces workspace ON workspace.id=project.workspace_id
 		WHERE workspace.worker_id=$1 AND project.availability_status='available'
-		ORDER BY project.name`, workerID)
+		ORDER BY project.name, project.relative_path`, workerID)
 	if err != nil {
 		problem(c, http.StatusInternalServerError, "读取项目失败", err)
 		return
@@ -811,12 +812,13 @@ func (s *Server) listClientLiveWorkerProjects(c *gin.Context) {
 	items := make([]gin.H, 0)
 	for rows.Next() {
 		var id uuid.UUID
-		var name string
-		if err := rows.Scan(&id, &name); err != nil {
+		var name, relativePath, hostPath, availabilityStatus string
+		if err := rows.Scan(&id, &name, &relativePath, &hostPath, &availabilityStatus); err != nil {
 			problem(c, http.StatusInternalServerError, "解析项目失败", err)
 			return
 		}
-		items = append(items, gin.H{"id": id, "name": name})
+		items = append(items, gin.H{"id": id, "name": name, "relativePath": relativePath,
+			"hostPath": hostPath, "availabilityStatus": availabilityStatus})
 	}
 	c.JSON(http.StatusOK, gin.H{"projects": items})
 }

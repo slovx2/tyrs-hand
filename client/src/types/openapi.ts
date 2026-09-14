@@ -2636,6 +2636,9 @@ export interface components {
                 /** Format: uuid */
                 id: string;
                 name: string;
+                relativePath: string;
+                hostPath: string;
+                availabilityStatus: string;
             }[];
         };
         LiveSessionRequest: {

@@ -38,7 +38,9 @@ vi.mock("@/db/cache", () => ({ loadCachedProjects: vi.fn(async () => []),
 vi.mock("@/db/connections", () => ({ listConnections: vi.fn(async () => []),
   setActiveConnection: vi.fn(async () => undefined) }));
 vi.mock("@/db/settings", () => ({ loadThemeMode: vi.fn(async () => "system"),
-  saveThemeMode: vi.fn(), saveLastTurnPreferences: vi.fn(async () => undefined) }));
+  saveThemeMode: vi.fn(), saveLastTurnPreferences: vi.fn(async () => undefined),
+  loadSelectedWorkerId: vi.fn(async () => null),
+  saveSelectedWorkerId: vi.fn(async () => undefined) }));
 vi.mock("@/db/sshProjects", () => ({ listSSHProjects: vi.fn(async () => []) }));
 vi.mock("@/app-server/registry", () => ({ officialClientFor: () => client }));
 vi.mock("@/app-server/attachments", () => ({ materializeUserInput: vi.fn(async (
@@ -299,6 +301,7 @@ function activate(profileId: string, controls: Connection["controls"] = []): voi
   useAppStore.setState({ ready: true, refreshing: false, error: null,
     activeConnection: connection, connections: [connection], projects: [project], threads: [],
     outbox: [], pendingMessages: [], unreadThreadIds: {}, selectedProjectId: project.id,
+    selectedWorkerId: null,
     modelsByTarget: {}, pendingRequests: {} });
 }
 

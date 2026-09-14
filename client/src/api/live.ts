@@ -17,6 +17,13 @@ export const liveSessionSchema = z.object({
 export type LiveSession = z.infer<typeof liveSessionSchema>;
 export type LiveMessage = { sequence: number; role: "developer" | "user" | "assistant"; text: string; sourceSessionId?: string; createdAt: string };
 export type LiveEvent = { id: number; direction: string; type: string; eventId?: string; payload: Record<string, unknown>; createdAt: string };
+export type LiveWorkerProject = {
+  id: string;
+  name: string;
+  relativePath: string;
+  hostPath: string;
+  availabilityStatus: string;
+};
 
 async function controlRequest<T>(link: ControlMachineLink, path: string, init?: RequestInit, parse?: (value: unknown) => T): Promise<T> {
   const token = await getControlDeviceToken(link.serverId);
@@ -32,10 +39,10 @@ export function createLiveConversation(link: ControlMachineLink, input: {
   workerId: string; sessionId?: string; projectId?: string; model?: string; voice?: string; instructions?: string;
 }) { return controlRequest(link, "/live-conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) }, (value) => liveConversationSchema.parse(value)); }
 export function listLiveWorkerSessions(link: ControlMachineLink, workerId: string) {
-  return controlRequest<{ sessions: Array<{ id: string; title: string }> }>(link, `/live-workers/${workerId}/sessions`);
+  return controlRequest<{ sessions: { id: string; title: string }[] }>(link, `/live-workers/${workerId}/sessions`);
 }
 export function listLiveWorkerProjects(link: ControlMachineLink, workerId: string) {
-  return controlRequest<{ projects: Array<{ id: string; name: string }> }>(link, `/live-workers/${workerId}/projects`);
+  return controlRequest<{ projects: LiveWorkerProject[] }>(link, `/live-workers/${workerId}/projects`);
 }
 export function getLiveConversation(link: ControlMachineLink, id: string) { return controlRequest(link, `/live-conversations/${id}`, undefined, (value) => liveConversationSchema.parse(value)); }
 export function updateLiveConversation(link: ControlMachineLink, id: string, voice: string) {

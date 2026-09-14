@@ -47,6 +47,8 @@ vi.mock("@/db/settings", () => ({
   loadThemeMode: async () => "system",
   saveLastTurnPreferences: async () => undefined,
   saveThemeMode: async () => undefined,
+  loadSelectedWorkerId: async () => null,
+  saveSelectedWorkerId: async () => undefined,
 }));
 vi.mock("@/db/threadReads", () => ({
   loadUnreadThreadIds: async () => [],

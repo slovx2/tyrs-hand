@@ -7,15 +7,15 @@ import { RTCPeerConnection, mediaDevices, type MediaStream } from "react-native-
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import audioRoute, { type LiveAudioRoute, type LiveAudioRouteKind } from "tyrs-audio-route";
 
-import { clearLiveConversationMessages, closeLiveSession, createLiveConversation, createLiveSession, getLiveConversation, listLiveMessages, listLiveWorkerProjects, listLiveWorkerSessions, recoverLiveSession, resetLiveConversationHistory, updateLiveConversation, type LiveConversation } from "@/api/live";
-import { Dropdown } from "@/components/Dropdown";
+import { clearLiveConversationMessages, closeLiveSession, createLiveConversation, createLiveSession, getLiveConversation, listLiveMessages, listLiveWorkerProjects, recoverLiveSession, resetLiveConversationHistory, updateLiveConversation, type LiveConversation } from "@/api/live";
 import { Screen } from "@/components/ui";
 import { LiveMark } from "@/features/live/LiveMark";
 import { LiveVoicePicker } from "@/features/live/LiveVoicePicker";
+import { resolveLiveProjectForSSHProject, type LiveProjectResolution } from "@/features/live/liveProjectMapping";
 import { initialLiveTranscriptState, reduceLiveTranscript, visibleLiveTranscript, type LiveTranscriptState } from "@/features/live/transcriptReducer";
 import { defaultLiveVoice, findLiveVoice, type LiveVoice } from "@/features/live/voices";
-import { loadLiveConnectionSoundsEnabled, loadLiveConversationId, saveLiveConversationId,
-  saveLiveConnectionSoundsEnabled } from "@/db/settings";
+import { clearLegacyLiveConversationId, loadLegacyLiveConversationId, loadLiveConnectionSoundsEnabled,
+  loadLiveConversationId, saveLiveConversationId, saveLiveConnectionSoundsEnabled } from "@/db/settings";
 import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
 import { playLiveConnectionSound } from "@/features/live/liveSounds";
@@ -46,14 +46,16 @@ async function requestBluetoothConnectPermission(): Promise<void> {
 function audioRouteLabel(route: LiveAudioRoute | null): string {
   if (!route) return "自动";
   const name = route.activeDevice?.name;
-  const inputConfirmed = route.activeInputDevice?.kind === route.kind;
+  const inputKind = route.activeInputDevice?.kind;
+  const inputLabel = inputKind === "bluetooth" ? "蓝牙麦克风"
+    : inputKind === "wired" ? "有线麦克风"
+      : inputKind ? "手机麦克风" : "输入待确认";
+  const inputOutputLabel = inputKind === route.kind ? "输入/输出" : `输出 · ${inputLabel}`;
   if (route.kind === "bluetooth") {
-    const suffix = inputConfirmed ? "输入/输出" : route.activeInputDevice ? "输出 · 手机麦克风" : "输入待确认";
-    return name ? `蓝牙耳机（${suffix}） · ${name}` : `蓝牙耳机（${suffix}）`;
+    return name ? `蓝牙耳机（${inputOutputLabel}） · ${name}` : `蓝牙耳机（${inputOutputLabel}）`;
   }
   if (route.kind === "wired") {
-    const suffix = inputConfirmed ? "输入/输出" : route.activeInputDevice ? "输出 · 手机麦克风" : "输入待确认";
-    return name ? `有线耳机（${suffix}） · ${name}` : `有线耳机（${suffix}）`;
+    return name ? `有线耳机（${inputOutputLabel}） · ${name}` : `有线耳机（${inputOutputLabel}）`;
   }
   if (route.kind === "speaker") return "手机扬声器 · 手机麦克风";
   if (route.kind === "earpiece") return "手机听筒 · 手机麦克风";
@@ -89,12 +91,14 @@ export default function LiveScreen() {
   const params = useLocalSearchParams<Record<string, string | string[]>>();
   const ready = useAppStore((state) => state.ready);
   const connection = useAppStore((state) => state.activeConnection);
+  const selectedWorkerId = useAppStore((state) => state.selectedWorkerId);
+  const projects = useAppStore((state) => state.projects);
+  const selectedProjectId = useAppStore((state) => state.selectedProjectId);
   const peer = useRef<RTCPeerConnection | null>(null);
   const channel = useRef<ReturnType<RTCPeerConnection["createDataChannel"]> | null>(null);
   const stream = useRef<MediaStream | null>(null);
   const [conversation, setConversation] = useState<LiveConversation | null>(null);
   const [conversationLoaded, setConversationLoaded] = useState(false);
-  const [conversationLoadError, setConversationLoadError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [state, setState] = useState<LiveTranscriptState>(initialLiveTranscriptState);
   const [status, setStatus] = useState("未连接");
@@ -105,14 +109,10 @@ export default function LiveScreen() {
   const [audioSelection, setAudioSelection] = useState<LiveAudioSelection>({ kind: "auto" });
   const [soundsEnabled, setSoundsEnabled] = useState(true);
   const [wakeRequestCount, setWakeRequestCount] = useState(0);
-  const [workerId, setWorkerId] = useState("");
-  const [mode, setMode] = useState<"bind" | "new">("bind");
-  const [bindSessionId, setBindSessionId] = useState("");
-  const [projectId, setProjectId] = useState("");
   const [selectedVoice, setSelectedVoice] = useState<LiveVoice>(defaultLiveVoice);
   const [activeSessionVoice, setActiveSessionVoice] = useState<string>();
-  const [sessions, setSessions] = useState<Array<{ id: string; title: string }>>([]);
-  const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
+  const [controlProjectId, setControlProjectId] = useState<string | null | undefined>(undefined);
+  const [controlProjectError, setControlProjectError] = useState<string | null>(null);
   const voiceSaveQueue = useRef(Promise.resolve());
   const voiceSaveRevision = useRef(0);
   const requestedVoice = useRef<{ conversationId: string; voice: LiveVoice } | undefined>(undefined);
@@ -121,12 +121,15 @@ export default function LiveScreen() {
   const sessionIdRef = useRef<string | null>(null);
   const sessionStartedSoundPlayed = useRef(false);
   const consumedWakeRequestCount = useRef(0);
-  const loadedConversationProfile = useRef<string | undefined>(undefined);
+  const initialAutoConnectAttempted = useRef(false);
+  const loadedConversationTarget = useRef<string | undefined>(undefined);
   const connectRef = useRef<() => Promise<void>>(async () => undefined);
   const soundsEnabledRef = useRef(true);
-  const workers = connection?.controls ?? [];
-  const link = workers.find((item) => item.workerId === workerId) ?? workers[0] ?? null;
+  const routeWorkerId = Array.isArray(params.workerId) ? params.workerId[0] : params.workerId;
+  const workerId = routeWorkerId ?? selectedWorkerId ?? "";
+  const link = connection?.controls.find((item) => item.workerId === workerId) ?? null;
   const profileId = connection?.profileId;
+  const selectedProject = projects.find((item) => item.id === selectedProjectId) ?? null;
 
   useEffect(() => {
     void loadLiveConnectionSoundsEnabled()
@@ -176,39 +179,33 @@ export default function LiveScreen() {
     void audioRoute.restoreLiveAudioRoute().catch(() => undefined);
   }, []);
   useEffect(() => {
-    const only = connection?.controls.length === 1 ? connection.controls[0] : undefined;
-    if (workerId || !only) return;
-    setWorkerId(only.workerId);
-  }, [workerId, connection]);
-  useEffect(() => {
-    if (!link || !workerId) {
-      setSessions([]);
-      setProjects([]);
+    if (!link || !workerId || !selectedProject) {
+      setControlProjectId(null);
+      setControlProjectError(!link ? "当前 Worker 不可用" : !selectedProject
+        ? "请先在会话页选择 Codex 项目" : null);
       return;
     }
     let cancelled = false;
-    void (async () => {
-      try {
-        const [sessionResult, projectResult] = await Promise.all([
-          listLiveWorkerSessions(link, workerId),
-          listLiveWorkerProjects(link, workerId),
-        ]);
+    setControlProjectId(undefined);
+    setControlProjectError(null);
+    void listLiveWorkerProjects(link, workerId)
+      .then(({ projects: controlProjects }) => {
         if (cancelled) return;
-        setSessions(sessionResult.sessions ?? []);
-        setProjects(projectResult.projects ?? []);
-      } catch {
-        if (!cancelled) {
-          setSessions([]);
-          setProjects([]);
-        }
-      }
-    })();
+        const resolution: LiveProjectResolution = resolveLiveProjectForSSHProject(
+          selectedProject, controlProjects);
+        setControlProjectId(resolution.status === "matched" ? resolution.project.id : null);
+        setControlProjectError(resolution.status === "matched" ? null : resolution.message);
+      })
+      .catch((reason: unknown) => {
+        if (cancelled) return;
+        setControlProjectId(null);
+        setControlProjectError(reason instanceof Error ? reason.message : "无法读取 Control 项目");
+      });
     return () => { cancelled = true; };
-  }, [link, workerId]);
+  }, [link, selectedProject, workerId]);
   useEffect(() => {
     if (!ready) return;
     setConversationLoaded(false);
-    setConversationLoadError(null);
     if (!profileId) {
       setConversationLoaded(true);
       return;
@@ -217,22 +214,31 @@ export default function LiveScreen() {
       setConversationLoaded(true);
       return;
     }
-    if (loadedConversationProfile.current !== profileId) {
-      loadedConversationProfile.current = profileId;
+    const targetKey = `${profileId}:${workerId}`;
+    if (loadedConversationTarget.current !== targetKey) {
+      loadedConversationTarget.current = targetKey;
       setConversation(null);
+      setState(initialLiveTranscriptState);
     }
     let cancelled = false;
     void (async () => {
       try {
-        const id = await loadLiveConversationId(profileId);
-        if (!id || cancelled) return;
-        const current = await getLiveConversation(link, id);
-        const history = await listLiveMessages(link, id);
+        const id = await loadLiveConversationId(profileId, workerId);
+        const legacyId = id ? null : await loadLegacyLiveConversationId(profileId);
+        const savedId = id ?? legacyId;
+        if (!savedId || cancelled) return;
+        const current = await getLiveConversation(link, savedId);
+        if (current.workerId !== workerId) {
+          if (id) await saveLiveConversationId(profileId, workerId, null);
+          return;
+        }
+        const history = await listLiveMessages(link, savedId);
+        if (!id) {
+          await saveLiveConversationId(profileId, workerId, current.id);
+          await clearLegacyLiveConversationId(profileId);
+        }
         if (cancelled) return;
         setConversation(current);
-        if (current.workerId) setWorkerId(current.workerId);
-        if (current.workspaceSessionId) setBindSessionId(current.workspaceSessionId);
-        if (current.projectId) setProjectId(current.projectId);
         setSelectedVoice(findLiveVoice(current.voice).slug);
         selectedVoiceRef.current = findLiveVoice(current.voice).slug;
         setState({
@@ -246,15 +252,15 @@ export default function LiveScreen() {
         });
       } catch (reason: unknown) {
         if (!cancelled) {
-          await saveLiveConversationId(profileId, null);
-          setConversationLoadError(reason instanceof Error ? reason.message : "无法读取已保存的 Live 配置");
+          await saveLiveConversationId(profileId, workerId, null);
+          setError(reason instanceof Error ? reason.message : "无法读取已保存的 Live 配置");
         }
       } finally {
         if (!cancelled) setConversationLoaded(true);
       }
     })();
     return () => { cancelled = true; };
-  }, [link, profileId, ready]);
+  }, [link, profileId, ready, workerId]);
 
   const stopPeer = () => {
     channel.current?.close();
@@ -278,7 +284,7 @@ export default function LiveScreen() {
         setStatus("已连接");
         if (shouldPlaySessionStartedSound(event.type, sessionStartedSoundPlayed.current)) {
           sessionStartedSoundPlayed.current = true;
-          void playLiveConnectionSound("connected", soundsEnabledRef.current);
+          void playLiveConnectionSound("connected", soundsEnabledRef.current).catch(() => undefined);
         }
       }
       if (event.type === "session.closed") {
@@ -334,16 +340,15 @@ export default function LiveScreen() {
       let current = conversation;
       stopPeer();
       if (!current) {
-        if (!workerId) throw new Error("请先选择 Worker");
-        if (mode === "bind") {
-          if (!bindSessionId) throw new Error("请选择要绑定的 Session");
-          current = await createLiveConversation(link, { workerId, sessionId: bindSessionId, voice: selectedVoice });
-        } else {
-          if (!projectId) throw new Error("请选择项目以新开语音");
-          current = await createLiveConversation(link, { workerId, projectId, voice: selectedVoice });
+        if (!workerId) throw new Error("请先在会话页选择 Worker");
+        if (!controlProjectId) {
+          throw new Error(controlProjectError ?? "当前 SSH 项目尚未同步到 Control");
         }
+        current = await createLiveConversation(link, {
+          workerId, projectId: controlProjectId, voice: selectedVoice,
+        });
         setConversation(current);
-        await saveLiveConversationId(profileId, current.id);
+        await saveLiveConversationId(profileId, workerId, current.id);
       }
       await requestBluetoothConnectPermission();
       let route: LiveAudioRoute | null = null;
@@ -356,7 +361,7 @@ export default function LiveScreen() {
       } catch {
         // 路由选择失败时继续使用系统默认设备，不阻断 Live 建连。
       }
-      void playLiveConnectionSound("connecting", soundsEnabledRef.current);
+      void playLiveConnectionSound("connecting", soundsEnabledRef.current).catch(() => undefined);
       await voiceSaveQueue.current;
       const pc = new RTCPeerConnection(liveIceConfiguration);
       peer.current = pc;
@@ -434,23 +439,28 @@ export default function LiveScreen() {
 
   connectRef.current = connect;
   useEffect(() => {
-    if (!ready || !conversationLoaded ||
-      wakeRequestCount <= consumedWakeRequestCount.current) return;
-    consumedWakeRequestCount.current = wakeRequestCount;
+    if (!ready || !conversationLoaded || controlProjectId === undefined ||
+      initialAutoConnectAttempted.current) return;
+    initialAutoConnectAttempted.current = true;
     if (!profileId) {
       setError("请先在设置页连接一个 Control");
       return;
     }
     if (!link) {
-      setError("当前连接不可用，请先在设置页连接 Control");
+      setError("当前 Worker 不可用，请返回会话页重新选择");
       return;
     }
-    if (!conversation) {
-      setError(conversationLoadError ?? "请先手动完成一次 Live 配置");
+    if (!selectedProject) {
+      setError("请先在会话页选择 Codex 项目");
       return;
     }
     void connectRef.current();
-  }, [conversation, conversationLoadError, conversationLoaded, link, profileId, ready, wakeRequestCount]);
+  }, [conversationLoaded, controlProjectId, link, profileId, ready, selectedProject]);
+  useEffect(() => {
+    if (wakeRequestCount <= consumedWakeRequestCount.current) return;
+    consumedWakeRequestCount.current = wakeRequestCount;
+    void connectRef.current();
+  }, [wakeRequestCount]);
 
   const toggleSounds = (value: boolean) => {
     soundsEnabledRef.current = value;
@@ -532,36 +542,6 @@ export default function LiveScreen() {
       </Pressable>
     </View>
     {error ? <Text style={[styles.error, { color: theme.colors.danger }]}>{error}</Text> : null}
-    <View style={styles.pickers}>
-      <View style={styles.voiceField}>
-        <LiveVoicePicker value={selectedVoice} onChange={handleVoiceChange} />
-        {voiceNeedsReset ? <Text style={[styles.voicePending, { color: theme.colors.warning }]}>
-          已选择 {findLiveVoice(selectedVoice).name}，重置会话或清空字幕后生效
-        </Text> : null}
-      </View>
-      <Dropdown testID="live:worker" label="Worker" value={workerId || null}
-        placeholder="选择 Worker" emptyLabel="没有可用 Worker"
-        disabled={Boolean(conversation)}
-        options={workers.map((item) => ({ value: item.workerId, label: item.workerName }))}
-        onChange={(value) => { setWorkerId(value); setBindSessionId(""); setProjectId(""); }} />
-      <Dropdown testID="live:mode" label="入口" value={mode}
-        disabled={Boolean(conversation)}
-        options={[{ value: "bind", label: "绑定已有 Session" }, { value: "new", label: "新开语音" }]}
-        onChange={(value) => setMode(value as "bind" | "new")} />
-      {mode === "bind" ? (
-        <Dropdown testID="live:session" label="Session" value={bindSessionId || null}
-          placeholder="选择 Session" emptyLabel="没有可绑定的 Session"
-          disabled={Boolean(conversation)}
-          options={sessions.map((item) => ({ value: item.id, label: item.title || item.id }))}
-          onChange={setBindSessionId} />
-      ) : (
-        <Dropdown testID="live:project" label="项目" value={projectId || null}
-          placeholder="选择项目" emptyLabel="没有可用项目"
-          disabled={Boolean(conversation)}
-          options={projects.map((item) => ({ value: item.id, label: item.name }))}
-          onChange={setProjectId} />
-      )}
-    </View>
     <ScrollView contentContainerStyle={styles.transcript} testID="live:transcript">
       {visible.length === 0
         ? <Text style={{ color: theme.colors.textMuted }}>连接后开始说话</Text>
@@ -583,7 +563,7 @@ export default function LiveScreen() {
         音频输出 · {audioRouteLabel(activeAudioRoute)}
       </Text>
       <Pressable testID={connected ? "live:disconnect" : "live:connect"} accessibilityRole="button"
-        disabled={connecting || (!conversation && (!workerId || (mode === "bind" ? !bindSessionId : !projectId)))}
+        disabled={connecting || (!conversation && (!workerId || !controlProjectId))}
         onPress={() => void (connected ? disconnect() : connect())}
         style={[styles.action, { backgroundColor: theme.colors.accent, opacity: connecting ? 0.5 : 1 }]}>
         <Text style={[styles.actionText, { color: theme.colors.accentForeground }]}>{connected ? "断开" : "连接"}</Text>
@@ -594,6 +574,13 @@ export default function LiveScreen() {
         <Pressable accessibilityRole="button" accessibilityLabel="关闭菜单" style={StyleSheet.absoluteFill}
           onPress={() => setMenuOpen(false)} />
         <View style={[styles.menu, { top: insets.top + 48, backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, theme.shadow]}>
+          <View style={styles.menuVoice}>
+            <LiveVoicePicker value={selectedVoice} onChange={handleVoiceChange}
+              onOpen={() => setMenuOpen(false)} />
+            {voiceNeedsReset ? <Text style={[styles.voicePending, { color: theme.colors.warning }]}>
+              已选择 {findLiveVoice(selectedVoice).name}，重置会话或清空字幕后生效
+            </Text> : null}
+          </View>
           <Pressable testID="live:reset" style={styles.menuItem} onPress={() => { setMenuOpen(false); void resetSession(); }}>
             <Text style={[styles.menuText, { color: theme.colors.text }]}>重置会话</Text>
           </Pressable>
@@ -655,8 +642,7 @@ const styles = StyleSheet.create({
   exit: { fontFamily: "Inter_500Medium", fontSize: 16 },
   more: { fontFamily: "Inter_600SemiBold", fontSize: 22, letterSpacing: 1, textAlign: "right" },
   error: { paddingHorizontal: 20, marginBottom: 8 },
-  pickers: { paddingHorizontal: 20, gap: 8, marginBottom: 8 },
-  voiceField: { gap: 4 },
+  menuVoice: { padding: 8, gap: 4 },
   voicePending: { fontSize: 12, paddingHorizontal: 4 },
   transcript: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, gap: 12 },
   line: { gap: 4 },
@@ -666,7 +652,7 @@ const styles = StyleSheet.create({
   action: { alignSelf: "stretch", minHeight: 48, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   actionText: { fontFamily: "Inter_600SemiBold", fontSize: 16 },
   modalRoot: { flex: 1 },
-  menu: { position: "absolute", right: 10, width: 180, borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, paddingVertical: 6 },
+  menu: { position: "absolute", right: 10, width: 240, borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, paddingVertical: 6 },
   menuItem: { minHeight: 48, paddingHorizontal: 16, justifyContent: "center" },
   menuSubtext: { fontSize: 12, marginTop: 2 },
   menuSetting: { minHeight: 48, paddingHorizontal: 12, flexDirection: "row",

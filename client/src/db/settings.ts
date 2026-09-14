@@ -70,30 +70,67 @@ export async function saveSelectedProjectId(profileId: string,
   selectedProjectKey(profileId), projectId ?? ""));
 }
 
-function preferencesKey(profileId: string): string {
-  return `lastTurnPreferences:${profileId}`;
-}
-
-export async function loadLiveConversationId(profileId: string): Promise<string | null> {
+export async function loadSelectedWorkerId(profileId: string): Promise<string | null> {
   const database = await getDatabase();
   const row = await database.getFirstAsync<{ value: string }>(
-    "SELECT value FROM app_settings WHERE key=?", liveConversationKey(profileId));
+    "SELECT value FROM app_settings WHERE key=?", selectedWorkerKey(profileId));
   const value = row?.value?.trim();
   return value || null;
 }
 
-export async function saveLiveConversationId(profileId: string,
-  conversationId: string | null): Promise<void> {
+export async function saveSelectedWorkerId(profileId: string,
+  workerId: string | null): Promise<void> {
   await runDatabaseWrite((database) => database.runAsync(
     `INSERT INTO app_settings(key,value) VALUES (?,?)
     ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
-  liveConversationKey(profileId), conversationId ?? ""));
+  selectedWorkerKey(profileId), workerId ?? ""));
+}
+
+function preferencesKey(profileId: string): string {
+  return `lastTurnPreferences:${profileId}`;
+}
+
+export async function loadLiveConversationId(profileId: string, workerId: string): Promise<string | null> {
+  const database = await getDatabase();
+  const row = await database.getFirstAsync<{ value: string }>(
+    "SELECT value FROM app_settings WHERE key=?", liveConversationKey(profileId, workerId));
+  const value = row?.value?.trim();
+  return value || null;
+}
+
+export async function loadLegacyLiveConversationId(profileId: string): Promise<string | null> {
+  const database = await getDatabase();
+  const row = await database.getFirstAsync<{ value: string }>(
+    "SELECT value FROM app_settings WHERE key=?", legacyLiveConversationKey(profileId));
+  const value = row?.value?.trim();
+  return value || null;
+}
+
+export async function clearLegacyLiveConversationId(profileId: string): Promise<void> {
+  await runDatabaseWrite((database) => database.runAsync(
+    "DELETE FROM app_settings WHERE key=?", legacyLiveConversationKey(profileId)));
+}
+
+export async function saveLiveConversationId(profileId: string,
+  workerId: string, conversationId: string | null): Promise<void> {
+  await runDatabaseWrite((database) => database.runAsync(
+    `INSERT INTO app_settings(key,value) VALUES (?,?)
+    ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+  liveConversationKey(profileId, workerId), conversationId ?? ""));
 }
 
 function selectedProjectKey(profileId: string): string {
   return `selectedProject:${profileId}`;
 }
 
-function liveConversationKey(profileId: string): string {
+function selectedWorkerKey(profileId: string): string {
+  return `selectedWorker:${profileId}`;
+}
+
+function liveConversationKey(profileId: string, workerId: string): string {
+  return `liveConversation:${profileId}:${workerId}`;
+}
+
+function legacyLiveConversationKey(profileId: string): string {
   return `liveConversation:${profileId}`;
 }

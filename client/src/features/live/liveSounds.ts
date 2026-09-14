@@ -18,8 +18,8 @@ const liveAudioMode = {
   staysActiveInBackground: false,
   interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
   shouldDuckAndroid: false,
-  // Keep Expo AV in communication mode; the native route module selects BT or wired output.
-  playThroughEarpieceAndroid: true,
+  // 原生路由模块选择通信设备，不强制使用手机听筒。
+  playThroughEarpieceAndroid: false,
 };
 
 let soundQueue: Promise<void> = Promise.resolve();
@@ -30,8 +30,8 @@ export function playLiveConnectionSound(kind: LiveConnectionSound,
   const operation = soundQueue.catch(() => undefined).then(async () => {
     let sound: Audio.Sound | null = null;
     try {
-      await Audio.setAudioModeAsync(liveAudioMode);
-      await audioRoute.prepareLiveAudioRoute();
+      try { await Audio.setAudioModeAsync(liveAudioMode); } catch { /* 提示音不阻断建连。 */ }
+      try { await audioRoute.prepareLiveAudioRoute(); } catch { /* 使用系统当前路由。 */ }
       sound = (await Audio.Sound.createAsync(sources[kind], { shouldPlay: true })).sound;
       await waitForSoundToFinish(sound);
     } catch {
