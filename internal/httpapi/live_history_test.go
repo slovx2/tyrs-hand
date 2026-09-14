@@ -92,3 +92,12 @@ func TestLiveUserTranscriptUsesSinglePendingUtterance(t *testing.T) {
 	}}
 	require.Equal(t, "现在几点了", manager.userTranscript(sessionID))
 }
+
+func TestNormalizeLiveCodexSettings(t *testing.T) {
+	model, effort := normalizeLiveCodexSettings("", "")
+	require.Equal(t, defaultLiveCodexModel, model)
+	require.Equal(t, defaultLiveCodexEffort, effort)
+	model, effort = normalizeLiveCodexSettings(" gpt-5.6-sol ", " xhigh ")
+	require.Equal(t, "gpt-5.6-sol", model)
+	require.Equal(t, "xhigh", effort)
+}

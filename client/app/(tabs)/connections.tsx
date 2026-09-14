@@ -18,6 +18,7 @@ import { connectPairingUri } from "@/features/connections/connectPairing";
 import { listSSHDirectory, probeSSHHost, probeSSHHostAddress,
   sshTransport } from "@/native/sshTransport";
 import { isDefaultAssistant, openAssistantSettings } from "@/native/voiceWake";
+import { LiveCodexSettings } from "@/features/live/LiveCodexSettings";
 import { isPreviewMode } from "@/preview/config";
 import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
@@ -259,6 +260,7 @@ export default function ConnectionsScreen() {
           onPress={() => void enableAssistant()} />
       </View>
     </Card> : null}
+    <LiveCodexSettings />
     <ConnectionErrorBanner />
     <View style={styles.list}>{connections.length === 0
       ? <EmptyState title="还没有机器" detail="可先添加 SSH，也可先扫码关联 Control Worker。" />

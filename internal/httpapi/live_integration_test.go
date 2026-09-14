@@ -38,9 +38,10 @@ type fakeLiveCall struct {
 }
 
 type fakeLiveServer struct {
-	server *httptest.Server
-	mu     sync.Mutex
-	calls  []*fakeLiveCall
+	server      *httptest.Server
+	mu          sync.Mutex
+	calls       []*fakeLiveCall
+	ignoreClose bool
 }
 
 func newFakeLiveServer(t *testing.T) *fakeLiveServer {
@@ -118,6 +119,12 @@ func newFakeLiveServer(t *testing.T) *fakeLiveServer {
 			}
 			if event["type"] == "session.close" {
 				call.closeSignals <- struct{}{}
+				fake.mu.Lock()
+				ignoreClose := fake.ignoreClose
+				fake.mu.Unlock()
+				if ignoreClose {
+					continue
+				}
 				call.writeJSON(map[string]any{"type": "session.closed", "id": "closed-" + id})
 				_ = connection.Close()
 				return
@@ -345,6 +352,76 @@ func TestLiveControlWithFakeProvider(t *testing.T) {
 	finalClose := clientJSONRequest(t, http.MethodPost, httpServer.URL+"/api/v1/client/live-sessions/"+
 		recoveredBody.SessionID.String()+"/close", loginBody.AccessToken, nil)
 	require.Equal(t, http.StatusOK, finalClose.Code, finalClose.Body.String())
+}
+
+func TestLiveCloseWhenProviderOmitsClosed(t *testing.T) {
+	db := workerDatabase(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	require.NoError(t, database.Migrate(ctx, db))
+	box, err := security.NewSecretBox(make([]byte, 32))
+	require.NoError(t, err)
+	authService := auth.NewService(db, box, "live-setup-token", "")
+	setup, err := authService.Setup(ctx, "live-setup-token", "live-close-admin", "test-password-123")
+	require.NoError(t, err)
+	fake := newFakeLiveServer(t)
+	fake.mu.Lock()
+	fake.ignoreClose = true
+	fake.mu.Unlock()
+	manager := newLiveManager(db, live.NewProvider(fake.server.URL, "provider-secret"), zap.NewNop())
+	server := &Server{db: db, auth: authService, cfg: config.Config{LeaseDuration: time.Minute}, logger: zap.NewNop(), liveManager: manager}
+	httpServer := httptest.NewServer(liveIntegrationRouter(server))
+	t.Cleanup(httpServer.Close)
+	go func() { _ = manager.Start(ctx) }()
+	require.Eventually(t, func() bool {
+		_, err := manager.rootContext()
+		return err == nil
+	}, time.Second, 10*time.Millisecond)
+	code, err := totp.GenerateCode(setup.TOTPSecret, time.Now())
+	require.NoError(t, err)
+	login := clientJSONRequest(t, http.MethodPost, httpServer.URL+"/api/v1/client/auth/login", "",
+		map[string]any{"username": "live-close-admin", "password": "test-password-123", "totp": code})
+	require.Equal(t, http.StatusOK, login.Code, login.Body.String())
+	var loginBody struct {
+		AccessToken string `json:"accessToken"`
+	}
+	require.NoError(t, json.Unmarshal(login.Body.Bytes(), &loginBody))
+	var workerID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO workers(name, roles, max_concurrent_jobs)
+		VALUES ('live-close-worker','["discord"]',1) RETURNING id`).Scan(&workerID))
+	fixture := seedScheduledClaimWorkspace(t, db, workerID)
+	conversation := clientJSONRequest(t, http.MethodPost, httpServer.URL+"/api/v1/client/live-conversations",
+		loginBody.AccessToken, map[string]any{
+			"model": "gpt-live-test", "voice": "marin",
+			"workerId": workerID, "sessionId": fixture.session,
+		})
+	require.Equal(t, http.StatusCreated, conversation.Code, conversation.Body.String())
+	var conversationBody liveConversationResponse
+	require.NoError(t, json.Unmarshal(conversation.Body.Bytes(), &conversationBody))
+	created := clientJSONRequest(t, http.MethodPost, httpServer.URL+"/api/v1/client/live-conversations/"+
+		conversationBody.ID.String()+"/sessions", loginBody.AccessToken,
+		map[string]any{"offerSdp": "offer-sdp\r\n", "platform": "web"})
+	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
+	var createdBody liveSessionResponse
+	require.NoError(t, json.Unmarshal(created.Body.Bytes(), &createdBody))
+	call := fake.waitCall(t, 0)
+	call.waitAttach(t, 2)
+	require.Eventually(t, func() bool {
+		var status string
+		return db.QueryRowContext(ctx, `SELECT status FROM live_sessions WHERE id=$1`, createdBody.SessionID).Scan(&status) == nil && status == "active"
+	}, 5*time.Second, 20*time.Millisecond)
+	started := time.Now()
+	closed := clientJSONRequest(t, http.MethodPost, httpServer.URL+"/api/v1/client/live-sessions/"+
+		createdBody.SessionID.String()+"/close", loginBody.AccessToken, nil)
+	require.Equal(t, http.StatusOK, closed.Code, closed.Body.String())
+	require.Less(t, time.Since(started), 3*time.Second)
+	require.Contains(t, closed.Body.String(), `"status":"closing"`)
+	var status, lastError string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status, COALESCE(last_error,'') FROM live_sessions WHERE id=$1`,
+		createdBody.SessionID).Scan(&status, &lastError))
+	require.Equal(t, "closing", status)
+	require.Empty(t, lastError)
+	call.waitClosed(t)
 }
 
 func liveDelegationInstructions(t *testing.T, db *sql.DB, sessionID uuid.UUID) []string {

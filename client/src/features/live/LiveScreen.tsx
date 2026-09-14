@@ -12,6 +12,9 @@ import { resolveMachineControlBinding } from "@/features/connections/machineCont
 import { LiveMark } from "@/features/live/LiveMark";
 import { LiveVoicePicker } from "@/features/live/LiveVoicePicker";
 import { selectableLiveAudioDevices } from "@/features/live/liveAudioDevices";
+import { resolveLiveCodexPreferences } from "@/features/live/liveCodexPreferences";
+import { loadLiveCodexPreferences } from "@/db/settings";
+import { targetKey } from "@/app-server/types";
 import { resolveLiveProjectForSSHProject, type LiveProjectResolution } from "@/features/live/liveProjectMapping";
 import { initialLiveTranscriptState, reduceLiveTranscript, visibleLiveTranscript, type LiveTranscriptState } from "@/features/live/transcriptReducer";
 import { defaultLiveVoice, findLiveVoice, type LiveVoice } from "@/features/live/voices";
@@ -97,6 +100,7 @@ export function LiveScreen({ initialWake = false, onLeave }: {
   const connection = useAppStore((state) => state.activeConnection);
   const projects = useAppStore((state) => state.projects);
   const selectedProjectId = useAppStore((state) => state.selectedProjectId);
+  const modelsByTarget = useAppStore((state) => state.modelsByTarget);
   const peer = useRef<RTCPeerConnection | null>(null);
   const channel = useRef<ReturnType<RTCPeerConnection["createDataChannel"]> | null>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -358,8 +362,12 @@ export function LiveScreen({ initialWake = false, onLeave }: {
         if (!controlProjectId) {
           throw new Error(controlProjectError ?? "当前 SSH 项目尚未同步到 Control");
         }
+        const prefs = resolveLiveCodexPreferences(
+          modelsByTarget[targetKey(profileId, null)] ?? [],
+          await loadLiveCodexPreferences(profileId));
         current = await createLiveConversation(link, {
           workerId, projectId: controlProjectId, voice: selectedVoice,
+          codexModel: prefs.model, codexEffort: prefs.effort,
         });
         setConversation(current);
         await saveLiveConversationId(profileId, workerId, current.id);
@@ -495,9 +503,14 @@ export function LiveScreen({ initialWake = false, onLeave }: {
     const reconnect = Boolean(sessionId);
     setError(null);
     await voiceSaveQueue.current;
-    if (link && conversation) {
+    if (link && conversation && profileId) {
       try {
-        const updated = await resetLiveConversationHistory(link, conversation.id);
+        const prefs = resolveLiveCodexPreferences(
+          modelsByTarget[targetKey(profileId, null)] ?? [],
+          await loadLiveCodexPreferences(profileId));
+        const updated = await resetLiveConversationHistory(link, conversation.id, {
+          codexModel: prefs.model, codexEffort: prefs.effort,
+        });
         setConversation(updated);
       }
       catch (reason) { setError(reason instanceof Error ? reason.message : "重置会话失败"); return; }
@@ -509,9 +522,14 @@ export function LiveScreen({ initialWake = false, onLeave }: {
     const reconnect = Boolean(sessionId);
     setError(null);
     await voiceSaveQueue.current;
-    if (link && conversation) {
+    if (link && conversation && profileId) {
       try {
-        const updated = await clearLiveConversationMessages(link, conversation.id);
+        const prefs = resolveLiveCodexPreferences(
+          modelsByTarget[targetKey(profileId, null)] ?? [],
+          await loadLiveCodexPreferences(profileId));
+        const updated = await clearLiveConversationMessages(link, conversation.id, {
+          codexModel: prefs.model, codexEffort: prefs.effort,
+        });
         setConversation(updated);
       }
       catch (reason) { setError(reason instanceof Error ? reason.message : "清空字幕失败"); return; }

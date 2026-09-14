@@ -1,5 +1,6 @@
 import { getDatabase, runDatabaseWrite } from "./database";
 import type { TurnPreferences } from "@/app-server/officialClient";
+import type { LiveCodexPreferences } from "@/features/live/liveCodexPreferences";
 import type { ThemeMode } from "@/theme/tokens";
 
 export async function loadThemeMode(): Promise<ThemeMode> {
@@ -72,6 +73,32 @@ export async function saveSelectedProjectId(profileId: string,
 
 function preferencesKey(profileId: string): string {
   return `lastTurnPreferences:${profileId}`;
+}
+
+export async function loadLiveCodexPreferences(profileId: string): Promise<LiveCodexPreferences | null> {
+  const database = await getDatabase();
+  const row = await database.getFirstAsync<{ value: string }>(
+    "SELECT value FROM app_settings WHERE key=?", liveCodexPreferencesKey(profileId));
+  if (!row) return null;
+  try {
+    const value = JSON.parse(row.value) as Partial<LiveCodexPreferences>;
+    if (typeof value.model !== "string" || typeof value.effort !== "string") return null;
+    return { model: value.model, effort: value.effort };
+  } catch {
+    return null;
+  }
+}
+
+export async function saveLiveCodexPreferences(profileId: string,
+  value: LiveCodexPreferences): Promise<void> {
+  await runDatabaseWrite((database) => database.runAsync(
+    `INSERT INTO app_settings(key,value) VALUES (?,?)
+    ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+    liveCodexPreferencesKey(profileId), JSON.stringify(value)));
+}
+
+function liveCodexPreferencesKey(profileId: string): string {
+  return `liveCodexPreferences:${profileId}`;
 }
 
 export async function loadLiveConversationId(profileId: string, workerId: string): Promise<string | null> {

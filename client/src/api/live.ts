@@ -37,6 +37,7 @@ async function controlRequest<T>(link: ControlMachineLink, path: string, init?: 
 }
 export function createLiveConversation(link: ControlMachineLink, input: {
   workerId: string; sessionId?: string; projectId?: string; model?: string; voice?: string; instructions?: string;
+  codexModel?: string; codexEffort?: string;
 }) { return controlRequest(link, "/live-conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) }, (value) => liveConversationSchema.parse(value)); }
 export function listLiveWorkerSessions(link: ControlMachineLink, workerId: string) {
   return controlRequest<{ sessions: { id: string; title: string }[] }>(link, `/live-workers/${workerId}/sessions`);
@@ -52,11 +53,19 @@ export function updateLiveConversation(link: ControlMachineLink, id: string, voi
 }
 export function createLiveSession(link: ControlMachineLink, id: string, offerSdp: string) { return controlRequest(link, `/live-conversations/${id}/sessions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ offerSdp, platform: "android" }) }, (value) => liveSessionSchema.parse(value)); }
 export function recoverLiveSession(link: ControlMachineLink, id: string, offerSdp: string) { return controlRequest(link, `/live-conversations/${id}/recover`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ offerSdp, platform: "android" }) }, (value) => liveSessionSchema.parse(value)); }
-export function resetLiveConversationHistory(link: ControlMachineLink, id: string) {
-  return controlRequest(link, `/live-conversations/${id}/reset-history`, { method: "POST" }, (value) => liveConversationSchema.parse(value));
+export function resetLiveConversationHistory(link: ControlMachineLink, id: string, input?: {
+  codexModel?: string; codexEffort?: string;
+}) {
+  return controlRequest(link, `/live-conversations/${id}/reset-history`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input ?? {}),
+  }, (value) => liveConversationSchema.parse(value));
 }
-export function clearLiveConversationMessages(link: ControlMachineLink, id: string) {
-  return controlRequest(link, `/live-conversations/${id}/clear-messages`, { method: "POST" }, (value) => liveConversationSchema.parse(value));
+export function clearLiveConversationMessages(link: ControlMachineLink, id: string, input?: {
+  codexModel?: string; codexEffort?: string;
+}) {
+  return controlRequest(link, `/live-conversations/${id}/clear-messages`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input ?? {}),
+  }, (value) => liveConversationSchema.parse(value));
 }
 export function closeLiveSession(link: ControlMachineLink, id: string) { return controlRequest(link, `/live-sessions/${id}/close`, { method: "POST" }, (value) => z.object({ sessionId: z.string().uuid(), status: z.string() }).parse(value)); }
 export function listLiveMessages(link: ControlMachineLink, id: string) { return controlRequest<{ items: LiveMessage[] }>(link, `/live-conversations/${id}/messages?limit=100`); }

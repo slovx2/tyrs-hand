@@ -18,10 +18,24 @@ import (
 )
 
 const (
-	defaultLiveModel     = "gpt-live-1-codex"
-	defaultLiveVoice     = "cove"
-	liveCloseWaitTimeout = 30 * time.Second
+	defaultLiveModel       = "gpt-live-1-codex"
+	defaultLiveVoice       = "cove"
+	defaultLiveCodexModel  = "gpt-5.6-luna"
+	defaultLiveCodexEffort = "medium"
+	liveCloseAckTimeout    = 2 * time.Second
 )
+
+func normalizeLiveCodexSettings(model, effort string) (string, string) {
+	model = strings.TrimSpace(model)
+	effort = strings.TrimSpace(effort)
+	if model == "" {
+		model = defaultLiveCodexModel
+	}
+	if effort == "" {
+		effort = defaultLiveCodexEffort
+	}
+	return model, effort
+}
 
 type liveConversationRequest struct {
 	WorkerID     uuid.UUID  `json:"workerId"`
@@ -30,6 +44,12 @@ type liveConversationRequest struct {
 	Model        string     `json:"model"`
 	Voice        string     `json:"voice"`
 	Instructions string     `json:"instructions"`
+	CodexModel   string     `json:"codexModel"`
+	CodexEffort  string     `json:"codexEffort"`
+}
+type liveCodexSettingsRequest struct {
+	CodexModel  string `json:"codexModel"`
+	CodexEffort string `json:"codexEffort"`
 }
 type liveConversationVoiceRequest struct {
 	Voice string `json:"voice"`
@@ -143,7 +163,8 @@ func (s *Server) createLiveConversation(c *gin.Context) {
 		item.ProjectID = projectID
 		item.WorkspaceSessionID = *request.SessionID
 	} else {
-		sessionID, projectID, createErr := s.createLiveCoordinatorSession(c, tx, request.WorkerID, *request.ProjectID)
+		codexModel, codexEffort := normalizeLiveCodexSettings(request.CodexModel, request.CodexEffort)
+		sessionID, projectID, createErr := s.createLiveCoordinatorSession(c, tx, request.WorkerID, *request.ProjectID, codexModel, codexEffort)
 		if createErr != nil {
 			problem(c, http.StatusUnprocessableEntity, "创建接线员 Session 失败", createErr)
 			return
@@ -267,7 +288,13 @@ func (s *Server) mutateLiveConversationMemory(c *gin.Context, deleteMessages boo
 			return
 		}
 	}
-	sessionID, _, err := s.createLiveCoordinatorSession(c, tx, workerID, projectID)
+	var settings liveCodexSettingsRequest
+	if bindErr := c.ShouldBindJSON(&settings); bindErr != nil && !errors.Is(bindErr, io.EOF) {
+		badRequest(c, bindErr)
+		return
+	}
+	codexModel, codexEffort := normalizeLiveCodexSettings(settings.CodexModel, settings.CodexEffort)
+	sessionID, _, err := s.createLiveCoordinatorSession(c, tx, workerID, projectID, codexModel, codexEffort)
 	if err != nil {
 		problem(c, http.StatusUnprocessableEntity, "创建接线员 Session 失败", err)
 		return
@@ -526,60 +553,43 @@ func (s *Server) closeLiveSession(c *gin.Context) {
 		problem(c, http.StatusInternalServerError, "读取 Live session 失败", err)
 		return
 	}
-	if status == "closed" || status == "expired" || status == "failed" || status == "replaced" {
+	if status == "closed" || status == "expired" || status == "failed" || status == "replaced" ||
+		status == "closing" || status == "close_timeout" {
 		c.JSON(http.StatusOK, gin.H{"sessionId": id, "status": status})
 		return
 	}
-	// A concurrent caller that observes closing only waits for the first close command.
-	sendClose := status != "closing"
-	if sendClose {
-		if _, err = tx.ExecContext(requestCtx, `UPDATE live_sessions SET status='closing',last_error=NULL,updated_at=now() WHERE id=$1`, id); err != nil {
-			problem(c, http.StatusInternalServerError, "更新 Live session 状态失败", err)
-			return
-		}
-		if _, err = tx.ExecContext(requestCtx, `UPDATE live_conversations SET status='closing',updated_at=now() WHERE active_session_id=$1`, id); err != nil {
-			problem(c, http.StatusInternalServerError, "更新 Live conversation 状态失败", err)
-			return
-		}
+	if _, err = tx.ExecContext(requestCtx, `UPDATE live_sessions SET status='closing',last_error=NULL,updated_at=now() WHERE id=$1`, id); err != nil {
+		problem(c, http.StatusInternalServerError, "更新 Live session 状态失败", err)
+		return
+	}
+	if _, err = tx.ExecContext(requestCtx, `UPDATE live_conversations SET status='closing',updated_at=now() WHERE active_session_id=$1`, id); err != nil {
+		problem(c, http.StatusInternalServerError, "更新 Live conversation 状态失败", err)
+		return
 	}
 	if err = tx.Commit(); err != nil {
 		problem(c, http.StatusInternalServerError, "关闭 Live session 失败", err)
 		return
 	}
 
-	closeCtx, cancel := context.WithTimeout(requestCtx, liveCloseWaitTimeout)
+	closeCtx, cancel := context.WithTimeout(requestCtx, liveCloseAckTimeout)
 	defer cancel()
-	if sendClose {
-		if err = s.liveManager.waitSideband(closeCtx, id); err != nil {
-			s.failLiveSession(s.liveServiceContext(requestCtx), id, errors.New("等待 Live sideband 超时"))
-			problem(c, http.StatusGatewayTimeout, "等待 Live sideband 超时", err)
-			return
-		}
-		if err = s.liveManager.sendClose(closeCtx, id); err != nil {
-			s.failLiveSession(s.liveServiceContext(requestCtx), id, errors.New("发送 Live close 失败"))
-			problem(c, http.StatusGatewayTimeout, "发送 Live close 失败", err)
-			return
-		}
+	if err = s.liveManager.waitSideband(closeCtx, id); err == nil {
+		_ = s.liveManager.sendClose(closeCtx, id)
 	}
-	ticker := time.NewTicker(100 * time.Millisecond)
+	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		if err = s.db.QueryRowContext(closeCtx, `SELECT status FROM live_sessions WHERE id=$1`, id).Scan(&status); err != nil {
 			problem(c, http.StatusInternalServerError, "读取关闭状态失败", err)
 			return
 		}
-		if status == "closed" {
+		if status == "closed" || status == "expired" || status == "failed" || status == "replaced" {
 			c.JSON(http.StatusOK, gin.H{"sessionId": id, "status": status})
-			return
-		}
-		if status == "expired" || status == "failed" || status == "replaced" {
-			problem(c, http.StatusConflict, "Live session 未收到 session.closed", errors.New(status))
 			return
 		}
 		select {
 		case <-closeCtx.Done():
-			s.failLiveSession(s.liveServiceContext(requestCtx), id, errors.New("等待 session.closed 超时"))
-			problem(c, http.StatusGatewayTimeout, "等待 Live session 关闭超时", closeCtx.Err())
+			c.JSON(http.StatusOK, gin.H{"sessionId": id, "status": "closing"})
 			return
 		case <-ticker.C:
 		}

@@ -240,7 +240,7 @@ func (s *Server) liveSessionBinding(ctx context.Context, tx *sql.Tx, sessionID u
 	return projectID, workerID, err
 }
 
-func (s *Server) createLiveCoordinatorSession(c *gin.Context, tx *sql.Tx, workerID, projectID uuid.UUID) (uuid.UUID, uuid.UUID, error) {
+func (s *Server) createLiveCoordinatorSession(c *gin.Context, tx *sql.Tx, workerID, projectID uuid.UUID, model, effort string) (uuid.UUID, uuid.UUID, error) {
 	administrator := c.MustGet("session").(auth.Session)
 	var workspaceID, projectWorker uuid.UUID
 	err := tx.QueryRowContext(c.Request.Context(), `SELECT project.workspace_id, workspace.worker_id
@@ -266,9 +266,9 @@ func (s *Server) createLiveCoordinatorSession(c *gin.Context, tx *sql.Tx, worker
 	err = tx.QueryRowContext(c.Request.Context(), `INSERT INTO workspace_sessions(
 		workspace_id,workspace_project_id,agent_profile_id,created_by_administrator_id,title,
 		model,reasoning_effort,service_tier,collaboration_mode,settings_version,title_revision,title_source)
-		SELECT $1,$2,$3,$4,'Live 语音',profile.model,profile.reasoning_effort,'standard','default',1,0,'fallback'
+		SELECT $1,$2,$3,$4,'Live 语音',$5,$6,'standard','default',1,0,'fallback'
 		FROM agent_profiles profile WHERE profile.id=$3
-		RETURNING id`, workspaceID, projectID, profileID, administrator.AdministratorID).Scan(&sessionID)
+		RETURNING id`, workspaceID, projectID, profileID, administrator.AdministratorID, model, effort).Scan(&sessionID)
 	return sessionID, projectID, err
 }
 
