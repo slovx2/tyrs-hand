@@ -1,11 +1,11 @@
 ---
 name: tyrs-browser
-description: Use Playwright, the Tyrs Hand Worker browser, or the Desktop browser for web navigation, UI interaction, screenshots, downloads, uploads, and local testing. Use whenever a task requires browser UI work; prefer purpose-built APIs or connectors for non-UI semantic operations.
+description: Use the Tyrs Hand Worker browser for web navigation, UI interaction, screenshots, downloads, uploads, and local testing. Use whenever a task requires browser UI work; prefer purpose-built APIs or connectors for non-UI semantic operations.
 ---
 
 # Tyrs Browser
 
-Choose between Playwright, the Worker browser, and the Desktop browser.
+Use the Worker browser by default. Playwright is allowed only when the user explicitly asks for it.
 
 Host browser tools, file exchange, local services, and local Git do not require a Control Workspace binding. Worker, SSH, and browser authentication still apply. Control automations and Forum publishing require an active Workspace binding.
 
@@ -13,11 +13,11 @@ Binding, unbinding, and owner changes take effect on the next turn without resta
 
 ## Choose the browser
 
-Honor an explicit browser choice. When user identity or login state is required, prefer the Worker browser, then the Desktop browser. Otherwise, use Playwright or the Worker browser based on the task.
+Default to the Worker browser. Honor an explicit request for Playwright.
 
-Use the `chrome` MCP when selecting Worker or Desktop. Do not control the same page through Playwright and MCP simultaneously.
+Use the `chrome` MCP for the Worker browser. Do not control the same page through Playwright and MCP simultaneously.
 
-The remaining MCP-specific instructions apply only to Worker and Desktop. Call `browser_select` only to inspect availability or make an intentional selection. A stale or closed tab does not invalidate the browser selection: list tabs again and obtain a fresh tab.
+The remaining MCP-specific instructions apply to the Worker browser. Call `browser_select` only to inspect availability; keep the selection on worker. A stale or closed tab does not invalidate the browser selection: list tabs again and obtain a fresh tab.
 
 ## Work with tabs
 
@@ -77,9 +77,8 @@ Do not use `browser_evaluate` to bypass these restrictions. Treat redacted outpu
 - Stage workspace files with `browser_files.stage_file` before upload.
 - Import completed downloads with `browser_files.import_download`.
 - Worker browser tools use the host Browser MCP and the configured host files directory directly.
-- Desktop browser tools use the dedicated Browser Agent SSH channel; a Desktop disconnect must not affect Worker browser tools or other Desktop clients.
 - For a service bound to a non-browser-visible interface, call `browser_expose_service` and navigate to the returned loopback endpoint.
 - Use task lifetime by default; use review lifetime only for a page the user must inspect after the turn.
 - Browser tokens are read by the Worker from its restricted token file. Never inspect, echo, copy, or return them.
 
-If the selected browser or required file tools are unavailable, report that directly and use another allowed browser when the task permits.
+If the Worker browser or required file tools are unavailable, report that directly.

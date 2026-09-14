@@ -38,10 +38,10 @@ func browserToolSpec() ports.DynamicToolSpec {
 		Description: "Exchange files with the selected browser.",
 		Tools: []ports.DynamicToolSpec{
 			{Type: "function", Name: "stage_file",
-				Description: "Copy a regular file from the current workspace into the browser exchange directory for worker or desktop upload.",
+				Description: "Copy a regular file from the current workspace into the browser exchange directory for Worker browser upload.",
 				InputSchema: json.RawMessage(`{"type":"object","properties":{"source":{"type":"string","minLength":1}},"required":["source"],"additionalProperties":false}`)},
 			{Type: "function", Name: "import_download",
-				Description: "Copy a worker or desktop browser download from the exchange directory into the current workspace.",
+				Description: "Copy a Worker browser download from the exchange directory into the current workspace.",
 				InputSchema: json.RawMessage(`{"type":"object","properties":{"source":{"type":"string","minLength":1},"destination":{"type":"string","minLength":1}},"required":["source","destination"],"additionalProperties":false}`)},
 		},
 	}
