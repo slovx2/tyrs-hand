@@ -109,6 +109,10 @@ func liveDelegationID(event map[string]any) string {
 	return ""
 }
 
+func liveDelegationIdempotencyKey(liveSessionID uuid.UUID, delegationID string) string {
+	return "live:delegation:" + liveSessionID.String() + ":" + delegationID
+}
+
 func isLiveDelegationEvent(typ string) bool {
 	switch strings.TrimSpace(typ) {
 	case "session.delegation.created", "delegation.created", "conversation.handoff.requested":
@@ -174,7 +178,7 @@ func (s *Server) enqueueLiveDelegation(ctx context.Context, liveSessionID uuid.U
 		s.cfg.CodexMaxSteersPerTurn, s.cfg.CodexReconcileMaxAttempts)
 	_, inserted, err := repository.Enqueue(ctx, tx, codexcontrol.EnqueueRequest{
 		SourceType: codexcontrol.SourceWorkspace, SessionID: sessionID.UUID,
-		InputSurface: "live", IdempotencyKey: "live:delegation:" + conversationID.String() + ":" + delegationID,
+		InputSurface: "live", IdempotencyKey: liveDelegationIdempotencyKey(liveSessionID, delegationID),
 		Instruction: text, Behavior: "steer_if_active", ReplyPolicy: "silent",
 		ActorLogin: actorLogin, ActorPermission: "owner", ActorParticipantID: administratorID,
 		ActorDisplayName: actorLogin,

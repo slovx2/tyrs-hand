@@ -4,6 +4,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +18,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/pquerna/otp/totp"
 	"github.com/slovx2/tyrs-hand/internal/auth"
+	"github.com/slovx2/tyrs-hand/internal/config"
 	"github.com/slovx2/tyrs-hand/internal/database"
 	"github.com/slovx2/tyrs-hand/internal/live"
 	"github.com/slovx2/tyrs-hand/internal/security"
@@ -204,7 +206,7 @@ func TestLiveControlWithFakeProvider(t *testing.T) {
 	require.NoError(t, err)
 	fake := newFakeLiveServer(t)
 	manager := newLiveManager(db, live.NewProvider(fake.server.URL, "provider-secret"), zap.NewNop())
-	server := &Server{db: db, auth: authService, logger: zap.NewNop(), liveManager: manager}
+	server := &Server{db: db, auth: authService, cfg: config.Config{LeaseDuration: time.Minute}, logger: zap.NewNop(), liveManager: manager}
 	manager.onDelegation = server.enqueueLiveDelegation
 	router := liveIntegrationRouter(server)
 	httpServer := httptest.NewServer(router)
@@ -284,6 +286,14 @@ func TestLiveControlWithFakeProvider(t *testing.T) {
 		var count int
 		return db.QueryRowContext(ctx, `SELECT count(*) FROM live_messages WHERE conversation_id=$1`, conversationBody.ID).Scan(&count) == nil && count == 2
 	}, 5*time.Second, 20*time.Millisecond)
+	call.writeJSON(map[string]any{"type": "conversation.handoff.requested", "id": "handoff-event-1", "handoff_id": "handoff_1"})
+	require.Eventually(t, func() bool {
+		return equalStrings(liveDelegationInstructions(t, db, fixture.session), []string{"你好"})
+	}, 5*time.Second, 20*time.Millisecond)
+	call.writeJSON(map[string]any{"type": "conversation.handoff.requested", "id": "handoff-event-1-dup", "handoff_id": "handoff_1"})
+	require.Never(t, func() bool {
+		return !equalStrings(liveDelegationInstructions(t, db, fixture.session), []string{"你好"})
+	}, 300*time.Millisecond, 20*time.Millisecond)
 	events := clientJSONRequest(t, http.MethodGet, httpServer.URL+"/api/v1/client/live-conversations/"+
 		conversationBody.ID.String()+"/events?limit=100", loginBody.AccessToken, nil)
 	require.Equal(t, http.StatusOK, events.Code, events.Body.String())
@@ -310,10 +320,60 @@ func TestLiveControlWithFakeProvider(t *testing.T) {
 	require.Len(t, input, 2)
 	require.Equal(t, "user", input[0].(map[string]any)["role"])
 	require.Equal(t, "assistant", input[1].(map[string]any)["role"])
+	require.Eventually(t, func() bool {
+		var status string
+		return db.QueryRowContext(ctx, `SELECT status FROM live_sessions WHERE id=$1`, recoveredBody.SessionID).Scan(&status) == nil && status == "active"
+	}, 5*time.Second, 20*time.Millisecond)
+	recoveredCall.writeJSON(map[string]any{"type": "input_transcript.done", "id": "recover-input-done", "item_id": "item-2", "transcript": "再查一次"})
+	require.Eventually(t, func() bool {
+		var count int
+		return db.QueryRowContext(ctx, `SELECT count(*) FROM live_messages WHERE conversation_id=$1 AND role='user'`, conversationBody.ID).Scan(&count) == nil && count == 2
+	}, 5*time.Second, 20*time.Millisecond)
+	recoveredCall.writeJSON(map[string]any{"type": "conversation.handoff.requested", "id": "handoff-event-2", "handoff_id": "handoff_1"})
+	require.Eventually(t, func() bool {
+		return equalStrings(liveDelegationInstructions(t, db, fixture.session), []string{"你好", "再查一次"})
+	}, 5*time.Second, 20*time.Millisecond)
+	recoveredCall.writeJSON(map[string]any{"type": "conversation.handoff.requested", "id": "handoff-event-2-dup", "handoff_id": "handoff_1"})
+	require.Never(t, func() bool {
+		return !equalStrings(liveDelegationInstructions(t, db, fixture.session), []string{"你好", "再查一次"})
+	}, 300*time.Millisecond, 20*time.Millisecond)
+	var lastDelegationID string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT last_delegation_id FROM live_conversations WHERE id=$1`,
+		conversationBody.ID).Scan(&lastDelegationID))
+	require.Equal(t, "handoff_1", lastDelegationID)
 
 	finalClose := clientJSONRequest(t, http.MethodPost, httpServer.URL+"/api/v1/client/live-sessions/"+
 		recoveredBody.SessionID.String()+"/close", loginBody.AccessToken, nil)
 	require.Equal(t, http.StatusOK, finalClose.Code, finalClose.Body.String())
+}
+
+func liveDelegationInstructions(t *testing.T, db *sql.DB, sessionID uuid.UUID) []string {
+	t.Helper()
+	rows, err := db.QueryContext(context.Background(),
+		`SELECT instruction FROM codex_turn_intents
+		 WHERE session_id=$1 AND input_surface='live' ORDER BY sequence_no`, sessionID)
+	require.NoError(t, err)
+	defer rows.Close()
+	var instructions []string
+	for rows.Next() {
+		var instruction string
+		require.NoError(t, rows.Scan(&instruction))
+		instructions = append(instructions, instruction)
+	}
+	require.NoError(t, rows.Err())
+	return instructions
+}
+
+func equalStrings(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func liveIntegrationRouter(server *Server) http.Handler {

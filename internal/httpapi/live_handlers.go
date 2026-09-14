@@ -18,8 +18,9 @@ import (
 )
 
 const (
-	defaultLiveModel = "gpt-live-1-codex"
-	defaultLiveVoice = "cove"
+	defaultLiveModel     = "gpt-live-1-codex"
+	defaultLiveVoice     = "cove"
+	liveCloseWaitTimeout = 30 * time.Second
 )
 
 type liveConversationRequest struct {
@@ -528,7 +529,7 @@ func (s *Server) closeLiveSession(c *gin.Context) {
 		return
 	}
 
-	closeCtx, cancel := context.WithTimeout(requestCtx, 10*time.Second)
+	closeCtx, cancel := context.WithTimeout(requestCtx, liveCloseWaitTimeout)
 	defer cancel()
 	if sendClose {
 		if err = s.liveManager.waitSideband(closeCtx, id); err != nil {
