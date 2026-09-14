@@ -1,5 +1,4 @@
 import * as Linking from "expo-linking";
-import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Modal, PermissionsAndroid, Platform, Pressable, ScrollView, StyleSheet,
   Switch, Text, View } from "react-native";
@@ -20,7 +19,8 @@ import { clearLegacyLiveConversationId, loadLegacyLiveConversationId, loadLiveCo
 import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
 import { playLiveConnectionSound } from "@/features/live/liveSounds";
-import { isLiveWakeParam, shouldPlaySessionStartedSound } from "@/features/live/liveWake";
+import { isLiveWakeParam, shouldAutoConnectOnOpen, shouldPlaySessionStartedSound } from "@/features/live/liveWake";
+import { addLiveWakeListener, takeLiveWake } from "@/native/voiceWake";
 
 const liveIceConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -86,10 +86,12 @@ async function waitForIceGathering(connection: RTCPeerConnection): Promise<void>
   });
 }
 
-export default function LiveScreen() {
+export function LiveScreen({ initialWake = false, onLeave }: {
+  initialWake?: boolean;
+  onLeave: () => void;
+}) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<Record<string, string | string[]>>();
   const ready = useAppStore((state) => state.ready);
   const connection = useAppStore((state) => state.activeConnection);
   const projects = useAppStore((state) => state.projects);
@@ -121,13 +123,16 @@ export default function LiveScreen() {
   const sessionIdRef = useRef<string | null>(null);
   const sessionStartedSoundPlayed = useRef(false);
   const consumedWakeRequestCount = useRef(0);
-  const initialAutoConnectAttempted = useRef(false);
   const loadedConversationTarget = useRef<string | undefined>(undefined);
   const connectRef = useRef<() => Promise<void>>(async () => undefined);
+  const disconnectRef = useRef<() => Promise<void>>(async () => undefined);
   const soundsEnabledRef = useRef(true);
+  const mountedRef = useRef(true);
   const machineBinding = useMemo(() => resolveMachineControlBinding(connection), [connection]);
   const workerId = machineBinding.workerId ?? "";
   const link = machineBinding.link;
+  const linkRef = useRef(link);
+  linkRef.current = link;
   const profileId = connection?.profileId;
   const selectedProject = projects.find((item) => item.id === selectedProjectId) ?? null;
 
@@ -161,22 +166,27 @@ export default function LiveScreen() {
     };
   }, []);
   useEffect(() => {
-    if (!isLiveWakeParam(params.wake)) return;
-    setWakeRequestCount((current) => current + 1);
-    router.setParams({ wake: undefined } as never);
-  }, [params.wake]);
-  useEffect(() => {
-    const subscription = Linking.addEventListener("url", ({ url }) => {
-      const parsed = Linking.parse(url);
-      if (parsed.path !== "live" ||
-        !isLiveWakeParam(parsed.queryParams?.wake as string | string[] | undefined)) return;
+    if (shouldAutoConnectOnOpen(initialWake)) setWakeRequestCount((current) => current + 1);
+    void takeLiveWake().then((wake) => {
+      if (wake && mountedRef.current) setWakeRequestCount((current) => current + 1);
+    }).catch(() => undefined);
+    const nativeWake = addLiveWakeListener(() => {
       setWakeRequestCount((current) => current + 1);
     });
-    return () => subscription.remove();
-  }, []);
+    const subscription = Linking.addEventListener("url", ({ url }) => {
+      const parsed = Linking.parse(url);
+      if (parsed.path !== "live" && parsed.hostname !== "live") return;
+      if (!isLiveWakeParam(parsed.queryParams?.wake as string | string[] | undefined)) return;
+      setWakeRequestCount((current) => current + 1);
+    });
+    return () => {
+      nativeWake?.remove();
+      subscription.remove();
+    };
+  }, [initialWake]);
   useEffect(() => () => {
-    stopPeer();
-    void audioRoute.restoreLiveAudioRoute().catch(() => undefined);
+    mountedRef.current = false;
+    void disconnectRef.current();
   }, []);
   useEffect(() => {
     if (!link || !workerId || !selectedProject) {
@@ -272,8 +282,10 @@ export default function LiveScreen() {
   };
 
   const restoreAudioRoute = async () => {
-    setAudioSelection({ kind: "auto" });
-    setActiveAudioRoute(null);
+    if (mountedRef.current) {
+      setAudioSelection({ kind: "auto" });
+      setActiveAudioRoute(null);
+    }
     await audioRoute.restoreLiveAudioRoute().catch(() => undefined);
   };
 
@@ -440,28 +452,11 @@ export default function LiveScreen() {
 
   connectRef.current = connect;
   useEffect(() => {
-    if (!ready || !conversationLoaded || controlProjectId === undefined ||
-      initialAutoConnectAttempted.current) return;
-    initialAutoConnectAttempted.current = true;
-    if (!profileId) {
-      setError("请先在设置页连接一个 Control");
-      return;
-    }
-    if (!link) {
-      setError(machineBinding.message ?? "当前机器尚未关联 Control Worker，请返回设置页关联");
-      return;
-    }
-    if (!selectedProject) {
-      setError("请先在会话页选择 Codex 项目");
-      return;
-    }
-    void connectRef.current();
-  }, [conversationLoaded, controlProjectId, link, machineBinding.message, profileId, ready, selectedProject]);
-  useEffect(() => {
+    if (!ready || !conversationLoaded || controlProjectId === undefined) return;
     if (wakeRequestCount <= consumedWakeRequestCount.current) return;
     consumedWakeRequestCount.current = wakeRequestCount;
     void connectRef.current();
-  }, [wakeRequestCount]);
+  }, [conversationLoaded, controlProjectId, ready, wakeRequestCount]);
 
   const toggleSounds = (value: boolean) => {
     soundsEnabledRef.current = value;
@@ -472,19 +467,28 @@ export default function LiveScreen() {
   };
 
   const disconnect = async () => {
-    const activeSessionId = sessionIdRef.current ?? sessionId;
-    if (link && activeSessionId) {
-      try { await closeLiveSession(link, activeSessionId); }
-      catch (reason) { setError(reason instanceof Error ? reason.message : "关闭失败"); }
-    }
+    const activeSessionId = sessionIdRef.current;
+    const activeLink = linkRef.current;
     sessionIdRef.current = null;
     sessionStartedSoundPlayed.current = false;
-    setSessionId(null);
-    setStatus("未连接");
-    setActiveSessionVoice(undefined);
+    connectingRef.current = false;
+    if (mountedRef.current) {
+      setSessionId(null);
+      setStatus("未连接");
+      setActiveSessionVoice(undefined);
+    }
     stopPeer();
     await restoreAudioRoute();
+    if (activeLink && activeSessionId) {
+      try { await closeLiveSession(activeLink, activeSessionId); }
+      catch (reason) {
+        if (mountedRef.current) {
+          setError(reason instanceof Error ? reason.message : "关闭失败");
+        }
+      }
+    }
   };
+  disconnectRef.current = disconnect;
 
   const resetSession = async () => {
     const reconnect = Boolean(sessionId);
@@ -509,7 +513,7 @@ export default function LiveScreen() {
     setState(initialLiveTranscriptState);
     if (reconnect) await connect();
   };
-  const leave = () => { if (router.canGoBack()) router.back(); else router.replace("/(tabs)/sessions"); };
+  const leave = () => { void disconnect().finally(() => onLeave()); };
   const visible = visibleLiveTranscript(state);
   const connected = status === "已连接";
   const connecting = status === "连接中";

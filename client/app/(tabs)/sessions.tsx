@@ -14,6 +14,7 @@ import { SessionActionsMenu } from "@/features/chat/SessionActionsMenu";
 import { SessionListPane } from "@/features/session-list/SessionListPane";
 import { resolveMachineControlBinding } from "@/features/connections/machineControlBinding";
 import { resolveLiveProjectForSSHProject } from "@/features/live/liveProjectMapping";
+import { openLive } from "@/features/live/openLive";
 import { useTablet } from "@/hooks/useTablet";
 import { useAppStore } from "@/store/appStore";
 import { useTheme } from "@/theme/ThemeProvider";
@@ -56,10 +57,9 @@ export default function SessionsScreen() {
     setSelectedId(null);
     void switchConnection(profileId);
   };
-  const openLive = () => {
+  const openLivePage = () => {
     if (!selectedProject || machineBinding.status !== "bound") return;
-    router.push({ pathname: "/(tabs)/live" as never,
-      params: { workerId: machineBinding.workerId } } as never);
+    openLive();
   };
   useEffect(() => {
     if (machineBinding.status !== "bound" || !selectedProject) {
@@ -128,7 +128,7 @@ export default function SessionsScreen() {
     </Pressable>
     <Pressable testID="session:live:add" accessibilityRole="button" accessibilityLabel="Live"
       accessibilityState={{ disabled: !canOpenLive }}
-      disabled={!canOpenLive} onPress={openLive}
+      disabled={!canOpenLive} onPress={openLivePage}
       style={({ pressed }) => [styles.fab, { backgroundColor: theme.colors.accent,
         opacity: canOpenLive ? (pressed ? 0.78 : 1) : 0.4 }, theme.shadow]}>
       <Ionicons name="mic-outline" size={27} color={theme.colors.accentForeground} />

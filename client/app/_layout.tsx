@@ -17,6 +17,7 @@ function Navigation() {
     gestureEnabled: true, fullScreenGestureEnabled: true }}>
     <Stack.Screen name="index" options={{ headerShown: false }} />
     <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+    <Stack.Screen name="live" options={{ headerShown: false, animation: "slide_from_right" }} />
     <Stack.Screen name="device-pair" options={{ title: "定时任务授权" }} />
     <Stack.Screen name="project/[id]/new" options={{ title: "新会话" }} />
     <Stack.Screen name="session/[id]" options={{ title: "会话" }} />

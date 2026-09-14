@@ -27,6 +27,7 @@ type NativeAudioRoute = {
   setLiveAudioRoute(kind: "auto" | LiveAudioRouteKind, deviceId?: number | null): Promise<LiveAudioRoute>;
   restoreLiveAudioRoute(): Promise<void>;
   getLiveAudioRoute(): Promise<LiveAudioRoute>;
+  playLiveCue(kind: "connecting" | "connected"): Promise<void>;
   addListener(eventName: "onLiveAudioRouteChanged",
     listener: (route: LiveAudioRoute) => void): EventSubscription;
 };
@@ -67,5 +68,9 @@ export default {
   addLiveAudioRouteListener(listener: (route: LiveAudioRoute) => void): EventSubscription | null {
     if (Platform.OS !== "android") return null;
     return nativeModule().addListener("onLiveAudioRouteChanged", listener);
+  },
+  playLiveCue(kind: "connecting" | "connected"): Promise<void> {
+    if (Platform.OS !== "android") return Promise.resolve();
+    return nativeModule().playLiveCue(kind);
   },
 };

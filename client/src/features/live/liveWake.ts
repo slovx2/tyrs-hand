@@ -8,6 +8,10 @@ export function shouldConsumeLiveWake(value: LiveWakeParam, consumed: boolean): 
   return isLiveWakeParam(value) && !consumed;
 }
 
+export function shouldAutoConnectOnOpen(wake: boolean): boolean {
+  return wake;
+}
+
 export function shouldPlaySessionStartedSound(eventType: string | undefined,
   alreadyPlayed: boolean): boolean {
   return eventType === "session.started" && !alreadyPlayed;

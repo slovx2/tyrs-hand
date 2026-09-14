@@ -39,6 +39,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   plugins: [
     "expo-router",
+    "./plugins/withLiveIntentForward.js",
     ["expo-build-properties", { android: { usesCleartextTraffic: false } }],
     "expo-secure-store",
     "expo-sqlite",

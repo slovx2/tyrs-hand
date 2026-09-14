@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isLiveWakeParam, shouldConsumeLiveWake, shouldPlaySessionStartedSound } from "./liveWake";
+import { isLiveWakeParam, shouldAutoConnectOnOpen, shouldConsumeLiveWake, shouldPlaySessionStartedSound } from "./liveWake";
 
 describe("Live 语音唤醒", () => {
   it("只识别 wake=1", () => {
@@ -21,5 +21,12 @@ describe("Live 连接完成提示音", () => {
     expect(shouldPlaySessionStartedSound("session.started", false)).toBe(true);
     expect(shouldPlaySessionStartedSound("session.started", true)).toBe(false);
     expect(shouldPlaySessionStartedSound("session.closed", false)).toBe(false);
+  });
+});
+
+describe("Live 进页自动连接", () => {
+  it("只有唤醒才自动连", () => {
+    expect(shouldAutoConnectOnOpen(true)).toBe(true);
+    expect(shouldAutoConnectOnOpen(false)).toBe(false);
   });
 });

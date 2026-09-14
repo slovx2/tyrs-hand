@@ -6,12 +6,15 @@ import android.media.AudioDeviceInfo
 import android.media.AudioDeviceCallback
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class TyrsAudioRouteModule : Module() {
   private var prepared = false
@@ -63,6 +66,10 @@ class TyrsAudioRouteModule : Module() {
 
     AsyncFunction("getLiveAudioRoute") {
       snapshot(requireContext())
+    }
+
+    AsyncFunction("playLiveCue") { kind: String ->
+      playCue(requireContext(), kind)
     }
   }
 
@@ -419,4 +426,47 @@ class TyrsAudioRouteModule : Module() {
       device.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
       (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
         device.type == AudioDeviceInfo.TYPE_USB_HEADSET)
+
+  private fun playCue(context: Context, kind: String) {
+    val resId = when (kind) {
+      "connecting" -> R.raw.live_connect_start
+      "connected" -> R.raw.live_connect_ready
+      else -> return
+    }
+    val player = MediaPlayer()
+    val finished = CountDownLatch(1)
+    try {
+      val attributes = AudioAttributes.Builder()
+        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+        .build()
+      player.setAudioAttributes(attributes)
+      context.resources.openRawResourceFd(resId).use { fd ->
+        player.setDataSource(fd.fileDescriptor, fd.startOffset, fd.length)
+      }
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        val audioManager = context.getSystemService(AudioManager::class.java)
+        val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+          try { audioManager?.communicationDevice } catch (_: SecurityException) { null }
+        } else null
+        if (device != null) player.setPreferredDevice(device)
+      }
+      player.setOnCompletionListener {
+        it.release()
+        finished.countDown()
+      }
+      player.setOnErrorListener { current, _, _ ->
+        current.release()
+        finished.countDown()
+        true
+      }
+      player.prepare()
+      player.start()
+      if (!finished.await(1800, TimeUnit.MILLISECONDS)) {
+        player.release()
+      }
+    } catch (_: RuntimeException) {
+      player.release()
+    }
+  }
 }
