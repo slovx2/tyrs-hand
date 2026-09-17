@@ -133,6 +133,8 @@ export function LiveScreen({ initialWake = false, onLeave }: {
   const disconnectRef = useRef<() => Promise<void>>(async () => undefined);
   const soundsEnabledRef = useRef(true);
   const mountedRef = useRef(true);
+  const transcriptRef = useRef<ScrollView>(null);
+  const pinnedToBottom = useRef(true);
   const machineBinding = useMemo(() => resolveMachineControlBinding(connection), [connection]);
   const workerId = machineBinding.workerId ?? "";
   const link = machineBinding.link;
@@ -567,7 +569,15 @@ export function LiveScreen({ initialWake = false, onLeave }: {
       </Pressable>
     </View>
     {error ? <Text style={[styles.error, { color: theme.colors.danger }]}>{error}</Text> : null}
-    <ScrollView contentContainerStyle={styles.transcript} testID="live:transcript">
+    <ScrollView ref={transcriptRef} style={styles.transcriptScroll} contentContainerStyle={styles.transcript}
+      testID="live:transcript" scrollEventThrottle={16}
+      onScroll={({ nativeEvent }) => {
+        pinnedToBottom.current = nativeEvent.contentOffset.y + nativeEvent.layoutMeasurement.height
+          >= nativeEvent.contentSize.height - 48;
+      }}
+      onContentSizeChange={() => {
+        if (pinnedToBottom.current) transcriptRef.current?.scrollToEnd({ animated: false });
+      }}>
       {visible.length === 0
         ? <Text style={{ color: theme.colors.textMuted }}>连接后开始说话</Text>
         : visible.map((item: Transcript, index) => (
@@ -668,6 +678,7 @@ const styles = StyleSheet.create({
   error: { paddingHorizontal: 20, marginBottom: 8 },
   menuVoice: { padding: 8, gap: 4 },
   voicePending: { fontSize: 12, paddingHorizontal: 4 },
+  transcriptScroll: { flex: 1 },
   transcript: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, gap: 12 },
   line: { gap: 4 },
   dock: { alignItems: "center", gap: 10, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 18, paddingHorizontal: 24 },
