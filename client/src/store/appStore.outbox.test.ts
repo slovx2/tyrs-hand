@@ -48,7 +48,7 @@ vi.mock("@/app-server/attachments", () => ({ materializeUserInput: vi.fn(async (
 ) => [{ type: "text", text, text_elements: [] }]) }));
 
 const preferences = { model: "gpt-test", effort: "low" as const, serviceTier: null,
-  collaborationMode: "default" as const };
+  collaborationMode: "default" as const, permissions: ":danger-full-access" as const };
 const project: MobileProject = { id: "project-1", workspaceId: null, name: "workspace",
   relativePath: "/workspace", cwd: "/workspace", kind: "ssh",
   availabilityStatus: "available", branch: null, dirty: false };

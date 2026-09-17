@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { LocalAttachment } from "@/app-server/attachments";
 import { latestExecutablePlan, type TurnPreferences } from "@/app-server/officialClient";
-import { defaultTurnPreferences } from "@/app-server/preferences";
+import { defaultTurnPreferences, normalizeTurnPreferences, turnPreferencesSummary } from "@/app-server/preferences";
 import { targetKey } from "@/app-server/types";
 import { Button, EmptyState } from "@/components/ui";
 import { clearDraft, loadDraft, saveDraft } from "@/db/drafts";
@@ -104,7 +104,10 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
     ? modelsByTarget[targetKey(profileId, workspaceId)] ?? EMPTY_MODELS
     : EMPTY_MODELS;
   const fallbackPreferences = useMemo(() => defaultTurnPreferences(models), [models]);
-  const resolvedPreferences = preferences ?? record?.preferences ?? fallbackPreferences;
+  const resolvedPreferences = (() => {
+    const current = preferences ?? record?.preferences ?? fallbackPreferences;
+    return current ? normalizeTurnPreferences(current) : current;
+  })();
   const draftScope = `thread:${sessionId}`;
   const activeTurnId = [...(record?.thread.turns ?? [])].reverse()
     .find((turn) => turn.status === "inProgress")?.id ?? null;
@@ -565,7 +568,7 @@ export function ConversationPane({ sessionId }: { sessionId: string }) {
       }} onSend={() => void send()} onStop={() => void stop()} active={activeTurnId !== null}
       sending={sending} stopping={stopping}
       parameterLabel={resolvedPreferences
-        ? `${resolvedPreferences.model} · ${resolvedPreferences.effort ?? "默认"} · ${resolvedPreferences.collaborationMode === "plan" ? "先做计划" : "直接执行"}`
+        ? turnPreferencesSummary(resolvedPreferences)
         : "参数暂不可用"} disabled={sending} />
     {resolvedPreferences && <ParameterSheet visible={showParameters} models={models}
       value={resolvedPreferences} onChange={setPreferences} onClose={() => setShowParameters(false)}

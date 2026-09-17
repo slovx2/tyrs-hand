@@ -14,13 +14,13 @@ describe("原生协议 Outbox", () => {
       projectId: "project-1", threadId: null,
       payload: { text: "hello", attachments: [], preferences: {
         model: "gpt-5.6", effort: "low", serviceTier: "priority",
-        collaborationMode: "default",
+        collaborationMode: "default", permissions: ":danger-full-access",
       } } });
     await enqueueOutbox({ profileId, clientMessageId: "message-1", kind: "create_task",
       projectId: "project-1", threadId: null,
       payload: { text: "duplicate", attachments: [], preferences: {
         model: "gpt-5.6", effort: "low", serviceTier: "priority",
-        collaborationMode: "default",
+        collaborationMode: "default", permissions: ":danger-full-access",
       } } });
 
     expect(await listOutbox(profileId)).toHaveLength(1);

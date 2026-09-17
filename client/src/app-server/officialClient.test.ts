@@ -61,7 +61,7 @@ class MemoryJournal implements SubmissionJournal {
 }
 
 const preferences = { model: "gpt-test", effort: "high" as const, serviceTier: null,
-  collaborationMode: "default" as const };
+  collaborationMode: "default" as const, permissions: ":danger-full-access" as const };
 
 describe("OfficialAppServerClient", () => {
   it("App Server 断线时清理旧交互请求，并允许新连接重新登记请求", () => {
@@ -306,6 +306,8 @@ describe("OfficialAppServerClient", () => {
 
     await unsupported.client.startThread("/workspace", "gpt-test");
     await supported.client.startThread("/workspace", "gpt-test");
+    expect(unsupported.rpc.calls.find((call) => call.method === "thread/start")?.params)
+      .toMatchObject({ permissions: ":danger-full-access" });
 
     expect(unsupported.rpc.calls.map((call) => call.method)).toEqual([
       "thread/items/list", "thread/start",
@@ -353,7 +355,22 @@ describe("OfficialAppServerClient", () => {
     expect(rpc.calls.map((call) => call.method)).toEqual(["turn/start"]);
     expect(rpc.calls[0]?.params).toMatchObject({
       threadId: thread.id, clientUserMessageId: "message-first",
+      permissions: ":danger-full-access",
     });
+  });
+
+  it("后续 Turn 可切换权限 profile", async () => {
+    const thread = officialThread([]);
+    const rpc = new FakeRpc((method, params) => {
+      if (method === "turn/start") {
+        expect(params).toMatchObject({ threadId: thread.id, permissions: ":workspace" });
+        return { turn: officialTurn("turn-workspace", "inProgress", []) };
+      }
+      throw new Error(`unexpected ${method}`);
+    });
+    const client = new OfficialAppServerClient("profile-1", rpc, new MemoryJournal());
+    await client.submitNewThread(thread, { clientMessageId: "message-workspace",
+      input: [textInput("hello")], preferences: { ...preferences, permissions: ":workspace" } });
   });
 
   it("Plan 未回答时先清空 requestUserInput，再 steer 当前 Turn", async () => {

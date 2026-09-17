@@ -20,6 +20,8 @@ import type { UserInput } from "@codex-app-server/v2/UserInput";
 
 import { JsonRpcRequestError } from "./jsonRpc";
 import { projectItemForMobile, projectThreadForMobile, projectTurnForMobile } from "./mobileProjection";
+import { DEFAULT_PERMISSION_PROFILE, normalizePermissionProfile,
+  permissionProfileFromRuntime, type PermissionProfile } from "./permissionProfile";
 import type { SubmissionJournal } from "./submissions";
 import type { MobileThread, ThreadPreferences } from "./types";
 
@@ -184,7 +186,8 @@ export class OfficialAppServerClient {
       thread: { ...projectThreadForMobile(response.thread), turns: page.turns },
       page,
       preferences: { model: response.model, effort: response.reasoningEffort,
-        serviceTier: response.serviceTier },
+        serviceTier: response.serviceTier,
+        permissions: permissionProfileFromRuntime(response.activePermissionProfile, response.sandbox) },
     };
   }
 
@@ -226,12 +229,14 @@ export class OfficialAppServerClient {
     return items;
   }
 
-  async startThread(cwd: string, model?: string, threadSource?: string): Promise<ThreadStartResponse> {
+  async startThread(cwd: string, model?: string, threadSource?: string,
+    permissions: PermissionProfile = DEFAULT_PERMISSION_PROFILE): Promise<ThreadStartResponse> {
     const historyMode: ThreadHistoryMode = await this.supportsPaginatedHistory()
       ? "paginated" : "legacy";
+    const permissionProfile = normalizePermissionProfile(permissions);
     const params: ThreadStartParams = model
-      ? { cwd, model, runtimeWorkspaceRoots: [cwd], historyMode }
-      : { cwd, runtimeWorkspaceRoots: [cwd], historyMode };
+      ? { cwd, model, runtimeWorkspaceRoots: [cwd], historyMode, permissions: permissionProfile }
+      : { cwd, runtimeWorkspaceRoots: [cwd], historyMode, permissions: permissionProfile };
     if (threadSource) {
       (params as ThreadStartParams & { threadSource: string }).threadSource = threadSource;
     }
@@ -444,6 +449,7 @@ export class OfficialAppServerClient {
       model: input.preferences.model,
       effort: input.preferences.effort,
       serviceTier: input.preferences.serviceTier,
+      permissions: normalizePermissionProfile(input.preferences.permissions),
       collaborationMode: {
         mode: input.preferences.collaborationMode,
         settings: { model: input.preferences.model, reasoning_effort: input.preferences.effort,

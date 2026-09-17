@@ -1,4 +1,5 @@
 import { THREAD_PAGE_SIZE } from "@/app-server/officialClient";
+import { normalizePermissionProfile } from "@/app-server/permissionProfile";
 import type { MobileProject, MobileThread, ThreadPreferences,
   ThreadRecord } from "@/app-server/types";
 import { isPreviewMode } from "@/preview/config";
@@ -124,5 +125,8 @@ function parseThreadPreferences(value: unknown): ThreadPreferences | null {
     (preferences.collaborationMode !== "default" && preferences.collaborationMode !== "plan")) {
     return null;
   }
-  return preferences as ThreadPreferences;
+  return { ...preferences, model: preferences.model, effort: preferences.effort ?? null,
+    serviceTier: preferences.serviceTier ?? null,
+    collaborationMode: preferences.collaborationMode,
+    permissions: normalizePermissionProfile(preferences.permissions) };
 }

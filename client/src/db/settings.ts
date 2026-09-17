@@ -1,5 +1,6 @@
 import { getDatabase, runDatabaseWrite } from "./database";
 import type { TurnPreferences } from "@/app-server/officialClient";
+import { normalizePermissionProfile } from "@/app-server/permissionProfile";
 import type { LiveCodexPreferences } from "@/features/live/liveCodexPreferences";
 import type { ThemeMode } from "@/theme/tokens";
 
@@ -41,7 +42,9 @@ export async function loadLastTurnPreferences(profileId: string): Promise<TurnPr
       (value.effort !== null && typeof value.effort !== "string") ||
       (value.serviceTier !== null && typeof value.serviceTier !== "string") ||
       (value.collaborationMode !== "default" && value.collaborationMode !== "plan")) return null;
-    return value as TurnPreferences;
+    return { ...value, model: value.model, effort: value.effort ?? null,
+      serviceTier: value.serviceTier ?? null, collaborationMode: value.collaborationMode,
+      permissions: normalizePermissionProfile(value.permissions) } as TurnPreferences;
   } catch {
     return null;
   }

@@ -4,7 +4,7 @@ import type { PendingSubmission } from "./submissions";
 import { recoverPendingProfileSubmissions } from "./submissionRecovery";
 
 const preferences = { model: "gpt-test", effort: "high", serviceTier: null,
-  collaborationMode: "default" };
+  collaborationMode: "default", permissions: ":danger-full-access" };
 
 describe("持久提交冷启动恢复", () => {
   it("按项目路由到正确 App Server，串行恢复并保留已物化附件", async () => {

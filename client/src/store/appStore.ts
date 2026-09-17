@@ -351,7 +351,7 @@ async function sendDirectMessage(connection: Connection, projects: MobileProject
         ? await client.resumeThreadForSubmissionIfExists(discovered.id) : null;
     }
     if (!thread) thread = (await client.startThread(project.cwd, item.payload.preferences.model,
-      source)).thread;
+      source, item.payload.preferences.permissions)).thread;
     submissionThread = thread;
     threadId = thread.id;
     pendingCatalogThreads.add(threadKey(item.profileId, threadId));
@@ -431,7 +431,7 @@ async function drainOutboxItems(connection: Connection, projects: MobileProject[
         }
         if (!thread) {
           thread = (await client.startThread(project.cwd, item.payload.preferences.model,
-            source)).thread;
+            source, item.payload.preferences.permissions)).thread;
         }
         submissionThread = thread;
         threadId = thread.id;

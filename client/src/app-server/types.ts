@@ -6,6 +6,8 @@ import type { Thread } from "@codex-app-server/v2/Thread";
 import type { ThreadItem } from "@codex-app-server/v2/ThreadItem";
 import type { Turn } from "@codex-app-server/v2/Turn";
 
+import type { PermissionProfile } from "./permissionProfile";
+
 export type UserInputResponseItem = {
   type: "userInputResponse";
   id: string;
@@ -51,6 +53,7 @@ export type ThreadPreferences = {
   effort: ReasoningEffort | null;
   serviceTier: string | null;
   collaborationMode: ModeKind;
+  permissions: PermissionProfile;
 };
 
 export type ThreadHistoryState =

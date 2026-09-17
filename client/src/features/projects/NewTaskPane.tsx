@@ -5,7 +5,7 @@ import { Alert, KeyboardAvoidingView, Platform, StyleSheet, View } from "react-n
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { LocalAttachment } from "@/app-server/attachments";
-import { resolveNewTaskPreferences } from "@/app-server/preferences";
+import { resolveNewTaskPreferences, turnPreferencesSummary } from "@/app-server/preferences";
 import { targetKey, type MobileProject } from "@/app-server/types";
 import { Muted, Title } from "@/components/ui";
 import { clearDraft, loadDraft, saveDraft } from "@/db/drafts";
@@ -108,7 +108,7 @@ export function NewTaskPane({ project, expanded = false, showHeading = true, onS
         setBeforeSheet(preferences); setPreferences(resolvedPreferences); setShowParameters(true);
       }} onSend={() => void send()} sending={sending}
       parameterLabel={resolvedPreferences
-        ? `${resolvedPreferences.model} · ${resolvedPreferences.effort ?? "默认"} · ${resolvedPreferences.collaborationMode === "plan" ? "先做计划" : "直接执行"}`
+        ? turnPreferencesSummary(resolvedPreferences)
         : "参数暂不可用"} disabled={sending} />
     {resolvedPreferences && <ParameterSheet visible={showParameters} models={models}
       value={resolvedPreferences} onChange={setPreferences}

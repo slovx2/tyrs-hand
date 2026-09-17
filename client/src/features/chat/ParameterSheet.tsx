@@ -3,6 +3,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-nati
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import type { TurnPreferences } from "@/app-server/officialClient";
+import { PERMISSION_PROFILES, permissionProfileTestID } from "@/app-server/permissionProfile";
 import { SegmentedControl } from "@/components/SegmentedControl";
 import { Button, Muted, Title } from "@/components/ui";
 import { useTheme } from "@/theme/ThemeProvider";
@@ -81,6 +82,11 @@ export function ParameterSheet({ visible, models, value, onChange, onClose, onCa
               onPress={() => onChange({ ...value, serviceTier: tier.id })} />)}
           </>}
         </>}
+        <Title>权限</Title>
+        {PERMISSION_PROFILES.map((option) => <Choice key={option.id} label={option.label}
+          testID={permissionProfileTestID(option.id)}
+          selected={value.permissions === option.id}
+          onPress={() => onChange({ ...value, permissions: option.id })} />)}
         <Title>模式</Title>
         <SegmentedControl testIDPrefix="parameters:mode" value={value.collaborationMode}
           options={[{ value: "default", label: "直接执行" },

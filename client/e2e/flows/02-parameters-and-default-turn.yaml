@@ -19,6 +19,8 @@ appId: ${TYRS_HAND_E2E_APP_ID}
 - tapOn:
     id: "parameters:mode:default"
 - tapOn:
+    id: "parameters:permissions:danger-full-access"
+- tapOn:
     id: "parameters:done"
 - tapOn:
     id: "composer:input"
